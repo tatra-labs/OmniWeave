@@ -282,8 +282,8 @@ def test_print_registration_prints_both_halves_and_exits_zero(sink: io.StringIO)
     assert driver.main(["--print-registration"], out=sink) == driver.EXIT_CLEAN
     printed = sink.getvalue()
     assert GITATTRIBUTES_LINE in printed
-    assert "git config merge.owlock.name" in printed
-    assert "git config merge.owlock.driver" in printed
+    assert "git config merge.ow-index-lock.name" in printed
+    assert "git config merge.ow-index-lock.driver" in printed
 
 
 def test_the_registration_the_driver_prints_never_names_a_glob(sink: io.StringIO) -> None:

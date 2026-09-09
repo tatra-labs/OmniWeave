@@ -35,12 +35,21 @@ from __future__ import annotations
 import re
 import sqlite3  # noqa: TID251 -- see the module docstring: this file drives a REAL store.
 from pathlib import Path
+from types import MappingProxyType
+from typing import Any
 
 import pytest
 from conftest import MIGRATIONS_DIR
+from omniweave_core.blobs import BlobStore
+from omniweave_core.model import Capabilities, Kind, Layer, Method, PageKind, Quote, Trust
+from omniweave_core.model.block import BlockDraft
+from omniweave_core.model.records import DocRecord, PageRecord
+from omniweave_core.model.spans import OriginBytes
 from omniweave_core.store import migrate
 from omniweave_core.store import sqlite as ow
+from omniweave_core.store.doc import DocSink
 from omniweave_core.store.maintenance import maintenance_window, planner_statistics
+from omniweave_core.store.reader import SqliteReader
 
 # A fixed timestamp. `time.time()` is banned in library code and injected everywhere in the store,
 # so a test that reads the ambient clock would be asserting against a value the production path
@@ -310,3 +319,258 @@ def test_neither_absence_dictionary_names_a_table_the_charter_does_not_declare(
     charter = _declared_tables(plan.text("_notes/charter.md"))  # type: ignore[attr-defined]
     for name in (*DEFERRED_TO_A_LATER_PHASE, *LIVES_IN_A_SEPARATE_DATABASE_FILE):
         assert name in charter, f"{name} is excused but the charter does not declare it"
+
+
+# ---------------------------------------------------------------------------------------------
+# The round trip: a document goes in through DocSink and comes back out through Reader
+# ---------------------------------------------------------------------------------------------
+#
+# This is P2's demo in miniature (16-roadmap.md:434-440) and it is the assertion no single module
+# can make. `test_store_doc.py` proves `DocSink` writes the rows it means to, by reading them back
+# with raw SQL. `test_store_reader.py` proves `SqliteReader` reads rows, from a fixture it inserted
+# itself with raw SQL. Both can be entirely right while the two disagree about what a column MEANS
+# -- an enum ordinal decoded against the wrong domain, a `gen` predicate that stages one way and
+# filters the other, a `cite` minted in one format and parsed in another. Only a write through one
+# and a read through the other can see that, and each side's fixture SQL is precisely the shared
+# assumption that would hide it.
+
+
+def _producer(connection: sqlite3.Connection) -> int:
+    cursor = connection.execute(
+        "INSERT INTO producer(operator, op_version, code_fingerprint, options_digest) "
+        "VALUES('parse.pdf', 1, 'abc123', X'00')"
+    )
+    connection.commit()
+    return int(cursor.lastrowid or 0)
+
+
+FLOOR = Capabilities(
+    spatial="none",
+    origin_span="none",
+    text_span=False,
+    marks=False,
+    reading_order="raster",
+    sections="none",
+    tables="none",
+    math=frozenset(),
+    assets="none",
+    asset_origin=False,
+    notes="none",
+    confidence="none",
+    furniture="destroyed",
+    round_trip="none",
+)
+"""The all-absent capability floor. `Capabilities` has no defaults -- all fifteen are required,
+which is 03 section 4.4's point: a driver that forgets to declare one cannot silently claim it."""
+
+
+def _fresh(tmp_path: Path) -> tuple[Path, Path, int]:
+    path = tmp_path / "index.owstore"
+    cas = tmp_path / "cas"
+    cas.mkdir()
+    connection = ow.connect(path)
+    try:
+        migrate.apply_pending(connection, now_ns=NOW_NS)
+        producer_id = _producer(connection)
+    finally:
+        connection.close()
+    return path, cas, producer_id
+
+
+def _doc_record(key: int, uri: str) -> Any:
+
+    return DocRecord(
+        doc_ord=0,
+        doc_key=bytes([key]) * 16,
+        gen=0,
+        source_sha256=bytes([key]) * 32,
+        normalizer="canonical/1",
+        uri=uri,
+        media_type="application/pdf",
+        format="pdf",
+        format_evidence=MappingProxyType({}),
+        source_bytes=4096,
+        status="ok",
+        page_count=None,
+        model_version="1.1",
+        declared=FLOOR,
+        achieved=FLOOR,
+        confidence=MappingProxyType({}),
+        timings_ms=MappingProxyType({}),
+    )
+
+
+def _page_record() -> Any:
+
+    return PageRecord(
+        page=1,
+        page_kind=PageKind.PAGE,
+        label=None,
+        w_mpt=595_280,
+        h_mpt=841_890,
+        rotation=0,
+        quad_origin="topleft",
+        method=Method.NATIVE,
+        status="ok",
+    )
+
+
+def _sink(thread: Any, cas: Path, producer_id: int) -> Any:
+
+    return DocSink(
+        thread,
+        producer_id=producer_id,
+        origin_operator="parse.pdf",
+        origin_driver="parse.pdf.pdfium",
+        driver_schema_v=1,
+        blobs=BlobStore(cas),
+    )
+
+
+BODY_TEXT = "termination for convenience"
+
+
+def test_a_document_written_through_docsink_hydrates_through_reader(tmp_path: Path) -> None:
+    """The seam. Two modules, one column set, and neither one's own fixture in sight.
+
+    `DocSink` encodes `kind`, `layer`, `method` and `os_kind` to their `enum_val` ordinals on the
+    way in; `SqliteReader` decodes them back on the way out (reader.py:315-318). A domain mismatch
+    there is invisible to either module's tests, because each side would be self-consistent.
+    """
+    path, cas, producer_id = _fresh(tmp_path)
+    with ow.StoreThread(lambda: ow.connect(path)) as thread:
+        sink = _sink(thread, cas, producer_id)
+        sink.begin_doc(_doc_record(7, "file:///corpus/contract.pdf"))
+        sink.begin_page(_page_record())
+        root = sink.add_block(
+            BlockDraft(
+                kind=Kind.DOCUMENT,
+                layer=Layer.BODY,
+                method=Method.NATIVE,
+                trust=Trust.EXTRACTED,
+                quote=Quote.SYNTHETIC,
+            )
+        )
+        body = sink.add_block(
+            BlockDraft(
+                kind=Kind.PARAGRAPH,
+                layer=Layer.BODY,
+                method=Method.NATIVE,
+                trust=Trust.EXTRACTED,
+                quote=Quote.NORMALIZED,
+                parent=root,
+                text=BODY_TEXT,
+                origin=OriginBytes(
+                    part="file", start=0, length=len(BODY_TEXT), codec="utf-8/strict"
+                ),
+            )
+        )
+        sink.end_page({})
+        sink.end_doc("ok")
+
+    connection = ow.connect(path)
+    try:
+        minted = connection.execute(
+            "SELECT cite FROM block WHERE block_id = ?", (body,)
+        ).fetchone()[0]
+    finally:
+        connection.close()
+
+    connection = ow.connect_readonly(path)
+    try:
+        reader = SqliteReader(connection, now_ns=NOW_NS)
+        with reader.snapshot() as snap:
+            rows = reader.hydrate(snap, [root, body])
+    finally:
+        connection.close()
+
+    assert len(rows) == 2, f"hydrate returned {len(rows)} of 2 published blocks"
+    by_id = {row.block_id: row for row in rows}
+    assert set(by_id) == {root, body}
+
+    paragraph = by_id[body]
+    assert paragraph.text == BODY_TEXT
+    assert paragraph.kind is Kind.PARAGRAPH, "the kind ordinal decoded to the wrong member"
+    assert paragraph.layer is Layer.BODY
+    assert paragraph.trust is Trust.EXTRACTED
+    assert paragraph.quote is Quote.NORMALIZED
+    assert paragraph.method is Method.NATIVE
+    assert paragraph.page == 1
+    assert paragraph.uri == "file:///corpus/contract.pdf"
+    assert by_id[root].kind is Kind.DOCUMENT
+
+    assert paragraph.cite == minted, (
+        "the cite DocSink minted is not the cite Reader returns -- a durable public name that "
+        "differs by reader is worse than no cite at all (16-roadmap.md:139)"
+    )
+
+    # THE LITERALS, and they are here because the comparison above cannot replace them.
+    #
+    # `paragraph.cite == minted` reads BOTH sides out of the database, so it catches a reader that
+    # parses cites differently and is blind to a change in how they are MINTED. Proved rather than
+    # supposed: shifting `_mint_cite`'s ordinal by one (`f"d{doc_ord}#{number + 1}"`) left that
+    # assertion green, because both sides moved together. Pinning the values is what closes it.
+    #
+    # `cite` and `addr` are two of the things 16-roadmap.md:428 freezes at the END of P2 -- "the
+    # `addr` grammar. The `cite` grammar and `doc.next_cite_n` minting" -- so a change here after
+    # this phase is a re-mint of durable public names, not a refactor. 16-roadmap.md:166's own M0
+    # exit criterion asserts the same shape from the far end of the pipeline
+    # (`.hits[0].cite == "d1#3"`).
+    assert by_id[root].cite == "d1#1", "the first document is d1 and its root block takes n = 1"
+    assert paragraph.cite == "d1#2", "cites are minted in add_block order from doc.next_cite_n"
+    assert by_id[root].addr == "doc", "03:816 -- the document root's addr is the literal `doc`"
+    assert paragraph.addr == "p1/0", "page 1, ordinal 0 among its page root's children"
+
+
+def test_a_staged_generation_is_invisible_to_the_reader(tmp_path: Path) -> None:
+    """The other half of the same seam, and the one that fails silently in the wrong direction.
+
+    03-document-model.md section 2.9: rows are written at `g_t = doc.gen + 1` and are "durable and
+    invisible while `g_t > doc.gen`". `DocSink` stages that way and `SqliteReader` filters on it.
+    `test_store_doc.py` proves the rows are staged by reading them with raw SQL that ignores the
+    predicate -- the right test for that module, and one that cannot see whether the READER honours
+    it. If the two disagreed, a half-parsed document would be queryable, which is the exact failure
+    the staging mechanism exists to prevent.
+    """
+    path, cas, producer_id = _fresh(tmp_path)
+    with ow.StoreThread(lambda: ow.connect(path)) as thread:
+        sink = _sink(thread, cas, producer_id)
+        sink.begin_doc(_doc_record(9, "file:///corpus/staged.pdf"))
+        sink.begin_page(_page_record())
+        staged = sink.add_block(
+            BlockDraft(
+                kind=Kind.DOCUMENT,
+                layer=Layer.BODY,
+                method=Method.NATIVE,
+                trust=Trust.EXTRACTED,
+                quote=Quote.SYNTHETIC,
+            )
+        )
+        sink.end_page({})
+        # end_doc is deliberately NOT called: the page is committed but the generation is not
+        # published, which is precisely the state a crash mid-parse leaves behind.
+
+        connection = ow.connect_readonly(path)
+        try:
+            reader = SqliteReader(connection, now_ns=NOW_NS)
+            with reader.snapshot() as snap:
+                rows = reader.hydrate(snap, [staged])
+        finally:
+            connection.close()
+
+    assert list(rows) == [], (
+        "a staged generation was visible to the reader. Rows at g_t > doc.gen are durable and "
+        "INVISIBLE (03 section 2.9); a half-parsed document must not be queryable."
+    )
+
+    connection = ow.connect(path)
+    try:
+        present = connection.execute(
+            "SELECT count(*) FROM block WHERE block_id = ?", (staged,)
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    assert present == 1, (
+        "the staged row is not in the database at all, so the assertion above proved nothing -- "
+        "invisible must mean FILTERED, not absent"
+    )

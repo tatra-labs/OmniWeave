@@ -6,4 +6,12 @@ schema/expected/**      -diff
 docs/reference/**       text eol=lf
 *.owdoc                 binary
 *.sql                   text eol=lf
-omniweave.index.lock    merge=ow-index-lock
+# The NAME is 11-repo-layout.md:473's (this file is section 1.9's artefact); `-diff` is
+# 07-store-and-retrieval.md:3141's, whose section 13.2 owns what this file's attributes MEAN.
+# 11 section 1.9's subject is the eol=lf contract and it never discusses `-diff`, so omitting
+# it there is silence rather than a contrary claim. `-diff` and NOT `binary`: it suppresses
+# the DISPLAY (the reviewable diff is `ow store diff`, which speaks documents) and leaves the
+# MERGE alone, while `binary` implies `-text` and would forfeit both the eol=lf contract and
+# git's default text merge -- the sanctioned, loud fallback for a clone with the attribute and
+# no driver. `_plan/_notes/build-defects.md` D20.
+omniweave.index.lock    merge=ow-index-lock -diff

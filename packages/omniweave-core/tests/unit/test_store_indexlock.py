@@ -18,6 +18,7 @@ import ast
 import inspect
 
 import pytest
+from conftest import REPO_ROOT as REPO
 from omniweave_core.contract import SCHEMA
 from omniweave_core.errors import StoreError
 from omniweave_core.store import indexlock
@@ -522,18 +523,59 @@ def test_a_longer_marker_length_still_contains_the_three_strings_verify_refuses_
 
 
 def test_the_gitattributes_line_is_the_one_the_plan_prints() -> None:
-    """07:3141, verbatim, `-diff` included."""
-    assert GITATTRIBUTES_LINE == "omniweave.index.lock merge=owlock -diff"
-    assert MERGE_DRIVER_NAME == "owlock"
+    """The FORM is 07:3141's (`-diff`, not `binary`); the NAME is 11:473's. See D20."""
+    assert GITATTRIBUTES_LINE == "omniweave.index.lock merge=ow-index-lock -diff"
+    assert MERGE_DRIVER_NAME == "ow-index-lock"
     assert LOCK_PATH == "omniweave.index.lock"
 
 
-def test_the_two_git_config_entries_are_the_ones_the_plan_prints() -> None:
-    """07:3145-3146."""
-    assert git_config_argv() == (
-        ("git", "config", "merge.owlock.name", "omniweave index lock sort-merge"),
-        ("git", "config", "merge.owlock.driver", "ow store merge-lock %O %A %B %L %P"),
+def test_the_committed_gitattributes_names_the_driver_this_module_registers() -> None:
+    """The check that was missing, and its absence hid a shipped defect.
+
+    The test above asserts a constant against a literal, which is a transcription check: it cannot
+    see whether the repository's committed `.gitattributes` agrees. It did not. The file said
+    `merge=ow-index-lock` and this module registered `merge.owlock.*`, so **the attribute named a
+    driver nothing installed and the driver would never have fired** -- git would have fallen back
+    to its default text merge, which unions both sides and resurrects a deleted line, the one
+    property this driver exists to refuse (`00-vision.md:583`).
+
+    It would also have been invisible. `11:496-505` says a driver lives in the untracked
+    `.git/config`, so a fresh clone legitimately has the attribute and no driver, and `ow doctor`
+    reports that as a warning naming `ow store git-install`. A name that matches nothing produces
+    the **same** warning, so the honest message would have covered a real bug indefinitely.
+
+    Reads the file rather than a copy of it, because a copy is what the test above already is.
+    """
+    line = next(
+        row
+        for row in (REPO / ".gitattributes").read_text(encoding="utf-8").splitlines()
+        if row.strip().startswith(LOCK_PATH)
     )
+    attribute = next(field for field in line.split() if field.startswith("merge="))
+    assert attribute == f"merge={MERGE_DRIVER_NAME}", (
+        f".gitattributes says {attribute} and this module registers "
+        f"merge.{MERGE_DRIVER_NAME}.driver -- the driver would never fire. "
+        f"See _plan/_notes/build-defects.md D20."
+    )
+    assert "-diff" in line.split(), f"07:3141 prints `-diff` on this line; got {line!r}"
+
+
+def test_the_two_git_config_entries_are_the_ones_the_plan_prints() -> None:
+    """The VALUES are 07:3145-3146's; the driver NAME is 11's. See `MERGE_DRIVER_NAME`."""
+    assert git_config_argv() == (
+        ("git", "config", "merge.ow-index-lock.name", "omniweave index lock sort-merge"),
+        ("git", "config", "merge.ow-index-lock.driver", "ow store merge-lock %O %A %B %L %P"),
+    )
+
+
+def test_no_registration_form_spells_the_driver_two_ways() -> None:
+    """One name, everywhere it appears. The bug D20 records was exactly two spellings."""
+    forms = [GITATTRIBUTES_LINE, *(" ".join(argv) for argv in git_config_argv())]
+    for form in forms:
+        assert MERGE_DRIVER_NAME in form, form
+        assert "owlock" not in form.replace(MERGE_DRIVER_NAME, ""), (
+            f"{form!r} carries a second spelling of the driver name"
+        )
 
 
 def test_no_registration_form_mentions_a_glob() -> None:
