@@ -18,11 +18,32 @@ description, a `NamedTuple` reflects as the fixed-length ARRAY the wire actually
 `bytes` renders as 32 lowercase hex characters per
 03-document-model.md:665's wire mapping. `schema/fragment-v1.json` is committed alongside them.
 
-`Doc` is deliberately still absent from the surface, which keeps `document-v1.json` PENDING. It is
-a lazy handle that reads THROUGH the store (03 sections 13.5 and 2584: "`Doc` is a **lazy handle**,
-not a loaded object"), so it follows `omniweave_core.store` rather than the value types, and the
-store is P2 stage B. Binding a placeholder to satisfy the inventory would make G6 assert a schema
-for a type whose read path does not exist.
+`Grid` HAS landed and is bound below; `Doc` has landed as `omniweave_core.model.doc.Doc` and is
+deliberately NOT bound here, which keeps `document-v1.json` PENDING. Both halves of that need
+saying, because the two types were deferred together and only one of them can be re-exported
+today.
+
+* `Grid` (03 section 10.1) reads nothing. It is a derived cover map over already-minted
+  `BlockId`s, `build_grid` is its sole constructor and `render_grid(g, reader, fmt)` (03:1892) is
+  handed a reader rather than holding one, so it is a value type like the rest of this surface and
+  goes on it. No inventory row names it.
+* `Doc` (03 section 13.5) is a lazy handle over a live reader, and `tools/schemagen.py`'s
+  `document-v1.json` row resolves off `omniweave_core.model.Doc` by name. Binding it here flips
+  that row from PENDING to LIVE, and a LIVE row is byte-diffed against `build_schema`'s output --
+  which cannot exist. `build_schema` reflects DATACLASSES and refuses anything else, and 03:2588
+  prints `class Doc:` undecorated, unlike every record in section 2.8; `_object_schema` then calls
+  `typing.get_type_hints()`, and `Doc.rec`'s annotation names `DocRecord`, which 03 section 2.8
+  homes in `block.py`'s cluster and which has not landed. Both gates fail, and they would fail for
+  a reason deeper than a missing import: a handle whose whole job is to NOT materialise page
+  renders, asset bytes, retained parts, the FTS index or a `SpanMap` (03:2617-2619) has no wire
+  form for a second-language reader to read. `document-v1.json`'s own locus in that inventory row
+  is 03 section 3.1, "The wire record" -- the twenty-nine short archive keys of a BLOCK -- and the
+  plan names no declaring Python type for the file at any of its three enumerations
+  (02-architecture.md:273, 11-repo-layout.md:347, 18-api-sketch.md section 8). So the row's
+  `symbol` is a build-time inference and not a transcription, the row stays PENDING, and the fix
+  is an edit to `tools/schemagen.py`'s INVENTORY plus `test_schemagen.py:539` -- which pins
+  `("omniweave_core.model", "Doc")` as its example of a pending row and would break on the day the
+  name is bound. Both are reported as required edits, with the exact lines, rather than made here.
 
 THE IMPORTS BELOW ARE WHY THIS FILE IS NOT EMPTY, AND THEY ARE NOT A G17 PROBLEM. `model` is one
 of the nine lazy subpackages, and G17's assertion is that `import omniweave_core` does not reach
@@ -45,14 +66,20 @@ Landed so far, one plan section per module and no name in two of them (INV-21).
   (03:2604) is the lazy handle's forwarding method and lands with `Doc`, through the store. W2.8's
   other half -- `block_sec` with `sec_path`, and `block_fts` as an FTS5 external-content table --
   is SQL and belongs to the store wave, not here.
+* `grid.py` -- 03 sections 10.1, 10.2 and 10.3's rendering paragraph: `Origin`, `Covered`, `Slot`,
+  `Grid` with the exactly-once cover map, `build_grid` (the sole, streaming constructor) and
+  `render_grid`, which delegates to `serialize.py` rather than carrying a second table renderer.
+  `serialize.py`'s own `_cover_map` predates it and should now delegate here; reported.
+* `doc.py` -- 03 section 13.5: `Doc`, the lazy read handle, and `DocReadSide`, the structural
+  Protocol it reads through. Not re-exported below -- see the paragraph above.
 
-Still owed by P2. `Doc` and `Grid`, the two lazy handles (03 sections 13.5 and 10.1) -- `Doc`
-reads through the store and `Grid` is built only by `build_grid`, so both follow the store
-rather than the value types. `DocSink`'s eleven methods (03 section 2.10). Section 2.8's
-records: `Producer`, `DocRecord`, `PageRecord`, `AssetDraft`, `AssetRef`, `Rel`, `Frame`.
-`payload.py`'s three named readers (03:991). `MAX_QUOTE_BY_OS_KIND` (03 section 8.3). And
-`taint.py`, if the owner keeps 02-architecture.md:248's separate home for names `enums.py`
-already declares -- as a pure re-export, never a second declaration.
+Still owed by P2. `DocSink`'s eleven methods (03 section 2.10). Section 2.8's records:
+`Producer`, `DocRecord`, `PageRecord`, `AssetDraft`, `AssetRef`, `Rel`, `Frame`. Section 2.6's
+`CellDraft` (03:337-338), which `build_grid` consumes and reads structurally until it lands.
+Section 9's `Diag` (03:1798-1804), which `build_grid`'s `diag` sink cannot construct until it has
+a home. `payload.py`'s three named readers (03:991). `MAX_QUOTE_BY_OS_KIND` and `QuoteVerdict`
+(03 section 8.3). And `taint.py`, if the owner keeps 02-architecture.md:248's separate home for
+names `enums.py` already declares -- as a pure re-export, never a second declaration.
 """
 
 from __future__ import annotations
@@ -88,6 +115,16 @@ from omniweave_core.model.enums import (
     Trust,
     enum_val_rows,
 )
+from omniweave_core.model.grid import (
+    RECON_STRATEGIES,
+    Covered,
+    Grid,
+    GridReadSide,
+    Origin,
+    Slot,
+    build_grid,
+    render_grid,
+)
 from omniweave_core.model.serialize import (
     FORMATS,
     SERIALIZER_VERSION,
@@ -115,6 +152,7 @@ __all__ = [
     "FORMATS",
     "GENERATION_BLOCKED",
     "MAX_TRUST_BY_METHOD",
+    "RECON_STRATEGIES",
     "SERIALIZER_CAPS",
     "SERIALIZER_VERSION",
     "Addr",
@@ -128,11 +166,15 @@ __all__ = [
     "CellPos",
     "Cite",
     "ClaimStatus",
+    "Covered",
+    "Grid",
+    "GridReadSide",
     "Kind",
     "Lane",
     "Layer",
     "Mark",
     "Method",
+    "Origin",
     "OriginBytes",
     "OriginGlyphs",
     "OriginNodePath",
@@ -145,6 +187,7 @@ __all__ = [
     "Quote",
     "RelKind",
     "RenderSpan",
+    "Slot",
     "SpanMap",
     "TableFacts",
     "TableKind",
@@ -153,6 +196,8 @@ __all__ = [
     "TimePrecision",
     "Trust",
     "ViewScope",
+    "build_grid",
     "enum_val_rows",
+    "render_grid",
     "serialize",
 ]
