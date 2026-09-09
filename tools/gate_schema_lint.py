@@ -1,4 +1,4 @@
-"""INV-1's `L` enforcer: the schema lint over `schema/migrations/*.sql`, in three clauses.
+"""INV-1's `L` enforcer: the schema lint over the migration set, in three clauses.
 
 `uv run tools/gate_schema_lint.py` is 16-roadmap.md section 5's P2 exit-criteria line, spelled
 there as "INV-1, the FK-target classification" (16-roadmap.md:454). W2.2 names the three clauses
@@ -88,7 +88,7 @@ Two shapes this gate deliberately does NOT flag, both measured rather than assum
 Exit codes
 ----------
 `0` the three clauses hold. `1` a clause is false. `2` the gate did not run (an argument, or
-`schema/migrations/` is absent or holds no `.sql` file). `1` and `2` are distinguished because CI
+the migration directory is absent or holds no `.sql` file). `1` and `2` are distinguished because CI
 treats both as failure and a human needs to know which.
 
 Specified in 16-roadmap.md sections 4 and 5 (the P2 exit line, :454) and section 3 (W2.2, :415);
@@ -111,7 +111,22 @@ if TYPE_CHECKING:
     from typing import TextIO
 
 REPO = Path(__file__).resolve().parent.parent
-MIGRATIONS = REPO / "schema" / "migrations"
+# The DDL is `omniweave-core` PACKAGE DATA, not a repo-root directory: 11-repo-layout.md:1186 has it
+# "packaged with `omniweave-core` as package data, read through `importlib.resources` at use time",
+# :205's tree diagram draws it under `omniweave_core/store/`, and :793 spells the path in full.
+# Root `schema/` is a different artefact -- :346, "GENERATED from Python, committed, byte-diff
+# gated (G6)" -- and hand-written DDL is not generated. The move, and the sdist defect that a
+# build-time copy from the root introduced, are `_plan/_notes/build-defects.md` D12.
+MIGRATIONS = (
+    REPO
+    / "packages"
+    / "omniweave-core"
+    / "src"
+    / "omniweave_core"
+    / "store"
+    / "schema"
+    / "migrations"
+)
 
 EXIT_CLEAN = 0
 EXIT_FAIL = 1
@@ -822,7 +837,7 @@ def main(
     out: TextIO | None = None,
     root: Path | None = None,
 ) -> int:
-    """Run the three clauses over `root` (default `schema/migrations/`) and report."""
+    """Run the three clauses over `root` (default `MIGRATIONS`) and report."""
     writer = sys.stdout if out is None else out
     arguments: Iterable[str] = sys.argv[1:] if argv is None else argv
     extra = list(arguments)

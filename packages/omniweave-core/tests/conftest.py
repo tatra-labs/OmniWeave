@@ -63,6 +63,53 @@ REPO_ROOT: Path = _find_repo_root(Path(__file__).resolve())
 
 
 # ---------------------------------------------------------------------------
+# The migration set — ONE home for the path
+# ---------------------------------------------------------------------------
+
+# The DDL is package data of `omniweave-core`, not a repo-root directory, and this constant is the
+# single place the workspace path is written.
+#
+# WHY IT IS HERE AND NOT AT THE REPO ROOT. 11-repo-layout.md:1186 -- "`schema/migrations/*.sql` is
+# packaged with `omniweave-core` as package data, read through `importlib.resources` at use time
+# (section 2.6)". `importlib.resources.files()` takes a PACKAGE, so a repo-root `schema/` cannot
+# satisfy that mechanism, and section 2.6 rule 1 bans the `__file__` / `__path__` workaround
+# outright. 11-repo-layout.md:205's tree diagram draws these files as a child of
+# `omniweave_core/store/` and :793 spells the path in full. Root `schema/` is a different thing
+# entirely -- :346 describes it as "GENERATED from Python, committed, byte-diff gated (G6)", which
+# hand-written DDL is not.
+#
+# A build-time copy from a root location was tried and is worse than the move: a hatchling
+# `force-include` whose source escapes the project directory takes `omniweave-core`'s sdist from 34
+# members to three -- **no `src/` at all** -- while still reporting `Successfully built`, and adding
+# it to both targets then makes `sdist` -> `wheel` fail outright. At this path both artefacts carry
+# the four files with ZERO build configuration. The finding is `_plan/_notes/build-defects.md` D12
+# and `tests/unit/test_sdist_shape.py` is the check that would have caught it.
+#
+# One consequence for `_plan/`, recorded in D12: 11-repo-layout.md:2304's CODEOWNERS line reads
+# `/schema/migrations/`, anchored at the repo root, and should name this path instead. The intent --
+# contract review on every DDL change -- is unaffected.
+MIGRATIONS_DIR: Path = (
+    REPO_ROOT
+    / "packages"
+    / "omniweave-core"
+    / "src"
+    / "omniweave_core"
+    / "store"
+    / "schema"
+    / "migrations"
+)
+
+# `NNNN_<slug>.sql`, four digits (11-repo-layout.md:1188). Sorting four-digit prefixes as text IS
+# numeric order, which is the order 11-repo-layout.md:1188 makes load-bearing.
+MIGRATION_GLOB = "[0-9][0-9][0-9][0-9]_*.sql"
+
+
+def migration_files() -> tuple[Path, ...]:
+    """The migration set in the numeric order it must be applied in."""
+    return tuple(sorted(MIGRATIONS_DIR.glob(MIGRATION_GLOB)))
+
+
+# ---------------------------------------------------------------------------
 # The plan reader
 # ---------------------------------------------------------------------------
 
@@ -474,6 +521,17 @@ def repo_root() -> Path:
 
 
 @pytest.fixture(scope="session")
+def migrations() -> Path:
+    """The migration set's directory. It is `omniweave-core` package data, not a root directory.
+
+    See `MIGRATIONS_DIR` above for why, and `_plan/_notes/build-defects.md` D12 for the finding.
+    Every test that reads the DDL takes this rather than composing the path itself, so the next
+    move -- if the plan's CODEOWNERS line is resolved the other way -- is one edit.
+    """
+    return MIGRATIONS_DIR
+
+
+@pytest.fixture(scope="session")
 def plan() -> PlanDocs:
     """A reader over `_plan/`. Call `plan.require()` before asserting against it."""
     return PLAN
@@ -531,6 +589,8 @@ def pure_unit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 
 __all__ = [
+    "MIGRATIONS_DIR",
+    "MIGRATION_GLOB",
     "AuditReport",
     "Distribution",
     "ImportSite",
@@ -541,5 +601,6 @@ __all__ = [
     "distributions",
     "first_party_root",
     "import_sites",
+    "migration_files",
     "source_files",
 ]

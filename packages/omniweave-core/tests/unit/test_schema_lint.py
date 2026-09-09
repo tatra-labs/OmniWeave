@@ -46,6 +46,7 @@ import textwrap
 from typing import TYPE_CHECKING
 
 import pytest
+from conftest import MIGRATIONS_DIR
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -82,8 +83,8 @@ def gate(repo_root: Path) -> ModuleType:
 
 
 @pytest.fixture(scope="session")
-def migration_text(repo_root: Path) -> str:
-    return (repo_root / "schema" / "migrations" / MIGRATION).read_text(encoding="utf-8")
+def migration_text() -> str:
+    return (MIGRATIONS_DIR / MIGRATION).read_text(encoding="utf-8")
 
 
 def _run(gate: ModuleType, root: Path, argv: list[str] | None = None) -> tuple[int, str]:
@@ -238,14 +239,14 @@ def test_the_gate_is_green_on_head(gate: ModuleType) -> None:
     assert gate.main([], out=buffer) == gate.EXIT_CLEAN, buffer.getvalue()
 
 
-def test_the_gate_classifies_every_shipped_fk_target(gate: ModuleType, repo_root: Path) -> None:
+def test_the_gate_classifies_every_shipped_fk_target(gate: ModuleType) -> None:
     """The classification is PRINTED on every run, because one nobody can read is unchecked.
 
     16-roadmap.md:454 spells this gate's job "INV-1, the FK-target classification", so the census
     is part of the report and not an internal. `UNKNOWN` empty is the assertion that matters: every
     foreign key in the shipped DDL names a table some migration creates.
     """
-    schema = gate.read_schema(repo_root / "schema" / "migrations")
+    schema = gate.read_schema(MIGRATIONS_DIR)
     census = gate.fk_target_census(schema)
     assert "UNKNOWN" not in census, census.get("UNKNOWN")
     assert census["L2"], "no L2 FK target: the parser found nothing"
@@ -588,14 +589,14 @@ def test_clause_3_notices_a_block_primary_key_that_is_not_the_surrogate(
 # ---------------------------------------------------------------------------
 
 
-def test_the_splitter_keeps_a_trigger_body_whole(gate: ModuleType, repo_root: Path) -> None:
+def test_the_splitter_keeps_a_trigger_body_whole(gate: ModuleType) -> None:
     """A trigger body's inner `;` is not a statement terminator, and every shipped trigger has one.
 
     charter.md:3148 (`block_fts_ai`), :4070 (`work_no_live_delete`) and :2851
     (`route_decision_monotone`). Splitting naively on `;` would cut each in half and the second
     fragment would parse as nothing, which makes every clause silently blind to the file.
     """
-    path = repo_root / "schema" / "migrations" / MIGRATION
+    path = MIGRATIONS_DIR / MIGRATION
     statements = gate.split_statements(path.read_text(encoding="utf-8"), path)
     triggers = [s for s in statements if "CREATE TRIGGER" in s.blank]
     assert len(triggers) == 2, [s.line for s in triggers]
@@ -604,11 +605,9 @@ def test_the_splitter_keeps_a_trigger_body_whole(gate: ModuleType, repo_root: Pa
         assert "RAISE(ABORT" in statement.raw
 
 
-def test_the_splitter_survives_a_case_expression_in_a_view(
-    gate: ModuleType, repo_root: Path
-) -> None:
+def test_the_splitter_survives_a_case_expression_in_a_view(gate: ModuleType) -> None:
     """`CASE ... END` has an `END` and no `BEGIN`; `route_scoreboard` has three of them."""
-    path = repo_root / "schema" / "migrations" / MIGRATION
+    path = MIGRATIONS_DIR / MIGRATION
     statements = gate.split_statements(path.read_text(encoding="utf-8"), path)
     views = [s for s in statements if "CREATE VIEW" in s.blank]
     assert len(views) == 2, [s.line for s in views]
@@ -684,11 +683,9 @@ ROUTE_TABLES = (
 )
 
 
-def test_0004_creates_the_twelve_named_tables_in_section_3s_order(
-    gate: ModuleType, repo_root: Path
-) -> None:
+def test_0004_creates_the_twelve_named_tables_in_section_3s_order(gate: ModuleType) -> None:
     """07-store-and-retrieval.md section 3's 0004 row is the per-file assignment, order included."""
-    path = repo_root / "schema" / "migrations" / MIGRATION
+    path = MIGRATIONS_DIR / MIGRATION
     statements = gate.split_statements(path.read_text(encoding="utf-8"), path)
     created = [
         gate._unquote(match.group(2))
@@ -701,9 +698,9 @@ def test_0004_creates_the_twelve_named_tables_in_section_3s_order(
     assert created.index("route_decision") > created.index("driver_card_cache")
 
 
-def test_0004_creates_every_route_star_object(gate: ModuleType, repo_root: Path) -> None:
+def test_0004_creates_every_route_star_object(gate: ModuleType) -> None:
     """`route_*` is 07 section 3's glob; 05-ingest-and-routing.md:2647 says every one is here."""
-    schema = gate.read_schema(repo_root / "schema" / "migrations")
+    schema = gate.read_schema(MIGRATIONS_DIR)
     owners = {
         name: table.statement.file.name
         for name, table in schema.tables.items()
@@ -715,9 +712,7 @@ def test_0004_creates_every_route_star_object(gate: ModuleType, repo_root: Path)
     assert schema.views["route_scoreboard"].file.name == MIGRATION
 
 
-def test_0004_is_self_contained_so_it_needs_no_earlier_file_at_all(
-    gate: ModuleType, repo_root: Path
-) -> None:
+def test_0004_is_self_contained_so_it_needs_no_earlier_file_at_all(gate: ModuleType) -> None:
     """Every `REFERENCES` in this file names a table this file creates. Measured, not assumed.
 
     07-store-and-retrieval.md section 3's table records 0004 as depending on 0001, and the real
@@ -726,7 +721,7 @@ def test_0004_is_self_contained_so_it_needs_no_earlier_file_at_all(
     `budget_reservation.run_id` and `.decision_id` -- and all three are safe because a parent is
     resolved at the first DML on the child row, not at `CREATE TABLE`.
     """
-    path = repo_root / "schema" / "migrations" / MIGRATION
+    path = MIGRATIONS_DIR / MIGRATION
     schema = gate.read_schema(path.parent)
     own = {n for n, t in schema.tables.items() if t.statement.file.name == MIGRATION}
     outward = sorted(
@@ -787,7 +782,7 @@ def test_0004_holds_the_two_triggers_the_plan_generates_and_their_codes(
 
 
 def test_0004_declares_no_pragma_and_writes_no_migration_row(
-    gate: ModuleType, repo_root: Path, migration_text: str
+    gate: ModuleType, migration_text: str
 ) -> None:
     """Two omissions, both derived rather than forgotten, and both stated in the file's header.
 
@@ -799,7 +794,7 @@ def test_0004_declares_no_pragma_and_writes_no_migration_row(
     Asserted over the STATEMENTS and not the file text: the header explains both omissions and
     therefore contains both words, so a text search would fail on the explanation.
     """
-    path = repo_root / "schema" / "migrations" / MIGRATION
+    path = MIGRATIONS_DIR / MIGRATION
     for statement in gate.split_statements(path.read_text(encoding="utf-8"), path):
         upper = statement.blank.upper()
         assert "PRAGMA" not in upper, statement.line
@@ -823,7 +818,7 @@ def test_0004_records_its_three_per_file_migration_facts(migration_text: str) ->
 
 
 def test_0004_carries_the_columns_the_plan_names_and_the_charter_ddl_omits(
-    gate: ModuleType, repo_root: Path
+    gate: ModuleType,
 ) -> None:
     """`unit.trust_class` is named as a column at eight sites and declared at none.
 
@@ -834,7 +829,7 @@ def test_0004_carries_the_columns_the_plan_names_and_the_charter_ddl_omits(
     no DEFAULT: a default would silently pick one of the two the plan states for two different
     connector classes.
     """
-    schema = gate.read_schema(repo_root / "schema" / "migrations")
+    schema = gate.read_schema(MIGRATIONS_DIR)
     unit = schema.tables["unit"]
     assert "trust_class" in unit.column_names
     body = unit.statement.raw
@@ -845,7 +840,7 @@ def test_0004_carries_the_columns_the_plan_names_and_the_charter_ddl_omits(
 
 
 def test_0004_lands_resolution_report_and_spend_attribution(
-    gate: ModuleType, repo_root: Path, migration_text: str
+    gate: ModuleType, migration_text: str
 ) -> None:
     """Two objects 07 section 3's 0004 row does not name and no other row names either.
 
@@ -855,7 +850,7 @@ def test_0004_lands_resolution_report_and_spend_attribution(
     of its three inputs is created above it here. Both are reported to the owner; both are landed
     because the alternative is an object with no migration at all.
     """
-    schema = gate.read_schema(repo_root / "schema" / "migrations")
+    schema = gate.read_schema(MIGRATIONS_DIR)
     assert schema.tables["resolution_report"].statement.file.name == MIGRATION
     assert schema.views["spend_attribution"].file.name == MIGRATION
     assert "charter.md:2937" in migration_text
@@ -873,9 +868,9 @@ def test_0004_declares_dep_reverse_over_two_columns_not_three(migration_text: st
     assert "dep(kind, key, digest)" not in migration_text
 
 
-def test_0004_is_ascii_lf_and_ends_in_exactly_one_newline(repo_root: Path) -> None:
+def test_0004_is_ascii_lf_and_ends_in_exactly_one_newline() -> None:
     """House style, and for SQL it is more than style: a non-ASCII dash is not a comment marker."""
-    raw = (repo_root / "schema" / "migrations" / MIGRATION).read_bytes()
+    raw = (MIGRATIONS_DIR / MIGRATION).read_bytes()
     assert b"\r" not in raw
     assert raw.endswith(b"\n")
     assert not raw.endswith(b"\n\n")
