@@ -1,0 +1,63 @@
+# A framework tombstone (04-driver-system.md sections 7.5 and 10.4 row 4).
+#
+# This is the JURISDICTION row. 04 section 7.5's four-row table classes "a territorial exclusion
+# covering the operator's jurisdiction" as `restricted, refused locally`, and 14-security.md
+# section 9.5 computes HunyuanOCR the same way -- while section 10.4's tier column reads
+# `forbidden` for all six rows, because section 7.1's first clause is "forbidden <= id in the
+# shipped tombstone set". Both are true of different inputs and this card resolves neither: it
+# carries FACTS, and `compute_tier()` computes the tier (DR15). The facts are here so that the
+# refusal an operator in an excluded territory meets names the clause and the territory.
+
+card_schema = 1
+
+[driver]
+id    = "parse.page.hunyuan"
+port  = "parse/1"
+title = "HunyuanOCR (Tencent weights)"
+
+# HunyuanOCR/License.txt covers the model. `territory_excluded` is transcribed as the plan
+# writes it -- "the EU, UK and South Korea" (04 section 10.4) and "EU/UK/KR" (14-security.md
+# section 9.5). A strict ISO 3166-1 alpha-2 reading of "UK" is "GB"; whoever writes the
+# `[licence] jurisdiction` comparison owns that normalisation, and it is reported.
+#
+# `field_of_use_excluded` merges two loci: 04 section 10.4 names insurance, credit, health and
+# employment; 14-security.md section 9.5 adds that AUP 12/14 bar the enterprise document market,
+# which is omniweave's own shipped `fields_of_use` (04 section 7.4), so it must be here or the
+# posture report clears a driver over the one field it cannot be used in.
+[licence.weights]
+spdx                  = "LicenseRef-Tencent-Hunyuan"
+licence_sha256        = "unresolved:HunyuanOCR/License.txt"
+territory_excluded    = ["EU", "UK", "KR"]
+field_of_use_excluded = ["insurance", "credit", "health", "employment", "enterprise_documents"]
+mau_gate              = 100000000
+no_model_training     = true
+redistribution        = "restricted"
+clause_refs           = [
+  "License.txt:3",
+  "License.txt:17",
+  "License.txt:31",
+  "License.txt:35",
+  "AUP 12",
+  "AUP 14",
+]
+
+[tombstone]
+reason = """
+HunyuanOCR/License.txt:3,17,31,35. Lines :3 and :17 put the EU, the UK and South Korea OUTSIDE \
+the licensed Territory, and :35 extends that to the Output -- "You must not use ... Output ... \
+outside the Territory" -- so a document parsed inside the Territory still could not be delivered \
+outside it. Line :31 adds a 100-million-MAU gate. The AUP bars insurance, credit, health and \
+employment use, and AUP 12/14 bar the enterprise document market, which is omniweave's shipped \
+default field of use.
+
+A territorial exclusion is jurisdiction-dependent, and the facts above are what an operator's \
+`[licence] jurisdiction` and `[licence] fields_of_use` are checked against: an operator inside an \
+excluded territory or an excluded field meets a named refusal with the clause cited rather than a \
+mid-run rejection. omniweave ships no HunyuanOCR weights and no HunyuanOCR driver, so the id \
+resolves here rather than to "unknown driver".
+
+Use parse.page.olmocr, Apache-2.0 code and Apache-2.0 weights, with no territory and no field of \
+use excluded.
+"""
+replaced_by = "parse.page.olmocr"
+review_by   = "2026-12-03"

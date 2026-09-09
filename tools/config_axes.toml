@@ -1,0 +1,298 @@
+# tools/config_axes.toml — GENERATED from omniweave_core.config declarations, committed,
+# byte-diff gated (G18). AN UNCLASSIFIED KEY FAILS CI and is treated at runtime as `semantic`
+# (FAIL EXPENSIVE, NEVER WRONG). semantic_digest = sha256_canonical(the semantic projection).
+#
+# GLOB ARITY, STATED SO COVERAGE CAN BE EVALUATED AT ALL:
+#   `*`  matches EXACTLY ONE key segment.       `drivers.*.config` matches `drivers."x.y".config`.
+#   `**` matches ONE OR MORE segments.          `runtime.**` matches `runtime.claim.batch`.
+#   An EXPLICIT key beats a glob. TWO GLOBS matching one key is a G18 FAILURE, not a precedence
+#   puzzle. G18 additionally asserts that the union of the two lists covers every key in
+#   `omniweave.toml.example` EXACTLY — neither over nor under — which is the assertion that was
+#   missing while sixteen keys of the shipped config matched no pattern at all.
+#
+# KEY ENUMERATION, so "covers omniweave.toml.example EXACTLY" is decidable (ADR-3 decision 3):
+#   An INLINE TABLE is ONE key: `drivers.max_workers = {free=4,...}` is the key
+#   `drivers.max_workers`, not three. A key quoted because it holds dots is ONE
+#   SEGMENT: `[drivers."parse.pdf.pdfium"] config` matches `drivers.*.config`.
+#
+# THE CLASSIFICATION RULE, so a reader can check a row rather than trust it:
+#   A key is `semantic` IFF changing it can change the CONTENT of a produced row for a driver whose
+#   identity, schema_version and config are unchanged. Everything else is `operational`.
+#   WHICH DRIVER RUNS IS ALREADY IN THE KEY — `producer.operator`, `schema_version`,
+#   `code_fingerprint`, `options_digest` — so an ALLOWLIST that merely selects among drivers is
+#   `operational`. Classifying `drivers.enabled` as semantic would re-bill an entire corpus every
+#   time an operator enabled an unrelated driver, which is the failure this axis exists to prevent,
+#   pointed the other way.
+#
+# ONE PATTERN PER DECLARATION SITE. A glob appears below only where the declared KEY is a glob
+# (`corpora.*.path`, `services.*.model_id`, `drivers.*.config`, `drivers.resolve.*`); charter.md's
+# coarse `store.**` / `runtime.**` / `serve.**` / `observe.**` are expanded into the keys they stood
+# for, which is what lets `store.retain_parts` carry the `semantic` axis its own row in
+# 18-api-sketch.md section 4 gives it. The classification rule above is unchanged by the grain.
+#
+# 126 patterns from the omniweave_core.config registry: 13 semantic, 113 operational.
+
+[semantic]    # enters cache keys AND sets the full-scan latch
+keys = [
+  "store.retain_parts",
+  "limits.max_entry_bytes",
+  "drivers.*.config",
+  "services.*.model_id",
+  "services.*.model_revision",
+  "targets.video.ffmpeg",
+  "targets.video.codec",
+  "cache.recipe",
+  "retrieval.vec.model_key",
+  "graph.etypes",
+  "graph.segment_target_tokens",
+  "graph.llm_coverage_floor",
+  "graph.max_items_per_segment",
+]
+[operational] # NEVER enters a cache key. Changing these must not cost a dollar.
+keys = [
+  "schema",
+  "roots.source",
+  "roots.output",
+  "roots.cache",
+  "corpora.*.path",
+  "corpora.*.source",
+  "store.backend",
+  "store.path",
+  "store.wal_valve_mb",
+  "store.wal_heal_mb",
+  "store.bulk_windows",
+  "drivers.enabled",
+  "drivers.require_lock",
+  "drivers.allow_unattested",
+  "drivers.isolation_floor",
+  "drivers.inproc",
+  "drivers.probe_timeout_ms",
+  "drivers.max_workers",
+  "drivers.worker_idle_ttl_s",
+  "drivers.crash_quarantine",
+  "drivers.cost.allow_classes",
+  "drivers.cost.auto_refresh_classes",
+  "drivers.resolve.*",
+  "services.*.endpoint",
+  "services.*.autostart",
+  "services.*.capacity",
+  "services.*.batch_wait_ms",
+  "services.*.max_batch",
+  "services.*.keep_alive_s",
+  "licence.allow_tiers",
+  "licence.jurisdiction",
+  "licence.fields_of_use",
+  "targets.enabled",
+  "budget.max_inflight",
+  "runtime.queue_high_water",
+  "runtime.queue_low_water",
+  "runtime.plan_batch",
+  "runtime.store_group_commit_ms",
+  "runtime.lease_ms",
+  "runtime.lease_extend_ms",
+  "runtime.watchdog_ms",
+  "runtime.loop_lag_max_ms",
+  "runtime.yield_interval",
+  "runtime.interactive_wait_ms",
+  "runtime.batch_wait_lock_ms",
+  "runtime.max_inproc",
+  "runtime.inproc_bulk_threshold",
+  "runtime.max_deps_per_unit",
+  "runtime.work_compact_above",
+  "runtime.claim.batch",
+  "cache.gc",
+  "cache.min_free_bytes",
+  "cache.max_bytes.blob",
+  "cache.max_bytes.render",
+  "cache.max_bytes.signal",
+  "cache.max_bytes.call",
+  "cache.max_bytes.embed",
+  "retrieval.vectors",
+  "retrieval.scorer",
+  "retrieval.fusion_k",
+  "retrieval.snapshot_ms",
+  "retrieval.trigram",
+  "retrieval.event_log",
+  "retrieval.event_log_query",
+  "retrieval.weights.identity",
+  "retrieval.weights.exact",
+  "retrieval.weights.lexical",
+  "retrieval.weights.semantic",
+  "retrieval.weights.structural",
+  "retrieval.lex.w_body",
+  "retrieval.lex.w_head",
+  "retrieval.lex.spine_decay",
+  "retrieval.lex.overfetch",
+  "retrieval.budget.query_ms",
+  "retrieval.budget.hydration_reserve_ms",
+  "retrieval.budget.channel_ms",
+  "retrieval.vec.backend",
+  "retrieval.vec.storage",
+  "retrieval.vec.max_segments",
+  "graph.enabled",
+  "graph.passes.order",
+  "graph.passes.enable",
+  "serve.profile",
+  "serve.listed",
+  "serve.enabled",
+  "serve.compact_schemas",
+  "serve.default_corpus",
+  "serve.tool_prefix",
+  "serve.add_deadline_ms",
+  "serve.max_sessions",
+  "serve.read_timeout_ms",
+  "serve.allowed_origins",
+  "serve.allowed_hosts",
+  "serve.packing.hard_ceiling",
+  "serve.packing.cliff_fraction",
+  "serve.packing.cliff_exempt_trust",
+  "serve.packing.min_chars",
+  "serve.packing.max_share",
+  "serve.packing.doc_overhead",
+  "serve.packing.block_overhead",
+  "serve.packing.spine_boost",
+  "serve.packing.whole_section_buy",
+  "serve.packing.buy_pool",
+  "serve.packing.tier",
+  "observe.sinks",
+  "observe.ndjson_path",
+  "observe.shard_bytes",
+  "observe.sample",
+  "observe.timings",
+  "observe.otlp_endpoint",
+  "observe.level",
+  "observe.redact",
+  "observe.retain_days",
+]
+[env]
+# THE DECLARED TWIN, one row per pattern above. 02-architecture.md section 8.2: a twin is DECLARED,
+# NOT DERIVED -- `[serve] listed` twins as `OMNIWEAVE_MCP_LISTED`, which no mechanical `section_key`
+# rule produces -- and it is emitted here so THE SAME G18 BYTE DIFF COVERS BOTH. A KEY WITH NO TWIN
+# FAILS CI. A glob pattern's twin carries one `*` per glob segment: that is the slot
+# `ConfigKey.env_for()` substitutes an instance name into, and an arity mismatch is a G18 failure.
+"schema" = "OMNIWEAVE_SCHEMA"
+"roots.source" = "OMNIWEAVE_ROOTS_SOURCE"
+"roots.output" = "OMNIWEAVE_ROOTS_OUTPUT"
+"roots.cache" = "OMNIWEAVE_ROOTS_CACHE"
+"corpora.*.path" = "OMNIWEAVE_CORPORA_*_PATH"
+"corpora.*.source" = "OMNIWEAVE_CORPORA_*_SOURCE"
+"store.backend" = "OMNIWEAVE_STORE_BACKEND"
+"store.path" = "OMNIWEAVE_STORE_PATH"
+"store.retain_parts" = "OMNIWEAVE_STORE_RETAIN_PARTS"
+"store.wal_valve_mb" = "OMNIWEAVE_STORE_WAL_VALVE_MB"
+"store.wal_heal_mb" = "OMNIWEAVE_STORE_WAL_HEAL_MB"
+"store.bulk_windows" = "OMNIWEAVE_STORE_BULK_WINDOWS"
+"limits.max_entry_bytes" = "OMNIWEAVE_LIMITS_MAX_ENTRY_BYTES"
+"drivers.enabled" = "OMNIWEAVE_DRIVERS_ENABLED"
+"drivers.require_lock" = "OMNIWEAVE_DRIVERS_REQUIRE_LOCK"
+"drivers.allow_unattested" = "OMNIWEAVE_DRIVERS_ALLOW_UNATTESTED"
+"drivers.isolation_floor" = "OMNIWEAVE_DRIVERS_ISOLATION_FLOOR"
+"drivers.inproc" = "OMNIWEAVE_DRIVERS_INPROC"
+"drivers.probe_timeout_ms" = "OMNIWEAVE_DRIVERS_PROBE_TIMEOUT_MS"
+"drivers.max_workers" = "OMNIWEAVE_DRIVERS_MAX_WORKERS"
+"drivers.worker_idle_ttl_s" = "OMNIWEAVE_DRIVERS_WORKER_IDLE_TTL_S"
+"drivers.crash_quarantine" = "OMNIWEAVE_DRIVERS_CRASH_QUARANTINE"
+"drivers.cost.allow_classes" = "OMNIWEAVE_DRIVERS_COST_ALLOW_CLASSES"
+"drivers.cost.auto_refresh_classes" = "OMNIWEAVE_DRIVERS_COST_AUTO_REFRESH_CLASSES"
+"drivers.resolve.*" = "OMNIWEAVE_DRIVERS_RESOLVE_*"
+"drivers.*.config" = "OMNIWEAVE_DRIVERS_*_CONFIG"
+"services.*.model_id" = "OMNIWEAVE_SERVICES_*_MODEL_ID"
+"services.*.model_revision" = "OMNIWEAVE_SERVICES_*_MODEL_REVISION"
+"services.*.endpoint" = "OMNIWEAVE_SERVICES_*_ENDPOINT"
+"services.*.autostart" = "OMNIWEAVE_SERVICES_*_AUTOSTART"
+"services.*.capacity" = "OMNIWEAVE_SERVICES_*_CAPACITY"
+"services.*.batch_wait_ms" = "OMNIWEAVE_SERVICES_*_BATCH_WAIT_MS"
+"services.*.max_batch" = "OMNIWEAVE_SERVICES_*_MAX_BATCH"
+"services.*.keep_alive_s" = "OMNIWEAVE_SERVICES_*_KEEP_ALIVE_S"
+"licence.allow_tiers" = "OMNIWEAVE_LICENCE_ALLOW_TIERS"
+"licence.jurisdiction" = "OMNIWEAVE_LICENCE_JURISDICTION"
+"licence.fields_of_use" = "OMNIWEAVE_LICENCE_FIELDS_OF_USE"
+"targets.enabled" = "OMNIWEAVE_TARGETS_ENABLED"
+"targets.video.ffmpeg" = "OMNIWEAVE_TARGETS_VIDEO_FFMPEG"
+"targets.video.codec" = "OMNIWEAVE_TARGETS_VIDEO_CODEC"
+"budget.max_inflight" = "OMNIWEAVE_BUDGET_MAX_INFLIGHT"
+"runtime.queue_high_water" = "OMNIWEAVE_RUNTIME_QUEUE_HIGH_WATER"
+"runtime.queue_low_water" = "OMNIWEAVE_RUNTIME_QUEUE_LOW_WATER"
+"runtime.plan_batch" = "OMNIWEAVE_RUNTIME_PLAN_BATCH"
+"runtime.store_group_commit_ms" = "OMNIWEAVE_RUNTIME_STORE_GROUP_COMMIT_MS"
+"runtime.lease_ms" = "OMNIWEAVE_RUNTIME_LEASE_MS"
+"runtime.lease_extend_ms" = "OMNIWEAVE_RUNTIME_LEASE_EXTEND_MS"
+"runtime.watchdog_ms" = "OMNIWEAVE_RUNTIME_WATCHDOG_MS"
+"runtime.loop_lag_max_ms" = "OMNIWEAVE_RUNTIME_LOOP_LAG_MAX_MS"
+"runtime.yield_interval" = "OMNIWEAVE_RUNTIME_YIELD_INTERVAL"
+"runtime.interactive_wait_ms" = "OMNIWEAVE_RUNTIME_INTERACTIVE_WAIT_MS"
+"runtime.batch_wait_lock_ms" = "OMNIWEAVE_RUNTIME_BATCH_WAIT_LOCK_MS"
+"runtime.max_inproc" = "OMNIWEAVE_RUNTIME_MAX_INPROC"
+"runtime.inproc_bulk_threshold" = "OMNIWEAVE_RUNTIME_INPROC_BULK_THRESHOLD"
+"runtime.max_deps_per_unit" = "OMNIWEAVE_RUNTIME_MAX_DEPS_PER_UNIT"
+"runtime.work_compact_above" = "OMNIWEAVE_RUNTIME_WORK_COMPACT_ABOVE"
+"runtime.claim.batch" = "OMNIWEAVE_RUNTIME_CLAIM_BATCH"
+"cache.recipe" = "OMNIWEAVE_CACHE_RECIPE"
+"cache.gc" = "OMNIWEAVE_CACHE_GC"
+"cache.min_free_bytes" = "OMNIWEAVE_CACHE_MIN_FREE_BYTES"
+"cache.max_bytes.blob" = "OMNIWEAVE_CACHE_MAX_BYTES_BLOB"
+"cache.max_bytes.render" = "OMNIWEAVE_CACHE_MAX_BYTES_RENDER"
+"cache.max_bytes.signal" = "OMNIWEAVE_CACHE_MAX_BYTES_SIGNAL"
+"cache.max_bytes.call" = "OMNIWEAVE_CACHE_MAX_BYTES_CALL"
+"cache.max_bytes.embed" = "OMNIWEAVE_CACHE_MAX_BYTES_EMBED"
+"retrieval.vectors" = "OMNIWEAVE_RETRIEVAL_VECTORS"
+"retrieval.scorer" = "OMNIWEAVE_RETRIEVAL_SCORER"
+"retrieval.fusion_k" = "OMNIWEAVE_RETRIEVAL_FUSION_K"
+"retrieval.snapshot_ms" = "OMNIWEAVE_RETRIEVAL_SNAPSHOT_MS"
+"retrieval.trigram" = "OMNIWEAVE_RETRIEVAL_TRIGRAM"
+"retrieval.event_log" = "OMNIWEAVE_RETRIEVAL_EVENT_LOG"
+"retrieval.event_log_query" = "OMNIWEAVE_RETRIEVAL_EVENT_LOG_QUERY"
+"retrieval.weights.identity" = "OMNIWEAVE_RETRIEVAL_WEIGHTS_IDENTITY"
+"retrieval.weights.exact" = "OMNIWEAVE_RETRIEVAL_WEIGHTS_EXACT"
+"retrieval.weights.lexical" = "OMNIWEAVE_RETRIEVAL_WEIGHTS_LEXICAL"
+"retrieval.weights.semantic" = "OMNIWEAVE_RETRIEVAL_WEIGHTS_SEMANTIC"
+"retrieval.weights.structural" = "OMNIWEAVE_RETRIEVAL_WEIGHTS_STRUCTURAL"
+"retrieval.lex.w_body" = "OMNIWEAVE_RETRIEVAL_LEX_W_BODY"
+"retrieval.lex.w_head" = "OMNIWEAVE_RETRIEVAL_LEX_W_HEAD"
+"retrieval.lex.spine_decay" = "OMNIWEAVE_RETRIEVAL_LEX_SPINE_DECAY"
+"retrieval.lex.overfetch" = "OMNIWEAVE_RETRIEVAL_LEX_OVERFETCH"
+"retrieval.budget.query_ms" = "OMNIWEAVE_RETRIEVAL_BUDGET_QUERY_MS"
+"retrieval.budget.hydration_reserve_ms" = "OMNIWEAVE_RETRIEVAL_BUDGET_HYDRATION_RESERVE_MS"
+"retrieval.budget.channel_ms" = "OMNIWEAVE_RETRIEVAL_BUDGET_CHANNEL_MS"
+"retrieval.vec.model_key" = "OMNIWEAVE_RETRIEVAL_VEC_MODEL_KEY"
+"retrieval.vec.backend" = "OMNIWEAVE_RETRIEVAL_VEC_BACKEND"
+"retrieval.vec.storage" = "OMNIWEAVE_RETRIEVAL_VEC_STORAGE"
+"retrieval.vec.max_segments" = "OMNIWEAVE_RETRIEVAL_VEC_MAX_SEGMENTS"
+"graph.enabled" = "OMNIWEAVE_GRAPH_ENABLED"
+"graph.etypes" = "OMNIWEAVE_GRAPH_ETYPES"
+"graph.segment_target_tokens" = "OMNIWEAVE_GRAPH_SEGMENT_TARGET_TOKENS"
+"graph.llm_coverage_floor" = "OMNIWEAVE_GRAPH_LLM_COVERAGE_FLOOR"
+"graph.max_items_per_segment" = "OMNIWEAVE_GRAPH_MAX_ITEMS_PER_SEGMENT"
+"graph.passes.order" = "OMNIWEAVE_GRAPH_PASSES_ORDER"
+"graph.passes.enable" = "OMNIWEAVE_GRAPH_PASSES_ENABLE"
+"serve.profile" = "OMNIWEAVE_SERVE_PROFILE"
+"serve.listed" = "OMNIWEAVE_MCP_LISTED"
+"serve.enabled" = "OMNIWEAVE_SERVE_ENABLED"
+"serve.compact_schemas" = "OMNIWEAVE_SERVE_COMPACT_SCHEMAS"
+"serve.default_corpus" = "OMNIWEAVE_SERVE_DEFAULT_CORPUS"
+"serve.tool_prefix" = "OMNIWEAVE_SERVE_TOOL_PREFIX"
+"serve.add_deadline_ms" = "OMNIWEAVE_SERVE_ADD_DEADLINE_MS"
+"serve.max_sessions" = "OMNIWEAVE_SERVE_MAX_SESSIONS"
+"serve.read_timeout_ms" = "OMNIWEAVE_SERVE_READ_TIMEOUT_MS"
+"serve.allowed_origins" = "OMNIWEAVE_SERVE_ALLOWED_ORIGINS"
+"serve.allowed_hosts" = "OMNIWEAVE_SERVE_ALLOWED_HOSTS"
+"serve.packing.hard_ceiling" = "OMNIWEAVE_SERVE_PACKING_HARD_CEILING"
+"serve.packing.cliff_fraction" = "OMNIWEAVE_SERVE_PACKING_CLIFF_FRACTION"
+"serve.packing.cliff_exempt_trust" = "OMNIWEAVE_SERVE_PACKING_CLIFF_EXEMPT_TRUST"
+"serve.packing.min_chars" = "OMNIWEAVE_SERVE_PACKING_MIN_CHARS"
+"serve.packing.max_share" = "OMNIWEAVE_SERVE_PACKING_MAX_SHARE"
+"serve.packing.doc_overhead" = "OMNIWEAVE_SERVE_PACKING_DOC_OVERHEAD"
+"serve.packing.block_overhead" = "OMNIWEAVE_SERVE_PACKING_BLOCK_OVERHEAD"
+"serve.packing.spine_boost" = "OMNIWEAVE_SERVE_PACKING_SPINE_BOOST"
+"serve.packing.whole_section_buy" = "OMNIWEAVE_SERVE_PACKING_WHOLE_SECTION_BUY"
+"serve.packing.buy_pool" = "OMNIWEAVE_SERVE_PACKING_BUY_POOL"
+"serve.packing.tier" = "OMNIWEAVE_SERVE_PACKING_TIER"
+"observe.sinks" = "OMNIWEAVE_OBSERVE_SINKS"
+"observe.ndjson_path" = "OMNIWEAVE_OBSERVE_NDJSON_PATH"
+"observe.shard_bytes" = "OMNIWEAVE_OBSERVE_SHARD_BYTES"
+"observe.sample" = "OMNIWEAVE_OBSERVE_SAMPLE"
+"observe.timings" = "OMNIWEAVE_OBSERVE_TIMINGS"
+"observe.otlp_endpoint" = "OMNIWEAVE_OBSERVE_OTLP_ENDPOINT"
+"observe.level" = "OMNIWEAVE_OBSERVE_LEVEL"
+"observe.redact" = "OMNIWEAVE_OBSERVE_REDACT"
+"observe.retain_days" = "OMNIWEAVE_OBSERVE_RETAIN_DAYS"

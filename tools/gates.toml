@@ -1,0 +1,1007 @@
+# tools/gates.toml -- the G-series register + the [[job_assertion]] rows. Section 6.4.
+#
+# 11-repo-layout.md section 6.4: "`tools/gates.toml` is the register; this table is its rendering,
+# and G27 clause d2 asserts the two agree." This file is the register. It is THE authority on how
+# many gates there are: the series is "append-by-ADR and its cardinality lives in the file", because
+# ADR-2 retired charter X32's "CI gates are `G1-G27` and nothing else" (erratum E33) and 00-vision
+# V10-1:724 now reads "every `G` row in `tools/gates.toml` green ... it holds twenty-nine rows,
+# `G1`-`G29`, at release 1". Append-only against the previous tag (section 1.7): a `G<n>` is never
+# renumbered and never reused, exactly as an error code is not.
+#
+# TWENTY-NINE rows are section 6.4's rendering; a THIRTIETH (G30) is registered here and is not yet
+# rendered -- see `status` below and the G30 row's own comment.
+#
+# WHAT BLOCKS WHAT. Twenty-eight of the twenty-nine have a PR job and therefore block a merge.
+# G22 does not: it is a nightly 100k-roster scale run with no PR cell, so it blocks the RELEASE
+# (section 7.6 checklist step 11, "G22 has no PR cell at all") and is "deliberately absent from
+# `ci-ok`'s required set". `pr = false` is the machine-readable form of that, and it is true of
+# exactly one row.
+#
+# ---------------------------------------------------------------------------------------------
+# ASCII FOLDING, and why the rendering still matches. House style keeps TOML values ASCII, and
+# section 6.4's cells are not. Every value here carries the cell verbatim under exactly one
+# substitution table, applied nowhere else:
+#
+#     U+2194 LEFT RIGHT ARROW           ->  <->      (G5, gates.invariant_register)
+#     U+2261 IDENTICAL TO               ->  ==       (G19)
+#     U+2014 EM DASH  (an empty cell)   ->  a false boolean, not a string
+#     U+00A7 SECTION SIGN               ->  the word "section" in a `section` value
+#
+# The test that asserts the register against the rendering (G27 clause d2, in
+# packages/omniweave-core/tests/unit/test_gates_register.py) folds the markdown side the same way
+# before comparing. Any other divergence is a failure, which is the point of the clause.
+#
+# ---------------------------------------------------------------------------------------------
+# CLAUSES ARE NOT ROWS. G27 has lettered clauses (a, a2, a3, b, c, d) and ADR-4 added G27(a2) and
+# G27(a3) taking NO new G number ("neither takes a new `G` number", section 6.4). So a clause is a
+# `[[gate.clause]]` sub-table of its gate's row, never a row of its own. Three reasons, each
+# sufficient:
+#   1. a row's identity in this register IS its `G<n>`; a clause has no `G<n>` to be identified by,
+#      and giving it one would be the renumbering section 1.7 forbids;
+#   2. the enabled/blocked state is PER CLAUSE and not per gate -- ADR-1 decision 6 requires
+#      `G27(c)` to sit here with `enabled = false` and a `blocked_by = "ADR-1"` note "so its absence
+#      is visible rather than assumed", while a, a2, b and d are live;
+#   3. section 8.6 puts clause d0's symbol floor "in `tools/gates.toml` beside G27's row" -- a
+#      sub-table is exactly beside it, and a sibling row would not be.
+# G23 also gains a clause by ADR-12 consequence 4, but the plan letters it nowhere, so it is
+# recorded as a comment on the G23 row rather than invented as `G23(b)`.
+#
+# ---------------------------------------------------------------------------------------------
+# THE RUNNER COLUMNS. Section 6.4's table has no runner column; the glossary's own entry for this
+# file says a row carries "its implementing script or job step" (glossary.md:1082, restated at
+# 11-repo-layout.md:2693), so the register is where that belongs and section 6.4's table is simply
+# not its rendering. Three keys, because a gate is enforced in one of three shapes:
+#
+#   `runner`          scripts that EXIST on disk today and implement (part of) this row.
+#   `runner_planned`  scripts the plan names for this row that are NOT written yet. The test
+#                     asserts these do not exist, so landing one forces a register edit rather
+#                     than leaving a row pointing at a file nobody wrote.
+#   `step`            the workflow step or command, for a row the plan enforces without a
+#                     `tools/` script (G13's tag diff, G16's `git worktree` build) and for the
+#                     command form of a row that has one (G6, G8).
+#
+# Every row carries at least one of the three. Runner-to-row is many-to-many by construction:
+# `tools/gate_importtime.py` implements G9 and G23 (its own docstring says so, and
+# 16-roadmap.md:159 spells the P1 exit line `# G9 + G23`), and `tools/gate_semgrep.py` implements
+# G8 and G24 -- which is section 6.4's own reading of G24's budget cell, "(in G8)".
+#
+# Provenance of every runner name: 16-roadmap.md section 4's phase-exit shell lines, which pair a
+# script with its gate in a trailing comment (:158-160, :389-393, :453-458, :513-516, :574-578,
+# :743), plus 11-repo-layout.md:1443 (`tools/ci_ok.py`), :1265 (`gate_migrations.py`), section 8.6
+# (`gate_docs.py`), 16-roadmap.md:364 (`schemagen.py` for G6) and section 7.6 step 5
+# (`gen_notice.py` for G3's fifteen NOTICE trees). Nothing here is guessed from a filename.
+#
+# ---------------------------------------------------------------------------------------------
+# OWNERS ARE AUTHORED, NOT QUOTED. Section 6.8 requires that "every `G<n>` row in
+# `tools/gates.toml` carries an owner and a review date, exactly as `eval/gates.toml`'s metric rows
+# do", and the plan assigns not one gate to an owner. One rule, applied uniformly and auditable
+# against 17-risks.md section 1.3's ten roles: the owner is the role whose "owns" cell names the
+# artefact or subsystem the gate's assertion is ABOUT; where no role's cell names it, the owner is
+# `release`, which owns "the CI workflows". Four fall out of section 1.3 verbatim -- `licence` owns
+# "G3" and "tombstones", `release` owns "`tools/weights.toml`" (G2) and "`CONTRACT`" (G16). The
+# consequence is visible and is the honest one: `release` carries sixteen of the thirty `G` rows and
+# seven of the nine job assertions, which is exactly the concentration R-A2 predicts and which
+# section 1.3 already says must be split before any other role if the ten roles map onto fewer than
+# four people. `router` and `retrieval` carry none, because no gate's subject is the policy grammar
+# or a Channel.
+#
+# `reviewed_at` / `review_by` follow the shape 17-risks.md section 1's `[[risk]]` block prints
+# (:49-50) and land on the project-wide horizon already in the tree: the six shipped tombstones and
+# the risk register's own example row both read `review_by = "2026-12-03"`. One date, one bump.
+# Q-G17's rot clock and tools/gate_gate_rot.py (16-roadmap.md:973, "every gate row's `review_by`")
+# are what read these.
+#
+# ---------------------------------------------------------------------------------------------
+# WHAT THIS FILE MUST NOT HOLD. `eval/gates.toml` holds the METRIC gates -- `structure_f1`,
+# `hallucination_rate`, the Q-G series -- with their own owners, review dates and guards, and
+# "neither file may name a row the other owns" (section 1.7). So there is no `Q-G` row here, and
+# section 6.4 says why: the static Q-G series' "budgets, owners and review dates live in
+# `eval/gates.toml`; this document only reserves them a job." 17-risks.md:56-57 rule 1 lists "a
+# `G<n>` or `Q-G<n>` row ... in `tools/gates.toml`" as a resolvable indicator, which contradicts
+# both of those; the more specific statements win and a `Q-G<n>` indicator resolves against
+# `eval/gates.toml`.
+
+schema = 1
+
+# The nineteen-job graph of section 6.2, by job name. `test` is nine cells
+# ({ubuntu, macos, windows} x {3.11, 3.12, 3.13}), which is why section 6.4 renders its two rows
+# as "`test` (9)"; every other job is one cell. `ci-ok` is the single required status check and the
+# aggregator, so no `[[gate]]` may name it -- a gate running inside `ci-ok` would be a check that
+# `ci-ok.skips_declared` had to inspect itself.
+#
+# `golden` and `parity` carry no `G` row and no job assertion at release 1. They are real jobs
+# (section 6.2) and the omission is section 6.4's, not a transcription loss: `golden` carries
+# Reductions + Counters + Cassette replay and `parity` the offline/GPU-free/Node-free container
+# run, neither of which section 6.4 numbers.
+job_name = [
+  "versions",
+  "gates",
+  "test",
+  "golden",
+  "conform",
+  "incremental",
+  "crash",
+  "parity",
+  "toolchains",
+  "build",
+  "ci-ok",
+]
+
+# =============================================================================================
+# THE G SERIES. Rows are in section 6.4's rendering order, which puts G5 first because it is CI
+# job 1 and every other job needs it. `status = "law"` means the row is rendered in section 6.4's
+# table and blocks what its `pr` / `release` cells say; `status = "registered"` means the row is
+# enforced but has no section 6.4 rendering yet and therefore carries a `pending` reason.
+# =============================================================================================
+
+[[gate]]
+id            = "G5"
+assertion     = "versions <-> tag"
+jobs          = ["versions"]
+budget_s      = 2
+pr            = true
+nightly       = false
+release       = true
+release_note  = "yes, against the tag"
+runner        = ["tools/check_versions.py"]
+step          = "tools/check_versions.py --set <RELEASE> at checklist step 2; bare on the tag"
+owner         = "release"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+status        = "law"
+section       = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id            = "G1"
+assertion     = "core resolves to two first-party dists, zero third-party"
+jobs          = ["gates"]
+budget_s      = 20
+pr            = true
+nightly       = false
+release       = true
+runner        = ["tools/gate_core_pure.py"]
+owner         = "release"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+status        = "law"
+section       = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id            = "G2"
+assertion     = "weight ceilings + the 250 MB union"
+jobs          = ["build"]
+budget_s      = 90
+pr            = true
+nightly       = false
+release       = true
+runner        = ["tools/gate_weights.py"]
+# `release` owns `tools/weights.toml` verbatim in 17-risks.md section 1.3.
+owner         = "release"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+status        = "law"
+section       = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id            = "G3"
+assertion     = """
+licences: resolved graph, import graph, unpacked artefacts, **and the fifteen \
+`gen_notice.py --check` trees**"""
+jobs          = ["gates"]
+budget_s      = 60
+pr            = true
+nightly       = true
+release       = true
+# Two halves and only one is written. `gate_licences.py` is the three-graph scan (16-roadmap.md
+# :391); the fifteen NOTICE/LICENSES/THIRD_PARTY trees are `gen_notice.py --check` (section 1.7,
+# section 7.6 step 5), which does not exist yet. A row that named only the first half would make
+# G3 look complete while the most common licence defect in the mined collection went unchecked.
+runner         = ["tools/gate_licences.py"]
+runner_planned = ["tools/gen_notice.py"]
+# 17-risks.md section 1.3: `licence` owns "`tools/licences.toml`, G3, tombstones".
+owner         = "licence"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+status        = "law"
+section       = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id            = "G4"
+assertion     = """
+the module graph obeys `layers.toml`, rows re-derived from entry points, entry-point values \
+shape-checked"""
+jobs          = ["gates"]
+budget_s      = 8
+pr            = true
+nightly       = false
+release       = false
+runner        = ["tools/gate_layers.py"]
+owner         = "release"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+status        = "law"
+section       = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id            = "G6"
+assertion     = "`ow schema emit --check`, CRLF-normalised"
+jobs          = ["gates"]
+budget_s      = 5
+pr            = true
+nightly       = false
+release       = false
+# NOT the archive round trip. ADR-2 decision 4: "Do not cite `G6` for the archive round-trip --
+# it is `G28`", and G6 is "not renumbered". 16-roadmap.md:364 (W1.8) names the script.
+runner        = ["tools/schemagen.py"]
+step          = "ow schema emit --check (section 7.6 step 4)"
+# `model` owns "`SCHEMA`" and the L2/L3 schema in 17-risks.md section 1.3.
+owner         = "model"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+status        = "law"
+section       = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id            = "G7"
+assertion     = "a constraint tighter than `>=` carries a comment"
+jobs          = ["gates"]
+budget_s      = 2
+pr            = true
+nightly       = false
+release       = false
+# The plan names no script. Section 8.5 is the policy and 16-roadmap.md:363 (W1.7) schedules the
+# gate without a filename, so this row says "job step" rather than inventing `gate_pins.py`.
+step          = """
+a `gates` job step over every packages/*/pyproject.toml: a `==`, `~=` or `<` bound carries a \
+justification comment (section 8.5). No tools/ script is named by the plan."""
+owner         = "release"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+status        = "law"
+section       = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id            = "G8"
+assertion     = """
+semgrep: cwd, `subprocess`, `time.time`, `sys.exit`, bare `except`, `revision="main"`, \
+`__file__`/`__path__` under `src/`"""
+jobs          = ["gates"]
+budget_s      = 45
+pr            = true
+nightly       = false
+release       = false
+# G8 and G24 are one bank and one runner: G24's budget cell is "(in G8)". `gate_semgrep.py` is the
+# harness because semgrep publishes no Windows wheel (section 6.2's dev-group marker), so it skips
+# the semgrep half loudly and runs an `ast` re-implementation of every ban `ast` can express.
+runner        = ["tools/gate_semgrep.py"]
+step          = "uv run semgrep --config tools/semgrep/omniweave.yaml --error (16-roadmap.md:161)"
+owner         = "release"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+status        = "law"
+section       = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id            = "G9"
+assertion     = "`-X importtime` loads zero third-party modules"
+jobs          = ["gates"]
+budget_s      = 3
+pr            = true
+nightly       = false
+release       = false
+runner        = ["tools/gate_importtime.py"]
+owner         = "release"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+status        = "law"
+section       = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id            = "G10"
+assertion     = "cold start vs the per-OS baseline, 25% band + a hard module count"
+jobs          = ["test"]
+budget_s      = 15
+pr            = true
+nightly       = true
+release       = true
+# Split in two on purpose (section 6.4's closing paragraph): the HARD assertion is the module
+# count, which does not vary with runner load; the wall clock is a 25% band against
+# eval/baselines/coldstart-<os>-<py>.json, best-of-five after two warm-ups, on a pinned runner
+# class. OQ-4 records that the 25% is inherited, not measured.
+runner        = ["tools/gate_coldstart.py"]
+owner         = "release"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+status        = "law"
+section       = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id             = "G11"
+assertion      = "discovery never imports: the rogue driver"
+jobs           = ["gates"]
+budget_s       = 10
+pr             = true
+nightly        = false
+release        = false
+runner_planned = ["tools/gate_discovery_no_import.py"]
+step           = "with the rogue driver installed (16-roadmap.md:513)"
+# 17-risks.md section 1.3: `drivers` owns "discovery".
+owner          = "drivers"
+reviewed_at    = "2026-09-07"
+review_by      = "2026-12-03"
+status         = "law"
+section        = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id             = "G12"
+assertion      = "every vendored artefact: sha256, parity test, arch assertion, NOTICE row"
+jobs           = ["gates"]
+budget_s       = 5
+pr             = true
+nightly        = false
+release        = true
+runner_planned = ["tools/gate_vendor.py"]
+# 17-risks.md section 1.3: `licence` owns "`vendor/*/NOTICE`".
+owner          = "licence"
+reviewed_at    = "2026-09-07"
+review_by      = "2026-12-03"
+status         = "law"
+section        = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id            = "G13"
+assertion     = "`codes.toml` append-only against the previous tag"
+jobs          = ["gates"]
+budget_s      = 3
+pr            = true
+nightly       = false
+release       = true
+# One of the three history-reading gates: `fetch_depth = 0` is part of the gate contract, not a
+# performance knob (section 6.2). Getting it wrong produces `fatal: no such ref` inside a gate
+# whose failure message is about error codes.
+fetch_depth   = 0
+step          = """
+a `gates` job step diffing codes.toml against the previous tag; squash-only merges are what keep \
+the diff computable (section 5.2 item 3). No tools/ script is named by the plan."""
+# 17-risks.md section 1.3: `surface` owns "the Action registry, MCP, CLI, SDK, hooks, install, the
+# Answer" -- an error code is the refusal surface, and 10-interfaces.md:299 assigns the `OW-A-0xx`
+# block under G13's own rule.
+owner         = "surface"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+status        = "law"
+section       = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id            = "G14"
+assertion     = "no `all`/`everything` extra; the extras map is total and injective"
+jobs          = ["gates"]
+budget_s      = 1
+pr            = true
+nightly       = false
+release       = false
+# The plan names no `tools/` script for G14, but one on disk already asserts it: G14's four clauses
+# are implemented BY NAME in tools/check_versions.py:411-460 ("no such extra (G14)", "G14 totality",
+# "G14 injectivity"), whose own docstring cites "section 2.2 (the extras block G14 also reads)".
+# So the runner is recorded rather than left blank, and ci.yml honours G14's cell with the script
+# that actually makes the assertion instead of a second implementation inline (INV-21).
+#
+# G5 names the same script. That is legitimate and is why `runner` is a list per row rather than a
+# unique index: one script may discharge two gates, and two seconds twice is cheaper than two homes
+# for one assertion. A blank runner here read as "nothing runs this", which was false, and let a
+# test conclude the script was executing in a job no row named.
+runner        = ["tools/check_versions.py"]
+step          = """
+a `gates` job step over the extras block section 2.2 prints complete: the 1:1 alias rule, total \
+and injective. The plan names no tools/ script; check_versions.py implements the four clauses."""
+owner         = "release"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+status        = "law"
+section       = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id             = "G15"
+assertion      = "no egress compiled in: hostname grep + a socket-blocked run"
+# The one row with two jobs: the grep is static and runs in `gates`, the socket-blocked run needs
+# the twelve conformance suites and runs in `conform` (section 6.2's `conform` cell says so).
+jobs           = ["gates", "conform"]
+budget_s       = 30
+pr             = true
+nightly        = true
+release        = true
+runner_planned = ["tools/gate_egress.py"]
+# `licence` holds seat `S-sec` (17-risks.md section 1.3), and no role's "owns" cell names egress.
+owner          = "licence"
+reviewed_at    = "2026-09-07"
+review_by      = "2026-12-03"
+status         = "law"
+section        = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id             = "G16"
+assertion      = "the previous **two** releases' template drivers load against HEAD"
+jobs           = ["conform"]
+budget_s       = 40
+pr             = true
+nightly        = false
+release        = true
+# Reads history, so `fetch-depth: 0` and `filter: blob:none` (section 6.2). Section 4.4: G16 must
+# NOT reach the network -- it adds a `git worktree` at each of the last two tags, builds
+# `omniweave-conform` from source there, scaffolds that checkout's own template driver and loads
+# the result against HEAD. Building from PyPI would let a yanked release break an unrelated merge.
+fetch_depth    = 0
+runner_planned = ["tools/gate_contract.py"]
+step           = """
+git worktree per tag + uv build --package omniweave-conform + that checkout's ow drivers scaffold \
+(section 4.4); vacuous at the P3 exit and wired for later (16-roadmap.md:516)"""
+# 17-risks.md section 1.3: `release` owns "`CONTRACT`".
+owner          = "release"
+reviewed_at    = "2026-09-07"
+review_by      = "2026-12-03"
+status         = "law"
+section        = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id            = "G17"
+assertion     = "lazy core: none of the nine subpackages"
+jobs          = ["gates"]
+budget_s      = 3
+pr            = true
+nightly       = false
+release       = false
+runner        = ["tools/gate_lazy_core.py"]
+owner         = "release"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+status        = "law"
+section       = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id            = "G18"
+assertion     = "config axes cover every key exactly once"
+jobs          = ["gates"]
+budget_s      = 2
+pr            = true
+nightly       = false
+release       = false
+runner        = ["tools/gate_config_axes.py"]
+owner         = "release"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+status        = "law"
+section       = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id             = "G19"
+assertion      = "incremental == full: 300 docs, 40 mutations, `.owdoc` export diff"
+# Its own job because 300 documents in 40 scripted mutations does not fit inside `golden`'s 4 min
+# and shrinking the fixture would change a gate the charter says owns its two numbers (section 6.2
+# "Extends the charter").
+jobs           = ["incremental"]
+budget_s       = 420
+pr             = true
+nightly        = true
+release        = true
+runner_planned = ["tools/gate_incremental.py"]
+# 17-risks.md section 1.3: `runtime` owns "the Supervisor, `work`, the claim, ... the cache".
+owner          = "runtime"
+reviewed_at    = "2026-09-07"
+review_by      = "2026-12-03"
+status         = "law"
+section        = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id             = "G20"
+assertion      = "event schema generated from `events.toml`"
+jobs           = ["gates"]
+budget_s       = 2
+pr             = true
+nightly        = false
+release        = false
+runner_planned = ["tools/gate_events.py"]
+step           = "schema/event-v1.json generated from tools/events.toml (16-roadmap.md:548, W4.8)"
+owner          = "release"
+reviewed_at    = "2026-09-07"
+review_by      = "2026-12-03"
+status         = "law"
+section        = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id             = "G21"
+assertion      = "kill-9 at three points; `ow resume`; store equals an uninterrupted run"
+jobs           = ["crash"]
+budget_s       = 240
+pr             = true
+nightly        = true
+# The one nightly cell that is not a plain yes: the PR job takes three random points, the nightly
+# takes the whole matrix (section 6.5's `ow-bench-1` row, "the full G21 crash matrix").
+nightly_note   = "full matrix"
+release        = true
+runner_planned = ["tools/gate_crash.py"]
+owner          = "runtime"
+reviewed_at    = "2026-09-07"
+review_by      = "2026-12-03"
+status         = "law"
+section        = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id             = "G22"
+assertion      = "scale: 100k roster, RSS <= 600 MB, >= 2,000 transitions/s"
+# THE ONE ROW WITH NO PR CELL. Section 6.4: G22 "blocks the *release* (checklist step 11) and is
+# deliberately absent from `ci-ok`'s required set. Claiming otherwise would be the exact kind of
+# unfalsifiable statement section 6.8 refuses." Section 7.6 step 11 is the release-side half:
+# "run the nightly suite once on the release commit (G22, the full G21 matrix, T4 eval)", because
+# "G22 has no PR cell at all". So `jobs = []` and `budget_s` is absent -- section 6.4 prints an
+# em dash in both cells and there is no number to invent.
+jobs           = []
+pr             = false
+nightly        = true
+nightly_note   = "**nightly only**"
+release        = true
+runner_planned = ["tools/gate_scale.py"]
+step           = "uv run tools/gate_scale.py --roster 100000 on ow-bench-1 (16-roadmap.md:578)"
+owner          = "runtime"
+reviewed_at    = "2026-09-07"
+review_by      = "2026-12-03"
+status         = "law"
+section        = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id            = "G23"
+assertion     = "core imports neither `asyncio` nor `selectors`"
+jobs          = ["gates"]
+budget_s      = 3
+pr            = true
+nightly       = false
+release       = false
+# Shares its runner with G9: one `-X importtime` trace answers both questions.
+# ADR-12 consequence 4: "`G23` gains the AST clause; `tools/gates.toml`'s `G23` row and its script
+# change together" -- the guard against a core type transitively reaching `subprocess` through
+# `RunContext.services`. The plan letters that clause nowhere, so this row records it as prose
+# rather than minting `G23(b)`; when it lands, this row and gate_importtime.py move in one commit.
+runner        = ["tools/gate_importtime.py"]
+owner         = "release"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+status        = "law"
+section       = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id            = "G24"
+assertion     = "semgrep: `sqlite3` confined to `store/`; no bare `except` on identity"
+jobs          = ["gates"]
+# NO BUDGET OF ITS OWN. Section 6.4's `s` cell reads "(in G8)": G24 runs inside G8's 45 s because
+# it is the same semgrep bank over the same tree. `budget_in` says which row pays; a `budget_s`
+# here would double-count the `gates` job's 180 s ceiling (V01-14).
+budget_in     = "G8"
+pr            = true
+nightly       = false
+release       = false
+runner        = ["tools/gate_semgrep.py"]
+owner         = "release"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+status        = "law"
+section       = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id            = "G25"
+assertion     = "`ow surface emit --check`; no two CLI groups differ by a trailing `s`"
+jobs          = ["gates"]
+budget_s      = 5
+pr            = true
+nightly       = false
+release       = false
+step          = """
+ow surface emit --check (section 7.6 step 4, 16-roadmap.md:716 W7.2). No tools/ script is named \
+by the plan; the emitter is `gen/` inside the CLI distribution, not a tools/ gate."""
+# 17-risks.md section 1.3: `surface` owns "the Action registry, MCP, CLI, SDK".
+owner         = "surface"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+status        = "law"
+section       = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id             = "G26"
+assertion      = "`ow hook prompt` p95 <= 250 ms warm / 1 s cold"
+jobs           = ["test"]
+budget_s       = 20
+pr             = true
+nightly        = true
+release        = true
+# The second half of section 6.4's split-timing-gate paragraph: the hard assertion is the module
+# count on the hook path, the wall clock is the 25% band. Every failure on this hook is a silent
+# exit 0, so a deadline breach turns the adoption lever off with no symptom (INV-3).
+runner_planned = ["tools/gate_hook_latency.py"]
+# 17-risks.md section 1.3: `surface` owns "hooks".
+owner          = "surface"
+reviewed_at    = "2026-09-07"
+review_by      = "2026-12-03"
+status         = "law"
+section        = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id             = "G27"
+assertion      = """
+documents machine-checked: fences parse (a), one key per physical line (a2), `[[rule]]` fences \
+linted (a3), migrations dense-unique-ordered (b), terminology (c), \
+**symbols and registers (d)**"""
+jobs           = ["gates"]
+budget_s       = 25
+pr             = true
+nightly        = false
+release        = true
+# Clause b diffs the migration set against the previous tag (section 5.2), so this row is the
+# third of section 6.2's three history readers.
+fetch_depth    = 0
+runner_planned = ["tools/gate_docs.py", "tools/gate_migrations.py"]
+owner          = "release"
+reviewed_at    = "2026-09-07"
+review_by      = "2026-12-03"
+status         = "law"
+section        = "11-repo-layout.md section 6.4"
+
+# The six clauses, in section 6.4's own order. `enabled = false` means the clause is registered and
+# does not yet fail the build; it is ADR-1 decision 6's mechanism, not a `--warn-only` (section 6.8
+# says there is none anywhere).
+[[gate.clause]]
+id            = "a"
+asserts       = "every fenced block parses under the parser its fence names"
+enabled       = true
+runner        = ["tools/gate_docs.py"]
+
+[[gate.clause]]
+id            = "a2"
+asserts       = """
+lexical, not a parse check: outside comments and strings, the running count of `{` minus `}` is \
+zero at the end of every physical line of every toml fence, naming file, line and fence"""
+enabled       = true
+added_by      = "ADR-4"
+runner        = ["tools/gate_docs.py"]
+# Why it cannot be semantic: TOML 1.0.0 permits a newline inside an inline table's braces where it
+# falls inside a value, so `tomllib` accepts the charter's D4 block at :2739 and always would have.
+# Over the corpus the clause scans 73 fences and reports that one line and no other.
+
+[[gate.clause]]
+id             = "a3"
+asserts        = """
+every toml fence parsing to a table containing a `[[rule]]` array additionally passes \
+`ow route lint` checks 1, 2, 4, 5, 7, 9, 10 and 12"""
+# Live but interim. `ow route lint` ships at P5, so from P1 the harness runs a standalone check 4
+# over `[[rule]]` fences, reading nullability out of 05-ingest-and-routing.md section 5.1's `null`
+# column. Pre-committed fallback: at the P5 exit the standalone check is DELETED in the same commit
+# that lands a3 -- two implementations of one check is charter section 8 rejection criterion 19.
+enabled        = true
+added_by       = "ADR-4"
+runner         = ["tools/gate_docs.py"]
+blocked_until  = "P5 exit for the full form; the standalone check 4 runs from P1"
+
+[[gate.clause]]
+id             = "b"
+asserts        = """
+migrations are dense and unique from 0001, apply in numeric order to an empty file on \
+MIN_SQLITE, and no migration present in the previous tag was renamed or edited"""
+enabled        = true
+runner         = ["tools/gate_migrations.py"]
+
+[[gate.clause]]
+id            = "c"
+asserts       = "the terminology lock holds in both directions"
+# ADR-1 decision 6: c turns on when four conditions hold and not before -- section 2 covers every
+# name rule 1's parser finds, section 3 carries its three columns, `tools/lock_allow.toml` exists,
+# and the residual on a clean tree is zero. Until then it is registered here with `enabled = false`
+# and a `blocked_by` note "so its absence is visible rather than assumed".
+enabled       = false
+blocked_by    = "ADR-1"
+runner        = ["tools/gate_docs.py"]
+# The ratchet ADR-1 decision 5 puts in this file: `tools/lock_allow.toml`'s length, which c fails
+# on an increase. Zero because decision 6's fourth turn-on condition IS that the residual on a
+# clean tree is zero; the file does not exist yet, and this number is the ceiling at turn-on rather
+# than a measured count.
+lock_allow_max_rows = 0
+
+[[gate.clause]]
+id            = "d"
+asserts       = "symbols and registers"
+enabled       = true
+runner        = ["tools/gate_docs.py"]
+# Section 8.6's five checks d0..d4 are that section's own table and are not re-homed here; what
+# section 8.6 does put in this file is d0's floor: "the symbol regex matched at least the count in
+# `tools/gates.toml` ... The floor lives in `tools/gates.toml` beside G27's row, so raising it is a
+# reviewable act and lowering it is visible. It is 520 at release 1, against the 620 symbol
+# occurrences the nineteen plan documents match under d1." It moved from 400 to 520 when d1's
+# module group became a `*`; a floor inherited from a narrower match set measures nothing.
+symbol_floor  = 520
+
+[[gate]]
+id            = "G28"
+assertion     = "`import(export(store)) == store` over the fixture corpus"
+jobs          = ["gates"]
+budget_s      = 45
+pr            = true
+nightly       = false
+release       = true
+# ADR-2 decision 4: G28 is charter section D2's unnumbered "CI gate" given a number, and it is
+# INV-1's third enforcer. Do NOT cite G6 for it -- G6 is `ow schema emit --check` and is not
+# renumbered (00-vision.md:852, ADR-2 erratum E31).
+step          = """
+a `gates` job step over the fixture corpus (ADR-2 decision 4). No tools/ script is named by the \
+plan; 45 s is an estimate and section 6.4's pre-committed fallback is a one-line move of this row \
+to the `test` job beside G26 if the `gates` job's 180 s ceiling (V01-14) breaches."""
+owner         = "model"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+status        = "law"
+added_by      = "ADR-2"
+section       = "11-repo-layout.md section 6.4"
+
+[[gate]]
+id             = "G29"
+assertion      = """
+the redaction canary: `tests/test_no_content_in_artefacts.py` under four forced faults"""
+jobs           = ["gates"]
+budget_s       = 60
+pr             = true
+nightly        = false
+release        = true
+# 15-observability.md section 8.3 is "the assertion's sole home": a full ingest of a canary corpus
+# under a forced crash, a forced budget denial, a forced quarantine and a forced exception holding
+# page text, asserting `OWCANARY-7f3a91` appears in the `quarantine` payload and nowhere else.
+# G8 absorption was considered and rejected there: one failure message cannot mean both "a semgrep
+# rule fired" and "content leaked into an artefact".
+#
+# The path is verbatim from section 6.4 and from 15-observability.md:1447, which write it
+# root-relative as `tests/...` and never say which `tests/` root. Recorded as written; resolving it
+# belongs to whoever lands the test.
+runner_planned = ["tests/test_no_content_in_artefacts.py"]
+owner          = "licence"
+reviewed_at    = "2026-09-07"
+review_by      = "2026-12-03"
+status         = "law"
+added_by       = "ADR-2"
+section        = "11-repo-layout.md section 6.4"
+
+# ---------------------------------------------------------------------------------------------
+# G30 IS AN APPEND THIS FILE MAKES AND SECTION 6.4 DOES NOT YET RENDER.
+#
+# `tools/gate_tombstones.py` exists, runs, and is a blocking CI check by every criterion section
+# 6.8 uses -- and it carries NO `G<n>` anywhere in the plan. 04-driver-system.md section 7.5 states
+# the obligation ("CI **fails** a tombstone past its `review_by` date, so the refusal set cannot
+# silently ossify"), section 10.4 repeats it over the six cards shipped at release 1, and section
+# 7.6's DR22 enforcer column names it only as "the `review_by` CI check". An unnumbered blocking
+# check is exactly what V10-1 stopped being able to see when it started quoting this register: if
+# the tombstone clock has no row here, "every `G` row in `tools/gates.toml` green" does not cover
+# it and no document can cite it.
+#
+# Why G30 and not a job assertion. Section 8.7 makes a job assertion the cheap path -- "no ADR,
+# because it creates no new promise a document can name numerically" -- and it would be the wrong
+# path here: DR22 is a numbered promise, 04-driver-system.md section 7.6 already cites this check
+# in an enforcer column, and the `[[job_assertion]]` family is spelled "nine at release 1" in four
+# places (11-repo-layout.md:2692, glossary.md:719, terminology.md:479, 17-risks.md:265), so a tenth
+# would falsify a count this register cannot amend.
+#
+# Why `status = "registered"` and not `"law"`. Section 8.7's "add a gate" row requires an ADR, then
+# a `tools/gate_*.py`, then a row here, then "a row in section 6.4's table". The script and this row
+# exist; the ADR and the section 6.4 row do not, and no agent may edit `_plan/`. So the row is
+# registered and enforced, and `pending` names what is missing -- ADR-1's `enabled = false` idiom
+# would be the wrong instrument, because that says "does not yet fail the build" and this one does.
+# The G27 clause-d2 rendering check therefore compares section 6.4's table against the `law` rows
+# only, and asserts every non-`law` row carries a `pending` reason.
+[[gate]]
+id            = "G30"
+assertion     = "every framework tombstone's `review_by` is in the future"
+jobs          = ["gates"]
+# 04-driver-system.md section 4.4 step 5 measures loading the six framework tombstones at ~1.2 ms;
+# a date comparison over six files is not measurably more, and 1 s is the smallest budget this
+# register already carries (G14).
+budget_s      = 1
+pr            = true
+nightly       = false
+release       = true
+runner        = ["tools/gate_tombstones.py"]
+# 17-risks.md section 1.3: `licence` owns "tombstones" verbatim. A tombstone is a licence reading
+# with a date on it (gate_tombstones.py's own header), so the clock and the reading share an owner.
+owner         = "licence"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+status        = "registered"
+pending       = """
+an ADR allocating the number (section 8.7 "add a gate") and a row in section 6.4's table. The \
+script and this row exist and block today; the rendering does not."""
+section       = "04-driver-system.md section 7.5"
+
+# =============================================================================================
+# THE JOB ASSERTIONS. Nine at release 1, in section 6.4's rendering order.
+#
+# Section 6.4: they "live in `tools/gates.toml` under `[[job_assertion]]` rather than as new G
+# numbers. The reason is no longer a quoted count ... but the distinction section 8.7 draws: a
+# `G<n>` is a numbered promise a document may cite, and a job assertion is a blocking check that
+# belongs to one job and that nothing cites by number. Adding a `G<n>` still requires an ADR on
+# that ground alone; adding a job assertion does not. G27 clause d2 resolves a `[[job_assertion]]`
+# name the same way it resolves a `G<n>`, so a document may name one without inventing a register."
+#
+# The name is `<job>.<what>` and the prefix IS the job -- that is not a convention this file
+# invented, it is how all nine are spelled in section 6.4's table, and the test asserts it, so a
+# row cannot claim `build.` and run in `gates`.
+#
+# The last two are register checks and are NOT a fifth clause of G27(d): "`d2` resolves whether
+# `INV-21` exists, `gates.invariant_register` asserts whether its row is well-formed. Different
+# questions, different failure messages, different budgets." 17-risks.md section 1.1 adds
+# "It is not `G27(e)`; there is no clause `e`."
+# =============================================================================================
+
+[[job_assertion]]
+name          = "build.reproducible"
+job           = "build"
+asserts       = "two build passes produce 28 identical sha256s"
+step          = "the `build` job's two-pass build of 14 sdists + 14 wheels (sections 6.2, 6.6)"
+owner         = "release"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+section       = "11-repo-layout.md section 6.6"
+
+[[job_assertion]]
+name          = "build.wheelhouse_profiles"
+job           = "build"
+asserts       = """
+the three offline install-profile installs and their per-profile assertions"""
+# Section 2.4 is the sole home of the three, and each carries one assertion that fails loudly:
+#   laptop, minimum      -- `pip install omniweave` succeeds offline; `ow parse report.pdf` gives
+#                           the "no driver for `.pdf`" refusal NAMING `pip install omniweave-pdf`,
+#                           with the declared exit code and `OW-D-*` code and no traceback; and
+#                           `-X importtime` shows zero third-party modules (G9)
+#   laptop, working      -- `pip install "omniweave[recommended]"` succeeds offline; `ow doctor`
+#                           exits 0; summed `RECORD` sizes are <= `aggregate_mb` (G2) and are
+#                           written to eval/baselines/weights-<os>-<py>.json
+#   all-packages minus vision -- all thirteen bounded distributions install together with no
+#                           resolver backtracking past `~=`, "the DataFlow failure, asserted
+#                           rather than assumed"
+# The minimum profile's refusal message earns its own assertion because it is the only thing
+# standing between the smallest install and a user who concludes the framework is broken.
+profiles      = ["laptop-minimum", "laptop-working", "all-packages-minus-vision"]
+step          = """
+fresh venvs from an offline wheelhouse, built in the `build` job from the wheels that release will \
+publish (section 2.4)"""
+owner         = "release"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+section       = "11-repo-layout.md section 2.4"
+
+[[job_assertion]]
+name           = "build.first_party_manifest"
+job            = "build"
+asserts        = """
+thirteen rows, `omniweave-core` absent, every row's digest matches `dist/`"""
+runner_planned = ["tools/gen_first_party.py"]
+step           = "checklist step 13 is the release-side half of the same assertion"
+owner          = "release"
+reviewed_at    = "2026-09-07"
+review_by      = "2026-12-03"
+section        = "11-repo-layout.md section 7.2"
+
+[[job_assertion]]
+name          = "toolchains.reproducible"
+job           = "toolchains"
+asserts       = "two esbuild passes produce an identical bundle sha256"
+step          = """
+the `toolchains` job, ubuntu x node 20, CONDITIONAL on toolchains/** -- the only cell with a Node \
+runtime and the only job `ci-ok` may see `skipped` (section 6.2)"""
+# 17-risks.md section 1.3: `out` owns "the Toolchain seam".
+owner         = "out"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+section       = "11-repo-layout.md section 3.3"
+
+[[job_assertion]]
+name          = "gates.reference_docs"
+job           = "gates"
+asserts       = "`ow surface emit --docs --check` over `docs/reference/**`"
+step          = "ow surface emit --docs --check (section 1.8)"
+owner         = "surface"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+section       = "11-repo-layout.md section 1.8"
+
+[[job_assertion]]
+name          = "gates.workflow_tools_pinned"
+job           = "gates"
+asserts       = """
+every `uses:` is a 40-hex SHA and no `run:` step installs a tool without `==<exact>`"""
+# Two halves because zizmor does not read shell (section 6.7): zizmor covers the `uses:` half as a
+# linter, and a ~40-line check covers the `run:` half. The CI definition is itself an attack
+# surface with write access to the release, which is the whole reason this row exists.
+step          = """
+uvx zizmor over both workflow files plus a ~40-line `run:`-step check (section 6.7)"""
+owner         = "release"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+section       = "11-repo-layout.md section 6.7"
+
+[[job_assertion]]
+name           = "ci-ok.skips_declared"
+job            = "ci-ok"
+asserts        = """
+every `needs` result is `success`, or `skipped` for `toolchains` alone"""
+# Three properties, and the third is the one a naive version gets wrong: a `cancelled` result is a
+# FAILURE, because `if: always()` also fires on cancellation and a bare truthiness check would
+# treat an aborted matrix as green. And SKIPPABLE is a literal set in the script, not a wildcard,
+# so admitting a second conditional job is a reviewable act rather than a silent widening.
+runner_planned = ["tools/ci_ok.py"]
+step           = """
+python3 tools/ci_ok.py with NEEDS=${{ toJSON(needs) }}; SKIPPABLE = {"toolchains"} \
+(section 6.2). The same job prints tools/print_quarantine.py's list on every PR."""
+owner          = "release"
+reviewed_at    = "2026-09-07"
+review_by      = "2026-12-03"
+section        = "11-repo-layout.md section 6.2"
+
+[[job_assertion]]
+name           = "gates.invariant_register"
+job            = "gates"
+asserts        = """
+`tools/invariants.toml`'s five semantic assertions over the twenty-five `[[inv]]` rows: heading \
+<-> row bidirectionally, ladder rule 1, `independent == len(enforcers) + len(sites)`, ladder rule \
+2's two decidable cases, and every spelled-out invariant count in any document against the row \
+count. Budget 2 s"""
+budget_s       = 2
+runner_planned = ["tools/gate_invariants.py"]
+# ADR-2 decision 2: 01-principles.md open question 3 claimed `G27(d)` for this script and cannot
+# have it, because section 8.6 already spends the clause on `gate_docs.py`. 17-risks.md:578 gives
+# the open question's role as `release`.
+owner          = "release"
+reviewed_at    = "2026-09-07"
+review_by      = "2026-12-03"
+section        = "01-principles.md section 1e"
+
+[[job_assertion]]
+name          = "gates.risk_register"
+job           = "gates"
+asserts       = "the same shape over [risks](17-risks.md)'s register rows"
+# 17-risks.md section 1.1 sizes it: "one `tomllib.load`, five set-membership passes over 60 rows
+# and ~200 question keys, and one byte-diff of section 1.2's table", budgeted at 2 s. Rule 4 is
+# also this register's own rot clock, which is why `tools/risks.toml` is deliberately NOT added to
+# Q-G17's list -- one clock per register.
+budget_s      = 2
+step          = """
+five rules over tools/risks.toml's sixty `[[risk]]` rows: indicator resolves, \
+likelihood * impact >= 12 carries a contingency, `questions` keys resolve, owner/reviewed_at/\
+review_by present and in window, and `kill` values resolve both ways (17-risks.md section 1)"""
+owner         = "release"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+section       = "17-risks.md section 1.1"
+
+# ------------------------------------------------------------------------------------------------
+# G31 -- appended for the same reason G30 was, and under the same caveat. `pending` says what is
+# still owed on the plan side; the script exists and blocks today.
+#
+# 16-roadmap.md:454 lists `uv run tools/gate_schema_lint.py` in P2's exit criteria and describes it
+# as "INV-1, the FK-target classification". Section 6.4's rendered table carries no schema-lint row,
+# so the number is allocated here, and `test_every_gate_script_on_disk_is_registered` is what
+# noticed the omission: a gate script with no row is invisible to V10-1's "every G row in
+# tools/gates.toml green", which is exactly the hole G30 was appended to close.
+# ------------------------------------------------------------------------------------------------
+
+[[gate]]
+id            = "G31"
+assertion     = "the schema lint: FK-target classification, no second text column, no positional Block reference"
+jobs          = ["gates"]
+# Three clauses over four .sql files totalling ~150 KB, all of it string work with no database
+# opened. The same 2 s the register gives G18, which likewise parses committed declaration files.
+budget_s      = 2
+pr            = true
+nightly       = false
+release       = true
+runner        = ["tools/gate_schema_lint.py"]
+# INV-1 is 01-principles.md's, and GR15 -- the `mention`-only both-layers exception the lint
+# enforces -- is 06-structure-extraction.md:233's. Both sit with the model, not with release.
+owner         = "model"
+reviewed_at   = "2026-09-07"
+review_by     = "2026-12-03"
+status        = "registered"
+pending       = """
+an ADR allocating the number (section 8.7 "add a gate") and a row in section 6.4's table. \
+16-roadmap.md:454 already invokes the script by name in P2's exit criteria."""
+section       = "01-principles.md INV-1; 16-roadmap.md section 5"

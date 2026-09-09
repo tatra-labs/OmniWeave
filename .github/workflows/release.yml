@@ -1,0 +1,422 @@
+# .github/workflows/release.yml -- the shape section 7.3 prints, made real. 11-repo-layout.md
+# sections 6.1, 6.3, 7.1, 7.3, 7.4 and 7.6.
+#
+# THIS FILENAME MUST NEVER CHANGE. Section 1.1 fact 1: "PyPI Trusted Publishing binds the OIDC
+# subject to repository + workflow_ref, so a rename silently revokes publish rights and the failure
+# appears only at the publish step of a tagged release. The filename is asserted by a gate (section
+# 7.3) so a rename fails on the PR that does it, not four weeks later on the tag." That gate is the
+# "two workflow files, and no publisher inside a reusable workflow" step in ci.yml's gates job.
+#
+# Section 6.1: "release.yml invokes ci.yml through workflow_call, so THE RELEASE GATE IS CI and the
+# two cannot diverge." The ci job below is the whole of that: one definition of passing, no
+# release-gate.yml re-declaring checks the PR path already ran. The cost is real and accepted --
+# no per-check status badges, and a re-run re-runs everything.
+#
+# WHY THERE IS NO repository_dispatch AND NO REUSABLE PUBLISH WORKFLOW. Trusted Publishing matches
+# the OIDC workflow_ref claim and that claim names the CALLER when a workflow is invoked through
+# workflow_call, so a reusable *publish* workflow fails with invalid-publisher
+# (pypa/gh-action-pypi-publish#166, pypi/warehouse#11096). The mined workaround was a
+# repository_dispatch from release.yml to publish.yml, and repository_dispatch runs on
+# DEFAULT-BRANCH HEAD AT DISPATCH TIME, not on the release commit: on one release main was 4 PRs
+# ahead and PyPI shipped code absent from the tag. omniweave cannot recur that not because dispatch
+# is avoided but because THE HUMAN APPROVAL PAUSE HAPPENS INSIDE THE RUN, ON github.sha -- the
+# publish job declares "environment: release", so the run stops at that job with every artefact
+# already built from the tagged commit, and no amount of human latency can move the commit under
+# it. The constraint is only on the job that calls pypa/gh-action-pypi-publish, which is why that
+# job is top-level here and not in ci.yml.
+#
+# NO concurrency BLOCK, DELIBERATELY. Section 6.3: "concurrency ... is set on ci.yml and NOT on
+# release.yml ... On a tag, cancellation would abandon a partially published release, which section
+# 7.7 says is the one state with no clean recovery."
+#
+# ACTION PINS. Section 7.3 rule 2 requires a full 40-hex commit SHA with the version in a trailing
+# comment, and section 7.3 prints @<40-hex> for every action rather than a SHA. Inventing forty hex
+# characters would be a fabricated supply-chain claim, so every third-party uses: below carries a
+# mutable ref and a "TODO: pin" marker naming its owner (release, which 17-risks.md section 1.3
+# gives "the CI workflows"). This file cannot be trusted for a real release until every one of them
+# is pinned; zizmor and the gates.workflow_tools_pinned job assertion are what will say so.
+#
+# WHAT SECTION 7.3'S PRINTED SHAPE OMITS, and therefore what is marked rather than written here:
+#   * the SBOM GENERATION itself. Rule 4: trivy, SHA-pinned, "its output is sanity-checked before
+#     signing" against 80% of the previous stable release's component count PER FORMAT, a cap of
+#     2000, and -- replacing the mined repository's hard floor of 50 -- the install profile's
+#     declared direct dependency count, which is 2 for the minimum profile. The printed shape signs
+#     sbom-spdx.json and never says where it came from; section 7.1 says there are SIX of them,
+#     two formats x three install profiles.
+#   * the CONTAINER IMAGE and the GHCR promote job (rule 5, rule 7, section 7.1's row), the deck
+#     Toolchain bundle (checklist step 10) and the two data artefacts (section 7.1's last row).
+#     16-roadmap.md W10.9 owns release engineering; none of it exists yet.
+#   * the ancestry assertion of section 6.1 IS written, as the tag-guard job, because it is two git
+#     commands and its absence is what checklist step 12 fails on.
+#
+# CONSEQUENCE, STATED PLAINLY: THIS FILE CANNOT COMPLETE A RELEASE TODAY. The sbom-sign job exits 1
+# at the SBOM generation step and says why, and the build job exits 1 the day gen_first_party.py
+# lands without section 7.3's four-command block being wired. Both are deliberate. The alternative
+# is a release workflow that signs a nonexistent SBOM or publishes wheels whose first-party
+# manifest names nothing, and section 6.8 refuses a check that cannot fail. 16-roadmap.md W10.9
+# ("Release engineering: release.yml with OIDC trusted publishing ...") is the item that turns
+# these into commands. Nothing here runs before a v* tag exists, and none exists.
+
+name: release
+
+on:
+  push:
+    # Section 6.3's last row: "a tag v*" runs release.yml, which calls ci.yml and adds
+    # build/provenance/sbom/publish. Its ~25 min is a COLD number by construction, not a
+    # pessimistic one: checklist step 2 rewrites thirteen [project] version fields and therefore
+    # uv.lock, so hashFiles('uv.lock') misses every uv cache key on the release commit. A release
+    # run never gets a warm cache and budgeting one would be a planning error.
+    tags: ["v*"]
+
+# Minimal at the top level, section 7.3's own first line. Every job re-grants exactly what it
+# needs, which for the reusable ci job means contents: read -- a called workflow inherits the
+# caller's token and can only reduce it, so an unstated permission there is a checkout failure
+# rather than a safe default.
+permissions: {}
+
+jobs:
+  # ==========================================================================================
+  # tag-guard -- section 6.1's two extra assertions: "release.yml additionally asserts
+  # github.ref_type == 'tag' and that the tag's commit is an ancestor of the default branch."
+  # Checklist step 12 is the human half ("tag v<RELEASE> on a commit that is an ancestor of the
+  # default branch; push"); this is the half that fails when the human half was skipped.
+  # ==========================================================================================
+  tag-guard:
+    name: "tag-guard (ref_type, ancestry)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      release: ${{ steps.release.outputs.release }}
+    steps:
+      - uses: step-security/harden-runner@v2 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          persist-credentials: false
+          # Ancestry is a history question, so this is one more of the fetch-depth: 0 jobs of
+          # section 6.2's gate-contract paragraph -- and here getting it wrong produces
+          # "fatal: no such ref" on a tag, which is the worst moment for it.
+          fetch-depth: 0
+          filter: "blob:none"
+      - name: "the ref is a tag, and its commit is an ancestor of the default branch"
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [ "$REF_TYPE" != "tag" ]
+          then
+            echo "release FAILED: ref_type is $REF_TYPE, not tag (section 6.1)"
+            exit 1
+          fi
+          # NO --depth. `git fetch --depth=0` is not "unlimited depth" -- it is a fatal argument
+          # error ("fatal: depth 0 is not a positive number"), so the tag-guard would fail on every
+          # single `v*` tag while echoing a message about ANCESTRY. That is exactly the misleading
+          # failure the checkout comment above warns about, one line further down.
+          #
+          # The fetch is still required and is not redundant with `fetch-depth: 0`: checking out a
+          # tag configures a refspec for that tag, so `origin/$DEFAULT_BRANCH` does not exist as a
+          # remote-tracking ref and `merge-base --is-ancestor` would die on a missing ref. This
+          # fetch creates it, and inherits the full history `fetch-depth: 0` already pulled.
+          git fetch --no-tags origin "$DEFAULT_BRANCH"
+          if ! git merge-base --is-ancestor HEAD "origin/$DEFAULT_BRANCH"
+          then
+            echo "release FAILED: $REF_NAME is not an ancestor of $DEFAULT_BRANCH (checklist 12)"
+            exit 1
+          fi
+          echo "tag-guard: $REF_NAME is a tag and an ancestor of $DEFAULT_BRANCH"
+      - name: "RELEASE is the tag without its leading v"
+        id: release
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        # Checklist step 12 tags "v<RELEASE>", and section 7.3's build block spends "$RELEASE" on
+        # gen_first_party.py. This is the one place the two spellings are reconciled.
+        run: echo "release=${REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+  # ==========================================================================================
+  # ci -- THE RELEASE GATE IS CI. One definition (section 6.1). This is the whole reason ci.yml
+  # carries a workflow_call trigger, and the reason nothing in ci.yml publishes.
+  # ==========================================================================================
+  ci:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  # ==========================================================================================
+  # build -- 28 files from the tagged commit, and the base64 sha256 list that becomes the SLSA
+  # subjects. Section 7.3's printed block, with the two-pass reproducibility check left where
+  # section 6.6 puts it: inside ci.yml's build job, which this job needs.
+  # ==========================================================================================
+  build:
+    name: "build (28 subjects)"
+    needs: [ci, tag-guard]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      hashes: ${{ steps.hash.outputs.hashes }} # base64 sha256 of all 28 files
+    env:
+      RELEASE: ${{ needs.tag-guard.outputs.release }}
+    steps:
+      - uses: step-security/harden-runner@v2 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          # Section 7.1: "The repository holds zero publishing secrets" -- PyPI is OIDC Trusted
+          # Publishing, cosign is keyless OIDC, GHCR uses the run's GITHUB_TOKEN. That is what
+          # makes this egress audit "a meaningful control rather than a formality: the only thing
+          # a compromised step could exfiltrate is the run's own short-lived identity token."
+          egress-policy: audit
+      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
+      - name: "the two-pass build, with SOURCE_DATE_EPOCH from the commit and not the clock"
+        # Section 7.4's corollary is the rule this step obeys: nothing that produces an artefact
+        # the publish job needs may depend on wall-clock time, a network resource that can
+        # disappear, or a mutable upstream tag -- because all three make a re-run after a five-day
+        # gap produce a different byte. The commit date is the only epoch that survives the pause.
+        #
+        # gen_first_party.py does not exist yet (section 7.2, tools/gates.toml runner_planned), so
+        # the middle two commands section 7.3 prints are not run and core is not rebuilt. The step
+        # FAILS the day the script lands, because landing it changes what the digests are and
+        # therefore what the SLSA subjects are -- that is not a change to make silently on a tag.
+        run: |
+          SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
+          export SOURCE_DATE_EPOCH
+          uv build --all-packages --out-dir dist
+          if [ -f tools/gen_first_party.py ]
+          then
+            echo "tools/gen_first_party.py exists: wire section 7.3's four-command build block"
+            echo "  python tools/gen_first_party.py --dist dist/ --release \"\$RELEASE\""
+            echo "  rm dist/omniweave_core-* dist/omniweave-core-*"
+            echo "  SOURCE_DATE_EPOCH=... uv build --package omniweave-core"
+            exit 1
+          fi
+          # -name "omniweave*" because "uv build --out-dir dist" also writes a dist/.gitignore
+          # holding "*", so a bare file count is 29. Measured on this checkout, uv 0.9.x.
+          count="$(find dist -maxdepth 1 -type f -name "omniweave*" | wc -l)"
+          if [ "$count" != "28" ]
+          then
+            echo "release FAILED: expected 28 files (section 7.1), found $count"
+            exit 1
+          fi
+      - id: hash
+        # base64 -w0 keeps the whole list on one line, which is what the generator's
+        # base64-subjects input takes.
+        run: echo "hashes=$(sha256sum dist/* | base64 -w0)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          name: dist
+          path: dist/
+          # NEVER 1, and section 7.4 is the scar with the largest blast radius in the mined
+          # collection: at retention-days 1 an artefact expired 24 h after the build while the
+          # approval arrived ~30 h later, create-release failed with "Artifact not found", and the
+          # release was unrecoverable in place BECAUSE THE SIGNED SBOM BYTES NAMED AS SUBJECTS IN
+          # THE SLSA PROVENANCE NO LONGER EXISTED. A provenance statement whose subjects have been
+          # garbage-collected cannot be satisfied by regenerating them: a regenerated SBOM has a
+          # different digest.
+          retention-days: 7
+
+  # ==========================================================================================
+  # provenance -- SLSA build level 3 over all 28 PyPI subjects (section 7.1's row).
+  #
+  # THE EFFECTIVE APPROVAL WINDOW IS FIVE DAYS, NOT SEVEN, and it is not ours to set: this
+  # reusable workflow uploads provenance.intoto.jsonl with a hardcoded retention-days: 5 and
+  # exposes no caller input (section 7.4 rule 2). CONTRIBUTING.md states the number and checklist
+  # step 14 repeats it; the 7-day setting on our own uploads exists only so that ours is never the
+  # artefact that expires first. If the generator gains a retention input, both values move
+  # together in one commit.
+  # ==========================================================================================
+  provenance:
+    needs: [build]
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    # TODO: pin to a 40-hex SHA -- owner: release. Section 7.4 rule 2 records the version this was
+    # verified at: v2.1.0.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: ${{ needs.build.outputs.hashes }}
+      provenance-name: provenance.intoto.jsonl
+      upload-assets: false
+
+  # ==========================================================================================
+  # sbom-sign -- and the point of the job is that it VERIFIES what it signed, in the same job.
+  # Section 7.3 rule 3 quotes the defect it prevents: "cosign signs above but never verifies, so a
+  # sigstore/cert-chain regression would silently break downstream verification -- caught only when
+  # a user complains." The round trip proves the recipe a user will run still works.
+  # ==========================================================================================
+  sbom-sign:
+    name: "sbom-sign (sign and verify in one job)"
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: step-security/harden-runner@v2 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/download-artifact@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        # Section 7.3 prints "the shape, not the whole file" and elides this; the SBOM is generated
+        # over the built distributions, so the job needs them.
+        with:
+          name: dist
+          path: dist
+      - uses: sigstore/cosign-installer@v3 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          # PINNED TO v2.6.3, NOT THE INSTALLER'S DEFAULT, and section 7.3 rule 1 is precise about
+          # why: installer v4.1.2 ships cosign v3 by default, and v3's new-bundle-format changes
+          # the signature/attestation on-wire format so that a v3 producer and a v2 consumer cannot
+          # interoperate. The version that signs and the version in docs/verify.md's recipe move
+          # together, in one commit, and both live in section 6.7's table.
+          cosign-release: "v2.6.3"
+      - name: "generate the six SBOMs and sanity-check each before signing"
+        # NOT WRITTEN, AND NAMED SO IT IS NOT MISTAKEN FOR DONE. Section 7.3 rule 4: trivy is
+        # SHA-pinned and "its output is sanity-checked before signing. Trivy can emit a near-empty
+        # SBOM on a partial scan failure without a non-zero exit; signing that produces a
+        # fraudulent SBOM carrying a legitimate Sigstore certificate." The floor is 80% of the
+        # previous stable release's component count PER FORMAT (SPDX and CycloneDX counts differ
+        # because of virtual and metadata-only entries), a cap of 2000 against runaway drift, and
+        # -- in place of the mined repository's hard floor of 50 -- the install profile's declared
+        # direct dependency count, which is 2 for the minimum profile's core. "A floor of 50 on a
+        # two-dependency profile would either never fire or always fire, and neither is a check."
+        # Section 7.1 says there are six SBOMs: two formats x three install profiles.
+        run: |
+          echo "SBOM GENERATION NOT WRITTEN: trivy, the 80%-per-format floor, the 2000 cap and" \
+            "the per-profile direct-dependency floor (section 7.3 rule 4). W10.9 owns it." \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+          exit 1
+      - name: "cosign sign-blob, then cosign verify-blob, over the same bytes"
+        run: |
+          cosign sign-blob --yes --bundle sbom-spdx.json.bundle sbom-spdx.json
+          cosign verify-blob --bundle sbom-spdx.json.bundle \
+            --certificate-identity-regexp '^https://github\.com/omniweave/omniweave/' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            sbom-spdx.json
+      - uses: actions/upload-artifact@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          name: sbom
+          path: |
+            sbom-spdx.json
+            sbom-spdx.json.bundle
+          # Section 7.4 rule 1: every pre-approval upload sets 7 days. Never the default.
+          retention-days: 7
+
+  # ==========================================================================================
+  # publish -- THE APPROVAL PAUSE, and the only job in this file that touches PyPI.
+  #
+  # "environment: release" gates exactly the jobs that declare it (section 7.3 rule 7) -- this one
+  # and the GHCR promote job, and nothing else. An environment is per-job, not per-run; every other
+  # job above runs unattended before the pause. Stating it the other way round would be the same
+  # category of error the drift bug came from: an approval believed to gate more than it does. The
+  # environment additionally sets REQUIRED REVIEWERS and PREVENT SELF-REVIEW, so the person who
+  # pushed the tag cannot approve their own publish (checklist step 14: "The approver is not the
+  # tagger").
+  #
+  # THE FOUR UPLOAD STEPS ARE ORDERED, AND THE ORDER IS A PARTIAL-FAILURE DESIGN. PyPI filenames
+  # are immutable: a partially completed upload cannot be retried into the same version, only
+  # yanked and superseded. Uploading dependency-first means every reachable intermediate state is
+  # UNRESOLVABLE rather than BROKEN -- if the run dies after step 3, "pip install omniweave"
+  # resolves to the previous release, because the umbrella that would have pointed at the new
+  # siblings does not exist. Reversed, "pip install omniweave==<new>" would resolve and then fail
+  # at its dependencies, which is a much worse state for the hours before anyone notices.
+  # ==========================================================================================
+  publish:
+    name: "publish (environment: release)"
+    needs: [build, provenance, sbom-sign]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: release
+    permissions:
+      # PyPI Trusted Publishing, OIDC. No API token: section 7.7's last row refuses one even as a
+      # fallback, because "a long-lived secret is the thing section 7.1's zero publishing secrets
+      # buys".
+      id-token: write
+    steps:
+      - uses: step-security/harden-runner@v2 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          egress-policy: audit
+      - uses: actions/download-artifact@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        # Elided by section 7.3's shape and required by it: this download is what section 7.4 is
+        # about. Past the five-day window it fails, the run is dead, and approving late produces a
+        # job that cannot download its inputs. The recovery is to re-run the whole release from the
+        # same tag, which is safe only because build.reproducible holds.
+        with:
+          name: dist
+          path: dist
+      - uses: actions/attest-build-provenance@v1 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          subject-path: "dist/*"
+      - name: "split dist/ into the four ordered upload groups"
+        # Section 7.3 prints four bare uses: lines whose trailing comments name the four groups and
+        # does not say how a group is selected. The selection is fully determined by section 7.1's
+        # fourteen names, so it is derived here rather than hand-listed: ports, then core, then
+        # everything else that is not the umbrella, then the umbrella. sdist and wheel filenames
+        # normalise "-" to "_", which is why the globs use omniweave_.
+        run: |
+          mkdir -p groups/ports groups/core groups/siblings groups/umbrella
+          # dist/* does not glob the dist/.gitignore that uv writes, which is why the case arms
+          # below can afford to treat an unrecognised name as a failure.
+          for path in dist/*
+          do
+            base="$(basename "$path")"
+            case "$base" in
+              omniweave_ports-*) mv "$path" groups/ports/ ;;
+              omniweave_core-*) mv "$path" groups/core/ ;;
+              omniweave-*) mv "$path" groups/umbrella/ ;;
+              omniweave_*) mv "$path" groups/siblings/ ;;
+              *)
+                echo "release FAILED: $base is not one of section 7.1's fourteen names"
+                exit 1
+                ;;
+            esac
+          done
+          for group in ports core umbrella
+          do
+            count="$(find "groups/$group" -maxdepth 1 -type f | wc -l)"
+            if [ "$count" != "2" ]
+            then
+              echo "release FAILED: groups/$group holds $count files, expected an sdist + a wheel"
+              exit 1
+            fi
+          done
+          siblings="$(find groups/siblings -maxdepth 1 -type f | wc -l)"
+          if [ "$siblings" != "22" ]
+          then
+            echo "release FAILED: the eleven siblings are $siblings files, expected 22"
+            exit 1
+          fi
+      - name: "step 1 -- omniweave-ports, if its Port major moved"
+        uses: pypa/gh-action-pypi-publish@release/v1 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          packages-dir: groups/ports
+          # THE ONLY STEP THAT MAY SKIP AN EXISTING FILE, and section 4.1's Port-major exception is
+          # why: omniweave-ports moves on its own Port major and is otherwise republished at an
+          # unchanged version, which PyPI refuses as an immutable filename. "If it moved" is
+          # exactly what this expresses. It is deliberately NOT set on steps 2 to 4, where a file
+          # that already exists means check_versions.py let a stale version through -- a real
+          # defect that must not be skipped past.
+          skip-existing: true
+      - name: "step 2 -- omniweave-core"
+        uses: pypa/gh-action-pypi-publish@release/v1 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          packages-dir: groups/core
+      - name: "step 3 -- the eleven siblings"
+        uses: pypa/gh-action-pypi-publish@release/v1 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          packages-dir: groups/siblings
+      - name: "step 4 -- omniweave"
+        uses: pypa/gh-action-pypi-publish@release/v1 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          packages-dir: groups/umbrella

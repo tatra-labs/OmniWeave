@@ -1,0 +1,150 @@
+# tools/licences.toml — WHAT OMNIWEAVE ITSELF MAY DEPEND ON. Read by G3 over three scans: the
+# resolved dependency graph, the import graph, and the unpacked artifacts. FAILS the build; never
+# warns (DR18). Shipped inside the wheel so `ow doctor --licences` can re-run it at runtime
+# (14-security.md section 8.6).
+#
+# Specified in 14-security.md section 9.2, which prints [allow] and [deny] verbatim; the layer-2
+# row of 11-repo-layout.md section 9.2 fixes the three scans; R-L1 in 17-risks.md fixes the four
+# named distributions whose appearance in any scan is the risk's own detector.
+#
+# THIS IS NOT `driver.toml [licence.*]` AND NOT `omniweave.acks.toml`. Three files, three jobs, no
+# overlap (04-driver-system.md section 7.4): this file governs what omniweave may depend on at
+# BUILD time; `driver.toml [licence.*]` holds a driver's own facts with the tier COMPUTED by
+# `compute_tier` at RESOLVE time (P3 W3.3); `omniweave.acks.toml` holds the operator's consent
+# bound to a licence text hash. A change here says nothing about a driver card, and vice versa.
+#
+# The reviewed-once-per-release obligation is 11-repo-layout.md section 9.3 checklist step 5: an
+# allowlist without justifications becomes a list of things nobody remembers approving.
+
+# ---------------------------------------------------------------------------
+# [allow] — the allowlist. VERBATIM from 14-security.md section 9.2.
+# ---------------------------------------------------------------------------
+# AN ALLOWLIST, NOT A DENYLIST: a denylist admits every licence nobody thought of. LGPL is
+# absent deliberately (ASF Category X); `cairosvg` is the regression fixture and it is LGPL-3.0.
+# 11-repo-layout.md section 9.4 item 1 requires this to be the SAME list `pip-licenses
+# --allow-only` is given, so any edit here is an edit to the published falsifiable check.
+
+[allow]
+spdx = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "MPL-2.0",
+        "PSF-2.0", "Python-2.0", "Zlib", "0BSD", "Unlicense", "CC0-1.0",
+        "OFL-1.1", "BlueOak-1.0.0", "PostgreSQL", "libpng-2.0", "FTL"]
+
+# ---------------------------------------------------------------------------
+# [deny] — the denylist. `spdx` and `prefix` are VERBATIM from 14-security.md section 9.2.
+# ---------------------------------------------------------------------------
+# The denylist is redundant with the allowlist by construction and exists anyway, because a
+# denied id names WHICH clause bites in the failure message, and because `prefix` is the only
+# way to reach a `LicenseRef-` id that has no registered SPDX form at all.
+
+[deny]
+spdx = ["AGPL-3.0-only", "AGPL-3.0-or-later", "GPL-2.0-only", "GPL-2.0-or-later",
+        "GPL-3.0-only", "GPL-3.0-or-later", "LGPL-2.1-only", "LGPL-2.1-or-later",
+        "LGPL-3.0-only", "LGPL-3.0-or-later", "SSPL-1.0", "BUSL-1.1",
+        "Commons-Clause", "Elastic-2.0", "CC-BY-NC-4.0", "CC-BY-SA-4.0"]
+prefix = ["LicenseRef-AIPubs-OpenRAIL", "LicenseRef-Tencent-Hunyuan"]
+
+# `name` and `module` are NOT in 14-security.md section 9.2's printed block. They are added here
+# because R-L1's own detector is written over DISTRIBUTION NAMES — "any G3 hit on `marker-pdf`,
+# `surya-ocr`, `texify` or `lift`" — and because an SPDX check cannot see a hazard whose metadata
+# claims a permissive licence. Both lists are transcribed from named plan rows, never invented:
+#
+#   the five 14-security.md section 9.2 names that "will trip the gate":
+#     PyMuPDF · mineru · pypandoc-binary · ffmpeg-static · cairosvg
+#   the two import spellings of the first, from 11-repo-layout.md section 9.3: pymupdf · fitz
+#   R-L1's four Datalab distributions:  marker-pdf · surya-ocr · texify · lift
+#   14-security.md section 9.1: omniparse, whose LICENSE is GPL-3.0 while its pyproject.toml:7
+#     says "Apache" — a self-contradicting licence is itself a blocker
+#   R-L10: jcodemunch-mcp, which has no tier at any price permitting redistribution
+#
+# `pdf2image` is DELIBERATELY ABSENT. 11-repo-layout.md section 9.3 lists it, but the constraint
+# is poppler-utils, an EXTERNAL GPL-2.0 binary: "a separate process is defensible; bundling is
+# not". Denying the Python distribution would deny the defensible arrangement, and the bundling
+# it must not do is caught by the unpacked-artifact scan instead.
+#
+# Names are compared PEP-503-normalised (lowercased, runs of `-_.` collapsed to `-`), so
+# `PyMuPDF`, `pymupdf` and `py_mu_pdf` are one entry, not three.
+name = ["PyMuPDF", "pymupdf", "fitz", "mineru", "pypandoc-binary", "ffmpeg-static", "cairosvg",
+        "marker-pdf", "surya-ocr", "texify", "lift", "omniparse", "jcodemunch-mcp"]
+
+# Import roots the import-graph scan refuses outright. `cairosvg` is the regression fixture:
+# LGPL-3.0, imported at `ppt-master/skills/ppt-master/scripts/svg_to_pptx/pptx_package/media.py:15`
+# and ABSENT from `ppt-master/requirements.txt`, which is the proof that manifest scanning alone
+# is insufficient (DR18). A module denylist is needed rather than a name->module derivation
+# because an undeclared import's distribution is, by definition, not installed, so
+# `packages_distributions()` cannot map it.
+module = ["cairosvg", "fitz", "pymupdf", "marker", "surya", "texify", "lift", "mineru",
+          "omniparse", "pypandoc"]
+
+# ---------------------------------------------------------------------------
+# [normalise] — free-text `License:` metadata -> SPDX candidates.
+# ---------------------------------------------------------------------------
+# 14-security.md section 9.2: "`SPDX-License-Identifier` metadata is a claim, not a licence."
+# Most distributions predate PEP 639 and carry prose in `License:` or nothing but a trove
+# classifier. Without this table every such distribution reads UNKNOWN and the gate degenerates
+# into a wall of exceptions, which is how an exception register stops meaning anything.
+#
+# A row maps to a LIST of candidates and the gate requires EVERY candidate to clear, so an
+# ambiguous spelling can only ever be read conservatively. Keys are matched case-insensitively
+# on the stripped string. The traps are 11-repo-layout.md section 9.4 item 1's, verbatim: use
+# version-specific CC-BY entries so `CC-BY-NC` and `CC-BY-SA` cannot match (there is no bare
+# "creative commons" row here at all), and spell "Mozilla Public License 2.0" in full so
+# MPL-1.0/1.1 cannot match.
+
+[normalise]
+"Apache 2.0" = ["Apache-2.0"]
+"Apache 2.0 License" = ["Apache-2.0"]
+"Apache License 2.0" = ["Apache-2.0"]
+"Apache Software License" = ["Apache-2.0"]
+"BSD" = ["BSD-2-Clause", "BSD-3-Clause"]
+"BSD License" = ["BSD-2-Clause", "BSD-3-Clause"]
+"ISC License" = ["ISC"]
+"MIT License" = ["MIT"]
+"MPL 2.0" = ["MPL-2.0"]
+"Mozilla Public License 2.0" = ["MPL-2.0"]
+"PSF" = ["PSF-2.0"]
+"PSFL" = ["PSF-2.0"]
+"Python Software Foundation License" = ["PSF-2.0"]
+# pypdfium2 ships a comma list with a prose tail rather than an SPDX expression. The two ids are
+# the wrapper's; "dependency licenses" is PDFium's bundled FreeType / libjpeg-turbo / lcms2 /
+# zlib / libopenjpeg set, which 14-security.md section 9.4 marks VERIFY and hands to the
+# unpacked-artifact scan — so it is enumerated there, not silently absorbed here.
+"BSD-3-Clause, Apache-2.0, dependency licenses" = ["BSD-3-Clause", "Apache-2.0"]
+
+# ---------------------------------------------------------------------------
+# [classifier] — trove classifier -> SPDX candidates, used only when there is nothing better.
+# ---------------------------------------------------------------------------
+# Classifier evidence is WEAK and the gate labels it so in its report: `License :: OSI Approved ::
+# Apache Software License` does not distinguish Apache-1.1 from Apache-2.0, and `BSD License` does
+# not distinguish two clauses from three. It is admitted because the alternative is UNKNOWN for a
+# third of the graph, and it is corroborated by the unpacked-artifact scan, which reads the text.
+# The generic `Mozilla Public License (MPL)` and `GNU General Public License` classifiers are
+# absent on purpose: the first cannot be read as MPL-2.0 and the second must never normalise to
+# anything at all.
+
+[classifier]
+"License :: OSI Approved :: Apache Software License" = ["Apache-2.0"]
+"License :: OSI Approved :: BSD License" = ["BSD-2-Clause", "BSD-3-Clause"]
+"License :: OSI Approved :: ISC License (ISCL)" = ["ISC"]
+"License :: OSI Approved :: MIT License" = ["MIT"]
+"License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)" = ["MPL-2.0"]
+"License :: OSI Approved :: Python Software Foundation License" = ["PSF-2.0"]
+
+# ---------------------------------------------------------------------------
+# [exception.<distribution>] — the waiver register. Shape VERBATIM from 14-security.md 9.2.
+# ---------------------------------------------------------------------------
+# ONE table per exception. ALL FIVE KEYS REQUIRED; a missing key fails the gate. CI FAILS an
+# exception past its review date, so an exception cannot become permanent by silence, and it
+# fails a stale exception naming a distribution no longer in the graph, so the register cannot
+# accumulate rows nobody can attribute.
+#
+# THERE ARE NO LIVE EXCEPTIONS AT RELEASE 1. The template below is commented out rather than
+# shipped live because an exception is an approval, and an approval with `name@example.com` in
+# the approver field is not one. Uncomment, replace every field, and get the approver's name.
+#
+# [exception.example-pkg]
+# spdx = "LGPL-2.1-or-later"
+# reason = "linked as a separate process, not a derivative work"
+# scope = "bench"
+# # dev | bench | test | runtime; `runtime` additionally requires a named approver
+# review_by = "2027-03-01"
+# approver = "name@example.com"

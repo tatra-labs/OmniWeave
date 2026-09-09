@@ -1,0 +1,29 @@
+# packages/omniweave-conform/pyproject.toml — the conformance kit. DEV-ONLY for a driver author.
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "omniweave-conform"
+version = "0.1.0"                     # == RELEASE. G5.
+description = "The twelve conformance suites, the driver testkit, the eval harness and the reference target compile.text.owtext."
+license = "Apache-2.0"
+requires-python = ">=3.11"           # NO upper bound. charter.md D1.
+dependencies = [
+  "omniweave-core ~= 0.1.0",
+  # The compile row of tools/layers.toml, because this distribution ships the
+  # reference target compile.text.owtext (11-repo-layout.md sections 1.2, 3.4).
+  "omniweave-ports >=1,<2",
+  "pytest",
+  # A driver author dev-depends on omniweave-conform in a [dependency-groups] dev
+  # list, which no consumer resolves. There is deliberately no omniweave[conform]
+  # extra: that is exactly how test-only weight lands in a production install.
+]
+
+# The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
+[tool.hatch.build.targets.wheel]
+packages = ["src/omniweave_conform"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "LICENSE", "NOTICE", "THIRD_PARTY.md", "LICENSES", "pyproject.toml"]

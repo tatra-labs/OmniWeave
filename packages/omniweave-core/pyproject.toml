@@ -1,0 +1,33 @@
+# packages/omniweave-core/pyproject.toml — the zero-dependency foundation.
+# 11-repo-layout.md section 1.3 and charter.md D1.
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "omniweave-core"
+version = "0.1.0"                     # == RELEASE. G5.
+description = "The omniweave host substrate: digests, identity, errors, limits, config, probes, discovery, resolution and the four seam clients."
+license = "Apache-2.0"
+requires-python = ">=3.11"           # NO upper bound. charter.md D1.
+dependencies = [
+  "omniweave-ports >=1,<2",
+  # THE ONLY dependency, and it is first-party and stdlib-only. Zero third
+  # party. INV-2. ENFORCED BY G1. Amending this amends the CHARTER.
+]
+
+# Only ever a capability REMEDY named by the probe that fails. Never a feature.
+# `store/sqlite.py` REFUSES at open when the interpreter's SQLite lacks FTS5 or is
+# below MIN_SQLITE = (3, 42, 0), naming `pip install omniweave-core[sqlite]`.
+# No other core extra may exist, because an extra that adds a capability makes
+# INV-2 conditional (11-repo-layout.md section 2.1).
+[project.optional-dependencies]
+sqlite = ["pysqlite3-binary>=0.5"]
+
+# The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
+[tool.hatch.build.targets.wheel]
+packages = ["src/omniweave_core"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "LICENSE", "NOTICE", "THIRD_PARTY.md", "LICENSES", "pyproject.toml"]

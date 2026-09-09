@@ -1,0 +1,46 @@
+# A framework tombstone (04-driver-system.md sections 7.5 and 10.4 row 6).
+#
+# The other code-side seed. It carries NO `[licence.weights]` table: omniparse ships no weights
+# of its own, and although it pulls marker-pdf, surya-ocr and texify -- and is therefore triply
+# encumbered by the three Datalab rows -- writing their digest here would put a fourth copy of a
+# ONE-file fact into the seed set and break the property section 10.4 states, that it is "the
+# three Datalab tombstones" that seed the known-bad weights hash set. The transitive encumbrance
+# is stated in the reason, where a reader meets it.
+
+card_schema = 1
+
+[driver]
+id    = "parse.doc.omniparse"
+port  = "parse/1"
+title = "omniparse"
+
+# omniparse/LICENSE:1-2 is GPL-3.0; omniparse/pyproject.toml:6 declares `license = "Apache"`
+# (04 section 10.4; 17-risks.md R-L10 cites the same key at `:7` -- the two line numbers
+# disagree and it is reported). The recorded fact is the LICENCE TEXT and not the metadata
+# claim: 14-security.md section 9.2, "SPDX-License-Identifier metadata is a claim, not a
+# licence". GPL-3.0-only is on tools/licences.toml's [deny] spdx list, so G3 refuses the
+# distribution independently of this file -- three mechanisms, none of which is a review habit.
+[licence.code]
+spdx           = "GPL-3.0-only"
+licence_sha256 = "unresolved:omniparse/LICENSE"
+redistribution = "restricted"
+clause_refs    = ["LICENSE:1-2", "pyproject.toml:6"]
+
+[tombstone]
+reason = """
+omniparse/LICENSE:1-2 is a GPL-3.0 while omniparse/pyproject.toml:6 declares `license = "Apache"`. \
+A self-contradicting licence is itself a blocker: there is no version of the grant a \
+redistributor can rely on, and the project is unmaintained, so there is no maintainer to ask. \
+The licence text governs and the metadata claim does not, and GPL-3.0 is on tools/licences.toml's \
+deny list.
+
+It is triply encumbered besides. It pulls marker-pdf, surya-ocr and texify, all three under the \
+Datalab MODEL_LICENSE md5 e1f69b64dee2f1641a9b1ab12adf24d6 whose Attachment A clause 2(c) is a \
+competitor bar with no revenue threshold and whose clause 8 licenses the Output. See \
+parse.page.marker.toml, parse.page.surya.toml and parse.fields.lift.toml. This card does not \
+restate that licence hash: it is one file, and it is seeded once per distribution that ships it.
+
+Use parse.office.anydoc, MIT.
+"""
+replaced_by = "parse.office.anydoc"
+review_by   = "2026-12-03"

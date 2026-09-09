@@ -1,0 +1,75 @@
+# A framework tombstone. NOT a driver card: `[tombstone]` branches in `load_card()` before any
+# driver-card validation, because a tombstone has no entrypoint, no schema_version, no
+# granularity and no replay_class (04-driver-system.md sections 2.1 and 7.5).
+#
+# It does two jobs. DR22: `parse.page.surya` resolves to THIS QUOTED REASON and a named
+# replacement, never to "unknown driver". And it seeds the known-bad-weights-licence set:
+# `compute_tier()` returns `forbidden` for any card whose `[licence.code].licence_sha256` or
+# `[licence.weights].licence_sha256` equals one written here, which is hash-keyed and therefore
+# survives a rename -- a third party wrapping these weights under any id computes `forbidden`.
+#
+# Content transcribed from 04-driver-system.md section 10.4 row 1, with 17-risks.md R-L1 and
+# 14-security.md section 9.5. There is NO `tier` key: 04 section 7.1 makes the tier COMPUTED
+# from the facts below so an author cannot mislabel (DR15), and the `tier` column of 10.4's
+# table is that computation's result rather than a card key.
+
+card_schema = 1
+
+[driver]
+id    = "parse.page.surya"
+port  = "parse/1"
+title = "surya (Datalab OCR weights)"
+
+# The CODE licence is permissive and that is exactly the trap R-L1 names: the top-level LICENSE
+# is Apache-2.0 and mentions the weights nowhere. Recorded so the refusal reads as "these
+# weights", not "this project". No `licence_sha256` here: this table is not a seed, and an
+# EMPTY digest must never enter the seed set (see this directory's gate).
+[licence.code]
+spdx = "Apache-2.0"
+
+# The seed. `licence_sha256` is the sha256 of surya/MODEL_LICENSE, which omniweave does not have
+# and deliberately never will (11-repo-layout.md section 9.2 layer 1: "it is not in the
+# repository"). The plan prints the file's md5 and elides its sha256, so the value below is an
+# explicitly-marked UNRESOLVED seed carrying the one digest the plan does print. It cannot
+# collide with any real `sha256:` digest, and it is BYTE-IDENTICAL to marker's and lift's
+# because the underlying file is one file.
+[licence.weights]
+spdx                   = "LicenseRef-AIPubs-OpenRAIL-M"
+licence_sha256         = "unresolved:md5=e1f69b64dee2f1641a9b1ab12adf24d6"
+competitor_bar         = true
+output_share_alike     = true
+attribution_per_output = true
+remote_kill_switch     = true
+revenue_gate_usd       = 0
+redistribution         = "restricted"
+clause_refs            = [
+  "Attachment A 2(c) at MODEL_LICENSE:58",
+  "8 at MODEL_LICENSE:39",
+  "9 at MODEL_LICENSE:41",
+]
+
+[tombstone]
+reason = """
+The Datalab MODEL_LICENSE, md5 e1f69b64dee2f1641a9b1ab12adf24d6.
+
+Attachment A clause 2(c) at surya/MODEL_LICENSE:58 is a competitor bar with NO revenue threshold \
+and no research carve-out. It bars use "for any purpose if You (your employer, or the entity you \
+are affiliated with) provides or otherwise makes available any product or service that competes \
+with any product or service offered by or made available by Licensor". Clauses 2(a) and 2(b) at \
+:56-57 both carve out personal and research use below $5,000,000 in revenue or funding; 2(c) does \
+not, which is why revenue_gate_usd is 0 here and not 5000000. Datalab sells document parsing. So \
+does omniweave. There is no acknowledgement that fixes that, which is why this is `forbidden` \
+rather than `restricted`.
+
+Clause 8 at :39 applies the licence to the Output, so every document omniweave parsed with these \
+weights would carry OpenRAIL-M terms and inherit 2(c). Clause 9 at :41 reserves a remote runtime \
+kill switch.
+
+The top-level surya LICENSE is Apache-2.0 and mentions the weights nowhere: that is the trap. The \
+Apache-2.0 code may be run against other weights; these weights may not be run at all. Use \
+parse.page.olmocr, Apache-2.0 code and Apache-2.0 weights. The roughly four-point olmOCR-bench gap \
+is the price of clause 2(c) and is a recorded product decision, not an oversight -- do not let an \
+accuracy comparison reintroduce it.
+"""
+replaced_by = "parse.page.olmocr"
+review_by   = "2026-12-03"

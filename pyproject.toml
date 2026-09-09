@@ -1,0 +1,135 @@
+# pyproject.toml — the uv workspace root. NOT publishable.
+# Specified in 11-repo-layout.md section 1.1 and charter.md D1 ("The workspace root and the
+# zero-dependency foundation"). One repo, one uv workspace, one uv.lock, fourteen members.
+
+[project]
+name = "omniweave-monorepo"
+version = "0.0.0"
+description = "The omniweave workspace root. Holds no code and is never published."
+requires-python = ">=3.11"
+classifiers = ["Private :: Do Not Upload"]
+
+# ---------------------------------------------------------------------------
+# uv
+# ---------------------------------------------------------------------------
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+# One row per sibling. Without these, uv refuses to resolve a first-party edge that names a
+# workspace member (11-repo-layout.md section 2.2: [tool.uv.sources] governs WHERE a member
+# resolves from during development and is absent from the published METADATA entirely).
+[tool.uv.sources]
+omniweave = { workspace = true }
+omniweave-conform = { workspace = true }
+omniweave-core = { workspace = true }
+omniweave-graph = { workspace = true }
+omniweave-llm = { workspace = true }
+omniweave-office = { workspace = true }
+omniweave-pdf = { workspace = true }
+omniweave-ports = { workspace = true }
+omniweave-serve = { workspace = true }
+omniweave-target-deck = { workspace = true }
+omniweave-target-docx = { workspace = true }
+omniweave-target-pptx = { workspace = true }
+omniweave-target-video = { workspace = true }
+omniweave-vision = { workspace = true }
+
+# [dependency-groups], the whole of it. Membership is charter.md D1's exactly; the two markers
+# are 11-repo-layout.md section 6.2's addition, because semgrep publishes no Windows wheel and
+# atheris requires clang, so an unmarked group fails on a third of the nine-cell matrix before
+# a test runs. msgpack and zstandard are the REJECTED dependencies, kept dev-only so a
+# comparison test can prove the first-party replacement matches them.
+[dependency-groups]
+dev = [
+  "pytest~=9.1",
+  "pytest-xdist",
+  "ruff",
+  "pyright",
+  "hypothesis",
+  "msgpack",
+  "zstandard",
+  "tiktoken",
+  "semgrep; sys_platform != 'win32'",
+  "atheris; sys_platform == 'linux'",
+]
+
+# ---------------------------------------------------------------------------
+# ruff — one config for all fourteen. 11-repo-layout.md section 8.1, verbatim.
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["packages"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "DTZ", "T20", "SIM",
+          "TID", "PTH", "RUF", "ANN", "S", "PL", "ARG", "RET", "TRY"]
+ignore = ["ANN401", "TRY003", "PLR0913"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"subprocess".msg = "S2/S4 only: omniweave_core.toolchain, omniweave_core.host.subproc."
+"sqlite3".msg = "INV-17: omniweave_core.store only."
+"asyncio".msg = "INV-3: omniweave/run/ only. Core must not import a loop."
+"opentelemetry".msg = "omniweave_serve.otlp only."
+"random".msg = "Sampling is blake2b. Determinism is a gate, not a habit."
+
+[tool.ruff.lint.per-file-ignores]
+"packages/omniweave-core/src/omniweave_core/toolchain.py" = ["TID251"]
+"packages/omniweave-core/src/omniweave_core/host/subproc.py" = ["TID251"]
+"packages/omniweave-core/src/omniweave_core/store/*.py" = ["TID251"]
+"packages/omniweave/src/omniweave/run/*.py" = ["TID251"]
+"packages/omniweave-serve/src/omniweave_serve/otlp.py" = ["TID251"]
+"packages/omniweave-conform/**" = ["S101"]
+
+# --- P1 additions. Each is a rule whose premise the plan overrides, not a rule being dodged. ---
+
+# RUF001/RUF002 flag "ambiguous" Unicode. In the two grounding modules adversarial Unicode IS the
+# subject: `normalize_k`'s operation list is written over U+FB01, U+00DF, U+00AD, U+2010..2015 and
+# the zero-width Cf class, and its property tests exercise exactly the characters the rule warns
+# about. 06-structure-extraction.md section 1.7 is the specification; a linter cannot tell a
+# homoglyph attack from a homoglyph fixture.
+"packages/omniweave-core/src/omniweave_core/ident.py" = ["RUF001", "RUF002"]
+"packages/omniweave-core/tests/unit/test_ident.py" = ["RUF001", "RUF002"]
+
+# The coercion table is a ten-arm dispatch over `ConfigKind` (02-architecture.md section 8.4), so
+# one return per kind is the shape the plan mandates; collapsing it to satisfy a branch counter
+# would hide the very table the module exists to implement. PLC0415: the two cross-module shims
+# import lazily on purpose, which is what keeps G17 true.
+"packages/omniweave-core/src/omniweave_core/config.py" = ["PLR0911", "PLR0912", "PLR2004", "PLC0415"]
+
+# A test may reach for a private to test it, and a test name may carry a type name verbatim
+# (`..._not_a_Path`). Neither is production style.
+"packages/omniweave-core/tests/unit/test_config.py" = ["PLC0415", "N802"]
+
+# The purity gate asserts that `open`, `socket` and `subprocess` RAISE under its patched builtins.
+# The lambdas defer the call so `pytest.raises` can catch it, and a context manager would defeat
+# the assertion outright.
+"packages/omniweave-core/tests/test_purity.py" = ["SIM115", "PLW0108"]
+"**/tests/**" = ["S101", "PLR2004", "ANN"]
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+# The markers are the tier vocabulary of 13-quality.md section 2.7, which Q-G25 enforces by
+# directory: a `golden` marker outside tests/golden/ fails (OW-Q-014). --strict-markers is what
+# turns a typo in a marker name into an error rather than a silently deselected test, which is
+# the failure mode Q-G24 (test inventory) exists to catch after the fact.
+
+[tool.pytest.ini_options]
+minversion = "9.1"
+testpaths = ["packages"]
+addopts = "-ra --strict-markers --strict-config"
+xfail_strict = true
+filterwarnings = ["error"]
+markers = [
+  "golden: T2 — reads a byte out of fixtures/. Must live in tests/golden/ (Q-G25).",
+  "conform: T3 — spawns a subprocess or a Driver host. Must live in tests/conform/ (Q-G25).",
+]

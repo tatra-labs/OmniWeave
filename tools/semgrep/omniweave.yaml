@@ -1,0 +1,908 @@
+# tools/semgrep/omniweave.yaml — the site bans a layer graph cannot express. Gates G8 and G24.
+#
+# WHAT THIS FILE IS. `tools/gate_layers.py` proves the import DAG; `tools/gate_core_pure.py` and its
+# two siblings prove core's purity. Neither can express a ban on a *call shape* — `conn.commit()` on
+# any receiver, `zipfile.ZipFile(..., "w")`, `DriverHost.invoke()` from the wrong module,
+# `revision="main"` as an argument value. Those need a pattern language over expressions, and this
+# file is it. Specified in 02-architecture.md section 3.3, the semgrep row of the table at
+# **line 392**; the enumeration in that row is this bank's complete specification, and every rule
+# below carries the clause it implements verbatim in `metadata.ban`. 11-repo-layout.md section 8.1
+# draws the ruff/semgrep line: ruff owns banned *imports* scoped by path
+# (`[tool.ruff.lint.flake8-tidy-imports.banned-api]` plus `per-file-ignores`, sub-second); semgrep
+# owns everything that is a shape.
+#
+# WHY THE MESSAGES ARE LONG. Every message names the recorded defect the ban exists to prevent and
+# the plan locus that fixes it. 01-principles.md section 1's rejection list, item 8, tells a reviewer
+# who sees one of these to read the semgrep-config diff first — a message a developer cannot act on
+# is a rule that gets `# nosemgrep`-ed, and a suppressed rule is a deleted rule that still costs
+# 45 seconds of CI. The `gates` job budget for G8 is 45 s and G24 runs inside it
+# (11-repo-layout.md section 6.4).
+#
+# WHY THE BANK IS WIDER THAN THE TREE. Several rules name files that do not exist at P1 —
+# `omniweave/route/eval.py`, `omniweave_core/retrieve/plan.py`, `omniweave_core/out/opc.py`,
+# `omniweave_core/retrieve/verdict.py`. They are written now on purpose: a ban added on the day its
+# subject lands is a ban that was absent on the day the subject was designed. 16-roadmap.md
+# section 1 ends P1 at `CONTRACT = 1`; the bank is standing law across all four phases.
+#
+# ON WINDOWS. `pyproject.toml`'s dev group declares `"semgrep; sys_platform != 'win32'"` because
+# semgrep publishes no Windows wheel (11-repo-layout.md section 6.2). `tools/gate_semgrep.py` skips
+# the semgrep half there — loudly, naming the platform — and runs an `ast` re-implementation of the
+# bans that `ast` can express exactly, so a Windows developer still gets most of the property. This
+# YAML is what CI runs on ubuntu; keep the two halves in step.
+#
+# SCOPE. `paths.include` is `packages/*/src/**` for every "library code" rule. Tests, `tools/`,
+# `fuzz/`, `eval/`, `fixtures/` and `vendor/` are not library code — a test that asserts
+# `time.time()` is banned has to be able to write `time.time()`.
+
+rules:
+  # ---------------------------------------------------------------------------
+  # INV-17 / ST1 — SQLite reaches exactly one package.
+  # 07-store-and-retrieval.md section 10.1: "`sqlite3.connect` appears in exactly one module (ST1),
+  # enforced by G24 *and* a monkeypatch test." Section 1: "reaches SQL outside
+  # `omniweave_core.store.sqlite` fails G24 and lint rule ST1."
+  # ---------------------------------------------------------------------------
+
+  - id: omniweave-no-sqlite3-connect-outside-store
+    message: >-
+      `sqlite3.connect` may appear in `omniweave_core/store/` and nowhere else (INV-17, ST1).
+      One writer per store, one thread per connection, one transaction per unit: a second module
+      holding a `Connection` re-opens the cross-thread-connection failure class the store thread
+      was built to delete, and it does so silently — the second connection works until it contends.
+      Move the query behind `Store` or `Reader`. Specified in 02-architecture.md section 3.3
+      (line 392) and 07-store-and-retrieval.md section 10.1; the module inventory row is
+      02-architecture.md section 2 row 26.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: sqlite3.connect(...)
+          - pattern: sqlite3.dbapi2.connect(...)
+    paths:
+      include:
+        - "packages/*/src/**"
+      exclude:
+        - "packages/omniweave-core/src/omniweave_core/store/**"
+    metadata:
+      gate: [G24, G8]
+      ban: "sqlite3.connect outside omniweave_core/store/"
+      invariant: [INV-17, ST1]
+      plan: "02-architecture.md line 392; 07-store-and-retrieval.md section 10.1"
+
+  - id: omniweave-no-sqlite3-commit-outside-store
+    message: >-
+      `conn.commit()` on any receiver is banned outside `omniweave_core/store/` (INV-17, ST1).
+      This rule is receiver-blind on purpose: the defect it catches is a module that acquired a
+      `Connection` some other way — through a helper, a fixture, an ORM handle — and committed
+      outside the store thread's transaction closure, which is how half a unit becomes readable.
+      Every write reaches the store as a transaction closure on a bounded queue; there is no second
+      commit site. Specified in 02-architecture.md section 3.3 (line 392) and
+      07-store-and-retrieval.md section 10.1. This is one of the shapes 11-repo-layout.md
+      section 8.1 names as the reason ruff cannot replace semgrep.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern: $CONN.commit()
+    paths:
+      include:
+        - "packages/*/src/**"
+      exclude:
+        - "packages/omniweave-core/src/omniweave_core/store/**"
+    metadata:
+      gate: [G24, G8]
+      ban: "conn.commit() outside omniweave_core/store/"
+      invariant: [INV-17, ST1]
+      plan: "02-architecture.md line 392; 07-store-and-retrieval.md section 10.1"
+
+  - id: omniweave-no-sql-begin-outside-store
+    message: >-
+      A literal `BEGIN` statement is banned outside `omniweave_core/store/` (INV-17, ST1).
+      Transaction *demarcation* is the store's, not a caller's: the pragma order with
+      `busy_timeout` first, heal-on-open and the WAL valve all assume the store owns the
+      transaction boundary, and a `BEGIN` issued elsewhere either nests into an implicit
+      transaction or holds the write lock across code that never planned to. Specified in
+      02-architecture.md section 3.3 (line 392) and 07-store-and-retrieval.md section 10.1; the
+      store's method surface is 02-architecture.md section 2 row 26.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-regex: "['\"]\\s*(?i:BEGIN)(\\s+(?i:DEFERRED|IMMEDIATE|EXCLUSIVE|TRANSACTION))?\\b"
+    paths:
+      include:
+        - "packages/*/src/**"
+      exclude:
+        - "packages/omniweave-core/src/omniweave_core/store/**"
+    metadata:
+      gate: [G24, G8]
+      ban: "BEGIN outside omniweave_core/store/"
+      invariant: [INV-17, ST1]
+      plan: "02-architecture.md line 392; 07-store-and-retrieval.md section 10.1"
+
+  - id: omniweave-no-sqlite3-import-outside-store
+    message: >-
+      `import sqlite3` is banned outside `omniweave_core/store/` (INV-17, ST1). The import is the
+      ban's outermost ring and the cheapest to check: a module that cannot name the driver cannot
+      open a connection, register an adapter, or install a
+      `sqlite3.enable_callback_tracebacks` side effect on the process. ruff's `banned-api` carries
+      the same ban with a `per-file-ignores` escape for `store/*.py`; this rule is the independent
+      second enforcer, because 01-principles.md section 1 requires that one edit cannot disable
+      both. Specified in 02-architecture.md section 3.3 (line 392); rejection-list item 13.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: import sqlite3
+          - pattern: import sqlite3 as $X
+          - pattern: from sqlite3 import ...
+    paths:
+      include:
+        - "packages/*/src/**"
+      exclude:
+        - "packages/omniweave-core/src/omniweave_core/store/**"
+    metadata:
+      gate: [G24, G8]
+      ban: "import sqlite3 outside omniweave_core/store/"
+      invariant: [INV-17, ST1]
+      plan: "02-architecture.md line 392; 01-principles.md rejection-list item 13"
+
+  # ---------------------------------------------------------------------------
+  # S2 / S4 — spawning a child process is a security seam, and it has exactly two homes.
+  # 02-architecture.md section 3.4: "`omniweave_core.host.subproc` may import `subprocess` (G8)."
+  # 04-driver-system.md names the darwin RSS-sampling `ps` call as "a G8-permitted `subprocess`
+  # site inside `host/subproc.py`".
+  # ---------------------------------------------------------------------------
+
+  - id: omniweave-no-subprocess-outside-toolchain-and-host-subproc
+    message: >-
+      `subprocess` has exactly two homes: `omniweave_core/toolchain.py` (S2, the pinned app-bundle
+      launcher that reads `tools/toolchains.toml` and never the network) and
+      `omniweave_core/host/subproc.py` (S4, the one long-lived driver worker per
+      `(driver_id, config_digest)`). Everywhere else a child process is an unaudited execution and
+      an unaudited egress: no toolchain digest is checked, no `cwd=` is passed — graphify #2316 ran
+      `git rev-parse HEAD` without `cwd=` and stamped the *invoking* repo's commit into the
+      target's graph — and the spawn appears in no ledger row. Route the call through
+      `omniweave_core.toolchain` or `omniweave_core.host.subproc`. Specified in 02-architecture.md
+      section 3.3 (line 392) and section 3.4; the two-home rule is also `pyproject.toml`'s
+      `banned-api` message, which is the independent second enforcer.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: import subprocess
+          - pattern: import subprocess as $X
+          - pattern: from subprocess import ...
+          - pattern: subprocess.$F(...)
+    paths:
+      include:
+        - "packages/*/src/**"
+      exclude:
+        - "packages/omniweave-core/src/omniweave_core/toolchain.py"
+        - "packages/omniweave-core/src/omniweave_core/host/subproc.py"
+    metadata:
+      gate: G8
+      ban: "subprocess outside toolchain.py and host/subproc.py"
+      seam: [S2, S4]
+      plan: "02-architecture.md line 392 and section 3.4"
+
+  # ---------------------------------------------------------------------------
+  # OUT15 — one module opens a ZIP for writing, because byte-determinism lives in the ZipInfo.
+  # 09-generation.md: `omniweave_core/out/opc.py` is "the only module permitted to open a ZIP for
+  # writing". 02-architecture.md section 5 row 8 prints what may not vary.
+  # ---------------------------------------------------------------------------
+
+  - id: omniweave-no-zipfile-write-outside-opc
+    message: >-
+      Opening a ZIP for writing (`"w"`, `"a"`, `"x"`) is permitted only in
+      `omniweave_core/out/opc.py` (OUT15). That module is where member order is canonicalised
+      (`[Content_Types].xml`, `_rels/.rels`, then sorted by partname) and where every entry is
+      built with `ZipInfo(name)` rather than `ZipFile.write`/`writestr`, whose `date_time` reads
+      the **local clock** and makes the artifact differ between two runs on one machine. A second
+      writer forfeits OUT13's `part`-level determinism silently — the file opens fine and only the
+      digest moves. Call `omniweave_core.out.opc.write_opc()`. Specified in 02-architecture.md
+      section 3.3 (line 392) and section 5 row 8; 09-generation.md; 01-principles.md's OUT15
+      enforcement note.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: zipfile.ZipFile($P, "w", ...)
+          - pattern: zipfile.ZipFile($P, "a", ...)
+          - pattern: zipfile.ZipFile($P, "x", ...)
+          - pattern: zipfile.ZipFile(..., mode="w", ...)
+          - pattern: zipfile.ZipFile(..., mode="a", ...)
+          - pattern: zipfile.ZipFile(..., mode="x", ...)
+          - pattern: ZipFile($P, "w", ...)
+          - pattern: ZipFile($P, "a", ...)
+          - pattern: ZipFile($P, "x", ...)
+          - pattern: ZipFile(..., mode="w", ...)
+          - pattern: ZipFile(..., mode="a", ...)
+          - pattern: ZipFile(..., mode="x", ...)
+    paths:
+      include:
+        - "packages/*/src/**"
+      exclude:
+        - "packages/omniweave-core/src/omniweave_core/out/opc.py"
+    metadata:
+      gate: G8
+      ban: "zipfile.ZipFile(..., 'w'|'a'|'x') outside out/opc.py"
+      invariant: OUT15
+      plan: "02-architecture.md line 392 and section 5 row 8; 09-generation.md"
+
+  - id: omniweave-no-make-archive-outside-opc
+    message: >-
+      `shutil.make_archive` is banned outside `omniweave_core/out/opc.py` (OUT15). It is the
+      `ZipFile(..., "w")` ban wearing a different name, and it is worse: `make_archive` walks a
+      directory, so member order is the filesystem's, every `date_time` is an `mtime`, and nothing
+      about the result is reproducible across two machines. No argument makes it deterministic —
+      lower the parts and hand them to `write_opc()`. Specified in 02-architecture.md section 3.3
+      (line 392) and section 5 row 8; 09-generation.md.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: shutil.make_archive(...)
+          - pattern: make_archive(...)
+    paths:
+      include:
+        - "packages/*/src/**"
+      exclude:
+        - "packages/omniweave-core/src/omniweave_core/out/opc.py"
+    metadata:
+      gate: G8
+      ban: "shutil.make_archive outside out/opc.py"
+      invariant: OUT15
+      plan: "02-architecture.md line 392 and section 5 row 8; 09-generation.md"
+
+  # ---------------------------------------------------------------------------
+  # Telemetry has one module, and it is not in core.
+  # 11-repo-layout.md section 1.2, row `omniweave-serve`: "`otlp.py`, the only module that may
+  # import `opentelemetry`". 02-architecture.md section 2 row 40.
+  # ---------------------------------------------------------------------------
+
+  - id: omniweave-no-opentelemetry-outside-otlp
+    message: >-
+      `opentelemetry` may be imported only by `omniweave_serve/otlp.py`. Core carries ZERO
+      third-party runtime dependencies (INV-2, G1), and an import in a hot path also costs cold
+      start, which G10/G17/G23 hold at 80 ms. The deeper reason is control: telemetry wired
+      module-by-module cannot be switched off by an operator, and `ow trace export` is the one
+      place the framework decides what leaves the process. Emit through the run ledger and let
+      `otlp.py` project it. Specified in 02-architecture.md section 3.3 (line 392) and section 2
+      row 40; 11-repo-layout.md section 1.2. `pyproject.toml`'s `banned-api` carries the import ban
+      as the independent second enforcer.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: import opentelemetry
+          - pattern: import opentelemetry.$M
+          - pattern: import opentelemetry as $X
+          - pattern: from opentelemetry import ...
+          - pattern: from opentelemetry.$M import ...
+    paths:
+      include:
+        - "packages/*/src/**"
+      exclude:
+        - "packages/omniweave-serve/src/omniweave_serve/otlp.py"
+    metadata:
+      gate: G8
+      ban: "opentelemetry outside omniweave_serve/otlp.py"
+      invariant: INV-2
+      plan: "02-architecture.md line 392 and section 2 row 40; 11-repo-layout.md section 1.2"
+
+  # ---------------------------------------------------------------------------
+  # INV-4 / DR1 / DR2 / DR19 — discovery never executes driver code.
+  # 04-driver-system.md section 4.6, "the one decision here that cannot be reversed".
+  # ---------------------------------------------------------------------------
+
+  - id: omniweave-no-entrypoint-load-under-drivers
+    message: >-
+      `EntryPoint.load()` is banned under `omniweave_core/drivers/` (INV-4). Loading an entry point
+      *imports the module*, and 04-driver-system.md section 4.6 records exactly what that costs:
+      docling's `docling/docling/models/factories/base_factory.py:96` calls
+      `plugin_manager.load_setuptools_entrypoints(plugin_name)`, while its `allow_external_plugins`
+      test sits in the **next** loop over `list_name_plugin()` at `:98-105` — so that gate
+      suppresses *registration* by code which has already *executed*, and `process_plugin` then
+      swallows a duplicate as a `logger.warning`. Four consequences omniweave cannot accept: no
+      licence gate before execution, no cost evidence without paying the import, no catalog without
+      importing everything, and order-dependent registration. Read the card, not the module — every
+      router input is readable without importing the driver (section 2.5) — and let
+      `omniweave_core/host/`'s `activate()` be the one place driver code runs, after it has
+      asserted `PORT` and `SCHEMA_VERSION`. This rule flags any `.load(...)` under `drivers/`
+      except on the stdlib deserialisers (`tomllib`, `json`, `toml`, `yaml`, `pickle`, `marshal`),
+      because an entry point's receiver can be named anything. Specified in 02-architecture.md
+      section 3.3 (line 392) and 04-driver-system.md section 4.6 clause 1; G11 and the `sys.modules`
+      test are the other two layers.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern: $EP.load(...)
+      - metavariable-regex:
+          metavariable: $EP
+          regex: '^(?!(tomllib|json|toml|yaml|pickle|marshal)$).*$'
+    paths:
+      include:
+        - "packages/omniweave-core/src/omniweave_core/drivers/**"
+    metadata:
+      gate: G8
+      ban: "EntryPoint.load() under omniweave_core/drivers/"
+      invariant: [INV-4, DR1, DR2]
+      plan: "04-driver-system.md section 4.6; 02-architecture.md line 392"
+
+  - id: omniweave-no-import-module-outside-host
+    message: >-
+      `importlib.import_module` is banned outside `omniweave_core/host/` (INV-4, DR19). The host is
+      the one place a driver's module body may execute, and only after `activate()` has asserted
+      the loaded class's `PORT` and `SCHEMA_VERSION`. An `import_module` elsewhere is dispatch by
+      string, which is also why section 2.7's `[config]` JSON-Schema subset carries no import-path
+      keyword: a config value must never be able to name a module. Specified in 02-architecture.md
+      section 3.3 (line 392) and 04-driver-system.md section 4.6 clause 1 and DR19.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: importlib.import_module(...)
+          - pattern: import_module(...)
+    paths:
+      include:
+        - "packages/*/src/**"
+      exclude:
+        - "packages/omniweave-core/src/omniweave_core/host/**"
+    metadata:
+      gate: G8
+      ban: "importlib.import_module outside omniweave_core/host/"
+      invariant: [INV-4, DR19]
+      plan: "04-driver-system.md section 4.6 and DR19; 02-architecture.md line 392"
+
+  - id: omniweave-no-dunder-import-outside-host
+    message: >-
+      `__import__` is banned outside `omniweave_core/host/` (INV-4, DR19). It is
+      `importlib.import_module` with the module-name validation and the reviewer's attention
+      removed. Same rule, same reason: discovery never executes driver code, and only
+      `omniweave_core/host/` may execute it after `activate()` checks `PORT` and `SCHEMA_VERSION`.
+      Specified in 02-architecture.md section 3.3 (line 392) and 04-driver-system.md section 4.6
+      clause 1 and DR19.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern: __import__(...)
+    paths:
+      include:
+        - "packages/*/src/**"
+      exclude:
+        - "packages/omniweave-core/src/omniweave_core/host/**"
+    metadata:
+      gate: G8
+      ban: "__import__ outside omniweave_core/host/"
+      invariant: [INV-4, DR19]
+      plan: "04-driver-system.md section 4.6 and DR19; 02-architecture.md line 392"
+
+  # ---------------------------------------------------------------------------
+  # The eight ambient inputs, in library code. 08-runtime.md section 1.3's three bans,
+  # 01-principles.md's OUT14 enforcement note, 00-vision.md's graphify row. Each has a recorded
+  # bug behind it, named in its message.
+  # ---------------------------------------------------------------------------
+
+  - id: omniweave-no-getcwd-in-library-code
+    message: >-
+      `os.getcwd()` is banned in library code. The process's current directory is an ambient input
+      no caller declared and no test can vary: graphify #1774 wrote its cache **into the analysed
+      tree** because of it. Every path enters through an argument — `load()` takes `cwd` and `env`
+      as keyword arguments (02-architecture.md section 8 clause (e)), and the project-file search
+      walks up from *that* `cwd` to `.git`, never from the ambient one. Take a `Path` parameter, or
+      read the injected `Roots`. Specified in 02-architecture.md section 3.3 (line 392),
+      08-runtime.md section 1.3 and 00-vision.md's graphify row (G8).
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: os.getcwd()
+          - pattern: getcwd()
+          - pattern: os.getcwdb()
+          - pattern: Path.cwd()
+          - pattern: pathlib.Path.cwd()
+    paths:
+      include:
+        - "packages/*/src/**"
+    metadata:
+      gate: G8
+      ban: "os.getcwd() in library code"
+      invariant: OUT14
+      plan: "02-architecture.md line 392; 08-runtime.md section 1.3; 00-vision.md graphify row"
+
+  - id: omniweave-no-relative-path-root-in-library-code
+    message: >-
+      `Path(".")` is banned in library code — and so are `Path("")` and `Path(os.curdir)`, which
+      are the same ambient current directory spelled differently. It is graphify #1774 again: a
+      relative root resolves against whatever directory the process happens to be in, so one call
+      writes to two places on two machines and into the *user's source tree* when the process was
+      launched from an editor. Accept a root as a parameter; the runtime injects `Roots`.
+      Specified in 02-architecture.md section 3.3 (line 392) and section 8 clause (e);
+      08-runtime.md section 1.3.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: Path(".")
+          - pattern: Path("")
+          - pattern: Path(os.curdir)
+          - pattern: pathlib.Path(".")
+          - pattern: pathlib.Path("")
+          - pattern: pathlib.Path(os.curdir)
+          - pattern: PurePath(".")
+          - pattern: PurePosixPath(".")
+    paths:
+      include:
+        - "packages/*/src/**"
+    metadata:
+      gate: G8
+      ban: 'Path(".") in library code'
+      invariant: OUT14
+      plan: "02-architecture.md line 392 and section 8 clause (e); 08-runtime.md section 1.3"
+
+  - id: omniweave-no-time-time-in-library-code
+    message: >-
+      `time.time()` is banned in library code. The clock is injected — `ctx.clock.wall_ns()` for a
+      wall reading, `time.monotonic_ns()` for a duration — because a wall clock can go backwards
+      and because a determinism harness cannot vary a call that reads the machine. Every byte-diff
+      gate (G6, G18, G20, G25) and the three-run determinism harness
+      (`PYTHONHASHSEED` over {0, 1, random}, two temp dirs, different `cwd` and `TMPDIR`,
+      `SOURCE_DATE_EPOCH=0`) exist to catch after the fact what this ban prevents up front.
+      Specified in 02-architecture.md section 3.3 (line 392), 01-principles.md's OUT14 enforcement
+      note, and 08-runtime.md section 1.3's "no ambient clock".
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: time.time()
+          - pattern: time.time_ns()
+          - pattern: time.perf_counter()
+          - pattern: time.perf_counter_ns()
+          - pattern: time.process_time()
+          - pattern: time.process_time_ns()
+    paths:
+      include:
+        - "packages/*/src/**"
+    metadata:
+      gate: G8
+      ban: "time.time() in library code"
+      invariant: OUT14
+      plan: "02-architecture.md line 392; 01-principles.md OUT14; 08-runtime.md section 1.3"
+
+  - id: omniweave-no-random-in-library-code
+    message: >-
+      `random` is banned in library code. Sampling is `blake2b` over a declared key — determinism
+      is a gate, not a habit — and a `random` draw makes a run un-replayable in a way that surfaces
+      only as a flaky digit in a published metric. `random.seed()` does not rescue it: the seed is
+      process state every other caller shares, so the first library to call it decides the second
+      library's numbers. Specified in 02-architecture.md section 3.3 (line 392) and
+      01-principles.md's OUT14 enforcement note. `pyproject.toml`'s `banned-api` carries the import
+      ban with the message "Sampling is blake2b. Determinism is a gate, not a habit.", which is the
+      independent second enforcer.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: import random
+          - pattern: import random as $X
+          - pattern: from random import ...
+          - pattern: random.$F(...)
+    paths:
+      include:
+        - "packages/*/src/**"
+    metadata:
+      gate: G8
+      ban: "random in library code"
+      invariant: OUT14
+      plan: "02-architecture.md line 392; 01-principles.md OUT14"
+
+  - id: omniweave-no-secrets-in-library-code
+    message: >-
+      `secrets` is banned in library code. It is `random` with a CSPRNG behind it — still
+      un-replayable — and its appearance on a library path usually means an identity is being
+      minted where a content digest belongs. Where real entropy is genuinely needed, `run_id` is
+      the shape: `'r_' + ulid(ctx.clock.wall_ns(), os.urandom(10))`, minted once at the runtime
+      edge and threaded through `RunContext`, never drawn mid-computation. Specified in
+      02-architecture.md section 3.3 (line 392), 01-principles.md's OUT14 enforcement note and
+      08-runtime.md section 1.3.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: import secrets
+          - pattern: import secrets as $X
+          - pattern: from secrets import ...
+          - pattern: secrets.$F(...)
+    paths:
+      include:
+        - "packages/*/src/**"
+    metadata:
+      gate: G8
+      ban: "secrets in library code"
+      invariant: OUT14
+      plan: "02-architecture.md line 392; 01-principles.md OUT14; 08-runtime.md section 1.3"
+
+  - id: omniweave-no-uuid4-in-library-code
+    message: >-
+      `uuid4` is banned in library code. Ids in omniweave are either content-addressed or minted
+      once at the runtime edge: `run_id` is `'r_' + ulid(ctx.clock.wall_ns(), os.urandom(10))` — 26
+      Crockford base32 characters, lexicographically sortable by mint time — and 08-runtime.md
+      section 1.3 says in as many words that it is **not** `uuid4`, "which is semgrep-banned in
+      library code", and not a counter, because two processes mint run ids concurrently. A `uuid4`
+      reaching a cache key or a digest input is AP-6 exactly: the system runs, produces output, and
+      is wrong for months. Specified in 02-architecture.md section 3.3 (line 392) and
+      08-runtime.md section 1.3.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: uuid.uuid4(...)
+          - pattern: uuid4(...)
+          - pattern: uuid.uuid1(...)
+          - pattern: uuid1(...)
+    paths:
+      include:
+        - "packages/*/src/**"
+    metadata:
+      gate: G8
+      ban: "uuid4 in library code"
+      invariant: OUT14
+      plan: "02-architecture.md line 392; 08-runtime.md section 1.3"
+
+  - id: omniweave-no-datetime-now-in-library-code
+    message: >-
+      `datetime.now` — with `datetime.utcnow` and `date.today`, which are the same reading — is
+      banned in library code. It is the ambient clock again, and it is the one that lands in
+      *output*: a generated file with a timestamp header is the canonical determinism violation.
+      ruff's `DTZ` rules ban the naive-datetime half; this rule bans the reading itself. Take the
+      instant from `ctx.clock`, or from `job.determinism.clock_ns` when it is going into an
+      artifact — `dcterms:created == dcterms:modified == job.determinism.clock_ns` is what makes a
+      `.pptx` byte-stable. Specified in 02-architecture.md section 3.3 (line 392) and section 5
+      row 8; 01-principles.md's OUT14 enforcement note; 11-repo-layout.md section 8.1's `DTZ` note.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: datetime.now(...)
+          - pattern: datetime.datetime.now(...)
+          - pattern: datetime.utcnow()
+          - pattern: datetime.datetime.utcnow()
+          - pattern: date.today()
+          - pattern: datetime.date.today()
+    paths:
+      include:
+        - "packages/*/src/**"
+    metadata:
+      gate: G8
+      ban: "datetime.now in library code"
+      invariant: OUT14
+      plan: "02-architecture.md line 392 and section 5 row 8; 11-repo-layout.md section 8.1"
+
+  - id: omniweave-no-sys-exit-in-library-code
+    message: >-
+      `sys.exit` is banned in library code (DR21). A library that exits the process removes the
+      caller's ability to handle the condition, and in omniweave that condition is always already
+      typed: a missing capability is `probe()` returning `PROBE_UNAVAILABLE` at preflight, the plan
+      is pruned, and the rejection is named — never an `ImportError`, never an exit. An embedded
+      caller (the MCP server; an editor hook with a 400 ms deadline) gets no traceback and no exit
+      code to read, only a dead process. Raise the typed error and let the CLI map it onto one of
+      its twelve exit codes. `os._exit` is deliberately NOT covered here: 04-driver-system.md
+      requires it in the watchdog's `threading.Timer` fallback, where a `Timer` thread raising
+      `SystemExit` would not stop the main thread. Specified in 02-architecture.md section 3.3
+      (line 392), 04-driver-system.md DR21 and 00-vision.md's failure-mode table.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: sys.exit(...)
+          - pattern: exit(...)
+          - pattern: quit(...)
+          - pattern: raise SystemExit
+          - pattern: raise SystemExit(...)
+    paths:
+      include:
+        - "packages/*/src/**"
+    metadata:
+      gate: G8
+      ban: "sys.exit in library code"
+      invariant: DR21
+      plan: "02-architecture.md line 392; 04-driver-system.md DR21; 00-vision.md failure-mode table"
+
+  # ---------------------------------------------------------------------------
+  # "...and all of them in `route/eval.py`, `retrieve/plan.py` and every `omniweave-target-*`".
+  # One rule, because the clause is one ban: all eight ambient inputs, in three places, with no
+  # exemption available. RT1 (05-ingest-and-routing.md) declares `evaluate()` pure; 16-roadmap.md
+  # W6.1 declares `retrieve/plan.py` pure and memoised; 01-principles.md's OUT14 note extends the
+  # eight to "every `omniweave-target-*`".
+  # ---------------------------------------------------------------------------
+
+  - id: omniweave-no-ambient-input-in-purity-islands
+    message: >-
+      None of the eight ambient inputs — `os.getcwd()`, `Path(".")`, `time.time()`, `random`,
+      `secrets`, `uuid4`, `datetime.now`, `sys.exit` — may appear in `omniweave/route/eval.py`,
+      `omniweave_core/retrieve/plan.py`, or any `omniweave-target-*` distribution. These are not
+      merely library code, they are the framework's purity islands, and the ban here carries no
+      exemption at all — note that the whole `time.` module is banned in `route/eval.py`, not only
+      `time.time()`. `evaluate(policy, evidence, hints, rung, lane, phase)` takes no ledger, no
+      clock and no `RunContext` (RT1); replay is byte-exact *because* of that, and a property test
+      evaluates 10,000 fixtures twice in shuffled order. `retrieve/plan.py` is memoised on
+      `(mode, channel set, filter-field set, policy_digest, caps_digest)`, so an ambient read makes
+      the memo key a lie. A target's output is compared across nine OS/python cells (OUT13/OUT14).
+      This rule is also the independent second enforcer of the eight rules above: one
+      `paths.exclude` edit cannot disable both. Specified in 02-architecture.md section 3.3
+      (line 392), 05-ingest-and-routing.md RT1, 16-roadmap.md W6.1 and 01-principles.md's OUT14
+      enforcement note.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: os.getcwd()
+          - pattern: getcwd()
+          - pattern: Path.cwd()
+          - pattern: Path(".")
+          - pattern: Path("")
+          - pattern: pathlib.Path(".")
+          - pattern: time.$F(...)
+          - pattern: import random
+          - pattern: from random import ...
+          - pattern: random.$F(...)
+          - pattern: import secrets
+          - pattern: from secrets import ...
+          - pattern: secrets.$F(...)
+          - pattern: uuid.uuid4(...)
+          - pattern: uuid4(...)
+          - pattern: datetime.now(...)
+          - pattern: datetime.datetime.now(...)
+          - pattern: datetime.utcnow()
+          - pattern: date.today()
+          - pattern: sys.exit(...)
+          - pattern: raise SystemExit
+          - pattern: raise SystemExit(...)
+    paths:
+      include:
+        - "packages/omniweave/src/omniweave/route/eval.py"
+        - "packages/omniweave-core/src/omniweave_core/retrieve/plan.py"
+        - "packages/omniweave-target-*/src/**"
+    metadata:
+      gate: G8
+      ban: "all of them in route/eval.py, retrieve/plan.py and every omniweave-target-*"
+      invariant: [RT1, OUT14]
+      plan: "02-architecture.md line 392; 05-ingest-and-routing.md RT1; 16-roadmap.md W6.1"
+
+  # ---------------------------------------------------------------------------
+  # AP-6 / INV-12 / ST8 — a soft fallback on an identity or safety input.
+  # ---------------------------------------------------------------------------
+
+  - id: omniweave-no-bare-except-around-identity
+    message: >-
+      A bare `except:` or `except Exception:` may not wrap a digest, a cache key, a code
+      fingerprint, a probe, a baseline read or a retrieval channel (AP-6, INV-12, ST8). This is the
+      highest-yield rule in the bank because the failure is invisible: graphrag's `str()` fallback
+      for an un-serialisable cache-key value produced a **permanent silent 100% cache miss**;
+      `_EXTRACTOR_VERSION = "unknown"` shared one AST namespace across every extractor version;
+      `except Exception: return {}` around a baseline load turns a missing baseline into a passing
+      gate. Under `retrieve/`, `except: return []` turns a Channel failure into a *confident zero*
+      — which is why a channel that raised reports `unavailable` with a `reason`, forces
+      `degraded`, and contributes nothing to the ceiling. Catch the specific exception, name the
+      failure in the returned value, and let the caller see it. Specified in 02-architecture.md
+      section 3.3 (line 392), 01-principles.md AP-6 and rejection-list item 8, and
+      07-store-and-retrieval.md ST8.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: |
+              try:
+                  ...
+                  $F(...)
+                  ...
+              except:
+                  ...
+          - pattern: |
+              try:
+                  ...
+                  $F(...)
+                  ...
+              except Exception:
+                  ...
+          - pattern: |
+              try:
+                  ...
+                  $F(...)
+                  ...
+              except BaseException:
+                  ...
+          - pattern: |
+              try:
+                  ...
+                  $O.$F(...)
+                  ...
+              except:
+                  ...
+          - pattern: |
+              try:
+                  ...
+                  $O.$F(...)
+                  ...
+              except Exception:
+                  ...
+          - pattern: |
+              try:
+                  ...
+                  $O.$F(...)
+                  ...
+              except BaseException:
+                  ...
+      - metavariable-regex:
+          metavariable: $F
+          regex: '(?i).*(digest|cache_key|cachekey|fingerprint|probe|baseline|channel|sha256|blake2|ow128|canonical|checksum)'
+    paths:
+      include:
+        - "packages/*/src/**"
+    metadata:
+      gate: [G8, G24]
+      ban: "bare except around a digest, cache key, code fingerprint, probe, baseline read or retrieval channel"
+      invariant: [INV-12, ST8]
+      plan: "02-architecture.md line 392; 01-principles.md AP-6; 07-store-and-retrieval.md ST8"
+
+  # ---------------------------------------------------------------------------
+  # RT14 — an unpinned model revision is not a pin. 04-driver-system.md section 2.4.
+  # ---------------------------------------------------------------------------
+
+  - id: omniweave-no-revision-main
+    message: >-
+      `revision="main"` is forbidden framework-wide (RT14). A branch name is not a revision: the
+      bytes it resolves to change under you, so a "pinned" model is reproducible only until someone
+      pushes. 04-driver-system.md section 2.4 records the precedent — docling's model `revision`
+      defaults to `"main"` at **six** declaration sites
+      (`docling/docling/datamodel/layout_model_specs.py:87,94,101,108,115,122`) while the field's
+      own annotation at `:44` says it names a "Git revision (branch, tag, or commit hash) of the
+      model", so the type documents a pin the defaults do not provide. And
+      `grep -rn "revision=" marker/ surya/ lift/` returns zero hits, so those weights were never
+      reproducible even where licensed. Write the exact sha: `[embed] model_revision` and
+      `[licence.weights] weights_revision` both require one, and `"main"` on a card is
+      `CARD_INVALID`. Specified in 02-architecture.md section 3.3 (line 392), 04-driver-system.md
+      section 2.4 and 00-vision.md's "with omniweave" walkthrough.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: $F(..., revision="main", ...)
+          - pattern: $O.$F(..., revision="main", ...)
+          - pattern: revision = "main"
+          - pattern: $F(..., model_revision="main", ...)
+          - pattern: $O.$F(..., model_revision="main", ...)
+          - pattern: model_revision = "main"
+          - pattern: $F(..., weights_revision="main", ...)
+          - pattern: $O.$F(..., weights_revision="main", ...)
+          - pattern: weights_revision = "main"
+    paths:
+      include:
+        - "packages/*/src/**"
+    metadata:
+      gate: G8
+      ban: 'revision="main"'
+      invariant: RT14
+      plan: "02-architecture.md line 392; 04-driver-system.md section 2.4"
+
+  # ---------------------------------------------------------------------------
+  # One caller of the driver host. 08-runtime.md: "`omniweave/run/pipeline.py` is the **only**
+  # caller of `DriverHost.invoke()`, semgrep-enforced."
+  # ---------------------------------------------------------------------------
+
+  - id: omniweave-no-driverhost-invoke-outside-pipeline
+    message: >-
+      `DriverHost.invoke()` may be called only from `omniweave/run/pipeline.py`. That module IS the
+      middleware order — batching policy, retries, quarantine decisions, the ledger row, the
+      timeout, the cancel token — and an Operator that called the host directly would silently
+      bypass every one of them, producing a driver call no `driver_observation` row records and no
+      budget bounds. It is also how ST22 stays checkable: no `embed/1` driver call may happen
+      inside a read `Snapshot`, and that check has exactly one call site to look at. Dispatch
+      through the pipeline. Specified in 02-architecture.md section 3.3 (line 392) and section 1's
+      module map ("run/pipeline.py — THE MIDDLEWARE ORDER; the ONLY caller of DriverHost.invoke()
+      (G8)"), 08-runtime.md, and 07-store-and-retrieval.md ST22. `omniweave_core/host/**` is
+      excluded because that is where `invoke()` is *defined* and internally delegated.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: $HOST.invoke(...)
+          - pattern: DriverHost.invoke(...)
+    paths:
+      include:
+        - "packages/*/src/**"
+      exclude:
+        - "packages/omniweave/src/omniweave/run/pipeline.py"
+        - "packages/omniweave-core/src/omniweave_core/host/**"
+    metadata:
+      gate: G8
+      ban: "DriverHost.invoke() call outside run/pipeline.py"
+      invariant: ST22
+      plan: "02-architecture.md line 392 and section 1; 08-runtime.md; 07-store-and-retrieval.md ST22"
+
+  # ---------------------------------------------------------------------------
+  # INV-1 — one representation of a Block. 03-document-model.md section 16; 00-vision.md NG-2.
+  # ---------------------------------------------------------------------------
+
+  - id: omniweave-no-second-text-column
+    message: >-
+      No model class may carry an `html`, `markdown` or `md` field (INV-1). Markdown, GFM, HTML,
+      text and OTSL are **projections** — pure functions over `(scope, options, store snapshot)` —
+      never a stored second representation, and a field is exactly how the second representation
+      arrives: it can be set, it can drift from `block.text`, and nothing recomputes it. That is
+      AP-1, mined from 11 parsing repos of which only 4 expose anything beyond a markdown string;
+      the caller who reads only the README never learns their pipeline forfeited citation-to-pixel,
+      round-trip and layout-aware segmentation. `block_fts` is an FTS5 **external-content** table
+      for the same reason — it indexes `block.text` rather than copying it. Call
+      `serialize(scope, fmt)`, which returns `(str, SpanMap)`. Specified in 02-architecture.md
+      section 3.3 (line 392) and section 2 row 24, 03-document-model.md section 16 and section 1
+      clause 2, 01-principles.md INV-1, and 00-vision.md NG-2.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: |
+              class $C(...):
+                  ...
+                  $FIELD: $T
+                  ...
+          - pattern: |
+              class $C(...):
+                  ...
+                  $FIELD: $T = $D
+                  ...
+          - pattern: |
+              class $C:
+                  ...
+                  $FIELD: $T
+                  ...
+          - pattern: |
+              class $C:
+                  ...
+                  $FIELD: $T = $D
+                  ...
+      - metavariable-regex:
+          metavariable: $FIELD
+          regex: '^(html|markdown|md)$'
+    paths:
+      include:
+        - "packages/*/src/**"
+    metadata:
+      gate: G8
+      ban: "html/markdown/md field on a model class"
+      invariant: INV-1
+      plan: "02-architecture.md line 392; 03-document-model.md section 16; 00-vision.md NG-2"
+
+  # ---------------------------------------------------------------------------
+  # SV8 / INV-11 — exactly one `return VerdictState.ABSENT` site in the framework.
+  # 07-store-and-retrieval.md marks it: `if not hits: return VerdictState.ABSENT  # <- THE ONE SITE`
+  # ---------------------------------------------------------------------------
+
+  - id: omniweave-one-verdict-absent-site
+    message: >-
+      `return VerdictState.ABSENT` may appear only in `omniweave_core/retrieve/verdict.py`
+      (INV-11, SV8). `absent` is a **claim about the corpus**, not a description of the search: it
+      requires all fifteen absence gates to have passed, in precedence order, and `build_verdict()`
+      is its sole constructor. A second return site is a second citability rule — the one change
+      that turns "we looked, and it is not there" into "we failed, and did not say so". The
+      fault-injection test that corrupts `block_fts` asserts `degraded`, never `absent`, and this
+      rule is what stops a sixteenth hazard from quietly becoming a second path. Return a
+      `DegradeCause` carrying the `diag` code and the exact clearing command instead. NOTE: semgrep
+      cannot count occurrences, so this rule enforces the single *file*; `tools/gate_semgrep.py`'s
+      `ast` half enforces the single *site*, and the two together are SV8. Specified in
+      02-architecture.md section 3.3 (line 392), 07-store-and-retrieval.md section 9,
+      01-principles.md INV-11, and 16-roadmap.md W6.5.
+    languages: [python]
+    severity: ERROR
+    patterns:
+      - pattern-either:
+          - pattern: return VerdictState.ABSENT
+          - pattern: return $M.VerdictState.ABSENT
+    paths:
+      include:
+        - "packages/*/src/**"
+      exclude:
+        - "packages/omniweave-core/src/omniweave_core/retrieve/verdict.py"
+    metadata:
+      gate: G8
+      ban: "second return VerdictState.ABSENT site"
+      invariant: [INV-11, SV8]
+      plan: "02-architecture.md line 392; 07-store-and-retrieval.md section 9; 16-roadmap.md W6.5"

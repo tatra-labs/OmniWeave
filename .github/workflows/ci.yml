@@ -1,0 +1,1074 @@
+# .github/workflows/ci.yml -- the one CI definition. 11-repo-layout.md sections 6.1 to 6.6.
+#
+# Section 6.1: ".github/workflows/ holds exactly two files: ci.yml and release.yml. release.yml
+# invokes ci.yml through workflow_call, so THE RELEASE GATE IS CI and the two cannot diverge."
+# That is the whole reason workflow_call is a trigger here, and the reason nothing in this file
+# publishes: PyPI Trusted Publishing matches the OIDC workflow_ref claim and that claim names the
+# CALLER when a workflow is invoked through workflow_call, so a reusable *publish* workflow fails
+# with invalid-publisher (section 6.1, pypa/gh-action-pypi-publish#166). The publish job is a
+# top-level job in release.yml for that reason alone.
+#
+# THE JOB GRAPH is section 6.2's, complete, by name: versions, gates, test, golden, conform,
+# incremental, crash, parity, toolchains, build, ci-ok. Eleven names, nineteen cells at the P2 end
+# state (1 + 1 + 9 + 7 + 1). versions is a predecessor of everything and ci-ok a successor of
+# everything, which is what caps concurrency at seventeen. Those eleven names are the closed
+# vocabulary tools/gates.toml's job_name array prints, and a [[gate]] row's jobs cell may name
+# nothing else -- so every PR-blocking row in that register is invoked below, in the job its row
+# names, and no job below is absent from that array.
+#
+# ==========================================================================================
+# WHAT IS P1 AND WHAT LANDS LATER. 16-roadmap.md section 4's non-goals close with the one
+# statement that overrides section 6.2 for now: "No CI matrix beyond three OSes at 3.11 -- the
+# nine-cell test job arrives with P2's determinism work." So test is THREE cells here and the
+# ninefold expansion is marked at the matrix itself. Section 6.4's "test (9)" column is the P2 end
+# state, not P1's.
+#
+#   ARMED AND BLOCKING TODAY (the runner exists on disk and its exit code is the job's):
+#     G1 G3 G4 G6 G8 G9 G14 G17 G18 G23 G24 G30 in gates, G5 in versions, G10 in test, G2 in
+#     build, and build.reproducible.
+#     G13 is armed and VACUOUS: the repository carries no v* tag yet, and "append-only against the
+#     previous tag" has nothing to diff until one exists. The step says so, and self-arms.
+#   PRESENT, MARKED, NOT YET ENFORCING (the register lists the runner under runner_planned, and
+#   test_gates_register.py asserts those paths do NOT exist, so landing one forces the register
+#   edit and arms the step in the same commit):
+#     G7  section 8.5's pin policy; no tools/ script is named by the plan (see its step)
+#     G11 G12 G15 G16   P3 (16-roadmap.md:513-516)
+#     G19               harness P2, fixture P4 (16-roadmap.md:458, :575)
+#     G20 G21           P4 (16-roadmap.md:576-577); G21's harness lands at P2 (:457)
+#     G25 G26           P7 (16-roadmap.md:742-743)
+#     G27               tools/gate_docs.py lands "with P1's gate harness" (section 6.4 on a2);
+#                       clause b is tools/gate_migrations.py at P2 (16-roadmap.md:453)
+#     G28 G29           ADR-2's two appends; the plan states no phase for either
+#   DELIBERATELY ABSENT: G22. Section 6.4: it "is a nightly 100k-roster scale run with no PR cell,
+#   so it blocks the *release* (checklist step 11) and is deliberately absent from ci-ok's required
+#   set." tools/gates.toml says the same as jobs = [] and pr = false. It belongs to section 6.5's
+#   nightly ow-bench-1 row, which is not this file.
+#
+# There is no continue-on-error and no "|| true" anywhere below, because section 6.8 refuses a
+# check that cannot fail: "There is no --warn-only anywhere." A guarded step is not that -- when
+# the guarded file exists its exit code IS the job's, and when it does not the step writes NOT
+# ENFORCED into the run summary, where section 6.8's own argument about the quarantine list puts
+# it: where a reviewer cannot avoid seeing it. One gate is RED on this checkout and is meant to
+# be: tools/gate_licences.py exits 2 because four resolved SPDX ids (MIT-0, MIT-CMU, CNRI-Python,
+# BSL-1.0) are absent from 14-security.md section 9.2's verbatim allow list. Hiding that is the one
+# thing this file may not do.
+#
+# ==========================================================================================
+# ACTION PINS. Section 7.3 rule 2 and the gates.workflow_tools_pinned job assertion require "every
+# third-party action is pinned by full 40-hex commit SHA with the version in a trailing comment. A
+# tag is mutable." THE PLAN NAMES NO SHA -- section 7.3 prints @<40-hex> for every action it lists
+# -- and forty invented hex characters would be a fabricated supply-chain claim, strictly worse
+# than a visibly unpinned one. So every third-party uses: below carries a mutable ref plus a
+# "TODO: pin" marker, and test_ci_workflows.py asserts that every uses: in both workflow files is
+# a local path, a 40-hex SHA, or carries that marker. The owner is release: 17-risks.md section
+# 1.3 gives release "the CI workflows", and section 6.7's rule (a) is the policy.
+#
+# ==========================================================================================
+# NOT IMPLEMENTED HERE, AND NAMED SO IT IS NOT MISTAKEN FOR DONE: section 6.6's "each job writes
+# its wall time to the Counter ci.job_seconds.<job>, which ratchets in eval/counters.toml".
+# eval/counters.toml does not exist, so the two-sided budget enforcement is half present -- every
+# job below carries timeout-minutes at TWICE its section 6.2 budget, which is the half that catches
+# a hang, and the ratchet that catches the slow accumulation lands with the counter register.
+# Section 6.6 is explicit that a budget with only the first "is a budget nobody reads".
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    # Section 6.3 row 2: "every push to the default branch" runs the same nineteen and blocks
+    # nothing, because the merge already happened; a failure opens an issue and blocks the next
+    # release. master is this repository's default branch.
+    branches: [master]
+  # Section 6.1. release.yml's ci job is "uses: ./.github/workflows/ci.yml", and this trigger is
+  # what makes the release gate the same definition rather than a second one.
+  workflow_call:
+
+# Section 6.3, verbatim: "concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }
+# is set on ci.yml and NOT on release.yml." On a PR a second push should cancel the first: at
+# seventeen concurrent jobs a superseded run wastes on the order of an hour of runner time and,
+# worse, competes for the same cache keys. On a tag, cancellation would abandon a partially
+# published release, which section 7.7 calls the one state with no clean recovery.
+concurrency:
+  group: "ci-${{ github.ref }}"
+  cancel-in-progress: true
+
+# Minimal at the top level, exactly as section 7.3 opens release.yml. Each job re-grants the one
+# scope it needs, so a new job starts with nothing rather than with the caller's token.
+permissions: {}
+
+defaults:
+  run:
+    # One shell for all three OSes, so the test job's steps are the same bytes on windows-latest as
+    # on ubuntu-latest. A nine-cell matrix stays one definition only if the shell does not fork.
+    shell: bash
+
+jobs:
+  # ==========================================================================================
+  # versions -- CI job 1, ~20 s. Carries G5 and nothing else. Every other job needs it, which is
+  # what makes a version-string disagreement cost twenty seconds instead of a whole run.
+  # ==========================================================================================
+  versions:
+    name: "versions (G5)"
+    runs-on: ubuntu-latest
+    # 2x the 20 s budget of section 6.2, rounded up to the minute GitHub counts in.
+    timeout-minutes: 1
+    permissions:
+      contents: read
+    outputs:
+      # The toolchains job is "CONDITIONAL on toolchains/**" (section 6.2). See that job for why
+      # this is a presence test at P1 rather than a changed-paths diff.
+      toolchains: ${{ steps.toolchains.outputs.present }}
+    steps:
+      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release (section 6.7 (a))
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
+      - name: "G5 -- every version-bearing declaration site agrees"
+        # 16-roadmap.md:358 is the P1 exit line: "uv run tools/check_versions.py  # G5, CI job 1".
+        # --no-project installs nothing: check_versions.py is stdlib-only by design, so CI job 1
+        # cannot fail for a reason that has nothing to do with versions.
+        #
+        # THIS JOB DELIBERATELY PINS NO PYTHON, unlike every other single-cell job below. Section
+        # 6.6: "`versions`/`ci-ok` install nothing", and a UV_PYTHON that the runner image does not
+        # already carry would make uv download a managed interpreter -- an install, and one costing
+        # more than the 20 s budget. The runner's own Python is enough for a stdlib-only script.
+        run: uv run --no-project tools/check_versions.py
+      - name: "does toolchains/ exist in this tree"
+        id: toolchains
+        run: |
+          if [ -d toolchains ]
+          then echo "present=true" >> "$GITHUB_OUTPUT"
+          else echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ==========================================================================================
+  # gates -- ubuntu x 3.11, "G1..G29 minus the OS-matrix and long-running rows", ~3 min against a
+  # 180 s ceiling (V01-14). Checks out at depth 0 because TWO of section 6.2's three history
+  # readers live here: G13 diffs codes.toml against the previous tag and G27(b) diffs the migration
+  # set against it. "Getting this wrong does not produce a wrong answer; it produces 'fatal: no
+  # such ref' in a gate whose failure message is about error codes, which is worse than either."
+  # ==========================================================================================
+  gates:
+    name: "gates (G1 G3 G4 G6-G9 G11-G15 G17 G18 G20 G23-G25 G27-G30)"
+    needs: [versions]
+    runs-on: ubuntu-latest
+    timeout-minutes: 6 # 2x the 180 s budget of section 6.2.
+    permissions:
+      contents: read
+    env:
+      UV_PYTHON: "3.11"
+      # Section 8.2: "pyright runs only in gates. The PyPI pyright shim downloads a Node runtime
+      # into a cache on first use unless PYRIGHT_PYTHON_GLOBAL_NODE=1 finds a node on PATH. The
+      # gates job sets that variable against the runner's Node." Every GitHub-hosted ubuntu image
+      # ships one; the parity container has none by design, which is why pyright may not run there.
+      PYRIGHT_PYTHON_GLOBAL_NODE: "1"
+    steps:
+      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          persist-credentials: false
+          # Section 6.2's gate contract, not a performance knob. blob:none is a blobless clone that
+          # fetches file contents on demand, and the largest tracked tree is fixtures/ at <= 64 MB,
+          # so the full-history clone is cheap and the filter keeps it that way.
+          fetch-depth: 0
+          filter: "blob:none"
+      - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
+      - run: uv python install "$UV_PYTHON"
+      - id: uv-cache-dir
+        run: echo "dir=$(uv cache dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          # Section 6.6's key verbatim, with this job's single Python cell substituted for
+          # matrix.py: "a lock change invalidates exactly one key, and the prefix fallback turns it
+          # into a partial hit rather than a cold miss."
+          path: ${{ steps.uv-cache-dir.outputs.dir }}
+          key: "uv-${{ runner.os }}-py3.11-${{ hashFiles('uv.lock') }}"
+          restore-keys: "uv-${{ runner.os }}-py3.11-"
+      - name: "install the workspace and the dev group"
+        # --frozen is the gate lockfile drift cannot slip past (section 6.6): it fails on a stale
+        # lock rather than resolving around it.
+        run: uv sync --frozen --all-packages --group dev
+
+      # --- section 8.1's formatter and linter, and section 8.2's type checker -----------------
+      - name: "ruff format --check (section 8.1)"
+        run: uv run ruff format --check .
+      - name: "ruff check (section 8.1)"
+        run: uv run ruff check .
+      - name: "pyright strict (section 8.2)"
+        # NOT ENFORCED YET, and the blocker is a missing declaration rather than a missing phase:
+        # section 8.1's table says "pyright strict", the workspace root carries no [tool.pyright]
+        # table, and a bare run would type-check under pyright's own defaults -- asserting
+        # something section 8.1 did not ask for. The table belongs in pyproject.toml.
+        run: |
+          if grep -q "^\[tool\.pyright\]" pyproject.toml
+          then uv run pyright
+          else
+            echo "pyright NOT ENFORCED: pyproject.toml carries no [tool.pyright] (section 8.1)" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # --- the G rows whose job cell is gates, in section 6.4's rendering order ---------------
+      - name: "G1 -- core resolves to two first-party dists, zero third-party"
+        run: uv run tools/gate_core_pure.py
+      - name: "G3 -- licences over the resolved graph, the import graph and the artefacts"
+        # RED ON THIS CHECKOUT AND CORRECTLY SO: exits 2 because four resolved SPDX ids (MIT-0,
+        # MIT-CMU, CNRI-Python, BSL-1.0) are absent from 14-security.md section 9.2's verbatim
+        # allow list. Section 6.8 forbids the alternative outright.
+        run: uv run tools/gate_licences.py
+      - name: "G3 second half -- the fifteen gen_notice.py --check trees"
+        # The register splits G3's row in two for a reason: a row naming only gate_licences.py
+        # would make the gate look complete while the most common licence defect in the mined
+        # collection -- attribution drift across the fifteen NOTICE/LICENSES/THIRD_PARTY trees --
+        # went unchecked. gen_notice.py is section 7.6 step 5 and is not written.
+        run: |
+          if [ -f tools/gen_notice.py ]
+          then uv run tools/gen_notice.py --check
+          else
+            echo "G3 HALF NOT ENFORCED: tools/gen_notice.py (section 7.6 step 5)" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: "G4 -- the module graph obeys layers.toml, rows re-derived from entry points"
+        run: uv run tools/gate_layers.py
+      - name: "G6 -- ow schema emit --check, CRLF-normalised"
+        # ow does not exist at P1. 16-roadmap.md:364 (W1.8) names tools/schemagen.py as the
+        # generator behind the thirteen schema/*.json, and its own docstring reads "ow schema emit
+        # before ow exists". The command form becomes "ow schema emit --check" at P7.
+        run: uv run tools/schemagen.py --check
+      - name: "G7 -- a constraint tighter than >= carries a comment"
+        # PRESENT, MARKED, NOT ENFORCING, and the blocker is a plan silence rather than a phase.
+        # The register's row says "No tools/ script is named by the plan"; section 8.5 is the
+        # policy and it assigns each dependency a ROLE, so whether a given ~= or < is justified
+        # depends on the role of the package it bounds. packages/omniweave-pdf/pyproject.toml:15
+        # carries "omniweave-ports >=1,<2" with no comment on the line, and that is section 4.1's
+        # Port-major ceiling rather than a tightened pin -- so the naive form of this check is a
+        # false red on thirteen sibling rows. What is needed is a script implementing section 8.5's
+        # role table, or a stated exemption for the Port-major ceiling. There is deliberately no
+        # "if [ -f tools/gate_pins.py ]" guard here: the plan names no filename for this row, and
+        # guessing one would put an invented path in a workflow that the register would then have
+        # to honour. This step arms when its owner names the script.
+        run: |
+          echo "G7 NOT ENFORCED: the plan names no tools/ script for this row and section 8.5's" \
+            "role table is what decides whether a given bound is justified" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: "G8 + G24 -- the semgrep bank, and the half ast can prove without semgrep"
+        # One bank, one runner, two rows: G24's s cell reads "(in G8)" and the register records
+        # that as budget_in = "G8", so there is no second invocation and no double-counted 45 s
+        # against the 180 s ceiling. gate_semgrep.py skips the semgrep half loudly on a platform
+        # with no semgrep wheel and runs an ast re-implementation of every ban ast can express.
+        run: uv run tools/gate_semgrep.py
+      - name: "G9 + G23 -- importtime loads zero third-party; core imports no asyncio/selectors"
+        # 16-roadmap.md:159's P1 exit line is spelled "# G9 + G23" and the script's own docstring
+        # reads "G9 + G23". One fresh-interpreter trace answers both questions, which is why the
+        # register's SHARED_RUNNERS map admits this script twice and admits no third.
+        run: uv run tools/gate_importtime.py
+      - name: "G11 -- discovery never imports, against the rogue driver"
+        run: |
+          if [ -f tools/gate_discovery_no_import.py ]
+          then uv run tools/gate_discovery_no_import.py
+          else
+            echo "G11 NOT ENFORCED: lands at P3 (16-roadmap.md:513)" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: "G12 -- every vendored artefact has sha256, parity test, arch assertion, NOTICE row"
+        run: |
+          if [ -f tools/gate_vendor.py ]
+          then uv run tools/gate_vendor.py
+          else
+            echo "G12 NOT ENFORCED: lands at P3 (16-roadmap.md:514)" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: "G13 -- codes.toml append-only against the previous tag"
+        # ARMED AND VACUOUS. The register gives this row fetch_depth = 0 and this job checks out at
+        # depth 0 for it. With no v* tag in the repository there is nothing to diff, which is a
+        # true statement about an append-only rule rather than a skipped check; the step self-arms
+        # on the first tag. A removed or rewritten line is the failure, an appended one is not.
+        run: |
+          if prev="$(git describe --tags --abbrev=0 --match "v*" 2>/dev/null)"
+          then
+            echo "G13: diffing codes.toml against $prev"
+            if git diff --unified=0 "$prev" -- codes.toml | grep -qE "^-[^-]"
+            then
+              echo "G13 FAILED: codes.toml is append-only; lines present in $prev were removed"
+              git diff --unified=0 "$prev" -- codes.toml | grep -E "^-[^-]"
+              exit 1
+            fi
+            echo "G13: codes.toml is append-only against $prev"
+          else
+            echo "G13 VACUOUS: no v* tag exists yet, so there is no previous tag to diff" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: "G14 -- no all/everything extra; the extras map is total and injective"
+        # The register's row says no tools/ script is named by the plan, and that under-reads what
+        # is on disk: tools/check_versions.py:411-460 implements G14's four clauses by name ("no
+        # such extra (G14)", "G14 totality", "G14 injectivity") and its docstring cites "section
+        # 2.2 (the extras block G14 also reads)". So G14's job cell is honoured with the script
+        # that actually asserts it rather than with a second implementation inline. G5 ran the same
+        # script in versions; two seconds twice is cheaper than two homes for one assertion.
+        run: uv run --no-project tools/check_versions.py
+      - name: "G15 static half -- no egress compiled in, the hostname grep"
+        # THE ONE ROW WITH TWO JOBS. The hostname grep is static and belongs here; the socket-
+        # blocked run needs the twelve conformance suites and belongs in conform. 16-roadmap.md:515
+        # gives the invocation with no arguments, so no half-selector flag is invented here -- the
+        # script gets to define how a caller asks for one half, and when it does both steps take
+        # the flag in one commit.
+        run: |
+          if [ -f tools/gate_egress.py ]
+          then uv run tools/gate_egress.py
+          else
+            echo "G15 NOT ENFORCED (static half): lands at P3 (16-roadmap.md:515)" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: "G17 -- lazy core: none of the nine subpackages"
+        run: uv run tools/gate_lazy_core.py
+      - name: "G18 -- config axes cover every key exactly once"
+        run: uv run tools/gate_config_axes.py
+      - name: "G20 -- the event schema is generated from events.toml"
+        run: |
+          if [ -f tools/gate_events.py ]
+          then uv run tools/gate_events.py
+          else
+            echo "G20 NOT ENFORCED: lands at P4 (16-roadmap.md:576)" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: "G25 -- ow surface emit --check; no two CLI groups differ by a trailing s"
+        # The emitter is gen/ inside the CLI distribution, not a tools/ gate, and ow arrives at P7
+        # (16-roadmap.md:742, W7.2).
+        run: |
+          if uv run ow --version > /dev/null 2>&1
+          then uv run ow surface emit --check
+          else
+            echo "G25 NOT ENFORCED: ow surface emit lands at P7 (16-roadmap.md:742)" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: "G27 -- documents machine-checked (a, a2, a3, b, c, d)"
+        # Two runners, both runner_planned. gate_docs.py carries clauses a, a2, a3, c and d and
+        # lands "with P1's gate harness" (section 6.4's a2 paragraph); gate_migrations.py carries
+        # clause b at the P2 exit (16-roadmap.md:453). Clause c is registered with enabled = false
+        # by ADR-1 decision 6 and must stay off until its four turn-on conditions hold, which is
+        # the script's business and not this file's.
+        run: |
+          armed=0
+          if [ -f tools/gate_docs.py ]
+          then
+            armed=1
+            uv run tools/gate_docs.py
+          fi
+          if [ -f tools/gate_migrations.py ]
+          then
+            armed=1
+            uv run tools/gate_migrations.py --min-sqlite 3.42
+          fi
+          if [ "$armed" = "0" ]
+          then
+            echo "G27 NOT ENFORCED: gate_docs.py (P1 harness) + gate_migrations.py (P2)" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: "G28 -- import(export(store)) == store over the fixture corpus"
+        # ADR-2 decision 4 gave charter D2's unnumbered CI gate a number and INV-1 its third
+        # enforcer. Do NOT cite G6 for it: G6 is "ow schema emit --check" and is not renumbered.
+        # The register's row says "No tools/ script is named by the plan", and no ow subcommand is
+        # named either, so nothing is invented here; it needs the archive round trip and fixtures/,
+        # and the plan states no phase for either. A tripwire on fixtures/ instead of a guess.
+        run: |
+          if [ -d fixtures ]
+          then
+            echo "fixtures/ exists: wire G28's round trip over the corpus (ADR-2 decision 4)"
+            exit 1
+          fi
+          echo "G28 NOT ENFORCED: needs the archive round trip and fixtures/ (ADR-2 dec. 4)" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: "G29 -- the redaction canary under four forced faults"
+        # 15-observability.md section 8.3 is the assertion's sole home. Both it (:1447) and section
+        # 6.4 write the path root-relative as tests/test_no_content_in_artefacts.py and neither
+        # says which tests/ root; the register records that ambiguity verbatim rather than
+        # resolving it, so this step looks for the path the plan names and nothing else.
+        run: |
+          if [ -f tests/test_no_content_in_artefacts.py ]
+          then uv run pytest tests/test_no_content_in_artefacts.py -q
+          else
+            echo "G29 NOT ENFORCED: tests/test_no_content_in_artefacts.py is not written" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: "G30 -- every framework tombstone's review_by is in the future"
+        # An append tools/gates.toml makes that section 6.4 does not yet render (status =
+        # "registered"). 04-driver-system.md section 7.5: "CI FAILS a tombstone past its review_by
+        # date, so the refusal set cannot silently ossify." The script exists and blocks today,
+        # which is exactly why the register refused ADR-1's enabled = false idiom for it.
+        run: uv run tools/gate_tombstones.py
+      - name: "G31 -- the schema lint: FK targets, no second text column, no positional Block ref"
+        # The second append to tools/gates.toml, on the same terms as G30: registered, not yet
+        # rendered in section 6.4. 16-roadmap.md:454 already invokes this script by name in P2's
+        # exit criteria ("INV-1, the FK-target classification"), so the row records a gate the plan
+        # was running without a number. INV-1 is 01-principles.md's and the mention-only
+        # both-layers exception is GR15 (06-structure-extraction.md:233).
+        #
+        # It reads schema/migrations/*.sql as text and opens no database, which is why it sits in
+        # `gates` beside the other declaration-file linters rather than in a job with a sqlite
+        # service. G27(b), which APPLIES the migrations, is a separate row with its own runner.
+        run: uv run tools/gate_schema_lint.py
+
+      # --- the four [[job_assertion]] rows whose job cell is gates ----------------------------
+      - name: "gates.reference_docs -- ow surface emit --docs --check over docs/reference"
+        run: |
+          if [ -d docs/reference ] && uv run ow --version > /dev/null 2>&1
+          then uv run ow surface emit --docs --check
+          else
+            echo "gates.reference_docs NOT ENFORCED: docs/reference/** lands at P7 (s. 1.8)" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: "gates.workflow_tools_pinned -- every action pinned, every run: install exact"
+        # Section 6.7: zizmor covers the uses: half as a linter and "a ~40-line check covers the
+        # run: half, because zizmor does not read shell". Both halves are unenforced here for one
+        # reason: section 6.7's own rule (b) is "uvx <name>==<exact version>", the plan names no
+        # zizmor version, and inventing one is the same fabrication as inventing a SHA. The in-repo
+        # half of the assertion -- every uses: in both workflow files is a local path, a 40-hex
+        # SHA, or carries a TODO: pin marker -- is asserted meanwhile by
+        # packages/omniweave-core/tests/unit/test_ci_workflows.py.
+        run: |
+          echo "gates.workflow_tools_pinned NOT ENFORCED: zizmor needs a pinned version" \
+            "(section 6.7 rule (b)); test_ci_workflows.py holds the in-repo half" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: "two workflow files, and no publisher inside a reusable workflow"
+        # A BLOCKING CHECK WITH NO ROW IN tools/gates.toml, and the plan demands it twice.
+        # Section 1.1 fact 1: "release.yml must never be renamed ... The filename is asserted by a
+        # gate (section 7.3) so a rename fails on the PR that does it, not four weeks later on the
+        # tag." Section 7.3 rule 6 adds the second half: "The same gate asserts that no job calling
+        # pypa/gh-action-pypi-publish appears in a workflow invoked by workflow_call, since
+        # workflow_ref names the caller and the publisher would get invalid-publisher." Section 6.1
+        # supplies the third: exactly two files. Neither a G row nor a [[job_assertion]] row exists
+        # for it, which is a register gap rather than a licence to leave the check out -- section
+        # 8.7 makes a job assertion the ADR-free path, and only the register's owner may add one.
+        run: |
+          found="$(find .github/workflows -maxdepth 1 -type f | sort | tr "\n" " ")"
+          expected=".github/workflows/ci.yml .github/workflows/release.yml "
+          if [ "$found" != "$expected" ]
+          then
+            echo "FAILED: .github/workflows/ holds exactly two files (section 6.1). Found: $found"
+            exit 1
+          fi
+          # A DEFINITION SITE, NOT A MENTION. ci.yml's header explains at length why the publisher
+          # is not here, so a bare grep for the action's name matches the explanation and fails on
+          # its own documentation. The anchor is a uses: key. ci.yml is the only workflow with a
+          # workflow_call trigger, which the two-file assertion above is what makes checkable.
+          if grep -qE "^[[:space:]]*(-[[:space:]]+)?uses:[[:space:]]*pypa/gh-action-pypi-publish" \
+            .github/workflows/ci.yml
+          then
+            echo "FAILED: ci.yml is invoked by workflow_call and names a publisher (s. 7.3 r. 6)"
+            exit 1
+          fi
+          if ! grep -qE "^[[:space:]]+workflow_call:" .github/workflows/ci.yml
+          then
+            echo "FAILED: ci.yml carries no workflow_call trigger, so release.yml cannot call it"
+            exit 1
+          fi
+          echo "two workflow files, ci.yml reusable, no publisher inside it"
+      - name: "gates.invariant_register -- invariants.toml's five semantic assertions"
+        run: |
+          if [ -f tools/gate_invariants.py ]
+          then uv run tools/gate_invariants.py
+          else
+            echo "gates.invariant_register NOT ENFORCED: tools/gate_invariants.py over" \
+              "tools/invariants.toml (01-principles.md section 1e, ADR-2 decision 2)" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: "gates.risk_register -- the same five rules over risks.toml's sixty rows"
+        # The register's row carries a step and no runner: 17-risks.md section 1.1 sizes the check
+        # ("one tomllib.load, five set-membership passes over 60 rows and ~200 question keys, and
+        # one byte-diff of section 1.2's table") and names no script. So this is a tripwire on the
+        # register file rather than a guess at a filename.
+        run: |
+          if [ -f tools/risks.toml ]
+          then
+            echo "tools/risks.toml exists: wire gates.risk_register (17-risks.md section 1.1)"
+            exit 1
+          fi
+          echo "gates.risk_register NOT ENFORCED: tools/risks.toml is not written" \
+            "(17-risks.md section 1.1)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: "the static Q-G series"
+        # Section 6.4: "The gates job additionally runs the static Q-G series ... Their budgets,
+        # owners and review dates live in eval/gates.toml; this document only reserves them a job."
+        # Section 1.7's rule is that neither register may name a row the other owns, which is why
+        # tools/gates.toml carries no Q-G row and this step reads the other file. A tripwire rather
+        # than a stub: the day eval/gates.toml lands, this job has to be wired.
+        run: |
+          if [ -f eval/gates.toml ]
+          then
+            echo "eval/gates.toml exists: wire the static Q-G series into gates (section 6.4)"
+            exit 1
+          fi
+          echo "Q-G NOT ENFORCED: eval/gates.toml is not written (13-quality.md)" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # ==========================================================================================
+  # test -- the OS/Python matrix. THREE CELLS AT P1 and nine at P2; see the matrix comment. Carries
+  # G10 and G26, which section 6.4's closing paragraph calls "timing gates on shared runners, which
+  # is a known-bad idea unless split. They are split."
+  # ==========================================================================================
+  test:
+    name: "test (${{ matrix.os }} py${{ matrix.py }})"
+    needs: [versions]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 8 # 2x the 240 s per-cell budget of section 6.2.
+    permissions:
+      contents: read
+    strategy:
+      # Nine cells that stop at the first failure hide eight answers. Section 6.2 budgets every
+      # cell, which only means anything if every cell runs.
+      fail-fast: false
+      matrix:
+        # THE P1 MATRIX IS THREE CELLS, and this is the one place 16-roadmap.md section 4's
+        # non-goals override section 6.2: "No CI matrix beyond three OSes at 3.11 -- the nine-cell
+        # test job arrives with P2's determinism work." At P2 this becomes
+        #   py: ["3.11", "3.12", "3.13"]
+        # for 3 x 3 = 9 cells, which is what section 6.2's axis table and section 6.4's "test (9)"
+        # column describe, and what section 6.6's 747 s of cache saving is measured against.
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        py: ["3.11"]
+    env:
+      UV_PYTHON: ${{ matrix.py }}
+    steps:
+      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          persist-credentials: false
+          # Section 6.2: "Every other job uses fetch-depth: 1." Only the three history-reading
+          # gates' jobs (gates, conform) take depth 0.
+          fetch-depth: 1
+      - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
+      - run: uv python install "$UV_PYTHON"
+      - id: uv-cache-dir
+        run: echo "dir=$(uv cache dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          # Section 6.6, verbatim, matrix.py and all. "The nine test cells are 747 s of [the cache
+          # saving], which is why they get their own key per Python version rather than sharing
+          # one."
+          path: ${{ steps.uv-cache-dir.outputs.dir }}
+          key: "uv-${{ runner.os }}-py${{ matrix.py }}-${{ hashFiles('uv.lock') }}"
+          restore-keys: "uv-${{ runner.os }}-py${{ matrix.py }}-"
+      - name: "install the workspace and the dev group"
+        run: uv sync --frozen --all-packages --group dev
+      - name: "the test suite"
+        # testpaths = ["packages"] in the workspace root, so this is every tier the tree carries.
+        run: uv run pytest -q
+      - name: "G10 -- cold start against this OS's baseline, 25% band plus a hard module count"
+        # The HARD assertion is the module count from "python -X importtime -c 'import
+        # omniweave_core'", which does not vary with runner load and is what actually regresses --
+        # a new eager import. The wall clock is a 25% band against
+        # eval/baselines/coldstart-<os>-<py>.json, best-of-five after two warm-ups. A missing
+        # baseline for a cell is reported and is a pass (the script's own exit-code table), which
+        # is what makes "no baseline for this OS yet" observable rather than silent. --record-
+        # baseline is NOT passed here: recording in CI would make the gate remember the answer,
+        # which is section 6.6's "no cache of anything a gate asserts about" arriving from the
+        # other side. A re-record is a deliberate act logged in eval/BLESS.log.
+        run: uv run tools/gate_coldstart.py
+      - name: "G26 -- ow hook prompt p95 <= 250 ms warm / 1 s cold"
+        # The other half of the split-timing paragraph. Every failure on this hook is a silent exit
+        # 0 (INV-3), so a deadline breach turns the adoption lever off with no symptom -- which is
+        # why the gate exists and why it may not be quietly absent.
+        run: |
+          if [ -f tools/gate_hook_latency.py ]
+          then uv run tools/gate_hook_latency.py
+          else
+            echo "G26 NOT ENFORCED: lands at P7 (16-roadmap.md:743)" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ==========================================================================================
+  # golden -- ubuntu x 3.11, Reductions + Counters + Cassette replay, <= 4 min. Section 6.4
+  # numbers none of it, and the register records that as an omission of section 6.4's rather than
+  # a transcription loss. At P1 there is nothing to run: 16-roadmap.md section 4's non-goals are
+  # "no store beyond M0's six-table sketch, no omniweave_core.model, no parse of any real document
+  # outside M0's fixture". So the job is a TRIPWIRE, not a green stub -- it fails the day one of
+  # its three inputs lands unwired, which is the opposite of a check that cannot fail.
+  # ==========================================================================================
+  golden:
+    name: "golden (Reductions + Counters + Cassette replay)"
+    needs: [versions]
+    runs-on: ubuntu-latest
+    timeout-minutes: 8 # 2x the 240 s budget of section 6.2.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: "the Tier-B corpus and the Cassettes have not landed unwired"
+        # eval/corpora.toml is the digest that keys section 6.6's golden cache; fixtures/cassettes/
+        # is where the Cassettes are committed, content-addressed and uncached. Either one existing
+        # means this job has work it is not doing.
+        run: |
+          for path in eval/corpora.toml fixtures/cassettes
+          do
+            if [ -e "$path" ]
+            then
+              echo "$path exists: wire the golden job (11-repo-layout.md sections 6.2, 6.6)"
+              exit 1
+            fi
+          done
+          echo "golden: Reductions, Counters and Cassette replay all land at P2 or later" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # ==========================================================================================
+  # conform -- ubuntu x 3.11, "the twelve suites + G15's socket-blocked run + G16", <= 5 min.
+  # Depth 0 because G16 is the third of section 6.2's history readers: it builds the previous TWO
+  # releases' template drivers from source in a git worktree at each tag (section 4.4) and loads
+  # them against HEAD. Building from PyPI instead would let a yanked release break an unrelated
+  # merge, which is why the gate may not reach the network.
+  # ==========================================================================================
+  conform:
+    name: "conform (G15 socket-blocked, G16)"
+    needs: [versions]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10 # 2x the 300 s budget of section 6.2.
+    permissions:
+      contents: read
+    env:
+      UV_PYTHON: "3.11"
+    steps:
+      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          filter: "blob:none"
+      - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
+      - run: uv python install "$UV_PYTHON"
+      - id: uv-cache-dir
+        run: echo "dir=$(uv cache dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          path: ${{ steps.uv-cache-dir.outputs.dir }}
+          key: "uv-${{ runner.os }}-py3.11-${{ hashFiles('uv.lock') }}"
+          restore-keys: "uv-${{ runner.os }}-py3.11-"
+      - name: "install the workspace and the dev group"
+        run: uv sync --frozen --all-packages --group dev
+      - name: "G15 socket-blocked half -- the conformance suites with no socket"
+        # The other half of the two-job row. Same invocation as in gates and for the same reason:
+        # 16-roadmap.md:515 gives it with no arguments and the half-selector is the script's to
+        # define, not this file's to guess.
+        run: |
+          if [ -f tools/gate_egress.py ]
+          then uv run tools/gate_egress.py
+          else
+            echo "G15 NOT ENFORCED (socket-blocked half): lands at P3 (16-roadmap.md:515)" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: "G16 -- the previous two releases' template drivers load against HEAD"
+        # 16-roadmap.md:516's P3 exit line is "uv run tools/gate_contract.py --releases 2   # G16
+        # (vacuous at P3; wired for later)". Vacuous is the correct state with fewer than two tags,
+        # and the script is the thing that gets to say so once it exists.
+        run: |
+          if [ -f tools/gate_contract.py ]
+          then uv run tools/gate_contract.py --releases 2
+          else
+            echo "G16 NOT ENFORCED: lands at P3 (16-roadmap.md:516)" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: "the twelve conformance suites"
+        # 16-roadmap.md:517-518 gives the two invocations verbatim at the P3 exit.
+        # packages/omniweave-conform exists as a distribution; its suites and "ow" do not.
+        run: |
+          if uv run ow --version > /dev/null 2>&1
+          then
+            uv run ow conform packages/omniweave-office --suites mandatory
+            uv run ow conform packages/omniweave-pdf --suites mandatory
+          else
+            echo "conform NOT ENFORCED: the twelve suites land at P3 (16-roadmap.md:517)" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ==========================================================================================
+  # incremental -- ubuntu x 3.11, G19 alone, <= 8 min. Its own job because section 6.2's "Extends
+  # the charter" note says 300 documents in 40 scripted mutations does not fit inside golden's
+  # 4 min, and shrinking the fixture would change a gate the charter says owns its two numbers.
+  # ==========================================================================================
+  incremental:
+    name: "incremental (G19)"
+    needs: [versions]
+    runs-on: ubuntu-latest
+    timeout-minutes: 16 # 2x the 480 s budget of section 6.2.
+    permissions:
+      contents: read
+    env:
+      UV_PYTHON: "3.11"
+    steps:
+      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
+      - run: uv python install "$UV_PYTHON"
+      - name: "G19 -- incremental == full over 300 docs and 40 mutations"
+        # Two arrival dates, both stated by the plan: the harness lands at the P2 exit as
+        # "gate_incremental.py --smoke" with the note "G19's harness exists; its fixture lands in
+        # P4" (16-roadmap.md:458), and the full run is the P4 exit line (:575). The step runs
+        # whichever form the tree can support, so it arms in two steps rather than one.
+        run: |
+          if [ -f tools/gate_incremental.py ]
+          then
+            if [ -d fixtures/incremental ]
+            then uv run tools/gate_incremental.py
+            else uv run tools/gate_incremental.py --smoke
+            fi
+          else
+            echo "G19 NOT ENFORCED: harness at P2 (16-roadmap.md:458), fixture at P4 (:575)" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ==========================================================================================
+  # crash -- ubuntu x 3.11, G21 alone, <= 5 min. The PR job takes three random kill points; the
+  # nightly ow-bench-1 row takes the whole matrix (section 6.5), which the register carries as
+  # nightly_note = "full matrix".
+  # ==========================================================================================
+  crash:
+    name: "crash (G21)"
+    needs: [versions]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10 # 2x the 300 s budget of section 6.2.
+    permissions:
+      contents: read
+    env:
+      UV_PYTHON: "3.11"
+    steps:
+      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
+      - run: uv python install "$UV_PYTHON"
+      - name: "G21 -- kill-9 at three points, ow resume, store equals an uninterrupted run"
+        # Harness at the P2 exit (16-roadmap.md:457), re-run at P4 (:577). It needs Store.complete
+        # to exist, which is P2's work.
+        run: |
+          if [ -f tools/gate_crash.py ]
+          then uv run tools/gate_crash.py
+          else
+            echo "G21 NOT ENFORCED: lands at P2 (16-roadmap.md:457) and P4 (:577)" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ==========================================================================================
+  # parity -- the container job, <= 10 min: "uv sync && pytest: offline, GPU-free, Node-free".
+  # Section 8.2 fixes what may run here and why: "the parity container has no Node BY DESIGN and
+  # therefore installs pytest alone. A type checker that silently fetches a JavaScript runtime is
+  # not something to run inside the job whose entire purpose is to prove the framework needs no
+  # JavaScript runtime -- and running it there would make the Node-free claim self-refuting rather
+  # than merely untested."
+  #
+  # At P1 the three claims this job exists to make are provable WITHOUT installing anything, and
+  # that is the form below: omniweave-core is stdlib-only (G1, INV-2), so importing it off
+  # PYTHONPATH in a bare python:3.11-slim container with nothing installed is a stronger offline
+  # proof than any sync. The pytest half waits on the parity Dockerfile of section 7.1, which
+  # 16-roadmap.md W10.9 owns.
+  # ==========================================================================================
+  parity:
+    name: "parity (offline, GPU-free, Node-free)"
+    needs: [versions]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20 # 2x the 600 s budget of section 6.2, and section 6.6 says so out loud:
+    # "a hard stop that turns a hung parity container into a 20-minute failure rather than a
+    # six-hour one".
+    permissions:
+      contents: read
+    container:
+      # TODO: pin by digest -- owner: release. The published image is section 7.1's own
+      # (ghcr.io/omniweave/omniweave, built from the parity Dockerfile, non-root USER 65532, no
+      # EXPOSE, ENTRYPOINT ["ow"]); it does not exist yet, so the stock slim image stands in and
+      # carries the same two properties that matter here: no Node and no CUDA.
+      image: python:3.11-slim
+    steps:
+      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: "Node-free and GPU-free, asserted rather than assumed"
+        # Section 6.2's axis table: Node is "absent (every cell but one)", and "absent is the
+        # default and is what parity proves". The GPU half is section 6.5's: omniweave-vision is
+        # installed in exactly one nightly cell and nowhere else.
+        run: |
+          if command -v node > /dev/null 2>&1
+          then
+            echo "parity FAILED: a node runtime is on PATH in the parity container"
+            exit 1
+          fi
+          if command -v nvidia-smi > /dev/null 2>&1
+          then
+            echo "parity FAILED: a GPU toolchain is present in the parity container"
+            exit 1
+          fi
+          echo "parity: no node, no nvidia-smi"
+      - name: "omniweave_core imports with nothing installed and no network"
+        # INV-2 and G1: core resolves to two first-party distributions and zero third-party, so it
+        # imports off source with no site-packages at all. The audit hook is the witness for the
+        # offline half -- a socket opened during the import fails the job here, which is the same
+        # property G15 asserts from the static side. This is not a second home for G1 or G9: those
+        # read an import graph on a runner with the dev group installed, and this reads what
+        # happens in a container that has nothing.
+        env:
+          PYTHONPATH: "packages/omniweave-core/src:packages/omniweave-ports/src"
+        run: |
+          python - <<'PY'
+          import sys
+
+          sockets = []
+
+
+          def hook(event, args):
+              if event.startswith("socket."):
+                  sockets.append(event)
+
+
+          sys.addaudithook(hook)
+          # A DIFFERENCE, not an absolute set. An interpreter can inject a .pth finder,
+          # sitecustomize or a bootstrap module before any user code runs; measured absolutely
+          # those read as third-party dependencies of whatever is imported next, and measured as a
+          # difference they cancel. conftest.py's Interpreter.modules_added_by makes the same
+          # argument for the same reason.
+          before = set(sys.modules)
+          import omniweave_core
+          import omniweave_ports
+
+          added = set(sys.modules) - before
+          assert not sockets, f"import opened a socket: {sockets}"
+          reached = sorted(
+              name
+              for name in added
+              if "site-packages" in str(getattr(sys.modules[name], "__file__", ""))
+          )
+          assert not reached, f"import reached site-packages: {reached}"
+          print(f"parity: {len(added)} modules, stdlib-only, no socket")
+          PY
+      - name: "the parity Dockerfile and the pytest half have not landed unwired"
+        # A tripwire on the same pattern as golden's: section 7.1's parity Dockerfile is what turns
+        # this job into section 6.2's "uv sync && pytest" form, and W10.9 owns it.
+        run: |
+          if [ -f Dockerfile ] || [ -f docker/parity.Dockerfile ]
+          then
+            echo "a parity Dockerfile exists: wire uv sync && pytest into parity (section 6.2)"
+            exit 1
+          fi
+          echo "parity: the pytest half lands with the parity Dockerfile (section 7.1, W10.9)" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # ==========================================================================================
+  # toolchains -- ubuntu x node 20, CONDITIONAL on toolchains/**, <= 3 min. Section 6.2: "the only
+  # cell with a runtime", and the only job ci-ok may see as skipped -- which is the whole reason
+  # ci-ok exists as the single required check rather than nine of them.
+  #
+  # THE CONDITION IS A PRESENCE TEST AT P1, NOT A CHANGED-PATHS DIFF, and that is a departure worth
+  # naming. A per-job paths filter needs either a third-party action or a base..head diff, and the
+  # diff needs history in a job section 6.2 pins at fetch-depth: 1. toolchains/ does not exist yet
+  # (section 1.6 is the whole of the second language and it arrives with the deck Toolchain), so
+  # the presence test is exactly right today and becomes wrong the day the directory lands with
+  # content. The diff form is what replaces it then, and versions already owns the output.
+  # ==========================================================================================
+  toolchains:
+    name: "toolchains (toolchains.reproducible)"
+    needs: [versions]
+    if: needs.versions.outputs.toolchains == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6 # 2x the 180 s budget of section 6.2.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          # Section 6.2's axis table: "node 20". The pnpm store cache is keyed on
+          # toolchains/pnpm-lock.yaml (section 6.6) and is added with the lockfile.
+          node-version: "20"
+      - name: "toolchains.reproducible -- two esbuild passes produce an identical bundle sha256"
+        # Section 3.3 is the assertion's home. Nothing under toolchains/ exists, and this job only
+        # runs at all once the directory does, so the guard is on the manifest rather than a phase.
+        run: |
+          if [ -f toolchains/pnpm-lock.yaml ]
+          then
+            echo "toolchains.reproducible NOT ENFORCED: the esbuild two-pass diff is W9/W10 work"
+            echo "toolchains/ exists: wire toolchains.reproducible (section 3.3)" \
+              >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "toolchains: toolchains/ carries no pnpm lockfile yet (section 1.6)" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # ==========================================================================================
+  # build -- ubuntu x 3.11, "two-pass build of 14 sdists + 14 wheels + the wheelhouse profile
+  # installs + G2", <= 6 min. Section 6.6's four steps, in order, "because the order is the
+  # mechanism". Steps 1 and 3 are real here; step 2 (gen_first_party.py) and step 4 (the offline
+  # wheelhouse installs) are marked, because their runners and their profiles do not exist.
+  # ==========================================================================================
+  build:
+    name: "build (G2, build.reproducible, build.first_party_manifest, build.wheelhouse_profiles)"
+    needs: [versions]
+    runs-on: ubuntu-latest
+    timeout-minutes: 12 # 2x the 360 s budget of section 6.2.
+    permissions:
+      contents: read
+    env:
+      UV_PYTHON: "3.11"
+    steps:
+      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
+      - run: uv python install "$UV_PYTHON"
+      - id: uv-cache-dir
+        run: echo "dir=$(uv cache dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          path: ${{ steps.uv-cache-dir.outputs.dir }}
+          key: "uv-${{ runner.os }}-py3.11-${{ hashFiles('uv.lock') }}"
+          restore-keys: "uv-${{ runner.os }}-py3.11-"
+      - name: "install the workspace and the dev group"
+        run: uv sync --frozen --all-packages --group dev
+      - name: "section 6.6 step 1 -- SOURCE_DATE_EPOCH, then 14 sdists and 14 wheels"
+        # SOURCE_DATE_EPOCH is the commit date, not the clock: section 7.4's corollary is that
+        # nothing before the approval pause may depend on wall-clock time, or a re-run after a
+        # five-day gap produces a different byte.
+        run: |
+          echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
+      - run: uv build --all-packages --out-dir dist
+      - name: "28 files, zero platform wheels"
+        # Section 7.1: "28 PyPI files, zero platform wheels, one runner. That is the whole point of
+        # the py3-none-any decision." A count is the guard section 6.8 requires on any gate that
+        # discovers its own inputs.
+        # The -name filter is not cosmetic: "uv build --out-dir dist" also writes a dist/.gitignore
+        # holding "*", so a bare file count is 29 and the assertion would be a false red. Measured
+        # on this checkout, uv 0.9.x.
+        run: |
+          count="$(find dist -maxdepth 1 -type f -name "omniweave*" | wc -l)"
+          if [ "$count" != "28" ]
+          then
+            echo "build FAILED: expected 28 files in dist/, found $count"
+            find dist -maxdepth 1 -type f | sort
+            exit 1
+          fi
+          if find dist -maxdepth 1 -name "*.whl" -not -name "*-py3-none-any.whl" | grep -q .
+          then
+            echo "build FAILED: a wheel is not py3-none-any (section 7.1)"
+            exit 1
+          fi
+          echo "build: 28 files, every wheel py3-none-any"
+      - name: "G2 -- the fourteen weight ceilings and the 250 MB [recommended] union"
+        run: uv run tools/gate_weights.py
+      - name: "section 6.6 step 2 -- build.first_party_manifest"
+        # Thirteen rows, omniweave-core absent, every row's digest matching dist/ (section 7.2).
+        # Section 7.3 prints the three commands this step becomes:
+        #     python tools/gen_first_party.py --dist dist/ --release "$RELEASE"
+        #     rm dist/omniweave_core-* dist/omniweave-core-*
+        #     SOURCE_DATE_EPOCH=... uv build --package omniweave-core
+        # and they are NOT run here, because the ordering problem section 7.2 exists to solve --
+        # core's own wheel carries the manifest that names the other twenty-six, so core is always
+        # rebuilt after them -- also changes what step 3 compares: 26 files against pass 1 and
+        # core's two against pass 2, not 28 against 28. Wiring this is one edit to two steps, and
+        # a tripwire is what forces it to be one edit rather than a silently wrong diff.
+        run: |
+          if [ -f tools/gen_first_party.py ]
+          then
+            echo "tools/gen_first_party.py exists: wire section 6.6 steps 2 AND 3 together"
+            exit 1
+          fi
+          echo "build.first_party_manifest NOT ENFORCED: tools/gen_first_party.py (s. 7.2)" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: "section 6.6 step 3 -- build.reproducible: two passes, 28 identical sha256s"
+        # "A non-reproducible wheel means SLSA provenance names a digest nobody else can produce",
+        # and section 7.4 shows the second thing it buys: a blown five-day approval window becomes
+        # "press the button again" instead of "cut a new PATCH".
+        run: |
+          uv build --all-packages --out-dir dist-second
+          (cd dist && sha256sum -- * | sort -k2) > pass1.sha256
+          (cd dist-second && sha256sum -- * | sort -k2) > pass2.sha256
+          if ! diff -u pass1.sha256 pass2.sha256
+          then
+            echo "build.reproducible FAILED: two passes disagree (section 6.6 step 3)"
+            exit 1
+          fi
+          echo "build.reproducible: 28 identical sha256s across two passes"
+      - name: "section 6.6 step 4 -- build.wheelhouse_profiles"
+        # The three offline install-profile installs of section 2.4, from a wheelhouse built out of
+        # the wheels this release will publish. "Offline is load-bearing: with an index reachable, a
+        # sibling constraint could be satisfied by a previously published wheel and a broken
+        # dependencies entry would pass." Each profile's own assertion names ow parse, ow doctor
+        # and a resolver-backtracking check, which arrive at P3 and P7.
+        run: |
+          if uv run ow --version > /dev/null 2>&1
+          then
+            echo "build.wheelhouse_profiles NOT ENFORCED: the three profile assertions of"
+            echo "section 2.4 need an offline wheelhouse harness; ow exists, so wire it."
+            exit 1
+          fi
+          echo "build.wheelhouse_profiles NOT ENFORCED: section 2.4's assertions name ow parse" \
+            "and ow doctor, which land at P3/P7" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # ==========================================================================================
+  # ci-ok -- THE ONE REQUIRED STATUS CHECK. Section 6.2: "A conditional job that does not run
+  # reports skipped, and GitHub cannot require a check that may never report -- a required
+  # toolchains would block every PR that does not touch TypeScript, forever. So there is exactly
+  # one required check, ci-ok, and it runs if: always() and inspects the needs context rather than
+  # relying on the implicit success()."
+  #
+  # Three properties, and the third is the one a naive version gets wrong: a CANCELLED result is a
+  # failure, not a pass, because if: always() also fires on cancellation and a bare truthiness
+  # check would treat an aborted matrix as green. And SKIPPABLE is a literal set, never a wildcard,
+  # so admitting a second conditional job is a reviewable act rather than a silent widening.
+  # ==========================================================================================
+  ci-ok:
+    name: "ci-ok (the required check)"
+    needs:
+      [versions, gates, test, golden, conform, incremental, crash, parity, toolchains, build]
+    if: always()
+    runs-on: ubuntu-latest
+    # No budget is stated for this job anywhere in section 6.2 or 6.6 -- it installs nothing and
+    # reads a JSON blob -- so five minutes is a floor chosen here rather than 2x anything.
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: "assert every job succeeded, and that only toolchains may be skipped"
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        # tools/ci_ok.py is runner_planned. Unlike every other guarded step in this file, the
+        # fallback here is a full implementation rather than a NOT ENFORCED line: this is the check
+        # a merge is gated on, and a required check that reports green when a job failed is the one
+        # defect this whole design exists to prevent. The jq filter is the same three properties
+        # the register's ci-ok.skips_declared row states, and it is deleted the day ci_ok.py lands.
+        run: |
+          if [ -f tools/ci_ok.py ]
+          then
+            python3 tools/ci_ok.py
+            exit 0
+          fi
+          bad="$(printf "%s" "$NEEDS" | jq -r '
+            to_entries
+            | map(select(.value.result != "success"
+                         and ((.key != "toolchains") or (.value.result != "skipped"))))
+            | map("\(.key)=\(.value.result)")
+            | join(" ")')"
+          if [ -n "$bad" ]
+          then
+            echo "ci-ok FAILED: $bad"
+            echo "SKIPPABLE is {toolchains} and nothing else; cancelled is a failure, not a pass."
+            exit 1
+          fi
+          echo "ci-ok: every job succeeded, or was toolchains and skipped"
+      - name: "print the quarantine list"
+        # Section 6.2's second ci-ok step, and section 6.8 is why it is here rather than behind a
+        # flag: "The quarantine list is printed in the ci-ok job's summary, so its length is
+        # visible on every PR rather than discoverable only by reading a config."
+        if: always()
+        run: |
+          if [ -f tools/print_quarantine.py ]
+          then python3 tools/print_quarantine.py | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "quarantine list NOT AVAILABLE: tools/print_quarantine.py and the eval_flake" \
+              "table land with 13-quality.md's quarantine semantics" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi

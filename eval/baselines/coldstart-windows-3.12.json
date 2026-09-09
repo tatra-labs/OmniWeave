@@ -1,0 +1,331 @@
+{
+  "baseline_schema": 1,
+  "budget": [
+    {
+      "arithmetic": "(2.2) + 20 x 0.38 = 9.8 ms  vs 20 ms  ->  2x headroom",
+      "budget_ms": 20.0,
+      "cards": 20,
+      "fixed_ms": 2.2,
+      "fixed_terms": [
+        2.2
+      ],
+      "headroom": 2.0,
+      "note": "G10, unchanged",
+      "per_card_ms": 0.38,
+      "per_card_terms": [
+        0.38
+      ],
+      "scenario": "20 drivers, 20 installed distributions, cold",
+      "total_ms": 9.8
+    },
+    {
+      "arithmetic": "(16.3 + 1.2 + 0.2 = 17.7) + 20 x 0.38 = 25.3 ms  vs 45 ms  ->  1.8x headroom",
+      "budget_ms": 45.0,
+      "cards": 20,
+      "fixed_ms": 17.7,
+      "fixed_terms": [
+        16.3,
+        1.2,
+        0.2
+      ],
+      "headroom": 1.8,
+      "note": "",
+      "per_card_ms": 0.38,
+      "per_card_terms": [
+        0.38
+      ],
+      "scenario": "20 drivers, 328 installed distributions, cold",
+      "total_ms": 25.3
+    },
+    {
+      "arithmetic": "(17.7) + 20 x 0.08 = 19.3 ms  vs 25 ms  ->  1.3x headroom",
+      "budget_ms": 25.0,
+      "cards": 20,
+      "fixed_ms": 17.7,
+      "fixed_terms": [
+        17.7
+      ],
+      "headroom": 1.3,
+      "note": "the tightest row, and deliberately so",
+      "per_card_ms": 0.08,
+      "per_card_terms": [
+        0.08
+      ],
+      "scenario": "20 drivers, 328 installed distributions, warm",
+      "total_ms": 19.3
+    },
+    {
+      "arithmetic": "0.35 + 0.03 = 0.38 ms per driver  vs 0.4 ms  ->  1.05x headroom",
+      "budget_ms": 0.4,
+      "cards": null,
+      "fixed_ms": null,
+      "fixed_terms": [],
+      "headroom": null,
+      "note": "",
+      "per_card_ms": 0.38,
+      "per_card_terms": [
+        0.35,
+        0.03
+      ],
+      "scenario": "per additional installed driver, cold",
+      "total_ms": null
+    },
+    {
+      "arithmetic": "0.05 + 0.03 = 0.08 ms per driver  vs 0.06 ms  ->  0.75x headroom",
+      "budget_ms": 0.06,
+      "cards": null,
+      "fixed_ms": null,
+      "fixed_terms": [],
+      "headroom": null,
+      "note": "",
+      "per_card_ms": 0.08,
+      "per_card_terms": [
+        0.05,
+        0.03
+      ],
+      "scenario": "per additional installed driver, warm",
+      "total_ms": null
+    },
+    {
+      "arithmetic": "no sum: 250 ms is a ceiling, not a total",
+      "budget_ms": 250.0,
+      "cards": null,
+      "fixed_ms": null,
+      "fixed_terms": [],
+      "headroom": null,
+      "note": "",
+      "per_card_ms": null,
+      "per_card_terms": [],
+      "scenario": "hard ceiling, any environment",
+      "total_ms": null
+    }
+  ],
+  "cold_start_ceilings": [
+    {
+      "basis": "in_process",
+      "ceiling_ms": 80.0,
+      "gate": "G10",
+      "note": "INV-3; measured with -X importtime",
+      "subject": "import omniweave_core"
+    },
+    {
+      "basis": "spawn_inclusive",
+      "ceiling_ms": 150.0,
+      "gate": "G10",
+      "note": "",
+      "subject": "ow --version"
+    },
+    {
+      "basis": "spawn_inclusive",
+      "ceiling_ms": 250.0,
+      "gate": "G10",
+      "note": "the verb tree is generated data",
+      "subject": "ow --help"
+    },
+    {
+      "basis": "in_process",
+      "ceiling_ms": 20.0,
+      "gate": "G10",
+      "note": "dist-info only; imports nothing. Extended by E4 - see DISCOVERY_BUDGET",
+      "subject": "driver discovery, 20 installed"
+    },
+    {
+      "basis": "in_process",
+      "ceiling_ms": 250.0,
+      "gate": "G10",
+      "note": "",
+      "subject": "ow query, warm store"
+    },
+    {
+      "basis": "spawn_inclusive",
+      "ceiling_ms": 250.0,
+      "gate": "G26",
+      "note": "p95, not best-of-five; G26's subject and not measured here",
+      "subject": "ow hook prompt, warm"
+    }
+  ],
+  "coverage": {
+    "Darwin": [],
+    "Linux": [],
+    "Windows": [
+      "3.12"
+    ]
+  },
+  "environment": {
+    "installed_distributions": 97,
+    "machine": "AMD64",
+    "operating_system": "Windows",
+    "operating_system_release": "11",
+    "python": "3.12.0",
+    "python_implementation": "CPython",
+    "runner": "unpinned"
+  },
+  "findings": [
+    {
+      "locus": "04-driver-system.md section 4.4",
+      "message": "the plan budgets 0.06 ms for a cost its own terms put at 0.08 ms (0.75x) - a defect in the source table, transcribed verbatim and not corrected here",
+      "severity": "NOTE",
+      "subject": "per additional installed driver, warm"
+    },
+    {
+      "locus": "04-driver-system.md section 4.4",
+      "message": "20 drivers, 328 installed distributions, warm at 1.3x - the row a regression shows up in first, being dominated by one entry_points() call whose cost is a property of the environment rather than of omniweave",
+      "severity": "NOTE",
+      "subject": "tightest scenario"
+    },
+    {
+      "locus": "02-architecture.md section 5.5 / 00-vision.md V01-3",
+      "message": "1.3 ms under a 80 ms ceiling (in_process)",
+      "severity": "NOTE",
+      "subject": "import omniweave_core"
+    },
+    {
+      "locus": "02-architecture.md section 5.5 / 00-vision.md V01-3",
+      "message": "'ow' is not on PATH; the CLI distribution is unbuilt",
+      "severity": "ABSENT",
+      "subject": "ow --version"
+    },
+    {
+      "locus": "02-architecture.md section 5.5 / 00-vision.md V01-3",
+      "message": "'ow' is not on PATH; the CLI distribution is unbuilt",
+      "severity": "ABSENT",
+      "subject": "ow --help"
+    },
+    {
+      "locus": "02-architecture.md section 5.5 / 00-vision.md V01-3",
+      "message": "not measured by G10 at P1: dist-info only; imports nothing. Extended by E4 - see DISCOVERY_BUDGET",
+      "severity": "ABSENT",
+      "subject": "driver discovery, 20 installed"
+    },
+    {
+      "locus": "02-architecture.md section 5.5 / 00-vision.md V01-3",
+      "message": "not measured by G10 at P1: no instrument",
+      "severity": "ABSENT",
+      "subject": "ow query, warm store"
+    },
+    {
+      "locus": "02-architecture.md section 5.5 / 00-vision.md V01-3",
+      "message": "not measured by G10 at P1: p95, not best-of-five; G26's subject and not measured here",
+      "severity": "ABSENT",
+      "subject": "ow hook prompt, warm"
+    },
+    {
+      "locus": "04-driver-system.md section 4.4",
+      "message": "this machine has 97 installed distributions and a Catalog.build() timing; section 4.4's rows describe 20 and 328 distributions, so no row's precondition holds and none is asserted",
+      "severity": "ABSENT",
+      "subject": "scenario rows"
+    },
+    {
+      "locus": "04-driver-system.md section 4.3",
+      "message": "7.66 ms at 97 distributions here, against 15.3 ms at 328 on Windows / 3.11.9 (warm) - an observation, not an assertion",
+      "severity": "NOTE",
+      "subject": "step 1 vs the reference machine"
+    },
+    {
+      "locus": "11-repo-layout.md section 6.4",
+      "message": "WITHIN_BAND: 1.33 ms against 1.16 +/-25% (0.87..1.44)",
+      "severity": "NOTE",
+      "subject": "import omniweave_core"
+    },
+    {
+      "locus": "11-repo-layout.md section 6.4",
+      "message": "WITHIN_BAND: 3 modules against a baseline of 3 (hard assertion: a count may fall and be re-blessed, never grow)",
+      "severity": "NOTE",
+      "subject": "import omniweave_core module count"
+    },
+    {
+      "locus": "11-repo-layout.md section 6.4",
+      "message": "WITHIN_BAND: 7.66 ms against 6.63 +/-25% (4.98..8.29)",
+      "severity": "NOTE",
+      "subject": "discovery step 1: entry_points"
+    },
+    {
+      "locus": "11-repo-layout.md section 6.4",
+      "message": "WITHIN_BAND: 0.97 ms against 0.82 +/-25% (0.62..1.03)",
+      "severity": "NOTE",
+      "subject": "discovery step 2: dist-info validity key"
+    },
+    {
+      "locus": "11-repo-layout.md section 6.4",
+      "message": "WITHIN_BAND: 118.89 ms against 100.02 +/-25% (75.02..125.03)",
+      "severity": "NOTE",
+      "subject": "Catalog.build()"
+    }
+  ],
+  "gate": "G10",
+  "hard_ceiling_crossing": null,
+  "measured_runs": 5,
+  "measurements": {
+    "Catalog.build()": {
+      "absent_because": "",
+      "name": "Catalog.build()",
+      "samples": [],
+      "unit": "ms",
+      "value": 118.89289999817265
+    },
+    "discovery step 1: entry_points": {
+      "absent_because": "",
+      "name": "discovery step 1: entry_points",
+      "samples": [],
+      "unit": "ms",
+      "value": 7.655800000065938
+    },
+    "discovery step 2: dist-info validity key": {
+      "absent_because": "",
+      "name": "discovery step 2: dist-info validity key",
+      "samples": [],
+      "unit": "ms",
+      "value": 0.9730000019771978
+    },
+    "import omniweave_core": {
+      "absent_because": "",
+      "name": "import omniweave_core",
+      "samples": [
+        1.462,
+        1.364,
+        1.331,
+        1.889,
+        1.328
+      ],
+      "unit": "ms",
+      "value": 1.328
+    },
+    "import omniweave_core module count": {
+      "absent_because": "",
+      "name": "import omniweave_core module count",
+      "samples": [
+        3.0,
+        3.0,
+        3.0,
+        3.0,
+        3.0
+      ],
+      "unit": "modules",
+      "value": 3.0
+    },
+    "ow --help": {
+      "absent_because": "'ow' is not on PATH; the CLI distribution is unbuilt",
+      "name": "ow --help",
+      "samples": [],
+      "unit": "ms",
+      "value": null
+    },
+    "ow --version": {
+      "absent_because": "'ow' is not on PATH; the CLI distribution is unbuilt",
+      "name": "ow --version",
+      "samples": [],
+      "unit": "ms",
+      "value": null
+    }
+  },
+  "recorded_at": "2026-09-07T01:45:52+00:00",
+  "reference_machine": {
+    "installed_distributions": 328,
+    "operating_system": "Windows",
+    "python": "3.11.9",
+    "thermal_state": "warm"
+  },
+  "statistic": "min",
+  "tolerance_pct": 25,
+  "warmup_runs": 2
+}

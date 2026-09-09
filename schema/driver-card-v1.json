@@ -1,0 +1,1249 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schema/driver-card-v1.json",
+  "title": "DriverCard",
+  "type": "object",
+  "additionalProperties": false,
+  "description": "One validated `driver.toml`. Everything `resolve()` filters on, and nothing it imports.",
+  "required": [
+    "card_schema",
+    "identity",
+    "capability",
+    "origin",
+    "source",
+    "card_sha256",
+    "attestation",
+    "attested",
+    "parse",
+    "acquire",
+    "acquire_sibling",
+    "derive",
+    "derive_sibling",
+    "embed",
+    "embed_sibling",
+    "compile_capability",
+    "compile_sibling",
+    "hardware",
+    "isolation",
+    "limits",
+    "licence_code",
+    "licence_weights",
+    "deps",
+    "config",
+    "cost_model",
+    "cost_measured",
+    "quality",
+    "deprecation",
+    "degradations"
+  ],
+  "properties": {
+    "card_schema": {
+      "type": "integer"
+    },
+    "identity": {
+      "$ref": "#/$defs/DriverIdentity"
+    },
+    "capability": {
+      "$ref": "#/$defs/Capability"
+    },
+    "origin": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    },
+    "card_sha256": {
+      "type": "string"
+    },
+    "attestation": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "attested": {
+      "type": "boolean"
+    },
+    "parse": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ParseCapability"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "acquire": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/AcquireCapability"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "acquire_sibling": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/AcquireSibling"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "derive": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/DeriveCapability"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "derive_sibling": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/DeriveSibling"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "embed": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/EmbedCapability"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "embed_sibling": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/EmbedSibling"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "compile_capability": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      }
+    },
+    "compile_sibling": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      }
+    },
+    "hardware": {
+      "$ref": "#/$defs/Hardware"
+    },
+    "isolation": {
+      "$ref": "#/$defs/IsolationSpec"
+    },
+    "limits": {
+      "$ref": "#/$defs/CardLimits"
+    },
+    "licence_code": {
+      "$ref": "#/$defs/LicenceFacts"
+    },
+    "licence_weights": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/LicenceFacts"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "deps": {
+      "$ref": "#/$defs/Deps"
+    },
+    "config": {
+      "$ref": "#/$defs/ConfigSchema"
+    },
+    "cost_model": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/CostModel"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "cost_measured": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/CostMeasured"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "quality": {
+      "$ref": "#/$defs/Quality"
+    },
+    "deprecation": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/Deprecation"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "degradations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/CardDegradation"
+      }
+    }
+  },
+  "$defs": {
+    "AcquireCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`[capability.acquire]` — ordered ladders and set floors only (erratum E1).",
+      "required": [
+        "schemes",
+        "listing",
+        "revision",
+        "addressing",
+        "deletes",
+        "ranges",
+        "streaming",
+        "authn",
+        "trust_class_declared"
+      ],
+      "properties": {
+        "schemes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "listing": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "addressing": {
+          "type": "string"
+        },
+        "deletes": {
+          "type": "string"
+        },
+        "ranges": {
+          "type": "boolean"
+        },
+        "streaming": {
+          "type": "boolean"
+        },
+        "authn": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "trust_class_declared": {
+          "type": "boolean"
+        }
+      }
+    },
+    "AcquireSibling": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`[acquire]` — NON-MONOTONE. An unknown key here is a HARD ERROR (charter X37).",
+      "required": [
+        "implemented",
+        "max_units_per_call",
+        "rate_limit_rps",
+        "cursor_opaque"
+      ],
+      "properties": {
+        "implemented": {
+          "type": "boolean"
+        },
+        "max_units_per_call": {
+          "type": "integer"
+        },
+        "rate_limit_rps": {
+          "type": "integer"
+        },
+        "cursor_opaque": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Benchmark": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One `[[quality.benchmark]]` row — the only place a card carries an accuracy number.",
+      "required": [
+        "metric",
+        "value",
+        "n",
+        "ci95",
+        "witness",
+        "measured_on",
+        "method",
+        "slice_key"
+      ],
+      "properties": {
+        "metric": {
+          "type": "string"
+        },
+        "value": {
+          "type": "number"
+        },
+        "n": {
+          "type": "integer"
+        },
+        "ci95": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "witness": {
+          "type": "string"
+        },
+        "measured_on": {
+          "$ref": "#/$defs/MeasuredOn"
+        },
+        "method": {
+          "type": "string"
+        },
+        "slice_key": {
+          "type": "string"
+        }
+      }
+    },
+    "Capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`[capability]` — `formats`, `consumes` and `produces`.",
+      "required": [
+        "formats",
+        "consumes",
+        "produces"
+      ],
+      "properties": {
+        "formats": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "consumes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "raw_bytes",
+              "roster_items",
+              "doc_fragment",
+              "graph_items",
+              "witness_set",
+              "vector_batch",
+              "text_batch",
+              "il_bundle",
+              "asset",
+              "artifact",
+              "receipt",
+              "carrier_doc",
+              "diag"
+            ]
+          }
+        },
+        "produces": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "raw_bytes",
+              "roster_items",
+              "doc_fragment",
+              "graph_items",
+              "witness_set",
+              "vector_batch",
+              "text_batch",
+              "il_bundle",
+              "asset",
+              "artifact",
+              "receipt",
+              "carrier_doc",
+              "diag"
+            ]
+          }
+        }
+      }
+    },
+    "CardDegradation": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One thing the loader ignored rather than refused, with enough detail to act on.",
+      "required": [
+        "kind",
+        "table",
+        "key",
+        "detail"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "table": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    },
+    "CardLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`[limits]` — the driver DECLARES; the table in section 2.5 says who ENFORCES.",
+      "required": [
+        "max_input_bytes",
+        "max_parts"
+      ],
+      "properties": {
+        "max_input_bytes": {
+          "type": "integer"
+        },
+        "max_parts": {
+          "type": "integer"
+        }
+      }
+    },
+    "ConfigSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`[config]` — the CLOSED JSON-Schema subset, already validated (erratum E3).",
+      "required": [
+        "properties",
+        "required"
+      ],
+      "properties": {
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/$defs/JsonValue"
+            }
+          }
+        },
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "CostMeasured": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`[cost.measured]` — written by `ow conform`; author values are rejected.",
+      "required": [
+        "p50_ms_per_unit",
+        "p95_ms_per_unit",
+        "spend_per_unit",
+        "hardware",
+        "hardware_spawn",
+        "timing_basis"
+      ],
+      "properties": {
+        "p50_ms_per_unit": {
+          "type": "number"
+        },
+        "p95_ms_per_unit": {
+          "type": "number"
+        },
+        "spend_per_unit": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "hardware": {
+          "type": "string"
+        },
+        "hardware_spawn": {
+          "type": "string"
+        },
+        "timing_basis": {
+          "type": "string"
+        }
+      }
+    },
+    "CostModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`[cost.model]` — AUTHOR-declared because it is structural, not measured (charter X10).",
+      "required": [
+        "cost_class",
+        "shape",
+        "unit",
+        "per_part",
+        "per_session",
+        "scaling",
+        "tokens_out_p95_multiple",
+        "max_retries"
+      ],
+      "properties": {
+        "cost_class": {
+          "type": "string",
+          "enum": [
+            "free",
+            "local_compute",
+            "billed_api"
+          ]
+        },
+        "shape": {
+          "type": "string"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "per_part": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "per_session": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "scaling": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CostScaling"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tokens_out_p95_multiple": {
+          "type": "number"
+        },
+        "max_retries": {
+          "type": "integer"
+        }
+      }
+    },
+    "CostScaling": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`[cost.model] scaling` — one evidence key, one exponent, one reference value.",
+      "required": [
+        "key",
+        "exponent",
+        "reference"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "exponent": {
+          "type": "number"
+        },
+        "reference": {
+          "type": "number"
+        }
+      }
+    },
+    "Deprecation": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`[deprecation]` — the driver's own retirement schedule (erratum E8).",
+      "required": [
+        "since",
+        "removed_in",
+        "reason",
+        "replaced_by"
+      ],
+      "properties": {
+        "since": {
+          "type": "string"
+        },
+        "removed_in": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "replaced_by": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "Deps": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`[deps] pins` and the digest over them.",
+      "required": [
+        "pins"
+      ],
+      "properties": {
+        "pins": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "DeriveCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`[capability.derive]` (erratum E1).",
+      "required": [
+        "items",
+        "grounding",
+        "relations",
+        "schema",
+        "confidence",
+        "coreference",
+        "scripts",
+        "scope_honoured"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "grounding": {
+          "type": "string"
+        },
+        "relations": {
+          "type": "string"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "string"
+        },
+        "coreference": {
+          "type": "boolean"
+        },
+        "scripts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scope_honoured": {
+          "type": "boolean"
+        }
+      }
+    },
+    "DeriveSibling": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`[derive]` — NON-MONOTONE. An unknown key here is a HARD ERROR.",
+      "required": [
+        "implemented",
+        "phase",
+        "max_items_per_segment",
+        "prompt_version",
+        "schema_path"
+      ],
+      "properties": {
+        "implemented": {
+          "type": "boolean"
+        },
+        "phase": {
+          "type": "integer"
+        },
+        "max_items_per_segment": {
+          "type": "integer"
+        },
+        "prompt_version": {
+          "type": "string"
+        },
+        "schema_path": {
+          "type": "string"
+        }
+      }
+    },
+    "DriverIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`[driver]` — identity, Port, versions, the entry point and the two streaming axes.",
+      "required": [
+        "id",
+        "port",
+        "port_major",
+        "version",
+        "schema_version",
+        "granularity",
+        "replay_class",
+        "title",
+        "summary",
+        "homepage",
+        "entrypoint",
+        "exec",
+        "detects"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "port": {
+          "type": "string",
+          "enum": [
+            "acquire",
+            "parse",
+            "derive",
+            "embed",
+            "compile"
+          ]
+        },
+        "port_major": {
+          "type": "integer"
+        },
+        "version": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "granularity": {
+          "type": "string"
+        },
+        "replay_class": {
+          "type": "string",
+          "enum": [
+            "byte_exact",
+            "seeded",
+            "unpinnable"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "homepage": {
+          "type": "string"
+        },
+        "entrypoint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "exec": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "detects": {
+          "type": "boolean"
+        }
+      }
+    },
+    "EmbedCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`[capability.embed]` (erratum E1).",
+      "required": [
+        "inputs",
+        "quantization",
+        "truncation",
+        "instructions",
+        "multi_vector"
+      ],
+      "properties": {
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "quantization": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "truncation": {
+          "type": "string"
+        },
+        "instructions": {
+          "type": "boolean"
+        },
+        "multi_vector": {
+          "type": "boolean"
+        }
+      }
+    },
+    "EmbedSibling": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`[embed]` — IDENTITY AND LIMITS. An unknown key here is a HARD ERROR.",
+      "required": [
+        "implemented",
+        "model_id",
+        "model_revision",
+        "dim",
+        "metric",
+        "normalization",
+        "max_tokens",
+        "max_units"
+      ],
+      "properties": {
+        "implemented": {
+          "type": "boolean"
+        },
+        "model_id": {
+          "type": "string"
+        },
+        "model_revision": {
+          "type": "string"
+        },
+        "dim": {
+          "type": "integer"
+        },
+        "metric": {
+          "type": "string"
+        },
+        "normalization": {
+          "type": "string"
+        },
+        "max_tokens": {
+          "type": "integer"
+        },
+        "max_units": {
+          "type": "integer"
+        }
+      }
+    },
+    "FormatTokenPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One `{media_type, token}` member of `[capability.parse] format_tokens`.",
+      "required": [
+        "media_type",
+        "token"
+      ],
+      "properties": {
+        "media_type": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string"
+        }
+      }
+    },
+    "Hardware": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`[hardware]` — everything about the environment, readable without importing the driver.",
+      "required": [
+        "gpu",
+        "vram_gb_min",
+        "ram_gb_min",
+        "cpu_arch",
+        "os",
+        "needs_network",
+        "needs_binaries",
+        "imports_torch",
+        "install_bytes",
+        "services"
+      ],
+      "properties": {
+        "gpu": {
+          "type": "string"
+        },
+        "vram_gb_min": {
+          "type": "number"
+        },
+        "ram_gb_min": {
+          "type": "number"
+        },
+        "cpu_arch": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "os": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "needs_network": {
+          "type": "boolean"
+        },
+        "needs_binaries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "imports_torch": {
+          "type": "boolean"
+        },
+        "install_bytes": {
+          "type": "integer"
+        },
+        "services": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "IsolationSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`[isolation]` — a REQUEST, which the host may only tighten (DR9).",
+      "required": [
+        "requires",
+        "memory_mb",
+        "progress_ms",
+        "wall_ms_hard",
+        "batch_max_units"
+      ],
+      "properties": {
+        "requires": {
+          "type": "string",
+          "enum": [
+            "inproc",
+            "subproc",
+            "wasm"
+          ]
+        },
+        "memory_mb": {
+          "type": "integer"
+        },
+        "progress_ms": {
+          "type": "integer"
+        },
+        "wall_ms_hard": {
+          "type": "integer"
+        },
+        "batch_max_units": {
+          "type": "integer"
+        }
+      }
+    },
+    "JsonValue": {
+      "description": "Any JSON value. The recursive arms point back at this definition, so an array or object nests to any depth.",
+      "oneOf": [
+        {
+          "type": [
+            "boolean",
+            "integer",
+            "number",
+            "string",
+            "null"
+          ]
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          }
+        }
+      ]
+    },
+    "LicenceFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`[licence.code]` or `[licence.weights]` — **facts only**. The tier is COMPUTED.",
+      "required": [
+        "spdx",
+        "licence_sha256",
+        "licence_url",
+        "notice_path",
+        "redistribution",
+        "output_share_alike",
+        "competitor_bar",
+        "requires_credential",
+        "revenue_gate_usd",
+        "mau_gate",
+        "territory_excluded",
+        "field_of_use_excluded",
+        "attribution_per_output",
+        "no_model_training",
+        "remote_kill_switch",
+        "clause_refs",
+        "weights_revision"
+      ],
+      "properties": {
+        "spdx": {
+          "type": "string"
+        },
+        "licence_sha256": {
+          "type": "string"
+        },
+        "licence_url": {
+          "type": "string"
+        },
+        "notice_path": {
+          "type": "string"
+        },
+        "redistribution": {
+          "type": "string"
+        },
+        "output_share_alike": {
+          "type": "boolean"
+        },
+        "competitor_bar": {
+          "type": "boolean"
+        },
+        "requires_credential": {
+          "type": "boolean"
+        },
+        "revenue_gate_usd": {
+          "type": "integer"
+        },
+        "mau_gate": {
+          "type": "integer"
+        },
+        "territory_excluded": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "field_of_use_excluded": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "attribution_per_output": {
+          "type": "boolean"
+        },
+        "no_model_training": {
+          "type": "boolean"
+        },
+        "remote_kill_switch": {
+          "type": "boolean"
+        },
+        "clause_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "weights_revision": {
+          "type": "string"
+        }
+      }
+    },
+    "MeasuredOn": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The ten-field provenance of one benchmark number. **Frozen with NO defaults** (DR14).",
+      "required": [
+        "weights",
+        "weights_revision",
+        "runtime",
+        "runtime_version",
+        "sampling",
+        "prompt_version",
+        "hardware",
+        "corpus",
+        "corpus_digest",
+        "harness_version"
+      ],
+      "properties": {
+        "weights": {
+          "type": "string"
+        },
+        "weights_revision": {
+          "type": "string"
+        },
+        "runtime": {
+          "type": "string"
+        },
+        "runtime_version": {
+          "type": "string"
+        },
+        "sampling": {
+          "type": "string"
+        },
+        "prompt_version": {
+          "type": "string"
+        },
+        "hardware": {
+          "type": "string"
+        },
+        "corpus": {
+          "type": "string"
+        },
+        "corpus_digest": {
+          "type": "string"
+        },
+        "harness_version": {
+          "type": "string"
+        }
+      }
+    },
+    "ParseCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`[capability.parse]` — the fifteen monotone floors, plus the sixteenth key.",
+      "required": [
+        "spatial",
+        "origin_span",
+        "text_span",
+        "marks",
+        "reading_order",
+        "sections",
+        "tables",
+        "math",
+        "assets",
+        "asset_origin",
+        "notes",
+        "confidence",
+        "furniture",
+        "round_trip",
+        "forfeits",
+        "format_tokens"
+      ],
+      "properties": {
+        "spatial": {
+          "type": "string"
+        },
+        "origin_span": {
+          "type": "string"
+        },
+        "text_span": {
+          "type": "boolean"
+        },
+        "marks": {
+          "type": "boolean"
+        },
+        "reading_order": {
+          "type": "string"
+        },
+        "sections": {
+          "type": "string"
+        },
+        "tables": {
+          "type": "string"
+        },
+        "math": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "assets": {
+          "type": "string"
+        },
+        "asset_origin": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "string"
+        },
+        "furniture": {
+          "type": "string"
+        },
+        "round_trip": {
+          "type": "string"
+        },
+        "forfeits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "format_tokens": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FormatTokenPair"
+          }
+        }
+      }
+    },
+    "Quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`[quality]`, `[quality.suites]` and the `[[quality.benchmark]]` rows.",
+      "required": [
+        "kit_version",
+        "kit_run",
+        "suites",
+        "benchmarks"
+      ],
+      "properties": {
+        "kit_version": {
+          "type": "string"
+        },
+        "kit_run": {
+          "type": "string"
+        },
+        "suites": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "benchmarks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Benchmark"
+          }
+        }
+      }
+    }
+  }
+}

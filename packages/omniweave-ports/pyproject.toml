@@ -1,0 +1,28 @@
+# packages/omniweave-ports/pyproject.toml — the driver-facing surface.
+# VERSIONED BY PORT MAJOR, not by RELEASE (11-repo-layout.md section 4.2). The one
+# exception to "one RELEASE", and the whole reason a third-party driver cannot pin
+# the framework: a driver's floor is `omniweave-ports >=1,<2`, so a core upgrade is
+# never blocked by a driver's resolver constraint.
+#
+# The ONLY distribution with an empty `dependencies` list. G1 resolves it in a clean
+# environment and asserts it resolves to itself alone; tools/layers.toml gives it the
+# row [], so it may not import even omniweave_core.
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "omniweave-ports"
+version = "1.0.0"                     # PORT MAJOR. Not RELEASE. G5.
+description = "The omniweave driver-facing type surface. Depends on nothing."
+license = "Apache-2.0"
+requires-python = ">=3.11"           # NO upper bound. charter.md D1.
+dependencies = []
+
+# The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
+[tool.hatch.build.targets.wheel]
+packages = ["src/omniweave_ports"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "LICENSE", "NOTICE", "THIRD_PARTY.md", "LICENSES", "pyproject.toml"]
