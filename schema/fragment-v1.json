@@ -1,0 +1,393 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schema/fragment-v1.json",
+  "title": "BlockDraft",
+  "type": "object",
+  "additionalProperties": false,
+  "description": "Everything `Block` carries except what the HOST mints. **The one mutable type.**",
+  "required": [
+    "kind",
+    "layer",
+    "method",
+    "trust",
+    "quote",
+    "parent",
+    "text",
+    "label",
+    "raw_kind",
+    "quad",
+    "origin",
+    "span",
+    "score",
+    "score_kind",
+    "payload",
+    "cell",
+    "marks",
+    "x"
+  ],
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "document",
+        "section",
+        "title",
+        "heading",
+        "paragraph",
+        "list",
+        "list_item",
+        "blockquote",
+        "code",
+        "table",
+        "table_cell",
+        "figure",
+        "picture",
+        "caption",
+        "formula",
+        "rule",
+        "page_header",
+        "page_footer",
+        "footnote",
+        "endnote",
+        "speaker_note",
+        "comment",
+        "form",
+        "form_field",
+        "checkbox",
+        "key_value",
+        "toc",
+        "toc_entry",
+        "reference",
+        "bibliography",
+        "handwriting",
+        "chemical",
+        "diagram",
+        "container",
+        "unknown"
+      ]
+    },
+    "layer": {
+      "type": "string",
+      "enum": [
+        "body",
+        "furniture",
+        "note",
+        "annotation",
+        "hidden"
+      ]
+    },
+    "method": {
+      "type": "string",
+      "enum": [
+        "native",
+        "text_layer",
+        "native_xml",
+        "ocr_page",
+        "ocr_block",
+        "vlm_page",
+        "llm",
+        "heuristic",
+        "roundtrip",
+        "user"
+      ]
+    },
+    "trust": {
+      "type": "integer",
+      "enum": [
+        0,
+        1,
+        2
+      ]
+    },
+    "quote": {
+      "type": "integer",
+      "enum": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    "parent": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "BlockId"
+    },
+    "text": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "label": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "raw_kind": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "quad": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "integer"
+      },
+      "minItems": 8,
+      "maxItems": 8,
+      "description": "Four corners in 1/1000 pt, topleft origin, unrotated page. i32, never float (03:168)."
+    },
+    "origin": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/OriginBytes"
+        },
+        {
+          "$ref": "#/$defs/OriginNodePath"
+        },
+        {
+          "$ref": "#/$defs/OriginGlyphs"
+        },
+        {
+          "$ref": "#/$defs/OriginPixels"
+        },
+        {
+          "$ref": "#/$defs/OriginNone"
+        }
+      ]
+    },
+    "span": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/TextSpan"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "score_kind": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "payload": {
+      "oneOf": [
+        {},
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "cell": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/CellPos"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "marks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Mark"
+      }
+    },
+    "x": {
+      "type": "object",
+      "additionalProperties": {}
+    }
+  },
+  "$defs": {
+    "CellPos": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A table cell's grid position. 03:319. **Extends the charter**: D2 names no such type.",
+      "required": [
+        "r",
+        "c",
+        "row_span",
+        "col_span"
+      ],
+      "properties": {
+        "r": {
+          "type": "integer"
+        },
+        "c": {
+          "type": "integer"
+        },
+        "row_span": {
+          "type": "integer"
+        },
+        "col_span": {
+          "type": "integer"
+        }
+      }
+    },
+    "Mark": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Sparse inline formatting over `block.text`. 03:260, section 2.7.",
+      "required": [
+        "a",
+        "b",
+        "kind",
+        "value"
+      ],
+      "properties": {
+        "a": {
+          "type": "integer"
+        },
+        "b": {
+          "type": "integer"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "value": {
+          "oneOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "OriginBytes": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Flat text: `.txt`, `.md`, `.csv`, an `.html` source, a JSON blob (03:1415).",
+      "required": [
+        "part",
+        "start",
+        "length",
+        "codec"
+      ],
+      "properties": {
+        "part": {
+          "type": "string"
+        },
+        "start": {
+          "type": "integer"
+        },
+        "length": {
+          "type": "integer"
+        },
+        "codec": {
+          "type": "string"
+        }
+      }
+    },
+    "OriginGlyphs": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A PDF text layer: a glyph run in ONE extractor's own index space (03:1470).",
+      "required": [
+        "part",
+        "extractor",
+        "start",
+        "length"
+      ],
+      "properties": {
+        "part": {
+          "type": "string"
+        },
+        "extractor": {
+          "type": "string"
+        },
+        "start": {
+          "type": "integer"
+        },
+        "length": {
+          "type": "integer"
+        }
+      }
+    },
+    "OriginNodePath": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "OOXML, ODF, any XML container: a child-index path, stored as `os_path = '0.3.1.7'`.",
+      "required": [
+        "part",
+        "path"
+      ],
+      "properties": {
+        "part": {
+          "type": "string"
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "OriginNone": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Derived, synthetic, or a driver that carries no address.",
+      "required": [],
+      "properties": {}
+    },
+    "OriginPixels": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "OCR / VLM: the polygon IS the address, and nothing re-verifies it (03:1423).",
+      "required": [
+        "page",
+        "quad"
+      ],
+      "properties": {
+        "page": {
+          "type": "integer"
+        },
+        "quad": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "minItems": 8,
+          "maxItems": 8,
+          "description": "Four corners in 1/1000 pt, topleft origin, unrotated page. i32, never float (03:168)."
+        }
+      }
+    },
+    "TextSpan": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Half-open `[a, b)` in characters of **this block's own `block.text`** (07:2496).",
+      "required": [
+        "a",
+        "b"
+      ],
+      "properties": {
+        "a": {
+          "type": "integer"
+        },
+        "b": {
+          "type": "integer"
+        }
+      }
+    }
+  }
+}

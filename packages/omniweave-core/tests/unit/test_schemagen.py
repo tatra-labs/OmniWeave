@@ -136,7 +136,23 @@ class SelfRef:
 
 @dataclass(frozen=True, slots=True)
 class HasBytes:
+    """`bytes` IS reflectable -- as 32 lowercase hex characters. Kept as a positive fixture."""
+
     payload: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class HasComplex:
+    """`complex` has no JSON type and no plausible encoding, so it is the unreflectable case.
+
+    It replaced `bytes` here when `bytes` gained a handler: 03-document-model.md:665 gives the wire
+    rendering of a digest ("32 hex chars"), which is a decision the plan had already made, whereas
+    a complex number is not mentioned anywhere in the plan and could not be rendered without
+    inventing a convention. A test asserting "the reflector refuses what it cannot encode" needs a
+    subject the reflector should NEVER learn to encode.
+    """
+
+    payload: complex
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,6 +188,7 @@ def live(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     module.Sample = Sample
     module.SelfRef = SelfRef
     module.HasBytes = HasBytes
+    module.HasComplex = HasComplex
     module.HasIntKeys = HasIntKeys
     module.HasMixedEnum = HasMixedEnum
     module.NoDoc = NoDoc
@@ -481,7 +498,7 @@ def test_an_array_rooted_row_puts_the_record_under_items() -> None:
 @pytest.mark.parametrize(
     ("declaration", "fragment"),
     [
-        (HasBytes, "bytes"),
+        (HasComplex, "complex"),
         (HasIntKeys, "must be `str`"),
         (HasMixedEnum, "mixes JSON types"),
     ],
