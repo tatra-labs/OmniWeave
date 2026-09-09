@@ -96,6 +96,8 @@ def test_d1_the_eager_import_adds_only_stdlib_and_omniweave_modules() -> None:
 # still-empty set exactly once, when its phase lands, and the entry here is the record of that.
 FILLED_HOMES: dict[str, str] = {
     "model": "P2 W2.1 -- enums, spans, block, and the flat re-export surface",
+    "store": "P2 W2.3 -- the four Protocols, Snapshot, and the boundary types",
+    "archive": "P2 W2.5 -- the .owdoc codec, frames.json, the manifest, and owcheck",
 }
 
 

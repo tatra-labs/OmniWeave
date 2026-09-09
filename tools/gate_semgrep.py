@@ -82,6 +82,36 @@ DRIVERS = "packages/omniweave-core/src/omniweave_core/drivers/**"
 TOOLCHAIN = "packages/omniweave-core/src/omniweave_core/toolchain.py"
 SUBPROC = "packages/omniweave-core/src/omniweave_core/host/subproc.py"
 OPC = "packages/omniweave-core/src/omniweave_core/out/opc.py"
+OWDOC = "packages/omniweave-core/src/omniweave_core/archive/owdoc.py"
+"""The SECOND module permitted to open a ZIP for writing, and the reason it had to become two.
+
+02-architecture.md:130, :253 and :392, 09-generation.md:1561, 16-roadmap.md:828, 17-risks.md:259
+and README.md:125 all say `out/opc.py` is "the only zipfile-for-write in the framework". Six other
+sites require `omniweave_core.archive` to WRITE a `.owdoc`, which is a plain ZIP of `ZIP_DEFLATED`
+NDJSON frames: 02-architecture.md:107 and :249, 03-document-model.md:2485-2501 (the member tree),
+:2503, 12-performance.md:1129, and 16-roadmap.md:418, whose W2.5 asks for "writer **and** reader"
+at P2 -- seven phases before `out/opc.py` exists at all (W9.1). Both cannot hold.
+
+The contradiction is resolved by reading what the ban is FOR rather than by counting sites, and
+the rule states its own purpose in two independent voices. The bank message says the point is that
+"every entry is built with `ZipInfo(name)` rather than `ZipFile.write`/`writestr`, whose
+`date_time` reads the **local clock**" -- a DETERMINISM property, restated generally at
+01-principles.md:684. 17-risks.md:259 gives the other: "there is exactly one container writer to
+audit", an argument about artefacts a human opens in PowerPoint, where active content and external
+relationships are the risk. Neither reason reaches `.owdoc`, which is an internal lossless
+projection of the store (02-architecture.md:249) and is never delivered to anyone.
+
+So the ban is not widened, it is MOVED: `owdoc.py` may open the ZIP, and the determinism half --
+the actual guarantee -- is carried into that file by two tests in `test_archive_owdoc.py`, an
+`ast` assertion that every member write passes a pinned `ZipInfo` and a byte-identical
+re-export. A hole in a ban is a hole; a ban replaced by the property it was protecting is not.
+
+IT IS NOT A NEW BANK RULE, and that is deliberate. The bank is a TRANSCRIPTION of
+02-architecture.md:392's list, which `test_the_bank_carries_no_rule_the_plan_did_not_order`
+enforces: inventing a site ban here and adding it to the register would be claiming the plan
+ordered something it did not. A test owned by the archive is the honest home until 02's owner
+rules. `_plan/_notes/build-defects.md` D13 is the finding, and it names the amendment owed.
+"""
 OTLP = "packages/omniweave-serve/src/omniweave_serve/otlp.py"
 PIPELINE = "packages/omniweave/src/omniweave/run/pipeline.py"
 VERDICT = "packages/omniweave-core/src/omniweave_core/retrieve/verdict.py"
@@ -448,9 +478,9 @@ def _zip_write(rel: str, tree: ast.Module) -> Iterator[Finding]:
     """
     ban = AstBan(
         rule_id="omniweave-no-zipfile-write-outside-opc",
-        ban="zipfile.ZipFile(..., 'w'|'a'|'x') outside out/opc.py",
+        ban="zipfile.ZipFile(..., 'w'|'a'|'x') outside out/opc.py and archive/owdoc.py",
         include=LIBRARY,
-        exclude=(OPC,),
+        exclude=(OPC, OWDOC),
     )
     if not ban.covers(rel):
         return

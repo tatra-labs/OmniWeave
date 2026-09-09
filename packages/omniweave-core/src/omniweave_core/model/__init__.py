@@ -39,6 +39,12 @@ Landed so far, one plan section per module and no name in two of them (INV-21).
   `OriginSpan` variants, `TextSpan`, `RenderSpan`, `SpanMap` and `SERIALIZER_CAPS`.
 * `block.py` -- 03 sections 2.2, 2.5, 2.6 and 2.9: `BlockId`, `Addr`, `Cite`, `Mark`, `Block`,
   `CellPos`, `BlockDraft` (the one mutable type in the framework) and `Capabilities`.
+* `serialize.py` -- 03 sections 16.1, 16.2 and 16.5: `serialize()` over the five core formats,
+  `ArraySpanMap` (the concrete `SpanMap` 03:2855-2861 specifies), `ViewScope` -- whose sole home
+  section 16.1 is (03:3048) -- and `TableFacts`. It does NOT bind `Doc`: `Doc.serialize(fmt, **kw)`
+  (03:2604) is the lazy handle's forwarding method and lands with `Doc`, through the store. W2.8's
+  other half -- `block_sec` with `sec_path`, and `block_fts` as an FTS5 external-content table --
+  is SQL and belongs to the store wave, not here.
 
 Still owed by P2. `Doc` and `Grid`, the two lazy handles (03 sections 13.5 and 10.1) -- `Doc`
 reads through the store and `Grid` is built only by `build_grid`, so both follow the store
@@ -82,6 +88,14 @@ from omniweave_core.model.enums import (
     Trust,
     enum_val_rows,
 )
+from omniweave_core.model.serialize import (
+    FORMATS,
+    SERIALIZER_VERSION,
+    ArraySpanMap,
+    TableFacts,
+    ViewScope,
+    serialize,
+)
 from omniweave_core.model.spans import (
     SERIALIZER_CAPS,
     OriginBytes,
@@ -98,12 +112,15 @@ from omniweave_core.model.spans import (
 
 __all__ = [
     "ENUM_DOMAINS",
+    "FORMATS",
     "GENERATION_BLOCKED",
     "MAX_TRUST_BY_METHOD",
     "SERIALIZER_CAPS",
+    "SERIALIZER_VERSION",
     "Addr",
     "AliasKind",
     "AnchorKind",
+    "ArraySpanMap",
     "Block",
     "BlockDraft",
     "BlockId",
@@ -129,10 +146,13 @@ __all__ = [
     "RelKind",
     "RenderSpan",
     "SpanMap",
+    "TableFacts",
     "TableKind",
     "Taint",
     "TextSpan",
     "TimePrecision",
     "Trust",
+    "ViewScope",
     "enum_val_rows",
+    "serialize",
 ]

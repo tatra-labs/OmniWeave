@@ -37,9 +37,8 @@ from pathlib import Path
 from typing import NamedTuple
 
 import pytest
+from conftest import MIGRATIONS_DIR as MIGRATIONS
 
-REPO = Path(__file__).resolve().parents[4]
-MIGRATIONS = REPO / "schema" / "migrations"
 GRAPH = MIGRATIONS / "0002_graph.sql"
 INDEX = MIGRATIONS / "0003_index.sql"
 

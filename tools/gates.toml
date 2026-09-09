@@ -636,7 +636,10 @@ release        = true
 # Clause b diffs the migration set against the previous tag (section 5.2), so this row is the
 # third of section 6.2's three history readers.
 fetch_depth    = 0
-runner_planned = ["tools/gate_docs.py", "tools/gate_migrations.py"]
+# Clause b's script landed, so its path moved from `runner_planned` to `runner` in the same commit
+# -- the forcing function the runner columns above describe, exercised for the first time.
+runner         = ["tools/gate_migrations.py"]
+runner_planned = ["tools/gate_docs.py"]
 owner          = "release"
 reviewed_at    = "2026-09-07"
 review_by      = "2026-12-03"

@@ -221,11 +221,22 @@ rules:
         - "packages/*/src/**"
       exclude:
         - "packages/omniweave-core/src/omniweave_core/out/opc.py"
+        - "packages/omniweave-core/src/omniweave_core/archive/owdoc.py"
     metadata:
       gate: G8
-      ban: "zipfile.ZipFile(..., 'w'|'a'|'x') outside out/opc.py"
+      ban: "zipfile.ZipFile(..., 'w'|'a'|'x') outside out/opc.py and archive/owdoc.py"
       invariant: OUT15
       plan: "02-architecture.md line 392 and section 5 row 8; 09-generation.md"
+      note: >-
+        `archive/owdoc.py` is the second exclusion and it is not a widening. A `.owdoc` IS a plain
+        ZIP (03-document-model.md:2485-2501) and 16-roadmap.md:418 asks for the writer at P2, seven
+        phases before `out/opc.py` exists. Neither reason behind this ban reaches it: the
+        determinism reason is carried into that file by an ast assertion in
+        `tests/unit/test_archive_owdoc.py` plus its byte-identical export test, and
+        17-risks.md:259's
+        "exactly one container writer to audit" is about artefacts a human opens, while a `.owdoc`
+        is an internal projection of the store that is never delivered. See
+        `_plan/_notes/build-defects.md` D13.
 
   - id: omniweave-no-make-archive-outside-opc
     message: >-

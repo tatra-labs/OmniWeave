@@ -43,6 +43,7 @@ import sqlite3  # noqa: TID251
 from typing import TYPE_CHECKING
 
 import pytest
+from conftest import MIGRATIONS_DIR
 from omniweave_core.limits import MIN_SQLITE
 from omniweave_core.model.enums import (
     ENUM_DOMAINS,
@@ -59,12 +60,12 @@ from omniweave_core.model.enums import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from pathlib import Path
-
     from conftest import PlanDocs
 
 
-MIGRATION = "schema/migrations/0001_init.sql"
+MIGRATION = "0001_init.sql"
+"""The file this module owns, by NAME. Its directory is `conftest.MIGRATIONS_DIR` -- one home for
+the path, because `_plan/_notes/build-defects.md` D12 moved it and a name is what does not move."""
 
 # 07-store-and-retrieval.md:237 -- the "Creates" cell for `0001_init.sql`, verbatim, minus
 # `block_fts`, which is a CREATE VIRTUAL TABLE and is asserted separately.
@@ -286,13 +287,13 @@ def _objects(connection: sqlite3.Connection, kind: str) -> tuple[str, ...]:
 
 
 @pytest.fixture(scope="module")
-def migration_sql(repo_root: Path) -> str:
-    return (repo_root / MIGRATION).read_text(encoding="utf-8")
+def migration_sql() -> str:
+    return (MIGRATIONS_DIR / MIGRATION).read_text(encoding="utf-8")
 
 
 @pytest.fixture(scope="module")
-def migration_bytes(repo_root: Path) -> bytes:
-    return (repo_root / MIGRATION).read_bytes()
+def migration_bytes() -> bytes:
+    return (MIGRATIONS_DIR / MIGRATION).read_bytes()
 
 
 @pytest.fixture(scope="module")
@@ -331,8 +332,8 @@ def store(migration_sql: str) -> sqlite3.Connection:
 # ---------------------------------------------------------------------------
 
 
-def test_the_migration_file_is_where_07_section_3_says_it_is(repo_root: Path) -> None:
-    assert (repo_root / MIGRATION).is_file(), f"{MIGRATION} is missing"
+def test_the_migration_file_is_where_07_section_3_says_it_is() -> None:
+    assert (MIGRATIONS_DIR / MIGRATION).is_file(), f"{MIGRATION} is missing"
 
 
 def test_the_sqlite_under_test_is_at_or_above_the_min_sqlite_floor() -> None:
