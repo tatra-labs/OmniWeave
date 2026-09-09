@@ -208,26 +208,56 @@ project root (02-architecture.md section 8.1's six-file table), and 07:142 place
 `.omniweave/` for exactly that reason -- everything inside `.omniweave/` is `.gitignore`d.
 """
 
-MERGE_DRIVER_NAME: Final = "owlock"
-"""The git merge-driver name, from 07:3141 (`merge=owlock`) and :3145-3146 (`merge.owlock.*`).
+MERGE_DRIVER_NAME: Final = "ow-index-lock"
+"""The git merge-driver name. **The plan spells it two ways and this is the ruling.**
 
-**The plan contradicts itself here, and this is the reading with more definition sites.** Section
-13.2 binds the name three times -- the `.gitattributes` line at :3141 and both `git config` keys at
-:3145 and :3146 -- while 11-repo-layout.md spells it `ow-index-lock` twice, in its own
-`.gitattributes` fence at :473 and in `merge.ow-index-lock.driver` at :503. Three definition sites
-against two, and section 13.2 is the section whose title is *"the merge-driver question --
-decided"*, so `owlock` is what this module uses. The repository's committed `.gitattributes` follows
-11-repo-layout.md, so **the two spellings disagree today and the driver would never fire**: that is
-an erratum, and it is reported rather than papered over, because a merge-driver name matching
-nothing is indistinguishable from an uninstalled driver -- the exact failure 11:496-505 exists to
-prevent.
+* `07-store-and-retrieval.md` section 13.2 spells it **`owlock`** at four sites: `:3136` (prose),
+  `:3141` (its own `.gitattributes` fence), `:3144` (`merge.owlock.name`) and `:3145`
+  (`merge.owlock.driver`).
+* `11-repo-layout.md` section 1.9 spells it **`ow-index-lock`** at three: `:473` (its own
+  `.gitattributes` fence), `:496` (prose) and `:503` (`merge.ow-index-lock.driver`).
+
+Four sites against three, so a raw count favours `owlock` -- and the count is **not** the right
+tiebreaker here, because both documents are internally consistent and each prints a complete
+`.gitattributes` fence. What decides it is which document OWNS the artefact.
+
+`.gitattributes` is 11-repo-layout.md section 1.9's file. Section 1.9 is titled
+*"`.gitattributes`, and why a byte-diff gate needs one"*, its fence at `:466-473` is the **only**
+place in the plan that gives the file's complete contents, and the repository's committed
+`.gitattributes` carries the header *"Specified verbatim in 11-repo-layout.md section 1.9"*.
+07 section 13.2 owns the merge SEMANTICS -- sort-merge by `doc_key`, identical lines union, a
+deleted line stays deleted -- and names the driver only in passing, while making a point about
+installation. Choosing 07's spelling would mean editing the one file the plan specifies verbatim in
+order to satisfy a name mentioned incidentally elsewhere.
+
+11 also carries more operational weight for the name: `ow store git-install` writes
+`merge.ow-index-lock.driver` (`:503`), and `ow doctor`'s user-visible string is
+`index-lock merge driver: not installed` (`:504`).
+
+**Why this mattered rather than being cosmetic.** Until this was fixed the committed
+`.gitattributes` said `ow-index-lock` and this module said `owlock`, so the attribute named a
+driver nothing registered and **the driver would never have fired** -- git would have silently
+fallen back to its default text merge, which unions both sides and resurrects a deleted line. That
+is the exact defect `omniweave.index.lock`'s driver exists to refuse
+(`00-vision.md:583`, graphify's `nx.compose` at `graphify/cli.py:2572`). Worse,
+`11:496-505` names this failure mode precisely -- *"a driver lives in the developer's `.git/config`
+... so a fresh clone silently falls back"* -- and a name that matches nothing is
+**indistinguishable from an uninstalled driver**, so `ow doctor` would have reported the honest
+"not installed" warning and nobody would have looked further.
+
+Nothing in the tree noticed. `test_the_gitattributes_line_is_the_one_the_plan_prints` asserted the
+CONSTANT against itself and never read the committed file.
+`test_the_committed_gitattributes_names_the_driver_this_module_registers` now closes that.
+`_plan/_notes/build-defects.md` D20 is the finding; the erratum owed is to 07's four sites.
 """
 
 DRIVER_DESCRIPTION: Final = "omniweave index lock sort-merge"
-"""`git config merge.owlock.name`'s value, transcribed from 07:3145."""
+"""`git config merge.<name>.name`'s value, transcribed from 07:3145.
+
+The VALUE is 07's; only the driver name is 11's. See `MERGE_DRIVER_NAME`."""
 
 DRIVER_COMMAND: Final = "ow store merge-lock %O %A %B %L %P"
-"""`git config merge.owlock.driver`'s value, transcribed from 07:3146.
+"""`git config merge.<name>.driver`'s value, transcribed from 07:3146.
 
 Five placeholders: `%O` ancestor, `%A` ours (**and the file the driver writes**), `%B` theirs, `%L`
 the conflict-marker length and `%P` the pathname. `tools/ow_merge_index_lock.py` accepts `%L` and
@@ -236,7 +266,7 @@ refused the last two would be unregisterable.
 """
 
 GITATTRIBUTES_LINE: Final = f"{LOCK_PATH} merge={MERGE_DRIVER_NAME} -diff"
-"""The committed `.gitattributes` line, transcribed from 07:3141.
+"""The committed `.gitattributes` line. The FORM is 07:3141's, the NAME is 11:473's.
 
 `-diff` is deliberate and is not `binary`; the module docstring gives the three reasons.
 """

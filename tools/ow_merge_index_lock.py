@@ -1,13 +1,15 @@
 """The git merge driver for `omniweave.index.lock` -- the executable git invokes.
 
-`git config merge.owlock.driver "ow store merge-lock %O %A %B %L %P"` (07-store-and-retrieval.md
-:3146) is the shipped registration, and `ow store merge-lock` is a CLI verb W2.7's second half owns.
+`git config merge.ow-index-lock.driver "ow store merge-lock %O %A %B %L %P"`
+is the shipped registration -- 07-store-and-retrieval.md:3146's value with
+11-repo-layout.md:503's driver name, ruled in `indexlock.MERGE_DRIVER_NAME` and recorded as D20.
+`ow store merge-lock` is a CLI verb W2.7's second half owns.
 This file is the same driver as a standalone script, so the merge semantics can be registered,
 tested and run before the CLI exists:
 
 ```text
-git config merge.owlock.name   "omniweave index lock sort-merge"
-git config merge.owlock.driver "uv run tools/ow_merge_index_lock.py %O %A %B %L %P"
+git config merge.ow-index-lock.name   "omniweave index lock sort-merge"
+git config merge.ow-index-lock.driver "uv run tools/ow_merge_index_lock.py %O %A %B %L %P"
 ```
 
 `uv run tools/ow_merge_index_lock.py --print-registration` prints both, plus the `.gitattributes`

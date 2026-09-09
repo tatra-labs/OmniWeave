@@ -1,0 +1,1361 @@
+"""`store/reader.py` against a REAL `.owstore`, because every claim it makes is about SQLite.
+
+Six methods, and the tests are grouped by which of them they hold. Four of the groups exist
+because the property they check is invisible to a mock:
+
+* **the narrowing probe runs on a `mode=ro` connection.** That is what `temp_store = MEMORY` buys
+  (07-store-and-retrieval.md:186-190) and it is the second job of a pragma that otherwise reads as
+  a speed knob, so the test opens the store through `connect_readonly`, writes into a TEMP table
+  inside a read transaction, and asserts that no temp FILE appeared in a temp directory this test
+  controls.
+* **hydration inside one snapshot is generation-consistent.** ST2's own test shape (07:2761-2763)
+  is asserted in BOTH directions, following `test_store_integration.py`: the re-index committed
+  mid-hydrate is invisible to the open snapshot AND visible to the next one. Either half alone
+  passes against a reader pointed at the wrong file.
+* **a `Snapshot` from another store is refused.** `Snapshot.token` is typed `object` (07:72-78) so
+  nothing in the type system stops it, and the failure it prevents is a consistent-looking read of
+  the wrong file rather than an exception.
+* **the refusals are legible.** P6 inherits whatever `channel()` says when it will not run, so the
+  reason strings are asserted rather than the statuses alone.
+
+`import sqlite3` here is TID251's test exception and it is taken deliberately: these tests seed
+`doc`, `page`, `block`, `ref_site` and `anchor` rows through the same connection the `Reader`
+reads, and a fixture that could not write SQL could only test the `Reader` against itself. The
+seeding is direct DDL-shaped SQL rather than `DocSink`, because `DocSink` has no implementation
+yet and 16-roadmap.md schedules it separately -- so the rows are built from the shipped DDL, which
+is *"the authority on columns, types, CHECKs, UNIQUEs and foreign keys"*.
+
+`PREFILTER_MAX` is 200,000 (limits.py:626) and `Narrowing.kind == "all"` is what happens above it.
+Inserting 200,001 blocks to reach one branch would make this suite minutes long, so the two tests
+that need the cap monkeypatch `reader.PREFILTER_MAX` instead. That is honest rather than a dodge:
+the module reads the name at call time through `cap = PREFILTER_MAX + 1`, so the arithmetic, the
+`LIMIT` and the `>=` comparison under test are the shipped ones, and only the number moves.
+
+Specified in 07-store-and-retrieval.md sections 1.1, 3.8, 6.1, 7.2, 10.4 and 16, and
+16-roadmap.md:1034 (W2.3).
+"""
+
+from __future__ import annotations
+
+import inspect
+import sqlite3  # noqa: TID251 -- see the module docstring: the fixtures seed a REAL store.
+from collections.abc import Iterator
+from pathlib import Path
+from typing import NamedTuple
+
+import pytest
+from omniweave_core.errors import StoreError, UsageError
+from omniweave_core.model.enums import Kind, Layer, Method, Quote, Trust
+from omniweave_core.store import Reader, migrate
+from omniweave_core.store import reader as rd
+from omniweave_core.store import sqlite as ow
+from omniweave_core.store.types import ChannelInput, ChannelSpec, Filters
+
+NOW_NS = 1_757_400_000_000_000_000
+"""A fixed clock. `time.time()` is banned in library code and `SqliteReader` takes `now_ns` from
+its caller, so a test reading the ambient clock would assert against a value the production path
+cannot produce."""
+
+DIGEST = b"\x00" * 16
+
+
+# ---------------------------------------------------------------------------------------------
+# Fixtures: one store, one live writer, and seed helpers built from the shipped DDL
+# ---------------------------------------------------------------------------------------------
+
+
+class Built(NamedTuple):
+    """A migrated store, its path, and a writer connection that STAYS OPEN.
+
+    The writer is held open on purpose: `readonly_target()` picks `mode=ro` only while a `-wal`
+    sidecar exists and `mode=ro&immutable=1` otherwise (07:2744-2757), and the narrowing test is
+    about the `mode=ro` rung specifically. A live writer is what keeps the sidecar on disk.
+    """
+
+    path: Path
+    writer: sqlite3.Connection
+
+
+@pytest.fixture
+def built(tmp_path: Path) -> Iterator[Built]:
+    path = tmp_path / "index.owstore"
+    writer = ow.connect(path)
+    applied = migrate.apply_pending(writer, now_ns=NOW_NS)
+    assert len(applied) == 4, f"expected four migrations, applied {len(applied)}"
+    try:
+        yield Built(path=path, writer=writer)
+    finally:
+        writer.close()
+
+
+def _reader(built: Built, *, now_ns: int = NOW_NS) -> rd.SqliteReader:
+    """A `Reader` on a fresh read-only connection to the built store."""
+    return rd.SqliteReader(ow.connect_readonly(built.path), now_ns=now_ns)
+
+
+def _code(conn: sqlite3.Connection, domain: str, name: str) -> int:
+    row = conn.execute(
+        "SELECT ord FROM enum_val WHERE domain = ? AND name = ?", (domain, name)
+    ).fetchone()
+    assert row is not None, f"enum_val has no {domain}.{name}"
+    return int(row[0])
+
+
+def _producer(conn: sqlite3.Connection) -> int:
+    conn.execute(
+        "INSERT INTO producer(operator, op_version, code_fingerprint, options_digest) "
+        "VALUES('op.parse', 1, 'fp', X'00')"
+    )
+    row = conn.execute("SELECT producer_id FROM producer").fetchone()
+    return int(row[0])
+
+
+def _doc(
+    conn: sqlite3.Connection,
+    doc_ord: int,
+    *,
+    uri: str,
+    status: str = "ok",
+    fmt: str = "pdf",
+    gen: int = 1,
+) -> None:
+    conn.execute(
+        "INSERT INTO doc(doc_ord, doc_key, source_sha256, uri, media_type, format, "
+        "                format_evidence, source_bytes, gen, status, model_version, "
+        "                declared, achieved) "
+        "VALUES(?, ?, ?, ?, 'application/pdf', ?, '{}', 1, ?, ?, '1.1', '{}', '{}')",
+        (doc_ord, bytes([doc_ord]) * 16, DIGEST, uri, fmt, gen, status),
+    )
+
+
+def _page(conn: sqlite3.Connection, doc_ord: int, gen: int, page: int, producer_id: int) -> None:
+    conn.execute(
+        "INSERT OR IGNORE INTO page(doc_ord, gen, page, page_kind, method, producer_id) "
+        "VALUES(?, ?, ?, ?, ?, ?)",
+        (
+            doc_ord,
+            gen,
+            page,
+            _code(conn, "page_kind", "page"),
+            _code(conn, "method", "native"),
+            producer_id,
+        ),
+    )
+
+
+def _block(
+    conn: sqlite3.Connection,
+    *,
+    block_id: int,
+    doc_ord: int,
+    producer_id: int,
+    gen: int = 1,
+    page: int = 0,
+    ord_: int = 0,
+    kind: str = "paragraph",
+    layer: str = "body",
+    method: str = "native",
+    text: str | None = "hello",
+    trust: int = 2,
+    quote: int = 4,
+    restriction_bits: int = 0,
+    state: int = 0,
+) -> None:
+    """One `block` row. `os_kind = none` so neither of the DDL's two os CHECKs applies."""
+    _page(conn, doc_ord, gen, page, producer_id)
+    conn.execute(
+        "INSERT INTO block(block_id, doc_ord, gen, page, addr, cite, ord, kind, layer, text, "
+        "                  content_digest, os_kind, producer_id, method, trust, quote, "
+        "                  origin_operator, origin_driver, driver_schema_v, restriction_bits, "
+        "                  state) "
+        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'op.parse', 'drv', 1, ?, ?)",
+        (
+            block_id,
+            doc_ord,
+            gen,
+            page,
+            f"p{page}/{ord_}",
+            f"d{doc_ord}#{block_id}",
+            ord_,
+            _code(conn, "kind", kind),
+            _code(conn, "layer", layer),
+            text,
+            DIGEST,
+            _code(conn, "origin_span_kind", "none"),
+            producer_id,
+            _code(conn, "method", method),
+            trust,
+            quote,
+            restriction_bits,
+            state,
+        ),
+    )
+
+
+def _seed_one_block(built: Built, *, text: str = "hello") -> None:
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    producer_id = _producer(conn)
+    _doc(conn, 1, uri="file:///corpus/a.pdf")
+    _block(conn, block_id=1, doc_ord=1, producer_id=producer_id, text=text)
+    conn.execute("COMMIT")
+
+
+# ---------------------------------------------------------------------------------------------
+# The Protocol
+# ---------------------------------------------------------------------------------------------
+
+
+def test_the_reader_protocol_still_has_exactly_six_methods_and_this_class_has_all_six() -> None:
+    """07:63-68 prints six and 02-architecture.md:702 prices the surface at 4 + 6 + 11 + 12 = 33.
+
+    A seventh here would mean the frozen boundary moved without an ADR (16-roadmap.md:428), and a
+    sixth that `SqliteReader` lacked would mean the backend does not implement the boundary it
+    claims to. Both directions are asserted, and so are the PARAMETER NAMES, because P6 may call
+    `narrow(s=..., f=...)` by keyword and a rename would break it silently.
+    """
+    declared = sorted(name for name in vars(Reader) if not name.startswith("_"))
+    assert declared == ["capabilities", "channel", "coverage", "hydrate", "narrow", "snapshot"]
+    for name in declared:
+        protocol_parameters = list(inspect.signature(getattr(Reader, name)).parameters)
+        implementation = list(inspect.signature(getattr(rd.SqliteReader, name)).parameters)
+        assert implementation == protocol_parameters, name
+
+
+def test_the_reader_never_opens_a_connection_of_its_own() -> None:
+    """ST1 (07:2721): *"`sqlite3.connect` appears in exactly one module"*, and it is `sqlite.py`."""
+    source = Path(rd.__file__ if hasattr(rd, "__file__") else "").read_text(encoding="utf-8")
+    assert "sqlite3.connect(" not in source
+
+
+# ---------------------------------------------------------------------------------------------
+# 1. snapshot
+# ---------------------------------------------------------------------------------------------
+
+
+def test_the_snapshot_is_the_one_sqlite_module_already_ships(built: Built) -> None:
+    """07:2777-2782's mechanism is `sqlite.snapshot()`'s; this method delegates and books it.
+
+    The observable of the delegation is that `Snapshot.token` is the Reader's own connection and
+    that `generation` came from inside the transaction -- `index_state.generation` is seeded to 0
+    by `migrate._seed_index_state`, so a Reader that never issued the first read would report the
+    same 0 and the token check is what distinguishes them.
+    """
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        assert state.token is reader._connection
+        assert state.generation == 0
+        assert state.schema == 1
+
+
+def test_two_snapshots_from_one_reader_are_both_refused_after_they_close(built: Built) -> None:
+    """A `Snapshot` outlives its transaction as a Python object; reading through it must not."""
+    reader = _reader(built)
+    with reader.snapshot() as first:
+        pass
+    with reader.snapshot() as second:
+        assert reader.narrow(second, Filters()).kind == "empty"
+    for stale in (first, second):
+        with pytest.raises(StoreError, match="this Snapshot has closed"):
+            reader.narrow(stale, Filters())
+
+
+# ---------------------------------------------------------------------------------------------
+# 2. capabilities -- read once, at open (07:3272)
+# ---------------------------------------------------------------------------------------------
+
+
+def test_capabilities_is_read_once_at_open_and_returns_the_same_object_every_time(
+    built: Built,
+) -> None:
+    """07:3272. Two calls issue no statement and hand back one object.
+
+    `caps_digest` *"memoises `plan()`"* (07:3280), so a digest that could change between two calls
+    inside one process would make the memo key describe a store state the plan was not built
+    against. The trace callback is the witness: it records every statement the connection runs,
+    and after `__init__` there must be none.
+    """
+    reader = _reader(built)
+    statements: list[str] = []
+    reader._connection.set_trace_callback(statements.append)
+    first = reader.capabilities()
+    second = reader.capabilities()
+    reader._connection.set_trace_callback(None)
+    assert first is second
+    assert statements == []
+
+
+def test_a_change_after_open_does_not_reach_a_reader_that_already_read_its_capabilities(
+    built: Built,
+) -> None:
+    """Read-once means a fresher answer needs a fresh `Reader`, and that is the point."""
+    reader = _reader(built)
+    assert reader.capabilities().fts_state == "ok"
+    built.writer.execute("UPDATE index_state SET v = 'stale' WHERE k = 'fts_state'")
+    built.writer.commit()
+    assert reader.capabilities().fts_state == "ok"
+    assert _reader(built).capabilities().fts_state == "stale"
+
+
+@pytest.mark.parametrize(
+    ("mutate", "field", "expected"),
+    [
+        pytest.param(
+            "UPDATE index_state SET v = 'stale' WHERE k = 'fts_state'",
+            "fts_state",
+            "stale",
+            id="fts_state",
+        ),
+        pytest.param(
+            "UPDATE index_state SET v = '7' WHERE k = 'shard_ord'",
+            "shard_ord",
+            7,
+            id="shard_ord",
+        ),
+        pytest.param(
+            "INSERT INTO index_state(k, v) VALUES('scorer_version', '3')",
+            "scorer_version",
+            3,
+            id="scorer_version",
+        ),
+        pytest.param(
+            "INSERT INTO stat(k, v, computed_ns) VALUES('docs', 12, 1)",
+            "docs",
+            12,
+            id="docs",
+        ),
+    ],
+)
+def test_the_caps_digest_moves_when_any_field_moves(
+    built: Built, mutate: str, field: str, expected: object
+) -> None:
+    """07:3280: `caps_digest` is *"sha256_canonical of every field above"*, so ALL of them.
+
+    Four different fields, drawn from three different sources (`index_state`, `stat` and, in
+    `test_the_caps_digest_moves_when_the_channels_do`, `sqlite_master`), because a digest computed
+    over a subset would still be stable across two calls and would still LOOK right -- it would
+    only memoise `plan()` against a store state that had moved.
+    """
+    before = _reader(built).capabilities()
+    built.writer.execute(mutate)
+    built.writer.commit()
+    after = _reader(built).capabilities()
+    assert getattr(after, field) == expected
+    assert getattr(before, field) != expected
+    assert after.caps_digest != before.caps_digest
+
+
+def test_the_caps_digest_moves_when_the_channels_do(built: Built) -> None:
+    """`channels` is a store fact read off `sqlite_master`, and it is inside the digest."""
+    before = _reader(built).capabilities()
+    assert "lexical" in before.channels
+    built.writer.execute("DROP TABLE block_fts")
+    built.writer.commit()
+    after = _reader(built).capabilities()
+    assert "lexical" not in after.channels
+    assert after.caps_digest != before.caps_digest
+
+
+def test_the_caps_digest_moves_with_the_clock_because_stat_age_is_inside_it(built: Built) -> None:
+    """`stat_age_ns` is a field of `IndexCaps`, so two opens a day apart are two capabilities."""
+    early = rd.SqliteReader(ow.connect_readonly(built.path), now_ns=NOW_NS).capabilities()
+    late = rd.SqliteReader(
+        ow.connect_readonly(built.path), now_ns=NOW_NS + 86_400_000_000_000
+    ).capabilities()
+    assert late.stat_age_ns > early.stat_age_ns
+    assert late.caps_digest != early.caps_digest
+
+
+def test_a_missing_stat_key_reports_an_age_a_staleness_rule_must_call_stale(built: Built) -> None:
+    """07:729-731: *"age > STAT_MAX_AGE_NS **or a key is missing**"* takes the maximum clamp.
+
+    `stat_age_ns` is the only carrier `IndexCaps` gives that rule, so a never-computed key has to
+    come back as an age above the 24 h threshold rather than as a comfortable zero -- which is the
+    reading under which *"a wrong over-fetch factor is a silent recall loss"* (07:733) cannot
+    happen by omission.
+    """
+    stat_max_age_ns = 86_400 * 1_000_000_000
+    caps = _reader(built).capabilities()
+    assert caps.docs == 0
+    assert caps.stat_age_ns > stat_max_age_ns
+
+
+def test_the_five_channel_names_are_reported_as_store_facts_not_as_build_facts(
+    built: Built,
+) -> None:
+    """07:3275: *"which of the five CAN run at all in this store"*.
+
+    `structural` is present although `channel()` refuses it, and that is the ruling: a Channel
+    absent from `channels` reads as `OffReason.NOT_IN_PLAN` (an operator choice) while one present
+    and refused reads as `NOT_BUILT` (a shipped limitation), and 16-roadmap.md:114 requires the
+    second. `semantic` is absent because the `vec` sidecar is not attached, which is the one
+    genuine store fact among the five here.
+    """
+    caps = _reader(built).capabilities()
+    assert caps.channels == frozenset({"identity", "exact", "lexical", "structural"})
+    assert "semantic" not in caps.channels
+    assert caps.vec_ceiling == 0
+    assert caps.vec_backend is None
+    assert caps.federated is False
+
+
+# ---------------------------------------------------------------------------------------------
+# 3. narrow -- the three-way tag, and the mode=ro TEMP table
+# ---------------------------------------------------------------------------------------------
+
+
+def test_the_narrowing_probe_runs_on_a_read_only_connection_and_leaves_no_temp_file(
+    built: Built, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """This is what `temp_store = MEMORY` buys, and it is the pragma's SECOND job (07:186-190).
+
+    *"An `INSERT` into a TEMP table is a write to the temp schema, and with an in-memory temp store
+    there is no temp file to create, journal or leave behind on a read-only filesystem."* Three
+    assertions, and each can fail on its own: the rung really is `mode=ro`, the pragma really is
+    `MEMORY` (2), and the directory SQLite would spill a temp file into is still empty afterwards.
+
+    The third is the weakest of the three and is stated honestly: a small temp table may live in
+    the page cache even with a file-backed temp store, so an empty directory does not by itself
+    prove the pragma. It is here because it is the only DIRECT observation of "no file", and the
+    pragma assertion is what carries the mechanism.
+    """
+    sqlite_tmp = tmp_path / "sqlite-temp"
+    sqlite_tmp.mkdir()
+    for name in ("SQLITE_TMPDIR", "TMPDIR", "TMP", "TEMP"):
+        monkeypatch.setenv(name, str(sqlite_tmp))
+    _seed_one_block(built)
+
+    uri, rung = ow.readonly_target(built.path)
+    assert rung == ow.ReadonlyRung.RO, f"expected the mode=ro rung, got {rung} for {uri}"
+
+    reader = _reader(built)
+    assert reader._connection.execute("PRAGMA temp_store").fetchone()[0] == 2
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, Filters())
+        assert narrowing == ("set", "tmp_narrow", 1)
+        temp_objects = {
+            str(row[0]) for row in reader._connection.execute("SELECT name FROM temp.sqlite_master")
+        }
+        assert "tmp_narrow" in temp_objects
+    assert list(sqlite_tmp.iterdir()) == []
+
+
+def test_all_three_narrowing_kinds_are_reachable(
+    built: Built, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """07:1579-1582's tag is MEASURED: `empty` at zero rows, `set` at or below the cap, `all` above.
+
+    `PREFILTER_MAX` is moved to 1 so the third branch is reachable without 200,001 blocks; the
+    `LIMIT PREFILTER_MAX + 1` probe, the `>=` comparison and the `table` field are the shipped
+    ones. `n` is EXACT in the `set` case (07:1581) and is the capped count in the `all` case, which
+    is the difference the probe *"gives an exact candidate set or PROVES it is too big"* describes.
+    """
+    monkeypatch.setattr(rd, "PREFILTER_MAX", 1)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        assert reader.narrow(state, Filters()) == ("empty", None, 0)
+
+    _seed_one_block(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        assert reader.narrow(state, Filters()) == ("set", "tmp_narrow", 1)
+
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    producer_id = int(conn.execute("SELECT producer_id FROM producer").fetchone()[0])
+    _block(conn, block_id=2, doc_ord=1, producer_id=producer_id, ord_=1)
+    conn.execute("COMMIT")
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        assert reader.narrow(state, Filters()) == ("all", None, 2)
+
+
+def test_an_empty_filter_set_short_circuits_before_any_statement_runs(built: Built) -> None:
+    """`kind="empty"` from an empty `kinds` set is PROVEN, not measured, so nothing is scanned.
+
+    ST5 (07:1637-1640) makes the asymmetry explicit for `deny_methods`: that field is
+    `frozenset[Method]` and NOT `| None` *"because there is no third state to represent"*, which
+    only says what it says if the `| None` fields DO have three -- `None` for no restriction and an
+    empty set for restrict-to-nothing.
+
+    The positive control is the second half: the same call with a real `Filters()` DOES issue
+    statements, so an assertion of "no statements" cannot pass by the trace callback being broken.
+    """
+    _seed_one_block(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        statements: list[str] = []
+        reader._connection.set_trace_callback(statements.append)
+        assert reader.narrow(state, Filters(kinds=frozenset())) == ("empty", None, 0)
+        assert statements == []
+        assert reader.narrow(state, Filters()).kind == "set"
+        reader._connection.set_trace_callback(None)
+    assert any("tmp_narrow" in statement for statement in statements)
+
+
+@pytest.mark.parametrize(
+    "empty_filter",
+    [
+        pytest.param(Filters(doc_keys=frozenset()), id="doc_keys"),
+        pytest.param(Filters(formats=frozenset()), id="formats"),
+        pytest.param(Filters(kinds=frozenset()), id="kinds"),
+        pytest.param(Filters(layers=frozenset()), id="layers"),
+    ],
+)
+def test_every_positively_empty_set_filter_narrows_to_empty(
+    built: Built, empty_filter: Filters
+) -> None:
+    """Four fields, one rule: an empty positive set restricts to nothing and matches nothing."""
+    _seed_one_block(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        assert reader.narrow(state, empty_filter) == ("empty", None, 0)
+
+
+def test_the_filters_that_narrow_actually_narrow(built: Built) -> None:
+    """Each `Filters` field that names a shipped column changes the candidate count.
+
+    07:1564 is the rule this checks -- FILTERS NARROW -- and it is checked per field rather than in
+    aggregate, because a predicate that was built but never bound (an `IN ()` with the wrong
+    parameter order, a range with its bounds swapped) narrows to nothing and looks like a working
+    filter until something asks for a row back.
+    """
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    producer_id = _producer(conn)
+    _doc(conn, 1, uri="file:///corpus/a.pdf", fmt="pdf")
+    _doc(conn, 2, uri="file:///other/b.md", fmt="markdown")
+    _block(conn, block_id=1, doc_ord=1, producer_id=producer_id, page=0, kind="paragraph")
+    _block(conn, block_id=2, doc_ord=1, producer_id=producer_id, page=3, ord_=1, kind="heading")
+    _block(conn, block_id=3, doc_ord=1, producer_id=producer_id, page=0, ord_=2, layer="furniture")
+    _block(conn, block_id=4, doc_ord=1, producer_id=producer_id, page=0, ord_=3, trust=1, quote=1)
+    _block(conn, block_id=5, doc_ord=1, producer_id=producer_id, page=0, ord_=4, method="roundtrip")
+    _block(conn, block_id=6, doc_ord=1, producer_id=producer_id, page=0, ord_=5, restriction_bits=2)
+    _block(conn, block_id=7, doc_ord=2, producer_id=producer_id, page=0)
+    conn.execute("COMMIT")
+
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        # layers defaults to {BODY}, so the furniture block is out from the start.
+        assert reader.narrow(state, Filters()).n == 6
+        assert reader.narrow(state, Filters(layers=frozenset({Layer.FURNITURE}))).n == 1
+        assert reader.narrow(state, Filters(kinds=frozenset({Kind.HEADING}))).n == 1
+        assert reader.narrow(state, Filters(pages=range(3, 4))).n == 1
+        assert reader.narrow(state, Filters(min_trust=Trust.EXTRACTED)).n == 5
+        assert reader.narrow(state, Filters(min_quote=Quote.VERBATIM)).n == 5
+        assert reader.narrow(state, Filters(deny_methods=frozenset({Method.ROUNDTRIP}))).n == 5
+        assert reader.narrow(state, Filters(deny_restriction_bits=2)).n == 5
+        assert reader.narrow(state, Filters(uri_prefix="file:///corpus/")).n == 5
+        assert reader.narrow(state, Filters(formats=frozenset({"markdown"}))).n == 1
+        assert reader.narrow(state, Filters(doc_keys=frozenset({bytes([2]) * 16}))).n == 1
+        assert reader.narrow(state, Filters(gen=2)) == ("empty", None, 0)
+
+
+def test_a_uri_prefix_range_still_contains_a_supplementary_plane_character(
+    built: Built,
+) -> None:
+    """The prefix upper bound is `prefix || U+10FFFF` and the last codepoint is load-bearing.
+
+    A prefix filter is implemented as a half-open range so it can ride an index, and the bound has
+    to be above every string that starts with the prefix. `U+FFFF` is the obvious-looking choice
+    and it is WRONG: it encodes to `EF BF BF`, while any supplementary-plane character encodes to a
+    four-byte sequence starting `F0`-`F4`, which sorts ABOVE it under SQLite's BINARY collation. So
+    a document whose URI carries an emoji or a Gothic letter after the prefix would fall outside
+    its own scope -- silently, as a smaller result set. This test is the only thing in the suite
+    that can tell the two sentinels apart, and it exists because a mutation swapping them survived
+    every other test here.
+    """
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    producer_id = _producer(conn)
+    _doc(conn, 1, uri="file:///corpus/plain.pdf")
+    _doc(conn, 2, uri="file:///corpus/𐍈-gothic.pdf")
+    _block(conn, block_id=1, doc_ord=1, producer_id=producer_id)
+    _block(conn, block_id=2, doc_ord=2, producer_id=producer_id)
+    conn.execute("COMMIT")
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        assert reader.narrow(state, Filters(uri_prefix="file:///corpus/")).n == 2
+        assert reader.narrow(state, Filters(uri_prefix="file:///corpu")).n == 2
+        assert reader.narrow(state, Filters(uri_prefix="file:///other/")).n == 0
+
+
+def test_a_sec_path_prefix_is_a_range_scan_that_survives_the_four_digit_carry(
+    built: Built,
+) -> None:
+    """`Filters.sec_path_prefix` joins `block_sec` and scans a range (0003_index.sql:283-291).
+
+    The DDL prints the alternative upper bound -- *"the path with its last component
+    incremented"* -- and that form loses rows at the carry it warns about two lines later:
+    incrementing `/0001/9999` gives `/0001/10000`, which sorts BELOW `/0001/9999/0001` because
+    `'1' < '9'`, so everything under the 9,999th sibling silently leaves the result. The sentinel
+    bound has no carry, and the second half of this test is what tells the two apart.
+    """
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    producer_id = _producer(conn)
+    _doc(conn, 1, uri="file:///corpus/a.pdf")
+    paths = {
+        1: "/0001/0002",
+        2: "/0001/0002/0001",
+        3: "/0001/0003",
+        4: "/0001/9999",
+        5: "/0001/9999/0001",
+    }
+    for block_id, sec_path in paths.items():
+        _block(conn, block_id=block_id, doc_ord=1, producer_id=producer_id, ord_=block_id)
+        conn.execute(
+            "INSERT INTO block_sec(block_id, sec_id, sec_depth, sec_path) VALUES(?, ?, ?, ?)",
+            (block_id, block_id, sec_path.count("/"), sec_path),
+        )
+    conn.execute("COMMIT")
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        assert reader.narrow(state, Filters(sec_path_prefix="/0001/0002")).n == 2
+        assert reader.narrow(state, Filters(sec_path_prefix="/0001/0003")).n == 1
+        assert reader.narrow(state, Filters(sec_path_prefix="/0001/9999")).n == 2
+        assert reader.narrow(state, Filters(sec_path_prefix="/0002")).n == 0
+
+
+def test_an_empty_deny_methods_is_no_restriction_and_not_a_restriction_to_nothing(
+    built: Built,
+) -> None:
+    """ST5 in the SQL: 07:1590 says the `NOT IN (...)` clause is *"OMITTED ENTIRELY"* when empty.
+
+    `Filters()` and `Filters(deny_methods=frozenset())` are *"the same query"* (07:1637-1640), and
+    the failure the rule exists to prevent is the opposite reading, under which an unset deny list
+    would exclude every method and return nothing.
+    """
+    _seed_one_block(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        assert reader.narrow(state, Filters()) == reader.narrow(
+            state, Filters(deny_methods=frozenset())
+        )
+        assert reader.narrow(state, Filters(deny_methods=frozenset())).n == 1
+
+
+def test_a_tombstoned_or_superseded_block_is_not_a_candidate(built: Built) -> None:
+    """`b.state = 0 AND b.gen = d.gen` is the head-generation projection (0001_init.sql:328-330)."""
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    producer_id = _producer(conn)
+    _doc(conn, 1, uri="file:///corpus/a.pdf", gen=2)
+    _block(conn, block_id=1, doc_ord=1, producer_id=producer_id, gen=2)
+    _block(conn, block_id=2, doc_ord=1, producer_id=producer_id, gen=1, ord_=1)
+    _block(conn, block_id=3, doc_ord=1, producer_id=producer_id, gen=2, ord_=2, state=1)
+    conn.execute("COMMIT")
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        assert reader.narrow(state, Filters()) == ("set", "tmp_narrow", 1)
+        assert reader.narrow(state, Filters(gen=1)).n == 1
+
+
+def test_doc_keys_above_the_cap_become_a_second_temp_table_and_not_an_in_list(
+    built: Built, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """07:1608-1612: above `MAX_FILTER_DOC_KEYS` the keys go into `tmp_docs`, joined in.
+
+    *"SQLite's parameter and expression-tree limits make a 100k-element `IN` list a parse-time
+    failure rather than a slow query."* The ceiling changes the PLAN and never refuses the query,
+    so the same filter must return the same rows on both sides of it -- which is what makes the
+    cap safe to cross.
+    """
+    _seed_one_block(built)
+    reader = _reader(built)
+    keys = frozenset({bytes([1]) * 16, *(bytes([2, i // 256, i % 256]) * 5 for i in range(4))})
+    with reader.snapshot() as state:
+        below = reader.narrow(state, Filters(doc_keys=keys))
+        assert below == ("set", "tmp_narrow", 1)
+        temp_before = {
+            str(row[0]) for row in reader._connection.execute("SELECT name FROM temp.sqlite_master")
+        }
+        assert "tmp_docs" not in temp_before
+
+        monkeypatch.setattr(rd, "MAX_FILTER_DOC_KEYS", 2)
+        above = reader.narrow(state, Filters(doc_keys=keys))
+        temp_after = {
+            str(row[0]) for row in reader._connection.execute("SELECT name FROM temp.sqlite_master")
+        }
+    assert above == below
+    assert "tmp_docs" in temp_after
+
+
+def test_the_narrowing_probe_runs_twice_on_one_connection(built: Built) -> None:
+    """07:1601-1603: `IF NOT EXISTS` plus `DELETE FROM`, because a read connection is REUSED.
+
+    *"A bare `CREATE TEMP TABLE` fails on the second query on that connection."* The second half is
+    the `DELETE`: without it the second probe would union with the first, so the two narrowings
+    below must not accumulate.
+    """
+    _seed_one_block(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        assert reader.narrow(state, Filters()).n == 1
+        assert reader.narrow(state, Filters()).n == 1
+    with reader.snapshot() as state:
+        assert reader.narrow(state, Filters()).n == 1
+
+
+@pytest.mark.parametrize(
+    ("bad", "message"),
+    [
+        pytest.param(Filters(formats=frozenset({"owjob", "pdf"})), "owjob", id="owjob"),
+        pytest.param(Filters(pages=range(0, 10, 2)), "step 2", id="strided_pages"),
+        pytest.param(Filters(lang="en"), "Filters.lang", id="lang"),
+    ],
+)
+def test_a_filter_that_cannot_be_honoured_is_a_usage_error_and_never_a_silent_drop(
+    built: Built, bad: Filters, message: str
+) -> None:
+    """Three refusals, and each one refuses because the alternative returns a confident wrong set.
+
+    `owjob` is 07:754's *"usage error naming `NO_JOB_DOCS`, not an empty result"*; a strided
+    `pages` range *"would silently become a full scan"* (07:1613-1615); and `Filters.lang` names no
+    shipped column at all (reader.py's DEFECT 1), so ignoring it would widen the query to the whole
+    corpus. All three raise BEFORE any store read, which is what `UsageError` means (errors.py).
+    """
+    reader = _reader(built)
+    with reader.snapshot() as state, pytest.raises(UsageError, match=message):
+        reader.narrow(state, bad)
+
+
+def test_the_enum_codes_come_from_this_store_and_not_from_this_builds_python_enum(
+    built: Built,
+) -> None:
+    """07:1655-1657: the codes are *"resolved on the read connection"*, through `enum_val`.
+
+    Reading `Kind.HEADING`'s ordinal off the Python enum instead would answer a query against an
+    older store with this build's numbering. The test moves the store's own seed and asserts the
+    narrowing follows the STORE: a block stored under the store's `heading` ord is still found by
+    `kinds={Kind.HEADING}` after the ord changes, because both sides read the same table.
+    """
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    producer_id = _producer(conn)
+    _doc(conn, 1, uri="file:///corpus/a.pdf")
+    conn.execute("UPDATE enum_val SET ord = 99 WHERE domain = 'kind' AND name = 'heading'")
+    _block(conn, block_id=1, doc_ord=1, producer_id=producer_id, kind="heading")
+    conn.execute("COMMIT")
+    assert int(conn.execute("SELECT kind FROM block WHERE block_id = 1").fetchone()[0]) == 99
+
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        assert reader.narrow(state, Filters(kinds=frozenset({Kind.HEADING}))).n == 1
+        assert reader.narrow(state, Filters(kinds=frozenset({Kind.PARAGRAPH}))).n == 0
+
+
+def test_a_kind_this_store_never_seeded_is_refused_rather_than_matched_against_nothing(
+    built: Built,
+) -> None:
+    """A member missing from `enum_val` means the seed predates this build, not that nothing
+    matches."""
+    built.writer.execute("DELETE FROM enum_val WHERE domain = 'kind' AND name = 'formula'")
+    built.writer.commit()
+    reader = _reader(built)
+    with (
+        reader.snapshot() as state,
+        pytest.raises(StoreError, match="enum_val has no kind member"),
+    ):
+        reader.narrow(state, Filters(kinds=frozenset({Kind.FORMULA})))
+
+
+# ---------------------------------------------------------------------------------------------
+# 4. channel -- what P2 runs, and how legibly it refuses the rest
+# ---------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("name", ["identity", "lexical", "structural", "semantic"])
+def test_a_channel_this_build_has_not_shipped_reports_off_not_built(
+    built: Built, name: str
+) -> None:
+    """16-roadmap.md:114's exact pair: `ChannelStatus.OFF` with `reason = "not_built"`.
+
+    The reason string is asserted rather than the status alone, because P6 inherits this contract:
+    `OffReason` is closed at four members *"because `ceiling()` branches on it"* (07:2242-2245), so
+    a free-form reason here would change a published `confidence` number with no error anywhere.
+    `off` contributes nothing to the ceiling (07:1218-1222), which is why it is not `empty`.
+    """
+    _seed_one_block(built)
+    reader = _reader(built)
+    spec = ChannelSpec(name=name, budget_ms=50, limit=20, overfetch=1, weight=None, params={})
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, Filters())
+        outcome = reader.channel(state, spec, narrowing)
+    assert outcome.status == "off"
+    assert outcome.reason == "not_built"
+    assert outcome.ranked == ()
+
+
+def test_a_sixth_channel_name_is_a_usage_error_and_not_a_silent_off(built: Built) -> None:
+    """`ChannelSpec.name` is *"a member of `CHANNELS`"* (07:3295) and 07:1196 closes the five."""
+    reader = _reader(built)
+    spec = ChannelSpec(name="vibes", budget_ms=50, limit=20, overfetch=1, weight=None, params={})
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, Filters())
+        with pytest.raises(UsageError, match="not one of the five Channels"):
+            reader.channel(state, spec, narrowing)
+
+
+def test_an_empty_narrowing_stops_every_channel_including_the_one_that_runs(built: Built) -> None:
+    """The tagged type doing its job: an empty narrowed set has nothing inside it to rank.
+
+    This is jcodemunch's failure in the other direction (07:1666-1680): there, an empty candidate
+    set SKIPPED the filter and let the whole repository through, *"labelled 'Confident matches
+    returned'"*. Here the empty set stops the Channel, and the reason says which.
+    """
+    _seed_one_block(built)
+    reader = _reader(built)
+    spec = ChannelSpec(
+        name="exact",
+        budget_ms=25,
+        limit=20,
+        overfetch=1,
+        weight=None,
+        params={},
+        bind=ChannelInput(refs=(("fig-3", "figure"),)),
+    )
+    with reader.snapshot() as state:
+        empty = reader.narrow(state, Filters(kinds=frozenset()))
+        outcome = reader.channel(state, spec, empty)
+    assert outcome.status == "empty"
+    assert "narrowed set is empty" in outcome.reason
+
+
+def _seed_refs(built: Built) -> None:
+    """A corpus with one `anchor` definition and two `ref_site` occurrences of the same name.
+
+    `anchor.run_id` is `NOT NULL REFERENCES derive_run(run_id)`, so the definition side needs a
+    `derive_pass` and a `derive_run` row as well -- a corpus pass, which is what
+    `derive_run.segment_id IS NULL` means (0002_graph.sql:174).
+    """
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    producer_id = _producer(conn)
+    _doc(conn, 1, uri="file:///corpus/a.pdf")
+    _doc(conn, 2, uri="file:///corpus/b.pdf")
+    # The ids INVERT reading order on purpose: block 9 is the definition and blocks 4 and 3 are
+    # the two occurrences, so `ORDER BY tier, block_id` (07:1281 as printed) yields (9, 3, 4) and
+    # 07:1271-1272's `(doc_ord, page, ord)` yields (9, 4, 3). Without the inversion the two
+    # orderings agree and the assertion cannot tell them apart.
+    _block(conn, block_id=9, doc_ord=1, producer_id=producer_id, page=9, ord_=1)
+    _block(conn, block_id=4, doc_ord=1, producer_id=producer_id, page=0, ord_=0)
+    _block(conn, block_id=3, doc_ord=2, producer_id=producer_id, page=0, ord_=0)
+    conn.execute(
+        "INSERT INTO derive_pass(pass_id, port, cost_class, cost_rank, lanes, granularity, "
+        "                        card_sha256, schema_version) "
+        "VALUES('op.resolve', 'op', 'free', 0, '[\"anchor\"]', 'corpus', 'x', 1)"
+    )
+    conn.execute(
+        "INSERT INTO derive_run(run_id, segment_id, pass_id, at_gen, producer_id, method, "
+        "                       origin_operator, origin_driver, driver_schema_v, cost_class, "
+        "                       input_digest, cache_key, status) "
+        "VALUES(1, NULL, 'op.resolve', 1, ?, ?, 'op.resolve', 'core', 1, 'free', ?, 'k', 'ok')",
+        (producer_id, _code(conn, "method", "heuristic"), DIGEST),
+    )
+    conn.execute(
+        "INSERT INTO anchor(doc_ord, gen, name_norm, akind, surface, block_id, scope, run_id) "
+        "VALUES(1, 1, 'fig3', 'figure', 'Figure 3', 9, 'corpus', 1)"
+    )
+    for block_id, doc_ord in ((4, 1), (3, 2)):
+        conn.execute(
+            "INSERT INTO ref_site(name_norm, akind, doc_ord, block_id, ts_a, ts_b, surface, "
+            "                     scope, origin_operator) "
+            "VALUES('fig3', 'figure', ?, ?, 4, 12, 'Figure 3', 'corpus', 'op.resolve')",
+            (doc_ord, block_id),
+        )
+    conn.execute("COMMIT")
+
+
+def _exact_spec(**bind: object) -> ChannelSpec:
+    return ChannelSpec(
+        name="exact",
+        budget_ms=25,
+        limit=20,
+        overfetch=1,
+        weight=None,
+        params={},
+        bind=ChannelInput(**bind),  # type: ignore[arg-type]
+    )
+
+
+def test_the_exact_channel_ranks_definitions_before_occurrences(built: Built) -> None:
+    """07:1271-1272's order, which is why reader.py extends 07:1281's printed `ORDER BY`.
+
+    The `anchor` row (block 9, the definition) must outrank both `ref_site` occurrences, and the
+    two occurrences must then be in READING order `(doc_ord, page, ord)` -- block 4 in document 1
+    before block 3 in document 2. The fixture inverts the ids against reading order for exactly
+    this assertion: 07:1281's printed `ORDER BY tier, block_id` produces `(9, 3, 4)` here and
+    07:1271-1272's prose produces `(9, 4, 3)`, so the two readings are distinguishable and DEFECT
+    5's ruling is what the test pins.
+    """
+    _seed_refs(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, Filters())
+        outcome = reader.channel(state, _exact_spec(refs=(("fig3", "figure"),)), narrowing)
+    assert outcome.status == "ok"
+    assert outcome.ranked == (9, 4, 3)
+
+
+def test_the_exact_channel_carries_the_ref_site_span_and_invents_none_for_a_definition(
+    built: Built,
+) -> None:
+    """07:2287-2290: a span comes from *"a `ref_site` `(ts_a, ts_b)` pair"*, and is never
+    invented."""
+    _seed_refs(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, Filters())
+        outcome = reader.channel(state, _exact_spec(refs=(("fig3", "figure"),)), narrowing)
+    assert set(outcome.spans) == {4, 3}
+    assert outcome.spans[4].a == 4
+    assert outcome.spans[4].b == 12
+    assert 9 not in outcome.spans
+
+
+def test_the_exact_channel_scores_only_within_the_narrowed_set(built: Built) -> None:
+    """*"FILTERS NARROW. CHANNELS SCORE WITHIN THE NARROWED SET"* (07:1564).
+
+    Narrowing to document 1 must drop the occurrence in document 2, and the assertion is on the
+    RANKED IDS rather than on the count, because a Channel that ignored `tmp_narrow` would return
+    the same three ids and only a per-id check can see it.
+    """
+    _seed_refs(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, Filters(doc_keys=frozenset({bytes([1]) * 16})))
+        outcome = reader.channel(state, _exact_spec(refs=(("fig3", "figure"),)), narrowing)
+    assert outcome.ranked == (9, 4)
+
+
+def test_the_exact_channel_honours_the_channel_local_limit(built: Built) -> None:
+    """`ChannelSpec.limit` is *"channel-local top-N BEFORE fusion"* (07:3297).
+
+    `truncated_at_limit` is what tells the Verdict the shortfall was the plan's and not the
+    corpus's, which is gate 12's distinction (07:2192) applied one level down.
+    """
+    _seed_refs(built)
+    reader = _reader(built)
+    spec = ChannelSpec(
+        name="exact",
+        budget_ms=25,
+        limit=2,
+        overfetch=1,
+        weight=None,
+        params={},
+        bind=ChannelInput(refs=(("fig3", "figure"),)),
+    )
+    with reader.snapshot() as state:
+        outcome = reader.channel(state, spec, reader.narrow(state, Filters()))
+    assert outcome.ranked == (9, 4)
+    assert outcome.truncated_at_limit is True
+    assert set(outcome.spans) == {4}
+
+
+def test_a_document_scoped_anchor_never_resolves_another_documents_reference(
+    built: Built,
+) -> None:
+    """0003_index.sql:250-252's second predicate, on the Channel path rather than in the view.
+
+    *"A `scope='document'` anchor in document A resolves a `ref_site` in document B: 'Figure 3' in
+    one contract binding 'Figure 3' in another. That is the single most common false merge in a
+    document corpus."* With `scope_doc` unset, only a corpus-scoped anchor may be a definition.
+    """
+    _seed_refs(built)
+    built.writer.execute("UPDATE anchor SET scope = 'document'")
+    built.writer.commit()
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, Filters())
+        unscoped = reader.channel(state, _exact_spec(refs=(("fig3", "figure"),)), narrowing)
+        scoped = reader.channel(
+            state, _exact_spec(refs=(("fig3", "figure"),), scope_doc=1), narrowing
+        )
+    assert unscoped.ranked == (4, 3)
+    assert scoped.ranked == (9, 4, 3)
+
+
+def test_the_exact_channel_is_empty_and_not_off_when_nothing_matches(built: Built) -> None:
+    """`empty` means the statement RAN, which is a different fact from `off` and a different
+    ceiling.
+
+    07:1218-1219: *"`ok`/`empty` contribute weight to the ceiling. `off` is an operator choice."*
+    A Channel that looked and found nothing has done its job; reporting `off` would exempt it from
+    the arithmetic it earned.
+    """
+    _seed_refs(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, Filters())
+        no_refs = reader.channel(state, _exact_spec(), narrowing)
+        no_match = reader.channel(state, _exact_spec(refs=(("nope", "figure"),)), narrowing)
+    assert no_refs.status == "empty"
+    assert "no reference-shaped tokens" in no_refs.reason
+    assert no_match.status == "empty"
+    assert "no anchor or ref_site row" in no_match.reason
+
+
+def test_a_channel_outcome_that_is_not_ok_must_carry_a_reason(built: Built) -> None:
+    """07:1232: `reason` is REQUIRED when status is not OK, and the shape enforces it."""
+    del built
+    with pytest.raises(ValueError, match="REQUIRED when status is not OK"):
+        rd.ChannelOutcome(name="exact", status="off")
+    with pytest.raises(ValueError, match="duplicate-free"):
+        rd.ChannelOutcome(name="exact", status="ok", ranked=(1, 1))
+
+
+# ---------------------------------------------------------------------------------------------
+# 5. hydrate
+# ---------------------------------------------------------------------------------------------
+
+
+def test_hydrate_returns_the_columns_the_plan_selects_with_the_enums_decoded(
+    built: Built,
+) -> None:
+    """07:2312-2321, including the two columns that are not `Hit` fields.
+
+    `method` and `chars` are *"selected EVEN WHEN `PackSpec.hydrate_text` is `False`"* (07:2329)
+    because `Verdict.generated_share` and `RenderedBlock.method` read them, and `d.achieved` rides
+    along so `byte_exact` is not an N+1 (07:2322).
+    """
+    _seed_one_block(built, text="hello world")
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        rows = reader.hydrate(state, [1])
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.block_id == 1
+    assert row.cite == "d1#1"
+    assert row.addr == "p0/0"
+    assert row.text == "hello world"
+    assert row.chars == 11
+    assert row.kind is Kind.PARAGRAPH
+    assert row.layer is Layer.BODY
+    assert row.method is Method.NATIVE
+    assert row.trust is Trust.EXTRACTED
+    assert row.quote is Quote.VERBATIM
+    assert row.uri == "file:///corpus/a.pdf"
+    assert row.achieved == "{}"
+    assert row.segment_id is None
+    assert rows.dropped == 0
+
+
+def test_hydrate_returns_rows_in_the_callers_order_and_counts_what_it_could_not_find(
+    built: Built,
+) -> None:
+    """The ids are a fused RANKING, so `block_id` order would silently replace it.
+
+    07:2323-2324: a row failing the `gen`/`state` predicate is *"dropped and counted"*, and the
+    count is what gate 3 reads as corroboration that the store advanced mid-query. Here the drops
+    are a tombstone and an id that never existed -- one fact from the caller's side.
+    """
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    producer_id = _producer(conn)
+    _doc(conn, 1, uri="file:///corpus/a.pdf")
+    _block(conn, block_id=1, doc_ord=1, producer_id=producer_id, ord_=0)
+    _block(conn, block_id=2, doc_ord=1, producer_id=producer_id, ord_=1)
+    _block(conn, block_id=3, doc_ord=1, producer_id=producer_id, ord_=2, state=1)
+    conn.execute("COMMIT")
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        rows = reader.hydrate(state, [2, 1, 3, 999, 2])
+    assert [row.block_id for row in rows] == [2, 1]
+    assert rows.dropped == 2
+    assert isinstance(rows, tuple)
+
+
+def test_hydrate_batches_at_512_and_returns_every_row(built: Built) -> None:
+    """07:2310: *"one statement per batch of up to 512 ids"*, and the batching must not lose rows.
+
+    600 ids is two batches, and the second one is what a `range(0, n, 512)` off-by-one drops.
+    """
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    producer_id = _producer(conn)
+    _doc(conn, 1, uri="file:///corpus/a.pdf")
+    for block_id in range(1, 601):
+        _block(conn, block_id=block_id, doc_ord=1, producer_id=producer_id, ord_=block_id)
+    conn.execute("COMMIT")
+    reader = _reader(built)
+    wanted = list(range(600, 0, -1))
+    with reader.snapshot() as state:
+        rows = reader.hydrate(state, wanted)
+    assert [row.block_id for row in rows] == wanted
+    assert rows.dropped == 0
+
+
+def test_hydration_inside_one_snapshot_is_generation_consistent(built: Built) -> None:
+    """ST2 (07:2758-2763) asserted in BOTH directions, which is what makes either half evidence.
+
+    A re-index committed between two hydrations of one snapshot must be invisible to that snapshot
+    AND visible to the next one. Asserting only the first half passes just as well against a reader
+    that never saw the commit at all, or one pointed at the wrong file --
+    `test_store_integration.py`'s own rule, applied here.
+
+    07:2334-2340 is why this matters for `text` specifically: reading it after the transaction
+    closes would let *"a committed re-index hand it text from a different generation than the one
+    that was ranked and scored"*, with gate 3 detecting the generation change only after the
+    evidence was already wrong.
+    """
+    _seed_one_block(built, text="original")
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        assert reader.hydrate(state, [1])[0].text == "original"
+        built.writer.execute("BEGIN IMMEDIATE")
+        built.writer.execute("UPDATE block SET text = 'reindexed' WHERE block_id = 1")
+        built.writer.execute("UPDATE index_state SET v = '1' WHERE k = 'generation'")
+        built.writer.execute("COMMIT")
+        assert reader.hydrate(state, [1])[0].text == "original"
+        assert state.generation == 0
+    with reader.snapshot() as after:
+        assert reader.hydrate(after, [1])[0].text == "reindexed"
+        assert after.generation == 1
+
+
+def test_a_generation_advance_mid_snapshot_is_invisible_to_the_narrowing_too(
+    built: Built,
+) -> None:
+    """The same isolation, one method over: a Channel and its narrowing share one read view."""
+    _seed_one_block(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        assert reader.narrow(state, Filters()).n == 1
+        conn = built.writer
+        conn.execute("BEGIN IMMEDIATE")
+        producer_id = int(conn.execute("SELECT producer_id FROM producer").fetchone()[0])
+        _block(conn, block_id=2, doc_ord=1, producer_id=producer_id, ord_=1)
+        conn.execute("COMMIT")
+        assert reader.narrow(state, Filters()).n == 1
+    with reader.snapshot() as after:
+        assert reader.narrow(after, Filters()).n == 2
+
+
+# ---------------------------------------------------------------------------------------------
+# 6. coverage
+# ---------------------------------------------------------------------------------------------
+
+
+def test_no_ingest_scope_row_is_coverage_unknown_and_never_a_clean_bill_of_health(
+    built: Built,
+) -> None:
+    """07:695 and 07:3335: *"AN ABSENT ROW MEANS 'COVERAGE UNKNOWN', NEVER 'NOTHING WAS EXCLUDED'."*
+
+    `scope_rows == 0` is gate 4's input (07:2184), and `complete` must be `False` alongside it: a
+    vacuous `all()` over zero rows is `True`, and that is precisely the confident zero the field
+    exists to prevent.
+    """
+    _seed_one_block(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        coverage = reader.coverage(state, Filters())
+    assert coverage.scope_rows == 0
+    assert coverage.complete is False
+    assert coverage.discovered == 0
+    assert coverage.indexed == 0
+    assert coverage.gaps == ()
+
+
+def _scope(
+    built: Built,
+    scope_id: str,
+    *,
+    discovered: int,
+    indexed: int,
+    skipped: int = 0,
+    complete: int = 1,
+) -> None:
+    built.writer.execute(
+        "INSERT INTO ingest_scope(scope_id, discovered, indexed, skipped, scanned_at_ns, complete) "
+        "VALUES(?, ?, ?, ?, ?, ?)",
+        (scope_id, discovered, indexed, skipped, NOW_NS, complete),
+    )
+    built.writer.commit()
+
+
+def test_coverage_sums_the_scope_rows_and_counts_document_status_beside_them(
+    built: Built,
+) -> None:
+    """The counts gate 4 reads, from the two tables that hold them.
+
+    `discovered`, `indexed`, `skipped` and `complete` are `ingest_scope` columns of those names
+    (07:686-691); `partial` and `failed` have no `ingest_scope` column and come from `doc.status`,
+    which is reader.py's DEFECT 4 and the ruling it records.
+    """
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    producer_id = _producer(conn)
+    _doc(conn, 1, uri="file:///corpus/a.pdf", status="ok")
+    _doc(conn, 2, uri="file:///corpus/b.pdf", status="partial")
+    _doc(conn, 3, uri="file:///corpus/c.pdf", status="failed")
+    _block(conn, block_id=1, doc_ord=1, producer_id=producer_id)
+    conn.execute("COMMIT")
+    _scope(built, "file:///corpus/", discovered=5, indexed=3, skipped=1, complete=0)
+
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        coverage = reader.coverage(state, Filters())
+    assert coverage.scope_rows == 1
+    assert (coverage.discovered, coverage.indexed, coverage.skipped) == (5, 3, 1)
+    assert coverage.complete is False
+    assert (coverage.partial, coverage.failed) == (1, 1)
+
+
+def test_a_query_scoped_to_documents_reads_only_the_scope_rows_containing_them(
+    built: Built,
+) -> None:
+    """07:706-708, and the containment test is 07:704's `doc.uri GLOB scope_id || '*'`.
+
+    *"A query whose `Filters` name no document scope reads EVERY scope row; a query scoped to
+    documents reads the scope rows containing them."* There is no `doc.scope_id` column and there
+    must not be one, *"because a document can be reached by two scans"* (07:700-703).
+    """
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    _doc(conn, 1, uri="file:///alpha/a.pdf")
+    _doc(conn, 2, uri="file:///beta/b.pdf")
+    conn.execute("COMMIT")
+    _scope(built, "file:///alpha/", discovered=1, indexed=1)
+    _scope(built, "file:///beta/", discovered=9, indexed=2, complete=0)
+
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        everything = reader.coverage(state, Filters())
+        alpha = reader.coverage(state, Filters(uri_prefix="file:///alpha/"))
+        beta = reader.coverage(state, Filters(doc_keys=frozenset({bytes([2]) * 16})))
+    assert everything.scope_rows == 2
+    assert everything.discovered == 10
+    assert alpha.scope_rows == 1
+    assert (alpha.discovered, alpha.indexed, alpha.complete) == (1, 1, True)
+    assert beta.scope_rows == 1
+    assert (beta.discovered, beta.indexed, beta.complete) == (9, 2, False)
+
+
+def test_a_job_document_never_pulls_a_scope_row_into_view_or_a_status_into_the_counts(
+    built: Built,
+) -> None:
+    """07:757 lists absence gate 4's scope roll-up among `NO_JOB_DOCS`'s exhaustive sites.
+
+    *"Vacuous in practice -- `ow-job://` matches no enumerated scope prefix -- and the predicate is
+    still written, because 'vacuous today' is how a silent miscount arrives."* The fixture makes it
+    non-vacuous by giving the job document a URI under the scanned scope, which is the shape the
+    predicate defends against.
+    """
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    _doc(conn, 1, uri="file:///corpus/a.pdf", status="ok")
+    _doc(conn, 2, uri="file:///corpus/job", status="failed", fmt="owjob")
+    conn.execute("COMMIT")
+    _scope(built, "file:///corpus/", discovered=1, indexed=1)
+
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        coverage = reader.coverage(state, Filters(uri_prefix="file:///corpus/"))
+    assert coverage.scope_rows == 1
+    assert coverage.failed == 0
+
+
+def test_coverage_counts_the_queue_and_the_unit_roster(built: Built) -> None:
+    """Gates 5 and 8 read these, and P2 creates both tables and leaves them empty.
+
+    07:2185 fixes `pending_work` as `work.status IN ('pending','claimed')`; 07:2229 gives gate 8's
+    case -- *"a unit whose path is removed after `ingest_scope` was written"* -- which is
+    `unit.state = 'failed'`. `stale_units` is `unit.stale_since IS NOT NULL`, the column the
+    `unit_stale` partial index exists to serve.
+    """
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    for uri, state, stale in (
+        ("file:///corpus/a.pdf", "planned", None),
+        ("file:///corpus/b.pdf", "failed", None),
+        ("file:///other/c.pdf", "discovered", NOW_NS),
+    ):
+        conn.execute(
+            "INSERT INTO unit(unit_uri, state, last_seen_gen, trust_class, stale_since) "
+            "VALUES(?, ?, 1, 'internal', ?)",
+            (uri, state, stale),
+        )
+    for row_id, uri, operator, status in (
+        (1, "file:///corpus/a.pdf", "op.identify", "pending"),
+        (2, "file:///corpus/a.pdf", "op.converge", "done"),
+        (3, "file:///other/c.pdf", "op.identify", "claimed"),
+    ):
+        conn.execute(
+            "INSERT INTO work(id, unit_uri, operator, op_version, cache_key, cost_class, status) "
+            "VALUES(?, ?, ?, 1, 'k', 'free', ?)",
+            (row_id, uri, operator, status),
+        )
+    conn.execute("COMMIT")
+
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        everything = reader.coverage(state, Filters())
+        corpus = reader.coverage(state, Filters(uri_prefix="file:///corpus/"))
+    assert (everything.pending_work, everything.stale_units, everything.unreadable_units) == (
+        2,
+        1,
+        1,
+    )
+    assert (corpus.pending_work, corpus.stale_units, corpus.unreadable_units) == (1, 0, 1)
+
+
+# ---------------------------------------------------------------------------------------------
+# The Snapshot guard, across every method that takes one
+# ---------------------------------------------------------------------------------------------
+
+
+def _every_snapshot_method(reader: rd.SqliteReader, state: object) -> list[tuple[str, object]]:
+    spec = ChannelSpec(name="exact", budget_ms=25, limit=20, overfetch=1, weight=None, params={})
+    narrowing = rd.Narrowing(kind="all", table=None, n=0)
+    return [
+        ("narrow", lambda: reader.narrow(state, Filters())),  # type: ignore[arg-type]
+        ("channel", lambda: reader.channel(state, spec, narrowing)),  # type: ignore[arg-type]
+        ("hydrate", lambda: reader.hydrate(state, [1])),  # type: ignore[arg-type]
+        ("coverage", lambda: reader.coverage(state, Filters())),  # type: ignore[arg-type]
+    ]
+
+
+def test_every_method_refuses_a_snapshot_issued_by_another_store(
+    built: Built, tmp_path: Path
+) -> None:
+    """A token from another store must RAISE rather than silently read the wrong file.
+
+    `Snapshot.token` is typed `object` so a Postgres backend can construct one (07:72-78), which
+    means the type system cannot stop this: threading store A's `Snapshot` through store B's
+    `Reader` would answer B's data under A's `generation` and `corpus_id`, and every consistency
+    fact carried on the response (07:2896-2905) would describe the wrong store.
+    """
+    other_path = tmp_path / "other.owstore"
+    other_writer = ow.connect(other_path)
+    try:
+        migrate.apply_pending(other_writer, now_ns=NOW_NS)
+        other = rd.SqliteReader(ow.connect_readonly(other_path), now_ns=NOW_NS)
+        mine = _reader(built)
+        with other.snapshot() as foreign:
+            for name, call in _every_snapshot_method(mine, foreign):
+                with pytest.raises(StoreError, match="issued by another Reader"):
+                    call()  # type: ignore[operator]
+                assert name
+    finally:
+        other_writer.close()
+
+
+def test_every_method_refuses_a_snapshot_that_has_closed(built: Built) -> None:
+    """A `Snapshot` is a Python object that outlives its transaction; a read through it must not."""
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        pass
+    for name, call in _every_snapshot_method(reader, state):
+        with pytest.raises(StoreError, match="this Snapshot has closed"):
+            call()  # type: ignore[operator]
+        assert name
+
+
+def test_every_method_refuses_something_that_is_not_a_snapshot_at_all(built: Built) -> None:
+    """`capabilities()` is the one method that takes none (07:3272); the other five require one."""
+    reader = _reader(built)
+    for name, call in _every_snapshot_method(reader, object()):
+        with pytest.raises(StoreError, match="is not a Snapshot"):
+            call()  # type: ignore[operator]
+        assert name

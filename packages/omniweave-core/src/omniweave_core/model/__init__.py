@@ -32,8 +32,9 @@ today.
   that row from PENDING to LIVE, and a LIVE row is byte-diffed against `build_schema`'s output --
   which cannot exist. `build_schema` reflects DATACLASSES and refuses anything else, and 03:2588
   prints `class Doc:` undecorated, unlike every record in section 2.8; `_object_schema` then calls
-  `typing.get_type_hints()`, and `Doc.rec`'s annotation names `DocRecord`, which 03 section 2.8
-  homes in `block.py`'s cluster and which has not landed. Both gates fail, and they would fail for
+  `typing.get_type_hints()`, and `Doc.rec`'s annotation names `DocRecord`, which has since landed
+  in `records.py` below -- so that half of the obstruction is gone and the undecorated-`Doc` half
+  is not. The gate still fails, and it would fail for
   a reason deeper than a missing import: a handle whose whole job is to NOT materialise page
   renders, asset bytes, retained parts, the FTS index or a `SpanMap` (03:2617-2619) has no wire
   form for a second-language reader to read. `document-v1.json`'s own locus in that inventory row
@@ -72,12 +73,15 @@ Landed so far, one plan section per module and no name in two of them (INV-21).
   `serialize.py`'s own `_cover_map` predates it and should now delegate here; reported.
 * `doc.py` -- 03 section 13.5: `Doc`, the lazy read handle, and `DocReadSide`, the structural
   Protocol it reads through. Not re-exported below -- see the paragraph above.
+* `records.py` -- 03 sections 2.8 and 9: `DocKey` (03:162's fourth identity, homed with its only
+  consumer), `Producer`, `DocRecord`, `PageRecord`, `AssetDraft`, `AssetRef`, `Rel` and `Diag`,
+  each field mapped to its column in `0001_init.sql` and asserted both ways off a migrated
+  database. Section 2.8's `Frame` is NOT here: it already lives at `archive/frames.py:94`
+  against section 13.3, and INV-21 gives one name one home.
 
-Still owed by P2. `DocSink`'s eleven methods (03 section 2.10). Section 2.8's records:
-`Producer`, `DocRecord`, `PageRecord`, `AssetDraft`, `AssetRef`, `Rel`, `Frame`. Section 2.6's
-`CellDraft` (03:337-338), which `build_grid` consumes and reads structurally until it lands.
-Section 9's `Diag` (03:1798-1804), which `build_grid`'s `diag` sink cannot construct until it has
-a home. `payload.py`'s three named readers (03:991). `MAX_QUOTE_BY_OS_KIND` and `QuoteVerdict`
+Still owed by P2. `DocSink`'s eleven methods (03 section 2.10). Section 2.6's `CellDraft`
+(03:337-338), which `build_grid` consumes and reads structurally until it lands.
+`payload.py`'s three named readers (03:991). `MAX_QUOTE_BY_OS_KIND` and `QuoteVerdict`
 (03 section 8.3). And `taint.py`, if the owner keeps 02-architecture.md:248's separate home for
 names `enums.py` already declares -- as a pure re-export, never a second declaration.
 """
@@ -125,6 +129,19 @@ from omniweave_core.model.grid import (
     build_grid,
     render_grid,
 )
+from omniweave_core.model.records import (
+    DOC_STATUSES,
+    QUAD_ORIGINS,
+    SEVERITIES,
+    AssetDraft,
+    AssetRef,
+    Diag,
+    DocKey,
+    DocRecord,
+    PageRecord,
+    Producer,
+    Rel,
+)
 from omniweave_core.model.serialize import (
     FORMATS,
     SERIALIZER_VERSION,
@@ -148,17 +165,22 @@ from omniweave_core.model.spans import (
 )
 
 __all__ = [
+    "DOC_STATUSES",
     "ENUM_DOMAINS",
     "FORMATS",
     "GENERATION_BLOCKED",
     "MAX_TRUST_BY_METHOD",
+    "QUAD_ORIGINS",
     "RECON_STRATEGIES",
     "SERIALIZER_CAPS",
     "SERIALIZER_VERSION",
+    "SEVERITIES",
     "Addr",
     "AliasKind",
     "AnchorKind",
     "ArraySpanMap",
+    "AssetDraft",
+    "AssetRef",
     "Block",
     "BlockDraft",
     "BlockId",
@@ -167,6 +189,9 @@ __all__ = [
     "Cite",
     "ClaimStatus",
     "Covered",
+    "Diag",
+    "DocKey",
+    "DocRecord",
     "Grid",
     "GridReadSide",
     "Kind",
@@ -183,8 +208,11 @@ __all__ = [
     "OriginSpan",
     "OsKind",
     "PageKind",
+    "PageRecord",
+    "Producer",
     "Quad",
     "Quote",
+    "Rel",
     "RelKind",
     "RenderSpan",
     "Slot",
