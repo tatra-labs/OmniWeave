@@ -589,3 +589,61 @@ CREATE TABLE graph_observation (     -- symmetric with driver_observation (0004_
 -- deep (07-store-and-retrieval.md section 2.1). `pass_id` carries no FK to `derive_pass`
 -- deliberately: an observation of a pass that has since been disabled and deleted from the
 -- registry is exactly the row an operator needs.
+
+-- =========================================================================================
+-- enum_val: the six closed domains L3 brings into use
+-- =========================================================================================
+-- charter.md:4834, describing THIS FILE: "enum_val gains the CLOSED domains: 'lane', 'akind',
+-- 'alias_kind', 'claim_status', 'taint', 'precision'. The OPEN vocabularies get their own
+-- tables." That is settled law assigning these six domains to 0002, and it is why they are here
+-- and not left to a later step.
+--
+-- WHY LITERAL SQL, against the reading recorded in this file's header. That reading was that
+-- 03-document-model.md section 15.3 assigns the write to the migration STEP -- "Each runs in one
+-- transaction, updates its `meta` rows, and regenerates `enum_val` from the Python enums" -- so a
+-- literal INSERT would be a second writer. The reading is defensible about the MECHANISM and does
+-- not settle the OUTCOME: section 15.3 fixes where the truth lives (the Python enums), while
+-- charter.md:4834 fixes which file the six domains belong to, and the two are not in conflict.
+-- What no reading permits is the state abstaining produced -- 0001_init.sql seeding L2's nine
+-- domains literally, nothing seeding L3's six, and enum_val holding NINE of the fifteen closed
+-- domains after all four migrations apply. Consistency with the sibling file settles the form.
+--
+-- The truth remains `omniweave_core.model.enums.enum_val_rows()`, which is the only site that
+-- knows an ordinal. These rows are GENERATED from it, and
+-- packages/omniweave-core/tests/unit/test_enum_val_parity.py asserts the two agree in both
+-- directions -- so this is a second enforcer, never a second truth. When the migration runner
+-- lands in P2 stage B and regenerates enum_val at migration time, it becomes the third enforcer
+-- of the same one truth and these literals are what it is checked against.
+--
+-- THE ORDINAL IS THE STORED VALUE AND IS APPEND-ONLY (03 section 2.1). For `taint` -- an IntFlag
+-- -- `ord` is the member's own flag bit and the sequence is therefore NOT dense: 0, 1, 2, 4, 8,
+-- 16. A reader must not infer position from it, and renumbering it densely would silently
+-- reinterpret every stored taint column. For the five StrEnums it is declaration order.
+-- lane <- Lane: 11 members, ord dense from 0.
+INSERT INTO enum_val (domain, ord, name) VALUES
+  ('lane', 0, 'text'), ('lane', 1, 'table'), ('lane', 2, 'math'), ('lane', 3, 'fields'),
+  ('lane', 4, 'caption'), ('lane', 5, 'anchor'), ('lane', 6, 'xref'), ('lane', 7, 'entity'),
+  ('lane', 8, 'claim'), ('lane', 9, 'community'), ('lane', 10, 'summary');
+-- akind <- AnchorKind: 14 members, ord dense from 0.
+INSERT INTO enum_val (domain, ord, name) VALUES
+  ('akind', 0, 'section'), ('akind', 1, 'clause'), ('akind', 2, 'figure'), ('akind', 3,
+  'table'), ('akind', 4, 'equation'), ('akind', 5, 'citekey'), ('akind', 6, 'identifier'),
+  ('akind', 7, 'defined_term'), ('akind', 8, 'footnote'), ('akind', 9, 'exhibit'), ('akind', 10,
+  'slide'), ('akind', 11, 'sheet'), ('akind', 12, 'glossary'), ('akind', 13, 'bookmark');
+-- alias_kind <- AliasKind: 7 members, ord dense from 0.
+INSERT INTO enum_val (domain, ord, name) VALUES
+  ('alias_kind', 0, 'canonical'), ('alias_kind', 1, 'variant'), ('alias_kind', 2, 'abbrev'),
+  ('alias_kind', 3, 'expansion'), ('alias_kind', 4, 'translit'), ('alias_kind', 5, 'llm'),
+  ('alias_kind', 6, 'user');
+-- claim_status <- ClaimStatus: 4 members, ord dense from 0.
+INSERT INTO enum_val (domain, ord, name) VALUES
+  ('claim_status', 0, 'asserted'), ('claim_status', 1, 'denied'), ('claim_status', 2,
+  'suspected'), ('claim_status', 3, 'superseded');
+-- taint <- Taint: 6 members, ord IS the flag bit -- NOT dense.
+INSERT INTO enum_val (domain, ord, name) VALUES
+  ('taint', 0, 'none'), ('taint', 1, 'untrusted_source'), ('taint', 2, 'sentinel'), ('taint', 4,
+  'hidden_text'), ('taint', 8, 'offscreen'), ('taint', 16, 'single_witness_xdoc');
+-- precision <- TimePrecision: 4 members, ord dense from 0.
+INSERT INTO enum_val (domain, ord, name) VALUES
+  ('precision', 0, 'year'), ('precision', 1, 'month'), ('precision', 2, 'day'), ('precision', 3,
+  'datetime');

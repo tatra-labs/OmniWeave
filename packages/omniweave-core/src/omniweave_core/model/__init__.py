@@ -1,24 +1,35 @@
 """The L2 owdoc types and taint.py. LAZY.
 03-document-model.md; 02-architecture.md section 2 row 24.
 
-**Docstring-only on purpose, and the reason is a measurement rather than a style.**
-02-architecture.md:248 and 18-api-sketch.md:834-838 name `omniweave_core.model` itself as the
-home of `Block`, `BlockDraft`, `Capabilities`, `Doc` and the rest, so the flat re-export
-surface belongs in this file. It cannot land yet. `tools/schemagen.py`'s `INVENTORY` resolves
-`fragment-v1.json` off `omniweave_core.model.BlockDraft` and `document-v1.json` off
-`omniweave_core.model.Doc`, and G6 -- `test_schemagen.py::test_the_committed_tree_passes_the_gate`
--- asserts that the committed tree passes the gate. Binding either name here flips its row from
-PENDING to LIVE, at which point `check()` calls `build_schema`, which raises
-`UnsupportedDeclarationError` on `BlockDraft.parent`: the reflector has no handler for a
-`NewType`, and none for `bytes` either, which is what `Block.content_digest` is. Measured, not
-assumed. Two things must land before the surface can, and neither is one of this cluster's
-files: a `NewType`/`bytes` handler in `tools/schemagen.py`, and the generated
-`schema/fragment-v1.json` that the same gate then demands.
+**The flat re-export surface, which 02-architecture.md:248 and 18-api-sketch.md:834-838 put in
+this module rather than in its submodules.** A consumer writes
+`from omniweave_core.model import Block`, not `... .model.block import Block`.
 
-Until then every consumer names the submodule -- `omniweave_core.model.enums`,
-`omniweave_core.model.spans`, `omniweave_core.model.block` -- which is also what keeps this file
-free of the module-level statement that `test_core_eager_surface.py` forbids in a subpackage
-home, and what keeps G17 true without argument.
+This file was docstring-only until `tools/schemagen.py` could reflect two annotations, and the
+dependency is worth recording because it is not obvious. `schemagen`'s `INVENTORY` resolves
+`fragment-v1.json` off `omniweave_core.model.BlockDraft`, so BINDING THE NAME HERE flips that
+row from PENDING to LIVE -- at which point G6 (`test_schemagen.py`'s
+`test_the_committed_tree_passes_the_gate`) calls `build_schema`, which raised
+`UnsupportedDeclarationError` on `BlockDraft.parent` (a `NewType`, which the reflector had no
+handler for), on `BlockDraft.quad` (a `NamedTuple`, which `typing.get_origin` reports as
+nothing) and on `Block.content_digest` (`bytes`, which has no JSON type at all). All three
+handlers now exist: a `NewType` reflects as its supertype carrying its own name as the
+description, a `NamedTuple` reflects as the fixed-length ARRAY the wire actually uses, and
+`bytes` renders as 32 lowercase hex characters per
+03-document-model.md:665's wire mapping. `schema/fragment-v1.json` is committed alongside them.
+
+`Doc` is deliberately still absent from the surface, which keeps `document-v1.json` PENDING. It is
+a lazy handle that reads THROUGH the store (03 sections 13.5 and 2584: "`Doc` is a **lazy handle**,
+not a loaded object"), so it follows `omniweave_core.store` rather than the value types, and the
+store is P2 stage B. Binding a placeholder to satisfy the inventory would make G6 assert a schema
+for a type whose read path does not exist.
+
+THE IMPORTS BELOW ARE WHY THIS FILE IS NOT EMPTY, AND THEY ARE NOT A G17 PROBLEM. `model` is one
+of the nine lazy subpackages, and G17's assertion is that `import omniweave_core` does not reach
+it -- which holds because `omniweave_core/__init__.py` imports none of the nine and exposes them
+through `__getattr__`. Importing `omniweave_core.model` is what a caller does ON PURPOSE; what
+must never happen is paying for it unasked. `test_core_eager_surface.py`'s subpackage-home rule
+covers the homes that are still EMPTY, and this one no longer is.
 
 Landed so far, one plan section per module and no name in two of them (INV-21).
 
@@ -37,3 +48,91 @@ records: `Producer`, `DocRecord`, `PageRecord`, `AssetDraft`, `AssetRef`, `Rel`,
 `taint.py`, if the owner keeps 02-architecture.md:248's separate home for names `enums.py`
 already declares -- as a pure re-export, never a second declaration.
 """
+
+from __future__ import annotations
+
+from omniweave_core.model.block import (
+    Addr,
+    Block,
+    BlockDraft,
+    BlockId,
+    Capabilities,
+    CellPos,
+    Cite,
+    Mark,
+)
+from omniweave_core.model.enums import (
+    ENUM_DOMAINS,
+    GENERATION_BLOCKED,
+    MAX_TRUST_BY_METHOD,
+    AliasKind,
+    AnchorKind,
+    ClaimStatus,
+    Kind,
+    Lane,
+    Layer,
+    Method,
+    OsKind,
+    PageKind,
+    Quote,
+    RelKind,
+    TableKind,
+    Taint,
+    TimePrecision,
+    Trust,
+    enum_val_rows,
+)
+from omniweave_core.model.spans import (
+    SERIALIZER_CAPS,
+    OriginBytes,
+    OriginGlyphs,
+    OriginNodePath,
+    OriginNone,
+    OriginPixels,
+    OriginSpan,
+    Quad,
+    RenderSpan,
+    SpanMap,
+    TextSpan,
+)
+
+__all__ = [
+    "ENUM_DOMAINS",
+    "GENERATION_BLOCKED",
+    "MAX_TRUST_BY_METHOD",
+    "SERIALIZER_CAPS",
+    "Addr",
+    "AliasKind",
+    "AnchorKind",
+    "Block",
+    "BlockDraft",
+    "BlockId",
+    "Capabilities",
+    "CellPos",
+    "Cite",
+    "ClaimStatus",
+    "Kind",
+    "Lane",
+    "Layer",
+    "Mark",
+    "Method",
+    "OriginBytes",
+    "OriginGlyphs",
+    "OriginNodePath",
+    "OriginNone",
+    "OriginPixels",
+    "OriginSpan",
+    "OsKind",
+    "PageKind",
+    "Quad",
+    "Quote",
+    "RelKind",
+    "RenderSpan",
+    "SpanMap",
+    "TableKind",
+    "Taint",
+    "TextSpan",
+    "TimePrecision",
+    "Trust",
+    "enum_val_rows",
+]

@@ -460,6 +460,51 @@ def _is_json_value(annotation: object) -> bool:
     )
 
 
+def _schema_new_type(annotation: object, ctx: _Ctx) -> dict[str, object] | None:
+    """A `NewType` reflects as its supertype, and carries its own name as the description.
+
+    `BlockId = NewType("BlockId", int)`, `Addr = NewType("Addr", str)` and
+    `Cite = NewType("Cite", str)` are 03-document-model.md section 2.2's identities. On the wire
+    they ARE an int and two strings -- a `NewType` has no runtime representation of its own, which
+    is the entire point of it -- so the schema is the supertype's. The name is kept in
+    `description` because it is the only place the wire can say WHICH string this is, and a reader
+    comparing `schema/fragment-v1.json` to `03` section 2.2's table needs that to line the two up.
+
+    `__supertype__` is the documented attribute for this and is stable across 3.10-3.13; the
+    `hasattr` guard is what keeps a plain class from being mistaken for one.
+    """
+    supertype = getattr(annotation, "__supertype__", None)
+    if supertype is None:
+        return None
+    inner = _schema_for(supertype, ctx)
+    name = getattr(annotation, "__name__", None)
+    return {**inner, "description": name} if name and "description" not in inner else inner
+
+
+def _schema_bytes(annotation: object, _ctx: _Ctx) -> dict[str, object] | None:
+    """`bytes` is a 16-byte `ow128` rendered as 32 lowercase hex characters.
+
+    03-document-model.md:665 is the wire mapping and states it exactly: the `cd` field is
+    "string | 32 hex chars (a 16-byte `ow128`)". `:1057-1058` gives both carriers --
+    `content_digest` and `layout_digest` -- as `16 B`, and those are the only two `bytes` fields
+    in the wire types, so the pattern is not a generalisation from one case.
+
+    THE PATTERN IS DELIBERATELY EXACT AND WILL REFUSE A DIFFERENT DIGEST. A `bytes` field holding
+    a sha256 renders as 64 characters and fails this pattern loudly at validation, which is the
+    correct outcome: `sha256_canonical` returns `str` already (see `omniweave_core.canonical`), so
+    a `bytes`-typed sha256 would be a declaration error. A future non-`ow128` `bytes` field must
+    extend this handler rather than silently inherit a wrong length -- there is no JSON type for
+    octets, so every such field is a decision about its encoding and none of them is automatic.
+    """
+    if annotation is not bytes:
+        return None
+    return {
+        "type": "string",
+        "pattern": "^[0-9a-f]{32}$",
+        "description": "a 16-byte ow128 as 32 lowercase hex characters",
+    }
+
+
 def _schema_json_value(annotation: object, ctx: _Ctx) -> dict[str, object] | None:
     """`JsonValue` becomes one `$defs` entry that refers to itself.
 
@@ -582,6 +627,36 @@ def _schema_sequence(annotation: object, ctx: _Ctx) -> dict[str, object] | None:
     return {"type": "array", "items": _schema_for(args[0], ctx.at("item"))}
 
 
+def _schema_named_tuple(annotation: object, ctx: _Ctx) -> dict[str, object] | None:
+    """A `NamedTuple` is an ARRAY on the wire, not an object, because a tuple is.
+
+    `Quad(NamedTuple)` is eight ints and 03-document-model.md:665's mapping renders it exactly that
+    way -- `q` is "8 ints | null", never `{"x0": ..., "y0": ...}`. Reflecting it as an object would
+    invent a JSON shape the plan does not use, and would do it for the one type whose positional
+    reading is load-bearing: the `quad` column is "8 x i32 LE, or NULL" (charter.md:1039) and
+    `Quad(*ints)` is the store's decode path.
+
+    `typing.get_origin` returns `None` for a `NamedTuple` SUBCLASS, so `_schema_sequence` never
+    sees it -- hence a handler of its own rather than a row in that one. The field types come from
+    `__annotations__` in declaration order, which for a `NamedTuple` is `_fields` order, and that
+    order is the wire order.
+
+    Detected by `_fields` rather than by `issubclass(annotation, NamedTuple)`, which is not a legal
+    runtime check: `typing.NamedTuple` is a factory, not a base class.
+    """
+    if not (isinstance(annotation, type) and issubclass(annotation, tuple)):
+        return None
+    fields = getattr(annotation, "_fields", None)
+    if fields is None:
+        return None
+    hints = typing.get_type_hints(annotation)
+    where = ctx.at(annotation.__name__)
+    arms = [hints[name] for name in fields]
+    schema = _fixed_tuple(list(arms), where)
+    summary = _summary(annotation)
+    return {**schema, "description": summary} if summary else schema
+
+
 def _schema_dataclass(annotation: object, ctx: _Ctx) -> dict[str, object] | None:
     """A nested dataclass becomes a `$ref` into `$defs`, registered **before** recursing.
 
@@ -601,11 +676,21 @@ _HANDLERS = (
     _schema_any,
     _schema_none,
     _schema_json_value,
+    # BEFORE `_schema_primitive`, which would otherwise claim `bytes` if it ever gained a row, and
+    # before `_schema_dataclass`, because a `NewType` over a dataclass must unwrap rather than
+    # `$ref`. `_schema_new_type` recurses into `_schema_for`, so its supertype still reaches the
+    # right handler.
+    _schema_new_type,
+    _schema_bytes,
     _schema_primitive,
     _schema_literal,
     _schema_union,
     _schema_enum,
     _schema_mapping,
+    # BEFORE `_schema_sequence`, which claims `tuple` by origin and would miss a NamedTuple
+    # subclass entirely, and before `_schema_dataclass` so a NamedTuple never becomes an
+    # object. 03-document-model.md:665 renders `Quad` as `8 ints`.
+    _schema_named_tuple,
     _schema_sequence,
     _schema_dataclass,
 )

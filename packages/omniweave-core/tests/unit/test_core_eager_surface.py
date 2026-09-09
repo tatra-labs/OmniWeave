@@ -92,12 +92,59 @@ def test_d1_the_eager_import_adds_only_stdlib_and_omniweave_modules() -> None:
     assert third_party == [], f"import omniweave_core pulled in {third_party}"
 
 
-def test_the_eight_subpackage_homes_exist_and_are_empty() -> None:
-    """P1 creates the homes so later phases have somewhere to land (11-repo-layout.md
-    section 1.3's tree). Each is a package, and each is a docstring and nothing else."""
+# The homes a phase has FILLED, and the phase that filled each. A home leaves the
+# still-empty set exactly once, when its phase lands, and the entry here is the record of that.
+FILLED_HOMES: dict[str, str] = {
+    "model": "P2 W2.1 -- enums, spans, block, and the flat re-export surface",
+}
+
+
+def test_every_subpackage_home_exists() -> None:
+    """P1 creates all eight so later phases have somewhere to land (11-repo-layout.md
+    section 1.3's tree). This half never relaxes, filled or not."""
     for name in SUBPACKAGE_HOMES:
         init = CORE_SRC / name / "__init__.py"
         assert init.is_file(), f"missing subpackage home omniweave_core/{name}/"
         source = init.read_text(encoding="utf-8")
         assert source.lstrip().startswith('"""'), f"{name}/__init__.py has no docstring"
-        assert "import " not in source, f"{name}/__init__.py carries an import at P1"
+
+
+def test_the_still_empty_homes_carry_no_import() -> None:
+    """A home no phase has filled holds a docstring and nothing else.
+
+    SCOPED TO THE UNFILLED HOMES, and the scoping is the point rather than a relaxation. The
+    original form asserted `"import " not in source` over all eight, which was true at P1 and
+    became false the moment P2 filled `model/` -- 02-architecture.md:248 and
+    18-api-sketch.md:834-838 put the flat `Block`/`BlockDraft`/`Capabilities` surface in
+    `omniweave_core.model` itself, so the re-exports belong in that file and the assertion had to
+    stop covering it.
+
+    What must not happen is the assertion quietly becoming vacuous as phases land. So `FILLED_HOMES`
+    is an explicit allow-list naming the phase that filled each entry, the still-empty set is
+    computed as the difference, and `test_the_filled_homes_are_really_filled` below asserts the
+    allow-list carries no name that is still a placeholder. A home cannot leave this test's scope
+    by accident, only by someone adding a row and saying which phase did it.
+
+    G17's runtime half is unaffected either way: laziness is a property of
+    `omniweave_core/__init__.py` not importing the nine, not of the nine being empty.
+    """
+    for name in sorted(set(SUBPACKAGE_HOMES) - set(FILLED_HOMES)):
+        init = CORE_SRC / name / "__init__.py"
+        source = init.read_text(encoding="utf-8")
+        assert "import " not in source, (
+            f"{name}/__init__.py carries an import but is not in FILLED_HOMES. "
+            f"If a phase filled it, add the row and name the phase."
+        )
+
+
+def test_the_filled_homes_are_really_filled() -> None:
+    """Every `FILLED_HOMES` row names a home that actually has a body.
+
+    Without this, the allow-list is a way to switch the assertion off: a name added here with no
+    code behind it would exempt a home from the import rule while proving nothing. Read the other
+    way, it also catches a row left behind after a revert.
+    """
+    for name, phase in FILLED_HOMES.items():
+        assert name in SUBPACKAGE_HOMES, f"{name} is not a subpackage home"
+        source = (CORE_SRC / name / "__init__.py").read_text(encoding="utf-8")
+        assert "import " in source, f"{name} is listed as filled by {phase} but carries no import"

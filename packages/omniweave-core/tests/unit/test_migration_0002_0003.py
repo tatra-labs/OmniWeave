@@ -75,6 +75,13 @@ L2_OBJECTS: frozenset[str] = frozenset(
 )
 
 # 07-store-and-retrieval.md:238, the `0002_graph.sql` row of section 3's table, verbatim.
+# charter.md:4834, verbatim and in its order: "enum_val gains the CLOSED domains: 'lane',
+# 'akind', 'alias_kind', 'claim_status', 'taint', 'precision'." Six, and exactly these six --
+# `0001_init.sql` owns L2's nine and no third file seeds any.
+L3_ENUM_DOMAINS: frozenset[str] = frozenset(
+    {"lane", "akind", "alias_kind", "claim_status", "taint", "precision"}
+)
+
 L3_TABLES: frozenset[str] = frozenset(
     {
         "segmenter",
@@ -268,9 +275,23 @@ _TRIGGER_ON = re.compile(
 )
 
 
+_ENUM_SEED = re.compile(r"\s*INSERT\s+INTO\s+enum_val\b", re.IGNORECASE)
+"""The ONE non-CREATE statement these files may carry: 0002's six closed domains (charter.md:4834).
+
+Skipped here rather than allowed a `verb`, because a `Stmt` is a created OBJECT throughout this
+module -- every roster assertion, the forward-reference walk and the both-files-disjoint check all
+read `name` as "the object this statement creates", and a seed statement creates nothing. It is
+matched narrowly on the table name so that an `INSERT INTO segment` still trips the assertion
+below, which is the property 16-roadmap.md:466 ("the tables exist and are empty") actually needs.
+`test_every_statement_is_a_create_and_no_rows_are_written` is where the seeds are checked.
+"""
+
+
 def _parse_text(text: str, label: str) -> tuple[Stmt, ...]:
     out: list[Stmt] = []
     for raw in _split(_decomment(text)):
+        if _ENUM_SEED.match(raw):
+            continue
         m = _CREATE.match(raw)
         assert m is not None, f"{label}: not a CREATE statement: {raw[:80]!r}"
         verb = " ".join(m.group("verb").lower().split())
@@ -413,10 +434,19 @@ def test_every_statement_is_a_create_and_no_rows_are_written(path: Path) -> None
 
     * `etype_vocab`'s fifteen builtin rows and `relation_vocab`'s thirteen
       (06-structure-extraction.md section 1.6) -- P8's;
-    * `enum_val`'s six L3 domains (charter.md:4834) -- the migration RUNNER's, because
-      03-document-model.md section 15.3 assigns the write to the migration step ("regenerates
-      `enum_val` from the Python enums ... and the append-only assertion of section 2.1") and a
-      literal INSERT can make no such assertion;
+    `enum_val`'s six L3 domains ARE seeded here and are the exception this test allows. That was
+    once the other way round, and the citation that settled it is charter.md:4834, which describes
+    THIS FILE and says outright: "enum_val gains the CLOSED domains: 'lane', 'akind', 'alias_kind',
+    'claim_status', 'taint', 'precision'." Settled law assigns the six domains to 0002.
+
+    The contrary argument -- that 03-document-model.md section 15.3 gives the write to the
+    migration STEP ("regenerates `enum_val` from the Python enums"), so a literal INSERT would be a
+    second writer -- is right about the MECHANISM and does not reach the OUTCOME. Section 15.3
+    fixes where the truth lives; charter.md:4834 fixes which file the domains belong to. Abstaining
+    left `enum_val` holding NINE of the fifteen closed domains after all four migrations, which no
+    reading permits and which nothing detected, because `0001_init.sql` seeds L2's nine literally
+    and every test compared only what was present against what was expected to be present.
+    test_enum_val_parity.py is the assertion that now closes both directions.
     * `index_state`'s `schema` row and this file's own `migration` row -- also the runner's, and
       G27(b) checks the first at the END of the run (11-repo-layout.md:1196-1200).
 
@@ -427,11 +457,23 @@ def test_every_statement_is_a_create_and_no_rows_are_written(path: Path) -> None
     for stmt in _parse(path):
         assert stmt.verb in {"table", "virtual table", "index", "unique index", "view", "trigger"}
     dml = re.compile(r"\b(INSERT\s+INTO|REPLACE\s+INTO|DELETE\s+FROM|UPDATE\s+\w+\s+SET)\b", re.I)
+    # `enum_val` is the ONE table these two files may write, and only 0002 may: charter.md:4834
+    # assigns it six closed domains. Scoped to that table by name so that a write to any other --
+    # an `etype_vocab` row, a `segment` row, a `meta` row -- still fails. The parity of those rows
+    # against the Python enums is test_enum_val_parity.py's, not this test's.
+    seed = re.compile(r"\bINSERT\s+INTO\s+enum_val\b", re.IGNORECASE)
     for stmt in _split(_decomment(path.read_text(encoding="ascii"))):
         # An fts5 sync trigger's BODY is INSERTs by construction and writes no row at DDL time; the
         # `'delete'` command row is how an external-content table is told to drop a posting.
-        if not re.match(r"\s*CREATE\s+TRIGGER\b", stmt, re.IGNORECASE):
-            assert not dml.search(stmt), stmt[:80]
+        if re.match(r"\s*CREATE\s+TRIGGER\b", stmt, re.IGNORECASE):
+            continue
+        if seed.search(stmt):
+            assert path is GRAPH, f"only 0002 seeds enum_val (charter.md:4834), not {path.name}"
+            # ...and it may write NOTHING BUT the six domains that file is assigned.
+            written = set(re.findall(r"\('([a-z_]+)',\s*\d+,", stmt))
+            assert written <= L3_ENUM_DOMAINS, f"0002 seeded {sorted(written - L3_ENUM_DOMAINS)}"
+            continue
+        assert not dml.search(stmt), stmt[:80]
 
 
 # ---------------------------------------------------------------------------------------------
