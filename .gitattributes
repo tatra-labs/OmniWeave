@@ -1,0 +1,9 @@
+# .gitattributes — the eol contract. Without it, G6 and G25 fail on the Windows cells.
+# Specified verbatim in 11-repo-layout.md section 1.9.
+*                       text=auto eol=lf
+schema/**               text eol=lf
+schema/expected/**      -diff
+docs/reference/**       text eol=lf
+*.owdoc                 binary
+*.sql                   text eol=lf
+omniweave.index.lock    merge=ow-index-lock

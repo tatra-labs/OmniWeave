@@ -1,0 +1,28 @@
+# packages/omniweave-vision/pyproject.toml.
+# The ONLY UNBOUNDED ceiling in tools/weights.toml and the only distribution exempt
+# from the 250 MB aggregate gate (G2); it must print its resolved installed size
+# during `ow doctor`, because a plan that promises a number for a CUDA wheel set is
+# lying (11-repo-layout.md section 1.2).
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "omniweave-vision"
+version = "0.1.0"                     # == RELEASE. G5.
+description = "parse.page.olmocr, reaching a model through io.service('vlm')."
+license = "Apache-2.0"
+requires-python = ">=3.11"           # NO upper bound. charter.md D1.
+dependencies = [
+  "omniweave-ports >=1,<2",
+  "torch",
+  "transformers",
+]
+
+# The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
+[tool.hatch.build.targets.wheel]
+packages = ["src/omniweave_vision"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "LICENSE", "NOTICE", "THIRD_PARTY.md", "LICENSES", "pyproject.toml"]

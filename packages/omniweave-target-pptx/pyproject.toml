@@ -1,0 +1,31 @@
+# packages/omniweave-target-pptx/pyproject.toml — the flagship OUT target. Pure Python.
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "omniweave-target-pptx"
+version = "0.1.0"                     # == RELEASE. G5.
+description = "compile.pptx.native and parse.pptx.native, owsvg/1."
+license = "Apache-2.0"
+requires-python = ">=3.11"           # NO upper bound. charter.md D1.
+dependencies = [
+  "omniweave-core ~= 0.1.0",
+  # A compile driver's carve-out: it imports omniweave_core.out for the OUT
+  # framework it is validated by, which is the whole of the exception to "a
+  # driver cannot pin the framework" (02-architecture.md section 3.2 rule 4).
+  "omniweave-ports >=1,<2",
+  "python-pptx",
+  "XlsxWriter",
+  "skia-pathops",
+  "uharfbuzz",
+  "Pillow",
+]
+
+# The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
+[tool.hatch.build.targets.wheel]
+packages = ["src/omniweave_target_pptx"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "LICENSE", "NOTICE", "THIRD_PARTY.md", "LICENSES", "pyproject.toml"]

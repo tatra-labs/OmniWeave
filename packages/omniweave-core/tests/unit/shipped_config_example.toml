@@ -1,0 +1,223 @@
+# omniweave.toml.example -- the shipped configuration, quoted from charter.md:462-670.
+#
+# TWO DELIBERATE DIVERGENCES FROM THAT BLOCK, both already adjudicated by the plan:
+#   1. `[retrieval.vec] max_segments`, not `max_blocks`. 07-store-and-retrieval.md:3414-3419
+#      rules that charter.md:612 and :4440 are the sites to correct: VEC_BRUTE_MAX is a ceiling
+#      on SEGMENTS, and terminology.md:1008 carries `max_segments`.
+#   2. `[drivers] enabled` at THIRTEEN ids, not ten. ADR-3 decision 1.
+#
+# This is a TEST FIXTURE. The committed root artefact `omniweave.toml.example` that CI
+# `tomllib.loads` (11-repo-layout.md:46) is still owed and is not this module's to create.
+
+schema = 1                             # line 1 is the grammar version
+
+# EVERY BLOCK IN THIS CHARTER IS PARSEABLE TOML. One key per line: `;` is not a separator, and an
+# inline table may not span a newline. `omniweave.toml.example` is a committed artefact and CI
+# `tomllib.load`s every TOML block printed in this document.
+
+[roots]                                # THREE ROOTS, ALWAYS SEPARATE
+source = "."                           # the identity anchor; the cache salt is relative to this
+output = ".omniweave/out"
+cache  = ".omniweave/cache"            # a cache_root inside source_root is a STARTUP ERROR
+
+# THE CORPUS REGISTRY. `ow_corpora` enumerates EXACTLY this, and a `corpus` argument on any Action
+# resolves through it. Without it C13's multi-corpus resolution has no source of truth and
+# OW_CITE_AMBIGUOUS_CORPUS could never fire. A name matches [a-z0-9][a-z0-9_-]{0,31} (§5 X29) and
+# IS the string a qualified cite carries. ONE `retrieve()` READS ONE STORE: cross-corpus work is N
+# calls fused by the surface, and the surface says so.
+[corpora.handbook]
+path   = ".omniweave/index.owstore"
+source = "."                           # this corpus's identity anchor, overriding [roots] source
+[corpora.contracts]
+path   = "../contracts/.omniweave/index.owstore"
+source = "../contracts"
+
+[store]                                # DEFAULTS for every [corpora] entry. Writing [store] with
+backend = "sqlite"                     #   no [corpora] declares ONE corpus, named by
+path    = ".omniweave/index.owstore"   #   [serve] default_corpus — the single-entry sugar.
+                                       # sqlite (shipped) | postgres (T3) | fabric (T4)
+                                       # (§5 X13 — D1's `index.db` is struck)
+retain_parts = "when_citable"          # always | when_citable | never          (§7 F32)
+                                       # when_citable: retain a `part` iff the producing driver
+                                       #   declared origin_span in {exact, normalized} for it.
+                                       #   `never` makes quote = 'verbatim' UNREACHABLE (INV-10)
+                                       #   and is disclosed in corpus_card.verbatim_fraction.
+wal_valve_mb = 0                       # 0 = clamp(db_bytes/4, 256 MB, 2 GB)
+wal_heal_mb  = 64
+bulk_windows = true
+
+[limits]                               # clamps BELOW omniweave_core.limits MAX_*; never above
+max_entry_bytes = 33554432             # MAX_ENTRY_BYTES = 134217728
+
+[drivers]                              # DISCOVERY IS NOT CONSENT (INV-5)
+# INV-5 is the ONLY activation gate, so every driver this file's policy and [graph.passes] name
+# must appear here or it can never run. `ow doctor` FAILS on a named-but-unenabled driver.
+enabled = ["parse.office.anydoc", "parse.pdf.pdfium",
+           "parse.text.builtin",       # ADR-3 D1: ten ids -> thirteen, so `ow doctor` is green
+           "parse.pptx.native",        #   on a fresh install -- the two Drivers the `pptx`
+           "compile.pptx.native",      #   Target is implemented by, plus the text family
+           "parse.page.olmocr",        # named so the shipped escalation rule CAN fire; where
+                                       #   omniweave-vision is absent, resolve() returns a named
+                                       #   PROBE_UNAVAILABLE rejection, never a silent no-op
+           "derive.segment.spine", "derive.anchor.native", "derive.anchor.defterm",
+           "derive.xref.native", "derive.xref.pattern",
+           "derive.entity.table", "derive.entity.gazetteer"]
+require_lock     = true
+allow_unattested = false
+isolation_floor  = "subproc"
+inproc           = ["parse.office.anydoc"]      # a reviewable act, never a card claim
+probe_timeout_ms = 2000
+max_workers      = { free = 4, local_compute = 4, billed_api = 8 }   # PROCESSES
+worker_idle_ttl_s = 300
+crash_quarantine  = { crashes = 3, window_s = 60 }
+[drivers.cost]
+allow_classes        = ["free", "local_compute"]   # billed_api is opt-in
+auto_refresh_classes = ["free"]                    # a watcher may NEVER auto-run billed work
+[drivers."parse.pdf.pdfium"]
+config = { dpi = 192 }
+
+[services]                             # SEAM S3. A Service is named and never routed.
+[services.vlm]
+model_id       = "allenai/olmOCR-7B"   # SEMANTIC: it enters the cache key, because the model
+model_revision = "9f8e7d6c5b4a3928"    #   behind a Service is NOT on any driver's card
+endpoint       = ""                    # "" = attach-or-spawn on demand
+autostart      = true
+capacity       = 0                     # 0 = min(server-reported, MAX_AUTO_PARALLEL, ceiling)
+batch_wait_ms  = 5
+max_batch      = 8
+keep_alive_s   = 300                   # a resident 7B engine holds 20-40 GB of VRAM  (§7 F37)
+
+[licence]
+allow_tiers   = ["open"]
+jurisdiction  = "DE"                   # checked against territory_excluded
+fields_of_use = ["enterprise_documents"]
+
+[targets]
+enabled = ["pptx"]                     # an artefact-kind POLICY ALLOWLIST (§5 X5)
+[targets.video]
+ffmpeg = "system"                      # never "bundled": libx264 makes a bundle GPL-2.0-or-later
+codec  = "vp9"                         # h264 is an operator-owned opt-in, never a fallback
+
+[budget]
+# THERE IS NO `per_document_micros` HERE. Currency caps live in `.omniweave/policy.d/*.toml` under
+# [budget.per_part] / [budget.per_unit] (§5 X19), which is the ONE home for them, so a Degradation
+# message can name a knob that exists. This block holds admission only.
+max_inflight = { free = 32, local_compute = 4, billed_api = 2 }   # UNITS  (§5 X18)
+
+[runtime]
+queue_high_water = 50000
+queue_low_water  = 25000
+plan_batch = 512
+store_group_commit_ms = 20
+lease_ms = 120000
+lease_extend_ms = 60000
+watchdog_ms = 60000
+loop_lag_max_ms = 250
+yield_interval = 1000
+interactive_wait_ms = 2000
+batch_wait_lock_ms = 60000
+max_inproc = 2
+inproc_bulk_threshold = 64
+max_deps_per_unit = 256
+work_compact_above = 5000000
+[runtime.claim]
+batch = { free = 256, local_compute = 32, billed_api = 8 }   # clamped by the card; AIMD
+
+[cache]
+recipe = 1
+gc = { free_after_days = 7, local_after_days = 90, billed_after_days = 0 }   # 0 = NEVER
+min_free_bytes = 5368709120
+[cache.max_bytes]                      # a sub-table, NOT a multi-line inline table (illegal TOML)
+blob   = 107374182400
+render = 21474836480
+signal = 2147483648
+call   = 0                             # 0 = unbounded
+embed  = 0
+
+[retrieval]
+vectors = "off"                        # THE DEFAULT IS OFF
+scorer = 1
+fusion_k = 60
+snapshot_ms = 2000
+trigram = false
+event_log = true
+[retrieval.weights]
+identity = 2.0
+exact = 1.2
+lexical = 1.0
+semantic = 0.8
+structural = 0.4
+[retrieval.lex]
+w_body = 1.0
+w_head = 6.0
+spine_decay = 0.6
+overfetch = 5
+[retrieval.budget]
+query_ms = 250
+# THE CHANNEL BUDGETS SUM BELOW THE QUERY BUDGET, net of hydration and the coverage scan
+# (15+25+50+40+80 = 210 against 250). A set that sums above it guarantees a G10 breach and turns
+# the honesty machinery into permanent noise. `ow route lint` refuses a sum >= query_ms.
+channel_ms = { identity = 15, exact = 25, lexical = 50, structural = 40, semantic = 80 }
+[retrieval.vec]                        # NOT [retrieval.vectors]: `vectors` above is a STRING, and
+model_key = ""                         #   a key cannot be both a value and a table in TOML.
+backend = "vector.brute"               #   `vec` is the sidecar's own locked name.
+storage = "auto"
+max_segments = 250000
+
+[graph]
+enabled = true
+etypes = "auto"
+segment_target_tokens = 1200           # THE TARGET, clamped below MAX_SEGMENT_TOKENS = 2048.
+                                       #   It is not a ceiling; §6.10 owns the ceiling.
+llm_coverage_floor = 0.60
+max_items_per_segment = 2048
+[graph.passes]
+order  = "cost_class"                  # THE ONLY ordering key; `phase` breaks ties WITHIN a rank.
+# `[graph.passes] enable` is a lane/pass ALLOWLIST; `[drivers] enabled` is the ACTIVATION gate
+# (INV-5). BOTH APPLY; NEITHER BYPASSES THE OTHER, exactly as for targets (§5 X5), and `ow doctor`
+# FAILS on a pass enabled here whose driver is not in `[drivers] enabled`.
+enable = ["derive.segment.spine", "derive.anchor.native", "derive.anchor.defterm",
+          "derive.xref.native", "derive.xref.pattern", "derive.entity.table",
+          "derive.entity.gazetteer"]   # billed_api passes are ABSENT, therefore OFF
+
+[serve]
+profile = "default"                    # default | full  -> derives `listed`
+listed  = []                           # explicit override
+enabled = "read_only+add"              # all | read_only | read_only+add | <explicit list>
+compact_schemas = true
+default_corpus = "handbook"            # MUST name a [corpora] entry
+tool_prefix = "ow_"
+[serve.packing]                        # THE PACKING CONSTANTS, WITH THE FIXTURES AS TESTS (§5 X19)
+hard_ceiling           = 24000
+cliff_fraction         = 0.15
+cliff_exempt_trust     = "extracted"
+min_chars              = 600
+max_share              = 0.60
+doc_overhead           = 180
+block_overhead         = 95
+spine_boost            = 2.0
+whole_section_buy      = 0.60
+buy_pool               = 0.15
+# NOT HERE: `SEM_BLOCKS_PER_SEGMENT = 64` is a RETRIEVAL constant in `omniweave_core.limits`, and
+# putting it in a packing block would have given one number two homes.
+# [blocks_below, max_chars, max_docs, chars_per_doc, calls, related, pointers, meta_text]
+# MONOTONICITY (SV4): a larger tier may never receive a smaller chars_per_doc.
+tier = [[      5000, 12000,  4, 3500, 1, false, false, false],
+        [     50000, 18000,  6, 4500, 2, false, true,  false],
+        [    500000, 22000,  8, 5000, 3, true,  true,  true ],
+        [   5000000, 24000,  8, 5500, 4, true,  true,  true ],
+        [9223372036854775807, 24000, 10, 5500, 5, true, true, true]]
+
+[observe]
+sinks = ["console", "ndjson"]
+ndjson_path = ".omniweave/events/{run_id}.ndjson"
+shard_bytes = 67108864
+sample = { non_ok = 1.0, ok = 0.015625 }   # blake2b(work_id‖salt), NEVER RNG
+timings = "always"
+otlp_endpoint = ""                     # honoured by `ow trace export` ONLY
+
+# Precedence: --config <path> > ./omniweave.toml (walking up to .git or root) >
+#             [tool.omniweave] in pyproject.toml (only if no omniweave.toml) >
+#             $OMNIWEAVE_HOME/config.toml > built-in defaults.
+# Env: every key has an OMNIWEAVE_* twin, resolved ONCE at startup.
+# `ow show-config` prints every resolved value WITH ITS SOURCE; `--digest` prints config_digest.

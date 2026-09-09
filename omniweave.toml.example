@@ -1,0 +1,405 @@
+# omniweave.toml.example -- the shipped configuration, committed at the repository root.
+#
+# 11-repo-layout.md section 1.1 (line 46) puts this file here and states what CI does with it: it
+# `tomllib.loads` this file and every TOML block printed in charter.md or a plan document (G27a),
+# it holds EVERY INLINE TABLE TO ONE PHYSICAL LINE (a2), and it lints any routing-rule fence
+# through `ow route lint` (a3). There is no rule fence here: a routing policy's one home is
+# `.omniweave/policy.d/*.toml` (18-api-sketch.md section 4), and a rule table in this file would
+# also be a config key that no axis pattern matches.
+#
+# EVERY VALUE BELOW IS THE SHIPPED DEFAULT, so copying this file changes nothing about what zero
+# configuration already does -- 15-observability.md section 10.1 quotes the `[drivers]`,
+# `[budget]`, `[retrieval]` and `[observe]` slices of exactly that. Four keys are the exception,
+# and only because they are DECLARED WITH NO DEFAULT and no default can invent an instance name:
+# `corpora.*.path`, `drivers.resolve.*`, `services.*.model_id` and `services.*.model_revision`.
+# Each is marked below where it appears.
+#
+# G18 (02-architecture.md section 8.3; ADR-3) asserts that the union of `tools/config_axes.toml`'s
+# two axis lists covers every key in THIS FILE exactly -- neither over nor under, with exactly one
+# matching pattern per key. So adding a config key costs a declaration in `omniweave_core.config`,
+# a regenerated pattern AND a line here; and deleting a line here turns its pattern into a dead
+# pattern that fails the same gate. Key enumeration is ADR-3 decision 3's rule: an INLINE TABLE IS
+# ONE KEY, and a key quoted because it holds dots IS ONE SEGMENT.
+#
+# The axis, so a reader can check a row rather than trust it (18-api-sketch.md section 4): a key is
+# `semantic` iff changing it can change the CONTENT of a produced row for a driver whose identity,
+# schema_version and config are unchanged. Only the semantic projection enters a cache key. The
+# `semantic` keys are called out in the comments below; everything unmarked is `operational`, and
+# changing an operational key must not cost a dollar.
+#
+# Precedence (02-architecture.md section 8.1), resolved ONCE at startup:
+#   --config <path>  >  ./omniweave.toml (walking up to .git or the root)
+#   >  [tool.omniweave] in pyproject.toml (ONLY if no omniweave.toml was found)
+#   >  $OMNIWEAVE_HOME/config.toml  >  the built-in defaults this file restates.
+# Every key has exactly one DECLARED OMNIWEAVE_* twin, emitted into `tools/config_axes.toml` under
+# [env]; a key with no twin fails CI. `ow show-config` prints every resolved value WITH ITS SOURCE,
+# and `--digest` prints config_digest.
+
+schema = 1                             # the grammar version. A newer value refuses at startup
+
+# =============================================================================================
+# [roots] -- THREE ROOTS, ALWAYS SEPARATE
+# =============================================================================================
+[roots]
+source = "."                           # the identity anchor. The cache salt is the walked path
+                                       #   RELATIVE to this, so an absolute root here would
+                                       #   destroy portability across checkouts
+output = ".omniweave/out"              # artefacts, run manifests, job directories
+cache  = ".omniweave/cache"            # a cache root INSIDE `source` is a startup error
+                                       #   (OW_CONFIG_CACHE_INSIDE_SOURCE). `.omniweave/` itself is
+                                       #   exempt, which is what makes this default legal: the
+                                       #   default Scope excludes it from the walk
+
+# =============================================================================================
+# [corpora.<name>] -- THE CORPUS REGISTRY. `ow_corpora` enumerates EXACTLY this, and a `corpus`
+# argument on any Action resolves through it (02-architecture.md:1189). <name> matches
+# [a-z0-9][a-z0-9_-]{0,31} and IS the string a qualified cite carries. ONE `retrieve()` READS ONE
+# STORE: cross-corpus work is N calls fused by the surface, and the surface says so.
+# =============================================================================================
+[corpora.handbook]                     # `handbook` is [serve] default_corpus' shipped value, and
+                                       #   default_corpus MUST name a [corpora] entry
+path   = ".omniweave/index.owstore"    # the .owstore. DECLARED WITH NO DEFAULT: an operator names
+                                       #   it, so this line is not a default being restated
+source = "."                           # this corpus's identity anchor, overriding [roots] source.
+                                       #   Its declared default INHERITS `roots.source`, so "." is
+                                       #   that inherited value written out, not a second number
+
+# A second store is a second stanza and nothing more. Left commented because an entry naming a
+# sibling checkout that does not exist would be an edit before the first `ow query`, which is the
+# first trigger R-A8 (17-risks.md:272) measures:
+# [corpora.contracts]
+# path   = "../contracts/.omniweave/index.owstore"
+# source = "../contracts"
+
+# =============================================================================================
+# [store] -- THE SINGLE-ENTRY SUGAR: [store] with no [corpora] declares ONE corpus, named by
+# [serve] default_corpus. A T3 Postgres swap changes no other key -- that is the point of making
+# the store the distribution boundary.
+# =============================================================================================
+[store]
+backend      = "sqlite"                # sqlite (shipped) | postgres (T3) | fabric (T4)
+path         = ".omniweave/index.owstore"
+retain_parts = "when_citable"          # SEMANTIC. always | when_citable | never.
+                                       #   `when_citable` retains a part iff the producing driver
+                                       #   declared origin_span in {exact, normalized} for it.
+                                       #   `never` makes quote = verbatim UNREACHABLE (INV-10) and
+                                       #   is disclosed in corpus_card.verbatim_fraction
+wal_valve_mb = 0                       # 0 = clamp(db_bytes/4, 256 MB, 2 GB)
+wal_heal_mb  = 64                      # the heal-on-open threshold
+bulk_windows = true                    # group-commit windows during ingest
+
+# =============================================================================================
+# [limits] -- clamps BELOW omniweave_core.limits' MAX_*, never above. A lower limit TRUNCATES
+# output; widening past a MAX_* is a fork, not a flag.
+# =============================================================================================
+[limits]
+max_entry_bytes = 33554432             # effective = min(tenant_cap, declared, HOST_MAX);
+                                       #   MAX_ENTRY_BYTES = 134217728 is the ceiling above it
+
+# =============================================================================================
+# [drivers] -- DISCOVERY IS NOT CONSENT (INV-5). `enabled` is THE ONLY activation gate: a driver
+# named in a routing policy or in [graph.passes] enable but absent here can never run, and
+# `ow doctor` fails on exactly that (ADR-3 decision 2 states the check's three sources).
+# =============================================================================================
+[drivers]
+# THIRTEEN ids, not ten (ADR-3 decision 1). `parse.text.builtin` serves the ten text-family tokens
+# `decode.text-native` names; `parse.pptx.native` and `compile.pptx.native` are the two Drivers the
+# `pptx` Target is implemented by, and without them `ow doctor` is red on a fresh install.
+# `parse.deck.native` is NOT here: `deck` is absent from [targets] enabled.
+enabled = ["parse.office.anydoc", "parse.pdf.pdfium", "parse.page.olmocr",
+           "parse.text.builtin", "parse.pptx.native", "compile.pptx.native",
+           "derive.segment.spine", "derive.anchor.native", "derive.anchor.defterm",
+           "derive.xref.native", "derive.xref.pattern",
+           "derive.entity.table", "derive.entity.gazetteer"]
+require_lock      = true               # a driver absent from omniweave.lock is NOT_IN_LOCKFILE
+allow_unattested  = false              # an unattested card is refused UNATTESTED unless explicitly
+                                       #   pinned. Attestation is tamper-evidence, not
+                                       #   authentication
+isolation_floor   = "subproc"          # inproc | subproc. A CARD CANNOT LOWER IT
+inproc            = ["parse.office.anydoc"]   # a reviewable operator act, never a card claim
+probe_timeout_ms  = 2000               # a probe past this is UNAVAILABLE(timeout)
+max_workers       = { free = 4, local_compute = 4, billed_api = 8 }   # PROCESSES per cost class
+worker_idle_ttl_s = 300                # a subproc worker idle past this is reaped
+crash_quarantine  = { crashes = 3, window_s = 60 }   # trips the circuit breaker; resolve() then
+                                       #   rejects QUARANTINED for the rest of the run
+
+[drivers.cost]
+allow_classes        = ["free", "local_compute"]   # billed_api is OPT-IN. Rejection is
+                                       #   COST_CLASS_NOT_PERMITTED
+auto_refresh_classes = ["free"]        # a watcher, hook or agent may NEVER auto-run billed work
+
+# ADR-3 decision 3 prints this stanza for this file. DR3: when two distributions declare the same
+# driver id, `Registry.register` raises DuplicateDriver and `resolve()` emits
+# ID_COLLISION_UNQUALIFIED -- only an explicit disambiguation proceeds, so A DUPLICATE ID NEVER
+# WINS SILENTLY (04-driver-system.md:1219). The key is the colliding id and the value is the
+# distribution that wins. DECLARED WITH NO DEFAULT, because only the operator knows which they
+# meant.
+[drivers.resolve]
+"parse.office.anydoc" = "omniweave-office"
+
+# A driver's OWN config table: flat scalars only, validated against the card's [config] schema
+# before construction, then preserved VERBATIM and entered into options_digest. There is no
+# pydantic model here by design. The table header's segment holds dots and is therefore ONE SEGMENT
+# (ADR-3 decision 3), which is why `drivers.*.config` -- whose `*` matches EXACTLY ONE segment --
+# matches this key.
+[drivers."parse.pdf.pdfium"]
+config = { dpi = 192 }                 # SEMANTIC. 04-driver-system.md:2779 prints this stanza as
+                                       #   the shipped example's own; the declared default for a
+                                       #   driver nobody configured is the empty table
+
+# =============================================================================================
+# [services.<name>] -- SEAM S3. A Service is NAMED AND NEVER ROUTED: config chooses the model and
+# `resolve()` never does (02-architecture.md:239, :886).
+# =============================================================================================
+[services.vlm]
+model_id       = "allenai/olmOCR-7B"   # SEMANTIC, and DECLARED WITH NO DEFAULT: the model behind
+model_revision = "9f8e7d6c5b4a3928"    #   a Service is on NO driver's card, so this pair is its
+                                       #   only route into the cache key. The revision is an exact
+                                       #   sha -- "main" is a lint error, and an absent revision is
+                                       #   forbidden framework-wide
+endpoint       = ""                    # "" = attach-or-spawn on demand, authenticated by a
+                                       #   32-byte token in a 0600 sentinel, with model-id
+                                       #   verification on attach
+autostart      = true
+capacity       = 0                     # 0 = min(server-reported, MAX_AUTO_PARALLEL = 96, ceiling)
+batch_wait_ms  = 5                     # the server-side coalescing window
+max_batch      = 8
+keep_alive_s   = 300                   # a resident 7B engine holds 20-40 GB of VRAM (F37)
+
+# =============================================================================================
+# [licence] -- SELECTORS, checked against card facts. `compute_tier()` derives a card's tier from
+# its facts, so an author cannot mislabel one.
+# =============================================================================================
+[licence]
+allow_tiers   = ["open"]               # open | restricted | commercial | forbidden. Rejection is
+                                       #   LICENCE_TIER_NOT_ALLOWED
+jurisdiction  = "DE"                   # checked against a card's territory_excluded
+fields_of_use = ["enterprise_documents"]   # checked against field_of_use_excluded
+
+# =============================================================================================
+# [targets] -- an ARTEFACT-KIND allowlist. [drivers] enabled still applies; NEITHER BYPASSES THE
+# OTHER, and `ow doctor` fails on a target whose implementing driver is not enabled.
+# =============================================================================================
+[targets]
+enabled = ["pptx"]
+[targets.video]
+ffmpeg = "system"                      # never "bundled": libx264 makes a deploy artefact
+                                       #   GPL-2.0-or-later
+codec  = "vp9"                         # SEMANTIC. vp9 | h264. h264 is an operator-owned opt-in,
+                                       #   never a fallback; a missing codec is refused, never
+                                       #   substituted
+
+# =============================================================================================
+# [budget] -- ADMISSION ONLY. There is deliberately no `per_document_micros` here: currency caps
+# live in .omniweave/policy.d/*.toml under [budget.per_part] / [budget.per_unit], which is their
+# ONE home, so a Degradation message can always name a knob that exists.
+# =============================================================================================
+[budget]
+max_inflight = { free = 32, local_compute = 4, billed_api = 2 }   # UNITS admitted concurrently
+
+# =============================================================================================
+# [runtime] -- THE CLAIMABLE SET IS THE CHECKPOINT: there is no wave and no checkpoint file.
+# =============================================================================================
+[runtime]
+queue_high_water      = 50000          # part expansion pauses above it
+queue_low_water       = 25000          #   and resumes below it
+plan_batch            = 512            # rows per planning INSERT
+store_group_commit_ms = 20
+lease_ms              = 120000         # a claim's lease
+lease_extend_ms       = 60000
+watchdog_ms           = 60000
+loop_lag_max_ms       = 250            # above it the loop sheds admission
+yield_interval        = 1000
+interactive_wait_ms   = 2000           # how long a foreground command waits for the writer lock
+                                       #   before exit 7
+batch_wait_lock_ms    = 60000          # the batch equivalent
+max_inproc            = 2              # concurrent inproc calls
+inproc_bulk_threshold = 64             # above it an inproc driver is moved to subproc, so a bulk
+                                       #   ingest does not hold the GIL proportionally to corpus
+                                       #   size
+max_deps_per_unit     = 256            # clamps below MAX_DEPS_PER_UNIT
+work_compact_above    = 5000000        # the `work` table compaction threshold
+[runtime.claim]
+batch = { free = 256, local_compute = 32, billed_api = 8 }   # clamped by the card, then AIMD:
+                                       #   additive-increase / multiplicative-decrease, never
+                                       #   halve-and-never-recover, which would let one foreign
+                                       #   process permanently cap a driver's throughput
+
+# =============================================================================================
+# [cache]
+# =============================================================================================
+[cache]
+recipe = 1                             # SEMANTIC. A bump invalidates every content-addressed cache
+                                       #   in the fleet, is serviced by a RE-DIGEST pass rather
+                                       #   than a re-parse, and is budgeted at most annually
+gc = { free_after_days = 7, local_after_days = 90, billed_after_days = 0 }   # 0 = NEVER. Billed
+                                       #   output is the one thing GC never reclaims on a timer
+min_free_bytes = 5368709120            # GC runs below it
+[cache.max_bytes]                      # a sub-table, NOT a multi-line inline table -- that is
+                                       #   illegal TOML, and 11-repo-layout.md:46 (a2) holds every
+                                       #   inline table in this file to one physical line
+blob   = 107374182400                  # the per-layer ceiling
+render = 21474836480
+signal = 2147483648
+call   = 0                             # 0 = unbounded. THE DECISIVE LAYER: it holds the driver's
+                                       #   raw response, so re-deriving a corpus WITHIN ONE STORE
+                                       #   costs CPU-seconds instead of a re-bill. It does not
+                                       #   cross stores -- cache_index lives in the store
+embed  = 0
+
+# =============================================================================================
+# [retrieval] -- THE DEFAULT IS OFF, which makes the `semantic` channel EMPTY. An EMPTY channel
+# still contributes weight to the ceiling: that is the honest confidence penalty for "we looked
+# there and found nothing", not a bug to tune away.
+# =============================================================================================
+[retrieval]
+vectors         = "off"                # off | on
+scorer          = 1                    # must equal SCORER_VERSION; a mismatch refuses at open
+fusion_k        = 60                   # RRF_K. Both fuse() and ceiling() resolve weights through
+                                       #   _weight(); nobody may hardcode 1/(k+1)
+snapshot_ms     = 2000                 # clamps below MAX_SNAPSHOT_MS = 5000. A held read
+                                       #   transaction pins the WAL, so this is a WAL-valve safety
+                                       #   parameter, not a UX parameter
+trigram         = false                # a second FTS index
+event_log       = true                 # writes retrieval_event rows. LOCAL ONLY, never egressed;
+                                       #   `false` leaves `ow route scoreboard` with no input, and
+                                       #   that consequence is disclosed rather than absorbed
+event_log_query = false                # stores the raw query text beside the always-stored
+                                       #   query_hash, so the scoreboard works on a store that
+                                       #   never retains a user's words
+[retrieval.weights]                    # resolved through _weight() in BOTH the scorer and the
+identity   = 2.0                       #   ceiling: a ceiling that drifts from the scorer silently
+exact      = 1.2                       #   rescales every confidence number in the product
+lexical    = 1.0
+semantic   = 0.8
+structural = 0.4
+[retrieval.lex]
+w_body      = 1.0                      # the BM25 body weight
+w_head      = 6.0                      # the heading weight, decayed along the spine from block_sec
+spine_decay = 0.6                      # SPINE_DECAY ** depth(b, a); a block is its own depth-0
+                                       #   ancestor
+overfetch   = 5                        # 5x BEFORE re-rank: a re-ranker that only sees the base
+                                       #   scorer's top-k cannot promote what it buried
+[retrieval.budget]
+query_ms             = 250             # gate G10's budget for a warm store, and the reason the
+                                       #   verb is `query` and not `ask`
+hydration_reserve_ms = 40              # hydration plus the coverage scan. NOT a Channel and not
+                                       #   schedulable
+# THE CHANNEL BUDGETS SUM TO 210, plus hydration_reserve_ms = 40, EXACTLY query_ms = 250. A set
+# summing past the remainder guarantees a G10 breach and turns the honesty machinery into permanent
+# noise; `ow route lint` check 3 refuses sum(channel_ms) + hydration_reserve_ms > query_ms, which is
+# what stops an edit summing to 249 from silently spending the reservation.
+channel_ms = { identity = 15, exact = 25, lexical = 50, structural = 40, semantic = 80 }
+[retrieval.vec]                        # NOT [retrieval.vectors]: `vectors` above is a STRING and a
+model_key    = ""                      #   key cannot be both a value and a table in TOML. `vec` is
+backend      = "vector.brute"          #   the sidecar's own locked name.
+                                       # model_key is SEMANTIC -- the embedding space's identity,
+                                       #   and a mismatch fires absence gate 13, space_mismatch.
+                                       # backend is an omniweave.backends entry-point name,
+                                       #   selected BY NAME IN CONFIG ONLY: a Backend is never
+                                       #   resolved and never appears in resolve()
+storage      = "auto"                  # auto | sig_only | sig_full
+max_segments = 250000                  # VEC_BRUTE_MAX. Above it the brute backend REFUSES rather
+                                       #   than serving a slow query -- contract obligation (3) on
+                                       #   every Backend
+
+# =============================================================================================
+# [graph]
+# =============================================================================================
+[graph]
+enabled               = true           # false makes Corpus.graph() raise OW_GRAPH_DISABLED naming
+                                       #   this key
+etypes                = "auto"         # SEMANTIC: the entity-type vocabulary is rendered INTO the
+                                       #   prompt, so prompt and schema cannot drift and both are
+                                       #   in the key
+segment_target_tokens = 1200           # SEMANTIC. A TARGET, NOT A CEILING -- the segmenter emits
+                                       #   AFTER crossing it, so totals land above by design.
+                                       #   Clamped below MAX_SEGMENT_TOKENS = 2048, the real ceiling
+llm_coverage_floor    = 0.60           # below it a billed pass is refused as under-covered
+max_items_per_segment = 2048           # clamps below MAX_ITEMS_PER_SEGMENT
+[graph.passes]
+order  = "cost_class"                  # THE ONLY ordering key; `phase` breaks ties WITHIN a cost
+                                       #   rank, which is what keeps a third party's free extractor
+                                       #   able to preempt a paid one
+# A lane/pass ALLOWLIST. [drivers] enabled is the ACTIVATION gate (INV-5); BOTH APPLY and NEITHER
+# BYPASSES THE OTHER, exactly as for targets, and `ow doctor` FAILS on a pass enabled here whose
+# driver is not in [drivers] enabled. billed_api passes are ABSENT, therefore OFF.
+enable = ["derive.segment.spine", "derive.anchor.native", "derive.anchor.defterm",
+          "derive.xref.native", "derive.xref.pattern",
+          "derive.entity.table", "derive.entity.gazetteer"]
+
+# =============================================================================================
+# [serve] -- the MCP surface. `listed` is a subset of `enabled`, checked at startup.
+# =============================================================================================
+[serve]
+profile         = "default"            # default | full -> derives `listed`
+listed          = []                   # an explicit override of the profile
+enabled         = "read_only+add"      # all | read_only | read_only+add | <explicit list>.
+                                       #   THE AUTHORITY DECISION
+compact_schemas = true                 # strips `advanced` args from the published schema; the
+                                       #   handler still honours them
+default_corpus  = "handbook"           # MUST name a [corpora] entry. When it does not resolve,
+                                       #   `corpus` is promoted to required on every corpus-scoped
+                                       #   tool
+tool_prefix     = "ow_"
+add_deadline_ms = 20000                # ow_add's poll deadline. It ALWAYS returns inside it, with
+                                       #   deadline_reached: true and whatever is still running
+                                       #   listed under `pending`
+max_sessions    = 64                   # concurrent stateful HTTP sessions; beyond it `initialize`
+                                       #   is refused OW-A-022 with a retry_after_ms. A
+                                       #   file-descriptor argument: 64 x 4 corpora x 3 = 768
+                                       #   against a 1,024 macOS soft limit
+read_timeout_ms = 30000                # the ASGI body read, enforced BEFORE parsing
+allowed_origins = []                   # empty means ANY Origin header is rejected OW-A-041 -- an
+                                       #   MCP client is not a browser and sends none
+allowed_hosts   = ["localhost", "127.0.0.1", "[::1]"]   # the DNS-rebinding guard, checked before
+                                       #   the API-key comparison
+[serve.packing]                        # THE PACKING CONSTANTS, WITH THE FIXTURES AS TESTS
+hard_ceiling       = 24000             # HARD_CEILING, one ceiling for every tool. Above the host's
+                                       #   ~25,000-char inline cap the result is externalised to a
+                                       #   file the agent must Read back, reintroducing exactly the
+                                       #   Read the tool exists to remove
+cliff_fraction     = 0.15              # THE LEVER: below 15% of the top document's weight a
+                                       #   document becomes a ~110-char pointer instead of ~4,500
+                                       #   chars, and does not consume a max_docs slot
+cliff_exempt_trust = "extracted"       # an exact-cite extracted hit is never cliffed
+min_chars          = 600               # a fragment is worse than a pointer
+max_share          = 0.60              # a valve against one god-document
+doc_overhead       = 180               # charged against the pool BEFORE allocation --
+                                       #   reserve-then-render, because first-come-first-served
+                                       #   lets the top two documents eat the envelope
+block_overhead     = 95
+spine_boost        = 2.0               # applied to a block reachable by `rel` from another hit;
+                                       #   cliff-exempt
+whole_section_buy  = 0.60              # one shared pool with buy_pool, spent in rank order
+buy_pool           = 0.15
+# NOT HERE: SEM_BLOCKS_PER_SEGMENT = 64 is a RETRIEVAL constant in omniweave_core.limits, and
+# putting it in a packing block would have given one number two homes.
+# [blocks_below, max_chars, max_docs, chars_per_doc, calls, related, pointers, meta_text], tiered on
+# INDEXED BLOCKS and not documents -- cells are blocks, so a 137-document corpus is 41k blocks or
+# 4M. MONOTONE in chars_per_doc (SV4), property-tested: a larger tier may never receive a smaller
+# chars_per_doc.
+tier = [[      5000, 12000,  4, 3500, 1, false, false, false],
+        [     50000, 18000,  6, 4500, 2, false, true,  false],
+        [    500000, 22000,  8, 5000, 3, true,  true,  true ],
+        [   5000000, 24000,  8, 5500, 4, true,  true,  true ],
+        [9223372036854775807, 24000, 10, 5500, 5, true, true, true]]
+
+# =============================================================================================
+# [observe] -- EVERY KEY HERE IS OPERATIONAL: none of them can change a produced row.
+# =============================================================================================
+[observe]
+sinks         = ["console", "ndjson"]  # console | ndjson. ConsoleSink writes to STDERR and
+                                       #   self-suppresses when stderr is not a TTY, so a console
+                                       #   sink can never corrupt a --render json document
+ndjson_path   = ".omniweave/events/{run_id}.ndjson"
+shard_bytes   = 67108864
+sample        = { non_ok = 1.0, ok = 0.015625 }   # blake2b(work_id || salt), NEVER RNG, so a
+                                       #   sampled trace is reproducible
+timings       = "always"               # always | never
+otlp_endpoint = ""                     # honoured by `ow trace export` ONLY, over OTLP/HTTP JSON:
+                                       #   a broken exporter cannot break a run
+level         = "info"                 # debug | info | notice | warn | error -- closed to five
+                                       #   values, declared per kind and applied at emit()
+redact        = "none"                 # none | paths. tools/redact.toml is the field register
+retain_days   = 14                     # ~9 MB of events per full reference-scale ingest

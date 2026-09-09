@@ -1,0 +1,50 @@
+# A framework tombstone (04-driver-system.md sections 7.5 and 10.4 row 3). The third of the
+# three Datalab tombstones that seed the known-bad-weights-licence set from ONE licence file.
+#
+# `replaced_by` is ABSENT, and that is a statement rather than an omission: there is no
+# schema-guided field-extraction driver to point at. `card.py`'s `_tombstone_replacement()`
+# reads "`replaced_by` may be omitted only when there is no successor; then `reason` says so",
+# so the reason below says so in a sentence `tools/gate_tombstones.py` checks verbatim.
+
+card_schema = 1
+
+[driver]
+id    = "parse.fields.lift"
+port  = "parse/1"
+title = "lift (Datalab schema-guided extraction weights)"
+
+[licence.code]
+spdx = "Apache-2.0"
+
+# The same file again -- see parse.page.surya.toml for why the seed is an unresolved marker.
+[licence.weights]
+spdx                   = "LicenseRef-AIPubs-OpenRAIL-M"
+licence_sha256         = "unresolved:md5=e1f69b64dee2f1641a9b1ab12adf24d6"
+competitor_bar         = true
+output_share_alike     = true
+attribution_per_output = true
+remote_kill_switch     = true
+revenue_gate_usd       = 0
+redistribution         = "restricted"
+clause_refs            = [
+  "Attachment A 2(c) at MODEL_LICENSE:58",
+  "8 at MODEL_LICENSE:39",
+  "9 at MODEL_LICENSE:41",
+]
+
+[tombstone]
+reason = """
+The same MODEL_LICENSE as marker and surya, md5 e1f69b64dee2f1641a9b1ab12adf24d6 -- Attachment A \
+clause 2(c) at :58 is a competitor bar with no revenue threshold and no research carve-out, \
+clause 8 at :39 licenses the Output, clause 9 at :41 reserves a remote kill switch.
+
+lift additionally says it in its own words. lift/README.md:232: "free for research, personal use, \
+and startups under $5M funding/revenue, cannot be used competitively with our API". omniweave is a \
+document-parsing product competing with Datalab's API, so no threshold and no acknowledgement \
+reaches this.
+
+There is no replacement. Nothing in the roster does schema-guided field extraction with \
+guaranteed schema validity; that capability has to be rebuilt rather than substituted, and \
+claiming a successor that does not exist would be worse than naming none.
+"""
+review_by = "2026-12-03"

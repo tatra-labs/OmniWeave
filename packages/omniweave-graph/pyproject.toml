@@ -1,0 +1,23 @@
+# packages/omniweave-graph/pyproject.toml — the free derive/1 passes.
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "omniweave-graph"
+version = "0.1.0"                     # == RELEASE. G5.
+description = "The seven free derive/1 passes."
+license = "Apache-2.0"
+requires-python = ">=3.11"           # NO upper bound. charter.md D1.
+dependencies = [
+  "omniweave-ports >=1,<2",
+  # NO THIRD PARTY. 11-repo-layout.md section 1.2.
+]
+
+# The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
+[tool.hatch.build.targets.wheel]
+packages = ["src/omniweave_graph"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "LICENSE", "NOTICE", "THIRD_PARTY.md", "LICENSES", "pyproject.toml"]

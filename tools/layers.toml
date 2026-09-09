@@ -1,0 +1,39 @@
+# tools/layers.toml — the import DAG. An arrow means "may import". G4.
+#
+# A row is the COMPLETE allowed set of first-party import roots for that package, transitively
+# closed. Specified in 02-architecture.md section 3.2 (verbatim from charter.md section 3.3) and
+# 11-repo-layout.md sections 1.2, 1.10 and 3.4.
+#
+# NO AUTHOR PICKS THEIR OWN ROW. tools/gate_layers.py re-derives every row from that
+# distribution's [project.entry-points."omniweave.drivers"] table under rules 3 and 4 and
+# asserts equality with what is written here:
+#
+#   rule 1  omniweave-ports depends on nothing                                    -> []
+#   rule 2  omniweave-core depends on omniweave-ports and no third party
+#   rule 3  a distribution declaring only acquire/parse/derive/embed drivers has
+#           ["omniweave_ports"] EXACTLY
+#   rule 4  a distribution declaring a compile driver has
+#           ["omniweave_core", "omniweave_ports"]
+#
+# omniweave-office appears under rule 3 and is ALSO the single first-party dependency of
+# omniweave — the only edge in the graph not forced by a protocol (charter F33, OQ-3).
+# omniweave-conform carries the compile row because it ships the reference target
+# compile.text.owtext (11-repo-layout.md section 1.2).
+#
+# Fourteen lines, one per distribution. acquire/1 is a live Port with no in-tree implementation
+# at release 1, so there is no fifteenth (02-architecture.md section 3.1, ADR-3).
+
+omniweave_ports        = []
+omniweave_core         = ["omniweave_ports"]
+omniweave_office       = ["omniweave_ports"]
+omniweave_pdf          = ["omniweave_ports"]
+omniweave_vision       = ["omniweave_ports"]
+omniweave_graph        = ["omniweave_ports"]
+omniweave_llm          = ["omniweave_ports"]
+omniweave_serve        = ["omniweave_core", "omniweave_ports"]
+omniweave_target_pptx  = ["omniweave_core", "omniweave_ports"]
+omniweave_target_docx  = ["omniweave_core", "omniweave_ports"]
+omniweave_target_deck  = ["omniweave_core", "omniweave_ports"]
+omniweave_target_video = ["omniweave_core", "omniweave_ports"]
+omniweave_conform      = ["omniweave_core", "omniweave_ports"]
+omniweave              = ["omniweave_core", "omniweave_ports", "omniweave_office"]

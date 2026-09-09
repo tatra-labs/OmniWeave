@@ -1,0 +1,26 @@
+# packages/omniweave-target-deck/pyproject.toml — a card plus a ToolchainSpec.
+# The renderer is a digest-pinned Toolchain bundle under toolchains/deck/, installed
+# by `ow targets install deck` and never a pip dependency
+# (11-repo-layout.md sections 1.6 and 3.4).
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "omniweave-target-deck"
+version = "0.1.0"                     # == RELEASE. G5.
+description = "compile.deck.native and parse.deck.native — a card plus a ToolchainSpec, no renderer."
+license = "Apache-2.0"
+requires-python = ">=3.11"           # NO upper bound. charter.md D1.
+dependencies = [
+  "omniweave-core ~= 0.1.0",
+  "omniweave-ports >=1,<2",
+]
+
+# The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
+[tool.hatch.build.targets.wheel]
+packages = ["src/omniweave_target_deck"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "LICENSE", "NOTICE", "THIRD_PARTY.md", "LICENSES", "pyproject.toml"]

@@ -1,0 +1,100 @@
+# tools/weights.toml — the per-distribution installed-size ceilings. G2.
+#
+# Specified in 11-repo-layout.md section 2.5, which prints four of these rows verbatim. The
+# fourteen `marginal_mb` numbers are the `ceiling` column of section 1.2's distribution table,
+# transcribed. `aggregate_mb` is the only UNION number in the file.
+#
+# A row is MARGINAL: the distribution's own installed files plus the third-party closure it
+# introduces, EXCLUDING first-party siblings, each of which is counted in its own row. The
+# closure reading is arithmetically inconsistent — omniweave-target-deck's 1 MB is smaller than
+# its dependency omniweave-core's 3 MB, and a closure cannot be smaller than something it
+# contains — and was retired by adr/0010-data-artefacts-and-weight-ceiling.md under charter
+# erratum E79. Section 2.5 is that reading's sole home.
+#
+# `MB` here is 1_000_000 bytes. The plan spells 2^20 as `MiB` where it means it (section 1.6's
+# "1 MiB stdout cap", 12-performance's GiB budgets) and `MB` in this column, so the two are not
+# the same unit and this file carries the SI one. tools/gate_weights.py states the same constant
+# once and this comment is its only prose home.
+#
+# Enforced by tools/gate_weights.py (G2, the `build` job, 90 s), measured from `RECORD` in a
+# fresh environment plus a `du` over site-packages, after first import. An unlisted distribution
+# has no ceiling and FAILS CLOSED — section 1.10 row 4, the fourth of the ten sites that move
+# when a distribution is added.
+#
+# This file is the one file in tools/ where raising a number is a reviewable act with its own
+# justification line (section 1.7). Raising a `marginal_mb` is non-breaking ONLY with a `why`
+# line (section 4.3's packaging row); gate_weights.py refuses a row that has no `why`.
+#
+# PROVENANCE OF THE `why` STRINGS. Section 2.5 prints four rows complete — omniweave-ports,
+# omniweave-core, omniweave-pdf and omniweave-vision — and those four `why` strings are
+# transcribed from it verbatim. The plan fixes no `why` string for the other ten; theirs are
+# written here from that row's own `deps` and `what it ships` columns in section 1.2, which is
+# the only justification the plan supplies for them. A reviewer raising one of those ten is
+# rewriting an authored line, not a quoted one.
+
+schema = 1
+
+# The one union number: `pip install "omniweave[recommended]"` into a fresh environment, every
+# `RECORD` summed with duplicate installed paths counted once. 174 MB of ceiling is claimed by
+# the seven rows that profile installs (1+3+25+15+40+30+60), so 76 MB of headroom is deliberate:
+# it is what a licence-clean ANN backend (F10) and a `deck` rasterizer (F18) must fit inside
+# (section 2.3). omniweave-vision is exempt and so are the five attachment distributions of
+# section 1.2's second table, none of which is RELEASE-versioned.
+aggregate_mb = 250
+
+[dist."omniweave-ports"]
+marginal_mb = 1
+why = "pure typing, no third party"
+
+[dist."omniweave-core"]
+marginal_mb = 3
+why = "stdlib only; the number is the source tree plus generated data"
+
+[dist."omniweave"]
+marginal_mb = 25
+why = "the largest first-party source tree — CLI, SDK, the generated surface registry, router, Supervisor, planner, the three host graph passes, install, hooks and omniweave/skills/**; its three dependency edges are all first-party and counted in their own rows"
+
+[dist."omniweave-office"]
+marginal_mb = 15
+why = "firecrawl-anydoc == 0.2.4 and its closure — the only third-party compiled abi3 wheel on the default install path, which is what OQ-3 is counting"
+
+[dist."omniweave-pdf"]
+marginal_mb = 30
+why = "pypdfium2 bundles the pdfium binary; defusedxml is negligible"
+
+[dist."omniweave-serve"]
+marginal_mb = 40
+why = "the mcp SDK and its closure, carrying both the stdio and http transports; opentelemetry is not a dependency, it is imported only by otlp.py when an operator has installed it"
+
+[dist."omniweave-graph"]
+marginal_mb = 5
+why = "the seven free derive/1 passes and no third party at all; the number is source plus their shipped data"
+
+[dist."omniweave-llm"]
+marginal_mb = 2
+why = "the four billed_api derive/1 passes and no third party at all — a model is reached through io.service(), never a client library"
+
+[dist."omniweave-target-pptx"]
+marginal_mb = 60
+why = "the heaviest bounded row: python-pptx, XlsxWriter, skia-pathops, uharfbuzz and Pillow, two of which ship compiled wheels"
+
+[dist."omniweave-target-docx"]
+marginal_mb = 20
+why = "python-docx plus lxml, whose compiled libxml2/libxslt payload is the whole of the row"
+
+[dist."omniweave-target-deck"]
+marginal_mb = 1
+why = "a card plus a ToolchainSpec and no renderer; the Toolchain bundle is installed by `ow targets install` into $OMNIWEAVE_HOME, never into site-packages"
+
+[dist."omniweave-target-video"]
+marginal_mb = 1
+why = "implemented = false at release 1; toolchains/video/ ships no bundle, so the wheel is a card and a refusal"
+
+[dist."omniweave-vision"]
+marginal_mb = 0
+unbounded = true
+why = "torch + transformers; ow doctor prints the resolved size (the G2 exemption)"
+
+[dist."omniweave-conform"]
+marginal_mb = 5
+why = "the twelve suites, the testkit, the eval harness, the reducers, the Cassette codec, the calibrator, the scoreboard generator and compile.text.owtext, over pytest alone"

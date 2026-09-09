@@ -1,0 +1,53 @@
+# A framework tombstone (04-driver-system.md sections 7.5 and 10.4 row 2). Two jobs: DR22's
+# quoted reason and named replacement, and the known-bad-weights-licence seed set, which is
+# hash-keyed on `licence_sha256` and therefore survives a rename.
+#
+# This row is the reason the seed set is keyed on a HASH rather than on an id: marker, surya and
+# lift are three distributions, three driver ids and ONE licence file.
+
+card_schema = 1
+
+[driver]
+id    = "parse.page.marker"
+port  = "parse/1"
+title = "marker (Datalab PDF converter weights)"
+
+# Apache-2.0 code over encumbered weights, exactly as surya. Not a seed: no digest here.
+[licence.code]
+spdx = "Apache-2.0"
+
+# BYTE-IDENTICAL to parse.page.surya's and parse.fields.lift's, and that identity is the fact:
+# `md5sum marker/MODEL_LICENSE surya/MODEL_LICENSE lift/MODEL_LICENSE` returns one digest three
+# times (04-driver-system.md section 10.4). The value is an explicitly-marked UNRESOLVED seed
+# because omniweave does not have the file and never will; see parse.page.surya.toml.
+[licence.weights]
+spdx                   = "LicenseRef-AIPubs-OpenRAIL-M"
+licence_sha256         = "unresolved:md5=e1f69b64dee2f1641a9b1ab12adf24d6"
+competitor_bar         = true
+output_share_alike     = true
+attribution_per_output = true
+remote_kill_switch     = true
+revenue_gate_usd       = 0
+redistribution         = "restricted"
+clause_refs            = [
+  "Attachment A 2(c) at MODEL_LICENSE:58",
+  "8 at MODEL_LICENSE:39",
+  "9 at MODEL_LICENSE:41",
+]
+
+[tombstone]
+reason = """
+The byte-identical file: `md5sum marker/MODEL_LICENSE surya/MODEL_LICENSE lift/MODEL_LICENSE` \
+returns one digest three times, e1f69b64dee2f1641a9b1ab12adf24d6. marker is refused for exactly \
+the reasons parse.page.surya is refused, and the seed set is keyed on the licence hash rather \
+than on the driver id so that this is one fact and not three.
+
+Attachment A clause 2(c) at marker/MODEL_LICENSE:58 is a competitor bar with no revenue \
+threshold and no research carve-out, where 2(a) and 2(b) at :56-57 both carve out personal and \
+research use below $5,000,000. Clause 8 at :39 licenses the Output. Clause 9 at :41 reserves a \
+remote kill switch. The top-level LICENSE is Apache-2.0 and mentions the weights nowhere.
+
+Use parse.page.olmocr, Apache-2.0 code and Apache-2.0 weights.
+"""
+replaced_by = "parse.page.olmocr"
+review_by   = "2026-12-03"

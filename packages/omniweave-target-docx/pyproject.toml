@@ -1,0 +1,28 @@
+# packages/omniweave-target-docx/pyproject.toml — the second real target.
+# Deliberately NOT in omniweave[recommended]: a second real target exists to falsify
+# "one implementation wearing an interface", not to be installed by default
+# (11-repo-layout.md section 1.2).
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "omniweave-target-docx"
+version = "0.1.0"                     # == RELEASE. G5.
+description = "compile.docx.native and parse.docx.native, owflow/1."
+license = "Apache-2.0"
+requires-python = ">=3.11"           # NO upper bound. charter.md D1.
+dependencies = [
+  "omniweave-core ~= 0.1.0",
+  "omniweave-ports >=1,<2",
+  "python-docx",
+  "lxml",
+]
+
+# The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
+[tool.hatch.build.targets.wheel]
+packages = ["src/omniweave_target_docx"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "LICENSE", "NOTICE", "THIRD_PARTY.md", "LICENSES", "pyproject.toml"]

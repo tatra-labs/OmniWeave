@@ -1,0 +1,27 @@
+# packages/omniweave-serve/pyproject.toml — the MCP server.
+# NEVER imports omniweave and NEVER runs the Supervisor: its tools/layers.toml row
+# is ["omniweave_core", "omniweave_ports"] and G4 enforces it
+# (02-architecture.md section 3.2 consequences 2 and 3).
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "omniweave-serve"
+version = "0.1.0"                     # == RELEASE. G5.
+description = "The omniweave MCP stdio and http transports, and otlp.py."
+license = "Apache-2.0"
+requires-python = ">=3.11"           # NO upper bound. charter.md D1.
+dependencies = [
+  "omniweave-core ~= 0.1.0",
+  "omniweave-ports >=1,<2",
+  "mcp",
+]
+
+# The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
+[tool.hatch.build.targets.wheel]
+packages = ["src/omniweave_serve"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "LICENSE", "NOTICE", "THIRD_PARTY.md", "LICENSES", "pyproject.toml"]

@@ -1,0 +1,47 @@
+# A framework tombstone (04-driver-system.md sections 7.5 and 10.4 row 5).
+#
+# The CODE-side seed. 04 section 7.5 keys the forbidden set on `[licence.code].licence_sha256`
+# OR `[licence.weights].licence_sha256`; this row and parse.doc.omniparse.toml are why the "or"
+# is load-bearing -- neither ships weights, so 11-repo-layout.md:2503's "six shipped cards ...
+# each carrying ... a `[licence.weights].licence_sha256`" does not hold for them. Reported.
+#
+# `replaced_by` is ABSENT and the reason says so verbatim; see parse.fields.lift.toml.
+
+card_schema = 1
+
+[driver]
+id    = "derive.code.jcodemunch"
+port  = "derive/1"
+title = "jcodemunch-mcp"
+
+# "Dual-Use License v1.1, All rights reserved" (17-risks.md R-L10). No SPDX identifier exists for
+# it, so the `LicenseRef-` spelling below is this file's and not the plan's; reported as a filled
+# silence. `requires_credential` is the fact that produces the `commercial` tier (erratum E10).
+# It is recorded even though `redistribution = "forbidden"` already reaches a higher tier,
+# because the card carries facts and `compute_tier()` computes over all of them.
+[licence.code]
+spdx                = "LicenseRef-JCodeMunch-Dual-Use-1.1"
+licence_sha256      = "unresolved:jcodemunch-mcp/LICENSE"
+requires_credential = true
+redistribution      = "forbidden"
+clause_refs         = ["LICENSE:29-33", "LICENSE:82-84", "LICENSE clause (c)"]
+
+[tombstone]
+reason = """
+jcodemunch-mcp/LICENSE:29-33,82-84 -- three paid tiers topping out at $1,999 for org-wide \
+INTERNAL deployment, none of which licenses embedding or redistribution, and clause (c) forbids \
+publishing any derivative "to any public package registry, index, marketplace, or app store". \
+omniweave ships to a public package registry. There is no price at which omniweave may ship it, \
+which is why this is `forbidden` rather than `commercial`: buying the top tier does not produce a \
+configuration in which omniweave may redistribute it.
+
+There is no replacement. The out-of-tree omniweave-driver-code distribution specifies \
+derive.code.treesitter and derive.code.manifest over neighbouring territory \
+(06-structure-extraction.md section 3.9), but neither is shipped at release 1 and neither is a \
+drop-in for this id, so naming one here would be a promise nothing keeps.
+
+A separate obligation survives this file: 17-risks.md R-L10 requires a docs/CLEAN-ROOM.md row for \
+this repository, because its shape was read and reimplemented. A tombstone is a licence \
+instrument and does not discharge a clean-room record.
+"""
+review_by = "2026-12-03"

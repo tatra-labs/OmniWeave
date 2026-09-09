@@ -1,3 +1,32 @@
 _collections/
 _index/
 _plan/
+
+# --- omniweave state that must never reach a pull request -----------------
+# 11-repo-layout.md section 1.1: ".omniweave/ · *.owstore* · $OMNIWEAVE_HOME never inside
+# the repo". A tracked store is a corpus committed to git; it fails `ow doctor` with
+# OW-S-060 at runtime (00-vision V01-16) and this file is what stops it reaching a PR at all.
+.omniweave/
+*.owstore*
+
+# $OMNIWEAVE_HOME defaults to ~/.omniweave (charter.md, "Names fixed here"); an operator who
+# repoints it at the checkout still gets no tracked bytes.
+.omniweave-home/
+
+# --- generated package data ------------------------------------------------
+# The first-party release manifest is generated into src/ by tools/gen_first_party.py during
+# the `build` job (11-repo-layout.md section 7.2), so a workspace checkout has none and every
+# first-party driver there is `unpinned`.
+packages/omniweave-core/src/omniweave_core/drivers/first_party.toml
+
+# --- Python / uv -----------------------------------------------------------
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+wheelhouse/
+.pytest_cache/
+.hypothesis/
+.ruff_cache/
