@@ -483,7 +483,13 @@ budget_s       = 420
 pr             = true
 nightly        = true
 release        = true
-runner_planned = ["tools/gate_incremental.py"]
+# LANDED at P2 as the HARNESS, which is what moved this out of `runner_planned`: 16-roadmap.md:458
+# puts `tools/gate_incremental.py --smoke` in P2's exit criteria and annotates it "G19's harness
+# exists; its fixture lands in P4", and :575 puts the unflagged run in P4's. The script therefore
+# exists, `test_gates_register.py`'s "every `runner_planned` path does NOT exist" forces this move,
+# and the row's assertion is unchanged: the unflagged run exits 2 (DID NOT RUN) until W4.10 lands
+# `fixtures/incremental/`, so nothing here claims the gate is enforcing yet.
+runner         = ["tools/gate_incremental.py"]
 # 17-risks.md section 1.3: `runtime` owns "the Supervisor, `work`, the claim, ... the cache".
 owner          = "runtime"
 reviewed_at    = "2026-09-07"
@@ -518,7 +524,11 @@ nightly        = true
 # takes the whole matrix (section 6.5's `ow-bench-1` row, "the full G21 crash matrix").
 nightly_note   = "full matrix"
 release        = true
-runner_planned = ["tools/gate_crash.py"]
+# LANDED at W2.9. Both halves of the row are one script: no arguments draws three blake2b-selected
+# points (the PR cell) and `--all` walks every boundary of every fixture (the nightly cell's
+# "full matrix", section 6.5's `ow-bench-1` row). The library half is
+# `omniweave_core.store.crashmatrix`, which `ow test crash-matrix` wires at P7 (16-roadmap.md:445).
+runner         = ["tools/gate_crash.py"]
 owner          = "runtime"
 reviewed_at    = "2026-09-07"
 review_by      = "2026-12-03"

@@ -28,12 +28,16 @@
 #     build, and build.reproducible.
 #     G13 is armed and VACUOUS: the repository carries no v* tag yet, and "append-only against the
 #     previous tag" has nothing to diff until one exists. The step says so, and self-arms.
+#     G19 is armed in incremental and runs its HARNESS: tools/gate_incremental.py --smoke,
+#     which is what 16-roadmap.md:458 puts in P2's exit criteria: "G19's harness exists; its
+#     fixture lands in P4". The unflagged run needs fixtures/incremental/ and exits 2 without
+#     it, so the step branches on the directory and neither branch can pass for the wrong
+#     reason.
 #   PRESENT, MARKED, NOT YET ENFORCING (the register lists the runner under runner_planned, and
 #   test_gates_register.py asserts those paths do NOT exist, so landing one forces the register
 #   edit and arms the step in the same commit):
 #     G7  section 8.5's pin policy; no tools/ script is named by the plan (see its step)
 #     G11 G12 G15 G16   P3 (16-roadmap.md:513-516)
-#     G19               harness P2, fixture P4 (16-roadmap.md:458, :575)
 #     G20 G21           P4 (16-roadmap.md:576-577); G21's harness lands at P2 (:457)
 #     G25 G26           P7 (16-roadmap.md:742-743)
 #     G27               tools/gate_docs.py lands "with P1's gate harness" (section 6.4 on a2);
@@ -367,15 +371,27 @@ jobs:
         # ADR-2 decision 4 gave charter D2's unnumbered CI gate a number and INV-1 its third
         # enforcer. Do NOT cite G6 for it: G6 is "ow schema emit --check" and is not renumbered.
         # The register's row says "No tools/ script is named by the plan", and no ow subcommand is
-        # named either, so nothing is invented here; it needs the archive round trip and fixtures/,
-        # and the plan states no phase for either. A tripwire on fixtures/ instead of a guess.
+        # named either, so nothing is invented here.
+        #
+        # The row's assertion has TWO halves -- "import(export(store)) == store" and "over the
+        # fixture corpus" -- and P2 landed exactly one. The round trip is real now:
+        # test_owdoc_roundtrip.py writes a document through the real DocSink, exports it, imports
+        # it into a SECOND fresh store through a second real DocSink, and compares. So the
+        # MECHANISM is enforced here from P2 on. The CORPUS is not -- fixtures/ does not exist and
+        # the plan states no phase for it -- so P1's tripwire is kept underneath: the day
+        # fixtures/ lands, this step fails and says to widen the run over it.
+        #
+        # Enforcing half and saying WHICH half is the point. "G28 NOT ENFORCED" was true while the
+        # round trip did not exist; leaving it there now would be a green light on a gate that can
+        # actually run.
         run: |
+          uv run pytest packages/omniweave-core/tests/unit/test_owdoc_roundtrip.py -q
           if [ -d fixtures ]
           then
-            echo "fixtures/ exists: wire G28's round trip over the corpus (ADR-2 decision 4)"
+            echo "fixtures/ exists: widen G28's round trip over the corpus (ADR-2 dec. 4)"
             exit 1
           fi
-          echo "G28 NOT ENFORCED: needs the archive round trip and fixtures/ (ADR-2 dec. 4)" \
+          echo "G28 mechanism enforced; corpus half pending fixtures/ (ADR-2 dec. 4)" \
             | tee -a "$GITHUB_STEP_SUMMARY"
       - name: "G29 -- the redaction canary under four forced faults"
         # 15-observability.md section 8.3 is the assertion's sole home. Both it (:1447) and section
@@ -699,20 +715,19 @@ jobs:
       - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
       - run: uv python install "$UV_PYTHON"
       - name: "G19 -- incremental == full over 300 docs and 40 mutations"
-        # Two arrival dates, both stated by the plan: the harness lands at the P2 exit as
-        # "gate_incremental.py --smoke" with the note "G19's harness exists; its fixture lands in
-        # P4" (16-roadmap.md:458), and the full run is the P4 exit line (:575). The step runs
-        # whichever form the tree can support, so it arms in two steps rather than one.
+        # Two arrival dates, both stated by the plan: the harness landed at the P2 exit as
+        # "gate_incremental.py --smoke" with the note "G19's harness exists; its fixture
+        # lands in P4" (16-roadmap.md:458), and the full run is the P4 exit line (:575). The
+        # harness is on disk now and tools/gates.toml carries it under `runner`, so the outer
+        # file guard is gone and this step's exit code IS the job's in both branches. The
+        # fixture branch stays because it is the ONE thing still absent: without
+        # fixtures/incremental/ the unflagged run exits 2 (DID NOT RUN), which is a red job --
+        # so --smoke is what P2 asks for and the branch is a phase, not a warn-only mode. The
+        # smoke run prints a NOT CHECKED block naming P4 for every piece it could not check.
         run: |
-          if [ -f tools/gate_incremental.py ]
-          then
-            if [ -d fixtures/incremental ]
-            then uv run tools/gate_incremental.py
-            else uv run tools/gate_incremental.py --smoke
-            fi
-          else
-            echo "G19 NOT ENFORCED: harness at P2 (16-roadmap.md:458), fixture at P4 (:575)" \
-              | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ -d fixtures/incremental ]
+          then uv run tools/gate_incremental.py
+          else uv run tools/gate_incremental.py --smoke
           fi
 
   # ==========================================================================================
@@ -737,15 +752,11 @@ jobs:
       - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
       - run: uv python install "$UV_PYTHON"
       - name: "G21 -- kill-9 at three points, ow resume, store equals an uninterrupted run"
-        # Harness at the P2 exit (16-roadmap.md:457), re-run at P4 (:577). It needs Store.complete
-        # to exist, which is P2's work.
-        run: |
-          if [ -f tools/gate_crash.py ]
-          then uv run tools/gate_crash.py
-          else
-            echo "G21 NOT ENFORCED: lands at P2 (16-roadmap.md:457) and P4 (:577)" \
-              | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
+        # LANDED at W2.9, so the existence guard is gone: a step that passes when its runner is
+        # missing is section 6.8's check that cannot fail. Three blake2b-drawn points, printed by
+        # the gate so a failure here is reproducible with the same --salt. The nightly ow-bench-1
+        # row (section 6.5) runs the same script with --all, which is the "full matrix" cell.
+        run: uv run tools/gate_crash.py
 
   # ==========================================================================================
   # parity -- the container job, <= 10 min: "uv sync && pytest: offline, GPU-free, Node-free".
