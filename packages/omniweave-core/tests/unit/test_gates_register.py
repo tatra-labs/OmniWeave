@@ -15,7 +15,10 @@ Five properties, and the middle two are the ones that earn the file:
   never reused, exactly as an error code is not.
 * **every named runner exists, and every `tools/gate_*.py` on disk is named** -- the second half is
   the forcing function. A gate script nobody registered is a blocking check no document can cite
-  and `V10-1` cannot see, which is the exact hole `tools/gate_tombstones.py` sat in.
+  and `V10-1` cannot see, which is the exact hole `tools/gate_tombstones.py` sat in. The one
+  qualification is `QG_SERIES_SCRIPTS`: `tools/gate_budgets.py` is a *`Q-G`* script, and
+  11-repo-layout.md:397 forbids `tools/gates.toml` from naming a row `eval/gates.toml` owns, so it
+  is registered elsewhere and the sweep asserts that in both directions rather than skipping it.
 * **every `runner_planned` path does NOT exist** -- the other direction of the same forcing
   function. When someone writes `tools/gate_egress.py`, this test goes red until G15's row moves
   the path from `runner_planned` to `runner`, so the register cannot quietly keep describing a
@@ -109,6 +112,35 @@ SHARED_RUNNERS: dict[str, tuple[str, ...]] = {
     # G14's row carried no runner until this was found: a blank field read as "nothing runs this",
     # which was false and let ci.yml execute the script in a job no row named.
     "tools/check_versions.py": ("G5", "G14"),
+}
+
+# ---------------------------------------------------------------------------------------------
+# THE ONE BOUNDARY THIS REGISTER DOES NOT OWN: the static Q-G series' scripts.
+#
+# `tools/gate_*.py` is not the same set as "the G series". 11-repo-layout.md:393-397 states the
+# split in as many words -- `eval/gates.toml` holds the metric gates and the Q-G series, owned by
+# 13-quality.md; `tools/gates.toml` holds the G series, owned by 11-repo-layout.md; and "Neither
+# file may name a row the other owns." 11-repo-layout.md:1615-1617 repeats it for exactly the
+# rows at issue: the static Q-G series' "budgets, owners and review dates live in
+# `eval/gates.toml`; this document only reserves them a job."
+#
+# So a Q-G script sitting under `tools/` is registered, just not HERE, and the on-disk sweep below
+# must know the difference or it asks `tools/gates.toml` to violate its own boundary rule. This
+# table is the difference, one row per script, each naming the plan line that assigns it:
+#
+#   tools/gate_budgets.py  ->  Q-G15.  13-quality.md:354-355 "So `tools/gate_budgets.py`, under
+#   `Q-G15`, asserts one arithmetic property"; :368-371 adds the second, `process` clause;
+#   13-quality.md:1999 is the Q-G register row ("Q-G15 perf | `G` | `eval/perf.toml` ...");
+#   adr/0011-eval-register-reconciliation.md:117 calls it "already the `Q-G15` script".
+#
+# It is an ALLOW-LIST and not an exemption: the test asserts both directions, so a script named
+# here that ALSO gained a `tools/gates.toml` row fails (that is the boundary violation), and a
+# script named neither here nor in the register fails exactly as `tools/gate_tombstones.py` did.
+# Adding a row here is therefore a deliberate act with a plan citation attached, not a way past a
+# red test. `eval/gates.toml` does not exist in the tree yet -- P10 lands it (16-roadmap.md:68) --
+# which is why the second column is the plan citation and not a file offset.
+QG_SERIES_SCRIPTS: dict[str, str] = {
+    "tools/gate_budgets.py": "Q-G15 (13-quality.md:354-355, :368-371, :1999)",
 }
 
 # The register keeps TOML values ASCII (house style); section 6.4's cells do not. Exactly this
@@ -403,8 +435,36 @@ def test_every_gate_script_on_disk_is_registered(
     for row in [*gates, *register["job_assertion"]]:
         named.update(_runners(row))
         named.update(_planned(row))
-    missing = on_disk - named
+    missing = on_disk - named - set(QG_SERIES_SCRIPTS)
     assert not missing, f"unregistered gate scripts: {sorted(missing)}"
+
+
+def test_the_q_g_scripts_are_registered_in_the_other_register_and_not_this_one(
+    gates: list[dict[str, Any]], register: dict[str, Any], repo_root: Path
+) -> None:
+    """The other direction of `QG_SERIES_SCRIPTS`, which is what keeps it an allow-list.
+
+    11-repo-layout.md:397: "Neither file may name a row the other owns." A Q-G script that gained
+    a `tools/gates.toml` row would be that violation, and it would also be invisible as a
+    violation -- the sweep above would go green on it, because the row would put the path in
+    `named`. So the exclusion is asserted as an equality against the register rather than
+    subtracted and forgotten.
+
+    The second assertion is the anti-rot half: a name in this table that is not on disk is a
+    stale exemption, and a stale exemption is how the sweep above quietly stops covering a script
+    somebody renamed.
+    """
+    named: set[str] = set()
+    for row in [*gates, *register["job_assertion"]]:
+        named.update(_runners(row))
+        named.update(_planned(row))
+    overlap = named & set(QG_SERIES_SCRIPTS)
+    assert not overlap, (
+        f"11-repo-layout.md:397 -- tools/gates.toml names a row eval/gates.toml owns: "
+        f"{sorted(overlap)}"
+    )
+    absent = {path for path in QG_SERIES_SCRIPTS if not (repo_root / path).is_file()}
+    assert not absent, f"stale Q-G exemption for a script that is gone: {sorted(absent)}"
 
 
 def test_a_runner_serves_two_rows_only_where_the_plan_says_so(gates: list[dict[str, Any]]) -> None:

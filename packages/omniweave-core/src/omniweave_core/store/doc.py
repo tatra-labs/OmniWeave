@@ -358,6 +358,41 @@ def _quad_blob(quad: Quad | None) -> bytes | None:
     return None if quad is None else struct.pack("<8i", *quad)
 
 
+def _diag_bind(row: Mapping[str, Any]) -> dict[str, Any]:
+    """One `owcheck` diag row, made bindable. **`archive/owcheck.py` hands us a `dict` here.**
+
+    Two functions write the `diag` table and until this one existed they disagreed. `_diag_row`
+    below (the `DocSink.diag` path) sends `detail` through `_json_column`; `owcheck.py`'s two row
+    builders -- `_diag_row` at `owcheck.py:247` and the UNCHECKED arm at `:228` -- put a raw
+    Python `dict` in the same key. `sqlite3` refuses to bind a `dict`, so binding those rows
+    straight into `_DIAG_INSERT` raised
+    `ProgrammingError: Error binding parameter 10: type 'dict' is not supported`.
+
+    What that cost is out of proportion to the typo. `03:66-72` designs `end_doc` so that an
+    owcheck violation **quarantines the generation**: the store stays consistent and the head does
+    not move. A bind error instead propagates out of `end_doc` as a driver-level exception, so any
+    ingest whose owcheck found one violation -- **or merely left one clause UNCHECKED, which is a
+    `warning`** -- could not commit at all, and took the failure path the quarantine exists to
+    avoid. It was invisible only because every fixture in the tree produced an EMPTY owcheck
+    report: the code path was reachable and had never once been entered (ledger D39, and C-series
+    territory -- a vacuous green rather than a wrong answer).
+
+    Fixed on this side rather than in `owcheck.py` so the JSON encoding of a `diag.detail` keeps
+    ONE home (INV-21). `archive/` would otherwise have to import `store.doc._json_column` -- an
+    archive-to-store edge for a column encoding that is the store's own business -- or grow a
+    second copy of `canonical()`-then-decode, which is the shape INV-21 exists to forbid.
+
+    `block_id` is filled in here too: an owcheck finding names an `addr` inside its `detail`, not a
+    `block_id`, and the column is nullable for exactly that reason.
+    """
+    bound = {"block_id": None, **row}
+    if not isinstance(bound.get("detail"), str):
+        # Every other value in the row is already a bindable scalar; `detail` is the only JSON
+        # column, so this is a total conversion and not a defensive sweep.
+        bound["detail"] = _json_column(bound.get("detail"))
+    return bound
+
+
 def _json_column(value: object) -> str:
     """A JSON column's stored text: `canonical()`'s bytes, decoded.
 
@@ -1820,7 +1855,7 @@ class DocSink:
         _execute(
             connection,
             [
-                (_DIAG_INSERT, {"block_id": None, **row})
+                (_DIAG_INSERT, _diag_bind(row))
                 for row in report.diag_rows(doc_ord=doc.doc_ord, gen=doc.target_gen)
             ],
         )

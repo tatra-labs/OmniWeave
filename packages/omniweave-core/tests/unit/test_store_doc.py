@@ -23,6 +23,7 @@ from __future__ import annotations
 import hashlib
 import inspect
 import io
+import json
 import re
 import sqlite3  # noqa: TID251 -- the store's own IntegrityError is the assertion.
 from dataclasses import dataclass, replace
@@ -32,6 +33,13 @@ from typing import Any
 
 import pytest
 from conftest import PlanDocs
+from omniweave_core.archive.owcheck import (
+    Clause,
+    ClauseResult,
+    ClauseState,
+    OwcheckReport,
+    Violation,
+)
 from omniweave_core.blobs import BlobStore
 from omniweave_core.errors import ModelError, ResourceLimit
 from omniweave_core.model import enums
@@ -49,7 +57,12 @@ from omniweave_core.model.spans import OriginBytes, OriginNone, OriginPixels, Qu
 from omniweave_core.store import DocSink as DocSinkProtocol
 from omniweave_core.store import migrate
 from omniweave_core.store import sqlite as ow
-from omniweave_core.store.doc import _MAX_QUOTE_BY_OS_KIND, DocSink
+from omniweave_core.store.doc import (
+    _DIAG_INSERT,
+    _MAX_QUOTE_BY_OS_KIND,
+    DocSink,
+    _diag_bind,
+)
 
 NOW_NS = 1_757_400_000_000_000_000
 """A fixed wall clock. `time.time` is banned in library code and injected everywhere in the
@@ -1396,3 +1409,88 @@ def test_a_diagnostic_raised_between_two_pages_joins_the_next_transaction_to_com
         writer.end_page({})
 
     assert read(harness, "SELECT code FROM diag") == [("OW_DEPTH_FLATTENED",)]
+
+
+# ---------------------------------------------------------------------------
+# The second writer to `diag`: `owcheck`'s rows, and the bind that used to raise.
+# ---------------------------------------------------------------------------
+
+
+def test_an_owcheck_diag_row_binds_against_the_real_diag_ddl(harness: Harness) -> None:
+    """`end_doc`'s quarantine path, entered for the first time. Ledger D39.
+
+    Two functions write `diag` and they disagreed. `DocSink._diag_row` sends `detail` through
+    `_json_column`; `archive/owcheck.py`'s two row builders -- `_diag_row` and the UNCHECKED arm --
+    put a raw Python `dict` in the same key, and `sqlite3` refuses to bind a `dict`. So
+    `_end_doc`'s comprehension raised `ProgrammingError: Error binding parameter 10` for any
+    generation whose owcheck found a violation **or left a clause unchecked**, which is a
+    `warning`. 03:66-72 designs that case to QUARANTINE the generation; a bind error instead threw
+    out of `end_doc` and the document could not be committed at all.
+
+    It was invisible because every fixture in the tree produced an EMPTY owcheck report. The path
+    was reachable and had never been entered -- so this test's value is not the assertion, it is
+    that the assertion is now made at all.
+
+    Both owcheck arms are exercised deliberately, because they are separate literals in separate
+    branches: a FAILED clause carrying a `Violation`, and an UNCHECKED clause carrying a `reason`.
+    Fixing one and not the other would leave the warning half broken, which is the half a real
+    driver hits first.
+    """
+    clauses = list(Clause)
+    report = OwcheckReport(
+        (
+            ClauseResult(
+                clause=clauses[0],
+                state=ClauseState.FAILED,
+                checked=1,
+                violations=(Violation(clause=clauses[0], code="OW_X", addr="p1/0", detail="bad"),),
+            ),
+            ClauseResult(
+                clause=clauses[1],
+                state=ClauseState.UNCHECKED,
+                checked=0,
+                reason="no part bytes retained",
+            ),
+        )
+    )
+    rows = report.diag_rows(doc_ord=1, gen=1)
+    assert len(rows) == 2, "one row per violation plus one per unchecked clause"
+    assert [type(r["detail"]) for r in rows] == [dict, dict], (
+        "owcheck stopped handing out a dict, so this test no longer covers the bind it was "
+        "written for -- re-point it at whatever it hands out now"
+    )
+
+    bound = [_diag_bind(row) for row in rows]
+    for row in bound:
+        assert isinstance(row["detail"], str)
+        json.loads(row["detail"])  # raises if it is not JSON text
+        assert row["block_id"] is None, "an owcheck finding names an addr, never a block_id"
+
+    # The real DDL and a real `doc` row, not a stand-in table: the bind failed on column ORDER and
+    # TYPE together, `diag.doc_ord` is an FK to `doc` (0001_init.sql:462), and a hand-written
+    # CREATE TABLE here would be a second home for the diag schema (INV-21). The document goes in
+    # through `DocSink` for the same reason -- `begin_doc` is what assigns `doc_ord = 1`.
+    with open_store(harness) as thread:
+        writer = sink(harness, thread)
+        writer.begin_doc(doc_record())
+        writer.begin_page(page_record(1))
+        writer.add_block(root_draft())
+        writer.end_page({})
+        writer.end_doc("ok")
+
+    connection = ow.connect(harness.path)
+    try:
+        for row in bound:
+            connection.execute(_DIAG_INSERT, row)
+        connection.commit()
+        stored = connection.execute(
+            "SELECT code, detail FROM diag WHERE component LIKE '%owcheck' ORDER BY code"
+        ).fetchall()
+    finally:
+        connection.close()
+
+    assert len(stored) == 2
+    assert {json.loads(detail)["clause"] for _code, detail in stored} == {
+        clauses[0].value,
+        clauses[1].value,
+    }
