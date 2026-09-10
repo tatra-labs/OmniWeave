@@ -14,7 +14,19 @@ description = "compile.deck.native and parse.deck.native — a card plus a Toolc
 license = "Apache-2.0"
 requires-python = ">=3.11"           # NO upper bound. charter.md D1.
 dependencies = [
+  # ROLE: A FIRST-PARTY SIBLING ON ONE RELEASE TRAIN, which is why this is `~=` and not a floor.
+  # `~= 0.1.0` expands to `>= 0.1.0, == 0.1.*` (11-repo-layout.md:610), so it resolves across the
+  # MINOR it was built against and no further -- and a MINOR is what moves `SCHEMA`'s deprecation
+  # window, `CONTRACT`'s previous-two-releases rule and the store's system-of-record read contract
+  # (section 4.4). Written by `tools/check_versions.py --set <RELEASE>` and read back by G5
+  # (section 4.2 row 3): do not hand-edit the bound. G7 is why the reason is written down.
   "omniweave-core ~= 0.1.0",
+  # ROLE: THE PORT-MAJOR CEILING, which bounds a type vocabulary and not a release. Section 4.4's
+  # support table: "`omniweave-ports >=1,<2` for the life of Port 1 ... a Port 2 is a new
+  # distribution version, and Port 1 drivers keep resolving until the framework drops
+  # `CONTRACTS_SUPPORTED` support for them". Without `<2` a Port 2 that renames a Protocol
+  # resolves silently under a live driver, so section 4.1 rule 3 (11-repo-layout.md:128, :1080)
+  # REQUIRES this ceiling rather than permitting it, and `--set` never rewrites it (4.2 row 2).
   "omniweave-ports >=1,<2",
 ]
 

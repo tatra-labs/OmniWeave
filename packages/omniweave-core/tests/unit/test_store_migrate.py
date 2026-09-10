@@ -330,6 +330,49 @@ def test_index_state_is_seeded_with_the_keys_a_store_open_reads(tmp_path: Path) 
         connection.close()
 
 
+def test_a_migrated_store_reports_schema_major_one_and_that_is_the_frozen_value(
+    tmp_path: Path,
+) -> None:
+    """16-roadmap.md:428 freezes `SCHEMA = 1`; :433-434 obliges v1.0 to ship the same value.
+
+    **This is the literal, and the test above it deliberately is not.** That one compares
+    `index_state.schema` against `contract.SCHEMA_STRING`, which is the correct instrument for
+    ADR-9's single-homedness -- it proves the seed comes from the one formatting site -- and the
+    wrong one for the freeze, because both sides of the equality are this build's own number.
+    Renumbering `contract.SCHEMA` to `2` moves the constant, moves the seed, and leaves that
+    assertion green while breaking the one promise 16-roadmap.md:433 calls an obligation
+    "nothing else in the plan does" carry: *"v0.1 ships a store at `SCHEMA = 1`, and v1.0 ships
+    the same `SCHEMA`."*
+
+    So the value appears here once, on the DISK side, read back out of a store the shipped
+    migrations built. That is not a second home for it -- `omniweave_core.contract` is still the
+    sole code home and `index_state.schema` the sole disk home (ADR-9 decisions 1 and 3) -- it is
+    an expectation a wrong constant cannot satisfy by agreeing with itself.
+
+    The stamp is parsed rather than compared whole because 03:2700 fixes its spelling as
+    `<major>.<minor>` and it is the MAJOR the freeze is about: a `SCHEMA` minor is the sanctioned
+    additive-DDL move (:436-437), so pinning `"1.0"` here would fail the first legal minor bump
+    and teach the next reader to delete the test. What may never move without breaking the
+    published read contract is the `1`.
+    """
+    connection = migrated(tmp_path)
+    try:
+        row = connection.execute("SELECT v FROM index_state WHERE k = 'schema'").fetchone()
+    finally:
+        connection.close()
+    assert row is not None, "a fully migrated store holds an `index_state.schema` row"
+    stamp = str(row[0])
+    major, dot, minor = stamp.partition(".")
+    assert dot == ".", f"index_state.schema is {stamp!r}; 03:2700 spells it `<major>.<minor>`"
+    assert minor.isdigit(), f"index_state.schema is {stamp!r}; the minor is an int"
+    assert major == "1", (
+        f"a store built from the shipped migrations stamps schema {stamp!r}; 16-roadmap.md:428 "
+        f"freezes SCHEMA = 1 and :434 obliges v1.0 to ship the same major. A major bump is a "
+        f"published read-contract break with a two-release deprecation window (02:211), not a "
+        f"migration -- see the freeze paragraph at 16-roadmap.md:433-438 before editing this."
+    )
+
+
 def test_meta_never_gains_a_schema_key(tmp_path: Path) -> None:
     """ADR-9's other half: `index_state.schema` is the only place on disk that holds the pair."""
     connection = migrated(tmp_path)
