@@ -1,0 +1,235 @@
+# eval/perf.toml -- THE GATED SUBSET. The rows CI fails on, with a value, a tolerance and a
+# gate class.
+#
+# Specified in 12-performance.md section 2.4 ("### 2.4 The gated subset -- `eval/perf.toml`",
+# 12-performance.md:207), which declares itself the sole home of the `[[budget]]` row schema
+# (12-performance.md:214-225). Read by tools/gate_budgets.py under Q-G15 (13-quality.md:1999,
+# 13-quality.md:351-375). THIS FILE IS A REGISTER: every row below is TRANSCRIBED from a plan
+# site named in the comment above it. A row the plan does not state does not belong here,
+# however well motivated, and a value is never adjusted in transcription.
+#
+# WHAT A ROW IS NOT. A value here is a BUDGET -- an absolute floor owned by the product, whose
+# breach means we shipped something worse than a published promise (charter:7633-7638). It is not
+# a measurement. Nothing in this file has been measured on this checkout; at P2 the instrument
+# that measures these rows (`ow eval perf`, W10.6) does not exist, and 12-performance.md:1966
+# fixes the only machine a Budget may live on as `ow-bench-1`, which is not the machine this
+# repository is being written on.
+#
+# ---------------------------------------------------------------------------------------------
+# THE ROW SCHEMA, 12-performance.md:215-225. An unknown key is a hard error at load; `tol_pct`
+# and `tol_abs` are mutually exclusive and exactly one is required.
+#
+#   id       str, [a-z0-9_.]{1,64}, unique across the file            required
+#   value    int | float, in the unit the id's suffix names           required
+#   tol_pct  int 0-100                          exactly one of the two is required
+#   tol_abs  int | float, same unit as value    exactly one of the two is required
+#   gate     str in {pr, nightly}                                     required
+#   process  str in {supervisor, worker, driver_subproc, service}     iff the id starts `rss.`,
+#            REJECTED on any other row
+#   note     str                                                      optional
+#
+# ---------------------------------------------------------------------------------------------
+# THREE PROVENANCES, and every row says which it is.
+#
+#   [C]  charter:7573-7630 -- ten rows, as TOML, verbatim. The `#`-comments on those rows are the
+#        charter's own trailing comments, carried across.
+#   [P]  12-performance.md:190-198 -- two rows the performance document ADDS under a heading that
+#        says so in as many words ("**Extends the charter (new decision).**"), and which section
+#        2.4's own table then renders as shipped rows at 12-performance.md:238-239.
+#   [Q]  13-quality.md:1916-1941 -- three rows the quality document adds under "### 13.5 Five new
+#        files, three new perf rows, two new gate rows" (13-quality.md:1903), each printed there
+#        as a complete `[[budget]]` block with its own `note`.
+#
+# FIFTEEN ROWS, not twelve. Section 2.4's table renders twelve; the charter's TOML holds ten;
+# 13-quality section 13.5 adds three more that section 2.4's table does not render. All fifteen
+# are stated by the plan as `[[budget]]` rows of THIS file, so all fifteen are transcribed. A
+# register does not get to pick which of its sources is right, so the disagreement in the count
+# is reported as a finding and not resolved here.
+#
+# ROW ORDER is section 2.4's table order (12-performance.md:236-247) for the twelve it renders,
+# then 13-quality section 13.5's three in the order that section prints them. Order carries no
+# meaning -- `id` is the identity -- and the rendering's order is used so that a reader can diff
+# the two by eye.
+#
+# ---------------------------------------------------------------------------------------------
+# TWO KEYS THAT ARE NOT IN THE CHARTER TOML, both deliberate and both cited on their row:
+#
+#   `process` on the two `rss.` rows. Added by ADR-11 D5 and recorded as charter section 9.2
+#   erratum E88; 12-performance.md:227-228 states the value in as many words -- "Both shipped
+#   `rss.` rows declare `process = "worker"`". The charter TOML predates the key.
+#
+#   `ratchet = true` on `store.bytes_per_block`. The charter TOML carries it (charter:7622) and
+#   section 2.4's table carries it in the tolerance cell ("+/-10%, **ratchet**",
+#   12-performance.md:244), but the section 2.4 key table -- which declares itself the schema's
+#   sole home and makes an unknown key a hard error -- does not list it. It is transcribed,
+#   because dropping a key that two sites state would lose the only machine-readable form of "it
+#   may fall and never rise"; tools/gate_budgets.py therefore knows the key, and the
+#   contradiction between the key table and the two sites that use it is reported as a finding
+#   rather than smoothed away.
+#
+# WHAT IS NOT HERE. 12-performance.md:1966 says "Every `eval/perf.toml` row and every
+# `[cost.measured]` block names one [reference machine]", but the section 2.4 key table has no
+# key for it and an unknown key is a hard error, so no row can. `[pacer] runner` below names
+# `ow-bench-1` once, for the file; that is the only reading under which both sentences stand.
+# Also a finding.
+
+# ---------------------------------------------------------------------------------------------
+# [pacer] -- charter:7567-7571, verbatim. Time is compared as a RATIO against this work, so a
+# runner that is 12% slow today moves every timing row by 12% and the ratio does not move at all.
+# ---------------------------------------------------------------------------------------------
+[pacer]
+work = "blake2b(64MiB) + a 2M int loop + 200k sqlite insert+select"
+instability_pct = 15               # |before-after|/mean > 15% => UNSTABLE (not pass, not fail)
+rule = "fail on 3 consecutive nightly runs above tolerance, comparing 7-run rolling medians"
+runner = "ow-bench-1"              # ONE PINNED MACHINE. A runner change is a baseline reset.
+
+# ---------------------------------------------------------------------------------------------
+# THE PR ROWS. A breach fails the pull request.
+# ---------------------------------------------------------------------------------------------
+
+# [C] charter:7573-7577. Ceiling: V01-3's 80 ms (00-vision.md:704, 12-performance.md:184);
+# 62 x 1.25 = 77.5 ms, 2.5 ms of headroom.
+[[budget]]
+id = "import.omniweave_core_ms"
+value = 62
+tol_pct = 25
+gate = "pr"                        # G10
+
+# [C] charter:7578-7582. Ceiling: V01-3's 150 ms (12-performance.md:185); 118 x 1.25 = 147.5 ms.
+[[budget]]
+id = "cold.ow_version_ms"
+value = 118
+tol_pct = 25
+gate = "pr"
+
+# [P] 12-performance.md:195. "`cold.ow_help_ms = 190`, +/-25% (=> 237.5 ms, inside the 250 ms
+# ceiling), `gate = "pr"`." The ceiling is V01-3's `ow --help` <= 250 ms (00-vision.md:704), which
+# 12-performance.md:186 records as having no budget row until this one. The plan fixes no `note`
+# string for this row, so it carries none -- this comment is its provenance.
+[[budget]]
+id = "cold.ow_help_ms"
+value = 190
+tol_pct = 25
+gate = "pr"
+
+# [P] 12-performance.md:196-198. "`discovery.20dists_ms = 16`, +/-20% (=> 19.2 ms, inside the
+# 20 ms ceiling), `gate = "pr"`. 16 rather than B31's 15.3 because 15.3 was measured over 328
+# distributions and the ceiling is stated for 20." Ceiling: V01-3's 20 ms (00-vision.md:704).
+[[budget]]
+id = "discovery.20dists_ms"
+value = 16
+tol_pct = 20
+gate = "pr"
+
+# [C] charter:7583-7587. Ceiling: T3 conform's five-minute tier ceiling, 300 s (13-quality.md:71);
+# 240 + 60 = 300 exactly, which is why 13-quality.md:365-366 makes the check non-strict.
+[[budget]]
+id = "conform.mandatory_tier_s"
+value = 240
+tol_abs = 60
+gate = "pr"                        # the 5-min rule
+
+# [C] charter:7588-7592. Ceiling: the parity tier's hard ceiling, 600 s (13-quality.md:71);
+# 420 + 180 = 600 exactly.
+[[budget]]
+id = "contributor_parity_s"
+value = 420
+tol_abs = 180
+gate = "pr"                        # hard ceiling 600
+
+# ---------------------------------------------------------------------------------------------
+# THE NIGHTLY ROWS. Measured on `ow-bench-1` only; a breach fails the nightly job.
+# ---------------------------------------------------------------------------------------------
+
+# [C] charter:7593-7598.
+[[budget]]
+id = "parse.office.p50_ms"
+value = 5
+tol_pct = 20
+gate = "nightly"
+note = "anydoc README: 4.4 ms median across 14 formats. timing_basis = in_process."
+
+# [C] charter:7623-7630. Ceiling: G10's 250 ms warm-query ceiling (12-performance.md:188);
+# 180 x 1.20 = 216 ms.
+[[budget]]
+id = "query.warm_p50_ms"
+value = 180
+tol_pct = 20
+gate = "nightly"
+note = """G10 <= 250. The five channel budgets sum to 210 ms against `[retrieval.budget] query_ms
+= 250` net of hydration, so a query that uses its budgets stays inside this number rather than
+guaranteeing a breach."""
+
+# [C] charter:7617-7622. `ratchet` is the charter's own key; see the header note on it. V01-10
+# (00-vision.md:711) states the same row as "<= 660 B +/- 10% on the 5,000-page generated PDF
+# fixture, nightly ratchet". P2 exit is the earliest this can be measured against a real store
+# (17-risks.md:290), and what closes at P2 is bytes-per-block only -- blocks-per-page needs the
+# ten real 200-page documents of 03-document-model.md:3086 and is P3.
+[[budget]]
+id = "store.bytes_per_block"
+value = 660
+tol_pct = 10
+gate = "nightly"
+ratchet = true
+
+# [C] charter:7599-7605, plus `process` per ADR-11 D5 / charter section 9.2 E88, stated as "Both
+# shipped `rss.` rows declare `process = "worker"`" at 12-performance.md:227.
+[[budget]]
+id = "rss.gen5000p_peak_bytes"
+value = 1_610_612_736
+tol_pct = 10
+gate = "nightly"
+process = "worker"
+note = """THE FORK-TRIGGER GATE. anydoc marshals eagerly into Python objects and py.detach does
+not cover the marshal. A breach fires vendor/anydoc/FORK-TRIGGER.md."""
+
+# [C] charter:7606-7610, plus `process` -- see the row above. The 4 GiB figure is a worker peak,
+# and ADR-11 D5 is the whole reason the key exists: a reader who takes it for a whole-host figure
+# sets sixteen workers against it and gets an OOM kill at hour six.
+[[budget]]
+id = "rss.merged4mcell_peak_bytes"
+value = 4_294_967_296
+tol_pct = 10
+gate = "nightly"
+process = "worker"
+
+# [C] charter:7612-7616.
+[[budget]]
+id = "wal.bulk_index_peak_bytes"
+value = 2_147_483_648
+tol_abs = 536_870_912
+gate = "nightly"
+note = "codegraph: 5.9 GB WAL against a 340 MB DB, then 22 GB and exit 137. ABSOLUTE, not a percent."
+
+# ---------------------------------------------------------------------------------------------
+# [Q] THE THREE CI-JOB ROWS, 13-quality.md:1916-1941, each printed there as a complete block with
+# its note. They are `gate = "pr"` rows and could sit above with the other PR rows; they are kept
+# together here so that the third provenance is one contiguous block a reader checks against
+# section 13.5 in a single pass. 13-quality.md:1916 states of all three: "each satisfying section
+# 2.9's `value + tol_abs <= ceiling`".
+# ---------------------------------------------------------------------------------------------
+
+# Ceiling: T0's 180 s (13-quality.md:71); 128 + 40 = 168.
+[[budget]]
+id = "t0.gates_job_s"
+value = 128
+tol_abs = 40
+gate = "pr"
+note = "T0's ceiling is 180 s; 128 + 40 = 168 leaves 12 s of headroom."
+
+# Ceiling: T1's 240 s per cell (13-quality.md:71); 185 + 50 = 235.
+[[budget]]
+id = "test.cell_ubuntu_311_s"
+value = 185
+tol_abs = 50
+gate = "pr"
+note = """The 9-cell T1 ceiling is 240 s. 185 is the measured ubuntu/3.11 cell, of which the 258
+hypothesis properties at max_examples=200 are the dominant term (Q-Q1)."""
+
+# Ceiling: T2's 240 s (13-quality.md:71); 190 + 45 = 235.
+[[budget]]
+id = "golden.job_s"
+value = 190
+tol_abs = 45
+gate = "pr"
+note = "T2's ceiling is 240 s; 190 + 45 = 235."

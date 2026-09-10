@@ -108,6 +108,28 @@ give `(kind, key)`.** Already found and ruled from the other side --
 the register cell as printed while the probe follows the shipped statement, which is what the
 planner has to answer to.
 
+**DEFECT 5 -- 07:1023-1029's `block`-row decomposition covers thirty-four of the table's forty
+columns, so its ~324 B subtotal is short by whatever the other five cost.** The seven rows name
+`text`; "fixed scalars (~20 small ints)"; `addr` + `cite`; `content_digest` + `layout_digest`;
+`quad`; `origin_operator` + `origin_driver` + `os_part` + `os_extractor`; and `x` + `payload` +
+`raw_kind`. `0001_init.sql:235-282` declares forty columns, and `label`, `os_path`, `os_codec`,
+`score_kind` and `decision_id` appear in no row. They are not free: `os_codec` is `NOT NULL`
+wherever `os_kind = 0` (`0001_init.sql:280`) and every text block this framework produces from a
+byte origin carries `'utf-8/strict'` in it, thirteen bytes plus a serial byte on every such row --
+about 4% of the stated subtotal, from one unlisted column. `store_sizing` reports them as the
+`UNLISTED` row with an estimate of `--`, so the gap is visible instead of being folded into the
+subtotal, and the total it computes says in `covers` that it includes them.
+
+**DEFECT 6 -- 07:1037's "~636" is the sum of the printed rows and 07:1012's "~338 B/block" is a
+measurement of something else, and the section reads as though they were commensurable.** 07:1010
+calls 338 *"the measured figure"* and 07:1017 says the decomposition is *"At 660 B/block"*, but
+the thirteen rows add to 636, which is neither. Nothing here is wrong arithmetic -- 636 really is
+the row sum -- but a reader who takes 338 as the low end of the same quantity the table
+decomposes is comparing a whole-file ratio against a hand-built estimate whose FTS and index rows
+(07:1031-1033, ~202 B of the 636) may or may not have been in the 338. `store_sizing` reports
+both denominators separately (`bytes_per_block` over the file, `record_bytes_per_block` over the
+`block` rows alone) so a reviewer can see which one a figure is.
+
 WHY `export --portable` IS A SECOND MODULE
 -------------------------------------------
 `omniweave_core.store.portable` writes one `.owdoc` per document (07:3092), so it imports
@@ -120,7 +142,10 @@ holding no backend and `omniweave_core/__init__.py` makes for the nine lazy name
 
 from __future__ import annotations
 
+import re
 import sqlite3
+from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Final, NamedTuple
 
 from omniweave_core.errors import StoreError
@@ -128,24 +153,49 @@ from omniweave_core.store import migrate
 from omniweave_core.store.indexlock import LockFile, LockHeader, LockRow, read_lock
 
 __all__ = [
+    "BLOCK_INDEXES",
+    "CELLS",
+    "CELL_KINDS",
+    "COMPOSITIONS",
+    "DECOMPOSITION",
     "DEFAULT_GROUP_LIMIT",
+    "FIXTURE_CAVEAT",
     "INDEX_REGISTER",
+    "MACHINE_CAVEAT",
+    "MEASURED",
+    "MIXED",
     "MS_PER_NS",
+    "PARTIAL",
+    "PROSE",
+    "PROSE_KINDS",
     "RESIDUE_TABLES",
+    "SIZING_STATES",
+    "SUBTOTAL_ESTIMATE",
+    "SUBTOTAL_LINE",
+    "TOTAL_ESTIMATE",
+    "TOTAL_LINE",
+    "UNCHECKED",
+    "UNLISTED",
+    "ComponentCost",
+    "CompositionSize",
     "ContainerShare",
     "DocDelta",
     "ExplainReport",
     "ExplainRow",
+    "KindCount",
     "LockDiff",
     "RefGroup",
     "RegisteredIndex",
     "ResidueReport",
     "ResidueTable",
+    "SizingReport",
+    "StoreFiles",
     "diff_lock",
     "diff_stores",
     "explain_indexes",
     "lock_rows",
     "residue",
+    "store_sizing",
 ]
 
 _FIX_LOCK: Final = "ow store lock"
@@ -153,6 +203,11 @@ _FIX_LOCK: Final = "ow store lock"
 
 _FIX_EXPLAIN: Final = "ow store explain --golden"
 """The verb whose golden output `explain_indexes` produces (07:956)."""
+
+_FIX_SIZING: Final = "uv run tools/measure_store.py"
+"""What a caller runs to reproduce a sizing refusal. There is no `ow store sizing` verb: D25's
+standing pattern is a library function plus a `tools/` script now, and a P7 or P10 CLI later
+(`tools/gate_crash.py` is the worked example, `tools/schemagen.py` the P1 precedent)."""
 
 MS_PER_NS: Final = 1_000_000
 """Nanoseconds per millisecond. `route_signal.computed_at` is wall ms; `now_ns` is ns."""
@@ -1157,3 +1212,1126 @@ AGE_UNITS: Final[tuple[str, ...]] = (GENERATION, WALL_MS)
 
 CHANGES: Final[tuple[str, ...]] = _CHANGE_ORDER
 """The four `DocDelta.change` values, in `sentence()`'s render order."""
+
+
+# =============================================================================================
+# 4. STORE SIZING -- `store.bytes_per_block`, and 07:1021-1037's decomposition MEASURED.
+# =============================================================================================
+#
+# WHY THIS LIVES IN `inspect.py` AND NOT IN A NEW `store/sizing.py`
+# ------------------------------------------------------------------
+# INV-21, one fact one home (01-principles.md:766). This file is already the store's reporting
+# home: `residue()` counts rows across four tables and `ContainerShare` already divides one byte
+# total by another and calls the quotient a share (05-ingest-and-routing.md:816-819). A sizing
+# report is that same act over a different denominator, and it reuses two things this module owns
+# outright -- `INDEX_REGISTER`, from which `BLOCK_INDEXES` DERIVES the nine `block` indexes
+# 07:1031 charges for rather than transcribing that list a second time, and the house rule that a
+# report returns a value object and never prints. A separate module would have had to import
+# `INDEX_REGISTER` from here anyway, which is the tell that the fact already lives here.
+#
+# WHAT THE PLAN ASKS FOR, AND WHY A SCALAR WOULD NOT ANSWER IT
+# --------------------------------------------------------------
+# 07:1017: *"At 660 B/block, decomposed so a reviewer can attack a line rather than the total."*
+# So `store_sizing` returns a TABLE with an ESTIMATED column, transcribed from 07:1023-1037, and a
+# MEASURED column beside it, per component. 07:1023 states the reason the total alone is
+# uninformative in its own words: *"corpus-dependent and dominant. A prose paragraph is ~300 B; a
+# table cell is ~10 B. The 60-120 blocks/page envelope is that wide **because cells are Blocks**."*
+# Every aggregate here is therefore reported next to the composition that produced it
+# (`CompositionSize`), and a caller that prints one number without the composition has thrown away
+# the only variable that moves it.
+#
+# HOW A BYTE IS COUNTED, AND WHY NOT WITH `dbstat`
+# --------------------------------------------------
+# `dbstat` is a compile-time-optional virtual table (`SQLITE_ENABLE_DBSTAT_VTAB`), and CPython's
+# bundled SQLite is built without it on at least Windows/msvc -- observed on the 3.43.1 that
+# `store/sqlite.py`'s `refuse_old_sqlite` treats as the floor. It answers a question nothing else
+# can, namely how many PAGES an index occupies, so it is detected and used when present; when it
+# is absent the components that need it are reported `UNCHECKED` WITH THE REASON, never silently
+# folded into a total and never quietly passed. That third state is `store/verify.py`'s
+# `_unchecked()` pattern and the reason is the same one 07:3184-3185 gives: "I could not read
+# them" must not read like "they were fine".
+#
+# The per-COLUMN numbers need no `dbstat`, because SQLite's record format is specified and
+# arithmetic. A table b-tree cell is `[payload-size varint][rowid varint][header][body]`; the
+# header is its own length as a varint followed by one serial-type varint per column; the body is
+# each column's bytes in order, and NULL and the integers 0 and 1 cost ZERO body bytes because
+# their serial type carries the value (serial types 0, 8, 9). `_payload_sql` and
+# `_serial_width_sql` express that encoding as SQL, so the measurement is one pass over the table
+# and is exact for the record rather than a sample. What it does NOT include is the b-tree's own
+# overhead -- cell pointers, page headers, free space, overflow chaining -- which is exactly why
+# `SizingReport.bytes_per_block` (the whole file over the block count) is reported separately and
+# is the figure 12-performance.md:244's ratchet names. The two disagree by the b-tree's slack, and
+# that gap is a fact about the store rather than an error in either number.
+#
+# WHAT THIS MODULE DELIBERATELY DOES NOT DO
+# -------------------------------------------
+# It does not decide whether a budget was met. 12-performance.md:1966 makes `ow-bench-1` the only
+# machine a Budget may live on, so a comparison against 660 is an INDICATION and whoever prints it
+# owes the reader that sentence. `tools/measure_store.py` is where it is printed; this file
+# supplies no verdict, no baseline and no exit code.
+
+
+MEASURED: Final = "measured"
+"""A `ComponentCost` whose measured figure covers everything its plan row names."""
+
+PARTIAL: Final = "partial"
+"""Measured over PART of what the plan row names. `covers` says which part, in words.
+
+The plan's rows are not all one object. 07:1034 charges the `block_sec` row and the
+`block_sec_path` index together; the row is a table this module encodes exactly and the index
+needs `dbstat`. Folding a half-measurement into `MEASURED` would understate the component with no
+signal at all, and calling the whole row `UNCHECKED` would throw away a number actually obtained.
+"""
+
+UNCHECKED: Final = "unchecked"
+"""No measurement was possible. `reason` says why, in the voice of `verify.py`'s `_unchecked()`."""
+
+SIZING_STATES: Final[tuple[str, ...]] = (MEASURED, PARTIAL, UNCHECKED)
+"""The three `ComponentCost.state` values, so a caller can switch on them exhaustively."""
+
+
+PROSE: Final = "prose"
+CELLS: Final = "cells"
+MIXED: Final = "mixed"
+
+COMPOSITIONS: Final[tuple[str, ...]] = (PROSE, CELLS, MIXED)
+"""The three compositions every aggregate is reported against.
+
+07:1023 is why there are three and not one: *"A prose paragraph is ~300 B; a table cell is ~10 B.
+The 60-120 blocks/page envelope is that wide **because cells are Blocks**."* A single
+bytes-per-block figure over a corpus whose prose/cell mix was chosen by whoever wrote the fixture
+is a number about the fixture, so the mix is reported beside the aggregate every time.
+"""
+
+PROSE_KINDS: Final[frozenset[str]] = frozenset({"heading", "paragraph"})
+"""`enum_val` names counted as prose. Two, and they are the left-hand side of 07:1023's example.
+
+Not `title`, not `list_item`, not `caption`: each is prose to a reader and each would move the
+number, so the set is the narrow one the split was defined over and a corpus carrying them shows
+them in `SizingReport.kinds` as neither prose nor cells. Widening this set is a decision about
+what the measurement MEANS, and it belongs to whoever makes it explicitly.
+"""
+
+CELL_KINDS: Final[frozenset[str]] = frozenset({"table_cell"})
+"""`enum_val` names counted as cells. `Kind.TABLE_CELL`, ordinal 10 (`0001_init.sql:104`)."""
+
+
+BLOCK_INDEXES: Final[tuple[str, ...]] = tuple(
+    row.name for row in INDEX_REGISTER if row.table == "block"
+)
+"""The nine `block` indexes 07:1031 charges ~130 B/block for -- DERIVED, not transcribed twice.
+
+07:1031 names seven that "carry the weight" plus `block_review` and `block_restricted`, which is
+exactly the set of `INDEX_REGISTER` rows whose `table` is `block`. Deriving it means that the day
+the register gains or loses a `block` index this component's coverage moves with it (INV-21); a
+second literal list would have gone stale in silence while the estimate still read ~130.
+"""
+
+_FTS_SHADOWS: Final[tuple[str, ...]] = ("_data", "_idx", "_docsize", "_content", "_config")
+"""The shadow tables an fts5 virtual table ships. `dbstat` reports each under its own name, so an
+FTS component's page cost is the sum over `<name><shadow>` for every shadow that exists."""
+
+
+# --------------------------------------------------------------------------------------------
+# 4.1 The record encoding, as SQL. See the section header for why this and not `dbstat`.
+# --------------------------------------------------------------------------------------------
+
+_IDENT_RE: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+"""Every identifier interpolated into a statement below is checked against this first.
+
+The names come from `PRAGMA table_info` -- the store's own schema, not a caller's string -- and
+`_require_ident` runs anyway, because "it came from the schema" is an argument about today's
+callers while a regex is an argument about the statement.
+"""
+
+_INT_WIDTHS: Final[tuple[tuple[int, int], ...]] = (
+    (127, 1),
+    (32_767, 2),
+    (8_388_607, 3),
+    (2_147_483_647, 4),
+    (140_737_488_355_327, 6),
+)
+"""SQLite serial types 1-6: an integer's body width by magnitude. There is no five-byte form --
+serial type 5 is SIX bytes -- which is why this is a table and not `(bits + 7) // 8`."""
+
+_VARINT_BOUNDS: Final[tuple[int, ...]] = (
+    127,
+    16_383,
+    2_097_151,
+    268_435_455,
+    34_359_738_367,
+    4_398_046_511_103,
+    562_949_953_421_311,
+)
+"""Inclusive upper bound of a 1-, 2- ... 7-byte SQLite varint. Larger values take 8 or 9 bytes and
+`_varint_width_sql` answers 8 past the end of the table, which no `rowid` in this schema reaches:
+`CHECK ((block_id >> 48) = 0)` (`0001_init.sql:281`) bounds it at 2**48."""
+
+_TEXT_1B: Final = 57
+"""Longest text/blob body whose serial type still fits one varint byte. Text is `2n+13` and blob
+is `2n+12`; both clear 127 at n = 57 and neither does at n = 58."""
+
+_TEXT_2B: Final = 8_185
+"""...and two varint bytes: `2*8185 + 13 = 16383`, the last value a two-byte varint holds."""
+
+_TEXT_3B: Final = 1_048_569
+"""...and three."""
+
+
+def _require_ident(name: str) -> str:
+    """Refuse an identifier that is not a bare SQL name before it reaches a statement."""
+    if not _IDENT_RE.match(name):
+        raise StoreError(
+            f"{name!r} is not a bare SQL identifier, and this module interpolates column and "
+            f"table names into statements",
+            fix=_FIX_SIZING,
+        )
+    return name
+
+
+def _varint_width_sql(expr: str) -> str:
+    """A SQL expression for how many bytes SQLite's varint encoding gives `expr`."""
+    arms = " ".join(
+        f"WHEN ({expr}) <= {bound} THEN {width}"
+        for width, bound in enumerate(_VARINT_BOUNDS, start=1)
+    )
+    return f"CASE {arms} ELSE {len(_VARINT_BOUNDS) + 1} END"
+
+
+def _payload_sql(column: str) -> str:
+    """A SQL expression for one column's BODY bytes in the record format.
+
+    NULL costs zero bytes and so do the integers 0 and 1: serial types 0, 8 and 9 carry the value
+    in the type itself. That is not a rounding. `state`, `revision`, `restriction_bits`, `gen` and
+    `layer` are 0 on very nearly every row of a healthy store, and charging each of them a byte
+    would inflate 07:1024's "~20 small ints" row by a fifth against the file it is measured over.
+    """
+    col = _require_ident(column)
+    ints = " ".join(
+        f"WHEN {col} BETWEEN {-bound - 1} AND {bound} THEN {w}" for bound, w in _INT_WIDTHS
+    )
+    return (
+        f"CASE typeof({col})"
+        " WHEN 'null' THEN 0"
+        " WHEN 'real' THEN 8"
+        f" WHEN 'integer' THEN (CASE WHEN {col} IN (0, 1) THEN 0 {ints} ELSE 8 END)"
+        f" ELSE length(CAST({col} AS BLOB)) END"
+    )
+
+
+def _serial_width_sql(column: str) -> str:
+    """A SQL expression for the bytes one column costs in the record HEADER (its serial type)."""
+    col = _require_ident(column)
+    body = _payload_sql(col)
+    return (
+        f"CASE WHEN typeof({col}) IN ('text', 'blob') THEN"
+        f" (CASE WHEN ({body}) <= {_TEXT_1B} THEN 1"
+        f" WHEN ({body}) <= {_TEXT_2B} THEN 2"
+        f" WHEN ({body}) <= {_TEXT_3B} THEN 3 ELSE 4 END)"
+        " ELSE 1 END"
+    )
+
+
+def _header_sql(widths: str) -> str:
+    """Total header bytes given the summed serial-type widths -- solved, not approximated.
+
+    The header's first field is the header's OWN length as a varint, so the length includes itself
+    and `H = W + varint_width(H)` is implicit. It is solved by trying each varint width in
+    increasing order, which terminates because `varint_width` is monotone in its argument.
+    """
+    arms = " ".join(
+        f"WHEN ({widths}) + {width} <= {bound} THEN ({widths}) + {width}"
+        for width, bound in enumerate(_VARINT_BOUNDS[:3], start=1)
+    )
+    return f"CASE {arms} ELSE ({widths}) + 4 END"
+
+
+class _Column(NamedTuple):
+    """One column of a table, and whether it is the rowid alias.
+
+    `INTEGER PRIMARY KEY` IS the rowid: the record stores a NULL in its place, so it costs one
+    header byte and no body. Charging it its integer width would double-count the rowid the cell
+    already carries as its own varint, and would add roughly 4 B/block to 07:1024's row for free.
+    """
+
+    name: str
+    rowid_alias: bool
+
+
+def _columns_of(connection: sqlite3.Connection, table: str) -> tuple[_Column, ...]:
+    """Every column of `table`, in declaration order, with the rowid alias flagged.
+
+    `PRAGMA table_info` gives `(cid, name, type, notnull, dflt_value, pk)`. A column is the rowid
+    alias when it is the sole primary key AND its declared type is exactly `INTEGER` -- `pk = 1`
+    on a two-column primary key is a position within the key and not an alias, and
+    `sqlite_schema`'s own `WITHOUT ROWID` tables have no alias at all.
+    """
+    name = _require_ident(table)
+    rows = connection.execute(f"PRAGMA table_info({name})").fetchall()
+    pk_columns = [row for row in rows if int(row[5]) > 0]
+    alias = ""
+    if len(pk_columns) == 1 and str(pk_columns[0][2]).strip().upper() == "INTEGER":
+        alias = str(pk_columns[0][1])
+    return tuple(_Column(str(row[1]), str(row[1]) == alias) for row in rows)
+
+
+def _is_without_rowid(connection: sqlite3.Connection, table: str) -> bool:
+    """True when `table` is `WITHOUT ROWID`, whose rows live in an index b-tree and carry no rowid.
+
+    Read off the DDL text in `sqlite_schema` because SQLite exposes no pragma for it. The check is
+    on the whole statement rather than its tail: `0001_init.sql:408` and `0003_index.sql:282` both
+    put a trailing comment after the clause, so anchoring at the end would answer False for `part`
+    and `block_sec`, and each of those would then be charged a rowid varint it does not have.
+    """
+    row = connection.execute(
+        "SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = ?", (table,)
+    ).fetchone()
+    return bool(row) and "WITHOUT ROWID" in str(row[0]).upper()
+
+
+def _cell_bytes_sql(columns: Sequence[_Column], *, without_rowid: bool) -> str:
+    """A SQL expression for one row's total b-tree CELL bytes, header and body and varints.
+
+    The two b-tree cell layouts differ in exactly one field. A table b-tree cell is
+    `[payload-size varint][rowid varint][payload]`; an index b-tree cell -- which is what a
+    `WITHOUT ROWID` table's rows are -- is `[payload-size varint][payload]` with the key columns
+    inside the payload like any other. Both are computed here; neither includes the two-byte cell
+    pointer in the page's array or any page-level slack, which is the b-tree overhead
+    `SizingReport.bytes_per_block` picks up and this expression cannot see.
+    """
+    bodies = [f"({_payload_sql(c.name)})" for c in columns if not c.rowid_alias]
+    widths = [("1" if c.rowid_alias else f"({_serial_width_sql(c.name)})") for c in columns]
+    body = " + ".join(bodies) if bodies else "0"
+    header = _header_sql(" + ".join(widths) if widths else "0")
+    payload = f"(({header}) + ({body}))"
+    cell = f"{payload} + ({_varint_width_sql(payload)})"
+    if not without_rowid:
+        cell = f"{cell} + ({_varint_width_sql('rowid')})"
+    return cell
+
+
+def _table_bytes(connection: sqlite3.Connection, table: str) -> tuple[int, int]:
+    """`(rows, record bytes)` for one whole table, or `(0, 0)` when the table does not exist.
+
+    A missing table is zero and not an error: `0003_index.sql` ships `ref_site` and `block_sec`,
+    and a store migrated only as far as 0001 legitimately has neither. `residue()` takes the
+    opposite line for INV-25's four tables because their ABSENCE is the thing it reports on; here
+    the question is how many bytes they occupy, and a table that does not exist occupies none.
+    """
+    columns = _columns_of(connection, table)
+    if not columns:
+        return (0, 0)
+    cell = _cell_bytes_sql(columns, without_rowid=_is_without_rowid(connection, table))
+    # S608: `table` is a module-constant literal and every column name came from
+    # `PRAGMA table_info` through `_require_ident`; nothing here reaches a caller's string.
+    sql = f"SELECT count(*), coalesce(sum({cell}), 0) FROM {_require_ident(table)}"  # noqa: S608
+    rows, total = connection.execute(sql).fetchone()
+    return (int(rows), int(total))
+
+
+# --------------------------------------------------------------------------------------------
+# 4.2 The decomposition. TRANSCRIBED from 07:1021-1037; only the measurement is this module's.
+# --------------------------------------------------------------------------------------------
+
+_SCALAR_COLUMNS: Final[tuple[str, ...]] = (
+    "doc_ord",
+    "gen",
+    "page",
+    "parent_id",
+    "ord",
+    "kind",
+    "layer",
+    "revision",
+    "os_kind",
+    "os_a",
+    "os_b",
+    "ts_a",
+    "ts_b",
+    "producer_id",
+    "method",
+    "trust",
+    "score",
+    "quote",
+    "driver_schema_v",
+    "restriction_bits",
+    "state",
+)
+"""07:1024's *"~20 small ints"*, named. There are twenty-one, and `score` is a REAL rather than an
+int -- the plan's parenthetical is an order of magnitude and not a census, so the list is the
+schema's (`0001_init.sql:235-282`) and the count is reported rather than argued with."""
+
+
+class _ComponentSpec(NamedTuple):
+    """One row of 07:1021-1037, plus what has to be measured to answer it.
+
+    `component`, `plan_line` and `estimated` are TRANSCRIBED. Everything else is this module's
+    reading of what the row's prose names: which `block` columns, which whole tables, which
+    `sqlite_schema` objects only `dbstat` can weigh, and which fts5 tables' shadow families.
+    """
+
+    key: str
+    component: str
+    plan_line: int
+    estimated: float
+    columns: tuple[str, ...] = ()
+    tables: tuple[str, ...] = ()
+    objects: tuple[str, ...] = ()
+    fts: tuple[str, ...] = ()
+    row_overhead: bool = False
+
+
+DECOMPOSITION: Final[tuple[_ComponentSpec, ...]] = (
+    _ComponentSpec(
+        "text",
+        "`block` row: `text`",
+        1023,
+        140.0,
+        columns=("text",),
+    ),
+    _ComponentSpec(
+        "scalars",
+        "`block` row: fixed scalars (~20 small ints) + row header",
+        1024,
+        35.0,
+        columns=_SCALAR_COLUMNS,
+        row_overhead=True,
+    ),
+    _ComponentSpec(
+        "addr_cite",
+        "`block` row: `addr` + `cite`",
+        1025,
+        16.0,
+        columns=("addr", "cite"),
+    ),
+    _ComponentSpec(
+        "digests",
+        "`block` row: `content_digest` + `layout_digest`",
+        1026,
+        34.0,
+        columns=("content_digest", "layout_digest"),
+    ),
+    _ComponentSpec(
+        "quad",
+        "`block` row: `quad`",
+        1027,
+        34.0,
+        columns=("quad",),
+    ),
+    _ComponentSpec(
+        "provenance",
+        "`block` row: `origin_operator`, `origin_driver`, `os_part`, `os_extractor`",
+        1028,
+        60.0,
+        columns=("origin_operator", "origin_driver", "os_part", "os_extractor"),
+    ),
+    _ComponentSpec(
+        "x_payload_raw",
+        "`block` row: `x` (`'{}'`), `payload` (NULL), `raw_kind` (NULL)",
+        1029,
+        5.0,
+        columns=("x", "payload", "raw_kind"),
+    ),
+    _ComponentSpec(
+        "block_indexes",
+        "nine `block` indexes",
+        1031,
+        130.0,
+        objects=BLOCK_INDEXES,
+    ),
+    _ComponentSpec(
+        "block_fts",
+        "`block_fts` inverted index + docsize",
+        1032,
+        70.0,
+        fts=("block_fts",),
+    ),
+    _ComponentSpec(
+        "head_fts",
+        "`head_fts`",
+        1033,
+        2.0,
+        fts=("head_fts",),
+    ),
+    _ComponentSpec(
+        "block_sec",
+        "`block_sec` row + `block_sec_path`",
+        1034,
+        50.0,
+        tables=("block_sec",),
+        objects=("block_sec_path",),
+    ),
+    _ComponentSpec(
+        "segment_block",
+        "`segment_block` row",
+        1035,
+        20.0,
+        tables=("segment_block",),
+    ),
+    _ComponentSpec(
+        "sparse",
+        "`mark`, `rel`, `ref_site` (sparse, amortised)",
+        1036,
+        40.0,
+        tables=("mark", "rel", "ref_site"),
+    ),
+)
+"""07:1023-1036's thirteen component rows. The subtotal (07:1030) and the total (07:1037) are
+COMPUTED and are not rows here, because a transcribed subtotal that disagreed with the rows above
+it would be a second definition site for the same fact (rule: count definition sites)."""
+
+UNLISTED: Final = "unlisted"
+"""The key of the row this module ADDS, for `block` columns 07:1023-1029 does not name.
+
+**This is a reported defect, not an invention.** See `DEFECT 5` in the module docstring: the
+plan's seven `block`-row rows cover thirty-four of the table's forty columns, and the remaining
+five (`label`, `os_path`, `os_codec`, `score_kind`, `decision_id`) are charged to nothing. They
+are not free -- `os_codec` alone is `'utf-8/strict'`, thirteen bytes on every text block with a
+byte origin -- so the row exists with NO estimate and a measured figure, which lets a reviewer see
+the gap rather than have it silently added to the subtotal.
+"""
+
+SUBTOTAL_LINE: Final = 1030
+SUBTOTAL_ESTIMATE: Final = 324.0
+"""07:1030, *"**`block` row subtotal** | **~324**"*."""
+
+TOTAL_LINE: Final = 1037
+TOTAL_ESTIMATE: Final = 636.0
+"""07:1037, *"**Total** | **~636** | inside the 660 ± 10% budget"*.
+
+The 660 is NOT transcribed here. It is a `[[budget]]` row and `eval/perf.toml` is its register
+(12-performance.md:244, charter.md:7617-7622); a second copy in library code would be a second
+definition site for a number the plan gives one home. `tools/measure_store.py` reads it there.
+"""
+
+
+# --------------------------------------------------------------------------------------------
+# 4.3 What the report is
+# --------------------------------------------------------------------------------------------
+
+
+class StoreFiles(NamedTuple):
+    """The three files a `.owstore` is, sized SEPARATELY.
+
+    **The WAL is never folded into the database file's number.** A measurement taken with a fat
+    WAL is a different measurement, and the plan already knows it: `wal.bulk_index_peak_bytes`
+    exists as its own `[[budget]]` row at 12-performance.md:250 *"**absolute, not a percentage**,
+    because a percentage of a growing number is not a bound: codegraph measured **5.9 GB of WAL
+    against a 340 MB DB**, then 22 GB and exit 137."* A `bytes_per_block` computed over db + WAL
+    on a store mid-bulk-index would read 18x its steady-state value, and a ratchet fed that number
+    would never recover. So `db_bytes` is the ratchet's numerator, `total_bytes` is the disk's
+    answer, and both are printed.
+
+    `wal_present` and `shm_present` are separate from the sizes because a zero-byte WAL and no WAL
+    at all are different states -- SQLite creates and truncates the sidecar rather than deleting
+    it while any connection is open -- and an operator reading "0" needs to know which.
+    """
+
+    path: str
+    db_bytes: int
+    wal_bytes: int
+    shm_bytes: int
+    wal_present: bool
+    shm_present: bool
+
+    @property
+    def total_bytes(self) -> int:
+        """Everything on disk for this store. Not the ratchet's numerator; see the docstring."""
+        return self.db_bytes + self.wal_bytes + self.shm_bytes
+
+
+class KindCount(NamedTuple):
+    """One `enum_val` kind's population and record cost.
+
+    `name` is read out of the store's own `enum_val` table rather than out of `model.Kind`, which
+    keeps this module free of the model import and, more usefully, makes the report readable for a
+    store written by a newer `model_version` than the reader's (03 section 4.2 makes adding a Kind
+    a MINOR). A kind ordinal with no `enum_val` row is reported as `kind:<ord>` rather than
+    dropped, because a block that cannot be named is exactly the one a reviewer needs to see.
+    """
+
+    name: str
+    ordinal: int
+    blocks: int
+    live: int
+    text_bytes: int
+    row_bytes: int
+
+    @property
+    def bytes_per_block(self) -> float:
+        """Record bytes per block of this kind. `0.0` when the kind has no rows."""
+        return 0.0 if self.blocks == 0 else self.row_bytes / self.blocks
+
+
+class CompositionSize(NamedTuple):
+    """One of contract F4's three compositions, sized. See `COMPOSITIONS` for why three.
+
+    `row_bytes` is the record cost of the group's blocks; there is deliberately no per-composition
+    FILE figure, because the file's indexes, FTS and free pages cannot be attributed to a subset
+    of rows without inventing an allocation rule. `share` is the group's fraction of all blocks,
+    which is the number that makes the aggregate interpretable.
+    """
+
+    composition: str
+    kinds: tuple[str, ...]
+    blocks: int
+    text_bytes: int
+    row_bytes: int
+    corpus_blocks: int
+
+    @property
+    def bytes_per_block(self) -> float:
+        """Record bytes per block within this composition. `0.0` on an empty group."""
+        return 0.0 if self.blocks == 0 else self.row_bytes / self.blocks
+
+    @property
+    def text_bytes_per_block(self) -> float:
+        """07:1023's own quantity: *"A prose paragraph is ~300 B; a table cell is ~10 B."*"""
+        return 0.0 if self.blocks == 0 else self.text_bytes / self.blocks
+
+    @property
+    def share(self) -> float:
+        """This composition's fraction of all blocks in the store. `0.0` on an empty store."""
+        return 0.0 if self.corpus_blocks == 0 else self.blocks / self.corpus_blocks
+
+
+class ComponentCost(NamedTuple):
+    """One row of 07:1021-1037, estimated beside measured. The unit of the attackable table.
+
+    `estimated` is `None` on exactly one row, `UNLISTED`, which the plan does not carry. `measured`
+    is `None` when `state` is `UNCHECKED`. `covers` is prose and says what the measured number is
+    over -- it is the field that keeps `PARTIAL` from reading like a smaller `MEASURED`.
+    """
+
+    key: str
+    component: str
+    plan_line: int
+    estimated: float | None
+    measured: float | None
+    state: str
+    covers: str = ""
+    reason: str = ""
+
+    @property
+    def delta(self) -> float | None:
+        """`measured - estimated`, or `None` when either side is missing."""
+        if self.measured is None or self.estimated is None:
+            return None
+        return self.measured - self.estimated
+
+
+class SizingReport(NamedTuple):
+    """What a sizing run found. Read-only, clock-free, and carrying no verdict.
+
+    No `ok` field and no budget: 12-performance.md:1966 makes `ow-bench-1` the only machine a
+    Budget may live on, so nothing computed here can be a pass or a fail. `render()` prints the
+    numbers and the labels that qualify them; `tools/measure_store.py` prints the comparison and
+    the sentence that says a comparison is not a verdict.
+    """
+
+    files: StoreFiles
+    blocks: int
+    live_blocks: int
+    pages: int
+    documents: int
+    kinds: tuple[KindCount, ...]
+    compositions: tuple[CompositionSize, ...]
+    components: tuple[ComponentCost, ...]
+    page_size: int
+    page_count: int
+    freelist_pages: int
+    dbstat: bool
+    dbstat_reason: str = ""
+
+    @property
+    def bytes_per_block(self) -> float:
+        """The `store.bytes_per_block` quantity: the DATABASE FILE over the block count.
+
+        The database file and not the file plus its WAL -- `StoreFiles`' docstring works out why,
+        and `bytes_per_block_on_disk` is the other number for a caller that wants it. `0.0` on a
+        store with no blocks, because a ratio with a zero denominator is not "infinite bytes per
+        block", it is "this corpus does not answer the question".
+        """
+        return 0.0 if self.blocks == 0 else self.files.db_bytes / self.blocks
+
+    @property
+    def bytes_per_block_on_disk(self) -> float:
+        """The same ratio over db + `-wal` + `-shm`. Reported so the WAL's weight is visible."""
+        return 0.0 if self.blocks == 0 else self.files.total_bytes / self.blocks
+
+    @property
+    def record_bytes_per_block(self) -> float:
+        """Summed `block` record bytes over blocks -- the subtotal row, without b-tree slack."""
+        row = self.component("subtotal")
+        return 0.0 if row.measured is None else row.measured
+
+    @property
+    def blocks_per_page(self) -> float:
+        """Blocks per PAGE of the corpus. **A property of this corpus, never F1's answer.**
+
+        F1 is *"the blocks-per-page envelope"* and 03-document-model.md:3086 states what closes
+        it: `fixtures/gen/gen_5000p_pdf.py` **plus ten real 200-page documents** -- a 10-K, a court
+        filing, a scientific review, a spreadsheet-heavy report. A number measured over a
+        synthetic fixture whose paragraph and cell counts a person chose is a number about that
+        person's choice. `render()` prints the qualification on the same line as the figure, not
+        in a footnote, because a footnote is what gets quoted without.
+        """
+        return 0.0 if self.pages == 0 else self.blocks / self.pages
+
+    def composition(self, name: str) -> CompositionSize:
+        """One composition by name, raising rather than returning `None` for an unknown one."""
+        for row in self.compositions:
+            if row.composition == name:
+                return row
+        raise KeyError(f"{name!r} is not one of {COMPOSITIONS}")
+
+    def component(self, key: str) -> ComponentCost:
+        """One decomposition row by key, raising for an unknown one."""
+        for row in self.components:
+            if row.key == key:
+                return row
+        raise KeyError(f"{key!r} is not a row of 07:1021-1037's decomposition")
+
+    def kind(self, name: str) -> KindCount:
+        """One kind's counts by `enum_val` name, raising for a kind this store has no rows of."""
+        for row in self.kinds:
+            if row.name == name:
+                return row
+        raise KeyError(f"this store has no blocks of kind {name!r}")
+
+    def render(self) -> str:
+        """The whole report as LF-only text, sorted, with no clock and no absolute path in it.
+
+        Byte-stable for a given store, like `ExplainReport.render()` and for the same reason: a
+        report a reviewer diffs between two runs must not move for reasons unrelated to the store.
+        The store's name is printed and its directory is not, so two runs in two tempdirs render
+        identically.
+        """
+        return "\n".join(_render_lines(self)) + "\n"
+
+
+# --------------------------------------------------------------------------------------------
+# 4.4 Measuring it
+# --------------------------------------------------------------------------------------------
+
+WAL_SUFFIX: Final = "-wal"
+SHM_SUFFIX: Final = "-shm"
+"""SQLite's two sidecars. `store/sqlite.py:225` states the property that makes them worth sizing:
+*"a plain read-write open of a WAL-mode database creates `-shm` and `-wal` whether or not any
+pragma is issued"*, so their absence is information and so is their presence at zero bytes."""
+
+_NO_DBSTAT: Final = (
+    "this SQLite was built without SQLITE_ENABLE_DBSTAT_VTAB, so no page-level cost is available "
+    "for indexes or FTS shadow tables"
+)
+"""The degraded path's reason string, in `verify._unchecked()`'s register: what could not be
+read, and why, rather than a silence that reads like a zero."""
+
+
+def _store_files(path: Path) -> StoreFiles:
+    """Size the `.owstore` and each sidecar, separately. A missing file is 0 and `present=False`."""
+    wal = path.with_name(path.name + WAL_SUFFIX)
+    shm = path.with_name(path.name + SHM_SUFFIX)
+    return StoreFiles(
+        path=path.name,
+        db_bytes=path.stat().st_size if path.exists() else 0,
+        wal_bytes=wal.stat().st_size if wal.exists() else 0,
+        shm_bytes=shm.stat().st_size if shm.exists() else 0,
+        wal_present=wal.exists(),
+        shm_present=shm.exists(),
+    )
+
+
+def _dbstat_pages(connection: sqlite3.Connection) -> tuple[dict[str, int] | None, str]:
+    """`{object name: bytes}` from `dbstat`, or `(None, reason)` when the build has no `dbstat`.
+
+    The probe is a query and not a `compile_options` scan, because a compile option that is
+    present and a virtual table that resolves are two different claims and only the second one is
+    the one being relied on. `sqlite3.OperationalError` is the exact failure -- SQLite reports a
+    missing eponymous virtual table as `no such table: dbstat` -- and it is caught rather than
+    allowed out, because a sizing report that cannot weigh indexes is degraded and not broken.
+    """
+    try:
+        rows = connection.execute("SELECT name, sum(pgsize) FROM dbstat GROUP BY name").fetchall()
+    except sqlite3.OperationalError as exc:
+        return (None, f"{_NO_DBSTAT} ({exc})")
+    return ({str(name): int(size or 0) for name, size in rows}, "")
+
+
+def _objects_present(connection: sqlite3.Connection, names: Sequence[str]) -> tuple[str, ...]:
+    """Which of `names` exist in `sqlite_schema` at all, as tables, indexes or virtual tables."""
+    if not names:
+        return ()
+    marks = ", ".join("?" for _ in names)
+    # S608: `marks` is a run of bind placeholders; every value is bound, not interpolated.
+    sql = f"SELECT name FROM sqlite_schema WHERE name IN ({marks})"  # noqa: S608
+    return tuple(sorted(str(row[0]) for row in connection.execute(sql, tuple(names))))
+
+
+def _fts_shadow_names(connection: sqlite3.Connection, base: str) -> tuple[str, ...]:
+    """Every shadow table an fts5 table `base` actually shipped, plus `base` itself if present.
+
+    An fts5 virtual table stores nothing under its own name -- the bytes are in `<base>_data`,
+    `_idx`, `_docsize`, `_content` and `_config` -- and which of those exist depends on the
+    options: `block_fts` is external-content (07:1032, *"external-content, so no second text
+    copy"*), so it has no `_content` table and asking `dbstat` for one would return nothing
+    rather than fail. Both are handled by listing what is there.
+    """
+    candidates = [base, *(base + suffix for suffix in _FTS_SHADOWS)]
+    return _objects_present(connection, candidates)
+
+
+def _scan_blocks(
+    connection: sqlite3.Connection,
+) -> tuple[dict[int, tuple[int, int, int, int]], dict[str, int], int, int]:
+    """One pass over `block`. Returns per-kind counts and the corpus-wide column-group totals.
+
+    The per-kind tuple is `(blocks, live, text body bytes, record bytes)` and the second return is
+    `{group key: bytes}` over the seven `block`-row groups of 07:1023-1029 plus `UNLISTED`. The
+    last two are the summed record bytes and the summed per-row overhead.
+
+    **Charging rule, stated because the plan's table does not state it.** Each column is charged
+    its BODY plus its own serial-type byte, to the group that names it; the row's remaining
+    varints -- the header's own length, the payload size, the rowid, and the one serial byte the
+    `INTEGER PRIMARY KEY` costs -- go to the `scalars` group, because that is the only row of
+    07:1023-1029 that says *"+ row header"* (07:1024). Every byte of the record is charged exactly
+    once under this rule, which is what makes the measured subtotal add up to the measured cell.
+    """
+    columns = _columns_of(connection, "block")
+    by_group: dict[str, tuple[str, ...]] = {
+        spec.key: tuple(c for c in spec.columns if c in {col.name for col in columns})
+        for spec in DECOMPOSITION
+        if spec.columns
+    }
+    claimed = {name for names in by_group.values() for name in names}
+    by_group[UNLISTED] = tuple(
+        col.name for col in columns if col.name not in claimed and not col.rowid_alias
+    )
+    keys = tuple(by_group)
+
+    def group_sql(key: str) -> str:
+        names = by_group[key]
+        if not names:
+            return "0"
+        return " + ".join(f"(({_payload_sql(n)}) + ({_serial_width_sql(n)}))" for n in names)
+
+    cell = _cell_bytes_sql(columns, without_rowid=False)
+    charged = " + ".join(f"({group_sql(key)})" for key in keys)
+    selects = ", ".join(f"sum({group_sql(key)})" for key in keys)
+    # S608: every interpolated name came from `PRAGMA table_info` through `_require_ident`, and
+    # every literal in the CASE arms is a module constant. No caller string reaches this SQL.
+    sql = (
+        f"SELECT kind, count(*), sum(state = 0), sum({_payload_sql('text')}), sum({cell}), "  # noqa: S608
+        f"sum(({cell}) - ({charged})), {selects} FROM block GROUP BY kind ORDER BY kind"
+    )
+    per_kind: dict[int, tuple[int, int, int, int]] = {}
+    totals: dict[str, int] = dict.fromkeys(keys, 0)
+    record_bytes = 0
+    overhead = 0
+    for row in connection.execute(sql):
+        per_kind[int(row[0])] = (int(row[1]), int(row[2]), int(row[3]), int(row[4]))
+        record_bytes += int(row[4])
+        overhead += int(row[5])
+        for offset, key in enumerate(keys, start=6):
+            totals[key] += int(row[offset])
+    return (per_kind, totals, record_bytes, overhead)
+
+
+def _kind_names(connection: sqlite3.Connection) -> dict[int, str]:
+    """`{ordinal: name}` from the store's own `enum_val`. See `KindCount` for why not `model`."""
+    return {
+        int(ord_): str(name)
+        for ord_, name in connection.execute(
+            "SELECT ord, name FROM enum_val WHERE domain = 'kind' ORDER BY ord"
+        )
+    }
+
+
+def _compositions(kinds: Sequence[KindCount], corpus_blocks: int) -> tuple[CompositionSize, ...]:
+    """The three F4 groups, folded out of the per-kind counts. One store, measured once."""
+    members: dict[str, frozenset[str]] = {
+        PROSE: PROSE_KINDS,
+        CELLS: CELL_KINDS,
+        MIXED: frozenset(row.name for row in kinds),
+    }
+    out: list[CompositionSize] = []
+    for name in COMPOSITIONS:
+        chosen = [row for row in kinds if row.name in members[name]]
+        out.append(
+            CompositionSize(
+                composition=name,
+                kinds=tuple(sorted(row.name for row in chosen)),
+                blocks=sum(row.blocks for row in chosen),
+                text_bytes=sum(row.text_bytes for row in chosen),
+                row_bytes=sum(row.row_bytes for row in chosen),
+                corpus_blocks=corpus_blocks,
+            )
+        )
+    return tuple(out)
+
+
+def _per(total: float, blocks: int) -> float:
+    """`total / blocks`, or `0.0` on an empty corpus. See `bytes_per_block` for why not infinity."""
+    return 0.0 if blocks == 0 else total / blocks
+
+
+def _one_component(
+    connection: sqlite3.Connection,
+    spec: _ComponentSpec,
+    *,
+    blocks: int,
+    group_bytes: Mapping[str, int],
+    overhead: int,
+    pages_by_name: Mapping[str, int] | None,
+    dbstat_reason: str,
+) -> ComponentCost:
+    """Measure one row of 07:1021-1037, degrading to `PARTIAL` or `UNCHECKED` with a reason."""
+    measured = 0.0
+    covers: list[str] = []
+    if spec.columns:
+        measured += group_bytes.get(spec.key, 0)
+        covers.append(f"{len(spec.columns)} `block` column(s)")
+    if spec.row_overhead:
+        measured += overhead
+        covers.append("the row's header, payload and rowid varints")
+    for table in spec.tables:
+        rows, table_bytes = _table_bytes(connection, table)
+        measured += table_bytes
+        covers.append(f"`{table}` ({rows} row(s))")
+
+    wanted: list[str] = list(_objects_present(connection, spec.objects))
+    for base in spec.fts:
+        wanted.extend(_fts_shadow_names(connection, base))
+    absent = tuple(n for n in (*spec.objects, *spec.fts) if n not in wanted)
+    if wanted and pages_by_name is None:
+        state = PARTIAL if covers else UNCHECKED
+        return ComponentCost(
+            key=spec.key,
+            component=spec.component,
+            plan_line=spec.plan_line,
+            estimated=spec.estimated,
+            measured=_per(measured, blocks) if covers else None,
+            state=state,
+            covers="; ".join(covers),
+            reason=f"{dbstat_reason or _NO_DBSTAT}: {', '.join(sorted(wanted))} unweighed",
+        )
+    if wanted and pages_by_name is not None:
+        measured += sum(pages_by_name.get(name, 0) for name in wanted)
+        covers.append(f"{len(wanted)} object(s) via dbstat")
+    if absent and not wanted:
+        covers.append(f"{', '.join(absent)} not in this store")
+    return ComponentCost(
+        key=spec.key,
+        component=spec.component,
+        plan_line=spec.plan_line,
+        estimated=spec.estimated,
+        measured=_per(measured, blocks),
+        state=MEASURED,
+        covers="; ".join(covers),
+    )
+
+
+def _components(
+    connection: sqlite3.Connection,
+    *,
+    blocks: int,
+    group_bytes: Mapping[str, int],
+    record_bytes: int,
+    overhead: int,
+    pages_by_name: Mapping[str, int] | None,
+    dbstat_reason: str,
+) -> tuple[ComponentCost, ...]:
+    """Every row of the decomposition, plus `UNLISTED`, the subtotal and the total.
+
+    The subtotal and the total are COMPUTED from the rows above them and are not transcribed
+    numbers with a second life -- 07:1030 and 07:1037 supply the ESTIMATE for each, which is the
+    only half of those two rows the plan owns.
+    """
+    rows = [
+        _one_component(
+            connection,
+            spec,
+            blocks=blocks,
+            group_bytes=group_bytes,
+            overhead=overhead,
+            pages_by_name=pages_by_name,
+            dbstat_reason=dbstat_reason,
+        )
+        for spec in DECOMPOSITION
+    ]
+    unlisted = ComponentCost(
+        key=UNLISTED,
+        component="`block` row: columns 07:1023-1029 does not name",
+        plan_line=0,
+        estimated=None,
+        measured=_per(group_bytes.get(UNLISTED, 0), blocks),
+        state=MEASURED,
+        covers="`label`, `os_path`, `os_codec`, `score_kind`, `decision_id` -- see DEFECT 5",
+    )
+    subtotal = ComponentCost(
+        key="subtotal",
+        component="**`block` row subtotal**",
+        plan_line=SUBTOTAL_LINE,
+        estimated=SUBTOTAL_ESTIMATE,
+        measured=_per(record_bytes, blocks),
+        state=MEASURED,
+        covers="every `block` column and every per-row varint; NOT b-tree page slack",
+    )
+    contributing = [*rows, unlisted]
+    degraded = [row for row in contributing if row.state != MEASURED]
+    total = ComponentCost(
+        key="total",
+        component="**Total**",
+        plan_line=TOTAL_LINE,
+        estimated=TOTAL_ESTIMATE,
+        measured=sum(row.measured or 0.0 for row in contributing),
+        state=MEASURED if not degraded else PARTIAL,
+        covers="the sum of the rows above, INCLUDING the unlisted columns the plan omits",
+        reason=(
+            ""
+            if not degraded
+            else f"{len(degraded)} row(s) could not be measured in full: "
+            f"{', '.join(row.key for row in degraded)}"
+        ),
+    )
+    return (*rows[:7], unlisted, subtotal, *rows[7:], total)
+
+
+def store_sizing(connection: sqlite3.Connection, *, path: Path) -> SizingReport:
+    """Size a store: files, blocks, compositions, and 07:1021-1037's decomposition measured.
+
+    Read-only. Takes `path` as well as `connection` because three of the numbers are not in the
+    database at all -- the `.owstore`'s own size and its two sidecars' -- and asking SQLite for
+    `page_count * page_size` would answer a different question: it omits the WAL entirely and it
+    counts free pages the file has already given back. Both figures are reported, and the gap
+    between them is a fact about the store (see `SizingReport`).
+
+    **`bytes_per_block` here is a measurement and never a verdict.** 12-performance.md:1966 makes
+    `ow-bench-1` the only machine a `[[budget]]` may live on; a number from any other machine is a
+    number, and the comparison against `store.bytes_per_block = 660` belongs to a caller that
+    prints that sentence alongside it (`tools/measure_store.py` does).
+
+    **`blocks_per_page` is a property of the corpus, never F1's answer.** 03-document-model.md:3086
+    is explicit that closing F1 takes the generator PLUS ten real 200-page documents, and this
+    function will happily divide by whatever `page` rows it finds. `render()` says so on the line.
+
+    Degrades rather than failing when `dbstat` is absent: `SizingReport.dbstat` is False,
+    `dbstat_reason` says why, and every component that needed page-level accounting reports
+    `PARTIAL` or `UNCHECKED` with the same reason attached to it (`store/verify.py`'s
+    `_unchecked()` register).
+    """
+    pages_by_name, dbstat_reason = _dbstat_pages(connection)
+    per_kind, group_bytes, record_bytes, overhead = _scan_blocks(connection)
+    names = _kind_names(connection)
+    kinds = tuple(
+        KindCount(
+            name=names.get(ordinal, f"kind:{ordinal}"),
+            ordinal=ordinal,
+            blocks=counts[0],
+            live=counts[1],
+            text_bytes=counts[2],
+            row_bytes=counts[3],
+        )
+        for ordinal, counts in sorted(per_kind.items())
+    )
+    blocks = sum(row.blocks for row in kinds)
+    page_size = int(connection.execute("PRAGMA page_size").fetchone()[0])
+    page_count = int(connection.execute("PRAGMA page_count").fetchone()[0])
+    freelist = int(connection.execute("PRAGMA freelist_count").fetchone()[0])
+    return SizingReport(
+        files=_store_files(path),
+        blocks=blocks,
+        live_blocks=sum(row.live for row in kinds),
+        pages=int(connection.execute("SELECT count(*) FROM page").fetchone()[0]),
+        documents=int(connection.execute("SELECT count(*) FROM doc").fetchone()[0]),
+        kinds=kinds,
+        compositions=_compositions(kinds, blocks),
+        components=_components(
+            connection,
+            blocks=blocks,
+            group_bytes=group_bytes,
+            record_bytes=record_bytes,
+            overhead=overhead,
+            pages_by_name=pages_by_name,
+            dbstat_reason=dbstat_reason,
+        ),
+        page_size=page_size,
+        page_count=page_count,
+        freelist_pages=freelist,
+        dbstat=pages_by_name is not None,
+        dbstat_reason=dbstat_reason,
+    )
+
+
+# --------------------------------------------------------------------------------------------
+# 4.5 Rendering it. Every qualification is on the line it qualifies -- see `SizingReport.render`.
+# --------------------------------------------------------------------------------------------
+
+FIXTURE_CAVEAT: Final = (
+    "a property of THIS corpus, not F1's answer -- 03-document-model.md:3086 needs the "
+    "generator PLUS ten real 200-page documents"
+)
+"""Printed on the `blocks/page` line itself. F1 splits: bytes/block is the store variable and
+blocks/page is the corpus variable, and only the first of them can be answered by a fixture."""
+
+MACHINE_CAVEAT: Final = (
+    "a MEASUREMENT, not a budget verdict: 12-performance.md:1966 makes ow-bench-1 the only "
+    "machine a [[budget]] may live on"
+)
+"""Printed by every caller that puts a number next to `store.bytes_per_block`. It lives here so
+the library and `tools/measure_store.py` cannot drift into two different disclaimers."""
+
+
+def _render_lines(report: SizingReport) -> list[str]:
+    """`SizingReport.render()`'s body. Split out so the properties above stay readable."""
+    files = report.files
+    out = [
+        f"store sizing  {files.path}",
+        f"  database          {files.db_bytes:>14,} B",
+        f"  {WAL_SUFFIX:<16}  {files.wal_bytes:>14,} B  "
+        f"{'present' if files.wal_present else 'absent'}  (NOT folded into bytes/block)",
+        f"  {SHM_SUFFIX:<16}  {files.shm_bytes:>14,} B  "
+        f"{'present' if files.shm_present else 'absent'}",
+        f"  on disk           {files.total_bytes:>14,} B",
+        f"  pages             {report.page_count:>14,} x {report.page_size} B, "
+        f"{report.freelist_pages:,} free",
+        "",
+        f"documents {report.documents:,}   corpus pages {report.pages:,}   "
+        f"blocks {report.blocks:,} ({report.live_blocks:,} live)",
+        f"blocks/page        {report.blocks_per_page:>10.2f}   {FIXTURE_CAVEAT}",
+        f"bytes/block        {report.bytes_per_block:>10.2f}   database file / blocks",
+        f"bytes/block+wal    {report.bytes_per_block_on_disk:>10.2f}   "
+        f"database + {WAL_SUFFIX} + {SHM_SUFFIX} / blocks",
+        f"record B/block     {report.record_bytes_per_block:>10.2f}   `block` rows only, "
+        f"no index, no FTS, no b-tree slack",
+        "",
+        "composition        blocks     share    rec B/blk   text B/blk   (07:1023: prose ~300 B, "
+        "cell ~10 B)",
+    ]
+    for row in report.compositions:
+        out.append(
+            f"  {row.composition:<14} {row.blocks:>7,}  {row.share * 100:>7.2f}%  "
+            f"{row.bytes_per_block:>10.2f}   {row.text_bytes_per_block:>10.2f}"
+        )
+    out.extend(["", "by kind            blocks       live     rec B/blk   text bytes"])
+    for kind in report.kinds:
+        out.append(
+            f"  {kind.name:<14} {kind.blocks:>9,}  {kind.live:>9,}  "
+            f"{kind.bytes_per_block:>10.2f}   {kind.text_bytes:>12,}"
+        )
+    out.extend(
+        [
+            "",
+            f"dbstat             {'available' if report.dbstat else 'ABSENT'}"
+            + (f"  {report.dbstat_reason}" if report.dbstat_reason else ""),
+            "",
+            "decomposition (07:1021-1037)" + " " * 48 + "line   estimated    measured  state",
+        ]
+    )
+    for cost in report.components:
+        line = "    --" if cost.plan_line == 0 else f"{cost.plan_line:>6}"
+        estimate = "      --" if cost.estimated is None else f"{cost.estimated:>8.1f}"
+        value = "        --" if cost.measured is None else f"{cost.measured:>10.2f}"
+        out.append(f"  {cost.component:<74}{line}  {estimate}  {value}  {cost.state}")
+        if cost.reason:
+            out.append(f"        reason: {cost.reason}")
+    return out

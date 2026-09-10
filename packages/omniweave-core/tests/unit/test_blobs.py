@@ -459,6 +459,36 @@ def test_a_multi_chunk_stream_is_hashed_and_written_whole(store: BlobStore) -> N
     assert store.path(digest).stat().st_size == len(payload)
 
 
+def test_a_blob_full_of_newlines_hashes_to_the_name_it_was_stored_under(
+    store: BlobStore,
+) -> None:
+    """The one property `put` cannot check for itself: the file on disk IS the stream it was given.
+
+    `put` hashes the bytes it is HANDED, streaming, and never re-reads what landed -- which is the
+    right design (re-reading 256 MiB to confirm a write would double the cost of every ingest) and
+    is precisely why nothing inside `BlobStore` could see this. On Windows, `os.open` without
+    `O_BINARY` opens in the C runtime's text mode and rewrites every `0x0A` as `0x0D 0x0A`, so the
+    file under `ab/cd/<sha256>` hashed to something else and step 3's safety argument at
+    07-store-and-retrieval.md:914 -- "an overwrite is a no-op **because the name IS the digest**"
+    -- was false for every blob containing a newline.
+
+    The assertion is therefore deliberately NOT `digest == sha256_of(payload)`, which passed
+    throughout: it re-hashes the file READ BACK OFF THE DISK and compares that to the name. The
+    payload is chosen so text-mode translation is unmissable: a bare `0x0A`, one already preceded
+    by `0x0D` (which text mode would turn into `0x0D 0x0D 0x0A`), a trailing one, and a `0x1A`,
+    which the same text mode historically treated as end-of-file on the way back in.
+    """
+    payload = b"line\n\r\nmid\n\x1a\ntail\n"
+    digest = store.put(io.BytesIO(payload))
+    on_disk = store.path(digest).read_bytes()
+    assert on_disk == payload, "the CAS stored translated bytes"
+    assert hashlib.sha256(on_disk).hexdigest() == digest.hex(), (
+        "the file under the digest name does not hash to that name"
+    )
+    with store.open(digest) as fh:
+        assert fh.read() == payload
+
+
 # ---------------------------------------------------------------------------
 # 4. Crash recovery: the startup sweep of `cas/tmp/`.
 # ---------------------------------------------------------------------------

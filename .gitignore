@@ -30,3 +30,11 @@ wheelhouse/
 .pytest_cache/
 .hypothesis/
 .ruff_cache/
+
+# --- generated fixture corpora ---------------------------------------------
+# 13-quality.md:586-589: every generator under fixtures/gen/ writes to fixtures/generated/,
+# "which is .gitignored", and fixtures/gen/EXPECTED.sha256 pins each output "so a generator
+# change is a one-line visible diff rather than a silent corpus change". The 5,000-page PDF is
+# ~29 MB against Tier A's 64 MB total (11-repo-layout.md:383), so committing it would spend half
+# the corpus budget on bytes a script reproduces in a second.
+fixtures/generated/

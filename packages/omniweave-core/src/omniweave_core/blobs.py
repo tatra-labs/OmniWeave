@@ -121,6 +121,27 @@ _CHUNK_BYTES: Final = 1 << 20
 
 _FIX_FSCK: Final = "ow store fsck --cas"
 
+#: `os.O_BINARY` where it exists, `0` where it does not. THIS IS NOT A PORTABILITY ORNAMENT.
+#:
+#: `os.open` on Windows opens in the C runtime's *text* mode unless `O_BINARY` is in the flags, and
+#: text mode rewrites every `0x0A` the process writes as `0x0D 0x0A` on its way to the disk. The
+#: CAS write protocol at 07-store-and-retrieval.md:911-916 stages bytes through `cas/tmp/<name>`
+#: and then renames the staged file under its own sha256, and step 3's whole safety argument is
+#: "an overwrite is a no-op **because the name IS the digest**" (07:914). A translating write
+#: falsifies that sentence for every blob containing a newline: the file under `ab/cd/<sha256>`
+#: hashes to something else, and every reader that trusts the name instead of re-hashing -- which
+#: is every reader, by design -- serves bytes that are not the bytes that were stored.
+#:
+#: It is invisible on POSIX, invisible for any blob with no `0x0A` in it, and invisible to a test
+#: that round-trips through `BlobStore` alone, because `put` hashes the stream it was HANDED and
+#: never re-reads what landed. What sees it is INV-10's bytes branch (0001_init.sql:409-411)
+#: re-deriving a block's text from `part` bytes read back out of the CAS -- which is exactly
+#: 16-roadmap.md:435's P2 demo clause, and exactly how it was found.
+#:
+#: `getattr` rather than `os.O_BINARY`: the name does not exist on POSIX and `0` is the identity
+#: for `|`, so one spelling is correct on both.
+_O_BINARY: Final[int] = getattr(os, "O_BINARY", 0)
+
 
 def _as_digest(digest: bytes | str) -> bytes:
     """The 32 raw bytes, from either spelling, refusing anything else.
@@ -558,14 +579,19 @@ class BlobStore:
         return digest
 
     def _create_tmp(self) -> tuple[Path, int]:
-        """Step 1's `O_CREAT | O_EXCL` open, retried past a collision. Returns `(path, fd)`."""
+        """Step 1's `O_CREAT | O_EXCL` open, retried past a collision. Returns `(path, fd)`.
+
+        `_O_BINARY` is in the flags for the reason its own comment gives at length: without it a
+        Windows `os.open` translates `0x0A` to `0x0D 0x0A` and the file that lands under a digest
+        name is not the file that hashes to it.
+        """
         pid = os.getpid()
         while True:
             candidate = self.tmp_root / f"{pid}-{next(_TMP_SEQUENCE)}"
             try:
                 # 0o600: a staged asset is never group- or world-readable, not even for the
                 # milliseconds before step 3 renames it under the corpus's own permissions.
-                fd = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                fd = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL | _O_BINARY, 0o600)
             except FileExistsError:
                 continue  # the retry IS the uniqueness proof; see `put`'s docstring
             except OSError as exc:

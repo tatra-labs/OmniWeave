@@ -17,11 +17,12 @@
 # names, and no job below is absent from that array.
 #
 # ==========================================================================================
-# WHAT IS P1 AND WHAT LANDS LATER. 16-roadmap.md section 4's non-goals close with the one
-# statement that overrides section 6.2 for now: "No CI matrix beyond three OSes at 3.11 -- the
-# nine-cell test job arrives with P2's determinism work." So test is THREE cells here and the
-# ninefold expansion is marked at the matrix itself. Section 6.4's "test (9)" column is the P2 end
-# state, not P1's.
+# WHAT P2 LANDED AND WHAT LANDS LATER. 16-roadmap.md section 4's non-goals close with the one
+# statement that overrode section 6.2 for P1: "No CI matrix beyond three OSes at 3.11 -- the
+# nine-cell test job arrives with P2's determinism work." P2 is the phase that sentence names,
+# and P2 has landed, so test is NINE cells below and section 6.4's "test (9)" column is the
+# shipped shape rather than an end state. The sentence itself is not repealed: it scoped P1 and
+# is still a true statement about P1.
 #
 #   ARMED AND BLOCKING TODAY (the runner exists on disk and its exit code is the job's):
 #     G1 G3 G4 G6 G8 G9 G14 G17 G18 G23 G24 G30 in gates, G5 in versions, G10 in test, G2 in
@@ -377,21 +378,33 @@ jobs:
         # fixture corpus" -- and P2 landed exactly one. The round trip is real now:
         # test_owdoc_roundtrip.py writes a document through the real DocSink, exports it, imports
         # it into a SECOND fresh store through a second real DocSink, and compares. So the
-        # MECHANISM is enforced here from P2 on. The CORPUS is not -- fixtures/ does not exist and
-        # the plan states no phase for it -- so P1's tripwire is kept underneath: the day
-        # fixtures/ lands, this step fails and says to widen the run over it.
+        # MECHANISM is enforced here from P2 on. The CORPUS is not, so P1's tripwire is kept
+        # underneath: the day the corpus lands, this step fails and says to widen the run over it.
+        #
+        # THE TRIPWIRE USED TO TEST `[ -d fixtures ]` AND THAT WAS TOO COARSE, which P2 proved by
+        # firing it. `fixtures/` is not one thing: 11-repo-layout.md:383-384 lists seven members --
+        # `docs/ office-200/ cassettes/ il-digest/ golden-queries.jsonl gen/ regressions/` -- and
+        # P2 landed `gen/` alone, because 13-quality.md:586-589 puts the deterministic generator
+        # there and gitignores its output under `fixtures/generated/`. A generator is not a corpus:
+        # G28's second half is "over the fixture corpus", the licensed documents Q-G1 manifests in
+        # `fixtures/index.toml` (13-quality.md:92, :1985). So the tripwire now names the corpus
+        # members and the manifest, and `fixtures/gen/` may land without turning a real gate red
+        # for the wrong reason.
         #
         # Enforcing half and saying WHICH half is the point. "G28 NOT ENFORCED" was true while the
         # round trip did not exist; leaving it there now would be a green light on a gate that can
         # actually run.
         run: |
           uv run pytest packages/omniweave-core/tests/unit/test_owdoc_roundtrip.py -q
-          if [ -d fixtures ]
-          then
-            echo "fixtures/ exists: widen G28's round trip over the corpus (ADR-2 dec. 4)"
-            exit 1
-          fi
-          echo "G28 mechanism enforced; corpus half pending fixtures/ (ADR-2 dec. 4)" \
+          for path in fixtures/index.toml fixtures/docs fixtures/office-200 fixtures/regressions
+          do
+            if [ -e "$path" ]
+            then
+              echo "$path exists: widen G28's round trip over the corpus (ADR-2 dec. 4)"
+              exit 1
+            fi
+          done
+          echo "G28 mechanism enforced; corpus half pending fixtures/index.toml (ADR-2 dec. 4)" \
             | tee -a "$GITHUB_STEP_SUMMARY"
       - name: "G29 -- the redaction canary under four forced faults"
         # 15-observability.md section 8.3 is the assertion's sole home. Both it (:1447) and section
@@ -500,6 +513,79 @@ jobs:
           fi
           echo "gates.risk_register NOT ENFORCED: tools/risks.toml is not written" \
             "(17-risks.md section 1.1)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: "Q-G15 (static half) -- eval/perf.toml's row schema, rss process, tier ceilings"
+        # THE STATIC HALF OF Q-G15 AND NOT THE MEASURED HALF, and the split is the whole point.
+        #
+        # 13-quality.md:354-355 names the script: "So `tools/gate_budgets.py`, under `Q-G15`,
+        # asserts one arithmetic property over every row carrying a tier" -- value + tol_abs <= the
+        # tier ceiling -- and :368-371 gives it a second, non-arithmetic clause, "every `rss.`
+        # budget names the process it bounds" over the closed vocabulary
+        # {supervisor, worker, driver_subproc, service}. Both read `eval/perf.toml` as a
+        # declaration file. Neither opens a store, times anything, or needs a pinned machine, which
+        # is why the step sits in `gates` beside G18 and G31 and inside 13-quality.md:1916's
+        # 128 s `t0.gates_job_s` budget: it is a linter over a register.
+        #
+        # WHAT IS NOT ENFORCED HERE is the rest of Q-G15's row at 13-quality.md:1999 --
+        # "`eval/perf.toml` on `ow-bench-1`; Pacer ratios, absolute memory, exact counters". That
+        # half is a measurement, `ow eval perf` is W10.6, and 12-performance.md:1966 makes
+        # `ow-bench-1` the only machine a Budget may live on. A GitHub-hosted runner may lint the
+        # register and may never render a verdict from it.
+        #
+        # No `tools/gates.toml` row names this script and none may: 11-repo-layout.md:397, "Neither
+        # file may name a row the other owns", puts the Q-G series in `eval/gates.toml`, which does
+        # not exist yet (the tripwire immediately below is what will notice when it does).
+        # `test_gates_register.py`'s `QG_SERIES_SCRIPTS` records the same boundary on the test side.
+        run: |
+          uv run tools/gate_budgets.py
+          echo "Q-G15 static half enforced (13-quality.md:354-371); the measured half is" \
+            "ow eval perf on ow-bench-1 (W10.6, 12-performance.md:1966)" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # --- P2's demo and its measurement: THE MECHANISM HALF, ON A PAGE COUNT A PR CAN AFFORD ---
+      #
+      # THIS REPOSITORY HAS NO NIGHTLY WORKFLOW AND CANNOT GROW ONE AS A FILE. 11-repo-layout.md
+      # :1360 is "`.github/workflows/` holds exactly two files: `ci.yml` and `release.yml`", which
+      # the `gates` job asserts above and fails on a third. Section 6.5's nightly cells therefore
+      # have to be jobs inside this file with a `schedule:` trigger and a `runs-on: ow-bench-1`
+      # label, and none of that exists: there is no `schedule:` in `on:` and no nightly job. That
+      # is a real gap against 16-roadmap.md:343 ("nightly on ow-bench-1 is first green in P2, with
+      # store.bytes_per_block and rss.gen5000p_peak_bytes as its first two budgets") and it is
+      # recorded here rather than papered over, because the two steps below are deliberately NOT
+      # that job and must never be mistaken for it.
+      #
+      # WHAT THESE TWO STEPS ENFORCE: that the machinery RUNS. The generator produces its pinned
+      # bytes, the stub driver ingests them, the five roadmap clauses hold, and the measurement
+      # reaches a number and prints its decomposition.
+      #
+      # WHAT THEY DO NOT ENFORCE, and could not: any [[budget]] row. 12-performance.md:1966 makes
+      # `ow-bench-1` the only machine a Budget may live on, and this is a GitHub-hosted runner
+      # sharing a hypervisor. `tools/measure_store.py` knows it -- it prints INDICATION rather than
+      # a verdict, writes no Pacer baseline, and exits 1 only under `--gate`, which is not passed.
+      # 64 pages is also not 5,000: `store.bytes_per_block` is a per-block figure and the empty
+      # store's fixed floor is ~1.5 MB, so at 64 pages the floor is half the number. The scale run
+      # belongs on the machine the plan names.
+      - name: "P2 demo (mechanism) -- 16-roadmap.md:434-440's five clauses at 64 pages"
+        # ~5 s at 64 pages, against the gates job's 128 s budget (13-quality.md:1916). The demo
+        # prints an `enforced:` and a `NOT enforced:` line per clause and exits 0 only when every
+        # clause it ran held; a clause it could not run at this phase is reported, never deleted.
+        run: |
+          uv run python fixtures/gen/gen_5000p_pdf.py --pages 64 --print-sha256
+          uv run python tools/p2_demo.py --pages 64
+          echo "P2 demo mechanism enforced at 64 pages; the corpus half is ten real 200-page" \
+            "documents (03-document-model.md:3086, P3) and the scale run is nightly" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: "store.bytes_per_block (mechanism) -- the measurement runs; the budget does not"
+        # ~3 s at 64 pages. No `--gate`, so a number outside tolerance is an INDICATION and this
+        # step stays green: the assertion is that the measurement exists and decomposes, which is
+        # what DP8 needs from P2 (17-risks.md:290, "the earliest a measurement can run against a
+        # real STORE"). `rss.gen5000p_peak_bytes` is printed INFORMATIONAL and compared to nothing,
+        # per ruling D26: it is the anydoc fork tripwire and anydoc is W3.4 = P3.
+        run: |
+          uv run python tools/measure_store.py --pages 64
+          echo "store.bytes_per_block MEASUREMENT mechanism enforced; NOT a budget verdict --" \
+            "12-performance.md:1966 pins Budgets to ow-bench-1, which this runner is not" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: "the static Q-G series"
         # Section 6.4: "The gates job additionally runs the static Q-G series ... Their budgets,
         # owners and review dates live in eval/gates.toml; this document only reserves them a job."
@@ -516,7 +602,7 @@ jobs:
             | tee -a "$GITHUB_STEP_SUMMARY"
 
   # ==========================================================================================
-  # test -- the OS/Python matrix. THREE CELLS AT P1 and nine at P2; see the matrix comment. Carries
+  # test -- the OS/Python matrix. NINE CELLS since P2; see the matrix comment. Carries
   # G10 and G26, which section 6.4's closing paragraph calls "timing gates on shared runners, which
   # is a known-bad idea unless split. They are split."
   # ==========================================================================================
@@ -532,14 +618,22 @@ jobs:
       # cell, which only means anything if every cell runs.
       fail-fast: false
       matrix:
-        # THE P1 MATRIX IS THREE CELLS, and this is the one place 16-roadmap.md section 4's
-        # non-goals override section 6.2: "No CI matrix beyond three OSes at 3.11 -- the nine-cell
-        # test job arrives with P2's determinism work." At P2 this becomes
-        #   py: ["3.11", "3.12", "3.13"]
-        # for 3 x 3 = 9 cells, which is what section 6.2's axis table and section 6.4's "test (9)"
-        # column describe, and what section 6.6's 747 s of cache saving is measured against.
+        # THE NINE-CELL MATRIX, LANDED BY P2. Section 6.2's axis table
+        # (11-repo-layout.md:1464-1471) is the definition of the cross product: OS over
+        # ubuntu-latest, macos-latest, windows-latest, and Python over 3.11, 3.12, 3.13, for
+        # 3 x 3 = 9 cells -- which is section 6.4's "test (9)" column and what section 6.6's
+        # 747 s of cache saving is measured against.
+        #
+        # WHY IT IS NINE NOW AND WAS THREE BEFORE, since a reader meeting the P1 non-goal next
+        # will otherwise read this as a divergence. 16-roadmap.md:340 is the row: "test (9
+        # cells)" is first green in P2, "cross-cell determinism is meaningless before canonical()
+        # and the DDL exist". P2's W2.1 model and W2.3/W2.4 store are what made the extra six
+        # cells assert something rather than merely run. 16-roadmap.md section 4's non-goal --
+        # "No CI matrix beyond three OSes at 3.11 -- the nine-cell test job arrives with P2's
+        # determinism work" -- is a statement about P1, it is still true of P1, and it names P2
+        # as the phase that expands the matrix. This is that expansion, not a breach of it.
         os: [ubuntu-latest, macos-latest, windows-latest]
-        py: ["3.11"]
+        py: ["3.11", "3.12", "3.13"]
     env:
       UV_PYTHON: ${{ matrix.py }}
     steps:

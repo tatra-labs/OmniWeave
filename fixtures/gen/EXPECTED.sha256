@@ -1,0 +1,36 @@
+# fixtures/gen/EXPECTED.sha256 -- the pins for every generator under fixtures/gen/.
+#
+# 13-quality.md:588: "fixtures/gen/EXPECTED.sha256 pins each generator's output so a generator
+# change is a one-line visible diff rather than a silent corpus change."
+#
+# Standard sha256sum format: digest, two spaces, a path relative to the WORKSPACE ROOT. Check the
+# whole file from the workspace root with
+#
+#     sha256sum -c fixtures/gen/EXPECTED.sha256
+#
+# after regenerating both outputs, or regenerate and re-pin one line with
+#
+#     uv run python fixtures/gen/gen_5000p_pdf.py --pages 8 --print-sha256
+#     uv run python fixtures/gen/gen_5000p_pdf.py --print-sha256
+#
+# Neither output is committed: fixtures/generated/ is .gitignored (13-quality.md:588), and the
+# 5,000-page file is ~29 MB against Tier A's 64 MB total (11-repo-layout.md:383).
+#
+# WHICH LINE IS CHECKED BY WHICH TEST
+#   gen_8p.pdf     packages/omniweave-core/tests/unit/test_fixture_gen.py
+#                  ::test_the_small_pin_is_the_digest_of_a_freshly_generated_eight_page_run
+#                  ~0.1 s. The cheap check, and the one a developer runs while editing.
+#   gen_5000p.pdf  packages/omniweave-core/tests/unit/test_fixture_gen.py
+#                  ::test_the_default_pin_is_the_digest_of_a_freshly_generated_five_thousand_page_run
+#                  ~1.2 s and ~29 MB of temporary file. Run anyway: a pin nothing checks is the
+#                  silent corpus change arriving by the front door.
+#   both           ::test_the_pin_file_names_both_outputs_in_sha256sum_format asserts that this
+#                  file names exactly these two outputs and nothing else.
+#
+# The two lines are not independent. The content of page i is a pure function of i, so the
+# eight-page file is byte-for-byte the first eight pages of the 5,000-page one; that property is
+# itself a test (::test_the_content_of_a_page_does_not_depend_on_the_page_count), which is what
+# makes the cheap pin a real signal about the expensive one.
+
+933849098664005d04cc8f4d57880069dd5f25963ebc3fc05842ded8a71ddc72  fixtures/generated/gen_8p.pdf
+b8adadd720185a6f563a76347fff454e3ec2d7a4a5111572a20c183ee3e76820  fixtures/generated/gen_5000p.pdf
