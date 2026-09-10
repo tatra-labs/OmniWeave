@@ -629,3 +629,188 @@ meaning = "two distributions declare one driver id and no [drivers.resolve] row 
 fix     = "ow config set drivers.resolve.\"<id>\" <distribution>"
 raised_by = "DriverHostError"
 sites   = ["04-driver-system.md:1217", "04-driver-system.md:2675", "02-architecture.md:235"]
+
+# ── W3.1, resolve()'s RejectCode (04-driver-system.md sections 4.8 and 5.3). TWENTY-TWO fresh
+# numerics, and the register's own W1.5 note above scheduled them here: "`ID_COLLISION_UNQUALIFIED`
+# is a different row — resolve()'s RejectCode, allocated at W3.1".
+#
+# WHY THESE ROWS ARE TRANSCRIPTION AND THE NUMERIC IS ALLOCATION. 04-driver-system.md:1444 states
+# the rule — "Every `RejectCode` member has a row in `codes.toml` under `OW-D-nnn` with the symbol
+# `OW_DRIVER_<MEMBER>`, so the enum is a typed view over the one register rather than a second
+# register" — and :1557-1558 repeats it ("each with an `OW-D-nnn` row"). So the row's EXISTENCE and
+# its SYMBOL are both plan-stated; 01-principles.md:605 names "a new `RejectCode` member with no
+# `OW-D-nnn` row" as a defect class by name, which makes the gap a defect and not a deferral. The
+# three digits are the only free field, and they are this register's to allocate: of the seven
+# `OW-D` rows above, only `OW-D-009` (18-api-sketch.md:2158), `OW-D-024` and `OW-D-051` have a
+# numeric the plan binds — `OW-D-010`, `-011`, `-012` and `-013` were allocated here, from
+# conditions the plan states, exactly as these are. 18-api-sketch.md:3197 sanctions the shape: "a
+# new row in an existing class breaks no clause where a new *class letter* would".
+#
+# ALLOCATED FROM 052 UPWARD, above the highest existing `OW-D`, and deliberately NOT into the
+# 014-023 / 025-050 gaps: the plan allocates numerics in adjacent clusters and moves rows to keep a
+# cluster intact (18-api-sketch.md section 9 item 7's table), so the gaps are where a plan-stated
+# numeric is most likely to land next. One contiguous block also matches the "signature block"
+# practice of 18-api-sketch.md:3200.
+#
+# ORDER is section 5.3's own table order (04-driver-system.md:1563-1568): identity, fit, policy,
+# environment, preflight, activate. `FORMAT_UNSUPPORTED` is absent because it already holds
+# `OW-D-009`, and the three discovery members already hold `OW-D-010`/`-011`/`-012`.
+#
+# `fix` IS DELIBERATELY ABSENT, following `OW-D-009` and this file's header: a `fix` is the exact
+# command that clears the error, and `ow drivers explain <code>` is the verb 04:1445-1447 assigns
+# to resolve it. Inventing twenty-two commands here is the fabrication the header refuses. Filling
+# them is W1.3's other half, closed by `ow explain --check`.
+#
+# `raised_by` IS DELIBERATELY ABSENT TOO, and that is a claim about control flow: resolve() RETURNS
+# a `Rejection` and raises nothing (04:1574-1575 — `PORT_MISMATCH` is "raised as a rejection rather
+# than an exception so a mis-wired policy rule produces a report instead of a traceback"). Writing
+# `raised_by = "DriverHostError"` on a row no exception carries would be a false statement about
+# the code, so the field is omitted rather than guessed. Area D's `[area.D]` table already names
+# `DriverHostError` for the rows that DO raise.
+#
+# TWO SYMBOL CONFLICTS FOUND IN THE PLAN AND NOT SMOOTHED, both reported to the ledger:
+#   * `COST_CLASS_NOT_PERMITTED` is the member at 04:1565 and the gate at 04:1351, so :1444's rule
+#     gives `OW_DRIVER_COST_CLASS_NOT_PERMITTED` — but 08-runtime.md:2073 prints
+#     `OW_DRIVER_COST_CLASS_FORBIDDEN` for that exact condition ("billed_api not in [drivers.cost]
+#     allow_classes") inside a `resolution_report.pruned` payload. The definition site wins over
+#     the illustrative payload; NO second row is written, because one condition on two numerics is
+#     the `codes-unique` defect 18-api-sketch.md section 9 item 7 records twice already.
+#   * `CARD_CODE_MISMATCH` takes `OW_CARD_CODE_MISMATCH` and not :1444's literal
+#     `OW_DRIVER_CARD_CODE_MISMATCH`, because the four card rows this register already carries
+#     spell themselves `OW_CARD_*` and `card.py` raises those spellings. :1444's wording is
+#     therefore inexact for the members that already name the card.
+#
+# `OW_DRIVER_PROBE_UNAVAILABLE` is the one symbol below the plan prints verbatim
+# (08-runtime.md:2075), which is an independent check on the derivation.
+
+[[code]]
+numeric = "OW-D-052"
+symbol  = "OW_DRIVER_PORT_UNSUPPORTED"
+meaning = "this core does not implement that Port major at all. The first filter in resolve()'s order, and the reason both majors of a Port can coexist in a catalog while only one is resolvable"
+sites   = ["04-driver-system.md:1341", "04-driver-system.md:1563", "04-driver-system.md:1571"]
+
+[[code]]
+numeric = "OW-D-053"
+symbol  = "OW_DRIVER_PORT_MISMATCH"
+meaning = "the caller asked for derive/1 and the card is a parse/1 - a caller bug, raised as a rejection rather than an exception so a mis-wired policy rule produces a report instead of a traceback. Not redundant beside PORT_UNSUPPORTED: that one means the major is unimplemented, this one means the port is the wrong port"
+sites   = ["04-driver-system.md:1563", "04-driver-system.md:1572"]
+
+[[code]]
+numeric = "OW-D-054"
+symbol  = "OW_DRIVER_ID_COLLISION_UNQUALIFIED"
+meaning = "two distributions declare the same driver id and no [drivers.resolve] row disambiguates, so resolve() refuses the unqualified id rather than picking one. The registration-time half of the same fact is OW-D-013 OW_DRIVER_DUPLICATE_ID: a raise at registration and a rejection at resolution are two sites, not one"
+sites   = ["04-driver-system.md:1218", "04-driver-system.md:1563", "04-driver-system.md:2675"]
+
+[[code]]
+numeric = "OW-D-055"
+symbol  = "OW_DRIVER_TOMBSTONED"
+meaning = "the id is in the shipped tombstone set, refused with the quoted reason from the tombstone card. Installation is not consent: a tombstoned driver present on disk is still not resolvable"
+sites   = ["04-driver-system.md:1342", "04-driver-system.md:1563"]
+
+[[code]]
+numeric = "OW-D-056"
+symbol  = "OW_DRIVER_DEPRECATED_REMOVED"
+meaning = "RELEASE >= the card's [deprecation] removed_in, so the driver is past the release at which it stops resolving. Below removed_in the card still runs and records a deprecation Degradation instead"
+sites   = ["04-driver-system.md:1563", "04-driver-system.md:1584", "04-driver-system.md:1590"]
+
+[[code]]
+numeric = "OW-D-057"
+symbol  = "OW_DRIVER_PRODUCES_INSUFFICIENT"
+meaning = "the requirement's requires_produces is not a subset of the card's [capability] produces, so the driver cannot emit something the caller declared it needs"
+sites   = ["04-driver-system.md:1345", "04-driver-system.md:1564"]
+
+[[code]]
+numeric = "OW-D-058"
+symbol  = "OW_DRIVER_CAPABILITY_BELOW_FLOOR"
+meaning = "a requested capability floor is not met by the card's [capability.*] declaration, compared per the field semantics of section 2.2 - ladders by rank, sets by superset, booleans by implication, and forfeits inverted"
+sites   = ["04-driver-system.md:1347", "04-driver-system.md:1564"]
+
+[[code]]
+numeric = "OW-D-059"
+symbol  = "OW_DRIVER_GRANULARITY_MISMATCH"
+meaning = "the requirement named a granularity and the card does not offer it. Checked only when requested, so a requirement that names none cannot be refused on this gate"
+sites   = ["04-driver-system.md:1346", "04-driver-system.md:1564"]
+
+[[code]]
+numeric = "OW-D-060"
+symbol  = "OW_DRIVER_NO_WITNESS_SET"
+meaning = "a billed corpus-granularity requirement reached a driver with neither a witness set nor a cohort, so the spend would be unattributable"
+sites   = ["04-driver-system.md:1352", "04-driver-system.md:1564"]
+
+[[code]]
+numeric = "OW-D-061"
+symbol  = "OW_DRIVER_LICENCE_TIER_NOT_ALLOWED"
+meaning = "the tier compute_tier() derives from the card's licence facts is not in [licence] allow_tiers. The tier is always computed and never declared (DR15), so this cannot be cleared by editing the card. Also carries the local [licence] jurisdiction and fields_of_use exclusions, which the plan gives no code of their own"
+sites   = ["04-driver-system.md:1348", "04-driver-system.md:1565", "04-driver-system.md:1918"]
+
+[[code]]
+numeric = "OW-D-062"
+symbol  = "OW_DRIVER_LICENCE_ACK_MISSING"
+meaning = "a restricted-or-above driver has no acknowledgement row in omniweave.acks.toml. A fresh install of a restricted driver is refused twice over - once by the tier allowlist and once by the missing ack"
+sites   = ["04-driver-system.md:1349", "04-driver-system.md:1565"]
+
+[[code]]
+numeric = "OW-D-063"
+symbol  = "OW_DRIVER_LICENCE_ACK_STALE"
+meaning = "the acknowledgement exists but its recorded licence_sha256 no longer matches the installed licence text, so the operator acknowledged different terms than the ones now on disk. The refusal prints both digests"
+sites   = ["04-driver-system.md:1350", "04-driver-system.md:1565", "04-driver-system.md:1913"]
+
+[[code]]
+numeric = "OW-D-064"
+symbol  = "OW_DRIVER_COST_CLASS_NOT_PERMITTED"
+meaning = "the card's cost class is not in [drivers.cost] allow_classes - a billed_api driver on a host that permits only free ones. 08-runtime.md:2073 prints this condition under the spelling OW_DRIVER_COST_CLASS_FORBIDDEN; the member name at 04-driver-system.md:1565 is the definition site and governs"
+sites   = ["04-driver-system.md:1351", "04-driver-system.md:1565"]
+
+[[code]]
+numeric = "OW-D-065"
+symbol  = "OW_DRIVER_NOT_IN_LOCKFILE"
+meaning = "require_lock is set and the driver has no row in omniweave.lock, so a card appeared that the lockfile never pinned"
+sites   = ["04-driver-system.md:1357", "04-driver-system.md:1565"]
+
+[[code]]
+numeric = "OW-D-066"
+symbol  = "OW_DRIVER_UNATTESTED"
+meaning = "the card's recomputed attestation does not match the recorded one and the requirement did not explicitly pin the driver. Attestation is tamper-evidence and not authentication, so a pin is the sanctioned override"
+sites   = ["04-driver-system.md:1356", "04-driver-system.md:1565"]
+
+[[code]]
+numeric = "OW-D-067"
+symbol  = "OW_DRIVER_HARDWARE_ABSENT"
+meaning = "the card's [requires] hardware is not satisfiable on this host - no GPU, or too little VRAM for the declared floor"
+sites   = ["04-driver-system.md:1353", "04-driver-system.md:1566"]
+
+[[code]]
+numeric = "OW-D-068"
+symbol  = "OW_DRIVER_BINARY_ABSENT"
+meaning = "a binary the card declares it needs is not on PATH. The other half of the hardware-satisfiable gate, split from HARDWARE_ABSENT because the fix is an install and not a machine"
+sites   = ["04-driver-system.md:1353", "04-driver-system.md:1566"]
+
+[[code]]
+numeric = "OW-D-069"
+symbol  = "OW_DRIVER_ISOLATION_NOT_PERMITTED"
+meaning = "no isolation mode the card can run under is grantable under policy - wasm is in the vocabulary and not built at v1, so the grantable set is inproc and subproc"
+sites   = ["04-driver-system.md:1358", "04-driver-system.md:1566", "04-driver-system.md:1650"]
+
+[[code]]
+numeric = "OW-D-070"
+symbol  = "OW_DRIVER_TRUST_INSUFFICIENT"
+meaning = "an operator named this id in [drivers] inproc but its computed trust does not clear the six conjuncts inproc requires, so the config line is refused loudly rather than silently ignored. A card that merely REQUESTS inproc is degraded to subproc instead, recording Degradation(kind=\"isolation_shortfall\")"
+sites   = ["04-driver-system.md:1358", "04-driver-system.md:1566", "04-driver-system.md:1646"]
+
+[[code]]
+numeric = "OW-D-071"
+symbol  = "OW_DRIVER_QUARANTINED"
+meaning = "the driver was quarantined earlier in this run after a crash, so it is not offered again for the remainder of the run"
+sites   = ["04-driver-system.md:1355", "04-driver-system.md:1566"]
+
+[[code]]
+numeric = "OW-D-072"
+symbol  = "OW_DRIVER_PROBE_UNAVAILABLE"
+meaning = "the capability probe returned status unavailable. missing[] is machine-actionable and fix_hint is printed, so the refusal names the thing to install. Runs in a worker that imports the driver's own dependencies and never the framework's"
+sites   = ["04-driver-system.md:1354", "04-driver-system.md:1539", "04-driver-system.md:1567"]
+
+[[code]]
+numeric = "OW-D-073"
+symbol  = "OW_CARD_CODE_MISMATCH"
+meaning = "the loaded class or the worker's HELLO_ACK disagrees with the card on port, schema_version, driver_id or version. Checked twice on purpose - an inproc driver has no HELLO_ACK, an exec driver has no importable class, and a subproc worker may be a different build than the card the host read from disk. Refused BEFORE any work"
+sites   = ["04-driver-system.md:1544", "04-driver-system.md:1548", "04-driver-system.md:1568"]
