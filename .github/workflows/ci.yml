@@ -25,8 +25,12 @@
 # is still a true statement about P1.
 #
 #   ARMED AND BLOCKING TODAY (the runner exists on disk and its exit code is the job's):
-#     G1 G3 G4 G6 G8 G9 G14 G17 G18 G23 G24 G30 in gates, G5 in versions, G10 in test, G2 in
-#     build, and build.reproducible.
+#     G1 G3 G4 G6 G7 G8 G9 G14 G17 G18 G23 G24 G28 G30 in gates, G5 in versions, G10 in test,
+#     G2 in build, G19 in incremental, G21 in crash, and build.reproducible.
+#     G7 ARMED AT P2 STAGE D, owed since W1.7 (16-roadmap.md:363). tools/gate_pins.py is its
+#     runner and the register now carries the path: the plan names no script for this row, so
+#     the PATH is an engineering call and the register's row says so where it is made.
+#     G28 ARMED AT P2 STAGE D, both halves. See its step for which corpus is which.
 #     G13 is armed and VACUOUS: the repository carries no v* tag yet, and "append-only against the
 #     previous tag" has nothing to diff until one exists. The step says so, and self-arms.
 #     G19 is armed in incremental and runs its HARNESS: tools/gate_incremental.py --smoke,
@@ -34,16 +38,19 @@
 #     fixture lands in P4". The unflagged run needs fixtures/incremental/ and exits 2 without
 #     it, so the step branches on the directory and neither branch can pass for the wrong
 #     reason.
-#   PRESENT, MARKED, NOT YET ENFORCING (the register lists the runner under runner_planned, and
-#   test_gates_register.py asserts those paths do NOT exist, so landing one forces the register
-#   edit and arms the step in the same commit):
-#     G7  section 8.5's pin policy; no tools/ script is named by the plan (see its step)
+#     G27 is armed in its clause-b half only: tools/gate_migrations.py landed at P2
+#     (16-roadmap.md:453) and runs; tools/gate_docs.py carries a, a2, a3, c and d and does not
+#     exist, so the step runs what is there and says nothing about what is not.
+#   PRESENT, MARKED, NOT YET ENFORCING (for each of these the register lists the runner under
+#   runner_planned, or names no runner at all, and test_gates_register.py asserts every planned
+#   path does NOT exist -- so landing one forces the register edit and arms the step in the same
+#   commit. It was never true of G7, whose row carried only a `step`, which is why arming G7
+#   took a register edit nothing had forced):
 #     G11 G12 G15 G16   P3 (16-roadmap.md:513-516)
-#     G20 G21           P4 (16-roadmap.md:576-577); G21's harness lands at P2 (:457)
+#     G20               P4 (16-roadmap.md:576)
 #     G25 G26           P7 (16-roadmap.md:742-743)
-#     G27               tools/gate_docs.py lands "with P1's gate harness" (section 6.4 on a2);
-#                       clause b is tools/gate_migrations.py at P2 (16-roadmap.md:453)
-#     G28 G29           ADR-2's two appends; the plan states no phase for either
+#     G27 (a a2 a3 c d) tools/gate_docs.py lands "with P1's gate harness" (section 6.4 on a2)
+#     G29               ADR-2's second append; the plan states no phase for it
 #   DELIBERATELY ABSENT: G22. Section 6.4: it "is a nightly 100k-roster scale run with no PR cell,
 #   so it blocks the *release* (checklist step 11) and is deliberately absent from ci-ok's required
 #   set." tools/gates.toml says the same as jobs = [] and pr = false. It belongs to section 6.5's
@@ -240,21 +247,27 @@ jobs:
         # before ow exists". The command form becomes "ow schema emit --check" at P7.
         run: uv run tools/schemagen.py --check
       - name: "G7 -- a constraint tighter than >= carries a comment"
-        # PRESENT, MARKED, NOT ENFORCING, and the blocker is a plan silence rather than a phase.
-        # The register's row says "No tools/ script is named by the plan"; section 8.5 is the
-        # policy and it assigns each dependency a ROLE, so whether a given ~= or < is justified
-        # depends on the role of the package it bounds. packages/omniweave-pdf/pyproject.toml:15
-        # carries "omniweave-ports >=1,<2" with no comment on the line, and that is section 4.1's
-        # Port-major ceiling rather than a tightened pin -- so the naive form of this check is a
-        # false red on thirteen sibling rows. What is needed is a script implementing section 8.5's
-        # role table, or a stated exemption for the Port-major ceiling. There is deliberately no
-        # "if [ -f tools/gate_pins.py ]" guard here: the plan names no filename for this row, and
-        # guessing one would put an invented path in a workflow that the register would then have
-        # to honour. This step arms when its owner names the script.
-        run: |
-          echo "G7 NOT ENFORCED: the plan names no tools/ script for this row and section 8.5's" \
-            "role table is what decides whether a given bound is justified" \
-            | tee -a "$GITHUB_STEP_SUMMARY"
+        # ARMED AT P2 STAGE D, owed since W1.7 (16-roadmap.md:363). 11-repo-layout.md section 8.5
+        # is the policy; the register names no script, so the PATH is ours and the row's runner
+        # now carries it. The gate reads each pyproject.toml as TEXT for the comment and as TOML
+        # for the bound -- tomllib discards comments, so one pass cannot do it -- and exits 2
+        # rather than 0 when a bound it parsed is one the text pass cannot locate.
+        #
+        # THE TREE WAS RED WHEN THE GATE LANDED AND WAS MADE GREEN BY WRITING THE REASONS DOWN,
+        # not by exempting anything. Twenty-five tightened bounds across seven pyproject.toml
+        # files carried no adjacent comment, and both families had their reason already stated in
+        # the plan: "omniweave-ports >=1,<2" is section 4.4's Port-major CEILING over a type
+        # vocabulary, and "omniweave-* ~= <M>.<m>.0" is section 4.2's sibling release train. The
+        # earlier version of this comment predicted "a false red on thirteen sibling rows" and
+        # asked for "a stated exemption for the Port-major ceiling"; G7's assertion states no
+        # exemption, and the honest reading is that a ceiling the plan REQUIRES is exactly a
+        # bound whose reason belongs in the file. All thirty-five tightened bounds now carry one.
+        #
+        # No guard and no "|| true": section 6.8 refuses a check that cannot fail. --no-project is
+        # deliberate -- gate_pins.py is stdlib-only by design, so it must not be able to fail for
+        # a reason that has nothing to do with pins, which is the argument the versions job
+        # already makes for tools/check_versions.py.
+        run: uv run --no-project tools/gate_pins.py
       - name: "G8 + G24 -- the semgrep bank, and the half ast can prove without semgrep"
         # One bank, one runner, two rows: G24's s cell reads "(in G8)" and the register records
         # that as budget_in = "G8", so there is no second invocation and no double-counted 45 s
@@ -372,39 +385,44 @@ jobs:
         # ADR-2 decision 4 gave charter D2's unnumbered CI gate a number and INV-1 its third
         # enforcer. Do NOT cite G6 for it: G6 is "ow schema emit --check" and is not renumbered.
         # The register's row says "No tools/ script is named by the plan", and no ow subcommand is
-        # named either, so nothing is invented here.
+        # named either, so the runner is the test file that holds the assertion -- the shape G29's
+        # row already uses for a test-file runner -- and nothing is invented here.
         #
-        # The row's assertion has TWO halves -- "import(export(store)) == store" and "over the
-        # fixture corpus" -- and P2 landed exactly one. The round trip is real now:
-        # test_owdoc_roundtrip.py writes a document through the real DocSink, exports it, imports
-        # it into a SECOND fresh store through a second real DocSink, and compares. So the
-        # MECHANISM is enforced here from P2 on. The CORPUS is not, so P1's tripwire is kept
-        # underneath: the day the corpus lands, this step fails and says to widen the run over it.
+        # BOTH HALVES OF THE ASSERTION NOW RUN, over DIFFERENT corpora, and that difference is the
+        # whole content of this comment. test_owdoc_roundtrip.py writes a document through the real
+        # DocSink, exports it, imports it into a SECOND fresh store through a second real DocSink
+        # and compares the two wire projections; and since P2 stage D it does the same over a
+        # GENERATED corpus -- fixtures/gen/gen_5000p_pdf.py at 127 pages, ingested through
+        # tools/p2_stub_parse.py, 8,256 blocks across two Frames.
         #
-        # THE TRIPWIRE USED TO TEST `[ -d fixtures ]` AND THAT WAS TOO COARSE, which P2 proved by
-        # firing it. `fixtures/` is not one thing: 11-repo-layout.md:383-384 lists seven members --
-        # `docs/ office-200/ cassettes/ il-digest/ golden-queries.jsonl gen/ regressions/` -- and
-        # P2 landed `gen/` alone, because 13-quality.md:586-589 puts the deterministic generator
-        # there and gitignores its output under `fixtures/generated/`. A generator is not a corpus:
-        # G28's second half is "over the fixture corpus", the licensed documents Q-G1 manifests in
-        # `fixtures/index.toml` (13-quality.md:92, :1985). So the tripwire now names the corpus
-        # members and the manifest, and `fixtures/gen/` may land without turning a real gate red
-        # for the wrong reason.
+        # THE TRIPWIRE STAYS, AND ITS SUBJECT IS NARROWER THAN IT LOOKS. fixtures/ is not one
+        # thing: 11-repo-layout.md:383-384 lists seven members, and P2 landed gen/ alone because
+        # 13-quality.md:586-589 puts the deterministic generator there and gitignores its output
+        # under fixtures/generated/. A generator is not a licensed corpus: the fixture corpus Q-G1
+        # manifests in fixtures/index.toml (13-quality.md:92, :1985) exercises PDF grammars the
+        # generator's one frozen grammar does not, so the day those members land this step must
+        # fail and say to widen the round trip over them. That is what the loop below is for, and
+        # it is why "the corpus half is pending" is still a true sentence about a gate whose
+        # generated corpus already runs.
         #
-        # Enforcing half and saying WHICH half is the point. "G28 NOT ENFORCED" was true while the
-        # round trip did not exist; leaving it there now would be a green light on a gate that can
-        # actually run.
+        # 45 s IS THE ROW'S BUDGET AND THE COST IS MEASURED, not estimated: three runs of the whole
+        # file at 6.46 / 5.98 / 6.19 s wall on the P2 build machine, ~4.4 s of it the nine corpus
+        # tests. So section 6.4's pre-committed fallback -- move the row to the test job beside
+        # G26 -- is NOT taken here. It is separately due on 13-quality.md:109-113's own arithmetic
+        # (128 + 105 = 233 s is past V01-14's 180 s ceiling for the gates job), and that is one
+        # line each in tools/gates.toml rather than a change to this file.
         run: |
           uv run pytest packages/omniweave-core/tests/unit/test_owdoc_roundtrip.py -q
           for path in fixtures/index.toml fixtures/docs fixtures/office-200 fixtures/regressions
           do
             if [ -e "$path" ]
             then
-              echo "$path exists: widen G28's round trip over the corpus (ADR-2 dec. 4)"
+              echo "$path exists: widen G28 over the LICENSED corpus (ADR-2 dec. 4)"
               exit 1
             fi
           done
-          echo "G28 mechanism enforced; corpus half pending fixtures/index.toml (ADR-2 dec. 4)" \
+          echo "G28 enforced: round trip + generated corpus (127p, 8,256 blocks, 2 frames);" \
+            "licensed-corpus half pending fixtures/index.toml (ADR-2 dec. 4)" \
             | tee -a "$GITHUB_STEP_SUMMARY"
       - name: "G29 -- the redaction canary under four forced faults"
         # 15-observability.md section 8.3 is the assertion's sole home. Both it (:1447) and section

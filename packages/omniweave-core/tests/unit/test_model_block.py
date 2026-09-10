@@ -225,6 +225,74 @@ instead of 600,000 (03:385).
 COLUMNS = 40
 """03 section 13.1 and charter.md:1018-1077, counted. Asserted below, not trusted."""
 
+FROZEN_FIELD_SET: tuple[str, ...] = (
+    # identity
+    "id",
+    "addr",
+    "cite",
+    "doc_ord",
+    "gen",
+    "page",
+    # the containment spine
+    "parent",
+    "ord",
+    # classification
+    "kind",
+    "raw_kind",
+    "layer",
+    "label",
+    "text",
+    # digests and revision
+    "content_digest",
+    "layout_digest",
+    "revision",
+    # position and address in the original container
+    "quad",
+    "origin",
+    "span",
+    # provenance -- six axes, never conflated
+    "producer_id",
+    "method",
+    "trust",
+    "quote",
+    "score",
+    "score_kind",
+    "origin_operator",
+    "origin_driver",
+    "driver_schema_v",
+    "restriction_bits",
+    # satellites and state
+    "marks",
+    "tombstoned",
+    "x",
+)
+"""The FROZEN field set, spelled out, because 16-roadmap.md:429 freezes it at the end of P2.
+
+**Why a literal list is here on top of the two derivations above it.** `COLUMN_TO_FIELD` proves
+every field carries a column and `test_block_declares_the_plans_fields_in_the_plans_order` proves
+the declaration order is 03:236-258's own -- and both of those are relations, not values. A
+reviewer in P5 holding a patch that adds a field reads a relation and sees a rule that the new
+field can be made to satisfy: give it a column, add a row to the mapping, and both derivations go
+green again. What that reviewer needs to meet instead is a list of thirty-two names with
+16-roadmap.md:429 written next to it, because the freeze is a claim about the LIST and the
+paragraph at :433 is why -- a field that forces a re-parse of an existing corpus "is a defect, not
+a migration, because it re-mints cites".
+
+So this is the snapshot taken at the moment of the freeze, and adding a field means editing it,
+which is the point. It is not a second home for the field set: `Block` is the home, this is a
+golden, and the test below compares the two rather than deriving either from the other.
+
+**And a golden is only a golden while it is spelled out.** An adversarial pass replaced these
+thirty-two lines with `FROZEN_FIELD_SET = _declared_fields(Block)` -- one line, the shape a reader
+reaches for the first time the golden fails -- and the suite stayed green over 155 tests, because
+both sides of the comparison below had become the same object.
+`test_the_frozen_field_set_is_written_down_and_not_derived_from_block` reads this module's own AST
+to stop that, and the reason it is worth a test of its own is that the other pin on this surface,
+`test_block_declares_the_plans_fields_in_the_plans_order`, takes the `plan` fixture and therefore
+SKIPS on a checkout without `_plan/`. On a clean clone the golden is the only thing left holding
+the names and the order.
+"""
+
 
 # ---------------------------------------------------------------------------
 # 1. `Block` against the DDL, in both directions
@@ -288,6 +356,84 @@ def test_block_carries_thirty_two_fields_over_forty_columns() -> None:
     """
     collapsed = COLUMNS - 7 + 1 - 2 + 1 - 2 + len(FIELDS_WITHOUT_A_COLUMN)
     assert len(_declared_fields(Block)) == collapsed == 32
+
+
+def test_the_frozen_field_set_is_these_thirty_two_names_in_this_order__16_429() -> None:
+    """16-roadmap.md:429, "`Block`'s field set", frozen at the end of P2 (week 16).
+
+    The comparison is against `FROZEN_FIELD_SET`, whose docstring says why a literal golden is
+    the right instrument for a freeze and why the two derivations above it are not. Read as a
+    failure message: a field added, removed, renamed or MOVED shows up here, and the fix is not
+    to edit the golden -- it is to notice that 16-roadmap.md:433 calls this freeze's obligation
+    one "nothing else in the plan does" carry, and that a field which forces a re-parse is a
+    defect rather than a migration. `tests/unit/test_p2_freeze.py` indexes this test as the pin
+    for that surface, and it will fail if this function is renamed away.
+    """
+    assert _declared_fields(Block) == FROZEN_FIELD_SET
+    assert len(FROZEN_FIELD_SET) == 32
+    assert len(set(FROZEN_FIELD_SET)) == 32, "a name appears twice in the golden"
+
+
+def _sole_binding(source: str, filename: str, name: str) -> ast.AST:
+    """The ONE statement in `source` that binds `name`, or an assertion naming the others.
+
+    Every binding form is counted and not just the annotated one at module scope, which is the
+    hole the first version of this had: annotating the golden as a literal and then adding a plain
+    `NAME = <derivation>` line further down satisfied a check that only looked for `AnnAssign`,
+    and the module-level rebinding is what the tests then read. `ast.walk` rather than
+    `tree.body`, for the same reason one level out -- a `global NAME` inside a function reaches
+    the same value.
+    """
+    tree = ast.parse(source, filename=filename)
+    bindings: list[ast.AST] = []
+    for node in ast.walk(tree):
+        targets: list[ast.expr] = []
+        if isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+        elif isinstance(node, ast.Assign):
+            targets = list(node.targets)
+        elif isinstance(node, ast.AugAssign | ast.NamedExpr):
+            targets = [node.target]
+        if any(isinstance(target, ast.Name) and target.id == name for target in targets):
+            bindings.append(node)
+    assert len(bindings) == 1, (
+        f"{name} is bound {len(bindings)} times in {filename} (lines "
+        f"{[getattr(node, 'lineno', '?') for node in bindings]}); it is a golden, and a golden "
+        f"rebound anywhere is whatever the last binding made it"
+    )
+    binding = bindings[0]
+    assert isinstance(binding, ast.AnnAssign), f"{name} is declared with its type annotation"
+    assert binding.value is not None
+    return binding.value
+
+
+def test_the_frozen_field_set_is_written_down_and_not_derived_from_block() -> None:
+    """`FROZEN_FIELD_SET` is a tuple of thirty-two string literals in this module's own source.
+
+    Rule 5, on the one constant in this file where it bites: a golden compared against its own
+    subject is not an assertion, it is a restatement. See `FROZEN_FIELD_SET`'s docstring for the
+    one-line edit this catches and for why the plan-backed pin beside it is not a substitute.
+
+    The names are read back out of the AST rather than off the tuple so that the failure is about
+    HOW the constant is written -- a comprehension, a call, a splat of another tuple all read as
+    thirty-two names at runtime and as something other than `ast.Constant` here.
+    """
+    value = _sole_binding(Path(__file__).read_text(encoding="utf-8"), __file__, "FROZEN_FIELD_SET")
+    assert isinstance(value, ast.Tuple), (
+        "FROZEN_FIELD_SET is a tuple display and not an expression over `Block`; a derived golden "
+        "agrees with any dataclass by construction. 16-roadmap.md:429 freezes the LIST, so the "
+        "list is written here -- see the constant's docstring before changing this."
+    )
+    spelled = [
+        element.value
+        for element in value.elts
+        if isinstance(element, ast.Constant) and isinstance(element.value, str)
+    ]
+    assert len(spelled) == len(value.elts) == 32, (
+        f"FROZEN_FIELD_SET holds {len(value.elts)} elements of which {len(spelled)} are string "
+        f"literals; every one of the thirty-two names is spelled out or the golden is a derivation"
+    )
+    assert tuple(spelled) == FROZEN_FIELD_SET
 
 
 def test_block_has_neither_a_payload_nor_a_decision_id_attribute() -> None:

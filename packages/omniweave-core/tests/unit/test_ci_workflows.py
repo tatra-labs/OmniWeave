@@ -243,9 +243,9 @@ TEST_CACHE_RESTORE_KEY = "uv-${{ runner.os }}-py${{ matrix.py }}-"
 # kept the suite green. It closed it only for those rows, and the most expensive steps in this
 # file are not among them: nothing in `tools/gates.toml` names `uv run pytest -q`, so the nine
 # `test` cells -- the job 16-roadmap.md:340 makes P2's headline first-green -- could be replaced
-# by an `echo` with every required check still passing. So could `G28`'s round trip, whose own
-# step comment says the MECHANISM half is the half P2 landed and is therefore the half that must
-# actually run. Same defect, one job to the left of where it was found.
+# by an `echo` with every required check still passing. So could `G28`'s round trip, which since
+# P2 stage D is that row's own `runner` in the register and carries BOTH halves of its assertion.
+# Same defect, one job to the left of where it was found.
 CI_WORK_COMMANDS: dict[str, tuple[str, ...]] = {
     "test": ("uv sync --frozen --all-packages --group dev", "uv run pytest -q"),
     "gates": ("uv run pytest packages/omniweave-core/tests/unit/test_owdoc_roundtrip.py -q",),
@@ -1122,10 +1122,18 @@ def test_g28s_tripwire_does_not_fire_on_the_generator_directory(ci: Workflow) ->
     `run:` bodies, where a shell condition lives), and the step must say why the exemption is
     principled (asserted over the block including comments, because a condition that is merely
     narrower with no sentence saying why is one refactor away from being widened back).
+
+    THE ECHO IS PINNED AND ITS WORDING MOVED AT P2 STAGE D, which is this assertion doing its job
+    rather than a test bending to the file. It read "G28 mechanism enforced" while the round trip
+    ran and no corpus did. Stage D landed the corpus half over the GENERATED corpus, so the step
+    now says "G28 enforced" and names what is still pending -- and the pin is on both halves of
+    that sentence, because a step that stops distinguishing the generated corpus from the licensed
+    one is a step whose tripwire nobody will keep narrow.
     """
     body = ci.run_bodies("gates")
     assert "-d fixtures ]" not in body, "G28's tripwire is back to the whole fixtures/ tree"
-    assert "G28 mechanism enforced" in body
+    assert "G28 enforced: round trip + generated corpus" in body
+    assert "licensed-corpus half pending fixtures/index.toml" in body
     region = _job_region(ci, "gates")
     assert "13-quality.md:586-589 puts the deterministic generator" in region, (
         "the step no longer says why fixtures/gen/ is not the corpus"
@@ -1554,9 +1562,11 @@ def test_the_steps_that_do_the_work_run_the_work(ci: Workflow) -> None:
     `uv run pytest -q`, so the nine `test` cells were outside that net entirely: replacing the
     suite invocation with `run: echo "the test suite passed"` left all forty-three tests green
     and turned the job 16-roadmap.md:340 makes P2's headline first-green into nine no-ops behind
-    a green required check. `G28`'s round trip is the same story -- the step's own comment says
-    the MECHANISM half is the half P2 landed, so an `echo` there is a claim about `INV-1` that
-    nothing is checking.
+    a green required check. `G28`'s round trip is the same story -- since P2 stage D it is the
+    whole of that row's assertion, so an `echo` there is a claim about `INV-1` that nothing is
+    checking. It is no longer outside the net either: the register now carries the test file as
+    G28's `runner`, so the sibling above covers the same path. Two assertions overlapping on one
+    path is cheaper than either of them being the only one.
 
     Asserted per job, like both of its siblings: a `uv build` in `gates` would satisfy a
     file-wide search while running outside `build`'s budget and its two-pass reproducibility

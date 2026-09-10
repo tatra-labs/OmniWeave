@@ -249,8 +249,11 @@ budget_s      = 2
 pr            = true
 nightly       = false
 release       = false
-# The plan names no script. Section 8.5 is the policy and 16-roadmap.md:363 (W1.7) schedules the
-# gate without a filename, so this row says "job step" rather than inventing `gate_pins.py`.
+# The plan names no script (section 8.5 is the policy; 16-roadmap.md:363, W1.7, schedules the gate
+# with no filename), so the PATH below is an engineering call and not a plan claim -- the row's own
+# earlier guess, kept, and named here as ours. The assertion, the operator list and the scope are
+# the plan's. `step` stays beside it, as G6's row keeps both.
+runner        = ["tools/gate_pins.py"]
 step          = """
 a `gates` job step over every packages/*/pyproject.toml: a `==`, `~=` or `<` bound carries a \
 justification comment (section 8.5). No tools/ script is named by the plan."""
@@ -739,6 +742,20 @@ release       = true
 # ADR-2 decision 4: G28 is charter section D2's unnumbered "CI gate" given a number, and it is
 # INV-1's third enforcer. Do NOT cite G6 for it -- G6 is `ow schema emit --check` and is not
 # renumbered (00-vision.md:852, ADR-2 erratum E31).
+#
+# THE RUNNER IS A TEST FILE, which G29's row already establishes as a legal shape for this column
+# (its `runner_planned` is `tests/test_no_content_in_artefacts.py`). The plan names no script for
+# G28 -- "No tools/ script is named by the plan", below -- so choosing the PATH is our engineering
+# call and not a plan claim: the assertion is a store round trip and it belongs beside the store's
+# other unit tests. Both halves of the assertion now run there: the round trip through two real
+# `DocSink`s, and, since P2 stage D, the corpus half over `fixtures/gen/gen_5000p_pdf.py`'s output
+# ingested through `tools/p2_stub_parse.py`. MEASURED at P2 stage D: three runs of the whole file
+# at 6.00 / 5.54 / 5.76 s reported, 6.46 / 5.98 / 6.19 s wall including `uv` startup, of which the
+# nine corpus tests are ~4.4 s (2.69 s of that the module-scoped fixture that ingests 127 pages).
+# So 45 s stands and section 6.4's pre-committed fallback -- moving this row to the `test` job
+# beside G26 -- is NOT taken: the number was measured rather than estimated, which is what the
+# `step` text below asked for.
+runner        = ["packages/omniweave-core/tests/unit/test_owdoc_roundtrip.py"]
 step          = """
 a `gates` job step over the fixture corpus (ADR-2 decision 4). No tools/ script is named by the \
 plan; 45 s is an estimate and section 6.4's pre-committed fallback is a one-line move of this row \
