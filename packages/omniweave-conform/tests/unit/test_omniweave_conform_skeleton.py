@@ -8,6 +8,7 @@ same discipline tools/gate_layers.py applies at G4: no author picks their own ro
 from __future__ import annotations
 
 import ast
+import importlib
 import tomllib
 from pathlib import Path
 
@@ -28,17 +29,45 @@ def _layers_row() -> list[str]:
     return tomllib.loads(text)[PKG]
 
 
-def test_init_is_a_home_and_not_a_body() -> None:
-    """P1 creates the homes; the module bodies are later phases' (16-roadmap.md section 4).
+def test_init_is_a_surface_and_every_name_it_exports_resolves() -> None:
+    """P1 created the home; W3.6 filled it (16-roadmap.md:486).
 
-    A docstring-only __init__.py is also what makes G17 true for omniweave_core by
-    construction: a module with no import statement can import no subpackage.
+    This test used to assert the `__init__.py` had NO body -- P1's "the homes exist, the module
+    bodies are later phases'" rule. That phase is over for this distribution, so the assertion it
+    is replaced with is the one that matters once there IS a body: every name in `__all__` is real.
+    A stale `__all__` is how a package advertises a symbol it no longer has, and the failure lands
+    on the importer rather than on the author.
     """
-    source = (DIST_ROOT / "src" / PKG / "__init__.py").read_text(encoding="utf-8")
-    tree = ast.parse(source)
-    assert ast.get_docstring(tree), f"{PKG}/__init__.py must cite the plan section it serves"
-    body = [node for node in tree.body if not isinstance(node, ast.Expr)]
-    assert body == [], f"{DIST} __init__.py carries a body at P1: {body!r}"
+    module = importlib.import_module(PKG)
+    assert module.__doc__, f"{PKG}/__init__.py must cite the plan section it serves"
+    exported = getattr(module, "__all__", None)
+    assert exported, f"{PKG} has a body and must declare its surface"
+    # NOT asserted sorted: ruff's RUF022 owns `__all__` ordering and its order is not
+    # `sorted()` -- constants first, then classes, then functions. Two orderings would
+    # disagree and the linter would win, so only the linter states one.
+    missing = [name for name in exported if not hasattr(module, name)]
+    assert missing == [], f"{PKG}.__all__ names symbols that are not there: {missing}"
+
+
+def test_the_kit_imports_without_importing_any_driver() -> None:
+    """Importing the kit must not import driver code, and the ban is a build failure.
+
+    `tools/semgrep/omniweave.yaml`'s `omniweave-no-import-module-outside-host` covers
+    `packages/*/src/**` and excludes only `omniweave_core/host/`, so this package may not call
+    `importlib.import_module` at all. The AST is read rather than the behaviour observed, because
+    a module that imports a driver only on some path would pass a behavioural check on the other
+    one -- which is `purity`'s whole subject, one level up.
+    """
+    banned = {"import_module", "__import__"}
+    offenders: list[str] = []
+    for path in sorted((DIST_ROOT / "src" / PKG).rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                name = getattr(node.func, "attr", None) or getattr(node.func, "id", None)
+                if name in banned:
+                    offenders.append(f"{path.name}:{node.lineno} {name}()")
+    assert offenders == [], f"only omniweave_core/host/ may import a driver; found {offenders}"
 
 
 def test_first_party_dependencies_are_exactly_the_layers_row() -> None:

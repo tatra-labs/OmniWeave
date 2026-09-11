@@ -1,0 +1,5 @@
+The first paragraph is ordinary ASCII.
+
+The second one follows a blank line.
+
+And a third, to make the block count three.

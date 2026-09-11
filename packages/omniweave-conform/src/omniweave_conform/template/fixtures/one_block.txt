@@ -1,0 +1,1 @@
+Exactly one paragraph, no trailing newline.

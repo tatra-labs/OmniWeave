@@ -142,8 +142,9 @@ from omniweave_ports.types import (
 )
 
 from omniweave_core.drivers.card import DriverCard, IsolationSpec
-from omniweave_core.drivers.resolve import Candidate, RejectCode
+from omniweave_core.drivers.resolve import Candidate
 from omniweave_core.errors import CapabilityMissing, DriverHostError
+from omniweave_core.host.activate import check_card_code
 
 __all__ = [
     "NO_SERVICES",
@@ -482,19 +483,13 @@ class DriverGuard:
         (`codes.toml` `OW-D-073`). The other half is the worker's `HELLO_ACK` and an `inproc`
         driver has none, which is why the plan checks step 4 twice.
 
-        Imports nothing: the class is the caller's. Resolving `card.entrypoint` is `activate()`'s
-        and `activate()` does not exist in the tree yet.
+        Imports nothing: the class is the caller's. Resolving `card.entrypoint` is
+        `host/activate.py`'s `activate()`, which is where the comparison below now lives --
+        **one home for step 4, called from both halves** (INV-21). A guard that kept its own copy
+        would drift from the card exactly the way a card drifts from its code, which is the
+        defect this check exists to catch.
         """
-        identity = self._candidate.card.identity
-        wanted = (f"{identity.port.value}/{identity.port_major}", identity.schema_version)
-        got = (getattr(loaded, "PORT", None), getattr(loaded, "SCHEMA_VERSION", None))
-        if got != wanted:
-            raise DriverHostError(
-                f"{self.driver_id}: the loaded class declares PORT={got[0]!r} "
-                f"SCHEMA_VERSION={got[1]!r} and the card says {wanted[0]!r} / {wanted[1]!r}",
-                symbol=RejectCode.CARD_CODE_MISMATCH.symbol,
-                fix=f"ow drivers verify {self.driver_id}",
-            )
+        check_card_code(self._candidate.card, loaded)
 
     def invoke(
         self,
