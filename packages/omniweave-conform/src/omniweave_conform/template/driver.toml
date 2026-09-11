@@ -1,7 +1,7 @@
 # THE DRIVERCARD for the conformance-template driver. Read WITHOUT importing.
 #
 # 18-api-sketch.md:1863-1925 prints this card for `omniweave-driver-plaintext`. Six of its keys are
-# refused by `load_card()` and are corrected here; ledger D110 is the entry, and the correction is
+# refused by `load_card()` and are corrected here; ledger D121 is the entry, and the correction is
 # `04-driver-system.md` sections 2.1-2.8, which is the grammar `omniweave_core/drivers/card.py` was
 # built from. The six: `consumes = ["blob"]` -> `["raw_bytes"]`; `[hardware] gpu = false` ->
 # `"none"`; `[hardware] min_ram_mb` -> `ram_gb_min`; `[isolation] preferred` -> `requires`;

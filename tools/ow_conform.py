@@ -315,6 +315,14 @@ def main(argv: list[str] | None = None) -> int:
     if not args.card.is_file():
         print(f"{args.card}: no such card", file=sys.stderr)  # noqa: T201
         return EXIT_USAGE
+    # ABSOLUTE from here on. Every child runs with `cwd` set to a temp directory -- that is
+    # the point of the cwd axis `determinism` asks for -- so a relative path handed to one
+    # resolves against a directory the card is not in. It did, and three suites reported
+    # their measurement as unmade rather than as wrong, which is the right failure and still
+    # a failure. `--template` never showed it because that path is built from REPO.
+    args.card = args.card.resolve()
+    if args.fixtures is not None:
+        args.fixtures = args.fixtures.resolve()
 
     if args.child_mode:
         handler = CHILD_MODES[args.child_mode]

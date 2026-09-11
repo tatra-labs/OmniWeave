@@ -1,0 +1,152 @@
+# THE DRIVERCARD for `parse.pdf.pdfium`. Read WITHOUT importing.
+#
+# ONE KEY PER LINE -- this file is `tomllib.load`ed and `;` is not a TOML separator. An unknown
+# TOP-LEVEL table is a HARD ERROR: a card is a contract, not config. An unknown key inside
+# [capability.<port>] is IGNORED with a recorded CARD_CAPABILITY_UNKNOWN degradation, because every
+# key there is an ordered or set-valued FLOOR and an unrecognised one can only make the driver look
+# LESS capable.
+#
+# [cost.measured], [quality] and attestation are ABSENT: they are written by `ow conform` and
+# author values are rejected by the publish gate (DR13). A card carrying them before a run has
+# made a claim no run backed.
+card_schema = 1
+
+[driver]
+id = "parse.pdf.pdfium"
+port = "parse/1"
+version = "0.1.0"
+schema_version = 1                 # THE ONLY DRIVER VERSION IN A CACHE KEY. Bump it whenever the
+                                   #   output bytes change for the same input -- which includes a
+                                   #   change to how lines are split or how a quad is bounded.
+entrypoint = "omniweave_pdf.driver:PdfiumParser"
+granularity = "document"           # The glyph index space is the DOCUMENT's (03 section 7.2), so a
+                                   #   per-page invocation would renumber every address from zero.
+replay_class = "byte_exact"
+title = "PDF text layer (pdfium)"
+summary = "Born-digital PDF text runs, one Block per line, each addressed in the glyph index space."
+
+[capability]
+formats = ["application/pdf"]
+consumes = ["raw_bytes"]
+produces = ["doc_fragment"]
+
+[capability.parse]
+# THE FIFTEEN. `declared` here; `achieved` is what the driver reports per document and may be
+# LOWER, never higher. `omniweave_pdf.driver.ACHIEVED` is the constant the `capability` suite
+# compares against this table, key by key, on every fixture.
+spatial = "block_bbox"             # 03:1558's row: "both an origin address and a polygon
+                                   #   (parse.pdf.pdfium on a born-digital page)" -> "full:
+                                   #   byte-exact quoting AND citation-to-pixel".
+origin_span = "exact"              # PROVED on INV-10's `glyphs` branch: re-extracting
+                                   #   [a, a+len) from the retained part with the recorded
+                                   #   extractor reproduces block.text under NFC (03:1419).
+text_span = false                  # A block IS its glyph run, so a span inside one addresses
+                                   #   nothing a caller cannot already address.
+marks = false
+reading_order = "char_stream"      # The fourth of five rungs. 03:2183: "a char-stream order beat a
+                                   #   learned layout head 75% to 56% on olmocr-bench's order
+                                   #   tests", and 16-roadmap.md:485 makes that the floor.
+sections = "none"                  # 03:3118 says this driver is `outline_from_source` AT BEST.
+                                   #   At best is a ceiling; reading the outline is work this code
+                                   #   does not do, and a card may not declare a rung its code
+                                   #   does not reach.
+tables = "none"                    # Table reconstruction from a text layer is layout work, and
+                                   #   02:266 puts layout classification outside this driver at
+                                   #   release 1 (F4: no licence-clean detector).
+math = []
+assets = "none"                    # Page rasters are 02:266's row and not 16-roadmap.md:485's
+                                   #   W3.5 cell. When they land, this rises to `bytes` and
+                                   #   `[config] dpi` arrives with them (04:2779).
+asset_origin = false
+notes = "none"
+confidence = "none"
+furniture = "destroyed"            # Separating a running header from body text is layout work.
+round_trip = "text"
+forfeits = []
+format_tokens = [
+  { media_type = "application/pdf", token = "pdf" },
+]
+
+[hardware]
+gpu            = "none"
+vram_gb_min    = 0
+ram_gb_min     = 0.25
+cpu_arch       = ["x86_64", "aarch64"]
+os             = ["linux", "darwin", "windows"]
+needs_network  = false             # pdfium is a bundled binary. Nothing here opens a socket, and
+                                   #   the conform `sandbox` suite blocks them to prove it.
+needs_binaries = []                # pdfium ships INSIDE the pypdfium2 wheel; there is no external
+                                   #   executable to find on PATH, which is why this list is empty
+                                   #   rather than naming one.
+imports_torch  = false
+install_bytes  = 12000000          # The pypdfium2 wheel, which is mostly the pdfium binary.
+services       = []
+
+[isolation]
+requires        = "subproc"        # 14-security.md:466: pdfium "is the largest memory-unsafe
+                                   #   surface in the" system. A crash is one row across S4 and
+                                   #   the whole run in process.
+memory_mb       = 1024
+progress_ms     = 15000
+wall_ms_hard    = 300000
+batch_max_units = 8
+
+[limits]
+max_input_bytes = 67108864         # 64 MiB, under the host's 128 MiB (MAX_ENTRY_BYTES). A
+                                   #   ceiling is clampable DOWN and never widenable (DR20,
+                                   #   INV-22), and the loader refuses a card that tries: this
+                                   #   line read 256 MiB once and `load_card` said so.
+max_parts       = 1                # A PDF is one part. Its PAGES are the unit the runtime batches
+                                   #   over (02:479's `unit_part='p1'..'p42'`), which is a
+                                   #   different axis from this one.
+
+[licence.code]
+spdx = "Apache-2.0"                # THIS DRIVER's code. pypdfium2 is Apache-2.0/BSD-3-Clause and
+                                   #   pdfium is BSD-3-Clause bundling FreeType, libjpeg-turbo,
+                                   #   lcms2, zlib and libopenjpeg (14-security.md:1527) -- those
+                                   #   are the DEPENDENCY graph's, which the conform `licence`
+                                   #   suite and G3 scan, and the NOTICE file's obligation.
+redistribution = "allowed"
+output_share_alike = false
+competitor_bar = false
+requires_credential = false
+revenue_gate_usd = 0
+mau_gate = 0
+territory_excluded = []
+field_of_use_excluded = []
+attribution_per_output = false
+no_model_training = false
+remote_kill_switch = false
+clause_refs = []
+# [licence.weights] is OMITTED ENTIRELY: this driver ships no weights.
+
+[deps]
+pins = ["pypdfium2==5.13.0"]       # The glyph index space is the EXTRACTOR's (03:1471), and the
+                                   #   extractor identity this driver records is
+                                   #   `pypdfium2@5.13.0`. An address recorded under one version
+                                   #   is not re-extractable under another, so the pin is not a
+                                   #   compatibility preference: it is the identity.
+
+[config]
+type = "object"
+additionalProperties = false
+required = []
+[config.properties.min_chars]
+type = "integer"
+minimum = 0
+maximum = 4096
+default = 1
+
+[cost.model]
+class   = "free"
+shape   = "linear_per_byte"
+unit    = "page"                   # The denominator a reader should price against: a 400-page PDF
+                                   #   costs 400 of whatever `per_part` names, not 1.
+per_part    = { wall_ms = 8 }      # 05-ingest-and-routing.md:839's "PDF 8 ms/page target". A WALL
+                                   #   CLOCK, which is the caller's own machine; `ow conform`
+                                   #   replaces this block's measured half.
+per_session = { }
+scaling     = { key = "input_bytes", exponent = 1.0, reference = 65536 }
+tokens_out_p95_multiple = 1.0
+max_retries = 0                    # The only value a first release accepts: retry is the
+                                   #   runtime's, with the runtime's budget and ledger.

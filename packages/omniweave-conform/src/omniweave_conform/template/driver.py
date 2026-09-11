@@ -2,7 +2,7 @@
 
 18-api-sketch.md:1937-2097 prints this file as "A minimal `parse/1` driver -- the whole file. No
 omniweave import but `omniweave_ports`." This is that driver, transcribed, with the six card keys
-D110 records corrected and one record field (`page`) corrected against 03-document-model.md:2275.
+D121 records corrected and one record field (`page`) corrected against 03-document-model.md:2275.
 
 ## What it is for, in three places at once
 
@@ -203,7 +203,7 @@ class PlainTextParser:
             # `page = 0`, not 1. 03-document-model.md:2275: a `stream` page_kind means "there are
             # no pages: HTML, markdown, code, plain text, email. Always `page = 0`", and :2277
             # adds that `page` is never a batch index. 18-api-sketch.md:2047 prints `1` here and
-            # is wrong on both counts (ledger D110).
+            # is wrong on both counts (ledger D121).
             {
                 "t": "page",
                 "page": 0,

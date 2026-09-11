@@ -37,6 +37,8 @@ from omniweave_core.drivers.card import load_card, read_card_bytes
 REPO = Path(__file__).resolve().parents[4]
 TOOL = REPO / "tools" / "ow_conform.py"
 TEMPLATE = REPO / "packages/omniweave-conform/src/omniweave_conform/template"
+PDF_CARD = REPO / "packages/omniweave-pdf/src/omniweave_pdf/driver.toml"
+PDF_FIXTURES = REPO / "packages/omniweave-pdf/fixtures"
 
 TIMEOUT_S = 300
 """Generous: this test spawns three children, each of which spawns nothing further. Finite because
@@ -210,3 +212,79 @@ def test_a_card_written_by_the_tool_still_passes_a_second_run(tmp_path: Path) ->
     assert report["mandatory"] == "11/11"
     rows = {row["suite"]: row for row in report["suites"]}
     assert "attestation ok" in rows["card"]["summary"]
+
+
+# ---------------------------------------------------------------------------------------------
+# The P3 demo: the kit against a real first-party driver, not only against its own template
+# ---------------------------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def pdf_report() -> dict[str, object]:
+    """One real run against `parse.pdf.pdfium`. Module-scoped: it spawns three children."""
+    done = _run("--card", str(PDF_CARD), "--fixtures", str(PDF_FIXTURES), "--json")
+    assert done.returncode == 0, f"exit {done.returncode}\n{done.stdout}\n{done.stderr}"
+    return json.loads(done.stdout)
+
+
+def test_the_pdf_driver_passes_the_mandatory_tier(pdf_report: dict[str, object]) -> None:
+    """16-roadmap.md's P3 demo: `ow conform packages/omniweave-pdf --suites mandatory`.
+
+    The template driver passing proves the kit runs. THIS proves the kit is worth running: a
+    driver built against a real C library, with a real dependency graph, a real crash surface and
+    a real glyph index space, held to the same twelve.
+    """
+    assert pdf_report["passed"] is True
+    assert pdf_report["mandatory"] == "11/11"
+    assert pdf_report["driver_id"] == "parse.pdf.pdfium"
+    failures = {
+        row["suite"]: row["failures"]
+        for row in pdf_report["suites"]
+        if row["failures"]  # type: ignore[index]
+    }
+    assert failures == {}, failures
+
+
+def test_capability_proved_origin_span_on_every_block_of_every_fixture(
+    pdf_report: dict[str, object],
+) -> None:
+    """**INV-10's `glyphs` branch, proved rather than declared.**
+
+    03-document-model.md:3030 calls P7 "the only mechanism that makes a third party's honesty
+    machine-checkable", and 16-roadmap.md:486 requires `capability` to prove `origin_span` on all
+    three of its branches. The template proves `bytes`; this driver proves `glyphs`, through the
+    `verify_origin()` hook the kit calls for a branch it cannot read unaided. The summary carries
+    the count, and the count must be every block -- a partial proof is an unproved card.
+    """
+    rows = {row["suite"]: row for row in pdf_report["suites"]}  # type: ignore[index]
+    summary = str(rows["capability"]["summary"])
+    assert "origin_span=exact" in summary
+    checked, _, total = summary.partition(" of ")
+    count = int(checked.rsplit(" ", 1)[-1])
+    blocks = int(total.split()[0])
+    assert count == blocks > 0, summary
+    assert rows["capability"]["verdict"] == "pass"
+
+
+def test_the_pdf_driver_is_socket_blocked_and_writes_nowhere_but_tmp(
+    pdf_report: dict[str, object],
+) -> None:
+    """pdfium is a C library with a filesystem API. The `sandbox` suite says it stayed put."""
+    rows = {row["suite"]: row for row in pdf_report["suites"]}  # type: ignore[index]
+    assert rows["sandbox"]["verdict"] == "pass"
+    assert "socket-blocked" in str(rows["sandbox"]["summary"])
+    assert "0 writes outside tmp" in str(rows["sandbox"]["summary"])
+
+
+def test_the_pdf_drivers_dependency_graph_is_licence_clean(
+    pdf_report: dict[str, object],
+) -> None:
+    """`pypdfium2` declares three things in one metadata string, and all of them must be allowed.
+
+    04-driver-system.md:2081 scans "the resolved dependency graph and the import graph", and this
+    is the first driver with a dependency graph worth scanning: pdfium bundles FreeType,
+    libjpeg-turbo, lcms2, zlib and libopenjpeg (14-security.md:1527).
+    """
+    rows = {row["suite"]: row for row in pdf_report["suites"]}  # type: ignore[index]
+    assert rows["licence"]["verdict"] == "pass", rows["licence"]["failures"]
+    assert "tier=open" in str(rows["licence"]["summary"])

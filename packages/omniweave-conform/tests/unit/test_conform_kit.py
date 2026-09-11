@@ -405,7 +405,7 @@ def test_normalize_eval_is_a_composition_and_not_a_second_fold_table() -> None:
 
 
 def test_the_card_the_template_ships_loads_through_the_real_loader() -> None:
-    """Ledger D110's regression: `18-api-sketch.md`'s printed card is refused on six keys.
+    """Ledger D121's regression: `18-api-sketch.md`'s printed card is refused on seven keys.
 
     The template's card is that card with the six corrected. This test is what stops it drifting
     back -- and it is the cheapest possible guard on the one artefact a third party copies.
