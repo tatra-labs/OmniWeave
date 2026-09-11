@@ -280,21 +280,16 @@ jobs:
         # register's SHARED_RUNNERS map admits this script twice and admits no third.
         run: uv run tools/gate_importtime.py
       - name: "G11 -- discovery never imports, against the rogue driver"
-        run: |
-          if [ -f tools/gate_discovery_no_import.py ]
-          then uv run tools/gate_discovery_no_import.py
-          else
-            echo "G11 NOT ENFORCED: lands at P3 (16-roadmap.md:513)" \
-              | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
+        # UNCONDITIONAL, and that is the point of the edit that made it so. The `if [ -f ]` guard
+        # this replaces was correct while the script was unwritten and is a hole now that it
+        # exists: it turns a DELETED gate into a green step carrying a note, which is the one
+        # outcome a gate may never have. The script builds and removes its own fixture, so there
+        # is nothing to install and nothing to clean up.
+        run: uv run tools/gate_discovery_no_import.py
       - name: "G12 -- every vendored artefact has sha256, parity test, arch assertion, NOTICE row"
-        run: |
-          if [ -f tools/gate_vendor.py ]
-          then uv run tools/gate_vendor.py
-          else
-            echo "G12 NOT ENFORCED: lands at P3 (16-roadmap.md:514)" \
-              | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
+        # Unconditional for the reason G11 above is: both scripts landed at P3 and a guard that
+        # survives its subject reports "NOT ENFORCED" in the exact case where a failure is owed.
+        run: uv run tools/gate_vendor.py
       - name: "G13 -- codes.toml append-only against the previous tag"
         # ARMED AND VACUOUS. The register gives this row fetch_depth = 0 and this job checks out at
         # depth 0 for it. With no v* tag in the repository there is nothing to diff, which is a
