@@ -434,7 +434,7 @@ release        = true
 # `omniweave-conform` from source there, scaffolds that checkout's own template driver and loads
 # the result against HEAD. Building from PyPI would let a yanked release break an unrelated merge.
 fetch_depth    = 0
-runner_planned = ["tools/gate_contract.py"]
+runner         = ["tools/gate_contract.py"]
 step           = """
 git worktree per tag + uv build --package omniweave-conform + that checkout's ow drivers scaffold \
 (section 4.4); vacuous at the P3 exit and wired for later (16-roadmap.md:516)"""

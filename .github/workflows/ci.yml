@@ -776,13 +776,11 @@ jobs:
         # 16-roadmap.md:516's P3 exit line is "uv run tools/gate_contract.py --releases 2   # G16
         # (vacuous at P3; wired for later)". Vacuous is the correct state with fewer than two tags,
         # and the script is the thing that gets to say so once it exists.
-        run: |
-          if [ -f tools/gate_contract.py ]
-          then uv run tools/gate_contract.py --releases 2
-          else
-            echo "G16 NOT ENFORCED: lands at P3 (16-roadmap.md:516)" \
-              | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
+        # Unconditional, like G11 and G12 above. VACUOUS until there are two `v*` tags, and the
+        # script is the thing that gets to say so -- it prints the glob it searched, the count it
+        # found, the count it wanted and the three steps it would have taken, so a vacuous run is
+        # distinguishable from a wired one at a glance even though both exit 0.
+        run: uv run tools/gate_contract.py --releases 2
       - name: "the twelve conformance suites"
         # 16-roadmap.md:517-518 gives the two invocations verbatim at the P3 exit.
         # packages/omniweave-conform exists as a distribution; its suites and "ow" do not.
