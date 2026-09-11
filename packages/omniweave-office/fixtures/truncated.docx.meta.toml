@@ -1,0 +1,14 @@
+# truncated.docx.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# rich.docx cut in half: the central directory is gone, so MalformedError -> CORRUPT_INPUT
+[fixture]
+sha256 = "cada407c1d4084658519186f9c6c64025df55a82c333c323dd5e3d1a3ec1cc01"
+bytes = 3020
+media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_office_fixtures.py"
+# `generated` is 13-quality.md section 4.2's PREFERRED provenance and requires two things: the
+# generator path under fixtures/gen/ and the expected output sha256. Both are above. It also
+# carries no `review_by`: the review window is "none for `generated` and `authored`, which have no
+# external dependency to rot", and this file depends on nothing outside this repository.

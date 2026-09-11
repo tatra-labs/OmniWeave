@@ -1,0 +1,14 @@
+# deck.pptx.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# a speaker note, which anydoc emits as Block::BlockQuote -- indistinguishable from a real quotation, so Kind.SPEAKER_NOTE has no producer on this path and a test says so
+[fixture]
+sha256 = "e9c3b8f8f7274179f2373d8931099d921b8cc035f477c9e2af76754d1389eeff"
+bytes = 4197
+media_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_office_fixtures.py"
+# `generated` is 13-quality.md section 4.2's PREFERRED provenance and requires two things: the
+# generator path under fixtures/gen/ and the expected output sha256. Both are above. It also
+# carries no `review_by`: the review window is "none for `generated` and `authored`, which have no
+# external dependency to rot", and this file depends on nothing outside this repository.

@@ -1,0 +1,154 @@
+# vendor/anydoc/anydoc.sha256 -- THE PARITY MANIFEST. G12, 11-repo-layout.md section 1.7.
+#
+# upstream   https://github.com/firecrawl/anydoc
+# commit     261fc257d17c3eab0f673be31c408fd9fdc2171a   (2026-08-27, "Update README.md")
+# version    0.2.4                     == the `firecrawl-anydoc == 0.2.4` pin in
+#                                         packages/omniweave-office/pyproject.toml
+# licence    MIT, (c) 2026 Sideguide Technologies Inc.  -> LICENSE, NOTICE
+# tree       sha256:846ddff930b7ee6bec3b4054275681dfaaab68ec193507d76118257ee8751164
+#            over the lines below, each spelled `<digest><space><space><path><newline>`,
+#            in this order.
+#
+# THE BYTES ARE UPSTREAM'S BLOB BYTES, not a working-tree copy: they are LF and a Windows
+# checkout of anydoc is CRLF, so `git archive` under core.autocrlf=true produces different
+# files and different digests. `git cat-file blob` is the extractor, `vendor/anydoc/
+# .gitattributes` carries `* -text` to keep them, and a reviewer can fetch any path below
+# from raw.githubusercontent.com at the commit above and get a byte match.
+#
+# WHAT IS HERE: src/ (the whole Rust crate), python/ (the PyO3 binding whose `py.detach` is
+# the S1 seam's warrant, 14-security.md:502), fuzz/ (the twelve cargo-fuzz targets 04:2091
+# counts and the seed corpus 14:477 mirrors into fuzz/seeds/), and the five root files that
+# establish the version, the dependency set and the licence.
+#
+# WHAT IS NOT: tests/ (2.1 MB of binary fixtures -- omniweave generates its own, see
+# packages/omniweave-office/fixtures/), node/ and wasm/ (bindings omniweave does not use;
+# `anydoc/wasm/LICENSE` is 14-security.md:1518's open VERIFY and stays open), bench/,
+# examples/, skills/, scripts/. Excluding them is why this manifest exists: it says exactly
+# which bytes the `vendored` trust tier (04:1111) was granted over.
+#
+# REPRODUCE
+#   git -C <anydoc checkout at that commit> cat-file blob HEAD:<path>   for each path below
+#   uv run tools/gate_vendor.py
+7faf5b93ab3d496d848556be84eda6def764a18f50e4de39298847b612980d26  Cargo.lock
+9c1c134e3f5b1c1559f88afd8d86ab4f4db2950fc633b3f5fb2b7dc14c37b55c  Cargo.toml
+f70e1c78716e7ef6c4211d6ca9a4c4e6847314662fc8786b16156e3e94f9f99d  fuzz/.gitignore
+3f1034aae0a5a1f61ecd02585578ade69055af2d34b2c5e5b6ad7d9393ee88e2  fuzz/Cargo.toml
+7a08e84dde2ff6e22f916ff4c9034bf37c57b84b3fcfa0f04e5310414efe9bbf  fuzz/fuzz_targets/csv.rs
+ec73913176be332dff857599088623c4329106480feb06031fc9bdd2cde90de9  fuzz/fuzz_targets/doc.rs
+8dc7e27d8e2f9f971646f53de711b262eee92c32f8f5de247f5afc02abdbedcf  fuzz/fuzz_targets/docx.rs
+59bf993c774b85db05b115efc9458be2303ad339072cf96c087e96957b877c68  fuzz/fuzz_targets/epub.rs
+cb495d5f616f79a28c55e8552098e959d1f603bf7cff0f5706c00f484e9177b7  fuzz/fuzz_targets/numfmt.rs
+65ea877f5b29116d7931431c6c489656bb3c4bbbf55f335c187e252d328fefc6  fuzz/fuzz_targets/odf.rs
+442df56389ba3a3af7b16ac46b44a0cce29e3f2c02b3c14c1bf959de49e99087  fuzz/fuzz_targets/pdf.rs
+4a7beef286f4539054ff74234062355a2f4c190d8b293c74cbd04ed3bdfbb402  fuzz/fuzz_targets/ppt.rs
+9aba671186a4cc5ba227d6685b11af2146cfb01cd1b3eb8df1ad552296f576e9  fuzz/fuzz_targets/rtf.rs
+7c1ce352b1256df6c753e940d17ada13f06c6c9e4bec3963042e26a08ece83a7  fuzz/fuzz_targets/xls.rs
+e4f5dd1e7c56f1d1820727ef76e6d9d9437a8a79d8f4c2818e4b5376119836f7  fuzz/fuzz_targets/xlsb.rs
+19ef468ca4387188f63de887897259a7d259d3597aa58259ddeff752e1de788d  fuzz/fuzz_targets/xlsx.rs
+45c022e946c8f7fb7a0c8f9182f95fbd76798fd27f8a74240e5d5c018b17da7c  fuzz/README.md
+7e722b6e5412b0303055540ecdf794f36b7deaa1861a33cd2da3606b589f5721  fuzz/seeds/numfmt/ampm-multibyte
+48b2773c414566176ed0a5c927be1ee9cb3ae49fe8bed4b707b66935ad0a0924  fuzz/seeds/numfmt/ampm-token-multibyte
+3394463c6438e4a9828d16f110ede92984848ae187f6d276162753ccf74295de  fuzz/seeds/numfmt/conditions
+a10e6580b56014d139d96006853c73beee1a990b7d5b920e2ed1d3e148a54be8  fuzz/seeds/numfmt/currency
+eaed882ee257c2d911623673ec8757786c2b8aeb24b80b7363c2a21c52ed0eef  fuzz/seeds/numfmt/datetime
+a009aff336470fe1f1c854d3b4aeadf4f824dcebea7a9c666343861c7f1622f1  fuzz/seeds/numfmt/elapsed
+bdc437bb25bb18c9894b783f469f7bfc961e06729f1ad2ee52a6478f8cd6049a  fuzz/seeds/numfmt/four-sections
+a4ee7029c3f19ef025be045e137524c1c1689f7dacf4ccbc8f80ee857f901872  fuzz/seeds/numfmt/fraction
+13e2510bc57d3bd9e2a3cfc0b1c33ce18483d1b322d87221dd5c76fb2477e6fc  fuzz/seeds/numfmt/percent
+2eee14d3e30af64580e6fc567418085a1f1e1f819b9cd9d0c2f6cfb841a85329  fuzz/seeds/numfmt/scientific
+583230e3438c0bcf5f6904148deb9131de884c4231369604b211288eb20f8c22  fuzz/seeds/xls/workbook-stream
+edc05ce5c9a1d183e164bc8e3222dbf2d49ee705599572b5e5db504481b250f6  fuzz/seeds/xlsb/sheet1-bin
+ce83c7f64f95b302e0b1962852b2b25979092a49ba0a56bacd24b70286f62b62  fuzz/seeds/xlsb/styles-bin
+e4908661279e002695660a222778ab984b1b974c981293d3a80655ec90ddf957  fuzz/seeds/xlsb/workbook-bin
+70b735ffc96268b3856348d8fa226f6c8b91e0c52ae1abdbc9f1bf7e34576d53  fuzz/seeds/xlsx/merged.xlsx
+1b3fc8f35f4c7ad6bb4dcf9b9f1fdf4ddf1f4c7f2f6748f33b7948204f940136  fuzz/seeds/xlsx/sheet.xls
+6f965c3d4c9c9d4028c8e2bb8409c28473cd6310c4af05266cf54f4852f94fbf  fuzz/seeds/xlsx/sheet.xlsb
+ddfec7c1e98c7b50611b1c3ac55c0aa0d9d413135aa7afc36732338e44f4d26c  fuzz/seeds/xlsx/sheet.xlsx
+03a9e7657aac6536fb6458bd220347c4e7f85bd0a51d8d9e8528530b7a682ade  LICENSE
+066a9d8320e56d151bfe033e632c79017b693657c20d7282baac0c1d6c82ecda  python/anydoc/__init__.py
+6799eb7dd7ed6db3695b481c451615dbb3c44698aa3d497db1b1be95c938dc67  python/anydoc/_anydoc.pyi
+01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b  python/anydoc/py.typed
+5cbcc5b585396e692cdcd589dd20a17565bebab8d464b91953266ca7f7767807  python/Cargo.toml
+77df7b8ce6b9f4a8236b3de8eb053aa7a96e0e3c31d49c027068f3671cf192be  python/pyproject.toml
+71e2e9aae0145d9366c4ac7e8cd4bad8fc172434e87d658dd66717dd5e042600  python/README.md
+fd6e30f65078f55c5e9f17db51f7d673caf16cef5361b75901161bdecfcc5f3d  python/src/document.rs
+d85b1e2771841c7b071ab449b0e31ee41302793f38f439f43b789d0e2ef13440  python/src/lib.rs
+ccb06b46dd381ee82e7cfebde29f7c7f56a2cbe288e33bf1d714b702c64fcc7b  python/tests/test_anydoc.py
+0cc4383125c1640584f73b4630499529c9a7188b97c17d82065f9a9dad5b7cb6  README.md
+41f2d8780028adaddf0b4085f7a14528591fc97f225a640282c890531331485b  rustfmt.toml
+075eb50b17fb89c3bb6fffa384cb508b95712f6a491d4cc1b0c56ba68fb3185c  src/error.rs
+90defa1bf7dc61b9807a975ee19b0ce6308867fe36dbd5eb8ac9d539afbf26bd  src/formats/csv.rs
+f734573da5eb5501fe097ffccd669800ee406481332ac2106fa5bfae1bdc6c8f  src/formats/detect.rs
+df0d15c33738ecbc30824a5d924776445810a0ce943eb6bfba6621be3188a227  src/formats/doc/lists.rs
+f575be68b03d1487eb4fd765f31e47c9245da22d45ba863079cfe6f851b30a7e  src/formats/doc/mod.rs
+efa38a1a73f6e28da8c6e8422b32ee2c0fc3e7b19d1249f5bd4ba51f323b349a  src/formats/doc/sprm.rs
+992bd552fdfa58aa03ea836adfd77a149b4eb964bb1c142656050fee181e3a6f  src/formats/doc/stsh.rs
+b85cf9eab18c07245349e000b70551bcef6487c0d8457691be2dd4bebea447b1  src/formats/docx/content.rs
+174525e84a07714a99596cb5b7a2b09d4e8dcd16d9b1e7fbf530b9227ddd39f0  src/formats/docx/mod.rs
+5c999b2c383d08159cdcd0263303bea81608c71f11f8cf5f1760f4bfc3079a68  src/formats/docx/numbering.rs
+ead692ce82cb8da55ddbd889979bb85583d14c62043491f8ba5b3a9b48ea019c  src/formats/docx/styles.rs
+dab4a2da96bfacbf95e83b1718ca717d4640ac66e9435ec8d7952c05346c5b9e  src/formats/epub/mod.rs
+c77930e5b09621c1df543607b8999da49fb7010bbedb2962949803a9468cb75c  src/formats/mod.rs
+2614b5c6ec6cf34e2e75530a8bb8b3fb5b3feb47843d8f220702c3d50c117347  src/formats/odf/mod.rs
+e116a09ec4a2cb0c5ad5f61b4cd905c23913ba3b7192712b872e451e34289731  src/formats/odf/styles.rs
+9a1c86d297f156d2fd65bdc0f6d5bcd2efaf6927ea253b1cdce6ab7b5ec55e43  src/formats/odf/table.rs
+9d33375c27c6a0e0f14183673ed0b0c82046818bf71daf2e8e3f5487499f41c8  src/formats/odf/text.rs
+19cc0ce66bbafb0d820e221b3bc97cc83a24d14f97ddaf7f02f3f3a606550681  src/formats/pdf.rs
+0959440b817ba7bd11ec041093c62327004c1c0c28e5e71482ff326828eb1a90  src/formats/ppt/mod.rs
+c7a48d58d8ca7005bd266260ed8b5e6efdf0f68add6ddca7f3ad421eb7d689d9  src/formats/ppt/styletext.rs
+a7f8e6f801037364978ff76751bc98e59ab31ae137824fc879cf0a6e066a8334  src/formats/pptx/cascade.rs
+d0892592d7903b72ace89c1715f221c89cacbcf6cb93901a13ffb39bb4c933a2  src/formats/pptx/mod.rs
+bc44520a6fdffc8c3cbb73dc845a8f34baa1e25d90c6ff95a8e6f631ad5d8a6f  src/formats/rtf/lexer.rs
+f160db5a9e36fb40571ec88d39ea485f7cef2afd7aabd1cd131271b7708137a5  src/formats/rtf/mod.rs
+de294b710808ce4a6754e7ed34531e0c558dbffb028dd06fa124e61e9ed62073  src/formats/rtf/table.rs
+9a20f9eb5bd07f88ea9c375cd4152ea3c1a6fa2300ee3b806c628dc46c70559e  src/formats/rtf/tables.rs
+1f370fb714004cdeb0dbbf0a0ebbc29561b9d128b4495e3107fe839673c1475a  src/formats/sheet/controls.rs
+91cb7a8abdb76ac56d5bb3cdaa29a8a80d20f31594a29d4474c6bf5f79f162e3  src/formats/sheet/mod.rs
+0a28b1e5efb557c5a12c50a3d65488d5b3b28b51c553f1ee637a0be80a3a8533  src/formats/sheet/numfmt.rs
+efedd684c3ff06873b4989835cfaee5f5fbe94c56d57c99d3818ffd5afa5f75c  src/formats/sheet/xls.rs
+891420504d0813f54dc462789df8715cac176f4c427c52d93372ffbb4cd417cd  src/formats/sheet/xlsb.rs
+0fa9e305a829baf5d09f1b358c1279528dc1057316dfa14187e1e0f4ca9506f2  src/formats/sheet/xlsx.rs
+a75b8664e7f1b0b007b85c16464221047abd00c2dd95824023ae16f2a7bde509  src/lib.rs
+3e2bbae1bf7a68e2ee5a4a7c8ecb691ba58fb97a8d10aef5859c604bac2cae6f  src/model/asset.rs
+eb8f8324c38829639d815bb3793180bddb44e606251c9c599c7b1091c7931d69  src/model/block.rs
+09e198bad12bc6dc189ab7fbb6319f372e32e7c86ac559740cb86619b4cfc7f7  src/model/inline.rs
+5a4fcf238a782ac2cf17fedfa29446fbb6c48d17a86286a8ac94f5fe403cf36a  src/model/link.rs
+0e3c14098085000c7c89e7809b10bbdeeaeba237c023632eeabc665808ee3b36  src/model/list.rs
+a0fb106e1737b206e2f9148b6abc4d0743b9d9b25b7d572b06e4924faea91d60  src/model/mod.rs
+fe4831dab4d36d6d7d2e13021b337d23db35b117ad50c8e0a4eb3a0a7c98e7f8  src/model/style.rs
+c44d2833522cf2bbedbb263678e330b6485c434f097eb15e8177675b095f1649  src/model/table.rs
+dc5da0da6973535b3339ceadba65302547ca447e5623fdc7d5fe22731d9aaa13  src/package/archive.rs
+02bf0b76cf499fa52e41cf492f09a21641df97ff07310dbca374ee30c99aff24  src/package/limits.rs
+94642528446c033e2026b85061c9aaceb9b1f2d43deaa9cd37a33851600657f6  src/package/mod.rs
+206f78966fb76857ace1aaf2319d06eb6dd11dbc946558f93b040fe51e41b958  src/package/path.rs
+a946242875947b1261470c6cab0e152f45974127bb92960a111a413dc946f284  src/package/relationships.rs
+5843eae89b4aeca9222a51bb0663353fa1a02d54e66c1774fb2cae8acfc3aad0  src/package/xml.rs
+7ce634f3c171e6162385c029714effc16638b5503065da9a6a274968ebdad718  src/render/markdown/anchors.rs
+dedb614508afeb826f96b807f9011407d71c3b40aa35c31ad92287a93e448ba2  src/render/markdown/escape.rs
+395816095a377333ae4e4a959f4024c2db35f47acf4d0cd3212e584ed9896ac3  src/render/markdown/inline.rs
+c09552eb6d0077b95047ee164cec3effec7306da51392adfbddea9bc9852ee27  src/render/markdown/mod.rs
+2131b0ec1b356c8bfb9c2d234f47e50b090541e904d3a9646e5772598ea05472  src/render/markdown/table.rs
+f7c81f64c5abc6df939b44945b55b62e338e98bf56c0bbece90f83cbbe2558e0  src/render/markdown/tests.rs
+51c3a68b107e70138220a7d47565f5d183904500f84c46f1528d9323e96dd937  src/render/mod.rs
+8435da527db92bb9d128f36fc7aedd2e5f003d000305a818958578691a7d588b  src/shared/assets.rs
+2a1db34ae4e0518108556c83ce060682a1e6bfda5bc8c7b0e7d679bc8c5384c5  src/shared/binary.rs
+adcc4e066836944f3d8fd8825f4254c4eb19efacab018d802e3993216749f3e5  src/shared/blockstyle.rs
+665a0746043ca6fd9acdf94e558116b68027d2f8bedcac4a3f8035ac183edb48  src/shared/chain.rs
+549b83f270b41582d9cd7eee3bb8c5871088d86d8c3f167363557f08eac1e19c  src/shared/delta.rs
+adebc8367d12925111bc88acc63da4aa27b8c63487f8a37dd7bdec5052868e78  src/shared/drawingml.rs
+30c542cedceb4d1d3dd7d971676148bbb27e3fc3eece175faa7dcc222f49e111  src/shared/fields.rs
+bfbb7fd4a792981754d1ba8359116fff9be88179a82722d0bec512241059fd33  src/shared/grid.rs
+630ffa833ccb046a83367e6295348e66eede64ecf18256311d01ad79a18118dd  src/shared/header.rs
+91b4fa3eee68102b5a53b09ab1de9ab27a72141f25b228fca6da4d0785549229  src/shared/html.rs
+e41b8af60aca4b779c0690ad1a2cae22d55db047f4fef4fb61c907949478dd31  src/shared/list.rs
+59a49721a4ad34b0e66c271c1510fe294d79198e4cd596d0ff3f2a77447020a2  src/shared/math/mathml.rs
+a0e26031521e0b0f1e7fc5fd59f6791a3c049b29e7f256b58256779cf6ac8cb6  src/shared/math/mod.rs
+e7631a46b59f4062e660167b4ef1e24ea950758e07b502cb24529c5bed5b5b71  src/shared/math/omml.rs
+560f5de109d4e68b5b6fd9a58a7fce7e35987a30636c7db55f8b14dd24f110e1  src/shared/math/tests.rs
+29b28a3699022343f15f3993af66d4594a4d484c3f912e36794ff58bd3b04aa2  src/shared/math/tex.rs
+3067200e59acbee649cd7c6b38c3a339e6a40a716350cd031f7e3cf3c45fc1d2  src/shared/mc.rs
+5ed05e74aad522c9b0c81803eb1a0d702c99ff933dda9bc3685de52fe91add41  src/shared/mod.rs
+d361e5b28bcbe043fb8e6b313000dd537d457140125fecd43f01d54d42670840  src/shared/numbering.rs
+ebb88304f43d3d3bbb844b0bc0f042cf33acca22c1b41ea7c7232eca1decdff2  src/shared/officeart.rs
+8a60b082bf5a9a246d4432228fd54ac3cf215c19ca43a0187f72ea903c1ac0ce  src/shared/text.rs
+e569354204a2f234861e5063d55bfa10652a6f00b3d32e9bb67c1f78c8d0bda7  src/shared/uri.rs

@@ -1,0 +1,14 @@
+# Fixture bytes are conformance ground truth: never EOL-convert them.
+#
+# The repository root sets `* text=auto eol=lf` (11-repo-layout.md section 1.9), which rewrites
+# any file git decides is text. Here that would hit `rows.csv`, `memo.rtf`, every XML part inside
+# a ZIP_STORED package and the zero-padding inside a compound file -- invalidating EXPECTED.sha256,
+# breaking each ZIP entry's CRC, and moving the byte offsets a CFB's FAT and BOUNDSHEET records
+# point at. anydoc's own tests/fixtures/ carries the same attribute for the same reason.
+#
+# `.meta.toml` sidecars are exempt: they are this repository's own text, read by tomllib, and an
+# LF contract is exactly what should apply to them.
+* -text
+*.meta.toml text eol=lf
+README.md text eol=lf
+EXPECTED.sha256 text eol=lf

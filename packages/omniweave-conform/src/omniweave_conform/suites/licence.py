@@ -225,6 +225,14 @@ def _declared_dependencies(subject: Subject) -> dict[str, str]:
     return found
 
 
+_NOT_INSTALLED: Final = "<not installed>"
+"""What `_licence_of` answers for a name no distribution in this environment provides.
+
+A constant rather than a repeated literal because two readers now compare against it: the one that
+reports a declared-but-absent dependency, and `_licence_of_root`, which uses it to decide whether a
+root resolved through `packages_distributions()` told it anything."""
+
+
 def _dist_name(requirement: str) -> str:
     for separator in (" ", ">", "<", "=", "!", "~", "[", ";"):
         requirement = requirement.partition(separator)[0]
@@ -236,7 +244,7 @@ def _licence_of(distribution: str) -> str:
     try:
         meta = metadata.metadata(distribution)
     except metadata.PackageNotFoundError:
-        return "<not installed>"
+        return _NOT_INSTALLED
     for key in ("License-Expression", "License"):
         value = meta.get(key)
         if value and len(str(value)) < 200:  # noqa: PLR2004 -- a full licence TEXT, not an id.
@@ -261,8 +269,30 @@ def _imported_roots(subject: Subject) -> dict[str, str]:
             root = name.split(".")[0]
             if root == own or root in _STDLIB or root in roots:
                 continue
-            roots[root] = _licence_of(root)
+            roots[root] = _licence_of_root(root)
     return roots
+
+
+def _licence_of_root(root: str) -> str:
+    """The licence of whatever DISTRIBUTION installs this import root.
+
+    An import root and a distribution name are different namespaces, and reading metadata under
+    the import root is only right when they happen to coincide. `anydoc` is installed by
+    `firecrawl-anydoc`, so the direct lookup answered `<not installed>` and reported a finding
+    against a driver whose dependency is installed, pinned and MIT -- a bug in this reader, not a
+    fact about the driver, and exactly the shape `_roots_of`'s own docstring already warns about
+    for `pyyaml`/`yaml`.
+
+    `packages_distributions()` is the authoritative mapping. A root with several distributions
+    (namespace packages) contributes all of their licences joined, because every one of them is a
+    thing the driver's import actually pulls in and the allowlist has to hold for each.
+    """
+    providers = metadata.packages_distributions().get(root, [])
+    licences = [value for value in (_licence_of(name) for name in providers) if value]
+    known = [value for value in licences if value != _NOT_INSTALLED]
+    if known:
+        return ", ".join(dict.fromkeys(known))
+    return _licence_of(root)
 
 
 def _terms(licence: str) -> list[str]:

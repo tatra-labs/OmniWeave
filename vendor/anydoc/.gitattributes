@@ -1,0 +1,5 @@
+# Vendored bytes are the upstream commit's bytes: never EOL-convert them, or every
+# digest in anydoc.sha256 changes on a Windows checkout and G12 fails for a reason that has
+# nothing to do with the code. anydoc's own tests/fixtures/ carries the same attribute for
+# the same reason.
+* -text

@@ -343,7 +343,7 @@ budget_s       = 5
 pr             = true
 nightly        = false
 release        = true
-runner_planned = ["tools/gate_vendor.py"]
+runner         = ["tools/gate_vendor.py"]
 # 17-risks.md section 1.3: `licence` owns "`vendor/*/NOTICE`".
 owner          = "licence"
 reviewed_at    = "2026-09-07"
