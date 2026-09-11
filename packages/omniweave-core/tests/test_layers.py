@@ -27,8 +27,6 @@ import re
 import tomllib
 from typing import TYPE_CHECKING
 
-import pytest
-
 if TYPE_CHECKING:  # the fixtures deliver these; the names are here for the annotations
     from collections.abc import Iterable
     from pathlib import Path
@@ -236,15 +234,6 @@ def test_core_may_import_only_ports_and_ports_may_import_nothing(sources: Source
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "no distribution declares [project.entry-points.'omniweave.drivers'] yet — the "
-        "first-party cards land with P3 (16-roadmap.md section 6, W3.1-W3.6), so G4's "
-        "re-derivation is vacuous and the twelve driver rows are still hand-written "
-        "from 02-architecture.md section 3.2"
-    ),
-)
 def test_every_row_is_re_derived_from_that_distributions_entry_points(
     sources: SourceIndex,
 ) -> None:
@@ -252,9 +241,11 @@ def test_every_row_is_re_derived_from_that_distributions_entry_points(
 
     "NO AUTHOR PICKS THEIR OWN ROW" is the property that makes the layer graph
     self-derived, and it is the reason adding `omniweave_core` to a parse driver's row
-    fails the gate instead of quietly widening it. Strict xfail: the day a driver
-    distribution declares a card, this starts passing and the hand-written rows stop
-    being trusted.
+    This was a strict xfail until W3.5 -- "the day a driver distribution declares a card,
+    this starts passing and the hand-written rows stop being trusted". That day is
+    `omniweave-pdf` declaring `parse.pdf.pdfium`, and the marker came off with it. The rows
+    are now derived for every distribution that declares one and hand-written only for the
+    ones that do not yet.
     """
     rows = sources.layers()
     declaring = [dist for dist in sources.distributions() if _driver_entry_points(dist)]
@@ -264,13 +255,6 @@ def test_every_row_is_re_derived_from_that_distributions_entry_points(
         assert rows[dist.layer_key] == expected, f"{dist.name}'s row is not its derived row"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "same cause: there is no entry-point value to shape-check until P3 lands the "
-        "first-party driver cards (11-repo-layout.md section 1.5)"
-    ),
-)
 def test_every_entry_point_value_is_a_colon_free_dotted_package_that_exists(
     sources: SourceIndex,
 ) -> None:
@@ -279,7 +263,8 @@ def test_every_entry_point_value_is_a_colon_free_dotted_package_that_exists(
     hatchling writes `entry_points.txt` from the table without validating the value's
     shape at all, so a malformed first-party value would ship and fail on a user's
     machine as a discovery-time refusal. G4 asserts the shape while it is already
-    reading the table (11-repo-layout.md section 1.5).
+    reading the table (11-repo-layout.md section 1.5). Strict-xfailed until W3.5 gave it a
+    value to check.
     """
     checked = 0
     for dist in sources.distributions():
@@ -300,8 +285,8 @@ def test_the_derivation_rules_agree_with_the_plans_worked_shapes(sources: Source
     `omniweave-pdf` is 11-repo-layout.md section 1.5's worked non-`compile` shape and
     `omniweave-target-pptx` is 02-architecture.md section 3.2's worked `compile` one. So
     the rule can be checked today even though no card declares it today, which is what
-    makes the two strict xfails above a statement about missing *data* rather than about
-    missing code.
+    made the two tests above strict xfails for as long as the data was missing rather than
+    the code -- and W3.5 supplied the data, so they run.
     """
     rows = sources.layers()
     assert _row_from_entry_points({"parse.pdf.pdfium": "omniweave_pdf"}) == ROW_FOR_EVERYTHING_ELSE

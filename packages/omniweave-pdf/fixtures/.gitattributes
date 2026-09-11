@@ -1,0 +1,5 @@
+# A PDF is bytes. The repo-root `* text=auto eol=lf` rule would rewrite the ones that happen to
+# contain no NUL, which silently invalidates `EXPECTED.sha256` and every glyph offset recorded
+# against them. `-text` is scoped to this directory; 11-repo-layout.md section 1.9's eol contract
+# still governs every other file in the tree.
+* -text

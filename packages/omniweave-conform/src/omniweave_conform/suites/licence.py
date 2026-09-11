@@ -46,11 +46,13 @@ Specified in 04-driver-system.md section 8.2 row 10 and section 7; DR18, G3.
 from __future__ import annotations
 
 import ast
+import re
 import sys
 import time
 import tomllib
 from importlib import metadata
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 from omniweave_core.drivers.licence import LicenceSeeds, tier_from_card
@@ -59,7 +61,7 @@ from omniweave_ports.types import LicenceTier
 from omniweave_conform.result import Assertion, SuiteResult
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Iterable, Iterator, Mapping
 
     from omniweave_conform.subject import Subject
 
@@ -76,6 +78,35 @@ duration."""
 
 _ALLOWLIST_NAME: Final = "licences.toml"
 _STDLIB: Final = frozenset(sys.stdlib_module_names)
+
+ALIASES: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "psfl": "PSF-2.0",
+        "psf": "PSF-2.0",
+        "python software foundation license": "PSF-2.0",
+        "apache software license": "Apache-2.0",
+        "apache 2.0": "Apache-2.0",
+        "apache-2": "Apache-2.0",
+        "mit license": "MIT",
+        "bsd license": "BSD-3-Clause",
+        "the unlicense": "Unlicense",
+    }
+)
+"""Spellings PyPI metadata actually uses, mapped to the SPDX ids `[allow] spdx` names.
+
+**This widens no policy.** Every value is an identifier already on the allowlist; the keys are
+the strings distributions write instead of it. `defusedxml` declares `PSFL` and the allowlist
+names `PSF-2.0`; they are one licence with two spellings, and refusing the first would refuse
+a licence the policy permits for a reason that is about typography.
+
+**Why it is here and not in `tools/licences.toml`.** That file's `[allow]` is "VERBATIM from
+14-security.md section 9.2" and is the POLICY. A spelling table is input normalisation, which
+is the reader's job rather than the policy's. Ledger D9 already records that G3's own scan
+trips on the same class of thing -- four permissive ids absent from the allowlist -- and the
+resolution there is the user's, because it is a policy question. This one is not."""
+
+_EXPRESSION_SPLIT: Final = re.compile(r"\s+OR\s+|\s+AND\s+|\s*[,;/]\s*", re.IGNORECASE)
+_NOISE: Final = frozenset({"", "dependency licenses", "see license", "other/proprietary"})
 """Imported through a plain `import sys`, never `__import__("sys")`.
 
 `tools/semgrep/omniweave.yaml`'s `omniweave-no-dunder-import-outside-host` bans
@@ -234,6 +265,30 @@ def _imported_roots(subject: Subject) -> dict[str, str]:
     return roots
 
 
+def _terms(licence: str) -> list[str]:
+    """Split a licence metadata value into the SPDX identifiers it actually names.
+
+    A distribution's `License` or `License-Expression` is not one identifier. `pypdfium2`
+    declares `BSD-3-Clause, Apache-2.0, dependency licenses`; an SPDX expression joins terms
+    with `OR` and `AND`; classifiers arrive as prose. Comparing the whole string against a set
+    of atoms fails every compound value, which is a bug in the reader rather than a finding
+    about the driver -- and it reported one against `parse.pdf.pdfium` for two licences both
+    of which the policy permits.
+
+    Every term is required to be permitted, including under `OR`. That is stricter than SPDX
+    semantics, where `A OR B` needs only one, and it is deliberate: a dual-licensed dependency
+    whose other half is unacceptable is a dependency whose acceptability depends on a choice
+    nobody recorded, and DR18 makes a violation a failure rather than a warning.
+    """
+    terms: list[str] = []
+    for raw in _EXPRESSION_SPLIT.split(licence or ""):
+        term = raw.strip().strip("()").strip()
+        if term.lower() in _NOISE:
+            continue
+        terms.append(ALIASES.get(term.lower(), term))
+    return terms
+
+
 def _normalised(name: str) -> str:
     """PEP 503 normalisation plus the underscore form.
 
@@ -299,11 +354,11 @@ def _graph_assertions(
         locus="allowlist",
     )
     for graph, rows in (("resolved", declared), ("import", imported)):
-        offenders = [
-            f"{name} ({licence or 'no licence metadata'})"
-            for name, licence in sorted(rows.items())
-            if licence and licence not in permitted
-        ]
+        offenders = []
+        for name, licence in sorted(rows.items()):
+            unmatched = [term for term in _terms(licence) if term not in permitted]
+            if licence and unmatched:
+                offenders.append(f"{name} ({', '.join(unmatched)})")
         yield Assertion(
             f"every distribution in the {graph} graph carries an allowlisted licence",
             ok=not offenders,
