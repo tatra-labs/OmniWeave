@@ -1,0 +1,131 @@
+# THE DRIVERCARD for the conformance-template driver. Read WITHOUT importing.
+#
+# 18-api-sketch.md:1863-1925 prints this card for `omniweave-driver-plaintext`. Six of its keys are
+# refused by `load_card()` and are corrected here; ledger D110 is the entry, and the correction is
+# `04-driver-system.md` sections 2.1-2.8, which is the grammar `omniweave_core/drivers/card.py` was
+# built from. The six: `consumes = ["blob"]` -> `["raw_bytes"]`; `[hardware] gpu = false` ->
+# `"none"`; `[hardware] min_ram_mb` -> `ram_gb_min`; `[isolation] preferred` -> `requires`;
+# `[isolation] needs_network` -> `[hardware] needs_network`; `[limits] max_output_bytes` struck,
+# because `max_output_bytes` is per-invocation and arrives on `DriverIO`, never on a card.
+#
+# ONE KEY PER LINE -- this file is `tomllib.load`ed and `;` is not a TOML separator. An unknown
+# TOP-LEVEL table is a HARD ERROR: a card is a contract, not config. An unknown key inside
+# [capability.<port>] is IGNORED with a recorded CARD_CAPABILITY_UNKNOWN degradation, because every
+# key there is an ordered or set-valued FLOOR and an unrecognised one can only make the driver look
+# LESS capable.
+#
+# THIS CARD IS THE FILLED ONE, not the scaffolded one. 04-driver-system.md:2160: `ow drivers
+# scaffold` "emits a card with every capability at its WEAKEST value and with `[cost.measured]`,
+# `[quality]` and `attestation` absent", and "filling the card upward is the author's work". The kit
+# ships the finished article because the kit needs a subject that passes; weakening is what scaffold
+# does on the way out.
+card_schema = 1
+
+[driver]
+id = "parse.text.plain"
+port = "parse/1"
+version = "0.1.0"
+schema_version = 1                 # THE ONLY DRIVER VERSION IN A CACHE KEY. Forgetting to bump it
+                                   #   serves stale output forever with no symptom.
+entrypoint = "omniweave_conform.template.driver:PlainTextParser"   # module:attr, exactly one ':'
+granularity = "document"
+replay_class = "byte_exact"
+title = "Plain text"
+summary = "One paragraph Block per blank-line-separated run, with a byte span per Block."
+
+[capability]
+formats = ["text/plain"]
+consumes = ["raw_bytes"]
+produces = ["doc_fragment"]
+
+[capability.parse]
+# THE FIFTEEN Capabilities FIELDS -- the same fifteen as the dataclass and as doc.declared /
+# doc.achieved. `declared` here; `achieved` is what the runner stores per document and may be
+# LOWER, never higher. Over-declaring FAILS the shared testkit.
+spatial = "none"
+origin_span = "exact"              # PROVED by RE-READING the retained part on the `bytes` branch
+                                   #   (03 section 7.2): nfc(part_bytes[os_a : os_a + os_b]
+                                   #   .decode(*os_codec.split("/", 1))) == block.text
+text_span = true
+marks = false
+reading_order = "source"
+sections = "none"
+tables = "none"
+math = []
+assets = "none"
+asset_origin = false
+notes = "none"
+confidence = "none"
+furniture = "flagged"
+round_trip = "text"
+forfeits = []
+format_tokens = [
+  { media_type = "text/plain", token = "txt" },
+]
+
+[hardware]
+gpu            = "none"
+vram_gb_min    = 0
+ram_gb_min     = 0.0625
+cpu_arch       = ["x86_64", "aarch64"]
+os             = ["linux", "darwin", "windows"]
+needs_network  = false             # runs with no egress where the OS can enforce it, and RECORDS
+                                   #   the shortfall where it cannot. It never claims it.
+needs_binaries = []
+imports_torch  = false
+install_bytes  = 12000
+services       = []
+
+[isolation]
+requires        = "subproc"
+memory_mb       = 128
+progress_ms     = 15000
+wall_ms_hard    = 60000
+batch_max_units = 32
+
+[limits]
+max_input_bytes = 33554432
+max_parts       = 1
+
+[licence.code]
+spdx = "Apache-2.0"
+redistribution = "allowed"
+output_share_alike = false
+competitor_bar = false
+requires_credential = false
+revenue_gate_usd = 0
+mau_gate = 0
+territory_excluded = []
+field_of_use_excluded = []
+attribution_per_output = false
+no_model_training = false
+remote_kill_switch = false
+clause_refs = []
+# [licence.weights] is OMITTED ENTIRELY: this driver ships no weights.
+
+[deps]
+pins = []
+
+[config]
+type = "object"
+additionalProperties = false
+required = []
+[config.properties.errors]
+type = "string"
+enum = ["strict", "replace"]
+default = "strict"
+
+[cost.model]
+class   = "free"
+shape   = "linear_per_byte"
+unit    = "document"
+per_part    = { wall_ms = 1 }
+per_session = { }
+scaling     = { key = "input_bytes", exponent = 1.0, reference = 65536 }
+tokens_out_p95_multiple = 1.0
+max_retries = 0                    # the only value a first release accepts: retry is the
+                                   #   runtime's, with the runtime's budget and ledger
+
+# EVERY [cost.measured] and [quality] key is WRITTEN BY `ow conform`. AUTHOR VALUES ARE REJECTED,
+# and so is the `attestation` key. This card carries none of the three, which is what makes it the
+# honest starting point: a template shipping a `[quality]` block would ship an unearned claim.

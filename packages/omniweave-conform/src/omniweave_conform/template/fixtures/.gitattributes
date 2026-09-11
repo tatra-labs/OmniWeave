@@ -1,0 +1,5 @@
+# The template fixtures are BYTES, not text. `crlf.txt` exists to prove a driver handles CRLF
+# and the repo-root `* text=auto eol=lf` rule would rewrite it to LF on checkout, which is the
+# fixture silently becoming a copy of another fixture. `-text` is scoped to this directory so the
+# eol contract 11-repo-layout.md section 1.9 states still governs every other file in the tree.
+* -text

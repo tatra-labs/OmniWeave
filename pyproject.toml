@@ -99,6 +99,12 @@ ban-relative-imports = "all"
 "packages/omniweave-core/src/omniweave_core/ident.py" = ["RUF001", "RUF002"]
 "packages/omniweave-core/tests/unit/test_ident.py" = ["RUF001", "RUF002"]
 
+# Same rule, same reason, one distribution over. `normalize_eval` exists to fold the quote
+# families NFKC leaves alone and the dash table `fold_common` holds (13-quality.md section 8.2),
+# so its test corpus IS curly quotes and en dashes. A linter cannot tell a homoglyph fixture
+# from a homoglyph attack, and Q-G23 is the property that needs the fixture.
+"packages/omniweave-conform/tests/unit/test_conform_kit.py" = ["RUF001", "RUF002"]
+
 # The coercion table is a ten-arm dispatch over `ConfigKind` (02-architecture.md section 8.4), so
 # one return per kind is the shape the plan mandates; collapsing it to satisfy a branch counter
 # would hide the very table the module exists to implement. PLC0415: the two cross-module shims
