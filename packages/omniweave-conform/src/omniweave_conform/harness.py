@@ -45,6 +45,7 @@ import hashlib
 import io as _io
 import json
 import threading
+import tomllib
 import unicodedata
 import weakref
 from dataclasses import dataclass, field
@@ -265,6 +266,18 @@ class Fixture:
     path: Path
     data: bytes
     digest: str
+    media_type: str | None = None
+    """What the HOST would have routed on, read from the fixture's own `.meta.toml` sidecar.
+
+    `UnitRef.media_type` exists because routing already decided the format before `INVOKE`, and a
+    driver is entitled to use it: `parse.office.anydoc` needs it to tell a legacy BIFF workbook
+    from an OOXML one and to name CSV at all, because CSV carries no signature and cannot be
+    detected from content by anyone.
+
+    Without it every fixture reached `parse()` as `media_type=None`, so a kit run was strictly
+    harder than a real invocation -- and a driver that is correct under the host would fail here
+    for a reason no host would ever produce. 13-quality.md section 4.4's `[fixture] media_type` is
+    where the answer already lives, so this reads that rather than inventing a second channel."""
 
     @property
     def name(self) -> str:
@@ -276,7 +289,7 @@ class Fixture:
 
     @classmethod
     def of(cls, path: Path) -> Fixture:
-        """Read the file and canonicalise its path.
+        """Read the file, canonicalise its path, and read the sidecar if there is one.
 
         `resolve()` here is NOT the ambient-cwd input OUT14 bans and
         `omniweave-no-getcwd-in-library-code` flags. That rule's subject is "a path no caller
@@ -287,7 +300,34 @@ class Fixture:
         fail at the URI and not at anything a driver did.
         """
         data = path.read_bytes()
-        return cls(path=path.resolve(), data=data, digest=MemoryBlobStore.digest_of(data))
+        return cls(
+            path=path.resolve(),
+            data=data,
+            digest=MemoryBlobStore.digest_of(data),
+            media_type=_sidecar_media_type(path),
+        )
+
+
+def _sidecar_media_type(path: Path) -> str | None:
+    """`[fixture] media_type` from `<file>.meta.toml`, or `None` when there is no sidecar.
+
+    A malformed or absent sidecar is `None` and never an exception. The sidecar is optional by
+    design -- `packages/omniweave-pdf/fixtures/` has none and needs none, because a PDF's media
+    type is decidable from its first five bytes -- so a kit that refused to run without one would
+    make an optional file mandatory for every driver to satisfy one.
+    """
+    sidecar = path.with_name(path.name + ".meta.toml")
+    if not sidecar.is_file():
+        return None
+    try:
+        table = tomllib.loads(sidecar.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+        return None
+    fixture = table.get("fixture")
+    if not isinstance(fixture, dict):
+        return None
+    value = fixture.get("media_type")
+    return value if isinstance(value, str) and value else None
 
 
 def load_fixtures(directory: Path) -> tuple[Fixture, ...]:
@@ -449,6 +489,10 @@ def run_parse(
         # real document and a driver that trusts `byte_len` gets the oversized number DR20 says it
         # must not act on. `limits._input_ceiling_assertions` is the one caller.
         byte_len=declared_byte_len or fixture.byte_len,
+        # The routed media type, which the host knows before INVOKE and a driver is entitled to
+        # read. `None` when the fixture carries no sidecar, which is also what a host that could
+        # not decide would pass -- so a driver is exercised on both paths across a corpus.
+        media_type=fixture.media_type,
     )
     result = driver.parse(unit, PartSelector(), io_obj)  # type: ignore[attr-defined]
     produced = result.produced

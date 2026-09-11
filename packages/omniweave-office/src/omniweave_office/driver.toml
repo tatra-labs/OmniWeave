@@ -1,0 +1,257 @@
+# THE DRIVERCARD for `parse.office.anydoc`. Read WITHOUT importing.
+#
+# ONE KEY PER LINE -- this file is `tomllib.load`ed and `;` is not a TOML separator. An unknown
+# TOP-LEVEL table is a HARD ERROR: a card is a contract, not config. An unknown key inside
+# [capability.<port>] is IGNORED with a recorded CARD_CAPABILITY_UNKNOWN degradation, because every
+# key there is an ordered or set-valued FLOOR and an unrecognised one can only make the driver look
+# LESS capable.
+#
+# THIS IS THE HONEST CARD (16-roadmap.md:484). Read [capability.parse] as a statement about what
+# `firecrawl-anydoc == 0.2.4` can and cannot see, not about what omniweave wishes it could: the eight
+# `Block` variants carry NO source address of any kind, so `origin_span = "none"`, every block's
+# `os` is `{"k": "none"}`, every block is `quote = "normalized"`, and `verbatim` is unreachable on
+# this path at release 1. `vendor/anydoc/FORK-TRIGGER.md` clause 1 names the upstream change that
+# opens the tier, and `corpus_card.verbatim_fraction` discloses the consequence before any query.
+#
+# [cost.measured], [quality] and attestation are ABSENT: they are written by `ow conform` and author
+# values are rejected by the publish gate (DR13).
+card_schema = 1
+
+[driver]
+id = "parse.office.anydoc"
+port = "parse/1"
+version = "0.1.0"
+schema_version = 1                 # THE ONLY DRIVER VERSION IN A CACHE KEY. Bump it whenever the
+                                   #   output bytes change for the same input -- which includes an
+                                   #   anydoc bump, because the decoder is the output.
+entrypoint = "omniweave_office.driver:AnydocParser"
+granularity = "document"           # One `to_document` call per unit (02:149's S1 contract). A
+                                   #   part-granularity card would mean many FFI calls per
+                                   #   document, which is the thing that contract forbids.
+replay_class = "byte_exact"        # A deterministic Rust decode with no model, no clock, no
+                                   #   network and no filesystem read of its own.
+title = "Office, ODF, legacy binary, RTF, EPUB and CSV (anydoc)"
+summary = "Twelve office formats decoded in one FFI call, with real tables, marks and assets -- and no source address, which the card says out loud."
+
+[capability]
+# TWELVE MEDIA TYPES, ONE PER LINE, and this list is not documentation: `resolve()` filters on
+# `format in capability.formats` before anything else, so it is the input to `format_token_for`, to
+# `ow route lint` check 11 and to `V01-17`. It is EXACTLY the token list `decode.office-native`
+# routes (05 section 4.4), and check 11 asserts the equality, so neither can drift alone (ADR-8 D8.2).
+formats = ["application/msword",                                                        # doc
+           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",   # docx
+           "application/vnd.ms-powerpoint",                                             # ppt
+           "application/vnd.openxmlformats-officedocument.presentationml.presentation", # pptx
+           "application/vnd.ms-excel",                                                  # xls
+           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",         # xlsx
+           "application/vnd.oasis.opendocument.text",                                   # odt
+           "application/vnd.oasis.opendocument.spreadsheet",                            # ods
+           "application/vnd.oasis.opendocument.presentation",                           # odp
+           "application/rtf", "application/epub+zip", "text/csv"]                       # rtf epub csv
+# `application/pdf` is EXCLUDED although anydoc decodes it: `parse.pdf.pdfium` owns the PDF path and
+# `decode.office-native`'s own comment reads "minus pdf" (04:2564). The nine further extensions
+# anydoc supports (docm, pptm, ppsx, ppsm, pps, pot, xlsm, xlsb, and the .doc legacy alias's second
+# media type) are OUT until a fixture class exists for them (04:2565); adding one is a single change
+# to this list, to `decode.office-native` and to core's forty-eight-token table TOGETHER.
+consumes = ["raw_bytes"]
+produces = ["doc_fragment", "asset"]  # `asset` because `assets = "bytes"`: anydoc retains embedded
+                                      #   binaries and they leave through `ArtifactRef.of` so the
+                                      #   one `max_output_bytes` meter sees them (04 section 6.5).
+
+[capability.parse]
+# THE FIFTEEN. `declared` here; `achieved` is what the driver reports per document and may be
+# LOWER, never higher. `omniweave_office.driver._achieved()` computes seven of the fifteen from what
+# each document actually produced -- 03 section 2.9's rollup, applied driver-side -- so a CSV
+# honestly reports `math = []` while this card keeps the declaration routing filters on.
+spatial = "none"                   # 03:1404: "parse.office.anydoc declares spatial=none". There is
+                                   #   no fallback to the page box: an office document has no page
+                                   #   box until a layout engine makes one, and this framework runs
+                                   #   no layout engine.
+origin_span = "none"               # THE ROW THIS DRIVER EXISTS TO BE HONEST ABOUT. 03:1561's
+                                   #   "neither" line: no address, no polygon, so a block is "text
+                                   #   with a `cite`, at quote = NORMALIZED at best".
+text_span = false                  # A span inside a block would address a range of text whose
+                                   #   BLOCK has no address. It would locate nothing.
+marks = true                       # Fully resolved character style (bold/italic/strike/code),
+                                   #   links with a resolved target kind, inline LaTeX, bookmarks
+                                   #   and note references. 03:369: overlapping ranges are
+                                   #   representable here, which marker's one-list-per-span
+                                   #   formatting collapse cannot express.
+reading_order = "source"           # The FIFTH rung, and the honest one: anydoc walks w:body /
+                                   #   office:text / the slide list in the source's own declared
+                                   #   order. There is no reordering step to get wrong.
+sections = "outline_from_source"   # 03 Q7: this driver is `outline_from_source` AT BEST, and it
+                                   #   reaches that bar -- every heading carries the level the
+                                   #   source's own outline declares (w:outlineLvl / Heading styles
+                                   #   / text:outline-level). NOT `typed_levels`: that rung needs
+                                   #   `section` blocks, which are 06's to build, and 03:534 clamps
+                                   #   achieved to this rung for a driver that emits none.
+tables = "cells_with_spans"        # THE TOP RUNG, and anydoc is why: `Table.grid` is already the
+                                   #   exactly-once canonical form 03:1897 adopts BY NAME --
+                                   #   `CellSlot::Covered { origin_row, origin_col }` -- with spans
+                                   #   on the origin and every covered position pointing back.
+math = ["latex"]                   # anydoc converts OMML to LaTeX (`omath_para_to_tex`,
+                                   #   src/formats/docx/content.rs:154) and stores it WITHOUT
+                                   #   delimiters at both block and inline level, which 03:375 calls
+                                   #   out as anydoc's decision and right. 05:3224 says this card
+                                   #   declares `math = []`; that is a plan defect and D124 records
+                                   #   it -- declaring [] while emitting `payload.notation = "latex"`
+                                   #   would fail the conform `capability` suite's own P14 clause,
+                                   #   because 03:528 computes achieved.math FROM those payloads.
+assets = "bytes"                   # `Asset.data` is always retained -- "Bytes are always retained,
+                                   #   so a document stays self-contained" (src/model/asset.rs).
+asset_origin = true                # `Asset.origin_part`, the package part or stream the bytes came
+                                   #   from, and NOT EVEN OPTIONAL upstream. 03:2117: "provenance
+                                   #   for a binary blob at basically zero cost".
+notes = "linked"                   # `Document.notes` carries footnote and endnote BODIES, and a
+                                   #   `note_ref` inline in the text names the body's id. That is
+                                   #   the linked rung's definition: every note body has an inbound
+                                   #   reference. A document whose notes are unreferenced reports
+                                   #   `inline` in achieved, which is 03:532's rollup.
+confidence = "none"                # A deterministic decode has no score to report, and inventing
+                                   #   1.0 would put a number in `block.score` that means nothing.
+furniture = "destroyed"            # 03:1036's first rung, "the header text is gone", and it is
+                                   #   VERIFIED rather than assumed: anydoc reads no w:hdr/w:ftr
+                                   #   part at all, and explicitly skips PPTX hdr/ftr/sldNum/dt
+                                   #   placeholders (src/formats/pptx/mod.rs:198,392).
+round_trip = "structure"           # Kinds, heading levels, list markers and start ordinals, table
+                                   #   spans and header rows, code language, and marks. Not
+                                   #   `passthrough`: nothing here re-emits the source bytes.
+forfeits = []
+format_tokens = [
+  { media_type = "application/msword", token = "doc" },
+  { media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document", token = "docx" },
+  { media_type = "application/vnd.ms-powerpoint", token = "ppt" },
+  { media_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation", token = "pptx" },
+  { media_type = "application/vnd.ms-excel", token = "xls" },
+  { media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", token = "xlsx" },
+  { media_type = "application/vnd.oasis.opendocument.text", token = "odt" },
+  { media_type = "application/vnd.oasis.opendocument.spreadsheet", token = "ods" },
+  { media_type = "application/vnd.oasis.opendocument.presentation", token = "odp" },
+  { media_type = "application/rtf", token = "rtf" },
+  { media_type = "application/epub+zip", token = "epub" },
+  { media_type = "text/csv", token = "csv" },
+]
+# The PAIR is the declaration (04 section 2.2): two unpaired lists would supply no association
+# between a media type and its token, leaving `format_token_for(media_type)` undefined. The `xls`
+# row is why that matters here -- anydoc's own name for the legacy workbook is `xlsx`, a parser
+# FAMILY covering three container generations, while routing matches on the token `xls`.
+
+[hardware]
+gpu            = "none"
+vram_gb_min    = 0
+ram_gb_min     = 0.5               # anydoc marshals the whole document into Python objects in one
+                                   #   call and `py.detach` does not cover the marshal (F2, R-T17).
+                                   #   Half a gigabyte is the working figure for the office corpus;
+                                   #   the 5,000-page ceiling is 12-performance.md:245's and firing
+                                   #   it is a FORK TRIGGER rather than a budget conversation.
+cpu_arch       = ["x86_64", "aarch64"]
+os             = ["linux", "darwin", "windows"]
+needs_network  = false             # The crate has NO HTTP CLIENT OF ANY KIND -- no reqwest, no
+                                   #   hyper, no ureq (14:780, verified against
+                                   #   vendor/anydoc/Cargo.toml's eight dependencies) -- so it
+                                   #   structurally cannot SSRF, exfiltrate or fetch a remote
+                                   #   entity. The `hosted` OCR path in anydoc's Python layer is the
+                                   #   one exception and this driver never calls it: `to_document`
+                                   #   has no `ocr` parameter at all.
+needs_binaries = []                # The decoder is compiled INTO the wheel; there is no external
+                                   #   executable to find on PATH.
+imports_torch  = false
+install_bytes  = 9000000           # The abi3 wheel, which is almost entirely the Rust binary.
+services       = []
+
+[isolation]
+requires        = "inproc"         # THE ONE DRIVER THAT MAY ASK. 04:1653: `inproc =
+                                   #   ["parse.office.anydoc"]`, and 04:1111 gives the warrant --
+                                   #   the `vendored` trust tier, earned by carrying the source at a
+                                   #   recorded SHA under vendor/anydoc/ with LICENSE, NOTICE, a
+                                   #   digest manifest and a written fork trigger. `requires` is a
+                                   #   REQUEST; the host grants the mode (04 section 10.1's `iso`
+                                   #   column is "the isolation mode the host GRANTS, never merely
+                                   #   the one the card requests") and DR9's five conditions plus an
+                                   #   id in `[drivers] inproc` are what it checks.
+memory_mb       = 1024
+progress_ms     = 15000
+wall_ms_hard    = 300000
+batch_max_units = 8
+
+[limits]
+max_input_bytes = 67108864         # 64 MiB -- HALF the host's MAX_ENTRY_BYTES, and the half is
+                                   #   this driver's own judgement rather than a copy of the
+                                   #   host's number. anydoc marshals the WHOLE document into
+                                   #   Python objects in one call and `py.detach` does not cover
+                                   #   the marshal (F2, R-T17), so a 128 MiB office document
+                                   #   becomes a full second copy inside a worker whose
+                                   #   `[isolation] memory_mb` is 1024. 64 MiB is also anydoc's
+                                   #   own `max_expansion_text_bytes`, which is the closest thing
+                                   #   upstream has to a statement about how much text one
+                                   #   document may amplify to.
+                                   #
+                                   #   Declaring the host's number instead would declare no limit
+                                   #   at all -- `effective = min(tenant_cap, declared, HOST_MAX)`
+                                   #   and the host's would be the one that fires. DR20 asked for
+                                   #   the driver's judgement, and the conform `limits` suite
+                                   #   fails a card that returns the question.
+max_parts       = 1                # One document, one part. The archive MEMBERS of a DOCX are not
+                                   #   parts in this sense -- they never leave the Rust side, and
+                                   #   `max_entry_count = 100_000` is what bounds them.
+
+[licence.code]
+spdx = "Apache-2.0"                # THIS DRIVER's code. anydoc is MIT (c) 2026 Sideguide
+                                   #   Technologies Inc., and the 118 Rust crates its wheel
+                                   #   statically links are the DEPENDENCY graph's -- vendor/anydoc/
+                                   #   NOTICE section 2 enumerates them and names the one SPDX id
+                                   #   (Unicode-3.0) that is not on tools/licences.toml's allowlist.
+redistribution = "allowed"
+output_share_alike = false
+competitor_bar = false
+requires_credential = false
+revenue_gate_usd = 0
+mau_gate = 0
+territory_excluded = []
+field_of_use_excluded = []
+attribution_per_output = false
+no_model_training = false
+remote_kill_switch = false
+clause_refs = []
+# [licence.weights] is OMITTED ENTIRELY: this driver ships no weights.
+
+[deps]
+pins = ["firecrawl-anydoc==0.2.4"] # AN EXACT PIN, and the reason is not compatibility. The decoder
+                                   #   IS the output: its limit constants are compile-time, its
+                                   #   Block variant set is what `origin_span = "none"` is honest
+                                   #   about, and `vendor/anydoc/anydoc.sha256` records the source
+                                   #   at this exact version. A range would make three of those
+                                   #   claims unverifiable. 14:1276 puts it in the first row's
+                                   #   category: single-vendor, with `pdf-inspector = "1.14.2"` in
+                                   #   its graph.
+
+[config]
+type = "object"
+additionalProperties = false
+required = []
+[config.properties.max_asset_bytes]
+type = "integer"
+minimum = 0
+maximum = 268435456                # MAX_ASSET_BYTES, the charter's per-asset ceiling. A CLAMP DOWN
+                                   #   only: anydoc's own max_asset_total_bytes is 128 MiB and
+                                   #   compiled in, so this key cannot widen anything and does not
+                                   #   pretend to (INV-22, DR20).
+default = 33554432
+
+[cost.model]
+class   = "free"
+shape   = "linear_per_byte"
+unit    = "document"               # The denominator a reader should price against. Unlike the PDF
+                                   #   path there is no page to bill: anydoc returns one block
+                                   #   stream with no pagination, which is exactly why the page
+                                   #   record this driver emits is `page_kind = "stream"`.
+per_part    = { wall_ms = 5 }      # anydoc's own benchmark median is 4.4 ms across fourteen formats
+                                   #   (anydoc/README.md:178; 100 real-world documents, 94 judged),
+                                   #   which 05:839 carries as the DECODE rung's office figure. 5 is
+                                   #   that rounded up, and `ow conform` replaces the measured half.
+per_session = { }
+scaling     = { key = "input_bytes", exponent = 1.0, reference = 65536 }
+tokens_out_p95_multiple = 1.0
+max_retries = 0                    # The only value a first release accepts: retry is the runtime's,
+                                   #   with the runtime's budget and ledger.

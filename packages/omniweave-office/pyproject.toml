@@ -19,9 +19,19 @@ dependencies = [
   # vendored at vendor/anydoc/. Fork trigger: vendor/anydoc/FORK-TRIGGER.md.
 ]
 
+# THE ENTRY POINT. A DOTTED PACKAGE, no colon and no slash (11-repo-layout.md section 1.5): it
+# names the package that holds `driver.toml`, which is what discovery reads WITHOUT IMPORTING. The
+# card's own `[driver] entrypoint` is the `module:attr` form and is a different grammar for a
+# different job -- `activate()` resolves that one, and only after the card has been read and filtered.
+[project.entry-points."omniweave.drivers"]
+"parse.office.anydoc" = "omniweave_office"
+
 # The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
 [tool.hatch.build.targets.wheel]
 packages = ["src/omniweave_office"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "LICENSE", "NOTICE", "THIRD_PARTY.md", "LICENSES", "pyproject.toml"]
+include = ["src", "fixtures", "LICENSE", "NOTICE", "THIRD_PARTY.md", "LICENSES",
+           "pyproject.toml"]
+# `fixtures/` is in the SDIST and not in the wheel: the conformance run needs them
+# (`ow conform --fixtures packages/omniweave-office/fixtures`) and a production install does not.

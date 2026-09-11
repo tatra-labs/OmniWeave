@@ -1,0 +1,14 @@
+# rich.docx.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# every non-trivial capability row at once: two heading levels, styled runs, a hyperlink, a bookmark, a merged-cell table, displayed and inline OMML, an embedded PNG, a footnote
+[fixture]
+sha256 = "1720932978b82a736faa268d6c00cef94a29a14f2c377c93cd01bd807ef0202e"
+bytes = 6040
+media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_office_fixtures.py"
+# `generated` is 13-quality.md section 4.2's PREFERRED provenance and requires two things: the
+# generator path under fixtures/gen/ and the expected output sha256. Both are above. It also
+# carries no `review_by`: the review window is "none for `generated` and `authored`, which have no
+# external dependency to rot", and this file depends on nothing outside this repository.

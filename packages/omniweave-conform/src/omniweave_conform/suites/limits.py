@@ -150,56 +150,81 @@ def _declaration_assertions(subject: Subject) -> Iterator[Assertion]:
 
 
 def _output_ceiling_assertions(subject: Subject, driver: object) -> Iterator[Assertion]:
-    """`max_output_bytes` crossed must raise `TOO_LARGE` naming the knob."""
-    fixture = max(subject.fixtures, key=lambda f: f.byte_len)
+    """`max_output_bytes` crossed must raise `TOO_LARGE` naming the knob.
+
+    Fixtures are tried **largest first, and a refusal is not an answer**. The largest fixture in a
+    serious corpus is often an abuse case -- a zip bomb, a 400-deep XML document -- which the
+    driver refuses before it produces a byte, and that refusal says nothing at all about whether
+    the driver meters its output. An earlier draft took the largest fixture and reported the
+    refusal as a failure, which failed `parse.office.anydoc` for having a `max_xml_depth` fixture
+    in its corpus: a finding about this suite's fixture choice wearing a driver's name.
+
+    So a `DriverError` that is not `TOO_LARGE` moves to the next fixture; only a fixture that got
+    far enough to produce output can answer the question, and the suite says so when none did.
+    """
     scratch = subject.scratch(SUITE)
-    try:
-        run_parse(driver, fixture, scratch / "ceiling", max_output_bytes=_TINY_OUTPUT_BYTES)
-    except DriverError as exc:
-        yield Assertion(
-            "crossing max_output_bytes raises TOO_LARGE",
-            ok=exc.cls is FailureClass.TOO_LARGE,
-            detail=f"raised {exc.cls.value}",
-            fixture=fixture.name,
-            locus="max_output_bytes",
-            expected=FailureClass.TOO_LARGE.value,
-            actual=exc.cls.value,
-        )
-        yield Assertion(
-            "the breach names the knob",
-            ok=exc.limit == "max_output_bytes",
-            detail=(
-                "a RESOURCE_LIMIT that does not say which limit sends its reader to read the "
-                "code; naming the knob is what makes the refusal actionable"
-            ),
-            fixture=fixture.name,
-            locus="max_output_bytes:limit",
-            expected="max_output_bytes",
-            actual=str(exc.limit),
-        )
-        return
-    except Exception as exc:
+    refused: list[str] = []
+    for fixture in sorted(subject.fixtures, key=lambda f: f.byte_len, reverse=True):
+        try:
+            run_parse(driver, fixture, scratch / "ceiling", max_output_bytes=_TINY_OUTPUT_BYTES)
+        except DriverError as exc:
+            if exc.cls is not FailureClass.TOO_LARGE:
+                refused.append(f"{fixture.name}:{exc.cls.value}")
+                continue
+            yield Assertion(
+                "crossing max_output_bytes raises TOO_LARGE",
+                ok=True,
+                detail=f"raised {exc.cls.value}",
+                fixture=fixture.name,
+                locus="max_output_bytes",
+                expected=FailureClass.TOO_LARGE.value,
+                actual=exc.cls.value,
+            )
+            yield Assertion(
+                "the breach names the knob",
+                ok=exc.limit == "max_output_bytes",
+                detail=(
+                    "a RESOURCE_LIMIT that does not say which limit sends its reader to read the "
+                    "code; naming the knob is what makes the refusal actionable"
+                ),
+                fixture=fixture.name,
+                locus="max_output_bytes:limit",
+                expected="max_output_bytes",
+                actual=str(exc.limit),
+            )
+            return
+        except Exception as exc:
+            yield Assertion(
+                "crossing max_output_bytes raises TOO_LARGE",
+                ok=False,
+                detail=f"{type(exc).__name__}: {exc}"[:160],
+                fixture=fixture.name,
+                locus="max_output_bytes",
+                expected="DriverError(too_large)",
+                actual=type(exc).__name__,
+            )
+            return
         yield Assertion(
             "crossing max_output_bytes raises TOO_LARGE",
             ok=False,
-            detail=f"{type(exc).__name__}: {exc}"[:160],
+            detail=(
+                f"the driver produced a fragment under a {_TINY_OUTPUT_BYTES}-byte ceiling, so it "
+                f"is not routing its output through ArtifactRef.of, the single metered site"
+            ),
             fixture=fixture.name,
             locus="max_output_bytes",
             expected="DriverError(too_large)",
-            actual=type(exc).__name__,
+            actual="returned ok",
         )
         return
     yield Assertion(
-        "crossing max_output_bytes raises TOO_LARGE",
+        "a fixture exists that produces output, so the ceiling can be crossed",
         ok=False,
         detail=(
-            f"the driver produced a fragment under a {_TINY_OUTPUT_BYTES}-byte ceiling, so it is "
-            f"not routing its output through ArtifactRef.of, which is the single metered site"
+            "every fixture refused before producing a byte, so nothing exercised "
+            f"ArtifactRef.of's meter: {', '.join(refused[:6])}"
         ),
-        fixture=fixture.name,
         locus="max_output_bytes",
-        expected="DriverError(too_large)",
-        actual="returned ok",
     )
 
 

@@ -1,0 +1,79 @@
+# tools/vendor.toml — THE VENDORED-ARTEFACT REGISTER. G12.
+#
+# One row per artefact under `vendor/`, each carrying its recorded sha, its SPDX id and the NOTICE
+# that discharges its attribution obligation. Specified in 11-repo-layout.md section 1.7, whose
+# tools/ listing gives this file's whole job in one line: "every vendored artefact: sha256 · SPDX ·
+# NOTICE row. G12."
+#
+# G12's four checks, 11-repo-layout.md:1555 and 14-security.md:1273, are `sha256 recorded + a parity
+# test between copies + an arch assertion + a NOTICE row`. This file holds the declarations;
+# `tools/gate_vendor.py` runs them. Neither is allowed to be edited to make the other pass — the
+# rule 11-repo-layout.md:396 states for every file in tools/.
+#
+# WHY A REGISTER AND NOT A COMMENT. 14-security.md:1244 prices the alternative from the collection:
+# Unlimited-OCR's documented install step one is a 12.4 MB unsigned prebuilt wheel committed to git
+# with no hash, no signature and no index; codegraph records shas in comments with a parity test and
+# no NOTICE; hyperframes checks architecture with no hash and no NOTICE. Each of those has one or two
+# of G12's four. A register is what makes "all four, for every artefact" checkable by a script
+# instead of by a reviewer's memory.
+
+# ---------------------------------------------------------------------------
+# The artefacts
+# ---------------------------------------------------------------------------
+# `path`       the directory under vendor/, relative to the repository root
+# `upstream`   where the bytes came from
+# `commit`     the recorded SHA. A branch name is not a SHA and is a lint error, the same rule
+#              04-driver-system.md applies to `[weights] revision = "main"` on a driver card
+# `version`    the upstream release the commit is, and the string the parity test joins on
+# `spdx`       the artefact's own licence, which must be on tools/licences.toml [allow] spdx
+# `manifest`   the per-file digest file inside the artefact directory
+# `notice`     the NOTICE that discharges attribution
+# `fork_trigger`  the written, testable condition of 16-roadmap.md:1130. Required, never empty
+# `pinned_by`  the pyproject.toml whose exact pin this source is a copy OF. A vendored tree with no
+#              pin is a tree nobody is checking against anything
+# `parity`     the dotted path of the parity test's module. "a parity test BETWEEN COPIES": here the
+#              two copies are the vendored SOURCE and the installed BINARY, which cannot be compared
+#              byte for byte, so the comparison is over what both must agree about
+# `arch`       the wheel tag shape the arch assertion checks
+
+[[artefact]]
+path         = "vendor/anydoc"
+upstream     = "https://github.com/firecrawl/anydoc"
+commit       = "261fc257d17c3eab0f673be31c408fd9fdc2171a"
+version      = "0.2.4"
+spdx         = "MIT"
+copyright    = "Copyright (c) 2026 Sideguide Technologies Inc."
+manifest     = "anydoc.sha256"
+notice       = "NOTICE"
+fork_trigger = "FORK-TRIGGER.md"
+pinned_by    = "packages/omniweave-office/pyproject.toml"
+distribution = "firecrawl-anydoc"
+parity       = "omniweave_office.limits"
+arch         = "abi3"
+comment      = """
+The only compiled dependency in the framework, and omniweave does not build it (00-vision.md:434,
+NG-9). The vendored tree is `src/`, `python/`, `fuzz/` and five root files; anydoc.sha256's header
+lists what is excluded and why. 04-driver-system.md:1111 makes this the whole warrant for the
+`vendored` trust tier, which is in turn what makes `parse.office.anydoc` the one driver the host
+grants `Isolation.INPROC`.
+
+The parity test is 14-security.md:498's: every `MAX_*` in `omniweave_core.limits` that names a vector
+anydoc also bounds is >= anydoc's, so the Python-side ceiling can never silently be the tighter one.
+It joins the VENDORED `src/package/limits.rs` against core's constants against the names the
+INSTALLED wheel actually raises, which is three copies rather than two -- a vendored source that
+drifted from the shipped binary would otherwise pass a source-only check.
+"""
+
+# ---------------------------------------------------------------------------
+# Rows this file will carry and does not yet
+# ---------------------------------------------------------------------------
+# 11-repo-layout.md:378-381 lists three directories under vendor/. Two are absent because the cells
+# that ship them have not run, and they are named here rather than left to a reader's inference --
+# an empty register looks the same as a complete one, and a reader who cannot tell which they are
+# looking at cannot use this file at all.
+#
+#   vendor/graphify-ids/        ids.py at a pinned SHA + NOTICE
+#   vendor/graphify-security/   llm_wrap.py at a pinned SHA + NOTICE
+#
+# `tools/gate_vendor.py` checks every directory under vendor/ against a row here and fails on a
+# directory with no row, so neither can arrive unregistered.

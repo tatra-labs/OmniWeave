@@ -1,0 +1,14 @@
+# memo.doc.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# a WordDocument stream with no valid FIB: recognised as `doc` by sniff() and refused as CORRUPT_INPUT by parse(), which are two different answers and both are checked
+[fixture]
+sha256 = "9d2e0c8dc5401305a5eeaed465dd4c5d05c25dde213124e9a2fcf9450c6f2de1"
+bytes = 5632
+media_type = "application/msword"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_office_fixtures.py"
+# `generated` is 13-quality.md section 4.2's PREFERRED provenance and requires two things: the
+# generator path under fixtures/gen/ and the expected output sha256. Both are above. It also
+# carries no `review_by`: the review window is "none for `generated` and `authored`, which have no
+# external dependency to rot", and this file depends on nothing outside this repository.

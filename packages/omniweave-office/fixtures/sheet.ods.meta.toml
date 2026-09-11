@@ -1,0 +1,14 @@
+# sheet.ods.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# the ODF spreadsheet's own span spelling, table:number-columns-spanned plus an explicit covered-table-cell, which is a different encoding of the same exactly-once grid
+[fixture]
+sha256 = "9bebb0ab7dce6312a34f6ef2121be5725fdbb0648064553b0aa3c3da0b870990"
+bytes = 1968
+media_type = "application/vnd.oasis.opendocument.spreadsheet"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_office_fixtures.py"
+# `generated` is 13-quality.md section 4.2's PREFERRED provenance and requires two things: the
+# generator path under fixtures/gen/ and the expected output sha256. Both are above. It also
+# carries no `review_by`: the review window is "none for `generated` and `authored`, which have no
+# external dependency to rot", and this file depends on nothing outside this repository.

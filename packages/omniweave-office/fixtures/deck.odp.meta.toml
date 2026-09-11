@@ -1,0 +1,14 @@
+# deck.odp.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# the ODF presentation body, where slide text arrives through draw:frame text boxes
+[fixture]
+sha256 = "98df9af755ba966d309cede887dfb5a419736aa882a3c90ca4c057c08929abf2"
+bytes = 1450
+media_type = "application/vnd.oasis.opendocument.presentation"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_office_fixtures.py"
+# `generated` is 13-quality.md section 4.2's PREFERRED provenance and requires two things: the
+# generator path under fixtures/gen/ and the expected output sha256. Both are above. It also
+# carries no `review_by`: the review window is "none for `generated` and `authored`, which have no
+# external dependency to rot", and this file depends on nothing outside this repository.

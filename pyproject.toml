@@ -65,6 +65,13 @@ dev = [
 line-length = 100
 target-version = "py311"
 src = ["packages"]
+# `vendor/` is third-party source at a recorded SHA (11-repo-layout.md section 1.7, G12), and its
+# bytes ARE the artefact: `vendor/anydoc/anydoc.sha256` digests every one of them so a reviewer can
+# fetch the same path from the upstream commit and get a byte match. A formatter or an autofix
+# rewriting a line there would break that manifest, fail G12, and change code this repository does
+# not own. Excluded from linting for the same reason it is excluded from `packages/` -- it is not
+# ours to style.
+exclude = ["vendor"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "DTZ", "T20", "SIM",

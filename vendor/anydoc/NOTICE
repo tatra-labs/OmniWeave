@@ -1,0 +1,108 @@
+NOTICE for the third-party source vendored under vendor/anydoc/
+================================================================
+
+This directory contains source code that omniweave does not own. The copy exists so that
+omniweave's own reviewers can read the code that runs inside their process -- `parse.office.anydoc`
+is the one driver the host grants `Isolation.INPROC` (04-driver-system.md section 6, DR9), and the
+`vendored` trust tier that makes it eligible is granted over exactly the bytes listed in
+anydoc.sha256 and over nothing else.
+
+omniweave does not build this code. The binary that runs is the published `abi3` wheel
+`firecrawl-anydoc == 0.2.4`, resolved by `packages/omniweave-office/pyproject.toml`. This tree is the
+audit copy and the fork's starting point (FORK-TRIGGER.md); it is not a build input, and no
+`pyproject.toml` in this repository points at it.
+
+--------------------------------------------------------------------------------------------------
+1. The vendored work
+--------------------------------------------------------------------------------------------------
+
+  anydoc
+  Copyright (c) 2026 Sideguide Technologies Inc.
+  SPDX-License-Identifier: MIT
+  https://github.com/firecrawl/anydoc
+  commit 261fc257d17c3eab0f673be31c408fd9fdc2171a, version 0.2.4
+
+  The MIT licence text is LICENSE in this directory, verbatim as upstream ships it. MIT requires
+  that the copyright notice and the permission notice accompany every copy or substantial portion
+  of the software; this file and that one discharge that obligation for this repository, and
+  omniweave's own distributions carry it forward because `omniweave-office` depends on the wheel
+  rather than re-publishing the source.
+
+--------------------------------------------------------------------------------------------------
+2. What the WHEEL links that this tree does not show
+--------------------------------------------------------------------------------------------------
+
+The obligation does not stop at anydoc's own licence. The wheel is a statically linked Rust binary,
+so every crate it links ships inside it, and their attribution obligations ship with it. The wheel
+carries its own CycloneDX SBOM at
+
+  firecrawl_anydoc-0.2.4.dist-info/sboms/anydoc-python.cyclonedx.json
+
+which names **118 components** under **fifteen distinct SPDX expressions**. That file is the
+authority; this section records what it says, because a reader of vendor/anydoc/Cargo.toml sees
+eight direct dependencies and would otherwise conclude the obligation is eight rows deep.
+
+  MIT OR Apache-2.0 .......................... 83   the bulk of the Rust ecosystem
+  MIT ........................................ 10   anydoc, cfb, lopdf, nom, pdf-inspector, ...
+  Unlicense OR MIT ............................ 9   BurntSushi's crates (csv, aho-corasick, jiff)
+  Apache-2.0 OR MIT ........................... 5
+  (Apache-2.0 OR MIT) AND BSD-3-Clause ........ 1   encoding_rs -- the AND binds BSD-3-Clause
+  (MIT OR Apache-2.0) AND Unicode-3.0 ......... 1   unicode-ident -- the AND binds Unicode-3.0
+  Apache-2.0 OR BSL-1.0 ....................... 1   ryu
+  Apache-2.0 WITH LLVM-exception .............. 1   target-lexicon (build-time)
+  Apache-2.0 .................................. 1   zopfli
+  Apache-2.0  OR  MIT ......................... 1   fnv (upstream's own double spacing)
+  0BSD OR MIT OR Apache-2.0 ................... 1   adler2
+  MIT OR Apache-2.0 OR Zlib ................... 1   tinyvec_macros
+  Zlib OR Apache-2.0 OR MIT ................... 1   tinyvec
+  MIT OR Zlib OR Apache-2.0 ................... 1   miniz_oxide
+  Zlib ........................................ 1   zlib-rs -- no disjunct; Zlib binds
+
+Two of those reach omniweave's allowlist (`tools/licences.toml [allow] spdx`, which is
+14-security.md section 9.2's list verbatim) and one does not:
+
+  - `Zlib` is on the allowlist. `zlib-rs` offers no alternative and needs none.
+  - `BSD-3-Clause` is on the allowlist. `encoding_rs`'s AND is satisfied.
+  - **`Unicode-3.0` is NOT on the allowlist**, and `unicode-ident@1.0.24` joins it with AND, so no
+    disjunct avoids it. It is a permissive attribution licence over the Unicode character database
+    tables and is not a policy problem; it is an allowlist gap, and it is recorded in
+    `_plan/_notes/build-defects.md` rather than silently waived here. G3 does not see it: G3 scans
+    the PYTHON dependency graph, where this wheel declares one licence -- `MIT` -- and passes.
+
+`Apache-2.0 OR BSL-1.0` (ryu) resolves to Apache-2.0, which is allowlisted; the BSL-1.0 disjunct is
+the same id 14-security.md's D9 already records as absent for `torch`, and it binds nothing here.
+`Apache-2.0 WITH LLVM-exception` is `target-lexicon`, a build-time crate that does not link into the
+shipped binary.
+
+--------------------------------------------------------------------------------------------------
+3. The one dependency this NOTICE closes a question on
+--------------------------------------------------------------------------------------------------
+
+14-security.md:1517 lists `pdf-inspector == 1.14.2` as **unknown** -- "Firecrawl's own crate, not
+vendored in this tree" -- and carries it as an open VERIFY, because it "is the one dependency that
+could reintroduce an unbounded parser behind an otherwise clean surface".
+
+The wheel's SBOM states it:
+
+  pdf-inspector 1.14.2   SPDX-License-Identifier: MIT   https://github.com/firecrawl/pdf-inspector
+
+and `vendor/anydoc/Cargo.lock:1016-1019` records it from crates.io at
+`sha256:1e024ae242c514e2adf6aee186678e0eabdc2e5ecfbb2159186881b4498593cb`, which is a registry
+checksum a third party can verify. The VERIFY is answered: MIT, not unknown.
+
+The *unbounded parser* half of that row is a separate concern and stays open, because
+`parse.office.anydoc` never reaches it: `application/pdf` is excluded from the card's twelve formats
+(04-driver-system.md:2564, "parse.pdf.pdfium owns the PDF path"), and anydoc's own
+`to_document()` refuses PDF outright -- "PDF converts directly to Markdown; use to_markdown or
+to_markdown_bytes". The crate is linked into the binary and unreachable from this driver's only
+entry point.
+
+--------------------------------------------------------------------------------------------------
+4. What is NOT here, and why that is stated rather than left to inference
+--------------------------------------------------------------------------------------------------
+
+anydoc.sha256's header lists the excluded subtrees. The one with a standing question is
+`anydoc/wasm/LICENSE`, which 14-security.md:1518 records as a separate file that "must match the
+root MIT before the wasm artefact is redistributed" and marks **VERIFY**. omniweave redistributes no
+wasm artefact and does not vendor `wasm/`, so the question is not closed here -- it is out of scope
+here, which is a different thing, and saying so is the point of this paragraph.

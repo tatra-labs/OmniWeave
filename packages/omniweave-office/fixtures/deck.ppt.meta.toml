@@ -1,0 +1,14 @@
+# deck.ppt.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# a valid but EMPTY PowerPoint 97 stream: the driver returns ok with zero blocks and is_valid_nonempty() is what turns that into FAILED_PERMANENT(EMPTY_RESULT) host-side
+[fixture]
+sha256 = "5ccb2d6685f44a4f79bc1d99b6751fab180989261c9959c6e60e21cd9ee8e670"
+bytes = 5632
+media_type = "application/vnd.ms-powerpoint"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_office_fixtures.py"
+# `generated` is 13-quality.md section 4.2's PREFERRED provenance and requires two things: the
+# generator path under fixtures/gen/ and the expected output sha256. Both are above. It also
+# carries no `review_by`: the review window is "none for `generated` and `authored`, which have no
+# external dependency to rot", and this file depends on nothing outside this repository.

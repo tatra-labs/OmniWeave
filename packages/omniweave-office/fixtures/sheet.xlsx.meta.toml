@@ -1,0 +1,14 @@
+# sheet.xlsx.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# a merged cell, so the grid carries a `covered` slot pointing back at its origin
+[fixture]
+sha256 = "076bc84a7d8dca6ac018a16c1af9125bf4b61be0274a567c2a3a423d1a8e3fc5"
+bytes = 2592
+media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_office_fixtures.py"
+# `generated` is 13-quality.md section 4.2's PREFERRED provenance and requires two things: the
+# generator path under fixtures/gen/ and the expected output sha256. Both are above. It also
+# carries no `review_by`: the review window is "none for `generated` and `authored`, which have no
+# external dependency to rot", and this file depends on nothing outside this repository.
