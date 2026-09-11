@@ -413,7 +413,7 @@ budget_s       = 30
 pr             = true
 nightly        = true
 release        = true
-runner_planned = ["tools/gate_egress.py"]
+runner         = ["tools/gate_egress.py"]
 # `licence` holds seat `S-sec` (17-risks.md section 1.3), and no role's "owns" cell names egress.
 owner          = "licence"
 reviewed_at    = "2026-09-07"

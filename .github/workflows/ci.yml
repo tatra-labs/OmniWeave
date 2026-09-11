@@ -324,13 +324,11 @@ jobs:
         # gives the invocation with no arguments, so no half-selector flag is invented here -- the
         # script gets to define how a caller asks for one half, and when it does both steps take
         # the flag in one commit.
-        run: |
-          if [ -f tools/gate_egress.py ]
-          then uv run tools/gate_egress.py
-          else
-            echo "G15 NOT ENFORCED (static half): lands at P3 (16-roadmap.md:515)" \
-              | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
+        # `--half static`, because this is the `gates` cell. G15 is the one register row with two
+        # jobs and the split is not cosmetic: the source scan needs nothing installed, and the
+        # socket-blocked half needs the twelve conformance suites and a driver to run them
+        # against. Running `both` here would do the expensive half twice.
+        run: uv run tools/gate_egress.py --half static
       - name: "G17 -- lazy core: none of the nine subpackages"
         run: uv run tools/gate_lazy_core.py
       - name: "G18 -- config axes cover every key exactly once"
@@ -769,13 +767,11 @@ jobs:
         # The other half of the two-job row. Same invocation as in gates and for the same reason:
         # 16-roadmap.md:515 gives it with no arguments and the half-selector is the script's to
         # define, not this file's to guess.
-        run: |
-          if [ -f tools/gate_egress.py ]
-          then uv run tools/gate_egress.py
-          else
-            echo "G15 NOT ENFORCED (socket-blocked half): lands at P3 (16-roadmap.md:515)" \
-              | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
+        # `--half conform`, the other side of the two-job split above: a full `ow conform` run
+        # under an audit hook that refuses AF_INET and AF_INET6 in this process and every child it
+        # spawns. AF_UNIX is left alone because S4's transport is a 0600 unix socket and cannot
+        # carry a byte off the machine (04-driver-system.md section 1.3).
+        run: uv run tools/gate_egress.py --half conform
       - name: "G16 -- the previous two releases' template drivers load against HEAD"
         # 16-roadmap.md:516's P3 exit line is "uv run tools/gate_contract.py --releases 2   # G16
         # (vacuous at P3; wired for later)". Vacuous is the correct state with fewer than two tags,
