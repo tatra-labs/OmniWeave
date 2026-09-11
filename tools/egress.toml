@@ -1,0 +1,156 @@
+# tools/egress.toml — G15's register: what may address a network, and what may reach for one.
+#
+# Read by `tools/gate_egress.py` and by nothing else. Every row is a decision somebody wrote down,
+# and the gate's failure message for an unregistered value is "add a row saying why it is here and
+# what reads it, or remove it" — so this file is the argument, not the exception list.
+#
+# WHY IT EXISTS. 14-security.md:788, on the claim that omniweave has no telemetry, no usage
+# counter, no phone-home licence check and no update ping — "not `default off`: **absent**":
+#
+#   > omniweave has no equivalent code to disable, and G15's hostname allowlist is what keeps
+#   > that true across releases.
+#
+# An absence is the one property that decays with nobody noticing. The three precedents
+# 01-principles.md:1091 (AP-4) names are all live code somebody shipped: marker's `--use_llm`
+# sending page images to Gemini by default, DataFlow's `--host = "0.0.0.0"` in four places, and
+# jcodemunch's default-on telemetry plus an in-library phone-home licence gate.
+#
+# THE PATH IS PART OF THE ROW. A loopback literal is correct in the config table that defines
+# `serve.allowed_hosts` and is a question in a parser. `import socket` is correct in the six files
+# below and is a finding in a seventh. Neither list is a set of blessed VALUES; both are sets of
+# blessed (value, site) pairs, which is what makes a copy-paste into a new module fail.
+
+[allow]
+
+# Schemes omniweave coined. None addresses a machine: `cas://` is a content-addressed blob path,
+# `stream://` an identity for a stream that was never a file, `cassette://` a replay handle that
+# 14:1278 deliberately makes undialable, and `file://` a local path. A URL under one of these is
+# not reported at all.
+internal_schemes = ["cas", "cassette", "file", "stream"]
+
+# Schemes that DO address a machine. A URL under one of these has its host extracted and must be
+# registered below. A scheme on neither list is itself a finding — the gate refuses to guess,
+# because "a scheme nobody classified" is exactly how an `ssh://` or a `ws://` would arrive.
+network_schemes = ["ftp", "ftps", "git", "http", "https", "imap", "smtp", "ssh", "telnet", "ws", "wss"]
+
+# ---------------------------------------------------------------------------
+# 1. Host-shaped literals permitted in shipped source.
+# ---------------------------------------------------------------------------
+
+[[literal]]
+value = "localhost"
+path = "packages/omniweave-core/src/omniweave_core/config.py"
+why = """
+`serve.allowed_hosts` defaults to `("localhost", "127.0.0.1", "[::1]")` — an INBOUND Host-header \
+allowlist for `ow serve`, not an outbound destination. It is the anti-`0.0.0.0`: the default binds \
+the loopback interface and refuses a Host header naming anything else, so the safe configuration \
+is the one you get by not configuring anything. 14-security.md:437 gives the operator's escape \
+hatch (`OMNIWEAVE_ALLOW_PRIVATE_ORIGINS`) as an explicit env var and never as a default.\
+"""
+
+[[literal]]
+value = "127.0.0.1"
+path = "packages/omniweave-core/src/omniweave_core/config.py"
+why = "The IPv4 half of `serve.allowed_hosts` above. Same row, same reasoning."
+
+[[literal]]
+value = "[::1]"
+path = "packages/omniweave-core/src/omniweave_core/config.py"
+why = "The IPv6 half of `serve.allowed_hosts` above. Bracketed because a Host header is."
+
+[[literal]]
+value = "https://"
+path = "packages/omniweave-core/src/omniweave_core/toolchain.py"
+why = """
+A scheme with no host, and it is a REFUSAL rather than a destination. `_URL_SCHEME` is the only \
+scheme a `bundle_url` or a `[[node]] url` may carry, and `toolchain.py:413` raises on anything \
+else — so the literal's entire job is to reject `http://` and `file://` in a register that points \
+at executable code under a user-writable `$OMNIWEAVE_HOME/toolchains/`.
+
+The module states the rest of it in its own first line: "the reader for `tools/toolchains.toml`, \
+and nothing that spawns … **It NEVER reads the network**", and its imports are `re`, `tomllib`, \
+`dataclasses`, `pathlib` and `typing` — which is why it has no `[[client]]` row below and must \
+never acquire one. 11-repo-layout.md section 1.7: "if the digest were fetched alongside the \
+bundle, verifying it would prove only that the bundle matches itself". No host is compiled in \
+anywhere; the URLs are operator data in a register, and the digest beside them is the control.\
+"""
+
+# ---------------------------------------------------------------------------
+# 2. Denied outright. A value here is a finding even with a [[literal]] row.
+# ---------------------------------------------------------------------------
+#
+# The two lists are deliberately asymmetrical: a deny row exists to survive somebody adding the
+# matching allow row without reading why it was denied.
+
+[[deny]]
+value = "0.0.0.0"
+why = """
+A wildcard bind, and 01-principles.md:1091's AP-4 names it by name: DataFlow's `--host` defaults \
+to `0.0.0.0` in four places. AP-4 is "the safety mechanism whose default disables it" — the \
+mechanism exists, the audit finds it, and it has never once run. `serve.allowed_hosts` above is \
+the shape omniweave ships instead. If a bind address is genuinely needed, it is a config key with \
+a loopback default, not a literal.\
+"""
+
+# ---------------------------------------------------------------------------
+# 3. Network-capable modules, per import site.
+# ---------------------------------------------------------------------------
+#
+# THE STRONGEST OF THE THREE CLAUSES, and the one the plan argues FROM rather than about.
+# 14-security.md:779 clears `omniweave-office` like this: anydoc is "a Rust core with eight crates
+# and no HTTP client of any kind — no `reqwest`, no `hyper`, no `ureq` — so it *structurally
+# cannot* SSRF, exfiltrate, fetch a remote entity or phone home". That argument was available on
+# the Python side and nothing was making it. A hostname is unreachable without something to dial
+# it with, so the register of things that can dial is shorter and harder to evade than the
+# register of names.
+#
+# Six rows at P3, and not one of them opens a network connection.
+
+[[client]]
+module = "socket"
+path = "packages/omniweave-core/src/omniweave_core/host/subproc.py"
+why = """
+S4's transport: one `AF_UNIX SOCK_STREAM` socket on POSIX, an owner-only named pipe on Windows \
+(04-driver-system.md section 1.3, and `subproc.py:1691`). Neither can carry a byte off the \
+machine, which is why clause 3's audit hook blocks `AF_INET` and `AF_INET6` and leaves `AF_UNIX` \
+alone — a hook that refused socket creation outright would be asserting the driver host is broken \
+rather than that the network is absent. 11-repo-layout.md's own rule says it: never a daemon, \
+never a loopback TCP listener.\
+"""
+
+[[client]]
+module = "socket"
+path = "packages/omniweave-core/src/omniweave_core/store/sqlite.py"
+why = """
+`socket.gethostname()`, once, as the `host` field of the index lock's owner record \
+(`sqlite.py:941`) — the host/pid/create_time triple that tells a second process whether a lock is \
+stale or live. A name for this machine, never a name of another one. No socket is constructed.\
+"""
+
+[[client]]
+module = "socket"
+path = "packages/omniweave-conform/src/omniweave_conform/suites/sandbox.py"
+why = """
+The `sandbox` suite imports `socket` in order to BREAK it: `socket.socket`, \
+`socket.create_connection` and `socket.socketpair` are replaced so any egress attempt by a driver \
+under test fails the suite. The import is the mechanism of the prohibition. Its own docstring \
+records the defect it catches — a driver that had performed the egress it exists to forbid, once, \
+on the author's machine, with the author's fixtures.\
+"""
+
+[[client]]
+module = "socket"
+path = "packages/omniweave-conform/src/omniweave_conform/suites/cost.py"
+why = """
+The `cost` suite asserts that a `class = "free"` driver makes no egress and no GPU call \
+(14-security.md:778), which it cannot do without holding the same instrument `sandbox` holds. \
+Blocking, not dialling.\
+"""
+
+[[client]]
+module = "socket"
+path = "packages/omniweave-conform/src/omniweave_conform/suites/contract.py"
+why = """
+Same instrument again. `contract` asserts a driver's failures arrive as `DriverError` rather than \
+as another exception type, and a socket raised out of a driver is one of the ways that goes wrong.\
+"""
