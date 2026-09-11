@@ -187,12 +187,37 @@ def dists(site: Path) -> Sequence[object]:
     return list(Distribution.discover(path=[str(site)]))
 
 
+def stopped_clock() -> object:
+    """A monotonic clock that never advances, so no step here can cross the 250 ms ceiling.
+
+    The counterpart to `dists()` above and for the identical reason. `dists()` scopes the
+    ENUMERATION so a neighbouring package cannot change what a test finds; this scopes the
+    DURATION so a busy machine cannot. Without it every assertion in this file that reads
+    `result.degradations` is a race: `discover()` appends
+    `DiscoveryDegradation(kind="discovery_slow")` whenever its own steps sum past
+    `DISCOVERY_CEILING_MS`, and that degradation then joins a list four tests assert by equality.
+
+    Not hypothetical — it is why this helper exists. Under `pytest -n auto` with fifteen gate
+    scripts spawning interpreters alongside it, a five-package fixture site crossed 250 ms and
+    `test_one_malformed_card_among_five_does_not_stop_the_other_four` failed on
+    `[d.kind for d in result.degradations] == ["driver_unavailable"]`, having found
+    `["driver_unavailable", "discovery_slow"]`. The test was right and the harness was measuring
+    the machine.
+
+    A test that WANTS the ceiling crossed injects `clock(...)` explicitly and still wins: `run()`
+    pops `monotonic` from its kwargs before defaulting.
+    """
+    return lambda: 0.0
+
+
 def run(site: Path, **kwargs: object) -> object:
-    """`discover()` over one fixture site, with the shipped tombstones out of the way."""
+    """`discover()` over one fixture site, with the shipped tombstones and the clock out of the
+    way."""
     return discover(
         search_path=[str(site)],
         distributions=dists(site),
         tombstone_dir=kwargs.pop("tombstone_dir", site / "no-tombstones-here"),
+        monotonic=kwargs.pop("monotonic", stopped_clock()),
         **kwargs,  # type: ignore[arg-type]
     )
 
@@ -983,6 +1008,24 @@ def test_a_fast_catalog_records_no_degradation_and_times_all_six_steps(tmp_path:
     assert result.degradations == ()
     assert tuple(result.elapsed_ms) == TIMED_STEPS
     assert all(value >= 0.0 for value in result.elapsed_ms.values())
+
+
+def test_the_harness_clock_is_stopped_so_no_other_test_can_measure_the_machine(
+    tmp_path: Path,
+) -> None:
+    """A property of this FILE, pinned so nobody quietly un-pins it.
+
+    Four tests here assert `result.degradations` by equality, and `discovery_slow` is appended on
+    a wall-clock condition. If `run()` ever stops injecting `stopped_clock()`, those four become
+    races that pass on an idle laptop and fail in a loaded CI cell — the worst shape a test can
+    take, because the failure arrives attached to whichever unrelated change happened to be in
+    the merge queue. `run()` reports every step as 0.0 ms; the two ceiling tests above inject
+    their own clock and are unaffected.
+    """
+    result = run(tmp_path / "site")
+    assert result.total_ms == 0.0
+    assert all(value == 0.0 for value in result.elapsed_ms.values())
+    assert [d.kind for d in result.degradations] == []
 
 
 def test_a_degradation_kind_outside_the_closed_two_is_refused() -> None:

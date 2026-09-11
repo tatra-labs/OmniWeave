@@ -326,7 +326,7 @@ budget_s       = 10
 pr             = true
 nightly        = false
 release        = false
-runner_planned = ["tools/gate_discovery_no_import.py"]
+runner         = ["tools/gate_discovery_no_import.py"]
 step           = "with the rogue driver installed (16-roadmap.md:513)"
 # 17-risks.md section 1.3: `drivers` owns "discovery".
 owner          = "drivers"
