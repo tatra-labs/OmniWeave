@@ -46,24 +46,30 @@ from omniweave_core.store import migrate
 from omniweave_core.store import sqlite as ow
 from omniweave_core.store.queue import (
     CACHE_KEY_HEX_LEN,
-    CLAIM_SQL,
     COMPLETE_PARTICIPANTS,
+    DEP_KINDS,
+    SqliteStore,
+    Statement,
+    StepMetrics,
+    StepResult,
+    complete_boundaries,
+    dep_statements,
+)
+
+# The work vocabulary moved to `omniweave_core.work` with P4 W4.1 (02-architecture.md:246), so the
+# queue's own tests now reach for it there. That is the point of the move rather than a cost of it:
+# an import line is where a reader learns which module owns a name.
+from omniweave_core.work import (
+    CLAIM_SQL,
     COMPLETE_SQL,
     COUNTS_SQL,
     DECREMENTING,
-    DEP_KINDS,
     MAX_WORK_ATTEMPTS,
     OUTCOMES,
     TRANSITIONS,
     WORK_COLUMNS,
     WORK_STATUSES,
-    SqliteStore,
-    Statement,
-    StepMetrics,
-    StepResult,
     WorkRow,
-    complete_boundaries,
-    dep_statements,
 )
 
 # `import sqlite3` is banned outside `omniweave_core/store/` by ruff's TID251 (INV-17), and this

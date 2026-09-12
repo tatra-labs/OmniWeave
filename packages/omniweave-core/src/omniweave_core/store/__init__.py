@@ -121,7 +121,9 @@ Every type these 33 signatures name, with its definition site and its owner. "He
   both UNQUOTED in `DocSink` (03:557, :563), so both become real imports the moment they land.
 * `WorkRow` -- NEVER PRINTED anywhere in the plan; see the defect note on `Store`.
   02-architecture.md:246 homes it in `omniweave_core.work` and 08-runtime.md:2841 gives its one
-  load-bearing field.
+  load-bearing field. **That module landed with P4 W4.1, so this is now a real import** and no
+  longer a forward reference: a boundary declaration should name the type it returns, and the only
+  reason it did not was that the home did not exist.
 * `StepResult` -- 08-runtime.md:209-231. The runtime's, P4.
 * `ChannelResult`, `Hit` -- 07:1225-1235, :2250-2265. The retrieval module's, P6; 07:3348 says so.
 * `SegmentRef`, `PassIdentity`, `RunStatus`, `RunReport`, `RunId`, `EntityId`, `MentionId`,
@@ -167,6 +169,7 @@ from omniweave_core.store.types import (
     Narrowing,
     Snapshot,
 )
+from omniweave_core.work import WorkRow
 
 # `AbstractContextManager`, not `typing.ContextManager`. 07:63 prints
 # `def snapshot(self) -> ContextManager["Snapshot"]`, and `typing.ContextManager` has been a

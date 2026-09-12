@@ -95,6 +95,7 @@ __all__ = [
     "MAX_SEGMENT_TOKENS",
     "MAX_SNAPSHOT_MS",
     "MAX_VIEW_BYTES",
+    "MAX_WORK_ATTEMPTS",
     "MAX_XML_DEPTH",
     "MAX_XML_NODES",
     "MAX_X_BYTES",
@@ -717,6 +718,25 @@ MAX_AUTO_PARALLEL: int = 96
 
 Set by charter section 6.10; 08-runtime.md section 6 and 12-performance.md section 8 own the
 arithmetic.
+"""
+
+MAX_WORK_ATTEMPTS: int = 5
+"""`attempts_total < 5` — the claim predicate's hard ceiling, and every failure path's terminator.
+
+Four sites print the same number: charter.md:4089 and :4099 (the claim SQL, twice), 08-runtime.md
+section 1.6 (*"`classifier cooldown -> 1 day -> 30 days -> 30 days -> PERMANENT` at
+`attempts_total >= 5`, which is the `attempts_total < 5` clause in the claim predicate"*) and
+charter.md:4650's I7 (*"Every failure path terminates ... `attempts_total < 5` in the claim
+predicate"*).
+
+A ceiling and not a setting (INV-22): nothing in the plan gives it a config knob, because a corpus
+whose operator can raise the retry ceiling is a corpus that can be made to bill forever on a
+deterministic failure. `omniweave_core.work` interpolates it into `CLAIM_SQL` twice and indexes
+`ESCALATION_MS` against it; it lives here because 02-architecture.md section 2 row 25 makes this
+module the home of every `MAX_*` ceiling, and it was written in `store/queue.py` first with that
+move recorded as owed.
+
+Set by charter section 6.10's claim statement; 08-runtime.md section 1.6 owns the ladder above it.
 """
 
 MAX_DEPS_PER_UNIT: int = 256
