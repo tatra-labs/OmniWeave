@@ -79,9 +79,12 @@ to an empty file on every run, and a defect about a column is a claim about the 
 about a quotation of it."""
 
 # The types this module names in an annotation and cannot import, each with the cell that owes it.
-# `BudgetLedger` was here until W4.5 landed `omniweave_core.budget`; `RUF100` failed the build over
-# the suppression that had stopped being needed, which is the self-cleaning half doing its job. This
-# is `test_store_protocols.py`'s `EXPECTED_UNRESOLVED` device at a second boundary: the set is
+# Three have already left this set and each left the same way. `BudgetLedger` went when W4.5 landed
+# `omniweave_core.budget`; `CacheLayer` and `TraceSink` went when W4.4 and W4.8 landed `cache.py`
+# and `events.py`, at which point both became `TYPE_CHECKING` imports and their suppressions became
+# unused. `RUF100` is what reports that: it fails the build over a suppression that has stopped
+# being needed, which is the self-cleaning half doing its job. This is
+# `test_store_protocols.py`'s `EXPECTED_UNRESOLVED` device at a second boundary: the set is
 # pinned, so a typo arrives as a new member and a type that lands arrives as a stale one. Unlike
 # that file's, the suppression here is per-line, so `RUF100` is a second enforcer: ruff fails the
 # build the day one of these resolves and the suppression stops being needed. (Spelled without the
@@ -90,12 +93,15 @@ about a quotation of it."""
 EXPECTED_UNRESOLVED: frozenset[str] = frozenset(
     {
         "Limits",  # 08:275. `omniweave_core.limits` holds the constants, not this record.
-        "TraceSink",  # 02 row 21 -> `omniweave_core.events`; printed at 15-observability.md:362.
-        "CacheLayer",  # 02 row 18 -> `omniweave_core.cache`. W4.4.
         "Degradation",  # 15-observability.md's, by charter erratum E15. P7.
         "WorkSpec",  # 08:2842. What `Operator.plan()` emits; no module row names it.
     }
 )
+
+# The two the table now marks **imported**. They are NOT in the set above -- there is no suppression
+# left to pin -- and they are asserted here instead, because "the debt was discharged" is a fact
+# that should fail when somebody quietly re-quotes one rather than silently reverting to prose.
+RESOLVED_SINCE: frozenset[str] = frozenset({"CacheLayer", "TraceSink"})
 
 # `ServiceRegistry` is the sixth name the module docstring's table lists and it is NOT here,
 # because `RunContext.service()` calls it rather than naming it: it is reached through
@@ -694,6 +700,22 @@ def test_the_owed_types_are_exactly_the_pinned_set() -> None:
     # owed by anyone. It is the one name the scan cannot tell apart from a debt, so it is named.
     assert suppressed - {"Sequence"} == EXPECTED_UNRESOLVED
     assert all(not hasattr(op, name) for name in EXPECTED_UNRESOLVED)
+
+
+def test_the_two_resolved_names_are_imports_and_not_suppressions() -> None:
+    """The self-cleaning device, checked from the far side: a landed type is an import.
+
+    `cache.py` and `events.py` both exist now, so `CacheLayer` and `TraceSink` are `TYPE_CHECKING`
+    imports and carry no `# noqa`. Asserting it here rather than trusting `RUF100` alone is what
+    catches the reverse move -- somebody re-quoting a name and re-adding a suppression for a type
+    that is sitting in the tree.
+    """
+    source = OPERATOR_SOURCE.read_text(encoding="utf-8")
+    suppressed_lines = [line for line in source.splitlines() if "noqa: F821" in line]
+    for name in RESOLVED_SINCE:
+        assert f"import {name}" in source, name
+        assert not any(name in line for line in suppressed_lines), name
+        assert f"| `{name}` |" in (op.__doc__ or ""), name
 
 
 def test_the_docstring_table_names_every_owed_type_and_the_one_that_is_not_owed() -> None:
