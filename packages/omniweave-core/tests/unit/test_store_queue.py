@@ -41,17 +41,21 @@ import pytest
 from conftest import PlanDocs
 from omniweave_core.errors import ResourceLimit, StoreError
 from omniweave_core.limits import MAX_DEPS_PER_UNIT
+from omniweave_core.operator import (
+    CACHE_KEY_HEX_LEN,
+    OperatorIdentity,
+    Outcome,
+    StepMetrics,
+    StepResult,
+)
 from omniweave_core.store import Store as StoreProtocol
 from omniweave_core.store import migrate
 from omniweave_core.store import sqlite as ow
 from omniweave_core.store.queue import (
-    CACHE_KEY_HEX_LEN,
     COMPLETE_PARTICIPANTS,
     DEP_KINDS,
     SqliteStore,
     Statement,
-    StepMetrics,
-    StepResult,
     complete_boundaries,
     dep_statements,
 )
@@ -71,6 +75,7 @@ from omniweave_core.work import (
     WORK_STATUSES,
     WorkRow,
 )
+from omniweave_ports.types import UnitRef
 
 # `import sqlite3` is banned outside `omniweave_core/store/` by ruff's TID251 (INV-17), and this
 # file takes the escape deliberately. It drives a REAL store: the seeding below writes `unit`,
@@ -84,6 +89,15 @@ NOW_NS = 1_757_400_000_000_000_000
 """A fixed wall clock, as in `test_store_integration.py`: the store injects every clock it uses."""
 
 CACHE_KEY = "a" * CACHE_KEY_HEX_LEN
+
+UNIT = UnitRef(uri="file:///corpus/a.pdf", part="p0", content_sha256="a0", byte_len=11)
+"""`StepResult.unit`. The store never reads it -- `StepResultView` names six attributes and this is
+not one -- so it is a fixed value rather than a per-test one; what it proves is that these tests
+build the same class `omniweave/run/` will."""
+
+IDENTITY = OperatorIdentity(operator="parse.pdf", op_version=1, code_fingerprint="test")
+"""`StepResult.identity`, which **is** `Producer` (08:1930). Also unread by the `work` transition:
+`producer_id` is the derived rows' FK and those have no P2 producer."""
 WORKER = "host:4321:1757400000.5"
 """`'<host>:<pid>:<process_create_time>'` -- 0004_runtime.sql:110's shape, recorded not parsed."""
 
@@ -242,8 +256,14 @@ def opened(owstore: Path) -> Iterator[tuple[SqliteStore, ow.StoreThread]]:
 
 
 def result(outcome: str = "ok", **kwargs: object) -> StepResult:
-    """A `StepResult` carrying whatever each outcome's `__post_init__` demands."""
-    required: dict[str, object] = {"cache_key": CACHE_KEY}
+    """A `StepResult` carrying whatever each outcome's `__post_init__` demands.
+
+    `outcome` stays a `str` here and is coerced on the way in. The type moved to
+    `omniweave_core.operator` with P4, and its field is now an `Outcome`; every call site in this
+    file passes the wire value, which is what `work.TRANSITIONS` is keyed by and what the column
+    stores, so coercing once here keeps those call sites reading like the table they check.
+    """
+    required: dict[str, object] = {"cache_key": CACHE_KEY, "unit": UNIT, "identity": IDENTITY}
     if outcome == "ok_partial":
         required["partial_reason"] = "page 3 of 4"
     if outcome == "failed_transient":
@@ -254,7 +274,7 @@ def result(outcome: str = "ok", **kwargs: object) -> StepResult:
     if outcome == "deferred_budget":
         required["deferred_dim"] = "micros"
     required.update(kwargs)
-    return StepResult(outcome=outcome, **required)  # type: ignore[arg-type]
+    return StepResult(outcome=Outcome(outcome), **required)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1125,37 +1145,12 @@ def test_dep_statements_refuses_a_key_outside_the_invocations_input_set() -> Non
 
 
 # ---------------------------------------------------------------------------------------------
-# StepResult -- the constructor is the invariant (08:233)
+# `StepResult`'s own constructor invariants moved to `test_operator.py` with the type (08:222-231).
+# What stays here is the boundary's refusal: `test_complete_refuses_an_outcome_outside_the_eight`
+# above hands `complete()` a duck-typed object whose `outcome` is `'mostly_ok'` and asserts a
+# `StoreError` naming it, which is the check that survives a caller who never built a `StepResult`
+# at all.
 # ---------------------------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("outcome", "missing"),
-    [
-        ("ok_partial", "partial_reason"),
-        ("failed_transient", "retry_after_ms"),
-        ("failed_permanent", "failure_class"),
-        ("deferred_budget", "deferred_dim"),
-    ],
-)
-def test_step_result_requires_what_its_outcome_requires(outcome: str, missing: str) -> None:
-    """08:222-231, transcribed. The invariant is in the constructor, not in review."""
-    with pytest.raises(ValueError, match=missing):
-        StepResult(outcome=outcome, cache_key=CACHE_KEY)
-
-
-def test_step_result_refuses_an_outcome_outside_the_eight_and_a_short_cache_key() -> None:
-    """The two whole-object checks: the closed domain, and 08:212's 64-char hex width."""
-    with pytest.raises(ValueError, match="not one of the eight"):
-        StepResult(outcome="fine", cache_key=CACHE_KEY)
-    with pytest.raises(ValueError, match="64-char hex"):
-        StepResult(outcome="ok", cache_key="short")
-
-
-def test_retry_after_ms_is_meaningful_only_for_failed_transient() -> None:
-    """08:229-230 verbatim: a cooldown on an `ok` is a field nothing would ever read."""
-    with pytest.raises(ValueError, match="only for failed_transient"):
-        StepResult(outcome="ok", cache_key=CACHE_KEY, retry_after_ms=5)
 
 
 def test_work_row_refuses_a_tuple_of_the_wrong_width() -> None:

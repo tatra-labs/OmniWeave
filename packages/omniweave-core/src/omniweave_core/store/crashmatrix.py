@@ -94,6 +94,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final
 
+from omniweave_ports.types import UnitRef
+
 from omniweave_core.archive.owdoc import BlockExport, DocHeader, export
 from omniweave_core.blobs import BlobStore
 from omniweave_core.errors import StoreError
@@ -110,15 +112,19 @@ from omniweave_core.model import (
 from omniweave_core.model.block import Addr, Block, BlockDraft, BlockId, Cite
 from omniweave_core.model.records import DocRecord, PageRecord
 from omniweave_core.model.spans import OriginNone
+from omniweave_core.operator import (
+    CACHE_KEY_HEX_LEN,
+    OperatorIdentity,
+    Outcome,
+    StepMetrics,
+    StepResult,
+)
 from omniweave_core.store import migrate
 from omniweave_core.store import sqlite as ow
 from omniweave_core.store.doc import DocSink
 from omniweave_core.store.queue import (
-    CACHE_KEY_HEX_LEN,
     SqliteStore,
     Statement,
-    StepMetrics,
-    StepResult,
     StepResultView,
     complete_boundaries,
     dep_statements,
@@ -356,9 +362,33 @@ makes the comparison a comparison."""
 FIXTURE_LEASE_MS: Final = 60_000
 """Long enough that no lease expires inside a cycle by itself: `resume()` reaps deliberately."""
 
-FIXTURE_PRODUCER: Final = ("parse.pdf", 1, "crash-matrix", b"\x00")
+FIXTURE_IDENTITY: Final = OperatorIdentity(
+    operator="parse.pdf", op_version=1, code_fingerprint="crash-matrix", options_digest=b"\x00"
+)
+"""The `StepResult.identity` every scenario reports, and the `producer` row it is written as.
+
+**`OperatorIdentity` IS `Producer`** (08:1930), so there is one object here and not a value
+type beside a row: `FIXTURE_PRODUCER` below is this object's four columns read off it rather
+than a second literal, which is what stops the fixture's SQL from drifting from the fixture's
+type. `op_version` is an integer, as it is at every site.
+"""
+
+FIXTURE_PRODUCER: Final = (
+    FIXTURE_IDENTITY.operator,
+    FIXTURE_IDENTITY.op_version,
+    FIXTURE_IDENTITY.code_fingerprint,
+    FIXTURE_IDENTITY.options_digest,
+)
 """`(operator, op_version, code_fingerprint, options_digest)` -- `producer_identity`'s first
-four columns (0001_init.sql:195-198)."""
+four columns (0001_init.sql:195-198), bound positionally by `_PRODUCER_SQL`."""
+
+FIXTURE_CONTENT_SHA256: Final = "c0"
+"""`UnitRef.content_sha256`, and `route_decision.content_sha256` is the same two characters.
+
+A placeholder in both places and deliberately not a digest: the matrix has no source bytes,
+and what it needs is a value identical in the interrupted and the uninterrupted store. Taken
+from `_DECISION_SQL`, which wrote `'c0'` before there was a `UnitRef` to agree with.
+"""
 
 MATRIX_SALT: Final = b"ow-crash-1"
 """The sampling salt, in the plan's own `ow-<name>-1` shape (`ow-split-1`, `ow-tune-1` and
@@ -530,9 +560,24 @@ _UNUSED_THREAD: Final[Any] = _NoThread()
 
 
 def _result(scenario: Scenario) -> StepResult:
-    """The `StepResult` a scenario's driver would return. Fixed metrics: two runs, same bytes."""
+    """The `StepResult` a scenario's driver would return. Fixed metrics: two runs, same bytes.
+
+    `unit` and `identity` are required on the real type and were absent from the P2 carrier this
+    module used to build, which had folded both away as unhomed. Neither reaches SQL through
+    `complete()` -- `StepResultView` names six attributes and these are not among them -- so the
+    fixture store is byte-identical across the change. What they buy is that the matrix now
+    constructs the same class the runtime does, which is the whole point of a carrier having been
+    a carrier.
+    """
     return StepResult(
-        outcome=scenario.outcome,
+        outcome=Outcome(scenario.outcome),
+        unit=UnitRef(
+            uri=FIXTURE_URI,
+            part=scenario.part,
+            content_sha256=FIXTURE_CONTENT_SHA256,
+            byte_len=sum(len(text) for text in scenario.texts),
+        ),
+        identity=FIXTURE_IDENTITY,
         cache_key=FIXTURE_CACHE_KEY,
         metrics=StepMetrics(queued_ms=11, ran_ms=22, micros=33, rows_written=len(scenario.texts)),
     )

@@ -22,9 +22,19 @@ importable homes is the failure INV-21 names, and the cheapest moment to make th
 question unanswerable is the moment the second home is created.
 
 What stayed is what the STORE owns rather than what the work vocabulary owns: `SqliteStore`,
-`StepMetrics`/`StepResult` (08-runtime.md:177 homes those in `omniweave_core.operator`),
-`COMPLETE_PARTICIPANTS` and `Statement` (the shape of one transaction), `CACHE_KEY_HEX_LEN` (a
-`StepResult` invariant), and `dep_statements` with `DEP_KINDS`.
+`COMPLETE_PARTICIPANTS` and `Statement` (the shape of one transaction), `dep_statements` with
+`DEP_KINDS`, and the two `*View` Protocols.
+
+## What left with P4's `operator.py`
+
+`StepMetrics` and `StepResult` were carried here at P2 under a docstring that named the day they
+would go -- *"Deleted when `omniweave_core/operator.py` lands (P4). `StepMetricsView` is what
+survives."* That module has landed and this is the deletion, which is what a carrier is for: the
+class never became load-bearing anywhere, because everything in this file reads the two **Views**
+and P4's real types satisfy them structurally with no edit on either side. `CACHE_KEY_HEX_LEN` went
+with them -- it is `StepResult.__post_init__`'s only length rule and a constant belongs beside the
+one invariant that reads it. `omniweave_core.store` imports `StepResult` from the runtime's
+vocabulary now, so the `Store` Protocol's `complete()` names a type that resolves.
 
 **Where this module lives, and why it is not a second home.** 16-roadmap.md:416 homes W2.3's whole
 surface in `store/sqlite.py`. That file already holds every connection-and-thread mechanism the
@@ -144,14 +154,11 @@ from omniweave_core.work import (
 )
 
 __all__ = [
-    "CACHE_KEY_HEX_LEN",
     "COMPLETE_PARTICIPANTS",
     "DEP_KINDS",
     "SqliteStore",
     "Statement",
-    "StepMetrics",
     "StepMetricsView",
-    "StepResult",
     "StepResultView",
     "complete_boundaries",
     "dep_statements",
@@ -169,17 +176,6 @@ Enforced in Python as well as by the CHECK because 08:2489-2496 requires the ref
 that names the offence: a CHECK violation surfaces as `sqlite3.IntegrityError("CHECK constraint
 failed: dep")`, which does not say which kind, which key or which unit, and it arrives after the
 derived rows of the same transaction have already been written.
-"""
-
-CACHE_KEY_HEX_LEN: Final = 64
-"""`sha256_canonical` hex is 64 characters, and `StepResult.cache_key` is checked against it.
-
-08:212 types the field *"sha256_canonical hex, 64 chars, from the one `cache_key()`"* and 08:230-231
-makes the length a constructor invariant. Named rather than typed inline because the check tracks
-`cache_key()`'s output width and not anything this module owns, and because a bare `64` in a
-comparison reads as a magic number to a linter and to a reader alike. `work.cache_key` is `TEXT
-NOT NULL` with no length CHECK (0004_runtime.sql:95), so this is the only place the width is
-enforced at P2.
 """
 
 COMPLETE_PARTICIPANTS: Final = (
@@ -205,7 +201,7 @@ order wins.
 
 
 # --------------------------------------------------------------------------------------------
-# 2. What `complete()` reads off a `StepResult`, and a P2 carrier for it.
+# 2. What `complete()` reads off a `StepResult`. The type itself is `operator.py`'s.
 # --------------------------------------------------------------------------------------------
 
 
@@ -217,14 +213,33 @@ class StepMetricsView(Protocol):
     docstring's table). A Protocol listing only what is read is what lets P4's real `StepMetrics`
     satisfy this with no edit on either side -- the same reason `model/rebind.py` declares
     `RebindReadSide` instead of taking `store.Reader`.
+
+    **Read-only members, and that is what makes the structural claim true.** A Protocol attribute
+    written as `queued_ms: int` is *mutable*, and a mutable member is invariant: a frozen dataclass
+    does not satisfy it, and a field narrower than the declared type does not either. Declaring each
+    member as a property makes it read-only and therefore covariant, which is the whole point of a
+    type whose name ends in `View` -- `complete()` reads these and writes none of them. The
+    alternative was a Protocol that only a mutable class could satisfy, which is the opposite of
+    what a read surface is for.
     """
 
-    queued_ms: int
-    ran_ms: int
-    micros: int
-    was_cache_hit: bool
-    rows_written: int
-    peak_rss_bytes: int
+    @property
+    def queued_ms(self) -> int: ...
+
+    @property
+    def ran_ms(self) -> int: ...
+
+    @property
+    def micros(self) -> int: ...
+
+    @property
+    def was_cache_hit(self) -> bool: ...
+
+    @property
+    def rows_written(self) -> int: ...
+
+    @property
+    def peak_rss_bytes(self) -> int: ...
 
 
 class StepResultView(Protocol):
@@ -243,93 +258,32 @@ class StepResultView(Protocol):
     `StepResult` does not carry; 08:565 relies on it existing (*"the message names the deadline the
     driver was working to"*), and 08:583 on it naming *"which knob would need raising"*. A column
     the plan's own statement writes must have a channel, so the read surface declares one and the
-    defect is reported. It is optional on the concrete carrier and `None` writes NULL.
+    defect is reported as **D138**. `omniweave_core.operator.StepResult` carries the concrete
+    field, optional, and `None` writes NULL.
+
+    Read-only members, for the reason `StepMetricsView` records -- and here it is load-bearing
+    twice. `StepResult` is frozen, and its `outcome` is an `Outcome` where this says `str`: a
+    mutable `outcome: str` would be invariant, so the narrower `StrEnum` would not satisfy it and
+    the carrier's deletion would have cost this seam the property it exists for.
     """
 
-    outcome: str
-    cache_key: str
-    failure_class: str | None
-    failure_message: str | None
-    retry_after_ms: int | None
-    metrics: StepMetricsView
+    @property
+    def outcome(self) -> str: ...
 
+    @property
+    def cache_key(self) -> str: ...
 
-@dataclass(frozen=True, slots=True)
-class StepMetrics:
-    """08:200-207, field names and order verbatim, minus `spend`. A P2 carrier, not a home.
+    @property
+    def failure_class(self) -> str | None: ...
 
-    `spend: "Spend" = Spend()` is the one field dropped, and dropping it is what keeps this class
-    from being a second home for a type it cannot construct: `Spend` is 05-ingest-and-routing.md's
-    (:2370), P4's, and a pinned member of `EXPECTED_UNRESOLVED`. A default value cannot be a forward
-    reference, so carrying the field would have meant either inventing `Spend` or defaulting it to
-    `None` and lying about the annotation. The `spend_row` participant is where it belongs and it
-    has no P2 producer anyway.
+    @property
+    def failure_message(self) -> str | None: ...
 
-    Deleted when `omniweave_core/operator.py` lands (P4). `StepMetricsView` is what survives.
-    """
+    @property
+    def retry_after_ms(self) -> int | None: ...
 
-    queued_ms: int = 0
-    ran_ms: int = 0
-    micros: int = 0
-    was_cache_hit: bool = False
-    rows_written: int = 0
-    peak_rss_bytes: int = 0
-
-
-@dataclass(frozen=True, slots=True)
-class StepResult:
-    """08:209-231's field names and order, with the un-homed types folded. A P2 carrier, not a home.
-
-    **FORWARD HOME: `omniweave_core/operator.py`** -- 08:187 heads its own block with that path,
-    18-api-sketch.md:844 lists `Outcome`, `StepResult`, `StepMetrics`, `Operator`,
-    `OperatorIdentity`, `RunContext`, `Roots` and `CancelToken` there under tier `T-CONTRACT`, and
-    08:177-179 calls that block *"the sole home"* of three of them. This class exists because
-    `Store.complete()` cannot be written, let alone tested, against a type with no shape, and it is
-    deleted the day `operator.py` lands. `StepResultView` is the seam that makes that a deletion
-    rather than a refactor. It stays in `EXPECTED_UNRESOLVED`.
-
-    **Four of 08's eleven fields are folded, and each fold is a type with no home.**
-    `unit: "UnitRef"`, `identity: "OperatorIdentity"`, `produced: tuple["ArtifactRef", ...]` and
-    `degradations: tuple["Degradation", ...]` are all P4's, none is read by the `work` transition,
-    and none can be given a runtime default here. They are omitted rather than typed `object`,
-    because an `object`-typed `identity` on a class named `StepResult` is a field a caller would
-    fill and the store would silently drop. `produced` is the one whose absence has a consequence
-    worth naming: it is the plausible narrow-signature channel for the `derived_rows` participant,
-    so P4 restoring it is what turns that empty slot into statements.
-
-    **`__post_init__` is 08:222-231 verbatim**, minus the `cache_key` length check's dependence on
-    `cache_key()` existing. The invariant is in the constructor and not in review, and a
-    `FailureClass` is required on `FAILED_TRANSIENT` as well as `FAILED_PERMANENT` *"because the
-    retry ladder escalates from the class's first cooldown and a classless transient failure has
-    nothing to escalate from"* (08:233-236).
-    """
-
-    outcome: str
-    cache_key: str
-    partial_reason: str | None = None
-    failure_class: str | None = None
-    failure_message: str | None = None
-    retry_after_ms: int | None = None
-    deferred_dim: str | None = None
-    metrics: StepMetrics = StepMetrics()
-
-    def __post_init__(self) -> None:
-        """08:222-231, with `outcome` checked against `OUTCOMES` before it is used as a key."""
-        if self.outcome not in TRANSITIONS:
-            raise ValueError(f"{self.outcome!r} is not one of the eight Outcome values {OUTCOMES}")
-        required = {
-            "ok_partial": ("partial_reason",),
-            "failed_transient": ("retry_after_ms", "failure_class"),
-            "failed_permanent": ("failure_class",),
-            "deferred_budget": ("deferred_dim",),
-        }.get(self.outcome, ())
-        for name in required:
-            if getattr(self, name) is None:
-                raise ValueError(f"{self.outcome} requires {name}")
-        if self.retry_after_ms is not None and self.outcome != "failed_transient":
-            raise ValueError("retry_after_ms is meaningful only for failed_transient")
-        if len(self.cache_key) != CACHE_KEY_HEX_LEN:
-            raise ValueError("cache_key is the 64-char hex output of cache_key()")
+    @property
+    def metrics(self) -> StepMetricsView: ...
 
 
 # --------------------------------------------------------------------------------------------

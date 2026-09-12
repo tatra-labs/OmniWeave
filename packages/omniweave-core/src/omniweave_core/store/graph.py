@@ -86,7 +86,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields, is_dataclass
 from enum import Enum
 from types import MappingProxyType
-from typing import Any, Final, Literal, NewType, Protocol, get_args
+from typing import Any, Final, Literal, NewType, get_args
 
 from omniweave_core.canonical import JsonValue, canonical, ow128, sha256_canonical
 from omniweave_core.errors import GraphError
@@ -106,6 +106,7 @@ from omniweave_core.model.enums import (
 )
 from omniweave_core.model.records import Diag
 from omniweave_core.model.spans import TextSpan
+from omniweave_core.operator import SpendVector
 
 __all__ = [
     "OW_GRAPH_COVERED_GROUND",
@@ -268,29 +269,14 @@ rule"*. A second literal table here would be a second truth about what a stored 
 """
 
 
-class SpendVector(Protocol):
-    """The seven physical units plus `provider`, as `end_run` needs to read them.
-
-    **A structural description, never a second declaration.** `Spend` is 05-ingest-and-routing.md
-    section 6.1's (:2366-2374) and lives in P4's routing module, which does not exist yet;
-    `test_store_protocols.py` pins `Spend` as an unresolved forward reference for exactly that
-    reason. A Protocol naming the eight attributes lets `end_run` canonicalise a `Spend` into
-    `derive_run.spend` today without declaring the type twice (INV-21) and without an `Any` that
-    would let a `dict` through. `model/rebind.py` uses the same device for its two store sides.
-
-    `micros()` is deliberately absent: *"THE ONLY PLACE MONEY APPEARS"* is `Spend.micros(book)`
-    (INV-15) and `derive_run.spend` holds *"canonical JSON of Spend. NO DOLLARS HERE"* (0002:203),
-    so the sink must not be able to price anything.
-    """
-
-    wall_ms: int
-    cpu_ms: int
-    gpu_ms: int
-    tokens_in: int
-    tokens_out: int
-    calls: int
-    bytes_egress: int
-    provider: str
+# `SpendVector` moved to `omniweave_core.operator` with P4's runtime vocabulary, and is imported
+# above rather than re-declared. It was written here at P2 because `end_run(status, spend)` needed
+# the eight attributes while `Spend` -- 05-ingest-and-routing.md:2366-2374, `omniweave.route`'s and
+# therefore an import `tools/layers.toml` forbids core in either direction -- had no home and
+# still has none. P4's `StepMetrics` needs the same shape, `store/` is one of the nine LAZY names,
+# and a type the runner's vocabulary depends on cannot live behind a lazy import of the store. Its
+# reasoning travelled with it; it stays in this module's `__all__`, so `from
+# omniweave_core.store.graph import SpendVector` is unchanged for every caller that had it.
 
 
 @dataclass(frozen=True, slots=True)
