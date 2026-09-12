@@ -47,14 +47,20 @@ Each remaining forward reference carries that suppression on its own line, and i
 name resolves, so the cell that lands the type is told to delete the comment and make the import
 real.
 
-| name | home | cell |
-|---|---|---|
-| `Limits` | `omniweave_core.limits` (02 row 7) | unscheduled -- see below |
-| `CacheLayer` | `omniweave_core.cache` (02 row 18) | W4.4 |
-| `TraceSink` | `omniweave_core.events` (02 row 21), printed at 15:362 | W4.8 |
-| `ServiceRegistry` | `omniweave_core.modelserver` (02 row 15) | W4.9 |
-| `Degradation` | 15-observability.md's, by charter erratum E15 | P7 |
-| `WorkSpec` | 08:2842 -- *"what `Operator.plan()` emits"* | W4.3's planner |
+| name | home | cell | state |
+|---|---|---|---|
+| `Limits` | `omniweave_core.limits` (02 row 7) | unscheduled -- see below | quoted |
+| `CacheLayer` | `omniweave_core.cache` (02 row 18) | W4.4 | **imported** |
+| `TraceSink` | `omniweave_core.events` (02 row 21), printed at 15:362 | W4.8 | **imported** |
+| `ServiceRegistry` | `omniweave_core.modelserver` (02 row 15) | W4.9 | reached as a View |
+| `Degradation` | 15-observability.md's, by charter erratum E15 | P7 | quoted |
+| `WorkSpec` | 08:2842 -- *"what `Operator.plan()` emits"* | W4.3's planner | quoted |
+
+Two have landed and their rows are the device working as described: `cache.py` and `events.py` both
+exist, so the two suppressions are gone and the names are `TYPE_CHECKING` imports. They are under
+`TYPE_CHECKING` rather than at module scope because neither is needed at run time and both modules
+are heavier than the one name taken from each -- which keeps `import omniweave_core.operator` as
+cheap as it was while making the annotation a real reference a checker follows.
 
 `Limits` is the odd one: the *module* exists and holds every `MAX_*` constant, but the **record**
 08:275 hands an operator does not, and no cell is scheduled to build it. 08:2790 lists it among the
@@ -123,6 +129,15 @@ from omniweave_core.model.records import Producer
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
+
+    # Under TYPE_CHECKING because neither is needed at run time and both are heavier than the two
+    # names taken from them: `cache.py` imports `archive.manifest` lazily for the digest recipe and
+    # `events.py` opens `gzip`, `queue` and `threading` for its sinks. The annotations are strings
+    # under `from __future__ import annotations`, so a checker resolves them and the interpreter
+    # never does -- which is also why these two lines discharge two suppressions from the table
+    # above rather than adding an import cost.
+    from omniweave_core.cache import CacheLayer
+    from omniweave_core.events import TraceSink
 
 __all__ = [
     "CACHE_KEY_HEX_LEN",
@@ -491,7 +506,7 @@ class RunContext:
     budget: BudgetLedger
     cancel: CancelToken
     clock: Clock
-    events: TraceSink  # noqa: F821 -- omniweave_core.events, W4.8.
+    events: TraceSink
 
     def service(self, name: str) -> ServiceHandle:
         """The handle for a **named** Service. 08:283.
@@ -787,7 +802,7 @@ class Operator(Protocol):
     GRANULARITY: ClassVar[Literal["document", "part", "corpus"]]
     """What one work row covers, which is what makes a retry's blast radius declared rather than
     discovered."""
-    CACHE_LAYER: ClassVar[CacheLayer | None]  # noqa: F821 -- omniweave_core.cache, W4.4.
+    CACHE_LAYER: ClassVar[CacheLayer | None]
     """08 section 2.4's table, declared once, here."""
 
     def plan(self, unit: UnitRef, ctx: RunContext) -> Sequence[WorkSpec]:  # noqa: F821

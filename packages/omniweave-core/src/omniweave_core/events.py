@@ -2,10 +2,16 @@
 
 `Event` is the only thing a human or a machine reads (15-observability.md:1268: *"omniweave has no
 logger hierarchy, no `logging.getLogger(__name__)` tree and no per-module level configuration.
-Everything a human or a machine reads is an `Event`."*). This module is the half of W4.8 that
-**decides nothing at run time**: a vocabulary, a span hierarchy, a record, a `Protocol`, and four
-pure functions. `NdjsonSink` and `ConsoleSink` -- the half with a thread, a file handle and a
-bounded queue -- are the same cell's second half and are not here.
+Everything a human or a machine reads is an `Event`."*). This is `02-architecture.md:245`'s
+component row 21 whole: `Event`, `TraceSink`, `NdjsonSink`, `ConsoleSink`, `traceparent` and the
+closed `EVENTS` vocabulary, in the one module that row names.
+
+The file falls into two halves and the boundary is worth knowing before reading it. Sections 1-6
+**decide nothing at run time** -- a vocabulary, a span hierarchy, a record, a `Protocol` and four
+pure functions, none of which opens a file or takes a lock. Sections 7-11 are the sinks: a
+serialiser, a bounded drop-oldest queue, one writer thread, a 64 MiB shard roll, and the recorder
+that stamps `seq`. Everything in the second half is testable without the first half's documents and
+everything in the first half is testable without a thread.
 
 ## `tools/events.toml` is generated from `EVENTS`, and the plan offers both directions
 
@@ -74,9 +80,13 @@ how `15` added its own eleven. Reported.
 
 ## What is deliberately NOT here
 
-* **The sinks.** `NdjsonSink`, `ConsoleSink`, the 64k drop-oldest queue, `seq` under the sink's own
-  lock, the 64 MiB shard roll and the writer thread are W4.8's second half. `TraceSink` is a
-  `Protocol` here and nothing implements it, which is what keeps this module free of a thread.
+* **The manifest's `observe.*` block.** `SinkStats.as_manifest_fields()` produces the four numbers
+  `15:434` names; assembling them into `{output_root}/runs/{run_id}.json` is
+  `omniweave/run/manifest.py`'s, in the CLI distribution, because that is the process holding the
+  `store.write` lock.
+* **`ow trace tree | stat | export | prune`.** `parse_line()` is the read primitive all four need
+  and `15:2.6` makes the exporter *"a reconstructor, not an emitter"* that runs after the fact. The
+  verbs are `omniweave.surface`'s.
 * **`Degradation`.** `15:964` is that type's sole home and `omniweave_core/observe/degradation.py`
   does not exist. `EVENTS_DROPPED_DEGRADATION` transcribes the one literal, on `subproc.py`'s
   `IsolationShortfall.DEGRADATION_KIND` precedent.
@@ -94,14 +104,26 @@ row 21, _notes/charter.md:4456-4620, and 16-roadmap.md:548 (P4 W4.8).
 
 from __future__ import annotations
 
+import contextlib
+import dataclasses
+import gzip
 import hashlib
-from collections.abc import Mapping
+import json
+import os
+import queue
+import sys
+import threading
+import time
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
+from pathlib import Path
 from types import MappingProxyType
-from typing import Final, Literal, Protocol, runtime_checkable
+from typing import IO, Final, Literal, Protocol, runtime_checkable
 
+from omniweave_core.clock import Clock
 from omniweave_core.errors import ConfigError
+from omniweave_core.limits import MAX_EVENT_QUEUE, MAX_SPAN_BUFFER_EVENTS
 
 # `Mapping` is imported at run time and not under `TYPE_CHECKING`: `tools/schemagen.py` resolves
 # this module's annotations with `typing.get_type_hints()` to emit `schema/event-v1.json`, and a
@@ -109,13 +131,17 @@ from omniweave_core.errors import ConfigError
 # otherwise fail, on the day the schema goes live rather than on the day the import moved.
 
 __all__ = [
+    "CONSOLE_FLOOR_WHEN_PIPED",
+    "DEFAULT_SHARD_BYTES",
     "EVENTS",
     "EVENTS_DROPPED_DEGRADATION",
     "EVENT_ORDER",
     "LEVEL_ORDER",
+    "NDJSON_SEPARATORS",
     "NON_OK_SAMPLE_RATE",
     "OK_SAMPLE_RATE",
     "SEVERITY_NUMBER",
+    "SHARD_ORDINAL_DIGITS",
     "SPAN_ATTRIBUTES",
     "SPAN_ID_HEX_LEN",
     "SPAN_PARENT",
@@ -124,17 +150,24 @@ __all__ = [
     "TRACEPARENT_RE",
     "TRACE_FLAGS_SAMPLED",
     "TRACE_ID_HEX_LEN",
+    "ConsoleSink",
     "Event",
     "EventKind",
     "EventSpec",
     "Level",
+    "NdjsonSink",
     "Phase",
+    "RunRecorder",
+    "SinkStats",
     "SpanLevel",
     "Stage",
     "TraceSink",
     "is_span_kind",
     "kinds_at",
+    "parse_line",
     "sample_key",
+    "serialise",
+    "shard_path",
     "should_sample",
     "span_path",
     "traceparent",
@@ -970,3 +1003,744 @@ def should_sample(
             fix="set [observe] sample = { non_ok = 1.0, ok = 0.015625 }",
         )
     return sample_key(work_id, salt) < ok_rate * 2**64
+
+
+# =============================================================================================
+# 7. Serialising a record: one line, sorted keys, and nothing between the separators
+# =============================================================================================
+
+NDJSON_SEPARATORS: Final[tuple[str, str]] = (",", ":")
+"""15:389's `json.dumps(..., sort_keys=True, separators=(",", ":"))`, transcribed.
+
+Three properties in one call, and the plan names all three: *"One record per line, UTF-8 …, no
+trailing whitespace."* `sort_keys` makes two records with the same content one byte string, which is
+what lets a test diff a stream; the tight separators are what makes the ~180 B per record of
+15:3.3's arithmetic reachable; and the absence of an indent is what keeps one record on one line,
+which is the entire NDJSON contract."""
+
+
+def serialise(event: Event) -> bytes:
+    """One record as one UTF-8 line, newline-terminated. 15:389.
+
+    `ensure_ascii=False` keeps a non-ASCII name as itself rather than as twelve bytes of escapes --
+    the file is declared UTF-8, so escaping is cost without a reader. `allow_nan=False` because NaN
+    is not JSON and a `float('nan')` in `fields` would otherwise produce a line no conformant parser
+    on the other side can read.
+    """
+    body = {
+        "ts_wall_ns": event.ts_wall_ns,
+        "ts_mono_ns": event.ts_mono_ns,
+        "run_id": event.run_id,
+        "writer_id": event.writer_id,
+        "seq": event.seq,
+        "trace_id": event.trace_id,
+        "span_id": event.span_id,
+        "parent_span_id": event.parent_span_id,
+        "kind": str(event.kind),
+        "phase": event.phase,
+        "level": event.level,
+        "unit": event.unit,
+        "part": event.part,
+        "operator": event.operator,
+        "driver": event.driver,
+        "fields": dict(event.fields),
+    }
+    text = json.dumps(
+        body, sort_keys=True, separators=NDJSON_SEPARATORS, ensure_ascii=False, allow_nan=False
+    )
+    return text.encode("utf-8") + b"\n"
+
+
+def parse_line(line: str) -> Event | None:
+    """One line back into an `Event`, or `None` for a line that is not one.
+
+    15:390: *"A partial final line is skipped on read, never repaired."* A writer killed mid-record
+    leaves a prefix of a JSON document, and the only honest thing a reader can do with it is drop
+    it -- repairing would invent a record that was never emitted, and raising would make one
+    truncated byte at the end of a 370,000-record shard cost the whole shard.
+
+    A line that parses but is not a record of this shape is `None` for the same reason. This is the
+    read path and the read path is not a validator: `Event.validate()` is the writer's check, and a
+    reader that refused a record the writer already accepted could not read its own output.
+    """
+    stripped = line.strip()
+    if not stripped:
+        return None
+    try:
+        body = json.loads(stripped)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(body, dict) or "kind" not in body or "seq" not in body:
+        return None
+    try:
+        return Event(
+            ts_wall_ns=int(body["ts_wall_ns"]),
+            ts_mono_ns=int(body["ts_mono_ns"]),
+            run_id=str(body["run_id"]),
+            writer_id=str(body["writer_id"]),
+            seq=int(body["seq"]),
+            trace_id=str(body["trace_id"]),
+            span_id=str(body["span_id"]),
+            parent_span_id=(
+                None if body.get("parent_span_id") is None else str(body["parent_span_id"])
+            ),
+            kind=EventKind(body["kind"]),
+            phase=body["phase"],
+            level=body["level"],
+            unit=body.get("unit"),
+            part=str(body.get("part", "")),
+            operator=body.get("operator"),
+            driver=body.get("driver"),
+            fields=dict(body.get("fields") or {}),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+# =============================================================================================
+# 8. What the sink reports about itself
+# =============================================================================================
+
+
+@dataclass(slots=True)
+class SinkStats:
+    """The four numbers 15:434 puts in the manifest, plus two the roll produces.
+
+    15:432-436: *"The manifest records what observability actually cost -- `observe.events_emitted`,
+    `observe.events_dropped`, `observe.serialise_ns_total`, `observe.shard_bytes` -- adopting
+    graphrag's habit of reporting the profiler's own overhead so a reader can subtract it. A number
+    that cannot be subtracted contaminates every measurement beside it."*
+
+    Mutable, unlike almost everything else in this module: it is a running tally inside one sink and
+    a frozen counter would mean one allocation per record on the hot path.
+
+    `refused` is not in the plan's four and is separate from `dropped` on purpose. A drop is back
+    pressure -- the queue was full and the oldest record went, which 15:38 designs for. A refusal is
+    a record `validate()` rejected, which is a **bug in a call site** and not a load condition;
+    adding it to `events_dropped` would let a mis-typed field name hide inside a number an operator
+    reads as "the machine was busy".
+    """
+
+    emitted: int = 0
+    dropped: int = 0
+    refused: int = 0
+    serialise_ns_total: int = 0
+    shard_bytes: int = 0
+    shards_rolled: int = 0
+
+    def as_manifest_fields(self) -> Mapping[str, int]:
+        """The `observe.*` keys, under the names 15:434 prints."""
+        return MappingProxyType(
+            {
+                "events_emitted": self.emitted,
+                "events_dropped": self.dropped,
+                "events_refused": self.refused,
+                "serialise_ns_total": self.serialise_ns_total,
+                "shard_bytes": self.shard_bytes,
+                "shards_rolled": self.shards_rolled,
+            }
+        )
+
+
+# =============================================================================================
+# 9. `NdjsonSink` -- a bounded drop-oldest queue, one writer thread, and a 64 MiB roll
+# =============================================================================================
+
+SHARD_ORDINAL_DIGITS: Final = 4
+"""`{run_id}.0001.ndjson.gz` (15:387). Four digits is 9,999 shards, which at 64 MiB each is 625 GiB
+of uncompressed events for one run -- five hundred times the reference ingest's unsampled 1.22
+GB."""
+
+DEFAULT_SHARD_BYTES: Final = 67_108_864
+"""`[observe] shard_bytes = 67108864`. 64 MiB **of uncompressed bytes** (15:396)."""
+
+
+def shard_path(live: Path, ordinal: int) -> Path:
+    """The name a rolled shard takes. `{run_id}.ndjson` -> `{run_id}.0001.ndjson.gz`.
+
+    Derived from the live path rather than from a `run_id`, because `[observe] ndjson_path` is a
+    template an operator may change and the rolled name has to stay beside whatever it produced. A
+    follower resolves the successor from the `shard.roll` record's `successor` field and never by
+    guessing this (15:264-268), so this function has exactly one caller.
+    """
+    if ordinal < 1:
+        raise ConfigError(
+            f"a shard ordinal of {ordinal}; the live shard has no ordinal and rolls start at 1",
+            fix="pass the count of shards already rolled, plus one",
+        )
+    stem = live.name.removesuffix(".ndjson")
+    return live.with_name(f"{stem}.{ordinal:0{SHARD_ORDINAL_DIGITS}d}.ndjson.gz")
+
+
+class _Stop:
+    """The sentinel that ends the writer thread. A class, so no record can equal it."""
+
+
+class NdjsonSink:
+    """One record per line, one writer thread, and a queue that drops rather than blocks.
+
+    **`emit()` must not block** (15:361, in capitals; 08:882). Everything expensive happens on the
+    writer thread: the serialisation, the write, the roll and the deflate. `emit()` puts one object
+    on a bounded queue and returns, and when the queue is full it discards the OLDEST record and
+    counts it. Dropping the newest would be cheaper and is wrong: under back pressure the records
+    that matter are the ones describing what is happening now, and a queue that discarded them would
+    preserve a history of a run that had stopped being interesting.
+
+    **An unwritable path is a degradation and not a failure.** 15:401-403: *"An unwritable path is a
+    `Degradation(kind="events_dropped")` and the run continues: telemetry never fails a run, exactly
+    as telemetry never fails a query."* So `open()` failing is recorded in `stats.dropped` and
+    `degraded` rather than raised, and every later record is counted and discarded. The run's work
+    is not affected at all, which is rule 1 of 15:36 -- *"the event stream is diagnostic; the ledger
+    is
+    authoritative."*
+
+    **The `Clock` is injected here too, and that is not ceremony.** 15:434 requires
+    `observe.serialise_ns_total` in the manifest *"so a reader can subtract it"*, which is a
+    duration measurement, and 08:277 makes `Clock` the one duration source -- *"INJECTED:
+    `monotonic_ns()` + `wall_ns()`. Never ambient"*. G8 bans `time.perf_counter_ns()` in library
+    code for the same reason, so the machine reading belongs in the `Clock` implementation and
+    nowhere else. A test supplies a counting clock and gets a deterministic total.
+
+    **`fsync` only on roll and at exit** (15:400). A per-record `fsync` would put a disk flush
+    inside the charter's `<= 0.5 ms/unit` runtime overhead budget eight times per unit; the exposure
+    that
+    buys is the tail of the live shard after a power loss, which is diagnostic data about a run that
+    also did not commit.
+    """
+
+    __slots__ = (
+        "_clock",
+        "_closed",
+        "_degraded",
+        "_handle",
+        "_live",
+        "_lock",
+        "_queue",
+        "_rolled",
+        "_shard_bytes",
+        "_stats",
+        "_thread",
+        "_written",
+    )
+
+    def __init__(self, path: Path, *, clock: Clock, shard_bytes: int = DEFAULT_SHARD_BYTES) -> None:
+        if shard_bytes < 1:
+            raise ConfigError(
+                f"[observe] shard_bytes is {shard_bytes}; a shard that rolls at zero bytes rolls "
+                f"once per record",
+                fix="set [observe] shard_bytes = 67108864",
+            )
+        self._live = path
+        self._clock = clock
+        self._shard_bytes = shard_bytes
+        self._queue: queue.Queue[Event | type[_Stop]] = queue.Queue(maxsize=MAX_EVENT_QUEUE)
+        self._stats = SinkStats()
+        self._lock = threading.Lock()
+        self._handle: IO[bytes] | None = None
+        self._written = 0
+        self._rolled = 0
+        self._degraded = ""
+        self._closed = False
+        self._thread = threading.Thread(target=self._drain, name="ow-events", daemon=True)
+        self._thread.start()
+
+    # -- the producer side, which must not block -------------------------------------------
+
+    def emit(self, e: Event) -> None:
+        """Queue one record. Never blocks, never raises, never writes.
+
+        The `try/except Full` loop rather than `put_nowait` inside a lock: `queue.Queue` is already
+        thread-safe, and the race a lock would close -- two producers both seeing a full queue and
+        both discarding one record -- costs one extra drop under contention and is counted. A lock
+        here would serialise every producer behind the writer thread's own `get`, which is the one
+        thing 15:361 forbids.
+        """
+        while True:
+            try:
+                self._queue.put_nowait(e)
+            except queue.Full:
+                self._discard_oldest()
+            else:
+                return
+
+    def _discard_oldest(self) -> None:
+        """Make room by dropping the OLDEST queued record, and count it.
+
+        Oldest and not newest, which is the whole of 15:38's *"drop-oldest"*: under back pressure
+        the records that matter describe what is happening now, and a queue that discarded those
+        would preserve a detailed history of the moment the run stopped being interesting.
+
+        `queue.Empty` here means the writer thread drained the queue between the failed `put` and
+        this `get`, so there is nothing to discard and nothing to count -- the retry will succeed.
+        """
+        with contextlib.suppress(queue.Empty):
+            self._queue.get_nowait()
+            self._stats.dropped += 1
+
+    def flush(self, timeout_ms: int) -> int:
+        """Wait up to `timeout_ms` for the queue to drain. Returns the number still queued.
+
+        15:362's signature and its return value. A number rather than a bool because the caller --
+        the shutdown sequence, at `[runtime] shutdown_grace_ms` -- reports what it could not write
+        rather than deciding for itself whether that was acceptable.
+        """
+        # `time.monotonic()` and not the injected clock: this is a WAIT and not a measurement --
+        # nothing it produces reaches a row, a digest or the manifest, and a fake clock here would
+        # make a shutdown that has to really elapse return instantly. G8's ban lists the readings
+        # that can reach an artefact and `time.monotonic` is not among them.
+        deadline = time.monotonic() + timeout_ms / 1000
+        while self._queue.qsize() and time.monotonic() < deadline:
+            time.sleep(0.001)
+        return self._queue.qsize()
+
+    def close(self, *, timeout_ms: int = 5_000) -> int:
+        """Drain, `fsync`, close the handle and stop the thread. Returns what was left unwritten.
+
+        Idempotent: a second call returns zero and does nothing, because a shutdown path that could
+        be reached twice -- a signal handler and a `finally` -- would otherwise join a dead thread.
+        """
+        if self._closed:
+            return 0
+        self._closed = True
+        remaining = self.flush(timeout_ms)
+        self._queue.put(_Stop)
+        self._thread.join(timeout=timeout_ms / 1000)
+        return remaining
+
+    # -- what a reader of the manifest gets ------------------------------------------------
+
+    @property
+    def stats(self) -> SinkStats:
+        return self._stats
+
+    @property
+    def degraded(self) -> str:
+        """Empty, or the one sentence a `Degradation(kind="events_dropped")` carries."""
+        return self._degraded
+
+    @property
+    def live_path(self) -> Path:
+        return self._live
+
+    # -- the writer thread ------------------------------------------------------------------
+
+    def _drain(self) -> None:
+        while True:
+            item = self._queue.get()
+            if item is _Stop:
+                self._close_handle(sync=True)
+                return
+            if isinstance(item, Event):
+                self._write(item)
+            if self._queue.empty() and self._handle is not None:
+                # Flush the userspace buffer when the queue goes quiet, so `flush()` waiting for the
+                # queue is also waiting for the bytes. NOT an `fsync`: 15:400 puts the disk barrier
+                # on roll and at exit only, and this is the cheaper of the two -- it moves bytes
+                # into the OS, which is what a reader of the live shard needs and what a crash of
+                # THIS process cannot take back. Doing it here rather than in `flush()` keeps every
+                # access to the handle on the writer thread.
+                with contextlib.suppress(OSError, ValueError):
+                    self._handle.flush()
+
+    def _write(self, event: Event) -> None:
+        started = self._clock.monotonic_ns()
+        line = serialise(event)
+        self._stats.serialise_ns_total += self._clock.monotonic_ns() - started
+        handle = self._open()
+        if handle is None:
+            self._stats.dropped += 1
+            return
+        handle.write(line)
+        self._written += len(line)
+        self._stats.emitted += 1
+        self._stats.shard_bytes = self._written
+        if self._written >= self._shard_bytes:
+            self._roll(event)
+
+    def _open(self) -> IO[bytes] | None:
+        """The append handle, opened on first use. A failure degrades once and stays degraded."""
+        if self._handle is not None:
+            return self._handle
+        if self._degraded:
+            return None
+        try:
+            self._live.parent.mkdir(parents=True, exist_ok=True)
+            self._handle = self._live.open("ab")
+        except OSError as exc:
+            self._degraded = (
+                f"the event stream at {self._live} could not be opened ({exc.strerror or exc}); "
+                f"this run's records are dropped and its work is unaffected. "
+                f"Set [observe] ndjson_path to a writable location, or "
+                f'[observe] sinks = ["console"]'
+            )
+            return None
+        return self._handle
+
+    def _roll(self, last: Event) -> None:
+        """Close the live shard with a `shard.roll` record, rename it, deflate it, reopen.
+
+        15:399 and 15:264-268. The roll record is *"the closing line of the shard it closes"* and
+        carries the successor's name, which is what lets `ow trace export --follow` hold the open
+        HANDLE rather than the path: it reads to EOF, sees the roll, and opens the name it was
+        given. A follower that stat'ed the path in a loop would race the rename and read a `.gz` as
+        text.
+
+        The deflate happens here, on the writer thread, which is where 15:398 puts it. It is the one
+        genuinely slow thing this class does -- tens of milliseconds for 64 MiB -- and it is off the
+        producer's path by the whole width of the queue.
+        """
+        handle = self._handle
+        if handle is None:  # pragma: no cover -- `_write` only calls this after `_open` succeeded.
+            return
+        ordinal = self._rolled + 1
+        successor = shard_path(self._live, ordinal)
+        record = dataclasses.replace(
+            last,
+            kind=EventKind.SHARD_ROLL,
+            phase=Phase.POINT.value,
+            level=EVENTS[EventKind.SHARD_ROLL.value].level.value,
+            fields={
+                "closed": self._live.name,
+                "successor": successor.name,
+                "bytes": self._written,
+                "records": self._stats.emitted,
+            },
+        )
+        handle.write(serialise(record))
+        self._close_handle(sync=True)
+        try:
+            raw = self._live.read_bytes()
+            with gzip.open(successor, "wb") as out:
+                out.write(raw)
+            self._live.unlink()
+        except OSError as exc:  # pragma: no cover -- a roll that cannot rename keeps writing.
+            self._degraded = f"shard {self._live} could not be rolled ({exc.strerror or exc})"
+            return
+        self._rolled = ordinal
+        self._written = 0
+        self._stats.shards_rolled = ordinal
+        self._stats.shard_bytes = 0
+
+    def _close_handle(self, *, sync: bool) -> None:
+        handle, self._handle = self._handle, None
+        if handle is None:
+            return
+        try:
+            handle.flush()
+            if sync:
+                os.fsync(handle.fileno())
+        except OSError:  # pragma: no cover -- a closed or unsyncable handle is already lost.
+            pass
+        handle.close()
+
+
+# =============================================================================================
+# 10. `ConsoleSink` -- stderr, and the suppression that is a correctness property
+# =============================================================================================
+
+CONSOLE_FLOOR_WHEN_PIPED: Final = Level.WARN
+"""15:452: *"suppressed to `warn` and above when stderr is not a TTY."*"""
+
+
+class ConsoleSink:
+    """The same records for a human, one line each, on **stderr**. 15:444-457.
+
+    *"Not stdout: stdout is the machine channel -- `ow query --render json`, `ow cost --render
+    json`, `ow doctor --render json` -- and a progress line interleaved into a JSON document is a
+    parse
+    error in the caller, discovered by whoever automated the command rather than by us."*
+
+    **It tests the stream, not a config flag.** 15:454-457 takes the lesson from codegraph's prompt
+    hook (`if (process.stdin.isTTY) return;`): *"an interactive-only side effect must test the
+    stream it writes to, not a config flag someone forgot to set."* So the floor is raised by asking
+    the stream whether it is a terminal, once, at construction -- a hook, a cron and a piped
+    invocation get `warn` and above without anybody having configured anything.
+
+    There is no queue and no thread. A console line is bounded by the human reading it, `emit()`
+    writes one line to an already-buffered stream, and a second queue would be a second place
+    records could be dropped without the first one knowing.
+    """
+
+    __slots__ = ("_floor", "_stats", "_stream")
+
+    def __init__(self, stream: IO[str] | None = None, *, floor: Level = Level.DEBUG) -> None:
+        self._stream = stream if stream is not None else sys.stderr
+        piped = not _isatty(self._stream)
+        effective = CONSOLE_FLOOR_WHEN_PIPED if piped else floor
+        self._floor = max(LEVEL_ORDER.index(floor.value), LEVEL_ORDER.index(effective.value))
+        self._stats = SinkStats()
+
+    @property
+    def floor(self) -> Level:
+        """The level this sink actually renders at, after the not-a-TTY suppression."""
+        return Level(LEVEL_ORDER[self._floor])
+
+    @property
+    def stats(self) -> SinkStats:
+        return self._stats
+
+    def emit(self, e: Event) -> None:
+        """One line, or nothing. Never raises: a broken stderr is not a reason to fail a run."""
+        if LEVEL_ORDER.index(e.level) < self._floor:
+            self._stats.dropped += 1
+            return
+        try:
+            self._stream.write(self.render(e) + "\n")
+        except (OSError, ValueError):  # pragma: no cover -- a closed or detached stderr.
+            self._stats.dropped += 1
+            return
+        self._stats.emitted += 1
+
+    def flush(self, timeout_ms: int) -> int:  # noqa: ARG002 -- nothing is queued to wait for.
+        """Nothing is queued, so nothing is ever still queued. Flushes the stream and returns 0."""
+        with contextlib.suppress(OSError, ValueError):  # pragma: no cover -- a closed stderr.
+            self._stream.flush()
+        return 0
+
+    @staticmethod
+    def render(e: Event) -> str:
+        """One record as one human line. The envelope, then the fields, in declaration order.
+
+        `fields` is rendered in the row's declared order rather than sorted: `tools/events.toml` is
+        the order a reader of the vocabulary already knows, and `serialise()` sorts for the machine
+        channel where a stable byte string is what matters.
+        """
+        spec = EVENTS.get(str(e.kind))
+        order = spec.fields if spec is not None else tuple(sorted(e.fields))
+        pairs = " ".join(f"{name}={e.fields[name]!r}" for name in order if name in e.fields)
+        where = e.unit or ""
+        if e.part:
+            where = f"{where}#{e.part}" if where else f"#{e.part}"
+        head = f"{e.level:<6} {e.kind}"
+        return " ".join(part for part in (head, where, pairs) if part)
+
+
+def _isatty(stream: object) -> bool:
+    """Whether `stream` is a terminal, treating "it will not say" as "no".
+
+    A `StringIO` has no `isatty`, a detached stream raises from it, and both mean the same thing for
+    this decision: there is nobody watching, so render less. Failing closed here is what stops a
+    captured stream in a test or a CI log from filling with `info` lines.
+    """
+    isatty = getattr(stream, "isatty", None)
+    if isatty is None:
+        return False
+    try:
+        return bool(isatty())
+    except (OSError, ValueError):  # pragma: no cover -- a detached stream.
+        return False
+
+
+# =============================================================================================
+# 11. `RunRecorder` -- `seq` at the head, the floor, and the tail-sampling buffer
+# =============================================================================================
+
+
+@dataclass(slots=True)
+class _UnitBuffer:
+    """One open `unit` span's held subtree. 15:157-159."""
+
+    span_ids: set[str]
+    held: list[Event]
+    overflowed: bool = False
+
+
+class RunRecorder:
+    """The sink a run holds: it stamps `seq`, applies the floor, buffers, and fans out.
+
+    **Why this is a `TraceSink` and 15:56 still counts two.** That sentence -- *"`TraceSink` is a
+    Protocol with two methods and two shipped implementations; a third is a charter amendment"* --
+    rejects, in its own next clause, *"a fifteenth `omniweave-otel` distribution plus an
+    `omniweave.sinks` entry-point group … a third extension point created for one implementation."*
+    The two it counts are the two that WRITE. This one writes nothing: it consumes and forwards, and
+    it exists because three facts in 15 cannot all be true of a terminal sink at once:
+
+    * `RunContext.events` is typed `TraceSink` (08:281), so an operator's only channel is `emit()`;
+    * `seq` is *"assigned under the sink's own lock at the head of `emit()`"* (15:381);
+    * `[observe] sinks` is a LIST, defaulting to two.
+
+    Two terminal sinks each assigning `seq` under their own lock would give one record two values
+    for one field. So the assignment belongs to the object the run holds, and that object is this
+    one. Reported.
+
+    **`seq` before the queue, always.** 15:382-385: *"That ordering is what makes a drop detectable
+    as a gap in `seq` rather than invisible; the reverse ordering would have made
+    `run.events_dropped` the only evidence a record ever existed."* So the counter advances for
+    every record that passes the floor, including one a downstream queue is about to discard -- the
+    gap is
+    the evidence.
+
+    **Tail sampling buffers a unit's whole subtree** (15:154-163). Deciding at `unit.begin` is wrong
+    twice: the outcome is not known yet, so `non_ok = 1.0` is unimplementable, and dropping a `unit`
+    while keeping its `call` children produces the orphans I33 forbids. `open_unit()` and
+    `close_unit()` bracket the buffer; `run` and `plan` records are never buffered, so the tree
+    always has a spine.
+    """
+
+    __slots__ = (
+        "_buffers",
+        "_clock",
+        "_floor",
+        "_lock",
+        "_ok_rate",
+        "_owner",
+        "_run_id",
+        "_salt",
+        "_seq",
+        "_sinks",
+        "_stats",
+        "_writer_id",
+    )
+
+    def __init__(
+        self,
+        *,
+        run_id: str,
+        writer: str,
+        clock: Clock,
+        sinks: Sequence[TraceSink] = (),
+        level: Level = Level.INFO,
+        salt: str = "",
+        ok_rate: float = OK_SAMPLE_RATE,
+    ) -> None:
+        if not run_id or not writer:
+            raise ConfigError(
+                "a recorder needs a run_id and a writer_id; `seq` is monotone per the pair",
+                fix="pass ctx.run_id and events.writer_id(host, pid, create_time)",
+            )
+        self._run_id = run_id
+        self._writer_id = writer
+        self._clock = clock
+        self._sinks = tuple(sinks)
+        self._floor = LEVEL_ORDER.index(level.value)
+        self._salt = salt
+        self._ok_rate = ok_rate
+        self._lock = threading.Lock()
+        self._seq = 0
+        self._buffers: dict[str, _UnitBuffer] = {}
+        self._owner: dict[str, str] = {}
+        self._stats = SinkStats()
+
+    # -- the `TraceSink` surface ------------------------------------------------------------
+
+    def emit(self, e: Event) -> None:
+        """Stamp `seq`, apply the floor, buffer or forward. Never blocks and never raises.
+
+        The record arrives with whatever `seq` the caller left on it -- conventionally zero -- and
+        leaves with this recorder's next. `dataclasses.replace` rather than mutation because `Event`
+        is frozen, and it is frozen because a record that could be edited after the sink saw it
+        would make the stream a mutable log.
+        """
+        spec = EVENTS.get(str(e.kind))
+        if spec is None or LEVEL_ORDER.index(spec.level.value) < self._floor:
+            self._stats.dropped += 1
+            return
+        with self._lock:
+            self._seq += 1
+            stamped = dataclasses.replace(
+                e,
+                run_id=self._run_id,
+                writer_id=self._writer_id,
+                seq=self._seq,
+                level=spec.level.value,
+                ts_wall_ns=e.ts_wall_ns or self._clock.wall_ns(),
+                ts_mono_ns=e.ts_mono_ns or self._clock.monotonic_ns(),
+            )
+            buffered = self._buffer(stamped)
+        if not buffered:
+            self._forward(stamped)
+
+    def flush(self, timeout_ms: int) -> int:
+        """Flush every sink and report the worst. 15:362's return value, over a fan-out."""
+        return max((sink.flush(timeout_ms) for sink in self._sinks), default=0)
+
+    # -- the unit bracket, which is what makes tail sampling possible -----------------------
+
+    def open_unit(self, work_id: str, span_id: str) -> None:
+        """Start buffering the subtree under one `unit` span. 15:156.
+
+        A second `open_unit` for one `work_id` is the REGEN case -- the same work row claimed again
+        -- and it replaces the buffer rather than merging: the previous attempt's span closed with
+        its own outcome, and holding two attempts' records under one sampling decision would make
+        one attempt's failure keep the other attempt's records.
+        """
+        with self._lock:
+            self._buffers[work_id] = _UnitBuffer(span_ids={span_id}, held=[])
+            self._owner[span_id] = work_id
+
+    def close_unit(self, work_id: str, outcome: str) -> int:
+        """Decide, then release or discard the whole subtree. Returns the number of records kept.
+
+        15:157-159, in order: emitted whole if `outcome != ok` or if the digest selects it, dropped
+        whole and counted into `run.events_dropped` otherwise, and **an overflow flushes the unit
+        unsampled rather than truncating it**. The overflow branch is checked first because a
+        truncated subtree is an orphan wearing a different hat, and 15:158 calls the choice
+        *"fail visible"*.
+        """
+        with self._lock:
+            buffer = self._buffers.pop(work_id, None)
+            if buffer is None:
+                return 0
+            for span_id in buffer.span_ids:
+                self._owner.pop(span_id, None)
+            keep = buffer.overflowed or should_sample(
+                outcome, work_id, self._salt, ok_rate=self._ok_rate
+            )
+            held = tuple(buffer.held)
+        if not keep:
+            self._stats.dropped += len(held)
+            return 0
+        for record in held:
+            self._forward(record)
+        return len(held)
+
+    # -- what a manifest reads --------------------------------------------------------------
+
+    @property
+    def stats(self) -> SinkStats:
+        """This recorder's own counters. A terminal sink's are its own; the manifest sums them."""
+        return self._stats
+
+    @property
+    def seq(self) -> int:
+        """The last `seq` assigned. Monotone per `(run_id, writer_id)` and never reset."""
+        return self._seq
+
+    @property
+    def open_units(self) -> int:
+        """How many `unit` subtrees are held right now. The multiplicand in 15:170's formula."""
+        return len(self._buffers)
+
+    # -- internals --------------------------------------------------------------------------
+
+    def _buffer(self, e: Event) -> bool:
+        """Hold `e` if it belongs to an open unit. Returns whether it was held. Caller holds lock.
+
+        `run` and `plan` records are never buffered (15:161) -- *"so the tree always has a spine,
+        and a fully sampled-out run still produces a manifest and a `plan` subtree per Stage."*
+        Ownership is resolved from `parent_span_id` and inherited: a record whose parent is inside
+        the subtree
+        registers its own `span_id`, so a `call` three levels down is caught without this class
+        walking a chain it has not seen.
+        """
+        spec = EVENTS[str(e.kind)]
+        if spec.span in (SpanLevel.RUN.value, SpanLevel.PLAN.value):
+            return False
+        work_id = self._owner.get(e.span_id)
+        if work_id is None and e.parent_span_id is not None:
+            work_id = self._owner.get(e.parent_span_id)
+        if work_id is None:
+            return False
+        buffer = self._buffers[work_id]
+        buffer.span_ids.add(e.span_id)
+        self._owner[e.span_id] = work_id
+        if len(buffer.held) >= MAX_SPAN_BUFFER_EVENTS:
+            buffer.overflowed = True
+            return False
+        buffer.held.append(e)
+        return True
+
+    def _forward(self, e: Event) -> None:
+        self._stats.emitted += 1
+        for sink in self._sinks:
+            sink.emit(e)
