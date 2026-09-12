@@ -816,6 +816,7 @@ _DECLARATIONS: Final[tuple[ConfigKey, ...]] = (
     _key("runtime.inproc_bulk_threshold", "int", 64, "operational"),
     _key("runtime.max_deps_per_unit", "int", 256, "operational"),
     _key("runtime.work_compact_above", "int", 5000000, "operational"),
+    _key("runtime.max_sequence_units", "int", 64, "operational"),
     _key(
         "runtime.claim.batch",
         "table",

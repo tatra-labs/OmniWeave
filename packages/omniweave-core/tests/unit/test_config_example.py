@@ -52,12 +52,12 @@ sys.path.insert(0, str(REPO / "tools"))
 
 import gate_config_axes  # noqa: E402
 
-# The 126 declared patterns instantiate to 126 keys in this file: every glob is given exactly one
+# The 127 declared patterns instantiate to 127 keys in this file: every glob is given exactly one
 # instance, and `[corpora.contracts]` is a COMMENTED illustration rather than a second live
 # instance (see `test_the_example_declares_one_instance_per_glob`). Pinned as a number because a
 # key added to the registry without a line here, or a line here deleted, must fail LOUDLY rather
 # than change a count nobody reads.
-EXPECTED_KEYS = 126
+EXPECTED_KEYS = 127
 
 # The one key in the example whose value is NOT its declared default, and the locus that puts it
 # there. 04-driver-system.md:2779 names this exact stanza as the shipped example's own -- "which
@@ -203,7 +203,7 @@ def test_exactly_one_pattern_matches_each_key() -> None:
 
 
 def test_the_example_instantiates_every_declared_pattern_once() -> None:
-    """126 patterns, 126 keys. A count, so a silent drift in either direction fails here too."""
+    """127 patterns, 127 keys. A count, so a silent drift in either direction fails here too."""
     assert len(_rows()) == EXPECTED_KEYS
     assert len(_keys()) == EXPECTED_KEYS
 
@@ -320,7 +320,7 @@ def test_the_example_declares_one_instance_per_glob() -> None:
 def test_the_example_resolves_through_the_loader_with_nothing_left_to_a_default(
     tmp_path: Path,
 ) -> None:
-    """Every resolved value's source is THIS FILE, and there are exactly 126 of them.
+    """Every resolved value's source is THIS FILE, and there are exactly 127 of them.
 
     That is the coverage assertion restated from the loader's side, and it is bidirectional for
     the same reason: a key this file omitted would resolve from `ConfigLayer.BUILTIN` instead, and
