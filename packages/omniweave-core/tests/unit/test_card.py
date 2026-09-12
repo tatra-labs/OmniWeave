@@ -41,6 +41,7 @@ from omniweave_core.drivers.card import (
     MIN_SLICE_N,
     PARSE_LADDERS,
     PARSE_SETS,
+    QUALITY_SUITES,
     ArtifactKind,
     CostClass,
     DriverCard,
@@ -267,6 +268,65 @@ def benchmark_row(metric: str, n: int = MIN_SLICE_N) -> str:
 # --------------------------------------------------------------------------------------------
 # 1. The golden card
 # --------------------------------------------------------------------------------------------
+
+
+TWELVE_SUITES: tuple[str, ...] = (
+    "card",
+    "purity",
+    "contract",
+    "capability",
+    "idempotence",
+    "determinism",
+    "limits",
+    "sandbox",
+    "cost",
+    "licence",
+    "fuzz",
+    "quality",
+)
+"""04-driver-system.md section 8.2's table, in its own order. A VALUE, written out.
+
+Everything else in this repository that touches the twelve compares them against
+`QUALITY_SUITES` rather than against a list: `omniweave_conform.result` asserts `SUITES is
+QUALITY_SUITES`, its suite registry asserts `tuple(SUITE_RUNNERS) == SUITES`, and the card tests
+assert `len(card.quality.suites) == 12`. Every one of those is agreement with the declaration, so
+renaming `idempotence` to `idempotency` in `card.py` leaves all of them green -- and the twelve
+names are frozen at the end of P3 (16-roadmap.md:498), which is a claim about the NAMES a
+third party's `[quality.suites]` block may carry.
+
+That gap is `test_p3_freeze.py`'s finding and this is where it is closed, beside the loader that
+owns the tuple, rather than in the index that found it.
+"""
+
+
+def test_the_twelve_suite_names_are_a_value_and_not_an_agreement() -> None:
+    """`QUALITY_SUITES` IS these twelve strings in this order.
+
+    The order is load-bearing twice over and not only the membership: `result.py` calls it "the
+    order a run reports them", and `[quality.suites]` is a closed table whose keys the loader
+    refuses one by one, so a reordering is visible to a driver author reading a report and a
+    renaming makes their card fail to load.
+    """
+    assert QUALITY_SUITES == TWELVE_SUITES
+    assert len(QUALITY_SUITES) == 12
+    assert QUALITY_SUITES[-1] == "quality", "the one non-mandatory suite reports last"
+
+
+def test_the_twelve_are_04_2068s_own_table_read_out_of_the_plan(plan) -> None:
+    """The golden above, re-read from section 8.2's table. A transcription nobody checks is a guess.
+
+    The table is parsed rather than grepped for each name, so a suite the document lists and this
+    file omits fails here -- which is the direction that matters. A grep per name would pass on a
+    thirteenth row nobody transcribed.
+    """
+    plan.require()
+    rows = [
+        line.split("|")[1].strip().strip("`")
+        for line in plan.lines("04-driver-system.md")
+        if line.startswith("| `") and line.count("|") >= 5
+    ]
+    start = rows.index("card")
+    assert tuple(rows[start : start + 12]) == TWELVE_SUITES
 
 
 def test_the_embedded_golden_card_is_the_plans_own(plan) -> None:
