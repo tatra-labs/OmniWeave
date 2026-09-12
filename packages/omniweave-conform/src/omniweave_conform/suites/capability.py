@@ -66,7 +66,7 @@ from omniweave_core.limits import MAX_MARKS_PER_BLOCK
 from omniweave_ports.detect import StreamHint
 from omniweave_ports.types import DriverError, Port
 
-from omniweave_conform.harness import decode_span, nfc, run_parse
+from omniweave_conform.harness import ORIGIN_VERIFIER, nfc, reverify_origin, run_parse
 from omniweave_conform.result import Assertion, SuiteResult
 
 if TYPE_CHECKING:
@@ -94,31 +94,6 @@ scan line and far short of a frame error". It lives here rather than in `omniwea
 because this suite is its only consumer today and `limits.__all__` is a register
 `test_limits.py:122` compares against the plan's own list; the moment a second consumer appears it
 belongs there instead, and this comment is the note to move it."""
-
-ORIGIN_VERIFIER: Final = "verify_origin"
-"""The optional method a driver ships so P7 can be proved on a branch only it can read.
-
-    verify_origin(part: bytes, origin: Mapping[str, Any], text: str) -> tuple[bool, str]
-
-Returns `(ok, reason)`; `reason` is empty when `ok` and otherwise says WHY, so a verifier can
-tell "the address does not resolve here" from "the text differs".
-
-**Why this exists.** 03-document-model.md:2991 requires P7 on **all three** of INV-10's
-branches. The `bytes` branch is self-contained -- decode a slice of the part -- and the kit
-proves it unaided. The other two are not: `nodepath` needs a reader for the part's own
-container format, and `glyphs` needs the recorded `os_extractor` re-run, which for
-`parse.pdf.pdfium` means pdfium. The plan requires the assertion and supplies no mechanism for
-making it, so the kit names one: a method on the driver class the kit already activated.
-
-It is OPTIONAL and the absence is not a pass. A driver without it gets the same honest "not
-re-verified" this suite reported before the hook existed -- and that is still a failing
-assertion for a card claiming `exact`, because an unproved claim is what P7 exists to catch.
-
-**The hook cannot make a false claim true.** It is handed the retained part and the block's
-own recorded address, and the kit compares its answer against the block's text. A driver that
-returned `(True, "")` unconditionally would pass -- and would also pass a `bytes`-branch
-fixture the kit checks itself, so the cheapest defence against that is the one already here:
-the kit proves `bytes` without asking."""
 
 _QUAD_CORNERS: Final = 4
 _SNIFF_HEAD_BYTES: Final = 8192
@@ -332,70 +307,39 @@ def _origin_span_assertions(
 def _reverify(run_result: ParseRun, block: Mapping[str, Any], hook: object = None) -> Assertion:
     """P7: re-read the retained part on the branch `os_kind` selects and assert equality.
 
-    Three branches, and all three are named because "a `bytes`-only property is inapplicable to the
-    container formats it matters most for" (03:2990's P7 row). Only the `bytes` branch can be
-    proved from `owdoc-fragment/1` alone: `nodepath` needs a node reader for the part's own format
-    and `glyphs` needs the recorded `os_extractor` re-run, and both of those are the driver's
-    dependencies rather than the kit's. Those two therefore report what they could not do, with the
-    branch named -- never a pass.
+    The three-branch decision itself is `harness.reverify_origin()` and is not repeated here.
+    `evaluate.span_exact_rate` asks the identical question of a different population — blocks whose
+    own `quote` claims `verbatim`, rather than every body block of a card declaring
+    `origin_span = "exact"` — and two copies of INV-10's re-read that could drift apart is the
+    thing INV-21 is about. What stays here is the part that is genuinely this suite's: turning the
+    verdict into an `Assertion` with P7's own claim wording and locus.
     """
     tmp = str(block.get("tmp", "?"))
     text = str(block.get("text", ""))
     origin = block.get("os") or {}
-    kind = str(origin.get("k", "none"))
+    check = reverify_origin(run_result.fixture.data, origin, text, hook)
     name = run_result.fixture.name
-    if kind == "bytes":
-        got = decode_span(
-            run_result.fixture.data,
-            int(origin.get("start", -1)),
-            int(origin.get("length", -1)),
-            str(origin.get("codec", "utf-8")),
+    if check.branch == "bytes":
+        claim = "origin_span = exact re-reads the retained part and matches"
+        expected = nfc(text)
+    elif check.branch in {"nodepath", "glyphs"}:
+        claim = (
+            f"origin_span = exact re-verifies on the {check.branch} branch"
+            if hook is not None
+            else f"origin_span = exact on the {check.branch} branch is re-verified"
         )
-        want = nfc(text)
-        return Assertion(
-            "origin_span = exact re-reads the retained part and matches",
-            ok=got == want,
-            detail="nfc(part_bytes[a : a+b].decode(codec)) == text (03 section 7.2)",
-            fixture=name,
-            locus=f"P7:{tmp}",
-            expected=want[:120],
-            actual="<span out of range or undecodable>" if got is None else got[:120],
-        )
-    if kind in {"nodepath", "glyphs"}:
-        if hook is None:
-            return Assertion(
-                f"origin_span = exact on the {kind} branch is re-verified",
-                ok=False,
-                detail=(
-                    f"the {kind} branch needs the part's own reader "
-                    f"({'a node path resolver' if kind == 'nodepath' else 'the os_extractor'}), "
-                    f"which is the driver's dependency and not this kit's; a driver claiming "
-                    f"exact on this branch must ship a {ORIGIN_VERIFIER}() hook"
-                ),
-                fixture=name,
-                locus=f"P7:{tmp}",
-            )
-        try:
-            ok, why = hook(run_result.fixture.data, origin, text)  # type: ignore[operator]
-        except Exception as exc:  # a hook that raises is a failed verification, not a kit crash.
-            ok, why = False, f"{ORIGIN_VERIFIER}() raised {type(exc).__name__}: {exc}"
-        return Assertion(
-            f"origin_span = exact re-verifies on the {kind} branch",
-            ok=bool(ok),
-            detail=why or f"the driver's own {ORIGIN_VERIFIER}() re-read the retained part",
-            fixture=name,
-            locus=f"P7:{tmp}",
-            expected=text[:120],
-            actual=str(why)[:120] if not ok else text[:120],
-        )
+        expected = text
+    else:
+        claim = "origin_span = exact, and every body block carries a re-verifiable address"
+        expected = "bytes / nodepath / glyphs"
     return Assertion(
-        "origin_span = exact, and every body block carries a re-verifiable address",
-        ok=False,
-        detail=f"os_kind = {kind!r}; exact needs a re-verifiable OriginSpan (04:493)",
+        claim,
+        ok=check.ok,
+        detail=check.detail,
         fixture=name,
         locus=f"P7:{tmp}",
-        expected="bytes / nodepath / glyphs",
-        actual=kind or "absent",
+        expected=expected[:120],
+        actual=check.got[:120],
     )
 
 

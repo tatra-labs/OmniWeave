@@ -601,16 +601,20 @@ jobs:
         # Section 6.4: "The gates job additionally runs the static Q-G series ... Their budgets,
         # owners and review dates live in eval/gates.toml; this document only reserves them a job."
         # Section 1.7's rule is that neither register may name a row the other owns, which is why
-        # tools/gates.toml carries no Q-G row and this step reads the other file. A tripwire rather
-        # than a stub: the day eval/gates.toml lands, this job has to be wired.
-        run: |
-          if [ -f eval/gates.toml ]
-          then
-            echo "eval/gates.toml exists: wire the static Q-G series into gates (section 6.4)"
-            exit 1
-          fi
-          echo "Q-G NOT ENFORCED: eval/gates.toml is not written (13-quality.md)" \
-            | tee -a "$GITHUB_STEP_SUMMARY"
+        # tools/gates.toml carries no Q-G row and this step reads the other file.
+        #
+        # WAS A TRIPWIRE UNTIL eval/gates.toml LANDED, and this step is what the tripwire demanded:
+        # its own message read "the day eval/gates.toml lands, this job has to be wired", and its
+        # test's failure said "wire the step it names, then remove the path from CI_TRIPWIRE_PATHS
+        # -- do not widen the condition." That is what happened, in that order.
+        #
+        # ONE ROW AT P3. `span_exact_rate` is the only member of section 8.3's table that is
+        # computable without a corpus -- 13-quality.md:44, "that needs no corpus, no labels and no
+        # model, which is why `span_exact_rate` is a hard gate at 1.000 ... rather than a score
+        # with a floor". The rest of the table lands with the harness that measures it, and
+        # `tools/ow_eval.py` exits 2 on a register row it cannot compute, so a row added here
+        # without an implementation fails this step rather than passing quietly.
+        run: uv run tools/ow_eval.py golden --check span_exact_rate
 
   # ==========================================================================================
   # test -- the OS/Python matrix. NINE CELLS since P2; see the matrix comment. Carries

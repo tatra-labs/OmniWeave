@@ -178,14 +178,22 @@ CI_TRIPWIRE_PATHS: dict[str, tuple[str, ...]] = {
     "golden": ("eval/corpora.toml", "fixtures/cassettes"),
     # 17-risks.md section 1.1's register, which sizes the check and names no script.
     "gates.risk_register": ("tools/risks.toml",),
-    # 13-quality.md's metric-gate register. Its arrival is what wires the static Q-G series into
-    # the `gates` job (11-repo-layout.md:1615-1617).
-    "the static Q-G series": ("eval/gates.toml",),
+    # `eval/gates.toml` HAS LANDED and its tripwire is retired. The step that replaced it runs
+    # `tools/ow_eval.py golden --check span_exact_rate` (11-repo-layout.md:1615-1617,
+    # 16-roadmap.md:519), which is the tripwire's own instruction carried out: wire the step it
+    # names, then remove the path -- never widen the condition. A row is deleted here rather than
+    # emptied to `()`, because an empty tuple reads as "a tripwire that watches nothing" and this
+    # is "a tripwire that did its job".
 }
 
 # The step that owns each tripwire, by the `name:` `ci.yml` gives it and the job it sits in. A
-# fifth tripwire added with no row in `CI_TRIPWIRE_PATHS` is invisible to the two tests above, so
-# the four steps are pinned by name here rather than counted out of the file.
+# tripwire added with no row in `CI_TRIPWIRE_PATHS` is invisible to the two tests above, so the
+# steps are pinned by name here rather than counted out of the file.
+#
+# THREE, down from four: "the static Q-G series" retired when `eval/gates.toml` landed and its step
+# became `uv run tools/ow_eval.py golden --check span_exact_rate`. A tripwire is supposed to end
+# this way -- it fired, the thing it was waiting for was wired, and the row went. The count below
+# is asserted so the retirement is a decision somebody made rather than a row that fell out.
 CI_TRIPWIRE_STEPS: dict[str, tuple[str, str]] = {
     "G28": ("gates", "G28 -- import(export(store)) == store over the fixture corpus"),
     "golden": ("golden", "the Tier-B corpus and the Cassettes have not landed unwired"),
@@ -193,7 +201,6 @@ CI_TRIPWIRE_STEPS: dict[str, tuple[str, str]] = {
         "gates",
         "gates.risk_register -- the same five rules over risks.toml's sixty rows",
     ),
-    "the static Q-G series": ("gates", "the static Q-G series"),
 }
 
 # Section 6.6's two-sided budget rule: "Each job carries `timeout-minutes` at **twice** its stated
@@ -1105,12 +1112,19 @@ def test_every_tripwire_path_is_written_in_the_workflow(ci: Workflow) -> None:
             assert path in body, f"{step}: {path} is in the table and not in {job}'s run: bodies"
 
 
-def test_the_four_tripwire_steps_are_still_the_four(ci: Workflow) -> None:
-    """`CI_TRIPWIRE_STEPS`, against the step names `ci.yml` actually declares."""
+def test_the_three_tripwire_steps_are_still_the_three(ci: Workflow) -> None:
+    """`CI_TRIPWIRE_STEPS`, against the step names `ci.yml` actually declares.
+
+    THREE and not four. "the static Q-G series" watched for `eval/gates.toml`; that register landed
+    with `span_exact_rate` and its step now runs `tools/ow_eval.py`, so the tripwire retired. The
+    number is pinned on the way down as well as on the way up: a tripwire that quietly disappeared
+    because someone deleted a row is indistinguishable here from one that was honoured, and this
+    assertion is what makes the difference a commit rather than a shrug.
+    """
     for step, (job, name) in CI_TRIPWIRE_STEPS.items():
         assert name in ci.step_names(job), f"{step}: no step named {name!r} in job {job}"
     assert CI_TRIPWIRE_STEPS.keys() == CI_TRIPWIRE_PATHS.keys()
-    assert len(CI_TRIPWIRE_PATHS) == 4
+    assert len(CI_TRIPWIRE_PATHS) == 3
 
 
 def test_g28s_tripwire_does_not_fire_on_the_generator_directory(ci: Workflow) -> None:

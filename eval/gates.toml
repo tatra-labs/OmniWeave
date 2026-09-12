@@ -1,0 +1,111 @@
+# eval/gates.toml — the METRIC gate register.
+#
+# Two registers in this repository are called `gates.toml` and 11-repo-layout.md:394 makes the
+# distinction load-bearing:
+#
+#   > `eval/gates.toml` holds the **metric** gates — `span_exact_rate`, `structure_f1`,
+#   > `hallucination_rate` and the rest, each with an owner, a review date, a budget and a guard —
+#   > and is owned by [quality](13-quality.md); `tools/gates.toml` holds the **G-series** — the
+#   > twenty-nine CI gates of §6.4 — and is owned here. **Neither file may name a row the other
+#   > owns.**
+#
+# Read by `tools/ow_eval.py` and by nothing else.
+#
+# WHY EVERY ROW CARRIES AN OWNER AND A `review_by`. 13-quality.md:1082: "every gate row carries an
+# owner and a `review_by`, and a row past its date fails (`Q-G17`). There is no `--warn-only`
+# anywhere: a downgrade is a `class` change in that file, a reviewed diff with an owner."
+#
+# THE COLUMNS are 13-quality.md section 8.3's table, one key per column:
+#
+#   metric      the name `ow eval golden --check <name>` takes
+#   suite       which harness produces it
+#   slice       the slice expression it is macro-averaged over
+#   kind        `hard` | `floor` | `ceiling` — what `budget` means
+#   budget      the number. For `hard`, equality; for `floor`, `>=`; for `ceiling`, `<=`
+#   guard       the regression guard band, absent on a `hard` row because there is no band
+#               below 1.000 to be inside
+#   truth_kind  where ground truth comes from. `self_verifying` needs none, which is the
+#               property that makes a row cheap
+#   class       `blocking` | `informational`. A downgrade is a reviewed diff (12:1661)
+#   computed    the definition, verbatim from the plan. "A floor with no definition is not a
+#               gate" (13:1087)
+#
+# ONLY ONE ROW IS IMPLEMENTED AT P3, and the rest of section 8.3's table is deliberately absent
+# rather than present-and-unenforced: a register row naming a metric nothing computes is a claim
+# that something is being measured. They land with the harness that measures them —
+# `structure_f1`, `order_acc` and `table_rel_acc` need the Tier A corpus and T4's assertions;
+# `hallucination_rate` and `false_confident_zero` need the absence corpus; `citability_violations`
+# and `degradation_detection` need L4 and `Verdict`, which are P5's and P6's.
+
+[[gate]]
+metric = "span_exact_rate"
+suite = "parse"
+slice = "*"
+kind = "hard"
+budget = 1.000
+truth_kind = "self_verifying"
+class = "blocking"
+owner = "quality"
+reviewed_at = "2026-09-11"
+review_by = "2026-12-10"
+computed = """
+over Blocks with `quote == VERBATIM`, the fraction whose `span` assertion re-verifies on the \
+branch its `os_kind` selects. **Denominator is blocks that claim verbatimness**, so a slice with \
+none passes vacuously — which is every office slice at release 1. \
+(13-quality.md:1092, verbatim.)\
+"""
+sample_n = 1000
+# 01-principles.md:328, 07-store-and-retrieval.md:2563 and 13-quality.md:1990 all say "a
+# deterministic sample of n = 1000 blocks". Below that the sample is the population, which is
+# every slice this repository has today. The sampler is blake2b and never `random`:
+# pyproject.toml bans the module with the reason — "Sampling is blake2b. Determinism is a gate,
+# not a habit."
+guard_absent_because = """
+A `hard` row has no guard band. 13-quality.md:36 states the failure mode a band here would be: \
+"a byte-exactness claim degrades into an accuracy percentage and nobody notices it fell". 1.000 \
+or the gate is red.\
+"""
+vacuous_is_not_pass = """
+The denominator is a claim count, so a driver that claims nothing reports `vacuous` and not \
+1.0000. `parse.office.anydoc` is exactly that case at release 1 — anydoc's eight `Block` variants \
+carry no source address, so it declares `origin_span = "none"` honestly and emits \
+`quote = "normalized"` on every block. 13-quality.md:661 says the gate "holds **vacuously** on \
+that slice" and 17-risks.md R-T16 registers it as a risk rather than a defect. `ow eval golden` \
+prints the denominator beside the rate and prints `verbatim_denominator_frac`, which is R-T16's \
+own named indicator: its trigger is that share below 0.5 WHILE the rate reports 1.000, and the \
+two read together are the finding.\
+"""
+
+# ---------------------------------------------------------------------------
+# The subjects `span_exact_rate` is measured over.
+# ---------------------------------------------------------------------------
+#
+# A row per driver rather than a corpus path, because this metric needs no corpus: it needs a
+# driver, its own fixtures, and the bytes those fixtures are made of. `slice` is the name the
+# report groups under and matches 13-quality.md section 8.3's slice vocabulary.
+
+[[subject]]
+driver = "parse.pdf.pdfium"
+card = "packages/omniweave-pdf/src/omniweave_pdf/driver.toml"
+fixtures = "packages/omniweave-pdf/fixtures"
+slice = "pdf/born_digital"
+why = """
+Where the gate has teeth. The card declares `origin_span = "exact"` and the driver emits \
+`quote = "verbatim"` by construction — a block IS its glyph run, so its text is exactly \
+`document_text[a : a+len]` — and it ships the `verify_origin()` hook INV-10's `glyphs` branch \
+needs, because re-extraction requires pdfium and that is the driver's dependency rather than the \
+kit's.\
+"""
+
+[[subject]]
+driver = "parse.office.anydoc"
+card = "packages/omniweave-office/src/omniweave_office/driver.toml"
+fixtures = "packages/omniweave-office/fixtures"
+slice = "office"
+why = """
+The vacuous slice, included ON PURPOSE. Leaving it out would make the report look like a gate \
+that passes everywhere, when the truth is that it is unreachable on the format family most users \
+will bring first. 17-risks.md R-T16: "The framework's two hardest fidelity gates are both green \
+on the format family most users will bring first" — the disclosure is the mitigation, so the \
+slice has to appear and has to say `vacuous`.\
+"""

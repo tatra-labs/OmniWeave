@@ -63,14 +63,18 @@ if TYPE_CHECKING:
 __all__ = [
     "DEFAULT_DEADLINE_MS",
     "DEFAULT_MAX_OUTPUT_BYTES",
+    "NOT_INPUTS",
+    "ORIGIN_VERIFIER",
     "Call",
     "Fixture",
     "Fragment",
     "KitIO",
     "MemoryBlobStore",
+    "OriginCheck",
     "load_fixtures",
     "make_io",
     "read_fragment",
+    "reverify_origin",
     "run_parse",
 ]
 
@@ -84,6 +88,38 @@ drives. Not a plan constant and not pretending to be one: a real invocation's ce
 DEFAULT_DEADLINE_MS: Final = 60_000
 """One minute. `KitIO` does not enforce it -- see the module docstring -- and carries it because
 `DriverIO` has the field and a driver may read it to size its own work."""
+
+ORIGIN_VERIFIER: Final = "verify_origin"
+"""The optional method a driver ships so P7 can be proved on a branch only it can read.
+
+    verify_origin(part: bytes, origin: Mapping[str, Any], text: str) -> tuple[bool, str]
+
+Returns `(ok, reason)`; `reason` is empty when `ok` and otherwise says WHY, so a verifier can tell
+"the address does not resolve here" from "the text differs".
+
+**Why this exists.** 03-document-model.md:2991 requires P7 on **all three** of INV-10's branches.
+The `bytes` branch is self-contained -- decode a slice of the part -- and the kit proves it
+unaided. The other two are not: `nodepath` needs a reader for the part's own container format, and
+`glyphs` needs the recorded `os_extractor` re-run, which for `parse.pdf.pdfium` means pdfium. The
+plan requires the assertion and supplies no mechanism for making it, so the kit names one: a method
+on the driver class the kit already activated.
+
+It is OPTIONAL and the absence is not a pass. A driver without it gets an honest "not re-verified"
+-- and that is still a failing assertion for a card claiming `exact`, because an unproved claim is
+what P7 exists to catch.
+
+**The hook cannot make a false claim true.** It is handed the retained part and the block's own
+recorded address, and the caller compares its answer against the block's text. A driver that
+returned `(True, "")` unconditionally would pass here -- and would also face a `bytes`-branch
+fixture the kit checks itself, so the cheapest defence against that is the one already here: the
+kit proves `bytes` without asking.
+
+**It lives in this module and not in the `capability` suite** because `reverify_origin()` below is
+the one home of the three-branch decision, and two callers reach it: P7, which asks it of every
+body block when the CARD declares `origin_span = "exact"`, and `evaluate.span_exact_rate`, which
+asks it of every block whose own `quote` claims `verbatim`. A constant named in one suite and read
+by another module is the shape INV-21 asks you to notice.
+"""
 
 _CAS: Final = "cas://"
 _SHA_HEX_LEN: Final = 64
@@ -330,19 +366,39 @@ def _sidecar_media_type(path: Path) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+NOT_INPUTS: Final = frozenset({"EXPECTED.sha256", "README.md", "NOTICE", "LICENSE"})
+"""Files a fixture directory carries ABOUT itself, which are not fixtures.
+
+`EXPECTED.sha256` is the generator's digest manifest and `README.md` is the corpus's own prose;
+both are written by `fixtures/gen/`, both sit beside the fixtures, and neither is a document
+anybody wants parsed. Before this set existed the kit fed them to every driver and recorded the
+refusal: `parse.pdf.pdfium` reported `README.md (corrupt_input)` and `parse.office.anydoc` reported
+`EXPECTED.sha256 (unsupported_format)`, which is noise in a refusal count that a reader is supposed
+to be able to scan for a real refusal.
+
+A named set rather than a pattern, and the same shape `gate_vendor.check_digests` uses for the
+same reason: a fixture directory's bookkeeping is a short closed list, and a pattern broad enough
+to catch it (`*.md`, `*.sha256`) would also catch a Markdown fixture, which is a document
+`parse.text.builtin` is specified to parse."""
+
+
 def load_fixtures(directory: Path) -> tuple[Fixture, ...]:
-    """Every regular file under `directory`, sorted, minus the two kinds that are not inputs.
+    """Every regular file under `directory`, sorted, minus the three kinds that are not inputs.
 
     `*.meta.toml` is 13-quality.md section 4.4's fixture manifest -- metadata *about* a fixture --
-    and a dotfile is the toolchain's. Feeding either to a driver would be feeding it this
-    repository's bookkeeping and calling the result a parse failure.
+    a dotfile is the toolchain's, and `NOT_INPUTS` is the corpus's own bookkeeping. Feeding any of
+    them to a driver would be feeding it this repository's paperwork and calling the result a parse
+    failure.
     """
     if not directory.is_dir():
         return ()
     found = [
         path
         for path in sorted(directory.rglob("*"))
-        if path.is_file() and not path.name.startswith(".") and not path.name.endswith(".meta.toml")
+        if path.is_file()
+        and not path.name.startswith(".")
+        and not path.name.endswith(".meta.toml")
+        and path.name not in NOT_INPUTS
     ]
     return tuple(Fixture.of(path) for path in found)
 
@@ -553,6 +609,90 @@ def decode_span(data: bytes, start: int, length: int, codec: str) -> str | None:
     except (LookupError, UnicodeDecodeError, ValueError):
         return None
     return unicodedata.normalize("NFC", text)
+
+
+@dataclass(frozen=True, slots=True)
+class OriginCheck:
+    """The verdict of one re-read: did this block's address still produce this block's text?
+
+    `branch` is the `os_kind` that was taken and is carried because the three branches mean
+    different things when they fail. `got` is what the re-read actually produced, truncated by the
+    caller rather than here, because a suite wants it in an `Assertion` and a metric wants it in a
+    failure list.
+    """
+
+    ok: bool
+    branch: str
+    detail: str
+    got: str
+
+
+def reverify_origin(
+    data: bytes,
+    origin: Mapping[str, Any],
+    text: str,
+    hook: object = None,
+) -> OriginCheck:
+    """INV-10's re-read, on the branch `os_kind` selects. **The one home of this decision.**
+
+    Two callers need exactly this and they need it identically: the `capability` suite's P7, which
+    asks it of every body block when the CARD declares `origin_span = "exact"`, and
+    `evaluate.span_exact_rate`, which asks it of every block whose own `quote` claims `verbatim`.
+    Those are different populations — a card's declaration and a block's claim are not the same
+    statement — but the verification is one piece of arithmetic, and INV-21 has a name for the
+    version of this where it lives in two files.
+
+    Three branches, all named, because "a `bytes`-only property is inapplicable to the container
+    formats it matters most for" (03:2990's P7 row). Only `bytes` is provable from
+    `owdoc-fragment/1` alone: `nodepath` needs a node reader for the part's own format and `glyphs`
+    needs the recorded `os_extractor` re-run, and both are the driver's dependencies rather than
+    the kit's — so a driver claiming `exact` on either must ship a `verify_origin()` hook. Absent
+    one, this reports what it could not do, with the branch named, and **never a pass**.
+    """
+    kind = str(origin.get("k", "none"))
+    if kind == "bytes":
+        got = decode_span(
+            data,
+            int(origin.get("start", -1)),
+            int(origin.get("length", -1)),
+            str(origin.get("codec", "utf-8")),
+        )
+        want = unicodedata.normalize("NFC", text)
+        return OriginCheck(
+            ok=got == want,
+            branch=kind,
+            detail="nfc(part_bytes[a : a+b].decode(codec)) == text (03 section 7.2)",
+            got="<span out of range or undecodable>" if got is None else got,
+        )
+    if kind in {"nodepath", "glyphs"}:
+        if hook is None:
+            needs = "a node path resolver" if kind == "nodepath" else "the os_extractor"
+            return OriginCheck(
+                ok=False,
+                branch=kind,
+                detail=(
+                    f"the {kind} branch needs the part's own reader ({needs}), which is the "
+                    f"driver's dependency and not this kit's; a driver claiming exact on this "
+                    f"branch must ship a {ORIGIN_VERIFIER}() hook"
+                ),
+                got="",
+            )
+        try:
+            ok, why = hook(data, origin, text)  # type: ignore[operator]
+        except Exception as exc:  # a hook that raises is a failed verification, not a kit crash.
+            ok, why = False, f"{ORIGIN_VERIFIER}() raised {type(exc).__name__}: {exc}"
+        return OriginCheck(
+            ok=bool(ok),
+            branch=kind,
+            detail=why or f"the driver's own {ORIGIN_VERIFIER}() re-read the retained part",
+            got=text if ok else str(why),
+        )
+    return OriginCheck(
+        ok=False,
+        branch=kind or "absent",
+        detail=f"os_kind = {kind!r}; exact needs a re-verifiable OriginSpan (04:493)",
+        got=kind or "absent",
+    )
 
 
 def iter_fixture_names(fixtures: Sequence[Fixture]) -> Iterator[str]:
