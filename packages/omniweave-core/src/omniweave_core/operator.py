@@ -36,15 +36,20 @@ is a **reference**: core defines the shape, `omniweave` constructs the value. Mo
 
 ## Still owed, and by which cell
 
-Seven types are named in annotations here and have no home in the tree yet. Each is a quoted
-forward reference with a `# noqa: F821` on its own line, and that is a **self-cleaning** device
-rather than a suppression: `RUF100` fails the build the day the name resolves, so the cell that
-lands the type is told to delete the comment and make the import real.
+Five types are named in an annotation here and have no home in the tree yet; the table below
+carries a sixth, `ServiceRegistry`, which is **called** rather than named and is therefore reached
+through `ServiceRegistryView` instead of through a suppression.
+
+A seventh row left this table when W4.5 landed `omniweave_core.budget`: `RUF100` failed the build
+over `BudgetLedger`'s now-unused `# noqa`, which is the mechanism working exactly as described here.
+Each remaining forward reference carries that suppression on its own line, and it is a
+**self-cleaning** device rather than a way of hiding something: ruff fails the build the day the
+name resolves, so the cell that lands the type is told to delete the comment and make the import
+real.
 
 | name | home | cell |
 |---|---|---|
 | `Limits` | `omniweave_core.limits` (02 row 7) | unscheduled -- see below |
-| `BudgetLedger` | `omniweave_core.budget` (02 row 19) | W4.5 |
 | `CacheLayer` | `omniweave_core.cache` (02 row 18) | W4.4 |
 | `TraceSink` | `omniweave_core.events` (02 row 21), printed at 15:362 | W4.8 |
 | `ServiceRegistry` | `omniweave_core.modelserver` (02 row 15) | W4.9 |
@@ -111,6 +116,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, Literal, Protocol, runtime_ch
 
 from omniweave_ports.types import ArtifactRef, CostClass, FailureClass, ServiceHandle, UnitRef
 
+from omniweave_core.budget import BudgetLedger
 from omniweave_core.clock import Clock
 from omniweave_core.model.records import Producer
 
@@ -482,7 +488,7 @@ class RunContext:
     limits: Limits  # noqa: F821 -- 08:275; unhomed, see the docstring table.
     admission: AdmissionView
     services: ServiceRegistryView
-    budget: BudgetLedger  # noqa: F821 -- omniweave_core.budget, W4.5.
+    budget: BudgetLedger
     cancel: CancelToken
     clock: Clock
     events: TraceSink  # noqa: F821 -- omniweave_core.events, W4.8.

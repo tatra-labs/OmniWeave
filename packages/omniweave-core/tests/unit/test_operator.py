@@ -78,17 +78,18 @@ that matters is the one in this repository: it is what the store actually create
 to an empty file on every run, and a defect about a column is a claim about the schema rather than
 about a quotation of it."""
 
-# The seven types this module names in an annotation and cannot import, each with the cell that
-# owes it. This is `test_store_protocols.py`'s `EXPECTED_UNRESOLVED` device at a second boundary:
-# the set is pinned, so a typo arrives as a new member and a type that lands arrives as a stale
-# one. Unlike that file's, the suppression here is per-line, so `RUF100` is a second enforcer:
-# ruff fails the build the day one of these resolves and the suppression stops being needed.
-# (Spelled without the directive's own punctuation, because ruff reads a comment that carries
-# it as a directive on THIS line and warns that the prose is not a rule code.)
+# The types this module names in an annotation and cannot import, each with the cell that owes it.
+# `BudgetLedger` was here until W4.5 landed `omniweave_core.budget`; `RUF100` failed the build over
+# the suppression that had stopped being needed, which is the self-cleaning half doing its job. This
+# is `test_store_protocols.py`'s `EXPECTED_UNRESOLVED` device at a second boundary: the set is
+# pinned, so a typo arrives as a new member and a type that lands arrives as a stale one. Unlike
+# that file's, the suppression here is per-line, so `RUF100` is a second enforcer: ruff fails the
+# build the day one of these resolves and the suppression stops being needed. (Spelled without the
+# directive's own punctuation, because ruff reads a comment that carries it as a directive on
+# THIS line and warns that the prose is not a rule code.)
 EXPECTED_UNRESOLVED: frozenset[str] = frozenset(
     {
         "Limits",  # 08:275. `omniweave_core.limits` holds the constants, not this record.
-        "BudgetLedger",  # 02 row 19 -> `omniweave_core.budget`. W4.5.
         "TraceSink",  # 02 row 21 -> `omniweave_core.events`; printed at 15-observability.md:362.
         "CacheLayer",  # 02 row 18 -> `omniweave_core.cache`. W4.4.
         "Degradation",  # 15-observability.md's, by charter erratum E15. P7.
@@ -96,7 +97,7 @@ EXPECTED_UNRESOLVED: frozenset[str] = frozenset(
     }
 )
 
-# `ServiceRegistry` is the seventh name the module docstring's table lists and it is NOT here,
+# `ServiceRegistry` is the sixth name the module docstring's table lists and it is NOT here,
 # because `RunContext.service()` calls it rather than naming it: it is reached through
 # `ServiceRegistryView`, a declared Protocol, so there is no undefined name to suppress. The
 # docstring says so and `test_the_docstring_table_names_every_owed_type` checks that it does.
