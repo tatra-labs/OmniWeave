@@ -118,6 +118,14 @@ ban-relative-imports = "all"
 # from a homoglyph attack, and Q-G23 is the property that needs the fixture.
 "packages/omniweave-conform/tests/unit/test_conform_kit.py" = ["RUF001", "RUF002"]
 
+# `read_verdict()` is 08-runtime.md section 4.5's six-clause read policy, and the clauses are
+# ORDERED: clause 2 precedes clause 4 because an artefact that does not parse cannot be asked
+# whether it is empty, and clause 5 precedes clause 6 because a unit mismatch is a bug report and
+# must not be reported as a vintage. Six clauses plus the hit is seven returns. Collapsing them to
+# satisfy a branch counter would hide the very table the function exists to implement -- the same
+# reason `config.py` carries this ignore one line below.
+"packages/omniweave-core/src/omniweave_core/cache.py" = ["PLR0911"]
+
 # The coercion table is a ten-arm dispatch over `ConfigKind` (02-architecture.md section 8.4), so
 # one return per kind is the shape the plan mandates; collapsing it to satisfy a branch counter
 # would hide the very table the module exists to implement. PLC0415: the two cross-module shims
