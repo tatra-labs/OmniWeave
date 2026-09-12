@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schema/event-v1.json",
+  "title": "Event",
+  "type": "object",
+  "additionalProperties": false,
+  "description": "One record. 15-observability.md:352-364, field for field.",
+  "required": [
+    "ts_wall_ns",
+    "ts_mono_ns",
+    "run_id",
+    "writer_id",
+    "seq",
+    "trace_id",
+    "span_id",
+    "parent_span_id",
+    "kind",
+    "phase",
+    "level",
+    "unit",
+    "part",
+    "operator",
+    "driver",
+    "fields"
+  ],
+  "properties": {
+    "ts_wall_ns": {
+      "type": "integer"
+    },
+    "ts_mono_ns": {
+      "type": "integer"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "writer_id": {
+      "type": "string"
+    },
+    "seq": {
+      "type": "integer"
+    },
+    "trace_id": {
+      "type": "string"
+    },
+    "span_id": {
+      "type": "string"
+    },
+    "parent_span_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "run.start",
+        "run.end",
+        "run.degraded",
+        "plan.discover",
+        "plan.identify",
+        "plan.expand",
+        "plan.pause",
+        "plan.resume",
+        "work.enqueue",
+        "work.claim",
+        "work.lease_extend",
+        "work.lease_reap",
+        "work.complete",
+        "work.defer",
+        "work.cancel",
+        "unit.begin",
+        "unit.progress",
+        "unit.complete",
+        "unit.failed",
+        "driver.spawn",
+        "driver.ready",
+        "driver.invoke",
+        "driver.result",
+        "driver.crash",
+        "driver.quarantine",
+        "driver.shutdown",
+        "service.attach",
+        "service.spawn",
+        "service.refuse",
+        "service.evict",
+        "service.coalesce",
+        "cache.hit",
+        "cache.miss",
+        "cache.corrupt",
+        "cache.write",
+        "cache.sweep",
+        "budget.reserve",
+        "budget.deny",
+        "budget.commit",
+        "store.txn",
+        "store.wal_valve",
+        "store.bulk_lock",
+        "store.contend",
+        "dep.record",
+        "dep.invalidate",
+        "gc.sweep",
+        "degrade",
+        "manifest.write",
+        "query.plan",
+        "query.channel",
+        "query.complete",
+        "query.refuse",
+        "compile.begin",
+        "compile.unit",
+        "compile.gate",
+        "toolchain.run",
+        "driver.log",
+        "doctor.check",
+        "shard.roll",
+        "plan.begin",
+        "plan.end",
+        "attempt.begin",
+        "attempt.end",
+        "call.begin",
+        "call.end"
+      ]
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "start",
+        "end",
+        "point"
+      ]
+    },
+    "level": {
+      "type": "string",
+      "enum": [
+        "debug",
+        "info",
+        "notice",
+        "warn",
+        "error"
+      ]
+    },
+    "unit": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "part": {
+      "type": "string"
+    },
+    "operator": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "driver": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "fields": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    }
+  }
+}

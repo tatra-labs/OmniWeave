@@ -508,7 +508,11 @@ budget_s       = 2
 pr             = true
 nightly        = false
 release        = false
-runner_planned = ["tools/gate_events.py"]
+# LANDED at W4.8. One script, four checks: the file is its generator's output, the committed schema
+# and the committed file carry one vocabulary in one order, every row declares one of the five
+# levels (15-observability.md:341's not-an-append), and the rows the previous tag published are
+# still a prefix of the current file.
+runner         = ["tools/gate_events.py"]
 step           = "schema/event-v1.json generated from tools/events.toml (16-roadmap.md:548, W4.8)"
 owner          = "release"
 reviewed_at    = "2026-09-07"

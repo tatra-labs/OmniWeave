@@ -68,6 +68,7 @@ from omniweave_core import budget as budget_mod
 from omniweave_core.config import KEYS
 from omniweave_core.drivers.resolve import Policy
 from omniweave_core.errors import ConfigError, RouteError
+from omniweave_core.events import EVENTS, SPAN_ATTRIBUTES
 from omniweave_core.host import subproc
 from omniweave_core.host.subproc import (
     AIMD_RECOVERY_STREAK,
@@ -903,6 +904,20 @@ def test_the_eighteen_call_attributes_are_the_plans_row_in_order(plan: PlanDocs)
     declared = tuple(name.strip().strip("`") for name in cells[2].split(",") if name.strip())
     assert declared == CALL_SPAN_ATTRIBUTES
     assert len(CALL_SPAN_ATTRIBUTES) == 18
+
+
+def test_the_dispatchers_eighteen_are_the_event_vocabularys_call_span() -> None:
+    """One fact, two cells: `CALL_SPAN_ATTRIBUTES` here and `SPAN_ATTRIBUTES["call"]` in W4.8.
+
+    Both transcribe 15-observability.md:140 and both are used -- this one builds the mapping a span
+    carries, that one declares what `call.begin` and `call.end` may hold. INV-21 allows one home for
+    a fact and this assertion is the cheapest way to notice the day they stop agreeing; the
+    alternative, importing one from the other, would put the trace vocabulary inside the dispatcher.
+    """
+    assert SPAN_ATTRIBUTES["call"] == CALL_SPAN_ATTRIBUTES
+    assert set(EVENTS["call.begin"].fields) | set(EVENTS["call.end"].fields) == set(
+        CALL_SPAN_ATTRIBUTES
+    )
 
 
 def test_batch_index_and_batch_size_are_attributes_and_the_plan_says_so(plan: PlanDocs) -> None:

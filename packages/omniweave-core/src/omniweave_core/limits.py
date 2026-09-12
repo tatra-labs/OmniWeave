@@ -62,6 +62,7 @@ __all__ = [
     "MAX_ENTITY_DEGREE",
     "MAX_ENTRY_BYTES",
     "MAX_ENTRY_COUNT",
+    "MAX_EVENT_QUEUE",
     "MAX_EXPANSION",
     "MAX_EXPANSION_TEXT_BYTES",
     "MAX_FILTER_DOC_KEYS",
@@ -94,6 +95,7 @@ __all__ = [
     "MAX_SEGMENT_BLOCKS",
     "MAX_SEGMENT_TOKENS",
     "MAX_SNAPSHOT_MS",
+    "MAX_SPAN_BUFFER_EVENTS",
     "MAX_VIEW_BYTES",
     "MAX_WORK_ATTEMPTS",
     "MAX_XML_DEPTH",
@@ -718,6 +720,39 @@ MAX_AUTO_PARALLEL: int = 96
 
 Set by charter section 6.10; 08-runtime.md section 6 and 12-performance.md section 8 own the
 arithmetic.
+"""
+
+MAX_SPAN_BUFFER_EVENTS: int = 64
+"""Per OPEN UNIT, the span subtree a sink holds while tail sampling waits for the outcome.
+
+15-observability.md section 2.4 puts the number here rather than in a comment, and its own words
+say why: the peak buffer is `sum(max_inflight) x MAX_SPAN_BUFFER_EVENTS x mean serialised bytes`,
+*"which at the charter's default `[budget] max_inflight` = 38 units and the reference ingest's
+~180 B per event is 38 x 64 x 180 = 427.5 KiB"*. A bound that is a formula over three numbers is a
+bound a reader can recompute for their own machine, and a comment cannot be imported.
+
+64 is eight times the charter's `~8 events` per unit, *"which covers a REGEN ladder of three
+attempts each with a coalesced `call`, and it is a ceiling rather than a target"*. An overflow
+**flushes the unit unsampled** rather than truncating it (15:158) -- fail visible, because a
+truncated subtree is the orphan I33 forbids wearing a different hat.
+
+Set by 15-observability.md section 2.4.
+"""
+
+MAX_EVENT_QUEUE: int = 65_536
+"""The bounded drop-oldest queue between `TraceSink.emit()` and the writer thread.
+
+02-architecture.md:245 and 15-observability.md:38 both say *"a bounded 64k queue, drop-oldest"*, and
+15:37 gives the constraint it exists to satisfy: `emit` *"must not block"*, so under pressure the
+stream loses records rather than the run losing throughput. That is also why nothing that must
+reconcile may be computed from events -- *"the event stream is diagnostic; the ledger is
+authoritative"*.
+
+The drop is counted, never silent: `seq` is assigned at the HEAD of `emit()` before the queue can
+discard anything (15:381-385), so a drop is a GAP in `seq` rather than an absence, and the count
+rides in `run.events_dropped` and in one `Degradation(kind="events_dropped")`.
+
+Set by 15-observability.md sections 1 and 3.2.
 """
 
 MAX_WORK_ATTEMPTS: int = 5
