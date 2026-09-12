@@ -93,6 +93,12 @@ ban-relative-imports = "all"
 "packages/omniweave-core/src/omniweave_core/host/subproc.py" = ["TID251"]
 "packages/omniweave-core/src/omniweave_core/store/*.py" = ["TID251"]
 "packages/omniweave/src/omniweave/run/*.py" = ["TID251"]
+
+# The Supervisor's own tests read the four semaphore families' bounds, which needs the type they
+# are. INV-3's ban is about where a LOOP may live, and a test that asserts `render_sem` is an
+# `asyncio.BoundedSemaphore` opened at `max(1, cpus - 2)` is the thing that keeps the invariant
+# checkable rather than a breach of it. Scoped to the one file, like the source-side ignore above.
+"packages/omniweave/tests/unit/test_run_supervisor.py" = ["TID251"]
 "packages/omniweave-serve/src/omniweave_serve/otlp.py" = ["TID251"]
 "packages/omniweave-conform/**" = ["S101"]
 
