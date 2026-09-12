@@ -124,7 +124,11 @@ Every type these 33 signatures name, with its definition site and its owner. "He
   load-bearing field. **That module landed with P4 W4.1, so this is now a real import** and no
   longer a forward reference: a boundary declaration should name the type it returns, and the only
   reason it did not was that the home did not exist.
-* `StepResult` -- 08-runtime.md:209-231. The runtime's, P4.
+* `StepResult` -- 08-runtime.md:209-231. `omniweave_core.operator`, which landed with P4's
+  runtime vocabulary, so **this is now a real import** for the reason `WorkRow` is: a boundary
+  declaration should name the type it returns. `store/queue.py`'s `StepResultView` is what
+  `complete()` is actually typed against and stays narrow on purpose; this file declares the
+  Protocol, and the Protocol says `StepResult`.
 * `ChannelResult`, `Hit` -- 07:1225-1235, :2250-2265. The retrieval module's, P6; 07:3348 says so.
 * `SegmentRef`, `PassIdentity`, `RunStatus`, `RunReport`, `RunId`, `EntityId`, `MentionId`,
   `EdgeId`, `ClaimId` and the seven Drafts -- 06:337-384. `omniweave_core/store/graph.py`, which
@@ -132,14 +136,14 @@ Every type these 33 signatures name, with its definition site and its owner. "He
 * `Spend` -- 05-ingest-and-routing.md:2370. P4's.
 * `DegradeCause` -- 07:1989. P6's (07:3348-3351).
 
-**`# ruff: noqa: F821` below, and why it is a directive and not twenty-six comments.** Twenty-six of
-those names have no module yet, and the plan quotes most of them at their use sites for the same
+**`# ruff: noqa: F821` below, and why it is a directive and not twenty-five comments.** Twenty-five
+of those names have no module yet, and the plan quotes most of them at their use sites for the same
 reason. A Protocol method has no body, so a signature naming an unhomed type costs nothing at import
-time -- what it costs is `typing.get_type_hints()`, which raises `NameError` here rather than
-lying. Every statement in this file is a `class`, an `import`, or a `...`, so F821 can only ever
-fire on an annotation; and `test_store_protocols.py` pins the EXACT set of unresolved names, so a
-typo shows up as a new member of that set and a name that later gets a home shows up as a stale one.
-That test is the gate the suppression would otherwise remove.
+time -- what it costs is `typing.get_type_hints()`, which raises `NameError` here rather than lying.
+Every statement in this file is a `class`, an `import`, or a `...`, so F821 can only ever fire on an
+annotation; and `test_store_protocols.py` pins the EXACT set of unresolved names, so a typo shows up
+as a new member of that set and a name that later gets a home shows up as a stale one. That test is
+the gate the suppression would otherwise remove.
 
 Stdlib only (INV-2 / G1). One of the nine LAZY names (11-repo-layout.md section 1.3): G17 asserts a
 bare `import omniweave_core` does not reach this package, which holds because
@@ -159,6 +163,7 @@ from typing import Any, BinaryIO, Protocol
 
 from omniweave_core.model.block import BlockDraft, BlockId, Cite, Mark
 from omniweave_core.model.enums import RelKind, Trust
+from omniweave_core.operator import StepResult
 from omniweave_core.store.types import (
     ChannelInput,
     ChannelSpec,

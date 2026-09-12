@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import dataclasses
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -48,6 +49,7 @@ from omniweave.run.supervisor import (
 )
 from omniweave_core.config import load
 from omniweave_core.errors import ConfigError
+from omniweave_core.operator import AdmissionView
 
 REPO = Path(__file__).resolve().parents[4]
 EXAMPLE = REPO / "omniweave.toml.example"
@@ -446,3 +448,34 @@ def test_the_headroom_fraction_is_the_plans_zero_point_eight() -> None:
     host = HostFacts(cpus=4, ram_bytes=10 * GB, free_disk_bytes=GB)
     assert not check_ram(8 * GB, host).refuses
     assert check_ram(8 * GB + 1, host).refuses
+
+
+# ---------------------------------------------------------------------------
+# The seam core names, checked from the side that can see both types
+# ---------------------------------------------------------------------------
+
+
+def test_the_derived_admission_satisfies_the_view_core_declares(cfg) -> None:
+    """`RunContext.admission` is typed `AdmissionView`, and this is the only place both exist.
+
+    `omniweave_core/operator.py` cannot import `Admission`: `tools/layers.toml` gives
+    `omniweave_core` exactly `["omniweave_ports"]`, and `Admission`'s four families are
+    `asyncio.BoundedSemaphore` instances, which `pyproject.toml` bans from core outright --
+    *"INV-3: omniweave/run/ only. Core must not import a loop."* So core declares the two water
+    marks it can name and this distribution, which imports both, is where the structural claim is
+    checked. Without this test the narrowing is an assertion in a docstring.
+
+    The check is `isinstance` and not an attribute scan because `AdmissionView` is
+    `runtime_checkable` for exactly this: a seam should be able to assert what it was handed.
+    """
+    admission = derive_admission(cfg, HostFacts(cpus=8, ram_bytes=64 * GB, free_disk_bytes=GB))
+
+    assert isinstance(admission, AdmissionView)
+    assert admission.high_water == 50_000
+    assert admission.low_water == 25_000
+
+    # And the narrowing is real: the four families are NOT on the view, which is what keeps
+    # `asyncio` out of `omniweave_core`'s annotations.
+    assert set(AdmissionView.__annotations__) == {"high_water", "low_water"}
+    families = {"class_sem", "worker_sem", "render_sem", "service_sem"}
+    assert families <= {field.name for field in dataclasses.fields(admission)}
