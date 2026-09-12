@@ -597,6 +597,21 @@ jobs:
             "12-performance.md:1966 pins Budgets to ow-bench-1, which this runner is not" \
             | tee -a "$GITHUB_STEP_SUMMARY"
 
+      - name: "fuzz/seeds is still the vendored corpus"
+        # 13-quality.md:163 and 11-repo-layout.md:390: `fuzz/seeds/` "holds the atheris corpus,
+        # mirrored from vendor/anydoc". The mirror is a WRITABLE copy on purpose -- libFuzzer
+        # writes into its corpus directory and `vendor/` is the artefact G12 digests byte for
+        # byte, so pointing a fuzzer at the vendored tree would make a green fuzzing run and a red
+        # gate_vendor.py the same event.
+        #
+        # A copy is only not a second home for one fact if the generator can fail, which is what
+        # this step is. It compares both directions against vendor/anydoc/fuzz/seeds/ and exits 1
+        # on any drift, so the vendored tree stays the single source. No G number: 11-repo-
+        # layout.md section 6.4's register is closed at twenty-nine and inventing a thirtieth id
+        # for a check the plan does not number would put a row in tools/gates.toml that no plan
+        # line owns.
+        run: uv run tools/mirror_fuzz_seeds.py --check
+
       - name: "the static Q-G series"
         # Section 6.4: "The gates job additionally runs the static Q-G series ... Their budgets,
         # owners and review dates live in eval/gates.toml; this document only reserves them a job."
@@ -675,6 +690,25 @@ jobs:
       - name: "the test suite"
         # testpaths = ["packages"] in the workspace root, so this is every tier the tree carries.
         run: uv run pytest -q
+      - name: "fuzz/ -- the committed corpus, replayed through every target"
+        # 16-roadmap.md:520's P3 exit line, whose paths are explicit: `uv run pytest tests/host
+        # tests/drivers fuzz/ -q`. The step above runs `pytest -q` and the workspace root sets
+        # testpaths = ["packages"], so fuzz/ is reached by naming it and not by widening that
+        # setting -- the same decision the plan's own command makes.
+        #
+        # NINE CELLS ON PURPOSE. 13-quality.md:133 puts "frame framing under a byte-level fuzzer"
+        # in T1's `core/host, core/host/wire` row, and T1 is this matrix. A parser bug that only
+        # reproduces on one libc or one pdfium build is exactly the class a single-cell fuzz job
+        # would miss, and the replay costs seconds.
+        #
+        # This is the REPLAY half. The search half is atheris, which the root pyproject.toml pins
+        # `sys_platform == 'linux'` because it needs clang and publishes no Windows wheel
+        # (11-repo-layout.md:1480) -- so six of these nine cells cannot install it at all. Running
+        # it is 14-security.md:477's "nightly", and there is no `schedule:` in this file's `on:`
+        # block; that gap is the same one recorded above for ow-bench-1 and it is stated rather
+        # than papered over with a job that would never fire.
+        run: uv run pytest fuzz/ -q
+
       - name: "G10 -- cold start against this OS's baseline, 25% band plus a hard module count"
         # The HARD assertion is the module count from "python -X importtime -c 'import
         # omniweave_core'", which does not vary with runner load and is what actually regresses --

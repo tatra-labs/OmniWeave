@@ -38,3 +38,10 @@ wheelhouse/
 # ~29 MB against Tier A's 64 MB total (11-repo-layout.md:383), so committing it would spend half
 # the corpus budget on bytes a script reproduces in a second.
 fixtures/generated/
+
+# --- the fuzzer's working corpus -------------------------------------------
+# `vendor/anydoc/fuzz/README.md`, whose convention this follows: "fuzz/seeds/ holds checked-in
+# starting inputs; fuzz/corpus/ is the working directory libfuzzer writes to and is not checked
+# in". A coverage-guided corpus grows without bound and is a derived artefact of the seeds plus
+# the run that produced it, so committing one would commit a search result as if it were input.
+fuzz/corpus/

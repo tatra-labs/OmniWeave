@@ -50,6 +50,7 @@ from omniweave_core.errors import DriverHostError, OwError
 from omniweave_ports.types import DriverError, Port
 
 from omniweave_conform.harness import Fixture, MemoryBlobStore, run_parse
+from omniweave_conform.mutate import count, mutations
 from omniweave_conform.result import Assertion, SuiteResult
 
 if TYPE_CHECKING:
@@ -83,30 +84,23 @@ still here afterwards to say so."""
 HANG_BUDGET_NS: Final = int(HANG_BUDGET_S * 1_000_000_000)
 """The same budget in the unit the clock reports. Derived, so the two cannot disagree."""
 
-_TRUNCATE_FRACTIONS: Final = (0.5, 0.05)
-_NESTING_DEPTH: Final = 10_000
-
 
 def _mutations(fixture: Fixture) -> Iterator[tuple[str, bytes]]:
-    """Six mutations per fixture, each aimed at a different way a parser breaks.
+    """The mutation set, from the one module that defines it.
 
-    The names are the accusation: `truncated` catches a read past the end, `bitflip` catches a
-    checksum nobody checks, `nul` catches a C-string boundary, `nested` catches unbounded
-    recursion, `giant_length` catches a length field read from the input and trusted, and
-    `empty` catches the degenerate case every parser forgets.
+    It moved to `omniweave_conform.mutate` when `fuzz/targets/` needed the same set: this suite
+    runs it over an author's fixtures on the author's machine, and the atheris targets run it
+    over `fuzz/seeds/` in the nightly job 14-security.md:477 specifies. Two mechanisms, one
+    definition of "malformed", because a driver green under one and red under the other has been
+    told two different things by one framework (INV-21).
+
+    The extraction found a defect and it is worth naming. This docstring used to accuse seven
+    things -- including `empty`, "the degenerate case every parser forgets" -- over a generator
+    that yielded six, and `empty` was the one it never produced. The generator was the half that
+    was wrong, and the whole argument for naming a mutation after the bug it hunts is that the
+    gap between the two is readable.
     """
-    data = fixture.data
-    for fraction in _TRUNCATE_FRACTIONS:
-        cut = max(0, int(len(data) * fraction))
-        yield f"truncated@{fraction}", data[:cut]
-    if data:
-        index = len(data) // 2
-        flipped = bytearray(data)
-        flipped[index] ^= 0xFF
-        yield "bitflip", bytes(flipped)
-    yield "nul", data[: len(data) // 2] + b"\x00" * 64 + data[len(data) // 2 :]
-    yield "nested", b"[" * _NESTING_DEPTH + b"]" * _NESTING_DEPTH
-    yield "giant_length", b"\xff\xff\xff\x7f" + data
+    return mutations(fixture.data)
 
 
 def run(subject: Subject) -> SuiteResult:
@@ -226,11 +220,12 @@ def _assertions(subject: Subject, driver: object) -> tuple[list[Assertion], dict
             actual="; ".join(untyped[:3]) or "none",
         )
     )
-    # The floor is what `_mutations` ACTUALLY yields, counted, rather than a constant times
-    # the fixture count: `bitflip` is skipped for an empty fixture, so a hand-written
-    # multiplier is off by one for every zero-byte input and the assertion then fails for a
-    # reason that is about arithmetic rather than about the driver. It did; this is the fix.
-    expected = sum(sum(1 for _ in _mutations(f)) for f in subject.fixtures)
+    # The floor is what the mutator ACTUALLY yields, counted, rather than a constant times the
+    # fixture count: `bitflip` is skipped for an empty fixture, so a hand-written multiplier is
+    # off by one for every zero-byte input and the assertion then fails for a reason that is
+    # about arithmetic rather than about the driver. It did; `mutate.count` is the fix, and it
+    # generates for exactly that reason.
+    expected = sum(count(f.data) for f in subject.fixtures)
     checks.append(
         Assertion(
             "every generated mutation was actually run",

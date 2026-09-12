@@ -128,6 +128,13 @@ ban-relative-imports = "all"
 "packages/omniweave-core/tests/test_purity.py" = ["SIM115", "PLW0108"]
 "**/tests/**" = ["S101", "PLR2004", "ANN"]
 
+# `fuzz/` is a test tree that is not under a `tests/` directory, because 11-repo-layout.md:390
+# puts it at the repository root beside `tools/` and `eval/`. The same three allowances apply for
+# the same reasons -- an assertion is what a test is made of, a magic number in an assertion is
+# the expected value, and a test's own helpers are not a public API -- and they are spelled out
+# here rather than by widening the glob above, so that a file moving out of `fuzz/` loses them.
+"fuzz/test_targets.py" = ["S101", "PLR2004", "ANN"]
+
 # ---------------------------------------------------------------------------
 # pytest
 # ---------------------------------------------------------------------------
