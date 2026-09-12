@@ -10,6 +10,13 @@ than a rule about where people should put things.
 2.6 lists it among the five things that are deliberately not parallel, beside the commit, two
 writers on one store, a `REGEN` retry for one `(unit, part)`, and driver construction.
 
+**`dispatch` is deliberately not re-exported here.** `omniweave/run/dispatch.py` imports
+`omniweave_core.host.subproc` for the four mechanisms 02-architecture.md:238 leaves there, and that
+module opens `ctypes`, `socket` and `struct` for the job objects and the named pipes. Re-exporting
+its names would make `from omniweave.run import Admission` -- which is a pure arithmetic over
+`(Config, HostFacts)` -- pay for a driver host. The dispatcher's callers are `supervisor.py` and
+`pipeline.py`, both of which import it by module.
+
 Specified in 02-architecture.md section 2 rows 30-39 and section 5, 08-runtime.md Part 2, and
 11-repo-layout.md section 1.4.
 """

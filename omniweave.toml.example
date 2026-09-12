@@ -219,6 +219,10 @@ inproc_bulk_threshold = 64             # above it an inproc driver is moved to s
                                        #   size
 max_deps_per_unit     = 256            # clamps below MAX_DEPS_PER_UNIT
 work_compact_above    = 5000000        # the `work` table compaction threshold
+max_sequence_units    = 64             # a driver session is claimed whole or not at all; a
+                                       #   longer one is refused at plan time, because an
+                                       #   unbounded widening of the claim defeats
+                                       #   [budget] max_inflight
 [runtime.claim]
 batch = { free = 256, local_compute = 32, billed_api = 8 }   # clamped by the card, then AIMD:
                                        #   additive-increase / multiplicative-decrease, never

@@ -48,9 +48,11 @@ import gen_config_axes  # noqa: E402
 
 AxisRow = gate_config_axes.AxisRow
 
-# The eleven declared keys the shipped configuration does not instantiate. They are real keys with
-# real defaults -- 18-api-sketch.md section 4 carries a row for each of the ten, and ADR-3 decision
-# 3 adds `[drivers.resolve]` -- so the gap is in `omniweave.toml.example`, not in the registry.
+# The twelve declared keys the shipped configuration does not instantiate. They are real keys
+# with real defaults -- 18-api-sketch.md section 4 carries a row for ten, ADR-3 decision 3 adds
+# `[drivers.resolve]`, and 08-runtime.md:2606 adds `[runtime] max_sequence_units` -- so the gap
+# is in the fixture, not in the registry. The ROOT `omniweave.toml.example` carries the twelfth
+# already; this fixture quotes charter.md:462-670, which predates all of them.
 OWED_BY_THE_EXAMPLE = frozenset(
     {
         "drivers.resolve.*",
@@ -64,6 +66,7 @@ OWED_BY_THE_EXAMPLE = frozenset(
         "observe.level",
         "observe.redact",
         "observe.retain_days",
+        "runtime.max_sequence_units",
     }
 )
 
@@ -427,10 +430,10 @@ def test_exact_coverage_reports_nothing_when_it_is_exact() -> None:
     assert gate_config_axes.check_coverage(document, rows) == ()
 
 
-def test_the_shipped_fixture_leaves_exactly_the_eleven_owed_lines_uninstantiated() -> None:
+def test_the_shipped_fixture_leaves_exactly_the_twelve_owed_lines_uninstantiated() -> None:
     """The `over` direction cannot pass until the root artefact `omniweave.toml.example` is
     committed with a line per key: the test fixture beside this file quotes charter.md:462-670 and
-    that block predates eleven declared keys. Each name below has a row in 18-api-sketch.md
+    that block predates twelve declared keys. Each name below has a row in 18-api-sketch.md
     section 4 or in ADR-3 decision 3, so the debt is in the example and not in the registry.
     ADR-3 states the consequence: "adding a config key now costs a pattern AND a line in
     `omniweave.toml.example`"."""
@@ -562,7 +565,7 @@ def test_the_gate_exits_non_zero_on_the_shipped_fixture_and_says_why(
     assert gate_config_axes.main(["--example", str(SHIPPED)]) == 1
     out = capsys.readouterr().out
     assert gate_config_axes.DEAD_PATTERN in out
-    assert "G18 FAILED: 11 finding(s)" in out
+    assert "G18 FAILED: 12 finding(s)" in out
 
 
 # ---------------------------------------------------------------------------------------------
