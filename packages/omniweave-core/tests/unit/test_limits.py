@@ -24,6 +24,7 @@ OUT = "09-generation.md section 14.1"
 QUALITY = "13-quality.md section 13.4"
 SECURITY = "14-security.md section 2.1"
 DRIVERS = "04-driver-system.md section 4.5"
+RUNTIME = "08-runtime.md section 1.6"
 
 # (constant, value the plan prints, the document that sets it)
 VALUES: list[tuple[str, object, str]] = [
@@ -89,6 +90,7 @@ VALUES: list[tuple[str, object, str]] = [
     # The runtime
     ("MAX_AUTO_PARALLEL", 96, CHARTER),
     ("MAX_DEPS_PER_UNIT", 256, CHARTER),
+    ("MAX_WORK_ATTEMPTS", 5, RUNTIME),
     # The OUT framework
     ("MAX_IL_FILE_BYTES", 4_194_304, OUT),
     ("MAX_IL_NODES", 100_000, OUT),

@@ -115,9 +115,10 @@ LAZY = (
 # shows up as a stale one. Either way someone has to come back here and say which.
 EXPECTED_UNRESOLVED: frozenset[str] = frozenset(
     {
-        # 07:56-58 -- the queue's two, homed in `omniweave_core.work` (02-architecture.md:246)
-        # and `omniweave_core.run` (08-runtime.md:209) by P4.
-        "WorkRow",
+        # 07:56-58 -- the queue's two. `WorkRow` is GONE from this set: `omniweave_core.work`
+        # landed with P4 W4.1 (02-architecture.md:246) and `store/__init__.py` imports it, which
+        # is what a row leaving here is supposed to look like. `StepResult` is still owed --
+        # 08-runtime.md:177 homes it in `omniweave_core.operator`, which P4 has not built.
         "StepResult",
         # 07:1225, :2251 -- the query path's, sent there by 07:3348. P6.
         "ChannelResult",

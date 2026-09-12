@@ -7,6 +7,25 @@ table is the specification; a reviewer may reject any `Store.complete()` change 
 without amending it"* (08:91-92) -- and the claim statement is charter.md:4083-4102, the only place
 the batch-coherent claim is printed as SQL.
 
+## What left with P4 W4.1
+
+`WorkRow`, `WORK_STATUSES`, `WORK_COLUMNS`, `OUTCOMES`, `Transition`, `TRANSITIONS`,
+`DECREMENTING` and all seven statements were written here at P2 and now live in
+`omniweave_core.work`, which 02-architecture.md:246 makes the home of *"`WorkRow`, `FailureClass`
+re-export, `classify()`, the claim/complete/reap SQL, the retry ladder"*. `MAX_WORK_ATTEMPTS` went
+one step further, to `omniweave_core.limits`, which is the home of every `MAX_*` ceiling -- this
+file's own docstring recorded that as an owed edit and named it.
+
+**A move and not a re-export.** This module imports what it submits; it re-exports nothing, so
+`from omniweave_core.store.queue import CLAIM_SQL` now fails, which is the point. A type with two
+importable homes is the failure INV-21 names, and the cheapest moment to make the ownership
+question unanswerable is the moment the second home is created.
+
+What stayed is what the STORE owns rather than what the work vocabulary owns: `SqliteStore`,
+`StepMetrics`/`StepResult` (08-runtime.md:177 homes those in `omniweave_core.operator`),
+`COMPLETE_PARTICIPANTS` and `Statement` (the shape of one transaction), `CACHE_KEY_HEX_LEN` (a
+`StepResult` invariant), and `dep_statements` with `DEP_KINDS`.
+
 **Where this module lives, and why it is not a second home.** 16-roadmap.md:416 homes W2.3's whole
 surface in `store/sqlite.py`. That file already holds every connection-and-thread mechanism the
 plan gives it -- `connect`, the four pragma tuples, `StoreThread`, `Unit`, `snapshot`, the locks --
@@ -56,7 +75,9 @@ each contributes, in that order, so a participant is a slot rather than a rewrit
   **Here.**
 * `dep_rows` -- **empty**, but the refusals are not: `dep_statements()` ships with
   `MAX_DEPS_PER_UNIT` and the closed `kind` domain enforced, because 08:2491 makes both a raise.
-  **P4 W4.1** (16:541), in `omniweave_core.work`.
+  The producer is **P4 W4.6**'s `omniweave_core.deps` -- 02-architecture.md:244 homes `Dep`,
+  `DepKind` and `record_deps` there, not in `omniweave_core.work`, which is why `DEP_KINDS` did not
+  travel with the work vocabulary at W4.1.
 * `reservation_commit` -- **empty.** `budget_reservation.decision_id` is
   `NOT NULL REFERENCES route_decision`, and no P2 code writes a `route_decision` row. **P4**;
   05-ingest-and-routing.md section 6.4.
@@ -109,124 +130,37 @@ from typing import Final, Protocol
 from omniweave_core.errors import ResourceLimit, StoreError
 from omniweave_core.limits import MAX_DEPS_PER_UNIT
 from omniweave_core.store.sqlite import INTERACTIVE_WAIT_MS, StoreThread, Unit
+from omniweave_core.work import (
+    CLAIM_SQL,
+    COMPLETE_SQL,
+    COST_CLASS_SQL,
+    COUNTS_SQL,
+    OUTCOMES,
+    REAP_RESERVATIONS_SQL,
+    REAP_SQL,
+    TRANSITIONS,
+    WORK_STATUSES,
+    WorkRow,
+)
 
 __all__ = [
     "CACHE_KEY_HEX_LEN",
     "COMPLETE_PARTICIPANTS",
-    "COMPLETE_SQL",
-    "COST_CLASS_SQL",
-    "DECREMENTING",
     "DEP_KINDS",
-    "MAX_WORK_ATTEMPTS",
-    "OUTCOMES",
-    "STORE_NOW_MS",
-    "TRANSITIONS",
-    "WORK_COLUMNS",
-    "WORK_STATUSES",
     "SqliteStore",
     "Statement",
     "StepMetrics",
     "StepMetricsView",
     "StepResult",
     "StepResultView",
-    "Transition",
-    "WorkRow",
     "complete_boundaries",
     "dep_statements",
 ]
 
 
 # --------------------------------------------------------------------------------------------
-# 1. The closed domains, transcribed from the shipped DDL and from 08 section 1.2.
+# 1. What the STORE owns of the closed domains. The rest is `omniweave_core.work`'s.
 # --------------------------------------------------------------------------------------------
-
-WORK_STATUSES: Final = (
-    "pending",
-    "claimed",
-    "done",
-    "failed_transient",
-    "failed_permanent",
-    "deferred",
-)
-"""`work.status`'s CHECK, verbatim and in its printed order (0004_runtime.sql:106-107).
-
-08:85-87 states the omission that makes the list six rather than seven: *"There is no `cancelled`
-status, which is deliberate -- a cancellation is not a state a row rests in."* `CANCELLED` maps to
-`pending` in `TRANSITIONS`, which is the whole of that decision.
-
-`counts_by_status()` uses it to make its mapping TOTAL. `GROUP BY status` returns only the statuses
-present, and an operator reading "no `failed_permanent` key" cannot tell "none" from "the query did
-not ask"; a zero is an answer and a missing key is not.
-"""
-
-WORK_COLUMNS: Final = (
-    "id",
-    "unit_uri",
-    "unit_part",
-    "operator",
-    "op_version",
-    "cache_key",
-    "decision_id",
-    "sequence_id",
-    "driver",
-    "cost_class",
-    "dispatch_key",
-    "service",
-    "staged_gen",
-    "status",
-    "failure_class",
-    "failure_message",
-    "retry_after",
-    "attempts_total",
-    "attempts_today",
-    "last_attempt_at",
-    "stale_since",
-    "claimed_by",
-    "claimed_gen",
-    "lease_expires",
-    "cost_micros",
-    "queued_ms",
-    "ran_ms",
-    "peak_rss_bytes",
-    "priority",
-)
-"""Every column of `work`, in DDL order (0004_runtime.sql:90-131). `WorkRow`'s fields, in order.
-
-**Named, not `RETURNING *`.** charter.md:4102 prints `RETURNING *`, and the star is what makes a
-column order a property of `sqlite_master` rather than of this module: a later migration adding a
-column to `work` would silently shift every positional unpack in `WorkRow.from_row`. Listing them
-costs one tuple and makes that migration a failing test instead of a wrong row. 08:2528-2531 asks
-for the same portability from the other side -- *"The `work` schema is deliberately portable"* --
-and a named projection is the portable form.
-"""
-
-OUTCOMES: Final = (
-    "ok",
-    "ok_partial",
-    "skipped_cached",
-    "skipped_unchanged",
-    "failed_transient",
-    "failed_permanent",
-    "deferred_budget",
-    "cancelled",
-)
-"""The eight `Outcome` wire values, in 08:190-198's printed order.
-
-**`Outcome` the `StrEnum` is NOT minted here**, and the precedent is two files old.
-`omniweave_ports.types.DriverResult` types its `outcome` as `Literal["ok", "ok_partial"]` rather
-than importing an enum, and `sqlite.py`'s `Unit.cost_class` is a `str` *"because `CostClass` is P4's
-type and the hook ships before the enum"*. 08:177-179 is explicit that its own block is *"the sole
-home of `Outcome`, `StepMetrics` and `StepResult`"* and 18-api-sketch.md:844 homes all three in
-`omniweave_core.operator`; a second `StrEnum` here would be the second home that sentence forbids.
-What the store needs is the DOMAIN and the transition, and a tuple plus `TRANSITIONS` is exactly
-that. A `StrEnum` member compares and binds equal to its value, so P4's real `Outcome` satisfies
-every check in this module the day it lands.
-
-**Eight, and the count is load-bearing** (08:179-183): *"adding or removing a member is one edit to
-this enum **and** to section 1.2's transition table in the same change -- that table is the
-specification, and a member with no row in it is a rejectable PR."* `TRANSITIONS` has eight keys and
-`test_store_queue.py` asserts the two agree, in both directions.
-"""
 
 DEP_KINDS: Final = ("unit", "part", "name", "cohort", "policy", "service_model")
 """`dep.kind`'s CHECK, verbatim (0004_runtime.sql:186). Enforced by `dep_statements()`.
@@ -246,30 +180,6 @@ makes the length a constructor invariant. Named rather than typed inline because
 comparison reads as a magic number to a linter and to a reader alike. `work.cache_key` is `TEXT
 NOT NULL` with no length CHECK (0004_runtime.sql:95), so this is the only place the width is
 enforced at P2.
-"""
-
-MAX_WORK_ATTEMPTS: Final = 5
-"""`attempts_total < 5` -- the claim predicate's hard ceiling (charter.md:4089, :4099).
-
-Four sites print the same number: the claim SQL twice, 08:107 (*"`attempts_total < 5` is a clause in
-the claim predicate"*), 08:593 (*"PERMANENT at `attempts_total >= 5`"*) and charter.md:4650's I7
-(*"Every failure path terminates ... `attempts_total < 5` in the claim predicate"*).
-
-**DEFECT -- this is a ceiling with no `limits.py` row, and INV-21 says a ceiling has exactly one
-home.** `omniweave_core.limits` holds *"every `MAX_*` ceiling"* (02-architecture.md:231) and has no
-`MAX_WORK_ATTEMPTS`; nothing in the plan gives this number a config knob either, so it is a ceiling
-and not a setting (INV-22). It is named here rather than typed into a SQL string twice, and the
-required edit -- add `MAX_WORK_ATTEMPTS: int = 5` to `limits.py` and import it -- is reported to
-that file's owner. `test_store_queue.py` asserts the value against the plan text so the move is one
-line and cannot change the number.
-
-**`attempts_today` gets NO clause, and that is a reading with a printed statement behind it.**
-08:595 says *"Plus a per-unit daily cap of 3, enforced by `attempts_today`"*, but the charter's
-claim SQL (charter.md:4085-4102) has no `attempts_today` predicate, and 02:596 and 02:1028 both put
-it the weaker way -- `attempts_today` is period-stamped by `last_attempt_at` *"so a daily cap is
-enforceable"*. One printed statement beats three lines of prose about what it enables, so the claim
-maintains the counter and its period stamp and enforces only `attempts_total`. Who spends the daily
-cap is 08's; reported.
 """
 
 COMPLETE_PARTICIPANTS: Final = (
@@ -295,195 +205,7 @@ order wins.
 
 
 # --------------------------------------------------------------------------------------------
-# 2. The transition table. 08-runtime.md:94-103, one dataclass per row.
-# --------------------------------------------------------------------------------------------
-
-
-@dataclass(frozen=True, slots=True)
-class Transition:
-    """One row of 08:94-103 -- what an `Outcome` does to a `work` row. Seven cells.
-
-    The columns are the plan's, renamed only where a table heading is not an identifier:
-    "`work.status` becomes" -> `status`, `attempts_total` -> `decrements_attempts`,
-    `cost_micros` -> `adds_micros`, "claimable again" -> `claimable`.
-
-    `retry_after` is a THREE-valued cell and not a number, because two of its three values are
-    computed somewhere else: `ladder` is 08 section 1.6's escalation ladder, whose first cooldown
-    the driver supplies as `StepResult.retry_after_ms` and whose later rungs are `classify()`'s;
-    `sweeper` is 08:126-131's `min(60_000 * 2^(n-1), 1_800_000)`, keyed on an in-run defer streak
-    the store cannot see. So the store writes `null`, writes the caller's offset from the store
-    clock, or leaves the value to the sweeper -- and never invents a backoff.
-    """
-
-    outcome: str
-    status: str
-    decrements_attempts: bool
-    adds_micros: bool
-    reservation: str
-    retry_after: str
-    claimable: str
-
-
-TRANSITIONS: Final[Mapping[str, Transition]] = MappingProxyType(
-    {
-        transition.outcome: transition
-        for transition in (
-            Transition("ok", "done", False, True, "committed", "null", "no"),
-            Transition("ok_partial", "done", False, True, "committed", "null", "no"),
-            Transition("skipped_cached", "done", False, False, "released", "null", "no"),
-            Transition("skipped_unchanged", "done", False, False, "none", "null", "no"),
-            Transition(
-                "failed_transient",
-                "failed_transient",
-                False,
-                False,
-                "released",
-                "ladder",
-                "yes, at retry_after",
-            ),
-            Transition(
-                "failed_permanent",
-                "failed_permanent",
-                False,
-                True,
-                "committed",
-                "null",
-                "no, until clear_old_permanent(30d)",
-            ),
-            Transition(
-                "deferred_budget",
-                "deferred",
-                True,
-                False,
-                "released",
-                "sweeper",
-                "via deferred_sweeper",
-            ),
-            Transition("cancelled", "pending", True, False, "released", "null", "immediately"),
-        )
-    }
-)
-"""The `Outcome` -> row transition, in full. 08:94-103, which calls itself *the specification*.
-
-**Two cells are the whole reason the table exists** (08:105-112). The claim increments
-`attempts_total` unconditionally and `attempts_total < 5` gates the claim, so a row deferred five
-times for lack of budget, or cancelled five times by Ctrl-C, *"would become permanently unclaimable
-without ever having been attempted -- a corpus that quietly stops ingesting because the operator
-interrupted five runs."* `deferred_budget` and `cancelled` therefore decrement, floored at zero, in
-the same statement that writes the status. The lease reaper decrements on the same rule *"-- a power
-cut is not an attempt"* (08:121-122), which is why `reap_expired_leases` shares the arithmetic.
-
-`skipped_cached` and `skipped_unchanged` KEEP the attempt (08:120-121): the row goes to `done` and
-the counter is thereafter inert, and *"spending a branch to tidy an unread integer is not worth
-it."* Both are marked `decrements_attempts=False` for that reason and not by omission.
-
-`cancelled` is the row that makes `WORK_STATUSES` six long: it returns to `pending`, immediately
-claimable, because a cancellation is not a state a row rests in.
-
-The ninth row of the plan's table -- *(superseded)*, "unchanged, **zero rows updated**" -- is NOT a
-key here. It is not an `Outcome`; it is what the commit predicate does when the row moved under the
-caller, and `complete()` returns `False` for it. A key would have implied a caller can report it.
-"""
-
-DECREMENTING: Final = tuple(
-    outcome for outcome in OUTCOMES if TRANSITIONS[outcome].decrements_attempts
-)
-"""The two outcomes that decrement the attempt counters, in `OUTCOMES` order.
-
-DERIVED from `TRANSITIONS` and then interpolated into `COMPLETE_SQL`'s two `CASE` arms, so the SQL's
-IN-list and the transition table cannot disagree. 08:116-119 prints the list as
-`:outcome IN ('deferred_budget','cancelled')`; ordering by `OUTCOMES` reproduces that literal
-exactly, which is why this is a tuple in the enum's order and not a `frozenset`.
-"""
-
-
-# --------------------------------------------------------------------------------------------
-# 3. `WorkRow` -- one claimed `work` row.
-# --------------------------------------------------------------------------------------------
-
-
-@dataclass(frozen=True, slots=True)
-class WorkRow:
-    """One claimed `work` row as returned by `Store.claim()`. Every column, in DDL order.
-
-    **FORWARD HOME: `omniweave_core.work`.** 02-architecture.md:246 assigns *"`WorkRow`,
-    `FailureClass` re-export, `classify()`, the claim/complete/reap SQL, the retry ladder"* to that
-    module and 16-roadmap.md:541 schedules it as P4 W4.1. It is a pinned member of
-    `test_store_protocols.py`'s `EXPECTED_UNRESOLVED` for exactly that reason, and it stays pinned:
-    `store/__init__.py`'s Protocol still names it as a forward reference, which is what keeps the
-    boundary declaration free of an import edge into a module that does not exist. When `work.py`
-    lands it takes this class verbatim and this one is deleted -- not re-exported, because
-    02-architecture.md:246 gives that module the claim/complete/reap SQL too, and a type with two
-    homes is the failure INV-21 names.
-
-    **The plan never prints a shape, so this one is derived from the DDL and reported.**
-    17-risks.md:653 already logs the gap as defect `08#D1`: *"sixteen charter-named runtime types
-    have no lock row"*, `WorkRow` among them, marked discharged by ADR-1 -- an ADR that names the
-    problem and does not print the class. Nine mentions plus a return type, and the only field
-    anybody specifies is `claimed_gen`: 08:2841 and glossary.md:1124 both read *"carrying
-    `claimed_gen` -- which is what the commit predicate compares, and therefore what makes a
-    superseded result write nothing."*
-
-    So the shape is the row. Not a projection of it, and the reasoning is not aesthetic: the claim
-    statement is `RETURNING`-based (charter.md:4102), the runtime's `dispatch` groups by
-    `dispatch_key` and prices by `cost_class` (02:480), the runner needs `operator`, `op_version`,
-    `unit_uri`, `unit_part` and `cache_key` to invoke anything at all, `ow queue status` reads
-    `failure_class` and `retry_after`, and `attempts_total` is what `adapt_batch` and the ladder
-    both read. A narrower row would mean a second `SELECT` per claimed unit against the row the
-    claim already returned -- and charter.md:4701 budgets *"claim share + commit + key + ~8 events
-    <= 0.5 ms/unit"* for the whole of the runtime overhead. Twenty-nine columns of a STRICT table
-    cost one tuple unpack.
-    """
-
-    id: int
-    unit_uri: str
-    unit_part: str
-    operator: str
-    op_version: int
-    cache_key: str
-    decision_id: str | None
-    sequence_id: str | None
-    driver: str | None
-    cost_class: str
-    dispatch_key: str | None
-    service: str | None
-    staged_gen: int | None
-    status: str
-    failure_class: str | None
-    failure_message: str | None
-    retry_after: int | None
-    attempts_total: int
-    attempts_today: int
-    last_attempt_at: int | None
-    stale_since: int | None
-    claimed_by: str | None
-    claimed_gen: int | None
-    lease_expires: int | None
-    cost_micros: int
-    queued_ms: int
-    ran_ms: int
-    peak_rss_bytes: int
-    priority: int
-
-    @classmethod
-    def from_row(cls, row: Sequence[object]) -> WorkRow:
-        """Build one from a `WORK_COLUMNS`-ordered tuple, refusing any other width.
-
-        The refusal is the point. A migration that adds a column to `work` changes what
-        `WORK_COLUMNS` must say; without this check the addition would be invisible until some
-        caller read the wrong attribute, which is the class of bug `RETURNING *` invites.
-        """
-        if len(row) != len(WORK_COLUMNS):
-            raise StoreError(
-                f"a work row has {len(WORK_COLUMNS)} columns and this one has {len(row)}: "
-                f"WORK_COLUMNS and the `work` DDL have drifted",
-                fix="re-read 0004_runtime.sql's work table and update WORK_COLUMNS",
-            )
-        return cls(*row)  # type: ignore[arg-type]
-
-
-# --------------------------------------------------------------------------------------------
-# 4. What `complete()` reads off a `StepResult`, and a P2 carrier for it.
+# 2. What `complete()` reads off a `StepResult`, and a P2 carrier for it.
 # --------------------------------------------------------------------------------------------
 
 
@@ -611,7 +333,7 @@ class StepResult:
 
 
 # --------------------------------------------------------------------------------------------
-# 5. `Statement` -- the unit of a `complete()` plan, and therefore of a crash boundary.
+# 3. `Statement` -- the unit of a `complete()` plan, and therefore of a crash boundary.
 # --------------------------------------------------------------------------------------------
 
 
@@ -662,7 +384,7 @@ charter.md:3395). P4 supplies contributions when it has rows to write.
 
 
 # --------------------------------------------------------------------------------------------
-# 6. `dep` rows -- empty at P2, but the refusals ship now.
+# 4. `dep` rows -- empty at P2, but the refusals ship now.
 # --------------------------------------------------------------------------------------------
 
 
@@ -740,215 +462,7 @@ def dep_statements(
 
 
 # --------------------------------------------------------------------------------------------
-# 7. The statements. Each transcribed from the one place the plan prints it.
-# --------------------------------------------------------------------------------------------
-
-STORE_NOW_MS: Final = "CAST(unixepoch('subsec')*1000 AS INTEGER)"
-"""The store clock as a millisecond INTEGER. charter.md:4090's `unixepoch('subsec')*1000`, CAST.
-
-**DEFECT -- the charter's claim SQL writes a REAL into a STRICT table's INTEGER column.**
-`unixepoch('subsec')` returns a floating-point value (that is what `'subsec'` adds over
-`unixepoch()`), so `unixepoch('subsec')*1000` is a REAL, and charter.md:4092 and :4098 assign it
-straight into `work.lease_expires` and `work.last_attempt_at`. `work` is `) STRICT`
-(0004_runtime.sql:131), and a STRICT `INTEGER` column accepts a REAL only when the value is
-LOSSLESSLY convertible -- so the statement stores a clean integer whenever the wall clock happens to
-land on a whole millisecond and raises `sqlite3.IntegrityError("datatype mismatch")` the rest of the
-time. Measured: roughly one claim in a handful fails, at random, on SQLite 3.43.1.
-
-That is the worst possible failure shape -- a claim that works in every hand-run and drops a batch
-under load -- so the CAST is not optional. It also matters at the READ side: `lease_expires` is
-compared against `reap_expired_leases`'s injected integer `now_ms`, and a stored REAL would make
-`lease_expires < :now_ms` a float comparison. One fragment, five uses, so the two cannot diverge.
-Reported.
-"""
-
-CLAIM_SQL: Final = f"""
-WITH head AS (
-  SELECT dispatch_key FROM work
-   WHERE status IN ('pending','failed_transient')
-     AND (retry_after IS NULL OR retry_after <= {STORE_NOW_MS})
-     AND attempts_total < {MAX_WORK_ATTEMPTS}
-   ORDER BY priority DESC, dispatch_key, id LIMIT 1)
-UPDATE work SET
-  status='claimed', claimed_by=:worker, claimed_gen=:gen,
-  lease_expires = {STORE_NOW_MS} + :lease_ms,
-  attempts_total = attempts_total + 1,
-  attempts_today = CASE WHEN date(last_attempt_at/1000,'unixepoch')
-                          = date(unixepoch('subsec'),'unixepoch') THEN attempts_today+1 ELSE 1 END,
-  last_attempt_at = {STORE_NOW_MS}
-WHERE id IN (SELECT w.id FROM work w JOIN head h ON w.dispatch_key IS h.dispatch_key
-              WHERE w.status IN ('pending','failed_transient')
-                AND (w.retry_after IS NULL OR w.retry_after <= {STORE_NOW_MS})
-                AND w.attempts_total < {MAX_WORK_ATTEMPTS}
-              ORDER BY w.priority DESC, w.id
-              LIMIT IFNULL(
-                (SELECT CASE WHEN dispatch_key IS NULL THEN 1 ELSE :batch END FROM head), 0))
-RETURNING {", ".join(WORK_COLUMNS)}
-"""  # noqa: S608 -- see the docstring: no caller input.
-"""THE BATCH-COHERENT CLAIM. One statement. Priority survives. charter.md:4083-4102.
-
-Transcribed from the charter's block with exactly three deviations, each forced and each recorded.
-
-**(a) No `cost_class` clause.** The charter's SQL binds `:cost_class` in four places because
-08:2478-2481's WIDER `claim` takes one. The narrow signature does not (07:57, charter.md:3394), and
-the module docstring argues why nothing is lost: one `dispatch_key` is one `cost_class`.
-
-**(b) `JOIN head h ON w.dispatch_key IS h.dispatch_key`, not `w.dispatch_key = head.dispatch_key`,
-and a `LIMIT` that collapses to 1 for a NULL head.** This is a defect in the printed statement.
-`dispatch_key` is *"NULL for an `op.*` row, AND A NULL BATCHES ALONE"* (0004_runtime.sql:104-105),
-and `=` is never true of two NULLs -- so under the charter's SQL an `op.identify` row selected as
-the head matches no row in the `picked` subquery, the UPDATE claims nothing, and `op.identify` is
-unclaimable forever. Since `op.identify` *"is what CREATES the part rows the queue then drains"*
-(08:614) and carries priority 300, the head is exactly where it would appear. `IS` matches NULL to
-NULL, which alone would batch every `op.*` row together; the `LIMIT` subquery is what makes a NULL
-head *"batch alone"* as the DDL requires. `ORDER BY w.priority DESC, w.id` then picks the head row
-itself. Reported.
-
-The `IFNULL(..., 0)` around that subquery is not decoration. When nothing is claimable the `head`
-CTE is empty, the scalar subquery is NULL, and **SQLite raises `datatype mismatch` on a NULL
-`LIMIT`** -- measured on 3.43.1, and it is the single most common state a polling claim loop is in.
-`LIMIT 0` is the answer: no rows picked, no rows updated, an empty `RETURNING`.
-
-**(c) `RETURNING` the named columns rather than `*`** -- `WORK_COLUMNS`' docstring.
-
-Everything else is the charter's, including the two properties it is shaped for. `ORDER BY priority
-DESC, dispatch_key, id` in `head` and `ORDER BY w.priority DESC, w.id` in the picked set are why
-*"priority survives batching"* (08:625-627) is a property and not a hope. `unixepoch('subsec')*1000`
-is read five times and is *"THE STORE'S CLOCK, never a worker's"* (charter.md:4090) -- which is also
-why the `retry_after` comparison uses it: 08:597 requires that *"a backward NTP step on one worker
-must not make a row permanently unclaimable."* `attempts_today` is recomputed from
-`date(last_attempt_at)` rather than trusting a stored zero because *"a counter without its period
-stamp cannot answer 'is this from today'"* (08:595-597).
-
-**`RETURNING` needs no fallback.** charter.md:4104-4118 keeps a *"SQLite 3.35-3.41 (no `RETURNING`):
-BEGIN IMMEDIATE + UPDATE + SELECT"* branch and says *"BOTH PATHS RUN IN CI'S 16-PROCESS HAMMER"* --
-but the same block's own star note declares `MIN_SQLITE = (3, 42, 0)` the real floor, `limits.py`
-declares it, and `sqlite.py`'s `refuse_old_sqlite` refuses below it before the file is touched. The
-branch is unreachable, and a second path nothing can execute is a second path nobody tests. One
-path; reported.
-"""
-
-_DECREMENTING_IN: Final = ",".join(f"'{outcome}'" for outcome in DECREMENTING)
-
-COMPLETE_SQL: Final = f"""
-UPDATE work SET
-       status = :status,
-       cache_key = :cache_key,
-       attempts_total = CASE WHEN :outcome IN ({_DECREMENTING_IN})
-                             THEN MAX(0, attempts_total - 1) ELSE attempts_total END,
-       attempts_today = CASE WHEN :outcome IN ({_DECREMENTING_IN})
-                             THEN MAX(0, attempts_today - 1) ELSE attempts_today END,
-       retry_after = CASE WHEN :retry_after_ms IS NULL THEN NULL
-                          ELSE {STORE_NOW_MS} + :retry_after_ms END,
-       claimed_by = NULL, claimed_gen = NULL, lease_expires = NULL,
-       cost_micros = cost_micros + :micros,
-       queued_ms = :queued_ms, ran_ms = :ran_ms,
-       peak_rss_bytes = MAX(peak_rss_bytes, :peak_rss_bytes),
-       failure_class = :failure_class, failure_message = :failure_message
- WHERE id = :id AND claimed_gen = :gen AND status = 'claimed'
-"""  # noqa: S608 -- see the docstring: no caller input.
-"""The `work_transition` participant. 08:113-125 verbatim, plus one column 02-architecture.md adds.
-
-`cache_key = :cache_key` is the addition, and 02:487 is its definition site: the transaction holds
-*"the derived rows, `work.status='done'` + `work.cache_key`, the `dep` rows, the reservation commit
-and the `route_spend` row (I20)"*. The column is *"RECORDED: a config change is a MISMATCH, not a
-reuse"* (0004_runtime.sql:95), which only works if the value written is the one the invocation
-actually keyed on -- `StepResult.cache_key`, *"sha256_canonical hex, 64 chars, from the one
-`cache_key()`"* (08:212).
-
-`retry_after` is computed from the STORE clock plus the caller's offset (08:597), which is why the
-`CASE` adds `:retry_after_ms` to `unixepoch('subsec')*1000` rather than binding a timestamp. NULL in
-gives NULL out, which is seven of the eight transitions.
-
-The `WHERE` clause is the commit predicate, printed identically at charter.md:4104 and 02:487.
-Zero rows means superseded and nothing else.
-"""
-
-COST_CLASS_SQL: Final = "SELECT cost_class FROM work WHERE id = :id"
-"""ST14's prerequisite: which `synchronous` this completion commits at, read BEFORE `BEGIN`.
-
-07:2735-2740: *"a `BILLED_API` commit is durable -- `synchronous = FULL` is set **before** `BEGIN`
-for that transaction."* `Unit.durable` is read by `sqlite.py`'s `_transact` before it issues the
-pragma or the `BEGIN`, so the class cannot be learned inside the transaction. The narrow
-`complete()` carries no `cost_class` (08:2478-2481's wider `claim` does), so the store reads it.
-
-Its own short unit, and a crash across it writes nothing.
-"""
-
-REAP_RESERVATIONS_SQL: Final = """
-UPDATE budget_reservation SET state = 'released'
- WHERE state = 'held'
-   AND work_id IN (SELECT id FROM work WHERE status = 'claimed' AND lease_expires < :now_ms)
-"""
-"""I29: the lease reaper releases expired reservations IN THE SAME TRANSACTION as the reap.
-
-0004_runtime.sql:238-240 states it as a property of the schema: *"headroom(dim,scope,key) = limit -
-sum(held) - sum(committed), COMPUTED IN SQL, never cached in an attribute. The lease reaper releases
-expired reservations IN THE SAME TRANSACTION. (I29)"* 08:471-473 says why: *"Headroom is computed in
-SQL, never cached in an attribute, so a crash cannot leak it."*
-
-**It runs BEFORE the `work` reap and the order is load-bearing.** The subquery identifies the
-reservations by the rows about to be reaped; after the reap those rows are `pending` and the
-subquery selects nothing, so a reservation whose work row had just been returned to the queue would
-stay `held` forever and silently consume headroom. `expires_ms` is not used as the predicate even
-though 08:466 says *"Every `expires_ms` == its work row's `lease_expires`"*: that equality is the
-runtime's to maintain, and joining on `work_id` releases exactly the reservations of exactly the
-reaped rows whether or not it holds.
-
-Empty at P2 -- `budget_reservation.decision_id` is `NOT NULL REFERENCES route_decision` and nothing
-at P2 writes a `route_decision` row -- and correct the day it is not.
-"""
-
-REAP_SQL: Final = """
-UPDATE work SET
-       status = 'pending',
-       attempts_total = MAX(0, attempts_total - 1),
-       attempts_today = MAX(0, attempts_today - 1),
-       claimed_by = NULL, claimed_gen = NULL, lease_expires = NULL,
-       retry_after = NULL
- WHERE status = 'claimed' AND lease_expires < :now_ms
-"""
-"""The lease reap. `status='claimed' AND lease_expires < now`, back to `pending`, decremented.
-
-08:2411: *"Each row goes to `pending` with `attempts_total` decremented."* 08:121-122 gives the rule
-it shares with `CANCELLED`: *"The lease reaper decrements on the same rule as `CANCELLED` -- a power
-cut is not an attempt."* `MAX(0, ...)` is the same floor `COMPLETE_SQL` applies, and for the same
-reason: the claim increments unconditionally and `attempts_total < 5` gates the claim, so an
-un-floored decrement plus a repeated crash is a row that becomes unclaimable without ever having
-been attempted (08:105-112).
-
-`retry_after = NULL` because the row is `pending` and *"claimable again: immediately"* is
-`cancelled`'s cell (08:102), which this shares. A stale `retry_after` from an earlier transient
-failure would gate the re-claim on a timestamp that has nothing to do with the crash.
-
-**`lease_expires < :now_ms` is strict**, so a lease expiring exactly at `now_ms` is still live. A
-reaper and a holder that disagree by one millisecond is a stolen lease, and the plan's own predicate
-is `lease_expires < now` (08:2411, 08:462).
-
-**Holder liveness is NOT checked here, and that is a scope boundary rather than an omission.**
-08:462-470 requires the reaper to check `_is_live_holder(claimed_by)` --
-`'<host>:<pid>:<process_create_time>'`, *"the third component is what stops a recycled pid from
-looking alive"* -- and to give a live holder past its lease *"one extension with a WARNING naming
-it, never a steal."* Both halves need things the store boundary does not have: an OS probe per row,
-and `[runtime] lease_extend_ms = 60000` (08:2578), a runtime config key with no `limits.py` home.
-The signature the plan freezes is `reap_expired_leases(now_ms) -> int` and nothing else, so the SQL
-predicate is what ships and `lease_reaper` -- 08's, in `omniweave/run/`, P4 W4.1 -- owns the
-liveness check and the extension. `sqlite.py.process_create_time` is already the probe it needs.
-Recorded so nobody reads the missing check as a bug in this method.
-"""
-
-COUNTS_SQL: Final = "SELECT status, count(*) FROM work GROUP BY status"
-"""ONE query, and 0004_runtime.sql:137 is the comment that forbids the alternative.
-
-*"NO COUNTER TABLE: `SELECT status, count(*) FROM work GROUP BY status` is exact and cannot drift."*
-08:57-58 says the same from the runtime's side and names the counter-example: *"LDR maintains one by
-hand and it drifts."* One query and not six, because six `SELECT count(*) WHERE status = ?` reads
-are six index probes and, across a non-transactional loop, six inconsistent answers.
-"""
-
-
-# --------------------------------------------------------------------------------------------
-# 8. `Store` -- the four methods.
+# 5. `Store` -- the four methods.
 # --------------------------------------------------------------------------------------------
 
 
