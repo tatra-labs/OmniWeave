@@ -25,6 +25,8 @@ QUALITY = "13-quality.md section 13.4"
 SECURITY = "14-security.md section 2.1"
 DRIVERS = "04-driver-system.md section 4.5"
 RUNTIME = "08-runtime.md section 1.6"
+OBSERVE_SAMPLING = "15-observability.md section 2.4"
+OBSERVE_SUBSTRATE = "15-observability.md sections 1 and 3.2"
 
 # (constant, value the plan prints, the document that sets it)
 VALUES: list[tuple[str, object, str]] = [
@@ -91,6 +93,9 @@ VALUES: list[tuple[str, object, str]] = [
     ("MAX_AUTO_PARALLEL", 96, CHARTER),
     ("MAX_DEPS_PER_UNIT", 256, CHARTER),
     ("MAX_WORK_ATTEMPTS", 5, RUNTIME),
+    # Observability: the two bounds 15-observability.md puts here rather than in a comment
+    ("MAX_SPAN_BUFFER_EVENTS", 64, OBSERVE_SAMPLING),
+    ("MAX_EVENT_QUEUE", 65_536, OBSERVE_SUBSTRATE),
     # The OUT framework
     ("MAX_IL_FILE_BYTES", 4_194_304, OUT),
     ("MAX_IL_NODES", 100_000, OUT),

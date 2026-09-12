@@ -1,0 +1,299 @@
+# tools/events.toml — CLOSED, APPEND-ONLY, byte-diff gated (G20).
+# GENERATED from omniweave_core.events._DECLARATIONS; run `uv run tools/gen_events.py`.
+# 02-architecture.md:274 allows this family to be "either append-only against the previous tag or
+# generated from a declaration site"; this one is generated, because `tools/` ships in no wheel
+# (11-repo-layout.md section 2.6) and a runtime that loaded its vocabulary from here would have
+# none. The append-only PROPERTY is unchanged and G20 is what checks it.
+#
+# schema/event-v1.json is GENERATED from the same declarations, so this file needs a real TOML shape
+# and not a list of bare dotted words — which parses as nothing and left the D6 ADR's author to
+# invent one.
+# `fields` names the event-specific keys carried in `Event.fields`; every event ALSO carries the
+# envelope (`ts_wall_ns`, `ts_mono_ns`, `run_id`, `writer_id`, `seq`, trace ids, `phase`, `level`,
+# `unit`, `part`, `operator`, `driver`). A row is never removed and `kind` is never reused.
+#
+# `level` is REQUIRED on every row (15-observability.md:341) and is declared per kind, never chosen
+# at a call site. `span` and `phase` appear only on the ten rows that carry a span BOUNDARY; the
+# other rows are points and name neither.
+#
+# 65 rows in append order: 9 debug, 21 info, 22 notice, 9 warn, 4 error. 10 carry a span boundary.
+[[event]]
+kind = "run.start"
+level = "notice"
+fields = ["trigger", "argv_digest", "config_digest", "semantic_digest", "generation"]
+span = "run"
+phase = "start"
+[[event]]
+kind = "run.end"
+level = "notice"
+fields = ["status", "units", "failures", "micros", "events_dropped"]
+span = "run"
+phase = "end"
+[[event]]
+kind = "run.degraded"
+level = "error"
+fields = ["degradation_kind", "message"]
+[[event]]
+kind = "plan.discover"
+level = "info"
+fields = ["scope_id", "discovered", "skipped"]
+[[event]]
+kind = "plan.identify"
+level = "info"
+fields = ["part_count"]
+[[event]]
+kind = "plan.expand"
+level = "info"
+fields = ["rows"]
+[[event]]
+kind = "plan.pause"
+level = "notice"
+fields = ["claimable", "high_water"]
+[[event]]
+kind = "plan.resume"
+level = "notice"
+fields = ["claimable", "low_water"]
+[[event]]
+kind = "work.enqueue"
+level = "debug"
+fields = ["work_id", "cost_class", "dispatch_key"]
+[[event]]
+kind = "work.claim"
+level = "info"
+fields = ["work_id", "batch_size", "claimed_gen", "lease_ms"]
+[[event]]
+kind = "work.lease_extend"
+level = "debug"
+fields = ["work_id", "lease_ms"]
+[[event]]
+kind = "work.lease_reap"
+level = "warn"
+fields = ["work_id", "age_ms"]
+[[event]]
+kind = "work.complete"
+level = "info"
+fields = ["work_id", "outcome", "rows_written", "micros", "was_cache_hit"]
+[[event]]
+kind = "work.defer"
+level = "warn"
+fields = ["work_id", "dim", "retry_after"]
+[[event]]
+kind = "work.cancel"
+level = "notice"
+fields = ["work_id", "generation"]
+[[event]]
+kind = "unit.begin"
+level = "info"
+fields = []
+span = "unit"
+phase = "start"
+[[event]]
+kind = "unit.progress"
+level = "debug"
+fields = ["done", "total"]
+[[event]]
+kind = "unit.complete"
+level = "info"
+fields = ["outcome", "queued_ms", "ran_ms"]
+span = "unit"
+phase = "end"
+[[event]]
+kind = "unit.failed"
+level = "warn"
+fields = ["failure_class", "message"]
+[[event]]
+kind = "driver.spawn"
+level = "notice"
+fields = ["driver", "config_digest", "isolation"]
+[[event]]
+kind = "driver.ready"
+level = "notice"
+fields = ["driver", "version", "schema_version", "code_fingerprint"]
+[[event]]
+kind = "driver.invoke"
+level = "info"
+fields = ["driver", "invoke_id", "units", "batch_index", "batch_size"]
+[[event]]
+kind = "driver.result"
+level = "info"
+fields = ["driver", "invoke_id", "unit_index", "outcome"]
+[[event]]
+kind = "driver.crash"
+level = "error"
+fields = ["driver", "failure_class", "stderr_tail_bytes"]
+[[event]]
+kind = "driver.quarantine"
+level = "error"
+fields = ["driver", "crashes", "window_s"]
+[[event]]
+kind = "driver.shutdown"
+level = "notice"
+fields = ["driver", "grace_ms"]
+[[event]]
+kind = "service.attach"
+level = "notice"
+fields = ["name", "model_id", "model_rev", "base_url"]
+[[event]]
+kind = "service.spawn"
+level = "notice"
+fields = ["name", "cold_start_ms"]
+[[event]]
+kind = "service.refuse"
+level = "error"
+fields = ["name", "reason"]
+[[event]]
+kind = "service.evict"
+level = "notice"
+fields = ["name", "reason"]
+[[event]]
+kind = "service.coalesce"
+level = "debug"
+fields = ["name", "batch", "wait_ms"]
+[[event]]
+kind = "cache.hit"
+level = "info"
+fields = ["layer", "cache_key", "would_have_been_micros"]
+[[event]]
+kind = "cache.miss"
+level = "info"
+fields = ["layer", "cache_key", "verdict"]
+[[event]]
+kind = "cache.corrupt"
+level = "warn"
+fields = ["layer", "cache_key"]
+[[event]]
+kind = "cache.write"
+level = "debug"
+fields = ["layer", "cache_key", "bytes", "micros"]
+[[event]]
+kind = "cache.sweep"
+level = "notice"
+fields = ["layer", "rows", "bytes"]
+[[event]]
+kind = "budget.reserve"
+level = "debug"
+fields = ["dim", "scope", "amount"]
+[[event]]
+kind = "budget.deny"
+level = "warn"
+fields = ["dim", "scope", "headroom"]
+[[event]]
+kind = "budget.commit"
+level = "debug"
+fields = ["dim", "scope", "amount"]
+[[event]]
+kind = "store.txn"
+level = "debug"
+fields = ["rows", "ms"]
+[[event]]
+kind = "store.wal_valve"
+level = "warn"
+fields = ["wal_bytes", "action", "armed"]
+[[event]]
+kind = "store.bulk_lock"
+level = "notice"
+fields = ["indexes_dropped"]
+[[event]]
+kind = "store.contend"
+level = "warn"
+fields = ["holder", "waited_ms"]
+[[event]]
+kind = "dep.record"
+level = "debug"
+fields = ["kind", "keys"]
+[[event]]
+kind = "dep.invalidate"
+level = "notice"
+fields = ["kind", "keys", "dependents"]
+[[event]]
+kind = "gc.sweep"
+level = "notice"
+fields = ["rows", "bytes"]
+[[event]]
+kind = "degrade"
+level = "warn"
+fields = ["degradation_kind", "message"]
+[[event]]
+kind = "manifest.write"
+level = "notice"
+fields = ["path", "sha256"]
+[[event]]
+kind = "query.plan"
+level = "info"
+fields = ["surface", "mode", "plan_digest", "narrowing_kind", "narrowing_n", "prefilter_exact"]
+[[event]]
+kind = "query.channel"
+level = "info"
+fields = ["channel", "status", "reason", "ranked_n", "ran_ms", "truncated_at_limit"]
+[[event]]
+kind = "query.complete"
+level = "info"
+fields = ["verdict_state", "gates_n", "confidence", "returned_n", "latency_ms", "micros"]
+[[event]]
+kind = "query.refuse"
+level = "warn"
+fields = ["code", "detail"]
+[[event]]
+kind = "compile.begin"
+level = "notice"
+fields = ["target", "slug", "artifact_gen", "units"]
+[[event]]
+kind = "compile.unit"
+level = "info"
+fields = ["unit_index", "unit_outcome", "reason", "nsig"]
+[[event]]
+kind = "compile.gate"
+level = "notice"
+fields = ["gate_status", "findings_error", "findings_warning", "determinism"]
+[[event]]
+kind = "toolchain.run"
+level = "notice"
+fields = ["name", "version", "queued_ms", "ran_ms", "exit_code"]
+[[event]]
+kind = "driver.log"
+level = "info"
+fields = ["driver_level", "message", "redacted"]
+[[event]]
+kind = "doctor.check"
+level = "info"
+fields = ["check_id", "status", "detail"]
+[[event]]
+kind = "shard.roll"
+level = "notice"
+fields = ["closed", "successor", "bytes", "records"]
+[[event]]
+kind = "plan.begin"
+level = "notice"
+fields = ["stage"]
+span = "plan"
+phase = "start"
+[[event]]
+kind = "plan.end"
+level = "notice"
+fields = ["stage", "elapsed_ms"]
+span = "plan"
+phase = "end"
+[[event]]
+kind = "attempt.begin"
+level = "info"
+fields = ["attempt", "claimed_gen", "lease_ms", "rung", "lane"]
+span = "attempt"
+phase = "start"
+[[event]]
+kind = "attempt.end"
+level = "info"
+fields = ["attempt", "outcome", "failure_class", "retry_after"]
+span = "attempt"
+phase = "end"
+[[event]]
+kind = "call.begin"
+level = "info"
+fields = ["driver", "driver_version", "driver_schema_v", "isolation", "invoke_id", "batch_index", "batch_size", "dispatch_key", "service", "provider"]
+span = "call"
+phase = "start"
+[[event]]
+kind = "call.end"
+level = "info"
+fields = ["invoke_id", "wall_ms", "cpu_ms", "gpu_ms", "tokens_in", "tokens_out", "calls", "bytes_egress", "micros"]
+span = "call"
+phase = "end"
