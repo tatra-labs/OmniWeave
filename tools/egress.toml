@@ -107,6 +107,16 @@ a loopback default, not a literal.\
 # Six rows at P3, and not one of them opens a network connection.
 
 [[client]]
+module = "asyncio"
+path = "packages/omniweave/src/omniweave/run/supervisor.py"
+why = """
+INV-3's one sanctioned home for a loop — `pyproject.toml`'s `TID251` per-file-ignore is scoped to `packages/omniweave/src/omniweave/run/*.py` and nowhere else, so this path is the invariant's definition site rather than an exception to it.
+
+What is actually imported is `asyncio.BoundedSemaphore`, four times, and nothing else. 08-runtime.md:693-700 prints the constructor: `class_sem`, `worker_sem`, `render_sem` and `service_sem` are the four admission families, and a semaphore opens no descriptor of any kind. This module contains no `open_connection`, no `create_server`, no `loop.sock_*` and no `create_subprocess_*`; it has no loop at all, which is why every function in it is synchronous and testable without one.
+
+The row exists because `asyncio` CAN dial — `asyncio.open_connection` is two attributes away — and clause 1 is a declaration rule rather than a usage analysis (14:779). The day this file gains the loop W4.2 still owes, the loop still opens nothing: the Supervisor's outbound edges are the store thread, the `subproc` DriverHost's own AF_UNIX socket, and the model server's handle, and all three already carry their own rows or their own bans."""
+
+[[client]]
 module = "socket"
 path = "packages/omniweave-core/src/omniweave_core/host/subproc.py"
 why = """
