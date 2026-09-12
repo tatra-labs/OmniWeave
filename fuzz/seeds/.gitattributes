@@ -1,0 +1,18 @@
+# Seed bytes are a fuzzing corpus: never EOL-convert them.
+#
+# The repository root sets `* text=auto eol=lf` (11-repo-layout.md section 1.9), which rewrites any
+# file git decides is text. Ten of the mirrored seeds are `numfmt` format codes with no newline in
+# them at all, so the rule is a no-op on today's corpus -- and that is precisely why the attribute
+# has to be written rather than inferred: the first upstream seed that is text-shaped and carries a
+# CR would otherwise be rewritten at checkout, and `mirror_fuzz_seeds.py --check` would then fail on
+# Windows and pass on Linux for a reason that has nothing to do with the corpus.
+#
+# The rule covers `wire/` too, which this tool does not own -- those seeds are written by
+# `fuzz/targets/wire.py --write-seeds` and are encoded frames, so `header-not-utf8` is four bytes
+# that are deliberately not UTF-8 and `valid-invoke` carries a length prefix a CR would move.
+#
+# `vendor/anydoc/.gitattributes` carries the same line for the same reason, one layer up, and
+# `packages/*/fixtures/.gitattributes` carry it for a third: bytes that are ground truth are bytes.
+* -text
+MIRROR.toml text eol=lf
+.gitattributes text eol=lf
