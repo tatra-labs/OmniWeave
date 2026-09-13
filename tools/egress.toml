@@ -59,6 +59,22 @@ path = "packages/omniweave-core/src/omniweave_core/config.py"
 why = "The IPv6 half of `serve.allowed_hosts` above. Bracketed because a Host header is."
 
 [[literal]]
+value = "127.0.0.1"
+path = "packages/omniweave-core/src/omniweave_core/modelserver.py"
+why = """
+Seam S3's listener address, and 02-architecture.md:432 sanctions it by name: "two loopback TCP endpoints are sanctioned and no third may be added: an attached or spawned model server (S3, token-authenticated) and `ow serve --http`."
+
+It is OUTBOUND here and inbound in config.py's row, which is the asymmetry this file exists to keep visible. `_split()` REFUSES any endpoint whose host is not this value, so a `[services.<name>] endpoint` naming a remote host cannot dial through this client at all — the constant is the enforcement site, not a default somebody could widen."""
+
+[[literal]]
+value = "http://"
+path = "packages/omniweave-core/src/omniweave_core/modelserver.py"
+why = """
+The scheme half of the same endpoint. `http` and not `https` because the peer is a process on this machine reached over the loopback interface, where TLS would authenticate a name that resolves to us; what authenticates the peer instead is the 32-byte token in the 0600 sentinel (08-runtime.md:1084, closing surya's `VLLM_API_KEY = "EMPTY"`).
+
+A REFUSAL as much as a destination, like toolchain.py's `https://` row below: `_split()` uses it to reject an endpoint that is not `http://<loopback>:<port>` with no path."""
+
+[[literal]]
 value = "https://"
 path = "packages/omniweave-core/src/omniweave_core/toolchain.py"
 why = """
@@ -127,6 +143,20 @@ alone — a hook that refused socket creation outright would be asserting the dr
 rather than that the network is absent. 11-repo-layout.md's own rule says it: never a daemon, \
 never a loopback TCP listener.\
 """
+
+[[client]]
+module = "socket"
+path = "packages/omniweave-core/src/omniweave_core/modelserver.py"
+why = """
+`pick_port()`, once: bind ("127.0.0.1", 0), read `getsockname()[1]`, close, and hand the port to the spawned child (08-runtime.md:1049). The socket is bound to loopback and closed before anything is started on it; it carries no byte anywhere and exists only to make the kernel choose a free port. 08:1050-1055 handles the window between that close and the child's bind in three places, none of which is a second socket."""
+
+[[client]]
+module = "http.client"
+path = "packages/omniweave-core/src/omniweave_core/modelserver.py"
+why = """
+Seam S3's two probes: `GET /health` and `GET /v1/models`, over the loopback endpoint 02:432 sanctions, under the sentinel's bearer token. `http.client` and not `requests` because INV-2 gives core zero third-party dependencies — 08-runtime.md:946 says so on the module itself, "stdlib only; http.client, not requests" — and because an HTTP client a driver's dependency could replace would be a supply chain into the one seam that holds a bearer token.
+
+`_split()` refuses a non-loopback host before a connection is constructed, so this client cannot be pointed off the machine by a config file."""
 
 [[client]]
 module = "socket"

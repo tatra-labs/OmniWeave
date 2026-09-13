@@ -340,10 +340,10 @@ class Seam(StrEnum):
 SEAMS: Final[tuple[Seam, ...]] = (Seam.DRIVER_IO_SERVICE, Seam.MODELSERVER)
 """Both seams, in the order 13-quality.md:972 names them. Two, and a third is an amendment."""
 
-SEAMS_ENFORCED: Final[frozenset[Seam]] = frozenset({Seam.DRIVER_IO_SERVICE})
+SEAMS_ENFORCED: Final[frozenset[Seam]] = frozenset(SEAMS)
 """The seams this module actually intercepts at P3. ONE of the two. See the module docstring."""
 
-SEAMS_PENDING: Final[frozenset[Seam]] = frozenset({Seam.MODELSERVER})
+SEAMS_PENDING: Final[frozenset[Seam]] = frozenset()
 """The seam whose module does not exist yet. `modelserver.py` is P4 W4.9 (16-roadmap.md:549)."""
 
 MODELSERVER_MODULE: Final = "omniweave_core.modelserver"
@@ -379,28 +379,72 @@ def seam_coverage() -> tuple[SeamCoverage, ...]:
         ),
         SeamCoverage(
             seam=Seam.MODELSERVER,
-            enforced=False,
+            enforced=True,
             owner=f"{MODELSERVER_PHASE} (16-roadmap.md:549)",
-            note=f"{MODELSERVER_MODULE} does not exist; no interception is possible",
+            note="intercept_modelserver() wraps ServiceRegistry.handle",
         ),
     )
 
 
-def intercept_modelserver(*_args: object, **_kwargs: object) -> ServiceHandle:
-    """The second seam. RAISES, because `omniweave_core.modelserver` does not exist yet.
+def intercept_modelserver(
+    handle: Callable[[str], ServiceHandle],
+    *,
+    cassette: Cassette,
+    model_key: str,
+    prompt_digest: str,
+    prompt_version: str,
+    sampling: Mapping[str, JsonValue] | None = None,
+    declared: ServiceFacts | None = None,
+) -> Callable[[str], ServiceHandle]:
+    """The second seam: `ServiceRegistry.handle`, wrapped so every handle it issues is recorded.
 
-    A named absence rather than a silent one. The two wrong shapes here would be (a) no function
-    at all, which makes the gap invisible to anything but a careful reading of 13-quality.md:972,
-    and (b) a wrapper that returns a handle intercepting nothing, which would make
-    `seam_coverage()` a lie the first time somebody called it. Raising is what forces W4.9 back
-    to this line.
+    **It raised until P4 W4.9b.** The stub's docstring named what it was waiting for and what the
+    two wrong alternatives were -- no function at all, which *"makes the gap invisible"*, or a
+    wrapper returning a handle that intercepts nothing, which *"would make `seam_coverage()` a lie
+    the first time somebody called it."* `omniweave_core.modelserver` landed; this wraps.
+
+    **Symmetric with `intercept_service()`, and deliberately so.** 13-quality.md:971 names the two
+    sites as *"`DriverIO.service()` and `omniweave_core.modelserver`"*, and they are the same shape
+    seen from two sides: the first is the bound method a driver is handed, the second is
+    `ServiceRegistry.handle` itself, which is what that method resolves to. Wrapping the registry
+    covers a caller inside the host that reaches a Service without going through a `DriverIO` --
+    `op.*` steps and the Supervisor's own probes -- which the first seam structurally cannot see.
+
+    **Under `required` the upstream callable is never invoked**, for the reason `intercept_service`
+    states at length: `ServiceRegistry.handle` is `attach_or_spawn` and BLOCKING, so calling it
+    spawns a model server or opens a socket to a pinned endpoint. Neither is a model *call*, and a
+    `post()`-only interception would start a GPU process inside a cell specified as *"2 cores, 7 GB,
+    no GPU, no network"*.
     """
-    message = (
-        f"{MODELSERVER_MODULE} lands at {MODELSERVER_PHASE} (16-roadmap.md:549); "
-        f"{Seam.MODELSERVER.value} is the half of 13-quality.md:972's two-site construction "
-        "that P3 does not enforce"
-    )
-    raise NotImplementedError(message)
+    facts = ServiceFacts() if declared is None else declared
+    replaying = cassette.mode is CassetteMode.REQUIRED
+
+    def wrapped(name: str) -> ServiceHandle:
+        if replaying:
+            return _recorded(name, facts, upstream=None)
+        upstream = handle(name)
+        return _recorded(upstream.name, ServiceFacts.of(upstream), upstream=upstream)
+
+    def _recorded(
+        name: str, seen: ServiceFacts, *, upstream: ServiceHandle | None
+    ) -> ServiceHandle:
+        return CassetteHandle(
+            name=name,
+            model_id=seen.model_id,
+            model_rev=seen.model_rev,
+            capacity=seen.capacity,
+            traceparent=seen.traceparent,
+            deadline_ms=seen.deadline_ms,
+            cassette=cassette,
+            model_key=model_key,
+            prompt_digest=prompt_digest,
+            prompt_version=prompt_version,
+            sampling=sampling or {},
+            contract=ContractIdentity.for_modelserver(),
+            live=upstream,
+        )
+
+    return wrapped
 
 
 # ---------------------------------------------------------------------------
@@ -664,14 +708,24 @@ class ContractIdentity(NamedTuple):
 
     @classmethod
     def for_modelserver(cls) -> ContractIdentity:
-        """The pending seam. RAISES.
+        """The second seam. `contract_major` is the model server's declared API major (:979).
 
-        :979 makes `contract_major` *"the model server's declared API major"*, and there is no
-        model server to declare one until W4.9. A placeholder integer here would be a fabricated
-        contract identity inside a cache key, which is the worst place for one.
+        **It raised until P4 W4.9b**, and the reason it raised is the reason it can stop: there was
+        no model server to declare a major, and *"a placeholder integer here would be a fabricated
+        contract identity inside a cache key, which is the worst place for one."* There is one now,
+        and it is not a placeholder -- `modelserver.SERVICE_API_MAJOR` is derived from the route
+        this seam actually calls, so it cannot drift from the API it claims.
+
+        The import is function-scoped because `omniweave_core.modelserver` is one of the nine LAZY
+        names (11-repo-layout.md section 1.3) and this module is not: a module-scope import would
+        make `import omniweave_core.cassette` load the model server client, which is the coupling
+        the lazy list exists to prevent.
         """
-        intercept_modelserver()
-        raise AssertionError  # pragma: no cover -- unreachable; the line above always raises.
+        from omniweave_core.modelserver import (  # noqa: PLC0415 -- one of the nine lazy names.
+            SERVICE_API_MAJOR,
+        )
+
+        return cls(seam=Seam.MODELSERVER, contract_major=SERVICE_API_MAJOR)
 
     def key_value(self) -> list[JsonValue]:
         """The pair as it enters the key: a two-element array, seam first."""
