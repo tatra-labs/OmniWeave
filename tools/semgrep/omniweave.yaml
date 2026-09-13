@@ -472,6 +472,15 @@ rules:
     paths:
       include:
         - "packages/*/src/**"
+      exclude:
+        # D154. `clock.py` IS the injection this rule's own message prescribes: one module reads
+        # the machine and every other module takes a `Clock`. It needs `time.time_ns()` for
+        # `wall_ns()`, and `time.perf_counter_ns()` for a duration on a platform whose
+        # `time.monotonic()` is `GetTickCount64` at 15.6 ms -- where the number
+        # 15-observability.md:434 asks the manifest for rounds to zero. The substitution is taken
+        # only when the interpreter reports `perf_counter` monotonic, and the shortfall is recorded
+        # in `ClockFacts` rather than claimed. Scoped like toolchain.py's `subprocess` exemption.
+        - "packages/omniweave-core/src/omniweave_core/clock.py"
     metadata:
       gate: G8
       ban: "time.time() in library code"

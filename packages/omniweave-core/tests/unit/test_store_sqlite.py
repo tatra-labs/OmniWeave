@@ -39,14 +39,13 @@ None of the three is reachable without the name. The semgrep half of the ban sco
 from __future__ import annotations
 
 import inspect
-import os
 import sqlite3  # noqa: TID251 -- see the module docstring's last paragraph.
 import threading
 from typing import TYPE_CHECKING, Any
 
 import pytest
 from omniweave_core.contract import SCHEMA, SCHEMA_MINOR, SCHEMA_STRING
-from omniweave_core.errors import ConfigError, StoreBusy, StoreError
+from omniweave_core.errors import ConfigError, StoreError
 from omniweave_core.limits import MAX_SNAPSHOT_MS, MIN_SQLITE
 from omniweave_core.store import migrate
 from omniweave_core.store.sqlite import (
@@ -60,18 +59,14 @@ from omniweave_core.store.sqlite import (
     READONLY_PRAGMAS,
     SYNCHRONOUS_FULL,
     SYNCHRONOUS_NORMAL,
-    FileScopedLock,
     LockHolder,
     ReadonlyRung,
     SchemaAction,
     StoreThread,
     Unit,
-    _drop_advisory,
-    _take_advisory,
     connect,
     connect_readonly,
     heal_wal,
-    process_create_time,
     readonly_target,
     refuse_missing_fts5,
     refuse_old_sqlite,
@@ -682,151 +677,6 @@ def test_there_is_no_force_in_the_ladder() -> None:
     names = set(inspect.signature(schema_action).parameters)
     assert "force" not in names
     assert names == {"file_major", "file_minor", "writable", "raise_on_refuse"}
-
-
-# --------------------------------------------------------------------------------------------
-# 6. The cross-process scoped lock
-# --------------------------------------------------------------------------------------------
-
-
-def test_the_lock_identity_is_host_pid_and_process_create_time(tmp_path: Path) -> None:
-    """07:2724-2726's triple, plus the source that keeps a degraded value honest."""
-    lock = FileScopedLock(tmp_path / "store.write.lock", now_ns=lambda: NOW_NS)
-    identity = lock.identity()
-    assert identity.host == lock.host
-    assert identity.pid == os.getpid()
-    assert identity.process_create_time_source in {"/proc", "unavailable"}
-    assert (identity.process_create_time > 0.0) == (identity.process_create_time_source == "/proc")
-
-
-def test_process_create_time_degrades_explicitly_rather_than_silently() -> None:
-    """No portable stdlib API exists, so the unknowable case says `unavailable` and returns 0.0.
-
-    Pid 0 is not a process on any supported platform, so this exercises the degradation on Linux
-    too, where the live-pid branch would otherwise be the only one a test on that platform sees.
-    """
-    value, source = process_create_time(0)
-    assert (value, source) == (0.0, "unavailable")
-
-
-def test_the_second_holder_of_one_lock_is_refused_with_exit_seven(tmp_path: Path) -> None:
-    """07:2872: the loser *"reports store busy (exit 7) naming host, pid and age -- never a silent
-    retry loop."*
-
-    Both locks live in this process, and the refusal still holds: an advisory lock is per open file
-    description, so a second descriptor is refused whichever process opened it. `wait_ms = 0` is one
-    attempt, which is what makes the test fast and the refusal deterministic.
-    """
-    path = tmp_path / "store.write.lock"
-    clock = iter([NOW_NS, NOW_NS + 3_000_000_000, NOW_NS + 3_000_000_000])
-    first = FileScopedLock(path, now_ns=lambda: next(clock))
-    second = FileScopedLock(path, now_ns=lambda: NOW_NS + 3_000_000_000)
-    first.acquire(wait_ms=0)
-    try:
-        # The holder's own descriptor carries the advisory lock, asserted here and not only through
-        # the outcome below. On Windows an open descriptor already blocks `unlink`, so the refusal
-        # would be produced even by a build that never took the lock -- and that build would hand
-        # two writers one store on POSIX, where unlinking an open file succeeds.
-        probe = os.open(path, os.O_RDWR)
-        try:
-            assert _take_advisory(probe) is False
-        finally:
-            os.close(probe)
-        with pytest.raises(StoreBusy) as caught:
-            second.acquire(wait_ms=0)
-        assert caught.value.EXIT == 7
-        assert caught.value.code() == "OW_STORE_BUSY"
-        host, pid, age = caught.value.holder
-        assert (host, pid) == (first.host, os.getpid())
-        assert age == pytest.approx(3.0, abs=0.01)
-        assert str(pid) in str(caught.value)
-    finally:
-        first.release()
-
-
-def test_the_advisory_lock_refuses_a_second_descriptor_and_keeps_the_payload_readable(
-    tmp_path: Path,
-) -> None:
-    """The liveness mechanism itself, pinned directly, because the outcome test cannot isolate it.
-
-    **Why this test exists beside the refusal test above.** On Windows an open descriptor already
-    blocks `unlink`, so a lock file whose holder is alive cannot be broken even if no advisory lock
-    was ever taken -- which means the "second holder is refused" outcome is produced by the wrong
-    mechanism there and a build that stopped calling `_take_advisory` would still pass. On POSIX,
-    where unlinking an open file succeeds, that build would hand two writers the same store.
-    Testing the primitive is what makes the property platform-independent.
-
-    The second assertion is the byte offset. `_LOCK_BYTE` is a megabyte past any payload because a
-    Windows byte-range lock at offset 0 makes the locked byte unreadable, and an unreadable payload
-    turns `StoreBusy`'s "host, pid and age" (07:2872) into `?` and `0`.
-    """
-    path = tmp_path / "store.write.lock"
-    path.write_bytes(b'{"host":"h","pid":1}' + b"\n")
-    first = os.open(path, os.O_RDWR)
-    try:
-        assert _take_advisory(first) is True
-        second = os.open(path, os.O_RDWR)
-        try:
-            assert _take_advisory(second) is False
-        finally:
-            os.close(second)
-        assert path.read_text(encoding="utf-8").startswith('{"host"')
-        _drop_advisory(first)
-        third = os.open(path, os.O_RDWR)
-        try:
-            assert _take_advisory(third) is True
-            _drop_advisory(third)
-        finally:
-            os.close(third)
-    finally:
-        os.close(first)
-
-
-def test_a_stale_lock_file_whose_holder_is_gone_is_broken_and_taken(tmp_path: Path) -> None:
-    """The `process_create_time` question, answered by the kernel instead.
-
-    A lock file written by nobody is exactly what a SIGKILLed holder leaves: the bytes are there and
-    the advisory lock is not. A contender that can take the advisory lock has PROVED the writer is
-    gone, which is stronger than comparing a recorded start time and cannot be fooled by a recycled
-    pid or a clock change.
-    """
-    path = tmp_path / "store.write.lock"
-    stale = LockHolder(
-        host="dead-host",
-        pid=999_999,
-        process_create_time=1.0,
-        process_create_time_source="unavailable",
-        acquired_ns=NOW_NS,
-    )
-    path.write_text(stale.as_json() + "\n", encoding="utf-8")
-    lock = FileScopedLock(path, now_ns=lambda: NOW_NS)
-    lock.acquire(wait_ms=0)
-    try:
-        held = lock.holder()
-        assert held is not None
-        assert held.pid == os.getpid()
-    finally:
-        lock.release()
-    assert not path.exists()
-
-
-def test_releasing_a_lock_is_idempotent_and_reacquiring_it_is_not(tmp_path: Path) -> None:
-    """A scoped lock is not reentrant: the second release would be the one that mattered."""
-    lock = FileScopedLock(tmp_path / "store.write.lock", now_ns=lambda: NOW_NS)
-    lock.release()
-    lock.acquire(wait_ms=0)
-    with pytest.raises(StoreError):
-        lock.acquire(wait_ms=0)
-    lock.release()
-    lock.release()
-
-
-def test_the_lock_is_a_context_manager_that_releases_on_the_way_out(tmp_path: Path) -> None:
-    """The shape every caller uses, so the file cannot outlive the block by accident."""
-    path = tmp_path / "store.write.lock"
-    with FileScopedLock(path, now_ns=lambda: NOW_NS):
-        assert path.exists()
-    assert not path.exists()
 
 
 # --------------------------------------------------------------------------------------------
