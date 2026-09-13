@@ -10,7 +10,8 @@ than a rule about where people should put things.
 2.6 lists it among the five things that are deliberately not parallel, beside the commit, two
 writers on one store, a `REGEN` retry for one `(unit, part)`, and driver construction.
 
-**Neither `dispatch` nor `manifest` nor `pipeline` is re-exported here.** `dispatch.py` imports
+**None of `dispatch`, `manifest`, `pipeline`, `discover` or `expand` is re-exported here.**
+`dispatch.py` imports
 `omniweave_core.host.subproc` for the four mechanisms 02-architecture.md:238 leaves there, and that
 module opens `ctypes`, `socket` and `struct` for the job objects and the named pipes. Re-exporting
 its names would make `from omniweave.run import Admission` -- which is a pure arithmetic over
@@ -22,7 +23,14 @@ second one: it imports `omniweave_core.events` for the `Stage` vocabulary, which
 path on a type `tools/schemagen.py` resolves by one module-and-symbol pair. `pipeline.py` is out
 because it is the one module G8 lets call `DriverHost.invoke()`, and a name reachable from the
 package root is a name somebody imports from the package root -- the rule is about a call site, and
-the cheapest way to keep it one is to keep the module one import away.
+the cheapest way to keep it one is to keep the module one import away. `discover.py` and
+`expand.py` are out for a reason of their own: both write `unit` rows, and between them they own
+six of the nine states of `unit.state`'s CHECK. A `from omniweave.run import ACQUIRED` is the first
+step towards a third writer for that state machine, and the import that makes somebody type the
+module name is the cheapest place to ask whether they meant to be writing it at all. They are also
+the two modules with the largest import cost per name: `discover.py` opens `omniweave_core.acquire`
+for the walk and `omniweave_core.store.sqlite` for the thread, and `expand.py` adds
+`omniweave_core.cache` and `omniweave_core.model.records` for one `Producer`.
 
 Specified in 02-architecture.md section 2 rows 30-39 and section 5, 08-runtime.md Part 2, and
 11-repo-layout.md section 1.4.

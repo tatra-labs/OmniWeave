@@ -287,7 +287,7 @@ def unit_salt(
 def cache_key(
     unit: UnitRef,
     ident: OperatorIdentity,
-    card: DriverCard,
+    card: DriverCard | None,
     ctx: RunContext,
     *,
     salt: str,
@@ -312,9 +312,23 @@ def cache_key(
     specification too (08:1375-1381): sorted keys, `allow_nan=False`, three distinct encodings for
     absent / null / the empty string, and no `str()` fallback ever -- a `str()` fallback yields
     address-bearing reprs and therefore a permanent silent 100% cache miss (I12).
+
+    **`card=None` is the `op.*` row, and it is one recipe rather than two. D164.** `work.cache_key`
+    is `TEXT NOT NULL` on every row (`0004_runtime.sql:97`) and five operators -- `op.identify`,
+    `op.converge`, `op.lexicon`, `op.resolve`, `op.cluster` -- have no card at all: 04-driver-
+    system.md:2580 files them as *"core-only Operators"* whose `work` rows carry NULL `decision_id`,
+    `driver` and `dispatch_key`, and a card is a `driver.toml` a core operator does not have. The
+    three values this function reads off a card are all knowable without one, so `None` supplies
+    them rather than branching to a second recipe: `cost_class` is `free` (08:2307 names four of the
+    five and `op.cluster` is `local_compute`, which changes neither `cheap` nor `free` here),
+    `schema_version` is `ident.op_version` -- the same integer, and 03:396's `Producer` is the same
+    type under L5's name -- and `deps_digest` is absent, because a core operator has no third-party
+    dependency set to pin. The body's three groups and their key order are untouched, which is what
+    keeps 08:1263's *"a PR that reorders them without amending the table is rejectable"* true of the
+    `op.*` row as well.
     """
-    free = card.cost_model is not None and card.cost_model.cost_class == "free"
-    cheap = card.cost_model is None or card.cost_model.cost_class != "billed_api"
+    free = card is None or (card.cost_model is not None and card.cost_model.cost_class == "free")
+    cheap = card is None or card.cost_model is None or card.cost_model.cost_class != "billed_api"
     digest_recipe: int | None = None
     if consumes_blocks(ident.operator):
         from omniweave_core.archive.manifest import DIGEST_RECIPE  # noqa: PLC0415 -- see below.
@@ -335,9 +349,9 @@ def cache_key(
         },
         "producer": {
             "operator": ident.operator,
-            "schema_version": card.identity.schema_version,
+            "schema_version": ident.op_version if card is None else card.identity.schema_version,
             "code_fingerprint": ident.code_fingerprint if cheap else None,
-            "deps_digest": card.deps.digest if free else None,
+            "deps_digest": None if card is None else (card.deps.digest if free else None),
         },
         "config": {
             "driver": ident.options_digest.hex(),

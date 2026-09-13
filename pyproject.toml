@@ -99,6 +99,13 @@ ban-relative-imports = "all"
 # `asyncio.BoundedSemaphore` opened at `max(1, cpus - 2)` is the thing that keeps the invariant
 # checkable rather than a breach of it. Scoped to the one file, like the source-side ignore above.
 "packages/omniweave/tests/unit/test_run_supervisor.py" = ["TID251"]
+
+# `op.identify`'s three routing columns are nullable-together by CHECK, and the test that proves it
+# asserts the database REFUSES the row 03-document-model.md:589 describes. That needs
+# `sqlite3.IntegrityError` by name: catching `Exception` would pass on a typo in the SQL, which is
+# the one outcome the test exists to rule out. INV-17's ban is about who holds a CONNECTION, and
+# these tests get theirs from `omniweave_core.store.sqlite.connect` like everything else.
+"packages/omniweave/tests/unit/test_run_expand.py" = ["TID251"]
 "packages/omniweave-serve/src/omniweave_serve/otlp.py" = ["TID251"]
 "packages/omniweave-conform/**" = ["S101"]
 
