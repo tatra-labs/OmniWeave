@@ -119,7 +119,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
-from typing import IO, Final, Literal, Protocol, runtime_checkable
+from typing import IO, Final, Literal, Protocol, get_args, runtime_checkable
 
 from omniweave_core.clock import Clock
 from omniweave_core.errors import ConfigError
@@ -161,6 +161,7 @@ __all__ = [
     "SinkStats",
     "SpanLevel",
     "Stage",
+    "TimedStage",
     "TraceSink",
     "is_span_kind",
     "kinds_at",
@@ -390,21 +391,35 @@ class Stage(StrEnum):
 STAGE_ATTRIBUTE: Final = "ow.stage"
 """15:92 -- the span attribute a `plan` span carries and *"every descendant"* inherits."""
 
-STAGE_MS_KEYS: Final[tuple[str, ...]] = (
-    Stage.DISCOVER.value,
-    Stage.PLAN.value,
-    Stage.PARSE.value,
-    Stage.DERIVE.value,
-    Stage.INDEX.value,
-    Stage.CONVERGE.value,
-    Stage.MAINTAIN.value,
-)
-"""The seven Stages whose elapsed time lands in the manifest. 15:105-107's `in stage_ms` column.
+TimedStage = Literal[
+    Stage.DISCOVER,
+    Stage.PLAN,
+    Stage.PARSE,
+    Stage.DERIVE,
+    Stage.INDEX,
+    Stage.CONVERGE,
+    Stage.MAINTAIN,
+]
+"""The seven Stages whose elapsed time lands in the manifest, **as a type**. 15:105-107's
+`in stage_ms` column, and the key type of `omniweave.run.manifest.RunManifest.stage_ms`.
 
 `query` and `compile` are out and each says why in its own row: *"no: a read writes no manifest"*
 and *"no: a compile writes a receipt"*. They are still Stages and still open a `plan` span --
 15:110-113 is explicit that they are why the hierarchy did not need widening -- so excluding them
-here and not from `Stage` is the distinction the table draws."""
+here and not from `Stage` is the distinction the table draws.
+
+A `Literal` over the enum MEMBERS rather than over their strings, so that renaming a `Stage` member
+is a `NameError` here rather than a silent divergence, and so that `tools/schemagen.py` can emit the
+seven as `stage_ms`'s `propertyNames` in `schema/run-manifest-v1.json`. 15:2191's glossary is the
+sentence this type makes checkable: the nine-member vocabulary's *"first seven members are the key
+set of `manifest.stage_ms`"* -- `Stage` itself would publish a contract accepting `stage_ms.query`,
+which the manifest's constructor refuses."""
+
+STAGE_MS_KEYS: Final[tuple[str, ...]] = tuple(stage.value for stage in get_args(TimedStage))
+"""`TimedStage`'s seven as strings, for the run-time checks that compare against a key.
+
+DERIVED, so the vocabulary has one home and not two. A caller asking *"is this Stage timed?"* reads
+this tuple; a declaration asking *"which Stages may key this map?"* uses the type above."""
 
 
 # =============================================================================================

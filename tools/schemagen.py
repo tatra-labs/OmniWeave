@@ -528,7 +528,14 @@ def _enum_schema(values: list[object]) -> dict[str, object]:
 
     Declaration order, never sorted: 03-document-model.md section 3.2's `k` enum is printed in the
     `Kind` declaration order, and a sorted copy would be a different diff for no reason.
+
+    An `Enum` member is replaced by its `value` first. A `Literal` may be written over the members
+    themselves -- `omniweave_core.events.TimedStage` is, so that renaming a `Stage` is a `NameError`
+    rather than a silent divergence -- and the wire carries the value, not the member. `json.dumps`
+    would emit the right bytes for a `StrEnum` by accident, because it is a `str`; an `IntEnum` in
+    the same position would not, and neither would a repr in an error message.
     """
+    values = [value.value if isinstance(value, enum.Enum) else value for value in values]
     if all(isinstance(value, str) for value in values):
         return {"type": "string", "enum": values}
     if all(isinstance(value, int) and not isinstance(value, bool) for value in values):
@@ -593,14 +600,47 @@ def _schema_union(annotation: object, ctx: _Ctx) -> dict[str, object] | None:
     return {"oneOf": arms}
 
 
+def _property_names(key: object, ctx: _Ctx) -> dict[str, object] | None:
+    """The `propertyNames` constraint a mapping key carries, or `None` for an unconstrained `str`.
+
+    A JSON object key is always a string, so `Mapping[str, X]` needs no constraint and gets none.
+    A key typed as a **closed string vocabulary** -- a `Literal[...]` of strings, or a `str`-valued
+    `Enum` -- is a stronger statement, and dropping it on the way to JSON would drop the only thing
+    bounding the document it appears in: 15-observability.md section 1.1 bounds the run manifest by
+    calling `degradations` and `failures_by_class` *"dicts keyed by a closed vocabulary"*, and a
+    schema with a bare `"type": "object"` there publishes a contract in which the manifest is
+    unbounded. So the vocabulary is emitted as `propertyNames.enum`, which is 2020-12's spelling for
+    "these keys and no others".
+
+    Anything else raises, with the message this function replaced: a JSON object key must be a
+    string, and a `Mapping[int, X]` is a type whose wire form the declaration has not decided.
+    """
+    if key is str:
+        return None
+    schema: dict[str, object] | None = None
+    if typing.get_origin(key) is typing.Literal:
+        schema = _enum_schema(list(typing.get_args(key)))
+    elif isinstance(key, type) and issubclass(key, enum.Enum):
+        schema = _enum_schema([member.value for member in key])
+    if schema is None or schema.get("type") != "string":
+        message = (
+            f"{ctx.where}: a JSON object key must be `str` or a closed string vocabulary "
+            f"(a Literal of strings, or a str-valued Enum), not {key!r}"
+        )
+        raise UnsupportedDeclarationError(message)
+    return {"enum": schema["enum"]}
+
+
 def _schema_mapping(annotation: object, ctx: _Ctx) -> dict[str, object] | None:
     if typing.get_origin(annotation) not in (Mapping, dict):
         return None
     key, value = typing.get_args(annotation)
-    if key is not str:
-        message = f"{ctx.where}: a JSON object key must be `str`, not {key!r}"
-        raise UnsupportedDeclarationError(message)
-    return {"type": "object", "additionalProperties": _schema_for(value, ctx.at("value"))}
+    schema: dict[str, object] = {"type": "object"}
+    names = _property_names(key, ctx)
+    if names is not None:
+        schema["propertyNames"] = names
+    schema["additionalProperties"] = _schema_for(value, ctx.at("value"))
+    return schema
 
 
 def _fixed_tuple(args: list[object], ctx: _Ctx) -> dict[str, object]:

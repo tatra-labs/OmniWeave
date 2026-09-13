@@ -5,6 +5,11 @@ builds `PlanDocs` from the workspace root, skips the tests that need it when `_p
 (the design tree is `.gitignore`d, so a clean clone has none), and carries the `fences`, `grep`
 and `lines` helpers every transcription test in the tree is written against.
 
+`repo_root` and `migrations` come across for the same reason and with the same force. `migrations`
+in particular is not a path a test may compose: the migration set is `omniweave-core` package data
+rather than a root directory (`_plan/_notes/build-defects.md` D12), so a second spelling here would
+be a second answer to where the DDL lives.
+
 Re-exported rather than re-declared. A second `PlanDocs` here would be a second answer to "where
 is the plan and what counts as a document" -- `_notes/.snapshots/` is excluded from `documents()`
 for a reason, and a copy that forgot would assert against a superseded draft and pass. INV-21 is
@@ -33,6 +38,8 @@ if _MODULE not in sys.modules:
     _spec.loader.exec_module(_loaded)
 
 PlanDocs = sys.modules[_MODULE].PlanDocs
+migrations = sys.modules[_MODULE].migrations
 plan = sys.modules[_MODULE].plan
+repo_root = sys.modules[_MODULE].repo_root
 
-__all__ = ["PlanDocs", "plan"]
+__all__ = ["PlanDocs", "migrations", "plan", "repo_root"]
