@@ -10,7 +10,7 @@ than a rule about where people should put things.
 2.6 lists it among the five things that are deliberately not parallel, beside the commit, two
 writers on one store, a `REGEN` retry for one `(unit, part)`, and driver construction.
 
-**Neither `dispatch` nor `manifest` is re-exported here.** `omniweave/run/dispatch.py` imports
+**Neither `dispatch` nor `manifest` nor `pipeline` is re-exported here.** `dispatch.py` imports
 `omniweave_core.host.subproc` for the four mechanisms 02-architecture.md:238 leaves there, and that
 module opens `ctypes`, `socket` and `struct` for the job objects and the named pipes. Re-exporting
 its names would make `from omniweave.run import Admission` -- which is a pure arithmetic over
@@ -19,7 +19,10 @@ its names would make `from omniweave.run import Admission` -- which is a pure ar
 second one: it imports `omniweave_core.events` for the `Stage` vocabulary, which opens `gzip`,
 `queue` and `threading` for the sinks, and `RunManifest` is also the declaration
 `schema/run-manifest-v1.json` is generated from -- so a re-export here would put a second importable
-path on a type `tools/schemagen.py` resolves by one module-and-symbol pair.
+path on a type `tools/schemagen.py` resolves by one module-and-symbol pair. `pipeline.py` is out
+because it is the one module G8 lets call `DriverHost.invoke()`, and a name reachable from the
+package root is a name somebody imports from the package root -- the rule is about a call site, and
+the cheapest way to keep it one is to keep the module one import away.
 
 Specified in 02-architecture.md section 2 rows 30-39 and section 5, 08-runtime.md Part 2, and
 11-repo-layout.md section 1.4.
