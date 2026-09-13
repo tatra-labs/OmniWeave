@@ -93,7 +93,6 @@ about a quotation of it."""
 EXPECTED_UNRESOLVED: frozenset[str] = frozenset(
     {
         "Limits",  # 08:275. `omniweave_core.limits` holds the constants, not this record.
-        "Degradation",  # 15-observability.md's, by charter erratum E15. P7.
         "WorkSpec",  # 08:2842. What `Operator.plan()` emits; no module row names it.
     }
 )
@@ -101,7 +100,7 @@ EXPECTED_UNRESOLVED: frozenset[str] = frozenset(
 # The two the table now marks **imported**. They are NOT in the set above -- there is no suppression
 # left to pin -- and they are asserted here instead, because "the debt was discharged" is a fact
 # that should fail when somebody quietly re-quotes one rather than silently reverting to prose.
-RESOLVED_SINCE: frozenset[str] = frozenset({"CacheLayer", "TraceSink"})
+RESOLVED_SINCE: frozenset[str] = frozenset({"CacheLayer", "TraceSink", "Degradation"})
 
 # `ServiceRegistry` is the sixth name the module docstring's table lists and it is NOT here,
 # because `RunContext.service()` calls it rather than naming it: it is reached through
