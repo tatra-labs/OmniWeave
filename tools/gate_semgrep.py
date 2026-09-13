@@ -82,6 +82,21 @@ DRIVERS = "packages/omniweave-core/src/omniweave_core/drivers/**"
 TOOLCHAIN = "packages/omniweave-core/src/omniweave_core/toolchain.py"
 SUBPROC = "packages/omniweave-core/src/omniweave_core/host/subproc.py"
 OPC = "packages/omniweave-core/src/omniweave_core/out/opc.py"
+CLOCK = "packages/omniweave-core/src/omniweave_core/clock.py"
+"""The one module entitled to read the machine's clock. **D154**.
+
+`omniweave-no-time-time-in-library-code` prescribes `time.monotonic_ns()` for a duration, and
+on Windows that call's resolution is 15.6 ms -- so the number `15-observability.md:434` asks
+the manifest for (`observe.serialise_ns_total`, a few microseconds) rounds to zero on six of
+the nine test-matrix cells. `clock.py` chooses `time.perf_counter_ns()` there, records the
+shortfall in `ClockFacts` rather than claiming it, and substitutes only a clock the
+interpreter itself reports as monotonic.
+
+Scoped exactly like `TOOLCHAIN` and `SUBPROC`: one module is entitled to the banned call and
+every other module injects. `test_clock.py` asserts this file's own discipline -- it calls
+only `time_ns`, `monotonic_ns`, `perf_counter_ns` and `get_clock_info` -- so the path-level
+exemption does not become a blanket one.
+"""
 OWDOC = "packages/omniweave-core/src/omniweave_core/archive/owdoc.py"
 """The SECOND module permitted to open a ZIP for writing, and the reason it had to become two.
 
@@ -327,6 +342,7 @@ AST_BANS: tuple[AstBan, ...] = (
         rule_id="omniweave-no-time-time-in-library-code",
         ban="time.time() in library code",
         include=LIBRARY,
+        exclude=(CLOCK,),
         calls=frozenset(
             {
                 "time.time",

@@ -18,7 +18,9 @@ What this module is, section by section:
 4. **Heal-on-open** above `[store] wal_heal_mb` (07:2807, 15-observability.md:1806) and the
    open-bulk-window refusal (ST13, 07:2858-2862).
 5. **The section 3.1 schema-compatibility ladder** (07:273-295), four rows and no `--force`.
-6. **The cross-process scoped lock** `store.write` (07:2724-2728, 02-architecture.md:746).
+6. **The `ScopedLock` Protocol** -- three methods the store thread needs. The lock itself,
+   `FileScopedLock`, moved to `omniweave_core.locks` at P4 W4.9 and is re-exported here
+   (07:2724-2728, 02-architecture.md:746).
 7. **The store thread**, its bounded queue, the transaction primitive and ST14's durability hook.
 8. **`snapshot()`** -- `BEGIN DEFERRED` plus the one `index_state` read that opens it
 (07:2777-2782),
@@ -51,35 +53,31 @@ row 26.
 
 from __future__ import annotations
 
-import json
-import os
 import queue
-import socket
 import sqlite3
 import threading
 import time
 from contextlib import contextmanager, suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Final, Protocol
+from typing import TYPE_CHECKING, Final, Protocol
 
 from omniweave_core.config import KEYS
 from omniweave_core.contract import SCHEMA, SCHEMA_MINOR, SCHEMA_STRING
-from omniweave_core.errors import ConfigError, StoreBusy, StoreError
+from omniweave_core.errors import ConfigError, StoreError
 from omniweave_core.limits import MAX_SNAPSHOT_MS, MIN_SQLITE
+from omniweave_core.locks import (
+    BATCH_WAIT_MS,
+    INTERACTIVE_WAIT_MS,
+    STORE_WRITE_LOCK,
+    FileScopedLock,
+    LockHolder,
+    process_create_time,
+)
 from omniweave_core.store.types import Snapshot
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
-
-try:  # POSIX
-    import fcntl as _fcntl
-except ImportError:  # pragma: no cover -- Windows has no fcntl.
-    _fcntl = None
-try:  # Windows
-    import msvcrt as _msvcrt
-except ImportError:  # pragma: no cover -- POSIX has no msvcrt.
-    _msvcrt = None
 
 __all__ = [
     "BATCH_WAIT_MS",
@@ -241,29 +239,12 @@ writes `synchronous = NORMAL` and 07:2737 writes *"a test asserts the pragma val
 
 
 # --------------------------------------------------------------------------------------------
-# 2. The wait budgets and the queue bound. 07 section 10.1.
+# 2. The queue bound. The wait budgets moved to `omniweave_core.locks` with the lock.
 # --------------------------------------------------------------------------------------------
 
-INTERACTIVE_WAIT_MS: Final = 2_000
-BATCH_WAIT_MS: Final = 60_000
-"""The two `store.write` wait budgets, PASSED PER CALL and never configured globally (07:2726-2729).
-
-*"A lock timeout is a UX decision: codegraph's 120 s wait presented as a frozen, hung agent and was
-cut to 5 s."* 08-runtime.md:2583 names the same pair from the runtime's side as
-`[runtime] interactive_wait_ms` / `batch_wait_lock_ms` = 2000 / 60000, *"the two named `store.write`
-wait budgets, passed per call"*.
-
-**They live here and not in `omniweave_core.limits`, and the reason is limits.py's own rule.** That
-module holds *"every `MAX_*` ceiling, the one `MIN_SQLITE` floor, and `effective()`"*
-(02-architecture.md:231) under INV-22, *"a ceiling is never a target and never a setting"*. These
-two
-are neither ceilings nor floors: they are the default arguments of one call, and the plan says so in
-the same sentence that names them. `MAX_SNAPSHOT_MS` is the contrast -- it IS a ceiling, so it is
-imported from `limits` above rather than retyped.
-"""
-
-STORE_WRITE_LOCK: Final = "store.write"
-"""The scoped lock's name (07:2724, 02-architecture.md:746). One string, one site."""
+# INTERACTIVE_WAIT_MS and BATCH_WAIT_MS MOVED to `omniweave_core.locks` at W4.9 with the lock
+# they are the wait budgets of, and are re-exported above. 02-architecture.md section 5.4 names
+# both in the row titled *"how long a caller waits"*, so their home is the lock's module.
 
 STORE_QUEUE_BOUND: Final = 1024
 """The bound on the store thread's transaction queue (07:2723, "a bounded queue").
@@ -735,86 +716,17 @@ def schema_action(
 
 
 # --------------------------------------------------------------------------------------------
-# 7. The cross-process scoped lock `store.write`.
+# 7. What the store thread needs of a lock. The lock itself is `omniweave_core.locks`.
 # --------------------------------------------------------------------------------------------
 
 
-def process_create_time(pid: int) -> tuple[float, str]:
-    """`(process_create_time, source)` for `pid`, from the standard library only.
-
-    The third component of the `store.write` holder identity, and 07:2724-2726 says exactly what it
-    is for: *"holder identity is `(host, pid, process_create_time)` -- the third component is what
-    stops a recycled pid from looking like a live holder."*
-
-    **There is no portable standard-library API for another process's start time, so this degrades
-    explicitly.** What each platform gives:
-
-    * **Linux** -- `/proc/<pid>`'s own inode carries the process's start time. `st_ctime` on that
-      directory is the moment the kernel created it, which is the moment the process started.
-      Source `"/proc"`.
-    * **macOS, the BSDs, Windows** -- nothing. The answer lives behind `sysctl(KERN_PROC)` and
-      `GetProcessTimes`, and reaching either needs `ctypes` against a platform ABI or a third-party
-      dependency, which INV-2 forbids core outright. Source `"unavailable"`, value `0.0`.
-
-    **The degradation costs the operator-facing message and not the correctness property**, and that
-    is why it is acceptable rather than merely admitted. The recycled-pid question is answered by
-    `FileScopedLock` with an OS-held advisory lock, which the kernel releases when the holder dies
-    whatever its pid becomes afterwards -- strictly stronger than comparing a start time, because it
-    cannot be fooled by a clock change either. `process_create_time` remains in the identity because
-    `15-observability.md:1537`'s doctor row `D-24` prints it: *"a live `store.write` lock: prints
-    holder host, pid, `process_create_time`, age"*. Where it reads `0.0` the source string says
-    `unavailable` and the doctor line says so rather than printing a plausible zero.
-    """
-    try:
-        return (Path(f"/proc/{pid}").stat().st_ctime, "/proc")
-    except OSError:
-        return (0.0, "unavailable")
-
-
-@dataclass(frozen=True, slots=True)
-class LockHolder:
-    """Who holds a scoped lock: `(host, pid, process_create_time)` plus what a report needs.
-
-    The triple is 07:2724-2726's and 02-architecture.md:746's. `process_create_time_source` is this
-    module's addition and is not a second copy of anything: it records WHICH mechanism answered, so
-    a `0.0` reads as "this platform cannot tell" rather than as "the epoch". `acquired_ns` is a wall
-    clock supplied by the lock's caller, and `age_s` against another supplied wall clock is what
-    `StoreBusy.holder`'s third component is (`errors.py:247`, 18-api-sketch.md:450).
-    """
-
-    host: str
-    pid: int
-    process_create_time: float
-    process_create_time_source: str
-    acquired_ns: int
-
-    def age_s(self, now_ns: int) -> float:
-        """Seconds since `acquired_ns`, against a wall clock the caller reads.
-
-        Negative would mean the holder's clock is ahead of ours, which on a shared mount is
-        possible; it is clamped to 0.0 rather than reported, because a negative age in an error
-        message reads as a bug in the message and the fact it would carry is "the clocks disagree",
-        which is not what this error is about.
-        """
-        return max(0.0, (now_ns - self.acquired_ns) / 1e9)
-
-    def as_json(self) -> str:
-        """The lock file's payload: sorted keys, no spaces, one line.
-
-        Sorted and separator-pinned because the file is read by another process and by a human, and
-        a byte-stable rendering is what makes "the lock file changed" a meaningful observation.
-        """
-        return json.dumps(
-            {
-                "host": self.host,
-                "pid": self.pid,
-                "process_create_time": self.process_create_time,
-                "process_create_time_source": self.process_create_time_source,
-                "acquired_ns": self.acquired_ns,
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        )
+# `process_create_time`, `LockHolder` and `FileScopedLock` MOVED to `omniweave_core.locks` at
+# P4 W4.9, which is the move the Protocol below asked for when it shipped at P2. They are
+# re-exported at the top of this file so that no import outside it had to change: a re-export
+# is a pointer, not a second home, and INV-21 is satisfied by there being one definition.
+#
+# The Protocol stays. It is the store thread's statement of what it needs -- three methods --
+# and not a fact about locking, which is why it was never part of the move.
 
 
 class ScopedLock(Protocol):
@@ -852,237 +764,6 @@ class ScopedLock(Protocol):
     def holder(self) -> LockHolder | None:
         """Who holds it right now, or `None` when nobody does."""
         ...
-
-
-_LOCK_BYTE: Final = 1 << 20
-"""The byte offset Windows byte-range locking uses, and it is NOT 0.
-
-Measured on Windows 11: `msvcrt.locking` at offset 0 makes the locked byte unreadable to every
-handle, this process's included, so a contender trying to READ the holder's identity out of the lock
-file gets `PermissionError` and reports "no holder" for a lock that is very much held -- turning the
-`StoreBusy` message that names host, pid and age (07:2872) into `?` and `0`. Locking one byte a
-megabyte past any plausible payload keeps the identity readable while the lock itself stays
-exclusive; Windows permits a range beyond end-of-file, which is what makes the offset free.
-
-`fcntl.flock` needs no offset: it locks the open file description as a whole and blocks no read.
-"""
-
-
-def _take_advisory(fd: int) -> bool | None:
-    """Try to take an OS advisory lock on `fd`. `True`/`False` taken or refused, `None` unknowable.
-
-    The liveness half of 02-architecture.md:746's `O_CREAT|O_EXCL` plus `flock`. An advisory lock is
-    the one liveness signal that cannot be wrong: the kernel drops it when the holding process dies,
-    however it died and whatever pid is issued next. `None` means neither `fcntl` nor `msvcrt` is
-    importable, which is not a platform this framework has met; the caller degrades to "assume the
-    holder is live", which errs towards refusing a write rather than towards two writers.
-    """
-    if _fcntl is not None:
-        try:
-            _fcntl.flock(fd, _fcntl.LOCK_EX | _fcntl.LOCK_NB)
-        except OSError:
-            return False
-        return True
-    if _msvcrt is not None:
-        os.lseek(fd, _LOCK_BYTE, os.SEEK_SET)
-        try:
-            _msvcrt.locking(fd, _msvcrt.LK_NBLCK, 1)
-        except OSError:
-            return False
-        return True
-    return None  # pragma: no cover -- no platform in the support matrix reaches this.
-
-
-def _drop_advisory(fd: int) -> None:
-    """Release an advisory lock taken by `_take_advisory`, tolerating a platform that has none."""
-    if _fcntl is not None:
-        with suppress(OSError):
-            _fcntl.flock(fd, _fcntl.LOCK_UN)
-    elif _msvcrt is not None:
-        os.lseek(fd, _LOCK_BYTE, os.SEEK_SET)
-        with suppress(OSError):
-            _msvcrt.locking(fd, _msvcrt.LK_UNLCK, 1)
-
-
-@dataclass(eq=False)
-class FileScopedLock:
-    """`store.write` as a lock FILE plus an advisory lock on it. The shipped `ScopedLock`.
-
-    02-architecture.md:746 fixes both mechanisms and this class is exactly those two:
-
-    1. **`O_CREAT|O_EXCL`** is the mutual exclusion. Creating the file is the atomic act; the winner
-       writes its `LockHolder` payload into it.
-    2. **The advisory lock** (`fcntl.flock`, or `msvcrt.locking` on Windows) is the STALENESS test.
-       A holder that was SIGKILLed leaves the file behind, and the file alone cannot distinguish a
-       live holder from a dead one -- which is the same question `process_create_time` exists to
-       answer and which the kernel answers better: if a contender can take the advisory lock on an
-       existing file, the writer of that file is gone, and the file is broken and retried.
-
-    **The wait is passed per call and never configured** (07:2726-2729). `acquire(wait_ms=...)`
-    polls
-    at `_POLL_MS` until the budget is spent and then raises `StoreBusy`, whose `EXIT = 7` and whose
-    `.holder` is `(host, pid, age_s)` -- errors.py:246-261 and 18-api-sketch.md:450, *"the only code
-    for which a bare retry is correct"*. **Never a silent retry loop** (07:2872).
-
-    `now_ns` is a wall clock the caller supplies, because `time.time` is banned in library code
-    (02-architecture.md:392). It is read twice: once to stamp `acquired_ns` into the payload, and
-    once per refusal to compute the holder's age. A test supplies a counter and gets a deterministic
-    age.
-
-    `path` is the lock file. It is NOT `omniweave.index.lock` -- that is the committed corpus
-    receipt
-    (02-architecture.md:1168) and has nothing to do with this. A caller names
-    `<cache_root>/store.write.lock` or equivalent; this class takes the path and no policy.
-    """
-
-    path: Path
-    now_ns: Callable[[], int]
-    name: str = STORE_WRITE_LOCK
-    host: str = field(default_factory=socket.gethostname)
-    pid: int = field(default_factory=os.getpid)
-    _fd: int | None = field(default=None, init=False, repr=False)
-
-    _POLL_MS: ClassVar[int] = 25
-    """The poll interval while waiting. `ClassVar`, not `Final`: `dataclasses` excludes only
-    `ClassVar`, so a bare `Final = 25` in a dataclass body becomes a seventh FIELD with a default
-    -- measured, and the reason this annotation is spelled the long way."""
-
-    def identity(self) -> LockHolder:
-        """This process's `LockHolder`, stamped with the caller's clock."""
-        created, source = process_create_time(self.pid)
-        return LockHolder(
-            host=self.host,
-            pid=self.pid,
-            process_create_time=created,
-            process_create_time_source=source,
-            acquired_ns=self.now_ns(),
-        )
-
-    def holder(self) -> LockHolder | None:
-        """Read the lock file's payload, or `None` when there is no live holder.
-
-        A file whose payload does not parse is reported as a holder with `pid = 0` rather than as no
-        holder, because "there is a lock file I cannot read" must not resolve to "the lock is free".
-        """
-        try:
-            raw = self.path.read_text(encoding="utf-8")
-        except OSError:
-            return None
-        try:
-            data = json.loads(raw)
-        except ValueError:
-            data = {}
-        if not isinstance(data, dict):
-            data = {}
-        return LockHolder(
-            host=str(data.get("host", "?")),
-            pid=int(data.get("pid", 0)),
-            process_create_time=float(data.get("process_create_time", 0.0)),
-            process_create_time_source=str(data.get("process_create_time_source", "unavailable")),
-            acquired_ns=int(data.get("acquired_ns", 0)),
-        )
-
-    def acquire(self, *, wait_ms: int = INTERACTIVE_WAIT_MS) -> None:
-        """Take the lock within `wait_ms`, or raise `StoreBusy` naming host, pid and age.
-
-        The loop is: try `O_CREAT|O_EXCL`; on `FileExistsError` try to break a dead holder's file;
-        sleep `_POLL_MS`; repeat until the budget is spent. `wait_ms = 0` is one attempt and no
-        sleep, which is what a caller that has already enqueued its work wants when it is only
-        probing.
-
-        Re-entering on a lock this object already holds is a usage error, not a no-op: two
-        `acquire()` calls and one `release()` would leave the file behind with nobody watching it.
-        """
-        if self._fd is not None:
-            raise StoreError(
-                f"{self.name} is already held by this object; a scoped lock is not reentrant, "
-                f"because the second release would be the one that mattered",
-                fix="release the lock before acquiring it again",
-            )
-        deadline = time.monotonic_ns() + wait_ms * 1_000_000
-        while True:
-            if self._try_create():
-                return
-            if self._break_if_dead() and self._try_create():
-                return
-            if time.monotonic_ns() >= deadline:
-                break
-            time.sleep(self._POLL_MS / 1000)
-        self._refuse(wait_ms)
-
-    def _try_create(self) -> bool:
-        """One `O_CREAT|O_EXCL` attempt; on success write the payload and hold the descriptor."""
-        try:
-            fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o644)
-        except FileExistsError:
-            return False
-        except OSError as error:
-            raise StoreError(
-                f"cannot create the {self.name} lock at {self.path}: {error}",
-                fix="check that the cache root is writable",
-            ) from error
-        os.write(fd, self.identity().as_json().encode("utf-8") + b"\n")
-        _take_advisory(fd)
-        self._fd = fd
-        return True
-
-    def _break_if_dead(self) -> bool:
-        """Unlink a lock file whose writer is gone, proved by taking the advisory lock on it.
-
-        Returns whether it broke one, so `acquire` retries the `O_CREAT|O_EXCL` immediately rather
-        than sleeping a poll interval -- which is what makes `acquire(wait_ms=0)` against a stale
-        file succeed instead of refusing.
-
-        `taken is None` means the platform offers no advisory lock at all, in which case the file is
-        left alone: refusing a write is recoverable and two writers are not.
-        """
-        try:
-            fd = os.open(self.path, os.O_RDWR)
-        except OSError:
-            return False
-        try:
-            if _take_advisory(fd) is not True:
-                return False
-            _drop_advisory(fd)
-        finally:
-            os.close(fd)
-        try:
-            self.path.unlink()
-        except OSError:
-            return False
-        return True
-
-    def _refuse(self, wait_ms: int) -> None:
-        """Raise `StoreBusy` (exit 7) naming host, pid and age. Never a silent retry."""
-        held = self.holder()
-        host = held.host if held else "?"
-        pid = held.pid if held else 0
-        age = held.age_s(self.now_ns()) if held else 0.0
-        raise StoreBusy(
-            f"another writer holds {self.name}: host {host}, pid {pid}, age {age:.1f}s; "
-            f"waited {wait_ms} ms",
-            holder=(host, pid, age),
-            symbol="OW_STORE_BUSY",
-            fix=f"wait for {host}:{pid} to finish, or `ow store repair` if it is gone",
-        )
-
-    def release(self) -> None:
-        """Drop the advisory lock, close the descriptor and unlink the file. Idempotent."""
-        fd = self._fd
-        if fd is None:
-            return
-        self._fd = None
-        _drop_advisory(fd)
-        os.close(fd)
-        with suppress(OSError):
-            self.path.unlink()
-
-    def __enter__(self) -> FileScopedLock:
-        self.acquire()
-        return self
-
-    def __exit__(self, *_exc: object) -> None:
-        self.release()
 
 
 # --------------------------------------------------------------------------------------------

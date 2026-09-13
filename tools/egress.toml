@@ -130,12 +130,11 @@ never a loopback TCP listener.\
 
 [[client]]
 module = "socket"
-path = "packages/omniweave-core/src/omniweave_core/store/sqlite.py"
+path = "packages/omniweave-core/src/omniweave_core/locks.py"
 why = """
-`socket.gethostname()`, once, as the `host` field of the index lock's owner record \
-(`sqlite.py:941`) — the host/pid/create_time triple that tells a second process whether a lock is \
-stale or live. A name for this machine, never a name of another one. No socket is constructed.\
-"""
+`socket.gethostname()`, once, as the `host` field of the scoped lock's owner record — the \nhost/pid/create_time triple that tells a second process whether a lock is stale or live. A \nname for this machine, never a name of another one. No socket is constructed.
+
+The row MOVED here from `store/sqlite.py` at P4 W4.9 with `FileScopedLock` itself, and the \nmove is the point of this file's own rule: THE PATH IS PART OF THE ROW, so the allowance \nfollows the code rather than staying behind as a blessing on a file that no longer imports \nthe module.\n"""
 
 [[client]]
 module = "socket"
