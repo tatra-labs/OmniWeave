@@ -83,11 +83,12 @@ each contributes, in that order, so a participant is a slot rather than a rewrit
   `rows: "DerivedRows"` is the channel that would. **P4**, and `DerivedRows` is 08-runtime.md's.
 * `work_transition` -- **the one statement that ships.** 08:113-125, plus `cache_key` from 02:487.
   **Here.**
-* `dep_rows` -- **empty**, but the refusals are not: `dep_statements()` ships with
+* `dep_rows` -- **empty at P2**, but the refusals were not: `dep_statements()` shipped with
   `MAX_DEPS_PER_UNIT` and the closed `kind` domain enforced, because 08:2491 makes both a raise.
-  The producer is **P4 W4.6**'s `omniweave_core.deps` -- 02-architecture.md:244 homes `Dep`,
-  `DepKind` and `record_deps` there, not in `omniweave_core.work`, which is why `DEP_KINDS` did not
-  travel with the work vocabulary at W4.1.
+  The producer arrived at **P4 W4.6** as `omniweave_core.deps` -- 02-architecture.md:244 homes
+  `Dep`, `DepKind` and `record_deps` there, not in `omniweave_core.work`, which is why `DEP_KINDS`
+  did not travel with the work vocabulary at W4.1 and does now.
+  `omniweave_core.store.deps.dep_rows()` is the `Contribution` that binds the two.
 * `reservation_commit` -- **empty.** `budget_reservation.decision_id` is
   `NOT NULL REFERENCES route_decision`, and no P2 code writes a `route_decision` row. **P4**;
   05-ingest-and-routing.md section 6.4.
@@ -137,6 +138,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Final, Protocol
 
+from omniweave_core.deps import DEP_KINDS as _DEP_KINDS
 from omniweave_core.errors import ResourceLimit, StoreError
 from omniweave_core.limits import MAX_DEPS_PER_UNIT
 from omniweave_core.store.sqlite import INTERACTIVE_WAIT_MS, StoreThread, Unit
@@ -169,14 +171,19 @@ __all__ = [
 # 1. What the STORE owns of the closed domains. The rest is `omniweave_core.work`'s.
 # --------------------------------------------------------------------------------------------
 
-DEP_KINDS: Final = ("unit", "part", "name", "cohort", "policy", "service_model")
-"""`dep.kind`'s CHECK, verbatim (0004_runtime.sql:186). Enforced by `dep_statements()`.
-
-Enforced in Python as well as by the CHECK because 08:2489-2496 requires the refusal to be a RAISE
-that names the offence: a CHECK violation surfaces as `sqlite3.IntegrityError("CHECK constraint
-failed: dep")`, which does not say which kind, which key or which unit, and it arrives after the
-derived rows of the same transaction have already been written.
-"""
+#: `dep.kind`'s CHECK (0004_runtime.sql:186), re-exported from its home in `omniweave_core.deps`.
+#:
+#: It was declared here at W4.1 with a note saying where it belonged and why it had not moved yet:
+#: *"02-architecture.md:244 homes `Dep`, `DepKind` and `record_deps` there, not in
+#: `omniweave_core.work`."* W4.6 built that module, so the tuple moved and this name is now an
+#: alias -- kept because `dep_statements()` is the enforcement site and a reader of the refusal
+#: should find the domain in the file that raises.
+#:
+#: Enforced in Python as well as by the CHECK because 08:2489-2496 requires the refusal to be a
+#: RAISE that names the offence: a CHECK violation surfaces as `sqlite3.IntegrityError("CHECK
+#: constraint failed: dep")`, which does not say which kind, which key or which unit, and it
+#: arrives after the derived rows of the same transaction have already been written.
+DEP_KINDS: Final = _DEP_KINDS
 
 COMPLETE_PARTICIPANTS: Final = (
     "derived_rows",

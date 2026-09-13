@@ -107,6 +107,19 @@ ban-relative-imports = "all"
 # these tests get theirs from `omniweave_core.store.sqlite.connect` like everything else.
 "packages/omniweave/tests/unit/test_run_expand.py" = ["TID251"]
 "packages/omniweave-serve/src/omniweave_serve/otlp.py" = ["TID251"]
+
+# `cohort_member`'s foreign key must REFUSE a member whose parent row is absent, and the test
+# that asserts it names `sqlite3.IntegrityError`: catching `Exception` would pass on a typo in
+# the SQL, which is the one outcome the test exists to rule out. Same escape and same reason as
+# `test_store_queue.py`'s inline one, taken at file scope because this file also imports the
+# module for a second assertion. Every connection still comes from `omniweave_core.store`.
+"packages/omniweave-core/tests/unit/test_store_deps.py" = ["TID251"]
+
+# S106 flags a keyword argument named `token` as a hardcoded password. `Witness.token` is
+# 04-driver-system.md:570's own field name -- *"the foreign `(unit_uri, unit_part, token)`
+# tuples each item consulted"* -- and the values here are `fig:3` and `tbl:9`. A linter cannot
+# tell a driver's label for what it read from a credential; the vocabulary is the plan's.
+"packages/omniweave-core/tests/unit/test_deps.py" = ["S106"]
 "packages/omniweave-conform/**" = ["S101"]
 
 # --- P1 additions. Each is a rule whose premise the plan overrides, not a rule being dodged. ---
