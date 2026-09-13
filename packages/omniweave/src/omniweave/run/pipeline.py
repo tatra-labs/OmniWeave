@@ -90,7 +90,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Final, Literal, Protocol, TypeAlias
 
-from omniweave_core.cache import CacheLayer, CacheVerdict
+from omniweave_core.cache import CacheLayer, CacheProbe, CacheVerdict
 from omniweave_core.errors import ConfigError, ResourceLimit, RouteError
 from omniweave_core.events import EventKind
 from omniweave_core.observe.degradation import Degradation
@@ -127,6 +127,8 @@ __all__ = [
     "build",
     "cache_layer_for",
     "chaos_fires",
+    "decision_of",
+    "prober",
     "with_budget",
     "with_cache",
     "with_events",
@@ -638,6 +640,90 @@ class Prober(Protocol):
     """
 
     def __call__(self, call: Call, layer: CacheLayer) -> CacheDecision: ...
+
+
+def decision_of(
+    result: CacheProbe,
+    call: Call,
+    *,
+    produced: Mapping[int, tuple[ArtifactRef, ...]] | None = None,
+    replay: Callable[[str], Spend] | None = None,
+) -> CacheDecision:
+    """Project a `CacheProbe` onto the three tuples a `(fn) -> fn` layer can act on.
+
+    The full probe carries decoded payloads and a `Mapping[UnitKey, CacheVerdict]`;
+    `CacheDecision`'s own docstring says which three of the four the middleware needs and why the
+    fourth is absent -- I31 keeps document bytes out of the supervisor, so what crosses is
+    `ArtifactRef`, a reference by construction.
+
+    `CacheProbe.ordered(call.units)` is what re-projects the mapping onto the batch's positions, and
+    it is the probe's method rather than a loop here: one stored representation, one derived, and
+    the projection lives beside the mapping it projects.
+
+    `produced` and `replay` are optional because a hit's *payload* is the layer's business and its
+    *accounting* is not. A caller that only wants the short-circuit -- `08:1795`'s *"`outstanding`
+    is what gets dispatched"* -- passes neither and gets verdicts plus micros, which is everything
+    `with_cache` needs to narrow the call. A caller assembling `StepResult`s passes both.
+
+    `replay` takes the row's `spend_json` -- canonical JSON with no currency (INV-15) -- and returns
+    the `Spend` it encodes. It is a parameter rather than `Spend.loads`, because `08:1307`'s replay
+    is *"the Spend that produced it"* re-read at the current vocabulary and a codec change is the
+    caller's to absorb.
+    """
+    verdicts = result.ordered(call.units)
+    width = len(verdicts)
+    micros = [0] * width
+    payloads: list[tuple[ArtifactRef, ...]] = [() for _ in range(width)]
+    spends: list[Spend] = [Spend() for _ in range(width)]
+    for hit in result.hits:
+        micros[hit.index] = hit.micros
+        if produced is not None:
+            payloads[hit.index] = produced.get(hit.index, ())
+        if replay is not None:
+            spends[hit.index] = replay(hit.spend_json)
+    return CacheDecision(
+        verdicts=verdicts,
+        produced=tuple(payloads) if produced is not None else (),
+        spend=tuple(spends) if replay is not None else (),
+        micros=tuple(micros),
+        would_have_been_micros=result.would_have_been_micros,
+    )
+
+
+def prober(
+    probe_batch: Callable[..., CacheProbe],
+    *,
+    keys: Callable[[Call], Sequence[str]],
+    produced: Callable[[Call, CacheProbe], Mapping[int, tuple[ArtifactRef, ...]]] | None = None,
+    replay: Callable[[str], Spend] | None = None,
+) -> Prober:
+    """Wrap `omniweave_core.cache.probe` into the `Prober` this module's `with_cache` takes.
+
+    The adapter is here rather than in `omniweave_core.cache` because it is the only place the two
+    vocabularies meet: `CacheDecision` and `Spend` are this distribution's, `CacheProbe` is core's,
+    and `tools/layers.toml` lets the arrow point only this way.
+
+    `keys` is a callable rather than a precomputed tuple because a `Call` is narrowed between
+    layers -- `with_cache` itself re-cuts the batch on a partial hit -- so the key list has to be
+    derived from whatever units the call is carrying when it arrives. `cache.keys_for()` is what a
+    caller will normally close over, and its `salts` argument is D143's.
+
+    `probe_batch` arrives already bound to its index and its two clause-answerers -- in practice
+    `functools.partial(cache.probe, index=..., blob_ok=..., nonempty=..., reprice=...)` -- so the
+    only thing this adapter supplies is the pair the layer knows and core does not: the call's
+    units and the operator's layer.
+    """
+
+    def run(call: Call, layer: CacheLayer) -> CacheDecision:
+        result = probe_batch(call.units, keys(call), layer=layer)
+        return decision_of(
+            result,
+            call,
+            produced=None if produced is None else produced(call, result),
+            replay=replay,
+        )
+
+    return run
 
 
 def with_cache(
