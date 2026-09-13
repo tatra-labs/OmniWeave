@@ -957,25 +957,17 @@ def test_g17_requires_the_nine_to_be_deferred_rather_than_absent(
     """Clause 4, and the reason G17 is not satisfiable by deletion.
 
     A lazy name that is *absent* rather than deferred passes the absence assertion and breaks every
-    caller, so the gate asserts both halves. Asserted over the homes on disk because
-    `modelserver.py` lands at P4 W4.9; `toolchain.py` landed with W1.6, so eight of the
-    nine have a home on disk and only `modelserver` is still absent.
+    caller, so the gate asserts both halves. Asserted over the homes on disk, which was eight of
+    nine until P4 W4.9b: `modelserver.py` was the one still absent, and this list said so by
+    omitting it rather than by carrying an exception. It landed, so the list is the nine.
     """
     module = gates["gate_lazy_core"]
     src = module.core_src(repo_root)
     homes = tuple(
         name for name in module.LAZY if (src / name).is_dir() or (src / f"{name}.py").is_file()
     )
-    assert homes == (
-        "model",
-        "store",
-        "archive",
-        "retrieve",
-        "answer",
-        "out",
-        "host",
-        "toolchain",
-    ), homes
+    assert homes == tuple(module.LAZY), homes
+    assert len(homes) == 9
     interpreter = module.Interpreter(executable=sys.executable)
     assert module.check_reachable(repo_root, interpreter) == []
 

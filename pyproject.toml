@@ -120,6 +120,12 @@ ban-relative-imports = "all"
 # tuples each item consulted"* -- and the values here are `fig:3` and `tbl:9`. A linter cannot
 # tell a driver's label for what it read from a credential; the vocabulary is the plan's.
 "packages/omniweave-core/tests/unit/test_deps.py" = ["S106"]
+
+# Same rule family, one module over. Seam S3's `token` is a 32-byte bearer token from a 0600
+# sentinel (08-runtime.md:981), which is what closes surya's `VLLM_API_KEY = "EMPTY"` hole --
+# so every fixture here has one, and the linter is right that it is a credential and wrong
+# that it is hardcoded: the values are `de` and `abcd` and the real one is `os.urandom(32)`.
+"packages/omniweave-core/tests/unit/test_modelserver.py" = ["S105", "S106", "S107"]
 "packages/omniweave-conform/**" = ["S101"]
 
 # --- P1 additions. Each is a rule whose premise the plan overrides, not a rule being dodged. ---

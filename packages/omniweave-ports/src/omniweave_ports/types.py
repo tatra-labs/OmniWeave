@@ -299,17 +299,40 @@ class ServiceHandle(Protocol):
     because `tools/layers.toml` gives `omniweave_ports = []` and a driver must be able to
     name the type it is handed.
 
+    **The eight attributes are `@property` and not bare annotations, and that is the fix for
+    D181.** A bare annotation in a Protocol is READ-WRITE, so the frozen dataclass 08:967
+    prints could not satisfy this Protocol — and a mutable `base_url` or `token` would be a
+    driver able to redirect its own calls or rewrite its own credential, through the one
+    channel INV-6 exists to keep narrow. Both shipped implementations are frozen
+    (`modelserver.Handle` and `cassette.CassetteHandle`); nothing was ever meant to write
+    here, and until W4.9b nothing had asserted the conformance so nothing had noticed.
+
     Specified in 04-driver-system.md section 1.3.
     """
 
-    name: str
-    base_url: str
-    token: str
-    model_id: str
-    model_rev: str
-    capacity: int
-    traceparent: str
-    deadline_ms: int
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def base_url(self) -> str: ...
+
+    @property
+    def token(self) -> str: ...
+
+    @property
+    def model_id(self) -> str: ...
+
+    @property
+    def model_rev(self) -> str: ...
+
+    @property
+    def capacity(self) -> int: ...
+
+    @property
+    def traceparent(self) -> str: ...
+
+    @property
+    def deadline_ms(self) -> int: ...
 
     def post(self, path: str, body: bytes, *, headers: Mapping[str, str] | None = None) -> bytes:
         """POST to `base_url + path` under this handle's token and deadline."""

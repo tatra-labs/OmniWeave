@@ -26,8 +26,6 @@ import ast
 import re
 from typing import TYPE_CHECKING
 
-import pytest
-
 if TYPE_CHECKING:  # the fixtures deliver these; the names are here for the annotations
     from pathlib import Path
 
@@ -259,22 +257,20 @@ def test_the_seven_lazy_subpackages_p1_creates_are_importable_on_demand(
         assert f"omniweave_core.{name}" in loaded, f"omniweave_core.{name} is not importable"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "modelserver.py lands at P4 W4.9 (16-roadmap.md section 7), so __init__'s "
-        "__getattr__ cannot expose all nine before then. G17's absence half above is "
-        "asserted unconditionally and does not wait for this"
-    ),
-)
 def test_every_lazy_name_is_reachable_through_getattr(interpreter: Interpreter) -> None:
     """The complement of G17, and the reason G17 is not satisfiable by deletion.
 
     11-repo-layout.md section 1.3: "`__init__.py` exposes them through `__getattr__`".
     A lazy name that is *absent* rather than deferred passes the absence assertion and
-    breaks every caller, so the gate has to assert both halves. Strict xfail rather than
-    skip: the day this starts passing is the day the substrate is complete, and a skip
-    would say nothing at all on that day.
+    breaks every caller, so the gate has to assert both halves.
+
+    **This carried a strict xfail from P1 until P4 W4.9b**, whose reason read: "modelserver.py
+    lands at P4 W4.9, so `__init__`'s `__getattr__` cannot expose all nine before then. G17's
+    absence half above is asserted unconditionally and does not wait for this." The marker said
+    what would end it -- "the day this starts passing is the day the substrate is complete, and a
+    skip would say nothing at all on that day" -- and `strict=True` is what made the day arrive as
+    a failure rather than as silence. `modelserver.py` landed; the ninth name resolves; the marker
+    is gone and the assertion is unconditional.
     """
     program = "import omniweave_core\n" + "\n".join(
         f"getattr(omniweave_core, {name!r})" for name in LAZY

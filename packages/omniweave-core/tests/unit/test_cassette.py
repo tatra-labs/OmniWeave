@@ -76,7 +76,6 @@ from omniweave_core.cassette import (
     Seam,
     ServiceFacts,
     encode_body,
-    intercept_modelserver,
     intercept_service,
     payload_digest,
     prompt_digest,
@@ -87,6 +86,7 @@ from omniweave_core.cassette import (
 )
 from omniweave_core.contract import CONTRACT
 from omniweave_core.errors import QualityError
+from omniweave_core.modelserver import MODELS_PATH, SERVICE_API_MAJOR
 
 # ---------------------------------------------------------------------------
 # The live channel that must never be entered
@@ -753,51 +753,63 @@ def test_the_codec_touches_no_clock_no_socket_and_no_subprocess(
 # ---------------------------------------------------------------------------
 
 
-def test_the_modelserver_module_does_not_exist_in_this_tree(sources: SourceIndex) -> None:
-    """16-roadmap.md:549 lands `modelserver.py` at P4 W4.9, so half of 13-quality.md:972's
-    two-site construction cannot be built at P3.
+def test_the_modelserver_module_exists_and_the_second_seam_is_wired(
+    sources: SourceIndex,
+) -> None:
+    """The tripwire, inverted. It fired at P4 W4.9b and this is what it asked for.
 
-    Read off the source tree rather than with `importlib.util.find_spec`, because `find_spec`
-    imports the parent package and `omniweave_core`'s nine lazy names (G17) are exactly what a
-    test must not disturb. This is a tripwire: when W4.9 lands the module, this test goes red and
-    the person landing it is the person who must wire the second seam.
+    It read: *"This is a tripwire: when W4.9 lands the module, this test goes red and the person
+    landing it is the person who must wire the second seam."* The module landed;
+    `intercept_modelserver()` wraps `ServiceRegistry.handle`; `ContractIdentity.for_modelserver()`
+    returns `modelserver.SERVICE_API_MAJOR` instead of raising; and `seam_coverage()` reports both
+    channels enforced, which is 13-quality.md:972's *"coverage is complete by construction"*
+    becoming a fact rather than an aspiration.
+
+    Still read off the source tree rather than with `importlib.util.find_spec`, because `find_spec`
+    imports the parent package and `omniweave_core`'s nine lazy names (G17) are exactly what a test
+    must not disturb.
     """
     core = sources.distribution("omniweave-core").src / "omniweave_core"
-    assert not (core / "modelserver.py").exists()
+    assert (core / "modelserver.py").is_file()
     assert (core / "cassette.py").is_file()
+    assert all(row.enforced for row in seam_coverage())
 
 
-def test_intercept_modelserver_raises_and_names_the_phase_that_owns_it() -> None:
-    """A named absence, not a silent one: a wrapper that intercepted nothing would be worse."""
-    with pytest.raises(NotImplementedError) as caught:
-        intercept_modelserver()
-    message = str(caught.value)
-    assert "omniweave_core.modelserver" in message
-    assert "P4 W4.9" in message
-    assert "16-roadmap.md:549" in message
+def test_the_second_seams_contract_major_is_declared_and_not_invented() -> None:
+    """13-quality.md:979: *"the model server's declared API major."* `modelserver` declares it.
+
+    It raised until W4.9b because *"a placeholder integer here would be a fabricated contract
+    identity inside a cache key, which is the worst place for one"* -- so the test that it is NOT a
+    placeholder is that it is derived from the route the transport actually calls.
+    """
+    identity = ContractIdentity.for_modelserver()
+    assert identity.seam is Seam.MODELSERVER
+    assert identity.contract_major == SERVICE_API_MAJOR
+    assert MODELS_PATH.startswith(f"/v{SERVICE_API_MAJOR}/")
 
 
-def test_for_modelserver_refuses_to_invent_a_contract_major() -> None:
-    """13-quality.md:979 makes it "the model server's declared API major". Nothing declares one."""
-    with pytest.raises(NotImplementedError):
-        ContractIdentity.for_modelserver()
+def test_the_two_seams_carry_two_different_contract_identities() -> None:
+    """*"It is in the key so a seam change invalidates every recording made against it."*"""
+    assert ContractIdentity.for_driver_io() != ContractIdentity.for_modelserver()
+    assert ContractIdentity.for_driver_io().seam is Seam.DRIVER_IO_SERVICE
 
 
-def test_coverage_is_one_of_two_channels_and_says_which() -> None:
+def test_coverage_is_two_of_two_channels_and_says_which() -> None:
     """The claim the work item's estimation basis rests on, asserted as it actually stands.
 
     16-roadmap.md:487 prices W3.7 at 2 ew on "two interception points, so coverage is complete by
-    construction". At P3 one of the two exists, so `all(enforced)` must be FALSE and the
-    uncovered row must be the modelserver one. An assertion that only checked the enforced row
-    would be a closed set pinned against nothing.
+    construction". **At P3 one of the two existed**, and this test asserted `all(enforced)` was
+    FALSE with the modelserver row named as the uncovered one -- a closed set pinned in both
+    directions rather than a single row checked. W4.9b landed `omniweave_core.modelserver` and
+    wired `intercept_modelserver()`, so the claim is now a fact and this is the assertion that it
+    is: both rows, both enforced, and the row order still the plan's.
     """
     rows = seam_coverage()
     assert [row.seam.value for row in rows] == ["driver_io.service", "modelserver"]
-    assert [row.enforced for row in rows] == [True, False]
-    assert not all(row.enforced for row in rows)
-    uncovered = [row for row in rows if not row.enforced]
-    assert len(uncovered) == 1
-    assert uncovered[0].seam is Seam.MODELSERVER
+    assert [row.enforced for row in rows] == [True, True]
+    assert all(row.enforced for row in rows)
+    assert [row for row in rows if not row.enforced] == []
+    assert rows[1].note == "intercept_modelserver() wraps ServiceRegistry.handle"
 
 
 def test_the_two_seam_spellings_come_from_the_plan_line_that_defines_them(
@@ -1152,11 +1164,26 @@ def test_the_module_imports_nothing_a_gate_forbids_and_no_lazy_core_name(
 
     INV-2 (stdlib only), G23 (no `asyncio`, no `selectors`), INV-17 (`sqlite3` under `store/`
     only), G8/S2/S4 (`subprocess` in two named homes), the ban on `time.time` and `random` in
-    library code, and G17 (a bare `import omniweave_core` loads none of the nine lazy names, so
-    an eager module may name none of them) are ALL one assertion here: this set and no other.
+    library code, and G17 are ALL one assertion here: this set and no other.
+
+    **`omniweave_core.modelserver` is in the set at P4 W4.9b, and only at function scope.** It is
+    one of the nine lazy names, so an eager module may not name it at module scope -- a bare
+    `import omniweave_core.cassette` must not load the model server client. The second assertion
+    below is that rule, checked against the import SITE rather than trusted: `for_modelserver()`
+    imports it inside the method, which is why the module-scope set is unchanged from P3.
     """
     path = sources.distribution("omniweave-core").src / "omniweave_core" / "cassette.py"
-    modules = {site.module for site in sources.imports(path)}
+    sites = sources.imports(path)
+    modules = {site.module for site in sites}
+    lazy = [site for site in sites if site.module.startswith("omniweave_core.modelserver")]
+    assert len(lazy) == 1, "one site, and it is ContractIdentity.for_modelserver()"
+    indented = (
+        (sources.distribution("omniweave-core").src / "omniweave_core" / "cassette.py")
+        .read_text(encoding="utf-8")
+        .splitlines()[lazy[0].line - 1]
+    )
+    assert indented.startswith(" "), "a module-scope import would load a lazy name at import time"
+    modules.discard("omniweave_core.modelserver")
     assert modules == {
         "__future__",
         "base64",
@@ -1353,7 +1380,7 @@ def test_the_seam_constants_say_which_half_is_enforced_and_which_is_pending(
 ) -> None:
     """`SEAMS`, `SEAMS_ENFORCED` and `SEAMS_PENDING` -- the coverage claim AS DATA, and unpinned.
 
-    `test_coverage_is_one_of_two_channels_and_says_which` asserts `seam_coverage()`'s rows and
+    `test_coverage_is_two_of_two_channels_and_says_which` asserts `seam_coverage()`'s rows and
     nothing else, so all three constants can be wrong -- `SEAMS_ENFORCED` can name
     `MODELSERVER`, `SEAMS_PENDING` can be empty, `SEAMS` can be reversed -- with the file green.
     They are the machine-readable form of the module's central claim, which makes them the form
@@ -1372,10 +1399,11 @@ def test_the_seam_constants_say_which_half_is_enforced_and_which_is_pending(
     assert printed.index('"driver_io.service"') < printed.index('"modelserver"')
 
     assert [member.value for member in SEAMS] == ["driver_io.service", "modelserver"]
-    assert sorted(member.value for member in SEAMS_ENFORCED) == ["driver_io.service"]
-    assert sorted(member.value for member in SEAMS_PENDING) == ["modelserver"]
-    assert Seam.MODELSERVER not in SEAMS_ENFORCED
-    assert Seam.DRIVER_IO_SERVICE not in SEAMS_PENDING
+    assert sorted(member.value for member in SEAMS_ENFORCED) == [
+        "driver_io.service",
+        "modelserver",
+    ]
+    assert frozenset() == SEAMS_PENDING, "W4.9b wired the second seam; nothing is pending"
     assert not SEAMS_ENFORCED & SEAMS_PENDING
     assert sorted(member.value for member in SEAMS_ENFORCED | SEAMS_PENDING) == sorted(
         member.value for member in SEAMS
