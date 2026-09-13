@@ -41,10 +41,12 @@ from omniweave.run.pipeline import (
     DEFAULT_MAX_ATTEMPTS,
     HIT_VERDICTS,
     LAYER_ORDER,
+    Admitter,
     BudgetVerdict,
     CacheDecision,
     Call,
     Chaos,
+    LedgerAdmitter,
     Reply,
     RequestCount,
     RetryGuard,
@@ -54,6 +56,7 @@ from omniweave.run.pipeline import (
     chaos_fires,
     decision_of,
     prober,
+    verdict_of,
     with_budget,
     with_cache,
     with_events,
@@ -62,6 +65,13 @@ from omniweave.run.pipeline import (
     with_rate_limiting,
     with_request_count,
     with_retries,
+)
+from omniweave_core.budget import (
+    Admitted,
+    Deferred,
+    Degraded,
+    Reservation,
+    admission_of,
 )
 from omniweave_core.cache import CacheHit, CacheLayer, CacheProbe, CacheVerdict
 from omniweave_core.drivers import card as card_module
@@ -73,7 +83,7 @@ from omniweave_core.work import WORK_COLUMNS, WorkRow
 from omniweave_ports.types import ArtifactRef, FailureClass, Isolation, UnitRef
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
     from pathlib import Path
 
     from conftest import PlanDocs
@@ -1177,3 +1187,173 @@ def test_a_full_hit_projects_to_a_decision_with_nothing_outstanding() -> None:
     decision = decision_of(probe_of(hits=(0, 1, 2), width=3), call_of(3))
     assert decision.outstanding == ()
     assert decision.legacy == 0
+
+
+# =============================================================================================
+# 9b. The admission adapter: `Admitted | Deferred | Degraded` -> `BudgetVerdict`
+# =============================================================================================
+
+
+class _Ledger:
+    """A `BudgetLedger` that answers from a script and records every call."""
+
+    def __init__(self, denies: str | None = None) -> None:
+        self.denies = denies
+        self.reserved: list[tuple[str, ...]] = []
+        self.committed: list[tuple[str, int]] = []
+        self.released: list[str] = []
+
+    def headroom(self, dim: str, scope: str, scope_key: str, limit: int) -> int:
+        del dim, scope, scope_key
+        return limit
+
+    def reserve(self, reservations: Sequence[Reservation], limits: Mapping[str, int]) -> str | None:
+        del limits
+        self.reserved.append(tuple(row.dim for row in reservations))
+        return self.denies
+
+    def commit(self, reservation_id: str, amount: int, /) -> bool:
+        self.committed.append((reservation_id, amount))
+        return True
+
+    def release(self, reservation_id: str, /) -> bool:
+        self.released.append(reservation_id)
+        return True
+
+
+def _reservation(dim: str = "micros", amount: int = 10) -> Reservation:
+    return Reservation(
+        reservation_id=f"res_{dim}",
+        run_id="r_1",
+        work_id=1,
+        decision_id="d_1",
+        dim=dim,
+        amount=amount,
+        scope="part",
+        scope_key=f"{URI}#p1",
+        claimed_gen=1,
+        expires_ms=9_999,
+    )
+
+
+def test_the_three_admissions_agree_with_cores_mapping() -> None:
+    """Two homes for one pairing, asserted rather than trusted -- `verdict_of`'s own docstring."""
+    assert verdict_of(Admitted(("res_a",))).admission == admission_of(Admitted(()))
+    assert verdict_of(Deferred("micros")).admission == admission_of(Deferred("micros"))
+    degraded = Degraded((Degradation(kind="budget", message="clamped"),))
+    assert verdict_of(degraded).admission == admission_of(degraded)
+
+
+def test_a_deferral_carries_the_dimension_and_an_admission_carries_the_ids() -> None:
+    deferred = verdict_of(Deferred("calls"))
+    assert (deferred.admission, deferred.deferred_dim) == ("deferred", "calls")
+    admitted = verdict_of(Admitted(("res_a", "res_b")))
+    assert admitted.reservations == ("res_a", "res_b")
+    assert admitted.deferred_dim is None
+
+
+def test_a_degraded_verdict_carries_its_degradations_and_defers_nothing() -> None:
+    """`05:2519`'s steps 1-3: the work still runs, so nothing short-circuits."""
+    record = Degradation(kind="budget", message="max_cost_class")
+    verdict = verdict_of(Degraded((record,)))
+    assert verdict.admission == "degraded"
+    assert verdict.degradations == (record,)
+    assert verdict.deferred_dim is None
+
+
+def test_the_admitter_reserves_what_the_caller_computed() -> None:
+    ledger = _Ledger()
+    admitter = LedgerAdmitter(
+        ledger,
+        reservations_for=lambda _call: (_reservation("micros"), _reservation("calls", 1)),
+        limits={"micros": 6_000, "calls": 3},
+    )
+    verdict = admitter.admit(call_of(2))
+    assert verdict.admission == "admitted"
+    assert ledger.reserved == [("micros", "calls")]
+    assert verdict.reservations == ("res_micros", "res_calls")
+
+
+def test_a_denial_names_the_dimension_and_holds_nothing() -> None:
+    ledger = _Ledger(denies="calls")
+    admitter = LedgerAdmitter(
+        ledger, reservations_for=lambda _call: (_reservation("calls", 1),), limits={"calls": 3}
+    )
+    verdict = admitter.admit(call_of(1))
+    assert (verdict.admission, verdict.deferred_dim) == ("deferred", "calls")
+    assert verdict.reservations == ()
+
+
+def test_a_free_call_never_reaches_the_ledger() -> None:
+    """02:478's hop 8: a `free` decision reserves nothing, and reserving nothing takes no lock."""
+    ledger = _Ledger()
+    admitter = LedgerAdmitter(ledger, reservations_for=lambda _call: (), limits={})
+    assert admitter.admit(call_of(1)).admission == "admitted"
+    assert ledger.reserved == []
+
+
+def test_the_commit_prices_the_attempts_actual_spend() -> None:
+    """INV-15: the price arrives as a callable, because `PriceBook` is `route.spend`'s."""
+    ledger = _Ledger()
+    admitter = LedgerAdmitter(
+        ledger,
+        reservations_for=lambda _call: (_reservation("micros"),),
+        limits={"micros": 6_000},
+        price=lambda spend: spend.calls * 100,
+    )
+    call = call_of(2)
+    verdict = admitter.admit(call)
+    admitter.commit(call, verdict, (Spend(calls=1), Spend(calls=2)))
+    assert ledger.committed == [("res_micros", 300)]
+
+
+def test_without_a_pricebook_the_commit_is_zero_and_the_ceiling_is_released() -> None:
+    """ "Nothing was priced" is the honest reading; committing the p95 ceiling would be a bill."""
+    ledger = _Ledger()
+    admitter = LedgerAdmitter(
+        ledger, reservations_for=lambda _call: (_reservation("micros"),), limits={"micros": 6_000}
+    )
+    call = call_of(1)
+    verdict = admitter.admit(call)
+    admitter.commit(call, verdict, (Spend(calls=9),))
+    assert ledger.committed == [("res_micros", 0)]
+
+
+def test_release_returns_every_held_row_in_full() -> None:
+    ledger = _Ledger()
+    admitter = LedgerAdmitter(
+        ledger,
+        reservations_for=lambda _call: (_reservation("micros"), _reservation("calls", 1)),
+        limits={"micros": 6_000, "calls": 3},
+    )
+    call = call_of(1)
+    admitter.release(call, admitter.admit(call))
+    assert ledger.released == ["res_micros", "res_calls"]
+
+
+def test_the_admitter_satisfies_the_protocol_the_layer_takes() -> None:
+    """Structurally, and by use: `with_budget` is what actually consumes it."""
+    ledger = _Ledger()
+    admitter: Admitter = LedgerAdmitter(
+        ledger, reservations_for=lambda _call: (_reservation(),), limits={"micros": 6_000}
+    )
+    handler = with_budget(ok_reply, admitter=admitter)
+    reply = handler(call_of(2))
+    assert reply.outcomes == (Outcome.OK, Outcome.OK)
+    assert ledger.reserved == [("micros",)]
+    assert ledger.committed == [("res_micros", 0)]
+
+
+def test_a_deferred_call_short_circuits_without_reaching_the_driver() -> None:
+    """I8's other half: nothing below `with_budget` runs without a reservation."""
+    ledger = _Ledger(denies="micros")
+    admitter = LedgerAdmitter(
+        ledger, reservations_for=lambda _call: (_reservation(),), limits={"micros": 6_000}
+    )
+
+    def refuses(_call: Call) -> Reply:
+        raise AssertionError("a deferred call must not reach the driver")
+
+    reply = with_budget(refuses, admitter=admitter)(call_of(2))
+    assert reply.outcomes == (Outcome.DEFERRED_BUDGET, Outcome.DEFERRED_BUDGET)
+    assert ledger.committed == []

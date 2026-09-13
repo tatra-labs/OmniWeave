@@ -90,6 +90,8 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Final, Literal, Protocol, TypeAlias
 
+from omniweave_core.budget import Admitted, Deferred, Degraded
+from omniweave_core.budget import admit as core_admit
 from omniweave_core.cache import CacheLayer, CacheProbe, CacheVerdict
 from omniweave_core.errors import ConfigError, ResourceLimit, RouteError
 from omniweave_core.events import EventKind
@@ -103,6 +105,7 @@ from omniweave.run.dispatch import Batch, call_attributes
 if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from collections.abc import Iterator
 
+    from omniweave_core.budget import BudgetLedger, Reservation
     from omniweave_core.clock import Clock
     from omniweave_core.host.subproc import InvokeReport
     from omniweave_ports.types import UnitRef
@@ -119,6 +122,7 @@ __all__ = [
     "Chaos",
     "Handler",
     "Layer",
+    "LedgerAdmitter",
     "Prober",
     "Reply",
     "RequestCount",
@@ -129,6 +133,7 @@ __all__ = [
     "chaos_fires",
     "decision_of",
     "prober",
+    "verdict_of",
     "with_budget",
     "with_cache",
     "with_events",
@@ -826,6 +831,92 @@ class Admitter(Protocol):
     def commit(self, call: Call, verdict: BudgetVerdict, spend: Sequence[Spend]) -> None: ...
 
     def release(self, call: Call, verdict: BudgetVerdict) -> None: ...
+
+
+def verdict_of(result: Admitted | Deferred | Degraded) -> BudgetVerdict:
+    """Project `omniweave_core.budget`'s three-valued answer onto this layer's record.
+
+    `05:1841`'s printed return type is `"Admitted | Deferred | Degraded"` and
+    `route_decision.admission`'s CHECK is the three lower-cased strings. The three literals are
+    written out here rather than read from `budget.admission_of()`, because `BudgetVerdict.
+    admission` is a `Literal` and a `str` from a mapping does not satisfy it -- so the pairing is
+    stated in two places and `test_run_pipeline.py` asserts they agree, which is the arrangement
+    `_CACHE_KEY_HEX_LEN` uses for the same reason.
+
+    The same shape `decision_of()` has for `CacheProbe`: core owns the vocabulary, this module owns
+    the projection, and the arrow points one way because `tools/layers.toml` says so.
+    """
+    if isinstance(result, Deferred):
+        return BudgetVerdict(admission="deferred", deferred_dim=result.dim)
+    if isinstance(result, Degraded):
+        return BudgetVerdict(admission="degraded", degradations=result.degradations)
+    return BudgetVerdict(admission="admitted", reservations=result.reservations)
+
+
+class LedgerAdmitter:
+    """`Admitter` over `omniweave_core.budget`'s ledger. W4.5's arithmetic wired to this layer.
+
+    **It holds no headroom in memory and no verdict between calls.** I29 makes the durable rows
+    the authority -- the held sum for `(dim='calls', scope='provider')` **is** the cross-process
+    in-flight count (`08:2196`) -- so every `admit()` recomputes in SQL, and `commit` and `release`
+    each name a reservation id the caller already has. A cached figure is wrong the moment
+    another process reserves, and this ledger's job is to be right *across* processes.
+
+    `reservations_for` is the seam this class does not try to own: turning a `Call` into
+    `Reservation`s needs the decision's `est_spend`, the policy's `[budget.per_*]` table, the scope
+    and `tokens_out_p95_multiple` -- none of which is on a `Call`, and all of which are the
+    router's (`cache.keys_for`'s `salts` argument has the same shape and reason).
+    `budget.requests()` is what a caller will normally close over.
+
+    **`commit` releases the gap in the same transaction and that is the point.** `05:2532`: *"on
+    commit, the gap between `reserved_micros` and the `route_spend` row's actual `micros` is
+    released in the same transaction, which can lift the very denial that just fired."* At
+    `tokens_out_p95_multiple = 3.2` the held rows carry 3.2x the eventual spend, so
+    release-on-commit is what buys effective concurrency back -- and the alternative, reserving the
+    mean, overdraws half the time against a durable ledger, *"and a durable overdraw is a bill"*.
+    """
+
+    __slots__ = ("_ledger", "_limits", "_price", "_requests")
+
+    def __init__(
+        self,
+        ledger: BudgetLedger,
+        *,
+        reservations_for: Callable[[Call], Sequence[Reservation]],
+        limits: Mapping[str, int],
+        price: Callable[[Spend], int] | None = None,
+    ) -> None:
+        self._ledger = ledger
+        self._requests = reservations_for
+        self._limits = limits
+        self._price = price
+
+    def admit(self, call: Call) -> BudgetVerdict:
+        """Steps 4-6 over this call's reservations. Steps 1-3 are the router's (W5.3)."""
+        return verdict_of(
+            core_admit(self._requests(call), ledger=self._ledger, limits=self._limits)
+        )
+
+    def commit(self, call: Call, verdict: BudgetVerdict, spend: Sequence[Spend]) -> None:
+        """Held -> committed at the ACTUAL amount, one row per reservation.
+
+        The actual is what the attempt spent, priced through the caller's `price` -- INV-15's one
+        site, reached here as a callable because `PriceBook` is `omniweave.route.spend`'s and a
+        `micros` this class computed itself would be the second place money appears. With no
+        `price`, the commit is at `0` and the whole reservation is released as gap, which is the
+        honest reading of "nothing was priced" rather than a silent commit of the p95 ceiling.
+        """
+        del call
+        total = Spend() if not spend else sum(spend[1:], spend[0])
+        amount = 0 if self._price is None else self._price(total)
+        for reservation in verdict.reservations:
+            self._ledger.commit(reservation, amount)
+
+    def release(self, call: Call, verdict: BudgetVerdict) -> None:
+        """Every held row back, in full. The raise path and the no-spend path both reach here."""
+        del call
+        for reservation in verdict.reservations:
+            self._ledger.release(reservation)
 
 
 def with_budget(inner: Callable[[Call], Reply], *, admitter: Admitter) -> Callable[[Call], Reply]:
