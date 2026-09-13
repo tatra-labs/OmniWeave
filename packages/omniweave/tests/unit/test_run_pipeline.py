@@ -52,6 +52,8 @@ from omniweave.run.pipeline import (
     build,
     cache_layer_for,
     chaos_fires,
+    decision_of,
+    prober,
     with_budget,
     with_cache,
     with_events,
@@ -61,7 +63,7 @@ from omniweave.run.pipeline import (
     with_request_count,
     with_retries,
 )
-from omniweave_core.cache import CacheLayer, CacheVerdict
+from omniweave_core.cache import CacheHit, CacheLayer, CacheProbe, CacheVerdict
 from omniweave_core.drivers import card as card_module
 from omniweave_core.errors import ConfigError, ResourceLimit, RouteError
 from omniweave_core.events import EventKind
@@ -71,6 +73,7 @@ from omniweave_core.work import WORK_COLUMNS, WorkRow
 from omniweave_ports.types import ArtifactRef, FailureClass, Isolation, UnitRef
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
     from conftest import PlanDocs
@@ -1084,3 +1087,93 @@ def test_a_degraded_admission_carries_its_record_through_to_the_reply() -> None:
     reply = with_budget(host_that(), admitter=Degrading())(call_of(1))
     assert [record.kind for record in reply.degradations] == ["budget"]
     assert reply.outcomes == (Outcome.OK,)
+
+
+# =============================================================================================
+# 9a. The probe adapter: `CacheProbe` -> `CacheDecision`
+# =============================================================================================
+
+
+def probe_of(*, hits: tuple[int, ...], width: int, micros: int = 5) -> CacheProbe:
+    """A `CacheProbe` over `call_of(width)`'s own units, of which `hits` are answered.
+
+    Built from the module's own `unit()` rather than from a second unit factory, so the mapping
+    `decision_of` re-projects is keyed by the pairs the `Call` actually carries -- which is the
+    one thing the projection can get wrong.
+    """
+    units = [unit(f"p{n + 1}") for n in range(width)]
+    made = tuple(
+        CacheHit(
+            index=n,
+            key=f"{n:064d}",
+            unit=units[n],
+            verdict=CacheVerdict.HIT,
+            ref="cas://ab/cd/" + "ab" * 32,
+            bytes=1,
+            spend_json='{"wall_ms":3}',
+            micros=micros,
+        )
+        for n in hits
+    )
+    return CacheProbe(
+        hits=made,
+        outstanding=tuple(units[n] for n in range(width) if n not in hits),
+        verdicts={
+            (u.uri, u.part): (CacheVerdict.HIT if n in hits else CacheVerdict.MISS)
+            for n, u in enumerate(units)
+        },
+        legacy=0,
+        would_have_been_micros=micros * len(hits),
+        queries=1,
+    )
+
+
+def test_the_projection_keeps_every_tuple_parallel_to_the_calls_units() -> None:
+    """`CacheDecision`'s own invariant, fed from a probe whose verdicts are a mapping."""
+    decision = decision_of(probe_of(hits=(1,), width=3), call_of(3))
+    assert decision.verdicts == (CacheVerdict.MISS, CacheVerdict.HIT, CacheVerdict.MISS)
+    assert decision.micros == (0, 5, 0)
+    assert decision.outstanding == (0, 2)
+    assert decision.would_have_been_micros == 5
+
+
+def test_a_caller_that_wants_only_the_short_circuit_passes_neither_payload_nor_replay() -> None:
+    """08:1795's *"outstanding is what gets dispatched"* needs verdicts and micros, no more."""
+    decision = decision_of(probe_of(hits=(0,), width=2), call_of(2))
+    assert decision.produced == ()
+    assert decision.spend == ()
+    assert decision.verdicts[0] is CacheVerdict.HIT
+
+
+def test_payloads_and_replayed_spend_land_at_the_hits_own_position() -> None:
+    ref = ArtifactRef(kind="doc_fragment", byte_len=1, inline=b"x", blob=None)
+    decision = decision_of(
+        probe_of(hits=(2,), width=3),
+        call_of(3),
+        produced={2: (ref,)},
+        replay=lambda _json: Spend(wall_ms=3),
+    )
+    assert decision.produced == ((), (), (ref,))
+    assert decision.spend[2].wall_ms == 3
+    assert decision.spend[0].wall_ms == 0
+
+
+def test_the_adapter_asks_the_probe_for_the_calls_units_and_the_layer() -> None:
+    seen: list[tuple[int, CacheLayer]] = []
+
+    def fake(units: Sequence[UnitRef], keys: Sequence[str], *, layer: CacheLayer) -> CacheProbe:
+        assert len(keys) == len(units)
+        seen.append((len(units), layer))
+        return probe_of(hits=(), width=len(units))
+
+    run = prober(fake, keys=lambda call: [f"{n:064d}" for n in range(call.size)])
+    decision = run(call_of(4), CacheLayer.CALL)
+    assert seen == [(4, CacheLayer.CALL)]
+    assert decision.outstanding == (0, 1, 2, 3)
+
+
+def test_a_full_hit_projects_to_a_decision_with_nothing_outstanding() -> None:
+    """The 100%-hit Batch of I25: every verdict is a hit, so `with_cache` never calls inward."""
+    decision = decision_of(probe_of(hits=(0, 1, 2), width=3), call_of(3))
+    assert decision.outstanding == ()
+    assert decision.legacy == 0

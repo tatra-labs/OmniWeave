@@ -46,6 +46,7 @@ from omniweave_core.cache import (
     UPSERT_SQL,
     CacheEntry,
     CacheLayer,
+    chunked,
     reject_unallowed,
 )
 from omniweave_core.errors import StoreError
@@ -56,7 +57,14 @@ if TYPE_CHECKING:
 
     from omniweave_core.clock import Clock
 
-__all__ = ["GC_COST_CLASS_DAYS", "SELECT_SQL", "STAT_SQL", "TOUCH_SQL", "SqliteCacheIndex"]
+__all__ = [
+    "GC_COST_CLASS_DAYS",
+    "SELECT_SQL",
+    "STAT_SQL",
+    "TOUCH_SQL",
+    "SqliteCacheIndex",
+    "select_many_sql",
+]
 
 _COLUMNS: Final = ", ".join(CACHE_INDEX_COLUMNS)
 SELECT_SQL: Final = (
@@ -67,6 +75,30 @@ SELECT_SQL: Final = (
 )
 """The eighteen columns by name, in the DDL's order. Built from `CACHE_INDEX_COLUMNS` so the
 projection and the row-to-`CacheEntry` mapping cannot disagree about position."""
+
+
+def select_many_sql(count: int) -> str:
+    """`SELECT ... WHERE cache_key IN (?, ?, ...)` for exactly `count` keys. **08:1791.**
+
+    *"One indexed query per Batch, not one per unit: `WHERE cache_key IN (...)` against
+    `cache_index`'s primary key. At `batch = 256` that is one statement instead of 256, and the
+    `IN` list is chunked at 900 to stay under SQLite's `SQLITE_MAX_VARIABLE_NUMBER` floor."*
+
+    **The placeholders are generated and the keys are still bound.** A key is a 64-character hex
+    digest this process computed, so interpolating them would be safe and would also be the habit
+    that is unsafe the next time; what is interpolated is the *count* of `?`s, which is an integer
+    from `len()`. `cache_key` is the table's `PRIMARY KEY`, so the `IN` is an index scan over at
+    most 900 rowids and never a table scan.
+
+    Positional `?` rather than the named `:k` `SELECT_SQL` uses, because a named parameter per key
+    would need a generated name per key and a dict to match -- more machinery for the same bound
+    values, and `sqlite3` accepts a sequence directly.
+    """
+    if count < 1:
+        raise ValueError("select_many_sql is asked for at least one key")
+    holes = ", ".join("?" * count)
+    return f"SELECT {_COLUMNS} FROM cache_index WHERE cache_key IN ({holes})"  # noqa: S608
+
 
 TOUCH_SQL: Final = """
 UPDATE cache_index SET last_hit_ns = :now_ns, hits = hits + 1 WHERE cache_key = :k
@@ -136,6 +168,43 @@ class SqliteCacheIndex:
         if found is not None and not isinstance(found, CacheEntry):  # pragma: no cover
             raise StoreError("the cache.get unit returned no entry", fix="report this as a bug")
         return found
+
+    def get_many(self, keys: Sequence[str]) -> Mapping[str, CacheEntry]:
+        """Every row among `keys` that exists, by key. **The sixth call, and 08:1791 needs it.**
+
+        `02-architecture.md` row 18's boundary cell reads `CacheIndex.get/put`, and a probe built
+        over `get` alone issues one statement per unit -- which is exactly what `08:1789` says the
+        caller never does: *"the caller never issues N lookups"*. So the boundary grows one read,
+        and it is a read rather than a policy: what comes back is rows, and `read_verdict()` still
+        judges them. Recorded as **D170**.
+
+        Chunked at `cache.IN_CHUNK` inside one `Unit`, so a 5,000-key probe is six statements in
+        **one** transaction rather than six transactions. That matters for more than lock traffic:
+        two chunks read in two transactions could see two different states of the index, and a
+        probe that reported a hit for one half of a batch and a miss for the other after a
+        concurrent sweep would be a batch nobody can reproduce.
+
+        A key that has no row is simply absent from the mapping, which is clause 1's `None` in
+        batch form -- `probe()` reads `.get(key)` and `read_verdict(None, ...)` returns `MISS`.
+        """
+        wanted = tuple(dict.fromkeys(keys))
+        if not wanted:
+            return {}
+
+        def run(connection: sqlite3.Connection) -> object:
+            found: dict[str, CacheEntry] = {}
+            for chunk in chunked(wanted):
+                for row in connection.execute(select_many_sql(len(chunk)), chunk).fetchall():
+                    entry = _entry(row)
+                    found[entry.cache_key] = entry
+            return found
+
+        rows = self._thread.run(
+            Unit(name="cache.get_many", run=run, cost_class="free", wait_ms=self._wait_ms)
+        )
+        if not isinstance(rows, dict):  # pragma: no cover -- the closure returns a dict or raises.
+            raise StoreError("the cache.get_many unit returned no mapping", fix="report this bug")
+        return rows
 
     def touch(self, key: str) -> bool:
         """Advance `last_hit_ns` and increment `hits`. **D146**; the LRU has no other writer.

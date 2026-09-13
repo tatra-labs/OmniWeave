@@ -70,12 +70,12 @@ from dataclasses import dataclass
 from enum import StrEnum
 from posixpath import relpath
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Final, Protocol, TypeAlias
 
 from omniweave_core.canonical import sha256_canonical
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Iterator, Mapping, Sequence
 
     from omniweave_ports.types import UnitRef
 
@@ -91,19 +91,31 @@ __all__ = [
     "DEFAULT_CACHE_RECIPE",
     "GC_DEFAULT_DAYS",
     "GROWTH_BOUND_WORDS",
+    "IN_CHUNK",
     "MAX_BYTES_UNBOUNDED",
     "NEVER_SWEEP_DAYS",
     "SIZE_SWEEP_SQL",
     "UPSERT_SQL",
+    "BatchIndex",
+    "BlobCheck",
     "CacheEntry",
+    "CacheHit",
     "CacheIndex",
     "CacheLayer",
+    "CacheProbe",
     "CacheVerdict",
+    "Nonempty",
+    "Repricer",
+    "UnitKey",
     "cache_key",
     "cache_ns",
+    "chunked",
     "consumes_blocks",
+    "keys_for",
+    "probe",
     "read_verdict",
     "reject_unallowed",
+    "same_namespace",
     "unit_salt",
 ]
 
@@ -651,6 +663,355 @@ LRU by `last_hit_ns` **descending** with a running sum, so the rows kept are the
 touched and everything past the bound goes. `cost_class <> 'billed_api'` is I27 again, spelled in
 the statement as well as in the index: *"an automatic sweep NEVER re-bills."*
 """
+
+
+# ---------------------------------------------------------------------------------------------
+# 6. The batch cache-check -- hits PLUS the outstanding work list. 08:1760-1800.
+# ---------------------------------------------------------------------------------------------
+
+
+IN_CHUNK: Final = 900
+"""How many keys ride in one `WHERE cache_key IN (...)`. 08:1793.
+
+*"the `IN` list is chunked at 900 to stay under SQLite's `SQLITE_MAX_VARIABLE_NUMBER` floor."*
+The floor and not the ceiling: 3.32 raised the compiled default to 32,766, but a distribution may
+build with the historic 999 and the value is not queryable from `sqlite3` without
+`SQLITE_LIMIT_VARIABLE_NUMBER`, which the stdlib module does not expose. 900 leaves room for the
+statement's own bound parameters and is one number rather than a per-build probe.
+"""
+
+
+def chunked(keys: Sequence[str], size: int = IN_CHUNK) -> Iterator[tuple[str, ...]]:
+    """`keys` in runs of at most `size`, in order. The `IN`-list bound, as an iterator.
+
+    An iterator rather than a list of lists because the caller executes each chunk as it arrives
+    and a 100k-key probe should not materialise its own partition first.
+    """
+    if size < 1:
+        raise ValueError("a chunk holds at least one key")
+    for start in range(0, len(keys), size):
+        yield tuple(keys[start : start + size])
+
+
+UnitKey: TypeAlias = tuple[str, str]
+"""`(unit_uri, unit_part)`. 08:2856, and the key `allowed_units` and `verdicts` already use.
+
+The glossary calls it *"the pair that keys the pending set, the cache write allowlist and the
+per-part retry semaphore. Not a `UnitRef`, which additionally carries `content_sha256`, the
+connector and the walked path."* Declared here rather than in `omniweave_ports.types` because it is
+not a wire type: no driver ever sends or receives one, and `reject_unallowed()` above has been
+spelling it `tuple[str, str]` since this cell's first half.
+"""
+
+
+class BatchIndex(Protocol):
+    """`CacheIndex` plus the one read `08:1791` requires. **D170.**
+
+    *"One indexed query per Batch, not one per unit ... the caller never issues N lookups."*
+    `CacheIndex.get(key)` cannot express that, and `02-architecture.md` row 18's boundary cell --
+    `CacheIndex.get/put` -- names no batch read. A separate Protocol rather than a sixth method on
+    `CacheIndex`, so that a caller who only needs a lookup still declares only a lookup, and so the
+    widening is visible at the type rather than buried in a method list.
+    """
+
+    def get_many(self, keys: Sequence[str]) -> Mapping[str, CacheEntry]:
+        """Every row among `keys` that exists, by key. Absent keys are absent from the mapping."""
+        ...
+
+
+BlobCheck: TypeAlias = "Callable[[CacheEntry], bool]"
+"""Clause 2: does the blob parse, and does its sha256 match `ref`? 08's table, row 2.
+
+A callable because the answer needs a blob store and a codec, and `08:1439`'s whole point is that
+the six clauses are *"the cache's business"* while these two facts are not computable from a
+`cache_index` row. `omniweave_core.blobs` could answer the digest half here, but not the parse
+half -- that is the layer's codec -- so both travel together as one question the caller owns.
+"""
+
+Nonempty: TypeAlias = "Callable[[CacheEntry], bool]"
+"""Clause 4: does the decoded artefact pass the operator's `is_valid_nonempty`? 08's table, row 4.
+
+`Operator.is_valid_nonempty(ref)` is `08:245-249`'s *"There is no empty success"* on the read path,
+and `omniweave_core.operator.Operator` is a Protocol this module must not import: `cache.py` is on
+the path of every key computation and `operator.py` opens the runner's whole vocabulary.
+"""
+
+Repricer: TypeAlias = "Callable[[str], int]"
+"""`spend_json -> micros`, at the **current** `PriceBook`. INV-15's one indirection.
+
+`08:1307`: a hit *"replays the Spend and re-prices it from the current `PriceBook`, which is the
+only way to do cost accounting when 90% of calls are hits, and the only source of
+`cost.would_have_been_micros_if_uncached`."* `PriceBook` and `Spend.micros(book)` live in
+`omniweave.route.spend`, which `tools/layers.toml` forbids core from importing -- the same wall
+`StepMetrics.spend` hit at D139. So the re-pricing arrives as a callable and `cache_index.micros`
+(the price at creation) is the fallback when no caller supplies one.
+"""
+
+
+def same_namespace(entry: CacheEntry, *, driver: str, driver_schema_v: int, recipe: int) -> bool:
+    """Clause 6's namespace test, against the tuple the **index** is built on. **D171.**
+
+    `08:1424` is explicit that the string `cache_ns()` returns is not what enforces anything:
+    *"The enforcement is not this string. I27 is the `cache_ns` **partial index**, declared `WHERE
+    cost_class='free'`, so the automatic sweep's query cannot see a billed row at all --
+    structural, not a policy."* That index is
+    `cache_ns ON cache_index(driver, driver_schema_v, recipe) WHERE cost_class='free'`, so the
+    namespace a row actually belongs to is those three columns, and this is the comparison a
+    pruning sweep makes.
+
+    **It is not `cache_ns()`'s five inputs, and it cannot be.** That function takes
+    `(cost_class, operator, op_version, code_fingerprint, config_digest)` and `cache_index` carries
+    three of the five: `cost_class`, `origin_operator` and `config_digest`. `op_version` and
+    `code_fingerprint` are on no column, so a row's `cache_ns()` string is not derivable from the
+    row. Two namespaces, two tuples, one name. Recorded as **D171**; this is the index's.
+    """
+    return (
+        entry.driver == driver
+        and entry.driver_schema_v == driver_schema_v
+        and entry.recipe == recipe
+    )
+
+
+_HIT_VERDICTS: Final[frozenset[CacheVerdict]] = frozenset(
+    {CacheVerdict.HIT, CacheVerdict.HIT_LEGACY}
+)
+"""The two verdicts that answer a unit. Every other member leaves it outstanding.
+
+The same pair `pipeline.HIT_VERDICTS` holds, and the duplication is deliberate for the reason
+`_CACHE_KEY_HEX_LEN`'s is: importing it from `omniweave.run.pipeline` is the layer violation, and
+importing it the other way would put the middleware's vocabulary on every key computation.
+`test_cache.py` asserts the two are equal.
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class CacheHit:
+    """One decoded hit inside a `CacheProbe`. 08:2852.
+
+    *"the artefact ref, the replayed `Spend`, the re-priced `micros` and the `CacheVerdict` (`hit`
+    or `hit_legacy`)."* `spend_json` rather than a `Spend`, for `Repricer`'s reason: the type lives
+    in a distribution core may not import, and the row holds canonical JSON with **no currency**
+    (INV-15), which is exactly what a re-pricer wants as input.
+
+    `index` is the hit's position in the probed sequence, and it is what makes `08:1778`'s *"Order
+    preserved"* a property of the record rather than of a convention: a caller widening a narrowed
+    batch back to its original shape reads positions, not identities.
+    """
+
+    index: int
+    key: str
+    unit: UnitRef
+    verdict: CacheVerdict
+    ref: str
+    bytes: int
+    spend_json: str
+    micros: int
+
+    def __post_init__(self) -> None:
+        if self.verdict not in _HIT_VERDICTS:
+            raise ValueError(f"{self.verdict!r} is a miss; a CacheHit records a hit")
+        if self.index < 0:
+            raise ValueError("index is a position in the probed sequence")
+
+
+@dataclass(frozen=True, slots=True)
+class CacheProbe:
+    """What ONE call over a claimed Batch returns. 08:1774-1781, field for field.
+
+    The signature is the artefact, and `08:1762` says whose: graphify's
+    `check_semantic_cache(...) -> (cached_nodes, cached_edges, cached_hyperedges, uncached_files)`
+    -- *"One call returns reusable output **and** the remaining work."* The typed form keeps that
+    property and adds the three the untyped one could not carry: which clause fired for every
+    non-hit, the legacy count, and what the hits would have cost.
+
+    **`hits` and `outstanding` partition the probed units.** `08:2110` states it as a property of
+    the `call` span's attributes -- *"`cached` and `outstanding` sum to `units`"* -- and
+    `__post_init__` enforces it, because a probe that lost a unit would dispatch a batch narrower
+    than the work it was claimed for and the missing unit's `work` row would sit `claimed` until its
+    lease expired.
+
+    `queries` is not in the printed block. It is here because property 1 -- *"One indexed query per
+    Batch, not one per unit"* -- is the reason this type exists at all, and a number a test can
+    assert is the difference between a property and an intention.
+    """
+
+    hits: tuple[CacheHit, ...]
+    outstanding: tuple[UnitRef, ...]
+    verdicts: Mapping[UnitKey, CacheVerdict]
+    legacy: int
+    would_have_been_micros: int
+    queries: int = 0
+
+    def __post_init__(self) -> None:
+        """08:2110's property 3, and the two counts that are derived rather than reported."""
+        if len(self.hits) + len(self.outstanding) != len(self.verdicts):
+            raise ValueError(
+                f"{len(self.hits)} hits + {len(self.outstanding)} outstanding against "
+                f"{len(self.verdicts)} verdicts: cached and outstanding sum to units (08:2110)"
+            )
+        counted = sum(1 for hit in self.hits if hit.verdict is CacheVerdict.HIT_LEGACY)
+        if counted != self.legacy:
+            raise ValueError(f"legacy says {self.legacy} and {counted} hits are hit_legacy")
+        if self.would_have_been_micros != sum(hit.micros for hit in self.hits):
+            raise ValueError("would_have_been_micros is the sum over hits at the current PriceBook")
+
+    @property
+    def misses(self) -> Mapping[CacheVerdict, int]:
+        """Every non-hit verdict with its count. What `manifest.cache` and `graph_observation` read.
+
+        `08:1453` wants the five distinct miss shapes per `(run, pass, lane)` so that *"is the cache
+        working"* is a query rather than a feeling, and `08:1798` names the three manifest fields
+        this feeds. Zeros are dropped: a shape that did not occur is absent, and the manifest's own
+        `_ordered()` is what makes the reported map total.
+        """
+        counts: dict[CacheVerdict, int] = {}
+        for verdict in self.verdicts.values():
+            if verdict not in _HIT_VERDICTS:
+                counts[verdict] = counts.get(verdict, 0) + 1
+        return counts
+
+    def ordered(self, units: Sequence[UnitRef]) -> tuple[CacheVerdict, ...]:
+        """`verdicts` re-projected onto `units`' order, for a caller that thinks in positions.
+
+        `08:1779` prints `verdicts` as a `Mapping[UnitKey, CacheVerdict]` and a middleware layer
+        wants a tuple parallel to its batch -- `pipeline.CacheDecision` says so in its own
+        docstring. One stored representation and one derived, rather than two stored: a mapping and
+        a tuple that could disagree about one unit is the drift a probe exists to prevent.
+        """
+        return tuple(self.verdicts[(unit.uri, unit.part)] for unit in units)
+
+
+def keys_for(
+    units: Sequence[UnitRef],
+    ident: OperatorIdentity,
+    card: DriverCard | None,
+    ctx: RunContext,
+    *,
+    salts: Sequence[str],
+    recipe: int = DEFAULT_CACHE_RECIPE,
+) -> tuple[str, ...]:
+    """One `cache_key()` per unit, in order. The only place a probe's keys come from.
+
+    `salts` is parallel to `units` and is required rather than derived, which is **D143**:
+    `unit_salt()`'s three inputs are not on a `UnitRef` and the runner is the only component that
+    holds all three. A `probe()` that computed its own salts would have to guess, and `08:1364`
+    says what a guessed salt costs -- two symlink aliases of one file collapsing into one cache
+    entry, and therefore into one document.
+    """
+    if len(salts) != len(units):
+        raise ValueError(f"{len(salts)} salts against {len(units)} units; they are parallel")
+    return tuple(
+        cache_key(unit, ident, card, ctx, salt=salt, recipe=recipe)
+        for unit, salt in zip(units, salts, strict=True)
+    )
+
+
+def _always(entry: CacheEntry) -> bool:
+    """The default answer to clauses 2 and 4 for a caller with no blob store and no Operator.
+
+    `True` and not `False`, because the two clauses are *refusals*: a caller that cannot check
+    whether a blob parses has not thereby learned that it does not. A default of `False` would turn
+    every hit into a `miss_corrupt` and silently disable the cache for anyone who had not wired both
+    answerers -- which is the failure mode `manifest.cache.corrupt_entries` exists to make loud.
+    """
+    del entry
+    return True
+
+
+def probe(
+    units: Sequence[UnitRef],
+    keys: Sequence[str],
+    *,
+    index: BatchIndex,
+    layer: CacheLayer,
+    blob_ok: BlobCheck = _always,
+    nonempty: Nonempty = _always,
+    reprice: Repricer | None = None,
+    in_namespace: Callable[[CacheEntry], bool] | None = None,
+    allow_partial: bool = False,
+    allow_legacy: bool = False,
+) -> CacheProbe:
+    """The batch cache-check: hits, the outstanding list, and which clause fired for every miss.
+
+    `08:1783` prints the signature as
+    `probe(units, ident, card, ctx, *, layer, allow_partial=False)`, and **three of the six read
+    clauses cannot be evaluated from those four arguments**: the lookup needs a `CacheIndex`,
+    clause 2 needs a blob store and a codec, and clause 4 needs the Operator's `is_valid_nonempty`.
+    `RunContext` carries none of the three -- it has `roots`, `clock`, `cancel`, `admission`,
+    `services`, `budget`, `events` and five digests, and `08:300-317` defends its having no store
+    handle at length. So the index and the two answerers are parameters, and `keys` replaces
+    `(ident, card, ctx)` because `keys_for()` is the one place a key is computed and its salts are
+    D143's. Recorded as **D172**.
+
+    `layer` *"is not a caller's choice"* (`08:1786`): `with_cache` passes the operator's layer from
+    section 2.4's table and an operator with no layer never calls this at all. It is taken here to
+    be recorded **and checked**: a row that matched the key but sits in another layer is a key
+    collision, and it is reported as `miss_unit_mismatch` -- clause 5's shape one level up, which is
+    the clause the plan calls *"a bug report"* rather than a miss.
+
+    **Three properties a naive `get(key)` loop does not have** (`08:1789-1800`), each observable on
+    the returned record:
+
+    1. *"One indexed query per Batch"* -- `queries` counts the `IN` chunks, so a 256-unit batch
+       reports `1` and a test can say so.
+    2. *"`outstanding` is what gets dispatched"* -- a tuple of `UnitRef` in the probed order, and
+       `hits` plus `outstanding` partition the batch.
+    3. *"Every miss carries its clause"* -- `verdicts` covers every unit, and `misses` counts the
+       five shapes that make `manifest.cache.corrupt_entries`, `legacy_vintage_hits` and
+       `rebilled_units` computable.
+
+    `reprice=None` falls back to `cache_index.micros`, the price at creation. That is the honest
+    default rather than zero: a probe with no `PriceBook` still knows what the entry cost when it
+    was written, and reporting `0` would make `would_have_been_micros_if_uncached` read as "the
+    cache saved nothing" on exactly the runs where it saved the most.
+    """
+    if len(keys) != len(units):
+        raise ValueError(f"{len(keys)} keys against {len(units)} units; they are parallel")
+    distinct = tuple(dict.fromkeys(keys))
+    rows = index.get_many(distinct) if distinct else {}
+    queries = sum(1 for _ in chunked(distinct)) if distinct else 0
+
+    hits: list[CacheHit] = []
+    outstanding: list[UnitRef] = []
+    verdicts: dict[UnitKey, CacheVerdict] = {}
+    for position, (unit, key) in enumerate(zip(units, keys, strict=True)):
+        entry = rows.get(key)
+        asked = (unit.uri, unit.part)
+        verdict = read_verdict(
+            entry,
+            asked_for=asked,
+            blob_ok=entry is None or blob_ok(entry),
+            nonempty=entry is None or nonempty(entry),
+            allow_partial=allow_partial,
+            in_current_namespace=entry is None or in_namespace is None or in_namespace(entry),
+            allow_legacy=allow_legacy,
+        )
+        if verdict in _HIT_VERDICTS and entry is not None and entry.layer is not layer:
+            verdict = CacheVerdict.MISS_UNIT_MISMATCH
+        if verdict in _HIT_VERDICTS and entry is not None:
+            hits.append(
+                CacheHit(
+                    index=position,
+                    key=key,
+                    unit=unit,
+                    verdict=verdict,
+                    ref=entry.ref,
+                    bytes=entry.bytes,
+                    spend_json=entry.spend_json,
+                    micros=entry.micros if reprice is None else reprice(entry.spend_json),
+                )
+            )
+        else:
+            outstanding.append(unit)
+        verdicts[asked] = verdict
+    return CacheProbe(
+        hits=tuple(hits),
+        outstanding=tuple(outstanding),
+        verdicts=verdicts,
+        legacy=sum(1 for hit in hits if hit.verdict is CacheVerdict.HIT_LEGACY),
+        would_have_been_micros=sum(hit.micros for hit in hits),
+        queries=queries,
+    )
 
 
 class CacheIndex(Protocol):
