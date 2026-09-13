@@ -76,6 +76,19 @@ OTHER = "file:///corpus/b.pdf"
 SHA = "a" * 64
 
 
+def settled(plan: PlanDocs) -> tuple[str, ...]:
+    """Every plan document except `_notes/`, which is where the build-defect ledger lives.
+
+    An absence claim about the plan is a claim about SETTLED law. `_notes/build-defects.md` quotes
+    the strings these tests assert are missing -- D175 quotes `CREATE TEMP TABLE changed` while
+    reporting that nothing creates it, and D176 names `ABSENT_DIGEST` while reporting that no
+    document names a sentinel. A grep that swept the ledger would go green the moment the defect was
+    *filed* rather than the moment it was *fixed*, which is the failure mode the ledger exists to
+    prevent applied to the ledger itself.
+    """
+    return tuple(name for name in plan.documents() if not name.startswith("_notes/"))
+
+
 class _Index:
     """A `DepIndex` that records what it was asked and answers from a script."""
 
@@ -246,7 +259,7 @@ def test_a_deleted_key_invalidates_because_no_recorded_digest_can_be_empty(
     """
     plan.require()
     assert plan.grep(r"a whole document deleted", documents=("06-structure-extraction.md",))
-    assert not plan.grep(r"ABSENT_DIGEST|absent_digest|sentinel digest")
+    assert not plan.grep(r"ABSENT_DIGEST|absent_digest|sentinel digest", documents=settled(plan))
     assert ABSENT_DIGEST == ""
     with pytest.raises(StoreError):
         Dep(kind="unit", key=URI, digest=ABSENT_DIGEST)
@@ -472,7 +485,7 @@ def test_nothing_in_the_plan_creates_the_changed_relation(plan: PlanDocs, migrat
     """
     plan.require()
     assert plan.grep(r"JOIN changed c"), "the query stopped being printed"
-    assert not plan.grep(r"CREATE (TEMP )?TABLE( IF NOT EXISTS)? changed")
+    assert not plan.grep(r"CREATE (TEMP )?TABLE( IF NOT EXISTS)? changed", documents=settled(plan))
     for path in sorted(migrations.glob("*.sql")):
         assert "TABLE changed" not in path.read_text(encoding="utf-8")
     assert "CREATE TEMP TABLE IF NOT EXISTS" in CHANGED_DDL

@@ -42,6 +42,7 @@ import pytest
 from conftest import migration_files
 from omniweave_core.errors import StoreError
 from omniweave_core.store import maintenance as m
+from omniweave_core.store import sqlite as ow
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from pathlib import Path
@@ -817,3 +818,47 @@ def test_live_is_read_off_the_head_views_and_not_re_derived() -> None:
     for sql in m._STAT_SQL.values():
         assert "_head" in sql
         assert "state" not in sql
+
+
+def test_rederive_stat_is_one_home_and_repair_step_four_is_a_caller(
+    store: sqlite3.Connection,
+) -> None:
+    """W4.6 extracted step 4 so `op.converge` and `repair()` share it rather than transcribe it.
+
+    07:721 gives `stat` two writers -- *"(`op.converge`) and by `ow index stats`"* -- and `repair()`
+    is the third in practice. Three transcriptions of `live_blocks` would be three definitions of
+    "live", which is exactly what `_STAT_SQL`'s docstring says the head views exist to prevent.
+    """
+    written = m.rederive_stat(store, now_ns=1_700_000_000_000_000_000)
+    assert set(written) == set(m._STAT_SQL)
+    # It does not commit: the caller owns the transaction, which is how `op.converge` gets the
+    # re-derivation into the same commit as the work transitions it just made.
+    assert store.in_transaction
+    store.commit()
+    report = m.repair(store, now_ns=1_700_000_000_000_000_001)
+    assert set(report.stat_written) == set(written)
+    assert report.stat_written == written
+
+
+def test_the_stat_upsert_is_the_ddls_three_columns() -> None:
+    assert "INSERT INTO stat(k, v, computed_ns)" in m.STAT_UPSERT_SQL
+    assert "ON CONFLICT(k) DO UPDATE" in m.STAT_UPSERT_SQL
+
+
+def test_the_thread_level_helper_runs_one_free_unit(tmp_path: Path) -> None:
+    """`op.converge` holds a `StoreThread` and cannot name a `Connection`: G8 bans the import."""
+    path = tmp_path / "threaded.owstore"
+    _open(path).close()
+    seen: list[ow.Unit] = []
+    with ow.StoreThread(lambda: ow.connect(path)) as thread:
+        real = thread.run
+
+        def spy(unit: ow.Unit) -> object:
+            seen.append(unit)
+            return real(unit)
+
+        thread.run = spy  # type: ignore[method-assign]
+        written = m.rederive_stat_on(thread, now_ns=1_700_000_000_000_000_000)
+    assert set(written) == set(m._STAT_SQL)
+    assert [unit.name for unit in seen] == ["maintenance.rederive_stat"]
+    assert seen[0].cost_class == "free"
