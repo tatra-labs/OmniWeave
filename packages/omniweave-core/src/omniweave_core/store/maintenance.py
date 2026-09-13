@@ -162,6 +162,7 @@ from types import MappingProxyType
 from typing import Final
 
 from omniweave_core.errors import StoreError
+from omniweave_core.store.sqlite import INTERACTIVE_WAIT_MS, StoreThread, Unit
 
 __all__ = [
     "ANALYSIS_LIMIT",
@@ -187,6 +188,7 @@ __all__ = [
     "OPTIMIZE_INLINE",
     "OPTIMIZE_OFFTHREAD",
     "REPAIR_FIX",
+    "STAT_UPSERT_SQL",
     "BackupReport",
     "BulkWindow",
     "CompactReport",
@@ -211,6 +213,8 @@ __all__ = [
     "open_bulk_window",
     "planner_statistics",
     "reclaim_free_pages",
+    "rederive_stat",
+    "rederive_stat_on",
     "refuse_if_bulk_window_open",
     "repair",
     "secondary_index_names",
@@ -1297,6 +1301,74 @@ class RepairReport:
     bulk_window_cleared: bool
 
 
+STAT_UPSERT_SQL: Final = (
+    "INSERT INTO stat(k, v, computed_ns) VALUES(?, ?, ?) "
+    "ON CONFLICT(k) DO UPDATE SET v = excluded.v, computed_ns = excluded.computed_ns"
+)
+"""One scalar count, upserted. `0003_index.sql:420`: `stat(k, v, computed_ns)`, and no more."""
+
+
+def rederive_stat(
+    conn: sqlite3.Connection,
+    *,
+    now_ns: int,
+    on_step: Callable[[str], None] | None = None,
+) -> dict[str, int]:
+    """Re-derive the `stat` keys whose spelling the DDL fixes. `repair()` step 4, and converge's.
+
+    07:721 gives the table exactly two writers -- *"(`op.converge`) and by `ow index stats`, in one
+    transaction per key"* -- and 07:3459 repeats it: *"Re-derived by `op.converge` and
+    `ow index stats`."* `repair()` is the third caller in practice, because a repaired store with a
+    stale `stat` reports an over-fetch clamp computed from a corpus size that is no longer true.
+
+    Extracted at W4.6 so the converge pass and the repair path share one home. `_STAT_SQL` and
+    `_STAT_DEFERRED` stay private: the keys are the DDL's and the deferrals are DEFECT 4's, and a
+    caller that could pass its own SQL would be a second place `live_blocks` is defined.
+
+    **Not a transaction.** The caller owns one, which is how `op.converge` gets 07:2963's
+    *"re-derives `stat`"* into the same commit as the work transitions it just made, and how
+    `repair()` keeps step 4 inside the unit that clears the bulk window.
+    """
+    written: dict[str, int] = {}
+    for key, sql in _STAT_SQL.items():
+        if on_step is not None:
+            on_step(key)
+        row = conn.execute(sql).fetchone()
+        value = 0 if row is None else int(row[0])
+        conn.execute(STAT_UPSERT_SQL, (key, value, now_ns))
+        written[key] = value
+    return written
+
+
+def rederive_stat_on(
+    thread: StoreThread,
+    *,
+    now_ns: int,
+    wait_ms: int = INTERACTIVE_WAIT_MS,
+) -> dict[str, int]:
+    """`rederive_stat()` in a `Unit` of its own, for a caller that holds a thread and no connection.
+
+    `op.converge` is that caller. `tools/semgrep`'s `omniweave-no-sqlite3-import-outside-store`
+    (G8/G24) bans `import sqlite3` anywhere outside this package -- at any scope, `if TYPE_CHECKING`
+    included -- so a module in `omniweave/run/` cannot name the type a `Unit`'s closure receives.
+    `run/expand.py` solves that for its own statements with a one-method Protocol; a function that
+    takes a whole `Connection` cannot be reached that way, so the `Unit` is built here instead.
+
+    `cost_class="free"`: `stat` holds scalar counts that any reader can recompute, so ST14's
+    `synchronous = FULL` is not owed to it.
+    """
+
+    def run(connection: sqlite3.Connection) -> object:
+        return rederive_stat(connection, now_ns=now_ns)
+
+    written = thread.run(
+        Unit(name="maintenance.rederive_stat", run=run, cost_class="free", wait_ms=wait_ms)
+    )
+    if not isinstance(written, dict):  # pragma: no cover -- the closure returns a dict or raises.
+        raise StoreError("the rederive_stat unit returned no counts", fix="report this as a bug")
+    return written
+
+
 def repair(
     conn: sqlite3.Connection,
     *,
@@ -1371,18 +1443,7 @@ def repair(
 
     # ---- step 4: re-derive stat.
     steps.append("rederive_stat")
-    written: dict[str, int] = {}
-    for key, sql in _STAT_SQL.items():
-        if on_step is not None:
-            on_step(key)
-        row = conn.execute(sql).fetchone()
-        value = 0 if row is None else int(row[0])
-        conn.execute(
-            "INSERT INTO stat(k, v, computed_ns) VALUES(?, ?, ?) "
-            "ON CONFLICT(k) DO UPDATE SET v = excluded.v, computed_ns = excluded.computed_ns",
-            (key, value, now_ns),
-        )
-        written[key] = value
+    written = rederive_stat(conn, now_ns=now_ns, on_step=on_step)
 
     # ---- and only then the marker.
     steps.append("clear_bulk_window")
