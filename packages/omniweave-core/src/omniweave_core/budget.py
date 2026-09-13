@@ -76,20 +76,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Final, Protocol, TypeAlias
 
 from omniweave_core.canonical import sha256_canonical
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
+    from omniweave_core.observe.degradation import Degradation
+
 __all__ = [
+    "ADMISSIONS",
     "COMMIT_SQL",
     "DIMS",
     "DIM_SCOPES",
     "HEADROOM_SQL",
     "INPUT_PROPORTIONAL",
     "OUTPUT_PROPORTIONAL",
+    "PER_UNIT_MICROS_KEYS",
     "RELEASE_SQL",
     "RESERVATION_ID_BODY_LEN",
     "RESERVATION_ID_PREFIX",
@@ -98,11 +102,20 @@ __all__ = [
     "RESERVE_SQL",
     "SCOPES",
     "UNCAPPED",
+    "AdmissionVerdict",
+    "Admitted",
     "BudgetLedger",
+    "Deferred",
+    "Degraded",
     "Reservation",
+    "admission_of",
+    "admit",
+    "per_unit_micros",
+    "requests",
     "reservation_id",
     "reserved_amount",
     "scope_key_for",
+    "writes_exhausted",
 ]
 
 
@@ -497,6 +510,290 @@ the first time a lease was extended. INV-21 does not care that both would be cor
 # ---------------------------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------------------------
+# 6. `admit()` -- steps 4-6 of 05:2519's ladder. The three-valued verdict.
+# ---------------------------------------------------------------------------------------------
+
+
+PER_UNIT_MICROS_KEYS: Final[tuple[str, str, str]] = (
+    "micros_base",
+    "micros_per_part",
+    "micros_max",
+)
+"""The three `[budget.per_unit]` keys that make one `micros` cap. 05:1285-1288.
+
+```
+[budget.per_unit]                    # base + per_part x part_count, clamped. NO EXPRESSIONS.
+micros_base     = 4_000
+micros_per_part = 3_000
+micros_max      = 16_000_000
+```
+
+Three keys and not an expression, and the comment says why in capitals: a policy file that could
+carry arithmetic would be a policy file somebody has to evaluate, and `ow route lint` resolves keys
+rather than parsing a language. The shipped numbers are their own worked example --
+`4,000 + 3,000 x 5,000 = 15,004,000`, *"the largest priced document"*, under a 16,000,000 ceiling.
+"""
+
+
+def per_unit_micros(limits: Mapping[str, int], *, part_count: int) -> int:
+    """`clamp(micros_base + micros_per_part x part_count, 0, micros_max)`. 05:2515, executed.
+
+    **This is the only per-unit dimension that scales**, and the line after it says so: *"every
+    other per_unit dimension is a scalar and is not scaled by part_count"*. `wall_ms = 600_000` is
+    ten minutes per unit whether the unit has one part or five thousand, and `bytes_egress = 0` is a
+    refusal rather than a rate.
+
+    `part_count` comes from `unit.part_count`, which `op.identify` writes and which `05:1386`
+    guarantees is NOT NULL by the time the router runs -- *"`op.identify` precedes routing"*. A
+    caller holding a NULL has a unit that has not been identified and has no business admitting
+    work for it.
+
+    The clamp's lower bound is 0 and it is not decoration: `micros_base` and `micros_per_part` are
+    `INTEGER` and a policy that set either negative would otherwise produce a cap that grows as the
+    document shrinks. `max()` first, then `min()`, so a `micros_max` below `micros_base` yields
+    `micros_max` -- the operator's ceiling wins over the operator's floor, which is the direction
+    that cannot overspend.
+    """
+    if part_count < 0:
+        raise ValueError(f"a part_count of {part_count} is not a count")
+    missing = tuple(key for key in PER_UNIT_MICROS_KEYS if key not in limits)
+    if missing:
+        raise ValueError(
+            f"[budget.per_unit] needs {PER_UNIT_MICROS_KEYS} to make one micros cap; "
+            f"{missing} are absent (05:1285)"
+        )
+    base = limits["micros_base"] + limits["micros_per_part"] * part_count
+    return min(max(base, 0), limits["micros_max"])
+
+
+def requests(
+    estimate: Mapping[str, int],
+    *,
+    limits: Mapping[str, int],
+    scope: str,
+    scope_key: str,
+    run_id: str,
+    work_id: int,
+    decision_id: str,
+    attempt: int,
+    claimed_gen: int,
+    expires_ms: int,
+    p95_multiple: float,
+) -> tuple[Reservation, ...]:
+    """One `Reservation` per declared dimension, at the p95 ceiling, in `DIMS` order.
+
+    `estimate` is the decision's `est_spend` as a dimension map -- the seven physical units plus the
+    priced `micros` -- and `limits` is the `[budget.per_part]` or `[budget.per_unit]` table the
+    scope belongs to. A dimension the policy does not declare gets no row: `05:2523`'s ladder
+    reserves *"`reserved_micros` and every other **declared** dimension"*, and a reservation at a
+    dimension nothing caps would hold headroom against a limit that does not exist.
+
+    **The order is `DIMS`' order and that is what makes "first exhausted wins" reproducible.**
+    `05:2506`'s heading is *"first exhausted dimension wins"* and `02:563` gives the reason -- *"a
+    count cannot bound spend when per-attempt cost varies 100x with page density"* -- but neither
+    says *which* first. `SqliteBudgetLedger.reserve()` checks in the order it is handed, so the
+    order is this function's, and `DIMS` is `Spend`'s printed order rather than a dict's insertion
+    order or a sort. Two runs over one corpus must report the same bound dimension or the
+    scoreboard's `deferred_by_dim` is noise.
+
+    Every amount goes through `reserved_amount()`, so the two output-proportional dimensions are
+    scaled by `tokens_out_p95_multiple` and the input-proportional ones are not (`05:2470`).
+
+    `attempt` reaches the id and not the row. `reservation_id()` is
+    `'res_' || sha256_canonical(identity)[:24]` over `(work_id, decision_id, attempt, dim)`
+    (`08:2236`), so a retried reserve is idempotent *within* one attempt and distinct *across* them;
+    `budget_reservation` itself carries no `attempt` column, because the row is reachable from
+    `work_id` and the attempt is already in its primary key.
+    """
+    rows: list[Reservation] = []
+    for dim in DIMS:
+        if dim not in limits or dim not in estimate:
+            continue
+        rows.append(
+            Reservation(
+                reservation_id=reservation_id(work_id, decision_id, attempt, dim),
+                run_id=run_id,
+                work_id=work_id,
+                decision_id=decision_id,
+                dim=dim,
+                amount=reserved_amount(estimate[dim], dim, p95_multiple),
+                scope=scope,
+                scope_key=scope_key,
+                claimed_gen=claimed_gen,
+                expires_ms=expires_ms,
+            )
+        )
+    return tuple(rows)
+
+
+@dataclass(frozen=True, slots=True)
+class Admitted:
+    """Step 6: *"a durable reservation row whose expiry == the work row's `lease_expires`"*.
+
+    `reservations` is what was inserted, so the caller has the ids it must commit or release. It is
+    empty for a `free` decision -- `02:478`'s hop 8 is exactly that case, *"`Admitted(reservations=
+    ())` -- a `free` decision reserves nothing"* -- and an empty admission is therefore not a
+    contradiction the way an empty `reserve()` call is.
+    """
+
+    reservations: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class Deferred:
+    """Step 5: the first dimension whose headroom was below the request. **Not exhaustion.**
+
+    `05:2532`: *"A reservation denial is not exhaustion. Step 5 returns `Deferred(dim)`, the work
+    row stays claimable and `cost_micros` is unchanged; on commit, the gap between
+    `reserved_micros` and the `route_spend` row's actual `micros` is released in the same
+    transaction, which can lift the very denial that just fired."*
+
+    The dimension is the whole of what the operator is told, and `08:2270`'s table is written that
+    way: a deferral names a knob, and a deferral that named none would send an operator to read the
+    ledger.
+    """
+
+    dim: str
+
+    def __post_init__(self) -> None:
+        if self.dim not in DIMS:
+            raise ValueError(f"{self.dim!r} is not one of the eight dims {DIMS}")
+
+
+@dataclass(frozen=True, slots=True)
+class Degraded:
+    """Steps 1-3: admitted at a cheaper driver, or refused for a reason that is not headroom.
+
+    **Degraded is not a denial.** `05:2519`'s steps 1-3 -- the cost-class clamp, the licence tier
+    and the egress grant -- each produce a `Degradation` and the work still runs, which is why
+    `route_decision.admission`'s CHECK has three values rather than two and why only `deferred`
+    short-circuits the middleware.
+
+    This module produces none of the three: all three need a `RouteDecision`, a `DriverCard` and a
+    `Grant`, and `omniweave/route/admit.py` (W5.3) is where those are in scope. The type is here
+    because `05:1841`'s printed return type is `"Admitted | Deferred | Degraded"` and a union whose
+    third member lived in another distribution could not be written down in core at all.
+    """
+
+    degradations: tuple[Degradation, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.degradations:
+            raise ValueError(
+                "a degraded admission carries the Degradation that explains it; 05:2519's three "
+                "steps each name a kind, and a degradation with no record is a silent downgrade"
+            )
+
+
+AdmissionVerdict: TypeAlias = "Admitted | Deferred | Degraded"
+"""`05:1841`'s printed return type, as a name. `admit(d, ledger) -> Admitted | Deferred | Degraded`.
+
+Spelled as an alias rather than left inline because three call sites name it -- this module's
+`admit()`, `route/admit.py`'s wrapper, and the middleware's projection -- and `route_decision`'s
+`admission` column carries the three lower-cased strings its CHECK declares.
+"""
+
+ADMISSIONS: Final[Mapping[type, str]] = MappingProxyType(
+    {Admitted: "admitted", Deferred: "deferred", Degraded: "degraded"}
+)
+"""Each verdict's `route_decision.admission` value. The column's CHECK, as a projection.
+
+A mapping from the type rather than a method on each, so the three values live in one place beside
+the column they are written to -- and so a fourth verdict class is a missing key rather than a
+missing method nobody notices until the INSERT.
+"""
+
+
+def admission_of(verdict: AdmissionVerdict) -> str:
+    """The `route_decision.admission` string for a verdict. One lookup, one home."""
+    value = ADMISSIONS.get(type(verdict))
+    if value is None:
+        raise ValueError(f"{type(verdict).__name__} is not one of {sorted(ADMISSIONS.values())}")
+    return value
+
+
+def admit(
+    reservations: Sequence[Reservation], *, ledger: BudgetLedger, limits: Mapping[str, int]
+) -> Admitted | Deferred:
+    """Steps 4-6 of `05:2519`'s ladder: reserve every declared dimension, or name what bound.
+
+    ```
+    4. reserve reserved_micros and every other declared dimension against budget_reservation,
+       per (dim, scope, scope_key), with headroom computed IN SQL
+    5. the first dimension whose headroom is below the request -> Deferred(dim)
+    6. otherwise Admitted, with a durable reservation row whose expiry == the work row's
+       lease_expires
+    ```
+
+    **Steps 1-3 are not here and cannot be.** The cost-class clamp needs the GATE-established
+    `max_cost_class` off a `RouteDecision`; the licence check needs `compute_tier(card)` and the
+    `[licence] allow_tiers` list; the egress check needs a site-layer `Grant`. All three live in
+    `omniweave`, which `tools/layers.toml` forbids core from importing, and all three are W5.3's
+    row -- *"one impure function over W4.5's ledger"*, which is this one.
+
+    **It is impure, and it is the only impure thing in the admission path.** `05:1838` says so of
+    `route/admit.py` and the reason is RT9: it runs strictly after the `route_decision` row is
+    written, *"so a budget can never change which rung was chosen -- only whether it ran."* Nothing
+    here reads a rung, a lane or a rule.
+
+    **Two rows sharing one `reservation_id` is refused before the ledger sees them. D173.**
+    `08:2238`'s identity is `(work_id, decision_id, attempt, dim)` and carries no scope, while
+    `DIM_SCOPES` declares five of the eight dimensions at more than one scope and the shipped policy
+    caps `micros` at both `[budget.per_part]` and `[budget.per_unit]`. One work row reserving
+    `micros` at both scopes in one attempt therefore mints one id for two rows, and
+    `budget_reservation.reservation_id` is the PRIMARY KEY -- so one of the two would silently not
+    be reserved -- exactly the failure `08:2248` describes for a missing `dim`. A `ValueError` here
+    turns a silent half-reservation into a refusal the caller can read.
+
+    An empty `reservations` is `Admitted(())` rather than a refusal, because `02:478`'s free
+    decision reserves nothing and reaching the ledger to say so would take the write lock to insert
+    no rows. `SqliteBudgetLedger.reserve()` refuses an empty sequence for the opposite reason, and
+    both are right: a reservation-free admission is ordinary, a reservation-free *reserve* is a bug.
+    """
+    if not reservations:
+        return Admitted(())
+    seen: dict[str, tuple[str, str]] = {}
+    for row in reservations:
+        clash = seen.get(row.reservation_id)
+        if clash is not None:
+            raise ValueError(
+                f"{row.dim!r} at {row.scope}/{row.scope_key} and at {clash[0]}/{clash[1]} share "
+                f"one reservation_id: 08:2238's identity is (work_id, decision_id, attempt, dim) "
+                f"and carries no scope, so two scopes for one dimension collide on the primary "
+                f"key and one of the two would silently not be reserved (D173)"
+            )
+        seen[row.reservation_id] = (row.scope, row.scope_key)
+    denied = ledger.reserve(reservations, limits)
+    if denied is not None:
+        return Deferred(denied)
+    return Admitted(tuple(row.reservation_id for row in reservations))
+
+
+def writes_exhausted(*, siblings_in_flight: int) -> bool:
+    """Whether a deferral may write `budget.exhausted` into `Evidence`. **05:2534's clause.**
+
+    *"`budget.exhausted` is written into `Evidence` -- and `on_exhausted` therefore consulted --
+    only when a deferred row is re-offered with **no sibling reservation still in flight for the
+    same scope key**. Without that clause a p95 reservation model degrades the second half of every
+    document while spending a third of the cap, which is exactly what the section 10.3 trace makes
+    visible."*
+
+    The arithmetic behind it is `05:2545`'s: at `tokens_out_p95_multiple = 3.2`, in-flight
+    reservations consume 3.2x the eventual spend, so a document's later parts are denied against
+    headroom its earlier parts are *holding and will release*. Consulting `on_exhausted` there would
+    spill to a free driver, or emit a partial, on a budget that was never actually spent.
+
+    `siblings_in_flight` is `count(*) FROM budget_reservation WHERE state='held'` for the same
+    `(dim, scope, scope_key)`, excluding the deferred row's own -- which holds none, since step 5
+    denies before step 4's inserts. This module states the predicate; the query belongs to the
+    ledger and the write-back to `route/admit.py` (W5.3), because `Evidence` is W5.1's type.
+    """
+    if siblings_in_flight < 0:
+        raise ValueError("siblings_in_flight is a count of held rows")
+    return siblings_in_flight == 0
+
+
 class BudgetLedger(Protocol):
     """The four calls 02-architecture.md row 19 names, over `budget_reservation`.
 
@@ -535,10 +832,19 @@ class BudgetLedger(Protocol):
         """
         ...
 
-    def commit(self, reservation_id: str, amount: int) -> bool:
-        """Held -> committed at the ACTUAL amount. `False` if the row was not `held`."""
+    def commit(self, reservation_id: str, amount: int, /) -> bool:
+        """Held -> committed at the ACTUAL amount. `False` if the row was not `held`.
+
+        **Positional-only, and the `/` is load-bearing.** A Protocol whose parameters have names
+        promises those names to every implementor, and `SqliteBudgetLedger` spells this one
+        `reservation_id_` -- with the underscore, because `reservation_id()` is a module-level
+        function in *this* module and the store's method would otherwise shadow it. A boundary that
+        promised the keyword would make that a conformance break, which is exactly what it was
+        until `admit()` became the first caller to pass one where the other is expected. The
+        boundary promises an order; the argument has one obvious position.
+        """
         ...
 
-    def release(self, reservation_id: str) -> bool:
+    def release(self, reservation_id: str, /) -> bool:
         """Held -> released. `False` if the row was not `held`. A cache hit takes this path."""
         ...
