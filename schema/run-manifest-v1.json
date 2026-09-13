@@ -1,0 +1,552 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schema/run-manifest-v1.json",
+  "title": "RunManifest",
+  "type": "object",
+  "additionalProperties": false,
+  "description": "One run, as twenty-one members. The declaration `schema/run-manifest-v1.json` is emitted from.",
+  "required": [
+    "run_id",
+    "generation",
+    "trigger",
+    "status",
+    "started_ns",
+    "ended_ns",
+    "provenance",
+    "host",
+    "timings",
+    "stage_ms",
+    "stage_entries",
+    "units",
+    "outcomes",
+    "failures_by_class",
+    "deferred_by_dim",
+    "interrupted_inflight",
+    "runtime_overhead_ms",
+    "cache",
+    "cost",
+    "degradations",
+    "observe"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string"
+    },
+    "generation": {
+      "type": "integer"
+    },
+    "trigger": {
+      "type": "string",
+      "enum": [
+        "cli",
+        "hook",
+        "upstream",
+        "watch",
+        "mcp",
+        "sdk"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "running",
+        "ok",
+        "partial",
+        "failed",
+        "interrupted",
+        "abandoned"
+      ]
+    },
+    "started_ns": {
+      "type": "integer"
+    },
+    "ended_ns": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "provenance": {
+      "$ref": "#/$defs/Provenance"
+    },
+    "host": {
+      "$ref": "#/$defs/HostFacts"
+    },
+    "timings": {
+      "type": "string",
+      "enum": [
+        "always",
+        "never"
+      ]
+    },
+    "stage_ms": {
+      "type": "object",
+      "propertyNames": {
+        "enum": [
+          "discover",
+          "plan",
+          "parse",
+          "derive",
+          "index",
+          "converge",
+          "maintain"
+        ]
+      },
+      "additionalProperties": {
+        "type": "integer"
+      }
+    },
+    "stage_entries": {
+      "type": "object",
+      "propertyNames": {
+        "enum": [
+          "discover",
+          "plan",
+          "parse",
+          "derive",
+          "index",
+          "converge",
+          "maintain"
+        ]
+      },
+      "additionalProperties": {
+        "type": "integer"
+      }
+    },
+    "units": {
+      "type": "integer"
+    },
+    "outcomes": {
+      "type": "object",
+      "propertyNames": {
+        "enum": [
+          "ok",
+          "ok_partial",
+          "skipped_cached",
+          "skipped_unchanged",
+          "failed_transient",
+          "failed_permanent",
+          "deferred_budget",
+          "cancelled"
+        ]
+      },
+      "additionalProperties": {
+        "type": "integer"
+      }
+    },
+    "failures_by_class": {
+      "type": "object",
+      "propertyNames": {
+        "enum": [
+          "encrypted",
+          "needs_ocr",
+          "unsupported_format",
+          "corrupt_input",
+          "resource_limit",
+          "too_large",
+          "timeout",
+          "upstream_unavailable",
+          "rate_limited",
+          "auth",
+          "empty_result",
+          "driver_crashed",
+          "driver_bug"
+        ]
+      },
+      "additionalProperties": {
+        "type": "integer"
+      }
+    },
+    "deferred_by_dim": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer"
+      }
+    },
+    "interrupted_inflight": {
+      "type": "integer"
+    },
+    "runtime_overhead_ms": {
+      "type": "integer"
+    },
+    "cache": {
+      "$ref": "#/$defs/CacheStats"
+    },
+    "cost": {
+      "$ref": "#/$defs/CostBlock"
+    },
+    "degradations": {
+      "type": "object",
+      "propertyNames": {
+        "enum": [
+          "budget",
+          "signal_unavailable",
+          "driver_unavailable",
+          "acceptor_exhausted",
+          "rung_ceiling",
+          "policy_pruned",
+          "auto_demote",
+          "no_driver",
+          "discovery_slow",
+          "quarantine",
+          "deprecation",
+          "isolation_shortfall",
+          "toolchain_missing",
+          "pin",
+          "store_busy",
+          "stat_stale",
+          "pushdown_unavailable",
+          "vector_scan_over_budget",
+          "hub_capped",
+          "segment_lift_capped",
+          "cache_disabled_no_space",
+          "ledger_reset_by_compaction",
+          "grant_missing",
+          "compile_normalized",
+          "scope_clamped",
+          "calibration_stale",
+          "events_dropped"
+        ]
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/DegradationRollup"
+      }
+    },
+    "observe": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer"
+      }
+    }
+  },
+  "$defs": {
+    "CacheStats": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`manifest.cache` -- the five numbers 08 section 4.7's verdicts make computable.",
+      "required": [
+        "hits",
+        "misses",
+        "corrupt_entries",
+        "legacy_vintage_hits",
+        "rebilled_units"
+      ],
+      "properties": {
+        "hits": {
+          "type": "integer"
+        },
+        "misses": {
+          "type": "integer"
+        },
+        "corrupt_entries": {
+          "type": "integer"
+        },
+        "legacy_vintage_hits": {
+          "type": "integer"
+        },
+        "rebilled_units": {
+          "type": "integer"
+        }
+      }
+    },
+    "CostBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`manifest.cost` -- three money figures, two GPU figures, and one of them is exact.",
+      "required": [
+        "billed_micros",
+        "op_micros",
+        "total_micros",
+        "would_have_been_micros_if_uncached",
+        "gpu_ms_measured",
+        "gpu_ms_apportioned"
+      ],
+      "properties": {
+        "billed_micros": {
+          "type": "integer"
+        },
+        "op_micros": {
+          "type": "integer"
+        },
+        "total_micros": {
+          "type": "integer"
+        },
+        "would_have_been_micros_if_uncached": {
+          "type": "integer"
+        },
+        "gpu_ms_measured": {
+          "type": "integer"
+        },
+        "gpu_ms_apportioned": {
+          "type": "integer"
+        }
+      }
+    },
+    "Degradation": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One downgrade, carried. 15-observability.md:995-1024, field for field and default for default.",
+      "required": [
+        "kind",
+        "message",
+        "unit_uri",
+        "parts_affected",
+        "wanted_driver",
+        "unit_dim",
+        "spent",
+        "limit",
+        "rung_reached",
+        "knob",
+        "fix_command"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "budget",
+            "signal_unavailable",
+            "driver_unavailable",
+            "acceptor_exhausted",
+            "rung_ceiling",
+            "policy_pruned",
+            "auto_demote",
+            "no_driver",
+            "discovery_slow",
+            "quarantine",
+            "deprecation",
+            "isolation_shortfall",
+            "toolchain_missing",
+            "pin",
+            "store_busy",
+            "stat_stale",
+            "pushdown_unavailable",
+            "vector_scan_over_budget",
+            "hub_capped",
+            "segment_lift_capped",
+            "cache_disabled_no_space",
+            "ledger_reset_by_compaction",
+            "grant_missing",
+            "compile_normalized",
+            "scope_clamped",
+            "calibration_stale",
+            "events_dropped"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "unit_uri": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parts_affected": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "wanted_driver": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "unit_dim": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "spent": {
+          "type": "integer"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "rung_reached": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "knob": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fix_command": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "DegradationRollup": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One `manifest.degradations[<kind>]` entry. 15:1155-1164, field for field.",
+      "required": [
+        "kind",
+        "n",
+        "first_ns",
+        "last_ns",
+        "units",
+        "parts_affected",
+        "truncated",
+        "exemplar"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "budget",
+            "signal_unavailable",
+            "driver_unavailable",
+            "acceptor_exhausted",
+            "rung_ceiling",
+            "policy_pruned",
+            "auto_demote",
+            "no_driver",
+            "discovery_slow",
+            "quarantine",
+            "deprecation",
+            "isolation_shortfall",
+            "toolchain_missing",
+            "pin",
+            "store_busy",
+            "stat_stale",
+            "pushdown_unavailable",
+            "vector_scan_over_budget",
+            "hub_capped",
+            "segment_lift_capped",
+            "cache_disabled_no_space",
+            "ledger_reset_by_compaction",
+            "grant_missing",
+            "compile_normalized",
+            "scope_clamped",
+            "calibration_stale",
+            "events_dropped"
+          ]
+        },
+        "n": {
+          "type": "integer"
+        },
+        "first_ns": {
+          "type": "integer"
+        },
+        "last_ns": {
+          "type": "integer"
+        },
+        "units": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "parts_affected": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "exemplar": {
+          "$ref": "#/$defs/Degradation"
+        }
+      }
+    },
+    "HostFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The machine, measured ONCE at preflight. 08:659-667, field for field.",
+      "required": [
+        "cpus",
+        "ram_bytes",
+        "free_disk_bytes",
+        "gpus",
+        "is_container"
+      ],
+      "properties": {
+        "cpus": {
+          "type": "integer"
+        },
+        "ram_bytes": {
+          "type": "integer"
+        },
+        "free_disk_bytes": {
+          "type": "integer"
+        },
+        "gpus": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "is_container": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What produced these numbers: nine columns of the `run` row, in the DDL's order.",
+      "required": [
+        "omniweave_version",
+        "contract",
+        "schema",
+        "config_digest",
+        "semantic_digest",
+        "policy_digest",
+        "pricebook_digest",
+        "catalog_digest",
+        "lock_digest"
+      ],
+      "properties": {
+        "omniweave_version": {
+          "type": "string"
+        },
+        "contract": {
+          "type": "integer"
+        },
+        "schema": {
+          "type": "integer"
+        },
+        "config_digest": {
+          "type": "string"
+        },
+        "semantic_digest": {
+          "type": "string"
+        },
+        "policy_digest": {
+          "type": "string"
+        },
+        "pricebook_digest": {
+          "type": "string"
+        },
+        "catalog_digest": {
+          "type": "string"
+        },
+        "lock_digest": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
