@@ -53,11 +53,14 @@ real.
 | `CacheLayer` | `omniweave_core.cache` (02 row 18) | W4.4 | **imported** |
 | `TraceSink` | `omniweave_core.events` (02 row 21), printed at 15:362 | W4.8 | **imported** |
 | `ServiceRegistry` | `omniweave_core.modelserver` (02 row 15) | W4.9 | reached as a View |
-| `Degradation` | 15-observability.md's, by charter erratum E15 | P7 | quoted |
+| `Degradation` | `observe.degradation` (15:975) | W2.1, paid at W4.8 | **imported** |
 | `WorkSpec` | 08:2842 -- *"what `Operator.plan()` emits"* | W4.3's planner | quoted |
 
-Two have landed and their rows are the device working as described: `cache.py` and `events.py` both
-exist, so the two suppressions are gone and the names are `TYPE_CHECKING` imports. They are under
+Three have landed and their rows are the device working as described: `cache.py`, `events.py` and
+`observe/degradation.py` all exist, so three suppressions are gone and the names are
+`TYPE_CHECKING` imports. `Degradation`'s row is the odd one -- 16-roadmap.md:414 scheduled it in
+**W2.1** inside `omniweave_core.model` and P2 shipped without it, so its cell is recorded as the
+one that owed it and the one that paid. They are under
 `TYPE_CHECKING` rather than at module scope because neither is needed at run time and both modules
 are heavier than the one name taken from each -- which keeps `import omniweave_core.operator` as
 cheap as it was while making the annotation a real reference a checker follows.
@@ -65,8 +68,6 @@ cheap as it was while making the annotation a real reference a checker follows.
 `Limits` is the odd one: the *module* exists and holds every `MAX_*` constant, but the **record**
 08:275 hands an operator does not, and no cell is scheduled to build it. 08:2790 lists it among the
 terms the charter's own lock has no row for, which is the same gap seen from the other side.
-`Degradation`'s path is `omniweave_core.observe.degradation`, which `discovery.py:325` already names
-in a placeholder of its own.
 
 Two more can never become imports here, because `tools/layers.toml` gives `omniweave_core` exactly
 `["omniweave_ports"]` and both live in the `omniweave` distribution. They are declared as
@@ -138,6 +139,7 @@ if TYPE_CHECKING:
     # above rather than adding an import cost.
     from omniweave_core.cache import CacheLayer
     from omniweave_core.events import TraceSink
+    from omniweave_core.observe.degradation import Degradation
 
 __all__ = [
     "CACHE_KEY_HEX_LEN",
@@ -411,7 +413,7 @@ class StepResult:
     failure_message: str | None = None
     retry_after_ms: int | None = None
     deferred_dim: str | None = None
-    degradations: tuple[Degradation, ...] = ()  # noqa: F821 -- 15-observability.md's; P7.
+    degradations: tuple[Degradation, ...] = ()
     metrics: StepMetrics = StepMetrics()
 
     def __post_init__(self) -> None:
