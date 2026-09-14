@@ -223,6 +223,11 @@ max_sequence_units    = 64             # a driver session is claimed whole or no
                                        #   longer one is refused at plan time, because an
                                        #   unbounded widening of the claim defeats
                                        #   [budget] max_inflight
+shutdown_grace_ms     = 5000           # how long a cancelled run waits for its workers before
+                                       #   the host escalates to SHUTDOWN, SIGTERM, SIGKILL
+deferred_sweep_ms     = 5000           # deferred_sweeper's BACKSTOP poll; the mechanism proper
+                                       #   is edge-triggered on every budget release
+stall_poll_ms         = 30000          # stall_detector's cadence; two quiet cycles end the run
 [runtime.claim]
 batch = { free = 256, local_compute = 32, billed_api = 8 }   # clamped by the card, then AIMD:
                                        #   additive-increase / multiplicative-decrease, never

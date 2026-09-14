@@ -817,6 +817,11 @@ _DECLARATIONS: Final[tuple[ConfigKey, ...]] = (
     _key("runtime.max_deps_per_unit", "int", 256, "operational"),
     _key("runtime.work_compact_above", "int", 5000000, "operational"),
     _key("runtime.max_sequence_units", "int", 64, "operational"),
+    # 08-runtime.md:2598-2606's "New keys this document introduces", declared by W4.2's loop,
+    # which is the cell that reads all three (D137, D149).
+    _key("runtime.shutdown_grace_ms", "int", 5000, "operational"),
+    _key("runtime.deferred_sweep_ms", "int", 5000, "operational"),
+    _key("runtime.stall_poll_ms", "int", 30000, "operational"),
     _key(
         "runtime.claim.batch",
         "table",
