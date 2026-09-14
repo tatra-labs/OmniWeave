@@ -12,6 +12,7 @@
 #
 #     uv run python fixtures/gen/gen_5000p_pdf.py --pages 8 --print-sha256
 #     uv run python fixtures/gen/gen_5000p_pdf.py --print-sha256
+#     uv run python fixtures/gen/gen_incremental.py --manifest --print-sha256
 #
 # Neither output is committed: fixtures/generated/ is .gitignored (13-quality.md:588), and the
 # 5,000-page file is ~29 MB against Tier A's 64 MB total (11-repo-layout.md:383).
@@ -24,13 +25,25 @@
 #                  ::test_the_default_pin_is_the_digest_of_a_freshly_generated_five_thousand_page_run
 #                  ~1.2 s and ~29 MB of temporary file. Run anyway: a pin nothing checks is the
 #                  silent corpus change arriving by the front door.
-#   both           ::test_the_pin_file_names_both_outputs_in_sha256sum_format asserts that this
-#                  file names exactly these two outputs and nothing else.
+#   roster-step0   packages/omniweave-core/tests/unit/test_fixture_incremental.py
+#                  ::test_the_pin_is_the_digest_of_a_freshly_generated_initial_roster
+#                  ~0.3 s. G19's 300-document corpus, pinned through a MANIFEST rather than
+#                  document by document: 300 lines that all turn over together would make a
+#                  corpus change unreadable, and this file's whole purpose is that a corpus
+#                  change is "a one-line visible diff" (13-quality.md:588).
+#   all three      ::test_the_pin_file_names_every_generated_output_in_sha256sum_format asserts
+#                  that this file names exactly these outputs and nothing else.
 #
-# The two lines are not independent. The content of page i is a pure function of i, so the
+# The first two lines are not independent. The content of page i is a pure function of i, so the
 # eight-page file is byte-for-byte the first eight pages of the 5,000-page one; that property is
 # itself a test (::test_the_content_of_a_page_does_not_depend_on_the_page_count), which is what
 # makes the cheap pin a real signal about the expensive one.
+#
+# The third is not independent of them either, and that is W4.10's whole reason for making
+# gen_5000p_pdf.write_pdf public: every page of every document in the incremental corpus is a
+# page_content(i) from the same frozen space, so the two PDF pins cover the incremental corpus's
+# CONTENT and this third line covers which pages each document holds and in what order.
 
 933849098664005d04cc8f4d57880069dd5f25963ebc3fc05842ded8a71ddc72  fixtures/generated/gen_8p.pdf
 b8adadd720185a6f563a76347fff454e3ec2d7a4a5111572a20c183ee3e76820  fixtures/generated/gen_5000p.pdf
+867e70fddbc3dbd6573a23c2e6fe2bd8ed34f5a0ff7ba10d3d686fd0bd8cdfdf  fixtures/generated/incremental/roster-step0.manifest

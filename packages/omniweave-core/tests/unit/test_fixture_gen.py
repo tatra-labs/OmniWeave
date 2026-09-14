@@ -584,13 +584,21 @@ def _pins() -> dict[str, str]:
     return pins
 
 
-def test_the_pin_file_names_both_outputs_in_sha256sum_format() -> None:
-    """Two lines, the small one and the default one, each `hash  path` with the path relative to
-    the workspace root so `sha256sum -c fixtures/gen/EXPECTED.sha256` works from there."""
+def test_the_pin_file_names_every_generated_output_in_sha256sum_format() -> None:
+    """Three lines, each `hash  path` with the path relative to the workspace root so
+    `sha256sum -c fixtures/gen/EXPECTED.sha256` works from there.
+
+    **Two until W4.10.** The third is G19's 300-document corpus, pinned through a manifest rather
+    than document by document -- 300 lines that all turn over together is the unreadable diff the
+    pin exists to prevent. This file owns the two PDF digests; the roster's is checked by
+    `test_fixture_incremental.py`, and the set below is what keeps a fourth output from arriving
+    with no test at all.
+    """
     pins = _pins()
     assert set(pins) == {
         f"fixtures/generated/gen_{SMALL_PAGES}p.pdf",
         f"fixtures/generated/gen_{gen.DEFAULT_PAGES}p.pdf",
+        "fixtures/generated/incremental/roster-step0.manifest",
     }
 
 

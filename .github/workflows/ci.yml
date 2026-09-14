@@ -33,11 +33,10 @@
 #     G28 ARMED AT P2 STAGE D, both halves. See its step for which corpus is which.
 #     G13 is armed and VACUOUS: the repository carries no v* tag yet, and "append-only against the
 #     previous tag" has nothing to diff until one exists. The step says so, and self-arms.
-#     G19 is armed in incremental and runs its HARNESS: tools/gate_incremental.py --smoke,
-#     which is what 16-roadmap.md:458 puts in P2's exit criteria: "G19's harness exists; its
-#     fixture lands in P4". The unflagged run needs fixtures/incremental/ and exits 2 without
-#     it, so the step branches on the directory and neither branch can pass for the wrong
-#     reason.
+#     G19 is armed in incremental and runs the GATE: tools/gate_incremental.py, unflagged,
+#     which is 16-roadmap.md:575's P4 exit line. It branched on fixtures/incremental/ until
+#     W4.10 landed the corpus, the 40-mutation script, the indexer and the rebuilder; the
+#     branch is gone because the absent side of it no longer exists.
 #     G27 is armed in its clause-b half only: tools/gate_migrations.py landed at P2
 #     (16-roadmap.md:453) and runs; tools/gate_docs.py carries a, a2, a3, c and d and does not
 #     exist, so the step runs what is there and says nothing about what is not.
@@ -854,20 +853,22 @@ jobs:
       - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
       - run: uv python install "$UV_PYTHON"
       - name: "G19 -- incremental == full over 300 docs and 40 mutations"
-        # Two arrival dates, both stated by the plan: the harness landed at the P2 exit as
-        # "gate_incremental.py --smoke" with the note "G19's harness exists; its fixture
-        # lands in P4" (16-roadmap.md:458), and the full run is the P4 exit line (:575). The
-        # harness is on disk now and tools/gates.toml carries it under `runner`, so the outer
-        # file guard is gone and this step's exit code IS the job's in both branches. The
-        # fixture branch stays because it is the ONE thing still absent: without
-        # fixtures/incremental/ the unflagged run exits 2 (DID NOT RUN), which is a red job --
-        # so --smoke is what P2 asks for and the branch is a phase, not a warn-only mode. The
-        # smoke run prints a NOT CHECKED block naming P4 for every piece it could not check.
-        run: |
-          if [ -d fixtures/incremental ]
-          then uv run tools/gate_incremental.py
-          else uv run tools/gate_incremental.py --smoke
-          fi
+        # Two arrival dates, both stated by the plan, and BOTH have now passed: the harness
+        # landed at the P2 exit as "gate_incremental.py --smoke" with the note "G19's harness
+        # exists; its fixture lands in P4" (16-roadmap.md:458), and W4.10 landed the fixture,
+        # the indexer and the rebuilder, which is the P4 exit line (:575).
+        #
+        # The step used to branch on `[ -d fixtures/incremental ]` because without the corpus
+        # the unflagged run exits 2 (DID NOT RUN) and a red job is not what P2 asked for. The
+        # corpus is committed, so the branch could only ever take one side and a branch whose
+        # other side is unreachable is a branch that hides a deleted fixture behind a pass.
+        #
+        # The build measures ~130 s here against the register's 420 s budget: 300 documents
+        # ingested twice, 40 mutations applied incrementally, and a full rebuild plus a
+        # 300-archive export diff at every tenth step. 11-repo-layout.md OQ-6's pre-committed
+        # fallback -- above 12 min G19 moves to nightly with a 60-document subset -- is not
+        # reached and stays unimplemented, which is what that row asks for.
+        run: uv run tools/gate_incremental.py
 
   # ==========================================================================================
   # crash -- ubuntu x 3.11, G21 alone, <= 5 min. The PR job takes three random kill points; the

@@ -106,6 +106,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import BinaryIO, Final
 
@@ -503,9 +504,17 @@ def _font_object() -> bytes:
     )
 
 
-def _info_object(pages: int) -> bytes:
+def _info_object(title: str) -> bytes:
+    """`/Info`, whose `/Title` is the caller's. Every date is `FIXED_DATE` and nothing is read.
+
+    The title is a parameter rather than derived from the page count because `write_pdf` serves
+    two corpora now: this generator's own N-page fixture, whose title is
+    `"omniweave gen_5000p_pdf {pages}p"`, and `gen_incremental.py`'s 300 documents, each of which
+    needs a title of its own. Deriving it here would have made the second corpus either untitled
+    or mis-titled, and `/Title` is in the bytes the digest covers.
+    """
     body = (
-        f"<< /Title (omniweave gen_5000p_pdf {pages}p)"
+        f"<< /Title ({title})"
         " /Producer (omniweave fixtures/gen/gen_5000p_pdf.py)"
         f" /CreationDate ({FIXED_DATE}) /ModDate ({FIXED_DATE}) >>"
     )
@@ -534,15 +543,17 @@ def _content_object(number: int, content: bytes) -> bytes:
     return _obj(number, head + content + b"\nendstream")
 
 
-def _file_id(pages: int) -> str:
-    """A deterministic `/ID`, 32 hex digits.
+def _file_id(seed: str) -> str:
+    """A deterministic `/ID`, 32 hex digits, over a seed the caller chooses.
 
     A PDF `/ID` is conventionally random, and random is exactly what 13-quality.md:586-589
     forbids. A digest over the one input that changes the file content is the honest substitute:
     it is stable across runs and machines, and it still differs between two files that differ.
+
+    The seed is the caller's for `_info_object`'s reason: two documents of the same page count in
+    `gen_incremental.py`'s corpus are different files and must not share an `/ID`.
     """
-    seed = f"omniweave/gen_5000p_pdf/1/{pages}".encode("ascii")
-    return hashlib.sha256(seed).hexdigest()[:32].upper()
+    return hashlib.sha256(seed.encode("ascii")).hexdigest()[:32].upper()
 
 
 # --------------------------------------------------------------------------------------------
@@ -571,8 +582,29 @@ class _Sink:
         self.pos += len(data)
 
 
-def _emit(sink: _Sink, pages: int) -> None:
-    """Write the whole file, recording an offset per object as it goes."""
+def write_pdf(out: BinaryIO, contents: Sequence[int], *, title: str, id_seed: str) -> None:
+    """Write one PDF whose pages carry `page_content(i)` for each `i` in `contents`, in order.
+
+    **The public entry to this file's byte format, and the reason it is public.** 16-roadmap.md:550
+    gives W4.10 a 300-document corpus, `tools/p2_stub_parse.py` reads exactly one grammar, and a
+    second generator emitting that grammar would be a second home for a byte layout whose whole
+    value is that a literal in the file is a literal at a computable offset. So
+    `fixtures/gen/gen_incremental.py` composes its documents out of THIS function, and the two
+    corpora share one xref writer, one object numbering and one escape rule.
+
+    **Position and content are different indices, and keeping them apart is the whole change.**
+    The object numbering follows a page's POSITION in this file -- `page_object_number(1)` is the
+    first page object wherever its content came from -- and the content follows the INDEX into
+    this module's frozen content space. `_emit` passes `range(1, pages + 1)`, so the two coincide
+    for the N-page fixture and its bytes are unchanged; `gen_incremental.py` passes a scattered
+    tuple, and a document's content is then a function of the indices it names rather than of how
+    many pages it happens to have.
+
+    `contents` must be `Sized`: `/Count` and the xref table are both written from its length
+    before any page is emitted, so a bare iterator would need a materialised copy anyway.
+    """
+    sink = _Sink(out)
+    pages = len(contents)
     count = object_count(pages)
     offsets: list[int] = [0] * (count + 1)
 
@@ -586,14 +618,14 @@ def _emit(sink: _Sink, pages: int) -> None:
     offsets[OBJ_FONT] = sink.pos
     sink.write(_font_object())
     offsets[OBJ_INFO] = sink.pos
-    sink.write(_info_object(pages))
+    sink.write(_info_object(title))
 
-    for page in range(1, pages + 1):
-        number = page_object_number(page)
+    for position, index in enumerate(contents, start=1):
+        number = page_object_number(position)
         offsets[number] = sink.pos
-        sink.write(_page_object(page))
+        sink.write(_page_object(position))
         offsets[number + 1] = sink.pos
-        sink.write(_content_object(number + 1, page_content(page)))
+        sink.write(_content_object(number + 1, page_content(index)))
 
     startxref = sink.pos
     sink.write(f"xref\n0 {count + 1}\n".encode("ascii"))
@@ -601,7 +633,7 @@ def _emit(sink: _Sink, pages: int) -> None:
     for number in range(1, count + 1):
         sink.write(f"{offsets[number]:010d} 00000 n \n".encode("ascii"))
 
-    file_id = _file_id(pages)
+    file_id = _file_id(id_seed)
     trailer = (
         f"trailer\n<< /Size {count + 1} /Root {OBJ_CATALOG} 0 R /Info {OBJ_INFO} 0 R"
         f" /ID [<{file_id}> <{file_id}>] >>\n"
@@ -643,7 +675,12 @@ def generate(out: Path, *, pages: int = DEFAULT_PAGES) -> Path:
         raise ValueError(message)
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("wb") as handle:
-        _emit(_Sink(handle), pages)
+        write_pdf(
+            handle,
+            range(1, pages + 1),
+            title=f"omniweave gen_5000p_pdf {pages}p",
+            id_seed=f"omniweave/gen_5000p_pdf/1/{pages}",
+        )
     return out
 
 
