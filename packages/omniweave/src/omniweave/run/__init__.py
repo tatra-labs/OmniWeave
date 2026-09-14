@@ -8,7 +8,17 @@ than a rule about where people should put things.
 02-architecture.md section 5.3 step 9 makes one Supervisor per process an **assertion**: a second
 `run()` in one process is refused with a `StoreError` before the loop opens. 08-runtime.md section
 2.6 lists it among the five things that are deliberately not parallel, beside the commit, two
-writers on one store, a `REGEN` retry for one `(unit, part)`, and driver construction.
+writers on one store, a `REGEN` retry for one `(unit, part)`, and driver construction. The
+assertion is `supervisor._Exclusion`, and its docstring carries why a process-scoped latch is not
+the module global 08:291 bans.
+
+**The re-export below still costs what it did before the loop landed, and that is not automatic.**
+`supervisor.py` now holds `Supervisor` as well as `Admission`, so the two expensive things a loop
+needs -- `omniweave.run.dispatch` for `form_batches`, and `omniweave_core.operator` for
+`CancelReason` and `Outcome` -- would have arrived here through the same seven names. They are
+imported at function scope instead, which is measured rather than asserted:
+`test_importing_the_package_loads_neither_the_dispatcher_nor_the_operator_module` starts a fresh
+interpreter, imports this package, and reads `sys.modules`.
 
 **None of `dispatch`, `manifest`, `pipeline`, `discover` or `expand` is re-exported here.**
 `dispatch.py` imports

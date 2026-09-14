@@ -48,11 +48,17 @@ import gen_config_axes  # noqa: E402
 
 AxisRow = gate_config_axes.AxisRow
 
-# The twelve declared keys the shipped configuration does not instantiate. They are real keys
+# The fifteen declared keys the shipped configuration does not instantiate. They are real keys
 # with real defaults -- 18-api-sketch.md section 4 carries a row for ten, ADR-3 decision 3 adds
-# `[drivers.resolve]`, and 08-runtime.md:2606 adds `[runtime] max_sequence_units` -- so the gap
-# is in the fixture, not in the registry. The ROOT `omniweave.toml.example` carries the twelfth
-# already; this fixture quotes charter.md:462-670, which predates all of them.
+# `[drivers.resolve]`, and 08-runtime.md:2598-2606's "New keys this document introduces" adds the
+# last four -- so the gap is in the fixture, not in the registry. The ROOT
+# `omniweave.toml.example` carries all fifteen already; this fixture quotes charter.md:462-670,
+# which predates every one of them.
+#
+# The four `[runtime]` rows arrive one cell at a time, by the rule D149 set: a key is declared by
+# the cell that READS it, never by the cell that notices it is missing. `max_sequence_units` came
+# with W4.7's Sequence claim; `shutdown_grace_ms`, `deferred_sweep_ms` and `stall_poll_ms` come
+# with W4.2's loop, which is the one consumer of all three.
 OWED_BY_THE_EXAMPLE = frozenset(
     {
         "drivers.resolve.*",
@@ -67,6 +73,9 @@ OWED_BY_THE_EXAMPLE = frozenset(
         "observe.redact",
         "observe.retain_days",
         "runtime.max_sequence_units",
+        "runtime.shutdown_grace_ms",
+        "runtime.deferred_sweep_ms",
+        "runtime.stall_poll_ms",
     }
 )
 
@@ -430,13 +439,13 @@ def test_exact_coverage_reports_nothing_when_it_is_exact() -> None:
     assert gate_config_axes.check_coverage(document, rows) == ()
 
 
-def test_the_shipped_fixture_leaves_exactly_the_twelve_owed_lines_uninstantiated() -> None:
+def test_the_shipped_fixture_leaves_exactly_the_owed_lines_uninstantiated() -> None:
     """The `over` direction cannot pass until the root artefact `omniweave.toml.example` is
     committed with a line per key: the test fixture beside this file quotes charter.md:462-670 and
-    that block predates twelve declared keys. Each name below has a row in 18-api-sketch.md
-    section 4 or in ADR-3 decision 3, so the debt is in the example and not in the registry.
-    ADR-3 states the consequence: "adding a config key now costs a pattern AND a line in
-    `omniweave.toml.example`"."""
+    that block predates fifteen declared keys. Each name in `OWED_BY_THE_EXAMPLE` has a row in
+    18-api-sketch.md section 4, in ADR-3 decision 3, or in 08-runtime.md:2598-2606, so the debt is
+    in the example and not in the registry. ADR-3 states the consequence: "adding a config key now
+    costs a pattern AND a line in `omniweave.toml.example`"."""
     findings = gate_config_axes.check_coverage(_shipped_document(), _committed_rows())
     assert {f.subject for f in findings} == set(OWED_BY_THE_EXAMPLE)
     assert set(_codes(findings)) == {gate_config_axes.DEAD_PATTERN}
@@ -565,7 +574,7 @@ def test_the_gate_exits_non_zero_on_the_shipped_fixture_and_says_why(
     assert gate_config_axes.main(["--example", str(SHIPPED)]) == 1
     out = capsys.readouterr().out
     assert gate_config_axes.DEAD_PATTERN in out
-    assert "G18 FAILED: 12 finding(s)" in out
+    assert f"G18 FAILED: {len(OWED_BY_THE_EXAMPLE)} finding(s)" in out
 
 
 # ---------------------------------------------------------------------------------------------

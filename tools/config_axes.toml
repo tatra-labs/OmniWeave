@@ -30,7 +30,7 @@
 # for, which is what lets `store.retain_parts` carry the `semantic` axis its own row in
 # 18-api-sketch.md section 4 gives it. The classification rule above is unchanged by the grain.
 #
-# 127 patterns from the omniweave_core.config registry: 13 semantic, 114 operational.
+# 130 patterns from the omniweave_core.config registry: 13 semantic, 117 operational.
 
 [semantic]    # enters cache keys AND sets the full-scan latch
 keys = [
@@ -100,6 +100,9 @@ keys = [
   "runtime.max_deps_per_unit",
   "runtime.work_compact_above",
   "runtime.max_sequence_units",
+  "runtime.shutdown_grace_ms",
+  "runtime.deferred_sweep_ms",
+  "runtime.stall_poll_ms",
   "runtime.claim.batch",
   "cache.gc",
   "cache.min_free_bytes",
@@ -228,6 +231,9 @@ keys = [
 "runtime.max_deps_per_unit" = "OMNIWEAVE_RUNTIME_MAX_DEPS_PER_UNIT"
 "runtime.work_compact_above" = "OMNIWEAVE_RUNTIME_WORK_COMPACT_ABOVE"
 "runtime.max_sequence_units" = "OMNIWEAVE_RUNTIME_MAX_SEQUENCE_UNITS"
+"runtime.shutdown_grace_ms" = "OMNIWEAVE_RUNTIME_SHUTDOWN_GRACE_MS"
+"runtime.deferred_sweep_ms" = "OMNIWEAVE_RUNTIME_DEFERRED_SWEEP_MS"
+"runtime.stall_poll_ms" = "OMNIWEAVE_RUNTIME_STALL_POLL_MS"
 "runtime.claim.batch" = "OMNIWEAVE_RUNTIME_CLAIM_BATCH"
 "cache.recipe" = "OMNIWEAVE_CACHE_RECIPE"
 "cache.gc" = "OMNIWEAVE_CACHE_GC"

@@ -57,7 +57,7 @@ import gate_config_axes  # noqa: E402
 # instance (see `test_the_example_declares_one_instance_per_glob`). Pinned as a number because a
 # key added to the registry without a line here, or a line here deleted, must fail LOUDLY rather
 # than change a count nobody reads.
-EXPECTED_KEYS = 127
+EXPECTED_KEYS = 130
 
 # The one key in the example whose value is NOT its declared default, and the locus that puts it
 # there. 04-driver-system.md:2779 names this exact stanza as the shipped example's own -- "which
