@@ -124,6 +124,7 @@ from omniweave.route.rung import Rung
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
 
+    from omniweave.route.checks import Installation
     from omniweave.route.evidence import Scalar, SignalRegistry
     from omniweave.route.policy import Clause, RoutePolicy, Rule, Test, When
 
@@ -1077,14 +1078,27 @@ def lint(
     *,
     registry: SignalRegistry | None = None,
     format_domain: Iterable[str] | None = None,
+    installation: Installation | None = None,
 ) -> Report:
-    """Run every check this module has, and report the ones it does not have as data.
+    """Run every check available, and report the ones that are not as data. Twelve of fourteen.
 
     `registry` is optional and its absence narrows the run rather than failing it: check 8 still
     decides every numeric pair and every categorical pair that does not need a universe, which is
     what makes the linter usable from a test that has a policy and no installed providers. Checks 1,
     2, 4 and 7 need the registry by definition and are skipped without one -- and `Report.not_run`
     says which, so the narrowing is visible in the output and not only in this docstring.
+
+    `installation` is the same arrangement for `route/checks.py`'s six: with it, checks 3, 6, 9, 11,
+    13 and 14 run against `[drivers] enabled`, the installed cards, a `PriceBook` and
+    `[retrieval.budget]`; without it they stay in `not_run`. A field it carries empty narrows one
+    check rather than all six (`checks.not_run()` says which), and a driver whose card is missing
+    produces an `Undecided` rather than a verdict -- F30's discipline applied to an absent file
+    instead of an open domain.
+
+    **Checks 5 and 12 are never here and never will be.** `load_layer()` raises `OW-P-005` and
+    `OW-P-013` at load, so a policy carrying either never compiles into a `RoutePolicy` this
+    function could be handed. They stay in `not_run` with that sentence rather than being quietly
+    dropped, because a reader counting checks should find fourteen accounted for.
     """
     findings: list[Finding] = []
     absent = dict(NOT_RUN)
@@ -1107,9 +1121,19 @@ def lint(
         policy, registry=registry, format_domain=format_domain
     )
     findings += subsumed
+    gaps = list(undecided)
+    if installation is not None:
+        from omniweave.route import checks  # noqa: PLC0415 -- checks imports Finding from here
+
+        installed, deferred = checks.run_all(policy, installation)
+        findings += installed
+        gaps += deferred
+        for number in checks.CODES:
+            absent.pop(number, None)
+        absent.update(checks.not_run(installation))
     return Report(
         findings=tuple(findings),
-        undecided=undecided,
+        undecided=tuple(gaps),
         compared=compared,
         not_run=absent,
     )

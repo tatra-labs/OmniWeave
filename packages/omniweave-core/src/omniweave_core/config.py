@@ -1460,8 +1460,10 @@ def _check_startup_invariants(values: Mapping[str, ConfigValue], *, cwd: Path) -
     """The two checks 02-architecture.md section 5.3 row 2 attributes to the config step.
 
     Everything else -- ``set(listed) <= set(enabled)``, ``default_corpus`` naming a ``[corpora]``
-    entry, ``sum(channel_ms) < query_ms`` -- is startup step 5's surface invariants or
-    ``ow route lint``, and is deliberately NOT here.
+    entry, ``sum(channel_ms) + hydration_reserve_ms <= query_ms`` -- is startup step 5's surface
+    invariants or ``ow route lint``, and is deliberately NOT here. The third is check 3 and the
+    reserve is a TERM of it (07:1114); the shipped defaults sum to exactly ``query_ms``, so a
+    paraphrase that dropped the reserve would describe an arithmetic the shipped file fails.
     """
     schema = values.get("schema")
     if isinstance(schema, int) and schema > CONFIG_SCHEMA:
