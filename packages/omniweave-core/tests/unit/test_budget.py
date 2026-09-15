@@ -338,6 +338,23 @@ def test_the_part_scope_key_carries_the_unit_so_two_documents_do_not_share_a_bud
     assert scope_key_for("provider", provider="parasail") == "parasail"
 
 
+def test_two_lanes_on_one_part_have_two_budgets() -> None:
+    """05:2523, the other half of the same sentence: *"per-part dimensions are charged per
+    `(unit_part, lane)`: two lanes on one part have two budgets."*
+
+    Without the lane the `text` and `table` passes over page 3 share one cap, so the lane that ran
+    second is denied against headroom the first is still holding -- on a policy that declared a
+    budget per lane. The un-laned key is unchanged, because a `part`-scoped reservation for work
+    that has no lane is legitimate.
+    """
+    text = scope_key_for("part", unit_uri="file:///a.pdf", unit_part="p3", lane="text")
+    table = scope_key_for("part", unit_uri="file:///a.pdf", unit_part="p3", lane="table")
+    assert text == "file:///a.pdf#p3/text"
+    assert text != table
+    assert scope_key_for("part", unit_uri="file:///a.pdf", unit_part="p3") == "file:///a.pdf#p3"
+    assert scope_key_for("unit", unit_uri="file:///a.pdf", lane="text") == "file:///a.pdf"
+
+
 def test_an_empty_scope_key_is_refused_because_it_pools_every_scope() -> None:
     """The column is `TEXT NOT NULL DEFAULT ''`, so the database would take it happily."""
     with pytest.raises(ValueError, match="shares headroom"):
