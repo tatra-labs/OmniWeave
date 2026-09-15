@@ -271,6 +271,7 @@ def scope_key_for(
     *,
     unit_uri: str = "",
     unit_part: str = "",
+    lane: str = "",
     operator: str = "",
     provider: str = "",
     corpus: str = "",
@@ -285,6 +286,13 @@ def scope_key_for(
     `(unit_part, lane)`: two lanes on one part have two budgets"* -- and 08:2186's table fixes the
     rest. This function is that prose, executed.
 
+    **`lane` is half of the `part` grain and the key is wrong without it.** The sentence above says
+    two lanes on one part have two budgets, so `file:///a.pdf#p3` alone gives the `text` and `table`
+    lanes one shared cap -- and the lane that ran second would be denied against headroom the first
+    is holding, on a policy that declared a budget per lane. It is optional because a `part`-scoped
+    reservation for work that has no lane is legitimate (`op.*` steps have no `decision_id` at all),
+    and omitting it yields the un-laned key rather than a key ending in a separator.
+
     The `run` scope keys on the run id rather than on `''`, because a store outlives a run and a
     `run`-scoped cap that keyed on the empty string would be a cap on *every* run the store has
     ever held.
@@ -293,7 +301,7 @@ def scope_key_for(
         "run": run_id,
         "corpus": corpus,
         "unit": unit_uri,
-        "part": f"{unit_uri}#{unit_part}" if unit_part else unit_uri,
+        "part": _part_key(unit_uri, unit_part, lane),
         "operator": operator,
         "provider": provider,
     }
@@ -306,6 +314,17 @@ def scope_key_for(
             f"every other {scope} in the store"
         )
     return key
+
+
+def _part_key(unit_uri: str, unit_part: str, lane: str) -> str:
+    """`<unit_uri>#<unit_part>/<lane>`, with each suffix present only when its half is.
+
+    `#` for the part because that is the fragment separator `unit_part` already reads as, and `/`
+    for the lane because that is the separator `slice_key` joins with (05:1207) -- two conventions
+    this repository already has, rather than a third.
+    """
+    key = f"{unit_uri}#{unit_part}" if unit_part else unit_uri
+    return f"{key}/{lane}" if lane and key else key
 
 
 def reserved_amount(declared: int, dim: str, p95_multiple: float) -> int:

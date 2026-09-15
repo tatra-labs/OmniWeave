@@ -27,8 +27,12 @@ linter (`OW-P-011`), the isotonic threshold fitter, and section 4.4's forty rule
 05:1267 names. All three are analyses over a compiled policy or the data one reads, which is why
 none of them is in `policy.py`; and the policy ships beside the linter because a policy and the
 proof that it names every format token (check 10, `OW-P-014`) are one reviewable unit. That leaves
-02-architecture.md:259's row 35 complete except for `admit()`: `admit.py`, `estimate.py` and
-`detect.py` are W5.3 and W5.5.
+02-architecture.md:259's row 35 complete except for `admit()`.
+
+**W5.3 adds `admit.py`** (16-roadmap.md:605): *"the only channel by which budget reaches a routing
+decision (INV-14)"*. Steps 1-3 of 05:2519's admission ladder plus the `budget.exhausted` write-back;
+steps 4-6 are `omniweave_core.budget.admit()`'s and are not restated. `estimate.py` and `detect.py`
+are still W5.5's.
 
 **`lint()` and `fit()` are deliberately NOT re-exported, and the omission is mechanical.** Each
 shares its name with the module that defines it, so binding the function here would shadow the
@@ -46,6 +50,7 @@ entry points that wrap them are one import away at `omniweave.route.lint.lint` a
 
 from __future__ import annotations
 
+from omniweave.route.admit import AdmissionRequest, write_exhausted
 from omniweave.route.decision import Modifiers, RouteDecision, RouteHints
 from omniweave.route.eval import evaluate
 from omniweave.route.evidence import Evidence, SignalRegistry, SignalSpec
@@ -66,6 +71,7 @@ __all__ = [
     "BUILTIN_POLICY",
     "LANES",
     "PARSE_LANES",
+    "AdmissionRequest",
     "Evidence",
     "Finding",
     "Modifiers",
@@ -90,4 +96,5 @@ __all__ = [
     "load_layer",
     "render_diff",
     "subsumption",
+    "write_exhausted",
 ]
