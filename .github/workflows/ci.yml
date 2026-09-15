@@ -50,10 +50,13 @@
 #     G25 G26           P7 (16-roadmap.md:742-743)
 #     G27 (a a2 a3 c d) tools/gate_docs.py lands "with P1's gate harness" (section 6.4 on a2)
 #     G29               ADR-2's second append; the plan states no phase for it
-#   DELIBERATELY ABSENT: G22. Section 6.4: it "is a nightly 100k-roster scale run with no PR cell,
-#   so it blocks the *release* (checklist step 11) and is deliberately absent from ci-ok's required
-#   set." tools/gates.toml says the same as jobs = [] and pr = false. It belongs to section 6.5's
-#   nightly ow-bench-1 row, which is not this file.
+#   DELIBERATELY ABSENT: G22, whose runner `tools/gate_scale.py` LANDED at W4.10 and is still not
+#   run here. Section 6.4: it "is a nightly 100k-roster scale run with no PR cell, so it blocks the
+#   *release* (checklist step 11) and is deliberately absent from ci-ok's required set."
+#   tools/gates.toml says the same as jobs = [] and pr = false. It belongs to section 6.5's nightly
+#   ow-bench-1 row, which is not this file -- so G22 is the one row where a runner existing does NOT
+#   arm a step, and `packages/omniweave/tests/unit/test_gate_scale.py` asserts that against this
+#   file in both directions: the script is named here and never invoked here.
 #
 # There is no continue-on-error and no "|| true" anywhere below, because section 6.8 refuses a
 # check that cannot fail: "There is no --warn-only anywhere." A guarded step is not that -- when
