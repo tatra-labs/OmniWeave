@@ -754,11 +754,17 @@ def builtin_layer() -> Layer:
     (05:1084), so this is read once per run, and a module-level cache would serve a long-lived
     `ow route lint` the file it had at process start -- which is exactly the loop an author editing
     a policy is in.
+
+    `origin` is the PATH and carries no layer prefix, because `_rule()` prefixes one: 05:2682 gives
+    `rule_origin` the shape `'project:.omniweave/policy.d/route.toml:41'` -- layer, path, line --
+    and passing `builtin:<name>` here produced `builtin:builtin:<name>:15`. The path is the one
+    05:1267's fence prints in its own first line, so a reader who greps a `rule_origin` finds the
+    file.
     """
     return load_layer(
         BUILTIN_POLICY.read_bytes(),
         layer="builtin",
-        origin=f"builtin:{BUILTIN_POLICY.name}",
+        origin=f"omniweave/route/policies/{BUILTIN_POLICY.name}",
     )
 
 
@@ -796,7 +802,16 @@ def _blocks(raw: object, name: str, origin: str) -> tuple[Mapping[str, object], 
 
 
 def _rule(body: Mapping[str, object], *, index: int, layer: str, origin: str) -> Rule:
-    """One `[[rule]]`. `index` is the block's position, which is what `origin` renders."""
+    """One `[[rule]]`. `index` is the block's POSITION and deliberately not its line.
+
+    05:2682's example reads as a line -- `'project:.omniweave/policy.d/route.toml:41'` -- and a
+    line is what a reviewer would rather click. It may not be one, because `origin` is in
+    `_rule_form()` and therefore in `policy_digest`, which is one of `route_decision`'s eight
+    identity columns: a line number would make inserting a blank line at the top of a policy file
+    change every decision's identity and re-decide the whole corpus. A block index changes only
+    when a rule is added, removed or reordered, which is exactly when the identity should move.
+    D218.
+    """
     rule_id = body.get("id")
     if not isinstance(rule_id, str) or not rule_id:
         raise RouteError(f"{origin}: [[rule]] #{index} has no `id`", fix=_FIX)
