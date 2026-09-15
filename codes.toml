@@ -482,6 +482,30 @@ meaning = "a format token in the computed domain that no GATE or DECODE rule nam
 # rule literal outside the domain -- fails as OW-P-002 rather than as a second code.
 sites   = ["05-ingest-and-routing.md:1786", "05-ingest-and-routing.md:1790"]
 
+# ───────────────────────────────────────────────────────────────────────────────────────────
+# The R area's first row. `route_decision_monotone` has raised this string since W2.2 and
+# `0004_runtime.sql:364` carried a comment saying it had no row here yet; W5.4 closes that, because
+# `tools/gate_trigger_parity.py` now asserts the string 49 times and `ow explain OW-R-030` has to
+# answer for a code a gate prints.
+#
+# NO `raised_by`, for a reason unlike the lint six's. Those are reported and never raised; this one
+# IS raised, by `RAISE(ABORT, ...)` inside a trigger, and reaches Python as a `sqlite3.
+# IntegrityError` carrying the message. Naming `RouteError` here would claim a mapping that does not
+# exist -- nothing in this repository converts that IntegrityError into an OwError subclass, and
+# `raised_by` is read as "this class raises it", not as "this area would own it if something did".
+# The area letter already records the ownership: `[area.R]` is `RouteError`.
+# ───────────────────────────────────────────────────────────────────────────────────────────
+
+[[code]]
+numeric = "OW-R-030"
+symbol  = "OW_ROUTE_ESCALATION_NOT_MONOTONE"
+meaning = "a route_decision child row at a rung at or below its parent's"
+# INV-13's `S` enforcer, raised by the generated BEFORE INSERT trigger on the parent join. It cannot
+# be a CHECK -- 05:2705, "subqueries prohibited in CHECK constraints" -- which is why the second
+# enforcer is a trigger and why RT8 (05:3348) calls the compiler's OW-P-005 "CI parity ... rather
+# than a second opinion". G32 holds the two to one verdict on all 49 rung pairs.
+sites   = ["01-principles.md:399", "05-ingest-and-routing.md:2709", "05-ingest-and-routing.md:3348"]
+
 [[code]]
 numeric = "OW-S-010"
 symbol  = "OW_SNAPSHOT_EXPIRED"

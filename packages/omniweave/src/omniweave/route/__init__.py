@@ -15,8 +15,7 @@ converts one to the other.
 own (16-roadmap.md:603); `rung.py` is W5.4's first half, landed early and for the same reason
 `spend.py` was -- `SignalSpec.requires` is `tuple[Rung, ...]` and the day-one registry names
 `DECODE`, `PAGE`, `REPAIR` and `REGEN` in that column, so the registry cannot be read without the
-ordinal type. W5.4 still owns the `BEFORE INSERT` trigger, the compiler-parity gate and the three
-exact counters.
+ordinal type.
 
 **W5.2 adds `decision.py`, `policy.py` and `eval.py`** (16-roadmap.md:604): the three types
 `evaluate()` touches, the grammar and six-layer loader that 11-repo-layout.md:250 calls *"the policy
@@ -33,6 +32,13 @@ proof that it names every format token (check 10, `OW-P-014`) are one reviewable
 decision (INV-14)"*. Steps 1-3 of 05:2519's admission ladder plus the `budget.exhausted` write-back;
 steps 4-6 are `omniweave_core.budget.admit()`'s and are not restated. `estimate.py` and `detect.py`
 are still W5.5's.
+
+**W5.4 adds `demand.py` and `counters.py`** (16-roadmap.md:606) and closes `rung.py`'s other half.
+The `DemandPlan` is RT4's mechanism -- the union of a `(rung, lane, phase)`'s reachable read sets,
+partitioned by `CostClass` ascending -- and the three exact counters are what turn INV-13 from a
+promise into a number. The `BEFORE INSERT` trigger landed with W2.2's DDL; what W5.4 adds beside it
+is `tools/gate_trigger_parity.py`, which holds it and `load_layer()`'s `OW-P-005` to the same
+verdict on every `(parent, child)` rung pair. Two enforcers, one truth (RT8).
 
 **`lint()` and `fit()` are deliberately NOT re-exported, and the omission is mechanical.** Each
 shares its name with the module that defines it, so binding the function here would shadow the
@@ -51,7 +57,9 @@ entry points that wrap them are one import away at `omniweave.route.lint.lint` a
 from __future__ import annotations
 
 from omniweave.route.admit import AdmissionRequest, write_exhausted
+from omniweave.route.counters import Counters, Tally
 from omniweave.route.decision import Modifiers, RouteDecision, RouteHints
+from omniweave.route.demand import DemandPlan, Group, compile_demand
 from omniweave.route.eval import evaluate
 from omniweave.route.evidence import Evidence, SignalRegistry, SignalSpec
 from omniweave.route.fit import Observation, Proposal, isotonic, render_diff
@@ -72,8 +80,11 @@ __all__ = [
     "LANES",
     "PARSE_LANES",
     "AdmissionRequest",
+    "Counters",
+    "DemandPlan",
     "Evidence",
     "Finding",
+    "Group",
     "Modifiers",
     "Observation",
     "PriceBook",
@@ -87,8 +98,10 @@ __all__ = [
     "SignalRegistry",
     "SignalSpec",
     "Spend",
+    "Tally",
     "Undecided",
     "builtin_layer",
+    "compile_demand",
     "compile_policy",
     "degradations",
     "evaluate",
