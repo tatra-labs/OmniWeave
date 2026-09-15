@@ -527,3 +527,97 @@ def test_a_policy_compiled_without_a_registry_puts_every_rule_in_select() -> Non
     policy = _policy()
     assert policy.phases == {}
     assert policy.phase_of_rule(policy.rules[0]) == "select"
+
+
+# --------------------------------------------------------------------------------------------
+# 6. The shipped FILE, and whether it is section 4.4.
+# --------------------------------------------------------------------------------------------
+
+
+def test_the_shipped_file_is_byte_for_byte_section_4_4s_fence(shipped: bytes) -> None:
+    """The one property that makes `00-builtin-route.toml` checkable against the plan at all.
+
+    05:1267 prints the path in the fence's own first line, so the fence IS the file and any
+    difference is a divergence rather than an edit. A transcription checked only by "it loads and
+    has forty rules" would pass with a threshold moved by a digit, which is a policy that gates
+    money differently from the one the plan argued for.
+    """
+    assert rp.BUILTIN_POLICY.read_bytes() == shipped + b"\n"
+
+
+def test_the_shipped_file_names_itself_at_the_path_the_plan_prints() -> None:
+    """The fence's first line is a comment naming the file. Transcribed, so it is now true."""
+    first = rp.BUILTIN_POLICY.read_text(encoding="utf-8").splitlines()[0]
+    assert first.startswith("# omniweave/route/policies/00-builtin-route.toml")
+    assert rp.BUILTIN_POLICY.parent.name == "policies"
+    assert rp.BUILTIN_POLICY.parent.parent.name == "route"
+
+
+def test_builtin_layer_reads_the_file_and_is_forty_rules() -> None:
+    """The accessor a caller uses instead of composing the path. No `_plan/` needed."""
+    layer = rp.builtin_layer()
+    assert layer.layer == "builtin"
+    assert len(layer.rules) == 40
+    policy = rp.compile_policy([layer])
+    assert policy.name == "builtin:balanced"
+    assert len([rule for rule in policy.rules if rule.rung is Rung.GATE]) == 12
+
+
+def test_the_profile_fast_overlay_changes_no_rule() -> None:
+    """05:1747, as the heading of its own fence: *"A `--profile fast` overlay changes no rule."*
+    Four thresholds and a `[budget.per_part]`, which is what makes `profile` a layer rather than a
+    code path -- and why the two files can be merged without a precedence argument."""
+    fast = rp.load_layer(rp.PROFILE_FAST.read_bytes(), layer="profile", origin="50-profile-fast")
+    assert fast.rules == ()
+    assert fast.pins == ()
+    merged = rp.compile_policy([rp.builtin_layer(), fast])
+    assert len(merged.rules) == 40
+    assert merged.thresholds["garble_escalate"] == 0.65  # builtin ships 0.50
+    assert merged.thresholds["table_grid_min"] == 0.50  # builtin ships 0.75
+    assert merged.name == "builtin:fast"
+
+
+def test_the_profile_layer_moves_a_threshold_inside_a_compiled_rule() -> None:
+    """The substitution is what makes the overlay do anything: `@thresholds.garble_escalate` is
+    resolved at compile time (05:977), so the same rule object carries 0.65 under the overlay and
+    0.50 without it -- and `policy_digest` differs, which is what puts the profile in the
+    decision's identity rather than in a runtime branch."""
+    balanced = rp.compile_policy([rp.builtin_layer()])
+    fast = rp.load_layer(rp.PROFILE_FAST.read_bytes(), layer="profile", origin="50-profile-fast")
+    quick = rp.compile_policy([rp.builtin_layer(), fast])
+    bound = {
+        policy.policy_digest: [
+            test.value
+            for rule in policy.rules
+            for clause in rule.when.clauses
+            for _, test in clause.tests
+            if test.threshold == "garble_escalate"
+        ]
+        for policy in (balanced, quick)
+    }
+    assert len(bound) == 2, "two policies, two digests"
+    assert sorted(bound.values()) == [[0.50], [0.65]]
+
+
+def test_a_scalar_block_merges_per_key_and_not_per_block() -> None:
+    """D210. 05:958's *"last-write-wins on scalars (`[thresholds]`, `[budget.*]`, ...)"* names the
+    blocks that HOLD scalars; the unit that wins is the scalar. Section 4.4's own `--profile fast`
+    overlay is the proof: it declares three of sixteen thresholds, so a per-BLOCK merge would drop
+    thirteen and the first rule reading `@thresholds.blank_page_tiles` would fail to compile."""
+    fast = rp.load_layer(rp.PROFILE_FAST.read_bytes(), layer="profile", origin="50-profile-fast")
+    merged = rp.compile_policy([rp.builtin_layer(), fast])
+    assert len(merged.thresholds) == 16
+    assert merged.thresholds["blank_page_tiles"] == 4  # untouched by the overlay
+    assert merged.thresholds["promote_frac"] == 0.5  # moved by it
+
+
+def test_a_budget_block_merges_per_dimension() -> None:
+    """The same rule one level down, and the reason it matters is section 6.4's *"first exhausted
+    dimension wins"*: an overlay restating `micros` and dropping `gpu_ms` would not read as a looser
+    budget but as a dimension that no longer binds."""
+    fast = rp.load_layer(rp.PROFILE_FAST.read_bytes(), layer="profile", origin="50-profile-fast")
+    merged = rp.compile_policy([rp.builtin_layer(), fast])
+    per_part = merged.budgets["per_part"]
+    assert per_part["micros"] == 2_000  # the overlay's
+    assert per_part["gpu_ms"] == 12_000  # the builtin's, which the overlay does not restate
+    assert merged.budgets["per_unit"]["micros_max"] == 16_000_000  # a block it never mentions

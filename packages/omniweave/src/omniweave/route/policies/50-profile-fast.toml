@@ -1,0 +1,15 @@
+# omniweave/route/policies/50-profile-fast.toml   (layer: profile, active under --profile fast)
+surface        = "route"
+policy_name    = "builtin:fast"
+policy_version = 1
+schema         = "omniweave.policy/1"
+
+[thresholds]
+promote_frac    = 0.5                # marker block_ocr_promote_fraction: repair, do not promote
+garble_escalate = 0.65
+table_grid_min  = 0.50               # marker fast-mode min_recon_score (table.py:37-43)
+
+[budget.per_part]
+micros     = 2_000
+tokens_out = 8_000
+calls      = 1

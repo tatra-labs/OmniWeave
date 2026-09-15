@@ -91,6 +91,26 @@ bundle, verifying it would prove only that the bundle matches itself". No host i
 anywhere; the URLs are operator data in a register, and the digest beside them is the control.\
 """
 
+[[literal]]
+value = "logger.info"
+path = "packages/omniweave/src/omniweave/route/policies/00-builtin-route.toml"
+why = """
+`.info` is a real TLD, so a dotted name ending in it reads as a hostname to clause 1's pattern — \
+and this one is a Python attribute inside a rule's multi-line `comment` string, in the shipped \
+routing policy's `gate.form-admits-fields` rule. The sentence is about olmocr: its `PdfFilter` drops every \
+form and every non-English document with "a `logger.info` only, behind `--apply_filter`", which is \
+the receipt for why our equivalent rule ADMITS A LANE instead of dropping the document.
+
+It is not a destination of any kind. The file is `[[rule]]` data read by `tomllib` and contains no \
+scheme, no host and no code; `omniweave/route/eval.py` is held to purity by G8 and G24 and cannot \
+open a socket even if a policy named one.
+
+The row exists rather than an edit to the comment because the file is a byte-for-byte transcription \
+of 05-ingest-and-routing.md section 4.4's fence and a test holds it to that — rewording the prose \
+to appease a substring match would break the one property that makes the shipped policy checkable \
+against the plan.\
+"""
+
 # ---------------------------------------------------------------------------
 # 2. Denied outright. A value here is a finding even with a [[literal]] row.
 # ---------------------------------------------------------------------------

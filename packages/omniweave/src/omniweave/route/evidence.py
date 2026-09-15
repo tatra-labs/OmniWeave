@@ -664,6 +664,29 @@ class SignalRegistry:
         specs = self.specs_for(key)
         return specs[0].nullable if specs else True
 
+    def dtype_of(self, key: str) -> str:
+        """The `dtype` column for one KEY, independent of format. `""` for an unregistered key.
+
+        `requires_of()`'s argument again -- `dtype` is per KEY and `build_registry()` refuses a
+        disagreement. The subsumption linter reads it to decide whether a key's values form an
+        interval or a finite set, and a key whose dtype moved with the corpus would put one rule in
+        two algebras.
+        """
+        specs = self.specs_for(key)
+        return specs[0].dtype if specs else ""
+
+    def domain_of(self, key: str) -> Domain:
+        """The `domain` column for one KEY, independent of format. `None` for an unregistered key.
+
+        `None` is genuinely ambiguous here and the ambiguity is the plan's: 05:2101 gives it to
+        *"a bool or an unbounded int"*, and an unregistered key lands on the same value. Callers
+        that need the difference read `dtype_of()` alongside, which is what `lint._universe()`
+        does -- a `bool` has the two-member universe its dtype implies and no `domain` column, and
+        an unbounded int has no universe at all.
+        """
+        specs = self.specs_for(key)
+        return specs[0].domain if specs else None
+
     def resolve(self, key: str, format_token: str) -> SignalSpec | None:
         """The row that serves `key` for a unit of this format, or `None` for UNKNOWN.
 
