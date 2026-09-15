@@ -1,0 +1,487 @@
+# omniweave/route/signals.toml -- the `builtin` provider's rows of the day-one signal registry.
+#
+# 05-ingest-and-routing.md section 5.1 is "the sole home of the signal registry" and its table has
+# fifty-four keys. This file holds the thirty-seven whose provider column names `builtin` -- plus
+# the two it shares (`unit.part_count`, `math.part_frac`) as the FALLBACK row, and
+# `budget.exhausted`, whose provider column is `admit()` and which therefore declares `provider`
+# explicitly. The other rows are in `omniweave-pdf` and `omniweave-office`; `layout.class_hist` is
+# in none of the three, because its provider column reads "none (day 1)".
+#
+# READ BY `tomllib`, NEVER BY IMPORTING A PROVIDER. INV-4, applied to providers (05:2041). This
+# file is package data of `omniweave.route` and is not declared as an entry point: the framework's
+# own declarations are read as package data, which is `discovery.TOMBSTONE_DIRNAME`'s precedent.
+#
+# FOUR CONVENTIONS, each with its reason. A reader checking a row against 05 section 5.1's table
+# needs all four, because in each case the table and the type disagree about a shape.
+#
+#   est    The table declares TENTHS of a millisecond and `Spend.cpu_ms` is an `int` (05:2371).
+#          Every sub-millisecond figure is rounded UP to 1 and every exact 0 is written by OMITTING
+#          `est`, so "costs something" and "costs nothing" stay distinguishable -- rounding down
+#          would make `ow drivers check`'s "measured p50 above 2x est" a comparison against zero.
+#          `table.grid_score`'s "4-30 ms" takes the upper bound, because `est` is a BUDGET and a
+#          budget set at the optimistic end of a measured range is not one. D200.
+#
+#   domain The table writes the integer counts half-open -- `[0, 2^31)` -- and `SignalSpec.domain`
+#          is "INCLUSIVE ON BOTH ENDS" (05:2098), so the transcription is `[0, 2147483647]`.
+#          `unit.bytes`'s `[0, 2^63)` is omitted instead of transcribed: the pair is
+#          `tuple[float, float]` and 2^63 - 1 is not representable as a float, so writing it would
+#          record a bound that is wrong by one. An unbounded int is what 05:2098 calls `None`, and
+#          the machine word is not a domain.
+#
+#          FIVE ROWS LEAVE `domain` ABSENT BECAUSE THE TABLE GIVES PROSE WHERE A LITERAL IS NEEDED:
+#          `unit.producer_family` ("~30 members plus `und`", an exact-prefix table the plan never
+#          enumerates), `corpus.lang` ("ISO-639-1 plus `und`"), `block.type` ("the `Kind` wire
+#          values"), `request.lane` ("the `LANES` registry") and `request.prefer_capability` ("the
+#          `Capabilities` key set"). The last three name registries that already exist in code, and
+#          INV-21 forbids a second declaration of any of them -- so a literal here would be the
+#          defect, not the fix. `ow route lint` check 2 cannot resolve a rule's literal against an
+#          absent domain; `corpus.dup_of` is the table's own precedent for a `str` row whose domain
+#          column is an em dash. D201.
+#
+#   version One semver for every builtin row at release 1, and it is not decoration: 05:2110 says
+#          the version "ENTERS THE READ SET, so a decision names exactly which code produced each
+#          value". They move independently from here -- a `garble.score` coefficient refit bumps
+#          one row and invalidates one `route_signal` key, not the other thirty-six (05:2349).
+#
+#   req    `SignalSpec.requires` names "the rungs whose DRIVER OUTPUT this signal reads" (05:2116),
+#          which is what derives a rule's select/settle phase. Written as the rung NAMES, which is
+#          the policy grammar's own SCREAMING_SNAKE spelling (05:1216).
+
+# ═════════════════ unit -- ten keys, eight of them builtin's alone ═════════════════
+
+[signal."unit.format"]
+# The one computed domain in the day-one registry: core's 48 tokens union the `token` fields of the
+# enabled cards' `[capability.parse] format_tokens`, taken at policy-compile time and folded into
+# `policy_digest` (05:2073). Not nullable: detection is total, and `empty` and `unknown` are two
+# terminal non-formats "so a GATE rule can name them" (05:639).
+scope = "unit"
+kind = "fact"
+dtype = "str"
+domain = "format_tokens"
+cost_class = "free"
+est = { cpu_ms = 1 }
+nullable = false
+version = "1.0.0"
+
+[signal."unit.format_basis"]
+# How the format was decided, and it is a signal so that a policy can distrust one basis: a
+# `declared` media type from a connector is not an `magic` byte match.
+scope = "unit"
+kind = "fact"
+dtype = "str"
+domain = ["magic", "container_identity", "content_probe", "extension", "declared", "driver_sniff"]
+cost_class = "free"
+nullable = false
+version = "1.0.0"
+
+[signal."unit.bytes"]
+scope = "unit"
+kind = "count"
+dtype = "int"
+cost_class = "free"
+nullable = false
+version = "1.0.0"
+
+[signal."unit.part_count"]
+# THE FALLBACK ROW. `serves` is absent, which means every format (05:2113) -- pdfium names `pdf`
+# and officexml names the twelve office tokens, and this row answers for everything else. It has to
+# be a fallback rather than a list: the key is `nullable = false`, so it must answer over the whole
+# of `unit.format`'s domain, and that domain is computed and OPEN, so no finite `serves` can cover
+# it. 05:2219's "not a precedence puzzle" is about two rows NAMING one format. D198.
+scope = "unit"
+kind = "count"
+dtype = "int"
+domain = [0, 2147483647]
+cost_class = "free"
+est = { cpu_ms = 6 }
+nullable = false
+version = "1.0.0"
+
+[signal."unit.encrypted"]
+# Detection-provided and NON-NULLABLE, from three byte-scannable facts (05:2239). A residual false
+# negative surfaces as pdfium's FPDF_ERR_PASSWORD at DECODE and becomes DriverError(ENCRYPTED); a
+# successful open with an empty owner password RECOMPUTES the key as false rather than overriding
+# the rule, which is why `[ingest] password_file` accepts an empty secret.
+scope = "unit"
+kind = "fact"
+dtype = "bool"
+cost_class = "free"
+est = { cpu_ms = 1 }
+nullable = false
+version = "1.0.0"
+
+[signal."unit.corrupt"]
+# The container-level structural check the format's own specification mandates, AND NOTHING DEEPER
+# (05:2240). Per-page corruption is not this key: it surfaces as a per-part DECODE failure and
+# `doc.status = 'partial'`.
+scope = "unit"
+kind = "fact"
+dtype = "bool"
+cost_class = "free"
+est = { cpu_ms = 1 }
+nullable = false
+version = "1.0.0"
+
+[signal."unit.producer_family"]
+# `domain` absent: "~30 members plus `und`" is prose (see the header). "The strongest cheap
+# layout-pathology predictor and therefore the natural slice axis" -- and its named false positive
+# is that a re-saved document carries the LAST producer, so a Workiva 10-K printed through Acrobat
+# reads `acrobat` (05:2241).
+scope = "unit"
+kind = "fact"
+dtype = "str"
+cost_class = "free"
+est = { cpu_ms = 1 }
+version = "1.0.0"
+
+[signal."unit.trust_class"]
+scope = "unit"
+kind = "fact"
+dtype = "str"
+domain = ["internal", "untrusted_external"]
+cost_class = "free"
+nullable = false
+version = "1.0.0"
+
+[signal."unit.schema_requested"]
+scope = "unit"
+kind = "fact"
+dtype = "bool"
+cost_class = "free"
+nullable = false
+version = "1.0.0"
+
+# ═════════════════ corpus -- three of the four; `corpus.is_form` has no builtin row ═══════════
+
+[signal."corpus.lang"]
+# `domain` absent: "ISO-639-1 plus `und`" is a standard the plan names and does not enumerate.
+# It is a SLICE AXIS before it is a condition: `decode.replacement_ratio`'s threshold is fitted per
+# slice precisely so that a Chinese corpus in a PUA-mapped legacy font gets its own number
+# (05:2244), and `garble.score` sets its 5-gram feature to the TRAINING MEAN when this reads `und`
+# -- "the difference between 'unknown language' and 'definitely garbage'".
+scope = "unit"
+kind = "fact"
+dtype = "str"
+cost_class = "free"
+est = { cpu_ms = 9 }
+requires = ["DECODE"]
+version = "1.0.0"
+
+[signal."corpus.spam_score"]
+# REGISTERED AND READ BY NO SHIPPED RULE, deliberately (05:2190). olmocr's `PdfFilter` maps this
+# verdict to a document-level EXCLUSION with a `logger.info` -- a 12-word SEO lexicon at threshold
+# 0.004 -- which is the anti-pattern the charter names. Here it is a slice axis and a hook.
+scope = "unit"
+kind = "classifier"
+dtype = "float"
+domain = [0.0, 1.0]
+cost_class = "free"
+est = { cpu_ms = 1 }
+requires = ["DECODE"]
+version = "1.0.0"
+
+[signal."corpus.dup_of"]
+# The second of the three registered-and-unread keys, and the table's own precedent for a `str` row
+# with an em dash in the domain column: the value is another unit's content hash and has no literal
+# set. `ow route scoreboard --by corpus.dup_of` is how an operator finds a 40%-duplicate corpus.
+scope = "unit"
+kind = "fact"
+dtype = "str"
+cost_class = "free"
+est = { cpu_ms = 1 }
+version = "1.0.0"
+
+# ═════════════════ decode -- one of six; the other five are pdfium's and officexml's ═══════════
+
+[signal."decode.replacement_ratio"]
+# U+FFFD, private-use code points and stray C0 controls over the decoded text. The threshold comes
+# from marker's `_GARBLE_CHAR_FRAC = 0.02` (`table_recon.py:27`), and the named false positives are
+# a document QUOTING U+FFFD and CJK in a PUA-mapped legacy font (05:2244).
+scope = "part"
+kind = "measure"
+dtype = "float"
+domain = [0.0, 1.0]
+cost_class = "free"
+est = { cpu_ms = 1 }
+requires = ["DECODE"]
+version = "1.0.0"
+
+# ═════════════════ garble -- the licence-free replacement for surya's OCR-error model ═════════
+
+[signal."garble.score"]
+# A fitted logistic regression over seven CPU features with a bundled coefficient file, replacing
+# surya's DistilBERT at `s3://ocr_error_detection/2025_02_18` under a MODEL_LICENSE this framework
+# cannot ship (05:2254). `kind = "classifier"`, so registration refuses it unless this domain is
+# [0.0, 1.0] CLOSED ON BOTH ENDS (RT5) -- a softmax legitimately returns both. Its calibration is a
+# CI gate (RT6: ECE <= 0.05, Brier <= 0.08), because marker's ">= 0.05 recheck" gate is meaningless
+# against an uncalibrated probability. Below `@thresholds.garble_min_chars = 50` characters it
+# returns None, which is why `decode.part-text-unusable` declares `on_unknown = "match"`.
+scope = "part"
+kind = "classifier"
+dtype = "float"
+domain = [0.0, 1.0]
+cost_class = "free"
+est = { cpu_ms = 1 }
+requires = ["DECODE"]
+version = "1.0.0"
+
+# ═════════════════ math -- the fallback half of the pair that closes the OMML hole ════════════
+
+[signal."math.part_frac"]
+# THE SECOND FALLBACK ROW. On PDF this is marker's `equation.py:63-71` -- a math font name returns
+# immediately, otherwise `math_chars / len(text) > 0.02` per block and above 30% flagged blocks the
+# part is flagged. officexml names the five OMML/ODF-math formats explicitly and wins on those;
+# this row answers everywhere else. Named false positives: a chemistry paper's subscript-heavy
+# prose and a table of part numbers, whose consequence is an ENRICH pass that emits no `math`
+# blocks -- non-fatal by construction (05:2248).
+scope = "part"
+kind = "measure"
+dtype = "float"
+domain = [0.0, 1.0]
+cost_class = "free"
+est = { cpu_ms = 1 }
+requires = ["DECODE"]
+version = "1.0.0"
+
+# ═════════════════ block -- five of six; `block.has_ink` is pdfium's ══════════════════════════
+
+[signal."block.char_count"]
+scope = "block"
+kind = "count"
+dtype = "int"
+domain = [0, 2147483647]
+cost_class = "free"
+requires = ["DECODE"]
+version = "1.0.0"
+
+[signal."block.area_frac"]
+scope = "block"
+kind = "measure"
+dtype = "float"
+domain = [0.0, 1.0]
+cost_class = "free"
+requires = ["DECODE"]
+version = "1.0.0"
+
+[signal."block.sibling_containment"]
+scope = "block"
+kind = "measure"
+dtype = "float"
+domain = [0.0, 1.0]
+cost_class = "free"
+est = { cpu_ms = 1 }
+requires = ["DECODE"]
+version = "1.0.0"
+
+[signal."block.flagged_frac"]
+# SCOPE `part`, NOT `block`, and that is the whole of Open question 3's discharge: 05:2055 says it
+# is "registered here, part-scoped, `measure`, FREE, nullable, `req = REPAIR`, so the shipped
+# policy passes `ow route lint` check 1 against this table". Its group prefix says `block` and its
+# scope says `part` because it MEASURES blocks and is READ per part.
+scope = "part"
+kind = "measure"
+dtype = "float"
+domain = [0.0, 1.0]
+cost_class = "free"
+requires = ["REPAIR"]
+version = "1.0.0"
+
+# ═════════════════ verify -- seven keys, all builtin's, all reading a model's output ═══════════
+
+[signal."verify.repeat_ngram_max"]
+# olmocr's `repeatdetect.py` streaming n-gram counter. A legal document with a genuinely repeated
+# clause trips `>= 12`; `repetition_penalty` stays 1.0 because REAL DOCUMENTS REPEAT, so the guard
+# is the detector and its cost when wrong is one extra REGEN attempt bounded by
+# `[budget.per_part] calls = 3` (05:2252).
+scope = "part"
+kind = "count"
+dtype = "int"
+domain = [0, 2147483647]
+cost_class = "free"
+est = { cpu_ms = 1 }
+requires = ["PAGE"]
+version = "1.0.0"
+
+[signal."verify.finish_reason"]
+scope = "part"
+kind = "fact"
+dtype = "str"
+domain = ["stop", "length", "content_filter", "error"]
+cost_class = "free"
+requires = ["PAGE"]
+version = "1.0.0"
+
+[signal."verify.token_saturation"]
+scope = "part"
+kind = "measure"
+dtype = "float"
+domain = [0.0, 1.0]
+cost_class = "free"
+requires = ["PAGE"]
+version = "1.0.0"
+
+[signal."verify.parse_ok"]
+scope = "part"
+kind = "fact"
+dtype = "bool"
+cost_class = "free"
+est = { cpu_ms = 1 }
+requires = ["PAGE"]
+version = "1.0.0"
+
+[signal."verify.nonempty"]
+scope = "part"
+kind = "fact"
+dtype = "bool"
+cost_class = "free"
+requires = ["PAGE"]
+version = "1.0.0"
+
+[signal."verify.attempts_exhausted"]
+# The one `verify.*` key that requires REGEN rather than PAGE: it is the attempt counter, and there
+# is no attempt to have exhausted until the regeneration ladder has run.
+scope = "part"
+kind = "fact"
+dtype = "bool"
+cost_class = "free"
+requires = ["REGEN"]
+version = "1.0.0"
+
+[signal."verify.grounded_field_frac"]
+# `unit`-scoped, because a schema is requested of a document and not of a page.
+scope = "unit"
+kind = "measure"
+dtype = "float"
+domain = [0.0, 1.0]
+cost_class = "free"
+est = { cpu_ms = 4 }
+requires = ["PAGE"]
+version = "1.0.0"
+
+# ═════════════════ agree -- the free quality channel that may never score accuracy ════════════
+
+[signal."agree.decode_vs_page"]
+# THE THIRD registered-and-unread-by-any-rule key, and the only one with two required rungs: when a
+# part escalates you have already paid for two independent readings of the same pixels, so the
+# normalised edit distance costs nothing and lands exactly on the population where the cheap driver
+# is suspect. `TruthKind = "agreement"`, and it may NEVER populate an accuracy column -- two
+# readings agreeing is not evidence that either is right (05:2251). W5.7 is the cell that plumbs
+# it; this row is its registration.
+scope = "part"
+kind = "measure"
+dtype = "float"
+domain = [0.0, 1.0]
+cost_class = "free"
+est = { cpu_ms = 2 }
+requires = ["DECODE", "PAGE"]
+version = "1.0.0"
+
+# ═════════════════ doc -- two counters the router already maintains ═══════════════════════════
+
+[signal."doc.escalated_part_frac"]
+scope = "doc"
+kind = "measure"
+dtype = "float"
+domain = [0.0, 1.0]
+cost_class = "free"
+nullable = false
+version = "1.0.0"
+
+[signal."doc.rung_run_length"]
+# Zero cost: a counter the router already maintains to write `doc.escalated_part_frac`. It exists
+# for AMORTISATION, NEVER FOR EVIDENCE SKIPPING -- the charter rejects `signal_sampling
+# {head, stride, cap}` permanently, on the measurement that a stride of 32 misses a 40-page
+# scanned appendix at pages 2,900-2,940 of a 4,000-page report (05:2250).
+scope = "doc"
+kind = "count"
+dtype = "int"
+domain = [0, 2147483647]
+cost_class = "free"
+nullable = false
+version = "1.0.0"
+
+# ═════════════════ driver and budget -- the two keys nothing computes from bytes ══════════════
+
+[signal."driver.unavailable"]
+# Written ONCE before evaluation by the compiler's resolution probe, one boolean per reachable
+# driver, so `evaluate()` needs no live `resolve()` and RT1 stays enforceable (05:1160). Not
+# nullable: the probe covers every driver a reachable rule names, so "we did not ask" cannot occur.
+scope = "part"
+kind = "fact"
+dtype = "bool"
+cost_class = "free"
+nullable = false
+version = "1.0.0"
+
+[signal."budget.exhausted"]
+# `provider = "admit"` -- the one row whose provider column names a FUNCTION and not a package
+# (05 section 5.1's table). It is "the single channel by which budget reaches routing" (RT9), and
+# the whole of INV-14 rests on it being a `put()` into this record rather than a ledger argument:
+# a budget change can never alter WHICH rung a document would have taken, only whether it ran.
+# Its scope column reads `part / unit`; `part` is written here because that is the grain `admit()`
+# reserves at, and a unit-grain exhaustion is the same key at `unit_part = ''`.
+provider = "admit"
+scope = "part"
+kind = "fact"
+dtype = "bool"
+cost_class = "free"
+version = "1.0.0"
+
+# ═════════════════ trigger and request -- the surface layer, enumerated key by key ════════════
+# 05:2194: "`request.*` is enumerated key by key rather than globbed, because `ow route lint`
+# check 1 cannot resolve a glob."
+
+[signal."trigger.kind"]
+scope = "unit"
+kind = "fact"
+dtype = "str"
+domain = ["cli", "hook", "upstream", "watch", "mcp", "sdk"]
+cost_class = "free"
+nullable = false
+version = "1.0.0"
+
+[signal."request.lane"]
+# `domain` absent: the table says "the `LANES` registry", and `LANES` is
+# `frozenset(member.value for member in Lane)` -- a literal here would be the second declaration
+# INV-21 exists to forbid. See the header. D201.
+scope = "unit"
+kind = "fact"
+dtype = "str"
+cost_class = "free"
+version = "1.0.0"
+
+[signal."request.max_rung"]
+# [0, 6] inclusive: the seven rungs by ordinal, which is the one place `Rung`'s integers surface in
+# a domain rather than in a comparison.
+scope = "unit"
+kind = "count"
+dtype = "int"
+domain = [0, 6]
+cost_class = "free"
+version = "1.0.0"
+
+[signal."request.prefer_capability"]
+# `domain` absent: "the `Capabilities` key set" is the fifteen `[capability.parse]` rows, declared
+# in the driver card schema. Same INV-21 argument as `request.lane`. D201.
+scope = "unit"
+kind = "fact"
+dtype = "str"
+cost_class = "free"
+version = "1.0.0"
+
+[signal."request.deadline_ms"]
+scope = "unit"
+kind = "count"
+dtype = "int"
+domain = [0, 2147483647]
+cost_class = "free"
+version = "1.0.0"
+
+[signal."request.schema_present"]
+# `RouteHints.schema` "IS its presence, and it is what admits the `fields` lane" (05:2030).
+scope = "unit"
+kind = "fact"
+dtype = "bool"
+cost_class = "free"
+nullable = false
+version = "1.0.0"
