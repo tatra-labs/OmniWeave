@@ -687,6 +687,25 @@ class SignalRegistry:
         specs = self.specs_for(key)
         return specs[0].domain if specs else None
 
+    def cost_class_of(self, key: str) -> CostClass | None:
+        """The `cost` column for one KEY, or `None` for an unregistered key.
+
+        `requires_of()`'s argument once more -- `cost_class` is per KEY, `build_registry()` refuses
+        a disagreement, and the demand plan that groups by it is compiled once for every format
+        (D205). A grouping that moved with the corpus would put one rule's key in the FREE group on
+        a DOCX and the LOCAL group on a PDF, and the plan is memoised on a key carrying neither.
+
+        **`None` and not a default, which is the opposite of what the four accessors above do.**
+        They answer conservatively for an unregistered key because the question is "what may a rule
+        assume about this value"; this one's question is "which group computes it", and nothing
+        computes a key no provider claims. FREE would add one to `signal_computations` -- an
+        **exact** counter (05:1153) -- for an acquisition that never runs, and BILLED_API would hide
+        the group behind a clamp for a reason unrelated to money. `layout.class_hist` is the day-one
+        member, and 05:2161's provider column reads *"none (day 1)"* rather than naming one.
+        """
+        specs = self.specs_for(key)
+        return specs[0].cost_class if specs else None
+
     def resolve(self, key: str, format_token: str) -> SignalSpec | None:
         """The row that serves `key` for a unit of this format, or `None` for UNKNOWN.
 

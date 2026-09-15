@@ -361,7 +361,8 @@ CREATE TABLE route_decision (
 -- SQLite 3.45.1), so the DDL that tried was unrunnable and would have left the routing migration
 -- unapplied with INV-13 unenforced. It is a generated trigger, with CI parity against the policy
 -- compiler's rejection of a backward `escalate_to` (OW-P-005). Two enforcers, one truth.
--- OW-R-030 is charter.md:2854's allocation and has no codes.toml row yet -- reported to the owner.
+-- OW-R-030 is charter.md:2854's allocation; codes.toml carries its row and tools/gate_trigger_parity.py
+-- (G32) holds this trigger and OW-P-005 to one verdict on all 49 rung pairs.
 CREATE TRIGGER route_decision_monotone BEFORE INSERT ON route_decision
   WHEN NEW.parent_decision_id IS NOT NULL
    AND NEW.rung <= (SELECT rung FROM route_decision WHERE decision_id = NEW.parent_decision_id)

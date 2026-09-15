@@ -1061,3 +1061,51 @@ pending       = """
 an ADR allocating the number (section 8.7 "add a gate") and a row in section 6.4's table. \
 16-roadmap.md:454 already invokes the script by name in P2's exit criteria."""
 section       = "01-principles.md INV-1; 16-roadmap.md section 5"
+
+# ------------------------------------------------------------------------------------------------
+# G32 -- appended for the same reason G30 and G31 were, and under the same caveat. `pending` says
+# what is still owed on the plan side; the script exists and blocks today.
+#
+# 16-roadmap.md:637 lists `uv run tools/gate_trigger_parity.py` in P5's exit criteria and describes
+# it as "SQL trigger vs compiler rejection". Section 6.4's rendered table carries no parity row, so
+# the number is allocated here.
+#
+# THIS ONE IS NAMED BY AN INVARIANT, WHICH THE OTHER TWO APPENDED ROWS ARE NOT. 01-principles.md:399
+# puts the parity inside INV-13's own "Enforced by" line -- "a generated `BEFORE INSERT` trigger on
+# the parent join (`route_decision_monotone`, raising `OW-R-030`) ... with CI parity against the
+# policy compiler's rejection of a backward `escalate_to`" -- and RT8 (05:3348) repeats it with the
+# distinction that makes the row necessary: the compiler's rejection "is CI parity ... rather than a
+# second opinion". Two enforcers that may differ need no test; two that may not, do.
+#
+# 03-document-model.md:1628 states the same discipline for the OTHER two generated triggers (the
+# `MAX_TRUST_BY_METHOD` clamp mirror and the INV-13 escalation check) as "CI parity in both
+# directions: two enforcers, one truth". Only the escalation half has both enforcers on disk today;
+# the clamp mirror's compiler side is P6's, so this row's assertion names the one it can hold.
+# ------------------------------------------------------------------------------------------------
+
+[[gate]]
+id            = "G32"
+assertion     = "CI parity: `route_decision_monotone` and the compiler's backward-`escalate_to` rejection agree on every rung pair"
+jobs          = ["gates"]
+# Four migration files applied to one scratch database, then 49 savepointed insert pairs, 7 root
+# inserts, one refused CREATE TABLE and 98 one-rule policy loads. G27(b) budgets 6 s for applying
+# the same migrations plus six further checks; this does less per file and more per row, and 3 s is
+# the interval this register already gives G19 and G26 for comparable in-process work.
+budget_s      = 3
+pr            = true
+nightly       = false
+release       = true
+runner        = ["tools/gate_trigger_parity.py"]
+# INV-13 and RT8 are 01-principles.md's and 05-ingest-and-routing.md's, and the two enforcers live
+# in the schema and the router. 17-risks.md section 1.3 gives `model` the invariants stated over the
+# document model and the store's own constraints, which is where the trigger is; the compiler half
+# is the router's, and a parity check cannot have two owners without having none.
+owner         = "model"
+reviewed_at   = "2026-09-15"
+review_by     = "2026-12-15"
+status        = "registered"
+pending       = """
+an ADR allocating the number (section 8.7 "add a gate") and a row in section 6.4's table. \
+16-roadmap.md:637 already invokes the script by name in P5's exit criteria, and 01-principles.md:399 \
+names the parity inside INV-13's own enforcer line."""
+section       = "01-principles.md INV-13; 05-ingest-and-routing.md RT8"

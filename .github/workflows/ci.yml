@@ -448,6 +448,19 @@ jobs:
         # `gates` beside the other declaration-file linters rather than in a job with a sqlite
         # service. G27(b), which APPLIES the migrations, is a separate row with its own runner.
         run: uv run tools/gate_schema_lint.py
+      - name: "G32 -- CI parity: route_decision_monotone vs the compiler's backward-escalate_to"
+        # The third append to tools/gates.toml, on the same terms as G30 and G31: registered, not
+        # yet rendered in section 6.4. 16-roadmap.md:637 already invokes this script by name in P5's
+        # exit criteria ("SQL trigger vs compiler rejection"), and 01-principles.md:399 puts the
+        # parity inside INV-13's own "Enforced by" line. RT8 (05-ingest-and-routing.md:3348) is the
+        # sentence the row exists for: the compiler's OW-P-005 "is CI parity for the charter's
+        # route_decision_monotone trigger rather than a second opinion". Two enforcers that MAY
+        # differ need no test; two that may not, do.
+        #
+        # It applies the migrations to a scratch file in a temp directory and loads one-rule
+        # policies through the real load_layer(), so it needs the workspace installed -- which the
+        # gates job already has -- and no database service.
+        run: uv run tools/gate_trigger_parity.py
 
       # --- the four [[job_assertion]] rows whose job cell is gates ----------------------------
       - name: "gates.reference_docs -- ow surface emit --docs --check over docs/reference"

@@ -115,6 +115,13 @@ ban-relative-imports = "all"
 # module for a second assertion. Every connection still comes from `omniweave_core.store`.
 "packages/omniweave-core/tests/unit/test_store_deps.py" = ["TID251"]
 
+# G32's tests mutate `route_decision_monotone` and assert the gate goes red, which means opening a
+# scratch database and naming `sqlite3.IntegrityError`: catching `Exception` would pass on a typo in
+# the mutant DDL, which is the one outcome these tests exist to rule out. INV-17's ban is about who
+# holds a CONNECTION to a STORE; this file holds one to a file in `tmp_path` that it deletes, and
+# `tools/gate_trigger_parity.py` takes the same exemption inline for the same reason.
+"packages/omniweave/tests/unit/test_gate_trigger_parity.py" = ["TID251"]
+
 # S106 flags a keyword argument named `token` as a hardcoded password. `Witness.token` is
 # 04-driver-system.md:570's own field name -- *"the foreign `(unit_uri, unit_part, token)`
 # tuples each item consulted"* -- and the values here are `fig:3` and `tbl:9`. A linter cannot
