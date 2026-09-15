@@ -1,0 +1,240 @@
+# omniweave_pdf/signals.toml -- the `pdfium` provider's rows of the day-one signal registry.
+#
+# 05-ingest-and-routing.md section 5.1 is the registry's sole home; these are the sixteen rows
+# whose provider column names `pdfium`. Declared by `[project.entry-points."omniweave.signals"]`
+# in this distribution's `pyproject.toml` and located by NAME --
+# `Distribution.locate_file("omniweave_pdf/signals.toml")` -- so `omniweave.route` reads it without
+# importing this package, which `tools/layers.toml` forbids outright: `omniweave`'s row is
+# `["omniweave_core", "omniweave_ports", "omniweave_office"]` and `omniweave_pdf` is not on it.
+#
+# EVERY ROW NAMES `serves = ["pdf"]`, INCLUDING THE ELEVEN NO OTHER PROVIDER CLAIMS. A single-
+# provider key could leave `serves` absent and become the fallback for every format, and that would
+# be a lie with a consequence: `decode.cid_ratio` on a DOCX would resolve to this provider's
+# version, enter `read_set_digest` under it, and make an `omniweave-pdf` release invalidate every
+# office decision on the machine. An absent `serves` says "I answer for anything"; these rows
+# answer for PDFs.
+#
+# The seven columns 05 section 5.1's table gives per KEY -- scope, kind, dtype, domain, cost_class,
+# nullable, requires -- are restated here and MUST match `omniweave/route/signals.toml` and
+# `omniweave_office/signals.toml` for any key those files also carry. `build_registry()` refuses a
+# disagreement as `OW-P-022` naming the field and both providers (D199).
+#
+# `est` rounds sub-millisecond figures UP to 1 and writes an exact 0 by omitting the key; see
+# `omniweave/route/signals.toml`'s header for why, and D200.
+
+[signal."unit.part_count"]
+# `FPDF_GetPageCount`, which is the call 05:2198 names as the reason this key has three providers
+# rather than three format-suffixed keys.
+serves = ["pdf"]
+scope = "unit"
+kind = "count"
+dtype = "int"
+domain = [0, 2147483647]
+cost_class = "free"
+est = { cpu_ms = 6 }
+nullable = false
+version = "1.0.0"
+
+[signal."unit.needs_ocr_parts"]
+# pdfium's alone: it is the count of pages whose text layer is absent or unusable, which is the
+# routing datum behind 08:563's "`needs_ocr` is **not a failure** -- it is routing data: the named
+# pages escalate one Rung".
+serves = ["pdf"]
+scope = "unit"
+kind = "count"
+dtype = "int"
+domain = [0, 2147483647]
+cost_class = "free"
+est = { cpu_ms = 3 }
+version = "1.0.0"
+
+[signal."corpus.is_form"]
+serves = ["pdf"]
+scope = "unit"
+kind = "fact"
+dtype = "bool"
+cost_class = "free"
+est = { cpu_ms = 2 }
+version = "1.0.0"
+
+[signal."decode.char_count"]
+# `requires = ()` -- and 05:1138 makes the absence the worked example of what `requires` means:
+# "pdfium answers `FPDFText_CountChars` FROM THE SOURCE BYTES". The signal reads a text layer; it
+# does not read a DECODE driver's OUTPUT, and only the second puts a rung in this column.
+serves = ["pdf"]
+scope = "part"
+kind = "count"
+dtype = "int"
+domain = [0, 2147483647]
+cost_class = "free"
+est = { cpu_ms = 2 }
+version = "1.0.0"
+
+[signal."decode.line_count"]
+serves = ["pdf"]
+scope = "part"
+kind = "count"
+dtype = "int"
+domain = [0, 2147483647]
+cost_class = "free"
+est = { cpu_ms = 2 }
+version = "1.0.0"
+
+[signal."decode.has_text_span"]
+serves = ["pdf"]
+scope = "part"
+kind = "fact"
+dtype = "bool"
+cost_class = "free"
+version = "1.0.0"
+
+[signal."decode.cid_ratio"]
+# The fraction of glyph runs whose font has no `ToUnicode` CMap, has a partial one, or is CID-keyed
+# with no mapping. PRECEDENT, NOT SOURCE: `anydoc/src/formats/pdf.rs:26-29` receives a
+# DOCUMENT-LEVEL boolean from the external `pdf-inspector` crate and only `log::warn!`s it
+# (05:2243). The named false positive is a decorative symbol font, which is why the shipped
+# threshold is 0.10 and not 0.0.
+serves = ["pdf"]
+scope = "part"
+kind = "measure"
+dtype = "float"
+domain = [0.0, 1.0]
+cost_class = "free"
+est = { cpu_ms = 2 }
+version = "1.0.0"
+
+[signal."decode.stream_monotonicity"]
+# The fraction of adjacent line pairs whose character-stream order agrees with their geometric
+# order, compared WITHIN A DETECTED COLUMN BAND -- the signal behind marker's measured 75% (char
+# stream) against 56% (learned head) reading-order result (`builders/line.py:76-84`). A page whose
+# bands cannot be detected returns None and NOT a low number: "we could not tell" and "the stream
+# is scrambled" are different facts (05:2245).
+serves = ["pdf"]
+scope = "part"
+kind = "measure"
+dtype = "float"
+domain = [0.0, 1.0]
+cost_class = "free"
+est = { cpu_ms = 1 }
+requires = ["DECODE"]
+version = "1.0.0"
+
+[signal."geometry.overlap_line_frac"]
+# marker's signal 4, VERBATIM (`line.py:266-298`), and the one of its four page signals that was
+# never licence-at-risk, because `check_line_overlaps` reads only line bboxes and the page polygon.
+# It returns exactly 1.0 when any line bbox escapes `page.polygon.expand(5, 5)` -- marker's separate
+# early-out, which returns a boolean and has no other encoding in a [0,1] signal (05:2246).
+serves = ["pdf"]
+scope = "part"
+kind = "measure"
+dtype = "float"
+domain = [0.0, 1.0]
+cost_class = "free"
+est = { cpu_ms = 3 }
+requires = ["DECODE"]
+version = "1.0.0"
+
+[signal."geometry.ruled_regions"]
+# Closed axis-aligned rectangles from the part's vector paths, collinear segments merged under
+# marker's own 2.5 pt `table_recon` tolerance, rectangles under 1% of page area discarded. It
+# exists to give the `table` lane a region on PDF without a layout model. THE FALSE NEGATIVE IS THE
+# EXPENSIVE ONE: a borderless table yields 0 and the lane never engages (05:2247, section 3.1).
+# Domain [0, 4096] is the table's own, and it is inclusive at both ends.
+serves = ["pdf"]
+scope = "part"
+kind = "count"
+dtype = "int"
+domain = [0, 4096]
+cost_class = "free"
+est = { cpu_ms = 2 }
+version = "1.0.0"
+
+[signal."math.font_hit"]
+# marker's `equation.py:63-71`: a math font name returns immediately, which is the high-precision
+# half of the pair. The recall half is `math.part_frac`.
+serves = ["pdf"]
+scope = "part"
+kind = "fact"
+dtype = "bool"
+cost_class = "free"
+est = { cpu_ms = 1 }
+version = "1.0.0"
+
+[signal."table.grid_score"]
+# marker has NO table-structure model. `reconstruct_table_html(lines)` returns `(html, score)` and
+# the caller gates on `min_recon_score`; the composite is
+# `(purity + no_compound + fill + hdr + 2*one_span) / 6` with `one_span` double-weighted, best of
+# five swept grid candidates (`table_recon.py:188-212`). `kind = "measure"` and DELIBERATELY NOT
+# `"classifier"`: it is a heuristic composite with no ground-truth distribution, "so demanding an
+# ECE gate on it would only be satisfied by a lie" (05:2249).
+#
+# `est` takes the UPPER end of the table's "4-30 ms": a budget set at the optimistic end of a
+# measured range is not a budget. It needs a REGION and the CHAR-LEVEL decode, so it is computed
+# only for parts in the `table` lane -- which is property 2 of the demand plan, not a rule here.
+serves = ["pdf"]
+scope = "part"
+kind = "measure"
+dtype = "float"
+domain = [0.0, 1.0]
+cost_class = "free"
+est = { cpu_ms = 30 }
+requires = ["DECODE"]
+version = "1.0.0"
+
+[signal."ink.tiles"]
+# LOCAL_COMPUTE, and the first of the two keys whose whole reason for existing is that a clean
+# born-digital page must never compute them (INV-13, RT4). Render at the `structure` profile in
+# grayscale, threshold at 0.85 relative luminance, MIN-pool 8x8 tiles -- a min and not a box
+# average, because a one-pixel stroke across an 8x8 tile averages to 0.875 and would be discarded,
+# which is exactly the thin serif text a scan needs to keep (05:2307). At or below
+# `@thresholds.blank_page_tiles = 4` the part is blank. `requires = ()`: no decode needed.
+serves = ["pdf"]
+scope = "part"
+kind = "count"
+dtype = "int"
+domain = [0, 2147483647]
+cost_class = "local_compute"
+est = { cpu_ms = 15 }
+version = "1.0.0"
+
+[signal."ink.coverage"]
+# Inked tiles that intersect a text-layer line bbox, over all inked tiles -- so `requires =
+# (DECODE,)`, because it needs those line boxes. Below 0.25 (marker's own threshold, `line.py:35`)
+# means "there is ink here the text layer does not explain". ITS FALSE POSITIVE IS THE SINGLE MOST
+# EXPENSIVE ONE IN THE SHIPPED POLICY: a page that is one large photograph with a caption
+# escalates to a PAGE call that re-reads the caption it already had. Bounded by
+# `[budget.per_part] micros = 6_000` and VISIBLE, because `agree.decode_vs_page` on those parts is
+# high (05:2318).
+serves = ["pdf"]
+scope = "part"
+kind = "measure"
+dtype = "float"
+domain = [0.0, 1.0]
+cost_class = "local_compute"
+est = { cpu_ms = 16 }
+requires = ["DECODE"]
+version = "1.0.0"
+
+[signal."render.short_edge_px"]
+# FREE, and it is the render PROFILE's geometry rather than a render: the short edge is computed
+# from the page box and the profile's DPI, so reading it costs no raster.
+serves = ["pdf"]
+scope = "part"
+kind = "measure"
+dtype = "float"
+domain = [0.0, 65536.0]
+cost_class = "free"
+est = { cpu_ms = 1 }
+version = "1.0.0"
+
+[signal."block.has_ink"]
+# LOCAL_COMPUTE at BLOCK scope: the tile bitmap `ink.tiles` built, intersected with one block's
+# box. It is registered although PDF has no `block.type` -- the two are independent, and a block
+# without a type still has a box.
+serves = ["pdf"]
+scope = "block"
+kind = "fact"
+dtype = "bool"
+cost_class = "local_compute"
+est = { cpu_ms = 1 }
+version = "1.0.0"

@@ -328,6 +328,24 @@ raised_by = "PolicyRefusal"
 sites   = ["18-api-sketch.md:447", "18-api-sketch.md:3212"]
 
 [[code]]
+numeric = "OW-P-022"
+symbol  = "OW_SIGNAL_PROVIDER_CONFLICT"
+meaning = "two signal providers claim one (key, format), or disagree about a per-key column"
+raised_by = "PolicyRefusal"
+# RENUMBERED FROM OW-P-021, which lint check 13 now carries -- 05-ingest-and-routing.md:3524 and
+# glossary.md:1015 both record the renumbering, so the pair is the one thing about this row a
+# reader should not have to reconstruct. The symbol is minted here because the plan allocates the
+# numeric and no symbol; `omniweave/route/evidence.py` is the only raise site.
+#
+# The `meaning` covers more than 05 section 5.2's sentence: the plan's case is two providers naming
+# one (key, format), and `build_registry()` additionally refuses two fallback rows for one key, one
+# provider registering a key twice, and two rows disagreeing about any of the seven columns 05
+# section 5.1's table gives per KEY rather than per provider. All four are the same defect --
+# "exactly one provider serves a key for a given `unit.format`" -- and none of the last three is
+# distinguishable from the first by a reader looking at a routing decision.
+sites   = ["05-ingest-and-routing.md:2114", "05-ingest-and-routing.md:2220", "05-ingest-and-routing.md:3359", "05-ingest-and-routing.md:3524", "glossary.md:1015"]
+
+[[code]]
 numeric = "OW-P-030"
 symbol  = "OW_POLICY_EGRESS_DENIED"
 sites   = ["14-security.md:1747"]

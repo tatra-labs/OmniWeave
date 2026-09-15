@@ -85,7 +85,7 @@ from omniweave_core.cassette import (
     seam_coverage,
 )
 from omniweave_core.contract import CONTRACT
-from omniweave_core.errors import QualityError
+from omniweave_core.errors import QualityError, check_register
 from omniweave_core.modelserver import MODELS_PATH, SERVICE_API_MAJOR
 
 # ---------------------------------------------------------------------------
@@ -1121,7 +1121,8 @@ def test_the_plan_allocates_eighteen_ow_q_numerics_and_gives_none_of_them_a_symb
     """WHY the two rows this module needs cannot be transcribed. The blocking half is `symbol`.
 
     `codes.toml` requires every row to carry an `OW_SCREAMING_SNAKE` symbol -- "the stored and
-    wire form" (`codes.toml:3-4`) -- and all 113 seeded rows have one. The plan allocates
+    wire form" (`codes.toml:3-4`) -- and all 113 rows seeded at P1 have one, as does every row
+    appended since. The plan allocates
     eighteen `OW-Q-*` numerics, eleven in `_notes/charter.md`'s block and seven in
     13-quality.md's, each with a meaning and a fix and NONE with a symbol. So an integration
     agent appending `OW-Q-004` must invent the one column that is load-bearing, which is a plan
@@ -1153,8 +1154,15 @@ def test_the_plan_allocates_eighteen_ow_q_numerics_and_gives_none_of_them_a_symb
     assert symbol_bearing == (), symbol_bearing
 
     register = tomllib.loads((repo_root / "codes.toml").read_text(encoding="utf-8"))
-    assert len(register["code"]) == 113
+    # 113 is P1's SEEDING, and the register is APPEND-ONLY against the last tag (G13) -- so a
+    # floor, not an equality. An equality here was a counter every landing cell had to bump, and
+    # it conflated "seeded" with "total": P5 W5.1 appended OW-P-022, which carries a symbol, a
+    # meaning and a `raised_by` like the rows this test is about. What the count was standing in
+    # for is the property `check_register()` already asserts in both directions -- no numeric with
+    # two symbols and no symbol on two numerics -- so that is asserted instead of counted.
+    assert len(register["code"]) >= 113
     assert all(str(row["symbol"]).isupper() for row in register["code"])
+    assert check_register(repo_root / "codes.toml") == ()
 
 
 def test_the_module_imports_nothing_a_gate_forbids_and_no_lazy_core_name(

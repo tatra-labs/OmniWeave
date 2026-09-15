@@ -1,0 +1,142 @@
+# omniweave_office/signals.toml -- the `officexml` provider's rows of the day-one signal registry.
+#
+# 05-ingest-and-routing.md section 5.1 is the registry's sole home; these are the nine rows whose
+# provider column names `officexml`. Declared by `[project.entry-points."omniweave.signals"]` and
+# located by NAME, like `pdfium`'s -- `omniweave` may import this distribution (it is the one edge
+# in `tools/layers.toml` not forced by a protocol), and it still does not, because a registration
+# that executes provider code is INV-4's own counter-example.
+#
+# THIS FILE IS WHAT CLOSES THE OMML HOLE. 05:2226: "`math.font_hit` and `math.part_frac` on the
+# office path are an element count over `m:oMath` / `m:oMathPara` (Word, PowerPoint) and
+# `math:math` (ODF, EPUB) against the paragraph count, which is a few lines in the provider that
+# already parses that XML -- so `decode.admit-math-lane` fires on a DOCX rather than reading
+# UNKNOWN." Without these rows a DOCX full of equations routes as prose.
+#
+# `serves` IS THE CARD'S TWELVE TOKENS, and it is not a third list: `driver.toml`'s `[capability]
+# formats` holds the twelve media types this distribution decodes -- doc, docx, ppt, pptx, xls,
+# xlsx, odt, ods, odp, rtf, epub, csv -- and `ow route lint` check 11 asserts that list against
+# `decode.office-native`'s token list, so a format added to one has to be added to all three
+# together. `application/pdf` is excluded from the card although anydoc decodes it, because
+# `parse.pdf.pdfium` owns the PDF path; the same exclusion holds here, and it is what makes every
+# `(key, format)` pair in this file disjoint from `omniweave_pdf/signals.toml`'s.
+#
+# `math.part_frac` NAMES FIVE OF THE TWELVE, not all twelve, and 05:2208 prints exactly that list:
+# a CSV and a spreadsheet have no math element to count, so claiming them would register a provider
+# that always answers zero -- which reads as "no math here" rather than "nothing asked".
+# `omniweave/route/signals.toml` carries the fallback row that answers for the other seven.
+#
+# The seven per-KEY columns must match the other two files for every shared key;
+# `build_registry()` refuses a disagreement as `OW-P-022` (D199). `est` rounds up; see D200.
+
+[signal."unit.part_count"]
+# A sheet count on an XLSX, a slide count on a PPTX, a page count the document does not have on a
+# DOCX -- which is why `part_count` is the driver's answer and not a formula: 05:2198 names this
+# key as the reason per-format provider resolution exists at all.
+serves = ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "odt", "ods", "odp", "rtf", "epub", "csv"]
+scope = "unit"
+kind = "count"
+dtype = "int"
+domain = [0, 2147483647]
+cost_class = "free"
+est = { cpu_ms = 6 }
+nullable = false
+version = "1.0.0"
+
+[signal."corpus.is_form"]
+serves = ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "odt", "ods", "odp", "rtf", "epub", "csv"]
+scope = "unit"
+kind = "fact"
+dtype = "bool"
+cost_class = "free"
+est = { cpu_ms = 2 }
+version = "1.0.0"
+
+[signal."decode.char_count"]
+serves = ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "odt", "ods", "odp", "rtf", "epub", "csv"]
+scope = "part"
+kind = "count"
+dtype = "int"
+domain = [0, 2147483647]
+cost_class = "free"
+est = { cpu_ms = 2 }
+version = "1.0.0"
+
+[signal."decode.line_count"]
+serves = ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "odt", "ods", "odp", "rtf", "epub", "csv"]
+scope = "part"
+kind = "count"
+dtype = "int"
+domain = [0, 2147483647]
+cost_class = "free"
+est = { cpu_ms = 2 }
+version = "1.0.0"
+
+[signal."decode.has_text_span"]
+serves = ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "odt", "ods", "odp", "rtf", "epub", "csv"]
+scope = "part"
+kind = "fact"
+dtype = "bool"
+cost_class = "free"
+version = "1.0.0"
+
+[signal."math.font_hit"]
+# On the office path this is the presence of a math element rather than a font name, and the key
+# keeps its name because a POLICY names it: 05:2200's whole argument against `math.part_frac_pdf`
+# is that a per-format key "would put `math.part_frac_pdf` into a policy file and make every rule
+# format-aware".
+serves = ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "odt", "ods", "odp", "rtf", "epub", "csv"]
+scope = "part"
+kind = "fact"
+dtype = "bool"
+cost_class = "free"
+est = { cpu_ms = 1 }
+version = "1.0.0"
+
+[signal."math.part_frac"]
+# 05:2208's literal `serves` list, verbatim: the five formats that carry `m:oMath` / `m:oMathPara`
+# (Word, PowerPoint) or `math:math` (ODF, EPUB). An element count over the paragraph count.
+serves = ["docx", "pptx", "odt", "odp", "epub"]
+scope = "part"
+kind = "measure"
+dtype = "float"
+domain = [0.0, 1.0]
+cost_class = "free"
+est = { cpu_ms = 1 }
+requires = ["DECODE"]
+version = "1.0.0"
+
+[signal."table.grid_score"]
+# Office tables arrive with REAL ROW AND COLUMN SPANS out of the XML, so the composite scores high
+# by construction here and is doing a different job than on PDF: it is the office path's check that
+# a table survived the decode, not a reconstruction. Same key, same domain, same `requires`.
+serves = ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "odt", "ods", "odp", "rtf", "epub", "csv"]
+scope = "part"
+kind = "measure"
+dtype = "float"
+domain = [0.0, 1.0]
+cost_class = "free"
+est = { cpu_ms = 30 }
+requires = ["DECODE"]
+version = "1.0.0"
+
+[signal."block.type"]
+# THE KEY WITH NO PDF ROW, and the absence is load-bearing rather than incidental. 05:852: block
+# -level repair needs `block.type`, which on PDF needs a layout detector, and every candidate is
+# licence-blocked -- `surya/settings.py:153` points at `hf://datalab-to/surya_layout2` under a
+# MODEL_LICENSE whose clause 2(c) is a competitor bar and whose clause 8 is viral on Output. So
+# `block.type` is UNKNOWN on PDF, `repair.never-escalate-furniture` declares `on_unknown =
+# "match"`, and EVERY PDF BLOCK IS `not_eligible` FOR REPAIR. Office formats reach REPAIR fully,
+# because their `block.type` is in the XML -- and this row is the whole of that difference.
+#
+# `ow route lint --explain` "prints the provider resolved per format, which is how a reviewer sees
+# at a glance that `block.type` has no PDF row" (05:2224).
+#
+# `domain` is absent: the table says "the `Kind` wire values", which are
+# `omniweave_core.model.enums`' own, and INV-21 forbids a second declaration of them. D201.
+serves = ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "odt", "ods", "odp", "rtf", "epub", "csv"]
+scope = "block"
+kind = "fact"
+dtype = "str"
+cost_class = "free"
+requires = ["DECODE"]
+version = "1.0.0"

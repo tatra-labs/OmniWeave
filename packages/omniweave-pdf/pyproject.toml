@@ -33,6 +33,18 @@ dependencies = [
 [project.entry-points."omniweave.drivers"]
 "parse.pdf.pdfium" = "omniweave_pdf"
 
+# THE SECOND GROUP, AND IT IS NOT A SECOND DRIVER. 05-ingest-and-routing.md:2044: a signal provider
+# "is **not** a `DriverCard` (no capability floors, never in `resolve()`) and is selected by name,
+# exactly like a `VectorBackend`". The NAME is the provider name that 05 section 5.1's table's
+# provider column prints and that `SignalSpec.version` is scoped by; the VALUE is the same dotted
+# package, because `signals.toml` sits beside `driver.toml` in it.
+#
+# The two groups are read by two different consumers at two different times: `omniweave_core.
+# discovery` reads `omniweave.drivers` on the path INV-3 holds to 80 ms, and `omniweave.route.
+# evidence` reads this one once per run when a policy is compiled. Neither enumerates the other's.
+[project.entry-points."omniweave.signals"]
+"pdfium" = "omniweave_pdf"
+
 # The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
 [tool.hatch.build.targets.wheel]
 packages = ["src/omniweave_pdf"]
