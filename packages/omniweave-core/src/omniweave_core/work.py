@@ -1035,7 +1035,7 @@ and a `LIMIT` that collapses to 1 for a NULL head.** This is a defect in the pri
 and `=` is never true of two NULLs -- so under the charter's SQL an `op.identify` row selected as
 the head matches no row in the `picked` subquery, the UPDATE claims nothing, and `op.identify` is
 unclaimable forever. Since `op.identify` *"is what CREATES the part rows the queue then drains"*
-(08:614) and carries priority 300, the head is exactly where it would appear. `IS` matches NULL to
+(08:619) and carries priority 300, the head is exactly where it would appear. `IS` matches NULL to
 NULL, which alone would batch every `op.*` row together; the `LIMIT` subquery is what makes a NULL
 head *"batch alone"* as the DDL requires. `ORDER BY w.priority DESC, w.id` then picks the head row
 itself. Reported.

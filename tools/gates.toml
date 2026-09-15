@@ -556,7 +556,29 @@ pr             = false
 nightly        = true
 nightly_note   = "**nightly only**"
 release        = true
-runner_planned = ["tools/gate_scale.py"]
+# LANDED at W4.10. One process, one asyncio loop, one StoreThread: the roster is written by
+# `acquire.write_roster`, the work rows by `expand.enqueue` behind `Supervisor.pause_gate()`, and
+# the drain is the real `Supervisor` over a real `SqliteStore`. The operator is the no-op
+# 12-performance.md:1470 prescribes for a scheduler measurement, which is the only thing about the
+# run that is synthetic.
+#
+# IT RUNS ONE WORK ROW PER UNIT AND SAYS SO. 12-performance.md section 3.4 decomposes a
+# 100,000-unit roster into 846,400 `work` rows; the other 746,400 are the planner's and
+# `omniweave/plan/` is W4.1's, unbuilt. `op.identify` is the row every unit gets with no planner at
+# all, so the gate runs the head of that decomposition and prints the 8.464x it is not running.
+#
+# THIS ROW IS RED ON THE MACHINE THAT LANDED IT (D193): peak claimable and supervisor RSS hold --
+# RSS is FLAT in the roster, which is I31 observed rather than asserted -- and `>= 2,000
+# transitions/s` does not. The cause is not the scheduler. `work_claimable` leads on `cost_class`,
+# which the shipped four-parameter `claim` does not constrain, so every claim SCANs and sorts the
+# whole claimable set twice (D190: 11.9 ms at `queue_high_water = 50000`, which is the depth the
+# backpressure holds the queue AT); and a NULL `dispatch_key` claims one row per statement, so
+# `op.identify` pays that whole scan per row (D191). `_next_width()`'s `min()` is the third (D192).
+#
+# Red is the correct state for it. A nightly cell with `jobs = []` blocks the release (section 7.6
+# step 11) and no merge, and section 6.8 refuses the alternative: "There is no --warn-only
+# anywhere", and a gate that cannot fail is a rejectable defect on its own.
+runner         = ["tools/gate_scale.py"]
 step           = "uv run tools/gate_scale.py --roster 100000 on ow-bench-1 (16-roadmap.md:578)"
 owner          = "runtime"
 reviewed_at    = "2026-09-07"

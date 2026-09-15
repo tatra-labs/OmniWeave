@@ -698,6 +698,13 @@ def test_g22_is_invoked_nowhere(ci: Workflow, register: dict[str, object]) -> No
     would find the explanation and fail the file for explaining itself. The invocation is what must
     not exist, so the invocation is what is checked -- along with the runner the register names for
     it, which is the other way the row could arrive here by accident.
+
+    **The runner check moved from `ci.text` to the `run:` bodies at W4.10**, when
+    `tools/gate_scale.py` landed and `ci.yml`'s header began naming it: the header now records that
+    G22's runner EXISTS and is still not run, because G22 is the one row where a landed runner does
+    NOT arm a step. That is the case this docstring's second sentence anticipated, arriving for the
+    script path instead of for the `G` number. What the guard catches is unchanged -- a step that
+    invokes the gate is a `run:` body, and a comment that names it is not.
     """
     absent = [row for row in _gate_rows(register) if not row["pr"]]
     assert [str(row["id"]) for row in absent] == ["G22"], absent
@@ -705,7 +712,7 @@ def test_g22_is_invoked_nowhere(ci: Workflow, register: dict[str, object]) -> No
         names = " | ".join(ci.step_names(job))
         assert not re.search(r"\bG22\b", names), f"G22 named in a {job} step"
         assert not re.search(r"\bG22\b", ci.run_bodies(job)), f"G22 invoked in {job}"
-    assert "gate_scale.py" not in ci.text
+        assert "gate_scale.py" not in ci.run_bodies(job), f"G22's runner runs in {job}"
 
 
 def test_every_job_assertions_job_is_a_job_and_its_name_is_written_down(
