@@ -1,0 +1,271 @@
+# THE DRIVERCARD for `parse.page.olmocr`. Read WITHOUT importing -- which matters more here than
+# on any other card in the tree, because importing this one would pull torch.
+#
+# ONE KEY PER LINE. An unknown TOP-LEVEL table is a HARD ERROR; an unknown key inside
+# [capability.<port>] is IGNORED with a recorded CARD_CAPABILITY_UNKNOWN degradation.
+#
+# [cost.measured], [quality] and attestation are ABSENT: they are `ow conform`'s and author values
+# are rejected by the publish gate (DR13). This driver's numbers come from the nightly `ow-gpu-1`
+# cell, which 11-repo-layout.md:1666 makes the only cell where this distribution is installed.
+card_schema = 1
+
+[driver]
+id = "parse.page.olmocr"
+port = "parse/1"
+version = "0.1.0"
+schema_version = 1                 # Bump whenever the output bytes change for the same input --
+                                   #   which HERE includes the prompt, because the prompt is an
+                                   #   input to the model and `prompt.py` pins its version beside
+                                   #   this number. A prompt edit that left this alone would serve
+                                   #   a cached reading of the old prompt from the `call` layer.
+entrypoint = "omniweave_vision.driver:OlmocrParser"
+granularity = "part"               # A PAGE-rung call reads ONE rendered part. pdfium's card says
+                                   #   `document` because the glyph index space is the document's;
+                                   #   here there is no index space at all and the unit of work is
+                                   #   the raster, which 05:841 calls "one full-part model call".
+replay_class = "seeded"            # NOT `byte_exact`: a VLM at temperature 0 on one engine build
+                                   #   is reproducible, across engine builds and batch shapes it
+                                   #   is not. `seeded` is the honest rung and it is what makes a
+                                   #   Cassette the only thing that replays a run of this driver
+                                   #   byte for byte (05:2808).
+title = "olmOCR page reader"
+summary = "A VLM reading of one rendered page, in the model's own reading order."
+
+[capability]
+formats = [
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/tiff",
+  "image/bmp",
+  "image/gif",
+]
+consumes = ["raw_bytes"]
+produces = ["doc_fragment"]
+
+[capability.parse]
+# THE FIFTEEN. `omniweave_vision.driver.ACHIEVED` is the constant the `capability` suite compares
+# against this table, key by key, on every fixture.
+spatial = "page_bbox"              # NOT `block_bbox`, and this is the one row on this card that
+                                   #   disagrees with a printed line. 03:1559 gives the "only a
+                                   #   polygon (OCR, VLM)" row `spatial = "block_bbox"`; olmOCR is
+                                   #   a PAGE VLM whose output is a linearised reading with no
+                                   #   per-block geometry, so every block's polygon is the page's.
+                                   #   A card may not declare a rung its code does not reach, and
+                                   #   `page_bbox` is the rung immediately below. In crop mode at
+                                   #   the REPAIR rung the polygon IS a block box -- and a card
+                                   #   has one floor while this driver serves three rungs (05:867),
+                                   #   which is the gap D226 files.
+origin_span = "none"               # 03:1559's own column, and INV-10's consequence: the polygon
+                                   #   is the address, so there is no character source to
+                                   #   re-extract and `quote` caps at RECONSTRUCTED
+                                   #   (`MAX_QUOTE_BY_OS_KIND`). 00:116: "`verbatim` is unreachable
+                                   #   by construction".
+text_span = false                  # There is nothing inside a block to address.
+marks = false
+reading_order = "model_emitted"    # The THIRD of five rungs (03:507). Above `learned` because the
+                                   #   order is the model's own emission rather than a layout
+                                   #   head's sort, and below `char_stream` because 03:2183's
+                                   #   measurement -- "a char-stream order beat a learned layout
+                                   #   head 75% to 56%" -- is about a source this page does not
+                                   #   have. A scan has no char stream to beat.
+sections = "markdown_only"         # olmOCR emits markdown, so an `#` line is a heading and a
+                                   #   level. `outline_from_source` needs a source outline and
+                                   #   `typed_levels` needs a type this driver cannot infer.
+tables = "none"                    # 05:895 states the shipped reality from the layout side: with
+                                   #   `layout.class_hist` absent "the `table` lane does not engage
+                                   #   ... and its cells arrive as ordinary text Blocks in reading
+                                   #   order". A markdown pipe table flattened to HTML would claim
+                                   #   `flat_html` for a structure nothing downstream addresses.
+math = []                          # The `math` lane is ENRICH's (05:890) and tags a `formula`
+                                   #   Block with a notation; this is a `parse/1` at PAGE.
+assets = "none"
+asset_origin = false
+notes = "none"
+confidence = "none"                # The `verify.*` signals read the provider's `finish_reason` and
+                                   #   a token-saturation ratio (05:2252) -- both per CALL, neither
+                                   #   per element, and `confidence` is a per-element ladder.
+furniture = "destroyed"            # A page read in reading order emits a running header inline.
+                                   #   Separating one is layout work this driver does not do.
+round_trip = "text"
+forfeits = []
+format_tokens = [
+  { media_type = "application/pdf", token = "pdf" },
+  { media_type = "image/png", token = "png" },
+  { media_type = "image/jpeg", token = "jpeg" },
+  { media_type = "image/webp", token = "webp" },
+  { media_type = "image/tiff", token = "tiff" },
+  { media_type = "image/bmp", token = "bmp" },
+  { media_type = "image/gif", token = "gif" },
+]
+# The seven are exactly the union of what the shipped policy's rules ask this driver for:
+# `decode.raster-image` names the six raster tokens (05:1497) and `decode.no-text-layer`,
+# `decode.part-text-unusable` and `decode.broken-font-encoding` all reach it from `pdf`. `ow route
+# lint` check 11 (`OW-P-015`) is the two-way comparison, and it is exact in both directions.
+
+[hardware]
+gpu            = "optional"        # NOT `required`, and the reason is the seam. The weights run in
+                                   #   a HOST-MANAGED Service (02 row 15: "a Service is named and
+                                   #   never routed"); this process builds a request and parses a
+                                   #   response. `resolve()` gates `gpu = "required"` on the LOCAL
+                                   #   host's `ProbeEnv.gpu_present` (`resolve.py:1330`), so
+                                   #   `required` would reject the driver on the laptop whose vLLM
+                                   #   endpoint is a remote attach -- the deployment 08 section 3.2's
+                                   #   attach-or-spawn ladder exists for.
+vram_gb_min    = 0.0               # Same argument, and it is the one that would bite hardest:
+                                   #   `env.vram_gb` is the local host's, while F37's 20-40 GB
+                                   #   (12:596) is the SERVICE's residency. Declaring 20 here would
+                                   #   make every remote-engine deployment HARDWARE_ABSENT.
+ram_gb_min     = 1.0               # One decoded page at the glyph profile is 8.2 MB and the area
+                                   #   ceiling puts the worst case at 18.9 MB (`route/render.py`);
+                                   #   1 GB is the request buffer, the base64 and the response.
+cpu_arch       = ["x86_64", "aarch64"]
+os             = ["linux", "darwin", "windows"]
+needs_network  = true              # `io.service()` returns a BASE URL (04 section 1.5 obligation 1),
+                                   #   so this driver opens a socket -- to loopback under a local
+                                   #   spawn and to a host under an attach. The conform `sandbox`
+                                   #   suite must not block it, and a card claiming otherwise would
+                                   #   be a driver that cannot do its one job.
+needs_binaries = []                # The engine is the Service's process, spawned from `[services.*]`
+                                   #   argv. This driver finds nothing on PATH.
+imports_torch  = false             # THE DISTRIBUTION carries torch; THIS DRIVER does not import it.
+                                   #   04 section 1.3 on `ServiceHandle`: "NOT a client library,
+                                   #   which is why `omniweave-llm` needs neither torch nor an SDK."
+                                   #   `driver.py` imports `json`, `urllib.request` and `base64`.
+install_bytes  = 0                 # UNKNOWN AND DECLARED SO. `tools/weights.toml` marks this
+                                   #   distribution `unbounded = true` because torch's CUDA wheels
+                                   #   and a runtime-fetched model are weight the RECORD cannot
+                                   #   see; `ow doctor` D-19 prints the resolved size instead
+                                   #   (15:1532). A number here would be one nobody measured.
+services       = ["model:olmocr"]  # NAMES the Service and never routes it. `[cost.model] service`
+                                   #   below carries the same name, and the estimator reads THAT
+                                   #   one to omit `per_session` (05:2472).
+
+[isolation]
+requires        = "subproc"        # The host's default and the right one: this driver holds a
+                                   #   decoded page and a long-lived HTTP connection, and a hung
+                                   #   engine must be one killable row rather than the run.
+memory_mb       = 2048
+progress_ms     = 60000            # A p50 of 2.4 s per page (05:841) under a cold engine that can
+                                   #   take 31 s to load (05:2452) -- the progress clock has to
+                                   #   outlast a queue behind a warming service, and `wall_ms_hard`
+                                   #   is the backstop that does not reset.
+wall_ms_hard    = 600000
+batch_max_units = 1                # ONE part per invocation. 05:841 is "one full-part model call",
+                                   #   and batching two pages into one call would make the
+                                   #   `page_renders` counter a sum rather than a set membership.
+
+[limits]
+max_input_bytes = 33554432         # 32 MiB. A rendered page is at most `area_max_px x 3` = 18.9 MB
+                                   #   decoded and far less encoded, so this bounds a caller who
+                                   #   hands this driver a source document rather than a raster.
+max_parts       = 1                # ONE part per call, matching `batch_max_units`.
+
+[licence.code]
+spdx = "Apache-2.0"
+redistribution = "allowed"
+output_share_alike = false
+competitor_bar = false
+requires_credential = false
+revenue_gate_usd = 0
+mau_gate = 0
+territory_excluded = []
+field_of_use_excluded = []
+attribution_per_output = false
+no_model_training = false
+remote_kill_switch = false
+clause_refs = []
+
+# [licence.weights] IS OMITTED, and the omission is a finding rather than a shortcut.
+#
+# 04:1857 defines the absence: the table is "omitted entirely when a driver ships no weights -- an
+# empty table is not the same statement as an absent one" -- and this driver ships none. The model
+# is loaded by a HOST-MANAGED Service from `[services.vlm] model_id` / `model_revision`, which
+# `config.py:770-771` makes REQUIRED and `semantic`; 02 row 15 is explicit that choosing a model is
+# config's job and never the driver's.
+#
+# The loader closes the other door: `[licence.weights]` present REQUIRES `weights_revision` as an
+# exact sha (04:1858, `card.py:2449`), and this checkout has never contacted the weights
+# repository. The only available values are a real sha nobody here can read and a fabricated one,
+# and a fabricated sha in the field whose entire purpose is that it is true would be the defect the
+# rule exists to prevent, wearing compliance as a costume.
+#
+# So the facts that made olmocr the choice live in this comment and in 04:2612-2613 rather than in
+# a table: `parse.page.surya` and `parse.page.marker` are forbidden by a BYTE-IDENTICAL
+# MODEL_LICENSE (md5 e1f69b64dee2f1641a9b1ab12adf24d6) whose clause 2(c) is a competitor bar with
+# no revenue threshold and whose clause 9 reserves a remote kill switch. olmOCR's weights are
+# Apache-2.0 with neither. The tier this card computes is `open` either way, which is what 04:1938
+# prints; what that line also prints is the source string "Apache-2.0 (code + weights)", and D227
+# records that no card can produce it for a Service-backed driver.
+
+[deps]
+pins = []                          # No Python pin carries this driver's identity: the model is
+                                   #   fetched by the ENGINE from `[services.*]`, and the engine
+                                   #   is not this wheel. `pypdfium2==5.13.0` is pdfium's identity
+                                   #   because the glyph index space is the extractor's; here the
+                                   #   identity is the weights revision, and it has no home on a
+                                   #   card that does not ship them. See `[licence.weights]`.
+
+[config]
+type = "object"
+additionalProperties = false
+required = []
+[config.properties.service]
+type = "string"
+maxLength = 64
+default = "vlm"
+[config.properties.max_tokens]
+type = "integer"
+minimum = 1
+maximum = 8000                     # olmocr's own `MAX_TOKENS = 8000` (`olmocr/pipeline.py:107`),
+                                   #   as a CEILING rather than as a default times eight retries.
+default = 4096
+[config.properties.temperature]
+type = "number"
+minimum = 0.0
+maximum = 1.0
+default = 0.0                      # Determinism is the default, not an option an operator finds.
+                                   #   `replay_class = "seeded"` is only true at 0.0.
+[config.properties.repetition_penalty]
+type = "number"
+minimum = 1.0
+maximum = 2.0
+default = 1.0                      # 05:2252, verbatim: "`repetition_penalty` stays **1.0** -- real
+                                   #   documents repeat -- so the guard is the detector", which is
+                                   #   `verify.repeat_ngram_max`.
+
+[cost.model]
+# 05:2446-2457 prints this block for this driver. Every number below is that fence.
+class   = "local_compute"          # 05:2432: "load-bearing". It runs weights YOU host and its
+                                   #   `bytes_egress` is 0, so it is priced by `gpu_ms` through
+                                   #   `[local]`. A hosted olmocr is a DIFFERENT DRIVER ID,
+                                   #   `parse.page.olmocr_hosted`, declaring `billed_api`.
+shape   = "linear_per_part"
+unit    = "part"
+per_part    = { gpu_ms = 2400, cpu_ms = 120, tokens_in = 1800, tokens_out = 1100, calls = 1 }
+per_session = { wall_ms = 31_000 } # Model load / warm-up. WALL, NOT GPU -- and the estimator
+                                   #   OMITS it entirely, because `service` below is declared
+                                   #   (05:2472). It is carried anyway because the sequence rules
+                                   #   save WALL time against `[budget.per_unit] wall_ms`
+                                   #   (4 x 31 s = 124 s, 05:2476) and zero micros, which is the
+                                   #   whole reason `wall_ms` is in the `Spend` vector.
+scaling     = { key = "render.short_edge_px", exponent = 2.0, reference = 1384 }
+tokens_out_p95_multiple = 3.2      # The p95 multiple applies to `gpu_ms` as well as `tokens_out`
+                                   #   (05:2478): on a decode-bound VLM, GPU time is proportional
+                                   #   to output tokens, so reserving a mean `gpu_ms` against a p95
+                                   #   `tokens_out` reserves a number that cannot occur. This is
+                                   #   what makes `reserved_micros` 2,732 against `est_micros` 855.
+max_retries = 0                    # A CONTRACT. olmocr's own pipeline is MAX_TOKENS 8000 x
+                                   #   `--max_page_retries 8` = 64,000 output tokens per page, a
+                                   #   64x amplification fired in parallel at
+                                   #   `--max_concurrent_requests 1600` (05:2487-2491). Here a
+                                   #   retry is a `Rung` -- REGEN -- serial per `(unit_part, lane)`
+                                   #   and charged to the same per-part budget.
+# `service = "model:olmocr"` is NOT here, and 05:2456 prints it here. The shipped loader's
+# `[cost.model]` key set is closed at eight -- class, shape, unit, per_part, per_session, scaling,
+# tokens_out_p95_multiple, max_retries (`card.py:2538-2549`) -- and `CostModel` has no `service`
+# field, so the plan's own worked fence for THIS driver does not load. The name is declared once,
+# in `[hardware] services` above, which is the table 04's `Hardware` docstring says "NAMES Services
+# and never routes them". D228 records which of the two homes the estimator must read, because
+# 05:2472 makes the presence of that name the thing that omits `per_session` from every estimate.

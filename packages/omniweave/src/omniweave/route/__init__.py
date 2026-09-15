@@ -57,6 +57,16 @@ recomputes what `route_threshold` already holds. `propose.py` is pure: `bindings
 a `[thresholds]` name, the evidence key it is compared against and the DIRECTION of the comparison
 are a single record, which is what `fit()` has been taking as a parameter since W5.2.
 
+**W5.6 adds `render.py`** and the `omniweave-vision` distribution beside it. The module is 05:900's
+*"pixel floor on the short edge plus a pixel-area ceiling"* with the DPI derived per page, and it
+is the router's rather than a driver's for three reasons the plan supplies: the profile tables are
+`[render.*]` in the policy, `then.render`'s accumulation is a rule-level *"more expensive one
+wins"* (05:908), and the output `render.short_edge_px` is a registered `SignalSpec` that
+`parse.page.olmocr`'s `[cost.model] scaling` reads. Running it over the shipped profiles is how
+D224 and D225 were found: the plan's four printed rasters are none of them multiples of the
+`patch_snap` it declares, and the 10.7 MB every memory budget is stated in is A4 at a DPI nothing
+renders.
+
 **`lint()`, `fit()` and `propose()` are deliberately NOT re-exported, and the omission is
 mechanical.** Each
 shares its name with the module that defines it, so binding the function here would shadow the
@@ -94,6 +104,7 @@ from omniweave.route.policy import (
     load_layer,
 )
 from omniweave.route.propose import Binding, Patch, apply_patch, bindings, parse_diff
+from omniweave.route.render import Profile, Raster, plan_raster, profiles
 from omniweave.route.rung import LANES, PARSE_LANES, Rung
 from omniweave.route.spend import PriceBook, Spend
 
@@ -114,7 +125,9 @@ __all__ = [
     "Observation",
     "Patch",
     "PriceBook",
+    "Profile",
     "Proposal",
+    "Raster",
     "Report",
     "Rollup",
     "RouteDecision",
@@ -140,6 +153,8 @@ __all__ = [
     "isotonic",
     "load_layer",
     "parse_diff",
+    "plan_raster",
+    "profiles",
     "render_diff",
     "scoreboard",
     "subsumption",

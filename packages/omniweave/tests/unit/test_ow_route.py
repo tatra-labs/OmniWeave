@@ -73,12 +73,35 @@ def test_the_registry_it_builds_is_the_day_one_fifty_three() -> None:
     assert "layout.class_hist" not in keys
 
 
-def test_the_cards_it_finds_are_the_two_first_party_parse_drivers() -> None:
-    """`omniweave-vision` is W5.6's, so `parse.page.olmocr` has no card on this tree -- which is
-    what makes checks 9, 11 and 13 partly undecidable rather than green."""
+def test_the_cards_it_finds_are_the_three_first_party_parse_drivers() -> None:
+    """W5.6 added the third. Before it, checks 9, 11 and 13 all deferred on `parse.page.olmocr`
+    and the linter reported six undecidables; with the card on disk it reports three, and none of
+    the three is olmocr's."""
     cards = tool.installed_cards()
-    assert sorted(cards) == ["parse.office.anydoc", "parse.pdf.pdfium"]
-    assert "parse.page.olmocr" not in cards
+    assert sorted(cards) == ["parse.office.anydoc", "parse.page.olmocr", "parse.pdf.pdfium"]
+
+
+def test_the_olmocr_card_decides_every_check_that_deferred_on_it(tmp_path: Path) -> None:
+    """The measurement W5.6 is for. W5.5a reported **6 undecidable, 4 not run** and named
+    `parse.page.olmocr` in every one of the six; with the card on disk the default run reports
+    **2 undecidable** and a priced run **3**, and olmocr appears in none of them.
+
+    What is left is not about olmocr: `parse.text.builtin` and `parse.fields.lift` have no card
+    because neither has a distribution, and check 8's pair is a subsumption undecidable.
+    """
+    plain = StringIO()
+    assert tool.main([], writer=plain) == tool.EXIT_CLEAN
+    assert "2 undecidable" in plain.getvalue()
+    assert "parse.page.olmocr" not in plain.getvalue()
+
+    book = tmp_path / "pricebook.toml"
+    book.write_text(BOOK, encoding="utf-8")
+    priced = StringIO()
+    assert tool.main(["--pricebook", str(book)], writer=priced) == tool.EXIT_CLEAN
+    report = priced.getvalue()
+    assert "3 undecidable" in report
+    assert "not run: check 13:" not in report
+    assert "parse.page.olmocr" not in report
 
 
 def test_the_retrieval_budget_is_the_declared_default() -> None:
