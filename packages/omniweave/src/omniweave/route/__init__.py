@@ -47,14 +47,25 @@ fourteen over documentation fences and excludes exactly the ones that read somet
 documentation fence has no standing to carry"*. `tools/ow_route.py` drives both, because
 `omniweave.cli` is P7's and FE5 forbids a hand-written one arriving first.
 
-**`lint()` and `fit()` are deliberately NOT re-exported, and the omission is mechanical.** Each
+**W5.5's other half adds `ledger.py` and `propose.py`**: the three `route_threshold` rows the
+policy loader writes *"in the same transaction that installs `policy_digest`, or the install
+refuses"* (05:2884), the `route_scoreboard` read whose three-valued `state` gates a fit, and
+`ow route propose` / `ow route promote`. `ledger.py` takes a connection it never opens -- INV-17
+puts the only `sqlite3.connect` in `store/sqlite.py` -- and `Rollup.state` is SELECTed rather than
+recomputed, because 01:669's list of what an INV-23 violation looks like ends with a scoreboard that
+recomputes what `route_threshold` already holds. `propose.py` is pure: `bindings()` is the one place
+a `[thresholds]` name, the evidence key it is compared against and the DIRECTION of the comparison
+are a single record, which is what `fit()` has been taking as a parameter since W5.2.
+
+**`lint()`, `fit()` and `propose()` are deliberately NOT re-exported, and the omission is
+mechanical.** Each
 shares its name with the module that defines it, so binding the function here would shadow the
 module: after `from omniweave.route.lint import lint`, the name `omniweave.route.lint` is the
 function, and `from omniweave.route import lint as rl` then hands a caller something with no
 `Span` on it. The verbs 02-architecture.md:259 actually names -- *"the subsumption linter and the
-isotonic threshold fitter"* -- are `subsumption()` and `isotonic()`, and both are here; the two
-entry points that wrap them are one import away at `omniweave.route.lint.lint` and
-`omniweave.route.fit.fit`.
+isotonic threshold fitter"* -- are `subsumption()` and `isotonic()`, and both are here; the three
+entry points that wrap them are one import away at `omniweave.route.lint.lint`,
+`omniweave.route.fit.fit` and `omniweave.route.propose.propose`.
 
 `omniweave.route` may import `omniweave_core`; `omniweave_core` may not import this, which is why
 `omniweave_core.operator.SpendVector` exists as a structural stand-in for `Spend` and why
@@ -72,6 +83,7 @@ from omniweave.route.eval import evaluate
 from omniweave.route.evidence import Evidence, SignalRegistry, SignalSpec
 from omniweave.route.explain import KeyReading, RuleExplanation, explain_rule
 from omniweave.route.fit import Observation, Proposal, isotonic, render_diff
+from omniweave.route.ledger import Rollup, install_thresholds, scoreboard
 from omniweave.route.lint import Finding, Report, Undecided, degradations, subsumption
 from omniweave.route.policy import (
     BUILTIN_POLICY,
@@ -81,6 +93,7 @@ from omniweave.route.policy import (
     compile_policy,
     load_layer,
 )
+from omniweave.route.propose import Binding, Patch, apply_patch, bindings, parse_diff
 from omniweave.route.rung import LANES, PARSE_LANES, Rung
 from omniweave.route.spend import PriceBook, Spend
 
@@ -89,6 +102,7 @@ __all__ = [
     "LANES",
     "PARSE_LANES",
     "AdmissionRequest",
+    "Binding",
     "Counters",
     "DemandPlan",
     "Evidence",
@@ -98,9 +112,11 @@ __all__ = [
     "KeyReading",
     "Modifiers",
     "Observation",
+    "Patch",
     "PriceBook",
     "Proposal",
     "Report",
+    "Rollup",
     "RouteDecision",
     "RouteHints",
     "RoutePolicy",
@@ -112,15 +128,20 @@ __all__ = [
     "Spend",
     "Tally",
     "Undecided",
+    "apply_patch",
+    "bindings",
     "builtin_layer",
     "compile_demand",
     "compile_policy",
     "degradations",
     "evaluate",
     "explain_rule",
+    "install_thresholds",
     "isotonic",
     "load_layer",
+    "parse_diff",
     "render_diff",
+    "scoreboard",
     "subsumption",
     "write_exhausted",
 ]
