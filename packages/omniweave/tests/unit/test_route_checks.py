@@ -41,7 +41,12 @@ if TYPE_CHECKING:
 CARDS = (
     "packages/omniweave-office/src/omniweave_office/driver.toml",
     "packages/omniweave-pdf/src/omniweave_pdf/driver.toml",
+    "packages/omniweave-vision/src/omniweave_vision/driver.toml",
 )
+"""THREE since W5.6. The third is what turned six of this file's assertions from *"undecidable
+because `parse.page.olmocr` has no card"* into verdicts."""
+
+OLMOCR_CARD = "packages/omniweave-vision/src/omniweave_vision/driver.toml"
 
 SIGNALS = (
     ("pdfium", "packages/omniweave-pdf/src/omniweave_pdf/signals.toml"),
@@ -62,44 +67,6 @@ BUDGET = {
 """07:1108's own fence, and its own comment does the arithmetic: *"15 + 25 + 50 + 40 + 80 = 210,
 + 40 reserved = 250 against query_ms = 250"*. Exactly on the boundary, which is why check 3's
 inequality is non-strict."""
-
-OLMOCR_COST = """
-card_schema = 1
-[driver]
-id = "parse.page.olmocr"
-port = "parse/1"
-version = "0.1.0"
-schema_version = 1
-entrypoint = "omniweave_vision.driver:OlmocrParser"
-granularity = "part"
-replay_class = "seeded"
-title = "olmOCR page reader"
-summary = "A VLM reading of one rendered page."
-[capability]
-formats = ["application/pdf"]
-consumes = ["raw_bytes"]
-produces = ["doc_fragment"]
-[capability.parse]
-format_tokens = [{ media_type = "application/pdf", token = "pdf" }]
-[licence.code]
-spdx = "Apache-2.0"
-redistribution = "allowed"
-[cost.model]
-class   = "local_compute"
-shape   = "constant"
-unit    = "page"
-per_part    = { gpu_ms = 2400, cpu_ms = 120, tokens_out = 1100, calls = 1 }
-per_session = { }
-scaling     = { key = "render.short_edge_px", exponent = 2.0, reference = 1384 }
-tokens_out_p95_multiple = 3.2
-max_retries = 0
-"""
-"""Section 10's printed `[cost.model]` for `parse.page.olmocr`, as a card.
-
-Synthetic, and the one synthetic card here: `omniweave-vision` is W5.6's and the numbers this test
-needs are printed at 05:3081 rather than shipped. Every field below is from that fence --
-*"`per_part = {gpu_ms 2400, cpu_ms 120, tokens_out 1100, calls 1}`, `service = "model:olmocr"`
-(so no `per_session` term) and `tokens_out_p95_multiple = 3.2`"*."""
 
 
 @pytest.fixture(scope="module")
@@ -156,10 +123,17 @@ def _card(body: str, source: str) -> DriverCard:
     return loaded
 
 
-def _olmocr() -> DriverCard:
-    card = _card(OLMOCR_COST, "section 10")
-    assert card.identity.id == "parse.page.olmocr"
-    return card
+def _without_olmocr(installed: rc.Installation) -> rc.Installation:
+    """The installation as it was BEFORE W5.6. Six of this file's assertions were about this
+    state, and they are kept as assertions about an operator who has not installed
+    `omniweave-vision` -- which 05:3055 makes a supported condition with a named degradation, not
+    a transitional one."""
+    return rc.Installation(
+        enabled=installed.enabled,
+        cards={k: v for k, v in installed.cards.items() if k != "parse.page.olmocr"},
+        book=installed.book,
+        retrieval=installed.retrieval,
+    )
 
 
 # --------------------------------------------------------------------------------------------
@@ -235,9 +209,10 @@ def test_check_nine_is_undecidable_for_a_driver_whose_card_is_not_installed(
     shipped: rp.RoutePolicy, installed: rc.Installation
 ) -> None:
     """`decode.part-text-unusable` and `decode.broken-font-encoding` declare `on_unknown = "match"`
-    and both name `parse.page.olmocr`, whose distribution is W5.6's. So the check has two subjects
-    and can settle neither -- which is a sentence, not a pass."""
-    findings, undecided = rc.match_on_billed_api(shipped, installed)
+    and both name `parse.page.olmocr`. On an installation without `omniweave-vision` the check has
+    two subjects and can settle neither -- which is a sentence, not a pass, and 05:3055 makes that
+    installation a supported one rather than a transitional one."""
+    findings, undecided = rc.match_on_billed_api(shipped, _without_olmocr(installed))
     assert findings == ()
     assert [u.rule_id for u in undecided] == [
         "decode.part-text-unusable",
@@ -248,19 +223,24 @@ def test_check_nine_is_undecidable_for_a_driver_whose_card_is_not_installed(
 
 
 def test_check_nine_passes_on_local_compute_and_fires_on_billed_api(
-    shipped: rp.RoutePolicy, installed: rc.Installation
+    shipped: rp.RoutePolicy, installed: rc.Installation, repo_root: Path
 ) -> None:
     """olmocr declares `local_compute`, which 05:2438 says *"is what makes `ow route lint` check 9
     satisfiable by the shipped policy."* Install that card and the two rules pass; move the card's
-    class to `billed_api` and both fire, which is the check earning its place."""
-    with_card = rc.Installation(
-        enabled=installed.enabled, cards={**installed.cards, "parse.page.olmocr": _olmocr()}
-    )
-    findings, undecided = rc.match_on_billed_api(shipped, with_card)
+    class to `billed_api` and both fire, which is the check earning its place.
+
+    Since W5.6 the passing half needs no fixture at all: the shipped card declares
+    `local_compute`, so `installed` already carries it."""
+    findings, undecided = rc.match_on_billed_api(shipped, installed)
     assert findings == ()
     assert undecided == ()
 
-    billed = _card(OLMOCR_COST.replace('"local_compute"', '"billed_api"'), "a test")
+    billed = _card(
+        (repo_root / OLMOCR_CARD)
+        .read_text(encoding="utf-8")
+        .replace('"local_compute"', '"billed_api"'),
+        "a test",
+    )
     hostile = rc.Installation(
         enabled=installed.enabled, cards={**installed.cards, "parse.page.olmocr": billed}
     )
@@ -323,7 +303,7 @@ def test_check_eleven_fires_on_a_token_the_driver_refuses(
 
 
 def test_reserved_micros_reproduces_section_tens_two_thousand_seven_hundred_and_thirty_two(
-    book: PriceBook,
+    installed: rc.Installation, book: PriceBook
 ) -> None:
     """05:3085: *"`reserved_micros` = 2400 x 3.2 x 0.3556 + 1.11 = 2730.8 + 1.11 = **2732**"*.
 
@@ -331,7 +311,7 @@ def test_reserved_micros_reproduces_section_tens_two_thousand_seven_hundred_and_
     zero because section 6.2's book declares no rate for it -- which is `PriceBook.undeclared()`'s
     subject and not this check's.
     """
-    assert rc.reserved_micros(_olmocr(), book) == 2732
+    assert rc.reserved_micros(installed.cards["parse.page.olmocr"], book) == 2732
 
 
 def test_check_thirteen_passes_on_the_shipped_caps_and_fires_on_a_lowered_one(
@@ -340,11 +320,7 @@ def test_check_thirteen_passes_on_the_shipped_caps_and_fires_on_a_lowered_one(
     """The shipped `[budget.per_unit] micros_per_part = 3000` and `[budget.per_part] micros = 6000`
     both clear 2,732. 05:1789 says the check exists because they once did not: *"it is the shipped
     default that had this defect."*"""
-    with_book = rc.Installation(
-        enabled=installed.enabled,
-        cards={**installed.cards, "parse.page.olmocr": _olmocr()},
-        book=book,
-    )
+    with_book = rc.Installation(enabled=installed.enabled, cards=installed.cards, book=book)
     findings, undecided = rc.budget_below_reservation(shipped, with_book)
     assert findings == ()
     assert [u.key for u in undecided] == ["parse.fields.lift"]
