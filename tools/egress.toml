@@ -193,3 +193,35 @@ why = """
 Same instrument again. `contract` asserts a driver's failures arrive as `DriverError` rather than \
 as another exception type, and a socket raised out of a driver is one of the ways that goes wrong.\
 """
+
+[[client]]
+module = "asyncio"
+path = "packages/omniweave/src/omniweave/run/bench.py"
+why = """
+INV-3's sanctioned home for a loop, the same one `supervisor.py`'s row names: \
+`pyproject.toml`'s `TID251` per-file-ignore is scoped to \
+`packages/omniweave/src/omniweave/run/*.py` and nowhere else.
+
+What is imported is `to_thread`, `sleep`, `create_task` and `CancelledError` -- the four a \
+harness needs to drive the Supervisor it is measuring. There is no `open_connection`, no \
+`create_server`, no `loop.sock_*` and no `create_subprocess_*`. `ow bench scheduler` runs one \
+store, one loop and a no-op operator; 12-performance.md section 7.1 gives it no network at all, \
+and section 1.2's first limit says the Pacer this harness lives beside "is CPU and disk only. It \
+contains no GPU work and no network."
+
+The row exists because `asyncio` CAN dial and clause 1 is a declaration rule rather than a usage \
+analysis (14:779).\
+"""
+
+[[client]]
+module = "socket"
+path = "packages/omniweave/src/omniweave/run/bench.py"
+why = """
+`socket.gethostname()`, once, in `worker_identity()` -- the `host` field of `work.claimed_by`'s \
+`<host>:<pid>:<process_create_time>` triple (08-runtime.md:465), which is the identity the lease \
+reaper reads back. A name for this machine, never a name of another one. No socket is constructed.
+
+The same call and the same argument as `locks.py`'s row, for the same triple: `omniweave_core.locks` \
+owns the triple's construction and exports the third component, and the colon-joined spelling the \
+`work` table stores is composed here from parts rather than from a second source.\
+"""

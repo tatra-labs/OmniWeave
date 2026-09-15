@@ -91,33 +91,21 @@ import asyncio  # noqa: TID251 -- gate harness; see the module docstring's last 
 import contextlib
 import os
 import shutil
-import socket
 import sys
 import tempfile
 import textwrap
 import threading
 import time
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, TextIO
 
-from omniweave.run import expand
+from omniweave.run import bench, expand
 from omniweave.run import supervisor as sup
 from omniweave_core import acquire, locks
 from omniweave_core import config as configmod
-from omniweave_core.clock import SystemClock
-from omniweave_core.errors import ConfigError, StoreError
 from omniweave_core.host.subproc import peak_rss_bytes
-from omniweave_core.operator import (
-    CancelToken,
-    Outcome,
-    Producer,
-    Roots,
-    RunContext,
-    StepResult,
-    UnitRef,
-)
 from omniweave_core.store import migrate
 from omniweave_core.store import sqlite as ow
 from omniweave_core.store.queue import SqliteStore
@@ -166,11 +154,6 @@ EXIT_CLEAN: Final = 0
 EXIT_FAIL: Final = 1
 EXIT_NOT_RUN: Final = 2
 
-SHIPPED_MIGRATIONS: Final = 4
-"""The four migrations `0001`-`0004`. Asserted rather than assumed: a store one migration short
-would claim out of a `work` table with no `work_claimable` partial index, and the gate would report
-a scheduler number that was an index scan."""
-
 ROSTER: Final = 100_000
 """The roster size 16-roadmap.md:578 and V10-7 both name. `--roster` overrides it for a probe run;
 the gate's own step line passes it explicitly so the default and the invocation cannot drift."""
@@ -197,23 +180,6 @@ true `PeakWorkingSetSize` and procfs reports the CURRENT resident set, *"so a Li
 the 250 ms cadence to approximate what Windows gives for free."* Sampling on both platforms and
 taking the maximum is correct on both; only one of them needs it."""
 
-SWEEP_MS: Final = 250
-"""`[runtime] deferred_sweep_ms` for this run, against the shipped default of 5,000.
-
-It is also `_settle()`'s quiet-pass interval, so `QUIET_POLLS_BEFORE_SHED + 1` empty claims end the
-run after ~750 ms rather than ~15 s. That matters because the producer streams: a gate that ended a
-100,000-row run because the producer was 6 seconds behind would be measuring the gap, not the
-loop. 750 ms against a producer measured at ~119,000 rows/s is four orders of magnitude of headroom,
-and the gate refuses a short run rather than reporting one (see `run_scale`)."""
-
-PRODUCER_POLL_MS: Final = 50
-"""How often a paused producer re-reads the claimable set, waiting for `queue_low_water`.
-
-Not a config key and deliberately not derived from one: the real producer's resume is edge-driven
-from the same `PauseGate` the discoverer already holds between roster batches, and a poll is what a
-harness with no discoverer has instead. It is small against `SWEEP_MS` so the resume is never what
-the throughput number measures."""
-
 DEPTH_PROBE_DEPTHS: Final = (1_000, 10_000, 50_000)
 DEPTH_PROBE_CLAIMS: Final = 100
 """The queue-depth diagnostic: what ONE claim costs with `n` rows claimable, for three `n`.
@@ -233,18 +199,6 @@ asked for, **8** is what `Supervisor._next_width()` asks for (`min([runtime.clai
 `billed_api` sets), **32** is `local_compute`'s, and **256** is `free`'s -- the width the config
 declares for the class this gate's rows are in and which no claim ever asks for. Each number in the
 printed table is therefore a knob a reader can find."""
-
-NOW_NS: Final = 0
-"""The migration ledger's timestamp. `migrate.apply_pending(conn, *, now_ns=...)` is injected
-because `time.time` is banned in library code (02-architecture.md:392), and a fixed value here keeps
-two runs' ledgers byte-identical -- which costs nothing and removes one reason a store differs."""
-
-URI_FORMAT: Final = "file:///scale/{index:06d}.bin"
-CACHE_KEY: Final = "c" * 64
-"""`work.cache_key` for every row. Recorded, never computed: `expand.identify_key()` is the real
-producer and it needs a `RunContext` and a `unit_salt` per unit. A gate that computed 100,000 real
-cache keys would be measuring `cache_key()` inside a number about the scheduler, and the column's
-only role here is that it is `NOT NULL` and the same on both ends of a resume."""
 
 _UNIT_SQL: Final = (
     "INSERT INTO unit(unit_uri, connector, state, size, mtime_ns, indexed_at_ns, derived,"
@@ -289,220 +243,30 @@ _DISPATCH_KEY: Final = "d" * 16
 
 
 # =============================================================================================
-# 1. The roster, and the work rows it earns
+# 1. The harness, which is `omniweave.run.bench`'s and not this file's
 # =============================================================================================
 
+# 12-performance.md section 7.1 homes the corpus, the operator and the loop driver in
+# `packages/omniweave/src/omniweave/run/bench.py` -- *"the registry is one function per subject"*.
+# This gate is a gate over that harness, the way `tools/gate_crash.py` is a gate over
+# `store/crashmatrix.py`: the names below are BOUND, never re-implemented, because a second corpus
+# generator is a corpus that can drift from the bench's while both claim to measure one loop.
+CACHE_KEY: Final = bench.CACHE_KEY
+NOW_NS: Final = bench.NOW_NS
+PRODUCER_POLL_MS: Final = bench.PRODUCER_POLL_MS
+SHIPPED_MIGRATIONS: Final = bench.SHIPPED_MIGRATIONS
+SWEEP_MS: Final = bench.SWEEP_MS
+URI_FORMAT: Final = bench.URI_FORMAT
 
-def roster(count: int, *, generation: int) -> Iterator[acquire.RosterRow]:
-    """`count` synthetic `unit` rows in the `discovered` state, one at a time.
-
-    A generator and not a list: 12-performance.md section 3.4 prices the roster at *"100,000 rows x
-    ~220 B = 22 MB"* in the STORE, and the whole point of `write_roster` consuming lazily is that
-    the process never holds it. A gate that built the list first would put those 22 MB into the
-    number it is about to measure.
-
-    Every row is the same size and the same stat triple, which is the one place this roster is
-    unlike a corpus: `stat_fresh()` compares the triple and nothing here ever re-walks, so the
-    values only have to be legal. `trust_class` is `INTERNAL` because `TrustClass` has no
-    "synthetic" member, and inventing one for a fixture would put a value nothing else understands
-    into a real column.
-    """
-    for index in range(count):
-        yield acquire.RosterRow(
-            unit_uri=URI_FORMAT.format(index=index),
-            cursor=None,
-            stat=acquire.StatTriple(size=1024, mtime_ns=0, indexed_at_ns=0),
-            trust_class=acquire.TrustClass.INTERNAL,
-            last_seen_gen=generation,
-        )
-
-
-def identify_rows(count: int) -> Iterator[Mapping[str, object]]:
-    """`count` `op.identify` parameter sets for `expand.IDENTIFY_INSERT_SQL`, one at a time.
-
-    `expand.row_params()` builds each one, so every column but the uri and the key is the operator's
-    own constant and this function chooses none of them. Lazy for `roster()`'s reason, and because
-    `enqueue()` breaks out of its loop on a pause and is handed the SAME iterator on the next pass:
-    a list would have to carry an index the caller maintained, and an iterator carries it itself.
-    """
-    for index in range(count):
-        yield expand.row_params(URI_FORMAT.format(index=index), CACHE_KEY)
-
-
-def build(root: Path) -> Path:
-    """Create the `.owstore`, apply the four migrations, return its path.
-
-    `now_ns` is `NOW_NS` for the reason that constant gives, and `SHIPPED_MIGRATIONS` carries the
-    argument for asserting the count rather than trusting it. Refuses rather than returns: a store
-    that came back one migration short would be measured and reported.
-    """
-    root.mkdir(parents=True, exist_ok=True)
-    path = root / "index.owstore"
-    connection = ow.connect(path)
-    try:
-        applied = migrate.apply_pending(connection, now_ns=NOW_NS)
-        if len(applied) != SHIPPED_MIGRATIONS:
-            raise StoreError(
-                f"the scale fixture applied {len(applied)} migrations and the shipped set is "
-                f"{SHIPPED_MIGRATIONS}",
-                fix="ow store migrate",
-            )
-    finally:
-        connection.close()
-    return path
-
-
-def worker_identity() -> str:
-    """`'<host>:<pid>:<process_create_time>'` -- 08:465's `claimed_by`, composed here.
-
-    `Supervisor.__init__` takes this as a parameter *"because `omniweave_core.locks` already owns
-    that string's construction, and a second speller of an identity is a second identity."* What
-    `locks` actually exports is the third component (`process_create_time(pid)`) and the triple as a
-    dataclass (`LockHolder`); the colon-joined spelling the `work` table stores has no function
-    anywhere, so this composes it from the parts `locks` owns rather than inventing a third source.
-    """
-    created, _source = locks.process_create_time(os.getpid())
-    return f"{socket.gethostname()}:{os.getpid()}:{created}"
-
-
-# =============================================================================================
-# 2. The loop: the context it needs, the operator it does not have, and the producer
-# =============================================================================================
-
-
-def no_op(batch: object) -> Sequence[StepResult]:
-    """`Outcome.OK` for every row in `batch`, and nothing else. 12-performance.md:1470's operator.
-
-    *"p50/p95/p99 of claim, commit and total over 1M synthetic units with a no-op operator"* -- the
-    dispatcher a scheduler measurement takes, because any real one would put a parser's variance
-    into a number about the loop. It still builds a full `StepResult` per row: `Store.complete()`
-    reads `outcome`, `cache_key`, `identity` and `metrics` off it and writes a real transition, so
-    the cheap thing here is the WORK and not the answer.
-
-    `content_sha256` and `byte_len` are the roster's, not a driver's: `_abandon` cannot synthesise a
-    `StepResult` for exactly this reason, and a `UnitRef` needs both.
-    """
-    rows: Sequence[WorkRow] = batch.rows  # type: ignore[attr-defined]
-    return [
-        StepResult(
-            outcome=Outcome.OK,
-            unit=UnitRef(
-                uri=row.unit_uri, part=row.unit_part, content_sha256="b" * 64, byte_len=1024
-            ),
-            identity=Producer(
-                operator=row.operator, op_version=row.op_version, code_fingerprint="f" * 64
-            ),
-            cache_key=CACHE_KEY,
-        )
-        for row in rows
-    ]
-
-
-def _context(
-    config: object, admission: sup.Admission, root: Path, *, generation: int
-) -> RunContext:
-    """A real `RunContext`: frozen, `slots=True`, every field supplied.
-
-    Four are `None` and the type system is what makes that legible rather than sloppy: `limits`,
-    `services`, `budget` and `events` are the fields the loop does not read, and a gate that passed
-    plausible stubs for them would be claiming a coverage it does not have. The loop reads
-    `generation`, `cancel` and `clock`, and `cache_key()` would read the digests if anything here
-    computed one -- nothing does, which is what `CACHE_KEY` records.
-    """
-    clock = SystemClock()
-    run_id = "r_0000000000000000000000000"
-    return RunContext(
-        run_id=run_id,
-        generation=generation,
-        trigger="cli",
-        roots=Roots(source=root, output=root, cache=root),
-        config_digest=str(config.config_digest),  # type: ignore[attr-defined]
-        semantic_digest=str(config.semantic_digest),  # type: ignore[attr-defined]
-        policy_digest="p" * 64,
-        pricebook_digest="b" * 64,
-        catalog_digest="k" * 64,
-        limits=None,  # type: ignore[arg-type]
-        admission=admission,  # type: ignore[arg-type]
-        services=None,  # type: ignore[arg-type]
-        budget=None,  # type: ignore[arg-type]
-        cancel=CancelToken("run", run_id, clock),
-        clock=clock,
-        events=None,  # type: ignore[arg-type]
-    )
-
-
-class _Producer:
-    """`expand.enqueue` behind the `PauseGate`, resumed by polling. 08:880's `expander`.
-
-    The real producer is pulled by a discoverer that already holds the gate between roster batches;
-    this one has no discoverer, so a paused pass waits on `PRODUCER_POLL_MS` and asks again. What is
-    NOT re-implemented is the pause itself: the predicate is `PauseGate.__call__`, the boundary is
-    `enqueue`'s own post-commit check, and neither is spelled twice.
-
-    `written` is an attribute rather than a return value because the gate cancels this task if the
-    supervisor ends first, and a cancelled coroutine returns nothing at all.
-    """
-
-    __slots__ = ("_emit", "_gate", "_plan_batch", "_rows", "_thread", "paused", "written")
-
-    def __init__(
-        self,
-        thread: ow.StoreThread,
-        rows: Iterator[Mapping[str, object]],
-        *,
-        gate: sup.PauseGate,
-        emit: Callable[..., object],
-        plan_batch: int,
-    ) -> None:
-        self._thread = thread
-        self._rows = rows
-        self._gate = gate
-        self._emit = emit
-        self._plan_batch = plan_batch
-        self.written = 0
-        self.paused = 0
-
-    def pass_once(self) -> bool:
-        """One `enqueue` call, here. True iff it stopped at the high-water mark.
-
-        `plan_batch` is PASSED and not left to `enqueue`'s default, which is the same number read
-        from the same register key. Not passing it was a real defect this file's test caught: the
-        pause is checked between transactions, so the batch size IS the resolution of the water
-        mark, and a gate that measured the default while reporting the configured value would be
-        reporting a knob it had not used.
-        """
-        written, paused = expand.enqueue(
-            self._thread,
-            self._rows,
-            pause=self._gate,
-            emit=self._emit,
-            plan_batch=self._plan_batch,
-        )
-        self.written += written
-        self.paused += 1 if paused else 0
-        return paused
-
-    async def stream(self, cancelled: Callable[[], bool]) -> None:
-        """Wait while the gate says paused, then enqueue. Until the roster or the run runs out.
-
-        **The wait comes FIRST, and that ordering is a defect this gate caught in itself.** It read
-        `enqueue -> wait` and `run_scale` hands it a producer that is ALREADY paused: the first
-        pass runs before the loop opens and stops at `queue_high_water`. So the first thing the
-        task did was commit another `plan_batch` rows -- `enqueue` checks the pause *after* a
-        commit, never before one -- and the claimable set stood at `high_water + 2 x plan_batch`
-        before anything asked whether it should. The 100,000-row run reported 50,669 against a
-        50,512 bound, which is that bug and not D194's: 50,176 + 512. Waiting first makes the
-        producer's very first act a question.
-
-        The cancel check is at the loop top, which is 08:349's rule for every loop in the runtime:
-        a producer that kept writing rows after the Supervisor shed the run would be enqueueing work
-        for a generation that has already stopped claiming.
-        """
-        while not cancelled():
-            while not cancelled() and await asyncio.to_thread(self._gate):
-                await asyncio.sleep(PRODUCER_POLL_MS / 1000)
-            if cancelled() or not await asyncio.to_thread(self.pass_once):
-                return
+build = bench.open_store
+identify_rows = bench.identify_rows
+no_op = bench.no_op
+roster = bench.synthetic_roster
+worker_identity = bench.worker_identity
+_claim_batch = bench.claim_batch_of
+_claimable = bench.claimable
+_Producer = bench.Producing
+_context = bench.run_context
 
 
 # =============================================================================================
@@ -818,18 +582,6 @@ NOT_CHECKED: Final[tuple[Absence, ...]] = (
 # =============================================================================================
 
 
-def _claim_batch(config: object) -> Mapping[str, int]:
-    """`[runtime.claim] batch` as `{cost_class: int}`. The table the claim width comes out of."""
-    raw = config.get("runtime.claim.batch")  # type: ignore[attr-defined]
-    if not isinstance(raw, Mapping):
-        raise ConfigError(
-            f"[runtime.claim] batch is {type(raw).__name__} and must be a table keyed by cost "
-            f"class; supervisor.py's `_table` refuses the same shape for the same reason",
-            fix="set runtime.claim.batch = { free = .., local_compute = .., billed_api = .. }",
-        )
-    return {str(name): int(value) for name, value in raw.items()}  # type: ignore[call-overload]
-
-
 async def run_scale(
     root: Path,
     *,
@@ -963,16 +715,6 @@ async def run_scale(
         widths=measured_widths,
         depths=measured_depths,
     )
-
-
-def _claimable(counts: Mapping[str, int]) -> int:
-    """The claimable set: `pending` + `failed_transient`, which is `CLAIM_SQL`'s own predicate.
-
-    08:127-131 and `work_claimable`'s partial index carry the same two statuses, and `deferred` is
-    deliberately not among them -- a deferred row is waiting on the sweeper and is not claimable, so
-    counting it would let a stalled budget look like a full queue and pause the producer forever.
-    """
-    return counts.get("pending", 0) + counts.get("failed_transient", 0)
 
 
 def claim_widths(

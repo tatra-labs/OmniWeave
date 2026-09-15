@@ -20,7 +20,8 @@ imported at function scope instead, which is measured rather than asserted:
 `test_importing_the_package_loads_neither_the_dispatcher_nor_the_operator_module` starts a fresh
 interpreter, imports this package, and reads `sys.modules`.
 
-**None of `dispatch`, `manifest`, `pipeline`, `discover` or `expand` is re-exported here.**
+**None of `dispatch`, `manifest`, `pipeline`, `discover`, `expand` or `bench` is re-exported
+here.**
 `dispatch.py` imports
 `omniweave_core.host.subproc` for the four mechanisms 02-architecture.md:238 leaves there, and that
 module opens `ctypes`, `socket` and `struct` for the job objects and the named pipes. Re-exporting
@@ -41,6 +42,13 @@ module name is the cheapest place to ask whether they meant to be writing it at 
 the two modules with the largest import cost per name: `discover.py` opens `omniweave_core.acquire`
 for the walk and `omniweave_core.store.sqlite` for the thread, and `expand.py` adds
 `omniweave_core.cache` and `omniweave_core.model.records` for one `Producer`.
+
+`bench.py` is out because it is every one of those reasons at once: 12-performance.md section 7.1
+homes the `ow bench` registry there, and running a subject needs `omniweave_core.acquire`, the
+store thread, `expand`'s enqueue and this package's own `Supervisor`. It is the most expensive
+module in the package to import and the one with the fewest callers -- `tools/ow_bench.py` and
+`tools/gate_scale.py`, both of which name it -- so a re-export would make
+`from omniweave.run import Admission` pay for a benchmark harness.
 
 Specified in 02-architecture.md section 2 rows 30-39 and section 5, 08-runtime.md Part 2, and
 11-repo-layout.md section 1.4.
