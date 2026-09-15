@@ -89,6 +89,7 @@ from __future__ import annotations
 import operator
 import tomllib
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal
 
 from omniweave_core.canonical import sha256_canonical
@@ -105,6 +106,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "ACTION_KEYS",
+    "BUILTIN_POLICY",
     "LAYERS",
     "MEMBER_OPS",
     "MODIFIER_KEYS",
@@ -112,6 +114,8 @@ __all__ = [
     "OPS",
     "ORDERED_OPS",
     "PIN_REJECTIONS",
+    "POLICIES",
+    "PROFILE_FAST",
     "SURFACE",
     "THRESHOLD_PREFIX",
     "Clause",
@@ -122,6 +126,7 @@ __all__ = [
     "Test",
     "Then",
     "When",
+    "builtin_layer",
     "compile_policy",
     "load_layer",
     "phase_of",
@@ -716,8 +721,45 @@ class RoutePolicy:
 
 
 # --------------------------------------------------------------------------------------------
-# 7. The loader.
+# 7. Where the shipped layers are, and the loader.
 # --------------------------------------------------------------------------------------------
+
+POLICIES: Final[Path] = Path(__file__).with_name("policies")
+"""`omniweave/route/policies/` -- the shipped `[[rule]]` files, as package data.
+
+`Path(__file__).with_name(...)` and not `importlib.resources`, for `evidence.BUILTIN_SIGNALS`'
+reason: the files are siblings of the module that documents them, and nothing in this framework is
+zip-safe because `omniweave_core.discovery` locates every card as a filesystem path.
+"""
+
+BUILTIN_POLICY: Final[Path] = POLICIES / "00-builtin-route.toml"
+"""Section 4.4's forty rules, at the path 05:1267 prints in the fence's own first line.
+
+**The file is a transcription of the plan's fence and a test holds it to that**, which is the only
+form of "the shipped policy is section 4.4" a reader can check. It is data and not a Python literal
+for 05:928's reason -- *"the policy is data"* -- and it is committed rather than generated because
+`_plan/` is not in version control and a builtin layer that could only be rebuilt from a design tree
+would be unbuildable from a clone.
+"""
+
+PROFILE_FAST: Final[Path] = POLICIES / "50-profile-fast.toml"
+"""05:1750's `--profile fast` overlay. *"A `--profile fast` overlay changes no rule"* -- it is four
+thresholds and a `[budget.per_part]`, which is what makes `profile` a layer and not a code path."""
+
+
+def builtin_layer() -> Layer:
+    """The shipped `builtin` layer, read from disk on every call and deliberately not cached.
+
+    `evidence.builtin_specs()`' argument applies unchanged: a policy is compiled once per run
+    (05:1084), so this is read once per run, and a module-level cache would serve a long-lived
+    `ow route lint` the file it had at process start -- which is exactly the loop an author editing
+    a policy is in.
+    """
+    return load_layer(
+        BUILTIN_POLICY.read_bytes(),
+        layer="builtin",
+        origin=f"builtin:{BUILTIN_POLICY.name}",
+    )
 
 
 def load_layer(raw: bytes, *, layer: str, origin: str) -> Layer:
@@ -1054,12 +1096,56 @@ def compile_policy(
     return replace(policy, policy_digest=digest_of(policy))
 
 
+_ONE_LEVEL: Final[frozenset[str]] = frozenset({"thresholds", "audit", "slice", "calibration"})
+"""The scalar blocks that are `key -> value`. Merged PER KEY; see `_merge_scalars`."""
+
+_TWO_LEVEL: Final[frozenset[str]] = frozenset({"budget", "render"})
+"""The scalar blocks 05:958 spells with a star -- `[budget.*]`, `[render.*]`. Merged per key of
+each sub-table, which is the same rule one level down."""
+
+
 def _merge_scalars(into: dict[str, object], layer: Layer) -> None:
-    """Last-write-wins, except that a `project` budget may only lower a `site` one."""
+    """Last-write-wins **on scalars**, which is per KEY and not per block. 05:958.
+
+    *"Merge is concatenation of `[[rule]]` blocks and last-write-wins on scalars (`[thresholds]`,
+    `[budget.*]`, `[audit]`, `[slice]`, `[render.*]`)."* The parenthesis names the blocks that HOLD
+    the scalars, and the unit that wins is the scalar inside one -- not the block.
+
+    **Section 4.4's own `--profile fast` overlay is what settles the reading**, and it settles it
+    the way nothing in section 4.1 does. `50-profile-fast.toml` declares three of the sixteen
+    thresholds; under a per-BLOCK merge the other thirteen would vanish, and the first rule reading
+    `@thresholds.blank_page_tiles` would fail to compile -- so the plan's own printed overlay would
+    not load against the plan's own printed policy. A per-key merge is also the only reading under
+    which 05:1747's *"a `--profile fast` overlay changes no rule"* is a statement about rules rather
+    than an accident of which keys the overlay happened to restate. D210.
+
+    Top-level scalars (`policy_name`, `policy_version`, `schema`) are single values and are simply
+    overwritten, which is the same rule with no nesting to descend.
+    """
     for key, value in layer.scalars.items():
         if key == "budget" and layer.layer == "project" and "budget" in into:
             _refuse_raised_budget(_tables(into["budget"]), _tables(value), layer.origin)
-        into[key] = value
+        if key in _ONE_LEVEL:
+            into[key] = {**_table(into.get(key, {})), **_table(value)}
+        elif key in _TWO_LEVEL:
+            into[key] = _merge_blocks(_tables(into.get(key, {})), _tables(value))
+        else:
+            into[key] = value
+
+
+def _merge_blocks(
+    into: Mapping[str, Mapping[str, object]], over: Mapping[str, Mapping[str, object]]
+) -> dict[str, dict[str, object]]:
+    """`[budget.*]` and `[render.*]`: merge each named sub-table per key, keep the rest.
+
+    A `profile` restating `[budget.per_part] micros` must not silently drop `tokens_out`, `calls`
+    and `gpu_ms` -- which under section 6.4's *"first exhausted dimension wins"* would not read as a
+    looser budget but as three dimensions that no longer bind at all.
+    """
+    merged = {block: dict(values) for block, values in into.items()}
+    for block, values in over.items():
+        merged.setdefault(block, {}).update(values)
+    return merged
 
 
 def _refuse_raised_budget(

@@ -1,0 +1,478 @@
+# omniweave/route/policies/00-builtin-route.toml   (layer: builtin)
+# ONE KEY PER LINE. `;` is not a TOML separator, an inline table may not span a newline,
+# and this file gates money.
+surface        = "route"
+policy_name    = "builtin:balanced"
+policy_version = 1
+schema         = "omniweave.policy/1"
+
+[slice]
+by = ["unit.format", "unit.producer_family", "decode.has_text_span", "corpus.lang"]
+max_slices = 512
+
+[budget.per_part]                    # the runaway-part guard. FIRST EXHAUSTED DIMENSION WINS.
+micros     = 6_000                   # $0.006 — two p95-reserved olmocr attempts plus change
+tokens_out = 24_000                  # 3 x olmocr MAX_TOKENS=8000 (olmocr/pipeline.py:107)
+calls      = 3                       # THE DIMENSION THAT BINDS FIRST on this pricebook (6.3)
+gpu_ms     = 12_000
+
+[budget.per_unit]                    # base + per_part x part_count, clamped. NO EXPRESSIONS.
+micros_base     = 4_000
+micros_per_part = 3_000              # >= parse.page.olmocr's reserved_micros 2,732 (10, lint check 13)
+micros_max      = 16_000_000         # 4,000 + 3,000 x 5,000 = 15,004,000: the largest priced document
+wall_ms         = 600_000
+bytes_egress    = 0                  # 0 = NO hosted escalation without a site-layer Grant
+on_exhausted    = ["spill_to_free", "partial", "defer"]
+
+[audit]
+rate = 0.005
+salt = "2026-09-a"
+reference = "parse.page.olmocr"
+min_audit_n = 30
+regress_at = 0.08
+release_at = 0.048                   # hysteresis = regress_at x 0.6
+auto_demote = true
+demote_ttl_days = 30
+untrusted_external_rate = 0.05       # applied by the SAMPLER from unit.trust_class, not by a rule
+
+[calibration]
+eval_set_id = ""
+max_age_days = 30
+
+[render.structure]
+short_edge_min_px = 692              # lift settings.py:12 MIN_PDF_IMAGE_DIM
+area_max_px = 6_291_456
+patch_snap = 28
+binarize = false
+
+[render.glyph]
+short_edge_min_px = 1384             # 2 x the structure floor: tokens scale with pixels
+area_max_px = 6_291_456
+patch_snap = 28
+binarize = false
+
+[thresholds]                         # the learnable numbers. `ow route propose` fits these per slice.
+garble_escalate = 0.50
+garble_recheck = 0.05
+garble_min_chars = 50                # marker min_garbled_text_chars (line.py:110-114)
+ink_coverage_min = 0.25              # marker layout_coverage_threshold (line.py:35-39)
+overlap_max = 0.50                   # marker overlap_line_fraction_threshold (line.py:45-51)
+blank_page_tiles = 4
+promote_frac = 0.0                   # balanced: ANY flagged block promotes the part (fast: 0.5)
+empty_block_area_min = 0.01          # marker min_ocr_block_area_fraction (line.py:97-101)
+empty_block_containment = 0.75       # marker empty_block_contained_threshold (line.py:103-108)
+grounded_field_min = 0.60
+table_grid_min = 0.75                # marker balanced min_recon_score (table.py:37-43; fast 0.50)
+math_char_frac = 0.02                # marker inline_math_min_unicode_frac (equation.py:63-65)
+math_part_frac = 0.30                # marker inline_math_doc_ratio (equation.py:67-71)
+cid_ratio_max = 0.10
+replacement_ratio_max = 0.02         # marker table_recon.py:27 _GARBLE_CHAR_FRAC
+run_length_sequence = 8
+
+# ═════════════════ GATE — nothing has been decoded. Twelve rules. ═════════════════
+[[rule]]
+id   = "gate.empty"
+rung = "GATE"
+when = { "unit.format" = "empty" }
+then = { outcome = "refuse", failure_class = "corrupt_input", reason = "zero-byte-file" }
+
+[[rule]]
+id      = "gate.encrypted"
+rung    = "GATE"
+comment = """unit.encrypted is NON-NULLABLE and detection-provided (5.3): the CFB/OPC
+EncryptedPackage case and the PDF trailer /Encrypt case are both byte-scannable, so this rule
+needs no on_unknown and cannot be silently off on a password-protected DOCX."""
+when = { "unit.encrypted" = true }
+then = { outcome = "refuse", failure_class = "encrypted", reason = "ow-add-password-file" }
+
+[[rule]]
+id      = "gate.corrupt"
+rung    = "GATE"
+comment = "unit.corrupt is the container-level structural check the format's spec mandates (5.3)."
+when = { "unit.corrupt" = true }
+then = { outcome = "refuse", failure_class = "corrupt_input" }
+
+[[rule]]
+id      = "gate.unsupported-source"
+rung    = "GATE"
+comment = "A database is a SOURCE, not a document; PostScript has no licence-clean interpreter."
+when = { "unit.format" = { in = ["unknown", "sqlite", "ps"] } }
+then = { outcome = "refuse", failure_class = "unsupported_format" }
+
+[[rule]]
+id      = "gate.unsupported-media"
+rung    = "GATE"
+comment = """No audio or video driver is in [drivers] enabled at release 1, so refusing at GATE is
+both cheap and honest. The remedy the message names is `pip install omniweave-media`."""
+when = { "unit.format" = { in = ["mp4", "matroska", "mp3", "wav", "flac", "ogg"] } }
+then = { outcome = "refuse", failure_class = "unsupported_format", reason = "no-media-driver" }
+
+[[rule]]
+id      = "gate.too-large"
+rung    = "GATE"
+comment = "Belt and braces. The real guard is the pre-fetch check plus the bounded read in 1.1."
+when = { "unit.bytes" = { gt = 2_147_483_648 } }
+then = { outcome = "refuse", failure_class = "too_large", reason = "ingest.max_unit_bytes" }
+
+[[rule]]
+id      = "gate.too-many-parts"
+rung    = "GATE"
+comment = "unit.part_count is NOT NULL by the time the router runs: op.identify precedes routing."
+when = { "unit.part_count" = { gt = 10_000 } }
+then = { outcome = "refuse", failure_class = "resource_limit", reason = "ingest.max_parts" }
+
+[[rule]]
+id      = "gate.watcher-may-not-bill"
+rung    = "GATE"
+comment = "graphify watch.py: FREE runs now, LOCAL_COMPUTE within headroom, BILLED_API never."
+when = { "trigger.kind" = "watch" }
+then = { max_cost_class = "local_compute" }
+
+[[rule]]
+id      = "gate.agent-triggered-may-not-bill"
+rung    = "GATE"
+comment = """An ow_add arriving over MCP or the SDK is not the cost consent a human gave by
+typing. `ow add --allow-cost <micros>` is the approval path, and it is CLI-only because
+RouteHints correctly has no budget field. (charter 5 C15)"""
+when = { "trigger.kind" = { in = ["mcp", "sdk"] } }
+then = { max_cost_class = "local_compute" }
+
+[[rule]]
+id         = "gate.form-admits-fields"
+rung       = "GATE"
+on_unknown = "skip"
+comment = """olmocr's PdfFilter drops every form and every non-English document by default with a
+logger.info only, behind --apply_filter (action="store_true", off). Ours runs always, its verdict
+ADMITS A LANE, and any rule mapping a verdict to skip records {reason, key, threshold}."""
+when = { "corpus.is_form" = true }
+then = { lane = "fields", render = "structure" }
+
+[[rule]]
+id   = "gate.schema-admits-fields"
+rung = "GATE"
+when = { "unit.schema_requested" = true }
+then = { lane = "fields", render = "structure" }
+
+[[rule]]
+id      = "gate.weak-format-basis-denies-extraction"
+rung    = "GATE"
+comment = """2.3 case 3, as a rule rather than as prose. A schema extraction or a table
+reconstruction over a format guessed from a filename is a fabricated answer waiting to happen."""
+when = { "unit.format_basis" = { in = ["extension", "declared"] } }
+then = { deny_lanes = ["fields", "table"], reason = "weak-format-basis" }
+
+# ═════════════════ DECODE, select, lane = text. Eight rules, and their ORDER IS LOAD-BEARING.
+[[rule]]
+id      = "decode.office-native"
+rung    = "DECODE"
+comment = """The format list is EXACTLY parse.office.anydoc's declared [capability] formats
+(anydoc/README.md supported-formats table: Word .doc/.docx, PowerPoint .ppt/.pptx, Excel
+.xls/.xlsx, OpenDocument, RTF, EPUB, CSV, PDF) minus pdf. Lint check 11 asserts the equality, so
+this list cannot drift into naming a format the driver refuses. Native formats have a canonical
+reading order; never re-infer it and never funnel them through a PDF renderer. marker subclasses
+PdfProvider for DOCX/PPTX/XLSX/EPUB/HTML and renders to a temp A4 PDF, destroying speaker notes,
+comments, tracked changes, OMML math, numbering restarts, footnote linkage and true logical order
+BEFORE parsing starts. terminal = true STOPS EVALUATION."""
+when = { "unit.format" = { in = ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "odt", "ods", "odp", "rtf", "epub", "csv"] } }
+then = { driver = "parse.office.anydoc", terminal = true }
+
+[[rule]]
+id      = "decode.text-native"
+rung    = "DECODE"
+comment = """anydoc does NOT convert HTML, Markdown, XML, JSON or notebooks, so routing them there
+would name a format its card refuses. parse.text.builtin is the stdlib-only driver that serves
+them, shipped in omniweave-office (04 section 10.1). tsv is here rather than with csv because a sniffed delimiter is the text
+driver's job. terminal = true stops the fall-through to a paid rung; it does NOT lock a third party
+out of these ten tokens, because a project-layer rule prepends and first match wins (4.2, and
+publish step 8 in 04 section 9)."""
+when = { "unit.format" = { in = ["html", "xhtml", "xml", "md", "txt", "json", "jsonl", "ipynb", "tsv", "svg"] } }
+then = { driver = "parse.text.builtin", terminal = true }
+
+[[rule]]
+id      = "decode.container-expanded"
+rung    = "DECODE"
+comment = """A container's children were minted at acquire (2.5). The container itself gets no doc
+row and no blocks, so there is nothing to decode and nothing for the empty_result rule to catch."""
+when = { "unit.format" = { in = ["zip", "tar", "gz", "sevenz", "rar", "xz", "eml", "msg", "mbox"] } }
+then = { outcome = "ok", terminal = true, reason = "container-expanded" }
+
+[[rule]]
+id         = "decode.pdf-text-layer"
+rung       = "DECODE"
+on_unknown = "defer"                 # decode.char_count is pdfium's; compute it, do not guess
+comment    = """FIRST among the PDF rules, and that position is what makes INV-13 true: because no
+EARLIER rule at this (rung, lane, phase) declares defer, a clean page decides from the FREE group
+and the LOCAL_COMPUTE group holding ink.tiles is never computed."""
+when = { "unit.format" = "pdf", "decode.char_count" = { gt = 0 } }
+then = { driver = "parse.pdf.pdfium" }
+
+[[rule]]
+id         = "decode.blank-part-escape"
+rung       = "DECODE"
+on_unknown = "defer"
+comment = """The licence-free replacement for marker's blank-page escape (line.py:343-345), which
+reads the LAYOUT MODEL's block count; ours reads ink. 15 ms of CPU to avoid a 2,400 ms GPU call is
+a 160x trade, which is why this rule precedes decode.no-text-layer and why its `defer` is what
+promotes the LOCAL group on a part with no text layer."""
+when = { "ink.tiles" = { lte = "@thresholds.blank_page_tiles" } }
+then = { outcome = "ok", terminal = true, reason = "blank-part" }
+
+[[rule]]
+id         = "decode.no-text-layer"
+rung       = "DECODE"
+on_unknown = "defer"
+comment = "A scanned page. There is nothing to decode, so this goes straight to PAGE."
+when = { "unit.format" = "pdf", "decode.char_count" = 0 }
+then = { escalate_to = "PAGE", driver = "parse.page.olmocr", render = "glyph", reason = "no-text-layer" }
+
+[[rule]]
+id   = "decode.raster-image"
+rung = "DECODE"
+when = { "unit.format" = { in = ["png", "jpeg", "webp", "tiff", "bmp", "gif"] } }
+then = { escalate_to = "PAGE", driver = "parse.page.olmocr", render = "glyph", reason = "raster-source" }
+
+[[rule]]
+id      = "decode.no-rule-matched"
+rung    = "DECODE"
+comment = """UNREACHABLE BY CONSTRUCTION: lint check 10 asserts the union of unit.format literals
+across GATE and DECODE equals the format-token domain exactly. It exists so that an out-of-tree
+format added without a rule fails LOUDLY on its first document instead of settling with no
+decision, which is the failure a coverage lint can only catch in CI."""
+when = { "unit.bytes" = { gte = 0 } }
+then = { outcome = "refuse", failure_class = "unsupported_format", reason = "no-decode-rule" }
+
+# ═════════════════ DECODE, settle, lane = text. Three actions, three lane admissions.
+[[rule]]
+id      = "decode.part-text-unusable"
+rung    = "DECODE"
+comment = """marker/marker/builders/line.py:225-235 — four signals ANDed there, so ANY failing
+here. Signal 2 (surya OCRErrorPredictor) and signal 3 (layout coverage) are BOTH Datalab-licensed
+(MODEL_LICENSE md5 e1f69b64dee2f1641a9b1ab12adf24d6); garble.score and ink.coverage are the
+licence-free replacements. THE THRESHOLDS ARE OURS, NOT MARKER'S — its numbers were calibrated
+against its classifier's score distribution. on_unknown='match' is legal here only because
+parse.page.olmocr declares cost.class='local_compute' (lint check 9), and it fires only after the
+LOCAL group has actually been computed (4.3)."""
+on_unknown = "match"
+when.any_of = [
+  { "decode.line_count"          = { eq  = 0 } },
+  { "garble.score"               = { gte = "@thresholds.garble_escalate" } },
+  { "ink.coverage"               = { lt  = "@thresholds.ink_coverage_min" } },
+  { "geometry.overlap_line_frac" = { gt  = "@thresholds.overlap_max" } },
+]
+then = { escalate_to = "PAGE", driver = "parse.page.olmocr", render = "glyph", cause_from = "when" }
+
+[[rule]]
+id      = "decode.broken-font-encoding"
+rung    = "DECODE"
+comment = """A CID-keyed font with no ToUnicode CMap yields glyph ids, not characters. anydoc
+receives a DOCUMENT-LEVEL boolean from pdf-inspector and only log::warn!s it
+(src/formats/pdf.rs:26-29); the per-part fraction is work omniweave does."""
+on_unknown = "match"
+when.any_of = [
+  { "decode.cid_ratio"         = { gt = "@thresholds.cid_ratio_max" } },
+  { "decode.replacement_ratio" = { gt = "@thresholds.replacement_ratio_max" } },
+]
+then = { escalate_to = "PAGE", driver = "parse.page.olmocr", render = "glyph", cause_from = "when" }
+
+[[rule]]
+id         = "decode.skip-block-recheck-on-clean-parts"
+rung       = "DECODE"
+on_unknown = "skip"
+comment    = "marker block_garbled_check_min_page_score = 0.05 (line.py:116-121), as a rung skip."
+when = { "garble.score" = { lt = "@thresholds.garble_recheck" } }
+then = { skip_rungs = ["REPAIR"] }
+
+[[rule]]
+id         = "decode.admit-table-lane"
+rung       = "DECODE"
+on_unknown = "skip"
+comment    = """A MODIFIER: it admits a lane and takes no action, so it coexists with whichever
+action rule above fired. block.type covers office formats exactly; geometry.ruled_regions covers
+RULED PDF tables. A BORDERLESS PDF TABLE MATCHES NEITHER and its cells arrive as ordinary text
+blocks — named here rather than implied, and recorded as cause='layout_unavailable'."""
+when.any_of = [
+  { "block.type"              = "table" },
+  { "geometry.ruled_regions"  = { gte = 1 } },
+]
+then = { lane = "table", reason = "table-region-present" }
+
+[[rule]]
+id         = "decode.admit-math-lane"
+rung       = "DECODE"
+on_unknown = "skip"
+comment    = """marker equation.py:63-71 — a math font name is a high-precision signal; otherwise
+math_chars/len(text) > 0.02 per block, and above 30% flagged blocks the whole part is flagged,
+because math-heavy pages scatter inline math into ordinary prose."""
+when.any_of = [
+  { "math.font_hit"  = true },
+  { "math.part_frac" = { gt = "@thresholds.math_part_frac" } },
+]
+then = { lane = "math", reason = "math-dense" }
+
+[[rule]]
+id         = "decode.admit-caption-lane"
+rung       = "DECODE"
+on_unknown = "skip"
+comment    = "block.type has no PDF provider at release 1, so this admits on office formats only."
+when = { "block.type" = { in = ["picture", "figure", "diagram"] } }
+then = { lane = "caption", reason = "uncaptioned-figure" }
+
+# ═════════════════ lane = table ═════════════════
+[[rule]]
+id         = "table.grid-unresolved"
+rung       = "REPAIR"
+lane       = "table"
+on_unknown = "skip"
+comment    = """marker/processors/table.py:104-126 — reconstruct from the char-level page, then gate
+on the composite judge score (0.75 balanced / 0.50 fast) and fall back to a crop OCR below it. The
+score is a MEASURE, not a probability: kind='measure', so RT6's calibration gate does not apply and
+must not be demanded."""
+when = { "table.grid_score" = { lt = "@thresholds.table_grid_min" } }
+then = { driver = "parse.page.olmocr", render = "glyph", flag_blocks = true, cause_from = "when" }
+
+# ═════════════════ lane = math ═════════════════
+[[rule]]
+id      = "math.flag-for-enrich"
+rung    = "REPAIR"
+lane    = "math"
+comment = """The math lane FLAGS; the ENRICH pass that renders notation is 06's derive.math.*.
+Naming a driver here that [drivers] enabled does not list would make every math part degrade."""
+when = { "unit.bytes" = { gte = 0 } }
+then = { escalate_to = "ENRICH", flag_blocks = true, reason = "math-notation" }
+
+# ═════════════════ lane = caption ═════════════════
+[[rule]]
+id      = "caption.flag-for-enrich"
+rung    = "REPAIR"
+lane    = "caption"
+comment = "As the math lane: flag here, ENRICH in 06."
+when = { "unit.bytes" = { gte = 0 } }
+then = { escalate_to = "ENRICH", flag_blocks = true, reason = "figure-caption" }
+
+# ═════════════════ lane = fields ═════════════════
+[[rule]]
+id      = "fields.extract"
+rung    = "PAGE"
+lane    = "fields"
+expect_unavailable = true              # THE ONE RULE IN THIS FILE THAT CARRIES IT (4.2). Without
+                                       #   it `ow doctor` exits 1 on a fresh install; with it the
+                                       #   absence is a warning naming this rule, and lint check 14
+                                       #   fails the day parse.fields.lift becomes enabled.
+comment = """parse.fields.lift is NOT in [drivers] enabled and its OpenRAIL-M weights compute to
+licence tier `restricted`, which [licence] allow_tiers = ["open"] refuses. At release 1 this rule
+therefore ALWAYS resolves to driver.unavailable and the fields lane degrades with a named driver
+and a named licence reason — which is the honest outcome, and the reason the lane's rules ship
+anyway: the day an open-tier constrained-decoding driver exists, this is the only line that
+changes. The text lane is unaffected and still produces the page."""
+when = { "unit.bytes" = { gte = 0 } }
+then = { driver = "parse.fields.lift", render = "glyph" }
+
+[[rule]]
+id         = "fields.ungrounded"
+rung       = "PAGE"
+lane       = "fields"
+on_unknown = "skip"
+comment    = """lift's own adversarial benchmark: 90.2% per field but 20.9% FULL-DOCUMENT
+(lift/README.md, 225 documents / ~11k scored fields), with no verification layer in the open
+weights. The cross-check is free because DECODE already ran."""
+when = { "verify.grounded_field_frac" = { lt = "@thresholds.grounded_field_min" } }
+then = { escalate_to = "REGEN", render = "glyph", cause_from = "when" }
+
+# ═════════════════ REPAIR, lane = text ═════════════════
+[[rule]]
+id         = "repair.never-escalate-furniture"
+rung       = "REPAIR"
+on_unknown = "match"
+comment    = """A MODIFIER (outcome='not_eligible' excludes BLOCKS), so it composes with
+repair.empty-box-needs-ink instead of pre-empting it. marker/builders/line.py:125-135
+block_ocr_skip_types: page headers/footers are dropped from output by default, so OCRing them
+wastes a VLM call, and a single flagged footer forces an otherwise-clean document to spawn the
+inference server. THE LITERALS ARE `Kind` WIRE VALUES — the lower-case member names; marker's own
+`PageHeader` spelling is not a value in this vocabulary under any casing, which is how it silently
+disabled its own guard. on_unknown='match' is load-bearing: block.type has NO PDF provider at
+release 1, so on PDF this matches for every block and REPAIR is structurally unavailable rather
+than silently unguarded."""
+when = { "block.type" = { in = ["page_header", "page_footer", "picture", "figure", "diagram", "table", "form", "toc", "formula", "chemical"] } }
+then = { outcome = "not_eligible", reason = "layout_unavailable" }
+
+[[rule]]
+id         = "repair.empty-box-needs-ink"
+rung       = "REPAIR"
+on_unknown = "skip"
+comment    = """marker line.py:400-445 — only OCR an EMPTY layout box when it is at least 1% of the
+page, is not at least 75% contained in a text-bearing sibling (line-numbered transcripts), and
+actually has ink."""
+when.all_of = [
+  { "block.char_count" = 0 },
+  { "block.area_frac"  = { gte = "@thresholds.empty_block_area_min" } },
+  { "block.sibling_containment" = { lt = "@thresholds.empty_block_containment" } },
+  { "block.has_ink"    = true },
+]
+then = { driver = "parse.page.olmocr", render = "glyph", flag_blocks = true, reason = "empty-inked-box" }
+
+[[rule]]
+id         = "repair.promote-to-part"
+rung       = "REPAIR"
+on_unknown = "skip"
+comment    = "One full-part request is ~7x cheaper than N block requests on llama.cpp (ocr.py:76-84)."
+when = { "block.flagged_frac" = { gt = "@thresholds.promote_frac" } }
+then = { escalate_to = "PAGE", driver = "parse.page.olmocr", render = "glyph", reason = "promotion" }
+
+# ═════════════════ PAGE / REGEN, lane = text ═════════════════
+[[rule]]
+id      = "page.collapse-to-sequence"
+rung    = "PAGE"
+comment = "If most parts escalated, per-part routing has lost: pay the per-session cost once."
+when = { "doc.escalated_part_frac" = { gt = 0.80 }, "unit.part_count" = { lte = 64 } }
+then = { driver = "parse.page.olmocr", sequence = { max_parts = 64 }, reason = "de-escalation" }
+
+[[rule]]
+id      = "page.stable-run-becomes-a-sequence"
+rung    = "PAGE"
+comment = """Long-horizon layout stability, used for AMORTISATION and never for skipping evidence.
+Eight consecutive parts on the same (rung, driver) means the per-session model load should be paid
+once, not eight times. Sampling remains rejected: this changes batching, not what is measured."""
+when = { "doc.rung_run_length" = { gte = "@thresholds.run_length_sequence" } }
+then = { driver = "parse.page.olmocr", sequence = { max_parts = 64 }, reason = "stable-run" }
+
+[[rule]]
+id         = "page.output-invalid"
+rung       = "PAGE"
+on_unknown = "match"
+comment    = """Acceptor failures. repetition_penalty stays 1.0 — real documents repeat.
+on_unknown='match' means a PAGE result we cannot verify is treated as invalid and regenerated,
+which is the safe direction and costs at most one extra attempt."""
+when.any_of = [
+  { "verify.repeat_ngram_max" = { gte = 12 } },
+  { "verify.finish_reason"    = { ne  = "stop" } },
+  { "verify.token_saturation" = { gte = 0.98 } },
+  { "verify.parse_ok"         = false },
+  { "verify.nonempty"         = false },
+]
+then = { escalate_to = "REGEN", cause_from = "when" }
+
+# ═════════════════ REGEN -> DEGRADE. These three apply in EVERY lane. ═════════════════
+[[rule]]
+id      = "degrade.budget-exhausted"
+rung    = "REGEN"
+comment = "budget.exhausted is written by admit(), so evaluate() never reads the ledger (INV-14)."
+when = { "budget.exhausted" = { exists = true } }
+then = { escalate_to = "DEGRADE", driver = "parse.pdf.pdfium", outcome = "ok_partial", reason = "budget-exhausted" }
+
+[[rule]]
+id         = "degrade.attempts-exhausted"
+rung       = "REGEN"
+on_unknown = "skip"
+comment = "Unlimited-OCR/infer.py:229 writes an empty text field for a part that failed 5 retries."
+when = { "verify.attempts_exhausted" = true }
+then = { escalate_to = "DEGRADE", driver = "parse.pdf.pdfium", outcome = "ok_partial", reason = "regen-exhausted" }
+
+[[rule]]
+id      = "degrade.driver-unavailable"
+rung    = "REGEN"
+comment = """omniweave-vision absent, a probe UNAVAILABLE, or a licence tier outside
+[licence] allow_tiers. resolve() returns a NAMED rejection, never a silent no-op, and the part
+degrades to the text layer with the gap disclosed rather than returning a hole. This is also the
+rule that catches fields.extract at release 1."""
+when = { "driver.unavailable" = true }
+then = { escalate_to = "DEGRADE", driver = "parse.pdf.pdfium", outcome = "ok_partial", reason = "driver-unavailable" }

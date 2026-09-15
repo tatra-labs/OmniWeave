@@ -403,6 +403,85 @@ numeric = "OW-P-032"
 symbol  = "OW_POLICY_WEIGHTS_UNPINNED"
 sites   = ["14-security.md:1343", "18-api-sketch.md:3241"]
 
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# `ow route lint`'s six. 05-ingest-and-routing.md section 4.5 (:1767-1800) allocates fourteen
+# numerics and NO symbols, so each of the six below is minted at its definition site the way
+# OW-P-022 was, and the `meaning` is that table's own one-line check.
+#
+# NO `raised_by` ON ANY OF THE SIX, and the omission is the point: these are REPORTED by
+# `omniweave/route/lint.py` as `Finding.code` and never raised. A lint that raised on its first
+# finding would report one of fourteen checks and stop, which is the opposite of what section 4.5
+# asks a policy-wide check for. The rows exist so `ow explain OW-P-011` answers -- a linter that
+# prints a code the register cannot explain is the gap 02-architecture.md section 7.2 closes.
+#
+# The other eight of the fourteen are NOT here. OW-P-003 belongs to the retrieval surface,
+# OW-P-005 and OW-P-013 already have rows above because the loader RAISES them, and OW-P-006,
+# OW-P-012, OW-P-015, OW-P-021 and OW-P-024 each need a driver card or `[drivers] enabled` and
+# have no definition site in this repository yet. `lint.NOT_RUN` carries that list as data.
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+
+[[code]]
+numeric = "OW-P-001"
+symbol  = "OW_POLICY_KEY_UNKNOWN"
+meaning = "a key in `[slice] by` or in a `when` clause that no SignalSpec registers"
+# Check 1, and the charter's. 05:1768 states the whole family's warrant in one line: "A policy that
+# gates money must not be able to name something that does not exist."
+sites   = ["05-ingest-and-routing.md:1774"]
+
+[[code]]
+numeric = "OW-P-002"
+symbol  = "OW_POLICY_LITERAL_OFF_DOMAIN"
+meaning = "a literal compared against a str-dtype signal that is not in that signal's domain"
+# Check 2. For `unit.format` the comparison is against the COMPUTED domain -- core's 48 union the
+# enabled cards' contributed tokens -- and 05:1786 says why it can never be the literal 48: a check
+# equal to 48 would fail a third party's `warc` card whichever way its author turned.
+sites   = ["05-ingest-and-routing.md:1775"]
+
+[[code]]
+numeric = "OW-P-004"
+symbol  = "OW_POLICY_ON_UNKNOWN_MISSING"
+meaning = "a rule reading a nullable key without an `on_unknown`; an exists-only `when` is exempt"
+# Check 4 and RT7. 05:3409 states the shipped policy's count as a measured number -- seven rules of
+# the charter's retired policy fail it "against zero in section 4.4".
+sites   = ["05-ingest-and-routing.md:1777", "05-ingest-and-routing.md:3347"]
+
+[[code]]
+numeric = "OW-P-010"
+symbol  = "OW_POLICY_KEY_NEEDS_LATER_RUNG"
+meaning = "a rule reading a key whose `requires` names a rung strictly greater than the rule's own"
+# Check 7. 05:1144 calls it "the only way this can go wrong" about the derived select/settle phase:
+# the key cannot have a value in EITHER phase of the rule's rung, so the guard never fires.
+sites   = ["05-ingest-and-routing.md:1144", "05-ingest-and-routing.md:1780"]
+
+[[code]]
+numeric = "OW-P-011"
+symbol  = "OW_POLICY_RULE_UNREACHABLE"
+meaning = "an action rule subsumed by an earlier action rule at the same (rung, lane, phase)"
+# Check 8, and the one W5.2 exists to ship. 05:1169: a subsumed rule "is a silently disabled guard,
+# which is worse than a missing rule" -- worse because a missing rule is visible in a diff and a
+# shadowed one reads as present. The compiler additionally drops it from the demand plan with a
+# `Degradation(kind="policy_pruned")` naming the subsuming rule (15-observability.md:1077).
+#
+# MODIFIER RULES ARE EXEMPT ON BOTH SIDES. 05:1174: they "are meant to overlap", and 05:1023's
+# evaluation order is why that is not merely a convenience -- a matched action does not stop a later
+# modifier contributing, so a modifier inside another's box is a working policy.
+#
+# The report is SOUND AND INCOMPLETE BY DESIGN (F30, 17-risks.md:890): interval-box subsumption is
+# "incomplete over open string domains -- exactly where policy authors collide", and the shipped
+# behaviour is that "the linter reports only the complete cases AND SAYS SO", because a lint that
+# overclaims is worse than none. `lint.Undecided` is the saying-so.
+sites   = ["05-ingest-and-routing.md:1169", "05-ingest-and-routing.md:1781", "15-observability.md:1077", "17-risks.md:890"]
+
+[[code]]
+numeric = "OW-P-014"
+symbol  = "OW_POLICY_FORMAT_UNROUTED"
+meaning = "a format token in the computed domain that no GATE or DECODE rule names"
+# Check 10, which 05:1790 calls "the one that would have caught the largest class of silent bug:
+# `mp3`, `eml`, `zip`, `doc` and six more tokens exist in the detection vocabulary, and a policy that
+# never names them routes them nowhere." Both directions are the check; the other direction -- a
+# rule literal outside the domain -- fails as OW-P-002 rather than as a second code.
+sites   = ["05-ingest-and-routing.md:1786", "05-ingest-and-routing.md:1790"]
+
 [[code]]
 numeric = "OW-S-010"
 symbol  = "OW_SNAPSHOT_EXPIRED"

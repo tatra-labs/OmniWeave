@@ -20,10 +20,24 @@ exact counters.
 
 **W5.2 adds `decision.py`, `policy.py` and `eval.py`** (16-roadmap.md:604): the three types
 `evaluate()` touches, the grammar and six-layer loader that 11-repo-layout.md:250 calls *"the policy
-loader"*, and the pure `evaluate()` itself. W5.2's other half -- the interval-box subsumption linter
-(`OW-P-011`), the isotonic threshold fitter and the shipped forty-rule `builtin` layer of section
-4.4 -- is not here: all three are analyses over a compiled policy or data it reads, and none is
-needed to compile one. `admit.py`, `estimate.py` and `detect.py` are W5.3 and W5.5.
+loader"*, and the pure `evaluate()` itself.
+
+**W5.2's other half adds `lint.py`, `fit.py` and `policies/`** -- the interval-box subsumption
+linter (`OW-P-011`), the isotonic threshold fitter, and section 4.4's forty rules as the file
+05:1267 names. All three are analyses over a compiled policy or the data one reads, which is why
+none of them is in `policy.py`; and the policy ships beside the linter because a policy and the
+proof that it names every format token (check 10, `OW-P-014`) are one reviewable unit. That leaves
+02-architecture.md:259's row 35 complete except for `admit()`: `admit.py`, `estimate.py` and
+`detect.py` are W5.3 and W5.5.
+
+**`lint()` and `fit()` are deliberately NOT re-exported, and the omission is mechanical.** Each
+shares its name with the module that defines it, so binding the function here would shadow the
+module: after `from omniweave.route.lint import lint`, the name `omniweave.route.lint` is the
+function, and `from omniweave.route import lint as rl` then hands a caller something with no
+`Span` on it. The verbs 02-architecture.md:259 actually names -- *"the subsumption linter and the
+isotonic threshold fitter"* -- are `subsumption()` and `isotonic()`, and both are here; the two
+entry points that wrap them are one import away at `omniweave.route.lint.lint` and
+`omniweave.route.fit.fit`.
 
 `omniweave.route` may import `omniweave_core`; `omniweave_core` may not import this, which is why
 `omniweave_core.operator.SpendVector` exists as a structural stand-in for `Spend` and why
@@ -35,16 +49,30 @@ from __future__ import annotations
 from omniweave.route.decision import Modifiers, RouteDecision, RouteHints
 from omniweave.route.eval import evaluate
 from omniweave.route.evidence import Evidence, SignalRegistry, SignalSpec
-from omniweave.route.policy import RoutePolicy, Rule, compile_policy, load_layer
+from omniweave.route.fit import Observation, Proposal, isotonic, render_diff
+from omniweave.route.lint import Finding, Report, Undecided, degradations, subsumption
+from omniweave.route.policy import (
+    BUILTIN_POLICY,
+    RoutePolicy,
+    Rule,
+    builtin_layer,
+    compile_policy,
+    load_layer,
+)
 from omniweave.route.rung import LANES, PARSE_LANES, Rung
 from omniweave.route.spend import PriceBook, Spend
 
 __all__ = [
+    "BUILTIN_POLICY",
     "LANES",
     "PARSE_LANES",
     "Evidence",
+    "Finding",
     "Modifiers",
+    "Observation",
     "PriceBook",
+    "Proposal",
+    "Report",
     "RouteDecision",
     "RouteHints",
     "RoutePolicy",
@@ -53,7 +81,13 @@ __all__ = [
     "SignalRegistry",
     "SignalSpec",
     "Spend",
+    "Undecided",
+    "builtin_layer",
     "compile_policy",
+    "degradations",
     "evaluate",
+    "isotonic",
     "load_layer",
+    "render_diff",
+    "subsumption",
 ]
