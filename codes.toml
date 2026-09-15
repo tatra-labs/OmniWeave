@@ -328,6 +328,49 @@ raised_by = "PolicyRefusal"
 sites   = ["18-api-sketch.md:447", "18-api-sketch.md:3212"]
 
 [[code]]
+numeric = "OW-P-005"
+symbol  = "OW_POLICY_RUNG_NOT_FORWARD"
+meaning = "an escalate_to or a skip_rungs member at or below the rule's own rung"
+raised_by = "PolicyRefusal"
+# RT8's FIRST enforcer. 05-ingest-and-routing.md:3348: the compiler rejects it "at load", and the
+# charter's `route_decision_monotone` trigger is the second -- "CI parity ... rather than a second
+# opinion" (05:2708). DEGRADE = 5 is a FORWARD move while running a cheaper driver, which is why
+# the check is on the Rung ordinal and never on cost.
+sites   = ["05-ingest-and-routing.md:1778", "05-ingest-and-routing.md:1940", "05-ingest-and-routing.md:2007", "05-ingest-and-routing.md:3348"]
+
+[[code]]
+numeric = "OW-P-013"
+symbol  = "OW_POLICY_RULE_DOES_NOTHING"
+meaning = "a rule whose `then` holds neither an action key nor a modifier key"
+raised_by = "PolicyRefusal"
+# 05:1028 names the rule this exists for: a `then` of only `reason` MATCHES, pre-empts every later
+# rule at its (rung, lane, phase) under first-match-wins, and does nothing -- which is what the
+# draft `gate.untrusted-raises-audit` was. A load error and not a lint warning, because the failure
+# is invisible at runtime: the policy routes, and one guard below it never fires.
+sites   = ["05-ingest-and-routing.md:1028", "05-ingest-and-routing.md:1785"]
+
+[[code]]
+numeric = "OW-P-020"
+symbol  = "OW_POLICY_BUDGET_RAISED"
+meaning = "a project layer raising a budget above the site layer's"
+raised_by = "PolicyRefusal"
+# 05:959: "a `micros_max` above the site layer's is `OW-P-020` AT LOAD, not a silent clamp." The
+# third option -- clamping quietly -- is the worst of the three, because the file then reads as a
+# raise and behaves as a no-op, and nothing in a diff shows the difference.
+sites   = ["05-ingest-and-routing.md:959"]
+
+[[code]]
+numeric = "OW-P-023"
+symbol  = "OW_POLICY_RUNG_SPELLING"
+meaning = "a lower-case Rung literal in a policy file"
+raised_by = "PolicyRefusal"
+# 05:1219: `.omniweave/policy.d/*.toml` is "an author-facing config artefact and not a wire", so the
+# author writes SCREAMING_SNAKE and reads it against section 4.2's ladder, while every GENERATED
+# artefact emits the lower-case member name the terminology lock requires. Refusing the lower-case
+# form at load is what keeps it at ONE authored spelling rather than two.
+sites   = ["05-ingest-and-routing.md:1219", "05-ingest-and-routing.md:3383"]
+
+[[code]]
 numeric = "OW-P-022"
 symbol  = "OW_SIGNAL_PROVIDER_CONFLICT"
 meaning = "two signal providers claim one (key, format), or disagree about a per-key column"

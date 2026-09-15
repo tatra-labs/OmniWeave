@@ -636,6 +636,34 @@ class SignalRegistry:
         """Every row for one key, in provider order. What `ow route lint --explain` prints."""
         return tuple(sorted((s for s in self.specs if s.key == key), key=lambda s: s.provider))
 
+    def requires_of(self, key: str) -> tuple[Rung, ...]:
+        """The `req` column for one KEY, independent of format. `()` for an unregistered key.
+
+        **Format-independent on purpose, and the alternative is a bug.** `requires` is one of the
+        seven columns 05 section 5.1's table gives per KEY rather than per provider, and
+        `build_registry()` refuses a disagreement (D199) -- so any spec for the key answers. Going
+        through `resolve(key, format)` instead would return `None` for a format no provider serves
+        and read that as "requires nothing", which makes a RULE's derived phase depend on the unit's
+        format: `decode.admit-table-lane` reads `block.type`, which has no PDF row (05:2162), so it
+        would be a `select` rule on a PDF and a `settle` rule on a DOCX. Section 4.3 builds ONE
+        demand plan per `(rung, lane, phase)` at policy-compile time and memoises it on
+        `(policy_digest, caps_digest)` -- neither of which carries a format. D205.
+        """
+        specs = self.specs_for(key)
+        return specs[0].requires if specs else ()
+
+    def nullable_of(self, key: str) -> bool:
+        """The `null` column for one KEY, independent of format. `True` for an unregistered key.
+
+        Format-independent for `requires_of()`'s reason: `nullable` is a per-KEY column and
+        `build_registry()` refuses a disagreement. An UNREGISTERED key answers `True`, which is the
+        conservative direction and the one 05:2222's three-valued rule implies -- a key no provider
+        serves yields UNKNOWN, so a rule reading `layout.class_hist` (absent at release 1 by design)
+        needs an `on_unknown` for exactly the reason a nullable key does.
+        """
+        specs = self.specs_for(key)
+        return specs[0].nullable if specs else True
+
     def resolve(self, key: str, format_token: str) -> SignalSpec | None:
         """The row that serves `key` for a unit of this format, or `None` for UNKNOWN.
 
