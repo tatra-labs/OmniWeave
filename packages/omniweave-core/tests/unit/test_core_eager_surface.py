@@ -11,6 +11,7 @@ a convention") and 02-architecture.md section 3.3.
 
 from __future__ import annotations
 
+import ast
 import json
 import subprocess  # noqa: TID251 — a fresh interpreter is the only witness for G17/G23/G9.
 import sys
@@ -103,6 +104,18 @@ FILLED_HOMES: dict[str, str] = {
 }
 
 
+def _imports(path: Path) -> list[str]:
+    """Every module an `__init__.py` actually imports, by parsing rather than by grepping."""
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    found: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            found.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            found.append(node.module or ".")
+    return found
+
+
 def test_every_subpackage_home_exists() -> None:
     """P1 creates all eight so later phases have somewhere to land (11-repo-layout.md
     section 1.3's tree). This half never relaxes, filled or not."""
@@ -131,11 +144,18 @@ def test_the_still_empty_homes_carry_no_import() -> None:
 
     G17's runtime half is unaffected either way: laziness is a property of
     `omniweave_core/__init__.py` not importing the nine, not of the nine being empty.
+
+    **The witness is the AST and not the substring `"import "`.** A home whose docstring argues
+    about what `import omniweave_core` costs -- which is the argument every one of these files is
+    obliged to make -- would fail a substring check on its own prose, and the repair a reader
+    reaches for is to add a FILLED_HOMES row for a home nothing has filled. That turns the
+    allow-list from a record into a way to switch the assertion off, which is the failure its own
+    docstring above says it exists to prevent. Parsing catches strictly more: `import x`,
+    `from x import y`, and an import nested inside a function, none of which a docstring can fake.
     """
     for name in sorted(set(SUBPACKAGE_HOMES) - set(FILLED_HOMES)):
         init = CORE_SRC / name / "__init__.py"
-        source = init.read_text(encoding="utf-8")
-        assert "import " not in source, (
+        assert not _imports(init), (
             f"{name}/__init__.py carries an import but is not in FILLED_HOMES. "
             f"If a phase filled it, add the row and name the phase."
         )
@@ -150,5 +170,6 @@ def test_the_filled_homes_are_really_filled() -> None:
     """
     for name, phase in FILLED_HOMES.items():
         assert name in SUBPACKAGE_HOMES, f"{name} is not a subpackage home"
-        source = (CORE_SRC / name / "__init__.py").read_text(encoding="utf-8")
-        assert "import " in source, f"{name} is listed as filled by {phase} but carries no import"
+        assert _imports(CORE_SRC / name / "__init__.py"), (
+            f"{name} is listed as filled by {phase} but carries no import"
+        )
