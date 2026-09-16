@@ -23,8 +23,9 @@ column."* Six methods, one ruling each:
 3. **`narrow` -- ALL OF IT.** Argued at length in `store/__init__.py`'s docstring: the three-way
    tag is MEASURED by 07:1585-1591's `LIMIT PREFILTER_MAX + 1` probe, and 07:1592-1597 forecloses
    the planner reading -- *"No histogram, no independence assumption, no cost-based optimiser."*
-4. **`channel` -- `exact` ONLY.** `identity`, `lexical`, `structural` and `semantic` report
-   `off` / `not_built`. The per-Channel argument is below.
+4. **`channel` -- `identity`, `exact` and `lexical`.** `structural` and `semantic` report
+   `off` / `not_built`. The per-Channel argument is below; P2 shipped `exact` alone and P6 W6.2b
+   added the other two, each in the cell that could first supply its missing input.
 5. **`hydrate` -- THE ROW, all of it.** It cannot return `Hit`: four of `Hit`'s fourteen fields
    (`score`, `channel_contributions`, `channel_ranks`, `identity_grade`) are fusion outputs
    (07:2250-2265), and 07:3348 homes `Hit` with the query path. It returns `Hydration`, a
@@ -34,9 +35,9 @@ column."* Six methods, one ruling each:
    is a real read, including the three over `work` and `unit`, which P2 creates and leaves empty
    (16-roadmap.md:406).
 
-**Why `channel` refuses four of five, and why it refuses with a STATUS rather than an exception.**
+**Why `channel` refuses two of five, and why it refuses with a STATUS rather than an exception.**
 07:1198-1199 gives the vocabulary (`ChannelStatus` = `ok | empty | off | unavailable`) and
-07:2236-2240 closes the `off` reasons at four members, of which `NOT_BUILT="not_built"` is
+07:1201-1205 closes the `off` reasons at four members, of which `NOT_BUILT="not_built"` is
 *"the P-stage has not shipped it"*. 16-roadmap.md:114 uses exactly that pair for exactly this
 situation -- *"The `structural` and `semantic` channels return `ChannelStatus.OFF` with
 `reason = "not_built"`, which the Answer discloses in its verdict line"*. A `NotImplementedError`
@@ -44,15 +45,15 @@ would make the limitation an outage; an empty `ok` would make it a confident zer
 and 07:1670-1680's whole subject. `off` is disclosed and contributes nothing to the ceiling
 (07:1218-1222), which is the honest arithmetic.
 
-* **`identity` -- refused, and the reason is the 40 tier.** 07:1269 fixes the resolution as
-  *"`block_cite` / `block_addr` / `doc(uri)` index lookups **plus a `head_fts` title probe**"*, and
-  no user string reaches FTS5 unsanitised (07:1284-1292, *"a user cannot inject FTS5 syntax"*) --
-  a sanitiser 16-roadmap.md:468 excludes from P2 by name. The tempting move is to ship the five
-  index-lookup tiers and skip the two title tiers, and 07:1264-1268 forbids precisely that:
-  *"The **40 tier** is the first thing a 'simplification' deletes and it must not be ...
-  Collapsing 40 into 50 lets a punctuation-different match TIE a literal one and fall through to
-  BM25."* A truncated ladder is a recall loss that presents as a confident match, so the ladder is
-  all-or-nothing and P2 has none of it.
+* **`identity` -- SHIPPED at W6.2b, and the reason it could not ship at P2 was the 40 tier.**
+  07:1269 fixes the resolution as *"`block_cite` / `block_addr` / `doc(uri)` index lookups **plus a
+  `head_fts` title probe**"*, and no user string reaches FTS5 unsanitised -- 07:1318, *"a user
+  cannot inject FTS5 syntax"* -- through a sanitiser 16-roadmap.md:468 excludes from P2 by name. The
+  tempting move was to ship the index-lookup tiers and skip the title tiers, and 07:1264-1268
+  forbids precisely that: *"The **40 tier** is the first thing a 'simplification' deletes and it
+  must not be ... Collapsing 40 into 50 lets a punctuation-different match TIE a literal one and
+  fall through to BM25."* A truncated ladder is a recall loss that presents as a confident match,
+  so the ladder was all-or-nothing and waited for `retrieve/channels.py`'s `grade_title()`.
 * **`exact` -- implemented, and it is the exception the edge needed.** It needs no scorer and no
   sanitiser: `ChannelInput.refs` arrives as `(name_norm, akind)` pairs already through
   `normalize_key` (07:3286, 07:480), its statement is printed whole at 07:1273-1281, and its
@@ -61,9 +62,10 @@ and 07:1670-1680's whole subject. `off` is disclosed and contributes nothing to 
   inherits a working Channel to fuse against rather than a stub. At P2 `anchor` and `ref_site` are
   empty (16-roadmap.md:114), so it returns `empty` on a stock store; `empty` is not `off`, and the
   difference is that `empty` means the statement RAN.
-* **`lexical` -- refused.** `block_fts` exists at P2 (0001_init.sql:484) and nothing scores over it:
-  `lex(b)` is `W_BODY`, `W_HEAD` and `SPINE_DECAY` (07:1294-1296), all three named in
-  16-roadmap.md:468's exclusion, and its input is sanitised query text.
+* **`lexical` -- SHIPPED at W6.2b.** `block_fts` existed at P2 (0001_init.sql:484) and nothing
+  scored over it: `lex(b)` is `W_BODY`, `W_HEAD` and `SPINE_DECAY` (07:1294-1296), all three named
+  in 16-roadmap.md:468's exclusion, and its input is sanitised query text. W6.2a homed the three
+  weights and the sanitiser; `_lexical` below spends them.
 * **`structural` -- refused.** A bounded frontier BFS seeded from `identity` and `exact`
   (07:1298-1306), so it cannot be built before the Channels that seed it.
 * **`semantic` -- refused.** *"No vector column"* (16-roadmap.md:468); `vec` is never attached at
@@ -92,13 +94,24 @@ rest of the store. `capabilities()` takes no arguments and is *"read once, at op
 the open moment's clock is the only clock the field could honestly carry -- and a caller who wants
 a fresher `stat_age_ns` reopens the `Reader`, which is what "read once" means.
 
-**A second home for a P6 type.** `ChannelResult`, `ChannelStatus`, `OffReason`, `Hit` and `CHANNELS`
-all belong to `omniweave_core.retrieve` (18-api-sketch.md:841) and none of them exists yet.
-`channel()` therefore returns `ChannelOutcome` -- a stand-in whose `status` is a plain
+**A second home for a P6 type.** `ChannelResult`, `ChannelStatus`, `OffReason` and `Hit` all
+belong to `omniweave_core.retrieve` (18-api-sketch.md:841). `channel()` therefore returns
+`ChannelOutcome` -- a stand-in whose `status` is a plain
 `Literal["ok","empty","off","unavailable"]` rather than a new enum, so it is VALUE-COMPATIBLE with
 07:1198's `ChannelStatus` (a `StrEnum` member equals its value) and nothing has to be renamed when
-P6 lands. `_CHANNELS` is private for the same reason. This mirrors what `store/types.py` does for
-`DegradeCause`: name the absent owner, do not mint a rival.
+`retrieve` ships the real record. This mirrors what `store/types.py` does for `DegradeCause`: name
+the absent owner, do not mint a rival. `CHANNELS` itself is no longer copied: P6 W6.1 gave it a
+public home, and `_CHANNELS`'s own deletion condition -- that the moment `retrieve` exported
+the tuple this became an import and the constant went -- is discharged here.
+
+**The import that makes the package graph a cycle, and why the MODULE graph is still acyclic.**
+`store/reader.py` now imports `omniweave_core.retrieve.channels`, and `omniweave_core.retrieve`
+imports `omniweave_core.store.types`. That is a cycle between the two PACKAGES and not between any
+two modules: `retrieve/channels.py` imports `errors`, `ident` and `limits` and no `store` module at
+all, and `store/__init__.py` does not import this module, so every real import order terminates.
+The alternative was a second `grade_title()` and a second `IDENTITY_LADDER` inside the store, which
+is the drift 13:1072 names -- and the ladder is the one table in the system where a second copy
+would silently change a published `confidence`.
 
 ## Defects and omissions found while writing this, all reported
 
@@ -161,6 +174,17 @@ from omniweave_core.errors import StoreError, UsageError
 from omniweave_core.limits import MAX_FILTER_DOC_KEYS, MAX_QUERY_REFS, PREFILTER_MAX, VEC_BRUTE_MAX
 from omniweave_core.model.enums import Kind, Layer, Method, OsKind, Quote, Trust
 from omniweave_core.model.spans import TextSpan
+from omniweave_core.retrieve import CHANNELS
+from omniweave_core.retrieve.channels import (
+    FTS_SYNTAX,
+    IDENTITY_LADDER,
+    SPINE_DECAY,
+    W_BODY,
+    W_HEAD,
+    cite_doc_ord,
+    grade_title,
+    normalise_query_text,
+)
 from omniweave_core.store import sqlite as ow
 from omniweave_core.store.types import (
     ChannelSpec,
@@ -183,24 +207,53 @@ __all__ = [
 # Constants. Each is a transcription with its line, or private with a stated owner.
 # ---------------------------------------------------------------------------
 
-_CHANNELS: Final = ("identity", "exact", "lexical", "structural", "semantic")
-"""07:1196's `CHANNELS`, PRIVATE because its public home is `omniweave_core.retrieve`.
+_IMPLEMENTED_CHANNELS: Final = frozenset({"identity", "exact", "lexical"})
+"""Which of `CHANNELS` THIS BUILD can run, as opposed to which the store supports.
 
-18-api-sketch.md:841 puts `CHANNELS` in `omniweave_core.retrieve` beside `fuse()` and `ceiling()`,
-and that module holds a docstring and nothing else at P2. `IndexCaps.channels` cannot be computed
-without the five names, so they are transcribed here under a private name; the moment `retrieve`
-exports the tuple this becomes an import and the constant goes.
+The one-line edit site for each retrieval cell: widening this frozenset is what turns an
+`off`/`not_built` outcome into a real Channel run, and the ruling for each name is in the module
+docstring. P2 held `{"exact"}`; W6.2b added `identity` and `lexical`; `structural` and `semantic`
+are W6.2c's.
 """
 
-_IMPLEMENTED_CHANNELS: Final = frozenset({"exact"})
-"""Which of `_CHANNELS` THIS BUILD can run, as opposed to which the store supports.
+_REQUIRED_OBJECTS: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
+    {
+        "identity": ("block_cite", "block_addr"),
+        "exact": ("anchor", "ref_site"),
+        "lexical": ("block_fts",),
+    }
+)
+"""What each implemented Channel's statements NAME, so a missing one is `unavailable` and not a
+`sqlite3.OperationalError` crossing the boundary.
 
-The one-line edit site for P6: widening this frozenset is what turns an `off`/`not_built` outcome
-into a real Channel run, and the ruling for each of the other four is in the module docstring.
+The same object lists `_store_channels` reads, and deliberately the same: 07:3275's
+`IndexCaps.channels` answers *"which of the five CAN run at all in this store"*, and a planner
+that ignored it would otherwise reach `no such table: block_fts` here. An exception would be an
+outage where the truth is a store built by an earlier migration set -- and 07:1198's vocabulary
+has a member for exactly that reading. `head_fts` and `block_sec` are NOT in `identity`'s or
+`lexical`'s row: both are boosts over a Channel that still answers without them, so their absence
+narrows the ladder and flattens the spine term rather than stopping the Channel.
+"""
+
+_SPINE_MAX_HOPS: Final = 16
+"""How far `spine(b)` walks up `block_sec` before it stops. Not a plan constant; a termination one.
+
+`SPINE_DECAY ** 16` is 2.8e-4, below the resolution of a min-max normalised score, so the cap
+removes nothing a rank could see. It exists because `block_sec.sec_id` is an ordinary INTEGER
+column with no CHECK forbidding a cycle, and an unbounded walk over a cyclic `block_sec` is a hang
+inside a 50 ms Channel budget rather than a wrong answer.
+"""
+
+_ID_BATCH: Final = 512
+"""How many block ids go into one `IN (...)` list.
+
+NOT `_HYDRATE_BATCH`, which is 07:2310's number for a different statement. This one is only
+SQLite's bound-parameter ceiling kept well clear; the two being equal is a coincidence and a change
+to either must not be read as a change to both.
 """
 
 _OFF_NOT_BUILT: Final = "not_built"
-"""`OffReason.NOT_BUILT` (07:2238), *"the P-stage has not shipped it"*, and ceiling-EXEMPT.
+"""`OffReason.NOT_BUILT` (07:1204), *"the P-stage has not shipped it"*, and ceiling-EXEMPT.
 
 The value and not the member, because `OffReason` is `omniweave_core.retrieve`'s (18:841) and a
 `StrEnum` member compares equal to its value -- so P6's `reason == OffReason.NOT_BUILT` holds
@@ -251,12 +304,19 @@ _LIVE_STATES: Final = ("pending", "claimed")
 class ChannelOutcome:
     """One Channel's result, narrowed to what P2 can honestly fill. NOT `ChannelResult`.
 
-    07:1225-1235's `ChannelResult` has ten fields and four of them cannot exist at P2: `rank_of`
-    is the semantic Channel's shared-rank carrier (07:1240-1248), `grades` is the identity
-    ladder's measured tier, `weight` is fusion's, and `cost` is a `Spend`
-    (05-ingest-and-routing.md:2370, P4's). `ChannelResult` itself lives in
-    `omniweave_core.retrieve` (18-api-sketch.md:841), which is P6's and empty. So this is the
-    narrowest shape the four refusals and the one implemented Channel actually need.
+    07:1225-1235's `ChannelResult` has ten fields and three of them still cannot exist here:
+    `rank_of` is the semantic Channel's shared-rank carrier (07:1240-1248), `weight` is fusion's,
+    and `cost` is a `Spend` (05-ingest-and-routing.md:2370, P4's). `ChannelResult` itself lives in
+    `omniweave_core.retrieve` (18-api-sketch.md:841). So this is the narrowest shape the two
+    refusals and the three implemented Channels actually need.
+
+    **`grades` was the fourth and W6.2b gave it a producer.** P2 omitted it because the identity
+    ladder had none; 07:1231 declares it *"the tier ACTUALLY measured"* and 07:2296 says why the
+    word matters -- *"not the tier requested ... so a reader can tell a punctuation-different match
+    from a literal one without re-running the ladder"*. `__post_init__` therefore checks both
+    halves of "measured": every graded block is one this Channel actually ranked, and every tier
+    name is a member of `IDENTITY_LADDER`, because `Hit.identity_grade` is printed and a name the
+    ladder does not define would read as a tier nobody can rank against.
 
     **`status` is a `Literal` of `ChannelStatus`'s four VALUES, not a new enum** (07:1198-1199).
     `ChannelStatus` is a `StrEnum`, so `ChannelStatus.OFF == "off"` is `True` and P6 can compare
@@ -266,7 +326,7 @@ class ChannelOutcome:
     `reason` is REQUIRED when `status != "ok"` (07:1232) and `__post_init__` enforces it: an
     unexplained refusal is the surprise 16-roadmap.md:114 says the Answer must disclose. For `off`
     it is an `OffReason` value, a closed four-member domain *"because `ceiling()` branches on it"*
-    (07:2242-2245); for `empty` and `unavailable` it is free prose, deliberately (07:2251-2254).
+    (07:1214); for `empty` and `unavailable` it is free prose, deliberately (07:2251-2254).
 
     `ranked` is *"deterministic order, duplicate-free"* (07:1228) and the constructor checks the
     second half, because a Channel that ranks one block twice gives it two RRF contributions.
@@ -276,6 +336,7 @@ class ChannelOutcome:
     status: Literal["ok", "empty", "off", "unavailable"]
     ranked: tuple[int, ...] = ()
     spans: Mapping[int, TextSpan] = MappingProxyType({})
+    grades: Mapping[int, str] = MappingProxyType({})
     reason: str = ""
     truncated_at_limit: bool = False
 
@@ -290,6 +351,22 @@ class ChannelOutcome:
         if len(set(self.ranked)) != len(self.ranked):
             msg = (
                 f"channel {self.name!r} ranked a block twice; `ranked` is duplicate-free (07:1228)"
+            )
+            raise ValueError(msg)
+        ungraded = sorted(set(self.grades) - set(self.ranked))
+        if ungraded:
+            msg = (
+                f"channel {self.name!r} graded blocks it did not rank ({ungraded}): `grades` is "
+                f"the tier ACTUALLY measured (07:1231), so a grade for a block the Channel did "
+                f"not return is a tier nothing measured"
+            )
+            raise ValueError(msg)
+        unknown = sorted(set(self.grades.values()) - set(IDENTITY_LADDER))
+        if unknown:
+            msg = (
+                f"channel {self.name!r} reports tiers {unknown}, which IDENTITY_LADDER (07:1259) "
+                f"does not define; Hit.identity_grade is printed (07:2296) and an undefined tier "
+                f"has no rank to be read against"
             )
             raise ValueError(msg)
 
@@ -414,6 +491,139 @@ def _one_int(connection: sqlite3.Connection, sql: str, params: Sequence[object] 
 def _placeholders(n: int) -> str:
     """`?,?,?` for an `IN (...)` list of `n` bound values."""
     return ",".join("?" * n)
+
+
+def _fts_safe(term: str) -> str:
+    """One sanitised term, made inert for FTS5 a second time. Belt over `retrieve.channels`'s.
+
+    The terms this module receives came through `sanitize()`, which already strips `FTS_SYNTAX`
+    (07:1318, *"a user cannot inject FTS5 syntax"*). This runs the same strip again because the
+    `Reader` boundary takes a `ChannelInput` from whoever built it, not from the sanitiser by
+    construction -- `ChannelSpec.bind` is a plain field (07:3300) and a caller assembling one by
+    hand is a supported thing to do. Doing it twice costs a string scan; not doing it puts query
+    text into an FTS5 expression.
+    """
+    out = term
+    for char in FTS_SYNTAX:
+        out = out.replace(char, " ")
+    return " ".join(out.split())
+
+
+def _fts_match(terms: Sequence[str]) -> str:
+    """The terms as ONE FTS5 expression: each a quoted literal, joined by `OR`.
+
+    **`OR` and not FTS5's implicit `AND`.** `MAX_QUERY_TERMS` is 64 and a 64-term conjunction
+    matches nothing in any real corpus, so an implicit-AND lexical Channel would report `EMPTY` for
+    every sentence-shaped query -- absence produced by a tokeniser rather than by the corpus, which
+    is the whole failure §6.8's gate ladder exists to prevent. Filtering is `narrow()`'s job
+    (07:1585-1591) and ranking is this Channel's: bm25 already ranks a block matching four terms
+    above one matching one, so the disjunction loses no precision it has any way to report.
+
+    Each term is quoted, which makes it an FTS5 string literal rather than a fragment of the
+    expression grammar; a term that still held a space after `_fts_safe` becomes a phrase, which is
+    the narrower reading and never a syntax error.
+    """
+    quoted = [f'"{safe}"' for safe in (_fts_safe(term) for term in terms) if safe]
+    return " OR ".join(quoted)
+
+
+def _minmax(raw: Mapping[int, float]) -> dict[int, float]:
+    """07:1303's `bm25n`: *"min-max normalised **within the Channel's own result set**"*.
+
+    The input is already sign-flipped: SQLite's `bm25()` returns a NEGATIVE score where a better
+    match is more negative, so every caller passes `-bm25(...)` and higher is better here.
+
+    A one-element set, or a set where every score ties, normalises to `1.0` rather than to `0.0`.
+    Both are defensible arithmetic and only one is defensible retrieval: the blocks are all equally
+    the best this Channel found, and mapping them to zero would let `W_HEAD`'s spine term decide
+    the whole ranking of a query whose body scores were unanimous.
+    """
+    if not raw:
+        return {}
+    low = min(raw.values())
+    high = max(raw.values())
+    if high <= low:
+        return dict.fromkeys(raw, 1.0)
+    return {block_id: (value - low) / (high - low) for block_id, value in raw.items()}
+
+
+def _spines(
+    connection: sqlite3.Connection, ids: Sequence[int]
+) -> Mapping[int, tuple[tuple[int, int], ...]]:
+    """`spine(b)` from `block_sec`, as `((block, depth), ...)` with `b` its own depth-0 ancestor.
+
+    07:1299: *"`spine(b)` comes from `block_sec`; `b` is its own depth-0 ancestor."* `block_sec`
+    gives each block its NEAREST section (`sec_id`), so the spine is that pointer followed
+    repeatedly -- a section block has a `block_sec` row of its own naming its parent section. The
+    walk is breadth-first by level so the whole frontier is one `IN (...)` statement per hop rather
+    than one per block: a 100-candidate spine walk is at most `_SPINE_MAX_HOPS` statements.
+
+    A row whose `sec_id` is its own `block_id` is a top-level section and ends the chain; so does a
+    repeat, because `block_sec` has no CHECK that forbids a cycle and a cycle here would be a hang
+    rather than a wrong number. `block_sec` may not exist at all (it is 0003's), and then every
+    chain is just `((b, 0),)` -- the spine term flattens to the block's own head score, which is
+    what "no section index" honestly means.
+    """
+    parent: dict[int, int] = {}
+    pending = set(ids)
+    seen: set[int] = set()
+    for _ in range(_SPINE_MAX_HOPS):
+        todo = sorted(pending - seen)
+        if not todo:
+            break
+        seen.update(todo)
+        pending = set()
+        for start in range(0, len(todo), _ID_BATCH):
+            chunk = todo[start : start + _ID_BATCH]
+            rows = connection.execute(
+                f"SELECT block_id, sec_id FROM block_sec "  # noqa: S608
+                f"WHERE block_id IN ({_placeholders(len(chunk))})",
+                chunk,
+            )
+            for block_id, sec_id in rows:
+                if int(sec_id) != int(block_id):
+                    parent[int(block_id)] = int(sec_id)
+                    pending.add(int(sec_id))
+    chains: dict[int, tuple[tuple[int, int], ...]] = {}
+    for block_id in ids:
+        chain = [(block_id, 0)]
+        walked = {block_id}
+        current = block_id
+        while len(chain) <= _SPINE_MAX_HOPS:
+            nxt = parent.get(current)
+            if nxt is None or nxt in walked:
+                break
+            walked.add(nxt)
+            chain.append((nxt, len(chain)))
+            current = nxt
+        chains[block_id] = tuple(chain)
+    return chains
+
+
+def _reading_order(
+    connection: sqlite3.Connection, ids: Sequence[int]
+) -> Mapping[int, tuple[int, int, int]]:
+    """`{block_id: (doc_ord, page, ord)}` over the head generation -- the tie-break both new
+    Channels sort by.
+
+    07:1271-1272 names `(doc_ord, page, ord)` as `exact`'s third key and it is the only total,
+    MEANINGFUL order the store has: `block_id` is *"a DURABLE surrogate"* (0001_init.sql:236) and
+    sorting ties by it would order two equally-graded blocks by when they were ingested. A block
+    missing from the map was retired between the Channel's statement and this one, and sorts first
+    rather than raising -- it will be dropped and counted by `hydrate()`, which is where 07:2323
+    says that fact is reported.
+    """
+    order: dict[int, tuple[int, int, int]] = {}
+    for start in range(0, len(ids), _ID_BATCH):
+        chunk = list(ids[start : start + _ID_BATCH])
+        rows = connection.execute(
+            f"SELECT block_id, doc_ord, page, ord FROM ow_block_head "  # noqa: S608
+            f"WHERE block_id IN ({_placeholders(len(chunk))})",
+            chunk,
+        )
+        for block_id, doc_ord, page, ord_ in rows:
+            order[int(block_id)] = (int(doc_ord), int(page), int(ord_))
+    return order
 
 
 def _prefix_bounds(prefix: str) -> tuple[str, str]:
@@ -544,6 +754,7 @@ class SqliteReader:
         """
         connection = self._connection
         objects = _objects(connection)
+        self._objects = objects
         state = _index_state_map(connection)
         stats = _stat_rows(connection)
         vec_attached = any(
@@ -915,17 +1126,26 @@ class SqliteReader:
         rather than a silent `off`, because `ChannelSpec.name` is *"a member of `CHANNELS`"*
         (07:3295) and an unknown Channel in a plan is a planner bug the store should surface.
 
-        Four of the five report `off` / `not_built` at P2 and the module docstring argues each one
-        separately. `exact` runs; see `_exact`.
+        Two of the five report `off` / `not_built` and the module docstring argues each one
+        separately. `identity`, `exact` and `lexical` run; see `_identity`, `_exact` and
+        `_lexical`.
+
+        **The order of the three checks is the order of the three different facts.** An unknown
+        name is a planner bug (`UsageError`); a known name this build has not shipped is
+        `OFF(not_built)`, ceiling-exempt and disclosed; a shipped Channel whose tables this store
+        does not carry is `UNAVAILABLE`, which forces `degraded` -- a store fact, not a build one.
+        The empty narrowing comes last because it is the only one of the four that is about the
+        QUERY, and a Channel that could not have run anyway must say so before it says the
+        candidate set was empty.
 
         **A `Narrowing` of `kind="empty"` short-circuits every Channel**, including the ones that
         would run. That is the tagged type doing its job: an empty narrowed set is a PROVEN empty
         result, and scoring over it is the jcodemunch failure in the other direction.
         """
         connection = self._bound(s)
-        if spec.name not in _CHANNELS:
+        if spec.name not in CHANNELS:
             msg = (
-                f"{spec.name!r} is not one of the five Channels {_CHANNELS}: ChannelSpec.name is "
+                f"{spec.name!r} is not one of the five Channels {CHANNELS}: ChannelSpec.name is "
                 f"a member of CHANNELS (07:3295), and the five are closed by 07:1196"
             )
             raise UsageError(msg, fix="name one of identity, exact, lexical, structural, semantic")
@@ -935,13 +1155,341 @@ class SqliteReader:
                 status="off",
                 reason=_OFF_NOT_BUILT,
             )
+        missing = [name for name in _REQUIRED_OBJECTS[spec.name] if name not in self._objects]
+        if missing:
+            return ChannelOutcome(
+                name=spec.name,
+                status="unavailable",
+                reason=f"this store carries no {', '.join(missing)}",
+            )
         if n.kind == "empty":
             return ChannelOutcome(
                 name=spec.name,
                 status="empty",
                 reason="the narrowed set is empty, so there is nothing inside it to rank",
             )
+        if spec.name == "identity":
+            return self._identity(connection, spec, n)
+        if spec.name == "lexical":
+            return self._lexical(connection, spec, n)
         return self._exact(connection, spec, n)
+
+    def _identity(
+        self, connection: sqlite3.Connection, spec: ChannelSpec, n: Narrowing
+    ) -> ChannelOutcome:
+        """07:1254-1270's ladder: three index lookups and a `head_fts` title probe, graded.
+
+        *"A ladder over exact and near-exact addresses of a block or document. The reported grade
+        is **the one actually measured**, never the tier that was asked for."* (07:1254-1255.) The
+        ladder itself, and the four-answer `grade_title()` that measures its title half, live in
+        `omniweave_core.retrieve.channels` -- 07:1259 prints `IDENTITY_LADDER` inside §5.2, which is
+        the query path's section, and a second copy here is the drift that would let 40 and 45 tie.
+
+        **The strongest measured tier wins per block, not the first ident tried.** A query carrying
+        both `d7#412` and the document's title can reach one block twice; `ranked` is
+        duplicate-free (07:1228) so one of the two grades has to go, and taking the higher is the
+        only choice consistent with *"the tier ACTUALLY measured"* -- the cite lookup DID measure
+        50, and reporting 40 because a title probe ran second would understate evidence the Channel
+        holds.
+
+        **The order is the ladder, then reading order.** `IDENTITY_LADDER` descending is the whole
+        point of the Channel; `(doc_ord, page, ord)` breaks ties, because two blocks at tier 50 in
+        the same document should come back in the order a reader would meet them and not in
+        `block_id` order, which is ingest order.
+
+        Six of the ladder's nine tiers are reachable and D241 records why the other three are not:
+        `doc_key_prefix` has no spelling for a prefix of sixteen binary bytes, `spine_segment` is
+        named once and defined nowhere, and `addr_exact` needs a document scope -- that last one is
+        reachable HERE whenever `ChannelInput.scope_doc` is set, which is the half of D241's first
+        clause this cell could discharge.
+        """
+        bind = spec.bind
+        idents = () if bind is None else bind.idents
+        if not idents:
+            return ChannelOutcome(
+                name=spec.name,
+                status="empty",
+                reason="the query carried no cite, addr, uri or title candidate",
+            )
+        narrow_join = ""
+        if n.kind == "set":
+            narrow_join = f" JOIN {_TMP_NARROW} tn ON tn.block_id = b.block_id"
+        scope_doc = None if bind is None else bind.scope_doc
+        graded: dict[int, str] = {}
+        for ident in idents:
+            for block_id, tier in self._probe_ident(
+                connection, ident, scope_doc=scope_doc, narrow_join=narrow_join, limit=spec.limit
+            ):
+                held = graded.get(block_id)
+                if held is None or IDENTITY_LADDER[tier] > IDENTITY_LADDER[held]:
+                    graded[block_id] = tier
+        if not graded:
+            return ChannelOutcome(
+                name=spec.name,
+                status="empty",
+                reason="no cite, addr, uri or title matched",
+            )
+        order = _reading_order(connection, sorted(graded))
+        ranked = sorted(
+            graded,
+            key=lambda block_id: (
+                -IDENTITY_LADDER[graded[block_id]],
+                order.get(block_id, (0, 0, 0)),
+                block_id,
+            ),
+        )
+        truncated = spec.limit > 0 and len(ranked) > spec.limit
+        if truncated:
+            ranked = ranked[: spec.limit]
+        return ChannelOutcome(
+            name=spec.name,
+            status="ok",
+            ranked=tuple(ranked),
+            grades=MappingProxyType({block_id: graded[block_id] for block_id in ranked}),
+            truncated_at_limit=truncated,
+        )
+
+    def _probe_ident(
+        self,
+        connection: sqlite3.Connection,
+        ident: str,
+        *,
+        scope_doc: int | None,
+        narrow_join: str,
+        limit: int,
+    ) -> list[tuple[int, str]]:
+        """One ident down the ladder, stopping at the first rung that measured something.
+
+        The rungs are tried strongest first and the first one that matched is the answer, which is
+        what makes the reported grade the MEASURED one: a cite that resolved is tier 50 and its
+        block is not then handed to a title probe that might grade it 30.
+
+        The cite rung supplies BOTH columns of `block_cite` -- `UNIQUE INDEX block_cite ON
+        block(doc_ord, cite)` (0001_init.sql:306) -- by parsing the `doc_ord` out of the cite
+        string itself. Without that the equality on `cite` alone cannot use the index and 07:1269's
+        *"sub-millisecond"* lookup is a full scan of `block`. D240.
+
+        The addr rung runs only under a document scope, for the same two-column reason and one
+        more: `p14/3` is document-relative by construction, so a corpus-wide `addr` equality would
+        match one block per document and call all of them tier 50. `block_addr` is
+        `(doc_ord, gen, addr)`, and `ow_block_head` supplies the `gen`.
+
+        Nothing here validates the ident's SHAPE first. A title tried against `block_cite` is one
+        index probe that misses, which is cheaper than a second copy of `retrieve.channels`'s three
+        shape patterns and cannot disagree with them.
+        """
+        text = normalise_query_text(ident)
+        doc_ord = cite_doc_ord(text)
+        if doc_ord is not None:
+            rows = connection.execute(
+                f"SELECT b.block_id FROM ow_block_head b{narrow_join} "  # noqa: S608
+                f"WHERE b.doc_ord = ? AND b.cite = ?",
+                (doc_ord, text),
+            ).fetchall()
+            return [(int(row[0]), "cite_exact") for row in rows]
+        if scope_doc is not None:
+            rows = connection.execute(
+                f"SELECT b.block_id FROM ow_block_head b{narrow_join} "  # noqa: S608
+                f"WHERE b.doc_ord = ? AND b.addr = ?",
+                (scope_doc, text),
+            ).fetchall()
+            if rows:
+                return [(int(row[0]), "addr_exact") for row in rows]
+        by_uri = self._probe_doc_uri(connection, text, narrow_join)
+        if by_uri is not None:
+            return [(by_uri, "doc_uri_exact")]
+        return self._probe_title(connection, text, narrow_join, limit)
+
+    def _probe_doc_uri(
+        self, connection: sqlite3.Connection, uri: str, narrow_join: str
+    ) -> int | None:
+        """`doc(uri)` at tier 50 -- and the ONE block a document-level identity resolves to.
+
+        07:1254 says the ladder is over *"a block **or document**"* and `ChannelResult.ranked` is
+        `block_ids` (07:1228), so a matched document has to become blocks. It becomes exactly one:
+        the document root block (`addr = 'doc'`, 0001_init.sql:240) when it exists, otherwise the
+        first block in reading order.
+
+        The alternative -- every block of the document at tier 50 -- is the one that breaks the
+        arithmetic. `fuse()` gives rank 1 the weight `2.0/61` and a 41,822-block document would put
+        41,822 blocks above every other Channel's first hit, so a `--scope` that matched one URI
+        would return that document and nothing else with `confidence = 1.000`. One block is an
+        ADDRESS, which is what a tier-50 identity hit is; the rest of the document is what
+        `structural` and `hydrate()` are for.
+
+        Returning `None` when the document has no block in view is deliberate and is D239's shape
+        avoided: the Channel then reports `EMPTY` rather than `OK` with an empty ranking.
+        """
+        row = connection.execute("SELECT doc_ord FROM doc WHERE uri = ?", (uri,)).fetchone()
+        if row is None:
+            return None
+        found = connection.execute(
+            f"SELECT b.block_id FROM ow_block_head b{narrow_join} WHERE b.doc_ord = ? "  # noqa: S608
+            f"ORDER BY (b.addr <> 'doc'), b.page, b.ord, b.block_id LIMIT 1",
+            (int(row[0]),),
+        ).fetchone()
+        return None if found is None else int(found[0])
+
+    def _probe_title(
+        self, connection: sqlite3.Connection, ident: str, narrow_join: str, limit: int
+    ) -> list[tuple[int, str]]:
+        """07:1269's *"`head_fts` title probe"*, graded by `grade_title()` into 45 / 40 / 30.
+
+        Two steps, and the split is the whole design. FTS5 finds CANDIDATES -- every labelled block
+        sharing a token with the ident -- and `grade_title()` decides the tier by comparing the
+        strings exactly. An FTS5 match is not itself a grade: `unicode61 remove_diacritics 2` folds
+        case and diacritics and nothing else, so it cannot tell `"Table 3.2"` from `"Table 3-2"`
+        from `"Table 3.2 (revised)"`, which are 45, 40 and 30 and are the three the 40 tier exists
+        to keep apart (07:1264-1268).
+
+        The probe is disjunctive for the same reason `_fts_match` is, and additionally because the
+        30 tier is symmetric: `"Table 3.2 (revised)"` as the IDENT and `"Table 3.2"` as the label is
+        a prefix match, and a conjunction over the ident's tokens would never surface the shorter
+        label as a candidate at all.
+
+        `head_fts` is 0003's and a store without it has no title tiers; the three index rungs still
+        answer, so the Channel narrows rather than fails. `IndexCaps.has_head_fts` is the store fact
+        that says which (07:3275).
+        """
+        if not self._caps.has_head_fts:
+            return []
+        match = _fts_match(ident.split())
+        if not match:
+            return []
+        rows = connection.execute(
+            f"SELECT b.block_id, b.label FROM head_fts h "  # noqa: S608
+            f"JOIN ow_block_head b ON b.block_id = h.rowid{narrow_join} "
+            f"WHERE head_fts MATCH ? ORDER BY bm25(head_fts) LIMIT ?",
+            (match, max(limit, 1)),
+        ).fetchall()
+        graded: list[tuple[int, str]] = []
+        for block_id, label in rows:
+            tier = grade_title(ident, "" if label is None else str(label))
+            if tier != "none":
+                graded.append((int(block_id), tier))
+        return graded
+
+    def _lexical(
+        self, connection: sqlite3.Connection, spec: ChannelSpec, n: Narrowing
+    ) -> ChannelOutcome:
+        """07:1294-1302's `lex(b)`, which is where *"D5 owns the BM25 weights"* is discharged.
+
+        ```
+        lex(b) = W_BODY x bm25n(block_fts, b)
+               + W_HEAD x max over a in spine(b) of ( bm25n(head_fts, a) x SPINE_DECAY**depth(b,a) )
+        ```
+
+        **`fts_state` is read BEFORE anything runs.** 07:1823 and 0003_index.sql:413-418 make it a
+        three-state machine this Channel is the reader of: `building` and `stale` are
+        `UNAVAILABLE(fts_building)` / `(fts_stale)` and force `degraded`, because 07:433 --
+        *"a missing posting is indistinguishable from an absent phrase"* -- and the whole of
+        §6.8's gate ladder turns on that distinction. `unavailable` and not `empty`, because
+        `empty` means the statement RAN.
+
+        **The candidate set is the body matches, and only those.** 07:1300 leaves it to the
+        implementation -- `bm25n` is normalised *"within the Channel's own result set"* -- and the
+        two wider readings both break. Admitting `head_fts` matches directly returns container
+        blocks whose `text` is NULL, which `hydrate()` cannot render; admitting their DESCENDANTS
+        returns a whole section for a two-word heading, which is the `Expand` frontier of 07:1327
+        and belongs to `structural` with its own weight. So the spine term is a BOOST over blocks
+        the body scorer found, never a producer of new ones.
+
+        **The head probe is not joined to `tmp_narrow` and the body probe is.** An ancestor heading
+        is evidence about a candidate, not a candidate: a `Filters(layers={BODY})` query excludes
+        heading blocks from the answer and must not thereby lose the spine term, which is six times
+        the body weight. Narrowing bounds what is RETURNED (07:1585-1591), and only the body probe
+        returns anything.
+
+        **Over-fetch is already in `spec.limit`.** `plan()` computes `limit = q.k * overfetch`
+        (07:3297 plus `LEX_OVERFETCH = 5`), so `k=20` arrives here as 100 and the re-rank sees five
+        times what fusion will keep -- 07:1304: *"a re-ranker that only sees the base scorer's top-k
+        cannot promote what the base scorer buried"*. This method does not multiply again.
+
+        `spans` stays empty. 07:2291 sources it from *"FTS5 instance offsets at `detail='full'`"*,
+        and those offsets are reachable only through the C `fts5_api` (`xInstCount` / `xInst`),
+        which `sqlite3` does not surface -- there is no SQL function that returns them. D243. The
+        rule that decides the behaviour is 07:2293's: a span *"is never invented when the Channel
+        had no offset"*.
+        """
+        state = self._caps.fts_state
+        if state != "ok":
+            return ChannelOutcome(name=spec.name, status="unavailable", reason=f"fts_{state}")
+        bind = spec.bind
+        terms = () if bind is None else bind.terms
+        match = _fts_match(terms)
+        if not match:
+            return ChannelOutcome(
+                name=spec.name,
+                status="empty",
+                reason="no query term survived sanitisation, so there is nothing to match",
+            )
+        narrow_join = ""
+        if n.kind == "set":
+            narrow_join = f" JOIN {_TMP_NARROW} tn ON tn.block_id = f.rowid"
+        cap = max(spec.limit, 1)
+        rows = connection.execute(
+            f"SELECT f.rowid, bm25(block_fts) FROM block_fts f "  # noqa: S608
+            f"JOIN ow_block_head b ON b.block_id = f.rowid{narrow_join} "
+            f"WHERE block_fts MATCH ? ORDER BY bm25(block_fts) LIMIT ?",
+            (match, cap + 1),
+        ).fetchall()
+        if not rows:
+            return ChannelOutcome(
+                name=spec.name,
+                status="empty",
+                reason="no block's text carries any of the query terms",
+            )
+        truncated = len(rows) > cap
+        body = _minmax({int(rowid): -float(score) for rowid, score in rows[:cap]})
+        head = self._head_scores(connection, match, cap)
+        chains = _spines(connection, sorted(body))
+        lex = {
+            block_id: W_BODY * body[block_id]
+            + W_HEAD
+            * max(
+                (head.get(sec, 0.0) * SPINE_DECAY**depth for sec, depth in chains[block_id]),
+                default=0.0,
+            )
+            for block_id in body
+        }
+        order = _reading_order(connection, sorted(lex))
+        ranked = sorted(
+            lex,
+            key=lambda block_id: (-lex[block_id], order.get(block_id, (0, 0, 0)), block_id),
+        )
+        return ChannelOutcome(
+            name=spec.name,
+            status="ok",
+            ranked=tuple(ranked),
+            truncated_at_limit=truncated,
+        )
+
+    def _head_scores(
+        self, connection: sqlite3.Connection, match: str, cap: int
+    ) -> Mapping[int, float]:
+        """`bm25n(head_fts, a)` for every labelled block the query reaches, normalised among them.
+
+        Normalised within the HEAD result set and not within the body's: `lex(b)` adds two
+        normalised quantities, so each has to be a rank within its own scale or `W_HEAD = 6.0` is
+        multiplying a number whose units came from the other index. `block_fts` indexes `text` and
+        `head_fts` indexes `label` (0003_index.sql:97-99) and their bm25 magnitudes are not
+        comparable: a four-word label and a four-hundred-word paragraph differ by the length
+        normalisation `columnsize=1` exists to supply.
+
+        Bounded by the same `cap` as the body probe. The 101st-best heading of a query whose top
+        100 bodies all sit under it would lose its boost -- a real, bounded recall cost, taken
+        because the alternative is an unbounded scan of `head_fts` inside a 50 ms budget and
+        because a heading that ranks below a hundred others is weak evidence by construction.
+        """
+        if not self._caps.has_head_fts:
+            return {}
+        rows = connection.execute(
+            "SELECT f.rowid, bm25(head_fts) FROM head_fts f "
+            "JOIN ow_block_head b ON b.block_id = f.rowid "
+            "WHERE head_fts MATCH ? ORDER BY bm25(head_fts) LIMIT ?",
+            (match, cap),
+        ).fetchall()
+        return _minmax({int(rowid): -float(score) for rowid, score in rows})
 
     def _exact(
         self, connection: sqlite3.Connection, spec: ChannelSpec, n: Narrowing

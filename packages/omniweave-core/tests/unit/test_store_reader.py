@@ -155,30 +155,39 @@ def _block(
     kind: str = "paragraph",
     layer: str = "body",
     method: str = "native",
+    label: str | None = None,
+    addr: str | None = None,
     text: str | None = "hello",
     trust: int = 2,
     quote: int = 4,
     restriction_bits: int = 0,
     state: int = 0,
 ) -> None:
-    """One `block` row. `os_kind = none` so neither of the DDL's two os CHECKs applies."""
+    """One `block` row. `os_kind = none` so neither of the DDL's two os CHECKs applies.
+
+    `label` defaults to `None` because most rows have none -- 0003_index.sql:97 calls `head_fts`
+    *"tiny"* for exactly that reason -- and the identity ladder's three title tiers are the only
+    thing that reads it. `addr` defaults to the `p{page}/{ord}` form; the document root block
+    spells it `'doc'` (0001_init.sql:240) and has to say so.
+    """
     _page(conn, doc_ord, gen, page, producer_id)
     conn.execute(
-        "INSERT INTO block(block_id, doc_ord, gen, page, addr, cite, ord, kind, layer, text, "
-        "                  content_digest, os_kind, producer_id, method, trust, quote, "
+        "INSERT INTO block(block_id, doc_ord, gen, page, addr, cite, ord, kind, layer, label, "
+        "                  text, content_digest, os_kind, producer_id, method, trust, quote, "
         "                  origin_operator, origin_driver, driver_schema_v, restriction_bits, "
         "                  state) "
-        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'op.parse', 'drv', 1, ?, ?)",
+        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'op.parse', 'drv', 1, ?, ?)",
         (
             block_id,
             doc_ord,
             gen,
             page,
-            f"p{page}/{ord_}",
+            f"p{page}/{ord_}" if addr is None else addr,
             f"d{doc_ord}#{block_id}",
             ord_,
             _code(conn, "kind", kind),
             _code(conn, "layer", layer),
+            label,
             text,
             DIGEST,
             _code(conn, "origin_span_kind", "none"),
@@ -765,14 +774,18 @@ def test_a_kind_this_store_never_seeded_is_refused_rather_than_matched_against_n
 # ---------------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", ["identity", "lexical", "structural", "semantic"])
+@pytest.mark.parametrize("name", ["structural", "semantic"])
 def test_a_channel_this_build_has_not_shipped_reports_off_not_built(
     built: Built, name: str
 ) -> None:
     """16-roadmap.md:114's exact pair: `ChannelStatus.OFF` with `reason = "not_built"`.
 
+    Two names, not four: W6.2b shipped `identity` and `lexical` and this list shrinks as each cell
+    lands. The list is written out rather than derived from `_IMPLEMENTED_CHANNELS`, because a
+    derived list would pass for a build that shipped nothing.
+
     The reason string is asserted rather than the status alone, because P6 inherits this contract:
-    `OffReason` is closed at four members *"because `ceiling()` branches on it"* (07:2242-2245), so
+    `OffReason` is closed at four members *"because `ceiling()` branches on it"* (07:1214), so
     a free-form reason here would change a published `confidence` number with no error anywhere.
     `off` contributes nothing to the ceiling (07:1218-1222), which is why it is not `empty`.
     """
@@ -980,7 +993,7 @@ def test_the_exact_channel_is_empty_and_not_off_when_nothing_matches(built: Buil
     """`empty` means the statement RAN, which is a different fact from `off` and a different
     ceiling.
 
-    07:1218-1219: *"`ok`/`empty` contribute weight to the ceiling. `off` is an operator choice."*
+    07:1208: *"`ok`/`empty` contribute weight to the ceiling. `off` is an operator choice."*
     A Channel that looked and found nothing has done its job; reporting `off` would exempt it from
     the arithmetic it earned.
     """
@@ -1003,6 +1016,489 @@ def test_a_channel_outcome_that_is_not_ok_must_carry_a_reason(built: Built) -> N
         rd.ChannelOutcome(name="exact", status="off")
     with pytest.raises(ValueError, match="duplicate-free"):
         rd.ChannelOutcome(name="exact", status="ok", ranked=(1, 1))
+
+
+# ---------------------------------------------------------------------------------------------
+# 4a. channel -- identity: the ladder, and the tier ACTUALLY measured
+# ---------------------------------------------------------------------------------------------
+
+
+def _seed_identity(built: Built) -> None:
+    """One document, its root block, and the three labels the 40 tier exists to keep apart.
+
+    The pages INVERT the ladder on purpose. Block 45 carries the literal label and sits on the LAST
+    page, block 30 carries the prefix label and sits on the first, so reading order yields
+    `(30, 40, 45)` and the ladder yields `(45, 40, 30)`: the two orderings are distinguishable and
+    a test that asserts the second is asserting the ladder and not the seed.
+    """
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    producer_id = _producer(conn)
+    _doc(conn, 1, uri="file:///corpus/handbook.pdf")
+    _block(
+        conn,
+        block_id=1,
+        doc_ord=1,
+        producer_id=producer_id,
+        page=0,
+        ord_=0,
+        addr="doc",
+        text="the handbook",
+    )
+    _block(
+        conn,
+        block_id=30,
+        doc_ord=1,
+        producer_id=producer_id,
+        page=1,
+        ord_=1,
+        label="Table 3.2 (revised)",
+        text="the revised table",
+    )
+    _block(
+        conn,
+        block_id=40,
+        doc_ord=1,
+        producer_id=producer_id,
+        page=2,
+        ord_=2,
+        label="Table 3-2",
+        text="the punctuation-different table",
+    )
+    _block(
+        conn,
+        block_id=45,
+        doc_ord=1,
+        producer_id=producer_id,
+        page=3,
+        ord_=3,
+        label="Table 3.2",
+        text="the literal table",
+    )
+    conn.execute("COMMIT")
+
+
+def _identity_spec(limit: int = 20, **bind: object) -> ChannelSpec:
+    return ChannelSpec(
+        name="identity",
+        budget_ms=15,
+        limit=limit,
+        overfetch=1,
+        weight=None,
+        params={},
+        bind=ChannelInput(**bind),  # type: ignore[arg-type]
+    )
+
+
+def test_a_cite_resolves_at_tier_fifty_and_the_grade_names_the_tier(built: Built) -> None:
+    """07:1864's transcript: *"identity: OK, ranked=(block 412's block_id,),
+    grades={...: "cite_exact"}"*."""
+    _seed_identity(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state, _identity_spec(idents=("d1#40",)), reader.narrow(state, Filters())
+        )
+    assert outcome.status == "ok"
+    assert outcome.ranked == (40,)
+    assert outcome.grades == {40: "cite_exact"}
+
+
+def test_the_cite_lookup_supplies_both_columns_of_the_two_column_index(built: Built) -> None:
+    """D240, measured. 07:1269-1270: *"Resolution is `block_cite` / `block_addr` / `doc(uri)`
+    index lookups plus a `head_fts` title probe; cost is **sub-millisecond**"*.
+
+    `CREATE UNIQUE INDEX block_cite ON block(doc_ord, cite)` (0001_init.sql:306) is COMPOSITE and
+    a query string carries only the second column, so `WHERE cite = 'd1#40'` cannot use the index
+    at all -- SQLite needs the left-most column -- and the ladder's cheapest tier becomes a full
+    scan of `block`. The `doc_ord` is INSIDE the cite, which is what `cite_doc_ord()` recovers.
+
+    The statement under test is the one the Channel actually ran, captured through the connection's
+    trace callback (which expands the bound parameters, so it re-plans verbatim). The
+    counterfactual is DERIVED from it by deleting the one predicate this cell exists to add, so the
+    two plans differ by exactly the `doc_ord` and nothing else.
+
+    Both `EXPLAIN QUERY PLAN`s run on the reader's own connection and INSIDE the snapshot, because
+    `tmp_narrow` lives in that connection's TEMP schema and does not survive the snapshot's
+    rollback.
+    """
+    _seed_identity(built)
+    connection = ow.connect_readonly(built.path)
+    reader = rd.SqliteReader(connection, now_ns=NOW_NS)
+    executed: list[str] = []
+
+    def plan_of(sql: str) -> list[str]:
+        return [str(row[3]) for row in connection.execute("EXPLAIN QUERY PLAN " + sql)]
+
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, Filters())
+        connection.set_trace_callback(executed.append)
+        reader.channel(state, _identity_spec(idents=("d1#40",)), narrowing)
+        connection.set_trace_callback(None)
+        cite_sql = [sql for sql in executed if "b.cite = " in sql]
+        assert len(cite_sql) == 1, f"expected one cite statement, got {cite_sql}"
+        assert "b.doc_ord = 1 AND " in cite_sql[0]
+        without = cite_sql[0].replace("b.doc_ord = 1 AND ", "")
+        with_plan = plan_of(cite_sql[0])
+        without_plan = plan_of(without)
+    assert any("block_cite" in step for step in with_plan), with_plan
+    assert not any("block_cite" in step for step in without_plan), without_plan
+
+
+def test_the_forty_tier_survives_the_round_trip_through_the_store(built: Built) -> None:
+    """16-roadmap.md:669's freeze item, asserted over real `head_fts` rows rather than in Python.
+
+    `unicode61 remove_diacritics 2` folds case and diacritics and NOTHING else, so FTS5 returns all
+    three labels as candidates and cannot itself tell them apart. `grade_title()` does, and 07:1265
+    names the failure it prevents: *"The document analogue is 'Table 3.2 (revised)' tying with
+    'Table 3.2'."* Here it does not tie -- it grades 30 against the literal match's 45, with the
+    punctuation-different label at 40 between them.
+    """
+    _seed_identity(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state, _identity_spec(idents=("Table 3.2",)), reader.narrow(state, Filters())
+        )
+    assert outcome.status == "ok"
+    assert outcome.ranked == (45, 40, 30)
+    assert outcome.grades == {
+        45: "title_exact",
+        40: "title_normalised",
+        30: "title_prefix",
+    }
+
+
+def test_a_document_uri_resolves_to_one_block_and_not_to_the_whole_document(
+    built: Built,
+) -> None:
+    """07:1254's ladder is over *"a block **or document**"* and `ranked` is block ids (07:1228).
+
+    One block, and it is the document root (`addr = 'doc'`). Returning every block of the document
+    at tier 50 would put a 41,822-block document above every other Channel's first hit and report
+    `confidence = 1.000` for a URI match, which is the arithmetic ST8 exists to stop.
+    """
+    _seed_identity(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state,
+            _identity_spec(idents=("file:///corpus/handbook.pdf",)),
+            reader.narrow(state, Filters()),
+        )
+    assert outcome.ranked == (1,)
+    assert outcome.grades == {1: "doc_uri_exact"}
+
+
+def test_the_strongest_measured_tier_wins_when_two_idents_reach_one_block(built: Built) -> None:
+    """07:1255: *"the one actually measured"* -- and the cite lookup DID measure 50.
+
+    The title ident is listed FIRST, so a Channel that kept whichever grade it saw first would
+    report `title_exact` and understate evidence it holds. `ranked` is duplicate-free (07:1228),
+    so one of the two grades has to go and only the higher one is defensible.
+    """
+    _seed_identity(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state,
+            _identity_spec(idents=("Table 3.2", "d1#45")),
+            reader.narrow(state, Filters()),
+        )
+    assert outcome.ranked[0] == 45
+    assert outcome.grades[45] == "cite_exact"
+
+
+def test_an_addr_reaches_tier_fifty_only_under_a_document_scope(built: Built) -> None:
+    """D241's first clause, and the half this cell can discharge.
+
+    `block_addr` is `(doc_ord, gen, addr)` and `p2/0` is document-relative by construction: with no
+    `ChannelInput.scope_doc` there is no left-most column to supply and no way to tell which
+    document's `p2/0` was meant, so the rung does not run at all rather than calling one block per
+    document a tier-50 hit.
+    """
+    _seed_identity(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, Filters())
+        unscoped = reader.channel(state, _identity_spec(idents=("p2/2",)), narrowing)
+        scoped = reader.channel(state, _identity_spec(idents=("p2/2",), scope_doc=1), narrowing)
+    assert unscoped.status == "empty"
+    assert scoped.ranked == (40,)
+    assert scoped.grades == {40: "addr_exact"}
+
+
+def test_the_identity_channel_scores_only_within_the_narrowed_set(built: Built) -> None:
+    """`narrow()` bounds what is RETURNED (07:1585-1591), the ladder included."""
+    _seed_identity(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, Filters(pages=range(0, 2)))
+        outcome = reader.channel(state, _identity_spec(idents=("Table 3.2",)), narrowing)
+    assert narrowing.kind == "set"
+    assert outcome.ranked == (30,)
+
+
+def test_the_identity_channel_is_empty_and_not_off_when_nothing_matched(built: Built) -> None:
+    """07:1843's own transcript line: *"identity: EMPTY -- no cite, addr, uri or title matched."*
+
+    And `empty` rather than `off`, because `empty` means the lookups RAN: 07:1218-1219 keeps its
+    weight in the ceiling for exactly that reason.
+    """
+    _seed_identity(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, Filters())
+        nothing_bound = reader.channel(state, _identity_spec(), narrowing)
+        no_match = reader.channel(state, _identity_spec(idents=("d9#1",)), narrowing)
+    assert nothing_bound.status == "empty"
+    assert "no cite, addr, uri or title candidate" in nothing_bound.reason
+    assert no_match.status == "empty"
+    assert no_match.reason == "no cite, addr, uri or title matched"
+
+
+def test_a_grade_for_a_block_the_channel_did_not_rank_is_refused() -> None:
+    """07:1231: `grades` is *"the tier ACTUALLY measured"*, and a block that was not returned had
+    nothing measured about it."""
+    with pytest.raises(ValueError, match="graded blocks it did not rank"):
+        rd.ChannelOutcome(name="identity", status="ok", ranked=(1,), grades={2: "cite_exact"})
+
+
+def test_a_tier_the_ladder_does_not_define_is_refused() -> None:
+    """`Hit.identity_grade` is printed (07:2296) and an invented tier has no rank to be read
+    against."""
+    with pytest.raises(ValueError, match="IDENTITY_LADDER"):
+        rd.ChannelOutcome(name="identity", status="ok", ranked=(1,), grades={1: "title_ish"})
+
+
+# ---------------------------------------------------------------------------------------------
+# 4b. channel -- lexical: W_BODY, W_HEAD and SPINE_DECAY, spent
+# ---------------------------------------------------------------------------------------------
+
+
+def _seed_lexical(built: Built) -> None:
+    """A two-level section spine, and two bodies whose bm25 order is the OPPOSITE of their spine
+    order.
+
+    Block 11 sits one hop under the heading whose label matches and carries a LONG body; block 21
+    sits two hops under it and carries the single word `notice`. So the body term alone ranks 21
+    above 11 and the spine term alone ranks 11 above 21, and a test that asserts either ordering is
+    asserting which term won rather than which block happened to be seeded first.
+
+    `block_sec` is written by hand: it is 0003's DERIVED table (0003_index.sql:277-283) and nothing
+    in the store writes it yet -- 16-roadmap.md:406 leaves the derived tables to their own phases.
+    Block 10 has no `block_sec` row, which is what a top-level section looks like and is where the
+    spine walk stops.
+    """
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    producer_id = _producer(conn)
+    _doc(conn, 1, uri="file:///corpus/handbook.pdf")
+    _block(
+        conn,
+        block_id=10,
+        doc_ord=1,
+        producer_id=producer_id,
+        page=1,
+        ord_=0,
+        kind="heading",
+        label="Parental leave",
+        text="Parental leave",
+    )
+    _block(
+        conn,
+        block_id=11,
+        doc_ord=1,
+        producer_id=producer_id,
+        page=1,
+        ord_=1,
+        text="notice period runs four weeks and several extra words to dilute the body score",
+    )
+    _block(
+        conn,
+        block_id=20,
+        doc_ord=1,
+        producer_id=producer_id,
+        page=2,
+        ord_=2,
+        kind="heading",
+        label="Schedules",
+        text="Schedules",
+    )
+    _block(conn, block_id=21, doc_ord=1, producer_id=producer_id, page=2, ord_=3, text="notice")
+    _block(conn, block_id=30, doc_ord=1, producer_id=producer_id, page=3, ord_=4, text="notice")
+    for block_id, sec_id, depth, path in (
+        (11, 10, 1, "/0001"),
+        (20, 10, 1, "/0001"),
+        (21, 20, 2, "/0001/0001"),
+    ):
+        conn.execute(
+            "INSERT INTO block_sec(block_id, sec_id, sec_depth, sec_path) VALUES(?, ?, ?, ?)",
+            (block_id, sec_id, depth, path),
+        )
+    conn.execute("COMMIT")
+
+
+def _lexical_spec(limit: int = 20, **bind: object) -> ChannelSpec:
+    return ChannelSpec(
+        name="lexical",
+        budget_ms=50,
+        limit=limit,
+        overfetch=5,
+        weight=None,
+        params={},
+        bind=ChannelInput(**bind),  # type: ignore[arg-type]
+    )
+
+
+def test_the_lexical_channel_ranks_by_the_body_term_when_no_heading_matches(
+    built: Built,
+) -> None:
+    """`lex(b) = W_BODY x bm25n(block_fts, b) + W_HEAD x 0`, which is bm25 with a tie-break.
+
+    No label carries `notice`, so `max over spine(b)` is zero for every candidate and the ranking
+    is the body scorer's. The two one-word blocks tie exactly -- identical text, identical column
+    size -- and reading order `(doc_ord, page, ord)` breaks the tie, never `block_id`, which is
+    *"a DURABLE surrogate"* (0001_init.sql:236) and therefore ingest order.
+    """
+    _seed_lexical(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state, _lexical_spec(terms=("notice",)), reader.narrow(state, Filters())
+        )
+    assert outcome.status == "ok"
+    assert outcome.ranked == (21, 30, 11)
+
+
+def test_the_spine_term_promotes_a_block_under_a_matching_heading_and_decays_with_depth(
+    built: Built,
+) -> None:
+    """07:1294-1299's whole formula, including `b` as its own depth-0 ancestor.
+
+    ```
+    lex(10) = bm25n + 6.0 x 0.6**0 = bm25n + 6.00     the heading, its own spine
+    lex(11) = bm25n + 6.0 x 0.6**1 = bm25n + 3.60     one hop under it
+    lex(21) = bm25n + 6.0 x 0.6**2 = bm25n + 2.16     two hops under it
+    lex(30) = bm25n + 6.0 x 0                         under no section at all
+    ```
+
+    `bm25n` is in `[0, 1]` by construction, so the four spine terms are separated by more than the
+    body term can close and the ordering is the spine's. That is `W_HEAD = 6.0` doing what D5
+    chose it for, and it is why block 21 -- which the body scorer ranks FIRST (the previous test)
+    -- lands third here.
+    """
+    _seed_lexical(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state,
+            _lexical_spec(terms=("parental", "notice")),
+            reader.narrow(state, Filters()),
+        )
+    assert outcome.status == "ok"
+    assert outcome.ranked == (10, 11, 21, 30)
+
+
+def test_the_head_probe_is_not_narrowed_although_the_body_probe_is(built: Built) -> None:
+    """An ancestor heading is EVIDENCE about a candidate, not a candidate.
+
+    `Filters(kinds={PARAGRAPH})` is the ordinary way to exclude headings from an answer, and it
+    must not thereby delete a spine term worth six times the body weight. With the head probe
+    narrowed the boost vanishes and the ranking reverts to the body scorer's `(21, 30, 11)`; with
+    it unnarrowed the spine wins and block 11 leads. The two orders are different, which is what
+    makes this assertion about the join and not about the seed.
+    """
+    _seed_lexical(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, Filters(kinds=frozenset({Kind.PARAGRAPH})))
+        outcome = reader.channel(state, _lexical_spec(terms=("parental", "notice")), narrowing)
+    assert narrowing.kind == "set"
+    assert outcome.ranked == (11, 21, 30)
+
+
+def test_the_lexical_channel_matches_any_term_and_not_all_of_them(built: Built) -> None:
+    """`OR`, not FTS5's implicit `AND`. `MAX_QUERY_TERMS` is 64 and a 64-term conjunction matches
+    nothing, so an implicit-AND Channel reports `EMPTY` for every sentence-shaped query -- absence
+    manufactured by a tokeniser, which is the one thing §6.8's gate ladder exists to prevent."""
+    _seed_lexical(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state,
+            _lexical_spec(terms=("parental", "zzzabsentword")),
+            reader.narrow(state, Filters()),
+        )
+    assert outcome.status == "ok"
+    assert outcome.ranked == (10,)
+
+
+def test_a_building_fts_index_is_unavailable_and_not_empty(built: Built) -> None:
+    """0003_index.sql:413-418's three-state machine, read before the Channel runs.
+
+    07:432-433: *"An FTS index of unknown completeness must degrade the Verdict, because a missing
+    posting is indistinguishable from an absent phrase."* `empty` would be a claim about the corpus;
+    `unavailable` is a claim about the index, and only the second is true.
+    """
+    _seed_lexical(built)
+    built.writer.execute("UPDATE index_state SET v = 'building' WHERE k = 'fts_state'")
+    built.writer.commit()
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state, _lexical_spec(terms=("notice",)), reader.narrow(state, Filters())
+        )
+    assert outcome.status == "unavailable"
+    assert outcome.reason == "fts_building"
+    assert outcome.ranked == ()
+
+
+def test_the_lexical_channel_honours_the_channel_local_limit(built: Built) -> None:
+    """`ChannelSpec.limit` already carries `LEX_OVERFETCH`: `plan()` sets `limit = k x overfetch`,
+    so `k=20` arrives here as 100 and this method never multiplies again."""
+    _seed_lexical(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state, _lexical_spec(limit=2, terms=("notice",)), reader.narrow(state, Filters())
+        )
+    assert outcome.ranked == (21, 30)
+    assert outcome.truncated_at_limit is True
+
+
+def test_the_lexical_channel_is_empty_and_not_off_when_nothing_matches(built: Built) -> None:
+    """Two different empties, and each says which: nothing to match, or nothing matched."""
+    _seed_lexical(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, Filters())
+        no_terms = reader.channel(state, _lexical_spec(), narrowing)
+        no_match = reader.channel(state, _lexical_spec(terms=("zzzabsentword",)), narrowing)
+    assert no_terms.status == "empty"
+    assert "no query term survived sanitisation" in no_terms.reason
+    assert no_match.status == "empty"
+    assert "carries any of the query terms" in no_match.reason
+
+
+def test_a_channel_whose_tables_this_store_does_not_carry_is_unavailable(built: Built) -> None:
+    """A store fact, not a build one, and therefore not `off`.
+
+    `off` is 07:1204, *"the P-stage has not shipped it"*, and is ceiling-EXEMPT; a store built by
+    an earlier migration set has a Channel this build DID ship and this file cannot answer, which
+    is `unavailable` and forces `degraded`. The alternative is `no such table: block_fts` crossing
+    the `Reader` boundary as an exception.
+    """
+    _seed_lexical(built)
+    built.writer.execute("DROP TABLE block_fts")
+    built.writer.commit()
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state, _lexical_spec(terms=("notice",)), reader.narrow(state, Filters())
+        )
+    assert outcome.status == "unavailable"
+    assert outcome.reason == "this store carries no block_fts"
 
 
 # ---------------------------------------------------------------------------------------------
