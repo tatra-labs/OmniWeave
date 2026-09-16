@@ -98,6 +98,8 @@ FILLED_HOMES: dict[str, str] = {
     "model": "P2 W2.1 -- enums, spans, block, and the flat re-export surface",
     "store": "P2 W2.3 -- the four Protocols, Snapshot, and the boundary types",
     "archive": "P2 W2.5 -- the .owdoc codec, frames.json, the manifest, and owcheck",
+    "retrieve": "P6 W6.1 -- types.py and plan.py, plus the five scoring constants 07:1382 homes"
+    " in the package rather than in a module",
 }
 
 
