@@ -50,6 +50,7 @@ from omniweave_core.model.enums import Kind, Layer, Method, Quote, Trust
 from omniweave_core.store import Reader, migrate
 from omniweave_core.store import reader as rd
 from omniweave_core.store import sqlite as ow
+from omniweave_core.store import vectors as vec
 from omniweave_core.store.types import ChannelInput, ChannelSpec, Expand, Filters
 
 NOW_NS = 1_757_400_000_000_000_000
@@ -2050,7 +2051,11 @@ def _seed_segments(built: Built, *, members: dict[int, int] | None = None) -> No
 
 
 def _seed_sidecar(
-    built: Built, *, corpus_id: str | None = None, pushdown: bool = True
+    built: Built,
+    *,
+    corpus_id: str | None = None,
+    pushdown: bool = True,
+    sig_bits: int = 768,
 ) -> pathlib.Path:
     """`index.vec.owstore` with a `vec_manifest`, and nothing else in it.
 
@@ -2080,8 +2085,8 @@ def _seed_sidecar(
             ("backend", "vector.brute"),
             ("backend_version", "1"),
             ("storage", "sig_only"),
-            ("sig_bits", "768"),
-            ("dim", "384"),
+            ("sig_bits", str(sig_bits)),
+            ("dim", "768"),
             ("built_at_ns", "1"),
             ("rows", "2"),
             ("pushdown", "1" if pushdown else "0"),
@@ -2394,6 +2399,57 @@ def test_a_rank_below_one_is_refused_because_fuse_reads_it_as_absent() -> None:
     instead of the one it meant."""
     with pytest.raises(ValueError, match="rank below 1"):
         rd.ChannelOutcome(name="semantic", status="ok", ranked=(1,), rank_of={1: 0})
+
+
+def test_attach_vec_answers_false_for_a_sidecar_that_is_not_there(built: Built) -> None:
+    """The sidecar is *"[DER] Optional. Deletable."* (07:789), so its absence is the shipped
+    default's ordinary state and not a condition anything should have to catch."""
+    connection = ow.connect_readonly(built.path)
+    assert ow.attach_vec(connection, vec.vec_path(built.path)) is False
+    assert ow.attach_vec(connection, _seed_sidecar(built)) is True
+    assert [row[1] for row in connection.execute("PRAGMA database_list")] == ["main", "vec"]
+
+
+def test_the_stdlib_backend_drives_the_semantic_channel_end_to_end(built: Built) -> None:
+    """W6.2's ten-ew row, closed: a real sidecar, a real signature scan, and the real lift.
+
+    Every other semantic test above uses `FakeVectors`, because the seam is the Protocol and the
+    two halves are separately testable. This one is the join: `vector.brute` scans `vseg` with
+    07:812's XOR and `bit_count`, `SqliteReader` joins the digests it returns back to live segments
+    inside the snapshot -- *"the **only** exit from the `vec` sidecar (ST4)"* (07:1372) -- and the
+    lift gives each segment's members the segment's own rank.
+
+    Signature `0xFF` for segment 1 and `0x0F` for segment 2 puts them four bits apart against a
+    `0xFF` query, so the scan orders them and the six blocks arrive at two ranks.
+    """
+    _seed_segments(built)
+    path = _seed_sidecar(built, sig_bits=8)
+    writer = ow.connect(built.path)
+    try:
+        assert ow.attach_vec(writer, path, readonly=False) is True
+        for statement in vec.SIDECAR_DDL:
+            writer.execute(statement)
+        vec.BruteVectors(writer).upsert(
+            "bge-small/1",
+            [(_digest(1), b"\xff", None), (_digest(2), b"\x0f", None)],
+        )
+        writer.commit()
+    finally:
+        writer.close()
+
+    connection = ow.connect_readonly(built.path)
+    assert ow.attach_vec(connection, path) is True
+    reader = rd.SqliteReader(connection, now_ns=NOW_NS, vectors=vec.BruteVectors(connection))
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state,
+            _semantic_spec(q_sig=b"\xff"),
+            reader.narrow(state, Filters()),
+        )
+    assert reader.capabilities().vec_backend == "vector.brute"
+    assert outcome.status == "ok"
+    assert outcome.ranked == (1, 2, 3, 4, 5, 6)
+    assert dict(outcome.rank_of) == {1: 1, 2: 1, 3: 1, 4: 2, 5: 2, 6: 2}
 
 
 # ---------------------------------------------------------------------------------------------

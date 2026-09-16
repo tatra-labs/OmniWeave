@@ -211,6 +211,7 @@ from omniweave_core.store.types import (
     Snapshot,
     VecManifest,
 )
+from omniweave_core.store.vectors import parse_manifest
 
 if TYPE_CHECKING:
     from omniweave_core.store import VectorBackend
@@ -1662,6 +1663,10 @@ class SqliteReader:
         `ValueError` is caught beside `sqlite3.DatabaseError` because `vec_manifest` is a `(k, v)`
         TEXT table: a truncated write leaves a row whose `v` is not an integer, which is the same
         corruption arriving through `int()` instead of through the pager.
+
+        The eleven fields are mapped by `store/vectors.py`'s `parse_manifest` and not here: that
+        module writes the table and this one reads it, and two parsers of one `(k, v)` schema is
+        the drift INV-21 forbids.
         """
         attached = any(str(row[1]) == "vec" for row in connection.execute("PRAGMA database_list"))
         if not attached:
@@ -1676,20 +1681,7 @@ class SqliteReader:
                     f"the vec sidecar carries corpus_id {found!r} and this store is "
                     f"{corpus_id!r}, so the sidecar is ignored and not read"
                 )
-            storage = "sig_full" if rows.get("storage") == "sig_full" else "sig_only"
-            manifest = VecManifest(
-                corpus_id=found,
-                schema=int(rows.get("schema", 0)),
-                model_key=rows.get("model_key", ""),
-                backend=rows.get("backend", ""),
-                backend_version=rows.get("backend_version", ""),
-                storage=storage,
-                sig_bits=int(rows.get("sig_bits", 0)),
-                dim=int(rows.get("dim", 0)),
-                built_at_ns=int(rows.get("built_at_ns", 0)),
-                rows=int(rows.get("rows", 0)),
-                pushdown=rows.get("pushdown", "0") not in {"", "0", "false", "False"},
-            )
+            manifest = parse_manifest(rows)
         except (sqlite3.DatabaseError, ValueError):
             return None, _VEC_UNREADABLE
         return manifest, ""

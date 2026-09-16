@@ -100,6 +100,7 @@ __all__ = [
     "ScopedLock",
     "StoreThread",
     "Unit",
+    "attach_vec",
     "connect",
     "connect_readonly",
     "heal_wal",
@@ -536,6 +537,38 @@ def connect_readonly(
 # --------------------------------------------------------------------------------------------
 # 5. Heal-on-open, and the bulk-window marker.
 # --------------------------------------------------------------------------------------------
+
+
+def attach_vec(connection: sqlite3.Connection, path: Path, *, readonly: bool = True) -> bool:
+    """ATTACH `path` as `vec`, or report that there is nothing to attach. 07:789.
+
+    The sidecar is reached by ATTACH and never by a second connection -- *"`index.vec.owstore` --
+    ATTACHed as `vec`"* -- and an ATTACH opens a file, so it belongs in the module that owns every
+    open. That is not only INV-17 bookkeeping: an ATTACH inside one connection is what lets the
+    semantic Channel join `vec` rows back to `segment` INSIDE the main snapshot, which 07:1372
+    calls *"the only exit from the `vec` sidecar (ST4), which is what makes a stale vector invisible
+    rather than wrong"*.
+
+    **A missing sidecar returns `False` and does not raise.** The file is *"[DER] Optional.
+    Deletable."* (07:789) and 07:3077 says a moved store rebuilds its vectors, so its absence is
+    the shipped default's ordinary state -- `[retrieval] vectors = "off"` (07:2596) -- and not a
+    condition anything should have to catch.
+
+    `readonly` picks the same URI `connect_readonly` would: a read-only main opened with `uri=True`
+    honours a URI filename in ATTACH, and the rung matters for the same reason it matters there --
+    `immutable=1` while a `-wal` exists *"returns pre-WAL data, which is a silent stale read"*. A
+    write connection is opened from a plain path and has no URI flag, so it gets the plain path;
+    passing a URI to it would attach a file literally named `file:...`.
+
+    The corpus_id check is NOT here. 07:790 makes a mismatch mean *"THE SIDECAR IS IGNORED, not
+    read"*, which is a fact about the two files' contents and belongs with whatever reads the
+    manifest -- `SqliteReader` does it at open and reports it as the semantic Channel's reason.
+    """
+    if not path.exists():
+        return False
+    target = readonly_target(path)[0] if readonly else str(path)
+    connection.execute("ATTACH DATABASE ? AS vec", (target,))
+    return True
 
 
 def _wal_path(path: Path) -> Path:
