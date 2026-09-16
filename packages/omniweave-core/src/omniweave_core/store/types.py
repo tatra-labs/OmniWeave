@@ -287,6 +287,17 @@ class ChannelInput:
     pins the WAL -- which is the futility-latch condition, so the phase split is "the only way to
     obey both" (07 Extends-the-charter row 6). Carrying the signature on the INPUT side of the
     boundary is what makes that structural: a `Reader` receives a value it could not have computed.
+
+    **`seeds` is an EIGHTH field, added by P6 W6.2b's successor, and it is the same argument as
+    `ChannelSpec.bind`'s.** The `structural` Channel is *"seeded from the union of the `identity`
+    and `exact` ranked sets; when both of those are empty, from the ranked set of whichever scoring
+    Channels **precede it in this plan** ... and when no scoring Channel precedes it, from
+    `tmp_narrow` itself"* (07:1327-1332). Choosing the seed is 07:1333's *"runtime step"*, which
+    means `retrieve()` chooses it -- and `Reader.channel(s, spec, n)` is the frozen signature
+    (07:63-68), so with no field for the chosen seed the signature cannot carry it. The last rung of
+    the ladder needs no field, because `tmp_narrow` is already in the `Narrowing`; the first three
+    do. Defaulted to `()` like every other field here, and an empty `seeds` means "fall through to
+    `tmp_narrow`", never "traverse nothing". D246.
     """
 
     terms: tuple[str, ...] = ()
@@ -296,6 +307,7 @@ class ChannelInput:
     q_sig: bytes | None = None
     q_full: bytes | None = None
     expand: Expand | None = None
+    seeds: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -646,6 +646,22 @@ VALUE_TYPES: dict[str, type] = {
 
 VALUE_TYPE_HOME: dict[str, str] = dict.fromkeys(VALUE_TYPES, "07-store-and-retrieval.md")
 
+# Fields a build ADDED to a printed shape, each with the phase that added it and the reason.
+# A shape cannot gain a field by accident, only by someone adding a row here and saying why --
+# the same discipline `test_core_eager_surface.py`'s `FILLED_HOMES` uses for the same purpose.
+# Every entry is asserted to be a SUFFIX below, so the printed fields keep the printed order.
+ADDED_FIELDS: dict[str, tuple[tuple[str, str], ...]] = {
+    "ChannelInput": (
+        (
+            "seeds",
+            "P6 W6.2c (D246) -- 07:1327-1332 seeds `structural` from the `identity` and `exact` "
+            "ranked sets, choosing among them is 07:1333's runtime step and therefore "
+            "`retrieve()`'s, and `Reader.channel(s, spec, n)` is frozen, so the chosen seed has "
+            "no other carrier across the boundary",
+        ),
+    ),
+}
+
 
 @pytest.mark.parametrize("name", sorted(VALUE_TYPES))
 def test_every_boundary_value_type_is_frozen_and_slotted(name: str) -> None:
@@ -666,9 +682,33 @@ def test_every_boundary_value_type_has_the_plans_fields_in_the_plans_order(name:
 
     `IndexCaps.caps_digest` is "sha256_canonical of every field above; memoises plan()" (07:3280),
     which makes this shape's field order an input to a cache key.
+
+    A shape may carry MORE fields than the plan prints, and only through `ADDED_FIELDS`: the
+    printed names must still come first, in the printed order, and the additions must be exactly
+    the rows that table names for this shape. So an addition is visible in a diff of that table
+    and nowhere else, and a REMOVED field is still a failure.
     """
     printed = _printed_class(plan, VALUE_TYPE_HOME[name], name)
-    assert [f.name for f in dataclasses.fields(VALUE_TYPES[name])] == list(_printed_fields(printed))
+    added = tuple(field for field, _why in ADDED_FIELDS.get(name, ()))
+    assert [f.name for f in dataclasses.fields(VALUE_TYPES[name])] == [
+        *_printed_fields(printed),
+        *added,
+    ]
+
+
+def test_every_added_field_names_a_field_the_shape_really_has() -> None:
+    """Without this, `ADDED_FIELDS` is a way to switch the parity test off.
+
+    A row with no field behind it would exempt a name from the printed-fields comparison while
+    proving nothing, and a row left behind after a revert would go unnoticed. Read the other way,
+    it also stops a row being added for a shape that is not under test at all.
+    """
+    for name, rows in ADDED_FIELDS.items():
+        assert name in VALUE_TYPES, f"{name} is not a boundary value type"
+        shipped = {f.name for f in dataclasses.fields(VALUE_TYPES[name])}
+        for field, why in rows:
+            assert field in shipped, f"{name}.{field} is listed as added but does not exist"
+            assert len(why) > 40, f"{name}.{field} is added with no stated reason"
 
 
 def test_narrowing_is_a_named_tuple_with_the_plans_three_fields(plan) -> None:

@@ -66,8 +66,11 @@ and 07:1670-1680's whole subject. `off` is disclosed and contributes nothing to 
   scored over it: `lex(b)` is `W_BODY`, `W_HEAD` and `SPINE_DECAY` (07:1294-1296), all three named
   in 16-roadmap.md:468's exclusion, and its input is sanitised query text. W6.2a homed the three
   weights and the sanitiser; `_lexical` below spends them.
-* **`structural` -- refused.** A bounded frontier BFS seeded from `identity` and `exact`
-  (07:1298-1306), so it cannot be built before the Channels that seed it.
+* **`structural` -- SHIPPED at W6.2c.** A bounded frontier BFS seeded from `identity` and
+  `exact` (07:1327-1332), which is why it waited for them: a Channel whose first act is to read
+  another Channel's output cannot be built before that output exists. `ChannelInput` gained a
+  `seeds` field to carry it (D246); the last rung of 07's seed ladder, `tmp_narrow` itself, needed
+  no field because the `Narrowing` already carries it.
 * **`semantic` -- refused.** *"No vector column"* (16-roadmap.md:468); `vec` is never attached at
   P2, so `IndexCaps.channels` also omits it, and the refusal here is the second half of the same
   fact.
@@ -162,10 +165,13 @@ Specified in 07-store-and-retrieval.md sections 1.1, 3.3, 3.8, 6.1, 7.1, 7.2, 10
 
 from __future__ import annotations
 
+import math
 import sqlite3
-from collections.abc import Iterator, Mapping, Sequence
+import time
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
+from itertools import groupby
 from types import MappingProxyType
 from typing import Final, Literal
 
@@ -189,6 +195,7 @@ from omniweave_core.store import sqlite as ow
 from omniweave_core.store.types import (
     ChannelSpec,
     Coverage,
+    Expand,
     Filters,
     IndexCaps,
     Narrowing,
@@ -207,13 +214,14 @@ __all__ = [
 # Constants. Each is a transcription with its line, or private with a stated owner.
 # ---------------------------------------------------------------------------
 
-_IMPLEMENTED_CHANNELS: Final = frozenset({"identity", "exact", "lexical"})
+_IMPLEMENTED_CHANNELS: Final = frozenset({"identity", "exact", "lexical", "structural"})
 """Which of `CHANNELS` THIS BUILD can run, as opposed to which the store supports.
 
 The one-line edit site for each retrieval cell: widening this frozenset is what turns an
 `off`/`not_built` outcome into a real Channel run, and the ruling for each name is in the module
-docstring. P2 held `{"exact"}`; W6.2b added `identity` and `lexical`; `structural` and `semantic`
-are W6.2c's.
+docstring. P2 held `{"exact"}`; W6.2b added `identity` and `lexical`; W6.2c added
+`structural`. `semantic` is W6.2d's, and it is the one of the five that needs a
+`VectorBackend` and an attached `vec` sidecar before it can look at anything.
 """
 
 _REQUIRED_OBJECTS: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
@@ -221,6 +229,7 @@ _REQUIRED_OBJECTS: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
         "identity": ("block_cite", "block_addr"),
         "exact": ("anchor", "ref_site"),
         "lexical": ("block_fts",),
+        "structural": ("block_link", "relation_vocab"),
     }
 )
 """What each implemented Channel's statements NAME, so a missing one is `unavailable` and not a
@@ -242,6 +251,35 @@ _SPINE_MAX_HOPS: Final = 16
 removes nothing a rank could see. It exists because `block_sec.sec_id` is an ordinary INTEGER
 column with no CHECK forbidding a cycle, and an unbounded walk over a cyclic `block_sec` is a hang
 inside a 50 ms Channel budget rather than a wrong answer.
+"""
+
+_EXPAND_MAX_HOPS: Final = 4
+"""`Expand.max_hops`'s HARD CAP (07:1345, 18:2832), clamped HERE and not on the dataclass.
+
+`store/types.py` prints the cap as a comment and enforces nothing, which is deliberate and stated
+there: it is a clamp at the traversal and not a field constraint. So the traversal owns it, and a
+caller who asks for 99 hops gets 4 rather than a `ValueError` -- the ceiling is what keeps an
+unbounded traversal unrepresentable, and refusing the request would only move the unboundedness
+into the caller's retry.
+"""
+
+_HUB_CAPPED: Final = "hub_capped"
+"""The `Degradation.kind` an over-`hub_cap` block sets (07:1351), row 19 of the closed twenty-seven.
+
+15:1090 is the register row -- *"a block above `Expand.hub_cap = 4096` contributed
+a weight-sampled subset of its neighbours"* -- and it is one of the seven that FORCE `degraded`
+(15:1107). The literal lives here as a string because the `Degradation` TYPE is
+15-observability.md's sole property (charter erratum E15) and `omniweave_core.observe.degradation`
+does not exist yet; the caller constructs the record from this kind, exactly as
+`drivers/catalog.py`'s `UNPINNED_DEGRADATION` already does.
+"""
+
+_TIMEOUT: Final = "timeout"
+"""The `UNAVAILABLE` reason absence gate 1 reads, and the only one it reads (07:1221-1222).
+
+*"`reason` remains a free `str` for `EMPTY` and `UNAVAILABLE` ... since §6.8 gate 1 reads
+`reason == "timeout"` and the gate table is normative on its own terms."* So this one string is
+load-bearing in a way the other reason prose is not, and it is a constant for that reason alone.
 """
 
 _ID_BATCH: Final = 512
@@ -330,6 +368,14 @@ class ChannelOutcome:
 
     `ranked` is *"deterministic order, duplicate-free"* (07:1228) and the constructor checks the
     second half, because a Channel that ranks one block twice gives it two RRF contributions.
+
+    **`degradations` carries `Degradation.kind` STRINGS and not `Degradation` records**, for the
+    same reason `drivers/catalog.py`'s `UNPINNED_DEGRADATION` does: the type is
+    15-observability.md's sole property (charter erratum E15), `omniweave_core.observe.degradation`
+    does not exist yet, and a second declaration here would be the rival INV-21 forbids. It is not
+    in `ChannelResult`'s ten fields either -- 07:1351 says the traversal *"sets `degradations +=
+    [Degradation(kind="hub_capped", ...)]"* without saying onto what, and a Channel that truncated
+    a hub has to be able to say so before whatever assembles the `Verdict` can print it. D248.
     """
 
     name: str
@@ -337,6 +383,7 @@ class ChannelOutcome:
     ranked: tuple[int, ...] = ()
     spans: Mapping[int, TextSpan] = MappingProxyType({})
     grades: Mapping[int, str] = MappingProxyType({})
+    degradations: tuple[str, ...] = ()
     reason: str = ""
     truncated_at_limit: bool = False
 
@@ -671,6 +718,7 @@ class SqliteReader:
         *,
         now_ns: int,
         snapshot_ms: int | None = None,
+        monotonic_ns: Callable[[], int] = time.monotonic_ns,
     ) -> None:
         """Bind to `connection` and read `IndexCaps` ONCE, at open (07:3272).
 
@@ -678,9 +726,17 @@ class SqliteReader:
         takes its clock from its caller everywhere else (`migrate.apply_pending(conn, *, now_ns)`).
         `snapshot_ms` is passed straight through to `sqlite.snapshot()`, which clamps it below
         `MAX_SNAPSHOT_MS` and reads `[retrieval] snapshot_ms` when it is `None`.
+
+        `monotonic_ns` is a DURATION source and not a clock, which is the distinction that makes it
+        legal here at all: `store/sqlite.py`'s own `snapshot()` takes the same parameter with the
+        same default and the same reason, which `store/sqlite.py:44-45` states as a duration not
+        being a wall reading -- and a test can
+        spend a Channel's budget without spending the wall time. `now_ns` above is the wall clock
+        and stays required; these are two different facts and the store has never conflated them.
         """
         self._connection = connection
         self._snapshot_ms = snapshot_ms
+        self._monotonic_ns = monotonic_ns
         self._live: list[Snapshot] = []
         self._kinds = _enum_codes(connection, "kind")
         self._layers = _enum_codes(connection, "layer")
@@ -1126,9 +1182,9 @@ class SqliteReader:
         rather than a silent `off`, because `ChannelSpec.name` is *"a member of `CHANNELS`"*
         (07:3295) and an unknown Channel in a plan is a planner bug the store should surface.
 
-        Two of the five report `off` / `not_built` and the module docstring argues each one
-        separately. `identity`, `exact` and `lexical` run; see `_identity`, `_exact` and
-        `_lexical`.
+        One of the five reports `off` / `not_built` and the module docstring argues it.
+        `identity`, `exact`, `lexical` and `structural` run; see `_identity`, `_exact`, `_lexical`
+        and `_structural`.
 
         **The order of the three checks is the order of the three different facts.** An unknown
         name is a planner bug (`UsageError`); a known name this build has not shipped is
@@ -1143,6 +1199,23 @@ class SqliteReader:
         result, and scoring over it is the jcodemunch failure in the other direction.
         """
         connection = self._bound(s)
+        refusal = self._refuse(spec, n)
+        if refusal is not None:
+            return refusal
+        if spec.name == "identity":
+            return self._identity(connection, spec, n)
+        if spec.name == "lexical":
+            return self._lexical(connection, spec, n)
+        if spec.name == "structural":
+            return self._structural(connection, spec, n)
+        return self._exact(connection, spec, n)
+
+    def _refuse(self, spec: ChannelSpec, n: Narrowing) -> ChannelOutcome | None:
+        """The four pre-flight answers, or `None` when the Channel should actually run.
+
+        Split out of `channel()` so the dispatch reads as a dispatch. The ORDER is the argument and
+        it is `channel()`'s docstring; this method only carries it out.
+        """
         if spec.name not in CHANNELS:
             msg = (
                 f"{spec.name!r} is not one of the five Channels {CHANNELS}: ChannelSpec.name is "
@@ -1150,11 +1223,7 @@ class SqliteReader:
             )
             raise UsageError(msg, fix="name one of identity, exact, lexical, structural, semantic")
         if spec.name not in _IMPLEMENTED_CHANNELS:
-            return ChannelOutcome(
-                name=spec.name,
-                status="off",
-                reason=_OFF_NOT_BUILT,
-            )
+            return ChannelOutcome(name=spec.name, status="off", reason=_OFF_NOT_BUILT)
         missing = [name for name in _REQUIRED_OBJECTS[spec.name] if name not in self._objects]
         if missing:
             return ChannelOutcome(
@@ -1168,11 +1237,7 @@ class SqliteReader:
                 status="empty",
                 reason="the narrowed set is empty, so there is nothing inside it to rank",
             )
-        if spec.name == "identity":
-            return self._identity(connection, spec, n)
-        if spec.name == "lexical":
-            return self._lexical(connection, spec, n)
-        return self._exact(connection, spec, n)
+        return None
 
     def _identity(
         self, connection: sqlite3.Connection, spec: ChannelSpec, n: Narrowing
@@ -1490,6 +1555,304 @@ class SqliteReader:
             (match, cap),
         ).fetchall()
         return _minmax({int(rowid): -float(score) for rowid, score in rows})
+
+    def _structural(
+        self, connection: sqlite3.Connection, spec: ChannelSpec, n: Narrowing
+    ) -> ChannelOutcome:
+        """07:1327-1362's bounded frontier BFS over `block_link`. Four ceilings, none optional.
+
+        07:1352-1356: *"A Python frontier BFS over batched `WHERE src_block IN (...)`, with an
+        explicit visited set, cancellable at the top of each hop, joining `tmp_narrow`. **Not** a
+        recursive CTE: SQLite has no built-in visited set and no per-hop fan-out bound, so a
+        recursive CTE over a cyclic reference graph is unbounded by construction."* Every clause
+        of that sentence is a line below, and the ceilings compose: `max_hops` bounds the loop,
+        `beam` bounds each hop's fan-out, `max_visited` bounds the whole traversal, and `hub_cap`
+        bounds any one block's contribution.
+
+        **The forward hop only.** `block_link_out(src_block, relation)` is the index this statement
+        uses and 07:984 gives `block_link_in` a different job -- *"`Expand` reverse hop;
+        back-references"* -- which §7.4 spends on `ow open`, outside `retrieve()`. A Channel that
+        walked both directions would double the fan-out at every hop against caps chosen for one.
+
+        **`edge` is not traversed.** 07:1337-1339: *"not traversed by this Channel at v1; it is
+        reachable only through the `@provisional` `GraphView.neighbours()`, outside `retrieve()`"*,
+        and 16-roadmap.md W8.9 is the scheduled work that adds the L3 half.
+
+        **Over its OWN `budget_ms` this returns `UNAVAILABLE(timeout)` and discards what it had.**
+        That is W6.1's two-deadline split seen from inside a Channel: 07:1817 gives the Channel
+        budget `UNAVAILABLE(timeout)` and forces `degraded`, while the QUERY deadline is the other
+        case entirely -- `OK` with `truncated_at_limit`. Returning a partial ranking here would
+        merge the two cases into one and absence gate 1, which reads `reason == "timeout"` and
+        nothing else (07:1221), would have nothing to read. `structural` is also the first Channel
+        that can honour 07:1804's rule at all: *"`structural` at the top of each hop"* is a
+        cancellation point between statements, and the other three are single statements that
+        `interrupt()` could only abort by taking the whole transaction with them.
+        """
+        bind = spec.bind
+        expand = None if bind is None else bind.expand
+        if expand is None:
+            return ChannelOutcome(
+                name=spec.name,
+                status="unavailable",
+                reason="no Expand was bound, so nothing says which relations to traverse",
+            )
+        self._check_relations(connection, expand.relations)
+        seeds = self._seed(
+            connection,
+            () if bind is None else bind.seeds,
+            n,
+            max_visited=expand.max_visited,
+        )
+        if seeds is None:
+            return ChannelOutcome(
+                name=spec.name,
+                status="unavailable",
+                reason=(
+                    "no Channel preceded this one and the narrowing proved only that the "
+                    "candidate set is too big to enumerate, so the traversal has no bounded "
+                    "place to start"
+                ),
+            )
+        if not seeds:
+            return ChannelOutcome(
+                name=spec.name,
+                status="empty",
+                reason="the seed set is empty, so the frontier is empty before hop 1",
+            )
+
+        walk = self._traverse(connection, spec, n, expand, seeds)
+        if walk is None:
+            return ChannelOutcome(name=spec.name, status="unavailable", reason=_TIMEOUT)
+        reached, degradations, truncated = walk
+        if not reached:
+            return ChannelOutcome(
+                name=spec.name,
+                status="empty",
+                reason="no block_link row reaches the narrowed set from the seed",
+            )
+        order = _reading_order(connection, sorted(reached))
+        ranked = sorted(
+            reached,
+            key=lambda block_id: (
+                -reached[block_id],
+                order.get(block_id, (0, 0, 0)),
+                block_id,
+            ),
+        )
+        if spec.limit > 0 and len(ranked) > spec.limit:
+            ranked, truncated = ranked[: spec.limit], True
+        return ChannelOutcome(
+            name=spec.name,
+            status="ok",
+            ranked=tuple(ranked),
+            degradations=tuple(degradations),
+            truncated_at_limit=truncated,
+        )
+
+    def _traverse(
+        self,
+        connection: sqlite3.Connection,
+        spec: ChannelSpec,
+        n: Narrowing,
+        expand: Expand,
+        seeds: tuple[int, ...],
+    ) -> tuple[dict[int, float], list[str], bool] | None:
+        """The hop loop itself. `None` means this Channel spent its own `budget_ms`.
+
+        Returns `(reached, degradations, truncated)`. `truncated` is `True` when a CEILING cut the
+        frontier -- the per-hop `beam` or `max_visited` -- and not only when `spec.limit` cut the
+        output, because `truncated_at_limit` means the shortfall was the plan's and not the
+        corpus's, and a beam cut is exactly that. `max_hops` running out does NOT set it: a
+        two-hop `Expand` that stops at two hops got what it asked for.
+
+        The four ceilings are checked in the order that makes each one cheap. `max_visited` and an
+        empty frontier end the loop before a statement runs; the budget is checked next, at
+        07:1804's *"top of each hop"*; `hub_cap` is inside `_reach`, where the row group is; and
+        `beam` is applied after the hop, because a beam is a choice among what was found and
+        pushing it into the SQL would make it a per-SOURCE limit instead of a per-HOP one.
+
+        **`visited` bounds what is EXPANDED; it does not bound what is RANKED.** The two are
+        different questions and conflating them loses a result the plan's own transcript requires:
+        07:1892-1896 seeds the traversal from `tmp_narrow` itself and reports 311 ranked blocks,
+        every one of which is inside `tmp_narrow` and therefore already a seed. So a block reached
+        from another block ranks even when it was a seed, while the frontier only ever carries
+        blocks that have not been expanded before -- which is what makes a cyclic reference graph
+        terminate. `reached` is bounded by `max_hops x beam` because the beam is applied before
+        the recording, so the two bounds compose rather than one leaking past the other.
+        """
+        started = self._monotonic_ns()
+        budget_ns = max(spec.budget_ms, 0) * 1_000_000
+        narrow_join = ""
+        if n.kind == "set":
+            narrow_join = f" JOIN {_TMP_NARROW} tn ON tn.block_id = l.dst_block"
+        relations = sorted(expand.relations)
+        visited = set(seeds)
+        reached: dict[int, float] = {}
+        degradations: list[str] = []
+        frontier: list[int] = list(seeds)
+        truncated = False
+        for _hop in range(min(expand.max_hops, _EXPAND_MAX_HOPS)):
+            if not frontier or len(visited) >= expand.max_visited:
+                break
+            if budget_ns and self._monotonic_ns() - started >= budget_ns:
+                return None
+            fresh = self._reach(
+                connection,
+                frontier,
+                relations=relations,
+                min_trust=int(expand.min_trust),
+                narrow_join=narrow_join,
+                hub_cap=expand.hub_cap,
+                degradations=degradations,
+            )
+            if not fresh:
+                break
+            ordered = sorted(fresh, key=lambda block_id: (-fresh[block_id], block_id))
+            if len(ordered) > expand.beam:
+                ordered, truncated = ordered[: expand.beam], True
+            for block_id in ordered:
+                if block_id not in reached or fresh[block_id] > reached[block_id]:
+                    reached[block_id] = fresh[block_id]
+            frontier = [block_id for block_id in ordered if block_id not in visited]
+            room = expand.max_visited - len(visited)
+            if len(frontier) > room:
+                frontier, truncated = frontier[:room], True
+            visited.update(frontier)
+        return reached, degradations, truncated
+
+    @staticmethod
+    def _check_relations(connection: sqlite3.Connection, relations: frozenset[str]) -> None:
+        """Both halves of 07:1360-1362, as two usage errors rather than two silent traversals.
+
+        *"`relations` has no default because 'all relations' on a document graph reaches every
+        block in the corpus within three hops; a relation not present in `relation_vocab` is a
+        usage error naming the vocabulary, because silently traversing nothing is indistinguishable
+        from a corpus with no links."*
+
+        The second half is the one that would otherwise be invisible. A misspelled relation makes
+        the `IN (...)` list match nothing, the Channel reports `EMPTY`, absence gate 2 does not
+        fire because `EMPTY` is not `UNAVAILABLE`, and the Verdict says the corpus has no links --
+        which it may be full of. `relation_vocab` is an OPEN vocabulary (0003_index.sql:302) whose
+        rows a driver may add, so the check is a read of the table and never a frozen tuple here.
+        """
+        if not relations:
+            msg = (
+                "Expand.relations is empty and the field has no default: 'all relations' on a "
+                "document graph reaches every block in the corpus within three hops (07:1360)"
+            )
+            raise UsageError(msg, fix="name the relations to traverse, e.g. {'refers_to'}")
+        known = {str(row[0]) for row in connection.execute("SELECT relation FROM relation_vocab")}
+        unknown = sorted(set(relations) - known)
+        if unknown:
+            msg = (
+                f"{unknown} are not in this store's relation_vocab, which holds {sorted(known)}: "
+                f"silently traversing nothing is indistinguishable from a corpus with no links "
+                f"(07:1361)"
+            )
+            raise UsageError(msg, fix="name a relation this store's relation_vocab carries")
+
+    @staticmethod
+    def _seed(
+        connection: sqlite3.Connection,
+        seeds: tuple[int, ...],
+        n: Narrowing,
+        *,
+        max_visited: int,
+    ) -> tuple[int, ...] | None:
+        """The last rung of 07:1327-1332's seed ladder, and `None` when even that is unavailable.
+
+        The first three rungs -- `identity` u `exact`, then whichever scoring Channels precede this
+        one in the plan -- are `retrieve()`'s to choose, because only it has the other Channels'
+        output; they arrive in `ChannelInput.seeds` (D246). This method owns the fourth, *"when no
+        scoring Channel precedes it, from `tmp_narrow` itself"*, and the one case the ladder does
+        not cover: a `Narrowing` of `kind="all"` has no `tmp_narrow` to read, because it is the
+        PROOF that the candidate set was too big to enumerate (07:1585-1591). Seeding a traversal
+        from a set that could not be listed is the unbounded traversal `Expand` exists to prevent,
+        so the answer is `None` and the Channel reports `unavailable` -- a statement about this
+        query's shape, never about the corpus.
+
+        The `tmp_narrow` read is bounded by `max_visited` and ordered by `(doc_ord, page, ord)`.
+        Bounded, because a seed the traversal could never visit is work with no possible effect on
+        the result; ordered by reading order, because the bound decides WHICH blocks seed and
+        `block_id` order would make that decision by ingest time.
+        """
+        if seeds:
+            return tuple(dict.fromkeys(int(block_id) for block_id in seeds))
+        if n.kind != "set":
+            return None
+        rows = connection.execute(
+            f"SELECT tn.block_id FROM {_TMP_NARROW} tn "  # noqa: S608
+            f"JOIN ow_block_head b ON b.block_id = tn.block_id "
+            f"ORDER BY b.doc_ord, b.page, b.ord, b.block_id LIMIT ?",
+            (max(max_visited, 1),),
+        ).fetchall()
+        return tuple(int(row[0]) for row in rows)
+
+    @staticmethod
+    def _reach(
+        connection: sqlite3.Connection,
+        frontier: Sequence[int],
+        *,
+        relations: Sequence[str],
+        min_trust: int,
+        narrow_join: str,
+        hub_cap: int,
+        degradations: list[str],
+    ) -> dict[int, float]:
+        """One hop: `{neighbour: (weight x trust) / log1p(degree)}`, batched, unfiltered.
+
+        Every destination the allowlist, `min_trust`, the head generation and `tmp_narrow` admit,
+        including ones the traversal has already visited -- the caller decides which of those may
+        be expanded again and which may be ranked, and those are two different decisions (see
+        `_traverse`).
+
+        **`degree` is the SOURCE block's eligible out-degree**, and the reason is in the statement
+        rather than in the formula. 07:1894 and 18:2834 give the ordering as
+        `(weight x trust) / log1p(degree)` without saying whose degree, and the two readings are
+        both defensible in the abstract -- the source's is PageRank's out-degree division, the
+        destination's is an IDF-shaped penalty on a block everything points at. What decides it
+        here is that the source's degree is ALREADY IN HAND: it is the size of this row group, so
+        the hop stays *"batched `WHERE src_block IN (...)`"* (07:1352), one statement, while the
+        destination's degree needs a second statement per hop against a 40 ms budget. It is also
+        the same count `hub_cap` compares against one line below, so "hub" means one thing in both
+        places rather than two. D249.
+
+        **Eligible, not total.** The degree counted is the neighbours this hop could actually
+        contribute -- after the relation allowlist, `min_trust`, the head-generation join and
+        `tmp_narrow` -- because that is exactly what 07:1349 caps: *"a block with more links
+        contributes at most `hub_cap` neighbours"*.
+
+        **`hub_cap` truncates by weight, deterministically.** 07:1350 says *"sampled by weight"*;
+        the statement is ordered by `weight DESC, dst_block`, so the kept subset is the top
+        `hub_cap` and a re-run of the same query over the same store returns the same set. A
+        weighted RANDOM sample would satisfy the word "sampled" and break ST7, which is the
+        property the whole store is arranged around.
+        """
+        fresh: dict[int, float] = {}
+        for start in range(0, len(frontier), _ID_BATCH):
+            chunk = list(frontier[start : start + _ID_BATCH])
+            rows = connection.execute(
+                f"SELECT l.src_block, l.dst_block, l.weight, l.trust "  # noqa: S608
+                f"FROM block_link l "
+                f"JOIN ow_block_head b ON b.block_id = l.dst_block{narrow_join} "
+                f"WHERE l.src_block IN ({_placeholders(len(chunk))}) "
+                f"AND l.relation IN ({_placeholders(len(relations))}) AND l.trust >= ? "
+                f"ORDER BY l.src_block, l.weight DESC, l.dst_block",
+                (*chunk, *relations, min_trust),
+            ).fetchall()
+            for _src, group in groupby(rows, key=lambda row: row[0]):
+                edges = [(int(dst), float(weight), int(trust)) for _s, dst, weight, trust in group]
+                degree = len(edges)
+                if degree > hub_cap:
+                    edges = edges[:hub_cap]
+                    if _HUB_CAPPED not in degradations:
+                        degradations.append(_HUB_CAPPED)
+                penalty = math.log1p(degree)
+                for dst, weight, trust in edges:
+                    score = weight * trust / penalty
+                    if dst not in fresh or score > fresh[dst]:
+                        fresh[dst] = score
+        return fresh
 
     def _exact(
         self, connection: sqlite3.Connection, spec: ChannelSpec, n: Narrowing
