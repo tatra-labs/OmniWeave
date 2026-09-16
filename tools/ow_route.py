@@ -61,6 +61,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from omniweave.route import agree as rag
 from omniweave.route import demand as rd
 from omniweave.route import evidence as ev
 from omniweave.route import explain as rx
@@ -266,6 +267,9 @@ def _scoreboard(conn: rlg.Connection, out: TextIO, *, slice_key: str) -> int:
         _emit(out, "  'OK' -- so every slice would read OK for the reason it should not. D-12.")
         return EXIT_NOT_RUN
     rows = rlg.scoreboard(conn, slice_key=slice_key)
+    for line in rag.scoreboard_legend():
+        _emit(out, line)
+    _emit(out)
     for row in rows:
         _emit(out, row.render())
     counts = {state: sum(row.state == state for row in rows) for state in rlg.STATES}

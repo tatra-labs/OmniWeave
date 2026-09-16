@@ -241,6 +241,21 @@ _DECISION = (
 )
 
 
+_BASE: tuple[str, ...] = tuple(f"word{index:02d}" for index in range(50))
+"""Fifty distinct words, so one substitution is exactly one word edit and an agreement is exact."""
+
+
+def _readings(agreement: float) -> tuple[str, str]:
+    """Two readings of one part whose word-level agreement is `agreement`, to three decimals.
+
+    The fixture's 0.94 is COMPUTED by `agree.py` from these two strings rather than typed into an
+    `INSERT`, which is what W5.7 changes about this file: before it, the label `ow route propose`
+    fits against was a number a test author chose."""
+    edits = round((1.0 - agreement) * len(_BASE))
+    changed = [word if index >= edits else f"x{word}" for index, word in enumerate(_BASE)]
+    return " ".join(_BASE), " ".join(changed)
+
+
 def _store(tmp_path: Path, *, install: bool = True, decisions: int = 50) -> Path:
     """A store carrying section 10.3's slice: forty photo pages and ten genuine scans.
 
@@ -248,7 +263,8 @@ def _store(tmp_path: Path, *, install: bool = True, decisions: int = 50) -> Path
     escalates, `agree.decode_vs_page` comes back at 0.94, and the 858 micros bought nothing -- so
     the proposal this produces is a claim about the shipped policy and not about a fixture.
     """
-    from omniweave.route import ledger as rlg  # noqa: PLC0415 -- the tool's own dependency
+    from omniweave.route import agree as rag  # noqa: PLC0415 -- the tool's own dependency
+    from omniweave.route import ledger as rlg  # noqa: PLC0415
     from omniweave.route import policy as rp  # noqa: PLC0415
     from omniweave_core.store.sqlite import connect  # noqa: PLC0415
 
@@ -271,12 +287,15 @@ def _store(tmp_path: Path, *, install: bool = True, decisions: int = 50) -> Path
             (name, payload),
         )
         conn.execute(_DECISION, (name, name, name, SLICE, name))
-        for source in ("agree", "audit"):
-            conn.execute(
-                "INSERT INTO route_quality (decision_id, source, metric, agreement, created_at) "
-                "VALUES (?, ?, 'norm_edit_agreement', ?, 0)",
-                (name, source, 0.94 if photo else 0.30),
-            )
+        decode_text, page_text = _readings(0.94 if photo else 0.30)
+        rag.record(
+            conn, decision_id=name, decode_text=decode_text, page_text=page_text, created_at=0
+        )
+        conn.execute(
+            "INSERT INTO route_quality (decision_id, source, metric, agreement, created_at) "
+            "VALUES (?, 'audit', 'norm_edit_agreement', ?, 0)",
+            (name, 0.94 if photo else 0.30),
+        )
         conn.execute(
             "INSERT INTO route_spend (decision_id, attempt, micros, outcome) "
             "VALUES (?, 1, 858, 'ok')",
@@ -308,6 +327,36 @@ def test_scoreboard_prints_the_views_own_state_column(tmp_path: Path) -> None:
     assert "REGRESSED" in report
     assert SLICE in report
     assert "1 slice/rule/driver rollup(s)" in report
+
+
+def test_the_fitted_label_is_computed_by_the_signal_rather_than_typed(tmp_path: Path) -> None:
+    """W5.7 closes the loop this file has been testing the far end of since W5.5b.
+
+    The `agree` rows now come out of `agree.agreement()` over two readings, so the slice's
+    escalation divergence is a property of the population -- forty parts at 0.94 and ten at 0.30
+    average to 0.188 -- rather than a number a test author chose and the fitter read back.
+    """
+    from omniweave.route import agree as rag  # noqa: PLC0415 -- the module under demonstration
+
+    assert rag.agreement(*_readings(0.94)).value == pytest.approx(0.94)
+    assert rag.agreement(*_readings(0.30)).value == pytest.approx(0.30)
+    out = StringIO()
+    store = _store(tmp_path)
+    assert tool.main(["scoreboard", "--store", str(store)], writer=out) == tool.EXIT_CLEAN
+    assert "esc=0.1880" in out.getvalue()
+
+
+def test_scoreboard_heads_the_agreement_column_the_way_three_documents_ask(tmp_path: Path) -> None:
+    """01:946, 12:1101 and 13:1459 all give this signal *"its own column, headed "Agreement (not
+    accuracy)""*, and the column the view actually prints is `escalation_divergence` -- which is
+    `1.0 - agreement`. So the heading has to say both, or a divergence of 0.06 reads as 94%."""
+    out = StringIO()
+    store = _store(tmp_path)
+    assert tool.main(["scoreboard", "--store", str(store)], writer=out) == tool.EXIT_CLEAN
+    report = out.getvalue()
+    assert "NOT ACCURACY" in report
+    assert "1.0 - agree.decode_vs_page" in report
+    assert report.index("esc = escalation_divergence") < report.index("REGRESSED")
 
 
 def test_propose_without_the_exchange_rate_refuses(tmp_path: Path) -> None:
