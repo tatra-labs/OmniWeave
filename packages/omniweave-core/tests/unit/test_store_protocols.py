@@ -822,12 +822,18 @@ def test_coverage_can_report_that_coverage_is_unknown() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_the_reexport_surface_is_the_four_protocols_and_the_eight_value_types() -> None:
+def test_the_reexport_surface_is_the_four_protocols_the_backend_and_the_value_types() -> None:
     """A flat surface, like `omniweave_core.model`'s (02-architecture.md:248).
 
     A caller writes `from omniweave_core.store import Reader`, never
     `... .store.types import Reader`, so `types.py` being a separate module is an implementation
     detail of this package and not part of the boundary.
+
+    `VectorBackend` is here and is NOT one of the four: 07:86-92 calls it *"a fifth boundary
+    type ... deliberately not one of the four Protocols"*, because "seam" is the charter's word
+    for the four numbered process/FFI boundaries and a Backend crosses none of them. It is in
+    `__all__` because 07:3132 puts it in `T-CONTRACT` beside the four, and it is absent from
+    `PROTOCOLS` above because the 33-method price counts four.
     """
     assert sorted(store_module.__all__) == [
         "ChannelInput",
@@ -842,6 +848,8 @@ def test_the_reexport_surface_is_the_four_protocols_and_the_eight_value_types() 
         "Reader",
         "Snapshot",
         "Store",
+        "VecManifest",
+        "VectorBackend",
     ]
     for name in store_module.__all__:
         assert hasattr(store_module, name), f"{name} is exported but not bound"

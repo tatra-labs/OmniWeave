@@ -71,9 +71,12 @@ and 07:1670-1680's whole subject. `off` is disclosed and contributes nothing to 
   another Channel's output cannot be built before that output exists. `ChannelInput` gained a
   `seeds` field to carry it (D246); the last rung of 07's seed ladder, `tmp_narrow` itself, needed
   no field because the `Narrowing` already carries it.
-* **`semantic` -- refused.** *"No vector column"* (16-roadmap.md:468); `vec` is never attached at
-  P2, so `IndexCaps.channels` also omits it, and the refusal here is the second half of the same
-  fact.
+* **`semantic` -- SHIPPED at W6.2d, and it still answers `unavailable` on a stock store.**
+  *"No vector column"* (16-roadmap.md:468) is a P2 fact; `[retrieval] vectors = "off"` is a
+  permanent v1 default (07:2596). The Channel exists, calls `VectorBackend.search()` and lifts
+  segments to blocks; with no backend selected and no sidecar attached it says so, and saying so
+  is the difference between `OFF(vectors)` (an operator choice, ceiling-exempt) and a Channel
+  nobody wrote.
 
 **`IndexCaps.channels` reports the STORE fact and is deliberately NOT intersected with what this
 backend implements.** The tempting narrowing -- advertise only `exact`, so `plan()` never selects a
@@ -173,11 +176,17 @@ from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from itertools import groupby
 from types import MappingProxyType
-from typing import Final, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 from omniweave_core.canonical import sha256_canonical
 from omniweave_core.errors import StoreError, UsageError
-from omniweave_core.limits import MAX_FILTER_DOC_KEYS, MAX_QUERY_REFS, PREFILTER_MAX, VEC_BRUTE_MAX
+from omniweave_core.limits import (
+    MAX_FILTER_DOC_KEYS,
+    MAX_QUERY_REFS,
+    PREFILTER_MAX,
+    SEM_BLOCKS_PER_SEGMENT,
+    VEC_BRUTE_MAX,
+)
 from omniweave_core.model.enums import Kind, Layer, Method, OsKind, Quote, Trust
 from omniweave_core.model.spans import TextSpan
 from omniweave_core.retrieve import CHANNELS
@@ -200,7 +209,11 @@ from omniweave_core.store.types import (
     IndexCaps,
     Narrowing,
     Snapshot,
+    VecManifest,
 )
+
+if TYPE_CHECKING:
+    from omniweave_core.store import VectorBackend
 
 __all__ = [
     "ChannelOutcome",
@@ -214,14 +227,15 @@ __all__ = [
 # Constants. Each is a transcription with its line, or private with a stated owner.
 # ---------------------------------------------------------------------------
 
-_IMPLEMENTED_CHANNELS: Final = frozenset({"identity", "exact", "lexical", "structural"})
+_IMPLEMENTED_CHANNELS: Final = frozenset({"identity", "exact", "lexical", "structural", "semantic"})
 """Which of `CHANNELS` THIS BUILD can run, as opposed to which the store supports.
 
 The one-line edit site for each retrieval cell: widening this frozenset is what turns an
 `off`/`not_built` outcome into a real Channel run, and the ruling for each name is in the module
-docstring. P2 held `{"exact"}`; W6.2b added `identity` and `lexical`; W6.2c added
-`structural`. `semantic` is W6.2d's, and it is the one of the five that needs a
-`VectorBackend` and an attached `vec` sidecar before it can look at anything.
+docstring. P2 held `{"exact"}`; W6.2b added `identity` and `lexical`, W6.2c `structural` and
+W6.2d `semantic` -- the last of the five, and the only one that can be shipped and still
+report `unavailable` on every store, because it needs a `VectorBackend` and a matching `vec`
+sidecar before it can look at anything.
 """
 
 _REQUIRED_OBJECTS: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
@@ -230,6 +244,7 @@ _REQUIRED_OBJECTS: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
         "exact": ("anchor", "ref_site"),
         "lexical": ("block_fts",),
         "structural": ("block_link", "relation_vocab"),
+        "semantic": ("segment", "segment_block"),
     }
 )
 """What each implemented Channel's statements NAME, so a missing one is `unavailable` and not a
@@ -261,6 +276,34 @@ there: it is a clamp at the traversal and not a field constraint. So the travers
 caller who asks for 99 hops gets 4 rather than a `ValueError` -- the ceiling is what keeps an
 unbounded traversal unrepresentable, and refusing the request would only move the unboundedness
 into the caller's retry.
+"""
+
+_SEGMENT_LIFT_CAPPED: Final = "segment_lift_capped"
+"""Row 20 of the closed twenty-seven, and the cap that bites.
+
+07:1513-1515: *"The cap is `SEM_BLOCKS_PER_SEGMENT = 64`, and because `MAX_SEGMENT_BLOCKS =
+512`, the cap **can bite for up to 448 blocks of a large segment**. The selection rule is
+therefore named, deterministic and disclosed."* And without the record, 07:1519 -- *"up to
+87% of a large table segment's citable cells are unreachable through it with nothing
+recording the fact"*.
+"""
+
+_PUSHDOWN_UNAVAILABLE: Final = "pushdown_unavailable"
+"""What a backend declaring `VecManifest.pushdown = False` costs, disclosed.
+
+07:104-107 is contract obligation (1) and names the system that got it wrong: *"LEANN post-filters
+metadata after ANN retrieval with no over-fetch, which is silent recall loss that presents as
+absence."* A backend that cannot push the filter gets the over-fetch clamp instead, and absence
+gate 11 (`filter_starved`) reads `VecManifest.pushdown` by name (07:2191).
+"""
+
+_VEC_UNREADABLE: Final = "vec_unreadable"
+"""07:1373-1376's one exception-to-status conversion in the whole store.
+
+*"A `SQLITE_CORRUPT` or `SQLITE_NOTADB` raised while reading the sidecar is caught **at the Channel
+boundary only** and reported as `UNAVAILABLE(vec_unreadable)` -- the one place a store-level
+exception becomes a Channel status rather than propagating, and it is why the sidecar is deletable
+in the first place."* 07:3189 gives the documented fix: `rm index.vec.owstore`.
 """
 
 _HUB_CAPPED: Final = "hub_capped"
@@ -342,11 +385,18 @@ _LIVE_STATES: Final = ("pending", "claimed")
 class ChannelOutcome:
     """One Channel's result, narrowed to what P2 can honestly fill. NOT `ChannelResult`.
 
-    07:1225-1235's `ChannelResult` has ten fields and three of them still cannot exist here:
-    `rank_of` is the semantic Channel's shared-rank carrier (07:1240-1248), `weight` is fusion's,
-    and `cost` is a `Spend` (05-ingest-and-routing.md:2370, P4's). `ChannelResult` itself lives in
-    `omniweave_core.retrieve` (18-api-sketch.md:841). So this is the narrowest shape the two
-    refusals and the three implemented Channels actually need.
+    07:1225-1235's `ChannelResult` has ten fields and two of them still cannot exist here:
+    `weight` is fusion's and `cost` is a `Spend` (05-ingest-and-routing.md:2370, P4's).
+    `ChannelResult` itself lives in `omniweave_core.retrieve` (18-api-sketch.md:841). So this is
+    the narrowest shape the five implemented Channels actually need.
+
+    **`rank_of` was the third and W6.2d gave it a producer.** 07:1243-1250 calls it *"the one field
+    this document adds to the charter's shape, and it exists because the charter's own semantics
+    are otherwise unrepresentable"*: a segment hit at rank *r* yields its member blocks AT RANK
+    *r*, so up to 64 blocks share one rank, and a positional rank would spread them over 64 ranks
+    and destroy the region-level property the rule exists to create. It is *"empty for every
+    Channel but `semantic`"*, and `fuse()` reads `c.rank_of.get(b) or (position of b in c.ranked)
+    + 1` -- which is why an empty mapping is a real value here and not an omission.
 
     **`grades` was the fourth and W6.2b gave it a producer.** P2 omitted it because the identity
     ladder had none; 07:1231 declares it *"the tier ACTUALLY measured"* and 07:2296 says why the
@@ -381,6 +431,7 @@ class ChannelOutcome:
     name: str
     status: Literal["ok", "empty", "off", "unavailable"]
     ranked: tuple[int, ...] = ()
+    rank_of: Mapping[int, int] = MappingProxyType({})
     spans: Mapping[int, TextSpan] = MappingProxyType({})
     grades: Mapping[int, str] = MappingProxyType({})
     degradations: tuple[str, ...] = ()
@@ -406,6 +457,21 @@ class ChannelOutcome:
                 f"channel {self.name!r} graded blocks it did not rank ({ungraded}): `grades` is "
                 f"the tier ACTUALLY measured (07:1231), so a grade for a block the Channel did "
                 f"not return is a tier nothing measured"
+            )
+            raise ValueError(msg)
+        unranked = sorted(set(self.rank_of) - set(self.ranked))
+        if unranked:
+            msg = (
+                f"channel {self.name!r} gave ranks to blocks it did not rank ({unranked}): "
+                f"`rank_of` is the authoritative rank PER RANKED BLOCK (07:1248), not a second "
+                f"result set"
+            )
+            raise ValueError(msg)
+        if any(rank < 1 for rank in self.rank_of.values()):
+            msg = (
+                f"channel {self.name!r} reports a rank below 1; `fuse()` reads `rank_of.get(b) or "
+                f"(position + 1)` (07:1249-1250), so 0 is both a falsy sentinel and an illegal "
+                f"1-based rank"
             )
             raise ValueError(msg)
         unknown = sorted(set(self.grades.values()) - set(IDENTITY_LADDER))
@@ -719,6 +785,7 @@ class SqliteReader:
         now_ns: int,
         snapshot_ms: int | None = None,
         monotonic_ns: Callable[[], int] = time.monotonic_ns,
+        vectors: VectorBackend | None = None,
     ) -> None:
         """Bind to `connection` and read `IndexCaps` ONCE, at open (07:3272).
 
@@ -733,10 +800,20 @@ class SqliteReader:
         being a wall reading -- and a test can
         spend a Channel's budget without spending the wall time. `now_ns` above is the wall clock
         and stays required; these are two different facts and the store has never conflated them.
+
+        `vectors` is the `VectorBackend` the config named, ALREADY SELECTED. 18-api-sketch.md:1708
+        makes `[retrieval] vec.backend` (18:1708) *"an `omniweave.backends` entry-point name,
+        selected **by
+        name in config only** -- a Backend is never resolved and never in `resolve()`"*, so the
+        selection happens once, outside, and this class receives the result -- the same shape as
+        the connection it does not open. `None` is the shipped default because
+        `[retrieval] vectors = "off"` is (07:2596), and it makes the semantic Channel
+        `unavailable` rather than absent.
         """
         self._connection = connection
         self._snapshot_ms = snapshot_ms
         self._monotonic_ns = monotonic_ns
+        self._vectors = vectors
         self._live: list[Snapshot] = []
         self._kinds = _enum_codes(connection, "kind")
         self._layers = _enum_codes(connection, "layer")
@@ -796,10 +873,13 @@ class SqliteReader:
         robust than the ordering, not less. `channels` becomes a sorted list because a `frozenset`
         is outside canonical JSON's grammar and its iteration order is not stable across processes.
 
-        `vec_backend` and `vec_pushdown` come from the sidecar's `vec_manifest` (07:3339-3351) and
-        the sidecar is never attached at P2 (*"No vector column"*, 16-roadmap.md:468), so they are
-        `None` and `False`; the read that would fill them belongs with whatever ATTACHes `vec`, and
-        `store/sqlite.py`'s `snapshot()` records the same contract for `Snapshot.vec_attached`.
+        `vec_backend` and `vec_pushdown` come from the sidecar's `vec_manifest` (07:3339-3348)
+        and W6.2d fills them: `_read_vec_manifest` below is the read, and it is here rather than in
+        the Channel because 07:3272 is *"read once, at open"* and `caps_digest` memoises `plan()`.
+        **`vec_attached` here means attached AND matching**, which is one condition more than
+        `store/sqlite.py`'s `snapshot()` applies -- that module records the second half as owed to
+        *"whoever ATTACHes the sidecar"* and nothing attaches one yet, so the Reader applies it and
+        the two will agree when the attach path lands.
         `federated` is T4's (07 section 12) and no shipped table can make it true.
 
         `fts_state` defaults to `stale` and not to `ok` when the key is missing. The three-state
@@ -813,9 +893,10 @@ class SqliteReader:
         self._objects = objects
         state = _index_state_map(connection)
         stats = _stat_rows(connection)
-        vec_attached = any(
-            str(row[1]) == "vec" for row in connection.execute("PRAGMA database_list")
+        self._vec, self._vec_reason = self._read_vec_manifest(
+            connection, str(state.get("corpus_id", ""))
         )
+        vec_attached = self._vec is not None
         space_id = int(state["default_space_id"]) if "default_space_id" in state else None
         channels = self._store_channels(objects, vec_attached, space_id)
 
@@ -827,9 +908,9 @@ class SqliteReader:
             "has_trigram": "block_tri" in objects,
             "fts_state": state.get("fts_state", "stale"),
             "space_id": space_id,
-            "vec_backend": None,
+            "vec_backend": self._vec.backend if self._vec else None,
             "vec_ceiling": VEC_BRUTE_MAX if vec_attached else 0,
-            "vec_pushdown": False,
+            "vec_pushdown": bool(self._vec and self._vec.pushdown),
             "live_blocks": stats.get("live_blocks", (0, 0))[0],
             "live_segments": stats.get("live_segments", (0, 0))[0],
             "docs": stats.get("docs", (0, 0))[0],
@@ -845,9 +926,9 @@ class SqliteReader:
             has_trigram="block_tri" in objects,
             fts_state=str(fields["fts_state"]),
             space_id=space_id,
-            vec_backend=None,
+            vec_backend=self._vec.backend if self._vec else None,
             vec_ceiling=VEC_BRUTE_MAX if vec_attached else 0,
-            vec_pushdown=False,
+            vec_pushdown=bool(self._vec and self._vec.pushdown),
             live_blocks=stats.get("live_blocks", (0, 0))[0],
             live_segments=stats.get("live_segments", (0, 0))[0],
             docs=stats.get("docs", (0, 0))[0],
@@ -1182,9 +1263,10 @@ class SqliteReader:
         rather than a silent `off`, because `ChannelSpec.name` is *"a member of `CHANNELS`"*
         (07:3295) and an unknown Channel in a plan is a planner bug the store should surface.
 
-        One of the five reports `off` / `not_built` and the module docstring argues it.
-        `identity`, `exact`, `lexical` and `structural` run; see `_identity`, `_exact`, `_lexical`
-        and `_structural`.
+        All five run; the module docstring argues each one. See `_identity`, `_exact`,
+        `_lexical`, `_structural` and `_semantic`. `semantic` is the one that reports
+        `unavailable` on every stock store, because `[retrieval] vectors = "off"` is the shipped
+        default permanently (07:2596) -- which is a configuration fact and not a build one.
 
         **The order of the three checks is the order of the three different facts.** An unknown
         name is a planner bug (`UsageError`); a known name this build has not shipped is
@@ -1208,6 +1290,8 @@ class SqliteReader:
             return self._lexical(connection, spec, n)
         if spec.name == "structural":
             return self._structural(connection, spec, n)
+        if spec.name == "semantic":
+            return self._semantic(connection, spec, n)
         return self._exact(connection, spec, n)
 
     def _refuse(self, spec: ChannelSpec, n: Narrowing) -> ChannelOutcome | None:
@@ -1555,6 +1639,293 @@ class SqliteReader:
             (match, cap),
         ).fetchall()
         return _minmax({int(rowid): -float(score) for rowid, score in rows})
+
+    @staticmethod
+    def _read_vec_manifest(
+        connection: sqlite3.Connection, corpus_id: str
+    ) -> tuple[VecManifest | None, str]:
+        """The sidecar's identity, or `None` plus the reason the semantic Channel will report.
+
+        Three ways to get `None`, and they are three different facts a Verdict has to be able to
+        tell apart:
+
+        1. **Nothing attached.** The ordinary case, because 07:2596 makes
+           `[retrieval] vectors = "off"` the shipped default permanently.
+        2. **Attached and unreadable.** 07:1373-1376's `SQLITE_CORRUPT` / `SQLITE_NOTADB`, reported
+           as `vec_unreadable` with `rm index.vec.owstore` as the documented fix (07:3189). Caught
+           here as well as at the Channel because the manifest read is itself a sidecar read.
+        3. **Attached, readable, belonging to another corpus.** 07:3190 and 07:790: *"`corpus_id`
+           (!= `main.index_state.corpus_id` => THE SIDECAR IS IGNORED, not read)"*. Ignored is not
+           an error and not a rebuild -- the vectors are derived and the store is authoritative --
+           and absence gate 13 (`space_mismatch`) is what makes it visible.
+
+        `ValueError` is caught beside `sqlite3.DatabaseError` because `vec_manifest` is a `(k, v)`
+        TEXT table: a truncated write leaves a row whose `v` is not an integer, which is the same
+        corruption arriving through `int()` instead of through the pager.
+        """
+        attached = any(str(row[1]) == "vec" for row in connection.execute("PRAGMA database_list"))
+        if not attached:
+            return None, "no vec sidecar is attached: [retrieval] vectors is off"
+        try:
+            rows = {
+                str(k): str(v) for k, v in connection.execute("SELECT k, v FROM vec.vec_manifest")
+            }
+            found = rows.get("corpus_id", "")
+            if found != corpus_id:
+                return None, (
+                    f"the vec sidecar carries corpus_id {found!r} and this store is "
+                    f"{corpus_id!r}, so the sidecar is ignored and not read"
+                )
+            storage = "sig_full" if rows.get("storage") == "sig_full" else "sig_only"
+            manifest = VecManifest(
+                corpus_id=found,
+                schema=int(rows.get("schema", 0)),
+                model_key=rows.get("model_key", ""),
+                backend=rows.get("backend", ""),
+                backend_version=rows.get("backend_version", ""),
+                storage=storage,
+                sig_bits=int(rows.get("sig_bits", 0)),
+                dim=int(rows.get("dim", 0)),
+                built_at_ns=int(rows.get("built_at_ns", 0)),
+                rows=int(rows.get("rows", 0)),
+                pushdown=rows.get("pushdown", "0") not in {"", "0", "false", "False"},
+            )
+        except (sqlite3.DatabaseError, ValueError):
+            return None, _VEC_UNREADABLE
+        return manifest, ""
+
+    def _semantic(
+        self, connection: sqlite3.Connection, spec: ChannelSpec, n: Narrowing
+    ) -> ChannelOutcome:
+        """07:1364-1376's Channel: a backend call, one join back, and a capped lift to blocks.
+
+        **The embedding is not computed here and cannot be.** 07:1364-1366 puts it in phase 2,
+        *"before the snapshot"*, with `query_prompt_digest` applied client-side, and ST22 is why:
+        the query embedding is a Driver call, a Driver call inside a held read transaction pins the
+        WAL, and a pinned WAL is the futility-latch condition. So `q_sig` arrives on
+        `ChannelInput` and a Channel that finds it `None` reports that phase 2 did not run rather
+        than running it late.
+
+        **The join back is the only exit from the sidecar.** 07:1368-1372 prints the statement and
+        calls it *"the **only** exit from the `vec` sidecar (ST4), which is what makes a stale
+        vector invisible rather than wrong"*. `search()` returns segment CONTENT DIGESTS, never
+        `segment_id`s, and this method resolves them against live segments inside the main
+        snapshot; a backend that returned ids would make that join an identity and the staleness
+        undetectable.
+
+        **The table-synopsis rule is honoured by not doing something.** 07:1523-1525: *"a semantic
+        hit whose segment is a table synopsis (`segment.synopsis_of IS NOT NULL`) lifts to the
+        synopsis segment's own blocks and never to the 4M cells it summarises."* The lift reads
+        `segment_block` for the hit segment and follows no `synopsis_of` edge, so the rule holds by
+        construction -- which is worth saying, because the way to break it is to add a helpful join.
+
+        **A store-level exception becomes a Channel status exactly here and nowhere else**
+        (07:1373-1376). The catch is narrow -- `sqlite3.DatabaseError`, which is `SQLITE_CORRUPT`
+        and `SQLITE_NOTADB`'s Python class -- and it returns `unavailable`, which forces
+        `degraded`; an `except: return []` would make a corrupt sidecar a confident zero, which is
+        ST8's whole subject and what `retrieve/`'s semgrep ban exists for.
+        """
+        ready = self._vec_ready(spec)
+        if isinstance(ready, ChannelOutcome):
+            return ready
+        vectors, vec, q_sig = ready
+        bind = spec.bind
+        degradations: list[str] = []
+        candidates: frozenset[bytes] | None = None
+        if n.kind == "set" and vec.pushdown:
+            candidates = self._candidate_digests(connection)
+        elif n.kind == "set":
+            degradations.append(_PUSHDOWN_UNAVAILABLE)
+        over = 1 if candidates is not None else max(spec.overfetch, 1)
+        try:
+            hits = vectors.search(
+                vec.model_key,
+                q_sig,
+                None if bind is None else bind.q_full,
+                k=max(spec.limit, 1) * over,
+                candidates=candidates,
+            )
+        except sqlite3.DatabaseError:
+            return ChannelOutcome(name=spec.name, status="unavailable", reason=_VEC_UNREADABLE)
+        if not hits:
+            return ChannelOutcome(
+                name=spec.name,
+                status="empty",
+                reason="the vector backend matched no segment",
+            )
+        live = self._live_segments(connection, [digest for digest, _score in hits])
+        ranked, rank_of = self._lift(connection, hits, live, n, degradations)
+        if not ranked:
+            return ChannelOutcome(
+                name=spec.name,
+                status="empty",
+                reason=(
+                    "every segment the backend matched is retired, superseded or outside the "
+                    "narrowed set"
+                ),
+            )
+        truncated = spec.limit > 0 and len(ranked) > spec.limit
+        if truncated:
+            ranked = ranked[: spec.limit]
+            rank_of = {block_id: rank_of[block_id] for block_id in ranked}
+        return ChannelOutcome(
+            name=spec.name,
+            status="ok",
+            ranked=tuple(ranked),
+            rank_of=MappingProxyType(dict(rank_of)),
+            degradations=tuple(degradations),
+            truncated_at_limit=truncated,
+        )
+
+    def _vec_ready(
+        self, spec: ChannelSpec
+    ) -> tuple[VectorBackend, VecManifest, bytes] | ChannelOutcome:
+        """The backend, its manifest and the query signature -- or the refusal that stops the
+        Channel first.
+
+        Three things can stop it and each names a different missing piece, because the three have
+        three different fixes: select a backend, attach (or rebuild) the sidecar, or run phase 2.
+        All three are `unavailable` and never `empty` -- `empty` says the backend ran and matched
+        nothing, which is a claim about the corpus, and none of these three looked at it.
+
+        Returning the three values it proved present, rather than a `None`, is what keeps
+        `_semantic` from re-checking them: a refusal and the material that makes the Channel
+        runnable are the same question asked once.
+        """
+        if self._vectors is None:
+            return ChannelOutcome(
+                name=spec.name,
+                status="unavailable",
+                reason="no VectorBackend was selected: [retrieval] vectors is off",
+            )
+        if self._vec is None:
+            return ChannelOutcome(name=spec.name, status="unavailable", reason=self._vec_reason)
+        if spec.bind is None or spec.bind.q_sig is None:
+            return ChannelOutcome(
+                name=spec.name,
+                status="unavailable",
+                reason=(
+                    "the query carries no embedding: phase 2 embeds before the snapshot opens "
+                    "(ST22) and it did not run"
+                ),
+            )
+        return self._vectors, self._vec, spec.bind.q_sig
+
+    @staticmethod
+    def _candidate_digests(connection: sqlite3.Connection) -> frozenset[bytes]:
+        """The live segment digests the narrowed set touches -- contract obligation (1)'s input.
+
+        07:104-105: *"`candidates` narrows **before** ranking, tested at 0.01 selectivity"*. The
+        set is computed here rather than by the backend because `tmp_narrow` is the Reader's TEMP
+        table and the backend may not be SQLite at all; a digest is the only identifier the two
+        sides share, which is the same property that makes the join back the sidecar's only exit.
+
+        Only called when the narrowing is a `set`. A `kind="all"` narrowing is the PROOF that the
+        candidate set could not be enumerated (07:1585-1591), so there is nothing to push and
+        pushing `None` is the honest report -- not a `pushdown_unavailable`, which names the
+        BACKEND's limitation and not the query's.
+        """
+        rows = connection.execute(
+            f"SELECT DISTINCT s.content_digest FROM segment s "  # noqa: S608
+            f"JOIN doc d ON d.doc_ord = s.doc_ord "
+            f"JOIN segment_block sb ON sb.segment_id = s.segment_id "
+            f"JOIN {_TMP_NARROW} tn ON tn.block_id = sb.block_id "
+            f"WHERE s.gen = d.gen AND s.state = 0"
+        )
+        return frozenset(bytes(row[0]) for row in rows)
+
+    @staticmethod
+    def _live_segments(
+        connection: sqlite3.Connection, digests: Sequence[bytes]
+    ) -> Mapping[bytes, int]:
+        """07:1368-1370's statement, transcribed, batched at `_ID_BATCH`.
+
+        ```sql
+        SELECT s.segment_id, s.content_digest FROM segment s JOIN doc d USING (doc_ord)
+         WHERE s.content_digest IN (...) AND s.gen = d.gen AND s.state = 0;
+        ```
+
+        A digest the backend returned and this statement does not is a STALE vector: the segment it
+        described has been retired or superseded since the sidecar was built. It is dropped
+        silently and the ranks close up behind it, which is 07:1372's *"makes a stale vector
+        invisible rather than wrong"* -- the sidecar is derived, so a row it holds that the store
+        does not is the sidecar being out of date and never the store being incomplete.
+        """
+        found: dict[bytes, int] = {}
+        for start in range(0, len(digests), _ID_BATCH):
+            chunk = list(digests[start : start + _ID_BATCH])
+            rows = connection.execute(
+                f"SELECT s.content_digest, s.segment_id FROM segment s "  # noqa: S608
+                f"JOIN doc d ON d.doc_ord = s.doc_ord "
+                f"WHERE s.content_digest IN ({_placeholders(len(chunk))}) "
+                f"AND s.gen = d.gen AND s.state = 0",
+                chunk,
+            )
+            for digest, segment_id in rows:
+                found[bytes(digest)] = int(segment_id)
+        return found
+
+    @staticmethod
+    def _lift(
+        connection: sqlite3.Connection,
+        hits: Sequence[tuple[bytes, float]],
+        live: Mapping[bytes, int],
+        n: Narrowing,
+        degradations: list[str],
+    ) -> tuple[list[int], dict[int, int]]:
+        """07:1509-1517's lift: a segment at rank *r* yields its member blocks AT RANK *r*.
+
+        The rank is 1-based and counted over the segments that SURVIVED the live join, so a stale
+        digest costs its successors nothing -- rank 2 means "the second segment this store still
+        holds", which is the number `fuse()` divides by.
+
+        `SEM_BLOCKS_PER_SEGMENT = 64` with `MAX_SEGMENT_BLOCKS = 512` means *"the cap **can bite
+        for up to 448 blocks** of a large segment"*, so the selection rule is named and
+        deterministic: *"the first 64 members in `segment_block.ord` order -- which is `(page,
+        ord)` by construction -- and a truncated lift sets `Degradation(kind=
+        "segment_lift_capped", parts_affected=...)"*.
+
+        **The cap is applied AFTER the narrowing join, not before.** 07:1561 makes narrowing prior
+        to every Channel -- filters narrow, Channels score within the narrowed set -- and a cap
+        applied first would let a filter that happens to exclude members 1 to 64 turn a ranked
+        segment into zero blocks, which is a silent absence with a confident rank attached to it.
+        On an unfiltered query the two readings coincide, which is the case 07:1519's 87% figure is
+        computed over.
+
+        `segment_block.block_id` is a PRIMARY KEY, which 0002_graph.sql:165 calls exactly one
+        segment per block with overlap unrepresentable -- so no block can arrive twice and
+        `ranked` is duplicate-free by the schema rather than by a check here.
+        """
+        narrow_join = ""
+        if n.kind == "set":
+            narrow_join = f" JOIN {_TMP_NARROW} tn ON tn.block_id = sb.block_id"
+        ranked: list[int] = []
+        rank_of: dict[int, int] = {}
+        rank = 0
+        for digest, _score in hits:
+            segment_id = live.get(digest)
+            if segment_id is None:
+                continue
+            rank += 1
+            members = [
+                int(row[0])
+                for row in connection.execute(
+                    f"SELECT sb.block_id FROM segment_block sb "  # noqa: S608
+                    f"JOIN ow_block_head b ON b.block_id = sb.block_id{narrow_join} "
+                    f"WHERE sb.segment_id = ? ORDER BY sb.ord LIMIT ?",
+                    (segment_id, SEM_BLOCKS_PER_SEGMENT + 1),
+                )
+            ]
+            if len(members) > SEM_BLOCKS_PER_SEGMENT:
+                members = members[:SEM_BLOCKS_PER_SEGMENT]
+                if _SEGMENT_LIFT_CAPPED not in degradations:
+                    degradations.append(_SEGMENT_LIFT_CAPPED)
+            for block_id in members:
+                if block_id in rank_of:
+                    continue
+                ranked.append(block_id)
+                rank_of[block_id] = rank
+        return ranked, rank_of
 
     def _structural(
         self, connection: sqlite3.Connection, spec: ChannelSpec, n: Narrowing
