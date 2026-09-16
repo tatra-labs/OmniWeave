@@ -2806,3 +2806,122 @@ def test_every_method_refuses_something_that_is_not_a_snapshot_at_all(built: Bui
         with pytest.raises(StoreError, match="is not a Snapshot"):
             call()  # type: ignore[operator]
         assert name
+
+
+# ---------------------------------------------------------------------------------------------
+# 4f. Above `PREFILTER_MAX`: the filter is a predicate, and `_within` is who applies it
+# ---------------------------------------------------------------------------------------------
+
+
+def _notice(filters: Filters | None = None) -> ChannelSpec:
+    """The lexical spec of the three `notice` blocks, bound with the filters or without them."""
+    return _lexical_spec(terms=("notice",), filters=filters)
+
+
+def test_above_the_cap_the_filter_is_applied_to_what_the_channel_ranked(
+    built: Built, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """07:1671's post-filter, against the case that MEASURED wrong before it existed.
+
+    `_seed_lexical` puts `notice` on block 11 (page 1), block 21 (page 2) and block 30 (page 3).
+    Under `Filters(pages=range(1, 2))` the exact narrowing keeps block 11 alone. Above the cap
+    there is no `tmp_narrow` to join, so the Channel ranks all three -- and before
+    `ChannelInput.filters` this method returned `(21, 30, 11)`, which is two pages the query
+    excluded, with `status="ok"` and nothing disclosed. D262.
+    """
+    _seed_lexical(built)
+    keep = Filters(pages=range(1, 2))
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        exact = reader.channel(state, _notice(filters=keep), reader.narrow(state, keep))
+    monkeypatch.setattr(rd, "PREFILTER_MAX", 1)
+    capped = _reader(built)
+    with capped.snapshot() as state:
+        proof = capped.narrow(state, keep)
+        outcome = capped.channel(state, _notice(filters=keep), proof)
+    assert exact.ranked == (11,)
+    assert proof.kind == "all"
+    assert outcome.status == "ok"
+    assert outcome.ranked == (11,)
+
+
+def test_a_channel_bound_no_filters_will_not_answer_above_the_cap(
+    built: Built, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`ChannelInput.filters = None` means NOT BOUND, never "no filter" -- the ST5 asymmetry.
+
+    `unavailable` forces `degraded` (07:1208), which is the honest price of a caller that skipped
+    the bind. An `ok` over the unfiltered ranking would be the jcodemunch failure in its original
+    direction: a Channel whose gate went missing, answering confidently.
+    """
+    _seed_lexical(built)
+    monkeypatch.setattr(rd, "PREFILTER_MAX", 1)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        proof = reader.narrow(state, Filters(pages=range(1, 2)))
+        outcome = reader.channel(state, _notice(), proof)
+    assert proof.kind == "all"
+    assert outcome.status == "unavailable"
+    assert "post-filter" in outcome.reason
+
+
+def test_a_filter_that_excludes_every_ranked_block_is_empty_and_not_a_short_ok(
+    built: Built, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`Filters(kinds={HEADING})` matches the two headings and none of the three `notice` bodies.
+
+    `empty` and not `ok` with an empty tuple: 07:1670-1680 is about exactly this difference, and
+    `ChannelOutcome` requires a reason for every status that is not `ok`.
+    """
+    _seed_lexical(built)
+    monkeypatch.setattr(rd, "PREFILTER_MAX", 1)
+    headings = Filters(kinds=frozenset({Kind.HEADING}))
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        proof = reader.narrow(state, headings)
+        outcome = reader.channel(state, _notice(filters=headings), proof)
+    assert proof.kind == "all"
+    assert outcome.status == "empty"
+    assert outcome.ranked == ()
+    assert "outside the filter" in outcome.reason
+
+
+def test_below_the_cap_the_post_filter_does_not_run_at_all(built: Built) -> None:
+    """A `kind="set"` narrowing was already joined inside the Channel's own statement.
+
+    Binding the filters as well must change nothing -- a second application of one predicate is
+    the drift 13:1072 names, and the assertion is that the two outcomes are identical objects by
+    value rather than merely similar.
+    """
+    _seed_lexical(built)
+    keep = Filters(pages=range(1, 2))
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, keep)
+        bound = reader.channel(state, _notice(filters=keep), narrowing)
+        unbound = reader.channel(state, _notice(), narrowing)
+    assert narrowing.kind == "set"
+    assert bound == unbound
+    assert bound.ranked == (11,)
+
+
+def test_the_post_filter_shrinks_the_grades_with_the_ranking(
+    built: Built, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Everything a `ChannelOutcome` keys by `block_id` shrinks in one step.
+
+    The constructor refuses a `grades` key that is not in `ranked`, so a post-filter that dropped
+    a block and kept its grade would raise rather than mislead -- but it would raise inside a
+    query, which is why the filtering is one comprehension over all three mappings.
+    """
+    _seed_identity(built)
+    monkeypatch.setattr(rd, "PREFILTER_MAX", 1)
+    keep = Filters(pages=range(1, 3))
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        proof = reader.narrow(state, keep)
+        outcome = reader.channel(state, _identity_spec(idents=("Table 3.2",), filters=keep), proof)
+    assert proof.kind == "all"
+    assert 45 not in outcome.ranked
+    assert set(outcome.grades) == set(outcome.ranked)
+    assert set(outcome.ranked) == {30, 40}

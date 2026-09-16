@@ -23,9 +23,10 @@ column."* Six methods, one ruling each:
 3. **`narrow` -- ALL OF IT.** Argued at length in `store/__init__.py`'s docstring: the three-way
    tag is MEASURED by 07:1585-1591's `LIMIT PREFILTER_MAX + 1` probe, and 07:1592-1597 forecloses
    the planner reading -- *"No histogram, no independence assumption, no cost-based optimiser."*
-4. **`channel` -- `identity`, `exact` and `lexical`.** `structural` and `semantic` report
-   `off` / `not_built`. The per-Channel argument is below; P2 shipped `exact` alone and P6 W6.2b
-   added the other two, each in the cell that could first supply its missing input.
+4. **`channel` -- ALL FIVE, plus the post-filter above `PREFILTER_MAX`.** The per-Channel
+   argument is below; P2 shipped `exact` alone and W6.2b through W6.2d added the other four, each
+   in the cell that could first supply its missing input. W6.4 added `_within`, the one part of
+   this method that is about the NARROWING rather than about a Channel.
 5. **`hydrate` -- THE ROW, all of it.** It cannot return `Hit`: four of `Hit`'s fourteen fields
    (`score`, `channel_contributions`, `channel_ranks`, `identity_grade`) are fusion outputs
    (07:2250-2265), and 07:3348 homes `Hit` with the query path. It returns `Hydration`, a
@@ -34,6 +35,35 @@ column."* Six methods, one ruling each:
    07:1989's, with the gate ladder 16-roadmap.md:468 excludes from P2, so `gaps=()`. Every count
    is a real read, including the three over `work` and `unit`, which P2 creates and leaves empty
    (16-roadmap.md:406).
+
+## Above `PREFILTER_MAX` the filter is a predicate, and somebody has to apply it
+
+07:1585-1597's probe returns an exact candidate set or PROVES there is no enumerating it, and the
+second answer is `kind="all"` with `table=None`. Every Channel's SQL joins `tmp_narrow` only when
+the tag is `set`, so on the proof the join disappears -- and with it, if nothing else happens, the
+whole filter. 07:1671 says what has to happen instead: narrowing *"becomes an over-fetch factor
+`clamp(1/selectivity, 1, 64)`"*, and *"If post-filtering leaves fewer than `k`, absence gate 11
+(`filter_starved`) fires and the Verdict is `degraded` -- never a short list presented as the whole
+answer."* The over-fetch exists to survive the post-filter; the post-filter is `_within`.
+
+The predicate arrives on `ChannelInput.filters` (D262), because `Reader.channel(s, spec, n)` is
+frozen at 07:63-68 and a `kind="all"` `Narrowing` carries no predicate to reconstruct. Before that
+field a `Filters(pages=range(1, 2))` query on a corpus above the cap returned blocks from pages 2
+and 3 -- measured, not reasoned -- and a `deny_restriction_bits` mask stopped applying at the same
+threshold, which 14:101's B6 makes a boundary rather than a preference.
+
+**Why the same predicate is applied after the Channel rather than inside its statement.** Each
+Channel's SQL is shaped by its own index -- FTS5 `MATCH` with a `bm25()` order, a `block_cite`
+UNIQUE lookup, a `block_link` frontier -- and thirteen `Filters` fields inlined into five different
+statements is five places one predicate can drift. `_within` runs ONE statement over the ids the
+Channel ranked, bounded by `ChannelSpec.limit`, and reuses `_narrow_predicates` and
+`_narrow_joins` unchanged, so the post-filter and the narrowing are the same SQL by construction.
+That is also why the factor is called over-fetch: the Channel is asked for more than `k` precisely
+so the survivors still number `k`.
+
+**Why `math.fsum`'s sibling problem does not arise: ranks close up, scores do not move.** A
+post-filtered Channel's `bm25n` was normalised over the pre-filter set, which fusion never reads --
+07:1393 scores on RANKS -- so dropping a block re-ranks the survivors and changes nothing else.
 
 **Why `channel` refuses two of five, and why it refuses with a STATUS rather than an exception.**
 07:1198-1199 gives the vocabulary (`ChannelStatus` = `ok | empty | off | unavailable`) and
@@ -173,7 +203,7 @@ import sqlite3
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import groupby
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal
@@ -359,6 +389,11 @@ different 512 (limits.py:362, mark hydration) and is not this one.
 """
 
 _TMP_NARROW: Final = "tmp_narrow"
+_UNBOUND_FILTERS: Final = (
+    "the narrowed set exceeded PREFILTER_MAX, so the filter arrives as a proof and not "
+    "as a table; this Channel was bound no Filters to post-filter with and will not "
+    "answer outside the narrowing it was given"
+)
 _TMP_DOCS: Final = "tmp_docs"
 _TMP_REFS: Final = "tmp_refs"
 
@@ -1286,14 +1321,103 @@ class SqliteReader:
         if refusal is not None:
             return refusal
         if spec.name == "identity":
-            return self._identity(connection, spec, n)
-        if spec.name == "lexical":
-            return self._lexical(connection, spec, n)
-        if spec.name == "structural":
-            return self._structural(connection, spec, n)
-        if spec.name == "semantic":
-            return self._semantic(connection, spec, n)
-        return self._exact(connection, spec, n)
+            outcome = self._identity(connection, spec, n)
+        elif spec.name == "lexical":
+            outcome = self._lexical(connection, spec, n)
+        elif spec.name == "structural":
+            outcome = self._structural(connection, spec, n)
+        elif spec.name == "semantic":
+            outcome = self._semantic(connection, spec, n)
+        else:
+            outcome = self._exact(connection, spec, n)
+        return self._within(connection, spec, n, outcome)
+
+    def _within(
+        self,
+        connection: sqlite3.Connection,
+        spec: ChannelSpec,
+        n: Narrowing,
+        outcome: ChannelOutcome,
+    ) -> ChannelOutcome:
+        """07:1671's post-filter -- what makes `kind="all"` a narrowing rather than a shrug.
+
+        Only on the proof. A `kind="set"` narrowing was already joined inside every Channel's own
+        statement, and re-applying the predicate to its output would be the second normaliser
+        13:1072 warns about; a `kind="empty"` narrowing never reaches a Channel at all.
+
+        Only on `ok`. An `UNAVAILABLE` Channel's partial ranking contributes nothing to the score
+        (07:1393) and never reaches fusion, and re-labelling a Channel that did not finish as one
+        that finished with fewer hits would lose the distinction absence gate 1 reads.
+
+        **An unbound `Filters` is `unavailable`, not a smaller answer.** `ChannelInput.filters`
+        defaults to `None`, which means nobody bound it -- not "no filter" -- and a Channel that
+        answered anyway would be answering outside the narrowing it was handed. `unavailable`
+        forces `degraded` (07:1208), which is the honest cost of a caller that skipped the bind.
+
+        **Everything the outcome keys by `block_id` shrinks together.** `ChannelOutcome` refuses a
+        `grades` or `rank_of` key that is not in `ranked`, so the three mappings are filtered in
+        one step; the surviving order is the Channel's own, because `_post_filter` returns the ids
+        in the order it was given them.
+        """
+        if n.kind != "all" or outcome.status != "ok" or not outcome.ranked:
+            return outcome
+        filters = None if spec.bind is None else spec.bind.filters
+        if filters is None:
+            return ChannelOutcome(name=spec.name, status="unavailable", reason=_UNBOUND_FILTERS)
+        kept = self._post_filter(connection, outcome.ranked, filters)
+        if len(kept) == len(outcome.ranked):
+            return outcome
+        if not kept:
+            return ChannelOutcome(
+                name=spec.name,
+                status="empty",
+                reason=(
+                    "every block this Channel ranked is outside the filter, which the narrowing "
+                    "proved too big to enumerate"
+                ),
+            )
+        keep = frozenset(kept)
+        return replace(
+            outcome,
+            ranked=tuple(kept),
+            rank_of=MappingProxyType(
+                {block: rank for block, rank in outcome.rank_of.items() if block in keep}
+            ),
+            spans=MappingProxyType(
+                {block: span for block, span in outcome.spans.items() if block in keep}
+            ),
+            grades=MappingProxyType(
+                {block: tier for block, tier in outcome.grades.items() if block in keep}
+            ),
+        )
+
+    def _post_filter(
+        self, connection: sqlite3.Connection, ids: Sequence[int], f: Filters
+    ) -> list[int]:
+        """Which of `ids` the narrowing statement would have kept, in the order given.
+
+        The same `_narrow_predicates` and `_narrow_joins` the probe uses, over an `IN (...)` of the
+        Channel's own output instead of over `block` -- so there is one filter predicate in this
+        module and not two. Batched at `_ID_BATCH` for `narrow()`'s reason: `ChannelSpec.limit`
+        reaches `k x 64` above the cap, and SQLite's parameter limit is not a number to discover in
+        production.
+
+        `tmp_docs` is already filled when the joins need it, because `narrow()` fills it on this
+        same connection before any Channel runs (07:1608-1612).
+        """
+        where, params = self._narrow_predicates(f)
+        joins = self._narrow_joins(f)
+        survivors: set[int] = set()
+        for start in range(0, len(ids), _ID_BATCH):
+            chunk = [int(block_id) for block_id in ids[start : start + _ID_BATCH]]
+            rows = connection.execute(
+                f"SELECT b.block_id FROM block b JOIN doc d USING (doc_ord){joins} "  # noqa: S608
+                f"WHERE {' AND '.join(where)} "
+                f"AND b.block_id IN ({_placeholders(len(chunk))})",
+                (*params, *chunk),
+            )
+            survivors.update(int(row[0]) for row in rows)
+        return [int(block_id) for block_id in ids if int(block_id) in survivors]
 
     def _refuse(self, spec: ChannelSpec, n: Narrowing) -> ChannelOutcome | None:
         """The four pre-flight answers, or `None` when the Channel should actually run.

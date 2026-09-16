@@ -85,12 +85,27 @@ evaluate. (Row six is the vector backend's `VEC_BRUTE_MAX` refusal, whose disabl
 scan the ceiling exists to refuse -- read here as a row-count slip in the sentence, and implemented
 as rows one and five, the two that are early *exits* rather than refusals.)
 
-Specified in 07-store-and-retrieval.md section 6; scheduled by 16-roadmap.md:657.
+## W6.4: decision 3's bind-time half, and decision 1's one refusal
+
+Decision 3 is section 6.3 and it has two halves. `LEX_OVERFETCH = 5` is *"always"* (07:1780) and
+belongs to the plan; the semantic Channel's factor is `clamp(1/selectivity, 1, 64)` and cannot,
+because that division is by the narrowing's `n` and `n` is a function of the filter VALUES, which
+07:1541's memo key excludes on purpose. `overfetch_clamp()` is the division and `bind_overfetch()`
+applies it to a built plan without touching `plan_digest`.
+
+Decision 1 is the store's -- `Reader.narrow()` runs the `LIMIT PREFILTER_MAX + 1` probe -- and the
+only part of it that is this module's is the one field a caller may not set. 07:1576 makes
+`Filters.deny_restriction_bits` *"set by POLICY, never by the caller (DR17)"* and 14:101 states it
+as boundary B6. No shipped policy shape carries the value, so the refusal below is the whole of
+what this module can enforce and D261 is the rest.
+
+Specified in 07-store-and-retrieval.md section 6; scheduled by 16-roadmap.md:657 and :660.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import math
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Final
 
@@ -114,7 +129,7 @@ if TYPE_CHECKING:
 
     from omniweave_core.config import Scalar
     from omniweave_core.retrieve.types import Query, RetrievalPolicy
-    from omniweave_core.store.types import Filters, IndexCaps
+    from omniweave_core.store.types import Filters, IndexCaps, Narrowing
 
 __all__ = [
     "EVIDENCE_KEYS",
@@ -123,9 +138,11 @@ __all__ = [
     "MEMO_MAX",
     "STALE_OVERFETCH",
     "STAT_MAX_AGE_NS",
+    "bind_overfetch",
     "clear_memo",
     "evidence",
     "memo_key",
+    "overfetch_clamp",
     "plan",
     "select",
 ]
@@ -144,13 +161,14 @@ decision reads, so it is homed beside the decision rather than added to `limits.
 are ceilings an operator may hit (INV-22) and this is a staleness horizon."""
 
 STALE_OVERFETCH: Final[int] = 64
-"""The maximum of 07:1592's `clamp(1/selectivity, 1, 64)`, forced on a stale `stat` (07:729).
+"""The maximum of 07:1671's `clamp(1/selectivity, 1, 64)`, forced on a stale `stat` (07:729).
 
-The clamp itself is **not** computed here and cannot be: it is a function of the narrowing's `n`,
-`n` is a function of the filter *values*, and the memo key carries the filter field set and never
-the values. `retrieve()` applies the clamp at bind time. What a plan can say is the one value the
-clamp takes when the statistics are too old to argue with, and saying it in the plan is what makes
-`--explain` show an operator that their `stat` is stale before the query is slow."""
+The clamp is not computed HERE and `overfetch_clamp()` below is where it is: the division is by
+the narrowing's `n`, `n` is a function of the filter *values*, and 07:1541's memo key carries the
+filter field set and never the values. So the plan carries the floor and the bind carries the
+measurement. What a plan CAN say is the one value the clamp takes when the statistics are too old
+to argue with, and saying it in the plan is what makes `--explain` show an operator that their
+`stat` is stale before the query is slow."""
 
 EVIDENCE_KEYS: Final[tuple[str, ...]] = (
     "query.mode",
@@ -372,13 +390,44 @@ def rule_digest(rule: Rule) -> str:
     )
 
 
+def _refuse_policy_only_filters(filters: Filters) -> None:
+    """DR17: `deny_restriction_bits` is *"set by POLICY, never by the caller"* (07:1576).
+
+    14:101 states it as a boundary and not a preference -- B6, store to retrieval, is
+    *"`Filters.deny_restriction_bits` is set by policy, never by the caller"*. The asymmetry is
+    explicit at 07:1640, where `deny_methods` is the caller-expressible twin: *"a `retrieval`
+    policy rule may union members in, and the effective set is `caller u policy`, so a policy can
+    only ever narrow further."* A caller-set MASK is the case that rule does not admit, because a
+    caller who may set it may also set it to zero.
+
+    **Nothing in any shipped policy shape carries the value.** `RetrievalPolicy` is four fields
+    (07:3327) and a `Rule`'s `then` half is a channel list, weights, a short-circuit and gate
+    modifiers (07:1712-1756); neither names a filter, and `config.py`'s `[retrieval]` register has
+    no key for a restriction mask. So a non-zero value arriving here came from the one source the
+    boundary excludes, and D261 is the missing carrier. When it lands, this refusal becomes a
+    substitution -- policy's value replacing the caller's -- and until then refusing is the only
+    reading that does not let a caller own a mask policy is supposed to own.
+    """
+    if filters.deny_restriction_bits:
+        msg = (
+            f"Filters.deny_restriction_bits is 0x{filters.deny_restriction_bits:x} and only "
+            f"policy may set it (07:1576, 14:101 boundary B6); no shipped policy shape carries "
+            f"the field, so this value can only have come from the caller"
+        )
+        raise UsageError(msg, fix="drop deny_restriction_bits: the mask is deployment policy")
+
+
 def plan(q: Query, caps: IndexCaps, pol: RetrievalPolicy) -> QueryPlan:
     """One `QueryPlan`: the ordered specs, their own deadlines, the gates, and two digests.
 
     Pure. The memo it consults is a cache of this function over its own key and holds no state a
     caller can observe except through `clear_memo()`, which exists for the property test that two
     calls of the same shape return the same digest by arithmetic rather than by cache.
+
+    The filters are the caller's, attached and not memoised (`_Shape` says why), with the one
+    field DR17 reserves to policy refused before anything else runs.
     """
+    _refuse_policy_only_filters(q.filters)
     budget = q.budget or pol.budget or QueryBudget()
     rule = select(pol, evidence(q, caps))
     key = memo_key(q, caps, pol, rule, budget)
@@ -407,6 +456,60 @@ def plan(q: Query, caps: IndexCaps, pol: RetrievalPolicy) -> QueryPlan:
 def clear_memo() -> None:
     """Empty the plan memo. For tests that assert the arithmetic rather than the cache."""
     _MEMO.clear()
+
+
+def overfetch_clamp(n: Narrowing, caps: IndexCaps) -> int:
+    """07:1671's `clamp(1/selectivity, 1, 64)`, measured against the narrowing the probe returned.
+
+    **`n` is exact below the cap and a proof above it, and one division reads both.**
+    `Narrowing.n` is *"EXACT when kind == 'set'"* (07:1581) and is `PREFILTER_MAX + 1` when the
+    probe stopped counting, so above the cap this computes `live_blocks / (PREFILTER_MAX + 1)` --
+    a factor that is too LARGE, because the true narrowed set is bigger than the count that came
+    back. Too large is the safe direction and the only safe one: an over-fetch that is too small
+    is *"silent recall loss that presents as absence"* (07:1782-1783) and one that is too big
+    costs the backend a longer list. 07:722 calls `stat` *"the only input to the over-fetch factor
+    above `PREFILTER_MAX`"*, and at the cap the two readings -- the probe's capped count, and the
+    bound `PREFILTER_MAX` that `stat` alone would give -- differ by one block.
+
+    **A stale or missing `stat` takes the maximum, before anything is divided.** 07:729:
+    *"age > STAT_MAX_AGE_NS or a key is missing => the over-fetch factor is the maximum clamp,
+    64"*, and 07:722 gives the reason -- *"a wrong over-fetch factor is a silent recall loss"*, so
+    *"staleness fails expensive"*. A `live_blocks` of zero IS the missing key: `stat` is that
+    count's only writer.
+
+    **`ceil` and not `round`.** The factor multiplies `PackSpec.k` into a fetch depth, and half a
+    candidate rounded down is a candidate the post-filter cannot give back.
+    """
+    if caps.stat_age_ns > STAT_MAX_AGE_NS or caps.live_blocks <= 0:
+        return STALE_OVERFETCH
+    if n.kind == "empty" or n.n <= 0:
+        return 1
+    return min(max(math.ceil(caps.live_blocks / n.n), 1), STALE_OVERFETCH)
+
+
+def bind_overfetch(query_plan: QueryPlan, n: Narrowing, caps: IndexCaps) -> QueryPlan:
+    """Decision 3 applied: the semantic spec's `overfetch` and `limit`, once a narrowing exists.
+
+    **`plan_digest` is not recomputed and must not be.** 07:1545: it *"is computed over the
+    unbound specs, so two different queries of the same shape share a plan digest and the
+    scoreboard can slice by plan"*. The over-fetch factor is a function of the filter values, which
+    is exactly the material a shape excludes; a digest that moved here would slice the scoreboard
+    by narrowed-set size instead of by query shape.
+
+    **Only `semantic`.** `LEX_OVERFETCH = 5` is *"always"* (07:1780) and the three exact Channels
+    fetch what they rank; 07:1781 gives the selectivity clamp to the semantic Channel by name,
+    because it is the one Channel whose filter may have to be pushed into a backend instead of
+    joined. `limit` moves with it, since 07:3297 makes the limit `k x overfetch` and a factor
+    without a depth is a number nobody spends.
+    """
+    factor = overfetch_clamp(n, caps)
+    channels = tuple(
+        dataclasses.replace(spec, overfetch=factor, limit=query_plan.pack.k * factor)
+        if spec.name == "semantic"
+        else spec
+        for spec in query_plan.channels
+    )
+    return dataclasses.replace(query_plan, channels=channels)
 
 
 def _shape(

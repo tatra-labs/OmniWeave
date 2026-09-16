@@ -16,11 +16,14 @@ is `ceiling()`'s and is W6.3's.
 
 from __future__ import annotations
 
+import dataclasses
 import tomllib
 from typing import TYPE_CHECKING, Any
 
 import pytest
 from omniweave_core.errors import UsageError
+from omniweave_core.limits import PREFILTER_MAX
+from omniweave_core.model.enums import Method
 from omniweave_core.retrieve import plan as pl
 from omniweave_core.retrieve.types import (
     ABSENCE_GATES,
@@ -31,7 +34,7 @@ from omniweave_core.retrieve.types import (
     RetrievalPolicy,
     Rule,
 )
-from omniweave_core.store.types import Expand, Filters, IndexCaps
+from omniweave_core.store.types import Expand, Filters, IndexCaps, Narrowing
 
 if TYPE_CHECKING:
     from conftest import PlanDocs
@@ -511,3 +514,136 @@ def test_planning_twice_returns_equal_plans_in_either_order(policy: RetrievalPol
     pl.clear_memo()
     backward = [pl.plan(query, _caps(), policy) for query in reversed(queries)]
     assert forward == list(reversed(backward))
+
+
+# ---------------------------------------------------------------------------
+# W6.4 -- decision 3's bind-time half, and the one field a caller may not set
+# ---------------------------------------------------------------------------
+
+THEMATIC = "what does this corpus say about supply-chain concentration risk"
+
+
+def _set(n: int) -> Narrowing:
+    """An exact narrowing of `n` blocks -- `Narrowing.n` is EXACT when `kind == "set"` (07:1581)."""
+    return Narrowing(kind="set", table="tmp_narrow", n=n)
+
+
+def test_the_clamp_divides_the_corpus_by_the_narrowed_set() -> None:
+    """07:1671's `clamp(1/selectivity, 1, 64)`, over worked plan (1)'s own narrowing.
+
+    07:1841 narrows the 41,822-block handbook to *"n=38,104"*, a selectivity of 0.911, so the
+    factor is 2 -- a query that filters almost nothing over-fetches almost nothing. A tenth of the
+    corpus is a factor of 10 -- 41,822 over 4,183, rounded UP, which is the number the
+    post-filter has to survive.
+    """
+    assert pl.overfetch_clamp(_set(38_104), _caps()) == 2
+    assert pl.overfetch_clamp(_set(4_183), _caps()) == 10
+
+
+def test_a_narrowing_that_kept_the_corpus_needs_no_over_fetch() -> None:
+    """Selectivity 1.0. The clamp's floor is 1 and it is reached, not approached."""
+    assert pl.overfetch_clamp(_set(41_822), _caps()) == 1
+
+
+def test_the_clamp_stops_at_the_maximum_it_is_named_for() -> None:
+    """`STALE_OVERFETCH = 64` is the ceiling of the same clamp, not a second number."""
+    assert pl.overfetch_clamp(_set(1), _caps()) == pl.STALE_OVERFETCH
+
+
+def test_a_stale_stat_takes_the_maximum_before_anything_is_divided() -> None:
+    """07:729: *"age > STAT_MAX_AGE_NS or a key is missing"* takes the maximum clamp.
+
+    The narrowing here would otherwise yield 1, so the assertion is that staleness OVERRIDES the
+    measurement rather than bounding it -- 07:722's *"staleness fails expensive"*, because a wrong
+    over-fetch factor is a silent recall loss.
+    """
+    assert pl.overfetch_clamp(_set(41_822), _caps(stale=True)) == pl.STALE_OVERFETCH
+
+
+def test_a_live_blocks_count_of_zero_is_the_missing_key() -> None:
+    """`stat` is that count's only writer (07:722), so a zero is absence and not a small corpus."""
+    empty_stat = dataclasses.replace(_caps(), live_blocks=0)
+    assert pl.overfetch_clamp(_set(10), empty_stat) == pl.STALE_OVERFETCH
+
+
+def test_an_empty_narrowing_has_nothing_to_over_fetch() -> None:
+    """A proven-empty candidate set short-circuits every Channel, so the factor is the floor."""
+    assert pl.overfetch_clamp(Narrowing(kind="empty", table=None, n=0), _caps()) == 1
+
+
+def test_above_the_cap_the_capped_count_over_estimates_the_factor() -> None:
+    """The probe stopped at `PREFILTER_MAX + 1`, so the division is by a count that is too SMALL.
+
+    A ten-million-block corpus whose narrowed set the probe could not enumerate yields 50. If the
+    true set were five million the honest factor would be 2, so this over-fetches by 25x -- which
+    is the direction to be wrong in: 07:1782-1783 calls an under-fetch *"silent recall loss that
+    presents as absence"*, and an over-fetch costs the backend a longer list.
+    """
+    big = dataclasses.replace(_caps(), live_blocks=10_000_000)
+    proof = Narrowing(kind="all", table=None, n=PREFILTER_MAX + 1)
+    assert pl.overfetch_clamp(proof, big) == 50
+    assert pl.overfetch_clamp(proof, big) > pl.overfetch_clamp(_set(5_000_000), big)
+
+
+def test_the_bind_moves_the_semantic_spec_and_leaves_the_other_four(
+    policy: RetrievalPolicy,
+) -> None:
+    """07:1781 gives the selectivity clamp to the semantic Channel by name.
+
+    `LEX_OVERFETCH = 5` is *"always"* (07:1780) and must not move with the narrowing; the three
+    exact Channels fetch what they rank.
+    """
+    made = pl.plan(Query(text=THEMATIC, k=20), _caps(vectors=True), policy)
+    bound = pl.bind_overfetch(made, _set(4_183), _caps(vectors=True))
+    before = {spec.name: spec.overfetch for spec in made.channels}
+    after = {spec.name: spec.overfetch for spec in bound.channels}
+    assert before["semantic"] == 1
+    assert after["semantic"] == 10
+    assert {name: value for name, value in after.items() if name != "semantic"} == {
+        name: value for name, value in before.items() if name != "semantic"
+    }
+
+
+def test_the_bind_does_not_move_the_plan_digest(policy: RetrievalPolicy) -> None:
+    """07:1545: the digest is *"computed over the unbound specs"*, and the factor is a filter VALUE.
+
+    A digest that moved here would slice the scoreboard by narrowed-set size rather than by query
+    shape, which is the one thing `plan_digest` exists to make sliceable.
+    """
+    made = pl.plan(Query(text=THEMATIC), _caps(vectors=True), policy)
+    wide = pl.bind_overfetch(made, _set(41_822), _caps(vectors=True))
+    narrow = pl.bind_overfetch(made, _set(1_000), _caps(vectors=True))
+    assert wide.plan_digest == narrow.plan_digest == made.plan_digest
+    assert {spec.name: spec.overfetch for spec in wide.channels}["semantic"] == 1
+    assert {spec.name: spec.overfetch for spec in narrow.channels}["semantic"] == 42
+
+
+def test_the_bound_limit_is_k_times_the_factor(policy: RetrievalPolicy) -> None:
+    """07:3297's `limit = k x overfetch`. A factor with no depth is a number nobody spends."""
+    made = pl.plan(Query(text=THEMATIC, k=20), _caps(vectors=True), policy)
+    bound = pl.bind_overfetch(made, _set(4_183), _caps(vectors=True))
+    semantic = next(spec for spec in bound.channels if spec.name == "semantic")
+    assert semantic.limit == 20 * 10
+    assert bound.pack.k == 20
+
+
+def test_a_caller_set_restriction_mask_is_refused(policy: RetrievalPolicy) -> None:
+    """07:1576: `deny_restriction_bits` is *"set by POLICY, never by the caller (DR17)"*.
+
+    14:101 makes it boundary B6. No shipped policy shape carries the value -- `RetrievalPolicy` is
+    four fields and a `Rule`'s `then` half is channels, weights, a short-circuit and gate
+    modifiers -- so a non-zero mask here came from the caller, which is the source the boundary
+    excludes. D261.
+    """
+    with pytest.raises(UsageError, match="only policy may set it"):
+        pl.plan(Query(filters=Filters(deny_restriction_bits=0b10)), _caps(), policy)
+
+
+def test_the_deny_methods_twin_is_the_callers_to_set(policy: RetrievalPolicy) -> None:
+    """07:1640: *"Unlike `deny_restriction_bits` (DR17: policy only), `deny_methods` is a
+    caller-expressible intent."* V10-17's shipped spelling plans like any other query, and the
+    filters reach the plan unchanged."""
+    filters = Filters(deny_methods=frozenset({Method.ROUNDTRIP}))
+    made = pl.plan(Query(text="parental leave", filters=filters), _caps(), policy)
+    assert made.filters is filters
+    assert made.filters.deny_restriction_bits == 0

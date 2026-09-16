@@ -298,6 +298,21 @@ class ChannelInput:
     the ladder needs no field, because `tmp_narrow` is already in the `Narrowing`; the first three
     do. Defaulted to `()` like every other field here, and an empty `seeds` means "fall through to
     `tmp_narrow`", never "traverse nothing". D246.
+
+    **`filters` is a NINTH field, and it is the `Narrowing` that could not be built.** 07:1671 puts
+    a post-filter above the cap: *"Above `PREFILTER_MAX`, narrowing becomes an over-fetch factor
+    `clamp(1/selectivity, 1, 64)` ... If post-filtering leaves fewer than `k`, absence gate 11
+    (`filter_starved`) fires and the Verdict is `degraded` -- never a short list presented as the
+    whole answer."* A `kind="all"` `Narrowing` carries a PROOF and no predicate -- its `table` is
+    `None` by construction -- so a Channel handed one has nothing to post-filter WITH, and the
+    frozen signature gives it no other way to learn. Without this field the filter is silently
+    DROPPED on every corpus whose narrowed set exceeds 200,000 blocks: the `layers={BODY}` default
+    included, and `deny_restriction_bits` included, which 14:101's boundary B6 makes policy and not
+    preference. D262.
+
+    `None` means NOT BOUND and never "no filter". A Channel that finds it `None` under a
+    `kind="all"` narrowing reports `unavailable` rather than answering outside the narrowing it was
+    given -- the same ST5 asymmetry `Narrowing` itself is tagged for.
     """
 
     terms: tuple[str, ...] = ()
@@ -308,6 +323,7 @@ class ChannelInput:
     q_full: bytes | None = None
     expand: Expand | None = None
     seeds: tuple[int, ...] = ()
+    filters: Filters | None = None
 
 
 @dataclass(frozen=True, slots=True)
