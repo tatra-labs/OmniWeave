@@ -365,8 +365,16 @@ version = "1.0.0"
 # part escalates you have already paid for two independent readings of the same pixels, so the
 # normalised edit distance costs nothing and lands exactly on the population where the cheap driver
 # is suspect. `TruthKind = "agreement"`, and it may NEVER populate an accuracy column -- two
-# readings agreeing is not evidence that either is right (05:2251). W5.7 is the cell that plumbs
-# it; this row is its registration.
+# readings agreeing is not evidence that either is right (05:2251). W5.7 plumbed it:
+# `omniweave/route/agree.py` computes it and writes the `route_quality` row, and
+# `omniweave_core.quality` holds the `TruthKind` it is stamped with.
+#
+# `est` IS THE PLAN'S 1.2 ms, ROUNDED UP, AND THE IMPLEMENTATION DOES NOT MEET IT. A word-level
+# distance over a full page measures 62.7 ms here and the character-level one upstream takes with a
+# compiled wheel measures 3,141 ms -- more than the olmOCR call being graded. D229. The number is
+# left as the plan declares it because 05:2104 makes `est` a DECLARED BUDGET that `ow conform
+# --bench` overwrites and `ow drivers check` fails at 2x: a budget edited to match the code it
+# measures is a budget that can never fail.
 scope = "part"
 kind = "measure"
 dtype = "float"

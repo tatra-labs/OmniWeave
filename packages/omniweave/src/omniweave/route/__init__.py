@@ -67,6 +67,23 @@ D224 and D225 were found: the plan's four printed rasters are none of them multi
 `patch_snap` it declares, and the 10.7 MB every memory budget is stated in is A4 at a DPI nothing
 renders.
 
+**W5.7 adds `agree.py`** (16-roadmap.md:609) and closes P5. `agree.decode_vs_page` is the label
+`ow route propose` has been fitting since W5.5b over a `route_quality` table nothing wrote, and the
+second reading it is a distance against is W5.6's driver -- so the cell is the last step of FE3's
+ordering rather than a new mechanism. Three of its decisions are the plan's and one is a
+measurement: `None` and never `0.0` when a reading is missing (05:2122), the insert-if-absent write
+(a `decision_id` is a digest, so a second agree row is one measurement counted twice), the
+`TruthKind` stamp, and a WORD-level distance because the character-level one the upstream precedent
+takes costs 3,141 ms on a full page -- more than the olmOCR call it is measuring -- without the
+compiled wheel this distribution may not ship.
+
+**The vocabulary it stamps with is `omniweave_core.quality`'s, not this package's.** `TruthKind`'s
+two consumers are the writer here and the harness that enforces `Q-G9`, and `tools/layers.toml`
+puts those in two distributions that may not import each other; core is their only common ancestor,
+which is `fold_common`'s own argument at 02:229. `agreement()` and `Agreement` are re-exported here
+and `record()` and `distance()` are not -- the first two are types a caller names, and the second
+two are verbs whose bare names say nothing in a package namespace.
+
 **`lint()`, `fit()` and `propose()` are deliberately NOT re-exported, and the omission is
 mechanical.** Each
 shares its name with the module that defines it, so binding the function here would shadow the
@@ -85,6 +102,7 @@ entry points that wrap them are one import away at `omniweave.route.lint.lint`,
 from __future__ import annotations
 
 from omniweave.route.admit import AdmissionRequest, write_exhausted
+from omniweave.route.agree import Agreement, Entry, agreement
 from omniweave.route.checks import Installation
 from omniweave.route.counters import Counters, Tally
 from omniweave.route.decision import Modifiers, RouteDecision, RouteHints
@@ -113,9 +131,11 @@ __all__ = [
     "LANES",
     "PARSE_LANES",
     "AdmissionRequest",
+    "Agreement",
     "Binding",
     "Counters",
     "DemandPlan",
+    "Entry",
     "Evidence",
     "Finding",
     "Group",
@@ -141,6 +161,7 @@ __all__ = [
     "Spend",
     "Tally",
     "Undecided",
+    "agreement",
     "apply_patch",
     "bindings",
     "builtin_layer",
