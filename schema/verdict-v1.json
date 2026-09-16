@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schema/verdict-v1.json",
+  "title": "Verdict",
+  "type": "object",
+  "additionalProperties": false,
+  "description": "07:2000. Twenty-two fields: the charter's twenty, plus `generated_share` and `degradations`.",
+  "required": [
+    "state",
+    "gates",
+    "degraded_because",
+    "scanned",
+    "best_score",
+    "score_ceiling",
+    "confidence",
+    "scorer_version",
+    "plan_digest",
+    "channels",
+    "freshness",
+    "coverage",
+    "withheld",
+    "matches_before_packing",
+    "space",
+    "snapshot_gen",
+    "federated",
+    "shards_contributed",
+    "fusion_kind",
+    "did_you_mean",
+    "generated_share",
+    "degradations"
+  ],
+  "properties": {
+    "state": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "low_confidence",
+        "absent",
+        "degraded"
+      ]
+    },
+    "gates": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "degraded_because": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/DegradeCause"
+      }
+    },
+    "scanned": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer"
+      }
+    },
+    "best_score": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "score_ceiling": {
+      "type": "number"
+    },
+    "confidence": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "scorer_version": {
+      "type": "integer"
+    },
+    "plan_digest": {
+      "type": "string"
+    },
+    "channels": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "empty",
+          "off",
+          "unavailable"
+        ]
+      }
+    },
+    "freshness": {
+      "type": "string",
+      "enum": [
+        "fresh",
+        "refreshing",
+        "stale",
+        "unknown",
+        "not_tracked"
+      ]
+    },
+    "coverage": {
+      "$ref": "#/$defs/Coverage"
+    },
+    "withheld": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer"
+      }
+    },
+    "matches_before_packing": {
+      "type": "integer"
+    },
+    "space": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "snapshot_gen": {
+      "type": "integer"
+    },
+    "federated": {
+      "type": "boolean"
+    },
+    "shards_contributed": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "fusion_kind": {
+      "type": "string",
+      "enum": [
+        "rrf",
+        "rank_merge"
+      ]
+    },
+    "did_you_mean": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "generated_share": {
+      "type": "number"
+    },
+    "degradations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "Coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What `Reader.coverage()` returns; feeds absence gates 4-9 (07:3332).",
+      "required": [
+        "discovered",
+        "indexed",
+        "partial",
+        "failed",
+        "skipped",
+        "complete",
+        "scope_rows",
+        "pending_work",
+        "stale_units",
+        "unreadable_units",
+        "gaps"
+      ],
+      "properties": {
+        "discovered": {
+          "type": "integer"
+        },
+        "indexed": {
+          "type": "integer"
+        },
+        "partial": {
+          "type": "integer"
+        },
+        "failed": {
+          "type": "integer"
+        },
+        "skipped": {
+          "type": "integer"
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "scope_rows": {
+          "type": "integer"
+        },
+        "pending_work": {
+          "type": "integer"
+        },
+        "stale_units": {
+          "type": "integer"
+        },
+        "unreadable_units": {
+          "type": "integer"
+        },
+        "gaps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DegradeCause"
+          }
+        }
+      }
+    },
+    "DegradeCause": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "07:1989. ONE per gate that failed -- *\"NEVER a summary of several\"*.",
+      "required": [
+        "gate",
+        "detail",
+        "diag_codes",
+        "where",
+        "fix"
+      ],
+      "properties": {
+        "gate": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "diag_codes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "where": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 3,
+            "maxItems": 3
+          }
+        },
+        "fix": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

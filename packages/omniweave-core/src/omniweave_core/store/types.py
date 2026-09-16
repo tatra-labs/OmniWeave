@@ -31,6 +31,13 @@ import time; what it costs is `typing.get_type_hints()`, which raises `NameError
 lying. `test_store_protocols.py` asserts the ANNOTATION TEXT against the plan instead, and asserts
 which names are unresolved, so a later phase that homes them cannot do so silently.
 
+**`DegradeCause` now HAS a home and the reference here is still unresolvable.** P6 W6.5 homed
+it in `omniweave_core.retrieve.verdict` beside the gate ladder, which is where 18-api-sketch.md:840
+puts it. This module still cannot import it: `retrieve/types.py` imports `ChannelSpec`, `Expand` and
+`Filters` from here, so the edge back would be a cycle. The consequence is mechanical rather than
+theoretical -- `typing.get_type_hints(Coverage)` raises `NameError`, and `Verdict` nests `Coverage`,
+so `ow schema emit` resolves the name against the SCHEMA'S ROOT MODULE instead. D268.
+
 `Grid` and `Diag` (03-document-model.md:1880, :1800) are likewise quoted rather than imported: they
 are `omniweave_core.model`'s and are still owed by W2.1 (see that package's docstring, "Still owed
 by P2"). The plan prints `Grid` and `Diag` UNQUOTED in `DocSink` (03:557, :563), so those two become
@@ -421,10 +428,11 @@ class Coverage:
     handle -- "that is gate 4 firing, not a clean bill of health".
 
     `gaps` is typed `tuple["DegradeCause", ...]`, and `DegradeCause` is 07 section 6.7's (07:1989),
-    with the gate ladder it belongs to; 07:3348-3351 sends it there explicitly. It is therefore an
-    UNRESOLVED forward reference in this module -- see the module docstring. P2's non-goals name no
-    `Verdict` and no gate ladder (16-roadmap.md:468), so at P2 a backend returns `gaps=()` and the
-    counts are the whole of what it can honestly report.
+    with the gate ladder it belongs to; 07:3348-3351 sends it there explicitly. P6 W6.5 homed it in
+    `omniweave_core.retrieve.verdict` and the reference here is STILL unresolved, because the edge
+    back would be a cycle -- see the module docstring. P2's non-goals name no `Verdict` and no gate
+    ladder (16-roadmap.md:468), so at P2 a backend returns `gaps=()` and the counts are the whole of
+    what it can honestly report; W6.5's gate 9 is the first reader that fills them.
 
     `pending_work`, `stale_units` and `unreadable_units` read `work` and `unit`, which P2 creates
     and leaves EMPTY (16-roadmap.md:406, :468) and P4 fills. The read is a store read either way;
