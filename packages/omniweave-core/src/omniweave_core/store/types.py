@@ -342,6 +342,53 @@ class ChannelSpec:
 
 
 # ---------------------------------------------------------------------------
+# VecManifest -- 07 section 16, read at attach
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class VecManifest:
+    """The `vec` sidecar's identity, read at attach (07:3339-3348). Eleven fields.
+
+    **`corpus_id` is the field that makes the sidecar deletable.** 07:790 and 07:3190: a
+    `vec_manifest.corpus_id` that differs from `main.index_state.corpus_id` means the sidecar is
+    *"IGNORED, not read"* -- not an error, not a partial read, not a rebuild. The vectors are
+    derived and the store is authoritative, so a sidecar that belongs to another corpus is
+    indistinguishable from no sidecar at all, and absence gate 13 (`space_mismatch`) is what makes
+    the difference visible to a caller.
+
+    **`storage` is a `Literal` of two values because the two are different indexes**, not two
+    settings of one. `sig_only` is the signature scan alone; `sig_full` additionally holds `dim*4`
+    byte f32 vectors in `vfull` for an exact rerank of the top `RERANK_N`, and 07:2698 prices the
+    choice -- at 1M blocks the whole `sig_only` sidecar is 3.7 MB.
+
+    **`pushdown` is contract obligation (1)** (07:104-107): *"`candidates` narrows BEFORE ranking,
+    tested at 0.01 selectivity. LEANN post-filters metadata after ANN retrieval with no over-fetch,
+    which is silent recall loss that presents as absence."* A backend that declares `False` gets
+    the over-fetch clamp and a `pushdown_unavailable` Degradation, and absence gate 11
+    (`filter_starved`) reads this field by name (07:2191).
+
+    Home: `omniweave_core.store`, beside the other boundary value types and with the `Reader` that
+    reports two of its fields through `IndexCaps`. 18-api-sketch.md:840 lists it in a row whose
+    home is `omniweave_core.retrieve.verdict`, in the same breath as `Coverage` -- which P2 homed
+    here, for the same reason: the thing that reads it is a `Reader`, and `IndexCaps.vec_backend`
+    and `IndexCaps.vec_pushdown` are copied straight out of it at open.
+    """
+
+    corpus_id: str
+    schema: int
+    model_key: str
+    backend: str
+    backend_version: str
+    storage: Literal["sig_only", "sig_full"]
+    sig_bits: int
+    dim: int
+    built_at_ns: int
+    rows: int
+    pushdown: bool
+
+
+# ---------------------------------------------------------------------------
 # Coverage -- 07 section 16
 # ---------------------------------------------------------------------------
 

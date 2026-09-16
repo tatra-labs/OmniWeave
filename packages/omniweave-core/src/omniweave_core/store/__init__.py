@@ -157,7 +157,7 @@ Tier T-SCHEMA: 02-architecture.md section 2 row 26.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from typing import Any, BinaryIO, Protocol
 
@@ -173,6 +173,7 @@ from omniweave_core.store.types import (
     IndexCaps,
     Narrowing,
     Snapshot,
+    VecManifest,
 )
 from omniweave_core.work import WorkRow
 
@@ -195,6 +196,8 @@ __all__ = [
     "Reader",
     "Snapshot",
     "Store",
+    "VecManifest",
+    "VectorBackend",
 ]
 
 
@@ -419,3 +422,73 @@ class GraphSink(Protocol):
     def diag(self, d: Diag) -> None: ...
 
     def end_run(self, status: RunStatus, spend: Spend) -> RunReport: ...
+
+
+class VectorBackend(Protocol):
+    """The FIFTH boundary type, and deliberately NOT a fifth Protocol in the 33-method price.
+
+    07:86-92 is the whole ruling and it turns on one word: *"'seam' is the charter's word for the
+    four numbered process/FFI boundaries S1-S4 (charter section 3.4, 'The four seams, and no
+    fifth'), a fifth of those is a charter amendment, and a `VectorBackend` crosses none of them --
+    it is an in-process extension point behind a Protocol that is not on the T3 distribution
+    boundary."* So `test_store_protocols.py` still counts four Protocols and 33 methods, and this
+    class is outside that count by construction rather than by an exemption.
+
+    It is **selected by name in config** -- `[retrieval] vec.backend`, default `"vector.brute"`
+    (18:1708) -- through an `omniweave.backends` entry point plus a `backend.toml`
+    read by the same import-free loader as a DriverCard. It is 07:88-89's *"never a
+    Port, never a DriverCard, never in `resolve()`"*. A Backend has no card, no tier and no
+    trust decision; the one thing it has is a name in a config file, which is why
+    `discovery.py:1191` already records that a `VectorBackend` in `BACKEND_GROUP` is not a
+    Driver and carries no card at all.
+
+    ## The four methods, and the four contract obligations behind them
+
+    Transcribed from 07:94-101. `omniweave-conform` verifies the obligations (07:103-113), *"each
+    because a real system got it wrong"*:
+
+    1. **`search`'s `candidates` narrows BEFORE ranking**, tested at 0.01 selectivity, and a
+       backend that cannot declares `VecManifest.pushdown = False` rather than post-filtering. The
+       named failure is LEANN's: post-filtering metadata after ANN retrieval with no over-fetch is
+       *"silent recall loss that presents as absence"*.
+    2. **Either epoch-immutable or `unavailable(rebuilding)`** -- `search()` reads the version
+       resolved at open. This is what replaced the rejected `index_epoch` + `epoch_lease` + reaper
+       apparatus in the core schema, so it is a schema-sized decision expressed as a method
+       contract.
+    3. **It declares a ceiling and REFUSES above it** rather than serving a slow query. For the
+       stdlib backend that ceiling is `VEC_BRUTE_MAX = 250_000` SEGMENTS (07:808) and the refusal
+       is `OW-S-022`; 07:833's three bands are what `ow index vectors` prints at BUILD time, so a
+       corpus learns which band it is in once rather than once per query.
+    4. **recall@10 against exhaustive f32** on a fixed 50k fixture, with a committed floor.
+
+    `search` returns `(segment content_digest, score)` pairs, and the digest is the only identifier
+    that crosses: 07:1368-1370 joins them back to live segments INSIDE the main snapshot and calls
+    that join *"the **only** exit from the `vec` sidecar (ST4), which is what makes a stale vector
+    invisible rather than wrong"*. A backend that returned `segment_id`s would make that join an
+    identity and the staleness undetectable.
+
+    `upsert`'s rows are `(digest, sig, full)` with `full` optional, matching `storage`'s two modes;
+    `sweep` takes a CALLABLE returning the live digests rather than the set itself, which is the
+    same shape `blobs.py` uses for the same reason -- the caller must be able to stream a set that
+    does not fit in memory, and the backend must be able to decline to materialise it.
+
+    **There is no fifth WRITE protocol** (07:115): `DocSink` writes L2, `GraphSink` writes L3,
+    `Store.complete()` writes the queue, and `VectorBackend.upsert()` writes vectors. This class is
+    the fourth writer, not a fifth seam.
+    """
+
+    def manifest(self) -> VecManifest: ...
+
+    def upsert(self, model_key: str, rows: Iterable[tuple[bytes, bytes, bytes | None]]) -> int: ...
+
+    def search(
+        self,
+        model_key: str,
+        q_sig: bytes,
+        q_full: bytes | None,
+        *,
+        k: int,
+        candidates: frozenset[bytes] | None,
+    ) -> Sequence[tuple[bytes, float]]: ...
+
+    def sweep(self, live: Callable[[], Iterable[bytes]]) -> int: ...

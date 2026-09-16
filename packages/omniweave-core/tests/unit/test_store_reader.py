@@ -38,6 +38,7 @@ Specified in 07-store-and-retrieval.md sections 1.1, 3.8, 6.1, 7.2, 10.4 and 16,
 from __future__ import annotations
 
 import inspect
+import pathlib
 import sqlite3  # noqa: TID251 -- see the module docstring: the fixtures seed a REAL store.
 from collections.abc import Iterator
 from pathlib import Path
@@ -774,24 +775,35 @@ def test_a_kind_this_store_never_seeded_is_refused_rather_than_matched_against_n
 # ---------------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", ["semantic"])
+def test_all_five_channels_are_implemented_by_this_build() -> None:
+    """The end of the ladder P2 started: `_IMPLEMENTED_CHANNELS` is now `CHANNELS`.
+
+    P2 shipped `{"exact"}`, W6.2b added `identity` and `lexical`, W6.2c `structural` and W6.2d
+    `semantic`. Asserted against `CHANNELS` rather than against a written-out set, because the
+    claim is *"all five"* and a written-out set would restate the code.
+    """
+    assert frozenset(rd.CHANNELS) == rd._IMPLEMENTED_CHANNELS
+
+
 def test_a_channel_this_build_has_not_shipped_reports_off_not_built(
-    built: Built, name: str
+    built: Built, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """16-roadmap.md:114's exact pair: `ChannelStatus.OFF` with `reason = "not_built"`.
 
-    One name, not four: W6.2b shipped `identity` and `lexical`, W6.2c shipped `structural`, and
-    this list shrinks as each cell lands. It is written out rather than derived from
-    `_IMPLEMENTED_CHANNELS`, because a derived list would pass for a build that shipped nothing.
+    Every one of the five is implemented now, so the contract is asserted by emptying
+    `_IMPLEMENTED_CHANNELS` rather than by naming a Channel that still refuses. That is not a
+    weaker test: the frozenset is the module's one edit site for this branch, the branch is the
+    shipped one, and a sixth Channel added to `CHANNELS` tomorrow reaches exactly this code.
 
     The reason string is asserted rather than the status alone, because P6 inherits this contract:
     `OffReason` is closed at four members *"because `ceiling()` branches on it"* (07:1214), so
     a free-form reason here would change a published `confidence` number with no error anywhere.
     `off` contributes nothing to the ceiling (07:1218-1222), which is why it is not `empty`.
     """
+    monkeypatch.setattr(rd, "_IMPLEMENTED_CHANNELS", frozenset())
     _seed_one_block(built)
     reader = _reader(built)
-    spec = ChannelSpec(name=name, budget_ms=50, limit=20, overfetch=1, weight=None, params={})
+    spec = ChannelSpec(name="lexical", budget_ms=50, limit=20, overfetch=1, weight=None, params={})
     with reader.snapshot() as state:
         narrowing = reader.narrow(state, Filters())
         outcome = reader.channel(state, spec, narrowing)
@@ -1920,6 +1932,468 @@ def test_the_structural_channel_is_empty_when_the_seed_reaches_nothing(built: Bu
         )
     assert outcome.status == "empty"
     assert "no block_link row reaches" in outcome.reason
+
+
+# ---------------------------------------------------------------------------------------------
+# 4d. channel -- semantic: a backend call, one join back, and a capped lift
+# ---------------------------------------------------------------------------------------------
+
+
+class FakeVectors:
+    """A `VectorBackend` that answers from a list, so what is tested is the CHANNEL.
+
+    The seam is the Protocol (07:86-92), and `vector.brute` is a separate cell, so a Channel test
+    that needed the real backend would be testing two things and pinning neither. This records
+    every `search()` call, because half of what this Channel owes the plan is in the ARGUMENTS:
+    contract obligation (1)'s `candidates` and the over-fetch clamp that replaces it.
+    """
+
+    def __init__(self, hits: list[tuple[bytes, float]], *, raises: Exception | None = None) -> None:
+        self.hits = hits
+        self.raises = raises
+        self.calls: list[dict[str, object]] = []
+
+    def manifest(self) -> object:  # pragma: no cover -- not on the Channel's path
+        raise NotImplementedError
+
+    def upsert(self, model_key: str, rows: object) -> int:  # pragma: no cover
+        raise NotImplementedError
+
+    def sweep(self, live: object) -> int:  # pragma: no cover
+        raise NotImplementedError
+
+    def search(
+        self,
+        model_key: str,
+        q_sig: bytes,
+        q_full: bytes | None,
+        *,
+        k: int,
+        candidates: frozenset[bytes] | None,
+    ) -> list[tuple[bytes, float]]:
+        self.calls.append(
+            {
+                "model_key": model_key,
+                "q_sig": q_sig,
+                "q_full": q_full,
+                "k": k,
+                "candidates": candidates,
+            }
+        )
+        if self.raises is not None:
+            raise self.raises
+        found = self.hits
+        if candidates is not None:
+            found = [(digest, score) for digest, score in found if digest in candidates]
+        return found[:k]
+
+
+def _digest(n: int) -> bytes:
+    """A 16-byte `segment.content_digest`, the only identifier that crosses the sidecar seam."""
+    return bytes([n]) * 16
+
+
+def _seed_segments(built: Built, *, members: dict[int, int] | None = None) -> None:
+    """Two live segments over a document, plus one retired one, and their member blocks.
+
+    `members` maps `segment_id` to a member count; the default gives segments 1 and 2 three blocks
+    each and segment 3 -- the retired one -- one. Block ids are allocated in order, so
+    `segment_block.ord` and reading order agree and a lift that ignored `ord` would still pass;
+    the cap test below is where the order is made to matter.
+    """
+    counts = {1: 3, 2: 3, 3: 1} if members is None else members
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    producer_id = _producer(conn)
+    _doc(conn, 1, uri="file:///corpus/segmented.pdf")
+    conn.execute(
+        "INSERT INTO segmenter(segmenter_id, driver_id, driver_schema_v, params_digest) "
+        "VALUES(1, 'derive.segment.spine', 1, ?)",
+        (DIGEST,),
+    )
+    block_id = 0
+    for segment_id, count in counts.items():
+        retired = segment_id == 3
+        conn.execute(
+            "INSERT INTO segment(segment_id, doc_ord, gen, ord, segmenter_id, layer, "
+            "                    heading_path, n_blocks, n_tokens, n_chars, tokenizer_id, "
+            "                    first_page, last_page, trust, quote_min, kind_mask, "
+            "                    content_digest, origin_operator, origin_driver, "
+            "                    driver_schema_v, state) "
+            "VALUES(?, 1, 1, ?, 1, ?, '[]', ?, 1, 1, 'tok', 0, 0, 2, 4, 0, ?, "
+            "       'op.segment', 'drv', 1, ?)",
+            (
+                segment_id,
+                segment_id,
+                _code(conn, "layer", "body"),
+                count,
+                _digest(segment_id),
+                1 if retired else 0,
+            ),
+        )
+        for ord_ in range(count):
+            block_id += 1
+            _block(
+                conn,
+                block_id=block_id,
+                doc_ord=1,
+                producer_id=producer_id,
+                page=0,
+                ord_=block_id,
+                text=f"block {block_id}",
+            )
+            conn.execute(
+                "INSERT INTO segment_block(block_id, segment_id, ord) VALUES(?, ?, ?)",
+                (block_id, segment_id, ord_),
+            )
+    conn.execute("COMMIT")
+
+
+def _seed_sidecar(
+    built: Built, *, corpus_id: str | None = None, pushdown: bool = True
+) -> pathlib.Path:
+    """`index.vec.owstore` with a `vec_manifest`, and nothing else in it.
+
+    The Channel reads the manifest and calls the backend; `vseg`, `vfull` and `vpending` are the
+    backend's own tables and `vector.brute` is a separate cell, so the sidecar this fixture writes
+    is exactly the part of 07 section 3.9 the `Reader` reads.
+
+    `index_state.default_space_id` is written on the MAIN store at the same time, because
+    `IndexCaps.channels` reports `semantic` only when the sidecar is attached AND there is a space
+    to join through (07:3275) -- two halves of one fact, in two files, which is what makes the
+    sidecar independently deletable.
+    """
+    built.writer.execute("INSERT OR REPLACE INTO index_state(k, v) VALUES('default_space_id', '1')")
+    built.writer.commit()
+    if corpus_id is None:
+        row = built.writer.execute("SELECT v FROM index_state WHERE k = 'corpus_id'").fetchone()
+        corpus_id = str(row[0]) if row is not None else ""
+    path = built.path.with_name("index.vec.owstore")
+    side = sqlite3.connect(path)
+    side.execute("CREATE TABLE IF NOT EXISTS vec_manifest (k TEXT PRIMARY KEY, v TEXT NOT NULL)")
+    side.executemany(
+        "INSERT OR REPLACE INTO vec_manifest(k, v) VALUES(?, ?)",
+        [
+            ("corpus_id", corpus_id),
+            ("schema", "1"),
+            ("model_key", "bge-small/1"),
+            ("backend", "vector.brute"),
+            ("backend_version", "1"),
+            ("storage", "sig_only"),
+            ("sig_bits", "768"),
+            ("dim", "384"),
+            ("built_at_ns", "1"),
+            ("rows", "2"),
+            ("pushdown", "1" if pushdown else "0"),
+        ],
+    )
+    side.commit()
+    side.close()
+    return path
+
+
+def _vec_reader(built: Built, path: pathlib.Path | None, backend: object | None) -> rd.SqliteReader:
+    """A `Reader` whose connection already has the sidecar ATTACHed.
+
+    The ATTACH happens BEFORE the `Reader` is constructed because the manifest is *"read once, at
+    open"* (07:3272) and `caps_digest` memoises `plan()` -- a sidecar that appeared mid-`Reader`
+    would make two `capabilities()` calls disagree about a store the plan was built against.
+    """
+    connection = ow.connect_readonly(built.path)
+    if path is not None:
+        connection.execute("ATTACH DATABASE ? AS vec", (str(path),))
+    return rd.SqliteReader(connection, now_ns=NOW_NS, vectors=backend)  # type: ignore[arg-type]
+
+
+def _semantic_spec(limit: int = 20, overfetch: int = 1, **bind: object) -> ChannelSpec:
+    fields: dict[str, object] = {"q_sig": b"\x01" * 96}
+    fields.update(bind)
+    return ChannelSpec(
+        name="semantic",
+        budget_ms=80,
+        limit=limit,
+        overfetch=overfetch,
+        weight=None,
+        params={},
+        bind=ChannelInput(**fields),  # type: ignore[arg-type]
+    )
+
+
+def test_a_segment_hit_yields_its_member_blocks_at_the_segments_own_rank(built: Built) -> None:
+    """07:1511: *"A segment hit at rank *r* yields **its member blocks at rank *r***"*.
+
+    That is what `rank_of` exists for (07:1243-1250): a positional rank would spread one segment's
+    members over as many ranks as it has members and destroy the region-level signal the rule
+    creates. Six blocks, two segments, two ranks.
+    """
+    _seed_segments(built)
+    backend = FakeVectors([(_digest(1), 0.9), (_digest(2), 0.8)])
+    reader = _vec_reader(built, _seed_sidecar(built), backend)
+    with reader.snapshot() as state:
+        outcome = reader.channel(state, _semantic_spec(), reader.narrow(state, Filters()))
+    assert outcome.status == "ok"
+    assert outcome.ranked == (1, 2, 3, 4, 5, 6)
+    assert dict(outcome.rank_of) == {1: 1, 2: 1, 3: 1, 4: 2, 5: 2, 6: 2}
+    assert outcome.degradations == ()
+
+
+def test_the_lift_caps_at_sixty_four_members_and_records_that_it_did(built: Built) -> None:
+    """07:1513-1517's cap, and the register row that stops it being silent.
+
+    *"The cap is `SEM_BLOCKS_PER_SEGMENT = 64`, and because `MAX_SEGMENT_BLOCKS = 512`, the cap
+    **can bite for up to 448 blocks of a large segment**."* The rule is *"the first 64 members in
+    `segment_block.ord` order"*, so a 70-member segment yields members 0 to 63 and says so;
+    without the record, *"up to 87% of a large table segment's citable cells are unreachable
+    through it with nothing recording the fact"*.
+    """
+    _seed_segments(built, members={1: 70})
+    backend = FakeVectors([(_digest(1), 0.9)])
+    reader = _vec_reader(built, _seed_sidecar(built), backend)
+    with reader.snapshot() as state:
+        outcome = reader.channel(state, _semantic_spec(limit=200), reader.narrow(state, Filters()))
+    assert len(outcome.ranked) == 64
+    assert outcome.ranked == tuple(range(1, 65))
+    assert outcome.degradations == ("segment_lift_capped",)
+
+
+def test_a_stale_digest_is_dropped_and_the_ranks_close_up_behind_it(built: Built) -> None:
+    """07:1368-1372: the join back is *"the **only** exit from the `vec` sidecar (ST4), which is
+    what makes a stale vector invisible rather than wrong"*.
+
+    The sidecar is derived and the store is authoritative, so a digest the backend still holds and
+    `segment` no longer does is the sidecar being out of date -- never the store being incomplete.
+    Segment 3 is retired (`state = 1`) and segment 9 was never written at all; both are returned by
+    the backend ahead of segment 2, and segment 2 still comes back at rank 1.
+    """
+    _seed_segments(built)
+    backend = FakeVectors([(_digest(9), 1.0), (_digest(3), 0.95), (_digest(2), 0.8)])
+    reader = _vec_reader(built, _seed_sidecar(built), backend)
+    with reader.snapshot() as state:
+        outcome = reader.channel(state, _semantic_spec(), reader.narrow(state, Filters()))
+    assert outcome.ranked == (4, 5, 6)
+    assert set(outcome.rank_of.values()) == {1}
+
+
+def test_the_candidate_set_is_pushed_into_the_backend_before_ranking(built: Built) -> None:
+    """Contract obligation (1) (07:104-107), from the caller's side.
+
+    *"`candidates` narrows **before** ranking, tested at 0.01 selectivity. LEANN post-filters
+    metadata after ANN retrieval with no over-fetch, which is silent recall loss that presents as
+    absence."* The set is the live segment digests the narrowed set touches, and `k` is the
+    Channel's plain limit: a backend that filters before ranking needs no over-fetch.
+    """
+    _seed_segments(built)
+    backend = FakeVectors([(_digest(1), 0.9), (_digest(2), 0.8)])
+    reader = _vec_reader(built, _seed_sidecar(built), backend)
+    with reader.snapshot() as state:
+        reader.channel(state, _semantic_spec(limit=7), reader.narrow(state, Filters()))
+    call = backend.calls[0]
+    assert call["candidates"] == frozenset({_digest(1), _digest(2)})
+    assert call["k"] == 7
+    assert call["model_key"] == "bge-small/1"
+
+
+def test_a_backend_that_cannot_push_down_gets_the_overfetch_clamp_and_says_so(
+    built: Built,
+) -> None:
+    """`VecManifest.pushdown = False` is contract obligation (1) declined, and it is disclosed.
+
+    07:3035 calls it *"not a failure; a disclosed mode change"*, and absence gate 11
+    (`filter_starved`) reads the field by name (07:2191). So `candidates` goes as `None`, `k` is
+    multiplied by the plan's over-fetch factor, and `pushdown_unavailable` -- row 18 of the closed
+    twenty-seven -- rides back on the outcome.
+    """
+    _seed_segments(built)
+    backend = FakeVectors([(_digest(1), 0.9)])
+    reader = _vec_reader(built, _seed_sidecar(built, pushdown=False), backend)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state,
+            _semantic_spec(limit=5, overfetch=64),
+            reader.narrow(state, Filters()),
+        )
+    call = backend.calls[0]
+    assert call["candidates"] is None
+    assert call["k"] == 5 * 64
+    assert outcome.degradations == ("pushdown_unavailable",)
+    assert reader.capabilities().vec_pushdown is False
+
+
+def test_a_corrupt_sidecar_becomes_a_channel_status_and_never_an_exception(
+    built: Built,
+) -> None:
+    """07:1373-1376: the ONE place a store-level exception becomes a Channel status.
+
+    *"A `SQLITE_CORRUPT` or `SQLITE_NOTADB` raised while reading the sidecar is caught **at the
+    Channel boundary only** and reported as `UNAVAILABLE(vec_unreadable)` ... and it is why the
+    sidecar is deletable in the first place."* `unavailable` forces `degraded`; an
+    `except: return []` would make a corrupt sidecar a confident zero, and 07:3189 gives the fix
+    a caller can act on -- `rm index.vec.owstore`.
+    """
+    _seed_segments(built)
+    backend = FakeVectors([], raises=sqlite3.DatabaseError("database disk image is malformed"))
+    reader = _vec_reader(built, _seed_sidecar(built), backend)
+    with reader.snapshot() as state:
+        outcome = reader.channel(state, _semantic_spec(), reader.narrow(state, Filters()))
+    assert outcome.status == "unavailable"
+    assert outcome.reason == "vec_unreadable"
+
+
+def test_a_sidecar_belonging_to_another_corpus_is_ignored_and_not_read(built: Built) -> None:
+    """07:790 and 07:3190: a `corpus_id` mismatch means the sidecar is *"IGNORED, not read"*.
+
+    Not an error, not a partial read, not a rebuild -- the vectors are derived and the store is
+    authoritative. `IndexCaps` reports it the same way it reports a store with no sidecar at all,
+    and absence gate 13 (`space_mismatch`) is what makes the difference visible to a caller; the
+    Channel's reason names both corpus ids so the fix is obvious.
+    """
+    _seed_segments(built)
+    backend = FakeVectors([(_digest(1), 0.9)])
+    reader = _vec_reader(built, _seed_sidecar(built, corpus_id="another-corpus"), backend)
+    caps = reader.capabilities()
+    with reader.snapshot() as state:
+        outcome = reader.channel(state, _semantic_spec(), reader.narrow(state, Filters()))
+    assert outcome.status == "unavailable"
+    assert "ignored and not read" in outcome.reason
+    assert caps.vec_backend is None
+    assert "semantic" not in caps.channels
+    assert backend.calls == []
+
+
+def test_the_manifest_fills_the_two_index_caps_fields_it_owns(built: Built) -> None:
+    """07:3339-3348's `VecManifest` read at attach, and 07:3272's *"read once, at open"*.
+
+    P2 left `vec_backend` and `vec_pushdown` at `None` and `False` with the read owed to whatever
+    ATTACHes the sidecar. This is that read, and `caps_digest` moves with it because the two
+    fields are inside the digest that memoises `plan()`.
+    """
+    _seed_segments(built)
+    bare = _reader(built).capabilities()
+    reader = _vec_reader(built, _seed_sidecar(built), FakeVectors([]))
+    caps = reader.capabilities()
+    assert caps.vec_backend == "vector.brute"
+    assert caps.vec_pushdown is True
+    assert caps.vec_ceiling == 250_000
+    assert "semantic" in caps.channels
+    assert caps.caps_digest != bare.caps_digest
+
+
+def test_the_semantic_channel_names_which_of_the_three_pieces_is_missing(built: Built) -> None:
+    """Three refusals, three different fixes, and none of them is `empty`.
+
+    `empty` would say the backend ran and matched nothing, which is a claim about the corpus.
+    These three are claims about the configuration: no backend selected, no sidecar attached, and
+    a query that never reached phase 2 -- which *"embeds before the snapshot"* (07:1364, ST22)
+    precisely because a Driver call inside a held read transaction pins the WAL.
+    """
+    _seed_segments(built)
+    reader = _vec_reader(built, None, None)
+    with reader.snapshot() as state:
+        no_backend = reader.channel(state, _semantic_spec(), reader.narrow(state, Filters()))
+    reader = _vec_reader(built, None, FakeVectors([]))
+    with reader.snapshot() as state:
+        no_sidecar = reader.channel(state, _semantic_spec(), reader.narrow(state, Filters()))
+    reader = _vec_reader(built, _seed_sidecar(built), FakeVectors([]))
+    with reader.snapshot() as state:
+        no_embedding = reader.channel(
+            state,
+            ChannelSpec(
+                name="semantic",
+                budget_ms=80,
+                limit=20,
+                overfetch=1,
+                weight=None,
+                params={},
+                bind=ChannelInput(),
+            ),
+            reader.narrow(state, Filters()),
+        )
+    assert no_backend.status == "unavailable"
+    assert "no VectorBackend was selected" in no_backend.reason
+    assert no_sidecar.status == "unavailable"
+    assert "no vec sidecar is attached" in no_sidecar.reason
+    assert no_embedding.status == "unavailable"
+    assert "phase 2" in no_embedding.reason
+
+
+def test_a_synopsis_segment_lifts_its_own_blocks_and_never_the_ones_it_summarises(
+    built: Built,
+) -> None:
+    """07:1523-1525, and the rule is honoured by NOT following an edge.
+
+    *"a semantic hit whose segment is a table synopsis (`segment.synopsis_of IS NOT NULL`) lifts to
+    the synopsis segment's own blocks and never to the 4M cells it summarises. The synopsis is what
+    was embedded; pretending otherwise would make a cosine hit on eight sampled rows into a claim
+    about the whole sheet."* The lift reads `segment_block` for the hit segment and follows no
+    `synopsis_of`, so the way to break this is to add a helpful join -- which is why the test names
+    the column it must not be joined through.
+    """
+    _seed_segments(built)
+    built.writer.execute("UPDATE segment SET synopsis_of = 4 WHERE segment_id = 1")
+    built.writer.commit()
+    backend = FakeVectors([(_digest(1), 0.9)])
+    reader = _vec_reader(built, _seed_sidecar(built), backend)
+    with reader.snapshot() as state:
+        outcome = reader.channel(state, _semantic_spec(), reader.narrow(state, Filters()))
+    assert outcome.ranked == (1, 2, 3)
+    assert 4 not in outcome.ranked
+
+
+def test_the_semantic_channel_scores_only_within_the_narrowed_set(built: Built) -> None:
+    """07:1561: filters narrow, Channels score within the narrowed set -- the lift included.
+
+    The cap is applied AFTER this join and not before, so a filter that happens to exclude a
+        segment's first 64 members cannot turn a ranked segment into zero blocks while its rank
+    still stands. Here the filter excludes two of segment 1's three members and the segment
+    still ranks, with the one member that survived.
+    """
+    _seed_segments(built)
+    built.writer.execute(
+        "UPDATE block SET kind = ? WHERE block_id IN (1, 2)",
+        (_code(built.writer, "kind", "heading"),),
+    )
+    built.writer.commit()
+    backend = FakeVectors([(_digest(1), 0.9)])
+    reader = _vec_reader(built, _seed_sidecar(built), backend)
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, Filters(kinds=frozenset({Kind.PARAGRAPH})))
+        outcome = reader.channel(state, _semantic_spec(), narrowing)
+    assert narrowing.kind == "set"
+    assert outcome.ranked == (3,)
+    assert dict(outcome.rank_of) == {3: 1}
+
+
+def test_rank_of_is_empty_for_every_channel_but_semantic(built: Built) -> None:
+    """07:1249: *"it is empty for every Channel but `semantic`"*, and `fuse()` depends on it.
+
+    `fuse()` reads `c.rank_of.get(b) or (position of b in c.ranked) + 1` (07:1249-1250), so an
+    empty mapping is the instruction to use the positional rank. A Channel that filled it with the
+    positions would be saying the same thing twice and would break the moment one of them moved.
+    """
+    _seed_links(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, Filters())
+        for spec in (
+            _identity_spec(idents=("d1#1",)),
+            _lexical_spec(terms=("block",)),
+            _structural_spec(seeds=(1,), expand=_expand()),
+        ):
+            assert reader.channel(state, spec, narrowing).rank_of == {}
+
+
+def test_a_rank_for_a_block_the_channel_did_not_rank_is_refused() -> None:
+    """`rank_of` is the authoritative rank PER RANKED BLOCK (07:1248), not a second result set."""
+    with pytest.raises(ValueError, match="gave ranks to blocks it did not rank"):
+        rd.ChannelOutcome(name="semantic", status="ok", ranked=(1,), rank_of={2: 1})
+
+
+def test_a_rank_below_one_is_refused_because_fuse_reads_it_as_absent() -> None:
+    """07:1249-1250: `fuse()` reads `c.rank_of.get(b) or (position + 1)`, so 0 is a falsy sentinel
+    AND an illegal 1-based rank -- a Channel reporting it would silently get the positional rank
+    instead of the one it meant."""
+    with pytest.raises(ValueError, match="rank below 1"):
+        rd.ChannelOutcome(name="semantic", status="ok", ranked=(1,), rank_of={1: 0})
 
 
 # ---------------------------------------------------------------------------------------------
