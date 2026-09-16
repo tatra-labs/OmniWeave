@@ -3,8 +3,14 @@
 11-repo-layout.md:206 names those six modules and this package is being filled in that order:
 **W6.1** shipped `types.py` and `plan.py` (16-roadmap.md:657), **W6.2** `channels.py` and the five
 Channels behind `Reader.channel()`, and **W6.3** `fuse.py` and `ceiling.py` (16-roadmap.md:659) --
-the scorer, its denominator, and the one `_weight()` that ST6 makes them share. `verdict` and
-`expand` are W6.4 and W6.5 and are absent.
+the scorer, its denominator, and the one `_weight()` that ST6 makes them share. **W6.4** put
+decision 3's bind-time half in `plan.py` rather than in a module of its own, and **W6.5** ships
+`verdict.py` (16-roadmap.md:661) -- the fifteen absence gates and the one citability rule.
+
+`expand` is the last of the six and is absent. The traversal it names shipped inside
+`SqliteReader._traverse` at W6.2c, because 07:1343's `Expand` is bounded by construction and the
+frontier BFS runs against `block_link` inside the snapshot; what this package still owes is the
+`expand()` 18-api-sketch.md:841 puts on the public surface.
 
 **The five scoring constants are re-exported here on purpose.** 07:1382 puts them in this package by
 name -- *"`RRF_K = 60 ; SCORER_VERSION = 1` -- ONE constant, in `omniweave_core.retrieve`"* -- and a

@@ -358,13 +358,30 @@ invented here would be a wire decision made for a reflector's convenience."""
 
 @dataclass(slots=True)
 class _Ctx:
-    """The `$defs` table being accumulated, plus the field path, for error messages."""
+    """The `$defs` table being accumulated, the field path for error messages, and the vocabulary.
+
+    `vocabulary` is the declaring module's namespace, and it is what closes the forward references
+    the plan creates on purpose. `Verdict.coverage` is a `Coverage`, `Coverage.gaps` is a
+    `tuple["DegradeCause", ...]`, and `DegradeCause`'s home is
+    `omniweave_core.retrieve.verdict` (18-api-sketch.md:840) while `Coverage` is declared beside
+    the `Reader` Protocol that returns it -- which may not import the query path, because
+    `retrieve.types` already imports `store.types` and the edge back would be a cycle. So the name
+    is unresolvable in the module that writes it and resolvable in the module the schema is rooted
+    at, which is the one this passes as `localns`. Within one JSON document `DegradeCause` is
+    defined, so resolving it against the document's own root is the honest reading rather than a
+    workaround.
+    """
 
     defs: dict[str, object]
     where: str
+    vocabulary: Mapping[str, object] = types.MappingProxyType({})
 
     def at(self, step: str) -> _Ctx:
-        return _Ctx(defs=self.defs, where=f"{self.where}.{step}")
+        return _Ctx(defs=self.defs, where=f"{self.where}.{step}", vocabulary=self.vocabulary)
+
+    def hints(self, cls: type) -> dict[str, object]:
+        """`get_type_hints(cls)`, with the root module's names available to the evaluator."""
+        return typing.get_type_hints(cls, localns=dict(self.vocabulary))
 
 
 def _summary(obj: type) -> str | None:
@@ -689,7 +706,7 @@ def _schema_named_tuple(annotation: object, ctx: _Ctx) -> dict[str, object] | No
     fields = getattr(annotation, "_fields", None)
     if fields is None:
         return None
-    hints = typing.get_type_hints(annotation)
+    hints = ctx.hints(annotation)
     where = ctx.at(annotation.__name__)
     arms = [hints[name] for name in fields]
     schema = _fixed_tuple(list(arms), where)
@@ -769,7 +786,7 @@ def _object_schema(cls: type, ctx: _Ctx) -> dict[str, object]:
     bare dataclass field, and the plan names no carrier for them; that gap is real and belongs to
     whichever work item lands the first `LIVE` declaration.
     """
-    hints = typing.get_type_hints(cls)
+    hints = ctx.hints(cls)
     fields = dataclasses.fields(cls)
     properties = {
         field.name: _schema_for(hints[field.name], ctx.at(field.name)) for field in fields
@@ -800,7 +817,12 @@ def build_schema(entry: SchemaSource, declaration: object) -> dict[str, object]:
             f"see this row's `note` in INVENTORY."
         )
         raise UnsupportedDeclarationError(message)
-    ctx = _Ctx(defs={}, where=f"{entry.module}.{entry.symbol}")
+    module = sys.modules.get(entry.module)
+    ctx = _Ctx(
+        defs={},
+        where=f"{entry.module}.{entry.symbol}",
+        vocabulary=types.MappingProxyType(dict(vars(module)) if module else {}),
+    )
     document: dict[str, object] = {"$schema": DIALECT, "$id": f"schema/{entry.file}"}
     document["title"] = declaration.__name__
     if entry.root == "array":
