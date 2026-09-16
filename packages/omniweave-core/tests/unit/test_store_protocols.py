@@ -659,6 +659,13 @@ ADDED_FIELDS: dict[str, tuple[tuple[str, str], ...]] = {
             "`retrieve()`'s, and `Reader.channel(s, spec, n)` is frozen, so the chosen seed has "
             "no other carrier across the boundary",
         ),
+        (
+            "filters",
+            'P6 W6.4 (D262) -- 07:1671 post-filters above `PREFILTER_MAX`, a `kind="all"` '
+            "`Narrowing` carries a proof and no predicate, and the same frozen signature leaves "
+            "the Channel nothing to post-filter with; without it the filter is silently dropped "
+            "on every corpus above 200,000 narrowed blocks",
+        ),
     ),
 }
 
