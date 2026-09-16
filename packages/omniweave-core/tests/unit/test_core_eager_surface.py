@@ -101,6 +101,8 @@ FILLED_HOMES: dict[str, str] = {
     "archive": "P2 W2.5 -- the .owdoc codec, frames.json, the manifest, and owcheck",
     "retrieve": "P6 W6.1 -- types.py and plan.py, plus the five scoring constants 07:1382 homes"
     " in the package rather than in a module",
+    "answer": "P6 W6.6c -- render.py, and the three names 18-api-sketch.md:842 homes at the"
+    " package plus the four shapes schema/answer-v1.json is reflected through",
 }
 
 
