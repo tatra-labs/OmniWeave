@@ -47,7 +47,7 @@ Specified in 07-store-and-retrieval.md sections 5.1, 5.3, 6, 7.3 and 16; schedul
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from types import MappingProxyType
@@ -74,6 +74,7 @@ __all__ = [
     "SCORER_VERSION",
     "ChannelResult",
     "ChannelStatus",
+    "FusedHit",
     "FusionSpec",
     "OffReason",
     "PackSpec",
@@ -221,9 +222,114 @@ class ChannelResult:
         """
         if self.status in (ChannelStatus.OK, ChannelStatus.EMPTY):
             return True
-        if self.status is not ChannelStatus.OFF:
+        if self.status != ChannelStatus.OFF:
             return False
         return any(self.reason == member.value for member in CEILING_BEARING)
+
+
+def _weight(result: ChannelResult, weights: Mapping[str, float]) -> float:
+    """07:1385's three-level resolution, in the one place ST6 requires it to have.
+
+    07:1484 states the precedence and names the sentinel. `ChannelResult.weight` is *"an explicit
+    float, **including `0.0`**"*; `0.0` *"is a value, not "unset", and `_weight()`'s three-level
+    resolution (explicit -> named default -> 1.0) with `None` as the sentinel is what makes the
+    distinction representable"*. So the first branch tests `is not None` and never truthiness, and
+    the fall-through to `1.0` is for a Channel name `DEFAULT_WEIGHTS` does not carry -- which is
+    every future sixth Channel, weighted like an unweighted one rather than like a silent zero.
+
+    **It lives here and not in `fuse.py` or `ceiling.py`.** ST6 (07:3240) is the claim that the two
+    functions *"share `_weight()`"*, and 07:1428 prices a breach: *"A ceiling that drifts from the
+    scorer silently rescales every confidence number in the product."* A rule homed inside either
+    function makes the other an importer of its sibling's private name, and the import direction
+    would then declare one of the two authoritative when neither is. Here it sits beside the field
+    it resolves and beside `counts_in_ceiling`, the other rule the ceiling reads, and the two
+    callers are peers.
+
+    D258: nothing bounds the returned float below. `0.0` is blessed by 07:1484 and it is also the
+    denominator's only zero.
+    """
+    if result.weight is not None:
+        return result.weight
+    return weights.get(result.name, 1.0)
+
+
+def _channel_set(results: Iterable[ChannelResult]) -> tuple[ChannelResult, ...]:
+    """The argument both functions are stated over: materialised once, and unique by `name`.
+
+    Two jobs, shared rather than done twice. It **materialises**, because 07:1387-1388 print both
+    signatures over one `chs` and a caller holding a generator would hand `ceiling()` an iterator
+    `fuse()` had already drained -- a denominator of `0.0` under a real numerator, with nothing
+    raised.
+
+    And it refuses a **repeated name**, because the two functions disagree about a duplicate in
+    exactly the direction 07:1428 forbids: `ceiling()` sums over rows, so a Channel named twice
+    counts twice, while `fuse()` keys its contributions by name, so the second occurrence silently
+    replaces the first. One caller mistake, a confidence halved, and no error anywhere. A
+    name-keyed channel set is what the record downstream is shaped for in any case -- 07:2014 makes
+    `Verdict.channels` a mapping with *"ALL FIVE members of CHANNELS, ALWAYS present"*.
+    """
+    unique: dict[str, ChannelResult] = {}
+    for result in results:
+        if result.name in unique:
+            msg = (
+                f"two ChannelResults named {result.name!r} were handed to one fusion: "
+                f"ceiling() would count that weight twice and fuse() would keep only the second "
+                f"contribution, so the pair disagrees by construction -- fix: pass one result per "
+                f"Channel name, which is what QueryPlan.channels and Verdict.channels both are"
+            )
+            raise ValueError(msg)
+        unique[result.name] = result
+    return tuple(unique.values())
+
+
+@dataclass(frozen=True, slots=True)
+class FusedHit:
+    """07:1450. One fused result, and the two mappings that make a fusion tunable.
+
+    07:1458: *"**A fusion returning only a score is one you cannot tune**: the per-Channel
+    contributions and ranks are what make `ow query --explain` and weight fitting possible at
+    all."* Neither mapping therefore has a default -- a `FusedHit` carrying a score and nothing
+    else is the shape this one exists to refuse, and 07:1237 leaves exactly two options, a real
+    default or a required field.
+
+    **`__post_init__` refuses a rank below 1.** 07:1425: *"`rank` being 1-based matters because
+    `ceiling` hardcodes `k + 1` as the best attainable term: a 0-based implementation silently
+    yields `confidence > 1`."* The check is on the SHAPE and not only inside `fuse()`, because
+    `--explain` and the offline weight fitter read `channel_ranks` off hits they did not build.
+    The other check is that the two mappings carry the same keys: a contribution with no rank is a
+    number nobody can re-derive, and a rank with no contribution is a Channel that scored nothing
+    while claiming to have ranked something.
+
+    The order is `(-score, block_id)` and it is TOTAL (ST7, 07:1455). `fuse()` sorts on it; a
+    consumer that re-sorts on anything else re-introduces the tie the total order exists to remove,
+    and 07:1455 names when it bites -- *"Ties broken by storage order are nondeterministic across a
+    `VACUUM` or an FTS5 `'optimize'`"*, both of which section 2.2 schedules.
+    """
+
+    block_id: int
+    score: float
+    channel_contributions: Mapping[str, float]
+    channel_ranks: Mapping[str, int]
+
+    def __post_init__(self) -> None:
+        if set(self.channel_ranks) != set(self.channel_contributions):
+            msg = (
+                f"block {self.block_id} carries contributions from "
+                f"{sorted(self.channel_contributions)} and ranks from "
+                f"{sorted(self.channel_ranks)}: 07:1452 gives a FusedHit one Channel set and both "
+                f"mappings are keyed by it -- fix: emit both keys from the same loop over the "
+                f"Channels that ranked this block"
+            )
+            raise ValueError(msg)
+        for name, rank in self.channel_ranks.items():
+            if rank < 1:
+                msg = (
+                    f"channel {name!r} reports rank {rank} for block {self.block_id}: 07:1392 "
+                    f"makes rank 1-BASED and in [1, len(ranked)], and 07:1425 says why -- "
+                    f"`ceiling` hardcodes k + 1 as the best attainable term, so a 0-based rank "
+                    f"silently yields confidence > 1 -- fix: 1 + the position, never the position"
+                )
+                raise ValueError(msg)
 
 
 @dataclass(frozen=True, slots=True)
