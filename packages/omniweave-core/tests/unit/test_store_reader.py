@@ -49,7 +49,7 @@ from omniweave_core.model.enums import Kind, Layer, Method, Quote, Trust
 from omniweave_core.store import Reader, migrate
 from omniweave_core.store import reader as rd
 from omniweave_core.store import sqlite as ow
-from omniweave_core.store.types import ChannelInput, ChannelSpec, Filters
+from omniweave_core.store.types import ChannelInput, ChannelSpec, Expand, Filters
 
 NOW_NS = 1_757_400_000_000_000_000
 """A fixed clock. `time.time()` is banned in library code and `SqliteReader` takes `now_ns` from
@@ -774,15 +774,15 @@ def test_a_kind_this_store_never_seeded_is_refused_rather_than_matched_against_n
 # ---------------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", ["structural", "semantic"])
+@pytest.mark.parametrize("name", ["semantic"])
 def test_a_channel_this_build_has_not_shipped_reports_off_not_built(
     built: Built, name: str
 ) -> None:
     """16-roadmap.md:114's exact pair: `ChannelStatus.OFF` with `reason = "not_built"`.
 
-    Two names, not four: W6.2b shipped `identity` and `lexical` and this list shrinks as each cell
-    lands. The list is written out rather than derived from `_IMPLEMENTED_CHANNELS`, because a
-    derived list would pass for a build that shipped nothing.
+    One name, not four: W6.2b shipped `identity` and `lexical`, W6.2c shipped `structural`, and
+    this list shrinks as each cell lands. It is written out rather than derived from
+    `_IMPLEMENTED_CHANNELS`, because a derived list would pass for a build that shipped nothing.
 
     The reason string is asserted rather than the status alone, because P6 inherits this contract:
     `OffReason` is closed at four members *"because `ceiling()` branches on it"* (07:1214), so
@@ -1499,6 +1499,427 @@ def test_a_channel_whose_tables_this_store_does_not_carry_is_unavailable(built: 
         )
     assert outcome.status == "unavailable"
     assert outcome.reason == "this store carries no block_fts"
+
+
+# ---------------------------------------------------------------------------------------------
+# 4c. channel -- structural: a bounded frontier BFS, and each of its four ceilings
+# ---------------------------------------------------------------------------------------------
+
+REFERS_TO = "refers_to"
+CITES = "cites"
+
+
+def _seed_links(built: Built) -> None:
+    """One document, nine blocks and a small link graph with a cycle in it.
+
+    ```
+      1 --refers_to(w=1.0)--> 2 --> 4 --> 5 --> 6 --> 7      the chain the hop cap stops
+      1 --refers_to(w=0.5)--> 3 --refers_to--> 1             the cycle back to the seed
+      1 --cites(w=2.0)------> 8                              excluded by the allowlist
+      1 --refers_to(w=0.1, trust=AMBIGUOUS)--> 9             excluded by min_trust
+    ```
+
+    `relation_vocab` is seeded here because P2 creates it EMPTY -- 0002_graph.sql:34-35
+    withholds `etype_vocab`'s fifteen builtin rows and `relation_vocab`'s thirteen alike -- and
+    `block_link.relation` is a foreign key into it, so a link cannot exist without the row.
+
+    Block 4 is on page 9 while every other block is on pages 0-7. That is what lets one test
+    narrow it away without touching the rest of the graph, and it also makes reading order
+    disagree with `block_id` order, so a tie-break asserted below is asserting the right one.
+    """
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    producer_id = _producer(conn)
+    _doc(conn, 1, uri="file:///corpus/graph.pdf")
+    pages = {1: 0, 2: 1, 3: 2, 4: 9, 5: 3, 6: 4, 7: 5, 8: 6, 9: 7}
+    for index, (block_id, page) in enumerate(sorted(pages.items())):
+        _block(
+            conn,
+            block_id=block_id,
+            doc_ord=1,
+            producer_id=producer_id,
+            page=page,
+            ord_=index,
+            text=f"block {block_id}",
+        )
+    for relation in (REFERS_TO, CITES):
+        conn.execute(
+            "INSERT INTO relation_vocab(relation, symmetric, actor_rule, source) "
+            "VALUES(?, 0, 'source refers to target', 'builtin')",
+            (relation,),
+        )
+    links = (
+        (1, 2, REFERS_TO, 1.0, 2),
+        (1, 3, REFERS_TO, 0.5, 2),
+        (2, 4, REFERS_TO, 1.0, 2),
+        (4, 5, REFERS_TO, 1.0, 2),
+        (5, 6, REFERS_TO, 1.0, 2),
+        (6, 7, REFERS_TO, 1.0, 2),
+        (3, 1, REFERS_TO, 1.0, 2),
+        (1, 8, CITES, 2.0, 2),
+        (1, 9, REFERS_TO, 0.1, 0),
+    )
+    for src, dst, relation, weight, trust in links:
+        conn.execute(
+            "INSERT INTO block_link(src_block, dst_block, relation, weight, producer_id, trust, "
+            "                       origin_operator, origin_driver, driver_schema_v) "
+            "VALUES(?, ?, ?, ?, ?, ?, 'op.link', 'drv', 1)",
+            (src, dst, relation, weight, producer_id, trust),
+        )
+    conn.execute("COMMIT")
+
+
+def _expand(**over: object) -> Expand:
+    """`Expand` with the plan's defaults except `relations`, which has none (07:1360)."""
+    fields: dict[str, object] = {"relations": frozenset({REFERS_TO})}
+    fields.update(over)
+    return Expand(**fields)  # type: ignore[arg-type]
+
+
+def _structural_spec(limit: int = 20, budget_ms: int = 40, **bind: object) -> ChannelSpec:
+    return ChannelSpec(
+        name="structural",
+        budget_ms=budget_ms,
+        limit=limit,
+        overfetch=1,
+        weight=None,
+        params={},
+        bind=ChannelInput(**bind),  # type: ignore[arg-type]
+    )
+
+
+def test_the_structural_channel_ranks_by_weight_times_trust_over_log1p_degree(
+    built: Built,
+) -> None:
+    """07:1894 and 18:2834's ordering, and it is NOT hop order.
+
+    ```
+      hop 1   1 -> 2   1.0 x 2 / log1p(2) = 1.8207     the seed has two eligible links
+              1 -> 3   0.5 x 2 / log1p(2) = 0.9103
+      hop 2   2 -> 4   1.0 x 2 / log1p(1) = 2.8854     one link, so a smaller denominator
+              3 -> 1   1.0 x 2 / log1p(1) = 2.8854     the cycle back to the seed
+    ```
+
+    So a two-hop block outranks both one-hop blocks, which is what the formula says and what a
+    hop-decay would have hidden: there is no `SPINE_DECAY` here, deliberately, because the decay
+    that bounds this Channel is the hop CAP and not a weight. Blocks 1 and 4 tie exactly, and
+    reading order breaks it -- block 1 is on page 0 and block 4 on page 9.
+    """
+    _seed_links(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state,
+            _structural_spec(seeds=(1,), expand=_expand()),
+            reader.narrow(state, Filters()),
+        )
+    assert outcome.status == "ok"
+    assert outcome.ranked == (1, 4, 2, 3)
+    assert outcome.truncated_at_limit is False
+    assert outcome.degradations == ()
+
+
+def test_a_seed_reached_from_another_block_is_a_result_and_is_still_never_re_expanded(
+    built: Built,
+) -> None:
+    """`visited` bounds what is EXPANDED, not what is RANKED, and 07:1892-1896 needs both.
+
+    That transcript seeds the traversal from `tmp_narrow` itself and reports 311 ranked blocks --
+    every one of them already a seed -- so a set that excluded seeds from the result would report
+    zero there. The other half is what stops a cyclic reference graph from running forever:
+    block 1 is reached at hop 2 through `3 -> 1`, ranks, and is not expanded a second time.
+    """
+    _seed_links(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state,
+            _structural_spec(seeds=(1,), expand=_expand(max_hops=4)),
+            reader.narrow(state, Filters()),
+        )
+    assert 1 in outcome.ranked
+    assert len(set(outcome.ranked)) == len(outcome.ranked)
+    # 1 is expanded at hop 0 only, so 2 and 3 are never re-offered as fresh neighbours.
+    assert outcome.ranked.count(2) == 1
+
+
+def test_max_hops_is_hard_capped_at_four_however_many_are_asked_for(built: Built) -> None:
+    """07:1345 and 18:2832's `HARD CAP 4`, clamped at the traversal.
+
+    `store/types.py` prints the cap as a comment and enforces nothing: it is a clamp at the
+    traversal and not a field constraint -- so `max_hops=99` is a legal `Expand` and an illegal
+    traversal. The chain `1 -> 2 -> 4 -> 5 -> 6 -> 7` puts block 6 at hop 4 and block 7 at hop 5,
+    which is the one link the cap has to cut.
+    """
+    _seed_links(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state,
+            _structural_spec(seeds=(1,), expand=_expand(max_hops=99)),
+            reader.narrow(state, Filters()),
+        )
+    assert 6 in outcome.ranked
+    assert 7 not in outcome.ranked
+
+
+def test_the_per_hop_beam_cuts_the_frontier_and_says_it_truncated(built: Built) -> None:
+    """`beam: int = 64  # per hop, ordered by (weight x trust) / log1p(degree)` (07:1346).
+
+    With `beam=1` the weaker of the seed's two neighbours is dropped before hop 2, so block 3 is
+    never reached and the cycle through it never runs. `truncated_at_limit` is set because the
+    shortfall is the plan's and not the corpus's -- the same distinction gate 12 draws one level
+    up (07:2192).
+    """
+    _seed_links(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state,
+            _structural_spec(seeds=(1,), expand=_expand(beam=1)),
+            reader.narrow(state, Filters()),
+        )
+    assert outcome.ranked == (4, 2)
+    assert outcome.truncated_at_limit is True
+
+
+def test_max_visited_stops_the_traversal_and_keeps_what_it_had_already_reached(
+    built: Built,
+) -> None:
+    """`max_visited = 4096` (07:1349), here moved to 2 so one seed plus one hop exhausts it.
+
+    Block 3 is REACHED at hop 1 and ranks, and is not EXPANDED because the visited budget is
+    spent -- which is the same split the cycle test asserts from the other side.
+    """
+    _seed_links(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state,
+            _structural_spec(seeds=(1,), expand=_expand(max_visited=2)),
+            reader.narrow(state, Filters()),
+        )
+    assert outcome.ranked == (2, 3)
+    assert outcome.truncated_at_limit is True
+
+
+def test_a_hub_contributes_at_most_hub_cap_neighbours_and_sets_a_degradation(
+    built: Built,
+) -> None:
+    """07:1349-1351, and row 19 of 15-observability.md's closed twenty-seven.
+
+    *"a block with more links contributes at most `hub_cap` neighbours, sampled by weight, and
+    sets `degradations += [Degradation(kind="hub_capped", ...)]`"*. Sampled by weight and
+    DETERMINISTICALLY: the statement is ordered `weight DESC, dst_block`, so the kept subset is
+    the top `hub_cap` and two runs over one store agree, which a weighted random sample would
+    break and ST7 rests on.
+    """
+    _seed_links(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state,
+            _structural_spec(seeds=(1,), expand=_expand(hub_cap=1, max_hops=1)),
+            reader.narrow(state, Filters()),
+        )
+    assert outcome.ranked == (2,)
+    assert outcome.degradations == ("hub_capped",)
+
+
+def test_only_the_named_relations_are_traversed(built: Built) -> None:
+    """07:1344 gives `Expand.relations` the comment *"REQUIRED, no default"*, and the
+    allowlist is why.
+
+    The same seed reaches block 8 under `{cites}` and never under `{refers_to}`: one link, one
+    relation, two different answers.
+    """
+    _seed_links(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, Filters())
+        cites = reader.channel(
+            state,
+            _structural_spec(seeds=(1,), expand=_expand(relations=frozenset({CITES}))),
+            narrowing,
+        )
+        refers = reader.channel(state, _structural_spec(seeds=(1,), expand=_expand()), narrowing)
+    assert cites.ranked == (8,)
+    assert 8 not in refers.ranked
+
+
+def test_min_trust_filters_the_links_and_moves_the_degree_it_divides_by(built: Built) -> None:
+    """`min_trust: Trust = Trust.INFERRED` (07:1348), and the degree is the ELIGIBLE degree.
+
+    Block 9 hangs off an `AMBIGUOUS` link and the default floor excludes it. Lowering the floor
+    admits it, and the seed's degree goes from 2 to 3 -- so every score at that hop falls, which
+    is what "a block with more links" ought to mean and is why the count is taken after the
+    filters rather than off `block_link` whole. The `AMBIGUOUS` link scores 0.0 and the block
+    still ranks, which is 0001_init.sql:319's rule for an ambiguous link: kept, ranked down,
+    never dropped.
+    """
+    _seed_links(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, Filters())
+        strict = reader.channel(
+            state,
+            _structural_spec(seeds=(1,), expand=_expand(max_hops=1)),
+            narrowing,
+        )
+        loose = reader.channel(
+            state,
+            _structural_spec(seeds=(1,), expand=_expand(max_hops=1, min_trust=Trust.AMBIGUOUS)),
+            narrowing,
+        )
+    assert strict.ranked == (2, 3)
+    assert loose.ranked == (2, 3, 9)
+
+
+def test_the_traversal_is_joined_to_the_narrowed_set_at_every_hop(built: Built) -> None:
+    """18:2836: *"joined to `tmp_narrow` at every hop so it cannot leave the scope"*.
+
+    Block 4 is on page 9 and the filter stops at page 5, so hop 2's `2 -> 4` link is not followed
+    -- and the ranking that remains is the one the cycle produced, which proves the traversal ran
+    rather than stopping at hop 1.
+    """
+    _seed_links(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, Filters(pages=range(0, 5)))
+        outcome = reader.channel(state, _structural_spec(seeds=(1,), expand=_expand()), narrowing)
+    assert narrowing.kind == "set"
+    assert outcome.ranked == (1, 2, 3)
+
+
+def test_with_no_seed_bound_the_traversal_starts_from_tmp_narrow_itself(built: Built) -> None:
+    """07:1332's last rung: *"when no scoring Channel precedes it, from `tmp_narrow` itself"*.
+
+    That is plan 3's shape (07:1892-1896) -- no `identity` seed, no `lexical` Channel in the plan,
+    so the narrowed set seeds itself and every block it reaches is also inside it. Blocks 8 and 9
+    are still absent, because the relation allowlist and `min_trust` do not care where the seed
+    came from.
+    """
+    _seed_links(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state, _structural_spec(expand=_expand()), reader.narrow(state, Filters())
+        )
+    assert outcome.status == "ok"
+    assert outcome.ranked == (1, 5, 6, 7, 4, 2, 3)
+    assert 8 not in outcome.ranked
+    assert 9 not in outcome.ranked
+
+
+def test_a_narrowing_that_proved_the_set_too_big_leaves_the_traversal_no_bounded_start(
+    built: Built, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`kind="all"` is a PROOF that the candidate set could not be enumerated (07:1585-1591).
+
+    There is no `tmp_narrow` to seed from, and seeding from "the corpus" is the unbounded
+    traversal `Expand` exists to make unrepresentable. `unavailable` and not `empty`, because the
+    Channel did not look: `empty` would be a claim about the corpus's links.
+    """
+    monkeypatch.setattr(rd, "PREFILTER_MAX", 1)
+    _seed_links(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, Filters())
+        outcome = reader.channel(state, _structural_spec(expand=_expand()), narrowing)
+    assert narrowing.kind == "all"
+    assert outcome.status == "unavailable"
+    assert "no bounded" in outcome.reason
+
+
+def test_a_structural_channel_with_no_expand_bound_is_unavailable(built: Built) -> None:
+    """There is no default relation set to fall back to, and inventing one is the failure.
+
+    07:1360-1362 forbids "all relations" by construction, and no part of section 5.2 says where an
+    `Expand` comes from when `Query.expand` is `None` -- so the Channel reports that it could not
+    look. D247.
+    """
+    _seed_links(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state, _structural_spec(seeds=(1,)), reader.narrow(state, Filters())
+        )
+    assert outcome.status == "unavailable"
+    assert "no Expand" in outcome.reason
+
+
+def test_a_relation_this_store_does_not_carry_is_a_usage_error_naming_the_vocabulary(
+    built: Built,
+) -> None:
+    """07:1361: *"silently traversing nothing is indistinguishable from a corpus with no links"*.
+
+    A misspelled relation makes the `IN (...)` list match nothing, the Channel reports `EMPTY`,
+    absence gate 2 does not fire because `EMPTY` is not `UNAVAILABLE`, and the Verdict says the
+    corpus has no links. The empty set is refused for the same reason it has no default.
+    """
+    _seed_links(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, Filters())
+        with pytest.raises(UsageError, match="relation_vocab"):
+            reader.channel(
+                state,
+                _structural_spec(seeds=(1,), expand=_expand(relations=frozenset({"refres_to"}))),
+                narrowing,
+            )
+        with pytest.raises(UsageError, match="no default"):
+            reader.channel(
+                state,
+                _structural_spec(seeds=(1,), expand=_expand(relations=frozenset())),
+                narrowing,
+            )
+
+
+def test_a_channel_over_its_own_budget_is_unavailable_with_the_one_reason_gate_one_reads(
+    built: Built,
+) -> None:
+    """07:1817's half of the two-deadline split, at 07:1805's cancellation point.
+
+    07:1805 -- *"`structural` at the top of each hop"* -- is the first cancellation point any
+    Channel in this module can have: the other three are single statements, and `interrupt()`
+    aborts the whole
+    transaction, so it is reserved for the snapshot deadline. A Channel over its OWN `budget_ms`
+    returns `UNAVAILABLE(timeout)` and forces `degraded`; the QUERY deadline is the other case
+    entirely and reports `OK`. Absence gate 1 reads `reason == "timeout"` and nothing else
+    (07:1221), so the string is asserted rather than the status alone.
+
+    `monotonic_ns` is injected, so the budget is spent without spending the wall time -- the same
+    parameter and the same reason as `store/sqlite.py`'s `snapshot()`.
+    """
+    _seed_links(built)
+    ticks = iter([0, 30_000_000])
+    reader = rd.SqliteReader(
+        ow.connect_readonly(built.path),
+        now_ns=NOW_NS,
+        monotonic_ns=lambda: next(ticks, 30_000_000),
+    )
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state,
+            _structural_spec(budget_ms=25, seeds=(1,), expand=_expand()),
+            reader.narrow(state, Filters()),
+        )
+    assert outcome.status == "unavailable"
+    assert outcome.reason == "timeout"
+    assert outcome.ranked == ()
+
+
+def test_the_structural_channel_is_empty_when_the_seed_reaches_nothing(built: Built) -> None:
+    """Plan 1's transcript, 07:1846-1849: *"the frontier is empty at hop 1: ranked=0,
+    status EMPTY, weight still counts in the ceiling"*."""
+    _seed_links(built)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state, _structural_spec(seeds=(7,), expand=_expand()), reader.narrow(state, Filters())
+        )
+    assert outcome.status == "empty"
+    assert "no block_link row reaches" in outcome.reason
 
 
 # ---------------------------------------------------------------------------------------------
