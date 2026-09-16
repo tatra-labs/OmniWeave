@@ -78,6 +78,7 @@ from typing import TYPE_CHECKING, Final, Literal
 
 from omniweave_core.answer.budget import HARD_CEILING, AnswerBudget
 from omniweave_core.answer.untrusted import wrap_untrusted
+from omniweave_core.calibration import NO_SCORE, Calibrated, render_confidence
 from omniweave_core.errors import UsageError
 from omniweave_core.model.enums import Quote
 
@@ -234,7 +235,20 @@ class RenderedBlock:
     method: str
     origin_driver: str
     byte_exact: bool
-    score: str = EN_DASH
+    score: Calibrated | None = None
+    """The producer's confidence, and NEVER a bare float. 10:733 is the rule in one line --
+    *"The `score` column renders `Calibrated`, never a bare float, and it is a *producer's*
+    score."* `None` is 10:739's *"`-` where the pair is NULL"*, which 03:295 makes the only other
+    state the pair has: `score` and `score_kind` are nullable **together**, under a CHECK."""
+
+    now_ns: int | None = None
+    """The clock this block's confidence is checked for staleness against. Q-G13.
+
+    On the block and not on the `Answer` because `header` and the provenance cell are properties
+    of a block, and a property cannot be handed an argument. `None` means no numeral may print --
+    `render_confidence()` refuses a calibrated reading without a clock rather than assuming the
+    curve is fresh -- which is release 1's state for every signal (13:1531)."""
+
     restriction: str = EN_DASH
     identity_grade: str = ""
     is_context: bool = False
@@ -249,6 +263,13 @@ class RenderedBlock:
         section would have been droppable, and a safety disclosure that the truncator may drop is
         not
         a disclosure."*
+
+        **A sixth field, when the block has a confidence.** 10:635 prints
+        `... - parse.pdf.pdfium@2 - layout: high (uncalibrated)`, so the confidence follows the
+        driver and carries the LONG mark; the provenance cell carries the short one, which
+        ADR-11:94 rules deliberate. `identity_grade` follows it because the corpus prints that
+        field in no header at all -- 10:2220 lists it on `RenderedBlock` and nothing renders it --
+        so its position is this module's and the confidence's is the plan's.
         """
         parts = [
             self.cite,
@@ -257,6 +278,9 @@ class RenderedBlock:
             self.trust,
             self.origin_driver,
         ]
+        confidence = render_confidence(self.score, now_ns=self.now_ns)
+        if confidence != NO_SCORE:
+            parts.append(confidence)
         if self.identity_grade:
             parts.append(self.identity_grade)
         if self.defanged:
@@ -437,7 +461,7 @@ def _provenance(answer: Answer, *, collapsed: bool = False) -> str:
                 block.trust,
                 block.method,
                 block.origin_driver,
-                block.score,
+                render_confidence(block.score, now_ns=block.now_ns, abbreviated=True),
                 block.restriction,
             )
         )

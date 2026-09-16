@@ -194,6 +194,75 @@
         }
       }
     },
+    "Calibrated": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "charter.md:7331's nine fields, in its order.",
+      "required": [
+        "signal",
+        "value",
+        "status",
+        "p_correct",
+        "ci95",
+        "n",
+        "eval_set_id",
+        "slice_key",
+        "measured_at_ns"
+      ],
+      "properties": {
+        "signal": {
+          "type": "string"
+        },
+        "value": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "calibrated",
+            "bootstrap",
+            "uncalibrated",
+            "stale"
+          ]
+        },
+        "p_correct": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "ci95": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "n": {
+          "type": "integer"
+        },
+        "eval_set_id": {
+          "type": "string"
+        },
+        "slice_key": {
+          "type": "string"
+        },
+        "measured_at_ns": {
+          "type": "integer"
+        }
+      }
+    },
     "ImpactRow": {
       "type": "object",
       "additionalProperties": false,
@@ -321,6 +390,7 @@
         "origin_driver",
         "byte_exact",
         "score",
+        "now_ns",
         "restriction",
         "identity_grade",
         "is_context",
@@ -368,7 +438,20 @@
           "type": "boolean"
         },
         "score": {
-          "type": "string"
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Calibrated"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "now_ns": {
+          "type": [
+            "integer",
+            "null"
+          ]
         },
         "restriction": {
           "type": "string"

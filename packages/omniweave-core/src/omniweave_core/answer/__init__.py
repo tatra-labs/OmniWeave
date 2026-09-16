@@ -7,6 +7,12 @@ and
 `schema/answer-v1.json` from `omniweave_core.answer:Answer` and that is the path the inventory
 names.
 
+**W6.7** retypes `RenderedBlock.score` from a string to `Calibrated | None`, which is 10:733's
+rule -- *"The `score` column renders `Calibrated`, never a bare float"* -- and moves the only
+formatting of a confidence out of this package entirely: `omniweave_core.calibration` owns it,
+because 13:1427 wants one code path and this package is two of its call sites, the provenance cell
+and the block header.
+
 **W6.6a** shipped `budget` (the five tiers keyed on indexed blocks, `HARD_CEILING`, and 10:479's
 clamp), `worth` (the four tables that penalise BYTE SHARE and not rank) and `allocate`
 (reserve-then-render, the 15% cliff, and the `MIN_CHARS` floor). **W6.6b** adds `untrusted`
