@@ -841,6 +841,13 @@ def test_the_reexport_surface_is_the_four_protocols_the_backend_and_the_value_ty
     for the four numbered process/FFI boundaries and a Backend crosses none of them. It is in
     `__all__` because 07:3132 puts it in `T-CONTRACT` beside the four, and it is absent from
     `PROTOCOLS` above because the 33-method price counts four.
+
+    `NO_JOB_DOCS` is the one name here that is not a type. 07:750 puts the predicate in
+    `omniweave_core.store` and nowhere else, and the six sites 07:759-766 lists reach it from four
+    subpackages -- so a flat surface is what the plan asked for, and a `predicates.py` would be the
+    second home the constant exists to prevent. It sorts between `IndexCaps` and `Narrowing`
+    because `sorted()` compares codepoints and `O` precedes `a`; the order is the sort's, not a
+    curated one.
     """
     assert sorted(store_module.__all__) == [
         "ChannelInput",
@@ -851,6 +858,7 @@ def test_the_reexport_surface_is_the_four_protocols_the_backend_and_the_value_ty
         "Filters",
         "GraphSink",
         "IndexCaps",
+        "NO_JOB_DOCS",
         "Narrowing",
         "Reader",
         "Snapshot",

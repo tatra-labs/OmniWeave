@@ -158,8 +158,14 @@ L4_TABLES: frozenset[str] = frozenset(
         "index_state",  # section 3.8
         "stat",  # section 3.8
         "migration",  # section 3.8
+        "corpus_card",  # charter.md:6705-6727 -- see the note below
     }
 )
+# `corpus_card` is in NO row of 07 section 3's migration table, which assigns every other table to
+# one of the five files. P6 W6.8 puts it here because it is corpus-wide DERIVED statistics
+# refreshed by the runner, which is section 3.8's own subject, and because the two alternatives are
+# worse: `0005_out.sql` is named for generation's five `artifact*` tables, and a `0006` with no
+# `0005` opens the numbering gap G27(b) refuses. `_plan/_notes/build-defects.md` D286 is the entry.
 
 # 07 section 3.13's register, the rows whose `Owner` column reads 0002 or 0003. Section 3.13 is not
 # an exhaustive index list -- it is the corpus-wide register of the indexes the QUERY PATH depends

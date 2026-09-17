@@ -158,11 +158,12 @@ would silently change a published `confidence`.
    answer -- so `narrow()` REFUSES a non-`None` `lang` with a `UsageError` naming the defect. 07's
    own house rule for an unsatisfiable filter value is *"a usage error naming the legal set, never
    a silent drop"* (07:1290).
-2. **`NO_JOB_DOCS` has no code home.** 07:766 says *"`omniweave_core.store` -- the one spelling"*
-   and `store/__init__.py` does not export it; `store/maintenance.py`'s DEFECT 4 already reported
-   the same gap and deferred `stat.docs` over it. `coverage()` cannot defer: 07:757 lists
-   *"absence gate 4's scope roll-up"* among the predicate's exhaustive sites. `_NO_JOB_DOCS` below
-   is therefore private and carries its own deletion condition; the required edit is reported.
+2. **`NO_JOB_DOCS` -- CLOSED at P6 W6.8.** 07:750 says *"the one spelling. Every site below appends
+   it verbatim"* and names `omniweave_core.store`; that module did not export it when this file was
+   written, so the predicate lived here as a private copy carrying its own deletion condition.
+   `omniweave_core.store.NO_JOB_DOCS` is now that home -- `corpus_card`'s document count is the
+   fourth site of the six 07:759-766 lists, and building the card is what forced it -- so this file
+   imports it and the copy is gone.
 3. **`STAT_MAX_AGE_NS` is a plan-named constant absent from `limits.py`.** 07:731 defines
    `STAT_MAX_AGE_NS = 86_400e9`. Nothing here needs it -- `stat_age_ns` is an age and the
    comparison belongs to the over-fetch factor, which is P6's -- so it is reported and not
@@ -181,7 +182,7 @@ would silently change a published `confidence`.
 
 **On the fourteen `# noqa: S608`s.** Every statement in this module is built by interpolating one
 of three things and nothing else: a module-level table-name constant (`_TMP_NARROW`, `_TMP_DOCS`,
-`_TMP_REFS`), the `_NO_JOB_DOCS` predicate constant, or a `?,?,?` placeholder run from
+`_TMP_REFS`), the `NO_JOB_DOCS` predicate constant, or a `?,?,?` placeholder run from
 `_placeholders(n)` -- an integer count turned into question marks. **No caller value is ever
 interpolated**: every `Filters` field, every ref and every id travels as a bound parameter, which
 is also what makes `enum_val`-code resolution (07:1655-1657) a bind rather than a literal. S608
@@ -230,6 +231,7 @@ from omniweave_core.retrieve.channels import (
     grade_title,
     normalise_query_text,
 )
+from omniweave_core.store import NO_JOB_DOCS
 from omniweave_core.store import sqlite as ow
 from omniweave_core.store.types import (
     ChannelSpec,
@@ -370,14 +372,6 @@ _OFF_NOT_BUILT: Final = "not_built"
 The value and not the member, because `OffReason` is `omniweave_core.retrieve`'s (18:841) and a
 `StrEnum` member compares equal to its value -- so P6's `reason == OffReason.NOT_BUILT` holds
 against this string without a conversion.
-"""
-
-_NO_JOB_DOCS: Final = "doc.format <> 'owjob'"
-"""07:766's predicate, PRIVATE, and DEFECT 2 of the module docstring is its deletion condition.
-
-07:766 declares `omniweave_core.store` the one home and that module does not export it. This copy
-is private so that no second PUBLIC home exists to drift; `coverage()` needs it because 07:757
-lists absence gate 4's scope roll-up among the predicate's exhaustive sites.
 """
 
 _HYDRATE_BATCH: Final = 512
@@ -2588,7 +2582,7 @@ class SqliteReader:
             if doc_where is None
             else "SELECT discovered, indexed, skipped, complete FROM ingest_scope AS sc "  # noqa: S608
             " WHERE EXISTS (SELECT 1 FROM doc"
-            f"   WHERE {doc_where} AND {_NO_JOB_DOCS}"
+            f"   WHERE {doc_where} AND {NO_JOB_DOCS}"
             "     AND doc.uri GLOB sc.scope_id || '*')"
         )
         scope_rows = connection.execute(scope_sql, tuple(doc_params)).fetchall()
@@ -2598,7 +2592,7 @@ class SqliteReader:
         skipped = sum(int(row[2]) for row in scope_rows)
         complete = bool(scope_rows) and all(int(row[3]) != 0 for row in scope_rows)
 
-        status_where = _NO_JOB_DOCS if doc_where is None else f"{doc_where} AND {_NO_JOB_DOCS}"
+        status_where = NO_JOB_DOCS if doc_where is None else f"{doc_where} AND {NO_JOB_DOCS}"
         by_status = {
             str(status): int(count)
             for status, count in connection.execute(

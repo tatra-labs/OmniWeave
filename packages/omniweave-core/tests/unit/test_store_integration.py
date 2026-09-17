@@ -221,7 +221,6 @@ DEFERRED_TO_A_LATER_PHASE: dict[str, str] = {
     "artifact_cite": "P9, 0005_out.sql",
     "artifact_el": "P9, 0005_out.sql",
     "artifact_unit": "P9, 0005_out.sql",
-    "corpus_card": "P6 W6.8 (16-roadmap.md:664)",
     "serve_emission": "P7, omniweave-serve",
 }
 

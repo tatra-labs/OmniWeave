@@ -451,3 +451,50 @@ CREATE TABLE migration (                                                        
 -- PRAGMA table_info, and a NOT NULL column with a default belongs in 0001_init.sql -- verified on
 -- 3.45.1, `ALTER TABLE ... ADD COLUMN ... NOT NULL` raises only against a NON-EMPTY table, which
 -- is the worst possible distribution of outcomes for a later migration.
+
+-- =========================================================================================
+-- The corpus card -- charter.md:6705-6727, "Added to the .owstore ... refreshed by the runner"
+-- =========================================================================================
+--
+-- WHY THIS FILE. 07 section 3's migration table assigns every table to one of five files and does
+-- not assign this one: `0001` is L2, `0002` is L3, `0003` is "L4: this section", `0004` is the
+-- runtime ledger and `0005_out.sql` is named for generation's five `artifact*` tables. The card is
+-- corpus-wide DERIVED statistics refreshed by the runner, which is section 3.8's own subject --
+-- `ingest_scope`, `index_state`, `stat` and `migration` are the four tables above it -- so it lands
+-- here rather than taking the name 07:241 reserves for P9, and rather than opening a numbering gap
+-- that G27(b) refuses. `_plan/_notes/build-defects.md` D286 is the entry.
+--
+-- [DER]: droppable and rebuildable from `doc`, `block`, `page`, `diag` and `ingest_scope`. Nothing
+-- else reads it, and a missing row is `card_stale: true` on the wire (10:1036-1039) rather than an
+-- error -- "A stale card is never presented as current, and it is never silently recomputed inside
+-- a read call".
+
+CREATE TABLE corpus_card (                                                               -- [DER]
+  card_gen INTEGER PRIMARY KEY,       -- the CORPUS generation. NOT `gen`, which is the per-document
+                                      --   parse generation everywhere else; `artifact.artifact_gen`
+                                      --   is renamed for the same reason.
+  name TEXT NOT NULL, root TEXT NOT NULL,
+  built_at_ns INTEGER NOT NULL, writer_version TEXT NOT NULL,
+  docs_indexed INTEGER NOT NULL, docs_discovered INTEGER NOT NULL,
+  docs_partial INTEGER NOT NULL, docs_failed INTEGER NOT NULL,
+  pages INTEGER NOT NULL, blocks INTEGER NOT NULL, bytes INTEGER NOT NULL,
+  formats_json TEXT NOT NULL, langs_json TEXT NOT NULL, date_range_json TEXT NOT NULL,
+  outline_json TEXT NOT NULL,         -- <= 40 top-level titles, sampled DETERMINISTICALLY
+  top_terms_json TEXT NOT NULL,       -- from an fts5vocab('block_fts','row') table. NOT "free".
+  achieved_json TEXT NOT NULL,        -- MIN over drivers of Capabilities: THE CORPUS'S REAL FLOOR
+  trust_hist_json TEXT NOT NULL, quote_hist_json TEXT NOT NULL,
+  verbatim_fraction REAL NOT NULL,    -- THE HONESTY NUMBER, printed before any query is run
+  gaps_json TEXT NOT NULL,            -- top diag codes, doc/page counts, severity, the fix command
+  restriction_bits INTEGER NOT NULL DEFAULT 0,      -- OR over every block
+  embedding_json TEXT,                -- {model_id, model_rev, dim, metric, normalized} or NULL
+  abstract TEXT, abstract_producer_id INTEGER REFERENCES producer(producer_id)
+);                                 -- both NULL unless `ow corpora --summarize` ran; AN LLM
+                                   -- NEVER WRITES A CORPUS DESCRIPTION SILENTLY (10:1089)
+-- Every document count carries NO_JOB_DOCS (`doc.format <> 'owjob'`), whose one code spelling is
+-- `omniweave_core.store.NO_JOB_DOCS`. 07:763 states the consequence of forgetting it on exactly
+-- this table: a job document "has no blocks, so it would drive `verbatim_fraction` toward zero by
+-- adding to a denominator it can never contribute to".
+--
+-- NO INDEX. The reader wants `max(card_gen)` and `card_gen INTEGER PRIMARY KEY` is the rowid, so
+-- `SELECT max(card_gen)` is an O(1) btree seek. ST17 registers every shipped index in
+-- `tools/indexes.toml` and an index this table does not need would be a row to justify forever.

@@ -135,12 +135,13 @@ is this module's spelling, and it follows the house form already used twice in t
 row yet -- reported to the owner"*). `codes.toml` is a transcription of plan allocations and is not
 this wave's file, so no row is added here. Reported.
 
-**DEFECT 4 -- `stat`'s `docs` key needs `NO_JOB_DOCS`, which has no code home yet.**
-`0003_index.sql:426-428` fixes the predicate as `format <> 'owjob'` and says "whose one spelling
-lives in `omniweave_core.store` and which every site appends verbatim". `omniweave_core.store`
-does not export it. Repair step 4 therefore re-derives the keys it can spell without minting a
-second home and records `docs` in `RepairReport.stat_deferred`, naming why. Reported as a required
-edit to `store/__init__.py`.
+**DEFECT 4 -- `stat`'s `docs` key needed `NO_JOB_DOCS`, which had no code home. CLOSED at P6
+W6.8.** `0003_index.sql` fixes the predicate as `format <> 'owjob'` and says its one spelling lives
+in `omniweave_core.store`; that module did not export it, so repair step 4 re-derived only the keys
+it could spell without minting a second home and recorded `docs` in `RepairReport.stat_deferred`.
+Building `corpus_card` -- the fourth of the six sites 07:759-766 lists -- is what made the home
+worth having, and `docs` now comes off `_STAT_SQL` with the rest. `per_kind` is still deferred and
+for a different reason: nothing fixes its key spelling.
 
 Stdlib only (INV-2 / G1). `import sqlite3` is legal here and needs no `noqa`: ruff's TID251
 per-file-ignore covers `store/*.py` (pyproject.toml), which is INV-17's five-file allowance.
@@ -162,6 +163,7 @@ from types import MappingProxyType
 from typing import Final
 
 from omniweave_core.errors import StoreError
+from omniweave_core.store import NO_JOB_DOCS
 from omniweave_core.store.sqlite import INTERACTIVE_WAIT_MS, StoreThread, Unit
 
 __all__ = [
@@ -1260,11 +1262,6 @@ def compact(conn: sqlite3.Connection, *, tables: Sequence[str] | None = None) ->
 
 _STAT_DEFERRED: Final[Mapping[str, str]] = MappingProxyType(
     {
-        "docs": (
-            "needs the NO_JOB_DOCS predicate (`format <> 'owjob'`), whose one code home is "
-            "`omniweave_core.store` per 0003_index.sql:426-428; that module does not export it "
-            "yet and spelling it here would be INV-21's second home"
-        ),
         "per_kind": (
             "07:696-698 and 0003_index.sql:421-423 name 'per-kind counts' without fixing a key "
             "spelling; inventing one would allocate register rows the plan did not order"
@@ -1277,13 +1274,20 @@ _STAT_SQL: Final[Mapping[str, str]] = MappingProxyType(
     {
         "live_blocks": "SELECT count(*) FROM ow_block_head",
         "live_segments": "SELECT count(*) FROM ow_segment_head",
+        "docs": f"SELECT count(*) FROM doc WHERE {NO_JOB_DOCS}",  # noqa: S608 -- a constant
     }
 )
-"""The two `stat` keys whose spelling the shipped DDL fixes (`0003_index.sql:421-422`).
+"""The three `stat` keys whose spelling the shipped DDL fixes (`0003_index.sql`).
 
-Both read a head view rather than the base table, because "live" is exactly what `ow_block_head`
-and `ow_segment_head` define -- `gen = doc.gen AND state = 0` (`0001_init.sql:328-330`,
-`0003_index.sql:87-89`). Re-deriving the definition here would be a second home for it.
+The first two read a head view rather than the base table, because "live" is exactly what
+`ow_block_head` and `ow_segment_head` define -- `gen = doc.gen AND state = 0`
+(`0001_init.sql:328-330`, `0003_index.sql:87-89`). Re-deriving the definition here would be a
+second home for it.
+
+`docs` is 0003's own statement, `SELECT count(*) FROM doc WHERE format <> 'owjob'`, with the
+predicate imported rather than spelled: DEFECT 4 above is the history, and 07:761 is why the
+exclusion is not cosmetic here -- a job document *"would inflate the corpus size an operator reads
+and the denominator the over-fetch factor is clamped against"*.
 """
 
 
