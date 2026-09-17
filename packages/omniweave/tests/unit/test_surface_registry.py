@@ -12,16 +12,37 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess  # noqa: TID251 -- D298 is observable only from a fresh interpreter.
+import sys
 import tomllib
 from dataclasses import fields
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import omniweave.sdk as sdk_root
 import omniweave.surface.registry as registry_module
 import pytest
 from omniweave.sdk import Gap as SdkGap
-from omniweave.sdk.reports import AddReport, CorporaReport, CorpusCard
-from omniweave.surface import ACTIONS, GROUPS, HUMAN_ONLY, PROFILES, ActionSpec, assert_sv1, listed
+from omniweave.sdk.reports import (
+    DOCTOR_SEVERITIES,
+    SEVERITIES,
+    AddReport,
+    CodeRow,
+    CorporaReport,
+    CorpusCard,
+    DoctorFinding,
+    DoctorReport,
+)
+from omniweave.surface import (
+    ACTIONS,
+    FULL_ROSTER,
+    GROUPS,
+    HUMAN_ONLY,
+    PROFILES,
+    ActionSpec,
+    assert_sv1,
+    listed,
+)
 from omniweave.surface import inputs as inputs_module
 from omniweave.surface.inputs import (
     CORPORA_DETAILS,
@@ -31,6 +52,11 @@ from omniweave.surface.inputs import (
     WANTS,
     AddIn,
     CorporaIn,
+    CoverageIn,
+    DiffIn,
+    DoctorIn,
+    ExplainIn,
+    GridIn,
     OpenIn,
     QueryIn,
 )
@@ -38,13 +64,19 @@ from omniweave.surface.registry import (
     DECISION_MAX,
     MCP_NAME_RE,
     SUMMARY_MAX,
+    _duplicate_cli,
     _index,
+    _roster_failures,
+    _unrostered_full,
     _unrostered_human_only,
     _validate,
 )
 from omniweave_core.answer import Answer
 from omniweave_core.answer.budget import HARD_CEILING
 from omniweave_core.errors import SurfaceError
+from omniweave_core.model import Grid
+from omniweave_core.model.rebind import RebindReport
+from omniweave_core.retrieve.verdict import Coverage
 from omniweave_core.store.card import CorpusCardRow
 from omniweave_core.store.card import Gap as StoreGap
 from omniweave_ports import CostClass
@@ -59,6 +91,40 @@ LISTED_NAMES = ("add", "corpora", "open", "query")
 rather than budget: the default surface is measured at 850 tokens of a 1,900 ceiling."""
 
 MCP_NAMES = ("ow_add", "ow_corpora", "ow_open", "ow_query")
+
+NARROW_NAMES = ("corpus.coverage", "doc.diff", "doc.grid", "doctor", "explain")
+"""The five of 10:807's eighteen that have rows, sorted as `listed()` returns them.
+
+Five and not eighteen because `ActionSpec.out` is a `type` and thirteen output types have no home
+in this process yet -- seven in P8, two in P9, three forward-referenced by their own document, and
+`route.explain`'s deferred for a measured import cost (D298). `_unrostered_full()` names them."""
+
+FULL_ROSTER_NAMES = (
+    "doc.outline",
+    "doc.grid",
+    "extract.fields",
+    "graph.entities",
+    "graph.locate",
+    "graph.neighbors",
+    "graph.report",
+    "graph.claims",
+    "doc.xrefs",
+    "route.explain",
+    "doc.verify_quote",
+    "corpus.coverage",
+    "doc.diff",
+    "out.list",
+    "out.targets",
+    "cost.report",
+    "doctor",
+    "explain",
+)
+"""10:807-822's Action column, transcribed here a second time and on purpose.
+
+`FULL_ROSTER` is the shipped copy and this is the test's own, typed from the table rather than
+imported from the module, so the assertion below compares two independent transcriptions. Importing
+the constant and asserting it equals itself would test nothing.
+"""
 
 
 def _spec(**over: Any) -> ActionSpec:
@@ -99,14 +165,15 @@ def test_the_shipped_registry_passes_all_eleven_checks_at_import() -> None:
 
 
 def test_the_four_listed_actions_are_the_front_door() -> None:
-    assert tuple(sorted(ACTIONS)) == LISTED_NAMES
-    assert tuple(sorted(spec.mcp_name or "" for spec in ACTIONS.values())) == MCP_NAMES
+    """The front door is a PROFILE and not the mapping: `ACTIONS` also carries narrow rows."""
+    assert listed("default") == LISTED_NAMES
+    assert tuple(sorted(ACTIONS[name].mcp_name or "" for name in LISTED_NAMES)) == MCP_NAMES
 
 
-def test_every_profile_lists_all_four_and_full_is_a_superset_of_default() -> None:
-    for profile in PROFILES:
-        assert listed(profile) == LISTED_NAMES
-    assert set(listed("default")) <= set(listed("full"))
+def test_default_is_the_four_and_full_is_a_superset_of_it() -> None:
+    assert listed("default") == LISTED_NAMES
+    assert set(listed("default")) < set(listed("full"))
+    assert set(listed("full")) - set(listed("default")) == set(NARROW_NAMES)
 
 
 def test_listed_refuses_a_profile_that_is_not_one_of_the_two() -> None:
@@ -144,7 +211,7 @@ def test_every_listed_action_is_idempotent() -> None:
 def test_corpora_is_the_one_tool_compaction_does_not_change() -> None:
     """10:356, and it is still the second-cheapest tool at 189 tokens including its outputSchema."""
     assert ACTIONS["corpora"].advanced == frozenset()
-    assert all(spec.advanced for name, spec in ACTIONS.items() if name != "corpora")
+    assert all(ACTIONS[name].advanced for name in LISTED_NAMES if name != "corpora")
 
 
 def test_the_advanced_sets_are_the_ones_the_strip_table_names() -> None:
@@ -237,8 +304,14 @@ def test_check_6_default_without_full_is_not_a_superset_of_the_profile_below_it(
 
 
 def test_check_6_full_alone_is_legal_which_is_the_whole_eighteen_row_roster() -> None:
-    """10:802: the `full` roster is defined and dispatchable always, listed only under `full`."""
-    assert _validate(_mapping(_spec(listed_in=frozenset({"full"})))) == ()
+    """10:802: the `full` roster is defined and dispatchable always, listed only under `full`.
+
+    The probe borrows a rostered identity, because a `full`-only listing is legal exactly when
+    `FULL_ROSTER` carries the Action -- which is `_roster_failures`' fourth clause and is what
+    stops a nineteenth narrow tool arriving without a line in 10:807's table.
+    """
+    rostered = _spec(name="doc.outline", mcp_name="ow_outline", listed_in=frozenset({"full"}))
+    assert _validate(_mapping(rostered)) == ()
 
 
 @pytest.mark.parametrize(
@@ -494,6 +567,11 @@ def test_the_required_parameter_of_each_tool_is_the_one_the_schema_requires() ->
         "open": {"ref"},
         "corpora": set(),
         "add": {"source"},
+        "doc.grid": {"ref"},
+        "corpus.coverage": set(),
+        "doc.diff": {"ref"},
+        "doctor": set(),
+        "explain": {"code"},
     }
 
 
@@ -652,3 +730,372 @@ def test_the_module_docstring_carries_the_ordering_constraint_that_put_it_first(
     doc = registry_module.__doc__ or ""
     assert "FE5 (16:32)" in doc
     assert re.search(r"\b10:10\b", doc), "the paragraph that homes ACTIONS here"
+
+
+# ---------------------------------------------------------------------------------------------
+# The `full` roster
+# ---------------------------------------------------------------------------------------------
+
+
+def test_the_roster_is_10_807s_eighteen_in_that_tables_order() -> None:
+    """Two independent transcriptions of one table, compared. Eighteen rows, that order."""
+    assert len(FULL_ROSTER) == 18
+    assert tuple(name for _, name in FULL_ROSTER) == FULL_ROSTER_NAMES
+
+
+def test_every_rostered_tool_name_satisfies_the_name_grammar() -> None:
+    """Check 3's pattern applies to a roster entry before any row exists to carry it."""
+    for mcp_name, name in FULL_ROSTER:
+        assert MCP_NAME_RE.match(mcp_name), f"{name} is rostered as {mcp_name!r}"
+
+
+def test_the_roster_names_each_action_once_and_each_tool_once() -> None:
+    assert len({name for _, name in FULL_ROSTER}) == len(FULL_ROSTER)
+    assert len({mcp for mcp, _ in FULL_ROSTER}) == len(FULL_ROSTER)
+
+
+def test_thirteen_of_the_eighteen_are_still_waiting_on_an_output_type() -> None:
+    """`_unrostered_full()` is schedule, not defect, and reports in the table's order.
+
+    The day this becomes `()` is the day 10:833's `ow surface budget --bless` has its condition:
+    the `full_*` baseline rows are written *"on the first run after the eighteen `ActionSpec`s
+    exist"*, and this tuple is the distance from that run.
+    """
+    assert _unrostered_full(ACTIONS) == (
+        "doc.outline",
+        "extract.fields",
+        "graph.entities",
+        "graph.locate",
+        "graph.neighbors",
+        "graph.report",
+        "graph.claims",
+        "doc.xrefs",
+        "route.explain",
+        "doc.verify_quote",
+        "out.list",
+        "out.targets",
+        "cost.report",
+    )
+
+
+def test_the_landed_five_are_the_roster_minus_the_thirteen() -> None:
+    waiting = set(_unrostered_full(ACTIONS))
+    landed = tuple(sorted(name for _, name in FULL_ROSTER if name not in waiting))
+    assert landed == NARROW_NAMES
+
+
+def test_every_narrow_row_is_read_only_free_and_not_destructive() -> None:
+    """10:823: forced by SV1 rather than chosen.
+
+    `listed` must be a subset of `enabled`, the shipped `[serve] enabled = "read_only+add"` grants
+    the read-only Actions plus `add`, so a writer listed in `full` would make the default
+    configuration fail its own startup check. `ow_ingest` is the named casualty.
+    """
+    for name in NARROW_NAMES:
+        spec = ACTIONS[name]
+        assert spec.read_only, name
+        assert spec.idempotent, name
+        assert not spec.destructive, name
+        assert not spec.open_world, name
+        assert spec.cost_class is CostClass.FREE, name
+
+
+def test_the_shipped_enabled_preset_grants_every_listed_action_in_both_profiles() -> None:
+    """SV1 over the configuration that ships, which is the check 10:823 argues from."""
+    read_only_plus_add = {name for name, spec in ACTIONS.items() if spec.read_only} | {"add"}
+    for profile in PROFILES:
+        assert_sv1(listed(profile), read_only_plus_add)
+
+
+def test_each_narrow_row_declares_the_out_type_its_own_home_owns() -> None:
+    """`out` is imported, never redefined: 18 section 1.6's rule, applied row by row.
+
+    `Grid`, `Coverage` and `RebindReport` are `omniweave_core`'s and arrive through it; only
+    `DoctorReport` and `CodeRow` are this distribution's, and those two because 18 section 1.4
+    prints them field for field the way it prints `CorpusCard`.
+    """
+    assert ACTIONS["doc.grid"].out is Grid
+    assert ACTIONS["corpus.coverage"].out is Coverage
+    assert ACTIONS["doc.diff"].out is RebindReport
+    assert ACTIONS["doctor"].out is DoctorReport
+    assert ACTIONS["explain"].out is CodeRow
+
+
+def test_the_narrow_rows_carry_the_cli_spellings_their_documents_print() -> None:
+    assert ACTIONS["doc.grid"].cli == ("doc", "grid")
+    assert ACTIONS["doc.diff"].cli == ("doc", "diff")
+    assert ACTIONS["doctor"].cli == ("doctor",)
+    assert ACTIONS["explain"].cli == ("explain",)
+    assert ACTIONS["corpus.coverage"].cli == ("corpora",)
+
+
+def test_no_narrow_row_is_human_only() -> None:
+    """A `full` listing and `mcp_name = None` contradict by check 4; this is the other end."""
+    assert not set(NARROW_NAMES) & HUMAN_ONLY
+    assert all(ACTIONS[name].mcp_name is not None for name in NARROW_NAMES)
+
+
+# ---------------------------------------------------------------------------------------------
+# `_roster_failures`: the reconciliation that is not one of the eleven
+# ---------------------------------------------------------------------------------------------
+
+
+def test_roster_clause_1_a_tool_name_rostered_twice_is_reported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The failure a mapping literal answers by discarding a line."""
+    monkeypatch.setattr(
+        registry_module,
+        "FULL_ROSTER",
+        (("ow_twin", "first.thing"), ("ow_twin", "second.thing")),
+    )
+    failures = _roster_failures({})
+    assert any("'ow_twin' is first.thing's and second.thing's" in line for line in failures)
+
+
+def test_roster_clause_1_an_action_rostered_twice_is_reported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        registry_module,
+        "FULL_ROSTER",
+        (("ow_one", "same.thing"), ("ow_two", "same.thing")),
+    )
+    assert any("is rostered twice" in line for line in _roster_failures({}))
+
+
+def test_roster_clause_2_a_row_that_renamed_its_tool_is_reported() -> None:
+    """The two columns of 10:807 are one fact written twice, so they may not drift apart."""
+    renamed = _spec(name="doc.outline", mcp_name="ow_spine", listed_in=frozenset({"full"}))
+    failures = _roster_failures(_mapping(renamed))
+    assert any("rostered as 'ow_outline' but declares mcp_name 'ow_spine'" in x for x in failures)
+
+
+def test_roster_clause_3_a_rostered_row_that_widened_into_default_is_reported() -> None:
+    """10:265 rejects a fifth listed tool in advance; this is the door it would arrive through."""
+    widened = _spec(
+        name="doc.outline", mcp_name="ow_outline", listed_in=frozenset({"default", "full"})
+    )
+    failures = _roster_failures(_mapping(widened))
+    assert any("not ['full']" in line for line in failures)
+
+
+def test_roster_clause_4_a_full_listing_absent_from_the_roster_is_reported() -> None:
+    """Without this clause the roster is documentation rather than a register."""
+    stranger = _spec(name="new.thing", mcp_name="ow_new_thing", listed_in=frozenset({"full"}))
+    failures = _roster_failures(_mapping(stranger))
+    assert any("absent from FULL_ROSTER" in line for line in failures)
+
+
+def test_an_unlisted_row_is_not_a_roster_concern() -> None:
+    """10:857's ~110: an `mcp_name`, an empty `listed_in`, and no line in any profile's table."""
+    assert _roster_failures(_mapping(_spec(name="store.export"))) == ()
+
+
+def test_the_shipped_registry_reconciles_with_its_own_roster() -> None:
+    assert _roster_failures(ACTIONS) == ()
+
+
+# ---------------------------------------------------------------------------------------------
+# `_duplicate_cli`: the clause check 9 does not have
+# ---------------------------------------------------------------------------------------------
+
+
+def test_duplicate_cli_names_the_corpora_pair_and_nothing_else() -> None:
+    """D299. `ow corpora` is two Actions, and the second is a FLAG VALUE on the first (10:1424).
+
+    Reported rather than raised, for D295's reason: the pair surfaces on the day both rows land,
+    which is the day the generator has to decide how a flag-valued twin is emitted.
+    """
+    assert _duplicate_cli(ACTIONS) == (("corpora",),)
+    sharing = sorted(n for n, s in ACTIONS.items() if s.cli == ("corpora",))
+    assert sharing == ["corpora", "corpus.coverage"]
+
+
+def test_duplicate_cli_is_empty_when_every_tuple_differs() -> None:
+    a = _spec(name="a", mcp_name="ow_a", cli=("doc", "grid"))
+    b = _spec(name="b", mcp_name="ow_b", cli=("doc", "diff"))
+    assert _duplicate_cli(_mapping(a, b)) == ()
+
+
+def test_duplicate_cli_ignores_the_unreachable_empty_tuple() -> None:
+    """Check 9 already forbids an empty `cli`; a second reporter must not double-count it."""
+    assert _duplicate_cli(_mapping(_spec(name="a", mcp_name="ow_a", cli=()))) == ()
+
+
+def test_the_shipped_roots_still_contain_no_trailing_s_collision() -> None:
+    """Check 9's third clause over the roots the registry now uses. `hook`/`hooks` is not here
+    yet -- both are declared in `GROUPS` and neither has a row (D295)."""
+    roots = {spec.cli[0] for spec in ACTIONS.values() if spec.cli}
+    assert roots == {"query", "open", "corpora", "add", "doc", "doctor", "explain"}
+    assert not {root for root in roots if root + "s" in roots}
+    assert roots <= GROUPS
+
+
+# ---------------------------------------------------------------------------------------------
+# D298: `out` is a type, and a type is an import
+# ---------------------------------------------------------------------------------------------
+
+
+def _modules_loaded_by(statement: str) -> set[str]:
+    """`sys.modules` after `statement` runs in a fresh interpreter.
+
+    The same instrument `test_core_eager_surface.py` uses and for the same reason: once this
+    process has imported `omniweave.route` for its own purposes, `sys.modules` can no longer say
+    whether the surface pulled it in.
+    """
+    code = f"{statement}\nimport json as _j, sys as _s\nprint(_j.dumps(sorted(_s.modules)))"
+    proc = subprocess.run(  # noqa: S603
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return set(json.loads(proc.stdout.strip().splitlines()[-1]))
+
+
+def test_importing_the_surface_does_not_load_the_router() -> None:
+    """D298. `RouteDecision` is `route.explain`'s honest `out`, and naming it costs 72 modules.
+
+    `QueryIn.route_hints` is already `RouteHints` under `TYPE_CHECKING` for this reason; an `out`
+    has no such escape, because `ActionSpec.out` is an object rather than an annotation. This test
+    is what makes the next writer notice before the cost ships.
+    """
+    loaded = _modules_loaded_by("import omniweave.surface")
+    assert "omniweave.route" not in loaded
+
+
+def test_importing_the_surface_opens_no_path_to_a_socket() -> None:
+    """The concrete shape of the same cost: `omniweave.route` reaches the pricebook parser, which
+    reaches `email`, which reaches `_socket`. A socket module on `ow query`'s import path is what
+    this guard names, because a module count on its own reads as bookkeeping."""
+    loaded = _modules_loaded_by("import omniweave.surface")
+    assert loaded.isdisjoint({"_socket", "socket", "email", "csv", "decimal"})
+
+
+def test_the_registry_still_probes_no_distribution() -> None:
+    """10:300, asserted the only way it can be: nothing in the import asks what is installed."""
+    loaded = _modules_loaded_by("import omniweave.surface")
+    assert "importlib.metadata" not in loaded
+
+
+# ---------------------------------------------------------------------------------------------
+# The narrow inputs
+# ---------------------------------------------------------------------------------------------
+
+
+def test_the_field_order_of_each_narrow_input_is_the_published_order() -> None:
+    """10:231: schema properties in declaration order, so reordering a field is a wire change."""
+    assert [f.name for f in fields(GridIn)] == ["ref", "corpus"]
+    assert [f.name for f in fields(CoverageIn)] == ["corpus", "scope"]
+    assert [f.name for f in fields(DiffIn)] == ["ref", "corpus", "from_gen", "to_gen"]
+    assert [f.name for f in fields(DoctorIn)] == ["runtime"]
+    assert [f.name for f in fields(ExplainIn)] == ["code"]
+
+
+def test_no_narrow_input_declares_max_chars() -> None:
+    """A character ceiling packs prose. Every narrow Action returns rows, and a row set cut at a
+    character count would cut a row in half."""
+    for name in NARROW_NAMES:
+        assert "max_chars" not in {f.name for f in fields(ACTIONS[name].inp)}, name
+
+
+def test_the_narrow_advanced_sets_are_the_fields_the_strip_may_hide() -> None:
+    assert ACTIONS["doc.diff"].advanced == frozenset({"from_gen", "to_gen"})
+    assert ACTIONS["doctor"].advanced == frozenset({"runtime"})
+    assert ACTIONS["doc.grid"].advanced == frozenset()
+    assert ACTIONS["corpus.coverage"].advanced == frozenset()
+    assert ACTIONS["explain"].advanced == frozenset()
+
+
+def test_every_narrow_input_is_a_frozen_slotted_dataclass() -> None:
+    for name in NARROW_NAMES:
+        inp = ACTIONS[name].inp
+        assert inp.__dataclass_params__.frozen, name  # type: ignore[attr-defined]
+        assert getattr(inp, "__slots__", None) is not None, name
+
+
+def test_two_actions_need_no_corpus_and_both_reasons_are_stated() -> None:
+    """`ow explain` reads `codes.toml`, which is repository data; `ow doctor` reads the
+    deployment. Neither opens a store, so both answer before the first `ow add`."""
+    without_corpus = sorted(
+        name for name, spec in ACTIONS.items() if "corpus" not in {f.name for f in fields(spec.inp)}
+    )
+    assert without_corpus == ["doctor", "explain"]
+
+
+# ---------------------------------------------------------------------------------------------
+# The three report types 18 section 1.4 specifies
+# ---------------------------------------------------------------------------------------------
+
+
+def test_doctor_report_is_18_737s_fields_in_order() -> None:
+    assert [f.name for f in fields(DoctorReport)] == [
+        "ok",
+        "warned",
+        "failed",
+        "config_sources",
+        "config_digest",
+        "semantic_digest",
+    ]
+
+
+def test_doctor_finding_is_18_745s_fields_in_order() -> None:
+    assert [f.name for f in fields(DoctorFinding)] == ["check", "detail", "severity", "fix"]
+
+
+def test_code_row_is_18_751s_fields_in_order() -> None:
+    assert [f.name for f in fields(CodeRow)] == [
+        "numeric",
+        "symbol",
+        "meaning",
+        "fix",
+        "owner_doc",
+    ]
+
+
+def test_a_doctor_report_carries_three_disjoint_tuples() -> None:
+    """Three and not one with a severity filter: `failed` being non-empty IS the exit code."""
+    warn = DoctorFinding(check="pdfium", detail="not importable", severity="warning", fix="uv sync")
+    report = DoctorReport(
+        ok=(),
+        warned=(warn,),
+        failed=(),
+        config_sources={"serve.profile": "omniweave.toml"},
+        config_digest="0" * 64,
+        semantic_digest="1" * 64,
+    )
+    assert report.warned == (warn,)
+    assert report.failed == ()
+    assert report.config_sources["serve.profile"] == "omniweave.toml"
+
+
+def test_doctor_severities_is_not_gap_severities() -> None:
+    """D297. Two closed vocabularies that differ in one member, and the member is the weakest one:
+    a `Gap` rolls up facts that were recorded (`info`), a `DoctorFinding` is a probe that returned
+    nothing to do (`ok`). Folding them would make one member unspellable on each side."""
+    assert SEVERITIES == ("info", "warning", "error")
+    assert DOCTOR_SEVERITIES == ("ok", "warning", "error")
+    assert set(SEVERITIES) ^ set(DOCTOR_SEVERITIES) == {"info", "ok"}
+
+
+def test_a_code_row_carries_both_spellings_of_one_register_entry() -> None:
+    """10:1438: `ow explain` accepts either, so the row it returns names both."""
+    row = CodeRow(
+        numeric="OW-A-028",
+        symbol="OW_SURFACE_REGISTRY_INVALID",
+        meaning="the Action registry failed its own checks at import",
+        fix="fix every row named in the message",
+        owner_doc="10-interfaces.md",
+    )
+    assert row.numeric.startswith("OW-")
+    assert row.symbol.startswith("OW_")
+    assert row.owner_doc.endswith(".md")
+
+
+def test_the_three_new_report_types_are_reachable_from_the_sdk_root() -> None:
+    """18:149: `omniweave.sdk` is the module, so a caller never imports `reports` by name."""
+    assert sdk_root.DoctorReport is DoctorReport
+    assert sdk_root.DoctorFinding is DoctorFinding
+    assert sdk_root.CodeRow is CodeRow
+    assert {"CodeRow", "DoctorFinding", "DoctorReport"} <= set(sdk_root.__all__)

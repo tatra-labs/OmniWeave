@@ -1,11 +1,11 @@
 """ONE Action declaration, SEVEN generated surfaces. 11:247; 18:851; 02-architecture.md row 30.
 
-10:10 closes the opening paragraph that states it: *"Every capability omniweave has is one Action, declared exactly once as an `ActionSpec` in
-`omniweave.surface.registry`, from which seven agent-facing artefacts are generated and byte-diff
-gated (INV-20, gate G25)"*. This module is that one declaration. It generates nothing --
-`omniweave/gen/` is W7.2's -- and it opens nothing: it is imported by every CLI and server entry
-point, so an import that read a file or probed a distribution would charge every `ow query` for it
-(10:300).
+10:10 closes the opening paragraph that states it: *"Every capability omniweave has is one Action,
+declared exactly once as an `ActionSpec` in `omniweave.surface.registry`, from which seven
+agent-facing artefacts are generated and byte-diff gated (INV-20, gate G25)"*. This module is that
+one declaration. It generates nothing -- `omniweave/gen/` is W7.2's -- and it opens nothing: it is
+imported by every CLI and server entry point, so an import that read a file or probed a
+distribution would charge every `ow query` for it (10:300).
 
 ## WHY THIS FILE EXISTS BEFORE ANY SURFACE DOES
 
@@ -69,7 +69,25 @@ An invalid registry is a defect in shipped source that no configuration can caus
 clear, which is 10:1489's *"internal error"*; a breach of SV1 is two config keys that disagree,
 which is exit **1**, *"usage or configuration error"*. Two failures, two audiences, two numbers.
 
-## THE CHECK THAT IS NOT AMONG THE ELEVEN
+## `out` IS A TYPE, AND A TYPE IS AN IMPORT
+
+10:137 makes `inp` and `out` `type` objects, which is what lets one declaration generate a schema, a
+parser, an SDK stub and a `.pyi` without a second vocabulary. The cost arrives with the roster: an
+object cannot be named without importing the module that defines it, this module is imported by
+every CLI and server entry point (10:300), and 10:857 puts roughly 110 further Actions behind the
+eighteen. At the end of that road `import omniweave.surface` transitively imports every distribution
+that defines an output type, on the path of every `ow query`.
+
+It is already measurable. `RouteDecision` is the honest `out` for `route.explain` -- 10:816 asks for
+*"which driver produced a block, at what rung, and what it cost"* and that is four of its fields --
+and naming it here adds **72 modules** to this import, among them `email`, `csv`, `decimal` and
+`_socket`, because `omniweave.route` reaches the pricebook parser. A socket module on the front
+door's import path is not a cost this row is worth, so `route.explain` is the one rostered Action
+deferred for a measured reason rather than a missing type. D298 is the entry and W7.2 owns the
+answer, because a generator that reads `out` for its schema and a dispatcher that needs the class
+itself do not need it at the same moment.
+
+## THE THREE CHECKS THAT ARE NOT AMONG THE ELEVEN
 
 Nothing asserts that a `HUMAN_ONLY` member is an `ACTIONS` key at all. Check 4 is an implication
 over rows -- `name in HUMAN_ONLY` implies `mcp_name is None` -- so a typo in the frozenset
@@ -77,6 +95,12 @@ over rows -- `name in HUMAN_ONLY` implies `mcp_name is None` -- so a typo in the
 Action it was meant to protect. D291 is the entry, and `_unrostered_human_only()` below reports it
 without failing, because failing would make the four-row cell unimportable for a roster gap that is
 schedule rather than defect.
+
+`_unrostered_full()` is the same shape over `FULL_ROSTER` and reports thirteen; `_duplicate_cli()`
+is the shape check 9 does not have, and it already names a real pair. `_roster_failures()` is the
+one of the three that RAISES, because its four clauses are all about declarations this file
+carries -- a roster and a row that disagree is a defect in shipped source, which is the line
+`SurfaceError`'s floor of 70 draws.
 """
 
 from __future__ import annotations
@@ -87,10 +111,23 @@ from typing import TYPE_CHECKING, Final, Literal, get_args
 
 from omniweave_core.answer import Answer
 from omniweave_core.errors import SurfaceError, UsageError
+from omniweave_core.model import Grid
+from omniweave_core.model.rebind import RebindReport
+from omniweave_core.retrieve.verdict import Coverage
 from omniweave_ports import CostClass
 
-from omniweave.sdk.reports import AddReport, CorporaReport
-from omniweave.surface.inputs import AddIn, CorporaIn, OpenIn, QueryIn
+from omniweave.sdk.reports import AddReport, CodeRow, CorporaReport, DoctorReport
+from omniweave.surface.inputs import (
+    AddIn,
+    CorporaIn,
+    CoverageIn,
+    DiffIn,
+    DoctorIn,
+    ExplainIn,
+    GridIn,
+    OpenIn,
+    QueryIn,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable, Mapping
@@ -100,6 +137,7 @@ if TYPE_CHECKING:
 __all__ = [
     "ACTIONS",
     "DECISION_MAX",
+    "FULL_ROSTER",
     "GROUPS",
     "HUMAN_ONLY",
     "MCP_NAME_RE",
@@ -297,6 +335,52 @@ by name.
 """
 
 
+FULL_ROSTER: Final[tuple[tuple[str, str], ...]] = (
+    ("ow_outline", "doc.outline"),
+    ("ow_grid", "doc.grid"),
+    ("ow_fields", "extract.fields"),
+    ("ow_entities", "graph.entities"),
+    ("ow_locate", "graph.locate"),
+    ("ow_neighbors", "graph.neighbors"),
+    ("ow_community", "graph.report"),
+    ("ow_claims", "graph.claims"),
+    ("ow_xrefs", "doc.xrefs"),
+    ("ow_why", "route.explain"),
+    ("ow_verify", "doc.verify_quote"),
+    ("ow_coverage", "corpus.coverage"),
+    ("ow_diff", "doc.diff"),
+    ("ow_artifacts", "out.list"),
+    ("ow_targets", "out.targets"),
+    ("ow_cost", "cost.report"),
+    ("ow_doctor", "doctor"),
+    ("ow_explain", "explain"),
+)
+"""The eighteen `listed_in = {"full"}` Actions, transcribed from 10:807-822 in that table's order.
+
+**Pairs and not a mapping literal**, for the reason `_index` states one section down: a `dict`
+silently keeps the last of two rows sharing a key, so a roster written as `{...}` could lose a line
+to a copy-paste and still import. `_roster_failures()` checks both columns for duplicates over the
+pairs, which is a check a dict cannot be asked to perform on itself.
+
+**Eighteen is a roster and not a count, and here the count is load-bearing anyway.** 10:829 prices
+the `full` profile at `18 x 150.5 ~ 2,709` tokens against a `full_compact` ceiling of 4,200, and
+10:833 says those baseline rows are written by `ow surface budget --bless` *"on the first run after
+the eighteen `ActionSpec`s exist, not typed by hand"*. So this tuple is what tells that command when
+its day has come: `len(FULL_ROSTER) == len(listed("full")) - len(listed("default"))` is the
+condition, and `_unrostered_full()` is the distance from it.
+
+**Five have rows today and thirteen do not**, and the reason is never that the Action is unclear. It
+is that `ActionSpec.out` is a `type` -- an OBJECT, evaluated at import -- so a row cannot be written
+before something in this process can name what it returns. Seven of the thirteen wait on P8's L3
+types and two on P9's OUT framework (16:190-191), both of which exit after v0.1 ships at week 42;
+three -- `ow_verify`, `ow_fields` and `ow_cost` -- wait on a shape no module defines, and one of
+those three is `QuoteVerdict` (03:1706), which `omniweave_core/model/doc.py` already
+forward-references twice under `noqa: F821`. The thirteenth, `route.explain`, waits on nothing but
+the cost of naming `RouteDecision` here. D298 is that entry and it is the one worth reading, because
+it is a property of this mechanism rather than of the schedule; D300 is the other twelve.
+"""
+
+
 # =============================================================================================
 # 4. The eleven checks
 # =============================================================================================
@@ -427,6 +511,57 @@ def _trailing_s_failures(roots: Collection[str]) -> tuple[str, ...]:
     return tuple(f"{root!r} and {root}s differ only by a trailing s" for root in collisions)
 
 
+def _roster_failures(actions: Mapping[str, ActionSpec]) -> tuple[str, ...]:
+    """The reconciliation between `FULL_ROSTER` and the rows, and it is not one of the eleven.
+
+    The eleven are checks on a ROW (10:176). This is a check between two declarations in this file,
+    which is the same shape check 1's other half takes in `_index` and check 10 takes on
+    `ActionSpec`: where the evidence is not inside a row, the check is not inside `_row_failures`.
+
+    Four clauses, and the fourth is the one that earns the function:
+
+    1. `FULL_ROSTER` names each `mcp_name` once and each Action once. Written as pairs precisely so
+       this can be asked; a mapping literal would have answered it by discarding a line.
+    2. A rostered Action that HAS a row carries the roster's `mcp_name`. The two columns of 10:807
+       are the same fact written twice, so a row that renamed its tool without editing the roster
+       would leave the published table describing a tool no server serves.
+    3. A rostered Action that has a row is listed in `full` and NOT in `default`. 10:805 defines the
+       roster as the Actions *"listed only under `profile = "full"` or an explicit override"*, so a
+       row that widened itself into the front door would be a fifth listed tool arriving through a
+       table about narrow ones -- and 10:265 rejects a fifth in advance.
+    4. **Every `full`-listed row is IN the roster.** Without it the roster is documentation: a new
+       Action could be listed in `full`, cost its share of the 4,200-token ceiling, appear in
+       `tools/list` and never be added to 10:807's table -- which is precisely the LEANN defect
+       (10:108) this module exists to prevent, arrived at from the direction the other three clauses
+       leave open.
+    """
+    out: list[str] = []
+    seen_mcp: dict[str, str] = {}
+    seen_name: set[str] = set()
+    for mcp_name, name in FULL_ROSTER:
+        if mcp_name in seen_mcp:
+            out.append(f"FULL_ROSTER: mcp_name {mcp_name!r} is {seen_mcp[mcp_name]}'s and {name}'s")
+        if name in seen_name:
+            out.append(f"FULL_ROSTER: {name!r} is rostered twice")
+        seen_mcp[mcp_name] = name
+        seen_name.add(name)
+        spec = actions.get(name)
+        if spec is None:
+            continue
+        if spec.mcp_name != mcp_name:
+            out.append(f"{name}: rostered as {mcp_name!r} but declares mcp_name {spec.mcp_name!r}")
+        if set(spec.listed_in) != {FULL_PROFILE}:
+            out.append(
+                f"{name}: rostered in the full profile but listed_in is "
+                f"{sorted(spec.listed_in)}, not [{FULL_PROFILE!r}]"
+            )
+    for name, spec in actions.items():
+        narrow = FULL_PROFILE in spec.listed_in and DEFAULT_PROFILE not in spec.listed_in
+        if narrow and name not in seen_name:
+            out.append(f"{name}: listed in {FULL_PROFILE!r} but absent from FULL_ROSTER")
+    return tuple(out)
+
+
 def _validate(actions: Mapping[str, ActionSpec]) -> tuple[str, ...]:
     """The eleven checks. Returns EVERY failure, so one edit cycle clears a registry with three."""
     out: list[str] = []
@@ -439,6 +574,7 @@ def _validate(actions: Mapping[str, ActionSpec]) -> tuple[str, ...]:
                 out.append(f"{spec.name}: mcp_name {spec.mcp_name!r} is already {first}'s")
     out.extend(_trailing_s_failures({spec.cli[0] for spec in actions.values() if spec.cli}))
     out.extend(_undefaulted_failures())  # check 10
+    out.extend(_roster_failures(actions))  # not one of the eleven; see the function
     return tuple(out)
 
 
@@ -494,6 +630,48 @@ def _unrostered_human_only(actions: Mapping[str, ActionSpec]) -> tuple[str, ...]
     return tuple(sorted(HUMAN_ONLY - set(actions)))
 
 
+def _unrostered_full(actions: Mapping[str, ActionSpec]) -> tuple[str, ...]:
+    """Which of `FULL_ROSTER`'s eighteen have no row yet, in the roster's published order.
+
+    The companion to `_unrostered_human_only()` and reported on the same terms: a missing row here
+    is schedule, not defect, and raising would make the registry unimportable for an Action whose
+    output type ships two phases from now. A test asserts this function's exact answer, so the day
+    the thirteenth lands the assertion becomes `()` in one place and `ow surface budget --bless`
+    (10:833) has its condition.
+
+    Order is `FULL_ROSTER`'s rather than sorted, because the thing a reader wants from this tuple is
+    its position in 10:807's table.
+    """
+    return tuple(name for _, name in FULL_ROSTER if name not in actions)
+
+
+def _duplicate_cli(actions: Mapping[str, ActionSpec]) -> tuple[tuple[str, ...], ...]:
+    """CLI tuples two or more Actions declare, sorted. D299, and it is not among the eleven either.
+
+    Check 9 asks that `cli` be non-empty and that `cli[0]` be a declared root, and its third clause
+    forbids two roots differing only by a trailing `s`. None of the three asks whether two rows
+    declare the SAME tuple -- which is the collision the trailing-`s` clause is a special case of,
+    in its most direct form, and the one check 2 has a counterpart for on the MCP side (*"the
+    dispatcher would resolve to whichever won the dict"*, 10:184).
+
+    It already fires. `corpora` and `corpus.coverage` both spell `ow corpora`, because 10:1424 gives
+    the second no verb of its own: its CLI twin is `ow corpora --detail coverage`, a FLAG VALUE on
+    the first. Two Actions, one command, distinguished by an argument -- so the generated argparse
+    tree has one subparser to build and two rows asking for it.
+
+    Reported and not raised, for D295's reason and with D295's benefit: the pair surfaces on the day
+    both rows land, which is the day the decision has to be made rather than the day someone
+    notices. Raising would instead mean the roster could not be assembled until W7.2 had settled
+    how a flag-valued twin is generated, which is the wrong order: the generator needs the
+    collision in front of it.
+    """
+    seen: dict[tuple[str, ...], list[str]] = {}
+    for name, spec in actions.items():
+        if spec.cli:
+            seen.setdefault(spec.cli, []).append(name)
+    return tuple(sorted(cli for cli, names in seen.items() if len(names) > 1))
+
+
 # =============================================================================================
 # 5. `ACTIONS`
 # =============================================================================================
@@ -502,6 +680,13 @@ _LISTED: Final[frozenset[Profile]] = frozenset(PROFILES)
 """Both profiles. The four front-door Actions are listed everywhere, which check 6 requires anyway:
 `default` implies `full`, because a profile that is not a superset of the one below it would make
 `profile = "full"` a narrowing."""
+
+_FULL_ONLY: Final[frozenset[Profile]] = frozenset({FULL_PROFILE})
+"""The narrow roster's listing: `full` and not `default`, which is `_roster_failures`' clause 3.
+
+Not the complement of `_LISTED`, and the distinction is check 6's: `listed_in` is a SET of profiles
+a row appears in, so widening `full` never narrows `default` and the two constants are two legal
+values rather than two halves of one. A row that wanted both writes `_LISTED`; there is no third."""
 
 ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
     (
@@ -599,6 +784,112 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=AddReport,
             advanced=frozenset({"dry_run"}),
             cli=("add",),
+        ),
+        # -- the `full` profile, in FULL_ROSTER's order. Every one of them is read-only, and 10:823
+        #    says that is FORCED rather than chosen: `listed` must be a subset of `enabled`, the
+        #    shipped `enabled = "read_only+add"` grants the read-only Actions plus `add`, so listing
+        #    a writer in `full` would make the default configuration fail its own startup check. --
+        ActionSpec(
+            name="doc.grid",
+            mcp_name="ow_grid",
+            listed_in=_FULL_ONLY,
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Read one table as an exactly-once grid: every cell at its slot, the header row "
+                "and column, and the merges that would otherwise be counted twice"
+            ),
+            decision="you hold a table cite and need cells, not prose",
+            example={"ref": "d7#412", "corpus": "handbook"},
+            inp=GridIn,
+            out=Grid,
+            advanced=frozenset(),
+            cli=("doc", "grid"),
+        ),
+        ActionSpec(
+            name="corpus.coverage",
+            mcp_name="ow_coverage",
+            listed_in=_FULL_ONLY,
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "What a scope holds and what is missing from it: discovered against indexed, the "
+                "gap list behind a low or absent verdict, and the command that clears each gap"
+            ),
+            decision="ow_query said absent and you need to know why",
+            example={"corpus": "handbook", "scope": "policy.pdf"},
+            inp=CoverageIn,
+            out=Coverage,
+            advanced=frozenset(),
+            # 10:1424 gives this Action no verb of its own: the CLI twin is a flag VALUE on
+            # `ow corpora`. `_duplicate_cli()` reports the pair; D299 is the entry.
+            cli=("corpora",),
+        ),
+        ActionSpec(
+            name="doc.diff",
+            mcp_name="ow_diff",
+            listed_in=_FULL_ONLY,
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Compare two generations of one document: what carried, what was revised, what is "
+                "new, and whether the newer generation was quarantined rather than committed"
+            ),
+            decision="the document was re-indexed and you need what moved",
+            example={"ref": "policy.pdf", "corpus": "handbook"},
+            inp=DiffIn,
+            out=RebindReport,
+            advanced=frozenset({"from_gen", "to_gen"}),
+            cli=("doc", "diff"),
+        ),
+        ActionSpec(
+            name="doctor",
+            mcp_name="ow_doctor",
+            listed_in=_FULL_ONLY,
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Check this deployment: every resolved configuration value with its source, the "
+                "driver and toolchain probes, and a fix command for every warning"
+            ),
+            decision="something is misconfigured and you need the command",
+            example={"runtime": False},
+            inp=DoctorIn,
+            out=DoctorReport,
+            advanced=frozenset({"runtime"}),
+            cli=("doctor",),
+        ),
+        ActionSpec(
+            name="explain",
+            mcp_name="ow_explain",
+            listed_in=_FULL_ONLY,
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Resolve an OW-* code or symbol to what it means and the exact command that "
+                "clears it; reads no corpus, so it answers on a machine with no store at all"
+            ),
+            decision="you have a code from an error and need what clears it",
+            example={"code": "OW-A-013"},
+            inp=ExplainIn,
+            out=CodeRow,
+            advanced=frozenset(),
+            cli=("explain",),
         ),
     )
 )
