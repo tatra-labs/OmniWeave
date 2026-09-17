@@ -130,12 +130,17 @@ from omniweave.surface.inputs import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Collection, Iterable, Mapping
+    from collections.abc import Collection, Iterable, Mapping, Sequence
 
     from omniweave_ports import Scalar
 
 __all__ = [
     "ACTIONS",
+    "CLI_ABSENT",
+    "CLI_FREE",
+    "CLI_RESOLVED",
+    "CLI_ROSTER",
+    "CLI_UNROSTERED",
     "DECISION_MAX",
     "FULL_ROSTER",
     "GROUPS",
@@ -144,9 +149,11 @@ __all__ = [
     "PROFILES",
     "SUMMARY_MAX",
     "ActionSpec",
+    "CliStatus",
     "Profile",
     "assert_sv1",
     "listed",
+    "resolve_cli",
 ]
 
 
@@ -334,6 +341,365 @@ stated reason -- two operations with different receipts, and a second recovery p
 by name.
 """
 
+CLI_ROSTER: Final[Mapping[str, tuple[str, ...]]] = {
+    "add": (),
+    "audit-config": (),
+    # 12:1968 declares this one a CLOSED SET and declares it is not a verb list: *"the second word
+    # is a positional subject from a closed set -- one function per subject in
+    # `omniweave/run/bench.py`"*. It is rostered here anyway, because the property a roster
+    # checks -- may this second word appear after this root? -- is the same property either way,
+    # and a closed set left unrostered is a set nothing compares the plan against. `answer` is
+    # used three times and is not in it; D303.
+    "bench": (
+        "cold",
+        "compile",
+        "embed",
+        "encoding",
+        "incremental",
+        "inproc",
+        "pacer",
+        "parse",
+        "query",
+        "route",
+        "rss",
+        "scheduler",
+        "service",
+    ),
+    "cache": ("prune", "stat"),
+    "check": (),
+    "conform": (),
+    "corpora": (),
+    "cost": (),
+    "deps": (),
+    # 18:918 prints `show` / `verify` / `grid`; `diff` is 03:1302's, where a quarantined generation
+    # is *"durable and invisible for inspection by `ow doc diff`"*. Four, from two documents.
+    "doc": ("diff", "grid", "show", "verify"),
+    "doctor": (),
+    # 18:918, *"7 verbs: `list explain add verify ack check scaffold`"*. The one group whose
+    # printed count, printed roster and plan usage all agree.
+    "drivers": ("ack", "add", "check", "explain", "list", "scaffold", "verify"),
+    # No document rosters these. 18:918 prints `ow eval …` with an ellipsis, so the twelve below
+    # are the plan's own usage, collected the way 07's `ow store` roster had to be. D302.
+    "eval": (
+        "bless",
+        "calibrate",
+        "correlate",
+        "explain",
+        "fetch",
+        "golden",
+        "import",
+        "prune",
+        "publish",
+        "record",
+        "release-check",
+        "run",
+    ),
+    "explain": (),
+    # 18:918's sixteen, in that row's order re-sorted. `merge` and `merges` are two verbs that
+    # differ by one character and by write access (18:957), and both are here for that reason.
+    # Four of the sixteen -- `cluster`, `converge`, `diff`, `report` -- occur nowhere else in the
+    # plan, which is 18's Open question 6 and D304.
+    "graph": (
+        "build",
+        "cluster",
+        "converge",
+        "diff",
+        "doctor",
+        "explain",
+        "locate",
+        "merge",
+        "merges",
+        "plan",
+        "report",
+        "residue",
+        "review",
+        "split",
+        "types",
+        "why",
+    ),
+    "hook": (),
+    "hooks": ("check",),
+    # 18:952 names this roster unpublished and 18's Open question 5 asks 07 to publish it. Six,
+    # from usage. D302.
+    "index": ("drop", "rebuild", "segments", "stats", "update", "vectors"),
+    "ingest": (),
+    "install": (),
+    # 18:918, `ow make deck|pptx|docx|video <selection>`. `make.deck` is 10:43's Action name.
+    "make": ("deck", "docx", "pptx", "video"),
+    "open": (),
+    # 18:918's eleven plus `list`, which 10:820 rosters as the `full`-profile Action `out.list`
+    # and 14:1200 invokes as `ow out list --erased`. `project` is the reverse case: printed here,
+    # invoked nowhere. `preview` is the third: invoked twice, printed nowhere. D305.
+    "out": (
+        "assets",
+        "back",
+        "check",
+        "compile",
+        "constructs",
+        "list",
+        "normalize",
+        "project",
+        "scaffold",
+        "stamp",
+        "targets",
+        "verify",
+    ),
+    "parse": (),
+    "query": (),
+    # 18:918, `status` / `retry` / `reset`. `ow queue explain` is used twice and is not here; D305.
+    "queue": ("reset", "retry", "status"),
+    "rebind": (),
+    "replay": (),
+    # 18:918, *"8 verbs: `explain replay simulate lint scoreboard propose promote audit`"*.
+    # `audit` is printed and never invoked; `promote` is `route.promote`, one of HUMAN_ONLY's five.
+    "route": ("audit", "explain", "lint", "promote", "propose", "replay", "scoreboard", "simulate"),
+    "schema": ("emit",),
+    "serve": (),
+    "services": (),
+    # 18:918, `ls` / `show` / `clear`.
+    "session": ("clear", "ls", "show"),
+    "show-config": (),
+    # 18:918's six plus `remove`, which 10:1429 carries as a note rather than a cell --
+    # *"`remove` is human-only"* -- and which `HUMAN_ONLY` rosters as `skills.remove`.
+    "skills": ("check", "hash", "install", "ls", "remove", "update", "verify"),
+    # THE ROSTER 18'S OPEN QUESTION 5 ASKS FOR, and the reason this constant exists at all.
+    # 18:948: *"18's own rows said '20 verbs' and '5 verbs' while the plan already used at least
+    # twenty-six distinct `ow store <verb>` spellings"*. Twenty-four, collected from the plan's
+    # own usage across nine documents, because 07 publishes no table and 10 section 6.1 points at
+    # 07 for one -- a pointer to a roster nobody has enumerated. D302.
+    "store": (
+        "backup",
+        "compact",
+        "diff",
+        "doctor",
+        "explain",
+        "export",
+        "fsck",
+        "gc",
+        "git-install",
+        "import",
+        "key-export",
+        "key-list",
+        "lock",
+        "merge-lock",
+        "migrate",
+        "rebuild",
+        "redact",
+        "rekey",
+        "repair",
+        "residue",
+        "rm",
+        "stats",
+        "vacuum",
+        "verify",
+    ),
+    # 18:918, `list` / `emit` / `budget` / `typescript`.
+    "surface": ("budget", "emit", "list", "typescript"),
+    # `install` is 18:918's; `remove` is `HUMAN_ONLY`'s `targets.remove` and appears in no table.
+    "targets": ("install", "remove"),
+    "test": ("crash-matrix",),
+    "top": (),
+    # 15-observability owns these four; 18:918 gives `ow trace` no printed verbs. D302.
+    "trace": ("export", "prune", "stat", "tree"),
+    "uninstall": (),
+    "why": (),
+}
+"""Every legal second word, per CLI root. 18:948's *"a count is not a roster"*, made a register.
+
+`GROUPS` says what a root may be; this says what may follow one. The two are checked against each
+other at import, because a root with no entry is a root nothing can validate a spelling under, and
+an entry under no root is a roster for a command that cannot be typed.
+
+**An empty tuple is not an empty roster.** It means the root takes no second WORD from a closed
+set -- `ow query "<question>"`, `ow open d7#412`, `ow add policy.pdf`. Those roots are in
+`CLI_FREE`, and the resolver reads whatever follows them as data. A root with an empty tuple and no
+`CLI_FREE` membership would be a bare verb taking nothing at all, which is a legal shape
+(`ow doctor`, `ow top`) and the reason the two facts are two constants rather than one.
+
+**The verbs are transcribed, never invented, and where the plan publishes no table that is said
+out loud.** 18:918's command surface prints a roster for eleven of the twenty-two roots that have
+one. For `ow store`, `ow index`, `ow eval` and `ow trace` it prints a pointer or an ellipsis
+instead, and 18's Open question 5 records that the pointer for the first two *"names a roster
+nobody has enumerated"*. Those four entries are collected from the plan's own usage -- every
+`ow <root> <word>` spelling that occurs inside backticks in `_plan/*.md` -- which is the only
+source available and is exactly what Open question 5 asks 07 to write down. D302 is the entry.
+
+**10:1413's arity rule is violated by five of these roots and the violation is in the plan, not
+here.** *"A group only at three or more verbs"*: `cache` has two, `targets` has two, and `hooks`,
+`schema` and `test` have one each. Every one of the five is printed by 18:918 with exactly those
+verbs, so the grammar and the command surface disagree on five rows. D306.
+"""
+
+CLI_FREE: Final[frozenset[str]] = frozenset(
+    {
+        "add",
+        "conform",
+        "corpora",
+        "doc",
+        "eval",
+        "explain",
+        "graph",
+        "hook",
+        "open",
+        "out",
+        "parse",
+        "query",
+        "route",
+        "show-config",
+        "skills",
+        "store",
+        "targets",
+        "test",
+        "why",
+    }
+)
+"""The roots whose second or later word may be DATA rather than a name this registry knows.
+
+Two kinds are in here and they are not the same kind. A root with an empty `CLI_ROSTER` entry takes
+its argument immediately -- `ow open d7#412`, `ow explain OW-A-013`, `ow why absent`. A root with a
+non-empty entry takes its argument AFTER the verb -- `ow store export parquet`,
+`ow graph merge e412 e997`, `ow doc verify msa-2024` -- and the resolver only ever reads the first
+two words, so membership here says what the third word onwards may be.
+
+`why` is the uncomfortable one. `ow why absent` occurs five times and is specified by name at
+15:914 (*"the one an agent needs most, because a zero result is the answer most likely to be
+wrong"*), which reads much more like a closed subject than like a cite. It is left free because no
+document rosters a second member, and a one-member closed set is a set that cannot be wrong.
+"""
+
+CLI_ABSENT: Final[Mapping[tuple[str, ...], str]] = {
+    ("benchmark",): "12:1968 -- no two groups may differ only by a suffix; the group is `ow bench`",
+    ("driver",): "10:237 -- the singular the trailing-`s` rule forbids; `ow drivers` is the group",
+    ("export",): "10:1465 -- the one spelling is `ow store export`, so d2 resolves one name",
+    ("init",): "10:1469 -- `ow install` wires hosts, `ow add` creates a corpus; two receipts",
+    ("watch",): "16:586 -- `op.converge` shipped so a watcher is a scheduler's job, not a verb",
+    ("ask",): "terminology.md:967 -- the lock's rejected query verb; one name, no alias",
+    ("find",): "terminology.md:968 -- the same row family, and the same one name",
+    ("search",): "terminology.md:969 -- the same family; the cold-start gate measures `ow query`",
+    ("store", "rebalance"): "18:3319 -- 11 section 8.6's deliberate not-in-registry name",
+}
+"""Spellings the plan writes down in order to say they do not exist.
+
+Every one is a sentence of the form *"there is no `ow <x>`"*, and every one of those sentences is
+the reason a reader would otherwise expect the name. They are registered rather than simply omitted
+because a resolver that silently failed on them would be reporting the plan's own prose as a defect,
+and because `ow store rebalance` has a stronger claim than the rest: 18:3319 says it *"must stay out
+of `ACTIONS` whatever 07 decides"*, since 11 section 8.6 uses it as the worked example of a name
+that does NOT resolve. A register with a row for it is how that stays true through an edit.
+
+The last three come from the terminology lock rather than from a plan document, and they are the
+only rows here that were never candidates: `ow ask`, `ow find` and `ow search` are three spellings
+of `ow query` the lock refuses by name, with one reason for all three -- *"One name, no alias; the
+cold-start gate measures it"*. A lock that names a rejected spelling has already done the work a
+register does, so the rows are a transcription and not a decision.
+"""
+
+CLI_UNROSTERED: Final[Mapping[tuple[str, ...], str]] = {
+    ("bench", "answer"): "12:1968's closed set omits it; used at 10:2662, 10:2739, 17:667. D303",
+    ("out", "preview"): "printed by no verb table; used at 09:2865 and 17:662. D305",
+    ("plan", "lint"): "18:3227 and charter:8762 name the verb; `plan` is not a declared root. D307",
+    ("queue", "explain"): "18:918's `ow queue` prints status/retry/reset; used at 08:1991. D305",
+    ("resume",): "10:1473 says it does not exist; six sites invoke it, two of them gates. D301",
+}
+"""Spellings the plan USES that no roster carries. Each value names the defect it belongs to.
+
+This is the ratchet, and it is the half of the register that has to be able to shrink. A spelling
+the plan names and nothing rosters is a defect whichever way it is resolved -- the roster gains a
+row or the document loses a sentence -- so leaving it unrecorded would mean the resolver either
+fails on the plan as it stands or passes by not looking. `plan_lint`'s `cli-verbs` rule fails on a
+spelling that is in none of the four registers AND on a row here that no longer occurs, so a fix
+lands with its row struck rather than leaving a register that quietly stopped describing anything.
+
+`("resume",)` is the one to read first. 10:1473 states its absence and calls it load-bearing --
+*"a second recovery protocol that has to agree with the first, which AP-5 forbids by name"* -- and
+then 00:710's acceptance criterion V01-9, 11:1564's G21 row, 02:1137, 16:445 and 16:569 all invoke
+it as the command that converges after a kill. An acceptance criterion and a gate row naming a verb
+the interfaces document says does not exist is not a spelling mistake; D301 is the entry.
+"""
+CliStatus = Literal[
+    "verb", "argument", "bare", "absent", "unrostered", "no-such-root", "no-such-verb"
+]
+"""What `resolve_cli()` can say about a spelling. Seven answers, five of them not a finding."""
+
+CLI_RESOLVED: Final[frozenset[CliStatus]] = frozenset(
+    {"verb", "argument", "bare", "absent", "unrostered"}
+)
+"""The five statuses a caller treats as resolved, and the reason there are five rather than three.
+
+`verb`, `argument` and `bare` are the spelling being legal. `absent` and `unrostered` are the
+spelling being *known* -- the plan writes it down, a register carries it, and the register says
+which. A resolver with three answers would have to report the plan's own *"there is no `ow
+export`"* as a defect, and the only cure for that is an exception list nobody can audit; two more
+statuses put the exceptions in a mapping with a citation per row instead.
+
+The two outside this set are `no-such-root` and `no-such-verb`, and they are what 11 section 8.6
+clause d2 fails on: *"`ow store rebalance` -- not in the ACTIONS registry (nearest:
+`ow store reshard`)"*.
+"""
+
+
+ROOT_AND_VERB: Final[int] = 2
+"""The number of words in a fully spelled `ow <group> <verb>`, and the widest register key.
+
+Named because it is two different facts that happen to be the same integer: the longest spelling
+either exception register holds, and the point past which a root must be in `CLI_FREE` to carry
+another word. Writing `2` twice would let one of them move without the other.
+"""
+
+
+def _registered_spelling(words: Sequence[str]) -> CliStatus | None:
+    """`absent` or `unrostered` if either exception register holds this spelling, else `None`.
+
+    LONGEST FIRST, and that order is the whole of `resolve_cli`'s subtlety: `ow store rebalance`
+    has a rostered root and `store` is in `CLI_FREE`, so a lookup that tried the root first would
+    read `rebalance` as an argument and report the one name 18:3319 requires never to resolve as
+    perfectly ordinary.
+    """
+    for width in range(ROOT_AND_VERB, 0, -1):
+        key = tuple(words[:width])
+        if key in CLI_ABSENT:
+            return "absent"
+        if key in CLI_UNROSTERED:
+            return "unrostered"
+    return None
+
+
+def resolve_cli(words: Sequence[str]) -> CliStatus:
+    """Resolve one `ow <...>` spelling against the four CLI registers. 11 section 8.6 clause d2.
+
+    The registers are consulted LONGEST FIRST, and that order is the whole of the function's
+    subtlety. `ow store rebalance` has a rostered root, and `store` is in `CLI_FREE`, so a resolver
+    that checked the root before the spelling would read `rebalance` as an argument and report the
+    one name 18:3319 requires never to resolve as perfectly fine.
+
+    After the registers, the rule is 10:1413's grammar and nothing else:
+
+    - a root with a non-empty `CLI_ROSTER` entry takes a VERB as its second word, and `CLI_FREE`
+      then governs the third word onwards (`ow store export parquet`, `ow graph merge e412 e997`);
+    - a root with an empty entry takes its argument immediately if it is in `CLI_FREE`
+      (`ow open d7#412`) and takes nothing at all if it is not (`ow doctor`, `ow top`).
+
+    Only the first two words decide the status; the rest decide whether the root had to be free to
+    carry them. That is why `ow doc verify msa-2024` resolves and `ow doctor --runtime` never
+    reaches this function -- a flag is not a word this grammar has an opinion about, and the caller
+    strips it.
+    """
+    if not words:
+        return "no-such-root"
+    registered = _registered_spelling(words)
+    if registered is not None:
+        return registered
+    verbs = CLI_ROSTER.get(words[0])
+    if verbs is None:
+        return "no-such-root"
+    if len(words) == 1:
+        return "bare"
+    free = words[0] in CLI_FREE
+    if verbs:
+        rostered = words[1] in verbs and (len(words) == ROOT_AND_VERB or free)
+        return "verb" if rostered else "no-such-verb"
+    return "argument" if free else "no-such-verb"
+
 
 FULL_ROSTER: Final[tuple[tuple[str, str], ...]] = (
     ("ow_outline", "doc.outline"),
@@ -511,6 +877,82 @@ def _trailing_s_failures(roots: Collection[str]) -> tuple[str, ...]:
     return tuple(f"{root!r} and {root}s differ only by a trailing s" for root in collisions)
 
 
+def _cli_roster_failures(actions: Mapping[str, ActionSpec]) -> tuple[str, ...]:
+    """The reconciliation between the four CLI registers and the rows. Not one of the eleven.
+
+    `_roster_failures()` does this for `FULL_ROSTER` and this is the same shape one surface over,
+    with one difference that is worth stating: a `full`-profile listing is a property of a ROW, so
+    that function reads `ACTIONS` first and the roster second. A CLI spelling is a property of the
+    GRAMMAR, so this one checks the registers against each other before it looks at a row at all --
+    a roster with a root `GROUPS` does not carry validates nothing, whether or not a row uses it.
+
+    Six clauses:
+
+    1. `CLI_ROSTER`'s keys are exactly `GROUPS`. A root with no entry is a root under which no
+       spelling can be checked; an entry under no root is a roster for a command nobody can type.
+    2. Every entry is sorted and free of duplicates. Sorted because 10:229 makes the generator
+       pure -- *"no iteration over an unsorted set"* -- and this is one of its inputs; free of
+       duplicates because a roster that lists a verb twice is a roster somebody edited twice.
+    3. `CLI_FREE` names only rostered roots.
+    4. No `CLI_ABSENT` or `CLI_UNROSTERED` key is ALSO rostered. A spelling that is both registered
+       as missing and carried as a verb is the register describing a surface that moved out from
+       under it, and it is the failure both mappings exist to make impossible.
+    5. The two mappings are disjoint, because `absent` and `unrostered` are opposite claims about
+       the same spelling -- the plan meant to omit it, or the plan forgot it.
+    6. Every row's `cli` resolves to `verb` or `bare`. Not to `argument`: an Action whose CLI
+       spelling is data would be a row the generator cannot emit a subparser for.
+    """
+    out: list[str] = []
+    missing = sorted(GROUPS - set(CLI_ROSTER))
+    extra = sorted(set(CLI_ROSTER) - GROUPS)
+    out.extend(f"CLI_ROSTER: no entry for the declared root {root!r}" for root in missing)
+    out.extend(f"CLI_ROSTER: {root!r} is not a declared root" for root in extra)
+    for root, verbs in sorted(CLI_ROSTER.items()):
+        if list(verbs) != sorted(set(verbs)):
+            out.append(f"CLI_ROSTER[{root!r}] is not sorted and unique: {list(verbs)}")
+    out.extend(
+        f"CLI_FREE names {root!r}, which is not a rostered root"
+        for root in sorted(CLI_FREE - set(CLI_ROSTER))
+    )
+    for label, register in (("CLI_ABSENT", CLI_ABSENT), ("CLI_UNROSTERED", CLI_UNROSTERED)):
+        for spelling in register:
+            verbs = CLI_ROSTER.get(spelling[0])
+            rostered = verbs is not None and (
+                (len(spelling) == 1 and not verbs) or (len(spelling) > 1 and spelling[1] in verbs)
+            )
+            if rostered:
+                out.append(f"{label} names {' '.join(spelling)!r}, which CLI_ROSTER also carries")
+    for spelling in sorted(set(CLI_ABSENT) & set(CLI_UNROSTERED)):
+        out.append(f"{' '.join(spelling)!r} is registered both absent and unrostered")
+    for name, spec in actions.items():
+        if spec.cli and resolve_cli(spec.cli) not in {"verb", "bare"}:
+            out.append(
+                f"{name}: cli {' '.join(spec.cli)!r} resolves {resolve_cli(spec.cli)}, "
+                f"which is not a spelling the generator can emit"
+            )
+    return tuple(out)
+
+
+def _unrostered_cli(actions: Mapping[str, ActionSpec]) -> tuple[tuple[str, ...], ...]:
+    """Every `CLI_ROSTER` spelling with no `ActionSpec` row, sorted. The distance to the registry.
+
+    `_unrostered_full()` counts thirteen and `_unrostered_human_only()` counts five; this one
+    counts what is left of 10:857's *"roughly 110 further Actions"* after the rows that have
+    landed, and it is the number that says how far P7 W7.1 still has to run. It reports rather than
+    raises for the same reason both of those do, and for one more: 10:857's roster is blocked on
+    output types by D298 and D300, so every row here is waiting on a decision made elsewhere.
+
+    A root with an empty entry contributes ONE spelling -- itself -- because `ow doctor` is a
+    command and `ow doctor <verb>` is not a shape the grammar has.
+    """
+    have = {spec.cli for spec in actions.values() if spec.cli}
+    out: list[tuple[str, ...]] = []
+    for root, verbs in CLI_ROSTER.items():
+        spellings = [(root, verb) for verb in verbs] if verbs else [(root,)]
+        out.extend(spelling for spelling in spellings if spelling not in have)
+    return tuple(sorted(out))
+
+
 def _roster_failures(actions: Mapping[str, ActionSpec]) -> tuple[str, ...]:
     """The reconciliation between `FULL_ROSTER` and the rows, and it is not one of the eleven.
 
@@ -575,6 +1017,7 @@ def _validate(actions: Mapping[str, ActionSpec]) -> tuple[str, ...]:
     out.extend(_trailing_s_failures({spec.cli[0] for spec in actions.values() if spec.cli}))
     out.extend(_undefaulted_failures())  # check 10
     out.extend(_roster_failures(actions))  # not one of the eleven; see the function
+    out.extend(_cli_roster_failures(actions))  # nor is this one
     return tuple(out)
 
 

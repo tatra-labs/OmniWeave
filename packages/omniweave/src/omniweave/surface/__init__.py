@@ -17,6 +17,12 @@ generator reads, and both answer a question a reviewer asks of the surface rathe
 roster is also what `ow surface budget --bless` waits on (10:833), and a command in another package
 should not have to reach through a private module to learn whether its day has come.
 
+**The five CLI registers and `resolve_cli()` are bound as one family**, because a caller that had
+to reach `CLI_ABSENT` through the private module while `CLI_ROSTER` was public would be reading two
+halves of one answer from two places. `tools/plan_lint.py`'s `cli-verbs` rule needs all six: the
+roster to resolve a spelling, the two exception registers to know that an unresolved one is
+recorded, `CLI_RESOLVED` to know which statuses are findings, and the resolver itself.
+
 `inputs.py` and `omniweave.sdk.reports` are not re-exported. They are the `inp` and `out` types the
 generator reads, and a caller reaches them through `ACTIONS[name].inp` -- which is the only spelling
 that stays correct when a row's input type changes.
@@ -26,24 +32,38 @@ from __future__ import annotations
 
 from omniweave.surface.registry import (
     ACTIONS,
+    CLI_ABSENT,
+    CLI_FREE,
+    CLI_RESOLVED,
+    CLI_ROSTER,
+    CLI_UNROSTERED,
     FULL_ROSTER,
     GROUPS,
     HUMAN_ONLY,
     PROFILES,
     ActionSpec,
+    CliStatus,
     Profile,
     assert_sv1,
     listed,
+    resolve_cli,
 )
 
 __all__ = [
     "ACTIONS",
+    "CLI_ABSENT",
+    "CLI_FREE",
+    "CLI_RESOLVED",
+    "CLI_ROSTER",
+    "CLI_UNROSTERED",
     "FULL_ROSTER",
     "GROUPS",
     "HUMAN_ONLY",
     "PROFILES",
     "ActionSpec",
+    "CliStatus",
     "Profile",
     "assert_sv1",
     "listed",
+    "resolve_cli",
 ]
