@@ -1,0 +1,471 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schema/open-out-v1.json",
+  "title": "Answer",
+  "type": "object",
+  "additionalProperties": false,
+  "description": "One retrieval, packed and renderable.",
+  "required": [
+    "state",
+    "corpus",
+    "generation",
+    "freshness",
+    "evidence",
+    "pointers",
+    "withheld",
+    "impact",
+    "blocking",
+    "related",
+    "trailer_extra",
+    "licence_notices",
+    "degradations",
+    "defanged_blocks",
+    "instruction_shaped",
+    "blocks_matched",
+    "docs_matched",
+    "spend_micros",
+    "scorer_version",
+    "surface",
+    "budget",
+    "next_command"
+  ],
+  "properties": {
+    "state": {
+      "type": "string"
+    },
+    "corpus": {
+      "type": "string"
+    },
+    "generation": {
+      "type": "integer"
+    },
+    "freshness": {
+      "type": "string"
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/RenderedBlock"
+      }
+    },
+    "pointers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Pointer"
+      }
+    },
+    "withheld": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Pointer"
+      }
+    },
+    "impact": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ImpactRow"
+      }
+    },
+    "blocking": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "related": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "trailer_extra": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 2,
+        "maxItems": 2
+      }
+    },
+    "licence_notices": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/LicenceNotice"
+      }
+    },
+    "degradations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "defanged_blocks": {
+      "type": "integer"
+    },
+    "instruction_shaped": {
+      "type": "integer"
+    },
+    "blocks_matched": {
+      "type": "integer"
+    },
+    "docs_matched": {
+      "type": "integer"
+    },
+    "spend_micros": {
+      "type": "integer"
+    },
+    "scorer_version": {
+      "type": "integer"
+    },
+    "surface": {
+      "type": "string",
+      "enum": [
+        "query",
+        "open"
+      ]
+    },
+    "budget": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/AnswerBudget"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "next_command": {
+      "type": "string"
+    }
+  },
+  "$defs": {
+    "AnswerBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "18:773's eleven fields: which tier applied, and what it spent.",
+      "required": [
+        "tier_index",
+        "blocks_below",
+        "max_chars",
+        "chars_used",
+        "max_docs",
+        "docs_used",
+        "calls_allowed",
+        "call_ord",
+        "chars_deduped",
+        "doc_overhead",
+        "block_overhead"
+      ],
+      "properties": {
+        "tier_index": {
+          "type": "integer"
+        },
+        "blocks_below": {
+          "type": "integer"
+        },
+        "max_chars": {
+          "type": "integer"
+        },
+        "chars_used": {
+          "type": "integer"
+        },
+        "max_docs": {
+          "type": "integer"
+        },
+        "docs_used": {
+          "type": "integer"
+        },
+        "calls_allowed": {
+          "type": "integer"
+        },
+        "call_ord": {
+          "type": "integer"
+        },
+        "chars_deduped": {
+          "type": "integer"
+        },
+        "doc_overhead": {
+          "type": "integer"
+        },
+        "block_overhead": {
+          "type": "integer"
+        }
+      }
+    },
+    "Calibrated": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "charter.md:7331's nine fields, in its order.",
+      "required": [
+        "signal",
+        "value",
+        "status",
+        "p_correct",
+        "ci95",
+        "n",
+        "eval_set_id",
+        "slice_key",
+        "measured_at_ns"
+      ],
+      "properties": {
+        "signal": {
+          "type": "string"
+        },
+        "value": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "calibrated",
+            "bootstrap",
+            "uncalibrated",
+            "stale"
+          ]
+        },
+        "p_correct": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "ci95": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "n": {
+          "type": "integer"
+        },
+        "eval_set_id": {
+          "type": "string"
+        },
+        "slice_key": {
+          "type": "string"
+        },
+        "measured_at_ns": {
+          "type": "integer"
+        }
+      }
+    },
+    "ImpactRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "18:763's row. `ow_open` only, and only when `want_impact` was asked for (10:764).",
+      "required": [
+        "artifact",
+        "artifact_gen",
+        "unit",
+        "el",
+        "kind",
+        "verbatim",
+        "doc_gen",
+        "older_gen"
+      ],
+      "properties": {
+        "artifact": {
+          "type": "string"
+        },
+        "artifact_gen": {
+          "type": "integer"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "el": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "verbatim": {
+          "type": "boolean"
+        },
+        "doc_gen": {
+          "type": "integer"
+        },
+        "older_gen": {
+          "type": "boolean"
+        }
+      }
+    },
+    "LicenceNotice": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "18:770's row: the tier, the driver, the requirement and the bits it sets.",
+      "required": [
+        "tier",
+        "driver",
+        "requirement",
+        "restriction_bits"
+      ],
+      "properties": {
+        "tier": {
+          "type": "string"
+        },
+        "driver": {
+          "type": "string"
+        },
+        "requirement": {
+          "type": "string"
+        },
+        "restriction_bits": {
+          "type": "integer"
+        }
+      }
+    },
+    "Pointer": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "18:754's row: *\"One `ow:notseen` or `ow:sent-earlier` row: ~110 characters instead of ~4,500.\"*",
+      "required": [
+        "doc_uri",
+        "pages",
+        "cites",
+        "blocks",
+        "fetch",
+        "reason"
+      ],
+      "properties": {
+        "doc_uri": {
+          "type": "string"
+        },
+        "pages": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "cites": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "blocks": {
+          "type": "integer"
+        },
+        "fetch": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "cliffed",
+            "sent_earlier",
+            "truncated"
+          ]
+        }
+      }
+    },
+    "RenderedBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One packed block, as the renderer needs it. 18:588's shape, narrowed to what is printed.",
+      "required": [
+        "cite",
+        "addr",
+        "doc_uri",
+        "page",
+        "kind",
+        "text",
+        "quote",
+        "trust",
+        "method",
+        "origin_driver",
+        "byte_exact",
+        "score",
+        "now_ns",
+        "restriction",
+        "identity_grade",
+        "is_context",
+        "defanged"
+      ],
+      "properties": {
+        "cite": {
+          "type": "string"
+        },
+        "addr": {
+          "type": "string"
+        },
+        "doc_uri": {
+          "type": "string"
+        },
+        "page": {
+          "type": "integer"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "quote": {
+          "type": "integer",
+          "enum": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ]
+        },
+        "trust": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "origin_driver": {
+          "type": "string"
+        },
+        "byte_exact": {
+          "type": "boolean"
+        },
+        "score": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Calibrated"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "now_ns": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "restriction": {
+          "type": "string"
+        },
+        "identity_grade": {
+          "type": "string"
+        },
+        "is_context": {
+          "type": "boolean"
+        },
+        "defanged": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

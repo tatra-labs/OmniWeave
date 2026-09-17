@@ -1,0 +1,244 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schema/add-out-v1.json",
+  "title": "AddReport",
+  "type": "object",
+  "additionalProperties": false,
+  "description": "The roster's own report, not a queue receipt. 18:706, `@stable`; wire form at 10:1112.",
+  "required": [
+    "scope_id",
+    "corpus",
+    "discovered",
+    "unchanged",
+    "queued",
+    "skipped",
+    "completed",
+    "pending",
+    "degradations",
+    "deadline_reached",
+    "schema"
+  ],
+  "properties": {
+    "scope_id": {
+      "type": "integer"
+    },
+    "corpus": {
+      "type": "string"
+    },
+    "discovered": {
+      "type": "integer"
+    },
+    "unchanged": {
+      "type": "integer"
+    },
+    "queued": {
+      "type": "integer"
+    },
+    "skipped": {
+      "type": "integer"
+    },
+    "completed": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AddCompleted"
+      }
+    },
+    "pending": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AddPending"
+      }
+    },
+    "degradations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Degradation"
+      }
+    },
+    "deadline_reached": {
+      "type": "boolean"
+    },
+    "schema": {
+      "type": "integer"
+    }
+  },
+  "$defs": {
+    "AddCompleted": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One document `ow_add` finished inside its deadline. 18:722, `@stable`.",
+      "required": [
+        "uri",
+        "doc_ord",
+        "gen",
+        "pages",
+        "blocks",
+        "achieved_origin_span"
+      ],
+      "properties": {
+        "uri": {
+          "type": "string"
+        },
+        "doc_ord": {
+          "type": "integer"
+        },
+        "gen": {
+          "type": "integer"
+        },
+        "pages": {
+          "type": "integer"
+        },
+        "blocks": {
+          "type": "integer"
+        },
+        "achieved_origin_span": {
+          "type": "string",
+          "enum": [
+            "exact",
+            "normalized",
+            "none",
+            "glyphs",
+            "pixels"
+          ]
+        }
+      }
+    },
+    "AddPending": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One document `ow_add` did NOT run, and the exact command that would. 18:727, `@stable`.",
+      "required": [
+        "uri",
+        "reason",
+        "cost_class",
+        "est_micros",
+        "approve"
+      ],
+      "properties": {
+        "uri": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "cost_class": {
+          "type": "string",
+          "enum": [
+            "free",
+            "local_compute",
+            "billed_api"
+          ]
+        },
+        "est_micros": {
+          "type": "integer"
+        },
+        "approve": {
+          "type": "string"
+        }
+      }
+    },
+    "Degradation": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One downgrade, carried. 15-observability.md:995-1024, field for field and default for default.",
+      "required": [
+        "kind",
+        "message",
+        "unit_uri",
+        "parts_affected",
+        "wanted_driver",
+        "unit_dim",
+        "spent",
+        "limit",
+        "rung_reached",
+        "knob",
+        "fix_command"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "budget",
+            "signal_unavailable",
+            "driver_unavailable",
+            "acceptor_exhausted",
+            "rung_ceiling",
+            "policy_pruned",
+            "auto_demote",
+            "no_driver",
+            "discovery_slow",
+            "quarantine",
+            "deprecation",
+            "isolation_shortfall",
+            "toolchain_missing",
+            "pin",
+            "store_busy",
+            "stat_stale",
+            "pushdown_unavailable",
+            "vector_scan_over_budget",
+            "hub_capped",
+            "segment_lift_capped",
+            "cache_disabled_no_space",
+            "ledger_reset_by_compaction",
+            "grant_missing",
+            "compile_normalized",
+            "scope_clamped",
+            "calibration_stale",
+            "events_dropped"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "unit_uri": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "parts_affected": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "wanted_driver": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "unit_dim": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "spent": {
+          "type": "integer"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "rung_reached": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "knob": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fix_command": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

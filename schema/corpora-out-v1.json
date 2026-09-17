@@ -1,0 +1,391 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schema/corpora-out-v1.json",
+  "title": "CorpusCard",
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/CorpusCard"
+  },
+  "$defs": {
+    "Capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The fifteen capability fields. 03 section 2.9; 04-driver-system.md section 2.2.",
+      "required": [
+        "spatial",
+        "origin_span",
+        "text_span",
+        "marks",
+        "reading_order",
+        "sections",
+        "tables",
+        "math",
+        "assets",
+        "asset_origin",
+        "notes",
+        "confidence",
+        "furniture",
+        "round_trip",
+        "forfeits"
+      ],
+      "properties": {
+        "spatial": {
+          "type": "string",
+          "enum": [
+            "none",
+            "page_bbox",
+            "block_bbox",
+            "line_bbox",
+            "char_bbox"
+          ]
+        },
+        "origin_span": {
+          "type": "string",
+          "enum": [
+            "none",
+            "normalized",
+            "exact"
+          ]
+        },
+        "text_span": {
+          "type": "boolean"
+        },
+        "marks": {
+          "type": "boolean"
+        },
+        "reading_order": {
+          "type": "string",
+          "enum": [
+            "raster",
+            "learned",
+            "model_emitted",
+            "char_stream",
+            "source"
+          ]
+        },
+        "sections": {
+          "type": "string",
+          "enum": [
+            "none",
+            "markdown_only",
+            "outline_from_source",
+            "typed_levels"
+          ]
+        },
+        "tables": {
+          "type": "string",
+          "enum": [
+            "none",
+            "flat_html",
+            "cells",
+            "cells_with_spans"
+          ]
+        },
+        "math": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "assets": {
+          "type": "string",
+          "enum": [
+            "none",
+            "refs",
+            "bytes"
+          ]
+        },
+        "asset_origin": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string",
+          "enum": [
+            "none",
+            "inline",
+            "linked"
+          ]
+        },
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "none",
+            "document",
+            "page",
+            "element"
+          ]
+        },
+        "furniture": {
+          "type": "string",
+          "enum": [
+            "destroyed",
+            "flagged",
+            "separated"
+          ]
+        },
+        "round_trip": {
+          "type": "string",
+          "enum": [
+            "none",
+            "text",
+            "structure",
+            "passthrough"
+          ]
+        },
+        "forfeits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "CorpusCard": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One `corpus_card` row plus the three read-time degradations. 18:677, `@stable`.",
+      "required": [
+        "name",
+        "default",
+        "readable",
+        "reason",
+        "card_stale",
+        "card_gen",
+        "built_at_ns",
+        "writer_version",
+        "counts",
+        "formats",
+        "langs",
+        "date_range",
+        "outline",
+        "top_terms",
+        "achieved",
+        "trust_hist",
+        "quote_hist",
+        "verbatim_fraction",
+        "restriction_bits",
+        "embedding",
+        "gaps",
+        "abstract",
+        "abstract_producer"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "default": {
+          "type": "boolean"
+        },
+        "readable": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "card_stale": {
+          "type": "boolean"
+        },
+        "card_gen": {
+          "type": "integer"
+        },
+        "built_at_ns": {
+          "type": "integer"
+        },
+        "writer_version": {
+          "type": "string"
+        },
+        "counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "formats": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "langs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "date_range": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "outline": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "top_terms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "achieved": {
+          "$ref": "#/$defs/Capabilities"
+        },
+        "trust_hist": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "quote_hist": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "verbatim_fraction": {
+          "type": "number"
+        },
+        "restriction_bits": {
+          "type": "integer"
+        },
+        "embedding": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": {}
+        },
+        "gaps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Gap"
+          }
+        },
+        "abstract": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "abstract_producer": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Producer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "Gap": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "18:699's seven fields. One row of `gaps_json`, and absence gate 9's input.",
+      "required": [
+        "code",
+        "symbol",
+        "meaning",
+        "docs",
+        "pages",
+        "severity",
+        "fix"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": "string"
+        },
+        "meaning": {
+          "type": "string"
+        },
+        "docs": {
+          "type": "integer"
+        },
+        "pages": {
+          "type": "integer"
+        },
+        "severity": {
+          "type": "string"
+        },
+        "fix": {
+          "type": "string"
+        }
+      }
+    },
+    "Producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The reproduction tuple. **== L5's `OperatorIdentity`. ONE TYPE, TWO LAYERS** (03:396).",
+      "required": [
+        "operator",
+        "op_version",
+        "code_fingerprint",
+        "model_id",
+        "model_rev",
+        "runtime",
+        "runtime_version",
+        "prompt_fp",
+        "options_digest"
+      ],
+      "properties": {
+        "operator": {
+          "type": "string"
+        },
+        "op_version": {
+          "type": "integer"
+        },
+        "code_fingerprint": {
+          "type": "string"
+        },
+        "model_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model_rev": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runtime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runtime_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prompt_fp": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "options_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$",
+          "description": "a 16-byte ow128 as 32 lowercase hex characters"
+        }
+      }
+    }
+  }
+}

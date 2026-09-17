@@ -290,10 +290,40 @@ def test_every_row_names_a_module_a_landing_item_and_a_locus() -> None:
         assert entry.root in {"object", "array"}, entry
 
 
-def test_exactly_one_row_declines_to_name_a_symbol() -> None:
-    """`open-out-v1.json` is the one file the plan never attributes to a declaring type."""
-    unnamed = [entry.file for entry in schemagen.INVENTORY if entry.symbol is None]
-    assert unnamed == ["open-out-v1.json"]
+def test_every_row_now_names_a_declaring_symbol() -> None:
+    """`open-out-v1.json` was the one file the plan never attributes to a declaring type.
+
+    P7 W7.1 settled it, which is the moment the mechanism was built to force: `symbol = None`
+    resolves `UNRESOLVED` as soon as its module exists, and creating `omniweave.sdk` for
+    `corpora-out-v1.json` and `add-out-v1.json` made that module exist. The settlement is that
+    there is one shape -- `ow open` returns an `Answer` and `Answer.surface` is already
+    `Literal["query", "open"]` -- so the two files regenerate from one declaration and cannot
+    drift. D296 records the plan's silence.
+    """
+    assert [entry.file for entry in schemagen.INVENTORY if entry.symbol is None] == []
+    by_file = {entry.file: entry for entry in schemagen.INVENTORY}
+    assert by_file["open-out-v1.json"].symbol == by_file["answer-v1.json"].symbol == "Answer"
+
+
+def test_exactly_one_row_is_deferred_to_another_emitter() -> None:
+    """`mcp-tools-v1.json` is double-owned: G6 lists it and G25 generates it.
+
+    02:273 row 49 puts it among the thirteen `ow schema emit` files and 10:208 puts it among
+    `ow surface emit`'s seven. Reflection cannot produce it in any case -- a tool object is a name,
+    a description, four annotations and two JSON Schemas DERIVED from an `ActionSpec`, not an
+    `ActionSpec` -- so the row names the other emitter and stays `PENDING` until W7.2 lands it.
+    """
+    deferred = [entry.file for entry in schemagen.INVENTORY if entry.deferred]
+    assert deferred == ["mcp-tools-v1.json"]
+    item = schemagen.resolve({entry.file: entry for entry in schemagen.INVENTORY}[deferred[0]])
+    assert item.state is schemagen.State.PENDING
+    assert "ow surface emit" in item.detail
+
+
+def test_a_deferred_row_still_refuses_a_committed_file() -> None:
+    """A deferred row is not a hole: `_check_one`'s PENDING branch is what keeps it honest."""
+    entry = next(e for e in schemagen.INVENTORY if e.deferred)
+    assert not entry.path.is_file(), "W7.2 lands this file, and this test changes with it"
 
 
 # ---------------------------------------------------------------------------
