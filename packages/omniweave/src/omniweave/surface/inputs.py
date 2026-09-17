@@ -32,6 +32,20 @@ would put `corpus` before `query` and bury the one required parameter under an o
 - **No `k`, `mode` or `fail_on`.** Those are `ow query` CLI flags (18:910). `want` is a packing
   preset on the surface and *"never changes `Query.mode`"* (10:420), which the planner owns.
 
+## THE LISTED FOUR FIRST, THEN THE NARROW ROWS THAT HAVE LANDED
+
+The first four classes are the `default` profile's, in 10:311's order. The rest are `full`-profile
+Actions and arrive one at a time, because `ActionSpec` needs an `inp` AND an `out` and 10:807's
+roster has thirteen rows whose output type has no home yet (`registry.py`'s `_unrostered_full()`
+names them). An input type written ahead of its row would be a published parameter list nothing
+publishes -- dead weight that a reader would reasonably mistake for a shipped surface -- so a class
+appears here in the cell that adds its row and not before.
+
+**No narrow input declares `max_chars`.** The two retrievers pack prose into an Answer against
+`HARD_CEILING`; every narrow Action here returns rows, and a row set truncated at a character count
+would cut a row in half. Where a narrow Action needs a bound it is a row count, and where it needs
+none it has none.
+
 ## THE BOUNDS ARE CONSTANTS, AND ONE OF THEM IS IMPORTED
 
 Every numeric bound the published schema prints is a `Final` here, so the generator reads the same
@@ -70,6 +84,11 @@ __all__ = [
     "WANTS",
     "AddIn",
     "CorporaIn",
+    "CoverageIn",
+    "DiffIn",
+    "DoctorIn",
+    "ExplainIn",
+    "GridIn",
     "OpenIn",
     "QueryIn",
 ]
@@ -209,3 +228,106 @@ class AddIn:
     source: str | tuple[str, ...]
     corpus: str | None = None
     dry_run: bool = False
+
+
+# =============================================================================================
+# The `full` profile's inputs. One class per landed row; 10:807's table order.
+# =============================================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class GridIn:
+    """`ow_grid` / `ow doc grid`. 10:808.
+
+    `ref` addresses a table, and the resolution ladder is `ow_open`'s (10:437) rather than a second
+    one: a `d7#412` cite, a `p14/3` address or a path all reach a block, and a block that is not a
+    table is `OW-A-002`, naming the `Kind` it actually is. The alternative -- a `doc` plus a table
+    ordinal -- was not taken because an agent reading an Answer holds a cite and has never seen an
+    ordinal, and a parameter nothing in the payload supplies is a parameter that cannot be filled.
+
+    There is no `max_rows`. `Grid.slot(r, c)` is O(1) over a cover that was built at ingest
+    (03 section 9), so the cost of the whole table is the cost of the rows the caller reads, and a
+    truncation knob would have to cut either a row or a column -- both of which change what the
+    exactly-once cover MEANS. The bound that exists is the packer's, one layer up.
+    """
+
+    ref: str
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DiffIn:
+    """`ow_diff` / `ow doc diff`. 10:819.
+
+    Two optional generations, and the default pair is the one an operator wants: `to_gen` defaults
+    to the head and `from_gen` to the generation before it, because 03:1302 puts this Action's whole
+    reason in the quarantine path -- a `rebind()` below threshold leaves a generation *"durable and
+    invisible for inspection by `ow doc diff`"*, and the generation a reader wants to inspect is the
+    one that was just refused.
+
+    Both are `advanced`, so the compact schema publishes a document and nothing else. That is the
+    §3.3 strip working as designed rather than a narrowing: the handler honours a `from_gen` a host
+    forwards unvalidated, and `_DECLARED_ARG_KEYS` is snapshotted before the strip so neither is
+    ever reported unknown.
+    """
+
+    ref: str
+    corpus: str | None = None
+    from_gen: int | None = None
+    to_gen: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CoverageIn:
+    """`ow_coverage`. 10:818, and its CLI twin is `ow corpora --detail coverage` (10:1424).
+
+    The two parameters are `ow_query`'s first two, and deliberately the same two spellings: this is
+    the Action an agent reaches for when `ow_query` returned `absent`, and a scope that had to be
+    re-spelled to ask *"what is missing from what I just searched?"* would be a second scope grammar
+    to get wrong. 10:388's one-query-one-corpus rule applies here for the same reason -- a coverage
+    report over two corpora would sum counts nothing can join.
+
+    Everything it returns is derived, which is why it has no `detail` knob: the gap list IS the
+    `diag` roll-up (10:1085) and the counts ARE `ingest_scope`'s, so there is no cheaper form to ask
+    for. `Coverage.scope_rows == 0` means coverage is UNKNOWN rather than clean, and that is the
+    field this Action exists to put in front of a caller.
+    """
+
+    corpus: str | None = None
+    scope: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DoctorIn:
+    """`ow_doctor` / `ow doctor`. 10:1436, where the one flag is `--runtime`.
+
+    `runtime` is `advanced` because the two probes answer different questions at different prices.
+    The default pass reads configuration, resolves the driver catalog and checks toolchain digests
+    -- all of it local and free. `--runtime` additionally EXERCISES what it found: it opens the
+    model-server seam, resolves a subprocess host and prints the vision driver's installed size
+    (02:267, which makes that print `ow doctor`'s job). An agent that wanted a fix command should
+    not pay for a probe that starts processes to get one.
+
+    It is a bool and not a `depth` enum, because there are two behaviours and a two-member enum is
+    a bool that also needs a default spelled out.
+    """
+
+    runtime: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ExplainIn:
+    """`ow_explain` / `ow explain <CODE>`. 10:1438.
+
+    One required string, and it accepts BOTH spellings of a register entry -- `OW-A-013` or
+    `OW_PARSE_GAP_IN_SCOPE`. The parameter is therefore `code` and not `numeric`: a name that
+    promised the numeric form would be wrong half the time it is used, and the resolver's job is
+    precisely that it does not care which one it was handed.
+
+    There is no `corpus`, which makes this the only Action in either profile that reads no store at
+    all. `codes.toml` is repository data, so `ow explain` answers with no corpus configured, on a
+    machine that has never run `ow add`, and while a store is locked by another writer -- which is
+    most of the situations in which someone has an `OW-*` code and needs to know what it means.
+    """
+
+    code: str

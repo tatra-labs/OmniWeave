@@ -1,7 +1,7 @@
 """The report types two listed Actions return, and the wire form of each. 18-api-sketch.md 1.4.
 
-18:671: *"Each is what one entry point returns. They exist so no caller parses prose, and every one of them
-is also a row in a `schema/*.json` a `--render json` consumer validates against"*.
+18:671: *"Each is what one entry point returns. They exist so no caller parses prose, and every
+one of them is also a row in a `schema/*.json` a `--render json` consumer validates against"*.
 
 This module exists because `ActionSpec.out` is a `type` (10:137) and two of the four listed
 Actions declare an `outputSchema`. 10:230 emits `schema/corpora-out-v1.json` and
@@ -51,13 +51,17 @@ from omniweave_core.store.card import Gap
 from omniweave_ports import CostClass
 
 __all__ = [
+    "DOCTOR_SEVERITIES",
     "SCHEMA_VERSION",
     "SEVERITIES",
     "AddCompleted",
     "AddPending",
     "AddReport",
+    "CodeRow",
     "CorporaReport",
     "CorpusCard",
+    "DoctorFinding",
+    "DoctorReport",
     "Gap",
 ]
 
@@ -77,6 +81,22 @@ SEVERITIES: Final[tuple[str, ...]] = ("info", "warning", "error")
 gap IS a `diag` roll-up (10:1085, *"`gaps` is derived from the `diag` table"*), so the two agreeing
 is the point rather than a duplication. This binding exists so a surface consumer need not import
 the document model to name them.
+"""
+
+DOCTOR_SEVERITIES: Final[tuple[str, ...]] = ("ok", "warning", "error")
+"""`DoctorFinding.severity`'s three members, 18:747's `Literal`, and it is NOT `SEVERITIES`.
+
+The two tuples differ in exactly one member and the difference is not cosmetic. A `Gap` is a
+roll-up of `diag` rows that were RECORDED, so its weakest member is `info` -- something was written
+down that a reader may want. A `DoctorFinding` is one probe's verdict and every probe returns one,
+so its weakest member is `ok` -- nothing to do. A vocabulary whose weakest member means *"a fact"*
+and one whose weakest member means *"no finding"* cannot be the same closed set, and folding them
+would make `severity == "ok"` unspellable on one side and `severity == "info"` meaningless on the
+other.
+
+They are therefore two names in one module, which INV-21 permits and D297 records: one name, one
+home is a rule about a NAME, and these are two. What would breach it is a single `SEVERITIES` that
+both types annotated against, because then a reader could not tell which three a field admits.
 """
 
 
@@ -214,3 +234,75 @@ class AddReport:
         property rather than a second field, so the two spellings cannot disagree.
         """
         return self.pending
+
+
+@dataclass(frozen=True, slots=True)
+class DoctorFinding:
+    """One probe's verdict, and the command that clears it. 18:745, `@stable`.
+
+    `fix` is a required string that is empty ONLY at `severity = "ok"` (18:748), which is the same
+    shape `AddPending.approve` takes and for the same reason: 10:1436 says `ow doctor`
+    *"never fails on a warning"*, so a warning a caller cannot act on is a line of output that
+    costs attention and returns nothing. The emptiness rule is not enforced by this type -- a
+    dataclass cannot make one field's emptiness depend on another's value without raising at
+    construction, which is after the point a report is assembled -- so it is the assembler's, and
+    `ow doctor`'s own test is where it is asserted.
+    """
+
+    check: str
+    detail: str
+    severity: Literal["ok", "warning", "error"]
+    fix: str
+
+
+@dataclass(frozen=True, slots=True)
+class DoctorReport:
+    """What `ow doctor` / `ow_doctor` returns. 18:737, `@stable`.
+
+    **Three tuples and not one with a severity filter**, which is 18:740's shape: `failed` being
+    non-empty is what makes `ow doctor` exit 1, and a caller that had to filter a flat list to
+    learn that would be re-deriving the exit code the process already computed. The three are
+    disjoint by construction and their union is every probe that ran.
+
+    `config_sources` is every resolved key mapped to where it came from, which is
+    `ow show-config`'s payload (10:1437, *"prints every resolved value with its source"*) carried
+    on this report rather than duplicated into a second one: the question a `doctor` run answers is
+    almost always *"which file set this?"*, and a report that made the operator run a second
+    command to find out would be answering half of it.
+
+    The two digests are the pair 02 section 8 draws apart: `config_digest` covers every resolved
+    value and moves when a comment-only edit changes a file, while `semantic_digest` covers the
+    values a decision reads and is what a cache key may contain. Both, because a support thread
+    needs to know whether the configuration changed and a cache needs to know whether it MATTERED.
+    """
+
+    ok: tuple[DoctorFinding, ...]
+    warned: tuple[DoctorFinding, ...]
+    failed: tuple[DoctorFinding, ...]
+    config_sources: Mapping[str, str]
+    config_digest: str
+    semantic_digest: str
+
+
+@dataclass(frozen=True, slots=True)
+class CodeRow:
+    """One `codes.toml` row as a reader receives it. 18:751, `@stable`.
+
+    `ow explain <CODE>` accepts either spelling -- `OW-A-013` or `OW_PARSE_GAP_IN_SCOPE` (10:1438)
+    -- and this row carries BOTH, because the two are the same register entry under two indexes and
+    a report that returned only the one it was asked for would make a caller that logged the numeric
+    unable to search for the symbol. `Gap` already ships both spellings for exactly this reason
+    (10:1085's *"both spellings of every code"*), so this is that rule applied to the register
+    itself rather than to a roll-up of it.
+
+    `owner_doc` is the plan document that owns the code's block -- `10-interfaces.md` for the
+    `OW-A-0xx` range (10:299) -- and it is on the row because the fix for a code whose `fix` is a
+    design decision rather than a command is to read the section that allocated it. It is the one
+    field with no counterpart in `Gap`, which is a corpus fact; a code is a repository fact.
+    """
+
+    numeric: str
+    symbol: str
+    meaning: str
+    fix: str
+    owner_doc: str

@@ -12,6 +12,13 @@ What is here is `reports.py`, and it arrived with W7.1 rather than with the API 
 and not from the stored row. So the alternative to shipping it here was an `out` pointing at
 nothing.
 
+**W7.1b adds three more and no fourth.** `DoctorReport`, `DoctorFinding` and `CodeRow` are the
+`out` types of the `doctor` and `explain` Actions, and they are here because 18 section 1.4 prints
+them field for field exactly as it prints `CorpusCard` and `AddReport` -- a report type this
+document specifies is this package's whether or not the entry point that returns it exists. The
+other thirteen `full`-profile Actions have no such specification, and `registry.py`'s
+`_unrostered_full()` names each one rather than this module guessing a shape.
+
 `_generated.pyi` is 11:249's other half and is `T-GENERATED`: 10:211 generates it from `inp`, `out`
 and `name`, and G25 byte-diffs it. Nothing in this package may be hand-written into that file.
 """
@@ -22,8 +29,11 @@ from omniweave.sdk.reports import (
     AddCompleted,
     AddPending,
     AddReport,
+    CodeRow,
     CorporaReport,
     CorpusCard,
+    DoctorFinding,
+    DoctorReport,
     Gap,
 )
 
@@ -31,7 +41,10 @@ __all__ = [
     "AddCompleted",
     "AddPending",
     "AddReport",
+    "CodeRow",
     "CorporaReport",
     "CorpusCard",
+    "DoctorFinding",
+    "DoctorReport",
     "Gap",
 ]

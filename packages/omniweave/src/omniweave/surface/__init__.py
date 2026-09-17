@@ -11,6 +11,12 @@ the invariant row 30 owns -- it names SV1 in the same cell, as a startup check t
 subset of `enabled` and that `HUMAN_ONLY` and `enabled` do not intersect. The check is this
 package's; the config values it reads are the operator's and arrive as arguments.
 
+`FULL_ROSTER` is bound beside `GROUPS` and for the same reason: both are declaration data the
+generator reads, and both answer a question a reviewer asks of the surface rather than of one row --
+`GROUPS` what a CLI root may be, `FULL_ROSTER` what the `full` profile is supposed to contain. The
+roster is also what `ow surface budget --bless` waits on (10:833), and a command in another package
+should not have to reach through a private module to learn whether its day has come.
+
 `inputs.py` and `omniweave.sdk.reports` are not re-exported. They are the `inp` and `out` types the
 generator reads, and a caller reaches them through `ACTIONS[name].inp` -- which is the only spelling
 that stays correct when a row's input type changes.
@@ -20,6 +26,7 @@ from __future__ import annotations
 
 from omniweave.surface.registry import (
     ACTIONS,
+    FULL_ROSTER,
     GROUPS,
     HUMAN_ONLY,
     PROFILES,
@@ -31,6 +38,7 @@ from omniweave.surface.registry import (
 
 __all__ = [
     "ACTIONS",
+    "FULL_ROSTER",
     "GROUPS",
     "HUMAN_ONLY",
     "PROFILES",
