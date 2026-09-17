@@ -159,7 +159,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import AbstractContextManager
-from typing import Any, BinaryIO, Protocol
+from typing import Any, BinaryIO, Final, Protocol
 
 from omniweave_core.model.block import BlockDraft, BlockId, Cite, Mark
 from omniweave_core.model.enums import RelKind, Trust
@@ -184,6 +184,7 @@ from omniweave_core.work import WorkRow
 # comparing this file to 07:63 word for word will notice.
 
 __all__ = [
+    "NO_JOB_DOCS",
     "ChannelInput",
     "ChannelSpec",
     "Coverage",
@@ -199,6 +200,33 @@ __all__ = [
     "VecManifest",
     "VectorBackend",
 ]
+
+NO_JOB_DOCS: Final[str] = "doc.format <> 'owjob'"
+"""The job-document exclusion, one predicate stated once. 07:751, verbatim.
+
+07:750's code comment puts it here and nowhere else -- *"the one spelling. Every site below appends
+it verbatim"* -- and 07:3450 says the same in the register's words. The site table at 07:759-766 is
+exhaustive and has SIX rows, not the four the register's sentence lists: `stat.docs`,
+`ow store stats`, `corpus_card`'s document count, `Filters.formats`, absence gate 4's scope roll-up
+and `ow store rm --doc`, the last of which carries the predicate from generation's side and *"is
+not restated"* here. A
+`format = 'owjob'` document is the synthetic row generation hangs a compile-produced asset off; it
+carries **zero `block` rows**, so it is invisible to every Channel by construction and this
+predicate exists for COUNTS, not for hits.
+
+07:763 states what forgetting it does to the one table that has a ratio in it: a job document
+*"would drive `verbatim_fraction` toward zero by adding to a denominator it can never contribute
+to"*.
+
+A string and not a helper, because the four call sites append it to four different statements and a
+function returning SQL is a query builder -- which 07's whole store section refuses. `doc.format`
+is `NOT NULL`, so the predicate is total and needs no `IFNULL`, and no index is added for it
+(0003_index.sql, the `stat` comment).
+
+It lives in this file rather than in `types.py` because 07:3450 says `omniweave_core.store`, and
+because the four appenders reach it from four subpackages that all already import this one. P2's
+`store/maintenance.py` and `store/reader.py` each recorded its absence as a build defect; this is
+the home those two notes were waiting for."""
 
 
 class Store(Protocol):

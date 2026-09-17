@@ -413,8 +413,9 @@ def test_the_pass_rederives_stat(owstore: Path, thread: ow.StoreThread) -> None:
         now_ms=NOW_MS,
         now_ns=NOW_NS,
     )
-    assert set(report.stat) == {"live_blocks", "live_segments"}
+    assert set(report.stat) == {"live_blocks", "live_segments", "docs"}
     assert rows_of(owstore, "SELECT k, v FROM stat ORDER BY k") == [
+        ("docs", 0),
         ("live_blocks", 0),
         ("live_segments", 0),
     ]

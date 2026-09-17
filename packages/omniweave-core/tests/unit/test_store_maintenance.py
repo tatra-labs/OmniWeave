@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from conftest import migration_files
 from omniweave_core.errors import StoreError
+from omniweave_core.store import NO_JOB_DOCS
 from omniweave_core.store import maintenance as m
 from omniweave_core.store import sqlite as ow
 
@@ -717,7 +718,7 @@ def test_repair_runs_exactly_four_steps_in_order_and_clears_the_marker_last(
     assert report.steps[-1] == "clear_bulk_window"
     assert report.integrity == ("ok",)
     assert report.foreign_key_violations == 0
-    assert report.stat_written == {"live_blocks": 0, "live_segments": 0}
+    assert report.stat_written == {"live_blocks": 0, "live_segments": 0, "docs": 0}
     assert store.execute("SELECT computed_ns FROM stat WHERE k = 'live_blocks'").fetchone() == (99,)
 
 
@@ -805,19 +806,32 @@ def test_repair_stops_at_step_three_and_leaves_the_marker_open(
 
 
 def test_the_stat_keys_repair_cannot_write_are_named_with_their_reason() -> None:
-    """DEFECT 4 -- `docs` needs `NO_JOB_DOCS`, whose one code home has not landed."""
-    assert set(m._STAT_DEFERRED) == {"docs", "per_kind"}
-    assert "NO_JOB_DOCS" in m._STAT_DEFERRED["docs"]
-    assert "omniweave_core.store" in m._STAT_DEFERRED["docs"]
-    assert set(m._STAT_SQL) == {"live_blocks", "live_segments"}
+    """DEFECT 4 is closed and `per_kind` is not: one key left, for a different reason.
+
+    W6.8 gave `NO_JOB_DOCS` its home in `omniweave_core.store`, so `docs` moved from the deferred
+    map to `_STAT_SQL`. `per_kind` stays deferred because nothing in the plan fixes its key
+    spelling, which no home for a predicate can fix.
+    """
+    assert set(m._STAT_DEFERRED) == {"per_kind"}
+    assert "key spelling" in m._STAT_DEFERRED["per_kind"]
+    assert set(m._STAT_SQL) == {"live_blocks", "live_segments", "docs"}
     assert set(m._STAT_SQL) & set(m._STAT_DEFERRED) == set()
+
+
+def test_docs_counts_through_the_one_no_job_docs_home() -> None:
+    """07:761 -- a job document *"would inflate the corpus size an operator reads"*.
+
+    Asserted against the shared constant and not against a copy of the predicate: the whole point
+    of the home is that this statement and `corpus_card`'s are the same six characters.
+    """
+    assert NO_JOB_DOCS in m._STAT_SQL["docs"]
 
 
 def test_live_is_read_off_the_head_views_and_not_re_derived() -> None:
     """`gen = doc.gen AND state = 0` has one home, and it is the view (`0001_init.sql:328`)."""
-    for sql in m._STAT_SQL.values():
-        assert "_head" in sql
-        assert "state" not in sql
+    for key in ("live_blocks", "live_segments"):
+        assert "_head" in m._STAT_SQL[key]
+        assert "state" not in m._STAT_SQL[key]
 
 
 def test_rederive_stat_is_one_home_and_repair_step_four_is_a_caller(
