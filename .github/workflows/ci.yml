@@ -461,6 +461,27 @@ jobs:
         # policies through the real load_layer(), so it needs the workspace installed -- which the
         # gates job already has -- and no database service.
         run: uv run tools/gate_trigger_parity.py
+      - name: "G33 -- exactly one return VerdictState.ABSENT site (SV8, INV-11)"
+        # The fourth append to tools/gates.toml, on the same terms as G30 through G32: registered,
+        # not yet rendered in section 6.4. 16-roadmap.md:693 invokes this script by name in P6's
+        # exit criteria ("semgrep: exactly one ABSENT return").
+        #
+        # It is not a duplicate of G8. The bank rule omniweave-one-verdict-absent-site runs inside
+        # G8 and can only confine the return to one FILE, because semgrep has no counting operator;
+        # the COUNT is in gate_semgrep.py's ast half, and this runner calls that half rather than
+        # re-implementing it. What the separate step buys is a phase-boundary answer about one
+        # invariant instead of the absence of a failure among twenty-five bans.
+        run: uv run tools/gate_one_absent_site.py
+      - name: "G34 -- no `= ...` default in a shipped shape"
+        # The fifth append, same terms. 16-roadmap.md:694 invokes this script by name in P6's exit
+        # criteria, and 16-roadmap.md:674 makes the property part of what P6 FREEZES -- so it has
+        # to hold before the freeze rather than be checked after it.
+        #
+        # It ast-parses packages/*/src/**/*.py and opens nothing, so it sits here beside the other
+        # declaration-file linters. A Protocol method's parameter default is not a finding:
+        # _plan/_notes/build-defects.md D290 records why, and the gate's own docstring carries the
+        # argument.
+        run: uv run tools/gate_no_ellipsis_default.py
 
       # --- the four [[job_assertion]] rows whose job cell is gates ----------------------------
       - name: "gates.reference_docs -- ow surface emit --docs --check over docs/reference"
