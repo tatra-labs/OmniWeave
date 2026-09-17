@@ -180,6 +180,12 @@ class SchemaSource:
 
     `root` is `"object"` unless the plan says the wire form is a sequence of the declared type, in
     which case it is `"array"` and the declaration is emitted into `$defs` under `items`.
+
+    `deferred` is non-empty only where the plan gives the file a DIFFERENT emitter. Such a row is
+    `PENDING` whatever its module declares, because resolving it here would make this generator
+    race the other one, and the string says which emitter and which work item owns it. The
+    `PENDING` branch of `_check_one` still refuses a committed file, so a deferred row cannot be
+    used to smuggle a hand-written schema past G6.
     """
 
     file: str
@@ -189,6 +195,7 @@ class SchemaSource:
     locus: str
     root: str = "object"
     note: str = ""
+    deferred: str = ""
 
     @property
     def path(self) -> Path:
@@ -284,21 +291,29 @@ INVENTORY: tuple[SchemaSource, ...] = (
         note=(
             "DOUBLE-OWNED IN THE PLAN: row 49 lists it among the thirteen `ow schema emit` files "
             "(G6) and row 31 lists it among `ow surface emit`'s seven agent-facing artefacts "
-            "(G25). Its declaration is `ACTIONS`, a sequence of `ActionSpec`, not a single type, "
-            "so `build_schema` will refuse it until W7.2 reconciles the two emitters"
+            "(G25). Its declaration is `ACTIONS`, a mapping of `ActionSpec` and not a single "
+            "type, and a tool object is not an `ActionSpec` -- it is a name, a description, four "
+            "annotations and two JSON Schemas DERIVED from one. Reflection cannot produce it"
+        ),
+        deferred=(
+            "emitted by `ow surface emit` (G25), not by this generator; W7.1 landed `ACTIONS` "
+            "and W7.2 lands the emitter that reconciles the two gates"
         ),
     ),
     SchemaSource(
         file="open-out-v1.json",
-        module="omniweave.sdk",
-        symbol=None,
+        module="omniweave_core.answer",
+        symbol="Answer",
         landed_by="P7 W7.1",
         locus="18-api-sketch.md section 3.2",
         note=(
-            "the plan states what this file IS -- 'the --render json shape for ow open, not an "
-            "MCP outputSchema' -- and names no declaring Python type for it anywhere. `ow open` "
-            "returns an `Answer`, which is already answer-v1.json's source, so the two cannot "
-            "both be reflected from one symbol. UNRESOLVED on purpose"
+            "SETTLED AT W7.1, and the settlement is that there is one shape. The plan states "
+            "what this file is -- 'the --render json shape for ow open, not an MCP "
+            "outputSchema' -- and names no declaring type anywhere. `ow open` returns an "
+            "`Answer`, `ActionSpec['open'].out` is `Answer`, and `Answer.surface` is already "
+            "`Literal['query', 'open']`, so the two surfaces are one type discriminated by a "
+            "field. Two files, one declaration: they regenerate together and cannot drift. "
+            "D296 records the plan's silence"
         ),
     ),
     SchemaSource(
@@ -903,6 +918,8 @@ def resolve(entry: SchemaSource) -> Resolution:
     every run prints the pending table -- module, symbol and landing item, one row each -- rather
     than a count.
     """
+    if entry.deferred:
+        return Resolution(entry, State.PENDING, None, entry.deferred)
     if entry.symbol is None:
         try:
             importlib.import_module(entry.module)

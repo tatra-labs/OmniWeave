@@ -236,6 +236,13 @@ symbol  = "OW_EVAL_NOT_INSTALLED"
 sites   = ["10-interfaces.md:298", "10-interfaces.md:2804"]
 
 [[code]]
+numeric = "OW-A-028"
+symbol  = "OW_SURFACE_REGISTRY_INVALID"
+meaning = "the Action registry failed one of its eleven import-time checks (names every failing row)"
+raised_by = "SurfaceError"
+sites   = ["10-interfaces.md:179"]
+
+[[code]]
 numeric = "OW-A-030"
 symbol  = "OW_HOOK_NOT_RESOLVABLE"
 meaning = "hook command not resolvable"
