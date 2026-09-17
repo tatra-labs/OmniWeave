@@ -62,6 +62,7 @@ from types import ModuleType
 from typing import Final
 
 import pytest
+from omniweave.surface import CLI_ABSENT, CLI_UNROSTERED
 from omniweave_core import errors
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
@@ -141,7 +142,22 @@ Nothing else was reported stale.
 | **E-Q2** | Is there a check? | A `ow plan lint` rule. | The phrase is the locus. |
 """
 
+FIXTURE_CLI_DOC: Final[str] = "# Interfaces\n\n" + "".join(
+    f"- `ow {' '.join(spelling)}` is written down here so `cli-verbs` can see it.\n"
+    for spelling in (*CLI_ABSENT, *CLI_UNROSTERED)
+)
+"""One line per exception-register row, GENERATED from the registers rather than typed.
+
+`cli-verbs` fails on a register row no document writes, which is the ratchet that stops
+`CLI_UNROSTERED` becoming a permanent excuse list. A fixture tree carrying none of those
+sentences would fail every run against it for a reason that has nothing to do with the rule
+under test, so the fixture writes them -- and GENERATING the document means a row added to
+either register cannot make this fixture stale, which is the same reason `build_plan` already
+iterates `WRITABLE_NOTES` instead of re-listing it.
+"""
+
 FIXTURE_DOCS: Final[dict[str, str]] = {
+    "10-interfaces.md": FIXTURE_CLI_DOC,
     "00-vision.md": "# Vision\n\nV10-17 is a release criterion.\n",
     "01-principles.md": "# Principles\n\n`OW-A-002` `OW_FIXTURE_LIVE` is the live spelling.\n",
     "README.md": "# The fixture plan\n\nTwo documents, one charter.\n",
@@ -236,19 +252,25 @@ def test_the_real_plan_passes_every_rule_against_the_committed_manifest() -> Non
         assert f"ok   {rule}" in out.getvalue(), out.getvalue()
 
 
-def test_a_fixture_tree_blessed_from_itself_passes_all_four_rules(blessed) -> None:
+def test_a_fixture_tree_blessed_from_itself_passes_all_five_rules(blessed) -> None:
     """The baseline. Without it every mutation test below could be passing for the wrong reason."""
     plan, manifest = blessed
     code, report = run(plan, manifest)
     assert code == pl.EXIT_CLEAN, report
-    assert "4 rules, 0 findings" in report
+    assert "5 rules, 0 findings" in report
     assert "3 rows, 3 phrases resolved" in report
 
 
 def test_the_report_names_every_rule_so_a_failure_says_which_one_failed(blessed) -> None:
     plan, manifest = blessed
     _, report = run(plan, manifest)
-    assert set(pl.RULES) == {"charter-frozen", "documents-frozen", "errata-phrases", "codes-unique"}
+    assert set(pl.RULES) == {
+        "charter-frozen",
+        "documents-frozen",
+        "errata-phrases",
+        "codes-unique",
+        "cli-verbs",
+    }
     for rule in pl.RULES:
         assert rule in report, report
 
@@ -710,6 +732,7 @@ def test_the_corpus_is_the_plans_own_corpus_clause_and_excludes_snapshots(tmp_pa
     assert corpus == (
         "00-vision.md",
         "01-principles.md",
+        "10-interfaces.md",
         "README.md",
         "glossary.md",
         pl.CHARTER_REL,
@@ -1066,7 +1089,7 @@ def test_bless_names_every_digest_it_changes_adds_and_removes(tmp_path: Path) ->
     plan = build_plan(tmp_path / "plan")
     manifest = tmp_path / "plan.sha256"
     first = bless(plan, manifest, "the first bless")
-    assert "FIRST BLESS: 6 documents" in first, first
+    assert "FIRST BLESS: 7 documents" in first, first
 
     (plan / "00-vision.md").write_text("# Vision\n\nEdited.\n", encoding="utf-8", newline="\n")
     (plan / "02-new.md").write_text("# Two\n", encoding="utf-8", newline="\n")
@@ -1453,3 +1476,131 @@ def test_the_frozen_region_is_the_anchored_one_because_the_manifest_cannot_disag
     code, report = run(plan, manifest)
     assert code == pl.EXIT_NOT_RUN, report
     assert "disagree" in report
+
+
+# ---------------------------------------------------------------------------------------------
+# Rule 5, `cli-verbs`: 11 section 8.6 clause d2's CLI half
+# ---------------------------------------------------------------------------------------------
+
+
+def test_every_cli_spelling_the_real_plan_writes_resolves_against_the_register() -> None:
+    """d2's own assertion, over the tree this repository ships.
+
+    *"every … `ow <group> <verb>` … named in a document exists in its register"*. The register is
+    `omniweave.surface.registry`'s four CLI constants and this is the first run in which the claim
+    is a check rather than a sentence: 185 spellings over 23 documents, every one of them resolved,
+    absent by declaration, or unrostered with a defect number beside it.
+    """
+    findings, notes = pl.check_cli_verbs(REAL_PLAN)
+    assert findings == [], [f.render() for f in findings]
+    assert "0 unresolved" in notes[0], notes[0]
+
+
+def test_the_note_reports_the_corpus_and_both_exception_registers() -> None:
+    _, notes = pl.check_cli_verbs(REAL_PLAN)
+    assert "43 roots" in notes[0]
+    assert f"{len(CLI_ABSENT)} absent" in notes[0]
+    assert f"{len(CLI_UNROSTERED)} unrostered" in notes[0]
+    assert len(notes) == 1 + len(CLI_UNROSTERED), "every owed row is named, not counted"
+
+
+def test_every_unrostered_row_is_a_spelling_the_real_plan_actually_writes() -> None:
+    """The ratchet, from the other side: a row recording a defect must have one."""
+    written = set()
+    for rel in pl.codes_corpus(REAL_PLAN):
+        text = (REAL_PLAN / rel).read_text(encoding="utf-8")
+        written.update(words for words, _, _ in pl.cli_spellings(text, rel))
+    for spelling in (*CLI_ABSENT, *CLI_UNROSTERED):
+        assert spelling in written, f"ow {' '.join(spelling)} is registered and never written"
+
+
+def test_cli_verbs_fails_on_a_verb_no_roster_carries(blessed: tuple[Path, Path]) -> None:
+    """d2's worked example, run for real: *"`ow store rebalance` — not in the ACTIONS registry"*."""
+    plan, _ = blessed
+    (plan / "07-store.md").write_text(
+        "# Store\n\nRun `ow store reshard` when a shard grows.\n", encoding="utf-8", newline="\n"
+    )
+    findings, _ = pl.check_cli_verbs(plan)
+    assert len(findings) == 1
+    assert "ow store reshard -- no-such-verb" in findings[0].detail
+    assert "nearest: ow store" in findings[0].detail
+    assert findings[0].path == "07-store.md:3"
+
+
+def test_cli_verbs_fails_on_a_root_the_group_registry_does_not_declare(
+    blessed: tuple[Path, Path],
+) -> None:
+    plan, _ = blessed
+    (plan / "07-store.md").write_text(
+        "# Store\n\n`ow frobnicate` is not a thing.\n", encoding="utf-8", newline="\n"
+    )
+    findings, _ = pl.check_cli_verbs(plan)
+    assert [f.detail.split(" --")[0] for f in findings] == ["ow frobnicate"]
+    assert "no-such-root" in findings[0].detail
+
+
+def test_cli_verbs_fails_on_a_register_row_no_document_writes(
+    blessed: tuple[Path, Path],
+) -> None:
+    """The ratchet. A `CLI_UNROSTERED` row is a defect record, so it must go when the defect does.
+
+    Without this half the register only ever grows, and a register that only grows stops describing
+    the documents it was built from -- which is the C41/C55/D114 family: a check that silently
+    stops covering the thing it exists to cover.
+    """
+    plan, _ = blessed
+    interfaces = plan / "10-interfaces.md"
+    kept = [
+        line
+        for line in interfaces.read_text(encoding="utf-8").splitlines()
+        if "ow resume" not in line
+    ]
+    interfaces.write_text("\n".join(kept) + "\n", encoding="utf-8", newline="\n")
+    findings, _ = pl.check_cli_verbs(plan)
+    assert len(findings) == 1
+    assert "CLI_UNROSTERED carries 'ow resume'" in findings[0].detail
+    assert "strike the row with the sentence that needed it" in findings[0].detail
+
+
+def test_cli_verbs_is_green_on_the_fixture_before_any_mutation(blessed: tuple[Path, Path]) -> None:
+    plan, _ = blessed
+    findings, _ = pl.check_cli_verbs(plan)
+    assert findings == []
+
+
+def test_a_spelling_is_read_only_from_a_span_that_starts_with_it() -> None:
+    """Outside a code span the plan writes `ow` as an ordinary word, and a span that merely
+    CONTAINS one is usually prose about it."""
+    text = (
+        "Run `ow store verify` now. Say ow store frobnicate in prose, or `see ow store nonsense`.\n"
+    )
+    assert [words for words, _, _ in pl.cli_spellings(text, "x.md")] == [("store", "verify")]
+
+
+def test_a_spelling_stops_at_the_first_token_that_is_not_a_word() -> None:
+    """A flag, a quoted question and a `<placeholder>` all end a spelling instead of joining it."""
+    text = (
+        '`ow query "<question>" --corpus N`\n'
+        "`ow store rm --doc <ord>`\n"
+        "`ow graph merge e412 e997 --reason '...'`\n"
+        "`ow surface emit --check`\n"
+    )
+    assert [words for words, _, _ in pl.cli_spellings(text, "x.md")] == [
+        ("query",),
+        ("store", "rm"),
+        ("graph", "merge", "e412", "e997"),
+        ("surface", "emit"),
+    ]
+
+
+def test_the_line_number_reported_is_the_line_the_spelling_is_on() -> None:
+    text = "one\ntwo\n`ow doctor` is on line three\n"
+    assert [(w, p, n) for w, p, n in pl.cli_spellings(text, "x.md")] == [(("doctor",), "x.md", 3)]
+
+
+def test_the_rule_is_named_in_the_report_like_the_other_four(blessed: tuple[Path, Path]) -> None:
+    plan, manifest = blessed
+    code, report = run(plan, manifest)
+    assert code == pl.EXIT_CLEAN
+    assert "ok   cli-verbs" in report
+    assert pl.RULE_CLI == "cli-verbs"

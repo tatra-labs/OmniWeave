@@ -182,6 +182,7 @@ Specified in `_plan/_notes/charter.md:8687-8689` (the frozen boundary), `:8711-8
 from __future__ import annotations
 
 import argparse
+import difflib
 import hashlib
 import itertools
 import re
@@ -191,11 +192,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, TextIO
 
+from omniweave.surface.registry import (
+    CLI_ABSENT,
+    CLI_RESOLVED,
+    CLI_ROSTER,
+    CLI_UNROSTERED,
+    resolve_cli,
+)
 from omniweave_core.errors import NUMERIC_RE, SYMBOL_RE
 
 __all__ = [
     "BINDING_SEPARATOR",
     "CHARTER_REL",
+    "CLI_HEAD",
+    "CLI_SPAN",
     "DEFAULT_MANIFEST",
     "DEFAULT_PLAN_ROOT",
     "ERRATA_ROW_CELLS",
@@ -207,6 +217,7 @@ __all__ = [
     "PHRASE_MISS",
     "RULES",
     "RULE_CHARTER",
+    "RULE_CLI",
     "RULE_CODES",
     "RULE_DOCUMENTS",
     "RULE_ERRATA",
@@ -224,9 +235,11 @@ __all__ = [
     "bindings",
     "build_manifest",
     "check_charter_frozen",
+    "check_cli_verbs",
     "check_codes_unique",
     "check_documents_frozen",
     "check_errata_phrases",
+    "cli_spellings",
     "codes_corpus",
     "digest",
     "errata_rows",
@@ -260,9 +273,18 @@ RULE_CHARTER: Final = "charter-frozen"
 RULE_DOCUMENTS: Final = "documents-frozen"
 RULE_ERRATA: Final = "errata-phrases"
 RULE_CODES: Final = "codes-unique"
+RULE_CLI: Final = "cli-verbs"
 
-RULES: Final = (RULE_CHARTER, RULE_DOCUMENTS, RULE_ERRATA, RULE_CODES)
+RULES: Final = (RULE_CHARTER, RULE_DOCUMENTS, RULE_ERRATA, RULE_CODES, RULE_CLI)
 """Every rule is NAMED in the output, so a failure says which rule failed."""
+
+CLI_SPAN: Final = re.compile(r"`([^`\n]+)`")
+"""One backtick code span. `cli-verbs` reads commands only from inside one."""
+
+CLI_HEAD: Final = re.compile(r"^ow(?:\s+[a-z][a-z0-9-]*)+")
+"""`ow` plus its lower-case words, anchored at the start of a span. The first token that is not
+lower-case-and-hyphen ends the match, which is how a flag, a quoted question and a `<placeholder>`
+all stop a spelling instead of joining it."""
 
 CHARTER_REL: Final = "_notes/charter.md"
 TERMINOLOGY_REL: Final = "_notes/terminology.md"
@@ -903,6 +925,117 @@ def check_codes_unique(plan_root: Path) -> tuple[list[Finding], list[str]]:
     return findings, notes
 
 
+def cli_spellings(text: str, path: str) -> Iterator[tuple[tuple[str, ...], str, int]]:
+    """Every `ow <...>` command spelling in one document, as `(words, path, line)`.
+
+    **Only inside a backtick span, and only when the span STARTS with it.** Both halves matter.
+    Outside code spans the plan writes `ow` as an ordinary word, and a span that merely contains
+    the token is usually prose about one (`a corpus `ow add` has never seen`). A span that starts
+    with `ow ` is a command line, which is how every one of the plan's 181 spellings is written.
+
+    The match stops at the first token that is not lower-case-and-hyphen, so a flag, a quoted
+    question, a placeholder and a path all end the spelling rather than joining it:
+    `ow query "<q>" --corpus N` yields `("query",)` and `ow store rm --doc <ord>` yields
+    `("store", "rm")`. That is the same boundary `resolve_cli()` documents -- a flag is not a word
+    this grammar has an opinion about.
+    """
+    for number, line in enumerate(text.splitlines(), 1):
+        for span in CLI_SPAN.findall(line):
+            match = CLI_HEAD.match(span.strip())
+            if match is not None:
+                yield tuple(match.group(0).split()[1:]), path, number
+
+
+def _nearest(words: tuple[str, ...]) -> str:
+    """The `(nearest: …)` half of 11 section 8.6's own failure message, or `""`.
+
+    11 section 8.6 prints the shape verbatim: *"`ow store rebalance` — not in the ACTIONS registry
+    (nearest: `ow store reshard`)"*. A resolver that reported only the miss would make the reader
+    open two documents to find out whether they had mistyped a verb or invented one.
+    """
+    if not words:
+        return ""
+    verbs = CLI_ROSTER.get(words[0])
+    if verbs is None:
+        close = difflib.get_close_matches(words[0], sorted(CLI_ROSTER), n=1)
+        return f" (nearest: ow {close[0]})" if close else ""
+    if len(words) > 1 and verbs:
+        close = difflib.get_close_matches(words[1], sorted(verbs), n=1)
+        return f" (nearest: ow {words[0]} {close[0]})" if close else ""
+    return ""
+
+
+def check_cli_verbs(plan_root: Path) -> tuple[list[Finding], list[str]]:
+    """Rule 5, and it is 11 section 8.6 clause d2's CLI half, run where the plan is readable.
+
+    d2 asks that *"every … `ow <group> <verb>` … named in a document exists in its register"*, and
+    it assigns the check to `tools/gate_docs.py` over `docs/plan/*.md`. That script is not written
+    and that path does not exist: `_plan/` is where the plan is and `.gitignore:3` is `_plan/`, so
+    the check cannot live in CI at all until the move happens. It lives here for the same reason
+    `charter-frozen` does -- this is the one runner that already reads settled law.
+
+    The register is `omniweave.surface.registry`'s four CLI constants, and the rule fails in two
+    directions. **A spelling no register carries** is d2's own failure, reported with the nearest
+    rostered name. **A register row nothing writes** is the failure d2 does not have and needs: a
+    `CLI_UNROSTERED` row records a defect, so the row must disappear when the defect is fixed, and
+    a register that only ever grows stops describing the documents it was built from. `CLI_ABSENT`
+    ratchets on the same terms -- a *"there is no `ow export`"* sentence that is deleted takes its
+    row with it.
+
+    The corpus is `codes-unique`'s: `_plan/*.md` plus `charter.md` and `terminology.md`. The two
+    notes files earn their place -- the terminology lock is where `ow ask`, `ow find` and
+    `ow search` are refused by name, and a rule that read only the numbered documents would have
+    no source for three of `CLI_ABSENT`'s nine rows.
+    """
+    corpus = codes_corpus(plan_root)
+    sites: dict[tuple[str, ...], list[str]] = {}
+    for rel in corpus:
+        text = read_bytes(plan_root / rel, plan_root).decode("utf-8")
+        for words, path, number in cli_spellings(text, rel):
+            sites.setdefault(words, []).append(f"{path}:{number}")
+
+    findings: list[Finding] = []
+    unresolved = 0
+    for words in sorted(sites):
+        status = resolve_cli(words)
+        if status in CLI_RESOLVED:
+            continue
+        unresolved += 1
+        where = sites[words]
+        findings.append(
+            Finding(
+                RULE_CLI,
+                where[0],
+                f"ow {' '.join(words)} -- {status}{_nearest(words)}; "
+                f"{len(where)} site(s), first at {where[0]}",
+            )
+        )
+
+    written = set(sites)
+    for label, register in (("CLI_ABSENT", CLI_ABSENT), ("CLI_UNROSTERED", CLI_UNROSTERED)):
+        for spelling in sorted(register):
+            if spelling not in written:
+                findings.append(
+                    Finding(
+                        RULE_CLI,
+                        "",
+                        f"{label} carries {'ow ' + ' '.join(spelling)!r}, which no document writes "
+                        f"-- strike the row with the sentence that needed it",
+                    )
+                )
+
+    notes = [
+        f"{len(sites)} spellings over {len(corpus)} documents, {sum(map(len, sites.values()))} "
+        f"sites, {unresolved} unresolved; registers: {len(CLI_ROSTER)} roots, "
+        f"{len(CLI_ABSENT)} absent, {len(CLI_UNROSTERED)} unrostered"
+    ]
+    notes.extend(
+        f"unrostered and owed: ow {' '.join(spelling)} -- {reason}"
+        for spelling, reason in sorted(CLI_UNROSTERED.items())
+    )
+    return findings, notes
+
+
 # ---------------------------------------------------------------------------------------------
 # The manifest
 # ---------------------------------------------------------------------------------------------
@@ -1174,6 +1307,7 @@ def main(argv: Sequence[str] | None = None, *, out: TextIO | None = None) -> int
             RULE_DOCUMENTS: check_documents_frozen(plan_root, manifest, paths),
             RULE_ERRATA: check_errata_phrases(plan_root),
             RULE_CODES: check_codes_unique(plan_root),
+            RULE_CLI: check_cli_verbs(plan_root),
         }
     except GateNotRunError as exc:
         stream.write(f"plan lint DID NOT RUN: {exc}\n")

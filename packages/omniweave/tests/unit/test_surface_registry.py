@@ -35,6 +35,10 @@ from omniweave.sdk.reports import (
 )
 from omniweave.surface import (
     ACTIONS,
+    CLI_ABSENT,
+    CLI_FREE,
+    CLI_ROSTER,
+    CLI_UNROSTERED,
     FULL_ROSTER,
     GROUPS,
     HUMAN_ONLY,
@@ -42,6 +46,7 @@ from omniweave.surface import (
     ActionSpec,
     assert_sv1,
     listed,
+    resolve_cli,
 )
 from omniweave.surface import inputs as inputs_module
 from omniweave.surface.inputs import (
@@ -64,9 +69,11 @@ from omniweave.surface.registry import (
     DECISION_MAX,
     MCP_NAME_RE,
     SUMMARY_MAX,
+    _cli_roster_failures,
     _duplicate_cli,
     _index,
     _roster_failures,
+    _unrostered_cli,
     _unrostered_full,
     _unrostered_human_only,
     _validate,
@@ -1099,3 +1106,212 @@ def test_the_three_new_report_types_are_reachable_from_the_sdk_root() -> None:
     assert sdk_root.DoctorFinding is DoctorFinding
     assert sdk_root.CodeRow is CodeRow
     assert {"CodeRow", "DoctorFinding", "DoctorReport"} <= set(sdk_root.__all__)
+
+
+# ---------------------------------------------------------------------------------------------
+# The CLI roster
+# ---------------------------------------------------------------------------------------------
+
+
+def test_the_roster_carries_exactly_the_declared_roots() -> None:
+    """A root with no entry validates nothing; an entry under no root is a command nobody types."""
+    assert set(CLI_ROSTER) == GROUPS
+    assert len(CLI_ROSTER) == 43
+
+
+def test_every_entry_is_sorted_and_free_of_duplicates() -> None:
+    """10:229 makes the generator pure -- no unsorted iteration -- and this is an input."""
+    for root, verbs in CLI_ROSTER.items():
+        assert list(verbs) == sorted(set(verbs)), root
+
+
+def test_cli_free_names_only_rostered_roots() -> None:
+    assert set(CLI_ROSTER) >= CLI_FREE
+
+
+def test_the_two_exception_registers_are_disjoint() -> None:
+    """`absent` and `unrostered` are opposite claims about one spelling."""
+    assert not set(CLI_ABSENT) & set(CLI_UNROSTERED)
+
+
+def test_no_exception_row_is_also_a_rostered_spelling() -> None:
+    """A spelling registered as missing and carried as a verb is the register describing a surface
+    that moved out from under it."""
+    for spelling in (*CLI_ABSENT, *CLI_UNROSTERED):
+        assert resolve_cli(spelling) in {"absent", "unrostered"}, spelling
+
+
+def test_the_shipped_registers_reconcile() -> None:
+    assert _cli_roster_failures(ACTIONS) == ()
+
+
+@pytest.mark.parametrize(
+    ("spelling", "status"),
+    [
+        (("query",), "bare"),
+        (("doctor",), "bare"),
+        (("doc", "grid"), "verb"),
+        (("store", "export"), "verb"),
+        (("store", "export", "parquet"), "verb"),
+        (("graph", "merge", "e412", "e997"), "verb"),
+        (("open", "d7"), "argument"),
+        (("hook", "prompt"), "argument"),
+        (("store", "rebalance"), "absent"),
+        (("export",), "absent"),
+        (("search",), "absent"),
+        (("resume",), "unrostered"),
+        (("plan", "lint"), "unrostered"),
+        (("bench", "answer"), "unrostered"),
+        (("frobnicate",), "no-such-root"),
+        (("store", "reshard"), "no-such-verb"),
+        (("doctor", "deeply"), "no-such-verb"),
+        (("drivers", "check", "omniweave-pdf"), "no-such-verb"),
+        ((), "no-such-root"),
+    ],
+)
+def test_resolve_cli_answers_the_grammar(spelling: tuple[str, ...], status: str) -> None:
+    """10:1413's grammar, one row per shape it admits and one per shape it refuses.
+
+    `ow drivers check omniweave-pdf` is the row worth reading: `check` IS a `drivers` verb, and the
+    spelling still fails because `drivers` is not in `CLI_FREE`. A root that takes a third word has
+    to say so, or the roster cannot tell an argument from a verb somebody invented.
+    """
+    assert resolve_cli(spelling) == status
+
+
+def test_the_registers_are_consulted_longest_first() -> None:
+    """The one ordering bug this resolver can have, pinned.
+
+    `store` is in `CLI_FREE` and has a non-empty roster, so a lookup that tried the root before the
+    spelling would read `rebalance` as an argument -- and 18:3319 requires that exact name never to
+    resolve, because 11 section 8.6 uses it as the worked example of one that does not.
+    """
+    assert resolve_cli(("store", "rebalance")) == "absent"
+    assert "rebalance" not in CLI_ROSTER["store"]
+    assert "store" in CLI_FREE
+
+
+def test_resolve_cli_is_the_only_reader_of_the_two_word_width() -> None:
+    """`ROOT_AND_VERB` is two facts that happen to be one integer, so it is named once."""
+    assert registry_module.ROOT_AND_VERB == 2
+    assert max(len(spelling) for spelling in (*CLI_ABSENT, *CLI_UNROSTERED)) <= 2
+
+
+def test_every_shipped_row_resolves_to_a_spelling_the_generator_can_emit() -> None:
+    for name, spec in ACTIONS.items():
+        assert resolve_cli(spec.cli) in {"verb", "bare"}, name
+
+
+def test_the_unrostered_cli_count_is_the_distance_to_the_registry() -> None:
+    """10:857's *"roughly 110 further Actions"*, minus what has landed, plus what it undercounts.
+
+    149 rather than 110, and the gap is D293's: the roster is transcribed from the plan's own
+    tables and usage rather than from a numeral, and a numeral is a second copy of an enumeration.
+    """
+    waiting = _unrostered_cli(ACTIONS)
+    assert len(waiting) == 149
+    have = {spec.cli for spec in ACTIONS.values()}
+    assert not set(waiting) & have
+    assert len(waiting) + len(have) == sum(max(1, len(v)) for v in CLI_ROSTER.values())
+
+
+def test_a_root_with_no_verbs_contributes_exactly_one_spelling() -> None:
+    """`ow doctor` is a command; `ow doctor <verb>` is not a shape this grammar has."""
+    waiting = set(_unrostered_cli(ACTIONS))
+    assert ("top",) in waiting
+    assert not any(spelling[0] == "top" and len(spelling) > 1 for spelling in waiting)
+
+
+def test_five_rostered_roots_are_below_the_arity_the_grammar_requires() -> None:
+    """D306. 10:1413: *"a group only at three or more verbs"*, and 18:918 prints five that are not.
+
+    Reported by a test rather than by a check, because every one of the five is printed with
+    exactly those verbs by the command surface -- so the grammar and the roster disagree in the
+    plan, and a raise here would make the disagreement unimportable rather than visible.
+    """
+    thin = sorted(root for root, verbs in CLI_ROSTER.items() if 0 < len(verbs) < 3)
+    assert thin == ["cache", "hooks", "schema", "targets", "test"]
+
+
+def test_the_store_roster_is_the_one_open_question_5_asks_for() -> None:
+    """18:948's *"at least twenty-six distinct `ow store <verb>` spellings"*, against 20."""
+    assert len(CLI_ROSTER["store"]) == 24
+    assert {"export", "repair", "verify", "redact", "rekey", "gc"} <= set(CLI_ROSTER["store"])
+    assert "rebalance" not in CLI_ROSTER["store"]
+
+
+def test_the_graph_roster_is_18s_sixteen_and_four_of_them_are_charter_only() -> None:
+    """18's Open question 6: `cluster`, `converge`, `diff`, `report` are nowhere else."""
+    assert len(CLI_ROSTER["graph"]) == 16
+    assert {"cluster", "converge", "diff", "report"} <= set(CLI_ROSTER["graph"])
+    assert {"merge", "merges"} <= set(CLI_ROSTER["graph"])
+
+
+def test_out_carries_the_full_profile_action_and_not_the_verb_nothing_writes() -> None:
+    """`list` is 10:820's `out.list`; `project` is printed by 18:918 and invoked nowhere; `preview`
+    is invoked twice and printed nowhere, which is why it is unrostered rather than rostered."""
+    assert "list" in CLI_ROSTER["out"]
+    assert "project" in CLI_ROSTER["out"]
+    assert "preview" not in CLI_ROSTER["out"]
+    assert ("out", "preview") in CLI_UNROSTERED
+
+
+def test_the_human_only_five_all_have_a_rostered_cli_spelling() -> None:
+    """D291's five are CLI-only, so the roster is where they have to be reachable."""
+    assert "remove" in CLI_ROSTER["skills"]
+    assert "remove" in CLI_ROSTER["targets"]
+    assert "promote" in CLI_ROSTER["route"]
+    assert "rm" in CLI_ROSTER["store"]
+    assert CLI_ROSTER["uninstall"] == ()
+
+
+# ---------------------------------------------------------------------------------------------
+# `_cli_roster_failures`: the six clauses
+# ---------------------------------------------------------------------------------------------
+
+
+def test_cli_clause_1_a_root_with_no_entry_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    short = {root: verbs for root, verbs in CLI_ROSTER.items() if root != "top"}
+    monkeypatch.setattr(registry_module, "CLI_ROSTER", short)
+    assert any("no entry for the declared root 'top'" in x for x in _cli_roster_failures({}))
+
+
+def test_cli_clause_1_an_entry_under_no_root_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(registry_module, "CLI_ROSTER", {**CLI_ROSTER, "frobnicate": ()})
+    assert any("'frobnicate' is not a declared root" in x for x in _cli_roster_failures({}))
+
+
+def test_cli_clause_2_an_unsorted_entry_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(registry_module, "CLI_ROSTER", {**CLI_ROSTER, "queue": ("status", "retry")})
+    assert any("is not sorted and unique" in x for x in _cli_roster_failures({}))
+
+
+def test_cli_clause_3_a_free_root_that_is_not_rostered_is_reported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(registry_module, "CLI_FREE", CLI_FREE | {"frobnicate"})
+    assert any("CLI_FREE names 'frobnicate'" in x for x in _cli_roster_failures({}))
+
+
+def test_cli_clause_4_an_exception_row_that_became_a_verb_is_reported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The failure both exception registers exist to make impossible."""
+    monkeypatch.setattr(
+        registry_module, "CLI_ABSENT", {("store", "verify"): "a row that is also a rostered verb"}
+    )
+    assert any("which CLI_ROSTER also carries" in x for x in _cli_roster_failures({}))
+
+
+def test_cli_clause_5_a_spelling_in_both_registers_is_reported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(registry_module, "CLI_ABSENT", {("resume",): "absent"})
+    monkeypatch.setattr(registry_module, "CLI_UNROSTERED", {("resume",): "unrostered"})
+    assert any("both absent and unrostered" in x for x in _cli_roster_failures({}))
+
+
+def test_cli_clause_6_a_row_whose_cli_is_data_is_reported() -> None:
+    """An Action spelled `ow open <something>` would be a row the generator cannot subparse."""
+    bad = _spec(name="a", mcp_name="ow_a", cli=("open", "d7"))
+    assert any("resolves argument" in line for line in _cli_roster_failures(_mapping(bad)))
