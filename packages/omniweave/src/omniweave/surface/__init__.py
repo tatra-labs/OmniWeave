@@ -23,9 +23,14 @@ halves of one answer from two places. `tools/plan_lint.py`'s `cli-verbs` rule ne
 roster to resolve a spelling, the two exception registers to know that an unresolved one is
 recorded, `CLI_RESOLVED` to know which statuses are findings, and the resolver itself.
 
-`inputs.py` and `omniweave.sdk.reports` are not re-exported. They are the `inp` and `out` types the
-generator reads, and a caller reaches them through `ACTIONS[name].inp` -- which is the only spelling
-that stays correct when a row's input type changes.
+`inputs.py`, `schema.py` and `omniweave.sdk.reports` are not re-exported. The first and the last
+are the `inp` and `out` types the generator reads, and a caller reaches them through
+`ACTIONS[name].inp` -- which is the only spelling that stays correct when a row's input type
+changes.
+
+`schema.py` is bound nowhere for a different reason: its two readers are `omniweave/gen/` and the
+dispatcher, both inside this distribution, and its public surface is four functions over a tool
+object rather than a name anyone imports for its own sake.
 """
 
 from __future__ import annotations
