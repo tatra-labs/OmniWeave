@@ -716,8 +716,15 @@ def test_the_two_sv1_symbols_are_already_registered() -> None:
     assert {"OW_ACTION_NOT_ENABLED", "OW_HUMAN_ONLY_ACTION"} <= symbols
 
 
-def test_no_generated_artefact_has_been_written_yet() -> None:
-    """02:254 forbids this package from emitting them; row 31 is `omniweave/gen/`, W7.2's."""
+def test_this_package_has_written_no_generated_artefact() -> None:
+    """02:254 forbids this package from emitting them; row 31 is `omniweave/gen/`, W7.2's.
+
+    The two paths below are named rather than derived, because the property this test states is
+    about THIS package: `omniweave.surface` declares and does not emit, and the two artefacts the
+    registry is most obviously able to produce are the two an over-reaching cell would have
+    written. The general form -- no committed file for any artefact nothing can produce -- is
+    `omniweave.gen.check()`'s third clause and `test_gen_emit.py` asserts it over all six paths.
+    """
     assert not (REPO_ROOT / "llms.txt").exists()
     assert not (REPO_ROOT / "schema" / "mcp-tools-v1.json").exists()
 
