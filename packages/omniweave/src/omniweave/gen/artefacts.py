@@ -96,7 +96,7 @@ ARTEFACTS: Final[tuple[Artefact, ...]] = (
         path="schema/mcp-tools-v1.json",
         source="mcp_name, listed_in, the four booleans, inp, summary, decision, example, advanced",
         consumer="the MCP server's tools/list",
-        state=State.PENDING,
+        state=State.LIVE,
         lands_with="W7.2b",
     ),
     Artefact(

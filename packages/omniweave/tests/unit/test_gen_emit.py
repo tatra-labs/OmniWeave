@@ -46,17 +46,24 @@ def test_six_of_the_seven_are_files_and_the_seventh_is_the_instructions_string()
     assert [a.number for a in pathless] == [2]
 
 
-def test_exactly_one_artefact_has_a_renderer_today() -> None:
+def test_two_artefacts_have_a_renderer_today() -> None:
     live = [a.number for a in ARTEFACTS if a.state is State.LIVE]
-    assert live == [2]
-    assert all(a.state is State.PENDING for a in ARTEFACTS if a.number != 2)
+    assert live == [1, 2]
+    assert all(a.state is State.PENDING for a in ARTEFACTS if a.number not in {1, 2})
 
 
-def test_the_renderer_table_is_empty_because_the_live_row_is_not_a_file() -> None:
-    """A `LIVE` row with a path and no renderer is the contradiction `check()`'s first clause
-    reports; artefact 2 is `LIVE` with no path, which is a different thing."""
-    assert RENDERERS == {}
+def test_the_renderer_table_holds_the_one_live_row_that_is_a_file() -> None:
+    """Artefact 1 is `LIVE` and has a path, so it has a renderer; artefact 2 is `LIVE` and has no
+    path, so it has none. A `LIVE` row with a path and no renderer is the contradiction `check()`'s
+    first clause reports, and artefact 2 is not that shape."""
+    assert set(RENDERERS) == {1}
     assert by_number(2).path is None
+
+
+def test_the_renderer_table_cannot_be_appended_to_at_runtime() -> None:
+    """A register a caller could grow would make the states in `artefacts.py` a suggestion."""
+    with pytest.raises(TypeError):
+        RENDERERS[99] = lambda: b""  # type: ignore[index]
 
 
 def test_by_number_refuses_an_eighth() -> None:
@@ -90,12 +97,17 @@ def test_nothing_is_committed_for_an_artefact_nothing_can_produce() -> None:
             assert not (REPO_ROOT / artefact.path).exists(), artefact.path
 
 
-def test_emit_writes_nothing_while_every_path_carrying_row_is_pending() -> None:
+def test_emit_writes_nothing_because_the_one_live_file_is_already_committed() -> None:
+    """`ow surface emit` on a clean tree is a no-op, which is `write()`'s equal-bytes branch and
+    the reason `--bless` leaves a reviewable diff instead of touching seven files."""
     assert emit() == ()
 
 
-def test_render_returns_none_for_every_row_without_a_renderer() -> None:
-    assert [render(a) for a in ARTEFACTS] == [None] * len(ARTEFACTS)
+def test_render_returns_bytes_for_artefact_1_and_none_for_every_other_row() -> None:
+    produced = {a.number: render(a) for a in ARTEFACTS}
+    assert produced[1] is not None
+    assert produced[1].endswith(b"]\n")
+    assert [n for n, payload in produced.items() if payload is None] == [2, 3, 4, 5, 6, 7]
 
 
 # ---------------------------------------------------------------------------------------------

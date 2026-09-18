@@ -40,11 +40,31 @@ states:
 * `LIVE`       -- the declaration imports. The schema is emitted and `--check` byte-diffs it.
 * `PENDING`    -- the declaration does not exist yet. `--check` **passes** and prints the row, so
                   the gate is honest today and becomes binding on the day the source lands.
+* `DEFERRED`   -- the plan gives this file a DIFFERENT emitter. `--check` does not render it and
+                  does not refuse a committed file; it asks the owning register whether the file
+                  is claimed and produced, and fails when the two answers disagree.
 * `UNRESOLVED` -- this file's declaring type is named nowhere in the plan. `--check` **fails**,
                   because a row that can never fire is how a byte-diff gate stops meaning anything.
 
 A `PENDING` row with a committed file also fails: a file under `schema/` whose generator cannot have
 written it is hand-written by definition.
+
+One file, two gates, and the reconciliation is `DEFERRED`
+---------------------------------------------------------
+`mcp-tools-v1.json` is claimed twice. 02-architecture.md section 2 row 49 lists it among the
+thirteen this generator writes (G6); row 31 lists it among `ow surface emit`'s seven agent-facing
+artefacts (G25), and 18-api-sketch.md section 3 says the same -- "T-GENERATED from `ACTIONS` into
+`schema/mcp-tools-v1.json` and byte-diff gated (G25)". Only one generator may write a byte-diff
+gated file, and it is the other one: a tool object is not a reflection of a declared type, it is a
+name, a description, four annotations and two JSON Schemas derived from one, and this module's
+reflector cannot produce prose.
+
+Deleting the row would be the wrong repair, because `_stray_files()` would then report the file as
+one no inventory row claims. Leaving it `PENDING` was right while nothing could write it and is
+wrong the moment something can, because the `PENDING` branch refuses a committed file. So the row
+stays, its state says who owns it, and `--check` delegates: it reads `omniweave.gen.artefacts`,
+finds the artefact whose path is this file, and fails when that register's state and the file on
+disk disagree. G6 keeps a row and keeps an assertion; G25 keeps the bytes.
 
 CRLF, which is the whole of W1.8's stated subtlety
 --------------------------------------------------
@@ -163,10 +183,11 @@ class UnsupportedDeclarationError(Exception):
 
 
 class State(enum.Enum):
-    """What an inventory row resolved to. The three cases the module docstring names."""
+    """What an inventory row resolved to. The four cases the module docstring names."""
 
     LIVE = "live"
     PENDING = "pending"
+    DEFERRED = "deferred"
     UNRESOLVED = "unresolved"
 
 
@@ -182,10 +203,11 @@ class SchemaSource:
     which case it is `"array"` and the declaration is emitted into `$defs` under `items`.
 
     `deferred` is non-empty only where the plan gives the file a DIFFERENT emitter. Such a row is
-    `PENDING` whatever its module declares, because resolving it here would make this generator
-    race the other one, and the string says which emitter and which work item owns it. The
-    `PENDING` branch of `_check_one` still refuses a committed file, so a deferred row cannot be
-    used to smuggle a hand-written schema past G6.
+    `DEFERRED` whatever its module declares, because resolving it here would make this generator
+    race the other one, and the string says which emitter and which work item owns it. `--check`
+    does not stop caring about it: `_deferred_finding` asks the owning register whether the file is
+    produced, so a deferred row cannot be used to smuggle a hand-written schema past G6 and cannot
+    quietly go unwritten either.
     """
 
     file: str
@@ -296,8 +318,9 @@ INVENTORY: tuple[SchemaSource, ...] = (
             "annotations and two JSON Schemas DERIVED from one. Reflection cannot produce it"
         ),
         deferred=(
-            "emitted by `ow surface emit` (G25), not by this generator; W7.1 landed `ACTIONS` "
-            "and W7.2 lands the emitter that reconciles the two gates"
+            "emitted by `ow surface emit` (G25), not by this generator; W7.1 landed `ACTIONS`, "
+            "W7.2b landed `omniweave.gen.mcp_tools`, and `_deferred_finding` is G6's half of "
+            "the reconciliation -- an assertion over the file, not a byte diff of it"
         ),
     ),
     SchemaSource(
@@ -919,7 +942,7 @@ def resolve(entry: SchemaSource) -> Resolution:
     than a count.
     """
     if entry.deferred:
-        return Resolution(entry, State.PENDING, None, entry.deferred)
+        return Resolution(entry, State.DEFERRED, None, entry.deferred)
     if entry.symbol is None:
         try:
             importlib.import_module(entry.module)
@@ -975,6 +998,7 @@ def _report(out: typing.TextIO) -> tuple[Resolution, ...]:
         f"schemagen: {len(INVENTORY)} declared"
         f" | {counts[State.LIVE]} live"
         f" | {counts[State.PENDING]} pending"
+        f" | {counts[State.DEFERRED]} deferred"
         f" | {counts[State.UNRESOLVED]} unresolved\n"
     )
     for item in items:
@@ -1007,19 +1031,69 @@ def _stray_files() -> tuple[str, ...]:
     return tuple(sorted(p.name for p in SCHEMA_DIR.glob("*.json") if p.name not in declared))
 
 
+GEN_REGISTER: str = "omniweave.gen.artefacts"
+"""The other emitter's register: `ow surface emit`'s seven agent-facing artefacts, 10 section 2.3.
+
+Named rather than discovered, because the plan names exactly two generators over `schema/` and this
+is the other one. A lookup by convention would be a mechanism for a population of one.
+"""
+
+
+def _deferred_finding(entry: SchemaSource) -> str | None:
+    """G6's assertion over a file G25 writes: the two registers must agree that it exists.
+
+    Three outcomes, and the third is the reason this is not a `return None`:
+
+    * the owning register has no row for the file -- the deferral names an emitter that does not
+      claim it, so neither gate is watching and `--check` says so;
+    * the register calls its artefact producible and nothing is committed, or the reverse -- one
+      gate's view of the tree and the other's disagree, which is precisely the drift two gates over
+      one file exist to make impossible;
+    * they agree, and G25 owns the bytes from here.
+
+    An unimportable register is reported rather than skipped. `omniweave.gen` is a first-party
+    package in this workspace, so its absence is a broken checkout and not a scheduling state.
+    """
+    exists = entry.path.is_file()
+    try:
+        register = importlib.import_module(GEN_REGISTER)
+    except ImportError as exc:  # pragma: no cover -- a broken checkout, not a schedule
+        return f"{entry.file}: deferred to {GEN_REGISTER}, which is not importable: {exc}"
+    rows = [row for row in getattr(register, "ARTEFACTS", ()) if row.path == f"schema/{entry.file}"]
+    if not rows:
+        return (
+            f"{entry.file}: deferred to {GEN_REGISTER}, which carries no artefact at that path. "
+            f"No gate is watching this file; give it back to G6 or add the row."
+        )
+    produced = rows[0].state is register.State.LIVE
+    if produced and not exists:
+        return (
+            f"{entry.file}: {GEN_REGISTER} says artefact {rows[0].number} is produced and nothing "
+            f"is committed. Run `ow surface emit` (G25)."
+        )
+    if not produced and exists:
+        return (
+            f"{entry.file}: committed, and {GEN_REGISTER} still calls artefact {rows[0].number} "
+            f"{rows[0].state.value}. A file no generator can have written is hand-written."
+        )
+    return None
+
+
 def _check_one(item: Resolution) -> str | None:
     """The failure message for one row, or `None` when it is in order."""
     entry = item.entry
     exists = entry.path.is_file()
+    if item.state is State.DEFERRED:
+        return _deferred_finding(entry)
     if item.state is State.UNRESOLVED:
         return f"{entry.file}: UNRESOLVED -- {item.detail} (lands with {entry.landed_by})"
     if item.state is State.PENDING:
-        if exists:
-            return (
-                f"{entry.file}: committed, but its declaration {item.label} does not exist. "
-                f"A file no generator can have written is hand-written (T-GENERATED)."
-            )
-        return None
+        return (
+            f"{entry.file}: committed, but its declaration {item.label} does not exist. "
+            f"A file no generator can have written is hand-written (T-GENERATED)."
+            if exists
+            else None
+        )
     payload = render(build_schema(entry, item.declaration))
     if not exists:
         return (

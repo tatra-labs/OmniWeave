@@ -41,9 +41,11 @@ two of the five paths by name.
 from __future__ import annotations
 
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 from omniweave.gen.artefacts import ARTEFACTS, State
+from omniweave.gen.mcp_tools import render as _render_mcp_tools
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -69,12 +71,23 @@ bans: a generator whose output depended on the directory it was invoked from wou
 differently in CI than on a laptop, which is the failure a byte-diff gate exists to make impossible.
 """
 
-RENDERERS: Final[Mapping[int, Callable[[], bytes]]] = {}
-"""Artefact number -> the pure function that produces its bytes. Empty today, and correctly so.
+RENDERERS: Final[Mapping[int, Callable[[], bytes]]] = MappingProxyType(
+    {
+        1: _render_mcp_tools,
+    }
+)
+"""Artefact number -> the pure function that produces its bytes. One entry, and two absences.
+
+Artefact 1 is `schema/mcp-tools-v1.json` and `omniweave.gen.mcp_tools` renders it.
 
 Artefact 2 is `LIVE` and has no entry, because it has no path: `instructions.py` produces a string
 delivered on `initialize`, gated by SV2's character cap rather than by a byte-diff. Every other row
-is `PENDING`. A `LIVE` row with a path and no renderer is a contradiction `check()` reports.
+is `PENDING`. A `LIVE` row with a path and no renderer is a contradiction `check()` reports, and so
+is the reverse -- a renderer for a row the register still calls `PENDING`.
+
+Read-only, because `check()` and `emit()` both branch on membership and a table a caller could
+append to at runtime would make the register a suggestion. The tests that need a different table
+replace the attribute rather than mutating it.
 """
 
 
