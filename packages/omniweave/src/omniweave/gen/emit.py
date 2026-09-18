@@ -47,6 +47,7 @@ from typing import TYPE_CHECKING, Final
 from omniweave.gen.artefacts import ARTEFACTS, Shape, State
 from omniweave.gen.cli_tree import render as _render_cli_tree
 from omniweave.gen.mcp_tools import render as _render_mcp_tools
+from omniweave.gen.sdk_stub import render as _render_sdk_stub
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -84,6 +85,7 @@ def _cli_tree_files() -> Mapping[str, bytes]:
 RENDERERS: Final[Mapping[int, Callable[[], bytes]]] = MappingProxyType(
     {
         1: _render_mcp_tools,
+        4: _render_sdk_stub,
     }
 )
 """Artefact number -> the pure function that produces its bytes. One entry, and two absences.

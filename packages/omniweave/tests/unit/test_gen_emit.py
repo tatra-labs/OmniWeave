@@ -62,22 +62,23 @@ def test_six_of_the_seven_are_files_and_the_seventh_is_the_instructions_string()
     assert [a.number for a in pathless] == [2]
 
 
-def test_three_artefacts_have_a_renderer_today() -> None:
+def test_four_artefacts_have_a_renderer_today() -> None:
     live = [a.number for a in ARTEFACTS if a.state is State.LIVE]
-    assert live == [1, 2, 3]
-    assert all(a.state is State.PENDING for a in ARTEFACTS if a.number not in {1, 2, 3})
+    assert live == [1, 2, 3, 4]
+    assert all(a.state is State.PENDING for a in ARTEFACTS if a.number not in {1, 2, 3, 4})
 
 
 def test_each_live_row_is_in_the_table_its_shape_names() -> None:
     """One renderer table per shape, and a row in the wrong one is a row nothing renders.
 
-    Artefact 1 is a `FILE` and has bytes; artefact 3 is a `TREE` and has a membership as well;
-    artefact 2 is a `STRING` and is in neither, because it has no path to diff against."""
-    assert set(RENDERERS) == {1}
+    Artefacts 1 and 4 are `FILE`s and have bytes; artefact 3 is a `TREE` and has a membership as
+    well; artefact 2 is a `STRING` and is in neither, because it has no path to diff against."""
+    assert set(RENDERERS) == {1, 4}
     assert set(TREE_RENDERERS) == {3}
     assert by_number(1).shape is Shape.FILE
     assert by_number(2).shape is Shape.STRING
     assert by_number(3).shape is Shape.TREE
+    assert by_number(4).shape is Shape.FILE
 
 
 def test_string_is_exactly_the_shape_of_the_rows_with_no_path() -> None:
@@ -131,11 +132,13 @@ def test_emit_writes_nothing_because_the_one_live_file_is_already_committed() ->
     assert emit() == ()
 
 
-def test_render_returns_bytes_for_artefact_1_and_none_for_every_other_row() -> None:
+def test_render_returns_bytes_for_the_two_file_rows_that_are_live() -> None:
     produced = {a.number: render(a) for a in ARTEFACTS}
     assert produced[1] is not None
     assert produced[1].endswith(b"]\n")
-    assert [n for n, payload in produced.items() if payload is None] == [2, 3, 4, 5, 6, 7]
+    assert produced[4] is not None
+    assert produced[4].startswith(b'"""The SDK')
+    assert [n for n, payload in produced.items() if payload is None] == [2, 3, 5, 6, 7]
 
 
 # ---------------------------------------------------------------------------------------------

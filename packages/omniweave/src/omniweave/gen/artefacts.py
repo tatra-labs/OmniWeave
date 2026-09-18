@@ -152,7 +152,7 @@ ARTEFACTS: Final[tuple[Artefact, ...]] = (
         shape=Shape.FILE,
         source="inp, out, name",
         consumer="mypy, IDEs, ow surface typescript",
-        state=State.PENDING,
+        state=State.LIVE,
         lands_with="W7.2d",
     ),
     Artefact(
