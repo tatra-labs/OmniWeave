@@ -34,6 +34,18 @@ settles that, and the settlement is not a deletion -- `tools/schemagen.py` keeps
 resolves it `DEFERRED`, and asks this register whether the artefact is produced. G6 keeps an
 assertion over the file; G25 keeps the bytes.
 
+`cli_tree.py` is artefact 3 and the third renderer, and it is the one that made the register grow a
+`Shape`. 11:246 homes the argparse tree at `omniweave/cli/`, a package rather than a file, so its
+byte diff is over a directory -- and a directory needs the clause a file does not have: a member
+inside it that no renderer wrote is hand-written by definition. That is `tools/schemagen.py`'s
+`_stray_files()` applied inside a package, and it is what makes *"the directory is generated"* a
+gate rather than a sentence. `check()` is five clauses now, and the fifth is over `TREE` rows only.
+
+It also reads artefact 1. `--want`'s five values, `--detail`'s four and `--max-rung`'s seven come
+from `mcp_tools.INPUT_SCHEMAS`, which takes them from `surface/inputs.py`, so the two artefacts
+cannot disagree about a choice set. 10:206's numbering turns out to be a dependency order for at
+least those two.
+
 **Two entry points are deliberately not re-exported here, and the reason is mechanical rather
 than stylistic.** `instructions()` lives in `omniweave.gen.instructions` and `emit()` lives in
 `omniweave.gen.emit`, and in both cases the function's name is its module's name -- so binding it

@@ -13,8 +13,24 @@ from pathlib import Path
 
 import omniweave.gen.emit as emit_module
 import pytest
-from omniweave.gen.artefacts import ARTEFACTS, Artefact, State, by_number, path_carrying
-from omniweave.gen.emit import RENDERERS, REPO_ROOT, check, emit, normalise, render, write
+from omniweave.gen.artefacts import (
+    ARTEFACTS,
+    Artefact,
+    Shape,
+    State,
+    by_number,
+    path_carrying,
+)
+from omniweave.gen.emit import (
+    RENDERERS,
+    REPO_ROOT,
+    TREE_RENDERERS,
+    check,
+    emit,
+    normalise,
+    render,
+    write,
+)
 
 TABLE_ORDER = (
     "schema/mcp-tools-v1.json",
@@ -46,24 +62,36 @@ def test_six_of_the_seven_are_files_and_the_seventh_is_the_instructions_string()
     assert [a.number for a in pathless] == [2]
 
 
-def test_two_artefacts_have_a_renderer_today() -> None:
+def test_three_artefacts_have_a_renderer_today() -> None:
     live = [a.number for a in ARTEFACTS if a.state is State.LIVE]
-    assert live == [1, 2]
-    assert all(a.state is State.PENDING for a in ARTEFACTS if a.number not in {1, 2})
+    assert live == [1, 2, 3]
+    assert all(a.state is State.PENDING for a in ARTEFACTS if a.number not in {1, 2, 3})
 
 
-def test_the_renderer_table_holds_the_one_live_row_that_is_a_file() -> None:
-    """Artefact 1 is `LIVE` and has a path, so it has a renderer; artefact 2 is `LIVE` and has no
-    path, so it has none. A `LIVE` row with a path and no renderer is the contradiction `check()`'s
-    first clause reports, and artefact 2 is not that shape."""
+def test_each_live_row_is_in_the_table_its_shape_names() -> None:
+    """One renderer table per shape, and a row in the wrong one is a row nothing renders.
+
+    Artefact 1 is a `FILE` and has bytes; artefact 3 is a `TREE` and has a membership as well;
+    artefact 2 is a `STRING` and is in neither, because it has no path to diff against."""
     assert set(RENDERERS) == {1}
-    assert by_number(2).path is None
+    assert set(TREE_RENDERERS) == {3}
+    assert by_number(1).shape is Shape.FILE
+    assert by_number(2).shape is Shape.STRING
+    assert by_number(3).shape is Shape.TREE
 
 
-def test_the_renderer_table_cannot_be_appended_to_at_runtime() -> None:
+def test_string_is_exactly_the_shape_of_the_rows_with_no_path() -> None:
+    """`artefacts._shape_failures()` raises on a disagreement; this is the property it asserts."""
+    for artefact in ARTEFACTS:
+        assert (artefact.shape is Shape.STRING) == (artefact.path is None), artefact.number
+
+
+def test_neither_renderer_table_can_be_appended_to_at_runtime() -> None:
     """A register a caller could grow would make the states in `artefacts.py` a suggestion."""
     with pytest.raises(TypeError):
         RENDERERS[99] = lambda: b""  # type: ignore[index]
+    with pytest.raises(TypeError):
+        TREE_RENDERERS[99] = dict  # type: ignore[index]
 
 
 def test_by_number_refuses_an_eighth() -> None:
@@ -127,6 +155,7 @@ def _one(**over: object) -> Artefact:
         "number": 5,
         "name": "llms.txt",
         "path": "llms.txt",
+        "shape": Shape.FILE,
         "source": "every Action with an mcp_name",
         "consumer": "an agent with a shell and no MCP client",
         "state": State.PENDING,

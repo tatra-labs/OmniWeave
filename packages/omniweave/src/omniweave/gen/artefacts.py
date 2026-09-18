@@ -40,10 +40,31 @@ from typing import Final
 __all__ = [
     "ARTEFACTS",
     "Artefact",
+    "Shape",
     "State",
     "by_number",
     "path_carrying",
 ]
+
+
+class Shape(StrEnum):
+    """What an artefact IS on disk, which decides how `check()` can compare it.
+
+    Three members for seven rows, and each is a fact some document states rather than a category
+    invented to make the code tidy:
+
+    * `FILE` -- five of the seven. One path, one byte diff.
+    * `TREE` -- artefact 3 only. 11:246 homes the argparse tree at `omniweave/cli/`, a package, so
+      its diff is over a directory and it needs the clause a single file does not have: a file
+      inside it that no renderer wrote is hand-written by definition. That is
+      `tools/schemagen.py`'s `_stray_files()` one gate over, and it is the half that makes a
+      generated DIRECTORY mean anything.
+    * `STRING` -- artefact 2 only, which no document gives a path. D314.
+    """
+
+    FILE = "file"
+    TREE = "tree"
+    STRING = "string"
 
 
 class State(StrEnum):
@@ -76,6 +97,10 @@ class Artefact:
     path: str | None
     """Repository-relative, or `None` for an artefact that is not a file. See the docstring."""
 
+    shape: Shape
+    """`FILE`, `TREE` or `STRING`. `STRING` holds exactly the rows whose `path` is `None`, which
+    `_shape_failures()` asserts rather than leaves to a reader."""
+
     source: str
     """10:206's `generated from` cell: the `ActionSpec` fields a renderer may read, and no more."""
 
@@ -94,6 +119,7 @@ ARTEFACTS: Final[tuple[Artefact, ...]] = (
         number=1,
         name="schema/mcp-tools-v1.json",
         path="schema/mcp-tools-v1.json",
+        shape=Shape.FILE,
         source="mcp_name, listed_in, the four booleans, inp, summary, decision, example, advanced",
         consumer="the MCP server's tools/list",
         state=State.LIVE,
@@ -103,6 +129,7 @@ ARTEFACTS: Final[tuple[Artefact, ...]] = (
         number=2,
         name="the MCP instructions string, two variants",
         path=None,
+        shape=Shape.STRING,
         source="the listed set plus decision clauses",
         consumer="initialize, on a track that survives tool deferral",
         state=State.LIVE,
@@ -112,15 +139,17 @@ ARTEFACTS: Final[tuple[Artefact, ...]] = (
         number=3,
         name="the CLI argparse tree",
         path="packages/omniweave/src/omniweave/cli",
+        shape=Shape.TREE,
         source="cli tuples plus inp fields",
         consumer="ow --help, shell completion",
-        state=State.PENDING,
+        state=State.LIVE,
         lands_with="W7.2c",
     ),
     Artefact(
         number=4,
         name="omniweave/sdk/_generated.pyi",
         path="packages/omniweave/src/omniweave/sdk/_generated.pyi",
+        shape=Shape.FILE,
         source="inp, out, name",
         consumer="mypy, IDEs, ow surface typescript",
         state=State.PENDING,
@@ -130,6 +159,7 @@ ARTEFACTS: Final[tuple[Artefact, ...]] = (
         number=5,
         name="llms.txt",
         path="llms.txt",
+        shape=Shape.FILE,
         source="every Action with an mcp_name",
         consumer="an agent with a shell and no MCP client",
         state=State.PENDING,
@@ -139,6 +169,7 @@ ARTEFACTS: Final[tuple[Artefact, ...]] = (
         number=6,
         name="docs/AGENTS.md",
         path="docs/AGENTS.md",
+        shape=Shape.FILE,
         source="all Actions, summary inline",
         consumer="an agent asked to work on omniweave",
         state=State.PENDING,
@@ -148,6 +179,7 @@ ARTEFACTS: Final[tuple[Artefact, ...]] = (
         number=7,
         name="skills/omniweave/references/actions.md",
         path="skills/omniweave/references/actions.md",
+        shape=Shape.FILE,
         source="Actions with an mcp_name, grouped by cli[0]",
         consumer="the router skill's catalog",
         state=State.PENDING,
@@ -166,6 +198,30 @@ force a re-bless.
 generators at ~0.6 ew are not one commit and a register that claimed they were would be a schedule
 nobody could check against.
 """
+
+
+def _shape_failures() -> tuple[str, ...]:
+    """`STRING` holds exactly the pathless rows. Asserted, because the two encode one fact twice.
+
+    A `STRING` row with a path would be byte-diffable and is not being diffed; a `FILE` row without
+    one would make `check()` skip an artefact silently, which is the failure mode a register exists
+    to prevent.
+    """
+    return tuple(
+        f"artefact {artefact.number}: shape is {artefact.shape.value} and path is "
+        f"{'absent' if artefact.path is None else artefact.path!r}"
+        for artefact in ARTEFACTS
+        if (artefact.shape is Shape.STRING) != (artefact.path is None)
+    )
+
+
+_SHAPES: Final[tuple[str, ...]] = _shape_failures()
+if (
+    _SHAPES
+):  # pragma: no cover -- the shipped register agrees with itself; a test builds one that does not
+    raise ValueError(
+        "the register disagrees with itself about what is a file: " + "; ".join(_SHAPES)
+    )
 
 
 def by_number(number: int) -> Artefact:
