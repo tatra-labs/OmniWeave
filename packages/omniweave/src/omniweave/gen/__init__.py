@@ -46,6 +46,13 @@ from `mcp_tools.INPUT_SCHEMAS`, which takes them from `surface/inputs.py`, so th
 cannot disagree about a choice set. 10:206's numbering turns out to be a dependency order for at
 least those two.
 
+`sdk_stub.py` is artefact 4, and it is the one renderer whose output is bounded by something other
+than the registry: a stub declares what a package EXPORTS, and one that named a symbol
+`omniweave.sdk` does not bind would make it type-check and fail at runtime. That is LEANN's
+`llms.txt` written in Python, so `render()` emits exactly `omniweave.sdk.__all__` and grows when
+the package does. 02:212 makes the file the proof of every `T-PUBLIC` promise the SDK makes, which
+is why the binding runs in both directions and not only against over-declaration.
+
 **Two entry points are deliberately not re-exported here, and the reason is mechanical rather
 than stylistic.** `instructions()` lives in `omniweave.gen.instructions` and `emit()` lives in
 `omniweave.gen.emit`, and in both cases the function's name is its module's name -- so binding it
