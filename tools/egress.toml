@@ -111,6 +111,16 @@ to appease a substring match would break the one property that makes the shipped
 against the plan.\
 """
 
+[[literal]]
+value = "github.com"
+path = "packages/omniweave/src/omniweave/gen/llms.py"
+why = """
+Two lines of `llms.txt`, and neither is a destination this process ever dials. 10:2441-2442 print `homepage:` and `contact:` as fields of the generated manifest, so the strings are OUTPUT that an agent reads with its own browser or issue tracker -- the same status as the `url` values in `tools/toolchains.toml` above, except that these are compiled in because a generator may not read a file (10:229).
+
+The module that holds them cannot reach them. `omniweave/gen/llms.py` is a pure renderer: `test_gen_llms.py` walks its AST and refuses an import of `os`, `time`, `random`, `secrets`, `datetime` or `pathlib`, it has no `[[client]]` row below and must never acquire one, and 10:2429 settles the transport question for the artefact as a whole -- `llms.txt` is "**never served over HTTP**", so nothing fetches these and nothing publishes them.
+
+The row exists rather than an edit to the constants because the two values are the project's own repository and issue tracker as the plan prints them, and a manifest that named neither would leave an agent with a defect and nowhere to report it."""
+
 # ---------------------------------------------------------------------------
 # 2. Denied outright. A value here is a finding even with a [[literal]] row.
 # ---------------------------------------------------------------------------
