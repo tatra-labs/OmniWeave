@@ -53,6 +53,17 @@ than the registry: a stub declares what a package EXPORTS, and one that named a 
 the package does. 02:212 makes the file the proof of every `T-PUBLIC` promise the SDK makes, which
 is why the binding runs in both directions and not only against over-declaration.
 
+`llms.py` is artefact 5, and it is the file 00:851 makes G25's NAMED defect: LEANN's hand-written
+manifest declares two tools against a server defining four. Artefact 4's hazard is
+over-declaration; this one's is the mirror, so the renderer takes the wider reading of 10:212's
+*"every Action with an `mcp_name`"* -- nine blocks, not the four a `default` listing shows -- and
+`_manifest_failures()` refuses a manifest that names a tool the registry does not define OR omits
+one it does. It is also the first renderer whose inputs include the CONFIG registry: the shipped
+`enabled` preset, `add_deadline_ms` and the two `OMNIWEAVE_*` names come from
+`omniweave_core.config.KEYS`, and deriving the last of those found D327 -- `serve.enabled`'s twin
+was the mechanical `OMNIWEAVE_SERVE_ENABLED` while five sites of the plan and `assert_sv1()`'s own
+fix string named `OMNIWEAVE_MCP_ENABLED`, a variable nothing read.
+
 **Two entry points are deliberately not re-exported here, and the reason is mechanical rather
 than stylistic.** `instructions()` lives in `omniweave.gen.instructions` and `emit()` lives in
 `omniweave.gen.emit`, and in both cases the function's name is its module's name -- so binding it

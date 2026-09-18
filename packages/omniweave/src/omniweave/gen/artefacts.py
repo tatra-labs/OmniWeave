@@ -162,7 +162,7 @@ ARTEFACTS: Final[tuple[Artefact, ...]] = (
         shape=Shape.FILE,
         source="every Action with an mcp_name",
         consumer="an agent with a shell and no MCP client",
-        state=State.PENDING,
+        state=State.LIVE,
         lands_with="W7.2e",
     ),
     Artefact(
@@ -173,7 +173,7 @@ ARTEFACTS: Final[tuple[Artefact, ...]] = (
         source="all Actions, summary inline",
         consumer="an agent asked to work on omniweave",
         state=State.PENDING,
-        lands_with="W7.2e",
+        lands_with="W7.2f",
     ),
     Artefact(
         number=7,
@@ -183,7 +183,7 @@ ARTEFACTS: Final[tuple[Artefact, ...]] = (
         source="Actions with an mcp_name, grouped by cli[0]",
         consumer="the router skill's catalog",
         state=State.PENDING,
-        lands_with="W7.2f",
+        lands_with="W7.2g",
     ),
 )
 """10:206's seven rows, in that table's order.

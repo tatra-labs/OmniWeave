@@ -327,8 +327,14 @@ def default_env_name(name: str) -> str:
 
 
 ENV_OVERRIDES: Final[Mapping[str, str]] = {
-    # 02-architecture.md section 8.2: the one twin no mechanical rule produces.
+    # 02-architecture.md section 8.2: the twins no mechanical rule produces. Both are `[serve]`
+    # keys whose published name says MCP rather than serve, and both are published to an agent:
+    # 10-interfaces.md:780 tables them together as the two highest-precedence mechanisms, and
+    # 10-interfaces.md:2466's `llms.txt` prints both names in one sentence. `serve.enabled` was
+    # missing here until W7.2e, which meant `assert_sv1()`'s own fix string named a variable the
+    # loader did not read; D327 is the entry.
     "serve.listed": "OMNIWEAVE_MCP_LISTED",
+    "serve.enabled": "OMNIWEAVE_MCP_ENABLED",
 }
 
 
