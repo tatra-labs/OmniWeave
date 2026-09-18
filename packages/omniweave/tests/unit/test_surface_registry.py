@@ -10,6 +10,7 @@ checker CAN fail but that the shipped registry passes every one of the eleven, t
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 import subprocess  # noqa: TID251 -- D298 is observable only from a fresh interpreter.
@@ -716,17 +717,44 @@ def test_the_two_sv1_symbols_are_already_registered() -> None:
     assert {"OW_ACTION_NOT_ENABLED", "OW_HUMAN_ONLY_ACTION"} <= symbols
 
 
-def test_this_package_has_written_no_generated_artefact() -> None:
-    """02:254 forbids this package from emitting them; row 31 is `omniweave/gen/`, W7.2's.
+WRITING_CALLS: frozenset[str] = frozenset(
+    {"open", "write_text", "write_bytes", "mkdir", "touch", "unlink", "rename", "replace"}
+)
+"""Every way a module could put bytes on disk, as an attribute or a builtin name."""
 
-    The two paths below are named rather than derived, because the property this test states is
-    about THIS package: `omniweave.surface` declares and does not emit, and the two artefacts the
-    registry is most obviously able to produce are the two an over-reaching cell would have
-    written. The general form -- no committed file for any artefact nothing can produce -- is
-    `omniweave.gen.check()`'s third clause and `test_gen_emit.py` asserts it over all six paths.
+
+def test_this_package_can_write_no_file_at_all() -> None:
+    """02:254's forbidden column: this package declares, and row 31's `omniweave/gen/` emits.
+
+    Stated over the package's SOURCE rather than over two artefact paths, because those paths
+    stopped being evidence when W7.2b landed `schema/mcp-tools-v1.json`: the file exists now and
+    `omniweave.gen.mcp_tools` wrote it, which is row 31 doing its job rather than row 30 exceeding
+    it. What must stay true is that nothing HERE can write one, and that is also 10:300's claim --
+    this module is imported by every CLI and server entry point, so an `open` on any path in it
+    would be charged to every `ow query`.
+
+    `omniweave.gen.check()`'s third clause carries the other half, over all six artefact paths.
     """
-    assert not (REPO_ROOT / "llms.txt").exists()
-    assert not (REPO_ROOT / "schema" / "mcp-tools-v1.json").exists()
+    package = REPO_ROOT / "packages" / "omniweave" / "src" / "omniweave" / "surface"
+    sources = sorted(package.glob("*.py"))
+    assert [path.name for path in sources] == [
+        "__init__.py",
+        "inputs.py",
+        "registry.py",
+        "schema.py",
+    ]
+    for path in sources:
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.Call):
+                continue
+            called = (
+                node.func.attr
+                if isinstance(node.func, ast.Attribute)
+                else node.func.id
+                if isinstance(node.func, ast.Name)
+                else ""
+            )
+            assert called not in WRITING_CALLS, f"{path.name}: {called}()"
 
 
 def test_the_repo_root_this_module_computed_is_the_repo_root() -> None:

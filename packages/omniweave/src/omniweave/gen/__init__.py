@@ -22,15 +22,28 @@ from the day the register exists rather than from the day the renderers do: it r
 file for an artefact nothing can produce, which is LEANN's `llms.txt` exactly (00:851 makes that
 G25's named defect).
 
-`instructions.py` is artefact 2 and the only one with a renderer today. It is first because it is
-the only one of the seven whose content the plan prints verbatim and measures -- 977 characters at
-10:872 -- so it is the only one that can be generated without inventing a document layout.
+`instructions.py` is artefact 2 and `mcp_tools.py` is artefact 1. They are the first two for one
+reason: they are the two whose content the plan prints and MEASURES -- 977 characters at 10:872,
+and 10:336's eight figures for the four tool objects -- so they are the two that can be produced
+without inventing a document layout, and the two whose production can be checked against something
+other than itself.
+
+`mcp-tools-v1.json` is also the one file two gates claim: 02:273's row 49 lists it among the
+thirteen `ow schema emit` writes (G6) and 02:255's row 31 lists it among these seven (G25). W7.2b
+settles that, and the settlement is not a deletion -- `tools/schemagen.py` keeps its inventory row,
+resolves it `DEFERRED`, and asks this register whether the artefact is produced. G6 keeps an
+assertion over the file; G25 keeps the bytes.
 
 **Two entry points are deliberately not re-exported here, and the reason is mechanical rather
 than stylistic.** `instructions()` lives in `omniweave.gen.instructions` and `emit()` lives in
 `omniweave.gen.emit`, and in both cases the function's name is its module's name -- so binding it
 on the package overwrites the submodule attribute, and `import omniweave.gen.emit as m` hands the
 caller a function. A name that shadows its own module is a name with two meanings.
+
+`mcp_tools.render()` is not re-exported either, for the neighbouring reason: `render` is already
+`emit.render(artefact)`, the register-wide dispatcher, and a package-level `render` that sometimes
+meant *"artefact 1's bytes"* would be the same collision spelled across two modules. Every renderer
+is reached through its module and registered in `emit.RENDERERS` by number.
 
 `check`, `render` and `normalise` collide with nothing and are bound, because `ow surface emit
 --check` is the gate every other document cites and it should not need a submodule path. The

@@ -311,19 +311,48 @@ def test_exactly_one_row_is_deferred_to_another_emitter() -> None:
     02:273 row 49 puts it among the thirteen `ow schema emit` files and 10:208 puts it among
     `ow surface emit`'s seven. Reflection cannot produce it in any case -- a tool object is a name,
     a description, four annotations and two JSON Schemas DERIVED from an `ActionSpec`, not an
-    `ActionSpec` -- so the row names the other emitter and stays `PENDING` until W7.2 lands it.
+    `ActionSpec` -- so the row names the other emitter, and W7.2b landed it.
     """
     deferred = [entry.file for entry in schemagen.INVENTORY if entry.deferred]
     assert deferred == ["mcp-tools-v1.json"]
     item = schemagen.resolve({entry.file: entry for entry in schemagen.INVENTORY}[deferred[0]])
-    assert item.state is schemagen.State.PENDING
+    assert item.state is schemagen.State.DEFERRED
     assert "ow surface emit" in item.detail
 
 
-def test_a_deferred_row_still_refuses_a_committed_file() -> None:
-    """A deferred row is not a hole: `_check_one`'s PENDING branch is what keeps it honest."""
+def test_a_deferred_row_is_checked_against_the_register_that_owns_it() -> None:
+    """A deferred row is not a hole. G6 keeps an assertion over the file; G25 keeps the bytes.
+
+    The file is committed now, so the `PENDING` branch's rule -- refuse anything on disk -- would
+    fail the gate on a file `ow surface emit` legitimately wrote. What replaces it is not a skip:
+    `_deferred_finding` reads `omniweave.gen.artefacts`, finds the artefact at this path, and fails
+    when that register's state and the tree disagree in either direction.
+    """
     entry = next(e for e in schemagen.INVENTORY if e.deferred)
-    assert not entry.path.is_file(), "W7.2 lands this file, and this test changes with it"
+    assert entry.path.is_file(), "W7.2b writes this file; `ow surface emit` is its generator"
+    assert schemagen._deferred_finding(entry) is None
+
+
+def test_a_deferred_row_fails_when_its_owning_register_does_not_claim_the_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The half a `return None` would have thrown away: a deferral nobody honours."""
+    entry = next(e for e in schemagen.INVENTORY if e.deferred)
+    monkeypatch.setattr(schemagen, "GEN_REGISTER", "omniweave.surface.registry")
+    finding = schemagen._deferred_finding(entry)
+    assert finding is not None
+    assert "carries no artefact at that path" in finding
+
+
+def test_a_deferred_row_fails_when_the_register_and_the_tree_disagree(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The register says the artefact is produced and nothing is committed at its path."""
+    entry = next(e for e in schemagen.INVENTORY if e.deferred)
+    monkeypatch.setattr(schemagen, "SCHEMA_DIR", tmp_path)
+    finding = schemagen._deferred_finding(entry)
+    assert finding is not None
+    assert "`ow surface emit`" in finding
 
 
 # ---------------------------------------------------------------------------
@@ -756,6 +785,19 @@ def test_the_renders_registry_is_empty_at_p1() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _place_the_deferred_file() -> None:
+    """Put `mcp-tools-v1.json` in the tmp `schema/`, which `schemagen.emit()` never writes.
+
+    `ow surface emit` (G25) is its generator, and G6's deferred branch asserts only that the
+    file is present where `omniweave.gen.artefacts` says an artefact lands. Placeholder bytes
+    are therefore sufficient, and their sufficiency IS the division of labour: presence is
+    this gate's question and content is the other gate's. Without them, `check()` over the
+    real inventory reports a genuine disagreement between two registers and an empty
+    directory.
+    """
+    (schemagen.SCHEMA_DIR / "mcp-tools-v1.json").write_bytes(b"[]\n")
+
+
 @pytest.mark.parametrize("argv", [[], ["emit"], ["--check"], ["emit", "--check"]])
 def test_both_spellings_of_the_invocation_are_accepted(
     argv: list[str],
@@ -770,6 +812,7 @@ def test_both_spellings_of_the_invocation_are_accepted(
     emit spellings are unaffected by running it twice.
     """
     assert schemagen.emit(io.StringIO()) == 0
+    _place_the_deferred_file()
     assert schemagen.main(argv) == 0
 
 

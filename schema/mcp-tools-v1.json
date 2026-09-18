@@ -1,0 +1,205 @@
+[
+  {
+    "name": "ow_add",
+    "description": "Index documents into a corpus so ow_query can cite them. Accepts files, directories and URLs. Free and local work runs immediately; anything that would spend money is NOT run — it returns as a pending cost with the exact command that approves it. Safe to call twice: identical bytes are never re-parsed.",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true
+    },
+    "outputSchema": {
+      "$ref": "schema/add-out-v1.json"
+    },
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "source": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 256
+            }
+          ]
+        },
+        "corpus": {
+          "type": "string"
+        },
+        "dry_run": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    }
+  },
+  {
+    "name": "ow_corpora",
+    "description": "List the corpora this server can read — the deployment's [corpora] registry — and what is in each: document and page counts, formats, date range, languages, an outline sample, KNOWN GAPS (pages whose OCR failed, encrypted files, tables that timed out), freshness, the fraction of blocks that are byte-quotable, and the capability floor the indexed drivers actually achieved. Call it first when you do not know what exists, and read the gaps before you conclude something is absent.",
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "outputSchema": {
+      "$ref": "schema/corpora-out-v1.json"
+    },
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "corpus": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string",
+          "enum": [
+            "list",
+            "card",
+            "coverage",
+            "actions"
+          ],
+          "default": "list"
+        }
+      }
+    }
+  },
+  {
+    "name": "ow_open",
+    "description": "Fetch exact passages you already have an address for: one or more `d7#412` citations, a `p14/3` address, a page range, or a whole document. Returns the same provenance-carrying blocks as ow_query, without ranking. Use it to resolve a citation, follow a cross-reference, or read a document you were told about — never re-Read the file.",
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ref"
+      ],
+      "properties": {
+        "ref": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 64
+            }
+          ],
+          "description": "'d7#412' | 'handbook:d7#412' | 'policy.pdf#p14/3' | 'policy.pdf#p12-18' | 'policy.pdf'"
+        },
+        "corpus": {
+          "type": "string"
+        },
+        "context": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8,
+          "default": 1
+        },
+        "layers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "max_chars": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 24000
+        }
+      }
+    }
+  },
+  {
+    "name": "ow_query",
+    "description": "Answer a question from indexed documents. Returns the passages themselves — verbatim where the source allows it — grouped by document, each with a citation id, page and polygon provenance, a fidelity tier, and a verdict that says whether a zero result actually proves absence. Use this instead of opening, converting or grepping an indexed PDF/DOCX/PPTX/XLSX. If you already hold a `d7#412` citation, a `p14/3` address, a page range or a document path, use ow_open instead.\n\nExamples: 'parental leave accrual' · 'what does the MSA say about termination for convenience' · 'the table of per-region headcount'.",
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "inputSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "query"
+      ],
+      "properties": {
+        "query": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "corpus": {
+          "type": "string",
+          "description": "From ow_corpora — a name in the deployment's [corpora] registry. Omit for the default corpus. ONE QUERY ADDRESSES ONE CORPUS."
+        },
+        "scope": {
+          "type": "string",
+          "description": "'policy.pdf' | 'policy.pdf#p12-40' | 'd7' | 'contracts/2025/**'"
+        },
+        "want": {
+          "type": "string",
+          "enum": [
+            "passages",
+            "table",
+            "fields",
+            "outline",
+            "related"
+          ],
+          "default": "passages"
+        },
+        "route_hints": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "RouteHints. Cannot widen budget, egress or licence policy.",
+          "properties": {
+            "lane": {
+              "type": "string"
+            },
+            "max_rung": {
+              "type": "string",
+              "enum": [
+                "gate",
+                "decode",
+                "repair",
+                "page",
+                "regen",
+                "degrade",
+                "enrich"
+              ]
+            },
+            "deadline_ms": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 120000
+            }
+          }
+        },
+        "max_chars": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 24000
+        }
+      }
+    }
+  }
+]
