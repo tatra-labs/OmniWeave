@@ -15,8 +15,10 @@ bound in the corresponding line rather than trusting the renderer to have copied
 **Every constant that could not be derived is bound to whatever else knows the same fact.** A pure
 generator may not read `pyproject.toml`, `codes.toml` or an enum module (10:229), so the release
 number, the eight section markers, the four verdict states and the five quote tiers are spelled in
-the generator and pinned here -- `mcp_tools.MAX_RUNG_MEMBERS`'s pattern from W7.2b. `EXIT_CODES` is
-the one with nothing to bind to, and the strict xfail at the bottom is D329 waiting.
+the generator and pinned here -- `mcp_tools.MAX_RUNG_MEMBERS`'s pattern from W7.2b. The exit table
+was the one with nothing to bind to and is no longer: W7.2f moved it to
+`omniweave_core.errors.EXIT_CODES`, which is the home 18:996 gives it and which artefact 6 reads
+too, so the test at the bottom that was a strict xfail is now an ordinary one. D329, then D332.
 """
 
 from __future__ import annotations
@@ -32,7 +34,6 @@ from omniweave.gen.cli_tree import commands
 from omniweave.gen.emit import REPO_ROOT
 from omniweave.gen.instructions import SV2_MAX_CHARS
 from omniweave.gen.llms import (
-    EXIT_CODES,
     RELEASE,
     SECTION_MARKERS,
     TYPES,
@@ -55,6 +56,7 @@ from omniweave.surface.registry import (
 )
 from omniweave_core.answer.render import SECTIONS
 from omniweave_core.config import KEYS
+from omniweave_core.errors import EXIT_CODES
 from omniweave_core.model.enums import Quote
 from omniweave_core.retrieve.verdict import VerdictState
 
@@ -420,11 +422,18 @@ def test_the_cli_block_publishes_a_group_roster_and_not_a_verb_count() -> None:
 
 
 def test_the_twelve_exit_codes_are_published_in_numeric_order() -> None:
-    codes = [code for code, _ in EXIT_CODES]
+    """The manifest publishes the short form of every row the register carries.
+
+    `EXIT_CODES` is `omniweave_core.errors`' now rather than this module's: W7.2f moved it to
+    the home 18:996 gives it so artefact 6 could print the same table without a second
+    transcription, and `check_register()` holds `codes.toml` to it. D329 was the defect; D332 is
+    the move.
+    """
+    codes = [row.code for row in EXIT_CODES]
     assert codes == sorted(codes)
     line = _entries()["cli.exit_codes"]
-    for code, meaning in EXIT_CODES:
-        assert f"{code} {meaning}" in line
+    for row in EXIT_CODES:
+        assert f"{row.code} {row.slug}" in line
 
 
 def test_the_four_notes_share_one_key() -> None:
@@ -438,17 +447,16 @@ def test_the_lifecycle_examples_keep_their_alignment() -> None:
     assert "ow install --check          # exit 0 configured" in _text()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "D329. 18:996 puts the exit-code table *in `codes.toml` beside the `OW-*` register*, so "
-        "`ow explain` can print it and `ow surface emit` can generate it into `docs/AGENTS.md`. "
-        "`codes.toml` carries 126 `[[code]]` rows and no exit table, so the twelve pairs have one "
-        "home in this repository and it is a tuple in a generator -- agent-facing text written by "
-        "hand, in the module that enforces INV-20. When the table lands this XPASSes and breaks "
-        "the build, which is when `EXIT_CODES` moves out of `gen/llms.py`."
-    ),
-)
 def test_the_exit_code_table_lives_in_codes_toml() -> None:
+    """D329, closed by D332. This was a strict xfail from W7.2e until the table landed.
+
+    18:996 puts it *"in `codes.toml` beside the `OW-*` register, so `ow explain` prints it and
+    `ow surface emit` generates it into `docs/AGENTS.md`"*, and while `codes.toml` carried no
+    exit table the twelve pairs had one home in this repository -- a tuple in this generator,
+    which is agent-facing text written by hand inside the module that enforces INV-20. W7.2f
+    appended the rows, moved the constant to `omniweave_core.errors` where both generators can
+    import it, and `check_register()` is the binding this test now only samples.
+    """
     register = tomllib.loads((REPO_ROOT / "codes.toml").read_text(encoding="utf-8"))
-    assert [(row["code"], row["meaning"]) for row in register["exit"]] == list(EXIT_CODES)
+    published = [(row["code"], row["slug"]) for row in register["exit"]]
+    assert published == [(row.code, row.slug) for row in EXIT_CODES]

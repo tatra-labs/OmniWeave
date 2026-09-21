@@ -20,6 +20,7 @@ from omniweave_core import errors
 from omniweave_core.errors import (
     AREA_CLASSES,
     AREA_LETTERS,
+    EXIT_CODES,
     FAILURE_CLASS_IS_FATAL,
     NUMERIC_RE,
     SYMBOL_RE,
@@ -100,14 +101,39 @@ LEVEL_ONE = (
 )
 
 
+def _exit_table() -> str:
+    """The twelve `[[exit]]` rows, rendered from `EXIT_CODES`.
+
+    Synthesised for the same reason the ten area tables are: `check_register()` holds the
+    register to both constants, so a fixture carrying neither would report twenty-two findings
+    that have nothing to do with the clause under test. Rendered from the tuple rather than
+    transcribed, so the helper stays honest when a row changes.
+    """
+    rows = []
+    for row in EXIT_CODES:
+        lines = [
+            "[[exit]]",
+            f"code    = {row.code}",
+            f'slug    = "{row.slug}"',
+            f'meaning = "{row.meaning}"',
+        ]
+        if row.classes:
+            members = ", ".join(f'"{name}"' for name in row.classes)
+            lines.append(f"classes = [{members}]")
+        if row.note:
+            lines.append(f'note    = "{row.note}"')
+        rows.append("\n".join(lines))
+    return "\n\n".join(rows)
+
+
 def _fixture_register(tmp_path: Path, body: str) -> Path:
-    """A register carrying the ten area tables plus whatever rows the caller wants."""
+    """A register carrying the ten area tables and the exit table, plus the caller's rows."""
     areas = "\n".join(
         f'[area.{letter}]\nerror_class = "{AREA_CLASSES[letter].__name__}"\n'
         for letter in AREA_LETTERS
     )
     path = tmp_path / "codes.toml"
-    path.write_text(areas + "\n" + body, encoding="utf-8")
+    path.write_text(areas + "\n" + _exit_table() + "\n" + body, encoding="utf-8")
     return path
 
 
@@ -296,6 +322,89 @@ def test_the_registers_ten_areas_are_the_ten_level_one_classes() -> None:
     assert sorted(register.areas) == sorted(AREA_LETTERS)
     for letter, declared in register.areas.items():
         assert declared == AREA_CLASSES[letter].__name__
+
+
+def test_the_exit_table_lives_in_codes_toml() -> None:
+    """18-api-sketch.md:996: *"One table, in `codes.toml` beside the `OW-*` register, so
+    `ow explain` prints it and `ow surface emit` generates it into `docs/AGENTS.md`."*
+
+    The register carries the rows; `EXIT_CODES` is the form the generator reads, because
+    10-interfaces.md:229 bans a generator from opening a file. This asserts the two agree, which
+    is what `check_register()` enforces and what `_notes/build-defects.md` D332 moved.
+    """
+    register = load_register()
+    assert register.exits == EXIT_CODES
+    assert [row.code for row in register.exits] == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 64, 70]
+
+
+def test_every_class_the_exit_table_names_carries_that_exit() -> None:
+    """The third column is checked, not decoration.
+
+    18-api-sketch.md section 2.3's `derived from` names an exception class for seven of the
+    twelve rows, and 18-api-sketch.md:1016 says the exit code is a pure function of that class.
+    So a leaf whose `EXIT` drifted from the published table would put a number in two generated
+    artefacts that nothing produces, and this is what catches it.
+    """
+    for row in EXIT_CODES:
+        for name in row.classes:
+            cls = getattr(errors, name)
+            assert issubclass(cls, OwError), name
+            assert row.code == cls.EXIT, f"{name}.EXIT is {cls.EXIT}, table says {row.code}"
+
+
+def test_the_rows_that_name_no_class_say_what_they_are_instead() -> None:
+    """18-api-sketch.md:1016: *"3, 4, 8 and 9 are not exceptions"*, and 0 is not a failure.
+
+    Each of the five carries a `note` rather than an empty cell, because a blank third column
+    would read as an omission in a table whose other seven rows name a class.
+    """
+    classless = [row for row in EXIT_CODES if not row.classes]
+    assert [row.code for row in classless] == [0, 3, 4, 8, 9]
+    assert all(row.note for row in classless)
+    assert all(row.derived_from() == row.note for row in classless)
+
+
+def test_the_one_row_with_both_prints_the_class_then_the_note() -> None:
+    """Exit 70 is `InternalError` AND `OwError`'s floor, and the cell says both."""
+    internal = next(row for row in EXIT_CODES if row.code == 70)
+    assert internal.derived_from() == "`InternalError`, and `OwError`'s floor"
+    assert OwError.EXIT == 70
+
+
+def test_the_exit_check_catches_a_register_row_that_drifted(tmp_path: Path) -> None:
+    """A slug edited in the file and not in the tuple is a code two artefacts spell two ways."""
+    path = _fixture_register(tmp_path, "")
+    path.write_text(
+        path.read_text(encoding="utf-8").replace('slug    = "store-busy"', 'slug    = "busy"'),
+        encoding="utf-8",
+    )
+    failures = check_register(path)
+    assert any("[[exit]] 7 reads 'busy'" in line for line in failures), failures
+
+
+def test_the_exit_check_catches_a_row_the_tuple_does_not_carry(tmp_path: Path) -> None:
+    """Both directions: a thirteenth code in the register is one no artefact publishes."""
+    path = _fixture_register(tmp_path, '[[exit]]\ncode    = 99\nslug    = "invented"\n')
+    failures = check_register(path)
+    assert any("[[exit]] 99" in line and "not one of the twelve" in line for line in failures)
+
+
+def test_the_exit_check_catches_a_reordered_register(tmp_path: Path) -> None:
+    """Both generated artefacts print the table in `EXIT_CODES`' order, so the file holds it."""
+    path = _fixture_register(tmp_path, "")
+    text = path.read_text(encoding="utf-8")
+    head, _, tail = text.partition("[[exit]]\ncode    = 0\n")
+    first, _, rest = tail.partition("\n\n")
+    path.write_text(f"{head}{rest}\n\n[[exit]]\ncode    = 0\n{first}\n", encoding="utf-8")
+    assert any("not in EXIT_CODES' order" in line for line in check_register(path)), check_register(
+        path
+    )
+
+
+def test_a_malformed_exit_row_is_a_finding_and_never_a_raise(tmp_path: Path) -> None:
+    """11-repo-layout.md section 2.6 rule 3, at field granularity: a reader never raises."""
+    path = _fixture_register(tmp_path, '[[exit]]\ncode    = "seventy"\n')
+    assert any("[[exit]] -1" in line for line in check_register(path)), check_register(path)
 
 
 def test_every_raised_by_in_the_register_names_a_class_in_this_tree() -> None:
