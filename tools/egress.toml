@@ -59,6 +59,19 @@ path = "packages/omniweave-core/src/omniweave_core/config.py"
 why = "The IPv6 half of `serve.allowed_hosts` above. Bracketed because a Host header is."
 
 [[literal]]
+value = "localhost"
+path = "packages/omniweave-serve/src/omniweave_serve/guard.py"
+why = """
+The one name `is_loopback()` accepts that is not an IP literal, and the whole function is a REFUSAL: it decides which bind addresses may open a listener WITHOUT `--api-key` (`OW-A-040`), and which `Host` header a request may carry. Everything it returns `False` for is refused, so this constant narrows the surface rather than widening it -- `0.0.0.0` and `::` are the cases it exists to reject. Nothing here dials anything; the value is compared, never connected to.
+
+The same string is a default in config.py's `serve.allowed_hosts` row above. Two paths because the allowlist and the check that reads it are two sites, and G15 wants each one's reason written where the literal is."""
+
+[[literal]]
+value = "127.0.0.1"
+path = "packages/omniweave-serve/src/omniweave_serve/guard.py"
+why = "The IPv4 literal in the same refusal's prose. `ipaddress.ip_address(...).is_loopback` does the deciding, so this appears in the module docstring quoting 10:2353's rebinding attack and never in a comparison."
+
+[[literal]]
 value = "127.0.0.1"
 path = "packages/omniweave-core/src/omniweave_core/modelserver.py"
 why = """
