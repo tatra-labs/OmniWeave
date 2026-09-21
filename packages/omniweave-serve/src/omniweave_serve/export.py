@@ -60,6 +60,7 @@ from typing import TYPE_CHECKING, Final, Protocol, runtime_checkable
 from omniweave_core.errors import ConfigError
 
 from omniweave_serve.otlp import traces_request
+from omniweave_serve.shards import Position
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -152,15 +153,15 @@ class Delivered:
 
     requests: int
     spans: int
-    offset: int
-    """The last offset committed to the cursor, which a re-run resumes from."""
+    position: Position | None
+    """Where the cursor was committed, or `None` if nothing was sent."""
 
 
 @dataclass(frozen=True, slots=True)
 class Halted:
     """The export stopped. 15:255's *"exits non-zero naming the last shard offset it committed"*.
 
-    `offset` is the committed one and not the one being attempted, which is the whole point: it is
+    `position` is the committed one and not the one being attempted, which is the whole point: it is
     where a re-run starts, and starting there re-sends at most the batch that failed. Re-sending is
     free because a span id is stable across re-reads and the collector deduplicates; skipping is
     not, because nothing else will ever carry those spans.
@@ -168,7 +169,7 @@ class Halted:
 
     requests: int
     spans: int
-    offset: int
+    position: Position | None
     attempts: int
     status: int
     reason: str
@@ -180,7 +181,7 @@ class Halted:
         return (
             f"trace export stopped after {self.attempts} attempts against {cause}{detail}; "
             f"{self.requests} request(s) and {self.spans} span(s) were delivered, and the "
-            f"cursor is committed at offset {self.offset}"
+            f"cursor is committed at {_where(self.position)}"
         )
 
 
@@ -203,44 +204,44 @@ def cursor_path(events_dir: Path) -> Path:
     return events_dir / CURSOR_NAME
 
 
-def read_cursor(path: Path, *, endpoint: str, run_id: str) -> int:
-    """The committed offset for this `(endpoint, run)`, or `0`.
+def read_cursor(path: Path, *, endpoint: str, run_id: str) -> Position | None:
+    """The committed position for this `(endpoint, run)`, or `None`.
 
-    **An unreadable or malformed cursor is `0`, never an error.** A cursor is an optimisation over
-    re-sending, and 15:255 already licenses a duplicate arrival as harmless; refusing to export
-    because a JSON file was truncated by a full disk would turn a recoverable duplicate into an
-    unrecoverable gap. A cursor whose value is not a non-negative integer is treated as absent for
-    the same reason.
+    **An unreadable, malformed or legacy cursor is `None`, never an error.** A cursor is an
+    optimisation over re-sending, and 15:255 already licenses a duplicate arrival as harmless;
+    refusing to export because a JSON file was truncated by a full disk would turn a recoverable
+    duplicate into an unrecoverable gap. A row holding a bare integer -- which is what 15:256's
+    single *"shard offset"* would be, and what a cursor written before D367 holds -- reads as
+    absent for the same reason: a duplicate is free and a resume into the wrong shard is not.
     """
     try:
-        raw = path.read_text(encoding="utf-8")
-    except OSError:
-        return 0
-    try:
-        rows = json.loads(raw)
-    except json.JSONDecodeError:
-        return 0
+        rows = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
     if not isinstance(rows, dict):
-        return 0
-    offset = rows.get(cursor_key(endpoint, run_id))
-    if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
-        return 0
-    return offset
+        return None
+    row = rows.get(cursor_key(endpoint, run_id))
+    if not isinstance(row, dict):
+        return None
+    shard, offset = row.get("shard"), row.get("offset")
+    usable = (
+        isinstance(shard, str)
+        and bool(shard)
+        and isinstance(offset, int)
+        and not isinstance(offset, bool)
+        and offset >= 0
+    )
+    return Position(shard=str(shard), offset=int(offset)) if usable else None  # type: ignore[arg-type]
 
 
-def write_cursor(path: Path, *, endpoint: str, run_id: str, offset: int) -> None:
-    """Commit an offset, preserving every other row, atomically.
+def write_cursor(path: Path, *, endpoint: str, run_id: str, position: Position) -> None:
+    """Commit a position, preserving every other row, atomically.
 
     Atomic because `ow trace export` and `ow trace export --follow` can run against one
-    `.omniweave/` at once, and a torn cursor read as `0` re-sends a whole run. Written into the
-    same directory and `os.replace`d, which is atomic within a filesystem and is the only guarantee
-    a rename gives.
+    `.omniweave/` at once, and a torn cursor read as absent re-sends a whole run. Written into the
+    same directory and replaced, which is atomic within a filesystem and is the only guarantee a
+    rename gives.
     """
-    if offset < 0:
-        raise ConfigError(
-            f"an export cursor of {offset}; an offset is a byte count and is never negative",
-            fix="delete .omniweave/events/.export_cursor.json and re-run the export",
-        )
     rows: dict[str, object] = {}
     try:
         parsed = json.loads(path.read_text(encoding="utf-8"))
@@ -248,7 +249,7 @@ def write_cursor(path: Path, *, endpoint: str, run_id: str, offset: int) -> None
         parsed = None
     if isinstance(parsed, dict):
         rows = parsed
-    rows[cursor_key(endpoint, run_id)] = offset
+    rows[cursor_key(endpoint, run_id)] = {"shard": position.shard, "offset": position.offset}
     _replace(path, json.dumps(rows, indent=2, sort_keys=True) + "\n")
 
 
@@ -346,7 +347,7 @@ class Exporter:
         return answer, self.attempts
 
     def rehearse(
-        self, resource: Resource, batches: Iterable[tuple[int, Sequence[Span]]]
+        self, resource: Resource, batches: Iterable[tuple[Position, Sequence[Span]]]
     ) -> tuple[bytes, ...]:
         """`--dry-run --print-payload`: the exact bodies `export()` would send, in order.
 
@@ -358,13 +359,13 @@ class Exporter:
     def export(
         self,
         resource: Resource,
-        batches: Iterable[tuple[int, Sequence[Span]]],
+        batches: Iterable[tuple[Position, Sequence[Span]]],
         *,
         url: str,
         cursor: Path | None = None,
         endpoint: str = "",
         run_id: str = "",
-        committed: int = 0,
+        committed: Position | None = None,
     ) -> Delivered | Halted:
         """Send every batch in order, committing after each success and stopping at the first
         failure the ladder does not clear.
@@ -374,28 +375,35 @@ class Exporter:
         reason: a cursor written first loses spans on a crash in the gap, and 15:255 makes a
         duplicate harmless while nothing makes a gap recoverable.
 
-        `committed` is where this run started, so a `Halted` on the very first batch still names an
-        offset a re-run can resume from rather than `0`.
+        `committed` is where this run started, so a `Halted` on the very first batch still names a
+        position a re-run can resume from rather than nothing at all.
         """
         requests = 0
         spans_sent = 0
-        for offset, spans in batches:
+        for position, spans in batches:
             answer, attempts = self.deliver(url, payload(resource, spans))
             if not answer.ok():
                 return Halted(
                     requests=requests,
                     spans=spans_sent,
-                    offset=committed,
+                    position=committed,
                     attempts=attempts,
                     status=answer.status,
                     reason=answer.reason,
                 )
             requests += 1
             spans_sent += len(spans)
-            committed = offset
+            committed = position
             if cursor is not None:
-                write_cursor(cursor, endpoint=endpoint, run_id=run_id, offset=committed)
-        return Delivered(requests=requests, spans=spans_sent, offset=committed)
+                write_cursor(cursor, endpoint=endpoint, run_id=run_id, position=committed)
+        return Delivered(requests=requests, spans=spans_sent, position=committed)
+
+
+def _where(position: Position | None) -> str:
+    """A position for a human, or the honest absence of one."""
+    if position is None:
+        return "nothing (no batch was delivered)"
+    return f"{position.shard} offset {position.offset}"
 
 
 def _replace(path: Path, text: str) -> None:

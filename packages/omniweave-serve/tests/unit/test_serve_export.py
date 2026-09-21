@@ -51,6 +51,7 @@ from omniweave_serve.otlp import (
     Span,
     traces_request,
 )
+from omniweave_serve.shards import Position
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -105,9 +106,16 @@ def _exporter(recorder: Recorder, waits: Waits | None = None) -> Exporter:
     return Exporter(transport=recorder, sleep=waits or Waits())
 
 
-def _batches(count: int) -> list[tuple[int, list[Span]]]:
-    """`(offset, spans)` pairs, with an offset that grows the way a shard's does."""
-    return [((index + 1) * 4096, [_span(index)]) for index in range(count)]
+SHARD = "r_01J0000000000000000000000.ndjson"
+
+
+def _at(offset: int) -> Position:
+    return Position(shard=SHARD, offset=offset)
+
+
+def _batches(count: int) -> list[tuple[Position, list[Span]]]:
+    """`(position, spans)` pairs, with an offset that grows the way a shard's does."""
+    return [(_at((index + 1) * 4096), [_span(index)]) for index in range(count)]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -244,68 +252,85 @@ def test_the_endpoint_itself_never_reaches_the_file() -> None:
 
 def test_two_endpoints_key_two_rows(tmp_path: Path) -> None:
     path = cursor_path(tmp_path)
-    write_cursor(path, endpoint=ENDPOINT, run_id=RUN, offset=10)
-    write_cursor(path, endpoint="http://other:4318", run_id=RUN, offset=20)
-    assert read_cursor(path, endpoint=ENDPOINT, run_id=RUN) == 10
-    assert read_cursor(path, endpoint="http://other:4318", run_id=RUN) == 20
+    write_cursor(path, endpoint=ENDPOINT, run_id=RUN, position=_at(10))
+    write_cursor(path, endpoint="http://other:4318", run_id=RUN, position=_at(20))
+    assert read_cursor(path, endpoint=ENDPOINT, run_id=RUN) == _at(10)
+    assert read_cursor(path, endpoint="http://other:4318", run_id=RUN) == _at(20)
 
 
 def test_two_runs_key_two_rows(tmp_path: Path) -> None:
     path = cursor_path(tmp_path)
-    write_cursor(path, endpoint=ENDPOINT, run_id=RUN, offset=10)
-    write_cursor(path, endpoint=ENDPOINT, run_id="r_other", offset=20)
-    assert read_cursor(path, endpoint=ENDPOINT, run_id=RUN) == 10
+    write_cursor(path, endpoint=ENDPOINT, run_id=RUN, position=_at(10))
+    write_cursor(path, endpoint=ENDPOINT, run_id="r_other", position=_at(20))
+    assert read_cursor(path, endpoint=ENDPOINT, run_id=RUN) == _at(10)
 
 
 def test_a_second_write_preserves_every_other_row(tmp_path: Path) -> None:
     """The cursor is one file for every run this `.omniweave/` has exported."""
     path = cursor_path(tmp_path)
     for index in range(5):
-        write_cursor(path, endpoint=ENDPOINT, run_id=f"r_{index}", offset=index)
+        write_cursor(path, endpoint=ENDPOINT, run_id=f"r_{index}", position=_at(index))
     rows = json.loads(path.read_text(encoding="utf-8"))
     assert len(rows) == 5
 
 
-def test_an_absent_cursor_reads_zero(tmp_path: Path) -> None:
-    assert read_cursor(cursor_path(tmp_path), endpoint=ENDPOINT, run_id=RUN) == 0
+def test_an_absent_cursor_reads_as_absent(tmp_path: Path) -> None:
+    assert read_cursor(cursor_path(tmp_path), endpoint=ENDPOINT, run_id=RUN) is None
 
 
 @pytest.mark.parametrize("content", ["", "not json", "[]", '"a string"', "null", "123"])
-def test_a_malformed_cursor_reads_zero_rather_than_failing(tmp_path: Path, content: str) -> None:
+def test_a_malformed_cursor_is_absent_rather_than_a_failure(tmp_path: Path, content: str) -> None:
     """A cursor is an optimisation over re-sending, and 15:255 already licenses a duplicate
     arrival as harmless. Refusing to export because a JSON file was truncated by a full disk
     turns a recoverable duplicate into an unrecoverable gap."""
     path = cursor_path(tmp_path)
     path.write_text(content, encoding="utf-8")
-    assert read_cursor(path, endpoint=ENDPOINT, run_id=RUN) == 0
+    assert read_cursor(path, endpoint=ENDPOINT, run_id=RUN) is None
 
 
-@pytest.mark.parametrize("value", ["12", -1, 1.5, True, None, [], {}])
-def test_a_row_that_is_not_a_non_negative_int_reads_zero(tmp_path: Path, value: object) -> None:
+@pytest.mark.parametrize(
+    "value",
+    [
+        4096,
+        "r_01.ndjson:4096",
+        {"shard": SHARD},
+        {"offset": 10},
+        {"shard": "", "offset": 10},
+        {"shard": SHARD, "offset": -1},
+        {"shard": SHARD, "offset": "10"},
+        {"shard": SHARD, "offset": True},
+        {"shard": 7, "offset": 10},
+    ],
+)
+def test_a_row_that_is_not_a_position_reads_as_absent(tmp_path: Path, value: object) -> None:
+    """D367's compatibility rule, and the first case is the point of it: a bare integer is
+    what 15:256's single "shard offset" would be, and what a cursor written before D367
+    holds. It reads as absent, because a duplicate arrival is free and a resume into the
+    wrong shard is not."""
     path = cursor_path(tmp_path)
     path.write_text(json.dumps({cursor_key(ENDPOINT, RUN): value}), encoding="utf-8")
-    assert read_cursor(path, endpoint=ENDPOINT, run_id=RUN) == 0
+    assert read_cursor(path, endpoint=ENDPOINT, run_id=RUN) is None
 
 
-def test_a_negative_offset_is_refused_on_the_way_in(tmp_path: Path) -> None:
-    """Reading tolerates it and writing does not: one is somebody else's corruption and the other
-    is ours."""
-    with pytest.raises(ConfigError, match="never negative"):
-        write_cursor(cursor_path(tmp_path), endpoint=ENDPOINT, run_id=RUN, offset=-1)
+def test_a_negative_offset_is_refused_when_a_position_is_built() -> None:
+    """Reading tolerates it and constructing does not: one is somebody else's corruption
+    and the other is ours."""
+    with pytest.raises(ConfigError, match="byte count"):
+        Position(shard=SHARD, offset=-1)
 
 
 def test_the_cursor_is_written_atomically_and_leaves_no_temp_file(tmp_path: Path) -> None:
     """`ow trace export` and `ow trace export --follow` can run against one `.omniweave/` at
     once, and a torn cursor read as 0 re-sends a whole run."""
     path = cursor_path(tmp_path)
-    write_cursor(path, endpoint=ENDPOINT, run_id=RUN, offset=7)
+    write_cursor(path, endpoint=ENDPOINT, run_id=RUN, position=_at(7))
     assert [entry.name for entry in tmp_path.iterdir()] == [CURSOR_NAME]
 
 
 def test_the_cursor_directory_is_created_if_it_is_missing(tmp_path: Path) -> None:
     path = cursor_path(tmp_path / "events")
-    write_cursor(path, endpoint=ENDPOINT, run_id=RUN, offset=1)
-    assert read_cursor(path, endpoint=ENDPOINT, run_id=RUN) == 1
+    write_cursor(path, endpoint=ENDPOINT, run_id=RUN, position=_at(1))
+    assert read_cursor(path, endpoint=ENDPOINT, run_id=RUN) == _at(1)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -317,7 +342,7 @@ def test_every_batch_is_sent_in_order() -> None:
     recorder = Recorder()
     result = _exporter(recorder).export(_resource(), _batches(3), url=traces_url(ENDPOINT))
     assert isinstance(result, Delivered)
-    assert (result.requests, result.spans, result.offset) == (3, 3, 3 * 4096)
+    assert (result.requests, result.spans, result.position) == (3, 3, _at(3 * 4096))
     assert [call[0] for call in recorder.calls] == [traces_url(ENDPOINT)] * 3
 
 
@@ -325,7 +350,7 @@ def test_the_cursor_is_written_after_the_send_and_never_before(tmp_path: Path) -
     """The ordering 10 section 3.11(c) fixes for the emission ledger, one system over: a cursor
     written first loses spans on a crash in the gap, and nothing makes a gap recoverable."""
     path = cursor_path(tmp_path)
-    seen: list[int] = []
+    seen: list[Position | None] = []
 
     class Watching(Recorder):
         def post(self, url: str, body: bytes, headers: Mapping[str, str]) -> Response:
@@ -340,8 +365,8 @@ def test_the_cursor_is_written_after_the_send_and_never_before(tmp_path: Path) -
         endpoint=ENDPOINT,
         run_id=RUN,
     )
-    assert seen == [0, 4096, 2 * 4096], "each send saw only the PREVIOUS batch committed"
-    assert read_cursor(path, endpoint=ENDPOINT, run_id=RUN) == 3 * 4096
+    assert seen == [None, _at(4096), _at(2 * 4096)], "each send saw only the PREVIOUS"
+    assert read_cursor(path, endpoint=ENDPOINT, run_id=RUN) == _at(3 * 4096)
 
 
 def test_a_failure_stops_the_export_and_sends_nothing_after_it() -> None:
@@ -358,7 +383,7 @@ def test_a_failure_names_the_offset_a_re_run_resumes_from() -> None:
     recorder = Recorder(answers=[Response(200), Response(200), *[Response(0, "reset")] * 4])
     result = _exporter(recorder).export(_resource(), _batches(4), url=traces_url(ENDPOINT))
     assert isinstance(result, Halted)
-    assert result.offset == 2 * 4096
+    assert result.position == _at(2 * 4096)
     assert result.attempts == 4
     assert result.status == 0
     assert result.reason == "reset"
@@ -369,10 +394,10 @@ def test_a_failure_on_the_very_first_batch_still_names_where_this_run_began() ->
     resumed export that failed immediately."""
     recorder = Recorder(default=Response(500))
     result = _exporter(recorder).export(
-        _resource(), _batches(2), url=traces_url(ENDPOINT), committed=8192
+        _resource(), _batches(2), url=traces_url(ENDPOINT), committed=_at(8192)
     )
     assert isinstance(result, Halted)
-    assert result.offset == 8192
+    assert result.position == _at(8192)
 
 
 def test_the_cursor_holds_the_last_success_after_a_failure(tmp_path: Path) -> None:
@@ -386,12 +411,17 @@ def test_the_cursor_holds_the_last_success_after_a_failure(tmp_path: Path) -> No
         endpoint=ENDPOINT,
         run_id=RUN,
     )
-    assert read_cursor(path, endpoint=ENDPOINT, run_id=RUN) == 4096
+    assert read_cursor(path, endpoint=ENDPOINT, run_id=RUN) == _at(4096)
 
 
 def test_the_halted_message_names_the_cause_the_counts_and_the_offset() -> None:
     message = Halted(
-        requests=2, spans=7, offset=8192, attempts=4, status=503, reason="Unavailable"
+        requests=2,
+        spans=7,
+        position=_at(8192),
+        attempts=4,
+        status=503,
+        reason="Unavailable",
     ).message()
     assert "HTTP 503" in message
     assert "Unavailable" in message
@@ -401,7 +431,7 @@ def test_the_halted_message_names_the_cause_the_counts_and_the_offset() -> None:
 
 
 def test_a_socket_failure_says_so_rather_than_printing_http_0() -> None:
-    message = Halted(requests=0, spans=0, offset=0, attempts=4, status=0, reason="").message()
+    message = Halted(requests=0, spans=0, position=None, attempts=4, status=0, reason="").message()
     assert "socket error" in message
     assert "HTTP 0" not in message
 
@@ -409,7 +439,7 @@ def test_a_socket_failure_says_so_rather_than_printing_http_0() -> None:
 def test_exporting_nothing_sends_nothing() -> None:
     recorder = Recorder()
     result = _exporter(recorder).export(_resource(), [], url=traces_url(ENDPOINT))
-    assert result == Delivered(requests=0, spans=0, offset=0)
+    assert result == Delivered(requests=0, spans=0, position=None)
     assert recorder.calls == []
 
 
@@ -418,7 +448,7 @@ def test_no_cursor_is_written_when_none_is_given() -> None:
     recorder = Recorder()
     result = _exporter(recorder).export(_resource(), _batches(2), url=traces_url(ENDPOINT))
     assert isinstance(result, Delivered)
-    assert result.offset == 2 * 4096
+    assert result.position == _at(2 * 4096)
 
 
 # ---------------------------------------------------------------------------------------------
