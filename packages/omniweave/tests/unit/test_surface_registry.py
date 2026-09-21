@@ -739,6 +739,7 @@ def test_this_package_can_write_no_file_at_all() -> None:
     sources = sorted(package.glob("*.py"))
     assert [path.name for path in sources] == [
         "__init__.py",
+        "authority.py",
         "inputs.py",
         "registry.py",
         "schema.py",

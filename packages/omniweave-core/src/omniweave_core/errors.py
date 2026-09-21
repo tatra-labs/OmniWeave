@@ -60,6 +60,7 @@ __all__ = (
     "TargetError",
     "UsageError",
     "check_register",
+    "edit_distance",
     "explain",
     "is_fatal_failure",
     "load_register",
@@ -678,18 +679,26 @@ def _nearest(wanted: str, register: Register) -> tuple[str, ...]:
     scored = sorted(
         register.rows,
         key=lambda row: (
-            _edit_distance(wanted, row.numeric if numeric_form else row.symbol),
+            edit_distance(wanted, row.numeric if numeric_form else row.symbol),
             row.numeric,
         ),
     )
     return tuple(f"{row.numeric} {row.symbol}" for row in scored[:_NEAREST])
 
 
-def _edit_distance(a: str, b: str) -> int:
+def edit_distance(a: str, b: str) -> int:
     """Levenshtein, stdlib only.
 
     `difflib` ranks by matching-block ratio, not by edit distance, and 18-api-sketch.md
     section 1.1 says edit distance.
+
+    **Public because two registers rank by it and the metric is specified for both.** `explain()`
+    below lists the nearest three rows of `codes.toml` (18 section 1.1), and 10:790 requires the
+    same of the Action registry -- *"reports an unknown entry as `OW-A-004 /
+    OW_ACTION_NOT_ENABLED` listing near matches by edit distance"*. Two implementations of one
+    metric would rank the same typo differently in two refusals a user meets in one session, which
+    is the defect `omniweave_serve.admission.percentile` had to accept across a layers row (D346)
+    and this one does not: `omniweave` may import `omniweave_core`.
     """
     if a == b:
         return 0
