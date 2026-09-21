@@ -908,6 +908,13 @@ _DECLARATIONS: Final[tuple[ConfigKey, ...]] = (
     _key("serve.default_corpus", "str", "handbook", "operational"),
     _key("serve.tool_prefix", "str", "ow_", "operational"),
     _key("serve.add_deadline_ms", "int", 20000, "operational"),
+    # The admission queue, 10-interfaces.md:958. Two numbers and not one: `max_concurrent_queries`
+    # bounds SNAPSHOTS in flight, which is a WAL bound before it is a latency one (07 section 10.5
+    # -- a held read transaction pins the WAL), and `max_queued_queries` bounds what waits behind
+    # them. Beyond both the call is refused OW-A-022 with a `retry_after_ms` rather than blocked
+    # without an answer. Both `operational`: neither can change the CONTENT of a produced row.
+    _key("serve.max_concurrent_queries", "int", 2, "operational"),
+    _key("serve.max_queued_queries", "int", 8, "operational"),
     _key("serve.max_sessions", "int", 64, "operational"),
     _key("serve.read_timeout_ms", "int", 30000, "operational"),
     _key("serve.allowed_origins", "list", (), "operational", item_kind="str"),
