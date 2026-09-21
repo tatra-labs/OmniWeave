@@ -176,6 +176,18 @@ What is actually imported is `asyncio.BoundedSemaphore`, four times, and nothing
 The row exists because `asyncio` CAN dial — `asyncio.open_connection` is two attributes away — and clause 1 is a declaration rule rather than a usage analysis (14:779). The day this file gains the loop W4.2 still owes, the loop still opens nothing: the Supervisor's outbound edges are the store thread, the `subproc` DriverHost's own AF_UNIX socket, and the model server's handle, and all three already carry their own rows or their own bans."""
 
 [[client]]
+module = "urllib.request"
+path = "packages/omniweave-serve/src/omniweave_serve/export.py"
+why = """
+`ow trace export --otlp <endpoint>`, and it is the ONE outbound HTTP client in the framework. 15-observability.md:2009 bounds when it runs -- OTLP spans leave "**only when invoked**" -- so this is an operator typing a command, never a run, never a request handler and never a background thread. 15:260 says the same from the config side: "`[observe] otlp_endpoint` is honoured by `ow trace export` only; a run never reads it."
+
+**No host is compiled in anywhere.** The URL is `--otlp <endpoint>` or `[observe] otlp_endpoint`, both operator data, and `traces_url()` appends `/v1/traces` to whatever it was given. This module has no default endpoint and no fallback: with neither flag nor key there is nothing to dial.
+
+`urllib.request` rather than a client library for 15:216's reason one layer down -- this distribution's declared dependencies are `core, ports, mcp` under a 40 MB ceiling, and a fifth would have to earn its place against eight lines of stdlib. The dial is ONE call inside `UrllibTransport.post`, which a test asserts over the AST; everything else in the module is pure, takes a `Transport` Protocol, and is tested with a four-line fake that opens nothing.
+
+What crosses is an `ExportTraceServiceRequest` built by `otlp.py` from NDJSON shards. Its resource attributes are a closed list and `Resource.attributes()` REFUSES `host.name`, `host.id`, `os.user`, `process.command_line` and any absolute path (15:259), so the payload names a service, a version, two contract integers and a config digest -- and no machine, no user and no path."""
+
+[[client]]
 module = "socket"
 path = "packages/omniweave-core/src/omniweave_core/host/subproc.py"
 why = """
