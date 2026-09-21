@@ -200,6 +200,9 @@ sites   = ["14-security.md:594", "14-security.md:1751"]
 [[code]]
 numeric = "OW-A-022"
 symbol  = "OW_SERVE_OVERLOADED"
+meaning = "the server is at an admission ceiling and the call was not started: either [serve] max_concurrent_queries snapshots are held with max_queued_queries already waiting (10:958), or max_sessions stateful sessions exist and a new initialize was refused (10:2399). Carries a retry_after_ms computed from the observed p95, so it is a WAIT and never a rejection of the request itself"
+raised_by = "ResourceLimit"
+fix     = "ow config set serve.max_queued_queries <n>   # or retry after retry_after_ms"
 sites   = ["10-interfaces.md:2400", "18-api-sketch.md:1443"]
 
 [[code]]

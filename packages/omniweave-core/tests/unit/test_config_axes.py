@@ -65,6 +65,8 @@ OWED_BY_THE_EXAMPLE = frozenset(
         "retrieval.event_log_query",
         "retrieval.budget.hydration_reserve_ms",
         "serve.add_deadline_ms",
+        "serve.max_concurrent_queries",
+        "serve.max_queued_queries",
         "serve.max_sessions",
         "serve.read_timeout_ms",
         "serve.allowed_origins",
@@ -442,7 +444,7 @@ def test_exact_coverage_reports_nothing_when_it_is_exact() -> None:
 def test_the_shipped_fixture_leaves_exactly_the_owed_lines_uninstantiated() -> None:
     """The `over` direction cannot pass until the root artefact `omniweave.toml.example` is
     committed with a line per key: the test fixture beside this file quotes charter.md:462-670 and
-    that block predates fifteen declared keys. Each name in `OWED_BY_THE_EXAMPLE` has a row in
+    that block predates seventeen declared keys. Each name in `OWED_BY_THE_EXAMPLE` has a row in
     18-api-sketch.md section 4, in ADR-3 decision 3, or in 08-runtime.md:2598-2606, so the debt is
     in the example and not in the registry. ADR-3 states the consequence: "adding a config key now
     costs a pattern AND a line in `omniweave.toml.example`"."""

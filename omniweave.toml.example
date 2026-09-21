@@ -341,27 +341,35 @@ enable = ["derive.segment.spine", "derive.anchor.native", "derive.anchor.defterm
 # [serve] -- the MCP surface. `listed` is a subset of `enabled`, checked at startup.
 # =============================================================================================
 [serve]
-profile         = "default"            # default | full -> derives `listed`
-listed          = []                   # an explicit override of the profile
-enabled         = "read_only+add"      # all | read_only | read_only+add | <explicit list>.
+profile                = "default"     # default | full -> derives `listed`
+listed                 = []            # an explicit override of the profile
+enabled                = "read_only+add"   # all | read_only | read_only+add | <explicit list>.
                                        #   THE AUTHORITY DECISION
-compact_schemas = true                 # strips `advanced` args from the published schema; the
+compact_schemas        = true          # strips `advanced` args from the published schema; the
                                        #   handler still honours them
-default_corpus  = "handbook"           # MUST name a [corpora] entry. When it does not resolve,
+default_corpus         = "handbook"    # MUST name a [corpora] entry. When it does not resolve,
                                        #   `corpus` is promoted to required on every corpus-scoped
                                        #   tool
-tool_prefix     = "ow_"
-add_deadline_ms = 20000                # ow_add's poll deadline. It ALWAYS returns inside it, with
+tool_prefix            = "ow_"
+add_deadline_ms        = 20000         # ow_add's poll deadline. It ALWAYS returns inside it, with
                                        #   deadline_reached: true and whatever is still running
                                        #   listed under `pending`
-max_sessions    = 64                   # concurrent stateful HTTP sessions; beyond it `initialize`
+max_concurrent_queries = 2             # SNAPSHOTS admitted at once, and a WAL bound before it
+                                       #   is a latency one: a held read transaction pins the WAL
+                                       #   (07 section 10.5), and unbounded concurrent retrieval
+                                       #   against a store being written is the 22 GB / exit 137
+                                       #   condition
+max_queued_queries     = 8             # what waits behind that cap. Beyond BOTH the call is
+                                       #   refused OW-A-022 with a retry_after_ms computed from the
+                                       #   observed p95, never blocked without an answer
+max_sessions           = 64            # concurrent stateful HTTP sessions; beyond it `initialize`
                                        #   is refused OW-A-022 with a retry_after_ms. A
                                        #   file-descriptor argument: 64 x 4 corpora x 3 = 768
                                        #   against a 1,024 macOS soft limit
-read_timeout_ms = 30000                # the ASGI body read, enforced BEFORE parsing
-allowed_origins = []                   # empty means ANY Origin header is rejected OW-A-041 -- an
+read_timeout_ms        = 30000         # the ASGI body read, enforced BEFORE parsing
+allowed_origins        = []            # empty means ANY Origin header is rejected OW-A-041 -- an
                                        #   MCP client is not a browser and sends none
-allowed_hosts   = ["localhost", "127.0.0.1", "[::1]"]   # the DNS-rebinding guard, checked before
+allowed_hosts          = ["localhost", "127.0.0.1", "[::1]"]   # the DNS-rebinding guard, checked before
                                        #   the API-key comparison
 [serve.packing]                        # THE PACKING CONSTANTS, WITH THE FIXTURES AS TESTS
 hard_ceiling       = 24000             # HARD_CEILING, one ceiling for every tool. Above the host's

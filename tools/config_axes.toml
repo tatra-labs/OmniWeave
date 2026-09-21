@@ -30,7 +30,7 @@
 # for, which is what lets `store.retain_parts` carry the `semantic` axis its own row in
 # 18-api-sketch.md section 4 gives it. The classification rule above is unchanged by the grain.
 #
-# 130 patterns from the omniweave_core.config registry: 13 semantic, 117 operational.
+# 132 patterns from the omniweave_core.config registry: 13 semantic, 119 operational.
 
 [semantic]    # enters cache keys AND sets the full-scan latch
 keys = [
@@ -143,6 +143,8 @@ keys = [
   "serve.default_corpus",
   "serve.tool_prefix",
   "serve.add_deadline_ms",
+  "serve.max_concurrent_queries",
+  "serve.max_queued_queries",
   "serve.max_sessions",
   "serve.read_timeout_ms",
   "serve.allowed_origins",
@@ -280,6 +282,8 @@ keys = [
 "serve.default_corpus" = "OMNIWEAVE_SERVE_DEFAULT_CORPUS"
 "serve.tool_prefix" = "OMNIWEAVE_SERVE_TOOL_PREFIX"
 "serve.add_deadline_ms" = "OMNIWEAVE_SERVE_ADD_DEADLINE_MS"
+"serve.max_concurrent_queries" = "OMNIWEAVE_SERVE_MAX_CONCURRENT_QUERIES"
+"serve.max_queued_queries" = "OMNIWEAVE_SERVE_MAX_QUEUED_QUERIES"
 "serve.max_sessions" = "OMNIWEAVE_SERVE_MAX_SESSIONS"
 "serve.read_timeout_ms" = "OMNIWEAVE_SERVE_READ_TIMEOUT_MS"
 "serve.allowed_origins" = "OMNIWEAVE_SERVE_ALLOWED_ORIGINS"
