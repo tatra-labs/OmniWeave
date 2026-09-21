@@ -377,6 +377,11 @@ class Exporter:
 
         `committed` is where this run started, so a `Halted` on the very first batch still names a
         position a re-run can resume from rather than nothing at all.
+
+        **The cursor is written once per DISTINCT position.** A caller that cannot advance the
+        position between batches -- which is every caller whose window holds an open span, and
+        so every `--follow` turn -- would otherwise pay an atomic rewrite per request for a
+        value that did not change.
         """
         requests = 0
         spans_sent = 0
@@ -393,8 +398,9 @@ class Exporter:
                 )
             requests += 1
             spans_sent += len(spans)
+            moved = position != committed
             committed = position
-            if cursor is not None:
+            if cursor is not None and moved:
                 write_cursor(cursor, endpoint=endpoint, run_id=run_id, position=committed)
         return Delivered(requests=requests, spans=spans_sent, position=committed)
 
