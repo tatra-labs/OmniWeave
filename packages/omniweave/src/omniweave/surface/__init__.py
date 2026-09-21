@@ -11,6 +11,14 @@ the invariant row 30 owns -- it names SV1 in the same cell, as a startup check t
 subset of `enabled` and that `HUMAN_ONLY` and `enabled` do not intersect. The check is this
 package's; the config values it reads are the operator's and arrive as arguments.
 
+**`resolve`, `Resolution`, `normalise` and `refusal` complete that family**, and until W7.3j the
+family had a hole in the middle: `assert_sv1` took two collections and nothing in the repository
+produced either. `authority.py` is 10 section 3.8's four mechanisms resolved into them, so the
+sentence above -- *"the config values it reads are the operator's and arrive as arguments"* -- is
+now true of a function a caller can name rather than of a contract nobody implemented. `refusal`
+is bound with them because the dispatcher that needs it is in a third package and the refusal's
+symbol, message and fix are one decision (D376) rather than three strings.
+
 `FULL_ROSTER` is bound beside `GROUPS` and for the same reason: both are declaration data the
 generator reads, and both answer a question a reviewer asks of the surface rather than of one row --
 `GROUPS` what a CLI root may be, `FULL_ROSTER` what the `full` profile is supposed to contain. The
@@ -35,6 +43,7 @@ object rather than a name anyone imports for its own sake.
 
 from __future__ import annotations
 
+from omniweave.surface.authority import Resolution, normalise, refusal, resolve
 from omniweave.surface.registry import (
     ACTIONS,
     CLI_ABSENT,
@@ -68,7 +77,11 @@ __all__ = [
     "ActionSpec",
     "CliStatus",
     "Profile",
+    "Resolution",
     "assert_sv1",
     "listed",
+    "normalise",
+    "refusal",
+    "resolve",
     "resolve_cli",
 ]
