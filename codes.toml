@@ -271,12 +271,17 @@ sites   = ["10-interfaces.md:1746"]
 [[code]]
 numeric = "OW-A-040"
 symbol  = "OW_HTTP_BIND_UNAUTHENTICATED"
-meaning = "non-loopback bind without --api-key [A REFUSAL]"
+meaning = "non-loopback bind without --api-key [A REFUSAL]. The listener does not open: a warning on a line nobody reads is how an unauthenticated corpus reaches the network (10:2340). A LOOPBACK bind with no key is the sanctioned case and is one of exactly two loopback TCP endpoints the framework allows"
+raised_by = "UsageError"
+fix     = "ow serve --http --api-key <key>   # or set OMNIWEAVE_API_KEY, or bind 127.0.0.1"
 sites   = ["15-observability.md:1492", "18-api-sketch.md:1207", "_notes/charter.md:6887"]
 
 [[code]]
 numeric = "OW-A-041"
 symbol  = "OW_HTTP_ORIGIN_REJECTED"
+meaning = "the DNS-rebinding guard: an Origin header present and not in [serve] allowed_origins (default EMPTY, so ANY Origin is rejected - an MCP client is not a browser and sends none), or a Host whose name is neither a literal loopback address nor a member of [serve] allowed_hosts. Answered 403 BEFORE the API-key comparison, and the body names no origin, no host and no code"
+note    = "an HTTP status and not a raised OwError: the middleware short-circuits before the JSON-RPC layer, so the symbol reaches the log and never the wire"
+fix     = "ow config set serve.allowed_origins <the origin>   # or serve.allowed_hosts for a Host"
 sites   = ["10-interfaces.md:2357", "18-api-sketch.md:1206", "18-api-sketch.md:3344", "18-api-sketch.md:3350"]
 
 [[code]]
@@ -287,6 +292,9 @@ sites   = ["14-security.md:766"]
 [[code]]
 numeric = "OW-A-043"
 symbol  = "OW_SERVE_COPYLEFT_NETWORK"
+meaning = "ow serve --http refusing at listener start when any driver in [drivers] enabled computes to a tier carrying copyleft_network. The shipped acknowledgement covers a LOCAL run; a listening transport engages the clause the ack disclaims. The refusal names every offending driver, its SPDX expression and the licence_sha256 the ack is bound to. stdio and ow query are unaffected"
+raised_by = "PolicyRefusal"
+fix     = "ow config set drivers.enabled <the roster without it>   # or serve over stdio"
 sites   = ["10-interfaces.md:2349", "10-interfaces.md:2803"]
 
 [[code]]
