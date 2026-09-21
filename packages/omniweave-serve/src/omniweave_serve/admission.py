@@ -105,6 +105,7 @@ __all__ = [
     "Decision",
     "Held",
     "Verdict",
+    "elapsed_ms",
     "overloaded",
     "percentile",
 ]
@@ -384,7 +385,7 @@ class AdmissionQueue:
         if not self._queue or len(self._running) >= self._max_concurrent:
             return None
         ticket, offered_ns = self._queue.popleft()
-        queued_ms = _elapsed_ms(offered_ns, at_ns)
+        queued_ms = elapsed_ms(offered_ns, at_ns)
         self._running[ticket] = (queued_ms, at_ns)
         return Admitted(ticket=ticket, queued_ms=queued_ms)
 
@@ -399,7 +400,7 @@ class AdmissionQueue:
                 "omniweave bug",
             )
         queued_ms, started_ns = held
-        ran_ms = _elapsed_ms(started_ns, at_ns)
+        ran_ms = elapsed_ms(started_ns, at_ns)
         self._observed.append(ran_ms)
         return Held(ticket=ticket, queued_ms=queued_ms, ran_ms=ran_ms)
 
@@ -427,7 +428,7 @@ class AdmissionQueue:
         )
 
 
-def _elapsed_ms(start_ns: int, end_ns: int) -> int:
+def elapsed_ms(start_ns: int, end_ns: int) -> int:
     """Whole elapsed milliseconds, floored, and never negative.
 
     Floored rather than rounded because a hold that has not lasted a millisecond has not lasted
