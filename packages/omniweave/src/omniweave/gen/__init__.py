@@ -79,6 +79,30 @@ carries the twelve `[[exit]]` rows, `omniweave_core.errors.EXIT_CODES` is the fo
 read (10:229 bans it from opening the file), `check_register()` holds the two together in both
 directions and in order, and a test binds each row's named classes to their `EXIT`. D332.
 
+`skill_catalog.py` is artefact 7 and it closes the seven. Its reader is the always-resident router
+(10:1151), which is the only consumer that PICKS between capabilities, so it is the one artefact
+that publishes `decision` -- 10:192's <= 90-character disambiguator *"an agent reads at pick
+time"* -- beside every `summary`. `docs/AGENTS.md` deliberately does not, because its reader edits
+the registry and never picks.
+
+Its first section is the listing rule rather than an Action, and that ordering is the file's
+argument: a router that concluded a capability does not exist because `tools/list` omits it would
+decline work the server would have done, which is LEANN's defect arrived at from the routing side.
+The note is `llms.LISTED_NOTE` imported rather than transcribed, with both variable names filled
+from `omniweave_core.config.KEYS` -- W7.2e's D327 is why that is not optional.
+
+Two files now wrap prose to one contract, so `wrap.py` holds the mechanism and each renderer keeps
+its own column. It exists because `textwrap` splits on whitespace: `` `ow surface emit --check` ``
+would end one line at `` `ow surface `` and begin the next at `` emit --check` ``, which renders
+correctly and greps wrong, and both artefacts are read by something that greps. `llms.py` keeps its
+own wrapper, which is not an exception -- LEANN's two-space continuation is that artefact's
+published grammar (10:2431), not its formatting.
+
+**With artefact 7 `LIVE`, no row is `PENDING` and `check()`'s third clause has nothing in the
+shipped register to fire on.** It is still the clause that made this register a gate before any
+renderer existed, so `test_gen_emit.py` builds a synthetic eighth row to exercise it rather than
+deleting the tests -- the state an eighth artefact meets on its first day.
+
 **Two entry points are deliberately not re-exported here, and the reason is mechanical rather
 than stylistic.** `instructions()` lives in `omniweave.gen.instructions` and `emit()` lives in
 `omniweave.gen.emit`, and in both cases the function's name is its module's name -- so binding it

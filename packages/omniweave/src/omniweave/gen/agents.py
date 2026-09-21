@@ -84,6 +84,7 @@ from omniweave_core.errors import EXIT_CODES, SurfaceError
 from omniweave.gen.artefacts import ARTEFACTS, Shape, State
 from omniweave.gen.cli_tree import MIN_GROUP_VERBS
 from omniweave.gen.llms import PRODUCT, SUMMARY
+from omniweave.gen.wrap import wrapped
 from omniweave.surface.registry import ACTIONS, HUMAN_ONLY
 
 if TYPE_CHECKING:
@@ -154,48 +155,14 @@ def _table(headers: Sequence[str], rows: Iterable[Sequence[str]]) -> list[str]:
     ]
 
 
-def _tokens(text: str) -> list[str]:
-    """One paragraph split into the units a wrap may break between. A code span is one unit.
-
-    `textwrap` splits on whitespace and would put `` `ow surface `` at the end of one line and
-    `` emit --check` `` at the start of the next. That renders correctly and greps wrong, and
-    greppability is the property this artefact's consumer needs most: its reader is an agent
-    that will search this file for the command it is about to run.
-
-    The rule is the backtick count. A piece whose running text has an odd number of backticks is
-    inside a span, so the next piece joins it. Punctuation stays attached because the join is
-    over the space-split pieces and never over characters.
-    """
-    out: list[str] = []
-    for piece in text.split(" "):
-        if out and out[-1].count("`") % 2:
-            out[-1] = f"{out[-1]} {piece}"
-        else:
-            out.append(piece)
-    return out
-
-
 def _wrapped(text: str, indent: str = "") -> list[str]:
     """One paragraph, wrapped at `WIDTH`. Pure, and the only text here that is not a table.
 
-    A token wider than `WIDTH` is never broken -- a path or a dotted symbol split across two
-    lines stops being greppable -- so a line over the column happens and is correct.
-
-    `indent` is the hanging indent a Markdown list item needs on its continuation lines. Without
-    it a wrapped bullet's second line starts in column one and ends the list.
+    `gen.wrap` holds the mechanism, because artefact 7 wraps prose to the same contract and a
+    second copy is the one that stops matching the first. What stays here is the column: `WIDTH`
+    is this artefact's choice and not the wrapper's.
     """
-    tokens = _tokens(text)
-    lines: list[str] = []
-    current = tokens[0]
-    for token in tokens[1:]:
-        candidate = f"{current} {token}"
-        if len(candidate) > WIDTH:
-            lines.append(current)
-            current = f"{indent}{token}"
-        else:
-            current = candidate
-    lines.append(current)
-    return lines
+    return wrapped(text, width=WIDTH, indent=indent)
 
 
 def _item(marker: str, text: str) -> list[str]:
@@ -418,9 +385,10 @@ def render() -> bytes:
         ),
         "",
         *_wrapped(
-            "A **pending** row carries the one rule that is not guessable: nothing may be "
-            "committed at its path at all. A hand-written file sitting where a generator has "
-            "not landed yet is the defect G25 is named after, and `--check` fails on it."
+            "The `state` column has two values, and the second carries the rule that is not "
+            "guessable: a **pending** artefact is one no renderer produces yet, and nothing may "
+            "be committed at its path at all. A hand-written file sitting where a generator has "
+            "not landed is the defect G25 is named after, and `--check` fails on it."
         ),
         "",
         "## Actions",

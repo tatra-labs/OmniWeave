@@ -182,7 +182,7 @@ ARTEFACTS: Final[tuple[Artefact, ...]] = (
         shape=Shape.FILE,
         source="Actions with an mcp_name, grouped by cli[0]",
         consumer="the router skill's catalog",
-        state=State.PENDING,
+        state=State.LIVE,
         lands_with="W7.2g",
     ),
 )

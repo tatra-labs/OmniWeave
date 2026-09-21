@@ -29,11 +29,12 @@ that declaration. To add or change one:
 | 4 | omniweave/sdk/_generated.pyi | `packages/omniweave/src/omniweave/sdk/_generated.pyi` | inp, out, name | mypy, IDEs, ow surface typescript | generated |
 | 5 | llms.txt | `llms.txt` | every Action with an mcp_name | an agent with a shell and no MCP client | generated |
 | 6 | docs/AGENTS.md | `docs/AGENTS.md` | all Actions, summary inline | an agent asked to work on omniweave | generated |
-| 7 | skills/omniweave/references/actions.md | `skills/omniweave/references/actions.md` | Actions with an mcp_name, grouped by cli[0] | the router skill's catalog | **pending W7.2g** — nothing may be committed at this path |
+| 7 | skills/omniweave/references/actions.md | `skills/omniweave/references/actions.md` | Actions with an mcp_name, grouped by cli[0] | the router skill's catalog | generated |
 
-A **pending** row carries the one rule that is not guessable: nothing may be committed at its
-path at all. A hand-written file sitting where a generator has not landed yet is the defect G25
-is named after, and `--check` fails on it.
+The `state` column has two values, and the second carries the rule that is not guessable: a
+**pending** artefact is one no renderer produces yet, and nothing may be committed at its path
+at all. A hand-written file sitting where a generator has not landed is the defect G25 is named
+after, and `--check` fails on it.
 
 ## Actions
 
