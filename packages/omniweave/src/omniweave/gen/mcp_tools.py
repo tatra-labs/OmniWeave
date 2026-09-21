@@ -95,7 +95,8 @@ from omniweave.surface.inputs import (
     SOURCE_MAX,
     WANTS,
 )
-from omniweave.surface.registry import ACTIONS, DEFAULT_PROFILE, ActionSpec
+from omniweave.surface.registry import ACTIONS, DEFAULT_PROFILE, ActionSpec, listed
+from omniweave.surface.schema import compact, with_required_corpus
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -112,6 +113,8 @@ __all__ = [
     "STEERING",
     "description",
     "hints",
+    "listing",
+    "omitted",
     "render",
     "tool",
     "tools",
@@ -550,6 +553,64 @@ def tools() -> tuple[dict[str, Any], ...]:
     return tuple(
         tool(ACTIONS[name]) for name in sorted(ACTIONS) if ACTIONS[name].mcp_name in PUBLISHED
     )
+
+
+def omitted(profile: str = DEFAULT_PROFILE) -> tuple[str, ...]:
+    """The `mcp_name`s `profile` lists and this build cannot render, sorted.
+
+    `unpublished()` narrowed to one profile, and the two answer different questions. That one is
+    the distance between the registry and the generator; this one is the distance between what an
+    operator asked to see and what `tools/list` can send them. For `default` it is empty and
+    `_published_failures()` is what keeps it so; for `full` it is five of 10:807's eighteen rows,
+    and 10:2593 is the consequence -- the `full_*` totals stay unmeasured until it is empty.
+    """
+    return tuple(
+        sorted(
+            name
+            for action in listed(profile)
+            if (name := ACTIONS[action].mcp_name) is not None and name not in PUBLISHED
+        )
+    )
+
+
+def listing(
+    profile: str = DEFAULT_PROFILE,
+    *,
+    compact_schemas: bool = True,
+    corpus_required: bool = False,
+) -> tuple[dict[str, Any], ...]:
+    """What `tools/list` sends for one profile: `tools()` selected, compacted and promoted.
+
+    `tools()` is this module's docstring's *"every tool this build can render"*, and it is one
+    file. What one request receives is three transforms over it -- select by `listed_in`, strip the
+    `advanced` parameters under `[serve] compact_schemas` (10:495), and promote `corpus` into
+    `required` when `[serve] default_corpus` does not resolve (10:525) -- and until now the three
+    had no single caller, so nothing measured the thing an agent actually pays for.
+
+    **The transform order is asserted rather than assumed.** Compaction removes properties and the
+    promotion re-derives `required` in property order, so promoting first would let the strip
+    remove a property that `required` now names -- a schema requiring a parameter it does not
+    declare. It cannot happen today because no Action declares `corpus` advanced, and that is a
+    property of the registry rather than of this order, so a test pins both.
+
+    **This is the function `omniweave_serve` cannot reach.** 02:350 gives that distribution
+    `["omniweave_core", "omniweave_ports"]`, so it holds the catalogue bytes and none of the three
+    transforms; `omniweave_serve.catalog.unservable()` names exactly this list. D340 is the entry
+    and this does not settle it. What it does is put the three in one place, so the decision left
+    is about one edge rather than about three homes.
+    """
+    built: list[dict[str, Any]] = []
+    for action in listed(profile):
+        spec = ACTIONS[action]
+        if spec.mcp_name not in PUBLISHED:
+            continue
+        entry = tool(spec)
+        if compact_schemas:
+            entry = compact(entry)
+        if corpus_required:
+            entry = with_required_corpus(entry)
+        built.append(entry)
+    return tuple(built)
 
 
 def render() -> bytes:

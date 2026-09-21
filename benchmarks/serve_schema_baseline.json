@@ -1,0 +1,33 @@
+{
+  "tokenizer": "cl100k_base",
+  "recipe": "json.dumps(tool,separators=(',',':'),ensure_ascii=False)",
+  "release": "0.1.0",
+  "default_compact": 856,
+  "default_full": 1037,
+  "default_compact_corpus_required": 871,
+  "full_compact": null,
+  "full_full": null,
+  "per_tool_compact": {
+    "ow_query": 289,
+    "ow_open": 210,
+    "ow_corpora": 195,
+    "ow_add": 162
+  },
+  "per_tool_full": {
+    "ow_query": 411,
+    "ow_open": 258,
+    "ow_corpora": 195,
+    "ow_add": 173
+  },
+  "instructions_chars": {
+    "default": 977,
+    "no_corpus": 996
+  },
+  "ceilings": {
+    "default": 1900,
+    "full": 4200,
+    "per_tool": 700,
+    "instructions_chars": 1000
+  },
+  "drift_tolerance": 0.05
+}
