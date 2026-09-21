@@ -49,12 +49,15 @@ the five that wait. D328 is the entry.
 
 ## WHAT PURITY COSTS THIS RENDERER
 
-10:229 bans IO from a generator, so the release number, the exit-code table and eight blocks of
-steering prose are Python constants here rather than reads of `pyproject.toml`, `codes.toml` and
-the plan. Each is bound by a test to whatever else in the repository knows the same fact -- the
-pattern `mcp_tools.MAX_RUNG_MEMBERS` established in W7.2b, where a test does the import a pure
-generator may not afford. `EXIT_CODES` is the one with nothing to bind to: 18:996 puts that table
-*"in `codes.toml` beside the `OW-*` register"* and `codes.toml` does not carry it. D329.
+10:229 bans IO from a generator, so the release number and eight blocks of steering prose are
+Python constants here rather than reads of `pyproject.toml` and the plan. Each is bound by a test
+to whatever else in the repository knows the same fact -- the pattern `mcp_tools.MAX_RUNG_MEMBERS`
+established in W7.2b, where a test does the import a pure generator may not afford.
+
+The exit-code table WAS the one with nothing to bind to, and W7.2f moved it: D329 recorded twelve
+pieces of agent-facing text whose only home was a tuple in this module, 18:996 puts that table *"in
+`codes.toml` beside the `OW-*` register"*, and `omniweave_core.errors.EXIT_CODES` is now the form
+code reads with `check_register()` holding the register to it. This file imports it. D332.
 """
 
 from __future__ import annotations
@@ -64,7 +67,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_core.config import KEYS
-from omniweave_core.errors import SurfaceError
+from omniweave_core.errors import EXIT_CODES, SurfaceError
 
 from omniweave.gen.cli_tree import GLOBAL_FLAGS, Flag, commands
 from omniweave.gen.instructions import SV2_MAX_CHARS
@@ -79,12 +82,12 @@ if TYPE_CHECKING:
 
 __all__ = [
     "CONTACT",
-    "EXIT_CODES",
     "HOMEPAGE",
     "LICENCE",
     "PRODUCT",
     "RELEASE",
     "SECTION_MARKERS",
+    "SUMMARY",
     "TOOL_NOTES",
     "TYPES",
     "VERDICTS",
@@ -188,29 +191,6 @@ The printed form says *"the CLI has ~130 verbs the MCP surface does not list"*. 
 134 across 43 groups and 10:1457 refuses to print a verb count at all, for the reason D293 records:
 *"a numeral is a second copy of an enumeration and drifts from it in silence"*. `cli.groups` below
 prints the enumeration instead.
-"""
-
-EXIT_CODES: Final[tuple[tuple[int, str], ...]] = (
-    (0, "ok"),
-    (1, "usage"),
-    (2, "not-found"),
-    (3, "absent"),
-    (4, "degraded"),
-    (5, "budget"),
-    (6, "policy"),
-    (7, "store-busy"),
-    (8, "out-gate-refused"),
-    (9, "not-configured"),
-    (64, "capability-missing"),
-    (70, "internal"),
-)
-"""10:2526-2527, transcribed, and the one constant here with nothing to bind it to.
-
-18:996 says the table *"lives in `codes.toml` beside the `OW-*` register, so `ow explain` prints it
-and `ow surface emit` generates it into `docs/AGENTS.md`"*, and `codes.toml` carries 85 `[[code]]`
-rows and no exit table at all. So the twelve pairs have exactly one home in this repository and it
-is this tuple -- which makes them agent-facing text written by hand, INV-20's own defect, in the
-file INV-20 is enforced from. D329 is the entry, and artefact 6 will want the same table.
 """
 
 SKILLS: Final[tuple[tuple[str, str], ...]] = (
@@ -642,7 +622,7 @@ def _cli_lines() -> list[str]:
     lines.extend(
         _entry(
             "cli.exit_codes",
-            " · ".join(f"{code} {meaning}" for code, meaning in EXIT_CODES),
+            " · ".join(f"{row.code} {row.slug}" for row in EXIT_CODES),
         )
     )
     return lines

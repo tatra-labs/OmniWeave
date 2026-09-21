@@ -48,6 +48,20 @@ def test_every_code_row_is_well_formed() -> None:
         assert row["sites"], f"{row['numeric']} cites no plan definition site"
 
 
+def test_the_exit_table_is_well_formed_and_in_numeric_order() -> None:
+    """18-api-sketch.md section 2.3's twelve rows, beside the `OW-*` register because
+    18-api-sketch.md:996 puts them there. This is the declaration-SHAPE half; `test_errors.py`
+    holds the rows to `omniweave_core.errors.EXIT_CODES` and to the classes they name."""
+    rows = _codes()["exit"]
+    codes = [row["code"] for row in rows]
+    assert codes == sorted(codes), "a reader scans this table by number"
+    assert len(set(codes)) == len(codes)
+    for row in rows:
+        assert isinstance(row["code"], int), row
+        assert row["slug"] and row["meaning"], row
+        assert row.get("classes") or row.get("note"), f"exit {row['code']} says nothing it is"
+
+
 def test_codes_unique_holds_in_both_directions() -> None:
     """A numeric bound to two symbols, or a symbol bound to two numerics, is the same build
     failure seen from the other end. Reading has already failed twice on exactly this

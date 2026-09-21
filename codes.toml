@@ -985,3 +985,94 @@ numeric = "OW-D-073"
 symbol  = "OW_CARD_CODE_MISMATCH"
 meaning = "the loaded class or the worker's HELLO_ACK disagrees with the card on port, schema_version, driver_id or version. Checked twice on purpose - an inproc driver has no HELLO_ACK, an exec driver has no importable class, and a subproc worker may be a different build than the card the host read from disk. Refused BEFORE any work"
 sites   = ["04-driver-system.md:1544", "04-driver-system.md:1548", "04-driver-system.md:1568"]
+
+# ---------------------------------------------------------------------------
+# THE EXIT TABLE. 18-api-sketch.md section 2.3; 10-interfaces.md section 6.2.
+#
+# Twelve rows, beside the OW-* register because both answer "what happened", and because
+# 18-api-sketch.md:996 fixes the home: "One table, in codes.toml beside the OW-* register, so
+# `ow explain` prints it and `ow surface emit` generates it into docs/AGENTS.md."
+#
+# The PYTHON form is omniweave_core.errors.EXIT_CODES, and the two are not a duplication that
+# nobody noticed: a generator may not read a file (10-interfaces.md:229), so the artefact side
+# needs a constant, and `check_register()` holds this array to that tuple in both directions
+# and in this order. Same arrangement the [area.*] tables have with AREA_CLASSES.
+#
+# `classes` names the OwError leaves whose EXIT is this code; test_errors.py asserts each one.
+# Five rows name none, and 18-api-sketch.md:1016 says why: the exit code is a pure function of
+# the EXCEPTION class, and 3, 4, 8 and 9 are not exceptions. `note` carries what they are
+# instead. `slug` is the short form llms.txt publishes (10-interfaces.md:2526).
+# ---------------------------------------------------------------------------
+
+[[exit]]
+code    = 0
+slug    = "ok"
+meaning = "ok — also `low_confidence`, and also `absent` unless `--fail-on` names it"
+note    = "—"
+
+[[exit]]
+code    = 1
+slug    = "usage"
+meaning = "usage or configuration error"
+classes = ["UsageError", "ConfigError", "ResourceLimit"]
+
+[[exit]]
+code    = 2
+slug    = "not-found"
+meaning = "not found: no such corpus, cite, addr, document or Action"
+classes = ["NotFoundError"]
+
+[[exit]]
+code    = 3
+slug    = "absent"
+meaning = "`verdict = absent` (only with `--fail-on absent`)"
+note    = "a `Verdict`, not an exception"
+
+[[exit]]
+code    = 4
+slug    = "degraded"
+meaning = "`verdict = degraded` (only with `--fail-on degraded`)"
+note    = "a `Verdict`, not an exception"
+
+[[exit]]
+code    = 5
+slug    = "budget"
+meaning = "budget exhausted / `DEFERRED_BUDGET` — the message names the approving command"
+classes = ["BudgetExhausted"]
+
+[[exit]]
+code    = 6
+slug    = "policy"
+meaning = "policy refusal: licence tier, `restriction_bits`, a missing egress grant, a path outside roots"
+classes = ["PolicyRefusal"]
+
+[[exit]]
+code    = 7
+slug    = "store-busy"
+meaning = "store busy: another writer holds the corpus (names host, pid, age)"
+classes = ["StoreBusy"]
+
+[[exit]]
+code    = 8
+slug    = "out-gate-refused"
+meaning = "an OUT gate did not return `passed` — `ow out check`, `ow out verify --class render`"
+note    = "a `GateStatus`, not an exception"
+
+[[exit]]
+code    = 9
+slug    = "not-configured"
+meaning = "not configured (`ow install --check`)"
+note    = "a detection result, not an exception"
+
+[[exit]]
+code    = 64
+slug    = "capability-missing"
+meaning = "required capability missing — matches `omniweave-target/1`'s exit 64"
+classes = ["CapabilityMissing"]
+
+[[exit]]
+code    = 70
+slug    = "internal"
+meaning = "internal error (prints the `OW-*` code and the report command)"
+classes = ["InternalError"]
+note    = "and `OwError`'s floor"

@@ -172,7 +172,7 @@ ARTEFACTS: Final[tuple[Artefact, ...]] = (
         shape=Shape.FILE,
         source="all Actions, summary inline",
         consumer="an agent asked to work on omniweave",
-        state=State.PENDING,
+        state=State.LIVE,
         lands_with="W7.2f",
     ),
     Artefact(

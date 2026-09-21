@@ -1,0 +1,423 @@
+"""Artefact 6: `docs/AGENTS.md`, the file an agent asked to work ON omniweave reads. 10:213.
+
+This is the first artefact the plan prints no content for. 10:206's sixth row is three cells and
+18:997 adds the exit table, and that is the whole specification -- so the tests here cannot compare
+the output against a printed block the way `test_gen_mcp_tools.py` compares eight figures against
+10:336. They assert the two properties that survive the absence of one.
+
+**Every row of every table is its declaration site's.** The artefact register, `ACTIONS`,
+`HUMAN_ONLY` and `omniweave_core.errors.EXIT_CODES` are walked here and each is demanded in the
+rendered file, in both directions -- a row that reached the file and no longer has a declaration is
+the same defect as a declaration the file dropped. That is `test_gen_llms.py`'s discipline, and it
+is the only one that makes a design cell checkable.
+
+**The Markdown is a table a reader can parse.** Not an aesthetic claim: the consumer of this file
+greps it, so a row that lost a cell to an unescaped pipe or a stray newline would read as a
+different row rather than as a broken one. `_rows()` below parses the file back and the tests count
+cells.
+"""
+
+from __future__ import annotations
+
+import ast
+import re
+from dataclasses import replace
+from pathlib import Path
+
+import omniweave.gen.agents as agents_module
+import pytest
+from omniweave.gen.agents import (
+    ABSENT,
+    REGISTRY_PATH,
+    WIDTH,
+    _table_failures,
+    _tokens,
+    action_rows,
+    artefact_rows,
+    exit_rows,
+    human_only_rows,
+    render,
+)
+from omniweave.gen.artefacts import ARTEFACTS, State
+from omniweave.gen.cli_tree import MIN_GROUP_VERBS
+from omniweave.gen.emit import REPO_ROOT
+from omniweave.gen.llms import PRODUCT, SUMMARY
+from omniweave.surface.registry import ACTIONS, HUMAN_ONLY
+from omniweave_core.errors import EXIT_CODES
+
+COMMITTED = REPO_ROOT / "docs" / "AGENTS.md"
+
+
+def _text() -> str:
+    return render().decode("utf-8")
+
+
+ARTEFACT_HEADER = ("#", "artefact", "path", "generated from", "consumed by", "state")
+ACTION_HEADER = ("Action", "MCP tool", "CLI", "listed in", "cost", "summary")
+HUMAN_HEADER = ("Action", "summary")
+EXIT_HEADER = ("code", "meaning", "derived from")
+
+
+def _rows(header: tuple[str, ...]) -> list[list[str]]:
+    """Every data row of the table whose header is `header`, parsed back.
+
+    Keyed on the WHOLE header and not on its first cell, because two tables in this file open
+    with `Action` -- the capability roster and the human-only one -- and a parser that took the
+    first cell would silently concatenate them. That is the collision `cli_tree.commands()`
+    answers by keying on a command's words, one artefact over.
+
+    The file's own grammar otherwise: a line starting with `|` is a row, the dashes under the
+    header are the rule, and a run ends at the first line that is not a row. An escaped pipe is
+    unescaped on the way out, so a cell comes back as the string the registry declares.
+    """
+    rows: list[list[str]] = []
+    collecting = False
+    for line in _text().splitlines():
+        if not line.startswith("|"):
+            collecting = False
+            continue
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if tuple(cells) == header:
+            collecting = True
+            continue
+        if collecting and set("".join(cells)) != {"-"}:
+            rows.append([cell.replace("\\|", "|") for cell in cells])
+    return rows
+
+
+# ---------------------------------------------------------------------------------------------
+# The file that ships
+# ---------------------------------------------------------------------------------------------
+
+
+def test_the_committed_file_is_what_the_generator_produces() -> None:
+    """G25's byte diff for this artefact alone. `emit.check()` asserts it across all seven."""
+    assert COMMITTED.is_file(), "ow surface emit has not been run"
+    assert COMMITTED.read_bytes().replace(b"\r\n", b"\n") == render()
+
+
+def test_the_register_row_is_live_and_this_is_its_renderer() -> None:
+    row = next(a for a in ARTEFACTS if a.number == 6)
+    assert row.path == "docs/AGENTS.md"
+    assert row.state is State.LIVE
+    assert row.lands_with == "W7.2f"
+
+
+def test_the_output_is_newline_terminated_utf8_with_no_bom() -> None:
+    """10:232, and it is the one encoding claim every renderer here has to make itself."""
+    payload = render()
+    assert payload.endswith(b"\n")
+    assert not payload.startswith(b"\xef\xbb\xbf")
+    assert payload.decode("utf-8")
+
+
+def test_the_file_says_it_is_generated_and_names_what_to_edit_instead() -> None:
+    """The consumer is a coding agent, and the act this file exists to prevent is editing it."""
+    text = _text()
+    assert text.startswith(f"# AGENTS.md — {PRODUCT}\n")
+    assert "**GENERATED** by `ow surface emit`" in text
+    assert "Do not edit this file" in text
+    assert REGISTRY_PATH in text
+    assert (REPO_ROOT / REGISTRY_PATH).is_file(), "the file names a path that must exist"
+
+
+def test_the_product_sentence_has_one_home_and_this_is_not_it() -> None:
+    """`llms.SUMMARY` reaches two artefacts. A second transcription is D328's whole subject."""
+    assert SUMMARY in " ".join(_text().split())
+
+
+# ---------------------------------------------------------------------------------------------
+# The artefact register, whole
+# ---------------------------------------------------------------------------------------------
+
+
+def test_every_artefact_reaches_the_table_and_nothing_else_does() -> None:
+    rows = _rows(ARTEFACT_HEADER)
+    assert [row[0] for row in rows] == [str(a.number) for a in ARTEFACTS]
+    assert [row[1] for row in rows] == [a.name for a in ARTEFACTS]
+    assert [row[3] for row in rows] == [a.source for a in ARTEFACTS]
+    assert [row[4] for row in rows] == [a.consumer for a in ARTEFACTS]
+
+
+def test_a_pending_row_says_that_nothing_may_be_committed_at_its_path() -> None:
+    """The one rule in this file a reader could not guess, and the reason it is section one.
+
+    00:851 makes LEANN's hand-written `llms.txt` G25's named defect and `emit.check()`'s third
+    clause is the guard. A reader who did not know it would create the file and assume the
+    absence of a renderer meant the prose was theirs to write.
+    """
+    rows = {row[0]: row[5] for row in _rows(ARTEFACT_HEADER)}
+    for artefact in ARTEFACTS:
+        cell = rows[str(artefact.number)]
+        if artefact.state is State.PENDING:
+            assert artefact.lands_with in cell
+            assert "nothing may be committed" in cell
+        else:
+            assert cell == "generated"
+
+
+def test_the_pathless_artefact_is_the_only_one_with_no_path_cell() -> None:
+    """D314: 10:202 says `--check` byte-diffs all seven and artefact 2 has no path anywhere."""
+    empty = [row[0] for row in _rows(ARTEFACT_HEADER) if row[2] == ABSENT]
+    assert empty == ["2"]
+
+
+def test_a_generated_directory_carries_its_slash() -> None:
+    """Artefact 3 is a package (11:246), so its byte diff is over a tree and its cell says so."""
+    tree = next(row for row in _rows(ARTEFACT_HEADER) if row[0] == "3")
+    assert tree[2].endswith("/`")
+
+
+# ---------------------------------------------------------------------------------------------
+# The Actions
+# ---------------------------------------------------------------------------------------------
+
+
+def test_every_action_reaches_the_table_sorted_by_name() -> None:
+    """10:213's source cell is *"all Actions"* -- wider than artefact 5's and artefact 7's."""
+    rows = _rows(ACTION_HEADER)
+    assert [row[0].strip("`") for row in rows] == sorted(ACTIONS)
+
+
+def test_the_summary_is_inline_and_the_decision_clause_is_not() -> None:
+    """10:213 names one prose field. `decision` is artefacts 1 and 5's, and a fourth copy of a
+    pick-time disambiguator in a file whose reader does not pick would be D328 again."""
+    text = _text()
+    for spec in ACTIONS.values():
+        assert spec.summary in text
+        assert spec.decision not in text
+
+
+def test_an_unreachable_action_reads_as_unreachable_in_both_columns() -> None:
+    """10:1540: *"`mcp_name = None` is structural, not a denylist."* Check 5 then empties
+    `listed_in`, so the two cells are one fact and a row where they disagreed would be a defect
+    the registry cannot represent."""
+    for row in _rows(ACTION_HEADER):
+        name, mcp, _cli, listed, _cost, _summary = row
+        spec = ACTIONS[name.strip("`")]
+        assert (mcp == ABSENT) == (spec.mcp_name is None)
+        assert (listed == ABSENT) == (not spec.listed_in)
+
+
+def test_every_row_publishes_the_cli_spelling_and_the_cost_class() -> None:
+    for row in _rows(ACTION_HEADER):
+        spec = ACTIONS[row[0].strip("`")]
+        assert row[2] == f"`ow {' '.join(spec.cli)}`"
+        assert row[4] == f"`{spec.cost_class.value}`"
+
+
+def test_the_two_actions_that_share_a_command_both_get_a_row() -> None:
+    """D299: `corpora` and `corpus.coverage` both spell `ow corpora`, because 10:1424 gives the
+    second no verb of its own. This table is keyed on the Action and not on the spelling, so
+    both appear -- which is the difference between it and `llms.txt`'s `cli.*` lines."""
+    spelled = [row[0].strip("`") for row in _rows(ACTION_HEADER) if row[2] == "`ow corpora`"]
+    assert spelled == ["corpora", "corpus.coverage"]
+
+
+# ---------------------------------------------------------------------------------------------
+# Human-only
+# ---------------------------------------------------------------------------------------------
+
+
+def test_the_five_human_only_names_are_published_with_their_roster_distance() -> None:
+    """D291: `HUMAN_ONLY` is a frozenset of names and nothing asserts one is an `ACTIONS` key,
+    so the gap is published rather than hidden. The day a row lands, this artefact's diff is
+    where a reviewer sees it."""
+    rows = {row[0].strip("`"): row[1] for row in _rows(HUMAN_HEADER)}
+    assert sorted(rows) == sorted(HUMAN_ONLY)
+    for name, cell in rows.items():
+        expected = ACTIONS[name].summary if name in ACTIONS else "no `ActionSpec` row yet"
+        assert cell == expected
+
+
+def test_no_human_only_name_can_appear_in_the_action_table_with_a_tool() -> None:
+    """Check 4 in the registry, read off the artefact: a published MCP name for one of the five
+    would be the structural claim broken where an agent reads it."""
+    for row in _rows(ACTION_HEADER):
+        if len(row) == 6 and row[0].strip("`") in HUMAN_ONLY:
+            assert row[1] == ABSENT
+
+
+# ---------------------------------------------------------------------------------------------
+# Exit codes
+# ---------------------------------------------------------------------------------------------
+
+
+def test_the_exit_table_is_the_registers_twelve_rows() -> None:
+    """18:997 puts the whole table here, and D332 gave it one home to come from."""
+    rows = _rows(EXIT_HEADER)
+    assert [row[0] for row in rows] == [str(row.code) for row in EXIT_CODES]
+    assert [row[1] for row in rows] == [row.meaning for row in EXIT_CODES]
+    assert [row[2] for row in rows] == [row.derived_from() for row in EXIT_CODES]
+
+
+def test_the_exit_table_here_and_the_one_in_llms_txt_are_the_same_table() -> None:
+    """Two artefacts, one tuple. The manifest publishes the slug and this one the meaning, so
+    neither is the other truncated -- but a code in one and not the other would be a register
+    with two readings, which is what moving the constant out of `gen/llms.py` prevents.
+
+    The manifest's line wraps with LEANN's two-space continuation, so it is rejoined before it
+    is read: a test that took only the first physical line would pass on four of the twelve.
+    """
+    manifest = (REPO_ROOT / "llms.txt").read_text(encoding="utf-8").splitlines()
+    start = next(i for i, line in enumerate(manifest) if line.startswith("cli.exit_codes:"))
+    entry = manifest[start]
+    for line in manifest[start + 1 :]:
+        if not line.startswith("  "):
+            break
+        entry = f"{entry} {line[2:]}"
+    assert {row[0] for row in _rows(EXIT_HEADER)} == {str(row.code) for row in EXIT_CODES}
+    for row in EXIT_CODES:
+        assert f"{row.code} {row.slug}" in entry
+
+
+def test_the_rows_that_name_no_class_say_what_they_are_instead() -> None:
+    """18:1016: the exit code is a pure function of the EXCEPTION class, and five are not one."""
+    by_code = {str(row.code): row for row in EXIT_CODES}
+    for row in _rows(EXIT_HEADER):
+        if not by_code[row[0]].classes:
+            assert "not an exception" in row[2] or row[2] == ABSENT
+
+
+# ---------------------------------------------------------------------------------------------
+# The CLI grammar, and the counts this file does not print
+# ---------------------------------------------------------------------------------------------
+
+
+def test_the_group_arity_is_the_one_cli_tree_enforces() -> None:
+    """The only numeral in the prose, and it is imported rather than typed."""
+    assert f"a group exists only at {MIN_GROUP_VERBS} or more verbs" in _text()
+
+
+def test_no_section_prints_a_count_of_its_own_table() -> None:
+    """D293: *"a numeral is a second copy of an enumeration and drifts from it in silence."*
+
+    The three a writer would reach for are the three this file refuses, and the reader counts
+    rows instead. `MIN_GROUP_VERBS` is not one of them: it is a RULE's bound, not a roster's
+    size, and `cli_tree.py` enforces it.
+    """
+    text = _text().lower()
+    for numeral in ("seven artefacts", "eleven checks", "twelve exit", "nine actions"):
+        assert numeral not in text
+
+
+# ---------------------------------------------------------------------------------------------
+# The Markdown holds together
+# ---------------------------------------------------------------------------------------------
+
+
+def test_every_table_row_has_the_cell_count_its_header_declares() -> None:
+    """A row that lost a cell reads as a different row. The parser above would not notice; this
+    counts the raw pipes instead."""
+    widths: list[int] = []
+    for line in _text().splitlines():
+        if line.startswith("|"):
+            widths.append(line.count("|"))
+        elif widths:
+            assert len(set(widths)) == 1, widths
+            widths = []
+
+
+def test_a_pipe_in_a_cell_is_escaped_and_a_summary_carrying_one_survives() -> None:
+    """`--render text|json|jsonl` is how the CLI spells a choice set, so a pipe is legitimate
+    text in a `summary` and escaping is the only answer that publishes what the writer meant."""
+    row = next(iter(action_rows()))
+    assert "|" not in "".join(cell.replace("\\|", "") for cell in row)
+
+
+def test_a_newline_in_a_published_cell_is_refused_at_import(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The other half of the same subject, and the one that cannot be escaped: a cell with a
+    line break ends its row early and turns the rest of a summary into a paragraph.
+
+    Check 7 caps `summary` and forbids a trailing full stop; it says nothing about a newline.
+    """
+    first = next(iter(ACTIONS))
+    broken = dict(ACTIONS) | {first: replace(ACTIONS[first], summary="two\nlines")}
+    monkeypatch.setattr(agents_module, "ACTIONS", broken)
+    findings = _table_failures()
+    assert any("line break" in line for line in findings), findings
+    assert ACTIONS[first].summary == "\n".join(ACTIONS[first].summary.splitlines())
+
+
+def test_an_empty_registry_is_refused_rather_than_published(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A capability table with no capabilities is LEANN's defect at full strength, and it would
+    render as a document rather than as a failure."""
+    monkeypatch.setattr(agents_module, "ACTIONS", {})
+    assert any("no capabilities in it" in line for line in _table_failures())
+
+
+def test_the_shipped_registry_renders() -> None:
+    assert _table_failures() == ()
+
+
+# ---------------------------------------------------------------------------------------------
+# Wrapping
+# ---------------------------------------------------------------------------------------------
+
+
+def test_a_code_span_is_never_broken_across_two_lines() -> None:
+    """The consumer greps this file for the command it is about to run, so `ow surface emit
+    --check` has to survive the wrap as one string."""
+    for line in _text().splitlines():
+        if not line.startswith("|"):
+            assert line.count("`") % 2 == 0, line
+
+
+def test_prose_wraps_at_the_column_and_a_table_does_not() -> None:
+    """A table row cannot be folded -- a break inside one ends the row -- so the only lines over
+    `WIDTH` are table rows and single tokens wider than the column."""
+    for line in _text().splitlines():
+        if not line.startswith("|") and len(line) > WIDTH:
+            assert max(len(token) for token in _tokens(line)) > WIDTH // 2, line
+
+
+def test_a_list_item_wraps_under_its_text_and_not_under_its_marker() -> None:
+    """A continuation line in column one ends the list, which would silently drop the steps."""
+    lines = _text().splitlines()
+    numbered = [i for i, line in enumerate(lines) if line.startswith("1. edit the")]
+    assert numbered, "the three steps are the file's only numbered list"
+    assert lines[numbered[0] + 1].startswith("   "), lines[numbered[0] + 1]
+
+
+def test_tokenising_keeps_a_span_with_spaces_together() -> None:
+    assert _tokens("run `ow surface emit` now") == ["run", "`ow surface emit`", "now"]
+    assert _tokens("plain words only") == ["plain", "words", "only"]
+
+
+# ---------------------------------------------------------------------------------------------
+# Purity
+# ---------------------------------------------------------------------------------------------
+
+
+def test_the_renderer_reads_no_clock_no_environment_and_no_file() -> None:
+    """10:229's ban, and `pathlib` is in it here: this module is not the one that writes."""
+    tree = ast.parse(Path(agents_module.__file__).read_text(encoding="utf-8"))
+    banned = {"time", "random", "secrets", "os", "datetime", "pathlib"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            assert not {a.name.split(".")[0] for a in node.names} & banned
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            assert node.module.split(".")[0] not in banned, node.module
+
+
+def test_rendering_twice_produces_the_same_bytes() -> None:
+    """Determinism, which is what G25's byte diff gates. A set iterated unsorted fails here."""
+    assert render() == render()
+
+
+def test_no_row_builder_touches_a_path_or_a_clock() -> None:
+    """The four row builders are the whole derivation, and each returns tuples of strings."""
+    for rows in (artefact_rows(), action_rows(), human_only_rows(), exit_rows()):
+        assert rows
+        assert all(isinstance(cell, str) for row in rows for cell in row)
+
+
+def test_the_file_publishes_no_url() -> None:
+    """G15's subject from the other side. `llms.txt` publishes a homepage and a contact and
+    carries a `[[literal]]` row in `tools/egress.toml` for them; this artefact's reader has the
+    repository in front of it, so it names no host and the row is not needed."""
+    assert not re.search(r"https?://", _text())

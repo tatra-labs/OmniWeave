@@ -44,6 +44,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
+from omniweave.gen.agents import render as _render_agents
 from omniweave.gen.artefacts import ARTEFACTS, Shape, State
 from omniweave.gen.cli_tree import render as _render_cli_tree
 from omniweave.gen.llms import render as _render_llms
@@ -88,18 +89,20 @@ RENDERERS: Final[Mapping[int, Callable[[], bytes]]] = MappingProxyType(
         1: _render_mcp_tools,
         4: _render_sdk_stub,
         5: _render_llms,
+        6: _render_agents,
     }
 )
-"""Artefact number -> the pure function that produces its bytes. Three entries and one absence.
+"""Artefact number -> the pure function that produces its bytes. Four entries and one absence.
 
-Artefacts 1, 4 and 5 are the `FILE` rows with a renderer: `schema/mcp-tools-v1.json` from
-`omniweave.gen.mcp_tools`, `omniweave/sdk/_generated.pyi` from `omniweave.gen.sdk_stub` and
-`llms.txt` from `omniweave.gen.llms`. Artefact 3 is a `TREE` and is in the table below.
+Artefacts 1, 4, 5 and 6 are the `FILE` rows with a renderer: `schema/mcp-tools-v1.json` from
+`omniweave.gen.mcp_tools`, `omniweave/sdk/_generated.pyi` from `omniweave.gen.sdk_stub`,
+`llms.txt` from `omniweave.gen.llms` and `docs/AGENTS.md` from `omniweave.gen.agents`. Artefact 3
+is a `TREE` and is in the table below.
 
 Artefact 2 is `LIVE` and has no entry, because it has no path: `instructions.py` produces a string
-delivered on `initialize`, gated by SV2's character cap rather than by a byte-diff. Artefacts 6 and
-7 are `PENDING`. A `LIVE` row with a path and no renderer is a contradiction `check()` reports, and
-so is the reverse -- a renderer for a row the register still calls `PENDING`.
+delivered on `initialize`, gated by SV2's character cap rather than by a byte-diff. Artefact 7 is
+`PENDING`. A `LIVE` row with a path and no renderer is a contradiction `check()` reports, and so is
+the reverse -- a renderer for a row the register still calls `PENDING`.
 
 Read-only, because `check()` and `emit()` both branch on membership and a table a caller could
 append to at runtime would make the register a suggestion. The tests that need a different table

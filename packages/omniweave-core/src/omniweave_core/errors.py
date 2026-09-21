@@ -34,6 +34,7 @@ from typing import ClassVar, Final
 __all__ = (
     "AREA_CLASSES",
     "AREA_LETTERS",
+    "EXIT_CODES",
     "FAILURE_CLASS_IS_FATAL",
     "NUMERIC_RE",
     "SYMBOL_RE",
@@ -42,6 +43,7 @@ __all__ = (
     "CodeRow",
     "ConfigError",
     "DriverHostError",
+    "ExitCode",
     "GraphError",
     "InternalError",
     "ModelError",
@@ -309,6 +311,138 @@ AREA_CLASSES: Final[Mapping[str, type[OwError]]] = MappingProxyType(
 
 
 # ---------------------------------------------------------------------------
+# The exit table -- 18-api-sketch.md section 2.3. Twelve rows, seven of them classes above.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class ExitCode:
+    """One row of the exit table 18-api-sketch.md section 2.3 prints.
+
+    Four fields for a three-column table, because two generated artefacts print it at two
+    widths. `llms.txt` prints one line -- `0 ok - 1 usage - 2 not-found ...`
+    (10-interfaces.md:2526) -- and `docs/AGENTS.md` prints the table whole
+    (18-api-sketch.md:997). `slug` is the first, `meaning` is the second, and `classes` with
+    `note` are the third column split at the one seam that is checkable: a class name this
+    module binds, or prose about something that is not an exception at all.
+    """
+
+    code: int
+    slug: str
+    meaning: str
+    classes: tuple[str, ...] = ()
+    note: str = ""
+
+    def derived_from(self) -> str:
+        """18-api-sketch.md section 2.3's third column: the classes, then the note.
+
+        Five of the twelve name no class and 18-api-sketch.md:1016 says why -- *"the exit code
+        is a pure function of the exception class, and 3, 4, 8 and 9 are not exceptions"*. The
+        note carries what those rows say instead, and `70` is the one row with both.
+        """
+        named = [f"`{name}`" for name in self.classes]
+        return ", ".join([*named, *([self.note] if self.note else [])])
+
+
+#: The twelve exit codes, in numeric order. 18-api-sketch.md section 2.3; 10-interfaces.md
+#: section 6.2; `codes.toml`'s `[[exit]]` array, which `check_register()` holds to this tuple.
+#:
+#: **Why the table is here and not in the generator that prints it.** 18-api-sketch.md:996 puts
+#: it *"in `codes.toml` beside the `OW-*` register, so `ow explain` prints it and
+#: `ow surface emit` generates it into `docs/AGENTS.md`"* -- two readers, and the second may not
+#: read a file at all (10-interfaces.md:229 bans IO from a generator). So the register is the
+#: published form and this tuple is the form code reads, bound by `check_register()`. That is
+#: exactly the arrangement `AREA_LETTERS` and `AREA_CLASSES` already have with `[area.*]` one
+#: constant up, and it is the reason this module is the home rather than either generator.
+#: `_notes/build-defects.md` D329 is the entry; D332 is the move.
+#:
+#: **`classes` is checked, not decoration.** Every name in it is a class defined above whose
+#: `EXIT` is this row's `code`, which `test_errors.py` asserts in both directions -- so a leaf
+#: whose exit drifts from the published table fails a test rather than shipping a number two
+#: agent-facing artefacts print and nothing produces.
+EXIT_CODES: Final[tuple[ExitCode, ...]] = (
+    ExitCode(
+        code=0,
+        slug="ok",
+        meaning="ok — also `low_confidence`, and also `absent` unless `--fail-on` names it",
+        note="—",
+    ),
+    ExitCode(
+        code=1,
+        slug="usage",
+        meaning="usage or configuration error",
+        classes=("UsageError", "ConfigError", "ResourceLimit"),
+    ),
+    ExitCode(
+        code=2,
+        slug="not-found",
+        meaning="not found: no such corpus, cite, addr, document or Action",
+        classes=("NotFoundError",),
+    ),
+    ExitCode(
+        code=3,
+        slug="absent",
+        meaning="`verdict = absent` (only with `--fail-on absent`)",
+        note="a `Verdict`, not an exception",
+    ),
+    ExitCode(
+        code=4,
+        slug="degraded",
+        meaning="`verdict = degraded` (only with `--fail-on degraded`)",
+        note="a `Verdict`, not an exception",
+    ),
+    ExitCode(
+        code=5,
+        slug="budget",
+        meaning=("budget exhausted / `DEFERRED_BUDGET` — the message names the approving command"),
+        classes=("BudgetExhausted",),
+    ),
+    ExitCode(
+        code=6,
+        slug="policy",
+        meaning=(
+            "policy refusal: licence tier, `restriction_bits`, a missing egress grant, "
+            "a path outside roots"
+        ),
+        classes=("PolicyRefusal",),
+    ),
+    ExitCode(
+        code=7,
+        slug="store-busy",
+        meaning="store busy: another writer holds the corpus (names host, pid, age)",
+        classes=("StoreBusy",),
+    ),
+    ExitCode(
+        code=8,
+        slug="out-gate-refused",
+        meaning=(
+            "an OUT gate did not return `passed` — `ow out check`, `ow out verify --class render`"
+        ),
+        note="a `GateStatus`, not an exception",
+    ),
+    ExitCode(
+        code=9,
+        slug="not-configured",
+        meaning="not configured (`ow install --check`)",
+        note="a detection result, not an exception",
+    ),
+    ExitCode(
+        code=64,
+        slug="capability-missing",
+        meaning="required capability missing — matches `omniweave-target/1`'s exit 64",
+        classes=("CapabilityMissing",),
+    ),
+    ExitCode(
+        code=70,
+        slug="internal",
+        meaning="internal error (prints the `OW-*` code and the report command)",
+        classes=("InternalError",),
+        note="and `OwError`'s floor",
+    ),
+)
+
+
+# ---------------------------------------------------------------------------
 # Fatality over FailureClass -- the other half of `is_fatal()`.
 # ---------------------------------------------------------------------------
 
@@ -393,13 +527,16 @@ class CodeRow:
 
 @dataclass(frozen=True, slots=True)
 class Register:
-    """The whole parsed `codes.toml`: the ten area tables and every `[[code]]` row."""
+    """The whole parsed `codes.toml`: the area tables, every `[[code]]` row, the exit table."""
 
     path: Path
     areas: Mapping[str, str]  # area letter -> the level-1 class name it declares
     rows: tuple[CodeRow, ...]
     by_numeric: Mapping[str, CodeRow]
     by_symbol: Mapping[str, CodeRow]
+    exits: tuple[ExitCode, ...] = ()
+    """The `[[exit]]` array, in file order. `()` on a register written before it landed, which
+    `check_register()` reports as twelve missing rows rather than as a parse failure."""
 
 
 def register_path() -> Path:
@@ -459,12 +596,15 @@ def _load_register(path: Path) -> Register:
     }
     code_entries = raw.get("code", ())
     rows = tuple(_row(entry) for entry in code_entries) if isinstance(code_entries, list) else ()
+    exit_entries = raw.get("exit", ())
+    exits = tuple(_exit(e) for e in exit_entries) if isinstance(exit_entries, list) else ()
     return Register(
         path=path,
         areas=MappingProxyType(areas),
         rows=rows,
         by_numeric=MappingProxyType({row.numeric: row for row in rows}),
         by_symbol=MappingProxyType({row.symbol: row for row in rows}),
+        exits=exits,
     )
 
 
@@ -489,6 +629,26 @@ def _row(entry: object) -> CodeRow:
         meaning=str(table.get("meaning", "")),
         fix=str(table.get("fix", "")),
         owner_doc=first_site.split(":")[0],
+    )
+
+
+def _exit(entry: object) -> ExitCode:
+    """One `[[exit]]` table to an `ExitCode`. Never raises; a bad row becomes a finding.
+
+    A missing or non-integer `code` becomes `-1`, which is not one of the twelve, so
+    `check_register()` reports it as an unrecognised row and as a missing one. That is
+    11-repo-layout.md section 2.6 rule 3 applied to a field rather than to the file: an
+    unparseable register degrades one operation and never raises a `ValueError` out of a reader.
+    """
+    table = entry if isinstance(entry, dict) else {}
+    code = table.get("code")
+    classes = table.get("classes", ())
+    return ExitCode(
+        code=code if isinstance(code, int) else -1,
+        slug=str(table.get("slug", "")),
+        meaning=str(table.get("meaning", "")),
+        classes=tuple(str(name) for name in classes) if isinstance(classes, list) else (),
+        note=str(table.get("note", "")),
     )
 
 
@@ -588,4 +748,41 @@ def check_register(path: Path | None = None) -> tuple[str, ...]:
         for letter in AREA_LETTERS
         if letter not in register.areas
     )
+    failures.extend(_exit_failures(register))
+    return tuple(failures)
+
+
+def _exit_failures(register: Register) -> tuple[str, ...]:
+    """The `[[exit]]` half: the register's exit table against `EXIT_CODES`, both directions.
+
+    18-api-sketch.md:996 gives the table two readers and only one of them may open a file --
+    `ow explain` prints it from the register, `ow surface emit` generates it into
+    `docs/AGENTS.md` from `EXIT_CODES`, and 10-interfaces.md:229 bans the second from reading
+    the first. So the two exist and this is the seam that holds them equal. Checked in both
+    directions for `codes-unique`'s own reason: a row added to the file and not to the tuple is
+    a code `ow explain` prints and no artefact publishes, and the reverse is the artefact
+    publishing a code the register cannot resolve.
+
+    ORDER is checked as well. Both artefacts print the table in `EXIT_CODES`' order and a reader
+    comparing the file against either of them reads two lists in one order.
+    """
+    failures: list[str] = []
+    published = {row.code: row for row in register.exits}
+    declared = {row.code for row in EXIT_CODES}
+    for expected in EXIT_CODES:
+        found = published.get(expected.code)
+        if found is None:
+            failures.append(f"[[exit]] {expected.code} is missing from {register.path.name}")
+        elif found != expected:
+            failures.append(
+                f"[[exit]] {expected.code} reads {found.slug!r} / {found.meaning!r} and "
+                f"EXIT_CODES declares {expected.slug!r} / {expected.meaning!r}"
+            )
+    failures.extend(
+        f"[[exit]] {row.code} is in {register.path.name} and is not one of the twelve"
+        for row in register.exits
+        if row.code not in declared
+    )
+    if not failures and [row.code for row in register.exits] != [row.code for row in EXIT_CODES]:
+        failures.append(f"the [[exit]] rows in {register.path.name} are not in EXIT_CODES' order")
     return tuple(failures)

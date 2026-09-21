@@ -64,6 +64,21 @@ one it does. It is also the first renderer whose inputs include the CONFIG regis
 was the mechanical `OMNIWEAVE_SERVE_ENABLED` while five sites of the plan and `assert_sv1()`'s own
 fix string named `OMNIWEAVE_MCP_ENABLED`, a variable nothing read.
 
+`agents.py` is artefact 6, and it is the first renderer with no printed block to transcribe.
+10:213 gives it three cells -- *"all Actions, `summary` inline"*, for *"an agent asked to work
+**on** omniweave"* -- and 18:997 adds the exit table. That is the whole specification, so it is a
+DESIGN cell, and the discipline that replaces a printed block is a count: four of its five sections
+are a table derived whole from a declaration site, and the fifth is three sentences of CLI grammar
+with one imported numeral in them.
+
+It is also the renderer that moved a constant. 18:996 puts the exit table *"in `codes.toml` beside
+the `OW-*` register"* and `gen/llms.py` held it as a tuple, which D329 recorded as INV-20's own
+defect inside the module that enforces INV-20 -- twelve pieces of agent-facing text with one
+hand-written home. A second artefact wanting the same table is what made that due: `codes.toml` now
+carries the twelve `[[exit]]` rows, `omniweave_core.errors.EXIT_CODES` is the form a generator may
+read (10:229 bans it from opening the file), `check_register()` holds the two together in both
+directions and in order, and a test binds each row's named classes to their `EXIT`. D332.
+
 **Two entry points are deliberately not re-exported here, and the reason is mechanical rather
 than stylistic.** `instructions()` lives in `omniweave.gen.instructions` and `emit()` lives in
 `omniweave.gen.emit`, and in both cases the function's name is its module's name -- so binding it
