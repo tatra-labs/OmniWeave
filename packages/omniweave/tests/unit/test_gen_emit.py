@@ -3,7 +3,7 @@
 The red cases all run against a temporary repository root, because the property under test is what
 `check()` says about a tree and the only tree this process may not write to is the real one. The
 green case is the real one, and it is the assertion that matters: `ow surface emit --check` is green
-on the repository as it ships, with the seventh renderer unwritten.
+on the repository as it ships, with all seven renderers written.
 """
 
 from __future__ import annotations
@@ -62,19 +62,20 @@ def test_six_of_the_seven_are_files_and_the_seventh_is_the_instructions_string()
     assert [a.number for a in pathless] == [2]
 
 
-def test_six_artefacts_have_a_renderer_today() -> None:
-    live = [a.number for a in ARTEFACTS if a.state is State.LIVE]
-    assert live == [1, 2, 3, 4, 5, 6]
-    assert all(a.state is State.PENDING for a in ARTEFACTS if a.number not in set(live))
+def test_all_seven_artefacts_have_a_renderer_now() -> None:
+    """W7.2g closes the set. `check()`'s PENDING clause has no shipped row left to fire on, and
+    the tests that exercise it build their own -- see `_one()`."""
+    assert [a.number for a in ARTEFACTS if a.state is State.LIVE] == [1, 2, 3, 4, 5, 6, 7]
+    assert not [a for a in ARTEFACTS if a.state is State.PENDING]
 
 
 def test_each_live_row_is_in_the_table_its_shape_names() -> None:
     """One renderer table per shape, and a row in the wrong one is a row nothing renders.
 
-    Artefacts 1, 4, 5 and 6 are `FILE`s and have bytes; artefact 3 is a `TREE` and has a
+    Artefacts 1, 4, 5, 6 and 7 are `FILE`s and have bytes; artefact 3 is a `TREE` and has a
     membership as well; artefact 2 is a `STRING` and is in neither, because it has no path to
     diff against."""
-    assert set(RENDERERS) == {1, 4, 5, 6}
+    assert set(RENDERERS) == {1, 4, 5, 6, 7}
     assert set(TREE_RENDERERS) == {3}
     assert by_number(1).shape is Shape.FILE
     assert by_number(2).shape is Shape.STRING
@@ -82,6 +83,7 @@ def test_each_live_row_is_in_the_table_its_shape_names() -> None:
     assert by_number(4).shape is Shape.FILE
     assert by_number(5).shape is Shape.FILE
     assert by_number(6).shape is Shape.FILE
+    assert by_number(7).shape is Shape.FILE
 
 
 def test_string_is_exactly_the_shape_of_the_rows_with_no_path() -> None:
@@ -122,7 +124,12 @@ def test_ow_surface_emit_check_is_green_on_this_repository() -> None:
 def test_nothing_is_committed_for_an_artefact_nothing_can_produce() -> None:
     """The property `test_no_generated_artefact_has_been_written_yet` used to assert over two paths
     by name, now derived over all six. 00:851 makes LEANN's hand-written `llms.txt` G25's named
-    defect, and a committed file for a PENDING row is exactly that shape."""
+    defect, and a committed file for a PENDING row is exactly that shape.
+
+    **Vacuous since W7.2g**, and kept rather than deleted: every row is `LIVE`, so the loop body
+    never runs against the shipped register. It is the assertion an eighth artefact meets on the
+    day its row is added and before its renderer exists, which is the day it is worth having.
+    `_one()` carries the non-vacuous half against a temporary root."""
     for artefact in path_carrying():
         assert artefact.path is not None
         if artefact.state is State.PENDING:
@@ -135,7 +142,7 @@ def test_emit_writes_nothing_because_every_live_file_is_already_committed() -> N
     assert emit() == ()
 
 
-def test_render_returns_bytes_for_the_four_file_rows_that_are_live() -> None:
+def test_render_returns_bytes_for_the_five_file_rows_that_are_live() -> None:
     produced = {a.number: render(a) for a in ARTEFACTS}
     assert produced[1] is not None
     assert produced[1].endswith(b"]\n")
@@ -145,7 +152,9 @@ def test_render_returns_bytes_for_the_four_file_rows_that_are_live() -> None:
     assert produced[5].startswith(b"# llms.txt ")
     assert produced[6] is not None
     assert produced[6].startswith(b"# AGENTS.md ")
-    assert [n for n, payload in produced.items() if payload is None] == [2, 3, 7]
+    assert produced[7] is not None
+    assert produced[7].startswith(b"<!-- skills/omniweave/references/actions.md ")
+    assert [n for n, payload in produced.items() if payload is None] == [2, 3]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -160,27 +169,33 @@ def fake_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path
 
 
-def _catalog(root: Path) -> Path:
-    """Artefact 7's path under a temporary root. One spelling, used by every red case."""
-    return root / "skills" / "omniweave" / "references" / "actions.md"
+def _synthetic(root: Path) -> Path:
+    """`_one()`'s path under a temporary root. One spelling, used by every red case."""
+    return root / "docs" / "reference" / "nothing.md"
 
 
 def _one(**over: object) -> Artefact:
-    """A synthetic row, taken from artefact 7 because artefact 7 is the one still `PENDING`.
+    """A synthetic EIGHTH row, and it is synthetic now for a reason worth stating.
 
-    It was artefact 5 until W7.2e landed `llms.txt` and artefact 6 until W7.2f landed
-    `docs/AGENTS.md`. A fixture whose default state contradicts the shipped register reads as a
-    fossil, and the clause these tests exercise most -- a committed file for a row nothing can
-    produce -- needs a row that really is in that state to be legible."""
+    It borrowed a real `PENDING` row until W7.2g: artefact 5 until `llms.txt` landed, artefact 6
+    until `docs/AGENTS.md` did, artefact 7 until this cell. **The register has no `PENDING` row
+    left** -- all seven are `LIVE` -- so there is nothing real left to borrow, and a fixture that
+    kept naming artefact 7 would assert a state the shipped register contradicts, which is the
+    fossil these three moves have been avoiding.
+
+    The clause under test is still worth its tests. `check()`'s third clause is the one that made
+    the register a gate before any renderer existed, it is the LEANN shape (00:851), and it is
+    what an eighth artefact would meet on its first day.
+    """
     base: dict[str, object] = {
-        "number": 7,
-        "name": "skills/omniweave/references/actions.md",
-        "path": "skills/omniweave/references/actions.md",
+        "number": 8,
+        "name": "docs/reference/nothing.md",
+        "path": "docs/reference/nothing.md",
         "shape": Shape.FILE,
-        "source": "Actions with an mcp_name, grouped by cli[0]",
-        "consumer": "the router skill's catalog",
+        "source": "nothing; this row exists only in this test module",
+        "consumer": "no one",
         "state": State.PENDING,
-        "lands_with": "W7.2g",
+        "lands_with": "W0.0",
     }
     base.update(over)
     return Artefact(**base)  # type: ignore[arg-type]
@@ -190,19 +205,19 @@ def test_clause_3_a_committed_file_for_a_pending_row_fails(
     fake_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(emit_module, "ARTEFACTS", (_one(),))
-    (fake_root / "skills" / "omniweave" / "references").mkdir(parents=True)
-    _catalog(fake_root).write_text("hand written\n", encoding="utf-8", newline="\n")
+    (fake_root / "docs" / "reference").mkdir(parents=True)
+    _synthetic(fake_root).write_text("hand written\n", encoding="utf-8", newline="\n")
     findings = check()
     assert len(findings) == 1
     assert "no renderer produces it" in findings[0]
-    assert "W7.2g" in findings[0]
+    assert "W0.0" in findings[0]
 
 
 @pytest.mark.usefixtures("fake_root")
 def test_clause_1_a_pending_row_with_a_renderer_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     """The register claiming less than the code can do is as wrong as the reverse."""
     monkeypatch.setattr(emit_module, "ARTEFACTS", (_one(),))
-    monkeypatch.setattr(emit_module, "RENDERERS", {7: lambda: b"x\n"})
+    monkeypatch.setattr(emit_module, "RENDERERS", {8: lambda: b"x\n"})
     assert any("promote the row to LIVE" in line for line in check())
 
 
@@ -215,7 +230,7 @@ def test_clause_1b_a_live_row_with_no_renderer_fails(monkeypatch: pytest.MonkeyP
 @pytest.mark.usefixtures("fake_root")
 def test_clause_4_a_live_row_with_nothing_committed_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(emit_module, "ARTEFACTS", (_one(state=State.LIVE),))
-    monkeypatch.setattr(emit_module, "RENDERERS", {7: lambda: b"x\n"})
+    monkeypatch.setattr(emit_module, "RENDERERS", {8: lambda: b"x\n"})
     assert any("nothing is committed there" in line for line in check())
 
 
@@ -223,17 +238,17 @@ def test_clause_2_a_live_row_whose_bytes_differ_fails(
     fake_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(emit_module, "ARTEFACTS", (_one(state=State.LIVE),))
-    monkeypatch.setattr(emit_module, "RENDERERS", {7: lambda: b"generated\n"})
-    (fake_root / "skills" / "omniweave" / "references").mkdir(parents=True)
-    _catalog(fake_root).write_text("stale\n", encoding="utf-8", newline="\n")
+    monkeypatch.setattr(emit_module, "RENDERERS", {8: lambda: b"generated\n"})
+    (fake_root / "docs" / "reference").mkdir(parents=True)
+    _synthetic(fake_root).write_text("stale\n", encoding="utf-8", newline="\n")
     assert any("differs from what the generator produces" in line for line in check())
 
 
 def test_a_live_row_that_matches_passes(fake_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(emit_module, "ARTEFACTS", (_one(state=State.LIVE),))
-    monkeypatch.setattr(emit_module, "RENDERERS", {7: lambda: b"generated\n"})
-    (fake_root / "skills" / "omniweave" / "references").mkdir(parents=True)
-    _catalog(fake_root).write_text("generated\n", encoding="utf-8", newline="\n")
+    monkeypatch.setattr(emit_module, "RENDERERS", {8: lambda: b"generated\n"})
+    (fake_root / "docs" / "reference").mkdir(parents=True)
+    _synthetic(fake_root).write_text("generated\n", encoding="utf-8", newline="\n")
     assert check() == ()
 
 
@@ -248,9 +263,9 @@ def test_a_crlf_checkout_does_not_fail_a_gate_it_has_nothing_to_do_with(
     """11:484's whole subject: *"a generator that emits `\\n` and a working tree that holds
     `\\r\\n` disagree byte-for-byte for reasons that have nothing to do with the code."*"""
     monkeypatch.setattr(emit_module, "ARTEFACTS", (_one(state=State.LIVE),))
-    monkeypatch.setattr(emit_module, "RENDERERS", {7: lambda: b"one\ntwo\n"})
-    (fake_root / "skills" / "omniweave" / "references").mkdir(parents=True)
-    _catalog(fake_root).write_bytes(b"one\r\ntwo\r\n")
+    monkeypatch.setattr(emit_module, "RENDERERS", {8: lambda: b"one\ntwo\n"})
+    (fake_root / "docs" / "reference").mkdir(parents=True)
+    _synthetic(fake_root).write_bytes(b"one\r\ntwo\r\n")
     assert check() == ()
 
 
@@ -264,7 +279,7 @@ def test_the_writer_emits_lf_on_every_platform(fake_root: Path) -> None:
     """11:487's rule, and this is the only `open(..., "w")` in the package for that reason."""
     artefact = _one(state=State.LIVE)
     assert write(artefact, b"one\ntwo\n") is True
-    assert _catalog(fake_root).read_bytes() == b"one\ntwo\n"
+    assert _synthetic(fake_root).read_bytes() == b"one\ntwo\n"
 
 
 @pytest.mark.usefixtures("fake_root")
@@ -277,8 +292,8 @@ def test_writing_the_same_bytes_twice_is_a_no_op() -> None:
 
 def test_writing_over_a_crlf_file_with_equal_content_is_a_no_op(fake_root: Path) -> None:
     artefact = _one(state=State.LIVE)
-    (fake_root / "skills" / "omniweave" / "references").mkdir(parents=True)
-    _catalog(fake_root).write_bytes(b"same\r\n")
+    (fake_root / "docs" / "reference").mkdir(parents=True)
+    _synthetic(fake_root).write_bytes(b"same\r\n")
     assert write(artefact, b"same\n") is False
 
 
@@ -296,8 +311,8 @@ def test_writing_an_artefact_that_is_not_a_file_refuses() -> None:
 @pytest.mark.usefixtures("fake_root")
 def test_emit_writes_a_live_row_and_reports_the_path(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(emit_module, "ARTEFACTS", (_one(state=State.LIVE),))
-    monkeypatch.setattr(emit_module, "RENDERERS", {7: lambda: b"generated\n"})
-    assert emit() == ("skills/omniweave/references/actions.md",)
+    monkeypatch.setattr(emit_module, "RENDERERS", {8: lambda: b"generated\n"})
+    assert emit() == ("docs/reference/nothing.md",)
     assert emit() == (), "a second run changes nothing"
     assert check() == ()
 

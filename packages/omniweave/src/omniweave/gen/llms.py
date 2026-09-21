@@ -84,6 +84,7 @@ __all__ = [
     "CONTACT",
     "HOMEPAGE",
     "LICENCE",
+    "LISTED_NOTE",
     "PRODUCT",
     "RELEASE",
     "SECTION_MARKERS",

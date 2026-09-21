@@ -50,6 +50,7 @@ from omniweave.gen.cli_tree import render as _render_cli_tree
 from omniweave.gen.llms import render as _render_llms
 from omniweave.gen.mcp_tools import render as _render_mcp_tools
 from omniweave.gen.sdk_stub import render as _render_sdk_stub
+from omniweave.gen.skill_catalog import render as _render_skill_catalog
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -90,19 +91,23 @@ RENDERERS: Final[Mapping[int, Callable[[], bytes]]] = MappingProxyType(
         4: _render_sdk_stub,
         5: _render_llms,
         6: _render_agents,
+        7: _render_skill_catalog,
     }
 )
-"""Artefact number -> the pure function that produces its bytes. Four entries and one absence.
+"""Artefact number -> the pure function that produces its bytes. Five entries and one absence.
 
-Artefacts 1, 4, 5 and 6 are the `FILE` rows with a renderer: `schema/mcp-tools-v1.json` from
+Artefacts 1, 4, 5, 6 and 7 are the `FILE` rows with a renderer: `schema/mcp-tools-v1.json` from
 `omniweave.gen.mcp_tools`, `omniweave/sdk/_generated.pyi` from `omniweave.gen.sdk_stub`,
-`llms.txt` from `omniweave.gen.llms` and `docs/AGENTS.md` from `omniweave.gen.agents`. Artefact 3
-is a `TREE` and is in the table below.
+`llms.txt` from `omniweave.gen.llms`, `docs/AGENTS.md` from `omniweave.gen.agents` and
+`skills/omniweave/references/actions.md` from `omniweave.gen.skill_catalog`. Artefact 3 is a
+`TREE` and is in the table below.
 
 Artefact 2 is `LIVE` and has no entry, because it has no path: `instructions.py` produces a string
-delivered on `initialize`, gated by SV2's character cap rather than by a byte-diff. Artefact 7 is
-`PENDING`. A `LIVE` row with a path and no renderer is a contradiction `check()` reports, and so is
-the reverse -- a renderer for a row the register still calls `PENDING`.
+delivered on `initialize`, gated by SV2's character cap rather than by a byte-diff. **No row is
+`PENDING` any more**, so `check()`'s third clause has nothing in the shipped register to fire on
+and the tests that exercise it build their own row. A `LIVE` row with a path and no renderer is a
+contradiction `check()` reports, and so is the reverse -- a renderer for a row the register still
+calls `PENDING`.
 
 Read-only, because `check()` and `emit()` both branch on membership and a table a caller could
 append to at runtime would make the register a suggestion. The tests that need a different table

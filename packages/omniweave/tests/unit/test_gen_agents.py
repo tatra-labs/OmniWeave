@@ -31,7 +31,6 @@ from omniweave.gen.agents import (
     REGISTRY_PATH,
     WIDTH,
     _table_failures,
-    _tokens,
     action_rows,
     artefact_rows,
     exit_rows,
@@ -42,6 +41,7 @@ from omniweave.gen.artefacts import ARTEFACTS, State
 from omniweave.gen.cli_tree import MIN_GROUP_VERBS
 from omniweave.gen.emit import REPO_ROOT
 from omniweave.gen.llms import PRODUCT, SUMMARY
+from omniweave.gen.wrap import tokens
 from omniweave.surface.registry import ACTIONS, HUMAN_ONLY
 from omniweave_core.errors import EXIT_CODES
 
@@ -145,6 +145,10 @@ def test_a_pending_row_says_that_nothing_may_be_committed_at_its_path() -> None:
     00:851 makes LEANN's hand-written `llms.txt` G25's named defect and `emit.check()`'s third
     clause is the guard. A reader who did not know it would create the file and assume the
     absence of a renderer meant the prose was theirs to write.
+
+    Since W7.2g every row is `generated`, so the paragraph under the table explains the `state`
+    column's vocabulary rather than a row the reader can point at -- which is why it is phrased
+    over the column and asserted here over the column, not over a row that happens to exist.
     """
     rows = {row[0]: row[5] for row in _rows(ARTEFACT_HEADER)}
     for artefact in ARTEFACTS:
@@ -154,6 +158,8 @@ def test_a_pending_row_says_that_nothing_may_be_committed_at_its_path() -> None:
             assert "nothing may be committed" in cell
         else:
             assert cell == "generated"
+    assert "a **pending** artefact is one no renderer produces yet" in " ".join(_text().split())
+    assert "nothing may be committed at its path at all" in " ".join(_text().split())
 
 
 def test_the_pathless_artefact_is_the_only_one_with_no_path_cell() -> None:
@@ -372,7 +378,7 @@ def test_prose_wraps_at_the_column_and_a_table_does_not() -> None:
     `WIDTH` are table rows and single tokens wider than the column."""
     for line in _text().splitlines():
         if not line.startswith("|") and len(line) > WIDTH:
-            assert max(len(token) for token in _tokens(line)) > WIDTH // 2, line
+            assert max(len(token) for token in tokens(line)) > WIDTH // 2, line
 
 
 def test_a_list_item_wraps_under_its_text_and_not_under_its_marker() -> None:
@@ -383,9 +389,14 @@ def test_a_list_item_wraps_under_its_text_and_not_under_its_marker() -> None:
     assert lines[numbered[0] + 1].startswith("   "), lines[numbered[0] + 1]
 
 
-def test_tokenising_keeps_a_span_with_spaces_together() -> None:
-    assert _tokens("run `ow surface emit` now") == ["run", "`ow surface emit`", "now"]
-    assert _tokens("plain words only") == ["plain", "words", "only"]
+def test_the_wrapper_is_the_shared_one() -> None:
+    """`gen.wrap` holds the mechanism and `test_gen_wrap.py` holds its properties. What is
+    asserted here is that this artefact uses it: artefact 7 wraps to the same contract, and a
+    second copy is the one that stops matching the first."""
+    assert tokens("run `ow surface emit` now") == ["run", "`ow surface emit`", "now"]
+    assert "from omniweave.gen.wrap import wrapped" in Path(agents_module.__file__).read_text(
+        encoding="utf-8"
+    )
 
 
 # ---------------------------------------------------------------------------------------------
