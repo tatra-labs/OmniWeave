@@ -11,8 +11,10 @@ the other side of the line D340 is about.
 
 `session.py` is `<sessions>/` -- where it is, the journal, the markers and the sweep -- and
 `envelope.py` is what all six handlers share -- the channel, the caps, the session key, the kill
-switches, the deadline and the `Outcome` that makes a silent failure visible from inside. The
-handlers themselves, the counters file and the lease are the cells after these two.
+switches, the deadline and the `Outcome` that makes a silent failure visible from inside.
+`precompact.py` is the first of the six handlers: two writes and no output, because 10:1927 says
+this event has no model-facing channel at all. The other five, the counters file and the lease are
+the cells after these three.
 """
 
 from __future__ import annotations
@@ -29,6 +31,16 @@ from omniweave.hooks.envelope import (
     run,
     session_key,
     silent_because,
+)
+from omniweave.hooks.precompact import (
+    BRIEFING,
+    BRIEFING_MAX_CHARS,
+    COMPACTED,
+    KINDS,
+    SOURCE_LABELS,
+    briefing,
+    render_briefing,
+    run_precompact,
 )
 from omniweave.hooks.session import (
     JOURNAL_MAX_BYTES,
@@ -50,13 +62,18 @@ from omniweave.hooks.session import (
 )
 
 __all__ = [
+    "BRIEFING",
+    "BRIEFING_MAX_CHARS",
+    "COMPACTED",
     "EVENTS",
     "EXIT_OK",
     "JOURNAL_MAX_BYTES",
+    "KINDS",
     "READ_AGE_MIN",
     "RECORD_MAX_BYTES",
     "SELF_DEADLINE_MS",
     "SESSIONS_MAX_FILES",
+    "SOURCE_LABELS",
     "SWEEP_AGE_S",
     "Advice",
     "EventSpec",
@@ -66,12 +83,15 @@ __all__ = [
     "Written",
     "anchor",
     "append",
+    "briefing",
     "counter",
     "emission",
     "journal_paths",
     "read",
+    "render_briefing",
     "rotate",
     "run",
+    "run_precompact",
     "session_key",
     "sessions_dir",
     "silent_because",
