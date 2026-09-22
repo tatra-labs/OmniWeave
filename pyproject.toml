@@ -108,6 +108,25 @@ ban-relative-imports = "all"
 "packages/omniweave/tests/unit/test_run_expand.py" = ["TID251"]
 "packages/omniweave-serve/src/omniweave_serve/otlp.py" = ["TID251"]
 
+# D344, taken. The ban's message generalises INV-3 into a rule about where a loop may LIVE, and
+# INV-3 does not say that: charter.md:74 states it about ONE import graph -- "`import
+# omniweave_core` is cheap and shallow ... it imports neither `asyncio` nor `selectors`" -- and
+# G10, G17 and G23 all measure `omniweave_core` and nothing else. 02-architecture.md:264 row 40
+# gives `omniweave-serve` "the `stdio` and `http` transports" by name, and 10-interfaces.md:979
+# prints the line they exist to execute (`await transport.send(answer)`), so the two halves are
+# not in conflict and never were. G23 does not weaken by one character if `omniweave_serve`
+# awaits; it measures a different import. Scoped to the one file that binds real pipes, and inside
+# it `asyncio` is named by the two stream adapters and by nothing else (`to_thread`, twice, which a
+# test asserts over the AST): the framing, the loop and the ordering take their streams as
+# arguments and are tested without a loop at all.
+"packages/omniweave-serve/src/omniweave_serve/stdio.py" = ["TID251"]
+
+# The transport's tests drive the loop with `asyncio.run` and nothing else. There is no
+# pytest-asyncio in the ten-package dev group (02-architecture.md section 3.3 fixes it), so a
+# test of an `async def` either starts a loop by name or does not test it. Same escape and same
+# scope as `test_run_supervisor.py` above.
+"packages/omniweave-serve/tests/unit/test_serve_stdio.py" = ["TID251"]
+
 # `cohort_member`'s foreign key must REFUSE a member whose parent row is absent, and the test
 # that asserts it names `sqlite3.IntegrityError`: catching `Exception` would pass on a typo in
 # the SQL, which is the one outcome the test exists to rule out. Same escape and same reason as
