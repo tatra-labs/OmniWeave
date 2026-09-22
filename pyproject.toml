@@ -192,6 +192,15 @@ ban-relative-imports = "all"
 # import lazily on purpose, which is what keeps G17 true.
 "packages/omniweave-core/src/omniweave_core/config.py" = ["PLR0911", "PLR0912", "PLR2004", "PLC0415"]
 
+# D400 is a claim about what happens when two OS processes append to one file, and the only way to
+# test a claim about two processes is to start two. `subprocess` is banned so that a module reaching
+# for it has to argue; the argument here is that 10:1913's guarantee is stated against "an
+# interleaved append from a second server process", and a single-process test of it would assert
+# the opposite of what the plan says. The `conform` tier exists for exactly this and the file is
+# under `tests/conform/` as 13-quality.md section 2.7 requires. PLC0415: the child script is built
+# from this process's own `sys.path`, which is a value and not an import.
+"packages/omniweave/tests/conform/test_hooks_session_append.py" = ["TID251"]
+
 # A test may reach for a private to test it, and a test name may carry a type name verbatim
 # (`..._not_a_Path`). Neither is production style.
 "packages/omniweave-core/tests/unit/test_config.py" = ["PLC0415", "N802"]
