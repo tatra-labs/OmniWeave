@@ -188,6 +188,19 @@ why = """
 What crosses is an `ExportTraceServiceRequest` built by `otlp.py` from NDJSON shards. Its resource attributes are a closed list and `Resource.attributes()` REFUSES `host.name`, `host.id`, `os.user`, `process.command_line` and any absolute path (15:259), so the payload names a service, a version, two contract integers and a config digest -- and no machine, no user and no path."""
 
 [[client]]
+module = "asyncio"
+path = "packages/omniweave-serve/src/omniweave_serve/stdio.py"
+why = """
+The stdio transport, which 02-architecture.md:264 row 40 gives this distribution by name and which 10-interfaces.md:979 prints the one line of (`await transport.send(answer)`). It is the second half of D344: `pyproject.toml`'s `TID251` per-file-ignore is scoped to this one file and says why there, and this row is the same decision seen from the register that cares whether a machine can be addressed.
+
+**A stdio transport is not a network.** 10:2351 says so where it matters most -- the two ways out of an `ow serve --http` copyleft refusal are removing the driver or serving "over `stdio`, **which is not a network transport**". The peer is the process that launched this one, the channel is the two descriptors it was started with, and there is no address of any kind: no bind, no connect, no hostname, no port. `pipes()` takes `sys.stdin.buffer` and `sys.stdout.buffer` and takes nothing else.
+
+**What is imported is `to_thread`, and only `to_thread`.** Twice, both times wrapping a blocking call on a file object this process already holds -- `stream.readline()` and `stream.write()` plus `stream.flush()`. There is no `open_connection`, no `create_server`, no `loop.sock_*`, no `create_subprocess_*` and no `connect_read_pipe`; a test asserts the last of those over the AST, because it is the one an `asyncio`-native reader would have reached for and the reason it does not is D385 rather than taste.
+
+The row exists because `asyncio` CAN dial -- `asyncio.open_connection` is two attributes away -- and clause 1 is a declaration rule rather than a usage analysis (14:779). The day `ow serve --http` lands it will need its own row at its own path, and it will be making the opposite argument: a listener is exactly what 14:437 and `OW-A-040` exist for.\
+"""
+
+[[client]]
 module = "socket"
 path = "packages/omniweave-core/src/omniweave_core/host/subproc.py"
 why = """
