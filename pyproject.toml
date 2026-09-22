@@ -121,11 +121,19 @@ ban-relative-imports = "all"
 # arguments and are tested without a loop at all.
 "packages/omniweave-serve/src/omniweave_serve/stdio.py" = ["TID251"]
 
+# The same decision for the other transport 02-architecture.md:264 row 40 names, and a narrower
+# use: the ASGI application is driven by whatever server hosts it and starts no loop of its own.
+# `asyncio` is named once, for `asyncio.timeout()` in `read_body()`, because 10-interfaces.md:2371
+# requires "a `[serve] read_timeout_ms` (default 30,000)" on the body read and the standard library
+# has exactly one deadline primitive. A test asserts that single use over the AST.
+"packages/omniweave-serve/src/omniweave_serve/http.py" = ["TID251"]
+
 # The transport's tests drive the loop with `asyncio.run` and nothing else. There is no
 # pytest-asyncio in the ten-package dev group (02-architecture.md section 3.3 fixes it), so a
 # test of an `async def` either starts a loop by name or does not test it. Same escape and same
 # scope as `test_run_supervisor.py` above.
 "packages/omniweave-serve/tests/unit/test_serve_stdio.py" = ["TID251"]
+"packages/omniweave-serve/tests/unit/test_serve_http.py" = ["TID251"]
 
 # `cohort_member`'s foreign key must REFUSE a member whose parent row is absent, and the test
 # that asserts it names `sqlite3.IntegrityError`: catching `Exception` would pass on a typo in

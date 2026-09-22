@@ -201,6 +201,19 @@ The row exists because `asyncio` CAN dial -- `asyncio.open_connection` is two at
 """
 
 [[client]]
+module = "asyncio"
+path = "packages/omniweave-serve/src/omniweave_serve/http.py"
+why = """
+The row the `stdio.py` row above said would be needed, and the argument is indeed the opposite one: this module IS the network surface. 02-architecture.md:264 row 40 gives this distribution the `http` transport and 10-interfaces.md section 10 is the whole of what it serves.
+
+**It still opens nothing, and the distinction is the point.** An ASGI application is called; it does not listen. `Listener.__call__` takes `(scope, receive, send)` from whatever server hosts it, and there is no `create_server`, no `bind`, no `listen`, no `open_connection`, no `loop.sock_*` and no socket of any kind in this file. What is imported is `asyncio.timeout`, ONCE, in `read_body()`, because 10-interfaces.md:2371 requires "a `[serve] read_timeout_ms` (default 30,000)" on the body read and the standard library has one deadline primitive. A test asserts that single use over the AST, the same way `stdio.py`'s row is backed.
+
+**The refusals that bound this surface are declared, not assumed.** `guard.listener_refusal()` is `OW-A-040 / OW_HTTP_BIND_UNAUTHENTICATED` -- a non-loopback bind with no `--api-key` does not open at all, and 10:2344 counts `ow serve --http` as one of exactly TWO loopback TCP endpoints the framework sanctions, a third needing a charter amendment. `guard.rebinding_rejection()` is `OW-A-041`, applied before the key comparison. `guard.copyleft_refusal()` is `OW-A-043`, refusing at listener start when an enabled driver's tier carries `copyleft_network` -- which is the same clause 10:2351 says `stdio` does not engage, and `[literal]` rows for `localhost`, `127.0.0.1` and `[::1]` in `config.py` already carry the inbound half of this argument.
+
+**Nothing here serves an inventory.** `/healthz` answers two bytes and `/readyz` a boolean; 10:2325 forbids a release string, a corpus list or a count on either, and `llms.txt` has no route at all because it "enumerates the whole Action surface including unlisted names". A `Rejection` body is one word from a closed vocabulary and never echoes what it rejected.\
+"""
+
+[[client]]
 module = "socket"
 path = "packages/omniweave-core/src/omniweave_core/host/subproc.py"
 why = """

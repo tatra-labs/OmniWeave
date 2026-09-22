@@ -636,11 +636,12 @@ def test_all_names_every_public_symbol_this_module_defines() -> None:
     assert {name for name in defined if not name.startswith("_")} == set(stdio_module.__all__)
 
 
-def test_the_asyncio_exemption_is_scoped_to_the_one_file_that_binds_a_pipe() -> None:
+def test_the_asyncio_exemption_is_scoped_to_the_files_that_touch_a_transport() -> None:
     """D344, taken. The ban's message reads INV-3 as a rule about where a loop may live; INV-3 is
     about what `import omniweave_core` pulls in, and 02:264 row 40 gives this distribution the
-    transports by name. The exemption is per-file, so the framing, the loop and the ordering
-    above it stay loop-free and the one file that touches `asyncio` is the one that binds pipes."""
+    transports by name. The exemption is per-FILE and that is the assertion: of this package's ten
+    modules exactly three may name `asyncio`, and the framing, the queue, the guard, the registry
+    and the catalogue all still hold no loop at all."""
     ignores = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["ruff"][
         "lint"
     ]["per-file-ignores"]
@@ -652,7 +653,10 @@ def test_the_asyncio_exemption_is_scoped_to_the_one_file_that_binds_a_pipe() -> 
     assert exempt == {
         "packages/omniweave-serve/src/omniweave_serve/otlp.py",
         "packages/omniweave-serve/src/omniweave_serve/stdio.py",
+        "packages/omniweave-serve/src/omniweave_serve/http.py",
     }
+    package = Path(stdio_module.__file__).parent
+    assert len(exempt) < len(list(package.glob("*.py")))
     awaiting = {
         node.name for node in ast.walk(_module_tree()) if isinstance(node, ast.AsyncFunctionDef)
     }

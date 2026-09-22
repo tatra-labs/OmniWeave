@@ -144,9 +144,16 @@ _REASONS: Final = {
     401: "unauthorized",
     415: "unsupported_media_type",
     413: "payload_too_large",
+    408: "request_timeout",
 }
 """The whole vocabulary a refusal may use. 10:2333 fixes `401 {"error":"unauthorized"}` and the
-other three follow it rather than inventing a body shape per status."""
+others follow it rather than inventing a body shape per status.
+
+The first four are `gate()`'s. **`408` is not**, and it is here anyway because the vocabulary has
+one home: 10:2371 requires *"a `[serve] read_timeout_ms` (default 30,000)"* on the body read and
+names no status for its breach, `http.read_body()` is where the deadline is enforced, and a second
+module composing `{"error":"..."}` for itself would be two spellings of the one thing 10:2325
+constrains most tightly. D392 records what the plan owes; this row records where it landed."""
 
 
 @dataclass(frozen=True, slots=True)
