@@ -212,6 +212,39 @@ def briefing(body: str, source: str) -> str:
     return _HEADING.format(label=label) + "\n\n" + body
 
 
+def strip_cites(body: str) -> str:
+    """A rendered body with its three cite lines removed. The block's shape lives here, not away.
+
+    `sessionstart` needs this because 10:1970 requires every cite re-verified before emission and a
+    *frozen* briefing is text with no cites to verify -- only a line that contains them (D409). It
+    is here rather than there because the heading, the refs line and the `ow_open` note are this
+    module's constants, and a second spelling of them somewhere else would be a second answer to
+    what a cite block looks like.
+
+    The refs line is found by its position under the heading and the note by its own text, so a
+    briefing whose other sections moved still loses exactly the block that could not be checked.
+
+    `split("\\n")` and never `splitlines()`. `render_briefing` joins on `\\n` and nothing else, and
+    `splitlines()` additionally breaks on U+2028, U+2029 and U+0085 -- any of which can reach a
+    record through a corpus name, survive `_text()` (which strips only CR and LF) and shift every
+    line after it by one. That would make `skip` drop the wrong line, which is how a cite block
+    loses its heading and keeps its refs.
+    """
+    kept: list[str] = []
+    skip = False
+    for line in body.split("\n"):
+        if skip:
+            skip = False
+            continue
+        if line.startswith(_CITE_HEADING):
+            skip = True
+            continue
+        if line == _CITE_NOTE:
+            continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
 def _group(records: Iterable[Mapping[str, Any]]) -> Mapping[str, list[Mapping[str, Any]]]:
     """Records by kind, in journal order, and anything unrecognised silently dropped.
 
