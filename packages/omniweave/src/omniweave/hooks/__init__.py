@@ -12,9 +12,10 @@ the other side of the line D340 is about.
 `session.py` is `<sessions>/` -- where it is, the journal, the markers and the sweep -- and
 `envelope.py` is what all six handlers share -- the channel, the caps, the session key, the kill
 switches, the deadline and the `Outcome` that makes a silent failure visible from inside.
-`precompact.py` is the first of the six handlers: two writes and no output, because 10:1927 says
-this event has no model-facing channel at all. The other five, the counters file and the lease are
-the cells after these three.
+`precompact.py` and `sessionstart.py` are the two halves of the compaction play: 10:1927 gives
+`PreCompact` no model-facing channel, so it writes two files and says nothing, and `SessionStart`
+is the one hook that speaks. The other four handlers, the counters file and the lease are the cells
+after these four.
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ from omniweave.hooks.precompact import (
     briefing,
     render_briefing,
     run_precompact,
+    strip_cites,
 )
 from omniweave.hooks.session import (
     JOURNAL_MAX_BYTES,
@@ -60,6 +62,11 @@ from omniweave.hooks.session import (
     sweep,
     write_marker,
 )
+from omniweave.hooks.sessionstart import (
+    SILENT_SOURCES,
+    run_sessionstart,
+    verified,
+)
 
 __all__ = [
     "BRIEFING",
@@ -73,6 +80,7 @@ __all__ = [
     "RECORD_MAX_BYTES",
     "SELF_DEADLINE_MS",
     "SESSIONS_MAX_FILES",
+    "SILENT_SOURCES",
     "SOURCE_LABELS",
     "SWEEP_AGE_S",
     "Advice",
@@ -92,9 +100,12 @@ __all__ = [
     "rotate",
     "run",
     "run_precompact",
+    "run_sessionstart",
     "session_key",
     "sessions_dir",
     "silent_because",
+    "strip_cites",
     "sweep",
+    "verified",
     "write_marker",
 ]
