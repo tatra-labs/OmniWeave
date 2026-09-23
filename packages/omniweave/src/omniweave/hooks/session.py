@@ -96,6 +96,8 @@ __all__ = [
     "Written",
     "anchor",
     "append",
+    "claim",
+    "claimed",
     "encode_record",
     "journal_paths",
     "read",
@@ -356,6 +358,50 @@ def rotate(root: Path, key: str, *, max_bytes: int = JOURNAL_MAX_BYTES) -> bool:
     except OSError:
         return False
     return True
+
+
+def claim(root: Path, name: str, payload: Mapping[str, Any]) -> bool:
+    """Create `<name>` with `O_CREAT|O_EXCL|O_WRONLY`. `True` means **this process created it**.
+
+    10:2059 calls the creation itself the atomic act -- *"`O_EXCL` is the atomic claim: exactly one
+    of N simultaneous hook processes creates it"* -- and 10:2020 needs the same primitive for the
+    strict deny's *"once per session, claimed with `O_EXCL`"*. One function, two callers, because
+    they are the same guarantee and a second spelling would be a second set of edge cases.
+
+    **This is the one write under `<sessions>/` that D400 does not reach.** An `O_EXCL` create is
+    not an append: the filesystem either created the file or it did not, and Windows honours that
+    where it does not honour `O_APPEND`'s atomicity. A loser gets `FileExistsError` and `False`,
+    which is an answer and not a failure.
+
+    Every other error is also `False`. A hook that cannot claim must behave exactly like a hook that
+    lost the claim -- 10:1842 leaves no way to report the difference, and the conservative reading
+    of "I could not take the once-per-session lock" is "somebody else has it".
+    """
+    if not name:
+        return False
+    try:
+        text = json.dumps(payload, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return False
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        descriptor = os.open(root / name, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except OSError:
+        return False
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
+    except OSError:
+        return True  # the claim is the create; a failed body leaves a claimed, empty file
+    return True
+
+
+def claimed(root: Path, name: str) -> bool:
+    """Whether `<name>` exists at all -- the question a caller asks when it did not try to claim."""
+    try:
+        return (root / name).is_file()
+    except OSError:  # pragma: no cover -- an unreadable directory
+        return False
 
 
 def write_marker(root: Path, key: str, name: str, payload: Mapping[str, Any]) -> bool:

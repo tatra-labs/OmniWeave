@@ -15,8 +15,9 @@ switches, the deadline and the `Outcome` that makes a silent failure visible fro
 `precompact.py` and `sessionstart.py` are the two halves of the compaction play: 10:1927 gives
 `PreCompact` no model-facing channel, so it writes two files and says nothing, and `SessionStart`
 is the one hook that speaks. `prompt.py` is the front-load `UserPromptSubmit` runs and the one G26
-measures. `PreToolUse`, `PostToolUse`, `SessionEnd`, the counters file and the lease are the cells
-after these five.
+measures, and `pretool.py` is the five-gate scope check -- the only handler here that can stop
+something. `PostToolUse`, `SessionEnd`, the counters file and the lease are the cells after these
+six.
 """
 
 from __future__ import annotations
@@ -44,6 +45,19 @@ from omniweave.hooks.precompact import (
     render_briefing,
     run_precompact,
     strip_cites,
+)
+from omniweave.hooks.pretool import (
+    ENFORCE_ADVISORY,
+    ENFORCE_OFF,
+    ENFORCE_STEER,
+    MIN_SIZE_BYTES,
+    OPAQUE_DOC_EXTS,
+    Indexed,
+    Lookup,
+    Target,
+    enforce_mode,
+    run_pretool,
+    ttl_seconds,
 )
 from omniweave.hooks.prompt import (
     CITE_RE,
@@ -82,11 +96,16 @@ __all__ = [
     "BRIEFING_MAX_CHARS",
     "CITE_RE",
     "COMPACTED",
+    "ENFORCE_ADVISORY",
+    "ENFORCE_OFF",
+    "ENFORCE_STEER",
     "EVENTS",
     "EXIT_OK",
     "JOURNAL_MAX_BYTES",
     "KINDS",
     "MEDIUM_MAX_CHARS",
+    "MIN_SIZE_BYTES",
+    "OPAQUE_DOC_EXTS",
     "READ_AGE_MIN",
     "RECORD_MAX_BYTES",
     "SELF_DEADLINE_MS",
@@ -96,23 +115,28 @@ __all__ = [
     "SWEEP_AGE_S",
     "Advice",
     "EventSpec",
+    "Indexed",
     "Journal",
+    "Lookup",
     "Outcome",
     "Probes",
     "Shapes",
     "Swept",
+    "Target",
     "Written",
     "anchor",
     "append",
     "briefing",
     "counter",
     "emission",
+    "enforce_mode",
     "journal_paths",
     "read",
     "render_briefing",
     "rotate",
     "run",
     "run_precompact",
+    "run_pretool",
     "run_prompt",
     "run_sessionstart",
     "session_key",
@@ -121,6 +145,7 @@ __all__ = [
     "silent_because",
     "strip_cites",
     "sweep",
+    "ttl_seconds",
     "verified",
     "write_marker",
 ]
