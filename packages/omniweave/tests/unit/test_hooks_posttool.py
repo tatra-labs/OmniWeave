@@ -32,6 +32,7 @@ from omniweave.hooks.posttool import (
     command,
     edited_path,
     handler,
+    queue_key,
     read_lease,
     release_lease,
     run_posttool,
@@ -267,7 +268,7 @@ def test_every_edit_of_a_burst_is_enqueued_even_when_it_does_not_spawn(tmp_path:
             spawn=spawn,
         )
 
-    queued = read(root, KEY, now_ns=now)
+    queued = read(root, queue_key(KEY), now_ns=now)
     assert [record["path"] for record in queued.records] == ["a0.md", "a1.md", "a2.md", "a3.md"]
 
 
@@ -324,7 +325,7 @@ def test_the_queue_is_json_lines_that_can_report_their_own_losses(tmp_path: Path
     now = _now()
     run_posttool(EDIT, root=root, key=KEY, now_ns=now, pid=1, spawn=Spawns())
 
-    line = journal_paths(root, KEY)[0].read_bytes().splitlines()[0]
+    line = journal_paths(root, queue_key(KEY))[0].read_bytes().splitlines()[0]
     record = json.loads(line)
 
     assert record["path"] == "docs/policy.md"

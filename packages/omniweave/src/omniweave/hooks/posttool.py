@@ -41,6 +41,11 @@ stamped with `pid` and `seq`, and countable by `Journal.gaps`. The plan says *"a
 path"* and does not say in what form; every other file under `<sessions>/` is JSON lines, and this
 is the one that can report its own losses.
 
+It is also its **own** file rather than a kind of record in the session journal, which is where
+W7.4g first put it and which was wrong: a shared file makes edit records and briefing records evict
+each other through one 4 MiB rotation, and 10:1884's 240-minute read bound -- written for a briefing
+-- would drop queued work the 24-hour sweep is still keeping. `queue_key()` carries that argument.
+
 ## THE SELF-INVOCATION RULE IS A SECURITY RULE WEARING A PORTABILITY HAT
 
 10:2065:
@@ -81,6 +86,8 @@ if TYPE_CHECKING:
 __all__ = [
     "CREATE_NO_WINDOW",
     "DETACHED_PROCESS",
+    "EDITED",
+    "KIND",
     "LEASE_NAME",
     "LEASE_TTL_MS",
     "PENDING_SUFFIX",
@@ -89,6 +96,7 @@ __all__ = [
     "command",
     "edited_path",
     "handler",
+    "queue_key",
     "read_lease",
     "release_lease",
     "run_posttool",
@@ -109,6 +117,16 @@ expired early. The constant is the value written; the value honoured is whatever
 """
 
 PENDING_SUFFIX: Final[str] = ".pending"
+
+KIND: Final[str] = "kind"
+EDITED: Final[str] = "edited"
+"""The queue record's one discriminator, spelled here because there is nowhere else to spell it.
+
+`precompact.KIND` is the same four letters for the same purpose in another module, and the
+duplication is D405 arriving as code: 10 section 8 has no record schema at all, so every writer
+names its own fields and every reader guesses them. Two modules agreeing by coincidence is what a
+missing table looks like from the inside.
+"""
 
 DETACHED_PROCESS: Final[int] = 0x00000008
 CREATE_NO_WINDOW: Final[int] = 0x08000000
@@ -232,6 +250,34 @@ def release_lease(root: Path) -> bool:
     return True
 
 
+def queue_key(key: str) -> str:
+    """The journal key of one session's queue, so the queue is `<key>.pending.jsonl` on disk.
+
+    **10:2053 names a file -- `<sessions>/<key>.pending` -- and the queue belongs in it rather than
+    in the session journal**, which is where W7.4g first put it. The two files are described
+    separately and they are different kinds of thing, in three ways that matter:
+
+    1. **They share a budget if they share a file.** 10:1914 rotates the journal at 4 MiB and keeps
+       *"one generation, then discard"*, so a session busy enough to rotate twice discards the
+       oldest generation -- and a mixed file makes edit records and briefing records evict each
+       other, which is one instrument destroying another.
+    2. **They want different read bounds.** 10:1884 age-bounds every hook read at 240 minutes
+       because *"a stale journal from a dead session must not present days-old work as this task's
+       focus"* -- a rule about a briefing's honesty. A queued edit is not a focus, it is an
+       outstanding piece of work, and dropping it at 240 minutes deletes it from a file the 24-hour
+       sweep is still keeping. D428.
+    3. **A drain has to be able to find the queues.** The lease is per deployment (10:2063) and the
+       queue is per session, so whatever drains must enumerate them; `*.pending.jsonl` is that
+       enumeration and a journal holding some records of one kind is not. D427.
+
+    `.pending.jsonl` and not the plan's bare `.pending`, because the file *is* JSON lines -- capped,
+    stamped and countable, which is what D421 buys -- and every other JSON-lines file under
+    `<sessions>/` says so in its name. A queue named `.pending` alone would be the one file a reader
+    must parse whose name does not admit it.
+    """
+    return f"{key}{PENDING_SUFFIX}"
+
+
 def _as_int(value: object) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
@@ -335,7 +381,8 @@ def run_posttool(
         return Advice(counter=_TIER_NO_PATH)
     if root is None or not key:
         return Advice(counter=_TIER_NO_KEY)
-    if not append(root, key, {"kind": "edited", "path": path}, at_ns=now_ns, pid=pid).ok:
+    queue = queue_key(key)
+    if not append(root, queue, {KIND: EDITED, "path": path}, at_ns=now_ns, pid=pid).ok:
         return Advice(counter=_TIER_NO_WRITE)
 
     broke = break_lease(root, now_ns=now_ns)
