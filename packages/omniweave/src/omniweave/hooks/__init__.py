@@ -15,9 +15,9 @@ switches, the deadline and the `Outcome` that makes a silent failure visible fro
 `precompact.py` and `sessionstart.py` are the two halves of the compaction play: 10:1927 gives
 `PreCompact` no model-facing channel, so it writes two files and says nothing, and `SessionStart`
 is the one hook that speaks. `prompt.py` is the front-load `UserPromptSubmit` runs and the one G26
-measures, and `pretool.py` is the five-gate scope check -- the only handler here that can stop
-something. `PostToolUse`, `SessionEnd`, the counters file and the lease are the cells after these
-six.
+measures, `pretool.py` is the five-gate scope check -- the only handler here that can stop
+something -- and `posttool.py` is the coalescing enqueue that keeps `Edit|Write` from spawning one
+child per edit. `SessionEnd` and the counters file are the cells after these seven.
 """
 
 from __future__ import annotations
@@ -34,6 +34,17 @@ from omniweave.hooks.envelope import (
     run,
     session_key,
     silent_because,
+)
+from omniweave.hooks.posttool import (
+    LEASE_NAME,
+    LEASE_TTL_MS,
+    Lease,
+    break_lease,
+    command,
+    read_lease,
+    release_lease,
+    run_posttool,
+    take_lease,
 )
 from omniweave.hooks.precompact import (
     BRIEFING,
@@ -103,6 +114,8 @@ __all__ = [
     "EXIT_OK",
     "JOURNAL_MAX_BYTES",
     "KINDS",
+    "LEASE_NAME",
+    "LEASE_TTL_MS",
     "MEDIUM_MAX_CHARS",
     "MIN_SIZE_BYTES",
     "OPAQUE_DOC_EXTS",
@@ -117,6 +130,7 @@ __all__ = [
     "EventSpec",
     "Indexed",
     "Journal",
+    "Lease",
     "Lookup",
     "Outcome",
     "Probes",
@@ -126,15 +140,20 @@ __all__ = [
     "Written",
     "anchor",
     "append",
+    "break_lease",
     "briefing",
+    "command",
     "counter",
     "emission",
     "enforce_mode",
     "journal_paths",
     "read",
+    "read_lease",
+    "release_lease",
     "render_briefing",
     "rotate",
     "run",
+    "run_posttool",
     "run_precompact",
     "run_pretool",
     "run_prompt",
@@ -145,6 +164,7 @@ __all__ = [
     "silent_because",
     "strip_cites",
     "sweep",
+    "take_lease",
     "ttl_seconds",
     "verified",
     "write_marker",
