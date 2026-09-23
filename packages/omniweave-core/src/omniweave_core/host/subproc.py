@@ -192,7 +192,7 @@ import socket
 import subprocess  # S4. TID251 is per-file-ignored for this path in pyproject.toml.
 import sys
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
@@ -2464,6 +2464,58 @@ def _drain(stream: object, ring: StderrRing) -> None:
             stream.close()  # type: ignore[attr-defined]
 
 
+class Captured(NamedTuple):
+    """One finished child: exit status, both streams in full, and why it failed to run if it did.
+
+    `returncode` is `None` when there is no status to report -- the spawn itself failed, or the
+    child outlived `timeout_s` and was killed. `failed` then names the exception class and never
+    its message, for the reason `envelope.Outcome.failed` gives: a message carries paths.
+    """
+
+    returncode: int | None
+    stdout: bytes = b""
+    stderr: bytes = b""
+    failed: str = ""
+
+
+def run_captured(
+    argv: Sequence[str],
+    *,
+    stdin: bytes,
+    cwd: str,
+    env: Mapping[str, str],
+    timeout_s: float,
+) -> Captured:
+    """Run `argv` to completion with `stdin` piped in and both streams captured. Never raises.
+
+    The one synchronous run-and-capture in the framework, and it is here because this file and
+    `toolchain.py` are the only two `TID251` allows to import `subprocess`. Its first caller is
+    `ow hooks check` (10 section 8.7), which must *"execute the installed command string"* as a host
+    would -- a real child, piped stdio, the host's argv -- and read back what it printed.
+
+    `shell=False` and an argv, never a string: the caller has already split the command the way the
+    host's shell would, and resolving the executable is the caller's job because *that* is the
+    thing being checked. `(OSError, ValueError)` is 10:2072's pair -- `ValueError` covers a NUL byte
+    in an argument, which a command string read from a settings file can carry.
+    """
+    try:
+        done = subprocess.run(  # noqa: S603 -- argv is a sequence, shell=False, cwd is explicit
+            list(argv),
+            input=stdin,
+            capture_output=True,
+            cwd=cwd,
+            env=dict(env),
+            timeout=timeout_s,
+            shell=False,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return Captured(None, bytes(exc.stdout or b""), bytes(exc.stderr or b""), "TimeoutExpired")
+    except (OSError, ValueError) as exc:
+        return Captured(None, failed=type(exc).__name__)
+    return Captured(done.returncode, done.stdout, done.stderr)
+
+
 def synthesise_crash(proc: WorkerProcess, ring: StderrRing, *, wait_ms: int = 0) -> HostVerdict:
     """The exit status plus the tail of the stderr ring, and nothing else.
 
@@ -3290,6 +3342,7 @@ __all__ = [
     "AimdState",
     "BatchEvent",
     "ByteChannel",
+    "Captured",
     "Countdown",
     "CrashLedger",
     "Deadlines",
@@ -3328,6 +3381,7 @@ __all__ = [
     "peak_rss_bytes",
     "pipe_names",
     "retry_batch_size",
+    "run_captured",
     "spawn_worker",
     "synthesise_crash",
 ]

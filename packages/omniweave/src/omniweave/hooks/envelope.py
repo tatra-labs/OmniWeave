@@ -28,7 +28,7 @@ states is not a default.
 
 `emission()` is therefore the only way this package produces stdout, it writes exactly that key,
 and it **refuses an event that has no channel**: `PreCompact`, `PostToolUse` and `SessionEnd`
-return `""` whatever they are handed. 10:1929 records what the alternative costs -- jcodemunch
+return `""` whatever they are handed. 10:1926 records what the alternative costs -- jcodemunch
 shipped a `PreCompact` handler that emitted its briefing into a field hosts discard, for a whole
 release line.
 
@@ -284,7 +284,7 @@ def emission(event: str, advice: Advice) -> str:
     Three properties, each of which is a defect somewhere else if it is missing:
 
     1. **An event with no channel emits nothing**, whatever it was handed. `PreCompact`,
-       `PostToolUse` and `SessionEnd` have `cap = 0`, and 10:1929 records a shipped handler that
+       `PostToolUse` and `SessionEnd` have `cap = 0`, and 10:1926 records a shipped handler that
        wrote a briefing into a `PreCompact` `systemMessage` hosts discard.
     2. **The text is capped at the event's own number**, and the cap is on the field rather than on
        the payload: 10:1970 charges the `<ow:untrusted>` wrapper *"against the same field"*, so a
