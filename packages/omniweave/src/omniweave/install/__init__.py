@@ -10,8 +10,11 @@ no document defines, each defined from where it is used. `primitives.py` is four
 shared write primitives -- `atomic_write`, `json_deep_equal`, the backing-up `read_json`, and the
 marked-section pair -- and the measurement that decided what they had to be: the byte-identity
 reversal gate (10:1775) is a claim about a JSON serialiser the plan never specifies, and the
-obvious one round-trips one of this machine's five host configs (D441). The receipt (10 section
-7.3), the write modes, the hosts and the verbs come next.
+obvious one round-trips one of this machine's five host configs (D441). `receipt.py` is 10
+section 7.3's receipt and the lock it is written under: rows with two digests, because a whole-file
+hash goes stale the moment a second row's write or the host itself touches the file (D448), and
+the house lock, because an age cannot tell a dead holder from one waiting at its own prompt (D450).
+The write modes, the hosts and the verbs come next.
 """
 
 from __future__ import annotations
@@ -30,6 +33,15 @@ from omniweave.install.primitives import (
     render_json,
     upsert_marked_section,
     write_json,
+)
+from omniweave.install.receipt import (
+    Entry,
+    Receipt,
+    forget,
+    load,
+    record,
+    take_lock,
+    verdict,
 )
 from omniweave.install.types import (
     ACTIONS,
@@ -56,22 +68,29 @@ __all__ = [
     "TARGET_IDS",
     "AgentTarget",
     "DetectionResult",
+    "Entry",
     "FileAction",
     "HookSet",
     "InstallOptions",
     "JsonStyle",
     "Location",
     "ReadJson",
+    "Receipt",
     "Section",
     "SkillSet",
     "TargetId",
     "WriteResult",
     "Wrote",
     "atomic_write",
+    "forget",
     "json_deep_equal",
+    "load",
     "read_json",
+    "record",
     "remove_marked_section",
     "render_json",
+    "take_lock",
     "upsert_marked_section",
+    "verdict",
     "write_json",
 ]
