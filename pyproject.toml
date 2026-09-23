@@ -201,6 +201,14 @@ ban-relative-imports = "all"
 # from this process's own `sys.path`, which is a value and not an import.
 "packages/omniweave/tests/conform/test_hooks_session_append.py" = ["TID251"]
 
+# 10:2071 requires `DETACHED_PROCESS | CREATE_NO_WINDOW` on Windows and `start_new_session` on
+# POSIX, and `posttool.py` spells those as integers because `subprocess` is banned in that package
+# for a good reason: a hook that spawned directly would be a second site allowed to, for a call
+# `omniweave_core.host.subproc` already knows how to make. This suite imports `subprocess` to
+# assert the two spellings are equal, which is the only thing that stops them drifting -- and it
+# imports it to READ two constants, never to start a process.
+"packages/omniweave/tests/unit/test_hooks_posttool.py" = ["TID251"]
+
 # A test may reach for a private to test it, and a test name may carry a type name verbatim
 # (`..._not_a_Path`). Neither is production style.
 "packages/omniweave-core/tests/unit/test_config.py" = ["PLC0415", "N802"]
