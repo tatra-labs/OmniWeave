@@ -19,7 +19,9 @@ measures, `pretool.py` is the five-gate scope check -- the only handler here tha
 something -- and `posttool.py` is the coalescing enqueue that keeps `Edit|Write` from spawning one
 child per edit, and `sessionend.py` is the last of the six: the one event with no subsection
 of its own, whose job is one undefined word and a sweep two other triggers already run.
-The counters file (D397) and `ow hooks check` (section 8.7) are the cells after these eight.
+`main.py` is `ow hook <event>` itself -- the process around all six, reading and writing bytes
+because a piped child on Windows gets cp1252 (D431). It is deliberately not re-exported here: an
+entry point is not API. The counters file (D397) and `ow hooks check` (section 8.7) come next.
 """
 
 from __future__ import annotations

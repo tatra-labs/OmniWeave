@@ -1,7 +1,7 @@
 """`PostToolUse`: the queue, the lease, the break, and an `argv[0]` test the plan gets wrong.
 
 **The sharpest test here is `test_the_plans_own_isabs_accepts_a_path_this_rule_exists_to_reject`.**
-10:2068 names `os.path.isabs` as the check that keeps an untrusted cwd out of the spawn, and on
+10:2069 names `os.path.isabs` as the check that keeps an untrusted cwd out of the spawn, and on
 Windows that function returns `True` for `\\ow.exe` and `/usr/bin/ow` -- both of which resolve
 against the *current drive*, which is the cwd. The module uses `Path.is_absolute()` instead and the
 test pins the disagreement so the reason cannot be lost. D425.
@@ -72,7 +72,7 @@ class Spawns:
 
 
 # ---------------------------------------------------------------------------------------------
-# The self-invocation rule. 10:2065, and the place the plan is wrong.
+# The self-invocation rule. 10:2066, and the place the plan is wrong.
 # ---------------------------------------------------------------------------------------------
 
 
@@ -82,13 +82,24 @@ def test_an_absolute_argv0_is_used_directly() -> None:
 
 @pytest.mark.parametrize("argv0", ["ow", "./ow", "", "bin/ow", "..\\ow.exe"])
 def test_a_relative_argv0_falls_back_to_the_interpreter(argv0: str) -> None:
-    """10:2068: a relative `argv[0]` is re-resolved against the untrusted repository."""
+    """10:2069: a relative `argv[0]` is re-resolved against the untrusted repository."""
     assert command(argv0, executable="/py") == ("/py", "-m", "omniweave", "ingest")
 
 
 def test_the_fallback_uses_this_interpreter_and_needs_no_path_lookup() -> None:
     assert command("ow") == (sys.executable, "-m", "omniweave", "ingest")
     assert Path(sys.executable).is_absolute()
+
+
+def test_an_absolute_main_py_is_not_a_launcher_and_falls_back() -> None:
+    """D434: under `python -m omniweave`, `sys.argv[0]` is the absolute path of `__main__.py`."""
+    import omniweave.__main__ as launched  # noqa: PLC0415
+
+    main_py = str(Path(str(launched.__file__)).resolve())
+
+    assert Path(main_py).is_absolute()
+    assert command(main_py, executable="/py") == ("/py", "-m", "omniweave", "ingest")
+    assert command(main_py.upper(), executable="/py")[0] == "/py"
 
 
 def test_a_relative_argv0_is_never_resolved_against_the_cwd(tmp_path: Path) -> None:
@@ -108,7 +119,7 @@ def test_a_relative_argv0_is_never_resolved_against_the_cwd(tmp_path: Path) -> N
 def test_the_plans_own_isabs_accepts_a_path_this_rule_exists_to_reject() -> None:
     """D425. `os.path.isabs` calls two drive-relative forms absolute; both resolve against the cwd.
 
-    10:2068 names `os.path.isabs` by name. On Windows it returns `True` for a path with a root and
+    10:2069 names `os.path.isabs` by name. On Windows it returns `True` for a path with a root and
     no drive, which Windows resolves against the drive of the *current directory* -- the untrusted
     repository the rule is about. `Path.is_absolute()` returns `False` for exactly those.
     """
@@ -234,7 +245,7 @@ def test_releasing_a_lease_that_is_already_gone_is_not_an_error(tmp_path: Path) 
 
 
 # ---------------------------------------------------------------------------------------------
-# Coalescing. 10:2052.
+# Coalescing. 10:2053.
 # ---------------------------------------------------------------------------------------------
 
 
@@ -437,9 +448,10 @@ def test_the_module_imports_no_subprocess_and_no_core() -> None:
     assert not [name for name in names if name.startswith("omniweave_core")]
 
 
-def test_the_uncoalesced_list_names_the_six_readings_this_enqueue_runs_against() -> None:
+def test_the_uncoalesced_list_names_the_seven_readings_this_enqueue_runs_against() -> None:
     stated = uncoalesced()
 
-    assert len(stated) == 6
+    assert len(stated) == 7
     assert any("D421" in item for item in stated)
     assert any("D425" in item for item in stated)
+    assert any("D434" in item for item in stated)
