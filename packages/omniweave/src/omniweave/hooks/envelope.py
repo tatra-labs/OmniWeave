@@ -177,11 +177,28 @@ class Advice:
     `counter` is a **tier name** and never prompt text -- 10:1990 states the rule and this is where
     it is kept, because a handler returning a message here is the one way user input could reach a
     counter file.
+
+    `after_emit` is 10:2004's ordering and it is a field rather than a call the handler makes:
+    the HIGH-tier injection *"is committed to the session ledger **after the hook's stdout is
+    flushed** -- same rule as section 3.11(c), same reason."* A handler cannot honour that, because
+    it returns before anything is written. So it hands the callback back and `Outcome.after_emit`
+    carries it to the one place that knows the bytes are gone.
+
+    **Named `after_emit` and not `commit`**, which is `stdio.Reply.after_send`'s spelling and is
+    also the only one available: `.commit()` in this repository means a SQLite transaction, the
+    semgrep bank bans it outside `omniweave_core.store`, and the gate flagged this field the first
+    time it was written that way. The ban is right -- a reader cannot tell two `commit`s apart --
+    and `after_emit` says the thing that actually matters, which is *when*.
+
+    This is `stdio.Reply.after_send` in a second distribution, for the same clause and with the same
+    argument: D384 measured that a `send` which has returned is not a `send` that has arrived, and
+    a ledger committed before the write is a ledger claiming an emission the model never saw.
     """
 
     text: str = ""
     deny: bool = False
     counter: str = ""
+    after_emit: Callable[[], None] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,6 +215,7 @@ class Outcome:
     elapsed_ms: int = 0
     breached: bool = False
     failed: str = ""
+    after_emit: Callable[[], None] | None = None
 
     def exit_code(self) -> int:
         """`EXIT_OK`, always, and it takes no argument that could make it otherwise."""
@@ -206,6 +224,25 @@ class Outcome:
     def spoke(self) -> bool:
         """Whether anything reached the model."""
         return bool(self.stdout)
+
+    def settle(self) -> bool:
+        """Run the ledger write, if there is one. **Call this only after stdout is flushed.**
+
+        10:2004 puts the ledger write *"after the hook's stdout is flushed"* and 10:981 says why
+        the ordering is made structural rather than tested for: it makes three failures impossible
+        instead of unlikely. So the `__main__` is `print`, `flush`, `settle()`, `exit(0)`, and
+        nothing else in this package may call it -- a test asserts that over the AST, exactly as
+        `stdio.py` asserts its one `after_send` call site.
+
+        Returns whether anything ran, so the caller can count a settle it did not make.
+        """
+        if self.after_emit is None:
+            return False
+        try:
+            self.after_emit()
+        except Exception:  # 10:1842 -- a failed ledger write is still a silent exit 0.
+            return False
+        return True
 
 
 def session_key(payload: Mapping[str, Any]) -> str:
@@ -319,10 +356,16 @@ def run(
             elapsed_ms=elapsed,
             breached=True,
         )
+    stdout = emission(event, advice)
     return Outcome(
-        stdout=emission(event, advice),
+        stdout=stdout,
         counters=(counter(spec.slug, tier),),
         elapsed_ms=elapsed,
+        #  The commit rides only on the path that actually emits. A breach returns above and a
+        #  channel-less event renders `""` here, and in both cases 10:2004's "after the hook's
+        #  stdout is flushed" names a flush that never happens -- so there is nothing to commit
+        #  and a ledger that recorded one would claim an emission the model never saw.
+        after_emit=advice.after_emit if stdout else None,
     )
 
 

@@ -14,8 +14,9 @@ the other side of the line D340 is about.
 switches, the deadline and the `Outcome` that makes a silent failure visible from inside.
 `precompact.py` and `sessionstart.py` are the two halves of the compaction play: 10:1927 gives
 `PreCompact` no model-facing channel, so it writes two files and says nothing, and `SessionStart`
-is the one hook that speaks. The other four handlers, the counters file and the lease are the cells
-after these four.
+is the one hook that speaks. `prompt.py` is the front-load `UserPromptSubmit` runs and the one G26
+measures. `PreToolUse`, `PostToolUse`, `SessionEnd`, the counters file and the lease are the cells
+after these five.
 """
 
 from __future__ import annotations
@@ -44,6 +45,14 @@ from omniweave.hooks.precompact import (
     run_precompact,
     strip_cites,
 )
+from omniweave.hooks.prompt import (
+    CITE_RE,
+    MEDIUM_MAX_CHARS,
+    Probes,
+    Shapes,
+    run_prompt,
+    shapes_of,
+)
 from omniweave.hooks.session import (
     JOURNAL_MAX_BYTES,
     READ_AGE_MIN,
@@ -71,11 +80,13 @@ from omniweave.hooks.sessionstart import (
 __all__ = [
     "BRIEFING",
     "BRIEFING_MAX_CHARS",
+    "CITE_RE",
     "COMPACTED",
     "EVENTS",
     "EXIT_OK",
     "JOURNAL_MAX_BYTES",
     "KINDS",
+    "MEDIUM_MAX_CHARS",
     "READ_AGE_MIN",
     "RECORD_MAX_BYTES",
     "SELF_DEADLINE_MS",
@@ -87,6 +98,8 @@ __all__ = [
     "EventSpec",
     "Journal",
     "Outcome",
+    "Probes",
+    "Shapes",
     "Swept",
     "Written",
     "anchor",
@@ -100,9 +113,11 @@ __all__ = [
     "rotate",
     "run",
     "run_precompact",
+    "run_prompt",
     "run_sessionstart",
     "session_key",
     "sessions_dir",
+    "shapes_of",
     "silent_because",
     "strip_cites",
     "sweep",
