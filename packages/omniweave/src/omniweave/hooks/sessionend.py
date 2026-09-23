@@ -36,7 +36,7 @@ The plan noticed that a host which crashes never fires this event, and drew the 
 *directory*: pruning must not depend on it. The same crash does something worse to the *queue*, and
 the plan does not draw that one.
 
-10:2063 makes the lease **per deployment** and 10:2053 makes the queue **per session**. A drain is
+10:2063 makes the lease **per deployment** and 10:2054 makes the queue **per session**. A drain is
 spawned by whichever hook won the lease, and nothing says whose queue it reads. If it reads only
 the spawning session's, then a session whose host died with edits queued and no lease taken is
 never drained by anything: its own hooks will not fire again, another session's hooks drain their
@@ -278,7 +278,7 @@ def unflushed() -> tuple[str, ...]:
         "appends to files it closes -- so there is no buffer. The `.pending` queue is the only "
         "outstanding thing under `<sessions>/` and is what is flushed here (D426)",
         "whose queue a drain drains. The lease is per deployment (10:2063) and the queue is per "
-        "session (10:2053), and a session whose host crashed with edits queued is drained by "
+        "session (10:2054), and a session whose host crashed with edits queued is drained by "
         "nothing and swept at 24 h -- the crash 10:1919 names for pruning, costing work rather "
         "than disk (D427)",
         "how far back a queue read reaches. 10:1884 bounds every hook read at 240 minutes and "

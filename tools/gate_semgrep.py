@@ -76,6 +76,18 @@ be able to spawn a process. The glob is the same string the bank's `paths.includ
 two halves scope identically.
 """
 
+ENTRY = "packages/*/src/**/__main__.py"
+"""A process entry point, which is executed and never imported, and so is not library code. D435.
+
+02-architecture.md line 392 bans `os.getcwd()` and `sys.exit` *"in library code"* and never says
+where library code ends, while this bank's own message for the exit ban tells the reader to *"let
+the CLI map it onto one of its twelve exit codes"* -- which presumes a site that may exit. A process
+has to read its working directory and set its exit status somewhere. `__main__.py` is the narrowest
+place that can be: a module Python runs for `-m` and that nothing imports as a library. Exempted
+from exactly those two rules and no others, so the ambient reads of a whole distribution are
+visible in one file per distribution.
+"""
+
 STORE = "packages/omniweave-core/src/omniweave_core/store/**"
 HOST = "packages/omniweave-core/src/omniweave_core/host/**"
 DRIVERS = "packages/omniweave-core/src/omniweave_core/drivers/**"
@@ -335,6 +347,7 @@ AST_BANS: tuple[AstBan, ...] = (
         rule_id="omniweave-no-getcwd-in-library-code",
         ban="os.getcwd() in library code",
         include=LIBRARY,
+        exclude=(ENTRY,),
         calls=frozenset({"os.getcwd", "os.getcwdb", "Path.cwd", "pathlib.Path.cwd"}),
         bare_calls=frozenset({"getcwd"}),
     ),
@@ -392,6 +405,7 @@ AST_BANS: tuple[AstBan, ...] = (
         rule_id="omniweave-no-sys-exit-in-library-code",
         ban="sys.exit in library code",
         include=LIBRARY,
+        exclude=(ENTRY,),
         calls=frozenset({"sys.exit"}),
         bare_calls=frozenset({"exit", "quit"}),
     ),
@@ -615,6 +629,7 @@ def _sys_exit_raise(rel: str, tree: ast.Module) -> Iterator[Finding]:
         rule_id="omniweave-no-sys-exit-in-library-code",
         ban="sys.exit in library code",
         include=LIBRARY,
+        exclude=(ENTRY,),
     )
     if not ban.covers(rel):
         return

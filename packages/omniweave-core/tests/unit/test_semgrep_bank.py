@@ -393,6 +393,8 @@ PLAIN = f"{CORE}/model/block.py"
 ISLAND = "packages/omniweave/src/omniweave/route/eval.py"
 TARGET = "packages/omniweave-target-deck/src/omniweave_target_deck/lower.py"
 TEST_TREE = "packages/omniweave-core/tests/unit/test_determinism.py"
+#  D435: a process entry point is exempt from the cwd and exit bans, and from nothing else.
+ENTRY_FILE = "packages/omniweave/src/omniweave/__main__.py"
 
 # (rule id, source that must fire, path where it fires, path where the same source is exempt)
 POSITIVE: tuple[tuple[str, str, str, str | None], ...] = (
@@ -409,7 +411,13 @@ POSITIVE: tuple[tuple[str, str, str, str | None], ...] = (
     (LOAD_RULE, "def f(ep):\n    return ep.load()\n", DRIVERS_FILE, None),
     (IMPORT_MODULE_RULE, "import importlib\nimportlib.import_module('x')\n", PLAIN, HOST_FILE),
     (DUNDER_IMPORT_RULE, "m = __import__('x')\n", PLAIN, HOST_FILE),
-    ("omniweave-no-getcwd-in-library-code", "import os\nd = os.getcwd()\n", PLAIN, None),
+    ("omniweave-no-getcwd-in-library-code", "import os\nd = os.getcwd()\n", PLAIN, ENTRY_FILE),
+    (
+        "omniweave-no-getcwd-in-library-code",
+        "from pathlib import Path\nd = Path.cwd()\n",
+        PLAIN,
+        ENTRY_FILE,
+    ),
     (
         "omniweave-no-relative-path-root-in-library-code",
         "from pathlib import Path\nr = Path('.')\n",
@@ -426,8 +434,8 @@ POSITIVE: tuple[tuple[str, str, str, str | None], ...] = (
         PLAIN,
         None,
     ),
-    ("omniweave-no-sys-exit-in-library-code", "import sys\nsys.exit(1)\n", PLAIN, None),
-    ("omniweave-no-sys-exit-in-library-code", "raise SystemExit(2)\n", PLAIN, None),
+    ("omniweave-no-sys-exit-in-library-code", "import sys\nsys.exit(1)\n", PLAIN, ENTRY_FILE),
+    ("omniweave-no-sys-exit-in-library-code", "raise SystemExit(2)\n", PLAIN, ENTRY_FILE),
     (ISLANDS_RULE, "import time\nd = time.monotonic()\n", ISLAND, PLAIN),
     (ISLANDS_RULE, "import random\n", TARGET, None),
     (

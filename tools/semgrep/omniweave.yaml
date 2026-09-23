@@ -413,6 +413,8 @@ rules:
     paths:
       include:
         - "packages/*/src/**"
+      exclude:
+        - "packages/*/src/**/__main__.py"
     metadata:
       gate: G8
       ban: "os.getcwd() in library code"
@@ -620,6 +622,8 @@ rules:
     paths:
       include:
         - "packages/*/src/**"
+      exclude:
+        - "packages/*/src/**/__main__.py"
     metadata:
       gate: G8
       ban: "sys.exit in library code"

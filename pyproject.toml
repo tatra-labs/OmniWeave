@@ -201,6 +201,13 @@ ban-relative-imports = "all"
 # from this process's own `sys.path`, which is a value and not an import.
 "packages/omniweave/tests/conform/test_hooks_session_append.py" = ["TID251"]
 
+# D431 is a claim about a child process's stdio encoding when its stdio are pipes, which is how
+# every host runs a hook, and nothing in-process can observe it: the parent's streams are whatever
+# pytest made them. This suite starts `python -m omniweave hook <event>` exactly as a host would,
+# plus one control child running the naive `print()` so the fix is measured against the failure it
+# fixes. It is under `tests/conform/` as 13-quality.md section 2.7 requires.
+"packages/omniweave/tests/conform/test_hooks_process.py" = ["TID251"]
+
 # 10:2071 requires `DETACHED_PROCESS | CREATE_NO_WINDOW` on Windows and `start_new_session` on
 # POSIX, and `posttool.py` spells those as integers because `subprocess` is banned in that package
 # for a good reason: a hook that spawned directly would be a second site allowed to, for a call

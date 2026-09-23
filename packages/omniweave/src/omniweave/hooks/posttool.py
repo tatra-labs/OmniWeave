@@ -1,6 +1,6 @@
 """`PostToolUse`: append the edited path, and spawn one drain per burst rather than one per edit.
 
-10:2052 states the problem and the shape of the answer in two sentences:
+10:2053 states the problem and the shape of the answer in two sentences:
 
 > `Edit|Write` fires often, and **one process per edit is how a hook becomes a performance bug.**
 > The handler appends the edited path to `<sessions>/<key>.pending` and spawns the detached
@@ -48,7 +48,7 @@ each other through one 4 MiB rotation, and 10:1884's 240-minute read bound -- wr
 
 ## THE SELF-INVOCATION RULE IS A SECURITY RULE WEARING A PORTABILITY HAT
 
-10:2065:
+10:2066:
 
 > the hook process inherits the host's minimal PATH, so a bare-name spawn dies silently on exactly
 > the installs (pipx, `pip --user`, framework Python) that needed the absolute path. **Prefer the
@@ -65,7 +65,7 @@ interpreter, and a relative `argv[0]` is never resolved.
 
 `subprocess`, which `TID251` bans outside `omniweave_core.toolchain` and
 `omniweave_core.host.subproc`. The spawn arrives as a callable and `spawn_kwargs()` returns the
-flags 10:2071 requires as plain integers, so the knowledge lives here and the import does not. A
+flags 10:2072 requires as plain integers, so the knowledge lives here and the import does not. A
 test with the ban lifted asserts the integers are `subprocess`'s own.
 """
 
@@ -130,7 +130,7 @@ missing table looks like from the inside.
 
 DETACHED_PROCESS: Final[int] = 0x00000008
 CREATE_NO_WINDOW: Final[int] = 0x08000000
-"""10:2071's Windows flags, as integers, because `subprocess` is `TID251`-banned in this package.
+"""10:2072's Windows flags, as integers, because `subprocess` is `TID251`-banned in this package.
 
 A test with the ban lifted asserts these equal `subprocess.DETACHED_PROCESS` and
 `subprocess.CREATE_NO_WINDOW`, so the two spellings cannot drift.
@@ -138,6 +138,7 @@ A test with the ban lifted asserts these equal `subprocess.DETACHED_PROCESS` and
 
 _MODULE_FALLBACK: Final[tuple[str, ...]] = ("-m", "omniweave")
 _INGEST: Final[tuple[str, ...]] = ("ingest",)
+_SOURCE_SUFFIX: Final[str] = ".py"
 
 _PID: Final[str] = "pid"
 _AT_NS: Final[str] = "at_ns"
@@ -242,7 +243,7 @@ def break_lease(root: Path, *, now_ns: int) -> bool:
 
 
 def release_lease(root: Path) -> bool:
-    """The child's unlink when the drain finishes. 10:2061, and not this hook's to call."""
+    """The child's unlink when the drain finishes. 10:2062, and not this hook's to call."""
     try:
         (root / LEASE_NAME).unlink(missing_ok=True)
     except OSError:
@@ -253,7 +254,7 @@ def release_lease(root: Path) -> bool:
 def queue_key(key: str) -> str:
     """The journal key of one session's queue, so the queue is `<key>.pending.jsonl` on disk.
 
-    **10:2053 names a file -- `<sessions>/<key>.pending` -- and the queue belongs in it rather than
+    **10:2054 names a file -- `<sessions>/<key>.pending` -- and the queue belongs in it rather than
     in the session journal**, which is where W7.4g first put it. The two files are described
     separately and they are different kinds of thing, in three ways that matter:
 
@@ -283,20 +284,20 @@ def _as_int(value: object) -> int:
 
 
 # ---------------------------------------------------------------------------------------------
-# The self-invocation rule. 10:2065.
+# The self-invocation rule. 10:2066.
 # ---------------------------------------------------------------------------------------------
 
 
 def command(argv0: str, executable: str = "") -> tuple[str, ...]:
     """`ow ingest`'s argv. Absolute `argv[0]` wins; anything else is `python -m omniweave`.
 
-    **A relative `argv[0]` is never resolved and that is the security half of the rule.** 10:2068:
+    **A relative `argv[0]` is never resolved and that is the security half of the rule.** 10:2069:
     *"a relative `argv[0]` is re-resolved against the hook's cwd -- the checked-out, untrusted
     repository -- where a file named `ow` must never become the thing we execute."* So the test is
     a shape test and not `shutil.which`: a bare name falls through to the interpreter form rather
     than being looked up.
 
-    **`Path.is_absolute()` and not 10:2068's `os.path.isabs`, because on Windows they disagree on
+    **`Path.is_absolute()` and not 10:2069's `os.path.isabs`, because on Windows they disagree on
     exactly the paths this rule exists to reject.** Measured on this machine:
 
     | `argv[0]` | `os.path.isabs` | `Path.is_absolute` | resolves against |
@@ -307,20 +308,28 @@ def command(argv0: str, executable: str = "") -> tuple[str, ...]:
     | `/usr/bin/ow` | **True** | **False** | the **current drive** |
 
     The last two are drive-relative: Windows resolves them against the drive of the process's cwd,
-    which is the untrusted repository 10:2068 names. `os.path.isabs` calls them absolute and would
+    which is the untrusted repository 10:2069 names. `os.path.isabs` calls them absolute and would
     execute them; `Path.is_absolute` does not. The stricter answer is also the safe one to be wrong
-    about, because the fallback always works. D425.
+    about, because the fallback needs nothing from the cwd. D425. (This said *"always works"* when
+    W7.4g wrote it, and it did not: there was no `omniweave/__main__.py` until W7.4i. D433.)
 
     The fallback *"needs no PATH lookup at all"* because `sys.executable` is an absolute path the
     running process already proved works.
+
+    **An absolute `argv[0]` that is a `.py` file is not a launcher, and `python -m` produces one.**
+    Measured: under `python -m omniweave`, `sys.argv[0]` is the absolute path of `__main__.py`, so
+    10:2068's *"the absolute path this process was launched with"* is a source file -- not an
+    executable on Windows, and neither executable nor shebanged in site-packages on POSIX. Without
+    this test a hook launched the way this function's own fallback launches it would spawn a drain
+    that cannot start. D434.
     """
-    if argv0 and Path(argv0).is_absolute():
+    if argv0 and Path(argv0).is_absolute() and Path(argv0).suffix.lower() != _SOURCE_SUFFIX:
         return (argv0, *_INGEST)
     return (executable or sys.executable, *_MODULE_FALLBACK, *_INGEST)
 
 
 def spawn_kwargs() -> Mapping[str, Any]:
-    """10:2071's detach flags for this platform, as a mapping a caller hands to `subprocess`.
+    """10:2072's detach flags for this platform, as a mapping a caller hands to `subprocess`.
 
     Returned rather than applied, because `subprocess` is `TID251`-banned in this package and the
     ban is right: a hook that spawned directly would be the second site in the framework allowed to,
@@ -366,7 +375,7 @@ def run_posttool(
     spawn: Callable[[Sequence[str]], bool] | None = None,
     argv0: str = "",
 ) -> Advice:
-    """Append, then claim, then spawn -- and never the other way round. 10:2052.
+    """Append, then claim, then spawn -- and never the other way round. 10:2053.
 
     **The append comes first and is unconditional.** A hook that claimed before enqueuing would, on
     losing the claim, exit having recorded nothing: the winner's child drains a queue that does not
@@ -436,10 +445,13 @@ def uncoalesced() -> tuple[str, ...]:
         "where a broken lease is journalled. 10:2062 says the break is journalled; the lease is "
         "per deployment and the journal is per session, so a deployment-wide event lands in one "
         "session's file and the 24 h sweep takes the only record of a wedged child with it (D424)",
-        "what unlinks a lease whose child died. 10:2061 has the child unlink it and 10:2062 has "
+        "what unlinks a lease whose child died. 10:2062 has the child unlink it and 10:2062 has "
         "the next hook break it after `ttl_ms`; a deployment that stops editing between those two "
         "keeps the lease until the sweep, which is 24 h for a 30 s lock",
-        r"10:2068's `os.path.isabs`. On Windows it calls `\ow.exe` and `/usr/bin/ow` absolute, and "
+        r"10:2069's `os.path.isabs`. On Windows it calls `\ow.exe` and `/usr/bin/ow` absolute, and "
         "both resolve against the current drive -- which is the cwd the rule exists to distrust. "
         "`Path.is_absolute()` is used instead and rejects them (D425)",
+        "the absolute path this process was launched with. Under `python -m omniweave` it is "
+        "`__main__.py`, which is absolute and not executable, so a `.py` argv[0] falls back to "
+        "the interpreter form rather than becoming a drain that cannot start (D434)",
     )
