@@ -22,11 +22,18 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
-from omniweave.hooks.envelope import session_key
+from omniweave.hooks.check import Report, check, render
+from omniweave.hooks.envelope import EVENTS, session_key
 from omniweave.hooks.main import WORDS
 from omniweave.hooks.session import CONTROL_DIR, SESSIONS_DIR, append
+from omniweave_core.clock import SystemClock
+from omniweave_core.host.subproc import Captured, run_captured
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
 
 pytestmark = pytest.mark.conform
 
@@ -160,3 +167,50 @@ def test_every_other_root_is_refused_with_exit_70(tmp_path: Path) -> None:
 
     assert done.returncode == 70
     assert b"not dispatched" in done.stderr
+
+
+# ---------------------------------------------------------------------------------------------
+# `ow hooks check` against real children. 10 section 8.7.
+# ---------------------------------------------------------------------------------------------
+
+
+def _runner(
+    argv: Sequence[str], stdin: bytes, cwd: Path, env: Mapping[str, str], timeout: float
+) -> Captured:
+    return run_captured(argv, stdin=stdin, cwd=str(cwd), env=env, timeout_s=timeout)
+
+
+def _checked(tmp_path: Path, commands: Mapping[str, str]) -> Report:
+    return check(
+        commands,
+        runner=_runner,
+        clock=SystemClock(),
+        path=os.environ.get("PATH", ""),
+        scratch=tmp_path,
+        env=_env(),
+    )
+
+
+def test_every_installed_hook_passes_the_check_as_a_real_child(tmp_path: Path) -> None:
+    """The five assertions, against six real processes, from a scratch project. D437, D438."""
+    interpreter = Path(sys.executable).as_posix()
+    commands = {event: f"'{interpreter}' -m omniweave hook {word}" for word, event in WORDS.items()}
+
+    report = _checked(tmp_path, commands)
+
+    assert report.exit_code() == 0, render(report)
+    assert [item.event for item in report.probes] == list(EVENTS)
+    assert all(item.resolution.ok() and item.returncode == 0 for item in report.probes)
+    #  D438: 18:2992-2996 prints 8, 3, 11 and 6 ms. Spawn-inclusive, not one probe gets that low.
+    assert min(item.wall_ms for item in report.probes) > 11
+    #  D437: what the probes wrote, they wrote into the scratch project.
+    assert any((tmp_path / "project" / CONTROL_DIR / SESSIONS_DIR).iterdir())
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="a POSIX interpreter path has no backslashes")
+def test_this_machines_own_interpreter_path_has_the_backslash_bug(tmp_path: Path) -> None:
+    """Pasted unquoted, `sys.executable` is exactly the string a POSIX shell destroys."""
+    report = _checked(tmp_path, {"SessionEnd": f"{sys.executable} -m omniweave hook session-end"})
+
+    assert report.exit_code() == 1
+    assert "consumed the backslashes" in render(report)

@@ -21,7 +21,9 @@ child per edit, and `sessionend.py` is the last of the six: the one event with n
 of its own, whose job is one undefined word and a sweep two other triggers already run.
 `main.py` is `ow hook <event>` itself -- the process around all six, reading and writing bytes
 because a piped child on Windows gets cp1252 (D431). It is deliberately not re-exported here: an
-entry point is not API. The counters file (D397) and `ow hooks check` (section 8.7) come next.
+entry point is not API. `check.py` is `ow hooks check`'s engine -- resolve each installed command
+the way a host's shell would, run it as a real child from a scratch project, and apply section 8.7's
+five assertions -- waiting on the install receipt (W7.5) for the commands. The counters (D397) next.
 """
 
 from __future__ import annotations

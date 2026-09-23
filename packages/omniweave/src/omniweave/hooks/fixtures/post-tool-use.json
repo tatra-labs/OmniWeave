@@ -1,0 +1,9 @@
+{
+  "session_id": "ow-hooks-check",
+  "transcript_path": "ow-hooks-check.jsonl",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "notes.md"
+  }
+}

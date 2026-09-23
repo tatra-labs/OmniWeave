@@ -245,7 +245,7 @@ def test_the_only_key_that_reaches_the_model_is_additional_context() -> None:
 
 @pytest.mark.parametrize("event", ["PreCompact", "PostToolUse", "SessionEnd"])
 def test_an_event_with_no_channel_emits_nothing_whatever_it_is_handed(event: str) -> None:
-    """10:1929: a shipped handler wrote its briefing into a `PreCompact` `systemMessage` hosts
+    """10:1926: a shipped handler wrote its briefing into a `PreCompact` `systemMessage` hosts
     discard, for a whole release line. Here the refusal is structural rather than remembered."""
     assert emission(event, _advice("a restoration briefing")) == ""
     assert emission(event, _advice("x", deny=True)) == ""

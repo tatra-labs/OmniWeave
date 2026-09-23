@@ -1,0 +1,6 @@
+{
+  "session_id": "ow-hooks-check",
+  "transcript_path": "ow-hooks-check.jsonl",
+  "hook_event_name": "SessionStart",
+  "source": "compact"
+}

@@ -357,7 +357,7 @@ def test_the_handler_binds_a_root_and_reads_the_clock_when_it_is_called(tmp_path
 
 
 def test_precompact_cannot_speak_whatever_the_handler_returns() -> None:
-    """10:1929's shipped defect: a briefing emitted here goes into a field hosts discard."""
+    """10:1926's shipped defect: a briefing emitted here goes into a field hosts discard."""
     assert emission("PreCompact", Advice(text="## omniweave session state")) == ""
     assert EVENTS["PreCompact"].cap == 0
 
