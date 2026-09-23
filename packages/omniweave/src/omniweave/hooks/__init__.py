@@ -17,7 +17,9 @@ switches, the deadline and the `Outcome` that makes a silent failure visible fro
 is the one hook that speaks. `prompt.py` is the front-load `UserPromptSubmit` runs and the one G26
 measures, `pretool.py` is the five-gate scope check -- the only handler here that can stop
 something -- and `posttool.py` is the coalescing enqueue that keeps `Edit|Write` from spawning one
-child per edit. `SessionEnd` and the counters file are the cells after these seven.
+child per edit, and `sessionend.py` is the last of the six: the one event with no subsection
+of its own, whose job is one undefined word and a sweep two other triggers already run.
+The counters file (D397) and `ow hooks check` (section 8.7) are the cells after these eight.
 """
 
 from __future__ import annotations
@@ -41,6 +43,7 @@ from omniweave.hooks.posttool import (
     Lease,
     break_lease,
     command,
+    queue_key,
     read_lease,
     release_lease,
     run_posttool,
@@ -96,6 +99,14 @@ from omniweave.hooks.session import (
     sweep,
     write_marker,
 )
+from omniweave.hooks.sessionend import (
+    ENDED,
+    QUEUE_AGE_MIN,
+    end_reason,
+    flush,
+    queued,
+    run_sessionend,
+)
 from omniweave.hooks.sessionstart import (
     SILENT_SOURCES,
     run_sessionstart,
@@ -107,6 +118,7 @@ __all__ = [
     "BRIEFING_MAX_CHARS",
     "CITE_RE",
     "COMPACTED",
+    "ENDED",
     "ENFORCE_ADVISORY",
     "ENFORCE_OFF",
     "ENFORCE_STEER",
@@ -119,6 +131,7 @@ __all__ = [
     "MEDIUM_MAX_CHARS",
     "MIN_SIZE_BYTES",
     "OPAQUE_DOC_EXTS",
+    "QUEUE_AGE_MIN",
     "READ_AGE_MIN",
     "RECORD_MAX_BYTES",
     "SELF_DEADLINE_MS",
@@ -145,8 +158,12 @@ __all__ = [
     "command",
     "counter",
     "emission",
+    "end_reason",
     "enforce_mode",
+    "flush",
     "journal_paths",
+    "queue_key",
+    "queued",
     "read",
     "read_lease",
     "release_lease",
@@ -157,6 +174,7 @@ __all__ = [
     "run_precompact",
     "run_pretool",
     "run_prompt",
+    "run_sessionend",
     "run_sessionstart",
     "session_key",
     "sessions_dir",
