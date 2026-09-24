@@ -49,6 +49,7 @@ __all__ = [
     "DetectionResult",
     "FileAction",
     "HookSet",
+    "HostTarget",
     "InstallOptions",
     "Kind",
     "Location",
@@ -133,7 +134,8 @@ class FileAction:
     and `written` is where the bytes actually went, which differs only when `path` is a symlink:
     `atomic_write` writes through a link rather than replacing it with a regular file (D444).
     `code` is the `OW-*` numeric when the action carries one, `OW-A-032` for a config that was
-    backed up because it would not parse.
+    backed up because it would not parse. `detail` is what the row is, in 18:2975-2980's third
+    column: the key, `key += values`, the events, the marker, or `bundle_hash 4c1f...`.
     """
 
     path: str
@@ -143,6 +145,7 @@ class FileAction:
     note: str = ""
     code: str = ""
     written: str = ""
+    detail: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,3 +182,16 @@ class AgentTarget(Protocol):
     def uninstall(self, loc: Location) -> WriteResult: ...  # removes ONLY what install wrote
     def print_config(self, loc: Location) -> str: ...  # MUST NOT touch the filesystem
     def describe_paths(self, loc: Location) -> tuple[str, ...]: ...
+
+
+class HostTarget(AgentTarget, Protocol):
+    """`AgentTarget` with the two uninstall options the verb needs and 10:1640 does not declare.
+
+    10:1760 prints *"the whole plan before touching anything"*, which is an uninstall that writes
+    nothing, and 10:1428 gives `ow uninstall` a `--keep-cli`. Both are keyword-only with defaults,
+    so a `HostTarget` is still an `AgentTarget` as the plan wrote it.
+    """
+
+    def uninstall(
+        self, loc: Location, *, dry_run: bool = False, keep_cli: bool = False
+    ) -> WriteResult: ...

@@ -22,7 +22,10 @@ file: the lock, a row recorded after each write, and an uninstall that undoes in
 with each file's creator flag merged, then sweeps the directories once (D459). `claude_code.py` is
 the first host and `registry.py` its row. `skilldir.py` is the fifth mode, `dir`: a bundle staged,
 verified against its `sha256-bundle-1` digest (`omniweave.skills.hash`, D464) and renamed into
-place, and removed only on its row's digest. The verbs come next.
+place, and removed only on its row's digest. `verbs.py` is `ow install | uninstall | --check` as
+functions returning an exit code and lines: `--target`'s four resolutions, the plan printed first,
+0 and 9, uninstall's seven steps and `refresh_targets()`. The `ow` command that parses into them
+waits for their `ACTIONS` rows (D467).
 """
 
 from __future__ import annotations

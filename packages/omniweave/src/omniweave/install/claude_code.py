@@ -281,9 +281,16 @@ class ClaudeCode:
             dry_run=opts.dry_run, notes=self._notes(opts),
         )  # fmt: skip
 
-    def uninstall(self, loc: Location, *, dry_run: bool = False) -> WriteResult:
-        """Everything this target's rows name at `loc`, and by re-derivation what they do not."""
-        return uninstall(self.id, loc, self.steps(loc, None), self.env, dry_run=dry_run)
+    def uninstall(
+        self, loc: Location, *, dry_run: bool = False, keep_cli: bool = False
+    ) -> WriteResult:
+        """Everything this target's rows name at `loc`, and by re-derivation what they do not.
+
+        `keep_cli` is 10:1428's `--keep-cli`: `Bash(ow:*)` stays granted when the rest goes.
+        """
+        keep = frozenset({ALLOW_CLI}) if keep_cli else frozenset()
+        steps = self.steps(loc, None)
+        return uninstall(self.id, loc, steps, self.env, dry_run=dry_run, keep=keep)
 
     def print_config(self, loc: Location) -> str:
         """`--hooks steer --skills core --allow-cli`, rendered. Touches no file (10:1641)."""
