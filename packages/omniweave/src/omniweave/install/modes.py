@@ -774,10 +774,8 @@ def _ended(site: Site, kind: Kind, mode: Mode, action: FileAction, entry: Entry 
 
 
 def unbuilt() -> tuple[str, ...]:
-    """What 10:1665's table names that is not here, and why."""
+    """What 10:1665's table leaves open here. `dir` (10:1671) is `skilldir.py`'s."""
     return (
-        "dir (10:1671), the skill bundle. Its digest is 10:2805's sha256-bundle-1, which is the "
-        "skills cell's",
         "what install does with a file that will not round-trip (D441) or would not parse (D443). "
         "It writes, as the plan's text does, and the action's note says what that costs",
     )

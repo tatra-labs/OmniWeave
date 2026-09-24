@@ -185,7 +185,9 @@ def test_an_empty_home_is_created_into_and_comes_back_empty(tmp_path: Path) -> N
     again = _ok(host.install("global", STEER))
     assert set(again.values()) == {"unchanged"}
     undone = host.uninstall("global")
-    assert set(_ok(undone).values()) == {"removed"}, undone
+    actions = _ok(undone)
+    assert actions.pop("skill:~/.agents/skills/omniweave") == "not-found"
+    assert set(actions.values()) == {"removed"}, undone
     assert undone.notes == ()
     assert _tree(tmp_path / "home") == before
     assert _rows(host) == []
@@ -351,6 +353,7 @@ def test_a_dry_run_reports_the_plan_and_writes_nothing_not_even_the_home(tmp_pat
     _ok(host.install("global", STEER))
     installed = _tree(tmp_path)
     removal = _ok(host.uninstall("global", dry_run=True))
+    assert removal.pop("skill:~/.agents/skills/omniweave") == "not-found"
     assert set(removal.values()) == {"removed"}
     assert _tree(tmp_path) == installed
 
@@ -390,7 +393,8 @@ def test_the_notes_say_what_was_not_written_and_why(tmp_path: Path) -> None:
     host = _host(tmp_path)
     plain = host.install("global", _opts(skills="core", dry_run=True))
     assert f"{ALLOW_CLI} NOT written (--allow-cli is OFF BY DEFAULT)" in plain.notes
-    assert any("~/.agents/skills/omniweave: skill NOT written" in note for note in plain.notes)
+    skill = next(one for one in plain.actions if one.kind == "skill")
+    assert (skill.action, skill.note) == ("kept", "no skill bundle source was given")
     granted = host.install("global", _opts(allow_cli=True, dry_run=True))
     assert any("no `ow` on PATH" in note for note in granted.notes)
 
@@ -447,7 +451,9 @@ def test_a_newer_receipt_refuses_install_and_uninstall_re_derives_around_it(
     assert "cannot be rewritten" in host.install("global", STEER).refused
     undone = host.uninstall("global")
     assert any("re-derivation" in note for note in undone.notes)
-    assert set(_ok(undone).values()) == {"removed"}
+    actions = _ok(undone)
+    assert actions.pop("skill:~/.agents/skills/omniweave") == "not-found"
+    assert set(actions.values()) == {"removed"}
     assert receipt_path(host.env.omniweave_home).read_bytes() == receipt
     settings = json.loads((tmp_path / "home" / ".claude" / "settings.json").read_bytes())
     assert WILDCARD not in json.dumps(settings)

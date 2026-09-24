@@ -81,6 +81,7 @@ from omniweave.install.receipt import (
     take_lock,
     tildify,
 )
+from omniweave.install.skilldir import install_dir, remove_dir
 from omniweave.install.types import FileAction, WriteResult
 from omniweave.surface.registry import ACTIONS
 
@@ -120,7 +121,8 @@ class HostEnv:
     code (the semgrep rules), and `launch` is `hookrules.launcher()`'s answer resolved once by the
     caller, so `print_config` -- which *"MUST NOT touch the filesystem"* (10:1641) -- need not look
     for `ow`. `project_root` is the resolved, absolute root a `local` install writes under and keys
-    its rows by (10:1734); a global-only caller leaves it `None`.
+    its rows by (10:1734); a global-only caller leaves it `None`. `skills_root` is where the skill
+    bundles come from -- 10:1327's `"source":"omniweave/skills"`, the shipped tree.
     """
 
     omniweave_home: Path
@@ -134,6 +136,7 @@ class HostEnv:
     sleep: Callable[[float], None] = time.sleep
     which: Callable[[str], str | None] = shutil.which
     lock_wait_ms: int = INTERACTIVE_WAIT_MS
+    skills_root: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,7 +146,8 @@ class Step:
     Which fields matter is the mode's: `json-key` takes `key` and `value`; `json-array-add` `key`
     and `values`; `marker-section` `body`; `json-hook-rules` `hooks`. `refusal` makes the step a
     `kept` action without a write -- no launcher to put in a command, say -- and `note` is appended
-    to whatever the step reports.
+    to whatever the step reports. `dir` takes `source`, the bundle to copy; uninstall uses it to
+    re-derive (a tree equal to it is this release's) and to name the first differing path.
     """
 
     kind: Kind
@@ -154,6 +158,7 @@ class Step:
     values: tuple[str, ...] = ()
     body: str = ""
     hooks: tuple[Desired, ...] = ()
+    source: Path | None = None
     refusal: str = ""
     note: str = ""
 
@@ -276,7 +281,9 @@ def _write(
             site, step.hooks,
             previous=previous, clock=clock, pid=pid, dry_run=dry_run, sleep=sleep,
         )  # fmt: skip
-    return Applied(site.act("kept", step.kind, step.mode, "the dir mode is not built"))
+    if step.source is None:
+        return Applied(site.act("kept", step.kind, step.mode, "no bundle to copy"))
+    return install_dir(site, step.source, previous=previous, clock=clock, pid=pid, dry_run=dry_run)
 
 
 def _keep(lock: InstallLock, applied: Applied, env: HostEnv) -> str:
@@ -436,7 +443,8 @@ def _undo(
         return remove_section(site, kind, entry=entry, pid=pid, dry_run=dry_run, sleep=sleep)
     if mode == "json-hook-rules":
         return unset_hooks(site, entry=entry, pid=pid, dry_run=dry_run, sleep=sleep)
-    return Applied(site.act("kept", kind, mode, "the dir mode is not built; left in place"))
+    source = step.source if step is not None else None
+    return remove_dir(site, entry=entry, source=source, pid=pid, dry_run=dry_run)
 
 
 def _spell(path: Path, env: HostEnv) -> str:
@@ -469,7 +477,7 @@ def render_step(step: Step, shown: str) -> str:
         return f"{head}  {' '.join(one.event for one in step.hooks)}\n{_json(document)}"
     if step.mode == "marker-section":
         return f"{head}\n{BEGIN}\n{step.body}\n{END}"
-    return head
+    return f"{head}  a copy of {step.source}, recorded by its sha256-bundle-1 digest"
 
 
 def _json(value: object) -> str:
