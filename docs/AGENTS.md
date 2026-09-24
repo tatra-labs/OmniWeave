@@ -60,6 +60,7 @@ key can grant one.
 | `skills.install` | — | `ow skills install` | — | `free` | Copy a shipped skill bundle into every discovered agent-host skills directory, verified on its whole-bundle digest and recorded in skills-lock.json |
 | `skills.ls` | `ow_skills_ls` | `ow skills ls` | — | `free` | List the skills this release ships, with tier and digest, and which agent-host skills directories hold each one and on whose record |
 | `skills.remove` | — | `ow skills remove` | — | `free` | Take a skill out of every directory skills-lock.json says ow skills install put it in, on its digest; a modified or foreign copy is kept |
+| `skills.update` | — | `ow skills update` | — | `free` | Refresh every skill skills-lock.json records to this release's bundle and prune the ones this release no longer ships; a modified copy is kept |
 | `skills.verify` | `ow_skills_verify` | `ow skills verify` | — | `free` | Re-hash every skill bundle skills-lock.json says was installed and name each mismatch: expected digest, observed digest, first differing path |
 | `uninstall` | — | `ow uninstall` | — | `free` | Take omniweave out of agent hosts exactly: every path the install receipt names, on its digest, and never the corpus index |
 

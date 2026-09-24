@@ -269,6 +269,8 @@ def _skills(
     }
     if action in readers:
         return readers[action]()
+    if action == "skills.update":
+        return skillset.update(env)
     names = [ns.name] if isinstance(ns.name, str) else list(ns.name)
     if action == "skills.install":
         return skillset.install(names, env)

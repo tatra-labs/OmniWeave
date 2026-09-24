@@ -206,7 +206,9 @@ def test_add_is_the_one_writer_and_the_only_open_world_action() -> None:
     """
     writers = [spec.name for spec in ACTIONS.values() if not spec.read_only]
     open_world = [spec.name for spec in ACTIONS.values() if spec.open_world]
-    assert writers == ["add", "install", "uninstall", "skills.install", "skills.remove"]
+    assert writers == [
+        "add", "install", "uninstall", "skills.install", "skills.remove", "skills.update",
+    ]  # fmt: skip
     assert [name for name in writers if ACTIONS[name].mcp_name is not None] == ["add"]
     #  `hooks.check` runs the installed commands, which are outside the store (10:157-158); it
     #  reads and writes nothing of the deployment, so it is open-world and read-only.
@@ -220,7 +222,7 @@ def test_no_listed_tool_is_destructive_including_the_writer() -> None:
     both are human-only.
     """
     destructive = [spec.name for spec in ACTIONS.values() if spec.destructive]
-    assert destructive == ["uninstall", "skills.remove"]
+    assert destructive == ["uninstall", "skills.remove", "skills.update"]
     assert [name for name in LISTED_NAMES if ACTIONS[name].destructive] == []
 
 
@@ -265,7 +267,9 @@ def test_the_human_only_actions_are_the_install_and_skills_verbs_and_none_of_the
     transcribes: 10:53's row 1 also matches `install` and `skills.install`, and the roster leaves
     both out (D469, D489)."""
     unreachable = [spec.name for spec in ACTIONS.values() if spec.human_only]
-    assert unreachable == ["install", "uninstall", "skills.install", "skills.remove"]
+    assert unreachable == [
+        "install", "uninstall", "skills.install", "skills.remove", "skills.update",
+    ]  # fmt: skip
     assert set(ACTIONS) & HUMAN_ONLY == {"uninstall", "skills.remove"}
     assert not any(ACTIONS[name].human_only for name in LISTED_NAMES)
 
@@ -602,6 +606,7 @@ def test_the_required_parameter_of_each_tool_is_the_one_the_schema_requires() ->
         "skills.verify": set(),
         "skills.check": set(),
         "skills.hash": set(),
+        "skills.update": set(),
         "hooks.check": set(),
     }
 
@@ -1095,7 +1100,8 @@ def test_two_actions_need_no_corpus_and_both_reasons_are_stated() -> None:
     )
     assert without_corpus == [
         "doctor", "explain", "hooks.check", "install", "skills.check", "skills.hash",
-        "skills.install", "skills.ls", "skills.remove", "skills.verify", "uninstall",
+        "skills.install", "skills.ls", "skills.remove", "skills.update", "skills.verify",
+        "uninstall",
     ]  # fmt: skip
 
 
@@ -1273,11 +1279,11 @@ def test_every_shipped_row_resolves_to_a_spelling_the_generator_can_emit() -> No
 def test_the_unrostered_cli_count_is_the_distance_to_the_registry() -> None:
     """10:857's *"roughly 110 further Actions"*, minus what has landed, plus what it undercounts.
 
-    140 rather than 110, and the gap is D293's: the roster is transcribed from the plan's own
+    139 rather than 110, and the gap is D293's: the roster is transcribed from the plan's own
     tables and usage rather than from a numeral, and a numeral is a second copy of an enumeration.
     """
     waiting = _unrostered_cli(ACTIONS)
-    assert len(waiting) == 140
+    assert len(waiting) == 139
     have = {spec.cli for spec in ACTIONS.values()}
     assert not set(waiting) & have
     assert len(waiting) + len(have) == sum(max(1, len(v)) for v in CLI_ROSTER.values())

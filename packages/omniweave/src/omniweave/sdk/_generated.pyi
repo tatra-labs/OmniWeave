@@ -29,6 +29,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     skills.install    SkillsInstallIn     SkillsReport
     skills.ls         SkillsLsIn          SkillsReport
     skills.remove     SkillsRemoveIn      SkillsReport
+    skills.update     SkillsUpdateIn      SkillsReport
     skills.verify     SkillsVerifyIn      SkillsReport
     uninstall         UninstallIn         InstallReport
 """

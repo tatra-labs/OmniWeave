@@ -98,6 +98,7 @@ __all__ = [
     "SkillsInstallIn",
     "SkillsLsIn",
     "SkillsRemoveIn",
+    "SkillsUpdateIn",
     "SkillsVerifyIn",
     "UninstallIn",
 ]
@@ -424,6 +425,16 @@ class SkillsCheckIn:
     """
 
     check: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class SkillsUpdateIn:
+    """`ow skills update`. 10:1429 prints the verb and no flag, and 15:1530 names it as D-17's fix.
+
+    It refreshes what `skills-lock.json` records and prunes what this release no longer ships
+    (10:1376-1377). It installs nothing new: *"a missing on-demand skill is not 'out of date'"*
+    (10:1197-1198).
+    """
 
 
 @dataclass(frozen=True, slots=True)

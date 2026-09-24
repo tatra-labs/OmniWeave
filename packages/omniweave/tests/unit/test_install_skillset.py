@@ -28,6 +28,7 @@ from omniweave.install.skillset import (
     remove,
     scope_of_dir,
     shipped,
+    update,
 )
 from omniweave.install.types import InstallOptions
 from omniweave.install.verbs import OK, USAGE
@@ -356,7 +357,7 @@ def test_a_held_skills_lock_is_refused_by_name(tmp_path: Path) -> None:
     with held.lock:
         outcome = install(["omniweave"], env)
     assert outcome.exit_code == USAGE
-    assert "OW-A-033: another ow skills install or remove holds" in outcome.text()
+    assert "OW-A-033: another ow skills install, remove or update holds" in outcome.text()
     assert SERIAL_LOCK in outcome.text()
     assert not (_agents(env) / "omniweave").exists()
 
@@ -514,3 +515,140 @@ def test_the_last_skill_removed_deletes_the_lock(tmp_path: Path) -> None:
     skills_lock.write(tmp_path, {"omniweave": _locked()}, release="0.1.0", pid=PID)
     assert skills_lock.write(tmp_path, {}, release="0.1.0", pid=PID) == ""
     assert not lock_file(tmp_path).exists()
+
+
+# ---------------------------------------------------------------------------------------------
+# ow skills update.
+# ---------------------------------------------------------------------------------------------
+
+GONE = {"SKILL.md": b"---\nname: omniweave-gone\n---\nan older release's skill\n"}
+
+
+def _orphan(env: HostEnv, where: Path, *, source: str = "omniweave/skills") -> Path:
+    """A bundle this release no longer ships, placed and recorded as an older release would have."""
+    tree = _bundle(where / "omniweave-gone", GONE)
+    digest, files, size = bundle_sha256(tree)
+    stored = (
+        tree.relative_to(env.user_home).as_posix() if tree.is_relative_to(env.user_home) else ""
+    )
+    shown = f"~/{stored}" if stored else tree.as_posix()
+    lock = dict(skills_lock.read(env.omniweave_home).skills)
+    lock["omniweave-gone"] = Locked(
+        "omniweave-gone", digest, files, size, (shown,), "skills/omniweave-gone", source
+    )
+    skills_lock.write(env.omniweave_home, lock, release="0", pid=PID)
+    return tree
+
+
+def test_update_refreshes_a_stale_entry_and_a_second_run_is_unchanged(tmp_path: Path) -> None:
+    env = _env(tmp_path)
+    _agents(env).mkdir(parents=True)
+    _cursor(env).mkdir(parents=True)
+    install(["omniweave-demo"], env)
+    source = tmp_path / "skills" / "omniweave-demo"
+    (source / "SKILL.md").write_bytes(DEMO["SKILL.md"] + b"newer\n")
+    outcome = update(env)
+    assert outcome.exit_code == OK, outcome.text()
+    assert [line.split()[-1] for line in _actions(outcome)] == ["updated", "updated"]
+    for root in (_agents(env), _cursor(env)):
+        assert bundle_sha256(root / "omniweave-demo") == bundle_sha256(source)
+    entry = _lock(env)["skills"]["omniweave-demo"]  # type: ignore[index]
+    assert entry["bundle_sha256"] == bundle_sha256(source)[0]
+    before = lock_file(env.omniweave_home).read_bytes()
+    again = update(env)
+    assert [line.split()[-1] for line in _actions(again)] == ["unchanged", "unchanged"]
+    assert lock_file(env.omniweave_home).read_bytes() == before
+
+
+def test_update_forgets_a_directory_that_is_gone_and_does_not_recreate_it(tmp_path: Path) -> None:
+    env = _env(tmp_path)
+    _agents(env).mkdir(parents=True)
+    install(["omniweave-demo"], env)
+    shutil.rmtree(_agents(env) / "omniweave-demo")
+    outcome = update(env)
+    assert outcome.exit_code == OK
+    assert "not-found -- no directory; forgotten, not reinstalled" in outcome.text()
+    assert not (_agents(env) / "omniweave-demo").exists()
+    assert not lock_file(env.omniweave_home).exists()
+
+
+def test_update_keeps_a_modified_copy_and_exits_1(tmp_path: Path) -> None:
+    """15:1530 names `update` as D-17's fix for a hash mismatch; it does not overwrite one. D499."""
+    env = _env(tmp_path)
+    _agents(env).mkdir(parents=True)
+    install(["omniweave-demo"], env)
+    placed = _agents(env) / "omniweave-demo" / "SKILL.md"
+    placed.write_bytes(b"my edit\n")
+    outcome = update(env)
+    assert outcome.exit_code == USAGE
+    assert "kept -- modified since install" in outcome.text()
+    assert placed.read_bytes() == b"my edit\n"
+
+
+def test_update_prunes_what_this_release_no_longer_ships(tmp_path: Path) -> None:
+    """10:1376-1377: attributed to omniweave/skills and no longer published."""
+    env = _env(tmp_path)
+    _agents(env).mkdir(parents=True)
+    install(["omniweave"], env)
+    tree = _orphan(env, _agents(env))
+    outcome = update(env)
+    assert outcome.exit_code == OK, outcome.text()
+    assert "removed -- this release no longer publishes it (10:1377)" in outcome.text()
+    assert not tree.exists()
+    assert list(_lock(env)["skills"]) == ["omniweave"]  # type: ignore[call-overload]
+
+
+def test_a_modified_orphan_is_kept(tmp_path: Path) -> None:
+    env = _env(tmp_path)
+    tree = _orphan(env, _agents(env))
+    (tree / "SKILL.md").write_bytes(b"mine now\n")
+    outcome = update(env)
+    assert outcome.exit_code == USAGE
+    assert tree.is_dir()
+    assert "omniweave-gone" in _lock(env)["skills"]  # type: ignore[operator]
+
+
+def test_an_orphan_under_neither_the_project_nor_the_home_is_not_pruned(tmp_path: Path) -> None:
+    """10:1402: *"never prune globally for an unknown path"*."""
+    env = _env(tmp_path, project=tmp_path / "proj")
+    (tmp_path / "proj").mkdir()
+    tree = _orphan(env, tmp_path / "elsewhere" / ".agents" / "skills")
+    outcome = update(env)
+    assert outcome.exit_code == USAGE
+    assert "under neither this project nor the home, so not pruned from here" in outcome.text()
+    assert tree.is_dir()
+    inside = _env(tmp_path, project=tmp_path / "elsewhere")
+    assert update(inside).exit_code == OK
+    assert not tree.exists()
+
+
+def test_update_never_touches_an_entry_from_another_source(tmp_path: Path) -> None:
+    env = _env(tmp_path)
+    tree = _orphan(env, _agents(env), source="their/skills")
+    outcome = update(env)
+    assert outcome.exit_code == OK
+    assert outcome.lines == (
+        "  omniweave-gone: left alone -- attributed to their/skills (10:1378)",
+    )
+    assert tree.is_dir()
+
+
+def test_update_with_no_lock_writes_nothing(tmp_path: Path) -> None:
+    env = _env(tmp_path)
+    outcome = update(env)
+    assert outcome.exit_code == OK
+    assert outcome.lines[0].startswith("  lock_missing: true -- ")
+    assert not env.omniweave_home.joinpath("skills-lock.json").exists()
+
+
+def test_update_refuses_an_unreadable_lock_and_a_held_one(tmp_path: Path) -> None:
+    env = _env(tmp_path)
+    path = lock_file(env.omniweave_home)
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"{")
+    assert update(env).exit_code == USAGE
+    path.unlink()
+    held = take_lock(env.omniweave_home, clock=env.clock, wait_ms=0, file=SERIAL_LOCK)
+    assert held.lock is not None
+    with held.lock:
+        assert "OW-A-033" in update(env).text()

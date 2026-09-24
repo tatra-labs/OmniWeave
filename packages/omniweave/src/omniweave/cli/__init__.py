@@ -108,7 +108,7 @@ GLOBAL_FLAGS: Final[tuple[Argument, ...]] = (
 GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
     "hooks": "check",
-    "skills": "check · hash · install · ls · remove · verify",
+    "skills": "check · hash · install · ls · remove · update · verify",
 }
 
 COMMANDS: Final[tuple[Command, ...]] = (
@@ -476,6 +476,15 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 default=False,
             ),
         ),
+    ),
+    Command(
+        words=("skills", "update"),
+        actions=("skills.update",),
+        help=(
+            "Refresh every skill skills-lock.json records to this release's bundle and prune "
+            "the ones this release no longer ships; a modified copy is kept"
+        ),
+        arguments=(),
     ),
     Command(
         words=("skills", "verify"),

@@ -255,6 +255,8 @@ cli.skills.ls: ow skills ls
 cli.skills.ls.actions: skills.ls
 cli.skills.remove: ow skills remove NAME... [--yes]
 cli.skills.remove.actions: skills.remove
+cli.skills.update: ow skills update
+cli.skills.update.actions: skills.update
 cli.skills.verify: ow skills verify [--all]
 cli.skills.verify.actions: skills.verify
 cli.uninstall: ow uninstall [--target TARGET] [--location LOCATION] [--keep-cli] [--yes]
