@@ -86,7 +86,8 @@ def test_the_four_resolutions_of_target(tmp_path: Path) -> None:
     """10:1662-1663."""
     env = _env(tmp_path)
     assert verbs.resolve_targets("none", env, "global") == ()
-    assert [one.id for one in verbs.resolve_targets("all", env, "global")] == ["claude-code"]
+    everything = verbs.resolve_targets("all", env, "global")
+    assert [one.id for one in everything] == ["claude-code", "cursor"]
     assert [one.id for one in verbs.resolve_targets("auto", env, "global")] == ["claude-code"]
     listed = verbs.resolve_targets("claude-code, claude-code", env, "global")
     assert [one.id for one in listed] == ["claude-code"]
@@ -192,7 +193,7 @@ def test_print_config_is_the_hosts_and_writes_nothing(tmp_path: Path) -> None:
     assert outcome.exit_code == verbs.OK
     assert outcome.lines[0] == "# ~/.claude.json  json-key  mcpServers.omniweave"
     assert _tree(tmp_path) == before
-    assert verbs.print_config("cursor", "global", env).exit_code == verbs.USAGE
+    assert verbs.print_config("codex", "global", env).exit_code == verbs.USAGE
 
 
 # ---------------------------------------------------------------------------------------------

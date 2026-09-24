@@ -633,13 +633,19 @@ def upsert_section(
     pid: int,
     dry_run: bool = False,
     sleep: Callable[[float], None] = time.sleep,
+    head: str = "",
 ) -> Applied:
-    """Insert or replace omniweave's block in a Markdown file, creating the file if need be."""
+    """Insert or replace omniweave's block in a Markdown file, creating the file if need be.
+
+    `head` is what a file this creates starts with, before the block: a Cursor rule is read only
+    if its frontmatter opens the file, and the block's first line is a comment (D477). A file that
+    exists is never given one -- its first lines are the user's.
+    """
     read = _read_text(site.path)
     if isinstance(read, str):
         return Applied(site.act("kept", kind, "marker-section", read))
     text, bom, existed = read
-    section = upsert_marked_section(text, body)
+    section = upsert_marked_section(text if existed else head, body)
     if section.text is None:
         return Applied(site.act("kept", kind, "marker-section", section.reason))
     if section.action == "unchanged":
@@ -674,13 +680,19 @@ def remove_section(
     pid: int,
     dry_run: bool = False,
     sleep: Callable[[float], None] = time.sleep,
+    head: str = "",
 ) -> Applied:
-    """Remove omniweave's block, and the file too when install created it and nothing is left."""
+    """Remove omniweave's block, and the file too when install created it and nothing is left.
+
+    *Nothing* includes the `head` install created the file with (D477): what is left is then
+    only what omniweave wrote. A head the user edited is theirs, and the file stays.
+    """
     planned = _section_removal(site, kind, entry)
     if isinstance(planned, Applied):
         return planned
     text, bom, note = planned
-    if entry is not None and entry.created_file and not text.strip():
+    left = text.strip()
+    if entry is not None and entry.created_file and (not left or left == head.strip()):
         return _delete(site, kind, "marker-section", entry, note=note, dry_run=dry_run)
     if dry_run:
         return Applied(site.act("removed", kind, "marker-section", note), forget=entry)

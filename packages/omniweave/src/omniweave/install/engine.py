@@ -93,9 +93,11 @@ if TYPE_CHECKING:
     from omniweave_core.clock import Clock
 
     from omniweave.install.receipt import InstallLock, Receipt
-    from omniweave.install.types import Kind, Location, Mode, TargetId
+    from omniweave.install.types import Kind, Location, Mode, SkillSet, TargetId
 
 __all__ = [
+    "BUNDLE_ENTRY",
+    "CORE_SKILL",
     "HostEnv",
     "Step",
     "configured",
@@ -104,6 +106,9 @@ __all__ = [
     "instruction_block",
     "render_step",
     "scope_of",
+    "serve_note",
+    "skill_names",
+    "skill_step",
     "step_detail",
     "uninstall",
 ]
@@ -151,6 +156,7 @@ class Step:
     `kept` action without a write -- no launcher to put in a command, say -- and `note` is appended
     to whatever the step reports. `dir` takes `source`, the bundle to copy; uninstall uses it to
     re-derive (a tree equal to it is this release's) and to name the first differing path.
+    `marker-section` also takes `head`, the first lines of a file it creates (D477).
     """
 
     kind: Kind
@@ -164,6 +170,7 @@ class Step:
     source: Path | None = None
     refusal: str = ""
     note: str = ""
+    head: str = ""
 
 
 def scope_of(env: HostEnv, loc: Location) -> tuple[str | None, str]:
@@ -302,7 +309,7 @@ def _write(
     if step.mode == "marker-section":
         return upsert_section(
             site, step.kind, step.body,
-            previous=previous, clock=clock, pid=pid, dry_run=dry_run, sleep=sleep,
+            previous=previous, clock=clock, pid=pid, dry_run=dry_run, sleep=sleep, head=step.head,
         )  # fmt: skip
     if step.mode == "json-hook-rules":
         return set_hooks(
@@ -484,7 +491,10 @@ def _undo(
             site, kind, key, values, entry=entry, pid=pid, dry_run=dry_run, sleep=sleep
         )
     if mode == "marker-section":
-        return remove_section(site, kind, entry=entry, pid=pid, dry_run=dry_run, sleep=sleep)
+        head = step.head if step is not None else ""
+        return remove_section(
+            site, kind, entry=entry, pid=pid, dry_run=dry_run, sleep=sleep, head=head
+        )
     if mode == "json-hook-rules":
         return unset_hooks(site, entry=entry, pid=pid, dry_run=dry_run, sleep=sleep)
     source = step.source if step is not None else None
@@ -554,7 +564,8 @@ def render_step(step: Step, shown: str) -> str:
         converge(document, step.hooks)
         return f"{head}  {' '.join(one.event for one in step.hooks)}\n{_json(document)}"
     if step.mode == "marker-section":
-        return f"{head}\n{BEGIN}\n{step.body}\n{END}"
+        first = f"{step.head}\n" if step.head else ""
+        return f"{head}\n{first}{BEGIN}\n{step.body}\n{END}"
     return f"{head}  a copy of {step.source}, recorded by its sha256-bundle-1 digest"
 
 
@@ -562,7 +573,7 @@ def _json(value: object) -> str:
     return render_json(value).decode("utf-8").rstrip("\n")
 
 
-def instruction_block() -> str:
+def instruction_block(prefix: str | None = TOOL_PREFIX) -> str:
     """The `marker-section` body: the listed tools and their `decision` clauses. D461.
 
     10:1669 names the section and no document writes its body. 10:209 gives the recipe for the
@@ -570,10 +581,67 @@ def instruction_block() -> str:
     is why nothing else will do: an always-on block written against a surface rather than from it
     is jcodemunch's bug #397. So each line is an Action in the front door's order with its
     registry `decision`, and a fifth listed tool changes this text without anyone editing it.
+
+    `prefix` is the host's spelling of a tool's name, and the last line says it. It is Claude
+    Code's `mcp__omniweave__` by default; a host whose spelling no measurement has shown passes
+    `None` and the line is left out rather than guessed (D476).
     """
     lines = [_INSTRUCTION_LEAD]
     for name in FRONT_DOOR:
         spec = ACTIONS[name]
         lines.append(f"- `{spec.mcp_name}` when {spec.decision}")
-    lines.append(f"Their host-side names start `{TOOL_PREFIX}`.")
+    if prefix:
+        lines.append(f"Their host-side names start `{prefix}`.")
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------------------------
+# What two hosts share and neither owns: the skill steps, and the serve note.
+# ---------------------------------------------------------------------------------------------
+
+CORE_SKILL: Final = "omniweave"
+"""10:1151: *"THE ONLY ALWAYS-RESIDENT SKILL"*."""
+
+BUNDLE_ENTRY: Final = "SKILL.md"
+"""The file that makes a directory a skill bundle (10:1152)."""
+
+_SERVE_ROOT: Final = "serve"
+
+
+def serve_note() -> str:
+    """What an MCP step says while `python -m omniweave` does not dispatch `serve`. D460."""
+    from omniweave.__main__ import DISPATCHED  # noqa: PLC0415 -- the dispatcher, read live
+
+    if _SERVE_ROOT in DISPATCHED:
+        return ""
+    return (
+        "the host will start `serve --mcp`, which this build does not dispatch: it exits 70 "
+        "until it does (D460)"
+    )
+
+
+def skill_names(env: HostEnv, skills: SkillSet) -> tuple[str, ...]:
+    """`core` is the router alone (10:1151); `all` adds every bundle with a `SKILL.md`."""
+    if skills == "none":
+        return ()
+    root = env.skills_root
+    if skills == "core" or root is None or not root.is_dir():
+        return (CORE_SKILL,)
+    others = sorted(
+        one.name
+        for one in root.iterdir()
+        if one.name != CORE_SKILL and (one / BUNDLE_ENTRY).is_file()
+    )
+    return (CORE_SKILL, *others)
+
+
+def skill_step(env: HostEnv, skills_dir: Path, name: str, *, check: bool) -> Step:
+    """The `dir` step for bundle `name` into `skills_dir`; refused without a `SKILL.md` (W7.5f)."""
+    root = env.skills_root
+    source = root / name if root is not None else None
+    refusal = ""
+    if check and source is None:
+        refusal = "no skill bundle source was given"
+    elif check and source is not None and not (source / BUNDLE_ENTRY).is_file():
+        refusal = f"{source.as_posix()} has no {BUNDLE_ENTRY}: the router body is W7.6's (16:720)"
+    return Step("skill", "dir", skills_dir / name, source=source, refusal=refusal)

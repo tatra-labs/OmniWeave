@@ -660,12 +660,12 @@ def remove_marked_section(text: str) -> Section:
 
 
 def unbuilt() -> tuple[str, ...]:
-    """What 10 section 7.1 names that is not here, and why."""
+    """What 10 section 7.1 leaves to a decision this package does not take, and why.
+
+    Pruning (10:1654) shipped with the `json-hook-rules` mode (`hookrules.py`) and
+    `refresh_targets()` (10:1656) with the verbs (`verbs.py`); both were listed here until then.
+    """
     return (
-        "self-healing pruning (10:1654). It is per command inside hook rules and needs 10:1690's "
-        "four-spelling ownership parse and 10:1695's matcher convergence; it ships with the "
-        "json-hook-rules mode",
-        "refresh_targets() (10:1656). It re-runs AgentTarget.install(), and no target exists yet",
         "what install does with a config that will not round-trip (D441). ReadJson.round_trips "
         "says so before the write; whether to write anyway, refuse, or keep a pre-image is the "
         "plan's",
