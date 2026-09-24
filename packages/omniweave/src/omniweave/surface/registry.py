@@ -116,7 +116,13 @@ from omniweave_core.model.rebind import RebindReport
 from omniweave_core.retrieve.verdict import Coverage
 from omniweave_ports import CostClass
 
-from omniweave.sdk.reports import AddReport, CodeRow, CorporaReport, DoctorReport
+from omniweave.sdk.reports import (
+    AddReport,
+    CodeRow,
+    CorporaReport,
+    DoctorReport,
+    InstallReport,
+)
 from omniweave.surface.inputs import (
     AddIn,
     CorporaIn,
@@ -125,8 +131,10 @@ from omniweave.surface.inputs import (
     DoctorIn,
     ExplainIn,
     GridIn,
+    InstallIn,
     OpenIn,
     QueryIn,
+    UninstallIn,
 )
 
 if TYPE_CHECKING:
@@ -1313,6 +1321,54 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=DoctorReport,
             advanced=frozenset({"runtime"}),
             cli=("doctor",),
+        ),
+        #  10:53's row 1: an Action that modifies omniweave's installed configuration is human-only
+        #  and has no `mcp_name`. `install` writes an agent host's MCP entry, its permissions and
+        #  its hooks, so row 1 matches it -- though 10:59's five and 10:859's "every other Action
+        #  has an mcp_name" leave it out. The first match wins (10:48), the safe one. D469.
+        ActionSpec(
+            name="install",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Wire agent hosts to omniweave: the MCP entry, one permission wildcard, the "
+                "instruction block, hooks and the core skill, each recorded in a receipt"
+            ),
+            decision="an agent host should reach omniweave and does not yet",
+            example={
+                "target": "claude-code",
+                "location": "global",
+                "hooks": "context",
+                "skills": "core",
+                "dry_run": True,
+            },
+            inp=InstallIn,
+            out=InstallReport,
+            cli=("install",),
+        ),
+        ActionSpec(
+            name="uninstall",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            destructive=True,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Take omniweave out of agent hosts exactly: every path the install receipt names, "
+                "on its digest, and never the corpus index"
+            ),
+            decision="an agent host should stop reaching omniweave",
+            example={"target": "all", "location": "global", "yes": True},
+            inp=UninstallIn,
+            out=InstallReport,
+            cli=("uninstall",),
         ),
         ActionSpec(
             name="explain",

@@ -89,8 +89,10 @@ __all__ = [
     "DoctorIn",
     "ExplainIn",
     "GridIn",
+    "InstallIn",
     "OpenIn",
     "QueryIn",
+    "UninstallIn",
 ]
 
 
@@ -313,6 +315,43 @@ class DoctorIn:
     """
 
     runtime: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class InstallIn:
+    """`ow install`. 10:1427's flags, every one an option: a field with a default is `--kebab`.
+
+    `hooks`, `skills` and `location` default to `None`, and `None` is not a choice. 10:1427 gives
+    `--hooks` and `--skills` no default and 18:2973 passes both, so the verb refuses an install
+    that names neither rather than choosing what an unqualified `ow install` does to a host
+    (D447). `location` is asked for when there is a terminal to ask, as `ow uninstall`'s step 1
+    asks it (10:1754), and refused when there is not. `check` and `print_config` are the two
+    read-only modes 10:1427 folds into the same verb.
+    """
+
+    target: str = "auto"
+    location: str | None = None
+    hooks: str | None = None
+    skills: str | None = None
+    allow_cli: bool = False
+    check: bool = False
+    print_config: str | None = None
+    dry_run: bool = False
+    yes: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class UninstallIn:
+    """`ow uninstall`. 10:1428: `--target all --location ... --keep-cli --yes`.
+
+    `target` defaults to `all` and not `auto` -- 10:1751, *"so a user need not remember where they
+    installed it"*. `location` is asked first when omitted (10:1754).
+    """
+
+    target: str = "all"
+    location: str | None = None
+    keep_cli: bool = False
+    yes: bool = False
 
 
 @dataclass(frozen=True, slots=True)

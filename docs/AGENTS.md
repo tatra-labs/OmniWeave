@@ -51,8 +51,10 @@ key can grant one.
 | `doc.grid` | `ow_grid` | `ow doc grid` | full | `free` | Read one table as an exactly-once grid: every cell at its slot, the header row and column, and the merges that would otherwise be counted twice |
 | `doctor` | `ow_doctor` | `ow doctor` | full | `free` | Check this deployment: every resolved configuration value with its source, the driver and toolchain probes, and a fix command for every warning |
 | `explain` | `ow_explain` | `ow explain` | full | `free` | Resolve an OW-* code or symbol to what it means and the exact command that clears it; reads no corpus, so it answers on a machine with no store at all |
+| `install` | — | `ow install` | — | `free` | Wire agent hosts to omniweave: the MCP entry, one permission wildcard, the instruction block, hooks and the core skill, each recorded in a receipt |
 | `open` | `ow_open` | `ow open` | default, full | `free` | Fetch the exact passages behind an address you already hold: a cite, a page range, or a whole document |
 | `query` | `ow_query` | `ow query` | default, full | `local_compute` | Ask an indexed corpus a question and get cited passages, a verdict, and the gaps that could be hiding an answer |
+| `uninstall` | — | `ow uninstall` | — | `free` | Take omniweave out of agent hosts exactly: every path the install receipt names, on its digest, and never the corpus index |
 
 ## Human-only Actions
 
@@ -66,7 +68,7 @@ point of an absent MCP name is that no key grants it.
 | `route.promote` | no `ActionSpec` row yet |
 | `skills.remove` | no `ActionSpec` row yet |
 | `targets.remove` | no `ActionSpec` row yet |
-| `uninstall` | no `ActionSpec` row yet |
+| `uninstall` | Take omniweave out of agent hosts exactly: every path the install receipt names, on its digest, and never the corpus index |
 
 ## Exit codes
 

@@ -181,11 +181,14 @@ def test_sdk_homes_covers_every_action_whose_spelling_the_plan_prints() -> None:
         assert printed.startswith("Corpus.") == (home.holder == "Corpus")
 
 
-def test_the_two_actions_that_have_no_sdk_entry_point_are_the_document_model_pair() -> None:
+def test_the_actions_with_no_sdk_entry_point_are_the_document_pair_and_the_install_verbs() -> None:
     """18:500 routes the document model through `Corpus.doc(ref) -> Doc`, whose accessors 03
-    section 13.5 owns. So `doc.grid` and `doc.diff` are a boundary, not a gap."""
+    section 13.5 owns. So `doc.grid` and `doc.diff` are a boundary, not a gap.
+
+    `install` and `uninstall` are a gap. 10:32-33 gives every Action an SDK method and the plan
+    prints no signature for either, so there is nothing to transcribe into `SDK_HOMES` (D470)."""
     missing = sorted(name for name, spec in ACTIONS.items() if spec.cli and name not in SDK_HOMES)
-    assert missing == ["doc.diff", "doc.grid"]
+    assert missing == ["doc.diff", "doc.grid", "install", "uninstall"]
 
 
 def test_exactly_two_signatures_are_their_input_types_field_list() -> None:

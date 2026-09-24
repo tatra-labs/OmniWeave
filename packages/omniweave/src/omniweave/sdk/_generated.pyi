@@ -20,8 +20,10 @@ The Actions this surface comes from, with the declaration behind each promise:
     doc.grid          GridIn              Grid
     doctor            DoctorIn            DoctorReport
     explain           ExplainIn           CodeRow
+    install           InstallIn           InstallReport
     open              OpenIn              Answer
     query             QueryIn             Answer
+    uninstall         UninstallIn         InstallReport
 """
 
 from omniweave.sdk.reports import AddCompleted as AddCompleted

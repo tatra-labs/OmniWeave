@@ -1,21 +1,18 @@
 """`ow install | uninstall | --check`: the verbs' engine, over the registry's hosts.
 
 10:1427-1428 give the two rows and 10 section 7 the flow. This module is what those verbs do; the
-argv they are parsed from is not here, for the reason in the next section. Each function returns an
-`Outcome` -- an exit code and the lines to print -- and reads the terminal only through the
-`confirm` it is handed, so 10:1620's *"No verb reads the terminal"* outside these two holds by
-construction and every flow is testable without one.
+argv they are parsed from is `run.py`'s. Each function returns an `Outcome` -- an exit code and the
+lines to print -- and reads the terminal only through the `confirm` it is handed, so 10:1620's
+*"No verb reads the terminal"* outside these two holds by construction and every flow is testable
+without one.
 
-## THERE IS NO `ow install` TO DISPATCH THIS FROM YET
+## HOW `ow install` REACHES THIS
 
-The CLI tree is artefact 3 of the seven, generated from `ACTIONS` and byte-diff gated (G25). There
-is no `install`, `uninstall` or `hooks.check` row in `ACTIONS`: the registry itself reports
-`uninstall` as one of five human-only rows still pending (`_unrostered_human_only()`, D291), and
-`install` is a declared CLI root (`surface/registry.py`'s roster of roots) with no Action behind it.
-So the generated `ow` has no such command, and `python -m omniweave` dispatches only `hook` (D433).
-Wiring these verbs by hand into the dispatcher would make a CLI the generator does not know about,
-which is what G25 exists to prevent. The rows are the registry's to add, and these functions are
-what they will dispatch to. D467.
+The CLI tree is artefact 3 of the seven, generated from `ACTIONS` and byte-diff gated (G25). When
+this module was written there was no `install` or `uninstall` row, so there was no `ow install` to
+dispatch it from, and it was not wired by hand: a CLI the generator does not know about is what G25
+exists to refuse (D467). W7.5h added both rows -- `mcp_name = None`, 10:53's row 1 (D469) -- the
+generated tree gained the two commands, and `__main__` routes them to `run.py`, which calls these.
 
 ## `--target`, FOUR WAYS
 
