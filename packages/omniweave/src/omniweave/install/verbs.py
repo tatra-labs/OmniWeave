@@ -28,7 +28,9 @@ and not yet built says so rather than calling it unknown (`registry.build`).
 the owned part, by its own digest -- or `not configured`, or `not installed`. The exit is 0 when
 every resolved host that is installed is configured, and 9 otherwise, including when none is
 installed: 18:2987 prints a `codex ... not installed` line and still exits 0, so a host that is not
-there is not a host that is unconfigured.
+there is not a host that is unconfigured. A host whose line says a row is `MISSING`, `MODIFIED` or
+`missing` is not configured either (D485): 10:1786 makes `check` *"a CI-shaped assertion that exits
+non-zero"*, and the line printed the failure while the exit said 0.
 
 ## A PLAN THAT IS NOT CONFIRMED WRITES NOTHING, AND SAYS SO WITH EXIT 1
 
@@ -99,6 +101,7 @@ FALLBACK: Final = "claude-code"
 
 _IMPERATIVE: Final = {"created": "create", "updated": "update", "removed": "remove"}
 _MIDDOT: Final = " · "
+_INTACT: Final = " ok"
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,7 +251,11 @@ def check(spec: str, loc: Location, env: HostEnv) -> Outcome:
             continue
         scope = str(env.project_root) if loc == "local" and env.project_root else None
         mine = [one for one in rows.for_scope(loc, scope) if one.target == target.id]
-        parts = [_row_status(entry, env) for entry in mine] or ["no receipt rows"]
+        statuses = [_row_status(entry, env) for entry in mine]
+        #  D485: 10:1786's `check` is "a CI-shaped assertion that exits non-zero". A row that no
+        #  longer checks is a host not configured as installed, whatever its MCP key says.
+        every = every and all(one.endswith(_INTACT) for one in statuses)
+        parts = statuses or ["no receipt rows"]
         lines.append(f"{target.id:<11} {loc:<8} configured    {_MIDDOT.join(parts)}")
     configured = every and any("configured    " in line for line in lines)
     return Outcome(OK if configured else NOT_CONFIGURED, tuple(lines))

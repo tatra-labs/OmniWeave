@@ -224,7 +224,8 @@ def test_a_present_host_without_omniweave_is_not_configured(tmp_path: Path) -> N
     assert (outcome.exit_code, outcome.lines) == (9, ("claude-code global   not configured",))
 
 
-def test_check_names_what_changed_and_still_says_configured(tmp_path: Path) -> None:
+def test_check_names_what_changed_says_configured_and_exits_9(tmp_path: Path) -> None:
+    """D485: the line says configured and names the row; the exit is 10:1786's non-zero."""
     env = _env(tmp_path)
     verbs.install("claude-code", "global", _opts(skills="core"), env, yes=True)
     path = tmp_path / "home" / ".claude.json"
@@ -235,7 +236,8 @@ def test_check_names_what_changed_and_still_says_configured(tmp_path: Path) -> N
     line = verbs.check("claude-code", "global", env).lines[0]
     assert "mcp MODIFIED" in line
     assert "skill hash MISMATCH (OW-A-031)" in line
-    assert verbs.check("claude-code", "global", env).exit_code == verbs.OK
+    assert line.startswith("claude-code global   configured    ")
+    assert verbs.check("claude-code", "global", env).exit_code == verbs.NOT_CONFIGURED
 
 
 # ---------------------------------------------------------------------------------------------
