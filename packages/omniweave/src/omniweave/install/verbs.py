@@ -154,9 +154,12 @@ def _resolved(spec: str, env: HostEnv, loc: Location) -> tuple[HostTarget, ...] 
 
 
 def _row(action: FileAction, *, planned: bool) -> str:
+    """One path's line. A note that opens with its own action (10:1758's *"kept -- modified
+    since install"*) is printed once, not as `kept -- kept -- ...` (D488)."""
     verb = _IMPERATIVE.get(action.action, action.action) if planned else action.action
     line = f"  {action.path:<28} {action.mode or '':<15} {action.detail:<39} {verb}"
-    return f"{line} -- {action.note}" if action.note else line
+    note = action.note.removeprefix(f"{action.action} -- ")
+    return f"{line} -- {note}" if note else line
 
 
 def _rendered(results: Sequence[WriteResult], *, planned: bool) -> list[str]:

@@ -34,7 +34,7 @@ shell, which is how the skills reach omniweave (10:102-103: *"The skills shell o
 With no console script there is no `ow` for that grant to reach, so an install that writes it says
 so rather than implying the agent can now run the CLI. D456's consequence, noted, not coined.
 
-## THE SKILL: THE MODE IS HERE, THE BUNDLE IS W7.6'S
+## THE SKILL: THE `dir` MODE, AND THE ROUTER BUNDLE
 
 10:1671's fifth row is the `dir` mode (`skilldir.py`), recorded by its `sha256-bundle-1` digest
 (10:2805). `--skills core` copies `<skills_root>/omniweave`; `--skills all` adds every other bundle
@@ -43,9 +43,9 @@ under `skills_root` that has a `SKILL.md`, each to its own `skills/<name>` besid
 file omniweave shares and are converged to empty (W7.5d): a skill directory is a whole artefact, and
 the verb that takes it away is `ow uninstall` or `ow skills remove` (16:720).
 
-A bundle without a `SKILL.md` is refused by name. That is this repository today:
-`skills/omniweave/` holds `references/actions.md` and no router body, which W7.6 generates (16:720).
-So on this machine `--skills core` reports the skill `kept` and writes the other four steps.
+A bundle without a `SKILL.md` is refused by name. Until W7.6a that was this repository's own:
+`skills/omniweave/` held `references/actions.md` and no router body. The body is now rendered by
+`omniweave.skills.router`, so `--skills core` installs the router and its catalog.
 """
 
 from __future__ import annotations
