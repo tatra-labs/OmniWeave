@@ -83,6 +83,7 @@ from omniweave.install.receipt import (
 )
 from omniweave.install.skilldir import install_dir, remove_dir
 from omniweave.install.types import FileAction, WriteResult
+from omniweave.skills.hash import bundle_sha256
 from omniweave.surface.registry import ACTIONS
 
 if TYPE_CHECKING:
@@ -98,10 +99,12 @@ __all__ = [
     "HostEnv",
     "Step",
     "configured",
+    "entry_detail",
     "install",
     "instruction_block",
     "render_step",
     "scope_of",
+    "step_detail",
     "uninstall",
 ]
 
@@ -205,11 +208,7 @@ def install(
         return WriteResult(target, loc, notes=tuple(notes), refused=refusal)
     if dry_run:
         loaded = load(env.omniweave_home, pid=env.pid, release=env.release, back_up=False)
-        sites = [_site(target, loc, scope, step.path, env) for step in steps]
-        planned = tuple(
-            _apply(site, step, env, loaded.receipt, dry_run=True).action
-            for site, step in zip(sites, steps, strict=True)
-        )
+        planned = _planned(target, loc, scope, steps, env, receipt=loaded.receipt)
         return WriteResult(target, loc, planned, notes=tuple(notes))
     taken = take_lock(env.omniweave_home, clock=env.clock, wait_ms=env.lock_wait_ms)
     if taken.lock is None:
@@ -242,19 +241,48 @@ def install(
     return WriteResult(target, loc, tuple(actions), notes=tuple(lines))
 
 
+def _planned(
+    target: TargetId,
+    loc: Location,
+    scope: str | None,
+    steps: Sequence[Step],
+    env: HostEnv,
+    *,
+    receipt: Receipt,
+) -> tuple[FileAction, ...]:
+    """Each step's dry-run action, as the real run would report it. D468.
+
+    A dry run writes nothing, so a second step into a file the first would create still finds no
+    file and says `created`. Measured: claude-code's plan read `create` twice for `settings.json`,
+    where the install that followed reported `created` then `updated`, and 18:2976-2978 prints the
+    hooks row of a two-step file as `update`. A path an earlier step would create is an update to
+    every later one.
+    """
+    created: set[Path] = set()
+    planned: list[FileAction] = []
+    for step in steps:
+        action = _apply(_site(target, loc, scope, step.path, env), step, env, receipt, dry_run=True)
+        one = action.action
+        if one.action == "created" and step.path in created:
+            one = replace(one, action="updated")
+        elif one.action == "created":
+            created.add(step.path)
+        planned.append(one)
+    return tuple(planned)
+
+
 def _apply(
     site: Site, step: Step, env: HostEnv, receipt: Receipt, *, dry_run: bool = False
 ) -> Applied:
     if step.refusal:
-        return Applied(site.act("kept", step.kind, step.mode, step.refusal))
+        action = site.act("kept", step.kind, step.mode, step.refusal)
+        return Applied(replace(action, detail=step_detail(step)))
     found = receipt.find(
         identity_of(site.target, site.location, site.scope_root, step.kind, site.shown)
     )
     applied = _write(site, step, found, env, dry_run=dry_run)
-    if not step.note:
-        return applied
-    action = replace(applied.action, note=_notes(applied.action.note, step.note))
-    return replace(applied, action=action)
+    note = _notes(applied.action.note, step.note)
+    return replace(applied, action=replace(applied.action, note=note, detail=step_detail(step)))
 
 
 def _write(
@@ -312,16 +340,22 @@ def uninstall(
     env: HostEnv,
     *,
     dry_run: bool = False,
+    keep: frozenset[str] = frozenset(),
 ) -> WriteResult:
-    """Undo `steps` in reverse, then any row they do not name; never raises. D459."""
+    """Undo `steps` in reverse, then any row they do not name; never raises. D459.
+
+    `keep` names array values to leave in place: 10:1428's `--keep-cli` keeps `Bash(ow:*)`. A value
+    kept leaves with its row, so from then on it is the user's grant, not omniweave's.
+    """
     scope, refusal = scope_of(env, loc)
     if refusal:
         return WriteResult(target, loc, refused=refusal)
     if dry_run:
         loaded = load(env.omniweave_home, pid=env.pid, release=env.release, back_up=False)
         actions, lines = _undo_all(
-            target, loc, scope, steps, env, receipt=loaded.receipt, lock=None, dry_run=True
-        )
+            target, loc, scope, steps, env,
+            receipt=loaded.receipt, lock=None, dry_run=True, keep=keep,
+        )  # fmt: skip
         return WriteResult(target, loc, actions, notes=lines)
     taken = take_lock(env.omniweave_home, clock=env.clock, wait_ms=env.lock_wait_ms)
     if taken.lock is None:
@@ -336,8 +370,9 @@ def uninstall(
             )
         writer = lock if loaded.writable else None
         actions, more = _undo_all(
-            target, loc, scope, steps, env, receipt=loaded.receipt, lock=writer, dry_run=False
-        )
+            target, loc, scope, steps, env,
+            receipt=loaded.receipt, lock=writer, dry_run=False, keep=keep,
+        )  # fmt: skip
     return WriteResult(target, loc, actions, notes=(*lines, *more))
 
 
@@ -351,6 +386,7 @@ def _undo_all(
     receipt: Receipt,
     lock: InstallLock | None,
     dry_run: bool,
+    keep: frozenset[str],
 ) -> tuple[tuple[FileAction, ...], tuple[str, ...]]:
     rows = [entry for entry in receipt.for_scope(loc, scope) if entry.target == target]
     creators = _creators(rows)
@@ -362,7 +398,7 @@ def _undo_all(
     for entry in reversed([one for one in rows if (one.kind, one.path) in by_place]):
         site = _site(target, loc, scope, expand(entry.path, env.user_home), env)
         work.append((site, entry.kind, entry.mode, entry, None))
-    return _run_undo(work, creators, env, lock, dry_run=dry_run)
+    return _run_undo(work, creators, env, lock, dry_run=dry_run, keep=keep)
 
 
 def _run_undo(
@@ -372,6 +408,7 @@ def _run_undo(
     lock: InstallLock | None,
     *,
     dry_run: bool,
+    keep: frozenset[str] = frozenset(),
 ) -> tuple[tuple[FileAction, ...], tuple[str, ...]]:
     """Each undo in `work`'s order, then the one sweep of created directories. D459.
 
@@ -381,13 +418,14 @@ def _run_undo(
     lines: list[str] = []
     swept: list[Path] = []
     for site, kind, mode, entry, step in work:
-        merged = _merged(entry, creators)
+        merged = _merged(entry, creators, keep)
         try:
             applied = _undo(site, kind, mode, entry=merged, step=step, env=env, dry_run=dry_run)
         except Exception as error:  # 10:1765: a failed undo must not block the rest
             note = f"failed: {type(error).__name__}: {error}"
             applied = Applied(site.act("kept", kind, mode, note))
-        actions.append(applied.action)
+        detail = entry_detail(entry) if entry is not None else step_detail(step)
+        actions.append(replace(applied.action, detail=detail))
         if applied.forget is None or entry is None:
             continue
         swept.extend(expand(one, env.user_home) for one in entry.created_dirs)
@@ -413,11 +451,17 @@ def _creators(rows: Sequence[Entry]) -> dict[str, bool]:
     return created
 
 
-def _merged(entry: Entry | None, creators: Mapping[str, bool]) -> Entry | None:
-    """`entry` with its file's creator flag, and no directories: the sweep removes those."""
+def _merged(
+    entry: Entry | None, creators: Mapping[str, bool], keep: frozenset[str] = frozenset()
+) -> Entry | None:
+    """`entry` with its file's creator flag, no directories -- the sweep removes those -- and
+    none of the array values the caller asked to keep."""
     if entry is None:
         return None
-    return replace(entry, created_file=creators.get(entry.path, False), created_dirs=())
+    values = tuple(one for one in entry.values if one not in keep)
+    return replace(
+        entry, created_file=creators.get(entry.path, False), created_dirs=(), values=values
+    )
 
 
 def _undo(
@@ -449,6 +493,40 @@ def _undo(
 
 def _spell(path: Path, env: HostEnv) -> str:
     return tildify(path, env.user_home)
+
+
+def _bundle_hash(digest: str) -> str:
+    return f"bundle_hash {digest[:4]}\u2026" if digest else "bundle"
+
+
+def step_detail(step: Step | None) -> str:
+    """18:2975-2980's third column for a step: what it writes, in a few words."""
+    if step is None:
+        return ""
+    if step.mode == "json-key":
+        return step.key
+    if step.mode == "json-array-add":
+        return f"{step.key} += {' '.join(step.values)}"
+    if step.mode == "json-hook-rules":
+        return " ".join(one.event for one in step.hooks) or "none of ours"
+    if step.mode == "marker-section":
+        return BEGIN
+    source = step.source
+    digest = bundle_sha256(source)[0] if source is not None and source.is_dir() else ""
+    return _bundle_hash(digest)
+
+
+def entry_detail(entry: Entry) -> str:
+    """The same column for a receipt row: what omniweave wrote there."""
+    if entry.mode == "json-key":
+        return entry.key
+    if entry.mode == "json-array-add":
+        return f"{entry.key} += {' '.join(entry.values)}".strip()
+    if entry.mode == "json-hook-rules":
+        return " ".join(entry.events)
+    if entry.mode == "marker-section":
+        return entry.marker
+    return _bundle_hash(entry.bundle_sha256)
 
 
 # ---------------------------------------------------------------------------------------------

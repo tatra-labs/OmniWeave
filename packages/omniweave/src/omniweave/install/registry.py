@@ -20,11 +20,11 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
     from omniweave.install.engine import HostEnv
-    from omniweave.install.types import AgentTarget, TargetId
+    from omniweave.install.types import HostTarget, TargetId
 
 __all__ = ["BUILT", "TARGETS", "build"]
 
-TARGETS: Final[Mapping[TargetId, Callable[[HostEnv], AgentTarget]]] = {
+TARGETS: Final[Mapping[TargetId, Callable[[HostEnv], HostTarget]]] = {
     "claude-code": ClaudeCode,
 }
 
@@ -32,7 +32,7 @@ BUILT: Final[tuple[TargetId, ...]] = tuple(one for one in TARGET_IDS if one in T
 """The built ids, in 10:1632's order."""
 
 
-def build(target: str, env: HostEnv) -> AgentTarget:
+def build(target: str, env: HostEnv) -> HostTarget:
     """The target for `target`; `ValueError` naming the known ids, or saying it is not built."""
     factory = TARGETS.get(target)  # type: ignore[call-overload]
     if factory is not None:
