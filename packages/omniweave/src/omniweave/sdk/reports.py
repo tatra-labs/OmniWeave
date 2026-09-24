@@ -65,6 +65,7 @@ __all__ = [
     "Gap",
     "HooksCheckReport",
     "InstallReport",
+    "SkillsReport",
 ]
 
 
@@ -307,6 +308,18 @@ class InstallReport:
     18:2973-2989 prints and the exit the table at 10:1483-1492 gives it -- 0, 1, or 9 for
     `--check`. The per-path detail is the install receipt's, which is the record; a second copy
     here would be a second place for it to disagree.
+    """
+
+    exit_code: int
+    lines: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SkillsReport:
+    """What `ow skills install` and `ow skills remove` return: 10:1429's 0/1/2 and the lines.
+
+    `InstallReport`'s shape, for its reason: neither Action has an `mcp_name`, so there is no MCP
+    payload to shape, and the per-directory record is `skills-lock.json`'s.
     """
 
     exit_code: int

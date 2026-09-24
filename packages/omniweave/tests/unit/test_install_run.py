@@ -157,3 +157,31 @@ def test_the_null_device_is_not_a_terminal_though_isatty_says_it_is() -> None:
 
 def test_a_stream_with_no_descriptor_is_not_a_terminal() -> None:
     assert not run._is_terminal(io.StringIO())
+
+
+# ---------------------------------------------------------------------------------------------
+# `ow skills install | remove` (W7.6b), from argv.
+# ---------------------------------------------------------------------------------------------
+
+
+def test_ow_skills_install_and_remove_from_argv(tmp_path: Path) -> None:
+    """The router's section 4, `ow skills install <name>` (10:1261), run as an agent runs it."""
+    code, out, _ = _run(["skills", "install", "omniweave"], tmp_path)
+    assert code == 1
+    assert "`ow install --skills core`" in out
+    (tmp_path / "home" / ".agents" / "skills").mkdir(parents=True)
+    code, out, _ = _run(["skills", "install", "omniweave", "omniweave"], tmp_path)
+    assert code == 0, out
+    assert out.rstrip().endswith(" created")
+    assert _run(["skills", "install", "omniweave-pptx"], tmp_path)[0] == 2
+    code, out, _ = _run(["skills", "remove", "omniweave"], tmp_path)
+    assert code == 1
+    assert "not confirmed; nothing removed" in out
+    code, out, _ = _run(["skills", "remove", "omniweave", "--yes"], tmp_path)
+    assert code == 0, out
+    assert _tree(tmp_path / "home") == {".agents": None, ".agents/skills": None}
+    assert not (tmp_path / "owhome" / "skills-lock.json").exists()
+
+
+def test_ow_skills_install_needs_a_name(tmp_path: Path) -> None:
+    assert _run(["skills", "install"], tmp_path)[0] == 1

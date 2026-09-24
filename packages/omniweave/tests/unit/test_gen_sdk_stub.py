@@ -186,9 +186,13 @@ def test_the_actions_with_no_sdk_entry_point_are_the_document_pair_and_the_insta
     section 13.5 owns. So `doc.grid` and `doc.diff` are a boundary, not a gap.
 
     `install` and `uninstall` are a gap. 10:32-33 gives every Action an SDK method and the plan
-    prints no signature for either, so there is nothing to transcribe into `SDK_HOMES` (D470)."""
+    prints no signature for either, so there is nothing to transcribe into `SDK_HOMES` (D470). The
+    two `ow skills` verbs are the same gap."""
     missing = sorted(name for name, spec in ACTIONS.items() if spec.cli and name not in SDK_HOMES)
-    assert missing == ["doc.diff", "doc.grid", "hooks.check", "install", "uninstall"]
+    assert missing == [
+        "doc.diff", "doc.grid", "hooks.check", "install", "skills.install", "skills.remove",
+        "uninstall",
+    ]  # fmt: skip
 
 
 def test_exactly_two_signatures_are_their_input_types_field_list() -> None:

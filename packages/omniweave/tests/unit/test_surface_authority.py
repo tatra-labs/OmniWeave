@@ -343,9 +343,11 @@ def test_listed_all_is_ordinary_in_the_prose_and_a_startup_error_in_the_invarian
 def test_the_human_only_clause_fires_on_the_first_human_only_row() -> None:
     """SV1's second clause could not fire while none of `HUMAN_ONLY`'s five was an Action; this
     test announced the day one landed by failing, and `uninstall` is that day (W7.5h). Naming it
-    in an enabled variable is now refused by name, and `query` beside it is not."""
-    assert HUMAN_ONLY & set(ACTIONS) == frozenset({"uninstall"})
+    in an enabled variable is now refused by name, and `query` beside it is not. `skills.remove`
+    is the second (W7.6b)."""
+    assert HUMAN_ONLY & set(ACTIONS) == frozenset({"uninstall", "skills.remove"})
     assert human_only_named(["uninstall", "query"]) == ("uninstall",)
+    assert human_only_named(["skills.remove"]) == ("skills.remove",)
 
 
 # =============================================================================================

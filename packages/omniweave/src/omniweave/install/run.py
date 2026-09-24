@@ -1,6 +1,6 @@
-"""`ow install`, `ow uninstall` and `ow hooks check` from argv: the parser, a `HostEnv`, the verbs.
+"""`ow install`, `ow uninstall`, `ow hooks check` and `ow skills install | remove` from argv.
 
-`__main__` routes the three roots here now that their `ACTIONS` rows exist (W7.5h, W7.5i). The
+`__main__` routes the four roots here now that their `ACTIONS` rows exist (W7.5h, W7.5i, W7.6b). The
 argv is parsed by the generated tree (`omniweave.cli.build_parser`, artefact 3, byte-gated by G25),
 so a flag this file reads is a flag the registry published -- and one it does not publish cannot be
 typed.
@@ -48,7 +48,7 @@ from omniweave_core.clock import SystemClock
 from omniweave_core.host.subproc import Captured, run_captured
 
 from omniweave.cli import ACTION_DEST, build_parser
-from omniweave.install import verbs
+from omniweave.install import skillset, verbs
 from omniweave.install.engine import HostEnv
 from omniweave.install.hookrules import launcher
 from omniweave.install.types import HOOK_SETS, LOCATIONS, SKILL_SETS, InstallOptions
@@ -60,7 +60,7 @@ if TYPE_CHECKING:
 
 __all__ = ["ROOTS", "host_env", "main"]
 
-ROOTS: Final = frozenset({"install", "uninstall", "hooks"})
+ROOTS: Final = frozenset({"install", "uninstall", "hooks", "skills"})
 """The roots this module dispatches; `__main__.DISPATCHED` includes them."""
 
 _ARGPARSE_USAGE: Final = 2
@@ -164,6 +164,8 @@ def main(
         outcome = _hooks_check(built, env)
     elif action == "install":
         outcome = _install(parsed, built, terminal)
+    elif action.startswith("skills."):
+        outcome = _skills(action, parsed, built, terminal)
     else:
         outcome = _uninstall(parsed, built, terminal)
     out.write(outcome.text())
@@ -251,6 +253,17 @@ def _uninstall(ns: argparse.Namespace, env: HostEnv, terminal: _Terminal) -> ver
         return loc
     confirm = terminal.confirm if terminal.present else None
     return verbs.uninstall(ns.target, loc, env, yes=ns.yes, confirm=confirm, keep_cli=ns.keep_cli)
+
+
+def _skills(
+    action: str, ns: argparse.Namespace, env: HostEnv, terminal: _Terminal
+) -> verbs.Outcome:
+    """`ow skills install <name>...` writes without asking; `remove` asks, as uninstall does."""
+    names = [ns.name] if isinstance(ns.name, str) else list(ns.name)
+    if action == "skills.install":
+        return skillset.install(names, env)
+    confirm = terminal.confirm if terminal.present else None
+    return skillset.remove(names, env, yes=ns.yes, confirm=confirm)
 
 
 def _runner(

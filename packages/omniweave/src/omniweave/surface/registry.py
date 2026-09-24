@@ -123,6 +123,7 @@ from omniweave.sdk.reports import (
     DoctorReport,
     HooksCheckReport,
     InstallReport,
+    SkillsReport,
 )
 from omniweave.surface.inputs import (
     AddIn,
@@ -136,6 +137,8 @@ from omniweave.surface.inputs import (
     InstallIn,
     OpenIn,
     QueryIn,
+    SkillsInstallIn,
+    SkillsRemoveIn,
     UninstallIn,
 )
 
@@ -1371,6 +1374,50 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             inp=UninstallIn,
             out=InstallReport,
             cli=("uninstall",),
+        ),
+        #  10:53's row 1 again: a skill is omniweave's steering surface in an agent host, so writing
+        #  one is the installed configuration row 1 names, and there is no `mcp_name` -- the rule
+        #  `install` follows (D469). The agent still runs it: the router's section 4 says
+        #  `ow skills install <name>`, and 10:102 is *"The skills shell out to `ow`"*. A shell is
+        #  not an MCP dispatch, and row 1 is about the second. D489.
+        ActionSpec(
+            name="skills.install",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Copy a shipped skill bundle into every discovered agent-host skills directory, "
+                "verified on its whole-bundle digest and recorded in skills-lock.json"
+            ),
+            decision="a route needs a skill body that is not installed yet",
+            example={"name": "omniweave-pptx"},
+            inp=SkillsInstallIn,
+            out=SkillsReport,
+            cli=("skills", "install"),
+        ),
+        #  One of HUMAN_ONLY's five (10:59), so check 4 already requires what this row declares.
+        ActionSpec(
+            name="skills.remove",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            destructive=True,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Take a skill out of every directory skills-lock.json says ow skills install put "
+                "it in, on its digest; a modified or foreign copy is kept"
+            ),
+            decision="a skill ow skills install placed should go",
+            example={"name": "omniweave-pptx", "yes": True},
+            inp=SkillsRemoveIn,
+            out=SkillsReport,
+            cli=("skills", "remove"),
         ),
         #  10:57's row 5: not irreversible, spends nothing, writes nothing a user opens, and not a
         #  pure function of the corpus -- so an `mcp_name`, unlisted and not enabled. 10:57 spells

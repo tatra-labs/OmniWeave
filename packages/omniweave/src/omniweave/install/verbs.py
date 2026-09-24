@@ -88,6 +88,7 @@ __all__ = [
     "print_config",
     "refresh_targets",
     "resolve_targets",
+    "row",
     "uninstall",
 ]
 
@@ -153,7 +154,7 @@ def _resolved(spec: str, env: HostEnv, loc: Location) -> tuple[HostTarget, ...] 
 # ---------------------------------------------------------------------------------------------
 
 
-def _row(action: FileAction, *, planned: bool) -> str:
+def row(action: FileAction, *, planned: bool) -> str:
     """One path's line. A note that opens with its own action (10:1758's *"kept -- modified
     since install"*) is printed once, not as `kept -- kept -- ...` (D488)."""
     verb = _IMPERATIVE.get(action.action, action.action) if planned else action.action
@@ -168,7 +169,7 @@ def _rendered(results: Sequence[WriteResult], *, planned: bool) -> list[str]:
         if result.refused:
             lines.append(f"  {result.target} {result.location}: refused -- {result.refused}")
             continue
-        lines.extend(_row(action, planned=planned) for action in result.actions)
+        lines.extend(row(action, planned=planned) for action in result.actions)
         lines.extend(f"  {note}" for note in result.notes)
     return lines
 

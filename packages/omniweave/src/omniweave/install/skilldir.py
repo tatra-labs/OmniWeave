@@ -45,6 +45,7 @@ from omniweave.install.primitives import remove_empty_dirs
 from omniweave.skills.hash import bundle_sha256, first_difference, walk
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from omniweave_core.clock import Clock
@@ -53,16 +54,18 @@ if TYPE_CHECKING:
     from omniweave.install.receipt import Entry
     from omniweave.install.types import Action
 
-__all__ = ["HASH_MISMATCH", "install_dir", "remove_dir"]
+__all__ = ["HASH_MISMATCH", "MODIFIED", "discard", "install_dir", "is_link", "place", "remove_dir"]
 
 HASH_MISMATCH: Final = "OW-A-031"
 """codes.toml: `OW_SKILL_HASH_MISMATCH`, *"skill bundle hash mismatch"*."""
 
-_MODIFIED: Final = "kept -- modified since install"
+MODIFIED: Final = "kept -- modified since install"
+"""10:1758's phrase, verbatim."""
 _REDERIVED: Final = "no receipt row: removed because it is exactly this release's bundle (D455)"
 
 
-def _is_link(path: Path) -> bool:
+def is_link(path: Path) -> bool:
+    """A symlink or a Windows junction, which omniweave neither writes nor deletes through."""
     return path.is_symlink() or path.is_junction()
 
 
@@ -94,14 +97,14 @@ def install_dir(
         return Applied(site.act("kept", "skill", "dir", f"{source} holds no bundle file"))
     dest = site.path
     existed = dest.exists()
-    blocked = _occupied(site, want, previous, clock) if existed or _is_link(dest) else None
+    blocked = _occupied(site, want, previous, clock) if existed or is_link(dest) else None
     if blocked is not None:
         return blocked
     action: Action = "updated" if existed else "created"
     if dry_run:
         return Applied(site.act(action, "skill", "dir"))
     parents = _missing_parents(dest)
-    placed = _place(source, dest, want, pid)
+    placed = place(source, dest, want, pid)
     if placed:
         remove_empty_dirs(parents)
         return Applied(site.act("kept", "skill", "dir", placed))
@@ -117,7 +120,7 @@ def install_dir(
 def _occupied(site: Site, want: str, previous: Entry | None, clock: Clock) -> Applied | None:
     """What an existing destination decides: `None` when omniweave may replace it."""
     dest = site.path
-    if _is_link(dest):
+    if is_link(dest):
         return Applied(site.act("kept", "skill", "dir", "is a link; not writing through it"))
     if not dest.is_dir():
         return Applied(site.act("kept", "skill", "dir", "is a file, not a directory"))
@@ -139,8 +142,12 @@ def _unchanged(site: Site, want: str, previous: Entry | None, clock: Clock) -> A
     return Applied(site.act("unchanged", "skill", "dir", note), record=row)
 
 
-def _place(source: Path, dest: Path, want: str, pid: int) -> str:
-    """Stage, verify, rename into place; `""`, or why not, with nothing left behind."""
+def place(source: Path, dest: Path, want: str, pid: int) -> str:
+    """Stage, verify, rename into place; `""`, or why not, with nothing left behind.
+
+    `want` is the source's digest, computed by the caller. `ow skills install` places with this
+    too, so the two writers of a skill directory stage and verify the same way.
+    """
     staged = dest.with_name(f"{dest.name}.tmp.{pid}")
     old = dest.with_name(f"{dest.name}.old.{pid}")
     try:
@@ -166,7 +173,7 @@ def _place(source: Path, dest: Path, want: str, pid: int) -> str:
 
 
 def _clear(path: Path) -> None:
-    if path.exists() and not _is_link(path):
+    if path.exists() and not is_link(path):
         shutil.rmtree(path, ignore_errors=True)
 
 
@@ -192,24 +199,36 @@ def remove_dir(
     note = _REDERIVED if entry is None else ""
     if dry_run:
         return Applied(site.act("removed", "skill", "dir", note), forget=entry)
+    removed, left = discard(site.path, site.shown, site.spell, pid)
+    if not removed:
+        return Applied(site.act("kept", "skill", "dir", _notes(left, note)))
+    return Applied(site.act("removed", "skill", "dir", _notes(note, left)), forget=entry)
+
+
+def discard(path: Path, shown: str, spell: Callable[[Path], str], pid: int) -> tuple[bool, str]:
+    """Rename the tree aside, then delete it: `(removed, leftover note)`. D465's order.
+
+    `False` means the rename failed and nothing in the tree was deleted. `True` with a note means
+    the tree is gone from `path` and its renamed copy could not all be deleted (10:1763's
+    *"Could not remove <path> -- delete it manually"*).
+    """
     later = " after this window closes" if os.name == "nt" else ""
-    aside = site.path.with_name(f"{site.path.name}.old.{pid}")
+    aside = path.with_name(f"{path.name}.old.{pid}")
     try:
-        site.path.replace(aside)
+        path.replace(aside)
     except OSError as error:
-        leftover = f"Could not remove {site.shown} -- delete it manually{later}"
-        why = f"{type(error).__name__}; nothing in it was deleted"
-        return Applied(site.act("kept", "skill", "dir", _notes(leftover, why, note)))
+        leftover = f"Could not remove {shown} -- delete it manually{later}"
+        return False, _notes(leftover, f"{type(error).__name__}; nothing in it was deleted")
     shutil.rmtree(aside, ignore_errors=True)
     if aside.exists():
-        note = _notes(note, f"Could not remove {site.spell(aside)} -- delete it manually{later}")
-    return Applied(site.act("removed", "skill", "dir", note), forget=entry)
+        return True, f"Could not remove {spell(aside)} -- delete it manually{later}"
+    return True, ""
 
 
 def _removal_blocked(site: Site, entry: Entry | None, source: Path | None) -> Applied | None:
     """What stops the removal, or `None` when the tree is omniweave's to delete."""
     dest = site.path
-    if _is_link(dest):
+    if is_link(dest):
         return Applied(site.act("kept", "skill", "dir", "is a link; not removing through it"))
     if not dest.exists():
         return Applied(site.act("not-found", "skill", "dir", "no directory"), forget=entry)
@@ -243,5 +262,5 @@ def _mismatch(
     if source is not None and source.is_dir() and bundle_sha256(source)[0] == expected:
         differs = first_difference(source, site.path)
         first = f"first differing path {differs}" if differs else ""
-    detail = _notes(_MODIFIED, f"expected {expected}", f"observed {have}", first)
+    detail = _notes(MODIFIED, f"expected {expected}", f"observed {have}", first)
     return Applied(site.act("kept", "skill", "dir", detail, code=HASH_MISMATCH))

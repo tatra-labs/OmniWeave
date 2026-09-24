@@ -108,6 +108,7 @@ GLOBAL_FLAGS: Final[tuple[Argument, ...]] = (
 GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
     "hooks": "check",
+    "skills": "install · remove",
 }
 
 COMMANDS: Final[tuple[Command, ...]] = (
@@ -405,6 +406,41 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 spelling=("--explain",),
                 kind="switch",
                 help="print the routing decision with the answer",
+            ),
+        ),
+    ),
+    Command(
+        words=("skills", "install"),
+        actions=("skills.install",),
+        help=(
+            "Copy a shipped skill bundle into every discovered agent-host skills directory, "
+            "verified on its whole-bundle digest and recorded in skills-lock.json"
+        ),
+        arguments=(
+            Argument(
+                spelling=("name",),
+                nargs="+",
+                metavar="NAME",
+            ),
+        ),
+    ),
+    Command(
+        words=("skills", "remove"),
+        actions=("skills.remove",),
+        help=(
+            "Take a skill out of every directory skills-lock.json says ow skills install put "
+            "it in, on its digest; a modified or foreign copy is kept"
+        ),
+        arguments=(
+            Argument(
+                spelling=("name",),
+                nargs="+",
+                metavar="NAME",
+            ),
+            Argument(
+                spelling=("--yes",),
+                kind="switch",
+                default=False,
             ),
         ),
     ),

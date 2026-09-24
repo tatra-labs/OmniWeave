@@ -1,9 +1,9 @@
 """The `dir` mode through the claude-code host: a bundle copied, recorded by digest, taken back.
 
-**The sharpest test is `test_this_repositorys_bundle_is_refused_by_name_and_the_rest_installs`.** It
-points the host at the repository's own `skills/` and shows what `--skills core` does on this
-machine today: the router has no `SKILL.md` yet (W7.6), so the skill is refused by name and the
-other four steps are written.
+**The sharpest test is `test_this_repositorys_bundle_installs_with_the_rest`.** It points the host
+at the repository's own `skills/` and shows what `--skills core` does on this machine: W7.5f
+measured the skill refused by name, because the router had no `SKILL.md`; W7.6a rendered one, and
+the bundle now installs beside the other four steps.
 """
 
 from __future__ import annotations
