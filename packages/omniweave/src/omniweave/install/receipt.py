@@ -78,6 +78,8 @@ from omniweave_core.locks import INTERACTIVE_WAIT_MS, FileScopedLock, LockHolder
 
 from omniweave.install.primitives import (
     DEFAULT_STYLE,
+    HTML,
+    Markers,
     atomic_write,
     read_json,
     render_json,
@@ -700,9 +702,9 @@ def owned_array(document: Mapping[str, Any], key: str, values: Sequence[str]) ->
     return sha256_canonical([value for value in values if value in array])
 
 
-def owned_section(text: str) -> str | None:
+def owned_section(text: str, markers: Markers = HTML) -> str | None:
     """A `marker-section` row's owned digest: the section's lines, newline-normalised."""
-    span = section_span(text)
+    span = section_span(text, markers)
     if not isinstance(span, tuple):
         return None
     start, stop = span

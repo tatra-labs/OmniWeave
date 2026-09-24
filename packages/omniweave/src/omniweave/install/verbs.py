@@ -49,7 +49,7 @@ from omniweave.hooks.check import check as probe_hooks
 from omniweave.hooks.check import render as render_probes
 from omniweave.hooks.session import anchor, sessions_dir
 from omniweave.install.hookrules import owned_event, owned_pairs
-from omniweave.install.primitives import decode_text, read_json
+from omniweave.install.primitives import decode_text, markers_for, read_json
 from omniweave.install.receipt import (
     expand,
     load,
@@ -288,7 +288,7 @@ def _section_status(entry: Entry, path: Path) -> str:
         text = decode_text(path.read_bytes())[0]
     except (OSError, UnicodeDecodeError):
         return f"{entry.kind} missing"
-    return _said(entry.kind, owned_section(text) == entry.owned_sha256)
+    return _said(entry.kind, owned_section(text, markers_for(entry.marker)) == entry.owned_sha256)
 
 
 def _said(kind: str, ok: bool) -> str:

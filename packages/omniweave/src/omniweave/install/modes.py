@@ -58,12 +58,14 @@ from omniweave_core.canonical import sha256_canonical
 
 from omniweave.install.hookrules import Converged, Desired, converge, owned_pairs, strip
 from omniweave.install.primitives import (
-    BEGIN,
+    HTML,
+    Markers,
     ReadJson,
     atomic_write,
     decode_text,
     encode_text,
     json_deep_equal,
+    markers_for,
     read_json,
     remove_empty_dirs,
     remove_marked_section,
@@ -523,8 +525,32 @@ def set_hooks(
     dry_run: bool = False,
     sleep: Callable[[float], None] = time.sleep,
 ) -> Applied:
-    """Converge the file's hook rules to `wanted`. An empty `wanted` is `--hooks none`: ours go."""
+    """Converge the file's hook rules to `wanted`. An empty `wanted` is `--hooks none`: ours go.
+
+    D483: `--hooks none` into no file is nothing to do. Writing `{}` made a file no row names,
+    which uninstall then never removes -- invisible while claude-code's permissions step created
+    `settings.json` first, and the whole of Codex's `hooks.json`.
+    """
     before = read_json(site.path, pid=pid, back_up=not dry_run)
+    if not wanted and before.state == "missing":
+        nothing = site.act("unchanged", "hooks", "json-hook-rules", "no file")
+        return Applied(nothing, forget=previous)
+    return _converge_hooks(
+        site, wanted, before, previous=previous, clock=clock, pid=pid, dry_run=dry_run, sleep=sleep
+    )
+
+
+def _converge_hooks(
+    site: Site,
+    wanted: Sequence[Desired],
+    before: ReadJson,
+    *,
+    previous: Entry | None,
+    clock: Clock,
+    pid: int,
+    dry_run: bool,
+    sleep: Callable[[float], None],
+) -> Applied:
     document = copy.deepcopy(before.value)
     result = converge(document, wanted)
     if not wanted and previous is not None:
@@ -634,20 +660,30 @@ def upsert_section(
     dry_run: bool = False,
     sleep: Callable[[float], None] = time.sleep,
     head: str = "",
+    markers: Markers = HTML,
+    validate: Callable[[str], str] | None = None,
 ) -> Applied:
-    """Insert or replace omniweave's block in a Markdown file, creating the file if need be.
+    """Insert or replace omniweave's block in a text file, creating the file if need be.
 
     `head` is what a file this creates starts with, before the block: a Cursor rule is read only
     if its frontmatter opens the file, and the block's first line is a comment (D477). A file that
     exists is never given one -- its first lines are the user's.
+
+    `markers` is the comment syntax (D480), and `validate` reads the whole text the write would
+    leave and names why it must not be written, or returns `""`. A TOML block is text to this
+    mode and a table to Codex: a second `[mcp_servers.omniweave]` elsewhere in the file, or a
+    file that does not parse, is caught before the write, not after.
     """
     read = _read_text(site.path)
     if isinstance(read, str):
         return Applied(site.act("kept", kind, "marker-section", read))
     text, bom, existed = read
-    section = upsert_marked_section(text if existed else head, body)
-    if section.text is None:
-        return Applied(site.act("kept", kind, "marker-section", section.reason))
+    section = upsert_marked_section(text if existed else head, body, markers)
+    refused = section.reason if section.text is None else ""
+    if section.text is not None and validate is not None:
+        refused = validate(section.text)
+    if refused or section.text is None:
+        return Applied(site.act("kept", kind, "marker-section", refused))
     if section.action == "unchanged":
         return Applied(site.act("unchanged", kind, "marker-section"))
     action: Action = "updated" if existed else "created"
@@ -662,9 +698,9 @@ def upsert_section(
         kind,
         "marker-section",
         clock,
-        marker=BEGIN,
+        marker=markers.begin,
         sha256_after=wrote.sha256,
-        owned_sha256=owned_section(section.text) or "",
+        owned_sha256=owned_section(section.text, markers) or "",
         created_file=created_file,
         created_dirs=dirs,
     )
@@ -681,13 +717,16 @@ def remove_section(
     dry_run: bool = False,
     sleep: Callable[[float], None] = time.sleep,
     head: str = "",
+    markers: Markers = HTML,
 ) -> Applied:
     """Remove omniweave's block, and the file too when install created it and nothing is left.
 
     *Nothing* includes the `head` install created the file with (D477): what is left is then
-    only what omniweave wrote. A head the user edited is theirs, and the file stays.
+    only what omniweave wrote. A head the user edited is theirs, and the file stays. A row's own
+    `marker` names its markers; `markers` is re-derivation's, when there is no row (D480).
     """
-    planned = _section_removal(site, kind, entry)
+    chosen = markers_for(entry.marker) if entry is not None and entry.marker else markers
+    planned = _section_removal(site, kind, entry, chosen)
     if isinstance(planned, Applied):
         return planned
     text, bom, note = planned
@@ -703,20 +742,20 @@ def remove_section(
 
 
 def _section_removal(
-    site: Site, kind: Kind, entry: Entry | None
+    site: Site, kind: Kind, entry: Entry | None, markers: Markers
 ) -> tuple[str, bool, str] | Applied:
     """The text without the block, its BOM and a note -- or the action that ends it early."""
     read = _read_text(site.path)
     if isinstance(read, str):
         return Applied(site.act("kept", kind, "marker-section", read))
     text, bom, existed = read
-    if not existed or section_span(text) is None:
+    if not existed or section_span(text, markers) is None:
         why = "no file" if not existed else "not configured"
         return Applied(site.act("not-found", kind, "marker-section", why), forget=entry)
-    judged = _judge(site, entry, owned_section(text))
+    judged = _judge(site, entry, owned_section(text, markers))
     if judged == "modified":
         return Applied(site.act("kept", kind, "marker-section", _MODIFIED))
-    section = remove_marked_section(text)
+    section = remove_marked_section(text, markers)
     if section.text is None:
         return Applied(site.act("kept", kind, "marker-section", section.reason))
     note = _REDERIVED if entry is None else (_OTHER_CHANGES if judged == "owned-untouched" else "")

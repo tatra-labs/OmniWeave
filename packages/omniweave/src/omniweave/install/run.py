@@ -92,6 +92,7 @@ def host_env(env: Mapping[str, str], cwd: Path) -> HostEnv | str:
         launch=launcher(),
         project_root=cwd.resolve(),
         skills_root=_skills_root(),
+        environ=dict(env),
     )
 
 
