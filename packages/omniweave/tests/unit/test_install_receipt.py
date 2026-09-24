@@ -229,7 +229,7 @@ def test_a_local_row_needs_an_absolute_scope_root() -> None:
 
 def test_each_mode_needs_its_own_field() -> None:
     cases = {
-        "json-array-add": {"kind": "permissions", "values": []},
+        "json-array-add": {"kind": "permissions", "values": [1]},
         "marker-section": {"kind": "instructions", "marker": ""},
         "json-hook-rules": {"kind": "hooks", "events": ["SessionStart", 1]},
         "dir": {"kind": "skill", "bundle_sha256": "short"},
