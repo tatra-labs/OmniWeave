@@ -205,6 +205,10 @@ cli.query: ow query QUERY [--scope SCOPE] [--want passages|table|fields|outline|
   [--max-rung gate|decode|repair|page|regen|degrade|enrich] [--max-chars MAX_CHARS] [--k N]
   [--mode find|cite|explore|prove_absent] [--fail-on STATE[,STATE]] [--explain]
 cli.query.actions: query
+cli.skills.install: ow skills install NAME...
+cli.skills.install.actions: skills.install
+cli.skills.remove: ow skills remove NAME... [--yes]
+cli.skills.remove.actions: skills.remove
 cli.uninstall: ow uninstall [--target TARGET] [--location LOCATION] [--keep-cli] [--yes]
 cli.uninstall.actions: uninstall
 cli.groups: add audit-config bench cache check conform corpora cost deps doc doctor drivers eval

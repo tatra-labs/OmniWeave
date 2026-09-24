@@ -35,6 +35,7 @@ from omniweave.hooks.envelope import EVENTS
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from pathlib import Path
 
 __all__ = [
     "ACTIONS",
@@ -189,9 +190,13 @@ class HostTarget(AgentTarget, Protocol):
 
     10:1760 prints *"the whole plan before touching anything"*, which is an uninstall that writes
     nothing, and 10:1428 gives `ow uninstall` a `--keep-cli`. Both are keyword-only with defaults,
-    so a `HostTarget` is still an `AgentTarget` as the plan wrote it.
+    so a `HostTarget` is still an `AgentTarget` as the plan wrote it. `skills_dir` is where the
+    host reads skill bundles from at `loc`: `ow skills install` writes into every one of them that
+    exists (10:1393), so a new host's directory is found by its registry row and no list.
     """
 
     def uninstall(
         self, loc: Location, *, dry_run: bool = False, keep_cli: bool = False
     ) -> WriteResult: ...
+
+    def skills_dir(self, loc: Location) -> Path: ...

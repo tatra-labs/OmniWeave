@@ -200,12 +200,13 @@ def test_add_is_the_one_writer_and_the_only_open_world_action() -> None:
     """10:158: `open_world` is true *"only where the Action touches something outside the
     store"* -- `ow_add` alone, because it walks a filesystem or fetches a URL.
 
-    `add` is the one writer an agent can reach. `install` and `uninstall` write too -- an agent
-    host's configuration -- and have no `mcp_name` (10:53's row 1, D469), so no agent reaches them.
+    `add` is the one writer an agent can reach. `install`, `uninstall` and the two `ow skills`
+    verbs write too -- an agent host's configuration -- and have no `mcp_name` (10:53's row 1,
+    D469, D489), so no agent reaches them over MCP.
     """
     writers = [spec.name for spec in ACTIONS.values() if not spec.read_only]
     open_world = [spec.name for spec in ACTIONS.values() if spec.open_world]
-    assert writers == ["add", "install", "uninstall"]
+    assert writers == ["add", "install", "uninstall", "skills.install", "skills.remove"]
     assert [name for name in writers if ACTIONS[name].mcp_name is not None] == ["add"]
     #  `hooks.check` runs the installed commands, which are outside the store (10:157-158); it
     #  reads and writes nothing of the deployment, so it is open-world and read-only.
@@ -215,9 +216,11 @@ def test_add_is_the_one_writer_and_the_only_open_world_action() -> None:
 def test_no_listed_tool_is_destructive_including_the_writer() -> None:
     """10:161: ingest appends and never removes indexed content, so a host should not prompt.
 
-    `uninstall` is destructive -- it removes configuration a user has -- and is human-only.
+    `uninstall` and `skills.remove` are destructive -- they remove configuration a user has -- and
+    both are human-only.
     """
-    assert [spec.name for spec in ACTIONS.values() if spec.destructive] == ["uninstall"]
+    destructive = [spec.name for spec in ACTIONS.values() if spec.destructive]
+    assert destructive == ["uninstall", "skills.remove"]
     assert [name for name in LISTED_NAMES if ACTIONS[name].destructive] == []
 
 
@@ -256,12 +259,14 @@ def test_the_two_retrievers_return_an_answer_and_the_two_row_shaped_tools_do_not
     assert ACTIONS["add"].out is AddReport
 
 
-def test_the_human_only_actions_are_the_two_install_verbs_and_none_of_the_four() -> None:
-    """`install` and `uninstall` are the first rows with `mcp_name = None`. Only `uninstall` is
-    in `HUMAN_ONLY`, the roster 10:143 transcribes: 10:53's row 1 also matches `install`, and the
-    roster leaves it out (D469)."""
-    assert [spec.name for spec in ACTIONS.values() if spec.human_only] == ["install", "uninstall"]
-    assert set(ACTIONS) & HUMAN_ONLY == {"uninstall"}
+def test_the_human_only_actions_are_the_install_and_skills_verbs_and_none_of_the_four() -> None:
+    """`install` and `uninstall` are the first rows with `mcp_name = None`, and the `ow skills`
+    pair the next. `uninstall` and `skills.remove` are in `HUMAN_ONLY`, the roster 10:143
+    transcribes: 10:53's row 1 also matches `install` and `skills.install`, and the roster leaves
+    both out (D469, D489)."""
+    unreachable = [spec.name for spec in ACTIONS.values() if spec.human_only]
+    assert unreachable == ["install", "uninstall", "skills.install", "skills.remove"]
+    assert set(ACTIONS) & HUMAN_ONLY == {"uninstall", "skills.remove"}
     assert not any(ACTIONS[name].human_only for name in LISTED_NAMES)
 
 
@@ -470,12 +475,7 @@ def test_no_eleventh_check_asserts_a_human_only_name_has_a_row_at_all() -> None:
     All five are unrostered today, which is schedule and not defect -- W7.1's first cell carries the
     four listed Actions. When the roster closes, this assertion is the one line that changes.
     """
-    assert _unrostered_human_only(ACTIONS) == (
-        "corpus.rm",
-        "route.promote",
-        "skills.remove",
-        "targets.remove",
-    )
+    assert _unrostered_human_only(ACTIONS) == ("corpus.rm", "route.promote", "targets.remove")
     assert _validate(ACTIONS) == (), "and the eleven checks say nothing about it"
 
 
@@ -596,6 +596,8 @@ def test_the_required_parameter_of_each_tool_is_the_one_the_schema_requires() ->
         "explain": {"code"},
         "install": set(),
         "uninstall": set(),
+        "skills.install": {"name"},
+        "skills.remove": {"name"},
         "hooks.check": set(),
     }
 
@@ -990,7 +992,7 @@ def test_the_shipped_roots_still_contain_no_trailing_s_collision() -> None:
     roots = {spec.cli[0] for spec in ACTIONS.values() if spec.cli}
     assert roots == {
         "query", "open", "corpora", "add", "doc", "doctor", "explain", "install", "uninstall",
-        "hooks",
+        "hooks", "skills",
     }  # fmt: skip
     assert not {root for root in roots if root + "s" in roots}
     assert roots <= GROUPS
@@ -1082,11 +1084,15 @@ def test_every_narrow_input_is_a_frozen_slotted_dataclass() -> None:
 def test_two_actions_need_no_corpus_and_both_reasons_are_stated() -> None:
     """`ow explain` reads `codes.toml`, which is repository data; `ow doctor` reads the
     deployment. Neither opens a store, so both answer before the first `ow add`. `install` and
-    `uninstall` wire agent hosts and open no store either (10:1469: two verbs, two receipts)."""
+    `uninstall` wire agent hosts and open no store either (10:1469: two verbs, two receipts), and
+    nor do the two `ow skills` verbs, which copy bundles between directories."""
     without_corpus = sorted(
         name for name, spec in ACTIONS.items() if "corpus" not in {f.name for f in fields(spec.inp)}
     )
-    assert without_corpus == ["doctor", "explain", "hooks.check", "install", "uninstall"]
+    assert without_corpus == [
+        "doctor", "explain", "hooks.check", "install", "skills.install", "skills.remove",
+        "uninstall",
+    ]  # fmt: skip
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1263,11 +1269,11 @@ def test_every_shipped_row_resolves_to_a_spelling_the_generator_can_emit() -> No
 def test_the_unrostered_cli_count_is_the_distance_to_the_registry() -> None:
     """10:857's *"roughly 110 further Actions"*, minus what has landed, plus what it undercounts.
 
-    149 rather than 110, and the gap is D293's: the roster is transcribed from the plan's own
+    144 rather than 110, and the gap is D293's: the roster is transcribed from the plan's own
     tables and usage rather than from a numeral, and a numeral is a second copy of an enumeration.
     """
     waiting = _unrostered_cli(ACTIONS)
-    assert len(waiting) == 146
+    assert len(waiting) == 144
     have = {spec.cli for spec in ACTIONS.values()}
     assert not set(waiting) & have
     assert len(waiting) + len(have) == sum(max(1, len(v)) for v in CLI_ROSTER.values())

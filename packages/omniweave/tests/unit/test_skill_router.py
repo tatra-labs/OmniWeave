@@ -3,8 +3,8 @@
 **The sharpest test is `test_every_tool_and_verb_the_body_names_is_the_registrys`.** The router
 is the one skill every session loads, and a tool name spelled by hand in it is jcodemunch's #397
 (10:111) on the always-resident surface. So every `ow_*` in the body must be an `mcp_name`, and
-every `ow <verb>` an Action's CLI spelling or one of the five `unregistered()` names -- which the
-day their rows land stop being hand-spelled without anyone editing the body.
+every `ow <verb>` an Action's CLI spelling or one of the `unregistered()` names -- which the day
+their rows land stop being hand-spelled without anyone editing the body.
 """
 
 from __future__ import annotations
@@ -110,15 +110,13 @@ def test_every_tool_and_verb_the_body_names_is_the_registrys() -> None:
     assert verbs <= spelled | planned, verbs - spelled - planned
 
 
-def test_the_five_verbs_the_body_names_without_a_row_are_listed() -> None:
-    """D487: pinned so a row landing flips it, and the body stops spelling that verb by hand."""
-    assert router.unregistered() == (
-        "skills.install",
-        "out.targets",
-        "out.check",
-        "ingest",
-        "route.explain",
-    )
+def test_the_verbs_the_body_names_without_a_row_are_listed() -> None:
+    """D487: pinned so a row landing flips it, and the body stops spelling that verb by hand.
+
+    Five at W7.6a; `skills.install` landed in W7.6b, and the body's `ow skills install` is now the
+    registry's spelling -- the same bytes, which `router.check` confirms."""
+    assert router.unregistered() == ("out.targets", "out.check", "ingest", "route.explain")
+    assert ACTIONS["skills.install"].cli == ("skills", "install")
 
 
 def test_the_tier_rule_is_one_name() -> None:

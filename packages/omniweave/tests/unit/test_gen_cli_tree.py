@@ -131,7 +131,8 @@ def test_the_arity_rule_is_reported_and_not_raised() -> None:
     """
     assert MIN_GROUP_VERBS == 3
     #  `hooks` joined with its one published verb (W7.5i). D306 already names it a breach.
-    assert unrostered_groups() == ("doc (2)", "hooks (1)")
+    #  `skills` has two of its seven rostered verbs (W7.6b): schedule, like `doc`, not a breach.
+    assert unrostered_groups() == ("doc (2)", "hooks (1)", "skills (2)")
     assert _grammar_failures() == ()
 
 
@@ -355,7 +356,7 @@ def test_every_command_records_the_action_it_resolves_to() -> None:
 def test_a_group_advertises_the_verbs_it_has_and_not_the_ones_it_is_owed() -> None:
     """`CLI_ROSTER["doc"]` carries four; two have landed. A `--help` naming `show` and `verify`
     against a parser with neither is LEANN's `llms.txt` in one line, and G25 is named after it."""
-    assert GROUP_HELP == {"doc": "diff · grid", "hooks": "check"}
+    assert GROUP_HELP == {"doc": "diff · grid", "hooks": "check", "skills": "install · remove"}
     assert group_help() == GROUP_HELP
     text = _help(["doc"])
     assert "diff" in text

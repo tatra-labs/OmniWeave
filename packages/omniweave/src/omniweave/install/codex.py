@@ -209,6 +209,9 @@ class Codex:
         return Paths(base / "config.toml", root / "AGENTS.md", base / "hooks.json",
                      root / ".agents" / "skills")  # fmt: skip
 
+    def skills_dir(self, loc: Location) -> Path:
+        return self.paths(loc).skills
+
     def skill_names(self, skills: SkillSet) -> tuple[str, ...]:
         return skill_names(self.env, skills)
 

@@ -84,7 +84,8 @@ def test_an_undispatched_root_still_names_what_is(tmp_path: Path) -> None:
     (tmp_path / "proj").mkdir()
     refused = _ow(tmp_path, "serve", "--mcp")
     assert refused.returncode == 70
-    assert b"only `ow hook`, `ow hooks`, `ow install`, `ow uninstall` are." in refused.stderr
+    named = b"only `ow hook`, `ow hooks`, `ow install`, `ow skills`, `ow uninstall` are."
+    assert named in refused.stderr
 
 
 def test_hooks_check_runs_the_installed_hooks_the_receipt_names(tmp_path: Path) -> None:

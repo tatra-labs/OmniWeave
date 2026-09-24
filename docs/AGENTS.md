@@ -55,6 +55,8 @@ key can grant one.
 | `install` | — | `ow install` | — | `free` | Wire agent hosts to omniweave: the MCP entry, one permission wildcard, the instruction block, hooks and the core skill, each recorded in a receipt |
 | `open` | `ow_open` | `ow open` | default, full | `free` | Fetch the exact passages behind an address you already hold: a cite, a page range, or a whole document |
 | `query` | `ow_query` | `ow query` | default, full | `local_compute` | Ask an indexed corpus a question and get cited passages, a verdict, and the gaps that could be hiding an answer |
+| `skills.install` | — | `ow skills install` | — | `free` | Copy a shipped skill bundle into every discovered agent-host skills directory, verified on its whole-bundle digest and recorded in skills-lock.json |
+| `skills.remove` | — | `ow skills remove` | — | `free` | Take a skill out of every directory skills-lock.json says ow skills install put it in, on its digest; a modified or foreign copy is kept |
 | `uninstall` | — | `ow uninstall` | — | `free` | Take omniweave out of agent hosts exactly: every path the install receipt names, on its digest, and never the corpus index |
 
 ## Human-only Actions
@@ -67,7 +69,7 @@ point of an absent MCP name is that no key grants it.
 | --- | --- |
 | `corpus.rm` | no `ActionSpec` row yet |
 | `route.promote` | no `ActionSpec` row yet |
-| `skills.remove` | no `ActionSpec` row yet |
+| `skills.remove` | Take a skill out of every directory skills-lock.json says ow skills install put it in, on its digest; a modified or foreign copy is kept |
 | `targets.remove` | no `ActionSpec` row yet |
 | `uninstall` | Take omniweave out of agent hosts exactly: every path the install receipt names, on its digest, and never the corpus index |
 

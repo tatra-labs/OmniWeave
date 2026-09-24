@@ -93,6 +93,8 @@ __all__ = [
     "InstallIn",
     "OpenIn",
     "QueryIn",
+    "SkillsInstallIn",
+    "SkillsRemoveIn",
     "UninstallIn",
 ]
 
@@ -362,6 +364,32 @@ class UninstallIn:
     target: str = "all"
     location: str | None = None
     keep_cli: bool = False
+    yes: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class SkillsInstallIn:
+    """`ow skills install <name>...`. 10:1429 prints the positional and no flag.
+
+    `name` is `str | tuple[str, ...]`, `OpenIn.ref`'s shape, so the generated tree gives it
+    `nargs="+"`: `ow skills install omniweave-pptx omniweave-authoring` is one argv whichever form
+    a caller holds. There is no `--location`: 10:1393 writes *"into every discovered
+    `<host>/skills` directory"*, and 10:1398's containment rule says which scope each one is.
+    """
+
+    name: str | tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SkillsRemoveIn:
+    """`ow skills remove <name>...`, the human-only fifth of 10:59's five (`skills.remove`).
+
+    10:1429 gives `remove` no cell, only the note *"`remove` is human-only"*, so its one flag is
+    `ow uninstall`'s: `--yes`, because a verb that deletes prints its plan and asks first
+    (10:1620-1621) and a pipe has no one to ask.
+    """
+
+    name: str | tuple[str, ...]
     yes: bool = False
 
 

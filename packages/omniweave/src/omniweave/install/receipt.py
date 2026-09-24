@@ -491,19 +491,30 @@ class Taken:
         return self.lock is not None
 
 
-def take_lock(home: Path, *, clock: Clock, wait_ms: int = INTERACTIVE_WAIT_MS) -> Taken:
-    """Take `$OMNIWEAVE_HOME/.install.lock`. Never raises; `OW-A-033` on a break or a refusal."""
-    path = lock_path(home)
+def take_lock(
+    home: Path,
+    *,
+    clock: Clock,
+    wait_ms: int = INTERACTIVE_WAIT_MS,
+    file: str = LOCK_NAME,
+    holders: str = "ow install or uninstall",
+) -> Taken:
+    """Take `$OMNIWEAVE_HOME/.install.lock`. Never raises; `OW-A-033` on a break or a refusal.
+
+    `file` and `holders` are for the second lock with the same rule: `ow skills install`'s
+    `.skills.lock` (10:1384-1386), which the plan gives the same `O_CREAT|O_EXCL` and 120 s.
+    """
+    path = home / file
     try:
         home.mkdir(parents=True, exist_ok=True)
     except OSError as error:
         return Taken(None, reason=f"cannot create {home}: {type(error).__name__}")
     before = inspect(path)
-    lock = FileScopedLock(path=path, now_ns=clock.wall_ns, name="install")
+    lock = FileScopedLock(path=path, now_ns=clock.wall_ns, name=path.stem.lstrip("."))
     try:
         lock.acquire(wait_ms=wait_ms)
     except OwError:
-        return Taken(None, reason=_refusal(path, clock.wall_ns()), code=RECEIPT_LOCKED)
+        return Taken(None, reason=_refusal(path, clock.wall_ns(), holders), code=RECEIPT_LOCKED)
     held = InstallLock(home, lock)
     if not before.stale:
         return Taken(held)
@@ -514,15 +525,13 @@ def take_lock(home: Path, *, clock: Clock, wait_ms: int = INTERACTIVE_WAIT_MS) -
     return Taken(held, broke=gone, reason=reason, code=RECEIPT_LOCKED)
 
 
-def _refusal(path: Path, now_ns: int) -> str:
+def _refusal(path: Path, now_ns: int, holders: str) -> str:
     state = inspect(path)
     holder = state.holder
     if holder is None:
         return f"{path} is held and its holder cannot be read"
     age = holder.age_s(now_ns)
-    message = (
-        f"another ow install or uninstall holds {path}: {holder.host} pid {holder.pid}, {age:.0f} s"
-    )
+    message = f"another {holders} holds {path}: {holder.host} pid {holder.pid}, {age:.0f} s"
     if age > LOCK_REPORT_AGE_S:
         message += (
             f"; older than 10:1745's {LOCK_REPORT_AGE_S} s but its writer is alive, so it is not "

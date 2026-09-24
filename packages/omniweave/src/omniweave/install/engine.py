@@ -99,6 +99,7 @@ from omniweave.install.receipt import (
     tildify,
 )
 from omniweave.install.skilldir import install_dir, remove_dir
+from omniweave.install.skills_lock import claimant
 from omniweave.install.types import FileAction, WriteResult
 from omniweave.skills.hash import bundle_sha256
 from omniweave.skills.tier import CORE
@@ -585,6 +586,11 @@ def _undo(
     if mode == "json-hook-rules":
         return unset_hooks(site, entry=entry, pid=pid, dry_run=dry_run, sleep=sleep)
     source = step.source if step is not None else None
+    if entry is None:
+        #  10:1758-1759's re-derivation has no row to say whose the tree is; `skills-lock.json` may.
+        owner = claimant(env.omniweave_home, site.path, env.user_home)
+        if owner:
+            return Applied(site.act("not-found", kind, mode, owner))
     return remove_dir(site, entry=entry, source=source, pid=pid, dry_run=dry_run)
 
 

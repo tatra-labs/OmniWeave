@@ -141,6 +141,9 @@ class Cursor:
         base = (self.env.project_root or home) / ".cursor"
         return Paths(base / "mcp.json", base / "rules" / "omniweave.mdc", base / "skills")
 
+    def skills_dir(self, loc: Location) -> Path:
+        return self.paths(loc).skills
+
     def skill_names(self, skills: SkillSet) -> tuple[str, ...]:
         return skill_names(self.env, skills)
 
