@@ -563,3 +563,16 @@ def test_unbuilt_names_the_four_things_left() -> None:
     assert len(listed) == 4
     assert any("D451" in line for line in listed)
     assert any("json-hook-rules" in line for line in listed)
+
+
+def test_an_array_row_names_its_array_and_reads_back_with_it() -> None:
+    """D462. 10:1712's row has `values` and no `key`, so a row read back could not say where."""
+    perms = _entry(kind="permissions", path="~/.claude/settings.json", mode="json-array-add")
+    perms = replace(perms, key="permissions.allow", values=("mcp__omniweave__*",))
+    row = perms.to_json()
+    assert list(row)[7:9] == ["key", "values"]
+    assert Entry.from_json(json.loads(json.dumps(row))) == perms
+    del row["key"]
+    keyless = Entry.from_json(row)
+    assert isinstance(keyless, Entry)
+    assert keyless.key == ""

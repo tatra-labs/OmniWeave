@@ -17,12 +17,15 @@ the house lock, because an age cannot tell a dead holder from one waiting at its
 `modes.py` is three of 10:1665's five write modes -- `json-key`, `json-array-add`,
 `marker-section` -- each an install and its inverse, with a row that inherits what an earlier
 install created (D454), and the fourth, `json-hook-rules`, whose command, five spellings of
-ownership and convergence are `hookrules.py`'s (D456-D457). The skill mode, the hosts and the
-verbs come next.
+ownership and convergence are `hookrules.py`'s (D456-D457). `engine.py` is what makes a host one
+file: the lock, a row recorded after each write, and an uninstall that undoes in reverse step order
+with each file's creator flag merged, then sweeps the directories once (D459). `claude_code.py` is
+the first host and `registry.py` its row. The skill `dir` mode is W7.6's, and the verbs come next.
 """
 
 from __future__ import annotations
 
+from omniweave.install.engine import HostEnv, Step
 from omniweave.install.primitives import (
     BEGIN,
     END,
@@ -47,6 +50,7 @@ from omniweave.install.receipt import (
     take_lock,
     verdict,
 )
+from omniweave.install.registry import BUILT, TARGETS, build
 from omniweave.install.types import (
     ACTIONS,
     HOOK_SETS,
@@ -66,15 +70,18 @@ from omniweave.install.types import (
 __all__ = [
     "ACTIONS",
     "BEGIN",
+    "BUILT",
     "END",
     "HOOK_SETS",
     "LOCATIONS",
+    "TARGETS",
     "TARGET_IDS",
     "AgentTarget",
     "DetectionResult",
     "Entry",
     "FileAction",
     "HookSet",
+    "HostEnv",
     "InstallOptions",
     "JsonStyle",
     "Location",
@@ -82,10 +89,12 @@ __all__ = [
     "Receipt",
     "Section",
     "SkillSet",
+    "Step",
     "TargetId",
     "WriteResult",
     "Wrote",
     "atomic_write",
+    "build",
     "forget",
     "json_deep_equal",
     "load",

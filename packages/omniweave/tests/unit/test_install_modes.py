@@ -403,3 +403,21 @@ def test_unbuilt_names_the_mode_left_and_the_decision_owed() -> None:
     assert len(listed) == 2
     assert any(line.startswith("dir") for line in listed)
     assert not any(line.startswith("json-hook-rules") for line in listed)
+
+
+def test_a_row_without_its_array_key_still_removes_through_the_callers_key(
+    tmp_path: Path,
+) -> None:
+    """D462: a row in 10:1712's shape names no array; the caller's key is the fallback."""
+    site = _site(tmp_path, "settings.json")
+    applied = add_values(
+        site, "permissions", ALLOW, [WILDCARD], previous=None, clock=CLOCK, pid=PID
+    )
+    assert applied.record is not None
+    row = applied.record.to_json()
+    del row["key"]
+    keyless = Entry.from_json(row)
+    assert isinstance(keyless, Entry)
+    removed = remove_values(site, "permissions", ALLOW, [WILDCARD], entry=keyless, pid=PID)
+    assert removed.action.action == "removed"
+    assert not site.path.exists()

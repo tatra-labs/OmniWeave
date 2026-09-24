@@ -147,11 +147,19 @@ class FileAction:
 
 @dataclass(frozen=True, slots=True)
 class WriteResult:
-    """What one `install()` or `uninstall()` did to one target at one location."""
+    """What one `install()` or `uninstall()` did to one target at one location.
+
+    `notes` are the lines that are not about a path written: 18:2981's *"Bash(ow:*) NOT written
+    (--allow-cli is OFF BY DEFAULT)"* is one, a broken stale lock (`OW-A-033`) another. `refused`
+    is set when nothing was attempted -- the lock is held, or the receipt could not be written --
+    and then `actions` is empty.
+    """
 
     target: TargetId
     location: Location
     actions: tuple[FileAction, ...] = ()
+    notes: tuple[str, ...] = ()
+    refused: str = ""
 
     def changed(self) -> bool:
         """Whether any path was written or removed; `unchanged`, `not-found` and `kept` were not."""
