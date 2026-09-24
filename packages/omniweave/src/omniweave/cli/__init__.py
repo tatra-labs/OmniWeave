@@ -107,6 +107,7 @@ GLOBAL_FLAGS: Final[tuple[Argument, ...]] = (
 
 GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
+    "hooks": "check",
 }
 
 COMMANDS: Final[tuple[Command, ...]] = (
@@ -247,6 +248,15 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 metavar="CODE",
             ),
         ),
+    ),
+    Command(
+        words=("hooks", "check"),
+        actions=("hooks.check",),
+        help=(
+            "Run each installed hook command as its host would, with a probe payload in a "
+            "scratch project, and say which failed and why"
+        ),
+        arguments=(),
     ),
     Command(
         words=("install",),

@@ -36,10 +36,10 @@ mcp.human_only_note: these have no MCP name and are unreachable from any agent s
 
 # Tools — every Action with an MCP name. `listed_in` says which profiles LIST it;
 # every one of them is DISPATCHABLE when enabled, listed or not.
-mcp.tools: ow_add, ow_corpora, ow_coverage, ow_diff, ow_doctor, ow_explain, ow_grid, ow_open,
-  ow_query
-mcp.tools.unbounded: ow_coverage, ow_diff, ow_doctor, ow_explain, ow_grid — no inputSchema is
-  published for these yet, so their input lines carry a type and no bounds
+mcp.tools: ow_add, ow_corpora, ow_coverage, ow_diff, ow_doctor, ow_explain, ow_grid,
+  ow_hooks_check, ow_open, ow_query
+mcp.tools.unbounded: ow_coverage, ow_diff, ow_doctor, ow_explain, ow_grid, ow_hooks_check — no
+  inputSchema is published for these yet, so their input lines carry a type and no bounds
 
 mcp.tool.ow_add.action: add
 mcp.tool.ow_add.description: Index files, directories or URLs into a corpus so ow_query can cite
@@ -127,6 +127,15 @@ mcp.tool.ow_grid.input.ref: string, required
 mcp.tool.ow_grid.input.corpus: string, optional
 mcp.tool.ow_grid.output: Grid, no outputSchema declared
 
+mcp.tool.ow_hooks_check.action: hooks.check
+mcp.tool.ow_hooks_check.description: Run each installed hook command as its host would, with a
+  probe payload in a scratch project, and say which failed and why
+mcp.tool.ow_hooks_check.decision: a hook seems silent and you need to know whether it runs
+mcp.tool.ow_hooks_check.listed_in: none
+mcp.tool.ow_hooks_check.state_changing: false
+mcp.tool.ow_hooks_check.cost_class: free
+mcp.tool.ow_hooks_check.output: HooksCheckReport, no outputSchema declared
+
 mcp.tool.ow_open.action: open
 mcp.tool.ow_open.description: Fetch the exact passages behind an address you already hold: a
   cite, a page range, or a whole document
@@ -184,6 +193,8 @@ cli.doctor: ow doctor [--runtime]
 cli.doctor.actions: doctor
 cli.explain: ow explain CODE
 cli.explain.actions: explain
+cli.hooks.check: ow hooks check
+cli.hooks.check.actions: hooks.check
 cli.install: ow install [--target TARGET] [--location LOCATION] [--hooks HOOKS] [--skills
   SKILLS] [--allow-cli] [--check] [--print-config PRINT_CONFIG] [--dry-run] [--yes]
 cli.install.actions: install

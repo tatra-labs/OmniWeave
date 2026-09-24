@@ -89,6 +89,7 @@ __all__ = [
     "DoctorIn",
     "ExplainIn",
     "GridIn",
+    "HooksCheckIn",
     "InstallIn",
     "OpenIn",
     "QueryIn",
@@ -315,6 +316,16 @@ class DoctorIn:
     """
 
     runtime: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class HooksCheckIn:
+    """`ow hooks check`. 10:1432's one flag is `--render`, which is global, so there is no field.
+
+    Which commands to check is not an argument: they are the ones the install receipt says were
+    installed, read back out of the files the receipt names (10:2078, *"resolves the installed
+    command string"*). A command given on argv would be a command that was not installed.
+    """
 
 
 @dataclass(frozen=True, slots=True)

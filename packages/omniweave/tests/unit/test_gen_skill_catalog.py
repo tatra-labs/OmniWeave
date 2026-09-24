@@ -202,7 +202,7 @@ def test_every_block_publishes_six_fields_from_the_registry() -> None:
             block = blocks[str(spec.mcp_name)]
             assert block["action"] == spec.name
             assert block["cli"] == f"ow {' '.join(spec.cli)}"
-            assert block["listed"] == ", ".join(sorted(spec.listed_in))
+            assert block["listed"] == (", ".join(sorted(spec.listed_in)) or ABSENT)
             assert block["cost"] == spec.cost_class.value
             assert block["pick it"] == spec.decision
             assert block["it does"] == spec.summary

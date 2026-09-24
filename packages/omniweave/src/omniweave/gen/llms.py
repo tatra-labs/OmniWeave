@@ -567,7 +567,9 @@ def tool_block(spec: ActionSpec) -> list[str]:
     this file to widen a listing needs the pair, and the manifest is the only place it appears.
     """
     prefix = f"mcp.tool.{spec.mcp_name}"
-    profiles = ", ".join(sorted(spec.listed_in))
+    #  `none` for a tool no profile lists -- the header's "DISPATCHABLE when enabled, listed or not"
+    #  is the rest of that sentence. An empty value left `listed_in: ` with a trailing space (D473).
+    profiles = ", ".join(sorted(spec.listed_in)) or "none"
     lines = [
         *_entry(f"{prefix}.action", spec.name),
         *_entry(f"{prefix}.description", spec.summary),

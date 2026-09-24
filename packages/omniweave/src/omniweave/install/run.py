@@ -1,8 +1,9 @@
-"""`ow install` and `ow uninstall` from argv: the generated parser, a `HostEnv`, and the verbs.
+"""`ow install`, `ow uninstall` and `ow hooks check` from argv: the parser, a `HostEnv`, the verbs.
 
-`__main__` routes the two roots here once their `ACTIONS` rows exist (W7.5h). The argv is parsed
-by the generated tree (`omniweave.cli.build_parser`, artefact 3, byte-gated by G25), so a flag this
-file reads is a flag the registry published -- and a flag it does not publish cannot be typed.
+`__main__` routes the three roots here now that their `ACTIONS` rows exist (W7.5h, W7.5i). The
+argv is parsed by the generated tree (`omniweave.cli.build_parser`, artefact 3, byte-gated by G25),
+so a flag this file reads is a flag the registry published -- and one it does not publish cannot be
+typed.
 
 ## WHAT THE ENVIRONMENT IS READ FOR, AND NOTHING ELSE
 
@@ -39,10 +40,12 @@ import argparse
 import contextlib
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, TextIO
 
 from omniweave_core.clock import SystemClock
+from omniweave_core.host.subproc import Captured, run_captured
 
 from omniweave.cli import ACTION_DEST, build_parser
 from omniweave.install import verbs
@@ -57,7 +60,7 @@ if TYPE_CHECKING:
 
 __all__ = ["ROOTS", "host_env", "main"]
 
-ROOTS: Final = frozenset({"install", "uninstall"})
+ROOTS: Final = frozenset({"install", "uninstall", "hooks"})
 """The roots this module dispatches; `__main__.DISPATCHED` includes them."""
 
 _ARGPARSE_USAGE: Final = 2
@@ -155,8 +158,13 @@ def main(
         err.write(f"ow: {built}\n")
         return verbs.USAGE
     terminal = _Terminal(stdin or sys.stdin, out)
-    run = _install if getattr(parsed, ACTION_DEST) == "install" else _uninstall
-    outcome = run(parsed, built, terminal)
+    action = getattr(parsed, ACTION_DEST)
+    if action == "hooks.check":
+        outcome = _hooks_check(built, env)
+    elif action == "install":
+        outcome = _install(parsed, built, terminal)
+    else:
+        outcome = _uninstall(parsed, built, terminal)
     out.write(outcome.text())
     return outcome.exit_code
 
@@ -242,3 +250,15 @@ def _uninstall(ns: argparse.Namespace, env: HostEnv, terminal: _Terminal) -> ver
         return loc
     confirm = terminal.confirm if terminal.present else None
     return verbs.uninstall(ns.target, loc, env, yes=ns.yes, confirm=confirm, keep_cli=ns.keep_cli)
+
+
+def _runner(
+    argv: Sequence[str], stdin: bytes, cwd: Path, env: Mapping[str, str], timeout: float
+) -> Captured:
+    return run_captured(argv, stdin=stdin, cwd=str(cwd), env=env, timeout_s=timeout)
+
+
+def _hooks_check(env: HostEnv, environ: Mapping[str, str]) -> verbs.Outcome:
+    """`ow hooks check`: the receipt's hooks, each run in a scratch project that is then removed."""
+    with tempfile.TemporaryDirectory(prefix="ow-hooks-check-") as scratch:
+        return verbs.hooks_check(env, environ=environ, runner=_runner, scratch=Path(scratch))

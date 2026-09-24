@@ -272,7 +272,9 @@ def test_measure_reports_the_full_profile_as_unmeasured() -> None:
     measured = measure(_words)
     assert measured.measured(DEFAULT_PROFILE) is True
     assert measured.measured("full") is False
-    assert measured.omitted["full"] == unpublished()
+    #  An unpublished tool no profile lists (`ow_hooks_check`) is omitted from none of them.
+    full = tuple(name for name in unpublished() if _listed_in_full(name))
+    assert measured.omitted["full"] == full
 
 
 def test_measure_counts_all_four_instructions_strings() -> None:
@@ -741,3 +743,9 @@ def test_a_stand_in_encoder_produces_a_coherent_measurement() -> None:
     rows: Mapping[str, int] = measured.per_tool_compact
     assert all(value > 0 for value in rows.values())
     assert measured.default_compact == sum(rows.values())
+
+
+def _listed_in_full(mcp_name: str) -> bool:
+    from omniweave.surface.registry import ACTIONS  # noqa: PLC0415
+
+    return any(spec.mcp_name == mcp_name and "full" in spec.listed_in for spec in ACTIONS.values())
