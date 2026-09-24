@@ -1,0 +1,493 @@
+"""The one engine every host runs: a host names its writes as `Step`s, and this runs them.
+
+10:1628's claim -- *"a new host is one file plus one registry row"* -- is only true if the lock, the
+receipt, the order of writes and their undoing, the dry run and the never-throwing uninstall live
+somewhere that is not the host's file. They live here. A host says *what* it writes where
+(`Step`), and in what order; `install()` and `uninstall()` are the same for all seven.
+
+## THE RECEIPT IS WRITTEN AS THE WRITES HAPPEN, UNDER THE LOCK
+
+10:1739: *"The receipt is appended per entry, immediately after each write"*, and 10:1744: under
+`$OMNIWEAVE_HOME/.install.lock`. So `install()` takes the lock before its first write, records each
+step's row the moment its mode returns one, and stops -- naming what it did not reach -- if a row
+cannot be recorded, because every write after that would be an artefact with no row. A receipt it
+cannot rewrite at all (unreadable, or a newer schema) refuses the install before anything is
+written. A dry run takes no lock and writes nothing, not even a backup (D453).
+
+## UNDOING IS NOT THE ROWS IN REVERSE, AND WHAT A ROW CREATED IS PER FILE
+
+Two of claude-code's steps write one file: permissions, then hooks, both into `settings.json`. The
+first write creates the file, so only the permissions row says `created_file`. Undo them in the
+wrong order -- permissions first, while the hooks are still there -- and the file is not empty when
+the row that may delete it is undone; the hooks row that empties it next never created it, so it
+writes `{}` and the user is left with a file they never had. The receipt's own order cannot be
+trusted to be right: D449 moves a re-recorded row last, so a re-install that grants `Bash(ow:*)`
+puts the permissions row after the hooks row.
+
+So uninstall runs the host's steps in **reverse step order**, and gives every row for one file the
+union of what any of them created: whichever removal empties the file is the one that deletes it.
+The directories install created are swept **once, after every step**, innermost first:
+`~/.claude` holds both `settings.json` and `CLAUDE.md`, and a sweep after the first removal would
+find it not yet empty and report a leftover that the next step was about to clear. D459.
+
+## A ROW NO STEP NAMES IS STILL UNDONE
+
+A later release that moves a file leaves rows naming the old path. Uninstall finds them in the
+receipt, filtered to this target and scope (10:1738), and undoes each by its mode at the path it
+names, after the steps. *"removes ONLY what install wrote"* (10:1640) is a promise about the
+receipt, not about the current release's table.
+
+## NEVER THROW
+
+10:1765: *"Two nested `try/except`; a failed cleanup must not block the uninstall."* One around
+each step and one around the sweep; an exception becomes a `kept` action or a note naming it, and
+every later step still runs.
+"""
+
+from __future__ import annotations
+
+import shutil
+import sys
+import time
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, Any, Final
+
+from omniweave_core.contract import RELEASE
+from omniweave_core.locks import INTERACTIVE_WAIT_MS
+
+from omniweave.gen.instructions import FRONT_DOOR, TOOL_PREFIX
+from omniweave.install.hookrules import Desired, converge
+from omniweave.install.modes import (
+    Applied,
+    Site,
+    add_values,
+    remove_section,
+    remove_values,
+    set_hooks,
+    set_key,
+    unset_hooks,
+    unset_key,
+    upsert_section,
+)
+from omniweave.install.primitives import BEGIN, END, read_json, remove_empty_dirs, render_json
+from omniweave.install.receipt import (
+    Entry,
+    expand,
+    forget,
+    identity_of,
+    load,
+    owned_key,
+    record,
+    take_lock,
+    tildify,
+)
+from omniweave.install.types import FileAction, WriteResult
+from omniweave.surface.registry import ACTIONS
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping, Sequence
+    from pathlib import Path
+
+    from omniweave_core.clock import Clock
+
+    from omniweave.install.receipt import InstallLock, Receipt
+    from omniweave.install.types import Kind, Location, Mode, TargetId
+
+__all__ = [
+    "HostEnv",
+    "Step",
+    "configured",
+    "install",
+    "instruction_block",
+    "render_step",
+    "scope_of",
+    "uninstall",
+]
+
+_WINDOWS: Final = sys.platform == "win32"
+
+_INSTRUCTION_LEAD: Final = (
+    "omniweave indexes documents with page-level citations. Ask its MCP tools rather than "
+    "reading whole files:"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class HostEnv:
+    """What a target needs that is not the target: where, whose home, which clock, which launcher.
+
+    All of it injected. The working directory, the clock and randomness are banned in library
+    code (the semgrep rules), and `launch` is `hookrules.launcher()`'s answer resolved once by the
+    caller, so `print_config` -- which *"MUST NOT touch the filesystem"* (10:1641) -- need not look
+    for `ow`. `project_root` is the resolved, absolute root a `local` install writes under and keys
+    its rows by (10:1734); a global-only caller leaves it `None`.
+    """
+
+    omniweave_home: Path
+    user_home: Path
+    clock: Clock
+    pid: int
+    launch: tuple[str, ...] | str
+    project_root: Path | None = None
+    release: str = RELEASE
+    windows: bool = _WINDOWS
+    sleep: Callable[[float], None] = time.sleep
+    which: Callable[[str], str | None] = shutil.which
+    lock_wait_ms: int = INTERACTIVE_WAIT_MS
+
+
+@dataclass(frozen=True, slots=True)
+class Step:
+    """One write a host makes, and what undoing it needs when there is no row to say.
+
+    Which fields matter is the mode's: `json-key` takes `key` and `value`; `json-array-add` `key`
+    and `values`; `marker-section` `body`; `json-hook-rules` `hooks`. `refusal` makes the step a
+    `kept` action without a write -- no launcher to put in a command, say -- and `note` is appended
+    to whatever the step reports.
+    """
+
+    kind: Kind
+    mode: Mode
+    path: Path
+    key: str = ""
+    value: Any = None
+    values: tuple[str, ...] = ()
+    body: str = ""
+    hooks: tuple[Desired, ...] = ()
+    refusal: str = ""
+    note: str = ""
+
+
+def scope_of(env: HostEnv, loc: Location) -> tuple[str | None, str]:
+    """`(scope_root, refusal)`: `None` for global, the project root for local (10:1734)."""
+    if loc == "global":
+        return None, ""
+    root = env.project_root
+    if root is None or not root.is_absolute():
+        return None, "a local install needs the absolute project root it writes under"
+    return str(root), ""
+
+
+def _notes(*parts: str) -> str:
+    return "; ".join(part for part in parts if part)
+
+
+def _coded(code: str, reason: str) -> str:
+    return f"{code}: {reason}" if code else reason
+
+
+def _site(target: TargetId, loc: Location, scope: str | None, path: Path, env: HostEnv) -> Site:
+    return Site(target, loc, path, env.user_home, scope_root=scope)
+
+
+# ---------------------------------------------------------------------------------------------
+# install.
+# ---------------------------------------------------------------------------------------------
+
+
+def install(
+    target: TargetId,
+    loc: Location,
+    steps: Sequence[Step],
+    env: HostEnv,
+    *,
+    dry_run: bool = False,
+    notes: Sequence[str] = (),
+) -> WriteResult:
+    """Run `steps` in order, recording each row as it is written. See the module docstring."""
+    scope, refusal = scope_of(env, loc)
+    if refusal:
+        return WriteResult(target, loc, notes=tuple(notes), refused=refusal)
+    if dry_run:
+        loaded = load(env.omniweave_home, pid=env.pid, release=env.release, back_up=False)
+        sites = [_site(target, loc, scope, step.path, env) for step in steps]
+        planned = tuple(
+            _apply(site, step, env, loaded.receipt, dry_run=True).action
+            for site, step in zip(sites, steps, strict=True)
+        )
+        return WriteResult(target, loc, planned, notes=tuple(notes))
+    taken = take_lock(env.omniweave_home, clock=env.clock, wait_ms=env.lock_wait_ms)
+    if taken.lock is None:
+        return WriteResult(
+            target, loc, notes=tuple(notes), refused=_coded(taken.code, taken.reason)
+        )
+    lines = [*notes, _coded(taken.code, taken.reason)] if taken.reason else [*notes]
+    with taken.lock as lock:
+        loaded = load(env.omniweave_home, pid=env.pid, release=env.release)
+        if not loaded.writable:
+            why = loaded.reason or loaded.state
+            return WriteResult(
+                target,
+                loc,
+                notes=tuple(lines),
+                refused=f"the receipt cannot be rewritten ({why}), so nothing was installed: "
+                "10:1739 records each write as it happens",
+            )
+        if loaded.code:
+            lines.append(_coded(loaded.code, f"the receipt would not parse: {loaded.reason}"))
+        actions: list[FileAction] = []
+        for index, step in enumerate(steps):
+            applied = _apply(_site(target, loc, scope, step.path, env), step, env, loaded.receipt)
+            actions.append(applied.action)
+            failed = _keep(lock, applied, env)
+            if failed:
+                rest = ", ".join(one.path.as_posix() for one in steps[index + 1 :])
+                lines.append(failed + (f"; stopped before {rest}" if rest else ""))
+                break
+    return WriteResult(target, loc, tuple(actions), notes=tuple(lines))
+
+
+def _apply(
+    site: Site, step: Step, env: HostEnv, receipt: Receipt, *, dry_run: bool = False
+) -> Applied:
+    if step.refusal:
+        return Applied(site.act("kept", step.kind, step.mode, step.refusal))
+    found = receipt.find(
+        identity_of(site.target, site.location, site.scope_root, step.kind, site.shown)
+    )
+    applied = _write(site, step, found, env, dry_run=dry_run)
+    if not step.note:
+        return applied
+    action = replace(applied.action, note=_notes(applied.action.note, step.note))
+    return replace(applied, action=action)
+
+
+def _write(
+    site: Site, step: Step, previous: Entry | None, env: HostEnv, *, dry_run: bool
+) -> Applied:
+    clock, pid, sleep = env.clock, env.pid, env.sleep
+    if step.mode == "json-key":
+        return set_key(
+            site, step.kind, step.key, step.value,
+            previous=previous, clock=clock, pid=pid, dry_run=dry_run, sleep=sleep,
+        )  # fmt: skip
+    if step.mode == "json-array-add":
+        return add_values(
+            site, step.kind, step.key, step.values,
+            previous=previous, clock=clock, pid=pid, dry_run=dry_run, sleep=sleep,
+        )  # fmt: skip
+    if step.mode == "marker-section":
+        return upsert_section(
+            site, step.kind, step.body,
+            previous=previous, clock=clock, pid=pid, dry_run=dry_run, sleep=sleep,
+        )  # fmt: skip
+    if step.mode == "json-hook-rules":
+        return set_hooks(
+            site, step.hooks,
+            previous=previous, clock=clock, pid=pid, dry_run=dry_run, sleep=sleep,
+        )  # fmt: skip
+    return Applied(site.act("kept", step.kind, step.mode, "the dir mode is not built"))
+
+
+def _keep(lock: InstallLock, applied: Applied, env: HostEnv) -> str:
+    """Record or forget the row `applied` names; why not, when the receipt refused it."""
+    if applied.record is not None:
+        done = record(lock, applied.record, release=env.release, pid=env.pid, sleep=env.sleep)
+    elif applied.forget is not None:
+        identities = [applied.forget.identity()]
+        done = forget(lock, identities, release=env.release, pid=env.pid, sleep=env.sleep)
+    else:
+        return ""
+    if done.ok:
+        return ""
+    return f"{applied.action.path} was written but its receipt row was not: {done.reason}"
+
+
+# ---------------------------------------------------------------------------------------------
+# uninstall.
+# ---------------------------------------------------------------------------------------------
+
+
+def uninstall(
+    target: TargetId,
+    loc: Location,
+    steps: Sequence[Step],
+    env: HostEnv,
+    *,
+    dry_run: bool = False,
+) -> WriteResult:
+    """Undo `steps` in reverse, then any row they do not name; never raises. D459."""
+    scope, refusal = scope_of(env, loc)
+    if refusal:
+        return WriteResult(target, loc, refused=refusal)
+    if dry_run:
+        loaded = load(env.omniweave_home, pid=env.pid, release=env.release, back_up=False)
+        actions, lines = _undo_all(
+            target, loc, scope, steps, env, receipt=loaded.receipt, lock=None, dry_run=True
+        )
+        return WriteResult(target, loc, actions, notes=lines)
+    taken = take_lock(env.omniweave_home, clock=env.clock, wait_ms=env.lock_wait_ms)
+    if taken.lock is None:
+        return WriteResult(target, loc, refused=_coded(taken.code, taken.reason))
+    lines = [_coded(taken.code, taken.reason)] if taken.reason else []
+    with taken.lock as lock:
+        loaded = load(env.omniweave_home, pid=env.pid, release=env.release)
+        if not loaded.writable:
+            lines.append(
+                f"the receipt cannot be read ({loaded.reason or loaded.state}): every path is "
+                "undone by re-derivation (10:1758) and the receipt is left as it is"
+            )
+        writer = lock if loaded.writable else None
+        actions, more = _undo_all(
+            target, loc, scope, steps, env, receipt=loaded.receipt, lock=writer, dry_run=False
+        )
+    return WriteResult(target, loc, actions, notes=(*lines, *more))
+
+
+def _undo_all(
+    target: TargetId,
+    loc: Location,
+    scope: str | None,
+    steps: Sequence[Step],
+    env: HostEnv,
+    *,
+    receipt: Receipt,
+    lock: InstallLock | None,
+    dry_run: bool,
+) -> tuple[tuple[FileAction, ...], tuple[str, ...]]:
+    rows = [entry for entry in receipt.for_scope(loc, scope) if entry.target == target]
+    creators = _creators(rows)
+    by_place = {(entry.kind, entry.path): entry for entry in rows}
+    work: list[tuple[Site, Kind, Mode, Entry | None, Step | None]] = []
+    for step in reversed(steps):
+        site = _site(target, loc, scope, step.path, env)
+        work.append((site, step.kind, step.mode, by_place.pop((step.kind, site.shown), None), step))
+    for entry in reversed([one for one in rows if (one.kind, one.path) in by_place]):
+        site = _site(target, loc, scope, expand(entry.path, env.user_home), env)
+        work.append((site, entry.kind, entry.mode, entry, None))
+    return _run_undo(work, creators, env, lock, dry_run=dry_run)
+
+
+def _run_undo(
+    work: Sequence[tuple[Site, Kind, Mode, Entry | None, Step | None]],
+    creators: Mapping[str, bool],
+    env: HostEnv,
+    lock: InstallLock | None,
+    *,
+    dry_run: bool,
+) -> tuple[tuple[FileAction, ...], tuple[str, ...]]:
+    """Each undo in `work`'s order, then the one sweep of created directories. D459.
+
+    `lock` is `None` on a dry run and when the receipt cannot be rewritten; rows are then left.
+    """
+    actions: list[FileAction] = []
+    lines: list[str] = []
+    swept: list[Path] = []
+    for site, kind, mode, entry, step in work:
+        merged = _merged(entry, creators)
+        try:
+            applied = _undo(site, kind, mode, entry=merged, step=step, env=env, dry_run=dry_run)
+        except Exception as error:  # 10:1765: a failed undo must not block the rest
+            note = f"failed: {type(error).__name__}: {error}"
+            applied = Applied(site.act("kept", kind, mode, note))
+        actions.append(applied.action)
+        if applied.forget is None or entry is None:
+            continue
+        swept.extend(expand(one, env.user_home) for one in entry.created_dirs)
+        if lock is not None:
+            done = forget(lock, [entry.identity()], release=env.release, pid=env.pid)
+            if not done.ok:
+                lines.append(f"{site.shown} was removed but its receipt row was not: {done.reason}")
+    if not dry_run:
+        try:
+            left = remove_empty_dirs(swept)
+        except Exception as error:  # 10:1765, the second of the two
+            left = ()
+            lines.append(f"the directory sweep failed: {type(error).__name__}: {error}")
+        lines.extend(f"Could not remove {_spell(one, env)} -- it is not empty" for one in left)
+    return tuple(actions), tuple(lines)
+
+
+def _creators(rows: Sequence[Entry]) -> dict[str, bool]:
+    """Per path, whether any row for it created the file. D459."""
+    created: dict[str, bool] = {}
+    for entry in rows:
+        created[entry.path] = created.get(entry.path, False) or entry.created_file
+    return created
+
+
+def _merged(entry: Entry | None, creators: Mapping[str, bool]) -> Entry | None:
+    """`entry` with its file's creator flag, and no directories: the sweep removes those."""
+    if entry is None:
+        return None
+    return replace(entry, created_file=creators.get(entry.path, False), created_dirs=())
+
+
+def _undo(
+    site: Site,
+    kind: Kind,
+    mode: Mode,
+    *,
+    entry: Entry | None,
+    step: Step | None,
+    env: HostEnv,
+    dry_run: bool,
+) -> Applied:
+    key = step.key if step is not None else ""
+    pid, sleep = env.pid, env.sleep
+    if mode == "json-key":
+        return unset_key(site, kind, key, entry=entry, pid=pid, dry_run=dry_run, sleep=sleep)
+    if mode == "json-array-add":
+        values = step.values if step is not None else ()
+        return remove_values(
+            site, kind, key, values, entry=entry, pid=pid, dry_run=dry_run, sleep=sleep
+        )
+    if mode == "marker-section":
+        return remove_section(site, kind, entry=entry, pid=pid, dry_run=dry_run, sleep=sleep)
+    if mode == "json-hook-rules":
+        return unset_hooks(site, entry=entry, pid=pid, dry_run=dry_run, sleep=sleep)
+    return Applied(site.act("kept", kind, mode, "the dir mode is not built; left in place"))
+
+
+def _spell(path: Path, env: HostEnv) -> str:
+    return tildify(path, env.user_home)
+
+
+# ---------------------------------------------------------------------------------------------
+# What a host shows without writing: detection, print_config, the instruction block.
+# ---------------------------------------------------------------------------------------------
+
+
+def configured(path: Path, key: str, *, pid: int) -> bool:
+    """Whether `path` has a value at `key`. Reads only: nothing is backed up (D453)."""
+    read = read_json(path, pid=pid, back_up=False)
+    return read.state == "parsed" and owned_key(read.value, key) is not None
+
+
+def render_step(step: Step, shown: str) -> str:
+    """One step as `print_config` shows it: the path, the mode, and the exact value. Pure."""
+    head = f"# {shown}  {step.mode}"
+    if step.refusal:
+        return f"{head}  NOT written: {step.refusal}"
+    if step.mode == "json-key":
+        return f"{head}  {step.key}\n{_json(step.value)}"
+    if step.mode == "json-array-add":
+        return f"{head}  {step.key} += {' '.join(step.values)}"
+    if step.mode == "json-hook-rules":
+        document: dict[str, Any] = {}
+        converge(document, step.hooks)
+        return f"{head}  {' '.join(one.event for one in step.hooks)}\n{_json(document)}"
+    if step.mode == "marker-section":
+        return f"{head}\n{BEGIN}\n{step.body}\n{END}"
+    return head
+
+
+def _json(value: object) -> str:
+    return render_json(value).decode("utf-8").rstrip("\n")
+
+
+def instruction_block() -> str:
+    """The `marker-section` body: the listed tools and their `decision` clauses. D461.
+
+    10:1669 names the section and no document writes its body. 10:209 gives the recipe for the
+    one steering prose that is generated -- *"the listed set plus `decision` clauses"* -- and 10:111
+    is why nothing else will do: an always-on block written against a surface rather than from it
+    is jcodemunch's bug #397. So each line is an Action in the front door's order with its
+    registry `decision`, and a fifth listed tool changes this text without anyone editing it.
+    """
+    lines = [_INSTRUCTION_LEAD]
+    for name in FRONT_DOOR:
+        spec = ACTIONS[name]
+        lines.append(f"- `{spec.mcp_name}` when {spec.decision}")
+    lines.append(f"Their host-side names start `{TOOL_PREFIX}`.")
+    return "\n".join(lines)

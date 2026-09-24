@@ -342,7 +342,7 @@ def unset_key(
     sleep: Callable[[float], None] = time.sleep,
 ) -> Applied:
     """Remove the key `entry` recorded, or `key` by re-derivation when there is no row."""
-    key = entry.key if entry is not None else key
+    key = entry.key if entry is not None and entry.key else key
     before = _read_for_uninstall(site, pid)
     if isinstance(before, FileAction):
         return _ended(site, kind, "json-key", before, entry)
@@ -476,7 +476,8 @@ def remove_values(
 ) -> Applied:
     """Remove the values `entry` recorded -- the ones install added -- or `values` with no row."""
     if entry is not None:
-        key, values = entry.key, entry.values
+        #  A row read back from a receipt 10:1712's way names no array; the caller's key does. D462.
+        key, values = entry.key or key, entry.values
     before = _read_for_uninstall(site, pid)
     if isinstance(before, FileAction):
         return _ended(site, kind, "json-array-add", before, entry)
@@ -526,6 +527,9 @@ def set_hooks(
     before = read_json(site.path, pid=pid, back_up=not dry_run)
     document = copy.deepcopy(before.value)
     result = converge(document, wanted)
+    if not wanted and previous is not None:
+        #  The row is forgotten below, and with it what it created: prune that now. D463.
+        _prune(document, previous.created_parents)
     refusal = before.reason if before.state == "unreadable" else result.refusal
     if refusal:
         return Applied(site.act("kept", "hooks", "json-hook-rules", refusal))

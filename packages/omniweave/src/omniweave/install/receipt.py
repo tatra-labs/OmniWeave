@@ -109,6 +109,7 @@ __all__ = [
     "expand",
     "file_sha256",
     "forget",
+    "identity_of",
     "load",
     "lock_path",
     "owned_array",
@@ -243,6 +244,14 @@ def dotted(*segments: str) -> str:
 # ---------------------------------------------------------------------------------------------
 
 
+def identity_of(
+    target: str, location: str, scope_root: str | None, kind: str, path: str
+) -> tuple[str, str, str, str, str]:
+    """A row's identity from its parts, so a caller can look one up before there is a row."""
+    scope = "" if scope_root is None else os.path.normcase(scope_root)
+    return (target, location, scope, kind, path)
+
+
 @dataclass(frozen=True, slots=True)
 class Entry:
     """One receipt row. 10:1705-1726, plus `owned_sha256` (D448) and `created_*` (D449).
@@ -272,8 +281,7 @@ class Entry:
 
     def identity(self) -> tuple[str, str, str, str, str]:
         """What a re-install replaces. D449."""
-        scope = "" if self.scope_root is None else os.path.normcase(self.scope_root)
-        return (self.target, self.location, scope, self.kind, self.path)
+        return identity_of(self.target, self.location, self.scope_root, self.kind, self.path)
 
     def owned(self) -> str:
         """The digest of what omniweave owns: `owned_sha256`, or a `dir` row's bundle digest."""
@@ -294,6 +302,9 @@ class Entry:
         if needed == "key":
             row["key"] = self.key
         elif needed == "values":
+            #  The array the values went into, which 10:1712's row leaves out. D462.
+            if self.key:
+                row["key"] = self.key
             row["values"] = list(self.values)
         elif needed == "marker":
             row["marker"] = self.marker
@@ -540,13 +551,16 @@ class Loaded:
         return self.state in {"missing", "read", "unparseable"}
 
 
-def load(home: Path, *, pid: int, release: str = "") -> Loaded:
+def load(home: Path, *, pid: int, release: str = "", back_up: bool = True) -> Loaded:
     """Read the receipt. Never raises; an unparseable one is backed up first (OW-A-032).
+
+    `back_up=False` is a dry run's read, which writes nothing, backups included (D453); a receipt
+    it cannot parse is then `unreadable`, since nothing was saved that a rewrite could stand on.
 
     A receipt whose `schema` is newer than this release's is read but not writable: its rows may
     mean something this version cannot know, and rewriting it would narrow them.
     """
-    read = read_json(receipt_path(home), pid=pid)
+    read = read_json(receipt_path(home), pid=pid, back_up=back_up)
     empty = Receipt(release=release)
     if read.state == "missing":
         return Loaded(empty, "missing")
