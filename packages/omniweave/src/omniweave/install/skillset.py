@@ -38,6 +38,17 @@ wrote. `skills_lock`'s docstring is the rule (D490): a directory already holding
 bytes is `unchanged` and is not claimed, and a directory the receipt says `ow install` created is
 left to `ow install` and `ow uninstall`, with the note saying so.
 
+## `update`
+
+10:1429 gives it a cell and 15:1530 a use -- D-17's fix -- and nothing else. It is built from the
+plan's other sentences about what the lock is for. An entry this release still ships is refreshed
+wherever the lock lists it, by `install`'s own decision, so a modified copy is kept. An entry
+attributed to `omniweave/skills` that this release no longer ships is pruned by `remove`'s
+decision (10:1376-1377). A listed directory that is gone is forgotten and not recreated, because
+*"a missing on-demand skill is not 'out of date'"* (10:1197-1198). 10:1402's *"never prune
+globally for an unknown path"* is the one place the scope rule acts: an orphan under neither the
+working directory nor the home is left for a run from its own project. D498-D500.
+
 ## `remove`
 
 The plan is printed first, and nothing is written without `--yes` or a *yes* at the terminal
@@ -49,7 +60,7 @@ when it is not. A name the lock does not have is `not-found`; exit 2 when every 
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Final, Literal
 
 from omniweave.install import skills_lock
@@ -79,12 +90,13 @@ __all__ = [
     "remove",
     "scope_of_dir",
     "shipped",
+    "update",
 ]
 
 NOT_FOUND: Final = 2
 """10:1485, *"not found"*: 10:1429's third exit, for a name this release does not ship."""
 
-_HOLDERS: Final = "ow skills install or remove"
+_HOLDERS: Final = "ow skills install, remove or update"
 _RECEIPT_REMOVES: Final = "the install receipt names it; `ow uninstall` removes it (D490)"
 _RECEIPT_UPDATES: Final = "the install receipt names it; `ow install` updates it (D490)"
 _NOT_OURS: Final = "already present with this digest; not recorded as this verb's (D490)"
@@ -489,3 +501,127 @@ def _first_difference(entry: Locked, dest: Path, env: HostEnv) -> str:
     if source is None or not source.is_dir() or bundle_sha256(source)[0] != entry.bundle_sha256:
         return ""
     return first_difference(source, dest) or ""
+
+
+# ---------------------------------------------------------------------------------------------
+# ow skills update.
+# ---------------------------------------------------------------------------------------------
+
+_FORGOTTEN: Final = (
+    "no directory; forgotten, not reinstalled -- a missing on-demand skill is not out of date "
+    "(10:1197-1198)"
+)
+_PRUNED: Final = "this release no longer publishes it (10:1377)"
+_UNKNOWN_PATH: Final = (
+    "under neither this project nor the home, so not pruned from here (10:1402); run `ow skills "
+    "update` from the project it belongs to"
+)
+
+
+def update(env: HostEnv) -> Outcome:
+    """Refresh what the lock records and prune what this release no longer ships. D498-D500.
+
+    Each entry attributed to `omniweave/skills` is one of two cases:
+    - **shipped:** each listed directory goes through `install`'s own decision against this
+      release's bundle -- `updated` on the recorded digest, `unchanged` on the new one, `kept` with
+      `OW-A-031` when modified. A listed directory that is gone is forgotten, not recreated;
+    - **not shipped:** each listed directory goes through `remove`'s decision -- `removed` on the
+      recorded digest, `kept` otherwise -- except one under neither the working directory nor the
+      home, which 10:1402's *"never prune globally for an unknown path"* leaves alone.
+
+    An entry from another source is never touched (10:1378). Nothing is asked: every write is to a
+    tree the lock says this verb placed, on the digest it recorded.
+    """
+    root = env.skills_root
+    ships = shipped(root)
+    if root is None or not ships:
+        return _refused("this build has no skill bundles to update from (skills/ is not shipped)")
+    taken = take_lock(
+        env.omniweave_home, clock=env.clock, wait_ms=env.lock_wait_ms, file=SERIAL_LOCK,
+        holders=_HOLDERS,
+    )  # fmt: skip
+    if taken.lock is None:
+        return _lock_refusal(taken)
+    with taken.lock:
+        return _update_locked(env, root, ships)
+
+
+def _update_locked(env: HostEnv, root: Path, ships: Sequence[str]) -> Outcome:
+    lock = skills_lock.read(env.omniweave_home)
+    if not lock.writable:
+        return _refused(f"refused -- {lock.reason}; nothing updated")
+    if lock.state == "missing":
+        shown = tildify(skills_lock.lock_file(env.omniweave_home), env.user_home)
+        return Outcome(OK, (f"  lock_missing: true -- {shown} is not there; nothing to update",))
+    receipt_created = _receipt_created(env)
+    entries = dict(lock.skills)
+    lines: list[str] = []
+    clean = True
+    for name, entry in sorted(lock.skills.items()):
+        if entry.source != skills_lock.SOURCE:
+            lines.append(f"  {name}: left alone -- attributed to {entry.source} (10:1378)")
+            continue
+        if name in ships:
+            actions, kept = _refreshed(entry, root / name, env, receipt_created)
+        else:
+            actions, kept = _pruned(entry, env, receipt_created)
+        lines.extend(row(one, planned=False) for one in actions)
+        clean = clean and all(one.action != "kept" for one in actions)
+        if kept is None:
+            entries.pop(name, None)
+        else:
+            entries[name] = kept
+    if entries != dict(lock.skills):
+        why = skills_lock.write(env.omniweave_home, entries, release=env.release, pid=env.pid)
+        if why:
+            lines.append(f"  {skills_lock.LOCK_FILE} not written -- {why}")
+            clean = False
+    return Outcome(OK if clean else USAGE, tuple(lines))
+
+
+def _refreshed(
+    entry: Locked, source: Path, env: HostEnv, receipt_created: Callable[[Path], bool]
+) -> tuple[list[FileAction], Locked | None]:
+    """One shipped entry, brought to this release's bundle wherever the lock lists it."""
+    want, count, total = bundle_sha256(source)
+    actions: list[FileAction] = []
+    remaining: list[str] = []
+    for stored in entry.installed_to:
+        dest = expand(stored, env.user_home)
+        if not dest.exists() and not is_link(dest):
+            actions.append(_act(dest, env, "not-found", _FORGOTTEN, detail=_hash_detail(want)))
+            continue
+        placed = _place_one(
+            source, dest, want=want, previous=entry, env=env, receipt_created=receipt_created
+        )
+        actions.append(placed.action)
+        if placed.listed:
+            remaining.append(stored)
+    if not remaining:
+        return actions, None
+    return actions, Locked(entry.name, want, count, total, tuple(remaining), entry.skill_path)
+
+
+def _pruned(
+    entry: Locked, env: HostEnv, receipt_created: Callable[[Path], bool]
+) -> tuple[list[FileAction], Locked | None]:
+    """One entry this release no longer ships, removed wherever its digest still holds."""
+    actions: list[FileAction] = []
+    remaining: list[str] = []
+    cwd, home = env.project_root, env.user_home
+    for stored in entry.installed_to:
+        dest = expand(stored, home)
+        known = (cwd is not None and _within(dest, cwd)) or _within(dest, home)
+        if not known:
+            detail = _hash_detail(entry.bundle_sha256)
+            action = _act(dest, env, "kept", _UNKNOWN_PATH, detail=detail)
+        else:
+            action = _remove_one(dest, entry, env, receipt_created, dry_run=False)
+            if action.action == "removed" and not action.note:
+                action = replace(action, note=_PRUNED)
+        actions.append(action)
+        if action.action == "kept":
+            remaining.append(stored)
+    if not remaining:
+        return actions, None
+    return actions, replace(entry, installed_to=tuple(remaining))

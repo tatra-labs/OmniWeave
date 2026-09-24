@@ -202,3 +202,14 @@ def test_the_four_read_only_skills_verbs_from_argv(tmp_path: Path) -> None:
     code, out, _ = _run(["skills", "check", "--check"], tmp_path)
     assert code == 0, out
     assert "  --check: skills/expected/ matches the render" in out.splitlines()
+
+
+def test_ow_skills_update_from_argv(tmp_path: Path) -> None:
+    """W7.6d. With nothing recorded it writes nothing; after an install it has nothing to change."""
+    code, out, _ = _run(["skills", "update"], tmp_path)
+    assert (code, out.startswith("  lock_missing: true")) == (0, True)
+    (tmp_path / "home" / ".agents" / "skills").mkdir(parents=True)
+    assert _run(["skills", "install", "omniweave"], tmp_path)[0] == 0
+    code, out, _ = _run(["skills", "update"], tmp_path)
+    assert code == 0, out
+    assert out.rstrip().endswith(" unchanged")

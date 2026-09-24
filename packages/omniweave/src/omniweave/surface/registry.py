@@ -142,6 +142,7 @@ from omniweave.surface.inputs import (
     SkillsInstallIn,
     SkillsLsIn,
     SkillsRemoveIn,
+    SkillsUpdateIn,
     SkillsVerifyIn,
     UninstallIn,
 )
@@ -1422,6 +1423,27 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             inp=SkillsRemoveIn,
             out=SkillsReport,
             cli=("skills", "remove"),
+        ),
+        #  `skills.install`'s row 1 (D489): it rewrites and deletes skill bundles in agent hosts, so
+        #  no `mcp_name`. `destructive`, because its prune removes a directory (10:1377).
+        ActionSpec(
+            name="skills.update",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            destructive=True,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Refresh every skill skills-lock.json records to this release's bundle and prune "
+                "the ones this release no longer ships; a modified copy is kept"
+            ),
+            decision="ow skills check said update available or removed",
+            example={},
+            inp=SkillsUpdateIn,
+            out=SkillsReport,
+            cli=("skills", "update"),
         ),
         #  10:57's row 5, by `hooks.check`'s reasoning: read-only, spends nothing, writes nothing a
         #  user opens, and not a pure function of the corpus -- so an `mcp_name`, and listed in no
