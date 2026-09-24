@@ -54,6 +54,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final
 
 from omniweave.install.engine import (
+    BUNDLE_ENTRY,
+    CORE_SKILL,
     HostEnv,
     Step,
     configured,
@@ -61,6 +63,9 @@ from omniweave.install.engine import (
     instruction_block,
     render_step,
     scope_of,
+    serve_note,
+    skill_names,
+    skill_step,
     uninstall,
 )
 from omniweave.install.hookrules import desired
@@ -100,14 +105,7 @@ WILDCARD: Final = "mcp__omniweave__*"
 ALLOW_CLI: Final = "Bash(ow:*)"
 """10:1681, written only under `--allow-cli`."""
 
-CORE_SKILL: Final = "omniweave"
-"""10:1151: *"THE ONLY ALWAYS-RESIDENT SKILL"*."""
-
-BUNDLE_ENTRY: Final = "SKILL.md"
-"""The file that makes a directory a skill bundle (10:1152)."""
-
 _SERVE: Final = ("serve", "--mcp")
-_SERVE_ROOT: Final = "serve"
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,17 +122,6 @@ def mcp_entry(launch: tuple[str, ...], *, windows: bool) -> dict[str, Any]:
     """10:1675's entry for `launch`: forward-slashed on Windows, never quoted. D460."""
     head = launch[0].replace("\\", "/") if windows else launch[0]
     return {"type": "stdio", "command": head, "args": [*launch[1:], *_SERVE], "env": {}}
-
-
-def _serve_note() -> str:
-    from omniweave.__main__ import DISPATCHED  # noqa: PLC0415 -- the dispatcher, read live
-
-    if _SERVE_ROOT in DISPATCHED:
-        return ""
-    return (
-        "the host will start `serve --mcp`, which this build does not dispatch: it exits 70 "
-        "until it does (D460)"
-    )
 
 
 class ClaudeCode:
@@ -159,31 +146,10 @@ class ClaudeCode:
         return base / ".agents" / "skills"
 
     def skill_names(self, skills: SkillSet) -> tuple[str, ...]:
-        """`core` is the router alone (10:1151); `all` adds every bundle with a `SKILL.md`."""
-        if skills == "none":
-            return ()
-        root = self.env.skills_root
-        if skills == "core" or root is None or not root.is_dir():
-            return (CORE_SKILL,)
-        others = sorted(
-            one.name
-            for one in root.iterdir()
-            if one.name != CORE_SKILL and (one / BUNDLE_ENTRY).is_file()
-        )
-        return (CORE_SKILL, *others)
+        return skill_names(self.env, skills)
 
     def _skill_step(self, loc: Location, name: str, *, check: bool) -> Step:
-        path = self.skills_dir(loc) / name
-        root = self.env.skills_root
-        source = root / name if root is not None else None
-        refusal = ""
-        if check and source is None:
-            refusal = "no skill bundle source was given"
-        elif check and source is not None and not (source / BUNDLE_ENTRY).is_file():
-            refusal = (
-                f"{source.as_posix()} has no {BUNDLE_ENTRY}: the router body is W7.6's (16:720)"
-            )
-        return Step("skill", "dir", path, source=source, refusal=refusal)
+        return skill_step(self.env, self.skills_dir(loc), name, check=check)
 
     def paths(self, loc: Location) -> Paths:
         """10:1667-1671: the global column under the user's home, the local one under the root."""
@@ -223,7 +189,7 @@ class ClaudeCode:
             mcp = Step("mcp", "json-key", where.mcp, key=MCP_KEY, refusal=launch)
         else:
             entry = mcp_entry(launch, windows=windows)
-            mcp = Step("mcp", "json-key", where.mcp, key=MCP_KEY, value=entry, note=_serve_note())
+            mcp = Step("mcp", "json-key", where.mcp, key=MCP_KEY, value=entry, note=serve_note())
         steps = [
             mcp,
             Step("permissions", "json-array-add", where.settings, key=ALLOW_KEY, values=grants),

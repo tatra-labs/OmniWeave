@@ -17,6 +17,9 @@ from omniweave_core.host.subproc import Captured, run_captured
 
 pytestmark = pytest.mark.conform
 
+#  Named, not `auto`: the child inherits this machine's PATH, which has `cursor` on it (D479).
+CHECK = ("install", "--check", "--target", "claude-code")
+
 
 def _tree(root: Path) -> dict[str, bytes | None]:
     return {
@@ -48,11 +51,11 @@ def test_install_check_uninstall_from_argv_leave_the_home_as_it_was(tmp_path: Pa
     assert b"Write this plan?" not in detached.stdout
     assert _tree(tmp_path / "home") == before
 
-    assert _ow(tmp_path, "install", "--check").returncode == 9
+    assert _ow(tmp_path, *CHECK).returncode == 9
     wrote = _ow(tmp_path, *install, "--skills", "none", "--yes")
     assert wrote.returncode == 0, wrote
     assert "wrote 4 entries · receipt".encode() in wrote.stdout
-    checked = _ow(tmp_path, "install", "--check")
+    checked = _ow(tmp_path, *CHECK)
     assert checked.returncode == 0, checked
     assert checked.stdout.decode("utf-8").startswith("claude-code global   configured    mcp ok")
 
@@ -61,7 +64,7 @@ def test_install_check_uninstall_from_argv_leave_the_home_as_it_was(tmp_path: Pa
     assert b"there is no terminal to ask on" in unasked.stdout
     removed = _ow(tmp_path, "uninstall", "--location", "global", "--yes")
     assert removed.returncode == 0, removed
-    assert _ow(tmp_path, "install", "--check").returncode == 9
+    assert _ow(tmp_path, *CHECK).returncode == 9
     assert _tree(tmp_path / "home") == before
 
 

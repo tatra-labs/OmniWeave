@@ -695,11 +695,10 @@ def test_removing_an_absent_section_is_not_found() -> None:
 # ---------------------------------------------------------------------------------------------
 
 
-def test_unbuilt_names_pruning_refresh_and_the_two_decisions_owed() -> None:
+def test_unbuilt_names_the_two_decisions_owed_and_nothing_since_built() -> None:
     listed = unbuilt()
-    assert len(listed) == 4
-    assert any("pruning" in line for line in listed)
-    assert any("refresh_targets" in line for line in listed)
+    assert len(listed) == 2
+    assert not any("pruning" in line or "refresh_targets" in line for line in listed)
     assert any("D441" in line for line in listed)
     assert any("D443" in line for line in listed)
 

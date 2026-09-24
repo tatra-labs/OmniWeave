@@ -56,6 +56,8 @@ def _tree(root: Path) -> dict[str, bytes | None]:
 
 
 INSTALL = ["install", "--target", "claude-code", "--location", "global", "--hooks", "context"]
+#  Named, not `auto`: `auto` is every host found, and PATH is this machine's (D479).
+CHECK = ["install", "--check", "--target", "claude-code"]
 
 
 def test_the_plans_own_example_is_refused_with_both_flags_named(tmp_path: Path) -> None:
@@ -124,16 +126,16 @@ def test_a_terminal_is_asked_the_location_and_the_confirmation(
 
 def test_the_whole_cycle_from_argv_leaves_the_home_as_it_was(tmp_path: Path) -> None:
     before = _tree(tmp_path / "home")
-    assert _run(["install", "--check"], tmp_path)[0] == 9
+    assert _run(CHECK, tmp_path)[0] == 9
     code, out, _ = _run([*INSTALL, "--skills", "none", "--yes"], tmp_path)
     assert code == 0
     assert "wrote 4 entries" in out
-    code, out, _ = _run(["install", "--check"], tmp_path)
+    code, out, _ = _run(CHECK, tmp_path)
     assert code == 0
     assert out.startswith("claude-code global   configured    mcp ok")
     code, _, _ = _run(["uninstall", "--location", "global", "--yes"], tmp_path)
     assert code == 0
-    assert _run(["install", "--check"], tmp_path)[0] == 9
+    assert _run(CHECK, tmp_path)[0] == 9
     assert _tree(tmp_path / "home") == before
 
 

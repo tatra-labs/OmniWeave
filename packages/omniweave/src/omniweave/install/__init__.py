@@ -20,7 +20,8 @@ install created (D454), and the fourth, `json-hook-rules`, whose command, five s
 ownership and convergence are `hookrules.py`'s (D456-D457). `engine.py` is what makes a host one
 file: the lock, a row recorded after each write, and an uninstall that undoes in reverse step order
 with each file's creator flag merged, then sweeps the directories once (D459). `claude_code.py` is
-the first host and `registry.py` its row. `skilldir.py` is the fifth mode, `dir`: a bundle staged,
+the first host, `cursor.py` the second -- one file, whose paths no document gives (D474) -- and
+`registry.py` their two rows. `skilldir.py` is the fifth mode, `dir`: a bundle staged,
 verified against its `sha256-bundle-1` digest (`omniweave.skills.hash`, D464) and renamed into
 place, and removed only on its row's digest. `verbs.py` is `ow install | uninstall | --check` as
 functions returning an exit code and lines: `--target`'s four resolutions, the plan printed first,
