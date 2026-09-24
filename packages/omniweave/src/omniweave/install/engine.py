@@ -37,6 +37,16 @@ receipt, filtered to this target and scope (10:1738), and undoes each by its mod
 names, after the steps. *"removes ONLY what install wrote"* (10:1640) is a promise about the
 receipt, not about the current release's table.
 
+## ONE ARTEFACT, TWO HOSTS: THE LAST ONE OUT REMOVES IT
+
+Codex reads skills from `$HOME/.agents/skills` and `.agents/skills` -- the directories 10:1671
+gives Claude Code. So both hosts' rows can name one `~/.agents/skills/omniweave`, and the second
+install finds the first one's tree and records it as not its own. Without a rule, uninstalling
+the host that created it takes the skill from the host still wired to it. So a row whose kind,
+mode and path another target's row in the same scope also names is **kept and forgotten**, and
+what it created -- the file flag and its directories -- is handed to that row, which then removes
+it when its own host goes. Byte identity still holds, whatever the order. D481.
+
 ## NEVER THROW
 
 10:1765: *"Two nested `try/except`; a failed cleanup must not block the uninstall."* One around
@@ -50,6 +60,7 @@ import shutil
 import sys
 import time
 from dataclasses import dataclass, replace
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_core.contract import RELEASE
@@ -69,7 +80,13 @@ from omniweave.install.modes import (
     unset_key,
     upsert_section,
 )
-from omniweave.install.primitives import BEGIN, END, read_json, remove_empty_dirs, render_json
+from omniweave.install.primitives import (
+    HTML,
+    Markers,
+    read_json,
+    remove_empty_dirs,
+    render_json,
+)
 from omniweave.install.receipt import (
     Entry,
     expand,
@@ -130,7 +147,9 @@ class HostEnv:
     caller, so `print_config` -- which *"MUST NOT touch the filesystem"* (10:1641) -- need not look
     for `ow`. `project_root` is the resolved, absolute root a `local` install writes under and keys
     its rows by (10:1734); a global-only caller leaves it `None`. `skills_root` is where the skill
-    bundles come from -- 10:1327's `"source":"omniweave/skills"`, the shipped tree.
+    bundles come from -- 10:1327's `"source":"omniweave/skills"`, the shipped tree. `environ` is
+    the process environment, handed in for the variables a host names its own home by: Codex's
+    `CODEX_HOME` (W7.5k). Empty by default, so a host reads its documented default.
     """
 
     omniweave_home: Path
@@ -145,6 +164,7 @@ class HostEnv:
     which: Callable[[str], str | None] = shutil.which
     lock_wait_ms: int = INTERACTIVE_WAIT_MS
     skills_root: Path | None = None
+    environ: Mapping[str, str] = MappingProxyType({})
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,7 +176,8 @@ class Step:
     `kept` action without a write -- no launcher to put in a command, say -- and `note` is appended
     to whatever the step reports. `dir` takes `source`, the bundle to copy; uninstall uses it to
     re-derive (a tree equal to it is this release's) and to name the first differing path.
-    `marker-section` also takes `head`, the first lines of a file it creates (D477).
+    `marker-section` also takes `head`, the first lines of a file it creates (D477), `markers`,
+    its comment syntax, and `validate`, which refuses a text that must not be written (D480).
     """
 
     kind: Kind
@@ -171,6 +192,8 @@ class Step:
     refusal: str = ""
     note: str = ""
     head: str = ""
+    markers: Markers = HTML
+    validate: Callable[[str], str] | None = None
 
 
 def scope_of(env: HostEnv, loc: Location) -> tuple[str | None, str]:
@@ -310,6 +333,7 @@ def _write(
         return upsert_section(
             site, step.kind, step.body,
             previous=previous, clock=clock, pid=pid, dry_run=dry_run, sleep=sleep, head=step.head,
+            markers=step.markers, validate=step.validate,
         )  # fmt: skip
     if step.mode == "json-hook-rules":
         return set_hooks(
@@ -395,7 +419,9 @@ def _undo_all(
     dry_run: bool,
     keep: frozenset[str],
 ) -> tuple[tuple[FileAction, ...], tuple[str, ...]]:
-    rows = [entry for entry in receipt.for_scope(loc, scope) if entry.target == target]
+    scoped = receipt.for_scope(loc, scope)
+    rows = [entry for entry in scoped if entry.target == target]
+    shared = _sharers(scoped, target)
     creators = _creators(rows)
     by_place = {(entry.kind, entry.path): entry for entry in rows}
     work: list[tuple[Site, Kind, Mode, Entry | None, Step | None]] = []
@@ -405,7 +431,49 @@ def _undo_all(
     for entry in reversed([one for one in rows if (one.kind, one.path) in by_place]):
         site = _site(target, loc, scope, expand(entry.path, env.user_home), env)
         work.append((site, entry.kind, entry.mode, entry, None))
-    return _run_undo(work, creators, env, lock, dry_run=dry_run, keep=keep)
+    return _run_undo(work, creators, env, lock, dry_run=dry_run, keep=keep, shared=shared)
+
+
+def _sharers(rows: Sequence[Entry], target: TargetId) -> dict[tuple[str, str, str], Entry]:
+    """Per `(kind, mode, path)`, another target's row naming the same artefact. D481."""
+    found: dict[tuple[str, str, str], Entry] = {}
+    for entry in rows:
+        if entry.target != target:
+            found.setdefault((entry.kind, entry.mode, entry.path), entry)
+    return found
+
+
+def _hand_over(
+    site: Site,
+    kind: Kind,
+    mode: Mode,
+    *,
+    entry: Entry | None,
+    sibling: Entry,
+    env: HostEnv,
+    lock: InstallLock | None,
+) -> tuple[Applied, str]:
+    """Keep what `sibling`'s host still uses; give it what `entry` created. D481.
+
+    With no row of this target's there is nothing of its own to remove, and re-derivation must not
+    take the sibling's artefact on a digest's word: that is `not-found`, not `kept`.
+    """
+    if entry is None:
+        note = f"{sibling.target}'s row names it; not this host's to remove (D481)"
+        return Applied(site.act("not-found", kind, mode, note)), ""
+    note = f"kept -- {sibling.target}'s row names it too, and removes it when it goes (D481)"
+    applied = Applied(site.act("kept", kind, mode, note), forget=entry)
+    if lock is None or not (entry.created_file or entry.created_dirs):
+        return applied, ""
+    heir = replace(
+        sibling,
+        created_file=sibling.created_file or entry.created_file,
+        created_dirs=tuple(dict.fromkeys((*sibling.created_dirs, *entry.created_dirs))),
+    )
+    done = record(lock, heir, release=env.release, pid=env.pid, sleep=env.sleep)
+    if done.ok:
+        return applied, ""
+    return applied, f"{site.shown}: handing it to {sibling.target}'s row failed: {done.reason}"
 
 
 def _run_undo(
@@ -416,15 +484,31 @@ def _run_undo(
     *,
     dry_run: bool,
     keep: frozenset[str] = frozenset(),
+    shared: Mapping[tuple[str, str, str], Entry] | None = None,
 ) -> tuple[tuple[FileAction, ...], tuple[str, ...]]:
     """Each undo in `work`'s order, then the one sweep of created directories. D459.
 
     `lock` is `None` on a dry run and when the receipt cannot be rewritten; rows are then left.
+    A row another target's row shares is kept and handed over instead of undone (D481).
     """
     actions: list[FileAction] = []
     lines: list[str] = []
     swept: list[Path] = []
     for site, kind, mode, entry, step in work:
+        sibling = (shared or {}).get((kind, mode, site.shown))
+        if sibling is not None:
+            own = replace(entry, created_file=creators.get(entry.path, False)) if entry else None
+            applied, failed = _hand_over(
+                site, kind, mode, entry=own, sibling=sibling, env=env, lock=lock
+            )
+            lines.extend([failed] if failed else [])
+            detail = entry_detail(entry) if entry is not None else step_detail(step)
+            actions.append(replace(applied.action, detail=detail))
+            if entry is not None and lock is not None:
+                done = forget(lock, [entry.identity()], release=env.release, pid=env.pid)
+                if not done.ok:
+                    lines.append(f"{site.shown} was kept but its receipt row was not forgotten")
+            continue
         merged = _merged(entry, creators, keep)
         try:
             applied = _undo(site, kind, mode, entry=merged, step=step, env=env, dry_run=dry_run)
@@ -492,9 +576,11 @@ def _undo(
         )
     if mode == "marker-section":
         head = step.head if step is not None else ""
+        markers = step.markers if step is not None else HTML
         return remove_section(
-            site, kind, entry=entry, pid=pid, dry_run=dry_run, sleep=sleep, head=head
-        )
+            site, kind, entry=entry, pid=pid, dry_run=dry_run, sleep=sleep, head=head,
+            markers=markers,
+        )  # fmt: skip
     if mode == "json-hook-rules":
         return unset_hooks(site, entry=entry, pid=pid, dry_run=dry_run, sleep=sleep)
     source = step.source if step is not None else None
@@ -520,7 +606,7 @@ def step_detail(step: Step | None) -> str:
     if step.mode == "json-hook-rules":
         return " ".join(one.event for one in step.hooks) or "none of ours"
     if step.mode == "marker-section":
-        return BEGIN
+        return step.markers.begin
     source = step.source
     digest = bundle_sha256(source)[0] if source is not None and source.is_dir() else ""
     return _bundle_hash(digest)
@@ -565,7 +651,8 @@ def render_step(step: Step, shown: str) -> str:
         return f"{head}  {' '.join(one.event for one in step.hooks)}\n{_json(document)}"
     if step.mode == "marker-section":
         first = f"{step.head}\n" if step.head else ""
-        return f"{head}\n{first}{BEGIN}\n{step.body}\n{END}"
+        marks = step.markers
+        return f"{head}\n{first}{marks.begin}\n{step.body}\n{marks.end}"
     return f"{head}  a copy of {step.source}, recorded by its sha256-bundle-1 digest"
 
 

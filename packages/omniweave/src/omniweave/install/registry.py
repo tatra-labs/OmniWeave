@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final
 
 from omniweave.install.claude_code import ClaudeCode
+from omniweave.install.codex import Codex
 from omniweave.install.cursor import Cursor
 from omniweave.install.types import TARGET_IDS
 
@@ -27,6 +28,9 @@ __all__ = ["BUILT", "TARGETS", "build"]
 
 TARGETS: Final[Mapping[TargetId, Callable[[HostEnv], HostTarget]]] = {
     "claude-code": ClaudeCode,
+    #  W7.5k. With it came the engine's second comment syntax (D480) and the rule for an artefact
+    #  two hosts' rows name (D481): Codex writes TOML and reads Claude Code's skill directory.
+    "codex": Codex,
     #  W7.5j: the second row, and the second file (`cursor.py`) is all that came with it -- apart
     #  from the marker-section `head` its rule needed (D477), which is the engine's.
     "cursor": Cursor,

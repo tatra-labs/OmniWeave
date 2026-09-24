@@ -94,10 +94,13 @@ __all__ = [
     "BOM",
     "DEFAULT_STYLE",
     "END",
+    "HASH",
+    "HTML",
     "REPLACE_ATTEMPTS",
     "REPLACE_BACKOFF_S",
     "UNPARSEABLE",
     "JsonStyle",
+    "Markers",
     "ReadJson",
     "Section",
     "Wrote",
@@ -107,6 +110,7 @@ __all__ = [
     "encode_text",
     "fit_style",
     "json_deep_equal",
+    "markers_for",
     "read_json",
     "remove_empty_dirs",
     "remove_marked_section",
@@ -134,6 +138,30 @@ BACKUP_LIMIT: Final = 100
 BEGIN: Final = "<!-- omniweave:begin -->"
 # Not in the plan. D446.
 END: Final = "<!-- omniweave:end -->"
+
+
+@dataclass(frozen=True, slots=True)
+class Markers:
+    """A marked section's two lines, and whether Markdown's fenced code blocks hide them.
+
+    `HTML` is 10:1716's, for Markdown. `HASH` is the same section in a file whose comments start
+    `#`: Codex's `config.toml`, which has no fences, so a `` ``` `` line inside a TOML multi-line
+    string is text and not a fence (D480). A row records its begin marker (10:1716's `"marker"`),
+    so `markers_for` reads which pair a row was written with.
+    """
+
+    begin: str
+    end: str
+    fences: bool = True
+
+
+HTML: Final = Markers(BEGIN, END)
+HASH: Final = Markers("# omniweave:begin", "# omniweave:end", fences=False)
+
+
+def markers_for(begin: str) -> Markers:
+    """The pair a row's `marker` names; `HTML` for any other value, as every row before D480 is."""
+    return HASH if begin == HASH.begin else HTML
 
 
 # ---------------------------------------------------------------------------------------------
@@ -580,13 +608,13 @@ def _lines(text: str) -> Iterator[tuple[int, str]]:
         offset += len(line) + 1
 
 
-def section_span(text: str) -> tuple[int, int] | str | None:
+def section_span(text: str, markers: Markers = HTML) -> tuple[int, int] | str | None:
     """The block's `[start, stop)` offsets, `None` when absent, or why it is refused."""
     begins: list[int] = []
     ends: list[tuple[int, int]] = []
     fence: str | None = None
     for offset, line in _lines(text):
-        opened = _FENCE.match(line)
+        opened = _FENCE.match(line) if markers.fences else None
         if fence is not None:
             if opened and _closes(opened, line, fence):
                 fence = None
@@ -595,9 +623,9 @@ def section_span(text: str) -> tuple[int, int] | str | None:
             fence = opened.group(1)
             continue
         marker = line.rstrip(" \t")
-        if marker == BEGIN:
+        if marker == markers.begin:
             begins.append(offset)
-        elif marker == END:
+        elif marker == markers.end:
             stop = text.find("\n", offset)
             ends.append((offset, len(text) if stop < 0 else stop + 1))
     if not begins and not ends:
@@ -619,18 +647,18 @@ def _newline(text: str) -> str:
     return "\r\n" if first > 0 and text[first - 1] == "\r" else "\n"
 
 
-def _block(body: str, newline: str) -> str:
+def _block(body: str, newline: str, markers: Markers = HTML) -> str:
     inner = body.replace("\r\n", "\n").strip("\n").replace("\n", newline)
-    return f"{BEGIN}{newline}{inner}{newline}{END}{newline}"
+    return f"{markers.begin}{newline}{inner}{newline}{markers.end}{newline}"
 
 
-def upsert_marked_section(text: str, body: str) -> Section:
+def upsert_marked_section(text: str, body: str, markers: Markers = HTML) -> Section:
     """Insert or replace the block. Absent: exactly one newline, then the block, at the end."""
-    span = section_span(text)
+    span = section_span(text, markers)
     if isinstance(span, str):
         return Section(None, "kept", span)
     newline = _newline(text)
-    block = _block(body, newline)
+    block = _block(body, newline, markers)
     if span is None:
         return Section(text + newline + block if text else block, "created")
     start, stop = span
@@ -638,7 +666,7 @@ def upsert_marked_section(text: str, body: str) -> Section:
     return Section(updated, "unchanged" if updated == text else "updated")
 
 
-def remove_marked_section(text: str) -> Section:
+def remove_marked_section(text: str, markers: Markers = HTML) -> Section:
     """The inverse of an insert: the block, and the one newline the insert put before it.
 
     That newline is taken back when the block ends the file -- the insert's own shape -- and also
@@ -646,7 +674,7 @@ def remove_marked_section(text: str) -> Section:
     appended after it (W7.5c measured the extra blank line the first rule alone left). Otherwise
     the newline ends the user's own line and removing it would join two lines.
     """
-    span = section_span(text)
+    span = section_span(text, markers)
     if isinstance(span, str):
         return Section(None, "kept", span)
     if span is None:

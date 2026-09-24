@@ -113,7 +113,7 @@ def test_the_host_is_an_agent_target_and_one_registry_row(tmp_path: Path) -> Non
     assert target.id == "claude-code"
     assert target.supports_location("global")
     assert target.supports_location("local")
-    assert BUILT == ("claude-code", "cursor")
+    assert BUILT == ("claude-code", "codex", "cursor")
     assert set(TARGETS) <= set(TARGET_IDS)
 
 
@@ -122,8 +122,8 @@ def test_an_unknown_id_names_the_known_list_and_an_unbuilt_one_says_not_yet(
 ) -> None:
     with pytest.raises(ValueError, match="unknown target 'claude'; known: claude-code, codex"):
         build("claude", _env(tmp_path))
-    with pytest.raises(ValueError, match=r"'codex' is declared .* built: claude-code, cursor"):
-        build("codex", _env(tmp_path))
+    with pytest.raises(ValueError, match=r"'gemini' is declared .* built: claude-code, codex, cur"):
+        build("gemini", _env(tmp_path))
 
 
 def test_the_paths_are_10_1667s_table_in_both_columns(tmp_path: Path) -> None:

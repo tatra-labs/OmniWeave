@@ -14,19 +14,20 @@ obvious one round-trips one of this machine's five host configs (D441). `receipt
 section 7.3's receipt and the lock it is written under: rows with two digests, because a whole-file
 hash goes stale the moment a second row's write or the host itself touches the file (D448), and
 the house lock, because an age cannot tell a dead holder from one waiting at its own prompt (D450).
-`modes.py` is three of 10:1665's five write modes -- `json-key`, `json-array-add`,
-`marker-section` -- each an install and its inverse, with a row that inherits what an earlier
-install created (D454), and the fourth, `json-hook-rules`, whose command, five spellings of
-ownership and convergence are `hookrules.py`'s (D456-D457). `engine.py` is what makes a host one
-file: the lock, a row recorded after each write, and an uninstall that undoes in reverse step order
-with each file's creator flag merged, then sweeps the directories once (D459). `claude_code.py` is
-the first host, `cursor.py` the second -- one file, whose paths no document gives (D474) -- and
-`registry.py` their two rows. `skilldir.py` is the fifth mode, `dir`: a bundle staged,
+`modes.py` is three of 10:1665's five write modes -- `json-key`, `json-array-add`, `marker-section`
+-- each an install and its inverse, with a row that inherits what an earlier install created (D454),
+and the fourth, `json-hook-rules`, whose command, five spellings of ownership and convergence are
+`hookrules.py`'s (D456-D457). `engine.py` is what makes a host one file: the lock, a row recorded
+after each write, and an uninstall that undoes in reverse step order with each file's creator flag
+merged, then sweeps the directories once (D459). `claude_code.py` is the first host, `cursor.py` the
+second -- one file, whose paths no document gives (D474) -- `codex.py` the third, whose MCP entry is
+a TOML table written as a marked section (D480) and whose skill directory is Claude Code's (D481),
+and `registry.py` their three rows. `skilldir.py` is the fifth mode, `dir`: a bundle staged,
 verified against its `sha256-bundle-1` digest (`omniweave.skills.hash`, D464) and renamed into
 place, and removed only on its row's digest. `verbs.py` is `ow install | uninstall | --check` as
-functions returning an exit code and lines: `--target`'s four resolutions, the plan printed first,
-0 and 9, uninstall's seven steps and `refresh_targets()`. `run.py` is `python -m omniweave install
-| uninstall`: the generated parser over the two `ACTIONS` rows (D467, D469), a `HostEnv` from the
+functions returning an exit code and lines: `--target`'s four resolutions, the plan printed first, 0
+and 9, uninstall's seven steps and `refresh_targets()`. `run.py` is `python -m omniweave install |
+uninstall`: the generated parser over the two `ACTIONS` rows (D467, D469), a `HostEnv` from the
 environment, and the terminal only when there is one (D472).
 """
 
