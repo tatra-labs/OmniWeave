@@ -1,26 +1,32 @@
-"""`python -m omniweave`: dispatches `hook` and nothing else, and says so for everything else.
+"""`python -m omniweave`: dispatches `hook`, `install` and `uninstall`, and says so for the rest.
 
 This file did not exist before W7.4i, and its absence was a defect in a cell that claimed otherwise.
 `posttool.command()` falls back to `python -m omniweave ingest` and its docstring called that
 fallback one that *"always works"* -- but `python -m omniweave` exited 1 at import with *"No module
 named omniweave.__main__"*, into the `DEVNULL` 10:2072 requires. D433.
 
-**It dispatches one root.** `ow hook <event>` is W7.4's (16:718) and is the only verb whose runtime
-exists; the other roots in `cli.COMMANDS` are parsed by a generated tree whose own docstring says it
-*"parses and does not dispatch"*, because 02:719's steps 2-9 belong to a runtime not yet built. So
-every other argv is refused, on stderr, with `InternalError`'s exit -- 10:2185's *"anything else"*,
-the only row in the taxonomy that does not assert something about a store or an argument that would
-be false here. The refusal is spelled out rather than silent, because the one thing worse than a
-command that does not work is one that exits 0 having done nothing.
+**It dispatches the roots whose runtime exists.** `ow hook <event>` is W7.4's (16:718); `ow install`
+and `ow uninstall` are W7.5's (16:719), parsed by the generated tree now that their `ACTIONS` rows
+exist (W7.5h, D467) and run by `omniweave.install.run`. The other roots in `cli.COMMANDS` are
+refused, on stderr, with `InternalError`'s exit -- 10:2185's *"anything else"*, the only row in the
+taxonomy that does not assert something about a store or an argument that would be false here. The
+refusal is spelled out rather than silent, because the one thing worse than a command that does not
+work is one that exits 0 having done nothing.
+
+**`hook` is routed first and imports nothing else.** A hook runs on every prompt and has a deadline
+(G26); the install verbs import the generated parser, the registry and the engine, and are imported
+only when their root is asked for.
 
 **No console script is declared, and 18:874 says there is one.** *"`ow` and `omniweave` are the same
 console script"* -- and no `pyproject.toml` in the workspace has a `[project.scripts]` table. A
-console script that dispatched only `hook` would put an `ow` on every user's PATH that refuses every
-command in `ow --help`, so it waits for the dispatcher rather than arriving here.
+console script would put an `ow` on every user's PATH that refuses most of `ow --help`, so it waits
+for the dispatcher rather than arriving here.
 """
 
 from __future__ import annotations
 
+import io
+import os
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
@@ -32,24 +38,41 @@ if TYPE_CHECKING:
 
 __all__ = ["DISPATCHED", "main"]
 
-DISPATCHED: Final[frozenset[str]] = frozenset({HOOK_WORD})
+_INSTALL_ROOTS: Final[frozenset[str]] = frozenset({"install", "uninstall"})
+
+DISPATCHED: Final[frozenset[str]] = frozenset({HOOK_WORD, *_INSTALL_ROOTS})
 """The roots this build can run. `ingest` joining it is the day the drain can be wired (D433)."""
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Route `hook` to the hook entry point; refuse everything else with `InternalError.EXIT`."""
+    """Route each dispatched root to its entry point; refuse everything else with exit 70."""
     args = list(sys.argv[1:] if argv is None else argv)
     if args and args[0] == HOOK_WORD:
-        #  The one read of the working directory in this distribution, which the cwd ban exempts
-        #  this file for (D435): a hook's `<sessions>/` is found by walking up from it (10:1893).
+        #  A read of the working directory, which the cwd ban exempts this file for (D435): a
+        #  hook's `<sessions>/` is found by walking up from it (10:1893).
         return entry(args[1:], cwd=Path.cwd())
+    if args and args[0] in _INSTALL_ROOTS:
+        return _install(args)
 
     from omniweave_core.errors import InternalError  # noqa: PLC0415 -- only the refusal pays
 
     #  `ascii()`, because stderr is cp1252 in a piped child on Windows (D431) and `root` is argv.
     root = ascii(args[0]) if args else "nothing"
-    sys.stderr.write(f"ow: {root} is not dispatched by this build; only `ow hook <event>` is.\n")
+    known = ", ".join(f"`ow {one}`" for one in sorted(DISPATCHED))
+    sys.stderr.write(f"ow: {root} is not dispatched by this build; only {known} are.\n")
     return InternalError.EXIT
+
+
+def _install(args: list[str]) -> int:
+    from omniweave.install.run import main as run  # noqa: PLC0415 -- the hook path never pays
+
+    #  Measured: into a pipe on Windows, Python writes cp1252 and the transcript's `·` and `…`
+    #  reach a UTF-8 reader as U+FFFD. A terminal is left alone -- the console writes Unicode.
+    if not sys.stdout.isatty() and isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(encoding="utf-8")
+    #  The second read of the working directory, under the same exemption (D435): a `local`
+    #  install writes under the project it is run from (10:1734).
+    return run(args, env=os.environ, cwd=Path.cwd())
 
 
 if __name__ == "__main__":

@@ -24,8 +24,9 @@ the first host and `registry.py` its row. `skilldir.py` is the fifth mode, `dir`
 verified against its `sha256-bundle-1` digest (`omniweave.skills.hash`, D464) and renamed into
 place, and removed only on its row's digest. `verbs.py` is `ow install | uninstall | --check` as
 functions returning an exit code and lines: `--target`'s four resolutions, the plan printed first,
-0 and 9, uninstall's seven steps and `refresh_targets()`. The `ow` command that parses into them
-waits for their `ACTIONS` rows (D467).
+0 and 9, uninstall's seven steps and `refresh_targets()`. `run.py` is `python -m omniweave install
+| uninstall`: the generated parser over the two `ACTIONS` rows (D467, D469), a `HostEnv` from the
+environment, and the terminal only when there is one (D472).
 """
 
 from __future__ import annotations

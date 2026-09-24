@@ -249,6 +249,57 @@ COMMANDS: Final[tuple[Command, ...]] = (
         ),
     ),
     Command(
+        words=("install",),
+        actions=("install",),
+        help=(
+            "Wire agent hosts to omniweave: the MCP entry, one permission wildcard, the "
+            "instruction block, hooks and the core skill, each recorded in a receipt"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--target",),
+                metavar="TARGET",
+                default="auto",
+            ),
+            Argument(
+                spelling=("--location",),
+                metavar="LOCATION",
+            ),
+            Argument(
+                spelling=("--hooks",),
+                metavar="HOOKS",
+            ),
+            Argument(
+                spelling=("--skills",),
+                metavar="SKILLS",
+            ),
+            Argument(
+                spelling=("--allow-cli",),
+                kind="switch",
+                default=False,
+            ),
+            Argument(
+                spelling=("--check",),
+                kind="switch",
+                default=False,
+            ),
+            Argument(
+                spelling=("--print-config",),
+                metavar="PRINT_CONFIG",
+            ),
+            Argument(
+                spelling=("--dry-run",),
+                kind="switch",
+                default=False,
+            ),
+            Argument(
+                spelling=("--yes",),
+                kind="switch",
+                default=False,
+            ),
+        ),
+    ),
+    Command(
         words=("open",),
         actions=("open",),
         help=(
@@ -344,6 +395,35 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 spelling=("--explain",),
                 kind="switch",
                 help="print the routing decision with the answer",
+            ),
+        ),
+    ),
+    Command(
+        words=("uninstall",),
+        actions=("uninstall",),
+        help=(
+            "Take omniweave out of agent hosts exactly: every path the install receipt names, "
+            "on its digest, and never the corpus index"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--target",),
+                metavar="TARGET",
+                default="all",
+            ),
+            Argument(
+                spelling=("--location",),
+                metavar="LOCATION",
+            ),
+            Argument(
+                spelling=("--keep-cli",),
+                kind="switch",
+                default=False,
+            ),
+            Argument(
+                spelling=("--yes",),
+                kind="switch",
+                default=False,
             ),
         ),
     ),

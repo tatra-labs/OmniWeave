@@ -198,16 +198,25 @@ def test_listed_is_sorted_because_the_generator_must_be_deterministic() -> None:
 
 def test_add_is_the_one_writer_and_the_only_open_world_action() -> None:
     """10:158: `open_world` is true *"only where the Action touches something outside the
-    store"* -- `ow_add` alone, because it walks a filesystem or fetches a URL."""
+    store"* -- `ow_add` alone, because it walks a filesystem or fetches a URL.
+
+    `add` is the one writer an agent can reach. `install` and `uninstall` write too -- an agent
+    host's configuration -- and have no `mcp_name` (10:53's row 1, D469), so no agent reaches them.
+    """
     writers = [spec.name for spec in ACTIONS.values() if not spec.read_only]
     open_world = [spec.name for spec in ACTIONS.values() if spec.open_world]
-    assert writers == ["add"]
+    assert writers == ["add", "install", "uninstall"]
+    assert [name for name in writers if ACTIONS[name].mcp_name is not None] == ["add"]
     assert open_world == ["add"]
 
 
 def test_no_listed_tool_is_destructive_including_the_writer() -> None:
-    """10:161: ingest appends and never removes indexed content, so a host should not prompt."""
-    assert [spec.name for spec in ACTIONS.values() if spec.destructive] == []
+    """10:161: ingest appends and never removes indexed content, so a host should not prompt.
+
+    `uninstall` is destructive -- it removes configuration a user has -- and is human-only.
+    """
+    assert [spec.name for spec in ACTIONS.values() if spec.destructive] == ["uninstall"]
+    assert [name for name in LISTED_NAMES if ACTIONS[name].destructive] == []
 
 
 def test_every_listed_action_is_idempotent() -> None:
@@ -245,9 +254,13 @@ def test_the_two_retrievers_return_an_answer_and_the_two_row_shaped_tools_do_not
     assert ACTIONS["add"].out is AddReport
 
 
-def test_no_action_is_human_only_yet_and_none_of_the_four_could_be() -> None:
-    assert [spec.name for spec in ACTIONS.values() if spec.human_only] == []
-    assert set(ACTIONS) & HUMAN_ONLY == set()
+def test_the_human_only_actions_are_the_two_install_verbs_and_none_of_the_four() -> None:
+    """`install` and `uninstall` are the first rows with `mcp_name = None`. Only `uninstall` is
+    in `HUMAN_ONLY`, the roster 10:143 transcribes: 10:53's row 1 also matches `install`, and the
+    roster leaves it out (D469)."""
+    assert [spec.name for spec in ACTIONS.values() if spec.human_only] == ["install", "uninstall"]
+    assert set(ACTIONS) & HUMAN_ONLY == {"uninstall"}
+    assert not any(ACTIONS[name].human_only for name in LISTED_NAMES)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -460,7 +473,6 @@ def test_no_eleventh_check_asserts_a_human_only_name_has_a_row_at_all() -> None:
         "route.promote",
         "skills.remove",
         "targets.remove",
-        "uninstall",
     )
     assert _validate(ACTIONS) == (), "and the eleven checks say nothing about it"
 
@@ -580,6 +592,8 @@ def test_the_required_parameter_of_each_tool_is_the_one_the_schema_requires() ->
         "doc.diff": {"ref"},
         "doctor": set(),
         "explain": {"code"},
+        "install": set(),
+        "uninstall": set(),
     }
 
 
@@ -971,7 +985,9 @@ def test_the_shipped_roots_still_contain_no_trailing_s_collision() -> None:
     """Check 9's third clause over the roots the registry now uses. `hook`/`hooks` is not here
     yet -- both are declared in `GROUPS` and neither has a row (D295)."""
     roots = {spec.cli[0] for spec in ACTIONS.values() if spec.cli}
-    assert roots == {"query", "open", "corpora", "add", "doc", "doctor", "explain"}
+    assert roots == {
+        "query", "open", "corpora", "add", "doc", "doctor", "explain", "install", "uninstall",
+    }  # fmt: skip
     assert not {root for root in roots if root + "s" in roots}
     assert roots <= GROUPS
 
@@ -1061,11 +1077,12 @@ def test_every_narrow_input_is_a_frozen_slotted_dataclass() -> None:
 
 def test_two_actions_need_no_corpus_and_both_reasons_are_stated() -> None:
     """`ow explain` reads `codes.toml`, which is repository data; `ow doctor` reads the
-    deployment. Neither opens a store, so both answer before the first `ow add`."""
+    deployment. Neither opens a store, so both answer before the first `ow add`. `install` and
+    `uninstall` wire agent hosts and open no store either (10:1469: two verbs, two receipts)."""
     without_corpus = sorted(
         name for name, spec in ACTIONS.items() if "corpus" not in {f.name for f in fields(spec.inp)}
     )
-    assert without_corpus == ["doctor", "explain"]
+    assert without_corpus == ["doctor", "explain", "install", "uninstall"]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1246,7 +1263,7 @@ def test_the_unrostered_cli_count_is_the_distance_to_the_registry() -> None:
     tables and usage rather than from a numeral, and a numeral is a second copy of an enumeration.
     """
     waiting = _unrostered_cli(ACTIONS)
-    assert len(waiting) == 149
+    assert len(waiting) == 147
     have = {spec.cli for spec in ACTIONS.values()}
     assert not set(waiting) & have
     assert len(waiting) + len(have) == sum(max(1, len(v)) for v in CLI_ROSTER.values())

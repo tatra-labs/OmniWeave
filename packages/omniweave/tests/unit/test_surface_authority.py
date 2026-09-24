@@ -340,13 +340,12 @@ def test_listed_all_is_ordinary_in_the_prose_and_a_startup_error_in_the_invarian
         resolve(enabled_key=_granting(*FRONT), env={LISTED_ENV: ALL})
 
 
-def test_the_human_only_clause_is_unreachable_in_this_build() -> None:
-    """SV1's second clause cannot fire yet, and the reason is a registry with nine of ~130 rows:
-    none of `HUMAN_ONLY`'s five is an Action, so no variable can name one. The registry's
-    `_unrostered_human_only()` measures the same distance from the other side. This test
-    announces the day they land by failing."""
-    assert HUMAN_ONLY & set(ACTIONS) == frozenset()
-    assert human_only_named(["uninstall", "query"]) == ()
+def test_the_human_only_clause_fires_on_the_first_human_only_row() -> None:
+    """SV1's second clause could not fire while none of `HUMAN_ONLY`'s five was an Action; this
+    test announced the day one landed by failing, and `uninstall` is that day (W7.5h). Naming it
+    in an enabled variable is now refused by name, and `query` beside it is not."""
+    assert HUMAN_ONLY & set(ACTIONS) == frozenset({"uninstall"})
+    assert human_only_named(["uninstall", "query"]) == ("uninstall",)
 
 
 # =============================================================================================

@@ -184,6 +184,9 @@ cli.doctor: ow doctor [--runtime]
 cli.doctor.actions: doctor
 cli.explain: ow explain CODE
 cli.explain.actions: explain
+cli.install: ow install [--target TARGET] [--location LOCATION] [--hooks HOOKS] [--skills
+  SKILLS] [--allow-cli] [--check] [--print-config PRINT_CONFIG] [--dry-run] [--yes]
+cli.install.actions: install
 cli.open: ow open REF... [--context CONTEXT] [--layers LAYERS] [--max-chars MAX_CHARS] [--raw]
   [--want-impact]
 cli.open.actions: open
@@ -191,6 +194,8 @@ cli.query: ow query QUERY [--scope SCOPE] [--want passages|table|fields|outline|
   [--max-rung gate|decode|repair|page|regen|degrade|enrich] [--max-chars MAX_CHARS] [--k N]
   [--mode find|cite|explore|prove_absent] [--fail-on STATE[,STATE]] [--explain]
 cli.query.actions: query
+cli.uninstall: ow uninstall [--target TARGET] [--location LOCATION] [--keep-cli] [--yes]
+cli.uninstall.actions: uninstall
 cli.groups: add audit-config bench cache check conform corpora cost deps doc doctor drivers eval
   explain graph hook hooks index ingest install make open out parse query queue rebind replay
   route schema serve services session show-config skills store surface targets test top trace
