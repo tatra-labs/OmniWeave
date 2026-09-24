@@ -398,11 +398,10 @@ def test_this_machines_host_configs_come_back_byte_for_byte(tmp_path: Path) -> N
         pytest.skip("no host config on this machine")
 
 
-def test_unbuilt_names_the_mode_left_and_the_decision_owed() -> None:
+def test_unbuilt_names_the_decision_owed_and_no_mode() -> None:
     listed = unbuilt()
-    assert len(listed) == 2
-    assert any(line.startswith("dir") for line in listed)
-    assert not any(line.startswith("json-hook-rules") for line in listed)
+    assert len(listed) == 1
+    assert not any(line.startswith(("dir", "json-hook-rules")) for line in listed)
 
 
 def test_a_row_without_its_array_key_still_removes_through_the_callers_key(
