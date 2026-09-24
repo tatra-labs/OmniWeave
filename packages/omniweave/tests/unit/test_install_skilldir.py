@@ -244,25 +244,19 @@ def test_print_config_names_the_skill_without_reading_the_bundle(tmp_path: Path)
     assert not (tmp_path / "nowhere").exists()
 
 
-def test_this_repositorys_bundle_is_refused_by_name_and_the_rest_installs(tmp_path: Path) -> None:
-    """The measurement: `skills/omniweave/` has no `SKILL.md` until W7.6 generates it."""
+def test_this_repositorys_bundle_installs_with_the_rest(tmp_path: Path) -> None:
+    """The measurement W7.5f recorded as refused: W7.6a rendered the router, and it installs."""
     skills = REPO / "skills"
     assert (skills / "omniweave" / "references" / "actions.md").is_file()
+    assert (skills / "omniweave" / "SKILL.md").is_file()
     host = _host(tmp_path, skills_root=skills)
     result = host.install("global", InstallOptions(hooks="context", skills="core"))
-    actions = {one.kind: one.action for one in result.actions}
-    if (skills / "omniweave" / "SKILL.md").is_file():
-        assert actions["skill"] == "created"
-        return
-    skill = _skill(result)
-    assert skill.action == "kept"
-    assert "has no SKILL.md: the router body is W7.6's (16:720)" in skill.note
-    assert actions == {
+    assert {one.kind: one.action for one in result.actions} == {
         "mcp": "created",
         "permissions": "created",
         "instructions": "created",
         "hooks": "updated",
-        "skill": "kept",
+        "skill": "created",
     }
 
 
@@ -289,4 +283,14 @@ def test_a_bundle_with_a_file_held_open_is_left_whole_for_the_next_attempt(
         assert _tree(_installed(tmp_path)) == whole
     second = _skill(host.uninstall("global"))
     assert second.action == "removed"
+    assert not (tmp_path / "home" / ".agents").exists()
+
+
+def test_a_bundle_without_a_skill_md_is_refused_by_name(tmp_path: Path) -> None:
+    """10:1152: a directory is a skill bundle by its `SKILL.md`; without one nothing is copied."""
+    skills = _bundle(tmp_path / "bare" / "omniweave", {"references/actions.md": b"catalog\n"})
+    host = _host(tmp_path, skills_root=skills.parent)
+    skill = _skill(host.install("global", _opts()))
+    assert skill.action == "kept"
+    assert skill.note.endswith("has no SKILL.md, so it is not a skill bundle (10:1152)")
     assert not (tmp_path / "home" / ".agents").exists()

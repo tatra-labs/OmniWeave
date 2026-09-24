@@ -352,3 +352,13 @@ def test_refresh_does_not_install_a_skill_nobody_asked_for(tmp_path: Path) -> No
     (result,) = verbs.refresh_targets(env)
     assert not [one for one in result.actions if one.kind == "skill"]
     assert not (tmp_path / "home" / ".agents").exists()
+
+
+def test_a_note_that_opens_with_its_action_is_printed_once() -> None:
+    """D488: 10:1758's `kept -- modified since install` rendered as `kept -- kept -- ...`."""
+    from omniweave.install.types import FileAction  # noqa: PLC0415 -- this test's only use
+
+    kept = FileAction("~/.claude.json", "kept", "mcp", "json-key", "kept -- modified since install")
+    line = verbs._row(kept, planned=False)
+    assert line.endswith(" kept -- modified since install")
+    assert "kept -- kept" not in line

@@ -47,11 +47,10 @@ is the root and every block still prints its own full spelling.
 
 ## WHAT IS NOT HERE, AND WHICH OF IT IS SCHEDULE
 
-`SKILL.md` is W7.6's and is gated by `ow skills check --check` against `skills/expected/` (10:1371),
-not by G25. The ten route stubs under `references/routes/` are generated too (10:2801) and are in
-neither gate's set. So this directory ends W7.2 with one file, generated and byte-diffed, beside a
-bundle that is not installable yet -- which is correct for the cell and is recorded as D338 rather
-than left for a reader to notice that `skills/omniweave/` has no `SKILL.md` in it.
+`SKILL.md` is `omniweave.skills.router`'s (W7.6a) and is checked against `skills/expected/`
+(10:1371), not by G25. The ten route stubs under `references/routes/` are generated too (10:2801)
+and are in neither gate's set yet. W7.2 ended this directory with one file and a bundle that could
+not install (D338); W7.6a's router made it installable.
 """
 
 from __future__ import annotations

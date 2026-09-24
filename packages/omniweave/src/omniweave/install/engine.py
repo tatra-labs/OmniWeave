@@ -101,6 +101,7 @@ from omniweave.install.receipt import (
 from omniweave.install.skilldir import install_dir, remove_dir
 from omniweave.install.types import FileAction, WriteResult
 from omniweave.skills.hash import bundle_sha256
+from omniweave.skills.tier import CORE
 from omniweave.surface.registry import ACTIONS
 
 if TYPE_CHECKING:
@@ -461,7 +462,7 @@ def _hand_over(
     if entry is None:
         note = f"{sibling.target}'s row names it; not this host's to remove (D481)"
         return Applied(site.act("not-found", kind, mode, note)), ""
-    note = f"kept -- {sibling.target}'s row names it too, and removes it when it goes (D481)"
+    note = f"{sibling.target}'s row names it too, and removes it when it goes (D481)"
     applied = Applied(site.act("kept", kind, mode, note), forget=entry)
     if lock is None or not (entry.created_file or entry.created_dirs):
         return applied, ""
@@ -686,8 +687,8 @@ def instruction_block(prefix: str | None = TOOL_PREFIX) -> str:
 # What two hosts share and neither owns: the skill steps, and the serve note.
 # ---------------------------------------------------------------------------------------------
 
-CORE_SKILL: Final = "omniweave"
-"""10:1151: *"THE ONLY ALWAYS-RESIDENT SKILL"*."""
+CORE_SKILL: Final = CORE
+"""10:1151: *"THE ONLY ALWAYS-RESIDENT SKILL"*, by `skills.tier`'s rule (10:1185-1188)."""
 
 BUNDLE_ENTRY: Final = "SKILL.md"
 """The file that makes a directory a skill bundle (10:1152)."""
@@ -730,5 +731,6 @@ def skill_step(env: HostEnv, skills_dir: Path, name: str, *, check: bool) -> Ste
     if check and source is None:
         refusal = "no skill bundle source was given"
     elif check and source is not None and not (source / BUNDLE_ENTRY).is_file():
-        refusal = f"{source.as_posix()} has no {BUNDLE_ENTRY}: the router body is W7.6's (16:720)"
+        bare = source.as_posix()
+        refusal = f"{bare} has no {BUNDLE_ENTRY}, so it is not a skill bundle (10:1152)"
     return Step("skill", "dir", skills_dir / name, source=source, refusal=refusal)
