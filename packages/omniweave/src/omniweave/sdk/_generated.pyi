@@ -24,8 +24,12 @@ The Actions this surface comes from, with the declaration behind each promise:
     install           InstallIn           InstallReport
     open              OpenIn              Answer
     query             QueryIn             Answer
+    skills.check      SkillsCheckIn       SkillsReport
+    skills.hash       SkillsHashIn        SkillsReport
     skills.install    SkillsInstallIn     SkillsReport
+    skills.ls         SkillsLsIn          SkillsReport
     skills.remove     SkillsRemoveIn      SkillsReport
+    skills.verify     SkillsVerifyIn      SkillsReport
     uninstall         UninstallIn         InstallReport
 """
 

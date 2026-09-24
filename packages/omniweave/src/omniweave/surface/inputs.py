@@ -93,8 +93,12 @@ __all__ = [
     "InstallIn",
     "OpenIn",
     "QueryIn",
+    "SkillsCheckIn",
+    "SkillsHashIn",
     "SkillsInstallIn",
+    "SkillsLsIn",
     "SkillsRemoveIn",
+    "SkillsVerifyIn",
     "UninstallIn",
 ]
 
@@ -391,6 +395,40 @@ class SkillsRemoveIn:
 
     name: str | tuple[str, ...]
     yes: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class SkillsLsIn:
+    """`ow skills ls`. 10:1429 prints the verb and no flag."""
+
+
+@dataclass(frozen=True, slots=True)
+class SkillsVerifyIn:
+    """`ow skills verify [--all]`. 10:1368: *"re-hashes every installed bundle"*.
+
+    Without `--all` it iterates `skills-lock.json`, which is what 10:1389 says it iterates. The
+    plan gives `--all` no meaning; here it adds the install receipt's `dir` rows -- the core skill
+    `ow install --skills core` placed, which the lock does not list (D490). D493.
+    """
+
+    all: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class SkillsCheckIn:
+    """`ow skills check [--check]`. 10:1199 and 10:1371.
+
+    Without `--check` it reports staleness and exits non-zero on a stale or missing **core** skill
+    only (10:1199). `--check` adds 10:1371's byte diff of the rendered `SKILL.md` set against
+    `skills/expected/`, which is `omniweave.skills.router.check`.
+    """
+
+    check: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class SkillsHashIn:
+    """`ow skills hash`. 10:1370: *"prints the source-tree digests for a release PR"*."""
 
 
 @dataclass(frozen=True, slots=True)

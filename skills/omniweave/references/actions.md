@@ -133,3 +133,45 @@ cost        local_compute
 pick it     you have a question, not an id
 it does     Ask an indexed corpus a question and get cited passages, a verdict, and the gaps
             that could be hiding an answer
+
+## ow skills
+
+### ow_skills_check
+
+action      skills.check
+cli         ow skills check
+listed      —
+cost        free
+pick it     the router skill may be older than this release
+it does     Say whether the installed skills are this release's: a stale or missing core skill
+            fails, an outdated or orphaned on-demand one is reported
+
+### ow_skills_hash
+
+action      skills.hash
+cli         ow skills hash
+listed      —
+cost        free
+pick it     a release needs the skill digests it ships
+it does     Print the sha256-bundle-1 digest, file count and byte count of every skill bundle
+            this release ships, for a release PR to pin
+
+### ow_skills_ls
+
+action      skills.ls
+cli         ow skills ls
+listed      —
+cost        free
+pick it     you need to know which skills are installed and where
+it does     List the skills this release ships, with tier and digest, and which agent-host
+            skills directories hold each one and on whose record
+
+### ow_skills_verify
+
+action      skills.verify
+cli         ow skills verify
+listed      —
+cost        free
+pick it     an installed skill may have been edited or damaged
+it does     Re-hash every skill bundle skills-lock.json says was installed and name each
+            mismatch: expected digest, observed digest, first differing path

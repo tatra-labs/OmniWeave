@@ -137,8 +137,12 @@ from omniweave.surface.inputs import (
     InstallIn,
     OpenIn,
     QueryIn,
+    SkillsCheckIn,
+    SkillsHashIn,
     SkillsInstallIn,
+    SkillsLsIn,
     SkillsRemoveIn,
+    SkillsVerifyIn,
     UninstallIn,
 )
 
@@ -1418,6 +1422,85 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             inp=SkillsRemoveIn,
             out=SkillsReport,
             cli=("skills", "remove"),
+        ),
+        #  10:57's row 5, by `hooks.check`'s reasoning: read-only, spends nothing, writes nothing a
+        #  user opens, and not a pure function of the corpus -- so an `mcp_name`, and listed in no
+        #  profile. The group stays in the name, as `ow_hooks_check` keeps it. D492.
+        ActionSpec(
+            name="skills.ls",
+            mcp_name="ow_skills_ls",
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "List the skills this release ships, with tier and digest, and which agent-host "
+                "skills directories hold each one and on whose record"
+            ),
+            decision="you need to know which skills are installed and where",
+            example={},
+            inp=SkillsLsIn,
+            out=SkillsReport,
+            cli=("skills", "ls"),
+        ),
+        ActionSpec(
+            name="skills.verify",
+            mcp_name="ow_skills_verify",
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Re-hash every skill bundle skills-lock.json says was installed and name each "
+                "mismatch: expected digest, observed digest, first differing path"
+            ),
+            decision="an installed skill may have been edited or damaged",
+            example={"all": True},
+            inp=SkillsVerifyIn,
+            out=SkillsReport,
+            cli=("skills", "verify"),
+        ),
+        ActionSpec(
+            name="skills.check",
+            mcp_name="ow_skills_check",
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Say whether the installed skills are this release's: a stale or missing core "
+                "skill fails, an outdated or orphaned on-demand one is reported"
+            ),
+            decision="the router skill may be older than this release",
+            example={"check": True},
+            inp=SkillsCheckIn,
+            out=SkillsReport,
+            cli=("skills", "check"),
+        ),
+        ActionSpec(
+            name="skills.hash",
+            mcp_name="ow_skills_hash",
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Print the sha256-bundle-1 digest, file count and byte count of every skill bundle "
+                "this release ships, for a release PR to pin"
+            ),
+            decision="a release needs the skill digests it ships",
+            example={},
+            inp=SkillsHashIn,
+            out=SkillsReport,
+            cli=("skills", "hash"),
         ),
         #  10:57's row 5: not irreversible, spends nothing, writes nothing a user opens, and not a
         #  pure function of the corpus -- so an `mcp_name`, unlisted and not enabled. 10:57 spells

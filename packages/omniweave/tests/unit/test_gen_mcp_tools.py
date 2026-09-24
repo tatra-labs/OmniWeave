@@ -143,6 +143,10 @@ def test_the_five_narrow_rows_that_landed_are_not_published_yet() -> None:
         "ow_explain",
         "ow_grid",
         "ow_hooks_check",
+        "ow_skills_check",
+        "ow_skills_hash",
+        "ow_skills_ls",
+        "ow_skills_verify",
     )
 
 

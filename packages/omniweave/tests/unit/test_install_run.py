@@ -185,3 +185,20 @@ def test_ow_skills_install_and_remove_from_argv(tmp_path: Path) -> None:
 
 def test_ow_skills_install_needs_a_name(tmp_path: Path) -> None:
     assert _run(["skills", "install"], tmp_path)[0] == 1
+
+
+def test_the_four_read_only_skills_verbs_from_argv(tmp_path: Path) -> None:
+    """W7.6c. After `ow install --skills core`, from this repository's own `skills/`."""
+    installed = _run([*INSTALL, "--skills", "core", "--yes"], tmp_path)
+    assert installed[0] == 0, installed[1]
+    code, out, _ = _run(["skills", "hash"], tmp_path)
+    assert code == 0
+    assert out.splitlines()[0] == "  sha256-bundle-1"
+    code, out, _ = _run(["skills", "ls"], tmp_path)
+    assert (code, out.rstrip().endswith("(claude-code receipt)")) == (0, True)
+    assert _run(["skills", "verify"], tmp_path)[1].startswith("  nothing to verify")
+    code, out, _ = _run(["skills", "verify", "--all"], tmp_path)
+    assert (code, out.rstrip().endswith(" ok")) == (0, True)
+    code, out, _ = _run(["skills", "check", "--check"], tmp_path)
+    assert code == 0, out
+    assert "  --check: skills/expected/ matches the render" in out.splitlines()

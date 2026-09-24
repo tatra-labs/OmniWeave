@@ -598,6 +598,10 @@ def test_the_required_parameter_of_each_tool_is_the_one_the_schema_requires() ->
         "uninstall": set(),
         "skills.install": {"name"},
         "skills.remove": {"name"},
+        "skills.ls": set(),
+        "skills.verify": set(),
+        "skills.check": set(),
+        "skills.hash": set(),
         "hooks.check": set(),
     }
 
@@ -1090,8 +1094,8 @@ def test_two_actions_need_no_corpus_and_both_reasons_are_stated() -> None:
         name for name, spec in ACTIONS.items() if "corpus" not in {f.name for f in fields(spec.inp)}
     )
     assert without_corpus == [
-        "doctor", "explain", "hooks.check", "install", "skills.install", "skills.remove",
-        "uninstall",
+        "doctor", "explain", "hooks.check", "install", "skills.check", "skills.hash",
+        "skills.install", "skills.ls", "skills.remove", "skills.verify", "uninstall",
     ]  # fmt: skip
 
 
@@ -1269,11 +1273,11 @@ def test_every_shipped_row_resolves_to_a_spelling_the_generator_can_emit() -> No
 def test_the_unrostered_cli_count_is_the_distance_to_the_registry() -> None:
     """10:857's *"roughly 110 further Actions"*, minus what has landed, plus what it undercounts.
 
-    144 rather than 110, and the gap is D293's: the roster is transcribed from the plan's own
+    140 rather than 110, and the gap is D293's: the roster is transcribed from the plan's own
     tables and usage rather than from a numeral, and a numeral is a second copy of an enumeration.
     """
     waiting = _unrostered_cli(ACTIONS)
-    assert len(waiting) == 144
+    assert len(waiting) == 140
     have = {spec.cli for spec in ACTIONS.values()}
     assert not set(waiting) & have
     assert len(waiting) + len(have) == sum(max(1, len(v)) for v in CLI_ROSTER.values())

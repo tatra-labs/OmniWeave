@@ -190,8 +190,8 @@ def test_the_actions_with_no_sdk_entry_point_are_the_document_pair_and_the_insta
     two `ow skills` verbs are the same gap."""
     missing = sorted(name for name, spec in ACTIONS.items() if spec.cli and name not in SDK_HOMES)
     assert missing == [
-        "doc.diff", "doc.grid", "hooks.check", "install", "skills.install", "skills.remove",
-        "uninstall",
+        "doc.diff", "doc.grid", "hooks.check", "install", "skills.check", "skills.hash",
+        "skills.install", "skills.ls", "skills.remove", "skills.verify", "uninstall",
     ]  # fmt: skip
 
 

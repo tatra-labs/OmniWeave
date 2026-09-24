@@ -108,7 +108,7 @@ GLOBAL_FLAGS: Final[tuple[Argument, ...]] = (
 GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
     "hooks": "check",
-    "skills": "install · remove",
+    "skills": "check · hash · install · ls · remove · verify",
 }
 
 COMMANDS: Final[tuple[Command, ...]] = (
@@ -410,6 +410,30 @@ COMMANDS: Final[tuple[Command, ...]] = (
         ),
     ),
     Command(
+        words=("skills", "check"),
+        actions=("skills.check",),
+        help=(
+            "Say whether the installed skills are this release's: a stale or missing core "
+            "skill fails, an outdated or orphaned on-demand one is reported"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--check",),
+                kind="switch",
+                default=False,
+            ),
+        ),
+    ),
+    Command(
+        words=("skills", "hash"),
+        actions=("skills.hash",),
+        help=(
+            "Print the sha256-bundle-1 digest, file count and byte count of every skill bundle "
+            "this release ships, for a release PR to pin"
+        ),
+        arguments=(),
+    ),
+    Command(
         words=("skills", "install"),
         actions=("skills.install",),
         help=(
@@ -423,6 +447,15 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 metavar="NAME",
             ),
         ),
+    ),
+    Command(
+        words=("skills", "ls"),
+        actions=("skills.ls",),
+        help=(
+            "List the skills this release ships, with tier and digest, and which agent-host "
+            "skills directories hold each one and on whose record"
+        ),
+        arguments=(),
     ),
     Command(
         words=("skills", "remove"),
@@ -439,6 +472,21 @@ COMMANDS: Final[tuple[Command, ...]] = (
             ),
             Argument(
                 spelling=("--yes",),
+                kind="switch",
+                default=False,
+            ),
+        ),
+    ),
+    Command(
+        words=("skills", "verify"),
+        actions=("skills.verify",),
+        help=(
+            "Re-hash every skill bundle skills-lock.json says was installed and name each "
+            "mismatch: expected digest, observed digest, first differing path"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--all",),
                 kind="switch",
                 default=False,
             ),
