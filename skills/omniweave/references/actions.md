@@ -98,6 +98,18 @@ pick it     you have a code from an error and need what clears it
 it does     Resolve an OW-* code or symbol to what it means and the exact command that clears
             it; reads no corpus, so it answers on a machine with no store at all
 
+## ow hooks
+
+### ow_hooks_check
+
+action      hooks.check
+cli         ow hooks check
+listed      —
+cost        free
+pick it     a hook seems silent and you need to know whether it runs
+it does     Run each installed hook command as its host would, with a probe payload in a scratch
+            project, and say which failed and why
+
 ## ow open
 
 ### ow_open

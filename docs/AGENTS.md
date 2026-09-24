@@ -51,6 +51,7 @@ key can grant one.
 | `doc.grid` | `ow_grid` | `ow doc grid` | full | `free` | Read one table as an exactly-once grid: every cell at its slot, the header row and column, and the merges that would otherwise be counted twice |
 | `doctor` | `ow_doctor` | `ow doctor` | full | `free` | Check this deployment: every resolved configuration value with its source, the driver and toolchain probes, and a fix command for every warning |
 | `explain` | `ow_explain` | `ow explain` | full | `free` | Resolve an OW-* code or symbol to what it means and the exact command that clears it; reads no corpus, so it answers on a machine with no store at all |
+| `hooks.check` | `ow_hooks_check` | `ow hooks check` | — | `free` | Run each installed hook command as its host would, with a probe payload in a scratch project, and say which failed and why |
 | `install` | — | `ow install` | — | `free` | Wire agent hosts to omniweave: the MCP entry, one permission wildcard, the instruction block, hooks and the core skill, each recorded in a receipt |
 | `open` | `ow_open` | `ow open` | default, full | `free` | Fetch the exact passages behind an address you already hold: a cite, a page range, or a whole document |
 | `query` | `ow_query` | `ow query` | default, full | `local_compute` | Ask an indexed corpus a question and get cited passages, a verdict, and the gaps that could be hiding an answer |

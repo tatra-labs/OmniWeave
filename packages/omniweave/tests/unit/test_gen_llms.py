@@ -184,7 +184,7 @@ def test_the_roster_is_every_named_action_and_not_only_the_listed_four() -> None
     """
     entries = _entries()
     assert entries["mcp.tools"].split(", ") == list(declared())
-    assert len(declared()) == 9
+    assert len(declared()) == 10
     assert set(entries["mcp.profile.default"].split(", ")) < set(declared())
 
 

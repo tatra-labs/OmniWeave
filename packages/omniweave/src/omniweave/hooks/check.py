@@ -7,9 +7,9 @@ the event has a channel, the right channel key, the self-deadline, no store side
 command that cannot be spawned is `OW-A-030 OW_HOOK_NOT_RESOLVABLE`, reported with the command
 string and the PATH it was resolved against (10:2082).
 
-This is the engine and not yet the verb. `ow hooks check` needs the command strings *as installed*,
-and those are on the install receipt (10 section 7.3), which is W7.5's. `check()` takes them as a
-mapping, so the verb is one reader away and every assertion is testable today.
+This is the engine. The verb, `ow hooks check`, is `omniweave.install.verbs.hooks_check` (W7.5i):
+it reads the command strings *as installed* from the files the install receipt's `json-hook-rules`
+rows name (10 section 7.3) and hands them to `check()` as the mapping it takes.
 
 ## THE PROBE RUNS IN A SCRATCH PROJECT, BECAUSE A SCRATCH HOME PROTECTS NOTHING THE PROBE TOUCHES
 

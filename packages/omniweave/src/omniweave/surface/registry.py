@@ -121,6 +121,7 @@ from omniweave.sdk.reports import (
     CodeRow,
     CorporaReport,
     DoctorReport,
+    HooksCheckReport,
     InstallReport,
 )
 from omniweave.surface.inputs import (
@@ -131,6 +132,7 @@ from omniweave.surface.inputs import (
     DoctorIn,
     ExplainIn,
     GridIn,
+    HooksCheckIn,
     InstallIn,
     OpenIn,
     QueryIn,
@@ -1369,6 +1371,29 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             inp=UninstallIn,
             out=InstallReport,
             cli=("uninstall",),
+        ),
+        #  10:57's row 5: not irreversible, spends nothing, writes nothing a user opens, and not a
+        #  pure function of the corpus -- so an `mcp_name`, unlisted and not enabled. 10:57 spells
+        #  it `ow_<verb>`; the verb is `check`, which names nothing alone, so the group is kept.
+        #  `open_world`: it runs the installed commands, which are outside the store (10:157-158).
+        ActionSpec(
+            name="hooks.check",
+            mcp_name="ow_hooks_check",
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=True,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Run each installed hook command as its host would, with a probe payload in a "
+                "scratch project, and say which failed and why"
+            ),
+            decision="a hook seems silent and you need to know whether it runs",
+            example={},
+            inp=HooksCheckIn,
+            out=HooksCheckReport,
+            cli=("hooks", "check"),
         ),
         ActionSpec(
             name="explain",

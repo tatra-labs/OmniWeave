@@ -20,6 +20,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     doc.grid          GridIn              Grid
     doctor            DoctorIn            DoctorReport
     explain           ExplainIn           CodeRow
+    hooks.check       HooksCheckIn        HooksCheckReport
     install           InstallIn           InstallReport
     open              OpenIn              Answer
     query             QueryIn             Answer

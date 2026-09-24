@@ -142,6 +142,7 @@ def test_the_five_narrow_rows_that_landed_are_not_published_yet() -> None:
         "ow_doctor",
         "ow_explain",
         "ow_grid",
+        "ow_hooks_check",
     )
 
 

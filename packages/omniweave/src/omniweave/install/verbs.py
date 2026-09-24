@@ -45,8 +45,10 @@ import tomllib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
+from omniweave.hooks.check import check as probe_hooks
+from omniweave.hooks.check import render as render_probes
 from omniweave.hooks.session import anchor, sessions_dir
-from omniweave.install.hookrules import owned_pairs
+from omniweave.install.hookrules import owned_event, owned_pairs
 from omniweave.install.primitives import decode_text, read_json
 from omniweave.install.receipt import (
     expand,
@@ -63,8 +65,10 @@ from omniweave.install.types import LOCATIONS, TARGET_IDS, InstallOptions
 from omniweave.skills.hash import bundle_sha256
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
     from pathlib import Path
+
+    from omniweave_core.host.subproc import Captured
 
     from omniweave.install.engine import HostEnv
     from omniweave.install.receipt import Entry
@@ -76,6 +80,7 @@ __all__ = [
     "USAGE",
     "Outcome",
     "check",
+    "hooks_check",
     "install",
     "location_hint",
     "print_config",
@@ -431,3 +436,87 @@ def refresh_targets(env: HostEnv) -> tuple[WriteResult, ...]:
             opts = InstallOptions(hooks=None, skills="core" if skilled else "none")
             results.append(target.install(loc, opts))
     return tuple(results)
+
+
+# ---------------------------------------------------------------------------------------------
+# ow hooks check. 10:2076-2089, over the commands the receipt says were installed.
+# ---------------------------------------------------------------------------------------------
+
+
+def hooks_check(
+    env: HostEnv,
+    *,
+    environ: Mapping[str, str],
+    runner: Callable[[Sequence[str], bytes, Path, Mapping[str, str], float], Captured],
+    scratch: Path,
+) -> Outcome:
+    """Probe every hook the receipt records, read back out of the file it names. 10:2078.
+
+    *"Verifying a hook by reading `settings.json` proves nothing"* -- so the file is read only to
+    get the command strings as installed, and W7.4j's engine runs each one. The receipt says which
+    files and which events: every `json-hook-rules` row for the global scope, and for this project's
+    root. An event the row records and the file no longer holds is a failure named by itself, not a
+    probe that silently did not run. No row at all is exit 1 too: a check that checked nothing has
+    not passed.
+    """
+    rows = load(env.omniweave_home, pid=env.pid, release=env.release, back_up=False).receipt
+    scopes: list[tuple[Location, str | None]] = [("global", None)]
+    if env.project_root is not None:
+        scopes.append(("local", str(env.project_root)))
+    found = [
+        (loc, entry)
+        for loc, scope in scopes
+        for entry in rows.for_scope(loc, scope)
+        if entry.mode == "json-hook-rules"
+    ]
+    if not found:
+        return Outcome(USAGE, ("no installed hook to check: the install receipt records none "
+                               "(ow install --hooks context|steer writes them)",))  # fmt: skip
+    lines: list[str] = []
+    failed = False
+    for index, (loc, entry) in enumerate(found):
+        commands, lost = _installed_commands(entry, env)
+        lines.append(f"{entry.target} {loc}  {entry.path}")
+        lines.extend(
+            f"{event:<17} recorded by the receipt and not in {entry.path}" for event in lost
+        )
+        report = probe_hooks(
+            commands,
+            runner=runner,
+            clock=env.clock,
+            path=environ.get("PATH", ""),
+            scratch=scratch / str(index),
+            env=environ,
+            watch=_stores(env),
+        )
+        lines.extend(render_probes(report).split("\n"))
+        failed = failed or bool(lost) or report.exit_code() != OK
+    return Outcome(USAGE if failed else OK, tuple(lines))
+
+
+def _installed_commands(entry: Entry, env: HostEnv) -> tuple[dict[str, str], list[str]]:
+    """`{event: command}` as the file holds them now, and the recorded events it no longer does."""
+    read = read_json(expand(entry.path, env.user_home), pid=env.pid, back_up=False)
+    pairs = owned_pairs(read.value) if read.state == "parsed" else []
+    commands: dict[str, str] = {}
+    for event, command in pairs:
+        if event in entry.events and owned_event(command):
+            commands.setdefault(event, command)
+    return commands, [event for event in entry.events if event not in commands]
+
+
+def _stores(env: HostEnv) -> tuple[Path, ...]:
+    """The project's `[corpora.*] path` stores, whose WAL sidecars 10:2081 says a probe must not
+    create. Without a project file there are none, and the engine says the assertion is vacuous."""
+    root = env.project_root
+    project = anchor(root) if root is not None else None
+    if project is None:
+        return ()
+    try:
+        table = tomllib.loads(project.read_text(encoding="utf-8")).get("corpora", {})
+    except (OSError, tomllib.TOMLDecodeError, UnicodeDecodeError):
+        return ()
+    if not isinstance(table, dict):
+        return ()
+    paths = [one.get("path") for one in table.values() if isinstance(one, dict)]
+    return tuple(project.parent / path for path in paths if isinstance(path, str))

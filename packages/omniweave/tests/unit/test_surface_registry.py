@@ -207,7 +207,9 @@ def test_add_is_the_one_writer_and_the_only_open_world_action() -> None:
     open_world = [spec.name for spec in ACTIONS.values() if spec.open_world]
     assert writers == ["add", "install", "uninstall"]
     assert [name for name in writers if ACTIONS[name].mcp_name is not None] == ["add"]
-    assert open_world == ["add"]
+    #  `hooks.check` runs the installed commands, which are outside the store (10:157-158); it
+    #  reads and writes nothing of the deployment, so it is open-world and read-only.
+    assert open_world == ["add", "hooks.check"]
 
 
 def test_no_listed_tool_is_destructive_including_the_writer() -> None:
@@ -594,6 +596,7 @@ def test_the_required_parameter_of_each_tool_is_the_one_the_schema_requires() ->
         "explain": {"code"},
         "install": set(),
         "uninstall": set(),
+        "hooks.check": set(),
     }
 
 
@@ -987,6 +990,7 @@ def test_the_shipped_roots_still_contain_no_trailing_s_collision() -> None:
     roots = {spec.cli[0] for spec in ACTIONS.values() if spec.cli}
     assert roots == {
         "query", "open", "corpora", "add", "doc", "doctor", "explain", "install", "uninstall",
+        "hooks",
     }  # fmt: skip
     assert not {root for root in roots if root + "s" in roots}
     assert roots <= GROUPS
@@ -1082,7 +1086,7 @@ def test_two_actions_need_no_corpus_and_both_reasons_are_stated() -> None:
     without_corpus = sorted(
         name for name, spec in ACTIONS.items() if "corpus" not in {f.name for f in fields(spec.inp)}
     )
-    assert without_corpus == ["doctor", "explain", "install", "uninstall"]
+    assert without_corpus == ["doctor", "explain", "hooks.check", "install", "uninstall"]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1263,7 +1267,7 @@ def test_the_unrostered_cli_count_is_the_distance_to_the_registry() -> None:
     tables and usage rather than from a numeral, and a numeral is a second copy of an enumeration.
     """
     waiting = _unrostered_cli(ACTIONS)
-    assert len(waiting) == 147
+    assert len(waiting) == 146
     have = {spec.cli for spec in ACTIONS.values()}
     assert not set(waiting) & have
     assert len(waiting) + len(have) == sum(max(1, len(v)) for v in CLI_ROSTER.values())

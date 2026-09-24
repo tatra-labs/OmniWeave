@@ -63,6 +63,7 @@ __all__ = [
     "DoctorFinding",
     "DoctorReport",
     "Gap",
+    "HooksCheckReport",
     "InstallReport",
 ]
 
@@ -283,6 +284,19 @@ class DoctorReport:
     config_sources: Mapping[str, str]
     config_digest: str
     semantic_digest: str
+
+
+@dataclass(frozen=True, slots=True)
+class HooksCheckReport:
+    """What `ow hooks check` returns: the exit (10:1432's 0/1) and 18:2991-2997's table as lines.
+
+    The per-probe facts are `omniweave.hooks.check.Report`'s. They are not carried here because
+    importing that module into the registry's type graph costs the surface a dozen modules for a
+    report no MCP host is sent: the Action is unlisted, and the schema prints listed tools only.
+    """
+
+    exit_code: int
+    lines: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,4 +1,4 @@
-"""`python -m omniweave`: dispatches `hook`, `install` and `uninstall`, and says so for the rest.
+"""`python -m omniweave`: dispatches `hook`, `install`, `uninstall`, `hooks`; refuses the rest.
 
 This file did not exist before W7.4i, and its absence was a defect in a cell that claimed otherwise.
 `posttool.command()` falls back to `python -m omniweave ingest` and its docstring called that
@@ -6,8 +6,9 @@ fallback one that *"always works"* -- but `python -m omniweave` exited 1 at impo
 named omniweave.__main__"*, into the `DEVNULL` 10:2072 requires. D433.
 
 **It dispatches the roots whose runtime exists.** `ow hook <event>` is W7.4's (16:718); `ow install`
-and `ow uninstall` are W7.5's (16:719), parsed by the generated tree now that their `ACTIONS` rows
-exist (W7.5h, D467) and run by `omniweave.install.run`. The other roots in `cli.COMMANDS` are
+and `ow uninstall` are W7.5's (16:719), and `ow hooks check` runs W7.4j's engine over what they
+installed; all three are parsed by the generated tree now that their `ACTIONS` rows exist (W7.5h,
+W7.5i, D467) and run by `omniweave.install.run`. The other roots in `cli.COMMANDS` are
 refused, on stderr, with `InternalError`'s exit -- 10:2185's *"anything else"*, the only row in the
 taxonomy that does not assert something about a store or an argument that would be false here. The
 refusal is spelled out rather than silent, because the one thing worse than a command that does not
@@ -38,7 +39,7 @@ if TYPE_CHECKING:
 
 __all__ = ["DISPATCHED", "main"]
 
-_INSTALL_ROOTS: Final[frozenset[str]] = frozenset({"install", "uninstall"})
+_INSTALL_ROOTS: Final[frozenset[str]] = frozenset({"install", "uninstall", "hooks"})
 
 DISPATCHED: Final[frozenset[str]] = frozenset({HOOK_WORD, *_INSTALL_ROOTS})
 """The roots this build can run. `ingest` joining it is the day the drain can be wired (D433)."""

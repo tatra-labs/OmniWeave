@@ -81,4 +81,20 @@ def test_an_undispatched_root_still_names_what_is(tmp_path: Path) -> None:
     (tmp_path / "proj").mkdir()
     refused = _ow(tmp_path, "serve", "--mcp")
     assert refused.returncode == 70
-    assert b"only `ow hook`, `ow install`, `ow uninstall` are." in refused.stderr
+    assert b"only `ow hook`, `ow hooks`, `ow install`, `ow uninstall` are." in refused.stderr
+
+
+def test_hooks_check_runs_the_installed_hooks_the_receipt_names(tmp_path: Path) -> None:
+    """10:2078, from argv: the six commands read back from the file the receipt names, run."""
+    (tmp_path / "home").mkdir()
+    (tmp_path / "proj").mkdir()
+    assert _ow(tmp_path, "hooks", "check").returncode == 1
+    installed = _ow(tmp_path, "install", "--target", "claude-code", "--location", "global",
+                    "--hooks", "steer", "--skills", "none", "--yes")  # fmt: skip
+    assert installed.returncode == 0, installed
+    checked = _ow(tmp_path, "hooks", "check")
+    #  Text-mode stdout on Windows writes CRLF, as every Python CLI there does.
+    text = checked.stdout.decode("utf-8").replace("\r\n", "\n")
+    assert checked.returncode == 0, text + checked.stderr.decode("utf-8", "replace")
+    assert text.startswith("claude-code global  ~/.claude/settings.json\n")
+    assert text.count("resolved · exit 0") == 6
