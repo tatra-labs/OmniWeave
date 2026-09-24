@@ -639,7 +639,15 @@ def test_an_existing_block_is_replaced_in_place_and_the_users_text_kept() -> Non
 
 def test_text_after_the_block_survives_its_removal() -> None:
     text = "X\n" + _block() + "Y\n"
-    assert remove_marked_section(text).text == "X\nY\n"
+    assert remove_marked_section(text).text == "X\nY\n"  # the newline is X's own: no join
+
+
+def test_the_inserted_blank_line_goes_with_the_block_when_text_follows_it() -> None:
+    """Insert into "X\\n", then the user appends: the blank line was the insert's, not theirs."""
+    inserted = upsert_marked_section("X\n", BODY).text
+    assert inserted is not None
+    assert remove_marked_section(inserted + "\nY\n").text == "X\n\nY\n"
+    assert remove_marked_section(inserted + "Y\n").text == "X\nY\n"
 
 
 def test_a_marker_inside_a_fence_is_not_the_section() -> None:

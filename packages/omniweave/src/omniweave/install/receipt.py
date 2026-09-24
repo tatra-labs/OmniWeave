@@ -36,8 +36,9 @@ so a field it needs has to exist before then.
 `permissions` creates `{"permissions": {"allow": [...]}}`. Removing the one value leaves
 `{"permissions": {"allow": []}}` -- not the pre-install bytes, so G-install's first case fails --
 and nothing on 10:1712's row says the two containers were ours. The same holds for a file the
-install created, which uninstall should delete rather than leave as `{}`. Rows carry
-`created_file` and `created_parents`. D449.
+install created, which uninstall should delete rather than leave as `{}`, and for the directories
+`atomic_write` made on the way to it. Rows carry `created_file`, `created_parents` and
+`created_dirs`. D449, D452.
 
 **Which row a re-install replaces.** 10:1739 says rows are *appended*. A second `ow install` that
 rewrites the same key appends a second row for the same artefact, and the older one's digests are
@@ -138,7 +139,7 @@ _HEX64: Final = re.compile(r"[0-9a-f]{64}")
 _STAMP: Final = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
 _TILDE: Final = "~"
 
-# 10:1702-1726's keys, in the order the plan prints them, then the three this module adds.
+# 10:1702-1726's keys, in the order the plan prints them, then the four this package adds.
 _ORDER: Final = (
     "target",
     "location",
@@ -156,6 +157,7 @@ _ORDER: Final = (
     "owned_sha256",
     "created_file",
     "created_parents",
+    "created_dirs",
 )
 
 # The field each mode needs, from the row that mode appears on at 10:1705-1726.
@@ -265,6 +267,7 @@ class Entry:
     owned_sha256: str = ""
     created_file: bool = False
     created_parents: tuple[str, ...] = ()
+    created_dirs: tuple[str, ...] = ()
     extra: Mapping[str, Any] = field(default_factory=dict)
 
     def identity(self) -> tuple[str, str, str, str, str]:
@@ -303,6 +306,7 @@ class Entry:
             row["owned_sha256"] = self.owned_sha256
             row["created_parents"] = list(self.created_parents)
         row["created_file"] = self.created_file
+        row["created_dirs"] = list(self.created_dirs)
         ordered = {name: row[name] for name in _ORDER if name in row}
         ordered.update((name, value) for name, value in self.extra.items() if name not in ordered)
         return ordered
@@ -333,6 +337,7 @@ class Entry:
             owned_sha256=row.get("owned_sha256", ""),
             created_file=row.get("created_file", False) is True,
             created_parents=tuple(row.get("created_parents", ())),
+            created_dirs=tuple(row.get("created_dirs", ())),
             extra={name: value for name, value in row.items() if name not in known},
         )
 
@@ -371,7 +376,11 @@ def _strings(value: object) -> bool:
 def _mode_problem(row: dict[str, Any]) -> str:
     needed = _MODE_FIELD[row["mode"]]
     value = row.get(needed)
-    if needed in {"values", "events"}:
+    if needed == "values":
+        # Empty is a row that says "this install added nothing": the value was the user's already,
+        # and without the row a re-derived uninstall would revoke it (D454).
+        ok = isinstance(value, list) and all(isinstance(v, str) and v for v in value)
+    elif needed == "events":
         ok = _strings(value)
     elif needed == "bundle_sha256":
         ok = isinstance(value, str) and bool(_HEX64.fullmatch(value))
@@ -383,6 +392,10 @@ def _mode_problem(row: dict[str, Any]) -> str:
         isinstance(row.get("sha256_after"), str) and _HEX64.fullmatch(row["sha256_after"])
     ):
         return "sha256_after is not a full sha256"
+    for name in ("created_parents", "created_dirs"):
+        listed = row.get(name, [])
+        if not isinstance(listed, list) or not all(isinstance(v, str) and v for v in listed):
+            return f"{name} is not a list of strings"
     return ""
 
 

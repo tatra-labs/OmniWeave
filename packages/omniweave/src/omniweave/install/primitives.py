@@ -79,12 +79,12 @@ import os
 import re
 import stat
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Iterator, Sequence
 
     from omniweave.install.types import Action
 
@@ -108,6 +108,7 @@ __all__ = [
     "fit_style",
     "json_deep_equal",
     "read_json",
+    "remove_empty_dirs",
     "remove_marked_section",
     "render_json",
     "section_span",
@@ -145,7 +146,10 @@ class Wrote:
     """What `atomic_write` did. `path` is where the bytes went, which is a link's target (D444).
 
     `sha256` is the digest of what was written, which is what is on disk after a successful replace
-    -- the receipt's `sha256_after` (10:1729) without a second read.
+    -- the receipt's `sha256_after` (10:1729) without a second read. `created_dirs` are the parent
+    directories this write had to create, outermost first: an uninstall that does not know them
+    leaves an empty `./.claude/` in the user's repository, which no byte comparison of the named
+    paths can see (D452). A failed write removes them again.
     """
 
     ok: bool
@@ -153,6 +157,7 @@ class Wrote:
     sha256: str = ""
     reason: str = ""
     attempts: int = 0
+    created_dirs: tuple[Path, ...] = ()
 
 
 def temp_name(target: Path, pid: int) -> Path:
@@ -186,25 +191,52 @@ def atomic_write(
     prepared = _prepare(path)
     if isinstance(prepared, Wrote):
         return prepared
-    target, mode = prepared
+    target, mode, created = prepared
     temporary = temp_name(target, pid)
     try:
         _stage(temporary, data, mode)
     except OSError as error:
         _discard(temporary)
+        remove_empty_dirs(created)
         return Wrote(ok=False, path=target, reason=f"{temporary}: {type(error).__name__}")
     wrote = _replace(temporary, target, data, sleep=sleep, attempts=max(attempts, 1))
     if not wrote.ok:
         _discard(temporary)
-    return wrote
+        remove_empty_dirs(created)
+        return wrote
+    return replace(wrote, created_dirs=created)
 
 
-def _prepare(path: Path) -> tuple[Path, int | None] | Wrote:
-    """The real target and its mode bits, or the refusal. D444."""
+def remove_empty_dirs(dirs: Sequence[Path]) -> tuple[Path, ...]:
+    """`rmdir` each of `dirs` that is empty, innermost first; the ones that could not be removed."""
+    left: list[Path] = []
+    for directory in sorted(dirs, key=lambda one: len(one.parts), reverse=True):
+        try:
+            directory.rmdir()
+        except FileNotFoundError:
+            continue
+        except OSError:
+            left.append(directory)
+    return tuple(left)
+
+
+def _missing_parents(target: Path) -> tuple[Path, ...]:
+    """The ancestors of `target` that do not exist yet, outermost first."""
+    missing: list[Path] = []
+    parent = target.parent
+    while not parent.exists() and parent != parent.parent:
+        missing.append(parent)
+        parent = parent.parent
+    return tuple(reversed(missing))
+
+
+def _prepare(path: Path) -> tuple[Path, int | None, tuple[Path, ...]] | Wrote:
+    """The real target, its mode bits and the directories made for it, or the refusal. D444."""
     target = _through(path)
     if isinstance(target, str):
         return Wrote(ok=False, path=path, reason=target)
     mode: int | None = None
+    created: tuple[Path, ...] = ()
     try:
         if target.exists():
             if target.is_dir():
@@ -212,10 +244,12 @@ def _prepare(path: Path) -> tuple[Path, int | None] | Wrote:
             if not os.access(target, os.W_OK):
                 return Wrote(ok=False, path=target, reason=f"{target} is read-only")
             mode = stat.S_IMODE(target.stat().st_mode)
+        created = _missing_parents(target)
         target.parent.mkdir(parents=True, exist_ok=True)
     except OSError as error:
+        remove_empty_dirs(created)
         return Wrote(ok=False, path=target, reason=f"{target}: {type(error).__name__}")
-    return target, mode
+    return target, mode, created
 
 
 def _replace(
@@ -421,12 +455,16 @@ def encode_text(text: str, *, bom: bool) -> bytes:
     return (BOM if bom else b"") + text.encode("utf-8")
 
 
-def read_json(path: Path, *, pid: int) -> ReadJson:
+def read_json(path: Path, *, pid: int, back_up: bool = True) -> ReadJson:
     """10:1652: a config that will not parse is **backed up** before `{}` is returned. Never raises.
 
     The backup is written before this returns, so a caller that goes on to write `{}` plus its own
     keys over the file has already kept the user's version. `backup` is `None` only when that
     copy could not be made, and `write_json` then refuses the write.
+
+    `back_up=False` is for a caller that must not write at all -- `--dry-run`'s *"plan (nothing
+    written)"* (18:2974), `print_config` (10:1641), and an uninstall, which leaves an unparseable
+    file alone rather than replacing it. A backup is a write. D453.
     """
     try:
         raw = path.read_bytes()
@@ -435,10 +473,10 @@ def read_json(path: Path, *, pid: int) -> ReadJson:
     except OSError as error:
         reason = f"{path}: {type(error).__name__}"
         return ReadJson({}, "unreadable", DEFAULT_STYLE, round_trips=False, reason=reason)
-    return _parse(path, raw, pid)
+    return _parse(path, raw, pid if back_up else None)
 
 
-def _parse(path: Path, raw: bytes, pid: int) -> ReadJson:
+def _parse(path: Path, raw: bytes, pid: int | None) -> ReadJson:
     try:
         text, bom = decode_text(raw)
     except UnicodeDecodeError:
@@ -457,7 +495,10 @@ def _parse(path: Path, raw: bytes, pid: int) -> ReadJson:
     return ReadJson(value, "parsed", style, round_trips=fitted is not None, raw=raw)
 
 
-def _unparseable(path: Path, raw: bytes, pid: int, why: str) -> ReadJson:
+def _unparseable(path: Path, raw: bytes, pid: int | None, why: str) -> ReadJson:
+    if pid is None:
+        reason = f"{path} would not parse ({why}); read only, so not backed up"
+        return ReadJson({}, "unparseable", DEFAULT_STYLE, False, raw, None, reason, UNPARSEABLE)
     saved = backup(path, raw, pid=pid)
     if isinstance(saved, str):
         reason = f"{path} would not parse ({why}) and could not be backed up: {saved}"
@@ -598,7 +639,13 @@ def upsert_marked_section(text: str, body: str) -> Section:
 
 
 def remove_marked_section(text: str) -> Section:
-    """The inverse of an insert: the block, and the newline before it when it ends the file."""
+    """The inverse of an insert: the block, and the one newline the insert put before it.
+
+    That newline is taken back when the block ends the file -- the insert's own shape -- and also
+    when it makes a blank line before the block, which is the insert's shape with the user's text
+    appended after it (W7.5c measured the extra blank line the first rule alone left). Otherwise
+    the newline ends the user's own line and removing it would join two lines.
+    """
     span = section_span(text)
     if isinstance(span, str):
         return Section(None, "kept", span)
@@ -607,7 +654,7 @@ def remove_marked_section(text: str) -> Section:
     start, stop = span
     prefix, suffix = text[:start], text[stop:]
     newline = _newline(text)
-    if not suffix and prefix.endswith(newline):
+    if prefix.endswith(newline) and (not suffix or prefix.endswith(newline * 2)):
         prefix = prefix[: -len(newline)]
     return Section(prefix + suffix, "removed")
 
