@@ -258,19 +258,24 @@ def test_a_shard_rolls_at_its_byte_bound_and_the_roll_record_closes_it(tmp_path:
     """15:396-399 and 15:264-268: the closing line names the successor, and the shard is
     deflated."""
     live = tmp_path / f"{RUN_ID}.ndjson"
+    # EXACTLY the records that cross the bound once, counted from their serialised size. The
+    # first version paced emits at 2 ms and stopped when `shards_rolled` moved -- but the counter
+    # moves only after the roll's fsync and deflate, and under a loaded `-n auto` run that took
+    # longer than six emits, which then crossed the bound a second time: 13 records, 2 rolls.
+    # The roll is the writer's; how many records the producer sends is the test's to decide.
+    records: list[Event] = []
+    size = 0
+    while size < 2_048:
+        one = record(seq=len(records) + 1, fields={"layer": "call", "cache_key": "c" * 64})
+        records.append(one)
+        size += len(serialise(one))
     made = NdjsonSink(live, clock=FakeClock(), shard_bytes=2_048)
     try:
-        # One record at a time, stopping the moment the first roll lands: a burst would roll
-        # several times and this test is about what ONE roll leaves behind.
-        written = 0
-        deadline = time.monotonic() + 5
-        while made.stats.shards_rolled == 0 and time.monotonic() < deadline:
-            written += 1
-            made.emit(record(seq=written, fields={"layer": "call", "cache_key": "c" * 64}))
-            time.sleep(0.002)
-        assert made.stats.shards_rolled == 1
+        for one in records:
+            made.emit(one)
     finally:
         made.close()
+    assert made.stats.emitted == len(records)
     assert made.stats.shards_rolled == 1
 
     rolled = shard_path(live, 1)
