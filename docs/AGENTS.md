@@ -55,8 +55,12 @@ key can grant one.
 | `install` | — | `ow install` | — | `free` | Wire agent hosts to omniweave: the MCP entry, one permission wildcard, the instruction block, hooks and the core skill, each recorded in a receipt |
 | `open` | `ow_open` | `ow open` | default, full | `free` | Fetch the exact passages behind an address you already hold: a cite, a page range, or a whole document |
 | `query` | `ow_query` | `ow query` | default, full | `local_compute` | Ask an indexed corpus a question and get cited passages, a verdict, and the gaps that could be hiding an answer |
+| `skills.check` | `ow_skills_check` | `ow skills check` | — | `free` | Say whether the installed skills are this release's: a stale or missing core skill fails, an outdated or orphaned on-demand one is reported |
+| `skills.hash` | `ow_skills_hash` | `ow skills hash` | — | `free` | Print the sha256-bundle-1 digest, file count and byte count of every skill bundle this release ships, for a release PR to pin |
 | `skills.install` | — | `ow skills install` | — | `free` | Copy a shipped skill bundle into every discovered agent-host skills directory, verified on its whole-bundle digest and recorded in skills-lock.json |
+| `skills.ls` | `ow_skills_ls` | `ow skills ls` | — | `free` | List the skills this release ships, with tier and digest, and which agent-host skills directories hold each one and on whose record |
 | `skills.remove` | — | `ow skills remove` | — | `free` | Take a skill out of every directory skills-lock.json says ow skills install put it in, on its digest; a modified or foreign copy is kept |
+| `skills.verify` | `ow_skills_verify` | `ow skills verify` | — | `free` | Re-hash every skill bundle skills-lock.json says was installed and name each mismatch: expected digest, observed digest, first differing path |
 | `uninstall` | — | `ow uninstall` | — | `free` | Take omniweave out of agent hosts exactly: every path the install receipt names, on its digest, and never the corpus index |
 
 ## Human-only Actions

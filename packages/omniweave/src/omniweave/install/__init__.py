@@ -27,8 +27,13 @@ verified against its `sha256-bundle-1` digest (`omniweave.skills.hash`, D464) an
 place, and removed only on its row's digest. `verbs.py` is `ow install | uninstall | --check` as
 functions returning an exit code and lines: `--target`'s four resolutions, the plan printed first, 0
 and 9, uninstall's seven steps and `refresh_targets()`. `run.py` is `python -m omniweave install |
-uninstall`: the generated parser over the two `ACTIONS` rows (D467, D469), a `HostEnv` from the
-environment, and the terminal only when there is one (D472).
+uninstall | hooks | skills`: the generated parser over their `ACTIONS` rows (D467, D469), a
+`HostEnv` from the environment, and the terminal only when there is one (D472).
+
+The `ow skills` group is three more files. `skills_lock.py` is `skills-lock.json`, the second
+record of a skill directory, and `claimant()`, which keeps each tree on one record (D490).
+`skillset.py` is `ow skills install | remove` and where a bundle goes (D491). `skillcheck.py` is
+`ls | verify | check | hash`, which only read (D493, D494).
 """
 
 from __future__ import annotations

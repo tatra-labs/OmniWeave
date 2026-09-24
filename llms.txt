@@ -37,9 +37,11 @@ mcp.human_only_note: these have no MCP name and are unreachable from any agent s
 # Tools — every Action with an MCP name. `listed_in` says which profiles LIST it;
 # every one of them is DISPATCHABLE when enabled, listed or not.
 mcp.tools: ow_add, ow_corpora, ow_coverage, ow_diff, ow_doctor, ow_explain, ow_grid,
-  ow_hooks_check, ow_open, ow_query
-mcp.tools.unbounded: ow_coverage, ow_diff, ow_doctor, ow_explain, ow_grid, ow_hooks_check — no
-  inputSchema is published for these yet, so their input lines carry a type and no bounds
+  ow_hooks_check, ow_open, ow_query, ow_skills_check, ow_skills_hash, ow_skills_ls,
+  ow_skills_verify
+mcp.tools.unbounded: ow_coverage, ow_diff, ow_doctor, ow_explain, ow_grid, ow_hooks_check,
+  ow_skills_check, ow_skills_hash, ow_skills_ls, ow_skills_verify — no inputSchema is published
+  for these yet, so their input lines carry a type and no bounds
 
 mcp.tool.ow_add.action: add
 mcp.tool.ow_add.description: Index files, directories or URLs into a corpus so ow_query can cite
@@ -176,6 +178,44 @@ mcp.tool.ow_query.input.route_hints.deadline_ms: integer, optional, min=100, max
 mcp.tool.ow_query.input.max_chars: integer, optional, min=1000, max=24000
 mcp.tool.ow_query.output: text/markdown, one content block, <= 24000 chars, no outputSchema
 
+mcp.tool.ow_skills_check.action: skills.check
+mcp.tool.ow_skills_check.description: Say whether the installed skills are this release's: a
+  stale or missing core skill fails, an outdated or orphaned on-demand one is reported
+mcp.tool.ow_skills_check.decision: the router skill may be older than this release
+mcp.tool.ow_skills_check.listed_in: none
+mcp.tool.ow_skills_check.state_changing: false
+mcp.tool.ow_skills_check.cost_class: free
+mcp.tool.ow_skills_check.input.check: boolean, optional, default=false
+mcp.tool.ow_skills_check.output: SkillsReport, no outputSchema declared
+
+mcp.tool.ow_skills_hash.action: skills.hash
+mcp.tool.ow_skills_hash.description: Print the sha256-bundle-1 digest, file count and byte count
+  of every skill bundle this release ships, for a release PR to pin
+mcp.tool.ow_skills_hash.decision: a release needs the skill digests it ships
+mcp.tool.ow_skills_hash.listed_in: none
+mcp.tool.ow_skills_hash.state_changing: false
+mcp.tool.ow_skills_hash.cost_class: free
+mcp.tool.ow_skills_hash.output: SkillsReport, no outputSchema declared
+
+mcp.tool.ow_skills_ls.action: skills.ls
+mcp.tool.ow_skills_ls.description: List the skills this release ships, with tier and digest, and
+  which agent-host skills directories hold each one and on whose record
+mcp.tool.ow_skills_ls.decision: you need to know which skills are installed and where
+mcp.tool.ow_skills_ls.listed_in: none
+mcp.tool.ow_skills_ls.state_changing: false
+mcp.tool.ow_skills_ls.cost_class: free
+mcp.tool.ow_skills_ls.output: SkillsReport, no outputSchema declared
+
+mcp.tool.ow_skills_verify.action: skills.verify
+mcp.tool.ow_skills_verify.description: Re-hash every skill bundle skills-lock.json says was
+  installed and name each mismatch: expected digest, observed digest, first differing path
+mcp.tool.ow_skills_verify.decision: an installed skill may have been edited or damaged
+mcp.tool.ow_skills_verify.listed_in: none
+mcp.tool.ow_skills_verify.state_changing: false
+mcp.tool.ow_skills_verify.cost_class: free
+mcp.tool.ow_skills_verify.input.all: boolean, optional, default=false
+mcp.tool.ow_skills_verify.output: SkillsReport, no outputSchema declared
+
 # CLI (every MCP tool has a CLI twin, and the CLI publishes verbs the MCP surface does not list)
 cli.global: [--config PATH] [--corpus NAME] [--render text|json|jsonl|rows] [--quiet]
   [--verbose] [--no-color] [--offline] [--json-errors]
@@ -205,10 +245,18 @@ cli.query: ow query QUERY [--scope SCOPE] [--want passages|table|fields|outline|
   [--max-rung gate|decode|repair|page|regen|degrade|enrich] [--max-chars MAX_CHARS] [--k N]
   [--mode find|cite|explore|prove_absent] [--fail-on STATE[,STATE]] [--explain]
 cli.query.actions: query
+cli.skills.check: ow skills check [--check]
+cli.skills.check.actions: skills.check
+cli.skills.hash: ow skills hash
+cli.skills.hash.actions: skills.hash
 cli.skills.install: ow skills install NAME...
 cli.skills.install.actions: skills.install
+cli.skills.ls: ow skills ls
+cli.skills.ls.actions: skills.ls
 cli.skills.remove: ow skills remove NAME... [--yes]
 cli.skills.remove.actions: skills.remove
+cli.skills.verify: ow skills verify [--all]
+cli.skills.verify.actions: skills.verify
 cli.uninstall: ow uninstall [--target TARGET] [--location LOCATION] [--keep-cli] [--yes]
 cli.uninstall.actions: uninstall
 cli.groups: add audit-config bench cache check conform corpora cost deps doc doctor drivers eval

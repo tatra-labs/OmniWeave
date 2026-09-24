@@ -176,7 +176,7 @@ def test_every_block_names_an_action_the_registry_declares() -> None:
 
 
 def test_the_roster_is_every_named_action_and_not_only_the_listed_four() -> None:
-    """10:212's source column is *"every Action with an `mcp_name`"*, which is nine, not four.
+    """10:212's source column is *"every Action with an `mcp_name`"*, which is fourteen, not four.
 
     The four in `default` are what an MCP client sees in `tools/list`; the file exists for an agent
     that has no MCP client at all, and `mcp.listed_note`'s *"READ THIS BEFORE ASSUMING A TOOL DOES
@@ -184,7 +184,7 @@ def test_the_roster_is_every_named_action_and_not_only_the_listed_four() -> None
     """
     entries = _entries()
     assert entries["mcp.tools"].split(", ") == list(declared())
-    assert len(declared()) == 10
+    assert len(declared()) == 14
     assert set(entries["mcp.profile.default"].split(", ")) < set(declared())
 
 
