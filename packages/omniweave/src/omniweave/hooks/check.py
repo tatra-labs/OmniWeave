@@ -116,6 +116,9 @@ NOT_RESOLVABLE: Final[str] = "OW_HOOK_NOT_RESOLVABLE"
 """10:2082's symbol. `OW-A-030` in `codes.toml`, and a test asserts the pairing."""
 
 PROBE_TIMEOUT_S: Final[float] = 10.0
+
+# D458: what `/bin/sh` reads as syntax when it is not quoted.
+_OPERATORS: Final = frozenset("();<>|&")
 """How long one probe may run before it is killed and failed.
 
 Not the self-deadline, which is the hook's own and invisible from here (D438). Twenty-five times
@@ -198,7 +201,7 @@ def resolve(
     if not argv:
         return Resolution(command, reason="empty or unparseable command string")
     head = argv[0]
-    eaten = _eaten(command, head, posix=posix)
+    eaten = _eaten(command, head, posix=posix) or _syntax(command, posix=posix)
     if eaten:
         return Resolution(command, argv, reason=eaten)
     if Path(head).is_absolute() or "/" in head or "\\" in head:
@@ -234,6 +237,34 @@ def _eaten(command: str, head: str, *, posix: bool) -> str:
     return (
         f"a POSIX shell consumed the backslashes: {literal[0]} became {head}; "
         "quote the path and write it with forward slashes"
+    )
+
+
+def _syntax(command: str, *, posix: bool) -> str:
+    """An unquoted shell operator, named as itself -- or `""` when the string is one plain command.
+
+    `shlex.split` is a word splitter, not a shell grammar, and the probe runs the argv it returns.
+    Measured under this machine's `/bin/sh` (GNU bash 5.2): `C:/tools(x86)/ow.exe hook session-end`
+    is *"syntax error near unexpected token `x86'"*, exit 2, while `shlex` splits it into a
+    runnable argv -- so the check would pass a hook its host cannot even parse. An unquoted `;`,
+    `|`, `&` or redirect is the same gap from the other side: the host runs a pipeline the probe
+    never ran. `punctuation_chars` makes the operators separate words, and a quoted one stays
+    inside its word. D458.
+    """
+    if not posix:
+        return ""
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    try:
+        words = list(lexer)
+    except ValueError:
+        return ""
+    found = next((word for word in words if word and set(word) <= _OPERATORS), "")
+    if not found:
+        return ""
+    return (
+        f"a POSIX shell reads the unquoted {found!r} as syntax, so the host would not run this as "
+        "one program; quote any path that contains it"
     )
 
 

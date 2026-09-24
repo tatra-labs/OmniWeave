@@ -16,7 +16,9 @@ hash goes stale the moment a second row's write or the host itself touches the f
 the house lock, because an age cannot tell a dead holder from one waiting at its own prompt (D450).
 `modes.py` is three of 10:1665's five write modes -- `json-key`, `json-array-add`,
 `marker-section` -- each an install and its inverse, with a row that inherits what an earlier
-install created (D454). The hook-rules and skill modes, the hosts and the verbs come next.
+install created (D454), and the fourth, `json-hook-rules`, whose command, five spellings of
+ownership and convergence are `hookrules.py`'s (D456-D457). The skill mode, the hosts and the
+verbs come next.
 """
 
 from __future__ import annotations

@@ -1,10 +1,11 @@
-"""Three of 10:1665's five write modes, each as an install and its exact inverse.
+"""Four of 10:1665's five write modes, each as an install and its exact inverse.
 
 `json-key` puts one value at a dotted key (the MCP entry, 10:1667), `json-array-add` adds values to
 an array (the permission wildcard, 10:1668), and `marker-section` keeps one block in a Markdown file
 (`CLAUDE.md`, 10:1669). Each install returns the `FileAction` 10:1645 reports and the receipt row
 10:1739 appends right after the write; each uninstall takes that row back and says what it did.
-`json-hook-rules` needs 10:1690's ownership parse and ships with it; `dir` is the skill bundle's.
+`json-hook-rules` (10:1670) is here too, over `hookrules.py`'s parse and convergence; `dir` is the
+skill bundle's.
 
 ## WHAT A ROW MUST CARRY ACROSS A RE-INSTALL
 
@@ -55,6 +56,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_core.canonical import sha256_canonical
 
+from omniweave.install.hookrules import Converged, Desired, converge, owned_pairs, strip
 from omniweave.install.primitives import (
     BEGIN,
     ReadJson,
@@ -94,8 +96,10 @@ __all__ = [
     "add_values",
     "remove_section",
     "remove_values",
+    "set_hooks",
     "set_key",
     "unbuilt",
+    "unset_hooks",
     "unset_key",
     "upsert_section",
 ]
@@ -504,6 +508,98 @@ def remove_values(
 
 
 # ---------------------------------------------------------------------------------------------
+# json-hook-rules. 10:1670, 10:1683-1698: the rules themselves are `hookrules.py`'s.
+# ---------------------------------------------------------------------------------------------
+
+
+def set_hooks(
+    site: Site,
+    wanted: Sequence[Desired],
+    *,
+    previous: Entry | None,
+    clock: Clock,
+    pid: int,
+    dry_run: bool = False,
+    sleep: Callable[[float], None] = time.sleep,
+) -> Applied:
+    """Converge the file's hook rules to `wanted`. An empty `wanted` is `--hooks none`: ours go."""
+    before = read_json(site.path, pid=pid, back_up=not dry_run)
+    document = copy.deepcopy(before.value)
+    result = converge(document, wanted)
+    refusal = before.reason if before.state == "unreadable" else result.refusal
+    if refusal:
+        return Applied(site.act("kept", "hooks", "json-hook-rules", refusal))
+    note = _hook_note(result)
+    if dry_run:
+        return Applied(site.act(_would(before, document), "hooks", "json-hook-rules", note))
+    action, wrote, written = write_json(site.path, document, before, pid=pid, sleep=sleep)
+    if action == "kept":
+        return Applied(site.act("kept", "hooks", "json-hook-rules", _notes(written, note)))
+    if not wanted:
+        gone: Action = "removed" if result.pruned else "unchanged"
+        return Applied(site.act(gone, "hooks", "json-hook-rules", note), forget=previous)
+    if action == "unchanged" or wrote is None:
+        return Applied(site.act("unchanged", "hooks", "json-hook-rules", note))
+    fields = _provenance(site, previous, before, result.created, wrote.created_dirs)
+    row = site.row(
+        "hooks",
+        "json-hook-rules",
+        clock,
+        events=tuple(one.event for one in wanted),
+        sha256_after=wrote.sha256,
+        owned_sha256=sha256_canonical(owned_pairs(document)),
+        **fields,
+    )
+    reported = _reported(
+        site, "hooks", "json-hook-rules",
+        action=action, before=before, note=_notes(written, note), written=wrote.path,
+    )  # fmt: skip
+    return Applied(reported, record=row)
+
+
+def unset_hooks(
+    site: Site,
+    *,
+    entry: Entry | None,
+    pid: int,
+    dry_run: bool = False,
+    sleep: Callable[[float], None] = time.sleep,
+) -> Applied:
+    """Remove every hook of ours, by 10:1690's ownership parse, from every event in the file."""
+    before = _read_for_uninstall(site, pid)
+    if isinstance(before, FileAction):
+        return _ended(site, "hooks", "json-hook-rules", before, entry)
+    document = copy.deepcopy(before.value)
+    pairs = owned_pairs(document)
+    if not pairs:
+        return Applied(
+            site.act("not-found", "hooks", "json-hook-rules", "not configured"), forget=entry
+        )
+    judged = _judge(site, entry, sha256_canonical(pairs))
+    if judged == "modified":
+        return Applied(site.act("kept", "hooks", "json-hook-rules", _MODIFIED))
+    strip(document, drop_emptied=entry is None)
+    if entry is not None:
+        _prune(document, entry.created_parents)
+    note = _REDERIVED if entry is None else (_OTHER_CHANGES if judged == "owned-untouched" else "")
+    return _finish_json(
+        site, "hooks", "json-hook-rules", document=document, before=before, entry=entry,
+        note=note, pid=pid, dry_run=dry_run, sleep=sleep,
+    )  # fmt: skip
+
+
+def _hook_note(result: Converged) -> str:
+    parts = (
+        ("converged", result.converged),
+        ("pruned", result.pruned),
+        ("matcher converged", result.matchers),
+    )
+    return "; ".join(
+        f"{label} {' '.join(dict.fromkeys(events))}" for label, events in parts if events
+    )
+
+
+# ---------------------------------------------------------------------------------------------
 # marker-section. 10:1669: `CLAUDE.md`.
 # ---------------------------------------------------------------------------------------------
 
@@ -676,8 +772,6 @@ def _ended(site: Site, kind: Kind, mode: Mode, action: FileAction, entry: Entry 
 def unbuilt() -> tuple[str, ...]:
     """What 10:1665's table names that is not here, and why."""
     return (
-        "json-hook-rules (10:1670). Ownership is 10:1690's four-spelling parse of the `ow` "
-        "subcommand, and convergence is 10:1695's rule-level condition; both ship with that mode",
         "dir (10:1671), the skill bundle. Its digest is 10:2805's sha256-bundle-1, which is the "
         "skills cell's",
         "what install does with a file that will not round-trip (D441) or would not parse (D443). "

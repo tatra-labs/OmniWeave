@@ -157,6 +157,31 @@ def test_the_plan_puts_the_fixtures_in_a_tree_no_artefact_ships(plan: PlanDocs) 
 # ---------------------------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize(
+    ("command", "operator"),
+    [
+        ("C:/tools(x86)/ow.exe hook session-end", "("),
+        ("/opt/ow hook session-end; rm -rf ~", ";"),
+        ("/opt/ow hook session-end | tee log", "|"),
+        ("/opt/ow hook session-end > /dev/null", ">"),
+    ],
+)
+def test_an_unquoted_shell_operator_is_syntax_not_a_word(command: str, operator: str) -> None:
+    """D458: `shlex.split` returns a runnable argv for each; `/bin/sh` does not run one program.
+
+    Measured under this machine's GNU bash 5.2: the first is "syntax error near unexpected token
+    `x86'", exit 2.
+    """
+    assert split(command)
+    resolved = resolve(command, path="")
+    assert not resolved.ok()
+    assert f"the unquoted {operator!r} as syntax" in resolved.reason
+
+
+def test_a_quoted_operator_is_part_of_its_word() -> None:
+    assert "as syntax" not in resolve('"/opt/tools (x86)/ow" hook session-end', path="").reason
+
+
 def test_a_posix_split_eats_unquoted_backslashes() -> None:
     assert split("C:\\x\\ow.exe hook session-end") == ("C:xow.exe", "hook", "session-end")
     assert split("C:\\x\\ow.exe hook", posix=False) == ("C:\\x\\ow.exe", "hook")
