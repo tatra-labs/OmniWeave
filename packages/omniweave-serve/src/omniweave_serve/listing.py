@@ -223,17 +223,20 @@ def tools_list(
     listing: Listing | None = None,
     catalogue: Catalogue | None = None,
 ) -> tuple[dict[str, Any], ...]:
-    """The `tools` array `tools/list` sends, in the catalogue's order. Fresh dictionaries."""
+    """The `tools` array `tools/list` sends, in the catalogue's order. Fresh dictionaries.
+
+    The catalogue is loaded only for the one form the listing does not carry, `(compact=False,
+    corpus_resolves=True)`, which is the catalogue's own object. Loading it for the other three
+    would make the shipped default -- `compact_schemas = true` -- fail on every install that lacks
+    `schema/`, which is every `pip install` (D341), for a file those three forms never read. D509.
+    """
     listing = listing or load_listing()
-    catalogue = catalogue or load_catalogue()
     key = _FORM[(compact, corpus_resolves)]
-    out: list[dict[str, Any]] = []
-    for name in _profile(listing, profile)["tools"]:
-        if key:
-            out.append(json.loads(listing.variants[name][key]))
-        else:
-            out.append(catalogue.by_name[name].wire())
-    return tuple(out)
+    names = _profile(listing, profile)["tools"]
+    if key:
+        return tuple(json.loads(listing.variants[name][key]) for name in names)
+    catalogue = catalogue or load_catalogue()
+    return tuple(catalogue.by_name[name].wire() for name in names)
 
 
 def instructions(profile: str, *, corpus_resolves: bool, listing: Listing | None = None) -> str:
