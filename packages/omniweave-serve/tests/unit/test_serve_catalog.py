@@ -323,15 +323,12 @@ def test_no_module_in_this_distribution_imports_omniweave() -> None:
             assert "omniweave" not in roots, f"{source.name} imports omniweave"
 
 
-def test_unservable_names_three_transforms_and_the_keys_that_ask_for_them() -> None:
-    """D340. Each row names a shipped configuration default and the symbol holding the data."""
-    rows = unservable()
-    assert len(rows) == 3
-    assert any("listed_in" in row and "registry" in row for row in rows)
-    assert any("_ADVANCED" in row for row in rows)
-    assert any("with_required_corpus" in row for row in rows)
-    for key in ("serve.profile", "serve.compact_schemas", "serve.default_corpus"):
-        assert any(key in row for row in rows), key
+def test_unservable_names_only_the_input_d340_left_owed() -> None:
+    """D340 route 2: the three transforms are read from the listing, and one input is left."""
+    (row,) = unservable()
+    assert "serve.default_corpus" in row
+    assert "omniweave.surface.startup.servable().resolves" in row
+    assert "corpus_resolves" in row
 
 
 def test_every_symbol_unservable_names_lives_where_it_says_it_does() -> None:

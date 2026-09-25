@@ -427,20 +427,17 @@ def initialize_result(*, instructions: str | None = None) -> dict[str, Any]:
 
 
 def uninstructable() -> tuple[str, ...]:
-    """What `initialize` owes and this distribution cannot build. D340 a fourth time; D389.
+    """What `initialize` still owes and no file this distribution reads can carry. D389.
 
-    `catalog.unservable()` names the three transforms `tools/list` needs; this names the one string
-    `initialize` needs, and it is the sharper instance for a reason 10:861 states: the instructions
-    arrive *"on a separate track from `tools/list`"*, so they arrive whole *"even in a host that
-    defers tool schemas and sends names only"* -- *"the only prose that survives deferral, at
-    exactly the moment steering matters most."* A server that cannot build it loses the one channel
-    that is guaranteed to be read.
+    The string itself is now read: `mcp-listing-v1.json` carries both variants for both profiles
+    (D340 route 2), and `listing.instructions()` returns one. What is left is the choice between
+    them -- variant B when `[serve] default_corpus` does not resolve (10:892) -- and that is a fact
+    about the deployment that `omniweave.surface.startup.servable().resolves` decides.
     """
     return (
-        "initialize.instructions: omniweave.gen.instructions.instructions(profile=, "
-        "default_corpus=) builds both variants and omniweave_serve may not import it",
-        "the variant is chosen by omniweave.surface.startup.servable().resolves, which is in the "
-        "same distribution",
+        "the variant is chosen by omniweave.surface.startup.servable().resolves, which "
+        "listing.instructions() takes as corpus_resolves from a caller this distribution does "
+        "not have",
     )
 
 

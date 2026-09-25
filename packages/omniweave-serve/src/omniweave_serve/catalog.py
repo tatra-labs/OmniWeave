@@ -7,6 +7,8 @@ for one payload -- INV-20's defect with the server on the wrong side of it.
 
 So this module locates the committed artefact, parses it, refuses one that is not servable, and
 says -- out loud, in `unservable()` -- which parts of `tools/list` it cannot produce on its own.
+Since D340 was decided, the profile selection, compaction and `corpus` promotion are read from
+`mcp-listing-v1.json` by `omniweave_serve.listing`, and `unservable()` names only the input left.
 
 ## WHY A LOADER AT ALL, WHEN EVERY OTHER CONSUMER IMPORTS ITS SOURCE
 
@@ -39,8 +41,8 @@ Read literally that gives this module three jobs beyond loading, and it can do n
 * **promote `corpus` to required** (10 section 3.4) is `with_required_corpus()`, in the same module.
 
 All three are in the distribution this one may not import, and all three change what `tools/list`
-sends. `unservable()` reports them rather than this module inventing a fourth home for any of them.
-D340 is the entry, and it is W7.3's blocking decision rather than this cell's to make.
+sends. D340 was the entry, and it was decided for route 2: `omniweave.gen.listing` renders the
+three transformed forms of every listed tool into `mcp-listing-v1.json`, and `listing.py` selects.
 
 ## WHAT THIS MODULE REFUSES
 
@@ -318,25 +320,19 @@ def check(path: Path | None = None) -> tuple[str, ...]:
 
 
 def unservable() -> tuple[str, ...]:
-    """The transforms `tools/list` needs and this distribution cannot apply. D340.
+    """What `tools/list` still needs that no file this distribution reads can carry. D340.
 
-    Reported rather than raised, and the distinction matters: the payload is loadable, checkable
-    and correct, so refusing at import would make the whole server unimportable for a gap that is
-    an architectural decision rather than a defect in these bytes. It is reported rather than
-    left implicit because a `tools/list` that shipped the whole payload uncompacted, under a
-    configuration asking for the `default` profile compacted, would be a server disagreeing with
-    its own `llms.txt` -- which is the one thing 10:788 says has no repair-and-continue path.
-
-    Each row names the configuration key that asks for the transform, the shipped default that
-    makes it live, and the symbol that holds the data. All three symbols are in `omniweave`.
+    Three rows at W7.3a: selecting a profile, compacting and promoting `corpus` each needed data
+    `omniweave` holds. D340 route 2 closed all three with `mcp-listing-v1.json`, which carries the
+    transformed objects precomputed (`omniweave_serve.listing`). One input is left, and it is not
+    data a file can hold: whether `[serve] default_corpus` resolves is a fact about the deployment
+    at startup, decided by `omniweave.surface.startup.servable().resolves`. `listing.tools_list()`
+    takes it as `corpus_resolves`, and this row names who owes it.
     """
     return (
-        f"[{_PROFILE_KEY}] = {KEYS[_PROFILE_KEY].default!r}: selecting a profile needs "
-        f"ActionSpec.listed_in, which omniweave.surface.registry holds",
-        f"[{_COMPACT_KEY}] = {KEYS[_COMPACT_KEY].default!r}: compaction needs ActionSpec.advanced, "
-        f"which omniweave.surface.schema holds as _ADVANCED",
-        f"[{_CORPUS_KEY}] = {KEYS[_CORPUS_KEY].default!r}: promoting corpus to required when it "
-        f"does not resolve is omniweave.surface.schema.with_required_corpus",
+        f"[{_CORPUS_KEY}] = {KEYS[_CORPUS_KEY].default!r}: whether it resolves is "
+        f"omniweave.surface.startup.servable().resolves, which listing.tools_list() takes as "
+        f"corpus_resolves from a caller this distribution does not have",
     )
 
 
