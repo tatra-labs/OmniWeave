@@ -1,7 +1,7 @@
 {
   "version": 1,
   "catalogue": "schema/mcp-tools-v1.json",
-  "catalogue_sha256": "360574f2ac0219a7a6dedd9b941aa54056be89ed27f28e8641679f497d9270ad",
+  "catalogue_sha256": "db525616a91798b94fe03d6448e78fc9723206d3c4e38f16147389f68f9c427d",
   "profiles": {
     "default": {
       "tools": [
@@ -39,9 +39,6 @@
           "idempotentHint": true,
           "openWorldHint": true
         },
-        "outputSchema": {
-          "$ref": "schema/add-out-v1.json"
-        },
         "inputSchema": {
           "type": "object",
           "additionalProperties": false,
@@ -77,9 +74,6 @@
           "destructiveHint": false,
           "idempotentHint": true,
           "openWorldHint": true
-        },
-        "outputSchema": {
-          "$ref": "schema/add-out-v1.json"
         },
         "inputSchema": {
           "type": "object",
@@ -122,9 +116,6 @@
           "idempotentHint": true,
           "openWorldHint": true
         },
-        "outputSchema": {
-          "$ref": "schema/add-out-v1.json"
-        },
         "inputSchema": {
           "type": "object",
           "additionalProperties": false,
@@ -164,9 +155,6 @@
           "idempotentHint": true,
           "openWorldHint": false
         },
-        "outputSchema": {
-          "$ref": "schema/corpora-out-v1.json"
-        },
         "inputSchema": {
           "type": "object",
           "additionalProperties": false,
@@ -195,9 +183,6 @@
           "destructiveHint": false,
           "idempotentHint": true,
           "openWorldHint": false
-        },
-        "outputSchema": {
-          "$ref": "schema/corpora-out-v1.json"
         },
         "inputSchema": {
           "type": "object",
@@ -230,9 +215,6 @@
           "destructiveHint": false,
           "idempotentHint": true,
           "openWorldHint": false
-        },
-        "outputSchema": {
-          "$ref": "schema/corpora-out-v1.json"
         },
         "inputSchema": {
           "type": "object",

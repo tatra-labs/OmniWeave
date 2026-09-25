@@ -548,22 +548,23 @@ def test_the_committed_file_has_unix_line_endings_and_one_trailing_newline() -> 
     assert raw.endswith(b"}\n")
 
 
-def test_the_committed_file_carries_d316s_five_numbers() -> None:
-    """D316 counted the cost of `ow_corpora`'s missing `destructiveHint` at six tokens and named
-    the five figures it moves. This file is where those five now live, so the entry is discharged
-    by a frozen artefact rather than by a test that re-derives the arithmetic."""
+def test_the_committed_file_carries_d316s_and_d549s_five_numbers() -> None:
+    """D316 counted `ow_corpora`'s missing `destructiveHint` at +6 tokens, and D549 its
+    `outputSchema` at -15 and `ow_add`'s at -13. This file is where the five figures they move now
+    live, so the entries are discharged by a frozen artefact rather than by a test that re-derives
+    the arithmetic."""
     base = _committed()
-    assert base.per_tool_compact["ow_corpora"] == 195
-    assert base.per_tool_full["ow_corpora"] == 195
-    assert base.default_compact == 856
-    assert base.default_full == 1037
-    assert base.default_compact_corpus_required == 871
+    assert base.per_tool_compact["ow_corpora"] == 180
+    assert base.per_tool_full["ow_corpora"] == 180
+    assert base.default_compact == 828
+    assert base.default_full == 1009
+    assert base.default_compact_corpus_required == 843
 
 
 def test_the_promotion_costs_what_the_plan_measured() -> None:
-    """10:538's *"+15 tokens"* is a delta and D316 confirmed it is unmoved by the six-token
-    correction: 856 to 871. A delta is worth pinning separately from its endpoints, because it is
-    the number that argues the promotion is affordable."""
+    """10:538's *"+15 tokens"* is a delta, unmoved by D316's six-token correction and by D549's:
+    828 to 843. A delta is worth pinning separately from its endpoints, because it is the number
+    that argues the promotion is affordable."""
     base = _committed()
     assert base.default_compact_corpus_required - base.default_compact == 15
 
@@ -622,19 +623,20 @@ def test_sv2_the_live_payload_matches_the_frozen_baseline() -> None:
 
 
 def test_sv2_the_plans_own_table_is_reproduced_tool_for_tool() -> None:
-    """10:340's four rows, three of which the shipped generator lands on the nose and the fourth of
-    which D316 moved by six. Asserted against the plan's numbers directly rather than against the
-    baseline, so this fails if the baseline and the plan ever drift together."""
+    """10:340's four rows. The two prose retrievers land on the plan's numbers; `ow_corpora` is
+    D316's +6 and D549's -15, and `ow_add` is D549's -13, because no `outputSchema` goes on the
+    wire. Asserted as literals rather than against the baseline, so this fails if the baseline and
+    the generator ever drift together."""
     measured = measure(_real_encoder())
     assert dict(measured.per_tool_compact) == {
-        "ow_add": 162,
-        "ow_corpora": 195,
+        "ow_add": 149,
+        "ow_corpora": 180,
         "ow_open": 210,
         "ow_query": 289,
     }
     assert dict(measured.per_tool_full) == {
-        "ow_add": 173,
-        "ow_corpora": 195,
+        "ow_add": 160,
+        "ow_corpora": 180,
         "ow_open": 258,
         "ow_query": 411,
     }

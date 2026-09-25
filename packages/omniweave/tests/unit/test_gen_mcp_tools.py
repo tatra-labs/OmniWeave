@@ -66,8 +66,8 @@ PLAN_FULL_TOKENS = {"ow_query": 411, "ow_open": 258, "ow_corpora": 189, "ow_add"
 PLAN_COMPACT_TOKENS = {"ow_query": 289, "ow_open": 210, "ow_corpora": 189, "ow_add": 162}
 """10:336's two token columns. `ow_corpora`'s two figures are the ones D316 moves."""
 
-SHIPPED_FULL_TOKENS = {"ow_query": 411, "ow_open": 258, "ow_corpora": 195, "ow_add": 173}
-SHIPPED_COMPACT_TOKENS = {"ow_query": 289, "ow_open": 210, "ow_corpora": 195, "ow_add": 162}
+SHIPPED_FULL_TOKENS = {"ow_query": 411, "ow_open": 258, "ow_corpora": 180, "ow_add": 160}
+SHIPPED_COMPACT_TOKENS = {"ow_query": 289, "ow_open": 210, "ow_corpora": 180, "ow_add": 149}
 """What the generator emits, with `destructiveHint` present on all four tools as 10:216 requires."""
 
 LADDER = ("ow_query", "ow_open", "ow_corpora", "ow_add")
@@ -377,7 +377,7 @@ def test_the_shared_input_schemas_are_not_handed_out_by_reference() -> None:
 
 
 # ---------------------------------------------------------------------------------------------
-# `outputSchema`: declared for the row-shaped two, absent for the two that pack prose
+# `outputSchema`: named for the row-shaped two, and put on the wire for none (D549)
 # ---------------------------------------------------------------------------------------------
 
 
@@ -388,9 +388,12 @@ def test_the_two_prose_retrievers_declare_no_output_schema() -> None:
     assert "outputSchema" not in _by_name()["ow_open"]
 
 
-def test_the_two_row_shaped_tools_ref_a_schema_file_that_exists() -> None:
+def test_the_two_row_shaped_tools_name_a_schema_file_and_list_none() -> None:
+    """D549. 18:1348's `{"$ref": "schema/corpora-out-v1.json"}` is a repository path no MCP
+    client can resolve, and the reference client validates against a listed `outputSchema` on
+    every call -- so the schema is the `--render json` contract and never a `tools/list` field."""
     for name, target in OUTPUT_SCHEMAS.items():
-        assert _by_name()[name]["outputSchema"] == {"$ref": target}
+        assert "outputSchema" not in _by_name()[name]
         assert (REPO_ROOT / target).is_file(), target
 
 
@@ -411,15 +414,9 @@ def test_declaring_an_output_schema_for_a_prose_retriever_fails_at_import(
     assert any("18:1315 pairs them" in line for line in _published_failures())
 
 
-def test_the_key_order_puts_output_schema_before_input_schema() -> None:
-    """18:1348's order. It changes no count worth measuring and every byte of a reviewer's diff."""
-    assert list(_by_name()["ow_corpora"]) == [
-        "name",
-        "description",
-        "annotations",
-        "outputSchema",
-        "inputSchema",
-    ]
+def test_every_tool_has_the_same_four_keys_in_18_1250s_order() -> None:
+    """18:1250's order, less the `outputSchema` D549 takes off the wire."""
+    assert list(_by_name()["ow_corpora"]) == ["name", "description", "annotations", "inputSchema"]
     assert list(_by_name()["ow_query"]) == ["name", "description", "annotations", "inputSchema"]
 
 
@@ -441,8 +438,8 @@ def test_the_compact_schema_column_is_what_the_generator_emits() -> None:
 def test_the_two_profile_totals_are_the_ones_the_arithmetic_gives() -> None:
     """The measurement behind the xfails, asserted positively so the numbers are pinned."""
     payload = _payload()
-    assert sum(_tokens(entry) for entry in payload) == 1037
-    assert sum(_tokens(compact(entry)) for entry in payload) == 856
+    assert sum(_tokens(entry) for entry in payload) == 1009
+    assert sum(_tokens(compact(entry)) for entry in payload) == 828
 
 
 def test_the_promotion_still_costs_the_fifteen_tokens_the_plan_measured() -> None:
@@ -460,20 +457,35 @@ def test_the_promotion_still_costs_the_fifteen_tokens_the_plan_measured() -> Non
     assert promoted - base == 15
 
 
-def test_three_of_the_four_tools_cost_exactly_what_the_plan_counted() -> None:
-    """The transcription's strongest evidence: six of 10:336's eight figures, reproduced."""
+def test_the_two_prose_retrievers_cost_exactly_what_the_plan_counted() -> None:
+    """The transcription's strongest evidence: four of 10:336's eight figures, reproduced. The
+    other four are the two row-shaped tools, which D316 and D549 move."""
     got_full = {entry["name"]: _tokens(entry) for entry in _payload()}
     got_compact = {entry["name"]: _tokens(compact(entry)) for entry in _payload()}
-    for name in ("ow_query", "ow_open", "ow_add"):
+    for name in ("ow_query", "ow_open"):
         assert got_full[name] == PLAN_FULL_TOKENS[name], name
         assert got_compact[name] == PLAN_COMPACT_TOKENS[name], name
 
 
+D549_REASON = (
+    "D549. 10:336 counts `ow_add` with its `outputSchema` `$ref`, 13 tokens, and the listing puts "
+    "none on the wire because no MCP client can resolve that reference. So `ow_add` is 160 full "
+    "and 149 compact rather than 173 and 162."
+)
+
+
+@pytest.mark.xfail(strict=True, reason=D549_REASON)
+def test_ow_add_costs_what_the_plan_counted() -> None:
+    add = _by_name()["ow_add"]
+    assert _tokens(add) == PLAN_FULL_TOKENS["ow_add"]
+    assert _tokens(compact(add)) == PLAN_COMPACT_TOKENS["ow_add"]
+
+
 D316_REASON = (
-    "D316. 18:1345 prints `ow_corpora` with three annotation keys and 10:216 requires four of "
-    "every tool. Emitting `destructiveHint: false` costs 6 tokens, so `ow_corpora` is 195 in both "
-    "columns rather than 189, and 10:2596's frozen `default_compact` 850, `default_full` 1031 and "
-    "`default_compact_corpus_required` 865 become 856, 1037 and 871. These xfails land when "
+    "D316 and D549. 18:1345 prints `ow_corpora` with three annotation keys and 10:216 requires "
+    "four of every tool (+6 tokens), and the listing puts no `outputSchema` on the wire (-15), so "
+    "`ow_corpora` is 180 rather than 189. 10:2596's frozen `default_compact` 850, `default_full` "
+    "1031 and `default_compact_corpus_required` 865 are 828, 1009 and 843. These xfails land when "
     "10 section 3.1's table and the baseline are re-derived together."
 )
 

@@ -66,6 +66,7 @@ from omniweave_core.retrieve.types import Query, RetrievalPolicy
 from omniweave_core.store import reader as store_reader
 from omniweave_core.store import sqlite as store_sqlite
 
+from omniweave_serve import corpora as corpora_tool
 from omniweave_serve import opening
 from omniweave_serve.answers import blocked, refusal, text_result, unreadable
 from omniweave_serve.stdio import INVALID_PARAMS, METHOD_NOT_FOUND, Reply, failure, result
@@ -94,7 +95,9 @@ _ARGUMENTS: Final[frozenset[str]] = frozenset(
 
 _NOT_SERVED: Final[frozenset[str]] = frozenset({"scope", "route_hints"})
 _MAX_CHARS: Final[tuple[int, int]] = (1_000, 24_000)
-_PENDING: Final[str] = "ow_query and ow_open are the tools this build answers; {name} is not built"
+_PENDING: Final[str] = (
+    "ow_add is the one listed tool this build does not answer; {name} is not built"
+)
 
 
 @dataclass(slots=True)
@@ -112,22 +115,24 @@ class QueryCaller:
     session: StdioSession | None = None
 
     async def call(self, request: Request, surface: Surface) -> Reply:
-        """Answer one `tools/call`. `ow_query` and `ow_open` are built; the other two say so."""
+        """Answer one `tools/call`. Three of the four listed tools are built; `ow_add` says so."""
         del surface
         params = request.params
         name = params.get("name")
-        if name not in {QUERY_TOOL, opening.OPEN_TOOL}:
+        if name not in {QUERY_TOOL, opening.OPEN_TOOL, corpora_tool.CORPORA_TOOL}:
             return Reply(
                 body=failure(
                     request.ident,
                     METHOD_NOT_FOUND,
                     _PENDING.format(name=name),
-                    data={"owed": "ow_corpora and ow_add have no Caller yet"},
+                    data={"owed": "ow_add has no Caller yet"},
                 )
             )
         arguments = params.get("arguments") or {}
         if not isinstance(arguments, dict):
             return Reply(body=failure(request.ident, INVALID_PARAMS, "arguments is not an object"))
+        if name == corpora_tool.CORPORA_TOOL:
+            return Reply(body=result(request.ident, self.respond_corpora(arguments)))
         respond = self.respond if name == QUERY_TOOL else self.respond_open
         body, sent = respond(arguments)
         session = self.session
@@ -167,6 +172,12 @@ class QueryCaller:
         if session is not None:
             session.calls += 1
         return text_result(document), emitted(packed, document)
+
+    def respond_corpora(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
+        """`ow_corpora`'s result. It sends no evidence, so it has nothing to record as sent."""
+        return corpora_tool.respond(
+            arguments, corpora=self.corpora, default=self.default, now_ns=self.wall_ns()
+        )
 
     def respond_open(
         self, arguments: Mapping[str, Any]

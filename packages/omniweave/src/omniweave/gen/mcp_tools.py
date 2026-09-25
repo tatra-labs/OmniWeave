@@ -524,9 +524,16 @@ def description(spec: ActionSpec) -> str:
 def tool(spec: ActionSpec) -> dict[str, Any]:
     """One `tools/list` entry, in 18:1250's key order.
 
-    `outputSchema` sits between `annotations` and `inputSchema` because that is where 18:1348 and
-    18:1355 print it. Key order changes no token count worth measuring and changes every byte of
-    the diff a reviewer reads, which is the only argument a byte-diff gate accepts.
+    **No `outputSchema` goes on the wire, although 18:1348 and 18:1357 print one** (D549). The two
+    printed objects are `{"$ref": "schema/corpora-out-v1.json"}` and `add-out-v1.json`'s: a path
+    relative to this repository, which no MCP client can resolve. The reference client validates
+    `structuredContent` against a listed `outputSchema` on every call, and fails either way:
+    `jsonschema` raises `Unresolvable` on the reference, and a result without `structuredContent`
+    is *"Tool ... has an output schema but did not return structured content"*. Both schemas'
+    roots are also arrays, and MCP's `structuredContent` is an object. So the two row-shaped tools
+    return their JSON as one text block, `OUTPUT_SCHEMAS` still records which tools are
+    row-shaped (18:1315's pairing, and `llms.txt`'s `output` line), and the schema files remain
+    the `--render json` contract.
     """
     name = spec.mcp_name
     if name is None or name not in PUBLISHED:
@@ -536,8 +543,6 @@ def tool(spec: ActionSpec) -> dict[str, Any]:
         "description": description(spec),
         "annotations": hints(spec),
     }
-    if name in OUTPUT_SCHEMAS:
-        built["outputSchema"] = {"$ref": OUTPUT_SCHEMAS[name]}
     built["inputSchema"] = json.loads(json.dumps(INPUT_SCHEMAS[name]))
     return built
 

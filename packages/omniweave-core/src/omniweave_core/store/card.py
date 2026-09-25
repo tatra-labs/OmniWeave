@@ -74,6 +74,7 @@ reach it (G17).
 from __future__ import annotations
 
 import json
+import sqlite3
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Final
 
@@ -83,8 +84,8 @@ from omniweave_core.model.enums import Quote, Trust
 from omniweave_core.store import NO_JOB_DOCS
 
 if TYPE_CHECKING:
-    import sqlite3
     from collections.abc import Iterable, Mapping, Sequence
+    from pathlib import Path
 
     from omniweave_core.errors import Register
 
@@ -93,11 +94,13 @@ __all__ = [
     "GAPS_MAX",
     "OUTLINE_MAX",
     "TOP_TERMS_MAX",
+    "CardRead",
     "CorpusCardRow",
     "Gap",
     "build_card",
     "capability_floor",
     "card_stale",
+    "inspect",
     "read_card",
     "write_card",
 ]
@@ -546,3 +549,81 @@ def card_stale(connection: sqlite3.Connection, row: CorpusCardRow | None) -> boo
     statement = f"SELECT max(gen) FROM doc WHERE {NO_JOB_DOCS}"  # noqa: S608 -- a constant
     newest = connection.execute(statement).fetchone()[0]
     return newest is not None and int(newest) > row.card_gen
+
+
+# =============================================================================================
+# 6. One corpus, read for `ow_corpora`: the card and the three read-time degradations
+# =============================================================================================
+
+_PRODUCER_COLUMNS: Final[tuple[str, ...]] = (
+    "operator",
+    "op_version",
+    "code_fingerprint",
+    "model_id",
+    "model_rev",
+    "runtime",
+    "runtime_version",
+    "prompt_fp",
+    "options_digest",
+)
+"""`producer`'s nine identity columns, in 18's `Producer` order (`corpora-out-v1.json`)."""
+
+
+@dataclass(frozen=True, slots=True)
+class CardRead:
+    """What one store says about itself when `ow_corpora` asks. 10:1029-1040's three degradations.
+
+    `readable` and `reason` are 10:1031's: *"listed with `readable: false` and a `reason`, and never
+    omitted and never fatal"*. `stale` is `card_stale()`. `row` is `None` both when the store could
+    not be read and when it holds no card, and `stale` is what tells the two apart. `producer` is
+    the abstract's producer row, which is `None` whenever `abstract` is (10:1089).
+    """
+
+    readable: bool
+    reason: str | None = None
+    row: CorpusCardRow | None = None
+    stale: bool = True
+    producer: dict[str, object] | None = None
+
+
+def inspect(path: Path) -> CardRead:
+    """Open `path` read-only, read its newest card, and close it. Never raises for a bad store.
+
+    10:1032: *"Omitting it would make a configuration error look like a corpus that does not exist;
+    failing the whole call would let one bad store hide fifteen good ones."* So every way a store
+    can fail to be read -- missing, unmigrated, locked, corrupt -- comes back as `readable=False`
+    with the store's own message, and the card is never rebuilt here (10:1039).
+    """
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415 -- the one open
+
+    try:
+        connection = store_sqlite.connect_readonly(path)
+    except StoreError as error:
+        return CardRead(readable=False, reason=str(error))
+    try:
+        row = read_card(connection)
+        stale = card_stale(connection, row)
+        producer = _producer(connection, row)
+    except (sqlite3.Error, StoreError) as error:
+        return CardRead(readable=False, reason=f"{path}: {error}")
+    finally:
+        connection.close()
+    return CardRead(readable=True, row=row, stale=stale, producer=producer)
+
+
+def _producer(
+    connection: sqlite3.Connection, row: CorpusCardRow | None
+) -> dict[str, object] | None:
+    """The abstract's `producer` row, `options_digest` as 32 hex characters, or `None`."""
+    if row is None or row.abstract_producer_id is None:
+        return None
+    found = connection.execute(
+        f"SELECT {', '.join(_PRODUCER_COLUMNS)} FROM producer WHERE producer_id = ?",  # noqa: S608
+        (row.abstract_producer_id,),
+    ).fetchone()
+    if found is None:
+        return None
+    out: dict[str, object] = dict(zip(_PRODUCER_COLUMNS, found, strict=True))
+    digest = out["options_digest"]
+    out["options_digest"] = bytes(digest).hex() if isinstance(digest, bytes | bytearray) else digest
+    return out
