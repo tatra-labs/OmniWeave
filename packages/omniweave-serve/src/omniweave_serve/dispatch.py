@@ -48,13 +48,12 @@ client's (*"SHOULD NOT"* in the spec), which is the side the spec puts it on.
 
 ## WHAT `tools/call` IS, TODAY
 
-Not built, and said. `tools/call` runs an Action: the `ow_query` retrieval, the `ow_open` resolve,
-the `ow_corpora` enumeration and the `ow_add` roster write. `omniweave_core.retrieve` holds the
-planner, the channels, fusion and the verdict, and holds no `retrieve()` that composes them;
-10:977's `render`/`send`/`commit` needs that first. So `create()` takes a `Caller`, the seam the
-owed half plugs into, and without one a call is answered with `METHOD_NOT_FOUND` -- JSON-RPC's
-code for a method that *"does not exist / is not available"*, the second half of which is this
-build's state -- carrying `uncallable()`'s row as `data`, in `catalog.unservable()`'s idiom. D511.
+`create()` takes a `Caller`, the seam every tool's execution plugs into. `launch.run()` plugs in
+`query.QueryCaller`, which answers `ow_query` over `omniweave_core.retrieve.retrieve()` (W7.3q)
+and refuses the other listed tools by name. A dispatcher built with no `Caller` -- the transport
+tests, and `test_serve_sdk_client.py`'s child -- answers every call with `METHOD_NOT_FOUND`,
+JSON-RPC's code for a method that *"does not exist / is not available"*, carrying
+`uncallable()`'s row as `data`, in `catalog.unservable()`'s idiom. D511.
 
 A `Caller` receives the `Request` and returns a `Reply`, so the one ordering 10:979-981 prints is
 unchanged by this file: the caller puts its commit in `Reply.after_send`, and `serve()` runs it
@@ -127,10 +126,10 @@ class Caller(Protocol):
 
 
 def uncallable() -> tuple[str, ...]:
-    """What `tools/call` still needs that this distribution does not hold. D511."""
+    """What a dispatcher built with no `Caller` says to every `tools/call`. D511."""
     return (
-        "tools/call runs an Action, and omniweave_core.retrieve holds the planner, channels, "
-        "fusion and verdict with no retrieve() composing them; no Caller is wired",
+        "tools/call runs an Action through a Caller, and this dispatcher was built without one; "
+        "launch.run() wires query.QueryCaller",
     )
 
 

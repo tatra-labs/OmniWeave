@@ -18,9 +18,11 @@ or argument can change it. The user chose this route over a process handoff on 2
 
 ## WHAT CROSSES
 
-Three keyword arguments of builtin types -- `profile: str`, `compact: bool`, `corpus_resolves:
-bool` -- and an `int` back. A type defined on either side is one the other side cannot import, so
-the contract is written in the types both already share.
+Five keyword arguments of builtin types -- `profile: str`, `compact: bool`, `corpus_resolves:
+bool`, `corpus: str | None` (the default corpus step 5 resolved) and `corpora: Mapping[str, str]`
+(each declared corpus's store, as an absolute path) -- and an `int` back. A type defined on
+either side is one the other side cannot import, so the contract is written in the types both
+already share.
 
 ## THE REFUSAL
 
@@ -39,7 +41,7 @@ from typing import TYPE_CHECKING, Final, Protocol
 from omniweave_core.errors import CapabilityMissing, ConfigError
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping
 
 __all__ = ["SERVE_DISTRIBUTION", "SERVE_GROUP", "SERVE_NAME", "Entry", "ServeEntry", "serve_entry"]
 
@@ -52,7 +54,15 @@ _INSTALL: Final[str] = f"pip install {SERVE_DISTRIBUTION}"
 class ServeEntry(Protocol):
     """`omniweave_serve.launch.run`'s signature, written on this side of the boundary."""
 
-    def __call__(self, *, profile: str, compact: bool, corpus_resolves: bool) -> int:
+    def __call__(
+        self,
+        *,
+        profile: str,
+        compact: bool,
+        corpus_resolves: bool,
+        corpus: str | None,
+        corpora: Mapping[str, str],
+    ) -> int:
         """Serve until the host closes the stream; return the process exit code."""
         ...
 

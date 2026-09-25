@@ -8,6 +8,10 @@ variant B and a required `corpus` when none is (10:525, 10:871, D381).
 
 **It spawns, so it is T3** (13 section 2.7). The spawn is the SDK's `stdio_client`, so this file
 imports no `subprocess`.
+
+**The last test is the first `tools/call` an agent host could make and get an answer from.** A
+store is seeded beside a real `omniweave.toml`, the client calls `ow_query`, and what comes back is
+the Answer document, rendered in the child from a retrieval over that store (W7.3r).
 """
 
 from __future__ import annotations
@@ -19,12 +23,76 @@ import anyio
 import pytest
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from mcp.types import CallToolResult, TextContent
+from omniweave_core.store import migrate
+from omniweave_core.store import sqlite as ow
 from omniweave_serve import listing
 
 pytestmark = pytest.mark.conform
 
 DEADLINE_S = 60
 HANDBOOK = '[corpora.handbook]\npath = ".omniweave/index.owstore"\n'
+
+
+NOW_NS = 1_757_400_000_000_000_000
+PARAGRAPH = "Fees are payable monthly in arrears."
+
+
+def _seeded(path: Path) -> None:
+    """One document and one paragraph, in a store the shipped migrations built."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = ow.connect(path)
+    try:
+        migrate.apply_pending(conn, now_ns=NOW_NS)
+
+        def code(domain: str, name: str) -> int:
+            row = conn.execute(
+                "SELECT ord FROM enum_val WHERE domain = ? AND name = ?", (domain, name)
+            ).fetchone()
+            return int(row[0])
+
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute(
+            "INSERT INTO producer(operator, op_version, code_fingerprint, options_digest) "
+            "VALUES('op.parse', 1, 'fp', X'00')"
+        )
+        conn.execute(
+            "INSERT INTO doc(doc_ord, doc_key, source_sha256, uri, media_type, format, "
+            "                format_evidence, source_bytes, gen, status, model_version, "
+            "                declared, achieved) "
+            "VALUES(1, ?, ?, 'file:///corpus/contract.pdf', 'application/pdf', 'pdf', '{}', 1, "
+            "       1, 'ok', '1.1', '{}', '{}')",
+            (b"\x01" * 16, b"\x00" * 16),
+        )
+        conn.execute(
+            "INSERT INTO page(doc_ord, gen, page, page_kind, method, producer_id) "
+            "VALUES(1, 1, 1, ?, ?, 1)",
+            (code("page_kind", "page"), code("method", "native")),
+        )
+        conn.execute(
+            "INSERT INTO block(block_id, doc_ord, gen, page, addr, cite, ord, kind, layer, "
+            "                  text, content_digest, os_kind, producer_id, method, trust, quote, "
+            "                  origin_operator, origin_driver, driver_schema_v, "
+            "                  restriction_bits, state) "
+            "VALUES(1, 1, 1, 1, 'p1/1', 'd1#1', 1, ?, ?, ?, ?, ?, 1, ?, 2, 4, 'op.parse', "
+            "       'drv', 1, 0, 0)",
+            (
+                code("kind", "paragraph"),
+                code("layer", "body"),
+                PARAGRAPH,
+                b"\x00" * 16,
+                code("origin_span_kind", "none"),
+                code("method", "native"),
+            ),
+        )
+        conn.execute(
+            "INSERT INTO ingest_scope(scope_id, discovered, indexed, skipped, scanned_at_ns, "
+            "                         complete) VALUES('corpus', 1, 1, 0, ?, 1)",
+            (NOW_NS,),
+        )
+        conn.execute("COMMIT")
+    finally:
+        conn.close()
 
 
 def _session(cwd: Path, argv: list[str]) -> dict[str, object]:
@@ -43,6 +111,8 @@ def _session(cwd: Path, argv: list[str]) -> dict[str, object]:
                 seen["instructions"] = init.instructions
                 listed = await client.list_tools()
                 seen["tools"] = [tool.model_dump(exclude_none=True) for tool in listed.tools]
+                called = await client.call_tool("ow_query", {"query": "fees payable"})
+                seen["called"] = called
 
     anyio.run(talk)
     return seen
@@ -66,3 +136,33 @@ def test_the_profile_flag_reaches_the_server(tmp_path: Path) -> None:
     (tmp_path / "omniweave.toml").write_text("", encoding="utf-8")
     seen = _session(tmp_path, ["--mcp", "--profile", "full"])
     assert seen["instructions"] == listing.instructions("full", corpus_resolves=False)
+
+
+def test_the_client_calls_ow_query_and_reads_the_answer_document(tmp_path: Path) -> None:
+    """The whole path: the host's `tools/call` -> step 5 in the child -> `QueryCaller` ->
+    `retrieve()` over the seeded store -> `pack()` -> `render()` -> one text content block."""
+    _seeded(tmp_path / ".omniweave" / "index.owstore")
+    body = HANDBOOK + '[serve]\ndefault_corpus = "handbook"\n'
+    (tmp_path / "omniweave.toml").write_text(body, encoding="utf-8")
+    called = _session(tmp_path, ["--mcp"])["called"]
+    assert isinstance(called, CallToolResult)
+    assert called.isError is False
+    (content,) = called.content
+    assert isinstance(content, TextContent)
+    document = content.text
+    assert document.startswith("ow/1 ")
+    assert "corpus=handbook@0" in document
+    assert "d1#1" in document
+    assert PARAGRAPH in document
+
+
+def test_with_no_corpus_declared_the_call_is_answered_with_ow_a_001(tmp_path: Path) -> None:
+    """10:540: the tool is listed and callable before the first `ow add`, and the answer says what
+    is missing rather than the call failing."""
+    (tmp_path / "omniweave.toml").write_text("", encoding="utf-8")
+    called = _session(tmp_path, ["--mcp"])["called"]
+    assert isinstance(called, CallToolResult)
+    assert called.isError is False
+    (content,) = called.content
+    assert isinstance(content, TextContent)
+    assert "[OW-A-001]" in content.text
