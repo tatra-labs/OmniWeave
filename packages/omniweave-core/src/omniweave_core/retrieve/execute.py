@@ -106,7 +106,16 @@ if TYPE_CHECKING:
     from omniweave_core.store import Reader
     from omniweave_core.store.reader import HydratedRow
 
-__all__ = ["ANSWER_FORMAT", "Hit", "Response", "Retrieval", "byte_exact", "execute", "retrieve"]
+__all__ = [
+    "ANSWER_FORMAT",
+    "Hit",
+    "Response",
+    "Retrieval",
+    "byte_exact",
+    "execute",
+    "freshness",
+    "retrieve",
+]
 
 ANSWER_FORMAT: Final[str] = "md"
 """The serializer format `byte_exact()`'s fourth conjunct is evaluated for. 07:2551's predicate
@@ -507,10 +516,12 @@ def _selected(fused: Sequence[FusedHit], k: int, max_blocks: int) -> list[int]:
     return chosen
 
 
-def _freshness(
+def freshness(
     coverage: Coverage,
 ) -> Literal["fresh", "refreshing", "stale", "unknown", "not_tracked"]:
     """`Verdict.freshness` from `Coverage`, which has no freshness field. D517.
+
+    Public because `ow_open`'s Answer prints the same roll-up and has no Verdict to read it from.
 
     07:2187 calls it *"`Reader.coverage()`'s freshness roll-up"* and 07:2945 defines it from the
     `unit` roster's `stat_fresh` predicate; `Coverage` carries the roster's three counts and no
@@ -665,7 +676,7 @@ def execute(
         caps=caps,
         fused=fused,
         returned=len(hits),
-        freshness=_freshness(coverage),
+        freshness=freshness(coverage),
         withheld=MappingProxyType({"rows": 0}),
         snapshot_gen=snapshot_gen,
         generation_at_pack=generation_at_pack,

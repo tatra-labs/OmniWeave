@@ -232,3 +232,52 @@ def test_a_compaction_marker_between_calls_brings_the_content_back(tmp_path: Pat
     assert LONG in second
     assert "ledger_reset_by_compaction" in second
     assert "**ow:sent-earlier**" in third
+
+
+def _tools(cwd: Path, calls: list[tuple[str, dict[str, object]]]) -> list[str]:
+    """Each `(tool, arguments)` in ONE child, in order; the text of each result."""
+    texts: list[str] = []
+    params = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "omniweave", "serve", "--mcp"],
+        env={"OMNIWEAVE_HOME": str(cwd / "owhome")},
+        cwd=cwd,
+    )
+
+    async def talk() -> None:
+        with anyio.fail_after(DEADLINE_S):
+            async with stdio_client(params) as (read, write), ClientSession(read, write) as client:
+                await client.initialize()
+                for name, arguments in calls:
+                    called = await client.call_tool(name, arguments)
+                    assert isinstance(called, CallToolResult)
+                    assert called.isError is False
+                    (content,) = called.content
+                    assert isinstance(content, TextContent)
+                    texts.append(content.text)
+
+    anyio.run(talk)
+    return texts
+
+
+def test_the_client_opens_a_cite_a_document_and_a_stale_address(tmp_path: Path) -> None:
+    """`ow_open`, the other half of the front door, across a real process boundary: the cite the
+    first `ow_query` returned resolves exactly, a file name resolves to its document, and an
+    address the store does not hold is an Answer saying so rather than a failed call."""
+    _seeded(tmp_path / ".omniweave" / "index.owstore", LONG)
+    body = HANDBOOK + '[serve]\ndefault_corpus = "handbook"\n'
+    (tmp_path / "omniweave.toml").write_text(body, encoding="utf-8")
+    cite, document, stale = _tools(
+        tmp_path,
+        [
+            ("ow_open", {"ref": "d1#1"}),
+            ("ow_open", {"ref": "contract.pdf"}),
+            ("ow_open", {"ref": "contract.pdf#p1/99"}),
+        ],
+    )
+    assert cite.startswith("ow/1 ok corpus=handbook@0 ")
+    assert LONG.strip() in cite
+    assert "resolved           = 1 of 1 refs" in cite
+    assert LONG.strip() in document
+    assert stale.startswith("ow/1 degraded ")
+    assert "[OW-M-032]" in stale

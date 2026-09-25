@@ -278,13 +278,11 @@ def test_tools_call_for_ow_query_returns_the_answer_and_commits_nothing(store: S
 
 
 def test_a_listed_tool_with_no_caller_yet_says_so(store: Store) -> None:
-    request = Request(
-        ident=1, method=TOOLS_CALL, params={"name": "ow_open", "arguments": {"ref": "d1#2"}}
-    )
+    request = Request(ident=1, method=TOOLS_CALL, params={"name": "ow_corpora", "arguments": {}})
     reply = _drive(_dispatcher(store).dispatch(request))
     assert reply is not None
     assert reply.body["error"]["code"] == METHOD_NOT_FOUND
-    assert "ow_open" in reply.body["error"]["message"]
+    assert "ow_corpora" in reply.body["error"]["message"]
 
 
 # ---------------------------------------------------------------------------------------------
