@@ -568,9 +568,9 @@ def test_initialize_names_this_build_and_omits_instructions_when_there_are_none(
 def test_the_one_string_initialize_owes_is_in_the_distribution_this_one_may_not_import() -> None:
     """D340, a fourth crossing, and the sharpest for `initialize`: 10:861 makes the instructions
     *"the only prose that survives deferral"*."""
-    owed = uninstructable()
-    assert any("omniweave.gen.instructions" in line for line in owed)
-    assert any("omniweave.surface.startup" in line for line in owed)
+    (owed,) = uninstructable()
+    assert "omniweave.gen.instructions" not in owed, "the string is read from the listing now"
+    assert "omniweave.surface.startup" in owed
     rows = tomllib.loads((REPO / "tools" / "layers.toml").read_text(encoding="utf-8"))
     assert "omniweave" not in rows["omniweave_serve"]
 

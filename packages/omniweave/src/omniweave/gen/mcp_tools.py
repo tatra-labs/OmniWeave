@@ -595,9 +595,10 @@ def listing(
 
     **This is the function `omniweave_serve` cannot reach.** 02:350 gives that distribution
     `["omniweave_core", "omniweave_ports"]`, so it holds the catalogue bytes and none of the three
-    transforms; `omniweave_serve.catalog.unservable()` names exactly this list. D340 is the entry
-    and this does not settle it. What it does is put the three in one place, so the decision left
-    is about one edge rather than about three homes.
+    transforms. D340 was decided for route 2: `omniweave.gen.listing` renders each listed tool's
+    transformed forms, with the same two functions this one applies, into
+    `omniweave_serve/mcp-listing-v1.json`, and the server selects from that file.
+    `test_gen_listing.py` binds its selection to this module's transforms.
     """
     built: list[dict[str, Any]] = []
     for action in listed(profile):
