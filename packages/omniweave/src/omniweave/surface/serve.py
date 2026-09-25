@@ -123,6 +123,7 @@ def _serve(
         corpus_resolves=decided.resolves,
         corpus=decided.corpus,
         corpora=stores(config, decided.corpora, cwd=cwd),
+        sources=stores(config, decided.corpora, cwd=cwd, field="source"),
         sessions=_sessions(cwd),
     )
 
@@ -142,8 +143,14 @@ def _sessions(cwd: Path) -> str | None:
     return None if found is None else str(found)
 
 
-def stores(config: Config, names: Iterable[str], *, cwd: Path) -> dict[str, str]:
-    """Each declared corpus's `.owstore`, absolute. D527.
+def stores(
+    config: Config, names: Iterable[str], *, cwd: Path, field: str = "path"
+) -> dict[str, str]:
+    """Each declared corpus's `.owstore` -- or, with `field="source"`, its source root -- absolute.
+
+    D527's rule for both, because both are `path` keys and neither is relative to anything the plan
+    names. `corpora.*.source` inherits `[roots] source` (18's config table), and an inherited or
+    built-in value resolves against `cwd`.
 
     `corpora.*.path` is a `path` key, and `config._as_path` normalises its separator and nothing
     else: no document says what a relative one is relative to. It is resolved against the
@@ -153,7 +160,7 @@ def stores(config: Config, names: Iterable[str], *, cwd: Path) -> dict[str, str]
     """
     out: dict[str, str] = {}
     for name in names:
-        key = f"corpora.{name}.path"
+        key = f"corpora.{name}.{field}"
         raw = Path(str(config.get(key)))
         declared = config.source_of(key).path
         base = declared.parent if declared is not None else cwd

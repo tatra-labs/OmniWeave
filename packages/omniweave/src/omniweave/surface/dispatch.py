@@ -62,6 +62,7 @@ class ServeEntry(Protocol):
         corpus_resolves: bool,
         corpus: str | None,
         corpora: Mapping[str, str],
+        sources: Mapping[str, str],
         sessions: str | None,
     ) -> int:
         """Serve until the host closes the stream; return the process exit code."""

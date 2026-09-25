@@ -105,6 +105,7 @@ sections 1.4-1.5 and 2.4, 07-store-and-retrieval.md section 3.8, and 16-roadmap.
 
 from __future__ import annotations
 
+import glob
 import hashlib
 import json
 import os
@@ -132,11 +133,19 @@ from omniweave_ports.types import (
 )
 
 from omniweave_core.config import KEYS
-from omniweave_core.errors import PolicyRefusal, StoreError
+from omniweave_core.errors import PolicyRefusal, ResourceLimit, StoreError
 from omniweave_core.identity import canonical_uri
-from omniweave_core.store.sqlite import BATCH_WAIT_MS, StoreThread, Unit
+from omniweave_core.store.sqlite import (
+    BATCH_WAIT_MS,
+    INTERACTIVE_WAIT_MS,
+    StoreThread,
+    Unit,
+    connect,
+    connect_readonly,
+)
 
 __all__ = [
+    "ADD_MAX_DISCOVERED",
     "CONNECTOR",
     "CURSOR_SEP",
     "DEFAULT_EXCLUDE",
@@ -159,6 +168,7 @@ __all__ = [
     "TMP_FIRST",
     "UNIT_COLUMNS",
     "UNIT_UPSERT_SQL",
+    "Added",
     "CandidateRecord",
     "FetchedRecord",
     "FsLocal",
@@ -169,6 +179,7 @@ __all__ = [
     "StatTriple",
     "Tally",
     "TrustClass",
+    "add_sources",
     "fetch_local",
     "in_scope",
     "iter_candidates",
@@ -1534,3 +1545,198 @@ def refuse_unmigrated(thread: StoreThread) -> None:
             f"the roster writer needs {', '.join(missing)}; this store has not been migrated",
             fix="ow store migrate",
         )
+
+
+# --------------------------------------------------------------------------------------------
+# 6. `ow_add`'s roster step: every source, one transaction each, bounded before it opens
+# --------------------------------------------------------------------------------------------
+
+ADD_MAX_DISCOVERED: Final[int] = 20_000
+"""10:1127-1130: *"A directory source is walked with a `take(N+1)`-then-check against
+`ADD_MAX_DISCOVERED = 20_000` units, so the limit is hit at the read boundary rather than after the
+memory is spent."* A breach writes nothing."""
+
+_KNOWN_BATCH: Final[int] = 500
+"""Bound parameters per `unit` lookup, well under SQLite's 32,766."""
+
+_SETTLED: Final[frozenset[str]] = frozenset({"discovered", "acquiring"})
+"""The two `unit.state`s whose document is not yet in the store, whatever its stat triple says."""
+
+
+@dataclass(frozen=True, slots=True)
+class Added:
+    """What one `ow_add` roster step found and wrote. The report's counts, from the walk itself.
+
+    `unchanged` are units already in the store, past acquisition, whose stored triple still
+    `stat_fresh()`es against the one observed now. Every other rostered unit is `queued`: new, or
+    changed, or never acquired. The drain's own change-detection ladder decides what a queued
+    unit costs (05:337), so `queued` is what the drain will look at and not what it will parse.
+    """
+
+    scopes: tuple[str, ...]
+    discovered: int
+    skipped: int
+    unchanged: int
+    queued: tuple[str, ...]
+    skipped_why: Mapping[str, int]
+    written: bool
+
+
+def add_sources(
+    store: Path,
+    sources: Sequence[Path],
+    *,
+    now_ns: int,
+    dry_run: bool = False,
+    max_discovered: int = ADD_MAX_DISCOVERED,
+) -> Added:
+    """Roster `sources` into the store at `store`: 10:1114's (a), and nothing after it.
+
+    *"`ow_add` (a) writes `unit` rows plus one `ingest_scope` row in a single transaction,
+    enqueue-before-lock"*. Each source is one transaction, through a `StoreThread` at
+    `INTERACTIVE_WAIT_MS`, so an interactive add does not sit behind a batch writer (07:2730).
+
+    **Every source is walked before anything is written**, and the whole call is refused with
+    `OW_RESOURCE_LIMIT` if the walks discover more than `max_discovered` units: 10:1127-1130's
+    *"nothing is written"*.
+
+    **A directory gets its `ingest_scope` row and a file does not** (D556). `scope_id` is the
+    canonical prefix of the walked root (07 section 3.8), and `SCOPE_UPSERT_SQL` replaces every
+    column of an existing row. A file's walked root is its parent, so a scope row for one added file
+    would overwrite the parent's last complete scan with `discovered = 1`, and gate 4 would then
+    read one file's coverage as the directory's.
+
+    A store that does not exist yet is created and migrated, because the first `ow_add` of a
+    corpus is the case 10:541-542 names (*"before the first `ow add`"*). A `dry_run` writes nothing,
+    the store included.
+    """
+    from omniweave_core.store import migrate  # noqa: PLC0415 -- the add path only
+
+    generation = _generation(store)
+    walks: list[tuple[str | None, list[RosterRow], Tally]] = []
+    discovered = 0
+    for source in sources:
+        scope_id, rows, tally = _walk_source(
+            source, now_ns=now_ns, generation=generation, bound=max_discovered + 1
+        )
+        discovered += tally.discovered
+        if discovered > max_discovered:
+            raise ResourceLimit(
+                f"the sources hold more than {max_discovered} units, and ow_add walks at most "
+                f"that many before writing anything",
+                limit="ADD_MAX_DISCOVERED",
+                fix="ow ingest <directory>   # the CLI ingests a large tree in batches",
+            )
+        walks.append((scope_id, rows, tally))
+    known = _known(store, [row.unit_uri for _, rows, _ in walks for row in rows])
+    if not dry_run:
+        if not store.exists():
+            store.parent.mkdir(parents=True, exist_ok=True)
+            connection = connect(store)
+            try:
+                migrate.apply_pending(connection, now_ns=now_ns)
+            finally:
+                connection.close()
+        with StoreThread(lambda: connect(store)) as thread:
+            for scope_id, rows, tally in walks:
+                write_roster(
+                    thread,
+                    rows,
+                    tally=tally if scope_id is not None else None,
+                    scope_id=scope_id,
+                    scanned_at_ns=now_ns,
+                    plan_batch=max(len(rows), 1),
+                    wait_ms=INTERACTIVE_WAIT_MS,
+                )
+    return _added(walks, known, written=not dry_run)
+
+
+def _walk_source(
+    source: Path, *, now_ns: int, generation: int, bound: int
+) -> tuple[str | None, list[RosterRow], Tally]:
+    """One source's rows, at most `bound` of them. A file is its parent walked for its name."""
+    tally = Tally()
+    if source.is_dir():
+        locator = locator_for(source)
+        scope = Scope(roots=(str(source),))
+        scope_id: str | None = scope_id_for(locator)
+    else:
+        locator = locator_for(source.parent)
+        scope = Scope(roots=(str(source.parent),), include=(glob.escape(source.name),))
+        scope_id = None
+    rows = list(
+        scan(
+            locator,
+            scope,
+            IngestGuards(),
+            indexed_at_ns=now_ns,
+            last_seen_gen=generation,
+            tally=tally,
+            scope_rule="explicit" if scope_id is None else "inherited",
+            max_units=bound,
+        )
+    )
+    return scope_id, rows, tally
+
+
+def _added(
+    walks: Sequence[tuple[str | None, list[RosterRow], Tally]],
+    known: Mapping[str, tuple[StatTriple, str]],
+    *,
+    written: bool,
+) -> Added:
+    unchanged = 0
+    queued: list[str] = []
+    why: dict[str, int] = {}
+    for _, rows, tally in walks:
+        for reason, count in tally.skipped_why.items():
+            why[reason] = why.get(reason, 0) + count
+        for row in rows:
+            held = known.get(row.unit_uri)
+            if held is not None and held[1] not in _SETTLED and stat_fresh(held[0], row.stat):
+                unchanged += 1
+            else:
+                queued.append(row.unit_uri)
+    return Added(
+        scopes=tuple(scope_id for scope_id, _, _ in walks if scope_id is not None),
+        discovered=sum(tally.discovered for _, _, tally in walks),
+        skipped=sum(tally.skipped for _, _, tally in walks),
+        unchanged=unchanged,
+        queued=tuple(queued),
+        skipped_why=why,
+        written=written,
+    )
+
+
+def _known(store: Path, uris: Sequence[str]) -> dict[str, tuple[StatTriple, str]]:
+    """The stored triple and state of each walked unit already rostered, read-only, in batches."""
+    if not store.exists() or not uris:
+        return {}
+    out: dict[str, tuple[StatTriple, str]] = {}
+    connection = connect_readonly(store)
+    try:
+        for start in range(0, len(uris), _KNOWN_BATCH):
+            chunk = list(uris[start : start + _KNOWN_BATCH])
+            marks = ", ".join("?" for _ in chunk)
+            rows = connection.execute(
+                f"SELECT unit_uri, size, mtime_ns, indexed_at_ns, state FROM unit "  # noqa: S608
+                f"WHERE unit_uri IN ({marks})",
+                chunk,
+            ).fetchall()
+            for uri, size, mtime, indexed, state in rows:
+                out[str(uri)] = (StatTriple(size or 0, mtime or 0, indexed or 0), str(state))
+    finally:
+        connection.close()
+    return out
+
+
+def _generation(store: Path) -> int:
+    """The store's committed generation, which `unit.last_seen_gen` is stamped with."""
+    if not store.exists():
+        return 0
+    connection = connect_readonly(store)
+    try:
+        row = connection.execute("SELECT v FROM index_state WHERE k = 'generation'").fetchone()
+    finally:
+        connection.close()
+    return 0 if row is None else int(row[0])

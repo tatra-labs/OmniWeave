@@ -51,6 +51,7 @@ that presents as a confident answer. `serve_emission`, 10:984's accounting row, 
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -66,8 +67,8 @@ from omniweave_core.retrieve.types import Query, RetrievalPolicy
 from omniweave_core.store import reader as store_reader
 from omniweave_core.store import sqlite as store_sqlite
 
+from omniweave_serve import adding, opening
 from omniweave_serve import corpora as corpora_tool
-from omniweave_serve import opening
 from omniweave_serve.answers import blocked, refusal, text_result, unreadable
 from omniweave_serve.stdio import INVALID_PARAMS, METHOD_NOT_FOUND, Reply, failure, result
 
@@ -93,11 +94,13 @@ _ARGUMENTS: Final[frozenset[str]] = frozenset(
 )
 """`ow_query`'s published `inputSchema` properties. A test binds this set to the catalogue."""
 
+_TOOLS: Final[frozenset[str]] = frozenset(
+    {QUERY_TOOL, opening.OPEN_TOOL, corpora_tool.CORPORA_TOOL, adding.ADD_TOOL}
+)
+"""The four listed tools, each with a handler."""
 _NOT_SERVED: Final[frozenset[str]] = frozenset({"scope", "route_hints"})
 _MAX_CHARS: Final[tuple[int, int]] = (1_000, 24_000)
-_PENDING: Final[str] = (
-    "ow_add is the one listed tool this build does not answer; {name} is not built"
-)
+_PENDING: Final[str] = "{name} is not a tool this server answers"
 
 
 @dataclass(slots=True)
@@ -112,20 +115,24 @@ class QueryCaller:
     default: str | None = None
     policy: RetrievalPolicy = field(default_factory=RetrievalPolicy)
     wall_ns: Callable[[], int] = field(default_factory=lambda: SystemClock().wall_ns)
+    monotonic_ns: Callable[[], int] = time.monotonic_ns
+    """The clock `retrieve()`'s two deadlines read (07:1126), injectable like `wall_ns`."""
     session: StdioSession | None = None
+    sources: Mapping[str, Path] = field(default_factory=dict)
+    """Each corpus's `corpora.*.source`, absolute: `ow_add`'s roots (10:485)."""
 
     async def call(self, request: Request, surface: Surface) -> Reply:
-        """Answer one `tools/call`. Three of the four listed tools are built; `ow_add` says so."""
+        """Answer one `tools/call`: the four listed tools, and `METHOD_NOT_FOUND` for any other."""
         del surface
         params = request.params
         name = params.get("name")
-        if name not in {QUERY_TOOL, opening.OPEN_TOOL, corpora_tool.CORPORA_TOOL}:
+        if name not in _TOOLS:
             return Reply(
                 body=failure(
                     request.ident,
                     METHOD_NOT_FOUND,
                     _PENDING.format(name=name),
-                    data={"owed": "ow_add has no Caller yet"},
+                    data={"tools": sorted(_TOOLS)},
                 )
             )
         arguments = params.get("arguments") or {}
@@ -133,6 +140,8 @@ class QueryCaller:
             return Reply(body=failure(request.ident, INVALID_PARAMS, "arguments is not an object"))
         if name == corpora_tool.CORPORA_TOOL:
             return Reply(body=result(request.ident, self.respond_corpora(arguments)))
+        if name == adding.ADD_TOOL:
+            return Reply(body=result(request.ident, self.respond_add(arguments)))
         respond = self.respond if name == QUERY_TOOL else self.respond_open
         body, sent = respond(arguments)
         session = self.session
@@ -173,6 +182,31 @@ class QueryCaller:
             session.calls += 1
         return text_result(document), emitted(packed, document)
 
+    def respond_add(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
+        """`ow_add`'s result. It sends no evidence, so it has nothing to record as sent."""
+        refused = adding.check(arguments)
+        if refused is not None:
+            return refused
+        chosen = self._corpus(arguments.get("corpus"))
+        if isinstance(chosen, dict):
+            return chosen
+        corpus, store = chosen
+        root = self.sources.get(corpus)
+        if root is None:
+            return refusal(
+                "",
+                f"corpus {corpus!r} has no source root this server was given",
+                "declare corpora.<name>.source, or [roots] source, in omniweave.toml",
+            )
+        return adding.respond(
+            arguments,
+            corpus=corpus,
+            store=store,
+            source_root=root,
+            roots=tuple(self.sources.values()),
+            now_ns=self.wall_ns(),
+        )
+
     def respond_corpora(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
         """`ow_corpora`'s result. It sends no evidence, so it has nothing to record as sent."""
         return corpora_tool.respond(
@@ -210,7 +244,7 @@ class QueryCaller:
             return unreadable(corpus, path, error)
         try:
             reader = store_reader.SqliteReader(connection, now_ns=self.wall_ns())
-            return execute(reader, Query(text=text), self.policy)
+            return execute(reader, Query(text=text), self.policy, monotonic_ns=self.monotonic_ns)
         except UsageError as error:
             return refusal(error.numeric(), str(error), error.fix)
         except OwError as error:

@@ -108,7 +108,7 @@ def store(tmp_path: Path) -> Iterator[Store]:
 def _caller(store: Store, **kw: Any) -> QueryCaller:
     fields: dict[str, Any] = {"corpora": {"handbook": store.path}, "default": "handbook"}
     fields.update(kw)
-    return QueryCaller(wall_ns=lambda: NOW_NS, **fields)
+    return QueryCaller(wall_ns=lambda: NOW_NS, monotonic_ns=lambda: 0, **fields)
 
 
 def _text(result: dict[str, Any]) -> str:

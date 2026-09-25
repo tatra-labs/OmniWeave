@@ -315,3 +315,65 @@ def test_the_client_lists_the_corpora_and_reads_a_card(tmp_path: Path) -> None:
     (whole,) = json.loads(card)["corpora"]
     assert whole["card_gen"] == 1
     assert "achieved" in whole
+
+
+def _results(cwd: Path, calls: list[tuple[str, dict[str, object]]]) -> list[CallToolResult]:
+    """`_tools()` without its `isError` assertion, for the one result that is allowed it."""
+    out: list[CallToolResult] = []
+    params = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "omniweave", "serve", "--mcp"],
+        env={"OMNIWEAVE_HOME": str(cwd / "owhome")},
+        cwd=cwd,
+    )
+
+    async def talk() -> None:
+        with anyio.fail_after(DEADLINE_S):
+            async with stdio_client(params) as (read, write), ClientSession(read, write) as client:
+                await client.initialize()
+                for name, arguments in calls:
+                    out.append(await client.call_tool(name, arguments))
+
+    anyio.run(talk)
+    return out
+
+
+def test_the_client_adds_a_directory_and_is_refused_a_path_outside_the_roots(
+    tmp_path: Path,
+) -> None:
+    """`ow_add` across a real process boundary: the first add creates the store beside the real
+    `omniweave.toml` and rosters the directory, and a path outside `[roots] source` is 10:486's
+    `isError: true` -- the one result on this surface an agent is told to abandon."""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "a.txt").write_text("Fees are payable monthly.", encoding="utf-8")
+    (docs / "b.txt").write_text("Notice is thirty days.", encoding="utf-8")
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.txt"
+    outside.write_text("not in the corpus", encoding="utf-8")
+    body = HANDBOOK + '[serve]\ndefault_corpus = "handbook"\n'
+    (tmp_path / "omniweave.toml").write_text(body, encoding="utf-8")
+    try:
+        added, refused, listed = _results(
+            tmp_path,
+            [
+                ("ow_add", {"source": "docs"}),
+                ("ow_add", {"source": str(outside)}),
+                ("ow_corpora", {}),
+            ],
+        )
+    finally:
+        outside.unlink()
+    assert added.isError is False
+    (content,) = added.content
+    assert isinstance(content, TextContent)
+    report = json.loads(content.text)
+    assert (report["discovered"], report["queued"]) == (2, 2)
+    assert (tmp_path / ".omniweave" / "index.owstore").is_file()
+    assert refused.isError is True
+    (content,) = refused.content
+    assert isinstance(content, TextContent)
+    assert content.text.startswith("ow: OW-A-007: ")
+    (content,) = listed.content
+    assert isinstance(content, TextContent)
+    (row,) = json.loads(content.text)["corpora"]
+    assert (row["readable"], row["card_stale"]) == (True, True), "D550: nothing writes a card"
