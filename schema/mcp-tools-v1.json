@@ -8,9 +8,6 @@
       "idempotentHint": true,
       "openWorldHint": true
     },
-    "outputSchema": {
-      "$ref": "schema/add-out-v1.json"
-    },
     "inputSchema": {
       "type": "object",
       "additionalProperties": false,
@@ -50,9 +47,6 @@
       "destructiveHint": false,
       "idempotentHint": true,
       "openWorldHint": false
-    },
-    "outputSchema": {
-      "$ref": "schema/corpora-out-v1.json"
     },
     "inputSchema": {
       "type": "object",

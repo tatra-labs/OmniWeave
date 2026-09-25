@@ -16,6 +16,7 @@ the Answer document, rendered in the child from a retrieval over that store (W7.
 
 from __future__ import annotations
 
+import json
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -281,3 +282,36 @@ def test_the_client_opens_a_cite_a_document_and_a_stale_address(tmp_path: Path) 
     assert LONG.strip() in document
     assert stale.startswith("ow/1 degraded ")
     assert "[OW-M-032]" in stale
+
+
+def test_the_client_lists_the_corpora_and_reads_a_card(tmp_path: Path) -> None:
+    """D549, across a real process boundary: with no `outputSchema` in `tools/list` the reference
+    client accepts `ow_corpora`'s one JSON text block. With 18:1348's `$ref` it raised on every
+    call, before any content was read."""
+    from omniweave_core.store import card as store_card  # noqa: PLC0415
+
+    store = tmp_path / ".omniweave" / "index.owstore"
+    _seeded(store, LONG)
+    conn = ow.connect(store)
+    conn.execute("BEGIN IMMEDIATE")
+    row = store_card.build_card(
+        conn,
+        name="handbook",
+        root="/corpus",
+        card_gen=1,
+        built_at_ns=NOW_NS,
+        writer_version="0.1.0",
+    )
+    store_card.write_card(conn, row)
+    conn.execute("COMMIT")
+    conn.close()
+    body = HANDBOOK + '[serve]\ndefault_corpus = "handbook"\n'
+    (tmp_path / "omniweave.toml").write_text(body, encoding="utf-8")
+    listed, card = _tools(tmp_path, [("ow_corpora", {}), ("ow_corpora", {"detail": "card"})])
+    (entry,) = json.loads(listed)["corpora"]
+    assert (entry["name"], entry["default"], entry["readable"]) == ("handbook", True, True)
+    assert entry["card_stale"] is False
+    assert entry["counts"]["blocks"] == 1
+    (whole,) = json.loads(card)["corpora"]
+    assert whole["card_gen"] == 1
+    assert "achieved" in whole
