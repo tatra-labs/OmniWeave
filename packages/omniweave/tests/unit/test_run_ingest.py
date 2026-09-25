@@ -343,3 +343,64 @@ def test_the_queue_forgets_an_identification_only_when_its_commit_stuck() -> Non
     assert queue.complete(1, 1, object()) is True  # type: ignore[arg-type]
     assert queue.complete(2, 1, object()) is False  # type: ignore[arg-type]
     assert len(ledger) == 1
+
+
+# ---------------------------------------------------------------------------------------------
+# detection at identify: 05:559, `acquired -> identified`
+# ---------------------------------------------------------------------------------------------
+
+DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+OPC_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
+
+
+def _docx(path: Path, *, rels: str | None = None) -> Path:
+    import zipfile  # noqa: PLC0415
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(
+            "[Content_Types].xml",
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            f'<Override PartName="/word/document.xml" ContentType="{DOCX_TYPE}.main+xml"/></Types>',
+        )
+        archive.writestr(
+            "_rels/.rels",
+            rels
+            or '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            f'<Relationship Id="r1" Type="{OPC_REL}" Target="word/document.xml"/></Relationships>',
+        )
+        archive.writestr("word/document.xml", "<w:document/>")
+    return path
+
+
+def test_identify_writes_each_unit_s_format_media_type_and_evidence(tmp_path: Path) -> None:
+    """D166 closed: `unit.format` and `unit.media_type` had no writer, and every rule of 05 section
+    4.4 reads `unit.format` first."""
+    store, config = _project(tmp_path, "notes.txt", "sheet.csv")
+    (tmp_path / "docs" / "sheet.csv").write_text("a,b\n1,2\n3,4\n5,6\n", encoding="utf-8")
+    _docx(tmp_path / "docs" / "report.doc")
+    report = _run(tmp_path, store, config, paths=(tmp_path / "docs",))
+    assert report.formats == {"csv": 1, "docx": 1, "txt": 1}
+    assert "  detect    csv 1, docx 1, txt 1" in report.lines()
+    rows = _rows(
+        store,
+        "SELECT format, media_type, json_extract(derived, '$.format_evidence.chosen.basis'), "
+        "json_extract(derived, '$.format_evidence.extension_mismatch') FROM unit ORDER BY format",
+    )
+    assert rows == [
+        ("csv", "text/csv", "content_probe", 0),
+        ("docx", DOCX_TYPE, "container_identity", 1),
+        ("txt", "text/plain", "content_probe", 0),
+    ]
+
+
+def test_a_container_whose_identity_part_has_a_dtd_fails_its_unit(tmp_path: Path) -> None:
+    """05:748-754's refusal, through `op.identify`'s one failure path: the unit is `failed` with the
+    class, no part is counted, and the rest of the corpus is identified."""
+    store, config = _project(tmp_path, "fine.txt")
+    hostile = '<!DOCTYPE r [<!ENTITY a "a">]><Relationships/>'
+    _docx(tmp_path / "docs" / "bomb.docx", rels=hostile)
+    report = _run(tmp_path, store, config, paths=(tmp_path / "docs",))
+    assert report.states == {IDENTIFIED: 1, discover.FAILED: 1}
+    failed = _rows(store, "SELECT acq_failure_class, part_count FROM unit WHERE state = 'failed'")
+    assert failed == [("resource_limit", None)]
