@@ -133,12 +133,23 @@ def _seed(built: Built, *, scope: bool = True, texts: dict[int, str] | None = No
     conn.execute("COMMIT")
 
 
+def _frozen() -> int:
+    """A clock that never moves, for every test that is not about time.
+
+    `retrieve()`'s two deadlines read `monotonic_ns`, and on the real clock a loaded machine --
+    `-n auto` with every core busy -- can spend a Channel's millisecond budget before its first
+    statement returns. The query deadline then turns every Channel `OFF` and a test about ranking
+    fails on timing. The one test that IS about time brings its own `Clock`.
+    """
+    return 0
+
+
 def _reader(built: Built) -> rd.SqliteReader:
     return rd.SqliteReader(ow.connect_readonly(built.path), now_ns=NOW_NS)
 
 
 def _ask(built: Built, q: Query, pol: RetrievalPolicy = POLICY) -> Response:
-    return retrieve(_reader(built), q, pol)
+    return retrieve(_reader(built), q, pol, monotonic_ns=_frozen)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -374,7 +385,7 @@ class Committing:
 def test_a_commit_between_the_ranking_and_the_pack_is_gate_3(built: Built) -> None:
     _seed(built)
     reader = Committing(_reader(built), built.writer)
-    response = retrieve(reader, Query(text="fees payable"), POLICY)  # type: ignore[arg-type]
+    response = retrieve(reader, Query(text="fees payable"), POLICY, monotonic_ns=_frozen)  # type: ignore[arg-type]
     assert response.hits[0].text == TEXTS[3], "the payload is the generation that was ranked"
     assert response.verdict.snapshot_gen == 0
     assert "store_changed_mid_query" in response.verdict.gates
@@ -483,7 +494,7 @@ def _document(built: Built, q: Query, **pack_kw: object) -> str:
     from omniweave_core.answer import render  # noqa: PLC0415
     from omniweave_core.answer.pack import pack  # noqa: PLC0415
 
-    retrieval = ex.execute(_reader(built), q, POLICY)
+    retrieval = ex.execute(_reader(built), q, POLICY, monotonic_ns=_frozen)
     packed = pack(retrieval, corpus="handbook", **pack_kw)  # type: ignore[arg-type]
     return render(packed.answer, max_chars=packed.max_chars)
 
@@ -554,7 +565,7 @@ def _packed(built: Built, ledger: object = None, **kw: object) -> tuple[object, 
     from omniweave_core.answer import render  # noqa: PLC0415
     from omniweave_core.answer.pack import pack  # noqa: PLC0415
 
-    retrieval = ex.execute(_reader(built), Query(text="fees payable"), POLICY)
+    retrieval = ex.execute(_reader(built), Query(text="fees payable"), POLICY, monotonic_ns=_frozen)
     retrieval = kw.pop("adjust", lambda r: r)(retrieval)  # type: ignore[operator]
     packed = pack(retrieval, corpus="handbook", ledger=ledger, **kw)  # type: ignore[arg-type]
     return packed, render(packed.answer, max_chars=packed.max_chars)

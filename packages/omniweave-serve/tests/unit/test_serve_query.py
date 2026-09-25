@@ -133,7 +133,7 @@ def long_store(tmp_path: Path) -> Iterator[Store]:
 def _caller(store: Store, **kw: Any) -> QueryCaller:
     fields: dict[str, Any] = {"corpora": {"handbook": store.path}, "default": "handbook"}
     fields.update(kw)
-    return QueryCaller(wall_ns=lambda: NOW_NS, **fields)
+    return QueryCaller(wall_ns=lambda: NOW_NS, monotonic_ns=lambda: 0, **fields)
 
 
 def _text(result: dict[str, Any]) -> str:
@@ -277,14 +277,17 @@ def test_tools_call_for_ow_query_returns_the_answer_and_commits_nothing(store: S
     assert _text(reply.body["result"]).startswith("ow/1 ")
 
 
-def test_a_listed_tool_with_no_caller_yet_says_so(store: Store) -> None:
+def test_a_name_that_is_not_a_listed_tool_is_method_not_found(store: Store) -> None:
+    """All four listed tools have a handler; `ow_grid` is a `full`-profile name with no published
+    schema (D507), and anything else is not a tool at all."""
     request = Request(
-        ident=1, method=TOOLS_CALL, params={"name": "ow_add", "arguments": {"source": "x.pdf"}}
+        ident=1, method=TOOLS_CALL, params={"name": "ow_grid", "arguments": {"ref": "d1#1"}}
     )
     reply = _drive(_dispatcher(store).dispatch(request))
     assert reply is not None
     assert reply.body["error"]["code"] == METHOD_NOT_FOUND
-    assert "ow_add" in reply.body["error"]["message"]
+    assert "ow_grid" in reply.body["error"]["message"]
+    assert reply.body["error"]["data"]["tools"] == ["ow_add", "ow_corpora", "ow_open", "ow_query"]
 
 
 # ---------------------------------------------------------------------------------------------

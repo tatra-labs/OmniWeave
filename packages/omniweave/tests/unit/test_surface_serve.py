@@ -42,6 +42,7 @@ class Recorder:
     calls: list[dict[str, object]] = field(default_factory=list)
     stores: list[tuple[str | None, dict[str, str]]] = field(default_factory=list)
     sessions: list[str | None] = field(default_factory=list)
+    sources: list[dict[str, str]] = field(default_factory=list)
 
     def __call__(
         self,
@@ -51,9 +52,11 @@ class Recorder:
         corpus_resolves: bool,
         corpus: str | None,
         corpora: Mapping[str, str],
+        sources: Mapping[str, str],
         sessions: str | None,
     ) -> int:
         self.sessions.append(sessions)
+        self.sources.append(dict(sources))
         self.calls.append(
             {"profile": profile, "compact": compact, "corpus_resolves": corpus_resolves}
         )

@@ -106,6 +106,7 @@ def test_a_bad_profile_raises_before_stdio_is_bound(monkeypatch: pytest.MonkeyPa
             corpus_resolves=True,
             corpus=None,
             corpora={},
+            sources={},
             sessions=None,
             stderr=io.StringIO(),
         )

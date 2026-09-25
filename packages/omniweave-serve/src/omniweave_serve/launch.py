@@ -3,10 +3,11 @@
 `omniweave` may not import this distribution and this one may not import `omniweave` (02:350,
 02:361). So `ow serve --mcp` runs startup step 5 where it lives, then reaches this function
 through the `omniweave.serve` entry-point group that `pyproject.toml` declares, the way the
-framework reaches every driver it does not import. Only data crosses the boundary: six
+framework reaches every driver it does not import. Only data crosses the boundary: seven
 keyword arguments of builtin types, because a type defined on either side is one the other side
-cannot name. `corpus` and `corpora` are what `query.QueryCaller` searches, and `sessions` is the
-directory its `emission.StdioSession` reads compaction markers from.
+cannot name. `corpus` and `corpora` are what `query.QueryCaller` searches, `sources` are the roots
+`ow_add` may read, and `sessions` is the directory its `emission.StdioSession` reads compaction
+markers from.
 
 ## WHY `asyncio` IS NAMED HERE, ONCE
 
@@ -79,6 +80,7 @@ def run(
     corpus_resolves: bool,
     corpus: str | None,
     corpora: Mapping[str, str],
+    sources: Mapping[str, str],
     sessions: str | None,
     stderr: TextIO | None = None,
 ) -> int:
@@ -102,6 +104,7 @@ def run(
         default=corpus,
         wall_ns=clock.wall_ns,
         session=session,
+        sources={name: Path(path) for name, path in sources.items()},
     )
     dispatcher = McpDispatcher.create(surface, caller=caller)
     err = stderr or sys.stderr
