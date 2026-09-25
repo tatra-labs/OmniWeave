@@ -30,7 +30,8 @@ true` and does not print *"up to date"* (10:1380-1382). An unreadable lock is th
 zero-removed result from an unreadable lock is not a clean bill of health"*.
 
 `--check` adds 10:1371's byte diff of the rendered `SKILL.md` set against `skills/expected/`, which
-is `omniweave.skills.router.check`. It fails on a difference, because it is a gate.
+is `omniweave.skills.router.check`, and `references/cite.md` against its render
+(`omniweave.skills.cite.check`, D505). It fails on a difference, because it is a gate.
 """
 
 from __future__ import annotations
@@ -45,7 +46,7 @@ from omniweave.install.skilldir import HASH_MISMATCH, is_link
 from omniweave.install.skills_lock import SOURCE
 from omniweave.install.skillset import discovered, shipped
 from omniweave.install.verbs import OK, USAGE, Outcome
-from omniweave.skills import router
+from omniweave.skills import cite, router
 from omniweave.skills.hash import ALGO, bundle_sha256, first_difference
 from omniweave.skills.tier import CORE, is_core
 
@@ -238,10 +239,10 @@ def check(env: HostEnv, *, byte_diff: bool = False) -> Outcome:
     lines, failed = _core_lines(env, want[CORE], recorded)
     warned = _lock_lines(env, want, lines)
     if byte_diff and env.skills_root is not None:
-        differences = router.check(env.skills_root)
+        differences = (*router.check(env.skills_root), *cite.check(env.skills_root))
         lines.extend(f"  --check: {one}" for one in differences)
         if not differences:
-            lines.append("  --check: skills/expected/ matches the render")
+            lines.append("  --check: skills/expected/ and references/cite.md match the render")
         failed = failed or bool(differences)
     if not failed and not warned:
         lines.append("up to date")
