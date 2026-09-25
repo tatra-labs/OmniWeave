@@ -57,10 +57,12 @@ from omniweave.run.discover import (
     UNSEEN,
     WALKED_PATH_KEY,
     Acquired,
+    AcquirePass,
     Backpressure,
     RosterFeed,
     StoredStat,
     acq_retryable,
+    acquire_pending,
     acquire_unit,
     content_digest,
     discover,
@@ -583,6 +585,7 @@ def test_an_unchanged_unit_reads_zero_bytes(tmp_path: Path) -> None:
             size=info.st_size, mtime_ns=info.st_mtime_ns, indexed_at_ns=info.st_mtime_ns + 10**10
         ),
         settled_gen=3,
+        content_sha256="0" * 64,
     )
 
     def never(_path: Path, _limit: int) -> bytes:
@@ -1027,3 +1030,95 @@ def test_the_water_mark_defaults_are_the_plans_two_numbers(plan: PlanDocs) -> No
     assert hits, "08:880's row names both thresholds"
     marks = Backpressure(high_water=50_000, low_water=25_000)
     assert marks.high_water == 2 * marks.low_water, "08:885's 2:1 gap"
+
+
+# ---------------------------------------------------------------------------------------------
+# The acquisition pass: W7.3w's first caller of the four statements above
+# ---------------------------------------------------------------------------------------------
+
+
+LATE_NS = 9 * 10**18
+"""Late enough that every stat triple a walk writes reads fresh: `stat_fresh()`'s third clause."""
+
+
+def _rostered(store: ow.StoreThread, root: Path, *names: str, generation: int = 1) -> None:
+    for name in names:
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_bytes(name.encode())
+    discover(
+        store,
+        root,
+        Scope(roots=(str(root),)),
+        IngestGuards(),
+        indexed_at_ns=LATE_NS,
+        generation=generation,
+        scanned_at_ns=1,
+    )
+
+
+def test_a_pass_reads_every_unit_the_walk_saw_and_writes_its_digest(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """The walk's triple is the WALK's, not an indexing's, so it looks fresh at `indexed_at_ns =
+    LATE_NS` -- and the units are read anyway, because none has a digest to preserve (D561)."""
+    root = tmp_path / "src"
+    _rostered(store, root, "a.txt", "b/c.txt")
+    done = acquire_pending(store, generation=1, indexed_at_ns=LATE_NS)
+    assert done == AcquirePass(acquired=2, bytes_read=len("a.txt") + len("b/c.txt"))
+    rows = (
+        _reader(tmp_path)
+        .execute("SELECT state, content_sha256 IS NOT NULL, bytes FROM unit")
+        .fetchall()
+    )
+    assert sorted(rows) == [(ACQUIRED, 1, 5), (ACQUIRED, 1, 7)]
+
+
+def test_a_pass_reads_a_failing_unit_once_and_leaves_the_next_attempt_to_the_next_run(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """`PENDING_ACQUISITION_AFTER_SQL`'s reason: a failure with no `retry_after` satisfies the
+    pending query again at once, and without the key it is read `MAX_ATTEMPTS_TODAY` times."""
+    root = tmp_path / "src"
+    _rostered(store, root, "a.txt", "b.txt")
+    reads: list[str] = []
+
+    def unreadable(path: Path, _limit: int) -> bytes:
+        reads.append(path.name)
+        raise OSError("gone")
+
+    done = acquire_pending(
+        store, generation=1, indexed_at_ns=LATE_NS, plan_batch=1, read=unreadable
+    )
+    assert (done.failed, done.acquired) == (2, 0)
+    assert sorted(reads) == ["a.txt", "b.txt"]
+    rows = _reader(tmp_path).execute("SELECT state, acq_attempts_total FROM unit").fetchall()
+    assert rows == [(FAILED, 1), (FAILED, 1)]
+
+
+def test_a_pass_reads_only_this_generation_s_units(store: ow.StoreThread, tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _rostered(store, root, "a.txt", generation=1)
+    _rostered(store, tmp_path / "other", "b.txt", generation=2)
+    assert acquire_pending(store, generation=2, indexed_at_ns=LATE_NS).acquired == 1
+    rows = _reader(tmp_path).execute("SELECT state FROM unit ORDER BY unit_uri").fetchall()
+    assert sorted(rows) == [(ACQUIRED,), ("discovered",)]
+
+
+def test_the_free_rung_skips_only_a_unit_whose_bytes_were_read_before(tmp_path: Path) -> None:
+    """D561. A skip preserves a digest; a stored triple with no digest behind it is a walk's."""
+    path = tmp_path / "a.txt"
+    path.write_bytes(b"x" * 8)
+    info = path.stat()
+    triple = StatTriple(size=8, mtime_ns=info.st_mtime_ns, indexed_at_ns=info.st_mtime_ns + 10**10)
+    never_read = acquire_unit(
+        path, "c:/x/a.txt", StoredStat(triple=triple), indexed_at_ns=LATE_NS, max_unit_bytes=64
+    )
+    assert (never_read.skipped, never_read.bytes_read) == (False, 8)
+    read_before = acquire_unit(
+        path,
+        "c:/x/a.txt",
+        StoredStat(triple=triple, settled_gen=1, content_sha256=never_read.content_sha256),
+        indexed_at_ns=LATE_NS,
+        max_unit_bytes=64,
+    )
+    assert (read_before.skipped, read_before.bytes_read) == (True, 0)

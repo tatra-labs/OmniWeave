@@ -773,6 +773,7 @@ def test_this_package_can_write_no_file_at_all() -> None:
         "__init__.py",
         "authority.py",
         "dispatch.py",
+        "ingest.py",
         "inputs.py",
         "registry.py",
         "schema.py",

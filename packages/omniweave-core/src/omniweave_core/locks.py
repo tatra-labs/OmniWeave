@@ -113,6 +113,7 @@ __all__ = [
     "process_create_time",
     "scope_name",
     "scoped_lock",
+    "store_write_lock",
 ]
 
 
@@ -512,6 +513,24 @@ def lock_path(root: Path, scope: str, target: str = "") -> Path:
     """
     flat = scope_name(scope, target).replace("/", "-")
     return root / f"{flat}{LOCK_SUFFIX}"
+
+
+def store_write_lock(store: Path, *, now_ns: Callable[[], int]) -> FileScopedLock:
+    """`store.write` for ONE `.owstore`: the lock file beside it, named for it. W7.3w.
+
+    02:746 names the lock and its mechanism -- *"the cross-process scoped lock `store.write` in
+    `omniweave_core.locks`"* -- and every writer of one store must compute one path for it, or two
+    writers each hold "the" lock and nothing is serialised. **No document says where the file
+    lives.** `scoped_lock()`'s root is *"`roots.cache` in practice"*, and one cache root can serve
+    several corpora: `store.write` under it would make an ingest of one corpus refuse an
+    `ow_add` to another, which 02:741's *"one `.owstore` is one corpus with **one writer**"*
+    does not ask for.
+
+    So the root is the store's own directory and the target is the store's file name --
+    `.omniweave/store.write-index.owstore.lock` beside `.omniweave/index.owstore`. Two stores in one
+    directory get two locks, and the lock travels with the store it guards. Recorded as D560.
+    """
+    return scoped_lock(store.parent, STORE_WRITE_LOCK, store.name, now_ns=now_ns)
 
 
 def scoped_lock(

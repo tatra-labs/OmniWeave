@@ -302,9 +302,10 @@ def unwired() -> tuple[str, ...]:
         "18:2994 spells it `ow hook user-prompt-submit`; an unknown word is the cheapest silent "
         "exit there is, so a gate on the wrong one passes by measuring nothing. Both are "
         "accepted (D432)",
-        "the drain. Neither form `posttool.command()` produces can run -- no console script, and "
-        "`ingest` is not dispatched -- so PostToolUse and SessionEnd are wired with spawn=None "
-        "and count `noop-spawn-failed` rather than `drained` (D433)",
+        "the drain. `python -m omniweave ingest` runs since W7.3w, but no module may start a "
+        "detached child -- subprocess is TID251-banned outside toolchain and host.subproc -- so "
+        "PostToolUse and SessionEnd are wired with spawn=None and count `noop-spawn-failed` "
+        "rather than `drained` (D433, D554)",
         "the three store-backed seams. Verify, Probes and Lookup are None: SessionStart withholds "
         "cites, UserPromptSubmit is silent and PreToolUse fails gate 1, each by its documented "
         "quiet path. They belong to the connect_readonly cell",

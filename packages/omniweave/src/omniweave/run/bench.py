@@ -84,8 +84,6 @@ import array
 import asyncio
 import contextlib
 import math
-import os
-import socket
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -93,7 +91,7 @@ from typing import TYPE_CHECKING, Final
 
 from omniweave_core import acquire, locks
 from omniweave_core.clock import SystemClock
-from omniweave_core.errors import ConfigError, StoreError
+from omniweave_core.errors import StoreError
 from omniweave_core.operator import (
     CancelToken,
     Outcome,
@@ -109,6 +107,7 @@ from omniweave_core.store.queue import SqliteStore
 
 from omniweave.run import expand
 from omniweave.run import supervisor as sup
+from omniweave.run.supervisor import claim_batch_of, worker_identity
 
 if TYPE_CHECKING:  # pragma: no cover -- annotations only.
     from pathlib import Path
@@ -555,19 +554,6 @@ def open_store(root: Path) -> Path:
     return path
 
 
-def worker_identity() -> str:
-    """`'<host>:<pid>:<process_create_time>'` -- 08:465's `claimed_by`, composed from its parts.
-
-    `Supervisor.__init__` takes this as a parameter *"because `omniweave_core.locks` already owns
-    that string's construction"*. What `locks` exports is the third component
-    (`process_create_time(pid)`) and the triple as a dataclass; the colon-joined spelling the `work`
-    table stores has no function anywhere, so this composes it from the parts rather than inventing
-    a third source for an identity.
-    """
-    created, _source = locks.process_create_time(os.getpid())
-    return f"{socket.gethostname()}:{os.getpid()}:{created}"
-
-
 def no_op(batch: object) -> Sequence[StepResult]:
     """`Outcome.OK` for every row in `batch`. 12-performance.md:1470's operator, verbatim.
 
@@ -631,18 +617,6 @@ def run_context(
         clock=clock,
         events=None,  # type: ignore[arg-type]
     )
-
-
-def claim_batch_of(config: object) -> Mapping[str, int]:
-    """`[runtime.claim] batch` as `{cost_class: int}`. Refuses a shape `_next_width` cannot read."""
-    raw = config.get("runtime.claim.batch")  # type: ignore[attr-defined]
-    if not isinstance(raw, Mapping):
-        raise ConfigError(
-            f"[runtime.claim] batch is {type(raw).__name__} and must be a table keyed by cost "
-            f"class; supervisor.py's `_table` refuses the same shape for the same reason",
-            fix="set runtime.claim.batch = { free = .., local_compute = .., billed_api = .. }",
-        )
-    return {str(name): int(value) for name, value in raw.items()}  # type: ignore[call-overload]
 
 
 def claimable(counts: Mapping[str, int]) -> int:

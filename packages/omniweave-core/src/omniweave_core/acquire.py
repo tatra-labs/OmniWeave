@@ -110,7 +110,7 @@ import hashlib
 import json
 import os
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from fnmatch import fnmatchcase
 from pathlib import Path
@@ -135,6 +135,7 @@ from omniweave_ports.types import (
 from omniweave_core.config import KEYS
 from omniweave_core.errors import PolicyRefusal, ResourceLimit, StoreError
 from omniweave_core.identity import canonical_uri
+from omniweave_core.locks import store_write_lock
 from omniweave_core.store.sqlite import (
     BATCH_WAIT_MS,
     INTERACTIVE_WAIT_MS,
@@ -168,6 +169,7 @@ __all__ = [
     "TMP_FIRST",
     "UNIT_COLUMNS",
     "UNIT_UPSERT_SQL",
+    "WALKED_PATH_KEY",
     "Added",
     "CandidateRecord",
     "FetchedRecord",
@@ -189,8 +191,10 @@ __all__ = [
     "roster_row_of",
     "scan",
     "scope_id_for",
+    "stamp_walked_path",
     "stat_fresh",
     "walk_order",
+    "walked_path",
     "write_roster",
 ]
 
@@ -997,6 +1001,10 @@ def _listing(
         return iter(())
 
 
+_READ_CHUNK: Final[int] = 1 << 20
+"""What `read_bounded()` reads per step past the `fstat` size: 1 MiB, bounded by the limit."""
+
+
 def read_bounded(path: Path, limit: int) -> bytes:
     """Read at most `limit` bytes, refusing at `limit + 1`. 05:330-332, mechanism 2.
 
@@ -1006,9 +1014,28 @@ def read_bounded(path: Path, limit: int) -> bytes:
 
     The extra byte is the point: reading exactly `limit` cannot distinguish a file of `limit`
     bytes from a file of a terabyte.
+
+    **`handle.read(limit + 1)` allocates `limit + 1` bytes before it reads one**, and W7.3w
+    measured what that costs at the shipped `max_unit_bytes`: a 1-byte file took 387 ms and peaked
+    at 2,147,492,590 bytes traced, on every acquisition -- CPython sizes the result buffer from the
+    request, not from the file. D566. So the first read is sized from `fstat` plus the extra byte,
+    which is one exact allocation for a file that does not change, and a file that grew after the
+    `fstat` is read on in `_READ_CHUNK` pieces until it ends or passes the bound. The size is a
+    hint for the allocation and never the bound itself, so 05:230's *"a declared length is
+    attacker-supplied"* still holds: the bound is what was read.
     """
+    chunks: list[bytes] = []
+    total = 0
     with path.open("rb") as handle:
-        body = handle.read(limit + 1)
+        want = min(limit + 1, max(os.fstat(handle.fileno()).st_size, 0) + 1)
+        while total <= limit:
+            chunk = handle.read(want)
+            chunks.append(chunk)
+            total += len(chunk)
+            if len(chunk) < want:  # a short read of a file is its end
+                break
+            want = min(_READ_CHUNK, limit + 1 - total)
+    body = chunks[0] if len(chunks) == 1 else b"".join(chunks)
     if len(body) > limit:
         raise DriverError(
             cls=FailureClass.TOO_LARGE,
@@ -1115,6 +1142,59 @@ def scope_id_for(locator: Locator) -> str:
     predicate, not a prefix, and the predicate is 07's to change.
     """
     return locator.target.rstrip("/") + "/"
+
+
+WALKED_PATH_KEY: Final[str] = "walked_path"
+"""The `unit.derived` key holding the unresolved walked path. **D143's named site.**
+
+`08:1349-1362` computes the cache salt as `relpath(unit.walked_path, roots.source)` and `08:1364`
+gives the reason it is the walked path and not `realpath`'s output: *"two symlink aliases of one
+file are two units with two salts and two cache entries, because a corpus that lists a document
+twice under two names has two documents as far as citation is concerned."* `canonical_uri()` has
+already applied `realpath` by the time a `unit_uri` exists, so the value is not recoverable from any
+column -- which is what made D143 *"unrecoverable by construction"* and left
+`cache.unit_salt(connector, *, walked_path, locator, source_root)` taking it as an argument.
+
+The value ships in `derived` rather than in a new column: `0004_runtime.sql:59` names `derived`
+*"the stat index's derived facts (charter section 5 X25)"*, and X25 is the same charter clause the
+salt comes from. It is written at first sight and never refreshed, because `UNIT_UPSERT_SQL` does
+not touch `derived` -- which is the correct lifetime for a salt, and the reason **every** roster
+writer has to stamp it: a unit first rostered without it keeps no salt for ever.
+
+**It moved here from `omniweave.run.discover` in W7.3w, and the move is the fix for D559.** W4.3
+stamped it in `discover.roster_rows()`, the one walker there was. `add_sources()` (W7.3v) is a
+second walker, below `omniweave` in the layering and unable to import it, and it rostered every
+`ow_add` unit without the key -- so `expand.salt_for()` refused each of them and not one could ever
+be identified. `discover` re-exports both names.
+"""
+
+
+def walked_path(source: str, unit_uri: str) -> str:
+    """The walked path as this connector knows it: the root as given, plus the unit's own tail.
+
+    **This is an approximation and saying so is the point.** `scan()` hands back a `RosterRow` whose
+    `unit_uri` is already canonical, and the `CandidateRecord`'s `stable_id` -- the relative path
+    the walk actually saw -- is consumed inside it. What is reconstructed here is therefore `<root
+    as the operator typed it>/<canonical tail>`, which differs from the true walked path exactly
+    when a symlink was descended *below* the root: the tail is the resolved one. D143's worked case
+    -- two aliases of one file getting two salts -- is preserved where the aliases differ above the
+    root and collapses where they differ below it.
+
+    The complete fix is `scan()` yielding `(candidate, row)` so the unresolved id survives, which is
+    a W3.8 signature change. What the approximation costs is a shared cache entry between two
+    aliases, which is a wrong *salt*, never a wrong `unit_uri`.
+    """
+    prefix = scope_id_for(locator_for(source))
+    tail = unit_uri[len(prefix) :] if unit_uri.startswith(prefix) else unit_uri
+    return f"{source.replace(chr(92), '/').rstrip('/')}/{tail}"
+
+
+def stamp_walked_path(rows: Iterable[RosterRow], source: str) -> Iterator[RosterRow]:
+    """`rows` with `derived[WALKED_PATH_KEY]` set from `source`, lazily. One stamp, two walkers."""
+    for row in rows:
+        yield replace(
+            row, derived={**dict(row.derived), WALKED_PATH_KEY: walked_path(source, row.unit_uri)}
+        )
 
 
 def roster_row_of(
@@ -1637,7 +1717,8 @@ def add_sources(
                 migrate.apply_pending(connection, now_ns=now_ns)
             finally:
                 connection.close()
-        with StoreThread(lambda: connect(store)) as thread:
+        lock = store_write_lock(store, now_ns=lambda: now_ns)
+        with StoreThread(lambda: connect(store), lock=lock) as thread:
             for scope_id, rows, tally in walks:
                 write_roster(
                     thread,
@@ -1664,18 +1745,17 @@ def _walk_source(
         locator = locator_for(source.parent)
         scope = Scope(roots=(str(source.parent),), include=(glob.escape(source.name),))
         scope_id = None
-    rows = list(
-        scan(
-            locator,
-            scope,
-            IngestGuards(),
-            indexed_at_ns=now_ns,
-            last_seen_gen=generation,
-            tally=tally,
-            scope_rule="explicit" if scope_id is None else "inherited",
-            max_units=bound,
-        )
+    walked = scan(
+        locator,
+        scope,
+        IngestGuards(),
+        indexed_at_ns=now_ns,
+        last_seen_gen=generation,
+        tally=tally,
+        scope_rule="explicit" if scope_id is None else "inherited",
+        max_units=bound,
     )
+    rows = list(stamp_walked_path(walked, str(source if scope_id else source.parent)))
     return scope_id, rows, tally
 
 

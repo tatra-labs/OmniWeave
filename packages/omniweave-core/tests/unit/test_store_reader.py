@@ -2747,6 +2747,49 @@ def test_coverage_counts_the_queue_and_the_unit_roster(built: Built) -> None:
     assert (corpus.pending_work, corpus.stale_units, corpus.unreadable_units) == (1, 0, 1)
 
 
+def test_a_unit_rostered_and_not_indexed_is_pending_work_with_or_without_a_work_row(
+    built: Built,
+) -> None:
+    """D567, the user's decision in W7.3w. With work rows alone, 200 rostered and never-parsed
+    files fired none of the fifteen gates and `ow_query` answered `absent`: a unit is a hole from
+    first sight, and in this build its only work row -- `op.identify` -- is `done`.
+
+    A unit with a live row is counted once, by the row; `settled` and `out_of_scope` are not holes
+    and `failed` is gate 8's."""
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    for uri, state in (
+        ("file:///corpus/rostered.pdf", "discovered"),
+        ("file:///corpus/identified.pdf", "identified"),
+        ("file:///corpus/queued.pdf", "planned"),
+        ("file:///corpus/done.pdf", "settled"),
+        ("file:///corpus/gone.pdf", "out_of_scope"),
+        ("file:///corpus/broken.pdf", "failed"),
+    ):
+        conn.execute(
+            "INSERT INTO unit(unit_uri, state, last_seen_gen, trust_class) "
+            "VALUES(?, ?, 1, 'internal')",
+            (uri, state),
+        )
+    for row_id, uri, status in (
+        (1, "file:///corpus/identified.pdf", "done"),
+        (2, "file:///corpus/queued.pdf", "pending"),
+    ):
+        conn.execute(
+            "INSERT INTO work(id, unit_uri, operator, op_version, cache_key, cost_class, status) "
+            "VALUES(?, ?, 'op.identify', 1, 'k', 'free', ?)",
+            (row_id, uri, status),
+        )
+    conn.execute("COMMIT")
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        coverage = reader.coverage(state, Filters())
+    assert coverage.pending_work == 3, "rostered + identified by state, queued by its row"
+    assert rd.IN_FLIGHT_UNIT_STATES == (
+        "discovered", "acquiring", "acquired", "identified", "planned", "running",
+    )  # fmt: skip
+
+
 # ---------------------------------------------------------------------------------------------
 # The Snapshot guard, across every method that takes one
 # ---------------------------------------------------------------------------------------------
