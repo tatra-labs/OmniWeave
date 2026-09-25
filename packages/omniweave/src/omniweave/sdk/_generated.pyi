@@ -24,6 +24,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     install           InstallIn           InstallReport
     open              OpenIn              Answer
     query             QueryIn             Answer
+    serve             ServeIn             ServeReport
     skills.check      SkillsCheckIn       SkillsReport
     skills.hash       SkillsHashIn        SkillsReport
     skills.install    SkillsInstallIn     SkillsReport

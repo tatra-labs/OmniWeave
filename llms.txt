@@ -245,6 +245,9 @@ cli.query: ow query QUERY [--scope SCOPE] [--want passages|table|fields|outline|
   [--max-rung gate|decode|repair|page|regen|degrade|enrich] [--max-chars MAX_CHARS] [--k N]
   [--mode find|cite|explore|prove_absent] [--fail-on STATE[,STATE]] [--explain]
 cli.query.actions: query
+cli.serve: ow serve [--mcp] [--http] [--host HOST] [--port PORT] [--path PATH] [--api-key
+  API_KEY] [--stateless] [--session-timeout SESSION_TIMEOUT] [--profile PROFILE]
+cli.serve.actions: serve
 cli.skills.check: ow skills check [--check]
 cli.skills.check.actions: skills.check
 cli.skills.hash: ow skills hash

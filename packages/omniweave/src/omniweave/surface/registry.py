@@ -123,6 +123,7 @@ from omniweave.sdk.reports import (
     DoctorReport,
     HooksCheckReport,
     InstallReport,
+    ServeReport,
     SkillsReport,
 )
 from omniweave.surface.inputs import (
@@ -137,6 +138,7 @@ from omniweave.surface.inputs import (
     InstallIn,
     OpenIn,
     QueryIn,
+    ServeIn,
     SkillsCheckIn,
     SkillsHashIn,
     SkillsInstallIn,
@@ -1379,6 +1381,28 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             inp=UninstallIn,
             out=InstallReport,
             cli=("uninstall",),
+        ),
+        #  10:46's rule reaches row 5 for this one and would give it an `mcp_name`. The Action IS
+        #  the transport: a call over MCP that started it would open a second server on the stream
+        #  the first is answering on. No `mcp_name`, for a reason the five rows do not give. D513.
+        ActionSpec(
+            name="serve",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Serve the MCP surface to an agent host over stdio, from the [serve] configuration "
+                "startup step 5 resolves; runs until the host closes the stream"
+            ),
+            decision="an agent host's MCP entry starts omniweave",
+            example={"mcp": True, "profile": "default"},
+            inp=ServeIn,
+            out=ServeReport,
+            cli=("serve",),
         ),
         #  10:53's row 1 again: a skill is omniweave's steering surface in an agent host, so writing
         #  one is the installed configuration row 1 names, and there is no `mcp_name` -- the rule

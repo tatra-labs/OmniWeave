@@ -82,9 +82,10 @@ def test_the_output_is_utf_8_into_a_pipe(tmp_path: Path) -> None:
 def test_an_undispatched_root_still_names_what_is(tmp_path: Path) -> None:
     (tmp_path / "home").mkdir()
     (tmp_path / "proj").mkdir()
-    refused = _ow(tmp_path, "serve", "--mcp")
+    #  `serve` was the example until W7.3p dispatched it; `query` is still refused (no retrieve()).
+    refused = _ow(tmp_path, "query", "what is indexed")
     assert refused.returncode == 70
-    named = b"only `ow hook`, `ow hooks`, `ow install`, `ow skills`, `ow uninstall` are."
+    named = b"only `ow hook`, `ow hooks`, `ow install`, `ow serve`, `ow skills`, `ow uninstall` are"
     assert named in refused.stderr
 
 

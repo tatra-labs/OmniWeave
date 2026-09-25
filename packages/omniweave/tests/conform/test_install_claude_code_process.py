@@ -2,10 +2,11 @@
 
 The MCP entry is spawned as the argv it is -- `command` then `args`, no shell -- which is how a host
 starts a stdio server, so the space and the parentheses in this machine's interpreter path must
-survive unquoted and forward-slashed (D460). It starts, and it is this build's dispatcher that
-answers: `serve` is not dispatched, exit 70. The strict xfail is the handshake a host needs, and it
-turns into an XPASS the day `serve` is wired. The hooks are handed to W7.4j's `ow hooks check` as
-real children, as W7.5d's conform test did for the mode alone.
+survive unquoted and forward-slashed (D460). It starts, and since W7.3p it answers `initialize`:
+`ow serve --mcp` runs step 5 and reaches the server through its entry point. Until then this file
+asserted the dispatcher's exit-70 refusal and held the handshake as a strict xfail, and the xfail
+turning into a pass is what closed D460. The hooks are handed to W7.4j's `ow hooks check` as real
+children, as W7.5d's conform test did for the mode alone.
 """
 
 from __future__ import annotations
@@ -16,7 +17,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from omniweave.__main__ import DISPATCHED
 from omniweave.hooks.check import check, render
 from omniweave.hooks.envelope import EVENTS
 from omniweave.install.claude_code import ClaudeCode
@@ -31,7 +31,6 @@ if TYPE_CHECKING:
 
 pytestmark = pytest.mark.conform
 
-_SERVING = "serve" in DISPATCHED
 _INITIALIZE = {
     "jsonrpc": "2.0",
     "id": 1,
@@ -74,18 +73,6 @@ def _serve(home: Path, tmp_path: Path) -> Captured:
     return run_captured(argv, stdin=line, cwd=str(tmp_path), env=_env(), timeout_s=60)
 
 
-def test_the_mcp_entry_spawns_as_its_argv_and_reaches_this_builds_dispatcher(
-    tmp_path: Path,
-) -> None:
-    child = _serve(_installed(tmp_path), tmp_path)
-    assert child.returncode is not None, child
-    if _SERVING:
-        pytest.skip("serve is dispatched; the handshake test below is the measurement")
-    assert child.returncode == 70, child
-    assert b"'serve' is not dispatched by this build" in child.stderr, child.stderr
-
-
-@pytest.mark.xfail(not _SERVING, strict=True, reason="D460: `serve` is not dispatched yet")
 def test_the_mcp_entry_answers_initialize(tmp_path: Path) -> None:
     child = _serve(_installed(tmp_path), tmp_path)
     first = child.stdout.split(b"\n", 1)[0]
@@ -93,6 +80,12 @@ def test_the_mcp_entry_answers_initialize(tmp_path: Path) -> None:
     reply = json.loads(first)
     assert reply["id"] == 1
     assert "result" in reply
+    #  The host asked for 2025-06-18, which this build does not carry, and is answered with the
+    #  revision it does rather than refused. The server exits 0 when the host closes stdin.
+    assert reply["result"]["protocolVersion"] == "2025-03-26"
+    assert reply["result"]["serverInfo"]["name"] == "omniweave"
+    assert child.returncode == 0, child
+    assert child.stdout.count(b"\n") == 1, "one request, one frame, and nothing else on stdout"
 
 
 def _runner(

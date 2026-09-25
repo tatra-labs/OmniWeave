@@ -410,6 +410,57 @@ COMMANDS: Final[tuple[Command, ...]] = (
         ),
     ),
     Command(
+        words=("serve",),
+        actions=("serve",),
+        help=(
+            "Serve the MCP surface to an agent host over stdio, from the [serve] configuration "
+            "startup step 5 resolves; runs until the host closes the stream"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--mcp",),
+                kind="switch",
+                default=False,
+            ),
+            Argument(
+                spelling=("--http",),
+                kind="switch",
+                default=False,
+            ),
+            Argument(
+                spelling=("--host",),
+                metavar="HOST",
+            ),
+            Argument(
+                spelling=("--port",),
+                kind="int",
+                metavar="PORT",
+            ),
+            Argument(
+                spelling=("--path",),
+                metavar="PATH",
+            ),
+            Argument(
+                spelling=("--api-key",),
+                metavar="API_KEY",
+            ),
+            Argument(
+                spelling=("--stateless",),
+                kind="switch",
+                default=False,
+            ),
+            Argument(
+                spelling=("--session-timeout",),
+                kind="int",
+                metavar="SESSION_TIMEOUT",
+            ),
+            Argument(
+                spelling=("--profile",),
+                metavar="PROFILE",
+            ),
+        ),
+    ),
+    Command(
         words=("skills", "check"),
         actions=("skills.check",),
         help=(

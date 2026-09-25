@@ -1,4 +1,4 @@
-"""`python -m omniweave`: dispatches `hook`, `install`, `uninstall`, `hooks`, `skills`; no more.
+"""`python -m omniweave`: dispatches `hook`, `install`, `uninstall`, `hooks`, `skills`, `serve`.
 
 This file did not exist before W7.4i, and its absence was a defect in a cell that claimed otherwise.
 `posttool.command()` falls back to `python -m omniweave ingest` and its docstring called that
@@ -9,8 +9,10 @@ named omniweave.__main__"*, into the `DEVNULL` 10:2072 requires. D433.
 and `ow uninstall` are W7.5's (16:719), and `ow hooks check` runs W7.4j's engine over what they
 installed; all three are parsed by the generated tree now that their `ACTIONS` rows exist (W7.5h,
 W7.5i, D467) and run by `omniweave.install.run`, as `ow skills install | remove` are since
-W7.6b -- the verb the router skill's section 4 tells an agent to run. The other roots in
-`cli.COMMANDS` are refused, on stderr, with `InternalError`'s exit -- 10:2185's *"anything
+W7.6b -- the verb the router skill's section 4 tells an agent to run. `ow serve --mcp` is
+W7.3p's: startup step 5 here, then the server through the `omniweave.serve` entry point
+(`omniweave.surface.serve`), which is the command 10:1675's MCP entry runs (D460). The other
+roots in `cli.COMMANDS` are refused, on stderr, with `InternalError`'s exit -- 10:2185's *"anything
 else"*, the only row in the taxonomy that does not assert something about a store or an argument
 that would be false here. The refusal is spelled out rather than silent, because the one thing
 worse than a command that does not work is one that exits 0 having done nothing.
@@ -42,7 +44,9 @@ __all__ = ["DISPATCHED", "main"]
 
 _INSTALL_ROOTS: Final[frozenset[str]] = frozenset({"install", "uninstall", "hooks", "skills"})
 
-DISPATCHED: Final[frozenset[str]] = frozenset({HOOK_WORD, *_INSTALL_ROOTS})
+_SERVE_ROOT: Final[str] = "serve"
+
+DISPATCHED: Final[frozenset[str]] = frozenset({HOOK_WORD, *_INSTALL_ROOTS, _SERVE_ROOT})
 """The roots this build can run. `ingest` joining it is the day the drain can be wired (D433)."""
 
 
@@ -55,6 +59,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return entry(args[1:], cwd=Path.cwd())
     if args and args[0] in _INSTALL_ROOTS:
         return _install(args)
+    if args and args[0] == _SERVE_ROOT:
+        return _serve(args)
 
     from omniweave_core.errors import InternalError  # noqa: PLC0415 -- only the refusal pays
 
@@ -75,6 +81,15 @@ def _install(args: list[str]) -> int:
     #  The second read of the working directory, under the same exemption (D435): a `local`
     #  install writes under the project it is run from (10:1734).
     return run(args, env=os.environ, cwd=Path.cwd())
+
+
+def _serve(args: list[str]) -> int:
+    from omniweave.surface.serve import main as run  # noqa: PLC0415 -- the hook path never pays
+
+    #  Nothing here touches stdout: from the moment the server binds it, it is the protocol
+    #  channel, and the refusals before that go to stderr. The third read of the working
+    #  directory under D435's exemption: `./omniweave.toml` is found by walking up from it.
+    return run(args, env=os.environ, cwd=Path.cwd(), stderr=sys.stderr)
 
 
 if __name__ == "__main__":

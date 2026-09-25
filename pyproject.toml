@@ -128,6 +128,12 @@ ban-relative-imports = "all"
 # has exactly one deadline primitive. A test asserts that single use over the AST.
 "packages/omniweave-serve/src/omniweave_serve/http.py" = ["TID251"]
 
+# The one call that runs the loop the two transports are written for: `asyncio.run(serve(...))`
+# in `launch.run()`, the `omniweave.serve` entry point `ow serve --mcp` loads. D344's decision a
+# third time and the narrowest use of the three: one attribute, `run`, which a test asserts over
+# the AST. Everything the loop drives still takes its streams as arguments.
+"packages/omniweave-serve/src/omniweave_serve/launch.py" = ["TID251"]
+
 # The transport's tests drive the loop with `asyncio.run` and nothing else. There is no
 # pytest-asyncio in the ten-package dev group (02-architecture.md section 3.3 fixes it), so a
 # test of an `async def` either starts a loop by name or does not test it. Same escape and same

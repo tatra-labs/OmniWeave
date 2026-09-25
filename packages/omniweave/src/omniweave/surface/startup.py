@@ -166,7 +166,9 @@ def declared_corpus(config: Config) -> tuple[str | None, str]:
     )
 
 
-def servable(config: Config, *, env: Mapping[str, str] | None = None) -> Servable:
+def servable(
+    config: Config, *, env: Mapping[str, str] | None = None, profile: str | None = None
+) -> Servable:
     """Startup step 5, both clauses, in the order 02:723 writes them.
 
     SV1 first, because it is the authority check and 10:785 already fixes `enabled` as resolving
@@ -176,12 +178,16 @@ def servable(config: Config, *, env: Mapping[str, str] | None = None) -> Servabl
     `config` and `env` are arguments and nothing here reads the ambient environment, so a test
     exercises every combination without a process and two servers in one interpreter do not share
     a surface.
+
+    `profile` is `ow serve --profile`, and it beats `[serve] profile` for this call only: 02:1155's
+    *"an Action argument ... overrides for that call only and NEVER mutates the resolved
+    Config"*. `None` is a flag nobody typed, which falls through to the key.
     """
-    profile = config.get("serve.profile")
+    chosen = config.get("serve.profile") if profile is None else profile
     listed_key = config.get("serve.listed")
     enabled_key = config.get("serve.enabled")
     resolution = resolve(
-        profile=profile if isinstance(profile, str) else "default",
+        profile=chosen if isinstance(chosen, str) else "default",
         listed_key=_listed(listed_key),
         enabled_key=_enabled(enabled_key),
         env=env,

@@ -55,6 +55,7 @@ key can grant one.
 | `install` | — | `ow install` | — | `free` | Wire agent hosts to omniweave: the MCP entry, one permission wildcard, the instruction block, hooks and the core skill, each recorded in a receipt |
 | `open` | `ow_open` | `ow open` | default, full | `free` | Fetch the exact passages behind an address you already hold: a cite, a page range, or a whole document |
 | `query` | `ow_query` | `ow query` | default, full | `local_compute` | Ask an indexed corpus a question and get cited passages, a verdict, and the gaps that could be hiding an answer |
+| `serve` | — | `ow serve` | — | `free` | Serve the MCP surface to an agent host over stdio, from the [serve] configuration startup step 5 resolves; runs until the host closes the stream |
 | `skills.check` | `ow_skills_check` | `ow skills check` | — | `free` | Say whether the installed skills are this release's: a stale or missing core skill fails, an outdated or orphaned on-demand one is reported |
 | `skills.hash` | `ow_skills_hash` | `ow skills hash` | — | `free` | Print the sha256-bundle-1 digest, file count and byte count of every skill bundle this release ships, for a release PR to pin |
 | `skills.install` | — | `ow skills install` | — | `free` | Copy a shipped skill bundle into every discovered agent-host skills directory, verified on its whole-bundle digest and recorded in skills-lock.json |
