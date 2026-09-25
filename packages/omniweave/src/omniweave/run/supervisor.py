@@ -105,6 +105,7 @@ import asyncio
 import contextlib
 import os
 import shutil
+import socket
 import threading
 from collections.abc import AsyncIterator, Callable, Iterator, Mapping, Sequence
 from contextlib import asynccontextmanager, contextmanager
@@ -144,12 +145,14 @@ __all__ = [
     "Supervisor",
     "Sweeper",
     "check_ram",
+    "claim_batch_of",
     "derive_admission",
     "no_emit",
     "no_sweep",
     "producer_should_pause",
     "ram_required",
     "stall_verdict",
+    "worker_identity",
 ]
 
 COST_CLASSES: Final[tuple[str, ...]] = ("free", "local_compute", "billed_api")
@@ -1635,3 +1638,37 @@ def _default_mint(ctx: RunContext) -> Callable[[], str]:
     from omniweave.run.dispatch import new_invoke_id  # noqa: PLC0415
 
     return lambda: new_invoke_id(ctx.clock, os.urandom(ULID_ENTROPY_BYTES))
+
+
+def worker_identity() -> str:
+    """`'<host>:<pid>:<process_create_time>'` -- 08:490's `claimed_by`, composed from its parts.
+
+    Moved here from `run/bench.py` in W7.3w, which re-exports it: `ow ingest` is the second
+    caller that builds a `Supervisor`, and a production verb importing a benchmark harness for
+    one identity string would make the harness a dependency of every ingest.
+
+    `Supervisor.__init__` takes this as a parameter *"because `omniweave_core.locks` already owns
+    that string's construction"*. What `locks` exports is the third component
+    (`process_create_time(pid)`) and the triple as a dataclass; the colon-joined spelling the `work`
+    table stores has no function anywhere, so this composes it from the parts rather than inventing
+    a third source for an identity.
+    """
+    from omniweave_core.locks import process_create_time  # noqa: PLC0415 -- the claimer's only
+
+    created, _source = process_create_time(os.getpid())
+    return f"{socket.gethostname()}:{os.getpid()}:{created}"
+
+
+def claim_batch_of(config: object) -> Mapping[str, int]:
+    """`[runtime.claim] batch` as `{cost_class: int}`. Refuses a shape `_next_width` cannot read.
+
+    Moved here from `run/bench.py` with `worker_identity()`, for the same reason.
+    """
+    raw = config.get("runtime.claim.batch")  # type: ignore[attr-defined]
+    if not isinstance(raw, Mapping):
+        raise ConfigError(
+            f"[runtime.claim] batch is {type(raw).__name__} and must be a table keyed by cost "
+            f"class; supervisor.py's `_table` refuses the same shape for the same reason",
+            fix="set runtime.claim.batch = { free = .., local_compute = .., billed_api = .. }",
+        )
+    return {str(name): int(value) for name, value in raw.items()}  # type: ignore[call-overload]

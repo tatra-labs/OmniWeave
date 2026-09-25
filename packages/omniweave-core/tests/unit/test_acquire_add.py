@@ -154,3 +154,37 @@ def test_an_existing_store_is_written_through_its_migrations_not_recreated(
     conn.close()
     acquire.add_sources(store, [_tree(tmp_path / "docs", "a.pdf")], now_ns=_now())
     assert _rows(store, "SELECT v FROM index_state WHERE k = 'probe'") == [("1",)]
+
+
+def test_every_row_ow_add_rosters_carries_the_walked_path_the_cache_salt_needs(
+    tmp_path: Path,
+) -> None:
+    """D559. The key is written at first sight and never refreshed, so a roster writer that omits it
+    leaves a unit no `op.identify` row can ever be keyed for."""
+    import json  # noqa: PLC0415
+
+    docs = _tree(tmp_path / "docs", "a.pdf", "sub/b.pdf")
+    store = tmp_path / "index.owstore"
+    acquire.add_sources(store, [docs, _tree(tmp_path / "loose", "c.pdf") / "c.pdf"], now_ns=_now())
+    for (derived,) in _rows(store, "SELECT derived FROM unit"):
+        walked = json.loads(str(derived))[acquire.WALKED_PATH_KEY]
+        assert walked.startswith(str(tmp_path).replace("\\", "/"))
+
+
+def test_an_add_waits_for_the_store_write_lock_and_names_its_holder(tmp_path: Path) -> None:
+    """02:757-758: *"`ow_add` takes `store.write` at `interactive_wait_ms = 2000`"*. It took
+    none."""
+    from omniweave_core.errors import StoreBusy  # noqa: PLC0415
+    from omniweave_core.locks import store_write_lock  # noqa: PLC0415
+
+    store = tmp_path / "index.owstore"
+    acquire.add_sources(store, [_tree(tmp_path / "docs", "a.pdf")], now_ns=_now())
+    held = store_write_lock(store, now_ns=time.time_ns)
+    held.acquire(wait_ms=0)
+    try:
+        with pytest.raises(StoreBusy) as busy:
+            acquire.add_sources(store, [_tree(tmp_path / "more", "b.pdf")], now_ns=_now())
+    finally:
+        held.release()
+    assert busy.value.EXIT == 7
+    assert _rows(store, "SELECT count(*) FROM unit") == [(1,)]

@@ -85,7 +85,10 @@ def test_an_undispatched_root_still_names_what_is(tmp_path: Path) -> None:
     #  `serve` was the example until W7.3p dispatched it; `query` is still refused (no retrieve()).
     refused = _ow(tmp_path, "query", "what is indexed")
     assert refused.returncode == 70
-    named = b"only `ow hook`, `ow hooks`, `ow install`, `ow serve`, `ow skills`, `ow uninstall` are"
+    named = (
+        b"only `ow hook`, `ow hooks`, `ow ingest`, `ow install`, `ow serve`, `ow skills`, "
+        b"`ow uninstall` are"
+    )
     assert named in refused.stderr
 
 

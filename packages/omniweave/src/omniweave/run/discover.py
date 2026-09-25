@@ -125,15 +125,18 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, TypeAlias
 
 from omniweave_core.acquire import (
     CONNECTOR,
+    DEFAULT_MAX_UNIT_BYTES,
     MAX_UNITS_PER_CALL,
     PLAN_BATCH,
     SKIP_TOO_LARGE,
     SKIP_UNREADABLE,
+    WALKED_PATH_KEY,
     RosterRow,
     StatTriple,
     Tally,
@@ -143,6 +146,7 @@ from omniweave_core.acquire import (
     scan,
     scope_id_for,
     stat_fresh,
+    walked_path,
     write_roster,
 )
 from omniweave_core.errors import RouteError
@@ -153,7 +157,6 @@ from omniweave_ports.types import DriverError, FailureClass
 
 if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from collections.abc import Iterator, Mapping, Sequence
-    from pathlib import Path
 
     from omniweave_core.acquire import IngestGuards, Scope, ScopeTally
     from omniweave_core.store.sqlite import StoreThread
@@ -171,6 +174,7 @@ __all__ = [
     "MARK_STALE_SQL",
     "OUT_OF_SCOPE",
     "OUT_OF_SCOPE_SQL",
+    "PENDING_ACQUISITION_AFTER_SQL",
     "PENDING_ACQUISITION_SQL",
     "RAW_DIGEST_CODE",
     "RESET_ACQUIRING_SQL",
@@ -179,6 +183,7 @@ __all__ = [
     "UNCHANGED_SQL",
     "UNSEEN",
     "WALKED_PATH_KEY",
+    "AcquirePass",
     "Acquired",
     "Backpressure",
     "DiscoverReport",
@@ -187,6 +192,7 @@ __all__ = [
     "RosterFeed",
     "StoredStat",
     "acq_retryable",
+    "acquire_pending",
     "acquire_unit",
     "content_digest",
     "discover",
@@ -199,6 +205,7 @@ __all__ = [
     "roster_rows",
     "stale_params",
     "sweep_unseen",
+    "walked_path",
 ]
 
 
@@ -275,27 +282,9 @@ def acq_retryable(failure_class: str) -> bool:
     return failure_class not in {UNSEEN, FILTERED}
 
 
-WALKED_PATH_KEY: Final[str] = "walked_path"
-"""The `unit.derived` key holding the unresolved walked path. **D143's named site.**
-
-`08:1349-1362` computes the cache salt as `relpath(unit.walked_path, roots.source)` and `08:1364`
-gives the reason it is the walked path and not `realpath`'s output: *"two symlink aliases of one
-file are two units with two salts and two cache entries, because a corpus that lists a document
-twice under two names has two documents as far as citation is concerned."* `canonical_uri()` has
-already applied `realpath` by the time a `unit_uri` exists, so the value is not recoverable from any
-column -- which is what made D143 *"unrecoverable by construction"* and left
-`cache.unit_salt(connector, *, walked_path, locator, source_root)` taking it as an argument.
-
-D143's owed-to-the-plan line is *"`unit` gains a `walked_path` column ... written by
-`run/discover.py` at the moment the walk sees the name -- which is W4.3's cell and the last moment
-the unresolved path exists."* This is that moment, and the value ships in `derived` rather than in a
-new column: `0004_runtime.sql:59` names `derived` *"the stat index's derived facts (charter section
-5 X25)"*, and X25 is the same charter clause the salt comes from -- `05:253`, *"The cache salt is
-the walked path **relative to `roots.source`** (charter section 5 X25)"*. One clause, one column, no
-migration on a charter table. It is written at first sight and never refreshed, because
-`UNIT_UPSERT_SQL` does not touch `derived` -- which is the correct lifetime for a salt: a resume
-must reproduce the key the first run used.
-"""
+#  `WALKED_PATH_KEY` and `walked_path()` moved to `omniweave_core.acquire` in W7.3w (D559):
+#  `add_sources()` is a second walker below this package and has to stamp the same key. Both
+#  names are re-exported from here, where W4.3 put them.
 
 ACQUIRING_STALE_MS: Final[int] = 600_000
 """How old `acq_last_attempt_at` must be before `acquiring` is returned to `discovered`. **D163.**
@@ -510,28 +499,6 @@ def roster_rows(
             derived={**dict(row.derived), WALKED_PATH_KEY: walked_path(source, row.unit_uri)},
             scope_rule=row.scope_rule,
         )
-
-
-def walked_path(source: str, unit_uri: str) -> str:
-    """The walked path as this connector knows it: the root as given, plus the unit's own tail.
-
-    **This is an approximation and saying so is the point.** `acquire.scan()` hands back a
-    `RosterRow` whose `unit_uri` is already canonical, and the `CandidateRecord`'s `stable_id` --
-    the relative path the walk actually saw -- is consumed inside it. What is reconstructed here is
-    therefore `<root as the operator typed it>/<canonical tail>`, which differs from the true walked
-    path exactly when a symlink was descended *below* the root: the tail is the resolved one. D143's
-    worked case -- two aliases of one file getting two salts -- is preserved where the aliases
-    differ above the root and collapses where they differ below it.
-
-    The complete fix is `scan()` yielding `(candidate, row)` so the unresolved id survives, which is
-    a W3.8 signature change and not this cell's. What the approximation costs is a shared cache
-    entry between two aliases, which is a wrong *salt*, never a wrong `unit_uri` -- and a wrong salt
-    is a cache hit where a miss was wanted, bounded by `[cache] recipe`. Reported here rather than
-    in the ledger, because the shortfall is this implementation's and not the plan's.
-    """
-    prefix = scope_id_for(locator_for(source))
-    tail = unit_uri[len(prefix) :] if unit_uri.startswith(prefix) else unit_uri
-    return f"{source.replace(chr(92), '/').rstrip('/')}/{tail}"
 
 
 def discover(
@@ -1109,7 +1076,8 @@ def acquire_unit(
     except OSError:
         return _unreadable(unit_uri)
     verdict = freshness(stored, pre)
-    if verdict != "changed" and not verify_digests:
+    #  D561: a skip preserves a digest, so a unit with none -- rostered, never read -- is read.
+    if verdict != "changed" and not verify_digests and stored.content_sha256 is not None:
         return Acquired(unit_uri=unit_uri, state=ACQUIRED, verdict=verdict, skipped=True, stat=pre)
 
     kwargs = {} if read is None else {"read": read}
@@ -1238,6 +1206,148 @@ def reset_stale_acquiring(
 
     thread.run(Unit(name="discover.reset_acquiring", run=run, cost_class="free", wait_ms=wait_ms))
     return returned
+
+
+PENDING_ACQUISITION_AFTER_SQL: Final[str] = PENDING_ACQUISITION_SQL.replace(
+    " ORDER BY unit_uri", "   AND unit_uri > :after\n ORDER BY unit_uri"
+)
+"""`PENDING_ACQUISITION_SQL` resumed past a key: the keyset page `acquire_pending()` walks by.
+
+**Without the key a failing unit is read three times in one pass.** `ACQ_FAILED_SQL` leaves a unit
+in `failed`, and a failure whose class carries no `retry_after` leaves `acq_retry_after` NULL -- so
+the unit satisfies `PENDING_ACQUISITION_SQL` again the moment its row is written, sorts first, and
+comes back in the next page until `acq_attempts_total` reaches `MAX_ATTEMPTS_TODAY`. A pass visits
+each unit once and the next run is the retry; `unit_uri > :after` is what makes "once" true.
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class AcquirePass:
+    """What one `acquire_pending()` pass did, counted by the statement each unit wrote.
+
+    `lost` is the units another process claimed between this pass's page read and its claim --
+    `CLAIM_ACQUIRING_SQL`'s compare-and-swap matching zero rows, which is D163's skip and not a
+    failure. `bytes_read` is `05:339`'s price of the ladder, summed.
+    """
+
+    acquired: int = 0
+    unchanged: int = 0
+    failed: int = 0
+    lost: int = 0
+    bytes_read: int = 0
+
+    def plus(self, outcomes: Sequence[Acquired], *, lost: int) -> AcquirePass:
+        """This pass with one page's outcomes added."""
+        read = [one for one in outcomes if one.state == ACQUIRED and not one.skipped]
+        return AcquirePass(
+            acquired=self.acquired + len(read),
+            unchanged=self.unchanged
+            + sum(1 for one in outcomes if one.state == ACQUIRED and one.skipped),
+            failed=self.failed + sum(1 for one in outcomes if one.state != ACQUIRED),
+            lost=self.lost + lost,
+            bytes_read=self.bytes_read + sum(one.bytes_read for one in outcomes),
+        )
+
+
+def acquire_pending(
+    thread: StoreThread,
+    *,
+    generation: int,
+    indexed_at_ns: int,
+    max_unit_bytes: int = DEFAULT_MAX_UNIT_BYTES,
+    connector: str = CONNECTOR,
+    plan_batch: int = PLAN_BATCH,
+    wait_ms: int = BATCH_WAIT_MS,
+    verify_digests: bool = False,
+    read: Callable[[Path, int], bytes] | None = None,
+) -> AcquirePass:
+    """`02:473`'s hop 3 for every unit this generation's walk saw: claim, read, write. W7.3w.
+
+    Every statement it runs was here before it: `PENDING_ACQUISITION_SQL`, `CLAIM_ACQUIRING_SQL`,
+    `acquire_unit()` and `Acquired.statement()`. **Nothing ran them in order**, which is the gap
+    W7.3w found: `ow_add` rostered units into `discovered` and no code anywhere moved one out.
+
+    One page is three steps and two transactions:
+
+    1. **claim** -- one transaction: read up to `plan_batch` pending units past the last key, and
+       compare-and-swap each into `acquiring`. `rowcount == 1` is the claim (D163), so a unit a
+       second process took first is counted `lost` and left to it;
+    2. **read** -- outside any transaction: `acquire_unit()` stats, decides, and reads. The file is
+       the `unit_uri` itself -- an `fs` unit's canonical uri is its `realpath` in path form (05
+       section 1.2), which is the file the bytes are, where the walked path is only the salt;
+    3. **write** -- one transaction: each outcome's own statement, which names the state it leaves
+       (`WHERE state = 'acquiring'`), so a unit `RESET_ACQUIRING_SQL` handed to someone else
+       meanwhile is written by exactly one of them.
+
+    **No transaction is held across a read.** A 2 GiB file read inside `BEGIN IMMEDIATE` would hold
+    `store.write` for as long as the disk takes, and `ow_add` waits `INTERACTIVE_WAIT_MS` for it.
+
+    **Nothing is copied into the content-addressed store**, which is D165's reading of hop 3 --
+    08:860, *"the file *is* the blob"* -- and is unchanged here.
+    """
+    if plan_batch < 1:
+        raise ValueError("plan_batch is a positive row count per transaction")
+    params = pending_params(generation=generation, connector=connector, limit=plan_batch)
+    after = ""
+    total = AcquirePass()
+    while True:
+        page, keys = _claim_page(thread, params, after=after, wait_ms=wait_ms)
+        if not keys:
+            return total
+        after = keys[-1]
+        outcomes = [
+            acquire_unit(
+                Path(uri),
+                uri,
+                stored,
+                indexed_at_ns=indexed_at_ns,
+                max_unit_bytes=max_unit_bytes,
+                verify_digests=verify_digests,
+                read=read,
+            )
+            for uri, stored in page
+        ]
+        _write_outcomes(thread, outcomes, wait_ms=wait_ms)
+        total = total.plus(outcomes, lost=len(keys) - len(page))
+
+
+def _claim_page(
+    thread: StoreThread, params: Mapping[str, object], *, after: str, wait_ms: int
+) -> tuple[list[tuple[str, StoredStat]], list[str]]:
+    """Step 1: one page past `after`, each unit compare-and-swapped into `acquiring`.
+
+    Returns `(claimed, every key the page read)`. The second is what the next page resumes past,
+    so a unit lost to another process is not read again by this one.
+    """
+    claimed: list[tuple[str, StoredStat]] = []
+    keys: list[str] = []
+
+    def run(connection: _Rows) -> None:
+        rows = connection.execute(PENDING_ACQUISITION_AFTER_SQL, {**params, "after": after})
+        for uri, _state, size, mtime, indexed, digest, settled, _derived in rows.fetchall():
+            keys.append(str(uri))
+            if connection.execute(CLAIM_ACQUIRING_SQL, {"unit_uri": uri}).rowcount != 1:
+                continue
+            triple = StatTriple(size=size or 0, mtime_ns=mtime or 0, indexed_at_ns=indexed or 0)
+            claimed.append(
+                (str(uri), StoredStat(triple=triple, settled_gen=settled, content_sha256=digest))
+            )
+
+    thread.run(Unit(name="discover.acquire.claim", run=run, cost_class="free", wait_ms=wait_ms))
+    return claimed, keys
+
+
+def _write_outcomes(thread: StoreThread, outcomes: Sequence[Acquired], *, wait_ms: int) -> None:
+    """Step 3: each outcome's own statement, in one transaction."""
+    statements = [outcome.statement() for outcome in outcomes]
+    if not statements:
+        return
+
+    def run(connection: _Rows) -> None:
+        for sql, values in statements:
+            connection.execute(sql, values)
+
+    thread.run(Unit(name="discover.acquire.write", run=run, cost_class="free", wait_ms=wait_ms))
 
 
 SKIP_REASON_CLASSES: Final[Mapping[str, str]] = MappingProxyType(

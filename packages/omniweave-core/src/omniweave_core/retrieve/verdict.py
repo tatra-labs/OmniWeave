@@ -388,7 +388,9 @@ def _coverage_incomplete(ev: _Evidence) -> DegradeCause | None:
 
 
 def _pending_work_in_scope(ev: _Evidence) -> DegradeCause | None:
-    """Gate 5. 07:2185: `work.status IN ('pending','claimed')` for units inside the scope.
+    """Gate 5. 07:2185: `work.status IN ('pending','claimed')` for units inside the scope --
+    and, since W7.3w, every unit in scope rostered and not yet indexed (D567,
+    `store.reader.IN_FLIGHT_UNIT_STATES`).
 
     *"A queued unit is a coverage hole with a completion date"* -- narrower than gate 4, and its
     remedy is *"wait or raise the budget"*, which is not a command, so `fix` is empty and the count
@@ -399,8 +401,8 @@ def _pending_work_in_scope(ev: _Evidence) -> DegradeCause | None:
     return DegradeCause(
         gate="pending_work_in_scope",
         detail=(
-            f"{ev.coverage.pending_work} work row(s) pending or claimed in scope; wait for them "
-            f"or raise [limits] the run budget"
+            f"{ev.coverage.pending_work} unit(s) or work row(s) in scope are not indexed yet; "
+            f"run ow ingest, wait for it, or raise [limits] the run budget"
         ),
     )
 

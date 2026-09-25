@@ -249,6 +249,7 @@ if TYPE_CHECKING:
     from omniweave_core.store import VectorBackend
 
 __all__ = [
+    "IN_FLIGHT_UNIT_STATES",
     "ChannelOutcome",
     "HydratedRow",
     "Hydration",
@@ -404,6 +405,28 @@ needs no carry and is the same set for every path the zero-padding admits. Used 
 
 _LIVE_STATES: Final = ("pending", "claimed")
 """07:2185: `Coverage.pending_work` counts `work.status IN ('pending','claimed')` in scope."""
+
+IN_FLIGHT_UNIT_STATES: Final = (
+    "discovered",
+    "acquiring",
+    "acquired",
+    "identified",
+    "planned",
+    "running",
+)
+"""The `unit.state` values between first sight and `settled`: rostered and not yet indexed.
+
+**Gate 5 counts these as well as live `work` rows. D567, the user's decision in W7.3w.** 07:2185
+prints gate 5's read source as `work.status IN ('pending','claimed')` alone, and its rationale
+as *"a queued unit is a coverage hole with a completion date"*. A unit is a hole before it has
+a work row -- `ow_add` rosters it `discovered` and nothing plans it until hops 5-9 run -- and in
+this build every unit stops at `identified` with its only work row `done`. With work rows
+alone, no gate of the fifteen fired over 200 rostered, never-parsed files, and `ow_query`
+answered **`absent`** with `coverage = {discovered: 200, indexed: 200}`: gate 4 reads a walked
+scope as covered, because `ingest_scope.indexed` counts rostered units (W3.8).
+
+`failed` is gate 8's (`unreadable_units`) and `settled` / `out_of_scope` are not holes, so the
+set is the six in between, in `0004_runtime.sql`'s CHECK order."""
 
 
 # ---------------------------------------------------------------------------
@@ -2627,11 +2650,20 @@ class SqliteReader:
         }
 
         unit_where, unit_params = self._unit_scope(f)
+        live = _placeholders(len(_LIVE_STATES))
         pending_work = _one_int(
             connection,
             "SELECT count(*) FROM work JOIN unit USING (unit_uri) "  # noqa: S608
-            f"WHERE work.status IN ({_placeholders(len(_LIVE_STATES))}) AND {unit_where}",
+            f"WHERE work.status IN ({live}) AND {unit_where}",
             (*_LIVE_STATES, *unit_params),
+        ) + _one_int(
+            connection,
+            #  D567: a unit still in flight with no live work row is a hole as well.
+            "SELECT count(*) FROM unit "  # noqa: S608
+            f"WHERE unit.state IN ({_placeholders(len(IN_FLIGHT_UNIT_STATES))}) "
+            f"AND {unit_where} AND NOT EXISTS (SELECT 1 FROM work "
+            f"WHERE work.unit_uri = unit.unit_uri AND work.status IN ({live}))",
+            (*IN_FLIGHT_UNIT_STATES, *unit_params, *_LIVE_STATES),
         )
         stale_units = _one_int(
             connection,

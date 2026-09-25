@@ -1836,3 +1836,53 @@ def test_the_runner_exits_two_when_it_did_not_run(tmp_path: Path, tree: Path) ->
     assert main(["--root", str(tree), "--store", str(missing_store)], out=out) == 2
     assert "--create" in out.getvalue()
     assert not missing_store.exists()
+
+
+def test_a_bounded_read_allocates_what_the_file_holds_and_not_what_the_bound_allows(
+    tmp_path: Path,
+) -> None:
+    """D566. `handle.read(limit + 1)` sized its buffer from the request: a 1-byte file read under
+    the shipped 2 GiB `max_unit_bytes` peaked at 2,147,492,590 bytes traced and took 387 ms."""
+    import tracemalloc  # noqa: PLC0415
+
+    from omniweave_core.acquire import DEFAULT_MAX_UNIT_BYTES  # noqa: PLC0415
+
+    path = tmp_path / "one.txt"
+    path.write_bytes(b"x")
+    tracemalloc.start()
+    try:
+        assert acquire.read_bounded(path, DEFAULT_MAX_UNIT_BYTES) == b"x"
+        _now, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert peak < 1 << 16
+
+
+def test_a_bounded_read_past_one_chunk_is_whole_and_still_bounded(tmp_path: Path) -> None:
+    """The chunked tail: a body longer than `_READ_CHUNK` is read whole, and the extra byte past
+    the bound is still what refuses it."""
+    from omniweave_core import acquire as module  # noqa: PLC0415
+
+    body = b"y" * (module._READ_CHUNK * 2 + 7)
+    path = tmp_path / "big.bin"
+    path.write_bytes(body)
+    assert acquire.read_bounded(path, len(body)) == body
+    with pytest.raises(DriverError):
+        acquire.read_bounded(path, len(body) - 1)
+
+
+def test_a_file_larger_than_its_fstat_said_is_read_to_its_end_and_still_bounded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The size is an allocation hint and never the bound (05:230, *"a declared length is
+    attacker-supplied"*): a file that grew after its `fstat` -- here, one whose `fstat` says 0 -- is
+    read on in chunks to its end, and the extra byte past the bound still refuses it."""
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    body = b"z" * (acquire._READ_CHUNK + 3)
+    path = tmp_path / "grew.bin"
+    path.write_bytes(body)
+    monkeypatch.setattr(acquire.os, "fstat", lambda _fd: SimpleNamespace(st_size=0))
+    assert acquire.read_bounded(path, len(body)) == body
+    with pytest.raises(DriverError):
+        acquire.read_bounded(path, len(body) - 1)

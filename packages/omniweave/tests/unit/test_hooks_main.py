@@ -419,16 +419,21 @@ def test_a_cwd_that_does_not_exist_is_a_quiet_counter(tmp_path: Path) -> None:
     assert bound(SESSION).counter == "noop-no-key"
 
 
-def test_the_drain_stays_unwired_until_something_dispatches_ingest() -> None:
-    """D433. When `ingest` joins `DISPATCHED`, this fails -- and the spawn should land with it.
+def test_ingest_is_dispatched_and_the_spawn_that_would_start_it_is_still_unwired() -> None:
+    """D433, and the half of it W7.3w could not close.
 
-    `install` and `uninstall` joined in W7.5h, `hooks` in W7.5i, `skills` in W7.6b and `serve` in
-    W7.3p; none is the drain."""
+    `ingest` joined `DISPATCHED` in W7.3w, so the command `posttool.command()` builds now runs. The
+    spawn did not land with it, although this test's first form said it should: `subprocess` is
+    `TID251`-banned outside `omniweave_core.toolchain` and `host.subproc`, and neither offers a
+    detached spawn (D554). So both drains are still wired with `spawn=None`, as `unwired()` says.
+    """
     import omniweave.__main__ as launcher  # noqa: PLC0415
 
-    roots = frozenset({HOOK_WORD, "install", "uninstall", "hooks", "skills", "serve"})
+    roots = frozenset({HOOK_WORD, "install", "uninstall", "hooks", "skills", "serve", "ingest"})
     assert roots == launcher.DISPATCHED
-    assert "ingest" not in launcher.DISPATCHED
+    source = Path(hook_main.__file__).read_text(encoding="utf-8")
+    assert source.count("pid=pid, spawn=None, argv0=argv0") == 2
+    assert any("D554" in item for item in unwired())
 
 
 # ---------------------------------------------------------------------------------------------

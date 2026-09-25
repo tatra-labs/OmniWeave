@@ -306,7 +306,7 @@ analysis (14:779).\
 
 [[client]]
 module = "socket"
-path = "packages/omniweave/src/omniweave/run/bench.py"
+path = "packages/omniweave/src/omniweave/run/supervisor.py"
 why = """
 `socket.gethostname()`, once, in `worker_identity()` -- the `host` field of `work.claimed_by`'s \
 `<host>:<pid>:<process_create_time>` triple (08-runtime.md:465), which is the identity the lease \
@@ -314,5 +314,26 @@ reaper reads back. A name for this machine, never a name of another one. No sock
 
 The same call and the same argument as `locks.py`'s row, for the same triple: `omniweave_core.locks` \
 owns the triple's construction and exports the third component, and the colon-joined spelling the \
-`work` table stores is composed here from parts rather than from a second source.\
+`work` table stores is composed here from parts rather than from a second source.
+
+The row moved here from `run/bench.py` in W7.3w with the function: `ow ingest` is the second \
+caller that builds a `Supervisor`, and a production verb must not import the benchmark harness \
+for one identity string. `bench.py` re-exports the name and no longer imports `socket`.\
+"""
+
+[[client]]
+module = "asyncio"
+path = "packages/omniweave/src/omniweave/run/ingest.py"
+why = """
+INV-3's sanctioned home for a loop, the `supervisor.py` and `bench.py` rows' own reason: \
+`pyproject.toml`'s `TID251` per-file-ignore is scoped to \
+`packages/omniweave/src/omniweave/run/*.py`.
+
+What is imported is `asyncio.run`, once, around `Supervisor.run()` -- startup step 9 for \
+`ow ingest` (W7.3w). The loop drains `op.identify` rows through the store thread; there is no \
+`open_connection`, no `create_server`, no `loop.sock_*` and no `create_subprocess_*`, and \
+`op.identify` reads a store column and nothing else (08:861).
+
+The row exists because `asyncio` CAN dial and clause 1 is a declaration rule rather than a usage \
+analysis (14:779).\
 """
