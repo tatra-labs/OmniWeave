@@ -57,10 +57,12 @@ from omniweave.surface.startup import servable
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
 
+    from omniweave_core.config import Config
+
     from omniweave.surface.authority import Resolution
     from omniweave.surface.dispatch import Entry
 
-__all__ = ["HTTP_ONLY", "main"]
+__all__ = ["HTTP_ONLY", "main", "stores"]
 
 HTTP_ONLY: Final[tuple[str, ...]] = (
     "host",
@@ -119,7 +121,28 @@ def _serve(
         profile=decided.resolution.profile,
         compact=decided.compact,
         corpus_resolves=decided.resolves,
+        corpus=decided.corpus,
+        corpora=stores(config, decided.corpora, cwd=cwd),
     )
+
+
+def stores(config: Config, names: Iterable[str], *, cwd: Path) -> dict[str, str]:
+    """Each declared corpus's `.owstore`, absolute. D527.
+
+    `corpora.*.path` is a `path` key, and `config._as_path` normalises its separator and nothing
+    else: no document says what a relative one is relative to. It is resolved against the
+    directory of the file that declared it -- a project's `omniweave.toml` naming
+    `.omniweave/index.owstore` means the one beside it, wherever `ow serve` was started -- and
+    against `cwd` when the value came from the environment or a built-in.
+    """
+    out: dict[str, str] = {}
+    for name in names:
+        key = f"corpora.{name}.path"
+        raw = Path(str(config.get(key)))
+        declared = config.source_of(key).path
+        base = declared.parent if declared is not None else cwd
+        out[name] = str(raw if raw.is_absolute() else (base / raw).resolve())
+    return out
 
 
 def _parse(argv: Sequence[str], stderr: TextIO) -> argparse.Namespace | int:

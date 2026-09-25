@@ -106,7 +106,7 @@ if TYPE_CHECKING:
     from omniweave_core.store import Reader
     from omniweave_core.store.reader import HydratedRow
 
-__all__ = ["ANSWER_FORMAT", "Hit", "Response", "byte_exact", "retrieve"]
+__all__ = ["ANSWER_FORMAT", "Hit", "Response", "Retrieval", "byte_exact", "execute", "retrieve"]
 
 ANSWER_FORMAT: Final[str] = "md"
 """The serializer format `byte_exact()`'s fourth conjunct is evaluated for. 07:2551's predicate
@@ -574,6 +574,30 @@ def _pack(
     return tuple(hits), (generated / spent if spent else 0.0)
 
 
+@dataclass(frozen=True, slots=True)
+class Retrieval:
+    """A `Response` and the rows its hits were hydrated from, read in the SAME snapshot. D523.
+
+    `Hit` is fourteen fields by 07:2274's design, and the packer and the renderer need five facts it
+    does not carry: the document (`Candidate.doc_key`, `RenderedBlock.doc_uri`), `page`, `kind`,
+    `layer` (both inputs to `worth()`) and `method`. Every one is on the hydrated row. Re-reading
+    them after the snapshot closes is 07:2327's failure -- *"a committed re-index can hand it text
+    from a different generation than the one that was ranked"* -- so they travel with the
+    `Response`, keyed by `block_id`, and `Hit` stays the shape the plan prints.
+
+    `retrieve()` returns `.response` and is the public interface; this is what `answer/pack.py`
+    reads.
+    """
+
+    response: Response
+    rows: Mapping[int, HydratedRow]
+    indexed_blocks: int
+    """`IndexCaps.live_blocks`, the count 10:479's tier table is keyed on (`answer.budget`)."""
+    reasons: Mapping[str, str]
+    """Each Channel's `reason`, keyed by name. The trailer prints `semantic:off(vectors)` (10:680),
+    and `Verdict.channels` carries the status and not the reason, so the reason rides here."""
+
+
 def retrieve(
     r: Reader,
     q: Query,
@@ -587,6 +611,17 @@ def retrieve(
     `sqlite.snapshot()` takes the same parameter: a test spends the budgets without spending the
     wall time. Every other input is the three the plan prints.
     """
+    return execute(r, q, pol, monotonic_ns=monotonic_ns).response
+
+
+def execute(
+    r: Reader,
+    q: Query,
+    pol: RetrievalPolicy,
+    *,
+    monotonic_ns: Callable[[], int] = time.monotonic_ns,
+) -> Retrieval:
+    """`retrieve()`, keeping the hydrated rows the `Response` was built from. See `Retrieval`."""
     material = _material(q)
     caps = r.capabilities()
     query_plan = plan(material.query, caps, pol)
@@ -639,4 +674,10 @@ def retrieve(
         generated_share=generated_share,
         degradations=tuple(dict.fromkeys(run.degradations)),
     )
-    return Response(hits=hits, verdict=verdict)
+    kept = {hit.block_id for hit in hits}
+    return Retrieval(
+        response=Response(hits=hits, verdict=verdict),
+        rows=MappingProxyType({row.block_id: row for row in rows if row.block_id in kept}),
+        indexed_blocks=caps.live_blocks,
+        reasons=MappingProxyType({result.name: result.reason for result in results}),
+    )

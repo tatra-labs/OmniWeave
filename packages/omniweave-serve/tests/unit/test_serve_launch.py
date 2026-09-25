@@ -100,7 +100,14 @@ def test_a_bad_profile_raises_before_stdio_is_bound(monkeypatch: pytest.MonkeyPa
 
     monkeypatch.setattr(launch_module, "pipes", bound)
     with pytest.raises(ConfigError, match="is not a profile"):
-        run(profile="everything", compact=True, corpus_resolves=True, stderr=io.StringIO())
+        run(
+            profile="everything",
+            compact=True,
+            corpus_resolves=True,
+            corpus=None,
+            corpora={},
+            stderr=io.StringIO(),
+        )
 
 
 # ---------------------------------------------------------------------------------------------

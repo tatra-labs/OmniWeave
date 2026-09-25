@@ -37,11 +37,21 @@ class Recorder:
 
     exit_code: int = 0
     calls: list[dict[str, object]] = field(default_factory=list)
+    stores: list[tuple[str | None, dict[str, str]]] = field(default_factory=list)
 
-    def __call__(self, *, profile: str, compact: bool, corpus_resolves: bool) -> int:
+    def __call__(
+        self,
+        *,
+        profile: str,
+        compact: bool,
+        corpus_resolves: bool,
+        corpus: str | None,
+        corpora: Mapping[str, str],
+    ) -> int:
         self.calls.append(
             {"profile": profile, "compact": compact, "corpus_resolves": corpus_resolves}
         )
+        self.stores.append((corpus, dict(corpora)))
         return self.exit_code
 
 
@@ -97,6 +107,30 @@ def test_a_declared_default_corpus_resolves(tmp_path: Path) -> None:
     body = HANDBOOK + '[serve]\ndefault_corpus = "handbook"\n'
     _run(tmp_path, ["--mcp"], body=body, rows=[Row(served)])
     assert served.calls[0]["corpus_resolves"] is True
+    corpus, corpora = served.stores[0]
+    assert corpus == "handbook"
+    assert corpora == {"handbook": str((tmp_path / ".omniweave" / "index.owstore").resolve())}
+
+
+def test_a_relative_store_path_is_the_declaring_files_neighbour(tmp_path: Path) -> None:
+    """D527: `ow serve` started from a subdirectory still opens the store beside the
+    `omniweave.toml` that named it, and an absolute path is taken as written."""
+    served = Recorder()
+    absolute = (tmp_path / "elsewhere" / "legal.owstore").resolve().as_posix()
+    body = HANDBOOK + f'[corpora.legal]\npath = "{absolute}"\n'
+    (tmp_path / "omniweave.toml").write_text(body, encoding="utf-8")
+    inner = tmp_path / "deep" / "er"
+    inner.mkdir(parents=True)
+    main(
+        ["serve", "--mcp"],
+        env={"OMNIWEAVE_HOME": str(tmp_path / "owhome")},
+        cwd=inner,
+        stderr=io.StringIO(),
+        entries=[Row(served)],
+    )
+    _, corpora = served.stores[0]
+    assert corpora["handbook"] == str((tmp_path / ".omniweave" / "index.owstore").resolve())
+    assert Path(corpora["legal"]) == Path(absolute)
 
 
 def test_the_flag_beats_the_key_and_the_key_beats_the_default(tmp_path: Path) -> None:

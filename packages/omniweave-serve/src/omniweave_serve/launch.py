@@ -3,9 +3,9 @@
 `omniweave` may not import this distribution and this one may not import `omniweave` (02:350,
 02:361). So `ow serve --mcp` runs startup step 5 where it lives, then reaches this function
 through the `omniweave.serve` entry-point group that `pyproject.toml` declares, the way the
-framework reaches every driver it does not import. Only data crosses the boundary: three
+framework reaches every driver it does not import. Only data crosses the boundary: five
 keyword arguments of builtin types, because a type defined on either side is one the other side
-cannot name.
+cannot name. `corpus` and `corpora` are what `query.QueryCaller` searches.
 
 ## WHY `asyncio` IS NAMED HERE, ONCE
 
@@ -26,15 +26,19 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, Final, TextIO
 
 from omniweave_core.errors import InternalError
 
 from omniweave_serve import listing
 from omniweave_serve.dispatch import McpDispatcher, Surface
+from omniweave_serve.query import QueryCaller
 from omniweave_serve.stdio import EOF, pipes, serve
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from omniweave_serve.stdio import Dispatcher, Lines, Sink
 
 __all__ = ["OK", "report", "run", "run_on"]
@@ -64,7 +68,15 @@ async def run_on(lines: Lines, sink: Sink, dispatcher: Dispatcher) -> int:
     return OK if served.stopped_by == EOF else InternalError.EXIT
 
 
-def run(*, profile: str, compact: bool, corpus_resolves: bool, stderr: TextIO | None = None) -> int:
+def run(
+    *,
+    profile: str,
+    compact: bool,
+    corpus_resolves: bool,
+    corpus: str | None,
+    corpora: Mapping[str, str],
+    stderr: TextIO | None = None,
+) -> int:
     """The `omniweave.serve` entry point: select, report, bind this process's stdio, serve.
 
     `McpDispatcher.create()` runs before `pipes()` takes the streams, so a `ConfigError` from a
@@ -72,7 +84,10 @@ def run(*, profile: str, compact: bool, corpus_resolves: bool, stderr: TextIO | 
     the transport opens"*), and `ow`'s own error path reports it.
     """
     surface = Surface(profile=profile, compact=compact, corpus_resolves=corpus_resolves)
-    dispatcher = McpDispatcher.create(surface)
+    caller = QueryCaller(
+        corpora={name: Path(path) for name, path in corpora.items()}, default=corpus
+    )
+    dispatcher = McpDispatcher.create(surface, caller=caller)
     err = stderr or sys.stderr
     for line in report(surface):
         err.write(line + "\n")
