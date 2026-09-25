@@ -165,6 +165,22 @@ a loopback default, not a literal.\
 #
 # Six rows at P3, and not one of them opens a network connection.
 
+[[literal]]
+value = "schemas.openxmlformats.org"
+path = "packages/omniweave/src/omniweave/route/detect.py"
+why = """
+An XML namespace NAME, never a URL anything fetches. ECMA-376's transitional `officeDocument` relationship type is spelled as an http URI, and `route.detect` compares a `Relationship/@Type` attribute read out of `_rels/.rels` against it to find an OPC package's main part (05:739-746). The string is matched, never dialled: detection opens the unit's own file and nothing else."""
+
+[[literal]]
+value = "purl.oclc.org"
+path = "packages/omniweave/src/omniweave/route/detect.py"
+why = "The strict-conformance spelling of the same `officeDocument` relationship type (ECMA-376 Part 1, strict). Same row, same reasoning: an attribute value compared, never a destination."
+
+[[literal]]
+value = 'www\.w3\.org'
+path = "packages/omniweave/src/omniweave/route/detect.py"
+why = "The SVG namespace, `http://www.w3.org/2000/svg`, escaped inside the regex 05:684's `svg` probe matches an `xmlns` attribute against. A pattern over the unit's own HEAD bytes, never a destination."
+
 [[client]]
 module = "asyncio"
 path = "packages/omniweave/src/omniweave/run/supervisor.py"

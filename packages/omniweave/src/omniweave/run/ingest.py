@@ -93,7 +93,9 @@ from omniweave_core.operator import (
 from omniweave_core.store import migrate
 from omniweave_core.store import sqlite as ow
 from omniweave_core.store.queue import SqliteStore
+from omniweave_ports.types import DriverError, FailureClass
 
+from omniweave.route.detect import Detection, detect
 from omniweave.run import discover, expand
 from omniweave.run import supervisor as sup
 
@@ -175,6 +177,10 @@ _TALLY_SQL: Final[str] = """
 SELECT state, count(*), COALESCE(sum(part_count), 0) FROM unit
  WHERE last_seen_gen = :generation GROUP BY state
 """
+_FORMATS_SQL: Final[str] = """
+SELECT format, count(*) FROM unit
+ WHERE last_seen_gen = :generation AND format IS NOT NULL GROUP BY format ORDER BY format
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,6 +215,7 @@ class IngestReport:
     drained: sup.RunReport | None = None
     states: Mapping[str, int] = field(default_factory=dict)
     parts: int = 0
+    formats: Mapping[str, int] = field(default_factory=dict)
 
     @property
     def identified(self) -> int:
@@ -238,6 +245,9 @@ class IngestReport:
             f"{acq.bytes_read} bytes",
             f"  {identify}",
         ]
+        if self.formats:
+            shown = ", ".join(f"{token} {count}" for token, count in self.formats.items())
+            out.append(f"  detect    {shown}")
         if self.unsalted:
             out.append(
                 f"  identify  {self.unsalted} units carry no walked path and cannot be keyed (D559)"
@@ -444,6 +454,7 @@ def _hops(
         else None
     )
     states, parts = _tally(thread, generation)
+    formats = _formats(thread, generation)
     identified = states.get(IDENTIFIED, 0)
     status = "partial" if identified or (drained is not None and drained.status != "done") else "ok"
     return IngestReport(
@@ -461,6 +472,7 @@ def _hops(
         drained=drained,
         states=states,
         parts=parts,
+        formats=formats,
     )
 
 
@@ -631,6 +643,19 @@ def _tally(thread: ow.StoreThread, generation: int) -> tuple[dict[str, int], int
     return states, parts
 
 
+def _formats(thread: ow.StoreThread, generation: int) -> dict[str, int]:
+    """`unit.format` over this generation's walk: what the ladder decided, from the table."""
+    rows = cast(
+        "list[tuple[str, int]]",
+        _read(
+            thread,
+            "ingest.formats",
+            lambda c: c.execute(_FORMATS_SQL, {"generation": generation}).fetchall(),  # type: ignore[attr-defined]
+        ),
+    )
+    return {str(token): int(count) for token, count in rows}
+
+
 # =============================================================================================
 # Hop 4's second half: the Supervisor, with `op.identify` as its dispatcher
 # =============================================================================================
@@ -655,10 +680,15 @@ class _Identify:
         out: list[StepResult] = []
         for row in batch.rows:
             unit = self._unit(row)
+            detected, refused = _detected(row.unit_uri)
+            count = expand.single_part if refused is None else _refusing(refused)
             result, answer = expand.identify(
-                unit, count=expand.single_part, cache_key_hex=row.cache_key
+                unit,
+                count=count,
+                cache_key_hex=row.cache_key,
+                fmt="" if detected is None else detected.format,
             )
-            self._ledger.record(row.id, row.unit_uri, answer)
+            self._ledger.record(row.id, row.unit_uri, answer, _columns(detected))
             out.append(result)
         return out
 
@@ -676,6 +706,45 @@ class _Identify:
             )
         digest, size, media = cast("tuple[str, int | None, str | None]", found)
         return expand.counted(row.unit_uri, digest, size or 0, media or "")
+
+
+def _detected(unit_uri: str) -> tuple[Detection | None, DriverError | None]:
+    """05 section 2's ladder over the unit's file: `(detection, None)` or `(None, the refusal)`.
+
+    An `fs` unit's uri is its file (05 section 1.2). A file gone since acquisition
+    fails as `corrupt_input`, which is what `discover._unreadable` calls
+    the same fact; a container identity that breaks 05:748's bound is the ladder's own refusal.
+    """
+    try:
+        return detect(Path(unit_uri)), None
+    except DriverError as refused:
+        return None, refused
+    except OSError as gone:
+        return None, DriverError(
+            cls=FailureClass.CORRUPT_INPUT, message=f"the file is unreadable at identify: {gone}"
+        )
+
+
+def _refusing(refused: DriverError) -> expand.PartCounter:
+    """A counter that answers with the ladder's refusal, so `expand.identify()` fails the unit with
+    its class exactly as it fails one whose counter refused -- one failure path, not two."""
+
+    def count(unit: UnitRef, *, fmt: str) -> expand.PartCount:
+        del unit, fmt
+        raise refused
+
+    return count
+
+
+def _columns(detected: Detection | None) -> dict[str, object] | None:
+    """The three columns `IDENTIFIED_SQL` writes from a detection, or none for a refusal."""
+    if detected is None:
+        return None
+    return {
+        "format": detected.format,
+        "media_type": detected.media_type,
+        "format_evidence": detected.evidence_json(),
+    }
 
 
 class _Forgetting:
