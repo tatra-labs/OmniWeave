@@ -639,9 +639,10 @@ def test_all_names_every_public_symbol_this_module_defines() -> None:
 def test_the_asyncio_exemption_is_scoped_to_the_files_that_touch_a_transport() -> None:
     """D344, taken. The ban's message reads INV-3 as a rule about where a loop may live; INV-3 is
     about what `import omniweave_core` pulls in, and 02:264 row 40 gives this distribution the
-    transports by name. The exemption is per-FILE and that is the assertion: of this package's ten
-    modules exactly three may name `asyncio`, and the framing, the queue, the guard, the registry
-    and the catalogue all still hold no loop at all."""
+    transports by name. The exemption is per-FILE and that is the assertion: of this package's
+    modules exactly four may name `asyncio` -- the two transports, the exporter, and `launch.py`'s
+    one `asyncio.run` -- and the framing, the queue, the guard, the registry, the catalogue and the
+    dispatcher all still hold no loop at all."""
     ignores = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["tool"]["ruff"][
         "lint"
     ]["per-file-ignores"]
@@ -654,6 +655,7 @@ def test_the_asyncio_exemption_is_scoped_to_the_files_that_touch_a_transport() -
         "packages/omniweave-serve/src/omniweave_serve/otlp.py",
         "packages/omniweave-serve/src/omniweave_serve/stdio.py",
         "packages/omniweave-serve/src/omniweave_serve/http.py",
+        "packages/omniweave-serve/src/omniweave_serve/launch.py",
     }
     package = Path(stdio_module.__file__).parent
     assert len(exempt) < len(list(package.glob("*.py")))

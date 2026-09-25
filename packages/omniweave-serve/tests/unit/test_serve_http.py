@@ -627,8 +627,11 @@ def test_the_only_thing_this_module_takes_from_asyncio_is_a_deadline() -> None:
     )
 
 
-def test_the_exemptions_and_the_egress_rows_name_the_same_two_files() -> None:
-    """The two registers that have to agree about which files may hold a loop, held equal."""
+def test_the_exemptions_and_the_egress_rows_name_the_same_three_files() -> None:
+    """The two registers that have to agree about which files may hold a loop, held equal.
+
+    Three since W7.3p: the two transports, and `launch.py`, which runs the loop they are driven by.
+    `otlp.py`'s exemption is for `opentelemetry` and not `asyncio`, so it has no row here."""
     root = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
     exempt = {
         path
@@ -644,6 +647,7 @@ def test_the_exemptions_and_the_egress_rows_name_the_same_two_files() -> None:
     assert declared == {
         "packages/omniweave-serve/src/omniweave_serve/stdio.py",
         "packages/omniweave-serve/src/omniweave_serve/http.py",
+        "packages/omniweave-serve/src/omniweave_serve/launch.py",
     }
     assert declared <= exempt
 

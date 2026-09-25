@@ -65,6 +65,7 @@ __all__ = [
     "Gap",
     "HooksCheckReport",
     "InstallReport",
+    "ServeReport",
     "SkillsReport",
 ]
 
@@ -308,6 +309,18 @@ class InstallReport:
     18:2973-2989 prints and the exit the table at 10:1483-1492 gives it -- 0, 1, or 9 for
     `--check`. The per-path detail is the install receipt's, which is the record; a second copy
     here would be a second place for it to disagree.
+    """
+
+    exit_code: int
+    lines: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ServeReport:
+    """What `ow serve` returns when its transport closes: 10:1426's 0/1/9 and the lines.
+
+    `SkillsReport`'s shape, for its reason: the row has no `mcp_name`, since starting the transport
+    is not a call over it, so there is no MCP payload to shape.
     """
 
     exit_code: int

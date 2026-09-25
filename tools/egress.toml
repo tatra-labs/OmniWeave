@@ -214,6 +214,16 @@ The row the `stdio.py` row above said would be needed, and the argument is indee
 """
 
 [[client]]
+module = "asyncio"
+path = "packages/omniweave-serve/src/omniweave_serve/launch.py"
+why = """
+The `omniweave.serve` entry point `ow serve --mcp` loads (W7.3p), and the one place the stdio transport's loop is started: `asyncio.run(run_on(lines, sink, dispatcher))`. It is D344's decision a third time, and `pyproject.toml`'s `TID251` per-file-ignore is scoped to this one file and says why there.
+
+**What it runs is the `stdio.py` row's transport, and nothing else.** `pipes()` binds `sys.stdin.buffer` and `sys.stdout.buffer`, the two descriptors the host started this process with; 10:2351 calls that "**not a network transport**". What is imported is `asyncio.run`, ONCE, and a test asserts that single attribute over the AST: no `open_connection`, no `create_server`, no `loop.sock_*`, no `create_subprocess_*`.
+
+The row exists because `asyncio` CAN dial -- `asyncio.open_connection` is two attributes away -- and clause 1 is a declaration rule rather than a usage analysis (14:779). `ow serve --http` is refused by the CLI before this function is reached, so no listener is started from here."""
+
+[[client]]
 module = "socket"
 path = "packages/omniweave-core/src/omniweave_core/host/subproc.py"
 why = """

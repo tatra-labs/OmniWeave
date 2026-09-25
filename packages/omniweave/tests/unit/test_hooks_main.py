@@ -422,11 +422,12 @@ def test_a_cwd_that_does_not_exist_is_a_quiet_counter(tmp_path: Path) -> None:
 def test_the_drain_stays_unwired_until_something_dispatches_ingest() -> None:
     """D433. When `ingest` joins `DISPATCHED`, this fails -- and the spawn should land with it.
 
-    `install` and `uninstall` joined in W7.5h, `hooks` in W7.5i and `skills` in W7.6b; none is
-    the drain."""
+    `install` and `uninstall` joined in W7.5h, `hooks` in W7.5i, `skills` in W7.6b and `serve` in
+    W7.3p; none is the drain."""
     import omniweave.__main__ as launcher  # noqa: PLC0415
 
-    assert frozenset({HOOK_WORD, "install", "uninstall", "hooks", "skills"}) == launcher.DISPATCHED
+    roots = frozenset({HOOK_WORD, "install", "uninstall", "hooks", "skills", "serve"})
+    assert roots == launcher.DISPATCHED
     assert "ingest" not in launcher.DISPATCHED
 
 

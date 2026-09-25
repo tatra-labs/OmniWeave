@@ -93,6 +93,7 @@ __all__ = [
     "InstallIn",
     "OpenIn",
     "QueryIn",
+    "ServeIn",
     "SkillsCheckIn",
     "SkillsHashIn",
     "SkillsInstallIn",
@@ -440,6 +441,28 @@ class SkillsUpdateIn:
 @dataclass(frozen=True, slots=True)
 class SkillsHashIn:
     """`ow skills hash`. 10:1370: *"prints the source-tree digests for a release PR"*."""
+
+
+@dataclass(frozen=True, slots=True)
+class ServeIn:
+    """`ow serve`. 10:1426's flags, in its order, every one an option.
+
+    `--mcp` and `--http` pick the transport and exactly one must be given; the plan gives neither
+    a default. 18:916 prints an eleventh flag, `--json-response`, that 10:1426 does not (D393);
+    10 section 6.1 is the CLI grammar's owner, so this is its list and the eleventh is not here.
+    `profile` is `None` rather than `"default"`: an Action argument overrides `[serve] profile` for
+    the call only (02:1155), and `None` is what lets a flag nobody typed fall through to the key.
+    """
+
+    mcp: bool = False
+    http: bool = False
+    host: str | None = None
+    port: int | None = None
+    path: str | None = None
+    api_key: str | None = None
+    stateless: bool = False
+    session_timeout: int | None = None
+    profile: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
