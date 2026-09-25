@@ -100,6 +100,7 @@ def test_what_ow_add_rostered_in_one_process_is_identified_by_the_next(tmp_path:
     lines = ran.stdout.decode("ascii").splitlines()
     assert lines[-1] == "partial  0 failed"
     assert "2 units identified" in lines[3]
+    assert "  detect    txt 2" in lines, "05:559: detection runs at identify"
     assert _states(store) == [("identified", 2)]
     assert not (store.parent / "store.write-index.owstore.lock").exists()
 
