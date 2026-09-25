@@ -70,7 +70,12 @@ from omniweave_core.answer.allocate import (
     Candidate,
     allocate,
 )
-from omniweave_core.answer.budget import AnswerBudget, effective_max_chars, tier_for
+from omniweave_core.answer.budget import (
+    AnswerBudget,
+    BudgetTier,
+    effective_max_chars,
+    tier_for,
+)
 from omniweave_core.answer.dedup import (
     MAX_SPANS_IN_POINTER,
     Emission,
@@ -84,6 +89,8 @@ from omniweave_core.answer.render import (
     Pointer,
     RenderedBlock,
     cites_of,
+    render,
+    sections_of,
     sent_earlier_chars,
 )
 from omniweave_core.answer.untrusted import defang, serve_quote
@@ -96,8 +103,9 @@ if TYPE_CHECKING:
     from omniweave_core.retrieve.execute import Hit, Retrieval
     from omniweave_core.retrieve.verdict import DegradeCause, Verdict
     from omniweave_core.store.reader import HydratedRow
+    from omniweave_core.store.resolve import Opening
 
-__all__ = ["SERVED_DOMAIN", "Packed", "doc_name", "emitted", "pack"]
+__all__ = ["SERVED_DOMAIN", "Packed", "doc_name", "emitted", "pack", "pack_open"]
 
 SERVED_DOMAIN: Final[bytes] = b"ow.served.1"
 """The `ow128` domain of the served-text digest the ledger compares. D530.
@@ -144,6 +152,25 @@ def _cite(corpus: str, cite: str, *, qualify: bool) -> str:
 
 def _block(hit: Hit, row: HydratedRow, *, corpus: str, qualify: bool) -> tuple[RenderedBlock, int]:
     """One evidence block, defanged on a copy. Returns the block and its sentinel count."""
+    return _rendered(
+        row,
+        corpus=corpus,
+        qualify=qualify,
+        byte_exact=hit.byte_exact,
+        identity_grade=hit.identity_grade,
+    )
+
+
+def _rendered(
+    row: HydratedRow,
+    *,
+    corpus: str,
+    qualify: bool,
+    byte_exact: bool,
+    identity_grade: str = "",
+    is_context: bool = False,
+) -> tuple[RenderedBlock, int]:
+    """`_block()` for a row with no `Hit`: an opened block. The same defang, the same fields."""
     served = defang(row.text or "")
     changed = served.changed
     block = RenderedBlock(
@@ -157,9 +184,10 @@ def _block(hit: Hit, row: HydratedRow, *, corpus: str, qualify: bool) -> tuple[R
         trust=row.trust.name.lower(),
         method=row.method.value,
         origin_driver=_NO_DRIVER,
-        byte_exact=hit.byte_exact and not changed,
+        byte_exact=byte_exact and not changed,
         restriction=str(row.restriction_bits) if row.restriction_bits else EN_DASH,
-        identity_grade=hit.identity_grade,
+        identity_grade=identity_grade,
+        is_context=is_context,
         defanged=changed,
     )
     return block, served.sentinels if changed else 0
@@ -424,3 +452,209 @@ def pack(
         max_chars=envelope,
         emissions={block.cite: served[block.cite] for block in evidence},
     )
+
+
+# ---------------------------------------------------------------------------------------------
+# ow_open: no ranking, so no allocator. Request order, then reading order, until the envelope.
+# ---------------------------------------------------------------------------------------------
+
+TRUNCATED: Final[str] = "OW-A-010 OW_RESPONSE_TRUNCATED"
+"""10:458: a whole document that does not fit *"sets `OW-A-010 / OW_RESPONSE_TRUNCATED` in the
+trailer"*."""
+
+
+def pack_open(
+    opening: Opening,
+    *,
+    corpus: str,
+    qualify: bool = False,
+    max_chars: int | None = None,
+    call_ord: int = 1,
+    degradations: Sequence[str] = (),
+) -> Packed:
+    """One `Opening` to one `Answer` on the `open` surface. 18:346: no ranking, no fusion, no gates.
+
+    **Not `allocate()`.** The allocator's cliff, weights and `MIN_CHARS` rule decide which of
+    several RANKED documents deserve the envelope, and nothing here is ranked: the caller named
+    these blocks. So they pack in the order they were asked for, each ref's blocks in `(page, ord)`
+    order, under the same `DOC_OVERHEAD` and `BLOCK_OVERHEAD` the allocator reserves, and the first
+    block always packs.
+
+    **Nothing is cut silently** (10:459). Every block that does not fit becomes an `ow:notseen`
+    row per document with the page range that fetches it, and the trailer carries `OW-A-010` with
+    the first of those fetches. The trailer's copy is the one that counts: `ow:notseen` is itself
+    droppable (10:578's cut order), and at the 1,000-character floor the four never-dropped
+    sections and one block already fill the envelope, so the section naming what was cut is the
+    first thing cut (D546). The evidence count is checked against the rendered document and
+    lowered until `render()`'s truncator has no block left to cut.
+
+    **Nothing is withheld.** `ow:sent-earlier` is an `open` section too, and the one thing an agent
+    told *"already sent earlier"* can do next is call `ow_open` -- so withholding here would leave
+    the block unreachable in the session (D542). Its emissions are still returned for the ledger.
+    """
+    from omniweave_core.retrieve.execute import byte_exact  # noqa: PLC0415
+    from omniweave_core.store.resolve import Missed  # noqa: PLC0415
+
+    tier_index, tier = tier_for(opening.indexed_blocks)
+    envelope = effective_max_chars(max_chars, tier)
+    context: set[int] = set()
+    order: list[int] = []
+    blocking: list[str] = []
+    resolved = 0
+    for found in opening.results:
+        if isinstance(found, Missed):
+            error = found.error
+            blocking.append(f"> {found.ref}: {error}. Fix: `{error.fix}` [{error.numeric()}]")
+            continue
+        resolved += 1
+        if found.superseded:
+            blocking.append(f"> {found.superseded}. Cite the successor from now on.")
+        context.update(found.context_ids)
+        order.extend(found.block_ids)
+    order = [block_id for block_id in dict.fromkeys(order) if block_id in opening.rows]
+    rows = [opening.rows[block_id] for block_id in order]
+    blocks = [
+        _rendered(
+            row,
+            corpus=corpus,
+            qualify=qualify,
+            byte_exact=byte_exact(row),
+            is_context=row.block_id in context,
+        )
+        for row in rows
+    ]
+    shown = _fits(rows, envelope)
+    while True:
+        answer = _open_answer(
+            opening,
+            rows,
+            blocks,
+            shown,
+            corpus=corpus,
+            qualify=qualify,
+            blocking=tuple(blocking),
+            resolved=resolved,
+            envelope=envelope,
+            tier_index=tier_index,
+            tier=tier,
+            call_ord=call_ord,
+            degradations=degradations,
+        )
+        if shown <= 1 or _whole(render(answer, max_chars=envelope), shown, answer):
+            break
+        shown -= 1
+    emissions = {
+        block.cite: _emission(row, block, corpus=corpus, gen=opening.generation)
+        for (block, _), row in zip(blocks[:shown], rows[:shown], strict=True)
+    }
+    return Packed(answer=answer, max_chars=envelope, emissions=emissions)
+
+
+def _whole(document: str, shown: int, answer: Answer) -> bool:
+    """Every packed block survived `render()`, and so did `ow:notseen` if there is anything in it.
+
+    A block given up to keep `ow:notseen` is the right trade: the row naming a page range costs
+    less than the block, and it is what keeps the cut visible to an agent reading the evidence.
+    """
+    if len(cites_of(document)) < shown:
+        return False
+    return not answer.pointers or "notseen" in sections_of(document)
+
+
+def _fits(rows: Sequence[HydratedRow], envelope: int) -> int:
+    """How many blocks, in order, fit under the allocator's own reservation. At least one."""
+    spent = 0
+    docs: set[str] = set()
+    for index, row in enumerate(rows):
+        cost = (row.chars or 0) + BLOCK_OVERHEAD + (0 if row.uri in docs else DOC_OVERHEAD)
+        if index and spent + cost > envelope:
+            return index
+        spent += cost
+        docs.add(row.uri)
+    return len(rows)
+
+
+def _open_answer(
+    opening: Opening,
+    rows: Sequence[HydratedRow],
+    blocks: Sequence[tuple[RenderedBlock, int]],
+    shown: int,
+    *,
+    corpus: str,
+    qualify: bool,
+    blocking: tuple[str, ...],
+    resolved: int,
+    envelope: int,
+    tier_index: int,
+    tier: BudgetTier,
+    call_ord: int,
+    degradations: Sequence[str],
+) -> Answer:
+    """The Answer with the first `shown` blocks as evidence and the rest as page-range pointers."""
+    evidence = tuple(block for block, _ in blocks[:shown])
+    rest = rows[shown:]
+    extra: list[tuple[str, str]] = [("resolved", f"{resolved} of {len(opening.results)} refs")]
+    pointers = _unshown(rest, corpus=corpus, qualify=qualify)
+    if pointers:
+        more = len(pointers) - 1
+        tail = f"; {more} more document(s) in ow:notseen" if more else ""
+        extra.append(
+            (
+                "truncated",
+                f"{TRUNCATED}: {len(rest)} block(s) not shown; `{pointers[0].fetch}`{tail}",
+            )
+        )
+    return Answer(
+        state="ok" if resolved == len(opening.results) else "degraded",
+        corpus=corpus,
+        generation=opening.generation,
+        freshness=opening.freshness,
+        evidence=evidence,
+        pointers=pointers,
+        blocking=blocking,
+        trailer_extra=tuple(extra),
+        degradations=tuple(dict.fromkeys(degradations)),
+        defanged_blocks=sum(1 for block in evidence if block.defanged),
+        instruction_shaped=sum(sentinels for _, sentinels in blocks[:shown]),
+        blocks_matched=len(rows),
+        docs_matched=len({row.uri for row in rows}),
+        surface="open",
+        budget=AnswerBudget(
+            tier_index=tier_index,
+            blocks_below=tier.blocks_below,
+            max_chars=envelope,
+            chars_used=sum(block.chars for block in evidence),
+            max_docs=tier.max_docs,
+            docs_used=len({block.doc_uri for block in evidence}),
+            calls_allowed=tier.calls,
+            call_ord=call_ord,
+            chars_deduped=0,
+            doc_overhead=DOC_OVERHEAD,
+            block_overhead=BLOCK_OVERHEAD,
+        ),
+    )
+
+
+def _unshown(rows: Sequence[HydratedRow], *, corpus: str, qualify: bool) -> tuple[Pointer, ...]:
+    """One `truncated` row per document, carrying the page range that fetches the rest."""
+    by_doc: dict[str, list[HydratedRow]] = {}
+    for row in rows:
+        by_doc.setdefault(row.uri, []).append(row)
+    out: list[Pointer] = []
+    for uri, group in by_doc.items():
+        pages = tuple(sorted({row.page for row in group}))
+        name = doc_name(uri)
+        span = f"p{pages[0]}" if pages[0] == pages[-1] else f"p{pages[0]}-{pages[-1]}"
+        out.append(
+            Pointer(
+                doc_uri=name,
+                pages=pages,
+                cites=tuple(
+                    _cite(corpus, row.cite, qualify=qualify) for row in group[:MAX_SPANS_IN_POINTER]
+                ),
+                blocks=len(group),
+                fetch=f'ow_open ref="{name}#{span}"',
+                reason="truncated",
+            )
+        )
+    return tuple(out)

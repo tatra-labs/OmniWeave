@@ -476,13 +476,26 @@ def _provenance(answer: Answer, *, collapsed: bool = False) -> str:
     return "\n".join([header, rule, *rows])
 
 
+_NOTSEEN_WHY: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "cliffed": "matched, below the byte cliff.",
+        "truncated": "not shown: the budget ran out first.",
+        "sent_earlier": "already sent earlier in this conversation.",
+    }
+)
+"""What each `Pointer.reason` says in `ow:notseen`. 10:671 prints the `cliffed` sentence, the only
+one the worked Answer has; a block the budget cut was not *below the cliff*, and saying so would
+tell the agent it ranked low when it was never ranked (D541)."""
+
+
 def _pointer_rows(pointers: Sequence[Pointer]) -> str:
     """10:671-673's `ow:notseen` form: one line of prose, one line carrying the `ow_open` call."""
     lines: list[str] = []
     for pointer in pointers:
         pages = ", ".join(f"p.{page}" for page in pointer.pages)
         cites = ", ".join(pointer.cites)
-        lines.append(f"- {pointer.doc_uri} {pages} ({cites}) — matched, below the byte cliff.")
+        why = _NOTSEEN_WHY[pointer.reason]
+        lines.append(f"- {pointer.doc_uri} {pages} ({cites}) — {why}")
         if pointer.fetch:
             lines.append(f"  `{pointer.fetch}`")
     return "\n".join(lines)

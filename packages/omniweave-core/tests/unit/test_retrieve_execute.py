@@ -445,7 +445,7 @@ def _coverage(**over: int) -> Coverage:
     ],
 )
 def test_freshness_is_rolled_up_most_specific_first(over: dict[str, int], expected: str) -> None:
-    assert ex._freshness(_coverage(**over)) == expected
+    assert ex.freshness(_coverage(**over)) == expected
 
 
 def test_the_structural_channel_runs_when_the_query_binds_an_expand(built: Built) -> None:

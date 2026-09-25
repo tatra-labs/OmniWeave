@@ -231,7 +231,7 @@ from omniweave_core.retrieve.channels import (
     grade_title,
     normalise_query_text,
 )
-from omniweave_core.store import NO_JOB_DOCS
+from omniweave_core.store import NO_JOB_DOCS, resolve
 from omniweave_core.store import sqlite as ow
 from omniweave_core.store.types import (
     ChannelSpec,
@@ -2536,6 +2536,31 @@ class SqliteReader:
             f"seed and the rows disagree, and a guessed member would reach an Answer"
         )
         raise StoreError(msg, fix="ow store verify")
+
+    # -- beside the six: ow_open's resolve ----------------------------------
+
+    def resolve_refs(
+        self,
+        s: Snapshot,
+        refs: Sequence[str],
+        *,
+        context: int,
+        layers: frozenset[Layer],
+    ) -> tuple[resolve.Located | resolve.Missed, ...]:
+        """`ow_open`'s ladder over every ref, inside `s`. NOT a seventh `Reader` method.
+
+        07:62-68 prints the retrieval boundary with six methods, and `open` is not retrieval: 18:346
+        gives it *"no ranking, no fusion, no absence gates"*. It is here because it must read in the
+        same `Snapshot` as the `hydrate()` that follows it, and `_bound()` is how a statement
+        proves that. A T3 Postgres backend has no protocol to implement for it (D540).
+        """
+        connection = self._bound(s)
+        codes = frozenset(self._layers[layer.value] for layer in layers)
+        hidden = self._layers[Layer.HIDDEN.value]
+        return tuple(
+            resolve.resolve_one(connection, ref, context=context, layers=codes, hidden=hidden)
+            for ref in refs
+        )
 
     # -- 6. coverage -------------------------------------------------------
 
