@@ -201,7 +201,7 @@ def test_the_four_read_only_skills_verbs_from_argv(tmp_path: Path) -> None:
     assert (code, out.rstrip().endswith(" ok")) == (0, True)
     code, out, _ = _run(["skills", "check", "--check"], tmp_path)
     assert code == 0, out
-    assert "  --check: skills/expected/ matches the render" in out.splitlines()
+    assert "  --check: skills/expected/ and references/cite.md match the render" in out.splitlines()
 
 
 def test_ow_skills_update_from_argv(tmp_path: Path) -> None:

@@ -329,5 +329,5 @@ def test_check_check_passes_on_this_repositorys_skills(tmp_path: Path) -> None:
     env = _env(tmp_path, skills_root=REPO / "skills")
     ClaudeCode(env).install("global", CORE_ONLY)
     outcome = check(env, byte_diff=True)
-    assert "  --check: skills/expected/ matches the render" in outcome.lines
+    assert "  --check: skills/expected/ and references/cite.md match the render" in outcome.lines
     assert outcome.exit_code == OK

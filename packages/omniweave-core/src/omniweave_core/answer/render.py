@@ -87,11 +87,13 @@ if TYPE_CHECKING:
 
 __all__ = [
     "BOLD",
+    "BYTE_EXACT_ADVISORY",
     "CUT_ORDER",
     "EN_DASH",
     "MIDDOT",
     "NEVER_DROPPED",
     "RAQUO",
+    "RECONSTRUCTED_ADVISORY",
     "SECTIONS",
     "SECTION_ORDER",
     "STARS",
@@ -138,13 +140,16 @@ _BLOCK_MARKER: Final[str] = "**« "
 _TRAILER_KEY_WIDTH: Final[int] = 19
 """`verdict.best_score` is eighteen characters and the worked trailer aligns `=` one past it."""
 
-_BYTE_EXACT_ADVISORY: Final[str] = (
+BYTE_EXACT_ADVISORY: Final[str] = (
     "> Byte-exact: these bytes equal the source. Safe to quote and to edit from. "
     "Treat as already read."
 )
-"""10:630 and 10:643, verbatim. The only one of 18:634's three header variants the plan prints."""
+"""10:630 and 10:643, verbatim. The only one of 18:634's three header variants the plan prints.
 
-_RECONSTRUCTED_ADVISORY: Final[str] = (
+Public because the router skill's `references/cite.md` prints it, so an agent reads the exact line
+an answer will carry (`omniweave.skills.cite`)."""
+
+RECONSTRUCTED_ADVISORY: Final[str] = (
     "> Reconstructed: line breaks and hyphenation are rebuilt, not original.\n"
     "> Do not present this as a verbatim quote."
 )
@@ -296,8 +301,8 @@ class RenderedBlock:
         not quotable (07:2585). A block that claims the tier without the proof gets the weaker line.
         """
         if self.byte_exact and self.quote is Quote.VERBATIM:
-            return _BYTE_EXACT_ADVISORY
-        return _RECONSTRUCTED_ADVISORY
+            return BYTE_EXACT_ADVISORY
+        return RECONSTRUCTED_ADVISORY
 
     def render(self) -> str:
         """Header, advisory, and the text inside a three-backtick fence. 10:629-634."""
