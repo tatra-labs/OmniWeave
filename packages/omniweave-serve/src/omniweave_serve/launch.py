@@ -3,9 +3,10 @@
 `omniweave` may not import this distribution and this one may not import `omniweave` (02:350,
 02:361). So `ow serve --mcp` runs startup step 5 where it lives, then reaches this function
 through the `omniweave.serve` entry-point group that `pyproject.toml` declares, the way the
-framework reaches every driver it does not import. Only data crosses the boundary: five
+framework reaches every driver it does not import. Only data crosses the boundary: six
 keyword arguments of builtin types, because a type defined on either side is one the other side
-cannot name. `corpus` and `corpora` are what `query.QueryCaller` searches.
+cannot name. `corpus` and `corpora` are what `query.QueryCaller` searches, and `sessions` is the
+directory its `emission.StdioSession` reads compaction markers from.
 
 ## WHY `asyncio` IS NAMED HERE, ONCE
 
@@ -25,14 +26,17 @@ the server down, which is 0.
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, TextIO
 
+from omniweave_core.clock import SystemClock
 from omniweave_core.errors import InternalError
 
 from omniweave_serve import listing
 from omniweave_serve.dispatch import McpDispatcher, Surface
+from omniweave_serve.emission import StdioSession
 from omniweave_serve.query import QueryCaller
 from omniweave_serve.stdio import EOF, pipes, serve
 
@@ -75,6 +79,7 @@ def run(
     corpus_resolves: bool,
     corpus: str | None,
     corpora: Mapping[str, str],
+    sessions: str | None,
     stderr: TextIO | None = None,
 ) -> int:
     """The `omniweave.serve` entry point: select, report, bind this process's stdio, serve.
@@ -82,10 +87,21 @@ def run(
     `McpDispatcher.create()` runs before `pipes()` takes the streams, so a `ConfigError` from a
     bad profile is raised before anything could have been written to stdout (02:723's *"before
     the transport opens"*), and `ow`'s own error path reports it.
+
+    One `StdioSession` for the life of the process, because over stdio the process is the session.
     """
     surface = Surface(profile=profile, compact=compact, corpus_resolves=corpus_resolves)
+    clock = SystemClock()
+    session = StdioSession.open(
+        sessions=Path(sessions) if sessions else None,
+        pid=os.getpid(),
+        started_ns=clock.wall_ns(),
+    )
     caller = QueryCaller(
-        corpora={name: Path(path) for name, path in corpora.items()}, default=corpus
+        corpora={name: Path(path) for name, path in corpora.items()},
+        default=corpus,
+        wall_ns=clock.wall_ns,
+        session=session,
     )
     dispatcher = McpDispatcher.create(surface, caller=caller)
     err = stderr or sys.stderr

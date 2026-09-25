@@ -17,6 +17,7 @@ the Answer document, rendered in the child from a retrieval over that store (W7.
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import anyio
@@ -38,7 +39,7 @@ NOW_NS = 1_757_400_000_000_000_000
 PARAGRAPH = "Fees are payable monthly in arrears."
 
 
-def _seeded(path: Path) -> None:
+def _seeded(path: Path, text: str = PARAGRAPH) -> None:
     """One document and one paragraph, in a store the shipped migrations built."""
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = ow.connect(path)
@@ -79,7 +80,7 @@ def _seeded(path: Path) -> None:
             (
                 code("kind", "paragraph"),
                 code("layer", "body"),
-                PARAGRAPH,
+                text,
                 b"\x00" * 16,
                 code("origin_span_kind", "none"),
                 code("method", "native"),
@@ -166,3 +167,68 @@ def test_with_no_corpus_declared_the_call_is_answered_with_ow_a_001(tmp_path: Pa
     (content,) = called.content
     assert isinstance(content, TextContent)
     assert "[OW-A-001]" in content.text
+
+
+LONG = "Fees are payable monthly in arrears, in the currency of the invoice. " * 9
+"""A paragraph worth withholding: above 18:486's 400 characters net of the row that replaces it."""
+
+
+def _conversation(cwd: Path, calls: int, before: dict[int, Callable[[], None]]) -> list[str]:
+    """`calls` `ow_query` calls in ONE child, and so one session; `before[i]` runs before call i."""
+    texts: list[str] = []
+    params = StdioServerParameters(
+        command=sys.executable,
+        args=["-m", "omniweave", "serve", "--mcp"],
+        env={"OMNIWEAVE_HOME": str(cwd / "owhome")},
+        cwd=cwd,
+    )
+
+    async def talk() -> None:
+        with anyio.fail_after(DEADLINE_S):
+            async with stdio_client(params) as (read, write), ClientSession(read, write) as client:
+                await client.initialize()
+                for index in range(calls):
+                    if index in before:
+                        before[index]()
+                    called = await client.call_tool("ow_query", {"query": "fees payable"})
+                    assert isinstance(called, CallToolResult)
+                    assert called.isError is False
+                    (content,) = called.content
+                    assert isinstance(content, TextContent)
+                    texts.append(content.text)
+
+    anyio.run(talk)
+    return texts
+
+
+def test_the_second_call_in_a_session_points_at_what_the_first_sent(tmp_path: Path) -> None:
+    """D525 closed, across a real process boundary: the child commits the first Answer's blocks
+    after it wrote them, and the second Answer withholds them behind an `ow:sent-earlier` row."""
+    _seeded(tmp_path / ".omniweave" / "index.owstore", LONG)
+    body = HANDBOOK + '[serve]\ndefault_corpus = "handbook"\n'
+    (tmp_path / "omniweave.toml").write_text(body, encoding="utf-8")
+    first, second = _conversation(tmp_path, 2, {})
+    assert LONG in first
+    assert "dedup saved 0 chars" in first
+    assert "**ow:sent-earlier**" in second
+    assert LONG not in second
+    assert "call 2 of" in second
+    assert "dedup saved 0 chars" not in second
+
+
+def test_a_compaction_marker_between_calls_brings_the_content_back(tmp_path: Path) -> None:
+    """10:1948: the `PreCompact` hook's marker, written where the hook writes it, clears the
+    child's ledger, and the next Answer re-sends and says why (D534)."""
+    _seeded(tmp_path / ".omniweave" / "index.owstore", LONG)
+    body = HANDBOOK + '[serve]\ndefault_corpus = "handbook"\n'
+    (tmp_path / "omniweave.toml").write_text(body, encoding="utf-8")
+    sessions = tmp_path / ".omniweave" / "sessions"
+
+    def compact() -> None:
+        sessions.mkdir(parents=True, exist_ok=True)
+        (sessions / "0123456789abcdef.compacted").write_text("{}", encoding="utf-8")
+
+    _, second, third = _conversation(tmp_path, 3, {1: compact})
+    assert LONG in second
+    assert "ledger_reset_by_compaction" in second
+    assert "**ow:sent-earlier**" in third

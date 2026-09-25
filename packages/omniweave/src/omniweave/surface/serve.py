@@ -123,7 +123,23 @@ def _serve(
         corpus_resolves=decided.resolves,
         corpus=decided.corpus,
         corpora=stores(config, decided.corpora, cwd=cwd),
+        sessions=_sessions(cwd),
     )
+
+
+def _sessions(cwd: Path) -> str | None:
+    """`<sessions>`, where the hooks write the compaction marker the server's ledger reads.
+
+    `hooks.session.sessions_dir(cwd)` and not a path beside `--config`: the marker's writer is the
+    `PreCompact` hook, which resolves from the host's `cwd` and is never told about `--config`, and
+    a reader that resolved a different directory from its writer would never see a marker. That
+    is 10:1877's out-of-process split, and 10:1893 puts both halves beside *the resolved*
+    `omniweave.toml` for this reason.
+    """
+    from omniweave.hooks.session import sessions_dir  # noqa: PLC0415 -- the serve path only
+
+    found = sessions_dir(cwd)
+    return None if found is None else str(found)
 
 
 def stores(config: Config, names: Iterable[str], *, cwd: Path) -> dict[str, str]:

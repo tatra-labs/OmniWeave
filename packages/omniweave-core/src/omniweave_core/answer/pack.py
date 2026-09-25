@@ -28,13 +28,37 @@ the hits were hydrated from in the same snapshot. D523.
 4. **The Verdict becomes the blocking lines and the trailer**: one `ow:blocking` line per
    `DegradeCause`, with its detail and its fix, and the trailer rows 10:676-686 print.
 
-What this module does not do is withhold: `ow:sent-earlier` needs the session's emission ledger,
-and no surface holds one yet (D525).
+## WITHHOLDING, AND THE THREE KEY COMPONENTS NO ROW CARRIES
+
+Given a `SessionLedger`, `dedup.partition()` runs between stages 1 and 2 -- before allocation,
+D277's order -- and a document it withholds becomes an `ow:sent-earlier` row instead of evidence.
+The ledger key is charter.md:6681's five, `(corpus_id, doc_key, gen, cite, content_digest)`, and
+07:2305's hydration SELECT, transcribed as printed, selects none of `d.doc_key`, `b.gen` or
+`b.content_digest`. `Reader` is the six-method T3 boundary and a seventh read is an ADR. So each is
+taken from what this module holds, and each substitute can only err toward re-sending (D530):
+
+| component | taken from | why it cannot withhold wrongly |
+|---|---|---|
+| `doc_key` | the document's URI, as bytes | one URI is one document within a corpus |
+| `gen` | `Verdict.snapshot_gen` | any commit moves it, so a re-index forgets everything |
+| `content_digest` | `ow128` over the text SERVED | it digests what the agent received, defanged |
+
+The last is stronger than the stored column for this purpose: 18:480's *"the same content as we
+sent"* is a fact about the served bytes, and a block whose defanging changed between two calls
+would share a stored digest and not a served one.
+
+**`doc_fresh` is the Answer's freshness, for every document** (D531). 18:480 wants per-document
+freshness, and `Coverage` rolls it up to one state (D517). Only `fresh` withholds, so a single
+stale unit anywhere in scope re-sends every document.
+
+**What was emitted is read back from the rendered document** (`emitted()`), because 10:991 derives
+the emission *"from the rendered document, not from the packing plan"*: a block the truncator cut
+has no header in the document and is never recorded.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Final
 from urllib.parse import urlsplit
@@ -47,9 +71,24 @@ from omniweave_core.answer.allocate import (
     allocate,
 )
 from omniweave_core.answer.budget import AnswerBudget, effective_max_chars, tier_for
-from omniweave_core.answer.render import EN_DASH, Answer, Pointer, RenderedBlock
+from omniweave_core.answer.dedup import (
+    MAX_SPANS_IN_POINTER,
+    Emission,
+    Partition,
+    SessionLedger,
+    partition,
+)
+from omniweave_core.answer.render import (
+    EN_DASH,
+    Answer,
+    Pointer,
+    RenderedBlock,
+    cites_of,
+    sent_earlier_chars,
+)
 from omniweave_core.answer.untrusted import defang, serve_quote
 from omniweave_core.answer.worth import worth
+from omniweave_core.canonical import ow128
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -58,7 +97,14 @@ if TYPE_CHECKING:
     from omniweave_core.retrieve.verdict import DegradeCause, Verdict
     from omniweave_core.store.reader import HydratedRow
 
-__all__ = ["Packed", "doc_name", "pack"]
+__all__ = ["SERVED_DOMAIN", "Packed", "doc_name", "emitted", "pack"]
+
+SERVED_DOMAIN: Final[bytes] = b"ow.served.1"
+"""The `ow128` domain of the served-text digest the ledger compares. D530.
+
+Not `identity._CONTENT_DOMAIN`: that recipe is over `(kind, layer, nfc(text), payload, children)`
+and this one is over the text an agent was sent, and two recipes over two objects are two domains
+(`ow128`'s own rule)."""
 
 _NO_DRIVER: Final[str] = EN_DASH
 """`RenderedBlock.origin_driver` for every block, and D524 is why: the header prints the driver
@@ -68,10 +114,16 @@ document's own spelling for a value it does not have (10:740)."""
 
 @dataclass(frozen=True, slots=True)
 class Packed:
-    """The `Answer`, and the character envelope `render()` must be called with."""
+    """The `Answer`, the envelope `render()` must be called with, and what each block would record.
+
+    `emissions` is keyed by the cite the block renders under, so `emitted()` can map a header in the
+    rendered document back to its ledger entry. It holds the packed evidence only: a withheld block
+    was not sent again and a pointer is not content.
+    """
 
     answer: Answer
     max_chars: int
+    emissions: Mapping[str, Emission] = field(default_factory=dict)
 
 
 def doc_name(uri: str) -> str:
@@ -165,6 +217,76 @@ def _pointer(
     )
 
 
+def _emission(row: HydratedRow, block: RenderedBlock, *, corpus: str, gen: int) -> Emission:
+    """The ledger entry sending this block would make. D530 for the three substituted components."""
+    return Emission(
+        corpus_id=corpus,
+        doc_key=row.uri.encode("utf-8"),
+        gen=gen,
+        cite=row.cite,
+        content_digest=ow128(SERVED_DOMAIN, block.text),
+        chars=block.chars,
+    )
+
+
+def _pointer_chars(rows: Mapping[str, HydratedRow]) -> int:
+    """The longest `ow:sent-earlier` row any document here could need. D532.
+
+    `partition()` takes one pointer length for the call, and a longer URI or a longer cite costs a
+    longer row. The longest is the pessimistic figure, and over-estimating the pointer withholds
+    less, which is the safe direction.
+    """
+    by_doc: dict[str, list[HydratedRow]] = {}
+    for row in rows.values():
+        by_doc.setdefault(row.uri, []).append(row)
+    lengths = [
+        sent_earlier_chars(
+            Pointer(
+                doc_uri=doc_name(uri),
+                pages=tuple(sorted({row.page for row in group})),
+                cites=tuple(row.cite for row in group[:MAX_SPANS_IN_POINTER]),
+                blocks=len(group),
+                fetch="",
+                reason="sent_earlier",
+            )
+        )
+        for uri, group in by_doc.items()
+    ]
+    return max(lengths, default=0)
+
+
+def _withheld(
+    split: Partition, rows: Mapping[str, HydratedRow], *, corpus: str, qualify: bool
+) -> tuple[Pointer, ...]:
+    """One `ow:sent-earlier` row per withheld document, with the `ow_open` that re-fetches it."""
+    out: list[Pointer] = []
+    for row in split.withheld:
+        cites = tuple(_cite(corpus, cite, qualify=qualify) for cite in row.shown_cites)
+        pages = tuple(sorted({rows[cite].page for cite in row.cites if cite in rows}))
+        uri = row.doc_key.decode("utf-8")
+        out.append(
+            Pointer(
+                doc_uri=doc_name(uri),
+                pages=pages,
+                cites=cites,
+                blocks=row.blocks,
+                fetch=f'ow_open ref="{cites[0]}"' if cites else "",
+                reason="sent_earlier",
+            )
+        )
+    return tuple(out)
+
+
+def emitted(packed: Packed, document: str) -> tuple[Emission, ...]:
+    """What `document` actually carries, as ledger entries, in document order. 10:991.
+
+    Read from the block headers `render()` kept, never from `packed.answer.evidence`: the truncator
+    may have cut blocks the allocator packed, and 10:981 is explicit that *"anything the truncator
+    dropped [is] NOT recorded -- the agent never received them"*.
+    """
+    return tuple(packed.emissions[cite] for cite in cites_of(document) if cite in packed.emissions)
+
+
 def _blocking(causes: Sequence[DegradeCause]) -> tuple[str, ...]:
     """One `ow:blocking` line per failed gate, with its fix. 10:620's `> ... Fix: ...` form."""
     lines: list[str] = []
@@ -215,10 +337,16 @@ def pack(
     qualify: bool = False,
     max_chars: int | None = None,
     next_command: str = "",
+    ledger: SessionLedger | None = None,
+    call_ord: int = 1,
+    degradations: Sequence[str] = (),
 ) -> Packed:
     """One `Retrieval` to one `Answer`, and the envelope to render it in.
 
     `max_chars` is the caller's request (`ow_query`'s `max_chars`, 10:476); `None` takes the tier's.
+    `ledger` is the session's, READ and never written: the write is the caller's, after the send
+    (10:977), from `emitted()`. `None` is 18:475's *"Without a session DEDUP IS OFF"*.
+    `degradations` are the caller's own, appended to the Verdict's (a ledger reset is one).
     """
     response = retrieval.response
     verdict = response.verdict
@@ -226,26 +354,37 @@ def pack(
     envelope = effective_max_chars(max_chars, tier)
 
     by_cite: dict[str, HydratedRow] = {}
-    candidates: list[Candidate] = []
+    candidates: dict[str, Candidate] = {}
     blocks: dict[str, tuple[RenderedBlock, int]] = {}
+    emissions: dict[str, Emission] = {}
     for hit in response.hits:
         row = retrieval.rows.get(hit.block_id)
         if row is None:
             continue
         by_cite[row.cite] = row
         blocks[row.cite] = _block(hit, row, corpus=corpus, qualify=qualify)
-        candidates.append(
-            Candidate(
-                doc_key=row.uri,
-                cite=row.cite,
-                chars=row.chars or 0,
-                score=hit.score,
-                worth=worth(layer=row.layer, kind=row.kind, trust=row.trust, quote=row.quote),
-                trust=row.trust,
-                channels=frozenset(hit.channel_ranks),
-            )
+        emissions[row.cite] = _emission(
+            row, blocks[row.cite][0], corpus=corpus, gen=verdict.snapshot_gen
         )
-    allocation = allocate(candidates, tier=tier, max_chars=max_chars)
+        candidates[row.cite] = Candidate(
+            doc_key=row.uri,
+            cite=row.cite,
+            chars=row.chars or 0,
+            score=hit.score,
+            worth=worth(layer=row.layer, kind=row.kind, trust=row.trust, quote=row.quote),
+            trust=row.trust,
+            channels=frozenset(hit.channel_ranks),
+        )
+    split = partition(
+        ledger,
+        tuple(emissions.values()),
+        fresh_docs=frozenset(e.doc_key for e in emissions.values())
+        if verdict.freshness == "fresh"
+        else frozenset(),
+        pointer_chars=_pointer_chars(by_cite),
+    )
+    kept = [candidates[emission.cite] for emission in split.kept]
+    allocation = allocate(kept, tier=tier, max_chars=max_chars)
     evidence = tuple(blocks[block.cite][0] for plan in allocation.packed for block in plan.blocks)
     sentinels = sum(blocks[block.cite][1] for plan in allocation.packed for block in plan.blocks)
     answer = Answer(
@@ -255,9 +394,10 @@ def pack(
         freshness=verdict.freshness,
         evidence=evidence,
         pointers=_pointers(allocation, by_cite, corpus=corpus, qualify=qualify),
+        withheld=_withheld(split, by_cite, corpus=corpus, qualify=qualify),
         blocking=_blocking(verdict.degraded_because),
         trailer_extra=_trailer(verdict, retrieval.reasons),
-        degradations=verdict.degradations,
+        degradations=tuple(dict.fromkeys((*verdict.degradations, *degradations))),
         defanged_blocks=sum(1 for block in evidence if block.defanged),
         instruction_shaped=sentinels,
         blocks_matched=verdict.matches_before_packing,
@@ -271,11 +411,16 @@ def pack(
             max_docs=tier.max_docs,
             docs_used=allocation.docs_used,
             calls_allowed=tier.calls,
-            call_ord=1,
-            chars_deduped=0,
+            call_ord=call_ord,
+            chars_deduped=split.chars_deduped,
             doc_overhead=DOC_OVERHEAD,
             block_overhead=BLOCK_OVERHEAD,
         ),
         next_command=next_command,
     )
-    return Packed(answer=answer, max_chars=envelope)
+    served = {blocks[cite][0].cite: emission for cite, emission in emissions.items()}
+    return Packed(
+        answer=answer,
+        max_chars=envelope,
+        emissions={block.cite: served[block.cite] for block in evidence},
+    )

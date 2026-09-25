@@ -488,11 +488,28 @@ def _pointer_rows(pointers: Sequence[Pointer]) -> str:
     return "\n".join(lines)
 
 
+def _sent_cites(pointer: Pointer) -> str:
+    """The cites a sent-earlier row names: a range only when the pointer says it is one. D535.
+
+    18:758 types `cites` as a list of at most four, and 10:666 prints `d7#390`-`d7#404` for fifteen
+    blocks, a range's two endpoints. Both forms are legal, and they read differently: a range claims
+    every block between its ends was sent. So the range form is kept for the worked example's
+    shape, two cites standing for more blocks than two. Every other pointer lists what it names and
+    counts the rest, because an agent told it holds a block it was never sent will not ask for it.
+    """
+    cites = pointer.cites
+    if len(cites) == 2 and pointer.blocks > 2:  # noqa: PLR2004 -- a range has two ends
+        return EN_DASH.join(cites)
+    named = ", ".join(cites)
+    more = pointer.blocks - len(cites)
+    return f"{named} and {more} more" if more > 0 else named
+
+
 def _sent_earlier(pointers: Sequence[Pointer]) -> str:
     """10:666-668's blockquote, which is charged first and is never droppable."""
     lines: list[str] = []
     for pointer in pointers:
-        cites = EN_DASH.join(pointer.cites[:2]) if pointer.cites else ""
+        cites = _sent_cites(pointer)
         pages = ", ".join(f"p.{page}" for page in pointer.pages)
         lines.append(
             f"> **Already sent earlier in this conversation:** `{pointer.doc_uri}` {cites} "
@@ -719,6 +736,29 @@ def sections_of(document: str) -> tuple[str, ...]:
 def blocks_of(document: str) -> tuple[str, ...]:
     """The `**<< ... >>**` block headers, in order. The boundary truncation is allowed to cut on."""
     return tuple(line for line in document.splitlines() if line.startswith(_BLOCK_MARKER))
+
+
+def cites_of(document: str) -> tuple[str, ...]:
+    """The cite each surviving block header opens with, in document order.
+
+    10:991 derives the emission *"from the rendered document, not from the packing plan"*, and the
+    header is where a rendered block says which block it is: `RenderedBlock.header` puts the cite
+    first and joins on `MIDDOT`, which no cite contains. A block the truncator cut has no header
+    here, so it has no cite here, which is the whole of the property.
+    """
+    return tuple(
+        header.removeprefix(_BLOCK_MARKER).split(MIDDOT, 1)[0] for header in blocks_of(document)
+    )
+
+
+def sent_earlier_chars(pointer: Pointer) -> int:
+    """What one `ow:sent-earlier` row really costs, newline included.
+
+    `dedup.worth_withholding()` takes the pointer's length as an argument because *"only the
+    renderer knows how long the row it is about to write really is"*; this is the renderer saying
+    so. 10:718's 140 is the notseen row's figure, and this row's prose is about twice that.
+    """
+    return len(_sent_earlier((pointer,))) + 1
 
 
 def measure(document: str) -> Mapping[str, int]:

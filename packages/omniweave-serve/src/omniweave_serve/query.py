@@ -29,12 +29,24 @@ what step 5 decided `[serve] default_corpus` resolves to (`Servable.corpus`), or
 present but unreadable"*. 10:540: *"Tool availability is never gated on index presence"* -- the
 tool is listed and callable, and the answer says what is missing.
 
+## THE LEDGER, AND WHERE ITS WRITE IS
+
+Given an `emission.StdioSession`, each call reads the compaction marker, packs against the
+session's ledger -- a document already sent, unchanged and fresh becomes an `ow:sent-earlier` row --
+and returns the commit as `Reply.after_send`, which `stdio.serve()` runs only after the write and
+the flush succeeded. That is 10:977's ordering, and it is the only place this module writes the
+ledger: `respond()` reads it and never records. What is committed is `pack.emitted()` over the
+rendered document, so a block the truncator cut is never recorded as sent (10:991).
+
+With no session -- the unit tests, and any dispatcher built without one -- dedup is off, as 18:475
+says it is without a session, and `after_send` is `None`.
+
 ## WHAT IS NOT HERE
 
 `scope` (10:395's four forms), `want` other than `passages`, and `route_hints` are refused by name
 rather than ignored: an ignored `scope` answers over the whole corpus, which is the recall error
-that presents as a confident answer. The emission ledger is not held, so nothing is withheld as
-`ow:sent-earlier` and `Reply.after_send` is `None` -- there is nothing to commit (D525).
+that presents as a confident answer. `serve_emission`, 10:984's accounting row, has no writer
+(D533).
 """
 
 from __future__ import annotations
@@ -45,7 +57,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_core.answer import Answer, render
-from omniweave_core.answer.pack import pack
+from omniweave_core.answer.dedup import LEDGER_RESET_KIND
+from omniweave_core.answer.pack import emitted, pack
 from omniweave_core.clock import SystemClock
 from omniweave_core.errors import OwError, UsageError
 from omniweave_core.retrieve.execute import execute
@@ -56,7 +69,11 @@ from omniweave_core.store import sqlite as store_sqlite
 from omniweave_serve.stdio import INVALID_PARAMS, METHOD_NOT_FOUND, Reply, failure, result
 
 if TYPE_CHECKING:
+    from omniweave_core.answer.dedup import Emission
+    from omniweave_core.retrieve.execute import Retrieval
+
     from omniweave_serve.dispatch import Surface
+    from omniweave_serve.emission import StdioSession
     from omniweave_serve.stdio import Request
 
 __all__ = ["MAX_QUERY_CHARS", "QUERY_TOOL", "QueryCaller", "text_result"]
@@ -91,12 +108,17 @@ def _refusal(code: str, message: str, fix: str) -> dict[str, Any]:
 
 @dataclass(slots=True)
 class QueryCaller:
-    """A `dispatch.Caller`. Holds the resolved corpora and nothing mutable across calls."""
+    """A `dispatch.Caller`. The resolved corpora, and the session whose ledger it reads.
+
+    `session` is the one mutable thing, and it is mutated in two places only: `compacted()` before
+    a retrieval, and `commit()` from `after_send`.
+    """
 
     corpora: Mapping[str, Path]
     default: str | None = None
     policy: RetrievalPolicy = field(default_factory=RetrievalPolicy)
     wall_ns: Callable[[], int] = field(default_factory=lambda: SystemClock().wall_ns)
+    session: StdioSession | None = None
 
     async def call(self, request: Request, surface: Surface) -> Reply:
         """Answer one `tools/call`. Only `ow_query` is built; the other listed tools say so."""
@@ -115,38 +137,60 @@ class QueryCaller:
         arguments = params.get("arguments") or {}
         if not isinstance(arguments, dict):
             return Reply(body=failure(request.ident, INVALID_PARAMS, "arguments is not an object"))
-        return Reply(body=result(request.ident, self.answer(arguments)))
+        body, sent = self.respond(arguments)
+        session = self.session
+        if session is None or not sent:
+            return Reply(body=result(request.ident, body))
+        return Reply(body=result(request.ident, body), after_send=lambda: session.commit(sent))
 
     def answer(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
-        """The `tools/call` result for one set of `ow_query` arguments. Synchronous and pure of
-        the transport, so a test drives it without a loop."""
+        """The `tools/call` result for one set of `ow_query` arguments, committing nothing."""
+        return self.respond(arguments)[0]
+
+    def respond(self, arguments: Mapping[str, Any]) -> tuple[dict[str, Any], tuple[Emission, ...]]:
+        """The result, and what it would record as sent. Synchronous and pure of the transport,
+        so a test drives it without a loop; the ledger is read here and written by the caller."""
         refused = _check(arguments)
         if refused is not None:
-            return refused
+            return refused, ()
         chosen = self._corpus(arguments.get("corpus"))
         if isinstance(chosen, dict):
-            return chosen
+            return chosen, ()
         corpus, path = chosen
+        retrieval = self._retrieve(corpus, path, str(arguments["query"]))
+        if isinstance(retrieval, dict):
+            return retrieval, ()
+        session = self.session
+        reset = session is not None and session.compacted()
+        packed = pack(
+            retrieval,
+            corpus=corpus,
+            qualify=len(self.corpora) > 1,
+            max_chars=arguments.get("max_chars"),
+            ledger=None if session is None else session.ledger,
+            call_ord=1 if session is None else session.calls + 1,
+            degradations=(LEDGER_RESET_KIND,) if reset else (),
+        )
+        document = render(packed.answer, max_chars=packed.max_chars)
+        if session is not None:
+            session.calls += 1
+        return text_result(document), emitted(packed, document)
+
+    def _retrieve(self, corpus: str, path: Path, text: str) -> Retrieval | dict[str, Any]:
+        """One read-only retrieval over one store, or the result that says why there is none."""
         try:
             connection = store_sqlite.connect_readonly(path)
         except OwError as error:
             return _unreadable(corpus, path, error)
         try:
             reader = store_reader.SqliteReader(connection, now_ns=self.wall_ns())
-            retrieval = execute(reader, Query(text=str(arguments["query"])), self.policy)
+            return execute(reader, Query(text=text), self.policy)
         except UsageError as error:
             return _refusal(error.numeric(), str(error), error.fix)
         except OwError as error:
             return _unreadable(corpus, path, error)
         finally:
             connection.close()
-        packed = pack(
-            retrieval,
-            corpus=corpus,
-            qualify=len(self.corpora) > 1,
-            max_chars=arguments.get("max_chars"),
-        )
-        return text_result(render(packed.answer, max_chars=packed.max_chars))
 
     def _corpus(self, named: object) -> tuple[str, Path] | dict[str, Any]:
         """The corpus to search and its store, or the blocking Answer saying why there is none."""
