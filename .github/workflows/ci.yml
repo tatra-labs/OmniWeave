@@ -723,9 +723,18 @@ jobs:
           restore-keys: "uv-${{ runner.os }}-py${{ matrix.py }}-"
       - name: "install the workspace and the dev group"
         run: uv sync --frozen --all-packages --group dev
-      - name: "the test suite"
-        # testpaths = ["packages"] in the workspace root, so this is every tier the tree carries.
-        run: uv run pytest -q
+      - name: "the test suite, T1 and T2 -- everything not marked conform"
+        # testpaths = ["packages"] in the workspace root, so this is every tier the tree carries
+        # except T3, which the next step runs on its own.
+        run: uv run pytest -q -m "not conform"
+      - name: "T3 -- tests/conform/, the tests that spawn a subprocess or a Driver host"
+        # 13-quality.md section 2.7 places them at T3 and section 11.2 runs T3 as its own job. They
+        # stay in THIS matrix rather than moving to the `conform` job below, because that job is
+        # ubuntu-only and the S4 runner tests are the Windows cells (named pipes, job objects):
+        # moved there they would never run. A step of their own keeps the tier boundary and the
+        # Windows cells both (D503). Measured locally: under a 32-worker `-n auto` pool the
+        # runner's below-normal-priority children missed their 10 s connect 3 runs in 5 (D502).
+        run: uv run pytest -q -m conform
       - name: "fuzz/ -- the committed corpus, replayed through every target"
         # 16-roadmap.md:520's P3 exit line, whose paths are explicit: `uv run pytest tests/host
         # tests/drivers fuzz/ -q`. The step above runs `pytest -q` and the workspace root sets
