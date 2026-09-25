@@ -7,6 +7,12 @@ the scorer, its denominator, and the one `_weight()` that ST6 makes them share. 
 decision 3's bind-time half in `plan.py` rather than in a module of its own, and **W6.5** ships
 `verdict.py` (16-roadmap.md:661) -- the fifteen absence gates and the one citability rule.
 
+**`execute.py` is a seventh module 11:206 does not list**, and it holds the one function 02:251
+gives this row as its public interface: `retrieve(Reader, Query, RetrievalPolicy) -> Response`,
+with `Hit` and `Response` (07:2248-2270). 18:839 homes all three at `omniweave_core.retrieve` and
+they are bound here; the module name is not `retrieve`, so binding the function does not shadow a
+module the way `plan`, `fuse` and `ceiling` would (D260). D521.
+
 `expand` is the last of the six and is absent. The traversal it names shipped inside
 `SqliteReader._traverse` at W6.2c, because 07:1343's `Expand` is bounded by construction and the
 frontier BFS runs against `block_link` inside the snapshot; what this package still owes is the
@@ -37,6 +43,7 @@ does not reach it (G17) and everything under it is stdlib-only (INV-2 / G1).
 
 from __future__ import annotations
 
+from omniweave_core.retrieve.execute import Hit, Response, retrieve
 from omniweave_core.retrieve.types import (
     ABSENCE_GATES,
     CEILING_BEARING,
@@ -59,4 +66,7 @@ __all__ = [
     "ChannelResult",
     "ChannelStatus",
     "FusedHit",
+    "Hit",
+    "Response",
+    "retrieve",
 ]
