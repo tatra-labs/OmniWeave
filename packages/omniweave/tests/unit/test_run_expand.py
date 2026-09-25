@@ -504,7 +504,13 @@ def test_the_ledger_contributes_the_unit_update_for_a_row_it_knows() -> None:
     assert len(statements) == 1
     assert statements[0].participant == "derived_rows"
     assert statements[0].sql is IDENTIFIED_SQL
-    assert statements[0].params == {"unit_uri": "c:/x/a.pdf", "part_count": 42}
+    assert statements[0].params == {
+        "unit_uri": "c:/x/a.pdf",
+        "part_count": 42,
+        "format": None,
+        "media_type": None,
+        "format_evidence": None,
+    }, "a caller that detected nothing leaves the three detection columns alone"
 
 
 def test_the_ledger_contributes_nothing_for_a_row_it_does_not_know() -> None:
@@ -641,7 +647,10 @@ def test_a_unit_another_process_already_identified_is_not_re_stamped(store_path:
     connection = _conn(store_path)
     with connection:
         _unit_row(connection, "c:/x/a.pdf", state="planned", part_count=9)
-    cursor = connection.execute(IDENTIFIED_SQL, {"unit_uri": "c:/x/a.pdf", "part_count": 42})
+    params = {"unit_uri": "c:/x/a.pdf", "part_count": 42}
+    cursor = connection.execute(
+        IDENTIFIED_SQL, {**params, "format": "pdf", "media_type": None, "format_evidence": None}
+    )
     assert cursor.rowcount == 0
     assert connection.execute("SELECT part_count FROM unit").fetchone() == (9,)
     connection.close()

@@ -366,10 +366,20 @@ nothing, and a run's expansion progress would read as work where there was none.
 """
 
 IDENTIFIED_SQL: Final[str] = """
-UPDATE unit SET part_count = :part_count, state = 'identified'
+UPDATE unit SET part_count = :part_count, state = 'identified',
+       format = COALESCE(:format, format), media_type = COALESCE(:media_type, media_type),
+       derived = CASE WHEN :format_evidence IS NULL THEN derived
+                      ELSE json_set(derived, '$.format_evidence', json(:format_evidence))
+                 END
  WHERE unit_uri = :unit_uri AND state = '{acquired}'
 """.replace("{acquired}", ACQUIRED)
 """`02:474`'s second half: *"then `unit.part_count = 42`, `unit.state='identified'`"*.
+
+**And the detection the same transition runs** (05:559, W7.3x): `unit.format`,
+`unit.media_type`, and 05 section 2.4's evidence under `unit.derived["format_evidence"]`,
+where the document row a parse writes will read it from -- `doc.format_evidence` has no
+row to live in before hop 16. `COALESCE` and the `CASE` leave all three alone for a caller
+that detected nothing, which is every caller before W7.3x.
 
 **It rides in `complete()`'s transaction as the `derived_rows` participant, and that is not
 optional.** `07:2730-2733` lists the five things one `complete()` commits *"together or not at
@@ -666,21 +676,31 @@ class IdentifyLedger:
     __slots__ = ("_answers", "_max")
 
     def __init__(self, *, max_pending: int = MAX_PENDING_IDENTIFICATIONS) -> None:
-        self._answers: dict[int, tuple[str, PartCount | None]] = {}
+        self._answers: dict[int, tuple[str, PartCount | None, Mapping[str, object]]] = {}
         self._max = max_pending
 
     def __len__(self) -> int:
         return len(self._answers)
 
-    def record(self, row_id: int, unit_uri: str, answer: PartCount | None) -> None:
-        """Remember what a claimed row produced, so its statement can be built at commit time."""
+    def record(
+        self,
+        row_id: int,
+        unit_uri: str,
+        answer: PartCount | None,
+        detected: Mapping[str, object] | None = None,
+    ) -> None:
+        """Remember what a claimed row produced, so its statement can be built at commit time.
+
+        `detected` is `format`, `media_type` and `format_evidence` (canonical JSON) from
+        `route.detect`; absent, the unit's three detection columns are left as they are.
+        """
         if row_id not in self._answers and len(self._answers) >= self._max:
             raise RouteError(
                 f"{len(self._answers)} identifications are recorded and uncommitted, at the "
                 f"{self._max} ceiling: a caller is not calling forget() after complete()",
                 fix="call IdentifyLedger.forget(row_id) once complete() has returned True",
             )
-        self._answers[row_id] = (unit_uri, answer)
+        self._answers[row_id] = (unit_uri, answer, dict(detected or {}))
 
     def forget(self, row_id: int) -> None:
         """Drop a row whose transaction committed. Unknown ids are ignored, because a caller that
@@ -692,7 +712,7 @@ class IdentifyLedger:
         known = self._answers.get(row_id)
         if known is None:
             return ()
-        unit_uri, answer = known
+        unit_uri, answer, detected = known
         if result.outcome == Outcome.FAILED_PERMANENT:
             return (
                 Statement(
@@ -713,7 +733,13 @@ class IdentifyLedger:
                 participant="derived_rows",
                 name="unit_identified",
                 sql=IDENTIFIED_SQL,
-                params={"unit_uri": unit_uri, "part_count": answer.count},
+                params={
+                    "unit_uri": unit_uri,
+                    "part_count": answer.count,
+                    "format": detected.get("format"),
+                    "media_type": detected.get("media_type"),
+                    "format_evidence": detected.get("format_evidence"),
+                },
             ),
         )
 
