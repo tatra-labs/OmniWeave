@@ -12,6 +12,7 @@ of these conditions is a security refusal.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3  # noqa: TID251 -- the fixtures seed a REAL store, as core's reader tests do.
 from collections.abc import Coroutine, Iterator
 from pathlib import Path
@@ -22,6 +23,7 @@ from omniweave_core.store import migrate
 from omniweave_core.store import sqlite as ow
 from omniweave_serve import query as query_module
 from omniweave_serve.dispatch import TOOLS_CALL, McpDispatcher, Surface
+from omniweave_serve.emission import MARKER_SUFFIX, StdioSession
 from omniweave_serve.query import MAX_QUERY_CHARS, QUERY_TOOL, QueryCaller
 from omniweave_serve.stdio import METHOD_NOT_FOUND, Request
 
@@ -33,6 +35,11 @@ TEXTS = {
     1: "Termination",
     2: "Either party may terminate this agreement with thirty days notice.",
     3: "Fees are payable monthly in arrears.",
+}
+LONG = {
+    1: "Termination",
+    2: "Fees are due on the first business day of each month. " * 12,
+    3: "Fees are payable monthly in arrears, in the currency of the invoice. " * 9,
 }
 
 
@@ -48,7 +55,7 @@ def _code(conn: sqlite3.Connection, domain: str, name: str) -> int:
     return int(row[0])
 
 
-def _seed(conn: sqlite3.Connection) -> None:
+def _seed(conn: sqlite3.Connection, texts: dict[int, str] = TEXTS) -> None:
     conn.execute("BEGIN IMMEDIATE")
     conn.execute(
         "INSERT INTO producer(operator, op_version, code_fingerprint, options_digest) "
@@ -68,7 +75,7 @@ def _seed(conn: sqlite3.Connection) -> None:
         "VALUES(1, 1, 1, ?, ?, ?)",
         (_code(conn, "page_kind", "page"), _code(conn, "method", "native"), producer),
     )
-    for block_id, text in TEXTS.items():
+    for block_id, text in texts.items():
         conn.execute(
             "INSERT INTO block(block_id, doc_ord, gen, page, addr, cite, ord, kind, layer, "
             "                  label, text, content_digest, os_kind, producer_id, method, trust, "
@@ -104,6 +111,19 @@ def store(tmp_path: Path) -> Iterator[Store]:
     writer = ow.connect(path)
     migrate.apply_pending(writer, now_ns=NOW_NS)
     _seed(writer)
+    try:
+        yield Store(path=path, writer=writer)
+    finally:
+        writer.close()
+
+
+@pytest.fixture
+def long_store(tmp_path: Path) -> Iterator[Store]:
+    """Two paragraphs long enough to be worth withholding (18:486)."""
+    path = tmp_path / "long.owstore"
+    writer = ow.connect(path)
+    migrate.apply_pending(writer, now_ns=NOW_NS)
+    _seed(writer, LONG)
     try:
         yield Store(path=path, writer=writer)
     finally:
@@ -252,7 +272,7 @@ def test_tools_call_for_ow_query_returns_the_answer_and_commits_nothing(store: S
     )
     reply = _drive(_dispatcher(store).dispatch(request))
     assert reply is not None
-    assert reply.after_send is None, "no emission ledger is held yet (D525)"
+    assert reply.after_send is None, "a caller with no session has no ledger to commit to"
     assert reply.body["id"] == 9
     assert _text(reply.body["result"]).startswith("ow/1 ")
 
@@ -265,3 +285,73 @@ def test_a_listed_tool_with_no_caller_yet_says_so(store: Store) -> None:
     assert reply is not None
     assert reply.body["error"]["code"] == METHOD_NOT_FOUND
     assert "ow_open" in reply.body["error"]["message"]
+
+
+# ---------------------------------------------------------------------------------------------
+# a session: the ledger read before the pack, and written only after the send
+# ---------------------------------------------------------------------------------------------
+
+ASK = {"name": QUERY_TOOL, "arguments": {"query": "fees payable"}}
+
+
+def _session(sessions: Path | None = None) -> StdioSession:
+    return StdioSession.open(sessions=sessions, pid=4242, started_ns=NOW_NS)
+
+
+def _call(caller: QueryCaller, ident: int) -> tuple[str, Any]:
+    surface = Surface(profile="default", compact=True, corpus_resolves=True)
+    dispatcher = McpDispatcher.create(surface, caller=caller)
+    reply = _drive(dispatcher.dispatch(Request(ident=ident, method=TOOLS_CALL, params=ASK)))
+    assert reply is not None
+    return _text(reply.body["result"]), reply.after_send
+
+
+def test_the_commit_is_the_after_send_and_the_next_call_points(long_store: Store) -> None:
+    """10:977: the ledger is written after the transport accepted the response, never before --
+    so nothing is in it until `after_send` runs, and the next call withholds what it recorded."""
+    session = _session()
+    caller = _caller(long_store, session=session)
+    first, commit = _call(caller, 1)
+    assert LONG[3] in first
+    assert commit is not None
+    assert session.ledger.stats()["blocks"] == 0, "answering is not sending"
+    commit()
+    assert session.ledger.stats()["blocks"] == 2
+    second, _ = _call(caller, 2)
+    assert "**ow:sent-earlier**" in second
+    assert LONG[3] not in second
+    assert "call 2 of" in second
+
+
+def test_a_reply_that_was_never_sent_is_never_recorded(long_store: Store) -> None:
+    """10:987-988's cancelled and transport-error routes: `serve()` stops before `after_send`, so
+    the next call re-sends rather than pointing at content the agent never received."""
+    caller = _caller(long_store, session=_session())
+    _call(caller, 1)
+    second, _ = _call(caller, 2)
+    assert "**ow:sent-earlier**" not in second
+    assert LONG[3] in second
+
+
+def test_a_compaction_marker_resets_the_ledger_and_says_so(
+    long_store: Store, tmp_path: Path
+) -> None:
+    """10:1948: a marker newer than the last clear clears the ledger, and the next Answer re-sends
+    and records `ledger_reset_by_compaction`. Any marker, because the host's key is not ours (D534).
+    """
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    caller = _caller(long_store, session=_session(sessions))
+    _, commit = _call(caller, 1)
+    commit()
+    marker = sessions / f"0123456789abcdef{MARKER_SUFFIX}"
+    marker.write_text("{}", encoding="utf-8")
+    later = NOW_NS + 5_000_000_000
+    os.utime(marker, ns=(later, later))
+    second, commit = _call(caller, 2)
+    assert LONG[3] in second, "the agent's copy was compacted away; the content comes back"
+    assert "ledger_reset_by_compaction" in second
+    commit()
+    third, _ = _call(caller, 3)
+    assert "**ow:sent-earlier**" in third, "the same marker does not reset twice"
+    assert "ledger_reset_by_compaction" not in third

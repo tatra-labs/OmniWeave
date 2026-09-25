@@ -536,3 +536,123 @@ def test_the_doc_name_is_the_last_path_segment() -> None:
     assert doc_name("file:///corpus/2024/policy.pdf") == "policy.pdf"
     assert doc_name("https://example.org/a/b.html?x=1") == "b.html"
     assert doc_name("opaque") == "opaque"
+
+
+# ---------------------------------------------------------------------------------------------
+# withholding: the ledger read by pack(), and what the rendered document says was sent
+# ---------------------------------------------------------------------------------------------
+
+LONG = {
+    1: "Termination",
+    2: "Fees are due on the first business day of each month. " * 12,
+    3: "Fees are payable monthly in arrears, in the currency of the invoice. " * 9,
+}
+"""Two paragraphs long enough to be worth withholding: 18:486's 400 characters, net of the row."""
+
+
+def _packed(built: Built, ledger: object = None, **kw: object) -> tuple[object, str]:
+    from omniweave_core.answer import render  # noqa: PLC0415
+    from omniweave_core.answer.pack import pack  # noqa: PLC0415
+
+    retrieval = ex.execute(_reader(built), Query(text="fees payable"), POLICY)
+    retrieval = kw.pop("adjust", lambda r: r)(retrieval)  # type: ignore[operator]
+    packed = pack(retrieval, corpus="handbook", ledger=ledger, **kw)  # type: ignore[arg-type]
+    return packed, render(packed.answer, max_chars=packed.max_chars)
+
+
+def _sent(built: Built) -> tuple[object, str]:
+    """A ledger that holds what the first call's rendered document carried."""
+    from omniweave_core.answer.dedup import SessionLedger  # noqa: PLC0415
+    from omniweave_core.answer.pack import emitted  # noqa: PLC0415
+
+    ledger = SessionLedger("test")
+    packed, document = _packed(built, ledger)
+    ledger.record(emitted(packed, document))  # type: ignore[arg-type]
+    return ledger, document
+
+
+def test_a_block_already_sent_is_withheld_behind_a_row_and_counted(built: Built) -> None:
+    """18:480's two facts hold, so the second call points instead of repeating."""
+    _seed(built, texts=LONG)
+    ledger, first = _sent(built)
+    assert LONG[3] in first
+    _, second = _packed(built, ledger, call_ord=2)
+    assert "**ow:sent-earlier**" in second
+    assert "**ow:evidence**" not in second
+    assert LONG[3] not in second
+    assert "`contract.pdf` d1#3, d1#2 (p.1)" in second, "a list, in rank order, not a range"
+    assert "blocks=0/2" in second
+    assert "call 2 of" in second
+    saved = int(second.split("dedup saved ", 1)[1].split(" chars", 1)[0].replace(",", ""))
+    assert saved > 0
+
+
+def test_without_a_ledger_nothing_is_withheld(built: Built) -> None:
+    """18:475: *"Without a session DEDUP IS OFF, deliberately"*."""
+    _seed(built, texts=LONG)
+    _packed(built)
+    _, again = _packed(built)
+    assert "**ow:sent-earlier**" not in again
+    assert "dedup saved 0 chars" in again
+
+
+def test_a_short_block_is_re_sent_because_the_row_would_cost_more(built: Built) -> None:
+    """18:486: below 400 characters the pointer is bigger than the content it replaces."""
+    _seed(built)
+    ledger, _ = _sent(built)
+    _, second = _packed(built, ledger)
+    assert "**ow:sent-earlier**" not in second
+    assert TEXTS[3] in second
+
+
+def test_an_answer_that_is_not_fresh_withholds_nothing(built: Built) -> None:
+    """18:482: *"A document edited since indexing is RE-SENT under the staleness banner rather than
+    pointed at."* The roll-up is the only freshness in view, so it decides for every document."""
+    _seed(built, texts=LONG)
+    ledger, _ = _sent(built)
+
+    def stale(r: ex.Retrieval) -> ex.Retrieval:
+        verdict = replace(r.response.verdict, freshness="stale")
+        return replace(r, response=replace(r.response, verdict=verdict))
+
+    _, second = _packed(built, ledger, adjust=stale)
+    assert "**ow:sent-earlier**" not in second
+    assert LONG[3] in second
+
+
+@pytest.mark.parametrize("field_name", ["content_digest", "gen"])
+def test_a_changed_digest_or_generation_is_re_sent(built: Built, field_name: str) -> None:
+    """The digest is what was served and the generation is the snapshot's (D530): either moving
+    means the ledger's copy may not be what the agent would be sent now."""
+    from omniweave_core.answer.dedup import SessionLedger  # noqa: PLC0415
+    from omniweave_core.answer.pack import emitted  # noqa: PLC0415
+
+    _seed(built, texts=LONG)
+    packed, document = _packed(built)
+    moved = {"content_digest": b"\x09" * 16, "gen": 99}[field_name]
+    ledger = SessionLedger("test")
+    ledger.record(
+        [replace(e, **{field_name: moved}) for e in emitted(packed, document)]  # type: ignore[arg-type]
+    )
+    _, second = _packed(built, ledger)
+    assert "**ow:sent-earlier**" not in second
+    assert LONG[3] in second
+
+
+def test_a_block_the_truncator_cut_is_not_recorded_as_sent(built: Built) -> None:
+    """10:981: *"anything the truncator dropped [is] NOT recorded -- the agent never received
+    them"*. `emitted()` reads the document, and the document at 1,000 characters has one block."""
+    from omniweave_core.answer import render  # noqa: PLC0415
+    from omniweave_core.answer.pack import emitted  # noqa: PLC0415
+
+    _seed(built, texts=LONG)
+    packed, _ = _packed(built)
+    assert len(packed.emissions) == 2  # type: ignore[attr-defined]
+    tight = render(packed.answer, max_chars=1_000)  # type: ignore[attr-defined]
+    assert [e.cite for e in emitted(packed, tight)] == ["d1#3"]  # type: ignore[arg-type]
+
+
+def test_a_callers_degradation_reaches_the_trailer(built: Built) -> None:
+    _seed(built, texts=LONG)
+    _, document = _packed(built, degradations=("ledger_reset_by_compaction",))
+    assert "degradations       = [ledger_reset_by_compaction]" in document

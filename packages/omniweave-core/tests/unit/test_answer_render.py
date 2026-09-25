@@ -39,6 +39,7 @@ from omniweave_core.answer.render import (
     measure,
     render,
     sections_of,
+    sent_earlier_chars,
 )
 from omniweave_core.answer.untrusted import CLOSING_DELIMITER, NOTICE
 from omniweave_core.errors import UsageError
@@ -577,3 +578,25 @@ def test_measure_reproduces_the_worked_answers_eight_counts(plan: PlanDocs) -> N
     worked = "".join(lines[616:686])
     assert list(measure(worked).values()) == [102, 303, 1508, 549, 240, 287, 204, 678]
     assert sum(measure(worked).values()) == 3_871
+
+
+@pytest.mark.parametrize(
+    ("cites", "blocks", "named"),
+    [
+        (("d7#390", "d7#404"), 15, "d7#390\u2013d7#404"),
+        (("d1#3", "d1#2"), 2, "d1#3, d1#2"),
+        (("d1#1", "d1#5", "d1#9"), 3, "d1#1, d1#5, d1#9"),
+        (("d1#1", "d1#2", "d1#3", "d1#4"), 9, "d1#1, d1#2, d1#3, d1#4 and 5 more"),
+    ],
+)
+def test_a_sent_earlier_row_is_a_range_only_in_the_worked_examples_shape(
+    cites: tuple[str, ...], blocks: int, named: str
+) -> None:
+    """D535. A range claims every block between its ends was sent, so it is printed only for two
+    cites standing for more blocks than two -- 10:666's `d7#390`-`d7#404` for fifteen."""
+    pointer = Pointer("policy.pdf", (12,), cites, blocks, "", "sent_earlier")
+    document = render(
+        Answer(state="ok", corpus="c", generation=1, freshness="fresh", withheld=(pointer,))
+    )
+    assert f"`policy.pdf` {named} (p.12)" in document
+    assert sent_earlier_chars(pointer) > 0

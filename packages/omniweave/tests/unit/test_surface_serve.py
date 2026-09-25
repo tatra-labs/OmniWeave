@@ -20,10 +20,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from omniweave.hooks.precompact import COMPACTED
+from omniweave.hooks.session import sessions_dir
 from omniweave.surface import dispatch
 from omniweave.surface.dispatch import SERVE_DISTRIBUTION, SERVE_GROUP, SERVE_NAME, serve_entry
 from omniweave.surface.serve import HTTP_ONLY, main
 from omniweave_core.errors import CapabilityMissing, ConfigError, InternalError, UsageError
+from omniweave_serve.emission import MARKER_SUFFIX
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -38,6 +41,7 @@ class Recorder:
     exit_code: int = 0
     calls: list[dict[str, object]] = field(default_factory=list)
     stores: list[tuple[str | None, dict[str, str]]] = field(default_factory=list)
+    sessions: list[str | None] = field(default_factory=list)
 
     def __call__(
         self,
@@ -47,7 +51,9 @@ class Recorder:
         corpus_resolves: bool,
         corpus: str | None,
         corpora: Mapping[str, str],
+        sessions: str | None,
     ) -> int:
+        self.sessions.append(sessions)
         self.calls.append(
             {"profile": profile, "compact": compact, "corpus_resolves": corpus_resolves}
         )
@@ -131,6 +137,31 @@ def test_a_relative_store_path_is_the_declaring_files_neighbour(tmp_path: Path) 
     _, corpora = served.stores[0]
     assert corpora["handbook"] == str((tmp_path / ".omniweave" / "index.owstore").resolve())
     assert Path(corpora["legal"]) == Path(absolute)
+
+
+def test_the_sessions_directory_is_the_one_the_precompact_hook_writes(tmp_path: Path) -> None:
+    """D534: the server reads compaction markers from `hooks.session.sessions_dir(cwd)`, the
+    directory the `PreCompact` hook writes them to, from any subdirectory of the project."""
+    served = Recorder()
+    (tmp_path / "omniweave.toml").write_text(HANDBOOK, encoding="utf-8")
+    inner = tmp_path / "deep"
+    inner.mkdir()
+    main(
+        ["serve", "--mcp"],
+        env={"OMNIWEAVE_HOME": str(tmp_path / "owhome")},
+        cwd=inner,
+        stderr=io.StringIO(),
+        entries=[Row(served)],
+    )
+    (sessions,) = served.sessions
+    assert sessions is not None
+    assert Path(sessions) == sessions_dir(inner)
+    assert Path(sessions) == tmp_path.resolve() / ".omniweave" / "sessions"
+
+
+def test_the_marker_the_server_reads_is_the_one_the_hook_writes() -> None:
+    """The two spellings of `.compacted`, one per side of the layers row, agree."""
+    assert MARKER_SUFFIX == "." + COMPACTED
 
 
 def test_the_flag_beats_the_key_and_the_key_beats_the_default(tmp_path: Path) -> None:
