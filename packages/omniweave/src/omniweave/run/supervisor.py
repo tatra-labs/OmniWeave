@@ -1401,16 +1401,28 @@ class Supervisor:
     # -- the four watchers ---------------------------------------------------------------------
 
     async def _reaper(self) -> None:
-        """`lease_reaper`, on the `lease_extend_ms` cadence. 08:462-470.
+        """`lease_reaper`, on the `lease_extend_ms` cadence. 08:489.
 
         The cadence is `LoopTimings`' argument: no key names a reaper interval, and the interval at
         which a lease's disposition can change is `lease_extend_ms`. Holder liveness and the one
         extension a live holder gets are NOT here -- `REAP_SQL`'s own docstring records that
         boundary -- and this call is the sweep the store does expose.
+
+        **A sweep in flight when the reaper is cancelled is still counted (D606).** The sweep runs
+        in a thread and the store commits it whether or not this task survives, so a cancelled
+        `await` dropped the count of rows that WERE reaped. The sweep is shielded, and on
+        cancellation this waits for it -- one store statement -- counts it, and then re-raises.
         """
         async for _ in self._every(self._timings.lease_extend_ms):
             now_ms = self._ctx.clock.wall_ns() // 1_000_000
-            self._reaped += await asyncio.to_thread(self._queue.reap_expired_leases, now_ms)
+            sweep = asyncio.ensure_future(
+                asyncio.to_thread(self._queue.reap_expired_leases, now_ms)
+            )
+            try:
+                self._reaped += await asyncio.shield(sweep)
+            except asyncio.CancelledError:
+                self._reaped += await sweep
+                raise
 
     async def _deferred_sweeper(self) -> None:
         """08:139's *"an ordinary TaskGroup task"*, at `[runtime] deferred_sweep_ms`.
