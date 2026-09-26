@@ -1563,7 +1563,9 @@ def test_the_ingest_defaults_are_the_plan_s(plan: object) -> None:
     assert fences, "05-ingest-and-routing.md has no [ingest] TOML fence"
     ingest = fences[0]["ingest"]
     assert tuple(ingest["include"]) == acquire.DEFAULT_INCLUDE
-    assert tuple(ingest["exclude"]) == acquire.DEFAULT_EXCLUDE
+    #  D592: the corpus receipt is the one entry the fence does not list. 07:142 writes it at the
+    #  root the walk covers, so a walk that rostered it would ingest its own receipt.
+    assert (*ingest["exclude"], "**/omniweave.index.lock") == acquire.DEFAULT_EXCLUDE
     assert ingest["follow_symlinks"] == acquire.DEFAULT_FOLLOW_SYMLINKS
     assert ingest["max_depth"] == acquire.DEFAULT_MAX_DEPTH
     assert ingest["max_unit_bytes"] == acquire.DEFAULT_MAX_UNIT_BYTES
@@ -1584,6 +1586,7 @@ def test_the_constants_are_the_literals_the_plan_prints() -> None:
         "**/node_modules/**",
         "**/.omniweave/**",
         "**/~$*",
+        "**/omniweave.index.lock",
     )
     assert acquire.DEFAULT_HIDDEN is False
     assert acquire.DEFAULT_FOLLOW_SYMLINKS is False
