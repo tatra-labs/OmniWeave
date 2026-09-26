@@ -429,7 +429,9 @@ def test_ingest_is_dispatched_and_the_spawn_that_would_start_it_is_still_unwired
     """
     import omniweave.__main__ as launcher  # noqa: PLC0415
 
-    roots = frozenset({HOOK_WORD, "install", "uninstall", "hooks", "skills", "serve", "ingest"})
+    roots = frozenset(
+        {HOOK_WORD, "install", "uninstall", "hooks", "skills", "serve", "ingest", "surface"}
+    )
     assert roots == launcher.DISPATCHED
     source = Path(hook_main.__file__).read_text(encoding="utf-8")
     assert source.count("pid=pid, spawn=None, argv0=argv0") == 2

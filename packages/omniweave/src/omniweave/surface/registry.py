@@ -125,6 +125,7 @@ from omniweave.sdk.reports import (
     InstallReport,
     ServeReport,
     SkillsReport,
+    SurfaceReport,
 )
 from omniweave.surface.inputs import (
     AddIn,
@@ -146,6 +147,7 @@ from omniweave.surface.inputs import (
     SkillsRemoveIn,
     SkillsUpdateIn,
     SkillsVerifyIn,
+    SurfaceEmitIn,
     UninstallIn,
 )
 
@@ -1570,6 +1572,30 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             inp=HooksCheckIn,
             out=HooksCheckReport,
             cli=("hooks", "check"),
+        ),
+        #  10:52's row 1: the artefacts it writes include `llms.txt`, `docs/AGENTS.md`, the
+        #  router skill's action table and the MCP `instructions` -- omniweave's own steering
+        #  surface -- so it is human-only, with no `mcp_name`. `read_only` is False because the
+        #  no-flag call writes; `--check` is the same Action reading. D334: six generated headers
+        #  and G25's step named this verb before any row declared it.
+        ActionSpec(
+            name="surface.emit",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Write the artefacts generated from this registry, or with --check byte-diff them "
+                "against the committed files and fail on any drift (gate G25)"
+            ),
+            decision="the Action registry changed and its generated surfaces must follow",
+            example={"check": True},
+            inp=SurfaceEmitIn,
+            out=SurfaceReport,
+            cli=("surface", "emit"),
         ),
         ActionSpec(
             name="explain",

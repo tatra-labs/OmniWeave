@@ -101,6 +101,7 @@ __all__ = [
     "SkillsRemoveIn",
     "SkillsUpdateIn",
     "SkillsVerifyIn",
+    "SurfaceEmitIn",
     "UninstallIn",
 ]
 
@@ -441,6 +442,21 @@ class SkillsUpdateIn:
 @dataclass(frozen=True, slots=True)
 class SkillsHashIn:
     """`ow skills hash`. 10:1370: *"prints the source-tree digests for a release PR"*."""
+
+
+@dataclass(frozen=True, slots=True)
+class SurfaceEmitIn:
+    """`ow surface emit`. 10:1430's `emit [--check|--bless]`: two flags, neither with a value.
+
+    No flag writes every `LIVE` artefact; `--check` byte-diffs them and writes nothing, which is
+    gate G25; `--bless` is the no-flag call by name. `gen.emit.emit()`'s docstring gives the reason
+    there are three spellings and two behaviours: there is one writer, and the review is the diff
+    it leaves -- which 11:484-490's three line-ending rules exist to make mean something. The two
+    flags together are refused, because a check that also wrote would repair what it measures.
+    """
+
+    check: bool = False
+    bless: bool = False
 
 
 @dataclass(frozen=True, slots=True)
