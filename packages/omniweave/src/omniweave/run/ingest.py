@@ -1,10 +1,7 @@
 """`ow ingest`: the drain every `ow_add` and every `PostToolUse` hook waits on, as far as it goes.
 
-02-architecture.md section 4.1 traces one born-digital PDF through nineteen hops, and every hop
-from 2 to 17 has a module in this tree. **None of them had ever run after another.** `ow_add`
-rostered units into `discovered` (W7.3v) and nothing anywhere moved one out: the SQL for the claim,
-the read and the identify row was written in P4, tested alone, and called by no command. This
-module is the first caller, and it runs the trace in order until the first hop that is not built:
+02-architecture.md section 4.1 traces one born-digital PDF through nineteen hops. This module runs
+them in order, and every hop but 18 is built:
 
 - **hop 1**, one `run` row with a monotonic `generation` and `status='running'`: `open_run()`;
 - **hop 2**, `run/discover` rostering at `plan_batch` with one `ingest_scope` row: `discover()` per
@@ -12,15 +9,45 @@ module is the first caller, and it runs the trace in order until the first hop t
 - **hop 3**, the stat triple, the digest and `unit.state='acquired'`: `acquire_pending()`;
 - **hop 4**, `op.identify`'s `work` row and then `part_count` and `state='identified'`:
   `expand.enqueue()`, then **the Supervisor** draining it;
-- **hops 5-9**, resolve, evidence, `evaluate()`, `admit()` and `omniweave.plan`'s `INSERT`: **not
-  built.** No code writes a `route_decision` row, and a `parse.*` `work` row cannot exist before
-  one -- 02:452-461's three CHECKs;
-- **hops 10-17**, dispatch, the pipeline, S4, the driver, `DocSink` and `complete()`: unreachable
-  without hop 9.
+- **hops 5-9**, resolve, evidence, `evaluate()`, `admit()` and the plan's `INSERT`:
+  `run.routing.route_identified()` (W7.3y);
+- **hops 10-17**, dispatch, the pipeline, S4, the driver, `DocSink` and `complete()`: the parse
+  Operator, drained by the same Supervisor (W7.3z);
+- **hop 18**, the seven free `derive/1` passes: **not built**, so no Segment exists and the
+  receipt's `n_segments` column is 0 on every line;
+- **hop 19**, `omniweave.run.manifest` and `omniweave.index.lock`: `_Book` and `_receipt()`,
+  below.
 
-So a unit ends this run `identified`, and **the run says so**: `status = 'partial'`, and the last
-line of the report names the hop the drain stopped at. A run that exited 0 printing `ok` over a
-corpus that `ow_query` still cannot cite would be the defect INV-20 names -- a front door that lies.
+A unit a hop could not take further ends the run where it stopped, and **the run says so**:
+`status = 'partial'`, and the report's second-last line names where. A run that exited 0 printing
+`ok` over a corpus that `ow_query` still cannot cite would be the defect INV-20 names -- a front
+door that lies.
+
+## HOP 19: THE MANIFEST, THE RECEIPT, AND THE GENERATION A QUERY READS
+
+**The manifest** is `{output_root}/runs/{run_id}.json` (02:489), and `run.manifest_path` names it
+from the run's first statement. It is written when the run opens, at each of the three Stage
+boundaries this run crosses (15 section 2.2: `discover` is hops 2-3, `plan` is hops 4-9, `parse` is
+hops 10-17), and when it closes -- 15:68's *"so a killed run has one"*. Its outcome counts come from
+the commits that stuck, counted where `complete()` returns `True`.
+
+**The receipt** is `omniweave.index.lock` at the corpus's source root, beside `.omniweave/`
+(07:131-142), derived by `store.verify.derive_lock()` -- the function `ow store verify --lock`
+compares against, so the two cannot disagree by construction. Its uris are relative to the source
+root (D591), and the walk never rosters it (D592).
+
+**`index_state.generation` moves when the receipt's rows move** (D594). 07:2920 makes it *"the
+monotonic run counter"* and gate 3 compares it across a snapshot, and 08:1623 makes the bump
+*"the last step of the refresh loop"*. The receipt is exactly the corpus a query sees -- one line
+per document, its generation, status, block count and root digest -- so a run whose derived rows
+equal the committed ones changed nothing a reader can see, and bumping would announce a refresh
+that did not happen. When they differ, the bump rides in the transaction that closes the run
+(08:1610's *"inside the completing transaction"*), and the file is replaced after it commits: a
+crash between the two leaves the old file, whose rows still differ, so the next run bumps again. An
+extra bump is harmless; a missed one would hide a change from gate 3.
+
+A run that fails writes a `failed` manifest and neither the receipt nor the bump: it did not reach
+the last step of the loop, and the next run's comparison sees whatever it did commit.
 
 ## THE SUPERVISOR RUNS A REAL OPERATOR FOR THE FIRST TIME
 
@@ -40,20 +67,14 @@ A unit no driver reads is also counted 1, and the place it fails is resolution (
 where 02 section 7.4 puts a zero-candidate outcome. The page-granularity lane is an escalation of a
 decoded part, not a second count.
 
-## WHAT THE RUN ROW CARRIES, AND THE THREE COLUMNS NOTHING PRODUCES YET
+## WHAT THE RUN ROW CARRIES, AND THE ONE COLUMN NOTHING PRODUCES YET
 
 `config_digest` and `semantic_digest` are the loaded `Config`'s. `policy_digest` is the built-in
 route policy's, compiled here, because startup step 4 freezes one and no project policy loader is
-wired -- and this run routes nothing, so the digest names the policy that would have. Three
-columns are `NOT NULL` and have no producer in this run: `pricebook_digest` (no `PriceBook` is
-loaded: nothing here is priced), `lock_digest` (`omniweave.index.lock` is hop 19's), and
-`manifest_path` (`RunManifest` is hop 19's). Each is written as the empty string and D562 records
-why an empty string rather than an invented digest.
-
-**`index_state.generation` is not bumped.** 08:1623 makes the bump *"the last step of the refresh
-loop"*, and 08:1610-1611 put it *"inside the completing transaction"* -- after parse, merge and
-converge -- and retrieval's gate 3 reads it. Nothing this run writes is visible to a query, so
-advancing it would tell every reader a refresh happened that did not.
+wired. `manifest_path` is the manifest's, known from the `run_id`. `lock_digest` is the sha256 of
+the receipt as it stands when the run closes, or the empty string while no receipt exists (D593).
+`pricebook_digest` is still the empty string: no `PriceBook` is loaded because nothing here is
+priced, and D562 records why an empty string rather than an invented digest.
 
 Specified in 02-architecture.md sections 4.1 and 5.3-5.4, 05-ingest-and-routing.md sections 1.2
 and 3, 08-runtime.md sections 1.2, 2.5 and 5.1-5.2, and 10-interfaces.md sections 6.4 and 8.6.
@@ -62,7 +83,9 @@ and 3, 08-runtime.md sections 1.2, 2.5 and 5.1-5.2, and 10-interfaces.md section
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import glob
+import hashlib
 import json
 import os
 from dataclasses import dataclass, field, replace
@@ -82,22 +105,32 @@ from omniweave_core.acquire import (
 from omniweave_core.clock import SystemClock
 from omniweave_core.contract import CONTRACT
 from omniweave_core.errors import RouteError, StoreError
+from omniweave_core.events import Stage
 from omniweave_core.locks import BATCH_WAIT_MS, store_write_lock
 from omniweave_core.operator import (
     ULID_ENTROPY_BYTES,
     CancelToken,
+    Outcome,
     Roots,
     RunContext,
     new_run_id,
 )
 from omniweave_core.store import migrate
 from omniweave_core.store import sqlite as ow
+from omniweave_core.store.indexlock import LOCK_PATH, LockHeader, read_lock
 from omniweave_core.store.queue import SqliteStore
 from omniweave_ports.types import DriverError, FailureClass
 
 from omniweave.route.detect import Detection, detect
 from omniweave.run import discover, expand
 from omniweave.run import supervisor as sup
+from omniweave.run.manifest import (
+    TEMP_SUFFIX,
+    ManifestWriter,
+    Provenance,
+    RunTally,
+    manifest_path,
+)
 from omniweave.run.operators.parse import ParseLedger, ParseOperator, ParseTally, is_parse
 from omniweave.run.routing import RouteTally, resolve_policy, route_identified
 
@@ -109,6 +142,7 @@ if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from omniweave_core.drivers.catalog import Catalog
     from omniweave_core.drivers.resolve import Policy
     from omniweave_core.operator import StepResult
+    from omniweave_core.store.indexlock import LockFile, LockRow
     from omniweave_core.store.queue import Statement, StepResultView
     from omniweave_core.work import WorkRow
     from omniweave_ports.types import UnitRef
@@ -116,9 +150,13 @@ if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from omniweave.route.evidence import SignalRegistry
     from omniweave.route.policy import RoutePolicy
     from omniweave.run.dispatch import Batch
+    from omniweave.run.manifest import RunStatus, Timings
 
 __all__ = [
+    "GENERATION_BUMP_SQL",
     "IDENTIFIED",
+    "NO_SEGMENTER",
+    "NO_SPACE",
     "PLANNED",
     "RUN_CLOSE_SQL",
     "RUN_INSERT_SQL",
@@ -128,6 +166,8 @@ __all__ = [
     "UNROUTED",
     "IngestReport",
     "NoExecutorError",
+    "OpenedRun",
+    "Receipt",
     "Source",
     "close_run",
     "ingest",
@@ -163,7 +203,7 @@ INSERT INTO run(run_id, generation, trigger, argv, config_digest, semantic_diges
                 status, manifest_path)
 SELECT :run_id, COALESCE(MAX(generation), 0) + 1, :trigger, :argv, :config_digest,
        :semantic_digest, :policy_digest, '', '', :version, :contract, :schema, :started_ns,
-       'running', ''
+       'running', :manifest_path
   FROM run
 RETURNING generation
 """
@@ -177,8 +217,23 @@ second read that a third process could interleave with.
 """
 
 RUN_CLOSE_SQL: Final[str] = (
-    "UPDATE run SET status = :status, ended_ns = :ended_ns WHERE run_id = :id"
+    "UPDATE run SET status = :status, ended_ns = :ended_ns, lock_digest = :lock_digest "
+    "WHERE run_id = :id"
 )
+"""The run row's last write. `lock_digest` is the receipt's as the run leaves it (D593)."""
+
+GENERATION_BUMP_SQL: Final[str] = """
+UPDATE index_state SET v = :value
+ WHERE k = 'generation' AND CAST(v AS INTEGER) < :generation
+"""
+"""08:1610's *"one UPDATE, inside the completing transaction"*: `index_state.generation` becomes
+this run's `run.generation`, which 07:2920 makes the same counter.
+
+The guard keeps it monotonic without a read: `run.generation` is minted under `BEGIN IMMEDIATE`
+and only grows, so the only way the stored value could be at or above this run's is a later run
+having closed first, and a counter that moved backwards would make gate 3 compare two snapshots as
+the same corpus. `v` is `TEXT` (0003_index.sql:406), hence the cast on the read side and a string
+on the write side."""
 
 IDENTIFIED: Final[str] = "identified"
 PLANNED: Final[str] = "planned"
@@ -209,6 +264,42 @@ class Source:
     directory: bool
 
 
+NO_SEGMENTER: Final[str] = "none"
+NO_SPACE: Final[str] = "none"
+"""The receipt header's `segmenter` and `space` tokens in a build that has neither (D595).
+
+07:3117 prints `segmenter=derive.segment.spine@3:9c1e space=bge-m3@a1b2c3/768/cosine/i8`: the
+segmenter's identity and the embedding space's. Hop 18 is not built, so no Segment was ever cut,
+and no `embed/1` driver ships, so there is no space. `none` says exactly that, is a token
+`LockHeader.validate` accepts, and cannot be mistaken for an identity -- which an invented one
+could. The header is where 07:3130 catches *"two corpora indexed by different scorers"*; the
+first build that segments or embeds changes these two words, and the merge driver then refuses to
+merge a receipt from before it, which is the refusal the header exists for."""
+
+
+@dataclass(frozen=True, slots=True)
+class Receipt:
+    """What hop 19 did with `omniweave.index.lock`.
+
+    `changed` is the fact the generation bump keys on: the derived ROWS differ from the rows on
+    disk. `written` is whether the file's bytes were replaced, which can differ from `changed` in
+    one direction only -- a header-only difference rewrites the file without changing a row.
+    """
+
+    path: Path
+    documents: int
+    changed: bool
+    written: bool
+    digest: str
+
+    def line(self, generation: int) -> str:
+        if not self.digest:
+            return "  receipt   none: no document is committed"
+        state = "written" if self.written else "unchanged"
+        moved = f"generation {generation}" if self.changed else "generation not moved"
+        return f"  receipt   {LOCK_PATH} {state}, {self.documents} documents, {moved}"
+
+
 @dataclass(frozen=True, slots=True)
 class IngestReport:
     """What one `ow ingest` did, per hop, in the order 10:1570-1575's progress block prints them.
@@ -236,6 +327,8 @@ class IngestReport:
     formats: Mapping[str, int] = field(default_factory=dict)
     routed: RouteTally | None = None
     parsed: ParseTally | None = None
+    manifest: str = ""
+    receipt: Receipt | None = None
 
     @property
     def settled(self) -> int:
@@ -284,6 +377,10 @@ class IngestReport:
             out.extend(self.routed.lines())
         if self.parsed is not None:
             out.extend(self.parsed.lines())
+        if self.manifest:
+            out.append(f"  manifest  {self.manifest}")
+        if self.receipt is not None:
+            out.append(self.receipt.line(self.generation))
         if self.settled:
             out.append(f"  settled   {self.settled} units have a committed document")
         if self.identified:
@@ -384,14 +481,17 @@ def ingest(
                 fix="ow add <source> first, or ow ingest <directory>",
             )
         _create(store, now_ns=ticking.wall_ns())
+    host = sup.HostFacts.measure(store.parent)
     lock = store_write_lock(store, now_ns=ticking.wall_ns)
     with ow.StoreThread(lambda: ow.connect(store), lock=lock) as thread:
-        run_id, generation = open_run(thread, config=config, argv=argv, clock=ticking)
+        opened = open_run(thread, config=config, argv=argv, clock=ticking, output_root=output_root)
+        book = _Book(opened, config=config, host=host, clock=ticking)
+        book.write()
         try:
             report = _hops(
                 thread,
-                run_id=run_id,
-                generation=generation,
+                run_id=opened.run_id,
+                generation=opened.generation,
                 config=config,
                 roots=Roots(source=source_root, output=output_root, cache=cache_root),
                 paths=paths,
@@ -399,12 +499,34 @@ def ingest(
                 clock=ticking,
                 sweep_ms=sweep_ms,
                 store=store,
+                book=book,
+                host=host,
             )
+            pending = _receipt(thread, source_root=source_root)
         except BaseException:
-            close_run(thread, run_id, status="failed", ended_ns=ticking.wall_ns())
+            ended = ticking.wall_ns()
+            close_run(thread, opened.run_id, status="failed", ended_ns=ended)
+            with contextlib.suppress(OSError):
+                book.write(status="failed", ended_ns=ended)
             raise
-        close_run(thread, run_id, status=report.status, ended_ns=ticking.wall_ns())
-    return report
+        receipt = pending.receipt
+        ended = ticking.wall_ns()
+        close_run(
+            thread,
+            opened.run_id,
+            status=report.status,
+            ended_ns=ended,
+            lock_digest=receipt.digest,
+            generation=opened.generation if receipt.changed else None,
+        )
+        try:
+            if receipt.written:
+                _replace(receipt.path, pending.text)
+        finally:
+            book.write(
+                status=cast("RunStatus", report.status), ended_ns=ended, lock_digest=receipt.digest
+            )
+    return replace(report, manifest=book.path, receipt=receipt)
 
 
 def _create(store: Path, *, now_ns: int) -> None:
@@ -417,13 +539,36 @@ def _create(store: Path, *, now_ns: int) -> None:
         connection.close()
 
 
+@dataclass(frozen=True, slots=True)
+class OpenedRun:
+    """What hop 1 wrote: the ids, the start, and the provenance the manifest repeats (15:1568)."""
+
+    run_id: str
+    generation: int
+    started_ns: int
+    provenance: Provenance
+    manifest: Path | None
+
+
 def open_run(
-    thread: ow.StoreThread, *, config: Config, argv: Sequence[str], clock: Clock
-) -> tuple[str, int]:
-    """Hop 1. The `run` row, `status = 'running'`, and the generation it minted."""
+    thread: ow.StoreThread,
+    *,
+    config: Config,
+    argv: Sequence[str],
+    clock: Clock,
+    output_root: Path | None = None,
+) -> OpenedRun:
+    """Hop 1. The `run` row, `status = 'running'`, and the generation it minted.
+
+    `output_root` places the manifest, whose path the row records from its first statement: a run
+    killed before it closes still names the file that says how far it got. With none, the column is
+    the empty string and no manifest is kept.
+    """
     from omniweave.route.policy import builtin_layer, compile_policy  # noqa: PLC0415
 
     run_id = new_run_id(clock, os.urandom(ULID_ENTROPY_BYTES))
+    manifest = None if output_root is None else manifest_path(output_root, run_id)
+    started_ns = clock.wall_ns()
     params = {
         "run_id": run_id,
         "trigger": TRIGGER,
@@ -433,7 +578,8 @@ def open_run(
         "policy_digest": compile_policy([builtin_layer()]).policy_digest,
         "version": metadata.version("omniweave"),
         "contract": CONTRACT,
-        "started_ns": clock.wall_ns(),
+        "started_ns": started_ns,
+        "manifest_path": "" if manifest is None else str(manifest),
     }
 
     def run(connection: object) -> object:
@@ -442,19 +588,44 @@ def open_run(
         ).fetchone()
         major = int(str(schema[0]).split(".", 1)[0]) if schema else 0
         row = connection.execute(RUN_INSERT_SQL, {**params, "schema": major}).fetchone()  # type: ignore[attr-defined]
-        return int(row[0])
+        return int(row[0]), major
 
-    generation = thread.run(
-        ow.Unit(name="ingest.run", run=run, cost_class="free", wait_ms=BATCH_WAIT_MS)
+    generation, major = cast(
+        "tuple[int, int]",
+        thread.run(ow.Unit(name="ingest.run", run=run, cost_class="free", wait_ms=BATCH_WAIT_MS)),
     )
-    return run_id, cast("int", generation)
+    provenance = Provenance(
+        omniweave_version=str(params["version"]),
+        contract=CONTRACT,
+        schema=major,
+        config_digest=config.config_digest,
+        semantic_digest=config.semantic_digest,
+        policy_digest=str(params["policy_digest"]),
+    )
+    return OpenedRun(run_id, generation, started_ns, provenance, manifest)
 
 
-def close_run(thread: ow.StoreThread, run_id: str, *, status: str, ended_ns: int) -> None:
-    """The run row's last write: its status and its end."""
+def close_run(
+    thread: ow.StoreThread,
+    run_id: str,
+    *,
+    status: str,
+    ended_ns: int,
+    lock_digest: str = "",
+    generation: int | None = None,
+) -> None:
+    """The run row's last write -- its status, its end and its receipt digest -- and, when
+    `generation` is given, `index_state.generation` moved to it in the same transaction."""
 
     def run(connection: object) -> None:
-        connection.execute(RUN_CLOSE_SQL, {"status": status, "ended_ns": ended_ns, "id": run_id})  # type: ignore[attr-defined]
+        connection.execute(  # type: ignore[attr-defined]
+            RUN_CLOSE_SQL,
+            {"status": status, "ended_ns": ended_ns, "lock_digest": lock_digest, "id": run_id},
+        )
+        if generation is not None:
+            connection.execute(  # type: ignore[attr-defined]
+                GENERATION_BUMP_SQL, {"value": str(generation), "generation": generation}
+            )
 
     thread.run(ow.Unit(name="ingest.run.close", run=run, cost_class="free", wait_ms=BATCH_WAIT_MS))
 
@@ -471,18 +642,23 @@ def _hops(
     clock: Clock,
     sweep_ms: int | None,
     store: Path,
+    book: _Book,
+    host: sup.HostFacts,
 ) -> IngestReport:
     now_ns = clock.wall_ns()
     plan_batch = int(config.get("runtime.plan_batch"))  # type: ignore[arg-type]
+    opened = clock.monotonic_ns()
     sources = sources_of(thread, paths=paths, scope=scope)
     walked = _walk(thread, sources, generation=generation, now_ns=now_ns, plan_batch=plan_batch)
     discover.reset_stale_acquiring(thread)
     acquired = discover.acquire_pending(
         thread, generation=generation, indexed_at_ns=now_ns, plan_batch=plan_batch
     )
+    opened = book.stage(Stage.DISCOVER, opened)
     context = _context(run_id, generation, config=config, roots=roots, clock=clock)
     enqueued, unsalted = _enqueue(thread, context, plan_batch=plan_batch)
     inputs = _routing_inputs(config)
+    book.catalog(inputs.catalog.catalog_digest)
     context = replace(
         context,
         policy_digest=inputs.policy.policy_digest,
@@ -490,33 +666,27 @@ def _hops(
     )
     tally = ParseTally()
     executor = _Executors(thread, context, config=config, inputs=inputs, store=store, tally=tally)
-    try:
-        drained = (
-            asyncio.run(
-                _drain(
-                    context,
-                    thread,
-                    config=config,
-                    sweep_ms=sweep_ms,
-                    host_root=store.parent,
-                    executors=executor,
-                )
+
+    def drain() -> sup.RunReport:
+        return asyncio.run(
+            _drain(
+                context,
+                thread,
+                config=config,
+                sweep_ms=sweep_ms,
+                host=host,
+                executors=executor,
+                tally=book.tally,
             )
-            if enqueued
-            else None
         )
+
+    try:
+        drained = drain() if enqueued else None
         routed = _route(thread, context, inputs=inputs, roots=roots, clock=clock)
+        opened = book.stage(Stage.PLAN, opened)
         if _pending_parse(thread):
-            asyncio.run(
-                _drain(
-                    context,
-                    thread,
-                    config=config,
-                    sweep_ms=sweep_ms,
-                    host_root=store.parent,
-                    executors=executor,
-                )
-            )
+            drain()
+            book.stage(Stage.PARSE, opened)
     finally:
         executor.close()
     states, parts = _tally(thread, generation)
@@ -1001,19 +1171,26 @@ class _Forgetting:
     superseded commit rolled back, and its entry is what a retry would need.
     """
 
-    __slots__ = ("_inner", "_ledger")
+    __slots__ = ("_inner", "_ledger", "_tally")
 
-    def __init__(self, inner: SqliteStore, ledger: _Executors) -> None:
+    def __init__(
+        self, inner: SqliteStore, ledger: _Executors, tally: RunTally | None = None
+    ) -> None:
         self._inner = inner
         self._ledger = ledger
+        self._tally = tally
 
     def claim(self, batch: int, gen: int, worker: str, lease_ms: int) -> Sequence[WorkRow]:
         return self._inner.claim(batch, gen, worker, lease_ms)
 
     def complete(self, row_id: int, gen: int, result: StepResultView) -> bool:
+        """`complete()`, then the ledger's `forget()` and the manifest's count -- both only on a
+        commit that stuck, because a superseded one rolled back and settled nothing."""
         committed = self._inner.complete(row_id, gen, result)
         if committed:
             self._ledger.forget(row_id)
+            if self._tally is not None:
+                _settled(self._tally, result)
         return committed
 
     def reap_expired_leases(self, now_ms: int) -> int:
@@ -1029,8 +1206,9 @@ async def _drain(
     *,
     config: Config,
     sweep_ms: int | None,
-    host_root: Path,
+    host: sup.HostFacts,
     executors: _Executors,
+    tally: RunTally | None = None,
 ) -> sup.RunReport:
     """Startup step 9: the one loop, draining whatever is claimable -- `op.identify` rows before
     routing, `parse.*` rows after it. One dispatcher serves both (`_Executors`), because a claim
@@ -1038,8 +1216,11 @@ async def _drain(
 
     The admission is derived inside the loop because its semaphores are `asyncio` objects, and a
     semaphore created outside the loop that awaits it is one Python 3.10 bound to the wrong one.
+    `host` is measured once per run rather than once per drain: 08:661's *"measured ONCE at
+    preflight and recorded in the run manifest"*, and two drains that measured twice could admit
+    against two machines while the manifest recorded one.
     """
-    admission = sup.derive_admission(config, sup.HostFacts.measure(host_root))
+    admission = sup.derive_admission(config, host)
     shipped = sup.LoopTimings.of(config)
     timings = (
         shipped
@@ -1056,6 +1237,7 @@ async def _drain(
     queue = _Forgetting(
         SqliteStore(thread, wait_ms=BATCH_WAIT_MS, derived_rows=executors.contribution),
         executors,
+        tally,
     )
     loop_ctx = _with_admission(ctx, admission)
     supervisor = sup.Supervisor(
@@ -1072,3 +1254,173 @@ async def _drain(
 
 def _with_admission(ctx: RunContext, admission: sup.Admission) -> RunContext:
     return replace(ctx, admission=admission)  # type: ignore[arg-type]
+
+
+# =============================================================================================
+# Hop 19: the manifest and the receipt
+# =============================================================================================
+
+
+class _Book:
+    """Hop 19's manifest half: the run's frozen facts, its `RunTally`, and its writer.
+
+    One per run, held by the process that holds `store.write` -- 15:69's *"one writer process holds
+    the `store.write` lock, so one manifest has one author"*. `RunTally` counts and `ManifestWriter`
+    replaces the file atomically; this class is only where the two meet the run, and it writes at
+    the four moments the module docstring names.
+
+    **What this run leaves at zero, and why each zero is true rather than unmeasured.** `cost` is
+    zero because nothing this build runs is priced (D562). `cache` is zero because no Operator here
+    probes the cache: `op.identify` answers from a store column and the parse Operator stages
+    bytes without a verdict. `observe` is empty because the run opens no event sink. Each block
+    fills when its producer runs, through the `RunTally` method already waiting for it.
+    """
+
+    __slots__ = ("_clock", "_host", "_opened", "_provenance", "_timings", "_writer", "tally")
+
+    def __init__(
+        self, opened: OpenedRun, *, config: Config, host: sup.HostFacts, clock: Clock
+    ) -> None:
+        self._opened = opened
+        self._provenance = opened.provenance
+        self._host = host
+        self._clock = clock
+        self._timings: Timings = cast("Timings", str(config.get("observe.timings")))
+        self._writer = (
+            None if opened.manifest is None else ManifestWriter(opened.manifest, clock=clock)
+        )
+        self.tally = RunTally()
+
+    @property
+    def path(self) -> str:
+        """The manifest's path, or the empty string for a run that keeps none."""
+        return "" if self._writer is None else str(self._writer.path)
+
+    def stage(self, stage: Stage, opened_ns: int) -> int:
+        """Close one Stage opened at the monotonic `opened_ns`, rewrite the file, and return the
+        reading that opens the next -- so two Stages share a boundary and no time falls between
+        them."""
+        now = self._clock.monotonic_ns()
+        self.tally.stage_closed(stage, (now - opened_ns) // _NS_PER_MS)
+        self.write()
+        return now
+
+    def catalog(self, digest: str) -> None:
+        """Startup step 7's catalog digest. D140: no `run` column holds it, so the manifest is the
+        only durable place it reaches."""
+        self._provenance = replace(self._provenance, catalog_digest=digest)
+
+    def write(
+        self, *, status: RunStatus = "running", ended_ns: int | None = None, lock_digest: str = ""
+    ) -> None:
+        if self._writer is None:
+            return
+        if lock_digest:
+            self._provenance = replace(self._provenance, lock_digest=lock_digest)
+        opened = self._opened
+        self._writer.write(
+            self.tally.snapshot(
+                run_id=opened.run_id,
+                generation=opened.generation,
+                trigger=TRIGGER,
+                status=status,
+                started_ns=opened.started_ns,
+                ended_ns=ended_ns,
+                provenance=self._provenance,
+                host=self._host,
+                timings=self._timings,
+            )
+        )
+
+
+_NS_PER_MS: Final[int] = 1_000_000
+
+
+def _settled(tally: RunTally, result: StepResultView) -> None:
+    """One committed transition, in `RunTally`'s vocabulary. `deferred_dim` is read off the result
+    when it has one: `StepResult` carries it and the store's read surface does not name it."""
+    failure = result.failure_class
+    tally.settled(
+        Outcome(result.outcome),
+        failure_class=None if failure is None else FailureClass(failure),
+        deferred_dim=cast("str | None", getattr(result, "deferred_dim", None)),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _PendingReceipt:
+    """A `Receipt` and the text it would write, held between the derivation and the commit."""
+
+    receipt: Receipt
+    text: str
+
+
+def _receipt(thread: ow.StoreThread, *, source_root: Path) -> _PendingReceipt:
+    """Hop 19's receipt half: the lock the store implies, against the one on disk. Writes nothing.
+
+    The rows are `store.verify.derive_lock()`'s, over the uri root `acquire.scope_id_for()` gives
+    the source root -- the spelling a scope row uses, trailing `/` and all -- so the receipt is
+    what `ow store verify --lock` re-derives when it is handed the same root. Imported at function
+    scope for `inspect.lock_rows`'s reason: `verify.py` pulls in the archive and identity layers,
+    and a run that settles nothing should not pay for them before it gets here.
+
+    The comparison is over ROWS, because the bump keys on what a reader sees (the module docstring,
+    and D594). A file that is missing reads as no rows; a file that does not parse -- a merge left
+    conflict markers in it, or a hand edit broke a column -- reads as changed, since nothing it says
+    can be trusted, and the store's derivation replaces it. That is `ow store lock`'s fix for the
+    same state (`indexlock._FIX_LOCK`), run by the one process that holds the write lock.
+    """
+    from omniweave_core.retrieve.types import SCORER_VERSION  # noqa: PLC0415
+    from omniweave_core.store.verify import derive_lock  # noqa: PLC0415
+
+    header = LockHeader(scorer=SCORER_VERSION, segmenter=NO_SEGMENTER, space=NO_SPACE)
+    root = scope_id_for(locator_for(source_root.resolve()))
+    derived = cast(
+        "LockFile",
+        _read(thread, "ingest.receipt", lambda c: derive_lock(c, header=header, uri_root=root)),  # type: ignore[arg-type]
+    )
+    path = source_root / LOCK_PATH
+    before = _on_disk(path)
+    prior = _prior_rows(before)
+    text = derived.render()
+    kept = before is not None or bool(derived.rows)
+    receipt = Receipt(
+        path=path,
+        documents=len(derived.rows),
+        changed=prior != derived.rows,  # an unreadable file's `None` equals no tuple of rows
+        written=kept and text != before,
+        digest=hashlib.sha256(text.encode("utf-8")).hexdigest() if kept else "",
+    )
+    return _PendingReceipt(receipt=receipt, text=text)
+
+
+def _on_disk(path: Path) -> str | None:
+    """The receipt's text, or `None` when there is no file. Undecodable bytes read as `""`, which
+    `_prior_rows` then refuses to parse -- a file that exists is never mistaken for none."""
+    try:
+        raw = path.read_bytes()
+    except FileNotFoundError:
+        return None
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return ""
+
+
+def _prior_rows(text: str | None) -> tuple[LockRow, ...] | None:
+    """The rows a receipt on disk lists: `()` for no file, `None` for one that does not parse."""
+    if text is None:
+        return ()
+    try:
+        return read_lock(text).rows
+    except StoreError:
+        return None
+
+
+def _replace(path: Path, text: str) -> None:
+    """The receipt's bytes, replaced atomically through a sibling -- `ManifestWriter.write()`'s
+    reason -- and written as bytes with `\n`, so a Windows run commits the file a Linux run would
+    (11-repo-layout.md section 1.9's third rule)."""
+    staging = path.with_name(path.name + TEMP_SUFFIX)
+    staging.write_bytes(text.encode("utf-8"))
+    staging.replace(path)
