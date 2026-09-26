@@ -129,7 +129,11 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 from omniweave_core.canonical import sha256_canonical
-from omniweave_core.discovery import PACKAGE_PATH_RE
+from omniweave_core.discovery import (
+    PACKAGE_PATH_RE,
+    EditableLayoutAmbiguousError,
+    locate_package_file,
+)
 from omniweave_core.drivers.resolve import COST_CLASS_ORDER
 from omniweave_core.errors import PolicyRefusal, RouteError
 from omniweave_ports.types import CostClass
@@ -1085,7 +1089,12 @@ def installed_specs(distributions: Iterable[Distribution]) -> Installed:
                 f'[{SIGNAL_GROUP}] "{name}" = "{value}" is not a colon-free dotted package path',
                 fix=_FIX_SIGNALS,
             )
-        located = Path(dist.locate_file(signals_relative_path(value)))
+        try:
+            #  D128 and D202: an editable provider's file is in its project, not site-packages.
+            located = locate_package_file(dist, signals_relative_path(value))
+        except EditableLayoutAmbiguousError as both:
+            missing.append(f'[{SIGNAL_GROUP}] "{name}" = "{value}": {both}')
+            continue
         try:
             raw = located.read_bytes()
         except OSError:

@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 from omniweave.run import discover
 from omniweave.run import ingest as ingest_module
-from omniweave.run.ingest import IDENTIFIED, STOPPED_AT, TRIGGER, IngestReport, ingest
+from omniweave.run.ingest import IDENTIFIED, TRIGGER, UNROUTED, IngestReport, ingest
 from omniweave.surface import ingest as cli
 from omniweave_core import acquire
 from omniweave_core.config import Config, load
@@ -87,7 +87,7 @@ def test_a_directory_is_walked_read_and_identified_and_the_run_says_where_it_sto
     assert report.states == {IDENTIFIED: 2}
     assert report.parts == 2, "05:3186: a document-granularity unit is one part"
     assert report.status == "partial"
-    assert report.lines()[-2].endswith(STOPPED_AT)
+    assert report.lines()[-2].endswith(UNROUTED), "a .txt names parse.text.builtin, uninstalled"
     assert _rows(store, "SELECT operator, status, unit_part FROM work") == [
         ("op.identify", "done", ""),
         ("op.identify", "done", ""),
@@ -236,7 +236,7 @@ def test_the_report_is_ascii_and_says_what_stopped_it(tmp_path: Path) -> None:
     lines = _run(tmp_path, store, config, paths=(tmp_path / "docs",)).lines()
     assert all(line.isascii() for line in lines)
     assert lines[-1] == "partial  0 failed"
-    assert "02:452-461" in lines[-2]
+    assert UNROUTED in lines[-2]
 
 
 def test_an_empty_run_is_ok_and_not_partial(tmp_path: Path) -> None:

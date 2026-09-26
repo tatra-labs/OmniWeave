@@ -755,7 +755,7 @@ class _Dist:
     """A stand-in for `Distribution`: an entry-point list and a `locate_file` that joins a root.
 
     `importlib.metadata.Distribution` is abstract and its concrete subclass needs a real
-    `dist-info` on disk. What `installed_specs()` uses of it is exactly two members, so this is
+    `dist-info` on disk. What `installed_specs()` uses of it is exactly three members, so this is
     the whole surface -- and writing it out is also the assertion that the surface is that small:
     a future edit that reached for `dist.files` or `EntryPoint.load()` would fail here first,
     which is INV-4's rule enforced by the test rather than by a comment.
@@ -766,6 +766,13 @@ class _Dist:
 
     def locate_file(self, path: str) -> Any:
         return self._root / path
+
+    def read_text(self, _name: str) -> str | None:
+        """The third member since D128's fix: `direct_url.json`, absent -- a wheel install.
+
+        Reading a `dist-info` sibling file is metadata, not an import, so INV-4's surface still
+        holds: this is how `discovery.is_editable()` asks whether the install is editable."""
+        return None
 
 
 def _dist(root: Any, name: str, value: str) -> Any:

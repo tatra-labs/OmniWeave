@@ -1248,3 +1248,80 @@ def test_the_cacheless_path_still_reports_a_missing_card(tmp_path: Path) -> None
     assert outcome.found is None
     assert outcome.fault is not None and outcome.fault.detail == "card_missing"
     assert outcome.degradation is not None and outcome.degradation.kind == "driver_unavailable"
+
+
+# ---------------------------------------------------------------------------------------------
+# D128: an editable distribution's card is in its project, found by stat and never by import
+# ---------------------------------------------------------------------------------------------
+
+
+class _EditableDist:
+    """A `Distribution` whose `dist-info` says editable and names `project` in `direct_url.json`."""
+
+    def __init__(self, project: Path, site: Path, *, editable: bool = True) -> None:
+        self._project, self._site, self._editable = project, site, editable
+
+    def read_text(self, name: str) -> str | None:
+        if name != "direct_url.json":
+            return None
+        url = self._project.resolve().as_uri()
+        return json.dumps({"url": url, "dir_info": {"editable": self._editable}})
+
+    def locate_file(self, path: str) -> Path:
+        return self._site / path
+
+
+def _card_at(root: Path) -> Path:
+    card = root / "pkg" / "driver.toml"
+    card.parent.mkdir(parents=True, exist_ok=True)
+    card.write_text("[driver]\n", encoding="utf-8")
+    return card
+
+
+@pytest.mark.parametrize("layout", ["src", ""])
+def test_an_editable_card_is_found_in_either_project_layout(tmp_path: Path, layout: str) -> None:
+    """The measured failure: `locate_file()` resolves against site-packages, which an editable
+    install leaves empty, so every first-party card was `card_missing` and the catalog empty."""
+    from omniweave_core.discovery import locate_package_file  # noqa: PLC0415
+
+    project = tmp_path / "project with space"
+    card = _card_at(project / layout if layout else project)
+    dist = _EditableDist(project, tmp_path / "site")
+    assert locate_package_file(dist, "pkg/driver.toml") == card  # type: ignore[arg-type]
+
+
+def test_an_editable_project_holding_the_card_twice_is_refused(tmp_path: Path) -> None:
+    """Two cards for one entry point is a choice nothing may make; stat both, refuse both."""
+    from omniweave_core.discovery import (  # noqa: PLC0415
+        EditableLayoutAmbiguousError,
+        locate_package_file,
+    )
+
+    project = tmp_path / "project"
+    _card_at(project / "src")
+    _card_at(project)
+    with pytest.raises(EditableLayoutAmbiguousError):
+        locate_package_file(_EditableDist(project, tmp_path / "site"), "pkg/driver.toml")  # type: ignore[arg-type]
+
+
+def test_a_wheel_install_and_a_missing_editable_card_keep_locate_file_s_path(
+    tmp_path: Path,
+) -> None:
+    """Non-editable: `locate_file()` exactly as before. Editable with no card: the same path, so the
+    `card_missing` fault still names where a card was expected."""
+    from omniweave_core.discovery import locate_package_file  # noqa: PLC0415
+
+    site = tmp_path / "site"
+    wheel = _EditableDist(tmp_path / "project", site, editable=False)
+    _card_at(tmp_path / "project" / "src")
+    assert locate_package_file(wheel, "pkg/driver.toml") == site / "pkg/driver.toml"  # type: ignore[arg-type]
+    empty = _EditableDist(tmp_path / "nothing", site)
+    assert locate_package_file(empty, "pkg/driver.toml") == site / "pkg/driver.toml"  # type: ignore[arg-type]
+
+
+def test_this_checkout_s_catalog_holds_the_installed_first_party_drivers() -> None:
+    """D128 measured closed: `uv sync` installs every workspace member editable, and the catalog
+    of this very checkout now holds both installed first-party `parse/1` drivers."""
+    from omniweave_core.discovery import catalog  # noqa: PLC0415
+
+    assert {"parse.office.anydoc", "parse.pdf.pdfium"} <= set(catalog().cards)
