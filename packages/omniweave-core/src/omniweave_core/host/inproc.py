@@ -147,6 +147,8 @@ from omniweave_core.errors import CapabilityMissing, DriverHostError
 from omniweave_core.host.activate import check_card_code
 
 __all__ = [
+    "DRIVER",
+    "HOST",
     "NO_SERVICES",
     "DeadlineLimit",
     "Deadlines",
@@ -232,6 +234,11 @@ class Deadlines(NamedTuple):
         return tuple(limit for limit, value in pairs if value > 0)
 
 
+HOST: Final[str] = "host"
+DRIVER: Final[str] = "driver"
+"""`GuardFailure.detected_by`'s two values, `HostVerdict.detected_by`'s spelling."""
+
+
 @dataclass(frozen=True, slots=True)
 class GuardFailure:
     """A host-side failure, carrying the five fields that cross S4 (02-architecture.md:1060).
@@ -246,6 +253,11 @@ class GuardFailure:
     retry_after_ms: int | None = None
     pages: tuple[int, ...] = ()
     limit: str | None = None
+    detected_by: str = HOST
+    """`host` for the two failures the guard itself decides -- a deadline breach and a raise that
+    was not a `DriverError` -- and `driver` for a `DriverError` passed through. `HostVerdict`
+    carries the same field for the same reason: the retry ladder's first rung depends on who
+    observed the failure (`work.rung_for`'s `Source`), and the class alone does not say."""
 
     @classmethod
     def of_driver_error(cls, exc: DriverError) -> GuardFailure:
@@ -256,6 +268,7 @@ class GuardFailure:
             retry_after_ms=exc.retry_after_ms,
             pages=exc.pages,
             limit=exc.limit,
+            detected_by=DRIVER,
         )
 
 

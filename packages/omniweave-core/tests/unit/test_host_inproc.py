@@ -60,6 +60,8 @@ from omniweave_core.drivers.resolve import Candidate, RejectCode
 from omniweave_core.errors import CapabilityMissing, DriverHostError
 from omniweave_core.host import inproc
 from omniweave_core.host.inproc import (
+    DRIVER,
+    HOST,
     NO_SERVICES,
     DeadlineLimit,
     Deadlines,
@@ -436,6 +438,7 @@ def test_a_driver_error_crosses_the_boundary_with_its_five_fields_unchanged() ->
         failure_class=FailureClass.RATE_LIMITED,
         message="the upstream said 429",
         retry_after_ms=250,
+        detected_by=DRIVER,
     )
 
 
@@ -447,7 +450,7 @@ def test_needs_ocr_keeps_its_pages_because_they_are_routing_data() -> None:
         raise DriverError(cls=FailureClass.NEEDS_OCR, message="scanned", pages=(3, 4, 9))
 
     assert run(guard(), work).failure == GuardFailure(
-        failure_class=FailureClass.NEEDS_OCR, message="scanned", pages=(3, 4, 9)
+        failure_class=FailureClass.NEEDS_OCR, message="scanned", pages=(3, 4, 9), detected_by=DRIVER
     )
 
 
@@ -466,6 +469,7 @@ def test_anything_that_is_not_a_driver_error_becomes_driver_bug(raised: Exceptio
     assert outcome.failure is not None
     assert outcome.failure.failure_class is FailureClass.DRIVER_BUG
     assert type(raised).__name__ in outcome.failure.message
+    assert outcome.failure.detected_by == HOST, "the guard decided the class, not the driver"
 
 
 @pytest.mark.parametrize("raised", [SystemExit(3), KeyboardInterrupt()])
@@ -584,6 +588,7 @@ def test_a_breached_progress_deadline_discards_the_drivers_result() -> None:
     assert outcome.failure is not None
     assert outcome.failure.failure_class is FailureClass.TIMEOUT
     assert outcome.failure.limit == DeadlineLimit.PROGRESS_MS.value
+    assert outcome.failure.detected_by == HOST
 
 
 def test_progress_resets_the_progress_deadline() -> None:

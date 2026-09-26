@@ -84,6 +84,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import shutil
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -104,9 +105,11 @@ from omniweave.run.dispatch import Batch, call_attributes, fan_out
 
 if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from collections.abc import Iterator
+    from pathlib import Path
 
     from omniweave_core.budget import BudgetLedger, Reservation
     from omniweave_core.clock import Clock
+    from omniweave_core.host.inproc import DriverGuard, GuardFailure
     from omniweave_core.host.subproc import (
         Deadlines,
         HostVerdict,
@@ -114,7 +117,7 @@ if TYPE_CHECKING:  # pragma: no cover -- typing only.
         InvokeReport,
         Worker,
     )
-    from omniweave_ports.types import UnitRef
+    from omniweave_ports.types import BlobStore, DriverIO, UnitRef
 
 __all__ = [
     "CACHE_LAYER_BY_OPERATOR",
@@ -126,6 +129,7 @@ __all__ = [
     "CacheDecision",
     "Call",
     "Chaos",
+    "GuardSource",
     "Handler",
     "Layer",
     "LedgerAdmitter",
@@ -139,6 +143,7 @@ __all__ = [
     "cache_layer_for",
     "chaos_fires",
     "decision_of",
+    "inproc_host",
     "prober",
     "subproc_host",
     "verdict_of",
@@ -1378,6 +1383,140 @@ def subproc_host(source: WorkerSource) -> Handler:
         )
 
     return host
+
+
+# =============================================================================================
+# 14. The host at the bottom of the chain: S1, one `DriverGuard.invoke()` per unit
+# =============================================================================================
+
+
+class GuardSource(Protocol):
+    """What `inproc_host` needs from the caller: the guard, one unit's work, and its I/O roots.
+
+    `subproc_host`'s `WorkerSource`, for the seam with no process: the guard stands where the
+    worker stood, and `work()` is the driver call the worker would have made in its own
+    interpreter -- `parse(unit, PartSelector(), io)` for a `parse/1` card. The driver object, its
+    card and its clearance are the Operator's to know, for `WorkerSource`'s reason.
+    """
+
+    def guard(self, call: Call) -> DriverGuard: ...
+
+    def work(self, call: Call, index: int) -> Callable[[DriverIO], DriverResult]: ...
+
+    def blobs(self, call: Call) -> BlobStore: ...
+
+    def tmp(self, call: Call) -> Path: ...
+
+    def max_output_bytes(self, call: Call) -> int: ...
+
+
+def inproc_host(source: GuardSource) -> Handler:
+    """The innermost handler for an S1 driver: `DriverGuard.invoke()` per unit, as a `Reply`.
+
+    **The second `DriverHost.invoke()` G8 confines to this file**, and the only other one:
+    02:74's *"the ONLY caller of DriverHost.invoke()"* names the file, not the seam.
+
+    The `Reply` has `subproc_host`'s shape exactly -- one outcome per unit, `produced` per unit,
+    and an `InvokeReport` whose `failures` are `HostVerdict`s -- so the Operator's settle path
+    reads one shape whichever seam ran the driver:
+
+    * a `GuardFailure` becomes a `HostVerdict` field for field, `permanent` iff it carries no
+      cooldown. A driver-raised `DriverError` has one exactly when its class is transient (charter
+      D3), and the guard's own two verdicts -- a deadline breach and a raise that was not a
+      `DriverError` -- have none and are permanent, which is 04:1728's `FAILED_PERMANENT{TIMEOUT}`
+      for the host-detected case (`HostVerdict.timed_out`'s own rule, one seam over).
+    * the batch event is `RESOURCE_LIMIT` if any unit reported one, else `CLEAN`. There is no
+      `DRIVER_CRASHED` arm: an in-process crash is the run's, 04:1826's *"an `inproc` segfault
+      kills the run"*, and nothing survives to report it.
+
+    * `produced` is normalised the worker's way (`worker.produced_header`): at most one ref stays
+      inline, the first `doc_fragment`, and every other inline ref is put in the CAS first. An
+      in-process driver's refs are its own `ArtifactRef.of` results, so a small asset arrives
+      inline; after this it is a `cas://` ref exactly as it would be out of a `RESULT` frame.
+
+    Each unit gets its own scratch directory, removed after its call and before the next -- the
+    worker's order, for the worker's reason: nothing a result names lives in scratch.
+    """
+    from omniweave_core.host import subproc  # noqa: PLC0415 -- the S1 path only
+
+    def host(call: Call) -> Reply:
+        guard = source.guard(call)
+        blobs = source.blobs(call)
+        ceiling = source.max_output_bytes(call)
+        root = source.tmp(call) / call.batch.invoke_id
+        results: list[DriverResult | None] = []
+        failures: list[HostVerdict | None] = []
+        try:
+            for index in range(call.size):
+                scratch = root / str(index)
+                scratch.mkdir(parents=True, exist_ok=True)
+                try:
+                    outcome = guard.invoke(
+                        source.work(call, index),
+                        blobs=blobs,
+                        tmpdir=str(scratch),
+                        max_output_bytes=ceiling,
+                    )
+                finally:
+                    shutil.rmtree(scratch, ignore_errors=True)
+                results.append(_normalised(outcome.result, blobs))
+                failures.append(None if outcome.failure is None else _verdict(outcome.failure))
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+        limited = any(
+            one is not None and one.failure_class is FailureClass.RESOURCE_LIMIT for one in failures
+        )
+        report = subproc.InvokeReport(
+            results=tuple(results),
+            failures=tuple(failures),
+            event=subproc.BatchEvent.RESOURCE_LIMIT if limited else subproc.BatchEvent.CLEAN,
+        )
+        return Reply(
+            outcomes=tuple(_outcome_of(r, v) for r, v in zip(results, failures, strict=True)),
+            report=report,
+            produced=tuple(() if one is None else one.produced for one in results),
+        )
+
+    return host
+
+
+def _normalised(result: DriverResult | None, blobs: BlobStore) -> DriverResult | None:
+    """`produced` as a `RESULT` frame would carry it: one inline ref, the rest in the CAS.
+
+    `worker.produced_header` is the rule, called rather than restated, and the refs are rebuilt
+    through `ArtifactRef`'s own constructor in the order the driver produced them -- the office
+    driver's asset records name their refs by position.
+    """
+    if result is None:
+        return None
+    from omniweave_core.host.worker import produced_header  # noqa: PLC0415 -- the S1 path only
+
+    entries, body = produced_header(result.produced, blobs)  # type: ignore[arg-type]
+    produced = tuple(
+        ArtifactRef(
+            kind=str(entry["kind"]),
+            byte_len=int(entry["byte_len"]),  # type: ignore[call-overload]
+            inline=body if entry.get("inline") else None,
+            blob=None if entry.get("inline") else str(entry["blob"]),
+        )
+        for entry in entries
+    )
+    return replace(result, produced=produced)
+
+
+def _verdict(failure: GuardFailure) -> HostVerdict:
+    """S1's failure as S4's verdict: the same five fields, `permanent` iff there is no cooldown."""
+    from omniweave_core.host.subproc import HostVerdict  # noqa: PLC0415 -- the S1 path only
+
+    return HostVerdict(
+        failure_class=failure.failure_class,
+        message=failure.message,
+        permanent=failure.retry_after_ms is None,
+        limit=failure.limit,
+        retry_after_ms=failure.retry_after_ms,
+        pages=failure.pages,
+        detected_by=failure.detected_by,
+    )
 
 
 def _outcome_of(result: DriverResult | None, verdict: HostVerdict | None) -> Outcome:
