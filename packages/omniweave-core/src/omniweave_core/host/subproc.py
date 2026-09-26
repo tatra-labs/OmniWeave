@@ -199,7 +199,9 @@ from types import MappingProxyType
 from typing import ClassVar, Final, NamedTuple, Protocol
 
 from omniweave_ports.types import (
+    ArtifactRef,
     DriverError,
+    DriverMetrics,
     DriverResult,
     FailureClass,
     Isolation,
@@ -2593,8 +2595,14 @@ class Invocation:
     budget_micros: int
     body: bytes = b""
     inline_unit_index: int | None = None
+    blob_refs: tuple[str | None, ...] = ()
 
     def __post_init__(self) -> None:
+        if self.blob_refs and len(self.blob_refs) != len(self.units):
+            raise DriverHostError(
+                f"{len(self.blob_refs)} blob_refs for {len(self.units)} units",
+                fix="one blob_ref per unit, None where the unit's bytes ride in the body",
+            )
         if not self.units:
             raise DriverHostError(
                 "an INVOKE with no units",
@@ -2633,11 +2641,15 @@ class Invocation:
         * **`byte_len` on each unit.** :1699 prints `{uri, part, content_sha256, blob_ref?}`;
           `byte_len` is `omniweave_ports.types.UnitRef`'s fourth field (04-driver-system.md:195-196)
           and is sent because a worker that must bound its own read of a blob needs the length
-          before it opens it. `blob_ref` is absent for the opposite reason: the CAS reference is
-          `W3.8`'s and this module has no `BlobStore`, so a key nothing can populate would be a
-          claim rather than a payload.
+          before it opens it.
+        * **`blob_ref`**, :1699's own optional key, sent when the caller staged the unit's bytes
+          in the CAS -- which the parse Operator always does (D582). At W3.2 it was absent because
+          nothing could populate it; `blob_refs` is how a caller that can says so.
+        * **`media_type`**, `UnitRef`'s fifth field. A CSV has no signature (the office driver's
+          own `sniff` says so), so the unit's detected media type is the only evidence a driver has
+          for it, and a worker that dropped it would decode every CSV as unrecognised (D583).
 
-        Both are reported as amendments owed to :1699 rather than treated as settled.
+        All four are reported as amendments owed to :1699 rather than treated as settled.
         """
         return {
             "invoke_id": self.invoke_id,
@@ -2647,8 +2659,14 @@ class Invocation:
                     "part": unit.part,
                     "content_sha256": unit.content_sha256,
                     "byte_len": unit.byte_len,
+                    "media_type": unit.media_type,
+                    **(
+                        {"blob_ref": self.blob_refs[index]}
+                        if self.blob_refs and self.blob_refs[index] is not None
+                        else {}
+                    ),
                 }
-                for unit in self.units
+                for index, unit in enumerate(self.units)
             ],
             "deadline_ms": self.deadline_ms,
             "budget_micros": self.budget_micros,
@@ -3096,10 +3114,16 @@ def _result_of(frame: wire.Frame) -> tuple[DriverResult | None, HostVerdict | No
 
     02-architecture.md:1060: the worker serialises *"the five `DriverError` fields --
     `failure_class`, message, `retry_after_ms`, `pages`, `limit` -- into the `RESULT` header"*.
-    `produced` is deliberately NOT reconstructed here: an `ArtifactRef` is
-    `omniweave_ports.types`' and its `of()` is the single site that meters
-    `io.max_output_bytes` (04-driver-system.md:1795), so building one from a header key would
-    evade the meter. W3.7's cassette codec and the fragment decoder are the readers of the body.
+
+    **`produced` IS reconstructed here, from the header's `produced` list and the frame's one
+    body (D583).** At W3.2 it was not, on the argument that `ArtifactRef.of()` is the single site
+    that meters `io.max_output_bytes` (04-driver-system.md:1795) and a ref built from a header key
+    would evade the meter. The meter still runs where 04:1795 puts it -- inside the worker, on
+    the host's number, which `HELLO` now carries -- and what this function adds is the host-side
+    re-check a hostile worker cannot skip: every ref is built through `ArtifactRef`'s own
+    constructor (the closed kind vocabulary, `cas://` spelling, `INLINE_MAX`), at most one is
+    inline and its `byte_len` must equal the body exactly, and `produced_total` is summed for the
+    caller to hold against the ceiling. `worker.produced_header()` is the other end.
 
     **Every construction here is wrapped, because the types raise `ValueError` and a hostile
     worker is entitled to try it.** `DriverError.__post_init__` enforces charter D3's
@@ -3146,11 +3170,13 @@ def _result_of(frame: wire.Frame) -> tuple[DriverResult | None, HostVerdict | No
             fix="kill the worker; INV-7 gives a driver exactly those two outcomes",
         )
     reason = frame.header.get("partial_reason")
+    produced = _produced_of(frame)
     try:
         result = DriverResult(
             outcome="ok_partial" if outcome == "ok_partial" else "ok",
-            produced=(),
+            produced=produced,
             partial_reason=None if reason is None else str(reason),
+            metrics=_metrics_of(frame.header.get("metrics")),
         )
     except ValueError as exc:
         raise DriverHostError(
@@ -3158,6 +3184,103 @@ def _result_of(frame: wire.Frame) -> tuple[DriverResult | None, HostVerdict | No
             fix="kill the worker; ok_partial without partial_reason is not a result",
         ) from exc
     return (result, None)
+
+
+def _produced_of(frame: wire.Frame) -> tuple[ArtifactRef, ...]:
+    """`RESULT.produced` as `ArtifactRef`s, the one inline body attributed by position. D583.
+
+    Every refusal is a `DriverHostError`, never a `ValueError` out of the ports constructor, for
+    `_result_of`'s reason: a protocol fault at this seam is attributed to us (02:1060).
+    """
+    raw = frame.header.get("produced") or []
+    if not isinstance(raw, list):
+        raise DriverHostError(
+            "RESULT.produced is not a list",
+            fix="kill the worker; produced is [{kind, byte_len, blob | inline}]",
+        )
+    refs: list[ArtifactRef] = []
+    inline_seen = False
+    for entry in raw:
+        if not isinstance(entry, Mapping):
+            raise DriverHostError(
+                "a RESULT.produced entry is not a table",
+                fix="kill the worker; produced is [{kind, byte_len, blob | inline}]",
+            )
+        byte_len = entry.get("byte_len")
+        if not isinstance(byte_len, int) or isinstance(byte_len, bool):
+            raise DriverHostError(
+                f"a RESULT.produced byte_len is {byte_len!r}",
+                fix="kill the worker; byte_len is the ref's length in bytes",
+            )
+        inline = entry.get("inline") is True
+        if inline and inline_seen:
+            raise DriverHostError(
+                "two RESULT.produced entries claim the one frame body",
+                fix="kill the worker; at most one produced ref rides inline (D583)",
+            )
+        if inline and byte_len != len(frame.body):
+            raise DriverHostError(
+                f"the inline ref declares {byte_len} bytes and the body is {len(frame.body)}",
+                fix="kill the worker; an inline ref's byte_len is the body's length",
+            )
+        inline_seen = inline_seen or inline
+        try:
+            refs.append(
+                ArtifactRef(
+                    kind=str(entry.get("kind", "")),
+                    byte_len=byte_len,
+                    inline=frame.body if inline else None,
+                    blob=None if inline else str(entry.get("blob", "")),
+                )
+            )
+        except ValueError as exc:
+            raise DriverHostError(
+                f"a RESULT.produced entry is not an ArtifactRef: {exc}",
+                fix="kill the worker; the kind vocabulary and the cas:// spelling are closed",
+            ) from exc
+    if frame.body and not inline_seen:
+        raise DriverHostError(
+            f"a RESULT body of {len(frame.body)} bytes that no produced entry claims",
+            fix="kill the worker; a body belongs to the one inline ref",
+        )
+    return tuple(refs)
+
+
+def produced_total(result: DriverResult) -> int:
+    """The bytes one result's refs declare, summed: the host's re-check of 04:1795's ceiling."""
+    return sum(ref.byte_len for ref in result.produced)
+
+
+_METRIC_FIELDS: Final = (
+    "wall_ms",
+    "cpu_ms",
+    "gpu_ms",
+    "tokens_in",
+    "tokens_out",
+    "calls",
+    "bytes_egress",
+    "bytes_read",
+    "peak_rss_bytes",
+)
+"""`DriverMetrics`' nine physical units, in its own order. PHYSICAL UNITS ONLY: no micros."""
+
+
+def _metrics_of(raw: object) -> DriverMetrics:
+    """`RESULT.metrics` as `DriverMetrics`, a non-integer or negative field read as zero.
+
+    Zero rather than a refusal because a metric is a report and never a control input: a worker
+    that mis-states its own `wall_ms` has lied about itself, and the host's own clocks are what
+    `with_metrics` records (08:842). Keys outside the nine are ignored -- there is no `cost_micros`
+    to read even if a worker sends one (INV-15).
+    """
+    if not isinstance(raw, Mapping):
+        return DriverMetrics()
+    values: dict[str, int] = {}
+    for name in _METRIC_FIELDS:
+        value = raw.get(name, 0)
+        ok = isinstance(value, int) and not isinstance(value, bool) and value >= 0
+        values[name] = value if ok else 0  # type: ignore[assignment]
+    return DriverMetrics(**values)
 
 
 def _fatal_verdict(frame: wire.Frame) -> HostVerdict:
@@ -3330,7 +3453,84 @@ class WorkerPool:
             worker.stop()
 
 
+# =============================================================================================
+# 15. One live worker: listen, spawn, contain, accept, HELLO
+# =============================================================================================
+
+WORKER_MODULE: Final = "omniweave_core.host.worker"
+"""The bootstrap `python -m` runs. `host/worker.py` is the child's half of S4 (D581)."""
+
+ACCEPT_MS: Final = 30_000
+"""How long the host waits for a spawned worker to open both pipes. An interpreter start plus
+`omniweave_core`'s import is well under a second here; thirty is for a cold disk, and a worker
+that never connects is refused by `NamedPipeListener.accept`, naming the pipe, rather than
+waited on."""
+
+
+def worker_argv(executable: str, address: str) -> tuple[str, ...]:
+    """`(python, -m, omniweave_core.host.worker, <base address>)`. The address is the argv's last
+    element because `pipe_names` derives both pipe names from it on the child's side."""
+    return (executable, "-m", WORKER_MODULE, address)
+
+
+def launch(
+    key: WorkerKey,
+    request: SpawnRequest,
+    *,
+    hello: Mapping[str, object],
+    expect: Mapping[str, object],
+    deadlines: Deadlines,
+    settings: HostSettings,
+    now_ms: Callable[[], int],
+    memory_mb: int = 0,
+    spawn: Callable[..., WorkerProcess] = spawn_worker,
+    accept_ms: int = ACCEPT_MS,
+) -> tuple[Worker, HelloAck]:
+    """A `Worker` that has answered `HELLO`, or a raise with the child already reaped.
+
+    `WorkerPool.acquire()` takes this as its `build`: its docstring says *"a worker is a spawn AND
+    a listener AND an accept AND a `HELLO` exchange, and only the caller knows the card"*, and this
+    is those four in the one order that works. The listener exists before the spawn, because the
+    child connects on its first line and a pipe that does not exist yet is `could not open`. The
+    job object is created and the child assigned before the accept, so the address-space cap is in
+    force before the child has read a frame. Every failure path kills the child: a half-started
+    worker nobody holds is an orphan process with the driver's code loaded.
+
+    On POSIX there is no job object and the cap is `setrlimit` in the child, which the bootstrap
+    does not yet apply; `address_space_capped` is reported false there, as DR10 requires.
+    """
+    listener = listener_for(request.address)
+    stderr = StderrRing()
+    try:
+        proc = spawn(request, stderr=stderr, stdout=StderrRing())
+    except BaseException:
+        listener.close()
+        raise
+    job: JobObject | None = None
+    try:
+        if sys.platform == "win32":
+            job = JobObject(memory_limit_bytes=memory_mb * 1_048_576 if memory_mb > 0 else None)
+            job.assign(proc.pid)
+        channel = listener.accept(timeout_ms=accept_ms)
+    except BaseException:
+        listener.close()
+        with contextlib.suppress(OSError):
+            proc.kill()
+        if job is not None:
+            job.close()
+        raise
+    listener.close()
+    worker = Worker(key, proc, channel, settings=settings, now_ms=now_ms, stderr=stderr, job=job)
+    try:
+        ack = worker.hello(hello, expect=expect, deadlines=deadlines)
+    except BaseException:
+        worker.kill()
+        raise
+    return worker, ack
+
+
 __all__ = [
+    "ACCEPT_MS",
     "AIMD_RECOVERY_STREAK",
     "CONTROLS_BY_PLATFORM",
     "FAILURE_MODES",
@@ -3339,6 +3539,7 @@ __all__ = [
     "LIMIT_NAMES",
     "RESULT_UNIT_INDEX_KEY",
     "STDERR_RING_BYTES",
+    "WORKER_MODULE",
     "AimdState",
     "BatchEvent",
     "ByteChannel",
@@ -3374,14 +3575,17 @@ __all__ = [
     "connect",
     "current_user_sid",
     "grant_isolation",
+    "launch",
     "listener_for",
     "lower_priority",
     "next_frame",
     "owner_only_sddl",
     "peak_rss_bytes",
     "pipe_names",
+    "produced_total",
     "retry_batch_size",
     "run_captured",
     "spawn_worker",
     "synthesise_crash",
+    "worker_argv",
 ]
