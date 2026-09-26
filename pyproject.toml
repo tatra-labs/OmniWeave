@@ -239,6 +239,12 @@ ban-relative-imports = "all"
 # here rather than by widening the glob above, so that a file moving out of `fuzz/` loses them.
 "fuzz/test_targets.py" = ["S101", "PLR2004", "ANN"]
 
+# `bench/serve/` is the same kind of tree for the same reason: 16-roadmap.md:745 runs
+# `pytest bench/serve` at the repository root, and 13-quality.md section 8.8's harness is test
+# infrastructure rather than a distribution. Its measurement core, `serve_harness.py`, gets none of
+# these: it is the instrument, and it is held to production style.
+"bench/serve/test_harness.py" = ["S101", "PLR2004", "ANN"]
+
 # ---------------------------------------------------------------------------
 # pytest
 # ---------------------------------------------------------------------------

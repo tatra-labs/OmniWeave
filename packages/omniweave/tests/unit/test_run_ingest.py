@@ -12,6 +12,7 @@ from __future__ import annotations
 import io
 import json
 import sqlite3  # noqa: TID251 -- the assertions read the store the run wrote.
+import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -187,6 +188,42 @@ def test_a_failed_run_closes_its_row_as_failed(
     assert (manifest["status"], manifest["ended_ns"]) == ("failed", ended), "15:68: it has one"
     assert manifest["stage_entries"] == {}, "it failed inside discover, which never closed"
     assert _rows(store, "SELECT v FROM index_state WHERE k = 'generation'") == [("0",)]
+
+
+def test_two_first_batches_on_two_threads_build_one_parse_operator(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D603. The Supervisor dispatches claimed batches on worker threads, so a run's first two parse
+    batches reach `_ParseLazily.get()` together. Two Operators meant two pools and two launch
+    counters starting at 1, so two workers under ONE pipe name, and the second died on
+    `ERROR_PIPE_BUSY` -- D588 one level up, found by 4 failed full runs in 14. One is built."""
+    built: list[object] = []
+
+    class Slow:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            built.append(self)
+            time.sleep(0.2)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(ingest_module, "ParseOperator", Slow)
+    inputs = SimpleNamespace(catalog=None, resolving=None)
+    lazy = ingest_module._ParseLazily(None, None, None, inputs, tmp_path / "i.owstore", None, None)
+    together = threading.Barrier(2)
+    got: list[object] = []
+
+    def first_batch() -> None:
+        together.wait()
+        got.append(lazy.get())
+
+    threads = [threading.Thread(target=first_batch) for _ in range(2)]
+    for one in threads:
+        one.start()
+    for one in threads:
+        one.join()
+    assert len(built) == 1
+    assert got[0] is got[1] is built[0]
 
 
 def test_the_generation_bump_never_moves_the_counter_backwards(tmp_path: Path) -> None:

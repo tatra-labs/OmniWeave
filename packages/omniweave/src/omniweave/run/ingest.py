@@ -88,6 +88,7 @@ import glob
 import hashlib
 import json
 import os
+import threading
 from dataclasses import dataclass, field, replace
 from importlib import metadata
 from pathlib import Path
@@ -1121,15 +1122,27 @@ class _Executors:
 
 class _ParseLazily:
     """The parse Operator, built on its first batch. A run that plans nothing opens no CAS and
-    builds no worker pool, so `ow ingest` over a text-only corpus costs what it did before."""
+    builds no worker pool, so `ow ingest` over a text-only corpus costs what it did before.
 
-    __slots__ = ("_args", "_operator")
+    **Built under a lock (D603).** The Supervisor dispatches claimed batches on worker threads, so
+    a run's first two parse batches arrive here together. Unlocked, both saw no Operator and each
+    built one: two pools, two launch counters starting at 1, two workers under one pipe name, and
+    the second `CreateNamedPipeW` failed `ERROR_PIPE_BUSY` -- D588 one level up, where the per-key
+    lock could not reach, because it is a lock INSIDE one Operator.
+    """
+
+    __slots__ = ("_args", "_guard", "_operator")
 
     def __init__(self, *args: object) -> None:
         self._args = args
         self._operator: ParseOperator | None = None
+        self._guard = threading.Lock()
 
     def get(self) -> ParseOperator:
+        with self._guard:
+            return self._built()
+
+    def _built(self) -> ParseOperator:
         if self._operator is None:
             thread, ctx, config, inputs, store, ledger, tally = self._args
             cas_root = Path(cast("Path", store)).parent / CAS_DIR
