@@ -37,10 +37,11 @@ The only transcript that spells every event (18:2992-2996) writes `ow hook user-
 no document spells `prompt` for any other event or `user-prompt-submit` anywhere else.
 
 **The failure is not a naming inconsistency, it is a gate that passes by measuring the wrong
-path.** An event word the CLI does not know is 10:1849's *"an exit 0 and a counter and never an
-error"*, and it is the cheapest silent exit there is: no handler, no file, no store. A G26 harness
-timing `ow hook prompt` against a build that only accepts `user-prompt-submit` would report the
-fastest numbers in the framework for a command that did nothing. D432.
+path.** An event word the CLI does not know is an exit 0 and a counter -- this module's ruling
+under 10:1843-1844's *"every failure path is a silent exit 0"*, the plan's only sentence on it
+(D605) -- and it is the cheapest silent exit there is: no handler, no file, no store. A G26
+harness timing `ow hook prompt` against a build that only accepts `user-prompt-submit` would
+report the fastest numbers in the framework for a command that did nothing. D432.
 
 So both are accepted and land on one handler, and the alias set is closed at the one other spelling
 the plan uses. `WORDS` is derived from `EVENTS` rather than retyped, so a seventh event cannot be
