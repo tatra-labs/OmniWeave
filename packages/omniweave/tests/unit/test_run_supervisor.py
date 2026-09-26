@@ -36,6 +36,7 @@ import asyncio
 import dataclasses
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -1070,6 +1071,35 @@ def test_the_claim_asks_for_the_narrowest_class_because_it_cannot_name_one() -> 
 
 
 # -- the reaper and the sweeper ---------------------------------------------
+
+
+def test_a_sweep_in_flight_when_the_reaper_is_cancelled_is_still_counted() -> None:
+    """D606. A sweep runs in a thread, and the store commits it whether or not the task awaiting it
+    survives. Cancelling the reaper mid-sweep dropped that sweep's count: the rows were reaped and
+    the report said they were not. `test_the_reaper_sweeps_and_its_count_reaches_the_report` below
+    caught it once in a loaded run as 20 against 24; this makes the race happen every time."""
+    started, release = threading.Event(), threading.Event()
+
+    class Blocking(FakeQueue):
+        def reap_expired_leases(self, now_ms: int) -> int:
+            started.set()
+            release.wait(5)
+            return super().reap_expired_leases(now_ms)
+
+    queue = Blocking(reaps=4)
+    supervisor, _, _ = harness(queue, timings=loop_timings(lease_extend_ms=5))
+
+    async def scenario() -> None:
+        reaper = asyncio.create_task(supervisor._reaper())
+        await asyncio.to_thread(started.wait, 5)
+        reaper.cancel()
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await reaper
+
+    asyncio.run(scenario())
+    assert queue.reaped == 1
+    assert supervisor._reaped == 4, "the sweep ran in the store; its rows are the report's"
 
 
 def test_the_reaper_sweeps_and_its_count_reaches_the_report() -> None:
