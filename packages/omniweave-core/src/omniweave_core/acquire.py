@@ -266,6 +266,7 @@ DEFAULT_EXCLUDE: Final[tuple[str, ...]] = (
     "**/node_modules/**",
     "**/.omniweave/**",
     "**/~$*",
+    "**/omniweave.index.lock",
 )
 DEFAULT_FOLLOW_SYMLINKS: Final[bool] = False
 DEFAULT_MAX_DEPTH: Final[int] = 32
@@ -277,6 +278,11 @@ DEFAULT_HIDDEN: Final[bool] = False
 enumerate, then by a bounded read"* -- both halves are in this module (`iter_candidates` refuses a
 candidate above it before `fetch` is ever called; `read_bounded` reads `limit + 1` bytes and
 raises if the extra byte arrives). `~$*` is Office's lock-file prefix.
+
+**`omniweave.index.lock` is the one entry 05:442 does not list (D592).** 07:142 puts the corpus
+receipt at the root of the tree `.omniweave/` sits in, which is the source root the walk covers,
+and `ow ingest` rewrites it whenever the corpus changes. Walked, it would be rostered as a unit,
+and every run that changed a document would change a unit -- a receipt ingesting itself.
 
 **These are module constants and not `config.KEYS` rows, and that is a gap rather than a choice.**
 `omniweave_core.config.KEYS` carries `cache corpora drivers graph licence limits observe retrieval
