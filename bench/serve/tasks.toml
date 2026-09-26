@@ -1,0 +1,22 @@
+# bench/serve/tasks.toml -- the 30-task catalogue of 13-quality.md section 8.8.
+#
+# EMPTY ON PURPOSE (D602). A task is a question with a known answer over a known document, and
+# the three reference corpora it is asked of -- F20's 5,000-page legal matter, 137-document data
+# room and 60-document personal archive -- do not exist in this tree. An answer key written
+# against documents nobody has would be ground truth by assertion. test_harness.py's catalogue
+# test is a strict xfail until the corpora and their thirty tasks land together.
+#
+# One [[task]] per task. Every key is required except `injector`, which is required on a
+# `damaged` task and refused on any other:
+#
+#   [[task]]
+#   id      = "cite-termination"        # [a-z0-9][a-z0-9_-]{0,63}
+#   class   = "citation"                # citation | retrieval | absence | damaged   (8 / 8 / 6 / 8)
+#   corpus  = "legal_matter"            # legal_matter | data_room | personal_archive
+#   source  = "born_digital"            # born_digital | scanned
+#   prompt  = "What does section 4.2 of the MSA say about termination?"
+#   expect  = { contains = ["thirty days"], forbids = ["no such section"] }
+#   injector = "stall"                  # damaged only: the one Injector applied (13:1370)
+
+[catalog]
+version = 1
