@@ -707,7 +707,7 @@ SELECT unit_uri, state, size, mtime_ns, indexed_at_ns, content_sha256, settled_g
   FROM unit
  WHERE connector = :connector
    AND last_seen_gen = :generation
-   AND state IN ('discovered', 'failed')
+   AND (state = 'discovered' OR (state = 'failed' AND part_count IS NULL))
    AND (acq_retry_after IS NULL OR acq_retry_after <= {now})
    AND acq_attempts_total < :max_attempts
  ORDER BY unit_uri
@@ -726,6 +726,16 @@ reason -- a backward NTP step on one worker must not make a row permanently unac
 
 `ORDER BY unit_uri` is for determinism across two runs of one corpus, which is what makes a partial
 run's second half reproducible; it is not a priority, because acquisition has none.
+
+
+**A `failed` unit with a `part_count` is not acquisition's to retry. D580.** `unit` has one column
+for why a unit stopped (`expand.IDENTIFY_FAILED_SQL`'s docstring), and three stages write
+`failed` into it: acquisition, `op.identify`, and a routing refusal (`run.routing`). A unit that
+has a part count got past identify, so what failed it came later -- and re-acquiring it cleared its
+class and left it `acquired`, where nothing identifies it again (`part_count` is set) and nothing
+routes it (it is not `identified`): stranded, and counted by gate 5 as in flight for ever. Measured
+on the first re-run of a corpus holding an empty file and a binary blob, both refused at `GATE`.
+The same predicate is in `CLAIM_ACQUIRING_SQL`, so the claim cannot take what the page skipped.
 """
 
 CLAIM_ACQUIRING_SQL: Final[str] = """
@@ -737,7 +747,7 @@ UPDATE unit SET
                             THEN acq_attempts_today + 1 ELSE 1 END,
   acq_last_attempt_at = {now}
  WHERE unit_uri = :unit_uri
-   AND state IN ('discovered', 'failed')
+   AND (state = 'discovered' OR (state = 'failed' AND part_count IS NULL))
    AND (acq_retry_after IS NULL OR acq_retry_after <= {now})
 """.replace("{now}", STORE_NOW_MS)
 """`05:400` rule 6's claim, as a compare-and-swap. **D163: there is no lease column to hold.**

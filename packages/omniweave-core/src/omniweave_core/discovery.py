@@ -48,6 +48,7 @@ from importlib.metadata import Distribution
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Protocol
+from urllib.parse import unquote, urlsplit
 
 from omniweave_core.drivers.card import (
     DriverCard,
@@ -647,6 +648,78 @@ def entry_point_sources(
     return _driver_group_sources(dists, {id(dist): is_editable(dist) for dist in dists})
 
 
+EDITABLE_LAYOUTS: Final[tuple[str, ...]] = ("src", "")
+"""Where an editable distribution's package can sit under its project directory. D128's ruling.
+
+`uv sync` installs every workspace member editable: `site-packages` holds a `.pth` pointing at
+`<project>/src` and no package directory, so `Distribution.locate_file()` resolves a card to a path
+that does not exist and the catalog comes back EMPTY on every checkout (measured: `cards []`).
+
+The user chose, in W7.3y, D128's first option with both layouts checked: `direct_url.json`'s
+`"url"` names the project directory (`"dir_info": {"editable": true}` is what marks the install),
+and the file is looked for at `<project>/src/<relative>` and `<project>/<relative>`. The layout is
+**stat'ed, not guessed** -- the objection D128 recorded against the first option was that
+`dist-info` does not record `src/` versus flat -- and a project holding both is refused, because
+two cards for one entry point is a choice nothing here may make. No import machinery is used, so
+INV-4 is untouched, and a non-editable distribution takes `locate_file()` exactly as before.
+"""
+
+
+_DRIVE_PREFIX: Final[int] = 2
+
+
+class EditableLayoutAmbiguousError(ValueError):
+    """An editable project holds the file under both layouts. Raised, reported by the caller."""
+
+
+def locate_package_file(dist: Distribution, relative: str) -> Path:
+    """`relative` inside `dist`'s package: `locate_file()`, or the editable project's copy. D128.
+
+    Returns the `locate_file()` path whenever the editable branch finds nothing, so the caller's
+    existing missing-file report (`card_missing`, a signals `missing` row) still names the path
+    that was expected. Raises `EditableLayoutAmbiguousError` when both layouts hold the file.
+    """
+    located = Path(str(dist.locate_file(relative)))
+    if not is_editable(dist):
+        return located
+    project = _editable_project(dist)
+    if project is None:
+        return located
+    found = [
+        candidate
+        for candidate in (
+            project / layout / relative if layout else project / relative
+            for layout in EDITABLE_LAYOUTS
+        )
+        if candidate.is_file()
+    ]
+    if len(found) > 1:
+        raise EditableLayoutAmbiguousError(
+            f"{relative} exists under both {found[0]} and {found[1]}; an editable project may "
+            f"hold one"
+        )
+    return found[0] if found else located
+
+
+def _editable_project(dist: Distribution) -> Path | None:
+    """The project directory `direct_url.json` names, or `None` for any other URL."""
+    try:
+        raw = dist.read_text("direct_url.json")
+        parsed = json.loads(raw) if raw else None
+    except (OSError, json.JSONDecodeError):
+        return None
+    url = parsed.get("url") if isinstance(parsed, dict) else None
+    if not isinstance(url, str) or not url.startswith("file:"):
+        return None
+    parts = urlsplit(url)
+    path = unquote(parts.path)
+    #  `file:///E:/a` -> `/E:/a`: a drive letter keeps no leading slash. `url2pathname` does this
+    #  and lives in `urllib.request`, which can dial and which G15 refuses in core for one join.
+    if len(path) > _DRIVE_PREFIX and path[0] == "/" and path[2] == ":" and path[1].isalpha():
+        path = path[1:]
+    return Path(f"//{parts.netloc}{path}" if parts.netloc else path)
+
+
 def is_editable(dist: Distribution) -> bool:
     """True when this distribution's `dist-info` says `"editable": true`.
 
@@ -1210,10 +1283,24 @@ def _driver_group_sources(
                 faults.append(fault)
                 continue
             relative = card_relative_path(entry.value)
+            try:
+                path = locate_package_file(dist, relative)
+            except EditableLayoutAmbiguousError as both:
+                faults.append(
+                    DiscoveryFault(
+                        symbol=_CARD_INVALID,
+                        detail="editable_layout_ambiguous",
+                        source=str(both),
+                        origin="entry_point",
+                        fix=f"remove one of the two copies in {name or 'the project'}",
+                        dist_name=name,
+                    )
+                )
+                continue
             sources.append(
                 CardSource(
                     origin="entry_point",
-                    path=Path(dist.locate_file(relative)),
+                    path=path,
                     card_path=relative,
                     dist_name=name,
                     dist_version=version,
