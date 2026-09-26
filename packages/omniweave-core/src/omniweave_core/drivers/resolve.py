@@ -143,11 +143,13 @@ from omniweave_core.drivers.licence import (
 from omniweave_core.errors import ConfigError
 
 __all__ = [
+    "ARCH_ALIASES",
     "COST_CLASS_ORDER",
     "FLOOR_KINDS",
     "GATE_ORDER",
     "INPROC_TRUST",
     "ISOLATION_CONTAINMENT",
+    "OS_ALIASES",
     "PORT_MAJORS_SUPPORTED",
     "RESOLVE_DEGRADATION_KINDS",
     "RESOLVE_MEMO_MAX",
@@ -161,6 +163,8 @@ __all__ = [
     "Requirement",
     "Resolution",
     "ResolveDegradation",
+    "canonical_arch",
+    "canonical_os",
     "clear_memo",
     "considered_ids",
     "floor_kind",
@@ -1279,6 +1283,36 @@ def _gate_cost_class(subject: _Subject) -> Rejection | None:
     return None
 
 
+ARCH_ALIASES: Final[Mapping[str, str]] = MappingProxyType(
+    {"amd64": "x86_64", "x64": "x86_64", "x86-64": "x86_64", "arm64": "aarch64"}
+)
+"""`platform.machine()`'s other spellings of the two architectures a card names. D574.
+
+04:912 writes `cpu_arch = ["x86_64", "aarch64"]` and every shipped card copies it; CPython reports
+`AMD64` on 64-bit Windows and `arm64` on Apple silicon. Compared raw, the gate rejected all three
+first-party drivers as `HARDWARE_ABSENT` on every Windows x64 host -- measured on this one. The map
+is closed and lower-cased: an unknown spelling passes through unchanged and is compared as it is.
+"""
+
+
+def canonical_arch(machine: str) -> str:
+    """`machine` in the cards' vocabulary: `AMD64` -> `x86_64`, `arm64` -> `aarch64`."""
+    lowered = machine.lower()
+    return ARCH_ALIASES.get(lowered, lowered)
+
+
+OS_ALIASES: Final[Mapping[str, str]] = MappingProxyType({"win32": "windows", "cygwin": "windows"})
+"""`sys.platform`'s spellings against the cards' `os = ["linux", "darwin", "windows"]`. D574's
+second half: `sys.platform` is `win32` on every Windows, so the same gate rejected the office card
+there once its architecture was read correctly."""
+
+
+def canonical_os(platform: str) -> str:
+    """`platform` in the cards' vocabulary: `win32` -> `windows`; the rest as they are."""
+    lowered = platform.lower()
+    return OS_ALIASES.get(lowered, lowered)
+
+
 def _gate_hardware(subject: _Subject) -> Rejection | None:
     """Gate 10 — hardware satisfiable. `HARDWARE_ABSENT | BINARY_ABSENT`, in the printed order.
 
@@ -1337,12 +1371,12 @@ def _first_hardware_shortfall(subject: _Subject, env: ProbeEnv) -> Rejection | N
             f"[hardware] vram_gb_min = {hardware.vram_gb_min} and this host reports {env.vram_gb}",
         ),
         (
-            bool(hardware.cpu_arch) and env.machine not in hardware.cpu_arch,
+            bool(hardware.cpu_arch) and canonical_arch(env.machine) not in hardware.cpu_arch,
             RejectCode.HARDWARE_ABSENT,
             f"[hardware] cpu_arch = {list(hardware.cpu_arch)} and this host is {env.machine!r}",
         ),
         (
-            bool(hardware.os) and env.platform not in hardware.os,
+            bool(hardware.os) and canonical_os(env.platform) not in hardware.os,
             RejectCode.HARDWARE_ABSENT,
             f"[hardware] os = {list(hardware.os)} and this host is {env.platform!r}",
         ),

@@ -98,6 +98,7 @@ from omniweave_ports.types import DriverError, FailureClass
 from omniweave.route.detect import Detection, detect
 from omniweave.run import discover, expand
 from omniweave.run import supervisor as sup
+from omniweave.run.routing import RouteTally, resolve_policy, route_identified
 
 if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from collections.abc import Callable, Mapping, Sequence
@@ -113,11 +114,14 @@ if TYPE_CHECKING:  # pragma: no cover -- typing only.
 
 __all__ = [
     "IDENTIFIED",
+    "PLANNED",
     "RUN_CLOSE_SQL",
     "RUN_INSERT_SQL",
     "STOPPED_AT",
     "TRIGGER",
+    "UNROUTED",
     "IngestReport",
+    "NoExecutorError",
     "Source",
     "close_run",
     "ingest",
@@ -135,10 +139,13 @@ this build runs was typed by someone.
 """
 
 STOPPED_AT: Final[str] = (
-    "hops 5-9 (resolve, evidence, evaluate, admit, plan) are not built: no route_decision row is "
-    "written, so no parse work row can exist (02:452-461)"
+    "hops 10-17 (dispatch, the pipeline, the driver, DocSink, complete) are not run by this build: "
+    "a planned parse row waits for them"
 )
-"""Why an identified unit goes no further, printed on the report's last line. D563."""
+"""Why a planned unit goes no further, printed on the report's parse line. D578."""
+
+UNROUTED: Final[str] = "routed to no driver (see the route lines above)"
+"""Why an identified unit went no further: `run.routing` named a rule and no candidate served it."""
 
 RUN_INSERT_SQL: Final[str] = """
 INSERT INTO run(run_id, generation, trigger, argv, config_digest, semantic_digest, policy_digest,
@@ -164,6 +171,7 @@ RUN_CLOSE_SQL: Final[str] = (
 )
 
 IDENTIFIED: Final[str] = "identified"
+PLANNED: Final[str] = "planned"
 """The `unit.state` hop 4 leaves a unit in, and the one this build leaves every parsable unit in."""
 
 _SCOPES_SQL: Final[str] = "SELECT scope_id FROM ingest_scope ORDER BY scope_id"
@@ -216,6 +224,11 @@ class IngestReport:
     states: Mapping[str, int] = field(default_factory=dict)
     parts: int = 0
     formats: Mapping[str, int] = field(default_factory=dict)
+    routed: RouteTally | None = None
+
+    @property
+    def planned(self) -> int:
+        return self.states.get(PLANNED, 0)
 
     @property
     def identified(self) -> int:
@@ -252,8 +265,12 @@ class IngestReport:
             out.append(
                 f"  identify  {self.unsalted} units carry no walked path and cannot be keyed (D559)"
             )
+        if self.routed is not None:
+            out.extend(self.routed.lines())
         if self.identified:
-            out.append(f"  parse     {self.identified} units stop here: {STOPPED_AT}")
+            out.append(f"  identify  {self.identified} units stop here: {UNROUTED}")
+        if self.planned:
+            out.append(f"  parse     {self.planned} units planned: {STOPPED_AT}")
         out.append(f"{self.status}  {self.failed} failed")
         return tuple(out)
 
@@ -453,10 +470,11 @@ def _hops(
         if enqueued
         else None
     )
+    routed = _route(thread, context, config=config, roots=roots, clock=clock)
     states, parts = _tally(thread, generation)
     formats = _formats(thread, generation)
-    identified = states.get(IDENTIFIED, 0)
-    status = "partial" if identified or (drained is not None and drained.status != "done") else "ok"
+    waiting = states.get(IDENTIFIED, 0) + states.get(PLANNED, 0)
+    status = "partial" if waiting or (drained is not None and drained.status != "done") else "ok"
     return IngestReport(
         run_id=run_id,
         generation=generation,
@@ -473,6 +491,41 @@ def _hops(
         states=states,
         parts=parts,
         formats=formats,
+        routed=routed,
+    )
+
+
+def _route(
+    thread: ow.StoreThread, ctx: RunContext, *, config: Config, roots: Roots, clock: Clock
+) -> RouteTally:
+    """Hops 5-9 over every unit this generation identified. Startup step 7 runs here, once.
+
+    The catalog, the signal registry and both policies are built per run and frozen into it --
+    02:729's *"a driver installed mid-run is invisible until the next run"*.
+    """
+    from importlib.metadata import distributions  # noqa: PLC0415 -- the routing path only
+
+    from omniweave_core.discovery import catalog as build_catalog  # noqa: PLC0415
+
+    from omniweave.route.evidence import (  # noqa: PLC0415
+        build_registry,
+        builtin_specs,
+        installed_specs,
+    )
+    from omniweave.route.policy import builtin_layer, compile_policy  # noqa: PLC0415
+
+    registry = build_registry((*builtin_specs(), *installed_specs(distributions()).specs))
+    catalog = build_catalog()
+    policy = compile_policy([builtin_layer()], registry=registry)
+    return route_identified(
+        thread,
+        ctx=replace(ctx, policy_digest=policy.policy_digest, catalog_digest=catalog.catalog_digest),
+        policy=policy,
+        registry=registry,
+        catalog=catalog,
+        resolving=resolve_policy(config),
+        source_root=str(roots.source),
+        now_ms=clock.wall_ns() // 1_000_000,
     )
 
 
@@ -661,6 +714,22 @@ def _formats(thread: ow.StoreThread, generation: int) -> dict[str, int]:
 # =============================================================================================
 
 
+class NoExecutorError(RuntimeError):
+    """A claimed row whose operator this build cannot run: every routed `parse.*` row. D578.
+
+    Raised inside the dispatcher, so `Supervisor._crash()` takes it: the row stays claimed, the
+    reaper returns it at `lease_ms` with its attempt decremented (08:130-131), and `run.degraded`
+    names it. The claim cannot be narrowed to `op.*` rows -- `Store.claim()` is four parameters and
+    names no operator -- and every other answer would write something false: `failed` burns the
+    unit's attempts on a driver that never ran, and `CANCELLED` puts it straight back in the
+    claimable set for the same claimer to take again. Only a run that has `op.identify` rows to
+    drain opens the loop at all, so a corpus with nothing new to identify never claims one.
+    """
+
+    def __init__(self, operator: str, driver: str | None) -> None:
+        super().__init__(f"no executor for {operator} ({driver}): hops 10-17 are not built")
+
+
 class _Identify:
     """The `Dispatcher` for `op.identify` rows: read the unit, count it, remember the answer.
 
@@ -679,6 +748,8 @@ class _Identify:
     def __call__(self, batch: Batch, /) -> Sequence[StepResult]:
         out: list[StepResult] = []
         for row in batch.rows:
+            if row.operator != expand.OP_IDENTIFY:
+                raise NoExecutorError(row.operator, row.driver)
             unit = self._unit(row)
             detected, refused = _detected(row.unit_uri)
             count = expand.single_part if refused is None else _refusing(refused)

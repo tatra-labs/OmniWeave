@@ -2632,3 +2632,47 @@ def test_a_verb_that_cannot_read_its_tree_exits_two_and_not_one(tmp_path: Path) 
     code, report = run_verb("check", "--root", str(tmp_path), "--cards", str(directory))
     assert code == runner.EXIT_NOT_RUN
     assert "DID NOT RUN" in report
+
+
+# ---------------------------------------------------------------------------------------------
+# D574: the hardware gate reads CPython's spellings in the cards' vocabulary
+# ---------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("machine", "canonical"),
+    [("AMD64", "x86_64"), ("x86_64", "x86_64"), ("arm64", "aarch64"), ("aarch64", "aarch64")],
+)
+def test_cpython_s_machine_names_are_the_card_s_architectures(machine: str, canonical: str) -> None:
+    """CPython reports `AMD64` on 64-bit Windows and `arm64` on Apple silicon; 04:912's cards say
+    `x86_64` and `aarch64`. Compared raw, all three first-party drivers were HARDWARE_ABSENT on
+    every Windows x64 host."""
+    from omniweave_core.drivers.resolve import canonical_arch  # noqa: PLC0415
+
+    assert canonical_arch(machine) == canonical
+
+
+def test_win32_is_the_card_s_windows() -> None:
+    from omniweave_core.drivers.resolve import canonical_os  # noqa: PLC0415
+
+    assert (canonical_os("win32"), canonical_os("linux"), canonical_os("darwin")) == (
+        "windows",
+        "linux",
+        "darwin",
+    )
+
+
+def test_the_office_card_passes_the_hardware_gate_on_a_windows_x64_host() -> None:
+    """The real card through the real gate, with the host CPython reports on this platform class."""
+    from omniweave_core.discovery import catalog  # noqa: PLC0415
+    from omniweave_core.drivers.resolve import Policy, Requirement, resolve  # noqa: PLC0415
+    from omniweave_ports.types import ProbeEnv  # noqa: PLC0415
+
+    env = ProbeEnv(
+        platform="win32", machine="AMD64", python=(3, 12), which={}, gpu_present=False,
+        vram_gb=0.0, offline=False,
+    )  # fmt: skip
+    media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    policy = Policy(host_env=env, allow_unattested=True, require_lock=False)
+    found = resolve(Requirement(port="parse/1", format=media), catalog(), policy)
+    assert [one.driver_id for one in found.candidates] == ["parse.office.anydoc"]
