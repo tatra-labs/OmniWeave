@@ -67,6 +67,7 @@ __all__ = [
     "InstallReport",
     "ServeReport",
     "SkillsReport",
+    "SurfaceReport",
 ]
 
 
@@ -321,6 +322,19 @@ class ServeReport:
 
     `SkillsReport`'s shape, for its reason: the row has no `mcp_name`, since starting the transport
     is not a call over it, so there is no MCP payload to shape.
+    """
+
+    exit_code: int
+    lines: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SurfaceReport:
+    """What `ow surface emit` returns: 10:1430's 0/1 and the lines -- the paths it wrote, or with
+    `--check` the findings that fail G25.
+
+    `ServeReport`'s shape, for its reason: the row has no `mcp_name` (10:52's row 1 -- the
+    artefacts it writes ARE omniweave's steering surface), so there is no MCP payload to shape.
     """
 
     exit_code: int

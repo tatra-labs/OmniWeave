@@ -132,7 +132,8 @@ def test_the_arity_rule_is_reported_and_not_raised() -> None:
     assert MIN_GROUP_VERBS == 3
     #  `hooks` joined with its one published verb (W7.5i). D306 already names it a breach.
     #  `skills` had two of its seven rostered verbs at W7.6b, six at W7.6c, and all seven now.
-    assert unrostered_groups() == ("doc (2)", "hooks (1)")
+    #  `surface` joined with `emit`, one of the four `CLI_ROSTER` carries (W7.1e, D334).
+    assert unrostered_groups() == ("doc (2)", "hooks (1)", "surface (1)")
     assert _grammar_failures() == ()
 
 
@@ -360,6 +361,7 @@ def test_a_group_advertises_the_verbs_it_has_and_not_the_ones_it_is_owed() -> No
         "doc": "diff · grid",
         "hooks": "check",
         "skills": "check · hash · install · ls · remove · update · verify",
+        "surface": "emit",
     }
     assert group_help() == GROUP_HELP
     text = _help(["doc"])
