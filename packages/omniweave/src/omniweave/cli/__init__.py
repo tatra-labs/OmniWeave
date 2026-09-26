@@ -109,6 +109,7 @@ GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
     "hooks": "check",
     "skills": "check · hash · install · ls · remove · update · verify",
+    "surface": "emit",
 }
 
 COMMANDS: Final[tuple[Command, ...]] = (
@@ -547,6 +548,26 @@ COMMANDS: Final[tuple[Command, ...]] = (
         arguments=(
             Argument(
                 spelling=("--all",),
+                kind="switch",
+                default=False,
+            ),
+        ),
+    ),
+    Command(
+        words=("surface", "emit"),
+        actions=("surface.emit",),
+        help=(
+            "Write the artefacts generated from this registry, or with --check byte-diff them "
+            "against the committed files and fail on any drift (gate G25)"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--check",),
+                kind="switch",
+                default=False,
+            ),
+            Argument(
+                spelling=("--bless",),
                 kind="switch",
                 default=False,
             ),

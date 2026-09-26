@@ -204,12 +204,14 @@ def test_add_is_the_one_writer_and_the_only_open_world_action() -> None:
     verbs write too -- an agent host's configuration -- and have no `mcp_name` (10:53's row 1,
     D469, D489), so no agent reaches them over MCP. `serve` is a writer because the server it
     starts runs `ow_add`, and it has no `mcp_name` because it IS the transport (D513).
+    `surface.emit` writes the generated artefacts, omniweave's own steering surface, and has no
+    `mcp_name` by the same row 1 (D334).
     """
     writers = [spec.name for spec in ACTIONS.values() if not spec.read_only]
     open_world = [spec.name for spec in ACTIONS.values() if spec.open_world]
     assert writers == [
         "add", "install", "uninstall", "serve", "skills.install", "skills.remove",
-        "skills.update",
+        "skills.update", "surface.emit",
     ]  # fmt: skip
     assert [name for name in writers if ACTIONS[name].mcp_name is not None] == ["add"]
     #  `hooks.check` runs the installed commands, which are outside the store (10:157-158); it
@@ -268,10 +270,13 @@ def test_the_human_only_actions_are_the_install_and_skills_verbs_and_none_of_the
     pair the next. `uninstall` and `skills.remove` are in `HUMAN_ONLY`, the roster 10:143
     transcribes: 10:53's row 1 also matches `install` and `skills.install`, and the roster leaves
     both out (D469, D489). `serve` matches none of the five rows and has no `mcp_name` because it
-    is the transport a call would arrive on (D513)."""
+    is the transport a call would arrive on (D513). `surface.emit` matches row 1 -- what it
+    writes is the steering surface -- and the roster leaves it out, as it leaves `install`
+    (D334)."""
     unreachable = [spec.name for spec in ACTIONS.values() if spec.human_only]
     assert unreachable == [
         "install", "uninstall", "serve", "skills.install", "skills.remove", "skills.update",
+        "surface.emit",
     ]  # fmt: skip
     assert set(ACTIONS) & HUMAN_ONLY == {"uninstall", "skills.remove"}
     assert not any(ACTIONS[name].human_only for name in LISTED_NAMES)
@@ -612,6 +617,7 @@ def test_the_required_parameter_of_each_tool_is_the_one_the_schema_requires() ->
         "skills.hash": set(),
         "skills.update": set(),
         "hooks.check": set(),
+        "surface.emit": set(),
     }
 
 
@@ -1008,7 +1014,7 @@ def test_the_shipped_roots_still_contain_no_trailing_s_collision() -> None:
     roots = {spec.cli[0] for spec in ACTIONS.values() if spec.cli}
     assert roots == {
         "query", "open", "corpora", "add", "doc", "doctor", "explain", "install", "uninstall",
-        "hooks", "skills", "serve",
+        "hooks", "skills", "serve", "surface",
     }  # fmt: skip
     assert not {root for root in roots if root + "s" in roots}
     assert roots <= GROUPS
@@ -1102,14 +1108,15 @@ def test_two_actions_need_no_corpus_and_both_reasons_are_stated() -> None:
     deployment. Neither opens a store, so both answer before the first `ow add`. `install` and
     `uninstall` wire agent hosts and open no store either (10:1469: two verbs, two receipts), and
     nor do the two `ow skills` verbs, which copy bundles between directories. `serve` resolves
-    `[serve] default_corpus` itself, at startup step 5, so a `corpus` argument has no meaning."""
+    `[serve] default_corpus` itself, at startup step 5, so a `corpus` argument has no meaning.
+    `surface.emit` reads the registry and writes repository files; no store is involved."""
     without_corpus = sorted(
         name for name, spec in ACTIONS.items() if "corpus" not in {f.name for f in fields(spec.inp)}
     )
     assert without_corpus == [
         "doctor", "explain", "hooks.check", "install", "serve", "skills.check", "skills.hash",
         "skills.install", "skills.ls", "skills.remove", "skills.update", "skills.verify",
-        "uninstall",
+        "surface.emit", "uninstall",
     ]  # fmt: skip
 
 
@@ -1287,11 +1294,11 @@ def test_every_shipped_row_resolves_to_a_spelling_the_generator_can_emit() -> No
 def test_the_unrostered_cli_count_is_the_distance_to_the_registry() -> None:
     """10:857's *"roughly 110 further Actions"*, minus what has landed, plus what it undercounts.
 
-    138 rather than 110, and the gap is D293's: the roster is transcribed from the plan's own
+    137 rather than 110, and the gap is D293's: the roster is transcribed from the plan's own
     tables and usage rather than from a numeral, and a numeral is a second copy of an enumeration.
     """
     waiting = _unrostered_cli(ACTIONS)
-    assert len(waiting) == 138
+    assert len(waiting) == 137, "W7.1e landed `ow surface emit` (D334)"
     have = {spec.cli for spec in ACTIONS.values()}
     assert not set(waiting) & have
     assert len(waiting) + len(have) == sum(max(1, len(v)) for v in CLI_ROSTER.values())
