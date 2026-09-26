@@ -32,6 +32,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     skills.remove     SkillsRemoveIn      SkillsReport
     skills.update     SkillsUpdateIn      SkillsReport
     skills.verify     SkillsVerifyIn      SkillsReport
+    surface.emit      SurfaceEmitIn       SurfaceReport
     uninstall         UninstallIn         InstallReport
 """
 

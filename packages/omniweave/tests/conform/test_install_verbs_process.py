@@ -79,6 +79,17 @@ def test_the_output_is_utf_8_into_a_pipe(tmp_path: Path) -> None:
     done.stdout.decode("utf-8")
 
 
+def test_g25_runs_as_the_command_the_exit_criterion_types(tmp_path: Path) -> None:
+    """16:741's G25 line, as a process: the verb the generated headers name parses, dispatches and
+    gates. From a directory that is not the repository, because the gate reads the registry and
+    the committed artefacts, never the caller's working directory (D334)."""
+    (tmp_path / "home").mkdir()
+    (tmp_path / "proj").mkdir()
+    ran = _ow(tmp_path, "surface", "emit", "--check")
+    assert ran.returncode == 0, ran.stderr
+    assert ran.stdout.strip() == b"surface emit --check: every generated artefact matches ACTIONS"
+
+
 def test_an_undispatched_root_still_names_what_is(tmp_path: Path) -> None:
     (tmp_path / "home").mkdir()
     (tmp_path / "proj").mkdir()
@@ -87,7 +98,7 @@ def test_an_undispatched_root_still_names_what_is(tmp_path: Path) -> None:
     assert refused.returncode == 70
     named = (
         b"only `ow hook`, `ow hooks`, `ow ingest`, `ow install`, `ow serve`, `ow skills`, "
-        b"`ow uninstall` are"
+        b"`ow surface`, `ow uninstall` are"
     )
     assert named in refused.stderr
 
