@@ -88,7 +88,7 @@ import time
 from collections.abc import Callable
 from io import StringIO
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, TypeVar
 
 import pytest
 from omniweave_core.drivers.card import DriverCard, load_card
@@ -766,9 +766,31 @@ def test_an_invoke_carries_the_four_keys_the_plan_prints_and_the_two_we_declare(
     assert sorted(sent.header["units"][0]) == [  # type: ignore[index]
         "byte_len",
         "content_sha256",
+        "media_type",
         "part",
         "uri",
     ]
+
+
+def test_a_unit_carries_its_blob_ref_only_when_the_caller_staged_one() -> None:
+    """:1699's `blob_ref?` is optional, and optional means ABSENT rather than null: a worker reads
+    the key's presence as "the bytes are in the CAS". `media_type` rides on every unit because a
+    CSV has no signature and the detected type is a driver's only evidence for it (D583)."""
+    units = (
+        UnitRef(uri="file:///a", part="", content_sha256="a" * 64, byte_len=3),
+        UnitRef(
+            uri="file:///b", part="", content_sha256="b" * 64, byte_len=4, media_type="text/csv"
+        ),
+    )
+    header = sp.Invocation(
+        invoke_id="i", units=units, deadline_ms=0, budget_micros=0, blob_refs=("cas://x", None)
+    ).as_header()
+    first, second = header["units"]  # type: ignore[misc]
+    assert first["blob_ref"] == "cas://x"
+    assert "blob_ref" not in second
+    assert second["media_type"] == "text/csv"
+    with pytest.raises(DriverHostError, match="1 blob_refs for 2 units"):
+        sp.Invocation(invoke_id="i", units=units, deadline_ms=0, budget_micros=0, blob_refs=("x",))
 
 
 def test_an_invoke_with_two_inline_bodies_is_refused_because_the_grammar_cannot_express_it() -> (
@@ -3268,3 +3290,69 @@ def test_the_runner_imports_no_subprocess_of_its_own() -> None:
 # The two runner tests that spawn real workers -- the full run and `--scenario` -- are T3 by 13
 # section 2.7's table and live in `tests/conform/test_ow_host_runner.py`. Under a 32-worker
 # `-n auto` pool the below-normal-priority children missed `CONNECT_MS`, 3 runs in 5 (D502).
+
+
+# ---------------------------------------------------------------------------------------------
+# RESULT.produced, rebuilt host-side (D583)
+# ---------------------------------------------------------------------------------------------
+
+
+def _result(header: dict[str, Any], body: bytes = b"") -> wire.Frame:
+    return wire.Frame(
+        kind=wire.FrameKind.RESULT,
+        header={"invoke_id": "i", "unit_index": 0, "outcome": "ok", **header},
+        body=body,
+    )
+
+
+def test_a_result_rebuilds_produced_with_the_one_inline_body_in_its_place() -> None:
+    blob = "cas://ab/cd/" + "ab" * 32
+    frame = _result(
+        {
+            "produced": [
+                {"kind": "doc_fragment", "byte_len": 3, "inline": True},
+                {"kind": "asset", "byte_len": 70, "blob": blob},
+            ],
+            "metrics": {"bytes_read": 6040, "wall_ms": -5, "cost_micros": 99, "calls": True},
+        },
+        b"abc",
+    )
+    result, verdict = sp._result_of(frame)
+    assert verdict is None
+    assert result is not None
+    fragment, asset = result.produced
+    assert (fragment.kind, fragment.inline) == ("doc_fragment", b"abc")
+    assert (asset.kind, asset.blob, asset.byte_len) == ("asset", blob, 70)
+    assert sp.produced_total(result) == 73
+    # A metric is a report, never a control input: a negative or non-integer one reads as zero,
+    # and a key outside the nine -- there is no cost_micros (INV-15) -- is ignored.
+    assert (result.metrics.bytes_read, result.metrics.wall_ms, result.metrics.calls) == (6040, 0, 0)
+
+
+@pytest.mark.parametrize(
+    ("produced", "body", "message"),
+    [
+        (
+            [
+                {"kind": "doc_fragment", "byte_len": 1, "inline": True},
+                {"kind": "asset", "byte_len": 1, "inline": True},
+            ],
+            b"a",
+            "two RESULT.produced entries claim the one frame body",
+        ),
+        ([{"kind": "doc_fragment", "byte_len": 9, "inline": True}], b"abc", "declares 9 bytes"),
+        ([], b"stray", "no produced entry claims"),
+        ([{"kind": "sermon", "byte_len": 1, "blob": "cas://x"}], b"", "not an ArtifactRef"),
+        ([{"kind": "asset", "byte_len": 1, "blob": "http://x"}], b"", "not an ArtifactRef"),
+        ([{"kind": "asset", "byte_len": "1", "blob": "cas://x"}], b"", "byte_len"),
+        ("not a list", b"", "not a list"),
+        (["not a table"], b"", "not a table"),
+    ],
+)
+def test_a_result_whose_produced_is_malformed_is_a_protocol_error(
+    produced: object, body: bytes, message: str
+) -> None:
+    """Every refusal is a `DriverHostError`: a hostile worker is entitled to try each of these, and
+    a `ValueError` out of the ports constructor would be an unnamed error crossing the seam."""
+    with pytest.raises(DriverHostError, match=message):
+        sp._result_of(_result({"produced": produced}, body))

@@ -339,6 +339,20 @@ raised_by = "NotFoundError"
 sites   = ["18-api-sketch.md:387", "18-api-sketch.md:3211"]
 
 [[code]]
+numeric = "OW-M-033"
+symbol  = "OW_FRAGMENT_DANGLING_TMP"
+meaning = "a fragment references a tmp id it never defined, or defines one twice; the whole document fails"
+raised_by = "ModelError"
+sites   = ["03-document-model.md:2673", "03-document-model.md:2985", "04-driver-system.md:1798"]
+
+[[code]]
+numeric = "OW-M-034"
+symbol  = "OW_FRAGMENT_OUT_OF_SCOPE"
+meaning = "a fragment names a page outside the PartSelector it was given; nothing is committed"
+raised_by = "ModelError"
+sites   = ["03-document-model.md:2986", "04-driver-system.md:204", "04-driver-system.md:1797"]
+
+[[code]]
 numeric = "OW-P-016"
 symbol  = "OW_EGRESS_GRANT_MISSING"
 meaning = "a URL source with bytes_egress = 0"
