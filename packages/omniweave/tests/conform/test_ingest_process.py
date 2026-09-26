@@ -120,3 +120,39 @@ def test_a_path_outside_the_roots_is_refused_by_the_process_with_exit_6(tmp_path
     assert ran.returncode == 6
     assert ran.stdout == b""
     assert b"OW_PATH_OUTSIDE_ROOTS" in ran.stderr
+
+
+def test_an_office_document_is_planned_across_three_processes(tmp_path: Path) -> None:
+    """Hops 5-9 in a real child: `ow_add` over MCP, `ow ingest` with the three `[drivers]` opt-ins a
+    checkout needs (D576), and `ow_query` still `degraded` -- the unit is planned, not parsed."""
+    import zipfile  # noqa: PLC0415
+
+    rel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
+    main = "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    with zipfile.ZipFile(docs / "memo.docx", "w") as archive:
+        archive.writestr(
+            "[Content_Types].xml",
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            f'<Override PartName="/word/document.xml" ContentType="{main}"/></Types>',
+        )
+        archive.writestr(
+            "_rels/.rels",
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            f'<Relationship Id="r" Type="{rel}" Target="word/document.xml"/></Relationships>',
+        )
+        archive.writestr("word/document.xml", "<w:document/>")
+    opt_in = "[drivers]\nallow_unattested = true\nrequire_lock = false\ninproc = []\n"
+    (tmp_path / "omniweave.toml").write_text(PROJECT + opt_in, encoding="utf-8")
+    added = json.loads(_call(tmp_path, "ow_add", {"source": "docs"}))
+    assert added["queued"] == 1
+    ran = _ingest(tmp_path)
+    assert ran.returncode == 0, ran.stderr.decode("ascii", "replace")
+    lines = ran.stdout.decode("ascii").splitlines()
+    assert "  route     1 planned (parse.office.anydoc 1); 0 refused" in lines
+    store = tmp_path / ".omniweave" / "index.owstore"
+    assert _states(store) == [("planned", 1)]
+    answer = _call(tmp_path, "ow_query", {"query": "memo"})
+    assert answer.startswith("ow/1 degraded "), answer[:120]
+    assert "pending_work_in_scope" in answer
