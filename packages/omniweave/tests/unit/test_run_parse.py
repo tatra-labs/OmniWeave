@@ -27,7 +27,6 @@ from omniweave.run.operators import parse as parse_module
 from omniweave.run.operators.parse import (
     PARSE_FAILED_SQL,
     SETTLED_SQL,
-    InprocNotHostedError,
     ParseLedger,
     ParseOperator,
     ParseTally,
@@ -283,11 +282,12 @@ def _planned_only(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ingest_module, "_pending_parse", lambda _thread: False)
 
 
-def test_a_dispatch_key_minted_for_inproc_is_refused_by_name(
+def test_a_row_planned_inproc_that_resolve_no_longer_grants_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The office card's own request, under a pinned trust, is `inproc`; the S1 host is not built,
-    so such a row is refused like D578's rows -- held for the reaper, nothing false written."""
+    """Both isolations are recovered from the key, and an `inproc` key is served only while
+    `resolve()` still grants `inproc`: on a checkout it does not (D576), so a row carrying one is
+    refused before any driver runs -- held for the reaper, nothing false written."""
     _planned_only(monkeypatch)
     store, config = _project(tmp_path, ("rich.docx",))
     _run(tmp_path, store, config)
@@ -295,19 +295,55 @@ def test_a_dispatch_key_minted_for_inproc_is_refused_by_name(
         operator = _operator(tmp_path, store, config, thread)
         card = catalog().cards["parse.office.anydoc"]
         digest = sha256_canonical(card.config.effective({}))
-        granted = operator._granted(
-            card.identity.id, dispatch_key(card.identity.id, digest, "inproc")
-        )
-        assert str(granted.isolation) == "inproc"
+        inproc = dispatch_key(card.identity.id, digest, "inproc")
+        assert str(operator._granted(card.identity.id, inproc).isolation) == "inproc"
         with pytest.raises(RouteError, match="matches neither isolation"):
             operator._granted(card.identity.id, "0" * 16)
         (row,) = SqliteStore(thread).claim(8, 2, "w:1:1", 60_000)
-        forged = dataclasses.replace(
-            row, dispatch_key=dispatch_key(card.identity.id, digest, "inproc")
-        )
-        with pytest.raises(InprocNotHostedError, match=r"parse\.office\.anydoc"):
+        forged = dataclasses.replace(row, dispatch_key=inproc)
+        with pytest.raises(RouteError, match="no longer grants it"):
             operator(Batch(invoke_id="i", rows=(forged,)))
+        assert operator._tally.inproc == 0, "no driver was built in process"
         operator.close()
+
+
+def test_a_released_office_driver_parses_in_process_and_commits_what_a_worker_commits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, released_catalog: Any
+) -> None:
+    """Seam S1 end to end, against S4 over the same files. The released catalog makes `resolve()`
+    grant the office card its own request, `inproc`, under the shipped `[drivers] inproc`; routing
+    mints the `inproc` key, and the parse Operator runs the driver in this interpreter -- no
+    worker launched. What it commits is what the worker run commits, byte for byte: the two
+    receipts are identical, and so is every unit's end state, a refusal included."""
+    names = ("rich.docx", "sheet.xlsx", "memo.doc")
+    worker_root = tmp_path / "s4"
+    worker_root.mkdir()
+    s4_store, s4_config = _project(worker_root, names)
+    s4 = _run(worker_root, s4_store, s4_config)
+
+    inproc_root = tmp_path / "s1"
+    (inproc_root / "docs").mkdir(parents=True)
+    for name in names:
+        shutil.copy(FIXTURES / name, inproc_root / "docs" / name)
+    released = "[drivers]\nallow_unattested = true\nrequire_lock = false\n"
+    (inproc_root / "omniweave.toml").write_text(PROJECT + released, encoding="utf-8")
+    s1_config = load(cwd=inproc_root, env={"OMNIWEAVE_HOME": str(inproc_root / "owhome")})
+    monkeypatch.setattr("omniweave_core.discovery.catalog", lambda: released_catalog)
+    s1_store = inproc_root / ".omniweave" / "index.owstore"
+    s1 = _run(inproc_root, s1_store, s1_config)
+
+    assert s1.parsed is not None and s4.parsed is not None
+    assert (s1.parsed.workers, s1.parsed.inproc) == (0, 1)
+    assert (s4.parsed.workers, s4.parsed.inproc) == (1, 0)
+    assert any(line.endswith(" and 1 in process") for line in s1.lines()), s1.lines()
+    keys = "SELECT DISTINCT dispatch_key FROM work WHERE operator = 'parse.office'"
+    assert _rows(s1_store, keys) != _rows(s4_store, keys), "the isolation is in the key"
+    for name in names:
+        assert _state(s1_store, name) == _state(s4_store, name), name
+    assert _state(s1_store, "memo.doc") == ("failed", "corrupt_input")
+    s1_receipt = (inproc_root / LOCK_PATH).read_bytes()
+    assert s1_receipt == (worker_root / LOCK_PATH).read_bytes()
+    assert len(s1_receipt.splitlines()) == 1 + 2, "a header and the two settled documents"
 
 
 def test_a_source_that_changed_after_identify_is_not_parsed_under_its_old_key(

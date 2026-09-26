@@ -97,6 +97,7 @@ __all__ = [
     "egress_refusal",
     "install_egress_guard",
     "main",
+    "parse_one",
     "produced_header",
     "result_header",
     "serve",
@@ -495,19 +496,11 @@ def _catalog_card(driver_id: str) -> DriverCard | None:
 
 
 def _construct(card: DriverCard, session: Session) -> object:
-    """`activate()` then `__init__(**effective_config)`. Both run the driver's code, so both are
-    after the hook, and a raise from either is the host's `HELLO` failure, not a crash."""
-    from omniweave_core.host.activate import activate  # noqa: PLC0415 -- after the hook
+    """`activate.construct()`: it runs the driver's code, so it is after the hook, and a raise from
+    it is the host's `HELLO` failure, not a crash."""
+    from omniweave_core.host.activate import construct  # noqa: PLC0415 -- after the hook
 
-    loaded = activate(card)
-    try:
-        return loaded(**dict(session.effective_config))
-    except Exception as exc:
-        raise DriverHostError(
-            f"{card.identity.id}.__init__ raised {type(exc).__name__}: {exc}",
-            symbol="OW_DRIVER_ACTIVATION_FAILED",
-            fix=f"ow drivers verify {card.identity.id}",
-        ) from exc
+    return construct(card, session.effective_config)
 
 
 def _cas(session: Session) -> CasStore:
@@ -564,7 +557,7 @@ def _invoke(
         _CALLS[io_obj] = _Call(send=wired.send, invoke_id=invoke_id, unit_index=index)
         body = b""
         try:
-            result = _parse_one(parse, unit, io_obj)
+            result = parse_one(parse, unit, io_obj)
             entries, body = produced_header(result.produced, blobs)
             header = result_header(invoke_id, index, result, entries)
         except DriverError as error:
@@ -581,8 +574,11 @@ def _invoke(
     shutil.rmtree(Path(session.tmp) / invoke_id, ignore_errors=True)
 
 
-def _parse_one(parse: object, unit: UnitRef, io_obj: WorkerIO) -> DriverResult:
-    """`parse(unit, PartSelector(), io)`; anything but a `DriverResult` is the driver's bug."""
+def parse_one(parse: object, unit: UnitRef, io_obj: DriverIO) -> DriverResult:
+    """`parse(unit, PartSelector(), io)`; anything but a `DriverResult` is the driver's bug.
+
+    Public because the S1 parse Operator makes the same call in the host's interpreter, and the
+    two seams must refuse the same non-result the same way."""
     if not callable(parse):
         raise DriverError(cls=FailureClass.DRIVER_BUG, message="the driver has no parse()")
     result = parse(unit, PartSelector(), io_obj)

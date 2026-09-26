@@ -54,7 +54,7 @@ from omniweave_core.drivers.resolve import RejectCode
 from omniweave_core.errors import DriverHostError
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping
     from pathlib import Path
 
     from omniweave_core.drivers.card import DriverCard
@@ -64,6 +64,7 @@ __all__ = [
     "activate",
     "check_card_code",
     "code_fingerprint",
+    "construct",
     "entrypoint_parts",
 ]
 
@@ -184,6 +185,30 @@ def activate(card: DriverCard) -> type[object]:
         )
     check_card_code(card, loaded)
     return loaded
+
+
+def construct(card: DriverCard, config: Mapping[str, object]) -> object:
+    """`activate()` then `__init__(**config)`: the driver object both seams call methods on.
+
+    `activate()` returns a class on purpose -- constructing one *"is the caller's decision"* -- and
+    the two callers that decide to are the S4 worker, in its own interpreter after the egress
+    hook, and the S1 parse Operator, in the host's. Both run the driver's `__init__`, so both must
+    attribute a raise from it the same way: `OW_DRIVER_ACTIVATION_FAILED`, the symbol a module
+    that will not import already carries, because a constructor that raises is the driver failing
+    before its first unit, not a unit failing. One home for that ruling (INV-21).
+
+    `config` is the effective `[config]` -- the card's defaults under the operator's overrides,
+    whose digest the row's `dispatch_key` was minted over.
+    """
+    loaded = activate(card)
+    try:
+        return loaded(**dict(config))
+    except Exception as exc:
+        raise DriverHostError(
+            f"{card.identity.id}.__init__ raised {type(exc).__name__}: {exc}",
+            symbol=ACTIVATION_FAILED,
+            fix=f"ow drivers verify {card.identity.id}",
+        ) from exc
 
 
 def code_fingerprint(files: Iterable[Path]) -> str:
