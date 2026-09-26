@@ -151,6 +151,12 @@ def test_an_office_document_is_parsed_and_cited_across_three_processes(tmp_path:
     # property this test is about is that the answer comes FROM the parsed document at all.
     assert header.startswith(("ow/1 ok ", "ow/1 low_confidence ")), header
     assert " fresh blocks=1/1 docs=1/1 " in header, header
+    #  Hop 19: the run that committed the document moved the corpus generation, so the answer is
+    #  read at @1 -- it was @0 on every answer before, whatever had been ingested (D594).
+    assert " corpus=handbook@1 " in header, header
+    receipt = (tmp_path / "omniweave.index.lock").read_text(encoding="ascii")
+    assert receipt.splitlines()[1].endswith("  docs/rich.docx"), receipt
+    assert "  receipt   omniweave.index.lock written, 1 documents, generation 1" in lines
     assert "Quarterly report" in answer
     assert (
         "| d1#2 | rich.docx | 0 | p0/0 | heading | normalized | extracted | native_xml |" in answer

@@ -356,6 +356,7 @@ def verify_store(
     clauses: Iterable[str] = DEFAULT_CLAUSES,
     blobs: BlobStore | None = None,
     lock_text: str | None = None,
+    uri_root: str | None = None,
 ) -> VerifyReport:
     """`ow store verify`. Run each selected clause and return what every one of them found.
 
@@ -370,6 +371,8 @@ def verify_store(
 
     `lock_text` is `omniweave.index.lock` as read off disk. Reading files is the CLI's job and
     not this module's -- `LOCK_PATH` says where it lives -- so `--lock` without it is UNCHECKED.
+    `uri_root` is the root the receipt's uris were written relative to, which `derive_lock` takes
+    for the same reason: the comparison has to re-derive the same spelling `ow ingest` wrote.
 
     Raises `StoreError` only for a store that cannot be reported on at all.
     """
@@ -389,7 +392,7 @@ def verify_store(
         VerifyClause.FTS_ROWCOUNT: lambda: _fts_rowcount(connection),
         VerifyClause.GRAPH_CLOSURE: lambda: _graph_closure(connection),
         VerifyClause.LOCK_MARKERS: lambda: _lock_markers(lock_text),
-        VerifyClause.LOCK_STORE_MATCH: lambda: _lock_store_match(connection, lock_text),
+        VerifyClause.LOCK_STORE_MATCH: lambda: _lock_store_match(connection, lock_text, uri_root),
         VerifyClause.ERASED_RESIDUE: lambda: _erased_residue(connection),
     }
     results = tuple(runners[clause]() for clause in VerifyClause if clause in wanted)
@@ -1385,7 +1388,9 @@ def _lock_markers(lock_text: str | None) -> ClauseResult:
     return _passed(VerifyClause.LOCK_MARKERS, 1)
 
 
-def _lock_store_match(connection: sqlite3.Connection, lock_text: str | None) -> ClauseResult:
+def _lock_store_match(
+    connection: sqlite3.Connection, lock_text: str | None, uri_root: str | None = None
+) -> ClauseResult:
     """*"`ow store verify --lock` re-derives it from the store and compares"* (07:3155).
 
     The comparison is over **rendered lines**, byte for byte, because that is what the receipt
@@ -1417,7 +1422,7 @@ def _lock_store_match(connection: sqlite3.Connection, lock_text: str | None) -> 
             0,
             [Finding(VerifyClause.LOCK_STORE_MATCH, _STORE, LOCK_PATH, str(exc))],
         )
-    derived = derive_lock(connection, header=on_disk.header)
+    derived = derive_lock(connection, header=on_disk.header, uri_root=uri_root)
     findings = list(_compare_lock(on_disk, derived))
     return _result(
         VerifyClause.LOCK_STORE_MATCH,
@@ -1466,13 +1471,21 @@ def _compare_lock(on_disk: LockFile, derived: LockFile) -> Iterable[Finding]:
             )
 
 
-def derive_lock(connection: sqlite3.Connection, *, header: LockHeader) -> LockFile:
+def derive_lock(
+    connection: sqlite3.Connection, *, header: LockHeader, uri_root: str | None = None
+) -> LockFile:
     """The `omniweave.index.lock` this store implies. `ow store lock` writes it; verify compares.
 
     Every column is a stored field (`indexlock`'s FORMAT block enumerates the seven and their
     definition sites), so the receipt is re-derivable without a re-parse:
 
-    * `doc_key`, `gen`, `status`, `uri` -- the `doc` row.
+    * `doc_key`, `gen`, `status` -- the `doc` row.
+    * `uri` -- `doc.uri`, with `uri_root` stripped from its front when the caller gives one and
+      the uri starts with it. An `fs` document's uri is its canonical ABSOLUTE path, and a receipt
+      committed with absolute paths differs on every line between two checkouts of one corpus, so
+      the merge driver would see a conflict per document (D591). `uri_root` is the corpus source
+      root's `scope_id` form (`acquire.scope_id_for`, trailing `/` included), so a sibling
+      `docs2/` is never mistaken for a child of `docs/`. A uri outside the root is kept whole.
     * `n_blocks` -- live blocks at the head generation. `ow_block_head` is the projection that
       means "the head, live" (`0001_init.sql:328-331`) and is used rather than a hand-written
       predicate, so the receipt counts what a reader would see.
@@ -1517,11 +1530,23 @@ def derive_lock(connection: sqlite3.Connection, *, header: LockHeader) -> LockFi
                 n_blocks=n_blocks,
                 n_segments=n_segments,
                 content_digest=bytes(root[0]) if root is not None else bytes(_DOC_KEY_BYTES),
-                uri=str(uri),
+                uri=_receipt_uri(str(uri), uri_root),
             )
         )
     rows.sort(key=lambda row: row.doc_key)
     return LockFile(header=header, rows=tuple(rows))
+
+
+def _receipt_uri(uri: str, root: str | None) -> str:
+    """`doc.uri` as the receipt spells it: relative to `root` when under it, else whole.
+
+    The uri equal to the root with its slash is not "under" it -- a document is a file, never the
+    root -- so a strip that would leave the empty string (which `LockRow.validate` refuses) keeps
+    the uri whole instead.
+    """
+    if root and uri.startswith(root) and len(uri) > len(root):
+        return uri[len(root) :]
+    return uri
 
 
 def _store_header(connection: sqlite3.Connection, header: LockHeader) -> LockHeader:

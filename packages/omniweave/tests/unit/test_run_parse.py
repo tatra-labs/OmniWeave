@@ -11,6 +11,8 @@ D589 (two sinks minting one id).
 from __future__ import annotations
 
 import dataclasses
+import hashlib
+import json
 import shutil
 import sqlite3  # noqa: TID251 -- the assertions read the store the run wrote.
 import sys
@@ -20,7 +22,7 @@ from typing import Any
 import pytest
 from omniweave.run import ingest as ingest_module
 from omniweave.run.dispatch import Batch, dispatch_key
-from omniweave.run.ingest import ingest
+from omniweave.run.ingest import Receipt, ingest
 from omniweave.run.operators import parse as parse_module
 from omniweave.run.operators.parse import (
     PARSE_FAILED_SQL,
@@ -31,16 +33,21 @@ from omniweave.run.operators.parse import (
     ParseTally,
 )
 from omniweave.run.routing import resolve_policy
+from omniweave_core.acquire import locator_for, scope_id_for
 from omniweave_core.blobs import BlobStore
 from omniweave_core.canonical import sha256_canonical
 from omniweave_core.clock import SystemClock
 from omniweave_core.config import Config, load
+from omniweave_core.contract import SCHEMA
 from omniweave_core.discovery import catalog
 from omniweave_core.errors import RouteError
 from omniweave_core.model.records import Producer
 from omniweave_core.operator import Outcome, Roots
+from omniweave_core.retrieve.types import SCORER_VERSION
 from omniweave_core.store import sqlite as ow
+from omniweave_core.store.indexlock import FIELD_SEP, LOCK_PATH
 from omniweave_core.store.queue import SqliteStore
+from omniweave_core.store.verify import VerifyClause, verify_store
 from omniweave_ports.types import FailureClass
 
 pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="the named-pipe arm of S4")
@@ -135,6 +142,85 @@ def test_a_second_run_parses_nothing_and_writes_no_second_generation(tmp_path: P
     assert _rows(store, "SELECT count(*), max(gen) FROM doc") == [(2, 1)]
     assert _rows(store, "SELECT count(*) FROM block") == blocks
     assert _rows(store, "SELECT count(*) FROM work WHERE operator = 'parse.office'") == [(2,)]
+
+
+# ---------------------------------------------------------------------------------------------
+# hop 19: the receipt, the generation, the manifest
+# ---------------------------------------------------------------------------------------------
+
+
+def _generation(store: Path) -> str:
+    ((value,),) = _rows(store, "SELECT v FROM index_state WHERE k = 'generation'")
+    return str(value)
+
+
+def test_the_first_parse_writes_the_receipt_and_moves_the_generation(tmp_path: Path) -> None:
+    """Hop 19 over a committed document: the receipt beside `.omniweave/`, its uri relative to
+    the source root (D591), `index_state.generation` moved to the run's (D594), `run.lock_digest`
+    the file's own sha256, and `ow store verify --lock` agreeing with it line for line."""
+    store, config = _project(tmp_path, ("rich.docx",))
+    report = _run(tmp_path, store, config)
+    path = tmp_path / LOCK_PATH
+    raw = path.read_bytes()
+    assert b"\r" not in raw, "11 section 1.9: the line ending is written, never inherited"
+    header, line = raw.decode("ascii").splitlines()
+    assert header == f"# schema={SCHEMA} scorer={SCORER_VERSION} segmenter=none space=none"
+    key, gen, status, blocks, segments, digest, uri = line.split(FIELD_SEP)
+    ((doc_key, root),) = _rows(
+        store,
+        "SELECT hex(d.doc_key), hex(b.content_digest) FROM doc d JOIN block b"
+        " ON b.doc_ord = d.doc_ord AND b.gen = d.gen AND b.addr = 'doc'",
+    )
+    assert (key, digest) == (str(doc_key).lower(), str(root).lower())
+    assert (gen, status, segments, uri) == ("1", "ok", "0", "docs/rich.docx")
+    assert int(blocks) > 0
+    assert _generation(store) == str(report.generation) == "1"
+    sha = hashlib.sha256(raw).hexdigest()
+    assert _rows(store, "SELECT lock_digest FROM run") == [(sha,)]
+    assert report.receipt == Receipt(path, documents=1, changed=True, written=True, digest=sha)
+    assert f"  receipt   {LOCK_PATH} written, 1 documents, generation 1" in report.lines()
+
+    connection = sqlite3.connect(store)
+    try:
+        root_uri = scope_id_for(locator_for(tmp_path.resolve()))
+        clauses = [VerifyClause.LOCK_STORE_MATCH]
+        text = raw.decode("ascii")
+        agreed = verify_store(
+            connection, now_ns=0, clauses=clauses, lock_text=text, uri_root=root_uri
+        )
+        unrooted = verify_store(connection, now_ns=0, clauses=clauses, lock_text=text)
+    finally:
+        connection.close()
+    assert agreed.ok and not agreed.clauses[0].findings, agreed
+    assert not unrooted.ok, "without the root the store derives the absolute uri"
+
+    manifest = json.loads(Path(report.manifest).read_bytes())
+    assert manifest["outcomes"] == {"ok": 2}, "one op.identify and one parse.office commit"
+    assert manifest["stage_entries"] == {"discover": 1, "plan": 1, "parse": 1}
+    assert manifest["provenance"]["lock_digest"] == sha
+
+
+def test_a_run_that_changes_no_row_keeps_the_receipt_and_the_generation(tmp_path: Path) -> None:
+    """D594's other half: a run whose derived rows equal the committed ones leaves the file's
+    bytes and `index_state.generation` alone -- and a receipt a merge left conflict markers in is
+    replaced by the store's own, with the generation moved, because nothing it said can be read."""
+    store, config = _project(tmp_path, ("rich.docx",))
+    _run(tmp_path, store, config)
+    path = tmp_path / LOCK_PATH
+    first = path.read_bytes()
+    second = _run(tmp_path, store, config, paths=False)
+    assert (second.generation, _generation(store)) == (2, "1")
+    assert path.read_bytes() == first
+    assert second.receipt is not None
+    assert (second.receipt.changed, second.receipt.written) == (False, False)
+    assert f"  receipt   {LOCK_PATH} unchanged, 1 documents, generation not moved" in second.lines()
+    digests = _rows(store, "SELECT lock_digest FROM run ORDER BY generation")
+    assert digests == [(hashlib.sha256(first).hexdigest(),)] * 2
+
+    path.write_bytes(first + b"<<<<<<< ours\n=======\n>>>>>>> theirs\n")
+    third = _run(tmp_path, store, config, paths=False)
+    assert path.read_bytes() == first
+    assert (third.generation, _generation(store)) == (3, "3")
 
 
 def test_the_cas_is_beside_the_store_and_holds_the_source_and_the_asset(tmp_path: Path) -> None:

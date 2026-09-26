@@ -14,16 +14,20 @@ import json
 import sqlite3  # noqa: TID251 -- the assertions read the store the run wrote.
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from omniweave.run import discover
 from omniweave.run import ingest as ingest_module
 from omniweave.run.ingest import IDENTIFIED, TRIGGER, UNROUTED, IngestReport, ingest
+from omniweave.run.manifest import RunTally
 from omniweave.surface import ingest as cli
 from omniweave_core import acquire
 from omniweave_core.config import Config, load
 from omniweave_core.errors import StoreError
 from omniweave_core.locks import store_write_lock
+from omniweave_core.store import sqlite as ow
+from omniweave_core.store.indexlock import LOCK_PATH
 
 HANDBOOK = '[corpora.handbook]\npath = ".omniweave/index.owstore"\n'
 SWEEP_MS = 20
@@ -96,22 +100,48 @@ def test_a_directory_is_walked_read_and_identified_and_the_run_says_where_it_sto
     assert units == [(IDENTIFIED, 1, 1), (IDENTIFIED, 1, 1)]
 
 
-def test_the_run_row_carries_its_generation_and_the_three_empty_columns(tmp_path: Path) -> None:
-    """Hop 1, and D562: three `NOT NULL` columns with no producer in this run are empty."""
+def test_the_run_row_names_its_manifest_and_leaves_one_column_empty(tmp_path: Path) -> None:
+    """Hop 1 and hop 19. `manifest_path` is the manifest's from the first statement; `lock_digest`
+    is empty because this run commits no document, so no receipt exists (D593); `pricebook_digest`
+    is still D562's empty string, because nothing here is priced."""
     store, config = _project(tmp_path, "a.txt")
     report = _run(tmp_path, store, config, paths=(tmp_path / "docs",))
     ((run_id, generation, trigger, argv, status, digest, semantic, policy, empties, ended),) = (
         _rows(
             store,
             "SELECT run_id, generation, trigger, argv, status, config_digest, semantic_digest, "
-            "length(policy_digest), pricebook_digest || lock_digest || manifest_path, "
-            "ended_ns >= started_ns FROM run",
+            "length(policy_digest), pricebook_digest || lock_digest, ended_ns >= started_ns "
+            "FROM run",
         )
     )
+    ((path,),) = _rows(store, "SELECT manifest_path FROM run")
     assert (run_id, generation, trigger, status) == (report.run_id, 1, TRIGGER, "partial")
     assert json.loads(str(argv)) == ["ingest", str(tmp_path / "docs")]
     assert (digest, semantic) == (config.config_digest, config.semantic_digest)
     assert (policy, empties, ended) == (64, "", 1)
+    assert path == str(tmp_path / ".omniweave" / "out" / "runs" / f"{run_id}.json")
+    assert report.manifest == path
+
+
+def test_the_manifest_is_the_closed_run_with_its_counts_and_its_provenance(tmp_path: Path) -> None:
+    """15:44's members, filled by what this run did: two `op.identify` commits, the two Stages it
+    crossed, the machine it measured once, and the digests of the run row plus the catalog's."""
+    store, config = _project(tmp_path, "a.txt", "b.txt")
+    report = _run(tmp_path, store, config, paths=(tmp_path / "docs",))
+    manifest = json.loads(Path(report.manifest).read_bytes())
+    ((started, ended),) = _rows(store, "SELECT started_ns, ended_ns FROM run")
+    assert (manifest["run_id"], manifest["generation"]) == (report.run_id, 1)
+    assert (manifest["trigger"], manifest["status"]) == ("cli", "partial")
+    assert (manifest["started_ns"], manifest["ended_ns"]) == (started, ended)
+    assert (manifest["units"], manifest["outcomes"]) == (2, {"ok": 2})
+    assert manifest["stage_entries"] == {"discover": 1, "plan": 1}, "no parse row was planned"
+    provenance = manifest["provenance"]
+    assert provenance["config_digest"] == config.config_digest
+    assert len(provenance["catalog_digest"]) == 64, "D140: the manifest is where it lands"
+    assert provenance["lock_digest"] == ""
+    assert manifest["host"]["cpus"] > 0
+    assert manifest["cost"]["total_micros"] == 0
+    assert not list(Path(report.manifest).parent.glob("*.tmp")), "the replace left no sibling"
 
 
 def test_a_second_run_mints_the_next_generation_and_reads_nothing_it_read(tmp_path: Path) -> None:
@@ -127,6 +157,8 @@ def test_a_second_run_mints_the_next_generation_and_reads_nothing_it_read(tmp_pa
     assert again.states == {IDENTIFIED: 2}
     assert _rows(store, "SELECT generation FROM run ORDER BY generation") == [(1,), (2,)]
     assert _rows(store, "SELECT v FROM index_state WHERE k = 'generation'") == [("0",)]
+    assert not (tmp_path / LOCK_PATH).exists(), "no document is committed, so no receipt"
+    assert "  receipt   none: no document is committed" in again.lines()
 
 
 def test_with_no_store_and_nothing_to_walk_the_ingest_is_refused_and_creates_nothing(
@@ -150,6 +182,42 @@ def test_a_failed_run_closes_its_row_as_failed(
     with pytest.raises(RuntimeError):
         _run(tmp_path, store, config, paths=(tmp_path / "docs",))
     assert _rows(store, "SELECT status, ended_ns IS NOT NULL FROM run") == [("failed", 1)]
+    ((path, ended),) = _rows(store, "SELECT manifest_path, ended_ns FROM run")
+    manifest = json.loads(Path(str(path)).read_bytes())
+    assert (manifest["status"], manifest["ended_ns"]) == ("failed", ended), "15:68: it has one"
+    assert manifest["stage_entries"] == {}, "it failed inside discover, which never closed"
+    assert _rows(store, "SELECT v FROM index_state WHERE k = 'generation'") == [("0",)]
+
+
+def test_the_generation_bump_never_moves_the_counter_backwards(tmp_path: Path) -> None:
+    """`GENERATION_BUMP_SQL`'s guard: a run closing after a later one leaves the later value, so
+    gate 3 never sees the corpus counter go down. Only a closing run that is behind can reach it."""
+    store, config = _project(tmp_path, "a.txt")
+    _run(tmp_path, store, config, paths=(tmp_path / "docs",))
+    ((run_id,),) = _rows(store, "SELECT run_id FROM run")
+    lock = store_write_lock(store, now_ns=time.time_ns)
+    with ow.StoreThread(lambda: ow.connect(store), lock=lock) as thread:
+        ingest_module.close_run(thread, str(run_id), status="ok", ended_ns=1, generation=5)
+        ingest_module.close_run(thread, str(run_id), status="ok", ended_ns=1, generation=3)
+    assert _rows(store, "SELECT v FROM index_state WHERE k = 'generation'") == [("5",)]
+
+
+def test_a_receipt_in_the_source_tree_is_never_rostered(tmp_path: Path) -> None:
+    """D592. 07:142 writes the receipt at the root the walk covers; a walk that rostered it would
+    ingest the index's own receipt, and every change to the corpus would change a unit."""
+    store, config = _project(tmp_path, "a.txt")
+    (tmp_path / LOCK_PATH).write_text("# schema=1\n", encoding="utf-8")
+    (tmp_path / "docs" / LOCK_PATH).write_text("# schema=1\n", encoding="utf-8")
+    report = _run(tmp_path, store, config, paths=(tmp_path,))
+    uris = [str(uri) for (uri,) in _rows(store, "SELECT unit_uri FROM unit ORDER BY unit_uri")]
+    assert sorted(uri.rsplit("/", 1)[-1] for uri in uris) == ["a.txt", "omniweave.toml"]
+    #  The root file is not a receipt -- its header is one key of four -- so nothing it says can be
+    #  read: it counts as changed even over a store with no document, is replaced by the store's
+    #  own header-only receipt, and the generation moves. `docs/`'s copy is not the corpus's.
+    assert report.receipt is not None
+    assert (report.receipt.changed, report.receipt.documents) == (True, 0)
+    assert (tmp_path / LOCK_PATH).read_text(encoding="ascii").startswith("# schema=1 scorer=")
+    assert _rows(store, "SELECT v FROM index_state WHERE k = 'generation'") == [("1",)]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -339,10 +407,14 @@ def test_the_queue_forgets_an_identification_only_when_its_commit_stuck() -> Non
     ledger = ingest_module.expand.IdentifyLedger()
     ledger.record(1, "a", None)
     ledger.record(2, "b", None)
-    queue = ingest_module._Forgetting(Inner(), ledger)  # type: ignore[arg-type]
-    assert queue.complete(1, 1, object()) is True  # type: ignore[arg-type]
-    assert queue.complete(2, 1, object()) is False  # type: ignore[arg-type]
+    tally = RunTally()
+    queue = ingest_module._Forgetting(Inner(), ledger, tally)  # type: ignore[arg-type]
+    result = SimpleNamespace(outcome="ok", failure_class=None)
+    assert queue.complete(1, 1, result) is True  # type: ignore[arg-type]
+    assert queue.complete(2, 1, result) is False  # type: ignore[arg-type]
     assert len(ledger) == 1
+    #  The manifest counts the same way: the superseded commit settled nothing.
+    assert dict(tally.snapshot(run_id="r_x").outcomes) == {"ok": 1}
 
 
 # ---------------------------------------------------------------------------------------------
