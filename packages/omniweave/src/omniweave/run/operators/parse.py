@@ -2,20 +2,48 @@
 
 ```text
 hop 10  run.dispatch        the Supervisor's claim, one dispatch_key, formed into a Batch
-hop 11  run.pipeline        build(subproc_host(...)) -- with_events always, the rest as wired
+hop 11  run.pipeline        build(subproc_host(...) | inproc_host(...)) -- with_events always
 hop 12  host.subproc  S4    launch(): listen, spawn, contain, accept, HELLO, HELLO_ACK
-hop 13  the driver (child)  host.worker: parse(unit, PartSelector(), io) -> owdoc-fragment/1
-hop 14  host.wire           RESULT, one frame per unit, produced rebuilt host-side (D583)
+        host.inproc   S1    DriverGuard over a resolve() Candidate, the driver built once per key
+hop 13  the driver          parse(unit, PartSelector(), io) -> owdoc-fragment/1, child or host
+hop 14  host.wire           S4: RESULT, one frame per unit, produced rebuilt host-side (D583)
 hop 15  this module         DriverResult -> StepResult: identity, cache_key, the empty check
 hop 16  store.fragment      the fragment decoded into DocSink; end_page commits per page
 hop 17  Store.complete      work 'done' + unit 'settled' in one transaction (ParseLedger)
 ```
 
-`ow ingest` stopped at hop 9 until this cell: a planned `parse.office` row waited for an executor
-that did not exist, and `NoExecutorError` (D578) named that. This is the executor, for the S4 path
-the first-party office driver is granted on a checkout (D576). An `inproc` grant -- the office
-card's own request, under a pinned trust -- has no host here yet and is refused by name, exactly as
-D578 refused everything before.
+`ow ingest` stopped at hop 9 until W7.3z: a planned `parse.office` row waited for an executor that
+did not exist, and `NoExecutorError` (D578) named that. This is the executor, for both seams a
+`parse/1` card can be granted:
+
+* **S4**, a worker process -- what the first-party office driver is granted on a checkout, whose
+  editable install has no pinned trust (D576);
+* **S1**, in process -- the office card's own request, `[isolation] requires = "inproc"`, granted
+  when DR9's six conjuncts hold: a pinned first-party trust among them, which is a wheel install.
+
+Which one ran is the row's `dispatch_key`, recomputed for both modes (`_granted`), and nothing
+after the driver call can tell the two apart: `pipeline.inproc_host` answers with `subproc_host`'s
+`Reply` shape, so hops 15-17 are one code path.
+
+## What S1 does not do that S4 does
+
+* **Contain a crash.** 04:1826: *"an `inproc` segfault kills the run"*. That asymmetry is DR9's
+  whole justification, and it is why the grant is `resolve()`'s and re-checked here only as an
+  identity: the guard is built from the `Candidate` `resolve()` returns for this driver, and a
+  candidate granted anything but `inproc` refuses to become a guard.
+* **Arm an egress hook.** 14:875 covers an `inproc` driver by *"the host's hook"*, and `ow ingest`
+  arms none: a PEP 578 hook cannot be removed, and arming one in the supervisor would bind the
+  whole run to one driver's `needs_network`. DR9 bars `needs_network = true` from `inproc`, so the
+  first net holds; the second is not here (D597).
+* **Bound memory.** A job object caps a worker; nothing caps a thread. `[isolation] memory_mb` is
+  S4's.
+
+**Neither `[runtime]` S1 knob is read here (D598).** `max_inproc = 2` bounds S1 calls in flight
+(02:828), and the per-key lock -- one driver object serves every batch of its key, and a driver is
+not promised to be re-entrant -- already holds one key to one call. One driver is `inproc`-eligible,
+so at most one S1 call is ever in flight and the bound holds with nothing reading it; the second
+eligible driver is when it needs a reader. `inproc_bulk_threshold` -- the host switching to a worker
+past 64 units -- is a planning decision about the `dispatch_key`, and is not made here.
 
 ## Where the source bytes come from
 
@@ -66,10 +94,18 @@ from omniweave_core.store.doc import DocSink
 from omniweave_core.store.fragment import FragmentDoc, decode, records_of
 from omniweave_core.store.queue import Statement
 from omniweave_core.work import rung_for
-from omniweave_ports.types import ArtifactRef, FailureClass, Isolation, UnitRef
+from omniweave_ports.types import (
+    ArtifactRef,
+    DriverIO,
+    DriverResult,
+    FailureClass,
+    Isolation,
+    UnitRef,
+)
 
 from omniweave.run import pipeline
 from omniweave.run.dispatch import dispatch_key
+from omniweave.run.routing import PORT as PARSE_PORT
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -79,6 +115,8 @@ if TYPE_CHECKING:
     from omniweave_core.drivers.card import DriverCard
     from omniweave_core.drivers.catalog import Catalog
     from omniweave_core.drivers.resolve import Policy
+    from omniweave_core.host.inproc import DriverGuard
+    from omniweave_core.host.worker import WorkerBlobs
     from omniweave_core.operator import RunContext
     from omniweave_core.store.queue import StepResultView, WorkRow
 
@@ -91,7 +129,6 @@ __all__ = [
     "MODEL_VERSION",
     "PARSE_FAILED_SQL",
     "SETTLED_SQL",
-    "InprocNotHostedError",
     "ParseLedger",
     "ParseOperator",
     "ParseTally",
@@ -147,17 +184,6 @@ in a minute is not a worker, and there is no `PROGRESS` to wait for before `HELL
 def is_parse(operator: str) -> bool:
     """A routed `parse.*` row -- 02:479's operator, the driver's port family."""
     return operator.startswith("parse.")
-
-
-class InprocNotHostedError(RuntimeError):
-    """A parse row whose `dispatch_key` says `inproc`. The S1 host lands with its own cell.
-
-    Raised inside the dispatcher for `NoExecutorError`'s reason (D578): the row stays claimed, the
-    reaper returns it with its attempt decremented, and nothing false is written.
-    """
-
-    def __init__(self, driver: str) -> None:
-        super().__init__(f"{driver} is granted inproc and the S1 host is not built")
 
 
 # =============================================================================================
@@ -229,6 +255,8 @@ class ParseTally:
     asset_links_dropped: int = 0
     calls: int = 0
     workers: int = 0
+    inproc: int = 0
+    """Driver objects built in the host's interpreter, one per `(driver_id, config_digest)`."""
 
     def emit(self, *, kind: object, fields: Mapping[str, object]) -> None:
         """`with_events`' sink. No trace sink is wired into `ow ingest` yet, so the `call.begin`
@@ -244,7 +272,7 @@ class ParseTally:
         out = [
             f"  parse     {sum(self.parsed.values())} parsed ({drivers or 'none'}), "
             f"{self.docs} documents, {self.blocks} blocks, {self.calls} INVOKE over "
-            f"{self.workers} worker(s)"
+            f"{self.workers} worker(s)" + (f" and {self.inproc} in process" if self.inproc else "")
         ]
         if self.failed:
             classes = ", ".join(f"{name} {n}" for name, n in sorted(self.failed.items()))
@@ -294,6 +322,7 @@ class ParseOperator:
         "_catalog",
         "_config",
         "_ctx",
+        "_drivers",
         "_executable",
         "_launches",
         "_ledger",
@@ -342,6 +371,7 @@ class ParseOperator:
         self._locks: dict[subproc.WorkerKey, threading.Lock] = {}
         self._locks_guard = threading.Lock()
         self._sink_lock = threading.Lock()
+        self._drivers: dict[subproc.WorkerKey, object] = {}
 
     def _now_ms(self) -> int:
         return self._ctx.clock.monotonic_ns() // 1_000_000
@@ -360,8 +390,6 @@ class ParseOperator:
                 fix="ow ingest again: an unrouted row is a planner bug and the reaper returns it",
             )
         granted = self._granted(driver, batch.dispatch_key or "")
-        if granted.isolation is not Isolation.SUBPROC:
-            raise InprocNotHostedError(driver)
         operator = batch.rows[0].operator
         producer = Producer(
             operator=operator,
@@ -382,8 +410,13 @@ class ParseOperator:
                 operator=operator,
                 deadline_ms=granted.card.isolation.wall_ms_hard,
             )
-            source = _Source(self, granted, [cast("_Staged", staged[i]) for i in ready])
-            handler = pipeline.build(pipeline.subproc_host(source), emit=self._tally.emit)
+            ready_staged = [cast("_Staged", staged[i]) for i in ready]
+            host = (
+                pipeline.inproc_host(_Guarded(self, granted, ready_staged))
+                if granted.isolation is Isolation.INPROC
+                else pipeline.subproc_host(_Source(self, granted, ready_staged))
+            )
+            handler = pipeline.build(host, emit=self._tally.emit, isolation=str(granted.isolation))
             with self._lock(subproc.WorkerKey(driver, granted.config_digest)):
                 reply = handler(call)
             for slot, index in enumerate(ready):
@@ -681,6 +714,53 @@ class ParseOperator:
 
         return self._cas.open(parse_ref(str(ref.blob)))
 
+    # -- S1: the guard and the driver -----------------------------------------------------------
+
+    def _guard(self, granted: _Granted, call: Call) -> DriverGuard:
+        """A `DriverGuard` over the `Candidate` `resolve()` gives this driver for this batch.
+
+        `DriverGuard` takes clearance only as a `resolve()` `Candidate` -- *"clearance for inproc is
+        `Candidate.isolation_granted` and cannot be asserted by the caller"* -- and a claimed row
+        carries a `dispatch_key`, not a candidate (D596). So the Operator asks `resolve()` the
+        question routing asked, over the run's frozen catalog and policy and the batch's media
+        type: memoised on the three digests, so the answer is the one routing got. The config digest
+        needs no second check -- `_granted` has already matched the row's key against this config's
+        -- but the grant does: a policy that stopped granting `inproc` since planning is a refusal,
+        not a guard.
+        """
+        from omniweave_core.drivers.resolve import Requirement, resolve  # noqa: PLC0415
+        from omniweave_core.host.inproc import Deadlines, DriverGuard  # noqa: PLC0415
+
+        driver = granted.card.identity.id
+        media = call.units[0].media_type or ""
+        found = resolve(Requirement(port=PARSE_PORT, format=media), self._catalog, self._resolving)
+        candidate = next((one for one in found.candidates if one.driver_id == driver), None)
+        if candidate is None or candidate.isolation_granted is not Isolation.INPROC:
+            raise RouteError(
+                f"{driver}'s row was planned inproc and resolve() no longer grants it for "
+                f"{media!r}; the [drivers] policy changed after the row was planned",
+                fix="ow ingest again after the lease expires; the unit is re-routed",
+            )
+        return DriverGuard(
+            candidate,
+            deadlines=Deadlines.of_card(granted.card.isolation, deadline_ms=call.deadline_ms),
+            monotonic_ns=self._ctx.clock.monotonic_ns,
+        )
+
+    def _driver(self, granted: _Granted) -> object:
+        """The driver object for one `(driver_id, config_digest)`, built on first use, kept for the
+        run -- S1's counterpart of the worker pool, whose one worker per key it mirrors. Called
+        under that key's lock, so two batches of one key never build two."""
+        key = subproc.WorkerKey(granted.card.identity.id, granted.config_digest)
+        built = self._drivers.get(key)
+        if built is None:
+            from omniweave_core.host.activate import construct  # noqa: PLC0415
+
+            built = construct(granted.card, granted.effective_config)
+            self._drivers[key] = built
+            self._tally.inproc += 1
+        return built
+
     # -- the worker ----------------------------------------------------------------------------
 
     def _worker(self, granted: _Granted) -> subproc.Worker:
@@ -776,6 +856,47 @@ class _Source:
     def memory_mb(self, call: Call) -> int:
         del call
         return self._granted.card.isolation.memory_mb
+
+
+class _Guarded:
+    """`pipeline.GuardSource` for one batch: the guard, the driver's `parse`, the CAS aliased to the
+    staged blobs, and the run's scratch root -- `_Source`'s four answers, for the seam with no
+    process."""
+
+    __slots__ = ("_granted", "_operator", "_staged")
+
+    def __init__(self, operator: ParseOperator, granted: _Granted, staged: list[_Staged]) -> None:
+        self._operator = operator
+        self._granted = granted
+        self._staged = staged
+
+    def guard(self, call: Call) -> DriverGuard:
+        return self._operator._guard(self._granted, call)
+
+    def work(self, call: Call, index: int) -> Callable[[DriverIO], DriverResult]:
+        from omniweave_core.host.worker import parse_one  # noqa: PLC0415
+
+        parse = getattr(self._operator._driver(self._granted), "parse", None)
+        unit = call.units[index]
+        return lambda io_obj: parse_one(parse, unit, io_obj)
+
+    def blobs(self, call: Call) -> WorkerBlobs:
+        """The CAS with each unit's `content_sha256` aliased to its staged blob -- `WorkerBlobs`,
+        whose docstring is why: a driver opens its input by the NORMALISED digest."""
+        del call
+        from omniweave_core.host.worker import WorkerBlobs  # noqa: PLC0415
+
+        return WorkerBlobs(
+            self._operator._cas, {one.unit.content_sha256: one.blob_ref for one in self._staged}
+        )
+
+    def tmp(self, call: Call) -> Path:
+        del call
+        return self._operator._tmp
+
+    def max_output_bytes(self, call: Call) -> int:
+        del call
+        return MAX_OUTPUT_BYTES
 
 
 # =============================================================================================
