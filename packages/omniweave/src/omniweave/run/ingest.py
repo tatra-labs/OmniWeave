@@ -185,8 +185,7 @@ this build runs was typed by someone.
 """
 
 STOPPED_AT: Final[str] = (
-    "planned and not parsed by this run: its row is retrying, or it was granted inproc and the S1 "
-    "host is not built (see the parse lines above)"
+    "planned and not parsed by this run: its row is retrying (see the parse lines above)"
 )
 """Why a planned unit is still planned when the run ends. Hops 10-17 run since W7.3z; a unit left
 here is one whose row did not reach `done` or `failed` this run."""

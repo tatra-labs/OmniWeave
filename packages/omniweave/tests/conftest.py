@@ -1,4 +1,5 @@
-"""The `omniweave` distribution's fixtures: one re-export, and a reason it is a re-export.
+"""The `omniweave` distribution's fixtures: one re-export, a reason it is a re-export, and the
+one fixture this distribution owns.
 
 `packages/omniweave-core/tests/conftest.py` is this repository's one reader over `_plan/`. It
 builds `PlanDocs` from the workspace root, skips the tests that need it when `_plan/` is absent
@@ -19,13 +20,21 @@ The `sys.path` insertion is what makes the import work at all: pytest puts each 
 directory on the path, so `omniweave-core`'s is importable as a top-level `conftest` only from
 inside that package's tests. Naming the directory here is the cost of two distributions sharing
 one fixture without a test-support package neither of them ships.
+
+`released_catalog` is this distribution's own: the shipped catalog with the office driver as a
+released build carries it, the one catalog under which `resolve()` grants seam S1. Two test modules
+drive S1, one through `pipeline.inproc_host` and one through a whole `ow ingest`, and a copy in
+each would be two answers to what "released" means.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import importlib.util
 import sys
 from pathlib import Path
+
+import pytest
 
 _CORE_CONFTEST = Path(__file__).resolve().parents[2] / "omniweave-core" / "tests" / "conftest.py"
 _MODULE = "omniweave_core_tests_conftest"
@@ -42,4 +51,34 @@ migrations = sys.modules[_MODULE].migrations
 plan = sys.modules[_MODULE].plan
 repo_root = sys.modules[_MODULE].repo_root
 
-__all__ = ["PlanDocs", "migrations", "plan", "repo_root"]
+__all__ = ["PlanDocs", "migrations", "plan", "released_catalog", "repo_root"]
+
+OFFICE = "parse.office.anydoc"
+
+
+@pytest.fixture
+def released_catalog() -> object:
+    """The shipped catalog with `parse.office.anydoc` as a RELEASED build would carry it.
+
+    Two facts move, and they are the two DR9 conjuncts a checkout cannot meet: the trust tier a
+    wheel install is pinned at (`first_party`; an editable install is `unpinned`, D576), and a
+    green `fuzz` suite in `[quality.suites]`, which only `ow conform` writes and no shipped card
+    carries (D599). Every other conjunct is the card's own, so `resolve()` -- not a test -- is
+    what grants `inproc` under it.
+    """
+    from omniweave_core.discovery import catalog  # noqa: PLC0415
+    from omniweave_core.drivers.catalog import Catalog  # noqa: PLC0415
+    from omniweave_ports.types import TrustTier  # noqa: PLC0415
+
+    shipped = catalog()
+    card = shipped.cards[OFFICE]
+    released = dataclasses.replace(
+        card, quality=dataclasses.replace(card.quality, suites={"fuzz": "pass"})
+    )
+    return Catalog.assemble(
+        validity_key=shipped.validity_key,
+        cards={**shipped.cards, OFFICE: released},
+        probe_status={key: str(value) for key, value in shipped.probe_status.items()},
+        trust={**shipped.trust, OFFICE: TrustTier.FIRST_PARTY},
+        tombstones=shipped.tombstones.values(),
+    )
