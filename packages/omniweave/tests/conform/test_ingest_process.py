@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sqlite3  # noqa: TID251 -- the assertions read the store the child wrote.
 import subprocess  # noqa: TID251 -- T3 spawns the child a host would spawn; tests only.
 import sys
@@ -26,6 +27,7 @@ from mcp.types import TextContent
 pytestmark = pytest.mark.conform
 
 DEADLINE_S = 60
+OFFICE_FIXTURES = Path(__file__).resolve().parents[3] / "omniweave-office" / "fixtures"
 PROJECT = (
     '[corpora.handbook]\npath = ".omniweave/index.owstore"\n[serve]\ndefault_corpus = "handbook"\n'
 )
@@ -122,27 +124,14 @@ def test_a_path_outside_the_roots_is_refused_by_the_process_with_exit_6(tmp_path
     assert b"OW_PATH_OUTSIDE_ROOTS" in ran.stderr
 
 
-def test_an_office_document_is_planned_across_three_processes(tmp_path: Path) -> None:
-    """Hops 5-9 in a real child: `ow_add` over MCP, `ow ingest` with the three `[drivers]` opt-ins a
-    checkout needs (D576), and `ow_query` still `degraded` -- the unit is planned, not parsed."""
-    import zipfile  # noqa: PLC0415
-
-    rel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
-    main = "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"
+def test_an_office_document_is_parsed_and_cited_across_three_processes(tmp_path: Path) -> None:
+    """Hops 1-17 in real children: `ow_add` over MCP, `ow ingest` with the three `[drivers]`
+    opt-ins a checkout needs (D576) -- which now launches the S4 worker, parses the DOCX, and
+    commits the document -- and then `ow_query` over MCP, answering from that document with a
+    cite. The first cell in which a query answers from a parsed corpus."""
     docs = tmp_path / "docs"
     docs.mkdir()
-    with zipfile.ZipFile(docs / "memo.docx", "w") as archive:
-        archive.writestr(
-            "[Content_Types].xml",
-            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
-            f'<Override PartName="/word/document.xml" ContentType="{main}"/></Types>',
-        )
-        archive.writestr(
-            "_rels/.rels",
-            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            f'<Relationship Id="r" Type="{rel}" Target="word/document.xml"/></Relationships>',
-        )
-        archive.writestr("word/document.xml", "<w:document/>")
+    shutil.copy(OFFICE_FIXTURES / "rich.docx", docs / "rich.docx")
     opt_in = "[drivers]\nallow_unattested = true\nrequire_lock = false\ninproc = []\n"
     (tmp_path / "omniweave.toml").write_text(PROJECT + opt_in, encoding="utf-8")
     added = json.loads(_call(tmp_path, "ow_add", {"source": "docs"}))
@@ -151,8 +140,19 @@ def test_an_office_document_is_planned_across_three_processes(tmp_path: Path) ->
     assert ran.returncode == 0, ran.stderr.decode("ascii", "replace")
     lines = ran.stdout.decode("ascii").splitlines()
     assert "  route     1 planned (parse.office.anydoc 1); 0 refused" in lines
+    parsed = "  parse     1 parsed (parse.office.anydoc 1), 1 documents"
+    assert any(line.startswith(parsed) for line in lines), lines
     store = tmp_path / ".omniweave" / "index.owstore"
-    assert _states(store) == [("planned", 1)]
-    answer = _call(tmp_path, "ow_query", {"query": "memo"})
-    assert answer.startswith("ow/1 degraded "), answer[:120]
-    assert "pending_work_in_scope" in answer
+    assert _states(store) == [("settled", 1)]
+    answer = _call(tmp_path, "ow_query", {"query": "quarterly report"})
+    header = answer.splitlines()[0]
+    # `low_confidence`, not `ok`: one document, the lexical channel alone, and a best score under
+    # the scorer's ceiling. That is retrieval's honest verdict over a one-document corpus, and the
+    # property this test is about is that the answer comes FROM the parsed document at all.
+    assert header.startswith(("ow/1 ok ", "ow/1 low_confidence ")), header
+    assert " fresh blocks=1/1 docs=1/1 " in header, header
+    assert "Quarterly report" in answer
+    assert (
+        "| d1#2 | rich.docx | 0 | p0/0 | heading | normalized | extracted | native_xml |" in answer
+    )
+    assert "verdict.coverage   = {discovered: 1, indexed: 1, partial: 0, failed: 0}" in answer

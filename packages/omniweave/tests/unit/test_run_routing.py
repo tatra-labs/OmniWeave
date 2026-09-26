@@ -14,9 +14,11 @@ from pathlib import Path
 import pytest
 from omniweave.route.evidence import build_registry, builtin_specs
 from omniweave.run import ingest as ingest_module
-from omniweave.run.ingest import PLANNED, ingest
+from omniweave.run.dispatch import Batch
+from omniweave.run.ingest import ingest
 from omniweave.run.routing import resolve_policy, unit_evidence
 from omniweave_core.config import Config, load
+from omniweave_core.work import WorkRow
 
 from omniweave import plan
 
@@ -86,15 +88,19 @@ def _unit(store: Path, suffix: str, columns: str = "state") -> tuple[object, ...
 # ---------------------------------------------------------------------------------------------
 
 
-def test_an_office_document_is_decided_admitted_and_planned_in_one_transaction(
+def test_an_office_document_is_decided_admitted_planned_and_then_parsed(
     tmp_path: Path,
 ) -> None:
-    """02:475-479, hops 5-9: the decision row BEFORE anything runs (05:1103), then 02:479's row."""
+    """02:475-479, hops 5-9: the decision row BEFORE anything runs (05:1103), then 02:479's row --
+    which hops 10-17 now take to a terminal status in the same run. This DOCX is a bare
+    `<w:document/>` with no WordprocessingML namespace: it routes and plans exactly as a real one
+    does -- detection reads the package, not the body -- and anydoc then refuses the body as
+    `CORRUPT_INPUT`, which fails the unit with no `doc` row (05:405)."""
     store, config = _project(tmp_path)
     report = _run(tmp_path, store, config)
     assert report.routed is not None  # type: ignore[attr-defined]
     assert dict(report.routed.planned) == {"parse.office.anydoc": 1}  # type: ignore[attr-defined]
-    assert _unit(store, "memo.docx") == (PLANNED,)
+    assert _unit(store, "memo.docx", "state, acq_failure_class") == ("failed", "corrupt_input")
     ((operator, version, driver, status, cost, key, decision, priority, part),) = _rows(
         store,
         "SELECT operator, op_version, driver, status, cost_class, dispatch_key, decision_id, "
@@ -104,7 +110,7 @@ def test_an_office_document_is_decided_admitted_and_planned_in_one_transaction(
         "parse.office",
         1,
         "parse.office.anydoc",
-        "pending",
+        "failed_permanent",
         "free",
         "",
     )
@@ -192,23 +198,26 @@ def test_the_report_names_what_was_planned_and_what_stopped_it(tmp_path: Path) -
     store, config = _project(tmp_path)
     lines = _run(tmp_path, store, config).lines()  # type: ignore[attr-defined]
     assert any(line.startswith("  route     1 planned (parse.office.anydoc 1)") for line in lines)
-    assert any(line.startswith("  parse     1 units planned: hops 10-17") for line in lines)
+    assert "  parse     1 failed (corrupt_input 1)" in lines
     assert all(line.isascii() for line in lines)
 
 
-def test_a_planned_row_is_refused_by_name_when_a_later_loop_claims_it(tmp_path: Path) -> None:
-    """D578. The claim names no operator, so a run with new `op.identify` rows claims the planned
-    `parse.office` row too; the dispatcher refuses it by name, `Supervisor._crash()` counts it, and
-    the row stays claimed for the reaper rather than being failed for a driver that never ran."""
-    store, config = _project(tmp_path)
-    _run(tmp_path, store, config)
-    (tmp_path / "docs" / "later.csv").write_text("a,b\n1,2\n3,4\n5,6\n", encoding="utf-8")
-    report = _run(tmp_path, store, config, paths=False)
-    assert report.drained is not None  # type: ignore[attr-defined]
-    assert report.drained.crashed == 1  # type: ignore[attr-defined]
-    assert _rows(store, "SELECT status, attempts_total FROM work WHERE unit_uri LIKE '%memo.docx'"
-                 " AND operator = 'parse.office'") == [("claimed", 1)]  # fmt: skip
-    assert _unit(store, "later.csv") == (PLANNED,)
+def test_a_row_no_executor_serves_is_refused_by_name() -> None:
+    """D578, narrowed by W7.3z: `parse.*` rows have an executor now, and a row of any other family
+    -- `derive.*`, `embed.*` -- is still refused by name, so the Supervisor's crash path holds it
+    for the reaper rather than failing it for a driver that never ran."""
+    executors = ingest_module._Executors.__new__(ingest_module._Executors)
+    row = WorkRow(
+        id=1, unit_uri="u", unit_part="", operator="derive.segment", op_version=1,
+        cache_key="k" * 64, decision_id="d", sequence_id=None, driver="derive.segment.spine",
+        cost_class="free", dispatch_key="0" * 16, service=None, staged_gen=None,
+        status="claimed", failure_class=None, failure_message=None, retry_after=None,
+        attempts_total=1, attempts_today=1, last_attempt_at=None, stale_since=None,
+        claimed_by="w", claimed_gen=1, lease_expires=0, cost_micros=0, queued_ms=0, ran_ms=0,
+        peak_rss_bytes=0, priority=200,
+    )  # fmt: skip
+    with pytest.raises(ingest_module.NoExecutorError, match=r"derive\.segment"):
+        executors(Batch(invoke_id="i", rows=(row,)))
 
 
 # ---------------------------------------------------------------------------------------------
