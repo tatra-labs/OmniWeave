@@ -97,17 +97,23 @@ from omniweave_core.errors import ConfigError, ResourceLimit, RouteError
 from omniweave_core.events import EventKind
 from omniweave_core.observe.degradation import Degradation
 from omniweave_core.operator import Outcome
-from omniweave_ports.types import ArtifactRef, FailureClass
+from omniweave_ports.types import ArtifactRef, DriverResult, FailureClass
 
 from omniweave.route.spend import Spend
-from omniweave.run.dispatch import Batch, call_attributes
+from omniweave.run.dispatch import Batch, call_attributes, fan_out
 
 if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from collections.abc import Iterator
 
     from omniweave_core.budget import BudgetLedger, Reservation
     from omniweave_core.clock import Clock
-    from omniweave_core.host.subproc import InvokeReport
+    from omniweave_core.host.subproc import (
+        Deadlines,
+        HostVerdict,
+        Invocation,
+        InvokeReport,
+        Worker,
+    )
     from omniweave_ports.types import UnitRef
 
 __all__ = [
@@ -128,11 +134,13 @@ __all__ = [
     "RequestCount",
     "RetryGuard",
     "TokenBucket",
+    "WorkerSource",
     "build",
     "cache_layer_for",
     "chaos_fires",
     "decision_of",
     "prober",
+    "subproc_host",
     "verdict_of",
     "with_budget",
     "with_cache",
@@ -1316,6 +1324,67 @@ def with_fault_injection(
 # =============================================================================================
 # 12. `build()` -- a plain sequence of `if`s, no framework
 # =============================================================================================
+
+
+# =============================================================================================
+# 13. The host at the bottom of the chain: S4, one `INVOKE` per call
+# =============================================================================================
+
+
+class WorkerSource(Protocol):
+    """What `subproc_host` needs from the caller: the live worker for a call, and its limits.
+
+    A Protocol rather than a `WorkerPool`, because the worker's key, its card and its `HELLO` are
+    the Operator's to know (`WorkerPool.acquire`'s own docstring: *"only the caller knows the
+    card"*) and this module knows none of the three.
+    """
+
+    def worker(self, call: Call) -> Worker: ...
+
+    def invocation(self, call: Call) -> Invocation: ...
+
+    def deadlines(self, call: Call) -> Deadlines: ...
+
+    def memory_mb(self, call: Call) -> int: ...
+
+
+def subproc_host(source: WorkerSource) -> Handler:
+    """The innermost handler for an S4 driver: `Worker.invoke()`, then `fan_out()`, as a `Reply`.
+
+    **This is the `DriverHost.invoke()` call G8 confines to this file**, and it is the only one:
+    02:74's *"run/pipeline.py -- THE MIDDLEWARE ORDER; the ONLY caller of DriverHost.invoke()"*.
+    Everything above it is a layer; everything below it is `host/subproc.py`.
+
+    The reply is at the call's full width, one outcome per unit (I24): `fan_out()` synthesises a
+    crash for a unit the worker never answered, and a `HostVerdict` becomes `FAILED_PERMANENT` or
+    `FAILED_TRANSIENT` by its own `permanent` flag -- which `HostVerdict` carries explicitly because
+    a host-detected `timeout` is permanent where a driver-reported one is not (02:1014, 08:567).
+    `report` rides along so the Operator can read each unit's verdict; the middleware never does.
+    """
+
+    def host(call: Call) -> Reply:
+        worker = source.worker(call)
+        report = worker.invoke(
+            source.invocation(call),
+            deadlines=source.deadlines(call),
+            memory_mb=source.memory_mb(call),
+        )
+        answered = fan_out(call.batch, report)
+        outcomes = tuple(_outcome_of(one.result, one.verdict) for one in answered)
+        return Reply(
+            outcomes=outcomes,
+            report=report,
+            produced=tuple(() if one.result is None else one.result.produced for one in answered),
+        )
+
+    return host
+
+
+def _outcome_of(result: DriverResult | None, verdict: HostVerdict | None) -> Outcome:
+    if verdict is not None:
+        return Outcome.FAILED_PERMANENT if verdict.permanent else Outcome.FAILED_TRANSIENT
+    assert result is not None  # noqa: S101 -- UnitOutcome holds exactly one of the two.
+    return Outcome.OK_PARTIAL if result.outcome == "ok_partial" else Outcome.OK
 
 
 def build(

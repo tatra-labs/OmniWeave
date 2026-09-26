@@ -2307,10 +2307,21 @@ def _achieved(
         "SELECT count(*) FROM block WHERE doc_ord=? AND gen=? AND layer=?", (*where, note_layer)
     )
     if note_rows:
+        # 03:531 counts NOTE BODIES -- the `footnote`/`endnote` block a `note_ref` points at --
+        # and not the paragraphs inside one, which inherit `layer = note` (M-INV-5) and are
+        # referenced by nobody. Counting every note-layer block made a document whose every
+        # note is referenced read `inline` on its first real parse (D587).
         unlinked = one(
             "SELECT count(*) FROM block b WHERE b.doc_ord=? AND b.gen=? AND b.layer=? "
+            "AND b.kind IN (?, ?) "
             "AND NOT EXISTS (SELECT 1 FROM rel r WHERE r.dst_id=b.block_id AND r.kind=?)",
-            (*where, note_layer, _ordinal("rel_kind", RelKind.NOTE_REF)),
+            (
+                *where,
+                note_layer,
+                _ordinal("kind", Kind.FOOTNOTE),
+                _ordinal("kind", Kind.ENDNOTE),
+                _ordinal("rel_kind", RelKind.NOTE_REF),
+            ),
         )
         notes = "inline" if unlinked else "linked"
 

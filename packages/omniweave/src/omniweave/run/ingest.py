@@ -98,6 +98,7 @@ from omniweave_ports.types import DriverError, FailureClass
 from omniweave.route.detect import Detection, detect
 from omniweave.run import discover, expand
 from omniweave.run import supervisor as sup
+from omniweave.run.operators.parse import ParseLedger, ParseOperator, ParseTally, is_parse
 from omniweave.run.routing import RouteTally, resolve_policy, route_identified
 
 if TYPE_CHECKING:  # pragma: no cover -- typing only.
@@ -105,11 +106,15 @@ if TYPE_CHECKING:  # pragma: no cover -- typing only.
 
     from omniweave_core.clock import Clock
     from omniweave_core.config import Config
+    from omniweave_core.drivers.catalog import Catalog
+    from omniweave_core.drivers.resolve import Policy
     from omniweave_core.operator import StepResult
-    from omniweave_core.store.queue import StepResultView
+    from omniweave_core.store.queue import Statement, StepResultView
     from omniweave_core.work import WorkRow
     from omniweave_ports.types import UnitRef
 
+    from omniweave.route.evidence import SignalRegistry
+    from omniweave.route.policy import RoutePolicy
     from omniweave.run.dispatch import Batch
 
 __all__ = [
@@ -117,6 +122,7 @@ __all__ = [
     "PLANNED",
     "RUN_CLOSE_SQL",
     "RUN_INSERT_SQL",
+    "SETTLED",
     "STOPPED_AT",
     "TRIGGER",
     "UNROUTED",
@@ -139,10 +145,14 @@ this build runs was typed by someone.
 """
 
 STOPPED_AT: Final[str] = (
-    "hops 10-17 (dispatch, the pipeline, the driver, DocSink, complete) are not run by this build: "
-    "a planned parse row waits for them"
+    "planned and not parsed by this run: its row is retrying, or it was granted inproc and the S1 "
+    "host is not built (see the parse lines above)"
 )
-"""Why a planned unit goes no further, printed on the report's parse line. D578."""
+"""Why a planned unit is still planned when the run ends. Hops 10-17 run since W7.3z; a unit left
+here is one whose row did not reach `done` or `failed` this run."""
+
+SETTLED: Final[str] = "settled"
+"""05:404's terminal success: *"every part terminal; doc.status in ok|partial"*."""
 
 UNROUTED: Final[str] = "routed to no driver (see the route lines above)"
 """Why an identified unit went no further: `run.routing` named a rule and no candidate served it."""
@@ -225,6 +235,11 @@ class IngestReport:
     parts: int = 0
     formats: Mapping[str, int] = field(default_factory=dict)
     routed: RouteTally | None = None
+    parsed: ParseTally | None = None
+
+    @property
+    def settled(self) -> int:
+        return self.states.get(SETTLED, 0)
 
     @property
     def planned(self) -> int:
@@ -267,6 +282,10 @@ class IngestReport:
             )
         if self.routed is not None:
             out.extend(self.routed.lines())
+        if self.parsed is not None:
+            out.extend(self.parsed.lines())
+        if self.settled:
+            out.append(f"  settled   {self.settled} units have a committed document")
         if self.identified:
             out.append(f"  identify  {self.identified} units stop here: {UNROUTED}")
         if self.planned:
@@ -463,14 +482,43 @@ def _hops(
     )
     context = _context(run_id, generation, config=config, roots=roots, clock=clock)
     enqueued, unsalted = _enqueue(thread, context, plan_batch=plan_batch)
-    drained = (
-        asyncio.run(
-            _drain(context, thread, config=config, sweep_ms=sweep_ms, host_root=store.parent)
-        )
-        if enqueued
-        else None
+    inputs = _routing_inputs(config)
+    context = replace(
+        context,
+        policy_digest=inputs.policy.policy_digest,
+        catalog_digest=inputs.catalog.catalog_digest,
     )
-    routed = _route(thread, context, config=config, roots=roots, clock=clock)
+    tally = ParseTally()
+    executor = _Executors(thread, context, config=config, inputs=inputs, store=store, tally=tally)
+    try:
+        drained = (
+            asyncio.run(
+                _drain(
+                    context,
+                    thread,
+                    config=config,
+                    sweep_ms=sweep_ms,
+                    host_root=store.parent,
+                    executors=executor,
+                )
+            )
+            if enqueued
+            else None
+        )
+        routed = _route(thread, context, inputs=inputs, roots=roots, clock=clock)
+        if _pending_parse(thread):
+            asyncio.run(
+                _drain(
+                    context,
+                    thread,
+                    config=config,
+                    sweep_ms=sweep_ms,
+                    host_root=store.parent,
+                    executors=executor,
+                )
+            )
+    finally:
+        executor.close()
     states, parts = _tally(thread, generation)
     formats = _formats(thread, generation)
     waiting = states.get(IDENTIFIED, 0) + states.get(PLANNED, 0)
@@ -492,17 +540,25 @@ def _hops(
         parts=parts,
         formats=formats,
         routed=routed,
+        parsed=tally if (tally.parsed or tally.failed) else None,
     )
 
 
-def _route(
-    thread: ow.StoreThread, ctx: RunContext, *, config: Config, roots: Roots, clock: Clock
-) -> RouteTally:
-    """Hops 5-9 over every unit this generation identified. Startup step 7 runs here, once.
+@dataclass(frozen=True, slots=True)
+class _RoutingInputs:
+    """Startup step 7's four products, built once and frozen for the run -- 02:729's *"a driver
+    installed mid-run is invisible until the next run"*. Routing reads all four; the parse
+    Operator reads the catalog and the resolve policy, so the card it runs is the card that was
+    routed and the config digest it recomputes is the one the row's `dispatch_key` was minted
+    over."""
 
-    The catalog, the signal registry and both policies are built per run and frozen into it --
-    02:729's *"a driver installed mid-run is invisible until the next run"*.
-    """
+    registry: SignalRegistry
+    catalog: Catalog
+    policy: RoutePolicy
+    resolving: Policy
+
+
+def _routing_inputs(config: Config) -> _RoutingInputs:
     from importlib.metadata import distributions  # noqa: PLC0415 -- the routing path only
 
     from omniweave_core.discovery import catalog as build_catalog  # noqa: PLC0415
@@ -515,18 +571,48 @@ def _route(
     from omniweave.route.policy import builtin_layer, compile_policy  # noqa: PLC0415
 
     registry = build_registry((*builtin_specs(), *installed_specs(distributions()).specs))
-    catalog = build_catalog()
-    policy = compile_policy([builtin_layer()], registry=registry)
+    return _RoutingInputs(
+        registry=registry,
+        catalog=build_catalog(),
+        policy=compile_policy([builtin_layer()], registry=registry),
+        resolving=resolve_policy(config),
+    )
+
+
+def _route(
+    thread: ow.StoreThread,
+    ctx: RunContext,
+    *,
+    inputs: _RoutingInputs,
+    roots: Roots,
+    clock: Clock,
+) -> RouteTally:
+    """Hops 5-9 over every unit this generation identified."""
     return route_identified(
         thread,
-        ctx=replace(ctx, policy_digest=policy.policy_digest, catalog_digest=catalog.catalog_digest),
-        policy=policy,
-        registry=registry,
-        catalog=catalog,
-        resolving=resolve_policy(config),
+        ctx=ctx,
+        policy=inputs.policy,
+        registry=inputs.registry,
+        catalog=inputs.catalog,
+        resolving=inputs.resolving,
         source_root=str(roots.source),
         now_ms=clock.wall_ns() // 1_000_000,
     )
+
+
+_PENDING_PARSE_SQL: Final[str] = (
+    "SELECT 1 FROM work WHERE status = 'pending' AND operator LIKE 'parse.%' LIMIT 1"
+)
+
+
+def _pending_parse(thread: ow.StoreThread) -> bool:
+    """Whether hop 9 left anything for hops 10-17. A run with nothing planned opens no loop."""
+    found = _read(
+        thread,
+        "ingest.pending_parse",
+        lambda c: c.execute(_PENDING_PARSE_SQL).fetchone(),  # type: ignore[attr-defined]
+    )
+    return found is not None
 
 
 def _walk(
@@ -818,8 +904,96 @@ def _columns(detected: Detection | None) -> dict[str, object] | None:
     }
 
 
+class _Executors:
+    """The one `Dispatcher` a drain is handed: `op.identify` to `_Identify`, `parse.*` to the
+    parse Operator, anything else to `NoExecutorError` (D578). A batch is one `dispatch_key`, so it
+    is one operator family, and the first row names it.
+
+    It also carries the two ledgers' `derived_rows` contribution and their `forget()`, because
+    `SqliteStore` takes ONE contribution per participant and each ledger answers only for the rows
+    it recorded -- `IdentifyLedger`'s docstring: *"the map is the dispatch"*.
+    """
+
+    __slots__ = ("_identify", "_identify_ledger", "_parse", "_parse_ledger")
+
+    def __init__(
+        self,
+        thread: ow.StoreThread,
+        ctx: RunContext,
+        *,
+        config: Config,
+        inputs: _RoutingInputs,
+        store: Path,
+        tally: ParseTally,
+    ) -> None:
+        self._identify_ledger = expand.IdentifyLedger()
+        self._parse_ledger = ParseLedger()
+        self._identify = _Identify(thread, self._identify_ledger)
+        self._parse = _ParseLazily(thread, ctx, config, inputs, store, self._parse_ledger, tally)
+
+    def __call__(self, batch: Batch, /) -> Sequence[StepResult]:
+        operator = batch.rows[0].operator
+        if operator == expand.OP_IDENTIFY:
+            return self._identify(batch)
+        if is_parse(operator):
+            return self._parse.get()(batch)
+        raise NoExecutorError(operator, batch.driver)
+
+    def contribution(self, row_id: int, result: StepResultView) -> Sequence[Statement]:
+        return (*self._identify_ledger(row_id, result), *self._parse_ledger(row_id, result))
+
+    def forget(self, row_id: int) -> None:
+        self._identify_ledger.forget(row_id)
+        self._parse_ledger.forget(row_id)
+
+    def close(self) -> None:
+        self._parse.close()
+
+
+class _ParseLazily:
+    """The parse Operator, built on its first batch. A run that plans nothing opens no CAS and
+    builds no worker pool, so `ow ingest` over a text-only corpus costs what it did before."""
+
+    __slots__ = ("_args", "_operator")
+
+    def __init__(self, *args: object) -> None:
+        self._args = args
+        self._operator: ParseOperator | None = None
+
+    def get(self) -> ParseOperator:
+        if self._operator is None:
+            thread, ctx, config, inputs, store, ledger, tally = self._args
+            cas_root = Path(cast("Path", store)).parent / CAS_DIR
+            cas_root.mkdir(parents=True, exist_ok=True)
+            from omniweave_core.blobs import BlobStore  # noqa: PLC0415 -- the parse path only
+
+            self._operator = ParseOperator(
+                thread,  # type: ignore[arg-type]
+                ctx=ctx,  # type: ignore[arg-type]
+                config=config,  # type: ignore[arg-type]
+                catalog=cast("_RoutingInputs", inputs).catalog,
+                resolving=cast("_RoutingInputs", inputs).resolving,
+                cas=BlobStore(cas_root),
+                ledger=ledger,  # type: ignore[arg-type]
+                tally=tally,  # type: ignore[arg-type]
+            )
+        return self._operator
+
+    def close(self) -> None:
+        if self._operator is not None:
+            self._operator.close()
+
+
+CAS_DIR: Final[str] = "cas"
+"""The CAS directory, beside the store: 07:905 and 03:2088 put it at `.omniweave/cas/`, and
+`store/portable.py` calls it *"a directory beside the store"*. 08:2542 prints
+`roots.cache/cas/...`; the two are not the same path under the shipped `roots.cache =
+".omniweave/cache"`, and the store documents win because the CAS is what `asset.store_ref` and
+`part.store_ref` point into, which is the store's contract (D582)."""
+
+
 class _Forgetting:
-    """`SqliteStore` with `IdentifyLedger.forget()` after every commit that stuck.
+    """`SqliteStore` with each ledger's `forget()` after every commit that stuck.
 
     `IdentifyLedger`'s docstring leaves the call to the caller -- *"`forget()` is the caller's
     acknowledgement that the commit stuck"* -- and the caller of `complete()` is the Supervisor,
@@ -829,7 +1003,7 @@ class _Forgetting:
 
     __slots__ = ("_inner", "_ledger")
 
-    def __init__(self, inner: SqliteStore, ledger: expand.IdentifyLedger) -> None:
+    def __init__(self, inner: SqliteStore, ledger: _Executors) -> None:
         self._inner = inner
         self._ledger = ledger
 
@@ -856,8 +1030,11 @@ async def _drain(
     config: Config,
     sweep_ms: int | None,
     host_root: Path,
+    executors: _Executors,
 ) -> sup.RunReport:
-    """Startup step 9: the one loop, draining the `op.identify` rows hop 4 wrote.
+    """Startup step 9: the one loop, draining whatever is claimable -- `op.identify` rows before
+    routing, `parse.*` rows after it. One dispatcher serves both (`_Executors`), because a claim
+    names no operator and a row from an earlier run may be either.
 
     The admission is derived inside the loop because its semaphores are `asyncio` objects, and a
     semaphore created outside the loop that awaits it is one Python 3.10 bound to the wrong one.
@@ -876,13 +1053,15 @@ async def _drain(
             loop_lag_max_ms=shipped.loop_lag_max_ms,
         )
     )
-    ledger = expand.IdentifyLedger()
-    queue = _Forgetting(SqliteStore(thread, wait_ms=BATCH_WAIT_MS, derived_rows=ledger), ledger)
+    queue = _Forgetting(
+        SqliteStore(thread, wait_ms=BATCH_WAIT_MS, derived_rows=executors.contribution),
+        executors,
+    )
     loop_ctx = _with_admission(ctx, admission)
     supervisor = sup.Supervisor(
         loop_ctx,
         queue=queue,  # type: ignore[arg-type]
-        dispatch=_Identify(thread, ledger),
+        dispatch=executors,
         admission=admission,
         timings=timings,
         worker=sup.worker_identity(),
