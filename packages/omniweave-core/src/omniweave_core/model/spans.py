@@ -353,8 +353,9 @@ class Quad(NamedTuple):
     `Quad(...)` literal. Enforcement of "nothing else calls it" is lexical, by 01:1191's grep for
     `Quad(` outside `Quad.from_driver`; a `NamedTuple` cannot make `__new__` private, and the plan
     prints `class Quad(NamedTuple)` at two sites (03:168, 06:2093), so the type is the plan's and
-    the grep is the gate. That semgrep rule is not yet in `tools/semgrep/omniweave.yaml`;
-    reported.
+    the grep is the gate. It is an `ast` scan in `test_model_spans.py` rather than a semgrep rule,
+    because the bank's rules are exactly 02:392's row and this ban is 01:1191's (D613). The scan
+    holds every other `Quad` in library code to three decoders and the starred decode shape.
     """
 
     x0: int
