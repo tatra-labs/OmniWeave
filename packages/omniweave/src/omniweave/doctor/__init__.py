@@ -4,11 +4,18 @@ The `doctor` ActionSpec, `DoctorIn` and `DoctorReport` have existed since W7.1. 
 a runner, and `python -m omniweave doctor` was refused as a root *"not dispatched by this build"*.
 V01-16 (00:717) is the first criterion that needs it: *"`ow doctor` on a store tracked in git
 **fails** with `OW-S-060`"*. So this module runs D-02, and the configuration load every row reads
-through, and nothing else yet.
+through.
 
-**The other twenty-six rows of 15:1514-1540 are named, not skipped silently.** Every run prints
+W7.8e adds the catalog rebuild and D-08. 15:1499 makes `ow doctor` *"the only command that rebuilds
+the catalog"*, and V01-4 (00:705) makes that rebuild the thing a hostile wheel must not be able to
+take down: *"`ow doctor` exits 0 and the file is absent"*. So the rebuild is `discover()` and
+`catalog()` with this run's environment and project, and G11 now runs this verb as a process over
+its rogue fixture (D612).
+
+**The other twenty-five rows of 15:1514-1540 are named, not skipped silently.** Every run prints
 the ids it did not check, because a doctor that exits 0 is read as *"this deployment is fine"*,
-and here it can only mean *"D-02 is fine"*. `UNBUILT` is that list, and it shrinks as rows land.
+and here it can only mean that D-02 and D-08 are. `UNBUILT` is that list, and it shrinks as rows
+land.
 
 Exit 0 or 1, 18:222's rule: 1 exactly when `DoctorReport.failed` is non-empty. A warning never
 fails the run (10:1785). 15:1509's exit 6, 7 and 9 belong to D-20, D-24 and an unconfigured
@@ -29,6 +36,8 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from pathlib import Path
 
+    from omniweave_core import config
+
 __all__ = [
     "BUILT",
     "FAILED",
@@ -37,6 +46,7 @@ __all__ = [
     "STORE_TRACKED",
     "STORE_TRACKED_SYMBOL",
     "UNBUILT",
+    "check_driver_cards",
     "check_tracked_store",
     "main",
     "run",
@@ -57,13 +67,19 @@ STORE_GLOB: Final = "*.owstore*"
 (`index.vec.owstore`, `events.owstore`) and SQLite's `-wal` and `-shm` files. It is matched
 against the final path component, as a `.gitignore` line with no slash is."""
 
-BUILT: Final[tuple[str, ...]] = ("D-02",)
+BUILT: Final[tuple[str, ...]] = ("D-02", "D-08")
 UNBUILT: Final[tuple[str, ...]] = tuple(
     f"D-{n:02d}" for n in range(1, 28) if f"D-{n:02d}" not in BUILT
 )
 """15:1514-1540's rows that no code checks yet. `BUILT` and `UNBUILT` together are D-01 to D-27."""
 
 _BY_HAND: Final = "git ls-files -- '*.owstore*'"
+
+ALLOW_UNATTESTED: Final = "OMNIWEAVE_DRIVERS_ALLOW_UNATTESTED"
+"""`drivers.allow_unattested`'s declared twin: D576's opt-in, and the one command that clears an
+unattested card today. 15:1521's fix cell names `ow drivers verify`, which checks digests and
+attests nothing (`tools/ow_drivers.py`), and `ow conform`, which writes attestations, is not
+built."""
 
 
 def check_tracked_store(cwd: Path) -> DoctorFinding:
@@ -107,6 +123,88 @@ def check_tracked_store(cwd: Path) -> DoctorFinding:
     )
 
 
+def check_driver_cards(
+    *,
+    env: Mapping[str, str],
+    project_root: Path | None,
+    enabled: Sequence[str],
+    allow_unattested: bool,
+) -> tuple[DoctorFinding, ...]:
+    """The catalog rebuild, and D-08 over it (15:1521).
+
+    D-08 reads: *"every enabled driver's card validates; `attested = true` unless
+    `allow_unattested`"*. A card in the catalog has validated, because `load_card()` is the only
+    constructor of `DriverCard`. So the row's question is attestation, asked of every enabled id
+    that has a card.
+
+    **An enabled id with no card is not a D-08 failure.** 00:116 names `parse.page.olmocr` in
+    `[drivers] enabled` *"so the escalation rule can fire even where the distribution is absent"*,
+    and `resolve()` reports that as unavailable. The ids are printed, and they fail nothing.
+
+    **A discovery fault is a warning, with the fault's own `fix`.** `DiscoveryFault` carries the
+    code and the fix *"so `ow drivers check` and `ow doctor` print the same code"* (discovery.py).
+    A fault names a source, not always a driver id, so it cannot always be tied to an enabled
+    driver, and D-08 fails only what it can show.
+
+    Two passes: `discover()` for the faults, which `catalog()` does not keep, then `catalog()`.
+    G11 reads the same pair the same way. Neither pass imports a card's entrypoint (INV-4).
+    """
+    from omniweave_core.discovery import catalog, discover  # noqa: PLC0415 -- the verb pays
+
+    faults = discover(env=env, project_root=project_root).faults
+    built = catalog(env=env, project_root=project_root)
+    findings = [
+        DoctorFinding(
+            check="catalog",
+            detail=f"{fault.symbol}: {fault.detail} ({fault.source})",
+            severity="warning",
+            fix=fault.fix or "python tools/ow_drivers.py list",
+        )
+        for fault in faults
+    ]
+    findings.append(
+        DoctorFinding(
+            check="catalog",
+            detail=f"rebuilt: {len(built.cards)} card(s): {', '.join(sorted(built.cards))}",
+            severity="ok",
+            fix="",
+        )
+    )
+    carded = sorted(one for one in enabled if one in built.cards)
+    absent = sorted(one for one in enabled if one not in built.cards)
+    unattested = [one for one in carded if not built.cards[one].attested]
+    if unattested and not allow_unattested:
+        findings.extend(
+            DoctorFinding(
+                check="D-08",
+                detail=(
+                    f"{one} is in [drivers] enabled and its card carries no attestation, so "
+                    "resolve() refuses it as unattested (D576)"
+                ),
+                severity="error",
+                fix=f"{ALLOW_UNATTESTED}=true   # or allow_unattested = true under [drivers]",
+            )
+            for one in unattested
+        )
+        return tuple(findings)
+    waived = f"; attestation waived for {', '.join(unattested)}" if unattested else ""
+    missing = (
+        f"; {len(absent)} enabled id(s) have no installed card and resolve as unavailable: "
+        f"{', '.join(absent)}"
+        if absent
+        else ""
+    )
+    findings.append(
+        DoctorFinding(
+            check="D-08",
+            detail=f"{len(carded)} enabled driver(s) have a valid card{waived}{missing}",
+            severity="ok",
+            fix="",
+        )
+    )
+    return tuple(findings)
+
+
 def run(*, cwd: Path, env: Mapping[str, str], runtime: bool = False) -> DoctorReport:
     """The Action: load the configuration, run every built check, sort the findings three ways.
 
@@ -125,9 +223,22 @@ def run(*, cwd: Path, env: Mapping[str, str], runtime: bool = False) -> DoctorRe
         #  A configuration that does not resolve is 15:1509's exit-1 class. The two digests stay
         #  empty rather than naming a configuration that never existed.
         findings.append(DoctorFinding("config", str(exc), "error", exc.fix))
+        #  D-08 reads `[drivers] enabled`, so it cannot run, and says so rather than going quiet.
+        findings.append(
+            DoctorFinding("D-08", "not run: the configuration did not resolve", "warning", exc.fix)
+        )
     else:
         sources = {key: source.render() for key, source in sorted(resolved.sources.items())}
         config_digest, semantic_digest = resolved.config_digest, resolved.semantic_digest
+        enabled = resolved.get("drivers.enabled")
+        findings.extend(
+            check_driver_cards(
+                env=env,
+                project_root=_project_root(resolved),
+                enabled=[str(one) for one in enabled] if isinstance(enabled, tuple) else [],
+                allow_unattested=resolved.get("drivers.allow_unattested") is True,
+            )
+        )
     findings.append(check_tracked_store(cwd))
     return DoctorReport(
         ok=tuple(one for one in findings if one.severity == "ok"),
@@ -176,6 +287,20 @@ def main(
     for line in render(report):
         stdout.write(line.encode("ascii", "backslashreplace").decode("ascii") + "\n")
     return FAILED if report.failed else OK
+
+
+def _project_root(resolved: config.Config) -> Path | None:
+    """The directory of the `omniweave.toml` that supplied any value, or None when none did.
+
+    `discover()` resolves `.omniweave/drivers/` against it, and takes None as "no project" --
+    it never defaults to the working directory, and neither does this.
+    """
+    from omniweave_core.config import ConfigLayer  # noqa: PLC0415
+
+    for source in resolved.sources.values():
+        if source.layer is ConfigLayer.PROJECT_FILE and source.path is not None:
+            return source.path.parent
+    return None
 
 
 def _quoted(path: str) -> str:
