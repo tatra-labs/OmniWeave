@@ -1,4 +1,4 @@
-"""INV-1's `L` enforcer: the schema lint over the migration set, in three clauses.
+"""INV-1's `L` enforcer: the schema lint over the migration set, in three clauses, plus GR1.
 
 `uv run tools/gate_schema_lint.py` is 16-roadmap.md section 5's P2 exit-criteria line, spelled
 there as "INV-1, the FK-target classification" (16-roadmap.md:454). W2.2 names the three clauses
@@ -25,6 +25,16 @@ positional Block reference)" (16-roadmap.md:415) -- and each has its own specify
   `:272` (*"The only FK target for a Block"*), `:1054` (the identity table's job column, the same
   words) and `:2319`, the `block` DDL's own comment, *"DURABLE surrogate; the only FK target FOR A
   BLOCK"*.
+* **GR1: L3 stores no geometry** (W7.8f). INV-9's `L` enforcer, 01-principles.md:300-301: *"`GR1`
+  greps the graph DDL and the generated `schema.json` for `quad|bbox|poly|x0` and fails on a hit,
+  because no L3 table stores geometry"*, and V01-6's third clause (00-vision.md:707). Clause 2
+  sees geometry only on a table that reaches a Block, and it has no `poly` and no `x0`, so an L3
+  table that reached no Block could hold a bounding box unseen. This clause asks every L3 table,
+  whatever it references. It matches `_`-separated column-name TOKENS, not the DDL text: the
+  graph DDL's own comments say *"No quad column, ever (GR1)"*, and a text grep would fail on the
+  rule's own statement (D613). The `schema.json` half has no subject yet, because no generated
+  schema carries an L3 type. `fragment-v1.json`'s `quad` and `corpora-out-v1.json`'s `*_bbox`
+  enum are L2's.
 
 **Why this is an `L` and not an `X`.** 01-principles.md:74 defines the `L` rung as *"a static scan
 rejects the source"*, and lists a schema lint beside semgrep and `ow route lint`. This gate reads
@@ -187,6 +197,11 @@ BLOCK_SURROGATE = "block_id"
 TEXT_MARKERS = ("text", "html", "markdown", "md")
 GEOMETRY_MARKERS = ("bbox", "quad", "polygon", "geometry")
 SECOND_COPY_MARKERS = TEXT_MARKERS + GEOMETRY_MARKERS
+
+# GR1's four (01-principles.md:300-301), plus the two longer spellings clause 2 already refuses.
+# Matched as whole `_`-separated tokens of a column name, so `anchor_bbox`, `poly` and `x0`
+# are hits and `quadrant` is not.
+L3_GEOMETRY_TOKENS = frozenset({"quad", "bbox", "poly", "x0", "polygon", "geometry"})
 
 # Clause 3b. Only names that unambiguously identify a BLOCK by something other than its surrogate;
 # see the module docstring for why bare `cite` and `addr` are not here.
@@ -729,6 +744,31 @@ def clause_second_text_column(schema: Schema) -> list[Finding]:
     return findings
 
 
+def clause_l3_geometry(schema: Schema) -> list[Finding]:
+    """GR1 -- no geometry column on ANY L3 table, whether or not it reaches a Block."""
+    findings: list[Finding] = []
+    for name, table in sorted(schema.tables.items()):
+        if schema.layer_of.get(name) != "L3":
+            continue
+        for column in table.columns:
+            hits = sorted(set(column.name.lower().split("_")) & L3_GEOMETRY_TOKENS)
+            if not hits:
+                continue
+            findings.append(
+                Finding(
+                    clause="l3-geometry",
+                    subject=f"{name}.{column.name}",
+                    where=f"{table.statement.file.name}:{table.statement.line_of(column.offset)}",
+                    detail=(
+                        f"`{'`, `'.join(hits)}` in a column name on an L3 table. GR1: no L3 table "
+                        f"stores geometry. A mention has a span and its Block has the quad "
+                        f"(06-structure-extraction.md:34)."
+                    ),
+                )
+            )
+    return findings
+
+
 def clause_positional_block_reference(schema: Schema) -> list[Finding]:
     """Clause 3 -- `block_id` is the only FK target for a Block, and the only way to name one."""
     findings: list[Finding] = []
@@ -809,6 +849,7 @@ def audit(root: Path) -> tuple[Schema, list[Finding], list[str]]:
         *fk_findings,
         *clause_second_text_column(schema),
         *clause_positional_block_reference(schema),
+        *clause_l3_geometry(schema),
     ]
     for duplicate in schema.duplicates:
         findings.append(
@@ -837,7 +878,7 @@ def main(
     out: TextIO | None = None,
     root: Path | None = None,
 ) -> int:
-    """Run the three clauses over `root` (default `MIGRATIONS`) and report."""
+    """Run the three clauses and GR1 over `root` (default `MIGRATIONS`) and report."""
     writer = sys.stdout if out is None else out
     arguments: Iterable[str] = sys.argv[1:] if argv is None else argv
     extra = list(arguments)
@@ -896,7 +937,7 @@ def main(
     _emit(
         writer,
         "schema-lint ok  every FK target classified, GR15 holds, no second text column, "
-        "no positional Block reference.",
+        "no positional Block reference, no L3 geometry (GR1).",
     )
     return EXIT_CLEAN
 
