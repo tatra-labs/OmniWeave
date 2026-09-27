@@ -280,10 +280,12 @@ CRITERIA: tuple[Criterion, ...] = (
                 "test_the_declared_formats_are_exactly_the_drivers_media_types",
                 label="the office card's twelve formats",
             ),
+            pytest(
+                f"{CLI}/test_format_classes.py",
+                label="section 2.1's classes against [drivers] enabled cards (W7.8d)",
+            ),
         ),
-        Coverage.PARTIAL,
-        "only the office card's twelve-entry list is checked; nothing maps section 2.1's format "
-        "classes onto `[drivers] enabled` cards or states the named reasons",
+        Coverage.FULL,
     ),
 )
 
