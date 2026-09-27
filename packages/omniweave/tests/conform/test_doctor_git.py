@@ -136,11 +136,13 @@ def test_a_linked_worktree_is_read_through_its_gitdir_file(tmp_path: Path) -> No
 
 
 def _doctor(tree: Path, env: dict[str, str]) -> Captured:
+    """`ow doctor` with D576's opt-in, so its exit measures D-02 and not D-08: by the shipped
+    defaults no first-party card is attested, and D-08 fails every checkout (D612)."""
     return run_captured(
         (sys.executable, "-m", "omniweave", "doctor"),
         stdin=b"",
         cwd=str(tree),
-        env=env,
+        env=env | {"OMNIWEAVE_DRIVERS_ALLOW_UNATTESTED": "true"},
         timeout_s=TIMEOUT_S,
     )
 

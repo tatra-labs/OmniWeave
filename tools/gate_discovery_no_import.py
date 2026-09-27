@@ -22,12 +22,11 @@ does not: `OMNIWEAVE_DRIVER_PATH`, where the hostile module is named by the card
 field rather than by an entry-point value, so a loader that resolved *that* string early would be
 invisible to the entry-point route entirely.
 
-**`ow doctor` does not exist yet**, and this script does not invent it. `packages/omniweave/` is a
-bare skeleton and the CLI is P7's (16-roadmap.md section 10), so the standing pattern is ledger D25:
-the library function lives in the package and a `tools/` script drives it. "`ow doctor` succeeds" is
-asserted here as its two checkable halves -- `catalog()` returns a `Catalog` holding the rogue's
-card, and the process that called it exits 0 -- which is exactly what `ow doctor` will do when it
-wraps this call.
+**`ow doctor` itself is run too, since W7.8e.** Until then it did not exist, and this gate
+asserted "`ow doctor` succeeds" as its two checkable halves: `catalog()` returns a `Catalog` holding
+the rogue's card, and the process that called it exits 0. Those clauses stay, because they are
+what names a broken discovery precisely. Clause 6 now runs `python -m omniweave doctor` over the
+same two rogue installations, and V01-4's sentence is asserted of the verb it names (D612).
 
 **What it reads.** Nothing in the repository. The fixture is built under a temporary directory and
 deleted afterwards: two hostile packages, each with a real `*.dist-info`, a real `entry_points.txt`,
@@ -36,7 +35,7 @@ raises `SystemExit`. The write comes first on purpose. A `SystemExit` can be cau
 that raised halfway is still an import -- INV-4 forbids the execution and not the completion -- so
 the file on disk is the instrument that survives both.
 
-**What it asserts**, five clauses:
+**What it asserts**, six clauses:
 
 1. **the cards were read** -- `catalog().cards` holds both rogue ids, and each card's
    `identity.entrypoint` is the string naming its hostile module. First, because every clause below
@@ -53,6 +52,10 @@ the file on disk is the instrument that survives both.
    `import omniweave_driver_rogue`, must exit **non-zero** and leave the sentinel **present**. A
    gate that can only pass is not a gate: without this clause an inert fixture, a site that was
    never on `sys.path`, and a typo in the module prefix all read as a pass.
+6. **`ow doctor`, as a process** -- `python -m omniweave doctor` over the same installations, with
+   D576's `allow_unattested` opt-in so its exit measures the rogues and not the shipped card's
+   missing attestation. It must exit 0, leave no sentinel, and name both rogue ids on its
+   `catalog` line, which is the vacuity check clause 1 is for the probe (00-vision.md V01-4).
 
 **What is deliberately not asserted.** That no *other* module was imported. A discovery pass imports
 `tomllib`, `importlib.metadata` and the rest of core, so a gate counting `sys.modules` wholesale
@@ -90,14 +93,17 @@ __all__ = [
     "ENTRY_POINT_ID",
     "EXPECTED_ENTRYPOINTS",
     "MODULE_PREFIX",
+    "DoctorRun",
     "Finding",
     "Observation",
     "Site",
     "build_site",
     "check_control",
     "check_discovery",
+    "check_doctor",
     "main",
     "observe",
+    "observe_doctor",
     "run",
 ]
 
@@ -435,6 +441,81 @@ def check_discovery(seen: Observation) -> list[Finding]:
     return findings
 
 
+@dataclass(frozen=True, slots=True)
+class DoctorRun:
+    """What one `python -m omniweave doctor` run over the fixture left behind."""
+
+    returncode: int | None
+    sentinels: tuple[str, ...]
+    stdout: str = ""
+    stderr: str = ""
+
+
+DOCTOR_ENV: dict[str, str] = {"OMNIWEAVE_DRIVERS_ALLOW_UNATTESTED": "true"}
+"""D576's opt-in. Without it `ow doctor` exits 1 on every checkout, because no first-party card is
+attested, and clause 6 would be measuring that rather than the rogues."""
+
+
+def observe_doctor(fixture: Site, project: Path) -> DoctorRun:
+    """Run the verb V01-4 names, from an empty project directory, over the same installations."""
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join([str(fixture.site), env.get("PYTHONPATH", "")]).rstrip(
+        os.pathsep
+    )
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    env["OMNIWEAVE_DRIVER_PATH"] = str(fixture.drivers)
+    env.update(DOCTOR_ENV)
+    project.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(
+        [sys.executable, "-m", "omniweave", "doctor"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=PROBE_TIMEOUT_S,
+        env=env,
+        cwd=project,
+    )
+    found = tuple(sorted(path.name for path in fixture.sentinels.iterdir()))
+    return DoctorRun(proc.returncode, found, proc.stdout, proc.stderr)
+
+
+def check_doctor(seen: DoctorRun) -> list[Finding]:
+    """Clause 6: V01-4's *"`ow doctor` exits 0 and the file is absent"*, of the real verb."""
+    findings: list[Finding] = []
+    catalog_lines = [line for line in seen.stdout.splitlines() if " catalog: rebuilt" in line]
+    missing = [
+        driver_id
+        for driver_id in EXPECTED_ENTRYPOINTS
+        if not any(driver_id in line for line in catalog_lines)
+    ]
+    if missing:
+        findings.append(
+            Finding(
+                "doctor",
+                f"`ow doctor` did not name {', '.join(missing)} on its catalog line, so its exit "
+                f"and the empty sentinel directory say nothing about the rogues. stdout:\n"
+                f"          " + _tail(seen.stdout),
+            )
+        )
+    if seen.returncode != 0:
+        findings.append(
+            Finding(
+                "doctor",
+                f"`ow doctor` exited {seen.returncode} over a machine with two hostile wheels; "
+                f"V01-4 requires 0. stdout and stderr:\n          "
+                + _tail(seen.stdout + "\n" + seen.stderr),
+            )
+        )
+    if seen.sentinels:
+        findings.append(
+            Finding(
+                "doctor",
+                f"a driver module body RAN under `ow doctor`: {', '.join(seen.sentinels)}",
+            )
+        )
+    return findings
+
+
 def check_control(seen: Observation) -> list[Finding]:
     """Clause 5 -- the instruments, shown an import that really happens.
 
@@ -475,12 +556,14 @@ def emit(line: str = "") -> None:
 def run(root: Path) -> list[Finding]:
     """Build the fixture under `root`, run both probes, return every finding.
 
-    Order matters and is not an accident: the discovery pass runs FIRST, over a sentinel directory
-    this function has just created empty. Running the control first would leave its sentinel on
-    disk and clause 3 would then fail on evidence the gate itself planted.
+    Order matters and is not an accident: the discovery pass and `ow doctor` run FIRST, over a
+    sentinel directory this function has just created empty. Running the control first would
+    leave its sentinel on disk, and clauses 3 and 6 would then fail on evidence the gate itself
+    planted.
     """
     fixture = build_site(root)
     findings = check_discovery(observe(fixture, control=False))
+    findings.extend(check_doctor(observe_doctor(fixture, root / "project")))
     findings.extend(check_control(observe(fixture, control=True)))
     return findings
 
@@ -515,7 +598,7 @@ def main(argv: list[str] | None = None) -> int:
 
     emit(
         f"G11 ok  2 rogue installations over 2 routes, catalog built, exit 0, "
-        f"no {MODULE_PREFIX}* import, no module body run."
+        f"no {MODULE_PREFIX}* import, no module body run; `ow doctor` exit 0 over both."
     )
     return 0
 
