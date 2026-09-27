@@ -10,7 +10,7 @@ connection and no process state. Nothing here imports `locks.py` and nothing her
 merge driver registered for that path only. A deleted line stays deleted"* (02-architecture.md:1168;
 the same sentence at 01-principles.md:688, 00-vision.md:583 and glossary.md:811). It is the index's
 **receipt, not the index**: the `.owstore` is a cache, is `.gitignore`d, and a tracked store is
-`OW-S-060` (07-store-and-retrieval.md:3103-3104). The format and the merge semantics are fixed by
+`OW-S-060` (07-store-and-retrieval.md:3101-3102). The format and the merge semantics are fixed by
 07-store-and-retrieval.md section 13.2, "Git, and the merge-driver question -- decided", at
 :3099-3160; the printed fence is :3117-3118.
 
@@ -148,9 +148,10 @@ NOT HERE, and who owns it
 This module is the format and the merge and nothing else: it builds no rows from a store, opens no
 connection, and takes the rows as an argument. `has_conflict_markers` lives here because the
 predicate is a property of the format and INV-21 gives a fact one home; the `OW-S-061` refusal that
-uses it is `ow store verify --lock`'s (07:3151, 15-observability.md:1516), and **`OW-S-061` and
-`OW-S-060` are both absent from `codes.toml`** -- reported, not invented here, which is why every
-`StoreError` below carries the area default symbol and a `fix` rather than a numeric.
+uses it is `ow store verify --lock`'s (07:3151, 15-observability.md:1516), and **`OW-S-061` is
+absent from `codes.toml`** -- reported, not invented here, which is why every `StoreError` below
+carries the area default symbol and a `fix` rather than a numeric. `OW-S-060` was absent too until
+W7.8c gave `ow doctor`'s D-02 its row (D610).
 
 Stdlib only (INV-2, gate G1). No `sqlite3`: ruff's TID251 per-file-ignore covers `store/*.py`, so
 this file COULD take it and has no use for it -- the receipt is text and the rows arrive as values.

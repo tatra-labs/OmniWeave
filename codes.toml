@@ -566,6 +566,20 @@ symbol  = "OW_SCHEMA_SECOND_HOME"
 sites   = ["07-store-and-retrieval.md:3199", "07-store-and-retrieval.md:3211"]
 
 [[code]]
+numeric = "OW-S-060"
+symbol  = "OW_STORE_TRACKED_IN_GIT"
+meaning = "a .owstore file is tracked in git: a corpus committed to a repository"
+fix     = "git rm --cached -- <the tracked .owstore paths>"
+# The symbol is minted here, because the plan allocates the numeric and no symbol. OW-P-022 is the
+# precedent. The `fix` is plan-stated: 15-observability.md:1515 gives D-02's "`OW-S-060`;
+# `git rm --cached`". `ow doctor` prints it with the actual paths filled in.
+#
+# `raised_by` IS DELIBERATELY ABSENT. D-02 REPORTS a `DoctorFinding` and raises nothing, and
+# 02-architecture.md:724's store-open refusal, the one place this code would be raised, is not
+# built. Omitted rather than guessed, as the OW-D rows below explain. W7.8c, D610.
+sites   = ["00-vision.md:717", "02-architecture.md:724", "02-architecture.md:1168", "07-store-and-retrieval.md:3102", "10-interfaces.md:1789", "11-repo-layout.md:90", "14-security.md:887", "14-security.md:1752", "15-observability.md:1515", "17-risks.md:255"]
+
+[[code]]
 numeric = "OW-S-070"
 symbol  = "OW_ERASURE_INCOMPLETE"
 sites   = ["14-security.md:1208", "14-security.md:1749"]
