@@ -262,10 +262,14 @@ CRITERIA: tuple[Criterion, ...] = (
     Criterion(
         "V01-16",
         "ow doctor fails with OW-S-060 on a git-tracked store; .gitignore covers .owstore",
-        (),
-        Coverage.NONE,
-        "`OW-S-060` is not in codes.toml and `ow doctor` does not exist; `.gitignore` has "
-        "`*.owstore*` and no test asserts it",
+        (
+            pytest(f"{CLI}/test_doctor.py", label="D-02 and the ow doctor verb (W7.8c)"),
+            pytest(
+                "packages/omniweave/tests/conform/test_doctor_git.py",
+                label="against real git: a committed store, the shipped .gitignore, this index",
+            ),
+        ),
+        Coverage.FULL,
     ),
     Criterion(
         "V01-17",

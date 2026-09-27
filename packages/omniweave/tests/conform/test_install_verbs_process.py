@@ -97,8 +97,8 @@ def test_an_undispatched_root_still_names_what_is(tmp_path: Path) -> None:
     refused = _ow(tmp_path, "query", "what is indexed")
     assert refused.returncode == 70
     named = (
-        b"only `ow hook`, `ow hooks`, `ow ingest`, `ow install`, `ow serve`, `ow skills`, "
-        b"`ow surface`, `ow uninstall` are"
+        b"only `ow doctor`, `ow hook`, `ow hooks`, `ow ingest`, `ow install`, `ow serve`, "
+        b"`ow skills`, `ow surface`, `ow uninstall` are"
     )
     assert named in refused.stderr
 
