@@ -285,11 +285,54 @@ def test_a_corrupt_card_fires_clause_one_with_the_fault(gate: ModuleType, tmp_pa
     assert "ambush" in findings[0].message, "the fault naming the unparseable card is not reported"
 
 
+# ---------------------------------------------------------------------------
+# clause 6 -- `ow doctor`, as a process (W7.8e, D612)
+# ---------------------------------------------------------------------------
+
+DOCTOR_OUT = (
+    "ok   catalog: rebuilt: 4 card(s): parse.office.anydoc, parse.pdf.pdfium, "
+    "parse.rogue.driverpath, parse.rogue.entrypoint\n"
+    "doctor: passes the 2 check(s) it ran\n"
+)
+
+
+def doctor_run(gate: ModuleType, **overrides: object) -> object:
+    fields: dict[str, object] = {"returncode": 0, "sentinels": (), "stdout": DOCTOR_OUT}
+    fields.update(overrides)
+    return gate.DoctorRun(**fields)
+
+
+def test_a_healthy_doctor_run_produces_no_finding(gate: ModuleType) -> None:
+    assert gate.check_doctor(doctor_run(gate)) == []
+
+
+def test_a_doctor_that_exits_non_zero_is_a_finding(gate: ModuleType) -> None:
+    assert clauses(gate.check_doctor(doctor_run(gate, returncode=1))) == ["doctor"]
+
+
+def test_a_sentinel_left_by_doctor_is_a_finding(gate: ModuleType) -> None:
+    seen = doctor_run(gate, sentinels=("omniweave_driver_ambush.imported",))
+    assert clauses(gate.check_doctor(seen)) == ["doctor"]
+
+
+def test_a_doctor_that_never_saw_the_rogues_is_a_finding(gate: ModuleType) -> None:
+    """The vacuity check: exit 0 and no sentinel mean nothing over a catalog without the rogues."""
+    blind = "ok   catalog: rebuilt: 2 card(s): parse.office.anydoc, parse.pdf.pdfium\n"
+    (finding,) = gate.check_doctor(doctor_run(gate, stdout=blind))
+    assert finding.clause == "doctor"
+    assert "parse.rogue.entrypoint, parse.rogue.driverpath" in finding.message
+
+
+def test_doctor_runs_with_the_d576_opt_in_and_nothing_else(gate: ModuleType) -> None:
+    """Its exit must measure the rogues, not the shipped cards' missing attestation."""
+    assert gate.DOCTOR_ENV == {"OMNIWEAVE_DRIVERS_ALLOW_UNATTESTED": "true"}
+
+
 def test_the_gate_passes_on_this_machine(gate: ModuleType) -> None:
     """The assertion CI makes, made here so it fails on a laptop first.
 
-    This spawns two interpreters and builds two installations; it is the most expensive test in
-    the file and it is the only one that proves the five clauses hold against a real `sys.path`,
+    This spawns three interpreters and builds two installations; it is the most expensive test in
+    the file and it is the only one that proves the six clauses hold against a real `sys.path`,
     a real `importlib.metadata` enumeration and the real `omniweave_core.discovery`.
     """
     assert gate.main([]) == 0

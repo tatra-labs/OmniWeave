@@ -146,9 +146,14 @@ CRITERIA: tuple[Criterion, ...] = (
     Criterion(
         "V01-4",
         "a rogue driver never runs; ow doctor exits 0, the file is absent; 30 cards import nothing",
-        (tool("gate_discovery_no_import.py"),),
-        Coverage.PARTIAL,
-        "`ow doctor` does not exist; the gate stands `discovery.catalog()` in a child in for it",
+        (
+            tool("gate_discovery_no_import.py"),
+            pytest(
+                f"{CORE}/unit/test_discovery_never_imports.py",
+                label="thirty cards discovered, no driver key in sys.modules (INV-4 layer 3)",
+            ),
+        ),
+        Coverage.FULL,
     ),
     Criterion(
         "V01-5",
