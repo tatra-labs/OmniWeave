@@ -26,6 +26,7 @@ Specified in 03-document-model.md sections 2.3, 2.4, 7.1, 7.2, 7.4, 16.2 and 17 
 
 from __future__ import annotations
 
+import ast
 import dataclasses
 import hashlib
 import itertools
@@ -726,6 +727,111 @@ def test_the_bare_eight_int_form_is_the_stores_decode_path() -> None:
     decoded = Quad(0, 0, 10_000, 0, 10_000, 5_000, 0, 5_000)
     assert decoded == _quad([(0, 0), (10, 0), (10, 5), (0, 5)])
     assert len(decoded) == 8
+
+
+# ---------------------------------------------------------------------------
+# 01:1191's grep, implemented: no `Quad(` outside `Quad.from_driver` and the decoders (W7.8f)
+# ---------------------------------------------------------------------------
+
+DECODERS = frozenset(
+    {
+        "packages/omniweave-core/src/omniweave_core/store/doc.py",
+        "packages/omniweave-core/src/omniweave_core/store/portable.py",
+        "packages/omniweave-core/src/omniweave_core/archive/owdoc.py",
+    }
+)
+"""The three sites that turn a stored 8 x i32 value back into a `Quad`: the store's block read,
+the portable export's read, and the `.owdoc` archive's decoder. Each is a decode, and each is
+held to the one decode shape, a single starred argument. `spans.py` defines the type, and
+`from_driver` builds through `cls(...)`, which is the sanctioned constructor itself."""
+
+SPANS = "packages/omniweave-core/src/omniweave_core/model/spans.py"
+
+
+def _quad_constructions(source: str) -> list[tuple[int, str]]:
+    """Every expression in `source` that builds a `Quad` other than through `from_driver`.
+
+    Seen: a call to `Quad`, to `<module>.Quad`, or to a local alias of either (an import `as` or
+    a plain `Q = Quad`), and `Quad._make` / `Quad.__new__`. Not seen: `_replace` on a value
+    already a `Quad`, which a `NamedTuple` gives every instance and a name-based scan cannot type.
+    That is reported in D613 rather than claimed. Each hit is `(line, "decode")` when its only
+    argument is starred, which is the decode shape, and `(line, "synthesis")` otherwise.
+    """
+    tree = ast.parse(source)
+    names = {"Quad"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            names |= {a.asname for a in node.names if a.name == "Quad" and a.asname}
+        elif (
+            isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Name)
+            and node.value.id in names
+        ):
+            names |= {t.id for t in node.targets if isinstance(t, ast.Name)}
+    hits: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        direct = (isinstance(func, ast.Name) and func.id in names) or (
+            isinstance(func, ast.Attribute) and func.attr == "Quad"
+        )
+        raw = (
+            isinstance(func, ast.Attribute)
+            and func.attr in {"_make", "__new__"}
+            and isinstance(func.value, ast.Name | ast.Attribute)
+            and (
+                getattr(func.value, "id", None) in names
+                or getattr(func.value, "attr", None) == "Quad"
+            )
+        )
+        if not (direct or raw):
+            continue
+        decode = direct and len(node.args) == 1 and isinstance(node.args[0], ast.Starred)
+        hits.append((node.lineno, "decode" if decode and not node.keywords else "synthesis"))
+    return hits
+
+
+def test_nothing_in_library_code_synthesizes_a_quad(repo_root: Path) -> None:
+    """INV-9, 01:1191: *"synthesizes a `Quad` ... | grep for `Quad(` outside `Quad.from_driver`"*,
+    and V01-6's second clause (00:707). Every `Quad` built in `packages/*/src` outside `spans.py`
+    is a decode at one of the three decoders, so no library code assembles a rectangle."""
+    wrong: list[str] = []
+    decoders_seen: set[str] = set()
+    for path in sorted(repo_root.glob("packages/*/src/**/*.py")):
+        rel = path.relative_to(repo_root).as_posix()
+        if rel == SPANS:
+            continue
+        for line, form in _quad_constructions(path.read_text(encoding="utf-8")):
+            if rel in DECODERS and form == "decode":
+                decoders_seen.add(rel)
+                continue
+            wrong.append(f"{rel}:{line} ({form})")
+    assert wrong == [], f"a Quad built outside Quad.from_driver and the decoders: {wrong}"
+    assert decoders_seen == DECODERS, "a decoder stopped decoding; shrink DECODERS with it"
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("Quad(0, 0, 1, 0, 1, 1, 0, 1)", [(1, "synthesis")]),
+        ("spans.Quad(*box)", [(1, "decode")]),
+        ("spans.Quad(0, 0, 1, 0, 1, 1, 0, 1)", [(1, "synthesis")]),
+        ("Quad._make(coords)", [(1, "synthesis")]),
+        ("Quad.__new__(Quad, *coords)", [(1, "synthesis")]),
+        ("from omniweave_core.model.spans import Quad as Q\nQ(*coords)", [(2, "decode")]),
+        (
+            "from omniweave_core.model.spans import Quad as Q\nQ(1, 2, 3, 4, 5, 6, 7, 8)",
+            [(2, "synthesis")],
+        ),
+        ("Box = Quad\nBox(1, 2, 3, 4, 5, 6, 7, 8)", [(2, "synthesis")]),
+        ("Quad(*a, *b)", [(1, "synthesis")]),
+        ("Quad.from_driver(pts, origin='topleft', unit='pt', page_h=1, dpi=None, rotation=0)", []),
+        ("Quadrant(1, 2)", []),
+    ],
+)
+def test_the_quad_scan_sees_every_spelling(source: str, expected: list[tuple[int, str]]) -> None:
+    assert _quad_constructions(source) == expected
 
 
 # ---------------------------------------------------------------------------

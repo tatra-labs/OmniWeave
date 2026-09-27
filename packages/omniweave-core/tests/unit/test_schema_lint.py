@@ -589,6 +589,54 @@ def test_clause_3_notices_a_block_primary_key_that_is_not_the_surrogate(
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# GR1 -- L3 stores no geometry (W7.8f)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("column", ["quad", "anchor_bbox", "poly", "x0", "region_polygon"])
+def test_gr1_refuses_geometry_on_an_l3_table_that_reaches_no_block(
+    gate: ModuleType, clean: Path, column: str
+) -> None:
+    """The case clause 2 cannot see: an L3 table with no path to a Block, holding a box.
+    01-principles.md:300-301's four spellings plus `polygon`."""
+    (clean / "0002_graph.sql").write_text(
+        textwrap.dedent(L3).lstrip()
+        + f"CREATE TABLE community (community_id INTEGER PRIMARY KEY, {column} BLOB);\n",
+        encoding="utf-8",
+    )
+    code, report = _run(gate, clean)
+    assert code == gate.EXIT_FAIL
+    assert "l3-geometry" in report
+    assert f"community.{column}" in report
+
+
+def test_gr1_reads_column_tokens_and_not_the_ddl_text(gate: ModuleType, clean: Path) -> None:
+    """The graph DDL says "No quad column, ever (GR1)" in a comment, and `quadrant` contains
+    `quad`. Neither is geometry, and a text grep would fail on both (D613)."""
+    (clean / "0002_graph.sql").write_text(
+        "-- No quad column, ever (GR1). A bbox belongs to the Block.\n"
+        + textwrap.dedent(L3).lstrip()
+        + "CREATE TABLE sector (sector_id INTEGER PRIMARY KEY, quadrant TEXT, polymer TEXT);\n",
+        encoding="utf-8",
+    )
+    code, report = _run(gate, clean)
+    assert code == gate.EXIT_CLEAN, report
+
+
+def test_gr1_leaves_l2_geometry_alone(gate: ModuleType, clean: Path) -> None:
+    """`block.quad` is the one home of a Block's geometry (clause 2's exemption), and GR1 is
+    about L3 only."""
+    assert "l3-geometry" not in _run(gate, clean)[1]
+
+
+def test_gr1_holds_on_the_shipped_graph_ddl(gate: ModuleType) -> None:
+    schema, findings, _deferred = gate.audit(gate.MIGRATIONS)
+    l3 = sorted(name for name, layer in schema.layer_of.items() if layer == "L3")
+    assert l3, "the shipped migration set has no L3 table, so GR1 would hold vacuously"
+    assert [f for f in findings if f.clause == "l3-geometry"] == []
+
+
 def test_the_splitter_keeps_a_trigger_body_whole(gate: ModuleType) -> None:
     """A trigger body's inner `;` is not a statement terminator, and every shipped trigger has one.
 
