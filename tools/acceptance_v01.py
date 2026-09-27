@@ -183,10 +183,17 @@ CRITERIA: tuple[Criterion, ...] = (
     Criterion(
         "V01-8",
         "fifteen absence gates, one fixture each, one ABSENT site; a corrupt block_fts is degraded",
-        (tool("gate_one_absent_site.py"), pytest(f"{CORE}/unit/test_retrieve_verdict.py")),
-        Coverage.PARTIAL,
-        "no test corrupts `block_fts` and asserts the retrieval verdict is `degraded`; the "
-        "per-gate fixtures are predicate inputs, not stores",
+        (
+            tool("gate_one_absent_site.py"),
+            pytest(f"{CORE}/unit/test_retrieve_verdict.py", label="the fifteen, one test each"),
+            pytest(
+                f"{CORE}/unit/test_retrieve_execute.py",
+                "-k",
+                "corrupt_block_fts or store_verify_fts or malformed_match",
+                label="ST8's fault injection: a corrupt block_fts is degraded (W7.8b)",
+            ),
+        ),
+        Coverage.FULL,
     ),
     Criterion(
         "V01-9",
