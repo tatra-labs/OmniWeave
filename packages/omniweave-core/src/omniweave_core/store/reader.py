@@ -340,6 +340,16 @@ exception becomes a Channel status rather than propagating, and it is why the si
 in the first place."* 07:3189 gives the documented fix: `rm index.vec.owstore`.
 """
 
+_FTS_CORRUPT: Final = "fts_corrupt"
+"""07:3187's `lexical: UNAVAILABLE(fts_corrupt)`: the second exception-to-status conversion (D609).
+
+*"`block_fts` corrupt | the Channel's exception boundary ... | `lexical: UNAVAILABLE(fts_corrupt)`,
+`degraded`. ST8's fault-injection test asserts exactly this rather than `absent`."* 07:1373-1376
+calls the sidecar's the ONE such place, and 07:3187 and ST8 require this one too; the more
+specific rule is followed and the conflict is D609's. `ow store verify --fts`'s integrity-check is
+the remedy's first step, and `ow store repair` its second.
+"""
+
 _HUB_CAPPED: Final = "hub_capped"
 """The `Degradation.kind` an over-`hub_cap` block sets (07:1351), row 19 of the closed twenty-seven.
 
@@ -1340,7 +1350,15 @@ class SqliteReader:
         if spec.name == "identity":
             outcome = self._identity(connection, spec, n)
         elif spec.name == "lexical":
-            outcome = self._lexical(connection, spec, n)
+            #  07:3187's exception boundary, and the narrowest one that holds: `DatabaseError` is
+            #  SQLITE_CORRUPT's Python class, and `OperationalError` -- its subclass, raised by a
+            #  malformed MATCH -- is re-raised: that is a sanitiser bug and not a store fact.
+            try:
+                outcome = self._lexical(connection, spec, n)
+            except sqlite3.OperationalError:
+                raise
+            except sqlite3.DatabaseError:
+                return ChannelOutcome(name=spec.name, status="unavailable", reason=_FTS_CORRUPT)
         elif spec.name == "structural":
             outcome = self._structural(connection, spec, n)
         elif spec.name == "semantic":
