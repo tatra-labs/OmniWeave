@@ -44,6 +44,7 @@ from omniweave_core.store import migrate
 from omniweave_core.store import reader as rd
 from omniweave_core.store import sqlite as ow
 from omniweave_core.store.types import Coverage, Expand, Filters
+from omniweave_core.store.verify import ClauseState, VerifyClause, verify_store
 
 NOW_NS = 1_757_400_000_000_000_000
 DIGEST = b"\x00" * 16
@@ -193,6 +194,51 @@ def test_nothing_matching_in_a_whole_corpus_is_absent_and_citable(built: Built) 
     assert response.hits == ()
     assert response.verdict.state is VerdictState.ABSENT
     assert response.verdict.citable_as_absence
+
+
+def test_a_corrupt_block_fts_is_degraded_and_never_absent(built: Built) -> None:
+    """ST8 and V01-8's fault injection, 07:3187's row verbatim in effect: *"`block_fts` corrupt |
+    the Channel's exception boundary | `lexical: UNAVAILABLE(fts_corrupt)`, `degraded`. ST8's
+    fault-injection test asserts exactly this rather than `absent`."*
+
+    The same question the test above answers `absent` on a healthy store. Here FTS5's structure
+    record is overwritten -- a real `SQLITE_CORRUPT`-class failure, raised by the engine at
+    `MATCH` -- and a missing posting must not read as a missing phrase (07:433). D609."""
+    _seed(built)
+    built.writer.execute("UPDATE block_fts_data SET block = X'DEADBEEFDEADBEEF' WHERE id = 10")
+    built.writer.commit()
+    response = _ask(built, Query(text="unicorn"))
+    verdict = response.verdict
+    assert response.hits == ()
+    assert verdict.state is VerdictState.DEGRADED, verdict.state
+    assert verdict.channels["lexical"] is ChannelStatus.UNAVAILABLE
+    assert "channel_unavailable" in verdict.gates
+    assert not verdict.citable_as_absence
+    (cause,) = [one for one in verdict.degraded_because if one.gate == "channel_unavailable"]
+    assert "lexical is unavailable: fts_corrupt" in cause.detail
+
+
+def test_the_same_corruption_fails_store_verify_fts(built: Built) -> None:
+    """07:3187's other detector, on the same fault: *"`integrity-check` in `ow store verify
+    --fts`"*. The Channel boundary keeps a query honest; this is what names the store as the
+    thing to repair, so the two must see the same corruption (D609)."""
+    _seed(built)
+    built.writer.execute("UPDATE block_fts_data SET block = X'DEADBEEFDEADBEEF' WHERE id = 10")
+    built.writer.commit()
+    report = verify_store(built.writer, now_ns=NOW_NS, clauses=[VerifyClause.FTS_INTEGRITY])
+    assert report.by_clause(VerifyClause.FTS_INTEGRITY).state is ClauseState.FAILED
+
+
+def test_a_malformed_match_is_raised_and_never_read_as_corruption(
+    built: Built, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The boundary's other edge. `OperationalError` is `DatabaseError`'s subclass and is what an
+    FTS5 syntax error raises: a sanitiser bug, not a store fact. Converting it would report a
+    healthy index as corrupt and hide the bug, so it propagates (D609)."""
+    _seed(built)
+    monkeypatch.setattr(rd, "_fts_match", lambda _terms: '"unbalanced')
+    with pytest.raises(sqlite3.OperationalError):
+        _ask(built, Query(text="terminate"))
 
 
 def test_no_ingest_scope_row_is_degraded_and_never_absent(built: Built) -> None:
