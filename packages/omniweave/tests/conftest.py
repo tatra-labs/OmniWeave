@@ -1,5 +1,5 @@
 """The `omniweave` distribution's fixtures: one re-export, a reason it is a re-export, and the
-one fixture this distribution owns.
+two fixtures this distribution owns.
 
 `packages/omniweave-core/tests/conftest.py` is this repository's one reader over `_plan/`. It
 builds `PlanDocs` from the workspace root, skips the tests that need it when `_plan/` is absent
@@ -25,16 +25,25 @@ one fixture without a test-support package neither of them ships.
 released build carries it, the one catalog under which `resolve()` grants seam S1. Two test modules
 drive S1, one through `pipeline.inproc_host` and one through a whole `ow ingest`, and a copy in
 each would be two answers to what "released" means.
+
+`git_index` is the other: a git index built byte by byte from git's `index-format.txt`. Both
+`test_doctor_gitindex.py` and `test_doctor.py` write indexes, and the format should have one
+spelling in the test tree, as it has one in `omniweave.doctor.gitindex` (W7.8c).
 """
 
 from __future__ import annotations
 
 import dataclasses
 import importlib.util
+import struct
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
 
 _CORE_CONFTEST = Path(__file__).resolve().parents[2] / "omniweave-core" / "tests" / "conftest.py"
 _MODULE = "omniweave_core_tests_conftest"
@@ -51,7 +60,15 @@ migrations = sys.modules[_MODULE].migrations
 plan = sys.modules[_MODULE].plan
 repo_root = sys.modules[_MODULE].repo_root
 
-__all__ = ["PlanDocs", "migrations", "plan", "released_catalog", "repo_root"]
+__all__ = [
+    "GitIndex",
+    "PlanDocs",
+    "git_index",
+    "migrations",
+    "plan",
+    "released_catalog",
+    "repo_root",
+]
 
 OFFICE = "parse.office.anydoc"
 
@@ -82,3 +99,78 @@ def released_catalog() -> object:
         trust={**shipped.trust, OFFICE: TrustTier.FIRST_PARTY},
         tombstones=shipped.tombstones.values(),
     )
+
+
+class GitIndex:
+    """git's index format, written: the inverse of `omniweave.doctor.gitindex.parse_index`."""
+
+    REGULAR = 0o100644
+    DIRECTORY = 0o040000
+
+    @staticmethod
+    def varint(value: int) -> bytes:
+        """git's `encode_varint` (`varint.c`): each continuation byte stands for one more."""
+        out = [value & 0x7F]
+        value >>= 7
+        while value:
+            value -= 1
+            out.append(0x80 | (value & 0x7F))
+            value >>= 7
+        return bytes(reversed(out))
+
+    @classmethod
+    def entry(
+        cls,
+        path: bytes,
+        *,
+        version: int,
+        previous: bytes = b"",
+        hash_bytes: int = 20,
+        extended: bool = False,
+        mode: int = REGULAR,
+    ) -> bytes:
+        """One entry: stat data, object id, flags, the extended word if set, then the path."""
+        stat = struct.pack(">10I", 0, 0, 0, 0, 0, 0, mode, 0, 0, 0)
+        flags = min(len(path), 0xFFF) | (0x4000 if extended else 0)
+        head = stat + b"\x11" * hash_bytes + struct.pack(">H", flags)
+        if extended:
+            head += struct.pack(">H", 0x2000)  # intent-to-add, the flag `git add -N` sets
+        if version == 4:
+            common = 0
+            while common < min(len(path), len(previous)) and path[common] == previous[common]:
+                common += 1
+            return head + cls.varint(len(previous) - common) + path[common:] + b"\0"
+        body = head + path
+        return body + b"\0" * (8 - len(body) % 8)
+
+    @classmethod
+    def build(
+        cls,
+        paths: Sequence[bytes],
+        *,
+        version: int = 2,
+        hash_bytes: int = 20,
+        extended: frozenset[bytes] = frozenset(),
+        modes: Mapping[bytes, int] | None = None,
+        extensions: bytes = b"",
+    ) -> bytes:
+        """A whole index: header, `paths` in order, `extensions` verbatim, a zero checksum."""
+        out = b"DIRC" + struct.pack(">II", version, len(paths))
+        previous = b""
+        for path in paths:
+            out += cls.entry(
+                path,
+                version=version,
+                previous=previous,
+                hash_bytes=hash_bytes,
+                extended=path in extended,
+                mode=(modes or {}).get(path, cls.REGULAR),
+            )
+            previous = path
+        return out + extensions + b"\0" * hash_bytes
+
+
+@pytest.fixture
+def git_index() -> type[GitIndex]:
+    """The index writer, as a fixture because a test module cannot import a sibling (TID252)."""
+    return GitIndex

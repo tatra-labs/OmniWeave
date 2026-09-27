@@ -1,4 +1,4 @@
-"""`python -m omniweave`: `hook`, the install roots, `serve`, `ingest` and `surface`.
+"""`python -m omniweave`: `hook`, the install roots, `serve`, `ingest`, `surface` and `doctor`.
 
 This file did not exist before W7.4i, and its absence was a defect in a cell that claimed otherwise.
 `posttool.command()` falls back to `python -m omniweave ingest` and its docstring called that
@@ -14,7 +14,8 @@ step 5 here, then the server through the `omniweave.serve` entry point (`omniwea
 which is the command 10:1675's MCP entry runs (D460). `ow ingest` is W7.3w's: the drain, run as far
 as this build can take it (hops 1-4 of 02 section 4.1), parsed by its own module as `hook` is,
 because 18:928 hides it as 18:923 hides `hook` (D565). `ow surface emit` is W7.1e's: G25's step,
-and the command every generated header names (D334). The other roots in `cli.COMMANDS` are
+and the command every generated header names (D334). `ow doctor` is W7.8c's: the checks this
+build can run, and the list of those it cannot (D610). The other roots in `cli.COMMANDS` are
 refused, on stderr, with `InternalError`'s exit -- 10:2185's *"anything else"*, the only row in the
 taxonomy that does not assert something about a store or an argument that would be false here. The
 refusal is spelled out rather than silent, because the one thing worse than a command that does not
@@ -53,14 +54,16 @@ _INGEST_ROOT: Final[str] = "ingest"
 
 _SURFACE_ROOT: Final[str] = "surface"
 
+_DOCTOR_ROOT: Final[str] = "doctor"
+
 DISPATCHED: Final[frozenset[str]] = frozenset(
-    {HOOK_WORD, *_INSTALL_ROOTS, _SERVE_ROOT, _INGEST_ROOT, _SURFACE_ROOT}
+    {HOOK_WORD, *_INSTALL_ROOTS, _SERVE_ROOT, _INGEST_ROOT, _SURFACE_ROOT, _DOCTOR_ROOT}
 )
 """The roots this build can run. `ingest` joined in W7.3w; nothing spawns it yet (D433, D554).
-`surface` joined in W7.1e (D334)."""
+`surface` joined in W7.1e (D334), `doctor` in W7.8c (D610)."""
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0911 -- one return per root
     """Route each dispatched root to its entry point; refuse everything else with exit 70."""
     args = list(sys.argv[1:] if argv is None else argv)
     if args and args[0] == HOOK_WORD:
@@ -75,6 +78,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _ingest(args[1:])
     if args and args[0] == _SURFACE_ROOT:
         return _surface(args)
+    if args and args[0] == _DOCTOR_ROOT:
+        return _doctor(args)
 
     from omniweave_core.errors import InternalError  # noqa: PLC0415 -- only the refusal pays
 
@@ -118,6 +123,14 @@ def _surface(args: list[str]) -> int:
     from omniweave.gen.verb import main as run  # noqa: PLC0415 -- the hook path never pays
 
     return run(args, stdout=sys.stdout, stderr=sys.stderr)
+
+
+def _doctor(args: list[str]) -> int:
+    from omniweave.doctor import main as run  # noqa: PLC0415 -- the hook path never pays
+
+    #  The fifth read of the working directory under D435's exemption: D-02 asks about the git
+    #  work tree the operator is standing in, and `./omniweave.toml` is found by walking up.
+    return run(args, cwd=Path.cwd(), env=os.environ, stdout=sys.stdout, stderr=sys.stderr)
 
 
 if __name__ == "__main__":
