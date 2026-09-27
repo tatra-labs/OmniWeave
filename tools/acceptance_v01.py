@@ -174,10 +174,13 @@ CRITERIA: tuple[Criterion, ...] = (
     Criterion(
         "V01-6",
         "Locus.reason iff quad is None; only Quad.from_driver reached; no quad/bbox/poly L3 column",
-        (tool("gate_schema_lint.py"), pytest(f"{CORE}/unit/test_model_spans.py")),
+        (
+            tool("gate_schema_lint.py"),
+            pytest(f"{CORE}/unit/test_model_spans.py", label="Quad and 01:1191's scan (W7.8f)"),
+        ),
         Coverage.PARTIAL,
-        "no `Locus` type exists; nothing enforces `Quad.from_driver` as the only constructor; the "
-        "schema lint covers tables that reach a Block, not every L3 table, and has no bare `poly`",
+        "no `Locus` type and no `locate()` exist, so `reason` iff `quad is None` has no subject; "
+        "the Quad scan and GR1 over every L3 table landed in W7.8f",
     ),
     Criterion(
         "V01-7",
