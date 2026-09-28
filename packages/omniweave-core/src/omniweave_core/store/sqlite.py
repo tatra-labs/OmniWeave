@@ -528,6 +528,19 @@ def connect_readonly(
     )
     try:
         _apply(connection, READONLY_PRAGMAS)
+    except sqlite3.OperationalError:
+        connection.close()
+        raise
+    except sqlite3.DatabaseError as error:
+        #  A file that is there and is not a database: the first pragma reads its header and says
+        #  "file is not a database", which names no path and no remedy -- the missing file's case
+        #  above, one step later. Translated for the same reason, so every read verb reports it
+        #  (and `store.card.inspect()` lists it `readable: false`) rather than a traceback (D617).
+        connection.close()
+        raise StoreError(
+            f"{path} is not a readable store: {error}",
+            fix="move it aside and rebuild the corpus: ow index build",
+        ) from error
     except BaseException:
         connection.close()
         raise

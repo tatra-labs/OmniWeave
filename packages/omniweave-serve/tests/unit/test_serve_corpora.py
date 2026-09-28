@@ -181,7 +181,10 @@ def test_list_filters_by_exact_name_or_prefix_wildcard(tmp_path: Path) -> None:
 
 def test_list_is_capped_at_64_and_says_so(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """10:1023. The cap is patched down so the test builds three stores and not sixty-five."""
-    monkeypatch.setattr(corpora_module, "CORPORA_LIST_MAX", 2)
+    from omniweave_core.store import card as store_card  # noqa: PLC0415
+
+    #  The cap is the document's, and the document is core's since W7.8j.
+    monkeypatch.setattr(store_card, "CORPORA_LIST_MAX", 2)
     corpora = {name: _store(tmp_path / f"{name}.owstore") for name in ("a", "b", "c")}
     document = _json(_caller(corpora))
     assert len(document["corpora"]) == 2
