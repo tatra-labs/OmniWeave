@@ -8,7 +8,10 @@ moved there from `omniweave_serve.corpora`, so the CLI and the server print one 
 10:101-102) and neither imports the other (02:356).
 
 **What is served**, by flag:
-- `<name>`: one declared corpus, or a prefix ending in `*` for `list` (10:1027-1028).
+- `<name>`: one declared corpus, or a prefix ending in `*` for `list` (10:1027-1028). The global
+  `--corpus` names it too, on either side of the verb: the positional shares its `dest` and, since
+  W7.8q, declines a default, so it no longer overwrites the flag (D617, D624). Written both ways,
+  the last one wins, as a repeated `--corpus` does.
 - `--detail list` (the default), `card` and `coverage`: 10:1007-1011's modes, the documents
   `ow_corpora` returns. A store that will not open is a row with `readable: false`, never an
   error (10:1031-1032).
@@ -20,9 +23,6 @@ moved there from `omniweave_serve.corpora`, so the CLI and the server print one 
 
 **What is refused by name**, each exit 1, because a flag parsed and ignored answers a different
 question than the one asked (`ow query`'s rule, D614):
-- `--corpus`: the generated parser gives `ow corpora`'s positional and the global flag one `dest`,
-  and the positional's default overwrites the flag, so `ow corpora --corpus x` would list every
-  corpus (D617). The positional is the spelling 18:912 prints.
 - `--summarize`: it writes an LLM-written abstract, and no summariser is wired (10:1089);
 - `--scope`: `corpus.coverage`'s scope; core's coverage reads the whole corpus;
 - `--quiet`: 10:1542-1545 has each Action declare its one scalar, and `corpora` declares none;
@@ -56,7 +56,6 @@ __all__ = ["CORPORA_WORD", "actions_document", "main"]
 CORPORA_WORD: Final[str] = "corpora"
 
 _SCHEMA: Final[int] = 1
-_FLAG: Final[str] = "--corpus"
 
 
 def main(
@@ -73,7 +72,7 @@ def main(
         return parsed
     as_json = parsed.render == "json"
     try:
-        return _corpora(parsed, argv=argv, env=env, cwd=cwd, stdout=stdout)
+        return _corpora(parsed, env=env, cwd=cwd, stdout=stdout)
     except OwError as error:
         if as_json:
             stdout.write(json.dumps(error_object(error), ensure_ascii=False) + "\n")
@@ -85,12 +84,11 @@ def main(
 def _corpora(
     parsed: argparse.Namespace,
     *,
-    argv: Sequence[str],
     env: Mapping[str, str],
     cwd: Path,
     stdout: TextIO,
 ) -> int:
-    _refuse_unserved(parsed, argv)
+    _refuse_unserved(parsed)
     if parsed.detail == "actions":
         document = actions_document()
     else:
@@ -104,7 +102,7 @@ def _corpora(
     return 0
 
 
-def _refuse_unserved(parsed: argparse.Namespace, argv: Sequence[str]) -> None:
+def _refuse_unserved(parsed: argparse.Namespace) -> None:
     """Every flag this build parses and cannot honour, refused by name, before a store is read."""
     named = [
         flag
@@ -115,8 +113,6 @@ def _refuse_unserved(parsed: argparse.Namespace, argv: Sequence[str]) -> None:
         )
         if value
     ]
-    if any(word == _FLAG or word.startswith(f"{_FLAG}=") for word in argv):
-        named.insert(0, _FLAG)
     if parsed.render in ("jsonl", "rows"):
         named.append(f"--render {parsed.render}")
     if named:

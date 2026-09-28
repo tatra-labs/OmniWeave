@@ -22,11 +22,11 @@ makes, rendered to stdout (D616). `ow corpora` is W7.8j's: the documents `ow_cor
 returns, built by core for both (D617). `ow explain` is W7.8k's: a register row or an exit
 status, read from `codes.toml` and nothing else (D618). `ow doc` is W7.8n's: `grid` reads one
 table's `Grid` back from the store, and `diff` is refused by name (D621). Every root in
-`cli.COMMANDS` now dispatches. A word that is not a root is refused, on stderr, with
-`InternalError`'s exit -- 10:2185's *"anything else"*, the only row in the taxonomy that does not
-assert something about a store or an argument that would be false here. The
-refusal is spelled out rather than silent, because the one thing worse than a command that does not
-work is one that exits 0 having done nothing.
+`cli.COMMANDS` now dispatches. A word that is not a root is the generated tree's usage error,
+exit 1, which is 10:1484's *"usage or configuration error"* (D624). `InternalError`'s exit 70,
+10:2185's *"anything else"*, is left for a root the tree parses and no branch below routes: a
+build defect, spelled out rather than silent, because the one thing worse than a command that
+does not work is one that exits 0 having done nothing.
 
 **`hook` is routed first and imports nothing else.** A hook runs on every prompt and has a deadline
 (G26); the install verbs import the generated parser, the registry and the engine, and are imported
@@ -37,7 +37,7 @@ only when their root is asked for. The hook engine itself is imported only for `
 the thirteen roots to dispatch, because an `ow` on every PATH that refused most of `ow --help`
 would have been worse than none. The thirteenth, `ow doc`, dispatched in W7.8n.
 
-**Three words before a root are handled here, and they are what V01-3 times:**
+**Three words before a root are handled here, and two of them are what V01-3 times:**
 - `ow --version` prints `RELEASE`, `CONTRACT` and `SCHEMA` on one line (11:704), importing
   `omniweave_core.contract` and nothing else, against 11:680's 150 ms.
 - `ow --help` (and `-h`) prints the generated tree's help, importing the tree and nothing else,
@@ -45,8 +45,12 @@ would have been worse than none. The thirteenth, `ow doc`, dispatched in W7.8n.
 - `ow` alone is a usage error, exit 1, naming `ow --help`: a command line with no command did
   nothing, and a script that ran it should not read 0.
 
-Any other flag before the root is refused as usage, because the roots parse their own global
-flags and this build does not re-order a command line (D619).
+**A global flag before the root is routed, not refused** (W7.8q, D624). 18:887 accepts the eight
+*"before or after the verb, on every command"*, and the generated tree does: every node carries
+them. So a command line that starts with a flag is parsed once by the tree, the root it names is
+read from `ow_group`, and that root gets the command line unchanged, which it parses again the
+same way. Nothing is re-ordered. `hook` and `ingest` parse their own arguments and are not in the
+tree, so a flag before either is the tree's own usage error, exit 1.
 """
 
 from __future__ import annotations
@@ -69,7 +73,8 @@ the two are equal."""
 
 _VERSION_WORDS: Final[frozenset[str]] = frozenset({"--version"})
 
-_HELP_WORDS: Final[frozenset[str]] = frozenset({"--help", "-h"})
+_ARGPARSE_USAGE: Final[int] = 2
+"""argparse's exit for a parse error, which 10:1484 spells 1."""
 
 _INSTALL_ROOTS: Final[frozenset[str]] = frozenset({"install", "uninstall", "hooks", "skills"})
 
@@ -115,8 +120,8 @@ W7.8h (D615), `open` in W7.8i (D616), `corpora` in W7.8j (D617), `explain` in W7
 (D618), and `doc` in W7.8n (D621)."""
 
 
-def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0911, PLR0912 -- one per root
-    """Route each dispatched root to its entry point; refuse everything else with exit 70."""
+def main(argv: Sequence[str] | None = None) -> int:
+    """Route each dispatched root to its entry point; everything else is the tree's to parse."""
     args = list(sys.argv[1:] if argv is None else argv)
     if args and args[0] == HOOK_WORD:
         from omniweave.hooks.main import entry  # noqa: PLC0415 -- only the hook pays for it
@@ -126,37 +131,45 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0911, PLR0912 --
         return entry(args[1:], cwd=Path.cwd())
     if args and args[0] in _VERSION_WORDS:
         return _version()
-    if not args or args[0].startswith("-"):
-        return _tree(args)
-    if args and args[0] in _INSTALL_ROOTS:
+    if args and args[0] in DISPATCHED:
+        return _route(args[0], args)
+    return _tree(args)
+
+
+def _route(root: str, args: list[str]) -> int:  # noqa: PLR0911 -- one per root
+    """Run `root` over `args`, the whole command line after `ow`, or refuse it with exit 70.
+
+    `args` starts at the root word unless `_tree` routed a command line that starts with a global
+    flag. Every root below but `ingest` parses `args` through the tree, which reads both.
+    """
+    if root in _INSTALL_ROOTS:
         return _install(args)
-    if args and args[0] == _SERVE_ROOT:
+    if root == _SERVE_ROOT:
         return _serve(args)
-    if args and args[0] == _INGEST_ROOT:
+    if root == _INGEST_ROOT:
         return _ingest(args[1:])
-    if args and args[0] == _SURFACE_ROOT:
+    if root == _SURFACE_ROOT:
         return _surface(args)
-    if args and args[0] == _DOCTOR_ROOT:
+    if root == _DOCTOR_ROOT:
         return _doctor(args)
-    if args and args[0] == _QUERY_ROOT:
+    if root == _QUERY_ROOT:
         return _query(args)
-    if args and args[0] == _ADD_ROOT:
+    if root == _ADD_ROOT:
         return _add(args)
-    if args and args[0] == _OPEN_ROOT:
+    if root == _OPEN_ROOT:
         return _open(args)
-    if args and args[0] == _CORPORA_ROOT:
+    if root == _CORPORA_ROOT:
         return _corpora(args)
-    if args and args[0] == _EXPLAIN_ROOT:
+    if root == _EXPLAIN_ROOT:
         return _explain(args)
-    if args and args[0] == _DOC_ROOT:
+    if root == _DOC_ROOT:
         return _doc(args)
 
     from omniweave_core.errors import InternalError  # noqa: PLC0415 -- only the refusal pays
 
-    #  `ascii()`, because stderr is cp1252 in a piped child on Windows (D431) and `root` is argv.
-    root = ascii(args[0]) if args else "nothing"
+    #  `!a`, because stderr is cp1252 in a piped child on Windows (D431) and `root` is argv.
     known = ", ".join(f"`ow {one}`" for one in sorted(DISPATCHED))
-    sys.stderr.write(f"ow: {root} is not dispatched by this build; only {known} are.\n")
+    sys.stderr.write(f"ow: {root!a} is not dispatched by this build; only {known} are.\n")
     return InternalError.EXIT
 
 
@@ -169,28 +182,25 @@ def _version() -> int:
 
 
 def _tree(args: list[str]) -> int:
-    """`ow --help`, `ow` alone, and a flag before the root: the generated tree answers the first.
+    """`ow --help`, `ow` alone, and a command line that starts with a global flag.
 
-    argparse's help exits 0 and its parse error exits 2, which is 10:1484's 1 here.
+    The generated tree parses it once. Help exits 0, and a parse error exits argparse's 2, which is
+    10:1484's 1 here. A parse that names no root is `ow` with no command. One that does is routed,
+    with `args` unchanged (D624).
     """
-    from omniweave.cli import build_parser  # noqa: PLC0415 -- `--version` never pays for it
+    from omniweave.cli import GROUP_DEST, build_parser  # noqa: PLC0415 -- `--version` never pays
 
-    if args and args[0] in _HELP_WORDS:
-        try:
-            build_parser().parse_args(args)
-        except SystemExit as stop:
-            return stop.code if isinstance(stop.code, int) else 0
-        return 0
-    usage = build_parser().format_usage()
-    if not args:
-        sys.stderr.write(usage + "ow: no command given; `ow --help` lists them\n")
-    else:
-        #  `!a`, as the refusal below uses `ascii()`: a piped child's stderr is cp1252 (D431).
-        sys.stderr.write(
-            usage + f"ow: {args[0]!a} comes before the command, and this build reads a "
-            "global flag only after it: ow <command> [flags]\n"
-        )
-    return 1
+    parser = build_parser()
+    try:
+        parsed = parser.parse_args(args)
+    except SystemExit as stop:
+        code = stop.code if isinstance(stop.code, int) else 0
+        return 1 if code == _ARGPARSE_USAGE else code
+    root = getattr(parsed, GROUP_DEST, None)
+    if root is None:
+        sys.stderr.write(parser.format_usage() + "ow: no command given; `ow --help` lists them\n")
+        return 1
+    return _route(str(root), args)
 
 
 def _install(args: list[str]) -> int:
