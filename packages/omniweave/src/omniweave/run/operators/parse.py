@@ -615,7 +615,7 @@ class ParseOperator:
             cache_key=row.cache_key,
             produced=tuple(produced),
             partial_reason="the driver reported a partial document" if partial else None,
-            metrics=StepMetrics(rows_written=decoded.blocks),
+            metrics=StepMetrics(rows_written=decoded.blocks, peak_rss_bytes=_peak_of(reply, slot)),
         )
 
     def _unsettled(
@@ -960,6 +960,18 @@ def _declared(card: DriverCard) -> Capabilities:
             fix=f"ow drivers verify {card.identity.id}",
         )
     return Capabilities(**{name: getattr(caps, name) for name in names if hasattr(caps, name)})
+
+
+def _peak_of(reply: Reply, slot: int) -> int:
+    """The worker's sampled peak for one unit, from its `DriverResult` (04:1765). 0 when absent.
+
+    `subproc.Worker` writes the host's sample over the driver's own figure, so this is the number
+    `work.peak_rss_bytes` keeps (`COMPLETE_SQL`'s `MAX`). An in-process driver's result carries the
+    driver's own report, which for every first-party driver is 0 (D629).
+    """
+    results = reply.report.results if reply.report is not None else ()
+    found = results[slot] if slot < len(results) else None
+    return 0 if found is None else max(0, int(found.metrics.peak_rss_bytes))
 
 
 def _source_of(verdict: object) -> Any:

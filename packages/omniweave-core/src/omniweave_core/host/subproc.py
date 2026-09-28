@@ -150,10 +150,11 @@ missing control into one `IsolationShortfall` naming the control and the OS:
   one of them is benign: the job object covers the whole tree, so the reap and the address-space
   cap are unaffected -- which is exactly the argument 04-driver-system.md:1728 makes for reaping
   a group rather than a process -- but `peak_rss_bytes(proc.pid)` then samples the trampoline
-  and reads a few megabytes whatever the driver allocates. The watchdog's number is therefore
-  only as good as the spawn's shape, and a caller that spawns through a trampoline is sampling
-  the wrong process. Recorded, not papered over: the tree-wide answer is the job object's
-  `PeakJobMemoryUsed`, which 04:1751's Windows cell does not name, so it is not claimed here.
+  and reads a few megabytes whatever the driver allocates -- measured at 3.5 MB against the
+  310 MB its interpreter held (D629). So `Worker.peak_rss()` samples EVERY process the job holds
+  and takes the largest: the same `PeakWorkingSetSize` 04:1751's Windows cell names, read from the
+  process that actually did the work. `PeakJobMemoryUsed` is not used, because it is committed
+  memory summed over the tree, which is a different quantity from any RSS row in 12 section 4.1.
 * **RSS sampling is psapi, not `getrusage`.** There is no `resource` module on Windows, so no
   `RLIMIT_AS`, no `RLIMIT_DATA`, no `RLIMIT_CPU`, no `RLIMIT_NOFILE` and no `os.nice`.
   `tools/measure_store.py:410-436` already solved peak-RSS sampling here and `peak_rss_bytes()`
@@ -193,7 +194,7 @@ import subprocess  # S4. TID251 is per-file-ignored for this path in pyproject.t
 import sys
 import threading
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from types import MappingProxyType
 from typing import ClassVar, Final, NamedTuple, Protocol
@@ -2734,6 +2735,7 @@ class Worker:
         "_key",
         "_last_used_ms",
         "_now_ms",
+        "_peak",
         "_proc",
         "_reader",
         "_settings",
@@ -2762,6 +2764,7 @@ class Worker:
         self._reader = FrameReader(channel)
         self._last_used_ms = now_ms()
         self._stopped = False
+        self._peak: int | None = None
 
     @property
     def key(self) -> WorkerKey:
@@ -2782,6 +2785,24 @@ class Worker:
     @property
     def reader(self) -> FrameReader:
         return self._reader
+
+    def peak_rss(self) -> tuple[int | None, str]:
+        """The largest peak working set of any process this worker's job holds, and how.
+
+        With no job (POSIX, where the spawn is the interpreter itself) it is the child's own. The
+        running maximum is kept on the worker, because procfs reports the CURRENT resident set and
+        only a maximum over the 250 ms samples approximates a peak there (`peak_rss_bytes`).
+        """
+        pids = self._job.pids() if self._job is not None and not self._job.closed else ()
+        samples = [peak_rss_bytes(pid) for pid in pids or (self._proc.pid,)]
+        values = [value for value, _how in samples if value is not None]
+        if not values:
+            return (None, samples[0][1] if samples else "no process to sample")
+        self._peak = max(self._peak or 0, *values)
+        how = (
+            samples[0][1] if len(samples) == 1 else f"{samples[0][1]}, max over {len(samples)} pids"
+        )
+        return (self._peak, how)
 
     def touch(self) -> None:
         """Mark the worker used now. What `worker_idle_ttl_s` is measured from."""
@@ -2855,7 +2876,7 @@ class Worker:
                 verdict=HostVerdict.timed_out(fired, elapsed_ms=countdown.elapsed_ms(now)),
             )
         if memory_mb > 0:
-            observed, _how = peak_rss_bytes(self._proc.pid)
+            observed, _how = self.peak_rss()
             if observed is not None and observed > memory_mb * 1_048_576:
                 return _Awaited(
                     frame=None,
@@ -2980,7 +3001,7 @@ class Worker:
                 )
             index = _unit_index(frame, count=count, worker=self)
             outcome, verdict = _result_of(frame)
-            results[index] = outcome
+            results[index] = _with_peak(outcome, self.peak_rss()[0])
             failures[index] = verdict
             if verdict is not None:
                 event = _event_for(verdict)
@@ -3107,6 +3128,20 @@ def _unit_index(frame: wire.Frame, *, count: int, worker: Worker) -> int:
             fix="kill the worker; a RESULT for a unit outside the INVOKE is not trusted",
         )
     return raw
+
+
+def _with_peak(result: DriverResult | None, peak: int | None) -> DriverResult | None:
+    """`DriverMetrics.peak_rss_bytes` as the HOST sampled it (04:1765, 14:474-475).
+
+    *"`DriverMetrics.peak_rss_bytes` carries the sampled peak into the ledger so an OOM is
+    diagnosable before it happens"* -- the host's sample, and not the driver's own figure, which is
+    a claim by the process being bounded. A driver's value survives only where the host could not
+    sample at all. The peak is the worker's since it started, so a unit late in a long-lived worker
+    carries the largest of every unit before it, and never less than its own (D629).
+    """
+    if result is None or peak is None:
+        return result
+    return replace(result, metrics=replace(result.metrics, peak_rss_bytes=peak))
 
 
 def _result_of(frame: wire.Frame) -> tuple[DriverResult | None, HostVerdict | None]:

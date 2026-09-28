@@ -3356,3 +3356,91 @@ def test_a_result_whose_produced_is_malformed_is_a_protocol_error(
     a `ValueError` out of the ports constructor would be an unnamed error crossing the seam."""
     with pytest.raises(DriverHostError, match=message):
         sp._result_of(_result({"produced": produced}, body))
+
+
+# =============================================================================================
+# The sampled peak: the job's largest process, and the ledger's number (D629)
+# =============================================================================================
+
+
+class _FakeJob:
+    """The two members `Worker.peak_rss()` reads off a `JobObject`."""
+
+    def __init__(self, pids: tuple[int, ...]) -> None:
+        self._pids = pids
+        self.closed = False
+
+    def pids(self) -> tuple[int, ...]:
+        return self._pids
+
+
+def test_the_peak_is_the_largest_process_in_the_job_and_never_falls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A `uv` venv's `python.exe` is a launcher: the job holds it and the interpreter it starts,
+    and only the second one holds what the driver allocates. Procfs reports the current set, so
+    the worker keeps the running maximum."""
+    readings = {11: [3_500_000, 3_500_000], 12: [310_000_000, 120_000_000]}
+    monkeypatch.setattr(sp, "peak_rss_bytes", lambda pid: (readings[pid].pop(0), "psapi"))
+    worker, _proc, _clock = worker_on(FakeChannel(), proc=FakeProcess(pid=11))
+    worker._job = _FakeJob((11, 12))  # type: ignore[assignment]
+    assert worker.peak_rss() == (310_000_000, "psapi, max over 2 pids")
+    assert worker.peak_rss()[0] == 310_000_000, "a lower second sample does not lower the peak"
+
+
+def test_with_no_job_the_child_itself_is_sampled_and_no_sample_is_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    worker, _proc, _clock = worker_on(FakeChannel(), proc=FakeProcess(pid=11))
+    monkeypatch.setattr(sp, "peak_rss_bytes", lambda pid: (None, f"OpenProcess({pid}) failed"))
+    assert worker.peak_rss() == (None, "OpenProcess(11) failed")
+    monkeypatch.setattr(sp, "peak_rss_bytes", lambda _pid: (40_000_000, "psapi"))
+    assert worker.peak_rss() == (40_000_000, "psapi")
+
+
+def test_a_result_carries_the_host_s_sample_over_the_driver_s_own_figure() -> None:
+    """04:1765: *"`DriverMetrics.peak_rss_bytes` carries the sampled peak into the ledger"*. The
+    driver's figure is a claim by the process being bounded, and survives only unsampled."""
+    from omniweave_ports.types import DriverMetrics, DriverResult  # noqa: PLC0415
+
+    claimed = DriverResult(outcome="ok", produced=(), metrics=DriverMetrics(peak_rss_bytes=7))
+    sampled = sp._with_peak(claimed, 42_000_000)
+    assert sampled is not None
+    assert sampled.metrics.peak_rss_bytes == 42_000_000
+    assert sp._with_peak(claimed, None) is claimed
+    assert sp._with_peak(None, 1) is None
+
+
+@WINDOWS_ONLY
+def test_a_trampoline_s_own_peak_is_megabytes_and_the_job_s_is_the_interpreter() -> None:
+    """The measurement D629 rests on, repeated: `sys.executable` in this venv is a launcher, so
+    sampling `Popen.pid` reads megabytes while the interpreter it started holds the allocation."""
+    child = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import time; x = bytearray(200_000_000); x[::4096] = b'1' * len(x[::4096]); "
+            "print('ready', flush=True); time.sleep(5)",
+        ],
+        stdout=subprocess.PIPE,
+    )
+    job = sp.JobObject()
+    try:
+        job.assign(child.pid)
+        assert child.stdout is not None
+        assert child.stdout.readline().strip() == b"ready"
+        worker, _proc, _clock = worker_on(FakeChannel(), proc=FakeProcess(pid=child.pid))
+        worker._job = job
+        peak, _how = worker.peak_rss()
+        assert peak is not None
+        assert peak > 150_000_000
+        if len(job.pids()) > 1:
+            own, _why = sp.peak_rss_bytes(child.pid)
+            assert own is not None
+            assert own < 50_000_000, "the launcher itself, which is what the pid-only sample read"
+    finally:
+        job.terminate()
+        child.wait(timeout=10)
+        if child.stdout is not None:
+            child.stdout.close()
+        job.close()

@@ -32,7 +32,7 @@ lands, in the same commit, which is how `tools/gates.toml` moves `runner_planned
 Run it:
 
     uv run tools/acceptance_v01.py              # every row but the slow one
-    uv run tools/acceptance_v01.py --slow       # V01-10's 5,000-page measurement too (minutes)
+    uv run tools/acceptance_v01.py --slow       # V01-10/11's 5,000-page measurement (minutes)
     uv run tools/acceptance_v01.py --only V01-3,V01-12
     uv run tools/acceptance_v01.py --json
 
@@ -227,10 +227,9 @@ CRITERIA: tuple[Criterion, ...] = (
     Criterion(
         "V01-11",
         "peak RSS on the 5,000-page fixture <= 1,610,612,736 bytes +/- 10%",
-        (),
+        (),  # replaced by `_with_workspace`: the same run as V01-10's, reused
         Coverage.NONE,
-        "`measure_store.py` prints peak RSS as informational and compares it to nothing (D26); "
-        "`ow bench`'s rss subject is blocked",
+        "placeholder",
     ),
     Criterion(
         "V01-12",
@@ -313,26 +312,46 @@ CRITERIA: tuple[Criterion, ...] = (
 
 
 def _with_workspace(workspace: Path) -> tuple[Criterion, ...]:
-    """V01-10's row, with its measurement pointed at a scratch directory rather than the tree."""
+    """V01-10's and V01-11's rows, over ONE real-driver run kept in a scratch directory.
+
+    Both read `measure_store.py --driver pdfium` (D629): `ow add` over the 5,000-page fixture, the
+    product's store sized for V01-10 and the worker's sampled peak for V01-11. `--reuse` makes the
+    second row size the first row's kept project rather than ingest again, and the first row that
+    runs -- either one under `--only` -- is the one that ingests.
+    """
+
+    def measured(gate: str) -> Instrument:
+        return tool(
+            "measure_store.py",
+            "--driver",
+            "pdfium",
+            gate,
+            "--reuse",
+            "--workspace",
+            str(workspace / "store"),
+            "--out",
+            str(workspace / "gen_5000p.pdf"),
+            slow=True,
+        )
+
     v0110 = Criterion(
         "V01-10",
         CRITERIA[9].text,
-        (
-            tool(
-                "measure_store.py",
-                "--gate",
-                "--workspace",
-                str(workspace / "store"),
-                "--out",
-                str(workspace / "gen_5000p.pdf"),
-                slow=True,
-            ),
-        ),
+        (measured("--gate"),),
         Coverage.PARTIAL,
-        "measured through the stub parser, not a real driver, and labelled an indication rather "
-        "than a budget until `ow-bench-1` exists (D25, D31)",
+        "measured through `ow add` and parse.pdf.pdfium, and an indication rather than a budget "
+        "until `ow-bench-1` exists (D25, D31)",
     )
-    return (*CRITERIA[:9], v0110, *CRITERIA[10:])
+    v0111 = Criterion(
+        "V01-11",
+        CRITERIA[10].text,
+        (measured("--gate-rss"),),
+        Coverage.PARTIAL,
+        "the worker's peak, an indication until `ow-bench-1` (D25). The row is anydoc's fork "
+        "tripwire and anydoc refuses a PDF, and pdfium's card caps its worker at memory_mb = 1024, "
+        "under the row, so the row cannot fire on the driver that parses this fixture (D629)",
+    )
+    return (*CRITERIA[:9], v0110, v0111, *CRITERIA[11:])
 
 
 # ---------------------------------------------------------------------------
@@ -392,7 +411,7 @@ def main(argv: list[str] | None = None) -> int:
         prog="acceptance_v01", description=(__doc__ or "").split("\n", 1)[0]
     )
     parser.add_argument(
-        "--slow", action="store_true", help="also run V01-10's 5,000-page measurement"
+        "--slow", action="store_true", help="also run V01-10 and V01-11's 5,000-page measurement"
     )
     parser.add_argument("--only", default="", help="comma-separated criterion ids")
     parser.add_argument("--json", action="store_true", help="print the results as JSON")
