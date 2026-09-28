@@ -56,7 +56,16 @@ if TYPE_CHECKING:
     from omniweave_core.answer.render import Answer
     from omniweave_core.config import Config
 
-__all__ = ["ABSENT_EXIT", "DEGRADED_EXIT", "FAIL_ON", "QUERY_WORD", "answer_json", "main"]
+__all__ = [
+    "ABSENT_EXIT",
+    "DEGRADED_EXIT",
+    "FAIL_ON",
+    "QUERY_WORD",
+    "answer_json",
+    "error_object",
+    "main",
+    "parse",
+]
 
 QUERY_WORD: Final[str] = "query"
 
@@ -81,7 +90,7 @@ def main(
     stderr: TextIO,
 ) -> int:
     """`ow query ...` from argv (starting at the root word). The exit is 10 section 6.2's."""
-    parsed = _parse(argv, stderr)
+    parsed = parse(argv, stderr)
     if isinstance(parsed, int):
         return parsed
     as_json = parsed.render == "json"
@@ -89,7 +98,7 @@ def main(
         return _query(parsed, env=env, cwd=cwd, stdout=stdout)
     except OwError as error:
         if as_json:
-            stdout.write(json.dumps(_error_object(error), ensure_ascii=False) + "\n")
+            stdout.write(json.dumps(error_object(error), ensure_ascii=False) + "\n")
         else:
             stderr.write(f"ow: {error.numeric() or error.code()}: {error}\n  fix: {error.fix}\n")
         return type(error).EXIT
@@ -108,7 +117,7 @@ def _query(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, std
         raise NotFoundError(
             f"corpus {name!r} has no store at {store} yet: nothing has been ingested into it",
             symbol="OW_CORPUS_NOT_FOUND",
-            fix=f"ow ingest --corpus {name} <path>",
+            fix=f"ow add --corpus {name} <path>",
         )
     retrieval = _retrieve(store, parsed)
     try:
@@ -213,8 +222,11 @@ def _corpus(config: Config, wanted: str | None) -> str:
     return name
 
 
-def _parse(argv: Sequence[str], stderr: TextIO) -> argparse.Namespace | int:
-    """The namespace, or the parser's exit: `--help` is 0 and a parse error is 1 (10:1484)."""
+def parse(argv: Sequence[str], stderr: TextIO) -> argparse.Namespace | int:
+    """The namespace, or the parser's exit: `--help` is 0 and a parse error is 1 (10:1484).
+
+    Any root of the generated tree; `ow add` parses through it too (W7.8h).
+    """
     from omniweave.cli import build_parser  # noqa: PLC0415 -- only a CLI verb pays for the tree
 
     try:
@@ -225,7 +237,7 @@ def _parse(argv: Sequence[str], stderr: TextIO) -> argparse.Namespace | int:
         return _USAGE if code == _ARGPARSE_USAGE else code
 
 
-def _error_object(error: OwError) -> dict[str, Any]:
+def error_object(error: OwError) -> dict[str, Any]:
     """10:1539-1540's error object: `{"schema":1,"error":{code, symbol, message, fix}}`."""
     return {
         "schema": _ERROR_SCHEMA,

@@ -55,7 +55,7 @@ if TYPE_CHECKING:
 
     from omniweave_core.config import Config
 
-__all__ = ["INGEST_WORD", "main", "parser"]
+__all__ = ["INGEST_WORD", "contained", "main", "parser", "root_of"]
 
 INGEST_WORD: Final[str] = "ingest"
 
@@ -124,13 +124,13 @@ def _ingest(
     name = _corpus(config, parsed.corpus)
     store = Path(stores(config, [name], cwd=cwd)[name])
     source = Path(stores(config, [name], cwd=cwd, field="source")[name])
-    paths = tuple(_contained(Path(raw), source=source, cwd=cwd) for raw in parsed.paths)
+    paths = tuple(contained(Path(raw), source=source, cwd=cwd) for raw in parsed.paths)
     report = ingest(
         store,
         config=config,
         source_root=source,
-        output_root=_root(config, "roots.output", cwd),
-        cache_root=_root(config, "roots.cache", cwd),
+        output_root=root_of(config, "roots.output", cwd),
+        cache_root=root_of(config, "roots.cache", cwd),
         argv=["ingest", *argv],
         paths=paths,
         scope=parsed.scope,
@@ -173,13 +173,17 @@ def _corpus(config: Config, wanted: str | None) -> str:
     return name
 
 
-def _contained(raw: Path, *, source: Path, cwd: Path) -> Path:
-    """A path argument resolved against `cwd`, and refused outside the corpus's source root."""
+def contained(raw: Path, *, source: Path, cwd: Path, verb: str = "ow ingest") -> Path:
+    """A path argument resolved against `cwd`, and refused outside the corpus's source root.
+
+    `ow add` makes the same test with its own name in the refusal (W7.8h), so the two verbs that
+    walk a path cannot disagree about which paths they will walk.
+    """
     resolved = (raw if raw.is_absolute() else cwd / raw).resolve()
     root = source.resolve()
     if resolved != root and root not in resolved.parents:
         raise PolicyRefusal(
-            f"{raw} is outside the corpus source root {root}, and ow ingest will not walk it",
+            f"{raw} is outside the corpus source root {root}, and {verb} will not walk it",
             symbol="OW_PATH_OUTSIDE_ROOTS",
             fix=f"move it under {root}, or set [corpora.<name>] source to a root that holds it",
         )
@@ -188,7 +192,7 @@ def _contained(raw: Path, *, source: Path, cwd: Path) -> Path:
     return resolved
 
 
-def _root(config: Config, key: str, cwd: Path) -> Path:
+def root_of(config: Config, key: str, cwd: Path) -> Path:
     """`[roots] output` or `cache`, resolved by `stores()`'s D527 rule for a `path` key."""
     raw = Path(str(config.get(key)))
     declared = config.source_of(key).path
