@@ -1109,3 +1109,35 @@ def test_blobs_source_imports_no_sqlite3_no_lazy_name_and_no_banned_ambient_inpu
             elif isinstance(func, ast.Name):
                 called.add(func.id)
     assert called.isdisjoint(banned_calls), sorted(called & banned_calls)
+
+
+def test_a_put_of_bytes_the_cas_holds_succeeds_while_a_reader_has_them_open(
+    store: BlobStore,
+) -> None:
+    """D628. Step 3's overwrite is a no-op on POSIX and ERROR_ACCESS_DENIED on Windows when another
+    handle holds the object open. The name is the digest, so the object already holds the bytes:
+    the put returns the digest, leaves the object as it was, and strands no temp file.
+
+    The first writer to meet it was a retained part, `put` from a stream opened on the very object
+    it names -- the PDF driver's `pdf/source.pdf`, which `_stage()` had already put.
+    """
+    body = b"%PDF-1.7 retained part\n"
+    digest = store.put(io.BytesIO(body))
+    with store.open(digest) as reader:
+        assert store.put(reader) == digest
+    assert store.path(digest).read_bytes() == body
+    assert list(store.tmp_root.iterdir()) == []
+
+
+def test_a_denied_replace_with_no_object_there_still_raises(
+    store: BlobStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The fallback is for an object that exists. A denied rename onto nothing is a real failure."""
+
+    def denied(_self: Path, target: Path) -> Path:
+        raise PermissionError(errno.EACCES, "denied", str(target))
+
+    monkeypatch.setattr(Path, "replace", denied)
+    with pytest.raises(PermissionError):
+        store.put(io.BytesIO(b"never stored"))
+    assert list(store.tmp_root.iterdir()) == []

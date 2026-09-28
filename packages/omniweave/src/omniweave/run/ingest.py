@@ -726,6 +726,8 @@ class _RoutingInputs:
     catalog: Catalog
     policy: RoutePolicy
     resolving: Policy
+    computers: Mapping[str, str] = field(default_factory=dict)
+    """`evidence.Installed.computers`: the providers whose package ships a computer (D628)."""
 
 
 def _routing_inputs(config: Config) -> _RoutingInputs:
@@ -740,12 +742,14 @@ def _routing_inputs(config: Config) -> _RoutingInputs:
     )
     from omniweave.route.policy import builtin_layer, compile_policy  # noqa: PLC0415
 
-    registry = build_registry((*builtin_specs(), *installed_specs(distributions()).specs))
+    installed = installed_specs(distributions())
+    registry = build_registry((*builtin_specs(), *installed.specs))
     return _RoutingInputs(
         registry=registry,
         catalog=build_catalog(),
         policy=compile_policy([builtin_layer()], registry=registry),
         resolving=resolve_policy(config),
+        computers=dict(installed.computers),
     )
 
 
@@ -767,6 +771,7 @@ def _route(
         resolving=inputs.resolving,
         source_root=str(roots.source),
         now_ms=clock.wall_ns() // 1_000_000,
+        computers=inputs.computers,
     )
 
 

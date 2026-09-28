@@ -151,7 +151,7 @@ def egress_refusal(event: str, *, armed: bool) -> str | None:
 
 
 def install_egress_guard(*, armed: bool) -> None:
-    """`sys.addaudithook`, once per process. Called by `serve()` and by nothing else."""
+    """`sys.addaudithook`, once per process. Called by `serve()` and by `host.signals.main()`."""
 
     def hook(event: str, args: tuple[object, ...]) -> None:
         del args
