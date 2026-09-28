@@ -262,10 +262,16 @@ CRITERIA: tuple[Criterion, ...] = (
     Criterion(
         "V01-15",
         "first_answer_seconds <= 600: ow install -> ow add -> ow query, cited, 100 office docs",
-        (),
-        Coverage.NONE,
-        "no clean-machine script exists (W7.7c); `ow add` is not dispatched (`ow query` is, since "
-        "W7.8g), and the reference corpora do not exist (D602)",
+        (
+            pytest(
+                "packages/omniweave/tests/conform/test_add_process.py",
+                label="ow add -> ow query as two children: one DOCX parsed, then cited (W7.8h)",
+            ),
+        ),
+        Coverage.PARTIAL,
+        "the path runs and cites, and nothing times it: no clean-machine script exists (W7.7c), "
+        "`ow install` is not on it, the reference corpora do not exist (D602), and a DOCX cite "
+        "carries no page (D615)",
     ),
     Criterion(
         "V01-16",
