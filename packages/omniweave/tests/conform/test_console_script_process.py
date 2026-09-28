@@ -39,8 +39,8 @@ def test_ow_and_omniweave_are_one_script_printing_one_version_line() -> None:
     assert ow.stdout.decode("ascii").startswith(f"omniweave {RELEASE}  contract ")
 
 
-def test_the_script_dispatches_a_root_and_refuses_the_one_that_is_not() -> None:
+def test_the_script_dispatches_a_root_and_refuses_a_word_that_is_not_one() -> None:
     assert _script("ow", "explain", "OW-A-013").returncode == 0
-    refused = _script("ow", "doc", "grid", "d1#2")
+    refused = _script("ow", "frobnicate")
     assert refused.returncode == 70
     assert b"not dispatched" in refused.stderr
