@@ -98,13 +98,22 @@ from dataclasses import dataclass, field, replace
 from enum import Enum
 from itertools import pairwise
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, Literal, get_args, get_origin, get_type_hints
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Final,
+    Literal,
+    NamedTuple,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 from omniweave_core.archive.owcheck import BlockFacts as OwcheckFacts
 from omniweave_core.archive.owcheck import Generation, owcheck
 from omniweave_core.archive.owdoc import GridRow
 from omniweave_core.canonical import canonical, ow128
-from omniweave_core.errors import ModelError, ResourceLimit
+from omniweave_core.errors import ModelError, ResourceLimit, StoreError
 from omniweave_core.identity import content_digest as ow_content_digest
 from omniweave_core.limits import (
     MAX_BLOCK_DEPTH,
@@ -116,7 +125,15 @@ from omniweave_core.limits import (
     MAX_PAYLOAD_BYTES,
     MAX_X_BYTES,
 )
-from omniweave_core.model.block import Addr, BlockDraft, BlockId, Capabilities, Cite, Mark
+from omniweave_core.model.block import (
+    Addr,
+    BlockDraft,
+    BlockId,
+    Capabilities,
+    CellPos,
+    Cite,
+    Mark,
+)
 from omniweave_core.model.enums import (
     ENUM_DOMAINS,
     MAX_TRUST_BY_METHOD,
@@ -171,6 +188,9 @@ __all__ = [
     "SCORE_KIND_UNREGISTERED",
     "TRUST_CLAMPED",
     "DocSink",
+    "block_kind",
+    "head_documents",
+    "read_grid",
 ]
 
 
@@ -2671,3 +2691,115 @@ class _Rebind:
                 "INSERT OR IGNORE INTO block_asset(block_id, asset_id, role) VALUES(?,?,?)",
                 (old_id, *row),
             )
+
+
+# ---------------------------------------------------------------------------
+# The read-back of one table: `table_meta` + `cell` -> `Grid`. W7.8n.
+# ---------------------------------------------------------------------------
+
+
+def block_kind(connection: sqlite3.Connection, block_id: int) -> str | None:
+    """One block's `kind` by name, or `None` when no such block exists. For a refusal's text."""
+    row = connection.execute("SELECT kind FROM block WHERE block_id = ?", (block_id,)).fetchone()
+    return None if row is None else _kind_at(int(row[0])).value
+
+
+_HEAD_BATCH: Final = 500
+
+
+def head_documents(connection: sqlite3.Connection, uris: Sequence[str]) -> list[dict[str, object]]:
+    """`add-out-v1`'s `AddCompleted` rows: each uri's head document, in the order given.
+
+    `doc_ord`, the head `gen`, `page_count` (0 when unknown), the live block count through
+    `ow_block_head`, and `achieved.origin_span`. A uri with no `doc` row is absent. Moved here from
+    `omniweave.surface.add` (W7.8h), which ran it in the surface; INV-17 keeps it in the store
+    (D621).
+    """
+    rows: dict[str, dict[str, object]] = {}
+    for start in range(0, len(uris), _HEAD_BATCH):
+        chunk = tuple(uris[start : start + _HEAD_BATCH])
+        marks = ",".join("?" * len(chunk))
+        for uri, doc_ord, gen, pages, achieved, blocks in connection.execute(
+            "SELECT d.uri, d.doc_ord, d.gen, d.page_count, d.achieved, "  # noqa: S608
+            "(SELECT count(*) FROM ow_block_head AS b WHERE b.doc_ord = d.doc_ord) "
+            f"FROM doc AS d WHERE d.uri IN ({marks})",
+            chunk,
+        ):
+            span = json.loads(str(achieved)).get("origin_span", "none")
+            rows[str(uri)] = {
+                "uri": str(uri),
+                "doc_ord": int(doc_ord),
+                "gen": int(gen),
+                "pages": int(pages or 0),
+                "blocks": int(blocks),
+                "achieved_origin_span": str(span),
+            }
+    return [rows[uri] for uri in uris if uri in rows]
+
+
+class _StoredCell(NamedTuple):
+    """One `cell` row in `build_grid`'s `CellDraft` shape (03:337: `id: BlockId; pos: CellPos`)."""
+
+    id: int
+    pos: CellPos
+
+
+def read_grid(connection: sqlite3.Connection, block_id: int) -> tuple[int, Grid] | None:
+    """The `Grid` of the table `block_id` is, or of the table the cell `block_id` sits in.
+
+    `(table_id, grid)`, or `None` when the block is neither a table nor a cell of one -- the
+    caller owns that refusal, because only it knows which ref the user wrote.
+
+    **The grid is rebuilt by `build_grid()`, the sole constructor** (03:1880), from the stored
+    origin cells in row-major order. `add_grid` wrote those rows from the same builder's
+    `cells()`, after its clamps, so rebuilding them reproduces the grid that was written -- and
+    that is checked: a rebuilt `row_len`, `n_cols` or `has_merges` that disagrees with
+    `table_meta` is a torn table, and it is raised rather than returned, because a cover map that
+    silently differs from the stored shape would break the exactly-once invariant a reader relies
+    on (03:1895-1900). `grid_slot` is not read: when `has_merges` is 1 it is derived from `cell`
+    (03:1902-1907), which is exactly what the rebuild does.
+    """
+    from omniweave_core.model.grid import build_grid  # noqa: PLC0415 -- the read path only
+
+    table = connection.execute(
+        "SELECT block_id FROM table_meta WHERE block_id = ? "
+        "UNION ALL SELECT table_id FROM cell WHERE block_id = ?",
+        (block_id, block_id),
+    ).fetchone()
+    if table is None:
+        return None
+    table_id = int(table[0])
+    meta = connection.execute(
+        "SELECT n_rows, n_cols, row_len, header_rows, header_cols, kind, recon_strategy, "
+        "recon_score, has_merges, native_part, native_sha256 FROM table_meta WHERE block_id = ?",
+        (table_id,),
+    ).fetchone()
+    cells = (
+        _StoredCell(int(row[0]), CellPos(int(row[1]), int(row[2]), int(row[3]), int(row[4])))
+        for row in connection.execute(
+            "SELECT block_id, r, c, row_span, col_span FROM cell WHERE table_id = ? ORDER BY r, c",
+            (table_id,),
+        )
+    )
+    n_rows, n_cols, row_len, header_rows, header_cols, kind, strategy, score, merges = meta[:9]
+    native_part, native_sha256 = meta[9:]
+    grid = build_grid(
+        cells,
+        header_rows=int(header_rows),
+        header_cols=int(header_cols),
+        kind=_MEMBER["table_kind", int(kind)].value,
+        recon=None
+        if strategy is None
+        else (str(strategy), None if score is None else float(score)),
+        native=None if native_part is None else (str(native_part), bytes(native_sha256 or b"")),
+        diag=lambda _diag: None,
+    )
+    stored = (int(n_rows), int(n_cols), tuple(json.loads(row_len)), bool(merges))
+    rebuilt = (grid.n_rows, grid.n_cols, grid.row_len, grid.has_merges)
+    if rebuilt != stored:
+        raise StoreError(
+            f"table {table_id}'s stored shape (n_rows, n_cols, row_len, has_merges) = {stored} "
+            f"and the shape its cells rebuild to = {rebuilt} disagree: the table is torn",
+            fix="re-ingest the document: ow ingest --corpus <name> <path>",
+        )
+    return table_id, grid

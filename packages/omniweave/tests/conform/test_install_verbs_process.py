@@ -93,15 +93,14 @@ def test_g25_runs_as_the_command_the_exit_criterion_types(tmp_path: Path) -> Non
 def test_an_undispatched_root_still_names_what_is(tmp_path: Path) -> None:
     (tmp_path / "home").mkdir()
     (tmp_path / "proj").mkdir()
-    #  `serve` was the example until W7.3p dispatched it, `query` until W7.8g, `add` until
-    #  W7.8h, `open` until W7.8i, `corpora` until W7.8j and `explain` until W7.8k; `doc` is the
-    #  last root still refused.
-    refused = _ow(tmp_path, "doc", "grid")
+    #  Every root of the generated tree dispatches since W7.8n, so the example is a word that
+    #  is no root at all.
+    refused = _ow(tmp_path, "frobnicate")
     assert refused.returncode == 70
     named = (
-        b"only `ow add`, `ow corpora`, `ow doctor`, `ow explain`, `ow hook`, `ow hooks`, "
-        b"`ow ingest`, `ow install`, `ow open`, `ow query`, `ow serve`, `ow skills`, "
-        b"`ow surface`, `ow uninstall` are"
+        b"only `ow add`, `ow corpora`, `ow doc`, `ow doctor`, `ow explain`, `ow hook`, "
+        b"`ow hooks`, `ow ingest`, `ow install`, `ow open`, `ow query`, `ow serve`, "
+        b"`ow skills`, `ow surface`, `ow uninstall` are"
     )
     assert named in refused.stderr
 

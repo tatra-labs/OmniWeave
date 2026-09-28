@@ -53,7 +53,7 @@ from omniweave.surface.startup import corpora, declared_corpus
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Iterator, Mapping, Sequence
+    from collections.abc import Mapping, Sequence
 
     from omniweave_core.acquire import Added
     from omniweave_core.config import Config
@@ -81,7 +81,6 @@ NOT_DRAINED: Final[str] = "not_drained"
 DRY_RUN: Final[str] = "dry_run"
 
 _SETTLED: Final[str] = "settled"
-_BATCH: Final[int] = 500
 _COST_CLASS: Final[str] = "free"
 _REFUSED_FIX: Final[str] = "omit it; this build ingests local files at no cost and waits for them"
 
@@ -248,57 +247,21 @@ def _drain(
     return report.lines()
 
 
-def _chunks(items: Sequence[str]) -> Iterator[Sequence[str]]:
-    for start in range(0, len(items), _BATCH):
-        yield items[start : start + _BATCH]
-
-
 def _states(store: Path, uris: Sequence[str]) -> dict[str, str]:
     """Step (c): where each queued unit stopped, read after the drain returned."""
-    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+    from omniweave_core.acquire import unit_states  # noqa: PLC0415
 
-    connection = store_sqlite.connect_readonly(store)
-    try:
-        out: dict[str, str] = {}
-        for chunk in _chunks(uris):
-            marks = ",".join("?" * len(chunk))
-            out.update(
-                (str(uri), str(state))
-                for uri, state in connection.execute(
-                    f"SELECT unit_uri, state FROM unit WHERE unit_uri IN ({marks})",  # noqa: S608
-                    tuple(chunk),
-                )
-            )
-        return out
-    finally:
-        connection.close()
+    return unit_states(store, uris)
 
 
 def _completed(store: Path, uris: Sequence[str]) -> list[dict[str, Any]]:
     """`add-out-v1`'s `AddCompleted` rows: each settled unit's head document, by `doc.uri`."""
     from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+    from omniweave_core.store.doc import head_documents  # noqa: PLC0415
 
     connection = store_sqlite.connect_readonly(store)
     try:
-        rows: dict[str, dict[str, Any]] = {}
-        for chunk in _chunks(uris):
-            marks = ",".join("?" * len(chunk))
-            for uri, doc_ord, gen, pages, achieved, blocks in connection.execute(
-                "SELECT d.uri, d.doc_ord, d.gen, d.page_count, d.achieved, "  # noqa: S608
-                "(SELECT count(*) FROM ow_block_head AS b WHERE b.doc_ord = d.doc_ord) "
-                f"FROM doc AS d WHERE d.uri IN ({marks})",
-                tuple(chunk),
-            ):
-                span = json.loads(str(achieved)).get("origin_span", "none")
-                rows[str(uri)] = {
-                    "uri": str(uri),
-                    "doc_ord": int(doc_ord),
-                    "gen": int(gen),
-                    "pages": int(pages or 0),
-                    "blocks": int(blocks),
-                    "achieved_origin_span": str(span),
-                }
-        return [rows[uri] for uri in uris if uri in rows]
+        return [dict(row) for row in head_documents(connection, uris)]
     finally:
         connection.close()
 

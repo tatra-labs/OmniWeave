@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import dataclasses
 import importlib.util
+import json
 import struct
 import sys
 from pathlib import Path
@@ -262,5 +263,91 @@ def seeded_store() -> Callable[..., Path]:
         finally:
             writer.close()
         return path
+
+    return make
+
+
+def _table_block(
+    conn: sqlite3.Connection, block_id: int, kind: str, text: str | None, parent: int | None
+) -> None:
+    producer = int(conn.execute("SELECT producer_id FROM producer").fetchone()[0])
+    conn.execute(
+        "INSERT INTO block(block_id, doc_ord, gen, page, addr, cite, ord, kind, layer, parent_id, "
+        "                  label, text, content_digest, os_kind, producer_id, method, trust, "
+        "                  quote, origin_operator, origin_driver, driver_schema_v, "
+        "                  restriction_bits, state) "
+        "VALUES(?, 1, 1, 1, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, 2, 4, 'op.parse', 'drv', 1, "
+        "       0, 0)",
+        (
+            block_id,
+            f"p1/{block_id}",
+            f"d1#{block_id}",
+            block_id,
+            _enum_code(conn, "kind", kind),
+            _enum_code(conn, "layer", "body"),
+            parent,
+            text,
+            SEED_DIGEST,
+            _enum_code(conn, "origin_span_kind", "none"),
+            producer,
+            _enum_code(conn, "method", "native"),
+        ),
+    )
+
+
+@pytest.fixture
+def seeded_table() -> Callable[..., Path]:
+    """Add one table to a `seeded_store`, in the shape `DocSink.add_grid` writes it (W7.8n).
+
+    `cells` maps a cell's block id to `(r, c, row_span, col_span, text)`, in row-major order. The
+    shape `table_meta` records -- `n_rows`, `row_len`, `n_cols`, `has_merges` -- is derived from
+    the cells the way `build_grid()` derives it, so `read_grid()`'s torn-table check passes.
+    """
+    import sqlite3 as db  # noqa: PLC0415, TID251 -- the fixture seeds a REAL table.
+
+    def make(
+        store: Path,
+        cells: Mapping[int, tuple[int, int, int, int, str]],
+        *,
+        table: int = 10,
+        header_rows: int = 1,
+    ) -> Path:
+        row_len: dict[int, int] = {}
+        for r, c, row_span, col_span, _text in cells.values():
+            for row in range(r, r + row_span):
+                row_len[row] = max(row_len.get(row, 0), c + col_span)
+        n_rows = max(row_len) + 1
+        lengths = [row_len.get(row, 0) for row in range(n_rows)]
+        merges = any(rs > 1 or cs > 1 for _r, _c, rs, cs, _t in cells.values())
+        conn = db.connect(store)
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            _table_block(conn, table, "table", None, None)
+            for block_id, (_r, _c, _rs, _cs, text) in cells.items():
+                _table_block(conn, block_id, "table_cell", text, table)
+            conn.execute(
+                "INSERT INTO table_meta(block_id, n_rows, n_cols, row_len, header_rows, "
+                "                       header_cols, kind, has_merges) "
+                "VALUES(?, ?, ?, ?, ?, 0, ?, ?)",
+                (
+                    table,
+                    n_rows,
+                    max(lengths),
+                    json.dumps(lengths),
+                    header_rows,
+                    _enum_code(conn, "table_kind", "data"),
+                    int(merges),
+                ),
+            )
+            for block_id, (r, c, row_span, col_span, _text) in cells.items():
+                conn.execute(
+                    "INSERT INTO cell(block_id, table_id, r, c, row_span, col_span) "
+                    "VALUES(?, ?, ?, ?, ?, ?)",
+                    (block_id, table, r, c, row_span, col_span),
+                )
+            conn.execute("COMMIT")
+        finally:
+            conn.close()
+        return store
 
     return make

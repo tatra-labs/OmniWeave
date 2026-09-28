@@ -912,6 +912,92 @@ def test_a_merged_table_materialises_a_total_cover_map(harness: Harness) -> None
     assert slots == [(0, 0), (0, 1), (1, 0), (1, 1)], "total, including the origin's own position"
 
 
+def _read_back(harness: Harness, block_sql: str) -> tuple[int, Grid] | None:
+    from omniweave_core.store.doc import read_grid  # noqa: PLC0415
+
+    connection = ow.connect(harness.path)
+    try:
+        (block_id,) = connection.execute(block_sql).fetchone()
+        return read_grid(connection, int(block_id))
+    finally:
+        connection.close()
+
+
+def test_read_grid_rebuilds_the_grid_that_was_written(harness: Harness) -> None:
+    """W7.8n: `table_meta` + `cell` -> `build_grid()` -> the same cover map `add_grid` wrote."""
+    positions = (CellPos(0, 0, 2, 1), CellPos(0, 1), CellPos(1, 1))
+    _table_document(harness, positions)
+    table_id = read(harness, "SELECT block_id FROM table_meta")[0][0]
+    found = _read_back(harness, "SELECT block_id FROM table_meta")
+    assert found is not None
+    got_table, grid = found
+    assert got_table == table_id
+    assert (grid.n_rows, grid.n_cols, grid.row_len, grid.has_merges) == (2, 2, (2, 2), True)
+    assert [(o.r, o.c, o.row_span, o.col_span) for o in grid.cells()] == [
+        (0, 0, 2, 1),
+        (0, 1, 1, 1),
+        (1, 1, 1, 1),
+    ]
+    stored = read(harness, "SELECT r, c, origin_id FROM grid_slot ORDER BY r, c")
+    assert sorted(grid.grid_slots()) == stored, "the rebuilt cover map is the stored one"
+
+
+def test_read_grid_from_a_cell_finds_its_table(harness: Harness) -> None:
+    _table_document(harness, (CellPos(0, 0), CellPos(0, 1)))
+    table_id = read(harness, "SELECT block_id FROM table_meta")[0][0]
+    found = _read_back(harness, "SELECT block_id FROM cell WHERE c = 1")
+    assert found is not None
+    assert found[0] == table_id
+
+
+def test_read_grid_of_a_block_that_is_no_table_is_none_and_block_kind_names_it(
+    harness: Harness,
+) -> None:
+    from omniweave_core.store.doc import block_kind  # noqa: PLC0415
+
+    _table_document(harness, (CellPos(0, 0),))
+    root_sql = "SELECT block_id FROM block WHERE parent_id IS NULL"
+    assert _read_back(harness, root_sql) is None
+    connection = ow.connect(harness.path)
+    try:
+        (root,) = connection.execute(root_sql).fetchone()
+        assert block_kind(connection, int(root)) == "document"
+        assert block_kind(connection, 987_654_321) is None
+    finally:
+        connection.close()
+
+
+def test_a_torn_table_is_a_store_error_not_a_silent_grid(harness: Harness) -> None:
+    """A `table_meta` shape its cells cannot rebuild to breaks the exactly-once invariant."""
+    from omniweave_core.errors import StoreError  # noqa: PLC0415
+
+    _table_document(harness, (CellPos(0, 0), CellPos(0, 1)))
+    connection = ow.connect(harness.path)
+    try:
+        connection.execute("UPDATE table_meta SET row_len = '[5]', n_cols = 5")
+    finally:
+        connection.close()
+    with pytest.raises(StoreError, match="torn"):
+        _read_back(harness, "SELECT block_id FROM table_meta")
+
+
+def test_head_documents_reads_each_uris_head_row_in_the_order_given(harness: Harness) -> None:
+    """W7.8n moved `ow add`'s completed-row query here; its shape is `AddCompleted`'s."""
+    from omniweave_core.store.doc import head_documents  # noqa: PLC0415
+
+    _table_document(harness, (CellPos(0, 0),))
+    (uri,) = read(harness, "SELECT uri FROM doc")[0]
+    connection = ow.connect(harness.path)
+    try:
+        rows = head_documents(connection, ["file:///nothing", uri])
+    finally:
+        connection.close()
+    (row,) = rows
+    assert set(row) == {"uri", "doc_ord", "gen", "pages", "blocks", "achieved_origin_span"}
+    assert row["uri"] == uri
+    assert int(row["blocks"]) >= 1  # type: ignore[call-overload]
+
+
 def test_cells_that_reach_add_block_out_of_row_major_order_are_refused(harness: Harness) -> None:
     """03:1937: *"Cells arrive in row-major origin order ... `add_grid` asserts it."*
 
