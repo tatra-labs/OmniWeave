@@ -113,7 +113,7 @@ from omniweave_core.archive.owcheck import BlockFacts as OwcheckFacts
 from omniweave_core.archive.owcheck import Generation, owcheck
 from omniweave_core.archive.owdoc import GridRow
 from omniweave_core.canonical import canonical, ow128
-from omniweave_core.errors import ModelError, ResourceLimit, StoreError
+from omniweave_core.errors import ModelError, NotFoundError, ResourceLimit, StoreError, UsageError
 from omniweave_core.identity import content_digest as ow_content_digest
 from omniweave_core.limits import (
     MAX_BLOCK_DEPTH,
@@ -155,6 +155,7 @@ from omniweave_core.model.rebind import (
     Carry,
     RebindReport,
     Retire,
+    match_generations,
     rebind,
 )
 from omniweave_core.model.records import (
@@ -194,6 +195,7 @@ __all__ = [
     "DocSink",
     "StoreGridReader",
     "block_kind",
+    "diff_generations",
     "head_documents",
     "locate_block",
     "read_grid",
@@ -2762,6 +2764,90 @@ def locate_block(
     declared = {} if row is None else json.loads(str(row[0]))
     spatial = declared.get("spatial") if isinstance(declared, dict) else None
     return locate(block, declared_spatial=str(spatial or NO_SPATIAL), span=span)
+
+
+def diff_generations(
+    connection: sqlite3.Connection,
+    doc_ord: int,
+    *,
+    from_gen: int | None = None,
+    to_gen: int | None = None,
+) -> RebindReport:
+    """`ow doc diff`'s report: `rebind()`'s matcher over two generations, applied to nothing.
+
+    13-quality.md section 5.7: *"The semantic differ is `rebind()`, and there is no second one"*.
+    So this runs `match_generations()` over `_Rebind`'s own `blocks_at_gen`, the rows `end_doc()`
+    matched, and writes nothing (W7.8t, D627).
+
+    **Which generations can be compared.** Only those that hold live rows. A committed re-parse
+    carries every matched row forward into the new generation and retires the rest (03:1264-1280),
+    so the generation before a committed head holds no live row, and there is nothing of it to
+    compare. What does hold live rows beside the head is a generation that was staged and not
+    committed, a quarantine above all (03:1298-1302). So the default pair is the two newest
+    generations with live rows, which is the head and the generation it refused, when there is one.
+    - With one such generation there is no pair, and that is `NotFoundError`, saying why.
+    - An explicit `from_gen` or `to_gen` must name a generation with live rows, and `from_gen` must
+      be the older.
+
+    **`quarantined` is the store's fact**, *"not committed"* in `RebindReport`'s own words: the
+    newer generation is ahead of `doc.gen`. It covers a quarantine `owcheck` refused as well as one
+    the match rate refused. `threshold` is the one the quarantine recorded in its
+    `OW_REBIND_UNEXPLAINED` diag, else `DEFAULT_THRESHOLD`.
+    """
+    side = _Rebind(connection)
+    head = side.doc_generation(doc_ord)
+    live = [
+        int(row[0])
+        for row in connection.execute(
+            "SELECT DISTINCT gen FROM block WHERE doc_ord = ? AND state = 0 ORDER BY gen",
+            (doc_ord,),
+        )
+    ]
+    for named, flag in ((from_gen, "--from-gen"), (to_gen, "--to-gen")):
+        if named is not None and named not in live:
+            raise NotFoundError(
+                f"d{doc_ord} holds no live row at generation {named}; generations with rows: "
+                f"{', '.join(map(str, live)) or 'none'}. A committed re-parse carries its rows "
+                f"forward, so an earlier generation keeps none",
+                symbol="OW_ADDR_NOT_FOUND",
+                fix=f"ow doc diff d{doc_ord}   # without {flag}: the two newest generations",
+            )
+    newer = to_gen if to_gen is not None else (live[-1] if live else head)
+    older_choices = [gen for gen in live if gen < newer]
+    older = from_gen if from_gen is not None else (older_choices[-1] if older_choices else None)
+    if older is None:
+        raise NotFoundError(
+            f"d{doc_ord} holds live rows at generation {newer} only: nothing is staged beside the "
+            f"head, and a committed re-parse keeps no earlier generation to compare (03:1264-1280)",
+            symbol="OW_ADDR_NOT_FOUND",
+            fix="re-index the document; a re-parse that is quarantined stays here to diff",
+        )
+    if older >= newer:
+        raise UsageError(
+            f"--from-gen {older} must be older than --to-gen {newer}",
+            fix=f"ow doc diff d{doc_ord} --from-gen {newer} --to-gen {older}",
+        )
+    plan = match_generations(
+        side.blocks_at_gen(doc_ord, older),
+        side.blocks_at_gen(doc_ord, newer),
+        doc_ord=doc_ord,
+        from_gen=older,
+        to_gen=newer,
+    )
+    report = plan.report(threshold=_recorded_threshold(connection, doc_ord, newer))
+    return replace(report, quarantined=newer > head)
+
+
+def _recorded_threshold(connection: sqlite3.Connection, doc_ord: int, gen: int) -> float:
+    """The threshold a quarantine of `gen` recorded, or `DEFAULT_THRESHOLD` when none did."""
+    row = connection.execute(
+        "SELECT detail FROM diag WHERE doc_ord = ? AND gen = ? AND code = ? "
+        "ORDER BY rowid DESC LIMIT 1",
+        (doc_ord, gen, REBIND_UNEXPLAINED),
+    ).fetchone()
+    detail = {} if row is None else json.loads(str(row[0]))
+    value = detail.get("threshold") if isinstance(detail, dict) else None
+    return float(value) if isinstance(value, (int, float)) else DEFAULT_THRESHOLD
 
 
 class StoreGridReader:

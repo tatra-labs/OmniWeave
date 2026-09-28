@@ -1710,3 +1710,94 @@ def test_store_grid_reader_raises_for_a_block_the_store_does_not_hold(harness: H
             StoreGridReader(connection).block(BlockId(987_654_321))
     finally:
         connection.close()
+
+
+# ---------------------------------------------------------------------------
+# `diff_generations`: `ow doc diff`'s report, which is `rebind()`'s matcher applied to nothing
+# ---------------------------------------------------------------------------
+
+
+def _quarantined_reparse(harness: Harness, *, keep_heading: bool = False) -> None:
+    """A head at generation 1, and a re-parse staged at generation 2 that `rebind` refused."""
+    write_happy_path(harness)
+    with open_store(harness) as thread:
+        writer = sink(harness, thread)
+        writer.begin_doc(doc_record())
+        writer.begin_page(page_record(0))
+        root = writer.add_block(root_draft())
+        if keep_heading:
+            writer.add_block(
+                text_draft(root, Kind.HEADING, "Master Services Agreement", payload={"level": 1})
+            )
+        for n in range(6):
+            writer.add_block(text_draft(root, Kind.PARAGRAPH, f"entirely different text {n}"))
+        writer.end_page({})
+        writer.end_doc("ok")
+
+
+def _diff(harness: Harness, **kw: Any) -> Any:
+    from omniweave_core.store.doc import diff_generations  # noqa: PLC0415
+
+    connection = ow.connect(harness.path)
+    try:
+        doc_ord = int(connection.execute("SELECT doc_ord FROM doc").fetchone()[0])
+        return diff_generations(connection, doc_ord, **kw)
+    finally:
+        connection.close()
+
+
+def test_the_default_diff_is_the_head_against_the_generation_it_refused(harness: Harness) -> None:
+    """03:1298-1302: the quarantined generation is *"inspectable by `ow doc diff`"*."""
+    from omniweave_core.model.rebind import DEFAULT_THRESHOLD  # noqa: PLC0415
+
+    _quarantined_reparse(harness)
+    report = _diff(harness)
+    assert (report.from_gen, report.to_gen, report.quarantined) == (1, 2, True)
+    assert (report.carried, report.revised, report.created, report.retired) == (1, 1, 6, 6)
+    assert report.threshold == DEFAULT_THRESHOLD
+    assert report.match_rate() < report.threshold
+
+
+def test_the_diff_counts_are_the_ones_rebind_recorded_for_the_quarantine(harness: Harness) -> None:
+    """13 section 5.7: one differ, two consumers. The diag is what `end_doc()`'s `rebind()` saw."""
+    _quarantined_reparse(harness, keep_heading=True)
+    report = _diff(harness)
+    (detail,) = read(harness, "SELECT detail FROM diag WHERE code = 'OW_REBIND_UNEXPLAINED'")[0]
+    recorded = json.loads(detail)
+    assert (report.carried, report.created, report.retired) == (
+        recorded["carried"],
+        recorded["created"],
+        recorded["retired"],
+    )
+    assert report.match_rate() == recorded["match_rate"]
+    assert report.carried == 2, "the root and the unchanged heading"
+
+
+def test_diffing_writes_nothing(harness: Harness) -> None:
+    _quarantined_reparse(harness)
+    tables = ("block", "block_history", "doc", "diag", "mark", "cell")
+    before = counts(harness, *tables), read(harness, "SELECT gen FROM doc")
+    _diff(harness)
+    assert (counts(harness, *tables), read(harness, "SELECT gen FROM doc")) == before
+
+
+def test_a_committed_head_has_no_earlier_generation_to_compare(harness: Harness) -> None:
+    """A committed re-parse carries its rows forward (03:1264-1280): generation 1 keeps none."""
+    from omniweave_core.errors import NotFoundError  # noqa: PLC0415
+
+    write_happy_path(harness)
+    write_happy_path(harness)
+    with pytest.raises(NotFoundError, match="live rows at generation 2 only"):
+        _diff(harness)
+    with pytest.raises(NotFoundError, match="no live row at generation 1"):
+        _diff(harness, from_gen=1)
+
+
+def test_the_generations_must_be_named_older_first(harness: Harness) -> None:
+    from omniweave_core.errors import UsageError  # noqa: PLC0415
+
+    _quarantined_reparse(harness)
+    with pytest.raises(UsageError, match="--from-gen 2 must be older than --to-gen 1"):
+        _diff(harness, from_gen=2, to_gen=1)
+    explicit = _diff(harness, from_gen=1, to_gen=2)
+    assert (explicit.from_gen, explicit.to_gen) == (1, 2)

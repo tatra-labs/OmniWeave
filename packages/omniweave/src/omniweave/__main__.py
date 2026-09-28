@@ -21,7 +21,8 @@ the drain `ow ingest` runs, in one process (D615). `ow open` is W7.8i's: the cal
 makes, rendered to stdout (D616). `ow corpora` is W7.8j's: the documents `ow_corpora`
 returns, built by core for both (D617). `ow explain` is W7.8k's: a register row or an exit
 status, read from `codes.toml` and nothing else (D618). `ow doc` is W7.8n's: `grid` reads one
-table's `Grid` back from the store, and `diff` is refused by name (D621). Every root in
+table's `Grid` back from the store (D621, D626), and `diff` is `rebind()`'s matcher over two
+generations since W7.8t (D627). Every root in
 `cli.COMMANDS` now dispatches. A word that is not a root is the generated tree's usage error,
 exit 1, which is 10:1484's *"usage or configuration error"* (D624). `InternalError`'s exit 70,
 10:2185's *"anything else"*, is left for a root the tree parses and no branch below routes: a
