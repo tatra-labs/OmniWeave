@@ -522,6 +522,35 @@ def test_a_readonly_open_of_a_missing_file_refuses_and_never_creates_it(tmp_path
     assert not path.exists()
 
 
+def test_a_readonly_open_of_a_file_that_is_not_a_database_is_a_store_error(tmp_path: Path) -> None:
+    """D617: the first pragma's bare `DatabaseError` names no path, so it is translated."""
+    path = tmp_path / "junk.owstore"
+    path.write_bytes(b"not a database, and longer than a header would be" * 4)
+    with pytest.raises(StoreError) as caught:
+        connect_readonly(path)
+    assert str(path) in str(caught.value)
+    assert "not a readable store" in str(caught.value)
+    assert isinstance(caught.value.__cause__, sqlite3.DatabaseError)
+
+
+def test_a_readonly_open_that_meets_an_operational_error_reraises_it_untranslated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D617 translates only "not a database". A lock or an I/O error means something else, and a
+    caller that handles one must still see it as the `OperationalError` it is."""
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+
+    path = tmp_path / "real.owstore"
+    connect(path).close()
+
+    def locked(*_: object) -> None:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(store_sqlite, "_apply", locked)
+    with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+        connect_readonly(path)
+
+
 # --------------------------------------------------------------------------------------------
 # 4. Heal-on-open and the bulk-window marker
 # --------------------------------------------------------------------------------------------

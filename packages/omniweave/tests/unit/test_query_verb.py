@@ -140,6 +140,17 @@ def test_a_declared_corpus_with_no_store_is_exit_2_naming_the_add(tmp_path: Path
     assert "ow add --corpus handbook" in err
 
 
+def test_a_store_that_is_not_a_database_is_one_line_not_a_traceback(tmp_path: Path) -> None:
+    """D617: `connect_readonly()` raised a bare `DatabaseError`, which no verb catches."""
+    (tmp_path / "omniweave.toml").write_text(PROJECT, encoding="utf-8")
+    (tmp_path / ".omniweave").mkdir()
+    (tmp_path / ".omniweave" / "index.owstore").write_bytes(b"not a database" * 16)
+    code, out, err = _run(["x"], tmp_path)
+    assert (code, out) == (70, "")
+    assert "is not a readable store" in err
+    assert len(err.splitlines()) == 2, "the message and its fix"
+
+
 def test_an_error_under_render_json_is_the_error_object_on_stdout(project: Path) -> None:
     """10:1539-1540: `{"schema":1,"error":{...}}`, never a traceback, and nothing on stderr."""
     code, out, err = _run(["x", "--corpus", "nope", "--render", "json"], project)

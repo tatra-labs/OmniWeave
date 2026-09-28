@@ -79,7 +79,7 @@ from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Final
 
 from omniweave_core.drivers.card import PARSE_BOOLS, PARSE_LADDERS, PARSE_SETS
-from omniweave_core.errors import StoreError
+from omniweave_core.errors import OwError, StoreError
 from omniweave_core.model.enums import Quote, Trust
 from omniweave_core.store import NO_JOB_DOCS
 
@@ -91,15 +91,21 @@ if TYPE_CHECKING:
 
 __all__ = [
     "CARD_COLUMNS",
+    "CORPORA_LIST_MAX",
+    "CORPORA_SCHEMA_VERSION",
     "GAPS_MAX",
     "OUTLINE_MAX",
     "TOP_TERMS_MAX",
+    "WILDCARD",
     "CardRead",
     "CorpusCardRow",
     "Gap",
     "build_card",
     "capability_floor",
     "card_stale",
+    "corpora_card",
+    "corpora_coverage",
+    "corpora_list",
     "inspect",
     "read_card",
     "write_card",
@@ -627,3 +633,194 @@ def _producer(
     digest = out["options_digest"]
     out["options_digest"] = bytes(digest).hex() if isinstance(digest, bytes | bytearray) else digest
     return out
+
+
+# =============================================================================================
+# 7. The `corpora` document: what `ow_corpora` and `ow corpora` both print
+# =============================================================================================
+
+CORPORA_LIST_MAX: Final[int] = 64
+"""10:1023: `detail="list"` is capped at sixty-four entries, and the cut sets `truncated`."""
+
+CORPORA_SCHEMA_VERSION: Final[int] = 1
+"""10:1071's `"schema": 1`."""
+
+WILDCARD: Final[str] = "*"
+"""10:1027-1028: `list` accepts a trailing `*`; `card` and `coverage` refuse one."""
+
+
+@dataclass(frozen=True, slots=True)
+class _Store:
+    """One declared corpus and what its store said."""
+
+    name: str
+    default: bool
+    read: CardRead
+
+
+def corpora_list(
+    corpora: Mapping[str, Path], *, default: str | None, named: str | None
+) -> dict[str, object]:
+    """10:1023-1024's list: `default` first, then `card_gen` descending, then name, at most 64.
+
+    `named` narrows it to one name, or to a prefix when it ends in `*`. Moved here from
+    `omniweave_serve.corpora` in W7.8j so that `ow corpora` prints what `ow_corpora` returns
+    (SV19, 10:101-102): the server may not import `omniweave` and `omniweave` may not import the
+    server (02:356), so the one implementation lives beneath both.
+    """
+    names = sorted(corpora)
+    if named is not None:
+        prefix = named.removesuffix(WILDCARD)
+        names = (
+            [n for n in names if n.startswith(prefix)]
+            if named.endswith(WILDCARD)
+            else [n for n in names if n == named]
+        )
+    stores = [_Store(name=n, default=n == default, read=inspect(corpora[n])) for n in names]
+    stores.sort(key=lambda s: (not s.default, -_card_gen(s.read.row), s.name))
+    shown = stores[:CORPORA_LIST_MAX]
+    return _corpora_document(
+        [_list_row(entry) for entry in shown], shown, truncated=len(stores) > len(shown)
+    )
+
+
+def corpora_card(name: str, path: Path, *, default: str | None) -> dict[str, object]:
+    """10:1010's `card`: one corpus's whole entry, every field of 10:1047's, in its order."""
+    entry = _Store(name=name, default=name == default, read=inspect(path))
+    return _corpora_document([_full_row(entry)], [entry])
+
+
+def corpora_coverage(
+    name: str, path: Path, *, default: str | None, now_ns: int
+) -> dict[str, object]:
+    """10:1011's `coverage`: the card's `gaps` and a live read of what absence gates 4-9 read."""
+    entry = _Store(name=name, default=name == default, read=inspect(path))
+    head = _head(entry)
+    row = entry.read.row
+    gaps = [] if row is None else json.loads(row.gaps_json)
+    live: dict[str, object] | None = None
+    reason = entry.read.reason
+    if entry.read.readable:
+        try:
+            live = _live_coverage(path, now_ns)
+        except OwError as error:
+            reason = str(error)
+    rows = [{**head, "reason": reason, "gaps": gaps, "coverage": live}]
+    return _corpora_document(rows, [entry])
+
+
+def _card_gen(row: CorpusCardRow | None) -> int:
+    return -1 if row is None else row.card_gen
+
+
+def _corpora_document(
+    rows: list[dict[str, object]], stores: list[_Store], *, truncated: bool = False
+) -> dict[str, object]:
+    """10:1044's envelope, with a refresh command for every stale card (D553: an object)."""
+    degradations = [
+        f"card_stale: {entry.name}: ow index update --corpus {entry.name}"
+        for entry in stores
+        if entry.read.readable and entry.read.stale
+    ]
+    return {
+        "corpora": rows,
+        "truncated": truncated,
+        "degradations": degradations,
+        "schema": CORPORA_SCHEMA_VERSION,
+    }
+
+
+def _head(entry: _Store) -> dict[str, object]:
+    """The identity and the three degradations, which every row carries."""
+    row = entry.read.row
+    return {
+        "name": entry.name,
+        "default": entry.default,
+        "readable": entry.read.readable,
+        "reason": entry.read.reason,
+        "card_stale": entry.read.readable and entry.read.stale,
+        "card_gen": 0 if row is None else row.card_gen,
+    }
+
+
+def _card_counts(row: CorpusCardRow | None) -> dict[str, int]:
+    """10:1051's seven counts, or none: a card that does not exist has no counts to show."""
+    if row is None:
+        return {}
+    return {
+        "docs_indexed": row.docs_indexed,
+        "docs_discovered": row.docs_discovered,
+        "docs_partial": row.docs_partial,
+        "docs_failed": row.docs_failed,
+        "pages": row.pages,
+        "blocks": row.blocks,
+        "bytes": row.bytes,
+    }
+
+
+def _list_row(entry: _Store) -> dict[str, object]:
+    """A `list` row: identity, degradations, counts and the honesty number (D552)."""
+    row = entry.read.row
+    out: dict[str, object] = {**_head(entry), "counts": _card_counts(row)}
+    if row is not None:
+        out["verbatim_fraction"] = row.verbatim_fraction
+    return out
+
+
+def _full_row(entry: _Store) -> dict[str, object]:
+    """A `card` entry: every field of 10:1047's entry, in its order."""
+    row = entry.read.row
+    head = _head(entry)
+    if row is None:
+        return {**head, "counts": {}}
+    return {
+        **head,
+        "built_at_ns": row.built_at_ns,
+        "writer_version": row.writer_version,
+        "counts": _card_counts(row),
+        "formats": json.loads(row.formats_json),
+        "langs": json.loads(row.langs_json),
+        "date_range": json.loads(row.date_range_json),
+        "outline": json.loads(row.outline_json),
+        "top_terms": json.loads(row.top_terms_json),
+        "achieved": json.loads(row.achieved_json),
+        "trust_hist": json.loads(row.trust_hist_json),
+        "quote_hist": json.loads(row.quote_hist_json),
+        "verbatim_fraction": row.verbatim_fraction,
+        "restriction_bits": row.restriction_bits,
+        "embedding": None if row.embedding_json is None else json.loads(row.embedding_json),
+        "gaps": json.loads(row.gaps_json),
+        "abstract": row.abstract,
+        "abstract_producer": entry.read.producer,
+    }
+
+
+def _live_coverage(path: Path, now_ns: int) -> dict[str, object]:
+    """`Reader.coverage()` over the whole corpus, in one snapshot."""
+    from omniweave_core.store import reader as store_reader  # noqa: PLC0415 -- coverage only
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+    from omniweave_core.store.types import Filters  # noqa: PLC0415
+
+    connection = store_sqlite.connect_readonly(path)
+    try:
+        reader = store_reader.SqliteReader(connection, now_ns=now_ns)
+        with reader.snapshot() as s:
+            coverage = reader.coverage(s, Filters())
+    finally:
+        connection.close()
+    return {
+        "discovered": coverage.discovered,
+        "indexed": coverage.indexed,
+        "partial": coverage.partial,
+        "failed": coverage.failed,
+        "skipped": coverage.skipped,
+        "complete": coverage.complete,
+        "scope_rows": coverage.scope_rows,
+        "pending_work": coverage.pending_work,
+        "stale_units": coverage.stale_units,
+        "unreadable_units": coverage.unreadable_units,
+        "gaps": [
+            {"gate": gap.gate, "detail": gap.detail, "fix": gap.fix, "codes": list(gap.diag_codes)}
+            for gap in coverage.gaps
+        ],
+    }
