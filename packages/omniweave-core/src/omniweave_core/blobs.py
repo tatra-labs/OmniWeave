@@ -564,7 +564,17 @@ class BlobStore:
             # reader's open file.
             final = self.path(digest)
             final.parent.mkdir(parents=True, exist_ok=True)
-            tmp_path.replace(final)
+            try:
+                tmp_path.replace(final)
+            except PermissionError:
+                # WINDOWS, and the paragraph above is POSIX's: `MoveFileEx` onto a file another
+                # handle holds open is ERROR_ACCESS_DENIED, not an overwrite. The object is there
+                # and its name is this digest, so it already holds these bytes -- which is why the
+                # overwrite was a no-op to begin with. The first writer that met it was a retained
+                # part, `put` from a stream `open()`ed on the very object it names (D628).
+                if not final.is_file():
+                    raise
+                tmp_path.unlink(missing_ok=True)
         except BaseException:
             # Steps 1 to 3 are one recovery scope, because the staged file is unreferenced for the
             # whole of it and referenced the instant step 3 returns. 07:930 assigns the abandoned

@@ -301,3 +301,153 @@ def test_records_of_reads_ndjson_and_refuses_a_line_that_is_not_an_object() -> N
         list(records_of(b'{"t":"doc"}\n{oops\n'))
     with pytest.raises(ModelError, match="line 1 is not an object"):
         list(records_of(b"[1, 2]\n"))
+
+
+# ---------------------------------------------------------------------------------------------
+# the PDF path: a glyph origin, a quad, and the part they are proved against (D628)
+# ---------------------------------------------------------------------------------------------
+
+PDF_FIXTURES = Path(__file__).resolve().parents[3] / "omniweave-pdf" / "fixtures"
+
+
+def _pdf_run(tmp_path: Path, *, retain: bool) -> tuple[Decoded, Path, Any, bytes]:
+    """`gen02p.pdf` through the real PDF driver, then this decoder, with or without the part."""
+    from omniweave_conform.harness import Fixture, run_parse  # noqa: PLC0415
+    from omniweave_pdf.driver import ACHIEVED, PdfiumParser  # noqa: PLC0415
+
+    source = PDF_FIXTURES / "gen02p.pdf"
+    raw = source.read_bytes()
+    run = run_parse(PdfiumParser(), Fixture.of(source), tmp_path / "kit")
+    names = Capabilities.__dataclass_fields__
+    declared = Capabilities(
+        **{  # type: ignore[arg-type] -- ACHIEVED is the card's own values
+            key: frozenset(value) if isinstance(value, list) else value
+            for key, value in ACHIEVED.items()
+            if key in names
+        }
+    )
+    path, blobs, producer_id = _store(tmp_path)
+    with source.open("rb") as handle:
+        digest = blobs.put(handle)
+
+    def open_part(sha256: bytes) -> Any:
+        return blobs.open(sha256) if retain and sha256 == digest else None
+
+    with ow.StoreThread(lambda: ow.connect(path)) as thread:
+        sink = DocSink(
+            thread,
+            producer_id=producer_id,
+            origin_operator="parse.pdf",
+            origin_driver="parse.pdf.pdfium",
+            driver_schema_v=1,
+            blobs=blobs,
+        )
+        decoded = decode(
+            records_of(run.body),
+            sink=sink,
+            doc=FragmentDoc(
+                doc_key=hashlib.sha256(raw).digest()[:16],
+                source_sha256=hashlib.sha256(raw).digest(),
+                normalizer=None,
+                uri="c:/docs/gen02p.pdf",
+                source_bytes=len(raw),
+                declared=declared,
+                model_version="1.1",
+            ),
+            open_part=open_part,
+        )
+    return decoded, path, run, digest
+
+
+def test_the_pdf_drivers_real_fragment_stores_glyph_origins_quads_and_the_retained_part(
+    tmp_path: Path,
+) -> None:
+    """Every text block is `verbatim` on INV-10's `glyphs` branch, so its part is retained and its
+    quad is `Quad.from_driver`'s over the page record's frame -- recomputed here from the fragment
+    alone, which is the audit 03:1394 promises."""
+    from omniweave_core.model.enums import Quote  # noqa: PLC0415
+    from omniweave_core.model.spans import OriginGlyphs, Quad  # noqa: PLC0415
+    from omniweave_core.store.portable import read_block  # noqa: PLC0415
+
+    decoded, path, run, digest = _pdf_run(tmp_path, retain=True)
+    blocks = [record for record in records_of(run.body) if record["t"] == "block"]
+    assert (decoded.pages, decoded.blocks, decoded.status) == (2, len(blocks), "ok")
+    assert _rows(path, "SELECT path, store_ref IS NOT NULL, sha256 FROM part") == [
+        ("pdf/source.pdf", 1, digest)
+    ]
+    frames = {record["page"]: record for record in records_of(run.body) if record["t"] == "page"}
+    first = blocks[0]
+    frame = frames[first["page"]]
+    text = str(first["text"]).replace("'", "''")
+    ((block_id,),) = _rows(path, f"SELECT block_id FROM block WHERE text = '{text}'")  # noqa: S608
+    connection = ow.connect(path)
+    try:
+        stored = read_block(connection, block_id)
+    finally:
+        connection.close()
+    assert stored is not None
+    assert stored.text == first["text"]
+    assert stored.origin == OriginGlyphs(
+        part="pdf/source.pdf",
+        extractor=first["os"]["extractor"],
+        start=first["os"]["start"],
+        length=first["os"]["length"],
+    )
+    points = first["quad"]
+    assert stored.quad == Quad.from_driver(
+        [(points[i], points[i + 1]) for i in range(0, 8, 2)],
+        origin="bottomleft",
+        unit="pt",
+        page_h=frame["h_mpt"] / 1000,
+        dpi=None,
+        rotation=0,
+    )
+    assert stored.quote is Quote.VERBATIM
+
+
+def test_a_part_the_host_does_not_hold_is_recorded_unretained(tmp_path: Path) -> None:
+    """`store_ref` NULL is the DDL's *"bytes were not retained"* (03:602-604): the row is still
+    written, with its digest and length, so the check that fails can name the part."""
+    _decoded, path, _run, digest = _pdf_run(tmp_path, retain=False)
+    assert _rows(path, "SELECT path, store_ref, sha256 FROM part") == [
+        ("pdf/source.pdf", None, digest)
+    ]
+
+
+PDF_HEAD: list[dict[str, Any]] = [
+    {"t": "doc", "format": "pdf", "media_type": "application/pdf", "page_count": 1},
+    {
+        "t": "page",
+        "page": 0,
+        "page_kind": "page",
+        "w_mpt": 612000,
+        "h_mpt": 792000,
+        "quad_origin": "bottomleft",
+        "quad_unit": "pt",
+        "quad_dpi": None,
+        "rotation": 0,
+        "method": "text_layer",
+    },
+]
+GLYPHS = {"k": "glyphs", "part": "pdf/source.pdf", "extractor": "pypdfium2@5.13.0"}
+
+
+@pytest.mark.parametrize(
+    ("page", "block", "said"),
+    [
+        ({}, {"os": {**GLYPHS, "start": -1, "length": 3}}, "glyphs origin"),
+        ({}, {"os": {**GLYPHS, "start": 0}}, "glyphs origin"),
+        ({}, {"quad": [0, 0, 1, 1, 2, 2]}, "eight numbers in a pt, emu or px frame"),
+        ({"rotation": 90}, {"quad": [0, 10, 5, 10, 5, 0, 0, 0]}, "quad"),
+        ({"quad_unit": "px"}, {"quad": [0, 10, 5, 10, 5, 0, 0, 0]}, "eight numbers"),
+    ],
+)
+def test_an_origin_or_a_quad_the_model_refuses_refuses_the_document(
+    tmp_path: Path, page: dict[str, Any], block: dict[str, Any], said: str
+) -> None:
+    """The fail-closed direction, as for the origins: a rotated page's quad cannot be un-rotated
+    from the printed signature (`spans._reject_rotation`), and a `px` page needs its dpi."""
+    head = [PDF_HEAD[0], {**PDF_HEAD[1], **page}]
+    records = [*head, _block("b1", method="text_layer", **block), END]
+    with pytest.raises(ModelError, match=said):
+        _run(tmp_path, records)

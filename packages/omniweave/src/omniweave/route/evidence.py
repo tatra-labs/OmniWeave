@@ -147,6 +147,7 @@ if TYPE_CHECKING:
 __all__ = [
     "BUILTIN_PROVIDER",
     "BUILTIN_SIGNALS",
+    "COMPUTER_FILENAME",
     "DTYPES",
     "KEY_RE",
     "KINDS",
@@ -207,6 +208,15 @@ scope, a dtype and a `nullable` column that lint check 4 reads) while its produc
 inside this process. A row naming a reserved provider is legal in a `signals.toml`; an entry point
 naming one is refused, because it would put a locatable package behind a name that has none.
 """
+
+COMPUTER_FILENAME: Final[str] = "signals.py"
+"""A provider's computer: the fixed module beside `signals.toml`, which the router locates by path.
+
+The declaration's rule, applied to the code that answers it (D628). `omniweave_core.host.signals`
+imports `<package>.signals` in a child, and it is the only thing that ever does; the router needs
+only to know whether the file is there, so that a provider shipping no computer costs no child. A
+test pins this to `omniweave_core.host.signals.COMPUTER_MODULE`, which is the same fact named on
+the side that imports it."""
 
 SIGNAL_TABLE: Final[str] = "signal"
 """The top-level table: `[signal."math.part_frac"]`, 05:2207's literal shape. Quoted, because the
@@ -1047,6 +1057,10 @@ class Installed:
     specs: tuple[SignalSpec, ...]
     missing: tuple[str, ...]
     """One line per provider whose `signals.toml` could not be read, naming the path tried."""
+    computers: Mapping[str, str] = field(default_factory=dict)
+    """Provider name -> package, for each provider whose package has a `COMPUTER_FILENAME` beside
+    its `signals.toml`. Found by `Path.is_file()` on the located declaration's sibling, so no
+    provider code runs to learn it (INV-4)."""
 
 
 def installed_specs(distributions: Iterable[Distribution]) -> Installed:
@@ -1078,6 +1092,7 @@ def installed_specs(distributions: Iterable[Distribution]) -> Installed:
     """
     out: list[SignalSpec] = []
     missing: list[str] = []
+    computers: dict[str, str] = {}
     for dist, name, value in _signal_entry_points(distributions):
         if name in RESERVED_PROVIDERS:
             raise RouteError(
@@ -1101,7 +1116,9 @@ def installed_specs(distributions: Iterable[Distribution]) -> Installed:
             missing.append(f'[{SIGNAL_GROUP}] "{name}" = "{value}": no file at {located}')
             continue
         out.extend(load_signals(raw, provider=name, origin=f"{name}:{located}"))
-    return Installed(specs=tuple(out), missing=tuple(missing))
+        if located.with_name(COMPUTER_FILENAME).is_file():
+            computers[name] = value
+    return Installed(specs=tuple(out), missing=tuple(missing), computers=computers)
 
 
 def _signal_entry_points(

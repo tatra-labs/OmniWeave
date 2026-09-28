@@ -15,11 +15,24 @@ of each demand plan, and it ends by running the driver. This build runs its fron
   decoded part, and nothing has been decoded;
 - **the `select` phase**. `settle` is by definition the phase that reads a driver's output
   (05:1140);
-- **the FREE group, from the roster**. No signal computer exists: `signals.toml` declares 25 keys
-  and no code computes one. What is known without reading bytes is here -- the format and its basis
-  (`route.detect`, at identify), the size, the part count, the trust class, the trigger. A rule
-  that `defer`s on a key nobody computes degrades to `skip` exactly as 05:1130 says, and the key is
-  counted as `signal_unavailable` on the report.
+- **each plan's `CostClass` groups, in order**, as 05:1096-1100 prints them: compute a group,
+  `evaluate()`, and stop when a rule matched and `deferrals_pending()` holds nothing open. What
+  the roster knows without reading bytes is put first -- the format and its basis (`route.detect`,
+  at identify), the size, the part count, the trust class, the trigger. A key the registry resolves
+  to a provider that ships a computer (`evidence.COMPUTER_FILENAME`) is computed in a child, one
+  per unit and group, by `omniweave_core.host.signals` (D628); that is `pdfium`'s three keys for a
+  PDF. Every other key in a group is put UNAVAILABLE with the reason, and the key is counted as
+  `signal_unavailable` on the report. The `GATE` rung's `max_cost_class` clamps the groups
+  `DECODE` may compute (05:1117).
+
+**A deferring rule whose key is still UNKNOWN once its group has run holds the unit** (D579,
+kept by D628). 05:1130 lets `defer` degrade to `skip` there, and on the shipped policy that sends a
+PDF pdfium cannot open -- or a scanned page, whose `ink.tiles` nothing computes -- past every PDF
+rule to `decode.no-rule-matched`, which its own comment calls *"UNREACHABLE BY CONSTRUCTION"*, and
+refuses it permanently as `unsupported_format`. D579's ruling was that *"a build that cannot compute
+the promoted group must not settle"*; a group whose computation answered nothing for the key is the
+same fact one step later. So the unit stays `identified`, and the report names the rule and why its
+key is unknown.
 
 Then, for a matched action: a GATE refusal is a decision row with `driver = ''` and a failed unit
 (05:1180); a DECODE driver goes through `resolve()` (hop 5, memoised per media type), the decision
@@ -41,13 +54,20 @@ and 4.6, and 04-driver-system.md section 4.8.
 from __future__ import annotations
 
 import json
+import sys
 from collections import Counter
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Final, TypeAlias, cast
 
 from omniweave_core.budget import Admitted
 from omniweave_core.canonical import canonical, sha256_canonical
-from omniweave_core.drivers.resolve import Policy, Requirement, resolution_report, resolve
+from omniweave_core.drivers.resolve import (
+    COST_CLASS_ORDER,
+    Policy,
+    Requirement,
+    resolution_report,
+    resolve,
+)
 from omniweave_core.probe import probe_env
 from omniweave_core.store.budget import SqliteBudgetLedger
 from omniweave_core.store.sqlite import BATCH_WAIT_MS, Unit
@@ -56,6 +76,7 @@ from omniweave_ports.types import CostClass, Isolation
 from omniweave import plan as planner
 from omniweave.route.admit import admit
 from omniweave.route.decision import RouteHints
+from omniweave.route.demand import compile_demand, plan_for
 from omniweave.route.eval import evaluate, pending_deferrals
 from omniweave.route.evidence import Evidence
 from omniweave.route.ledger import payload_bytes
@@ -63,16 +84,18 @@ from omniweave.route.rung import Rung
 from omniweave.run import expand
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
     from omniweave_core.canonical import JsonValue
     from omniweave_core.config import Config
     from omniweave_core.drivers.catalog import Catalog
     from omniweave_core.drivers.resolve import Candidate, Resolution
+    from omniweave_core.host.signals import SignalAnswer
     from omniweave_core.operator import RunContext
     from omniweave_core.store.sqlite import StoreThread
 
-    from omniweave.route.decision import RouteDecision
+    from omniweave.route.decision import Modifiers, RouteDecision
+    from omniweave.route.demand import DemandMap, DemandPlan, Group
     from omniweave.route.evidence import Scalar, SignalRegistry
     from omniweave.route.policy import RoutePolicy
 
@@ -80,6 +103,7 @@ __all__ = [
     "LANE",
     "PHASE",
     "RUNGS",
+    "Compute",
     "RouteTally",
     "resolve_policy",
     "route_identified",
@@ -96,6 +120,22 @@ HINTS: Final[RouteHints] = RouteHints()
 flags, and `RouteHints` has no field `ow ingest` would set (05:2018-2033)."""
 
 _BUILTIN: Final[str] = "builtin"
+
+Compute: TypeAlias = "Callable[[str, str, str, tuple[str, ...]], SignalAnswer]"
+"""`(package, source path, content_sha256, keys) -> SignalAnswer`: one child's worth of signals.
+
+`omniweave_core.host.signals.compute_in_child` is the one real implementation, and
+`route_identified` builds it over this run's scratch directory. A parameter for the reason
+`subproc.Spawn` is one: a routing test that had to start an interpreter per unit could only be
+written against the real child, and the routing decisions are what those tests are about."""
+
+_PYTHON_TYPES: Final[dict[str, tuple[type, ...]]] = {
+    "bool": (bool,),
+    "int": (int,),
+    "float": (float, int),
+    "str": (str,),
+}
+"""A registered `dtype`'s Python types. `bool` is an `int` subclass, so `int` refuses it by name."""
 
 IDENTIFIED_UNITS_SQL: Final[str] = """
 SELECT unit_uri, content_sha256, bytes, part_count, format, media_type, trust_class, derived
@@ -157,6 +197,8 @@ class RouteTally:
     refused: Counter[str] = field(default_factory=Counter)
     unrouted: Counter[str] = field(default_factory=Counter)
     unavailable: Counter[str] = field(default_factory=Counter)
+    children: Counter[str] = field(default_factory=Counter)
+    """Signal children started, by provider: one per unit and `CostClass` group that needed one."""
 
     def lines(self) -> tuple[str, ...]:
         if not (self.planned or self.refused or self.unrouted):
@@ -164,6 +206,8 @@ class RouteTally:
         out = [f"  route     {_shown(self.planned, 'planned')}; {_shown(self.refused, 'refused')}"]
         if self.unrouted:
             out.append(f"  route     {_shown(self.unrouted, 'unrouted')}")
+        if self.children:
+            out.append(f"  route     {_shown(self.children, 'signal children')}")
         if self.unavailable:
             out.append(f"  route     signal_unavailable: {_shown(self.unavailable, '')}".rstrip())
         return tuple(out)
@@ -198,7 +242,13 @@ def resolve_policy(config: Config, *, locked_ids: frozenset[str] = frozenset()) 
     )
 
 
-def unit_evidence(row: Sequence[object], *, registry: SignalRegistry, trigger: str) -> Evidence:
+def unit_evidence(
+    row: Sequence[object],
+    *,
+    registry: SignalRegistry,
+    trigger: str,
+    computers: Mapping[str, str] | None = None,
+) -> Evidence:
     """The FREE group of 05 section 5.1 that the roster already holds, for one unit's one part.
 
     Every key is the `builtin` provider's (05:2135) and carries its version into the read set.
@@ -206,12 +256,21 @@ def unit_evidence(row: Sequence[object], *, registry: SignalRegistry, trigger: s
     `unit.corrupt`, because detection performs no container structural check; and `unit.encrypted`
     for a PDF, because the trailer `/Encrypt` scan the `gate.encrypted` rule's comment names is not
     built. A `False` in either would be a claim nothing checked.
+
+    **A key whose provider for this format ships a computer is left for it.** `unit.part_count`
+    resolves to `pdfium` for a PDF (05:2199's *"`FPDF_GetPageCount` on a PDF"*), and the read set
+    must record the provider resolution chose (05:2222); putting the roster's count under
+    `builtin`'s version first would leave the computer nothing to answer.
     """
     _uri, digest, size, parts, fmt, _media, trust, derived = row
     chosen = json.loads(str(derived or "{}")).get("format_evidence", {})
     ev = Evidence(content_sha256=str(digest), unit_part=expand.UNIDENTIFIED_PART)
+    computed_elsewhere = computers or {}
 
     def put(key: str, value: object, reason: str | None = None) -> None:
+        resolved = registry.resolve(key, str(fmt or ""))
+        if resolved is not None and resolved.provider in computed_elsewhere:
+            return
         specs = [spec for spec in registry.specs_for(key) if spec.provider == _BUILTIN]
         version = specs[0].version if specs else ""
         ev.put(key, value, provider_version=version, unavailable_reason=reason)  # type: ignore[arg-type]
@@ -247,17 +306,109 @@ class _Router:
     resolving: Policy
     source_root: str
     now_ms: int
+    demand: DemandMap
+    computers: Mapping[str, str]
+    compute: Compute
     tally: RouteTally = field(default_factory=RouteTally)
     resolutions: dict[str, Resolution] = field(default_factory=dict)
 
-    def decide(self, ev: Evidence) -> RouteDecision | None:
+    def decide(self, ev: Evidence, row: Sequence[object]) -> RouteDecision | None:
         """`GATE` then `DECODE`, `text` lane, `select` phase: the first matched action, or none."""
+        ceiling: CostClass | None = None
         for rung in RUNGS:
-            ev.clear_read_log()
-            decision, _mods = evaluate(self.policy, ev, HINTS, rung, LANE, PHASE)
+            decision, mods = self._rung(ev, row, plan_for(self.demand, rung, LANE, PHASE), ceiling)
+            if rung is Rung.GATE:
+                ceiling = mods.max_cost_class
             if decision.matched:
                 return decision
         return None
+
+    def _rung(
+        self,
+        ev: Evidence,
+        row: Sequence[object],
+        plan: DemandPlan,
+        ceiling: CostClass | None,
+    ) -> tuple[RouteDecision, Modifiers]:
+        """05:1096-1100 for one `(rung, lane, phase)`: compute a group, evaluate, maybe stop.
+
+        A group above `ceiling` is never computed (05:1117's *"still under the `GATE` clamp"*),
+        which is `DemandPlan.next_group()`'s rule, and `deferrals_pending()` is asked under the same
+        clamp so it cannot hold the loop open for a group it may not run. A plan with no group the
+        clamp allows still evaluates once, over what is already put: a rung is decided by the keys
+        it has, never skipped because it could compute none.
+        """
+        limit = len(COST_CLASS_ORDER) if ceiling is None else COST_CLASS_ORDER.index(ceiling)
+        allowed = tuple(group for group in plan.groups if group.rank <= limit)
+        steps: tuple[Group | None, ...] = allowed or (None,)
+        decision, mods = None, None
+        for group in steps:
+            if group is not None:
+                self._compute(group, ev, row)
+            ev.clear_read_log()
+            decision, mods = evaluate(self.policy, ev, HINTS, plan.rung, LANE, PHASE)
+            if decision.matched and not plan.deferrals_pending(
+                ev, before=decision.rule_id, ceiling=ceiling
+            ):
+                break
+        return cast("RouteDecision", decision), cast("Modifiers", mods)
+
+    def _compute(self, group: Group, ev: Evidence, row: Sequence[object]) -> None:
+        """One group's keys into `ev`: each once, by the provider this unit's format resolves to.
+
+        A key already put -- the roster's, or an earlier group's -- is not recomputed. A key with
+        no provider for this format, or whose provider ships no computer, is put UNAVAILABLE with
+        an empty version: no code produced it, which is `Evidence.read_set()`'s own rule for a key
+        nobody computed, so a unit with no computer to call reads exactly as it did before there
+        was one. The keys a computer serves go to it in one child per provider, and come back each
+        under the resolved provider's version, whether it answered a value or a reason.
+        """
+        uri, digest = str(row[0]), str(row[1])
+        fmt = str(row[4] or "")
+        asked: dict[str, list[str]] = {}
+        for key in group.keys:
+            if ev.computed(key):
+                continue
+            spec = self.registry.resolve(key, fmt)
+            if spec is None:
+                ev.put(
+                    key, None, provider_version="", unavailable_reason=f"no provider serves {fmt}"
+                )
+            elif spec.provider not in self.computers:
+                ev.put(
+                    key,
+                    None,
+                    provider_version="",
+                    unavailable_reason=f"the {spec.provider} provider ships no computer",
+                )
+            else:
+                asked.setdefault(spec.provider, []).append(key)
+        for provider, keys in asked.items():
+            self.tally.children[provider] += 1
+            found = self.compute(self.computers[provider], uri, digest, tuple(keys))
+            for key in keys:
+                self._put(ev, key, fmt, found)
+
+    def _put(self, ev: Evidence, key: str, fmt: str, found: SignalAnswer) -> None:
+        """One computed key, under its provider's version. A wrong-`dtype` value is refused."""
+        spec = self.registry.resolve(key, fmt)
+        version = "" if spec is None else spec.version
+        if key not in found.values:
+            reason = found.unavailable.get(key, "the provider answered nothing for it")
+            ev.put(key, None, provider_version=version, unavailable_reason=reason)
+            return
+        value = found.values[key]
+        dtype = self.registry.dtype_of(key)
+        wanted = _PYTHON_TYPES.get(dtype, ())
+        if not isinstance(value, wanted) or (dtype != "bool" and isinstance(value, bool)):
+            ev.put(
+                key,
+                None,
+                provider_version=version,
+                unavailable_reason=f"the provider answered {type(value).__name__}, not {dtype}",
+            )
+            return
+        ev.put(key, value, provider_version=version)
 
     def resolution(self, media_type: str) -> Resolution:
         found = self.resolutions.get(media_type)
@@ -267,10 +418,12 @@ class _Router:
         return found
 
     def route(self, row: Sequence[object]) -> None:
-        ev = unit_evidence(row, registry=self.registry, trigger=self.ctx.trigger)
-        decision = self.decide(ev)
-        #  The read set is the decision's identity (05:1880), so it is taken before anything else
-        #  reads the evidence -- `pending_deferrals()` evaluates the deferring rules' conditions.
+        ev = unit_evidence(
+            row, registry=self.registry, trigger=self.ctx.trigger, computers=self.computers
+        )
+        decision = self.decide(ev, row)
+        #  The read set is the decision's identity (05:1880): the window `_rung()` opened for the
+        #  `evaluate()` that decided, which `deferrals_pending()` reads inside and never widens.
         read_set = ev.read_set()
         digest = ev.read_set_digest()
         for key, _version, value in read_set:
@@ -279,14 +432,11 @@ class _Router:
         if decision is None:
             self.tally.unrouted["no rule matched"] += 1
             return
-        deferred = pending_deferrals(
+        held = pending_deferrals(
             self.policy, ev, decision.rung, LANE, PHASE, before=decision.rule_id
         )
-        if deferred:
-            #  D579. 05:1114-1116: a rule EARLIER in file order is UNKNOWN and defers, so its group
-            #  is promoted and evaluation restarts. No code computes that group, so nothing may
-            #  settle on the later match: `decode.no-rule-matched` would refuse every PDF.
-            self.tally.unrouted[f"deferred ({', '.join(deferred)}): no signal computer"] += 1
+        if held:
+            self.tally.unrouted[f"deferred ({', '.join(held)}): {self._why(ev, held[0])}"] += 1
             return
         decision = replace(
             decision,
@@ -303,6 +453,21 @@ class _Router:
             self.tally.unrouted[f"{decision.rule_id}: no driver (D577)"] += 1
             return
         self._plan(row, decision, read_set)
+
+    def _why(self, ev: Evidence, rule_id: str) -> str:
+        """Why a holding rule is UNKNOWN: its first unknown key and that key's recorded reason.
+
+        A key the loop never computed -- its group is above the `GATE` clamp, or no registered
+        provider puts it in any group -- has no reason to read, and says so.
+        """
+        rule = next(rule for rule in self.policy.rules if rule.id == rule_id)
+        for key in rule.when.keys:
+            if not ev.computed(key):
+                return f"{key}: not computed"
+            reason = ev.unavailable_reason(key)
+            if reason is not None:
+                return f"{key}: {reason}"
+        return "its keys are known and its condition is not"
 
     def _refuse(self, row: Sequence[object], decision: RouteDecision, read_set: ReadSet) -> None:
         unit_uri = str(row[0])
@@ -442,6 +607,29 @@ class _Router:
         )
 
 
+def _child_compute(ctx: RunContext) -> Compute:
+    """`compute_in_child` over this run's scratch directory, created on first use."""
+
+    def compute(package: str, source: str, digest: str, keys: tuple[str, ...]) -> SignalAnswer:
+        from omniweave_core.host.signals import compute_in_child  # noqa: PLC0415 -- signal path
+
+        from omniweave.run.operators.parse import worker_env  # noqa: PLC0415
+
+        scratch = ctx.roots.cache / "tmp" / ctx.run_id
+        scratch.mkdir(parents=True, exist_ok=True)
+        return compute_in_child(
+            package,
+            source=source,
+            content_sha256=digest,
+            keys=keys,
+            executable=sys.executable,
+            cwd=str(scratch),
+            env=worker_env(),
+        )
+
+    return compute
+
+
 def _candidate(resolution: Resolution, driver: str) -> Candidate | None:
     return next((one for one in resolution.candidates if one.driver_id == driver), None)
 
@@ -493,8 +681,16 @@ def route_identified(
     source_root: str,
     now_ms: int,
     limit: int = 512,
+    computers: Mapping[str, str] | None = None,
+    compute: Compute | None = None,
 ) -> RouteTally:
-    """Route every unit this generation identified. One transaction per unit, keyset-paged."""
+    """Route every unit this generation identified. One transaction per unit, keyset-paged.
+
+    `computers` is `evidence.Installed.computers`: the providers whose package ships a computer,
+    by name. Absent, nothing is computed and every group key the roster does not hold is
+    unavailable. `compute` defaults to `host.signals.compute_in_child`, run from this run's scratch
+    directory with a worker's named environment.
+    """
     router = _Router(
         thread=thread,
         ctx=ctx,
@@ -504,6 +700,9 @@ def route_identified(
         resolving=resolving,
         source_root=source_root,
         now_ms=now_ms,
+        demand=compile_demand(policy, registry=registry),
+        computers=computers or {},
+        compute=compute or _child_compute(ctx),
     )
     after = ""
     while True:

@@ -860,3 +860,33 @@ def test_only_the_signal_group_is_read(tmp_path: Any) -> None:
     groups are read by two consumers at two different times, and neither enumerates the other's."""
     drivers_only: Any = _Dist(tmp_path, [_Entry("omniweave.drivers", "d", "omniweave_pdf")])
     assert ev.installed_specs([drivers_only]) == ev.Installed(specs=(), missing=())
+
+
+def test_a_provider_with_a_signals_py_beside_its_toml_is_a_computer_found_by_path(
+    tmp_path: Any,
+) -> None:
+    """D628. `COMPUTER_FILENAME` is located the way the declaration is, and never imported: the
+    file below would raise on import, and the registry build does not notice."""
+    for name, key in (("omniweave_pdf", b"cid_ratio"), ("omniweave_office", b"line_count")):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "signals.toml").write_bytes(ROW.replace(b"cid_ratio", key))
+    (tmp_path / "omniweave_pdf" / ev.COMPUTER_FILENAME).write_text(
+        "raise SystemExit('imported')\n", encoding="utf-8"
+    )
+    found = ev.installed_specs(
+        [
+            _dist(tmp_path, "pdfium", "omniweave_pdf"),
+            _dist(tmp_path, "officexml", "omniweave_office"),
+        ]
+    )
+    assert found.computers == {"pdfium": "omniweave_pdf"}
+    assert len(found.specs) == 2
+
+
+def test_the_installed_first_party_providers_are_one_computer_and_one_without() -> None:
+    """This checkout: `omniweave_pdf/signals.py` exists, and `omniweave_office` ships none."""
+    from importlib.metadata import distributions  # noqa: PLC0415
+
+    found = ev.installed_specs(distributions())
+    assert found.computers.get("pdfium") == "omniweave_pdf"
+    assert "officexml" not in found.computers
