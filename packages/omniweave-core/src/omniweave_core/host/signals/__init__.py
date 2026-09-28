@@ -13,7 +13,8 @@ python -m omniweave_core.host.signals
   bytes    read `source`; sha256 must equal `content_sha256`    else every key is unavailable
   import   <package>.signals                                    the fixed module beside signals.toml
   compute  compute(raw, keys) -> {key: scalar}                  keys it does not compute are absent
-  stdout   {"values": {...}, "unavailable": {key: reason}}      every asked key in exactly one
+  stdout   {"values": {...}, "unavailable": {key: reason},      every asked key in exactly one;
+            "refused": reason | null}                            non-null when the request failed
 ```
 
 ## Why a child, when 02:882 says "in the host"
@@ -32,6 +33,8 @@ would serve every unit of a routing pass from one address space, so one hostile 
 leave the next one's answer wrong without crashing anything. A request is one unit and one
 `CostClass` group, which is what 05:1090's loop asks for at a time; the price is interpreter start
 per request (measured in D628), and `route_signal` is the cache 05 section 5.4 prices against that.
+The router reads it before asking and writes back what a computer answered, never a refusal
+(`SignalAnswer.refusal`, D632).
 
 ## What the child does not have
 
@@ -109,22 +112,30 @@ _STDERR_TAIL: Final[int] = 400
 
 @dataclass(frozen=True, slots=True)
 class SignalAnswer:
-    """Every asked key, in exactly one of the two mappings. The router `put`s each as it stands."""
+    """Every asked key, in exactly one of the two mappings. The router `put`s each as it stands.
+
+    `refusal` is the reason when the REQUEST failed -- the child timed out, crashed, found the
+    bytes changed, or the provider raised -- and `None` when the computer ran and answered each
+    key. Only the second is a pure function of the content, the key and the provider's version,
+    so only the second is what `route_signal` may keep (05 section 5.4, D632). A refusal is
+    re-attempted by the next run, as it was before the cache existed.
+    """
 
     values: Mapping[str, Scalar]
     unavailable: Mapping[str, str]
+    refusal: str | None = None
 
     @classmethod
     def refused(cls, keys: Sequence[str], reason: str) -> SignalAnswer:
         """Every key unavailable, for one reason: the request never reached a value."""
         why = _bounded(reason)
-        return cls(values={}, unavailable=dict.fromkeys(keys, why))
+        return cls(values={}, unavailable=dict.fromkeys(keys, why), refusal=why)
 
     def total(self, keys: Sequence[str], *, missing: str) -> SignalAnswer:
         """Only the asked keys, and each of them: a key nobody answered gets `missing`."""
         values = {key: self.values[key] for key in keys if key in self.values}
         unavailable = {key: self.unavailable.get(key, missing) for key in keys if key not in values}
-        return SignalAnswer(values=values, unavailable=unavailable)
+        return SignalAnswer(values=values, unavailable=unavailable, refusal=self.refusal)
 
 
 def _bounded(text: str) -> str:
@@ -206,7 +217,11 @@ def main() -> int:
     found = answer(request)
     sys.stdout.write(
         json.dumps(
-            {"values": dict(found.values), "unavailable": dict(found.unavailable)},
+            {
+                "values": dict(found.values),
+                "unavailable": dict(found.unavailable),
+                "refused": found.refusal,
+            },
             allow_nan=False,
             separators=(",", ":"),
         )
@@ -265,6 +280,9 @@ def compute_in_child(
         body = json.loads(done.stdout)
         values = {str(k): v for k, v in dict(body["values"]).items() if _scalar(v)}
         unavailable = {str(k): _bounded(str(v)) for k, v in dict(body["unavailable"]).items()}
-    except (ValueError, KeyError, TypeError) as bad:
+        refusal = body.get("refused")
+    except (ValueError, KeyError, TypeError, AttributeError) as bad:
         return SignalAnswer.refused(keys, f"the {package} provider answered no answer: {bad}")
+    if refusal is not None:
+        return SignalAnswer.refused(keys, str(refusal))
     return SignalAnswer(values=values, unavailable=unavailable).total(keys, missing=missing)
