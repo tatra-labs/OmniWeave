@@ -7,13 +7,15 @@ was refused as *"not dispatched by this build"*. W7.8n adds `omniweave_core.stor
 which rebuilds a table's `Grid` from `table_meta` and `cell` through `build_grid()` and checks the
 rebuilt shape against the stored one, and this module prints it.
 
-**What is printed is the grid, not a render of it.** `--render json` is the `Grid`'s printed fields
-and one row per origin cell -- its slot, its spans, its cite and its text -- which is 10:808's
-`slot(r,c)`, headers and merges. `--render text` is the same, one line per cell. A GFM table would
-come from `model.grid.render_grid()`, the one table serializer (INV-1), and that needs each cell as
-a model `Block`. D621 said no store read built one; `store.portable.read_block()` does since W7.8r,
-and wiring it to `render_grid()` is owed (D625). A hand-drawn table here would be the second
-serializer INV-1 forbids.
+**Two renders, one per consumer** (10 section 6.3).
+- `--render json` is the grid itself: the `Grid`'s printed fields and one row per origin cell --
+  its slot, its spans, whether it is a header, its cite and its text -- which is 10:808's
+  `slot(r,c)`, headers and merges.
+- `--render text`, the default, is 10:1529's *"a formatted table"* for a person: a head line, then
+  the table as GFM from `model.grid.render_grid()`, the one table serializer (INV-1), over
+  `store.doc.StoreGridReader` (W7.8s, D626). GFM has no span syntax, so a merged cell's text is
+  in its origin slot and the slots it covers are blank, and trailing blank rows and columns are
+  dropped (03:2035-2039). The loss is the render's only: the JSON keeps the spans and the cites.
 
 **`ow doc diff` is refused by name**, exit 70, 10:2185's *"anything else"*. It compares two
 generations through `model.rebind`'s `RebindReadSide`, and no store implements that Protocol
@@ -89,12 +91,15 @@ def _grid(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, stdo
     ref = str(parsed.ref)
     name = corpus_for(config, [ref], parsed.corpus, verb="ow doc grid")
     store = store_of(config, name, cwd=cwd)
-    document = _read(store, ref, corpus=name, qualify=len(corpora(config)) > 1)
-    if parsed.render == "json":
+    as_json = parsed.render == "json"
+    document, table = _read(
+        store, ref, corpus=name, qualify=len(corpora(config)) > 1, gfm=not as_json
+    )
+    if as_json:
         stdout.write(json.dumps(document, ensure_ascii=False) + "\n")
     else:
-        for line in _text(document):
-            stdout.write(line + "\n")
+        #  The serializer ends on the last row's pipe, and a line on stdout ends with a newline.
+        stdout.write(_head(document) + "\n\n" + table.rstrip("\n") + "\n")
     return 0
 
 
@@ -111,14 +116,22 @@ def _refuse_unserved(parsed: argparse.Namespace) -> None:
         raise UsageError("ow doc grid needs a table's cite", fix="ow doc grid d7#412")
 
 
-def _read(store: Path, ref: str, *, corpus: str, qualify: bool) -> dict[str, Any]:
-    """Resolve `ref` to one block, read its table's `Grid`, and hydrate each cell: one snapshot."""
+def _read(
+    store: Path, ref: str, *, corpus: str, qualify: bool, gfm: bool
+) -> tuple[dict[str, Any], str]:
+    """Resolve `ref` to one block, read its table's `Grid`, and hydrate each cell: one snapshot.
+
+    With `gfm`, the table is also rendered, over the same connection and inside the same snapshot,
+    so the render and the document describe one state of the store. Without it the render is `""`.
+    """
     from omniweave_core.clock import SystemClock  # noqa: PLC0415 -- a usage error never pays
+    from omniweave_core.model.block import BlockId  # noqa: PLC0415
     from omniweave_core.model.enums import Layer  # noqa: PLC0415
+    from omniweave_core.model.grid import render_grid  # noqa: PLC0415
     from omniweave_core.store import reader as store_reader  # noqa: PLC0415
     from omniweave_core.store import resolve  # noqa: PLC0415
     from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
-    from omniweave_core.store.doc import block_kind, read_grid  # noqa: PLC0415
+    from omniweave_core.store.doc import StoreGridReader, block_kind, read_grid  # noqa: PLC0415
 
     connection = store_sqlite.connect_readonly(store)
     try:
@@ -141,9 +154,14 @@ def _read(store: Path, ref: str, *, corpus: str, qualify: bool) -> dict[str, Any
                 row.block_id: row
                 for row in reader.hydrate(s, [table_id, *(o.block for o in grid.cells())])
             }
+            table = ""
+            if gfm:
+                table, _ = render_grid(
+                    grid, StoreGridReader(connection), "gfm", table=BlockId(table_id)
+                )
     finally:
         connection.close()
-    return grid_document(grid, table_id, hydrated, corpus=corpus, qualify=qualify)
+    return grid_document(grid, table_id, hydrated, corpus=corpus, qualify=qualify), table
 
 
 def _one_block(block_ids: Sequence[int], ref: str) -> int:
@@ -207,22 +225,11 @@ def grid_document(
     }
 
 
-def _text(document: Mapping[str, Any]) -> list[str]:
-    """A head line, then one line per origin cell: its slot, a span when it has one, cite, text."""
+def _head(document: Mapping[str, Any]) -> str:
+    """The line above the table: its cite, its shape, and what GFM cannot show."""
     merges = "yes" if document["has_merges"] else "no"
-    lines = [
+    return (
         f"table {document['table']}  {document['n_rows']} rows x {document['n_cols']} cols  "
         f"header_rows {document['header_rows']}  header_cols {document['header_cols']}  "
         f"merges {merges}  kind {document['kind']}"
-    ]
-    for cell in document["cells"]:
-        span = (
-            f" {cell['row_span']}x{cell['col_span']}"
-            if cell["row_span"] > 1 or cell["col_span"] > 1
-            else ""
-        )
-        head = " header" if cell["header"] else ""
-        #  One line per cell. Not `str.replace`: this package's no-write test bans the name.
-        text = " ".join((cell["text"] or "").splitlines())
-        lines.append(f"  [{cell['r']},{cell['c']}]{span}{head}  {cell['cite']}  {text}")
-    return lines
+    )

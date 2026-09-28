@@ -181,6 +181,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only.
     from typing import BinaryIO
 
     from omniweave_core.blobs import BlobStore
+    from omniweave_core.model.block import Block
     from omniweave_core.model.grid import Grid
 
 __all__ = [
@@ -191,6 +192,7 @@ __all__ = [
     "SCORE_KIND_UNREGISTERED",
     "TRUST_CLAMPED",
     "DocSink",
+    "StoreGridReader",
     "block_kind",
     "head_documents",
     "locate_block",
@@ -2760,6 +2762,27 @@ def locate_block(
     declared = {} if row is None else json.loads(str(row[0]))
     spatial = declared.get("spatial") if isinstance(declared, dict) else None
     return locate(block, declared_spatial=str(spatial or NO_SPATIAL), span=span)
+
+
+class StoreGridReader:
+    """`model.grid.GridReadSide` over one connection: the reader `render_grid()` takes (W7.8s).
+
+    Each cell is `portable.read_block()`'s Block, the store's one decode. A cover map that names a
+    block the store does not hold is a store that failed its own foreign keys, so it raises rather
+    than rendering a hole: `GridReadSide.block` raises instead of returning `None`.
+    """
+
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = connection
+
+    def block(self, block: BlockId) -> Block:
+        found = read_block(self._connection, int(block))
+        if found is None:
+            raise StoreError(
+                f"the table's cover map names block {int(block)}, which the store does not hold",
+                fix="ow store verify",
+            )
+        return found
 
 
 class _StoredCell(NamedTuple):
