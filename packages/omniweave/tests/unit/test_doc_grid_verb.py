@@ -83,15 +83,78 @@ def test_a_cells_cite_opens_the_table_it_sits_in(project: Path) -> None:
     assert _json(["grid", "d1#15"], project)["table"] == "d1#10"
 
 
-def test_the_text_render_is_a_head_line_and_one_line_per_origin(project: Path) -> None:
+def test_the_text_render_is_a_head_line_and_the_table_as_gfm(project: Path) -> None:
+    """10:1529's *"a formatted table"*, from `render_grid()` over the store (W7.8s, D626).
+
+    The merged `4,000` is in its origin slot and the slot it covers is blank: GFM has no span
+    syntax, and 03:2035-2039 says that is where the loss is.
+    """
     code, out, err = _run(["grid", "d1#10"], project)
     assert (code, err) == (0, "")
-    lines = out.splitlines()
-    assert lines[0] == (
-        "table d1#10  2 rows x 3 cols  header_rows 1  header_cols 0  merges yes  kind data"
+    assert out == (
+        "table d1#10  2 rows x 3 cols  header_rows 1  header_cols 0  merges yes  kind data\n"
+        "\n"
+        "| Name | Q1 | Q2 |\n"
+        "| --- | --- | --- |\n"
+        "| Fees | 4,000 |  |\n"
     )
-    assert lines[1] == "  [0,0] header  d1#11  Name"
-    assert lines[5] == "  [1,1] 1x2  d1#15  4,000"
+
+
+def test_the_gfm_render_is_the_one_table_serializers(project: Path) -> None:
+    """INV-1: the verb prints `render_grid()`'s string, not a table of its own."""
+    from omniweave_core.model.grid import render_grid  # noqa: PLC0415
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+    from omniweave_core.store.doc import StoreGridReader, read_grid  # noqa: PLC0415
+
+    connection = store_sqlite.connect_readonly(project / ".omniweave" / "index.owstore")
+    try:
+        found = read_grid(connection, TABLE)
+        assert found is not None
+        table, _ = render_grid(found[1], StoreGridReader(connection), "gfm", table=TABLE)  # type: ignore[arg-type]
+    finally:
+        connection.close()
+    assert _run(["grid", "d1#10"], project)[1].endswith("\n\n" + table.rstrip("\n") + "\n")
+
+
+_NO_HEADER = (
+    {11: (0, 0, 1, 1, "a"), 12: (0, 1, 1, 1, "b")},
+    0,
+    ["|  |  |", "| --- | --- |", "| a | b |"],
+)
+"""03:2037-2038: a table with no header row gets a synthetic empty one; GFM requires it."""
+
+_LINE_BREAK_AND_PIPE = (
+    {11: (0, 0, 1, 1, "Term"), 12: (0, 1, 1, 1, "x | y\nz")},
+    1,
+    ["| Term | x \\| y<br>z |", "| --- | --- |"],
+)
+"""03:2037: multi-line content is joined with `<br>`. The pipe is escaped so it ends no cell."""
+
+
+@pytest.mark.parametrize("case", [_NO_HEADER, _LINE_BREAK_AND_PIPE], ids=["no-header", "br-pipe"])
+def test_the_gfm_render_follows_03s_loss_rules(
+    tmp_path: Path, seeded_store: Any, seeded_table: Any, case: tuple[Any, int, list[str]]
+) -> None:
+    cells, header_rows, rows = case
+    (tmp_path / "omniweave.toml").write_text(PROJECT, encoding="utf-8")
+    store = seeded_store(tmp_path / ".omniweave" / "index.owstore")
+    seeded_table(store, cells, table=TABLE, header_rows=header_rows)
+    code, out, err = _run(["grid", "d1#10"], tmp_path)
+    assert (code, err) == (0, "")
+    assert out.splitlines()[2:] == rows
+
+
+def test_render_json_never_renders_the_table(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The JSON consumer does not pay for a render it would throw away, or fail on one."""
+    import omniweave_core.model.grid as grid_module  # noqa: PLC0415
+
+    def refuse(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("render_grid called under --render json")
+
+    monkeypatch.setattr(grid_module, "render_grid", refuse)
+    assert _json(["grid", "d1#10"], project)["table"] == "d1#10"
 
 
 def test_with_two_corpora_declared_every_cite_is_qualified(project: Path) -> None:
