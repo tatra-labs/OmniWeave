@@ -42,5 +42,14 @@ def test_ow_and_omniweave_are_one_script_printing_one_version_line() -> None:
 def test_the_script_dispatches_a_root_and_refuses_a_word_that_is_not_one() -> None:
     assert _script("ow", "explain", "OW-A-013").returncode == 0
     refused = _script("ow", "frobnicate")
-    assert refused.returncode == 70
-    assert b"not dispatched" in refused.stderr
+    assert refused.returncode == 1
+    assert b"invalid choice: 'frobnicate'" in refused.stderr
+
+
+def test_the_script_routes_a_global_flag_written_before_the_root() -> None:
+    """D624: `ow --render json explain ...` reaches `explain`, as 18:887 says it may."""
+    before = _script("ow", "--render", "json", "explain", "OW-A-013")
+    after = _script("ow", "explain", "OW-A-013", "--render", "json")
+    assert before.returncode == after.returncode == 0
+    assert before.stdout == after.stdout
+    assert before.stdout.startswith(b'{"schema": 1, "numeric": "OW-A-013"')

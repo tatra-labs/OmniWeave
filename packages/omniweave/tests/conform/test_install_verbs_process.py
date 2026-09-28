@@ -90,17 +90,17 @@ def test_g25_runs_as_the_command_the_exit_criterion_types(tmp_path: Path) -> Non
     assert ran.stdout.strip() == b"surface emit --check: every generated artefact matches ACTIONS"
 
 
-def test_an_undispatched_root_still_names_what_is(tmp_path: Path) -> None:
+def test_a_word_that_is_no_root_still_names_what_is(tmp_path: Path) -> None:
     (tmp_path / "home").mkdir()
     (tmp_path / "proj").mkdir()
-    #  Every root of the generated tree dispatches since W7.8n, so the example is a word that
-    #  is no root at all.
+    #  Every root of the generated tree dispatches since W7.8n, so the example is a word that is
+    #  no root at all, and since W7.8q it is the tree's usage error, which lists the roots (D624).
+    #  `hook` and `ingest` are not listed: 18:923 and 18:928 hide them from the tree.
     refused = _ow(tmp_path, "frobnicate")
-    assert refused.returncode == 70
+    assert refused.returncode == 1
     named = (
-        b"only `ow add`, `ow corpora`, `ow doc`, `ow doctor`, `ow explain`, `ow hook`, "
-        b"`ow hooks`, `ow ingest`, `ow install`, `ow open`, `ow query`, `ow serve`, "
-        b"`ow skills`, `ow surface`, `ow uninstall` are"
+        b"(choose from 'add', 'corpora', 'doc', 'doctor', 'explain', 'hooks', 'install', "
+        b"'open', 'query', 'serve', 'skills', 'surface', 'uninstall')"
     )
     assert named in refused.stderr
 
