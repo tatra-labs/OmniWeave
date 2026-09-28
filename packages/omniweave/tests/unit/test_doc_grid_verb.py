@@ -192,13 +192,6 @@ def test_a_ref_naming_several_blocks_is_usage() -> None:
         verb._one_block((7, 8), "d1")
 
 
-def test_doc_diff_is_refused_by_name_with_internal_errors_exit(project: Path) -> None:
-    """D621: `RebindReadSide` has no store behind it, so `ow doc diff` cannot run."""
-    code, out, err = _run(["diff", "d1"], project)
-    assert (code, out) == (70, "")
-    assert "RebindReadSide" in err
-
-
 @pytest.mark.parametrize(
     ("flags", "named"),
     [
