@@ -133,6 +133,7 @@ __all__ = [
     "ParseOperator",
     "ParseTally",
     "is_parse",
+    "worker_env",
 ]
 
 MAX_OUTPUT_BYTES: Final[int] = MAX_ENTRY_BYTES + MAX_ASSET_TOTAL_BYTES
@@ -590,6 +591,7 @@ class ParseOperator:
                 ),
                 assets=[ref for ref in produced if ref.kind == "asset"],
                 open_ref=self._open,
+                open_part=self._retained,
             )
         except ModelError as refused:
             return self._failed(
@@ -714,6 +716,15 @@ class ParseOperator:
 
         return self._cas.open(parse_ref(str(ref.blob)))
 
+    def _retained(self, sha256: bytes) -> Any:
+        """A part the driver asked to retain, by digest: the CAS's bytes, or `None` if it has none.
+
+        `_stage()` put the unit's own bytes in the CAS before `INVOKE`, so a part whose digest is
+        the source's -- the PDF driver's one `pdf/source.pdf` -- is always there. Any other part is
+        retained only if its bytes already are; nothing here fetches (D628).
+        """
+        return self._cas.open(sha256) if self._cas.has(sha256) else None
+
     # -- S1: the guard and the driver -----------------------------------------------------------
 
     def _guard(self, granted: _Granted, call: Call) -> DriverGuard:
@@ -805,7 +816,7 @@ class ParseOperator:
                 subproc.SpawnRequest(
                     argv=subproc.worker_argv(self._executable, address),
                     cwd=str(self._tmp),
-                    env=_worker_env(),
+                    env=worker_env(),
                     address=address,
                 ),
                 hello=hello,
@@ -920,7 +931,8 @@ where a card's `needs_binaries` are found; `TEMP`/`TMP` keep a library's own tem
 Windows directory. Nothing else crosses."""
 
 
-def _worker_env() -> dict[str, str]:
+def worker_env() -> dict[str, str]:
+    """`_WORKER_ENV_KEYS` from this process's environment: a child's complete environment."""
     return {key: os.environ[key] for key in _WORKER_ENV_KEYS if key in os.environ}
 
 

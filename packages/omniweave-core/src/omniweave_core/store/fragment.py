@@ -53,6 +53,26 @@ for each (INV-21), so a draft that `add_block` refuses raises out of `add_block`
    the fragment's last page closes, which is the last page of every table in it. For the office
    path (one `stream` page) the two are the same transaction.
 
+## The PDF path: a glyph origin, a quad, and the part they are proved against (D628)
+
+`parse.pdf.pdfium` is the one driver whose blocks carry an address, and three things arrive with it:
+
+- **`os.k = "glyphs"`** becomes `OriginGlyphs(part, extractor, start, length)` -- the fragment's
+  long keys (03:632-634), the model's field names. The other three addressed variants are still
+  refused: no routed driver emits them, and a block that claimed `bytes` and was stored as
+  something else would be a quote tier nobody earned.
+- **`quad`** is four `(x, y)` pairs in the driver's own frame, and `Quad.from_driver` is the only
+  constructor that takes one (INV-9, 03:178). Its five other inputs are the open page record's:
+  `quad_origin`, `quad_unit`, `quad_dpi`, `rotation`, and the page height in the driver's unit,
+  which is `h_mpt` scaled back by the unit (D120 is why the page carries `quad_unit` and
+  `quad_dpi` at all). A frame `from_driver` refuses -- a rotated page, a `px` page with no dpi --
+  refuses the document, the fail-closed direction the origins take.
+- **`retain: true`** on a `part` record is the driver asking for the bytes to be kept, and INV-10's
+  `glyphs` branch cannot re-verify a `verbatim` block without them (V01-5's clause). `open_part`
+  is how the decoder reaches them: the host's reader over the CAS, by the part's declared digest.
+  A retained part whose bytes the host does not hold is stored with `store_ref` NULL, which is the
+  DDL's own *"bytes were not retained"* (03:602-604), and `owcheck` then says which part.
+
 Specified in 03-document-model.md sections 2.7, 2.10, 13.5 and 17 (P1, P2), 04-driver-system.md
 section 6.5, and 02-architecture.md section 4.1 row 16.
 """
@@ -74,7 +94,7 @@ from omniweave_core.model.block import BlockDraft, CellPos, Mark
 from omniweave_core.model.enums import Kind, Layer, Method, PageKind, Quote, RelKind, Trust
 from omniweave_core.model.grid import build_grid
 from omniweave_core.model.records import AssetDraft, Diag, DocRecord, PageRecord
-from omniweave_core.model.spans import OriginNone
+from omniweave_core.model.spans import OriginGlyphs, OriginNone, Quad
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -164,6 +184,7 @@ class _State:
     pending_parts: list[Mapping[str, Any]] = field(default_factory=list)
     pending_assets: list[Mapping[str, Any]] = field(default_factory=list)
     pending_rels: list[tuple[BlockId, str]] = field(default_factory=list)
+    open_part: Callable[[bytes], BinaryIO | None] | None = None
     tables: dict[BlockId, tuple[Mapping[str, Any], list[_Cell]]] = field(default_factory=dict)
     assets: int = 0
     rels: int = 0
@@ -171,6 +192,8 @@ class _State:
     dropped: int = 0
     ended: str | None = None
     page_stats: Mapping[str, Any] = field(default_factory=dict)
+    frame: Mapping[str, Any] = field(default_factory=dict)
+    """The open page record: the five inputs `Quad.from_driver` takes besides the points."""
 
 
 class _Cell:
@@ -206,13 +229,16 @@ def decode(
     assets: Sequence[ArtifactRef] = (),
     open_ref: Callable[[ArtifactRef], BinaryIO] | None = None,
     selector: PartSelector = PartSelector(),  # noqa: B008 -- frozen, fieldless-by-default
+    open_part: Callable[[bytes], BinaryIO | None] | None = None,
 ) -> Decoded:
     """Drive `sink` through one fragment, in the fragment's own order. Returns after `end_doc`.
 
     `assets` is `produced` minus the fragment, in the driver's order: an `asset` record's `ord` is
     its position here. `open_ref` reads a blob-backed ref's bytes; an inline ref needs none.
+    `open_part` opens a retained part's bytes by its sha256, or answers `None` when the host does
+    not hold them; absent, no part is retained.
     """
-    state = _State()
+    state = _State(open_part=open_part)
     iterator = iter(records)
     first = next(iterator, None)
     if first is None or first.get("t") != "doc":
@@ -334,6 +360,7 @@ def _page(item: Mapping[str, Any], *, sink: DocSink, state: _State, selector: Pa
     )
     state.page = number
     state.pages += 1
+    state.frame = item
     if state.root is None:
         state.root = sink.add_block(
             BlockDraft(
@@ -383,6 +410,7 @@ def _block(item: Mapping[str, Any], *, sink: DocSink, state: _State) -> None:
         label=item.get("label"),
         raw_kind=None if known else raw_kind,
         origin=_origin(item.get("os"), tmp),
+        quad=_quad(item.get("quad"), state.frame, tmp),
         payload=item.get("payload"),
         cell=None if cell is None else CellPos(**cell),
     )
@@ -441,12 +469,17 @@ def _flush(
     if state.page is None:
         return
     for part in state.pending_parts:
-        sink.add_part(
-            str(part.get("path") or ""),
-            None,
-            bytes.fromhex(str(part.get("sha256") or "")),
-            int(part.get("byte_len") or 0),
-        )
+        sha256 = bytes.fromhex(str(part.get("sha256") or ""))
+        retained = None
+        if part.get("retain") is True and state.open_part is not None:
+            retained = state.open_part(sha256)
+        try:
+            sink.add_part(
+                str(part.get("path") or ""), retained, sha256, int(part.get("byte_len") or 0)
+            )
+        finally:
+            if retained is not None:
+                retained.close()
     state.pending_parts.clear()
     for asset in state.pending_assets:
         ref = _asset_ref(asset, assets)
@@ -524,18 +557,69 @@ def _read(ref: ArtifactRef, open_ref: Callable[[ArtifactRef], BinaryIO] | None) 
         return handle.read()
 
 
-def _origin(raw: object, tmp: str) -> OriginNone:
-    """`os` -> an `OriginSpan`. `none` only, until a driver that records an address is routed.
+def _origin(raw: object, tmp: str) -> OriginNone | OriginGlyphs:
+    """`os` -> an `OriginSpan`: `none`, or the PDF driver's `glyphs` (the module docstring).
 
     The office driver's every block is `{"k": "none"}` (its card's `origin_span = "none"`). The
-    four addressed variants need their part's bytes to be re-verifiable (INV-10), which the PDF
-    driver's cell will bring with it; refusing them here is the fail-closed direction -- a block
-    that claimed `bytes` and was silently stored as `none` would be a quote tier nobody earned.
+    other three addressed variants are refused, the fail-closed direction -- a block that claimed
+    `bytes` and was silently stored as `none` would be a quote tier nobody earned.
     """
     kind = raw.get("k") if isinstance(raw, dict) else None
-    if kind not in (None, "none"):
-        raise _refuse("OW_MODEL", f"block {tmp!r} carries os.k={kind!r}; this decoder reads none")
-    return OriginNone()
+    if kind in (None, "none"):
+        return OriginNone()
+    if kind != "glyphs":
+        raise _refuse(
+            "OW_MODEL", f"block {tmp!r} carries os.k={kind!r}; this decoder reads none and glyphs"
+        )
+    assert isinstance(raw, dict)  # noqa: S101 -- `kind` came out of it
+    try:
+        return OriginGlyphs(
+            part=str(raw.get("part") or ""),
+            extractor=str(raw.get("extractor") or ""),
+            start=raw.get("start"),  # type: ignore[arg-type]
+            length=raw.get("length"),  # type: ignore[arg-type]
+        )
+    except (ValueError, TypeError) as bad:
+        raise _refuse("OW_MODEL", f"block {tmp!r}'s glyphs origin: {bad}") from bad
+
+
+_MPT: Final[dict[str, float]] = {"pt": 1000.0, "emu": 1000.0 / 12700.0}
+"""Millipoints per driver unit, for the two units that need no dpi. `px` is `72000 / dpi`."""
+
+
+def _quad(raw: object, frame: Mapping[str, Any], tmp: str) -> Quad | None:
+    """A driver's quad through `Quad.from_driver`, in the open page's frame. `None` stays `None`.
+
+    `page_h` is the page height in the DRIVER'S unit (03:174-176), and the page record carries it
+    as `h_mpt`, so it is scaled back by the unit the page declares. Any refusal of the frame or the
+    points is the document's (the module docstring), named with the block that carried it.
+    """
+    if raw is None:
+        return None
+    unit = frame.get("quad_unit") or "pt"
+    dpi = frame.get("quad_dpi")
+    try:
+        per_unit = 72000.0 / float(dpi) if unit == "px" and dpi else _MPT.get(str(unit))
+    except (ValueError, TypeError):
+        per_unit = None
+    if per_unit is None or not isinstance(raw, list) or len(raw) != 8:  # noqa: PLR2004
+        raise _refuse(
+            "OW_MODEL",
+            f"block {tmp!r}'s quad: eight numbers in a pt, emu or px frame, not {raw!r} in "
+            f"{unit!r}",
+        )
+    try:
+        points = [(float(raw[i]), float(raw[i + 1])) for i in range(0, 8, 2)]
+        return Quad.from_driver(
+            points,
+            origin=frame.get("quad_origin"),  # type: ignore[arg-type]
+            unit=unit,  # type: ignore[arg-type]
+            page_h=float(frame.get("h_mpt") or 0) / per_unit,
+            dpi=None if dpi is None else float(dpi),
+            rotation=int(frame.get("rotation") or 0),
+        )
+    except (ValueError, TypeError) as bad:
+        raise _refuse("OW_MODEL", f"block {tmp!r}'s quad: {bad}") from bad
 
 
 def _diag(item: Mapping[str, Any], state: _State) -> Diag:
