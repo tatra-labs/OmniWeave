@@ -62,9 +62,11 @@ __all__ = [
     "FAIL_ON",
     "QUERY_WORD",
     "answer_json",
+    "corpus_of",
     "error_object",
     "main",
     "parse",
+    "store_of",
 ]
 
 QUERY_WORD: Final[str] = "query"
@@ -111,17 +113,18 @@ def _query(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, std
     fail_on = _refuse_unserved(parsed)
     explicit = Path(parsed.config) if parsed.config else None
     config = load(cwd=cwd, env=env, explicit=explicit)
-    name = _corpus(config, parsed.corpus)
-    store = Path(stores(config, [name], cwd=cwd)[name])
-    if not store.is_file():
-        raise NotFoundError(
-            f"corpus {name!r} has no store at {store} yet: nothing has been ingested into it",
-            symbol="OW_CORPUS_NOT_FOUND",
-            fix=f"ow add --corpus {name} <path>",
-        )
+    name = corpus_of(config, parsed.corpus, verb="ow query")
+    store = store_of(config, name, cwd=cwd)
     retrieval = _retrieve(store, parsed)
     try:
-        packed = pack(retrieval, corpus=name, max_chars=parsed.max_chars)
+        #  `qualify` is `ow_query`'s rule: with more than one corpus declared, every cite names
+        #  its corpus, so a cite pasted into `ow open` cannot resolve against the wrong one.
+        packed = pack(
+            retrieval,
+            corpus=name,
+            qualify=len(corpora(config)) > 1,
+            max_chars=parsed.max_chars,
+        )
     except ValueError as error:
         #  `effective_max_chars` refuses below 1,000 as a ValueError and leaves the exit to the
         #  surface (answer/budget.py), and this surface's is a usage error.
@@ -200,8 +203,23 @@ def _refuse_unserved(parsed: argparse.Namespace) -> dict[str, int]:
     return {state: FAIL_ON[state] for state in states}
 
 
-def _corpus(config: Config, wanted: str | None) -> str:
-    """`--corpus`, else `[serve] default_corpus` as startup step 5 resolves it. Missing is 2."""
+def store_of(config: Config, name: str, *, cwd: Path) -> Path:
+    """The corpus's `.owstore`, which must exist: a read never creates one. Missing is 2."""
+    store = Path(stores(config, [name], cwd=cwd)[name])
+    if not store.is_file():
+        raise NotFoundError(
+            f"corpus {name!r} has no store at {store} yet: nothing has been ingested into it",
+            symbol="OW_CORPUS_NOT_FOUND",
+            fix=f"ow add --corpus {name} <path>",
+        )
+    return store
+
+
+def corpus_of(config: Config, wanted: str | None, *, verb: str) -> str:
+    """`--corpus`, else `[serve] default_corpus` as startup step 5 resolves it. Missing is 2.
+
+    `ow open` resolves its corpus here too (W7.8i), after a qualified cite has named one.
+    """
     declared = corpora(config)
     if wanted is not None:
         if wanted not in declared:
@@ -215,9 +233,9 @@ def _corpus(config: Config, wanted: str | None) -> str:
     name, why = declared_corpus(config)
     if name is None:
         raise NotFoundError(
-            f"ow query needs a corpus and none resolves: {why}",
+            f"{verb} needs a corpus and none resolves: {why}",
             symbol="OW_CORPUS_NOT_FOUND",
-            fix="ow query --corpus <name> ..., or set [serve] default_corpus",
+            fix=f"{verb} --corpus <name> ..., or set [serve] default_corpus",
         )
     return name
 
