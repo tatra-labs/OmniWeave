@@ -666,10 +666,13 @@ def explain(code: str) -> CodeRow:
     if row is not None:
         return row
     nearest = _nearest(wanted, register)
+    #  The fix names the nearest row as a command that runs. It named `ow explain --check`, which
+    #  `ExplainIn` has no field for and so no parser can accept (D618).
+    closest = nearest[0].split()[0] if nearest else "OW-A-001"
     raise NotFoundError(
         f"{code} is not in {_REGISTER_NAME}. Nearest: {' - '.join(nearest)}",
         symbol="OW_UNKNOWN_CODE",
-        fix="ow explain --check   # prints every registered code, in both spellings",
+        fix=f"ow explain {closest}   # the nearest registered code",
     )
 
 
