@@ -9,12 +9,12 @@ not import it:
 > remains, and the pending cost **with the approving command**."*
 
 **(a) is here** and is core's (`acquire.add_sources`). **(b) and (c) are not** (D554).
-`ow ingest` is not a root this build's `__main__` dispatches, so a spawned child would exit 70.
-`subprocess` is banned outside `toolchain` and `host.subproc` (the TID251 row), and neither has a
-detached spawn. With nothing draining the roster, polling it to a 20-second deadline would wait
-for nothing. So the report says what was rostered and that nothing drains it: `completed` is empty,
-every queued unit is `pending` with that reason, and `deadline_reached` is false because no deadline
-was waited on.
+`ow ingest` has been dispatched since W7.3w, but `subprocess` is banned outside `toolchain` and
+`host.subproc` (the TID251 row), and neither has a detached spawn. With nothing draining the
+roster, polling it to a 20-second deadline would wait for nothing. So the report says what was
+rostered and that nothing drains it: `completed` is empty, every queued unit is `pending` with that
+reason, and `deadline_reached` is false because no deadline was waited on. The CLI's `ow add`
+runs all three steps, because it is in `omniweave` and drains in its own process (W7.8h, D615).
 
 ## THE ONE REFUSAL THAT IS `isError: true`
 
@@ -66,7 +66,8 @@ SCHEMA_VERSION: Final[int] = 1
 _ARGUMENTS: Final[frozenset[str]] = frozenset({"source", "corpus", "dry_run"})
 _DRAIN: Final[str] = "ow ingest"
 _NOT_DRAINED: Final[str] = (
-    "rostered; nothing drains it in this build, because ow ingest is not a dispatched command"
+    "rostered; nothing drains it from the server, which cannot spawn ow ingest (D554); "
+    "ow ingest, or ow add from a shell, drains it"
 )
 _DRY_RUN: Final[str] = "would be rostered; dry_run wrote nothing"
 

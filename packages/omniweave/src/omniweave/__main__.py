@@ -1,4 +1,4 @@
-"""`python -m omniweave`: the roots this build can run, from `hook` to `query`.
+"""`python -m omniweave`: the roots this build can run, from `hook` to `add`.
 
 This file did not exist before W7.4i, and its absence was a defect in a cell that claimed otherwise.
 `posttool.command()` falls back to `python -m omniweave ingest` and its docstring called that
@@ -16,7 +16,8 @@ as this build can take it (hops 1-4 of 02 section 4.1), parsed by its own module
 because 18:928 hides it as 18:923 hides `hook` (D565). `ow surface emit` is W7.1e's: G25's step,
 and the command every generated header names (D334). `ow doctor` is W7.8c's: the checks this
 build can run, and the list of those it cannot (D610). `ow query` is W7.8g's: the same core calls
-`ow_query` makes, rendered to stdout (D614). The other roots in `cli.COMMANDS` are
+`ow_query` makes, rendered to stdout (D614). `ow add` is W7.8h's: `ow_add`'s roster step, then
+the drain `ow ingest` runs, in one process (D615). The other roots in `cli.COMMANDS` are
 refused, on stderr, with `InternalError`'s exit -- 10:2185's *"anything else"*, the only row in the
 taxonomy that does not assert something about a store or an argument that would be false here. The
 refusal is spelled out rather than silent, because the one thing worse than a command that does not
@@ -59,6 +60,8 @@ _DOCTOR_ROOT: Final[str] = "doctor"
 
 _QUERY_ROOT: Final[str] = "query"
 
+_ADD_ROOT: Final[str] = "add"
+
 DISPATCHED: Final[frozenset[str]] = frozenset(
     {
         HOOK_WORD,
@@ -68,10 +71,12 @@ DISPATCHED: Final[frozenset[str]] = frozenset(
         _SURFACE_ROOT,
         _DOCTOR_ROOT,
         _QUERY_ROOT,
+        _ADD_ROOT,
     }
 )
 """The roots this build can run. `ingest` joined in W7.3w; nothing spawns it yet (D433, D554).
-`surface` joined in W7.1e (D334), `doctor` in W7.8c (D610), `query` in W7.8g (D614)."""
+`surface` joined in W7.1e (D334), `doctor` in W7.8c (D610), `query` in W7.8g (D614), and `add`
+in W7.8h (D615)."""
 
 
 def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0911 -- one return per root
@@ -93,6 +98,8 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0911 -- one retu
         return _doctor(args)
     if args and args[0] == _QUERY_ROOT:
         return _query(args)
+    if args and args[0] == _ADD_ROOT:
+        return _add(args)
 
     from omniweave_core.errors import InternalError  # noqa: PLC0415 -- only the refusal pays
 
@@ -151,11 +158,26 @@ def _query(args: list[str]) -> int:
 
     #  10:1553-1561: stdout and stderr are UTF-8 with `errors="replace"` on every platform, before
     #  anything is written: an Answer prints document text, which a cp1252 pipe cannot carry.
+    _utf8()
+    #  The sixth read of the working directory under D435's exemption: `./omniweave.toml`.
+    return run(args, env=os.environ, cwd=Path.cwd(), stdout=sys.stdout, stderr=sys.stderr)
+
+
+def _add(args: list[str]) -> int:
+    from omniweave.surface.add import main as run  # noqa: PLC0415 -- the hook path never pays
+
+    #  The same rule as `query`'s: the report prints each pending unit's path, which is the user's.
+    _utf8()
+    #  The seventh read of the working directory under D435's exemption: `./omniweave.toml` and
+    #  every relative source resolve against it.
+    return run(args, env=os.environ, cwd=Path.cwd(), stdout=sys.stdout, stderr=sys.stderr)
+
+
+def _utf8() -> None:
+    """10:1553-1561's reconfigure, for the roots that print a document's text or a user's path."""
     for stream in (sys.stdout, sys.stderr):
         if isinstance(stream, io.TextIOWrapper):
             stream.reconfigure(encoding="utf-8", errors="replace")
-    #  The sixth read of the working directory under D435's exemption: `./omniweave.toml`.
-    return run(args, env=os.environ, cwd=Path.cwd(), stdout=sys.stdout, stderr=sys.stderr)
 
 
 if __name__ == "__main__":
