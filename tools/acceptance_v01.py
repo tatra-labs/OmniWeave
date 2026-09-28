@@ -264,8 +264,8 @@ CRITERIA: tuple[Criterion, ...] = (
         "first_answer_seconds <= 600: ow install -> ow add -> ow query, cited, 100 office docs",
         (),
         Coverage.NONE,
-        "no clean-machine script exists (W7.7c); `ow add` and `ow query` are not dispatched, and "
-        "the reference corpora do not exist (D602)",
+        "no clean-machine script exists (W7.7c); `ow add` is not dispatched (`ow query` is, since "
+        "W7.8g), and the reference corpora do not exist (D602)",
     ),
     Criterion(
         "V01-16",
