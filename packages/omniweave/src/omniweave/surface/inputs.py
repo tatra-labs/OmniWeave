@@ -271,11 +271,13 @@ class GridIn:
 class DiffIn:
     """`ow_diff` / `ow doc diff`. 10:819.
 
-    Two optional generations, and the default pair is the one an operator wants: `to_gen` defaults
-    to the head and `from_gen` to the generation before it, because 03:1302 puts this Action's whole
-    reason in the quarantine path -- a `rebind()` below threshold leaves a generation *"durable and
-    invisible for inspection by `ow doc diff`"*, and the generation a reader wants to inspect is the
-    one that was just refused.
+    Two optional generations, and the default pair is the one an operator wants: the two newest
+    generations that hold live rows, which is the head and the generation a quarantine refused,
+    because 03:1302 puts this Action's whole reason in the quarantine path -- a `rebind()` below
+    threshold leaves a generation *"durable and invisible for inspection by `ow doc diff`"*, and the
+    generation a reader wants to inspect is the one that was just refused. It is AHEAD of the head,
+    and the generation before a committed head holds no live row to compare, since a commit carries
+    every matched row forward (D627, which corrects this docstring's first default).
 
     Both are `advanced`, so the compact schema publishes a document and nothing else. That is the
     §3.3 strip working as designed rather than a narrowing: the handler honours a `from_gen` a host

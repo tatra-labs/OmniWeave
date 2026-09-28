@@ -1,4 +1,4 @@
-"""`ow doc grid <ref>`: one table as its exactly-once grid. `ow doc diff`: refused by name.
+"""`ow doc grid <ref>`: one table as its exactly-once grid. `ow doc diff <ref>`: two generations.
 
 10:808 gives `ow_grid` one row: *"a table's exactly-once cover: `slot(r,c)`, headers, merges"*.
 The `Grid` type and its sole constructor, `build_grid()`, have existed since P2. What did not exist
@@ -17,15 +17,24 @@ rebuilt shape against the stored one, and this module prints it.
   in its origin slot and the slots it covers are blank, and trailing blank rows and columns are
   dropped (03:2035-2039). The loss is the render's only: the JSON keeps the spans and the cites.
 
-**`ow doc diff` is refused by name**, exit 70, 10:2185's *"anything else"*. It compares two
-generations through `model.rebind`'s `RebindReadSide`, and no store implements that Protocol
-either (D621).
+**`ow doc diff <ref>` is 10:819's *"semantic diff between two generations of one document"*.**
+13-quality.md section 5.7 fixes what that is: *"The semantic differ is `rebind()`, and there is no
+second one"*, and `RebindReport` is its output. So this prints `store.doc.diff_generations()`,
+which runs `rebind()`'s matcher over the store's own rows and writes nothing (W7.8t, D627).
+- `ref` is anything `ow open` resolves -- a cite, a URI, a file name -- and it names the document.
+- The default pair is the two newest generations that hold live rows: the head, and the
+  generation a quarantine refused, which 03:1298-1302 keeps *"inspectable by `ow doc diff`"*. A
+  committed head keeps no earlier generation, and that is exit 2, saying so.
+- `--render json` is the ten fields of `RebindReport`, `schema` first. `--render text` is the
+  counts, whether the newer generation was committed, and the pages that fell below the
+  threshold.
 
-**Also refused by name**, each exit 1: `--quiet`, because 10:1542-1545 has each Action declare its
-one scalar and `doc.grid` declares none, and `--render jsonl` and `--render rows`.
+**Refused by name**, each exit 1, for both verbs: `--quiet`, because 10:1542-1545 has each Action
+declare its one scalar and neither declares one, and `--render jsonl` and `--render rows`.
 
 Exits: 0; 1 for usage; 2 for a ref that does not resolve, a block that is neither a table nor a
-cell of one, or an undeclared corpus; 6 for refs that address two corpora (`OW-A-015`).
+cell of one, a generation with no live row, or an undeclared corpus; 6 for refs that address two
+corpora (`OW-A-015`).
 """
 
 from __future__ import annotations
@@ -35,7 +44,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, TextIO
 
 from omniweave_core.config import load
-from omniweave_core.errors import InternalError, NotFoundError, OwError, UsageError
+from omniweave_core.errors import NotFoundError, OwError, UsageError
 
 from omniweave.surface.opening import corpus_for
 from omniweave.surface.query import error_object, parse, store_of
@@ -46,8 +55,9 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from omniweave_core.model.grid import Grid
+    from omniweave_core.model.rebind import RebindReport
 
-__all__ = ["DOC_WORD", "grid_document", "main"]
+__all__ = ["DOC_WORD", "diff_document", "grid_document", "main"]
 
 DOC_WORD: Final[str] = "doc"
 
@@ -69,13 +79,9 @@ def main(
         return parsed
     as_json = parsed.render == "json"
     try:
-        if parsed.ow_action != _GRID:
-            raise InternalError(
-                "ow doc diff compares two generations through model.rebind's RebindReadSide, and "
-                "no store implements it in this build (D621)",
-                fix="ow doc grid <cite>   # the one ow doc verb this build serves",
-            )
-        return _grid(parsed, env=env, cwd=cwd, stdout=stdout)
+        if parsed.ow_action == _GRID:
+            return _grid(parsed, env=env, cwd=cwd, stdout=stdout)
+        return _diff(parsed, env=env, cwd=cwd, stdout=stdout)
     except OwError as error:
         if as_json:
             stdout.write(json.dumps(error_object(error), ensure_ascii=False) + "\n")
@@ -85,7 +91,9 @@ def main(
 
 
 def _grid(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, stdout: TextIO) -> int:
-    _refuse_unserved(parsed)
+    _refuse_unserved(parsed, verb="ow doc grid", fix="ow doc grid <cite> [--render json]")
+    if not str(parsed.ref).strip():
+        raise UsageError("ow doc grid needs a table's cite", fix="ow doc grid d7#412")
     explicit = Path(parsed.config) if parsed.config else None
     config = load(cwd=cwd, env=env, explicit=explicit)
     ref = str(parsed.ref)
@@ -103,17 +111,100 @@ def _grid(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, stdo
     return 0
 
 
-def _refuse_unserved(parsed: argparse.Namespace) -> None:
+def _refuse_unserved(parsed: argparse.Namespace, *, verb: str, fix: str) -> None:
     named = ["--quiet"] if parsed.quiet else []
     if parsed.render in ("jsonl", "rows"):
         named.append(f"--render {parsed.render}")
     if named:
+        raise UsageError(f"{', '.join(named)} is parsed and not served by {verb}", fix=fix)
+
+
+def _diff(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, stdout: TextIO) -> int:
+    _refuse_unserved(
+        parsed, verb="ow doc diff", fix="ow doc diff <document> [--from-gen N] [--to-gen M]"
+    )
+    ref = str(parsed.ref)
+    if not ref.strip():
         raise UsageError(
-            f"{', '.join(named)} is parsed and not served by ow doc grid",
-            fix="ow doc grid <cite> [--render json]",
+            "ow doc diff needs a document: a cite, a URI or a file name",
+            fix="ow doc diff policy.pdf",
         )
-    if not str(parsed.ref).strip():
-        raise UsageError("ow doc grid needs a table's cite", fix="ow doc grid d7#412")
+    explicit = Path(parsed.config) if parsed.config else None
+    config = load(cwd=cwd, env=env, explicit=explicit)
+    name = corpus_for(config, [ref], parsed.corpus, verb="ow doc diff")
+    store = store_of(config, name, cwd=cwd)
+    report = _compare(store, ref, from_gen=parsed.from_gen, to_gen=parsed.to_gen)
+    document = diff_document(report, corpus=name)
+    if parsed.render == "json":
+        stdout.write(json.dumps(document, ensure_ascii=False) + "\n")
+    else:
+        for line in _diff_text(document, report.match_rate()):
+            stdout.write(line + "\n")
+    return 0
+
+
+def _compare(store: Path, ref: str, *, from_gen: int | None, to_gen: int | None) -> RebindReport:
+    """Resolve `ref` to its one document, and diff two of its generations: one snapshot."""
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415 -- a usage error never pays
+    from omniweave_core.model.enums import Layer  # noqa: PLC0415
+    from omniweave_core.store import reader as store_reader  # noqa: PLC0415
+    from omniweave_core.store import resolve  # noqa: PLC0415
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+    from omniweave_core.store.doc import diff_generations  # noqa: PLC0415
+
+    connection = store_sqlite.connect_readonly(store)
+    try:
+        reader = store_reader.SqliteReader(connection, now_ns=SystemClock().wall_ns())
+        with reader.snapshot() as s:
+            (found,) = reader.resolve_refs(s, [ref], context=0, layers=frozenset(Layer))
+            if isinstance(found, resolve.Missed):
+                raise found.error
+            (doc_ord,) = found.doc_ords
+            return diff_generations(connection, doc_ord, from_gen=from_gen, to_gen=to_gen)
+    finally:
+        connection.close()
+
+
+def diff_document(report: RebindReport, *, corpus: str) -> dict[str, Any]:
+    """`RebindReport`'s ten fields in their order (03:1245-1250), after `schema` and `corpus`.
+
+    `match_rate_by_page` is keyed by the page as a string, because a JSON object's keys are strings,
+    and in page order. `match_rate()` is not a field: the report derives it, and so can a reader.
+    """
+    return {
+        "schema": _SCHEMA,
+        "corpus": corpus,
+        "doc_ord": report.doc_ord,
+        "from_gen": report.from_gen,
+        "to_gen": report.to_gen,
+        "carried": report.carried,
+        "revised": report.revised,
+        "created": report.created,
+        "retired": report.retired,
+        "match_rate_by_page": {
+            str(page): rate for page, rate in sorted(report.match_rate_by_page.items())
+        },
+        "quarantined": report.quarantined,
+        "threshold": report.threshold,
+    }
+
+
+def _diff_text(document: Mapping[str, Any], match_rate: float) -> list[str]:
+    """Which generations, whether the newer one is the head, the counts, and the pages below."""
+    state = "quarantined, not committed" if document["quarantined"] else "committed"
+    threshold = float(document["threshold"])
+    lines = [
+        f"d{document['doc_ord']}  generation {document['from_gen']} -> {document['to_gen']}  "
+        f"{state}",
+        f"  carried {document['carried']}  revised {document['revised']}  "
+        f"created {document['created']}  retired {document['retired']}",
+        f"  matched {match_rate:.2f} of the older generation, threshold {threshold:.2f}",
+    ]
+    below = [
+        (page, rate) for page, rate in document["match_rate_by_page"].items() if rate < threshold
+    ]
+    lines.extend(f"  page {page}  matched {rate:.2f}" for page, rate in below)
+    return lines
 
 
 def _read(
