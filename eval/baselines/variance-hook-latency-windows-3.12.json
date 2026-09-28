@@ -1,0 +1,559 @@
+{
+  "band_pct": 25.0,
+  "gate": "G26",
+  "machine": "AMD64",
+  "os": "windows",
+  "over_warm_budget": 0,
+  "python": "3.12.0",
+  "question": "OQ-4",
+  "recorded_at": "2026-09-28T16:04:09+00:00",
+  "runner": "unpinned",
+  "statistic": "p95",
+  "summary": {
+    "absent": [],
+    "banded_subjects": [
+      "ow hook prompt, warm p95"
+    ],
+    "bands_pct": [
+      25,
+      40
+    ],
+    "gate_false_failure_pct": {
+      "25": 10.8989898989899,
+      "40": 4.08080808080808
+    },
+    "runs": 100,
+    "subjects": {
+      "hook path module count": {
+        "cv_pct": 0.0,
+        "false_failure_pct": {
+          "25": 0.0,
+          "40": 0.0
+        },
+        "max": 86.0,
+        "mean": 86.0,
+        "median": 86.0,
+        "min": 86.0,
+        "stdev": 0.0,
+        "unit": "modules"
+      },
+      "ow hook prompt, warm p95": {
+        "cv_pct": 14.162704547742093,
+        "false_failure_pct": {
+          "25": 10.8989898989899,
+          "40": 4.08080808080808
+        },
+        "max": 190.2711,
+        "mean": 119.486628,
+        "median": 114.92875000000001,
+        "min": 93.0471,
+        "stdev": 16.922538097699675,
+        "unit": "ms"
+      }
+    }
+  },
+  "values": [
+    {
+      "cold p95": 429.2998,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 104.1007
+    },
+    {
+      "cold p95": 382.2326,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 101.8302
+    },
+    {
+      "cold p95": 344.8748,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 103.2735
+    },
+    {
+      "cold p95": 477.3616,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 126.2251
+    },
+    {
+      "cold p95": 607.9938,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 165.518
+    },
+    {
+      "cold p95": 454.0762,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 190.2711
+    },
+    {
+      "cold p95": 349.8676,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 105.7869
+    },
+    {
+      "cold p95": 437.552,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 100.8568
+    },
+    {
+      "cold p95": 358.0624,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 97.4897
+    },
+    {
+      "cold p95": 351.3382,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 124.987
+    },
+    {
+      "cold p95": 415.6889,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 110.0812
+    },
+    {
+      "cold p95": 343.6911,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 128.66
+    },
+    {
+      "cold p95": 403.5371,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 108.4903
+    },
+    {
+      "cold p95": 340.6505,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 116.3079
+    },
+    {
+      "cold p95": 468.6791,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 111.7808
+    },
+    {
+      "cold p95": 405.1899,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 112.5742
+    },
+    {
+      "cold p95": 445.1006,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 152.2283
+    },
+    {
+      "cold p95": 360.4565,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 135.2282
+    },
+    {
+      "cold p95": 443.2525,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 99.6591
+    },
+    {
+      "cold p95": 326.6469,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 115.3697
+    },
+    {
+      "cold p95": 343.2185,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 112.4906
+    },
+    {
+      "cold p95": 555.2351,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 152.5063
+    },
+    {
+      "cold p95": 473.9202,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 133.0096
+    },
+    {
+      "cold p95": 362.4192,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 146.4585
+    },
+    {
+      "cold p95": 322.3015,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 129.9595
+    },
+    {
+      "cold p95": 422.582,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 100.559
+    },
+    {
+      "cold p95": 330.1922,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 104.0296
+    },
+    {
+      "cold p95": 352.4593,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 103.514
+    },
+    {
+      "cold p95": 365.746,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 142.0849
+    },
+    {
+      "cold p95": 475.5456,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 131.5256
+    },
+    {
+      "cold p95": 330.0403,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 108.4592
+    },
+    {
+      "cold p95": 364.4961,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 103.0391
+    },
+    {
+      "cold p95": 413.3796,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 134.5822
+    },
+    {
+      "cold p95": 479.6054,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 107.6326
+    },
+    {
+      "cold p95": 386.2328,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 127.0413
+    },
+    {
+      "cold p95": 421.0974,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 132.4121
+    },
+    {
+      "cold p95": 416.5604,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 140.6926
+    },
+    {
+      "cold p95": 389.2718,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 111.3349
+    },
+    {
+      "cold p95": 415.4075,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 125.278
+    },
+    {
+      "cold p95": 460.1475,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 119.3092
+    },
+    {
+      "cold p95": 415.6806,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 150.7876
+    },
+    {
+      "cold p95": 355.2719,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 101.7001
+    },
+    {
+      "cold p95": 364.8428,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 109.1485
+    },
+    {
+      "cold p95": 415.1489,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 157.4373
+    },
+    {
+      "cold p95": 412.5683,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 112.8881
+    },
+    {
+      "cold p95": 350.3503,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 123.1387
+    },
+    {
+      "cold p95": 352.6806,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 111.3179
+    },
+    {
+      "cold p95": 353.3777,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 106.9685
+    },
+    {
+      "cold p95": 367.4048,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 115.7507
+    },
+    {
+      "cold p95": 331.4443,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 112.6874
+    },
+    {
+      "cold p95": 323.8791,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 93.0471
+    },
+    {
+      "cold p95": 380.7521,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 112.745
+    },
+    {
+      "cold p95": 357.9098,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 124.518
+    },
+    {
+      "cold p95": 356.4352,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 110.6202
+    },
+    {
+      "cold p95": 535.0409,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 129.1034
+    },
+    {
+      "cold p95": 439.5245,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 119.562
+    },
+    {
+      "cold p95": 507.3487,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 101.8691
+    },
+    {
+      "cold p95": 484.0192,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 121.9344
+    },
+    {
+      "cold p95": 486.0609,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 131.6431
+    },
+    {
+      "cold p95": 382.7491,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 103.0764
+    },
+    {
+      "cold p95": 364.7976,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 101.3239
+    },
+    {
+      "cold p95": 337.7485,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 113.5166
+    },
+    {
+      "cold p95": 349.9238,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 101.5108
+    },
+    {
+      "cold p95": 349.401,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 104.8027
+    },
+    {
+      "cold p95": 399.6529,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 111.9195
+    },
+    {
+      "cold p95": 362.2736,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 100.0355
+    },
+    {
+      "cold p95": 379.8237,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 110.9546
+    },
+    {
+      "cold p95": 482.9621,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 112.8537
+    },
+    {
+      "cold p95": 508.2824,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 160.8857
+    },
+    {
+      "cold p95": 396.2579,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 106.4813
+    },
+    {
+      "cold p95": 406.5625,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 125.9847
+    },
+    {
+      "cold p95": 398.102,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 125.9902
+    },
+    {
+      "cold p95": 367.7071,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 121.1986
+    },
+    {
+      "cold p95": 344.8301,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 151.9267
+    },
+    {
+      "cold p95": 385.3792,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 110.6689
+    },
+    {
+      "cold p95": 455.8226,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 123.9984
+    },
+    {
+      "cold p95": 391.8636,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 141.0206
+    },
+    {
+      "cold p95": 397.695,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 118.0134
+    },
+    {
+      "cold p95": 430.0417,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 121.3046
+    },
+    {
+      "cold p95": 397.1858,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 128.1646
+    },
+    {
+      "cold p95": 348.0605,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 105.8665
+    },
+    {
+      "cold p95": 324.8626,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 111.3572
+    },
+    {
+      "cold p95": 463.773,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 107.4189
+    },
+    {
+      "cold p95": 482.7386,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 127.9898
+    },
+    {
+      "cold p95": 404.7598,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 103.4602
+    },
+    {
+      "cold p95": 373.4021,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 111.8976
+    },
+    {
+      "cold p95": 399.2674,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 125.741
+    },
+    {
+      "cold p95": 357.8358,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 109.4436
+    },
+    {
+      "cold p95": 379.0833,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 106.7586
+    },
+    {
+      "cold p95": 374.7652,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 122.5632
+    },
+    {
+      "cold p95": 397.3267,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 118.3424
+    },
+    {
+      "cold p95": 398.4709,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 115.2244
+    },
+    {
+      "cold p95": 370.965,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 125.7676
+    },
+    {
+      "cold p95": 385.2162,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 145.9881
+    },
+    {
+      "cold p95": 374.8293,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 114.6331
+    },
+    {
+      "cold p95": 400.599,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 114.1053
+    },
+    {
+      "cold p95": 422.8362,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 117.3104
+    },
+    {
+      "cold p95": 378.3425,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 117.4745
+    },
+    {
+      "cold p95": 423.9188,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 111.1538
+    },
+    {
+      "cold p95": 414.2398,
+      "hook path module count": 86,
+      "ow hook prompt, warm p95": 117.0306
+    }
+  ],
+  "warm_budget_ms": 250.0,
+  "warm_runs": 30
+}

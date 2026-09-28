@@ -657,7 +657,9 @@ release        = true
 # exit 0, so a deadline breach turns the adoption lever off with no symptom (INV-3).
 # The script landed at W7.4k, so its path moved from `runner_planned` to `runner` in the same
 # commit. It times the real `python -m omniweave hook prompt` after a witness proves the word
-# reaches the UserPromptSubmit handler and not the unknown-event no-op (D432).
+# reaches the UserPromptSubmit handler and not the unknown-event no-op (D432). The band fails only
+# on the pinned runner that recorded the baseline, G10's rule, read from gate_coldstart.py
+# (D622, D623); `--variance N` is OQ-4's instrument for this gate.
 runner         = ["tools/gate_hook_latency.py"]
 # 17-risks.md section 1.3: `surface` owns "hooks".
 owner          = "surface"
