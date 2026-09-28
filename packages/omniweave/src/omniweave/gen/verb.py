@@ -13,6 +13,10 @@ entry point, so nothing there may be able to write (`test_this_package_can_write
 Exit 0 or 1, 10:1430's two: 0 when `--check` finds nothing or the write completed, 1 when
 `--check` finds drift. A usage error is argparse's, through the generated tree, like every other
 root. Everything printed is a repo-relative path or a finding, ASCII, for `__main__`'s reason.
+
+Of 18:887's eight global flags, `--config`, `--corpus`, `--offline` and `--no-color` change nothing
+this verb can print, and `--json-errors` shapes the one error it prints. `--render` other than
+`text`, `--quiet` and `--verbose` are refused by name, exit 1 (`switches.READS`, D631).
 """
 
 from __future__ import annotations
@@ -26,7 +30,9 @@ from omniweave.sdk.reports import SurfaceReport
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-__all__ = ["DRIFT", "OK", "main", "run"]
+__all__ = ["DRIFT", "OK", "SURFACE_WORD", "main", "run"]
+
+SURFACE_WORD: Final[str] = "surface"
 
 OK: Final[int] = 0
 DRIFT: Final[int] = 1
@@ -61,13 +67,20 @@ def run(*, check: bool, bless: bool) -> SurfaceReport:
 
 def main(argv: Sequence[str], *, stdout: TextIO, stderr: TextIO) -> int:
     """`ow surface emit ...` from argv (starting at the root word), through the generated tree."""
+    from omniweave_core.errors import OwError  # noqa: PLC0415
+
     from omniweave.cli import build_parser  # noqa: PLC0415 -- only a CLI verb pays for the tree
+    from omniweave.surface import switches  # noqa: PLC0415
 
     try:
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             parsed: argparse.Namespace = build_parser().parse_args(list(argv))
     except SystemExit as stop:
         return stop.code if isinstance(stop.code, int) else _ARGPARSE_USAGE
+    try:
+        switches.check(SURFACE_WORD, parsed)
+    except OwError as error:
+        return switches.report(error, parsed, stdout=stdout, stderr=stderr)
     report = run(
         check=bool(getattr(parsed, "check", False)), bless=bool(getattr(parsed, "bless", False))
     )

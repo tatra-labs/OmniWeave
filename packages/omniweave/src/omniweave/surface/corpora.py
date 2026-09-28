@@ -27,6 +27,8 @@ question than the one asked (`ow query`'s rule, D614):
 - `--scope`: `corpus.coverage`'s scope; core's coverage reads the whole corpus;
 - `--quiet`: 10:1542-1545 has each Action declare its one scalar, and `corpora` declares none;
 - `--render jsonl` and `--render rows`, which have no writer.
+- `--verbose`, and any other global flag `switches.READS` does not give this verb (D631).
+  `--json-errors` is served: 18:898's object on stderr, through `switches.report()`.
 
 Exits are 10:1424's `0/2`, plus 1 for usage. 2 is a named corpus that is not declared, or a `card`
 or `coverage` with no corpus named and no default.
@@ -41,9 +43,10 @@ from typing import TYPE_CHECKING, Any, Final, TextIO
 from omniweave_core.config import load
 from omniweave_core.errors import NotFoundError, OwError, UsageError
 
-from omniweave.surface.query import error_object, parse
+from omniweave.surface.query import parse
 from omniweave.surface.serve import stores
 from omniweave.surface.startup import corpora, declared_corpus
+from omniweave.surface.switches import check, report
 
 if TYPE_CHECKING:
     import argparse
@@ -70,15 +73,11 @@ def main(
     parsed = parse(argv, stderr)
     if isinstance(parsed, int):
         return parsed
-    as_json = parsed.render == "json"
     try:
+        check(CORPORA_WORD, parsed)
         return _corpora(parsed, env=env, cwd=cwd, stdout=stdout)
     except OwError as error:
-        if as_json:
-            stdout.write(json.dumps(error_object(error), ensure_ascii=False) + "\n")
-        else:
-            stderr.write(f"ow: {error.numeric() or error.code()}: {error}\n  fix: {error.fix}\n")
-        return type(error).EXIT
+        return report(error, parsed, stdout=stdout, stderr=stderr)
 
 
 def _corpora(

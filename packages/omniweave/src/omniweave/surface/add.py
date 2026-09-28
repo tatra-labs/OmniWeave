@@ -21,6 +21,9 @@ lock"*: a drain that dies leaves the roster behind, and the next `ow ingest` fin
 - `--render text` (the default) and `--render json`: the `add-out-v1` object, `ow_add`'s wire
   form, with `schema` first (10:1530).
 - `--quiet`: the count queued, 10:1543's scalar.
+- `--offline`: routing's `ProbeEnv.offline`, so a card with `[hardware] needs_network = true`
+  does not resolve (04:150, D631). No `acquire` connector fetches anything anyway.
+- `--json-errors`: 18:898's object on stderr, through `switches.report()`.
 
 **What is refused by name**, each exit 1, because a flag parsed and ignored answers a different
 question than the one asked (`ow query`'s rule, D614):
@@ -30,6 +33,7 @@ question than the one asked (`ow query`'s rule, D614):
   for the same reason;
 - `--wait`: the drain is synchronous, so there is no deadline to wait to;
 - `--render jsonl` and `--render rows`, which have no writer, and `--quiet` with `--render`.
+- `--verbose`, and any other global flag `switches.READS` does not give `add` (D631).
 
 Exits are 10:1425's `0/5/6/7`, plus 1 for usage and 2 for a corpus that is not declared. 5 is
 never reached, because nothing is deferred for budget. 6 is a source outside the corpus's source
@@ -47,9 +51,10 @@ from omniweave_core.config import load
 from omniweave_core.errors import NotFoundError, OwError, UsageError
 
 from omniweave.surface.ingest import contained, root_of
-from omniweave.surface.query import error_object, parse
+from omniweave.surface.query import parse
 from omniweave.surface.serve import stores
 from omniweave.surface.startup import corpora, declared_corpus
+from omniweave.surface.switches import check, report
 
 if TYPE_CHECKING:
     import argparse
@@ -101,15 +106,11 @@ def main(
     parsed = parse(argv, stderr)
     if isinstance(parsed, int):
         return parsed
-    as_json = parsed.render == "json"
     try:
+        check(ADD_WORD, parsed)
         return _add(parsed, argv=argv, env=env, cwd=cwd, out=(stdout, stderr), sweep_ms=sweep_ms)
     except OwError as error:
-        if as_json:
-            stdout.write(json.dumps(error_object(error), ensure_ascii=False) + "\n")
-        else:
-            stderr.write(f"ow: {error.numeric() or error.code()}: {error}\n  fix: {error.fix}\n")
-        return type(error).EXIT
+        return report(error, parsed, stdout=stdout, stderr=stderr)
 
 
 def _add(
@@ -139,7 +140,13 @@ def _add(
     completed: list[dict[str, Any]] = []
     if not parsed.dry_run and added.queued:
         drain = _drain(
-            store, config, roots=(source, cwd), paths=paths, argv=argv, sweep_ms=sweep_ms
+            store,
+            config,
+            roots=(source, cwd),
+            paths=paths,
+            argv=argv,
+            sweep_ms=sweep_ms,
+            offline=parsed.offline,
         )
         if not parsed.quiet:
             #  10:1565: a long verb's progress is stderr's, so stdout stays the report alone.
@@ -225,6 +232,7 @@ def _drain(
     paths: Sequence[Path],
     argv: Sequence[str],
     sweep_ms: int | None,
+    offline: bool = False,
 ) -> tuple[str, ...]:
     """Step (b): the drain `ow ingest <path>...` runs, over the paths (a) just rostered.
 
@@ -243,6 +251,7 @@ def _drain(
         argv=list(argv),
         paths=paths,
         sweep_ms=sweep_ms,
+        offline=offline,
     )
     return report.lines()
 
