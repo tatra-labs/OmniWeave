@@ -73,6 +73,7 @@ Specified in 02-architecture.md section 4.1 rows 10-17, 08-runtime.md sections 1
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import sys
@@ -81,7 +82,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Final, cast
+from typing import TYPE_CHECKING, Any, BinaryIO, Final, cast
 
 from omniweave_core.errors import ModelError, RouteError
 from omniweave_core.host import subproc
@@ -548,16 +549,10 @@ class ParseOperator:
                 FailureClass.EMPTY_RESULT if not fragments else FailureClass.DRIVER_BUG,
                 f"a parse produced {len(fragments)} doc_fragment refs; exactly one is a result",
             )
-        body = self._bytes(fragments[0])
-        records = list(records_of(body))
-        if not any(record.get("t") == "block" for record in records):
-            return self._failed(
-                row,
-                unit,
-                producer,
-                FailureClass.EMPTY_RESULT,
-                "the fragment has no block: 08:245-249, there is no empty success",
-            )
+        fragment = fragments[0]
+        refused = self._first_pass(fragment)
+        if refused is not None:
+            return self._failed(row, unit, producer, *refused)
         sink = DocSink(
             self._thread,
             producer_id=self._producer_id(producer),
@@ -576,23 +571,24 @@ class ParseOperator:
             # first fifteen-file corpus. The worker call runs concurrently; the store write, which
             # is serial on the store thread anyway, is serialised here as a whole document.
             self._sink_lock.acquire()
-            decoded = decode(
-                records,
-                sink=sink,
-                doc=FragmentDoc(
-                    doc_key=bytes.fromhex(unit.content_sha256)[:16],
-                    source_sha256=staged.raw_digest,
-                    normalizer=staged.normalizer,
-                    uri=unit.uri,
-                    source_bytes=unit.byte_len,
-                    declared=_declared(granted.card),
-                    model_version=MODEL_VERSION,
-                    format_evidence=staged.format_evidence,
-                ),
-                assets=[ref for ref in produced if ref.kind == "asset"],
-                open_ref=self._open,
-                open_part=self._retained,
-            )
+            with self._stream(fragment) as lines:
+                decoded = decode(
+                    records_of(lines),
+                    sink=sink,
+                    doc=FragmentDoc(
+                        doc_key=bytes.fromhex(unit.content_sha256)[:16],
+                        source_sha256=staged.raw_digest,
+                        normalizer=staged.normalizer,
+                        uri=unit.uri,
+                        source_bytes=unit.byte_len,
+                        declared=_declared(granted.card),
+                        model_version=MODEL_VERSION,
+                        format_evidence=staged.format_evidence,
+                    ),
+                    assets=[ref for ref in produced if ref.kind == "asset"],
+                    open_ref=self._open,
+                    open_part=self._retained,
+                )
         except ModelError as refused:
             return self._failed(
                 row,
@@ -705,11 +701,37 @@ class ParseOperator:
         self._producers[key] = producer_id
         return producer_id
 
-    def _bytes(self, ref: ArtifactRef) -> bytes:
+    def _stream(self, ref: ArtifactRef) -> BinaryIO:
+        """The fragment as lines off a stream: the CAS file, or its inline bytes. Never read whole.
+
+        12-performance.md:229: the supervisor is *"capped at 600 MB by I31 and forbidden from
+        holding document bytes"*. Reading the fragment whole and listing its records held both at
+        once -- 108 MB of body and 210,000 decoded dicts for `gen_5000p_pdf` -- and the supervisor
+        peaked at 1,021,456,384 B (D629). A binary file iterates by line, which is what
+        `records_of` takes, so neither pass below holds more than one record (D630).
+        """
         if ref.inline is not None:
-            return ref.inline
-        with self._open(ref) as handle:
-            return handle.read()
+            return io.BytesIO(ref.inline)
+        return cast("BinaryIO", self._open(ref))
+
+    def _first_pass(self, ref: ArtifactRef) -> tuple[FailureClass, str] | None:
+        """Every line a JSON object, and at least one block -- or the refusal that says which not.
+
+        Before `DocSink` sees anything, so a fragment with a malformed line or no block writes
+        nothing: the property the whole-fragment list gave for free. It parses and discards, so it
+        costs one more JSON pass and no memory (D630).
+        """
+        try:
+            with self._stream(ref) as lines:
+                blocks = sum(1 for record in records_of(lines) if record.get("t") == "block")
+        except ModelError as bad:
+            return (FailureClass.DRIVER_BUG, f"{bad.code()}: {bad}")
+        if not blocks:
+            return (
+                FailureClass.EMPTY_RESULT,
+                "the fragment has no block: 08:245-249, there is no empty success",
+            )
+        return None
 
     def _open(self, ref: ArtifactRef) -> Any:
         from omniweave_core.blobs import parse_ref  # noqa: PLC0415
