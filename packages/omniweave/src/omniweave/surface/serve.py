@@ -23,6 +23,10 @@ rather than a configuration error it would fix only to meet the install one next
 
 ## WHAT IS REFUSED, AND WHY EACH IS NOT SILENT
 
+- **A global flag `ow serve` does not serve** (`switches.READS`, D631): `--corpus`, because the
+  server's corpus is `[serve] default_corpus` and nothing passes it on; `--render` other than
+  `text` and `--quiet`, because stdout is the protocol's; `--verbose`, which prints nothing here.
+  Exit 1, before the capability check, since the command line is wrong whatever is installed.
 - **Neither or both transports.** 10:1426 gives `--mcp` and `--http` and no default. Exit 1.
 - **An `--http`-only flag under `--mcp`.** `--host`, `--port`, `--path`, `--api-key`,
   `--stateless` and `--session-timeout` configure a listener; beside `--mcp` they are ignored,
@@ -36,8 +40,9 @@ rather than a configuration error it would fix only to meet the install one next
   naming the key that won.
 
 Every refusal is one line on stderr: the symbol, the exit, the message and the command that clears
-it, 10:294's *"on one line, with no traceback"*. Stdout is not touched before the server takes it:
-the MCP stdio transport reserves it for protocol messages.
+it, 10:294's *"on one line, with no traceback"* -- or, under `--json-errors`, 18:898's object.
+Stdout is not touched before the server takes it: the MCP stdio transport reserves it for protocol
+messages.
 """
 
 from __future__ import annotations
@@ -53,6 +58,7 @@ from omniweave_core.errors import InternalError, OwError, UsageError
 from omniweave.surface.dispatch import serve_entry
 from omniweave.surface.registry import ACTIONS, PROFILES, listed
 from omniweave.surface.startup import servable
+from omniweave.surface.switches import check, report
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
@@ -76,6 +82,7 @@ HTTP_ONLY: Final[tuple[str, ...]] = (
 
 _USAGE: Final[int] = UsageError.EXIT
 _ARGPARSE_USAGE: Final[int] = 2
+_SERVE_WORD: Final[str] = "serve"
 
 
 def main(
@@ -86,25 +93,29 @@ def main(
     stderr: TextIO,
     entries: Iterable[Entry] | None = None,
 ) -> int:
-    """Run `ow serve` from argv (starting at `serve`). The exit is the server's, when it ran."""
-    try:
-        return _serve(argv, env=env, cwd=cwd, stderr=stderr, entries=entries)
-    except OwError as error:
-        stderr.write(_line(error))
-        return type(error).EXIT
+    """Run `ow serve` from argv (starting at `serve`). The exit is the server's, when it ran.
 
-
-def _serve(
-    argv: Sequence[str],
-    *,
-    env: Mapping[str, str],
-    cwd: Path,
-    stderr: TextIO,
-    entries: Iterable[Entry] | None,
-) -> int:
+    An error is `_line()` on stderr, or `--json-errors`' object there. Never stdout, which is the
+    protocol channel, so `--render json`'s error object is not written either: `switches.check`
+    refuses `--render json` here, on stderr.
+    """
     parsed = _parse(argv, stderr)
     if isinstance(parsed, int):
         return parsed
+    try:
+        return _serve(parsed, env=env, cwd=cwd, entries=entries)
+    except OwError as error:
+        return report(error, parsed, stdout=None, stderr=stderr, line=_line)
+
+
+def _serve(
+    parsed: argparse.Namespace,
+    *,
+    env: Mapping[str, str],
+    cwd: Path,
+    entries: Iterable[Entry] | None,
+) -> int:
+    check(_SERVE_WORD, parsed)
     _transport(parsed)
     profile = parsed.profile
     if profile is not None and profile not in PROFILES:

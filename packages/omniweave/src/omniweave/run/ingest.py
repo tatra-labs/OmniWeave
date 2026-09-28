@@ -461,8 +461,12 @@ def ingest(
     scope: str | None = None,
     clock: Clock | None = None,
     sweep_ms: int | None = None,
+    offline: bool = False,
 ) -> IngestReport:
     """Run hops 1-4 over one store, under `store.write`, and report where every unit stopped.
+
+    `offline` is `ow add --offline`: routing's `ProbeEnv.offline`, so a driver that needs the
+    network does not resolve (`routing.resolve_policy`, D631).
 
     `sweep_ms` replaces `[runtime] deferred_sweep_ms` for this run's loop when given. It is the
     interval `Supervisor._settle()` waits between empty claims, and 08:915's two quiet polls mean a
@@ -501,6 +505,7 @@ def ingest(
                 store=store,
                 book=book,
                 host=host,
+                offline=offline,
             )
             pending = _receipt(thread, source_root=source_root)
         except BaseException:
@@ -644,6 +649,7 @@ def _hops(
     store: Path,
     book: _Book,
     host: sup.HostFacts,
+    offline: bool,
 ) -> IngestReport:
     now_ns = clock.wall_ns()
     plan_batch = int(config.get("runtime.plan_batch"))  # type: ignore[arg-type]
@@ -657,7 +663,7 @@ def _hops(
     opened = book.stage(Stage.DISCOVER, opened)
     context = _context(run_id, generation, config=config, roots=roots, clock=clock)
     enqueued, unsalted = _enqueue(thread, context, plan_batch=plan_batch)
-    inputs = _routing_inputs(config)
+    inputs = _routing_inputs(config, offline=offline)
     book.catalog(inputs.catalog.catalog_digest)
     context = replace(
         context,
@@ -730,7 +736,7 @@ class _RoutingInputs:
     """`evidence.Installed.computers`: the providers whose package ships a computer (D628)."""
 
 
-def _routing_inputs(config: Config) -> _RoutingInputs:
+def _routing_inputs(config: Config, *, offline: bool = False) -> _RoutingInputs:
     from importlib.metadata import distributions  # noqa: PLC0415 -- the routing path only
 
     from omniweave_core.discovery import catalog as build_catalog  # noqa: PLC0415
@@ -748,7 +754,7 @@ def _routing_inputs(config: Config) -> _RoutingInputs:
         registry=registry,
         catalog=build_catalog(),
         policy=compile_policy([builtin_layer()], registry=registry),
-        resolving=resolve_policy(config),
+        resolving=resolve_policy(config, offline=offline),
         computers=dict(installed.computers),
     )
 
