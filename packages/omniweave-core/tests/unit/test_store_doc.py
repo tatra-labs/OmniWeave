@@ -1679,3 +1679,34 @@ def test_a_pixels_block_reads_back_with_its_page_and_quad_as_its_origin(
         connection.close()
     assert locus is not None
     assert (locus.quad, locus.reason, locus.origin) == (quad, None, OriginPixels(page=0, quad=quad))
+
+
+def test_store_grid_reader_renders_a_docsink_table_through_render_grid(harness: Harness) -> None:
+    """W7.8s: `render_grid()`'s reader over the store, for a table `DocSink` wrote."""
+    from omniweave_core.model.grid import render_grid  # noqa: PLC0415
+    from omniweave_core.store.doc import StoreGridReader  # noqa: PLC0415
+
+    _table_document(harness, (CellPos(0, 0), CellPos(0, 1), CellPos(1, 0, 1, 2)))
+    table_id = read(harness, "SELECT block_id FROM table_meta")[0][0]
+    found = _read_back(harness, "SELECT block_id FROM table_meta")
+    assert found is not None
+    connection = ow.connect(harness.path)
+    try:
+        text, _ = render_grid(found[1], StoreGridReader(connection), "gfm", table=table_id)
+    finally:
+        connection.close()
+    assert text.splitlines() == ["|  |  |", "| --- | --- |", "| c0 | c1 |", "| c2 |  |"]
+
+
+def test_store_grid_reader_raises_for_a_block_the_store_does_not_hold(harness: Harness) -> None:
+    """`GridReadSide.block` raises rather than returning `None`: a hole is not a blank cell."""
+    from omniweave_core.errors import StoreError  # noqa: PLC0415
+    from omniweave_core.store.doc import StoreGridReader  # noqa: PLC0415
+
+    _table_document(harness, (CellPos(0, 0),))
+    connection = ow.connect(harness.path)
+    try:
+        with pytest.raises(StoreError, match="987654321, which the store does not hold"):
+            StoreGridReader(connection).block(BlockId(987_654_321))
+    finally:
+        connection.close()
