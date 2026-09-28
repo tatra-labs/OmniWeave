@@ -724,6 +724,20 @@ def test_the_written_baseline_round_trips_into_a_within_band_comparison(tmp_path
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture
+def no_console_script(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The two `ow` spawn rows ABSENT, as they were before W7.8l declared the script (D619).
+
+    These tests are about the baseline file: that `--record-baseline` writes one and that the next
+    run classifies against it. With `ow` installed, the gate also spawns `ow --version` and `ow
+    --help` five times each and holds them to 150 ms and 250 ms absolute, which under `-n auto` is
+    a statement about the runner's load and not about the code under test. So `which("ow")` finds
+    nothing here, and the spawn rows are G10's own run's business.
+    """
+    monkeypatch.setattr(gate.shutil, "which", lambda _name: None)
+
+
+@pytest.mark.usefixtures("no_console_script")
 def test_the_gate_runs_records_one_row_and_reports_the_other_two_as_missing(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -750,6 +764,7 @@ def test_the_gate_runs_records_one_row_and_reports_the_other_two_as_missing(
     assert out.rstrip().endswith("G10: PASS (0 failing findings)")
 
 
+@pytest.mark.usefixtures("no_console_script")
 def test_a_second_run_finds_the_recorded_baseline_and_classifies_every_subject(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
