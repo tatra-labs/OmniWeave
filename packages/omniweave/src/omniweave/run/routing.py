@@ -21,9 +21,11 @@ of each demand plan, and it ends by running the driver. This build runs its fron
   at identify), the size, the part count, the trust class, the trigger. A key the registry resolves
   to a provider that ships a computer (`evidence.COMPUTER_FILENAME`) is computed in a child, one
   per unit and group, by `omniweave_core.host.signals` (D628); that is `pdfium`'s three keys for a
-  PDF. Every other key in a group is put UNAVAILABLE with the reason, and the key is counted as
-  `signal_unavailable` on the report. The `GATE` rung's `max_cost_class` clamps the groups
-  `DECODE` may compute (05:1117).
+  PDF. `route_signal` is read first, keyed on the content, the part, the key and the provider's
+  version, so identical bytes never start a second child, and a held unit re-routed by the next
+  run reads back what the first computed (05 section 5.4, D632). Every other key in a group is
+  put UNAVAILABLE with the reason, and the key is counted as `signal_unavailable` on the report.
+  The `GATE` rung's `max_cost_class` clamps the groups `DECODE` may compute (05:1117).
 
 **A deferring rule whose key is still UNKNOWN once its group has run holds the unit** (D579,
 kept by D628). 05:1130 lets `defer` degrade to `skip` there, and on the shipped policy that sends a
@@ -121,6 +123,8 @@ flags, and `RouteHints` has no field `ow ingest` would set (05:2018-2033)."""
 
 _BUILTIN: Final[str] = "builtin"
 
+_NOTHING: Final[str] = "the provider answered nothing for it"
+
 Compute: TypeAlias = "Callable[[str, str, str, tuple[str, ...]], SignalAnswer]"
 """`(package, source path, content_sha256, keys) -> SignalAnswer`: one child's worth of signals.
 
@@ -182,6 +186,24 @@ ON CONFLICT(run_id, resolution_digest) DO UPDATE SET hits = hits + 1
 """
 """04:1442: one row per `(run_id, resolution_digest)` with a hit counter, *"not one per unit"*."""
 
+SIGNAL_READ_SQL: Final[str] = """
+SELECT value, unavailable_reason FROM route_signal
+ WHERE content_sha256 = :content_sha256 AND unit_part = :unit_part AND signal_key = :signal_key
+   AND signal_version = :signal_version
+"""
+
+SIGNAL_WRITE_SQL: Final[str] = """
+INSERT OR REPLACE INTO route_signal(content_sha256, unit_part, signal_key, signal_version, value,
+                                    unavailable_reason, compute_ms, computed_at)
+VALUES(:content_sha256, :unit_part, :signal_key, :signal_version, :value, :unavailable_reason,
+       :compute_ms, :computed_at)
+"""
+"""05 section 5.4: *"Writes are `INSERT OR REPLACE`, which is safe under concurrency because the
+value is a pure function of the key."* `value` is the scalar's JSON, which gives back the Python
+type it was given -- `1.0` stays a `float` -- so a cached key enters `read_set_digest` exactly as
+the computed one did, and a decision read from the cache is the decision the child's answer
+made."""
+
 REFUSED_SQL: Final[str] = """
 UPDATE unit SET state = 'failed', acq_failure_class = :failure_class
  WHERE unit_uri = :unit_uri AND state = 'identified'
@@ -199,6 +221,8 @@ class RouteTally:
     unavailable: Counter[str] = field(default_factory=Counter)
     children: Counter[str] = field(default_factory=Counter)
     """Signal children started, by provider: one per unit and `CostClass` group that needed one."""
+    cached: Counter[str] = field(default_factory=Counter)
+    """Signals read back from `route_signal` rather than computed, by provider (D632)."""
 
     def lines(self) -> tuple[str, ...]:
         if not (self.planned or self.refused or self.unrouted):
@@ -208,6 +232,8 @@ class RouteTally:
             out.append(f"  route     {_shown(self.unrouted, 'unrouted')}")
         if self.children:
             out.append(f"  route     {_shown(self.children, 'signal children')}")
+        if self.cached:
+            out.append(f"  route     {_shown(self.cached, 'signals cached')}")
         if self.unavailable:
             out.append(f"  route     signal_unavailable: {_shown(self.unavailable, '')}".rstrip())
         return tuple(out)
@@ -367,6 +393,11 @@ class _Router:
         nobody computed, so a unit with no computer to call reads exactly as it did before there
         was one. The keys a computer serves go to it in one child per provider, and come back each
         under the resolved provider's version, whether it answered a value or a reason.
+
+        **`route_signal` is read first, per key** (05:1097's *"route_signal cache first, per
+        (key,ver)"*). A key whose row exists for this content, part and version is put from it,
+        and only the rest go to the child; a group the cache holds whole starts none. What the
+        child answered is written back unless the request was refused (`SignalAnswer.refusal`).
         """
         uri, digest = str(row[0]), str(row[1])
         fmt = str(row[4] or "")
@@ -389,17 +420,116 @@ class _Router:
             else:
                 asked.setdefault(spec.provider, []).append(key)
         for provider, keys in asked.items():
-            self.tally.children[provider] += 1
-            found = self.compute(self.computers[provider], uri, digest, tuple(keys))
+            versions = {key: self._version(key, fmt) for key in keys}
+            kept = self._cached(digest, versions)
+            hits = len(kept.values) + len(kept.unavailable)
+            if hits:
+                self.tally.cached[provider] += hits
+            missing = tuple(
+                key for key in keys if key not in kept.values and key not in kept.unavailable
+            )
+            found = kept
+            if missing:
+                self.tally.children[provider] += 1
+                started = self.ctx.clock.monotonic_ns()
+                answered = self.compute(self.computers[provider], uri, digest, missing)
+                elapsed_ms = (self.ctx.clock.monotonic_ns() - started) // 1_000_000
+                if answered.refusal is None:
+                    self._remember(digest, versions, missing, answered, elapsed_ms)
+                found = replace(
+                    answered,
+                    values={**kept.values, **answered.values},
+                    unavailable={**kept.unavailable, **answered.unavailable},
+                )
             for key in keys:
                 self._put(ev, key, fmt, found)
 
-    def _put(self, ev: Evidence, key: str, fmt: str, found: SignalAnswer) -> None:
-        """One computed key, under its provider's version. A wrong-`dtype` value is refused."""
+    def _version(self, key: str, fmt: str) -> str:
         spec = self.registry.resolve(key, fmt)
-        version = "" if spec is None else spec.version
+        return "" if spec is None else spec.version
+
+    def _cached(self, digest: str, versions: Mapping[str, str]) -> SignalAnswer:
+        """The `route_signal` rows for these keys at these versions: a value, or a kept reason."""
+        from omniweave_core.host.signals import SignalAnswer  # noqa: PLC0415 -- signal path
+
+        def run(connection: object) -> dict[str, tuple[object, object]]:
+            rows: dict[str, tuple[object, object]] = {}
+            for key, version in versions.items():
+                found = connection.execute(  # type: ignore[attr-defined]
+                    SIGNAL_READ_SQL,
+                    {
+                        "content_sha256": digest,
+                        "unit_part": expand.UNIDENTIFIED_PART,
+                        "signal_key": key,
+                        "signal_version": version,
+                    },
+                ).fetchone()
+                if found is not None:
+                    rows[key] = (found[0], found[1])
+            return rows
+
+        rows = cast(
+            "dict[str, tuple[object, object]]",
+            self.thread.run(
+                Unit(name="route.signal.read", run=run, cost_class="free", wait_ms=BATCH_WAIT_MS)
+            ),
+        )
+        values: dict[str, Scalar] = {}
+        unavailable: dict[str, str] = {}
+        for key, (value, reason) in rows.items():
+            if value is None:
+                unavailable[key] = str(reason or _NOTHING)
+            else:
+                values[key] = cast("Scalar", json.loads(cast("bytes", value)))
+        return SignalAnswer(values=values, unavailable=unavailable)
+
+    def _remember(
+        self,
+        digest: str,
+        versions: Mapping[str, str],
+        keys: Sequence[str],
+        found: SignalAnswer,
+        elapsed_ms: int,
+    ) -> None:
+        """One row per key the computer answered, in one transaction of its own.
+
+        Its own, and not the decision's: a unit whose rule defers on the key is held, and writes no
+        decision, and the next run's routing of that same unit is exactly the read this is for.
+        `compute_ms` is the request's wall time, which every key it answered shares.
+        """
+        statements: list[tuple[str, Mapping[str, object]]] = [
+            (
+                SIGNAL_WRITE_SQL,
+                {
+                    "content_sha256": digest,
+                    "unit_part": expand.UNIDENTIFIED_PART,
+                    "signal_key": key,
+                    "signal_version": versions[key],
+                    "value": (
+                        json.dumps(found.values[key], allow_nan=False).encode("utf-8")
+                        if key in found.values
+                        else None
+                    ),
+                    "unavailable_reason": (
+                        None if key in found.values else found.unavailable.get(key, _NOTHING)
+                    ),
+                    "compute_ms": elapsed_ms,
+                    "computed_at": self.now_ms,
+                },
+            )
+            for key in keys
+        ]
+        self._commit(statements, name="route.signal.write")
+
+    def _put(self, ev: Evidence, key: str, fmt: str, found: SignalAnswer) -> None:
+        """One computed key, under its provider's version. A wrong-`dtype` value is refused.
+
+        A cached key comes through here too, as the provider answered it, so the `dtype` check is
+        the same whichever way the value arrived.
+        """
+        version = self._version(key, fmt)
         if key not in found.values:
-            reason = found.unavailable.get(key, "the provider answered nothing for it")
+            reason = found.unavailable.get(key, _NOTHING)
             ev.put(key, None, provider_version=version, unavailable_reason=reason)
             return
         value = found.values[key]
@@ -602,14 +732,14 @@ class _Router:
             ]
         )
 
-    def _commit(self, statements: Sequence[tuple[str, Mapping[str, object]]]) -> None:
+    def _commit(
+        self, statements: Sequence[tuple[str, Mapping[str, object]]], *, name: str = "route.decide"
+    ) -> None:
         def run(connection: object) -> None:
             for sql, params in statements:
                 connection.execute(sql, params)  # type: ignore[attr-defined]
 
-        self.thread.run(
-            Unit(name="route.decide", run=run, cost_class="free", wait_ms=BATCH_WAIT_MS)
-        )
+        self.thread.run(Unit(name=name, run=run, cost_class="free", wait_ms=BATCH_WAIT_MS))
 
 
 def _child_compute(ctx: RunContext) -> Compute:
