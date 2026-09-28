@@ -16,13 +16,13 @@ diff and a diff of reordered keys is unreadable.
 Why a `tools/` script and not `ow schema emit`
 ----------------------------------------------
 16-roadmap.md section 4's P1 exit criteria spells this gate `uv run ow schema emit --check`, and
-that spelling is **not available at P1**. There is no `[project.scripts]` in
-`packages/omniweave/pyproject.toml`, and INV-20 forbids hand-writing one: every CLI verb is
-*generated* from `omniweave/surface/registry.py`, which lands at P7 W7.1/W7.2 (16-roadmap.md
-section 10). A hand-written `ow` shipped now would make the registry's arrival a reconciliation
-between two surfaces that already disagree. So the generator is the artefact and the verb is
-deferred: run it as `uv run tools/schemagen.py emit --check`. The `ow schema emit` spelling is
-W7.2's to add, over this module, and G6 does not change meaning when it does.
+that spelling is **not available at P1**. The `ow` console script exists since W7.8l (D619),
+but `ow schema` is not a root of the generated tree, and INV-20 forbids hand-writing one: every
+CLI verb is *generated* from `omniweave/surface/registry.py`, which lands at P7 W7.1/W7.2
+(16-roadmap.md section 10). A hand-written `ow schema` would make a registry row's arrival a
+reconciliation between two surfaces that already disagree. So the generator is the artefact and
+the verb is deferred: run it as `uv run tools/schemagen.py emit --check`. The `ow schema emit`
+spelling is W7.2's to add, over this module, and G6 does not change meaning when it does.
 
 Scope honesty: thirteen declared, and what exists now
 ----------------------------------------------------

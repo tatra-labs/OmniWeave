@@ -68,11 +68,13 @@ def _commands(document: dict[str, Any]) -> list[str]:
 # ---------------------------------------------------------------------------------------------
 
 
-def test_the_plans_launcher_does_not_exist_on_this_machine() -> None:
-    """`shutil.which("ow")` is None here: no console script is declared (D456)."""
-    assert shutil.which("ow") is None or Path(str(shutil.which("ow"))).is_absolute()
+def test_with_no_ow_on_path_the_launcher_is_the_interpreter_form() -> None:
+    """D456's fallback. The console script is declared since W7.8l (D619), so an installed `ow` is
+    what `launcher()` resolves; an environment without one on PATH still gets a working command."""
+    found = shutil.which("ow")
+    assert found is None or Path(found).is_absolute()
     pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
-    assert "[project.scripts]" not in pyproject.read_text("utf-8")
+    assert '\now = "omniweave.__main__:main"\n' in pyproject.read_text("utf-8")
     assert launcher(which=lambda _: None, executable=sys.executable) == (
         sys.executable,
         "-m",
