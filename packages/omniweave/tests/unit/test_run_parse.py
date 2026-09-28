@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import dataclasses
 import hashlib
+import io
 import json
 import shutil
 import sqlite3  # noqa: TID251 -- the assertions read the store the run wrote.
@@ -378,3 +379,91 @@ def test_the_ledger_s_peak_is_the_unit_s_result_metric_and_zero_without_one() ->
     assert parse_module._peak_of(reply, 1) == 9
     assert parse_module._peak_of(reply, 0) == 0
     assert parse_module._peak_of(SimpleNamespace(report=None), 0) == 0  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------------------------
+# the fragment is read as a stream, twice, and never whole (D630)
+# ---------------------------------------------------------------------------------------------
+
+DOC_LINE = b'{"t":"doc","format":"txt","media_type":"text/plain","page_count":1}\n'
+BLOCK_LINE = b'{"t":"block","tmp":"b1","text":"words"}\n'
+
+
+def _first_pass(tmp_path: Path, body: bytes, *, blob: bool) -> tuple[FailureClass, str] | None:
+    from omniweave_core.blobs import format_ref  # noqa: PLC0415
+    from omniweave_ports.types import ArtifactRef  # noqa: PLC0415
+
+    operator: Any = ParseOperator.__new__(ParseOperator)
+    cas = tmp_path / "cas"
+    cas.mkdir(exist_ok=True)
+    operator._cas = BlobStore(cas)
+    if blob:
+        digest = operator._cas.put(io.BytesIO(body))
+        ref = ArtifactRef(kind="doc_fragment", byte_len=len(body), blob=format_ref(digest))
+    else:
+        ref = ArtifactRef(kind="doc_fragment", byte_len=len(body), inline=body)
+    return operator._first_pass(ref)
+
+
+@pytest.mark.parametrize("blob", [False, True])
+def test_the_first_pass_refuses_a_malformed_line_and_a_fragment_with_no_block(
+    tmp_path: Path, blob: bool
+) -> None:
+    """Before `DocSink` sees anything: what the whole-fragment list gave for free, kept."""
+    assert _first_pass(tmp_path, DOC_LINE + BLOCK_LINE, blob=blob) is None
+    empty = _first_pass(tmp_path, DOC_LINE, blob=blob)
+    assert empty is not None
+    assert empty[0] is FailureClass.EMPTY_RESULT
+    bad = _first_pass(tmp_path, DOC_LINE + BLOCK_LINE + b"{not json\n", blob=blob)
+    assert bad is not None
+    assert bad[0] is FailureClass.DRIVER_BUG
+    assert "line 3 is not JSON" in bad[1]
+
+
+def test_the_fragment_reaches_the_decoder_as_a_stream_and_never_as_one_bytes_object(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """12-performance.md:229: the supervisor may not hold document bytes. The 5,000-page fragment
+    read whole, and listed, held the supervisor at 1,021,456,384 B (D629). Each fragment is read
+    twice -- the first pass, then the decode -- and neither pass is handed a `bytes`."""
+    seen: list[type] = []
+    real = parse_module.records_of
+
+    def spy(body: Any) -> Any:
+        seen.append(type(body))
+        return real(body)
+
+    decoded: list[type] = []
+    real_decode = parse_module.decode
+
+    def decode_spy(records: Any, **kwargs: Any) -> Any:
+        decoded.append(type(records))
+        return real_decode(records, **kwargs)
+
+    monkeypatch.setattr(parse_module, "records_of", spy)
+    monkeypatch.setattr(parse_module, "decode", decode_spy)
+    store, config = _project(tmp_path, ("rich.docx", "rows.csv"))
+    report = _run(tmp_path, store, config)
+    assert report.parsed is not None
+    assert dict(report.parsed.parsed) == {"parse.office.anydoc": 2}
+    assert len(seen) == 4, seen
+    assert bytes not in seen, seen
+    assert len(decoded) == 2
+    assert not {list, tuple} & set(decoded), "the decoder takes the records lazily, one at a time"
+
+
+def test_a_blob_backed_fragment_is_the_cas_file_itself_never_its_bytes_in_memory(
+    tmp_path: Path,
+) -> None:
+    """The office fragments above are inline. Above `INLINE_MAX` a fragment is a CAS blob, and
+    the stream is that file: a `BytesIO` of its bytes would pass the spy and hold them all."""
+    from omniweave_core.blobs import format_ref  # noqa: PLC0415
+    from omniweave_ports.types import ArtifactRef  # noqa: PLC0415
+
+    operator: Any = ParseOperator.__new__(ParseOperator)
+    (tmp_path / "cas").mkdir()
+    operator._cas = BlobStore(tmp_path / "cas")
+    digest = operator._cas.put(io.BytesIO(DOC_LINE + BLOCK_LINE))
+    ref = ArtifactRef(kind="doc_fragment", byte_len=1, blob=format_ref(digest))
+    with operator._stream(ref) as lines:
+        assert isinstance(lines, io.BufferedReader), type(lines)
