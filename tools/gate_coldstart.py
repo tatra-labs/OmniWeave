@@ -129,6 +129,8 @@ __all__ = [
     "measurement_named",
     "render",
     "render_variance",
+    "runner_enforces",
+    "runner_label",
     "variance_document",
     "variance_path",
     "variance_summary",
@@ -1136,7 +1138,7 @@ def observe_environment(probe: DiscoveryProbe) -> Environment:
         python=platform.python_version(),
         python_implementation=platform.python_implementation(),
         installed_distributions=probe.installed_distributions,
-        runner=os.environ.get("OMNIWEAVE_RUNNER", UNPINNED_RUNNER),
+        runner=runner_label(),
     )
 
 
@@ -1454,13 +1456,31 @@ def band_enforcement(baseline: dict[str, object], runner: str) -> tuple[bool, st
     baseline/run pairs at 25%, and at 18% at the 40% fallback. A new pinned runner is a re-bless:
     its first run compares against another machine's numbers.
     """
+    environment = baseline.get("environment")
+    calibrated = environment.get("runner") if isinstance(environment, dict) else None
+    return runner_enforces(calibrated, runner)
+
+
+def runner_label() -> str:
+    """This run's runner: `OMNIWEAVE_RUNNER`, else `UNPINNED_RUNNER`. G10 and G26 both read it here.
+
+    Never `platform.node()`: a developer's hostname is not a fact this repository commits, and it
+    is not the runner class the pin names (`Environment`'s docstring).
+    """
+    return os.environ.get("OMNIWEAVE_RUNNER", UNPINNED_RUNNER)
+
+
+def runner_enforces(calibrated: object, runner: str) -> tuple[bool, str]:
+    """`band_enforcement`'s rule over a bare label: `calibrated` is the runner a baseline names.
+
+    G26's baseline stamps its runner at the top level rather than under `environment`, so the rule
+    takes the label and each gate reads it from its own file (D623).
+    """
     if runner == UNPINNED_RUNNER:
         return False, (
             "the runner is unpinned (OMNIWEAVE_RUNNER is not set), and the band is a statement "
             "about one pinned runner class"
         )
-    environment = baseline.get("environment")
-    calibrated = environment.get("runner") if isinstance(environment, dict) else None
     if calibrated != runner:
         return False, (
             f"the baseline was calibrated on runner {calibrated!r} and this is {runner!r}, and a "

@@ -19,7 +19,10 @@ nothing the user sees, so a hook that got slow is a hook that stopped working an
    what actually regresses, one new eager import at a time. More modules than the baseline fails,
    naming them.
 3. **The wall clock is a 25% band against this OS's baseline** (11:1650). It answers "did this
-   change make it slower here", never "is it fast enough", which is (1)'s job.
+   change make it slower here", never "is it fast enough", which is (1)'s job. It fails only on
+   the pinned runner that recorded the baseline, and elsewhere it is reported (D622, D623): the
+   rule is `gate_coldstart.runner_enforces()`, which both gates share. (1) and (2) fail on every
+   runner.
 
 A machine with no recorded baseline passes (2) and (3) as UNMEASURED and says so. It is never
 silently green: the report prints which rows ran.
@@ -66,9 +69,15 @@ Run it:
     uv run tools/gate_hook_latency.py                    # check: budgets, module count, band
     uv run tools/gate_hook_latency.py --record-baseline  # measure and write this OS's baseline
     uv run tools/gate_hook_latency.py --json             # the report, machine-readable
+    uv run tools/gate_hook_latency.py --variance 100     # OQ-4: the band's false-failure rate here
 
-Exit codes: `0` pass (an absent baseline is a pass that says so), `1` a budget breach, a
-module-count regression, a band regression or a witness failure, `2` a usage error from argparse.
+The runner is `OMNIWEAVE_RUNNER`, read through `gate_coldstart.runner_label()`, and `"unpinned"`
+when it is not set.
+
+Exit codes: `0` pass (an absent baseline is a pass that says so, and so is a band regression on a
+runner that does not enforce the band), `1` a budget breach, a module-count regression, a band
+regression where the band is enforced, or a witness failure, `2` a usage error from argparse.
+`--variance` asserts nothing and exits `0`.
 
 Specified in 10-interfaces.md section 8.1 (:1842-1846), 11-repo-layout.md section 6.4
 (:1646-1652), 02-architecture.md section 2 row 34, and 16-roadmap.md:742.
@@ -77,6 +86,7 @@ Specified in 10-interfaces.md section 8.1 (:1842-1846), 11-repo-layout.md sectio
 from __future__ import annotations
 
 import argparse
+import functools
 import importlib.util
 import json
 import os
@@ -90,6 +100,7 @@ import tomllib
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 __all__ = [
@@ -101,12 +112,14 @@ __all__ = [
     "Baseline",
     "Budgets",
     "Report",
+    "band_notes",
     "baseline_path",
     "budgets",
     "judge",
     "main",
     "modules_of",
     "p95",
+    "variance_path",
 ]
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -125,7 +138,8 @@ WARMUP_RUNS = 2
 WARM_RUNS = 30
 COLD_RUNS = 10
 BAND_PCT = 25.0
-"""11:1650's *"25% band"*. OQ-4 records it as inherited rather than measured, and so does this."""
+"""11:1650's *"25% band"*. OQ-4 records it as inherited rather than measured, and so does this.
+`--variance` prices it and the 40% fallback on this machine, and adopts neither (D623)."""
 
 CONTROL_WORD = "g26-control-no-such-event"
 UPS_PREFIX = "ow-hook-ups-"
@@ -167,14 +181,24 @@ def budgets() -> Budgets:
     return Budgets(warm_ms=warm, cold_ms=cold, self_deadline_ms=float(SELF_DEADLINE_MS))
 
 
-def _coldstart_warm_row() -> float | None:
+@functools.cache
+def _coldstart() -> ModuleType:
+    """`tools/gate_coldstart.py`, loaded once by path: G26 reads its D1 row, its runner rule, its
+    band inequality and its variance arithmetic, and restates none of them (SV19)."""
     spec = importlib.util.spec_from_file_location("gate_coldstart_for_g26", COLDSTART)
     if spec is None or spec.loader is None:
-        return None
+        msg = f"cannot load {COLDSTART}"
+        raise SystemExit(msg)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
-    rows = [one for one in module.COLD_START_CEILINGS if one.subject == "ow hook prompt, warm"]
+    return module
+
+
+def _coldstart_warm_row() -> float | None:
+    rows = [
+        one for one in _coldstart().COLD_START_CEILINGS if one.subject == "ow hook prompt, warm"
+    ]
     return rows[0].ceiling_ms if rows else None
 
 
@@ -330,6 +354,7 @@ class Report:
     modules: tuple[str, ...]
     baseline: Baseline | None
     failures: tuple[str, ...]
+    notes: tuple[str, ...] = ()
 
     @property
     def warm_p95(self) -> float:
@@ -366,6 +391,7 @@ class Report:
                 f"{self.baseline.warm_p95_ms:.0f} ms (+{BAND_PCT:.0f}% band), recorded "
                 f"{self.baseline.recorded_at} on {self.baseline.runner}"
             )
+        out.extend(f"G26 NOTE  {one}" for one in self.notes)
         out.extend(f"G26 FAIL  {one}" for one in self.failures)
         out.append("G26  " + ("FAIL" if self.failures else "ok"))
         return tuple(out)
@@ -378,8 +404,13 @@ def judge(
     warm_ms: list[float],
     modules: tuple[str, ...],
     baseline: Baseline | None,
+    runner: str,
 ) -> tuple[str, ...]:
-    """Every failure, in the order the module docstring gives the assertions. Pure."""
+    """Every failure, in the order the module docstring gives the assertions. Pure.
+
+    `runner` is required so that no caller enforces the band by default. The band fails only
+    where `runner_enforces()` says so; `band_notes()` says the rest.
+    """
     failures: list[str] = []
     if not witnessed:
         failures.append(
@@ -398,13 +429,35 @@ def judge(
                 f"{len(modules)} modules on the hook path against the baseline's "
                 f"{baseline.module_count}; new: {', '.join(new) or '(renamed)'}"
             )
-        ceiling = baseline.warm_p95_ms * (1 + BAND_PCT / 100)
-        if p95(warm_ms) > ceiling:
-            failures.append(
-                f"warm p95 {p95(warm_ms):.0f} ms > the baseline's {baseline.warm_p95_ms:.0f} ms "
-                f"+ {BAND_PCT:.0f}% = {ceiling:.0f} ms"
-            )
+        band = _band(baseline, warm_ms)
+        if band is not None and _coldstart().runner_enforces(baseline.runner, runner)[0]:
+            failures.append(band)
     return tuple(failures)
+
+
+def _band(baseline: Baseline, warm_ms: list[float]) -> str | None:
+    """The band's regression, or `None` inside it. The inequality is G10's `above_band()`."""
+    if not _coldstart().above_band(p95(warm_ms), baseline.warm_p95_ms, BAND_PCT):
+        return None
+    ceiling = baseline.warm_p95_ms * (1 + BAND_PCT / 100)
+    return (
+        f"warm p95 {p95(warm_ms):.0f} ms > the baseline's {baseline.warm_p95_ms:.0f} ms "
+        f"+ {BAND_PCT:.0f}% = {ceiling:.0f} ms"
+    )
+
+
+def band_notes(baseline: Baseline | None, warm_ms: list[float], runner: str) -> tuple[str, ...]:
+    """Where the band is not enforced: why not, and the regression it would have failed. Pure."""
+    if baseline is None:
+        return ()
+    enforced, why_not = _coldstart().runner_enforces(baseline.runner, runner)
+    if enforced:
+        return ()
+    notes = [f"the +/-{BAND_PCT:.0f}% band is reported on this run and does not fail: {why_not}"]
+    band = _band(baseline, warm_ms)
+    if band is not None:
+        notes.append(f"{band}; reported, not failed")
+    return tuple(notes)
 
 
 def measure(
@@ -422,20 +475,114 @@ def measure(
     return witnessed, counters, warm, cold, hook_modules(root)
 
 
+WARM_SUBJECT = "ow hook prompt, warm p95"
+COUNT_SUBJECT = "hook path module count"
+
+
+def variance_path() -> Path:
+    """`eval/baselines/variance-hook-latency-<os>-<py>.json`, beside G10's OQ-4 evidence."""
+    return baseline_path().with_name("variance-" + baseline_path().name)
+
+
+def _variance(count: int, limits: Budgets, runner: str) -> dict[str, Any]:
+    """OQ-4 for G26: `count` consecutive measurements, summarised by G10's `variance_summary()`.
+
+    The subjects are the warm p95, which is banded, and the module count, which is not. The cold
+    p95 fails nothing (D607), so it is kept in the values and not priced.
+    """
+    cs = _coldstart()
+    runs: list[tuple[Any, ...]] = []
+    values: list[dict[str, float]] = []
+    for index in range(count):
+        with tempfile.TemporaryDirectory() as scratch:
+            _, _, warm, cold, modules = measure(Path(scratch))
+        runs.append(
+            (
+                cs.Measurement(name=WARM_SUBJECT, unit="ms", value=p95(warm)),
+                cs.Measurement(name=COUNT_SUBJECT, unit="modules", value=float(len(modules))),
+            )
+        )
+        values.append({WARM_SUBJECT: p95(warm), "cold p95": p95(cold), COUNT_SUBJECT: len(modules)})
+        if (index + 1) % 10 == 0:
+            sys.stderr.write(f"G26 --variance: {index + 1}/{count} runs\n")
+    return {
+        "gate": "G26",
+        "question": "OQ-4",
+        "recorded_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "os": platform.system().lower(),
+        "python": platform.python_version(),
+        "machine": platform.machine(),
+        "runner": runner,
+        "warm_runs": WARM_RUNS,
+        "statistic": "p95",
+        "band_pct": BAND_PCT,
+        "warm_budget_ms": limits.warm_ms,
+        "over_warm_budget": sum(one[WARM_SUBJECT] > limits.warm_ms for one in values),
+        "values": values,
+        "summary": cs.variance_summary(tuple(runs)),
+    }
+
+
+def _render_variance(document: dict[str, Any], path: Path) -> str:
+    summary = document["summary"]
+    lines = [f"G26 --variance - OQ-4, {summary['runs']} consecutive runs on one commit"]
+    for name, row in summary["subjects"].items():
+        rates = "  ".join(
+            f"ff@{band}% {row['false_failure_pct'][str(band)]:.2f}%"
+            for band in summary["bands_pct"]
+        )
+        lines.append(
+            f"  {name:<28} min {row['min']:8.2f}  median {row['median']:8.2f}  "
+            f"max {row['max']:8.2f}  cv {row['cv_pct']:5.1f}%  {rates}"
+        )
+    lines.append(
+        f"  over the {document['warm_budget_ms']:.0f} ms warm budget: "
+        f"{document['over_warm_budget']} of {summary['runs']} runs (fails on every runner)"
+    )
+    lines.append(f"  written to {path}")
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="gate_hook_latency", description=(__doc__ or "G26").split("\n", 1)[0]
     )
     parser.add_argument("--record-baseline", action="store_true", help="write this OS's baseline")
     parser.add_argument("--json", action="store_true", help="print the report as JSON")
-    parser.add_argument("--runner", default=platform.node(), help="the runner label to record")
+    parser.add_argument(
+        "--variance",
+        type=int,
+        default=None,
+        metavar="N",
+        help="OQ-4: N consecutive measurements, each band's false-failure rate; asserts nothing",
+    )
     args = parser.parse_args(argv)
+    if args.variance is not None and args.record_baseline:
+        parser.error("--variance measures the band and --record-baseline sets it: pick one")
+    if args.variance is not None and args.variance < 2:  # noqa: PLR2004 -- two runs make a spread
+        parser.error("--variance needs at least 2 runs to spread")
     limits = budgets()
+    runner = _coldstart().runner_label()
+    if args.variance is not None:
+        document = _variance(args.variance, limits, runner)
+        path = variance_path()
+        _coldstart().write_json(path, document)
+        body = json.dumps(document, indent=2, sort_keys=True)
+        sys.stdout.write((body if args.json else _render_variance(document, path)) + "\n")
+        return 0
     with tempfile.TemporaryDirectory() as scratch:
         witnessed, counters, warm, cold, modules = measure(Path(scratch))
     baseline = None if args.record_baseline else _load_baseline()
-    failures = judge(limits, witnessed=witnessed, warm_ms=warm, modules=modules, baseline=baseline)
-    report = Report(limits, witnessed, counters, warm, cold, modules, baseline, failures)
+    failures = judge(
+        limits,
+        witnessed=witnessed,
+        warm_ms=warm,
+        modules=modules,
+        baseline=baseline,
+        runner=runner,
+    )
+    notes = band_notes(baseline, warm, runner)
+    report = Report(limits, witnessed, counters, warm, cold, modules, baseline, failures, notes)
     if args.record_baseline and not failures:
         recorded = Baseline(
             baseline_schema=BASELINE_SCHEMA,
@@ -447,7 +594,7 @@ def main(argv: list[str] | None = None) -> int:
             warm_p95_ms=round(report.warm_p95, 1),
             cold_p95_ms=round(report.cold_p95, 1),
             recorded_at=datetime.now(UTC).strftime("%Y-%m-%d"),
-            runner=args.runner,
+            runner=runner,
         )
         payload = json.dumps(asdict(recorded), indent=2, sort_keys=True) + "\n"
         baseline_path().write_bytes(payload.encode("utf-8"))
