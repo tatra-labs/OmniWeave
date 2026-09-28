@@ -454,9 +454,27 @@ def test_every_other_root_is_refused_with_internal_errors_exit(
     from omniweave_core.errors import InternalError  # noqa: PLC0415
 
     assert launcher.main(["doc", "grid"]) == InternalError.EXIT == 70
-    assert launcher.main([]) == InternalError.EXIT
     assert launcher.main(["契約"]) == InternalError.EXIT
     assert "not dispatched" in capsys.readouterr().err
+    #  W7.8l: no command at all is a usage error that names `ow --help` (D619), not a refusal.
+    assert launcher.main([]) == 1
+    assert "ow --help" in capsys.readouterr().err
+
+
+def test_the_launcher_restates_the_hook_word_and_imports_no_hook_module_at_load() -> None:
+    """D619: `ow --version` must not pay for the hook engine, so the word is restated here."""
+    import ast  # noqa: PLC0415
+
+    import omniweave.__main__ as launcher  # noqa: PLC0415
+
+    assert launcher.HOOK_WORD == HOOK_WORD
+    tree = ast.parse(Path(launcher.__file__).read_text(encoding="utf-8"))
+    loaded = {
+        node.module
+        for node in tree.body
+        if isinstance(node, ast.ImportFrom) and node.module is not None
+    } | {alias.name for node in tree.body if isinstance(node, ast.Import) for alias in node.names}
+    assert not {name for name in loaded if name.startswith("omniweave.hooks")}, loaded
 
 
 # ---------------------------------------------------------------------------------------------

@@ -1,0 +1,46 @@
+"""The `ow` and `omniweave` console scripts, run as the installed executables. 18:874; D619.
+
+`conform` because it starts processes (13-quality.md section 2.7). The scripts are what
+`pyproject.toml`'s `[project.scripts]` installs, so this test finds them the way a shell and G10
+do, with `shutil.which()`, and skips with the reason when this environment was synced without the
+`omniweave` distribution's entry points (a `uv sync` older than W7.8l's pyproject).
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+from pathlib import Path
+
+import pytest
+from omniweave_core.contract import RELEASE
+from omniweave_core.host.subproc import Captured, run_captured
+
+pytestmark = pytest.mark.conform
+
+TIMEOUT_S = 60
+
+
+def _script(name: str, *args: str) -> Captured:
+    found = shutil.which(name)
+    if found is None:
+        pytest.skip(f"{name!r} is not on PATH: re-sync the environment to install the script")
+    return run_captured(
+        (found, *args), stdin=b"", cwd=str(Path.cwd()), env=dict(os.environ), timeout_s=TIMEOUT_S
+    )
+
+
+def test_ow_and_omniweave_are_one_script_printing_one_version_line() -> None:
+    """18:874: *"`ow` and `omniweave` are the same console script; there is no other alias."*"""
+    ow = _script("ow", "--version")
+    omniweave = _script("omniweave", "--version")
+    assert (ow.returncode, omniweave.returncode) == (0, 0)
+    assert ow.stdout == omniweave.stdout
+    assert ow.stdout.decode("ascii").startswith(f"omniweave {RELEASE}  contract ")
+
+
+def test_the_script_dispatches_a_root_and_refuses_the_one_that_is_not() -> None:
+    assert _script("ow", "explain", "OW-A-013").returncode == 0
+    refused = _script("ow", "doc", "grid", "d1#2")
+    assert refused.returncode == 70
+    assert b"not dispatched" in refused.stderr

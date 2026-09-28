@@ -36,6 +36,13 @@ dependencies = [
   # exit is to move office behind `omniweave[office]`.
 ]
 
+# 18:874: "`ow` and `omniweave` are the same console script; there is no other alias." One
+# entry point under two names, so the two cannot disagree about what a command line means.
+# Declared in W7.8l, once twelve of the thirteen roots dispatch (D619).
+[project.scripts]
+ow = "omniweave.__main__:main"
+omniweave = "omniweave.__main__:main"
+
 # The extras block, complete. A 1:1 ALIAS MAP onto omniweave-* siblings, so
 # `pip install omniweave[vision]` and `pip install omniweave-vision` resolve
 # identically. There is no [all], no [everything], and no extra may name a
