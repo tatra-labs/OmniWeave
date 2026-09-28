@@ -122,12 +122,12 @@ def test_an_undeclared_corpus_is_exit_2(project: Path) -> None:
     assert "OW-A-002" in err
 
 
-def test_a_declared_corpus_with_no_store_is_exit_2_naming_the_ingest(tmp_path: Path) -> None:
+def test_a_declared_corpus_with_no_store_is_exit_2_naming_the_add(tmp_path: Path) -> None:
     (tmp_path / ".git").mkdir()
     (tmp_path / "omniweave.toml").write_text(PROJECT, encoding="utf-8")
     code, _, err = _run(["x"], tmp_path)
     assert code == 2
-    assert "ow ingest --corpus handbook" in err
+    assert "ow add --corpus handbook" in err
 
 
 def test_an_error_under_render_json_is_the_error_object_on_stdout(project: Path) -> None:
