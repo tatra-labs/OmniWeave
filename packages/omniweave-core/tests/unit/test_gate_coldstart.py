@@ -26,6 +26,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 from hypothesis import given
@@ -390,6 +391,10 @@ def test_a_budget_row_never_raises_on_a_degenerate_scenario(
 # ---------------------------------------------------------------------------
 
 
+PINNED = "ow-bench-1"
+"""The runner every hand-built baseline here was calibrated on, so the band is enforced (D622)."""
+
+
 def _environment(installed: int) -> object:
     return gate.Environment(
         operating_system="Linux",
@@ -398,7 +403,7 @@ def _environment(installed: int) -> object:
         python="3.11.9",
         python_implementation="CPython",
         installed_distributions=installed,
-        runner="ow-bench-1",
+        runner=PINNED,
     )
 
 
@@ -501,7 +506,7 @@ def test_a_breached_ceiling_fails_and_an_unmeasurable_subject_does_not() -> None
 def test_no_baseline_is_neither_a_pass_nor_a_regression() -> None:
     """A platform nobody has measured is unmeasured, and the finding names the fix."""
     measurements = _measurements(step_one=8.0, step_two=1.0, build=None)
-    findings = gate.compare_to_baseline(None, measurements)
+    findings = gate.compare_to_baseline(None, measurements, runner=PINNED)
     assert len(findings) == 1
     assert findings[0].severity == gate.Severity.ABSENT
     assert gate.BaselineVerdict.NO_BASELINE in findings[0].message
@@ -512,7 +517,7 @@ def test_no_baseline_is_neither_a_pass_nor_a_regression() -> None:
 def test_a_baseline_from_another_schema_is_absent_not_a_failure() -> None:
     baseline = {"baseline_schema": gate.BASELINE_SCHEMA + 1, "measurements": {}}
     findings = gate.compare_to_baseline(
-        baseline, _measurements(step_one=8.0, step_two=1.0, build=None)
+        baseline, _measurements(step_one=8.0, step_two=1.0, build=None), runner=PINNED
     )
     assert [f.severity for f in findings] == [gate.Severity.ABSENT]
     assert "re-record" in findings[0].message
@@ -522,6 +527,7 @@ def test_a_baseline_from_another_schema_is_absent_not_a_failure() -> None:
 def _baseline(name: str, value: float) -> dict[str, object]:
     return {
         "baseline_schema": gate.BASELINE_SCHEMA,
+        "environment": {"runner": PINNED},
         "measurements": {name: {"name": name, "unit": "ms", "value": value}},
     }
 
@@ -541,7 +547,9 @@ def test_the_25_percent_band_fails_only_above_it(
 ) -> None:
     """Exactly +25% is inside; a hair over is a regression; below the band is a re-bless prompt."""
     measurement = gate.Measurement(name=gate.STEP_ONE_SUBJECT, unit="ms", value=now)
-    findings = gate.compare_to_baseline(_baseline(gate.STEP_ONE_SUBJECT, recorded), (measurement,))
+    findings = gate.compare_to_baseline(
+        _baseline(gate.STEP_ONE_SUBJECT, recorded), (measurement,), runner=PINNED
+    )
     assert len(findings) == 1
     assert findings[0].severity == severity
     assert findings[0].message.startswith(verdict)
@@ -557,7 +565,9 @@ def test_the_band_fails_exactly_when_the_measurement_is_above_it(
     """The band's only failing side is the high one, at any magnitude."""
     now = recorded * factor
     measurement = gate.Measurement(name=gate.STEP_ONE_SUBJECT, unit="ms", value=now)
-    findings = gate.compare_to_baseline(_baseline(gate.STEP_ONE_SUBJECT, recorded), (measurement,))
+    findings = gate.compare_to_baseline(
+        _baseline(gate.STEP_ONE_SUBJECT, recorded), (measurement,), runner=PINNED
+    )
     failed = findings[0].severity == gate.Severity.FAIL
     assert failed == (now > recorded * (1 + gate.BASELINE_TOLERANCE_PCT / 100.0))
 
@@ -573,10 +583,11 @@ def test_the_module_count_may_fall_and_never_grow(
     name = "import omniweave_core module count"
     baseline = {
         "baseline_schema": gate.BASELINE_SCHEMA,
+        "environment": {"runner": PINNED},
         "measurements": {name: {"name": name, "unit": "modules", "value": recorded}},
     }
     measurement = gate.Measurement(name=name, unit="modules", value=now)
-    findings = gate.compare_to_baseline(baseline, (measurement,))
+    findings = gate.compare_to_baseline(baseline, (measurement,), runner=PINNED)
     assert findings[0].severity == severity
     assert "may fall and be re-blessed, never grow" in findings[0].message
 
@@ -586,10 +597,11 @@ def test_a_baselined_subject_that_stopped_being_measurable_is_absent_not_a_pass(
     name = "ow --version"
     baseline = {
         "baseline_schema": gate.BASELINE_SCHEMA,
+        "environment": {"runner": PINNED},
         "measurements": {name: {"name": name, "unit": "ms", "value": 118.0}},
     }
     measurement = gate.Measurement(name=name, unit="ms", value=None, absent_because="no ow")
-    findings = gate.compare_to_baseline(baseline, (measurement,))
+    findings = gate.compare_to_baseline(baseline, (measurement,), runner=PINNED)
     assert findings[0].severity == gate.Severity.ABSENT
     assert "baselined at 118" in findings[0].message
     assert "no ow" in findings[0].message
@@ -684,7 +696,7 @@ def test_a_recorded_baseline_carries_the_stamp_a_comparison_needs(tmp_path: Path
     }
     assert written["reference_machine"]["installed_distributions"] == 328
     assert len(written["budget"]) == 6
-    assert gate.compare_to_baseline(written, report.measurements) != []
+    assert gate.compare_to_baseline(written, report.measurements, runner=PINNED) != []
 
 
 def test_the_written_baseline_round_trips_into_a_within_band_comparison(tmp_path: Path) -> None:
@@ -713,7 +725,7 @@ def test_the_written_baseline_round_trips_into_a_within_band_comparison(tmp_path
     path = gate.baseline_path(tmp_path, env)
     gate.write_baseline(path, report)
     written = json.loads(path.read_text(encoding="utf-8"))
-    findings = gate.compare_to_baseline(written, measurements)
+    findings = gate.compare_to_baseline(written, measurements, runner=PINNED)
     assert findings
     assert all(f.severity == gate.Severity.NOTE for f in findings)
     assert all(f.message.startswith(gate.BaselineVerdict.WITHIN_BAND) for f in findings)
@@ -807,12 +819,13 @@ def test_a_noisier_subject_than_its_own_band_is_reported_as_such() -> None:
     name = gate.STEP_ONE_SUBJECT
     baseline = {
         "baseline_schema": gate.BASELINE_SCHEMA,
+        "environment": {"runner": PINNED},
         "measurements": {
             name: {"name": name, "unit": "ms", "value": 1.0, "samples": [1.0, 1.1, 1.9]}
         },
     }
     findings = gate.compare_to_baseline(
-        baseline, (gate.Measurement(name=name, unit="ms", value=1.05),)
+        baseline, (gate.Measurement(name=name, unit="ms", value=1.05),), runner=PINNED
     )
     assert len(findings) == 2
     assert findings[0].message.startswith(gate.BaselineVerdict.WITHIN_BAND)
@@ -826,11 +839,193 @@ def test_a_quiet_subject_gets_no_noise_note() -> None:
     name = gate.STEP_ONE_SUBJECT
     baseline = {
         "baseline_schema": gate.BASELINE_SCHEMA,
+        "environment": {"runner": PINNED},
         "measurements": {
             name: {"name": name, "unit": "ms", "value": 100.0, "samples": [100.0, 101.0, 102.0]}
         },
     }
     findings = gate.compare_to_baseline(
-        baseline, (gate.Measurement(name=name, unit="ms", value=101.0),)
+        baseline, (gate.Measurement(name=name, unit="ms", value=101.0),), runner=PINNED
     )
     assert len(findings) == 1
+
+
+# ---------------------------------------------------------------------------
+# 6. Where the band fails (D622), and OQ-4's instrument
+# ---------------------------------------------------------------------------
+
+
+def _regressed(runner: str, calibrated: object = PINNED) -> list[Any]:
+    """Step 1 at twice its baselined value, compared on `runner`."""
+    baseline = _baseline(gate.STEP_ONE_SUBJECT, 10.0)
+    baseline["environment"] = {"runner": calibrated}
+    measurement = gate.Measurement(name=gate.STEP_ONE_SUBJECT, unit="ms", value=20.0)
+    return gate.compare_to_baseline(baseline, (measurement,), runner=runner)
+
+
+def test_a_band_regression_fails_on_the_pinned_runner_that_calibrated_the_baseline() -> None:
+    findings = _regressed(PINNED)
+    assert [f.severity for f in findings] == [gate.Severity.FAIL]
+    assert gate.exit_code(tuple(findings)) == 1
+
+
+def test_a_band_regression_on_an_unpinned_runner_is_reported_and_does_not_fail() -> None:
+    """11-repo-layout.md section 6.4 states the band against a Runner class pin (D622)."""
+    findings = _regressed(gate.UNPINNED_RUNNER)
+    band, verdict = findings
+    assert band.subject == "band"
+    assert band.severity == gate.Severity.NOTE
+    assert "OMNIWEAVE_RUNNER" in band.message
+    assert "module count and the absolute ceilings fail on every runner" in band.message
+    assert verdict.severity == gate.Severity.NOTE
+    assert verdict.message.startswith(gate.BaselineVerdict.REGRESSED)
+    assert "reported, not failed" in verdict.message
+    assert gate.exit_code(tuple(findings)) == 0
+
+
+def test_a_pinned_runner_that_did_not_calibrate_the_baseline_does_not_fail_on_it() -> None:
+    """A new runner class is a re-bless: its first run compares against another machine."""
+    findings = _regressed("ow-bench-2")
+    assert findings[0].subject == "band"
+    assert "'ow-bench-1'" in findings[0].message
+    assert "'ow-bench-2'" in findings[0].message
+    assert gate.exit_code(tuple(findings)) == 0
+
+
+def test_a_baseline_that_names_no_runner_is_calibrated_on_none() -> None:
+    """A file older than the stamp, or a hand-written one, enforces the band nowhere."""
+    baseline = _baseline(gate.STEP_ONE_SUBJECT, 10.0)
+    del baseline["environment"]
+    measurement = gate.Measurement(name=gate.STEP_ONE_SUBJECT, unit="ms", value=20.0)
+    findings = gate.compare_to_baseline(baseline, (measurement,), runner=PINNED)
+    assert findings[0].subject == "band"
+    assert gate.exit_code(tuple(findings)) == 0
+
+
+def test_the_module_count_fails_on_every_runner() -> None:
+    """The hard half does not vary with load, so no runner excuses it (11:1646-1650)."""
+    name = gate.MODULE_COUNT_SUBJECT
+    baseline = {
+        "baseline_schema": gate.BASELINE_SCHEMA,
+        "environment": {"runner": gate.UNPINNED_RUNNER},
+        "measurements": {name: {"name": name, "unit": "modules", "value": 3.0}},
+    }
+    grown = gate.Measurement(name=name, unit="modules", value=4.0)
+    for runner in (gate.UNPINNED_RUNNER, PINNED):
+        findings = gate.compare_to_baseline(baseline, (grown,), runner=runner)
+        assert gate.exit_code(tuple(findings)) == 1, runner
+
+
+def test_the_runner_is_unpinned_unless_the_environment_names_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    probe = gate.DiscoveryProbe(
+        entry_points_ms=1.0,
+        entry_points_found=0,
+        validity_key_ms=1.0,
+        installed_distributions=1,
+        catalog_home=None,
+        catalog_build_ms=None,
+        catalog_error="unbuilt",
+    )
+    monkeypatch.delenv("OMNIWEAVE_RUNNER", raising=False)
+    assert gate.observe_environment(probe).runner == gate.UNPINNED_RUNNER == "unpinned"
+    monkeypatch.setenv("OMNIWEAVE_RUNNER", "ubuntu-24.04")
+    assert gate.observe_environment(probe).runner == "ubuntu-24.04"
+
+
+def test_the_band_inequality_is_strict() -> None:
+    assert not gate.above_band(125.0, 100.0, 25)
+    assert gate.above_band(125.01, 100.0, 25)
+    assert not gate.above_band(139.9, 100.0, 40)
+
+
+def test_the_false_failure_rate_counts_ordered_pairs_of_distinct_runs() -> None:
+    """(1.0, 1.3): 1.3 against 1.0 fails at 25% and 1.0 against 1.3 does not, so 50%."""
+    assert gate.false_failure_pct((1.0, 1.3), 25) == 50.0
+    assert gate.false_failure_pct((1.0, 1.3), 40) == 0.0
+    assert gate.false_failure_pct((2.0, 2.0, 2.0), 25) == 0.0
+
+
+@given(
+    values=st.lists(
+        st.floats(min_value=0.001, max_value=1e6, allow_nan=False), min_size=2, max_size=12
+    ),
+    band=st.sampled_from(gate.VARIANCE_BANDS_PCT),
+)
+def test_the_false_failure_rate_is_a_percentage_and_zero_within_the_band(
+    values: list[float], band: int
+) -> None:
+    rate = gate.false_failure_pct(tuple(values), band)
+    assert 0.0 <= rate <= 100.0
+    if max(values) <= min(values) * (1 + band / 100):
+        assert rate == 0.0
+
+
+def _run(step_one: float, step_two: float, count: float = 3.0) -> tuple[object, ...]:
+    return (
+        gate.Measurement(name=gate.STEP_ONE_SUBJECT, unit="ms", value=step_one),
+        gate.Measurement(name=gate.STEP_TWO_SUBJECT, unit="ms", value=step_two),
+        gate.Measurement(name=gate.MODULE_COUNT_SUBJECT, unit="modules", value=count),
+        gate.Measurement(
+            name=gate.CATALOG_SUBJECT, unit="ms", value=None, absent_because="unbuilt"
+        ),
+    )
+
+
+def test_the_variance_summary_prices_each_band_per_subject_and_for_the_gate() -> None:
+    """Step 1 fails the pair (0, 1) and step 2 the pair (1, 0), so the gate fails both."""
+    summary = gate.variance_summary((_run(1.0, 2.0), _run(2.0, 1.0)))
+    assert summary["runs"] == 2
+    assert summary["bands_pct"] == [25, 40]
+    step_one = summary["subjects"][gate.STEP_ONE_SUBJECT]
+    assert (step_one["min"], step_one["median"], step_one["max"]) == (1.0, 1.5, 2.0)
+    assert step_one["false_failure_pct"] == {"25": 50.0, "40": 50.0}
+    assert round(step_one["cv_pct"], 1) == 47.1
+    assert summary["subjects"][gate.MODULE_COUNT_SUBJECT]["cv_pct"] == 0.0
+    assert summary["banded_subjects"] == [gate.STEP_ONE_SUBJECT, gate.STEP_TWO_SUBJECT]
+    assert summary["absent"] == [gate.CATALOG_SUBJECT]
+    assert summary["gate_false_failure_pct"] == {"25": 100.0, "40": 100.0}
+
+
+def test_a_module_count_that_moves_is_not_counted_as_a_band_failure() -> None:
+    """The count is the hard assertion, never banded, so it adds nothing to the gate's rate."""
+    summary = gate.variance_summary((_run(1.0, 1.0, 3.0), _run(1.0, 1.0, 9.0)))
+    assert summary["gate_false_failure_pct"] == {"25": 0.0, "40": 0.0}
+
+
+def test_variance_writes_its_evidence_and_asserts_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runs = iter([_run(1.0, 1.0), _run(1.6, 1.0), _run(1.0, 1.0)])
+    env = _environment(50)
+    monkeypatch.setattr(gate, "measure_all", lambda: (env, next(runs), None))
+    assert gate.main(["--variance", "3", "--baselines-dir", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "OQ-4, 3 consecutive runs" in out
+    assert "the gate at +/-25%" in out
+    path = gate.variance_path(tmp_path, env)
+    assert path.name == "variance-coldstart-linux-3.11.json"
+    raw = path.read_bytes()
+    assert raw.endswith(b"\n")
+    assert b"\r" not in raw
+    written = json.loads(raw)
+    assert written["question"] == "OQ-4"
+    assert written["environment"]["runner"] == PINNED
+    assert len(written["values"]) == 3
+    assert written["values"][1][gate.STEP_ONE_SUBJECT] == 1.6
+    assert written["summary"]["runs"] == 3
+    assert gate.baseline_coverage(tmp_path) == {"Darwin": (), "Linux": (), "Windows": ()}
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["--variance", "1"], ["--variance", "3", "--record-baseline"]],
+)
+def test_variance_refuses_one_run_and_refuses_to_record_a_baseline_beside_it(
+    argv: list[str], tmp_path: Path
+) -> None:
+    with pytest.raises(SystemExit) as raised:
+        gate.main([*argv, "--baselines-dir", str(tmp_path)])
+    assert raised.value.code == 2
+    assert not any(tmp_path.iterdir())
