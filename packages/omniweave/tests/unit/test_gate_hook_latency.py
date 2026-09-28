@@ -9,6 +9,7 @@ The spawning half (the witness, the module count against this OS's baseline) is 
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -54,6 +55,7 @@ def _judge(**changes: object) -> tuple[str, ...]:
         "warm_ms": [100.0] * 30,
         "modules": ("json", "omniweave.hooks.main"),
         "baseline": _baseline(),
+        "runner": "test",
     }
     args.update(changes)
     return g.judge(BUDGETS, **args)  # type: ignore[attr-defined]
@@ -149,3 +151,117 @@ def test_the_band_is_twenty_five_percent_over_the_baseline() -> None:
 def test_with_no_baseline_the_count_and_the_band_do_not_run() -> None:
     """UNMEASURED, not green: the report says so. Only the absolute budgets apply."""
     assert _judge(modules=("a", "b", "c", "d"), warm_ms=[200.0] * 30, baseline=None) == ()
+
+
+# ---------------------------------------------------------------------------
+# Where the band fails (D622, D623), the runner's one home, and OQ-4's instrument
+# ---------------------------------------------------------------------------
+
+UNPINNED = "unpinned"
+SLOW = [126.0] * 30
+"""Past the baseline's 100 ms + 25% band, and inside the 250 ms warm budget."""
+
+
+def test_a_band_regression_on_an_unpinned_runner_is_a_note_and_not_a_failure() -> None:
+    assert _judge(warm_ms=SLOW, runner=UNPINNED) == ()
+    why, regressed = g.band_notes(_baseline(), SLOW, UNPINNED)  # type: ignore[attr-defined]
+    assert "OMNIWEAVE_RUNNER" in why
+    assert "does not fail" in why
+    assert "the baseline's 100 ms + 25% = 125 ms" in regressed
+    assert regressed.endswith("reported, not failed")
+
+
+def test_a_pinned_runner_that_did_not_record_the_baseline_does_not_fail_on_it() -> None:
+    assert _judge(warm_ms=SLOW, runner="ow-bench-2") == ()
+    (why, _) = g.band_notes(_baseline(), SLOW, "ow-bench-2")  # type: ignore[attr-defined]
+    assert "'test'" in why
+    assert "'ow-bench-2'" in why
+
+
+def test_the_band_notes_are_empty_where_the_band_is_enforced() -> None:
+    assert g.band_notes(_baseline(), SLOW, "test") == ()  # type: ignore[attr-defined]
+    assert g.band_notes(None, SLOW, UNPINNED) == ()  # type: ignore[attr-defined]
+
+
+def test_inside_the_band_an_unpinned_run_still_says_the_band_is_not_enforced() -> None:
+    (why,) = g.band_notes(_baseline(), [100.0] * 30, UNPINNED)  # type: ignore[attr-defined]
+    assert "does not fail" in why
+
+
+def test_the_module_count_and_the_warm_budget_fail_on_every_runner() -> None:
+    """(1) and (2) do not vary with load, or are absolute, so no runner excuses them."""
+    grown = ("json", "omniweave.hooks.main", "omniweave_core.store")
+    for runner in (UNPINNED, "ow-bench-2", "test"):
+        assert _judge(modules=grown, runner=runner), runner
+        assert _judge(warm_ms=[300.0] * 30, baseline=None, runner=runner), runner
+
+
+def test_the_report_prints_its_notes() -> None:
+    notes = g.band_notes(_baseline(), SLOW, UNPINNED)  # type: ignore[attr-defined]
+    report = g.Report(BUDGETS, True, {}, SLOW, [300.0] * 10, (), _baseline(), (), notes)  # type: ignore[attr-defined]
+    lines = report.lines()
+    assert sum(one.startswith("G26 NOTE  ") for one in lines) == 2
+    assert lines[-1] == "G26  ok"
+
+
+def _fake_measure(warms: list[float], count: int = 2) -> object:
+    runs = iter(warms)
+
+    def measure(_root: Path) -> tuple[object, ...]:
+        warm = next(runs)
+        return True, {}, [warm] * 30, [300.0] * 10, tuple(f"m{i}" for i in range(count))
+
+    return measure
+
+
+def test_the_runner_recorded_is_omniweave_runner_and_never_the_hostname(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(g, "BASELINES", tmp_path)
+    monkeypatch.setattr(g, "measure", _fake_measure([100.0]))
+    monkeypatch.setenv("OMNIWEAVE_RUNNER", "ubuntu-24.04")
+    assert g.main(["--record-baseline"]) == 0  # type: ignore[attr-defined]
+    written = json.loads(g.baseline_path().read_text(encoding="utf-8"))  # type: ignore[attr-defined]
+    assert written["runner"] == "ubuntu-24.04"
+    monkeypatch.delenv("OMNIWEAVE_RUNNER")
+    monkeypatch.setattr(g, "measure", _fake_measure([100.0]))
+    assert g.main(["--record-baseline"]) == 0  # type: ignore[attr-defined]
+    written = json.loads(g.baseline_path().read_text(encoding="utf-8"))  # type: ignore[attr-defined]
+    assert written["runner"] == UNPINNED
+    with pytest.raises(SystemExit) as raised:
+        g.main(["--runner", "laptop"])  # type: ignore[attr-defined]
+    assert raised.value.code == 2
+
+
+def test_variance_writes_its_evidence_and_asserts_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(g, "BASELINES", tmp_path)
+    monkeypatch.setattr(g, "measure", _fake_measure([100.0, 130.0, 300.0]))
+    assert g.main(["--variance", "3"]) == 0  # type: ignore[attr-defined]
+    out = capsys.readouterr().out
+    assert "OQ-4, 3 consecutive runs" in out
+    assert "1 of 3 runs" in out
+    path = g.variance_path()  # type: ignore[attr-defined]
+    assert path.name.startswith("variance-hook-latency-")
+    raw = path.read_bytes()
+    assert b"\r" not in raw
+    written = json.loads(raw)
+    assert written["gate"] == "G26"
+    assert written["over_warm_budget"] == 1
+    summary = written["summary"]
+    assert summary["banded_subjects"] == [g.WARM_SUBJECT]  # type: ignore[attr-defined]
+    # 100 -> 130 and 100 -> 300 and 130 -> 300 fail at 25%, of six ordered pairs.
+    assert summary["gate_false_failure_pct"]["25"] == 50.0
+    assert [one["cold p95"] for one in written["values"]] == [300.0] * 3
+
+
+@pytest.mark.parametrize("argv", [["--variance", "1"], ["--variance", "3", "--record-baseline"]])
+def test_variance_refuses_one_run_and_refuses_to_record_beside_it(
+    argv: list[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(g, "BASELINES", tmp_path)
+    with pytest.raises(SystemExit) as raised:
+        g.main(argv)  # type: ignore[attr-defined]
+    assert raised.value.code == 2
+    assert not any(tmp_path.iterdir())
