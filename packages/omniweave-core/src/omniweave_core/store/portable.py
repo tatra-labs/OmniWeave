@@ -113,7 +113,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import struct
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Final, NamedTuple
 
@@ -148,6 +148,7 @@ __all__ = [
     "PortableArtefact",
     "PortableExport",
     "export_portable",
+    "read_block",
 ]
 
 ARCHIVE_SUFFIX: Final = ".owdoc"
@@ -287,6 +288,20 @@ SELECT block_id, addr, cite, page, parent_id, ord, kind, raw_kind, layer, label,
  ORDER BY page, ord, addr
 """
 """Every block of one generation, in frame order. **`addr` is the tiebreak; see DEFECT 1.**"""
+
+_BLOCK_COLUMNS: Final = _BLOCKS_SQL.split("SELECT", 1)[1].split("FROM block", 1)[0].strip()
+
+_BLOCK_SQL: Final = f"SELECT {_BLOCK_COLUMNS}, doc_ord, gen FROM block WHERE block_id = ?"  # noqa: S608 -- constants
+"""One block by id: `_BLOCKS_SQL`'s columns in its order, then the two that place its generation.
+
+Derived from `_BLOCKS_SQL` rather than restated, so `_decode_block`'s positional reads rest on one
+column list and not on two that could drift apart.
+"""
+
+_BLOCK_MARKS_SQL: Final = (
+    "SELECT a, b, kind, value FROM mark WHERE block_id = ? ORDER BY a, b, mark_id"
+)
+"""One block's marks, in `_MARKS_SQL`'s order within a block."""
 
 _MARKS_SQL: Final = """
 SELECT m.block_id, m.a, m.b, m.kind, m.value
@@ -593,41 +608,12 @@ class _StoreDocument:
         build's Python enum would let a store seeded by an older build answer with this build's
         numbering, which is exactly the drift `enum_val` exists to make impossible.
         """
-        block_id = int(row[0])
-        quad = None if row[14] is None else Quad(*_QUAD_STRUCT.unpack(bytes(row[14])))
-        block = Block(
-            id=BlockId(block_id),
-            addr=Addr(str(row[1])),
-            cite=Cite(str(row[2])),
+        block = _decode_block(
+            row,
             doc_ord=self._doc_ord,
             gen=self._gen,
-            page=int(row[3]),
-            parent=None if row[4] is None else BlockId(int(row[4])),
-            ord=int(row[5]),
-            kind=Kind(self._member("kind", int(row[6]))),
-            raw_kind=None if row[7] is None else str(row[7]),
-            layer=Layer(self._member("layer", int(row[8]))),
-            label=None if row[9] is None else str(row[9]),
-            text=None if row[10] is None else str(row[10]),
-            content_digest=bytes(row[11]),
-            layout_digest=None if row[12] is None else bytes(row[12]),
-            revision=int(row[13]),
-            quad=quad,
-            origin=self._origin(row),
-            span=None if row[22] is None else TextSpan(int(row[22]), int(row[23])),
-            producer_id=int(row[24]),
-            method=Method(self._member("method", int(row[25]))),
-            trust=Trust(int(row[26])),
-            quote=Quote(int(row[27])),
-            score=None if row[28] is None else float(row[28]),
-            score_kind=None if row[29] is None else str(row[29]),
-            origin_operator=str(row[30]),
-            origin_driver=str(row[31]),
-            driver_schema_v=int(row[32]),
-            restriction_bits=int(row[33]),
-            marks=self._marks.get(block_id, ()),
-            tombstoned=bool(row[36]),
-            x=_json_object(row[37]),
+            member=self._member,
+            marks=self._marks.get(int(row[0]), ()),
         )
         return BlockExport(
             block=block,
@@ -635,30 +621,6 @@ class _StoreDocument:
             payload=None if row[35] is None else _json_object(row[35]),
             decision_id=None if row[34] is None else str(row[34]),
         )
-
-    def _origin(self, row: Sequence[Any]) -> OriginSpan:
-        """The seven `os_*` columns back into one `OriginSpan`. `doc.py:398`'s mapping, reversed.
-
-        `os_b` is a LENGTH and never an end offset (03:1471-1473), which is why it becomes
-        `length=` on both variants that carry it and never `b=`.
-        """
-        kind = OsKind(self._member("origin_span_kind", int(row[15])))
-        part = None if row[16] is None else str(row[16])
-        if kind is OsKind.BYTES:
-            return OriginBytes(
-                part=str(part), start=int(row[17]), length=int(row[18]), codec=str(row[21])
-            )
-        if kind is OsKind.NODEPATH:
-            return OriginNodePath(
-                part=str(part), path=tuple(int(step) for step in str(row[19]).split("."))
-            )
-        if kind is OsKind.GLYPHS:
-            return OriginGlyphs(
-                part=str(part), start=int(row[17]), length=int(row[18]), extractor=str(row[20])
-            )
-        if kind is OsKind.PIXELS:
-            return OriginPixels()
-        return OriginNone()
 
     def _member(self, domain: str, code: int) -> str:
         """The `enum_val` member name for one stored code, refusing a code the store cannot name.
@@ -702,6 +664,135 @@ class _StoreDocument:
             return None
         with self._blobs.open(digest) as handle:
             return handle.read()
+
+
+# ---------------------------------------------------------------------------------------------
+# 3b. One `block` row back into a model `Block`: the export's decode, and `read_block`'s.
+# ---------------------------------------------------------------------------------------------
+
+
+def _decode_block(
+    row: Sequence[Any],
+    *,
+    doc_ord: int,
+    gen: int,
+    member: Callable[[str, int], str],
+    marks: tuple[Mark, ...],
+) -> Block:
+    """One `block` row, in `_BLOCKS_SQL`'s column order, as a model `Block`.
+
+    The store's one decode of a Block (SV19): the export's `_StoreDocument._block` and
+    `read_block()` both call it. `Quad(*ints)` is the stored blob decoded, the `Quad` docstring's
+    sanctioned shape, never a rectangle assembled here (INV-9, 01:1191).
+    """
+    block_id = int(row[0])
+    quad = None if row[14] is None else Quad(*_QUAD_STRUCT.unpack(bytes(row[14])))
+    return Block(
+        id=BlockId(block_id),
+        addr=Addr(str(row[1])),
+        cite=Cite(str(row[2])),
+        doc_ord=doc_ord,
+        gen=gen,
+        page=int(row[3]),
+        parent=None if row[4] is None else BlockId(int(row[4])),
+        ord=int(row[5]),
+        kind=Kind(member("kind", int(row[6]))),
+        raw_kind=None if row[7] is None else str(row[7]),
+        layer=Layer(member("layer", int(row[8]))),
+        label=None if row[9] is None else str(row[9]),
+        text=None if row[10] is None else str(row[10]),
+        content_digest=bytes(row[11]),
+        layout_digest=None if row[12] is None else bytes(row[12]),
+        revision=int(row[13]),
+        quad=quad,
+        origin=_decode_origin(row, member, quad=quad),
+        span=None if row[22] is None else TextSpan(int(row[22]), int(row[23])),
+        producer_id=int(row[24]),
+        method=Method(member("method", int(row[25]))),
+        trust=Trust(int(row[26])),
+        quote=Quote(int(row[27])),
+        score=None if row[28] is None else float(row[28]),
+        score_kind=None if row[29] is None else str(row[29]),
+        origin_operator=str(row[30]),
+        origin_driver=str(row[31]),
+        driver_schema_v=int(row[32]),
+        restriction_bits=int(row[33]),
+        marks=marks,
+        tombstoned=bool(row[36]),
+        x=_json_object(row[37]),
+    )
+
+
+def _decode_origin(
+    row: Sequence[Any], member: Callable[[str, int], str], *, quad: Quad | None
+) -> OriginSpan:
+    """The seven `os_*` columns back into one `OriginSpan`. `doc.py:398`'s mapping, reversed.
+
+    `os_b` is a LENGTH and never an end offset (03:1471-1473), which is why it becomes
+    `length=` on both variants that carry it and never `b=`.
+
+    **`pixels` round-trips through `block.page` and `block.quad`**, the `OriginPixels` docstring's
+    rule: it has no `os_*` column of its own. The decode was `OriginPixels()`, which raises for want
+    of both fields, so exporting an OCR'd document failed; no fixture held a `pixels` block (D625).
+    `0001_init.sql`'s CHECK makes `quad IS NOT NULL` on such a row, and a store that breaks it is
+    refused rather than decoded.
+    """
+    kind = OsKind(member("origin_span_kind", int(row[15])))
+    part = None if row[16] is None else str(row[16])
+    if kind is OsKind.BYTES:
+        return OriginBytes(
+            part=str(part), start=int(row[17]), length=int(row[18]), codec=str(row[21])
+        )
+    if kind is OsKind.NODEPATH:
+        return OriginNodePath(
+            part=str(part), path=tuple(int(step) for step in str(row[19]).split("."))
+        )
+    if kind is OsKind.GLYPHS:
+        return OriginGlyphs(
+            part=str(part), start=int(row[17]), length=int(row[18]), extractor=str(row[20])
+        )
+    if kind is OsKind.PIXELS:
+        if quad is None:
+            raise StoreError(
+                f"block {int(row[0])} has os_kind = pixels and no quad, which the schema's CHECK "
+                f"forbids: the polygon is a pixels origin's only address",
+                fix="ow store verify",
+            )
+        return OriginPixels(page=int(row[3]), quad=quad)
+    return OriginNone()
+
+
+def read_block(connection: sqlite3.Connection, block_id: int) -> Block | None:
+    """One stored Block by `block_id`, decoded as the export decodes it; `None` if there is none.
+
+    Its generation is the row's own, so a tombstoned or superseded Block reads back as stored and
+    the caller decides what that means. An `enum_val` code the store does not name is refused, as
+    the export refuses it: a guessed member would answer with this build's numbering.
+    """
+    row = connection.execute(_BLOCK_SQL, (block_id,)).fetchone()
+    if row is None:
+        return None
+    enums = _enum_map(connection)
+
+    def member(domain: str, code: int) -> str:
+        name = enums.get((domain, code))
+        if name is None:
+            raise StoreError(
+                f"this store holds {domain} code {code}, which its own enum_val does not name: "
+                f"reading block {block_id} with a guessed member would answer with this build's "
+                f"numbering",
+                fix="ow store verify",
+            )
+        return name
+
+    marks = tuple(
+        Mark(a=int(a), b=int(b), kind=str(kind), value=None if value is None else str(value))
+        for a, b, kind, value in connection.execute(_BLOCK_MARKS_SQL, (block_id,))
+    )
+    width = len(row) - 2
+    return _decode_block(
+        row[:width], doc_ord=int(row[width]), gen=int(row[width + 1]), member=member, marks=marks
+    )
 
 
 # ---------------------------------------------------------------------------------------------

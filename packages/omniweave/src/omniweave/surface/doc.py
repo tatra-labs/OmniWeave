@@ -11,7 +11,8 @@ rebuilt shape against the stored one, and this module prints it.
 and one row per origin cell -- its slot, its spans, its cite and its text -- which is 10:808's
 `slot(r,c)`, headers and merges. `--render text` is the same, one line per cell. A GFM table would
 come from `model.grid.render_grid()`, the one table serializer (INV-1), and that needs each cell as
-a model `Block`, which no store read builds yet (D621). A hand-drawn table here would be the second
+a model `Block`. D621 said no store read built one; `store.portable.read_block()` does since W7.8r,
+and wiring it to `render_grid()` is owed (D625). A hand-drawn table here would be the second
 serializer INV-1 forbids.
 
 **`ow doc diff` is refused by name**, exit 70, 10:2185's *"anything else"*. It compares two

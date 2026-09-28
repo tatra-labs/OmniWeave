@@ -147,6 +147,7 @@ from omniweave_core.model.enums import (
     Trust,
     enum_val_rows,
 )
+from omniweave_core.model.locus import NO_SPATIAL, Locus, locate
 from omniweave_core.model.rebind import (
     DEFAULT_THRESHOLD,
     REBIND_UNEXPLAINED,
@@ -171,7 +172,9 @@ from omniweave_core.model.spans import (
     OriginPixels,
     OriginSpan,
     Quad,
+    TextSpan,
 )
+from omniweave_core.store.portable import read_block
 from omniweave_core.store.sqlite import BATCH_WAIT_MS, StoreThread, Unit
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only.
@@ -190,6 +193,7 @@ __all__ = [
     "DocSink",
     "block_kind",
     "head_documents",
+    "locate_block",
     "read_grid",
 ]
 
@@ -2735,6 +2739,27 @@ def head_documents(connection: sqlite3.Connection, uris: Sequence[str]) -> list[
                 "achieved_origin_span": str(span),
             }
     return [rows[uri] for uri in uris if uri in rows]
+
+
+def locate_block(
+    connection: sqlite3.Connection, block_id: int, *, span: TextSpan | None = None
+) -> Locus | None:
+    """The `Locus` of one stored Block, or `None` when there is no such block (V01-6, INV-9).
+
+    The Block is `portable.read_block()`'s, the store's one decode, so its `quad` is the stored blob
+    and nothing is assembled. The reason for a missing quad names the driver and its document's
+    `declared.spatial`, the card's claim (03:1556-1561), read from the `doc` row. That row is the
+    head generation's, so a Block of an older generation is explained by today's card.
+    """
+    block = read_block(connection, block_id)
+    if block is None:
+        return None
+    row = connection.execute(
+        "SELECT declared FROM doc WHERE doc_ord = ?", (block.doc_ord,)
+    ).fetchone()
+    declared = {} if row is None else json.loads(str(row[0]))
+    spatial = declared.get("spatial") if isinstance(declared, dict) else None
+    return locate(block, declared_spatial=str(spatial or NO_SPATIAL), span=span)
 
 
 class _StoredCell(NamedTuple):

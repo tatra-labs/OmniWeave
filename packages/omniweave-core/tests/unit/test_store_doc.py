@@ -53,7 +53,7 @@ from omniweave_core.model.block import (
 from omniweave_core.model.enums import Kind, Layer, Method, PageKind, Quote, RelKind, Trust
 from omniweave_core.model.grid import Grid, build_grid
 from omniweave_core.model.records import AssetDraft, Diag, DocRecord, PageRecord
-from omniweave_core.model.spans import OriginBytes, OriginNone, OriginPixels, Quad
+from omniweave_core.model.spans import OriginBytes, OriginNone, OriginPixels, Quad, TextSpan
 from omniweave_core.store import DocSink as DocSinkProtocol
 from omniweave_core.store import migrate
 from omniweave_core.store import sqlite as ow
@@ -1580,3 +1580,102 @@ def test_an_owcheck_diag_row_binds_against_the_real_diag_ddl(harness: Harness) -
         clauses[0].value,
         clauses[1].value,
     }
+
+
+# ---------------------------------------------------------------------------
+# `read_block` and `locate_block`: one stored Block back, and where it is (W7.8r, V01-6)
+# ---------------------------------------------------------------------------
+
+
+def _open_read(harness: Harness) -> Any:
+    return ow.connect(harness.path)
+
+
+def test_read_block_decodes_a_stored_block_with_its_marks_and_is_none_for_no_block(
+    harness: Harness,
+) -> None:
+    from omniweave_core.store.portable import read_block  # noqa: PLC0415
+
+    written = write_happy_path(harness)
+    write_happy_path(harness)  # a re-parse carries the block_id into generation 2
+    connection = _open_read(harness)
+    try:
+        heading = read_block(connection, int(written.heading))
+        missing = read_block(connection, 987_654_321)
+    finally:
+        connection.close()
+    assert heading is not None
+    assert (heading.id, heading.doc_ord, heading.gen) == (
+        written.heading,
+        *read(harness, "SELECT doc_ord, gen FROM doc")[0],
+    )
+    assert heading.gen == 2
+    assert (heading.kind, heading.text, heading.origin_driver) == (
+        Kind.HEADING,
+        "Master Services Agreement",
+        "parse.pdf.pdfium",
+    )
+    assert [(m.a, m.b, m.kind) for m in heading.marks] == [(0, 0, "anchor"), (0, 6, "bold")]
+    assert heading.origin == OriginBytes(part="file", start=0, length=25, codec="utf-8/strict")
+    assert missing is None
+
+
+def test_locate_block_reads_the_documents_declared_spatial_for_the_reason(
+    harness: Harness,
+) -> None:
+    """`DECLARED` claims `block_bbox`, and no block here has a quad, so each says which it is."""
+    from omniweave_core.store.doc import locate_block  # noqa: PLC0415
+
+    written = write_happy_path(harness)
+    connection = _open_read(harness)
+    try:
+        root = locate_block(connection, int(written.root))
+        heading = locate_block(connection, int(written.heading))
+        narrowed = locate_block(connection, int(written.heading), span=TextSpan(0, 6))
+        missing = locate_block(connection, 987_654_321)
+    finally:
+        connection.close()
+    assert root is not None and heading is not None
+    assert root.reason == (
+        "parse.pdf.pdfium declares spatial=block_bbox and stored no quad for this document block"
+    )
+    assert heading.reason is not None and heading.reason.endswith("for this heading block")
+    assert heading.span == TextSpan(0, len("Master Services Agreement"))
+    assert narrowed is not None and narrowed.span == TextSpan(0, 6)
+    assert missing is None
+
+
+def test_a_pixels_block_reads_back_with_its_page_and_quad_as_its_origin(
+    harness: Harness,
+) -> None:
+    """D625: the decode built `OriginPixels()` with neither field, so this read raised."""
+    from omniweave_core.store.doc import locate_block  # noqa: PLC0415
+
+    quad = Quad(0, 0, 1000, 0, 1000, 1000, 0, 1000)
+    with open_store(harness) as thread:
+        writer = sink(harness, thread)
+        writer.begin_doc(doc_record())
+        writer.begin_page(page_record(0, method=Method.OCR_PAGE))
+        root = writer.add_block(root_draft())
+        scanned = writer.add_block(
+            BlockDraft(
+                kind=Kind.PARAGRAPH,
+                layer=Layer.BODY,
+                method=Method.OCR_PAGE,
+                trust=Trust.INFERRED,
+                quote=Quote.RECONSTRUCTED,
+                parent=root,
+                text="scanned line",
+                quad=quad,
+                origin=OriginPixels(page=0, quad=quad),
+            )
+        )
+        writer.end_page({})
+        writer.end_doc("ok")
+    connection = _open_read(harness)
+    try:
+        locus = locate_block(connection, int(scanned))
+    finally:
+        connection.close()
+    assert locus is not None
+    assert (locus.quad, locus.reason, locus.origin) == (quad, None, OriginPixels(page=0, quad=quad))
