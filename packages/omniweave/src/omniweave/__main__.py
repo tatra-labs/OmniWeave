@@ -17,7 +17,8 @@ because 18:928 hides it as 18:923 hides `hook` (D565). `ow surface emit` is W7.1
 and the command every generated header names (D334). `ow doctor` is W7.8c's: the checks this
 build can run, and the list of those it cannot (D610). `ow query` is W7.8g's: the same core calls
 `ow_query` makes, rendered to stdout (D614). `ow add` is W7.8h's: `ow_add`'s roster step, then
-the drain `ow ingest` runs, in one process (D615). The other roots in `cli.COMMANDS` are
+the drain `ow ingest` runs, in one process (D615). `ow open` is W7.8i's: the calls `ow_open`
+makes, rendered to stdout (D616). The other roots in `cli.COMMANDS` are
 refused, on stderr, with `InternalError`'s exit -- 10:2185's *"anything else"*, the only row in the
 taxonomy that does not assert something about a store or an argument that would be false here. The
 refusal is spelled out rather than silent, because the one thing worse than a command that does not
@@ -62,6 +63,8 @@ _QUERY_ROOT: Final[str] = "query"
 
 _ADD_ROOT: Final[str] = "add"
 
+_OPEN_ROOT: Final[str] = "open"
+
 DISPATCHED: Final[frozenset[str]] = frozenset(
     {
         HOOK_WORD,
@@ -72,11 +75,12 @@ DISPATCHED: Final[frozenset[str]] = frozenset(
         _DOCTOR_ROOT,
         _QUERY_ROOT,
         _ADD_ROOT,
+        _OPEN_ROOT,
     }
 )
 """The roots this build can run. `ingest` joined in W7.3w; nothing spawns it yet (D433, D554).
-`surface` joined in W7.1e (D334), `doctor` in W7.8c (D610), `query` in W7.8g (D614), and `add`
-in W7.8h (D615)."""
+`surface` joined in W7.1e (D334), `doctor` in W7.8c (D610), `query` in W7.8g (D614), `add` in
+W7.8h (D615), and `open` in W7.8i (D616)."""
 
 
 def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0911 -- one return per root
@@ -100,6 +104,8 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0911 -- one retu
         return _query(args)
     if args and args[0] == _ADD_ROOT:
         return _add(args)
+    if args and args[0] == _OPEN_ROOT:
+        return _open(args)
 
     from omniweave_core.errors import InternalError  # noqa: PLC0415 -- only the refusal pays
 
@@ -170,6 +176,15 @@ def _add(args: list[str]) -> int:
     _utf8()
     #  The seventh read of the working directory under D435's exemption: `./omniweave.toml` and
     #  every relative source resolve against it.
+    return run(args, env=os.environ, cwd=Path.cwd(), stdout=sys.stdout, stderr=sys.stderr)
+
+
+def _open(args: list[str]) -> int:
+    from omniweave.surface.opening import main as run  # noqa: PLC0415 -- the hook path never pays
+
+    #  An opened block is document text, `query`'s reason for the reconfigure.
+    _utf8()
+    #  The eighth read of the working directory under D435's exemption: `./omniweave.toml`.
     return run(args, env=os.environ, cwd=Path.cwd(), stdout=sys.stdout, stderr=sys.stderr)
 
 
