@@ -2841,3 +2841,96 @@ def test_import_re_roots_a_block_whose_parent_the_archive_omits_and_says_nothing
     assert report.blocks == FIXTURE_BLOCKS - 1, "not one of them was skipped"
     assert report.diagnostics == (), "and the re-rooting is not diagnosed anywhere"
     assert report.status == "ok", "so an archive with a dangling parent imports as `ok`"
+
+
+# ---------------------------------------------------------------------------------------------
+# 7. V01-6 over the three fixture documents: every block locates, and `Locus.reason` is non-None
+#    IFF `quad is None` (INV-9, 00-vision.md:707). `locate_block` reads through
+#    `portable.read_block`, the store's one Block decode, so nothing here assembles a quad.
+# ---------------------------------------------------------------------------------------------
+
+SPATIAL_NONE_REASON: Final = f"{ORIGIN_DRIVER} declares spatial=none"
+"""The reason every quad-less block here carries: `FLOOR` declares `spatial = "none"`."""
+
+
+def _located(store: Path) -> list[tuple[Any, bytes | None]]:
+    """`(locate_block(id), the stored quad blob)` for every block row of the store, by id."""
+    from omniweave_core.store.doc import locate_block  # noqa: PLC0415
+
+    connection = ow.connect_readonly(store)
+    try:
+        rows = connection.execute("SELECT block_id, quad FROM block ORDER BY block_id").fetchall()
+        return [(locate_block(connection, int(block_id)), blob) for block_id, blob in rows]
+    finally:
+        connection.close()
+
+
+def _assert_inv9(located: list[tuple[Any, bytes | None]]) -> None:
+    from omniweave_core.model.locus import LocusPrecision  # noqa: PLC0415
+
+    assert located, "a fixture with no blocks proves nothing"
+    for locus, blob in located:
+        assert locus is not None
+        assert (locus.reason is None) == (locus.quad is not None)
+        assert locus.quad == (None if blob is None else Quad(*_unquad(blob)))
+        assert locus.precision is LocusPrecision.BLOCK
+
+
+def test_v01_6_every_block_of_the_hand_built_document_locates(trip: RoundTrip) -> None:
+    """Six blocks, no quad among them, so every one states the card's reason."""
+    for store in (trip.source, trip.imported):
+        located = _located(store)
+        _assert_inv9(located)
+        assert len(located) == FIXTURE_BLOCKS
+        assert {locus.reason for locus, _ in located} == {SPATIAL_NONE_REASON}
+
+
+def test_v01_6_the_rich_document_reaches_both_sides_of_the_biconditional(
+    rich_trip: RoundTrip,
+) -> None:
+    """Two blocks with a quad and no reason, four with a reason and no quad, all five `os`."""
+    for store in (rich_trip.source, rich_trip.imported):
+        located = _located(store)
+        _assert_inv9(located)
+        with_quad = [locus for locus, _ in located if locus.quad is not None]
+        assert [locus.quad for locus in with_quad] == [RICH_QUAD, RICH_QUAD]
+        assert sum(locus.reason == SPATIAL_NONE_REASON for locus, _ in located) == 4
+        assert {type(locus.origin).__name__ for locus, _ in located} == {
+            "OriginNone",
+            "OriginGlyphs",
+            "OriginNodePath",
+            "OriginPixels",
+            "OriginBytes",
+        }
+        (pixels,) = [locus for locus, _ in located if isinstance(locus.origin, OriginPixels)]
+        assert pixels.origin == OriginPixels(page=0, quad=RICH_QUAD)
+
+
+def test_v01_6_every_block_of_the_generated_corpus_locates(corpus: CorpusTrip) -> None:
+    """8,256 blocks through the stub driver, which writes no quad, so 8,256 reasons."""
+    located = _located(corpus.source)
+    _assert_inv9(located)
+    assert len(located) == CORPUS_BLOCKS
+    assert all(locus.quad is None for locus, _ in located)
+
+
+def test_the_production_export_decodes_a_pixels_block(rich_trip: RoundTrip, tmp_path: Path) -> None:
+    """D625: `portable._decode_origin` built `OriginPixels()` without its two fields.
+
+    This file's own exporter decodes `pixels` correctly, so G28 never ran the production one over
+    it: `export_portable` raised `TypeError` on any store holding an OCR'd block.
+    """
+    from omniweave_core.store.portable import export_portable  # noqa: PLC0415
+
+    out = tmp_path / "portable"
+    out.mkdir()
+    connection = ow.connect_readonly(rich_trip.source)
+    try:
+        result = export_portable(connection, out)
+    finally:
+        connection.close()
+    assert (result.documents, result.skipped) == (1, ())
+    (archive,) = out.iterdir()
+    assert any(
+        record["os"]["k"] == "pixels" for record in _raw_records(archive, "blocks/000000.ndjson")
+    )

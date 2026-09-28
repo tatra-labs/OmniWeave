@@ -180,10 +180,15 @@ CRITERIA: tuple[Criterion, ...] = (
         (
             tool("gate_schema_lint.py"),
             pytest(f"{CORE}/unit/test_model_spans.py", label="Quad and 01:1191's scan (W7.8f)"),
+            pytest(f"{CORE}/unit/test_model_locus.py", label="Locus: INV-9 as a type (W7.8r)"),
+            pytest(
+                f"{CORE}/unit/test_owdoc_roundtrip.py",
+                "-k",
+                "v01_6",
+                label="every block of the three fixture stores locates (W7.8r)",
+            ),
         ),
-        Coverage.PARTIAL,
-        "no `Locus` type and no `locate()` exist, so `reason` iff `quad is None` has no subject; "
-        "the Quad scan and GR1 over every L3 table landed in W7.8f",
+        Coverage.FULL,
     ),
     Criterion(
         "V01-7",
