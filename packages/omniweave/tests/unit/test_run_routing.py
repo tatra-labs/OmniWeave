@@ -9,15 +9,22 @@ from __future__ import annotations
 
 import sqlite3  # noqa: TID251 -- the assertions read the store the run wrote.
 import zipfile
+from importlib.metadata import distributions
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
-from omniweave.route.evidence import build_registry, builtin_specs
+from omniweave.route.demand import compile_demand
+from omniweave.route.evidence import build_registry, builtin_specs, installed_specs
+from omniweave.route.policy import builtin_layer, compile_policy, load_layer
 from omniweave.run import ingest as ingest_module
+from omniweave.run import routing
 from omniweave.run.dispatch import Batch
 from omniweave.run.ingest import ingest
 from omniweave.run.routing import resolve_policy, unit_evidence
 from omniweave_core.config import Config, load
+from omniweave_core.host.signals import SignalAnswer
 from omniweave_core.work import WorkRow
 
 from omniweave import plan
@@ -164,14 +171,18 @@ def test_a_refused_unit_stays_refused_across_runs(tmp_path: Path) -> None:
     assert _unit(store, "empty.txt", "state, acq_failure_class") == ("failed", "corrupt_input")
 
 
-def test_a_pdf_whose_deciding_signal_nobody_computes_is_not_refused(tmp_path: Path) -> None:
-    """D579. `decode.pdf-text-layer` defers on `decode.char_count`; nothing computes it, and a
-    later rule -- `decode.no-rule-matched` -- would refuse every PDF as `unsupported_format`."""
+def test_a_pdf_whose_deciding_signal_pdfium_cannot_compute_is_not_refused(tmp_path: Path) -> None:
+    """D579, kept by D628. `decode.pdf-text-layer` defers on `decode.char_count`, and this run's
+    real pdfium child cannot open the stub `report.pdf`. A later rule -- `decode.no-rule-matched`
+    -- would refuse it as `unsupported_format`; it stays `identified`, and the report says why."""
     store, config = _project(tmp_path)
     report = _run(tmp_path, store, config)
     assert _unit(store, "report.pdf") == ("identified",)
     reasons = list(report.routed.unrouted)  # type: ignore[attr-defined]
-    assert any(reason.startswith("deferred (decode.pdf-text-layer") for reason in reasons)
+    held = [reason for reason in reasons if reason.startswith("deferred (decode.pdf-text-layer")]
+    assert len(held) == 1, reasons
+    assert "decode.char_count: omniweave_pdf.signals: PdfiumError" in held[0]
+    assert report.routed.children == {"pdfium": 3}  # type: ignore[attr-defined]
     assert not _rows(store, "SELECT 1 FROM route_decision WHERE rule_id = 'decode.no-rule-matched'")
 
 
@@ -266,3 +277,174 @@ def test_the_executor_refusal_names_the_row_it_cannot_run() -> None:
     error = ingest_module.NoExecutorError("parse.office", "parse.office.anydoc")
     assert "parse.office" in str(error)
     assert "hops 10-17" in str(error)
+
+
+# ---------------------------------------------------------------------------------------------
+# the signal groups: 05:1096-1100's loop, with a recording computer (D628)
+# ---------------------------------------------------------------------------------------------
+
+PDFIUM = {"pdfium": "omniweave_pdf"}
+CLAMP_TO_FREE = b"""surface = "route"
+[[rule]]
+id = "gate.test-free-only"
+rung = "GATE"
+when = { "unit.format" = "pdf" }
+then = { max_cost_class = "free" }
+"""
+PDF_ROW = ("c:/x/a.pdf", "a" * 64, 10, 1, "pdf", "application/pdf", "internal", "{}")
+
+
+class _Computer:
+    """`routing.Compute`, answering from a table and recording every child it would have started."""
+
+    def __init__(self, values: dict[str, Any], unavailable: dict[str, str] | None = None) -> None:
+        self.values, self.unavailable = values, unavailable or {}
+        self.asked: list[tuple[str, tuple[str, ...]]] = []
+
+    def __call__(self, package: str, source: str, digest: str, keys: tuple[str, ...]) -> Any:
+        del source, digest
+        self.asked.append((package, keys))
+        return SignalAnswer(
+            values={k: v for k, v in self.values.items() if k in keys},
+            unavailable={
+                k: self.unavailable.get(k, f"{package}.signals does not compute {k}")
+                for k in keys
+                if k not in self.values
+            },
+        )
+
+
+def _router(computer: _Computer, *, layers: tuple[bytes, ...] = (), shipped: bool = True) -> Any:
+    registry = build_registry((*builtin_specs(), *installed_specs(distributions()).specs))
+    extra = [load_layer(raw, layer="project", origin="test") for raw in layers]
+    policy = compile_policy([*([builtin_layer()] if shipped else []), *extra], registry=registry)
+    return routing._Router(
+        thread=None,  # type: ignore[arg-type]
+        ctx=SimpleNamespace(trigger="cli"),  # type: ignore[arg-type]
+        policy=policy,
+        registry=registry,
+        catalog=None,  # type: ignore[arg-type]
+        resolving=None,  # type: ignore[arg-type]
+        source_root="",
+        now_ms=0,
+        demand=compile_demand(policy, registry=registry),
+        computers=PDFIUM,
+        compute=computer,
+    )
+
+
+def _decide(router: Any, row: tuple[object, ...] = PDF_ROW) -> tuple[Any, Any]:
+    ev = unit_evidence(row, registry=router.registry, trigger="cli", computers=router.computers)
+    return router.decide(ev, row), ev
+
+
+def test_a_clean_pdf_computes_two_free_groups_and_never_the_local_one() -> None:
+    """05:3110 and INV-13: `decode.pdf-text-layer` matches on the FREE group, no earlier rule
+    defers, so `ink.tiles` is never asked for and no raster is rendered."""
+    computer = _Computer({"unit.part_count": 3, "corpus.is_form": False, "decode.char_count": 900})
+    decision, ev = _decide(_router(computer))
+    assert (decision.rule_id, decision.driver) == ("decode.pdf-text-layer", "parse.pdf.pdfium")
+    assert computer.asked == [
+        ("omniweave_pdf", ("corpus.is_form", "unit.part_count")),
+        ("omniweave_pdf", ("decode.char_count",)),
+    ]
+    assert not ev.computed("ink.tiles")
+    assert ("decode.char_count", "1.0.0", 900) in ev.read_set()
+
+
+def test_a_pdf_page_count_is_the_computer_answer_and_not_the_roster_one() -> None:
+    """05:2199 and 05:2222: the key resolves to `pdfium` for a PDF, so the roster's `1` is not put
+    under `builtin`'s version first."""
+    computer = _Computer({"unit.part_count": 12_000, "corpus.is_form": False})
+    decision, ev = _decide(_router(computer))
+    assert decision.rule_id == "gate.too-many-parts"
+    assert ev.read("unit.part_count") == 12_000
+
+
+def test_a_scanned_pdf_promotes_the_local_group_and_is_held_on_ink_tiles() -> None:
+    """`decode.blank-part-escape` defers on `ink.tiles`, which nothing computes: the LOCAL group is
+    asked for, answers nothing, and the unit is held rather than settled on the later rule."""
+    computer = _Computer({"unit.part_count": 1, "corpus.is_form": False, "decode.char_count": 0})
+    router = _router(computer)
+    decision, _ev = _decide(router)
+    assert decision.rule_id == "decode.no-text-layer"
+    assert computer.asked[-1] == ("omniweave_pdf", ("ink.tiles",))
+    router.route(PDF_ROW)
+    assert dict(router.tally.unrouted) == {
+        "deferred (decode.blank-part-escape): ink.tiles: omniweave_pdf.signals does not compute "
+        "ink.tiles": 1
+    }
+
+
+def test_a_pdf_pdfium_could_not_read_is_held_and_never_refused_as_unsupported() -> None:
+    """D579, kept: once its groups ran, `decode.pdf-text-layer` is still UNKNOWN, and a settle on
+    `decode.no-rule-matched` would refuse the unit for good as `unsupported_format`."""
+    why = "omniweave_pdf.signals: PdfiumError: Failed to load document"
+    keys = ("unit.part_count", "corpus.is_form", "decode.char_count")
+    router = _router(_Computer({}, dict.fromkeys(keys, why)))
+    decision, _ev = _decide(router)
+    assert decision.rule_id == "decode.no-rule-matched"
+    router.route(PDF_ROW)
+    assert not router.tally.refused
+    (reason,) = router.tally.unrouted
+    assert reason.startswith("deferred (decode.pdf-text-layer, decode.blank-part-escape")
+    assert reason.endswith(f"decode.char_count: {why}")
+
+
+def test_a_value_of_the_wrong_dtype_is_unavailable_not_compared() -> None:
+    computer = _Computer({"unit.part_count": 1, "corpus.is_form": False, "decode.char_count": "9"})
+    _decision, ev = _decide(_router(computer))
+    assert ev.read("decode.char_count") is None
+    assert ev.unavailable_reason("decode.char_count") == "the provider answered str, not int"
+
+
+def test_the_gate_clamp_keeps_the_local_group_uncomputed() -> None:
+    """05:1117: *"still under the `GATE` clamp"*. A scanned page under a `free` clamp never asks
+    for `ink.tiles`, and is held on the key it could not compute."""
+    computer = _Computer({"unit.part_count": 1, "corpus.is_form": False, "decode.char_count": 0})
+    router = _router(computer, layers=(CLAMP_TO_FREE,))
+    _decision, ev = _decide(router)
+    assert all(keys != ("ink.tiles",) for _package, keys in computer.asked)
+    assert not ev.computed("ink.tiles")
+    router.route(PDF_ROW)
+    (reason,) = router.tally.unrouted
+    assert reason == "deferred (decode.blank-part-escape): ink.tiles: not computed"
+
+
+def test_an_office_unit_starts_no_child_and_reads_as_it_did_before_there_was_one() -> None:
+    """`officexml` ships no computer: its keys are put UNAVAILABLE with an empty version, which is
+    `read_set()`'s own spelling for a key nobody computed."""
+    computer = _Computer({})
+    docx = ("c:/x/a.docx", "a" * 64, 10, 1, "docx", DOCX, "internal", "{}")
+    decision, ev = _decide(_router(computer), docx)
+    assert decision.rule_id == "decode.office-native"
+    assert computer.asked == []
+    assert ev.unavailable_reason("corpus.is_form") == "the officexml provider ships no computer"
+    unknown = [(key, version) for key, version, value in ev.read_set() if value is None]
+    assert unknown
+    assert all(version == "" for _key, version in unknown), unknown
+
+
+NO_CATCH_ALL = (
+    CLAMP_TO_FREE
+    + b"""
+[[rule]]
+id = "decode.test-blank"
+rung = "DECODE"
+on_unknown = "defer"
+when = { "ink.tiles" = { lte = 4 } }
+then = { outcome = "ok", terminal = true, reason = "blank-part" }
+"""
+)
+
+
+def test_a_group_above_the_clamp_is_not_computed_when_nothing_matched_below_it() -> None:
+    """`next_group()`'s rule, on the path the shipped policy never takes: its
+    `decode.no-rule-matched` always matches on the FREE group, so there `deferrals_pending()` is
+    what the clamp stops. With no catch-all, nothing matches and the loop reaches the LOCAL group,
+    which a `free` clamp forbids."""
+    computer = _Computer({"unit.part_count": 1, "corpus.is_form": False})
+    decision, ev = _decide(_router(computer, layers=(NO_CATCH_ALL,), shipped=False))
+    assert decision is None
+    assert not ev.computed("ink.tiles")
+    assert computer.asked == []

@@ -41,7 +41,7 @@ from omniweave_core.archive.owcheck import (
     Violation,
 )
 from omniweave_core.blobs import BlobStore
-from omniweave_core.errors import ModelError, ResourceLimit
+from omniweave_core.errors import ModelError, NotFoundError, ResourceLimit, StoreError, UsageError
 from omniweave_core.model import enums
 from omniweave_core.model.block import (
     BlockDraft,
@@ -969,7 +969,6 @@ def test_read_grid_of_a_block_that_is_no_table_is_none_and_block_kind_names_it(
 
 def test_a_torn_table_is_a_store_error_not_a_silent_grid(harness: Harness) -> None:
     """A `table_meta` shape its cells cannot rebuild to breaks the exactly-once invariant."""
-    from omniweave_core.errors import StoreError  # noqa: PLC0415
 
     _table_document(harness, (CellPos(0, 0), CellPos(0, 1)))
     connection = ow.connect(harness.path)
@@ -1700,7 +1699,6 @@ def test_store_grid_reader_renders_a_docsink_table_through_render_grid(harness: 
 
 def test_store_grid_reader_raises_for_a_block_the_store_does_not_hold(harness: Harness) -> None:
     """`GridReadSide.block` raises rather than returning `None`: a hole is not a blank cell."""
-    from omniweave_core.errors import StoreError  # noqa: PLC0415
     from omniweave_core.store.doc import StoreGridReader  # noqa: PLC0415
 
     _table_document(harness, (CellPos(0, 0),))
@@ -1783,7 +1781,6 @@ def test_diffing_writes_nothing(harness: Harness) -> None:
 
 def test_a_committed_head_has_no_earlier_generation_to_compare(harness: Harness) -> None:
     """A committed re-parse carries its rows forward (03:1264-1280): generation 1 keeps none."""
-    from omniweave_core.errors import NotFoundError  # noqa: PLC0415
 
     write_happy_path(harness)
     write_happy_path(harness)
@@ -1794,7 +1791,6 @@ def test_a_committed_head_has_no_earlier_generation_to_compare(harness: Harness)
 
 
 def test_the_generations_must_be_named_older_first(harness: Harness) -> None:
-    from omniweave_core.errors import UsageError  # noqa: PLC0415
 
     _quarantined_reparse(harness)
     with pytest.raises(UsageError, match="--from-gen 2 must be older than --to-gen 1"):
