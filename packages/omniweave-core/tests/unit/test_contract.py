@@ -155,3 +155,59 @@ def test_imports_nothing_outside_the_standard_library__charter_d1_and_gate_g1() 
             roots.add(node.module.split(".")[0])
     assert roots
     assert roots <= sys.stdlib_module_names, roots - sys.stdlib_module_names
+
+
+# ---------------------------------------------------------------------------------------------
+# `RELEASE` from the dist-info directory's name (W7.8m, D620)
+# ---------------------------------------------------------------------------------------------
+
+
+def test_the_fast_read_and_importlib_metadata_agree_on_this_install() -> None:
+    """The directory name and `METADATA` are one fact; if they ever differ, this is where."""
+    assert contract._release_from_dist_info() == dist_version("omniweave-core")
+
+
+def test_the_fast_read_takes_the_version_from_the_directory_name(tmp_path: Path) -> None:
+    """Case-insensitive, as Windows is; another distribution whose name merely starts the same
+    (`omniweave_core_extra`) is not a match; an unreadable path entry is skipped."""
+    (tmp_path / "OmniWeave_Core-2.3.4.dist-info").mkdir()
+    (tmp_path / "omniweave_core_extra-9.dist-info").mkdir()
+    assert contract._release_from_dist_info([str(tmp_path)]) == "2.3.4"
+    skipped = [str(tmp_path / "missing"), str(tmp_path)]
+    assert contract._release_from_dist_info(skipped) == "2.3.4"
+
+
+def test_the_first_path_entry_holding_one_decides(tmp_path: Path) -> None:
+    first, second = tmp_path / "a", tmp_path / "b"
+    (first / "omniweave_core-1.0.0.dist-info").mkdir(parents=True)
+    (second / "omniweave_core-2.0.0.dist-info").mkdir(parents=True)
+    assert contract._release_from_dist_info([str(first), str(second)]) == "1.0.0"
+    assert contract._release_from_dist_info([str(second), str(first)]) == "2.0.0"
+
+
+def test_two_in_one_entry_or_none_at_all_fall_back(tmp_path: Path) -> None:
+    (tmp_path / "omniweave_core-1.0.0.dist-info").mkdir()
+    (tmp_path / "omniweave_core-1.1.0.dist-info").mkdir()
+    assert contract._release_from_dist_info([str(tmp_path)]) is None
+    assert contract._release_from_dist_info([str(tmp_path / "nothing-here")]) is None
+    assert contract._release_from_dist_info([]) is None
+
+
+def test_importing_the_contract_does_not_import_importlib_metadata() -> None:
+    """D620: `ow --version` has 150 ms for the whole process, and this import was ~70 of them."""
+    tree = ast.parse(Path(contract.__file__).read_text(encoding="utf-8"))
+    top = [node for node in tree.body if isinstance(node, ast.Import | ast.ImportFrom)]
+    modules = {
+        alias.name for node in top if isinstance(node, ast.Import) for alias in node.names
+    } | {node.module for node in top if isinstance(node, ast.ImportFrom) and node.module}
+    assert not {name for name in modules if name.startswith("importlib")}, modules
+
+
+def test_release_takes_the_fast_reads_answer_and_falls_back_without_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fast read is consulted first; `importlib.metadata` answers only when it does not."""
+    monkeypatch.setattr(contract, "_release_from_dist_info", lambda: "7.7.7")
+    assert contract._release() == "7.7.7"
+    monkeypatch.setattr(contract, "_release_from_dist_info", lambda: None)
+    assert contract._release() == dist_version("omniweave-core")
