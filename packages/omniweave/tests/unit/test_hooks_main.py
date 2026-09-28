@@ -432,7 +432,8 @@ def test_ingest_is_dispatched_and_the_spawn_that_would_start_it_is_still_unwired
     roots = frozenset(
         {
             HOOK_WORD,
-            *("install", "uninstall", "hooks", "skills", "serve", "ingest", "surface", "doctor"),
+            *("install", "uninstall", "hooks", "skills", "serve", "ingest", "surface"),
+            *("doctor", "query"),
         }
     )
     assert roots == launcher.DISPATCHED
@@ -452,7 +453,7 @@ def test_every_other_root_is_refused_with_internal_errors_exit(
     import omniweave.__main__ as launcher  # noqa: PLC0415
     from omniweave_core.errors import InternalError  # noqa: PLC0415
 
-    assert launcher.main(["query", "x"]) == InternalError.EXIT == 70
+    assert launcher.main(["add", "x"]) == InternalError.EXIT == 70
     assert launcher.main([]) == InternalError.EXIT
     assert launcher.main(["契約"]) == InternalError.EXIT
     assert "not dispatched" in capsys.readouterr().err
