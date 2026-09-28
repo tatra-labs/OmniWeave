@@ -155,7 +155,8 @@ def test_garbage_on_stdin_is_still_exit_0(tmp_path: Path, stdin: bytes) -> None:
     assert (done.returncode, done.stdout, done.stderr) == (0, b"", b"")
 
 
-def test_every_other_root_is_refused_with_exit_70(tmp_path: Path) -> None:
+def test_a_word_that_is_no_root_is_usage(tmp_path: Path) -> None:
+    """D624: every root dispatches, so a word that names none is 10:1484's usage error, 1."""
     done = subprocess.run(
         (sys.executable, "-m", "omniweave", "frobnicate"),
         capture_output=True,
@@ -165,8 +166,8 @@ def test_every_other_root_is_refused_with_exit_70(tmp_path: Path) -> None:
         check=False,
     )
 
-    assert done.returncode == 70
-    assert b"not dispatched" in done.stderr
+    assert done.returncode == 1
+    assert b"invalid choice: 'frobnicate'" in done.stderr
 
 
 # ---------------------------------------------------------------------------------------------

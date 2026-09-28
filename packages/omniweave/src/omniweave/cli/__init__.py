@@ -661,9 +661,21 @@ def build_parser() -> argparse.ArgumentParser:
                 _open(nodes, holders, branch, GROUP_HELP.get(branch[-1], ""), inherited)
         node = _open(nodes, holders, command.words, command.help, inherited)
         for argument in command.arguments:
-            _add(node, argument)
+            _add(node, argument, suppress=_shadows_a_global(argument))
         node.set_defaults(**{ACTION_DEST: command.actions[0]})
     return root
+
+
+def _shadows_a_global(argument: Argument) -> bool:
+    """A positional whose dest is a global flag's: 18:912's `ow corpora [<name>]` and `--corpus`.
+
+    Its `nargs="?"` default would overwrite the flag after the flag was parsed, on either side of
+    the verb (D617). So it declines a default, as the subparsers' copies of the global flags do,
+    and is set only when written.
+    """
+    if argument.spelling[0].startswith("-"):
+        return False
+    return any(argument.spelling[0] == flag.spelling[0].lstrip("-") for flag in GLOBAL_FLAGS)
 
 
 def _open(
