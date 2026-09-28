@@ -310,7 +310,9 @@ release       = true
 # Split in two on purpose (section 6.4's closing paragraph): the HARD assertion is the module
 # count, which does not vary with runner load; the wall clock is a 25% band against
 # eval/baselines/coldstart-<os>-<py>.json, best-of-five after two warm-ups, on a pinned runner
-# class. OQ-4 records that the 25% is inherited, not measured.
+# class. OQ-4 records that the 25% is inherited, not measured. The band fails only on the pinned
+# runner that calibrated the baseline, and elsewhere it reports (D622); `--variance N` is OQ-4's
+# instrument.
 runner        = ["tools/gate_coldstart.py"]
 owner         = "release"
 reviewed_at   = "2026-09-07"
