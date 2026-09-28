@@ -433,7 +433,7 @@ def test_ingest_is_dispatched_and_the_spawn_that_would_start_it_is_still_unwired
         {
             HOOK_WORD,
             *("install", "uninstall", "hooks", "skills", "serve", "ingest", "surface"),
-            *("doctor", "query", "add", "open", "corpora", "explain"),
+            *("doctor", "query", "add", "open", "corpora", "explain", "doc"),
         }
     )
     assert roots == launcher.DISPATCHED
@@ -453,7 +453,7 @@ def test_every_other_root_is_refused_with_internal_errors_exit(
     import omniweave.__main__ as launcher  # noqa: PLC0415
     from omniweave_core.errors import InternalError  # noqa: PLC0415
 
-    assert launcher.main(["doc", "grid"]) == InternalError.EXIT == 70
+    assert launcher.main(["frobnicate"]) == InternalError.EXIT == 70
     assert launcher.main(["契約"]) == InternalError.EXIT
     assert "not dispatched" in capsys.readouterr().err
     #  W7.8l: no command at all is a usage error that names `ow --help` (D619), not a refusal.

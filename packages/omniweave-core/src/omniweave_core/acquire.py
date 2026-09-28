@@ -193,6 +193,7 @@ __all__ = [
     "scope_id_for",
     "stamp_walked_path",
     "stat_fresh",
+    "unit_states",
     "walk_order",
     "walked_path",
     "write_roster",
@@ -1814,6 +1815,16 @@ def _known(store: Path, uris: Sequence[str]) -> dict[str, tuple[StatTriple, str]
     finally:
         connection.close()
     return out
+
+
+def unit_states(store: Path, uris: Sequence[str]) -> dict[str, str]:
+    """Each rostered unit's `unit.state`, read-only and in batches; an unrostered uri is absent.
+
+    `ow add`'s step (c) reads where each queued unit stopped after the drain returned (W7.8h). It
+    ran this query in the CLI surface itself, and INV-17 keeps SQL in `omniweave_core.store` and
+    the modules that own a table; the roster is this module's (D621).
+    """
+    return {uri: state for uri, (_, state) in _known(store, uris).items()}
 
 
 def _generation(store: Path) -> int:
