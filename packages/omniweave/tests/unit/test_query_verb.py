@@ -69,6 +69,16 @@ def test_render_json_is_the_answer_the_schema_publishes(project: Path) -> None:
     assert [block["cite"] for block in document["evidence"]][:1] == ["d1#2"]
 
 
+def test_with_two_corpora_declared_every_cite_is_qualified(project: Path) -> None:
+    """`ow_query`'s `qualify=len(self.corpora) > 1`, which W7.8g's verb did not pass (D616)."""
+    (project / "omniweave.toml").write_text(
+        PROJECT + '[corpora.legal]\npath = ".omniweave/legal.owstore"\n', encoding="utf-8"
+    )
+    code, out, _ = _run(["terminate", "--corpus", "handbook", "--render", "json"], project)
+    assert code == 0
+    assert json.loads(out)["evidence"][0]["cite"] == "handbook:d1#2"
+
+
 def test_quiet_prints_the_verdict_state_and_nothing_else(project: Path) -> None:
     assert _run(["terminate", "--quiet"], project)[:2] == (0, "low_confidence\n")
 
