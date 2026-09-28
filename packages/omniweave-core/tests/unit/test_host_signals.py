@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -232,3 +233,78 @@ def test_the_computer_filename_is_the_module_the_child_imports() -> None:
     assert f'COMPUTER_FILENAME: Final[str] = "{signals.COMPUTER_MODULE}.py"' in evidence.read_text(
         encoding="utf-8"
     )
+
+
+# ---------------------------------------------------------------------------------------------
+# A refusal is marked, so `route_signal` keeps only what a computer answered (D632)
+# ---------------------------------------------------------------------------------------------
+
+
+def test_a_computed_answer_is_no_refusal_and_every_request_failure_is_one(
+    tmp_path: Path, provider: str
+) -> None:
+    """Only the first is a pure function of the content, the key and the provider's version."""
+    assert answer(_request(tmp_path, b"xxx", provider)).refusal is None
+    assert answer(_request(tmp_path, b"x", provider, keys=["ink.tiles"])).refusal is None
+    failed = [
+        answer(_request(tmp_path, b"RAISE", provider)),
+        answer(_request(tmp_path, b"xxx", provider, content_sha256="0" * 64)),
+        answer(_request(tmp_path, b"x", provider, source=str(tmp_path / "absent"))),
+        answer(_request(tmp_path, b"x", "../escape")),
+    ]
+    assert all(one.refusal and set(one.unavailable.values()) == {one.refusal} for one in failed)
+
+
+@pytest.mark.parametrize(
+    "captured",
+    [
+        subproc.Captured(None, failed="TimeoutExpired"),
+        subproc.Captured(None, failed="OSError"),
+        subproc.Captured(3, b"", b"Traceback\n"),
+        subproc.Captured(0, b"not json", b""),
+        subproc.Captured(0, b'{"values": {}, "unavailable": {}, "refused": "gone"}', b""),
+    ],
+)
+def test_a_child_that_did_not_compute_is_a_refusal_on_the_parent_side(
+    monkeypatch: pytest.MonkeyPatch, captured: subproc.Captured
+) -> None:
+    found, _ = _ask(monkeypatch, captured)
+    assert found.refusal is not None
+    assert set(found.unavailable) == set(KEYS)
+
+
+def test_a_child_that_computed_is_no_refusal_even_with_keys_it_could_not(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body = json.dumps(
+        {
+            "values": {"unit.part_count": 4},
+            "unavailable": {"decode.char_count": "no"},
+            "refused": None,
+        }
+    ).encode()
+    found, _ = _ask(monkeypatch, subproc.Captured(0, body, b""))
+    assert found.refusal is None
+    assert found.unavailable == {"decode.char_count": "no"}
+
+
+def test_the_refusal_crosses_the_real_childs_stdout(tmp_path: Path) -> None:
+    """`main()` writes `refused` and the parent reads it back: a missing source, a real child."""
+    found = compute_in_child(
+        "omniweave_pdf",
+        source=str(tmp_path / "absent.pdf"),
+        content_sha256="ab" * 32,
+        keys=KEYS,
+        executable=sys.executable,
+        cwd=str(tmp_path),
+        env={"SYSTEMROOT": os.environ.get("SYSTEMROOT", ""), "PATH": os.environ.get("PATH", "")},
+    )
+    assert found.refusal is not None
+    assert found.refusal.startswith("the source is unreadable")
+
+
+def test_narrowing_an_answer_to_the_asked_keys_keeps_its_refusal() -> None:
+    refused = SignalAnswer.refused(KEYS, "gone").total(KEYS[:1], missing="unasked")
+    assert (refused.refusal, dict(refused.unavailable)) == ("gone", {KEYS[0]: "gone"})
+    computed = SignalAnswer(values={KEYS[0]: 1}, unavailable={})
+    assert computed.total(KEYS, missing="m").refusal is None
