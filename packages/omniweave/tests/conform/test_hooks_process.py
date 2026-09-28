@@ -157,7 +157,7 @@ def test_garbage_on_stdin_is_still_exit_0(tmp_path: Path, stdin: bytes) -> None:
 
 def test_every_other_root_is_refused_with_exit_70(tmp_path: Path) -> None:
     done = subprocess.run(
-        (sys.executable, "-m", "omniweave", "corpora"),
+        (sys.executable, "-m", "omniweave", "explain", "OW-A-013"),
         capture_output=True,
         cwd=tmp_path,
         env=_env(),
