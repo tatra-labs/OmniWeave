@@ -15,6 +15,11 @@
    omniweave_core"`, and the wall-clock assertion is a **25% band** against
    `eval/baselines/coldstart-<os>-<py>.json`, best-of-five after two warm-up runs. A baseline
    answers "did this change make it slower *here*", never "is this fast enough".
+   - **The band fails only on the pinned runner that calibrated the baseline** (D622). Section
+     6.4 states it against a **Runner class pin**. On an unpinned machine, OQ-4's first
+     measurement found it failing 31% of baseline/run pairs on one unchanged commit, so there a
+     regression past the band is a NOTE. The module count and the absolute ceilings of item 1
+     fail on every runner.
 
 Conflating the two is the failure this docstring exists to prevent. A budget breach is a refusal.
 A baseline drift is a regression report about one machine. And an environment with no recorded
@@ -50,9 +55,12 @@ Run it:
     uv run tools/gate_coldstart.py                    # check against budgets + this OS's baseline
     uv run tools/gate_coldstart.py --record-baseline  # measure and write this OS's baseline row
     uv run tools/gate_coldstart.py --json             # the whole report, machine-readable
+    uv run tools/gate_coldstart.py --variance 100     # OQ-4: the band's false-failure rate here
 
-Exit codes: `0` pass (a hard-ceiling crossing, an absent subject and a missing baseline are all
-passes), `1` a budget breach or a baseline regression, `2` a usage error from argparse.
+Exit codes: `0` pass (a hard-ceiling crossing, an absent subject, a missing baseline and a band
+regression on a runner that does not enforce the band are all passes), `1` a budget breach, a
+module-count growth, or a band regression where the band is enforced, `2` a usage error from
+argparse. `--variance` asserts nothing and exits `0`.
 
 Specified in 04-driver-system.md sections 4.3 and 4.4, 02-architecture.md section 5.5,
 11-repo-layout.md sections 2.3 and 6.4, 12-performance.md sections 2.3 and 2.4, and
@@ -67,12 +75,14 @@ import os
 import platform
 import re
 import shutil
+import statistics
 import subprocess  # noqa: TID251 - G10's subjects are cold-process facts; a spawn is the witness.
 import sys
 import time
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 __all__ = [
     "BASELINE_SCHEMA",
@@ -85,8 +95,11 @@ __all__ = [
     "HARD_CEILING_MS",
     "MEASURABLE_CEILINGS",
     "MEASURED_RUNS",
+    "OQ4_FALLBACK_TOLERANCE_PCT",
     "REFERENCE_MACHINE",
     "TARGET_OPERATING_SYSTEMS",
+    "UNPINNED_RUNNER",
+    "VARIANCE_BANDS_PCT",
     "WARMUP_RUNS",
     "BaselineVerdict",
     "BudgetRow",
@@ -100,6 +113,8 @@ __all__ = [
     "ReferenceMachine",
     "Report",
     "Severity",
+    "above_band",
+    "band_enforcement",
     "baseline_coverage",
     "baseline_path",
     "build_report",
@@ -108,9 +123,16 @@ __all__ = [
     "check_plan_arithmetic",
     "compare_to_baseline",
     "exit_code",
+    "false_failure_pct",
     "main",
+    "measure_variance",
     "measurement_named",
     "render",
+    "render_variance",
+    "variance_document",
+    "variance_path",
+    "variance_summary",
+    "write_json",
 ]
 
 GATE = "G10"
@@ -673,8 +695,28 @@ BASELINE_TOLERANCE_PCT = 25
 """The wall-clock band, in percent, a measurement may drift from its baseline before G10 fails.
 
 11-repo-layout.md section 6.4, and OQ-4 on the same page records that the 25% figure is
-**inherited, not measured** - nobody has yet characterised the runner-class variance it absorbs.
-Transcribed rather than tuned: this gate is not the place that number gets decided.
+**inherited, not measured**. OQ-4 asks for the runner-class variance it absorbs, measured on CI.
+`--variance` is the instrument, and its first run was one unpinned Windows machine, not a runner
+class (D622). Transcribed rather than tuned: this gate is not the place that number gets decided.
+"""
+
+OQ4_FALLBACK_TOLERANCE_PCT = 40
+"""OQ-4's pre-committed fallback band for the macOS and Windows cells, in percent.
+
+11-repo-layout.md section 6.4's OQ-4 closes on *"100 consecutive `test` runs on an unchanged
+commit, reporting the coefficient of variation"*, and its fallback is to widen the band to 40% on
+macOS and Windows. `--variance` prints the false-failure rate at this band beside the one in force.
+It prints it and adopts nothing: the band stays `BASELINE_TOLERANCE_PCT` (D622).
+"""
+
+UNPINNED_RUNNER = "unpinned"
+"""`OMNIWEAVE_RUNNER`'s value when nothing pinned the runner: a developer's machine, or CI before
+its workflow sets the label.
+
+11-repo-layout.md section 6.4 states the band against a pinned runner class. On an unpinned runner,
+or on a pinned one other than the runner that calibrated the baseline, a regression past the band
+is reported as a NOTE and does not fail (D622). The module count and the absolute ceilings fail on
+every runner.
 """
 
 WARMUP_RUNS = 2
@@ -708,7 +750,8 @@ class BaselineVerdict:
     """The four outcomes of comparing a measurement to a baseline, kept distinct on purpose.
 
     * `WITHIN_BAND` - measured, compared, inside +/-25%.
-    * `REGRESSED` - measured, compared, above the band. The only one that fails.
+    * `REGRESSED` - measured, compared, above the band. The only one that can fail, and it fails
+      only where `band_enforcement` enforces the band (D622).
     * `IMPROVED` - measured, compared, below the band. Not a failure; it is a re-bless prompt,
       because a baseline left stale hides the next regression under the old slack.
     * `NO_BASELINE` - no file for this OS and Python. **Neither a pass nor a failure**: the gate
@@ -1093,7 +1136,7 @@ def observe_environment(probe: DiscoveryProbe) -> Environment:
         python=platform.python_version(),
         python_implementation=platform.python_implementation(),
         installed_distributions=probe.installed_distributions,
-        runner=os.environ.get("OMNIWEAVE_RUNNER", "unpinned"),
+        runner=os.environ.get("OMNIWEAVE_RUNNER", UNPINNED_RUNNER),
     )
 
 
@@ -1393,12 +1436,63 @@ def _noise_finding(measurement: Measurement, samples: tuple[float, ...]) -> Find
     )
 
 
-def _band_finding(measurement: Measurement, before: float) -> Finding:
-    """The 25% wall-clock band for one measurement against its baselined value."""
+def above_band(now: float, before: float, tolerance_pct: float) -> bool:
+    """Whether `now` is past the high side of a `tolerance_pct` band around `before`.
+
+    The one inequality behind a `REGRESSED` verdict and behind `--variance`'s false-failure rates,
+    so the rate printed for a band is the rate at which that band would fail.
+    """
+    return now > before + abs(before) * tolerance_pct / 100.0
+
+
+def band_enforcement(baseline: dict[str, object], runner: str) -> tuple[bool, str]:
+    """Whether a regression past the band fails here, and why not when it does not (D622).
+
+    It fails only on a pinned runner that is the runner the baseline was calibrated on. 11-repo-
+    layout.md section 6.4 states the band against a **Runner class pin**, and OQ-4's first
+    measurement put the band's false-failure rate on an unpinned Windows machine at 31% of
+    baseline/run pairs at 25%, and at 18% at the 40% fallback. A new pinned runner is a re-bless:
+    its first run compares against another machine's numbers.
+    """
+    if runner == UNPINNED_RUNNER:
+        return False, (
+            "the runner is unpinned (OMNIWEAVE_RUNNER is not set), and the band is a statement "
+            "about one pinned runner class"
+        )
+    environment = baseline.get("environment")
+    calibrated = environment.get("runner") if isinstance(environment, dict) else None
+    if calibrated != runner:
+        return False, (
+            f"the baseline was calibrated on runner {calibrated!r} and this is {runner!r}, and a "
+            f"new runner is re-blessed, not compared"
+        )
+    return True, ""
+
+
+def _band_note(why_not: str) -> Finding:
+    """The one NOTE that says the band is reported on this run and not enforced, and why."""
+    return Finding(
+        Severity.NOTE,
+        "band",
+        f"a regression past the +/-{BASELINE_TOLERANCE_PCT}% band is reported on this run and "
+        f"does not fail: {why_not}. The module count and the absolute ceilings fail on every "
+        f"runner",
+        BASELINE_LOCUS,
+    )
+
+
+def _band_finding(measurement: Measurement, before: float, *, enforced: bool) -> Finding:
+    """The 25% wall-clock band for one measurement against its baselined value.
+
+    A regression is a FAIL where the band is `enforced`, and a NOTE saying so where it is not.
+    """
     now = measurement.value or 0.0
     band = abs(before) * BASELINE_TOLERANCE_PCT / 100.0
-    if now > before + band:
-        verdict, severity = BaselineVerdict.REGRESSED, Severity.FAIL
+    reason = ""
+    if above_band(now, before, BASELINE_TOLERANCE_PCT):
+        verdict = BaselineVerdict.REGRESSED
+        severity = Severity.FAIL if enforced else Severity.NOTE
+        reason = "" if enforced else "; reported, not failed, as the band note says"
     elif now < before - band:
         verdict, severity = BaselineVerdict.IMPROVED, Severity.NOTE
     else:
@@ -1407,7 +1501,7 @@ def _band_finding(measurement: Measurement, before: float) -> Finding:
         severity,
         measurement.name,
         f"{verdict}: {now:.2f} {measurement.unit} against {before:.2f} "
-        f"+/-{BASELINE_TOLERANCE_PCT}% ({before - band:.2f}..{before + band:.2f})",
+        f"+/-{BASELINE_TOLERANCE_PCT}% ({before - band:.2f}..{before + band:.2f}){reason}",
         BASELINE_LOCUS,
     )
 
@@ -1431,9 +1525,16 @@ def _count_finding(measurement: Measurement, before: float) -> Finding:
 
 
 def compare_to_baseline(
-    baseline: dict[str, object] | None, measurements: tuple[Measurement, ...]
+    baseline: dict[str, object] | None,
+    measurements: tuple[Measurement, ...],
+    *,
+    runner: str,
 ) -> list[Finding]:
     """The 25% band and the hard module count, against the baseline recorded for **this** OS.
+
+    `runner` is this run's `Environment.runner`, required so that no caller enforces the band by
+    default. The band fails only where `band_enforcement` says so; the module count fails on
+    every runner, because a count does not vary with load (11-repo-layout.md section 6.4).
 
     `NO_BASELINE` is a first-class outcome, reported once with the command that fixes it. It is
     not a pass dressed as one and it is not a failure: 11-repo-layout.md section 6.4's band is a
@@ -1467,7 +1568,8 @@ def compare_to_baseline(
                 BASELINE_LOCUS,
             )
         ]
-    findings: list[Finding] = []
+    enforced, why_not = band_enforcement(baseline, runner)
+    findings: list[Finding] = [] if enforced else [_band_note(why_not)]
     for measurement in measurements:
         before = _recorded_value(baseline, measurement.name)
         if before is None:
@@ -1485,11 +1587,169 @@ def compare_to_baseline(
         elif measurement.unit == "modules":
             findings.append(_count_finding(measurement, before))
         else:
-            findings.append(_band_finding(measurement, before))
+            findings.append(_band_finding(measurement, before, enforced=enforced))
             noise = _noise_finding(measurement, _recorded_samples(baseline, measurement.name))
             if noise is not None:
                 findings.append(noise)
     return findings
+
+
+# ---------------------------------------------------------------------------
+# OQ-4: what the band sees on an unchanged commit
+# ---------------------------------------------------------------------------
+
+VARIANCE_BANDS_PCT: tuple[int, ...] = (BASELINE_TOLERANCE_PCT, OQ4_FALLBACK_TOLERANCE_PCT)
+"""The bands `--variance` prices: the one in force and OQ-4's fallback."""
+
+
+def variance_path(baselines_dir: Path, env: Environment) -> Path:
+    """`eval/baselines/variance-coldstart-<os>-<py>.json`: OQ-4's evidence for one OS and Python.
+
+    The prefix keeps it out of `baseline_coverage()`, whose pattern starts `coldstart-`: evidence
+    about the band is not a baseline to compare against.
+    """
+    name = f"variance-coldstart-{env.operating_system.lower()}-{env.python_tag}.json"
+    return baselines_dir / name
+
+
+def false_failure_pct(values: tuple[float, ...], tolerance_pct: float) -> float:
+    """Of every ordered pair of two distinct runs, the percent where the second fails the first.
+
+    Each run in turn is the baseline and each other run the measurement, on one commit, so every
+    failure counted is a false one. The inequality is `above_band()`, the band's own.
+    """
+    pairs = [(b, n) for i, b in enumerate(values) for j, n in enumerate(values) if i != j]
+    return 100.0 * sum(above_band(n, b, tolerance_pct) for b, n in pairs) / len(pairs)
+
+
+def variance_summary(runs: tuple[tuple[Measurement, ...], ...]) -> dict[str, Any]:
+    """OQ-4's report over consecutive runs: each subject's spread and coefficient of variation,
+    and the false-failure rate of each band in `VARIANCE_BANDS_PCT`, per subject and for the gate.
+
+    A subject enters only when every run measured it; the others are listed as absent. The gate
+    rate counts a pair as failing when any wall-clock subject fails it: the module count is not
+    banded, so it is summarised and not counted.
+    """
+    names = [m.name for m in runs[0]]
+    measured = [n for n in names if all(_value(run, n) is not None for run in runs)]
+    subjects: dict[str, dict[str, Any]] = {}
+    for name in measured:
+        values = tuple(_value(run, name) or 0.0 for run in runs)
+        mean = statistics.fmean(values)
+        stdev = statistics.stdev(values)
+        subjects[name] = {
+            "unit": _unit(runs[0], name),
+            "min": min(values),
+            "median": statistics.median(values),
+            "max": max(values),
+            "mean": mean,
+            "stdev": stdev,
+            "cv_pct": 100.0 * stdev / mean if mean else 0.0,
+            "false_failure_pct": {
+                str(band): false_failure_pct(values, band) for band in VARIANCE_BANDS_PCT
+            },
+        }
+    banded = [n for n in measured if _unit(runs[0], n) == "ms"]
+    gate_rate: dict[str, float] = {}
+    for band in VARIANCE_BANDS_PCT:
+        pairs = [(b, m) for i, b in enumerate(runs) for j, m in enumerate(runs) if i != j]
+        failing = sum(
+            any(above_band(_value(m, n) or 0.0, _value(b, n) or 0.0, band) for n in banded)
+            for b, m in pairs
+        )
+        gate_rate[str(band)] = 100.0 * failing / len(pairs)
+    return {
+        "runs": len(runs),
+        "bands_pct": list(VARIANCE_BANDS_PCT),
+        "subjects": subjects,
+        "banded_subjects": banded,
+        "absent": [n for n in names if n not in measured],
+        "gate_false_failure_pct": gate_rate,
+    }
+
+
+def _value(run: tuple[Measurement, ...], name: str) -> float | None:
+    found = measurement_named(run, name)
+    return None if found is None else found.value
+
+
+def _unit(run: tuple[Measurement, ...], name: str) -> str:
+    found = measurement_named(run, name)
+    return "" if found is None else found.unit
+
+
+def measure_variance(count: int) -> tuple[Environment, tuple[tuple[Measurement, ...], ...]]:
+    """`count` consecutive `measure_all()` runs, each best-of-five after two warm-ups.
+
+    One progress line per ten runs goes to stderr: at about 4.5 s a run on the machine OQ-4 was
+    first measured on, a hundred runs is seven minutes of silence otherwise.
+    """
+    runs: list[tuple[Measurement, ...]] = []
+    env: Environment | None = None
+    for index in range(count):
+        env, measurements, _ = measure_all()
+        runs.append(measurements)
+        if (index + 1) % 10 == 0:
+            sys.stderr.write(f"{GATE} --variance: {index + 1}/{count} runs\n")
+    if env is None:
+        raise ValueError("measure_variance needs at least one run")
+    return env, tuple(runs)
+
+
+def variance_document(
+    env: Environment, runs: tuple[tuple[Measurement, ...], ...], recorded_at: str
+) -> dict[str, object]:
+    """The evidence file: the stamp, the protocol, every run's values, and the summary."""
+    return {
+        "gate": GATE,
+        "question": "OQ-4",
+        "recorded_at": recorded_at,
+        "environment": env.to_json(),
+        "warmup_runs": WARMUP_RUNS,
+        "measured_runs": MEASURED_RUNS,
+        "statistic": "min",
+        "tolerance_pct": BASELINE_TOLERANCE_PCT,
+        "values": [{m.name: m.value for m in run} for run in runs],
+        "summary": variance_summary(runs),
+    }
+
+
+def write_json(path: Path, document: dict[str, object]) -> None:
+    """LF-terminated, sorted, two-space JSON with a trailing newline (11:1.9 rule 2)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="\n") as handle:
+        json.dump(document, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+
+
+def render_variance(env: Environment, summary: dict[str, Any], path: Path) -> None:
+    """Print OQ-4's table: one row per subject, then the gate's false-failure rate per band."""
+    bands = summary["bands_pct"]
+    _emit(f"{GATE} --variance - OQ-4, {summary['runs']} consecutive runs on one commit")
+    _emit("=" * 98)
+    _emit(
+        f"  {env.operating_system} {env.operating_system_release} / {env.machine} / "
+        f"python {env.python} / runner {env.runner}"
+    )
+    _emit()
+    heads = "  ".join(f"ff@{band}%" for band in bands)
+    _emit(f"  {'subject':<44} {'min':>8} {'median':>8} {'max':>8} {'cv':>6}  {heads}")
+    for name, row in summary["subjects"].items():
+        rates = "  ".join(f"{row['false_failure_pct'][str(band)]:6.2f}%" for band in bands)
+        _emit(
+            f"  {name:<44} {row['min']:8.2f} {row['median']:8.2f} {row['max']:8.2f} "
+            f"{row['cv_pct']:5.1f}%  {rates}"
+        )
+    for name in summary["absent"]:
+        _emit(f"  {name:<44} {'ABSENT':>8}")
+    _emit()
+    for band in bands:
+        rate = summary["gate_false_failure_pct"][str(band)]
+        _emit(
+            f"  the gate at +/-{band}%: {rate:.2f}% of baseline/run pairs fail on an unchanged "
+            f"commit"
+        )
+    _emit(f"  written to {path}")
 
 
 # ---------------------------------------------------------------------------
@@ -1546,7 +1806,7 @@ def build_report(baselines_dir: Path) -> Report:
         *check_plan_arithmetic(),
         *check_cold_start_ceilings(measurements),
         *budget_findings,
-        *compare_to_baseline(baseline, measurements),
+        *compare_to_baseline(baseline, measurements, runner=env.runner),
     )
     return Report(
         recorded_at=datetime.now(tz=UTC).isoformat(timespec="seconds"),
@@ -1650,10 +1910,7 @@ def write_baseline(path: Path, report: Report) -> None:
     default emits CRLF on Windows, and every `--check` gate in the repository then disagrees
     byte-for-byte with the same file written on Linux, for reasons no change caused.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="\n") as handle:
-        json.dump(report.to_json(), handle, indent=2, sort_keys=True)
-        handle.write("\n")
+    write_json(path, report.to_json())
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1675,6 +1932,17 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--variance",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "OQ-4: run the measurement N consecutive times, print each subject's coefficient of "
+            "variation and each band's false-failure rate, and write "
+            "eval/baselines/variance-coldstart-<os>-<py>.json. Asserts nothing; exits 0"
+        ),
+    )
+    parser.add_argument(
         "--baselines-dir",
         type=Path,
         default=None,
@@ -1687,9 +1955,23 @@ def main(argv: list[str] | None = None) -> int:
         help="print the whole report as JSON instead of as text",
     )
     args = parser.parse_args(argv)
+    if args.variance is not None and args.record_baseline:
+        parser.error("--variance measures the band and --record-baseline sets it: pick one")
+    if args.variance is not None and args.variance < MINIMUM_SAMPLES_FOR_A_SPREAD:
+        parser.error(f"--variance needs at least {MINIMUM_SAMPLES_FOR_A_SPREAD} runs to spread")
 
     repo_root = Path(__file__).resolve().parent.parent
     baselines_dir: Path = args.baselines_dir or repo_root / "eval" / "baselines"
+    if args.variance is not None:
+        env, runs = measure_variance(args.variance)
+        document = variance_document(env, runs, datetime.now(tz=UTC).isoformat(timespec="seconds"))
+        path = variance_path(baselines_dir, env)
+        write_json(path, document)
+        if args.as_json:
+            _emit(json.dumps(document, indent=2, sort_keys=True))
+        else:
+            render_variance(env, variance_summary(runs), path)
+        return 0
     report = build_report(baselines_dir)
 
     if args.record_baseline:

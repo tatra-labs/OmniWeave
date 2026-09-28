@@ -142,8 +142,9 @@ CRITERIA: tuple[Criterion, ...] = (
         Coverage.PARTIAL,
         "the import, `ow --version` and `ow --help` rows are timed against their ceilings "
         "(the console script landed in W7.8l, D619); the 20-dist row needs a 20-dist "
-        "environment, and the baseline predates the two `ow` rows and has a 42% spread on its "
-        "import row, so G10 is re-blessed nowhere and flakes on that row (D619)",
+        "environment; the 25% band fails only on the pinned runner that calibrated the "
+        "baseline, and no runner is pinned until CI returns at P10, so OQ-4 is measured on one "
+        "unpinned Windows machine and on no runner class (D622)",
     ),
     Criterion(
         "V01-4",

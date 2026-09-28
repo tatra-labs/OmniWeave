@@ -1,0 +1,1033 @@
+{
+  "environment": {
+    "installed_distributions": 97,
+    "machine": "AMD64",
+    "operating_system": "Windows",
+    "operating_system_release": "11",
+    "python": "3.12.0",
+    "python_implementation": "CPython",
+    "runner": "unpinned"
+  },
+  "gate": "G10",
+  "measured_runs": 5,
+  "question": "OQ-4",
+  "recorded_at": "2026-09-28T15:00:57+00:00",
+  "statistic": "min",
+  "summary": {
+    "absent": [],
+    "banded_subjects": [
+      "import omniweave_core",
+      "ow --version",
+      "ow --help",
+      "discovery step 1: entry_points",
+      "discovery step 2: dist-info validity key",
+      "Catalog.build()"
+    ],
+    "bands_pct": [
+      25,
+      40
+    ],
+    "gate_false_failure_pct": {
+      "25": 31.31313131313131,
+      "40": 18.282828282828284
+    },
+    "runs": 100,
+    "subjects": {
+      "Catalog.build()": {
+        "cv_pct": 15.961349202170535,
+        "false_failure_pct": {
+          "25": 10.191919191919192,
+          "40": 4.252525252525253
+        },
+        "max": 244.9237000037101,
+        "mean": 130.24942500043835,
+        "median": 123.24069999885978,
+        "min": 111.05210000096122,
+        "stdev": 20.789565558139174,
+        "unit": "ms"
+      },
+      "discovery step 1: entry_points": {
+        "cv_pct": 17.957948720006847,
+        "false_failure_pct": {
+          "25": 10.535353535353535,
+          "40": 5.151515151515151
+        },
+        "max": 18.583400000352412,
+        "mean": 8.775028999953065,
+        "median": 8.273699997516815,
+        "min": 7.410199999867473,
+        "stdev": 1.575815207977301,
+        "unit": "ms"
+      },
+      "discovery step 2: dist-info validity key": {
+        "cv_pct": 16.639817376409322,
+        "false_failure_pct": {
+          "25": 10.747474747474747,
+          "40": 5.404040404040404
+        },
+        "max": 1.9659000026877038,
+        "mean": 1.0496159999456722,
+        "median": 0.9907999992719851,
+        "min": 0.8860000016284175,
+        "stdev": 0.17465418554453244,
+        "unit": "ms"
+      },
+      "import omniweave_core": {
+        "cv_pct": 23.16091721890152,
+        "false_failure_pct": {
+          "25": 20.303030303030305,
+          "40": 12.04040404040404
+        },
+        "max": 2.904,
+        "mean": 1.62141,
+        "median": 1.462,
+        "min": 1.234,
+        "stdev": 0.37553342787899113,
+        "unit": "ms"
+      },
+      "import omniweave_core module count": {
+        "cv_pct": 0.0,
+        "false_failure_pct": {
+          "25": 0.0,
+          "40": 0.0
+        },
+        "max": 3.0,
+        "mean": 3.0,
+        "median": 3.0,
+        "min": 3.0,
+        "stdev": 0.0,
+        "unit": "modules"
+      },
+      "ow --help": {
+        "cv_pct": 21.687641728970664,
+        "false_failure_pct": {
+          "25": 16.78787878787879,
+          "40": 9.535353535353535
+        },
+        "max": 182.34010000014678,
+        "mean": 87.7816749997146,
+        "median": 81.38194999628467,
+        "min": 69.15209999715444,
+        "stdev": 19.037775177627513,
+        "unit": "ms"
+      },
+      "ow --version": {
+        "cv_pct": 23.573597521310216,
+        "false_failure_pct": {
+          "25": 16.626262626262626,
+          "40": 9.909090909090908
+        },
+        "max": 172.01389999536332,
+        "mean": 75.36556999963068,
+        "median": 69.63514999733889,
+        "min": 58.978899993235245,
+        "stdev": 17.766376141354254,
+        "unit": "ms"
+      }
+    }
+  },
+  "tolerance_pct": 25,
+  "values": [
+    {
+      "Catalog.build()": 112.8554000024451,
+      "discovery step 1: entry_points": 7.940199997392483,
+      "discovery step 2: dist-info validity key": 0.9343999990960583,
+      "import omniweave_core": 1.395,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 85.75220000057016,
+      "ow --version": 77.70990000426536
+    },
+    {
+      "Catalog.build()": 128.13620000088122,
+      "discovery step 1: entry_points": 8.32730000547599,
+      "discovery step 2: dist-info validity key": 1.0191999972448684,
+      "import omniweave_core": 1.311,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 73.9014999999199,
+      "ow --version": 67.1031000019866
+    },
+    {
+      "Catalog.build()": 123.40810000023339,
+      "discovery step 1: entry_points": 8.606600000348408,
+      "discovery step 2: dist-info validity key": 1.032400003168732,
+      "import omniweave_core": 1.766,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 89.35439999913797,
+      "ow --version": 73.7645999979577
+    },
+    {
+      "Catalog.build()": 156.91350000270177,
+      "discovery step 1: entry_points": 9.480400003667455,
+      "discovery step 2: dist-info validity key": 1.1550999988685362,
+      "import omniweave_core": 2.303,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 126.03910000325413,
+      "ow --version": 102.08779999811668
+    },
+    {
+      "Catalog.build()": 158.1718000015826,
+      "discovery step 1: entry_points": 12.19390000187559,
+      "discovery step 2: dist-info validity key": 1.366500000585802,
+      "import omniweave_core": 2.131,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 94.4180000005872,
+      "ow --version": 83.24529999663355
+    },
+    {
+      "Catalog.build()": 150.872199999867,
+      "discovery step 1: entry_points": 10.233100001642015,
+      "discovery step 2: dist-info validity key": 1.2787000014213845,
+      "import omniweave_core": 1.942,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 108.75759999908041,
+      "ow --version": 96.87380000104895
+    },
+    {
+      "Catalog.build()": 180.55520000052638,
+      "discovery step 1: entry_points": 12.189900000521448,
+      "discovery step 2: dist-info validity key": 1.5264000030583702,
+      "import omniweave_core": 2.116,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 98.5558000029414,
+      "ow --version": 98.69639999669744
+    },
+    {
+      "Catalog.build()": 130.10159999976167,
+      "discovery step 1: entry_points": 9.172799997031689,
+      "discovery step 2: dist-info validity key": 1.104399998439476,
+      "import omniweave_core": 1.816,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 73.23019999603275,
+      "ow --version": 75.40639999933774
+    },
+    {
+      "Catalog.build()": 163.06469999835826,
+      "discovery step 1: entry_points": 10.690499999327585,
+      "discovery step 2: dist-info validity key": 1.3038000033702701,
+      "import omniweave_core": 2.124,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 142.42179999564542,
+      "ow --version": 96.57570000126725
+    },
+    {
+      "Catalog.build()": 125.05579999560723,
+      "discovery step 1: entry_points": 9.144000003288966,
+      "discovery step 2: dist-info validity key": 1.101499998185318,
+      "import omniweave_core": 1.322,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 84.29839999735123,
+      "ow --version": 70.97760000033304
+    },
+    {
+      "Catalog.build()": 116.7453999951249,
+      "discovery step 1: entry_points": 8.12220000079833,
+      "discovery step 2: dist-info validity key": 0.9541999970679171,
+      "import omniweave_core": 1.495,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 88.75059999991208,
+      "ow --version": 73.72500000201399
+    },
+    {
+      "Catalog.build()": 119.46080000052461,
+      "discovery step 1: entry_points": 7.84169999678852,
+      "discovery step 2: dist-info validity key": 0.9513999975752085,
+      "import omniweave_core": 1.432,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 73.09230000100797,
+      "ow --version": 58.978899993235245
+    },
+    {
+      "Catalog.build()": 114.85390000598272,
+      "discovery step 1: entry_points": 7.488499999453779,
+      "discovery step 2: dist-info validity key": 0.9093000044231303,
+      "import omniweave_core": 1.517,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 73.77139999880455,
+      "ow --version": 66.47650000377325
+    },
+    {
+      "Catalog.build()": 113.66199999611126,
+      "discovery step 1: entry_points": 7.91659999958938,
+      "discovery step 2: dist-info validity key": 0.966899999184534,
+      "import omniweave_core": 1.315,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 74.12189999740804,
+      "ow --version": 64.6331999960239
+    },
+    {
+      "Catalog.build()": 114.9070000028587,
+      "discovery step 1: entry_points": 7.6546999989659525,
+      "discovery step 2: dist-info validity key": 0.9260999941034243,
+      "import omniweave_core": 1.813,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 80.44800000061514,
+      "ow --version": 72.46960000338731
+    },
+    {
+      "Catalog.build()": 131.38140000228304,
+      "discovery step 1: entry_points": 8.259199996246025,
+      "discovery step 2: dist-info validity key": 1.00640000164276,
+      "import omniweave_core": 1.625,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 85.47959999850718,
+      "ow --version": 81.22989999537822
+    },
+    {
+      "Catalog.build()": 120.94880000222474,
+      "discovery step 1: entry_points": 7.625099999131635,
+      "discovery step 2: dist-info validity key": 0.9152999991783872,
+      "import omniweave_core": 1.375,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 74.82819999859203,
+      "ow --version": 65.98450000456069
+    },
+    {
+      "Catalog.build()": 124.09499999921536,
+      "discovery step 1: entry_points": 8.418299999902956,
+      "discovery step 2: dist-info validity key": 1.021699994453229,
+      "import omniweave_core": 1.353,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 74.62340000347467,
+      "ow --version": 70.32690000050934
+    },
+    {
+      "Catalog.build()": 123.20559999352554,
+      "discovery step 1: entry_points": 8.412700000917539,
+      "discovery step 2: dist-info validity key": 1.0417000012239441,
+      "import omniweave_core": 1.82,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 93.65180000168039,
+      "ow --version": 82.84350000030827
+    },
+    {
+      "Catalog.build()": 117.39110000053188,
+      "discovery step 1: entry_points": 7.9786000060266815,
+      "discovery step 2: dist-info validity key": 0.9037999989232048,
+      "import omniweave_core": 2.42,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 75.3513000017847,
+      "ow --version": 64.87119999655988
+    },
+    {
+      "Catalog.build()": 121.3936999993166,
+      "discovery step 1: entry_points": 8.336200000485405,
+      "discovery step 2: dist-info validity key": 1.017199996567797,
+      "import omniweave_core": 1.464,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 72.84300000173971,
+      "ow --version": 64.77989999984857
+    },
+    {
+      "Catalog.build()": 126.84669999725884,
+      "discovery step 1: entry_points": 8.627699993667193,
+      "discovery step 2: dist-info validity key": 0.9500999949523248,
+      "import omniweave_core": 1.443,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 75.67249999556225,
+      "ow --version": 61.99380000180099
+    },
+    {
+      "Catalog.build()": 137.54080000217073,
+      "discovery step 1: entry_points": 8.698899997398257,
+      "discovery step 2: dist-info validity key": 1.142599998274818,
+      "import omniweave_core": 1.662,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 82.89819999481551,
+      "ow --version": 97.23330000269925
+    },
+    {
+      "Catalog.build()": 134.7516000023461,
+      "discovery step 1: entry_points": 8.142399994540028,
+      "discovery step 2: dist-info validity key": 0.9818999969866127,
+      "import omniweave_core": 2.069,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 77.66959999571554,
+      "ow --version": 63.15249999897787
+    },
+    {
+      "Catalog.build()": 112.6841000004788,
+      "discovery step 1: entry_points": 7.453500002156943,
+      "discovery step 2: dist-info validity key": 0.9307000000262633,
+      "import omniweave_core": 1.365,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 104.96599999896716,
+      "ow --version": 62.75910000113072
+    },
+    {
+      "Catalog.build()": 119.43389999942156,
+      "discovery step 1: entry_points": 8.18960000469815,
+      "discovery step 2: dist-info validity key": 0.9879999997792765,
+      "import omniweave_core": 1.273,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 71.52549999591429,
+      "ow --version": 69.24949999665841
+    },
+    {
+      "Catalog.build()": 123.70130000635982,
+      "discovery step 1: entry_points": 8.288199998787604,
+      "discovery step 2: dist-info validity key": 1.0535999972489662,
+      "import omniweave_core": 1.395,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 75.21470000210684,
+      "ow --version": 70.67510000342736
+    },
+    {
+      "Catalog.build()": 119.35090000042692,
+      "discovery step 1: entry_points": 8.066099995630793,
+      "discovery step 2: dist-info validity key": 0.9265000044251792,
+      "import omniweave_core": 1.436,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 81.6317999997409,
+      "ow --version": 67.77579999470618
+    },
+    {
+      "Catalog.build()": 113.1969999987632,
+      "discovery step 1: entry_points": 8.03279999672668,
+      "discovery step 2: dist-info validity key": 0.9210999996867031,
+      "import omniweave_core": 1.475,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 78.88690000254428,
+      "ow --version": 66.5175999965868
+    },
+    {
+      "Catalog.build()": 115.23460000171326,
+      "discovery step 1: entry_points": 7.725400006165728,
+      "discovery step 2: dist-info validity key": 0.9497000064584427,
+      "import omniweave_core": 1.356,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 85.59450000029756,
+      "ow --version": 76.18599999841535
+    },
+    {
+      "Catalog.build()": 126.61230000230717,
+      "discovery step 1: entry_points": 8.808099999441765,
+      "discovery step 2: dist-info validity key": 0.97490000189282,
+      "import omniweave_core": 1.442,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 81.35889999539359,
+      "ow --version": 69.6336999972118
+    },
+    {
+      "Catalog.build()": 113.85619999782648,
+      "discovery step 1: entry_points": 7.413600003928877,
+      "discovery step 2: dist-info validity key": 0.9086999998544343,
+      "import omniweave_core": 1.352,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 87.70140000706306,
+      "ow --version": 84.59450000373181
+    },
+    {
+      "Catalog.build()": 153.96920000057435,
+      "discovery step 1: entry_points": 10.257900001306552,
+      "discovery step 2: dist-info validity key": 1.2639999986276962,
+      "import omniweave_core": 1.791,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 81.55729999998584,
+      "ow --version": 72.71960000070976
+    },
+    {
+      "Catalog.build()": 119.34730000211857,
+      "discovery step 1: entry_points": 7.521200001065154,
+      "discovery step 2: dist-info validity key": 0.8860000016284175,
+      "import omniweave_core": 1.624,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 77.50630000373349,
+      "ow --version": 74.03409999824362
+    },
+    {
+      "Catalog.build()": 116.19659999996657,
+      "discovery step 1: entry_points": 7.941199997731019,
+      "discovery step 2: dist-info validity key": 0.9152999991783872,
+      "import omniweave_core": 1.324,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 69.15209999715444,
+      "ow --version": 60.58589999884134
+    },
+    {
+      "Catalog.build()": 112.2382000030484,
+      "discovery step 1: entry_points": 8.11950000206707,
+      "discovery step 2: dist-info validity key": 0.9781000044313259,
+      "import omniweave_core": 1.415,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 74.26349999877857,
+      "ow --version": 77.82440000300994
+    },
+    {
+      "Catalog.build()": 119.04209999920567,
+      "discovery step 1: entry_points": 7.857199998397846,
+      "discovery step 2: dist-info validity key": 0.9850999995251186,
+      "import omniweave_core": 1.35,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 73.88730000093346,
+      "ow --version": 64.90899999334943
+    },
+    {
+      "Catalog.build()": 122.6059999971767,
+      "discovery step 1: entry_points": 7.64319999871077,
+      "discovery step 2: dist-info validity key": 0.9113000051002018,
+      "import omniweave_core": 1.275,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 82.05370000359835,
+      "ow --version": 63.22669999644859
+    },
+    {
+      "Catalog.build()": 113.17060000146739,
+      "discovery step 1: entry_points": 8.415899996180087,
+      "discovery step 2: dist-info validity key": 0.9940999952959828,
+      "import omniweave_core": 1.324,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 74.79679999960354,
+      "ow --version": 67.49190000118688
+    },
+    {
+      "Catalog.build()": 121.24710000352934,
+      "discovery step 1: entry_points": 7.955900000524707,
+      "discovery step 2: dist-info validity key": 0.9705000047688372,
+      "import omniweave_core": 1.363,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 73.35630000306992,
+      "ow --version": 62.31390000175452
+    },
+    {
+      "Catalog.build()": 122.0407000000705,
+      "discovery step 1: entry_points": 7.627099999808706,
+      "discovery step 2: dist-info validity key": 0.9102999974857084,
+      "import omniweave_core": 1.446,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 75.35929999721702,
+      "ow --version": 64.29410000419011
+    },
+    {
+      "Catalog.build()": 111.05210000096122,
+      "discovery step 1: entry_points": 7.680799993977416,
+      "discovery step 2: dist-info validity key": 0.9093000044231303,
+      "import omniweave_core": 1.432,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 78.78070000151638,
+      "ow --version": 64.58410000050208
+    },
+    {
+      "Catalog.build()": 112.67250000673812,
+      "discovery step 1: entry_points": 7.455799997842405,
+      "discovery step 2: dist-info validity key": 0.9178000036627054,
+      "import omniweave_core": 1.234,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 71.20010000653565,
+      "ow --version": 62.660600000526756
+    },
+    {
+      "Catalog.build()": 119.019700003264,
+      "discovery step 1: entry_points": 7.769399999233428,
+      "discovery step 2: dist-info validity key": 0.9131999977398664,
+      "import omniweave_core": 1.34,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 73.87839999864809,
+      "ow --version": 59.40159999590833
+    },
+    {
+      "Catalog.build()": 120.09490000491496,
+      "discovery step 1: entry_points": 8.349800002179109,
+      "discovery step 2: dist-info validity key": 1.0098999991896562,
+      "import omniweave_core": 1.438,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 94.46690000186209,
+      "ow --version": 68.08769999770448
+    },
+    {
+      "Catalog.build()": 164.10890000406653,
+      "discovery step 1: entry_points": 10.147900000447407,
+      "discovery step 2: dist-info validity key": 1.2428000045474619,
+      "import omniweave_core": 2.863,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 126.20890000107465,
+      "ow --version": 99.2709999991348
+    },
+    {
+      "Catalog.build()": 134.50240000383928,
+      "discovery step 1: entry_points": 9.066699996765237,
+      "discovery step 2: dist-info validity key": 1.0591000027488917,
+      "import omniweave_core": 1.962,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 182.34010000014678,
+      "ow --version": 128.6411000037333
+    },
+    {
+      "Catalog.build()": 244.9237000037101,
+      "discovery step 1: entry_points": 18.583400000352412,
+      "discovery step 2: dist-info validity key": 1.9659000026877038,
+      "import omniweave_core": 2.904,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 139.6522999930312,
+      "ow --version": 172.01389999536332
+    },
+    {
+      "Catalog.build()": 136.76239999767859,
+      "discovery step 1: entry_points": 10.007299999415409,
+      "discovery step 2: dist-info validity key": 1.137799998105038,
+      "import omniweave_core": 1.762,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 92.67340000224067,
+      "ow --version": 71.72259999788366
+    },
+    {
+      "Catalog.build()": 128.96989999717334,
+      "discovery step 1: entry_points": 8.93999999971129,
+      "discovery step 2: dist-info validity key": 1.0572999963187613,
+      "import omniweave_core": 1.344,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 78.81420000194339,
+      "ow --version": 67.91839999641525
+    },
+    {
+      "Catalog.build()": 119.97669999982463,
+      "discovery step 1: entry_points": 8.31109999853652,
+      "discovery step 2: dist-info validity key": 0.9845999957178719,
+      "import omniweave_core": 1.366,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 81.16539999900851,
+      "ow --version": 65.36559999949532
+    },
+    {
+      "Catalog.build()": 138.40350000100443,
+      "discovery step 1: entry_points": 9.613400005036965,
+      "discovery step 2: dist-info validity key": 1.1115000015706755,
+      "import omniweave_core": 1.659,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 112.40499999985332,
+      "ow --version": 99.43719999864697
+    },
+    {
+      "Catalog.build()": 124.83000000065658,
+      "discovery step 1: entry_points": 8.638100000098348,
+      "discovery step 2: dist-info validity key": 0.985200000286568,
+      "import omniweave_core": 1.336,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 76.40800000081072,
+      "ow --version": 62.01890000374988
+    },
+    {
+      "Catalog.build()": 119.59289999504108,
+      "discovery step 1: entry_points": 8.235399996920023,
+      "discovery step 2: dist-info validity key": 0.9831000061240047,
+      "import omniweave_core": 1.551,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 81.89870000205701,
+      "ow --version": 81.88299999892479
+    },
+    {
+      "Catalog.build()": 130.95439999597147,
+      "discovery step 1: entry_points": 8.022499998332933,
+      "discovery step 2: dist-info validity key": 1.033500004268717,
+      "import omniweave_core": 1.371,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 80.92759999999544,
+      "ow --version": 62.83320000511594
+    },
+    {
+      "Catalog.build()": 119.05229999683797,
+      "discovery step 1: entry_points": 8.137999997416046,
+      "discovery step 2: dist-info validity key": 0.9475999977439642,
+      "import omniweave_core": 1.551,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 73.32840000162832,
+      "ow --version": 71.22399999934714
+    },
+    {
+      "Catalog.build()": 114.24420000548707,
+      "discovery step 1: entry_points": 7.828900001186412,
+      "discovery step 2: dist-info validity key": 0.9226999973179772,
+      "import omniweave_core": 1.325,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 103.34290000173496,
+      "ow --version": 68.05239999812329
+    },
+    {
+      "Catalog.build()": 165.2544000025955,
+      "discovery step 1: entry_points": 11.545099994691554,
+      "discovery step 2: dist-info validity key": 1.3946000035502948,
+      "import omniweave_core": 2.36,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 92.78120000089984,
+      "ow --version": 91.4312999957474
+    },
+    {
+      "Catalog.build()": 126.06460000097286,
+      "discovery step 1: entry_points": 8.40030000108527,
+      "discovery step 2: dist-info validity key": 1.032899999700021,
+      "import omniweave_core": 1.77,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 97.57119999994757,
+      "ow --version": 83.93939999950817
+    },
+    {
+      "Catalog.build()": 137.52350000140723,
+      "discovery step 1: entry_points": 9.093200002098456,
+      "discovery step 2: dist-info validity key": 1.0848999954760075,
+      "import omniweave_core": 2.848,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 120.21399999503046,
+      "ow --version": 129.4391999981599
+    },
+    {
+      "Catalog.build()": 186.07760000304552,
+      "discovery step 1: entry_points": 13.257300000987016,
+      "discovery step 2: dist-info validity key": 1.582500000949949,
+      "import omniweave_core": 2.608,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 105.09269999602111,
+      "ow --version": 105.73360000125831
+    },
+    {
+      "Catalog.build()": 159.9430000060238,
+      "discovery step 1: entry_points": 11.08119999844348,
+      "discovery step 2: dist-info validity key": 1.3029999972786754,
+      "import omniweave_core": 2.14,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 119.95279999973718,
+      "ow --version": 84.98369999870192
+    },
+    {
+      "Catalog.build()": 128.9053000000422,
+      "discovery step 1: entry_points": 9.070499996596482,
+      "discovery step 2: dist-info validity key": 1.0755000039353035,
+      "import omniweave_core": 1.555,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 101.45539999939501,
+      "ow --version": 75.78379999904428
+    },
+    {
+      "Catalog.build()": 142.49159999599215,
+      "discovery step 1: entry_points": 8.161699995980598,
+      "discovery step 2: dist-info validity key": 1.0968999995384365,
+      "import omniweave_core": 1.499,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 92.0957999987877,
+      "ow --version": 75.77429999946617
+    },
+    {
+      "Catalog.build()": 136.83470000250963,
+      "discovery step 1: entry_points": 9.819600003538653,
+      "discovery step 2: dist-info validity key": 1.1632999958237633,
+      "import omniweave_core": 1.388,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 71.20909999503056,
+      "ow --version": 61.506799997005146
+    },
+    {
+      "Catalog.build()": 123.27580000419402,
+      "discovery step 1: entry_points": 7.7965000018593855,
+      "discovery step 2: dist-info validity key": 0.9210000062012114,
+      "import omniweave_core": 1.704,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 77.98300000285963,
+      "ow --version": 61.562499999126885
+    },
+    {
+      "Catalog.build()": 120.46650000411319,
+      "discovery step 1: entry_points": 7.966500001202803,
+      "discovery step 2: dist-info validity key": 0.9654000023147091,
+      "import omniweave_core": 1.588,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 93.50129999802448,
+      "ow --version": 70.58840000536293
+    },
+    {
+      "Catalog.build()": 141.39129999966826,
+      "discovery step 1: entry_points": 9.49850000324659,
+      "discovery step 2: dist-info validity key": 1.1408999998820946,
+      "import omniweave_core": 1.772,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 94.89979999489151,
+      "ow --version": 77.38200000312645
+    },
+    {
+      "Catalog.build()": 138.85660000232747,
+      "discovery step 1: entry_points": 9.1381000020192,
+      "discovery step 2: dist-info validity key": 1.054299995303154,
+      "import omniweave_core": 1.403,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 79.78609999554465,
+      "ow --version": 66.21370000357274
+    },
+    {
+      "Catalog.build()": 120.09070000203792,
+      "discovery step 1: entry_points": 7.873800001107156,
+      "discovery step 2: dist-info validity key": 0.9110000028158538,
+      "import omniweave_core": 1.363,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 74.86220000282628,
+      "ow --version": 60.49740000162274
+    },
+    {
+      "Catalog.build()": 118.3353000014904,
+      "discovery step 1: entry_points": 7.8005000032135285,
+      "discovery step 2: dist-info validity key": 0.8881000030669384,
+      "import omniweave_core": 1.913,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 126.41040000016801,
+      "ow --version": 119.60669999825768
+    },
+    {
+      "Catalog.build()": 121.90900000132388,
+      "discovery step 1: entry_points": 8.493900000758003,
+      "discovery step 2: dist-info validity key": 1.0311000005458482,
+      "import omniweave_core": 1.802,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 100.34150000137743,
+      "ow --version": 77.13779999903636
+    },
+    {
+      "Catalog.build()": 134.22539999737637,
+      "discovery step 1: entry_points": 8.823299998766743,
+      "discovery step 2: dist-info validity key": 1.0765000042738393,
+      "import omniweave_core": 1.648,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 88.64330000506015,
+      "ow --version": 69.88979999732692
+    },
+    {
+      "Catalog.build()": 120.39930000173626,
+      "discovery step 1: entry_points": 8.398600002692547,
+      "discovery step 2: dist-info validity key": 0.9935999987646937,
+      "import omniweave_core": 1.389,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 94.55739999975776,
+      "ow --version": 67.51220000296598
+    },
+    {
+      "Catalog.build()": 144.29099999688333,
+      "discovery step 1: entry_points": 9.503899993433151,
+      "discovery step 2: dist-info validity key": 1.142900000559166,
+      "import omniweave_core": 2.342,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 128.75599999824772,
+      "ow --version": 110.82290000194917
+    },
+    {
+      "Catalog.build()": 150.33579999726498,
+      "discovery step 1: entry_points": 10.960699997667689,
+      "discovery step 2: dist-info validity key": 1.3042000064160675,
+      "import omniweave_core": 1.583,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 71.25620000442723,
+      "ow --version": 67.15260000055423
+    },
+    {
+      "Catalog.build()": 123.74350000027334,
+      "discovery step 1: entry_points": 8.232100000896025,
+      "discovery step 2: dist-info validity key": 0.9879000062937848,
+      "import omniweave_core": 1.387,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 81.40499999717576,
+      "ow --version": 68.22770000144374
+    },
+    {
+      "Catalog.build()": 145.1022000037483,
+      "discovery step 1: entry_points": 9.402900002896786,
+      "discovery step 2: dist-info validity key": 1.1771999998018146,
+      "import omniweave_core": 1.881,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 126.35740000405349,
+      "ow --version": 85.54059999732999
+    },
+    {
+      "Catalog.build()": 200.9872999988147,
+      "discovery step 1: entry_points": 13.423199998214841,
+      "discovery step 2: dist-info validity key": 1.5768000012030825,
+      "import omniweave_core": 1.937,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 106.97660000005271,
+      "ow --version": 98.19939999579219
+    },
+    {
+      "Catalog.build()": 160.9320999996271,
+      "discovery step 1: entry_points": 10.536100002354942,
+      "discovery step 2: dist-info validity key": 1.29489999380894,
+      "import omniweave_core": 1.967,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 84.93829999497393,
+      "ow --version": 86.29500000097323
+    },
+    {
+      "Catalog.build()": 142.80090000102064,
+      "discovery step 1: entry_points": 8.236399997258559,
+      "discovery step 2: dist-info validity key": 1.0197999945376068,
+      "import omniweave_core": 1.358,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 71.5619999973569,
+      "ow --version": 68.23940000322182
+    },
+    {
+      "Catalog.build()": 120.752499999071,
+      "discovery step 1: entry_points": 8.293099999718834,
+      "discovery step 2: dist-info validity key": 0.9949999948730692,
+      "import omniweave_core": 1.308,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 79.46320000337437,
+      "ow --version": 61.44320000021253
+    },
+    {
+      "Catalog.build()": 112.77719999634428,
+      "discovery step 1: entry_points": 7.494299999962095,
+      "discovery step 2: dist-info validity key": 0.9073999972315505,
+      "import omniweave_core": 1.251,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 73.14859999314649,
+      "ow --version": 61.02519999694778
+    },
+    {
+      "Catalog.build()": 115.26749999757158,
+      "discovery step 1: entry_points": 8.142800004861783,
+      "discovery step 2: dist-info validity key": 0.9432999941054732,
+      "import omniweave_core": 1.443,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 85.45969999977387,
+      "ow --version": 77.2235999975237
+    },
+    {
+      "Catalog.build()": 135.21960000070976,
+      "discovery step 1: entry_points": 8.911600001738407,
+      "discovery step 2: dist-info validity key": 1.0758000062196516,
+      "import omniweave_core": 1.701,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 84.77920000586892,
+      "ow --version": 76.49730000412092
+    },
+    {
+      "Catalog.build()": 137.3846999995294,
+      "discovery step 1: entry_points": 9.521599997242447,
+      "discovery step 2: dist-info validity key": 1.1288000023341738,
+      "import omniweave_core": 1.614,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 86.73359999374952,
+      "ow --version": 74.6419999995851
+    },
+    {
+      "Catalog.build()": 123.66469999687979,
+      "discovery step 1: entry_points": 7.567800006654579,
+      "discovery step 2: dist-info validity key": 0.9103999982471578,
+      "import omniweave_core": 1.367,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 70.72649999463465,
+      "ow --version": 61.820900002203416
+    },
+    {
+      "Catalog.build()": 114.27549999643816,
+      "discovery step 1: entry_points": 7.739499997114763,
+      "discovery step 2: dist-info validity key": 0.9540000028209761,
+      "import omniweave_core": 1.261,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 79.61690000229282,
+      "ow --version": 63.55819999589585
+    },
+    {
+      "Catalog.build()": 139.1241000019363,
+      "discovery step 1: entry_points": 9.63179999962449,
+      "discovery step 2: dist-info validity key": 1.1163999952259474,
+      "import omniweave_core": 2.087,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 83.14460000110557,
+      "ow --version": 69.63659999746596
+    },
+    {
+      "Catalog.build()": 125.32059999648482,
+      "discovery step 1: entry_points": 8.491200002026744,
+      "discovery step 2: dist-info validity key": 1.0494000016478822,
+      "import omniweave_core": 1.468,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 74.12309999926947,
+      "ow --version": 68.45999999495689
+    },
+    {
+      "Catalog.build()": 117.96070000127656,
+      "discovery step 1: entry_points": 8.18759999674512,
+      "discovery step 2: dist-info validity key": 0.9618999974918552,
+      "import omniweave_core": 1.46,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 81.48379999329336,
+      "ow --version": 64.07329999638023
+    },
+    {
+      "Catalog.build()": 119.43380000593606,
+      "discovery step 1: entry_points": 8.077899998170324,
+      "discovery step 2: dist-info validity key": 0.9561000042594969,
+      "import omniweave_core": 1.342,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 92.34959999594139,
+      "ow --version": 75.36989999789512
+    },
+    {
+      "Catalog.build()": 135.14849999774015,
+      "discovery step 1: entry_points": 8.958500002336223,
+      "discovery step 2: dist-info validity key": 1.090899997507222,
+      "import omniweave_core": 1.237,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 79.54150000296067,
+      "ow --version": 69.69360000221059
+    },
+    {
+      "Catalog.build()": 116.72060000273632,
+      "discovery step 1: entry_points": 7.663000003958587,
+      "discovery step 2: dist-info validity key": 0.9054999973159283,
+      "import omniweave_core": 1.39,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 77.75379999657162,
+      "ow --version": 62.2088000018266
+    },
+    {
+      "Catalog.build()": 113.99370000435738,
+      "discovery step 1: entry_points": 7.787599999574013,
+      "discovery step 2: dist-info validity key": 0.9349999963887967,
+      "import omniweave_core": 1.287,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 72.92160000361037,
+      "ow --version": 59.829700003319886
+    },
+    {
+      "Catalog.build()": 112.0530999978655,
+      "discovery step 1: entry_points": 7.410199999867473,
+      "discovery step 2: dist-info validity key": 0.8959999977378175,
+      "import omniweave_core": 1.239,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 75.57449999876553,
+      "ow --version": 62.76629999774741
+    },
+    {
+      "Catalog.build()": 117.98499999713385,
+      "discovery step 1: entry_points": 7.820300001185387,
+      "discovery step 2: dist-info validity key": 0.9442000009585172,
+      "import omniweave_core": 1.377,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 79.77959999698214,
+      "ow --version": 61.98700000095414
+    },
+    {
+      "Catalog.build()": 117.69989999447716,
+      "discovery step 1: entry_points": 7.900999997218605,
+      "discovery step 2: dist-info validity key": 0.9513999975752085,
+      "import omniweave_core": 1.696,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 73.30450000154087,
+      "ow --version": 69.35340000200085
+    },
+    {
+      "Catalog.build()": 113.2897999996203,
+      "discovery step 1: entry_points": 7.981499999004882,
+      "discovery step 2: dist-info validity key": 0.91229999816278,
+      "import omniweave_core": 1.612,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 75.2788000027067,
+      "ow --version": 61.71809999796096
+    },
+    {
+      "Catalog.build()": 117.22670000017388,
+      "discovery step 1: entry_points": 7.801300002029166,
+      "discovery step 2: dist-info validity key": 0.9483999965596013,
+      "import omniweave_core": 1.323,
+      "import omniweave_core module count": 3.0,
+      "ow --help": 74.1416000018944,
+      "ow --version": 60.74419999640668
+    }
+  ],
+  "warmup_runs": 2
+}
