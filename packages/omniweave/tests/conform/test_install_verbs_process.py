@@ -93,12 +93,13 @@ def test_g25_runs_as_the_command_the_exit_criterion_types(tmp_path: Path) -> Non
 def test_an_undispatched_root_still_names_what_is(tmp_path: Path) -> None:
     (tmp_path / "home").mkdir()
     (tmp_path / "proj").mkdir()
-    #  `serve` was the example until W7.3p dispatched it; `query` is still refused (no retrieve()).
-    refused = _ow(tmp_path, "query", "what is indexed")
+    #  `serve` was the example until W7.3p dispatched it, and `query` until W7.8g; `add` is
+    #  still refused.
+    refused = _ow(tmp_path, "add", "docs")
     assert refused.returncode == 70
     named = (
-        b"only `ow doctor`, `ow hook`, `ow hooks`, `ow ingest`, `ow install`, `ow serve`, "
-        b"`ow skills`, `ow surface`, `ow uninstall` are"
+        b"only `ow doctor`, `ow hook`, `ow hooks`, `ow ingest`, `ow install`, `ow query`, "
+        b"`ow serve`, `ow skills`, `ow surface`, `ow uninstall` are"
     )
     assert named in refused.stderr
 
