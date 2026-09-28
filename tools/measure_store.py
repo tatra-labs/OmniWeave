@@ -50,12 +50,36 @@ in it: four migrations, seventy-six indexes, two FTS5 shadow families) and print
 that floor removed. At 15 blocks the floor is 99% of the file; at 400,000 it is noise, and a
 reader who cannot see which regime a number came from cannot use it.
 
+## `--driver pdfium`: the real parser, and what it changes about points 1 and 2 (D629)
+
+The stub was the only way to build a 5,000-page store at P2. Since W7.8u `ow add` routes a PDF to
+`parse.pdf.pdfium`, and this mode measures THAT: a scratch project holding the fixture, `ow add`
+run in this process, the product's own store sized by the same `store_sizing()`. Point 1 does not
+move -- it is still not ow-bench-1 -- but point 2's reason does:
+
+- **The row's process is the WORKER.** `eval/perf.toml` gives `rss.gen5000p_peak_bytes`
+  `process = "worker"`, and 12-performance.md:229 says why: *"the supervisor is capped at 600 MB by
+  I31 and forbidden from holding document bytes"*. The worker's peak is what the host samples and
+  what `work.peak_rss_bytes` now keeps (D629), so it is read from there and compared to the row --
+  as an INDICATION, under `--gate-rss` only.
+- **The fork-trigger reading of the row cannot be this measurement's.** The row's note and
+  12-performance.md:245 make it anydoc's tripwire, and anydoc refuses a PDF outright (its card's
+  twelve formats exclude it). A PDF is parsed by pdfium, so the figure bounds pdfium's worker.
+  Printed on the line, owed to the plan (D629).
+- **This process is the supervisor**, and its own peak is printed beside G22's 600 MB ceiling.
+  Informational: `tools/gate_scale.py` is the gate that owns that number.
+
+`--reuse` keeps the ingested project in `--workspace` with its figures in `measured.json`, and a
+second call with the same fixture digest re-sizes that store instead of ingesting again -- so
+V01-10 and V01-11, which read one run, cost one run.
+
 ## Exit codes
 
 0 the measurement ran, 1 only under `--gate` and only when the row is BREACHED (for a ratchet
-that means above the ceiling only, never below the band), 2 the measurement did not run -- the
-generator or the stub driver is absent, the ingest raised, or
-`eval/perf.toml` could not be read. 1 and 2 are distinguished because a human needs to know
+that means above the ceiling only, never below the band) -- or under `--gate-rss`, when the
+worker's peak is over `rss.gen5000p_peak_bytes`'s ceiling -- and 2 the measurement did not run:
+the generator or the stub driver is absent, the ingest raised, or `eval/perf.toml` could not be
+read. 1 and 2 are distinguished because a human needs to know
 whether a number was produced.
 
 Specified in 16-roadmap.md:434-440 and :452-460, 12-performance.md:207-233 and :244,
@@ -65,9 +89,13 @@ Specified in 16-roadmap.md:434-440 and :452-460, 12-performance.md:207-233 and :
 from __future__ import annotations
 
 import argparse
+import contextlib
 import ctypes
 import hashlib
 import importlib.util
+import io
+import json
+import os
 import shutil
 import sys
 import tempfile
@@ -132,6 +160,25 @@ second-guessed: 660 is transcribed there from charter.md:7617-7622 and nowhere e
 
 BUDGET_ID: Final = "store.bytes_per_block"
 """12-performance.md:244. The one row this script has anything to say about."""
+
+RSS_BUDGET_ID: Final = "rss.gen5000p_peak_bytes"
+"""12-performance.md:245. Compared under `--driver pdfium` only, and only to the worker (D629)."""
+
+GATE_SCALE: Final = ROOT / "tools" / "gate_scale.py"
+"""G22's runner: its `RSS_CEILING_BYTES` is the supervisor's 600 MB, read from there."""
+
+DRIVERS: Final = ("stub", "pdfium")
+"""`--driver`. `stub` is P2's contract F2; `pdfium` is the product's own path (D629)."""
+
+PROJECT_TOML: Final = (
+    '[corpora.handbook]\npath = ".omniweave/index.owstore"\n'
+    "[drivers]\nallow_unattested = true\nrequire_lock = false\ninproc = []\n"
+)
+"""The scratch project `--driver pdfium` ingests: one corpus, and the three `[drivers]` opt-ins a
+checkout needs before a first-party driver resolves (D576)."""
+
+MEASURED_JSON: Final = "measured.json"
+"""`--reuse`'s record, in the workspace beside the project it describes."""
 
 DEFAULT_PAGES: Final = 5_000
 """Contract F1's `DEFAULT_PAGES`, restated so `--pages` has a default when the generator is
@@ -346,6 +393,11 @@ def _fixed_floor(workspace: Path) -> int:
     corpus (include it) or attacking 07:1021-1037's row list (exclude it).
     """
     path = workspace / "floor.owstore"
+    #  A kept workspace (`--reuse`, or a second run over one `--workspace`) holds the last run's
+    #  floor store, whose `producer` row the next `_new_store` would duplicate. It is this
+    #  script's own scratch file, so it is rebuilt rather than reused.
+    for stale in (path, path.with_name(path.name + "-wal"), path.with_name(path.name + "-shm")):
+        stale.unlink(missing_ok=True)
     _new_store(path)
     return path.stat().st_size
 
@@ -372,6 +424,74 @@ def _ingest(store: Path, pdf: Path, cas: Path) -> float:
         )
         driver.ingest(sink, pdf=pdf, uri=DOC_URI, doc_ord=0, doc_key=doc_key)
     return time.perf_counter() - started
+
+
+@dataclass(frozen=True)
+class _Ingested:
+    """What `--driver pdfium`'s ingest leaves: the store, the wall time and the two peaks."""
+
+    store: Path
+    seconds: float
+    worker_peak: int | None
+    worker_how: str
+
+
+def _project_store(workspace: Path) -> Path:
+    return workspace / "project" / ".omniweave" / "index.owstore"
+
+
+def _ingest_pdfium(workspace: Path, pdf: Path) -> _Ingested:
+    """`ow add` over a project holding the fixture, in THIS process. Raises if it did not parse.
+
+    In-process so that this process's own peak is the supervisor's for exactly this ingest; the
+    parse itself runs in the S4 worker `ow add` starts, whose peak the host samples across its
+    job (D629) and `work.peak_rss_bytes` keeps. `OMNIWEAVE_HOME` and the working directory are
+    set for the call and restored after it: `ow add` reads both, and a tool is where that is
+    allowed to be ambient.
+    """
+    from omniweave.__main__ import main as ow_main  # noqa: PLC0415 -- the pdfium mode only
+
+    project = workspace / "project"
+    docs = project / "docs"
+    if project.exists():
+        shutil.rmtree(project)
+    docs.mkdir(parents=True)
+    shutil.copyfile(pdf, docs / pdf.name)
+    (project / "omniweave.toml").write_text(PROJECT_TOML, encoding="utf-8")
+    captured = io.StringIO()
+    before = (Path.cwd(), os.environ.get("OMNIWEAVE_HOME"))
+    os.environ["OMNIWEAVE_HOME"] = str(workspace / "owhome")
+    os.chdir(project)
+    started = time.perf_counter()
+    try:
+        with contextlib.redirect_stdout(captured), contextlib.redirect_stderr(captured):
+            code = ow_main(["add", "docs"])
+    finally:
+        seconds = time.perf_counter() - started
+        os.chdir(before[0])
+        if before[1] is None:
+            os.environ.pop("OMNIWEAVE_HOME", None)
+        else:
+            os.environ["OMNIWEAVE_HOME"] = before[1]
+    store = _project_store(workspace)
+    connection = ow.connect(store)
+    try:
+        parsed = connection.execute(
+            "SELECT status, peak_rss_bytes FROM work WHERE operator LIKE 'parse.%'"
+        ).fetchall()
+    finally:
+        connection.close()
+    if code != 0 or [row[0] for row in parsed] != ["done"]:
+        tail = captured.getvalue().strip().splitlines()[-6:]
+        msg = f"ow add exited {code} with parse rows {parsed}: " + " | ".join(tail)
+        raise RuntimeError(msg)
+    peak = int(parsed[0][1] or 0)
+    return _Ingested(
+        store=store,
+        seconds=seconds,
+        worker_peak=peak or None,
+        worker_how="work.peak_rss_bytes: the host's sample over the worker's job (D629)",
+    )
 
 
 # ---------------------------------------------------------------------------------------------
@@ -460,6 +580,9 @@ class Measurement:
     report: SizingReport
     peak_rss: int | None
     peak_rss_source: str
+    driver: str = "stub"
+    worker_peak_rss: int | None = None
+    worker_peak_source: str = ""
 
     @property
     def bytes_per_block_above_floor(self) -> float:
@@ -470,11 +593,21 @@ class Measurement:
         return max(self.report.files.db_bytes - self.floor_bytes, 0) / blocks
 
 
-def measure(workspace: Path, *, pages: int, out: Path | None) -> Measurement:
+def measure(
+    workspace: Path,
+    *,
+    pages: int,
+    out: Path | None,
+    driver: str = "stub",
+    reuse: bool = False,
+) -> Measurement:
     """Generate, ingest, size. Raises on any failure; `main` turns that into exit 2."""
     generator = _load_script(GENERATOR, "ow_gen_5000p_pdf")
     pdf = generator.generate(out or generator.default_out(pages), pages=pages)
     data = Path(pdf).read_bytes()
+    digest = hashlib.sha256(data).hexdigest()
+    if driver == "pdfium":
+        return _measure_pdfium(workspace, pdf=Path(pdf), data=data, digest=digest, reuse=reuse)
 
     store = workspace / "measured.owstore"
     cas = workspace / "cas"
@@ -498,6 +631,50 @@ def measure(workspace: Path, *, pages: int, out: Path | None) -> Measurement:
         report=report,
         peak_rss=peak,
         peak_rss_source=source,
+    )
+
+
+def _measure_pdfium(
+    workspace: Path, *, pdf: Path, data: bytes, digest: str, reuse: bool
+) -> Measurement:
+    """`--driver pdfium`: the product's store and both peaks, or the kept ones under `--reuse`."""
+    record = workspace / MEASURED_JSON
+    kept: dict[str, Any] | None = None
+    if reuse and record.is_file() and _project_store(workspace).is_file():
+        loaded = json.loads(record.read_text(encoding="utf-8"))
+        kept = loaded if loaded.get("pdf_sha256") == digest else None
+    if kept is None:
+        ingested = _ingest_pdfium(workspace, pdf)
+        peak, source = _peak_rss()
+        kept = {
+            "pdf_sha256": digest,
+            "ingest_seconds": ingested.seconds,
+            "peak_rss": peak,
+            "peak_rss_source": source,
+            "worker_peak_rss": ingested.worker_peak,
+            "worker_peak_source": ingested.worker_how,
+        }
+        record.write_text(json.dumps(kept, indent=2), encoding="utf-8")
+    floor = _fixed_floor(workspace)
+    store = _project_store(workspace)
+    connection = ow.connect(store)
+    try:
+        report = store_sizing(connection, path=store)
+    finally:
+        connection.close()
+    return Measurement(
+        pages=report.pages,
+        pdf=pdf,
+        pdf_bytes=len(data),
+        pdf_sha256=digest,
+        ingest_seconds=float(kept["ingest_seconds"]),
+        floor_bytes=floor,
+        report=report,
+        peak_rss=kept["peak_rss"],
+        peak_rss_source=str(kept["peak_rss_source"]),
+        driver="pdfium",
+        worker_peak_rss=kept["worker_peak_rss"],
+        worker_peak_source=str(kept["worker_peak_source"]),
     )
 
 
@@ -568,13 +745,21 @@ def _report(m: Measurement, budget: Budget | None, reason: str, emit: Emit) -> b
     emit(f"   {m.pdf_bytes:,} B   sha256 {m.pdf_sha256}")
     emit("")
     emit("2. ingest")
-    emit(f"   {_under_root(STUB_DRIVER)}  ->  measured.owstore")
+    if m.driver == "pdfium":
+        emit(
+            "   ow add  ->  parse.pdf.pdfium in an S4 worker  ->  project/.omniweave/index.owstore"
+        )
+    else:
+        emit(f"   {_under_root(STUB_DRIVER)}  ->  measured.owstore")
     emit(f"   {m.ingest_seconds:.2f} s wall (elapsed time, not a [[budget]] row)")
     emit("")
     emit("3. sizing")
     for line in m.report.render().rstrip("\n").split("\n"):
         emit(f"   {line}")
     unbreached = _report_indication(m, budget, reason, emit)
+    if m.driver == "pdfium":
+        _report_worker_rss(m, emit)
+        return unbreached
     emit("")
     emit("rss.gen5000p_peak_bytes")
     if m.peak_rss is None:
@@ -585,6 +770,62 @@ def _report(m: Measurement, budget: Budget | None, reason: str, emit: Emit) -> b
     emit("  Owned by P3. Not compared to 1,610,612,736 here, because the comparison would be")
     emit("  against a program that does not contain the thing the row exists to trip on.")
     return unbreached
+
+
+def _rss_indication(m: Measurement) -> bool | None:
+    """Is the worker's peak under `rss.gen5000p_peak_bytes`'s ceiling? `None` when not comparable.
+
+    **One-sided, like a ratchet and for a different reason.** 00-vision.md:712 prints V01-11 as
+    *"Peak RSS on the 5,000-page fixture <= 1,610,612,736 bytes (1.5 GiB) +/- 10%"*, and 12 section
+    4.1 lists the row among the resident-set CEILINGS. A worker far under a memory ceiling is the
+    ceiling holding, so only `value + tolerance` is compared -- `Budget.breaches`' two-sided arm
+    would read a 42 MB worker as outside the band, which is what its first run here printed.
+    """
+    if m.driver != "pdfium" or m.worker_peak_rss is None:
+        return None
+    try:
+        row = load_budget(PERF_TOML, RSS_BUDGET_ID)
+    except (LookupError, OSError, tomllib.TOMLDecodeError):
+        return None
+    return float(m.worker_peak_rss) <= row.value + row.tolerance
+
+
+def _report_worker_rss(m: Measurement, emit: Emit) -> None:
+    """`rss.gen5000p_peak_bytes` against the WORKER, and the supervisor beside G22's ceiling."""
+    emit("")
+    emit(RSS_BUDGET_ID)
+    if m.worker_peak_rss is None:
+        emit("  worker peak RSS    unavailable: the host recorded no sample for the parse row")
+    else:
+        emit(f"  worker peak RSS    {m.worker_peak_rss:>13,} B  via {m.worker_peak_source}")
+    try:
+        row = load_budget(PERF_TOML, RSS_BUDGET_ID)
+    except (LookupError, OSError, tomllib.TOMLDecodeError) as exc:
+        emit(f"  register           UNREADABLE  {exc}")
+        row = None
+    if row is not None:
+        emit(
+            f"  register           <= {row.value:,.0f} B +/- {row.tol_pct}% "
+            f"(ceiling {row.value + row.tolerance:,.0f} B)  process = {row.row.get('process')!r}"
+        )
+        under = _rss_indication(m)
+        if under is not None:
+            emit(f"  INDICATION         {'under the ceiling' if under else 'OVER the ceiling'}")
+    emit(f"  {MACHINE_CAVEAT}.")
+    emit("  The row's note makes it anydoc's fork tripwire, and anydoc refuses a PDF: this figure")
+    emit("  bounds parse.pdf.pdfium's worker, the only driver that parses one (D629).")
+    ceiling = int(_load_script(GATE_SCALE, "ow_gate_scale").RSS_CEILING_BYTES)
+    emit("")
+    emit("supervisor (this process: the generator, then ow add in-process)")
+    if m.peak_rss is None:
+        emit(f"  peak RSS           unavailable: {m.peak_rss_source}")
+    else:
+        where = "over" if m.peak_rss > ceiling else "under"
+        emit(f"  peak RSS           {m.peak_rss:>13,} B  via {m.peak_rss_source}")
+        emit(
+            f"  INFORMATIONAL      {where} G22's {ceiling:,} B supervisor ceiling "
+            "(12-performance.md:229); tools/gate_scale.py owns that gate"
+        )
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -614,6 +855,25 @@ def _parser() -> argparse.ArgumentParser:
         help="where to build the stores; default a tempdir, removed unless --keep",
     )
     parser.add_argument("--keep", action="store_true", help="keep the measured store on disk")
+    parser.add_argument(
+        "--driver",
+        choices=DRIVERS,
+        default="stub",
+        help="stub: P2's contract F2 driver, in process (default). pdfium: `ow add`, the product "
+        "path, with the worker's peak RSS compared to rss.gen5000p_peak_bytes (D629)",
+    )
+    parser.add_argument(
+        "--reuse",
+        action="store_true",
+        help="with --driver pdfium and --workspace: size the kept project instead of ingesting "
+        "again, when its measured.json names this fixture's digest",
+    )
+    parser.add_argument(
+        "--gate-rss",
+        action="store_true",
+        help="with --driver pdfium: exit 1 when the worker's peak is over "
+        "rss.gen5000p_peak_bytes's ceiling. An indication off ow-bench-1, as --gate is",
+    )
     parser.add_argument(
         "--gate",
         action="store_true",
@@ -651,7 +911,9 @@ def main(argv: list[str] | None = None, *, out: TextIO | None = None) -> int:
     workspace = Path(tempfile.mkdtemp(prefix="ow-sizing-")) if owned else args.workspace
     try:
         workspace.mkdir(parents=True, exist_ok=True)
-        measurement = measure(workspace, pages=args.pages, out=args.out)
+        measurement = measure(
+            workspace, pages=args.pages, out=args.out, driver=args.driver, reuse=args.reuse
+        )
     except (OSError, ValueError, ImportError, AttributeError, RuntimeError) as exc:
         emit(f"measure-store DID NOT RUN  {type(exc).__name__}: {exc}")
         return EXIT_NOT_RUN
@@ -665,6 +927,17 @@ def main(argv: list[str] | None = None, *, out: TextIO | None = None) -> int:
         emit("measure-store EXIT 1  --gate was passed and the row is BREACHED.")
         emit("  That is this flag's contract and not a statement about the budget.")
         return EXIT_FAIL
+    if args.gate_rss:
+        under = _rss_indication(measurement)
+        if under is None:
+            emit("")
+            emit("measure-store DID NOT RUN  --gate-rss needs --driver pdfium and a worker sample")
+            return EXIT_NOT_RUN
+        if not under:
+            emit("")
+            emit("measure-store EXIT 1  --gate-rss was passed and the worker's peak is OVER.")
+            emit("  That is this flag's contract and not a statement about the budget.")
+            return EXIT_FAIL
     return EXIT_CLEAN
 
 
