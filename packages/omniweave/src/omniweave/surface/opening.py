@@ -50,9 +50,10 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Mapping, Sequence
 
+    from omniweave_core.config import Config
     from omniweave_core.model.enums import Layer
 
-__all__ = ["OPEN_WORD", "main"]
+__all__ = ["OPEN_WORD", "corpus_for", "main"]
 
 OPEN_WORD: Final[str] = "open"
 
@@ -90,16 +91,7 @@ def _open(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, stdo
     layers = _layers(parsed.layers)
     explicit = Path(parsed.config) if parsed.config else None
     config = load(cwd=cwd, env=env, explicit=explicit)
-    named = _named(refs, parsed.corpus)
-    if parsed.corpus is None and named is not None and named not in corpora(config):
-        #  `corpus_of()`'s refusal names `--corpus`, and here no `--corpus` was passed.
-        raise NotFoundError(
-            f"a ref is qualified with corpus {named!r}, which is not declared; [corpora] "
-            f"declares {', '.join(corpora(config)) or 'nothing'}",
-            symbol="OW_CORPUS_NOT_FOUND",
-            fix="open the cite with the corpus prefix [corpora] declares, or declare it",
-        )
-    name = corpus_of(config, named, verb="ow open")
+    name = corpus_for(config, refs, parsed.corpus, verb="ow open")
     store = store_of(config, name, cwd=cwd)
     opening = _fetch(store, refs, context=parsed.context, layers=layers)
     try:
@@ -187,6 +179,25 @@ def _layers(raw: str | None) -> frozenset[Layer]:
             fix="ow open <ref> --layers body,note",
         )
     return frozenset(known[one] for one in names)
+
+
+def corpus_for(config: Config, refs: Sequence[str], wanted: str | None, *, verb: str) -> str:
+    """The one corpus these refs address: a qualified cite's, `--corpus`, or the default.
+
+    `OW-A-015` when they name two (18:335). A cite qualified with an undeclared corpus is 2 and
+    names the ref, because `corpus_of()`'s refusal names `--corpus` and none was passed.
+    `ow doc grid` resolves its ref here too (W7.8n), so the two verbs cannot pick different
+    corpora for one cite.
+    """
+    named = _named(refs, wanted)
+    if wanted is None and named is not None and named not in corpora(config):
+        raise NotFoundError(
+            f"a ref is qualified with corpus {named!r}, which is not declared; [corpora] "
+            f"declares {', '.join(corpora(config)) or 'nothing'}",
+            symbol="OW_CORPUS_NOT_FOUND",
+            fix="open the cite with the corpus prefix [corpora] declares, or declare it",
+        )
+    return corpus_of(config, named, verb=verb)
 
 
 def _named(refs: Sequence[str], corpus: str | None) -> str | None:
