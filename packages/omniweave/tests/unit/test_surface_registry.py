@@ -791,6 +791,7 @@ def test_this_package_can_write_no_file_at_all() -> None:
         "schema.py",
         "serve.py",
         "startup.py",
+        "switches.py",
     ]
     for path in sources:
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):

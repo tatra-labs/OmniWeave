@@ -24,6 +24,8 @@ the verb ignores answers a different question than the one asked (the MCP handle
 - a comma list in `--corpus`: the rank-merged fan-out of 10:1440-1443 is not built.
 - `--render jsonl` and `--render rows`: `owrows/1` and the progress stream have no writer here.
 - `--quiet` with `--render json`: 10:1546 makes them exclusive.
+- `--verbose`, and any other global flag `switches.READS` does not give this verb (D631).
+  `--json-errors` is served: 18:898's object on stderr, through `switches.report()`.
 
 **`--render json` is the Answer as `schema/answer-v1.json` publishes it**, and that schema has
 `additionalProperties: false` and no `schema` field, while 10:1530 asks for `schema` first. So
@@ -49,6 +51,7 @@ from omniweave_core.errors import NotFoundError, OwError, UsageError
 
 from omniweave.surface.serve import stores
 from omniweave.surface.startup import corpora, declared_corpus
+from omniweave.surface.switches import check, error_object, report
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -80,7 +83,6 @@ FAIL_ON: Final[dict[str, int]] = {"absent": ABSENT_EXIT, "degraded": DEGRADED_EX
 
 _USAGE: Final[int] = UsageError.EXIT
 _ARGPARSE_USAGE: Final[int] = 2
-_ERROR_SCHEMA: Final[int] = 1
 
 
 def main(
@@ -95,15 +97,11 @@ def main(
     parsed = parse(argv, stderr)
     if isinstance(parsed, int):
         return parsed
-    as_json = parsed.render == "json"
     try:
+        check(QUERY_WORD, parsed)
         return _query(parsed, env=env, cwd=cwd, stdout=stdout)
     except OwError as error:
-        if as_json:
-            stdout.write(json.dumps(error_object(error), ensure_ascii=False) + "\n")
-        else:
-            stderr.write(f"ow: {error.numeric() or error.code()}: {error}\n  fix: {error.fix}\n")
-        return type(error).EXIT
+        return report(error, parsed, stdout=stdout, stderr=stderr)
 
 
 def _query(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, stdout: TextIO) -> int:
@@ -253,19 +251,6 @@ def parse(argv: Sequence[str], stderr: TextIO) -> argparse.Namespace | int:
     except SystemExit as stop:
         code = stop.code if isinstance(stop.code, int) else _USAGE
         return _USAGE if code == _ARGPARSE_USAGE else code
-
-
-def error_object(error: OwError) -> dict[str, Any]:
-    """10:1539-1540's error object: `{"schema":1,"error":{code, symbol, message, fix}}`."""
-    return {
-        "schema": _ERROR_SCHEMA,
-        "error": {
-            "code": error.numeric(),
-            "symbol": error.code(),
-            "message": str(error),
-            "fix": error.fix,
-        },
-    }
 
 
 def answer_json(answer: Answer) -> dict[str, Any]:

@@ -28,6 +28,14 @@ The generated parser publishes these as free strings, because a human-only row h
 schema for the generator to take `enum`s from, so the choices are checked here and a wrong one is
 a usage error naming the right ones.
 
+## THE GLOBAL FLAGS
+
+The four roots read none of 18:887's eight but `--json-errors`, which the refusal below is written
+through: `--config` and `--corpus` would change which configuration an MCP entry names, and nothing
+here writes one; `--render`, `--quiet` and `--verbose` have no writer. So each is refused by name,
+exit 1, before anything is planned (`switches.READS`, D631). The refusals this module prints itself
+are outcome lines with no register code, so `--json-errors` has no `OwError` of theirs to print.
+
 ## EXIT 2 IS NOT A USAGE ERROR HERE
 
 argparse exits 2 on a flag it does not know. 10:1484 makes a usage error exit 1, and 2 is *"not
@@ -45,13 +53,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, TextIO
 
 from omniweave_core.clock import SystemClock
+from omniweave_core.errors import OwError
 from omniweave_core.host.subproc import Captured, run_captured
 
-from omniweave.cli import ACTION_DEST, build_parser
+from omniweave.cli import ACTION_DEST, GROUP_DEST, build_parser
 from omniweave.install import skillcheck, skillset, verbs
 from omniweave.install.engine import HostEnv
 from omniweave.install.hookrules import launcher
 from omniweave.install.types import HOOK_SETS, LOCATIONS, SKILL_SETS, InstallOptions
+from omniweave.surface import switches
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -154,6 +164,10 @@ def main(
     parsed = _parse(argv, out, err)
     if isinstance(parsed, int):
         return parsed
+    try:
+        switches.check(str(getattr(parsed, GROUP_DEST)), parsed)
+    except OwError as error:
+        return switches.report(error, parsed, stdout=out, stderr=err)
     built = host_env(env, cwd)
     if isinstance(built, str):
         err.write(f"ow: {built}\n")

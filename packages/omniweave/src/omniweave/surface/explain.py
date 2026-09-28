@@ -18,6 +18,8 @@ register leaves empty says so rather than printing a blank.
 **What is refused by name**, each exit 1:
 - `--quiet`: 10:1542-1545 has each Action declare its one scalar, and `explain` declares none;
 - `--render jsonl` and `--render rows`, which have no writer.
+- `--verbose`, and any other global flag `switches.READS` does not give this verb (D631).
+  `--json-errors` is served: 18:898's object on stderr, through `switches.report()`.
 
 Exits are 10:1438's `0/2`, plus 1 for usage. 2 is a code or a status the register does not hold.
 """
@@ -29,7 +31,8 @@ from typing import TYPE_CHECKING, Any, Final, TextIO
 
 from omniweave_core.errors import NotFoundError, OwError, UsageError
 
-from omniweave.surface.query import error_object, parse
+from omniweave.surface.query import parse
+from omniweave.surface.switches import check, report
 
 if TYPE_CHECKING:
     import argparse
@@ -48,15 +51,11 @@ def main(argv: Sequence[str], *, stdout: TextIO, stderr: TextIO) -> int:
     parsed = parse(argv, stderr)
     if isinstance(parsed, int):
         return parsed
-    as_json = parsed.render == "json"
     try:
+        check(EXPLAIN_WORD, parsed)
         return _explain(parsed, stdout=stdout)
     except OwError as error:
-        if as_json:
-            stdout.write(json.dumps(error_object(error), ensure_ascii=False) + "\n")
-        else:
-            stderr.write(f"ow: {error.numeric() or error.code()}: {error}\n  fix: {error.fix}\n")
-        return type(error).EXIT
+        return report(error, parsed, stdout=stdout, stderr=stderr)
 
 
 def _explain(parsed: argparse.Namespace, *, stdout: TextIO) -> int:

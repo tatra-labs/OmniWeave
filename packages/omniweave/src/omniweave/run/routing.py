@@ -220,7 +220,9 @@ def _shown(counts: Counter[str], label: str) -> str:
     return f"{head} ({detail})" if detail else head
 
 
-def resolve_policy(config: Config, *, locked_ids: frozenset[str] = frozenset()) -> Policy:
+def resolve_policy(
+    config: Config, *, locked_ids: frozenset[str] = frozenset(), offline: bool = False
+) -> Policy:
     """`resolve()`'s `Policy` from `[drivers]`, with this host's `ProbeEnv`. Startup step 7's half.
 
     `host_env` is `probe.probe_env()`, the one core builder of a `ProbeEnv`; without it every card
@@ -228,6 +230,9 @@ def resolve_policy(config: Config, *, locked_ids: frozenset[str] = frozenset()) 
     three first-party cards. `locked_ids` is `omniweave.lock`'s driver rows, which no module in
     the workspace writes -- so `[drivers] require_lock = true`, the shipped default, refuses every
     driver until one does, and that is reported rather than waived (D576).
+
+    `offline` is `ow add --offline` (18:897), carried into `ProbeEnv.offline` (04:150), so a card
+    declaring `[hardware] needs_network = true` resolves out as `HARDWARE_ABSENT` (D631).
     """
     get = config.get
     return Policy(
@@ -238,7 +243,7 @@ def resolve_policy(config: Config, *, locked_ids: frozenset[str] = frozenset()) 
         inproc_ids=frozenset(str(d) for d in get("drivers.inproc")),  # type: ignore[union-attr]
         enabled=frozenset(str(d) for d in get("drivers.enabled")),  # type: ignore[union-attr]
         isolation_floor=Isolation(str(get("drivers.isolation_floor"))),
-        host_env=probe_env((), offline=False),
+        host_env=probe_env((), offline=offline),
     )
 
 
