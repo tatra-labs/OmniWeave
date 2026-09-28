@@ -25,8 +25,9 @@ Specified in 02-architecture.md section 2 row 2 and 18-api-sketch.md section 1.1
 
 from __future__ import annotations
 
-from importlib.metadata import PackageNotFoundError as _NotFound
-from importlib.metadata import version as _dist_version
+#  Private aliases: this module's public names are exactly the stamp (02 section 2 row 2).
+import os as _os
+import sys as _sys
 
 __all__ = [
     "CONTRACT",
@@ -49,11 +50,53 @@ def _release() -> str:
 
     The fallback is deliberately not a semver: an uninstalled source tree has no `RELEASE`, and a
     plausible-looking placeholder would be worse than an obviously wrong one.
+
+    **The installed metadata is read from its directory's name first** (W7.8m, D620), because
+    `importlib.metadata` costs ~70 ms to import -- its email parser, zipfile and csv -- and `ow
+    --version` has 150 ms spawn-inclusive for the whole process (11:680). The binary distribution
+    format names the directory `{name}-{version}.dist-info`, so its name IS the installed version,
+    the same fact `importlib.metadata.version()` reads out of `METADATA`. When no single such
+    directory is found on the first `sys.path` entry that holds one, the full reader decides.
     """
+    found = _release_from_dist_info()
+    if found is not None:
+        return found
+    from importlib.metadata import PackageNotFoundError, version  # noqa: PLC0415 -- fallback
+
     try:
-        return _dist_version("omniweave-core")
-    except _NotFound:  # pragma: no cover - only on an uninstalled source tree
+        return version("omniweave-core")
+    except PackageNotFoundError:  # pragma: no cover - only on an uninstalled source tree
         return "0+unknown"
+
+
+_DIST_INFO_PREFIX = "omniweave_core-"
+_DIST_INFO_SUFFIX = ".dist-info"
+
+
+def _release_from_dist_info(path: list[str] | None = None) -> str | None:
+    """The version in `omniweave_core-<version>.dist-info`'s name, or `None` to fall back.
+
+    `sys.path` is walked in order and the first entry that holds a matching directory decides,
+    which is the order `importlib.metadata` resolves a distribution in. Two matches in that one
+    entry are a broken install, and the full reader is left to report it rather than this function
+    guessing between them. Names compare case-insensitively, as a Windows filesystem does.
+    """
+    for entry in _sys.path if path is None else path:
+        try:
+            with _os.scandir(entry or ".") as items:
+                names = [
+                    item.name
+                    for item in items
+                    if item.name.lower().startswith(_DIST_INFO_PREFIX)
+                    and item.name.lower().endswith(_DIST_INFO_SUFFIX)
+                ]
+        except OSError:
+            continue
+        if names:
+            if len(names) != 1:
+                return None
+            return names[0][len(_DIST_INFO_PREFIX) : -len(_DIST_INFO_SUFFIX)] or None
+    return None
 
 
 RELEASE: str = _release()
