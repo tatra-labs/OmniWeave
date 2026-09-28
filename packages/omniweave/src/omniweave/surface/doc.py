@@ -31,6 +31,8 @@ which runs `rebind()`'s matcher over the store's own rows and writes nothing (W7
 
 **Refused by name**, each exit 1, for both verbs: `--quiet`, because 10:1542-1545 has each Action
 declare its one scalar and neither declares one, and `--render jsonl` and `--render rows`.
+`--verbose`, and any other global flag `switches.READS` does not give `doc`, is refused by
+`switches.check()`, and `--json-errors` is 18:898's object on stderr (D631).
 
 Exits: 0; 1 for usage; 2 for a ref that does not resolve, a block that is neither a table nor a
 cell of one, a generation with no live row, or an undeclared corpus; 6 for refs that address two
@@ -47,8 +49,9 @@ from omniweave_core.config import load
 from omniweave_core.errors import NotFoundError, OwError, UsageError
 
 from omniweave.surface.opening import corpus_for
-from omniweave.surface.query import error_object, parse, store_of
+from omniweave.surface.query import parse, store_of
 from omniweave.surface.startup import corpora
+from omniweave.surface.switches import check, report
 
 if TYPE_CHECKING:
     import argparse
@@ -77,17 +80,13 @@ def main(
     parsed = parse(argv, stderr)
     if isinstance(parsed, int):
         return parsed
-    as_json = parsed.render == "json"
     try:
+        check(DOC_WORD, parsed)
         if parsed.ow_action == _GRID:
             return _grid(parsed, env=env, cwd=cwd, stdout=stdout)
         return _diff(parsed, env=env, cwd=cwd, stdout=stdout)
     except OwError as error:
-        if as_json:
-            stdout.write(json.dumps(error_object(error), ensure_ascii=False) + "\n")
-        else:
-            stderr.write(f"ow: {error.numeric() or error.code()}: {error}\n  fix: {error.fix}\n")
-        return type(error).EXIT
+        return report(error, parsed, stdout=stdout, stderr=stderr)
 
 
 def _grid(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, stdout: TextIO) -> int:

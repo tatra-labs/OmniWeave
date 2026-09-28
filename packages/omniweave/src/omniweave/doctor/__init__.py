@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import fnmatch
+from pathlib import Path
 from typing import TYPE_CHECKING, Final, TextIO
 
 from omniweave.doctor import gitindex
@@ -34,12 +35,12 @@ from omniweave.sdk.reports import DoctorFinding, DoctorReport
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
-    from pathlib import Path
 
     from omniweave_core import config
 
 __all__ = [
     "BUILT",
+    "DOCTOR_WORD",
     "FAILED",
     "OK",
     "STORE_GLOB",
@@ -51,6 +52,8 @@ __all__ = [
     "main",
     "run",
 ]
+
+DOCTOR_WORD: Final[str] = "doctor"
 
 OK: Final[int] = 0
 FAILED: Final[int] = 1
@@ -205,10 +208,14 @@ def check_driver_cards(
     return tuple(findings)
 
 
-def run(*, cwd: Path, env: Mapping[str, str], runtime: bool = False) -> DoctorReport:
+def run(
+    *, cwd: Path, env: Mapping[str, str], runtime: bool = False, explicit: Path | None = None
+) -> DoctorReport:
     """The Action: load the configuration, run every built check, sort the findings three ways.
 
     `runtime` is accepted and changes nothing yet: D-10, the only `--runtime` row, is in `UNBUILT`.
+    `explicit` is `--config`, 18:891's *"highest-precedence config source; skips the upward
+    walk"*. Before W7.8x the verb dropped it and checked the configuration the walk found (D631).
     """
     from omniweave_core import config  # noqa: PLC0415 -- only the doctor verb pays for the loader
     from omniweave_core.errors import OwError  # noqa: PLC0415
@@ -218,7 +225,7 @@ def run(*, cwd: Path, env: Mapping[str, str], runtime: bool = False) -> DoctorRe
     sources: dict[str, str] = {}
     config_digest = semantic_digest = ""
     try:
-        resolved = config.load(cwd=cwd, env=env)
+        resolved = config.load(cwd=cwd, env=env, explicit=explicit)
     except OwError as exc:
         #  A configuration that does not resolve is 15:1509's exit-1 class. The two digests stay
         #  empty rather than naming a configuration that never existed.
@@ -275,17 +282,32 @@ def render(report: DoctorReport) -> tuple[str, ...]:
 def main(
     argv: Sequence[str], *, cwd: Path, env: Mapping[str, str], stdout: TextIO, stderr: TextIO
 ) -> int:
-    """`ow doctor ...` from argv (starting at the root word), through the generated tree."""
+    """`ow doctor ...` from argv (starting at the root word), through the generated tree.
+
+    `--quiet` prints nothing and speaks only through the exit code (10:1543). A global flag this
+    verb does not serve is refused by name before anything is checked (`switches.READS`, D631).
+    """
+    from omniweave_core.errors import OwError  # noqa: PLC0415
+
     from omniweave.cli import build_parser  # noqa: PLC0415 -- only a CLI verb pays for the tree
+    from omniweave.surface import switches  # noqa: PLC0415
 
     try:
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             parsed: argparse.Namespace = build_parser().parse_args(list(argv))
     except SystemExit as stop:
         return stop.code if isinstance(stop.code, int) else _ARGPARSE_USAGE
-    report = run(cwd=cwd, env=env, runtime=bool(getattr(parsed, "runtime", False)))
-    for line in render(report):
-        stdout.write(line.encode("ascii", "backslashreplace").decode("ascii") + "\n")
+    try:
+        switches.check(DOCTOR_WORD, parsed)
+    except OwError as error:
+        return switches.report(error, parsed, stdout=stdout, stderr=stderr)
+    explicit = Path(parsed.config) if parsed.config else None
+    report = run(
+        cwd=cwd, env=env, runtime=bool(getattr(parsed, "runtime", False)), explicit=explicit
+    )
+    if not parsed.quiet:
+        for line in render(report):
+            stdout.write(line.encode("ascii", "backslashreplace").decode("ascii") + "\n")
     return FAILED if report.failed else OK
 
 

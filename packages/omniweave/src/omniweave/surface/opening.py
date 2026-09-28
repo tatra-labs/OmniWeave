@@ -25,6 +25,8 @@ question than the one asked (`ow query`'s rule, D614):
 - `--want-impact`: `ow:impact` reads `artifact_cite`, which is not rendered (D544);
 - `--quiet`: 10:1542-1545 has each Action declare its one scalar, and `open` declares none;
 - `--render jsonl` and `--render rows`, which have no writer.
+- `--verbose`, and any other global flag `switches.READS` does not give this verb (D631).
+  `--json-errors` is served: 18:898's object on stderr, through `switches.report()`.
 
 **Exits are 10:1423's `0/2/6`, plus 1 for usage.** 0 when every ref resolved. 2 when any did not:
 the Answer is still printed, with the refs that resolved as evidence and an `ow:blocking` line for
@@ -43,8 +45,9 @@ from typing import TYPE_CHECKING, Any, Final, TextIO
 from omniweave_core.config import load
 from omniweave_core.errors import NotFoundError, OwError, PolicyRefusal, UsageError
 
-from omniweave.surface.query import answer_json, corpus_of, error_object, parse, store_of
+from omniweave.surface.query import answer_json, corpus_of, parse, store_of
 from omniweave.surface.startup import corpora
+from omniweave.surface.switches import check, report
 
 if TYPE_CHECKING:
     import argparse
@@ -72,15 +75,11 @@ def main(
     parsed = parse(argv, stderr)
     if isinstance(parsed, int):
         return parsed
-    as_json = parsed.render == "json"
     try:
+        check(OPEN_WORD, parsed)
         return _open(parsed, env=env, cwd=cwd, stdout=stdout)
     except OwError as error:
-        if as_json:
-            stdout.write(json.dumps(error_object(error), ensure_ascii=False) + "\n")
-        else:
-            stderr.write(f"ow: {error.numeric() or error.code()}: {error}\n  fix: {error.fix}\n")
-        return type(error).EXIT
+        return report(error, parsed, stdout=stdout, stderr=stderr)
 
 
 def _open(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, stdout: TextIO) -> int:
