@@ -447,18 +447,29 @@ def test_ingest_is_dispatched_and_the_spawn_that_would_start_it_is_still_unwired
 # ---------------------------------------------------------------------------------------------
 
 
-def test_every_other_root_is_refused_with_internal_errors_exit(
+def test_a_word_that_is_no_root_is_the_trees_usage_error(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    """D624: every root dispatches, so a word that names none is usage, 10:1484's 1."""
     import omniweave.__main__ as launcher  # noqa: PLC0415
-    from omniweave_core.errors import InternalError  # noqa: PLC0415
 
-    assert launcher.main(["frobnicate"]) == InternalError.EXIT == 70
-    assert launcher.main(["契約"]) == InternalError.EXIT
-    assert "not dispatched" in capsys.readouterr().err
+    assert launcher.main(["frobnicate"]) == 1
+    assert launcher.main(["契約"]) == 1
+    assert "invalid choice" in capsys.readouterr().err
     #  W7.8l: no command at all is a usage error that names `ow --help` (D619), not a refusal.
     assert launcher.main([]) == 1
     assert "ow --help" in capsys.readouterr().err
+
+
+def test_a_root_the_tree_parses_and_no_branch_routes_is_internal_errors_exit(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """10:2185's *"anything else"* is left for a build defect: a tree root with no branch."""
+    import omniweave.__main__ as launcher  # noqa: PLC0415
+    from omniweave_core.errors import InternalError  # noqa: PLC0415
+
+    assert launcher._route("newroot", ["newroot"]) == InternalError.EXIT == 70
+    assert "'newroot' is not dispatched by this build" in capsys.readouterr().err
 
 
 def test_the_launcher_restates_the_hook_word_and_imports_no_hook_module_at_load() -> None:

@@ -211,8 +211,6 @@ def test_card_refuses_a_wildcard(project: Path) -> None:
 @pytest.mark.parametrize(
     ("flags", "named"),
     [
-        (["--corpus", "handbook"], "--corpus"),
-        (["--corpus=handbook"], "--corpus"),
         (["--summarize"], "--summarize"),
         (["--scope", "d7"], "--scope"),
         (["--quiet"], "--quiet"),
@@ -228,11 +226,37 @@ def test_a_parsed_flag_this_build_cannot_serve_is_refused_by_name(
     assert named in err
 
 
-def test_the_corpus_flag_would_otherwise_be_lost_to_the_positional() -> None:
-    """D617: why `--corpus` is refused. The generated parser drops it, measured here."""
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["corpora", "handbook"],
+        ["corpora", "--corpus", "handbook"],
+        ["corpora", "--corpus=handbook"],
+        ["--corpus", "handbook", "corpora"],
+    ],
+)
+def test_the_positional_and_the_global_flag_name_one_corpus(argv: list[str]) -> None:
+    """D624: the positional declines a default, so it no longer overwrites `--corpus` (D617)."""
     from omniweave.cli import build_parser  # noqa: PLC0415
 
-    assert build_parser().parse_args(["corpora", "--corpus", "handbook"]).corpus is None
+    assert build_parser().parse_args(argv).corpus == "handbook"
+    assert build_parser().parse_args(["corpora"]).corpus is None
+
+
+def test_written_both_ways_the_last_corpus_wins_as_a_repeated_flag_does() -> None:
+    from omniweave.cli import build_parser  # noqa: PLC0415
+
+    assert build_parser().parse_args(["corpora", "legal", "--corpus", "handbook"]).corpus == (
+        "handbook"
+    )
+    assert build_parser().parse_args(["--corpus", "a", "--corpus", "b", "corpora"]).corpus == "b"
+
+
+def test_ow_corpora_corpus_lists_the_one_corpus_it_names(project: Path) -> None:
+    """What D617 refused: the flag is served, and answers what the positional answers."""
+    by_flag = _json(["--corpus", "handbook"], project)
+    assert [row["name"] for row in by_flag["corpora"]] == ["handbook"]
+    assert by_flag == _json(["handbook"], project)
 
 
 def test_an_error_under_render_json_is_the_error_object_on_stdout(project: Path) -> None:
