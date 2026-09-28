@@ -33,19 +33,21 @@ rather than in a side channel, so a client that iterates `corpora` cannot miss t
 `corpora-out-v1.json` requires twenty-three fields of every entry, and a full entry is ~1,200
 characters: sixty-four of them are not 10:1025's *"~2,600 characters"*. So a `list` row carries the
 identity, the three degradations and the counts, and `card` carries the whole entry (D552).
+
+## THE DOCUMENT IS CORE'S
+
+Since W7.8j the three documents are built by `omniweave_core.store.card` (`corpora_list`,
+`corpora_card`, `corpora_coverage`), and this module keeps what is the server's alone: the argument
+refusals and the one text block. `ow corpora` builds the same documents, so the CLI and the server
+cannot drift (SV19, 10:101-102), and neither imports the other (02:356).
 """
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final
 
-from omniweave_core.errors import OwError
 from omniweave_core.store import card as store_card
-from omniweave_core.store import reader as store_reader
-from omniweave_core.store import sqlite as store_sqlite
-from omniweave_core.store.types import Filters
 
 from omniweave_serve.answers import refusal, text_result
 
@@ -53,31 +55,19 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from pathlib import Path
 
-    from omniweave_core.store.card import CardRead, CorpusCardRow
-
 __all__ = ["CORPORA_LIST_MAX", "CORPORA_TOOL", "DETAILS", "SCHEMA_VERSION", "respond"]
 
 CORPORA_TOOL: Final[str] = "ow_corpora"
 DETAILS: Final[tuple[str, ...]] = ("list", "card", "coverage", "actions")
 """10:1007-1012's four modes, in the table's order. `list` is the default (10:2505)."""
 
-CORPORA_LIST_MAX: Final[int] = 64
-"""10:1023: `detail="list"` is capped at sixty-four entries, and the cut sets `truncated`."""
+CORPORA_LIST_MAX: Final[int] = store_card.CORPORA_LIST_MAX
+"""10:1023's cap. The document is `store.card`'s since W7.8j, so `ow corpora` prints it too."""
 
-SCHEMA_VERSION: Final[int] = 1
+SCHEMA_VERSION: Final[int] = store_card.CORPORA_SCHEMA_VERSION
 """10:1071's `"schema": 1`."""
 
 _ARGUMENTS: Final[frozenset[str]] = frozenset({"corpus", "detail"})
-_WILDCARD: Final[str] = "*"
-
-
-@dataclass(frozen=True, slots=True)
-class _Store:
-    """One declared corpus and what its store said."""
-
-    name: str
-    default: bool
-    read: CardRead
 
 
 def respond(
@@ -101,15 +91,14 @@ def respond(
             "ow_corpora detail=list",
         )
     if detail == "list":
-        return _json(_listed(corpora, default, named))
+        return _json(store_card.corpora_list(corpora, default=default, named=named))
     chosen = _one(corpora, named or default, detail)
     if isinstance(chosen, dict):
         return chosen
     name, path = chosen
-    entry = _Store(name=name, default=name == default, read=store_card.inspect(path))
     if detail == "card":
-        return _json(_document([_full(entry)], [entry]))
-    return _json(_coverage(entry, path, now_ns))
+        return _json(store_card.corpora_card(name, path, default=default))
+    return _json(store_card.corpora_coverage(name, path, default=default, now_ns=now_ns))
 
 
 def _check(arguments: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -145,7 +134,7 @@ def _one(
             f"declared: {declared}",
             f'ow_corpora detail={detail} corpus="<name>"',
         )
-    if str(named).endswith(_WILDCARD):
+    if str(named).endswith(store_card.WILDCARD):
         return refusal(
             "",
             f"detail={detail} accepts exactly one corpus and refuses a wildcard",
@@ -159,159 +148,6 @@ def _one(
             "ow_corpora",
         )
     return str(named), path
-
-
-def _listed(corpora: Mapping[str, Path], default: str | None, named: object) -> dict[str, Any]:
-    """10:1023-1024's list: `default` first, then `card_gen` descending, then name, at most 64."""
-    names = sorted(corpora)
-    if isinstance(named, str):
-        prefix = named.removesuffix(_WILDCARD)
-        names = (
-            [n for n in names if n.startswith(prefix)]
-            if named.endswith(_WILDCARD)
-            else [n for n in names if n == named]
-        )
-    stores = [
-        _Store(name=name, default=name == default, read=store_card.inspect(corpora[name]))
-        for name in names
-    ]
-    stores.sort(key=lambda s: (not s.default, -_gen(s.read.row), s.name))
-    shown = stores[:CORPORA_LIST_MAX]
-    return _document([_row(entry) for entry in shown], shown, truncated=len(stores) > len(shown))
-
-
-def _gen(row: CorpusCardRow | None) -> int:
-    return -1 if row is None else row.card_gen
-
-
-def _document(
-    rows: list[dict[str, Any]], stores: list[_Store], *, truncated: bool = False
-) -> dict[str, Any]:
-    """10:1044's envelope, with a refresh command for every stale card."""
-    degradations = [
-        f"card_stale: {entry.name}: ow index update --corpus {entry.name}"
-        for entry in stores
-        if entry.read.readable and entry.read.stale
-    ]
-    return {
-        "corpora": rows,
-        "truncated": truncated,
-        "degradations": degradations,
-        "schema": SCHEMA_VERSION,
-    }
-
-
-def _head(entry: _Store) -> dict[str, Any]:
-    """The identity and the three degradations, which every row carries."""
-    row = entry.read.row
-    return {
-        "name": entry.name,
-        "default": entry.default,
-        "readable": entry.read.readable,
-        "reason": entry.read.reason,
-        "card_stale": entry.read.readable and entry.read.stale,
-        "card_gen": 0 if row is None else row.card_gen,
-    }
-
-
-def _counts(row: CorpusCardRow | None) -> dict[str, int]:
-    """10:1051's seven counts, or none: a card that does not exist has no counts to show."""
-    if row is None:
-        return {}
-    return {
-        "docs_indexed": row.docs_indexed,
-        "docs_discovered": row.docs_discovered,
-        "docs_partial": row.docs_partial,
-        "docs_failed": row.docs_failed,
-        "pages": row.pages,
-        "blocks": row.blocks,
-        "bytes": row.bytes,
-    }
-
-
-def _row(entry: _Store) -> dict[str, Any]:
-    """A `list` row: identity, degradations, counts and the honesty number (D552)."""
-    row = entry.read.row
-    out = {**_head(entry), "counts": _counts(row)}
-    if row is not None:
-        out["verbatim_fraction"] = row.verbatim_fraction
-    return out
-
-
-def _full(entry: _Store) -> dict[str, Any]:
-    """A `card` entry: every field of 10:1047's entry, in its order."""
-    row = entry.read.row
-    head = _head(entry)
-    if row is None:
-        return {**head, "counts": {}}
-    return {
-        **head,
-        "built_at_ns": row.built_at_ns,
-        "writer_version": row.writer_version,
-        "counts": _counts(row),
-        "formats": json.loads(row.formats_json),
-        "langs": json.loads(row.langs_json),
-        "date_range": json.loads(row.date_range_json),
-        "outline": json.loads(row.outline_json),
-        "top_terms": json.loads(row.top_terms_json),
-        "achieved": json.loads(row.achieved_json),
-        "trust_hist": json.loads(row.trust_hist_json),
-        "quote_hist": json.loads(row.quote_hist_json),
-        "verbatim_fraction": row.verbatim_fraction,
-        "restriction_bits": row.restriction_bits,
-        "embedding": None if row.embedding_json is None else json.loads(row.embedding_json),
-        "gaps": json.loads(row.gaps_json),
-        "abstract": row.abstract,
-        "abstract_producer": entry.read.producer,
-    }
-
-
-def _coverage(entry: _Store, path: Path, now_ns: int) -> dict[str, Any]:
-    """10:1011's `coverage`: the card's `gaps` and a live read of what absence gates 4-9 read."""
-    head = _head(entry)
-    row = entry.read.row
-    gaps = [] if row is None else json.loads(row.gaps_json)
-    live: dict[str, Any] | None = None
-    reason = entry.read.reason
-    if entry.read.readable:
-        try:
-            live = _live(path, now_ns)
-        except OwError as error:
-            reason = str(error)
-    rows = [{**head, "reason": reason, "gaps": gaps, "coverage": live}]
-    return _document(rows, [entry])
-
-
-def _live(path: Path, now_ns: int) -> dict[str, Any]:
-    """`Reader.coverage()` over the whole corpus, in one snapshot."""
-    connection = store_sqlite.connect_readonly(path)
-    try:
-        reader = store_reader.SqliteReader(connection, now_ns=now_ns)
-        with reader.snapshot() as s:
-            coverage = reader.coverage(s, Filters())
-    finally:
-        connection.close()
-    return {
-        "discovered": coverage.discovered,
-        "indexed": coverage.indexed,
-        "partial": coverage.partial,
-        "failed": coverage.failed,
-        "skipped": coverage.skipped,
-        "complete": coverage.complete,
-        "scope_rows": coverage.scope_rows,
-        "pending_work": coverage.pending_work,
-        "stale_units": coverage.stale_units,
-        "unreadable_units": coverage.unreadable_units,
-        "gaps": [
-            {
-                "gate": gap.gate,
-                "detail": gap.detail,
-                "fix": gap.fix,
-                "codes": list(gap.diag_codes),
-            }
-            for gap in coverage.gaps
-        ],
-    }
 
 
 def _json(document: Mapping[str, Any]) -> dict[str, Any]:
