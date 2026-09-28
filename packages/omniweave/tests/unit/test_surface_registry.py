@@ -781,6 +781,7 @@ def test_this_package_can_write_no_file_at_all() -> None:
         "authority.py",
         "corpora.py",
         "dispatch.py",
+        "explain.py",
         "ingest.py",
         "inputs.py",
         "opening.py",

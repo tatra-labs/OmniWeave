@@ -19,7 +19,8 @@ build can run, and the list of those it cannot (D610). `ow query` is W7.8g's: th
 `ow_query` makes, rendered to stdout (D614). `ow add` is W7.8h's: `ow_add`'s roster step, then
 the drain `ow ingest` runs, in one process (D615). `ow open` is W7.8i's: the calls `ow_open`
 makes, rendered to stdout (D616). `ow corpora` is W7.8j's: the documents `ow_corpora`
-returns, built by core for both (D617). The other roots in `cli.COMMANDS` are
+returns, built by core for both (D617). `ow explain` is W7.8k's: a register row or an exit
+status, read from `codes.toml` and nothing else (D618). The other roots in `cli.COMMANDS` are
 refused, on stderr, with `InternalError`'s exit -- 10:2185's *"anything else"*, the only row in the
 taxonomy that does not assert something about a store or an argument that would be false here. The
 refusal is spelled out rather than silent, because the one thing worse than a command that does not
@@ -68,6 +69,8 @@ _OPEN_ROOT: Final[str] = "open"
 
 _CORPORA_ROOT: Final[str] = "corpora"
 
+_EXPLAIN_ROOT: Final[str] = "explain"
+
 DISPATCHED: Final[frozenset[str]] = frozenset(
     {
         HOOK_WORD,
@@ -80,11 +83,13 @@ DISPATCHED: Final[frozenset[str]] = frozenset(
         _ADD_ROOT,
         _OPEN_ROOT,
         _CORPORA_ROOT,
+        _EXPLAIN_ROOT,
     }
 )
 """The roots this build can run. `ingest` joined in W7.3w; nothing spawns it yet (D433, D554).
 `surface` joined in W7.1e (D334), `doctor` in W7.8c (D610), `query` in W7.8g (D614), `add` in
-W7.8h (D615), `open` in W7.8i (D616), and `corpora` in W7.8j (D617)."""
+W7.8h (D615), `open` in W7.8i (D616), `corpora` in W7.8j (D617), and `explain` in W7.8k
+(D618)."""
 
 
 def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0911 -- one return per root
@@ -112,6 +117,8 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0911 -- one retu
         return _open(args)
     if args and args[0] == _CORPORA_ROOT:
         return _corpora(args)
+    if args and args[0] == _EXPLAIN_ROOT:
+        return _explain(args)
 
     from omniweave_core.errors import InternalError  # noqa: PLC0415 -- only the refusal pays
 
@@ -201,6 +208,15 @@ def _corpora(args: list[str]) -> int:
     _utf8()
     #  The ninth read of the working directory under D435's exemption: `./omniweave.toml`.
     return run(args, env=os.environ, cwd=Path.cwd(), stdout=sys.stdout, stderr=sys.stderr)
+
+
+def _explain(args: list[str]) -> int:
+    from omniweave.surface.explain import main as run  # noqa: PLC0415 -- the hook path never pays
+
+    #  A register row's meaning is not all ASCII (`OW-A-017`'s `add(schema=…)`). No read of the
+    #  working directory: `codes.toml` is found from the package, not from where `ow` runs.
+    _utf8()
+    return run(args, stdout=sys.stdout, stderr=sys.stderr)
 
 
 def _utf8() -> None:
