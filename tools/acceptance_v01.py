@@ -140,8 +140,10 @@ CRITERIA: tuple[Criterion, ...] = (
         "import core <= 80 ms; ow --version <= 150; ow --help <= 250; 20-dist discovery <= 20",
         (tool("gate_coldstart.py"),),
         Coverage.PARTIAL,
-        "only the import clause is timed: `ow --version` and `ow --help` are ABSENT (no console "
-        "script, D604), and the 20-dist row needs a 20-dist environment; the gate passes ABSENT",
+        "the import, `ow --version` and `ow --help` rows are timed against their ceilings "
+        "(the console script landed in W7.8l, D619); the 20-dist row needs a 20-dist "
+        "environment, and the baseline predates the two `ow` rows and has a 42% spread on its "
+        "import row, so G10 is re-blessed nowhere and flakes on that row (D619)",
     ),
     Criterion(
         "V01-4",

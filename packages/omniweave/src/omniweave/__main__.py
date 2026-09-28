@@ -1,4 +1,4 @@
-"""`python -m omniweave`: the roots this build can run, from `hook` to `add`.
+"""`ow` and `python -m omniweave`: the roots this build can run, `--version` and `--help`.
 
 This file did not exist before W7.4i, and its absence was a defect in a cell that claimed otherwise.
 `posttool.command()` falls back to `python -m omniweave ingest` and its docstring called that
@@ -20,20 +20,32 @@ build can run, and the list of those it cannot (D610). `ow query` is W7.8g's: th
 the drain `ow ingest` runs, in one process (D615). `ow open` is W7.8i's: the calls `ow_open`
 makes, rendered to stdout (D616). `ow corpora` is W7.8j's: the documents `ow_corpora`
 returns, built by core for both (D617). `ow explain` is W7.8k's: a register row or an exit
-status, read from `codes.toml` and nothing else (D618). The other roots in `cli.COMMANDS` are
-refused, on stderr, with `InternalError`'s exit -- 10:2185's *"anything else"*, the only row in the
-taxonomy that does not assert something about a store or an argument that would be false here. The
+status, read from `codes.toml` and nothing else (D618). `ow doc`, the one other root in
+`cli.COMMANDS`, is refused, on stderr, with `InternalError`'s exit -- 10:2185's *"anything
+else"*, the only row in the taxonomy that does not assert something about a store or an argument
+that would be false here. The
 refusal is spelled out rather than silent, because the one thing worse than a command that does not
 work is one that exits 0 having done nothing.
 
 **`hook` is routed first and imports nothing else.** A hook runs on every prompt and has a deadline
 (G26); the install verbs import the generated parser, the registry and the engine, and are imported
-only when their root is asked for.
+only when their root is asked for. The hook engine itself is imported only for `hook`, so `ow
+--version` does not pay for it either (W7.8l).
 
-**No console script is declared, and 18:874 says there is one.** *"`ow` and `omniweave` are the same
-console script"* -- and no `pyproject.toml` in the workspace has a `[project.scripts]` table. A
-console script would put an `ow` on every user's PATH that refuses most of `ow --help`, so it waits
-for the dispatcher rather than arriving here.
+**`ow` and `omniweave` are the console script 18:874 names** (W7.8l, D619). It waited for twelve of
+the thirteen roots to dispatch, because an `ow` on every PATH that refused most of `ow --help`
+would have been worse than none. `ow doc` is the one that does not.
+
+**Three words before a root are handled here, and they are what V01-3 times:**
+- `ow --version` prints `RELEASE`, `CONTRACT` and `SCHEMA` on one line (11:704), importing
+  `omniweave_core.contract` and nothing else, against 11:680's 150 ms.
+- `ow --help` (and `-h`) prints the generated tree's help, importing the tree and nothing else,
+  against 250 ms.
+- `ow` alone is a usage error, exit 1, naming `ow --help`: a command line with no command did
+  nothing, and a script that ran it should not read 0.
+
+Any other flag before the root is refused as usage, because the roots parse their own global
+flags and this build does not re-order a command line (D619).
 """
 
 from __future__ import annotations
@@ -44,12 +56,19 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
-from omniweave.hooks.main import HOOK_WORD, entry
-
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-__all__ = ["DISPATCHED", "main"]
+__all__ = ["DISPATCHED", "HOOK_WORD", "main"]
+
+HOOK_WORD: Final[str] = "hook"
+"""`omniweave.hooks.main.HOOK_WORD`, restated so that importing this module does not import the
+hook engine: `ow --version` would otherwise pay ~43 ms for a word. `test_hooks_main.py` asserts
+the two are equal."""
+
+_VERSION_WORDS: Final[frozenset[str]] = frozenset({"--version"})
+
+_HELP_WORDS: Final[frozenset[str]] = frozenset({"--help", "-h"})
 
 _INSTALL_ROOTS: Final[frozenset[str]] = frozenset({"install", "uninstall", "hooks", "skills"})
 
@@ -92,13 +111,19 @@ W7.8h (D615), `open` in W7.8i (D616), `corpora` in W7.8j (D617), and `explain` i
 (D618)."""
 
 
-def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0911 -- one return per root
+def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0911, PLR0912 -- one per root
     """Route each dispatched root to its entry point; refuse everything else with exit 70."""
     args = list(sys.argv[1:] if argv is None else argv)
     if args and args[0] == HOOK_WORD:
+        from omniweave.hooks.main import entry  # noqa: PLC0415 -- only the hook pays for it
+
         #  A read of the working directory, which the cwd ban exempts this file for (D435): a
         #  hook's `<sessions>/` is found by walking up from it (10:1893).
         return entry(args[1:], cwd=Path.cwd())
+    if args and args[0] in _VERSION_WORDS:
+        return _version()
+    if not args or args[0].startswith("-"):
+        return _tree(args)
     if args and args[0] in _INSTALL_ROOTS:
         return _install(args)
     if args and args[0] == _SERVE_ROOT:
@@ -127,6 +152,39 @@ def main(argv: Sequence[str] | None = None) -> int:  # noqa: PLR0911 -- one retu
     known = ", ".join(f"`ow {one}`" for one in sorted(DISPATCHED))
     sys.stderr.write(f"ow: {root} is not dispatched by this build; only {known} are.\n")
     return InternalError.EXIT
+
+
+def _version() -> int:
+    """11:704's one line: `RELEASE`, `CONTRACT`, and `SCHEMA` as `<major>.<minor>`."""
+    from omniweave_core.contract import CONTRACT, RELEASE, SCHEMA_STRING  # noqa: PLC0415
+
+    sys.stdout.write(f"omniweave {RELEASE}  contract {CONTRACT}  schema {SCHEMA_STRING}\n")
+    return 0
+
+
+def _tree(args: list[str]) -> int:
+    """`ow --help`, `ow` alone, and a flag before the root: the generated tree answers the first.
+
+    argparse's help exits 0 and its parse error exits 2, which is 10:1484's 1 here.
+    """
+    from omniweave.cli import build_parser  # noqa: PLC0415 -- `--version` never pays for it
+
+    if args and args[0] in _HELP_WORDS:
+        try:
+            build_parser().parse_args(args)
+        except SystemExit as stop:
+            return stop.code if isinstance(stop.code, int) else 0
+        return 0
+    usage = build_parser().format_usage()
+    if not args:
+        sys.stderr.write(usage + "ow: no command given; `ow --help` lists them\n")
+    else:
+        #  `!a`, as the refusal below uses `ascii()`: a piped child's stderr is cp1252 (D431).
+        sys.stderr.write(
+            usage + f"ow: {args[0]!a} comes before the command, and this build reads a "
+            "global flag only after it: ow <command> [flags]\n"
+        )
+    return 1
 
 
 def _install(args: list[str]) -> int:

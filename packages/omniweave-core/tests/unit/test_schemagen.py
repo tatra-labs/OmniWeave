@@ -826,17 +826,19 @@ def test_an_unknown_verb_is_refused() -> None:
         schemagen.main(["scaffold"])
 
 
-def test_there_is_still_no_ow_console_script() -> None:
-    """The exit criteria spell G6 `uv run ow schema emit --check`; `ow` arrives with W7.1/W7.2.
+def test_the_ow_console_script_exists_and_ow_schema_emit_still_does_not() -> None:
+    """The exit criteria spell G6 `uv run ow schema emit --check`. The `ow` script landed in W7.8l
+    (D619), and `ow schema` is still not a root of the generated tree, so G6 keeps this module's
+    spelling, `uv run tools/schemagen.py emit --check`, until a `schema.emit` Action exists.
 
-    INV-20 and forcing-edge FE5 say every CLI verb is generated from `omniweave/surface/
-    registry.py`, so hand-writing one now would make the registry's arrival a reconciliation
-    between two surfaces that already disagree. This test records the divergence rather than
-    hiding it: when W7.1 lands the script, this test goes and `ow schema emit --check` becomes
-    the spelling of the same gate.
+    INV-20 and forcing-edge FE5 are why the verb is not hand-written here: every CLI verb is
+    generated from `omniweave/surface/registry.py`.
     """
+    from omniweave.cli import COMMANDS  # noqa: PLC0415 -- the generated tree, read as data
+
     text = (REPO / "packages" / "omniweave" / "pyproject.toml").read_text(encoding="utf-8")
-    assert "[project.scripts]" not in text
+    assert '\now = "omniweave.__main__:main"\n' in text
+    assert "schema" not in {command.words[0] for command in COMMANDS}
 
 
 # ---------------------------------------------------------------------------
