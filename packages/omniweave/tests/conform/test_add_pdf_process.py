@@ -75,6 +75,10 @@ def test_ow_add_routes_parses_and_retains_a_pdf_and_ow_query_cites_it_verbatim(
     assert _rows(project, "SELECT state FROM unit WHERE unit_uri LIKE '%scan.pdf'") == [
         ("identified",)
     ]
+    #  D629: the host's sample over the worker's job, not the `uv` launcher's few megabytes.
+    ((peak,),) = _rows(project, "SELECT peak_rss_bytes FROM work WHERE operator = 'parse.pdf'")
+    assert isinstance(peak, int), peak
+    assert peak > 20_000_000, peak
 
     asked = _ow(project, "query", "severance")
     answer = asked.stdout.decode("utf-8")

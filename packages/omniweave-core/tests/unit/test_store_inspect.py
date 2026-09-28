@@ -2286,9 +2286,11 @@ def test_the_measurement_script_never_prints_that_a_budget_was_met() -> None:
 
 
 def test_the_measurement_script_does_not_compare_peak_rss_to_the_deferred_row() -> None:
-    """Ruling D26. `rss.gen5000p_peak_bytes` is the anydoc fork tripwire and there is no anydoc.
+    """Ruling D26, for the stub. `rss.gen5000p_peak_bytes` is a WORKER's row, and the stub has none.
 
-    The figure is printed and labelled; the comparison is not made. `_numeric_literals` is the
+    Under `--driver stub` the figure is printed and labelled; the comparison is not made. Under
+    `--driver pdfium` the worker's peak is compared, with the value read from the register (D629)
+    -- which is why the literal is still absent below. `_numeric_literals` is the
     assertion that matters -- the budgeted value is not a number anywhere in the script's CODE,
     so nothing can be compared to it -- and the two prose assertions below say the reader is
     told the figure exists and is deferred rather than simply not being shown it.
@@ -2913,7 +2915,7 @@ def test_the_runner_says_no_comparison_was_made_when_the_register_is_unreadable(
 def _measure_stub(store: Path, seen: list[Path]) -> Any:
     """A stand-in for `measure()` that records its workspace and leaves one byte behind in it."""
 
-    def measure(workspace: Path, *, pages: int, out: Path | None) -> Any:  # noqa: ARG001
+    def measure(workspace: Path, *, pages: int, out: Path | None, **_modes: Any) -> Any:  # noqa: ARG001
         seen.append(workspace)
         (workspace / "left-behind.txt").write_text("state no second run recreates\n", "utf-8")
         return _fake_measurement(store)
@@ -3009,3 +3011,127 @@ def test_a_measurement_outside_tolerance_is_exit_zero_unless_gate_was_asked_for(
     )
     assert "EXIT 1  --gate was passed" in gated.getvalue()
     assert "not a statement about the budget" in gated.getvalue()
+
+
+# ---------------------------------------------------------------------------------------------
+# 7. `--driver pdfium`: the product's path, the worker's peak against the row (D629)
+# ---------------------------------------------------------------------------------------------
+
+RSS_ROW = (
+    '[[budget]]\nid = "rss.gen5000p_peak_bytes"\nvalue = 1000\ntol_pct = 10\nprocess = "worker"\n'
+)
+BYTES_ROW = '[[budget]]\nid = "store.bytes_per_block"\nvalue = 660\ntol_pct = 10\n'
+
+
+def _pdfium_measurement(store: Path, *, worker: int | None) -> Any:
+    from dataclasses import replace  # noqa: PLC0415
+
+    return replace(
+        _fake_measurement(store),
+        driver="pdfium",
+        worker_peak_rss=worker,
+        worker_peak_source="a literal worker peak",
+    )
+
+
+def _perf(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    perf = tmp_path / "perf.toml"
+    perf.write_text(BYTES_ROW + RSS_ROW, encoding="utf-8")
+    monkeypatch.setattr(measure_store, "PERF_TOML", perf)
+
+
+@pytest.mark.parametrize(("worker", "under"), [(40, True), (1100, True), (1101, False)])
+def test_the_worker_peak_is_compared_one_sided_against_the_rss_ceiling(
+    sized_store: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, worker: int, under: bool
+) -> None:
+    """00-vision.md:712 prints V01-11 as `<=`: a worker far under the ceiling is the ceiling
+    holding. The two-sided `Budget.breaches` read the first 42 MB worker as OUTSIDE."""
+    _perf(tmp_path, monkeypatch)
+    measured = _pdfium_measurement(sized_store, worker=worker)
+    assert measure_store._rss_indication(measured) is under
+
+
+def test_the_stub_and_an_unsampled_worker_are_not_comparable(
+    sized_store: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _perf(tmp_path, monkeypatch)
+    assert measure_store._rss_indication(_fake_measurement(sized_store)) is None
+    unsampled = _pdfium_measurement(sized_store, worker=None)
+    assert measure_store._rss_indication(unsampled) is None
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        (40, ["--gate-rss"], 0),
+        (5000, ["--gate-rss"], 1),
+        (5000, [], 0),
+        (None, ["--gate-rss"], 2),
+    ],
+)
+def test_gate_rss_is_the_only_way_the_worker_peak_reaches_the_exit_code(
+    sized_store: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: tuple[int | None, list[str], int],
+) -> None:
+    worker, flags, code = case
+    _perf(tmp_path, monkeypatch)
+    monkeypatch.setattr(measure_store, "GENERATOR", Path(__file__))
+    monkeypatch.setattr(measure_store, "STUB_DRIVER", Path(__file__))
+    monkeypatch.setattr(
+        measure_store, "measure", lambda *_a, **_k: _pdfium_measurement(sized_store, worker=worker)
+    )
+    out = StringIO()
+    argv = ["--driver", "pdfium", "--workspace", str(tmp_path / "w"), *flags]
+    assert measure_store.main(argv, out=out) == code
+    printed = out.getvalue()
+    if worker is not None:
+        assert "rss.gen5000p_peak_bytes" in printed
+        assert "process = 'worker'" in printed
+        assert "anydoc refuses a PDF" in printed
+        assert ("under the ceiling" if worker < 1100 else "OVER the ceiling") in printed
+        assert "supervisor (this process" in printed
+
+
+def test_reuse_sizes_the_kept_project_and_does_not_ingest_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """V01-10 and V01-11 read one 5,000-page run: the second call must not start a second."""
+    workspace = tmp_path / "w"
+    store = workspace / "project" / ".omniweave" / "index.owstore"
+    store.parent.mkdir(parents=True)
+    measure_store._new_store(store)
+    pdf = tmp_path / "gen.pdf"
+    pdf.write_bytes(b"%PDF-1.7 fixture\n")
+    digest = hashlib.sha256(pdf.read_bytes()).hexdigest()
+    (workspace / measure_store.MEASURED_JSON).write_text(
+        json.dumps(
+            {
+                "pdf_sha256": digest,
+                "ingest_seconds": 400.0,
+                "peak_rss": 300,
+                "peak_rss_source": "kept",
+                "worker_peak_rss": 900,
+                "worker_peak_source": "kept worker",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def no_second_ingest(*_args: Any) -> Any:
+        raise AssertionError("--reuse ingested again")
+
+    monkeypatch.setattr(measure_store, "_ingest_pdfium", no_second_ingest)
+    kept = measure_store._measure_pdfium(
+        workspace, pdf=pdf, data=pdf.read_bytes(), digest=digest, reuse=True
+    )
+    assert (kept.worker_peak_rss, kept.ingest_seconds, kept.driver) == (900, 400.0, "pdfium")
+    again = measure_store._measure_pdfium(
+        workspace, pdf=pdf, data=pdf.read_bytes(), digest=digest, reuse=True
+    )
+    assert again.floor_bytes == kept.floor_bytes, "the kept floor store is rebuilt, not reused"
+    with pytest.raises(AssertionError, match="ingested again"):
+        measure_store._measure_pdfium(
+            workspace, pdf=pdf, data=pdf.read_bytes(), digest="f" * 64, reuse=True
+        )

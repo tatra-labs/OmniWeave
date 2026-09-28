@@ -365,3 +365,16 @@ def test_a_source_that_changed_after_identify_is_not_parsed_under_its_old_key(
         assert staged.failure_class is FailureClass.CORRUPT_INPUT
         assert "changed after it was identified" in str(staged.failure_message)
         operator.close()
+
+
+def test_the_ledger_s_peak_is_the_unit_s_result_metric_and_zero_without_one() -> None:
+    """D629. `work.peak_rss_bytes` is `COMPLETE_SQL`'s `MAX` over this, and the host wrote it."""
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from omniweave_ports.types import DriverMetrics, DriverResult  # noqa: PLC0415
+
+    result = DriverResult(outcome="ok", produced=(), metrics=DriverMetrics(peak_rss_bytes=9))
+    reply: Any = SimpleNamespace(report=SimpleNamespace(results=(None, result)))
+    assert parse_module._peak_of(reply, 1) == 9
+    assert parse_module._peak_of(reply, 0) == 0
+    assert parse_module._peak_of(SimpleNamespace(report=None), 0) == 0  # type: ignore[arg-type]
