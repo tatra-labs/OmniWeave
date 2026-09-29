@@ -46,3 +46,24 @@ corpus at P2 is the *store* variable, `store.bytes_per_block` (12-performance.md
 **Do not tune the constants to a budget.** `store.bytes_per_block = 660` is measured over this
 fixture; a fixture shaped to make 660 come out true would make the nightly ratchet measure its own
 input.
+
+## `gen_reference_corpora.py`
+
+ADR-14 D14.1's three reference corpora for `bench/serve/`, at two scales:
+
+| corpus | `full` | `quick` |
+|---|---|---|
+| `legal_matter` | 5,000 pages over 120 PDFs | 250 pages over 12 |
+| `data_room` | 137 files | 16 |
+| `personal_archive` | 60 files | 8 |
+
+```bash
+uv run python fixtures/gen/gen_reference_corpora.py --all --print-sha256   # all six, ~1.5 s
+```
+
+- **Every answer the harness asks for is planted here.** `PLANTED` names each task's sentence and
+  its one document, and `ABSENT` names the terms no document holds.
+- **Formats are the ones the shipped roster parses**: PDF, DOCX, XLSX, PPTX and CSV. A plain-text
+  file is identified and never parsed (D567).
+- **Each corpus is pinned through its manifest**, one `sha256  relpath` line per file, as the
+  incremental roster is. `bench/serve/test_corpora.py` checks the six pins.
