@@ -69,6 +69,7 @@ __all__ = [
     "FRONT_DOOR",
     "NO_DEFAULT_CORPUS",
     "SKILL_SENTENCE",
+    "SV2_FULL_MAX_CHARS",
     "SV2_MAX_CHARS",
     "TOOL_PREFIX",
     "VARIANT_A",
@@ -85,6 +86,14 @@ SV2_MAX_CHARS: Final[int] = 1000
 10:868 gives the comparison that makes the number a budget rather than a round figure: its observed
 sibling servers sit at **660-984 characters**, so 1,000 is the top of an observed range and not a
 ceiling with room in it.
+
+It binds `profile = "default"`, the profile every host sees unless it opts in (ADR-13 D13.3).
+"""
+
+SV2_FULL_MAX_CHARS: Final[int] = 1100
+"""The `full` profile's own ceiling (ADR-13 D13.3): 1,050 measured, plus 50 against the next change
+to the deferral line. 10:907's fix for `full` recovers 80 characters against an overshoot of 111
+(D313), and every other sentence the text could drop is steering or safety text.
 """
 
 FRONT_DOOR: Final[tuple[str, ...]] = ("query", "open", "corpora", "add")

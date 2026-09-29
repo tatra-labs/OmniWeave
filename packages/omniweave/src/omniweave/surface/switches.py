@@ -18,9 +18,8 @@ A flag left at its default is never refused, so a root pays for this only when a
 
 **`--json-errors` is 18:898's object**, `code`, `numeric`, `message`, `fix` and `exit`, one line on
 stderr. `code` is `OwError.code()`, the symbol, which is the stored and wire form (charter section
-5 C9), and `numeric` is `OW-A-002`. 10:1539's `--render json` error object spells the same numeric
-`code` and the symbol `symbol`. The two objects are two flags' contracts and both are printed as
-their documents give them; which spelling wins is owed to the plan (D631).
+5 C9), and `numeric` is `OW-A-002`. `--render json`'s error object uses the same two keys: D631
+found 10:1539 spelling the numeric `code`, and ADR-13 D13.5 ruled for C9.
 """
 
 from __future__ import annotations
@@ -163,12 +162,17 @@ def check(root: str, parsed: argparse.Namespace) -> None:
 
 
 def error_object(error: OwError) -> dict[str, Any]:
-    """10:1539-1540's error object: `{"schema":1,"error":{code, symbol, message, fix}}`."""
+    """10:1539-1540's error object: `{"schema":1,"error":{code, numeric, message, fix}}`.
+
+    `code` is the SYMBOL, as charter section 5 C9 fixes it on the wire, and `numeric` is the
+    human form: the same two keys as 18:898's `--json-errors` object. 10:1539's printed example put
+    the numeric under `code` and the symbol under `symbol`, which C9 forbids (ADR-13 D13.5).
+    """
     return {
         "schema": 1,
         "error": {
-            "code": error.numeric(),
-            "symbol": error.code(),
+            "code": error.code(),
+            "numeric": error.numeric(),
             "message": str(error),
             "fix": error.fix,
         },

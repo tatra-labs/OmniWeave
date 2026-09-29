@@ -226,16 +226,20 @@ CRITERIA: tuple[Criterion, ...] = (
     ),
     Criterion(
         "V01-11",
-        "peak RSS on the 5,000-page fixture <= 1,610,612,736 bytes +/- 10%",
+        "peak RSS of the worker parsing the 5,000-page fixture <= 1,610,612,736 B + 10%, one-sided",
         (),  # replaced by `_with_workspace`: the same run as V01-10's, reused
         Coverage.NONE,
         "placeholder",
     ),
     Criterion(
         "V01-12",
-        "tools/list <= 1,900 tokens, per-tool <= 700, instructions <= 1,000 chars; seven artefacts",
+        "tools/list <= 1,900 tokens, per-tool <= 700, default instructions <= 1,000; six artefacts",
         (
             pytest(f"{CLI}/test_gen_budget.py", label="SV2 (D375: the test is its home)"),
+            pytest(
+                f"{CLI}/test_gen_instructions.py",
+                label="the instructions string: 1,000 for default, 1,100 for full (ADR-13 D13.3)",
+            ),
             module("omniweave", "surface", "emit", "--check"),
             pytest(
                 f"{CLI}/test_gen_cli_tree.py",
@@ -244,10 +248,7 @@ CRITERIA: tuple[Criterion, ...] = (
                 label="no two CLI groups differ by a trailing s",
             ),
         ),
-        Coverage.PARTIAL,
-        "the `full` profile's instructions are 1,031 and 1,050 chars against the 1,000 cap, which "
-        "the SV2 test accepts as a known breach (D313); the instructions string has no file for "
-        "`emit --check` to diff",
+        Coverage.FULL,
     ),
     Criterion(
         "V01-13",
@@ -280,9 +281,8 @@ CRITERIA: tuple[Criterion, ...] = (
             ),
         ),
         Coverage.PARTIAL,
-        "timed on this machine, which is not a clean 4-core one; and no cite can carry a page: "
-        "every office document is one `stream` page, because anydoc flattens a PPTX's slides and "
-        "a DOCX has no page boxes (D615, D634)",
+        "timed on this machine, which is not a clean 4-core one (D634); the cite clause reads by "
+        "page kind and holds, the needle's cite resolving through `ow open` (ADR-13 D13.1)",
     ),
     Criterion(
         "V01-16",
@@ -351,9 +351,9 @@ def _with_workspace(workspace: Path) -> tuple[Criterion, ...]:
         CRITERIA[10].text,
         (measured("--gate-rss"),),
         Coverage.PARTIAL,
-        "the worker's peak, an indication until `ow-bench-1` (D25). The row is anydoc's fork "
-        "tripwire and anydoc refuses a PDF, and pdfium's card caps its worker at memory_mb = 1024, "
-        "under the row, so the row cannot fire on the driver that parses this fixture (D629)",
+        "the worker's peak of the driver that parses the fixture, one-sided, and an indication "
+        "until `ow-bench-1` (D25); anydoc's fork tripwire moved to rss.office200_peak_bytes, "
+        "whose fixtures/office-200 does not exist yet (ADR-13 D13.2, D196)",
     )
     return (*CRITERIA[:9], v0110, v0111, *CRITERIA[11:])
 

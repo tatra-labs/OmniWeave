@@ -79,6 +79,7 @@ def rows(register: dict[str, Any]) -> dict[str, dict[str, Any]]:
 #   charter:7573-7630            the ten charter rows
 #   12-performance.md:195-198    cold.ow_help_ms and discovery.20dists_ms, "Extends the charter"
 #   13-quality.md:1916-1941      t0.gates_job_s, test.cell_ubuntu_311_s, golden.job_s
+#   adr/0013 D13.2               rss.office200_peak_bytes, anydoc's fork tripwire (erratum E96)
 EXPECTED: tuple[tuple[str, int, int | None, int | None, str], ...] = (
     ("import.omniweave_core_ms", 62, 25, None, "pr"),
     ("cold.ow_version_ms", 118, 25, None, "pr"),
@@ -95,6 +96,7 @@ EXPECTED: tuple[tuple[str, int, int | None, int | None, str], ...] = (
     ("t0.gates_job_s", 128, None, 40, "pr"),
     ("test.cell_ubuntu_311_s", 185, None, 50, "pr"),
     ("golden.job_s", 190, None, 45, "pr"),
+    ("rss.office200_peak_bytes", 1_610_612_736, 10, None, "nightly"),
 )
 
 
@@ -148,6 +150,7 @@ def test_process_is_on_the_two_rss_rows_and_nowhere_else(rows: dict[str, dict[st
     assert carrying == {
         "rss.gen5000p_peak_bytes": "worker",
         "rss.merged4mcell_peak_bytes": "worker",
+        "rss.office200_peak_bytes": "worker",
     }
 
 
@@ -262,6 +265,7 @@ def test_a_row_with_no_stated_tier_is_named_rather_than_silently_passed(
         "store.bytes_per_block",
         "rss.gen5000p_peak_bytes",
         "rss.merged4mcell_peak_bytes",
+        "rss.office200_peak_bytes",
         "wal.bulk_index_peak_bytes",
     }
     gate.main([])
@@ -282,7 +286,7 @@ def test_the_gate_is_green_on_the_shipped_register(
     out = capsys.readouterr().out
     assert code == gate.EXIT_CLEAN, out
     assert "Q-G15 ok" in out
-    assert "15 [[budget]] row(s), 15 distinct id(s)" in out
+    assert "16 [[budget]] row(s), 16 distinct id(s)" in out
     assert out.isascii(), "the report must survive a cp1252 console"
 
 

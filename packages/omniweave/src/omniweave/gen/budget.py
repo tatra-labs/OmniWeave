@@ -76,6 +76,7 @@ __all__ = [
     "blessed",
     "drift",
     "findings",
+    "instructions_cap",
     "measure",
     "read_baseline",
     "serialised",
@@ -128,9 +129,20 @@ for are the two that breach the cap. D374, and this constant is how the other tw
 """
 
 CEILINGS: Final[Mapping[str, int]] = MappingProxyType(
-    {"default": 1900, "full": 4200, "per_tool": 700, "instructions_chars": 1000}
+    {
+        "default": 1900,
+        "full": 4200,
+        "per_tool": 700,
+        "instructions_chars": 1000,
+        "instructions_chars_full": 1100,
+    }
 )
-"""10:2597's `ceilings` block, verbatim.
+"""10:2597's `ceilings` block, plus ADR-13 D13.3's fifth.
+
+`instructions_chars` is SV2's 1,000 and binds the `default` profile, both variants: V01-12
+(00:713) scopes its whole row to `profile=default`, and 1,000 is jcodemunch's convention rather
+than a host limit (10:866). `instructions_chars_full` is the `full` profile's own ceiling, the
+measured 1,050 plus 50 (D313).
 
 Spelled here and in the baseline file, which is two homes for four integers and is deliberate in
 the way `catalog.ANNOTATION_KEYS` is: the file is data a reviewer diffs and this is what a reader
@@ -477,13 +489,21 @@ def _one_drift(baseline: Baseline, label: str, frozen: int, now: int | None) -> 
     return []
 
 
+def instructions_cap(ceilings: Mapping[str, int], label: str) -> int:
+    """The character ceiling for one measured `instructions` label: the `full` profile's, or SV2's.
+
+    A label is a profile, with `NO_CORPUS_SUFFIX` when `[serve] default_corpus` does not resolve.
+    """
+    key = "instructions_chars_full" if label.startswith("full") else "instructions_chars"
+    return ceilings.get(key, CEILINGS[key])
+
+
 def _instruction_findings(baseline: Baseline, measured: Measurement) -> list[str]:
-    """The live `instructions` strings against the cap, including the two with no frozen slot."""
-    cap = baseline.ceilings.get("instructions_chars", CEILINGS["instructions_chars"])
+    """The live `instructions` strings against their profile's cap, the no-corpus ones included."""
     return [
         f"instructions {label} is {value} chars, over the {cap} cap (SV2)"
         for label, value in measured.instructions_chars.items()
-        if value > cap
+        if value > (cap := instructions_cap(baseline.ceilings, label))
     ]
 
 

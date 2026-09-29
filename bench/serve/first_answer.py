@@ -25,7 +25,8 @@ row (00:894) starts the clock at `ow install` and stops it when the Answer retur
    - `cited`: at least one `cite`;
    - `needle_cited`: a cite into the needle's document;
    - `answered`: the needle's notice period is in a cited block's text;
-   - `paged`: a cited block sits on a page whose kind is not `stream`.
+   - `paged`: a cited block sits on a page whose kind is not `stream`;
+   - and then, outside the clock, `ow open <the needle's cite>` must exit 0.
 
 ## What it cannot say
 
@@ -36,9 +37,10 @@ row (00:894) starts the clock at `ow install` and stops it when the Answer retur
 - **`paged` is false for every office document in this build.** `parse.office.anydoc` writes one
   page of kind `stream`, because anydoc flattens a PPTX's slides into one block stream and a DOCX
   has no page boxes (`omniweave_office/driver.py`, `_page_record`). 03 section 12.5 says a
-  `stream` document *"has no pages"*. So the criterion's cite *"carrying a page"* cannot hold over
-  its own corpus, which D615 item 7 already owes to the plan. `paged` is reported, and it is not
-  part of the exit.
+  `stream` document *"has no pages"*. ADR-13 D13.1 reads the criterion by page kind: *"a `cite`
+  that `ow open` resolves, carrying its page wherever the cited page's `page_kind` is not
+  `stream`"*. So the exit requires `paged` unless every cited page is `stream`, and it requires
+  `ow open` to resolve the needle's cite.
 - **The project declares the three `[drivers]` opt-ins** a checkout needs before any first-party
   driver resolves (D576). A clean machine would need them too until `omniweave.lock` has a writer.
 
@@ -48,8 +50,9 @@ Usage:
     uv run python bench/serve/first_answer.py --docs 12 --json
     uv run python bench/serve/first_answer.py --work <dir>    # keep the project for inspection
 
-Exit 0 when the Answer came back within `BUDGET_S` citing the needle and the uninstall left the
-home byte-identical; 1 when either did not; 2 when a verb failed.
+Exit 0 when the Answer came back within `BUDGET_S` citing the needle, with the page clause held,
+`ow open` resolving the cite and the uninstall leaving the home byte-identical; 1 when any did not;
+2 when a verb failed.
 """
 
 from __future__ import annotations
@@ -353,6 +356,18 @@ class Judgement:
     answered: bool
     paged: bool
     page_kinds: tuple[str, ...]
+    needle_cite: str = ""
+    """The first cite into the needle's document, which `measure()` hands to `ow open`."""
+
+    @property
+    def page_clause(self) -> bool:
+        """V01-15's cite clause as ADR-13 D13.1 reads it: a page wherever the page kind has one.
+
+        True when a cited block is on a page that is not `stream`, or when every cited page is
+        `stream` (03:2275, *"there are no pages"*). A cited block with no page row is `unknown`,
+        which is neither, and fails.
+        """
+        return self.paged or (bool(self.page_kinds) and set(self.page_kinds) == {"stream"})
 
 
 def _names(path: Path, doc_uri: str) -> bool:
@@ -386,6 +401,7 @@ def judge(answer: Mapping[str, Any], *, store: Path, needle: Path, expected: str
         answered=any(expected in str(one.get("text", "")) for one in on_needle),
         paged=any(kind not in ("stream", "unknown") for kind in kinds),
         page_kinds=tuple(sorted(set(kinds))),
+        needle_cite=str(on_needle[0]["cite"]) if on_needle else "",
     )
 
 
@@ -413,15 +429,20 @@ class Measurement:
     byte-identical to before `ow install`. Outside the clock. `None` when the run stopped first."""
     residue: tuple[str, ...] = field(default_factory=tuple)
     """The home's paths that differ after the uninstall, when `reversed` is false."""
+    resolved: bool | None = None
+    """Whether `ow open <the needle's cite>` exited 0: ADR-13 D13.1's *"a `cite` that `ow open`
+    resolves"*. Outside the clock. `None` when the run stopped before it."""
 
     @property
     def passed(self) -> bool:
-        """Within the budget, citing the needle, and reversed. `paged` is reported, not required."""
+        """Within the budget; the needle cited, resolved and paged as its kind allows; reversed."""
         return (
             not self.failed
             and self.first_answer_seconds <= self.budget_s
             and self.judgement is not None
             and self.judgement.needle_cited
+            and self.judgement.page_clause
+            and self.resolved is True
             and self.reversed is True
         )
 
@@ -509,21 +530,27 @@ def measure(n: int, *, work: Path, python: str = sys.executable) -> Measurement:
         answer = done
     total = round(time.perf_counter() - started, 3)
     assert answer is not None  # noqa: S101 -- three phases ran, the last is the query
-    undone = _verb(python, UNINSTALL, cwd=project, env=env)
-    after = _snapshot(home)
-    residue = tuple(
-        sorted(key for key in before.keys() | after.keys() if before.get(key) != after.get(key))
-    )
     judged = judge(
         json.loads(answer.stdout),
         store=project / ".omniweave" / "docs.owstore",
         needle=folder.needle,
         expected=folder.expected,
     )
+    resolved = False
+    if judged.needle_cite:
+        opened = _verb(
+            python, ("open", judged.needle_cite, "--render", "json"), cwd=project, env=env
+        )
+        resolved = not opened.failed and opened.returncode == 0
+    undone = _verb(python, UNINSTALL, cwd=project, env=env)
+    after = _snapshot(home)
+    residue = tuple(
+        sorted(key for key in before.keys() | after.keys() if before.get(key) != after.get(key))
+    )
     notes = (
-        ()
-        if judged.paged
-        else ("no cited block is on a page: office documents are `stream` (D615)",)
+        ("every cited page is `stream`, which has no page and is exempt (ADR-13 D13.1)",)
+        if not judged.paged and judged.page_clause
+        else ()
     )
     return Measurement(
         first_answer_seconds=total,
@@ -538,6 +565,7 @@ def measure(n: int, *, work: Path, python: str = sys.executable) -> Measurement:
         notes=notes,
         reversed=not residue,
         residue=residue,
+        resolved=resolved,
     )
 
 
@@ -553,7 +581,8 @@ def _lines(result: Measurement) -> list[str]:
         j = result.judgement
         out.append(
             f"answer  {j.cited} cite(s); needle cited {j.needle_cited}; answered {j.answered}; "
-            f"on a page {j.paged} (page kinds: {', '.join(j.page_kinds) or 'none'})"
+            f"on a page {j.paged} (page kinds: {', '.join(j.page_kinds) or 'none'}); "
+            f"ow open resolves {result.resolved}"
         )
     if result.reversed is not None:
         shown = "byte-identical" if result.reversed else f"differs at {', '.join(result.residue)}"

@@ -22,11 +22,11 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: First bless: the manifest C55 (_plan/_notes/build-defects.md:5935) asks for, over the tree at HEAD 4833428. No plan text was edited; this pins what is already there.
+# blessed-because: ADR-13 accepted (v0.1 acceptance reconciliation): the ADR and its index row; its five rulings applied to 00:712/713/716/894, 10:203-204/898-899/907-911/1540, 12:228/245/591 and 16:736/741-748, each edit line-count-preserving so no line citation moves
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
-documents-frozen  97e8cec971d86a68ba7f20e0d9e67b3fd2c9378f93d85b6d6589c0145f46fa14  00-vision.md
+documents-frozen  f0d2cf8de56c823d7a428b62a6c0d0449235106a5deb7504626f6df2a648096a  00-vision.md
 documents-frozen  6ffc2070193630b39f15385fc8640ec7b1a3e242ef098426f2754d4070a8026d  01-principles.md
 documents-frozen  7bf4220e75a23503a04139d4ba6d8b7774e57fd1774920104c4eb29c75a16c70  02-architecture.md
 documents-frozen  9ec0bb9988baf327069950ac46858ff0383238536255c9da4c729134d62fea72  03-document-model.md
@@ -36,13 +36,13 @@ documents-frozen  af878d7e1a795aded61af2ef27a5834654762f52bdafefb4955d4b4c754920
 documents-frozen  1579b9439073588028b3ff5a548f65698f787d9724474ae08b1d0ca6182a8e09  07-store-and-retrieval.md
 documents-frozen  8dbb83e6d1baa29901dad36b079a53c5459595e979799792ec3bd50eecc9661f  08-runtime.md
 documents-frozen  eddeb4634f5da1e2b056a002a7fa6eaa43d71836633b0a44d65301ac8b2d16e4  09-generation.md
-documents-frozen  de17310ad91fe4c665bd31b7ac7bc7740e0b79fdac9ba3d5587535b5e8b61ea5  10-interfaces.md
+documents-frozen  d96985003690550f4d996e31a41306d21d6a8e2e7ff34076c0ad5cff5f3cb64e  10-interfaces.md
 documents-frozen  76a694bf0b19b60ba35d2246f6b36466ca990f318f51e0a292c388ec0e78bc68  11-repo-layout.md
-documents-frozen  b5296f18791eae8fe93842edd6ac9c099dd12a441ec62d299464731e6a2a51db  12-performance.md
+documents-frozen  5401c10b52003dd2a6e1d7475795686c53d0674236f048ef2c9fcc9c3cf7ecbb  12-performance.md
 documents-frozen  2abb48efbf37a5d625a4da7b0b7941dfb8e337192778cbf48f1bda7e6a93b9c2  13-quality.md
 documents-frozen  667161a8bd206b5805998a289f7679f80dc3a8ea6910c52ea8345bfe9562d721  14-security.md
 documents-frozen  b40c687bb38801907249eef6ec9af9a8ac7d26083be9c0290f356e89aaf48695  15-observability.md
-documents-frozen  0d5b5ac5caaa8f083d6128cca9d94aa87191b23fa4ef805f39259c651f93a678  16-roadmap.md
+documents-frozen  8cb50c6254b2bf4a6c8fa7076b3382e55c92d1ad3791751c0e51e684d8bff0fc  16-roadmap.md
 documents-frozen  21396b7cdc7c60f5727a30f4569c67c2ea80180481ca4bb7d02555e06a2f4ad6  17-risks.md
 documents-frozen  3f6ecb1ad932d72e4cbc445ecab13e339129fc9ede99de5d5d06476589b4d95e  18-api-sketch.md
 documents-frozen  a2725dcf40c073536ff0c049911a27f8b5d7b4938e2116071b53054949c19b7c  README.md
@@ -588,5 +588,6 @@ documents-frozen  6b1a39d2e2a9a05139dfdabc2c501643da517f4760b3e6d8c55393957a43ac
 documents-frozen  d5d8133ea01598e711f1af5442b667523d4edbbcade788c4d99629e5c81a0cff  adr/0010-data-artefacts-and-weight-ceiling.md
 documents-frozen  03cc84af1248e0a1aa8a2453fed21cea7ea301908714f592994675d3d22d8f65  adr/0011-eval-register-reconciliation.md
 documents-frozen  67ab77cff65a136c53dc2a9ab596d47a79f1280f256ab2d4f2b0db27902d65fc  adr/0012-runtime-types-on-the-critical-path.md
-documents-frozen  22b8a1119f8ae0a94a7347c3fd332b7cbe9174c12e3639821bccfc5efe4fa0e6  adr/README.md
+documents-frozen  fc21ea2c865e992052e420114b110df651c6e2434e665410cbd3e7d9ab0d6571  adr/0013-v01-acceptance-reconciliation.md
+documents-frozen  9f8181b76989492a210a1ba6fba5ba115d0e80fc78abb0ee94d8f53d9609dc34  adr/README.md
 documents-frozen  dc548ebdb22a1ba703b0ad2548e52d27691cffb7f4d8656289a3750bc10f4791  glossary.md

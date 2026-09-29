@@ -104,7 +104,7 @@ def test_an_error_under_render_json_is_the_error_object_on_stdout() -> None:
     code, out, err = _run(["OW-A-999", "--render", "json"])
     assert (code, err) == (2, "")
     document = json.loads(out)
-    assert (list(document), document["error"]["symbol"]) == (["schema", "error"], "OW_UNKNOWN_CODE")
+    assert (list(document), document["error"]["code"]) == (["schema", "error"], "OW_UNKNOWN_CODE")
 
 
 @pytest.mark.parametrize(
