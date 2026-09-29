@@ -217,3 +217,46 @@ def test_a_ready_entry_with_the_same_digest_is_reused_and_nothing_is_ingested(
     )
     assert (prepared.cached, prepared.base, prepared.digest) == (True, base, digest)
     assert prepared.docs == base / "project" / "docs"
+
+
+def test_a_damaged_corpus_is_its_own_entry_with_its_answer_s_file_damaged(tmp_path: Path) -> None:
+    """D640. A damaged task's corpus is the pristine one with one file through its Injector: its
+    digest covers the damage, its entry is named for the Injector, and the pristine entry's key
+    is untouched. The interpreter is missing, so `ow add` cannot run and the files stay to look at.
+    """
+    from corpora import CorpusError, damage_of, prepare  # noqa: PLC0415
+    from omniweave_conform.damage import MASK  # noqa: PLC0415
+
+    damage = damage_of("home-dmg-refund", "mask_format")
+    assert damage == (("tax/tax-summary-2023.docx", "mask_format"),)
+    with pytest.raises(CorpusError, match="mask_format"):
+        prepare(
+            "personal_archive",
+            "quick",
+            cache_root=tmp_path,
+            damage=damage,
+            python="no-such-interpreter",
+        )
+    (entry,) = tmp_path.iterdir()
+    pristine = hashlib.sha256(gen.manifest_bytes(gen.documents("personal_archive", "quick")))
+    assert entry.name.startswith("personal_archive-quick-mask_format-")
+    assert not entry.name.endswith(pristine.hexdigest()[:12])
+    docs = entry / "project" / "docs"
+    assert (docs / "tax" / "tax-summary-2023.docx").read_bytes().startswith(MASK)
+    assert (docs / "letters" / "oakridge-renewal-2024.docx").read_bytes().startswith(b"PK")
+
+
+def test_damage_naming_a_file_or_an_injector_that_does_not_exist_is_refused(
+    tmp_path: Path,
+) -> None:
+    from corpora import CorpusError, prepare  # noqa: PLC0415
+
+    with pytest.raises(CorpusError, match="not a built Injector"):
+        prepare("personal_archive", "quick", cache_root=tmp_path, damage=(("x.pdf", "chaos"),))
+    with pytest.raises(CorpusError, match=r"no \['nowhere.pdf'\] to damage"):
+        prepare(
+            "personal_archive",
+            "quick",
+            cache_root=tmp_path,
+            damage=(("nowhere.pdf", "mask_format"),),
+        )
