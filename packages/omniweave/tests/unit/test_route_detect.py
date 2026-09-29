@@ -516,3 +516,60 @@ def test_detection_carries_the_check_into_the_evidence_routing_reads(tmp_path: P
     plain = tmp_path / "a.csv"
     plain.write_bytes(b"a,b,c\n1,2,3\n4,5,6\n7,8,9\n")
     assert "corrupt" not in json.loads(detect.detect(plain).evidence_json())
+
+
+# ---------------------------------------------------------------------------------------------
+# unit.encrypted for a PDF: the trailer and XRef-stream `/Encrypt` scan (ADR-15 D15.1)
+# ---------------------------------------------------------------------------------------------
+
+
+def test_a_pdf_whose_trailer_names_encrypt_is_encrypted_and_still_a_pdf(tmp_path: Path) -> None:
+    """05:2239's third fact. An encrypted OOXML becomes `unknown` because its inner format is
+    unknowable (05:3034); an encrypted PDF is still a PDF, so the flag is set after `_decide`."""
+    locked = _pdf().replace(b"<< /Root 1 0 R >>", b"<< /Root 1 0 R /Encrypt 2 0 R >>")
+    path = tmp_path / "a.pdf"
+    path.write_bytes(locked)
+    assert detect.pdf_encrypted(path) is True
+    found = detect.detect(path)
+    assert (found.format, found.encrypted) == ("pdf", True)
+    assert json.loads(found.evidence_json())["encrypted"] is True
+
+
+def test_a_trailer_beyond_a_long_xref_table_is_found_in_the_tail(tmp_path: Path) -> None:
+    """A classic table longer than the window puts the trailer out of reach of the read at
+    `startxref`'s offset; the tail read is what finds it."""
+    head = b"%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"
+    rows = b"0000000000 65535 f \n" * (detect.ENCRYPT_SCAN_BYTES // 20 + 50)
+    table = b"xref\n0 1\n" + rows
+    trailer = b"trailer\n<< /Root 1 0 R /Encrypt 2 0 R >>\n"
+    data = head + table + trailer + b"startxref\n" + str(len(head)).encode() + b"\n%%EOF\n"
+    path = tmp_path / "a.pdf"
+    path.write_bytes(data)
+    assert detect.pdf_encrypted(path) is True
+
+
+def test_an_xref_stream_dictionary_naming_encrypt_is_found_at_the_startxref_offset(
+    tmp_path: Path,
+) -> None:
+    """A cross-reference stream keeps its dictionary at the object `startxref` names, which may
+    sit further from the end than the tail window."""
+    head = b"%PDF-1.7\n"
+    xref_object = (
+        b"2 0 obj\n<< /Type /XRef /Root 1 0 R /Encrypt 3 0 R >>\nstream\nendstream\nendobj\n"
+    )
+    body = head + xref_object + b"%" + b"x" * (detect.ENCRYPT_SCAN_BYTES + 100) + b"\n"
+    data = body + b"startxref\n" + str(len(head)).encode() + b"\n%%EOF\n"
+    path = tmp_path / "a.pdf"
+    path.write_bytes(data)
+    assert detect.pdf_encrypted(path) is True
+
+
+def test_a_plain_pdf_is_not_encrypted_and_a_key_that_merely_starts_so_is_not_encrypt(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "a.pdf"
+    path.write_bytes(_pdf())
+    assert detect.pdf_encrypted(path) is False
+    assert detect.detect(path).encrypted is False
+    path.write_bytes(_pdf().replace(b"<< /Root 1 0 R >>", b"<< /Root 1 0 R /EncryptMeta 2 >>"))
+    assert detect.pdf_encrypted(path) is False

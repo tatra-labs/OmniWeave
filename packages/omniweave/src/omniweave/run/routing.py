@@ -291,10 +291,10 @@ def unit_evidence(
     """The FREE group of 05 section 5.1 that the roster already holds, for one unit's one part.
 
     Every key is the `builtin` provider's (05:2135) and carries its version into the read set.
-    Two non-nullable keys can be recorded UNAVAILABLE with a reason rather than guessed:
-    `unit.corrupt` for a container detection has no structural check for (D641 builds PDF and
-    ZIP); and `unit.encrypted` for a PDF, because the trailer `/Encrypt` scan the `gate.encrypted`
-    rule's comment names is not built. A `False` in either would be a claim nothing checked.
+    `unit.corrupt` is recorded UNAVAILABLE with a reason, rather than guessed, for a container
+    detection has no structural check for (D641 builds PDF and ZIP): a `False` would be a claim
+    nothing checked. `unit.encrypted` is detection's for every format (ADR-15 D15.1), and for a
+    PDF the `pdfium` child's when it is installed (D15.2).
 
     **`accept_partial` is `ow ingest --accept-partial` (05:2821).** A unit whose check failed is
     recorded UNAVAILABLE naming the override instead of `True`, so `gate.corrupt` does not match and
@@ -328,14 +328,10 @@ def unit_evidence(
     put("unit.trust_class", trust)
     put("unit.schema_requested", False)
     put("trigger.kind", trigger)
-    if fmt == "pdf":
-        put(
-            "unit.encrypted",
-            None,
-            "the PDF trailer /Encrypt scan (gate.encrypted's comment) is not built",
-        )
-    else:
-        put("unit.encrypted", bool(chosen.get("encrypted", False)))
+    #  ADR-15 D15.1: detection's trailer scan for a PDF, as for a CFB or an OCF package. For a
+    #  PDF this is the fallback only: D15.2 makes `unit.encrypted` the `pdfium` provider's, which
+    #  opens the file, so `put()` leaves the key to that child whenever it is installed.
+    put("unit.encrypted", bool(chosen.get("encrypted", False)))
     corrupt = chosen.get("corrupt")
     if not isinstance(corrupt, dict):
         put("unit.corrupt", None, f"detection has no structural check for {fmt or 'this format'}")

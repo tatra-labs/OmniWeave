@@ -889,7 +889,7 @@ def test_every_writable_row_names_a_file_this_project_actually_writes() -> None:
     row describes a working file rather than law somebody wanted exempted.
     """
     settled = [*REAL_PLAN.glob("*.md"), *(REAL_PLAN / "adr").glob("*.md")]
-    assert len(settled) == 21 + 15, len(settled)
+    assert len(settled) == 21 + 16, len(settled)
     #  The witness is the settled documents under `_notes/`, the one directory an allow-list row
     #  may name. An accepted ADR amends the top-level documents after the notes were written
     #  (ADR-13 did, 2026-09-29): law changing by the stated procedure, not a note losing its writer.
@@ -955,7 +955,7 @@ def test_the_covered_set_is_a_difference_and_partitions_the_real_tree() -> None:
     settled = set(pl.settled_documents(paths))
     writable = set(pl.WRITABLE_NOTES)
 
-    assert len(paths) == 577, len(paths)
+    assert len(paths) == 578, len(paths)
     assert len(writable) == 10, len(writable)
     assert len(settled) == len(paths) - len(writable) - 1
     assert settled == set(manifest.documents)
@@ -1143,7 +1143,7 @@ def test_the_shipped_manifest_is_the_one_bless_would_write_for_the_real_plan() -
     assert fresh.documents == pinned.documents
     assert fresh.charter_digest == pinned.charter_digest
     assert fresh.heading_line == pinned.heading_line
-    assert len(fresh.documents) == 566, len(fresh.documents)
+    assert len(fresh.documents) == 567, len(fresh.documents)
 
 
 def test_the_manifest_row_grammar_round_trips(tmp_path: Path) -> None:

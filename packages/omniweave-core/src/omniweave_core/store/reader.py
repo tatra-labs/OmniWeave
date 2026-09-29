@@ -789,6 +789,10 @@ def _unit_gaps(
             sniffed += f"; its structural check found {checked.get('check', '')}"
         reread = cls in REREAD_CLASSES
         remedy = "; restore or replace the file, then read it again" if reread else ""
+        if cls == "encrypted":
+            #  ADR-15 D15.2: pdfium would not open it with the empty password, so it needs a
+            #  real one, and D15.3's password path is not built yet: no command clears it.
+            remedy = "; it needs a password to open, and this build reads none yet (ADR-15 D15.3)"
         if checked.get("value"):
             remedy += (
                 f", or run `ow ingest --accept-partial {shlex.quote(uri)}` to let a driver try"
