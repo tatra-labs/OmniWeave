@@ -9,7 +9,7 @@
 #   > twenty-nine CI gates of §6.4 — and is owned here. **Neither file may name a row the other
 #   > owns.**
 #
-# Read by `tools/ow_eval.py` and by nothing else.
+# Read by `tools/ow_eval.py`, and by `tools/ow_damage.py` for the `degradation_detection` row.
 #
 # WHY EVERY ROW CARRIES AN OWNER AND A `review_by`. 13-quality.md:1082: "every gate row carries an
 # owner and a `review_by`, and a row past its date fails (`Q-G17`). There is no `--warn-only`
@@ -75,6 +75,27 @@ prints the denominator beside the rate and prints `verbatim_denominator_frac`, w
 own named indicator: its trigger is that share below 0.5 WHILE the rate reports 1.000, and the \
 two read together are the finding.\
 """
+
+# Q-G7's paired-damage half (13-quality.md section 8.6), the second row implemented. Its harness is
+# `tools/ow_damage.py` (ledger D640) and its population is `omniweave_conform.damage.TABLE`: one
+# Injector per `ABSENCE_BLOCKING_DIAGS` code, thirteen, of which the report names how many are
+# built. A new Injector lands behind its own passing pair or not at all (13:1314).
+
+[[gate]]
+metric = "degradation_detection"
+suite = "absence"
+slice = "*"
+kind = "hard"
+budget = 1.000
+truth_kind = "rendered"
+class = "blocking"
+owner = "quality"
+reviewed_at = "2026-09-29"
+review_by = "2026-12-28"
+computed = """
+over every `(Injector, fixture)` pair in §8.6, the fraction where all three clauses hold: `Verdict.state == degraded`, the expected gate appears in `Verdict.gates` in precedence order, and the emitted `DegradeCause.fix` command, executed, produces an undamaged run. (13-quality.md:1093, verbatim.)"""
+guard_absent_because = """
+A `hard` row has no guard band. 13-quality.md:1314: "A gate at 1.000 admits no partial coverage, so 'add the Injector now and make it pass next release' is not a state the gate can express.""""
 
 # ---------------------------------------------------------------------------
 # The subjects `span_exact_rate` is measured over.

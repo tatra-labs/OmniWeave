@@ -177,6 +177,9 @@ __all__ = [
     "PENDING_ACQUISITION_AFTER_SQL",
     "PENDING_ACQUISITION_SQL",
     "RAW_DIGEST_CODE",
+    "REOPEN_SCAN_SQL",
+    "REOPEN_SQL",
+    "REOPEN_WORK_SQL",
     "RESET_ACQUIRING_SQL",
     "SKIP_REASON_CLASSES",
     "STALE_SCAN_SQL",
@@ -201,6 +204,7 @@ __all__ = [
     "observe",
     "pending_params",
     "raw",
+    "reopen_changed_failures",
     "reset_stale_acquiring",
     "roster_rows",
     "stale_params",
@@ -736,6 +740,7 @@ class and left it `acquired`, where nothing identifies it again (`part_count` is
 routes it (it is not `identified`): stranded, and counted by gate 5 as in flight for ever. Measured
 on the first re-run of a corpus holding an empty file and a binary blob, both refused at `GATE`.
 The same predicate is in `CLAIM_ACQUIRING_SQL`, so the claim cannot take what the page skipped.
+Such a unit whose file has changed since is re-opened by `reopen_changed_failures()` (D640).
 """
 
 CLAIM_ACQUIRING_SQL: Final[str] = """
@@ -972,6 +977,114 @@ def mark_stale(
 
     thread.run(Unit(name="discover.mark_stale", run=run, cost_class="free", wait_ms=wait_ms))
     return changed
+
+
+REOPEN_SCAN_SQL: Final[str] = """
+SELECT unit_uri, size, mtime_ns, indexed_at_ns, content_sha256, settled_gen
+  FROM unit
+ WHERE connector = :connector
+   AND last_seen_gen = :generation
+   AND state = 'failed'
+   AND part_count IS NOT NULL
+   AND unit_uri > :after
+ ORDER BY unit_uri
+ LIMIT :limit
+"""
+"""The failed units this generation's walk saw that D580 keeps out of acquisition. **D640.**
+
+D580 is right that re-acquiring such a unit strands it: it has a `part_count` and a `done`
+`op.identify` row, so nothing identifies it again. But it left no way back at all, and gate 9's
+`fix` for a refused unit is `ow add <path>`: with the file restored, that command read nothing
+and the unit stayed `failed`. The paired-damage suite's third assertion caught it (13:1297,
+*"a fix instruction that does not fix is a lie with a shell prompt in front of it"*). So a failed
+unit whose bytes changed since the read that failed it is re-opened, and one whose bytes did not is
+left alone, which is D580's measured case.
+"""
+
+REOPEN_SQL: Final[str] = """
+UPDATE unit SET state = 'discovered', part_count = NULL, acq_failure_class = NULL,
+       acq_retry_after = NULL
+ WHERE unit_uri = :unit_uri AND state = 'failed' AND part_count IS NOT NULL
+"""
+"""Back to `discovered`, with the count that stranded it cleared. **D640.**
+
+`part_count = NULL` is what `PENDING_IDENTIFY_SQL` reads as *"NULL until op.identify"*, and the
+unit's terminal work rows go with it (`REOPEN_WORK_SQL`), so identify and the planner treat the
+new bytes as a unit they have not seen. `acq_attempts_total` is kept, for `RESET_ACQUIRING_SQL`'s
+reason: it is the only bound on a loop.
+"""
+
+REOPEN_WORK_SQL: Final[str] = """
+DELETE FROM work WHERE unit_uri = :unit_uri AND status NOT IN ('pending', 'claimed')
+"""
+"""A re-opened unit's terminal rows: its `done` identify row and any `failed_permanent` parse row.
+
+`work_identity` carries no generation, so the planner's `ON CONFLICT DO NOTHING` would otherwise
+keep the old row and write nothing for the new bytes. The cost record outlives the row, because
+`route_unit_decision` survives a `work` row's deletion (05:3017).
+"""
+
+
+def reopen_changed_failures(
+    thread: StoreThread,
+    *,
+    generation: int,
+    connector: str = CONNECTOR,
+    plan_batch: int = PLAN_BATCH,
+    wait_ms: int = BATCH_WAIT_MS,
+) -> int:
+    """Re-open each failed unit whose file changed since the read that failed it. **D640.**
+
+    One `stat` per failed unit, which is the zero-byte rung `freshness()` prices at nothing, and one
+    transaction per page. A path that no longer stats is left `failed`: the next walk will not see
+    it, and the deletion sweep is what takes it. Returns the number re-opened.
+    """
+    reopened = 0
+    after = ""
+    while True:
+        page: list[tuple[str, StoredStat]] = []
+        params = {
+            "connector": connector,
+            "generation": generation,
+            "after": after,
+            "limit": plan_batch,
+        }
+
+        def scan(
+            connection: _Rows,
+            params: Mapping[str, object] = params,
+            page: list[tuple[str, StoredStat]] = page,
+        ) -> None:
+            for uri, size, mtime, indexed, digest, settled in connection.execute(
+                REOPEN_SCAN_SQL, params
+            ).fetchall():
+                triple = StatTriple(size=size or 0, mtime_ns=mtime or 0, indexed_at_ns=indexed or 0)
+                stored = StoredStat(triple=triple, settled_gen=settled, content_sha256=digest)
+                page.append((str(uri), stored))
+
+        thread.run(Unit(name="discover.reopen.scan", run=scan, cost_class="free", wait_ms=wait_ms))
+        if not page:
+            return reopened
+        after = page[-1][0]
+        changed = []
+        for uri, stored in page:
+            try:
+                observed = observe(Path(uri), indexed_at_ns=stored.triple.indexed_at_ns)
+            except OSError:
+                continue
+            if freshness(stored, observed) == "changed":
+                changed.append(uri)
+        if not changed:
+            continue
+
+        def reopen(connection: _Rows, uris: Sequence[str] = tuple(changed)) -> None:
+            nonlocal reopened
+            for uri in uris:
+                if connection.execute(REOPEN_SQL, {"unit_uri": uri}).rowcount == 1:
+                    connection.execute(REOPEN_WORK_SQL, {"unit_uri": uri})
+                    reopened += 1
+
+        thread.run(Unit(name="discover.reopen", run=reopen, cost_class="free", wait_ms=wait_ms))
 
 
 @dataclass(frozen=True, slots=True)

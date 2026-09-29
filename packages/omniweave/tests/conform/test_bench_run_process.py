@@ -123,8 +123,10 @@ def test_a_local_model_records_the_run_and_a_replay_needs_no_model_at_all(tmp_pa
         for arm in ("omniweave", "control")
         for task in (
             "home-cite-rent-increase", "home-cite-flood", "home-ret-dental", "home-ret-harrow",
-            "home-abs-passport", "home-abs-pet",
+            "home-abs-passport", "home-abs-pet", "home-dmg-refund",
         )
     }  # fmt: skip
-    assert {u["task"] for u in recorded["unmeasured"]} == {"home-dmg-ldl", "home-dmg-refund"}  # type: ignore[union-attr, index]
+    #  D640: `mask_format` is built, so `home-dmg-refund` runs over its own damaged corpus, and
+    #  only the `chaos` task is held back.
+    assert {u["task"] for u in recorded["unmeasured"]} == {"home-dmg-ldl"}  # type: ignore[union-attr, index]
     assert recorded["scale"] == "quick"

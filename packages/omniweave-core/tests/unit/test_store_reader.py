@@ -2747,6 +2747,111 @@ def test_coverage_counts_the_queue_and_the_unit_roster(built: Built) -> None:
     assert (corpus.pending_work, corpus.stale_units, corpus.unreadable_units) == (1, 0, 1)
 
 
+def _diag(
+    conn: sqlite3.Connection, doc_ord: int, code: str, *, page: int | None, gen: int = 1
+) -> None:
+    conn.execute(
+        "INSERT INTO diag(doc_ord, gen, page, code, severity, component, message, fatal) "
+        "VALUES(?, ?, ?, ?, 'error', 'test', 'seeded', 0)",
+        (doc_ord, gen, page, code),
+    )
+
+
+def test_gate_9_joins_the_head_generations_blocking_diags_and_every_document_not_ok(
+    built: Built,
+) -> None:
+    """07:2189, gate 9's read: *"one indexed join of `diag` against `ABSENCE_BLOCKING_DIAGS`
+    over docs in scope ... plus `doc.status <> 'ok'`"*, grouped by `(doc, page range)`. D640.
+
+    Until D640 `coverage()` returned `gaps=()` on every store, so gate 9 had fired only on
+    evidence a test built by hand. The fixture has one of each thing the join must tell apart:
+    a blocking code on four pages that make two ranges, a code outside the thirteen, a blocking
+    code a re-parse left behind on generation 1 of a document now at generation 2, a `partial`
+    document with no diagnostic, and a job document, which `NO_JOB_DOCS` keeps out.
+    """
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    _doc(conn, 1, uri="file:///corpus/scan.pdf")
+    for page in (3, 4, 5, 9):
+        _diag(conn, 1, "OW_NEEDS_OCR", page=page)
+    _diag(conn, 1, "OW_TABLE_SPAN_CLAMPED", page=1)
+    _doc(conn, 2, uri="file:///corpus/fixed.pdf", gen=2)
+    _diag(conn, 2, "OW_MALFORMED", page=0, gen=1)
+    _doc(conn, 3, uri="file:///corpus/half.pdf", status="partial")
+    _doc(conn, 4, uri="file:///corpus/job", status="failed", fmt="owjob")
+    _diag(conn, 4, "OW_TIMEOUT", page=None)
+    _doc(conn, 5, uri="file:///corpus/clean.pdf")
+    conn.execute("COMMIT")
+
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        gaps = reader.coverage(state, Filters()).gaps
+        scoped = reader.coverage(state, Filters(uri_prefix="file:///corpus/half")).gaps
+    assert [(gap.gate, gap.diag_codes, gap.where, gap.fix) for gap in gaps] == [
+        ("parse_gap_in_scope", ("OW_NEEDS_OCR",), ((1, 3, 5), (1, 9, 9)), ""),
+        ("parse_gap_in_scope", (), (), ""),
+    ]
+    assert gaps[0].detail == "file:///corpus/scan.pdf: OW_NEEDS_OCR on p.3-5, p.9"
+    assert gaps[1].detail == "file:///corpus/half.pdf: doc.status = partial"
+    assert [gap.detail for gap in scoped] == ["file:///corpus/half.pdf: doc.status = partial"]
+
+
+def _failed(
+    conn: sqlite3.Connection, uri: str, failure_class: str | None, fmt: str = "pdf"
+) -> None:
+    conn.execute(
+        "INSERT INTO unit(unit_uri, state, last_seen_gen, trust_class, acq_failure_class, format, "
+        "part_count) VALUES(?, 'failed', 1, 'internal', ?, ?, 1)",
+        (uri, failure_class, fmt),
+    )
+
+
+def test_a_unit_that_stopped_with_no_document_is_gate_9_or_gate_8_by_its_class(
+    built: Built,
+) -> None:
+    """D640: a failed unit's class decides which of the two gates names it, and exactly one does.
+
+    13:1281-1295 sends `encrypt`, `chaos`, `mask_format` and `inflate` to gate 9, and 05:3028-3060
+    ends each at `unit.state = 'failed'` with no `doc` row, so no `diag` row can carry the code.
+    `FAILURE_CLASS_DIAGS` joins the class instead. A class with no code of the thirteen -- a crash,
+    or a class never set -- stays gate 8's `unreadable_units`, as 07:2229's fixture has it.
+    """
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    _failed(conn, "c:/corpus/masked.docx", "unsupported_format", fmt="unknown")
+    _failed(conn, "c:/corpus/locked.pdf", "encrypted")
+    _failed(conn, "c:/corpus/crashed.pdf", "driver_crashed")
+    _failed(conn, "c:/corpus/unknown.pdf", None)
+    _failed(conn, "c:/other/torn.pdf", "corrupt_input")
+    conn.execute("COMMIT")
+
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        everything = reader.coverage(state, Filters())
+        corpus = reader.coverage(state, Filters(uri_prefix="c:/corpus/"))
+    assert everything.unreadable_units == 2
+    assert [(gap.diag_codes, gap.fix) for gap in everything.gaps] == [
+        (("OW_ENCRYPTED",), ""),
+        (("OW_UNSUPPORTED_FORMAT",), "ow add c:/corpus/masked.docx"),
+        (("OW_MALFORMED",), "ow add c:/other/torn.pdf"),
+    ]
+    assert everything.gaps[1].detail == (
+        "c:/corpus/masked.docx: refused as unsupported_format, so no document was written "
+        "(detection sniffed unknown); restore or replace the file, then read it again"
+    )
+    assert all(gap.where == () for gap in everything.gaps)
+    assert (corpus.unreadable_units, len(corpus.gaps)) == (2, 2)
+
+
+def test_a_fix_names_a_path_with_spaces_so_that_a_posix_split_gives_it_back_whole() -> None:
+    """The damage suite splits `fix` with POSIX `shlex` and runs no shell (13:1306), so the path
+    is quoted the same way. A project under `Project (tatra-labs)` is the case that needs it."""
+    import shlex  # noqa: PLC0415 -- this test's own
+
+    uri = "e:/ai/project (tatra-labs)/docs/tax summary.docx"
+    assert shlex.split(rd._add_command(uri)) == ["ow", "add", uri]
+
+
 def test_a_unit_rostered_and_not_indexed_is_pending_work_with_or_without_a_work_row(
     built: Built,
 ) -> None:
