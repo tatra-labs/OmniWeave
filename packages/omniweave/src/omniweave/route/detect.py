@@ -64,7 +64,7 @@ import json
 import re
 import struct
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal
@@ -85,6 +85,7 @@ __all__ = [
     "HEAD_BYTES",
     "MEDIA_TYPES",
     "RESOURCE_LIMIT_COOLDOWN_MS",
+    "TAIL_BYTES",
     "Basis",
     "Detection",
     "RankedGuess",
@@ -93,6 +94,7 @@ __all__ = [
     "detect_bytes",
     "format_token_for",
     "hint_for",
+    "structural_check",
 ]
 
 Basis = Literal[
@@ -343,6 +345,11 @@ class Detection:
     ambiguous: bool = False
     extension_mismatch: bool = False
     encrypted: bool = False
+    corrupt: bool | None = None
+    """`unit.corrupt` (05:2240): `None` where no structural check exists for the container."""
+    corrupt_check: str = ""
+    """What the check found, which a refusal names (05:3035: *"the structural check that
+    failed"*)."""
 
     @property
     def weak(self) -> bool:
@@ -371,6 +378,11 @@ class Detection:
             "container": {"depth": 0, "member_path": None},
             "providers": [],
             **({"encrypted": True} if self.encrypted else {}),
+            **(
+                {}
+                if self.corrupt is None
+                else {"corrupt": {"value": self.corrupt, "check": self.corrupt_check}}
+            ),
         }
 
     def evidence_json(self) -> str:
@@ -414,7 +426,81 @@ def detect(path: Path) -> Detection:
     size = path.stat().st_size
     with path.open("rb") as handle:
         head = handle.read(HEAD_BYTES)
-    return detect_bytes(head, hint_for(path, byte_len=size), opener=_PathOpener(path))
+    detection = detect_bytes(head, hint_for(path, byte_len=size), opener=_PathOpener(path))
+    checked = structural_check(path, head)
+    if checked is None:
+        return detection
+    return replace(detection, corrupt=checked[0], corrupt_check=checked[1])
+
+
+# =============================================================================================
+# `unit.corrupt`: the container-level structural check, 05:2240
+# =============================================================================================
+
+TAIL_BYTES: Final[int] = 1024
+"""How far from the end a PDF's `%%EOF` may sit: the window readers search, ISO 32000-1 7.5.5."""
+
+_STARTXREF: Final = re.compile(rb"startxref\s+(\d+)")
+_XREF_AT: Final = re.compile(rb"\s*(?:xref\b|\d+\s+\d+\s+obj\b)")
+
+
+def structural_check(path: Path, head: bytes) -> tuple[bool, str] | None:
+    """`(corrupt, what the check found)`, or `None` for a container this has no check for. D641.
+
+    05:2240: *"the container-level structural check the format's own specification mandates, and
+    nothing deeper -- no `%%EOF` and no locatable xref or XRef stream (PDF), a bad or truncated
+    ZIP central directory, a CFB whose FAT chain does not close, a truncated `mimetype` member"*.
+    PDF and ZIP are built, chosen by their magic, so an OOXML, ODF or EPUB file gets the ZIP
+    check whatever its identity said. CFB is not built, and its `None` is recorded UNAVAILABLE
+    with that reason rather than guessed `False`. Per-page corruption is not this key: it is a
+    part's DECODE failure and `doc.status = 'partial'`.
+
+    Its false positive is the plan's own: *"a PDF with a broken xref that pdfium reconstructs
+    successfully is refused here and would have parsed. The escape is `--accept-partial`"*.
+    """
+    if b"%PDF-" in head[:1024]:
+        return _pdf_structure(path, header=head.index(b"%PDF-"))
+    if head.startswith(b"PK"):
+        return _zip_structure(path)
+    return None
+
+
+def _pdf_structure(path: Path, *, header: int) -> tuple[bool, str]:
+    """A `%%EOF` in the last `TAIL_BYTES`, and the last `startxref` naming an xref or XRef stream.
+
+    The offset is tried as written and past any bytes before `%PDF-`, since a file with a prefix
+    is read by readers that count from the header.
+    """
+    size = path.stat().st_size
+    with path.open("rb") as handle:
+        handle.seek(max(0, size - TAIL_BYTES))
+        tail = handle.read()
+        if b"%%EOF" not in tail:
+            return True, f"no %%EOF in the last {TAIL_BYTES} bytes, so the file ends early"
+        found = list(_STARTXREF.finditer(tail))
+        if not found:
+            return True, "no startxref before %%EOF, so no cross-reference table is locatable"
+        offset = int(found[-1].group(1))
+        for start in dict.fromkeys((offset, offset + header)):
+            if start < size:
+                handle.seek(start)
+                if _XREF_AT.match(handle.read(64)):
+                    return False, f"%%EOF present, and startxref locates the xref at byte {start}"
+    return True, f"startxref names byte {offset}, where no xref table or XRef stream begins"
+
+
+def _zip_structure(path: Path) -> tuple[bool, str]:
+    """The central directory opens and every member it lists starts inside the file."""
+    size = path.stat().st_size
+    try:
+        with zipfile.ZipFile(path) as archive:
+            members = archive.infolist()
+    except (zipfile.BadZipFile, ValueError, OSError) as exc:
+        return True, f"the ZIP central directory is missing or truncated ({exc})"
+    beyond = [one.filename for one in members if one.header_offset >= size]
+    if beyond:
+        return True, f"the ZIP central directory lists {len(beyond)} member(s) past the end"
+    return False, f"the ZIP central directory lists {len(members)} member(s)"
 
 
 def detect_bytes(head: bytes, hint: StreamHint, *, opener: _PathOpener | None = None) -> Detection:

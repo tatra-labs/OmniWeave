@@ -62,6 +62,7 @@ __all__ = [
     "Observed",
     "Row",
     "assess",
+    "chaos",
     "mask_format",
     "observed",
     "split_fix",
@@ -121,6 +122,19 @@ def mask_format(data: bytes) -> bytes:
     return MASK + data[len(MASK) :]
 
 
+def chaos(data: bytes) -> bytes:
+    """13:1285: *"truncates a part mid-stream at a fixed byte offset"*. The offset is the midpoint.
+
+    A PDF loses its cross-reference table and `%%EOF`, and an OOXML file its ZIP central directory,
+    which are what `route.detect.structural_check` reads (05:2240). Half and not a constant,
+    because the fixtures are a kilobyte and a 4 KiB offset would leave most of them whole.
+    """
+    if len(data) < 2:  # noqa: PLR2004 -- one byte cannot be cut in two
+        msg = f"chaos needs at least 2 bytes to cut, and got {len(data)}"
+        raise ValueError(msg)
+    return data[: len(data) // 2]
+
+
 @dataclass(frozen=True, slots=True)
 class Injector:
     """One built Injector: its row, the damage, and the file suffixes it applies to."""
@@ -139,6 +153,13 @@ class Injector:
 
 INJECTORS: Final[Mapping[str, Injector]] = MappingProxyType(
     {
+        "chaos": Injector(
+            row=next(row for row in TABLE if row.name == "chaos"),
+            damages="truncates a part mid-stream at a fixed byte offset",
+            applies_to=frozenset({".docx", ".xlsx", ".pptx", ".pdf"}),
+            transform=chaos,
+            restores_source=True,
+        ),
         "mask_format": Injector(
             row=next(row for row in TABLE if row.name == "mask_format"),
             damages="rewrites the leading magic bytes so no enabled driver accepts the unit",
@@ -148,7 +169,8 @@ INJECTORS: Final[Mapping[str, Injector]] = MappingProxyType(
         ),
     }
 )
-"""The Injectors built. One of thirteen, and each lands with its passing assertion (13:1314)."""
+"""The Injectors built, each with its passing assertion (13:1314): `mask_format` (D640) and
+`chaos` (D641). `TABLE` order, so the report reads as the plan's table does."""
 
 
 @dataclass(frozen=True, slots=True)

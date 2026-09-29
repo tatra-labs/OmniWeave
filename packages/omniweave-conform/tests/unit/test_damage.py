@@ -18,6 +18,7 @@ from omniweave_conform.damage import (
     FixRefusedError,
     Observed,
     assess,
+    chaos,
     mask_format,
     split_fix,
 )
@@ -94,6 +95,22 @@ def test_mask_format_rewrites_the_magic_and_nothing_else(pristine: bytes) -> Non
 def test_mask_format_refuses_a_file_it_could_only_erase() -> None:
     with pytest.raises(ValueError, match="more than 8 bytes"):
         mask_format(b"PK\x03\x04")
+
+
+def test_chaos_cuts_a_part_at_its_midpoint() -> None:
+    """13:1285: *"truncates a part mid-stream at a fixed byte offset"*: the first half, kept."""
+    pristine = bytes(range(256)) * 4
+    cut = chaos(pristine)
+    assert cut == pristine[: len(pristine) // 2]
+    assert chaos(b"ab") == b"a"
+    with pytest.raises(ValueError, match="at least 2 bytes"):
+        chaos(b"a")
+
+
+def test_the_built_injectors_are_in_the_table_s_order() -> None:
+    """The report reads as 13:1281-1295 does, whatever order they landed in."""
+    order = [row.name for row in TABLE]
+    assert list(INJECTORS) == sorted(INJECTORS, key=order.index)
 
 
 # ---------------------------------------------------------------------------------------------

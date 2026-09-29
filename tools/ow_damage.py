@@ -116,7 +116,27 @@ _ARCHIVE: Final = (
     "tax/tax-summary-2023.docx",
 )
 
+_ROOM: Final = (
+    "finance/cap-table-2024.xlsx",
+    "hr/headcount-2024.xlsx",
+    "legal/nda-northwind.docx",
+)
+
 FIXTURES: Final[Mapping[str, tuple[Fixture, ...]]] = {
+    "chaos": (
+        Fixture(
+            "data_room",
+            _ROOM,
+            "hr/headcount-2024.xlsx",
+            "What total headcount does the 2024 headcount report give?",
+        ),
+        Fixture(
+            "personal_archive",
+            _ARCHIVE,
+            "medical/lab-results-2024.pdf",
+            "What was the LDL cholesterol result in the 2024 lab results?",
+        ),
+    ),
     "mask_format": (
         Fixture(
             "personal_archive",
@@ -132,9 +152,10 @@ FIXTURES: Final[Mapping[str, tuple[Fixture, ...]]] = {
         ),
     ),
 }
-"""Each built Injector's fixtures: an OOXML file, whose magic is a ZIP's and whose identity is its
-container, and a PDF, whose magic is its own. The two are the two ways detection names a format
-(`route/detect.py` steps 2 and 3), so masking each is a different rejection."""
+"""Each built Injector's fixtures: an OOXML file and a PDF, the two structures detection reads.
+Masked, they are the two ways it names a format (`route/detect.py` steps 2 and 3); cut, they are
+the two structural checks of `unit.corrupt`, a ZIP central directory and a PDF trailer (D641).
+`chaos` takes its OOXML file from the data room, a spreadsheet, as the bench's own task does."""
 
 
 def emit(line: str = "") -> None:

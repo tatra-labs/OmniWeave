@@ -38,7 +38,8 @@ def test_select_takes_all_ids_classes_and_corpora_and_refuses_an_unknown_word() 
 
 
 def test_a_damaged_task_is_held_back_only_while_its_injector_is_not_built() -> None:
-    """D640: `mask_format` is built, so its two tasks run; `chaos` and `encrypt` are not."""
+    """D640 and D641: `mask_format` and `chaos` are built, so their four tasks run; the two that
+    need `encrypt` are held back, naming it."""
     runnable, held = run.partition(CATALOG.tasks)
     reasons = {one.task_id: one.reason for one in held}
     assert sorted(reasons) == sorted(
@@ -46,7 +47,8 @@ def test_a_damaged_task_is_held_back_only_while_its_injector_is_not_built() -> N
     )
     assert len(runnable) + len(held) == len(CATALOG.tasks)
     assert {"home-dmg-refund", "data-dmg-dpa-region"} <= {t.id for t in runnable}
-    assert "chaos Injector" in reasons["data-dmg-headcount"]
+    assert sorted(reasons) == ["data-dmg-materiality", "legal-dmg-service-credit"]
+    assert "encrypt Injector" in reasons["data-dmg-materiality"]
     assert all("P6" in reason and "mask_format" in reason for reason in reasons.values())
 
 
@@ -122,7 +124,7 @@ def test_every_task_runs_on_both_arms_is_graded_and_the_guard_holds(tmp_path: Pa
         )
         for task in runnable
     }
-    assert len(prepared) == 2
+    assert len(prepared) == 3
     lines: list[str] = []
     graded, failures = anyio.run(
         lambda: run.run_all(
@@ -137,23 +139,24 @@ def test_every_task_runs_on_both_arms_is_graded_and_the_guard_holds(tmp_path: Pa
         )
     )
     assert failures == []
-    assert len(graded) == 2 * len(runnable) == 14
+    assert len(graded) == 2 * len(runnable) == 16
     assert all(g.outcome.correct for g in graded), [
         g.task.id for g in graded if not g.outcome.correct
     ]
     #  The oracle reads the source after no omniweave call: D601's rule makes that a re-read.
-    present = [g for g in graded if g.task.id in gen.PLANTED]
+    #  A damaged file cannot be read, so reading it is no re-read of an indexed source.
+    present = [g for g in graded if g.task.id in gen.PLANTED and g.task.injector is None]
     assert all(g.outcome.reread for g in present)
     config = ac.resolve(env={"OW_BENCH_SCALE": "quick"})
     report_lines, passed, result = run.summarize(config, graded, failures, held, CATALOG.missing())
     assert passed is True
     assert any(line.startswith("control guard") and " ok " in line for line in report_lines)
-    assert any("UNMEASURED  home-dmg-ldl" in line for line in report_lines)
+    assert not any(line.startswith("UNMEASURED") for line in report_lines)
     assert any(line.startswith("OWED") for line in report_lines)
     assert any(line.startswith("WATERMARK") for line in report_lines)
     assert result["control_guard"]["ok"] is True
     assert {o["task"] for o in result["outcomes"]} == {t.id for t in runnable}
-    assert sum(1 for line in lines if line.startswith("  task")) == 14
+    assert sum(1 for line in lines if line.startswith("  task")) == 16
 
 
 def test_a_task_that_fails_is_recorded_and_fails_the_run_without_stopping_the_rest(
@@ -190,10 +193,10 @@ def _main(*argv: str) -> tuple[int, list[str]]:
 
 
 def test_list_prints_the_selection_and_marks_what_is_held_back() -> None:
-    code, out = _main("--list", "--tasks", "home-dmg-ldl,home-ret-dental")
+    code, out = _main("--list", "--tasks", "legal-dmg-service-credit,home-ret-dental")
     assert code == 0
     assert any("home-ret-dental" in line and "UNMEASURED" not in line for line in out)
-    assert any("home-dmg-ldl" in line and "UNMEASURED" in line for line in out)
+    assert any("legal-dmg-service-credit" in line and "UNMEASURED" in line for line in out)
     assert any("(flag)" in line for line in out)
 
 

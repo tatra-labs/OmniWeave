@@ -59,4 +59,5 @@ def test_every_built_injector_degrades_to_its_named_cause_and_its_fix_fixes_it(
     for pair in report["pairs"]:
         assert [clause["name"] for clause in pair["clauses"]] == CLAUSES, pair
         assert all(clause["ok"] for clause in pair["clauses"]), pair
-    assert "population: 1 of 13 Injectors built" in done.stdout.decode("utf-8", "replace")
+    population = f"population: {len(INJECTORS)} of {len(TABLE)} Injectors built"
+    assert population in done.stdout.decode("utf-8", "replace")

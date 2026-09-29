@@ -162,6 +162,7 @@ if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from omniweave_core.store.sqlite import StoreThread
 
 __all__ = [
+    "ACCEPT_PARTIAL_CLASSES",
     "ACQUIRED",
     "ACQUIRED_SQL",
     "ACQUIRING",
@@ -980,7 +981,7 @@ def mark_stale(
 
 
 REOPEN_SCAN_SQL: Final[str] = """
-SELECT unit_uri, size, mtime_ns, indexed_at_ns, content_sha256, settled_gen
+SELECT unit_uri, size, mtime_ns, indexed_at_ns, content_sha256, settled_gen, acq_failure_class
   FROM unit
  WHERE connector = :connector
    AND last_seen_gen = :generation
@@ -1025,6 +1026,14 @@ keep the old row and write nothing for the new bytes. The cost record outlives t
 """
 
 
+ACCEPT_PARTIAL_CLASSES: Final[frozenset[str]] = frozenset({"corrupt_input"})
+"""The classes `ow ingest --accept-partial` re-opens whether or not the file changed. **D641.**
+
+05:2821: *"one `gate.corrupt` refused, proceeds"*. The override exists for bytes the user will not
+change -- a PDF pdfium can reconstruct -- so a refused unit must be read again as it stands, or the
+flag would only ever reach a file seen for the first time."""
+
+
 def reopen_changed_failures(
     thread: StoreThread,
     *,
@@ -1032,8 +1041,12 @@ def reopen_changed_failures(
     connector: str = CONNECTOR,
     plan_batch: int = PLAN_BATCH,
     wait_ms: int = BATCH_WAIT_MS,
+    regardless: frozenset[str] = frozenset(),
 ) -> int:
     """Re-open each failed unit whose file changed since the read that failed it. **D640.**
+
+    A unit whose class is in `regardless` is re-opened whether or not its file changed: that is
+    `--accept-partial`'s `ACCEPT_PARTIAL_CLASSES` (D641).
 
     One `stat` per failed unit, which is the zero-byte rung `freshness()` prices at nothing, and one
     transaction per page. A path that no longer stats is left `failed`: the next walk will not see
@@ -1042,7 +1055,7 @@ def reopen_changed_failures(
     reopened = 0
     after = ""
     while True:
-        page: list[tuple[str, StoredStat]] = []
+        page: list[tuple[str, StoredStat, str | None]] = []
         params = {
             "connector": connector,
             "generation": generation,
@@ -1053,21 +1066,24 @@ def reopen_changed_failures(
         def scan(
             connection: _Rows,
             params: Mapping[str, object] = params,
-            page: list[tuple[str, StoredStat]] = page,
+            page: list[tuple[str, StoredStat, str | None]] = page,
         ) -> None:
-            for uri, size, mtime, indexed, digest, settled in connection.execute(
+            for uri, size, mtime, indexed, digest, settled, cls in connection.execute(
                 REOPEN_SCAN_SQL, params
             ).fetchall():
                 triple = StatTriple(size=size or 0, mtime_ns=mtime or 0, indexed_at_ns=indexed or 0)
                 stored = StoredStat(triple=triple, settled_gen=settled, content_sha256=digest)
-                page.append((str(uri), stored))
+                page.append((str(uri), stored, None if cls is None else str(cls)))
 
         thread.run(Unit(name="discover.reopen.scan", run=scan, cost_class="free", wait_ms=wait_ms))
         if not page:
             return reopened
         after = page[-1][0]
         changed = []
-        for uri, stored in page:
+        for uri, stored, cls in page:
+            if cls in regardless:
+                changed.append(uri)
+                continue
             try:
                 observed = observe(Path(uri), indexed_at_ns=stored.triple.indexed_at_ns)
             except OSError:
