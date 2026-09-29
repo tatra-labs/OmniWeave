@@ -462,11 +462,14 @@ def ingest(
     clock: Clock | None = None,
     sweep_ms: int | None = None,
     offline: bool = False,
+    ignore_evidence_cache: bool = False,
 ) -> IngestReport:
     """Run hops 1-4 over one store, under `store.write`, and report where every unit stopped.
 
     `offline` is `ow add --offline`: routing's `ProbeEnv.offline`, so a driver that needs the
-    network does not resolve (`routing.resolve_policy`, D631).
+    network does not resolve (`routing.resolve_policy`, D631). `ignore_evidence_cache` is `ow
+    ingest`'s flag: routing recomputes the signals `route_signal` holds rather than reading them
+    (05:2822, D633).
 
     `sweep_ms` replaces `[runtime] deferred_sweep_ms` for this run's loop when given. It is the
     interval `Supervisor._settle()` waits between empty claims, and 08:915's two quiet polls mean a
@@ -506,6 +509,7 @@ def ingest(
                 book=book,
                 host=host,
                 offline=offline,
+                ignore_evidence_cache=ignore_evidence_cache,
             )
             pending = _receipt(thread, source_root=source_root)
         except BaseException:
@@ -650,6 +654,7 @@ def _hops(
     book: _Book,
     host: sup.HostFacts,
     offline: bool,
+    ignore_evidence_cache: bool = False,
 ) -> IngestReport:
     now_ns = clock.wall_ns()
     plan_batch = int(config.get("runtime.plan_batch"))  # type: ignore[arg-type]
@@ -663,7 +668,9 @@ def _hops(
     opened = book.stage(Stage.DISCOVER, opened)
     context = _context(run_id, generation, config=config, roots=roots, clock=clock)
     enqueued, unsalted = _enqueue(thread, context, plan_batch=plan_batch)
-    inputs = _routing_inputs(config, offline=offline)
+    inputs = replace(
+        _routing_inputs(config, offline=offline), ignore_evidence_cache=ignore_evidence_cache
+    )
     book.catalog(inputs.catalog.catalog_digest)
     context = replace(
         context,
@@ -734,6 +741,8 @@ class _RoutingInputs:
     resolving: Policy
     computers: Mapping[str, str] = field(default_factory=dict)
     """`evidence.Installed.computers`: the providers whose package ships a computer (D628)."""
+    ignore_evidence_cache: bool = False
+    """`ow ingest --ignore-evidence-cache`: routing recomputes `route_signal` rows (D633)."""
 
 
 def _routing_inputs(config: Config, *, offline: bool = False) -> _RoutingInputs:
@@ -778,6 +787,7 @@ def _route(
         source_root=str(roots.source),
         now_ms=clock.wall_ns() // 1_000_000,
         computers=inputs.computers,
+        ignore_evidence_cache=inputs.ignore_evidence_cache,
     )
 
 

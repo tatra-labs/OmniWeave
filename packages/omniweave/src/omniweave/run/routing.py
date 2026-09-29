@@ -125,6 +125,13 @@ _BUILTIN: Final[str] = "builtin"
 
 _NOTHING: Final[str] = "the provider answered nothing for it"
 
+RECOMPUTABLE: Final[frozenset[CostClass]] = frozenset({CostClass.FREE, CostClass.LOCAL_COMPUTE})
+"""What `--ignore-evidence-cache` may recompute. 05:2822: *"can only ever spend
+`free`/`local_compute`"*, and 18:988-990 leaves re-running billed work to `--allow-rebill`. A key of
+any other class is read from `route_signal` as it would be without the flag. No shipped signal is
+billed, so today the rule is every key; it is here so a billed provider cannot make the flag an
+unnamed authorisation to re-bill, which is why 18:990-991 struck `--ignore-cache` (D633)."""
+
 Compute: TypeAlias = "Callable[[str, str, str, tuple[str, ...]], SignalAnswer]"
 """`(package, source path, content_sha256, keys) -> SignalAnswer`: one child's worth of signals.
 
@@ -340,6 +347,9 @@ class _Router:
     demand: DemandMap
     computers: Mapping[str, str]
     compute: Compute
+    ignore_evidence_cache: bool = False
+    """`ow ingest --ignore-evidence-cache`: skip the read of every `RECOMPUTABLE` key, and write
+    what the child answers over the row that was there (D633)."""
     tally: RouteTally = field(default_factory=RouteTally)
     resolutions: dict[str, Resolution] = field(default_factory=dict)
 
@@ -421,7 +431,9 @@ class _Router:
                 asked.setdefault(spec.provider, []).append(key)
         for provider, keys in asked.items():
             versions = {key: self._version(key, fmt) for key in keys}
-            kept = self._cached(digest, versions)
+            kept = self._cached(
+                digest, {key: v for key, v in versions.items() if not self._recomputes(key)}
+            )
             hits = len(kept.values) + len(kept.unavailable)
             if hits:
                 self.tally.cached[provider] += hits
@@ -443,6 +455,10 @@ class _Router:
                 )
             for key in keys:
                 self._put(ev, key, fmt, found)
+
+    def _recomputes(self, key: str) -> bool:
+        """Whether the read is skipped for `key`: under the flag, for a class it may spend."""
+        return self.ignore_evidence_cache and self.registry.cost_class_of(key) in RECOMPUTABLE
 
     def _version(self, key: str, fmt: str) -> str:
         spec = self.registry.resolve(key, fmt)
@@ -818,13 +834,15 @@ def route_identified(
     limit: int = 512,
     computers: Mapping[str, str] | None = None,
     compute: Compute | None = None,
+    ignore_evidence_cache: bool = False,
 ) -> RouteTally:
     """Route every unit this generation identified. One transaction per unit, keyset-paged.
 
     `computers` is `evidence.Installed.computers`: the providers whose package ships a computer,
     by name. Absent, nothing is computed and every group key the roster does not hold is
     unavailable. `compute` defaults to `host.signals.compute_in_child`, run from this run's scratch
-    directory with a worker's named environment.
+    directory with a worker's named environment. `ignore_evidence_cache` is `ow ingest`'s flag of
+    that name (`_Router.ignore_evidence_cache`).
     """
     router = _Router(
         thread=thread,
@@ -838,6 +856,7 @@ def route_identified(
         demand=compile_demand(policy, registry=registry),
         computers=computers or {},
         compute=compute or _child_compute(ctx),
+        ignore_evidence_cache=ignore_evidence_cache,
     )
     after = ""
     while True:
