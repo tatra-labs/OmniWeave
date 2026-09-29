@@ -7,6 +7,8 @@ no-omniweave control), and two numbers that are only ever reported together —
 ```
 bench/serve/
 ├── serve_harness.py   the instrument: catalogue, transcripts, per-task facts, rates, the Control guard
+├── first_answer.py    first_answer_seconds (V01-15): ow install -> ow add -> ow query, timed, reversed
+├── test_first_answer.py  its rules: the folder, the judge, the verdict and the exit
 ├── tasks.toml         the 30-task catalogue. EMPTY until the reference corpora exist (D602)
 ├── test_harness.py    the rules, pinned over synthetic transcripts before any real one exists
 └── conftest.py        --tasks
@@ -17,6 +19,7 @@ bench/serve/
 ```bash
 uv run pytest bench/serve -q                # the harness's own rules
 uv run pytest bench/serve -q --tasks all    # 16-roadmap.md:745's P7 exit command
+uv run python bench/serve/first_answer.py   # V01-15 and P7's demo, over 100 generated documents
 ```
 
 The second **fails today, on purpose**, and names why: the catalogue holds 0 of 30 tasks (D602) and
