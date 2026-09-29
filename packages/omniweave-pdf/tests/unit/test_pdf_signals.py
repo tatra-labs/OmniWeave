@@ -99,3 +99,49 @@ def test_every_computed_key_is_a_pdfium_row_of_this_package_s_signals_toml() -> 
         assert key in rows, key
         assert rows[key]["serves"] == ["pdf"]
         assert rows[key]["cost_class"] == "free", "a computer here answers the FREE group only"
+
+
+# ---------------------------------------------------------------------------------------------
+# unit.encrypted: whether the file OPENS (ADR-15 D15.2)
+# ---------------------------------------------------------------------------------------------
+
+
+def _encrypted(user: str) -> bytes:
+    from omniweave_conform.pdfcrypt import encrypt_pdf  # noqa: PLC0415 -- the kit's, test-only
+
+    raw = (FIXTURES / "gen02p.pdf").read_bytes()
+    return encrypt_pdf(raw, user_password=user, owner_password="owner")  # noqa: S106 -- a fixture's
+
+
+def test_a_pdf_that_needs_a_password_answers_encrypted_and_nothing_else() -> None:
+    """ADR-15 D15.2: a VALUE, not a raise. A raise refuses the whole group, which D579 holds for
+    ever under gate 5; a document that needs a password is an answer. Every other key needs the
+    open document, so it is absent and the child reports it unavailable."""
+    assert signals.compute(_encrypted("s3cret"), (*KEYS, signals.ENCRYPTED)) == {
+        signals.ENCRYPTED: True
+    }
+
+
+def test_an_owner_password_only_pdf_opens_and_answers_not_encrypted() -> None:
+    """The permission-restricted PDF: it carries `/Encrypt` and opens with no password, so it is
+    read as it always was (D15.2), with every key answered."""
+    answer = signals.compute(_encrypted(""), (*KEYS, signals.ENCRYPTED))
+    assert answer[signals.ENCRYPTED] is False
+    assert answer["unit.part_count"] == 2
+    assert int(answer["decode.char_count"]) > 0
+
+
+def test_a_plain_pdf_answers_not_encrypted() -> None:
+    raw = (FIXTURES / "gen01p.pdf").read_bytes()
+    assert signals.compute(raw, (signals.ENCRYPTED,)) == {signals.ENCRYPTED: False}
+
+
+def test_a_password_refusal_still_raises_when_encrypted_was_not_asked() -> None:
+    """Without the key asked there is no answer to give, so the group is refused as before."""
+    with pytest.raises(pdfium.PdfiumError, match="password"):
+        signals.compute(_encrypted("s3cret"), KEYS)
+
+
+def test_a_malformed_pdf_is_not_mistaken_for_an_encrypted_one() -> None:
+    with pytest.raises(pdfium.PdfiumError):
+        signals.compute((FIXTURES / "truncated.pdf").read_bytes(), (signals.ENCRYPTED,))

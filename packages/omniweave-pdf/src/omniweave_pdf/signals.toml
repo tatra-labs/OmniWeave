@@ -1,7 +1,7 @@
 # omniweave_pdf/signals.toml -- the `pdfium` provider's rows of the day-one signal registry.
 #
-# 05-ingest-and-routing.md section 5.1 is the registry's sole home; these are the sixteen rows
-# whose provider column names `pdfium`. Declared by `[project.entry-points."omniweave.signals"]`
+# 05-ingest-and-routing.md section 5.1 is the registry's sole home; these are the seventeen rows
+# whose provider column names `pdfium` (`unit.encrypted` is ADR-15 D15.2's). Declared by `[project.entry-points."omniweave.signals"]`
 # in this distribution's `pyproject.toml` and located by NAME --
 # `Distribution.locate_file("omniweave_pdf/signals.toml")` -- so `omniweave.route` reads it without
 # importing this package, which `tools/layers.toml` forbids outright: `omniweave`'s row is
@@ -32,6 +32,20 @@ dtype = "int"
 domain = [0, 2147483647]
 cost_class = "free"
 est = { cpu_ms = 6 }
+nullable = false
+version = "1.0.0"
+
+[signal."unit.encrypted"]
+# ADR-15 D15.2: whether pdfium OPENS the file with no password, which is what `gate.encrypted`
+# needs; detection's trailer `/Encrypt` scan (D15.1) stays the builtin fallback. An owner-password-
+# only PDF carries `/Encrypt` and opens, so it answers false and is read as it always was. The
+# per-key columns are the builtin row's (omniweave/route/signals.toml), as D199 requires.
+serves = ["pdf"]
+scope = "unit"
+kind = "fact"
+dtype = "bool"
+cost_class = "free"
+est = { cpu_ms = 1 }
 nullable = false
 version = "1.0.0"
 

@@ -609,6 +609,8 @@ def test_the_fifty_four_keys_of_the_table_are_the_fifty_three_plus_the_unregiste
         ("unit.part_count", "pdf", "pdfium"),  # three providers, PDF
         ("unit.part_count", "xlsx", "officexml"),  # three providers, office
         ("unit.part_count", "txt", "builtin"),  # three providers, the fallback
+        ("unit.encrypted", "pdf", "pdfium"),  # whether pdfium opens it (ADR-15 D15.2)
+        ("unit.encrypted", "docx", "builtin"),  # detection's scan, every other format
         ("math.part_frac", "docx", "officexml"),  # the OMML half
         ("math.part_frac", "pdf", "builtin"),  # the marker half, via the fallback
         ("math.part_frac", "csv", "builtin"),  # office, but no math element to count
