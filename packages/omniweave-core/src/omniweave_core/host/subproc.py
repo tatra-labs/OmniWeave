@@ -1298,11 +1298,17 @@ _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: Final = 9
 _JOB_OBJECT_BASIC_PROCESS_ID_LIST: Final = 3
 """`JobObjectBasicProcessIdList`. This is the one that makes the assignment OBSERVABLE."""
 
-_BELOW_NORMAL_PRIORITY_CLASS: Final = 0x00004000
+BELOW_NORMAL_PRIORITY_CLASS: Final = 0x00004000
 """04-driver-system.md:1754's Windows priority row: `SetPriorityClass(BELOW_NORMAL)`, which is
 `os.nice(10)`'s counterpart and carries graphify's reason -- *"a background rebuild must lose to
 the user's editor"* (:1763) -- with the higher stake :1764 names: a VLM parse can allocate
-gigabytes and an OOM-killer visit takes the user's editor with it."""
+gigabytes and an OOM-killer visit takes the user's editor with it.
+
+It is also a `CreateProcess` priority flag, and that is how a worker gets it (D637): passed in
+`creationflags`, the class is the child's before it runs, and a process whose class is
+`BELOW_NORMAL` gives it to every process it creates without a class of its own -- so `uv`'s
+trampoline hands it to the interpreter. `SetPriorityClass` after `Popen` returned had the job
+object's race: an interpreter the trampoline had already started kept `NORMAL`."""
 
 CREATE_SUSPENDED: Final = 0x00000004
 """The `CreateProcess` flag that closes the job-assignment race (D636): the child exists, holds
@@ -1533,12 +1539,40 @@ class JobObject:
         self._kernel32.CloseHandle(self._handle)
 
 
+def priority_class(pid: int) -> int | None:
+    """`GetPriorityClass` of a live process, or `None` where it cannot be read. Never raises.
+
+    The read-back that makes 04-driver-system.md:1754's row checkable: a worker spawned
+    `below_normal` reports `BELOW_NORMAL_PRIORITY_CLASS` here, and so does the interpreter its
+    trampoline started (D637). POSIX has no priority class; `None` there.
+    """
+    if sys.platform != "win32":  # pragma: no cover -- POSIX
+        return None
+    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    kernel32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+    kernel32.GetPriorityClass.restype = ctypes.c_uint32
+    kernel32.GetPriorityClass.argtypes = [ctypes.c_void_p]
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+    handle = kernel32.OpenProcess(0x1000, 0, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return None
+    try:
+        return int(kernel32.GetPriorityClass(handle)) or None
+    finally:
+        kernel32.CloseHandle(handle)
+
+
 def lower_priority(pid: int) -> tuple[bool, str]:
     """`SetPriorityClass(BELOW_NORMAL)` on Windows, `os.nice(10)` nowhere else. Never raises.
 
     04-driver-system.md:1754 and :1763. Returns `(obtained, how)` so the caller can record the
     shortfall rather than assume the priority; a background parse that did not lose to the
     user's editor is a fact worth having in the row.
+
+    For a process the host did NOT create. A worker gets its class at creation instead
+    (`spawn_worker(below_normal=True)`, D637), because lowering a running trampoline leaves an
+    interpreter it has already started at `NORMAL`.
     """
     if sys.platform == "win32":
         kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
@@ -1549,7 +1583,7 @@ def lower_priority(pid: int) -> tuple[bool, str]:
             return (False, f"OpenProcess({pid}) failed, GetLastError {kernel32.GetLastError()}")
         try:
             kernel32.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
-            ok = bool(kernel32.SetPriorityClass(proc, _BELOW_NORMAL_PRIORITY_CLASS))
+            ok = bool(kernel32.SetPriorityClass(proc, BELOW_NORMAL_PRIORITY_CLASS))
             return (ok, "SetPriorityClass(BELOW_NORMAL_PRIORITY_CLASS)")
         finally:
             kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
@@ -2525,6 +2559,7 @@ def spawn_worker(
     stderr: StderrRing,
     stdout: StderrRing,
     job: JobObject | None = None,
+    below_normal: bool = False,
 ) -> WorkerProcess:
     """`subprocess.Popen`, with every argument the semgrep message asks for.
 
@@ -2542,7 +2577,18 @@ def spawn_worker(
     runs a single instruction (D636), so the trampoline's interpreter is born inside the job. A
     child the job cannot admit is killed here: a suspended process nobody resumes is a leak that
     never exits on its own.
+
+    `below_normal` is 04-driver-system.md:1754's priority row, set in the same `creationflags`
+    (D637) so the class is inherited by everything the child starts. Windows only: POSIX's
+    `os.nice(10)` belongs in the child before it imports the driver, beside `setrlimit`, and the
+    bootstrap applies neither yet -- which the address-space cap already reports as not obtained.
     """
+    flags = 0
+    if sys.platform == "win32":
+        if job is not None:
+            flags |= CREATE_SUSPENDED
+        if below_normal:
+            flags |= BELOW_NORMAL_PRIORITY_CLASS
     proc = subprocess.Popen(  # noqa: S603 -- argv is a tuple, shell=False, cwd is explicit
         list(request.argv),
         cwd=request.cwd,
@@ -2552,7 +2598,7 @@ def spawn_worker(
         stderr=subprocess.PIPE,
         shell=False,
         close_fds=True,
-        creationflags=CREATE_SUSPENDED if job is not None else 0,
+        creationflags=flags,
     )
     if job is not None:
         try:
@@ -3659,7 +3705,9 @@ def launch(
     child connects on its first line and a pipe that does not exist yet is `could not open`. The
     job object is created BEFORE the spawn and the child is spawned suspended into it (D636), so
     the address-space cap covers the trampoline's interpreter from its first instruction, not
-    only whatever had not yet started when an `assign()` after the fact ran. Every failure path
+    only whatever had not yet started when an `assign()` after the fact ran. It is spawned at
+    `BELOW_NORMAL_PRIORITY_CLASS` for the same reason and in the same flags (D637): a background
+    parse must lose to the user's editor (04-driver-system.md:1763). Every failure path
     kills the child: a half-started worker nobody holds is an orphan process with the driver's
     code loaded.
 
@@ -3672,7 +3720,7 @@ def launch(
     try:
         if sys.platform == "win32":
             job = JobObject(memory_limit_bytes=memory_mb * 1_048_576 if memory_mb > 0 else None)
-        proc = spawn(request, stderr=stderr, stdout=StderrRing(), job=job)
+        proc = spawn(request, stderr=stderr, stdout=StderrRing(), job=job, below_normal=True)
     except BaseException:
         listener.close()
         if job is not None:
@@ -3700,6 +3748,7 @@ def launch(
 __all__ = [
     "ACCEPT_MS",
     "AIMD_RECOVERY_STREAK",
+    "BELOW_NORMAL_PRIORITY_CLASS",
     "CONTROLS_BY_PLATFORM",
     "CREATE_SUSPENDED",
     "FAILURE_MODES",
@@ -3751,6 +3800,7 @@ __all__ = [
     "owner_only_sddl",
     "peak_rss_bytes",
     "pipe_names",
+    "priority_class",
     "produced_total",
     "retry_batch_size",
     "run_captured",

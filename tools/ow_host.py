@@ -426,7 +426,9 @@ def cycle(behave: str, *, settings: sp.HostSettings, tag: str, emit: Emit) -> Cy
     # Spawned suspended INTO the job (D636): assigned after the fact, the trampoline's interpreter
     # could start first and sit outside the cap.
     try:
-        process = sp.spawn_worker(request, stderr=ring, stdout=stdout_ring, job=job)
+        process = sp.spawn_worker(
+            request, stderr=ring, stdout=stdout_ring, job=job, below_normal=True
+        )
     except BaseException:
         job.close()
         raise
@@ -448,7 +450,10 @@ def cycle(behave: str, *, settings: sp.HostSettings, tag: str, emit: Emit) -> Cy
             cpu_cap_requested=True,
             fd_cap_requested=True,
         )
-        lowered, how = sp.lower_priority(process.pid)
+        # At creation, and read back (D637): lowered after the fact, the trampoline's
+        # interpreter could already be running at NORMAL.
+        lowered = sp.priority_class(process.pid) == sp.BELOW_NORMAL_PRIORITY_CLASS
+        how = "BELOW_NORMAL_PRIORITY_CLASS at CreateProcess, read back with GetPriorityClass"
         emit(f"  spawned     pid {process.pid}, job pids {job.pids()}, priority {lowered} ({how})")
         channel = listener.accept(timeout_ms=CONNECT_MS)
         worker_process = sp.Worker(
