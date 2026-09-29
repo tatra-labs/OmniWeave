@@ -49,7 +49,7 @@ SEAM: Final[str] = "bench.agent"
 HARNESS_MAJOR: Final[int] = 1
 """The site's `contract_major`. Bumped when the loop's wire to the model changes meaning."""
 
-PROMPT_VERSION: Final[str] = "agent-prompt/1"
+PROMPT_VERSION: Final[str] = "agent-prompt/2"
 """The system prompt's version. 13:984: a recording whose prompt version no longer matches is a
 MISS, never a hit."""
 
