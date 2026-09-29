@@ -1,0 +1,30 @@
+# bench/serve/agent.toml -- every knob of the scripted agent and of a harness run (ADR-14 D14.7).
+#
+# Precedence, resolved once: a flag > its OW_BENCH_<KEY> environment twin > this file > the
+# built-in default. `agent_config.resolve()` reports every value with its source.
+#
+# THE DEFAULT RUN NEEDS NOTHING: `cassette = "required"` replays the committed recordings under
+# fixtures/cassettes/agent/ and calls no provider -- no key, no network, no GPU. `provider` and
+# `model` still matter there, because they are in every Cassette key: they name WHICH recordings
+# are replayed. Change either and the run records beside the committed set rather than over it.
+
+[agent]
+# anthropic -- the Messages API; the key is read from ANTHROPIC_API_KEY unless api_key_env says.
+# openai    -- the Chat Completions wire. Also every local server that speaks it: Ollama
+#              (base_url = "http://localhost:11434/v1"), vLLM, llama.cpp, LM Studio. A local
+#              server needs no key, so recording costs nothing.
+provider = "anthropic"
+model = "claude-sonnet-5"
+base_url = ""          # "" is the provider's public endpoint
+api_key_env = ""       # "" is ANTHROPIC_API_KEY or OPENAI_API_KEY, by provider
+temperature = 0.0      # 0 so a re-record differs only when the model or a prompt did
+max_tokens = 2048
+tool_budget = 12       # 13-quality.md:1362's fixed budget, the same in both arms (ADR-14 D14.3)
+timeout_s = 120
+
+[run]
+arms = ["omniweave", "control"]
+tasks = "all"          # all | comma-separated ids, classes or corpora
+scale = "full"         # full: F20's shapes, the only reportable scale | quick: ~1/20 the filler
+workers = 1            # tasks run in parallel, one isolated agent each
+cassette = "required"  # required: replay only | allow: record on miss | off: live, record nothing
