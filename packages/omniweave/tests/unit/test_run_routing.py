@@ -29,6 +29,7 @@ from omniweave_core.config import Config, load
 from omniweave_core.host.signals import SignalAnswer
 from omniweave_core.store.sqlite import StoreThread, Unit, connect
 from omniweave_core.work import WorkRow
+from omniweave_ports.types import CostClass
 
 from omniweave import plan
 
@@ -664,3 +665,100 @@ def test_the_real_child_is_started_once_for_a_scan_held_twice(
     assert dict(again.tally.unrouted) == dict(first.tally.unrouted)
     ((reason, _count),) = again.tally.unrouted.items()
     assert reason.startswith("deferred (decode.blank-part-escape): ink.tiles:")
+
+
+# ---------------------------------------------------------------------------------------------
+# --ignore-evidence-cache: recompute what route_signal holds, never a billed key (D633)
+# ---------------------------------------------------------------------------------------------
+
+
+class _Billed:
+    """The registry, with one key moved to `billed_api`, as a billed provider's key would be."""
+
+    def __init__(self, registry: Any, key: str) -> None:
+        self._registry, self._key = registry, key
+
+    def cost_class_of(self, key: str) -> Any:
+        return CostClass.BILLED_API if key == self._key else self._registry.cost_class_of(key)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._registry, name)
+
+
+def test_the_flag_recomputes_every_cached_key_and_writes_over_its_row(
+    signals: StoreThread,
+) -> None:
+    """05:2822: *"re-computes `route_signal` rows"*. Both FREE groups go to the child again, and
+    each row is the second run's: `computed_at` is its `now_ms`."""
+    _decide(_router(signals, _Computer(CLEAN)))
+    computer = _Computer({**CLEAN, "decode.char_count": 901})
+    router = _router(signals, computer)
+    router.ignore_evidence_cache = True
+    router.now_ms = 9_999
+    _decision, ev = _decide(router)
+    assert len(computer.asked) == 2
+    assert not router.tally.cached
+    assert ev.read("decode.char_count") == 901
+    assert {row[5] for row in _signal_rows(signals)} == {9_999}
+    assert [row[2] for row in _signal_rows(signals) if row[0] == "decode.char_count"] == [b"901"]
+
+
+def test_without_the_flag_the_same_router_reads_the_cache(signals: StoreThread) -> None:
+    _decide(_router(signals, _Computer(CLEAN)))
+    router = _router(signals, _Computer(CLEAN))
+    assert router.ignore_evidence_cache is False
+    _decide(router)
+    assert dict(router.tally.cached) == {"pdfium": 3}
+
+
+def test_the_flag_never_recomputes_a_billed_key(signals: StoreThread) -> None:
+    """18:988-990: re-running billed work is `--allow-rebill`'s, which prints what it discards."""
+    _decide(_router(signals, _Computer(CLEAN)))
+    computer = _Computer(CLEAN)
+    router = _router(signals, computer)
+    router.registry = _Billed(router.registry, "decode.char_count")
+    router.ignore_evidence_cache = True
+    _decide(router)
+    assert computer.asked == [("omniweave_pdf", ("corpus.is_form", "unit.part_count"))]
+    assert dict(router.tally.cached) == {"pdfium": 1}
+
+
+def test_only_free_and_local_compute_are_recomputable() -> None:
+    assert {CostClass.FREE, CostClass.LOCAL_COMPUTE} == routing.RECOMPUTABLE
+
+
+def test_a_held_scan_rerouted_by_ingest_reads_the_cache_unless_told_not_to(
+    tmp_path: Path,
+) -> None:
+    """Through `ingest()` and the real signal child: `no_text_layer.pdf` is held on `ink.tiles`, so
+    every run re-routes it. The second reads its four keys back; the third, under the flag, starts
+    the children again."""
+    (tmp_path / "omniweave.toml").write_text(HANDBOOK + OPT_IN, encoding="utf-8")
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    fixture = Path(__file__).resolve().parents[3] / "omniweave-pdf" / "fixtures"
+    (docs / "scan.pdf").write_bytes((fixture / "no_text_layer.pdf").read_bytes())
+    config = load(cwd=tmp_path, env={"OMNIWEAVE_HOME": str(tmp_path / "owhome")})
+    store = tmp_path / ".omniweave" / "index.owstore"
+
+    def lines(**flags: bool) -> list[str]:
+        report = ingest(
+            store,
+            config=config,
+            source_root=tmp_path,
+            output_root=tmp_path / ".omniweave" / "out",
+            cache_root=tmp_path / ".omniweave" / "cache",
+            argv=["ingest"],
+            paths=(docs,),
+            sweep_ms=20,
+            **flags,
+        )
+        return [line for line in report.lines() if "signal" in line]
+
+    first, second, third = lines(), lines(), lines(ignore_evidence_cache=True)
+    assert any("signal children" in line for line in first)
+    assert not any("signals cached" in line for line in first)
+    assert any("4 signals cached (pdfium 4)" in line for line in second)
+    assert not any("signal children" in line for line in second)
+    assert any("signal children" in line for line in third)
+    assert not any("signals cached" in line for line in third)
