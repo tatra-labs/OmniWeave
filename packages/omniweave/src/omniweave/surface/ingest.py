@@ -64,7 +64,8 @@ _ARGPARSE_USAGE: Final[int] = 2
 
 
 def parser() -> argparse.ArgumentParser:
-    """`ow ingest [PATH ...] [--scope S] [--corpus N] [--config PATH] [--ignore-evidence-cache]`."""
+    """`ow ingest [PATH ...] [--scope S] [--corpus N] [--config PATH] [--ignore-evidence-cache]
+    [--accept-partial]`."""
     built = argparse.ArgumentParser(
         prog="ow ingest",
         description=(
@@ -80,6 +81,11 @@ def parser() -> argparse.ArgumentParser:
         "--ignore-evidence-cache",
         action="store_true",
         help="recompute the routing signals route_signal holds; never billed work (05:2822)",
+    )
+    built.add_argument(
+        "--accept-partial",
+        action="store_true",
+        help="let a driver try a file its structural check refused, and read one again (05:2821)",
     )
     return built
 
@@ -141,6 +147,7 @@ def _ingest(
         scope=parsed.scope,
         sweep_ms=sweep_ms,
         ignore_evidence_cache=parsed.ignore_evidence_cache,
+        accept_partial=parsed.accept_partial,
     )
     for line in report.lines():
         stdout.write(_ascii(line) + "\n")

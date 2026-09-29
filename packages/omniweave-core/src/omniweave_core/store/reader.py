@@ -199,6 +199,7 @@ Specified in 07-store-and-retrieval.md sections 1.1, 3.3, 3.8, 6.1, 7.1, 7.2, 10
 
 from __future__ import annotations
 
+import json
 import math
 import shlex
 import sqlite3
@@ -765,20 +766,33 @@ def _unit_gaps(
     D640. The detail names the file, the class, and the format detection sniffed, which is
     13:1292's *"a named `resolve()` rejection with the format it sniffed"*. There is no document,
     so there is no page and `where` is empty.
+
+    A unit `gate.corrupt` refused also names the structural check that failed, from the evidence
+    detection wrote, and the override: 05:3035's message names *"the structural check that
+    failed, and `--accept-partial`"* (D641). The fix stays the re-read, because the override lets
+    a driver try and is no promise that it can.
     """
     classes = tuple(FAILURE_CLASS_DIAGS)
     rows = connection.execute(
-        "SELECT unit_uri, acq_failure_class, format FROM unit "  # noqa: S608
+        "SELECT unit_uri, acq_failure_class, format, "  # noqa: S608
+        "json_extract(derived, '$.format_evidence.corrupt') FROM unit "
         f"WHERE state = 'failed' AND acq_failure_class IN ({_placeholders(len(classes))}) "
         f"AND {unit_where} ORDER BY unit_uri",
         (*classes, *unit_params),
     ).fetchall()
     gaps: list[DegradeCause] = []
-    for unit_uri, failure_class, fmt in rows:
+    for unit_uri, failure_class, fmt, corrupt in rows:
         uri, cls = str(unit_uri), str(failure_class)
         sniffed = f"detection sniffed {fmt}" if fmt else "detection sniffed nothing"
+        checked = json.loads(corrupt) if isinstance(corrupt, str) else {}
+        if cls == "corrupt_input" and checked.get("value"):
+            sniffed += f"; its structural check found {checked.get('check', '')}"
         reread = cls in REREAD_CLASSES
         remedy = "; restore or replace the file, then read it again" if reread else ""
+        if checked.get("value"):
+            remedy += (
+                f", or run `ow ingest --accept-partial {shlex.quote(uri)}` to let a driver try"
+            )
         gaps.append(
             DegradeCause(
                 gate="parse_gap_in_scope",

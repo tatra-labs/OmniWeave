@@ -463,13 +463,15 @@ def ingest(
     sweep_ms: int | None = None,
     offline: bool = False,
     ignore_evidence_cache: bool = False,
+    accept_partial: bool = False,
 ) -> IngestReport:
     """Run hops 1-4 over one store, under `store.write`, and report where every unit stopped.
 
     `offline` is `ow add --offline`: routing's `ProbeEnv.offline`, so a driver that needs the
     network does not resolve (`routing.resolve_policy`, D631). `ignore_evidence_cache` is `ow
     ingest`'s flag: routing recomputes the signals `route_signal` holds rather than reading them
-    (05:2822, D633).
+    (05:2822, D633). `accept_partial` is `ow ingest --accept-partial` (05:2821, D641): a failed
+    structural check does not refuse, and a unit it refused before is read again.
 
     `sweep_ms` replaces `[runtime] deferred_sweep_ms` for this run's loop when given. It is the
     interval `Supervisor._settle()` waits between empty claims, and 08:915's two quiet polls mean a
@@ -510,6 +512,7 @@ def ingest(
                 host=host,
                 offline=offline,
                 ignore_evidence_cache=ignore_evidence_cache,
+                accept_partial=accept_partial,
             )
             pending = _receipt(thread, source_root=source_root)
         except BaseException:
@@ -655,6 +658,7 @@ def _hops(
     host: sup.HostFacts,
     offline: bool,
     ignore_evidence_cache: bool = False,
+    accept_partial: bool = False,
 ) -> IngestReport:
     now_ns = clock.wall_ns()
     plan_batch = int(config.get("runtime.plan_batch"))  # type: ignore[arg-type]
@@ -663,7 +667,13 @@ def _hops(
     walked = _walk(thread, sources, generation=generation, now_ns=now_ns, plan_batch=plan_batch)
     discover.reset_stale_acquiring(thread)
     #  D640: a refused unit whose file changed since is read again, which is what gate 9's fix says.
-    discover.reopen_changed_failures(thread, generation=generation, plan_batch=plan_batch)
+    #  D641: under --accept-partial, a unit gate.corrupt refused is read again unchanged.
+    discover.reopen_changed_failures(
+        thread,
+        generation=generation,
+        plan_batch=plan_batch,
+        regardless=discover.ACCEPT_PARTIAL_CLASSES if accept_partial else frozenset(),
+    )
     acquired = discover.acquire_pending(
         thread, generation=generation, indexed_at_ns=now_ns, plan_batch=plan_batch
     )
@@ -671,7 +681,9 @@ def _hops(
     context = _context(run_id, generation, config=config, roots=roots, clock=clock)
     enqueued, unsalted = _enqueue(thread, context, plan_batch=plan_batch)
     inputs = replace(
-        _routing_inputs(config, offline=offline), ignore_evidence_cache=ignore_evidence_cache
+        _routing_inputs(config, offline=offline),
+        ignore_evidence_cache=ignore_evidence_cache,
+        accept_partial=accept_partial,
     )
     book.catalog(inputs.catalog.catalog_digest)
     context = replace(
@@ -745,6 +757,8 @@ class _RoutingInputs:
     """`evidence.Installed.computers`: the providers whose package ships a computer (D628)."""
     ignore_evidence_cache: bool = False
     """`ow ingest --ignore-evidence-cache`: routing recomputes `route_signal` rows (D633)."""
+    accept_partial: bool = False
+    """`ow ingest --accept-partial`: a failed structural check does not refuse (D641)."""
 
 
 def _routing_inputs(config: Config, *, offline: bool = False) -> _RoutingInputs:
@@ -790,6 +804,7 @@ def _route(
         now_ms=clock.wall_ns() // 1_000_000,
         computers=inputs.computers,
         ignore_evidence_cache=inputs.ignore_evidence_cache,
+        accept_partial=inputs.accept_partial,
     )
 
 
