@@ -422,8 +422,14 @@ def cycle(behave: str, *, settings: sp.HostSettings, tag: str, emit: Emit) -> Cy
         env=worker_env(),
         address=address,
     )
-    process = sp.spawn_worker(request, stderr=ring, stdout=stdout_ring)
     job = sp.JobObject(memory_limit_bytes=MEMORY_MB * 1_048_576)
+    # Spawned suspended INTO the job (D636): assigned after the fact, the trampoline's interpreter
+    # could start first and sit outside the cap.
+    try:
+        process = sp.spawn_worker(request, stderr=ring, stdout=stdout_ring, job=job)
+    except BaseException:
+        job.close()
+        raise
     # EVERYTHING from here to the ack is inside the guard, because a handshake that fails leaves
     # a child nobody has killed: `CARD_CODE_MISMATCH` is a REFUSAL BEFORE WORK
     # (04-driver-system.md:1696), and a refusal that leaks the process it refused is a slow way
@@ -433,7 +439,6 @@ def cycle(behave: str, *, settings: sp.HostSettings, tag: str, emit: Emit) -> Cy
     channel: sp.ByteChannel | None = None
     worker_process: sp.Worker | None = None
     try:
-        job.assign(process.pid)
         granted, shortfalls = sp.grant_isolation(
             mode=Isolation.SUBPROC,
             batch_max_units=BATCH_MAX_UNITS,

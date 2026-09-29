@@ -2662,6 +2662,149 @@ def test_a_job_object_holds_the_child_and_says_so_when_asked() -> None:
             proc.kill()
 
 
+def _minimal_env() -> dict[str, str]:
+    return {key: os.environ[key] for key in ("SYSTEMROOT", "PATH") if key in os.environ}
+
+
+def _still_running(pid: int) -> bool:
+    """`GetExitCodeProcess` is `STILL_ACTIVE` (259). A pid that cannot be opened is gone."""
+    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    kernel32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+    kernel32.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)]
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+    handle = kernel32.OpenProcess(0x1000, 0, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return False
+    try:
+        code = ctypes.c_uint32(0)
+        assert kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
+        return code.value == 259
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+@WINDOWS_ONLY
+def test_a_worker_spawned_into_a_job_is_born_there_interpreter_and_all(tmp_path: Path) -> None:
+    """D636. The pid that does the work is in the job, not only the pid `Popen` returned.
+
+    The child writes its OWN pid -- under `uv`'s trampoline, the interpreter's, a grandchild of
+    this test -- and that pid must be one `job.pids()` reads back. Assigned after `Popen`
+    returned, a trampoline that had already started its interpreter left it outside the job:
+    the full suite's sample read the launcher's 3,416,064 B, and the interpreter ran uncapped.
+    """
+    marker = tmp_path / "pid"
+    job = sp.JobObject(memory_limit_bytes=256 * 1_048_576)
+    request = sp.SpawnRequest(
+        argv=(
+            sys.executable,
+            "-c",
+            "import os, pathlib, threading; "
+            f"pathlib.Path({str(marker)!r}).write_text(str(os.getpid())); "
+            "threading.Event().wait(30)",
+        ),
+        cwd=str(tmp_path),
+        env=_minimal_env(),
+        address=pipe_address("admit"),
+    )
+    proc = sp.spawn_worker(request, stderr=sp.StderrRing(), stdout=sp.StderrRing(), job=job)
+    try:
+        deadline = time.monotonic() + 20.0
+        written = ""
+        while not written.isdigit() and time.monotonic() < deadline:
+            threading.Event().wait(0.02)
+            written = marker.read_text() if marker.exists() else ""
+        assert written.isdigit(), "a spawn admitted into its job was never resumed"
+        held = job.pids()
+        assert proc.pid in held
+        assert int(written) in held, (int(written), held)
+    finally:
+        job.terminate()
+        proc.wait(timeout=10)
+        job.close()
+
+
+@WINDOWS_ONLY
+def test_admitting_a_process_that_was_already_running_is_refused() -> None:
+    """`ResumeThread`'s previous suspend count is the check: 0 means the child was running before
+    the assignment, so anything it started may be outside the job, and `admit()` says so rather
+    than let the host report a cap that may not hold (DR10)."""
+    proc = subprocess.Popen(  # this interpreter, a fixed argv, no shell
+        [sys.executable, "-c", "import threading; threading.Event().wait(30)"],
+        cwd=str(REPO_ROOT),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    job = sp.JobObject()
+    try:
+        with pytest.raises(DriverHostError, match="was not created suspended"):
+            job.admit(proc.pid)
+    finally:
+        job.terminate()
+        proc.wait(timeout=10)
+        job.close()
+
+
+class _ThreadlessJob(sp.JobObject):
+    """A job whose snapshot finds no thread: the child exited between assignment and resume."""
+
+    def _resume_threads(self, pid: int) -> tuple[int, ...]:
+        del pid
+        return ()
+
+
+@WINDOWS_ONLY
+def test_admitting_a_process_with_no_thread_to_resume_is_refused() -> None:
+    """No thread resumed is no proof the child was suspended, so it is not an admission."""
+    proc = subprocess.Popen(  # this interpreter, a fixed argv, no shell
+        [sys.executable, "-c", "pass"],
+        cwd=str(REPO_ROOT),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=sp.CREATE_SUSPENDED,
+    )
+    job = _ThreadlessJob()
+    try:
+        with pytest.raises(DriverHostError, match="has no thread to resume"):
+            job.admit(proc.pid)
+    finally:
+        job.terminate()
+        proc.wait(timeout=10)
+        job.close()
+
+
+class _RefusingJob(sp.JobObject):
+    """A job whose admission fails after the suspended child exists."""
+
+    refused: int = 0
+
+    def admit(self, pid: int) -> None:
+        self.refused = pid
+        raise DriverHostError("refused for the test", fix="none")
+
+
+@WINDOWS_ONLY
+def test_a_child_its_job_cannot_admit_is_killed_and_not_left_suspended(tmp_path: Path) -> None:
+    """A suspended process nobody resumes never exits on its own, so the spawn that could not
+    admit it kills it before raising."""
+    job = _RefusingJob()
+    request = sp.SpawnRequest(
+        argv=(sys.executable, "-c", "pass"),
+        cwd=str(tmp_path),
+        env=_minimal_env(),
+        address=pipe_address("refuse"),
+    )
+    try:
+        with pytest.raises(DriverHostError, match="refused for the test"):
+            sp.spawn_worker(request, stderr=sp.StderrRing(), stdout=sp.StderrRing(), job=job)
+        assert job.refused > 0
+        assert not _still_running(job.refused)
+    finally:
+        job.close()
+
+
 @WINDOWS_ONLY
 def test_lowering_a_childs_priority_is_observable_and_is_below_normal() -> None:
     """04-driver-system.md:1754 and :1763: `SetPriorityClass(BELOW_NORMAL)` is `os.nice(10)`'s
@@ -3423,10 +3566,11 @@ def test_a_trampoline_s_own_peak_is_megabytes_and_the_job_s_is_the_interpreter()
             "print('ready', flush=True); time.sleep(5)",
         ],
         stdout=subprocess.PIPE,
+        creationflags=sp.CREATE_SUSPENDED,
     )
     job = sp.JobObject()
     try:
-        job.assign(child.pid)
+        job.admit(child.pid)
         assert child.stdout is not None
         assert child.stdout.readline().strip() == b"ready"
         worker, _proc, _clock = worker_on(FakeChannel(), proc=FakeProcess(pid=child.pid))

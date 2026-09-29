@@ -394,6 +394,9 @@ def test_the_host_launches_a_real_worker_that_parses_a_real_document(tmp_path: P
     )  # fmt: skip
     try:
         assert ack.driver_id == OFFICE
+        #  D636: `launch()` spawned the child suspended INTO its job, so the job holds it.
+        assert worker._job is not None
+        assert worker.pid in worker._job.pids()
         unit = UnitRef(
             uri=str(FIXTURES / "rich.docx"), part="", content_sha256=digest.hex(),
             byte_len=(FIXTURES / "rich.docx").stat().st_size, media_type=DOCX,
