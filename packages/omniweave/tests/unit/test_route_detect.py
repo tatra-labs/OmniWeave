@@ -9,6 +9,7 @@ with `xxd`"* and a fixture that was not a real file would check nothing.
 from __future__ import annotations
 
 import json
+import re
 import struct
 import tomllib
 import zipfile
@@ -176,10 +177,13 @@ def test_a_docx_named_doc_is_a_docx_and_the_mismatch_is_recorded(tmp_path: Path)
             "superseded_by": "container_identity",
         }
     ]
+    #  The printed eight, and `corrupt`: 05:2240 makes `unit.corrupt` detection-provided, and it
+    #  rides in the evidence beside them as `encrypted` does (D641).
     assert set(evidence) == {
         "v", "chosen", "rejected", "hint", "ambiguous", "extension_mismatch", "container",
-        "providers",
+        "providers", "corrupt",
     }  # fmt: skip
+    assert evidence["corrupt"]["value"] is False
 
 
 def test_a_container_identity_supersedes_its_own_magic_and_not_the_ranking(tmp_path: Path) -> None:
@@ -396,3 +400,119 @@ def test_the_shipped_policy_names_every_core_token_in_a_rule() -> None:
 
     policy = compile_policy([builtin_layer()])
     assert format_coverage(policy, detect.computed_domain()) == ()
+
+
+# ---------------------------------------------------------------------------------------------
+# unit.corrupt: the container-level structural check, 05:2240 (D641)
+# ---------------------------------------------------------------------------------------------
+
+
+def _pdf(body: bytes = b"") -> bytes:
+    """A minimal PDF whose `startxref` names its xref table exactly."""
+    head = b"%PDF-1.7\n" + body + b"1 0 obj\n<< /Type /Catalog >>\nendobj\n"
+    return (
+        head
+        + b"xref\n0 2\n"
+        + b"trailer\n<< /Root 1 0 R >>\nstartxref\n"
+        + str(len(head)).encode()
+        + b"\n%%EOF\n"
+    )
+
+
+def _check(tmp_path: Path, name: str, data: bytes) -> tuple[bool, str] | None:
+    path = tmp_path / name
+    path.write_bytes(data)
+    return detect.structural_check(path, data[: detect.HEAD_BYTES])
+
+
+def test_a_sound_pdf_passes_and_says_where_its_xref_is(tmp_path: Path) -> None:
+    found = _check(tmp_path, "a.pdf", _pdf())
+    assert found is not None
+    assert found[0] is False
+    assert "locates the xref" in found[1]
+
+
+@pytest.mark.parametrize(
+    ("data", "why"),
+    [
+        (_pdf()[: len(_pdf()) // 2], "no %%EOF"),
+        (_pdf() + b" " * (detect.TAIL_BYTES + 10), "no %%EOF"),
+        (_pdf().replace(b"startxref", b"startxrf"), "no startxref"),
+        (_pdf().replace(b"startxref\n", b"startxref\n9"), "where no xref table"),
+        (re.sub(rb"startxref\n\d+", b"startxref\n3", _pdf()), "where no xref table"),
+    ],
+    ids=[
+        "cut in half",
+        "padded past the window",
+        "no startxref",
+        "an offset past the end",
+        "an offset to the header",
+    ],
+)
+def test_a_pdf_whose_trailer_does_not_locate_its_xref_is_corrupt(
+    tmp_path: Path, data: bytes, why: str
+) -> None:
+    """05:2240: *"no `%%EOF` and no locatable xref or XRef stream"*. The padded case is the plan's
+    own false positive -- a reader may still open it -- and `--accept-partial` is its escape."""
+    found = _check(tmp_path, "a.pdf", data)
+    assert found is not None
+    assert found[0] is True
+    assert why in found[1]
+
+
+def test_an_xref_offset_counted_from_a_prefixed_header_is_located(tmp_path: Path) -> None:
+    """A file with bytes before `%PDF-` is read by readers that count offsets from the header."""
+    found = _check(tmp_path, "a.pdf", b"JUNK" + _pdf())
+    assert found is not None
+    assert found[0] is False
+
+
+def test_an_xref_stream_is_a_locatable_cross_reference(tmp_path: Path) -> None:
+    body = _pdf().replace(
+        b"xref\n0 2\n", b"2 0 obj\n<< /Type /XRef >>\nstream\nendstream\nendobj\n"
+    )
+    found = _check(tmp_path, "a.pdf", body)
+    assert found is not None
+    assert found[0] is False
+
+
+def _zip_bytes(tmp_path: Path) -> bytes:
+    path = tmp_path / "made.zip"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("[Content_Types].xml", "<Types/>")
+        archive.writestr("word/document.xml", "<w:document/>" * 20)
+    return path.read_bytes()
+
+
+def test_a_sound_zip_passes_and_one_cut_in_half_is_corrupt(tmp_path: Path) -> None:
+    """05:2240: *"a bad or truncated ZIP central directory"*, for every container on the ZIP magic:
+    OOXML, ODF and EPUB get the same check whatever their identity said."""
+    whole = _zip_bytes(tmp_path)
+    assert _check(tmp_path, "a.xlsx", whole) == (
+        False,
+        "the ZIP central directory lists 2 member(s)",
+    )
+    torn = _check(tmp_path, "b.xlsx", whole[: len(whole) // 2])
+    assert torn is not None
+    assert torn[0] is True
+    assert "central directory is missing or truncated" in torn[1]
+
+
+def test_a_container_with_no_check_is_none_and_not_false(tmp_path: Path) -> None:
+    """A CFB file has no check yet, and `None` is recorded UNAVAILABLE, never guessed `False`."""
+    assert _check(tmp_path, "a.doc", bytes.fromhex("D0CF11E0A1B11AE1") + b"\x00" * 600) is None
+    assert _check(tmp_path, "a.csv", b"a,b\n1,2\n") is None
+
+
+def test_detection_carries_the_check_into_the_evidence_routing_reads(tmp_path: Path) -> None:
+    path = tmp_path / "a.pdf"
+    path.write_bytes(_pdf()[:40])
+    found = detect.detect(path)
+    assert found.format == "pdf"
+    assert found.corrupt is True
+    evidence = json.loads(found.evidence_json())
+    assert evidence["corrupt"]["value"] is True
+    assert "no %%EOF" in evidence["corrupt"]["check"]
+    plain = tmp_path / "a.csv"
+    plain.write_bytes(b"a,b,c\n1,2,3\n4,5,6\n7,8,9\n")
+    assert "corrupt" not in json.loads(detect.detect(plain).evidence_json())

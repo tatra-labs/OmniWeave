@@ -8,6 +8,7 @@ the installed signal registry. The OPC packages are built here from their struct
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3  # noqa: TID251 -- the assertions read the store the run wrote.
 import zipfile
 from importlib.metadata import distributions
@@ -66,7 +67,9 @@ def _project(tmp_path: Path, *, drivers: str = OPT_IN) -> tuple[Path, Config]:
     _docx(docs / "memo.docx")
     (docs / "notes.txt").write_text("plain words\n", encoding="utf-8")
     (docs / "empty.txt").write_bytes(b"")
-    (docs / "report.pdf").write_bytes(b"%PDF-1.7\n1 0 obj<<>>endobj\n%%EOF\n")
+    #  Sound to the structural check -- `%%EOF`, and a `startxref` naming its one object (D641) --
+    #  and still a stub pdfium cannot open, which is D579's case.
+    (docs / "report.pdf").write_bytes(b"%PDF-1.7\n1 0 obj<<>>endobj\nstartxref\n9\n%%EOF\n")
     config = load(cwd=tmp_path, env={"OMNIWEAVE_HOME": str(tmp_path / "owhome")})
     return tmp_path / ".omniweave" / "index.owstore", config
 
@@ -193,6 +196,21 @@ def test_a_pdf_whose_deciding_signal_pdfium_cannot_compute_is_not_refused(tmp_pa
     assert not _rows(store, "SELECT 1 FROM route_decision WHERE rule_id = 'decode.no-rule-matched'")
 
 
+def test_a_pdf_its_structural_check_refuses_fails_as_corrupt_at_gate(
+    tmp_path: Path,
+) -> None:
+    """D641, 05:3035: a PDF with no `%%EOF` is refused at `gate.corrupt` as `corrupt_input`,
+    where it was held for ever under gate 5. It costs one pdfium child, the FREE group's
+    (`unit.part_count` is pdfium's for a PDF), and none of the deferred groups the stub needs."""
+    store, config = _project(tmp_path)
+    (tmp_path / "docs" / "torn.pdf").write_bytes(b"%PDF-1.7\n1 0 obj<<>>endobj\n")
+    report = _run(tmp_path, store, config)
+    refused = dict(report.routed.refused)  # type: ignore[attr-defined]
+    assert refused == {"gate.empty": 1, "gate.corrupt": 1}
+    assert _unit(store, "torn.pdf", "state, acq_failure_class") == ("failed", "corrupt_input")
+    assert report.routed.children == {"pdfium": 4}  # type: ignore[attr-defined]
+
+
 def test_a_rule_naming_a_driver_no_package_provides_plans_nothing(tmp_path: Path) -> None:
     """`decode.text-native` names `parse.text.builtin`, which `[drivers] enabled` lists and no
     distribution ships: the unit stays `identified` and the report names the driver."""
@@ -258,6 +276,33 @@ def test_the_free_group_is_the_roster_and_two_keys_are_honestly_unknown() -> Non
     assert ev.read("unit.encrypted") is None
     docx = ("c:/x/a.docx", "a" * 64, 10, 1, "docx", DOCX, "internal", derived)
     assert unit_evidence(docx, registry=registry, trigger="cli").read("unit.encrypted") is False
+
+
+def test_unit_corrupt_is_what_the_structural_check_found_or_the_override_names() -> None:
+    """D641. Detection writes `corrupt` into the evidence where it has a check (05:2240), and the
+    FREE group reads it: `True` refuses at `gate.corrupt`, `False` passes, and under
+    `--accept-partial` a failed check is UNAVAILABLE naming the override, so the rule cannot match
+    and a driver tries (05:2821)."""
+    registry = build_registry(builtin_specs())
+
+    def row(corrupt: object) -> tuple[object, ...]:
+        evidence = {"chosen": {"basis": "magic"}, "corrupt": corrupt}
+        derived = json.dumps({"format_evidence": evidence})
+        return ("c:/x/a.pdf", "a" * 64, 10, 1, "pdf", "application/pdf", "internal", derived)
+
+    torn = {"value": True, "check": "no %%EOF in the last 1024 bytes"}
+    whole = {"value": False, "check": "startxref locates the xref"}
+    assert unit_evidence(row(torn), registry=registry, trigger="cli").read("unit.corrupt") is True
+    assert unit_evidence(row(whole), registry=registry, trigger="cli").read("unit.corrupt") is False
+    for accept in (False, True):
+        kept = unit_evidence(row(whole), registry=registry, trigger="cli", accept_partial=accept)
+        assert kept.read("unit.corrupt") is False
+    overridden = unit_evidence(row(torn), registry=registry, trigger="cli", accept_partial=True)
+    assert overridden.read("unit.corrupt") is None
+    reason = overridden.unavailable_reason("unit.corrupt")
+    assert reason is not None
+    assert "--accept-partial" in reason
+    assert "no %%EOF" in reason
 
 
 def test_the_resolve_policy_is_the_drivers_block_with_this_host(tmp_path: Path) -> None:

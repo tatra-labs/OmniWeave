@@ -286,14 +286,20 @@ def unit_evidence(
     registry: SignalRegistry,
     trigger: str,
     computers: Mapping[str, str] | None = None,
+    accept_partial: bool = False,
 ) -> Evidence:
     """The FREE group of 05 section 5.1 that the roster already holds, for one unit's one part.
 
     Every key is the `builtin` provider's (05:2135) and carries its version into the read set.
-    Two non-nullable keys are recorded UNAVAILABLE with a reason rather than guessed:
-    `unit.corrupt`, because detection performs no container structural check; and `unit.encrypted`
-    for a PDF, because the trailer `/Encrypt` scan the `gate.encrypted` rule's comment names is not
-    built. A `False` in either would be a claim nothing checked.
+    Two non-nullable keys can be recorded UNAVAILABLE with a reason rather than guessed:
+    `unit.corrupt` for a container detection has no structural check for (D641 builds PDF and
+    ZIP); and `unit.encrypted` for a PDF, because the trailer `/Encrypt` scan the `gate.encrypted`
+    rule's comment names is not built. A `False` in either would be a claim nothing checked.
+
+    **`accept_partial` is `ow ingest --accept-partial` (05:2821).** A unit whose check failed is
+    recorded UNAVAILABLE naming the override instead of `True`, so `gate.corrupt` does not match and
+    the driver tries; 05:2821 records it as *"`kind="signal_unavailable"` naming `unit.corrupt`"*,
+    which is the route tally's line.
 
     **A key whose provider for this format ships a computer is left for it.** `unit.part_count`
     resolves to `pdfium` for a PDF (05:2199's *"`FPDF_GetPageCount` on a PDF"*), and the read set
@@ -330,7 +336,17 @@ def unit_evidence(
         )
     else:
         put("unit.encrypted", bool(chosen.get("encrypted", False)))
-    put("unit.corrupt", None, "detection performs no container structural check")
+    corrupt = chosen.get("corrupt")
+    if not isinstance(corrupt, dict):
+        put("unit.corrupt", None, f"detection has no structural check for {fmt or 'this format'}")
+    elif corrupt.get("value") and accept_partial:
+        put(
+            "unit.corrupt",
+            None,
+            f"--accept-partial overrides the structural check: {corrupt.get('check', '')}",
+        )
+    else:
+        put("unit.corrupt", bool(corrupt.get("value")))
     return ev
 
 
@@ -350,6 +366,8 @@ class _Router:
     ignore_evidence_cache: bool = False
     """`ow ingest --ignore-evidence-cache`: skip the read of every `RECOMPUTABLE` key, and write
     what the child answers over the row that was there (D633)."""
+    accept_partial: bool = False
+    """`ow ingest --accept-partial`: a failed structural check does not refuse (05:2821, D641)."""
     tally: RouteTally = field(default_factory=RouteTally)
     resolutions: dict[str, Resolution] = field(default_factory=dict)
 
@@ -570,7 +588,11 @@ class _Router:
 
     def route(self, row: Sequence[object]) -> None:
         ev = unit_evidence(
-            row, registry=self.registry, trigger=self.ctx.trigger, computers=self.computers
+            row,
+            registry=self.registry,
+            trigger=self.ctx.trigger,
+            computers=self.computers,
+            accept_partial=self.accept_partial,
         )
         decision = self.decide(ev, row)
         #  The read set is the decision's identity (05:1880): the window `_rung()` opened for the
@@ -835,6 +857,7 @@ def route_identified(
     computers: Mapping[str, str] | None = None,
     compute: Compute | None = None,
     ignore_evidence_cache: bool = False,
+    accept_partial: bool = False,
 ) -> RouteTally:
     """Route every unit this generation identified. One transaction per unit, keyset-paged.
 
@@ -857,6 +880,7 @@ def route_identified(
         computers=computers or {},
         compute=compute or _child_compute(ctx),
         ignore_evidence_cache=ignore_evidence_cache,
+        accept_partial=accept_partial,
     )
     after = ""
     while True:

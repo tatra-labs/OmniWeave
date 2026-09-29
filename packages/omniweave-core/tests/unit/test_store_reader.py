@@ -2843,6 +2843,27 @@ def test_a_unit_that_stopped_with_no_document_is_gate_9_or_gate_8_by_its_class(
     assert (corpus.unreadable_units, len(corpus.gaps)) == (2, 2)
 
 
+def test_a_corrupt_refusal_names_the_check_that_failed_and_the_override(built: Built) -> None:
+    """05:3035: the message names *"the structural check that failed, and `--accept-partial`"*.
+    Detection wrote the check into `unit.derived`'s format evidence (D641). The fix stays the
+    re-read, because the override lets a driver try and promises nothing."""
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    _failed(conn, "c:/corpus/torn.pdf", "corrupt_input")
+    conn.execute(
+        "UPDATE unit SET derived = json_object('format_evidence', json_object('corrupt', "
+        "json_object('value', json('true'), 'check', 'no %%EOF in the last 1024 bytes')))"
+    )
+    conn.execute("COMMIT")
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        (gap,) = reader.coverage(state, Filters()).gaps
+    assert gap.diag_codes == ("OW_MALFORMED",)
+    assert "its structural check found no %%EOF in the last 1024 bytes" in gap.detail
+    assert "`ow ingest --accept-partial c:/corpus/torn.pdf`" in gap.detail
+    assert gap.fix == "ow add c:/corpus/torn.pdf"
+
+
 def test_a_fix_names_a_path_with_spaces_so_that_a_posix_split_gives_it_back_whole() -> None:
     """The damage suite splits `fix` with POSIX `shlex` and runs no shell (13:1306), so the path
     is quoted the same way. A project under `Project (tatra-labs)` is the case that needs it."""
