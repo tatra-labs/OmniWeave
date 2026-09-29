@@ -113,6 +113,7 @@ if TYPE_CHECKING:
 __all__ = [
     "ABSENCE_BLOCKING_DIAGS",
     "ABSENCE_GATES",
+    "FAILURE_CLASS_DIAGS",
     "MAX_DID_YOU_MEAN",
     "Coverage",
     "DegradeCause",
@@ -149,6 +150,33 @@ eight first, then the five 13:1279 adds *"so the set is total"*.
 Members, not a set of `Diag` objects: `Diag` is `omniweave_core.model`'s (03:1800) and a join
 against `diag.code` compares TEXT. A code that is not a member is a diagnostic that does not block
 an absence claim, which is a different and equally deliberate fact.
+"""
+
+FAILURE_CLASS_DIAGS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "encrypted": "OW_ENCRYPTED",
+        "needs_ocr": "OW_NEEDS_OCR",
+        "corrupt_input": "OW_MALFORMED",
+        "timeout": "OW_TIMEOUT",
+        "unsupported_format": "OW_UNSUPPORTED_FORMAT",
+        "resource_limit": "OW_RESOURCE_LIMIT",
+    }
+)
+"""The `FailureClass` of a unit that stopped with no `doc` row, as the `Diag` code gate 9 joins.
+**D640.**
+
+05:3028-3060 ends an encrypted PDF, a corrupt one, a masked format and a limit breach at
+`unit.state = 'failed'` with *"no `doc` row"*, and `diag.doc_ord` is `NOT NULL`, so no `diag` row
+can say why. 13:1281-1295 still sends `encrypt`, `chaos`, `mask_format` and `inflate` to gate 9,
+not gate 8, and 07:2229 builds gate 8's fixture from *"a unit whose path is removed"*: a read that
+failed, not a parse. So `Reader.coverage()` joins a failed unit's class through this map into
+`Coverage.gaps`, and counts only the classes outside it as `unreadable_units`. Every failed unit
+fires exactly one of the two gates.
+
+Six classes, each with a code of the thirteen of the same meaning. The other seven have none:
+`too_large` is never read (05:3029), the network four fail the read, and `driver_crashed`,
+`driver_bug` and `empty_result` are a driver's fault rather than a gap in the document. They stay
+gate 8's.
 """
 
 

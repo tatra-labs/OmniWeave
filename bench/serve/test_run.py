@@ -9,12 +9,14 @@ from typing import Any
 
 import agent_config as ac
 import anyio
+import corpora
 import pytest
 import run
 import serve_harness as h
 from agent import LoopSettings, ToolServer
-from corpora import Prepared, generator
+from corpora import Prepared, generator, key_of
 from models import ModelRequest, ToolResult, ToolSpec, ToolUse, Turn
+from omniweave_conform.damage import INJECTORS
 
 HERE = Path(__file__).resolve().parent
 CATALOG = h.load_catalog((HERE / "tasks.toml").read_text(encoding="utf-8"))
@@ -35,27 +37,43 @@ def test_select_takes_all_ids_classes_and_corpora_and_refuses_an_unknown_word() 
     assert "--list" in str(caught.value)
 
 
-def test_a_damaged_task_is_held_back_naming_its_injector_and_p6() -> None:
+def test_a_damaged_task_is_held_back_only_while_its_injector_is_not_built() -> None:
+    """D640: `mask_format` is built, so its two tasks run; `chaos` and `encrypt` are not."""
     runnable, held = run.partition(CATALOG.tasks)
-    assert len(runnable) == 18
-    assert len(held) == 6
     reasons = {one.task_id: one.reason for one in held}
+    assert sorted(reasons) == sorted(
+        t.id for t in CATALOG.tasks if t.injector is not None and t.injector not in INJECTORS
+    )
+    assert len(runnable) + len(held) == len(CATALOG.tasks)
+    assert {"home-dmg-refund", "data-dmg-dpa-region"} <= {t.id for t in runnable}
     assert "chaos Injector" in reasons["data-dmg-headcount"]
-    assert all("P6" in reason for reason in reasons.values())
+    assert all("P6" in reason and "mask_format" in reason for reason in reasons.values())
+
+
+def test_a_damaged_task_runs_over_its_own_corpus_with_its_answer_s_file_damaged() -> None:
+    task = next(t for t in CATALOG.tasks if t.id == "home-dmg-refund")
+    assert run.corpus_key(task) == "personal_archive+mask_format:tax/tax-summary-2023.docx"
+    plain = next(t for t in CATALOG.tasks if t.id == "home-cite-rent-increase")
+    assert run.corpus_key(plain) == "personal_archive"
 
 
 # -- a whole run, in process ---------------------------------------------------------------
 
 
-def _prepared(tmp_path: Path, corpus: str) -> Prepared:
-    base = tmp_path / corpus
+def _prepared(tmp_path: Path, corpus: str, damage: tuple[tuple[str, str], ...] = ()) -> Prepared:
+    base = tmp_path / key_of(corpus, damage).replace(":", "_").replace("/", "_")
     project = base / "project"
     gen.write_corpus(project / "docs", corpus, "quick")
+    for path, name in damage:
+        target = project / "docs" / path
+        target.write_bytes(INJECTORS[name].transform(target.read_bytes()))
     receipt = "".join(
         f"0  1  ok  1  0  0  docs/{doc.path}\n" for doc in gen.documents(corpus, "quick")
     )
     (project / "omniweave.index.lock").write_text(receipt, encoding="utf-8")
-    return Prepared(corpus, "quick", "0" * 64, base, cached=True, add_seconds=None, env={})
+    return Prepared(
+        corpus, "quick", "0" * 64, base, cached=True, add_seconds=None, env={}, damage=damage
+    )
 
 
 class Oracle:
@@ -75,6 +93,8 @@ class Oracle:
         planted = gen.PLANTED[task.id]
         if not results:
             return Turn("", (ToolUse("r", "Read", {"file_path": planted.path}),))
+        if task.injector is not None:
+            return Turn(f"NOT FOUND: {planted.path} cannot be read.")
         return Turn(f"{planted.text} ({planted.path})")
 
 
@@ -96,7 +116,13 @@ async def fake_server(_prepared: Prepared) -> AsyncIterator[ToolServer]:
 
 def test_every_task_runs_on_both_arms_is_graded_and_the_guard_holds(tmp_path: Path) -> None:
     runnable, held = run.partition(run.select(CATALOG, "personal_archive"))
-    prepared = {"personal_archive": _prepared(tmp_path, "personal_archive")}
+    prepared = {
+        run.corpus_key(task): _prepared(
+            tmp_path, task.corpus.value, corpora.damage_of(task.id, task.injector)
+        )
+        for task in runnable
+    }
+    assert len(prepared) == 2
     lines: list[str] = []
     graded, failures = anyio.run(
         lambda: run.run_all(
@@ -111,7 +137,7 @@ def test_every_task_runs_on_both_arms_is_graded_and_the_guard_holds(tmp_path: Pa
         )
     )
     assert failures == []
-    assert len(graded) == 2 * len(runnable) == 12
+    assert len(graded) == 2 * len(runnable) == 14
     assert all(g.outcome.correct for g in graded), [
         g.task.id for g in graded if not g.outcome.correct
     ]
@@ -127,7 +153,7 @@ def test_every_task_runs_on_both_arms_is_graded_and_the_guard_holds(tmp_path: Pa
     assert any(line.startswith("WATERMARK") for line in report_lines)
     assert result["control_guard"]["ok"] is True
     assert {o["task"] for o in result["outcomes"]} == {t.id for t in runnable}
-    assert sum(1 for line in lines if line.startswith("  task")) == 12
+    assert sum(1 for line in lines if line.startswith("  task")) == 14
 
 
 def test_a_task_that_fails_is_recorded_and_fails_the_run_without_stopping_the_rest(

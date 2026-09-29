@@ -13,7 +13,7 @@
 #   - a task with an answer `contains` it and `forbids` "not found";
 #   - an absence task `contains` "not found";
 #   - a damaged task `forbids` the value its Injector made unreadable. The Injectors are P6's
-#     absence suite (13 section 8.6); until they exist a damaged task is reported UNMEASURED.
+#     absence suite (13 section 8.6); until a task's own is built, it is reported UNMEASURED.
 #
 # Split (ADR-14 D14.2), born-digital only:
 #                  citation  retrieval  absence  damaged
