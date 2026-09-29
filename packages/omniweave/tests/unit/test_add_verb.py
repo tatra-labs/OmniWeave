@@ -270,7 +270,7 @@ def test_an_error_under_render_json_is_the_error_object_on_stdout(project: Path)
     assert (code, err) == (2, "")
     document = json.loads(out)
     assert list(document) == ["schema", "error"]
-    assert document["error"]["symbol"] == "OW_CORPUS_NOT_FOUND"
+    assert document["error"]["code"] == "OW_CORPUS_NOT_FOUND"
 
 
 def test_a_held_store_write_lock_is_exit_7(project: Path) -> None:

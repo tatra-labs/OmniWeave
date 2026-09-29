@@ -39,8 +39,13 @@
 #   [Q]  13-quality.md:1916-1941 -- three rows the quality document adds under "### 13.5 Five new
 #        files, three new perf rows, two new gate rows" (13-quality.md:1903), each printed there
 #        as a complete `[[budget]]` block with its own `note`.
+#   [A]  _plan/adr/0013-v01-acceptance-reconciliation.md D13.2 -- one row, `rss.office200_peak_bytes`,
+#        which takes anydoc's fork tripwire off `rss.gen5000p_peak_bytes` (charter section 9.2
+#        erratum E96). Appended last: 12-performance.md section 2.4 names it inside
+#        `rss.gen5000p_peak_bytes`'s cell rather than on a row of its own, so that no line of 12
+#        moves -- the code cites the plan by line number, some 2,900 times.
 #
-# FIFTEEN ROWS, not twelve. Section 2.4's table renders twelve; the charter's TOML holds ten;
+# SIXTEEN ROWS since ADR-13; before it, FIFTEEN, not twelve. Section 2.4's table renders twelve; the charter's TOML holds ten;
 # 13-quality section 13.5 adds three more that section 2.4's table does not render. All fifteen
 # are stated by the plan as `[[budget]]` rows of THIS file, so all fifteen are transcribed. A
 # register does not get to pick which of its sources is right, so the disagreement in the count
@@ -173,15 +178,19 @@ gate = "nightly"
 ratchet = true
 
 # [C] charter:7599-7605, plus `process` per ADR-11 D5 / charter section 9.2 E88, stated as "Both
-# shipped `rss.` rows declare `process = "worker"`" at 12-performance.md:227.
+# shipped `rss.` rows declare `process = "worker"`" at 12-performance.md:227. The note is ADR-13
+# D13.2's (erratum E96): the charter's made the row anydoc's fork tripwire, and anydoc refuses the
+# fixture, which is a PDF.
 [[budget]]
 id = "rss.gen5000p_peak_bytes"
 value = 1_610_612_736
 tol_pct = 10
 gate = "nightly"
 process = "worker"
-note = """THE FORK-TRIGGER GATE. anydoc marshals eagerly into Python objects and py.detach does
-not cover the marshal. A breach fires vendor/anydoc/FORK-TRIGGER.md."""
+note = """The S4 worker of the driver the catalog resolves for gen_5000p_pdf -- parse.pdf.pdfium on
+the shipped roster -- as a one-sided ceiling: value + tolerance, never a lower bound. A card whose
+memory_mb sits under the row makes it unreachable for that driver. Not anydoc's fork tripwire,
+which is rss.office200_peak_bytes (ADR-13 D13.2)."""
 
 # [C] charter:7606-7610, plus `process` -- see the row above. The 4 GiB figure is a worker peak,
 # and ADR-11 D5 is the whole reason the key exists: a reader who takes it for a whole-host figure
@@ -233,3 +242,17 @@ value = 190
 tol_abs = 45
 gate = "pr"
 note = "T2's ceiling is 240 s; 190 + 45 = 235."
+
+# [A] ADR-13 D13.2. F2's measurement (charter:8589, erratum E97): anydoc's worker over
+# fixtures/office-200, which does not exist yet (D196). Until it does, FORK-TRIGGER.md clause 2 is
+# run by hand before each release; if it does not exist by the P10 exit, the tripwire moves to
+# parse.office.p50_ms. 1.5 GiB is gen5000p's figure, carried until F2 measures this row's own.
+[[budget]]
+id = "rss.office200_peak_bytes"
+value = 1_610_612_736
+tol_pct = 10
+gate = "nightly"
+process = "worker"
+note = """THE FORK-TRIGGER GATE. anydoc marshals eagerly into Python objects and py.detach does
+not cover the marshal. A breach fires vendor/anydoc/FORK-TRIGGER.md. Measured over
+fixtures/office-200 by ow bench inproc (F2)."""

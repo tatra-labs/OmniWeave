@@ -243,8 +243,10 @@ def test_json_errors_beside_render_json_writes_both_contracts(
     assert code == NotFoundError.EXIT
     stdout_object, stderr_object = json.loads(out), json.loads(err)
     assert list(stdout_object) == ["schema", "error"]
-    assert stdout_object["error"]["symbol"] == stderr_object["code"]
-    assert stdout_object["error"]["code"] == stderr_object["numeric"]
+    #  One vocabulary on both flags (ADR-13 D13.5): `code` the symbol, `numeric` the human form.
+    assert list(stdout_object["error"]) == ["code", "numeric", "message", "fix"]
+    assert stdout_object["error"]["code"] == stderr_object["code"]
+    assert stdout_object["error"]["numeric"] == stderr_object["numeric"]
     assert stderr_object["exit"] == NotFoundError.EXIT
 
 

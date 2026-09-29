@@ -40,6 +40,10 @@ def test_three_children_answer_the_needle_question_within_the_budget(tmp_path: P
     judged = result["judgement"]
     assert (judged["needle_cited"], judged["answered"]) == (True, True)
     assert (judged["paged"], judged["page_kinds"]) == (False, ["stream"])
+    #  ADR-13 D13.1: every cited page is `stream`, so the clause holds, and `ow open` resolves the
+    #  needle's cite as a real child.
+    assert result["resolved"] is True
+    assert judged["needle_cite"].startswith("d")
     #  16:736-737: the uninstall left the run's own home byte-identical to before the install.
     assert (result["reversed"], result["residue"]) == (True, [])
     assert not (tmp_path / "home" / ".claude.json").exists()
