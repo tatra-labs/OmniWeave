@@ -397,6 +397,8 @@ def test_the_host_launches_a_real_worker_that_parses_a_real_document(tmp_path: P
         #  D636: `launch()` spawned the child suspended INTO its job, so the job holds it.
         assert worker._job is not None
         assert worker.pid in worker._job.pids()
+        #  D637: and at 04-driver-system.md:1754's priority, set at creation.
+        assert sp.priority_class(worker.pid) == sp.BELOW_NORMAL_PRIORITY_CLASS
         unit = UnitRef(
             uri=str(FIXTURES / "rich.docx"), part="", content_sha256=digest.hex(),
             byte_len=(FIXTURES / "rich.docx").stat().st_size, media_type=DOCX,
