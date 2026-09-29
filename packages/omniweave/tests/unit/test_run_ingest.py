@@ -16,6 +16,7 @@ import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from omniweave.run import discover
@@ -513,3 +514,32 @@ def test_a_container_whose_identity_part_has_a_dtd_fails_its_unit(tmp_path: Path
     assert report.states == {IDENTIFIED: 1, discover.FAILED: 1}
     failed = _rows(store, "SELECT acq_failure_class, part_count FROM unit WHERE state = 'failed'")
     assert failed == [("resource_limit", None)]
+
+
+def test_ignore_evidence_cache_reaches_routing_and_is_recorded_in_run_argv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """05:2822 records the override as `run.argv`, and routing is where it acts (D633)."""
+    seen: list[bool] = []
+    real = ingest_module.route_identified
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        seen.append(bool(kwargs.get("ignore_evidence_cache")))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(ingest_module, "route_identified", spy)
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "a.txt").write_text("x", encoding="utf-8")
+    code, _out, err = _cli(tmp_path, ["docs", "--corpus", "handbook", "--ignore-evidence-cache"])
+    assert (code, err) == (0, "")
+    (tmp_path / "docs" / "b.txt").write_text("y", encoding="utf-8")
+    assert _cli(tmp_path, ["docs", "--corpus", "handbook"])[0] == 0
+    assert seen == [True, False]
+    store = tmp_path / ".omniweave" / "index.owstore"
+    connection = sqlite3.connect(store)
+    try:
+        argv = [row[0] for row in connection.execute("SELECT argv FROM run ORDER BY generation")]
+    finally:
+        connection.close()
+    assert "--ignore-evidence-cache" in argv[0]
+    assert "--ignore-evidence-cache" not in argv[1]
