@@ -4,9 +4,8 @@ Two of the assertions here are the plan's own measurements — 977 characters fo
 for variant B — and they are exact rather than bounded, because 10:872 and 10:892 print them as
 figures. A test that asserted `< 1000` would pass on a string the plan never measured.
 
-The other two combinations do not meet SV2's cap and carry a **strict xfail** with the arithmetic in
-the reason, which is D1's standing treatment in this repository: transcribe the plan's number, fail
-where it fails, and let `xfail_strict` turn the amendment into an XPASS that breaks the build.
+The other two, under `full`, do not meet SV2's 1,000 and carried a strict xfail until ADR-13 D13.3
+gave `full` its own ceiling of 1,100; they are held to that now.
 """
 
 from __future__ import annotations
@@ -21,6 +20,7 @@ from omniweave.gen.instructions import (
     FRONT_DOOR,
     NO_DEFAULT_CORPUS,
     SKILL_SENTENCE,
+    SV2_FULL_MAX_CHARS,
     SV2_MAX_CHARS,
     TOOL_PREFIX,
     VARIANT_A,
@@ -153,19 +153,12 @@ def test_the_default_profile_meets_sv2(*, default_corpus: bool) -> None:
     assert len(instructions(profile="default", default_corpus=default_corpus)) <= SV2_MAX_CHARS
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "D313. 10:909 asserts len(s) <= 1000 for all four variant x profile combinations. Under "
-        "`full` the generator appends a 132-character deferral line (10:898 counts 118, which is "
-        "the ToolSearch fragment without the 13-character `If deferred: ` prefix and the closing "
-        "stop) and drops the 79-character skill sentence, leaving 1,031 and 1,050. 10:907 states "
-        "1,113 before the drop; the arithmetic gives 1,110. This xfail lands when 3.9 is amended."
-    ),
-)
 @pytest.mark.parametrize("default_corpus", [True, False])
-def test_the_full_profile_meets_sv2(*, default_corpus: bool) -> None:
-    assert len(instructions(profile="full", default_corpus=default_corpus)) <= SV2_MAX_CHARS
+def test_the_full_profile_meets_its_own_ceiling(*, default_corpus: bool) -> None:
+    """ADR-13 D13.3: SV2's 1,000 binds `default`; `full` has its own 1,100. Under `full` the
+    generator appends a 132-character deferral line (10:898 counts 118) and drops the 79-character
+    skill sentence, leaving 1,031 and 1,050, which is D313 and the reason for the second ceiling."""
+    assert len(instructions(profile="full", default_corpus=default_corpus)) <= SV2_FULL_MAX_CHARS
 
 
 def test_the_full_profile_lengths_are_the_ones_the_arithmetic_gives() -> None:

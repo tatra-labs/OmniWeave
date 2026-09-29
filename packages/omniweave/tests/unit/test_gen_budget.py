@@ -41,6 +41,7 @@ from omniweave.gen.budget import (
     blessed,
     drift,
     findings,
+    instructions_cap,
     measure,
     read_baseline,
     serialised,
@@ -455,18 +456,43 @@ def test_a_null_full_total_against_a_complete_roster_asks_for_a_bless() -> None:
     assert any("full_compact is null and the full roster now renders" in x for x in reported)
 
 
-def test_the_live_instructions_breach_is_reported_and_is_the_known_one() -> None:
-    """The `full` profile's `instructions` string is 1,031 characters and its no-corpus variant is
-    1,050, both over SV2's 1,000. That is the W7.2a entry rather than this cell's, and the two
-    breaches are the only findings the live surface produces -- which is what makes the assertion
-    worth writing as an equality rather than a containment."""
+def test_the_live_surface_produces_no_finding_under_each_profiles_cap() -> None:
+    """ADR-13 D13.3: SV2's 1,000 binds `default` and `full` has its own 1,100. The `full` strings
+    are 1,031 and 1,050 (D313), which were this test's two known breaches; now there are none."""
     measured = measure(_real_encoder())
-    reported = findings(_committed(), measured)
-    assert [line for line in reported if "chars, over" not in line] == []
-    assert {line.split(" is ")[0] for line in reported} == {
-        "instructions full",
-        "instructions full_no_corpus",
-    }
+    assert findings(_committed(), measured) == ()
+
+
+def test_each_instructions_label_takes_its_profiles_cap() -> None:
+    assert instructions_cap(CEILINGS, "default") == 1000
+    assert instructions_cap(CEILINGS, "default_no_corpus") == 1000
+    assert instructions_cap(CEILINGS, "full") == 1100
+    assert instructions_cap(CEILINGS, "full_no_corpus") == 1100
+
+
+def test_a_default_string_over_1000_is_a_finding_and_a_full_one_is_not_until_1100() -> None:
+    measured = measure(_real_encoder())
+    for label, value, reported in (
+        ("default", 1001, True),
+        ("full", 1100, False),
+        ("full_no_corpus", 1101, True),
+    ):
+        chars = {**measured.instructions_chars, label: value}
+        edited = Measurement(
+            per_tool_compact=measured.per_tool_compact,
+            per_tool_full=measured.per_tool_full,
+            default_compact=measured.default_compact,
+            default_full=measured.default_full,
+            default_compact_corpus_required=measured.default_compact_corpus_required,
+            full_compact=measured.full_compact,
+            full_full=measured.full_full,
+            instructions_chars=chars,
+            omitted=measured.omitted,
+        )
+        found = [
+            x for x in findings(_committed(), edited) if x.startswith(f"instructions {label} ")
+        ]
+        assert bool(found) is reported, (label, value, found)
 
 
 # =============================================================================================
@@ -699,6 +725,7 @@ def test_the_ceilings_constant_and_the_committed_block_agree() -> None:
         "full": 4200,
         "per_tool": 700,
         "instructions_chars": 1000,
+        "instructions_chars_full": 1100,
     }
 
 

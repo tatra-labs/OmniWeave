@@ -59,11 +59,21 @@ discloses the consequence before any query runs.
 
 ## Clause 2 — F2's marshal breach
 
-**The condition.** `rss.gen5000p_peak_bytes` exceeds **1 610 612 736 bytes (1.5 GiB) ± 10 %** on the
-nightly run. 12-performance.md:245 states the mechanism and the verdict in one row: *"anydoc marshals
-eagerly into Python objects and `py.detach` does not cover the marshal, so this row is the fork's
-tripwire and not merely a budget."* 00-vision.md:712 carries it as V01-11 and 12-performance.md:591
-as the parse ceiling.
+**The condition.** `rss.office200_peak_bytes` exceeds **1 610 612 736 bytes (1.5 GiB) + 10 %** on the
+nightly run: the peak RSS of `parse.office.anydoc`'s worker over `fixtures/office-200`, a one-sided
+ceiling. 12-performance.md:245 states the mechanism: *"anydoc marshals eagerly into Python objects and
+`py.detach` does not cover the marshal, so this row is the fork's tripwire and not merely a budget."*
+
+**Why not `rss.gen5000p_peak_bytes`, which this clause named until ADR-13 D13.2.** That row's fixture
+is a PDF, and anydoc refuses a PDF (its card's twelve formats exclude it): `parse.pdf.pdfium` parses
+it, so the row bounds pdfium's worker and could never fire this clause (D629). The row keeps its
+number as V01-11; the tripwire moved to an office corpus, which is what F2 measures (charter
+section 9.2 errata E96 and E97).
+
+**Until `fixtures/office-200` exists (D196)**, nothing measures the row, and the command below is run
+by hand before each release. **If it does not exist by the P10 exit**, when CI returns, this clause
+is re-homed to `parse.office.p50_ms`, the one office budget that runs, and this paragraph records
+the move.
 
 **The test.**
 

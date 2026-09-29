@@ -132,8 +132,15 @@ def test_an_office_answer_cites_the_needle_and_carries_no_page(tmp_path: Path) -
     }
     judged = fa.judge(answer, store=store, needle=NEEDLE, expected="64 days")
     assert judged == fa.Judgement(
-        cited=2, needle_cited=True, answered=True, paged=False, page_kinds=("stream",)
+        cited=2,
+        needle_cited=True,
+        answered=True,
+        paged=False,
+        page_kinds=("stream",),
+        needle_cite="d4#5",
     )
+    #  ADR-13 D13.1: every cited page is `stream`, which has no page, so the clause holds.
+    assert judged.page_clause
 
 
 def test_a_cite_on_a_real_page_is_paged_and_a_wrong_document_is_not_the_needle(
@@ -174,6 +181,7 @@ def _measured(**over: object) -> fa.Measurement:
         "judgement": CITED,
         "machine": {"cpus": 4, "platform": "p", "python": "3.12", "clean": False},
         "reversed": True,
+        "resolved": True,
     }
     fields.update(over)
     return fa.Measurement(**fields)  # type: ignore[arg-type]
@@ -188,6 +196,34 @@ def test_it_passes_within_the_budget_citing_the_needle_whether_or_not_on_a_page(
     assert not _measured(judgement=wrong).passed
     assert not _measured(judgement=None).passed
     assert not _measured(failed="ow add: exit 1: boom").passed
+
+
+@pytest.mark.parametrize(
+    ("kinds", "paged", "holds"),
+    [
+        (("stream",), False, True),
+        (("page",), True, True),
+        (("page", "stream"), True, True),
+        (("unknown",), False, False),
+        (("stream", "unknown"), False, False),
+        ((), False, False),
+    ],
+)
+def test_the_page_clause_is_read_by_page_kind(
+    kinds: tuple[str, ...], paged: bool, holds: bool
+) -> None:
+    """ADR-13 D13.1: a page wherever the page kind has one. A block with no page row is neither."""
+    judged = fa.Judgement(cited=1, needle_cited=True, answered=True, paged=paged, page_kinds=kinds)
+    assert judged.page_clause is holds
+
+
+def test_a_cite_ow_open_does_not_resolve_or_a_failed_page_clause_fails_the_run() -> None:
+    assert not _measured(resolved=False).passed
+    assert not _measured(resolved=None).passed
+    unknown = fa.Judgement(
+        cited=1, needle_cited=True, answered=True, paged=False, page_kinds=("unknown",)
+    )
+    assert not _measured(judgement=unknown).passed
 
 
 def test_an_uninstall_that_leaves_residue_fails_the_run() -> None:
@@ -253,7 +289,7 @@ def test_the_text_report_names_the_machine_and_never_calls_it_clean(
     assert fa.main([]) == 0
     out = capsys.readouterr().out.splitlines()
     assert out[0].startswith("first_answer_seconds 24.0 s against 600 s")
-    assert "on a page False (page kinds: stream)" in out[2]
+    assert out[2].endswith("on a page False (page kinds: stream); ow open resolves True")
     assert out[3] == "reverse ow uninstall: the home is byte-identical"
     assert out[4].endswith("not a clean machine")
     assert out[-2:] == ["note    n1", "PASS"]

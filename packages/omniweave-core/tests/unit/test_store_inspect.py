@@ -3051,6 +3051,15 @@ def test_the_worker_peak_is_compared_one_sided_against_the_rss_ceiling(
     assert measure_store._rss_indication(measured) is under
 
 
+def test_the_report_names_the_resolved_driver_and_whether_its_card_can_reach_the_row() -> None:
+    """ADR-13 D13.2: pdfium's card caps its worker at `memory_mb = 1024`, under the 1.5 GiB row,
+    so the row is unreachable for it, and the report says so rather than implying a breach."""
+    shown = measure_store._resolved_driver("parse.pdf.pdfium")
+    assert shown.startswith("parse.pdf.pdfium, memory_mb = 1024 (1,073,741,824 B, under the row")
+    assert measure_store._resolved_driver("") == "unrecorded: the parse row names no driver"
+    assert "declares no memory_mb" in measure_store._resolved_driver("parse.nothing.installed")
+
+
 def test_the_stub_and_an_unsampled_worker_are_not_comparable(
     sized_store: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -3089,7 +3098,9 @@ def test_gate_rss_is_the_only_way_the_worker_peak_reaches_the_exit_code(
     if worker is not None:
         assert "rss.gen5000p_peak_bytes" in printed
         assert "process = 'worker'" in printed
-        assert "anydoc refuses a PDF" in printed
+        #  ADR-13 D13.2: the row bounds the resolved driver's worker; the tripwire is elsewhere.
+        assert "fork tripwire is rss.office200_peak_bytes" in printed
+        assert "  driver             " in printed
         assert ("under the ceiling" if worker < 1100 else "OVER the ceiling") in printed
         assert "supervisor (this process" in printed
 

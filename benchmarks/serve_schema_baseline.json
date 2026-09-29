@@ -27,7 +27,8 @@
     "default": 1900,
     "full": 4200,
     "per_tool": 700,
-    "instructions_chars": 1000
+    "instructions_chars": 1000,
+    "instructions_chars_full": 1100
   },
   "drift_tolerance": 0.05
 }
