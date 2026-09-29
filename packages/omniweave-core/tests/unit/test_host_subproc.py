@@ -2805,6 +2805,77 @@ def test_a_child_its_job_cannot_admit_is_killed_and_not_left_suspended(tmp_path:
         job.close()
 
 
+NORMAL_PRIORITY_CLASS = 0x00000020
+
+
+def _spawn_reporting_pid(
+    tmp_path: Path, job: sp.JobObject, *, below_normal: bool
+) -> tuple[sp.WorkerProcess, int]:
+    """A worker whose child writes its OWN pid: under `uv`'s trampoline, the interpreter's."""
+    marker = tmp_path / f"pid-{below_normal}"
+    request = sp.SpawnRequest(
+        argv=(
+            sys.executable,
+            "-c",
+            "import os, pathlib, threading; "
+            f"pathlib.Path({str(marker)!r}).write_text(str(os.getpid())); "
+            "threading.Event().wait(30)",
+        ),
+        cwd=str(tmp_path),
+        env=_minimal_env(),
+        address=pipe_address(f"priority-{below_normal}"),
+    )
+    proc = sp.spawn_worker(
+        request, stderr=sp.StderrRing(), stdout=sp.StderrRing(), job=job, below_normal=below_normal
+    )
+    #  Sixty, not twenty: a below-normal child behind a 32-worker pool is starved by design (D502).
+    deadline = time.monotonic() + 60.0
+    written = ""
+    while not written.isdigit() and time.monotonic() < deadline:
+        threading.Event().wait(0.02)
+        written = marker.read_text() if marker.exists() else ""
+    assert written.isdigit(), "the child never wrote its pid"
+    return proc, int(written)
+
+
+@WINDOWS_ONLY
+def test_a_below_normal_worker_s_interpreter_is_below_normal_too(tmp_path: Path) -> None:
+    """D637. 04-driver-system.md:1754's row, on the process that does the work.
+
+    The class is set at `CreateProcess`, so the trampoline has it before it starts the
+    interpreter, and the interpreter inherits it. `SetPriorityClass` after `Popen` returned
+    lowered the trampoline only, and an interpreter it had already started kept `NORMAL`.
+    """
+    job = sp.JobObject()
+    proc, interpreter = _spawn_reporting_pid(tmp_path, job, below_normal=True)
+    try:
+        assert sp.priority_class(proc.pid) == sp.BELOW_NORMAL_PRIORITY_CLASS
+        assert sp.priority_class(interpreter) == sp.BELOW_NORMAL_PRIORITY_CLASS
+    finally:
+        job.terminate()
+        proc.wait(timeout=10)
+        job.close()
+
+
+@WINDOWS_ONLY
+def test_a_worker_not_asked_for_below_normal_keeps_the_normal_class(tmp_path: Path) -> None:
+    """The flag is the caller's, not a default: a spawn without it is `NORMAL` all the way down."""
+    job = sp.JobObject()
+    proc, interpreter = _spawn_reporting_pid(tmp_path, job, below_normal=False)
+    try:
+        assert sp.priority_class(proc.pid) == NORMAL_PRIORITY_CLASS
+        assert sp.priority_class(interpreter) == NORMAL_PRIORITY_CLASS
+    finally:
+        job.terminate()
+        proc.wait(timeout=10)
+        job.close()
+
+
+@WINDOWS_ONLY
+def test_the_priority_class_of_a_process_that_is_gone_is_none() -> None:
+    assert sp.priority_class(999_999) is None
+
+
 @WINDOWS_ONLY
 def test_lowering_a_childs_priority_is_observable_and_is_below_normal() -> None:
     """04-driver-system.md:1754 and :1763: `SetPriorityClass(BELOW_NORMAL)` is `os.nice(10)`'s
