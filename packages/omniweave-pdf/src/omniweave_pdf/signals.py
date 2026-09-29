@@ -16,6 +16,7 @@ and the free groups of those two plans read three keys this provider serves for 
 | key | rule | computation |
 |---|---|---|
 | `unit.part_count` | `gate.too-many-parts` | `FPDF_GetPageCount` (05:2199) |
+| `unit.encrypted` | `gate.encrypted` | pdfium opens it with no password (ADR-15 D15.2) |
 | `corpus.is_form` | `gate.form-admits-fields` | `FPDF_GetFormType` is not `FORMTYPE_NONE` |
 | `decode.char_count` | `decode.pdf-text-layer` | `FPDFText_CountChars`, summed (05:2242) |
 
@@ -27,7 +28,18 @@ it needs a raster, and a scanned page reaches it only after its free group is sp
 
 The row's scope is `part`, and a PDF's parts are its pages (02:479's `unit_part='p1'..'p42'`). The
 router routes one decision per unit, under `expand.UNIDENTIFIED_PART`, so the part it asks about is
-the whole document and the count is summed over every page. On a document with a text layer on some
+the whole document and the count is summed over every page.
+
+## `unit.encrypted` is whether the file OPENS, not whether it carries `/Encrypt`
+
+Detection's trailer scan (ADR-15 D15.1) says a PDF is encrypted. That is not the question
+`gate.encrypted` needs answered: an owner-password-only PDF -- print or copy restrictions, and
+nothing else -- carries `/Encrypt` and opens with the empty password, and 05:2239's scan alone would
+refuse it where the build had always read it. D15.2 makes the key this provider's for a PDF, so the
+child that already opens the file for `unit.part_count` answers it: `False` when pdfium opens the
+bytes, `True` when pdfium refuses them for want of a password. The second is a VALUE, not a raise:
+a raise refuses the whole group, which D579 holds for ever under gate 5, and a document that needs a
+password is an answer, not a failure to compute one. On a document with a text layer on some
 pages and none on others the sum is positive and `decode.pdf-text-layer` routes all of it to
 pdfium, which then reports each empty page with a `diag` (the driver's own docstring). A per-page
 decision is what 05:1089's loop over parts would make, and it is not built.
@@ -49,7 +61,7 @@ if TYPE_CHECKING:
 
     from omniweave_ports.types import Scalar
 
-__all__ = ["COMPUTES", "compute"]
+__all__ = ["COMPUTES", "ENCRYPTED", "compute", "needs_password"]
 
 
 def _part_count(document: pdfium.PdfDocument) -> int:
@@ -75,8 +87,18 @@ def _char_count(document: pdfium.PdfDocument) -> int:
     return total
 
 
+ENCRYPTED: Final[str] = "unit.encrypted"
+
+
+def _opened(document: pdfium.PdfDocument) -> bool:
+    """`unit.encrypted` for a document pdfium has opened: it needed no password (ADR-15 D15.2)."""
+    del document
+    return False
+
+
 COMPUTES: Final[dict[str, Callable[[pdfium.PdfDocument], Scalar]]] = {
     "unit.part_count": _part_count,
+    ENCRYPTED: _opened,
     "corpus.is_form": _is_form,
     "decode.char_count": _char_count,
 }
@@ -87,16 +109,32 @@ thirteen `pdfium` rows are declared and have no computer yet."""
 def compute(raw: bytes, keys: Sequence[str]) -> dict[str, Scalar]:
     """The asked-for keys this module computes, from one PDF's bytes. The others are absent.
 
+    A document pdfium refuses for want of a password answers `unit.encrypted = True` when that key
+    was asked, and nothing else: every other key needs the open document (ADR-15 D15.2).
+
     Raises:
-        pdfium.PdfiumError: pdfium will not open the bytes. The child reports every asked key
-            unavailable with pdfium's own message, which is what `decode.pdf-text-layer`'s
-            `on_unknown = "defer"` then degrades to `skip` on (05:1130).
+        pdfium.PdfiumError: pdfium will not open the bytes, and not for a password, or the
+            password refusal came where `unit.encrypted` was not asked. The child reports every
+            asked key unavailable with pdfium's own message, which is what
+            `decode.pdf-text-layer`'s `on_unknown = "defer"` then degrades to `skip` on (05:1130).
     """
     wanted = [key for key in keys if key in COMPUTES]
     if not wanted:
         return {}
-    document = pdfium.PdfDocument(raw)
+    try:
+        document = pdfium.PdfDocument(raw)
+    except pdfium.PdfiumError as exc:
+        if ENCRYPTED in wanted and needs_password(exc):
+            return {ENCRYPTED: True}
+        raise
     try:
         return {key: COMPUTES[key](document) for key in wanted}
     finally:
         document.close()
+
+
+def needs_password(exc: Exception) -> bool:
+    """pdfium's refusal for want of a password. The wrapper raises one type for every refusal,
+    so this reads its text, as `driver.PdfDriver._open` does."""
+    message = str(exc).lower()
+    return "password" in message or "encrypt" in message

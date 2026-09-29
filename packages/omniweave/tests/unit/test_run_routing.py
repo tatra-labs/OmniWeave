@@ -261,9 +261,10 @@ def test_a_row_no_executor_serves_is_refused_by_name() -> None:
 # ---------------------------------------------------------------------------------------------
 
 
-def test_the_free_group_is_the_roster_and_two_keys_are_honestly_unknown() -> None:
-    """05 section 5.1's FREE keys the roster holds; `unit.corrupt` and a PDF's `unit.encrypted` are
-    UNAVAILABLE with a reason, because nothing checked them."""
+def test_the_free_group_is_the_roster_and_an_unchecked_key_is_honestly_unknown() -> None:
+    """05 section 5.1's FREE keys the roster holds. `unit.corrupt` is UNAVAILABLE with a reason
+    where detection wrote no check, and `unit.encrypted` is detection's trailer scan for a PDF as
+    for any format (ADR-15 D15.1): with no computer, `False` is what the scan found."""
     registry = build_registry(builtin_specs())
     derived = '{"format_evidence":{"chosen":{"basis":"magic"}}}'
     row = ("c:/x/a.pdf", "a" * 64, 10, 1, "pdf", "application/pdf", "internal", derived)
@@ -273,7 +274,10 @@ def test_the_free_group_is_the_roster_and_two_keys_are_honestly_unknown() -> Non
     assert (ev.read("unit.bytes"), ev.read("unit.part_count")) == (10, 1)
     assert (ev.read("trigger.kind"), ev.read("unit.schema_requested")) == ("cli", False)
     assert ev.read("unit.corrupt") is None
-    assert ev.read("unit.encrypted") is None
+    assert ev.read("unit.encrypted") is False
+    scanned = derived.replace('"chosen"', '"encrypted":true,"chosen"')
+    locked = ("c:/x/a.pdf", "a" * 64, 10, 1, "pdf", "application/pdf", "internal", scanned)
+    assert unit_evidence(locked, registry=registry, trigger="cli").read("unit.encrypted") is True
     docx = ("c:/x/a.docx", "a" * 64, 10, 1, "docx", DOCX, "internal", derived)
     assert unit_evidence(docx, registry=registry, trigger="cli").read("unit.encrypted") is False
 
@@ -303,6 +307,18 @@ def test_unit_corrupt_is_what_the_structural_check_found_or_the_override_names()
     assert reason is not None
     assert "--accept-partial" in reason
     assert "no %%EOF" in reason
+
+
+def test_a_pdf_pdfium_says_needs_a_password_is_refused_at_gate_encrypted(
+    signals: StoreThread,
+) -> None:
+    """ADR-15 D15.2: the child's `unit.encrypted = True` is a value, so `gate.encrypted` matches
+    and refuses the unit as `encrypted`, where a raise would have held it under gate 5."""
+    why = "the document needs a password"
+    rest = ("unit.part_count", "corpus.is_form", "decode.char_count")
+    router = _router(signals, _Computer({"unit.encrypted": True}, dict.fromkeys(rest, why)))
+    decision, _ev = _decide(router)
+    assert (decision.rule_id, decision.outcome) == ("gate.encrypted", "refuse")
 
 
 def test_the_resolve_policy_is_the_drivers_block_with_this_host(tmp_path: Path) -> None:
@@ -408,11 +424,18 @@ def _decide(router: Any, row: tuple[object, ...] = PDF_ROW) -> tuple[Any, Any]:
 def test_a_clean_pdf_computes_two_free_groups_and_never_the_local_one(signals: StoreThread) -> None:
     """05:3110 and INV-13: `decode.pdf-text-layer` matches on the FREE group, no earlier rule
     defers, so `ink.tiles` is never asked for and no raster is rendered."""
-    computer = _Computer({"unit.part_count": 3, "corpus.is_form": False, "decode.char_count": 900})
+    computer = _Computer(
+        {
+            "unit.part_count": 3,
+            "unit.encrypted": False,
+            "corpus.is_form": False,
+            "decode.char_count": 900,
+        }
+    )
     decision, ev = _decide(_router(signals, computer))
     assert (decision.rule_id, decision.driver) == ("decode.pdf-text-layer", "parse.pdf.pdfium")
     assert computer.asked == [
-        ("omniweave_pdf", ("corpus.is_form", "unit.part_count")),
+        ("omniweave_pdf", ("corpus.is_form", "unit.encrypted", "unit.part_count")),
         ("omniweave_pdf", ("decode.char_count",)),
     ]
     assert not ev.computed("ink.tiles")
@@ -424,7 +447,9 @@ def test_a_pdf_page_count_is_the_computer_answer_and_not_the_roster_one(
 ) -> None:
     """05:2199 and 05:2222: the key resolves to `pdfium` for a PDF, so the roster's `1` is not put
     under `builtin`'s version first."""
-    computer = _Computer({"unit.part_count": 12_000, "corpus.is_form": False})
+    computer = _Computer(
+        {"unit.part_count": 12_000, "unit.encrypted": False, "corpus.is_form": False}
+    )
     decision, ev = _decide(_router(signals, computer))
     assert decision.rule_id == "gate.too-many-parts"
     assert ev.read("unit.part_count") == 12_000
@@ -435,7 +460,14 @@ def test_a_scanned_pdf_promotes_the_local_group_and_is_held_on_ink_tiles(
 ) -> None:
     """`decode.blank-part-escape` defers on `ink.tiles`, which nothing computes: the LOCAL group is
     asked for, answers nothing, and the unit is held rather than settled on the later rule."""
-    computer = _Computer({"unit.part_count": 1, "corpus.is_form": False, "decode.char_count": 0})
+    computer = _Computer(
+        {
+            "unit.part_count": 1,
+            "unit.encrypted": False,
+            "corpus.is_form": False,
+            "decode.char_count": 0,
+        }
+    )
     router = _router(signals, computer)
     decision, _ev = _decide(router)
     assert decision.rule_id == "decode.no-text-layer"
@@ -453,7 +485,7 @@ def test_a_pdf_pdfium_could_not_read_is_held_and_never_refused_as_unsupported(
     """D579, kept: once its groups ran, `decode.pdf-text-layer` is still UNKNOWN, and a settle on
     `decode.no-rule-matched` would refuse the unit for good as `unsupported_format`."""
     why = "omniweave_pdf.signals: PdfiumError: Failed to load document"
-    keys = ("unit.part_count", "corpus.is_form", "decode.char_count")
+    keys = ("unit.part_count", "unit.encrypted", "corpus.is_form", "decode.char_count")
     router = _router(signals, _Computer({}, dict.fromkeys(keys, why)))
     decision, _ev = _decide(router)
     assert decision.rule_id == "decode.no-rule-matched"
@@ -465,7 +497,14 @@ def test_a_pdf_pdfium_could_not_read_is_held_and_never_refused_as_unsupported(
 
 
 def test_a_value_of_the_wrong_dtype_is_unavailable_not_compared(signals: StoreThread) -> None:
-    computer = _Computer({"unit.part_count": 1, "corpus.is_form": False, "decode.char_count": "9"})
+    computer = _Computer(
+        {
+            "unit.part_count": 1,
+            "unit.encrypted": False,
+            "corpus.is_form": False,
+            "decode.char_count": "9",
+        }
+    )
     _decision, ev = _decide(_router(signals, computer))
     assert ev.read("decode.char_count") is None
     assert ev.unavailable_reason("decode.char_count") == "the provider answered str, not int"
@@ -474,7 +513,14 @@ def test_a_value_of_the_wrong_dtype_is_unavailable_not_compared(signals: StoreTh
 def test_the_gate_clamp_keeps_the_local_group_uncomputed(signals: StoreThread) -> None:
     """05:1117: *"still under the `GATE` clamp"*. A scanned page under a `free` clamp never asks
     for `ink.tiles`, and is held on the key it could not compute."""
-    computer = _Computer({"unit.part_count": 1, "corpus.is_form": False, "decode.char_count": 0})
+    computer = _Computer(
+        {
+            "unit.part_count": 1,
+            "unit.encrypted": False,
+            "corpus.is_form": False,
+            "decode.char_count": 0,
+        }
+    )
     router = _router(signals, computer, layers=(CLAMP_TO_FREE,))
     _decision, ev = _decide(router)
     assert all(keys != ("ink.tiles",) for _package, keys in computer.asked)
@@ -520,7 +566,7 @@ def test_a_group_above_the_clamp_is_not_computed_when_nothing_matched_below_it(
     `decode.no-rule-matched` always matches on the FREE group, so there `deferrals_pending()` is
     what the clamp stops. With no catch-all, nothing matches and the loop reaches the LOCAL group,
     which a `free` clamp forbids."""
-    computer = _Computer({"unit.part_count": 1, "corpus.is_form": False})
+    computer = _Computer({"unit.part_count": 1, "unit.encrypted": False, "corpus.is_form": False})
     decision, ev = _decide(_router(signals, computer, layers=(NO_CATCH_ALL,), shipped=False))
     assert decision is None
     assert not ev.computed("ink.tiles")
@@ -531,7 +577,12 @@ def test_a_group_above_the_clamp_is_not_computed_when_nothing_matched_below_it(
 # route_signal: 05 section 5.4's cache, read before the child and written after it (D632)
 # ---------------------------------------------------------------------------------------------
 
-CLEAN = {"unit.part_count": 3, "corpus.is_form": False, "decode.char_count": 900}
+CLEAN = {
+    "unit.part_count": 3,
+    "unit.encrypted": False,
+    "corpus.is_form": False,
+    "decode.char_count": 900,
+}
 SIGNAL_ROWS = (
     "SELECT signal_key, signal_version, value, unavailable_reason, compute_ms, computed_at "
     "FROM route_signal ORDER BY signal_key"
@@ -576,7 +627,7 @@ def test_a_second_run_over_the_same_content_starts_no_child_and_decides_the_same
     assert again_computer.asked == []
     assert (again.rule_id, again.driver) == (first.rule_id, first.driver)
     assert again_ev.read_set_digest() == first_ev.read_set_digest()
-    assert dict(router.tally.cached) == {"pdfium": 3}
+    assert dict(router.tally.cached) == {"pdfium": 4}
     assert not router.tally.children
 
 
@@ -588,9 +639,10 @@ def test_each_computed_key_is_one_row_under_its_provider_version(signals: StoreT
     assert [(key, version) for key, version, *_ in rows] == [
         ("corpus.is_form", "1.0.0"),
         ("decode.char_count", "1.0.0"),
+        ("unit.encrypted", "1.0.0"),
         ("unit.part_count", "1.0.0"),
     ]
-    assert [value for _k, _v, value, *_ in rows] == [b"false", b"900", b"3"]
+    assert [value for _k, _v, value, *_ in rows] == [b"false", b"900", b"false", b"3"]
     assert all(reason is None for *_, reason, _ms, _at in rows)
     assert all(isinstance(ms, int) and ms >= 0 for *_, ms, _at in rows)
     assert {at for *_, at in rows} == {1_234}
@@ -600,7 +652,12 @@ def test_a_kept_reason_is_cached_so_a_held_unit_is_not_recomputed(signals: Store
     """05:2352: *"we tried and could not" is a cacheable fact*. The scanned PDF is held on
     `ink.tiles`, which pdfium's computer does not compute; the next run holds it again, for the same
     reason, without asking the child for anything."""
-    scan = {"unit.part_count": 1, "corpus.is_form": False, "decode.char_count": 0}
+    scan = {
+        "unit.part_count": 1,
+        "unit.encrypted": False,
+        "corpus.is_form": False,
+        "decode.char_count": 0,
+    }
     first = _router(signals, _Computer(scan))
     first.route(PDF_ROW)
     computer = _Computer(scan)
@@ -664,17 +721,27 @@ def test_a_cached_value_comes_back_as_the_type_it_was_given(signals: StoreThread
 
 
 def test_the_report_names_the_cached_signals(signals: StoreThread) -> None:
-    scan = {"unit.part_count": 1, "corpus.is_form": False, "decode.char_count": 0}
+    scan = {
+        "unit.part_count": 1,
+        "unit.encrypted": False,
+        "corpus.is_form": False,
+        "decode.char_count": 0,
+    }
     _router(signals, _Computer(scan)).route(PDF_ROW)
     router = _router(signals, _Computer(scan))
     router.route(PDF_ROW)
-    assert "  route     4 signals cached (pdfium 4)" in router.tally.lines()
+    assert "  route     5 signals cached (pdfium 5)" in router.tally.lines()
 
 
 def test_a_run_that_read_nothing_from_the_cache_reports_no_cache_line(
     signals: StoreThread,
 ) -> None:
-    scan = {"unit.part_count": 1, "corpus.is_form": False, "decode.char_count": 0}
+    scan = {
+        "unit.part_count": 1,
+        "unit.encrypted": False,
+        "corpus.is_form": False,
+        "decode.char_count": 0,
+    }
     router = _router(signals, _Computer(scan))
     router.route(PDF_ROW)
     assert not router.tally.cached
@@ -706,7 +773,7 @@ def test_the_real_child_is_started_once_for_a_scan_held_twice(
     again.route(row)
     assert sum(first.tally.children.values()) == 3
     assert not again.tally.children
-    assert dict(again.tally.cached) == {"pdfium": 4}
+    assert dict(again.tally.cached) == {"pdfium": 5}
     assert dict(again.tally.unrouted) == dict(first.tally.unrouted)
     ((reason, _count),) = again.tally.unrouted.items()
     assert reason.startswith("deferred (decode.blank-part-escape): ink.tiles:")
@@ -753,7 +820,7 @@ def test_without_the_flag_the_same_router_reads_the_cache(signals: StoreThread) 
     router = _router(signals, _Computer(CLEAN))
     assert router.ignore_evidence_cache is False
     _decide(router)
-    assert dict(router.tally.cached) == {"pdfium": 3}
+    assert dict(router.tally.cached) == {"pdfium": 4}
 
 
 def test_the_flag_never_recomputes_a_billed_key(signals: StoreThread) -> None:
@@ -764,7 +831,9 @@ def test_the_flag_never_recomputes_a_billed_key(signals: StoreThread) -> None:
     router.registry = _Billed(router.registry, "decode.char_count")
     router.ignore_evidence_cache = True
     _decide(router)
-    assert computer.asked == [("omniweave_pdf", ("corpus.is_form", "unit.part_count"))]
+    assert computer.asked == [
+        ("omniweave_pdf", ("corpus.is_form", "unit.encrypted", "unit.part_count"))
+    ]
     assert dict(router.tally.cached) == {"pdfium": 1}
 
 
@@ -803,7 +872,7 @@ def test_a_held_scan_rerouted_by_ingest_reads_the_cache_unless_told_not_to(
     first, second, third = lines(), lines(), lines(ignore_evidence_cache=True)
     assert any("signal children" in line for line in first)
     assert not any("signals cached" in line for line in first)
-    assert any("4 signals cached (pdfium 4)" in line for line in second)
+    assert any("5 signals cached (pdfium 5)" in line for line in second)
     assert not any("signal children" in line for line in second)
     assert any("signal children" in line for line in third)
     assert not any("signals cached" in line for line in third)
