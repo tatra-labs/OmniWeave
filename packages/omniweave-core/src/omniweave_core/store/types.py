@@ -431,8 +431,9 @@ class Coverage:
     with the gate ladder it belongs to; 07:3348-3351 sends it there explicitly. P6 W6.5 homed it in
     `omniweave_core.retrieve.verdict` and the reference here is STILL unresolved, because the edge
     back would be a cycle -- see the module docstring. P2's non-goals name no `Verdict` and no gate
-    ladder (16-roadmap.md:468), so at P2 a backend returns `gaps=()` and the counts are the whole of
-    what it can honestly report; W6.5's gate 9 is the first reader that fills them.
+    ladder (16-roadmap.md:468), so at P2 a backend returned `gaps=()` and the counts were the
+    whole of what it could honestly report. The SQLite backend fills them from D640 on: 07:2189's
+    diag join, and the units that stopped with no document (`reader.coverage`).
 
     `pending_work`, `stale_units` and `unreadable_units` read `work` and `unit`, which P2 creates
     and leaves EMPTY (16-roadmap.md:406, :468) and P4 fills. The read is a store read either way;

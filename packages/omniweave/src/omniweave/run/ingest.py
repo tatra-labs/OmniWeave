@@ -662,6 +662,8 @@ def _hops(
     sources = sources_of(thread, paths=paths, scope=scope)
     walked = _walk(thread, sources, generation=generation, now_ns=now_ns, plan_batch=plan_batch)
     discover.reset_stale_acquiring(thread)
+    #  D640: a refused unit whose file changed since is read again, which is what gate 9's fix says.
+    discover.reopen_changed_failures(thread, generation=generation, plan_batch=plan_batch)
     acquired = discover.acquire_pending(
         thread, generation=generation, indexed_at_ns=now_ns, plan_batch=plan_batch
     )

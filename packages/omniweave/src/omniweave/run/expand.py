@@ -400,7 +400,8 @@ UPDATE unit SET state = 'failed', acq_failure_class = :failure_class
 """.replace("{acquired}", ACQUIRED)
 """`05:395`'s terminal exit: *"failed (a permanent FailureClass, no doc row)"*.
 
-The unit stops here and no `doc` row is ever written, which is what `07:2229`'s absence gate reads.
+The unit stops here and no `doc` row is ever written. Its class decides which absence gate names
+it: gate 9 through `FAILURE_CLASS_DIAGS`, or gate 8's `unreadable_units` (D640).
 `acq_failure_class` carries the cause even though the failure is an identification rather than an
 acquisition: `unit` has exactly one column for "why did this unit stop", the state machine at
 `05:389-395` routes both arrows into it, and a second column would be a migration on a charter table

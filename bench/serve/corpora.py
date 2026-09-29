@@ -14,6 +14,11 @@ Each entry is a project of its own, laid out as `first_answer.py` lays out V01-1
 - a `HOME` and an `OMNIWEAVE_HOME` of its own, so nothing of the user's is read or written.
 
 The default cache is `$OMNIWEAVE_HOME/bench-cache/`, or `~/.omniweave/bench-cache/` without it.
+
+**A damaged task gets a damaged corpus of its own** (ADR-14 D14.2 part 4, D640). `damage` names
+the file and the Injector (`omniweave_conform.damage.INJECTORS`), the digest covers both, and the
+entry is named for the Injector, so a damaged corpus is never the pristine one's cache entry. The
+Injector damages the source bytes, so both arms face the same unreadable file.
 """
 
 from __future__ import annotations
@@ -32,10 +37,20 @@ from types import ModuleType
 from typing import Final
 
 from first_answer import PROJECT, _env
+from omniweave_conform.damage import INJECTORS
 from omniweave_core.host.subproc import run_captured
 from serve_harness import indexed_sources
 
-__all__ = ["GENERATOR", "CorpusError", "Prepared", "default_cache", "generator", "prepare"]
+__all__ = [
+    "GENERATOR",
+    "CorpusError",
+    "Prepared",
+    "damage_of",
+    "default_cache",
+    "generator",
+    "key_of",
+    "prepare",
+]
 
 GENERATOR: Final[Path] = (
     Path(__file__).resolve().parents[2] / "fixtures" / "gen" / "gen_reference_corpora.py"
@@ -71,6 +86,8 @@ class Prepared:
     cached: bool
     add_seconds: float | None
     env: Mapping[str, str] = field(repr=False)
+    damage: tuple[tuple[str, str], ...] = ()
+    """`(path, injector)` for each damaged file, or empty for the pristine corpus."""
 
     @property
     def project(self) -> Path:
@@ -89,6 +106,22 @@ class Prepared:
         return indexed_sources(self.receipt.read_text(encoding="utf-8"), self.project.as_posix())
 
 
+def damage_of(task_id: str, injector: str | None) -> tuple[tuple[str, str], ...]:
+    """A damaged task's damage: its Injector over the one file `PLANTED` wrote its answer into.
+
+    13-quality.md section 8.8's damaged class asks *"does the agent act on `degraded` rather than
+    answering anyway"*, so the file the Injector damages is the one that holds the answer.
+    """
+    if injector is None:
+        return ()
+    return ((generator().PLANTED[task_id].path, injector),)
+
+
+def key_of(corpus: str, damage: tuple[tuple[str, str], ...]) -> str:
+    """The name a prepared corpus is looked up by: the corpus, then each damaged file."""
+    return corpus + "".join(f"+{name}:{path}" for path, name in damage)
+
+
 def default_cache() -> Path:
     home = os.environ.get("OMNIWEAVE_HOME")
     return (Path(home) if home else Path.home() / ".omniweave") / "bench-cache"
@@ -99,29 +132,46 @@ def prepare(
     scale: str,
     *,
     cache_root: Path,
+    damage: tuple[tuple[str, str], ...] = (),
     python: str = sys.executable,
     log: Callable[[str], None] = lambda _line: None,
 ) -> Prepared:
-    """Generate and ingest `corpus` at `scale`, or reuse the cached entry with the same digest."""
+    """Generate and ingest `corpus` at `scale`, or reuse the cached entry with the same digest.
+
+    `damage` applies each named Injector to its file before `ow add` reads it.
+    """
     gen = generator()
     documents = gen.documents(corpus, scale)
-    digest = hashlib.sha256(gen.manifest_bytes(documents)).hexdigest()
-    base = cache_root / f"{corpus}-{scale}-{digest[:12]}"
+    digest = hashlib.sha256(gen.manifest_bytes(documents) + _damage_bytes(damage)).hexdigest()
+    label = "-".join(name for _path, name in damage)
+    base = cache_root / f"{corpus}-{scale}-{label + '-' if label else ''}{digest[:12]}"
     ready = base / ".ready"
     project = base / "project"
+    shown = f"{corpus} ({scale}{', ' + label if label else ''})"
     if ready.is_file() and (project / "omniweave.index.lock").is_file():
-        log(f"  corpus    {corpus} ({scale}): cached, {len(documents)} files, {base.as_posix()}")
-        return Prepared(corpus, scale, digest, base, cached=True, add_seconds=None, env=_env(base))
+        log(f"  corpus    {shown}: cached, {len(documents)} files, {base.as_posix()}")
+        return Prepared(
+            corpus, scale, digest, base, cached=True, add_seconds=None, env=_env(base),
+            damage=damage,
+        )  # fmt: skip
     if base.exists():
         shutil.rmtree(base)
     (project / "docs").mkdir(parents=True)
     (project / "omniweave.toml").write_text(PROJECT, encoding="utf-8")
+    damaged = dict(damage)
+    unknown = sorted(set(damaged) - {document.path for document in documents})
+    if unknown:
+        msg = f"{corpus} ({scale}) has no {unknown} to damage"
+        raise CorpusError(msg)
     for document in documents:
         path = project / "docs" / document.path
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(document.to_bytes())
+        data = document.to_bytes()
+        if document.path in damaged:
+            data = INJECTORS[damaged[document.path]].transform(data)
+        path.write_bytes(data)
     env = _env(base)
-    log(f"  corpus    {corpus} ({scale}): generated {len(documents)} files; running ow add")
+    log(f"  corpus    {shown}: generated {len(documents)} files; running ow add")
     started = time.perf_counter()
     added = run_captured(
         (python, "-m", "omniweave", "add", "docs"),
@@ -134,10 +184,23 @@ def prepare(
     if added.returncode != 0 or not (project / "omniweave.index.lock").is_file():
         tail = added.stderr.decode("utf-8", "replace")[-1500:]
         msg = (
-            f"ow add over {corpus} ({scale}) exited {added.returncode} after {seconds} s. "
+            f"ow add over {shown} exited {added.returncode} after {seconds} s. "
             f"The project is kept at {project.as_posix()} to inspect; its stderr ends:\n{tail}"
         )
         raise CorpusError(msg)
     ready.write_text(digest + "\n", encoding="utf-8")
-    log(f"  corpus    {corpus} ({scale}): ingested in {seconds} s, {base.as_posix()}")
-    return Prepared(corpus, scale, digest, base, cached=False, add_seconds=seconds, env=env)
+    log(f"  corpus    {shown}: ingested in {seconds} s, {base.as_posix()}")
+    return Prepared(
+        corpus, scale, digest, base, cached=False, add_seconds=seconds, env=env, damage=damage
+    )
+
+
+def _damage_bytes(damage: tuple[tuple[str, str], ...]) -> bytes:
+    """What a damage spec adds to the digest: nothing for the pristine corpus, so its key holds."""
+    if not damage:
+        return b""
+    for _path, name in damage:
+        if name not in INJECTORS:
+            msg = f"{name!r} is not a built Injector; built: {sorted(INJECTORS)}"
+            raise CorpusError(msg)
+    return b"".join(f"damage {name} {path}\n".encode() for path, name in damage)

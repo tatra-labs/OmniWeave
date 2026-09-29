@@ -71,6 +71,7 @@ from omniweave.run.discover import (
     observe,
     pending_params,
     raw,
+    reopen_changed_failures,
     reset_stale_acquiring,
     roster_rows,
     stale_params,
@@ -1102,6 +1103,81 @@ def test_a_pass_reads_only_this_generation_s_units(store: ow.StoreThread, tmp_pa
     assert acquire_pending(store, generation=2, indexed_at_ns=LATE_NS).acquired == 1
     rows = _reader(tmp_path).execute("SELECT state FROM unit ORDER BY unit_uri").fetchall()
     assert sorted(rows) == [(ACQUIRED,), ("discovered",)]
+
+
+def _refused(store: ow.StoreThread, tmp_path: Path, root: Path, name: str) -> str:
+    """One unit acquired, then refused past identify, as `gate.unsupported-source` leaves it."""
+    _rostered(store, root, name)
+    acquire_pending(store, generation=1, indexed_at_ns=LATE_NS)
+    reader = _reader(tmp_path)
+    (uri,) = reader.execute("SELECT unit_uri FROM unit").fetchone()
+    reader.execute(
+        "UPDATE unit SET state = 'failed', part_count = 1, "
+        "acq_failure_class = 'unsupported_format' WHERE unit_uri = ?",
+        (uri,),
+    )
+    reader.execute(
+        "INSERT INTO work(unit_uri, operator, op_version, cache_key, cost_class, status) "
+        "VALUES(?, 'op.identify', 1, 'k', 'free', 'done')",
+        (uri,),
+    )
+    reader.commit()
+    return str(uri)
+
+
+def test_a_refused_unit_whose_file_is_unchanged_stays_refused(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """D580's measured case, kept: re-reading unchanged bytes would refuse them again, and
+    re-acquiring a unit with a part count is what stranded it."""
+    uri = _refused(store, tmp_path, tmp_path / "src", "masked.docx")
+    assert reopen_changed_failures(store, generation=1) == 0
+    row = _reader(tmp_path).execute(
+        "SELECT state, part_count, acq_failure_class FROM unit WHERE unit_uri = ?", (uri,)
+    )
+    assert row.fetchone() == (FAILED, 1, "unsupported_format")
+
+
+def test_a_refused_unit_whose_file_changed_is_reopened_and_read_again(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """D640. Gate 9's fix for a refused unit is `ow add <path>`, and with the file restored that
+    command read nothing: D580 kept every failed unit with a part count out of acquisition. The
+    paired-damage suite's `fix fixes` clause found it. A changed file is now re-opened: back to
+    `discovered`, its count and class cleared, its terminal work rows gone, and read again."""
+    root = tmp_path / "src"
+    uri = _refused(store, tmp_path, root, "masked.docx")
+    (root / "masked.docx").write_bytes(b"the restored bytes, which are longer")
+    assert reopen_changed_failures(store, generation=1) == 1
+    reader = _reader(tmp_path)
+    row = reader.execute(
+        "SELECT state, part_count, acq_failure_class FROM unit WHERE unit_uri = ?", (uri,)
+    )
+    assert row.fetchone() == ("discovered", None, None)
+    assert reader.execute("SELECT count(*) FROM work").fetchone() == (0,)
+    assert acquire_pending(store, generation=1, indexed_at_ns=LATE_NS).acquired == 1
+    assert reopen_changed_failures(store, generation=1) == 0
+
+
+def test_a_reopen_leaves_a_live_work_row_and_another_generation_alone(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """Only terminal rows go: a `pending` row belongs to a run in flight. And only the units this
+    generation's walk saw are surveyed, as `STALE_SCAN_SQL` surveys them."""
+    root = tmp_path / "src"
+    uri = _refused(store, tmp_path, root, "masked.docx")
+    reader = _reader(tmp_path)
+    reader.execute(
+        "INSERT INTO work(unit_uri, operator, op_version, cache_key, cost_class, status) "
+        "VALUES(?, 'op.converge', 1, 'k', 'free', 'pending')",
+        (uri,),
+    )
+    reader.commit()
+    (root / "masked.docx").write_bytes(b"the restored bytes, which are longer")
+    assert reopen_changed_failures(store, generation=2) == 0
+    assert reopen_changed_failures(store, generation=1) == 1
+    rows = _reader(tmp_path).execute("SELECT operator, status FROM work").fetchall()
+    assert rows == [("op.converge", "pending")]
 
 
 def test_the_free_rung_skips_only_a_unit_whose_bytes_were_read_before(tmp_path: Path) -> None:

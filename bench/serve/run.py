@@ -5,9 +5,11 @@
 2. **Select.** `--tasks` takes `all`, or a comma list of ids, classes (`citation`, `retrieval`,
    `absence`, `damaged`) and corpora (`legal_matter`, `data_room`, `personal_archive`).
 3. **Hold back what cannot be measured yet, and say why.** A `damaged` task needs its Injector,
-   which is P6's absence suite. The catalogue's missing scanned tasks wait on the public-domain
-   scans (ADR-14 D14.1 part 3).
-4. **Prepare** each corpus once per content digest (`corpora.prepare`, cached).
+   which is P6's absence suite (`omniweave_conform.damage`); one whose Injector is not built yet
+   is held back. The catalogue's missing scanned tasks wait on the public-domain scans (ADR-14
+   D14.1 part 3).
+4. **Prepare** each corpus once per content digest (`corpora.prepare`, cached). A damaged task
+   gets its corpus with its answer's file damaged by its Injector, cached apart (D640).
 5. **Run** every task on each arm, `workers` at a time, each on its own agent. The omniweave arm
    also gets its own `ow serve --mcp` child.
 6. **Grade and report.** `serve_harness` turns transcripts into `source_reread_rate` paired with
@@ -40,9 +42,10 @@ import anyio
 from agent import AgentRun, LoopSettings, OwServer, ToolServer, TurnFn, run_task
 from agent_cassette import CASSETTE_ROOT, SERVICE, AgentCassette, CassetteMissError
 from agent_config import BenchConfigError, Config, resolve
-from corpora import CorpusError, Prepared, default_cache, prepare
+from corpora import CorpusError, Prepared, damage_of, default_cache, key_of, prepare
 from host_tools import HostTools
 from models import ModelClient, ModelError, client_for
+from omniweave_conform.damage import INJECTORS, TABLE
 from omniweave_core.cassette import CassetteMode
 from serve_harness import (
     Arm,
@@ -61,6 +64,7 @@ __all__ = [
     "Failure",
     "Graded",
     "Unmeasured",
+    "corpus_key",
     "main",
     "partition",
     "run_all",
@@ -122,18 +126,25 @@ def partition(tasks: Sequence[Task]) -> tuple[tuple[Task, ...], tuple[Unmeasured
     """Split off what cannot be measured on this build, each with its reason."""
     runnable: list[Task] = []
     held: list[Unmeasured] = []
+    built = ", ".join(INJECTORS)
     for task in tasks:
-        if task.injector is not None:
+        if task.injector is not None and task.injector not in INJECTORS:
             held.append(
                 Unmeasured(
                     task.id,
                     f"needs the {task.injector} Injector, which is P6's absence suite "
-                    "(13-quality.md section 8.6) and not built (ADR-14 D14.2 part 4)",
+                    f"(13-quality.md section 8.6) and not built yet; built: {built} "
+                    f"({len(INJECTORS)} of {len(TABLE)})",
                 )
             )
         else:
             runnable.append(task)
     return tuple(runnable), tuple(held)
+
+
+def corpus_key(task: Task) -> str:
+    """Which prepared corpus `task` runs over: its own damaged one, if it is a damaged task."""
+    return key_of(task.corpus.value, damage_of(task.id, task.injector))
 
 
 def default_server(prepared: Prepared) -> AbstractAsyncContextManager[ToolServer]:
@@ -155,10 +166,10 @@ async def run_all(
     graded: list[Graded] = []
     failures: list[Failure] = []
     limiter = anyio.CapacityLimiter(workers)
-    indexed = {name: one.indexed() for name, one in prepared.items()}
+    indexed = {key: one.indexed() for key, one in prepared.items()}
 
     async def one(task: Task, arm: Arm) -> None:
-        corpus = prepared[task.corpus.value]
+        corpus = prepared[corpus_key(task)]
         async with limiter:
             try:
                 if arm is Arm.OMNIWEAVE:
@@ -176,9 +187,7 @@ async def run_all(
                 failures.append(Failure(task.id, arm, str(exc)))
                 log(f"  FAILED    {arm.value:9} {task.id}: {str(exc)[:160]}")
                 return
-        graded.append(
-            Graded(task, done, outcome(task, done.transcript, indexed[task.corpus.value]))
-        )
+        graded.append(Graded(task, done, outcome(task, done.transcript, indexed[corpus_key(task)])))
         mark = "right" if graded[-1].outcome.correct else "WRONG"
         log(f"  task      {arm.value:9} {task.id:28} {mark}  {done.tool_calls} calls")
 
@@ -359,9 +368,16 @@ def _start(args: argparse.Namespace, emit: Callable[[str], None]) -> Started | N
             timeout_s=config.timeout_s,
         )  # fmt: skip
     cache_root = args.cache or default_cache()
+    wanted = {corpus_key(task): task for task in runnable}
     prepared = {
-        corpus: prepare(corpus, config.scale.value, cache_root=cache_root, log=emit)
-        for corpus in sorted({task.corpus.value for task in runnable})
+        key: prepare(
+            task.corpus.value,
+            config.scale.value,
+            cache_root=cache_root,
+            damage=damage_of(task.id, task.injector),
+            log=emit,
+        )
+        for key, task in sorted(wanted.items())
     }
     if args.prepare_only:
         return None

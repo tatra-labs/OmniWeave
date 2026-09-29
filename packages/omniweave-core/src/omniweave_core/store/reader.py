@@ -31,10 +31,10 @@ column."* Six methods, one ruling each:
    (`score`, `channel_contributions`, `channel_ranks`, `identity_grade`) are fusion outputs
    (07:2250-2265), and 07:3348 homes `Hit` with the query path. It returns `Hydration`, a
    `Sequence` of the SELECT's own rows -- see that class.
-6. **`coverage` -- THE COUNTS.** `gaps` is `tuple[DegradeCause, ...]` and `DegradeCause` is
-   07:1989's, with the gate ladder 16-roadmap.md:468 excludes from P2, so `gaps=()`. Every count
-   is a real read, including the three over `work` and `unit`, which P2 creates and leaves empty
-   (16-roadmap.md:406).
+6. **`coverage` -- THE COUNTS, and gate 9's gaps.** `gaps` is `tuple[DegradeCause, ...]` and
+   `DegradeCause` is 07:1989's. It was `()` until D640, so gate 9 fired only on evidence a test
+   built; it is now 07:2189's join (`_document_gaps`, `_unit_gaps`). Every count is a real read,
+   including the three over `work` and `unit`.
 
 ## Above `PREFILTER_MAX` the filter is a predicate, and somebody has to apply it
 
@@ -200,6 +200,7 @@ Specified in 07-store-and-retrieval.md sections 1.1, 3.3, 3.8, 6.1, 7.1, 7.2, 10
 from __future__ import annotations
 
 import math
+import shlex
 import sqlite3
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -230,6 +231,11 @@ from omniweave_core.retrieve.channels import (
     cite_doc_ord,
     grade_title,
     normalise_query_text,
+)
+from omniweave_core.retrieve.verdict import (
+    ABSENCE_BLOCKING_DIAGS,
+    FAILURE_CLASS_DIAGS,
+    DegradeCause,
 )
 from omniweave_core.store import NO_JOB_DOCS, resolve
 from omniweave_core.store import sqlite as ow
@@ -435,8 +441,8 @@ alone, no gate of the fifteen fired over 200 rostered, never-parsed files, and `
 answered **`absent`** with `coverage = {discovered: 200, indexed: 200}`: gate 4 reads a walked
 scope as covered, because `ingest_scope.indexed` counts rostered units (W3.8).
 
-`failed` is gate 8's (`unreadable_units`) and `settled` / `out_of_scope` are not holes, so the
-set is the six in between, in `0004_runtime.sql`'s CHECK order."""
+`failed` is gate 8's or gate 9's by its class (D640), and `settled` / `out_of_scope` are not
+holes, so the set is the six in between, in `0004_runtime.sql`'s CHECK order."""
 
 
 # ---------------------------------------------------------------------------
@@ -667,6 +673,121 @@ def _one_int(connection: sqlite3.Connection, sql: str, params: Sequence[object] 
 def _placeholders(n: int) -> str:
     """`?,?,?` for an `IN (...)` list of `n` bound values."""
     return ",".join("?" * n)
+
+
+REREAD_CLASSES: Final[frozenset[str]] = frozenset(
+    {"corrupt_input", "unsupported_format", "timeout"}
+)
+"""The failure classes whose gap a re-read clears once the bytes are sound. **D640.**
+
+An unsupported or corrupt unit is what its bytes are, and no command repairs bytes the user owns:
+the fix is to restore or replace the file and read it again, which is `ow add <path>`, and the
+paired-damage suite's counterfactual restores the source before it runs that fix (D640). A timeout
+is re-read as it stands. `encrypted`, `needs_ocr` and `resource_limit` are cleared by a password,
+an OCR budget or a raised limit, and this build has no flag for any of them yet, so their `fix`
+is empty, which is what 07:1989 allows *"only where no command does"*.
+"""
+
+
+def _add_command(unit_uri: str) -> str:
+    """`ow add <path>`, quoted for a POSIX shell, which is also how the damage suite splits it."""
+    return f"ow add {shlex.quote(unit_uri)}"
+
+
+def _page_ranges(pages: Sequence[int]) -> tuple[tuple[int, int], ...]:
+    """Sorted distinct pages as inclusive runs: `[3, 4, 5, 9]` is `((3, 5), (9, 9))`."""
+    runs: list[tuple[int, int]] = []
+    for page in sorted(set(pages)):
+        if runs and page == runs[-1][1] + 1:
+            runs[-1] = (runs[-1][0], page)
+        else:
+            runs.append((page, page))
+    return tuple(runs)
+
+
+def _document_gaps(
+    connection: sqlite3.Connection, doc_where: str, doc_params: Sequence[object]
+) -> tuple[DegradeCause, ...]:
+    """Gate 9's join over documents, 07:2189: a blocking `diag` code, or `doc.status <> 'ok'`.
+
+    One cause per document, in `doc_ord` order: 07:2189 groups by *"(doc, page range)"* and a
+    document's ranges are its `where`. Only the head generation's rows count (`diag.gen = doc.gen`),
+    so a diagnostic a re-parse cleared is not a gap. A document-level diagnostic has no page and
+    adds no range. The command that clears a parse-level gap depends on its code, and this build
+    has none to give yet, so `fix` is empty (07:1989, D265).
+    """
+    blocking = _placeholders(len(ABSENCE_BLOCKING_DIAGS))
+    found: dict[int, tuple[str, str, set[str], list[int]]] = {}
+    #  Two reads and not one LEFT JOIN from `doc`: that form scans `doc` and builds an automatic
+    #  index over all of `diag` on every query. This one is the `diag_code` search 07:2189 names
+    #  (*"CREATE INDEX diag_code exists for exactly this"*), then `doc` by its primary key.
+    for doc_ord, uri, status, code, page in connection.execute(
+        "SELECT doc.doc_ord, doc.uri, doc.status, diag.code, diag.page FROM diag "  # noqa: S608
+        "JOIN doc ON doc.doc_ord = diag.doc_ord AND diag.gen = doc.gen "
+        f"WHERE diag.code IN ({blocking}) AND {doc_where}",
+        (*ABSENCE_BLOCKING_DIAGS, *doc_params),
+    ):
+        entry = found.setdefault(int(doc_ord), (str(uri), str(status), set(), []))
+        entry[2].add(str(code))
+        if page is not None:
+            entry[3].append(int(page))
+    for doc_ord, uri, status in connection.execute(
+        f"SELECT doc.doc_ord, doc.uri, doc.status FROM doc WHERE {doc_where} "  # noqa: S608
+        "AND doc.status <> 'ok'",
+        tuple(doc_params),
+    ):
+        found.setdefault(int(doc_ord), (str(uri), str(status), set(), []))
+    gaps: list[DegradeCause] = []
+    for doc_ord in sorted(found):
+        uri, status, present, pages = found[doc_ord]
+        codes = tuple(code for code in ABSENCE_BLOCKING_DIAGS if code in present)
+        ranges = _page_ranges(pages)
+        shown = ", ".join(f"p.{lo}" if lo == hi else f"p.{lo}-{hi}" for lo, hi in ranges)
+        said = [f"{', '.join(codes)}{f' on {shown}' if shown else ''}"] if codes else []
+        if status != "ok":
+            said.append(f"doc.status = {status}")
+        gaps.append(
+            DegradeCause(
+                gate="parse_gap_in_scope",
+                detail=f"{uri}: {'; '.join(said)}",
+                diag_codes=codes,
+                where=tuple((doc_ord, lo, hi) for lo, hi in ranges),
+            )
+        )
+    return tuple(gaps)
+
+
+def _unit_gaps(
+    connection: sqlite3.Connection, unit_where: str, unit_params: Sequence[object]
+) -> tuple[DegradeCause, ...]:
+    """Gate 9's join over units that stopped with no `doc` row, through `FAILURE_CLASS_DIAGS`.
+
+    D640. The detail names the file, the class, and the format detection sniffed, which is
+    13:1292's *"a named `resolve()` rejection with the format it sniffed"*. There is no document,
+    so there is no page and `where` is empty.
+    """
+    classes = tuple(FAILURE_CLASS_DIAGS)
+    rows = connection.execute(
+        "SELECT unit_uri, acq_failure_class, format FROM unit "  # noqa: S608
+        f"WHERE state = 'failed' AND acq_failure_class IN ({_placeholders(len(classes))}) "
+        f"AND {unit_where} ORDER BY unit_uri",
+        (*classes, *unit_params),
+    ).fetchall()
+    gaps: list[DegradeCause] = []
+    for unit_uri, failure_class, fmt in rows:
+        uri, cls = str(unit_uri), str(failure_class)
+        sniffed = f"detection sniffed {fmt}" if fmt else "detection sniffed nothing"
+        reread = cls in REREAD_CLASSES
+        remedy = "; restore or replace the file, then read it again" if reread else ""
+        gaps.append(
+            DegradeCause(
+                gate="parse_gap_in_scope",
+                detail=f"{uri}: refused as {cls}, so no document was written ({sniffed}){remedy}",
+                diag_codes=(FAILURE_CLASS_DIAGS[cls],),
+                fix=_add_command(uri) if reread else "",
+            )
+        )
+    return tuple(gaps)
 
 
 def _fts_safe(term: str) -> str:
@@ -2634,9 +2755,12 @@ class SqliteReader:
         is exercised and not yet load-bearing; recorded so P4 does not read the absence as a
         decision.
 
-        `unreadable_units` counts `unit.state = 'failed'`. 07:2229 gives the case gate 8 exists for
-        -- *"a unit whose path is removed after `ingest_scope` was written"* -- which is an acquire
-        that failed, and `failed` is the `unit.state` member that records it (0004_runtime.sql:50).
+        `unreadable_units` counts `unit.state = 'failed'` whose class has no code in
+        `FAILURE_CLASS_DIAGS`. 07:2229 gives the case gate 8 exists for -- *"a unit whose path is
+        removed after `ingest_scope` was written"* -- which is an acquire that failed, and
+        `failed` is the `unit.state` member that records it (0004_runtime.sql:50). A unit refused
+        as encrypted, corrupt, unsupported, over a limit, timed out or needing OCR was read, and
+        is gate 9's instead: `gaps` names it, with the code and the fix (D640).
         `stale_units` counts `unit.stale_since IS NOT NULL`, which is the column the partial index
         `unit_stale` exists to serve.
         """
@@ -2688,10 +2812,17 @@ class SqliteReader:
             f"SELECT count(*) FROM unit WHERE stale_since IS NOT NULL AND {unit_where}",  # noqa: S608
             unit_params,
         )
+        parse_classes = tuple(FAILURE_CLASS_DIAGS)
         unreadable_units = _one_int(
             connection,
-            f"SELECT count(*) FROM unit WHERE state = 'failed' AND {unit_where}",  # noqa: S608
-            unit_params,
+            "SELECT count(*) FROM unit WHERE state = 'failed' "  # noqa: S608
+            f"AND coalesce(acq_failure_class, '') NOT IN ({_placeholders(len(parse_classes))}) "
+            f"AND {unit_where}",
+            (*parse_classes, *unit_params),
+        )
+        gaps = (
+            *_document_gaps(connection, status_where, doc_params),
+            *_unit_gaps(connection, unit_where, unit_params),
         )
 
         return Coverage(
@@ -2705,7 +2836,7 @@ class SqliteReader:
             pending_work=pending_work,
             stale_units=stale_units,
             unreadable_units=unreadable_units,
-            gaps=(),
+            gaps=gaps,
         )
 
     @staticmethod

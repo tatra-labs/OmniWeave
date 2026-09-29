@@ -78,7 +78,7 @@ depends on scoring or planning P2 explicitly does not build.
    and P4 fills -- a store read either way, with nothing to count yet. `Coverage.gaps` is
    `tuple[DegradeCause, ...]`, and `DegradeCause` is 07 section 6.7's, with the gate ladder
    (07:1989, and 07:3348-3351 sends it there) that 16-roadmap.md:468 excludes from P2. At P2 a
-   backend returns `gaps=()`.
+   backend returned `gaps=()`; the SQLite backend fills them from D640 on (`reader.coverage`).
 
 **`narrow()` is a store mechanism, not a planner decision, and four things settle it.** 07 section
 6.1 is titled "Decision 1 -- narrowing, a closed three-way choice" and sits under section 6, "the
