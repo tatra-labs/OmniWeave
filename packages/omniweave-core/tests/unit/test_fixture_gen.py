@@ -599,6 +599,12 @@ def test_the_pin_file_names_every_generated_output_in_sha256sum_format() -> None
         f"fixtures/generated/gen_{SMALL_PAGES}p.pdf",
         f"fixtures/generated/gen_{gen.DEFAULT_PAGES}p.pdf",
         "fixtures/generated/incremental/roster-step0.manifest",
+        #  ADR-14 D14.1's corpora, checked by bench/serve/test_corpora.py.
+        *(
+            f"fixtures/generated/reference/{corpus}-{scale}.manifest"
+            for corpus in ("legal_matter", "data_room", "personal_archive")
+            for scale in ("full", "quick")
+        ),
     }
 
 

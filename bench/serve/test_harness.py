@@ -5,9 +5,10 @@ rules that turn transcripts into a verdict -- what a re-read is, how an answer i
 fails -- must be pinned before any real transcript exists, or the first real run would be graded by
 rules chosen after seeing it.
 
-`uv run pytest bench/serve -q` runs these. `--tasks all` (16-roadmap.md:745) additionally asks for a
-task run, which FAILS today with its reason: the catalogue is empty (D602) and no scripted agent is
-wired. The P7 exit command is meant to fail until W7.7 is done, and it says why.
+`uv run pytest bench/serve -q` runs these. `--tasks all` (16-roadmap.md:745) additionally runs the
+harness itself, through `run.main()`, with the configuration `agent.toml` resolves: by default a
+replay of the committed recordings, which needs no key. It fails when the harness fails, and prints
+the harness's own report and refusal, so the P7 exit command says why it is not yet green.
 """
 
 from __future__ import annotations
@@ -57,29 +58,31 @@ READ_MSA = h.ToolCall("Read", {"file_path": MSA})
 # ---------------------------------------------------------------------------------------------
 
 
-def test_the_shipped_catalogue_parses_and_owes_all_thirty() -> None:
+def test_the_shipped_catalogue_parses_and_owes_only_the_scanned_six() -> None:
     catalog = h.load_catalog((HERE / "tasks.toml").read_text(encoding="utf-8"))
     assert h.TASKS_TOTAL == 30
-    assert catalog.missing() == h.REQUIRED_COUNTS
+    assert sum(catalog.missing().values()) == 6
+    assert {task.source_kind for task in catalog.tasks} == {h.SourceKind.BORN_DIGITAL}
 
 
-@pytest.mark.xfail(strict=True, reason="D602: F20's three reference corpora and their 30 tasks")
+@pytest.mark.xfail(
+    strict=True, reason="ADR-14 D14.1 part 3: the six scanned tasks land with their scans"
+)
 def test_the_catalogue_holds_the_thirty_tasks_section_8_8_specifies() -> None:
     assert h.load_catalog((HERE / "tasks.toml").read_text(encoding="utf-8")).complete
 
 
-def test_a_task_run_needs_the_catalogue_and_the_agent(request: pytest.FixtureRequest) -> None:
-    """`--tasks` other than `none` is a task run, and a task run cannot happen yet. It fails, and
-    names both halves of why, rather than passing over zero tasks."""
+def test_a_task_run_is_the_harness_run(request: pytest.FixtureRequest) -> None:
+    """`--tasks` other than `none` runs `bench/serve/run.py` over those tasks, and passes only
+    when the harness does. Its report is the failure message, refusal and fix included."""
     selected = str(request.config.getoption("--tasks"))
     if selected == "none":
         pytest.skip("no --tasks selected")
-    catalog = h.load_catalog((HERE / "tasks.toml").read_text(encoding="utf-8"))
-    held = len(catalog.tasks)
-    pytest.fail(
-        f"--tasks {selected}: the catalogue holds {held} of {h.TASKS_TOTAL} tasks (D602) and no "
-        f"scripted agent is wired to run one (W7.7b)"
-    )
+    import run  # noqa: PLC0415 -- a task run only: the harness's own tests need no agent
+
+    printed: list[str] = []
+    code = run.main(["--tasks", selected], out=printed.append)
+    assert code == 0, "\n".join(printed[-40:])
 
 
 def test_a_catalogue_task_round_trips_and_its_rules_are_refused_by_name() -> None:

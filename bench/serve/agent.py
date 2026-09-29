@@ -56,8 +56,9 @@ MCP_PREFIX: Final[str] = "mcp__omniweave__"
 SYSTEM_PROMPT: Final[str] = (
     "You are answering a question about the documents in the folder {root}. Use the tools you "
     "have to find the answer. Answer concisely, and name the document the answer comes from, and "
-    "its page where it has one. If the documents do not contain the answer, say so plainly and "
-    "do not guess. Your final message, the one with no tool call, is your answer."
+    "its page where it has one. If the documents do not contain the answer, or the document that "
+    "would hold it cannot be read, reply NOT FOUND and say what you searched; do not guess. Your "
+    "final message, the one with no tool call, is your answer."
 )
 """The one system prompt, identical in both arms. Its version is `agent_cassette.PROMPT_VERSION`,
 and changing a word of it is a re-record."""

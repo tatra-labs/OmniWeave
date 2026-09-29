@@ -250,6 +250,8 @@ ban-relative-imports = "all"
 "bench/serve/test_agent_config.py" = ["S101", "PLR2004", "ANN"]
 "bench/serve/test_host_tools.py" = ["S101", "PLR2004", "ANN"]
 "bench/serve/test_models.py" = ["S101", "PLR2004", "ANN"]
+"bench/serve/test_corpora.py" = ["S101", "PLR2004", "ANN"]
+"bench/serve/test_run.py" = ["S101", "PLR2004", "ANN"]
 
 # ---------------------------------------------------------------------------
 # pytest

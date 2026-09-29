@@ -14,9 +14,11 @@ bench/serve/
 ├── agent_cassette.py  the bench.agent Cassette site: record, replay, refuse (ADR-14 D14.4)
 ├── models.py          provider-neutral turns; the anthropic and openai-compatible clients
 ├── host_tools.py      Read, Grep and a read-only Bash over the corpus, one converter per format
+├── run.py             the harness in one command: configure, select, prepare, run, grade, report
+├── corpora.py         generates and ingests each corpus once per content digest (the cache)
 ├── smoke.py           the omniweave arm end to end against a real `ow serve`, no model, no key
 ├── first_answer.py    first_answer_seconds (V01-15): ow install -> ow add -> ow query, timed, reversed
-├── tasks.toml         the 30-task catalogue. EMPTY until the reference corpora exist (D602)
+├── tasks.toml         the catalogue: 24 of 30 tasks, every answer planted; the 6 scanned are owed
 ├── test_*.py          the rules, pinned offline
 └── conftest.py        --tasks
 ```
@@ -24,14 +26,41 @@ bench/serve/
 ## Running it
 
 ```bash
+uv run python bench/serve/run.py            # the harness: replays the committed recordings
+uv run python bench/serve/run.py --list     # the tasks, and which are held back and why
+uv run python bench/serve/run.py --record --provider openai     --base-url http://localhost:11434/v1 --model qwen3:8b --scale quick   # record, local, no key
 uv run pytest bench/serve -q                # the harness's own rules; offline, no key
 uv run python bench/serve/smoke.py          # the agent reaches a real `ow serve`; no key
-uv run pytest bench/serve -q --tasks all    # 16-roadmap.md:745's P7 exit command
+uv run pytest bench/serve -q --tasks all    # 16-roadmap.md:745's P7 exit command: run.py, graded
 uv run python bench/serve/first_answer.py   # V01-15 and P7's demo, over 100 generated documents
 ```
 
-`--tasks all` **fails today, on purpose**, and names why: the catalogue holds 0 of 30 tasks (D602).
-It passes when the corpora and tasks land (ADR-14 D14.1-D14.2).
+**What `--tasks all` says today.** There are no committed recordings yet, so the default replay
+stops at once and prints how to record. Recording needs a model, and a local one needs no key.
+
+**What is held back, and why.**
+- The six `damaged` tasks need 13 section 8.6's Injectors, which are P6's absence suite. They are
+  reported UNMEASURED.
+- The six scanned tasks are owed until their real public-domain scans are sourced (ADR-14 D14.1
+  part 3).
+
+The report prints both every run.
+
+## The corpora
+
+`fixtures/gen/gen_reference_corpora.py` generates ADR-14's three corpora in F20's shapes:
+- `legal_matter`: 5,000 pages over 120 PDFs;
+- `data_room`: 137 office documents and PDFs;
+- `personal_archive`: 60 documents.
+
+Every answer is planted by the generator, and `test_corpora.py` holds the catalogue to it:
+- each answer is in its document;
+- each damaged value is in exactly one document;
+- each absent term is in none.
+
+`run.py` ingests each corpus once per content digest, under `$OMNIWEAVE_HOME/bench-cache/`
+(`--cache` moves it), so a second run starts at the first model turn. `--scale quick` keeps every
+answer and cuts the filler, to 250 pages, 16 files and 8.
 
 ## Configuring the agent
 
