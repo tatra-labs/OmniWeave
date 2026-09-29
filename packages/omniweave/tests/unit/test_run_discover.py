@@ -36,6 +36,7 @@ import omniweave_core.store.sqlite as ow
 import pytest
 from omniweave.run import discover as discover_module
 from omniweave.run.discover import (
+    ACCEPT_PARTIAL_CLASSES,
     ACQ_FAILED_SQL,
     ACQ_FAILURE_CLASSES,
     ACQUIRED,
@@ -1157,6 +1158,22 @@ def test_a_refused_unit_whose_file_changed_is_reopened_and_read_again(
     assert reader.execute("SELECT count(*) FROM work").fetchone() == (0,)
     assert acquire_pending(store, generation=1, indexed_at_ns=LATE_NS).acquired == 1
     assert reopen_changed_failures(store, generation=1) == 0
+
+
+def test_accept_partial_reopens_a_corrupt_refusal_whose_file_is_unchanged(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """D641. `--accept-partial` exists for bytes the user will not change (05:2821), so the unit
+    `gate.corrupt` refused is read again as it stands; a refusal of any other class is not."""
+    uri = _refused(store, tmp_path, tmp_path / "src", "torn.pdf")
+    reader = _reader(tmp_path)
+    reader.execute("UPDATE unit SET acq_failure_class = 'corrupt_input' WHERE unit_uri = ?", (uri,))
+    reader.commit()
+    assert reopen_changed_failures(store, generation=1) == 0
+    assert reopen_changed_failures(store, generation=1, regardless=frozenset({"encrypted"})) == 0
+    assert reopen_changed_failures(store, generation=1, regardless=ACCEPT_PARTIAL_CLASSES) == 1
+    row = _reader(tmp_path).execute("SELECT state FROM unit WHERE unit_uri = ?", (uri,))
+    assert row.fetchone() == ("discovered",)
 
 
 def test_a_reopen_leaves_a_live_work_row_and_another_generation_alone(

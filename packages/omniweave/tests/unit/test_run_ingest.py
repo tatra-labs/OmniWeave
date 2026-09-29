@@ -543,3 +543,40 @@ def test_ignore_evidence_cache_reaches_routing_and_is_recorded_in_run_argv(
         connection.close()
     assert "--ignore-evidence-cache" in argv[0]
     assert "--ignore-evidence-cache" not in argv[1]
+
+
+def test_accept_partial_reaches_routing_and_the_reopen_and_is_recorded_in_run_argv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """05:2821's override, D641: routing is where it lets a failed structural check through, and
+    the re-open is where a unit it refused before is read again. Both see it, and `run.argv`
+    records it."""
+    routed: list[bool] = []
+    reopened: list[frozenset[str]] = []
+    route, reopen = ingest_module.route_identified, ingest_module.discover.reopen_changed_failures
+
+    def route_spy(*args: Any, **kwargs: Any) -> Any:
+        routed.append(bool(kwargs.get("accept_partial")))
+        return route(*args, **kwargs)
+
+    def reopen_spy(*args: Any, **kwargs: Any) -> Any:
+        reopened.append(kwargs.get("regardless", frozenset()))
+        return reopen(*args, **kwargs)
+
+    monkeypatch.setattr(ingest_module, "route_identified", route_spy)
+    monkeypatch.setattr(ingest_module.discover, "reopen_changed_failures", reopen_spy)
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "a.txt").write_text("x", encoding="utf-8")
+    code, _out, err = _cli(tmp_path, ["docs", "--corpus", "handbook", "--accept-partial"])
+    assert (code, err) == (0, "")
+    assert _cli(tmp_path, ["docs", "--corpus", "handbook"])[0] == 0
+    assert routed == [True, False]
+    assert reopened == [frozenset({"corrupt_input"}), frozenset()]
+    store = tmp_path / ".omniweave" / "index.owstore"
+    connection = sqlite3.connect(store)
+    try:
+        argv = [row[0] for row in connection.execute("SELECT argv FROM run ORDER BY generation")]
+    finally:
+        connection.close()
+    assert "--accept-partial" in argv[0]
+    assert "--accept-partial" not in argv[1]

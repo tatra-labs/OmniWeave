@@ -42,8 +42,8 @@ stops at once and prints how to record. Recording needs a model, and a local one
 - The six `damaged` tasks need 13 section 8.6's Injectors, which are P6's absence suite
   (`omniweave_conform.damage`, run by `tools/ow_damage.py`). A task whose Injector is built runs
   over its own copy of the corpus, with its answer's file damaged, cached apart from the pristine
-  one. `mask_format` is built, so `data-dmg-dpa-region` and `home-dmg-refund` run; the four that
-  need `chaos` or `encrypt` are reported UNMEASURED, naming it.
+  one. `mask_format` and `chaos` are built, so four of the six run; the two that need `encrypt`
+  are reported UNMEASURED, naming it.
 - The six scanned tasks are owed until their real public-domain scans are sourced (ADR-14 D14.1
   part 3).
 
