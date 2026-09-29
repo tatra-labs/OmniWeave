@@ -31,7 +31,11 @@
 #                  document by document: 300 lines that all turn over together would make a
 #                  corpus change unreadable, and this file's whole purpose is that a corpus
 #                  change is "a one-line visible diff" (13-quality.md:588).
-#   all three      ::test_the_pin_file_names_every_generated_output_in_sha256sum_format asserts
+#   reference/*    bench/serve/test_corpora.py
+#                  ::test_every_reference_corpus_is_its_pin_at_both_scales
+#                  ~1.5 s for all six. ADR-14 D14.1's three corpora at both scales, each pinned
+#                  through its MANIFEST (`sha256  relpath` per file), as the roster is.
+#   all of them    ::test_the_pin_file_names_every_generated_output_in_sha256sum_format asserts
 #                  that this file names exactly these outputs and nothing else.
 #
 # The first two lines are not independent. The content of page i is a pure function of i, so the
@@ -47,3 +51,9 @@
 933849098664005d04cc8f4d57880069dd5f25963ebc3fc05842ded8a71ddc72  fixtures/generated/gen_8p.pdf
 b8adadd720185a6f563a76347fff454e3ec2d7a4a5111572a20c183ee3e76820  fixtures/generated/gen_5000p.pdf
 867e70fddbc3dbd6573a23c2e6fe2bd8ed34f5a0ff7ba10d3d686fd0bd8cdfdf  fixtures/generated/incremental/roster-step0.manifest
+60ac7477e28c794c5485eebcc32a666b40d59932444611eafeb49df6e7521032  fixtures/generated/reference/legal_matter-full.manifest
+437941d26fd616b15a2b82987062955bf82e7b9822e93123e9a83e2b679f6073  fixtures/generated/reference/legal_matter-quick.manifest
+382fd9267ee9b8ac3513ba3017d4d32254d98b8198339d04e7cca3e1cfdd423c  fixtures/generated/reference/data_room-full.manifest
+027f005720fb59a1af1e9597ee8a40e2660bc1c70d8b29d5178db9cce53aafbf  fixtures/generated/reference/data_room-quick.manifest
+7f308765d0099f149bfe5a5f06cf81460f95428b5da5107fd5faf91781f9b4d6  fixtures/generated/reference/personal_archive-full.manifest
+026a46036821d8229f41ef7cacded6e0fd541ad1d4e88cce63427e2688116769  fixtures/generated/reference/personal_archive-quick.manifest
