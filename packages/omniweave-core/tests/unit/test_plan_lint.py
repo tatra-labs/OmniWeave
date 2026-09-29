@@ -889,8 +889,16 @@ def test_every_writable_row_names_a_file_this_project_actually_writes() -> None:
     row describes a working file rather than law somebody wanted exempted.
     """
     settled = [*REAL_PLAN.glob("*.md"), *(REAL_PLAN / "adr").glob("*.md")]
-    assert len(settled) == 21 + 13, len(settled)
-    newest_settled = max(path.stat().st_mtime for path in settled)
+    assert len(settled) == 21 + 14, len(settled)
+    #  The witness is the settled documents under `_notes/`, the one directory an allow-list row
+    #  may name. An accepted ADR amends the top-level documents after the notes were written
+    #  (ADR-13 did, 2026-09-29): law changing by the stated procedure, not a note losing its writer.
+    notes = [
+        REAL_PLAN / rel
+        for rel in pl.settled_documents(pl.plan_files(REAL_PLAN))
+        if rel.startswith("_notes/") and rel != "_notes/charter.md"
+    ]
+    newest_settled = max(path.stat().st_mtime for path in notes)
 
     assert pl.WRITABLE_NOTES, "an empty allow-list would make this test vacuous"
     for rel, reason in pl.WRITABLE_NOTES.items():
@@ -904,7 +912,7 @@ def test_every_writable_row_names_a_file_this_project_actually_writes() -> None:
             f"{rel}'s reason names no writer: {reason!r}"
         )
         assert path.stat().st_mtime > newest_settled, (
-            f"{rel} is older than the newest settled document, so nothing here witnesses that "
+            f"{rel} is older than the newest settled `_notes/` document, so nothing witnesses that "
             "this project writes it. If the tree was copied and mtimes were reset, re-establish "
             "the evidence rather than deleting this assertion."
         )
@@ -947,7 +955,7 @@ def test_the_covered_set_is_a_difference_and_partitions_the_real_tree() -> None:
     settled = set(pl.settled_documents(paths))
     writable = set(pl.WRITABLE_NOTES)
 
-    assert len(paths) == 575, len(paths)
+    assert len(paths) == 576, len(paths)
     assert len(writable) == 10, len(writable)
     assert len(settled) == len(paths) - len(writable) - 1
     assert settled == set(manifest.documents)
@@ -1135,7 +1143,7 @@ def test_the_shipped_manifest_is_the_one_bless_would_write_for_the_real_plan() -
     assert fresh.documents == pinned.documents
     assert fresh.charter_digest == pinned.charter_digest
     assert fresh.heading_line == pinned.heading_line
-    assert len(fresh.documents) == 564, len(fresh.documents)
+    assert len(fresh.documents) == 565, len(fresh.documents)
 
 
 def test_the_manifest_row_grammar_round_trips(tmp_path: Path) -> None:

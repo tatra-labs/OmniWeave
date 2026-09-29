@@ -583,6 +583,7 @@ class Measurement:
     driver: str = "stub"
     worker_peak_rss: int | None = None
     worker_peak_source: str = ""
+    worker_driver: str = ""
 
     @property
     def bytes_per_block_above_floor(self) -> float:
@@ -660,6 +661,9 @@ def _measure_pdfium(
     connection = ow.connect(store)
     try:
         report = store_sizing(connection, path=store)
+        drivers = connection.execute(
+            "SELECT DISTINCT driver FROM work WHERE operator LIKE 'parse.%'"
+        ).fetchall()
     finally:
         connection.close()
     return Measurement(
@@ -675,6 +679,7 @@ def _measure_pdfium(
         driver="pdfium",
         worker_peak_rss=kept["worker_peak_rss"],
         worker_peak_source=str(kept["worker_peak_source"]),
+        worker_driver=", ".join(str(row[0]) for row in drivers if row[0]),
     )
 
 
@@ -790,6 +795,30 @@ def _rss_indication(m: Measurement) -> bool | None:
     return float(m.worker_peak_rss) <= row.value + row.tolerance
 
 
+def _resolved_driver(driver_id: str) -> str:
+    """The driver whose worker the row bounds, and its card's `memory_mb` (ADR-13 D13.2).
+
+    A card capped under the row makes the row unreachable for that driver, and the report says so
+    rather than implying a breach is possible.
+    """
+    if not driver_id:
+        return "unrecorded: the parse row names no driver"
+    from omniweave_core.discovery import catalog  # noqa: PLC0415 -- the pdfium report only
+
+    card = catalog().cards.get(driver_id)
+    memory_mb = getattr(getattr(card, "isolation", None), "memory_mb", 0) if card else 0
+    if not memory_mb:
+        return f"{driver_id} (its card declares no memory_mb)"
+    capped = memory_mb * 1024 * 1024
+    row = load_budget(PERF_TOML, RSS_BUDGET_ID)
+    reach = (
+        "under the row, so the worker is killed before the row can breach"
+        if capped < row.value
+        else "at or over the row"
+    )
+    return f"{driver_id}, memory_mb = {memory_mb} ({capped:,} B, {reach})"
+
+
 def _report_worker_rss(m: Measurement, emit: Emit) -> None:
     """`rss.gen5000p_peak_bytes` against the WORKER, and the supervisor beside G22's ceiling."""
     emit("")
@@ -812,8 +841,9 @@ def _report_worker_rss(m: Measurement, emit: Emit) -> None:
         if under is not None:
             emit(f"  INDICATION         {'under the ceiling' if under else 'OVER the ceiling'}")
     emit(f"  {MACHINE_CAVEAT}.")
-    emit("  The row's note makes it anydoc's fork tripwire, and anydoc refuses a PDF: this figure")
-    emit("  bounds parse.pdf.pdfium's worker, the only driver that parses one (D629).")
+    emit(f"  driver             {_resolved_driver(m.worker_driver)}")
+    emit("  The row bounds the worker of the driver that parses the fixture, one-sided; anydoc's")
+    emit("  fork tripwire is rss.office200_peak_bytes (ADR-13 D13.2).")
     ceiling = int(_load_script(GATE_SCALE, "ow_gate_scale").RSS_CEILING_BYTES)
     emit("")
     emit("supervisor (this process: the generator, then ow add in-process)")
