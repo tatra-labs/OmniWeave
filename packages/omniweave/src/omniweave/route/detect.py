@@ -81,6 +81,7 @@ __all__ = [
     "BASIS_RANK",
     "CONTAINER_FORMATS",
     "CORE_FORMATS",
+    "ENCRYPT_SCAN_BYTES",
     "EXTENSIONS",
     "HEAD_BYTES",
     "MEDIA_TYPES",
@@ -94,6 +95,7 @@ __all__ = [
     "detect_bytes",
     "format_token_for",
     "hint_for",
+    "pdf_encrypted",
     "structural_check",
 ]
 
@@ -427,10 +429,47 @@ def detect(path: Path) -> Detection:
     with path.open("rb") as handle:
         head = handle.read(HEAD_BYTES)
     detection = detect_bytes(head, hint_for(path, byte_len=size), opener=_PathOpener(path))
+    if detection.format == "pdf" and pdf_encrypted(path):
+        #  After `_decide`, not in it: an encrypted OOXML's inner format is unknowable (05:3034),
+        #  and an encrypted PDF is still a PDF. ADR-15 D15.1.
+        detection = replace(detection, encrypted=True)
     checked = structural_check(path, head)
     if checked is None:
         return detection
     return replace(detection, corrupt=checked[0], corrupt_check=checked[1])
+
+
+ENCRYPT_SCAN_BYTES: Final[int] = 4096
+"""How much of a PDF `pdf_encrypted` reads: the tail, and the object `startxref` names."""
+
+_ENCRYPT_KEY: Final = re.compile(rb"/Encrypt(?![A-Za-z0-9])")
+
+
+def pdf_encrypted(path: Path) -> bool:
+    """05:2239's third fact: *"an `/Encrypt` reference in a PDF trailer or XRef-stream
+    dictionary"*. ADR-15 D15.1.
+
+    Byte-scannable and FREE: the last `ENCRYPT_SCAN_BYTES`, where a classic trailer sits between
+    the xref table and `startxref`, and the same count at the offset `startxref` names, where an
+    XRef stream keeps its dictionary. A scan that misses is 05:2239's residual false negative,
+    which pdfium's own refusal then names at DECODE. It says nothing about whether a password is
+    NEEDED: an owner-password-only file carries `/Encrypt` and opens without one, and D15.2
+    leaves that answer to the pdfium provider, which opens the file.
+    """
+    size = path.stat().st_size
+    with path.open("rb") as handle:
+        handle.seek(max(0, size - ENCRYPT_SCAN_BYTES))
+        tail = handle.read()
+        if _ENCRYPT_KEY.search(tail):
+            return True
+        found = list(_STARTXREF.finditer(tail))
+        if not found:
+            return False
+        offset = int(found[-1].group(1))
+        if offset >= size:
+            return False
+        handle.seek(offset)
+        return _ENCRYPT_KEY.search(handle.read(ENCRYPT_SCAN_BYTES)) is not None
 
 
 # =============================================================================================
