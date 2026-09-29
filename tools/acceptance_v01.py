@@ -271,14 +271,18 @@ CRITERIA: tuple[Criterion, ...] = (
         "first_answer_seconds <= 600: ow install -> ow add -> ow query, cited, 100 office docs",
         (
             pytest(
-                "packages/omniweave/tests/conform/test_add_process.py",
-                label="ow add -> ow query as two children: one DOCX parsed, then cited (W7.8h)",
+                "bench/serve/test_first_answer.py", label="the folder, the judge, the exit (W7.7c)"
+            ),
+            Instrument(
+                label="bench/serve/first_answer.py: 100 office documents, three children, timed",
+                argv=("bench/serve/first_answer.py",),
+                timeout_s=900,
             ),
         ),
         Coverage.PARTIAL,
-        "the path runs and cites, and nothing times it: no clean-machine script exists (W7.7c), "
-        "`ow install` is not on it, the reference corpora do not exist (D602), and a DOCX cite "
-        "carries no page (D615)",
+        "timed on this machine, which is not a clean 4-core one; and no cite can carry a page: "
+        "every office document is one `stream` page, because anydoc flattens a PPTX's slides and "
+        "a DOCX has no page boxes (D615, D634)",
     ),
     Criterion(
         "V01-16",
