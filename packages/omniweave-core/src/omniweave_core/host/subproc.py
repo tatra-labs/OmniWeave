@@ -149,7 +149,10 @@ missing control into one `IsolationShortfall` naming the control and the OS:
   `Popen.pid` is the trampoline and the driver runs in a grandchild. Two consequences, and only
   one of them is benign: the job object covers the whole tree, so the reap and the address-space
   cap are unaffected -- which is exactly the argument 04-driver-system.md:1728 makes for reaping
-  a group rather than a process -- but `peak_rss_bytes(proc.pid)` then samples the trampoline
+  a group rather than a process, and which holds only because the child is spawned
+  `CREATE_SUSPENDED` and admitted before it runs (D636); assigned after `Popen` returned, a
+  trampoline that had already started its interpreter left it outside the job, cap and all --
+  but `peak_rss_bytes(proc.pid)` then samples the trampoline
   and reads a few megabytes whatever the driver allocates -- measured at 3.5 MB against the
   310 MB its interpreter held (D629). So `Worker.peak_rss()` samples EVERY process the job holds
   and takes the largest: the same `PeakWorkingSetSize` 04:1751's Windows cell names, read from the
@@ -1301,6 +1304,35 @@ _BELOW_NORMAL_PRIORITY_CLASS: Final = 0x00004000
 the user's editor"* (:1763) -- with the higher stake :1764 names: a VLM parse can allocate
 gigabytes and an OOM-killer visit takes the user's editor with it."""
 
+CREATE_SUSPENDED: Final = 0x00000004
+"""The `CreateProcess` flag that closes the job-assignment race (D636): the child exists, holds
+no running thread, and cannot start a grandchild until `JobObject.admit()` has put it in the job
+and resumed it. A process started before it joins a job leaves any child it has ALREADY started
+outside that job -- and `uv`'s trampoline starts the interpreter as its first act."""
+
+_TH32CS_SNAPTHREAD: Final = 0x00000004
+"""`CreateToolhelp32Snapshot`'s thread snapshot. `subprocess.Popen` closes the primary thread's
+handle and discards its id, so the snapshot is how the host finds the thread to resume."""
+
+_THREAD_SUSPEND_RESUME: Final = 0x0002
+
+_RESUME_FAILED: Final = 0xFFFFFFFF
+"""`ResumeThread`'s `(DWORD)-1`."""
+
+
+class _ThreadEntry32(ctypes.Structure):
+    """`THREADENTRY32`, tlhelp32.h. `dwSize` must be set before `Thread32First`."""
+
+    _fields_ = (
+        ("dwSize", ctypes.c_uint32),
+        ("cntUsage", ctypes.c_uint32),
+        ("th32ThreadID", ctypes.c_uint32),
+        ("th32OwnerProcessID", ctypes.c_uint32),
+        ("tpBasePri", ctypes.c_int32),
+        ("tpDeltaPri", ctypes.c_int32),
+        ("dwFlags", ctypes.c_uint32),
+    )
+
 
 class JobObject:
     """A Windows job object: the address-space cap and the process-tree reap, in one handle.
@@ -1389,6 +1421,82 @@ class JobObject:
         finally:
             self._kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
             self._kernel32.CloseHandle(proc)
+
+    def admit(self, pid: int) -> None:
+        """Assign a process created with `CREATE_SUSPENDED`, then resume it. Raises otherwise.
+
+        The order is the point (D636). `assign()` on a RUNNING process races it: `uv`'s
+        trampoline starts the real interpreter as its first act, a process started before its
+        parent joins a job is not in that job, and under load the interpreter won that race --
+        outside `JOB_OBJECT_LIMIT_PROCESS_MEMORY`, so the card's `memory_mb` went unenforced, and
+        outside `Worker.peak_rss()`'s sample, which read the launcher's 3,416,064 B. Suspended,
+        the child has no running thread until the assignment has happened, so everything it will
+        ever start is born inside the job.
+
+        `ResumeThread` returns each thread's PREVIOUS suspend count, so "the child was created
+        suspended" is checked, not assumed: a count of 0 means it was already running, the race
+        was open, and this raises after the resume rather than report a cap that may not hold.
+        """
+        self.assign(pid)
+        previous = self._resume_threads(pid)
+        if not previous:
+            raise DriverHostError(
+                f"process {pid} has no thread to resume",
+                fix="the worker had already exited; treat it as a crash and synthesise",
+            )
+        if any(count != 1 for count in previous):
+            raise DriverHostError(
+                f"process {pid} was not created suspended (previous suspend counts {previous}), "
+                "so a child it started before the assignment may be outside the job",
+                fix="spawn with creationflags=CREATE_SUSPENDED and admit() before anything else",
+            )
+
+    def _resume_threads(self, pid: int) -> tuple[int, ...]:
+        """Resume every thread `pid` owns; return each one's previous suspend count."""
+        k32 = self._kernel32
+        k32.CreateToolhelp32Snapshot.restype = ctypes.c_void_p
+        k32.CreateToolhelp32Snapshot.argtypes = [ctypes.c_uint32, ctypes.c_uint32]
+        k32.Thread32First.argtypes = [ctypes.c_void_p, ctypes.POINTER(_ThreadEntry32)]
+        k32.Thread32Next.argtypes = [ctypes.c_void_p, ctypes.POINTER(_ThreadEntry32)]
+        k32.OpenThread.restype = ctypes.c_void_p
+        k32.OpenThread.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+        k32.ResumeThread.restype = ctypes.c_uint32
+        k32.ResumeThread.argtypes = [ctypes.c_void_p]
+        k32.CloseHandle.argtypes = [ctypes.c_void_p]
+        snapshot = k32.CreateToolhelp32Snapshot(_TH32CS_SNAPTHREAD, 0)
+        if snapshot in (None, ctypes.c_void_p(-1).value):
+            raise DriverHostError(
+                f"CreateToolhelp32Snapshot failed, GetLastError {k32.GetLastError()}",
+                fix="the suspended worker cannot be resumed; kill it and record the refusal",
+            )
+        previous: list[int] = []
+        try:
+            entry = _ThreadEntry32()
+            entry.dwSize = ctypes.sizeof(entry)
+            more = k32.Thread32First(snapshot, ctypes.byref(entry))
+            while more:
+                if entry.th32OwnerProcessID == pid:
+                    thread = k32.OpenThread(_THREAD_SUSPEND_RESUME, 0, entry.th32ThreadID)
+                    if not thread:
+                        raise DriverHostError(
+                            f"OpenThread({entry.th32ThreadID}) failed, GetLastError "
+                            f"{k32.GetLastError()}",
+                            fix="the suspended worker cannot be resumed; kill it",
+                        )
+                    try:
+                        count = k32.ResumeThread(thread)
+                    finally:
+                        k32.CloseHandle(thread)
+                    if count == _RESUME_FAILED:
+                        raise DriverHostError(
+                            f"ResumeThread failed, GetLastError {k32.GetLastError()}",
+                            fix="the suspended worker cannot be resumed; kill it",
+                        )
+                    previous.append(int(count))
+                more = k32.Thread32Next(snapshot, ctypes.byref(entry))
+        finally:
+            k32.CloseHandle(snapshot)
+        return tuple(previous)
 
     def pids(self) -> tuple[int, ...]:
         """The pids currently assigned. This is what makes `assign()` checkable."""
@@ -2411,7 +2519,13 @@ suite anybody runs. `spawn_worker` below is the one real implementation.
 """
 
 
-def spawn_worker(request: SpawnRequest, *, stderr: StderrRing, stdout: StderrRing) -> WorkerProcess:
+def spawn_worker(
+    request: SpawnRequest,
+    *,
+    stderr: StderrRing,
+    stdout: StderrRing,
+    job: JobObject | None = None,
+) -> WorkerProcess:
     """`subprocess.Popen`, with every argument the semgrep message asks for.
 
     `stdout` and `stderr` are captured into rings and never parsed (04-driver-system.md:1683:
@@ -2423,6 +2537,11 @@ def spawn_worker(request: SpawnRequest, *, stderr: StderrRing, stdout: StderrRin
 
     `stdin` is `DEVNULL`: the protocol is the pipe, and a driver that reads stdin expecting input
     should see EOF rather than the host's terminal.
+
+    With a `job`, the child is created `CREATE_SUSPENDED` and `JobObject.admit()`ted before it
+    runs a single instruction (D636), so the trampoline's interpreter is born inside the job. A
+    child the job cannot admit is killed here: a suspended process nobody resumes is a leak that
+    never exits on its own.
     """
     proc = subprocess.Popen(  # noqa: S603 -- argv is a tuple, shell=False, cwd is explicit
         list(request.argv),
@@ -2433,7 +2552,18 @@ def spawn_worker(request: SpawnRequest, *, stderr: StderrRing, stdout: StderrRin
         stderr=subprocess.PIPE,
         shell=False,
         close_fds=True,
+        creationflags=CREATE_SUSPENDED if job is not None else 0,
     )
+    if job is not None:
+        try:
+            job.admit(proc.pid)
+        except BaseException:
+            proc.kill()
+            proc.wait()
+            for stream in (proc.stdout, proc.stderr):
+                if stream is not None:
+                    stream.close()
+            raise
     for stream, ring in ((proc.stdout, stdout), (proc.stderr, stderr)):
         if stream is None:  # pragma: no cover -- PIPE was requested for both
             continue
@@ -3527,25 +3657,28 @@ def launch(
     a listener AND an accept AND a `HELLO` exchange, and only the caller knows the card"*, and this
     is those four in the one order that works. The listener exists before the spawn, because the
     child connects on its first line and a pipe that does not exist yet is `could not open`. The
-    job object is created and the child assigned before the accept, so the address-space cap is in
-    force before the child has read a frame. Every failure path kills the child: a half-started
-    worker nobody holds is an orphan process with the driver's code loaded.
+    job object is created BEFORE the spawn and the child is spawned suspended into it (D636), so
+    the address-space cap covers the trampoline's interpreter from its first instruction, not
+    only whatever had not yet started when an `assign()` after the fact ran. Every failure path
+    kills the child: a half-started worker nobody holds is an orphan process with the driver's
+    code loaded.
 
     On POSIX there is no job object and the cap is `setrlimit` in the child, which the bootstrap
     does not yet apply; `address_space_capped` is reported false there, as DR10 requires.
     """
     listener = listener_for(request.address)
     stderr = StderrRing()
-    try:
-        proc = spawn(request, stderr=stderr, stdout=StderrRing())
-    except BaseException:
-        listener.close()
-        raise
     job: JobObject | None = None
     try:
         if sys.platform == "win32":
             job = JobObject(memory_limit_bytes=memory_mb * 1_048_576 if memory_mb > 0 else None)
-            job.assign(proc.pid)
+        proc = spawn(request, stderr=stderr, stdout=StderrRing(), job=job)
+    except BaseException:
+        listener.close()
+        if job is not None:
+            job.close()
+        raise
+    try:
         channel = listener.accept(timeout_ms=accept_ms)
     except BaseException:
         listener.close()
@@ -3568,6 +3701,7 @@ __all__ = [
     "ACCEPT_MS",
     "AIMD_RECOVERY_STREAK",
     "CONTROLS_BY_PLATFORM",
+    "CREATE_SUSPENDED",
     "FAILURE_MODES",
     "FRAME_QUEUE_MAX",
     "KILL_GRACE_MS",
