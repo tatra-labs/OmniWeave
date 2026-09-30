@@ -1004,15 +1004,22 @@ left alone, which is D580's measured case.
 
 REOPEN_SQL: Final[str] = """
 UPDATE unit SET state = 'discovered', part_count = NULL, acq_failure_class = NULL,
-       acq_retry_after = NULL
+       acq_retry_after = NULL, acq_attempts_total = 0
  WHERE unit_uri = :unit_uri AND state = 'failed' AND part_count IS NOT NULL
 """
 """Back to `discovered`, with the count that stranded it cleared. **D640.**
 
 `part_count = NULL` is what `PENDING_IDENTIFY_SQL` reads as *"NULL until op.identify"*, and the
 unit's terminal work rows go with it (`REOPEN_WORK_SQL`), so identify and the planner treat the
-new bytes as a unit they have not seen. `acq_attempts_total` is kept, for `RESET_ACQUIRING_SQL`'s
-reason: it is the only bound on a loop.
+new bytes as a unit they have not seen.
+
+**`acq_attempts_total` is reset, and D640 kept it (D643).** `PENDING_ACQUISITION_SQL` stops at
+three, and nothing else ever lowers the count, so the third re-open of one file was its last: a
+file restored three times, or an encrypted one whose third password was the right one, stayed
+`discovered` and unread, and gate 5 said *"run ow ingest"* for ever. Measured on the password path.
+The count bounds `RESET_ACQUIRING_SQL`'s crash loop, and a unit only reaches this statement after
+an acquisition that finished (`part_count IS NOT NULL`), which a crash loop never does. A re-open
+is a read of new input -- changed bytes, a password, an override -- and not a retry of the old one.
 """
 
 REOPEN_WORK_SQL: Final[str] = """
@@ -1042,11 +1049,16 @@ def reopen_changed_failures(
     plan_batch: int = PLAN_BATCH,
     wait_ms: int = BATCH_WAIT_MS,
     regardless: frozenset[str] = frozenset(),
+    reopens: Callable[[str, str | None], bool] | None = None,
 ) -> int:
     """Re-open each failed unit whose file changed since the read that failed it. **D640.**
 
     A unit whose class is in `regardless` is re-opened whether or not its file changed: that is
-    `--accept-partial`'s `ACCEPT_PARTIAL_CLASSES` (D641).
+    `--accept-partial`'s `ACCEPT_PARTIAL_CLASSES` (D641). So is one `reopens(unit_uri, class)`
+    answers true for: an `encrypted` unit a password mapping now matches (ADR-15 D15.3,
+    `run.passwords.Passwords.reopens`). A mapped unit whose password still does not open it is
+    refused again, and read again by the next run that maps it, which costs one identify and one
+    signal child per such file per run.
 
     One `stat` per failed unit, which is the zero-byte rung `freshness()` prices at nothing, and one
     transaction per page. A path that no longer stats is left `failed`: the next walk will not see
@@ -1081,7 +1093,7 @@ def reopen_changed_failures(
         after = page[-1][0]
         changed = []
         for uri, stored, cls in page:
-            if cls in regardless:
+            if cls in regardless or (reopens is not None and reopens(uri, cls)):
                 changed.append(uri)
                 continue
             try:

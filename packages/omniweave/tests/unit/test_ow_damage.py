@@ -101,7 +101,7 @@ def test_a_register_with_no_row_is_exit_two(tool: ModuleType, tmp_path: Path) ->
 def test_an_injector_that_is_not_built_is_exit_two_and_names_what_is_owed(
     tool: ModuleType, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert tool.main(["--injector", "encrypt"]) == 2
+    assert tool.main(["--injector", "stall"]) == 2
     out = capsys.readouterr().out
     assert "not built" in out
-    assert "encrypt" in out
+    assert "stall" in out

@@ -186,6 +186,7 @@ __all__ = [
     "in_scope",
     "iter_candidates",
     "locator_for",
+    "matches_glob",
     "read_bounded",
     "refuse_unmigrated",
     "roster_row_of",
@@ -287,9 +288,10 @@ and every run that changed a document would change a unit -- a receipt ingesting
 
 **These are module constants and not `config.KEYS` rows, and that is a gap rather than a choice.**
 `omniweave_core.config.KEYS` carries `cache corpora drivers graph licence limits observe retrieval
-roots runtime schema serve services store targets` and no `ingest` table at all, while 05:433-478
-specifies `[ingest]` and `[ingest.url]` in full and says every key *"carries an `OMNIWEAVE_*` twin
-and is classified for `tools/config_axes.toml` (G18) -- all `operational` except `normalize`"*.
+roots runtime schema serve services store targets` and, of `[ingest]`, only `password_file` (ADR-15
+D15.3), while 05:433-478 specifies `[ingest]` and `[ingest.url]` in full and says every key
+*"carries an `OMNIWEAVE_*` twin and is classified for `tools/config_axes.toml` (G18) -- all
+`operational` except `normalize`"*.
 `config.py` is not this wave's file; the required rows are reported.
 """
 
@@ -809,6 +811,15 @@ def in_scope(relpath: str, scope: Scope, guards: IngestGuards) -> bool:
     if not any(_glob(relpath, pattern) for pattern in scope.include):
         return False
     return not any(_glob(relpath, pattern) for pattern in scope.exclude)
+
+
+def matches_glob(relpath: str, pattern: str) -> bool:
+    """One `[ingest]` glob against one relative path, as `in_scope` matches `include`.
+
+    Public for `[ingest] password_file`, whose globs are *"relative to `roots.source` as `[ingest]
+    include` is"* (ADR-15 D15.3): one matcher, so the two cannot disagree about a path.
+    """
+    return _glob(relpath, pattern)
 
 
 def _glob(relpath: str, pattern: str) -> bool:
@@ -1676,6 +1687,7 @@ def add_sources(
     now_ns: int,
     dry_run: bool = False,
     max_discovered: int = ADD_MAX_DISCOVERED,
+    reopens: Callable[[str, str | None], bool] | None = None,
 ) -> Added:
     """Roster `sources` into the store at `store`: 10:1114's (a), and nothing after it.
 
@@ -1696,6 +1708,13 @@ def add_sources(
     A store that does not exist yet is created and migrated, because the first `ow_add` of a
     corpus is the case 10:541-542 names (*"before the first `ow add`"*). A `dry_run` writes nothing,
     the store included.
+
+    **`reopens(unit_uri, failure_class)` queues a failed unit whose file did not change.** An
+    unchanged file is otherwise `unchanged` and drains nothing, which is right for bytes that
+    failed and still would. It is wrong for an encrypted file a password now maps: nothing about
+    the file changed, and the password is what gate 9's `ow add <path>` fix waited for (ADR-15
+    D15.3, D15.5). The drain's own re-open (`run.discover.reopen_changed_failures`) takes the
+    same predicate, so the unit this queues is the unit that drain reads again.
     """
     from omniweave_core.store import migrate  # noqa: PLC0415 -- the add path only
 
@@ -1736,7 +1755,7 @@ def add_sources(
                     plan_batch=max(len(rows), 1),
                     wait_ms=INTERACTIVE_WAIT_MS,
                 )
-    return _added(walks, known, written=not dry_run)
+    return _added(walks, known, written=not dry_run, reopens=reopens)
 
 
 def _walk_source(
@@ -1768,9 +1787,10 @@ def _walk_source(
 
 def _added(
     walks: Sequence[tuple[str | None, list[RosterRow], Tally]],
-    known: Mapping[str, tuple[StatTriple, str]],
+    known: Mapping[str, tuple[StatTriple, str, str | None]],
     *,
     written: bool,
+    reopens: Callable[[str, str | None], bool] | None = None,
 ) -> Added:
     unchanged = 0
     queued: list[str] = []
@@ -1780,7 +1800,18 @@ def _added(
             why[reason] = why.get(reason, 0) + count
         for row in rows:
             held = known.get(row.unit_uri)
-            if held is not None and held[1] not in _SETTLED and stat_fresh(held[0], row.stat):
+            reopened = (
+                held is not None
+                and held[1] == "failed"
+                and reopens is not None
+                and reopens(row.unit_uri, held[2])
+            )
+            if (
+                held is not None
+                and held[1] not in _SETTLED
+                and stat_fresh(held[0], row.stat)
+                and not reopened
+            ):
                 unchanged += 1
             else:
                 queued.append(row.unit_uri)
@@ -1795,23 +1826,25 @@ def _added(
     )
 
 
-def _known(store: Path, uris: Sequence[str]) -> dict[str, tuple[StatTriple, str]]:
-    """The stored triple and state of each walked unit already rostered, read-only, in batches."""
+def _known(store: Path, uris: Sequence[str]) -> dict[str, tuple[StatTriple, str, str | None]]:
+    """The stored triple, state and failure class of each walked unit already rostered, read-only,
+    in batches."""
     if not store.exists() or not uris:
         return {}
-    out: dict[str, tuple[StatTriple, str]] = {}
+    out: dict[str, tuple[StatTriple, str, str | None]] = {}
     connection = connect_readonly(store)
     try:
         for start in range(0, len(uris), _KNOWN_BATCH):
             chunk = list(uris[start : start + _KNOWN_BATCH])
             marks = ", ".join("?" for _ in chunk)
             rows = connection.execute(
-                f"SELECT unit_uri, size, mtime_ns, indexed_at_ns, state FROM unit "  # noqa: S608
-                f"WHERE unit_uri IN ({marks})",
+                "SELECT unit_uri, size, mtime_ns, indexed_at_ns, state, acq_failure_class "  # noqa: S608
+                f"FROM unit WHERE unit_uri IN ({marks})",
                 chunk,
             ).fetchall()
-            for uri, size, mtime, indexed, state in rows:
-                out[str(uri)] = (StatTriple(size or 0, mtime or 0, indexed or 0), str(state))
+            for uri, size, mtime, indexed, state, cls in rows:
+                triple = StatTriple(size or 0, mtime or 0, indexed or 0)
+                out[str(uri)] = (triple, str(state), None if cls is None else str(cls))
     finally:
         connection.close()
     return out
@@ -1824,7 +1857,7 @@ def unit_states(store: Path, uris: Sequence[str]) -> dict[str, str]:
     ran this query in the CLI surface itself, and INV-17 keeps SQL in `omniweave_core.store` and
     the modules that own a table; the roster is this module's (D621).
     """
-    return {uri: state for uri, (_, state) in _known(store, uris).items()}
+    return {uri: state for uri, (_, state, _cls) in _known(store, uris).items()}
 
 
 def _generation(store: Path) -> int:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -38,18 +39,20 @@ def test_select_takes_all_ids_classes_and_corpora_and_refuses_an_unknown_word() 
 
 
 def test_a_damaged_task_is_held_back_only_while_its_injector_is_not_built() -> None:
-    """D640 and D641: `mask_format` and `chaos` are built, so their four tasks run; the two that
-    need `encrypt` are held back, naming it."""
+    """D640, D641 and D643: `mask_format`, `chaos` and `encrypt` are built, so all six damaged
+    tasks run. The rule is unchanged: a task whose Injector is not built is held back, naming
+    it and what is built."""
     runnable, held = run.partition(CATALOG.tasks)
-    reasons = {one.task_id: one.reason for one in held}
-    assert sorted(reasons) == sorted(
-        t.id for t in CATALOG.tasks if t.injector is not None and t.injector not in INJECTORS
-    )
-    assert len(runnable) + len(held) == len(CATALOG.tasks)
-    assert {"home-dmg-refund", "data-dmg-dpa-region"} <= {t.id for t in runnable}
-    assert sorted(reasons) == ["data-dmg-materiality", "legal-dmg-service-credit"]
-    assert "encrypt Injector" in reasons["data-dmg-materiality"]
-    assert all("P6" in reason and "mask_format" in reason for reason in reasons.values())
+    assert held == ()
+    assert len(runnable) == len(CATALOG.tasks)
+    assert {"legal-dmg-service-credit", "data-dmg-materiality"} <= {t.id for t in runnable}
+    task = next(t for t in CATALOG.tasks if t.id == "data-dmg-materiality")
+    runnable, held = run.partition((dataclasses.replace(task, injector="stall"),))
+    (one,) = held
+    assert runnable == ()
+    assert one.task_id == "data-dmg-materiality"
+    assert "stall Injector" in one.reason
+    assert all(name in one.reason for name in INJECTORS)
 
 
 def test_a_damaged_task_runs_over_its_own_corpus_with_its_answer_s_file_damaged() -> None:
@@ -192,11 +195,12 @@ def _main(*argv: str) -> tuple[int, list[str]]:
     return run.main(list(argv), out=out.append), out
 
 
-def test_list_prints_the_selection_and_marks_what_is_held_back() -> None:
+def test_list_prints_the_selection_and_marks_nothing_held_back_once_its_injector_is_built() -> None:
+    """`legal-dmg-service-credit` was UNMEASURED until `encrypt` landed (D643)."""
     code, out = _main("--list", "--tasks", "legal-dmg-service-credit,home-ret-dental")
     assert code == 0
     assert any("home-ret-dental" in line and "UNMEASURED" not in line for line in out)
-    assert any("legal-dmg-service-credit" in line and "UNMEASURED" in line for line in out)
+    assert any("legal-dmg-service-credit" in line and "UNMEASURED" not in line for line in out)
     assert any("(flag)" in line for line in out)
 
 

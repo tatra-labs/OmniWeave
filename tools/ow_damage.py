@@ -18,7 +18,9 @@ verdicts and prints. It is the one place allowed to import `omniweave`, which th
 2. **damaged**: the same documents with the Injector applied to one file, built from scratch.
 3. **the fix**: the damaged run's `DegradeCause.fix` for the expected gate, split by
    `damage.split_fix()`, admitted against the registry by `admit()`, and run with no shell. A
-   source-bytes Injector restores the file first (D640).
+   source-bytes Injector restores the file first (D640). `encrypt` restores nothing: its
+   `Injector.repair` does what the cause's detail tells a user to, a `password_file` line and an
+   `OW_SECRET_*` variable in the fix child's environment (D643).
 4. **fixed**: the verdict after the fix, which must be the pristine run's.
 
 Each project has its own `HOME` and `OMNIWEAVE_HOME`, as `bench/serve/first_answer.py` lays them
@@ -123,6 +125,20 @@ _ROOM: Final = (
 )
 
 FIXTURES: Final[Mapping[str, tuple[Fixture, ...]]] = {
+    "encrypt": (
+        Fixture(
+            "personal_archive",
+            _ARCHIVE,
+            "medical/lab-results-2024.pdf",
+            "What was the LDL cholesterol result in the 2024 lab results?",
+        ),
+        Fixture(
+            "personal_archive",
+            _ARCHIVE,
+            "insurance/home-policy-2024.pdf",
+            "What does section 5 of the home insurance policy say about flood damage?",
+        ),
+    ),
     "chaos": (
         Fixture(
             "data_room",
@@ -153,6 +169,8 @@ FIXTURES: Final[Mapping[str, tuple[Fixture, ...]]] = {
     ),
 }
 """Each built Injector's fixtures: an OOXML file and a PDF, the two structures detection reads.
+`encrypt` applies to a PDF alone (ADR-15 D15.6), so both of its fixtures are PDFs, one page and
+three.
 Masked, they are the two ways it names a format (`route/detect.py` steps 2 and 3); cut, they are
 the two structural checks of `unit.corrupt`, a ZIP central directory and a PDF trailer (D641).
 `chaos` takes its OOXML file from the data room, a spreadsheet, as the bench's own task does."""
@@ -202,13 +220,15 @@ def _env(work: Path) -> dict[str, str]:
     return {**kept, "HOME": str(home), "USERPROFILE": str(home), "OMNIWEAVE_HOME": str(work / "ow")}
 
 
-def _ow(work: Path, argv: Sequence[str]) -> Captured:
-    """`ow <argv>` in `work/project`, as a child with no shell. Never raises (`run_captured`)."""
+def _ow(work: Path, argv: Sequence[str], extra: Mapping[str, str] | None = None) -> Captured:
+    """`ow <argv>` in `work/project`, as a child with no shell. Never raises (`run_captured`).
+
+    `extra` is added to the fixture's environment: an `Injector.repair`'s secret, for the fix."""
     return run_captured(
         (sys.executable, "-m", "omniweave", *argv),
         stdin=b"",
         cwd=str(work / "project"),
-        env=_env(work),
+        env={**_env(work), **(extra or {})},
         timeout_s=ADD_TIMEOUT_S,
     )
 
@@ -317,7 +337,17 @@ def run_pair(
         return Damaged(damaged, None, refusal)
     if injector.restores_source:
         (work / "project" / "docs" / fixture.target).write_bytes(documents[fixture.target])
-    ran = _ow(work, argv[1:])
+    extra: Mapping[str, str] = {}
+    if injector.repair is not None:
+        try:
+            repair = injector.repair("" if cause is None else cause.detail)
+        except FixRefusedError as exc:
+            return Damaged(damaged, None, str(exc))
+        for relative, text in repair.append.items():
+            with (work / "project" / relative).open("a", encoding="utf-8") as handle:
+                handle.write(text)
+        extra = repair.env
+    ran = _ow(work, argv[1:], extra)
     if ran.returncode != 0:
         tail = ran.stderr.decode("utf-8", "replace")[-600:]
         return Damaged(damaged, None, f"the fix exited {ran.returncode} {ran.failed}: {tail}")

@@ -18,6 +18,7 @@ import shutil
 import sqlite3  # noqa: TID251 -- the assertions read the store the run wrote.
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -41,6 +42,7 @@ from omniweave_core.config import Config, load
 from omniweave_core.contract import SCHEMA
 from omniweave_core.discovery import catalog
 from omniweave_core.errors import RouteError
+from omniweave_core.host.keystore import PASSWORD_FILENAME
 from omniweave_core.model.records import Producer
 from omniweave_core.operator import Outcome, Roots
 from omniweave_core.retrieve.types import SCORER_VERSION
@@ -48,7 +50,7 @@ from omniweave_core.store import sqlite as ow
 from omniweave_core.store.indexlock import FIELD_SEP, LOCK_PATH
 from omniweave_core.store.queue import SqliteStore
 from omniweave_core.store.verify import VerifyClause, verify_store
-from omniweave_ports.types import FailureClass
+from omniweave_ports.types import FailureClass, UnitRef
 
 pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="the named-pipe arm of S4")
 
@@ -370,8 +372,6 @@ def test_a_source_that_changed_after_identify_is_not_parsed_under_its_old_key(
 
 def test_the_ledger_s_peak_is_the_unit_s_result_metric_and_zero_without_one() -> None:
     """D629. `work.peak_rss_bytes` is `COMPLETE_SQL`'s `MAX` over this, and the host wrote it."""
-    from types import SimpleNamespace  # noqa: PLC0415
-
     from omniweave_ports.types import DriverMetrics, DriverResult  # noqa: PLC0415
 
     result = DriverResult(outcome="ok", produced=(), metrics=DriverMetrics(peak_rss_bytes=9))
@@ -467,3 +467,59 @@ def test_a_blob_backed_fragment_is_the_cas_file_itself_never_its_bytes_in_memory
     ref = ArtifactRef(kind="doc_fragment", byte_len=1, blob=format_ref(digest))
     with operator._stream(ref) as lines:
         assert isinstance(lines, io.BufferedReader), type(lines)
+
+
+# ---------------------------------------------------------------------------------------------
+# A document password reaches the driver through its tmpdir (ADR-15 D15.4)
+# ---------------------------------------------------------------------------------------------
+
+
+def _units(*names: str) -> tuple[UnitRef, ...]:
+    return tuple(
+        UnitRef(uri=f"c:/x/{name}", part="", content_sha256="a" * 64, byte_len=1) for name in names
+    )
+
+
+def _secret_for(unit_uri: str) -> str | None:
+    return "s3cret" if unit_uri.endswith("locked.pdf") else None
+
+
+def test_the_host_writes_a_mapped_unit_s_password_where_the_worker_puts_its_tmpdir(
+    tmp_path: Path,
+) -> None:
+    """S4: `<tmp>/<invoke_id>/<index>` is `worker._invoke`'s scratch for unit `index`, so the file
+    the host writes before `INVOKE` is in the directory the driver is handed. An unmapped unit
+    gets none, and the `INVOKE` itself carries no password."""
+    operator = SimpleNamespace(_tmp=tmp_path, secret_for=_secret_for)
+    staged = [SimpleNamespace(blob_ref=None), SimpleNamespace(blob_ref=None)]
+    call = SimpleNamespace(
+        batch=SimpleNamespace(invoke_id="i1"),
+        units=_units("locked.pdf", "open.pdf"),
+        deadline_ms=1_000,
+        budget_micros=0,
+    )
+    invocation = parse_module._Source(operator, None, staged).invocation(call)  # type: ignore[arg-type]
+    assert (tmp_path / "i1" / "0" / PASSWORD_FILENAME).read_bytes() == b"s3cret"
+    assert not (tmp_path / "i1" / "1").exists()
+    assert "s3cret" not in repr(invocation)
+
+
+def test_in_process_the_password_is_written_into_the_tmpdir_the_guard_hands_the_driver(
+    tmp_path: Path,
+) -> None:
+    """S1: `inproc_host` makes and removes each unit's scratch, so the file is written inside the
+    call, into `io.tmpdir`, before `parse()` runs."""
+    seen: list[bytes] = []
+
+    class _Driver:
+        def parse(self, unit: UnitRef, parts: object, io_obj: Any) -> Any:
+            del unit, parts
+            seen.append((Path(io_obj.tmpdir) / PASSWORD_FILENAME).read_bytes())
+            raise RuntimeError("stop here: the file was read")
+
+    operator = SimpleNamespace(secret_for=_secret_for, _driver=lambda _granted: _Driver())
+    call = SimpleNamespace(units=_units("locked.pdf"))
+    work = parse_module._Guarded(operator, None, []).work(call, 0)  # type: ignore[arg-type]
+    with pytest.raises(RuntimeError, match="the file was read"):
+        work(SimpleNamespace(tmpdir=str(tmp_path / "scratch")))
+    assert seen == [b"s3cret"]

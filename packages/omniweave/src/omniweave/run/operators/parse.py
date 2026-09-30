@@ -67,6 +67,18 @@ identity across. The `unit`'s move to `settled` does ride in `complete()`'s tran
 `ParseLedger`. The dep rows, the reservation commit and the spend row are not written: the office
 driver is `free`, admits at DECODE with no reservation, and `route_spend` is P4's (D585).
 
+## A document password (ADR-15 D15.4)
+
+*"The host writes it to a file in the one invocation's `DriverIO.tmpdir`, which the host deletes
+(14:1060), and the driver reads it there. `DriverIO` keeps its four fields (INV-6)."* For each unit
+`[ingest] password_file` maps, the secret is written to `host.keystore.PASSWORD_FILENAME` in that
+unit's scratch directory before the call: by `_Source.invocation` for S4, into the directory the
+worker is about to hand the driver (`<tmp>/<invoke_id>/<index>`, `worker._invoke`'s own layout),
+and by `_Guarded.work` for S1, into the one `inproc_host` just made. The worker removes each unit's
+scratch after its call; this Operator removes the invocation's whole directory after the reply,
+whatever the worker did, so a crashed worker leaves no password behind. The secret is in no
+`INVOKE` header, no `HELLO`, no `effective_config` and no digest.
+
 Specified in 02-architecture.md section 4.1 rows 10-17, 08-runtime.md sections 1.3 and 6.1, and
 04-driver-system.md section 6.2.
 """
@@ -76,6 +88,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import shutil
 import sys
 import threading
 from collections import Counter
@@ -85,7 +98,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, BinaryIO, Final, cast
 
 from omniweave_core.errors import ModelError, RouteError
-from omniweave_core.host import subproc
+from omniweave_core.host import keystore, subproc
 from omniweave_core.limits import MAX_ASSET_TOTAL_BYTES, MAX_ENTRY_BYTES
 from omniweave_core.model.block import Capabilities
 from omniweave_core.model.records import Producer
@@ -122,6 +135,7 @@ if TYPE_CHECKING:
     from omniweave_core.store.queue import StepResultView, WorkRow
 
     from omniweave.run.dispatch import Batch
+    from omniweave.run.passwords import Passwords
     from omniweave.run.pipeline import Call, Reply
 
 __all__ = [
@@ -330,6 +344,7 @@ class ParseOperator:
         "_ledger",
         "_locks",
         "_locks_guard",
+        "_passwords",
         "_pool",
         "_producers",
         "_resolving",
@@ -354,6 +369,7 @@ class ParseOperator:
         tally: ParseTally,
         executable: str = sys.executable,
         spawn: Callable[..., subproc.WorkerProcess] = subproc.spawn_worker,
+        passwords: Passwords | None = None,
     ) -> None:
         self._thread = thread
         self._ctx = ctx
@@ -374,6 +390,7 @@ class ParseOperator:
         self._locks_guard = threading.Lock()
         self._sink_lock = threading.Lock()
         self._drivers: dict[subproc.WorkerKey, object] = {}
+        self._passwords = passwords
 
     def _now_ms(self) -> int:
         return self._ctx.clock.monotonic_ns() // 1_000_000
@@ -381,6 +398,10 @@ class ParseOperator:
     def close(self) -> None:
         """Stop every worker. `SHUTDOWN`, then the uncatchable step (`Worker.stop`)."""
         self._pool.close()
+
+    def secret_for(self, unit_uri: str) -> str | None:
+        """The password `[ingest] password_file` maps this unit to, or `None` (D15.4)."""
+        return None if self._passwords is None else self._passwords.secret_for(unit_uri)
 
     # -- the batch -----------------------------------------------------------------------------
 
@@ -419,8 +440,12 @@ class ParseOperator:
                 else pipeline.subproc_host(_Source(self, granted, ready_staged))
             )
             handler = pipeline.build(host, emit=self._tally.emit, isolation=str(granted.isolation))
-            with self._lock(subproc.WorkerKey(driver, granted.config_digest)):
-                reply = handler(call)
+            try:
+                with self._lock(subproc.WorkerKey(driver, granted.config_digest)):
+                    reply = handler(call)
+            finally:
+                #  D15.4: the host deletes the invocation's tmpdir, and a password file with it.
+                shutil.rmtree(self._tmp / batch.invoke_id, ignore_errors=True)
             for slot, index in enumerate(ready):
                 results[index] = self._settle(
                     batch.rows[index],
@@ -870,6 +895,15 @@ class _Source:
         return self._operator._worker(self._granted)
 
     def invocation(self, call: Call) -> subproc.Invocation:
+        """The `INVOKE`, after each mapped unit's password is in its scratch directory (D15.4).
+
+        Called once per attempt, so a retry's worker finds the file again even after the first
+        worker removed its scratch."""
+        for index, unit in enumerate(call.units):
+            secret = self._operator.secret_for(unit.uri)
+            if secret is not None:
+                directory = self._operator._tmp / call.batch.invoke_id / str(index)
+                keystore.write_password(directory, secret)
         return subproc.Invocation(
             invoke_id=call.batch.invoke_id,
             units=call.units,
@@ -911,7 +945,14 @@ class _Guarded:
 
         parse = getattr(self._operator._driver(self._granted), "parse", None)
         unit = call.units[index]
-        return lambda io_obj: parse_one(parse, unit, io_obj)
+        secret = self._operator.secret_for(unit.uri)
+
+        def work(io_obj: DriverIO) -> DriverResult:
+            if secret is not None:
+                keystore.write_password(Path(io_obj.tmpdir), secret)
+            return parse_one(parse, unit, io_obj)
+
+        return work
 
     def blobs(self, call: Call) -> WorkerBlobs:
         """The CAS with each unit's `content_sha256` aliased to its staged blob -- `WorkerBlobs`,
