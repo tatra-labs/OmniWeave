@@ -600,8 +600,16 @@ def test_password_file_reaches_routing_the_parse_and_the_reopen(
         reopens.append(kwargs.get("reopens"))
         return reopen(*args, **kwargs)
 
+    composed: list[tuple[object, frozenset[str]]] = []
+    of = ingest_module.discover.reopens_of
+
+    def of_spy(passwords: Any, raised: frozenset[str] = frozenset()) -> Any:
+        composed.append((passwords, raised))
+        return of(passwords, raised)
+
     monkeypatch.setattr(ingest_module, "route_identified", route_spy)
     monkeypatch.setattr(ingest_module.discover, "reopen_changed_failures", reopen_spy)
+    monkeypatch.setattr(ingest_module.discover, "reopens_of", of_spy)
     (tmp_path / "docs").mkdir()
     (tmp_path / "docs" / "a.txt").write_text("x", encoding="utf-8")
     (tmp_path / "pw.toml").write_text('"docs/*.pdf" = "legal"\n', encoding="utf-8")
@@ -611,7 +619,8 @@ def test_password_file_reaches_routing_the_parse_and_the_reopen(
     first, second = seen
     assert first is not None and second is None
     assert first.source == str((tmp_path / "pw.toml").resolve())  # type: ignore[attr-defined]
-    assert reopens[0] == first.reopens  # type: ignore[attr-defined]
+    assert composed == [(first.reopens, frozenset()), (None, frozenset())]  # type: ignore[attr-defined]
+    assert reopens[0] is not None
     assert reopens[1] is None
 
 

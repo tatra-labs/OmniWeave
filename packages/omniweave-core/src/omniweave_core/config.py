@@ -728,7 +728,8 @@ _DECLARATIONS: Final[tuple[ConfigKey, ...]] = (
     _key("store.bulk_windows", "bool", True, "operational"),
     # [limits] -- clamps BELOW omniweave_core.limits' MAX_*; a lower limit TRUNCATES output
     _key("limits.max_entry_bytes", "int", 33554432, "semantic"),
-    # [ingest] -- the one key of 05:433-478's table the build reads (ADR-15 D15.3). "" is none.
+    # [ingest] -- the two keys of 05:433-478's table the build reads. "" is no password file.
+    _key("ingest.max_parts", "int", 10_000, "operational"),
     _key("ingest.password_file", "str", "", "operational"),
     # [drivers] -- DISCOVERY IS NOT CONSENT (INV-5)
     _key("drivers.enabled", "list", SHIPPED_DRIVERS, "operational", item_kind="str"),
