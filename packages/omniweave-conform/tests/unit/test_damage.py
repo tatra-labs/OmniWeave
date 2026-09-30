@@ -1,4 +1,4 @@
-"""The paired-damage suite's library half: the table, `mask_format`, `split_fix` and `assess`.
+"""The paired-damage suite's library half: the table, the Injectors, `split_fix` and `assess`.
 
 The run itself, which builds fixtures and executes the fixes, is `tools/ow_damage.py`, and the
 conform tier runs it end to end (`packages/omniweave/tests/conform/test_damage_suite.py`). These
@@ -8,19 +8,25 @@ each of which is shown failing on the run it exists to catch.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from omniweave_conform import damage
 from omniweave_conform.damage import (
+    DAMAGE_PASSWORD,
     INJECTORS,
     MASK,
+    PASSWORD_FILE,
     TABLE,
     Cause,
     FixRefusedError,
     Observed,
     assess,
     chaos,
+    encrypt,
     mask_format,
     split_fix,
+    supply_password,
 )
 from omniweave_core.retrieve.types import ABSENCE_GATES
 from omniweave_core.retrieve.verdict import ABSENCE_BLOCKING_DIAGS
@@ -105,6 +111,58 @@ def test_chaos_cuts_a_part_at_its_midpoint() -> None:
     assert chaos(b"ab") == b"a"
     with pytest.raises(ValueError, match="at least 2 bytes"):
         chaos(b"a")
+
+
+PDF = Path(__file__).resolve().parents[3] / "omniweave-pdf" / "fixtures" / "gen01p.pdf"
+
+
+def test_encrypt_applies_a_user_password_to_the_whole_document() -> None:
+    """ADR-15 D15.6: RC4-128 under `DAMAGE_PASSWORD` (`test_pdfcrypt.py` has pdfium refuse it and
+    read it back). A PDF it cannot write is refused by name, never damaged some other way."""
+    pristine = PDF.read_bytes()
+    locked = encrypt(pristine)
+    assert b"/Encrypt" in locked
+    assert b"/Filter /Standard /V 2 /R 3" in locked
+    assert encrypt(pristine) == locked, "deterministic, so a fixture is one set of bytes"
+    with pytest.raises(ValueError, match="already"):
+        encrypt(locked)
+
+
+def test_the_encrypt_injector_repairs_rather_than_restores() -> None:
+    injector = INJECTORS["encrypt"]
+    assert injector.row.diag == "OW_ENCRYPTED"
+    assert injector.applies_to == frozenset({".pdf"})
+    assert (injector.restores_source, injector.repair) == (False, supply_password)
+
+
+def test_the_password_is_supplied_the_way_gate_9_s_refusal_says() -> None:
+    """D15.5's detail, as `store.reader` writes it, is the only thing `supply_password` reads: the
+    `password_file` line and the `OW_SECRET_*` variable. The secret goes to the environment, and
+    the files hold the mapping and the key that names it."""
+    from omniweave_core.store.reader import _password_remedy  # noqa: PLC0415 -- real text
+
+    uri = "c:/corpus/medical/lab-results-2024.pdf"
+    detail = f"{uri}: refused as encrypted, so no document was written{_password_remedy(uri)}"
+    repair = supply_password(detail)
+    assert repair.env == {"OW_SECRET_LAB_RESULTS_2024": DAMAGE_PASSWORD}
+    assert repair.append == {
+        PASSWORD_FILE: f'"{uri}" = "lab-results-2024"\n',
+        "omniweave.toml": f'\n[ingest]\npassword_file = "{PASSWORD_FILE}"\n',
+    }
+
+
+@pytest.mark.parametrize(
+    ("detail", "why"),
+    [
+        ("c:/a.pdf: refused as encrypted; set OW_SECRET_A", "names no password_file line"),
+        ('add the line `"c:/a.pdf" = "a"` to the password file', "names no OW_SECRET_ variable"),
+    ],
+)
+def test_a_refusal_that_does_not_say_how_fails_the_fourth_clause_by_name(
+    detail: str, why: str
+) -> None:
+    with pytest.raises(FixRefusedError, match=why):
+        supply_password(detail)
 
 
 def test_the_built_injectors_are_in_the_table_s_order() -> None:

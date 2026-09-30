@@ -252,7 +252,7 @@ def test_damage_naming_a_file_or_an_injector_that_does_not_exist_is_refused(
     from corpora import CorpusError, prepare  # noqa: PLC0415
 
     with pytest.raises(CorpusError, match="not a built Injector"):
-        prepare("personal_archive", "quick", cache_root=tmp_path, damage=(("x.pdf", "encrypt"),))
+        prepare("personal_archive", "quick", cache_root=tmp_path, damage=(("x.pdf", "stall"),))
     with pytest.raises(CorpusError, match=r"no \['nowhere.pdf'\] to damage"):
         prepare(
             "personal_archive",

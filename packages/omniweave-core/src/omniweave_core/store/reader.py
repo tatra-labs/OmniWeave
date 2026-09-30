@@ -684,9 +684,13 @@ REREAD_CLASSES: Final[frozenset[str]] = frozenset(
 An unsupported or corrupt unit is what its bytes are, and no command repairs bytes the user owns:
 the fix is to restore or replace the file and read it again, which is `ow add <path>`, and the
 paired-damage suite's counterfactual restores the source before it runs that fix (D640). A timeout
-is re-read as it stands. `encrypted`, `needs_ocr` and `resource_limit` are cleared by a password,
-an OCR budget or a raised limit, and this build has no flag for any of them yet, so their `fix`
-is empty, which is what 07:1989 allows *"only where no command does"*.
+is re-read as it stands. `needs_ocr` and `resource_limit` are cleared by an OCR budget or a raised
+limit, and this build has no flag for either yet, so their `fix` is empty, which is what 07:1989
+allows *"only where no command does"*.
+
+`encrypted` is cleared by a password (ADR-15 D15.5). Its detail says how to supply one on this
+machine, and its `fix` is the same re-read: `ow add` queues a failed `encrypted` unit a password
+line now maps even though its file did not change (`acquire.add_sources(reopens=)`).
 """
 
 
@@ -790,9 +794,7 @@ def _unit_gaps(
         reread = cls in REREAD_CLASSES
         remedy = "; restore or replace the file, then read it again" if reread else ""
         if cls == "encrypted":
-            #  ADR-15 D15.2: pdfium would not open it with the empty password, so it needs a
-            #  real one, and D15.3's password path is not built yet: no command clears it.
-            remedy = "; it needs a password to open, and this build reads none yet (ADR-15 D15.3)"
+            remedy = _password_remedy(uri)
         if checked.get("value"):
             remedy += (
                 f", or run `ow ingest --accept-partial {shlex.quote(uri)}` to let a driver try"
@@ -802,10 +804,32 @@ def _unit_gaps(
                 gate="parse_gap_in_scope",
                 detail=f"{uri}: refused as {cls}, so no document was written ({sniffed}){remedy}",
                 diag_codes=(FAILURE_CLASS_DIAGS[cls],),
-                fix=_add_command(uri) if reread else "",
+                fix=_add_command(uri) if reread or cls == "encrypted" else "",
             )
         )
     return tuple(gaps)
+
+
+def _password_remedy(unit_uri: str) -> str:
+    """What an `encrypted` refusal says, on this machine: store, map, re-read. ADR-15 D15.5.
+
+    Three things, each paste-ready: the one command that stores a secret in this OS's keystore
+    (it prompts, so the password is in no shell history), the environment variable that replaces
+    it where there is no keystore, and the `[ingest] password_file` line that maps the file, whose
+    absolute glob is the unit's own path (`run.passwords`' absolute form). The name is offered
+    from the file's stem, and any name works. The last clause is for the user who did all three:
+    a password that opens nothing is refused the same way.
+    """
+    from omniweave_core.host import keystore  # noqa: PLC0415 -- the one gap class needing it
+
+    name = keystore.suggested_name(unit_uri)
+    return (
+        f"; it needs a password to open. Store it under a name, say {name}, with "
+        f"`{keystore.store_command(name)}` (or set {keystore.env_name(name)} where there is no "
+        f'keystore), add the line `{json.dumps(unit_uri)} = "{name}"` to the password file '
+        "[ingest] password_file names, then run the fix; if a line maps it already, the password "
+        "it names did not open it"
+    )
 
 
 def _fts_safe(term: str) -> str:

@@ -39,7 +39,7 @@ from omniweave_core.drivers.card import (
     read_card_bytes,
 )
 from omniweave_core.model.spans import Quad
-from omniweave_pdf.driver import ACHIEVED, PART, PdfiumParser
+from omniweave_pdf.driver import ACHIEVED, DECRYPTED, PART, PASSWORD_FILE, PdfiumParser
 from omniweave_pdf.glyphs import EXTRACTOR, document_text
 from omniweave_ports.detect import StreamHint
 from omniweave_ports.types import DriverError, FailureClass, ProbeEnv, ProbeStatus
@@ -420,3 +420,76 @@ def test_verify_origin_is_the_hook_the_conformance_kit_looks_for(
 
     ok, why = hook(fixture.data, {"k": "bytes", "part": PART}, block["text"])
     assert not ok and "glyphs" in why
+
+
+# ---------------------------------------------------------------------------------------------
+# A document that needs a password (ADR-15 D15.4)
+# ---------------------------------------------------------------------------------------------
+
+
+def _locked(tmp_path: Path, *, user: str) -> Fixture:
+    from omniweave_conform.pdfcrypt import encrypt_pdf  # noqa: PLC0415 -- test-only
+
+    path = tmp_path / "locked.pdf"
+    path.write_bytes(
+        encrypt_pdf((FIXTURES / "gen02p.pdf").read_bytes(), user_password=user, owner_password="o")  # noqa: S106 -- a fixture's
+    )
+    return Fixture.of(path)
+
+
+def _given(scratch: Path, password: str) -> None:
+    """What the host does before the call: the password in the invocation's tmpdir."""
+    (scratch / "tmp").mkdir(parents=True, exist_ok=True)
+    (scratch / "tmp" / PASSWORD_FILE).write_bytes(password.encode("utf-8"))
+
+
+def test_the_driver_reads_the_file_the_host_writes() -> None:
+    """The name is written twice, because this distribution may not import the host's."""
+    from omniweave_core.host.keystore import PASSWORD_FILENAME  # noqa: PLC0415 -- test-only
+
+    assert PASSWORD_FILE == PASSWORD_FILENAME
+
+
+def test_a_document_opened_with_the_host_s_password_says_so_twice(tmp_path: Path) -> None:
+    """05:476: `Diag(OW_DOC_DECRYPTED)` and `doc.x.ow.decrypted = true`. The driver proposes the
+    second as `"decrypted": true` on its `doc` record, and the host writes the `x.ow.` key. The text
+    is the unencrypted document's, and neither record carries the password."""
+    fixture = _locked(tmp_path, user="s3cret")
+    _given(tmp_path / "run", "s3cret")
+    run = run_parse(PdfiumParser(), fixture, tmp_path / "run")
+    plain = run_parse(PdfiumParser(), Fixture.of(FIXTURES / "gen02p.pdf"), tmp_path / "plain")
+    assert run.fragment.doc is not None
+    assert run.fragment.doc["decrypted"] is True
+    diags = [one for one in run.fragment.records if one.get("t") == "diag"]
+    assert [(one["code"], one["page"], one["severity"]) for one in diags] == [
+        (DECRYPTED, 0, "info")
+    ]
+    assert [b["text"] for b in run.blocks] == [b["text"] for b in plain.blocks]
+    assert b"s3cret" not in run.body
+
+
+@pytest.mark.parametrize(
+    ("given", "said"), [(None, "with no password"), ("wrong", "with the password it was given")]
+)
+def test_a_document_that_does_not_open_is_encrypted_and_says_whether_a_password_was_tried(
+    tmp_path: Path, given: str | None, said: str
+) -> None:
+    fixture = _locked(tmp_path, user="s3cret")
+    if given is not None:
+        _given(tmp_path / "run", given)
+    with pytest.raises(DriverError) as caught:
+        run_parse(PdfiumParser(), fixture, tmp_path / "run")
+    assert caught.value.cls is FailureClass.ENCRYPTED
+    assert said in str(caught.value)
+    assert "wrong" not in str(caught.value)
+
+
+def test_an_owner_only_document_ignores_a_password_it_does_not_need(tmp_path: Path) -> None:
+    """Opened with no password first, so a password file changes nothing about a restricted PDF:
+    it is not `decrypted`, and there is no `OW_DOC_DECRYPTED`."""
+    fixture = _locked(tmp_path, user="")
+    _given(tmp_path / "run", "anything")
+    run = run_parse(PdfiumParser(), fixture, tmp_path / "run")
+    assert run.fragment.doc is not None
+    assert "decrypted" not in run.fragment.doc
+    assert not [one for one in run.fragment.records if one.get("t") == "diag"]

@@ -23,6 +23,7 @@ from omniweave_core.store import sqlite as ow
 from omniweave_core.store.doc import DocSink
 from omniweave_core.store.fragment import (
     DANGLING_TMP,
+    DECRYPTED_X,
     OUT_OF_SCOPE,
     Decoded,
     FragmentDoc,
@@ -175,6 +176,23 @@ def test_the_host_mints_the_document_root_and_a_null_parent_is_a_page_root(
     assert decoded.blocks == 2
     rows = _rows(path, "SELECT addr, kind FROM block ORDER BY block_id")
     assert [addr for addr, _kind in rows] == ["doc", "p0/0", "p0/1"]
+
+
+@pytest.mark.parametrize(
+    ("proposed", "stored"),
+    [(True, '{"x.ow.decrypted":true}'), (None, "{}"), ("yes", "{}")],
+    ids=["decrypted", "absent", "not-a-bool"],
+)
+def test_a_driver_that_opened_with_a_password_becomes_doc_x_ow_decrypted(
+    tmp_path: Path, proposed: object, stored: str
+) -> None:
+    """05:476 and ADR-15 D15.4. The driver proposes `"decrypted": true` on its `doc` record; the
+    host writes `doc.x.ow.decrypted`, because `x.ow.` is the framework's segment (03:2745). Only a
+    JSON `true` is the fact: anything else a driver sends is not."""
+    head = [{**HEAD[0], **({} if proposed is None else {"decrypted": proposed})}, HEAD[1]]
+    decoded, path = _run(tmp_path, [*head, _block("b1"), END])
+    assert _rows(path, "SELECT x FROM doc") == [(stored,)]
+    assert dict(decoded.record.x) == ({DECRYPTED_X: True} if proposed is True else {})
 
 
 def test_marks_carry_03s_value_shapes_and_a_note_ref_becomes_a_rel(tmp_path: Path) -> None:

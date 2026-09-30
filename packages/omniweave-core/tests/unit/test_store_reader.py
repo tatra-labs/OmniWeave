@@ -40,6 +40,7 @@ from __future__ import annotations
 import inspect
 import pathlib
 import sqlite3  # noqa: TID251 -- see the module docstring: the fixtures seed a REAL store.
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import NamedTuple
@@ -2831,7 +2832,7 @@ def test_a_unit_that_stopped_with_no_document_is_gate_9_or_gate_8_by_its_class(
         corpus = reader.coverage(state, Filters(uri_prefix="c:/corpus/"))
     assert everything.unreadable_units == 2
     assert [(gap.diag_codes, gap.fix) for gap in everything.gaps] == [
-        (("OW_ENCRYPTED",), ""),
+        (("OW_ENCRYPTED",), "ow add c:/corpus/locked.pdf"),
         (("OW_UNSUPPORTED_FORMAT",), "ow add c:/corpus/masked.docx"),
         (("OW_MALFORMED",), "ow add c:/other/torn.pdf"),
     ]
@@ -2864,10 +2865,24 @@ def test_a_corrupt_refusal_names_the_check_that_failed_and_the_override(built: B
     assert gap.fix == "ow add c:/corpus/torn.pdf"
 
 
-def test_an_encrypted_refusal_says_it_needs_a_password_and_offers_no_fix(built: Built) -> None:
-    """ADR-15 D15.2: pdfium would not open it with the empty password, and D15.3's password path
-    is not built, so no command clears it -- an empty fix, which 07:1989 allows *"only where no
-    command does"*, and a detail that says why rather than a re-read that would fail again."""
+@pytest.mark.parametrize(
+    ("platform", "store"),
+    [
+        ("win32", "`cmdkey /generic:omniweave/locked /user:omniweave /pass`"),
+        ("darwin", "`security add-generic-password -s omniweave -a locked -w`"),
+        (
+            "linux",
+            '`secret-tool store --label="omniweave locked" service omniweave name locked`',
+        ),
+    ],
+)
+def test_an_encrypted_refusal_says_how_to_supply_a_password_on_this_machine(
+    built: Built, monkeypatch: pytest.MonkeyPatch, platform: str, store: str
+) -> None:
+    """ADR-15 D15.5: the one command that stores the secret on this OS, the environment variable
+    that replaces it, and the `password_file` line, each paste-ready. The fix is the re-read,
+    which `ow add` performs on an unchanged file once a line maps it (D15.3)."""
+    monkeypatch.setattr(sys, "platform", platform)
     conn = built.writer
     conn.execute("BEGIN IMMEDIATE")
     _failed(conn, "c:/corpus/locked.pdf", "encrypted")
@@ -2875,10 +2890,15 @@ def test_an_encrypted_refusal_says_it_needs_a_password_and_offers_no_fix(built: 
     reader = _reader(built)
     with reader.snapshot() as state:
         (gap,) = reader.coverage(state, Filters()).gaps
-    assert (gap.diag_codes, gap.fix) == (("OW_ENCRYPTED",), "")
-    assert gap.detail.endswith(
-        "it needs a password to open, and this build reads none yet (ADR-15 D15.3)"
+    assert (gap.diag_codes, gap.fix) == (("OW_ENCRYPTED",), "ow add c:/corpus/locked.pdf")
+    assert gap.detail.startswith(
+        "c:/corpus/locked.pdf: refused as encrypted, so no document was written (detection "
+        "sniffed pdf); it needs a password to open. Store it under a name, say locked, with "
     )
+    assert store in gap.detail
+    assert "(or set OW_SECRET_LOCKED where there is no keystore)" in gap.detail
+    assert '`"c:/corpus/locked.pdf" = "locked"`' in gap.detail
+    assert gap.detail.endswith("the password it names did not open it")
 
 
 def test_a_fix_names_a_path_with_spaces_so_that_a_posix_split_gives_it_back_whole() -> None:

@@ -631,6 +631,58 @@ def test_a_second_run_over_the_same_content_starts_no_child_and_decides_the_same
     assert not router.tally.children
 
 
+class _Locked:
+    """A pdfium computer over a user-password PDF: it opens only with `password="s3cret"`."""
+
+    def __init__(self) -> None:
+        self.asked: list[tuple[tuple[str, ...], str | None]] = []
+
+    def __call__(
+        self, package: str, source: str, digest: str, keys: tuple[str, ...], /, **password: str
+    ) -> Any:
+        del package, source, digest
+        given = password.get("password")
+        self.asked.append((keys, given))
+        values = (
+            {**CLEAN, "unit.encrypted": False} if given == "s3cret" else {"unit.encrypted": True}
+        )
+        return SignalAnswer(
+            values={k: v for k, v in values.items() if k in keys},
+            unavailable={k: "pdfium: incorrect password" for k in keys if k not in values},
+        )
+
+
+def test_a_unit_a_password_maps_asks_its_child_with_it_and_never_touches_the_cache(
+    signals: StoreThread,
+) -> None:
+    """ADR-15 D15.4. The first run, with no password, refuses the file and caches
+    `unit.encrypted = true`. A run with the password must not read that row back -- it would refuse
+    the file the password opens -- and must not write what the password opened, which would be a
+    row derived from a secret. So every group goes to the child, with the password, each run."""
+    first = _Locked()
+    refused, _ev = _decide(_router(signals, first))
+    assert (refused.rule_id, refused.outcome) == ("gate.encrypted", "refuse")
+    cached = _signal_rows(signals)
+    assert [(k, v) for k, _ver, v, *_ in cached if k == "unit.encrypted"] == [
+        ("unit.encrypted", b"true")
+    ]
+
+    again = _Locked()
+    router = _router(signals, again)
+    router.passwords = SimpleNamespace(
+        secret_for=lambda uri: "s3cret" if uri == PDF_ROW[0] else None
+    )
+    opened, ev = _decide(router)
+    assert (opened.rule_id, opened.driver) == ("decode.pdf-text-layer", "parse.pdf.pdfium")
+    assert ev.read("unit.encrypted") is False
+    assert again.asked == [
+        (("corpus.is_form", "unit.encrypted", "unit.part_count"), "s3cret"),
+        (("decode.char_count",), "s3cret"),
+    ]
+    assert not router.tally.cached
+    assert _signal_rows(signals) == cached
+
+
 def test_each_computed_key_is_one_row_under_its_provider_version(signals: StoreThread) -> None:
     router = _router(signals, _Computer(CLEAN))
     router.now_ms = 1_234

@@ -26,6 +26,13 @@ So the counterfactual is *restore, then run the fix*, and the assertion is that 
 produce the pristine run's verdict. An Injector that damages the store instead (`drop_part`,
 `strip_integrity`) runs its fix with nothing restored, as 13:1297 has it.
 
+**`encrypt` restores nothing: the user does what the refusal says, then runs the fix.** An
+encrypted file is not damaged bytes; it is a file whose password the build was not given, and the
+file stays encrypted (ADR-15 D15.6). Gate 9's detail says how to give it one on this machine
+(D15.5): an `OW_SECRET_<NAME>` variable and a `password_file` line. `supply_password()` reads both
+out of that detail and nowhere else, so the fourth clause holds only if the message a user would
+follow is one that works: a detail that stopped naming the line would fail the pair by name.
+
 ## The fix is split, not shelled
 
 13:1306: *"the harness parses the string against the `ow` Action registry, refuses anything whose
@@ -39,20 +46,25 @@ passes it in as `admit`.
 
 from __future__ import annotations
 
+import re
 import shlex
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 from omniweave_core.retrieve.types import ABSENCE_GATES
 
+from omniweave_conform.pdfcrypt import encrypt_pdf
+
 if TYPE_CHECKING:
     from omniweave_core.retrieve.verdict import Verdict
 
 __all__ = [
+    "DAMAGE_PASSWORD",
     "INJECTORS",
     "MASK",
+    "PASSWORD_FILE",
     "TABLE",
     "Assessment",
     "Cause",
@@ -60,12 +72,15 @@ __all__ = [
     "FixRefusedError",
     "Injector",
     "Observed",
+    "Repair",
     "Row",
     "assess",
     "chaos",
+    "encrypt",
     "mask_format",
     "observed",
     "split_fix",
+    "supply_password",
 ]
 
 PARSE_GAP: Final[str] = "parse_gap_in_scope"
@@ -135,6 +150,62 @@ def chaos(data: bytes) -> bytes:
     return data[: len(data) // 2]
 
 
+DAMAGE_PASSWORD: Final[str] = "ow-damage"  # noqa: S105 -- a fixture's, by design
+"""The user password `encrypt` applies, and the one `supply_password` gives back."""
+
+PASSWORD_FILE: Final[str] = "passwords.toml"  # noqa: S105 -- a file name
+"""The password file `supply_password` writes, beside the fixture's `omniweave.toml`."""
+
+
+def encrypt(data: bytes) -> bytes:
+    """13:1283 as ADR-15 D15.6 rules it: *"user-password encryption to the document"*.
+
+    RC4-128 under a user password and a different owner password, so pdfium refuses the file with
+    no password and `gate.encrypted` refuses the unit. `pdfcrypt.encrypt_pdf` refuses a PDF with
+    an object stream or a cross-reference stream by name, which is a fixture this cannot damage.
+    """
+    return encrypt_pdf(data, user_password=DAMAGE_PASSWORD, owner_password=DAMAGE_PASSWORD + "-o")
+
+
+@dataclass(frozen=True, slots=True)
+class Repair:
+    """What a user does before the fix, as the damaged run's cause says: files, and environment.
+
+    `append` maps a path relative to the fixture's project to the text appended to it, and `env`
+    is added to the fix child's environment. The secret is in `env` and nowhere on disk.
+    """
+
+    append: Mapping[str, str] = field(default_factory=dict)
+    env: Mapping[str, str] = field(default_factory=dict)
+
+
+_LINE: Final = re.compile(r"add the line `(.+?)` to the password file")
+_VARIABLE: Final = re.compile(r"\bset (OW_SECRET_[A-Z0-9_]+)\b")
+
+
+def supply_password(detail: str) -> Repair:
+    """The password, supplied the way gate 9's `encrypted` detail says (ADR-15 D15.5).
+
+    The detail's `OW_SECRET_<NAME>` variable, set to `DAMAGE_PASSWORD`, and its `password_file`
+    line, written to `PASSWORD_FILE` and named by `[ingest] password_file`. Raises
+    `FixRefusedError` when the detail does not name both, which is the fourth clause failing.
+    """
+    line, variable = _LINE.search(detail), _VARIABLE.search(detail)
+    if line is None or variable is None:
+        msg = (
+            "the encrypted cause does not say how to supply a password: it names no "
+            f"{'password_file line' if line is None else 'OW_SECRET_ variable'} (ADR-15 D15.5)"
+        )
+        raise FixRefusedError(msg)
+    return Repair(
+        append={
+            PASSWORD_FILE: line.group(1) + "\n",
+            "omniweave.toml": f'\n[ingest]\npassword_file = "{PASSWORD_FILE}"\n',
+        },
+        env={variable.group(1): DAMAGE_PASSWORD},
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class Injector:
     """One built Injector: its row, the damage, and the file suffixes it applies to."""
@@ -145,6 +216,8 @@ class Injector:
     transform: Callable[[bytes], bytes]
     restores_source: bool
     """True when the damage is to the user's own file (D640): the fix runs after a restore."""
+    repair: Callable[[str], Repair] | None = None
+    """What the user does before the fix, read from the damaged run's cause detail (`encrypt`)."""
 
     @property
     def name(self) -> str:
@@ -153,6 +226,14 @@ class Injector:
 
 INJECTORS: Final[Mapping[str, Injector]] = MappingProxyType(
     {
+        "encrypt": Injector(
+            row=next(row for row in TABLE if row.name == "encrypt"),
+            damages="applies user-password encryption to the document",
+            applies_to=frozenset({".pdf"}),
+            transform=encrypt,
+            restores_source=False,
+            repair=supply_password,
+        ),
         "chaos": Injector(
             row=next(row for row in TABLE if row.name == "chaos"),
             damages="truncates a part mid-stream at a fixed byte offset",
@@ -169,8 +250,9 @@ INJECTORS: Final[Mapping[str, Injector]] = MappingProxyType(
         ),
     }
 )
-"""The Injectors built, each with its passing assertion (13:1314): `mask_format` (D640) and
-`chaos` (D641). `TABLE` order, so the report reads as the plan's table does."""
+"""The Injectors built, each with its passing assertion (13:1314): `encrypt` (D643),
+`mask_format` (D640) and `chaos` (D641). `TABLE` order, so the report reads as the plan's table
+does."""
 
 
 @dataclass(frozen=True, slots=True)

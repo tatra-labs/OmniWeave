@@ -209,7 +209,7 @@ def test_two_first_batches_on_two_threads_build_one_parse_operator(
             pass
 
     monkeypatch.setattr(ingest_module, "ParseOperator", Slow)
-    inputs = SimpleNamespace(catalog=None, resolving=None)
+    inputs = SimpleNamespace(catalog=None, resolving=None, passwords=None)
     lazy = ingest_module._ParseLazily(None, None, None, inputs, tmp_path / "i.owstore", None, None)
     together = threading.Barrier(2)
     got: list[object] = []
@@ -580,3 +580,68 @@ def test_accept_partial_reaches_routing_and_the_reopen_and_is_recorded_in_run_ar
         connection.close()
     assert "--accept-partial" in argv[0]
     assert "--accept-partial" not in argv[1]
+
+
+def test_password_file_reaches_routing_the_parse_and_the_reopen(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR-15 D15.3: `--password-file` is read once, against the working directory, and the one
+    mapping reaches routing (the signal child), the re-open (an encrypted unit it maps), and the
+    report. A run without it and without `[ingest] password_file` has none."""
+    seen: list[object] = []
+    reopens: list[object] = []
+    route, reopen = ingest_module.route_identified, ingest_module.discover.reopen_changed_failures
+
+    def route_spy(*args: Any, **kwargs: Any) -> Any:
+        seen.append(kwargs.get("passwords"))
+        return route(*args, **kwargs)
+
+    def reopen_spy(*args: Any, **kwargs: Any) -> Any:
+        reopens.append(kwargs.get("reopens"))
+        return reopen(*args, **kwargs)
+
+    monkeypatch.setattr(ingest_module, "route_identified", route_spy)
+    monkeypatch.setattr(ingest_module.discover, "reopen_changed_failures", reopen_spy)
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "a.txt").write_text("x", encoding="utf-8")
+    (tmp_path / "pw.toml").write_text('"docs/*.pdf" = "legal"\n', encoding="utf-8")
+    code, _out, err = _cli(tmp_path, ["docs", "--corpus", "handbook", "--password-file", "pw.toml"])
+    assert (code, err) == (0, "")
+    assert _cli(tmp_path, ["docs", "--corpus", "handbook"])[0] == 0
+    first, second = seen
+    assert first is not None and second is None
+    assert first.source == str((tmp_path / "pw.toml").resolve())  # type: ignore[attr-defined]
+    assert reopens[0] == first.reopens  # type: ignore[attr-defined]
+    assert reopens[1] is None
+
+
+def test_the_configured_password_file_is_relative_to_the_file_that_names_it(
+    tmp_path: Path,
+) -> None:
+    """`[ingest] password_file`, resolved as `root_of()` resolves a root (D527): against the
+    `omniweave.toml` that set it, not against wherever the command ran."""
+    project = tmp_path / "project"
+    (project / "secrets").mkdir(parents=True)
+    (project / "secrets" / "pw.toml").write_text('"*.pdf" = "legal"\n', encoding="utf-8")
+    (project / "omniweave.toml").write_text(
+        HANDBOOK + '[ingest]\npassword_file = "secrets/pw.toml"\n', encoding="utf-8"
+    )
+    config = load(cwd=project, env={"OMNIWEAVE_HOME": str(tmp_path / "owhome")})
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    found = cli.passwords_of(config, override=None, source=project, env={}, cwd=elsewhere)
+    assert found is not None
+    assert found.source == str((project / "secrets" / "pw.toml").resolve())
+    shipped = load(cwd=elsewhere, env={"OMNIWEAVE_HOME": str(tmp_path / "owhome")})
+    assert cli.passwords_of(shipped, override=None, source=project, env={}, cwd=elsewhere) is None
+
+
+def test_a_malformed_password_file_is_refused_before_anything_is_walked(tmp_path: Path) -> None:
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "a.txt").write_text("x", encoding="utf-8")
+    (tmp_path / "pw.toml").write_text('"docs/*.pdf" = "not a name"\n', encoding="utf-8")
+    code, out, err = _cli(tmp_path, ["docs", "--corpus", "handbook", "--password-file", "pw.toml"])
+    assert (code, out) == (1, "")
+    assert "pw.toml" in err
+    assert "not a secret name" in err
+    assert not (tmp_path / ".omniweave" / "index.owstore").exists()

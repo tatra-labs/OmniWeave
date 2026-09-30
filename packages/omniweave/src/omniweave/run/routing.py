@@ -59,7 +59,7 @@ import json
 import sys
 from collections import Counter
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Final, TypeAlias, cast
+from typing import TYPE_CHECKING, Final, Protocol, TypeAlias, cast
 
 from omniweave_core.budget import Admitted
 from omniweave_core.canonical import canonical, sha256_canonical
@@ -86,7 +86,7 @@ from omniweave.route.rung import Rung
 from omniweave.run import expand
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Mapping, Sequence
 
     from omniweave_core.canonical import JsonValue
     from omniweave_core.config import Config
@@ -100,6 +100,7 @@ if TYPE_CHECKING:
     from omniweave.route.demand import DemandMap, DemandPlan, Group
     from omniweave.route.evidence import Scalar, SignalRegistry
     from omniweave.route.policy import RoutePolicy
+    from omniweave.run.passwords import Passwords
 
 __all__ = [
     "LANE",
@@ -132,13 +133,23 @@ any other class is read from `route_signal` as it would be without the flag. No 
 billed, so today the rule is every key; it is here so a billed provider cannot make the flag an
 unnamed authorisation to re-bill, which is why 18:990-991 struck `--ignore-cache` (D633)."""
 
-Compute: TypeAlias = "Callable[[str, str, str, tuple[str, ...]], SignalAnswer]"
-"""`(package, source path, content_sha256, keys) -> SignalAnswer`: one child's worth of signals.
 
-`omniweave_core.host.signals.compute_in_child` is the one real implementation, and
-`route_identified` builds it over this run's scratch directory. A parameter for the reason
-`subproc.Spawn` is one: a routing test that had to start an interpreter per unit could only be
-written against the real child, and the routing decisions are what those tests are about."""
+class Compute(Protocol):
+    """`(package, source path, content_sha256, keys) -> SignalAnswer`: one child's worth of signals.
+
+    `omniweave_core.host.signals.compute_in_child` is the one real implementation, and
+    `route_identified` builds it over this run's scratch directory. A parameter for the reason
+    `subproc.Spawn` is one: a routing test that had to start an interpreter per unit could only be
+    written against the real child, and the routing decisions are what those tests are about.
+
+    `password=` is passed only for a unit `[ingest] password_file` maps and whose secret resolved
+    (ADR-15 D15.4), so a computer that takes none is called exactly as before.
+    """
+
+    def __call__(
+        self, package: str, source: str, digest: str, keys: tuple[str, ...], /, **password: str
+    ) -> SignalAnswer: ...
+
 
 _PYTHON_TYPES: Final[dict[str, tuple[type, ...]]] = {
     "bool": (bool,),
@@ -364,6 +375,8 @@ class _Router:
     what the child answers over the row that was there (D633)."""
     accept_partial: bool = False
     """`ow ingest --accept-partial`: a failed structural check does not refuse (05:2821, D641)."""
+    passwords: Passwords | None = None
+    """`[ingest] password_file`'s mapping: a mapped unit's secret goes to its child (D15.4)."""
     tally: RouteTally = field(default_factory=RouteTally)
     resolutions: dict[str, Resolution] = field(default_factory=dict)
 
@@ -422,8 +435,15 @@ class _Router:
         (key,ver)"*). A key whose row exists for this content, part and version is put from it,
         and only the rest go to the child; a group the cache holds whole starts none. What the
         child answered is written back unless the request was refused (`SignalAnswer.refusal`).
+
+        **A unit a password maps reads and writes no `route_signal` row** (ADR-15 D15.4). Its
+        child's answer is a function of the password as well as the content, so a cached answer
+        from a run without it (`unit.encrypted = true`) would refuse the file the password opens,
+        and an answer with it, cached, would be a row derived from a secret. It costs such a unit
+        one child per group per run.
         """
         uri, digest = str(row[0]), str(row[1])
+        secret = None if self.passwords is None else self.passwords.secret_for(uri)
         fmt = str(row[4] or "")
         asked: dict[str, list[str]] = {}
         for key in group.keys:
@@ -446,7 +466,12 @@ class _Router:
         for provider, keys in asked.items():
             versions = {key: self._version(key, fmt) for key in keys}
             kept = self._cached(
-                digest, {key: v for key, v in versions.items() if not self._recomputes(key)}
+                digest,
+                {
+                    key: v
+                    for key, v in versions.items()
+                    if secret is None and not self._recomputes(key)
+                },
             )
             hits = len(kept.values) + len(kept.unavailable)
             if hits:
@@ -458,9 +483,10 @@ class _Router:
             if missing:
                 self.tally.children[provider] += 1
                 started = self.ctx.clock.monotonic_ns()
-                answered = self.compute(self.computers[provider], uri, digest, missing)
+                extra = {} if secret is None else {"password": secret}
+                answered = self.compute(self.computers[provider], uri, digest, missing, **extra)
                 elapsed_ms = (self.ctx.clock.monotonic_ns() - started) // 1_000_000
-                if answered.refusal is None:
+                if answered.refusal is None and secret is None:
                     self._remember(digest, versions, missing, answered, elapsed_ms)
                 found = replace(
                     answered,
@@ -779,7 +805,9 @@ class _Router:
 def _child_compute(ctx: RunContext) -> Compute:
     """`compute_in_child` over this run's scratch directory, created on first use."""
 
-    def compute(package: str, source: str, digest: str, keys: tuple[str, ...]) -> SignalAnswer:
+    def compute(
+        package: str, source: str, digest: str, keys: tuple[str, ...], /, **password: str
+    ) -> SignalAnswer:
         from omniweave_core.host.signals import compute_in_child  # noqa: PLC0415 -- signal path
 
         from omniweave.run.operators.parse import worker_env  # noqa: PLC0415
@@ -794,6 +822,7 @@ def _child_compute(ctx: RunContext) -> Compute:
             executable=sys.executable,
             cwd=str(scratch),
             env=worker_env(),
+            password=password.get("password"),
         )
 
     return compute
@@ -854,6 +883,7 @@ def route_identified(
     compute: Compute | None = None,
     ignore_evidence_cache: bool = False,
     accept_partial: bool = False,
+    passwords: Passwords | None = None,
 ) -> RouteTally:
     """Route every unit this generation identified. One transaction per unit, keyset-paged.
 
@@ -877,6 +907,7 @@ def route_identified(
         compute=compute or _child_compute(ctx),
         ignore_evidence_cache=ignore_evidence_cache,
         accept_partial=accept_partial,
+        passwords=passwords,
     )
     after = ""
     while True:

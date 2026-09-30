@@ -64,6 +64,16 @@ nothing else, which is the audit 03:1394 promises.
 whether to send those pages to an OCR driver, and it can only decide that if this driver reports
 them rather than failing the document out from under it.
 
+## A document that needs a password (ADR-15 D15.4)
+
+The host writes the password `[ingest] password_file` maps a unit to into `io.tmpdir`, as
+`PASSWORD_FILE`, for the one invocation, and deletes the directory after it. `DriverIO` carries no
+password field (INV-6), so the tmpdir is the route. The driver opens with no password first, so an
+owner-password-only file reads as it always did, and reads the file only when pdfium refuses for
+want of one. A document it opened with the password says so twice, as 05:476 asks: the `doc`
+record carries `"decrypted": true`, which the host stores as `doc.x["x.ow.decrypted"]`, and page 0
+carries an `OW_DOC_DECRYPTED` `diag`. Neither carries the password.
+
 Specified in 16-roadmap.md W3.5; 02-architecture.md section 2 row 42; 03-document-model.md
 sections 7.1, 7.2 and 8.3.
 """
@@ -72,6 +82,7 @@ from __future__ import annotations
 
 import ctypes
 import json
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import pypdfium2 as pdfium
@@ -129,6 +140,14 @@ layout work, and 02:266 puts layout classification outside this driver at releas
 PART = "pdf/source.pdf"
 """The one retained part's path. `retain = True`, because `origin_span = "exact"` is a claim about
 a document that must still be there to re-extract from."""
+
+PASSWORD_FILE = ".omniweave-password"  # noqa: S105 -- a file name, not a password
+"""The file in `io.tmpdir` the host writes one unit's password to (ADR-15 D15.4). The host's name
+for it is `omniweave_core.host.keystore.PASSWORD_FILENAME`, which this distribution may not import;
+a test holds the two equal."""
+
+DECRYPTED = "OW_DOC_DECRYPTED"
+"""05:476's `Diag` code for a document opened with a password."""
 
 _PDF_MAGIC = b"%PDF-"
 _HEAD_WINDOW = 65_536
@@ -232,9 +251,9 @@ class PdfiumParser:
         with io.blobs.open(unit.content_sha256) as handle:
             raw = handle.read()
 
-        document = self._open(raw)
+        document, decrypted = self._open(raw, io)
         try:
-            records = list(self._records(document, unit, raw, io))
+            records = list(self._records(document, unit, raw, io, decrypted=decrypted))
         finally:
             document.close()
 
@@ -246,23 +265,33 @@ class PdfiumParser:
             outcome="ok", produced=(ref,), metrics=DriverMetrics(bytes_read=len(raw))
         )
 
-    def _open(self, raw: bytes) -> pdfium.PdfDocument:
+    def _open(self, raw: bytes, io: DriverIO) -> tuple[pdfium.PdfDocument, bool]:
         """Open, and turn pdfium's two refusals into the two `FailureClass` members that mean them.
 
         `PdfiumError` covers both a malformed file and an encrypted one, and they are different
         answers to the host: `CORRUPT_INPUT` is permanent for these bytes, while `ENCRYPTED` tells
         an operator that a password would fix it. The discrimination is on pdfium's own error text
         because the wrapper raises one exception type for both.
+
+        Returns the document and whether it needed the host's password to open (ADR-15 D15.4).
         """
         try:
-            document = pdfium.PdfDocument(raw)
+            try:
+                document = pdfium.PdfDocument(raw)
+                decrypted = False
+            except pdfium.PdfiumError as exc:
+                password = _password(io) if _needs_password(exc) else None
+                if password is None:
+                    raise
+                document = pdfium.PdfDocument(raw, password=password)
+                decrypted = True
             len(document)  # forces the page tree; a truncated xref fails here, not at open.
         except pdfium.PdfiumError as exc:
-            message = str(exc).lower()
-            if "password" in message or "encrypt" in message:
+            if _needs_password(exc):
+                given = "the password it was given" if _password(io) is not None else "no password"
                 raise DriverError(
                     cls=FailureClass.ENCRYPTED,
-                    message=f"pdfium will not open this document: {exc}",
+                    message=f"pdfium will not open this document with {given}: {exc}",
                 ) from None
             raise DriverError(
                 cls=FailureClass.CORRUPT_INPUT,
@@ -273,7 +302,7 @@ class PdfiumParser:
                 cls=FailureClass.CORRUPT_INPUT,
                 message=f"{type(exc).__name__} opening the document: {exc}",
             ) from None
-        return document
+        return document, decrypted
 
     def _records(
         self,
@@ -281,16 +310,21 @@ class PdfiumParser:
         unit: UnitRef,
         raw: bytes,
         io: DriverIO,
+        *,
+        decrypted: bool = False,
     ) -> Iterator[dict[str, Any]]:
         """The fragment, in order: `doc`, `part`, then per page a `page` and its blocks."""
         page_count = len(document)
-        yield {
+        doc: dict[str, Any] = {
             "t": "doc",
             "format": "pdf",
             "media_type": "application/pdf",
             "page_count": page_count,
             "achieved": ACHIEVED,
         }
+        if decrypted:
+            doc["decrypted"] = True
+        yield doc
         yield {
             "t": "part",
             "path": PART,
@@ -313,6 +347,18 @@ class PdfiumParser:
             width, height = page.get_size()
             rotation = page.get_rotation()
             yield self._page_record(part.index, width, height, rotation)
+            if decrypted and part.index == 0:
+                yield {
+                    "t": "diag",
+                    "code": DECRYPTED,
+                    "severity": "info",
+                    "component": "parse.pdf.pdfium",
+                    "message": "opened with the password its password file maps it to",
+                    "page": 0,
+                    "part": PART,
+                    "detail": {},
+                    "fatal": False,
+                }
 
             if part.length == 0:
                 yield {
@@ -476,6 +522,21 @@ class _Line:
     def __init__(self, offset: int, text: str) -> None:
         self.offset = offset
         self.text = text
+
+
+def _needs_password(exc: Exception) -> bool:
+    """pdfium's refusal for want of a password, read from its text: one exception type covers
+    every refusal. `omniweave_pdf.signals.needs_password` is the same test."""
+    message = str(exc).lower()
+    return "password" in message or "encrypt" in message
+
+
+def _password(io: DriverIO) -> str | None:
+    """The host's password for this unit, from `io.tmpdir`, or `None` when it wrote none."""
+    try:
+        return (Path(io.tmpdir) / PASSWORD_FILE).read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
 
 
 def _lines(text: str) -> Iterator[_Line]:
