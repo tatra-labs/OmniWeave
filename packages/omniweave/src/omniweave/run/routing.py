@@ -70,6 +70,7 @@ from omniweave_core.drivers.resolve import (
     resolution_report,
     resolve,
 )
+from omniweave_core.errors import ConfigError
 from omniweave_core.probe import probe_env
 from omniweave_core.store.budget import SqliteBudgetLedger
 from omniweave_core.store.sqlite import BATCH_WAIT_MS, Unit
@@ -82,6 +83,7 @@ from omniweave.route.demand import compile_demand, plan_for
 from omniweave.route.eval import evaluate, pending_deferrals
 from omniweave.route.evidence import Evidence
 from omniweave.route.ledger import payload_bytes
+from omniweave.route.policy import Layer, builtin_layer
 from omniweave.route.rung import Rung
 from omniweave.run import expand
 
@@ -104,12 +106,15 @@ if TYPE_CHECKING:
 
 __all__ = [
     "LANE",
+    "MAX_PARTS_KEY",
     "PHASE",
     "RUNGS",
     "Compute",
     "RouteTally",
+    "max_parts_of",
     "resolve_policy",
     "route_identified",
+    "route_layers",
     "unit_evidence",
 ]
 
@@ -289,6 +294,40 @@ def resolve_policy(
         isolation_floor=Isolation(str(get("drivers.isolation_floor"))),
         host_env=probe_env((), offline=offline),
     )
+
+
+MAX_PARTS_KEY: Final[str] = "ingest.max_parts"
+"""05:446's key, and the `reason` `gate.too-many-parts` refuses under. D644."""
+
+
+def max_parts_of(config: Config) -> int:
+    """`[ingest] max_parts`, refused unless it is a count of parts: 1 or more. D644."""
+    value = config.get(MAX_PARTS_KEY)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ConfigError(
+            f"[ingest] max_parts is {value!r}; it is the most parts a unit may have, 1 or more",
+            fix="set max_parts under [ingest] in omniweave.toml to a positive integer",
+        )
+    return value
+
+
+def route_layers(config: Config) -> list[Layer]:
+    """The layers routing compiles: the shipped `builtin`, and `[ingest] max_parts`. **D644.**
+
+    `gate.too-many-parts` refuses `unit.part_count > @thresholds.max_parts` (05:3037), and the
+    threshold is substituted when the policy compiles (05:977). So the configured cap is one
+    `project`-layer scalar, which wins over the builtin's `10_000` by 05:958's last-write-wins,
+    and `policy_digest` covers it: a decision taken under one cap is not a decision under another.
+    At the default the merged scalars are the builtin's, and so is the digest.
+    """
+    return [
+        builtin_layer(),
+        Layer(
+            layer="project",
+            origin="[ingest] max_parts",
+            scalars={"thresholds": {"max_parts": max_parts_of(config)}},
+        ),
+    ]
 
 
 def unit_evidence(

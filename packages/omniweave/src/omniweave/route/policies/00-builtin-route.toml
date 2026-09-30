@@ -68,7 +68,7 @@ math_part_frac = 0.30                # marker inline_math_doc_ratio (equation.py
 cid_ratio_max = 0.10
 replacement_ratio_max = 0.02         # marker table_recon.py:27 _GARBLE_CHAR_FRAC
 run_length_sequence = 8
-
+max_parts = 10_000                   # NOT learnable: [ingest] max_parts sets it (D644)
 # ═════════════════ GATE — nothing has been decoded. Twelve rules. ═════════════════
 [[rule]]
 id   = "gate.empty"
@@ -118,8 +118,8 @@ then = { outcome = "refuse", failure_class = "too_large", reason = "ingest.max_u
 id      = "gate.too-many-parts"
 rung    = "GATE"
 comment = "unit.part_count is NOT NULL by the time the router runs: op.identify precedes routing."
-when = { "unit.part_count" = { gt = 10_000 } }
-then = { outcome = "refuse", failure_class = "resource_limit", reason = "ingest.max_parts" }
+when = { "unit.part_count" = { gt = "@thresholds.max_parts" } }
+then = { outcome = "refuse", failure_class = "resource_limit", reason = "ingest.max_parts", cause_from = "when" }
 
 [[rule]]
 id      = "gate.watcher-may-not-bill"

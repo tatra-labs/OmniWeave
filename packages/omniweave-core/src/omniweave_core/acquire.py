@@ -1713,8 +1713,9 @@ def add_sources(
     unchanged file is otherwise `unchanged` and drains nothing, which is right for bytes that
     failed and still would. It is wrong for an encrypted file a password now maps: nothing about
     the file changed, and the password is what gate 9's `ow add <path>` fix waited for (ADR-15
-    D15.3, D15.5). The drain's own re-open (`run.discover.reopen_changed_failures`) takes the
-    same predicate, so the unit this queues is the unit that drain reads again.
+    D15.3, D15.5), and for a file `gate.too-many-parts` refused under a cap since raised (D644).
+    The drain's own re-open (`run.discover.reopen_changed_failures`) takes the same predicate,
+    so the unit this queues is the unit that drain reads again.
     """
     from omniweave_core.store import migrate  # noqa: PLC0415 -- the add path only
 

@@ -2901,6 +2901,101 @@ def test_an_encrypted_refusal_says_how_to_supply_a_password_on_this_machine(
     assert gap.detail.endswith("the password it names did not open it")
 
 
+def _refused_parts(
+    conn: sqlite3.Connection,
+    uri: str,
+    cause: str | None,
+    *,
+    digest: str = "c0",
+    reason: str = "ingest.max_parts",
+    decided_at: int = 1,
+) -> None:
+    """One `gate.too-many-parts` refusal as routing writes it: the decision, and the unit's link."""
+    conn.execute("UPDATE unit SET content_sha256 = 'c0' WHERE unit_uri = ?", (uri,))
+    conn.execute(
+        "INSERT OR IGNORE INTO route_evidence(evidence_digest, payload, first_seen_at) "
+        "VALUES('ev', X'00', 1)"
+    )
+    decision_id = f"dec_{uri}_{decided_at}"
+    conn.execute(
+        "INSERT INTO route_decision(decision_id, content_sha256, unit_part, lane, rung, "
+        "policy_digest, pricebook_digest, hints_digest, read_set_digest, driver, cost_class, "
+        "rule_id, rule_origin, cause, reason, slice_key, evidence_digest, est_spend, est_micros, "
+        "reserved_micros, admission, generation, decided_at) VALUES(?, ?, '', 'text', 0, ?, '', "
+        "'', ?, '', 'free', 'gate.too-many-parts', 'builtin', ?, ?, '', 'ev', '{}', 0, 0, "
+        "'admitted', 1, ?)",
+        (decision_id, digest, f"pd{decided_at}", decision_id, cause, reason, decided_at),
+    )
+    conn.execute(
+        "INSERT INTO route_unit_decision(unit_uri, unit_part, lane, decision_id, first_seen_at) "
+        "VALUES(?, '', 'text', ?, ?)",
+        (uri, decision_id, decided_at),
+    )
+
+
+def test_a_part_count_refusal_names_the_count_and_the_value_that_admits_it(built: Built) -> None:
+    """D644, 05:3037: `gate.too-many-parts` names `[ingest] max_parts`, and the detail names the
+    number. The count is the decision's own `cause`, because for a PDF the roster's `part_count` is
+    `1` and the router read `pdfium`'s page count. The fix is the re-read, which queues the unit
+    once the configured cap admits the count."""
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    _failed(conn, "c:/corpus/long.pdf", "resource_limit")
+    _refused_parts(conn, "c:/corpus/long.pdf", "unit.part_count=12000>10000.0")
+    conn.execute("COMMIT")
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        (gap,) = reader.coverage(state, Filters()).gaps
+    assert (gap.diag_codes, gap.fix) == (("OW_RESOURCE_LIMIT",), "ow add c:/corpus/long.pdf")
+    assert gap.detail == (
+        "c:/corpus/long.pdf: refused as resource_limit, so no document was written (detection "
+        "sniffed pdf); it has 12000 parts, and [ingest] max_parts was 10000 when it was read. "
+        "Raise it to 12000 or more (`max_parts = 12000` under [ingest] in omniweave.toml, or set "
+        "OMNIWEAVE_INGEST_MAX_PARTS=12000), then run the fix"
+    )
+
+
+def test_a_resource_limit_with_no_part_count_refusal_names_no_knob(built: Built) -> None:
+    """A `resource_limit` from anywhere but `gate.too-many-parts` -- the watchdog's memory limit,
+    detection's identity bytes -- names no key this build reads, so its fix stays empty (07:1989).
+    Nor does a refusal of the file's EARLIER bytes: the decision is held to `content_sha256`."""
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    _failed(conn, "c:/corpus/huge.pdf", "resource_limit")
+    _failed(conn, "c:/corpus/edited.pdf", "resource_limit")
+    _refused_parts(conn, "c:/corpus/edited.pdf", "unit.part_count=12000>10000.0", digest="old")
+    conn.execute("COMMIT")
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        gaps = reader.coverage(state, Filters()).gaps
+    assert [(gap.diag_codes, gap.fix) for gap in gaps] == [
+        (("OW_RESOURCE_LIMIT",), ""),
+        (("OW_RESOURCE_LIMIT",), ""),
+    ]
+    assert all(gap.detail.endswith("(detection sniffed pdf)") for gap in gaps)
+
+
+def test_parts_refused_reads_the_latest_refusal_of_each_unit_and_nothing_else(
+    built: Built,
+) -> None:
+    """`parts_refused` is the one reading both gate 9 and the re-open use (D644): the latest
+    decision per unit, under `ingest.max_parts` only, and a cause the rule would not render is
+    no count."""
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    _failed(conn, "c:/corpus/a.pdf", "resource_limit")
+    _refused_parts(conn, "c:/corpus/a.pdf", "unit.part_count=9>5.0", decided_at=1)
+    _refused_parts(conn, "c:/corpus/a.pdf", "unit.part_count=9>3.0", decided_at=2)
+    _failed(conn, "c:/corpus/b.pdf", "resource_limit")
+    _refused_parts(conn, "c:/corpus/b.pdf", "unit.part_count=9>3.0", reason="a-project-rule")
+    _failed(conn, "c:/corpus/c.pdf", "resource_limit")
+    _refused_parts(conn, "c:/corpus/c.pdf", None)
+    _failed(conn, "c:/corpus/d.pdf", "encrypted")
+    _refused_parts(conn, "c:/corpus/d.pdf", "unit.part_count=9>3.0")
+    conn.execute("COMMIT")
+    assert rd.parts_refused(conn) == {"c:/corpus/a.pdf": rd.PartsRefused(parts=9, cap=3)}
+
+
 def test_a_fix_names_a_path_with_spaces_so_that_a_posix_split_gives_it_back_whole() -> None:
     """The damage suite splits `fix` with POSIX `shlex` and runs no shell (13:1306), so the path
     is quoted the same way. A project under `Project (tatra-labs)` is the case that needs it."""

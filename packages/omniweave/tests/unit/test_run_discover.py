@@ -1199,6 +1199,68 @@ def test_a_password_mapping_reopens_an_encrypted_refusal_whose_file_is_unchanged
     assert row.fetchone() == ("discovered",)
 
 
+def _too_many_parts(tmp_path: Path, uri: str, cause: str) -> None:
+    """The decision `gate.too-many-parts` writes for `uri`'s bytes, and the unit's link to it."""
+    reader = _reader(tmp_path)
+    reader.execute(
+        "UPDATE unit SET acq_failure_class = 'resource_limit', content_sha256 = 'c0' "
+        "WHERE unit_uri = ?",
+        (uri,),
+    )
+    reader.execute(
+        "INSERT INTO route_evidence(evidence_digest, payload, first_seen_at) VALUES('ev', X'00', 1)"
+    )
+    reader.execute(
+        "INSERT INTO route_decision(decision_id, content_sha256, unit_part, lane, rung, "
+        "policy_digest, pricebook_digest, hints_digest, read_set_digest, driver, cost_class, "
+        "rule_id, rule_origin, cause, reason, slice_key, evidence_digest, est_spend, est_micros, "
+        "reserved_micros, admission, generation, decided_at) VALUES('dec_1', 'c0', '', 'text', 0, "
+        "'pd', '', '', '', '', 'free', 'gate.too-many-parts', 'builtin', ?, 'ingest.max_parts', "
+        "'', 'ev', '{}', 0, 0, 'admitted', 1, 1)",
+        (cause,),
+    )
+    reader.execute(
+        "INSERT INTO route_unit_decision(unit_uri, unit_part, lane, decision_id, first_seen_at) "
+        "VALUES(?, '', 'text', 'dec_1', 1)",
+        (uri,),
+    )
+    reader.commit()
+
+
+@pytest.mark.parametrize(("max_parts", "reopened"), [(3, 0), (4, 1), (10_000, 1)])
+def test_a_raised_max_parts_reopens_a_part_count_refusal_whose_file_is_unchanged(
+    store: ow.StoreThread, tmp_path: Path, max_parts: int, reopened: int
+) -> None:
+    """D644. A file `gate.too-many-parts` refused is what it is, and the user's remedy is the cap,
+    not the file. So once `[ingest] max_parts` admits the count the decision recorded, the unit
+    is read again as it stands; under a cap it still exceeds, it is left alone, since reading it
+    would cost an identify and a signal child only to be refused again."""
+    uri = _refused(store, tmp_path, tmp_path / "src", "long.pdf")
+    _too_many_parts(tmp_path, uri, "unit.part_count=4>3.0")
+    raised = discover_module.raised_on(store, max_parts=max_parts)
+    assert raised == (frozenset({uri}) if reopened else frozenset())
+    reopens = discover_module.reopens_of(None, raised)
+    assert (reopens is None) == (not reopened)
+    assert reopen_changed_failures(store, generation=1, reopens=reopens) == reopened
+    row = _reader(tmp_path).execute("SELECT state FROM unit WHERE unit_uri = ?", (uri,))
+    assert row.fetchone() == ("discovered" if reopened else FAILED,)
+
+
+def test_one_predicate_carries_both_reasons_to_read_an_unchanged_file_again() -> None:
+    """`reopens_of` joins the password mapping's predicate and the raised set, and each answers
+    for its own class only: a raised unit is not re-opened as `encrypted`, nor a mapped one as
+    `resource_limit`. With neither there is no predicate at all."""
+    assert discover_module.reopens_of(None) is None
+    reopens = discover_module.reopens_of(lambda _u, c: c == "encrypted", frozenset({"c:/a.pdf"}))
+    assert reopens is not None
+    assert reopens("c:/a.pdf", "resource_limit")
+    assert not reopens("c:/b.pdf", "resource_limit")
+    assert reopens("c:/b.pdf", "encrypted")
+    only_raised = discover_module.reopens_of(None, frozenset({"c:/a.pdf"}))
+    assert only_raised is not None
+    assert not only_raised("c:/a.pdf", "encrypted")
+
+
 def test_a_reopen_clears_the_attempt_count_so_the_fourth_read_still_happens(
     store: ow.StoreThread, tmp_path: Path
 ) -> None:

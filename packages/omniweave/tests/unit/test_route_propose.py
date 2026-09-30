@@ -93,7 +93,8 @@ def _population() -> rlg.Log:
 
 
 def test_the_shipped_policy_binds_fourteen_thresholds_to_a_signal_and_a_direction() -> None:
-    """Sixteen `[thresholds]` entries, fourteen of them read by an ORDERED operator in some rule."""
+    """Seventeen `[thresholds]` entries, fourteen of them read by an ORDERED operator in a rule that
+    does not refuse."""
     found = rpz.bindings(_policy())
     assert len(found) == 14
     assert {one.direction for one in found} == set(rf.DIRECTIONS)
@@ -122,7 +123,15 @@ def test_two_thresholds_are_declared_and_read_by_no_rule() -> None:
     assert rpz.unfittable(_policy()) == (
         ("garble_min_chars", "declared and read by no rule"),
         ("math_char_frac", "declared and read by no rule"),
+        ("max_parts", "read only by a refusal, a limit the user sets"),
     )
+
+
+def test_a_threshold_a_refusal_reads_is_no_binding() -> None:
+    """D644. `gate.too-many-parts` reads `@thresholds.max_parts`, which `[ingest] max_parts` sets.
+    A refused unit escalates nowhere, so no divergence in the log could move it."""
+    assert "max_parts" in _policy().threshold_keys()
+    assert "max_parts" not in {one.name for one in rpz.bindings(_policy())}
 
 
 # --------------------------------------------------------------------------------------------

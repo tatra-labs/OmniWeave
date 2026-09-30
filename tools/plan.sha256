@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: ADR-15 second cell (D643): D15.3-D15.5 built; 05:3033 password row, 18:928 ow ingest --password-file
+# blessed-because: D644: [ingest] max_parts compiled into gate.too-many-parts as @thresholds.max_parts; 05 fence, 05:446, 05:3037 and 13:1293 updated line-count-preserving
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -31,7 +31,7 @@ documents-frozen  6ffc2070193630b39f15385fc8640ec7b1a3e242ef098426f2754d4070a802
 documents-frozen  7bf4220e75a23503a04139d4ba6d8b7774e57fd1774920104c4eb29c75a16c70  02-architecture.md
 documents-frozen  9ec0bb9988baf327069950ac46858ff0383238536255c9da4c729134d62fea72  03-document-model.md
 documents-frozen  53440cdfd7e5d4b02e35e720f13a9ad7a58c39a66194837cb7004d42ba00a3c4  04-driver-system.md
-documents-frozen  b89aad2f6f38155a9033dad3ab105281bcd0c11fc63c7e6689b4001883416046  05-ingest-and-routing.md
+documents-frozen  a4a94a6599c7c827108fc8d1423544e125907bb50060b19a8dceda08b75b1ba2  05-ingest-and-routing.md
 documents-frozen  af878d7e1a795aded61af2ef27a5834654762f52bdafefb4955d4b4c75492031  06-structure-extraction.md
 documents-frozen  1579b9439073588028b3ff5a548f65698f787d9724474ae08b1d0ca6182a8e09  07-store-and-retrieval.md
 documents-frozen  8dbb83e6d1baa29901dad36b079a53c5459595e979799792ec3bd50eecc9661f  08-runtime.md
@@ -39,7 +39,7 @@ documents-frozen  eddeb4634f5da1e2b056a002a7fa6eaa43d71836633b0a44d65301ac8b2d16
 documents-frozen  d96985003690550f4d996e31a41306d21d6a8e2e7ff34076c0ad5cff5f3cb64e  10-interfaces.md
 documents-frozen  76a694bf0b19b60ba35d2246f6b36466ca990f318f51e0a292c388ec0e78bc68  11-repo-layout.md
 documents-frozen  5401c10b52003dd2a6e1d7475795686c53d0674236f048ef2c9fcc9c3cf7ecbb  12-performance.md
-documents-frozen  d11e0ad70f461e5119cc13fd07b20cb36302fd8b8c5ace625d0c2a7115b6e837  13-quality.md
+documents-frozen  0a797ab868666954858ea074188cabd82f72efcf06bdd46f4b7c609b309bd960  13-quality.md
 documents-frozen  667161a8bd206b5805998a289f7679f80dc3a8ea6910c52ea8345bfe9562d721  14-security.md
 documents-frozen  b40c687bb38801907249eef6ec9af9a8ac7d26083be9c0290f356e89aaf48695  15-observability.md
 documents-frozen  8cb50c6254b2bf4a6c8fa7076b3382e55c92d1ad3791751c0e51e684d8bff0fc  16-roadmap.md

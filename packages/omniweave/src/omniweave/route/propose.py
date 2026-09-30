@@ -19,7 +19,9 @@ direction of the comparison are one record.
 
 A threshold read only by `eq`, `ne`, `in`, `not_in` or `exists` is **unfittable** and says so. A fit
 sweeps candidate thresholds along an ordering, and those five have none -- proposing a move to an
-equality bound would be proposing a different rule, not a different number.
+equality bound would be proposing a different rule, not a different number. So is one read only by a
+**refusal**: `gate.too-many-parts` reads `@thresholds.max_parts`, which `[ingest] max_parts` sets
+(D644), and a refused unit escalates nowhere, so the decision log holds no divergence to fit it by.
 
 ## The diff is applied by VALUE, not by text, and the shipped file is why
 
@@ -153,6 +155,8 @@ def bindings(policy: RoutePolicy) -> tuple[Binding, ...]:
     """
     found: list[Binding] = []
     for rule in policy.rules:
+        if rule.then.outcome == "refuse":
+            continue
         for clause in rule.when.clauses:
             for key, test in clause.tests:
                 if not test.threshold or test.op not in ORDERED_OPS:
@@ -174,21 +178,32 @@ def bindings(policy: RoutePolicy) -> tuple[Binding, ...]:
 def unfittable(policy: RoutePolicy) -> tuple[tuple[str, str], ...]:
     """The thresholds a fit cannot move, each with the reason. Sorted, because it is a footer.
 
-    Two reasons, and they are different failures. A threshold **read by no rule** is declared and
+    Three reasons, and they are different failures. A threshold **read by no rule** is declared and
     dead -- `ow route lint` check 1 already resolves the other direction (a reference with no
     declaration), and this is the unreferenced half, which is not an error because a profile layer
     may legitimately declare a number the base policy has not started reading yet. A threshold read
     only by an **unordered operator** is live and still unfittable: `eq`, `ne`, `in`, `not_in` and
-    `exists` give a sweep nothing to sweep along.
+    `exists` give a sweep nothing to sweep along. One read only by a **refusal** is a limit the
+    user sets, and a refused unit gives the log no outcome to fit it by (D644).
     """
     fittable = {binding.name for binding in bindings(policy)}
     referenced = set(policy.threshold_keys())
+    refusing = {
+        test.threshold
+        for rule in policy.rules
+        if rule.then.outcome == "refuse"
+        for clause in rule.when.clauses
+        for _key, test in clause.tests
+        if test.threshold
+    }
     reasons: dict[str, str] = {}
     for name in policy.thresholds:
         if name in fittable:
             continue
         if name not in referenced:
             reasons[name] = "declared and read by no rule"
+        elif name in refusing:
+            reasons[name] = "read only by a refusal, a limit the user sets"
         else:
             reasons[name] = "read only by an operator with no ordering (eq/ne/in/not_in/exists)"
     return tuple(sorted(reasons.items()))

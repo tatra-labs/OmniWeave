@@ -201,6 +201,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import shlex
 import sqlite3
 import time
@@ -257,10 +258,14 @@ if TYPE_CHECKING:
 
 __all__ = [
     "IN_FLIGHT_UNIT_STATES",
+    "MAX_PARTS_REASON",
+    "PARTS_REFUSED_SQL",
     "ChannelOutcome",
     "HydratedRow",
     "Hydration",
+    "PartsRefused",
     "SqliteReader",
+    "parts_refused",
 ]
 
 
@@ -691,7 +696,57 @@ allows *"only where no command does"*.
 `encrypted` is cleared by a password (ADR-15 D15.5). Its detail says how to supply one on this
 machine, and its `fix` is the same re-read: `ow add` queues a failed `encrypted` unit a password
 line now maps even though its file did not change (`acquire.add_sources(reopens=)`).
+
+`resource_limit` is cleared by a raised limit when the limit is `[ingest] max_parts` (D644): its
+detail names the count and the value that admits it, and its `fix` is the same re-read, which
+queues the unit once the configured cap covers its count (`parts_refused`). A `resource_limit`
+from anywhere else names no knob this build reads, and its `fix` stays empty.
 """
+
+MAX_PARTS_REASON: Final[str] = "ingest.max_parts"
+"""The `reason` `gate.too-many-parts` refuses under (05:1388), which is the key that clears it."""
+
+PARTS_REFUSED_SQL: Final[str] = """
+SELECT u.unit_uri, rd.cause FROM unit AS u
+  JOIN route_unit_decision AS rud ON rud.unit_uri = u.unit_uri
+  JOIN route_decision AS rd ON rd.decision_id = rud.decision_id
+ WHERE u.state = 'failed' AND u.acq_failure_class = 'resource_limit'
+   AND rd.content_sha256 = u.content_sha256 AND rd.driver = '' AND rd.reason = :reason
+ ORDER BY u.unit_uri, rd.decided_at DESC
+"""
+"""Every failed unit `gate.too-many-parts` refused, with the cause its decision recorded. **D644.**
+
+The count is the decision's and not `unit.part_count`'s: for a PDF the roster holds `1` and the
+router reads `pdfium`'s page count (05:2199), and the rule's `cause_from = "when"` wrote that value
+into `route_decision.cause` as 05:1974's *"`unit.part_count=10001>10000.0`"*. The decision is held
+to the unit's own bytes (`content_sha256`), so a refusal of an earlier version of the file is not
+read as this one's."""
+
+_PARTS_CAUSE: Final = re.compile(r"\bunit\.part_count=(\d+)>(\d+)(?:\.0)?\b")
+
+
+@dataclass(frozen=True, slots=True)
+class PartsRefused:
+    """One unit `gate.too-many-parts` refused: its part count, and the cap it was read under."""
+
+    parts: int
+    cap: int
+
+
+def parts_refused(connection: object) -> Mapping[str, PartsRefused]:
+    """`PARTS_REFUSED_SQL` over any connection, as `{unit_uri: PartsRefused}`, latest decision wins.
+
+    `connection` is duck-typed, so the store thread's write connection and a read-only one both
+    serve: `run.discover` asks through the first and `ow add` through the second. A cause that does
+    not render as the rule renders it names no count, and that unit is left out.
+    """
+    found: dict[str, PartsRefused] = {}
+    rows = connection.execute(PARTS_REFUSED_SQL, {"reason": MAX_PARTS_REASON})  # type: ignore[attr-defined]
+    for unit_uri, cause in rows.fetchall():
+        matched = _PARTS_CAUSE.search(str(cause or ""))
+        if matched is not None and str(unit_uri) not in found:
+            found[str(unit_uri)] = PartsRefused(int(matched.group(1)), int(matched.group(2)))
+    return found
 
 
 def _add_command(unit_uri: str) -> str:
@@ -777,6 +832,7 @@ def _unit_gaps(
     a driver try and is no promise that it can.
     """
     classes = tuple(FAILURE_CLASS_DIAGS)
+    refused: Mapping[str, PartsRefused] | None = None
     rows = connection.execute(
         "SELECT unit_uri, acq_failure_class, format, "  # noqa: S608
         "json_extract(derived, '$.format_evidence.corrupt') FROM unit "
@@ -795,6 +851,11 @@ def _unit_gaps(
         remedy = "; restore or replace the file, then read it again" if reread else ""
         if cls == "encrypted":
             remedy = _password_remedy(uri)
+        limit = None
+        if cls == "resource_limit":
+            refused = parts_refused(connection) if refused is None else refused
+            limit = refused.get(uri)
+            remedy = "" if limit is None else _parts_remedy(limit)
         if checked.get("value"):
             remedy += (
                 f", or run `ow ingest --accept-partial {shlex.quote(uri)}` to let a driver try"
@@ -804,10 +865,26 @@ def _unit_gaps(
                 gate="parse_gap_in_scope",
                 detail=f"{uri}: refused as {cls}, so no document was written ({sniffed}){remedy}",
                 diag_codes=(FAILURE_CLASS_DIAGS[cls],),
-                fix=_add_command(uri) if reread or cls == "encrypted" else "",
+                fix=_add_command(uri) if reread or cls == "encrypted" or limit else "",
             )
         )
     return tuple(gaps)
+
+
+def _parts_remedy(limit: PartsRefused) -> str:
+    """What a `gate.too-many-parts` refusal says: the count, the cap, and the value that admits it.
+
+    05:3037 names the knob, `[ingest] max_parts`, and this names the number: the unit's own count,
+    since any cap at or above it reads the file. Both forms of the key are given, the file's and
+    its `OMNIWEAVE_*` twin. D644.
+    """
+    from omniweave_core.config import env_name_of  # noqa: PLC0415 -- the one gap class needing it
+
+    return (
+        f"; it has {limit.parts} parts, and [ingest] max_parts was {limit.cap} when it was read. "
+        f"Raise it to {limit.parts} or more (`max_parts = {limit.parts}` under [ingest] in "
+        f"omniweave.toml, or set {env_name_of(MAX_PARTS_REASON)}={limit.parts}), then run the fix"
+    )
 
 
 def _password_remedy(unit_uri: str) -> str:

@@ -27,6 +27,8 @@ lock"*: a drain that dies leaves the roster behind, and the next `ow ingest` fin
 - `[ingest] password_file`, read from the config, not a flag (ADR-15 D15.3): a unit it maps gets
   its password, and a failed `encrypted` one whose file did not change is queued again, which is
   what makes gate 9's `ow add <path>` fix for it a fix.
+- `[ingest] max_parts`, likewise the config's (D644): a failed unit `gate.too-many-parts` refused
+  is queued again, unchanged, once the cap admits the count its decision recorded.
 
 **What is refused by name**, each exit 1, because a flag parsed and ignored answers a different
 question than the one asked (`ow query`'s rule, D614):
@@ -130,6 +132,9 @@ def _add(
     from omniweave_core.acquire import add_sources  # noqa: PLC0415 -- a usage error never pays
     from omniweave_core.clock import SystemClock  # noqa: PLC0415
 
+    from omniweave.run import discover  # noqa: PLC0415
+    from omniweave.run.routing import max_parts_of  # noqa: PLC0415
+
     stdout, stderr = out
     _refuse_unserved(parsed)
     explicit = Path(parsed.config) if parsed.config else None
@@ -141,13 +146,17 @@ def _add(
         contained(Path(raw), source=source, cwd=cwd, verb="ow add") for raw in parsed.source
     )
     #  ADR-15 D15.3: `[ingest] password_file`, and an encrypted unit it maps is queued again.
+    #  D644: so is one `gate.too-many-parts` refused, once `[ingest] max_parts` admits its count.
     passwords = passwords_of(config, override=None, source=source, env=env, cwd=cwd)
     added = add_sources(
         store,
         paths,
         now_ns=SystemClock().wall_ns(),
         dry_run=parsed.dry_run,
-        reopens=None if passwords is None else passwords.reopens,
+        reopens=discover.reopens_of(
+            None if passwords is None else passwords.reopens,
+            _raised(store, max_parts=max_parts_of(config)),
+        ),
     )
     states: dict[str, str] = {}
     completed: list[dict[str, Any]] = []
@@ -270,6 +279,24 @@ def _drain(
         passwords=passwords,
     )
     return report.lines()
+
+
+def _raised(store: Path, *, max_parts: int) -> frozenset[str]:
+    """`discover.raised_parts` over a read-only connection, before anything is written (D644).
+
+    A store that does not exist yet has refused nothing."""
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+    from omniweave_core.store.reader import parts_refused  # noqa: PLC0415
+
+    from omniweave.run import discover  # noqa: PLC0415
+
+    if not store.exists():
+        return frozenset()
+    connection = store_sqlite.connect_readonly(store)
+    try:
+        return discover.raised_parts(parts_refused(connection), max_parts=max_parts)
+    finally:
+        connection.close()
 
 
 def _states(store: Path, uris: Sequence[str]) -> dict[str, str]:

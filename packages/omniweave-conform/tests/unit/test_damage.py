@@ -14,6 +14,7 @@ import pytest
 from omniweave_conform import damage
 from omniweave_conform.damage import (
     DAMAGE_PASSWORD,
+    INFLATE_MAX_PARTS,
     INJECTORS,
     MASK,
     PASSWORD_FILE,
@@ -24,10 +25,13 @@ from omniweave_conform.damage import (
     assess,
     chaos,
     encrypt,
+    inflate,
     mask_format,
+    raise_limit,
     split_fix,
     supply_password,
 )
+from omniweave_conform.pdfpages import page_count
 from omniweave_core.retrieve.types import ABSENCE_GATES
 from omniweave_core.retrieve.verdict import ABSENCE_BLOCKING_DIAGS
 
@@ -163,6 +167,42 @@ def test_a_refusal_that_does_not_say_how_fails_the_fourth_clause_by_name(
 ) -> None:
     with pytest.raises(FixRefusedError, match=why):
         supply_password(detail)
+
+
+@pytest.mark.parametrize("name", ["gen01p.pdf", "gen02p.pdf"])
+def test_inflate_pads_a_pdf_to_exactly_one_page_above_the_cap(name: str) -> None:
+    """D644, 13:1294: *"exactly one row above a `[limits]` value"*. The row is a page, and the value
+    is the `[ingest] max_parts` the Injector's own `config` builds the fixture under."""
+    pristine = (PDF.parent / name).read_bytes()
+    inflated = inflate(pristine)
+    assert page_count(inflated) == INFLATE_MAX_PARTS + 1
+    assert inflated.startswith(pristine)
+    assert inflate(pristine) == inflated, "deterministic, so a fixture is one set of bytes"
+
+
+def test_the_inflate_injector_builds_under_its_cap_and_repairs_rather_than_restores() -> None:
+    injector = INJECTORS["inflate"]
+    assert injector.row.diag == "OW_RESOURCE_LIMIT"
+    assert injector.applies_to == frozenset({".pdf"})
+    assert (injector.restores_source, injector.repair) == (False, raise_limit)
+    assert injector.config == f"\n[ingest]\nmax_parts = {INFLATE_MAX_PARTS}\n"
+    assert all(not other.config for name, other in INJECTORS.items() if name != "inflate")
+
+
+def test_the_limit_is_raised_the_way_gate_9_s_refusal_says() -> None:
+    """D644's detail, as `store.reader` writes it, is the only thing `raise_limit` reads: the
+    `OMNIWEAVE_INGEST_MAX_PARTS` value that admits the file, into the fix child's environment."""
+    from omniweave_core.store.reader import PartsRefused, _parts_remedy  # noqa: PLC0415
+
+    detail = "c:/corpus/long.pdf: refused as resource_limit" + _parts_remedy(PartsRefused(4, 3))
+    repair = raise_limit(detail)
+    assert repair.env == {"OMNIWEAVE_INGEST_MAX_PARTS": "4"}
+    assert repair.append == {}
+
+
+def test_a_limit_refusal_that_names_no_value_fails_the_fourth_clause_by_name() -> None:
+    with pytest.raises(FixRefusedError, match="names no OMNIWEAVE_INGEST_MAX_PARTS value"):
+        raise_limit("c:/corpus/huge.pdf: refused as resource_limit (detection sniffed pdf)")
 
 
 def test_the_built_injectors_are_in_the_table_s_order() -> None:
