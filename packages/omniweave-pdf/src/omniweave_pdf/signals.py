@@ -39,7 +39,15 @@ refuse it where the build had always read it. D15.2 makes the key this provider'
 child that already opens the file for `unit.part_count` answers it: `False` when pdfium opens the
 bytes, `True` when pdfium refuses them for want of a password. The second is a VALUE, not a raise:
 a raise refuses the whole group, which D579 holds for ever under gate 5, and a document that needs a
-password is an answer, not a failure to compute one. On a document with a text layer on some
+password is an answer, not a failure to compute one.
+
+**With a password (D15.3, D15.4) it is whether the file opens with it.** The host sends the one
+`[ingest] password_file` maps the unit to, on the child's stdin. pdfium is asked with no password
+first, so an owner-only file answers as it does without one, and the password is tried only when
+that is refused: a file it opens answers `False`, which is 05:476's *"`unit.encrypted` is
+recomputed as `false` after the successful open"*, and a wrong password leaves it `True`.
+
+On a document with a text layer on some
 pages and none on others the sum is positive and `decode.pdf-text-layer` routes all of it to
 pdfium, which then reports each empty page with a `diag` (the driver's own docstring). A per-page
 decision is what 05:1089's loop over parts would make, and it is not built.
@@ -106,11 +114,13 @@ COMPUTES: Final[dict[str, Callable[[pdfium.PdfDocument], Scalar]]] = {
 thirteen `pdfium` rows are declared and have no computer yet."""
 
 
-def compute(raw: bytes, keys: Sequence[str]) -> dict[str, Scalar]:
+def compute(raw: bytes, keys: Sequence[str], *, password: str | None = None) -> dict[str, Scalar]:
     """The asked-for keys this module computes, from one PDF's bytes. The others are absent.
 
     A document pdfium refuses for want of a password answers `unit.encrypted = True` when that key
-    was asked, and nothing else: every other key needs the open document (ADR-15 D15.2).
+    was asked, and nothing else: every other key needs the open document (ADR-15 D15.2). With
+    `password`, a document that opens with it answers every key, `unit.encrypted = False` among
+    them (D15.3).
 
     Raises:
         pdfium.PdfiumError: pdfium will not open the bytes, and not for a password, or the
@@ -122,7 +132,7 @@ def compute(raw: bytes, keys: Sequence[str]) -> dict[str, Scalar]:
     if not wanted:
         return {}
     try:
-        document = pdfium.PdfDocument(raw)
+        document = _open(raw, password)
     except pdfium.PdfiumError as exc:
         if ENCRYPTED in wanted and needs_password(exc):
             return {ENCRYPTED: True}
@@ -131,6 +141,16 @@ def compute(raw: bytes, keys: Sequence[str]) -> dict[str, Scalar]:
         return {key: COMPUTES[key](document) for key in wanted}
     finally:
         document.close()
+
+
+def _open(raw: bytes, password: str | None) -> pdfium.PdfDocument:
+    """With no password, then with `password` only if pdfium refused for want of one."""
+    try:
+        return pdfium.PdfDocument(raw)
+    except pdfium.PdfiumError as exc:
+        if password is None or not needs_password(exc):
+            raise
+    return pdfium.PdfDocument(raw, password=password)
 
 
 def needs_password(exc: Exception) -> bool:

@@ -58,9 +58,11 @@ AxisRow = gate_config_axes.AxisRow
 # The four `[runtime]` rows arrive one cell at a time, by the rule D149 set: a key is declared by
 # the cell that READS it, never by the cell that notices it is missing. `max_sequence_units` came
 # with W4.7's Sequence claim; `shutdown_grace_ms`, `deferred_sweep_ms` and `stall_poll_ms` come
-# with W4.2's loop, which is the one consumer of all three.
+# with W4.2's loop, which is the one consumer of all three. `ingest.password_file` is 05:450's,
+# declared by the cell that reads it (ADR-15 D15.3, D643); the charter's block has no `[ingest]`.
 OWED_BY_THE_EXAMPLE = frozenset(
     {
+        "ingest.password_file",
         "drivers.resolve.*",
         "retrieval.event_log_query",
         "retrieval.budget.hydration_reserve_ms",
@@ -696,8 +698,10 @@ CHARTER_OPERATIONAL = (
 # `never` makes `quote = 'verbatim'` unreachable (INV-10), which changes what a produced row says.
 CHARTER_REFINED = frozenset({"store.retain_parts"})
 
-# The two declared keys no charter pattern reaches at all: one is post-charter, one is ADR-3's.
-CHARTER_SILENT = frozenset({"retrieval.event_log_query", "drivers.resolve.*"})
+# The declared keys no charter pattern reaches at all: two are post-charter, one is ADR-3's.
+CHARTER_SILENT = frozenset(
+    {"retrieval.event_log_query", "drivers.resolve.*", "ingest.password_file"}
+)
 
 _CHARTER_ROWS = tuple(
     AxisRow(name=name, axis=axis, env="OMNIWEAVE_X")
@@ -717,7 +721,7 @@ def test_the_charter_block_is_sixty_patterns() -> None:
     above is wrong and every comparison below is worthless."""
     assert len(CHARTER_SEMANTIC) + len(CHARTER_OPERATIONAL) == 60
     assert len(set(CHARTER_SEMANTIC) | set(CHARTER_OPERATIONAL)) == 60
-    assert len(_CHARTER_ROWS) + len(CHARTER_SILENT & set(KEYS)) == 62
+    assert len(_CHARTER_ROWS) + len(CHARTER_SILENT & set(KEYS)) == 63
 
 
 def test_no_charter_pattern_double_matches_a_declared_key() -> None:

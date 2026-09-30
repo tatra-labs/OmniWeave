@@ -8,7 +8,8 @@ contract that was missing (D628).
 
 ```text
 python -m omniweave_core.host.signals
-  stdin    {"package", "source", "content_sha256", "keys"}      one request, then EOF
+  stdin    {"package", "source", "content_sha256", "keys"}      one request, then EOF;
+           and "password", only when one maps the unit          (ADR-15 D15.4)
   guard    install_egress_guard(armed=True)                     before any provider code runs
   bytes    read `source`; sha256 must equal `content_sha256`    else every key is unavailable
   import   <package>.signals                                    the fixed module beside signals.toml
@@ -44,12 +45,24 @@ The router reads it before asking and writes back what a computer answered, neve
 - **No store handle**, as for a worker (INV-6): the answer crosses stdout and the router writes it.
 - **No network.** The egress guard is armed unconditionally: no shipped provider declares a network
   need, and a provider has no card to declare one on.
+
+## A password, when one maps the unit
+
+ADR-15 D15.4: *"To the signal child: it is a field of the request on the child's stdin, never argv
+and never environment."* `compute_in_child(password=...)` adds `"password"` to the request, and
+`answer()` passes it to the provider's `compute(raw, keys, password=...)` when that `compute` takes
+a `password`. A request without one, or a provider whose `compute` takes none, calls
+`compute(raw, keys)` exactly as before, so a provider that reads no password needs no change and a
+unit a password maps is never refused by one that cannot use it.
+An answer computed with a password is a function of the password too, and the router neither reads
+nor writes `route_signal` for it (`run.routing._Router._compute`).
 """
 
 from __future__ import annotations
 
 import hashlib
 import importlib
+import inspect
 import json
 import math
 import sys
@@ -179,9 +192,14 @@ def answer(request: Mapping[str, Any]) -> SignalAnswer:
             "the source's bytes no longer hash to the digest it was identified under; the next "
             "ow ingest re-acquires it",
         )
+    password = request.get("password")
     try:
         module = importlib.import_module(f"{package}.{COMPUTER_MODULE}")
-        computed = module.compute(raw, tuple(keys))
+        computed = (
+            module.compute(raw, tuple(keys), password=str(password))
+            if password is not None and _takes_password(module.compute)
+            else module.compute(raw, tuple(keys))
+        )
     except Exception as exc:  # a provider's failure is its keys' reason, never the child's
         return SignalAnswer.refused(
             keys, f"{package}.{COMPUTER_MODULE}: {type(exc).__name__}: {exc}"
@@ -199,6 +217,17 @@ def answer(request: Mapping[str, Any]) -> SignalAnswer:
         else:
             values[key] = computed[key]
     return SignalAnswer(values=values, unavailable=unavailable)
+
+
+def _takes_password(compute: object) -> bool:
+    """Whether a provider's `compute` accepts `password=`: by name, or through `**kwargs`."""
+    try:
+        parameters = inspect.signature(compute).parameters  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return False
+    return "password" in parameters or any(
+        one.kind is inspect.Parameter.VAR_KEYWORD for one in parameters.values()
+    )
 
 
 def main() -> int:
@@ -245,16 +274,24 @@ def compute_in_child(
     cwd: str,
     env: Mapping[str, str],
     timeout_s: float = TIMEOUT_S,
+    password: str | None = None,
 ) -> SignalAnswer:
     """Ask one provider for `keys` of one unit, in a child. Never raises; every key is answered.
 
     The child is `run_captured`'s -- the framework's one synchronous run-and-capture, and one of
     the two files `TID251` lets import `subprocess` -- with the environment named by the caller,
-    never inherited (`SpawnRequest`'s rule), and a working directory the caller chose.
+    never inherited (`SpawnRequest`'s rule), and a working directory the caller chose. `password`
+    rides in the request on stdin and nowhere else (ADR-15 D15.4).
     """
-    request = json.dumps(
-        {"package": package, "source": source, "content_sha256": content_sha256, "keys": list(keys)}
-    ).encode("utf-8")
+    fields: dict[str, object] = {
+        "package": package,
+        "source": source,
+        "content_sha256": content_sha256,
+        "keys": list(keys),
+    }
+    if password is not None:
+        fields["password"] = password
+    request = json.dumps(fields).encode("utf-8")
     done = subproc.run_captured(
         (executable, "-I", "-m", SIGNALS_MODULE),
         stdin=request,

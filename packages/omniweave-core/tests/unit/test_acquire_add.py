@@ -90,6 +90,37 @@ def test_a_changed_file_is_queued_even_when_it_was_acquired(tmp_path: Path) -> N
     assert len(acquire.add_sources(store, [docs], now_ns=_now()).queued) == 1
 
 
+def test_a_failed_unit_reopens_names_is_queued_though_its_file_did_not_change(
+    tmp_path: Path,
+) -> None:
+    """ADR-15 D15.3 and D15.5. Gate 9's fix for an encrypted file is `ow add <path>`, and the
+    file does not change when its password is supplied: without `reopens` it is `unchanged` and
+    nothing drains. The predicate is asked with each failed unit's class, and only failed units."""
+    docs = _tree(tmp_path / "docs", "locked.pdf", "masked.docx", "fine.pdf")
+    store = tmp_path / "index.owstore"
+    acquire.add_sources(store, [docs], now_ns=_now())
+    conn = sqlite3.connect(store)
+    conn.execute(
+        "UPDATE unit SET state = 'failed', part_count = 1, acq_failure_class = CASE "
+        "WHEN unit_uri LIKE '%locked.pdf' THEN 'encrypted' ELSE 'unsupported_format' END "
+        "WHERE unit_uri NOT LIKE '%fine.pdf'"
+    )
+    conn.execute("UPDATE unit SET state = 'settled' WHERE unit_uri LIKE '%fine.pdf'")
+    conn.commit()
+    conn.close()
+    assert acquire.add_sources(store, [docs], now_ns=_now()).queued == ()
+    asked: list[tuple[str, str | None]] = []
+
+    def encrypted(unit_uri: str, failure_class: str | None) -> bool:
+        asked.append((unit_uri.rsplit("/", 1)[1], failure_class))
+        return failure_class == "encrypted"
+
+    again = acquire.add_sources(store, [docs], now_ns=_now(), reopens=encrypted)
+    assert [uri.rsplit("/", 1)[1] for uri in again.queued] == ["locked.pdf"]
+    assert again.unchanged == 2
+    assert sorted(asked) == [("locked.pdf", "encrypted"), ("masked.docx", "unsupported_format")]
+
+
 def test_a_file_source_writes_its_unit_and_no_scope_row(tmp_path: Path) -> None:
     """D556. The parent's complete scan must survive one file being added to it: a scope row for
     the file would REPLACE the parent's with `discovered = 1`."""

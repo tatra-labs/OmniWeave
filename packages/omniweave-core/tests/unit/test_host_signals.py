@@ -129,6 +129,37 @@ def test_a_package_with_no_computer_is_every_key_s_reason(tmp_path: Path) -> Non
     assert all("ModuleNotFoundError" in reason for reason in found.unavailable.values())
 
 
+LOCKED = """
+def compute(raw, keys, *, password=None):
+    return {"unit.encrypted": password != "right"}
+"""
+
+
+def test_a_password_reaches_a_compute_that_takes_one_and_no_other(
+    tmp_path: Path, provider: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR-15 D15.4. `password` in the request is passed as `compute(..., password=)` to a provider
+    that takes it; `ow_fake_provider`'s `compute(raw, keys)` takes none and is called as before,
+    so a unit a password maps is not refused by a provider that cannot use it."""
+    package = tmp_path / "site" / "ow_fake_locked"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "signals.py").write_text(LOCKED, encoding="utf-8")
+    for name in [name for name in sys.modules if name.startswith("ow_fake_locked")]:
+        monkeypatch.delitem(sys.modules, name)
+    keys = ["unit.encrypted"]
+    right = answer(_request(tmp_path, b"x", "ow_fake_locked", keys=keys, password="right"))  # noqa: S106 -- a fixture's
+    wrong = answer(_request(tmp_path, b"x", "ow_fake_locked", keys=keys, password="wrong"))  # noqa: S106 -- a fixture's
+    none = answer(_request(tmp_path, b"x", "ow_fake_locked", keys=keys))
+    assert (right.values, wrong.values, none.values) == (
+        {"unit.encrypted": False},
+        {"unit.encrypted": True},
+        {"unit.encrypted": True},
+    )
+    blind = answer(_request(tmp_path, b"xx", provider, password="right"))  # noqa: S106 -- a fixture's
+    assert blind.values == {"unit.part_count": 2, "decode.char_count": 2}
+
+
 def test_a_reason_is_bounded() -> None:
     long = SignalAnswer.refused(("k.k",), "x" * 5000)
     assert len(long.unavailable["k.k"]) == signals.REASON_MAX_CHARS
@@ -183,6 +214,28 @@ def test_the_child_is_isolated_python_with_the_request_on_stdin_and_nothing_ambi
         "content_sha256": "ab" * 32,
         "keys": list(KEYS),
     }
+
+
+def test_a_password_rides_in_the_request_on_stdin_and_nowhere_else(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """D15.4: *"a field of the request on the child's stdin, never argv and never environment"*."""
+    recorder = _Recorder(subproc.Captured(0, _stdout({}, {}), b""))
+    monkeypatch.setattr(subproc, "run_captured", recorder)
+    compute_in_child(
+        "omniweave_pdf",
+        source="/corpus/a.pdf",
+        content_sha256="ab" * 32,
+        keys=KEYS,
+        executable="python",
+        cwd="/scratch",
+        env={"PATH": "/bin"},
+        password="hunter2",  # noqa: S106 -- a fixture's
+    )
+    (call,) = recorder.calls
+    assert json.loads(call["stdin"])["password"] == "hunter2"  # noqa: S105 -- a fixture's
+    assert all("hunter2" not in part for part in call["argv"])
+    assert "hunter2" not in json.dumps(call["env"])
 
 
 def test_the_answer_is_total_over_the_asked_keys_and_nothing_else(

@@ -14,6 +14,12 @@ SDK stub and `ow --help`, which is four places a hidden command would be shown. 
 `--corpus` (*"accepted on every corpus-scoped verb ... its omission uses `[serve]
 default_corpus`"*), 02:467's positional path, and `--config`, which every command takes.
 
+**`--password-file PATH` replaces `[ingest] password_file` for this run** (05:473, ADR-15 D15.3):
+a TOML file of `"<glob>" = "<secret name>"` lines. It is here and not on `ow add`, whose MCP
+listing budget is frozen (V01-12); `ow add` reads the configured file. `passwords_of()` is the one
+resolution both use: the flag against the working directory, the key against the file that set
+it, as `root_of()` resolves a root.
+
 ## THE STEPS, AND WHICH ONES ARE NOT HERE
 
 | step | here |
@@ -55,7 +61,9 @@ if TYPE_CHECKING:
 
     from omniweave_core.config import Config
 
-__all__ = ["INGEST_WORD", "contained", "main", "parser", "root_of"]
+    from omniweave.run.passwords import Passwords
+
+__all__ = ["INGEST_WORD", "contained", "main", "parser", "passwords_of", "root_of"]
 
 INGEST_WORD: Final[str] = "ingest"
 
@@ -65,7 +73,7 @@ _ARGPARSE_USAGE: Final[int] = 2
 
 def parser() -> argparse.ArgumentParser:
     """`ow ingest [PATH ...] [--scope S] [--corpus N] [--config PATH] [--ignore-evidence-cache]
-    [--accept-partial]`."""
+    [--accept-partial] [--password-file PATH]`."""
     built = argparse.ArgumentParser(
         prog="ow ingest",
         description=(
@@ -86,6 +94,12 @@ def parser() -> argparse.ArgumentParser:
         "--accept-partial",
         action="store_true",
         help="let a driver try a file its structural check refused, and read one again (05:2821)",
+    )
+    built.add_argument(
+        "--password-file",
+        metavar="PATH",
+        help='a TOML file of "<glob>" = "<secret name>" lines, for this run instead of '
+        "[ingest] password_file; each name resolves from OW_SECRET_<NAME> or the OS keystore",
     )
     return built
 
@@ -136,6 +150,8 @@ def _ingest(
     store = Path(stores(config, [name], cwd=cwd)[name])
     source = Path(stores(config, [name], cwd=cwd, field="source")[name])
     paths = tuple(contained(Path(raw), source=source, cwd=cwd) for raw in parsed.paths)
+    override = Path(parsed.password_file) if parsed.password_file else None
+    passwords = passwords_of(config, override=override, source=source, env=env, cwd=cwd)
     report = ingest(
         store,
         config=config,
@@ -148,6 +164,7 @@ def _ingest(
         sweep_ms=sweep_ms,
         ignore_evidence_cache=parsed.ignore_evidence_cache,
         accept_partial=parsed.accept_partial,
+        passwords=passwords,
     )
     for line in report.lines():
         stdout.write(_ascii(line) + "\n")
@@ -203,6 +220,34 @@ def contained(raw: Path, *, source: Path, cwd: Path, verb: str = "ow ingest") ->
     if not resolved.exists():
         raise UsageError(f"{raw} does not exist", fix="pass a file or directory that does")
     return resolved
+
+
+def passwords_of(
+    config: Config,
+    *,
+    override: Path | None,
+    source: Path,
+    env: Mapping[str, str],
+    cwd: Path,
+) -> Passwords | None:
+    """The run's password mapping: `override`, else `[ingest] password_file`, else none.
+
+    `override` is `--password-file`, relative to `cwd`. The key is relative to the file that set
+    it, or to `cwd` when an environment variable or nothing did (D527's rule for a path key).
+    A file that does not read or does not parse is refused here, before anything is walked.
+    """
+    from omniweave.run.passwords import Passwords  # noqa: PLC0415 -- none, never paid
+
+    if override is not None:
+        path = override if override.is_absolute() else cwd / override
+    else:
+        raw = str(config.get("ingest.password_file") or "")
+        if not raw:
+            return None
+        declared = config.source_of("ingest.password_file").path
+        base = declared.parent if declared is not None else cwd
+        path = Path(raw) if Path(raw).is_absolute() else base / raw
+    return Passwords.load(path.resolve(), source_root=source, env=env)
 
 
 def root_of(config: Config, key: str, cwd: Path) -> Path:

@@ -97,6 +97,16 @@ max_entry_bytes = 33554432             # effective = min(tenant_cap, declared, H
                                        #   MAX_ENTRY_BYTES = 134217728 is the ceiling above it
 
 # =============================================================================================
+# [ingest] -- what the walk reads. Only `password_file` is read by this build (ADR-15 D15.3).
+# =============================================================================================
+[ingest]
+password_file = ""                     # a TOML file of `"<glob>" = "<secret name>"` lines, the glob
+                                       #   relative to roots.source or absolute. The name resolves
+                                       #   from OW_SECRET_<NAME>, then the OS keystore: never from
+                                       #   the file. "" reads no password. `ow ingest
+                                       #   --password-file PATH` replaces it for one run
+
+# =============================================================================================
 # [drivers] -- DISCOVERY IS NOT CONSENT (INV-5). `enabled` is THE ONLY activation gate: a driver
 # named in a routing policy or in [graph.passes] enable but absent here can never run, and
 # `ow doctor` fails on exactly that (ADR-3 decision 2 states the check's three sources).

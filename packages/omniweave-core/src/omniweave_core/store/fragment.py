@@ -104,6 +104,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "DANGLING_TMP",
+    "DECRYPTED_X",
     "OUT_OF_SCOPE",
     "RECORD_KINDS",
     "Decoded",
@@ -117,6 +118,9 @@ DANGLING_TMP: Final[str] = "OW_FRAGMENT_DANGLING_TMP"
 
 OUT_OF_SCOPE: Final[str] = "OW_FRAGMENT_OUT_OF_SCOPE"
 """04:1797 and 03:2986's P2. `codes.toml` row OW-M-034."""
+
+DECRYPTED_X: Final[str] = "x.ow.decrypted"
+"""05:476's `doc.x.ow.decrypted`: the document was opened with a password (ADR-15 D15.4)."""
 
 RECORD_KINDS: Final[frozenset[str]] = frozenset(
     {"doc", "part", "page", "block", "asset", "block_asset", "diag", "end"}
@@ -314,7 +318,14 @@ def _one_record(
 
 
 def _doc_record(first: Mapping[str, Any], doc: FragmentDoc) -> DocRecord:
+    """The `doc` record as `DocSink.begin_doc` takes it.
+
+    `"decrypted": true` is a driver saying it opened the document with the password the host gave
+    it (ADR-15 D15.4), and becomes 05:476's `doc.x.ow.decrypted = true`: the `x.ow.` segment is the
+    framework's (03:2745), so the host writes the key and the driver proposes the fact.
+    """
     page_count = first.get("page_count")
+    extra = MappingProxyType({DECRYPTED_X: True} if first.get("decrypted") is True else {})
     return DocRecord(
         doc_ord=0,
         doc_key=doc.doc_key,  # type: ignore[arg-type]
@@ -333,6 +344,7 @@ def _doc_record(first: Mapping[str, Any], doc: FragmentDoc) -> DocRecord:
         achieved=doc.declared,
         confidence=MappingProxyType({}),
         timings_ms=MappingProxyType({}),
+        x=extra,
     )
 
 

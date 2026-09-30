@@ -30,7 +30,7 @@
 # for, which is what lets `store.retain_parts` carry the `semantic` axis its own row in
 # 18-api-sketch.md section 4 gives it. The classification rule above is unchanged by the grain.
 #
-# 132 patterns from the omniweave_core.config registry: 13 semantic, 119 operational.
+# 133 patterns from the omniweave_core.config registry: 13 semantic, 120 operational.
 
 [semantic]    # enters cache keys AND sets the full-scan latch
 keys = [
@@ -61,6 +61,7 @@ keys = [
   "store.wal_valve_mb",
   "store.wal_heal_mb",
   "store.bulk_windows",
+  "ingest.password_file",
   "drivers.enabled",
   "drivers.require_lock",
   "drivers.allow_unattested",
@@ -189,6 +190,7 @@ keys = [
 "store.wal_heal_mb" = "OMNIWEAVE_STORE_WAL_HEAL_MB"
 "store.bulk_windows" = "OMNIWEAVE_STORE_BULK_WINDOWS"
 "limits.max_entry_bytes" = "OMNIWEAVE_LIMITS_MAX_ENTRY_BYTES"
+"ingest.password_file" = "OMNIWEAVE_INGEST_PASSWORD_FILE"
 "drivers.enabled" = "OMNIWEAVE_DRIVERS_ENABLED"
 "drivers.require_lock" = "OMNIWEAVE_DRIVERS_REQUIRE_LOCK"
 "drivers.allow_unattested" = "OMNIWEAVE_DRIVERS_ALLOW_UNATTESTED"
