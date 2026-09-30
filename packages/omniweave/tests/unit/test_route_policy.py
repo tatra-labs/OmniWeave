@@ -491,11 +491,11 @@ def test_every_shipped_slice_axis_is_a_registered_signal(
 
 def test_two_shipped_thresholds_are_read_by_no_rule(shipped: bytes) -> None:
     """D204. `[thresholds]` is *"the learnable numbers. `ow route propose` fits these per slice"*
-    and two of the sixteen are read by a PROVIDER rather than by a rule: `garble_min_chars` is
+    and two of the seventeen are read by a PROVIDER rather than by a rule: `garble_min_chars` is
     `garble.score`'s own floor (05:2285) and `math_char_frac` is the per-block fraction inside
     `math.part_frac` (05:2248). `ow route propose` cannot move either."""
     policy = rp.compile_policy([_layer(shipped, origin="05 section 4.4")])
-    assert len(policy.thresholds) == 16
+    assert len(policy.thresholds) == 17
     unread = sorted(set(policy.thresholds) - set(policy.threshold_keys()))
     assert unread == ["garble_min_chars", "math_char_frac"]
 
@@ -602,11 +602,11 @@ def test_the_profile_layer_moves_a_threshold_inside_a_compiled_rule() -> None:
 def test_a_scalar_block_merges_per_key_and_not_per_block() -> None:
     """D210. 05:958's *"last-write-wins on scalars (`[thresholds]`, `[budget.*]`, ...)"* names the
     blocks that HOLD scalars; the unit that wins is the scalar. Section 4.4's own `--profile fast`
-    overlay is the proof: it declares three of sixteen thresholds, so a per-BLOCK merge would drop
-    thirteen and the first rule reading `@thresholds.blank_page_tiles` would fail to compile."""
+    overlay is the proof: it declares three of seventeen thresholds, so a per-BLOCK merge would drop
+    fourteen and the first rule reading `@thresholds.blank_page_tiles` would fail to compile."""
     fast = rp.load_layer(rp.PROFILE_FAST.read_bytes(), layer="profile", origin="50-profile-fast")
     merged = rp.compile_policy([rp.builtin_layer(), fast])
-    assert len(merged.thresholds) == 16
+    assert len(merged.thresholds) == 17
     assert merged.thresholds["blank_page_tiles"] == 4  # untouched by the overlay
     assert merged.thresholds["promote_frac"] == 0.5  # moved by it
 

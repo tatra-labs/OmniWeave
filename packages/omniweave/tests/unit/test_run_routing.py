@@ -397,10 +397,12 @@ def _router(
     *,
     layers: tuple[bytes, ...] = (),
     shipped: bool = True,
+    config: Config | None = None,
 ) -> Any:
     registry = build_registry((*builtin_specs(), *installed_specs(distributions()).specs))
     extra = [load_layer(raw, layer="project", origin="test") for raw in layers]
-    policy = compile_policy([*([builtin_layer()] if shipped else []), *extra], registry=registry)
+    base = routing.route_layers(config) if config is not None else [builtin_layer()]
+    policy = compile_policy([*(base if shipped else []), *extra], registry=registry)
     return routing._Router(
         thread=thread,
         ctx=SimpleNamespace(trigger="cli", clock=SystemClock()),  # type: ignore[arg-type]
@@ -453,6 +455,57 @@ def test_a_pdf_page_count_is_the_computer_answer_and_not_the_roster_one(
     decision, ev = _decide(_router(signals, computer))
     assert decision.rule_id == "gate.too-many-parts"
     assert ev.read("unit.part_count") == 12_000
+
+
+def _capped(tmp_path: Path, max_parts: str) -> Config:
+    """A config whose `[ingest] max_parts` is `max_parts`, through its `OMNIWEAVE_*` twin."""
+    return load(
+        cwd=tmp_path,
+        env={"OMNIWEAVE_HOME": str(tmp_path / "h"), "OMNIWEAVE_INGEST_MAX_PARTS": max_parts},
+    )
+
+
+@pytest.mark.parametrize(
+    ("pages", "rule"), [(4, "gate.too-many-parts"), (3, "decode.pdf-text-layer")]
+)
+def test_ingest_max_parts_is_the_cap_the_part_count_gate_reads(
+    signals: StoreThread, tmp_path: Path, pages: int, rule: str
+) -> None:
+    """D644, 05:3037: `gate.too-many-parts` reads `@thresholds.max_parts`, and `[ingest] max_parts`
+    sets it. One page above the cap is refused and its cause renders the count and the cap, which
+    is what gate 9 and the re-open read back; at the cap it routes as any PDF does."""
+    computer = _Computer(
+        {
+            "unit.part_count": pages,
+            "unit.encrypted": False,
+            "corpus.is_form": False,
+            "decode.char_count": 900,
+        }
+    )
+    decision, _ev = _decide(_router(signals, computer, config=_capped(tmp_path, "3")))
+    assert decision.rule_id == rule
+    if pages == 4:
+        assert (decision.reason, decision.cause) == ("ingest.max_parts", "unit.part_count=4>3.0")
+
+
+def test_the_default_cap_is_the_builtin_policy_and_a_raised_one_is_another(tmp_path: Path) -> None:
+    """At the default, the `project` layer restates the builtin's `10_000`, so the digest every
+    earlier `route_decision` carries is unchanged. Any other cap is another policy: a decision
+    taken under one cap is not a decision under another (05:929)."""
+    builtin = compile_policy([builtin_layer()]).policy_digest
+    default = load(cwd=tmp_path, env={"OMNIWEAVE_HOME": str(tmp_path / "h")})
+    assert compile_policy(routing.route_layers(default)).policy_digest == builtin
+    raised = compile_policy(routing.route_layers(_capped(tmp_path, "20000")))
+    assert raised.policy_digest != builtin
+    assert raised.thresholds["max_parts"] == 20_000
+
+
+@pytest.mark.parametrize("value", ["0", "-5"])
+def test_a_cap_below_one_part_is_a_config_error_naming_the_key(tmp_path: Path, value: str) -> None:
+    from omniweave_core.errors import ConfigError  # noqa: PLC0415 -- this test's own
+
+    with pytest.raises(ConfigError, match=r"\[ingest\] max_parts is -?\d+; it is the most parts"):
+        routing.route_layers(_capped(tmp_path, value))
 
 
 def test_a_scanned_pdf_promotes_the_local_group_and_is_held_on_ink_tiles(

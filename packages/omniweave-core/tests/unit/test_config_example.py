@@ -59,7 +59,7 @@ import gate_config_axes  # noqa: E402
 # than change a count nobody reads -- and the number is written ONCE, here, because a count
 # repeated in a docstring is a second copy of an enumeration and drifts from it in silence (D293:
 # the three sentences below said 127 while this constant said 130).
-EXPECTED_KEYS = 133
+EXPECTED_KEYS = 134
 
 # The one key in the example whose value is NOT its declared default, and the locus that puts it
 # there. 04-driver-system.md:2779 names this exact stanza as the shipped example's own -- "which

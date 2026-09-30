@@ -59,9 +59,11 @@ AxisRow = gate_config_axes.AxisRow
 # the cell that READS it, never by the cell that notices it is missing. `max_sequence_units` came
 # with W4.7's Sequence claim; `shutdown_grace_ms`, `deferred_sweep_ms` and `stall_poll_ms` come
 # with W4.2's loop, which is the one consumer of all three. `ingest.password_file` is 05:450's,
-# declared by the cell that reads it (ADR-15 D15.3, D643); the charter's block has no `[ingest]`.
+# declared by the cell that reads it (ADR-15 D15.3, D643), and `ingest.max_parts` 05:446's (D644);
+# the charter's block has no `[ingest]`.
 OWED_BY_THE_EXAMPLE = frozenset(
     {
+        "ingest.max_parts",
         "ingest.password_file",
         "drivers.resolve.*",
         "retrieval.event_log_query",
@@ -446,7 +448,7 @@ def test_exact_coverage_reports_nothing_when_it_is_exact() -> None:
 def test_the_shipped_fixture_leaves_exactly_the_owed_lines_uninstantiated() -> None:
     """The `over` direction cannot pass until the root artefact `omniweave.toml.example` is
     committed with a line per key: the test fixture beside this file quotes charter.md:462-670 and
-    that block predates seventeen declared keys. Each name in `OWED_BY_THE_EXAMPLE` has a row in
+    that block predates nineteen declared keys. Each name in `OWED_BY_THE_EXAMPLE` has a row in
     18-api-sketch.md section 4, in ADR-3 decision 3, or in 08-runtime.md:2598-2606, so the debt is
     in the example and not in the registry. ADR-3 states the consequence: "adding a config key now
     costs a pattern AND a line in `omniweave.toml.example`"."""
@@ -700,7 +702,7 @@ CHARTER_REFINED = frozenset({"store.retain_parts"})
 
 # The declared keys no charter pattern reaches at all: two are post-charter, one is ADR-3's.
 CHARTER_SILENT = frozenset(
-    {"retrieval.event_log_query", "drivers.resolve.*", "ingest.password_file"}
+    {"retrieval.event_log_query", "drivers.resolve.*", "ingest.max_parts", "ingest.password_file"}
 )
 
 _CHARTER_ROWS = tuple(
@@ -721,7 +723,7 @@ def test_the_charter_block_is_sixty_patterns() -> None:
     above is wrong and every comparison below is worthless."""
     assert len(CHARTER_SEMANTIC) + len(CHARTER_OPERATIONAL) == 60
     assert len(set(CHARTER_SEMANTIC) | set(CHARTER_OPERATIONAL)) == 60
-    assert len(_CHARTER_ROWS) + len(CHARTER_SILENT & set(KEYS)) == 63
+    assert len(_CHARTER_ROWS) + len(CHARTER_SILENT & set(KEYS)) == 64
 
 
 def test_no_charter_pattern_double_matches_a_declared_key() -> None:
