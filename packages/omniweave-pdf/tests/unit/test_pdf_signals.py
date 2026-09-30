@@ -145,3 +145,23 @@ def test_a_password_refusal_still_raises_when_encrypted_was_not_asked() -> None:
 def test_a_malformed_pdf_is_not_mistaken_for_an_encrypted_one() -> None:
     with pytest.raises(pdfium.PdfiumError):
         signals.compute((FIXTURES / "truncated.pdf").read_bytes(), (signals.ENCRYPTED,))
+
+
+def test_with_its_password_a_locked_pdf_opens_and_answers_every_key() -> None:
+    """ADR-15 D15.3 and 05:476: *"`unit.encrypted` is recomputed as `false` after the successful
+    open"*. The host sends the password `[ingest] password_file` maps the unit to."""
+    answer = signals.compute(_encrypted("s3cret"), (*KEYS, signals.ENCRYPTED), password="s3cret")  # noqa: S106 -- a fixture's
+    assert answer[signals.ENCRYPTED] is False
+    assert answer["unit.part_count"] == 2
+    assert int(answer["decode.char_count"]) > 0
+
+
+def test_a_wrong_password_leaves_it_encrypted() -> None:
+    wrong = signals.compute(_encrypted("s3cret"), (*KEYS, signals.ENCRYPTED), password="nope")  # noqa: S106 -- a fixture's
+    assert wrong == {signals.ENCRYPTED: True}
+
+
+def test_a_password_is_tried_only_after_the_empty_one_is_refused() -> None:
+    """An owner-only PDF opens with none, so a password that is not its own changes nothing."""
+    answer = signals.compute(_encrypted(""), (signals.ENCRYPTED,), password="not-its-own")  # noqa: S106 -- a fixture's
+    assert answer == {signals.ENCRYPTED: False}

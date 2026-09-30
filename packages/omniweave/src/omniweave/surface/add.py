@@ -24,6 +24,9 @@ lock"*: a drain that dies leaves the roster behind, and the next `ow ingest` fin
 - `--offline`: routing's `ProbeEnv.offline`, so a card with `[hardware] needs_network = true`
   does not resolve (04:150, D631). No `acquire` connector fetches anything anyway.
 - `--json-errors`: 18:898's object on stderr, through `switches.report()`.
+- `[ingest] password_file`, read from the config, not a flag (ADR-15 D15.3): a unit it maps gets
+  its password, and a failed `encrypted` one whose file did not change is queued again, which is
+  what makes gate 9's `ow add <path>` fix for it a fix.
 
 **What is refused by name**, each exit 1, because a flag parsed and ignored answers a different
 question than the one asked (`ow query`'s rule, D614):
@@ -50,7 +53,7 @@ from typing import TYPE_CHECKING, Any, Final, TextIO
 from omniweave_core.config import load
 from omniweave_core.errors import NotFoundError, OwError, UsageError
 
-from omniweave.surface.ingest import contained, root_of
+from omniweave.surface.ingest import contained, passwords_of, root_of
 from omniweave.surface.query import parse
 from omniweave.surface.serve import stores
 from omniweave.surface.startup import corpora, declared_corpus
@@ -62,6 +65,8 @@ if TYPE_CHECKING:
 
     from omniweave_core.acquire import Added
     from omniweave_core.config import Config
+
+    from omniweave.run.passwords import Passwords
 
 __all__ = ["ADD_WORD", "REASONS", "SCHEMA_VERSION", "TEXT_PENDING_MAX", "main"]
 
@@ -135,7 +140,15 @@ def _add(
     paths = tuple(
         contained(Path(raw), source=source, cwd=cwd, verb="ow add") for raw in parsed.source
     )
-    added = add_sources(store, paths, now_ns=SystemClock().wall_ns(), dry_run=parsed.dry_run)
+    #  ADR-15 D15.3: `[ingest] password_file`, and an encrypted unit it maps is queued again.
+    passwords = passwords_of(config, override=None, source=source, env=env, cwd=cwd)
+    added = add_sources(
+        store,
+        paths,
+        now_ns=SystemClock().wall_ns(),
+        dry_run=parsed.dry_run,
+        reopens=None if passwords is None else passwords.reopens,
+    )
     states: dict[str, str] = {}
     completed: list[dict[str, Any]] = []
     if not parsed.dry_run and added.queued:
@@ -147,6 +160,7 @@ def _add(
             argv=argv,
             sweep_ms=sweep_ms,
             offline=parsed.offline,
+            passwords=passwords,
         )
         if not parsed.quiet:
             #  10:1565: a long verb's progress is stderr's, so stdout stays the report alone.
@@ -233,6 +247,7 @@ def _drain(
     argv: Sequence[str],
     sweep_ms: int | None,
     offline: bool = False,
+    passwords: Passwords | None = None,
 ) -> tuple[str, ...]:
     """Step (b): the drain `ow ingest <path>...` runs, over the paths (a) just rostered.
 
@@ -252,6 +267,7 @@ def _drain(
         paths=paths,
         sweep_ms=sweep_ms,
         offline=offline,
+        passwords=passwords,
     )
     return report.lines()
 

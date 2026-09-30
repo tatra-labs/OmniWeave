@@ -152,6 +152,7 @@ if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from omniweave.route.policy import RoutePolicy
     from omniweave.run.dispatch import Batch
     from omniweave.run.manifest import RunStatus, Timings
+    from omniweave.run.passwords import Passwords
 
 __all__ = [
     "GENERATION_BUMP_SQL",
@@ -329,6 +330,8 @@ class IngestReport:
     parsed: ParseTally | None = None
     manifest: str = ""
     receipt: Receipt | None = None
+    passwords: tuple[str, ...] = ()
+    """`Passwords.lines()`: each secret name this run looked up, and its source or why not."""
 
     @property
     def settled(self) -> int:
@@ -377,6 +380,7 @@ class IngestReport:
             out.extend(self.routed.lines())
         if self.parsed is not None:
             out.extend(self.parsed.lines())
+        out.extend(self.passwords)
         if self.manifest:
             out.append(f"  manifest  {self.manifest}")
         if self.receipt is not None:
@@ -464,6 +468,7 @@ def ingest(
     offline: bool = False,
     ignore_evidence_cache: bool = False,
     accept_partial: bool = False,
+    passwords: Passwords | None = None,
 ) -> IngestReport:
     """Run hops 1-4 over one store, under `store.write`, and report where every unit stopped.
 
@@ -471,7 +476,9 @@ def ingest(
     network does not resolve (`routing.resolve_policy`, D631). `ignore_evidence_cache` is `ow
     ingest`'s flag: routing recomputes the signals `route_signal` holds rather than reading them
     (05:2822, D633). `accept_partial` is `ow ingest --accept-partial` (05:2821, D641): a failed
-    structural check does not refuse, and a unit it refused before is read again.
+    structural check does not refuse, and a unit it refused before is read again. `passwords` is
+    `[ingest] password_file`'s mapping, or `--password-file`'s (ADR-15 D15.3): a unit it maps gets
+    its secret at routing and at parse, and an `encrypted` unit it maps is read again.
 
     `sweep_ms` replaces `[runtime] deferred_sweep_ms` for this run's loop when given. It is the
     interval `Supervisor._settle()` waits between empty claims, and 08:915's two quiet polls mean a
@@ -513,6 +520,7 @@ def ingest(
                 offline=offline,
                 ignore_evidence_cache=ignore_evidence_cache,
                 accept_partial=accept_partial,
+                passwords=passwords,
             )
             pending = _receipt(thread, source_root=source_root)
         except BaseException:
@@ -659,6 +667,7 @@ def _hops(
     offline: bool,
     ignore_evidence_cache: bool = False,
     accept_partial: bool = False,
+    passwords: Passwords | None = None,
 ) -> IngestReport:
     now_ns = clock.wall_ns()
     plan_batch = int(config.get("runtime.plan_batch"))  # type: ignore[arg-type]
@@ -668,11 +677,13 @@ def _hops(
     discover.reset_stale_acquiring(thread)
     #  D640: a refused unit whose file changed since is read again, which is what gate 9's fix says.
     #  D641: under --accept-partial, a unit gate.corrupt refused is read again unchanged.
+    #  ADR-15 D15.3: an encrypted unit a password maps is read again unchanged.
     discover.reopen_changed_failures(
         thread,
         generation=generation,
         plan_batch=plan_batch,
         regardless=discover.ACCEPT_PARTIAL_CLASSES if accept_partial else frozenset(),
+        reopens=None if passwords is None else passwords.reopens,
     )
     acquired = discover.acquire_pending(
         thread, generation=generation, indexed_at_ns=now_ns, plan_batch=plan_batch
@@ -684,6 +695,7 @@ def _hops(
         _routing_inputs(config, offline=offline),
         ignore_evidence_cache=ignore_evidence_cache,
         accept_partial=accept_partial,
+        passwords=passwords,
     )
     book.catalog(inputs.catalog.catalog_digest)
     context = replace(
@@ -738,6 +750,7 @@ def _hops(
         formats=formats,
         routed=routed,
         parsed=tally if (tally.parsed or tally.failed) else None,
+        passwords=() if passwords is None else passwords.lines(),
     )
 
 
@@ -759,6 +772,8 @@ class _RoutingInputs:
     """`ow ingest --ignore-evidence-cache`: routing recomputes `route_signal` rows (D633)."""
     accept_partial: bool = False
     """`ow ingest --accept-partial`: a failed structural check does not refuse (D641)."""
+    passwords: Passwords | None = None
+    """The run's password mapping, read by routing and by the parse Operator (ADR-15 D15.4)."""
 
 
 def _routing_inputs(config: Config, *, offline: bool = False) -> _RoutingInputs:
@@ -805,6 +820,7 @@ def _route(
         computers=inputs.computers,
         ignore_evidence_cache=inputs.ignore_evidence_cache,
         accept_partial=inputs.accept_partial,
+        passwords=inputs.passwords,
     )
 
 
@@ -1196,6 +1212,7 @@ class _ParseLazily:
                 cas=BlobStore(cas_root),
                 ledger=ledger,  # type: ignore[arg-type]
                 tally=tally,  # type: ignore[arg-type]
+                passwords=cast("_RoutingInputs", inputs).passwords,
             )
         return self._operator
 

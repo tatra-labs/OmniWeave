@@ -1176,6 +1176,49 @@ def test_accept_partial_reopens_a_corrupt_refusal_whose_file_is_unchanged(
     assert row.fetchone() == ("discovered",)
 
 
+def test_a_password_mapping_reopens_an_encrypted_refusal_whose_file_is_unchanged(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """ADR-15 D15.3. Nothing about an encrypted file changes when its password is supplied, so
+    `reopens` -- `Passwords.reopens` in a run -- is asked for each failed unit and its class, and
+    the unit it answers for is read again. It is asked about this unit's class, not any other."""
+    uri = _refused(store, tmp_path, tmp_path / "src", "locked.pdf")
+    reader = _reader(tmp_path)
+    reader.execute("UPDATE unit SET acq_failure_class = 'encrypted' WHERE unit_uri = ?", (uri,))
+    reader.commit()
+    asked: list[tuple[str, str | None]] = []
+
+    def nothing_maps(unit_uri: str, failure_class: str | None) -> bool:
+        asked.append((unit_uri, failure_class))
+        return False
+
+    assert reopen_changed_failures(store, generation=1, reopens=nothing_maps) == 0
+    assert asked == [(uri, "encrypted")]
+    assert reopen_changed_failures(store, generation=1, reopens=lambda _u, c: c == "encrypted") == 1
+    row = _reader(tmp_path).execute("SELECT state FROM unit WHERE unit_uri = ?", (uri,))
+    assert row.fetchone() == ("discovered",)
+
+
+def test_a_reopen_clears_the_attempt_count_so_the_fourth_read_still_happens(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """D643. `PENDING_ACQUISITION_SQL` stops at `MAX_ATTEMPTS_TODAY` and nothing lowered the count,
+    so a file re-opened for the third time was never read again, and gate 5 held it for ever.
+    Found on the password path: three passwords tried, and the right one never read."""
+    root = tmp_path / "src"
+    uri = _refused(store, tmp_path, root, "masked.docx")
+    reader = _reader(tmp_path)
+    reader.execute("UPDATE unit SET acq_attempts_total = 3 WHERE unit_uri = ?", (uri,))
+    reader.commit()
+    (root / "masked.docx").write_bytes(b"the restored bytes, which are longer")
+    assert reopen_changed_failures(store, generation=1) == 1
+    assert acquire_pending(store, generation=1, indexed_at_ns=LATE_NS).acquired == 1
+    row = _reader(tmp_path).execute(
+        "SELECT acq_attempts_total FROM unit WHERE unit_uri = ?", (uri,)
+    )
+    assert row.fetchone() == (1,)
+
+
 def test_a_reopen_leaves_a_live_work_row_and_another_generation_alone(
     store: ow.StoreThread, tmp_path: Path
 ) -> None:
