@@ -151,6 +151,7 @@ from omniweave_core.acquire import (
 )
 from omniweave_core.errors import RouteError
 from omniweave_core.events import EventKind
+from omniweave_core.store.reader import PartsRefused, parts_refused
 from omniweave_core.store.sqlite import BATCH_WAIT_MS, Unit
 from omniweave_core.work import MAX_ATTEMPTS_TODAY, STORE_NOW_MS
 from omniweave_ports.types import DriverError, FailureClass
@@ -204,8 +205,10 @@ __all__ = [
     "mark_stale",
     "observe",
     "pending_params",
+    "raised_parts",
     "raw",
     "reopen_changed_failures",
+    "reopens_of",
     "reset_stale_acquiring",
     "roster_rows",
     "stale_params",
@@ -1041,6 +1044,50 @@ change -- a PDF pdfium can reconstruct -- so a refused unit must be read again a
 flag would only ever reach a file seen for the first time."""
 
 
+Reopens: TypeAlias = "Callable[[str, str | None], bool]"
+"""`reopens(unit_uri, failure_class)`: whether a failed unit is read again though its file did not
+change. `acquire.add_sources` and `reopen_changed_failures` take the same one, so the unit `ow add`
+queues is the unit the drain re-opens."""
+
+
+def raised_parts(refused: Mapping[str, PartsRefused], *, max_parts: int) -> frozenset[str]:
+    """The units `gate.too-many-parts` refused whose count `max_parts` now admits. **D644.**
+
+    `refused` is `store.reader.parts_refused()`, read through whichever connection the caller holds.
+    A unit whose count is still above the cap is left alone: re-reading it would cost an identify
+    and a signal child per run to be refused the same way.
+    """
+    return frozenset(uri for uri, one in refused.items() if one.parts <= max_parts)
+
+
+def reopens_of(passwords: Reopens | None, raised: frozenset[str] = frozenset()) -> Reopens | None:
+    """One predicate from the run's two reasons to read an unchanged failed unit again.
+
+    An `encrypted` unit a password line maps (ADR-15 D15.3, `Passwords.reopens`), and a
+    `resource_limit` unit whose part count a raised `[ingest] max_parts` admits (D644, `raised`).
+    `None` when there is neither, so a run with no mapping and no raised cap reads nothing again.
+    """
+    if passwords is None and not raised:
+        return None
+
+    def reopens(unit_uri: str, failure_class: str | None) -> bool:
+        if failure_class == "resource_limit" and unit_uri in raised:
+            return True
+        return passwords is not None and passwords(unit_uri, failure_class)
+
+    return reopens
+
+
+def raised_on(
+    thread: StoreThread, *, max_parts: int, wait_ms: int = BATCH_WAIT_MS
+) -> frozenset[str]:
+    """`raised_parts` over the store `thread` writes, in one read. The drain's half of D644."""
+    refused = thread.run(
+        Unit(name="discover.reopen.parts", run=parts_refused, cost_class="free", wait_ms=wait_ms)
+    )
+    return raised_parts(refused, max_parts=max_parts)  # type: ignore[arg-type]
+
+
 def reopen_changed_failures(
     thread: StoreThread,
     *,
@@ -1055,8 +1102,9 @@ def reopen_changed_failures(
 
     A unit whose class is in `regardless` is re-opened whether or not its file changed: that is
     `--accept-partial`'s `ACCEPT_PARTIAL_CLASSES` (D641). So is one `reopens(unit_uri, class)`
-    answers true for: an `encrypted` unit a password mapping now matches (ADR-15 D15.3,
-    `run.passwords.Passwords.reopens`). A mapped unit whose password still does not open it is
+    answers true for (`reopens_of`): an `encrypted` unit a password mapping now matches (ADR-15
+    D15.3, `run.passwords.Passwords.reopens`), or a `resource_limit` unit a raised `[ingest]
+    max_parts` now admits (D644). A mapped unit whose password still does not open it is
     refused again, and read again by the next run that maps it, which costs one identify and one
     signal child per such file per run.
 

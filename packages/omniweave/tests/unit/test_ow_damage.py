@@ -105,3 +105,26 @@ def test_an_injector_that_is_not_built_is_exit_two_and_names_what_is_owed(
     out = capsys.readouterr().out
     assert "not built" in out
     assert "stall" in out
+
+
+def test_only_the_damaged_build_carries_the_injector_s_config(
+    tool: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D644. `inflate`'s fixture is one page above `[ingest] max_parts`, so its damaged project is
+    built under that cap; the pristine run is `PROJECT` alone, shared by every pair."""
+    from omniweave_core.host.subproc import Captured  # noqa: PLC0415 -- this test's own
+
+    ran: list[tuple[str, ...]] = []
+
+    def fake_ow(_work: Path, argv: tuple[str, ...], _extra: object = None) -> Captured:
+        ran.append(tuple(argv))
+        return Captured(0)
+
+    monkeypatch.setattr(tool, "_ow", fake_ow)
+    tool.build(tmp_path / "pristine", {"a.pdf": b"%PDF-"})
+    tool.build(tmp_path / "damaged", {"a.pdf": b"%PDF-"}, config=INJECTORS["inflate"].config)
+    pristine = (tmp_path / "pristine" / "project" / "omniweave.toml").read_text(encoding="utf-8")
+    damaged = (tmp_path / "damaged" / "project" / "omniweave.toml").read_text(encoding="utf-8")
+    assert pristine == tool.PROJECT
+    assert damaged == tool.PROJECT + "\n[ingest]\nmax_parts = 3\n"
+    assert ran == [("add", "docs"), ("add", "docs")]

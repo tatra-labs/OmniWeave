@@ -133,7 +133,13 @@ from omniweave.run.manifest import (
     manifest_path,
 )
 from omniweave.run.operators.parse import ParseLedger, ParseOperator, ParseTally, is_parse
-from omniweave.run.routing import RouteTally, resolve_policy, route_identified
+from omniweave.run.routing import (
+    RouteTally,
+    max_parts_of,
+    resolve_policy,
+    route_identified,
+    route_layers,
+)
 
 if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from collections.abc import Callable, Mapping, Sequence
@@ -479,6 +485,8 @@ def ingest(
     structural check does not refuse, and a unit it refused before is read again. `passwords` is
     `[ingest] password_file`'s mapping, or `--password-file`'s (ADR-15 D15.3): a unit it maps gets
     its secret at routing and at parse, and an `encrypted` unit it maps is read again.
+    `[ingest] max_parts` is the cap `gate.too-many-parts` compiles in (`routing.route_layers`,
+    D644), and a unit it refused whose count the cap now admits is read again.
 
     `sweep_ms` replaces `[runtime] deferred_sweep_ms` for this run's loop when given. It is the
     interval `Supervisor._settle()` waits between empty claims, and 08:915's two quiet polls mean a
@@ -584,7 +592,7 @@ def open_run(
     killed before it closes still names the file that says how far it got. With none, the column is
     the empty string and no manifest is kept.
     """
-    from omniweave.route.policy import builtin_layer, compile_policy  # noqa: PLC0415
+    from omniweave.route.policy import compile_policy  # noqa: PLC0415
 
     run_id = new_run_id(clock, os.urandom(ULID_ENTROPY_BYTES))
     manifest = None if output_root is None else manifest_path(output_root, run_id)
@@ -595,7 +603,7 @@ def open_run(
         "argv": json.dumps(list(argv), separators=(",", ":")),
         "config_digest": config.config_digest,
         "semantic_digest": config.semantic_digest,
-        "policy_digest": compile_policy([builtin_layer()]).policy_digest,
+        "policy_digest": compile_policy(route_layers(config)).policy_digest,
         "version": metadata.version("omniweave"),
         "contract": CONTRACT,
         "started_ns": started_ns,
@@ -678,12 +686,14 @@ def _hops(
     #  D640: a refused unit whose file changed since is read again, which is what gate 9's fix says.
     #  D641: under --accept-partial, a unit gate.corrupt refused is read again unchanged.
     #  ADR-15 D15.3: an encrypted unit a password maps is read again unchanged.
+    #  D644: so is a unit gate.too-many-parts refused, once [ingest] max_parts admits its count.
+    raised = discover.raised_on(thread, max_parts=max_parts_of(config))
     discover.reopen_changed_failures(
         thread,
         generation=generation,
         plan_batch=plan_batch,
         regardless=discover.ACCEPT_PARTIAL_CLASSES if accept_partial else frozenset(),
-        reopens=None if passwords is None else passwords.reopens,
+        reopens=discover.reopens_of(None if passwords is None else passwords.reopens, raised),
     )
     acquired = discover.acquire_pending(
         thread, generation=generation, indexed_at_ns=now_ns, plan_batch=plan_batch
@@ -786,14 +796,14 @@ def _routing_inputs(config: Config, *, offline: bool = False) -> _RoutingInputs:
         builtin_specs,
         installed_specs,
     )
-    from omniweave.route.policy import builtin_layer, compile_policy  # noqa: PLC0415
+    from omniweave.route.policy import compile_policy  # noqa: PLC0415
 
     installed = installed_specs(distributions())
     registry = build_registry((*builtin_specs(), *installed.specs))
     return _RoutingInputs(
         registry=registry,
         catalog=build_catalog(),
-        policy=compile_policy([builtin_layer()], registry=registry),
+        policy=compile_policy(route_layers(config), registry=registry),
         resolving=resolve_policy(config, offline=offline),
         computers=dict(installed.computers),
     )

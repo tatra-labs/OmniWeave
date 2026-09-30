@@ -33,6 +33,11 @@ file stays encrypted (ADR-15 D15.6). Gate 9's detail says how to give it one on 
 out of that detail and nowhere else, so the fourth clause holds only if the message a user would
 follow is one that works: a detail that stopped naming the line would fail the pair by name.
 
+**`inflate` restores nothing either: the user raises the limit, then runs the fix.** The fixture is
+built with `[ingest] max_parts = INFLATE_MAX_PARTS` (`Injector.config`), and the PDF is padded to
+one page above it (D644). Gate 9's detail names the count and the value that admits it, and
+`raise_limit()` sets the `OMNIWEAVE_INGEST_MAX_PARTS` twin the detail names, and nothing else.
+
 ## The fix is split, not shelled
 
 13:1306: *"the harness parses the string against the `ow` Action registry, refuses anything whose
@@ -56,12 +61,14 @@ from typing import TYPE_CHECKING, Final
 from omniweave_core.retrieve.types import ABSENCE_GATES
 
 from omniweave_conform.pdfcrypt import encrypt_pdf
+from omniweave_conform.pdfpages import pad_pages
 
 if TYPE_CHECKING:
     from omniweave_core.retrieve.verdict import Verdict
 
 __all__ = [
     "DAMAGE_PASSWORD",
+    "INFLATE_MAX_PARTS",
     "INJECTORS",
     "MASK",
     "PASSWORD_FILE",
@@ -77,8 +84,10 @@ __all__ = [
     "assess",
     "chaos",
     "encrypt",
+    "inflate",
     "mask_format",
     "observed",
+    "raise_limit",
     "split_fix",
     "supply_password",
 ]
@@ -206,6 +215,45 @@ def supply_password(detail: str) -> Repair:
     )
 
 
+INFLATE_MAX_PARTS: Final[int] = 3
+"""The `[ingest] max_parts` an `inflate` fixture is built under. D644.
+
+Small, so the padded file is a kilobyte and parses in a moment, and not below any pristine file's
+count: the archive's longest PDF has three pages, which is also why one of the two fixtures is it,
+padded by one page."""
+
+
+def inflate(data: bytes) -> bytes:
+    """13:1294: *"generates a fixture exactly one row above a `[limits]` value"*.
+
+    The row is a page, since a PDF's `unit.part_count` is its page count, and the value is
+    `INFLATE_MAX_PARTS`, which `Injector.config` sets. `pdfpages.pad_pages` appends copies of the
+    last page in an incremental update, so the pristine bytes are the file's first bytes still.
+    """
+    return pad_pages(data, to_pages=INFLATE_MAX_PARTS + 1)
+
+
+_LIMIT: Final = re.compile(r"\bset (OMNIWEAVE_INGEST_MAX_PARTS)=(\d+)\b")
+
+
+def raise_limit(detail: str) -> Repair:
+    """The limit, raised the way gate 9's `resource_limit` detail says (D644).
+
+    The detail names both forms of `[ingest] max_parts`: the file's line and its environment twin.
+    The twin is the one a repair can set without rewriting the fixture's `omniweave.toml`, whose
+    `[ingest]` table already holds the lower value. Raises `FixRefusedError` when the detail names
+    no value, which is the fourth clause failing.
+    """
+    found = _LIMIT.search(detail)
+    if found is None:
+        msg = (
+            "the resource_limit cause does not say which limit to raise: it names no "
+            "OMNIWEAVE_INGEST_MAX_PARTS value (D644)"
+        )
+        raise FixRefusedError(msg)
+    return Repair(env={found.group(1): found.group(2)})
+
+
 @dataclass(frozen=True, slots=True)
 class Injector:
     """One built Injector: its row, the damage, and the file suffixes it applies to."""
@@ -218,6 +266,8 @@ class Injector:
     """True when the damage is to the user's own file (D640): the fix runs after a restore."""
     repair: Callable[[str], Repair] | None = None
     """What the user does before the fix, read from the damaged run's cause detail (`encrypt`)."""
+    config: str = ""
+    """TOML the damaged project's `omniweave.toml` ends with: the `[limits]` value (`inflate`)."""
 
     @property
     def name(self) -> str:
@@ -248,11 +298,20 @@ INJECTORS: Final[Mapping[str, Injector]] = MappingProxyType(
             transform=mask_format,
             restores_source=True,
         ),
+        "inflate": Injector(
+            row=next(row for row in TABLE if row.name == "inflate"),
+            damages="generates a fixture exactly one row above a [limits] value",
+            applies_to=frozenset({".pdf"}),
+            transform=inflate,
+            restores_source=False,
+            repair=raise_limit,
+            config=f"\n[ingest]\nmax_parts = {INFLATE_MAX_PARTS}\n",
+        ),
     }
 )
 """The Injectors built, each with its passing assertion (13:1314): `encrypt` (D643),
-`mask_format` (D640) and `chaos` (D641). `TABLE` order, so the report reads as the plan's table
-does."""
+`mask_format` (D640), `chaos` (D641) and `inflate` (D644). `TABLE` order, so the report reads as
+the plan's table does."""
 
 
 @dataclass(frozen=True, slots=True)
