@@ -241,6 +241,7 @@ from omniweave_core.retrieve.verdict import (
 )
 from omniweave_core.store import NO_JOB_DOCS, resolve
 from omniweave_core.store import sqlite as ow
+from omniweave_core.store.fragment import RETIRED_X
 from omniweave_core.store.types import (
     ChannelSpec,
     Coverage,
@@ -702,6 +703,13 @@ detail names the count and the value that admits it, and its `fix` is the same r
 queues the unit once the configured cap covers its count (`parts_refused`). A `resource_limit`
 from anywhere else names no knob this build reads, and its `fix` stays empty.
 """
+
+_LIVE_DOCS: Final[str] = f"json_extract(doc.x, '$.\"{RETIRED_X}\"') IS NULL"
+"""A document some file still holds: not retired by `run.discover.retire_replaced` (D645).
+
+Its rows are `state = 1` already, so no Channel reads them. This is for the two reads of `doc`
+itself: gate 9's join, where a retired version's diagnostics and `status` would otherwise name a
+gap in text no file says any more, and the coverage counts beside it."""
 
 MAX_PARTS_REASON: Final[str] = "ingest.max_parts"
 """The `reason` `gate.too-many-parts` refuses under (05:1388), which is the key that clears it."""
@@ -2901,7 +2909,8 @@ class SqliteReader:
         skipped = sum(int(row[2]) for row in scope_rows)
         complete = bool(scope_rows) and all(int(row[3]) != 0 for row in scope_rows)
 
-        status_where = NO_JOB_DOCS if doc_where is None else f"{doc_where} AND {NO_JOB_DOCS}"
+        live = f"{NO_JOB_DOCS} AND {_LIVE_DOCS}"
+        status_where = live if doc_where is None else f"{doc_where} AND {live}"
         by_status = {
             str(status): int(count)
             for status, count in connection.execute(

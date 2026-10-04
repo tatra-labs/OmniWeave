@@ -2797,6 +2797,29 @@ def test_gate_9_joins_the_head_generations_blocking_diags_and_every_document_not
     assert [gap.detail for gap in scoped] == ["file:///corpus/half.pdf: doc.status = partial"]
 
 
+def test_a_retired_version_names_no_gap_and_is_not_counted(built: Built) -> None:
+    """D645. A document no file holds any more (`doc.x.ow.retired`) has its rows at `state = 1`, so
+    no Channel reads it; gate 9 and the counts must not read it either, or an edited file's old
+    version would name a gap in text the file no longer says."""
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    _doc(conn, 1, uri="file:///corpus/scan.pdf", status="partial")
+    _diag(conn, 1, "OW_NEEDS_OCR", page=3)
+    conn.execute(
+        "UPDATE doc SET x = json_object('x.ow.retired', json_object('reason', 'source_deleted', "
+        "'gen', 1)) WHERE doc_ord = 1"
+    )
+    _doc(conn, 2, uri="file:///corpus/scan.pdf", status="partial")
+    conn.execute("COMMIT")
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        coverage = reader.coverage(state, Filters())
+    assert [gap.detail for gap in coverage.gaps] == [
+        "file:///corpus/scan.pdf: doc.status = partial"
+    ]
+    assert coverage.partial == 1
+
+
 def _failed(
     conn: sqlite3.Connection, uri: str, failure_class: str | None, fmt: str = "pdf"
 ) -> None:
