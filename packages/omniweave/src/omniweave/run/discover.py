@@ -151,6 +151,7 @@ from omniweave_core.acquire import (
 )
 from omniweave_core.errors import RouteError
 from omniweave_core.events import EventKind
+from omniweave_core.store.fragment import RETIRED_X
 from omniweave_core.store.reader import PartsRefused, parts_refused
 from omniweave_core.store.sqlite import BATCH_WAIT_MS, Unit
 from omniweave_core.work import MAX_ATTEMPTS_TODAY, STORE_NOW_MS
@@ -179,9 +180,13 @@ __all__ = [
     "PENDING_ACQUISITION_AFTER_SQL",
     "PENDING_ACQUISITION_SQL",
     "RAW_DIGEST_CODE",
+    "REENTER_SCAN_SQL",
+    "REENTER_SQL",
+    "REFRESHED_SQL",
     "REOPEN_SCAN_SQL",
     "REOPEN_SQL",
     "REOPEN_WORK_SQL",
+    "REPLACED_SCAN_SQL",
     "RESET_ACQUIRING_SQL",
     "SKIP_REASON_CLASSES",
     "STALE_SCAN_SQL",
@@ -207,9 +212,11 @@ __all__ = [
     "pending_params",
     "raised_parts",
     "raw",
+    "reenter_changed",
     "reopen_changed_failures",
     "reopens_of",
     "reset_stale_acquiring",
+    "retire_replaced",
     "roster_rows",
     "stale_params",
     "sweep_unseen",
@@ -916,7 +923,10 @@ MARK_STALE_SQL: Final[str] = """
 UPDATE unit SET stale_since = :at_ns
  WHERE unit_uri = :unit_uri AND stale_since IS NULL
 """
-"""Stamp a settled unit whose bytes no longer match the roster. **The column's only writer. D169.**
+"""Stamp a settled unit whose bytes no longer match the roster. **The column's only setter. D169.**
+
+`reenter_changed()` runs it (D645), and `parse.SETTLED_SQL` is the one statement that clears it:
+a unit whose new bytes settled is no longer an answer older than its source.
 
 `0004_runtime.sql:76` declares `stale_since INTEGER, -- FIRST transition only; KEPT across a reset`
 and `unit_stale ON unit(stale_since) WHERE stale_since IS NOT NULL` indexes it.
@@ -1161,6 +1171,250 @@ def reopen_changed_failures(
                     reopened += 1
 
         thread.run(Unit(name="discover.reopen", run=reopen, cost_class="free", wait_ms=wait_ms))
+
+
+REENTER_SCAN_SQL: Final[str] = """
+SELECT unit_uri, size, mtime_ns, indexed_at_ns, content_sha256, settled_gen
+  FROM unit
+ WHERE connector = :connector
+   AND last_seen_gen = :generation
+   AND state = 'settled'
+   AND unit_uri > :after
+ ORDER BY unit_uri
+ LIMIT :limit
+"""
+"""The settled units this generation's walk saw, paged by `unit_uri`. **D645.**
+
+`STALE_SCAN_SQL`'s survey without its scope prefix or its `stale_since IS NULL`: a unit marked
+stale whose re-read failed is `failed` and `reopen_changed_failures`' to read again, so every unit
+this scan returns is one the ladder must still be asked about."""
+
+REENTER_SQL: Final[str] = """
+UPDATE unit SET state = 'discovered', part_count = NULL, acq_failure_class = NULL,
+       acq_retry_after = NULL, acq_attempts_total = 0
+ WHERE unit_uri = :unit_uri AND state = 'settled'
+"""
+"""A settled unit whose file changed, back to `discovered` to be read again. **D645.**
+
+`REOPEN_SQL`'s columns from `settled` rather than `failed`, with `REOPEN_WORK_SQL` beside it:
+`work_identity` carries no generation, so the unit's `done` identify and parse rows would otherwise
+keep the planner's `ON CONFLICT DO NOTHING` from writing anything for the new bytes. Its document
+stays, and is served under gates 5 and 6 until the new parse settles and replaces it."""
+
+
+def reenter_changed(
+    thread: StoreThread,
+    *,
+    generation: int,
+    at_ns: int,
+    connector: str = CONNECTOR,
+    plan_batch: int = PLAN_BATCH,
+    wait_ms: int = BATCH_WAIT_MS,
+) -> int:
+    """Read each settled unit again whose file changed since it was indexed. **D645.**
+
+    Returns how many. **Found by a probe, and the most basic freshness there is:** a PDF indexed,
+    then edited, then `ow add docs` and `ow ingest docs` again. Neither read it. `stat_fresh` saw
+    the change and nothing acted on it, so the old text was served and a query for the new text
+    answered a confident `absent`: no gate fired, because `stale_since` was never set (D640
+    section 10). 08:503's ladder is applied *"for each unit"*, and a settled one is a unit.
+
+    One `stat` per settled unit the walk saw, `freshness()`'s zero-byte rung, and per page one
+    transaction that marks each changed unit stale (`MARK_STALE_SQL`, so gate 6 names it while its
+    old document is still what a query reads), re-opens it (`REENTER_SQL`) and clears its terminal
+    work rows. Acquisition then reads it as any `discovered` unit. A path that no longer stats is
+    left alone: the walk did not see it, and the deletion sweep is what takes it.
+
+    **A file only too recent to prove fresh is hashed, not parsed.** `stat_fresh`'s third clause
+    fails for a file written within `MTIME_GRANULARITY_NS` of its indexing even when its size and
+    `mtime` match, so every file indexed right after it was written would be parsed a second time.
+    For that case alone the raw bytes are hashed and compared with the head document's
+    `source_sha256`: equal, and `REFRESHED_SQL` moves `indexed_at_ns` so the next pass is free,
+    which is `UNCHANGED_SQL`'s own reasoning; different, and it is re-entered. A changed size or
+    `mtime` is re-entered unread: a touch costs a parse, which 05:346 prices as *"never loses a
+    document"*.
+    """
+    reentered = 0
+    after = ""
+    while True:
+        page: list[tuple[str, StoredStat]] = []
+        params = {
+            "connector": connector,
+            "generation": generation,
+            "after": after,
+            "limit": plan_batch,
+        }
+
+        def scan(
+            connection: _Rows,
+            params: Mapping[str, object] = params,
+            page: list[tuple[str, StoredStat]] = page,
+        ) -> None:
+            for uri, size, mtime, indexed, digest, settled in connection.execute(
+                REENTER_SCAN_SQL, params
+            ).fetchall():
+                triple = StatTriple(size=size or 0, mtime_ns=mtime or 0, indexed_at_ns=indexed or 0)
+                page.append(
+                    (
+                        str(uri),
+                        StoredStat(triple=triple, settled_gen=settled, content_sha256=digest),
+                    )
+                )
+
+        thread.run(Unit(name="discover.reenter.scan", run=scan, cost_class="free", wait_ms=wait_ms))
+        if not page:
+            return reentered
+        after = page[-1][0]
+        changed: list[str] = []
+        unproven: list[tuple[str, StoredStat]] = []
+        for uri, stored in page:
+            try:
+                observed = observe(Path(uri), indexed_at_ns=stored.triple.indexed_at_ns)
+            except OSError:
+                continue
+            if freshness(stored, observed) != "changed":
+                continue
+            same_stat = (stored.triple.size, stored.triple.mtime_ns) == (
+                observed.size,
+                observed.mtime_ns,
+            )
+            if same_stat and stored.content_sha256:
+                unproven.append((uri, stored))
+            else:
+                changed.append(uri)
+        confirmed = _confirmed_unchanged(thread, unproven, wait_ms=wait_ms)
+        changed.extend(uri for uri, _stored in unproven if uri not in confirmed)
+        if not changed and not confirmed:
+            continue
+
+        def reenter(
+            connection: _Rows,
+            uris: Sequence[str] = tuple(changed),
+            fresh: Sequence[str] = tuple(confirmed),
+        ) -> None:
+            nonlocal reentered
+            for uri in fresh:
+                connection.execute(REFRESHED_SQL, {"unit_uri": uri, "at_ns": at_ns})
+            for uri in uris:
+                connection.execute(MARK_STALE_SQL, {"unit_uri": uri, "at_ns": at_ns})
+                if connection.execute(REENTER_SQL, {"unit_uri": uri}).rowcount == 1:
+                    connection.execute(REOPEN_WORK_SQL, {"unit_uri": uri})
+                    reentered += 1
+
+        thread.run(Unit(name="discover.reenter", run=reenter, cost_class="free", wait_ms=wait_ms))
+
+
+REPLACED_SCAN_SQL: Final[str] = """
+SELECT d.doc_ord, d.gen FROM doc AS d JOIN unit AS u ON u.unit_uri = d.uri
+ WHERE d.format <> 'owjob'
+   AND json_extract(d.x, :retired) IS NULL
+   AND u.content_sha256 IS NOT NULL
+   AND lower(hex(d.doc_key)) NOT IN (
+       SELECT substr(content_sha256, 1, 32) FROM unit WHERE content_sha256 IS NOT NULL)
+"""
+"""The documents whose file now holds other bytes, and that no file holds any more. **D645.**
+
+A document is its bytes: `doc_key` is `sha256(normalised source bytes)[:16]` (03:162). So an edited
+file is a new document, and the old one is still in the store, still answering queries with what
+the file used to say. Three conditions name it, and each is there for a case:
+
+- **its `uri` is a unit's, and that unit now holds other bytes.** A store whose documents no unit
+  rostered (a kit fixture, an archive restored by hand) is never touched;
+- **no unit holds its bytes**, whatever its state: a copy of the file elsewhere keeps it live, and
+  so does a deleted file, whose unit is `out_of_scope` with its digest kept. 05:370 and 08:1883
+  make deletion explicit (`ow store gc --unseen-for`) and never inferred, and this does not infer
+  one: the file is there, and says something else;
+- **not retired already** (`RETIRED_X`).
+
+A unit re-entered but not yet read still holds its old digest, so its document stays until the
+read. A unit whose new bytes failed is `failed` with the new digest, so its old document goes, and
+gate 9 names the failure: the old text is not what the file says either."""
+
+_RETIRE_HISTORY_SQL: Final[str] = """
+INSERT OR REPLACE INTO block_history(block_id, doc_ord, retired_gen, superseded_by, reason)
+SELECT block_id, doc_ord, gen, NULL, 'source_deleted' FROM block
+ WHERE doc_ord = :doc_ord AND gen = :gen AND state = 0
+"""
+_RETIRE_BLOCKS_SQL: Final[str] = (
+    "UPDATE block SET state = 1 WHERE doc_ord = :doc_ord AND gen = :gen AND state = 0"
+)
+_RETIRE_SEGMENTS_SQL: Final[str] = (
+    "UPDATE segment SET state = 1 WHERE doc_ord = :doc_ord AND gen = :gen AND state = 0"
+)
+_RETIRE_DOC_SQL: Final[str] = """
+UPDATE doc SET x = json_set(x, :retired, json_object('reason', 'source_deleted', 'gen', :gen))
+ WHERE doc_ord = :doc_ord
+"""
+
+
+def retire_replaced(thread: StoreThread, *, wait_ms: int = BATCH_WAIT_MS) -> int:
+    """Take each document no file holds any more out of every read. **D645.** Returns how many.
+
+    The rows are retired the way `rebind()` retires one (03:1259, 03:310): `state = 1` and a
+    `block_history` row, never a `DELETE`, so a cite already shipped still resolves and says it was
+    retired. `reason` is `source_deleted`, one of the four the DDL names, since the bytes it was
+    parsed from are gone from their source; `superseded_by` is NULL, *"retired with no defensible
+    successor"*, because the new document is other bytes and `rebind()` matches within one
+    document only. Its segments go to `state = 1` with it, and `doc.x` records it (`RETIRED_X`),
+    which is what gate 9 and the coverage counts read. One transaction for the lot.
+    """
+    retired = 0
+    key = f'$."{RETIRED_X}"'
+
+    def run(connection: _Rows) -> None:
+        nonlocal retired
+        found = connection.execute(REPLACED_SCAN_SQL, {"retired": key}).fetchall()
+        for doc_ord, gen in found:
+            params = {"doc_ord": int(doc_ord), "gen": int(gen)}
+            connection.execute(_RETIRE_HISTORY_SQL, params)
+            connection.execute(_RETIRE_BLOCKS_SQL, params)
+            connection.execute(_RETIRE_SEGMENTS_SQL, params)
+            connection.execute(_RETIRE_DOC_SQL, params | {"retired": key})
+            retired += 1
+
+    thread.run(Unit(name="discover.retire_replaced", run=run, cost_class="free", wait_ms=wait_ms))
+    return retired
+
+
+REFRESHED_SQL: Final[str] = """
+UPDATE unit SET indexed_at_ns = :at_ns WHERE unit_uri = :unit_uri AND state = 'settled'
+"""
+"""A settled unit whose bytes were hashed and found unchanged: its index time, and nothing else.
+
+`UNCHANGED_SQL`'s write for a unit that is not being acquired. D645."""
+
+_SOURCE_DIGEST_SQL: Final[str] = "SELECT source_sha256 FROM doc WHERE doc_key = :doc_key"
+
+
+def _raw_sha256(path: Path) -> bytes | None:
+    """sha256 of the file's raw bytes, streamed; `None` if it cannot be read."""
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(chunk)
+    except OSError:
+        return None
+    return digest.digest()
+
+
+def _confirmed_unchanged(
+    thread: StoreThread, units: Sequence[tuple[str, StoredStat]], *, wait_ms: int
+) -> frozenset[str]:
+    """Of `units`, those whose raw bytes hash to their head document's `source_sha256`. D645."""
+    if not units:
+        return frozenset()
+    keys = {uri: bytes.fromhex(str(stored.content_sha256))[:16] for uri, stored in units}
+    found: dict[str, bytes] = {}
+
+    def run(connection: _Rows) -> None:
+        for uri, key in keys.items():
+            row = connection.execute(_SOURCE_DIGEST_SQL, {"doc_key": key}).fetchone()
+            if row is not None and row[0] is not None:
+                found[uri] = bytes(row[0])
+
+    thread.run(Unit(name="discover.reenter.digests", run=run, cost_class="free", wait_ms=wait_ms))
+    return frozenset(uri for uri, digest in found.items() if _raw_sha256(Path(uri)) == digest)
 
 
 @dataclass(frozen=True, slots=True)
