@@ -63,6 +63,18 @@ def test_each_text_format_is_read_and_answers(
     assert any(words in hit["text"] for hit in hits), answer["evidence"]
 
 
+def test_a_question_is_answered_first_by_the_block_that_answers_it(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    """D649: with the stopwords out of the terms, the notes block that says when the launch moves
+    is the first evidence, and not the onboarding guide's sentence about *the* and *does*."""
+    project, env = _built(tmp_path_factory)
+    code, shown = _run(project, env, "query", "when does the launch move", "--render", "json")
+    assert code == 0, shown[-3000:]
+    first = json.loads(shown[: shown.rindex("}") + 1])["evidence"][0]
+    assert (first["doc_uri"], first["text"][:30]) == ("notes.txt", "The launch moves to April 14 b")
+
+
 _BUILT: dict[str, tuple[Path, dict[str, str]]] = {}
 
 
