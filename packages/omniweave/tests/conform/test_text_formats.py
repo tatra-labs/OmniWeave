@@ -47,6 +47,7 @@ def _run(project: Path, env: dict[str, str], *argv: str) -> tuple[int | None, st
         ("on-call rota pager", "guide.md", "on-call rota starts in your second week"),
         ("audit launch April", "notes.txt", "audit is not finished"),
         ("uptime feature", "page.html", "Uptime is a feature."),
+        ("p99", "page.html", "p99"),  # a page addr by shape, searched once no addr matches (D648)
         ("billing rps limit", "data.json", "limits.rps: 1200"),
         ("churn analysis rate", "analysis.ipynb", "rate = 42 / 1000"),
     ],

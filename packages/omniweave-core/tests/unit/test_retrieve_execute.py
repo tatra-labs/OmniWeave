@@ -267,6 +267,37 @@ def test_a_cite_in_the_text_is_lifted_to_identity_and_not_searched(built: Built)
     assert first.identity_grade == "cite_exact"
 
 
+def test_an_addr_shaped_word_that_resolves_to_nothing_is_searched_after_all(built: Built) -> None:
+    """D648. `p99` is a page addr by shape and a latency percentile in the corpus. It was lifted to
+    `identity`, which found no such addr, and the `lexical` Channel never saw it: the query
+    answered a confident `absent` while a block's whole text was `p99`."""
+    _seed(built, texts={1: "Latency", 2: "p99", 3: "Fees are payable monthly."})
+    response = _ask(built, Query(text="p99"))
+    assert [hit.block_id for hit in response.hits] == [2]
+    assert response.hits[0].channel_ranks == {"lexical": 1}
+    assert response.verdict.state is not VerdictState.ABSENT
+
+
+def test_a_reference_whose_anchor_is_missing_is_searched_after_all(built: Built) -> None:
+    """07:1318 lifts `Table 4` to `exact` as noise to FTS. With no such anchor in the store, the
+    words are the only way to find it, and they reach `lexical`."""
+    _seed(built, texts={1: "Revenue by table", 2: "Table 4 shows revenue by region.", 3: "4."})
+    hits = _ask(built, Query(text="Table 4")).hits
+    assert [(hit.block_id, hit.channel_ranks) for hit in hits] == [(2, {"lexical": 1})], (
+        "the words as one phrase, so neither `table` nor `4` alone matches"
+    )
+
+
+def test_a_cite_that_resolves_stays_lifted_and_is_not_searched(built: Built) -> None:
+    """The plan's rule where the lookup succeeds: a resolved cite is identity's, and its text adds
+    no lexical terms, so `d1#3` ranks nothing else -- not even block 2, which says `d1 3`."""
+    _seed(built, texts={1: "Termination", 2: "See annex d1 3 below.", 3: "Fees are payable."})
+    retrieval = ex.execute(_reader(built), Query(text="d1#3"), RetrievalPolicy())
+    (hit,) = retrieval.response.hits
+    assert (hit.block_id, hit.identity_grade) == (3, "cite_exact")
+    assert "lexical" not in hit.channel_ranks
+
+
 # ---------------------------------------------------------------------------------------------
 # the DSL fields onto Filters (D516)
 # ---------------------------------------------------------------------------------------------
