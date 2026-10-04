@@ -18,6 +18,7 @@ import base64
 import json
 import os
 import shutil
+import sqlite3  # noqa: TID251 -- the assertion reads the store the add wrote.
 import sys
 from pathlib import Path
 from typing import Any
@@ -119,3 +120,29 @@ def test_one_worker_parses_two_drivers_documents_in_one_run(tmp_path: Path) -> N
     assert added.returncode == 0, added.stderr.decode("utf-8", "replace")
     lines = added.stdout.decode("utf-8").splitlines()
     assert lines[1].rstrip("\r") == "completed 2   pending 0   deadline_reached false", lines
+
+
+def test_documents_are_numbered_in_path_order_on_the_default_workers(tmp_path: Path) -> None:
+    """D654: `doc_ord` was the order parses settled in, and the PDF driver's worker and the office
+    driver's raced, so two adds of one folder printed different cites. The add now reserves each
+    document's number in path order before any parse settles. `deck.ppt` fails its parse
+    (`empty_result`) and keeps its number unused, so the gap at 1 is the reservation's mark."""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    for name in ("deck.ppt", "rich.docx", "sheet.xlsx"):
+        shutil.copy(OFFICE_FIXTURES / name, docs / name)
+    shutil.copy(OFFICE_FIXTURES.parent.parent / "omniweave-pdf" / "fixtures" / "gen02p.pdf",
+                docs / "report.pdf")  # fmt: skip
+    (tmp_path / "omniweave.toml").write_text(PROJECT, encoding="utf-8")
+    added = _ow(tmp_path, "add", "docs")
+    assert added.returncode == 0, added.stderr.decode("utf-8", "replace")
+    connection = sqlite3.connect(tmp_path / ".omniweave" / "index.owstore")
+    try:
+        rows = connection.execute("SELECT doc_ord, uri FROM doc ORDER BY doc_ord").fetchall()
+    finally:
+        connection.close()
+    assert [(ord_, uri.rsplit("/", 1)[-1]) for ord_, uri in rows] == [
+        (2, "report.pdf"),
+        (3, "rich.docx"),
+        (4, "sheet.xlsx"),
+    ]

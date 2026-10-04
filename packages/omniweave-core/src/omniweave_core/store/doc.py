@@ -664,6 +664,9 @@ class DocSink:
     * `shard_ord` -- 03:1058's `block_id := (shard_ord << 48) | sequence`; `0` at a single store.
     * `rebind_threshold` / `allow_unexplained` -- 03:1300's quarantine and its ONLY override.
       There is no `--force` anywhere in the framework (03:1302), and there is no `force` here.
+    * `doc_ord` -- the ordinal a first-sight document takes, which the caller reserved in
+      `unit_uri` order before any parse settled (D654). `None`, or a number another row already
+      holds, leaves the choice to SQLite's rowid. A document already in the store keeps its own.
     """
 
     __slots__ = (
@@ -672,6 +675,7 @@ class DocSink:
         "_cost_class",
         "_decision_id",
         "_doc",
+        "_doc_ord",
         "_driver_schema_v",
         "_ended",
         "_marked",
@@ -709,6 +713,7 @@ class DocSink:
         wait_ms: int = BATCH_WAIT_MS,
         rebind_threshold: float = DEFAULT_THRESHOLD,
         allow_unexplained: bool = False,
+        doc_ord: int | None = None,
     ) -> None:
         if not 0 <= shard_ord <= _MAX_SHARD_ORD:
             msg = (
@@ -730,6 +735,7 @@ class DocSink:
         self._wait_ms = wait_ms
         self._rebind_threshold = rebind_threshold
         self._allow_unexplained = allow_unexplained
+        self._doc_ord = doc_ord
         self._doc: _DocState | None = None
         self._page: _PageState | None = None
         self._minted: dict[BlockId, _Minted] = {}
@@ -1408,14 +1414,15 @@ class DocSink:
         }
         if row is None:
             cursor = connection.execute(
-                "INSERT INTO doc(doc_key, source_sha256, normalizer, uri, media_type, format, "
-                "format_evidence, source_bytes, gen, next_cite_n, status, page_count, "
+                "INSERT INTO doc(doc_ord, doc_key, source_sha256, normalizer, uri, media_type, "
+                "format, format_evidence, source_bytes, gen, next_cite_n, status, page_count, "
                 "model_version, declared, achieved, confidence, timings_ms, x) "
-                "VALUES(:doc_key, :source_sha256, :normalizer, :uri, :media_type, :format, "
-                ":format_evidence, :source_bytes, 0, 1, :status, :page_count, :model_version, "
-                ":declared, :achieved, '{}', '{}', :x)",
+                "VALUES(:doc_ord, :doc_key, :source_sha256, :normalizer, :uri, :media_type, "
+                ":format, :format_evidence, :source_bytes, 0, 1, :status, :page_count, "
+                ":model_version, :declared, :achieved, '{}', '{}', :x)",
                 facts
                 | {
+                    "doc_ord": self._free_ord(connection),
                     "doc_key": bytes(rec.doc_key),
                     "status": rec.status,
                     "page_count": rec.page_count,
@@ -1461,6 +1468,13 @@ class DocSink:
             declared=rec.declared,
             assets=assets,
         )
+
+    def _free_ord(self, connection: sqlite3.Connection) -> int | None:
+        """The reserved ordinal if no row holds it, else `None`: a NULL rowid is SQLite's pick."""
+        if self._doc_ord is None:
+            return None
+        held = connection.execute("SELECT 1 FROM doc WHERE doc_ord = ?", (self._doc_ord,))
+        return None if held.fetchone() else self._doc_ord
 
     # -- add_block's minting and validation ----------------------------------------------------
 

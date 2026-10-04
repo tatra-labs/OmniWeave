@@ -132,7 +132,13 @@ from omniweave.run.manifest import (
     RunTally,
     manifest_path,
 )
-from omniweave.run.operators.parse import ParseLedger, ParseOperator, ParseTally, is_parse
+from omniweave.run.operators.parse import (
+    Ordinals,
+    ParseLedger,
+    ParseOperator,
+    ParseTally,
+    is_parse,
+)
 from omniweave.run.routing import (
     RouteTally,
     max_parts_of,
@@ -735,7 +741,16 @@ def _hops(
         catalog_digest=inputs.catalog.catalog_digest,
     )
     tally = ParseTally()
-    executor = _Executors(thread, context, config=config, inputs=inputs, store=store, tally=tally)
+    ordinals = Ordinals()
+    executor = _Executors(
+        thread,
+        context,
+        config=config,
+        inputs=inputs,
+        store=store,
+        tally=tally,
+        ordinals=ordinals,
+    )
 
     def drain() -> sup.RunReport:
         return asyncio.run(
@@ -755,6 +770,9 @@ def _hops(
         routed = _route(thread, context, inputs=inputs, roots=roots, clock=clock)
         opened = book.stage(Stage.PLAN, opened)
         if _pending_parse(thread):
+            #  D654: every unit this run parses is routed now, so its document's ordinal is fixed
+            #  in path order before the first parse settles, on however many workers.
+            ordinals.reserve(thread)
             drain()
             book.stage(Stage.PARSE, opened)
     finally:
@@ -1184,11 +1202,14 @@ class _Executors:
         inputs: _RoutingInputs,
         store: Path,
         tally: ParseTally,
+        ordinals: Ordinals | None = None,
     ) -> None:
         self._identify_ledger = expand.IdentifyLedger()
         self._parse_ledger = ParseLedger()
         self._identify = _Identify(thread, self._identify_ledger)
-        self._parse = _ParseLazily(thread, ctx, config, inputs, store, self._parse_ledger, tally)
+        self._parse = _ParseLazily(
+            thread, ctx, config, inputs, store, self._parse_ledger, tally, ordinals
+        )
 
     def __call__(self, batch: Batch, /) -> Sequence[StepResult]:
         operator = batch.rows[0].operator
@@ -1233,7 +1254,7 @@ class _ParseLazily:
 
     def _built(self) -> ParseOperator:
         if self._operator is None:
-            thread, ctx, config, inputs, store, ledger, tally = self._args
+            thread, ctx, config, inputs, store, ledger, tally, ordinals = self._args
             cas_root = Path(cast("Path", store)).parent / CAS_DIR
             cas_root.mkdir(parents=True, exist_ok=True)
             from omniweave_core.blobs import BlobStore  # noqa: PLC0415 -- the parse path only
@@ -1248,6 +1269,7 @@ class _ParseLazily:
                 ledger=ledger,  # type: ignore[arg-type]
                 tally=tally,  # type: ignore[arg-type]
                 passwords=cast("_RoutingInputs", inputs).passwords,
+                ordinals=ordinals,  # type: ignore[arg-type]
             )
         return self._operator
 
