@@ -87,8 +87,8 @@ def test_the_cite_carries_its_own_doc_ord() -> None:
 
 def test_the_typographic_marks_become_separators() -> None:
     """07:1316: *"`unicode61` drops them anyway; keeping them creates empty tokens"*."""
-    made = ch.sanitize("a ¶ b — c † d")
-    assert made.terms == ("a", "b", "c", "d")
+    made = ch.sanitize("w ¶ x — y † z")
+    assert made.terms == ("w", "x", "y", "z")
 
 
 def test_a_soft_hyphen_and_a_line_broken_word_fold_to_the_unbroken_form() -> None:
@@ -98,12 +98,24 @@ def test_a_soft_hyphen_and_a_line_broken_word_fold_to_the_unbroken_form() -> Non
 
 
 def test_fts_syntax_is_stripped_and_bare_operators_go_with_it() -> None:
-    """07:1318: *"a user cannot inject FTS5 syntax"*. Lower-case `and` is a word and stays."""
+    """07:1318: *"a user cannot inject FTS5 syntax"*. Lower-case `and` is a word, not an operator:
+    alone it is searched, and beside other words it is a stopword (D649)."""
     made = ch.sanitize('lease AND rent NOT "quoted phrase" (grouped) col^2')
     assert "AND" not in made.terms
     assert "NOT" not in made.terms
     assert made.terms == ("lease", "rent", "quoted", "phrase", "grouped", "col", "2")
-    assert "and" in ch.sanitize("salt and pepper").terms
+    assert ch.sanitize("and").terms == ("and",)
+    assert ch.sanitize("salt and pepper").terms == ("salt", "pepper")
+
+
+def test_stopwords_are_dropped_when_another_term_remains() -> None:
+    """D649. `_fts_match` ORs every term, so a stopword earns BM25 weight from every block that has
+    one: *"when does the launch move"* ranked a block matching only *the* and *does* above the one
+    that answers it. Casefolded; a query of nothing else keeps them all."""
+    assert ch.sanitize("When does the launch MOVE").terms == ("launch", "MOVE")
+    assert ch.sanitize("to be or not to be").terms == ("to", "be", "or", "not", "to", "be")
+    assert ch.sanitize("The Who").terms == ("The", "Who")
+    assert "the" in ch.STOPWORDS and "launch" not in ch.STOPWORDS
 
 
 def test_the_four_printed_shapes_are_lifted_and_three_of_them_carry_an_akind() -> None:
