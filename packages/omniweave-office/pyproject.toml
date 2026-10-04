@@ -8,7 +8,7 @@ build-backend = "hatchling.build"
 [project]
 name = "omniweave-office"
 version = "0.1.0"                     # == RELEASE. G5.
-description = "parse.office.anydoc — DOCX/ODT/RTF/EPUB/CSV/TXT/MD/HTML decode across seam S1."
+description = "parse.office.anydoc and parse.text.builtin: the office family over anydoc, and ten text formats over the standard library."
 license = "Apache-2.0"
 requires-python = ">=3.11"           # NO upper bound. charter.md D1.
 dependencies = [
@@ -17,6 +17,8 @@ dependencies = [
   "firecrawl-anydoc == 0.2.4",
   # Exact pin: single-vendor, `pdf-inspector = "1.14.2"` unaudited. MIT source
   # vendored at vendor/anydoc/. Fork trigger: vendor/anydoc/FORK-TRIGGER.md.
+  "defusedxml >=0.7.1",
+  # parse.text.builtin's XML and SVG readers: no DTD, no entity, no external reference (14:520).
 ]
 
 # THE ENTRY POINT. A DOTTED PACKAGE, no colon and no slash (11-repo-layout.md section 1.5): it
@@ -25,6 +27,9 @@ dependencies = [
 # different job -- `activate()` resolves that one, and only after the card has been read and filtered.
 [project.entry-points."omniweave.drivers"]
 "parse.office.anydoc" = "omniweave_office"
+# The second driver in this distribution (04 section 10.1, ADR-3 D3.1): its own package, because
+# the entry point names the package that holds `driver.toml`, and a package holds one.
+"parse.text.builtin" = "omniweave_office.text"
 
 # THE SECOND GROUP, AND IT IS NOT A SECOND DRIVER. 05-ingest-and-routing.md:2044: a signal provider
 # "is **not** a `DriverCard` (no capability floors, never in `resolve()`) and is selected by name,

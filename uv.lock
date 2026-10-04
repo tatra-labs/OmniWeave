@@ -1703,12 +1703,14 @@ name = "omniweave-office"
 version = "0.1.0"
 source = { editable = "packages/omniweave-office" }
 dependencies = [
+    { name = "defusedxml" },
     { name = "firecrawl-anydoc" },
     { name = "omniweave-ports" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "defusedxml", specifier = ">=0.7.1" },
     { name = "firecrawl-anydoc", specifier = "==0.2.4" },
     { name = "omniweave-ports", editable = "packages/omniweave-ports" },
 ]

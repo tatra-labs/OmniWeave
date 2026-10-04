@@ -62,9 +62,9 @@ CLASSES: Final[tuple[FormatClass, ...]] = (
     FormatClass("Office containers", ("decode.office-native",)),
     FormatClass("Born-digital PDF", ("decode.pdf-text-layer",)),
     FormatClass("Scanned PDF, page images", ("decode.no-text-layer", "decode.raster-image")),
-    #  `decode.text-native` routes `html` and `xhtml` to `parse.text.builtin`, which is enabled
-    #  and has no card anywhere in the tree (04:2490 lists it as shipped; D611). The email tokens
-    #  are routed to `decode.container-expanded`, which expands a container and parses nothing.
+    #  `decode.text-native` routes `html` and `xhtml` to `parse.text.builtin`, which ships in
+    #  `omniweave-office` since D646, so HTML is covered and the class's named-out half is email:
+    #  `decode.container-expanded` expands a container and parses nothing.
     FormatClass(
         "HTML, email",
         ("decode.text-native", "decode.container-expanded"),
@@ -79,10 +79,13 @@ CLASSES: Final[tuple[FormatClass, ...]] = (
 """Section 2.1's five format classes, in its order."""
 
 CLASS_TOKENS: Final[dict[str, frozenset[str]]] = {
-    "HTML, email": frozenset({"html", "xhtml", "eml", "msg", "mbox"}),
+    "HTML, email": frozenset({"eml", "msg", "mbox"}),
 }
-"""A named-out class whose rules also route formats outside it: only these tokens are the class's.
-`decode.text-native` also routes `md`, `txt` and eight more, which 00 section 2.1 does not name."""
+"""A named-out class whose rules also route formats outside it: only these tokens are named out.
+
+`HTML, email` is half covered since D646: 00 section 2.1's row now names `parse.text.builtin` for
+HTML and XHTML, and V-Q6 for email. So the named-out tokens are email's, and
+`test_html_is_served_by_the_text_driver` holds the covered half."""
 
 NOT_FORMAT_CLASSES: Final[dict[str, str]] = {
     "Locators": (
@@ -119,7 +122,9 @@ def _tokens(rule: dict[str, object]) -> frozenset[str]:
 
 def _roster(repo_root: Path) -> dict[str, DriverCard]:
     cards: dict[str, DriverCard] = {}
-    for path in sorted(repo_root.glob("packages/*/src/*/driver.toml")):
+    for path in sorted(repo_root.glob("packages/*/src/**/driver.toml")):
+        if "omniweave-conform" in path.parts:  # the conformance kit's template, not a driver
+            continue
         card = load_card(path.read_bytes(), origin="driver_path", source=str(path))
         assert isinstance(card, DriverCard), path
         cards[card.identity.id] = card
@@ -166,6 +171,17 @@ def test_a_named_out_class_is_still_served_by_no_enabled_card(
     for driver in enabled & roster.keys():
         served = tokens & _served(roster[driver])
         assert not served, f"{driver} serves {sorted(served)}: {klass.name} is no longer named out"
+
+
+def test_html_is_served_by_the_text_driver(repo_root: Path, enabled: frozenset[str]) -> None:
+    """D646: the covered half of `HTML, email`. `decode.text-native` routes `html` and `xhtml` to
+    `parse.text.builtin`, which is enabled and whose card serves both."""
+    then = _rules(repo_root)["decode.text-native"]["then"]
+    assert isinstance(then, dict)
+    driver = str(then["driver"])
+    assert driver == "parse.text.builtin"
+    assert driver in enabled
+    assert {"html", "xhtml"} <= _served(_roster(repo_root)[driver])
 
 
 def test_audio_and_video_are_refused_at_gate_rather_than_parsed(repo_root: Path) -> None:

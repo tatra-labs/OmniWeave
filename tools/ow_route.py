@@ -156,8 +156,10 @@ def installed_cards() -> dict[str, DriverCard]:
     otherwise would turn a refusal into a lint pass.
     """
     cards: dict[str, DriverCard] = {}
-    for path in sorted(PACKAGES.glob(f"*/src/*/{_CARD}")):
-        if "conform" in path.parts:  # the conformance kit's template, not a driver
+    #  `**`, not `*`: a distribution may ship two drivers, each card in its own package, and
+    #  `parse.text.builtin`'s is `omniweave_office/text/driver.toml` (D646).
+    for path in sorted(PACKAGES.glob(f"*/src/**/{_CARD}")):
+        if "omniweave-conform" in path.parts:  # the conformance kit's template, not a driver
             continue
         loaded = load_card(path.read_bytes(), origin="entry_point", source=str(path))
         identity = getattr(loaded, "identity", None)

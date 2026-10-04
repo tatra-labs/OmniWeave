@@ -70,8 +70,9 @@ src = ["packages"]
 # fetch the same path from the upstream commit and get a byte match. A formatter or an autofix
 # rewriting a line there would break that manifest, fail G12, and change code this repository does
 # not own. Excluded from linting for the same reason it is excluded from `packages/` -- it is not
-# ours to style.
-exclude = ["vendor"]
+# ours to style. A driver's conformance fixtures are excluded for the same reason: their bytes are
+# ground truth pinned by `EXPECTED.sha256`, and one is a notebook ruff would otherwise lint.
+exclude = ["vendor", "packages/*/fixtures"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "DTZ", "T20", "SIM",
