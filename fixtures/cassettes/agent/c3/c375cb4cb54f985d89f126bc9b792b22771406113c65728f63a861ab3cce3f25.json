@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "cb03bdeb991a8825c13b1e71f9385d9d0a07c024f247a8733c008617de833011",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "c375cb4cb54f985d89f126bc9b792b22771406113c65728f63a861ab3cce3f25",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "content",
+          "pattern": "favored nation|favoured nation|MFN|most-favored|not offer.*lower price|lower price to any other"
+        },
+        "id": "toolu_01CPTBoaBCD9gXV1a2YqoxEr",
+        "name": "Grep"
+      }
+    ]
+  }
+}

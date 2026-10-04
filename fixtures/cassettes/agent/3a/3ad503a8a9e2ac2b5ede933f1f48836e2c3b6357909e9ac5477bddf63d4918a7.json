@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "ddc1c22631560978fc67aec004081315fde6b8ba32cb112533384b3aab324ebc",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "3ad503a8a9e2ac2b5ede933f1f48836e2c3b6357909e9ac5477bddf63d4918a7",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND. Searched for \"policy number of pet insurance\" in corpus `docs`; the response indicates a low confidence match for car insurance policy number (`CP-7781-2024` in `car-policy-2024.pdf`), but no pet insurance policy number was found in the indexed documents. The `ow_query` result shows evidence for car policies, home policies, and receipts but none explicitly reference pet insurance policy numbers.",
+    "tool_uses": []
+  }
+}

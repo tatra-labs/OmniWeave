@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "8345fa2a878993319db256da0ae9d1e0cc368e7a86e3dd862af8732541c4a035",
+    "sampling": {
+      "allow_tools": false,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "71a4e98208967d032a2053116c77d4368bde09140407f4ea4283e092a515a644",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The headcount-2024.xlsx file exists but cannot be opened by the document reader (error: \"not a readable workbook container\" — the file appears corrupted/malformed). Let me check other documents (board decks) that might cite the headcount total.",
+    "tool_uses": []
+  }
+}

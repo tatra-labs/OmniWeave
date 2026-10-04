@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "471f742cc70f0fccc430861012b931fa98d496e0c8d777e9773af1a8d5fe8c0e",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "741822c0348b599c47a57db5aa793e5b1f04edb57af51ece143e3670f74fde21",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND.\n\nWhat I searched:\n- Grepped the docs folder for: \"pet insurance|pet policy|policy number|Policy Number|pet insurer|pet\" (case-insensitive).\n- Grepped for the word \"pet\" (pattern \"\\bpet\\b\") and for \"insurance\" (case-insensitive).\n\nFiles inspected:\n- docs/insurance/car-policy-2024.pdf — read page 1 (contains \"Policy number: CP-7781-2024\" for car insurance, not pet).\n- docs/insurance/home-policy-2024.pdf — read pages 1–3 (home insurance content; no pet policy number).\n\nNo document in the folder contains a pet insurance policy number.",
+    "tool_uses": []
+  }
+}

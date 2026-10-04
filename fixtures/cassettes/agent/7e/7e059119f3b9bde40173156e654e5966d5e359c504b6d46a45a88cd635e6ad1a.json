@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "eea86e871c023f94aa3d2e4fc613931d07a8c389a7e7e021e754135b60e93990",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "7e059119f3b9bde40173156e654e5966d5e359c504b6d46a45a88cd635e6ad1a",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "LDL cholesterol result 2024 lab results"
+        },
+        "id": "toolu_01FmSNJyo1upee92LciJ516v",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

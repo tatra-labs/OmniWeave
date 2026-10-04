@@ -129,3 +129,19 @@ def test_what_the_tools_record_is_what_the_harness_counts_as_a_reread(docs: Path
     assert [h.reads_source(call, indexed) for call in reads] == [True, True, True]
     listing = _call(tools, "Bash", command="ls").call
     assert h.reads_source(listing, indexed) is False
+
+
+def test_a_long_listing_is_cut_at_the_same_line_however_long_the_root_is(tmp_path: Path) -> None:
+    """D653: the shell's output cap counts the root as one character, so a listing of the same
+    corpus is cut at the same line under a 20-character folder and a 130-character one."""
+    cut: list[list[str]] = []
+    for parent in (tmp_path / "s", tmp_path / ("a-much-longer-scratch-folder-name" * 3)):
+        root = parent / "docs"
+        for i in range(1200):
+            (root / f"folder-{i // 100:02d}").mkdir(parents=True, exist_ok=True)
+            (root / f"folder-{i // 100:02d}" / f"document-{i:04d}.txt").write_text("x")
+        result = _call(HostTools(root), "Bash", command="find .").result
+        assert result.text.endswith("... output truncated at 30000 characters")
+        prefix = HostTools(root).root.as_posix()
+        cut.append([line.replace(prefix, "{root}") for line in result.text.splitlines()])
+    assert cut[0] == cut[1]

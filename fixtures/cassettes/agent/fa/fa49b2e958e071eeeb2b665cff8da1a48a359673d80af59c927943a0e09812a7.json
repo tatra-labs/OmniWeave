@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "df875f8a6a3adea78b4279682aeb47c32b3743755e5258013b338ac835e853e7",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "fa49b2e958e071eeeb2b665cff8da1a48a359673d80af59c927943a0e09812a7",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "policy number of pet insurance"
+        },
+        "id": "call_84zggai7",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

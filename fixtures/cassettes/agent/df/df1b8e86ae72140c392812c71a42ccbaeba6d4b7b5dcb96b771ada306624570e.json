@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "88c88b8c14b3175631af83375df2e48462846b59ffeca7b8e2551e2123cdf8ae",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "df1b8e86ae72140c392812c71a42ccbaeba6d4b7b5dcb96b771ada306624570e",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "pet insurance policy number"
+        },
+        "id": "toolu_01LXsyE9SaJAtWvUFjVv8cHs",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

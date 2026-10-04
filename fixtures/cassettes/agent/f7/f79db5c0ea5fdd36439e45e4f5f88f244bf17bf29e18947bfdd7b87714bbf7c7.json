@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "d74a7ef7aa2babd2d0893e274b871c43368b259755428fe39ba5d841dc349591",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "f79db5c0ea5fdd36439e45e4f5f88f244bf17bf29e18947bfdd7b87714bbf7c7",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND. Searched for \"2024 headcount report\" in corpus \"docs\" and found a gap: `{bench-cache|casefold}/data_room-full-chaos-f3361fcb8c54/project/docs/hr/headcount-2024.xlsx` is corrupted (ZIP malformed). The document is not indexed.",
+    "tool_uses": []
+  }
+}

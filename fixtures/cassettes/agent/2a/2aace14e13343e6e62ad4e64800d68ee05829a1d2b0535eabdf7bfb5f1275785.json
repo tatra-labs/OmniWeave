@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "4af831b51dc6ca08f369a2eee40401cfde7c71075ff9d3352a9b907c78b0a59e",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "2aace14e13343e6e62ad4e64800d68ee05829a1d2b0535eabdf7bfb5f1275785",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "find . -iname \"*pet*\""
+        },
+        "id": "toolu_01EMcudviNUaKvfReunTYM1d",
+        "name": "Bash"
+      },
+      {
+        "arguments": {
+          "query": "pet insurance"
+        },
+        "id": "toolu_01Wbe7AYrgvkJooJHY6AcAgq",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

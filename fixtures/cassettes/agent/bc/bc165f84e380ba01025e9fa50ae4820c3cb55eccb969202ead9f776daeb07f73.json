@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "6baf9e793a8978e49b1eb631b3ff8b6c3a3cb802a2660eb6e889a564c08bb55b",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "bc165f84e380ba01025e9fa50ae4820c3cb55eccb969202ead9f776daeb07f73",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND. Searched for \"section 2.1\" in project/docs and found no matches; ls command showed only \"docs\" directory.",
+    "tool_uses": []
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "9f07796706401383b924146ff9e073a4ac14eb934d3004f22d29fed9d665e1da",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "eb7424efc491f611394c1f615999d8b59806b17c32d17f11a5cbeb06373798bd",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The Office Lease - Lisbon (lease-lisbon.docx) — lease term expires 30 June 2027. Source: leases/lease-lisbon.docx, page 1.",
+    "tool_uses": []
+  }
+}

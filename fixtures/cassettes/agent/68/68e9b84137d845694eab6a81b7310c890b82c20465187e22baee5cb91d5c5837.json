@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "4700c17c5b677efa7853ea3acc21d82aa8b919237383f34abe1269f0ec7b67aa",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "68e9b84137d845694eab6a81b7310c890b82c20465187e22baee5cb91d5c5837",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "Oakridge Property tenancy renewal letter rent paragraph 3"
+        },
+        "id": "toolu_01YPoqHz18Skp3di3Cnthm8B",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

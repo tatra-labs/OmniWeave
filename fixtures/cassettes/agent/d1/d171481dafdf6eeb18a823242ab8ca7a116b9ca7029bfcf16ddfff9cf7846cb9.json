@@ -1,0 +1,42 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "35d882c614617063c8d08f697fb9addb4c44de718f2107f7cea86c4e8f6368e4",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "d171481dafdf6eeb18a823242ab8ca7a116b9ca7029bfcf16ddfff9cf7846cb9",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "find . -iname \"*master*service*\" -o -iname \"*MSA*\""
+        },
+        "id": "toolu_01PzWvFa51LNLVdmZH8jGugW",
+        "name": "Bash"
+      },
+      {
+        "arguments": {
+          "output_mode": "files_with_matches",
+          "pattern": "9\\.1"
+        },
+        "id": "toolu_017dXqJyaXZJSqu5QXhNebGu",
+        "name": "Grep"
+      }
+    ]
+  }
+}

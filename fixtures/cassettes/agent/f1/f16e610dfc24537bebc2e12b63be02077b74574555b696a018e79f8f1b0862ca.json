@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "29586ab5366df3d952359e104810cd97db081a865bf734fa2b46817d72fc0ebe",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "f16e610dfc24537bebc2e12b63be02077b74574555b696a018e79f8f1b0862ca",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "docs",
+          "query": "\"passport renewal\" \"application\" submitted OR \"date submitted\" OR \"submitted on\""
+        },
+        "id": "call_VoMcSLweQ48MCuex07xVt25n",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

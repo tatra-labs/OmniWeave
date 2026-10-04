@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "128c42fdaaa37541de52ea02afde654532bc2007f6fc54d2eb267ac6686596d1",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "c3fcdc9c962e3cd16629c5b0159dde2d681bb608745663f7ac006963abf21419",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/personal_archive-full-9fc3b7379202/project/docs/letters/letter-001.docx"
+        },
+        "id": "toolu_0196NKxF4XoaV3rBpU2n5BNi",
+        "name": "Read"
+      }
+    ]
+  }
+}

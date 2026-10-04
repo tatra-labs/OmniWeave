@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "9248948e5bc75cfa6f19ad58ea9e95a6bdb2e2726790f34050ea44873b1affae",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "852e9685575ad5cd1307b85072c53ee129a89984039356b4a10b5712895c18b1",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The file headcount-2024.xlsx is confirmed corrupt (not a valid zip/workbook container) by both the indexer and the direct reader. There is only one such file in the docs folder (docs/hr/headcount-2024.xlsx), and no other document in the corpus contains a total headcount figure.\n\nNOT FOUND — The only headcount report, `docs/hr/headcount-2024.xlsx`, cannot be read: it is reported as corrupt (not a valid ZIP/workbook container) by both the omniweave indexer and the file reader. I searched the indexed corpus (ow_query) for \"2024 headcount report total headcount\" and found no other document containing a total headcount figure; other hits (board deck, policies, audit report) only mention \"headcount\" in unrelated policy text, not a total figure. No alternate copy of the headcount report exists elsewhere in the docs folder.",
+    "tool_uses": []
+  }
+}

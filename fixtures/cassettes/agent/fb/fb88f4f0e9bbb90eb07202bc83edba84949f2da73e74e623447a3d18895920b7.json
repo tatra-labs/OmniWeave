@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "42cdec23568bf2640666c3f64f9e887cda949dbf554b7cce10009b4993733a7b",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "fb88f4f0e9bbb90eb07202bc83edba84949f2da73e74e623447a3d18895920b7",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND: Searched for \"When was the passport renewal application submitted?\" in corpus `docs` but no passport-related evidence found in indexed documents. The closest reference is `oakridge-renewal-2024.docx` (June 2024 tenancy renewal), not passport.",
+    "tool_uses": []
+  }
+}

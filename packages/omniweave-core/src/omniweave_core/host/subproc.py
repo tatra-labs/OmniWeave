@@ -3599,6 +3599,10 @@ class WorkerPool:
         if existing is not None and not existing[0].stopped:
             existing[0].touch()
             return existing[0]
+        if existing is not None:
+            #  D653: a stopped worker is being replaced, not added to; counting it against the cap
+            #  refused its own successor until the next run.
+            del self._workers[key]
         cap = self._settings.max_workers.get(cost_class)
         if cap is None:
             raise DriverHostError(
@@ -3620,6 +3624,25 @@ class WorkerPool:
             )
         self._workers[key] = (worker, cost_class)
         return worker
+
+    def full(self, cost_class: str) -> bool:
+        """Whether `cost_class` holds `max_workers` workers: the next new key would be refused."""
+        cap = self._settings.max_workers.get(cost_class)
+        return cap is not None and self.live_count(cost_class) >= cap
+
+    def idle_order(self, cost_class: str) -> tuple[WorkerKey, ...]:
+        """`cost_class`'s keys, least recently used first: the order a full class gives one up in.
+        Which of them is in use is the caller's to know (D653)."""
+        keys = [key for key, (_worker, klass) in self._workers.items() if klass == cost_class]
+        return tuple(sorted(keys, key=lambda key: self._workers[key][0].last_used_ms))
+
+    def retire(self, key: WorkerKey) -> bool:
+        """Stop the worker for `key` and free its place. Only for a worker nobody is calling."""
+        entry = self._workers.pop(key, None)
+        if entry is None:
+            return False
+        entry[0].stop()
+        return True
 
     def note_crash(self, driver_id: str) -> bool:
         """Record one crash against the DRIVER. Returns whether it is now quarantined.

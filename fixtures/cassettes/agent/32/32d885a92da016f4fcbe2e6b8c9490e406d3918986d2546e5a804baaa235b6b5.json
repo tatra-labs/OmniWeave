@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "fb6544f96dfdec7b090ad2d3d69c3a50298dd13640a5a75de8edc5dac35f160b",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "32d885a92da016f4fcbe2e6b8c9490e406d3918986d2546e5a804baaa235b6b5",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "There is no board deck or financial document specifically for Q4 2024 in this data room — the only quarterly revenue figure present is for Q3 2024, not Q4.\n\n**NOT FOUND.** I searched the indexed corpus (`ow_query` for \"Q4 2024 revenue\" and \"fourth quarter 2024 revenue results\") and listed all files under the project docs folder. The only revenue figure present is **Q3 2024 revenue: $18.4 million**, found in `board-deck-q3-2024.pptx` (p.1, board slide). There is no board deck, budget file, or other document covering Q4 2024 results — the board decks only go up to Q3 2024, and other numbered decks (deck-004 through deck-119) are not dated/labeled as Q4 2024. No document in the corpus reports Q4 2024 revenue.",
+    "tool_uses": []
+  }
+}

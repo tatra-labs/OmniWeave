@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "168e908dbcc0275d1236e2cde08c700244f16545a1d0426170034859ad90ac2a",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "c45686eea5b78b297c699a089109b0c959682e482c580563fb8690864841c9f6",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "pleadings/complaint.pdf"
+        },
+        "id": "toolu_018ZV97zteLp6SS3kx7jhLds",
+        "name": "Read"
+      }
+    ]
+  }
+}

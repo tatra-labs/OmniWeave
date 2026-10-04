@@ -1,0 +1,44 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "37d871e081c1b51c310a1d629a62b491d20657d52a442b7c2c073470d0576d4b",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "ef5156f7d1efb1b7ddefc81e540e81b3c9e1b7b0749f397f43eacc5828129276",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "MFN most favored nation clause price parity supplier shall not offer lower price to any other customer"
+        },
+        "id": "toolu_01RDrzbUc7rY7iX8mxM4mrJ3",
+        "name": "mcp__omniweave__ow_query"
+      },
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "files_with_matches",
+          "path": "{bench-cache}/data_room-full-8177b5d52e7c/project/docs",
+          "pattern": "most.favo(u)?red nation|MFN"
+        },
+        "id": "toolu_01TiW1M5RBoMkqCPeqiSZJ6i",
+        "name": "Grep"
+      }
+    ]
+  }
+}

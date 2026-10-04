@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "5fec2898d59078d8d3578b8498d1c6438efe3d2de36422bfc5f60c77adb1eea2",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "c45a48ff46e65d201393f074d4f0be2f6cde68cd688267600fe426a11a161022",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The relevant file, `medical/lab-results-2024.pdf`, is marked as corrupt/malformed (missing `%%EOF`) and could not be parsed by the index. Let me try to read it directly or force ingestion.",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "medical/lab-results-2024.pdf"
+        },
+        "id": "toolu_013WZcCV8bMqNuYN4X5JkHUn",
+        "name": "Read"
+      },
+      {
+        "arguments": {
+          "source": "medical/lab-results-2024.pdf"
+        },
+        "id": "toolu_01AGwCKbjtXs8o9U3ugmZZ8x",
+        "name": "mcp__omniweave__ow_add"
+      }
+    ]
+  }
+}

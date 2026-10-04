@@ -1,0 +1,42 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "965fa54a59e32b54282bacc5b7b7b2dcc646323050f695eedeefbcfc63bb78d3",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "c084a462318a38ffbc5e35060d99c795f9781649b9aa22a147324873f6f005dc",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "find . -iname \"*oakridge*\""
+        },
+        "id": "toolu_01Ln6ZZnLBGVnghmJDF5dxFP",
+        "name": "Bash"
+      },
+      {
+        "arguments": {
+          "output_mode": "files_with_matches",
+          "pattern": "Oakridge"
+        },
+        "id": "toolu_018djZc326s5riRhhUSsrBGd",
+        "name": "Grep"
+      }
+    ]
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "b0814c1c862136192441c15a509cb6bfa01d1863e4d45dccd69e9c536d24a8ec",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "2fee46514e24bb2f202924fdd358ae93d12935c3a48c66dfb91b5a3c65f3118b",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "detail": "list"
+        },
+        "id": "call_suhnen1k",
+        "name": "mcp__omniweave__ow_corpora"
+      }
+    ]
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "30a89d3f86895daa78d129f9798f8ff8e96d2449881551383f9a4db0c7b8ee29",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "42351eea0eba2b7390de8107ea8c4e2631869c8afdd940c7d0b9d0c396b135fd",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "docs",
+          "query": "What refund does the 2023 tax summary show?"
+        },
+        "id": "call_t7ty4xwr",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}
