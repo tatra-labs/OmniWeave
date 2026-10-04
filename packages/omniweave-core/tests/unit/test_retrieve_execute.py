@@ -288,6 +288,21 @@ def test_a_reference_whose_anchor_is_missing_is_searched_after_all(built: Built)
     )
 
 
+def test_a_question_s_stopwords_do_not_outrank_its_content_words(built: Built) -> None:
+    """D649: the probe's case. The block matching only *the* and *does* ranked first, and the one
+    that answers the question second."""
+    _seed(
+        built,
+        texts={
+            1: "Page the secondary if the primary does not answer.",
+            2: "The launch moves to April 14.",
+            3: "Fees are payable monthly.",
+        },
+    )
+    hits = _ask(built, Query(text="when does the launch move")).hits
+    assert [hit.block_id for hit in hits] == [2]
+
+
 def test_a_cite_that_resolves_stays_lifted_and_is_not_searched(built: Built) -> None:
     """The plan's rule where the lookup succeeds: a resolved cite is identity's, and its text adds
     no lexical terms, so `d1#3` ranks nothing else -- not even block 2, which says `d1 3`."""

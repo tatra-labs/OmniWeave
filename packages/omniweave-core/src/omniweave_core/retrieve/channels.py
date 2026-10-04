@@ -67,6 +67,7 @@ __all__ = [
     "FTS_SYNTAX",
     "IDENTITY_LADDER",
     "SPINE_DECAY",
+    "STOPWORDS",
     "TO_SPACE",
     "W_BODY",
     "W_HEAD",
@@ -242,7 +243,7 @@ def sanitize(text: str) -> Sanitized:
             continue
         kept.append(token)
     refs, residue = _lift_refs(" ".join(kept), dropped)
-    terms = _terms(residue)
+    terms = _content(_terms(residue))
     if len(terms) > MAX_QUERY_TERMS:
         dropped.extend(terms[MAX_QUERY_TERMS:])
         terms = terms[:MAX_QUERY_TERMS]
@@ -296,6 +297,38 @@ def _lift_refs(text: str, dropped: list[str]) -> tuple[tuple[tuple[str, str], ..
 def _is_ident(token: str) -> bool:
     """A cite, an addr or a document URI -- the identity ladder's three tier-50 lookups."""
     return bool(_CITE.match(token) or _ADDR.match(token) or _URI.match(token))
+
+
+STOPWORDS: Final[frozenset[str]] = frozenset(
+    {
+        # Lucene's English list (EnglishAnalyzer.ENGLISH_STOP_WORDS_SET), all thirty-three.
+        "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "if", "in", "into", "is",
+        "it", "no", "not", "of", "on", "or", "such", "that", "the", "their", "then", "there",
+        "these", "they", "this", "to", "was", "will", "with",
+        # The words a question is made of, which an agent's queries are: auxiliaries, the wh-words
+        # and the pronouns.
+        "am", "been", "being", "can", "could", "did", "do", "does", "had", "has", "have", "how",
+        "i", "its", "me", "my", "our", "should", "so", "than", "us", "we", "were", "what", "when",
+        "where", "which", "who", "whom", "why", "would", "you", "your",
+    }
+)  # fmt: skip
+"""English words dropped from a query's FTS terms when another term remains. **D649.**
+
+`_fts_match` ORs every term (a 64-term conjunction matches nothing), so each term earns BM25 weight
+by itself, and a stopword earns it from every block that has one. A probe asked *"when does the
+launch move"*: the block that answers it was rank 2, under *"Page the secondary if the primary
+does not answer"*, which matches *the* twice and *does* once and nothing else. Dropped, the terms
+are *launch* and *move*, and the answer is rank 1.
+
+**Only when another term remains.** A query made of nothing else -- *"to be or not to be"*, *"The
+Who"* -- searches for all of them, because an empty term list is an `EMPTY` Channel and that is
+absence produced by a word list. Compared casefolded; a CJK bigram never matches."""
+
+
+def _content(terms: tuple[str, ...]) -> tuple[str, ...]:
+    """`terms` without `STOPWORDS`, unless that would leave none."""
+    kept = tuple(term for term in terms if term.casefold() not in STOPWORDS)
+    return kept or terms
 
 
 def plain_terms(text: str) -> tuple[str, ...]:
