@@ -983,6 +983,63 @@ def _fts_safe(term: str) -> str:
     return " ".join(out.split())
 
 
+_LIVE_CHUNK: Final[int] = 900
+"""Ids per `IN (...)` when `_live_top` checks a page: under SQLite's oldest variable limit, 999."""
+
+
+def _live_top(
+    connection: sqlite3.Connection, table: str, match: str, want: int, *, narrowed: bool
+) -> list[tuple[int, float]]:
+    """The best `want` rows of `table MATCH match` by bm25 that are live head blocks, and inside
+    `tmp_narrow` when `narrowed`. **D651.**
+
+    The FTS tables index every generation, staged ones included (0001_init.sql), so a row is a
+    candidate only once `ow_block_head` says it is live. Joining that view, and `tmp_narrow`,
+    inside the scoring statement made SQLite look up each MATCHING row before ranking: a six-word
+    question whose common words match 77,000 of 143,000 blocks spent 82 ms there, against
+    `channel_ms.lexical = 50`, and timed out on an idle machine.
+
+    So the statement ranks on the FTS table alone, and the check runs on the page it returns.
+    When the page holds fewer than `want` live rows and the table had more, the next page is four
+    times longer, and so on until one is short. The answer is the joined statement's: the same
+    ids in the same order on every store the bench prepares, at a third of the time.
+    """
+    fetch = want
+    while True:
+        rows = [
+            (int(rowid), float(score))
+            for rowid, score in connection.execute(
+                f"SELECT rowid, bm25({table}) FROM {table} "  # noqa: S608
+                f"WHERE {table} MATCH ? ORDER BY bm25({table}) LIMIT ?",
+                (match, fetch),
+            )
+        ]
+        live = _live_ids(connection, [rowid for rowid, _score in rows], narrowed=narrowed)
+        kept = [row for row in rows if row[0] in live]
+        if len(kept) >= want or len(rows) < fetch:
+            return kept[:want]
+        fetch *= 4
+
+
+def _live_ids(
+    connection: sqlite3.Connection, ids: Sequence[int], *, narrowed: bool
+) -> frozenset[int]:
+    """The members of `ids` that are live head blocks, and in `tmp_narrow` when `narrowed`."""
+    narrow_join = f" JOIN {_TMP_NARROW} tn ON tn.block_id = h.block_id" if narrowed else ""
+    found: set[int] = set()
+    for start in range(0, len(ids), _LIVE_CHUNK):
+        chunk = ids[start : start + _LIVE_CHUNK]
+        found.update(
+            int(block_id)
+            for (block_id,) in connection.execute(
+                f"SELECT h.block_id FROM ow_block_head h{narrow_join} "  # noqa: S608
+                f"WHERE h.block_id IN ({_placeholders(len(chunk))})",
+                chunk,
+            )
+        )
+    return frozenset(found)
+
+
 def _fts_match(terms: Sequence[str]) -> str:
     """The terms as ONE FTS5 expression: each a quoted literal, joined by `OR`.
 
@@ -2030,16 +2087,8 @@ class SqliteReader:
                 status="empty",
                 reason="no query term survived sanitisation, so there is nothing to match",
             )
-        narrow_join = ""
-        if n.kind == "set":
-            narrow_join = f" JOIN {_TMP_NARROW} tn ON tn.block_id = f.rowid"
         cap = max(spec.limit, 1)
-        rows = connection.execute(
-            f"SELECT f.rowid, bm25(block_fts) FROM block_fts f "  # noqa: S608
-            f"JOIN ow_block_head b ON b.block_id = f.rowid{narrow_join} "
-            f"WHERE block_fts MATCH ? ORDER BY bm25(block_fts) LIMIT ?",
-            (match, cap + 1),
-        ).fetchall()
+        rows = _live_top(connection, "block_fts", match, cap + 1, narrowed=n.kind == "set")
         if not rows:
             return ChannelOutcome(
                 name=spec.name,
@@ -2090,12 +2139,7 @@ class SqliteReader:
         """
         if not self._caps.has_head_fts:
             return {}
-        rows = connection.execute(
-            "SELECT f.rowid, bm25(head_fts) FROM head_fts f "
-            "JOIN ow_block_head b ON b.block_id = f.rowid "
-            "WHERE head_fts MATCH ? ORDER BY bm25(head_fts) LIMIT ?",
-            (match, cap),
-        ).fetchall()
+        rows = _live_top(connection, "head_fts", match, cap, narrowed=False)
         return _minmax({int(rowid): -float(score) for rowid, score in rows})
 
     @staticmethod
