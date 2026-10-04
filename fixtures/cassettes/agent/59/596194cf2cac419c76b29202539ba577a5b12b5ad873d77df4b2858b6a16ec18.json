@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "00ad585a289e3fb72e08c644dff128d856d9a9600193e6efd4a995483b998079",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "596194cf2cac419c76b29202539ba577a5b12b5ad873d77df4b2858b6a16ec18",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "detail": "list"
+        },
+        "id": "toolu_01NoeTTXxXFs9PgDT7kkG2Te",
+        "name": "mcp__omniweave__ow_corpora"
+      },
+      {
+        "arguments": {
+          "query": "Contoso data processing agreement customer data hosted country"
+        },
+        "id": "toolu_01NTysnJHuQd3AwLaVog3C4Z",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

@@ -123,6 +123,8 @@ def _serve(
             f"--profile must be one of {', '.join(PROFILES)}; got {profile!r}",
             fix=f"ow serve --mcp --profile {PROFILES[0]}",
         )
+    from omniweave_core.retrieve.plan import budget_of  # noqa: PLC0415 -- the serve path only
+
     entry = serve_entry(entries)
     explicit = Path(parsed.config) if parsed.config else None
     config = load(cwd=cwd, env=env, explicit=explicit)
@@ -136,6 +138,7 @@ def _serve(
         corpora=stores(config, decided.corpora, cwd=cwd),
         sources=stores(config, decided.corpora, cwd=cwd, field="source"),
         sessions=_sessions(cwd),
+        budget=budget_of(config),
     )
 
 

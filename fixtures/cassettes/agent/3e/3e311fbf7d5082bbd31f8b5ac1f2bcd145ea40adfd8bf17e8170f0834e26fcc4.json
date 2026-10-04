@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "2c442b98fd09f5fa32d31ed93fb7e9f82e19e8fa98f7113c28d0e2cc4dd6c577",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "3e311fbf7d5082bbd31f8b5ac1f2bcd145ea40adfd8bf17e8170f0834e26fcc4",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "What does section 5 of the home insurance policy say about flood damage?"
+        },
+        "id": "call_t534vjku",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

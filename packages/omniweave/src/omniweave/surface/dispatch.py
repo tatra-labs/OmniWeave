@@ -43,6 +43,8 @@ from omniweave_core.errors import CapabilityMissing, ConfigError
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
+    from omniweave_core.retrieve.types import QueryBudget
+
 __all__ = ["SERVE_DISTRIBUTION", "SERVE_GROUP", "SERVE_NAME", "Entry", "ServeEntry", "serve_entry"]
 
 SERVE_GROUP: Final[str] = "omniweave.serve"
@@ -64,6 +66,7 @@ class ServeEntry(Protocol):
         corpora: Mapping[str, str],
         sources: Mapping[str, str],
         sessions: str | None,
+        budget: QueryBudget | None = None,
     ) -> int:
         """Serve until the host closes the stream; return the process exit code."""
         ...

@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "7f629f15df2e859e6990d76e015e1e71f1688b8dd2285c6e386030290cc6cf1e",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "312c1c440c619616fc4d09c586b105c674946bc0495b4f083df4c74946081368",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "\"Either party may terminate this Agreement for convenience on ninety (90) days’ written notice to the other party.\" — Master Services Agreement (msa-2019.pdf), Section 4.2, page 5.",
+    "tool_uses": []
+  }
+}

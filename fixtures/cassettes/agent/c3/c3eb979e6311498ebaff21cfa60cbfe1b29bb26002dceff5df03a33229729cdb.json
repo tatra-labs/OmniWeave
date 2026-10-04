@@ -1,0 +1,37 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "001a992c4606a6b4e83d134c53f3e47207249fe138fe25749ec7eea2ee3d88ae",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "c3eb979e6311498ebaff21cfa60cbfe1b29bb26002dceff5df03a33229729cdb",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": false,
+          "output_mode": "files_with_matches",
+          "path": "{bench-cache}/personal_archive-full-7f308765d009/project/docs",
+          "pattern": "Harrow Savings"
+        },
+        "id": "call_Qepkw5ZlQdzFLOjTN0kOqbIE",
+        "name": "Grep"
+      }
+    ]
+  }
+}

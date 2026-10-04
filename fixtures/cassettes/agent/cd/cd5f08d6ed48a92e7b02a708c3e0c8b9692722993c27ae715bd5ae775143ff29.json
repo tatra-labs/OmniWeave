@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "4960c689fb101bc70276388cf73a0f768143d837d38dae212c4d4fd806cd7733",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "cd5f08d6ed48a92e7b02a708c3e0c8b9692722993c27ae715bd5ae775143ff29",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND (searched for \"Northwind non-disclosure agreement\" in PDFs within project/docs, no matches found)",
+    "tool_uses": []
+  }
+}

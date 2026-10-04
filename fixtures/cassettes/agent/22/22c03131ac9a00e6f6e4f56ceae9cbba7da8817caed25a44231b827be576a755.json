@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "2a8cadb46a1f29bcef7c1458e851ce2ba11b58d54ad97d3ffb098e03a9f06472",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "22c03131ac9a00e6f6e4f56ceae9cbba7da8817caed25a44231b827be576a755",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "Section 2.1 assignment of intellectual property to the Company"
+        },
+        "id": "toolu_01Y6pQtsiHEoqtXdKyaaeiFB",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

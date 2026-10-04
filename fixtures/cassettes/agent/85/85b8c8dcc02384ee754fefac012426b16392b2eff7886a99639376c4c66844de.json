@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "986cda49a304f47fcda1231946cf5c4d2dbc9aecda7773caccb7830f3d557d3f",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "85b8c8dcc02384ee754fefac012426b16392b2eff7886a99639376c4c66844de",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Section 5 states: \"Flood damage is excluded unless the Flood Extension endorsement is purchased.\"  \nDocument: home-policy-2024.pdf, page 2",
+    "tool_uses": []
+  }
+}

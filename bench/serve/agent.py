@@ -80,7 +80,7 @@ class ToolServer(Protocol):
 @dataclass(frozen=True, slots=True)
 class LoopSettings:
     model: str
-    temperature: float
+    temperature: float | None
     max_tokens: int
     tool_budget: int
 

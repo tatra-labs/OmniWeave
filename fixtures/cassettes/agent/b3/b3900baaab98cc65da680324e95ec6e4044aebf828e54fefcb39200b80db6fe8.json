@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "a9d97f4a7e2d138ba23ef9f3d26979ed50640d382e16a28d4696ad0e6787da8f",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "b3900baaab98cc65da680324e95ec6e4044aebf828e54fefcb39200b80db6fe8",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/legal_matter-full-60ac7477e28c/project/docs/contracts/msa-2019.pdf",
+          "limit": 200,
+          "offset": 401
+        },
+        "id": "call_cH7q2jDuGSVxemKJ5sjHdZtE",
+        "name": "Read"
+      }
+    ]
+  }
+}

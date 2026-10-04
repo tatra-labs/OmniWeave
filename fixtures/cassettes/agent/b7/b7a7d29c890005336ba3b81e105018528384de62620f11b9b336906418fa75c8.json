@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "67ae20e497b942a755a82588fdc529fca02b9f4ed325fdfe3bf1b96e15eaa051",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "b7a7d29c890005336ba3b81e105018528384de62620f11b9b336906418fa75c8",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The Lisbon office lease expires in 2027.\n\n**Source:** *lease-lisbon.docx* — \"The lease term expires on 30 June 2027.\" (Madrid's lease expires 31 March 2026, Porto's expires 31 October 2029, for comparison.)",
+    "tool_uses": []
+  }
+}

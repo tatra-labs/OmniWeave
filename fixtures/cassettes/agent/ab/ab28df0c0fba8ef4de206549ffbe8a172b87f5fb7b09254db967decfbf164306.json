@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "7732e25fdff10f4b8c66af4d89aa50849f7caaddf8e5ea254e7565f8c4b6e02a",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "ab28df0c0fba8ef4de206549ffbe8a172b87f5fb7b09254db967decfbf164306",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The 2023 audit report (audit-report-2023.pdf) is encrypted and could not be indexed or opened without a password — there is no plaintext password file entry for it, so its content, including the overall materiality figure, could not be retrieved.\n\nNOT FOUND — the file `docs/audit/audit-report-2023.pdf` is password-protected/encrypted and the indexing/read tools refused to open it (no working password on file). I searched the corpus (ow_query/ow_corpora) and it flagged the document as `OW_ENCRYPTED`/unreadable, with no other document in the data room containing the 2023 audit's materiality figure. Cannot confirm the overall materiality without decrypting that PDF.",
+    "tool_uses": []
+  }
+}

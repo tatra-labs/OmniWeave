@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "84c04f43b95eac8cc527851100eef6818b111b27c9fcc066969168f30c255a32",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "f07ac543ff6628b3df17a0f34078ceefd320ff46449538d631f407ffa39bfd93",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND.\n\nWhat I searched:\n- Ran corpus listing (ow_corpora) and queries (ow_query) for:\n  - \"Amendment No. 1\" \"Master Services Agreement\" \"service credit\"\n  - variations including the phrases \"service credit\" and \"Master Services Agreement\"\n\nWhat I found:\n- The likely source file is encrypted and could not be read:\n  {bench-cache}/legal_matter-full-encrypt-93638d4a804d/project/docs/contracts/amendment-1-2021.pdf — the index reported: \"refused as encrypted, so no document was written\" (needs a password to open).\n- I also searched the indexed msa-2019.pdf and other indexed PDFs but did not find the Amendment No. 1 text there.\n\nBecause amendment-1-2021.pdf is encrypted and not indexed/readable, I cannot locate or cite the service credit percentage. If you can provide the decrypted file or the password (or a readable copy), I can extract the exact percentage and page.",
+    "tool_uses": []
+  }
+}

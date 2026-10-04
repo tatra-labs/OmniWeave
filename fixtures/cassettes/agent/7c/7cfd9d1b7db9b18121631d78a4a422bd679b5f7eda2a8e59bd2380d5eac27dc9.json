@@ -1,0 +1,37 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "8a79dadd3c9605f16a820c746f968ec8727b00ae570ec56ff7169e030125ef04",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "7cfd9d1b7db9b18121631d78a4a422bd679b5f7eda2a8e59bd2380d5eac27dc9",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": false,
+          "output_mode": "files_with_matches",
+          "path": "project/docs",
+          "pattern": "Contoso"
+        },
+        "id": "call_u3qe00c3",
+        "name": "Grep"
+      }
+    ]
+  }
+}

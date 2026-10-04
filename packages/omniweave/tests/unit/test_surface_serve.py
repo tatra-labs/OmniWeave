@@ -31,6 +31,8 @@ from omniweave_serve.emission import MARKER_SUFFIX
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from omniweave_core.retrieve.types import QueryBudget
+
 HANDBOOK = '[corpora.handbook]\npath = ".omniweave/index.owstore"\n'
 
 
@@ -43,6 +45,7 @@ class Recorder:
     stores: list[tuple[str | None, dict[str, str]]] = field(default_factory=list)
     sessions: list[str | None] = field(default_factory=list)
     sources: list[dict[str, str]] = field(default_factory=list)
+    budgets: list[QueryBudget | None] = field(default_factory=list)
 
     def __call__(
         self,
@@ -54,8 +57,10 @@ class Recorder:
         corpora: Mapping[str, str],
         sources: Mapping[str, str],
         sessions: str | None,
+        budget: QueryBudget | None = None,
     ) -> int:
         self.sessions.append(sessions)
+        self.budgets.append(budget)
         self.sources.append(dict(sources))
         self.calls.append(
             {"profile": profile, "compact": compact, "corpus_resolves": corpus_resolves}
@@ -160,6 +165,16 @@ def test_the_sessions_directory_is_the_one_the_precompact_hook_writes(tmp_path: 
     assert sessions is not None
     assert Path(sessions) == sessions_dir(inner)
     assert Path(sessions) == tmp_path.resolve() / ".omniweave" / "sessions"
+
+
+def test_the_projects_budget_reaches_the_server(tmp_path: Path) -> None:
+    """D650: `[retrieval.budget]` is the budget every `omniweave_query` spends."""
+    served = Recorder()
+    body = HANDBOOK + "[retrieval.budget]\nquery_ms = 900\n"
+    _run(tmp_path, ["--mcp"], body=body, rows=[Row(served)])
+    (budget,) = served.budgets
+    assert budget is not None
+    assert (budget.query_ms, budget.hydration_reserve_ms) == (900, 40)
 
 
 def test_the_marker_the_server_reads_is_the_one_the_hook_writes() -> None:

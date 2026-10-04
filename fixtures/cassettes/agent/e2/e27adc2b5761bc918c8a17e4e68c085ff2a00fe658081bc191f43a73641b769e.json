@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "e674819f87208a01b034e4b7c8ae005928c98528cd5dd3c5da8c3388fc0513e3",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "e27adc2b5761bc918c8a17e4e68c085ff2a00fe658081bc191f43a73641b769e",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND. Searched for \"headcount\" in project/docs (no matches), and `ls project/docs` shows only \"docs\" (no file entries found).",
+    "tool_uses": []
+  }
+}

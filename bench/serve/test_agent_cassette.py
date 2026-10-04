@@ -122,3 +122,95 @@ def test_an_oversize_recording_is_refused_at_record_time_and_nothing_is_written(
     with pytest.raises(ca.CassetteOversizeError, match="OW-Q-017"):
         cassette.turn(_request(), model_key=MODEL_KEY, live=lambda _r: huge)
     assert not any(tmp_path.rglob("*.json"))
+
+
+def _recorded(root: Path) -> Path:
+    ca.AgentCassette(CassetteMode.ALLOW, root).turn(
+        _request(), model_key=MODEL_KEY, live=lambda _r: m.Turn("Thirty days.")
+    )
+    (path,) = root.rglob("*.json")
+    return path
+
+
+def test_the_audit_passes_a_store_as_recorded_and_the_committed_one(tmp_path: Path) -> None:
+    """D650: the `golden` job's Cassette step, and the committed recordings it runs over."""
+    path = _recorded(tmp_path)
+    assert ca.audit(tmp_path) == (1, path.stat().st_size, [])
+    count, _total, problems = ca.audit()
+    assert problems == []
+    assert count > 0
+
+
+def test_the_audit_names_each_way_a_store_breaks_without_a_model(tmp_path: Path) -> None:
+    """Moved, retyped, re-keyed, hand-edited, foreign: each is a line naming its file."""
+    path = _recorded(tmp_path)
+    record = json.loads(path.read_text(encoding="utf-8"))
+
+    moved = path.parent.parent / "ff" / path.name
+    moved.parent.mkdir()
+    path.rename(moved)
+    assert any("filed away from its key" in line for line in ca.audit(tmp_path)[2])
+    moved.rename(path)
+
+    record["inputs"]["model_key"] = "openai/gpt-5-mini"
+    path.write_bytes(ca._encode(record))
+    assert any("not the sha256_canonical" in line for line in ca.audit(tmp_path)[2])
+
+    record = json.loads(_recorded(tmp_path / "again").read_text(encoding="utf-8"))
+    path.write_text(json.dumps(record), encoding="utf-8")
+    assert any("hand edit" in line for line in ca.audit(tmp_path)[2])
+
+    path.write_text("{", encoding="utf-8")
+    (path.parent / "notes.txt").write_text("x", encoding="utf-8")
+    problems = ca.audit(tmp_path)[2]
+    assert any("not a record" in line for line in problems)
+    assert any("notes.txt: not a recording" in line for line in problems)
+
+
+def test_audit_cassettes_is_the_golden_jobs_step_and_exits_on_a_problem(tmp_path: Path) -> None:
+    import run  # noqa: PLC0415 -- the CLI half
+
+    lines: list[str] = []
+    _recorded(tmp_path)
+    assert run.main(["--audit-cassettes", "--cassettes", str(tmp_path)], out=lines.append) == 0
+    assert lines[-1].startswith("bench/serve: cassette audit passed: 1 recordings")
+    (tmp_path / "agent" / "stray.bin").write_bytes(b"x")
+    assert run.main(["--audit-cassettes", "--cassettes", str(tmp_path)], out=lines.append) == 1
+
+
+def _at(root: Path) -> m.ModelRequest:
+    """One conversation, as it reads with the corpora under `root`."""
+    docs = (root / "data_room-full-0123456789ab" / "project" / "docs").resolve().as_posix()
+    use = m.ToolUse("t1", "Grep", {"pattern": "revenue", "path": docs})
+    return m.ModelRequest(
+        system=f"You are answering a question about the documents in the folder {docs}.",
+        messages=(
+            m.UserText("revenue?"),
+            m.AssistantTurn(m.Turn("", (use,))),
+            m.ToolResult("t1", f"{docs}/finance/q4.xlsx\n" + docs.replace("/", "\\") + "\a.pdf"),
+        ),
+        tools=(m.ToolSpec("Grep", "search", {"type": "object"}),),
+        model="claude-sonnet-5",
+        temperature=None,
+        max_tokens=256,
+    )
+
+
+def test_a_recording_replays_under_another_machines_corpora_folder(tmp_path: Path) -> None:
+    """D650: the key holds no `--cache` path, and a replayed turn names the replaying folder."""
+    here, there = tmp_path / "mine" / "bench-cache", tmp_path / "Theirs Home" / "cache"
+    store = tmp_path / "cassettes"
+    reading = (here / "data_room-full-0123456789ab" / "project" / "docs").resolve().as_posix()
+    answer = m.Turn("", (m.ToolUse("t2", "Read", {"file_path": f"{reading}/finance/q4.xlsx"}),))
+    recorder = ca.AgentCassette(CassetteMode.ALLOW, store, corpora=here)
+    recorder.turn(_at(here), model_key=MODEL_KEY, live=lambda _r: answer)
+    (path,) = store.rglob("*.json")
+    assert str(here.resolve().as_posix()) not in path.read_text(encoding="utf-8")
+    assert ca.CORPORA in path.read_text(encoding="utf-8")
+
+    replayer = ca.AgentCassette(CassetteMode.REQUIRED, store, corpora=there)
+    (use,) = replayer.turn(_at(there), model_key=MODEL_KEY, live=None).tool_uses
+    assert use.arguments["file_path"] == (
+        f"{there.resolve().as_posix()}/data_room-full-0123456789ab/project/docs/finance/q4.xlsx"
+    )
+    assert ca.audit(store)[2] == []

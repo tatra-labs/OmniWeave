@@ -40,7 +40,7 @@ from typing import Any, Final
 
 import anyio
 from agent import AgentRun, LoopSettings, OwServer, ToolServer, TurnFn, run_task
-from agent_cassette import CASSETTE_ROOT, SERVICE, AgentCassette, CassetteMissError
+from agent_cassette import CASSETTE_ROOT, SERVICE, AgentCassette, CassetteMissError, audit
 from agent_config import BenchConfigError, Config, resolve
 from corpora import CorpusError, Prepared, damage_of, default_cache, key_of, prepare
 from host_tools import HostTools
@@ -288,13 +288,18 @@ def _parser() -> argparse.ArgumentParser:
     knob.add_argument("--model")
     knob.add_argument("--base-url", dest="base_url")
     knob.add_argument("--api-key-env", dest="api_key_env")
-    knob.add_argument("--temperature", type=float)
+    knob.add_argument("--temperature", help='"default" (send none) or 0.0-2.0')
     knob.add_argument("--max-tokens", dest="max_tokens", type=int)
     knob.add_argument("--tool-budget", dest="tool_budget", type=int)
     knob.add_argument("--timeout-s", dest="timeout_s", type=int)
     run = parser.add_argument_group("run")
     run.add_argument("--record", action="store_true", help="shorthand for --cassette allow")
     run.add_argument("--list", action="store_true", help="print the selected tasks and stop")
+    run.add_argument(
+        "--audit-cassettes",
+        action="store_true",
+        help="check every committed recording offline (key, place, size, spelling) and stop",
+    )
     run.add_argument("--prepare-only", action="store_true", help="build the corpora and stop")
     run.add_argument(
         "--cache", type=Path, help="corpus cache (default $OMNIWEAVE_HOME/bench-cache)"
@@ -359,10 +364,12 @@ def _start(args: argparse.Namespace, emit: Callable[[str], None]) -> Started | N
         return None
     mode = CassetteMode(config.cassette)
     root = args.cassettes / SERVICE
-    if mode is CassetteMode.REQUIRED and not any(root.rglob("*.json")):
+    #  D650: `--prepare-only` builds the corpora and calls no model, so it needs neither a
+    #  recording to replay nor a provider to record with.
+    if not args.prepare_only and mode is CassetteMode.REQUIRED and not any(root.rglob("*.json")):
         raise BenchConfigError(_NO_RECORDINGS.format(root=root.as_posix()))
     client = None
-    if mode is not CassetteMode.REQUIRED:
+    if mode is not CassetteMode.REQUIRED and not args.prepare_only:
         client = client_for(
             config.provider, key_env=config.key_env, base_url=config.base_url,
             timeout_s=config.timeout_s,
@@ -382,12 +389,30 @@ def _start(args: argparse.Namespace, emit: Callable[[str], None]) -> Started | N
     if args.prepare_only:
         return None
     return Started(
-        config, catalog, runnable, unmeasured, AgentCassette(mode, args.cassettes), client, prepared
+        config,
+        catalog,
+        runnable,
+        unmeasured,
+        AgentCassette(mode, args.cassettes, corpora=cache_root),
+        client,
+        prepared,
     )
+
+
+def _audit(root: Path, out: Callable[[str], None]) -> int:
+    """`--audit-cassettes`: the `golden` job's Cassette step. 0 clean, 1 with each problem named."""
+    count, total, problems = audit(root)
+    for problem in problems:
+        out(f"  FAILED    {problem}")
+    verdict = "FAILED" if problems else "passed"
+    out(f"bench/serve: cassette audit {verdict}: {count} recordings, {total} bytes")
+    return 1 if problems else 0
 
 
 def main(argv: Sequence[str] | None = None, *, out: Callable[[str], None] = _emit) -> int:
     args = _parser().parse_args(argv)
+    if args.audit_cassettes:
+        return _audit(args.cassettes, out)
     try:
         started = _start(args, out)
     except (BenchConfigError, ModelError, CorpusError) as exc:

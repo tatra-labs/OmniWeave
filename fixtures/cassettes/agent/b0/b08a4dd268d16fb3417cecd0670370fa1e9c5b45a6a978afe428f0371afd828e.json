@@ -1,0 +1,58 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "a69fd66e134886d144faac406b26b08521aa7f949be038c7a221c25337fa6334",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "b08a4dd268d16fb3417cecd0670370fa1e9c5b45a6a978afe428f0371afd828e",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "content",
+          "path": "suppliers",
+          "pattern": "favour|favor"
+        },
+        "id": "toolu_01DXAFDT7c93pF4icg9Wo44s",
+        "name": "Grep"
+      },
+      {
+        "arguments": {
+          "file_path": "suppliers/supplier-agreement-acme.docx"
+        },
+        "id": "toolu_01UzPBEnWBEfDT14NWm94jYc",
+        "name": "Read"
+      },
+      {
+        "arguments": {
+          "file_path": "suppliers/supplier-agreement-borealis.docx"
+        },
+        "id": "toolu_01WHHcx97ydCnnQq4fU41v17",
+        "name": "Read"
+      },
+      {
+        "arguments": {
+          "file_path": "suppliers/supplier-agreement-corvid.docx"
+        },
+        "id": "toolu_01T49NVyDXujdofaJxqqFatn",
+        "name": "Read"
+      }
+    ]
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "5e0ae3caf6f7d64719a8f7641191b6a3e587a29a1ff8c7523dbf67b104fbe4a5",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "4656c8776d629384dbe2f7c7de9e23c5180b834c77aa6e6786ca242b1fd5a26a",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "Clause 6 Pricing most favored nation benchmark competitor lowest price"
+        },
+        "id": "toolu_01K5rnemzrS8QMHALw1M5MCf",
+        "name": "mcp__omniweave__ow_query"
+      },
+      {
+        "arguments": {
+          "command": "find . -iname \"supplier-agreement*.docx\" | wc -l"
+        },
+        "id": "toolu_012Vhz4BDGHuX4mxk1ue8jXu",
+        "name": "Bash"
+      }
+    ]
+  }
+}

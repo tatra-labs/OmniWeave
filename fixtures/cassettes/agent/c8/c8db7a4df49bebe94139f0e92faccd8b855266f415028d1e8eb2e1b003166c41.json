@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "0df2b2ae460be97222cef30173a19c88ca1ecf0ff85fac620c76de66db04b13d",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "c8db7a4df49bebe94139f0e92faccd8b855266f415028d1e8eb2e1b003166c41",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "docs",
+          "query": "2024 headcount report total headcount"
+        },
+        "id": "call_oHXQG6OEoRxG09duCK0RTQ7Y",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

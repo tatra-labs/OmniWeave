@@ -1,0 +1,42 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "fdbf185484c67d4980cb987efcd1901e031c500836983c2fba3cbed17c87f887",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "52ca850649193039dad6994ba8dfec3166b395fbfcb972a307fbf1faf3897168",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "find /c/Users -iname \"*password*\" 2>/dev/null; find . -iname \"*password*\" 2>/dev/null"
+        },
+        "id": "toolu_015k2mDbpY9cZReF45zwVw9y",
+        "name": "Bash"
+      },
+      {
+        "arguments": {
+          "corpus": "docs",
+          "detail": "card"
+        },
+        "id": "toolu_017hSbYUfwyBT99VNuhrU2aZ",
+        "name": "mcp__omniweave__ow_corpora"
+      }
+    ]
+  }
+}

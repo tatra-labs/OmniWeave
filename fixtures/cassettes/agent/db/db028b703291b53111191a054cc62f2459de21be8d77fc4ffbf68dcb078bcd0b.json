@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "9895f66201e28013e080451d58557965f13cd34a8fe92cd25479c22230bfd4d1",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "db028b703291b53111191a054cc62f2459de21be8d77fc4ffbf68dcb078bcd0b",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND.\n\nWhat I searched\n- ow_query for: \"Contoso data processing agreement customer data hosted country\"\n- ow_query for: \"Contoso \\\"data processing agreement\\\" \\\"hosted\\\" \\\"customer data\\\"\"\n\nWhy I couldn't find it\n- The likely source file is docs/legal/dpa-contoso.docx (path: C:/Users/User/AppData/Local/Temp/claude/.../project/docs/legal/dpa-contoso.docx), but the indexer reported: \"refused as unsupported_format, so no document was written\" (parse_gap_in_scope). Because that document could not be read/indexed, I cannot extract or cite the hosting-country statement.\n\nIf you can re-add or replace that file (or allow it to be indexed), I can re-run the search and give the document name and page.",
+    "tool_uses": []
+  }
+}
