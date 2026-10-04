@@ -1432,6 +1432,74 @@ def test_the_head_probe_is_not_narrowed_although_the_body_probe_is(built: Built)
     assert outcome.ranked == (11, 21, 30)
 
 
+def _seed_crowded(built: Built, *, staged: bool) -> None:
+    """Thirty one-word `notice` blocks that the best bm25 page is full of and that are not
+    candidates (a staged generation, or headings), and two live paragraphs that are, with longer
+    text so bm25 ranks them below all thirty."""
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    producer_id = _producer(conn)
+    _doc(conn, 1, uri="file:///corpus/handbook.pdf")
+    for i in range(30):
+        _block(
+            conn,
+            block_id=100 + i,
+            doc_ord=1,
+            producer_id=producer_id,
+            gen=2 if staged else 1,
+            page=1,
+            ord_=i,
+            kind="paragraph" if staged else "heading",
+            text="notice",
+        )
+    for block_id, ord_ in ((7, 40), (8, 41)):
+        _block(
+            conn,
+            block_id=block_id,
+            doc_ord=1,
+            producer_id=producer_id,
+            page=2,
+            ord_=ord_,
+            text="the notice period runs four weeks from the day it is given in writing",
+        )
+    conn.execute("COMMIT")
+
+
+@pytest.mark.parametrize("staged", [True, False], ids=["staged-generation", "narrowed-out"])
+def test_live_candidates_below_a_page_of_ineligible_matches_are_still_found(
+    built: Built, staged: bool
+) -> None:
+    """D651: the FTS tables rank every generation and every kind, and the live, narrowed check
+    runs on the page they return. Here the first pages hold only the thirty blocks that are not
+    candidates, so the page grows until the two that are come back, ranked as the joined
+    statement ranked them."""
+    _seed_crowded(built, staged=staged)
+    reader = _reader(built)
+    filters = Filters() if staged else Filters(kinds=frozenset({Kind.PARAGRAPH}))
+    with reader.snapshot() as state:
+        narrowing = reader.narrow(state, filters)
+        outcome = reader.channel(state, _lexical_spec(limit=2, terms=("notice",)), narrowing)
+    assert narrowing.kind == "set"
+    assert outcome.status == "ok"
+    assert outcome.ranked == (7, 8)
+    assert outcome.truncated_at_limit is False
+
+
+def test_a_page_longer_than_one_in_list_is_checked_in_full(
+    built: Built, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`_live_ids` splits a page into `_LIVE_CHUNK`-id statements; the live rows in the last
+    chunk count as much as the ones in the first."""
+    monkeypatch.setattr(rd, "_LIVE_CHUNK", 5)
+    _seed_crowded(built, staged=True)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state, _lexical_spec(limit=2, terms=("notice",)), reader.narrow(state, Filters())
+        )
+    assert outcome.ranked == (7, 8)
+
+
 def test_the_lexical_channel_matches_any_term_and_not_all_of_them(built: Built) -> None:
     """`OR`, not FTS5's implicit `AND`. `MAX_QUERY_TERMS` is 64 and a 64-term conjunction matches
     nothing, so an implicit-AND Channel reports `EMPTY` for every sentence-shaped query -- absence
