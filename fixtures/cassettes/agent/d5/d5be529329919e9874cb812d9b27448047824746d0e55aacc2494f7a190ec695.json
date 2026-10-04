@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "33b34f62a4e1ebd1118cf2ad5318379321613c4f5d7bca88dec9233c5b88d173",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "d5be529329919e9874cb812d9b27448047824746d0e55aacc2494f7a190ec695",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Refund due: $1,240 — source: tax-summary-2023.docx (page 1).",
+    "tool_uses": []
+  }
+}

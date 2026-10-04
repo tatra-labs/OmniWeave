@@ -1,0 +1,59 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "5d74516ff72401de68f0e736533c7e032eb9aed8dfa4c8efdc3178007f5b0e2e",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "4b87c9aafdb6302e9cf9d9c60106eec297ad69e298080a481b654aeafcf5c275",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "most favored nation clause pricing no less favorable terms",
+          "scope": "supplier-agreement-acme.docx"
+        },
+        "id": "toolu_01K8EQmptEWibvL8uqyGUECc",
+        "name": "mcp__omniweave__ow_query"
+      },
+      {
+        "arguments": {
+          "query": "most favored nation clause pricing no less favorable terms",
+          "scope": "supplier-agreement-borealis.docx"
+        },
+        "id": "toolu_01VyjyVQc78o1MMthM4BGxqk",
+        "name": "mcp__omniweave__ow_query"
+      },
+      {
+        "arguments": {
+          "query": "most favored nation clause pricing no less favorable terms",
+          "scope": "supplier-agreement-corvid.docx"
+        },
+        "id": "toolu_015Xa34nb9iZmDdVQqFYDbKm",
+        "name": "mcp__omniweave__ow_query"
+      },
+      {
+        "arguments": {
+          "query": "most favored nation clause pricing no less favorable terms",
+          "scope": "supplier-agreement-dunmore.docx"
+        },
+        "id": "toolu_01MVdS9gXBwAD5qDB56iZN9g",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

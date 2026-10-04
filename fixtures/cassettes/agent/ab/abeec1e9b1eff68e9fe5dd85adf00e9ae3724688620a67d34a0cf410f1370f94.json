@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "7c81cb1d3bb963e723482bca22101b0061d2cdca47ee243688bc62f617e9849b",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "abeec1e9b1eff68e9fe5dd85adf00e9ae3724688620a67d34a0cf410f1370f94",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Acme Components, Borealis Metals, Corvid Plastics, Dunmore Industrial (supplier-agreement-*.docx, p.0)",
+    "tool_uses": []
+  }
+}

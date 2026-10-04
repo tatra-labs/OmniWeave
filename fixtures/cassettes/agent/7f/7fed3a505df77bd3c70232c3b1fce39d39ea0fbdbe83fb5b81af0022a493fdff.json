@@ -1,0 +1,37 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "001a992c4606a6b4e83d134c53f3e47207249fe138fe25749ec7eea2ee3d88ae",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "7fed3a505df77bd3c70232c3b1fce39d39ea0fbdbe83fb5b81af0022a493fdff",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "files_with_matches",
+          "path": "project/docs",
+          "pattern": "Harrow Savings"
+        },
+        "id": "call_vo339mc8",
+        "name": "Grep"
+      }
+    ]
+  }
+}

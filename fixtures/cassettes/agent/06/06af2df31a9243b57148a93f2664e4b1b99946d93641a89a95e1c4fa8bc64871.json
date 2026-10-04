@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "d00319194a3808f3e79bc3cf0c0f26ca73bfae662a15673a4d9400fe0fc97398",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "06af2df31a9243b57148a93f2664e4b1b99946d93641a89a95e1c4fa8bc64871",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/personal_archive-full-chaos-cc0990d10496/project/docs/medical/lab-results-2024.pdf",
+          "limit": 2000,
+          "offset": 1
+        },
+        "id": "call_cbaiT1700KSXahYo111XMEU1",
+        "name": "Read"
+      }
+    ]
+  }
+}

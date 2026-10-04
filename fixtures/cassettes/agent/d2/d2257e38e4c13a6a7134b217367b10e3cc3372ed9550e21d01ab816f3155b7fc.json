@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "75d99717756b49cc3b41ec6bca2fe86e3c85bdd46af60fe8bd349006c946df64",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "d2257e38e4c13a6a7134b217367b10e3cc3372ed9550e21d01ab816f3155b7fc",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND. Searched for \"section 5\" in files under project/docs with case-insensitive matching, no matches found.",
+    "tool_uses": []
+  }
+}

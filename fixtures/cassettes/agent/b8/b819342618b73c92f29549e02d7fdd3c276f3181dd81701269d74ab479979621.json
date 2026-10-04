@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "498e81f50573a4a409db56c1ec32c6f542080ac1cea5cf929eb8b34335d19d1b",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "b819342618b73c92f29549e02d7fdd3c276f3181dd81701269d74ab479979621",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "amendment to dispute resolution clause arbitration Singapore SIAC governing law"
+        },
+        "id": "toolu_01FJnGsYLoVBeaju2xMagr94",
+        "name": "mcp__omniweave__ow_query"
+      },
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/legal_matter-full-60ac7477e28c/project/docs/contracts/amendment-1-2021.pdf"
+        },
+        "id": "toolu_01GNc897PSVNi5vwBh8UEMAq",
+        "name": "Read"
+      }
+    ]
+  }
+}

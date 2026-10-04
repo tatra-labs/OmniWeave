@@ -107,6 +107,7 @@ from __future__ import annotations
 import dataclasses
 import math
 from collections import OrderedDict
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 from omniweave_core.canonical import sha256_canonical
@@ -127,7 +128,7 @@ from omniweave_core.store.types import ChannelSpec
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-    from omniweave_core.config import Scalar
+    from omniweave_core.config import Config, Scalar
     from omniweave_core.retrieve.types import Query, RetrievalPolicy
     from omniweave_core.store.types import Filters, IndexCaps, Narrowing
 
@@ -139,6 +140,7 @@ __all__ = [
     "STALE_OVERFETCH",
     "STAT_MAX_AGE_NS",
     "bind_overfetch",
+    "budget_of",
     "clear_memo",
     "evidence",
     "memo_key",
@@ -611,6 +613,28 @@ def _afford(names: tuple[str, ...], budget: QueryBudget) -> None:
             "query would end at the query deadline with Channels reporting OFF(query_deadline)",
             fix=_FIX,
         )
+
+
+def budget_of(config: Config) -> QueryBudget:
+    """`[retrieval.budget]` as the `QueryBudget` a query spends. **D650.**
+
+    07:1105-1110 prints the table and 18's config section declares its three keys, and no query
+    read them: `ow query` and `ow serve` both ran the built-in `QueryBudget()`, so a project that
+    raised `query_ms` changed nothing. A nine-word query over a 5,000-page corpus takes about 51 ms
+    in `lexical`, against the shipped `channel_ms.lexical = 50`, so whether it timed out (gate 1)
+    depended on the machine's load, and a raised budget was the remedy no user could apply.
+
+    The arithmetic is not re-checked here: `plan()`'s `_afford` refuses a set whose selected
+    Channels exceed `query_ms` net of the reserve, naming both, at the query that would spend it.
+    """
+    channels = config.get("retrieval.budget.channel_ms")
+    return QueryBudget(
+        query_ms=int(config.get("retrieval.budget.query_ms")),  # type: ignore[call-overload]
+        hydration_reserve_ms=int(config.get("retrieval.budget.hydration_reserve_ms")),  # type: ignore[call-overload]
+        channel_ms=MappingProxyType(
+            {str(name): int(ms) for name, ms in dict(channels).items()}  # type: ignore[call-overload]
+        ),
+    )
 
 
 def _budget_ms(name: str, budget: QueryBudget) -> int:

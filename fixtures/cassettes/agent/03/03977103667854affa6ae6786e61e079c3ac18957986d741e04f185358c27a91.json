@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "4c1b4ffb638d65f1b290324f86b26aa453a4e79c6b9b42a0933daaf600de2bf2",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "03977103667854affa6ae6786e61e079c3ac18957986d741e04f185358c27a91",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND, searched for \"2024 headcount report total headcount\" in corpus \"docs\" but indexed documents show no content (counts: {}) per `ow_corpora` response.",
+    "tool_uses": []
+  }
+}

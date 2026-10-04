@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D649: 07 names the query stopword rule, line-count-preserving
+# blessed-because: D650: ADR-14 names where the recordings are audited and replayed
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -589,7 +589,7 @@ documents-frozen  d5d8133ea01598e711f1af5442b667523d4edbbcade788c4d99629e5c81a0c
 documents-frozen  03cc84af1248e0a1aa8a2453fed21cea7ea301908714f592994675d3d22d8f65  adr/0011-eval-register-reconciliation.md
 documents-frozen  67ab77cff65a136c53dc2a9ab596d47a79f1280f256ab2d4f2b0db27902d65fc  adr/0012-runtime-types-on-the-critical-path.md
 documents-frozen  fc21ea2c865e992052e420114b110df651c6e2434e665410cbd3e7d9ab0d6571  adr/0013-v01-acceptance-reconciliation.md
-documents-frozen  c42ffd1980811bb345c78d3ddfdc15729697bb37c91470ff2dfd45d0bed9240e  adr/0014-reference-corpora-and-control-arm.md
+documents-frozen  c8a782100e58dd58b26dd53cbd783ade2250631ca92cd8e7ad322044de82ba56  adr/0014-reference-corpora-and-control-arm.md
 documents-frozen  bb695279ba04a31dee3e3a386ef93c48ac64362faa86a58716083ebd9e940236  adr/0015-encrypted-pdfs-and-document-passwords.md
 documents-frozen  41b200ec6cf692f6265cc5faf822c1d501abbe84c9cadeaeb0331c7dbce5d06c  adr/README.md
 documents-frozen  dc548ebdb22a1ba703b0ad2548e52d27691cffb7f4d8656289a3750bc10f4791  glossary.md

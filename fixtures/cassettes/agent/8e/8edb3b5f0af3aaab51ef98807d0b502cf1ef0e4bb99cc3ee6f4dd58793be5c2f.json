@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "15c0c1aaa7a239b80a0b721bb0b7d7bffc6683b6ad04ad557824bdf7c25397d2",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "8edb3b5f0af3aaab51ef98807d0b502cf1ef0e4bb99cc3ee6f4dd58793be5c2f",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The document that would contain this answer — `contracts/amendment-1-2021.pdf` — is encrypted and cannot be opened; no password is available to decrypt it (ow_query confirms it was \"refused as encrypted, so no document was written,\" requiring a password via the ingest password-file mechanism, which is not configured here).\n\n**NOT FOUND** — I searched the indexed corpus (`ow_query` for \"Amendment No. 1 ... service credit percentage\") and attempted to open `contracts/amendment-1-2021.pdf` directly, but the file is password-protected/encrypted and PDFium reports \"Incorrect password error.\" No password file or credential store entry for it exists in the project. The only service-level content that could be read was in `msa-2019.pdf` (e.g., \"Section 3. Service Levels,\" p.2), which does not state a service credit percentage. Amendment No. 1 itself is unreadable, so I cannot confirm the service credit percentage it sets.",
+    "tool_uses": []
+  }
+}

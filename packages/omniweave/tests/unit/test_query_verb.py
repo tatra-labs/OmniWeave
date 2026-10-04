@@ -121,6 +121,31 @@ def test_k_and_mode_reach_the_query(project: Path, monkeypatch: pytest.MonkeyPat
     assert (seen[0].k, seen[0].mode, seen[0].text) == (3, "cite", "terminate")
 
 
+def test_the_projects_budget_reaches_the_policy(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D650: `[retrieval.budget]` is the budget `ow query` spends; no query read it before."""
+    from omniweave_core.retrieve import execute as execute_module  # noqa: PLC0415
+
+    seen: list[Any] = []
+    real = execute_module.execute
+
+    def spy(reader: Any, query: Any, policy: Any, **kwargs: Any) -> Any:
+        seen.append(policy)
+        return real(reader, query, policy, **kwargs)
+
+    monkeypatch.setattr(execute_module, "execute", spy)
+    budget = (
+        "[retrieval.budget]\nquery_ms = 900\n"
+        "channel_ms = { identity = 15, exact = 25, lexical = 400, structural = 40,"
+        " semantic = 80 }\n"
+    )
+    (project / "omniweave.toml").write_text(PROJECT + budget, encoding="utf-8")
+    _run(["terminate"], project)
+    assert seen[0].budget.query_ms == 900
+    assert seen[0].budget.channel_ms["lexical"] == 400
+
+
 # ---------------------------------------------------------------------------------------------
 # Not found, and usage
 # ---------------------------------------------------------------------------------------------

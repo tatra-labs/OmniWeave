@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "b6364e348872086eba15012881fcd66f6cb00583690dc367936879749a59ae02",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "53d3f8303206cec646f72884136628c7e285302fb228683676ae49a124869ac4",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The key file, `hr/headcount-2024.xlsx`, failed to parse (corrupt zip structure) and could not be indexed. Let me try reading it directly and check for alternate sources.",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "hr/headcount-2024.xlsx"
+        },
+        "id": "toolu_01RwreSKNAtrw1dE8HkMMjup",
+        "name": "Read"
+      },
+      {
+        "arguments": {
+          "command": "find . -iname \"*headcount*\""
+        },
+        "id": "toolu_01JoRJnXJZFiSz9XMEXpRYMM",
+        "name": "Bash"
+      }
+    ]
+  }
+}

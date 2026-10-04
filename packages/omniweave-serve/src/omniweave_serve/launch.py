@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING, Final, TextIO
 
 from omniweave_core.clock import SystemClock
 from omniweave_core.errors import InternalError
+from omniweave_core.retrieve.types import RetrievalPolicy
 
 from omniweave_serve import listing
 from omniweave_serve.dispatch import McpDispatcher, Surface
@@ -43,6 +44,8 @@ from omniweave_serve.stdio import EOF, pipes, serve
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+    from omniweave_core.retrieve.types import QueryBudget
 
     from omniweave_serve.stdio import Dispatcher, Lines, Sink
 
@@ -83,6 +86,7 @@ def run(
     sources: Mapping[str, str],
     sessions: str | None,
     stderr: TextIO | None = None,
+    budget: QueryBudget | None = None,
 ) -> int:
     """The `omniweave.serve` entry point: select, report, bind this process's stdio, serve.
 
@@ -105,6 +109,8 @@ def run(
         wall_ns=clock.wall_ns,
         session=session,
         sources={name: Path(path) for name, path in sources.items()},
+        #  D650: the project's `[retrieval.budget]`; an `ow` that passes none gets 07's.
+        policy=RetrievalPolicy() if budget is None else RetrievalPolicy(budget=budget),
     )
     dispatcher = McpDispatcher.create(surface, caller=caller)
     err = stderr or sys.stderr

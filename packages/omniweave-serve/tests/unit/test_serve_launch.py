@@ -126,14 +126,19 @@ def test_the_declared_entry_point_is_the_one_the_cli_looks_up() -> None:
 
 def test_runs_signature_is_the_protocol_the_cli_calls() -> None:
     """Keyword-only, builtin types, an `int` back: a type from either side is one the other
-    cannot import. `stderr` is this side's own seam and has a default, so the CLI never sees it."""
+    cannot import. `stderr` is this side's own seam and has a default, so the CLI never sees it.
+    `budget` (D650) is a `QueryBudget`, which both sides import from core, and has a default on
+    both, so a fake entry written before it still serves."""
     ours = inspect.signature(run)
     theirs = inspect.signature(cli_side.ServeEntry.__call__)
     wanted = [name for name in theirs.parameters if name != "self"]
+    empty = inspect.Parameter.empty
+    required = [name for name in wanted if theirs.parameters[name].default is empty]
     assert [
         name for name, one in ours.parameters.items() if one.default is inspect.Parameter.empty
-    ] == wanted
+    ] == required
     assert all(one.kind is inspect.Parameter.KEYWORD_ONLY for one in ours.parameters.values())
+    assert ours.parameters["budget"].default is theirs.parameters["budget"].default is None
     for name in wanted:
         assert ours.parameters[name].annotation == theirs.parameters[name].annotation
     assert ours.return_annotation == theirs.return_annotation == "int"

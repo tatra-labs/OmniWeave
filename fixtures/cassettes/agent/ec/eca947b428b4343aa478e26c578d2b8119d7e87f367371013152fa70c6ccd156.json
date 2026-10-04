@@ -1,0 +1,48 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "d9d3dd7579fcbd5f8fb45adf42c8c4451a40a7a533f18405b634f13a403af9e1",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "eca947b428b4343aa478e26c578d2b8119d7e87f367371013152fa70c6ccd156",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "leases/lease-lisbon.docx"
+        },
+        "id": "toolu_01LS4ytAQcGjUWrEfeqWxezc",
+        "name": "Read"
+      },
+      {
+        "arguments": {
+          "file_path": "leases/lease-madrid.docx"
+        },
+        "id": "toolu_017TsWXZJ2utSNpt4XKiZC2A",
+        "name": "Read"
+      },
+      {
+        "arguments": {
+          "file_path": "leases/lease-porto.docx"
+        },
+        "id": "toolu_01Wiykzqmg31RsDk5Kmm96MF",
+        "name": "Read"
+      }
+    ]
+  }
+}

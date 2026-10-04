@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "39d5880f7aca4fab56dd275dde8760b2358d4bda4d623b171e92d62d4aa69d0f",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "df5184029a0cf86939ddabd249c8abc0365b801efad0bdfd6e771bf56a717915",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "\"most-favoured\" OR \"most-favored\" OR \"most favoured\" OR \"most favored\" \"most\" pricing clause supplier agreement \"most-fav\""
+        },
+        "id": "call_A1SscgnjeSfRnvuPsSRUm3Yo",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

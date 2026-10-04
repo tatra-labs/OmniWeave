@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "610d4860277d271617ba062b7771e870bc45cccd94ff80e2644c00c3f8f0528b",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "415deedfcdae3f515f323500470fc533d207c13dbcac850b595ec60cbefba68d",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "ls -la \"{bench-cache}/data_room-full-382fd9267ee9/project/docs/policies\""
+        },
+        "id": "call_EQIbXqnqUIkp9X07TBaYAWFM",
+        "name": "Bash"
+      }
+    ]
+  }
+}

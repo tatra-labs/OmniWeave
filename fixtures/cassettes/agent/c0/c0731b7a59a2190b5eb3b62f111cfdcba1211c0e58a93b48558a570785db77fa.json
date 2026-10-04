@@ -1,0 +1,47 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "94dd8985891b5fc33db0931c3022b77d8840351501e7202ae1254ff116e034c4",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "c0731b7a59a2190b5eb3b62f111cfdcba1211c0e58a93b48558a570785db77fa",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "files_with_matches",
+          "path": "{bench-cache}/data_room-full-382fd9267ee9/project/docs/board",
+          "pattern": "revenue"
+        },
+        "id": "toolu_011obBYB5FaAZtfiPU19dJZ5",
+        "name": "Grep"
+      },
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "files_with_matches",
+          "path": "{bench-cache}/data_room-full-382fd9267ee9/project/docs/finance",
+          "pattern": "revenue"
+        },
+        "id": "toolu_014KZpJ63ZTxHrn5BhCMnLCc",
+        "name": "Grep"
+      }
+    ]
+  }
+}

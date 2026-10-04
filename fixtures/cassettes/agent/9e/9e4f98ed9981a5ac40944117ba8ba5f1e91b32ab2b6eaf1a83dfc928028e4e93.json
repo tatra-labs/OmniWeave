@@ -1,0 +1,44 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "76c917ebc2b4754314e73ab73a400a7680b53b4fc9abbac6cdf28dee51fd3f56",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "9e4f98ed9981a5ac40944117ba8ba5f1e91b32ab2b6eaf1a83dfc928028e4e93",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "contracts/amendment-1-2021.pdf"
+        },
+        "id": "toolu_017aFA2E6JRJi9EJieo5PcDR",
+        "name": "Read"
+      },
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "content",
+          "path": "pleadings",
+          "pattern": "arbitrat|Singapore|SIAC|seated|governing law\""
+        },
+        "id": "toolu_011MPPLv7rCrJMSJD2WVyzD7",
+        "name": "Grep"
+      }
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "83c41173a5ebca5eaf8c0f53867e0d057fadfeca5f9f82c242a62fc0cc93b805",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "00a6eee9ed4dd47dc83957aae631bf5d232d18973c1326d86b32b1b5aa10818c",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND - searched for \"2024 capitalisation table\" in project/docs",
+    "tool_uses": []
+  }
+}

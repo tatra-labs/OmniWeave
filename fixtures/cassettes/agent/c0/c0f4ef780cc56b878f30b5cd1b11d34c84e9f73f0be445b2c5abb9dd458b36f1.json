@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "5989f11b65f833d30874f396bb5c509e9bbe0b7bc7349d996a80487478bef15f",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "c0f4ef780cc56b878f30b5cd1b11d34c84e9f73f0be445b2c5abb9dd458b36f1",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND — I searched all documents in the archive (letters, insurance, medical, receipts, statements, tax folders) for the word \"passport\" (case-insensitive) and found no matches. There is no passport renewal application document in this collection.",
+    "tool_uses": []
+  }
+}

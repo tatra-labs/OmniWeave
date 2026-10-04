@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "ffa897edb693b77e01ce443aee67c9149b30c5cb67edb8d51dbf1b0c936b7273",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "bbd84d924e1c94cc0172b87a9253237ec048a293a5f55a8d0157c5585e0f84cf",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND (searched project/docs for \"Harrow Savings\" — no matches found)",
+    "tool_uses": []
+  }
+}
