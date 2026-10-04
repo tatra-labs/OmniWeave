@@ -180,14 +180,41 @@ def test_the_control_arm_rereads_by_construction_under_the_same_rule() -> None:
     assert h.report(h.Arm.CONTROL, outcomes).total.source_reread_rate == h.Rate(3, 3)
 
 
-def test_a_mis_pick_is_the_wrong_first_tool_for_the_task_class() -> None:
-    """F19: `ow_open` is the right first pick for a citation-shaped lookup, `ow_query` for the
-    rest. A task that never called either has no pick to be wrong about."""
+def test_a_mis_pick_is_a_first_call_whose_input_fits_the_other_tool() -> None:
+    """F19 as R-A5 words it (D652): `ow_query` given an address `ow_open` resolves, or `ow_open`
+    given prose. A section number in a named document is prose to `ow_open`'s grammar, so
+    `ow_query` is the right pick for it. A task that never called either has no pick at all."""
     citation = _task("c", h.TaskClass.CITATION)
-    assert _run(citation, h.Arm.OMNIWEAVE, [QUERY], "thirty days").mis_pick is True
+    section = h.ToolCall("ow_query", {"query": "what does section 4.2 of the MSA say"})
+    assert _run(citation, h.Arm.OMNIWEAVE, [section], "thirty days").mis_pick is False
     assert _run(citation, h.Arm.OMNIWEAVE, [OPEN], "thirty days").mis_pick is False
-    assert _run(_task("r"), h.Arm.OMNIWEAVE, [OPEN, QUERY], "thirty days").mis_pick is True
+    assert _run(_task("r"), h.Arm.OMNIWEAVE, [OPEN, QUERY], "thirty days").mis_pick is False
     assert _run(_task("n"), h.Arm.OMNIWEAVE, [READ_MSA], "thirty days").mis_pick is None
+    cite_as_query = h.ToolCall("ow_query", {"query": "d1#4"})
+    assert _run(citation, h.Arm.OMNIWEAVE, [cite_as_query], "thirty days").mis_pick is True
+    prose_as_ref = h.ToolCall("ow_open", {"ref": "the termination clause"})
+    assert _run(citation, h.Arm.OMNIWEAVE, [prose_as_ref], "thirty days").mis_pick is True
+
+
+@pytest.mark.parametrize(
+    ("call", "wrong"),
+    [
+        (h.ToolCall("ow_query", {"query": "msa-2019.pdf#p10"}), True),
+        (h.ToolCall("ow_query", {"query": "msa-2019.pdf#p4/3"}), True),
+        (h.ToolCall("ow_query", {"query": "notice period for termination"}), False),
+        (h.ToolCall("ow_open", {"ref": '["d87#2", "d91#2"]'}), False),
+        (h.ToolCall("ow_open", {"ref": '["msa-2019.pdf#p10", "the liability cap"]'}), True),
+        (h.ToolCall("ow_open", {"ref": "complaint.pdf"}), False),
+        (h.ToolCall("ow_open", {"ref": "Annual Report 2024.pdf"}), False),
+        (h.ToolCall("ow_open", {"ref": "docs/legal/msa"}), False),
+        (h.ToolCall("ow_open", {"ref": "d20"}), False),
+        (h.ToolCall("ow_corpora", {}), False),
+    ],
+)
+def test_each_input_shape_is_judged_by_ow_opens_own_parser(call: h.ToolCall, wrong: bool) -> None:
+    """The shapes the recorded models used, and the two that would be mis-picks. A list `ref` is
+    JSON in the transcript; one prose element in it is enough."""
+    assert h.mis_picked(call) is wrong
 
 
 # ---------------------------------------------------------------------------------------------
