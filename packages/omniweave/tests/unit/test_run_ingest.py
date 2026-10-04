@@ -582,6 +582,22 @@ def test_accept_partial_reaches_routing_and_the_reopen_and_is_recorded_in_run_ar
     assert "--accept-partial" not in argv[1]
 
 
+def test_the_report_says_what_an_edit_did() -> None:
+    """D645. The acquire line counts the settled files read again because `stat_fresh` failed, and a
+    line says how many earlier versions left search, and that their cites still resolve."""
+    quiet = IngestReport(run_id="r", generation=2, status="ok").lines()
+    assert not any("read again" in line or "retire" in line for line in quiet)
+    lines = IngestReport(run_id="r", generation=2, status="ok", changed=2, retired=1).lines()
+    (acquire,) = [line for line in lines if line.startswith("  acquire")]
+    assert acquire.endswith(
+        "; 2 indexed file(s) read again: changed, or too recent to prove unchanged"
+    )
+    assert (
+        "  retire    1 earlier versions of changed files leave search; their cites still "
+        "resolve, and say so"
+    ) in lines
+
+
 def test_password_file_reaches_routing_the_parse_and_the_reopen(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
