@@ -42,6 +42,7 @@ the framework cannot move the instrument that measures it.
 
 from __future__ import annotations
 
+import json
 import math
 import re
 import shlex
@@ -54,7 +55,9 @@ from pathlib import PurePosixPath
 from typing import Final
 
 __all__ = [
+    "ADDRESS_FORMS",
     "ALPHA",
+    "PROSE_WORDS",
     "REQUIRED_COUNTS",
     "SHELL_READERS",
     "TASKS_TOTAL",
@@ -76,6 +79,7 @@ __all__ = [
     "indexed_sources",
     "load_catalog",
     "mcnemar_worse",
+    "mis_picked",
     "outcome",
     "report",
     "wilson",
@@ -358,9 +362,61 @@ def reads_source(call: ToolCall, indexed: frozenset[str]) -> bool:
     return False
 
 
-def _expected_tool(task_class: TaskClass) -> str:
-    """F19's right first pick: `ow_open` for a citation-shaped lookup, `ow_query` for the rest."""
-    return "ow_open" if task_class is TaskClass.CITATION else "ow_query"
+ADDRESS_FORMS: Final[frozenset[str]] = frozenset({"cite", "entity", "addr", "pages"})
+"""The `ow_open` reference forms that are addresses, by `omniweave_core.store.resolve`'s names.
+Its fifth, `document`, parses any string at all, so it says nothing about the input's shape."""
+
+PROSE_WORDS: Final[int] = 2
+"""Fewest words an `ow_open` ref needs to read as prose rather than a document name."""
+
+_FILE_LIKE: Final = re.compile(r"[/\\]|\.[A-Za-z0-9]{1,6}$")
+
+
+def _address_shaped(text: str) -> bool:
+    """Whether `text` parses as one of `ow_open`'s address forms (`d7#412`, `policy.pdf#p14/3`,
+    `policy.pdf#p12-18`, an entity), by the same parser `ow_open` resolves it with."""
+    from omniweave_core.store.resolve import parse  # noqa: PLC0415 -- only F19 needs the store
+
+    return any(form.form in ADDRESS_FORMS for form in parse(text))
+
+
+def _refs(raw: str) -> list[str]:
+    """`ow_open`'s `ref` argument as its strings: the transcript JSON-encodes a list."""
+    if raw.startswith("["):
+        try:
+            loaded = json.loads(raw)
+        except ValueError:
+            return [raw]
+        return [str(one) for one in loaded] if isinstance(loaded, list) else [raw]
+    return [raw]
+
+
+def _prose(text: str) -> bool:
+    """Words rather than an address or a document: two or more, and no path or file extension."""
+    if len(text.split()) < PROSE_WORDS or _FILE_LIKE.search(text):
+        return False
+    return not _address_shaped(text)
+
+
+def mis_picked(call: ToolCall) -> bool:
+    """F19, as 17-risks.md R-A5 words it: *"`ow_query` called with a citation-shaped query, or
+    `ow_open` called with prose"*. **D652.**
+
+    Citation-shaped means what `ow_open` can resolve, judged by its own parser. Until D652 the
+    harness expected `ow_open` first for every citation-class task, whose questions name a section
+    of a named document (*"section 4.2 of the Master Services Agreement"*). No `ow_open` form
+    spells that: its five are a cite, an entity, an address, a page range and a document. Only
+    `ow_query`, whose identity Channel lifts the `4.2`, answers it in one call. All three recorded
+    models picked `ow_query` on every such task and answered every one correctly. The harness
+    counted all of them as mis-picks, which made F19 read 0.23-0.27 for choices that were right.
+    Over the same recordings, 0 of 100 `ow_query` calls carried an address and all 15 `ow_open`
+    calls did.
+    """
+    if call.tool == "ow_query":
+        return _address_shaped(call.args.get("query", ""))
+    if call.tool == "ow_open":
+        return any(_prose(ref) for ref in _refs(call.args.get("ref", "")))
+    return False
 
 
 @dataclass(frozen=True, slots=True)
@@ -383,9 +439,7 @@ def outcome(task: Task, transcript: Transcript, indexed: frozenset[str]) -> Task
         raise CatalogError(f"transcript for {transcript.task_id} graded against task {task.id}")
     first = next((i for i, call in enumerate(transcript.calls) if call.tool in OW_TOOLS), -1)
     reread = any(reads_source(call, indexed) for call in transcript.calls[first + 1 :])
-    mis_pick = (
-        None if first < 0 else transcript.calls[first].tool != _expected_tool(task.task_class)
-    )
+    mis_pick = None if first < 0 else mis_picked(transcript.calls[first])
     return TaskOutcome(
         task_id=task.id,
         arm=transcript.arm,

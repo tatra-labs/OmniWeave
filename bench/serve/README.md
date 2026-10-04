@@ -95,8 +95,8 @@ prints each resolved value and where it came from.
   the corpus receipt, `omniweave.index.lock`. One rule for both arms (D601).
 - **`task_accuracy`** — the fraction of tasks whose final answer is **right**, graded by substrings
   (D600).
-- **F19's mis-pick rate** — the first omniweave tool, against `ow_open` for a citation-shaped task
-  and `ow_query` for the rest.
+- **F19's mis-pick rate** — whether the first omniweave call fits its input (R-A5, D652): `ow_query`
+  given an address `ow_open` resolves, or `ow_open` given prose, is a mis-pick.
 
 Every rate carries its Wilson 95% interval, and every report is sliced by born-digital versus
 scanned and by task class. The **Control guard** fails a run whose omniweave arm is less accurate
