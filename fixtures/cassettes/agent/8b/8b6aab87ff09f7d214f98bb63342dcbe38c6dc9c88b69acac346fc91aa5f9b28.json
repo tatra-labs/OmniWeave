@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "80c795801e9ddf8789d607e24a8000c7a59da47a4d256c16c4a06be934aa814a",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "8b6aab87ff09f7d214f98bb63342dcbe38c6dc9c88b69acac346fc91aa5f9b28",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "docs",
+          "query": "What does clause 7 of the Northwind non-disclosure agreement say about how long confidentiality lasts?"
+        },
+        "id": "call_mlpkru96",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

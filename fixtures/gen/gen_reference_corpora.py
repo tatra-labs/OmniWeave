@@ -463,6 +463,7 @@ def _zip(entries: Sequence[tuple[str, str]]) -> bytes:
         for name, text in entries:
             info = zipfile.ZipInfo(name, date_time=ZIP_DATE)
             info.compress_type = zipfile.ZIP_DEFLATED
+            info.create_system = 0  # zipfile writes 3 on POSIX, 0 on Windows: one corpus (D653)
             archive.writestr(info, text.encode("utf-8"))
     return buffer.getvalue()
 

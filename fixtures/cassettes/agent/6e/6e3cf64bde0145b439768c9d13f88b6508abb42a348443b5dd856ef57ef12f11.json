@@ -1,0 +1,37 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "195929af6d13fa4895dee974f352e53af9b38d113bc995a033cbbbe5b04cd5c9",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "6e3cf64bde0145b439768c9d13f88b6508abb42a348443b5dd856ef57ef12f11",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "files_with_matches",
+          "path": "{bench-cache}/legal_matter-full-b6506a0822fc/project/docs",
+          "pattern": "Singapore"
+        },
+        "id": "call_XNN1DvYsJamBUFMYfP8yrsFH",
+        "name": "Grep"
+      }
+    ]
+  }
+}

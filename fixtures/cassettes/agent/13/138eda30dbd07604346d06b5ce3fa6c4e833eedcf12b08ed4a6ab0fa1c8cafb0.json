@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "f3559719bd91a692b7b438884eeabd08ddff8f8437b57124836f5de236da4bd1",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "138eda30dbd07604346d06b5ce3fa6c4e833eedcf12b08ed4a6ab0fa1c8cafb0",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Clause 7 of the Mutual Non-Disclosure Agreement – Northwind Traders is titled \"Term,\" and it states that the confidentiality obligations survive for five (5) years after disclosure.\n\nSource: nda-northwind.docx (d82#9) — note the text is reconstructed/normalized (not a verbatim extraction) but content is directly confirmed.",
+    "tool_uses": []
+  }
+}

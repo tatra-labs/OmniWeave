@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "53789ae60950133cdf40fb9e83d70a327b84eb0f6fa17942cae39c04c729fd36",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "b9a0f4b28ba1477e44b7632fd45a0c007095b717805617f6e7f609d2a77f5439",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "detail": "list"
+        },
+        "id": "toolu_01VKfkJbvw4wPvYix6JVVfpw",
+        "name": "mcp__omniweave__ow_corpora"
+      },
+      {
+        "arguments": {
+          "query": "office lease expiration date 2027"
+        },
+        "id": "toolu_01Rz6u1qqzovemxbEc6aXfEU",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

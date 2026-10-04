@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "f2ed0dde31503a81cf7413da07f8bcaed09f2672dae90f4788c8fe011d8f33d3",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "e1664fa75630ec99530a53b139daec7a74e2ffaf0a1146652013bad2d3ff3955",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "arbitration seated in Singapore"
+        },
+        "id": "toolu_01JwURVQkrf1ZEnGiom7xagz",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

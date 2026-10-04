@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "2f91e8d8a16fd44316126353ba86e80c75b36ae3400722b0e0e82a6997e5c7e6",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "504ff667449d84f84bd0c4167100b9f49aa67f573305e5ae7aa005dfbcad6b10",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "detail": "list"
+        },
+        "id": "toolu_01HgGZP4C6Mkg5RxR4o7ALUt",
+        "name": "mcp__omniweave__ow_corpora"
+      },
+      {
+        "arguments": {
+          "query": "overall materiality 2023 audit report"
+        },
+        "id": "toolu_01CbC8rKdJcZ7Vk2heocscoA",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

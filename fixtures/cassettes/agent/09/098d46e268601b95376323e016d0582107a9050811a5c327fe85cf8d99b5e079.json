@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "d8d36599e94702f20b37acf80a11f4aa4eb5fcb959e4c59cbd5e3322f7d3a8a8",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "098d46e268601b95376323e016d0582107a9050811a5c327fe85cf8d99b5e079",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The sentence is cut off; let me get the full text of section 9.1.",
+    "tool_uses": [
+      {
+        "arguments": {
+          "ref": "msa-2019.pdf#p10"
+        },
+        "id": "toolu_01De9DitvXrC8teTENkvD4c8",
+        "name": "mcp__omniweave__ow_open"
+      }
+    ]
+  }
+}

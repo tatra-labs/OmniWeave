@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "72f4396c1ca6d99475650107a64aeb04ae93de3331445d66225d5603bb1819d3",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "7419fed659f548e4bb3af3705b948b66d5251afe64aa967085050f0b242a4902",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND.\n\nWhat I searched and tried:\n- Queried the corpus for: \"Amendment No. 1\\\" \\\"Master Services Agreement\\\" \\\"service credit\\\"\" (ow_query).\n- Ran ow_add to index the local docs folder; the relevant file was discovered: \n  C:/Users/User/.../project/docs/contracts/amendment-1-2021.pdf\n- Attempted to open that file (Read), but it is encrypted and could not be opened: \"Failed to load document (PDFium: Incorrect password error)\".\n\nBecause Amendment No. 1 (amendment-1-2021.pdf) could not be read, I cannot extract the service credit percentage.",
+    "tool_uses": []
+  }
+}

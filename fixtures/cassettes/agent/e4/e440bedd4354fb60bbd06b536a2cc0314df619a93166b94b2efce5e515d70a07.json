@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "327b47de0defa9e06e421c8a63c97581561c7700ba573daf8eaccfa48b81d016",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "e440bedd4354fb60bbd06b536a2cc0314df619a93166b94b2efce5e515d70a07",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "detail": "list"
+        },
+        "id": "toolu_01THMqxfbV5MPtw8Rm47wUUP",
+        "name": "mcp__omniweave__ow_corpora"
+      },
+      {
+        "arguments": {
+          "query": "2024 headcount report total headcount"
+        },
+        "id": "toolu_01UcKixRCJxJZLq37vBmCVPL",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

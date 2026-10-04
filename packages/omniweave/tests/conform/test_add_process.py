@@ -102,3 +102,20 @@ def test_ow_add_under_render_json_reports_the_completed_document(project: Path) 
     (pending,) = document["pending"]
     assert pending["uri"].endswith(f"/{CJK}/scan.png")
     assert pending["reason"] == "no_driver"
+
+
+def test_one_worker_parses_two_drivers_documents_in_one_run(tmp_path: Path) -> None:
+    """D653: under `max_workers.free = 1` the first driver's idle worker held the class's only
+    place, the pool refused the second driver's, and its batches crashed. The PDF stayed
+    `claimed`, and the run ended `partial` with exit 0. The idle worker is retired instead."""
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    shutil.copy(OFFICE_FIXTURES / "rich.docx", docs / "rich.docx")
+    shutil.copy(OFFICE_FIXTURES.parent.parent / "omniweave-pdf" / "fixtures" / "gen02p.pdf",
+                docs / "report.pdf")  # fmt: skip
+    one = "max_workers = { free = 1, local_compute = 1, billed_api = 1 }\n"
+    (tmp_path / "omniweave.toml").write_text(PROJECT + one, encoding="utf-8")
+    added = _ow(tmp_path, "add", "docs")
+    assert added.returncode == 0, added.stderr.decode("utf-8", "replace")
+    lines = added.stdout.decode("utf-8").splitlines()
+    assert lines[1].rstrip("\r") == "completed 2   pending 0   deadline_reached false", lines

@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "51392177e93b697e5357a9c8697d17fa204caade80d7195c0d4a5f6c5b8ed4b9",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "69223af79fe27ddddd4d97ac5205da761377c499af5a337dce617fbe7585ea10",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND.\n\nWhat I searched:\n- ow_query on corpus \"docs\" for:\n  - \"most-favoured-nation OR most-favored-nation OR most favoured nation OR most favored nation OR MFN OR \\\"most-favoured\\\" OR \\\"most-favored\\\"\" — verdict: absent.\n- Attempted to index the local docs with ow_add (path: C:/Users/User/.../project/docs). ow_add discovered 137 files but many were left pending (ingest not completed), so corpus remained un-updated.\n- Grep across the folder C:/Users/User/AppData/Local/Temp/claude/.../project/docs for these patterns (case-insensitive, files_with_matches):\n  - \"most[- ]favou?red|most[- ]favou?red[- ]nation|most[- ]favored|most[- ]favored[- ]nation|\\bMFN\\b\"\n  - and a broader set: \"best price|best-price|price parity|price-parity|preferential pricing|price guarantee|price protection|most favou?red|most favou?red nation|most favoured nation|most favored nation|price match\"\n  — No matches found.\n\nBecause the indexed corpus contains no matching passages and several documents remain pending/uningested, I cannot identify any supplier agreement containing an MFN clause from these documents.",
+    "tool_uses": []
+  }
+}

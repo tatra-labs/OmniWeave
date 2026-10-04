@@ -881,7 +881,35 @@ class ParseOperator:
             self._tally.workers += 1
             return worker
 
+        if self._pool.get(key) is None and self._pool.full(str(cost)):
+            self._make_room(str(cost), key)
         return self._pool.acquire(key, cost_class=str(cost), build=build)
+
+    def _make_room(self, cost_class: str, key: subproc.WorkerKey) -> None:
+        """Retire the least recently used worker of a full class that nobody is calling. **D653.**
+
+        `[drivers] max_workers` bounds how many worker processes a class holds, and a worker
+        outlives its batches by `worker_idle_ttl_s` (300 s). So under `max_workers.free = 1` the
+        first driver's idle worker held the only place, the pool refused the second driver's, and
+        every batch of it crashed: a folder of documents and PDFs ingested its documents, left its
+        PDFs `claimed`, and ended `partial` with exit 0. Replacing an idle worker keeps the cap,
+        which counts processes and not drivers.
+
+        A worker is in use exactly while its key's lock is held (`_lock` covers the acquire and
+        the whole `INVOKE`), so a lock taken without blocking proves nobody is calling it. When
+        every worker of the class is busy, nothing is retired, and the pool's refusal stands.
+        """
+        for other in self._pool.idle_order(cost_class):
+            if other == key:
+                continue
+            lock = self._lock(other)
+            if not lock.acquire(blocking=False):
+                continue
+            try:
+                if self._pool.retire(other):
+                    return
+            finally:
+                lock.release()
 
 
 class _Source:

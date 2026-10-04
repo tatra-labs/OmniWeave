@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "9327370dbc2d289d9da241c3f669e38189f97ef0989fb24046e8a0fd8882af02",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "fb9aba5204de90ac57fffead5c732480e2e054e5c3187d0beabac5343c2f6efe",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "There is no pet insurance folder or document in this archive — only \"insurance/car-policy-2024.pdf\" and \"insurance/home-policy-2024.pdf\" are present (with letters, receipts, statements, medical, and tax folders also indexed; none relate to pets).\n\n**NOT FOUND** — I searched the indexed corpus (`ow_query` for \"pet insurance policy number\" and \"pet insurance\") and the file listing of the documents folder (searching for any file containing \"pet\"), and found no pet insurance policy document. The only insurance policies present are car-policy-2024.pdf (policy number CP-7781-2024) and home-policy-2024.pdf; neither is a pet insurance policy.",
+    "tool_uses": []
+  }
+}

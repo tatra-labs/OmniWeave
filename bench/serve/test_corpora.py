@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import sys
 import tomllib
 from pathlib import Path
 
@@ -201,10 +202,10 @@ def test_the_generator_is_where_adr_14_says() -> None:
 def test_a_ready_entry_with_the_same_digest_is_reused_and_nothing_is_ingested(
     tmp_path: Path,
 ) -> None:
-    from corpora import prepare  # noqa: PLC0415 -- the cache half, beside the generator's tests
+    from corpora import ONE_WORKER, prepare  # noqa: PLC0415 -- the cache half
 
     documents = gen.documents("personal_archive", "quick")
-    digest = hashlib.sha256(gen.manifest_bytes(documents)).hexdigest()
+    digest = hashlib.sha256(gen.manifest_bytes(documents) + ONE_WORKER.encode()).hexdigest()
     base = tmp_path / f"personal_archive-quick-{digest[:12]}"
     (base / "project").mkdir(parents=True)
     (base / "project" / "omniweave.index.lock").write_text("# schema=1\n", encoding="utf-8")
@@ -266,3 +267,55 @@ def test_damage_naming_a_file_or_an_injector_that_does_not_exist_is_refused(
             cache_root=tmp_path,
             damage=(("nowhere.pdf", "mask_format"),),
         )
+
+
+def test_every_zip_either_generator_writes_records_the_same_os(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D653: `zipfile` records `create_system` 0 on Windows and 3 on POSIX, so a generator that
+    left it alone wrote other bytes on Linux, and another corpus digest. Both pin it to 0."""
+    import importlib.util  # noqa: PLC0415
+    import io  # noqa: PLC0415
+    import zipfile  # noqa: PLC0415
+
+    #  Generated as on POSIX, where `ZipInfo` defaults to 3: on Windows the default is already 0,
+    #  and a test run there could not tell a pinned generator from one that left it alone.
+    monkeypatch.setattr(zipfile.sys, "platform", "linux")
+    office = [d for d in gen.documents("data_room", "quick") if d.path.endswith((".docx", ".xlsx"))]
+    assert office
+    for document in office:
+        with zipfile.ZipFile(io.BytesIO(document.to_bytes())) as archive:
+            assert {info.create_system for info in archive.infolist()} == {0}, document.path
+
+    path = REPO / "fixtures" / "gen" / "gen_office_fixtures.py"
+    spec = importlib.util.spec_from_file_location("omniweave_gen_office_fixtures", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(sys, "argv", ["gen_office_fixtures.py", "--out", str(tmp_path)])
+    assert module.main() == 0
+    zips = [p for p in tmp_path.iterdir() if zipfile.is_zipfile(p)]
+    assert len(zips) >= 8
+    for one in zips:
+        with zipfile.ZipFile(one) as archive:
+            assert {info.create_system for info in archive.infolist()} == {0}, one.name
+
+
+@pytest.mark.parametrize(
+    ("printed", "unparsed"),
+    [
+        (b"completed 38   pending 22 (22 not_parsed)   deadline_reached false\n", 22),
+        (b"completed 136   pending 1 (1 failed)   deadline_reached false\n", 0),
+        (b"completed 60   pending 0   deadline_reached false\n", 0),
+        (b"completed 1   pending 3 (1 failed, 2 not_parsed)   deadline_reached false\n", 2),
+        (b"no summary at all\n", None),
+    ],
+)
+def test_a_corpus_ow_add_left_unparsed_is_refused_and_a_damaged_file_is_not(
+    printed: bytes, unparsed: int | None
+) -> None:
+    """D653: `ow add` exits 0 as `partial` when it never parsed some units, and the corpus is
+    then missing them. A unit pending for its own reason (`failed`) is the damaged corpus's."""
+    from corpora import _not_parsed  # noqa: PLC0415
+
+    assert _not_parsed(printed) == unparsed

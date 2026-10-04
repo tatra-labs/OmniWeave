@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "48bff037a964d573432b8588d59632900ad94cf96f78fe1c046df1c2fc39705b",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "7a18d6b3e07f4eacd4185ae7d343cfdabc0fcda2a82a82177d3bfd0d1a1779d3",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-8177b5d52e7c/project/docs/suppliers/supplier-agreement-borealis.docx"
+        },
+        "id": "call_z1i4AgCkYuqkIlzvOHpVMM7E",
+        "name": "Read"
+      }
+    ]
+  }
+}

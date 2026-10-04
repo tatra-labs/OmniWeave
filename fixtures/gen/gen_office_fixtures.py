@@ -66,6 +66,7 @@ def zip_bytes(entries: list[tuple[str, bytes]]) -> bytes:
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as archive:
         for name, data in entries:
             info = zipfile.ZipInfo(name, date_time=ZIP_DATE)
+            info.create_system = 0  # as on Windows, on any OS (D653)
             info.external_attr = 0o600 << 16
             archive.writestr(info, data)
     return buffer.getvalue()
@@ -407,6 +408,7 @@ def odf(mimetype: str, body: str, *, encrypted: bool = False) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as archive:
         first = zipfile.ZipInfo("mimetype", date_time=ZIP_DATE)
+        first.create_system = 0  # as on Windows, on any OS (D653)
         first.compress_type = zipfile.ZIP_STORED
         archive.writestr(first, mimetype.encode())
         for name, data in (
@@ -414,6 +416,7 @@ def odf(mimetype: str, body: str, *, encrypted: bool = False) -> bytes:
             ("content.xml", content.encode()),
         ):
             info = zipfile.ZipInfo(name, date_time=ZIP_DATE)
+            info.create_system = 0  # as on Windows, on any OS (D653)
             archive.writestr(info, data)
     return buffer.getvalue()
 
@@ -510,6 +513,7 @@ def epub_book() -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as archive:
         first = zipfile.ZipInfo("mimetype", date_time=ZIP_DATE)
+        first.create_system = 0  # as on Windows, on any OS (D653)
         archive.writestr(first, b"application/epub+zip")
         for name, data in (
             ("META-INF/container.xml", container.encode()),
@@ -517,6 +521,7 @@ def epub_book() -> bytes:
             ("OEBPS/chapter1.xhtml", chapter.encode()),
         ):
             info = zipfile.ZipInfo(name, date_time=ZIP_DATE)
+            info.create_system = 0  # as on Windows, on any OS (D653)
             archive.writestr(info, data)
     return buffer.getvalue()
 

@@ -1,0 +1,37 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "0f797ea6346bf4fef6a9fb345b4c4ed85cc81187a5ca0ddc5906415d1a0a78d6",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "f42ba10477928166f622dcc013e86ede09c254b76e48bece6cfc440ed12b75e5",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "files_with_matches",
+          "path": "{bench-cache}/data_room-full-8177b5d52e7c/project/docs",
+          "pattern": "2024.*revenue|revenue.*2024"
+        },
+        "id": "call_OYbDFFfbtWLv0PFUZ1BKBY0C",
+        "name": "Grep"
+      }
+    ]
+  }
+}

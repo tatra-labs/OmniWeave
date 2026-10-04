@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "0a719d5898432eaac16d6eeeb4750f5b9f768d71577861ce5dea7ab7e4a0c18c",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "696b67de94857c326bed56d952ab7bca89cab732e6193a28bbf9a3af1cae1c69",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "Harrow Savings bank statement transaction"
+        },
+        "id": "toolu_01F4mfjzbK6TNvJtq2oS2zam",
+        "name": "mcp__omniweave__ow_query"
+      },
+      {
+        "arguments": {
+          "command": "grep -il \"Harrow Savings\" -r . 2>/dev/null"
+        },
+        "id": "toolu_0154skiZFoz8hMJfMQBmiyW4",
+        "name": "Bash"
+      }
+    ]
+  }
+}
