@@ -72,6 +72,7 @@ __all__ = [
     "W_HEAD",
     "Sanitized",
     "bigrams",
+    "plain_terms",
     "sanitize",
 ]
 
@@ -295,6 +296,15 @@ def _lift_refs(text: str, dropped: list[str]) -> tuple[tuple[tuple[str, str], ..
 def _is_ident(token: str) -> bool:
     """A cite, an addr or a document URI -- the identity ladder's three tier-50 lookups."""
     return bool(_CITE.match(token) or _ADDR.match(token) or _URI.match(token))
+
+
+def plain_terms(text: str) -> tuple[str, ...]:
+    """`text` as FTS terms with nothing lifted: what `sanitize()` makes of a residue. D648.
+
+    For the text of a cite, an addr or a reference whose lookup found nothing: it goes to the
+    `lexical` Channel after all, and must be made as inert there as any other term.
+    """
+    return _terms(text)
 
 
 def _terms(text: str) -> tuple[str, ...]:
