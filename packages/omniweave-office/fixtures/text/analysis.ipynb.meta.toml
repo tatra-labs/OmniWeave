@@ -1,0 +1,13 @@
+# analysis.ipynb.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# a notebook: a markdown cell read as Markdown, a code cell as python code, its stream output as code with no language
+[fixture]
+sha256 = "9f9b275b23a81a1b6006a175a53ffd6986d84047fb20f4ac37fd48ce57ce775b"
+bytes = 550
+media_type = "application/x-ipynb+json"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_text_fixtures.py"
+# `generated` is 13-quality.md section 4.2's PREFERRED provenance: the generator path and the
+# expected output sha256 are above, and it carries no `review_by` because it depends on nothing
+# outside this repository.

@@ -1,0 +1,13 @@
+# events.jsonl.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# JSON Lines: one paragraph per record, its leaves joined
+[fixture]
+sha256 = "7d99b35cdd5dab7f986f49d6bad69ae3ef22a7156a233fdfadb0d493f7b78add"
+bytes = 144
+media_type = "application/jsonl"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_text_fixtures.py"
+# `generated` is 13-quality.md section 4.2's PREFERRED provenance: the generator path and the
+# expected output sha256 are above, and it carries no `review_by` because it depends on nothing
+# outside this repository.

@@ -1,0 +1,13 @@
+# notes.txt.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# plain text: paragraphs split on blank lines, each keeping its line breaks
+[fixture]
+sha256 = "4572e32d19b358b2534f88d4769ea90a9e92f4ccf698d907a86f46139ed56b73"
+bytes = 175
+media_type = "text/plain"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_text_fixtures.py"
+# `generated` is 13-quality.md section 4.2's PREFERRED provenance: the generator path and the
+# expected output sha256 are above, and it carries no `review_by` because it depends on nothing
+# outside this repository.

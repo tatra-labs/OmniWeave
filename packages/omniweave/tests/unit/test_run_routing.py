@@ -116,12 +116,15 @@ def test_an_office_document_is_decided_admitted_planned_and_then_parsed(
     store, config = _project(tmp_path)
     report = _run(tmp_path, store, config)
     assert report.routed is not None  # type: ignore[attr-defined]
-    assert dict(report.routed.planned) == {"parse.office.anydoc": 1}  # type: ignore[attr-defined]
+    assert dict(report.routed.planned) == {  # type: ignore[attr-defined]
+        "parse.office.anydoc": 1,
+        "parse.text.builtin": 1,
+    }
     assert _unit(store, "memo.docx", "state, acq_failure_class") == ("failed", "corrupt_input")
     ((operator, version, driver, status, cost, key, decision, priority, part),) = _rows(
         store,
         "SELECT operator, op_version, driver, status, cost_class, dispatch_key, decision_id, "
-        "priority, unit_part FROM work WHERE operator <> 'op.identify'",
+        "priority, unit_part FROM work WHERE driver = 'parse.office.anydoc'",
     )
     assert (operator, version, driver, status, cost, part) == (
         "parse.office",
@@ -139,7 +142,7 @@ def test_an_office_document_is_decided_admitted_planned_and_then_parsed(
         f"WHERE decision_id = '{decision}'",
     )
     assert decided == [("decode.office-native", "parse.office.anydoc", 1, "admitted", "text", "")]
-    assert _rows(store, "SELECT count(*) FROM route_unit_decision") == [(2,)], "docx + empty"
+    assert _rows(store, "SELECT count(*) FROM route_unit_decision") == [(3,)], "docx, txt, empty"
     ((evidence,),) = _rows(store, "SELECT count(*) FROM route_evidence")
     assert int(str(evidence)) >= 1
 
@@ -211,13 +214,15 @@ def test_a_pdf_its_structural_check_refuses_fails_as_corrupt_at_gate(
     assert report.routed.children == {"pdfium": 4}  # type: ignore[attr-defined]
 
 
-def test_a_rule_naming_a_driver_no_package_provides_plans_nothing(tmp_path: Path) -> None:
-    """`decode.text-native` names `parse.text.builtin`, which `[drivers] enabled` lists and no
-    distribution ships: the unit stays `identified` and the report names the driver."""
+def test_a_text_file_is_planned_to_the_stdlib_driver_and_read(tmp_path: Path) -> None:
+    """D646. `decode.text-native` names `parse.text.builtin`, which `[drivers] enabled` lists and,
+    until D646, no distribution shipped: this unit stayed `identified` for ever, and the report
+    said "not installed". `omniweave-office` ships it now, so it is planned and settles."""
     store, config = _project(tmp_path)
     report = _run(tmp_path, store, config)
-    assert _unit(store, "notes.txt") == ("identified",)
-    assert report.routed.unrouted["parse.text.builtin: not installed"] == 1  # type: ignore[attr-defined]
+    assert _unit(store, "notes.txt") == ("settled",)
+    assert report.routed.planned["parse.text.builtin"] == 1  # type: ignore[attr-defined]
+    assert "parse.text.builtin: not installed" not in report.routed.unrouted  # type: ignore[attr-defined]
 
 
 def test_by_the_shipped_driver_defaults_nothing_on_a_checkout_resolves(tmp_path: Path) -> None:
@@ -233,7 +238,11 @@ def test_by_the_shipped_driver_defaults_nothing_on_a_checkout_resolves(tmp_path:
 def test_the_report_names_what_was_planned_and_what_stopped_it(tmp_path: Path) -> None:
     store, config = _project(tmp_path)
     lines = _run(tmp_path, store, config).lines()  # type: ignore[attr-defined]
-    assert any(line.startswith("  route     1 planned (parse.office.anydoc 1)") for line in lines)
+    assert any(
+        line.startswith("  route     2 planned (parse.office.anydoc 1, parse.text.builtin 1)")
+        for line in lines
+    )
+    assert any(line.startswith("  parse     1 parsed (parse.text.builtin 1)") for line in lines)
     assert "  parse     1 failed (corrupt_input 1)" in lines
     assert all(line.isascii() for line in lines)
 

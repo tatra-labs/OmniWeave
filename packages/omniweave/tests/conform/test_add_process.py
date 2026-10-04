@@ -14,6 +14,7 @@ every pending unit and the uri of every completed one, so without `__main__`'s U
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import shutil
@@ -52,12 +53,20 @@ def _ow(project: Path, *args: str) -> Captured:
     )
 
 
+DOT_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
+"""A 1x1 PNG, `fixtures/gen/gen_office_fixtures.py`'s `DOT_PNG`."""
+
+
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
     docs = tmp_path / CJK
     docs.mkdir()
     shutil.copy(OFFICE_FIXTURES / "rich.docx", docs / "rich.docx")
-    (docs / "notes.txt").write_text("Routed to no driver.", encoding="utf-8")
+    #  A page image routes to `parse.page.olmocr`, which no checkout installs (D575): the unit the
+    #  report names as pending. A `.txt` file was that unit until `parse.text.builtin` (D646).
+    (docs / "scan.png").write_bytes(DOT_PNG)
     (tmp_path / "omniweave.toml").write_text(PROJECT, encoding="utf-8")
     return tmp_path
 
@@ -68,7 +77,7 @@ def test_ow_add_parses_a_docx_and_ow_query_cites_it(project: Path) -> None:
     lines = added.stdout.decode("utf-8").splitlines()
     assert lines[0].endswith("  ·  discovered 2  ·  unchanged 0  ·  queued 2  ·  skipped 0")
     assert lines[1].rstrip("\r") == "completed 1   pending 1 (1 no_driver)   deadline_reached false"
-    assert any(f"{CJK}/notes.txt  no_driver" in line for line in lines), lines
+    assert any(f"{CJK}/scan.png  no_driver" in line for line in lines), lines
     progress = added.stderr.decode("utf-8")
     assert "  parse     1 parsed (parse.office.anydoc 1), 1 documents" in progress, progress
 
@@ -91,5 +100,5 @@ def test_ow_add_under_render_json_reports_the_completed_document(project: Path) 
     assert (completed["doc_ord"], completed["gen"]) == (1, 1)
     assert completed["blocks"] > 0
     (pending,) = document["pending"]
-    assert pending["uri"].endswith(f"/{CJK}/notes.txt")
+    assert pending["uri"].endswith(f"/{CJK}/scan.png")
     assert pending["reason"] == "no_driver"

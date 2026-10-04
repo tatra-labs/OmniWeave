@@ -1,0 +1,13 @@
+# broken.json.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# JSON cut short: parse() refuses with CORRUPT_INPUT naming the parser's message
+[fixture]
+sha256 = "5c21ddf233ffc42e4a9a797334a482a7895abbf6d2b8113300e305ba90b87dcd"
+bytes = 39
+media_type = "application/json"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_text_fixtures.py"
+# `generated` is 13-quality.md section 4.2's PREFERRED provenance: the generator path and the
+# expected output sha256 are above, and it carries no `review_by` because it depends on nothing
+# outside this repository.
