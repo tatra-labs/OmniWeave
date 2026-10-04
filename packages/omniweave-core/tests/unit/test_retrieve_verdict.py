@@ -346,7 +346,37 @@ def test_g05_pending_work_in_scope() -> None:
 
 def test_g06_source_edited_unindexed() -> None:
     """07:2186: the corpus is complete and idle, and a source moved under it."""
-    _fires("source_edited_unindexed", coverage=_coverage(stale_units=2))
+    cause = _fires("source_edited_unindexed", coverage=_coverage(stale_units=2))
+    assert cause.fix == "ow ingest"
+
+
+def _edit(uri: str, fix: str) -> vd.DegradeCause:
+    return vd.DegradeCause(
+        gate="source_edited_unindexed", detail=f"{uri} changed since it was indexed", fix=fix
+    )
+
+
+def test_g06_names_the_one_file_a_query_found_changed_and_its_own_fix() -> None:
+    """D647: the reader `stat`s each indexed file in scope and names a changed one. One file is
+    its own cause, with `ow add <path>`; several are counted, the first named, and the fix is the
+    ingest that reads them all again."""
+    one = _edit("c:/docs/a.md", "ow add c:/docs/a.md")
+    assert _fires("source_edited_unindexed", coverage=_coverage(stale_units=1, gaps=(one,))) == one
+    two = _edit("c:/docs/b.md", "ow add c:/docs/b.md")
+    cause = _fires("source_edited_unindexed", coverage=_coverage(stale_units=2, gaps=(one, two)))
+    assert cause.detail == (
+        "2 tracked source(s) changed after they were indexed: c:/docs/a.md changed since it was "
+        "indexed; ow ingest reads them again"
+    )
+    assert cause.fix == "ow ingest"
+
+
+def test_gate_9_reads_only_its_own_gaps() -> None:
+    """`Coverage.gaps` carries gate 6's named files beside gate 9's parse gaps since D647, and
+    each gate reads its own: an edited file is not a parse gap."""
+    edit = _edit("c:/docs/a.md", "ow add c:/docs/a.md")
+    made = _verdict(coverage=_coverage(stale_units=1, gaps=(edit,)))
+    assert made.gates == ("source_edited_unindexed",)
 
 
 def test_g07_freshness_unknown_and_not_tracked_is_not_a_failure() -> None:

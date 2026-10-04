@@ -209,6 +209,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, replace
 from itertools import groupby
+from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal
 
@@ -258,6 +259,7 @@ if TYPE_CHECKING:
     from omniweave_core.store import VectorBackend
 
 __all__ = [
+    "FRESHNESS_STAT_MAX",
     "IN_FLIGHT_UNIT_STATES",
     "MAX_PARTS_REASON",
     "PARTS_REFUSED_SQL",
@@ -703,6 +705,54 @@ detail names the count and the value that admits it, and its `fix` is the same r
 queues the unit once the configured cap covers its count (`parts_refused`). A `resource_limit`
 from anywhere else names no knob this build reads, and its `fix` stays empty.
 """
+
+FRESHNESS_STAT_MAX: Final[int] = 2_000
+"""The most indexed files one query `stat`s to ask whether they changed since. **D647.**
+
+07:2946's `stat_fresh` compares the roster with the file's own `stat`, and nothing asked it at query
+time: an edit made since the last ingest was served as it was, with no gate. A `stat` is about
+18 microseconds on this build's Windows runner, so 2,000 cost some 40 ms of phase 3's
+`query_ms = 250`. Past the cap the most recently indexed are asked, and the rest are not."""
+
+_EDITED_SQL: Final[str] = """
+SELECT unit_uri, size, mtime_ns FROM unit
+ WHERE state = 'settled' AND stale_since IS NULL AND connector = 'fs' AND {where}
+ ORDER BY indexed_at_ns DESC, unit_uri LIMIT {limit}
+"""
+
+
+def _edited_sources(
+    connection: sqlite3.Connection, unit_where: str, unit_params: Sequence[object]
+) -> tuple[DegradeCause, ...]:
+    """Gate 6's causes from the files themselves: each indexed file changed or gone since. D647.
+
+    The comparison is `stat_fresh`'s first two clauses, size and `mtime`. Its third, the 2 s
+    racily-clean window, is the ingest walk's to apply: it makes a file indexed right after it was
+    written unproven rather than changed, and at query time it would fire this gate on every file
+    added a moment ago. A path that no longer `stat`s is named as gone: the document still answers
+    for a file this machine cannot see.
+    """
+    sql = _EDITED_SQL.format(where=unit_where, limit=FRESHNESS_STAT_MAX)
+    causes: list[DegradeCause] = []
+    for unit_uri, size, mtime_ns in connection.execute(sql, tuple(unit_params)):
+        uri = str(unit_uri)
+        try:
+            info = Path(uri).stat()
+        except OSError:
+            said = "is no longer at its path"
+        else:
+            if (info.st_size, info.st_mtime_ns) == (int(size or 0), int(mtime_ns or 0)):
+                continue
+            said = "changed"
+        causes.append(
+            DegradeCause(
+                gate="source_edited_unindexed",
+                detail=f"{uri} {said} since it was indexed, so what it says now is not searched",
+                fix="ow ingest" if said != "changed" else _add_command(uri),
+            )
+        )
+    return tuple(causes)
+
 
 _LIVE_DOCS: Final[str] = f"json_extract(doc.x, '$.\"{RETIRED_X}\"') IS NULL"
 """A document some file still holds: not retired by `run.discover.retire_replaced` (D645).
@@ -2935,7 +2985,8 @@ class SqliteReader:
             f"WHERE work.unit_uri = unit.unit_uri AND work.status IN ({live}))",
             (*IN_FLIGHT_UNIT_STATES, *unit_params, *_LIVE_STATES),
         )
-        stale_units = _one_int(
+        edited = _edited_sources(connection, unit_where, unit_params)
+        stale_units = len(edited) + _one_int(
             connection,
             f"SELECT count(*) FROM unit WHERE stale_since IS NOT NULL AND {unit_where}",  # noqa: S608
             unit_params,
@@ -2949,6 +3000,7 @@ class SqliteReader:
             (*parse_classes, *unit_params),
         )
         gaps = (
+            *edited,
             *_document_gaps(connection, status_where, doc_params),
             *_unit_gaps(connection, unit_where, unit_params),
         )
