@@ -1,0 +1,13 @@
+# page.html.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# HTML: headings, an entity, a list, a table with colspan and rowspan, a block quote, pre, hr; the head, style and script are not content
+[fixture]
+sha256 = "10dc2117f7cf03fc19db2faf67b0438a074bcef023e84fc4c7f22e63cfa0c1f1"
+bytes = 642
+media_type = "text/html"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_text_fixtures.py"
+# `generated` is 13-quality.md section 4.2's PREFERRED provenance: the generator path and the
+# expected output sha256 are above, and it carries no `review_by` because it depends on nothing
+# outside this repository.

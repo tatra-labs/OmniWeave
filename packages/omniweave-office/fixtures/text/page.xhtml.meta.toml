@@ -1,0 +1,13 @@
+# page.xhtml.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# XHTML: self-closing br, and an ordered list that starts at 3
+[fixture]
+sha256 = "89809849fb44d8bfde042aa447e6f91379afc54121d07c1d7957c1e52d085bd7"
+bytes = 320
+media_type = "application/xhtml+xml"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_text_fixtures.py"
+# `generated` is 13-quality.md section 4.2's PREFERRED provenance: the generator path and the
+# expected output sha256 are above, and it carries no `review_by` because it depends on nothing
+# outside this repository.

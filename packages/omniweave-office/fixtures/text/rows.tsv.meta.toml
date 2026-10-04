@@ -1,0 +1,13 @@
+# rows.tsv.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# TSV: one table, the first row its header
+[fixture]
+sha256 = "17f5e99db040c1bff1b6b8791674671ed050e4f939b607c09076449837f85511"
+bytes = 60
+media_type = "text/tab-separated-values"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_text_fixtures.py"
+# `generated` is 13-quality.md section 4.2's PREFERRED provenance: the generator path and the
+# expected output sha256 are above, and it carries no `review_by` because it depends on nothing
+# outside this repository.

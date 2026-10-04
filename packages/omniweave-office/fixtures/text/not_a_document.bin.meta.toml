@@ -1,0 +1,12 @@
+# not_a_document.bin.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# an ELF header. sniff() returns (), a legitimate `not mine`, and parse() refuses with UNSUPPORTED_FORMAT. NO SIDECAR MEDIA TYPE, because nothing routed it
+[fixture]
+sha256 = "46c2d9a50a74dea4dc6777dfa1510b6e757da40177442eb2549730145c147ad8"
+bytes = 40
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_text_fixtures.py"
+# `generated` is 13-quality.md section 4.2's PREFERRED provenance: the generator path and the
+# expected output sha256 are above, and it carries no `review_by` because it depends on nothing
+# outside this repository.

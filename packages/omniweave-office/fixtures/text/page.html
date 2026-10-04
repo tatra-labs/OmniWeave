@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head><title>Status page</title><style>p { color: red; }</style></head>
+<body>
+<h1>Service status</h1>
+<p>All systems are operating normally &amp; on schedule.</p>
+<script>console.log("not content");</script>
+<h2>Regions</h2>
+<ul>
+  <li>Europe: <b>green</b></li>
+  <li>Asia: amber</li>
+</ul>
+<table>
+  <tr><th>Region</th><th colspan="2">Latency</th></tr>
+  <tr><td rowspan="2">Europe</td><td>p50</td><td>12 ms</td></tr>
+  <tr><td>p99</td><td>80 ms</td></tr>
+</table>
+<blockquote><p>Uptime is a feature.</p></blockquote>
+<pre>curl https://status.example/api
+</pre>
+<hr>
+<p>Last updated at 09:00 UTC.</p>
+</body>
+</html>

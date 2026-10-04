@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40">
+  <title>Acme logo</title>
+  <desc>The Acme wordmark on a blue bar</desc>
+  <rect width="120" height="40" fill="#1155cc"/>
+  <text x="10" y="26">Acme <tspan font-weight="bold">Corp</tspan></text>
+</svg>

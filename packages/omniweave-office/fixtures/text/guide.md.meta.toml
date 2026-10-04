@@ -1,0 +1,13 @@
+# guide.md.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# Markdown: front matter, setext and ATX headings, ordered, bullet and nested lists, a block quote, fenced code with its language, a pipe table and a thematic break
+[fixture]
+sha256 = "befa4c3d7745dc18a62c2f87ab79ea47c828889eab3b224c8dbdae23b6a9d816"
+bytes = 625
+media_type = "text/markdown"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_text_fixtures.py"
+# `generated` is 13-quality.md section 4.2's PREFERRED provenance: the generator path and the
+# expected output sha256 are above, and it carries no `review_by` because it depends on nothing
+# outside this repository.
