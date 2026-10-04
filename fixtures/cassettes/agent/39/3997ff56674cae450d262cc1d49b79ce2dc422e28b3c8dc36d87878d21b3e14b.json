@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "a23de684554a1d0c5f332a2c5d1998d5e40ba99dde1e7c72bbccb2cde40b0b18",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "3997ff56674cae450d262cc1d49b79ce2dc422e28b3c8dc36d87878d21b3e14b",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-382fd9267ee9/project/docs/board/board-deck-q3-2024.pptx"
+        },
+        "id": "toolu_01HKUKfDwAdUTu4WBkVMbcYW",
+        "name": "Read"
+      },
+      {
+        "arguments": {
+          "command": "find {bench-cache}/data_room-full-382fd9267ee9/project/docs/board -iname \"deck-11*\" -o -iname \"deck-12*\""
+        },
+        "id": "toolu_01Hpyb4gaQwvymKYpC82WeDM",
+        "name": "Bash"
+      }
+    ]
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "f5c7dd0a05eaa5085832f9552f99b76dcf0b02edb62c95616e2eff57934df747",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "abeb14e96ae3bba28fce4c2b00a7994919ed332a03718d012d196b40d48cad11",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "files_with_matches",
+          "path": "{bench-cache}/data_room-full-382fd9267ee9/project/docs",
+          "pattern": "Q4 2024|Q4 2024 revenue|Quarter 4 2024|fourth quarter 2024|Revenue for Q4 2024|revenue Q4 2024"
+        },
+        "id": "call_yfRRSk6AgqM1ZnZTQcrlViRJ",
+        "name": "Grep"
+      }
+    ]
+  }
+}

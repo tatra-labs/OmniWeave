@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -217,6 +218,11 @@ def test_a_ready_entry_with_the_same_digest_is_reused_and_nothing_is_ingested(
     )
     assert (prepared.cached, prepared.base, prepared.digest) == (True, base, digest)
     assert prepared.docs == base / "project" / "docs"
+    #  D650: a cache made before the bench's budget answers with it all the same.
+    written = (base / "project" / "omniweave.toml").read_text(encoding="utf-8")
+    budget = tomllib.loads(written)["retrieval"]["budget"]
+    assert budget["channel_ms"]["lexical"] > 50
+    assert sum(budget["channel_ms"].values()) <= budget["query_ms"] - budget["hydration_reserve_ms"]
 
 
 def test_a_damaged_corpus_is_its_own_entry_with_its_answer_s_file_damaged(tmp_path: Path) -> None:

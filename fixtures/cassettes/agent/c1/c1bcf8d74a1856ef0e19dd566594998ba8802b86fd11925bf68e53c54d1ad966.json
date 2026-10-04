@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "09f80375ce612b140be051bbefb76ea845ed71800c00ab9548c65e09793e5375",
+    "sampling": {
+      "allow_tools": false,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "c1bcf8d74a1856ef0e19dd566594998ba8802b86fd11925bf68e53c54d1ad966",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The amendment-1-2021.pdf file is password-protected and cannot be opened, so its contents (including any service credit percentage) are not accessible. I also searched all other readable documents (MSA, exhibits, correspondence, depositions, pleadings) for \"service credit\" and found no matches.\n\nNOT FOUND — The document that would contain this information, contracts/amendment-1-2021.pdf (Amendment No. 1 to the Master Services Agreement), is encrypted/password-protected and could not be opened. I searched the readable MSA (msa-2019.pdf) and all other documents in the docs folder for \"service credit\" and \"Amendment No. 1\" with no results, so the percentage cannot be determined from the accessible files.",
+    "tool_uses": []
+  }
+}

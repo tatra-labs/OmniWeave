@@ -16,23 +16,34 @@ framework seams, and widening them is ADR-14's rejected alternative. A record ho
 inputs and the model's `Turn`, never the request body: that is re-derivable from the fixtures and
 the harness, and a request carrying page images would breach the per-file cap for no reviewer's
 benefit. No header is recorded, so no key can be.
+
+**The corpora's folder is not in a key (D650).** The system prompt names the corpus folder, and the
+model copies it into every Grep and Read it asks for, so a key over the raw conversation held the
+recording machine's `--cache` path: the committed set replayed on that machine, at that path, and
+missed everywhere else, the nightly job and every contributor included. The key, and the recorded
+turn, spell that folder `CORPORA`; a loaded turn gets the replaying machine's folder back.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import re
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
+from urllib.parse import quote
 
 from models import ModelRequest, Turn, canonical_request, turn_from_json, turn_json
 from omniweave_core.canonical import sha256_canonical
 from omniweave_core.cassette import MAX_CASSETTE_BYTES, CassetteMode
+from omniweave_core.limits import MAX_CASSETTE_BYTES_TOTAL
 
 __all__ = [
     "CASSETTE_ROOT",
+    "CORPORA",
     "HARNESS_MAJOR",
     "PROMPT_VERSION",
     "RECORD_VERSION",
@@ -41,6 +52,7 @@ __all__ = [
     "AgentCassette",
     "CassetteMissError",
     "CassetteOversizeError",
+    "audit",
     "request_key",
 ]
 
@@ -54,6 +66,8 @@ PROMPT_VERSION: Final[str] = "agent-prompt/2"
 MISS, never a hit."""
 
 RECORD_VERSION: Final[int] = 1
+CORPORA: Final[str] = "{bench-cache}"
+"""How a key and a recorded turn spell the folder the corpora are prepared under (D650)."""
 CASSETTE_ROOT: Final[Path] = Path(__file__).resolve().parents[2] / "fixtures" / "cassettes"
 
 
@@ -65,9 +79,55 @@ class CassetteOversizeError(ValueError):
     """`OW-Q-017`: a recording over `MAX_CASSETTE_BYTES`, refused at record time."""
 
 
-def request_key(request: ModelRequest, *, model_key: str) -> tuple[str, dict[str, Any]]:
-    """13:978's six fields for one agent turn, and their `sha256_canonical`."""
-    conversation = canonical_request(request)
+def _spellings(root: Path) -> re.Pattern[str]:
+    """Every way a conversation spells `root`: either separator, a JSON-escaped backslash, a
+    `file:` URI's percent-encoding, and on Windows any case, since the model and a tool may each
+    write the folder its own way."""
+    parts = [
+        "(?:" + "|".join(sorted({re.escape(part), re.escape(quote(part))})) + ")"
+        for part in root.resolve().as_posix().split("/")
+    ]
+    flags = re.IGNORECASE if sys.platform == "win32" else 0
+    return re.compile(r"(?:/|\\{1,2})".join(parts), flags)
+
+
+def _neutral(value: Any, spellings: re.Pattern[str] | None) -> Any:
+    """`value` with every spelling of the corpora's folder as `CORPORA`."""
+    if spellings is None:
+        return value
+    if isinstance(value, str):
+        return spellings.sub(lambda _m: CORPORA, value)
+    if isinstance(value, list):
+        return [_neutral(one, spellings) for one in value]
+    if isinstance(value, dict):
+        return {key: _neutral(one, spellings) for key, one in value.items()}
+    return value
+
+
+def _local(value: Any, root: Path | None) -> Any:
+    """`_neutral`'s inverse for a recorded turn: `CORPORA` as this machine's folder."""
+    if root is None:
+        return value
+    if isinstance(value, str):
+        return value.replace(CORPORA, root.resolve().as_posix())
+    if isinstance(value, list):
+        return [_local(one, root) for one in value]
+    if isinstance(value, dict):
+        return {key: _local(one, root) for key, one in value.items()}
+    return value
+
+
+def request_key(
+    request: ModelRequest, *, model_key: str, corpora: Path | None = None
+) -> tuple[str, dict[str, Any]]:
+    """13:978's six fields for one agent turn, and their `sha256_canonical`.
+
+    `corpora` is the folder the corpora are prepared under: spelled `CORPORA`, so the key is the
+    same on every machine (D650).
+    """
+    conversation = _neutral(
+        canonical_request(request), None if corpora is None else _spellings(corpora)
+    )
     images = [
         image
         for message in conversation["messages"]
@@ -95,6 +155,8 @@ class AgentCassette:
 
     mode: CassetteMode
     root: Path = CASSETTE_ROOT
+    corpora: Path | None = None
+    """The folder the corpora are prepared under, which no key or record holds (D650)."""
 
     def __post_init__(self) -> None:
         self.hits: list[str] = []
@@ -112,7 +174,7 @@ class AgentCassette:
         live: Callable[[ModelRequest], Turn] | None,
     ) -> Turn:
         """Replay, record, or refuse -- 13:982's three modes, in the order that guarantees them."""
-        key, inputs = request_key(request, model_key=model_key)
+        key, inputs = request_key(request, model_key=model_key, corpora=self.corpora)
         if self.mode is CassetteMode.OFF:
             return self._live(request, live, key)
         found = self._load(key, inputs)
@@ -155,7 +217,7 @@ class AgentCassette:
             or record.get("inputs") != inputs
         ):
             return None
-        return turn_from_json(record["turn"])
+        return turn_from_json(_local(record["turn"], self.corpora))
 
     def _save(self, key: str, inputs: dict[str, Any], turn: Turn) -> None:
         record = {
@@ -165,9 +227,11 @@ class AgentCassette:
             "contract_major": HARNESS_MAJOR,
             "prompt_version": PROMPT_VERSION,
             "inputs": inputs,
-            "turn": turn_json(turn),
+            "turn": _neutral(
+                turn_json(turn), None if self.corpora is None else _spellings(self.corpora)
+            ),
         }
-        raw = (json.dumps(record, indent=2, sort_keys=True, ensure_ascii=False) + "\n").encode()
+        raw = _encode(record)
         if len(raw) > MAX_CASSETTE_BYTES:
             raise CassetteOversizeError(
                 f"OW-Q-017 cassette {key} is {len(raw)} bytes, over MAX_CASSETTE_BYTES "
@@ -177,3 +241,69 @@ class AgentCassette:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(raw)
         self.recorded.append(key)
+
+
+def _encode(record: dict[str, Any]) -> bytes:
+    """The one spelling a record is written in, so a hand edit is a difference `audit` sees."""
+    return (json.dumps(record, indent=2, sort_keys=True, ensure_ascii=False) + "\n").encode()
+
+
+def audit(root: Path = CASSETTE_ROOT) -> tuple[int, int, list[str]]:
+    """Every committed recording, checked without a corpus, a provider or a model. **D650.**
+
+    The `golden` job's Cassette half (11-repo-layout.md section 6.2), on every pull request. A full
+    replay needs the full-scale corpora ingested, which is the nightly two-arm job's (ADR-14
+    D14.5), not a four-minute job's. What a pull request can break without touching a model is
+    the store itself, and each check here is one way it does:
+
+    - a file that is not one record: it does not decode, or names a version the replay refuses;
+    - a key that is not its inputs' `sha256_canonical`, or a file not at `path_for(key)`: replay
+      can never find it, so the recording is dead weight a full run would report as a miss;
+    - a record not in `_encode`'s spelling: a hand edit, which a review would otherwise not see;
+    - a file over `MAX_CASSETTE_BYTES`, or a store over `MAX_CASSETTE_BYTES_TOTAL` (13:614).
+
+    Returns the recording count, the store's bytes, and one line per problem, each naming the file.
+    """
+    store = AgentCassette(CassetteMode.REQUIRED, root)
+    base = root / SERVICE
+    problems: list[str] = []
+    count = total = 0
+    for path in sorted(base.rglob("*")) if base.is_dir() else []:
+        if path.is_dir():
+            continue
+        shown = path.relative_to(root).as_posix()
+        raw = path.read_bytes()
+        count, total = count + 1, total + len(raw)
+        if path.suffix != ".json":
+            problems.append(f"{shown}: not a recording (only <key>.json files belong here)")
+            continue
+        if len(raw) > MAX_CASSETTE_BYTES:
+            problems.append(
+                f"{shown}: {len(raw)} bytes, over MAX_CASSETTE_BYTES ({MAX_CASSETTE_BYTES})"
+            )
+        try:
+            record = json.loads(raw)
+            turn_from_json(record["turn"])
+            key, inputs = record["key"], record["inputs"]
+        except (ValueError, KeyError, TypeError) as exc:
+            problems.append(f"{shown}: not a record ({type(exc).__name__}: {exc})")
+            continue
+        current = (RECORD_VERSION, SEAM, HARNESS_MAJOR, PROMPT_VERSION)
+        found = tuple(
+            record.get(name)
+            for name in ("record_version", "seam", "contract_major", "prompt_version")
+        )
+        if found != current:
+            problems.append(f"{shown}: written for {found}, and replay reads only {current}")
+        if sha256_canonical(inputs) != key:
+            problems.append(f"{shown}: its key is not the sha256_canonical of its inputs")
+        if path != store.path_for(key):
+            problems.append(f"{shown}: filed away from its key; replay reads {key[:2]}/{key}.json")
+        if raw != _encode(record):
+            problems.append(f"{shown}: not in the spelling a recording is written in (hand edit?)")
+    if total > MAX_CASSETTE_BYTES_TOTAL:
+        problems.append(
+            f"the store is {total} bytes, over MAX_CASSETTE_BYTES_TOTAL "
+            f"({MAX_CASSETTE_BYTES_TOTAL})"
+        )
+    return count, total, problems

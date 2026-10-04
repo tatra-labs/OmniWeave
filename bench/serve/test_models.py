@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from collections.abc import Mapping
 
@@ -151,3 +152,20 @@ def test_the_canonical_conversation_carries_an_image_as_its_digest_not_its_bytes
     tool = canonical["messages"][3]
     assert tool["images"] == [PNG.sha256]
     assert PNG.data_b64 not in json.dumps(canonical)
+
+
+def test_a_default_temperature_is_sent_as_none_on_both_wires() -> None:
+    """D650: `claude-sonnet-5` answers *"`temperature` is deprecated for this model"*, and the GPT-5
+    family accepts only its own default. `temperature=None` sends no field at all."""
+    request = dataclasses.replace(_request(), temperature=None)
+    assert "temperature" not in m.AnthropicClient(api_key="k").body(request)
+    assert "temperature" not in m.OpenAIClient(api_key="k").body(request)
+    assert m.OpenAIClient(api_key="k").body(_request())["temperature"] == 0.0
+
+
+def test_openai_s_own_endpoint_takes_max_completion_tokens_and_a_local_one_max_tokens() -> None:
+    """D650: OpenAI's reasoning models refuse `max_tokens`; Ollama, vLLM and llama.cpp take it."""
+    public = m.OpenAIClient(api_key="k").body(_request())
+    assert (public.get("max_completion_tokens"), "max_tokens" in public) == (512, False)
+    local = m.OpenAIClient(base_url="http://localhost:11434/v1").body(_request())
+    assert (local.get("max_tokens"), "max_completion_tokens" in local) == (512, False)

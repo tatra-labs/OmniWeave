@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "aee1a465c6dba4031fffa1115d26b6362f613d8b72ebe1414f47158c87a49a41",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "48749fb52f8db982c34f9dc45da10f9365779dc0bd2faf3d86f66e7a24cc0c13",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "Contoso \"data processing agreement\" customer data hosted country kind:agreement",
+          "scope": "*"
+        },
+        "id": "call_oarpGgJa5EYSFkf2gl5lTBjK",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

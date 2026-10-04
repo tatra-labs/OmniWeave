@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "adc711603ae7a18a7feedeebbc85073fa6f7f1503b1cfb3f0445f4bdd0d51f36",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "9eaa8952abe30f729479ce6652d65a83dee7ebea5e07d8d6416a780edd2b6ffc",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "**Section 5 (Flood)** of home-policy-2024.pdf states: \"Flood damage is excluded unless the Flood Extension endorsement is purchased.\"\n\nSource: home-policy-2024.pdf, page 2 (citation d40#20).",
+    "tool_uses": []
+  }
+}

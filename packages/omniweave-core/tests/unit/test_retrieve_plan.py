@@ -21,6 +21,7 @@ import tomllib
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from omniweave_core.config import load
 from omniweave_core.errors import UsageError
 from omniweave_core.limits import PREFILTER_MAX
 from omniweave_core.model.enums import Method
@@ -37,6 +38,8 @@ from omniweave_core.retrieve.types import (
 from omniweave_core.store.types import Expand, Filters, IndexCaps, Narrowing
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from conftest import PlanDocs
 
 DOC = "07-store-and-retrieval.md"
@@ -647,3 +650,25 @@ def test_the_deny_methods_twin_is_the_callers_to_set(policy: RetrievalPolicy) ->
     made = pl.plan(Query(text="parental leave", filters=filters), _caps(), policy)
     assert made.filters is filters
     assert made.filters.deny_restriction_bits == 0
+
+
+def test_the_budget_a_query_spends_is_the_projects(tmp_path: Path) -> None:
+    """D650: `[retrieval.budget]` reaches the `QueryBudget`, and an unset table is 07's own."""
+    home = {"OMNIWEAVE_HOME": str(tmp_path / "absent")}
+    (tmp_path / "plain").mkdir()
+    assert pl.budget_of(load(cwd=tmp_path / "plain", env=home)) == QueryBudget()
+    raised = tmp_path / "raised"
+    raised.mkdir()
+    (raised / "omniweave.toml").write_text(
+        "[retrieval.budget]\nquery_ms = 900\nhydration_reserve_ms = 60\n"
+        "channel_ms = { identity = 15, exact = 25, lexical = 400, structural = 40,"
+        " semantic = 80 }\n",
+        encoding="utf-8",
+    )
+    budget = pl.budget_of(load(cwd=raised, env=home))
+    assert (budget.query_ms, budget.hydration_reserve_ms) == (900, 60)
+    assert dict(budget.channel_ms) == {
+        "identity": 15, "exact": 25, "lexical": 400, "structural": 40, "semantic": 80,
+    }  # fmt: skip
+    made = pl.plan(Query(text="parental leave"), _caps(), RetrievalPolicy(budget=budget))
+    assert {spec.name: spec.budget_ms for spec in made.channels}["lexical"] == 400

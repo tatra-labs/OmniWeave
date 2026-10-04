@@ -123,7 +123,7 @@ class ModelRequest:
     messages: tuple[Message, ...]
     tools: tuple[ToolSpec, ...]
     model: str
-    temperature: float
+    temperature: float | None
     max_tokens: int
     sampling: Mapping[str, Any] = field(default_factory=dict)
 
@@ -269,10 +269,11 @@ class AnthropicClient:
         body: dict[str, Any] = {
             "model": request.model,
             "max_tokens": request.max_tokens,
-            "temperature": request.temperature,
             "system": request.system,
             "messages": messages,
         }
+        if request.temperature is not None:
+            body["temperature"] = request.temperature
         if request.tools:
             body["tools"] = [
                 {"name": t.name, "description": t.description, "input_schema": dict(t.input_schema)}
@@ -373,12 +374,21 @@ class OpenAIClient:
                     ]
                 messages.append(message)
         flush()
+        #  OpenAI's own endpoint takes `max_completion_tokens`, and its reasoning models refuse
+        #  `max_tokens`; the local servers this wire also reaches (Ollama, vLLM, llama.cpp) take
+        #  `max_tokens`. D650.
+        limit = (
+            "max_completion_tokens"
+            if self._url == OPENAI_URL + "/chat/completions"
+            else ("max_tokens")
+        )
         body: dict[str, Any] = {
             "model": request.model,
-            "temperature": request.temperature,
-            "max_tokens": request.max_tokens,
+            limit: request.max_tokens,
             "messages": messages,
         }
+        if request.temperature is not None:
+            body["temperature"] = request.temperature
         if request.tools:
             body["tools"] = [
                 {

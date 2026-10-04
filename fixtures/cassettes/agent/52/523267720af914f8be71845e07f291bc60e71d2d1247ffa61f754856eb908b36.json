@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "42e21627da8fe529b3f47458380c75d7c8dd45eaea4edc7aafb5efe93ca7110d",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "523267720af914f8be71845e07f291bc60e71d2d1247ffa61f754856eb908b36",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The document that would contain this (docs/audit/audit-report-2023.pdf) is password-protected/encrypted and cannot be opened with the available tools.\n\nNOT FOUND — I searched for \"materiality\" in docs/audit/audit-report-2023.pdf, but the file is encrypted (PDFium reports \"Incorrect password error\") and could not be read. No other document in the folder contains audit materiality figures.",
+    "tool_uses": []
+  }
+}

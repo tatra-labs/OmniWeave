@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "34ec03c1c9adec38aecbfdaa0c134edbc03fb9bba3877af610a3d7b3f72e6e99",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "2e2d823922a118bdd8698aab1edb4369ec07bc0526ba8973cc440cddcf30abe1",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND. Searched for document content related to Amendment No. 1 to the Master Services Agreement in the default corpus, but `ow_corpora` shows no indexed corpora exist (empty list). The query returned degraded status with 0 documents.",
+    "tool_uses": []
+  }
+}

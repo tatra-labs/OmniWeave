@@ -64,12 +64,21 @@ class Source(StrEnum):
     DEFAULT = "default"
 
 
+DEFAULT_TEMPERATURE: Final[str] = "default"
+"""`temperature = "default"` sends no temperature, and the model samples at its own. D650.
+
+The shipped default, because the shipped model refuses the parameter: `claude-sonnet-5` answers
+*"`temperature` is deprecated for this model"*, and the GPT-5 family accepts only its own default.
+A number is still accepted, for a model that takes one, and is part of the Cassette key either
+way. Replay is what makes a run reproducible, not the sampling: a committed recording replays the
+same bytes whatever sampled it."""
+
 DEFAULTS: Final[Mapping[str, object]] = {
     "provider": "anthropic",
     "model": "claude-sonnet-5",
     "base_url": "",
     "api_key_env": "",
-    "temperature": 0.0,
+    "temperature": DEFAULT_TEMPERATURE,
     "max_tokens": 2048,
     "tool_budget": 12,
     "timeout_s": 120,
@@ -108,7 +117,7 @@ class Config:
     model: str
     base_url: str
     api_key_env: str
-    temperature: float
+    temperature: float | None
     max_tokens: int
     tool_budget: int
     timeout_s: int
@@ -221,6 +230,16 @@ def _coerce(key: str, raw: object, default: object, source: Source) -> object:
         ) from exc
 
 
+def _temperature(raw: object) -> float | None:
+    """`"default"` as `None`, and anything else as a number; `nan` for what is neither."""
+    if str(raw).strip().lower() == DEFAULT_TEMPERATURE:
+        return None
+    try:
+        return float(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return float("nan")
+
+
 def _integer(raw: object) -> int:
     """An int, refusing a float with a fraction rather than truncating it."""
     if isinstance(raw, float) and not raw.is_integer():
@@ -250,8 +269,9 @@ def _validated(settings: Mapping[str, Setting]) -> Config:
     arms = value("arms")
     if not isinstance(arms, tuple) or not arms or not set(arms) <= ARMS:
         raise refuse("arms", "a non-empty subset of omniweave,control")
-    if not 0.0 <= float(value("temperature")) <= MAX_TEMPERATURE:  # type: ignore[arg-type]
-        raise refuse("temperature", f"0.0 to {MAX_TEMPERATURE}")
+    temperature = _temperature(value("temperature"))
+    if temperature is not None and not 0.0 <= temperature <= MAX_TEMPERATURE:
+        raise refuse("temperature", f'"{DEFAULT_TEMPERATURE}", or 0.0 to {MAX_TEMPERATURE}')
     for key, (low, high) in INTEGER_RANGES.items():
         if not low <= int(value(key)) <= high:  # type: ignore[call-overload]
             raise refuse(key, f"an integer from {low} to {high}")
@@ -263,7 +283,7 @@ def _validated(settings: Mapping[str, Setting]) -> Config:
         model=str(value("model")),
         base_url=str(value("base_url")).rstrip("/"),
         api_key_env=str(value("api_key_env")),
-        temperature=float(value("temperature")),  # type: ignore[arg-type]
+        temperature=temperature,
         max_tokens=int(value("max_tokens")),  # type: ignore[call-overload]
         tool_budget=int(value("tool_budget")),  # type: ignore[call-overload]
         timeout_s=int(value("timeout_s")),  # type: ignore[call-overload]

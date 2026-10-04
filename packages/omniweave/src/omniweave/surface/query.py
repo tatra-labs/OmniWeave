@@ -113,7 +113,7 @@ def _query(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, std
     config = load(cwd=cwd, env=env, explicit=explicit)
     name = corpus_of(config, parsed.corpus, verb="ow query")
     store = store_of(config, name, cwd=cwd)
-    retrieval = _retrieve(store, parsed)
+    retrieval = _retrieve(store, parsed, config)
     try:
         #  `qualify` is `ow_query`'s rule: with more than one corpus declared, every cite names
         #  its corpus, so a cite pasted into `ow open` cannot resolve against the wrong one.
@@ -138,10 +138,11 @@ def _query(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, std
     return fail_on.get(answer.state, 0)
 
 
-def _retrieve(store: Path, parsed: argparse.Namespace) -> Any:
+def _retrieve(store: Path, parsed: argparse.Namespace, config: Config | None = None) -> Any:
     """One read-only `execute()` over one store, as `ow_query` makes it (serve's `_retrieve`)."""
     from omniweave_core.clock import SystemClock  # noqa: PLC0415
     from omniweave_core.retrieve.execute import execute  # noqa: PLC0415
+    from omniweave_core.retrieve.plan import budget_of  # noqa: PLC0415
     from omniweave_core.retrieve.types import Query, RetrievalPolicy  # noqa: PLC0415
     from omniweave_core.store import reader as store_reader  # noqa: PLC0415
     from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
@@ -155,7 +156,9 @@ def _retrieve(store: Path, parsed: argparse.Namespace) -> Any:
     connection = store_sqlite.connect_readonly(store)
     try:
         reader = store_reader.SqliteReader(connection, now_ns=clock.wall_ns())
-        return execute(reader, Query(**fields), RetrievalPolicy())
+        #  D650: the project's `[retrieval.budget]`, which no query read until now.
+        policy = RetrievalPolicy() if config is None else RetrievalPolicy(budget=budget_of(config))
+        return execute(reader, Query(**fields), policy)
     finally:
         connection.close()
 

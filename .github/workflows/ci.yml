@@ -792,26 +792,47 @@ jobs:
     timeout-minutes: 8 # 2x the 240 s budget of section 6.2.
     permissions:
       contents: read
+    env:
+      UV_PYTHON: "3.11"
     steps:
       - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
         with:
           persist-credentials: false
           fetch-depth: 1
-      - name: "the Tier-B corpus and the Cassettes have not landed unwired"
-        # eval/corpora.toml is the digest that keys section 6.6's golden cache; fixtures/cassettes/
-        # is where the Cassettes are committed, content-addressed and uncached. Either one existing
-        # means this job has work it is not doing.
+      - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
+      - run: uv python install "$UV_PYTHON"
+      - id: uv-cache-dir
+        run: echo "dir=$(uv cache dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          path: ${{ steps.uv-cache-dir.outputs.dir }}
+          key: "uv-${{ runner.os }}-py3.11-${{ hashFiles('uv.lock') }}"
+          restore-keys: "uv-${{ runner.os }}-py3.11-"
+      - name: "install the workspace and the dev group"
+        run: uv sync --frozen --all-packages --group dev
+      - name: "the Tier-B corpus has not landed unwired"
+        # eval/corpora.toml is the digest that keys section 6.6's golden cache. Its existing means
+        # this job has Reductions and Counters to run that it is not running.
+        #
+        # fixtures/cassettes WAS THE SECOND PATH, until the bench's recordings landed (D650). The
+        # step below is what the tripwire demanded: "wire the step it names, then remove the path
+        # -- do not widen the condition."
         run: |
-          for path in eval/corpora.toml fixtures/cassettes
-          do
-            if [ -e "$path" ]
-            then
-              echo "$path exists: wire the golden job (11-repo-layout.md sections 6.2, 6.6)"
-              exit 1
-            fi
-          done
-          echo "golden: Reductions, Counters and Cassette replay all land at P2 or later" \
+          if [ -e eval/corpora.toml ]
+          then
+            echo "eval/corpora.toml exists: wire the golden job (11-repo-layout.md 6.2, 6.6)"
+            exit 1
+          fi
+          echo "golden: Reductions and Counters land with the Tier-B corpus" \
             | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: "Cassettes -- every committed recording is its key, in place, within the caps"
+        # Section 6.2's Cassette replay, the half a pull request can break without a model: a
+        # recording that does not decode, a key that is not its inputs' sha256_canonical, a file
+        # away from <service>/<key[:2]>/<key>.json, a hand edit, or a store over 13-quality.md:614's
+        # 32 MiB. The full two-arm replay needs the full-scale corpora ingested, which is longer
+        # than this job's budget, and is the nightly job's (ADR-14 D14.5): `required`, a miss is
+        # OW-Q-004 and never a live call.
+        run: uv run python bench/serve/run.py --audit-cassettes
 
   # ==========================================================================================
   # conform -- ubuntu x 3.11, "the twelve suites + G15's socket-blocked run + G16", <= 5 min.

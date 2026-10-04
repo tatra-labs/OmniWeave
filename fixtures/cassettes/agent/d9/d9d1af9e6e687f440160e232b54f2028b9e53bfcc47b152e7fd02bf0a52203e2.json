@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "55378c5b178f9b7a61e8b598bf6e78dd1662b5816566e66fc0ffed0bf3b7e720",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "d9d1af9e6e687f440160e232b54f2028b9e53bfcc47b152e7fd02bf0a52203e2",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "What does paragraph 3 of the Oakridge Property tenancy renewal letter say about the rent?"
+        },
+        "id": "call_nsx1wihw",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

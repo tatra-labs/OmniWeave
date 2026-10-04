@@ -36,7 +36,8 @@ from pathlib import Path
 from types import ModuleType
 from typing import Final
 
-from first_answer import PROJECT, _env
+from first_answer import PROJECT as FIRST_ANSWER_PROJECT
+from first_answer import _env
 from omniweave_conform.damage import INJECTORS
 from omniweave_core.host.subproc import run_captured
 from serve_harness import indexed_sources
@@ -51,6 +52,16 @@ __all__ = [
     "key_of",
     "prepare",
 ]
+
+PROJECT: Final[str] = FIRST_ANSWER_PROJECT + (
+    "[retrieval.budget]\nquery_ms = 5000\nhydration_reserve_ms = 500\n"
+    "channel_ms = { identity = 150, exact = 250, lexical = 2000, structural = 400,"
+    " semantic = 800 }\n"
+)
+"""first_answer's project, with budgets far above 07's. **D650.** The bench measures what the
+agent reads, not how fast a laptop answers: at the shipped `channel_ms.lexical = 50` a nine-word
+question over a full-scale corpus took about 51 ms, so whether it timed out depended on the
+machine's load, and a recording replayed on another machine, or the same one busier, missed."""
 
 GENERATOR: Final[Path] = (
     Path(__file__).resolve().parents[2] / "fixtures" / "gen" / "gen_reference_corpora.py"
@@ -103,7 +114,10 @@ class Prepared:
 
     def indexed(self) -> frozenset[str]:
         """The indexed sources, off the receipt `ow add` wrote (D601's meaning of "indexed")."""
-        return indexed_sources(self.receipt.read_text(encoding="utf-8"), self.project.as_posix())
+        #  Resolved, as `HostTools` resolves what it records: a symlinked temp folder (macOS's
+        #  `/var`) or a spelling that differs by case would otherwise never compare equal. D650.
+        root = self.project.resolve().as_posix()
+        return indexed_sources(self.receipt.read_text(encoding="utf-8"), root)
 
 
 def damage_of(task_id: str, injector: str | None) -> tuple[tuple[str, str], ...]:
@@ -149,6 +163,9 @@ def prepare(
     project = base / "project"
     shown = f"{corpus} ({scale}{', ' + label if label else ''})"
     if ready.is_file() and (project / "omniweave.index.lock").is_file():
+        #  Rewritten on a hit too: the budget is read per query, not at ingest, and a cache made
+        #  before it would otherwise answer with the shipped one.
+        (project / "omniweave.toml").write_text(PROJECT, encoding="utf-8")
         log(f"  corpus    {shown}: cached, {len(documents)} files, {base.as_posix()}")
         return Prepared(
             corpus, scale, digest, base, cached=True, add_seconds=None, env=_env(base),
