@@ -144,6 +144,7 @@ __all__ = [
     "MODEL_VERSION",
     "PARSE_FAILED_SQL",
     "SETTLED_SQL",
+    "Ordinals",
     "ParseLedger",
     "ParseOperator",
     "ParseTally",
@@ -204,6 +205,95 @@ in a minute is not a worker, and there is no `PROGRESS` to wait for before `HELL
 def is_parse(operator: str) -> bool:
     """A routed `parse.*` row -- 02:479's operator, the driver's port family."""
     return operator.startswith("parse.")
+
+
+# =============================================================================================
+# doc_ord, reserved in path order
+# =============================================================================================
+
+_TO_PARSE_SQL: Final[str] = """
+SELECT u.content_sha256 FROM work AS w JOIN unit AS u USING (unit_uri)
+ WHERE w.operator LIKE 'parse.%' AND w.status IN ('pending', 'claimed', 'failed_transient')
+   AND u.content_sha256 IS NOT NULL
+ ORDER BY w.unit_uri, w.unit_part
+"""
+_NEXT_ORD_SQL: Final[str] = "SELECT IFNULL(MAX(doc_ord), 0) + 1 FROM doc"
+_KNOWN_CHUNK: Final[int] = 900
+"""Doc keys per `IN (...)` probe, under SQLite's default 999 host parameters."""
+
+
+class Ordinals:
+    """The `doc_ord` each first-sight document of the run takes, fixed before any parse settles.
+
+    `doc_ord` is the row a document's first write inserts, and parses settle on as many threads as
+    a class has workers, in whatever order they finish. So two ingests of one folder numbered the
+    same documents differently, and every cite an Answer printed (`d77#2`) named a number the same
+    inputs did not reproduce (D653, D654). Routing has finished before the parse drain starts, so
+    every unit the run will parse is in `work` by then: `reserve` numbers the documents not yet in
+    the store in `unit_uri` order, from the next free ordinal, and a parse takes its document's.
+
+    A unit that fails keeps its number unused, so a store's ordinals can have gaps, as they already
+    do after `ow corpus rm`. A document the reservation did not see -- one whose parse row was
+    written after it -- takes the next number past the reserved ones. Before `reserve`, as in the
+    drain that finishes an interrupted run before routing, nothing is reserved and `take` answers
+    `None`, which is SQLite's own choice.
+    """
+
+    __slots__ = ("_guard", "_next", "_reserved")
+
+    def __init__(self) -> None:
+        self._reserved: dict[bytes, int] = {}
+        self._next: int | None = None
+        self._guard = threading.Lock()
+
+    def reserve(self, thread: ow.StoreThread) -> int:
+        """Number the run's unparsed documents in path order. Returns how many were numbered."""
+        found = thread.run(
+            ow.Unit(
+                name="parse.reserve_ordinals",
+                run=_to_number,
+                cost_class="free",
+                wait_ms=ow.BATCH_WAIT_MS,
+            )
+        )
+        keys, start, known = cast("tuple[list[bytes], int, set[bytes]]", found)
+        reserved: dict[bytes, int] = {}
+        for key in keys:
+            if key not in known and key not in reserved:
+                reserved[key] = start + len(reserved)
+        with self._guard:
+            self._reserved = reserved
+            self._next = start + len(reserved)
+        return len(reserved)
+
+    def take(self, doc_key: bytes) -> int | None:
+        """This document's reserved ordinal, the next one past them, or `None` before `reserve`."""
+        with self._guard:
+            if self._next is None:
+                return None
+            found = self._reserved.get(doc_key)
+            if found is None:
+                found = self._reserved[doc_key] = self._next
+                self._next += 1
+            return found
+
+
+def _to_number(connection: object) -> tuple[list[bytes], int, set[bytes]]:
+    """The doc keys of the run's parse rows in path order, the next ordinal, and those stored."""
+    rows = connection.execute(_TO_PARSE_SQL).fetchall()  # type: ignore[attr-defined]
+    keys = [bytes.fromhex(str(row[0]))[:16] for row in rows]
+    start = int(connection.execute(_NEXT_ORD_SQL).fetchone()[0])  # type: ignore[attr-defined]
+    known: set[bytes] = set()
+    distinct = list(dict.fromkeys(keys))
+    for at in range(0, len(distinct), _KNOWN_CHUNK):
+        chunk = distinct[at : at + _KNOWN_CHUNK]
+        marks = ",".join("?" * len(chunk))
+        found = connection.execute(  # type: ignore[attr-defined]
+            f"SELECT doc_key FROM doc WHERE doc_key IN ({marks})",  # noqa: S608 -- marks only
+            chunk,
+        )
+        known.update(bytes(row[0]) for row in found)
+    return keys, start, known
 
 
 # =============================================================================================
@@ -348,6 +438,7 @@ class ParseOperator:
         "_ledger",
         "_locks",
         "_locks_guard",
+        "_ordinals",
         "_passwords",
         "_pool",
         "_producers",
@@ -374,6 +465,7 @@ class ParseOperator:
         executable: str = sys.executable,
         spawn: Callable[..., subproc.WorkerProcess] = subproc.spawn_worker,
         passwords: Passwords | None = None,
+        ordinals: Ordinals | None = None,
     ) -> None:
         self._thread = thread
         self._ctx = ctx
@@ -395,6 +487,7 @@ class ParseOperator:
         self._sink_lock = threading.Lock()
         self._drivers: dict[subproc.WorkerKey, object] = {}
         self._passwords = passwords
+        self._ordinals = ordinals
 
     def _now_ms(self) -> int:
         return self._ctx.clock.monotonic_ns() // 1_000_000
@@ -582,6 +675,7 @@ class ParseOperator:
         refused = self._first_pass(fragment)
         if refused is not None:
             return self._failed(row, unit, producer, *refused)
+        doc_key = bytes.fromhex(unit.content_sha256)[:16]
         sink = DocSink(
             self._thread,
             producer_id=self._producer_id(producer),
@@ -591,6 +685,7 @@ class ParseOperator:
             blobs=self._cas,
             decision_id=row.decision_id,
             cost_class=row.cost_class,
+            doc_ord=None if self._ordinals is None else self._ordinals.take(doc_key),
         )
         try:
             # ONE OPEN SINK AT A TIME (D589). `DocSink.begin_doc` reads the store's `block_id` and
@@ -605,7 +700,7 @@ class ParseOperator:
                     records_of(lines),
                     sink=sink,
                     doc=FragmentDoc(
-                        doc_key=bytes.fromhex(unit.content_sha256)[:16],
+                        doc_key=doc_key,
                         source_sha256=staged.raw_digest,
                         normalizer=staged.normalizer,
                         uri=unit.uri,

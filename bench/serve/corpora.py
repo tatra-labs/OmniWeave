@@ -55,13 +55,16 @@ __all__ = [
 ]
 
 ONE_WORKER: Final[str] = "max_workers = { free = 1, local_compute = 1, billed_api = 1 }\n"
-"""`ow add` on one worker per cost class, so documents are numbered in claim order. **D653.**
+"""`ow add` on one worker per cost class, so documents settle in claim order. **D653, D654.**
 
-`doc_ord` is the row a document's first write inserts, and parse batches settle on as many threads
-as there are workers, so two ingests of the same folder numbered 105 of 137 data-room documents
-differently. Every cite an answer prints (`d77#2`) names a `doc_ord`, so a recording replayed
-against a corpus prepared again, on this machine or another, missed. In the cache key: a corpus
-ingested before this setting is not reused."""
+D653 added it because `doc_ord` was the order parses settled in. D654 fixed that in the product:
+an ingest reserves each document's number in path order. `block_id` is still the order documents
+settle in, and ST7 breaks a fused score's ties on it (07:1455), so on more workers two ingests of
+one folder can rank tied hits apart and a recording replayed against the second misses. In the
+cache key: a corpus ingested before this setting is not reused."""
+
+ORDINALS: Final[bytes] = b"doc_ord reserved in unit_uri order (D654)\n"
+"""In the cache key: a corpus numbered in the order its parses settled is not reused. **D654.**"""
 
 PROJECT: Final[str] = FIRST_ANSWER_PROJECT.replace(
     "inproc = []\n", "inproc = []\n" + ONE_WORKER
@@ -169,7 +172,7 @@ def prepare(
     gen = generator()
     documents = gen.documents(corpus, scale)
     digest = hashlib.sha256(
-        gen.manifest_bytes(documents) + _damage_bytes(damage) + ONE_WORKER.encode()
+        gen.manifest_bytes(documents) + _damage_bytes(damage) + ONE_WORKER.encode() + ORDINALS
     ).hexdigest()
     label = "-".join(name for _path, name in damage)
     base = cache_root / f"{corpus}-{scale}-{label + '-' if label else ''}{digest[:12]}"

@@ -202,10 +202,11 @@ def test_the_generator_is_where_adr_14_says() -> None:
 def test_a_ready_entry_with_the_same_digest_is_reused_and_nothing_is_ingested(
     tmp_path: Path,
 ) -> None:
-    from corpora import ONE_WORKER, prepare  # noqa: PLC0415 -- the cache half
+    from corpora import ONE_WORKER, ORDINALS, prepare  # noqa: PLC0415 -- the cache half
 
     documents = gen.documents("personal_archive", "quick")
-    digest = hashlib.sha256(gen.manifest_bytes(documents) + ONE_WORKER.encode()).hexdigest()
+    keyed = gen.manifest_bytes(documents) + ONE_WORKER.encode() + ORDINALS
+    digest = hashlib.sha256(keyed).hexdigest()
     base = tmp_path / f"personal_archive-quick-{digest[:12]}"
     (base / "project").mkdir(parents=True)
     (base / "project" / "omniweave.index.lock").write_text("# schema=1\n", encoding="utf-8")

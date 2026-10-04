@@ -633,6 +633,21 @@ def test_two_documents_cites_never_collide_because_the_doc_ord_is_inside_the_nam
     assert read(harness, "SELECT count(*) FROM block WHERE cite = 'd2#1'") == [(1,)]
 
 
+def test_a_first_sight_document_takes_the_ordinal_its_caller_reserved(harness: Harness) -> None:
+    """D654: the ingest reserves `doc_ord` in path order, so the number is not the order parses
+    settled in. A number another row holds falls back to the rowid, past the highest, and a
+    document already stored keeps its own whatever the caller asks."""
+    with open_store(harness) as thread:
+        first = sink(harness, thread, doc_ord=7).begin_doc(doc_record(1))
+        lower = sink(harness, thread, doc_ord=3).begin_doc(doc_record(2))
+        held = sink(harness, thread, doc_ord=7).begin_doc(doc_record(3))
+        free = sink(harness, thread).begin_doc(doc_record(4))
+        again = sink(harness, thread, doc_ord=20).begin_doc(doc_record(1))
+    assert (first.doc_ord, lower.doc_ord, held.doc_ord, free.doc_ord) == (7, 3, 8, 9)
+    assert again.doc_ord == 7
+    assert read(harness, "SELECT doc_ord FROM doc ORDER BY doc_ord") == [(3,), (7,), (8,), (9,)]
+
+
 def test_a_re_parse_carries_every_cite_and_block_id_and_advances_the_generation(
     harness: Harness,
 ) -> None:
