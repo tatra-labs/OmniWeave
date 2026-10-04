@@ -104,12 +104,56 @@ def _neutral(value: Any, spellings: re.Pattern[str] | None) -> Any:
     return value
 
 
-def _local(value: Any, root: Path | None) -> Any:
-    """`_neutral`'s inverse for a recorded turn: `CORPORA` as this machine's folder."""
+def _forms(root: Path) -> dict[str, str]:
+    """The spellings of `root` a recorded turn keeps apart, by the placeholder each is stored as.
+
+    A key does not need them: every spelling is `CORPORA` there. A turn does, because its text is
+    what the agent answers with: omniweave writes paths case-folded on Windows, and a replay that
+    gave them back in the resolved spelling would change an answer that echoes one (the conform
+    test of a local model's run caught exactly that). The plain placeholder is the resolved
+    spelling, which is all a turn recorded before the tags could hold.
+    """
+    base = root.resolve().as_posix()
+    tags = {
+        CORPORA: base,
+        "{bench-cache|backslash}": base.replace("/", "\\"),
+        "{bench-cache|uri}": quote(base),
+    }
+    if sys.platform == "win32":
+        tags["{bench-cache|casefold}"] = base.casefold()
+        tags["{bench-cache|casefold|backslash}"] = base.casefold().replace("/", "\\")
+    forms: dict[str, str] = {}
+    for tag, spelled in tags.items():
+        if spelled not in forms.values():
+            forms[tag] = spelled
+    return forms
+
+
+def _tagged(value: Any, root: Path | None) -> Any:
+    """`value` with each of `_forms`' spellings as its own placeholder, and any other spelling
+    `_spellings` matches as `CORPORA`, for a recorded turn."""
     if root is None:
         return value
     if isinstance(value, str):
-        return value.replace(CORPORA, root.resolve().as_posix())
+        forms = _forms(root)
+        for tag, spelled in sorted(forms.items(), key=lambda item: -len(item[1])):
+            value = value.replace(spelled, tag)
+        return _spellings(root).sub(lambda _m: CORPORA, value)
+    if isinstance(value, list):
+        return [_tagged(one, root) for one in value]
+    if isinstance(value, dict):
+        return {key: _tagged(one, root) for key, one in value.items()}
+    return value
+
+
+def _local(value: Any, root: Path | None) -> Any:
+    """`_tagged`'s inverse: each placeholder as this machine's folder, in the spelling it held."""
+    if root is None:
+        return value
+    if isinstance(value, str):
+        for tag, spelled in _forms(root).items():
+            value = value.replace(tag, spelled)
+        return value
     if isinstance(value, list):
         return [_local(one, root) for one in value]
     if isinstance(value, dict):
@@ -227,9 +271,7 @@ class AgentCassette:
             "contract_major": HARNESS_MAJOR,
             "prompt_version": PROMPT_VERSION,
             "inputs": inputs,
-            "turn": _neutral(
-                turn_json(turn), None if self.corpora is None else _spellings(self.corpora)
-            ),
+            "turn": _tagged(turn_json(turn), self.corpora),
         }
         raw = _encode(record)
         if len(raw) > MAX_CASSETTE_BYTES:

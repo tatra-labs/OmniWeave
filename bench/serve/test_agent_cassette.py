@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+from urllib.parse import quote
 
 import agent_cassette as ca
 import models as m
@@ -214,3 +216,27 @@ def test_a_recording_replays_under_another_machines_corpora_folder(tmp_path: Pat
         f"{there.resolve().as_posix()}/data_room-full-0123456789ab/project/docs/finance/q4.xlsx"
     )
     assert ca.audit(store)[2] == []
+
+
+def test_a_recorded_turn_keeps_the_spelling_it_named_the_folder_in(tmp_path: Path) -> None:
+    """D651: omniweave writes paths case-folded on Windows, and an answer that echoes one must
+    replay as it was recorded, under this folder or another machine's."""
+    here, there = tmp_path / "Mine" / "bench-cache", tmp_path / "Theirs" / "Cache"
+    store = tmp_path / "cassettes"
+    base = here.resolve().as_posix()
+    folded = base.casefold() if sys.platform == "win32" else base
+    text = f"see {folded}/a.pdf, {base.replace('/', chr(92))}{chr(92)}b.pdf and {quote(base)}/c"
+    recorder = ca.AgentCassette(CassetteMode.ALLOW, store, corpora=here)
+    recorder.turn(_at(here), model_key=MODEL_KEY, live=lambda _r: m.Turn(text))
+    assert ca.AgentCassette(CassetteMode.REQUIRED, store, corpora=here).turn(
+        _at(here), model_key=MODEL_KEY, live=None
+    ) == m.Turn(text)
+
+    moved = there.resolve().as_posix()
+    want = text.replace(folded, moved.casefold() if sys.platform == "win32" else moved)
+    want = want.replace(base.replace("/", chr(92)), moved.replace("/", chr(92)))
+    want = want.replace(quote(base), quote(moved))
+    replayed = ca.AgentCassette(CassetteMode.REQUIRED, store, corpora=there).turn(
+        _at(there), model_key=MODEL_KEY, live=None
+    )
+    assert replayed == m.Turn(want)
