@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D647: 07's gate 6 row names the query-time stat, line-count-preserving
+# blessed-because: D648: 07's sanitisation table: a lifted token whose lookup finds nothing is searched, line-count-preserving
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -33,7 +33,7 @@ documents-frozen  9ec0bb9988baf327069950ac46858ff0383238536255c9da4c729134d62fea
 documents-frozen  53440cdfd7e5d4b02e35e720f13a9ad7a58c39a66194837cb7004d42ba00a3c4  04-driver-system.md
 documents-frozen  58eeb69e5ed3d40f01c4f9afc0550778a3e88efc1c728c04f87d9e8fa1f6a572  05-ingest-and-routing.md
 documents-frozen  af878d7e1a795aded61af2ef27a5834654762f52bdafefb4955d4b4c75492031  06-structure-extraction.md
-documents-frozen  b882ac87cb91359cf79c494847ef621c1b5e419a145f391dd33c9881a54c4735  07-store-and-retrieval.md
+documents-frozen  4ac19a12493a7f099217e497b72abee6c436a7c422bcf3141ebc1b84dacb9360  07-store-and-retrieval.md
 documents-frozen  8dbb83e6d1baa29901dad36b079a53c5459595e979799792ec3bd50eecc9661f  08-runtime.md
 documents-frozen  eddeb4634f5da1e2b056a002a7fa6eaa43d71836633b0a44d65301ac8b2d16e4  09-generation.md
 documents-frozen  d96985003690550f4d996e31a41306d21d6a8e2e7ff34076c0ad5cff5f3cb64e  10-interfaces.md

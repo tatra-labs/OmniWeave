@@ -75,10 +75,11 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal, TypeVar
 
 from omniweave_core.errors import UsageError
+from omniweave_core.limits import MAX_QUERY_TERMS
 from omniweave_core.model.enums import Kind, Layer, Method, Quote, Trust
 from omniweave_core.model.spans import SERIALIZER_CAPS, TextSpan
 from omniweave_core.operator import SpendVector
-from omniweave_core.retrieve.channels import IDENTITY_LADDER, Sanitized, sanitize
+from omniweave_core.retrieve.channels import IDENTITY_LADDER, Sanitized, plain_terms, sanitize
 from omniweave_core.retrieve.fuse import fuse
 from omniweave_core.retrieve.plan import bind_overfetch, plan
 from omniweave_core.retrieve.types import (
@@ -466,6 +467,8 @@ def _one(
     bind = material.bound
     if spec.name == "structural":
         bind = dataclasses.replace(bind, seeds=_seeds(run, before))
+    if spec.name == "lexical":
+        bind = dataclasses.replace(bind, terms=_with_unresolved(bind, run))
     began = monotonic_ns()
     outcome = r.channel(s, dataclasses.replace(spec, bind=bind), n)
     ran_ms = (monotonic_ns() - began) // _NS_PER_MS
@@ -488,6 +491,30 @@ def _one(
         truncated_at_limit=outcome.truncated_at_limit,
         ran_ms=int(ran_ms),
     )
+
+
+def _with_unresolved(bind: ChannelInput, run: _Run) -> tuple[str, ...]:
+    """The lexical terms, plus the text of each lifted token whose own Channel found nothing. D648.
+
+    07:1318 lifts a reference out of the text because *"they belong to `exact`, and they are noise
+    to FTS"*, and `sanitize()` sends a cite- or addr-shaped token to `identity` the same way. Both
+    are right when the lookup succeeds. When it does not, the token was never searched at all: a
+    query for `p99`, which is a page addr by shape and a latency percentile in the corpus,
+    answered a confident `absent` with no gate while a block's whole text was `p99`. So a token
+    whose Channel came back with nothing goes to `lexical` after all, and one whose Channel found
+    something stays lifted, as the plan has it.
+
+    Each goes as one term, which `_fts_match` quotes into a phrase: `table_4` and `d1#3` search
+    for `table 4` and `d1 3` side by side, the narrower reading, and never for `4` alone.
+    """
+    extra: list[str] = []
+    identity = run.results.get("identity")
+    if bind.idents and (identity is None or identity.status is not ChannelStatus.OK):
+        extra.extend(plain_terms(" ".join(bind.idents)))
+    exact = run.results.get("exact")
+    if bind.refs and (exact is None or exact.status is not ChannelStatus.OK):
+        extra.extend(plain_terms(" ".join(key for key, _kind in bind.refs)))
+    return tuple(dict.fromkeys((*bind.terms, *extra)))[:MAX_QUERY_TERMS]
 
 
 def _no_backend(r: Reader) -> bool:
