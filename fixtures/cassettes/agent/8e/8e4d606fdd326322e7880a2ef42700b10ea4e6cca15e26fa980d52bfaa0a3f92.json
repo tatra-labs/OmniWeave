@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "a5b48487f8b810479cd942ca5e686938e88c48263208c857566d7d6400eb5545",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "8e4d606fdd326322e7880a2ef42700b10ea4e6cca15e26fa980d52bfaa0a3f92",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND  \nSearched: `ow_query` for \"How many Series B preferred shares does the 2024 capitalisation table show?\" returned `degraded` corpus (0 documents in `docs` corpus); `ow_corpora` confirmed `docs` corpus has 0 indexed documents (`docs=0/0`).",
+    "tool_uses": []
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "21bf2b5a0b20eabe5953dfba5d0dd0c7b09db434ed5fad9e4815b8c21910ae04",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "da445666da227e7591e1de3234ba08f16a767ece8545eb719421c45eb88ca122",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "Section 9.1 liability cap limitation of liability"
+        },
+        "id": "toolu_01AyiR9PYHzy8kKZg4iEQe4b",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

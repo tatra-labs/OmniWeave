@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "531a857070121431a0541fff28a8feb62ba3f24c78ae2cdedf7c9f120179a890",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "db96181973a9ca79b163e59b98670066abf2c357efaf3170b18ef570de6dd722",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND\n\nI searched for \"LDL cholesterol\" in the archive and located `docs/medical/lab-results-2024.pdf`, which is the only document that would contain this information. However, the file is corrupted/truncated — it fails to parse as a PDF (missing `%%EOF` trailer), cannot be opened by the PDF reader (PDFium: \"Data format error\"), cannot be indexed by omniweave (`ow_add` reports it refused as corrupt_input), and a direct text grep of the raw bytes returns no matches (consistent with the content being unreadable, not absent). No other document in the archive (statements, receipts, letters, insurance, tax files) contains lab/cholesterol data. The source document exists but cannot currently be read in any form.",
+    "tool_uses": []
+  }
+}

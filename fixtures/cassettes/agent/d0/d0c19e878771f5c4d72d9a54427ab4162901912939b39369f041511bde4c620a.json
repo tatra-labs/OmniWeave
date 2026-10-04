@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "37fb6295dea035e0a987de340fed76d619e2b04394e8818f657a7d86a61fb847",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "d0c19e878771f5c4d72d9a54427ab4162901912939b39369f041511bde4c620a",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "No password is available to me, and I cannot set one. I'll report this as the limiting factor.\n\nNOT FOUND. The relevant document, **amendment-1-2021.pdf** (in docs/contracts/), is encrypted and could not be opened/indexed — the system reports it \"refused as encrypted... needs a password to open.\" I searched the corpus (ow_query for \"Amendment No. 1 to the Master Services Agreement service credit percentage\") and confirmed via ow_corpora that this file is a known gap requiring a password I don't have access to. No other indexed document (msa-2019.pdf, complaint.pdf, exhibit-001 through 015) contains the amendment's service credit terms. This is a degraded/unread result, not confirmed absence — the answer may exist in amendment-1-2021.pdf once decrypted.",
+    "tool_uses": []
+  }
+}

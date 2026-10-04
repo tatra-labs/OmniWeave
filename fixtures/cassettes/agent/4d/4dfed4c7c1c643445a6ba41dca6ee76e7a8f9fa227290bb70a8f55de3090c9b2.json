@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "947b4daa83a6501b3222316fd8eea9fd6f1d8dbdf36b94690417ed5b4f7c7f4d",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "4dfed4c7c1c643445a6ba41dca6ee76e7a8f9fa227290bb70a8f55de3090c9b2",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "docs",
+          "source": "{bench-cache}/data_room-full-8177b5d52e7c/project/docs"
+        },
+        "id": "call_i0a81JeFe2xregrMbj40S4HP",
+        "name": "mcp__omniweave__ow_add"
+      }
+    ]
+  }
+}

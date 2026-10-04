@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "6e970db9f53612ed249546adf10ab4990e27eac8757a8a083874ca2b2582cbad",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "0a02148e0ed536255b6685449090249c6b2608a7b892ed909f975e708f264e7a",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "Section 4.2 termination for convenience Master Services Agreement"
+        },
+        "id": "toolu_01Xtc8PARZH2TPikcon35VGF",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "32ac9c78cf12b4ab3b54e579d9a15d1d557ee578954737e719f668501269106d",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "080b75742e446f5c9c664fcfd0356f20736c789e254c07cc8cff510cf0266f93",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "find . -iname \"*lab*\""
+        },
+        "id": "toolu_01MT78A3ijMaR9o5oc7wuj8j",
+        "name": "Bash"
+      },
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "pattern": "LDL"
+        },
+        "id": "toolu_01SigsiixqfxZENLRhKzGg4A",
+        "name": "Grep"
+      }
+    ]
+  }
+}

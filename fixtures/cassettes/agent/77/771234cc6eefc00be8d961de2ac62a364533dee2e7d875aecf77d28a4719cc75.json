@@ -1,0 +1,42 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "9f8abb39004ab568b4f60ea2e79bcb8c619ad6b45cea2ece47a4ab33fa4a965f",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "771234cc6eefc00be8d961de2ac62a364533dee2e7d875aecf77d28a4719cc75",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "find . -iname \"*brightline*\""
+        },
+        "id": "toolu_019q9fy7pRS5i59AZ1DY8CxX",
+        "name": "Bash"
+      },
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "pattern": "Brightline"
+        },
+        "id": "toolu_018Yz4ecdB2GoT2SnZeFnp5d",
+        "name": "Grep"
+      }
+    ]
+  }
+}

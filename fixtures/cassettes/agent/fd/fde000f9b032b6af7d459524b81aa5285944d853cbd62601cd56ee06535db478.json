@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "500add544aa84539e2b8f8d449045fe0fd750529d4e90ad9b63b943ef3a3103a",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "fde000f9b032b6af7d459524b81aa5285944d853cbd62601cd56ee06535db478",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "docs",
+          "query": "Q3 2024 revenue reported",
+          "scope": ""
+        },
+        "id": "call_F1oO0b5mZEON9WAkdinJVmHd",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

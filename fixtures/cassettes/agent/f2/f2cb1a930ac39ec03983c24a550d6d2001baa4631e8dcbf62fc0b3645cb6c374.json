@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "4169d250c8c7ad7763d1440ac3a758eb7e64029a64f42752c1cc15324d40c690",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "f2cb1a930ac39ec03983c24a550d6d2001baa4631e8dcbf62fc0b3645cb6c374",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "",
+          "query": "kind:policy sec:5 flood damage",
+          "scope": ""
+        },
+        "id": "call_d6nw8egt",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

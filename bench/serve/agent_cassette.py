@@ -39,6 +39,7 @@ from urllib.parse import quote
 from models import ModelRequest, Turn, canonical_request, turn_from_json, turn_json
 from omniweave_core.canonical import sha256_canonical
 from omniweave_core.cassette import MAX_CASSETTE_BYTES, CassetteMode
+from omniweave_core.host import keystore
 from omniweave_core.limits import MAX_CASSETTE_BYTES_TOTAL
 
 __all__ = [
@@ -79,6 +80,49 @@ class CassetteOversizeError(ValueError):
     """`OW-Q-017`: a recording over `MAX_CASSETTE_BYTES`, refused at record time."""
 
 
+_SERVICE: Final[str] = re.escape(keystore.SERVICE)
+_NAME: Final[str] = r"[A-Za-z0-9_.-]+"
+STORE_COMMANDS: Final[re.Pattern[str]] = re.compile(
+    rf"cmdkey /generic:{_SERVICE}/(?P<w>{_NAME}) /user:{_SERVICE} /pass"
+    rf"|security add-generic-password -s {_SERVICE} -a (?P<m>{_NAME}) -w"
+    rf'|secret-tool store --label="{_SERVICE} (?P<l>{_NAME})" service {_SERVICE} name (?P=l)'
+)
+"""The three platforms' spellings of `keystore.store_command`. **D653.** An answer about an
+encrypted file names the command that stores its password on the machine it runs on, which is
+right for a user and made the conversation a different one on each OS. A key and a recorded turn
+spell it `{store-command:NAME}`, and a replay prints this machine's."""
+
+
+def _commands(text: str) -> str:
+    """`text` with each platform's store command as its machine-free placeholder."""
+    return STORE_COMMANDS.sub(
+        lambda m: "{store-command:" + (m["w"] or m["m"] or m["l"]) + "}", text
+    )
+
+
+SELF_LENGTH: Final[tuple[re.Pattern[str], ...]] = (
+    re.compile(r"(chars=)( *\d+)(/\d+)"),
+    re.compile(r"(=)( *\d+)(/\d+ chars)(?!=)"),
+)
+"""An Answer's own length, as its status and budget lines print it (10:617: `chars= 5682/12000`,
+`budget = 5682/12000 chars`). **D653.** The length counts every character, the corpus folder and
+the store command included, so it differed by machine after both were placeholders. In a key it is
+the length of the document as the key spells it."""
+
+
+def _relength(raw: str, neutral: str) -> str:
+    """`neutral` with each self-reported length lowered by the characters neutralising removed."""
+    if "chars" not in neutral:
+        return neutral
+    removed = len(raw) - len(neutral)
+    for pattern in SELF_LENGTH:
+        neutral = pattern.sub(lambda m: f"{m[1]}{int(m[2]) - removed:>{len(m[2])}}{m[3]}", neutral)
+    return neutral
+
+
+_COMMAND_TAG: Final[re.Pattern[str]] = re.compile(r"\{store-command:(" + _NAME + r")\}")
+
+
 def _spellings(root: Path) -> re.Pattern[str]:
     """Every way a conversation spells `root`: either separator, a JSON-escaped backslash, a
     `file:` URI's percent-encoding, and on Windows any case, since the model and a tool may each
@@ -93,10 +137,10 @@ def _spellings(root: Path) -> re.Pattern[str]:
 
 def _neutral(value: Any, spellings: re.Pattern[str] | None) -> Any:
     """`value` with every spelling of the corpora's folder as `CORPORA`."""
-    if spellings is None:
-        return value
     if isinstance(value, str):
-        return spellings.sub(lambda _m: CORPORA, value)
+        neutral = _commands(value)
+        neutral = neutral if spellings is None else spellings.sub(lambda _m: CORPORA, neutral)
+        return _relength(value, neutral)
     if isinstance(value, list):
         return [_neutral(one, spellings) for one in value]
     if isinstance(value, dict):
@@ -132,9 +176,10 @@ def _forms(root: Path) -> dict[str, str]:
 def _tagged(value: Any, root: Path | None) -> Any:
     """`value` with each of `_forms`' spellings as its own placeholder, and any other spelling
     `_spellings` matches as `CORPORA`, for a recorded turn."""
-    if root is None:
-        return value
     if isinstance(value, str):
+        value = _commands(value)
+        if root is None:
+            return value
         forms = _forms(root)
         for tag, spelled in sorted(forms.items(), key=lambda item: -len(item[1])):
             value = value.replace(spelled, tag)
@@ -148,9 +193,10 @@ def _tagged(value: Any, root: Path | None) -> Any:
 
 def _local(value: Any, root: Path | None) -> Any:
     """`_tagged`'s inverse: each placeholder as this machine's folder, in the spelling it held."""
-    if root is None:
-        return value
     if isinstance(value, str):
+        value = _COMMAND_TAG.sub(lambda m: keystore.store_command(m[1]), value)
+        if root is None:
+            return value
         for tag, spelled in _forms(root).items():
             value = value.replace(tag, spelled)
         return value

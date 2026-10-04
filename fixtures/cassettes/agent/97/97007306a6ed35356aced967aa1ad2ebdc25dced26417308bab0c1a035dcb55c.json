@@ -1,0 +1,37 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "a52e3debea142dff8b6fe1bdc0770aa138fce400fe233da5f0cba6361d0f2821",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "97007306a6ed35356aced967aa1ad2ebdc25dced26417308bab0c1a035dcb55c",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "glob": "*.pdf",
+          "path": "project/docs",
+          "pattern": "Q4 2024 revenue"
+        },
+        "id": "call_vuuszzq0",
+        "name": "Grep"
+      }
+    ]
+  }
+}

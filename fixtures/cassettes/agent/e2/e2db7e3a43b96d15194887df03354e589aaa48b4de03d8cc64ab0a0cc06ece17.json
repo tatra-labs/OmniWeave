@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "b6309914aafb067f54c258ed6fd6c48fa212072fdef02128fcc68151cdc3791e",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "e2db7e3a43b96d15194887df03354e589aaa48b4de03d8cc64ab0a0cc06ece17",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "docs/board/board-deck-q3-2024.pptx"
+        },
+        "id": "toolu_01X5Zr1jDsoiBXjwS2ReHkZ8",
+        "name": "Read"
+      },
+      {
+        "arguments": {
+          "command": "find docs/board -name \"deck-1*.pptx\""
+        },
+        "id": "toolu_01947ZHEEtoZRCfAxySwktRF",
+        "name": "Bash"
+      }
+    ]
+  }
+}

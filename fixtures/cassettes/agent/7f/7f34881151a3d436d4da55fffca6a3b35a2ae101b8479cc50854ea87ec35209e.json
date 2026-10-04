@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "fdd7e5befe8ecd58aac34515b428a593c1094c0de23e94748296d791c5f0b506",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "7f34881151a3d436d4da55fffca6a3b35a2ae101b8479cc50854ea87ec35209e",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The documents do not contain any mention of a passport or passport renewal application — I searched all files (letters, receipts, statements, insurance, medical, tax) in the docs folder for \"passport\" and found no matches.\n\nNOT FOUND",
+    "tool_uses": []
+  }
+}

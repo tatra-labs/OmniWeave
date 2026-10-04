@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "c5aaf2e067a81c3cb0b64fda3216f219575b47d76818a5072a15c556968aab6f",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "d380c300311191a1919635167858c41e4332db1e9818c5059901d4ce323929c4",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The monthly rent will increase by 3.5 percent from 1 September 2024. (Document: oakridge-renewal-2024.docx, Page: 1)",
+    "tool_uses": []
+  }
+}

@@ -1526,6 +1526,37 @@ def test_the_pool_refuses_the_worker_that_would_exceed_max_workers_rather_than_c
     assert pool.live_count("free") == 2
 
 
+def test_a_full_class_gives_up_its_least_recent_worker_and_replaces_a_stopped_one() -> None:
+    """D653: `idle_order` is least recently used first, `retire` frees the place it held, and a
+    stopped worker for the key being acquired is replaced rather than counted against the cap."""
+    host = settings(max_workers={"free": 2, "local_compute": 4, "billed_api": 8})
+    clock = Clock()
+    pool = sp.WorkerPool(spawn=lambda _r: FakeProcess(), settings=host, now_ms=clock)
+    keys = [sp.WorkerKey(driver_id=f"parse.a.{i}", config_digest=DIGEST_A) for i in range(3)]
+    for key in keys[:2]:
+        pool.acquire(
+            key, cost_class="free", build=lambda k=key: build_worker(k, clock=clock, host=host)
+        )
+        clock.advance(10)
+    pool.acquire(
+        keys[0], cost_class="free", build=lambda: build_worker(keys[0], clock=clock, host=host)
+    )
+    assert pool.full("free")
+    assert pool.idle_order("free") == (keys[1], keys[0])
+    assert pool.retire(keys[1]) is True
+    assert pool.retire(keys[1]) is False
+    third = pool.acquire(
+        keys[2], cost_class="free", build=lambda: build_worker(keys[2], clock=clock, host=host)
+    )
+    assert pool.live_keys() == (keys[0], keys[2])
+    third.stop()
+    again = pool.acquire(
+        keys[2], cost_class="free", build=lambda: build_worker(keys[2], clock=clock, host=host)
+    )
+    assert again is not third
+    assert pool.live_count("free") == 2
+
+
 def test_the_cap_is_per_cost_class_and_a_full_class_does_not_block_another() -> None:
     """`max_workers` is a TABLE per cost class (04-driver-system.md:1782), so a `free` class at
     its ceiling has no bearing on a `billed_api` worker."""

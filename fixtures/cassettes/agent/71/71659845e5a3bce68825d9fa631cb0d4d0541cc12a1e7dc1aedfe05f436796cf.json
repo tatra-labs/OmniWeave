@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "744bde90145c77671c58a2a823e1b653bd234cd07d5f143faf6a2e70cbc65e42",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "71659845e5a3bce68825d9fa631cb0d4d0541cc12a1e7dc1aedfe05f436796cf",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Found it: paragraph 3 of the Oakridge Property tenancy renewal letter states that **the monthly rent will increase by 3.5 percent from 1 September 2024**.\n\nSource: oakridge-renewal-2024.docx (d19#5) — \"Oakridge Property - Tenancy renewal, June 2024\" letter, paragraph 3 (reconstructed text, not verbatim-formatted).",
+    "tool_uses": []
+  }
+}

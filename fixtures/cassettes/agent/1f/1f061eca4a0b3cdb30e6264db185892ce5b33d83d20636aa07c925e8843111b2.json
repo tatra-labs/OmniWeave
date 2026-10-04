@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "81ce54439cd26cdf16e974d73bd6bf8dcd9dbcf54a66836069fa40857f979113",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "1f061eca4a0b3cdb30e6264db185892ce5b33d83d20636aa07c925e8843111b2",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The complaint seeks $4,850,000 in damages (complaint.pdf, p.10; cite: d120#144).",
+    "tool_uses": []
+  }
+}

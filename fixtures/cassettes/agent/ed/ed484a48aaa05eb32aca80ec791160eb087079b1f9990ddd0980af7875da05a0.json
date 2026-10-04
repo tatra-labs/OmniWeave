@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "2cd853b749344abb0f85467f0a66faa27a41170342db257adcc4063d7a5843f9",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "ed484a48aaa05eb32aca80ec791160eb087079b1f9990ddd0980af7875da05a0",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-chaos-f3361fcb8c54/project/docs/hr/headcount-2024.xlsx"
+        },
+        "id": "toolu_01987rXVub8Td2jBprR6eSS7",
+        "name": "Read"
+      }
+    ]
+  }
+}

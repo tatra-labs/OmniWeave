@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "e21395d0c2cbce43cf8662582034066470840c4b48657d3bed26313fc2048897",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "1ac9993693df4d80eb19dbe44f29254705eb1fcab7087cc5628dbdfd95fdf54f",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND. I searched for \"section 4.2 of the Master Services Agreement\" in the default corpus (from `ow_corpora` which showed no indexed corpora), but the documents aren't indexed yet. The system indicates the corpus registry has no active corpora (response: `{\"corpora\":[],\"truncated\":false,\"degradations\":[],\"schema\":1}`). This means the document section 4.2 cannot be found in the current indexed corpus.",
+    "tool_uses": []
+  }
+}

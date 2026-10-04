@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "30727b38acd3dcb7880977e62f60c2bb5cf05e4e4390567b97e158d3d1c4da97",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "64a4657755238711086b1b793c9138bedc2a8e08b9973220a8a66f4cec6b89c0",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "policy.pdf",
+          "limit": 2000,
+          "offset": 0
+        },
+        "id": "call_ll8qxxwa",
+        "name": "Read"
+      }
+    ]
+  }
+}

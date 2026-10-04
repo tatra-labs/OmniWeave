@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "494ddf78ddf0b06ecab6299952cd4cf78710ddc6afe28a2d92df76dbf6b1ca28",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "81c9d4bd415c282710b01fca2dba7969ab75f4a01868a57548067a7234947f6a",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "Singapore arbitration clause SIAC"
+        },
+        "id": "toolu_01EoQgvVF5LCzpYN7t6YwaVU",
+        "name": "mcp__omniweave__ow_query"
+      },
+      {
+        "arguments": {
+          "query": "dispute resolution governing law Singapore"
+        },
+        "id": "toolu_01Ts5fT59kL5JVFwoff3Y5Ux",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

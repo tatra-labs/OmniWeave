@@ -1,0 +1,37 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "6f61d49b58041e3c35e69d5e57c552cfae126731b89cf5466ea2af7c1254642e",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "d476595014edc771421ba3862d49c017a3bf5c20e747ea83dc1da16850a774a2",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "files_with_matches",
+          "path": "project/docs",
+          "pattern": "Northwind non-disclosure agreement"
+        },
+        "id": "call_jre0gpn7",
+        "name": "Grep"
+      }
+    ]
+  }
+}

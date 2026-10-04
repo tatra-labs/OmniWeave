@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "803ba565c3a1ab416c0df8892f56d9b1b8dffa91108963c44339c18d6d71d0cc",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "a8424e5afb4fd97bf28a6c864e50f3dab17575806b3c9238e9ae54ae661248eb",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "grep -ril \"favor\" ."
+        },
+        "id": "toolu_019A3FFLkfkk1DhLApGEvcio",
+        "name": "Bash"
+      },
+      {
+        "arguments": {
+          "command": "grep -ril \"nation\" ."
+        },
+        "id": "toolu_01F1Lbbr9fnWWyp7jPv2usNG",
+        "name": "Bash"
+      }
+    ]
+  }
+}
