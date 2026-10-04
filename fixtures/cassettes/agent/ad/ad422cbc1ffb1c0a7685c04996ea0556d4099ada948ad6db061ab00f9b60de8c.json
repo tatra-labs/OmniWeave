@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "f3ec04b2ea94b6359fe5945caab07e0e3dbd745d07d676ed8d2bfd9eb36e56a4",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "ad422cbc1ffb1c0a7685c04996ea0556d4099ada948ad6db061ab00f9b60de8c",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "ls finance"
+        },
+        "id": "call_itcsh9nk",
+        "name": "Bash"
+      }
+    ]
+  }
+}

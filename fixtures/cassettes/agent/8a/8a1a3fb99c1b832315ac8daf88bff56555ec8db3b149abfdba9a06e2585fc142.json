@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "b1e626a5b1a62ebe2683225401e8bc7e5dc48d7c8f9f4e8ba81d75f71a2dd8d9",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "8a1a3fb99c1b832315ac8daf88bff56555ec8db3b149abfdba9a06e2585fc142",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "output_mode": "content",
+          "path": "contracts/msa-2019.pdf",
+          "pattern": "4\\.2|Termination for Convenience"
+        },
+        "id": "toolu_017WQASaQji4ZQv5v7eChv5Q",
+        "name": "Grep"
+      }
+    ]
+  }
+}

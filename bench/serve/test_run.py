@@ -228,3 +228,20 @@ def test_an_unusable_knob_or_task_word_is_exit_2_naming_it() -> None:
     code, out = _main("--tool-budget", "0", "--list")
     assert code == 2
     assert "tool_budget" in out[-1]
+
+
+def test_prepare_only_needs_no_recording_and_no_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D650: `--prepare-only` builds the corpora and calls no model, so neither the replay's
+    recordings nor a provider's key may stop it."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    built: list[str] = []
+    monkeypatch.setattr(
+        run, "prepare", lambda corpus, scale, **_kw: built.append(f"{corpus}/{scale}") or None
+    )
+    code, out = _main(
+        "--prepare-only", "--tasks", "home-ret-dental", "--cassettes", str(tmp_path / "none")
+    )
+    assert code == 0, out
+    assert built == ["personal_archive/full"]

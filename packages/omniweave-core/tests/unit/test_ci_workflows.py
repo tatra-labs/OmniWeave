@@ -174,8 +174,9 @@ CI_TRIPWIRE_PATHS: dict[str, tuple[str, ...]] = {
         "fixtures/office-200",
         "fixtures/regressions",
     ),
-    # The `golden` job: the Tier-B corpus digest and the committed Cassettes (sections 6.2, 6.6).
-    "golden": ("eval/corpora.toml", "fixtures/cassettes"),
+    # The `golden` job: the Tier-B corpus digest (sections 6.2, 6.6). `fixtures/cassettes` was its
+    # second path until the bench's recordings landed and the job's Cassette step was wired (D650).
+    "golden": ("eval/corpora.toml",),
     # 17-risks.md section 1.1's register, which sizes the check and names no script.
     "gates.risk_register": ("tools/risks.toml",),
     # `eval/gates.toml` HAS LANDED and its tripwire is retired. The step that replaced it runs
@@ -196,7 +197,7 @@ CI_TRIPWIRE_PATHS: dict[str, tuple[str, ...]] = {
 # is asserted so the retirement is a decision somebody made rather than a row that fell out.
 CI_TRIPWIRE_STEPS: dict[str, tuple[str, str]] = {
     "G28": ("gates", "G28 -- import(export(store)) == store over the fixture corpus"),
-    "golden": ("golden", "the Tier-B corpus and the Cassettes have not landed unwired"),
+    "golden": ("golden", "the Tier-B corpus has not landed unwired"),
     "gates.risk_register": (
         "gates",
         "gates.risk_register -- the same five rules over risks.toml's sixty rows",
@@ -257,6 +258,7 @@ CI_WORK_COMMANDS: dict[str, tuple[str, ...]] = {
     "test": ("uv sync --frozen --all-packages --group dev", "uv run pytest -q"),
     "gates": ("uv run pytest packages/omniweave-core/tests/unit/test_owdoc_roundtrip.py -q",),
     "build": ("uv build",),
+    "golden": ("uv run python bench/serve/run.py --audit-cassettes",),
 }
 
 # Number words, for reading a cell-count claim out of a comment written in prose.

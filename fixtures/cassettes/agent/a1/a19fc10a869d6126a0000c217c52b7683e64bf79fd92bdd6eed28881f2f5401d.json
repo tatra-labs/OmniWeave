@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "004828248c7757daa9a2fb51d3190d80a1af80af323792ba22512718fa7e06e6",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "a19fc10a869d6126a0000c217c52b7683e64bf79fd92bdd6eed28881f2f5401d",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND. Searched for pet insurance policy in the provided documents, but the only insurance policies available are car-policy-2024.pdf (Policy number: CP-7781-2024) and home-policy-2024.pdf (no policy number shown in output), with no pet insurance policy identified in the documents.",
+    "tool_uses": []
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "b8086f6bc71215196f44e78e8369f4e0a3ff7f8aee740bcaa60f53c497874c26",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "fb61cbfc693340742bb30125d73078b76dc6fa7109b4a09c692056d72f9447af",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "ref": [
+            "d79#2",
+            "d80#2",
+            "d82#2",
+            "d83#2",
+            "d85#2",
+            "d86#2",
+            "d88#2",
+            "d89#2",
+            "d90#2",
+            "d92#2",
+            "d93#2",
+            "d94#2",
+            "d95#2",
+            "d96#2",
+            "d97#2",
+            "d98#2",
+            "d105#2",
+            "d107#2",
+            "d109#2",
+            "d110#2"
+          ]
+        },
+        "id": "call_VhNW7rjiFGQnFRbSNxgsiEJW",
+        "name": "mcp__omniweave__ow_open"
+      }
+    ]
+  }
+}

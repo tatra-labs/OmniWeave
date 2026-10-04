@@ -45,6 +45,7 @@ from __future__ import annotations
 import math
 import re
 import shlex
+import sys
 import tomllib
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -315,9 +316,20 @@ def indexed_sources(receipt_text: str, source_root: str) -> frozenset[str]:
 
 
 def _posix(path: str) -> str:
-    """One spelling for a path on either OS: forward slashes, a lower-case drive letter."""
+    """One spelling for a path on either OS: forward slashes, and case folded where case is not
+    a difference (Windows).
+
+    **D650.** A lower-case drive letter alone was not enough. The host tools record
+    `Path.resolve()`, which spells each folder as it is on disk (`...--omniweave`), and the
+    receipt's root is the path the run was given (`...--OmniWeave`). Compared with case, no read
+    ever matched an indexed source, and every recorded run reported `source_reread_rate = 0.000`
+    on both arms, the control arm included, which has no omniweave call and so re-reads by
+    definition (D601).
+    """
     spelled = path.replace("\\", "/")
-    if re.match(r"[A-Za-z]:/", spelled):
+    if sys.platform == "win32":
+        spelled = spelled.casefold()
+    elif re.match(r"[A-Za-z]:/", spelled):
         spelled = spelled[0].lower() + spelled[1:]
     return str(PurePosixPath(spelled))
 

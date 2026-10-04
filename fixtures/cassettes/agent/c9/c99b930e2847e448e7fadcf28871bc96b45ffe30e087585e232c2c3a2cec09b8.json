@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "898db5833d607572f70634c36f587e9b8dbeccc8508d44198f5ea97e4b619f6d",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "c99b930e2847e448e7fadcf28871bc96b45ffe30e087585e232c2c3a2cec09b8",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND.\n\nWhat I searched:\n- Ran ow_query on the \"docs\" corpus for \"2024 headcount report total headcount\".\n- The file that should contain the answer is hr/headcount-2024.xlsx ({bench-cache}/data_room-full-chaos-d55f0fad24d9/project/docs/hr/headcount-2024.xlsx), but the indexer refused it as corrupt_input (ZIP central directory missing or truncated) so it was not read/indexed.\n- The query returned other indexed documents (e.g., board-deck-q3-2024.pptx, policy-052.pdf, audit-report-2023.pdf) but none contained a total headcount.\n\nBecause the headcount-2024.xlsx could not be read, I cannot retrieve the total headcount. To proceed, restore/replace that Excel file or allow partial ingest so it can be indexed.",
+    "tool_uses": []
+  }
+}

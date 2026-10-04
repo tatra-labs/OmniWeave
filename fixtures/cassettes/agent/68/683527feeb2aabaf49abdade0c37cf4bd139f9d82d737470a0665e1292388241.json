@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "f321bffac574bfcda95a9cd163bb8b12d52b969859fa31742c975b90abc62647",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "683527feeb2aabaf49abdade0c37cf4bd139f9d82d737470a0665e1292388241",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "find . -maxdepth 3 -type f | head -200"
+        },
+        "id": "toolu_01CNed97Fi9WrqhEL8W8RxE3",
+        "name": "Bash"
+      },
+      {
+        "arguments": {
+          "detail": "coverage"
+        },
+        "id": "toolu_011BszTU9Vw7BmmFYFCXJGZR",
+        "name": "mcp__omniweave__ow_corpora"
+      }
+    ]
+  }
+}

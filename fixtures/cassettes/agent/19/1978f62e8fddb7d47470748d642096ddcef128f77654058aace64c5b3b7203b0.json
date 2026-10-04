@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "a947877e0333745551a257aadb707e30341c56a160519bba07742cd9d78d4963",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "1978f62e8fddb7d47470748d642096ddcef128f77654058aace64c5b3b7203b0",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Customer data is hosted in Ireland.\n\nSource: Data Processing Agreement - Contoso (dpa-contoso.docx), page 1.",
+    "tool_uses": []
+  }
+}

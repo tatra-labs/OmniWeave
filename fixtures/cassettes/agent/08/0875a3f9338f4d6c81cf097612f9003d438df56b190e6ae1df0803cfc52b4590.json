@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "ab6fd6ebfb6a7a37b1da7ed6d07005660d9d581356a384d8798a4ee235eb2826",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "0875a3f9338f4d6c81cf097612f9003d438df56b190e6ae1df0803cfc52b4590",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The office lease that expires in 2027 is documented in **lease-lisbon.docx**, page **0**.  \nAnswer comes from `lease-lisbon.docx` (page 0).",
+    "tool_uses": []
+  }
+}

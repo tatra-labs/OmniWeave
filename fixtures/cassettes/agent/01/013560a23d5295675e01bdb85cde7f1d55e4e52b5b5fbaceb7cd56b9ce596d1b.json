@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "85bb9f4736e0cdd3c8bf7ff8b670cb1c3a182c30634b66ed4e2b70e2e27ac616",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "013560a23d5295675e01bdb85cde7f1d55e4e52b5b5fbaceb7cd56b9ce596d1b",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-mask_format-56b7f0c62c27/project/docs/legal/dpa-contoso.docx"
+        },
+        "id": "toolu_01XvihyEQnwafvomMB1uvU15",
+        "name": "Read"
+      }
+    ]
+  }
+}

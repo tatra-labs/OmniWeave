@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "d3ea73c64d2fa074bc29b2b237d0f6cffd94a5fd366ab071b3d8f328ceb2480c",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "1ea657ee2943be0bb40788969f2252e72d1ab0e64e65ad55322e5edd9b57e301",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "insurance/car-policy-2024.pdf"
+        },
+        "id": "call_k745e5e6",
+        "name": "Read"
+      }
+    ]
+  }
+}

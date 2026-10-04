@@ -118,3 +118,16 @@ def test_the_report_prints_every_knob_with_its_source() -> None:
     assert "run.workers = 3  (env)" in lines
     assert "agent.model = 'claude-sonnet-5'  (file)" in lines
     assert "run.arms = omniweave,control  (file)" in lines
+
+
+@pytest.mark.parametrize(("raw", "expected"), [("default", None), ("DEFAULT", None), ("0.7", 0.7)])
+def test_temperature_is_the_word_default_or_a_number(raw: str, expected: float | None) -> None:
+    """D650: `"default"` sends none, which the shipped model needs; a number is still a number."""
+    config = ac.resolve(env={"OW_BENCH_TEMPERATURE": raw})
+    assert config.temperature == expected
+    assert ac.resolve(env={}).temperature is None
+
+
+def test_a_temperature_that_is_neither_is_refused_naming_both_forms() -> None:
+    with pytest.raises(ac.BenchConfigError, match=r'"default", or 0.0 to 2.0'):
+        ac.resolve(env={"OW_BENCH_TEMPERATURE": "warm"})

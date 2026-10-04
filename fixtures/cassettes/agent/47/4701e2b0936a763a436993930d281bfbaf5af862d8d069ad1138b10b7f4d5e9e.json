@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "5a779c9949334996315b5715553075c94f8b173cb18f3d5d2ee79ddf7524883c",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "4701e2b0936a763a436993930d281bfbaf5af862d8d069ad1138b10b7f4d5e9e",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "find . -iname \"*lease*\""
+        },
+        "id": "toolu_019U5xjSx4dFQhjtjeKNNVPJ",
+        "name": "Bash"
+      }
+    ]
+  }
+}

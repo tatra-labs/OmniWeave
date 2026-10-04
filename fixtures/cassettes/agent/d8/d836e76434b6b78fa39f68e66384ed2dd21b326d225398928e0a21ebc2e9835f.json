@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "0bc85877a6ed63a775c1f6333134ac46f4bf5cf683f31a8bfb08fce8b4224ea7",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "d836e76434b6b78fa39f68e66384ed2dd21b326d225398928e0a21ebc2e9835f",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "damages sought in the complaint"
+        },
+        "id": "toolu_01BFjBdgYBuypeEZT2vf8vrn",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

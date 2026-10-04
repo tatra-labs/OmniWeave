@@ -1,0 +1,37 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "68da5b9df847260302360e2182df0ed8314c28db852a1aced8918cafc19917a8",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "0f49151d0ad1a4ab3b523e10df861af9da6fd0476ab714b28230c8fdd6fb8905",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "content",
+          "path": "{bench-cache}/data_room-full-382fd9267ee9/project/docs/suppliers",
+          "pattern": "indexed price cap|price cap"
+        },
+        "id": "toolu_013nDVD63MMWkzAThajnZu6R",
+        "name": "Grep"
+      }
+    ]
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "21f5efe50f7815508156118822599a24082684e7d13e4ef503fd78232ddeae1b",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "2ac09d146409dd9b6f0411a9b81ebaa8801a6c99904e07639f2a59ef95545e91",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-382fd9267ee9/project/docs/board/deck-119.pptx"
+        },
+        "id": "toolu_01LLgRRym7wtoXvMzwRBGZ2U",
+        "name": "Read"
+      },
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-382fd9267ee9/project/docs/board/deck-114.pptx"
+        },
+        "id": "toolu_015SjD7HsBcYYcUxpZEBTNat",
+        "name": "Read"
+      },
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-382fd9267ee9/project/docs/board/deck-109.pptx"
+        },
+        "id": "toolu_01TwZjYsfovo522PPjXe6LQJ",
+        "name": "Read"
+      }
+    ]
+  }
+}

@@ -1,0 +1,70 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "d09375bb0f0e37d824acc57c0b8c57666dd2d614008a22d0a025a2cadfd7644a",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "02b04a9840c12d2ad4e5d1400abe660eba2856e63446d763688d4d390a9c9c83",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "grep -ril \"service credit\" --include=*.pdf -r . 2>/dev/null; echo done"
+        },
+        "id": "toolu_01PLcmbykKxhb751T4hUakTK",
+        "name": "Bash"
+      },
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "path": "exhibits",
+          "pattern": "service credit"
+        },
+        "id": "toolu_01AEDHEGSrFK9yCibE7XUuvK",
+        "name": "Grep"
+      },
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "path": "correspondence",
+          "pattern": "service credit"
+        },
+        "id": "toolu_01JH7yhiZKWzs5Db6MLepxfi",
+        "name": "Grep"
+      },
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "path": "depositions",
+          "pattern": "service credit"
+        },
+        "id": "toolu_01KjRaPPZSa1zipc8pBEu6Wj",
+        "name": "Grep"
+      },
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "path": "pleadings",
+          "pattern": "service credit"
+        },
+        "id": "toolu_01Uiwaz7F4N78zLzPX2FLaWc",
+        "name": "Grep"
+      }
+    ]
+  }
+}

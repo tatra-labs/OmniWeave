@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "f298d3dc3075869d089efb5b627ca4295ba0eaab05cfcfd3e87cbf7750c6f534",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "8c6e489e47dc4466e84dd808128c9f28cb3d493ec1f177e86978c6390102b538",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The answer comes from **ip-assignment.pdf** (page 1).  \n**Document**: ip-assignment.pdf  \n**Page**: 1  \n\n**Answer**: Section 2.1 assigns to the Company *all right, title and interest in the Assigned IP*.",
+    "tool_uses": []
+  }
+}

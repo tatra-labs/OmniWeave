@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "dc5929677f324e7613fdcd18c2fc0abf067c687211cf39db649a5b2376da9d0a",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "94fe3917f1813ed9916ba796b45e9f51b1fb0fdb72cfcbf74f757ccff05b1890",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "docs",
+          "query": "title:Oakridge tenancy renewal 'renewal' paragraph 3 rent"
+        },
+        "id": "call_c2Ock4Z1TDcm3c82Nvampxx8",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}
