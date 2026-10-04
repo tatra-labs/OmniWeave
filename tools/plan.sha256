@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D651: 07 says where the lexical Channel applies the head filter
+# blessed-because: D652: 13 section 8.8 says what F19 counts
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -39,7 +39,7 @@ documents-frozen  eddeb4634f5da1e2b056a002a7fa6eaa43d71836633b0a44d65301ac8b2d16
 documents-frozen  d96985003690550f4d996e31a41306d21d6a8e2e7ff34076c0ad5cff5f3cb64e  10-interfaces.md
 documents-frozen  76a694bf0b19b60ba35d2246f6b36466ca990f318f51e0a292c388ec0e78bc68  11-repo-layout.md
 documents-frozen  5401c10b52003dd2a6e1d7475795686c53d0674236f048ef2c9fcc9c3cf7ecbb  12-performance.md
-documents-frozen  0a797ab868666954858ea074188cabd82f72efcf06bdd46f4b7c609b309bd960  13-quality.md
+documents-frozen  b88be329b12a5c365965791a3562fbdd7cf8914d49f09876160e6cf0edcaad0f  13-quality.md
 documents-frozen  667161a8bd206b5805998a289f7679f80dc3a8ea6910c52ea8345bfe9562d721  14-security.md
 documents-frozen  b40c687bb38801907249eef6ec9af9a8ac7d26083be9c0290f356e89aaf48695  15-observability.md
 documents-frozen  8cb50c6254b2bf4a6c8fa7076b3382e55c92d1ad3791751c0e51e684d8bff0fc  16-roadmap.md
