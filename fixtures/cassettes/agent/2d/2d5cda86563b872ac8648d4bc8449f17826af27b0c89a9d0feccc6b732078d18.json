@@ -1,0 +1,42 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "84169fd44f7bef4a23f682482aa8e9bf2f1690a3a471f45591bcd6aea1a3e6e4",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "2d5cda86563b872ac8648d4bc8449f17826af27b0c89a9d0feccc6b732078d18",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "find . -iname \"*passport*\""
+        },
+        "id": "toolu_011Mxw2Pb6yRQmFELd85Qde5",
+        "name": "Bash"
+      },
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "pattern": "passport"
+        },
+        "id": "toolu_01QBwZAqv4FQfKPc19kSaJrH",
+        "name": "Grep"
+      }
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "02fd709f0caceaaf4a092cccd7f44528f76e0e6b1f106df3ad59a34e131f2ab1",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "cb2d17d64a9ec52b927b144e3495ad718e668d71a17958f8914ab2a33c6f977f",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The transfer to Harrow Savings appears in **statement-2024-05.csv** (row dated 2024-05-14: \"Transfer to Harrow Savings, -1500.00\"), located in the `statements` folder.",
+    "tool_uses": []
+  }
+}

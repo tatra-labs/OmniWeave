@@ -280,12 +280,29 @@ class HostTools:
             else:
                 spelled.append(word)
         recorded = {"command": " ".join(shlex.quote(word) for word in spelled)}
-        output = _run(name, spelled[1:], self)
-        if len(output) > BASH_OUTPUT_CAP:
-            output = (
-                output[:BASH_OUTPUT_CAP] + f"\n... output truncated at {BASH_OUTPUT_CAP} characters"
-            )
+        output = self._capped(_run(name, spelled[1:], self))
         return Invocation(ToolResult(use.id, output), ToolCall(HOST_SHELL, recorded))
+
+    def _capped(self, output: str) -> str:
+        """`output` cut at `BASH_OUTPUT_CAP`, counting each spelling of the root as one character.
+        **D653.**
+
+        The emulated shell prints absolute paths, so a raw count cut a long listing at a line that
+        depended on how long the machine's corpus folder is: the recording machine's 130-character
+        scratch path left 140 lines, a Linux runner's 20-character one about 145, and every
+        conversation that listed the corpus replayed as a miss. Counted this way the cut falls on
+        the same character of the same line on any machine.
+        """
+        root = self.root.as_posix()
+        neutral = output.replace(root, _ROOT_MARK)
+        if len(neutral) <= BASH_OUTPUT_CAP:
+            return output
+        kept = neutral[:BASH_OUTPUT_CAP].replace(_ROOT_MARK, root)
+        return kept + f"\n... output truncated at {BASH_OUTPUT_CAP} characters"
+
+
+_ROOT_MARK: Final[str] = "\x00"
+"""The one character the root counts as in `_capped`: never in a path, never in converted text."""
 
 
 class _RefusedError(Exception):

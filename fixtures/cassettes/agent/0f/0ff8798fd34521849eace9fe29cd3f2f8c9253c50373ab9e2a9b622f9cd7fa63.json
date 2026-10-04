@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "434968e7ce8edc9eb085f3c717334d117d9d045c4e9b986609f19a008057355b",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "0ff8798fd34521849eace9fe29cd3f2f8c9253c50373ab9e2a9b622f9cd7fa63",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Found it: paragraph 41 of the complaint states the damages sought.\n\n**Answer:** The plaintiff's complaint seeks **$4,850,000** in damages (together with interest and costs).\n\n**Source:** *complaint.pdf* (pleadings/complaint.pdf), Paragraph 41, Page 11.",
+    "tool_uses": []
+  }
+}

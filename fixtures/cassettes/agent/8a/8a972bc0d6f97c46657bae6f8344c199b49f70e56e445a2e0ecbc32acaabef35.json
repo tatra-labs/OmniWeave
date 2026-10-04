@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "37ebfd5088a2cc3ba358d11db8459c74bbc234789a36e809b31f637af621f94f",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "8a972bc0d6f97c46657bae6f8344c199b49f70e56e445a2e0ecbc32acaabef35",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The suppliers with indexed price caps in their supplier agreements are:  \n- Acme Components  \n- Borealis Metals  \n- Corvid Plastics  \n- Dunmore Industrial  \n\nDocument: `supplier-agreement-acme.docx` (page 0), `supplier-agreement-borealis.docx` (page 0), `supplier-agreement-corvid.docx` (page 0), and `supplier-agreement-dunmore.docx` (page 0).  \nAnswer comes from `ow_query` output, page 1.",
+    "tool_uses": []
+  }
+}

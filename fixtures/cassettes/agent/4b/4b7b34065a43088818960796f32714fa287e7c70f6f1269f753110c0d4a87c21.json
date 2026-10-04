@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "d7234620f56069b15ba9261c3b36c9842bdedb86c75886bf00040777694dd16b",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "4b7b34065a43088818960796f32714fa287e7c70f6f1269f753110c0d4a87c21",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "path": "project/docs",
+          "pattern": "2027"
+        },
+        "id": "call_j477101d",
+        "name": "Grep"
+      }
+    ]
+  }
+}

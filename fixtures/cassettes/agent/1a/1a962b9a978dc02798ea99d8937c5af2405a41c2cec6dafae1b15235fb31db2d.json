@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "4e58e90d0e4f86bc0c59cf2eb9031929cd01541eeb11b3154035ee5844e5bc0a",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "1a962b9a978dc02798ea99d8937c5af2405a41c2cec6dafae1b15235fb31db2d",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "docs",
+          "query": "section 9.1: what is each party's liability capped at? kind:master_services_agreement",
+          "scope": "policy.pdf"
+        },
+        "id": "call_p6xm0zla",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

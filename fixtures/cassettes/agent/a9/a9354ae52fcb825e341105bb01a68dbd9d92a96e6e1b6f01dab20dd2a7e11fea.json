@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "2774e76617e5b70323cd22339edfe49347e8e51302ca93d480da1e9be5a6eca3",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "a9354ae52fcb825e341105bb01a68dbd9d92a96e6e1b6f01dab20dd2a7e11fea",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "tax/tax-summary-2023.docx"
+        },
+        "id": "call_r13lihOfci6mSypi052RSDX7",
+        "name": "Read"
+      }
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "9cd214fd6198fb45fd91ae4f4d5856dfe252b9f4208f7bc3d40602f424687e3a",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "7c3963bb24e8465818824b76aeff471d5b00efee29b171b9d17f738214ef6411",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND.\n\nI searched the project docs folder for the terms \"Singapore\", \"seated\", \"arbitr\", \"arbitration\", and \"SIAC\" (case-insensitive). I opened and reviewed contracts/msa-2019.pdf (pages 1–20) and contracts/amendment-1-2021.pdf (pages 1–4). No document in the folder specifies arbitration seated in Singapore. (For reference, msa-2019.pdf instead provides arbitration seated in London — see Master Services Agreement, Section 14.3 on page 17.)",
+    "tool_uses": []
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "27803b575abacadcc76e8c2b9fccc1079a4a9abf481ed19899489341098ef6bd",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "e20867fb8883aae821ab54d7b7ff0e326fda39de5c4ff7f15bc09fb24af89531",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "find . -iname \"*amendment*\" -o -iname \"*master services*\""
+        },
+        "id": "toolu_015B1iJFXGgwuSM8Gn3tx8tZ",
+        "name": "Bash"
+      },
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "files_with_matches",
+          "pattern": "service credit"
+        },
+        "id": "toolu_01KqFwkLnxFBwNj9tc4u57Py",
+        "name": "Grep"
+      }
+    ]
+  }
+}

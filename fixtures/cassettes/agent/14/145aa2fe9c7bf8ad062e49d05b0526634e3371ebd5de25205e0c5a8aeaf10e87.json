@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "fdd551a848ac34c40cfbbd29384644ab6b996c7ad0308d75acd5bb21787f306d",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "145aa2fe9c7bf8ad062e49d05b0526634e3371ebd5de25205e0c5a8aeaf10e87",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "docs/leases/lease-lisbon.docx"
+        },
+        "id": "toolu_01Y1nZsbr7zimqKN15dzDKnd",
+        "name": "Read"
+      }
+    ]
+  }
+}

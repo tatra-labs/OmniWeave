@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "84169fd44f7bef4a23f682482aa8e9bf2f1690a3a471f45591bcd6aea1a3e6e4",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "f1fbb4b17a260b7555ee0ef0f02fd53fa642a7ec26254397060b452bbf6feb2e",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "ls project/docs"
+        },
+        "id": "call_7cu1jj9i",
+        "name": "Bash"
+      }
+    ]
+  }
+}

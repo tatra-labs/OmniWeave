@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "67024acabe6b8e73997c5e7ba8f8336dca3a9b4669ecec549cdf4eb617bddd28",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "33f1eb04d765ddd01d99722d92bc37f5b97da01baa0d95878fce06932b220133",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND (searched for \"passport renewal submission\" in project/docs)",
+    "tool_uses": []
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "50450e12352f8bd8b91838690b5a6f40a7848544d8cc76fa65d0fbdfd2bed966",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "5e3fccd559ddc2d0f6dc7592af61f8f8341c5e84c24c17830a03bf82d791fd23",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "Q3 2024 revenue"
+        },
+        "id": "toolu_0141iWqSHduQb27d5DF3nTGi",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

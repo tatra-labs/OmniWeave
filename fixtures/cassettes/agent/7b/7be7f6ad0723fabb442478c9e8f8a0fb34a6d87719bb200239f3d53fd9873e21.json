@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "4d176844681267793197bdba9fe3e0491b7d03f7afc122e316e16dc25ed09afc",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "7be7f6ad0723fabb442478c9e8f8a0fb34a6d87719bb200239f3d53fd9873e21",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND.\n\nWhat I searched (corpus = \"docs\"):\n- Queries run: \"Q4 2024 revenue\"; \"Q4 2024 revenue \\\"Q4 2024\\\" revenue\"; \"\\\"Q4 2024\\\"\"; \"revenue \\\"Q4\\\" 2024\"; \"reported revenue Q4 2024\".\n\nWhat the index returned:\n- board-deck-q3-2024.pptx (d1#3) p.0 — contains \"Q3 2024 revenue: $18.4 million\" (not Q4).\n- headcount-2024.xlsx (d77#8 / d77#12) p.0 — headcount items.\n- Several policy PDFs with isolated occurrences of the word \"revenue\" but no Q4 2024 revenue figure.\n\nNo indexed document in the corpus contains a passage reporting Q4 2024 revenue.",
+    "tool_uses": []
+  }
+}

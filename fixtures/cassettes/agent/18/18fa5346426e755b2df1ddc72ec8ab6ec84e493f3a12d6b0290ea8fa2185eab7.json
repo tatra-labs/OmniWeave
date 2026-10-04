@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "4fc7b7066e227e9201e785eddb572850dc4947f5b94315f75f3d4b7edf42f22d",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "18fa5346426e755b2df1ddc72ec8ab6ec84e493f3a12d6b0290ea8fa2185eab7",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND: searched query \"How much was due on the Brightline Dental invoice from March 2024?\" in corpus \"default\" (the documents folder path specified does not contain a matching invoice document with the required information)",
+    "tool_uses": []
+  }
+}

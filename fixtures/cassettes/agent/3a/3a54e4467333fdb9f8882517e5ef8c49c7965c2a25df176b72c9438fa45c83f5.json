@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "cc039d1e119549704eb4d0534c727225e0f24f0cb5bd87bfd8b32c2b93251efe",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "3a54e4467333fdb9f8882517e5ef8c49c7965c2a25df176b72c9438fa45c83f5",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "source": "{bench-cache}/personal_archive-full-mask_format-f72d83151b23/project/docs/tax/tax-summary-2023.docx"
+        },
+        "id": "toolu_01SuUsAkaSruEc31QgfanAAv",
+        "name": "mcp__omniweave__ow_add"
+      },
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/personal_archive-full-mask_format-f72d83151b23/project/docs/tax/tax-summary-2023.docx"
+        },
+        "id": "toolu_01AXDuWr9inf9e9ntUYiKAFM",
+        "name": "Read"
+      }
+    ]
+  }
+}

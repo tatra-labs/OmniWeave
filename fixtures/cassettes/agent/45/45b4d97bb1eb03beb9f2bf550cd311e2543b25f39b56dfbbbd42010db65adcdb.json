@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "f4a239020965b7bd47da8d05b01a82813606af47584f49436024ec318e814ff2",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "45b4d97bb1eb03beb9f2bf550cd311e2543b25f39b56dfbbbd42010db65adcdb",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "default",
+          "query": "How many Series B preferred shares does the 2024 capitalisation table show?"
+        },
+        "id": "call_bv1pph8o",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

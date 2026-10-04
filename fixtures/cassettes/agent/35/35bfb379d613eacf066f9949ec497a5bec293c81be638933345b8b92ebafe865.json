@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "fb1fcf94f578835914c585513219f63582546cc0eaa79fa5f948558efad6c180",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "35bfb379d613eacf066f9949ec497a5bec293c81be638933345b8b92ebafe865",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Document: msa-2019.pdf (Master Services Agreement, between Harbor Freight Logistics Inc. and Meridian Systems Ltd., dated 14 May 2019)\nPage: 5\nText of Section 4.2: \"Either party may terminate this Agreement for convenience on ninety (90) days’ written notice to the other party.\"",
+    "tool_uses": []
+  }
+}

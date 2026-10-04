@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "f4a239020965b7bd47da8d05b01a82813606af47584f49436024ec318e814ff2",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "6b25a0319ef8817c8064fe6f6981c5793060d09c6711b4d3080fd9b5e8a7a9ee",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "Series B preferred shares capitalisation table 2024 \"Series B\" \"capitalisation\" \"table\" 2024",
+          "scope": "project/docs"
+        },
+        "id": "call_GzDtJoFe26ZXb2Zk19BWMW1c",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

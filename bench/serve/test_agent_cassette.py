@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import sys
 from pathlib import Path
@@ -240,3 +241,50 @@ def test_a_recorded_turn_keeps_the_spelling_it_named_the_folder_in(tmp_path: Pat
         _at(there), model_key=MODEL_KEY, live=None
     )
     assert replayed == m.Turn(want)
+
+
+def test_a_store_command_is_one_key_on_every_platform_and_replays_as_this_ones() -> None:
+    """D653: an answer about an encrypted file names the store command of the machine it ran
+    on; the key holds none of the three, and a replayed turn prints this machine's."""
+    from omniweave_core.host import keystore  # noqa: PLC0415
+
+    keys = set()
+    for platform in ("win32", "darwin", "linux"):
+        text = f"store it with `{keystore.store_command('amendment-1', platform)}`, then rerun"
+        request = dataclasses.replace(
+            _request(), messages=(m.UserText("q"), m.AssistantTurn(m.Turn(text)))
+        )
+        keys.add(ca.request_key(request, model_key=MODEL_KEY)[0])
+        assert ca._local(ca._tagged(text, None), None) == (
+            f"store it with `{keystore.store_command('amendment-1')}`, then rerun"
+        )
+    assert len(keys) == 1
+
+
+def _answer(root: str, platform: str) -> str:
+    """An Answer naming a gap under `root` with `platform`'s store command, its own length filled
+    in the way `render._substitute` fills it."""
+    from omniweave_core.host import keystore  # noqa: PLC0415
+
+    sentinel = "\x00" * 5
+    body = (
+        f"ow/1 degraded corpus=docs@1 fresh blocks=7/100 docs=4/17 chars={sentinel}/12000\n"
+        f"budget             = {sentinel}/12000 chars · call 1 of 1\n"
+        f"> parse_gap_in_scope: {root}/docs/a.pdf: refused as encrypted; store it with "
+        f"`{keystore.store_command('a', platform)}`\n"
+    )
+    return body.replace(sentinel, f"{len(body):>5}")
+
+
+def test_an_answers_own_length_is_one_key_on_every_machine(tmp_path: Path) -> None:
+    """D653: `chars=` counts the corpus folder and the store command, so the same Answer printed
+    a different length on each machine; a key spells it as the length of the neutral document."""
+    keys = set()
+    for root, platform in ((tmp_path / "short", "linux"), (tmp_path / ("long" * 30), "win32")):
+        text = _answer(root.resolve().as_posix(), platform)
+        request = dataclasses.replace(
+            _request(), messages=(m.UserText("q"), m.ToolResult("t1", text))
+        )
+        keys.add(ca.request_key(request, model_key=MODEL_KEY, corpora=root)[0])
+        assert "docs=4/17" in ca._neutral(text, ca._spellings(root))
+    assert len(keys) == 1

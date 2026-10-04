@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "b233b62b3f6e27caea073cb4e159eb9c3f80ddd832095f2a86e01d08ad5ce2b3",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "984784358409bed459b53121c9d40e61b76cc75fdc6dfda924b9dc21c5d7bfa0",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "contracts/amendment-1-2021.pdf",
+          "limit": 200,
+          "offset": 1
+        },
+        "id": "call_dDQp7wfXeHo8LoXP6ggXRWbl",
+        "name": "Read"
+      }
+    ]
+  }
+}

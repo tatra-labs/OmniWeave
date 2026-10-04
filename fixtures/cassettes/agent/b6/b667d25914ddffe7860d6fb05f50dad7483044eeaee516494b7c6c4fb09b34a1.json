@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "cb2339f3e4d3194a0c6d5ef4aa8bf6285c39dd6c6e7eec8d6278a68a20d5ca72",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "b667d25914ddffe7860d6fb05f50dad7483044eeaee516494b7c6c4fb09b34a1",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The file medical/lab-results-2024.pdf could not be opened (it is corrupted/not a valid PDF — PDFium reports \"Data format error\"), so I could not extract the LDL cholesterol value from it.\n\nNOT FOUND — I searched for \"LDL\" across the documents and located the relevant file (docs/medical/lab-results-2024.pdf), but it cannot be opened/read (data format error), so the LDL cholesterol result could not be retrieved.",
+    "tool_uses": []
+  }
+}

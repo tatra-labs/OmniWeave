@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "b168298f6fed07ec941ad670a338c446fd4457709efd2d00068facce6329b16c",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "a6cb2d753b5b10f5413ad8a2e91b0d4ffc10929194a01272be93f81c1aeb6188",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/legal_matter-full-b6506a0822fc/project/docs/contracts/msa-2019.pdf",
+          "limit": 25,
+          "offset": 250
+        },
+        "id": "toolu_0149CedeTMGqVr6tkExUybN8",
+        "name": "Read"
+      }
+    ]
+  }
+}

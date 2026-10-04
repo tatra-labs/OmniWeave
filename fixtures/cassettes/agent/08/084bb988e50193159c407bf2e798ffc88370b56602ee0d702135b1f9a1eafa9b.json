@@ -1,0 +1,37 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "ed824f6a495e2c7fe83a1c41248bc4a732e7fc1236c9bd91ea8bc59528e75c69",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "084bb988e50193159c407bf2e798ffc88370b56602ee0d702135b1f9a1eafa9b",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "files_with_matches",
+          "path": "{bench-cache}/data_room-full-8177b5d52e7c/project/docs",
+          "pattern": "2024"
+        },
+        "id": "call_YJhuJhVCN53a3xQ9QwTkjD8H",
+        "name": "Grep"
+      }
+    ]
+  }
+}

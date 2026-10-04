@@ -26,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import os
+import re
 import shutil
 import sys
 import time
@@ -53,7 +54,18 @@ __all__ = [
     "prepare",
 ]
 
-PROJECT: Final[str] = FIRST_ANSWER_PROJECT + (
+ONE_WORKER: Final[str] = "max_workers = { free = 1, local_compute = 1, billed_api = 1 }\n"
+"""`ow add` on one worker per cost class, so documents are numbered in claim order. **D653.**
+
+`doc_ord` is the row a document's first write inserts, and parse batches settle on as many threads
+as there are workers, so two ingests of the same folder numbered 105 of 137 data-room documents
+differently. Every cite an answer prints (`d77#2`) names a `doc_ord`, so a recording replayed
+against a corpus prepared again, on this machine or another, missed. In the cache key: a corpus
+ingested before this setting is not reused."""
+
+PROJECT: Final[str] = FIRST_ANSWER_PROJECT.replace(
+    "inproc = []\n", "inproc = []\n" + ONE_WORKER
+) + (
     "[retrieval.budget]\nquery_ms = 5000\nhydration_reserve_ms = 500\n"
     "channel_ms = { identity = 150, exact = 250, lexical = 2000, structural = 400,"
     " semantic = 800 }\n"
@@ -156,7 +168,9 @@ def prepare(
     """
     gen = generator()
     documents = gen.documents(corpus, scale)
-    digest = hashlib.sha256(gen.manifest_bytes(documents) + _damage_bytes(damage)).hexdigest()
+    digest = hashlib.sha256(
+        gen.manifest_bytes(documents) + _damage_bytes(damage) + ONE_WORKER.encode()
+    ).hexdigest()
     label = "-".join(name for _path, name in damage)
     base = cache_root / f"{corpus}-{scale}-{label + '-' if label else ''}{digest[:12]}"
     ready = base / ".ready"
@@ -205,11 +219,39 @@ def prepare(
             f"The project is kept at {project.as_posix()} to inspect; its stderr ends:\n{tail}"
         )
         raise CorpusError(msg)
+    unparsed = _not_parsed(added.stdout + added.stderr)
+    if unparsed != 0:
+        #  D653: a run that left work unparsed exits 0 as `partial`, and the corpus it leaves is
+        #  missing those documents; under one worker every PDF of a mixed corpus went this way. A
+        #  unit pending for a reason of its own (`failed`: the damaged file) is the corpus's.
+        said = "no 'completed N pending M' line" if unparsed is None else f"{unparsed} not_parsed"
+        msg = (
+            f"ow add over {shown} left {said}, so the corpus is incomplete. The project is kept "
+            f"at {project.as_posix()} to inspect: `ow ingest --corpus docs` names each unit"
+        )
+        raise CorpusError(msg)
     ready.write_text(digest + "\n", encoding="utf-8")
     log(f"  corpus    {shown}: ingested in {seconds} s, {base.as_posix()}")
     return Prepared(
         corpus, scale, digest, base, cached=False, add_seconds=seconds, env=env, damage=damage
     )
+
+
+_SUMMARY: Final = re.compile(rb"^completed \d+ +pending \d+(?: \((?P<why>[^)]*)\))?", re.M)
+
+
+def _not_parsed(output: bytes) -> int | None:
+    """The units `ow add`'s last summary line says the run never parsed (`not_parsed`), or `None`
+    when it printed no summary line. Units pending for their own reason are not counted."""
+    found = list(_SUMMARY.finditer(output))
+    if not found:
+        return None
+    why = (found[-1]["why"] or b"").decode("utf-8", "replace")
+    for part in why.split(", "):
+        count, _, reason = part.partition(" ")
+        if reason == "not_parsed":
+            return int(count)
+    return 0
 
 
 def _damage_bytes(damage: tuple[tuple[str, str], ...]) -> bytes:

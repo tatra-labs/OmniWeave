@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "a8c059e43fe1228f1307b47b06518fd41dd82dd3d0223e37c10ad081b4f1bf16",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "17a256bc685025842e04adfae63afe9a95c7bb4eb5285de07917c22835228501",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/personal_archive-full-9fc3b7379202/project/docs/letters/oakridge-renewal-2024.docx"
+        },
+        "id": "toolu_01RnHqpNQ9GDJooCRrkXrtTb",
+        "name": "Read"
+      }
+    ]
+  }
+}

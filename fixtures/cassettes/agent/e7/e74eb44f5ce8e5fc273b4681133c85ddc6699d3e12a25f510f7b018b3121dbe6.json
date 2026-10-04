@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "f2b7179ac5ed92c21ee2936b58f1a72ab158b69e726bfe236626a71bc264697a",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "e74eb44f5ce8e5fc273b4681133c85ddc6699d3e12a25f510f7b018b3121dbe6",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "medical/lab-results-2024.pdf"
+        },
+        "id": "toolu_0172aRayZDuqt3DaV6vKf3S9",
+        "name": "Read"
+      }
+    ]
+  }
+}
