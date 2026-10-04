@@ -22,11 +22,11 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D645: 05 state machine and section 1.4 name the re-entry of a changed settled unit and the hash for an unproven one, line-count-preserving
+# blessed-because: D646: 00 section 2.1's HTML, email row names parse.text.builtin for HTML and XHTML, line-count-preserving
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
-documents-frozen  8091e401c7951398d4c37b3a92cd7c54dc3b49e9f3bc134650b2d866f1c31edf  00-vision.md
+documents-frozen  47fddfabf24a37948ddd8b8f2d7da02e19864cfb4c42a352e951a85b3158ba21  00-vision.md
 documents-frozen  6ffc2070193630b39f15385fc8640ec7b1a3e242ef098426f2754d4070a8026d  01-principles.md
 documents-frozen  7bf4220e75a23503a04139d4ba6d8b7774e57fd1774920104c4eb29c75a16c70  02-architecture.md
 documents-frozen  9ec0bb9988baf327069950ac46858ff0383238536255c9da4c729134d62fea72  03-document-model.md

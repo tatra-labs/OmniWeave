@@ -1,0 +1,13 @@
+# data.json.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# JSON: one `path: value` paragraph per leaf, nested objects and arrays included
+[fixture]
+sha256 = "b05503f3e74bf43467377a814bf58e2b5ba63fcd1cda7ce27156aec83ac3623c"
+bytes = 138
+media_type = "application/json"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_text_fixtures.py"
+# `generated` is 13-quality.md section 4.2's PREFERRED provenance: the generator path and the
+# expected output sha256 are above, and it carries no `review_by` because it depends on nothing
+# outside this repository.

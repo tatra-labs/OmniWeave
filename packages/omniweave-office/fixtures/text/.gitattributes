@@ -1,0 +1,5 @@
+# Fixture bytes are conformance ground truth: never EOL-convert them (see ../.gitattributes).
+* -text
+*.meta.toml text eol=lf
+README.md text eol=lf
+EXPECTED.sha256 text eol=lf

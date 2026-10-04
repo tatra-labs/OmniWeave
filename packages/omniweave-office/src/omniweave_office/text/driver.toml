@@ -1,0 +1,139 @@
+# THE DRIVERCARD for `parse.text.builtin`. Read WITHOUT importing.
+#
+# ONE KEY PER LINE -- this file is `tomllib.load`ed and `;` is not a TOML separator. An unknown
+# TOP-LEVEL table is a HARD ERROR: a card is a contract, not config.
+#
+# 04-driver-system.md section 10.1's roster row: "stdlib only: `codecs`, `json`, `csv`,
+# `html.parser`, `xml.etree` via `defusedxml`. Serves the ten tokens `decode.text-native` names".
+# ADR-3 D3.1 enabled it; this card is the driver that row and that rule named (D646).
+#
+# [cost.measured], [quality] and attestation are ABSENT: they are written by `ow conform` and author
+# values are rejected by the publish gate (DR13).
+card_schema = 1
+
+[driver]
+id = "parse.text.builtin"
+port = "parse/1"
+version = "0.1.0"
+schema_version = 1                 # THE ONLY DRIVER VERSION IN A CACHE KEY. Bump it whenever the
+                                   #   output bytes change for the same input.
+entrypoint = "omniweave_office.text.driver:TextParser"
+granularity = "document"           # One read per unit: a text file is one part.
+replay_class = "byte_exact"        # The standard library's parsers, no model, no clock, no network.
+title = "HTML, XML, Markdown, text, JSON, JSONL, notebooks, TSV and SVG (stdlib)"
+summary = "The ten text formats anydoc does not serve, read by the standard library and defusedxml, with headings, lists, code and tables kept."
+
+[capability]
+# TEN MEDIA TYPES, ONE PER LINE: `resolve()` filters on `format in capability.formats` first, and
+# `ow route lint` check 11 holds the token set equal to `decode.text-native`'s list (ADR-8 D8.2).
+formats = ["text/html",                          # html
+           "application/xhtml+xml",              # xhtml
+           "application/xml",                    # xml
+           "text/markdown",                      # md
+           "text/plain",                         # txt
+           "application/json",                   # json
+           "application/jsonl",                  # jsonl
+           "application/x-ipynb+json",           # ipynb
+           "text/tab-separated-values",          # tsv
+           "image/svg+xml"]                      # svg
+consumes = ["raw_bytes"]
+produces = ["doc_fragment"]        # No asset: an SVG is read for its text, not kept as a picture.
+
+[capability.parse]
+spatial = "none"                   # A text file has no page box.
+origin_span = "none"               # A block's text is the format's content -- a heading without
+                                   #   its `#`, a paragraph with its entities decoded, a JSON leaf
+                                   #   as `path: value` -- and not a byte range of the source. The
+                                   #   same row as `parse.office.anydoc` (03:1561).
+text_span = false
+marks = false                      # Inline Markdown and HTML markup is not lifted into marks: a
+                                   #   Markdown `**bold**` stays in the text as written.
+reading_order = "source"           # The file's own order. There is no reordering step.
+sections = "outline_from_source"   # Markdown's `#` levels and HTML's `h1`-`h6`.
+tables = "cells_with_spans"        # Markdown pipe tables and TSV give cells; an HTML table's
+                                   #   `rowspan` and `colspan` give spans.
+math = []
+assets = "none"
+asset_origin = false
+notes = "none"
+confidence = "none"                # A deterministic read has no score to report.
+furniture = "destroyed"            # The lowest rung, and the honest one: a text file has no
+                                   #   running header to keep, so none was kept.
+round_trip = "structure"           # Kinds, heading levels, list markers and start ordinals, table
+                                   #   spans and code languages.
+forfeits = []
+format_tokens = [
+  { media_type = "text/html", token = "html" },
+  { media_type = "application/xhtml+xml", token = "xhtml" },
+  { media_type = "application/xml", token = "xml" },
+  { media_type = "text/markdown", token = "md" },
+  { media_type = "text/plain", token = "txt" },
+  { media_type = "application/json", token = "json" },
+  { media_type = "application/jsonl", token = "jsonl" },
+  { media_type = "application/x-ipynb+json", token = "ipynb" },
+  { media_type = "text/tab-separated-values", token = "tsv" },
+  { media_type = "image/svg+xml", token = "svg" },
+]
+
+[hardware]
+gpu            = "none"
+vram_gb_min    = 0
+ram_gb_min     = 0.25              # The decoded text and its records, a few times the file.
+cpu_arch       = ["x86_64", "aarch64"]
+os             = ["linux", "darwin", "windows"]
+needs_network  = false             # No reader fetches: `defusedxml` refuses an external entity.
+needs_binaries = []
+imports_torch  = false
+install_bytes  = 100000            # This package's Python, and defusedxml's.
+services       = []
+
+[isolation]
+requires        = "subproc"        # 04 section 10.1's `iso` column. A first-party driver over the
+                                   #   standard library could ask for `inproc`, and does not: DR9's
+                                   #   fuzz-green condition is a measurement this card has not had.
+memory_mb       = 512
+progress_ms     = 15000
+wall_ms_hard    = 120000
+batch_max_units = 16
+
+[limits]
+max_input_bytes = 33554432         # 32 MiB, a quarter of the host's MAX_ENTRY_BYTES. The whole text
+                                   #   is decoded into memory and a JSON file becomes one record
+                                   #   per leaf, so a file past this is a data dump rather than a
+                                   #   document, and is refused host-side before INVOKE (DR20).
+max_parts       = 1                # One text file, one part.
+
+[licence.code]
+spdx = "Apache-2.0"
+redistribution = "allowed"
+output_share_alike = false
+competitor_bar = false
+requires_credential = false
+revenue_gate_usd = 0
+mau_gate = 0
+territory_excluded = []
+field_of_use_excluded = []
+attribution_per_output = false
+no_model_training = false
+remote_kill_switch = false
+clause_refs = []
+
+[deps]
+pins = ["defusedxml==0.7.1"]       # The one dependency beyond the standard library, at the
+                                   #   version the workspace lock resolves.
+
+[config]
+type = "object"
+additionalProperties = false
+required = []
+
+[cost.model]
+class   = "free"
+shape   = "linear_per_byte"
+unit    = "document"
+per_part    = { wall_ms = 2 }      # A Markdown file of a few kilobytes reads in about a millisecond
+                                   #   in pure Python; `ow conform` replaces the measured half.
+per_session = { }
+scaling     = { key = "input_bytes", exponent = 1.0, reference = 65536 }
+tokens_out_p95_multiple = 1.0
+max_retries = 0                    # Retry is the runtime's, with the runtime's budget and ledger.

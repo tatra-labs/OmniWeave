@@ -1,0 +1,12 @@
+{
+  "service": "billing",
+  "owners": [
+    "Ana",
+    "Bo"
+  ],
+  "limits": {
+    "rps": 1200,
+    "burst": true
+  },
+  "region": null
+}

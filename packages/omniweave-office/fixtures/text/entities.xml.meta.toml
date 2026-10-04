@@ -1,0 +1,13 @@
+# entities.xml.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# XML with a DTD declaring nested entities (billion laughs): defusedxml refuses it, and parse() refuses with CORRUPT_INPUT without expanding anything
+[fixture]
+sha256 = "211f61aeb0213b7d1e228458dbb3d1f8c47a79e9e293cdcc5340bdbbafe78abe"
+bytes = 154
+media_type = "application/xml"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_text_fixtures.py"
+# `generated` is 13-quality.md section 4.2's PREFERRED provenance: the generator path and the
+# expected output sha256 are above, and it carries no `review_by` because it depends on nothing
+# outside this repository.

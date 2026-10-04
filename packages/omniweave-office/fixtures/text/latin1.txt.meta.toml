@@ -1,0 +1,13 @@
+# latin1.txt.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# bytes that are not UTF-8: read as Latin-1, with an OW_TEXT_NOT_UTF8 warning diag
+[fixture]
+sha256 = "2f99d85dcaf0998c139c497e41d4acbaa9061d1594e133575215580254884c67"
+bytes = 28
+media_type = "text/plain"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_text_fixtures.py"
+# `generated` is 13-quality.md section 4.2's PREFERRED provenance: the generator path and the
+# expected output sha256 are above, and it carries no `review_by` because it depends on nothing
+# outside this repository.

@@ -1,0 +1,13 @@
+# catalog.xml.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# XML: the text of each element that has any, in document order
+[fixture]
+sha256 = "1628db39c7cb470186cfcf7dcebdac63c45c12735d5545b8dab83d205dd1d8cd"
+bytes = 207
+media_type = "application/xml"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_text_fixtures.py"
+# `generated` is 13-quality.md section 4.2's PREFERRED provenance: the generator path and the
+# expected output sha256 are above, and it carries no `review_by` because it depends on nothing
+# outside this repository.
