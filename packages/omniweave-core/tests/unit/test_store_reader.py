@@ -52,7 +52,7 @@ from omniweave_core.store import Reader, migrate
 from omniweave_core.store import reader as rd
 from omniweave_core.store import sqlite as ow
 from omniweave_core.store import vectors as vec
-from omniweave_core.store.types import ChannelInput, ChannelSpec, Expand, Filters
+from omniweave_core.store.types import ChannelInput, ChannelSpec, Coverage, Expand, Filters
 
 NOW_NS = 1_757_400_000_000_000_000
 """A fixed clock. `time.time()` is banned in library code and `SqliteReader` takes `now_ns` from
@@ -2818,6 +2818,116 @@ def test_a_retired_version_names_no_gap_and_is_not_counted(built: Built) -> None
         "file:///corpus/scan.pdf: doc.status = partial"
     ]
     assert coverage.partial == 1
+
+
+def _indexed(
+    conn: sqlite3.Connection,
+    path: Path,
+    *,
+    state: str = "settled",
+    connector: str = "fs",
+    stale_since: int | None = None,
+    indexed_at_ns: int = 0,
+) -> str:
+    """A unit indexed from `path` as it is now: the roster's size and `mtime` are the file's."""
+    info = path.stat()
+    uri = path.as_posix()
+    conn.execute(
+        "INSERT INTO unit(unit_uri, connector, state, size, mtime_ns, indexed_at_ns, "
+        "last_seen_gen, trust_class, stale_since) VALUES(?, ?, ?, ?, ?, ?, 1, 'internal', ?)",
+        (uri, connector, state, info.st_size, info.st_mtime_ns, indexed_at_ns, stale_since),
+    )
+    return uri
+
+
+def _edited(built: Built, f: Filters | None = None) -> Coverage:
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        return reader.coverage(state, f or Filters())
+
+
+def test_a_file_edited_since_it_was_indexed_is_gate_6_naming_it(
+    built: Built, tmp_path: Path
+) -> None:
+    """D647. 07:2946's `stat_fresh` compares the roster with the file's own `stat`, and nothing
+    asked it at query time: an edit made since the last ingest was served as it was. Now the
+    query `stat`s each indexed file in scope, and a changed one is a gate 6 cause naming it, whose
+    fix reads it again."""
+    source = tmp_path / "docs" / "note.md"
+    source.parent.mkdir()
+    source.write_text("# Note\n\nThe launch code is AARDVARK.\n", encoding="utf-8")
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    uri = _indexed(conn, source)
+    conn.execute("COMMIT")
+    assert (_edited(built).stale_units, _edited(built).gaps) == (0, ())
+
+    source.write_text("# Note\n\nThe launch code is ZEBRAFISH now.\n", encoding="utf-8")
+    coverage = _edited(built)
+    assert coverage.stale_units == 1
+    (gap,) = coverage.gaps
+    assert (gap.gate, gap.fix) == ("source_edited_unindexed", rd._add_command(uri))
+    assert gap.detail == f"{uri} changed since it was indexed, so what it says now is not searched"
+
+    source.unlink()
+    (gap,) = _edited(built).gaps
+    assert gap.detail.startswith(f"{uri} is no longer at its path since it was indexed")
+    assert gap.fix == "ow ingest"
+
+
+def test_only_settled_local_units_not_already_stale_are_asked(built: Built, tmp_path: Path) -> None:
+    """A unit already stamped `stale_since` is counted once, by the ingest that saw it; a unit not
+    settled has no document answering for it; a connector other than `fs` has no path to `stat`.
+    And a file indexed a moment after it was written is not called changed: the 2 s racily-clean
+    window is the ingest walk's to apply (05:339), not the query's."""
+    tmp_path.joinpath("a.txt").write_text("a", encoding="utf-8")
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    _indexed(conn, tmp_path / "a.txt", indexed_at_ns=0)
+    for name, kwargs in (
+        ("stale.txt", {"stale_since": 5}),
+        ("failed.txt", {"state": "failed"}),
+        ("remote.txt", {"connector": "url"}),
+    ):
+        tmp_path.joinpath(name).write_text("x", encoding="utf-8")
+        _indexed(conn, tmp_path / name, **kwargs)  # type: ignore[arg-type]
+        tmp_path.joinpath(name).write_text("changed", encoding="utf-8")
+    conn.execute("COMMIT")
+    coverage = _edited(built)
+    assert coverage.stale_units == 1, "only the one stamped by the ingest that saw it"
+    assert coverage.gaps == ()
+
+
+def test_the_query_asks_at_most_the_cap_most_recently_indexed(
+    built: Built, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`FRESHNESS_STAT_MAX` bounds the `stat`s a query spends, most recently indexed first."""
+    monkeypatch.setattr(rd, "FRESHNESS_STAT_MAX", 1)
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    for at, name in ((1, "old.txt"), (2, "new.txt")):
+        tmp_path.joinpath(name).write_text("x", encoding="utf-8")
+        _indexed(conn, tmp_path / name, indexed_at_ns=at)
+        tmp_path.joinpath(name).write_text("edited", encoding="utf-8")
+    conn.execute("COMMIT")
+    (gap,) = _edited(built).gaps
+    assert "new.txt changed" in gap.detail
+
+
+def test_the_scope_filter_limits_which_files_are_asked(built: Built, tmp_path: Path) -> None:
+    (tmp_path / "in").mkdir()
+    (tmp_path / "out").mkdir()
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    for folder in ("in", "out"):
+        source = tmp_path / folder / "f.txt"
+        source.write_text("x", encoding="utf-8")
+        _indexed(conn, source)
+        source.write_text("edited", encoding="utf-8")
+    conn.execute("COMMIT")
+    scoped = _edited(built, Filters(uri_prefix=(tmp_path / "in").as_posix()))
+    (gap,) = scoped.gaps
+    assert "/in/f.txt changed" in gap.detail
 
 
 def _failed(

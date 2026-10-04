@@ -438,18 +438,26 @@ def _pending_work_in_scope(ev: _Evidence) -> DegradeCause | None:
 def _source_edited_unindexed(ev: _Evidence) -> DegradeCause | None:
     """Gate 6. 07:2186: a source moved under a corpus that is complete and idle.
 
-    `Coverage.stale_units` is the carrier for section 11.3 fact 5's `stat_fresh` predicate --
-    *"`st_mtime_ns + MTIME_GRANULARITY_NS > indexed_at_ns` ... the racily-clean window, 2 s"*.
+    `Coverage.stale_units` is the carrier for section 11.3 fact 5's `stat_fresh` predicate. Two
+    sources fill it: units an ingest saw change and stamped `stale_since` (D645), and indexed files
+    the query itself found changed or gone since (D647), which arrive in `Coverage.gaps` named, as
+    gate 9's do. One named file is its own cause, with its own fix; several are counted, the first
+    named, and the fix is `ow ingest`, which reads every one again.
     Below gate 5 because *"a `work` row is a KNOWN hole and an edited source is an INFERRED one"*.
     """
     if ev.coverage.stale_units <= 0:
         return None
+    named = [gap for gap in ev.coverage.gaps if gap.gate == "source_edited_unindexed"]
+    if named and ev.coverage.stale_units == 1:
+        return named[0]
+    first = f": {named[0].detail}" if named else ""
     return DegradeCause(
         gate="source_edited_unindexed",
         detail=(
-            f"{ev.coverage.stale_units} tracked source(s) changed after they were indexed; "
-            f"re-add them to pick the edits up"
+            f"{ev.coverage.stale_units} tracked source(s) changed after they were indexed"
+            f"{first}; ow ingest reads them again"
         ),
+        fix="ow ingest",
     )
 
 
@@ -496,7 +504,7 @@ def _parse_gap_in_scope(ev: _Evidence) -> DegradeCause | None:
     order the join produced them, with the FIRST gap's `fix` -- which is exact when the gaps share
     a document and a guess when they do not.
     """
-    gaps = ev.coverage.gaps
+    gaps = tuple(gap for gap in ev.coverage.gaps if gap.gate == "parse_gap_in_scope")
     if not gaps:
         return None
     codes: list[str] = []
