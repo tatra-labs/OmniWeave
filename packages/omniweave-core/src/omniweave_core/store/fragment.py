@@ -107,6 +107,7 @@ __all__ = [
     "DECRYPTED_X",
     "OUT_OF_SCOPE",
     "RECORD_KINDS",
+    "RETIRED_X",
     "Decoded",
     "FragmentDoc",
     "decode",
@@ -121,6 +122,11 @@ OUT_OF_SCOPE: Final[str] = "OW_FRAGMENT_OUT_OF_SCOPE"
 
 DECRYPTED_X: Final[str] = "x.ow.decrypted"
 """05:476's `doc.x.ow.decrypted`: the document was opened with a password (ADR-15 D15.4)."""
+
+RETIRED_X: Final[str] = "x.ow.retired"
+"""`doc.x.ow.retired`: no file holds this document's bytes any more, because the one it came from
+was edited, so its head rows are retired and no Channel or gate reads it (D645). The host writes
+it, never a driver, and a later parse of the same bytes rewrites `doc.x` and clears it."""
 
 RECORD_KINDS: Final[frozenset[str]] = frozenset(
     {"doc", "part", "page", "block", "asset", "block_asset", "diag", "end"}

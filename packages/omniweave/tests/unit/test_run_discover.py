@@ -28,6 +28,7 @@ claims against a real store and then shows the `unit` table has no column `05:40
 from __future__ import annotations
 
 import inspect
+import json
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -1259,6 +1260,237 @@ def test_one_predicate_carries_both_reasons_to_read_an_unchanged_file_again() ->
     only_raised = discover_module.reopens_of(None, frozenset({"c:/a.pdf"}))
     assert only_raised is not None
     assert not only_raised("c:/a.pdf", "encrypted")
+
+
+def _settled(store: ow.StoreThread, tmp_path: Path, root: Path, name: str) -> str:
+    """One unit read, identified and parsed, as `SETTLED_SQL` leaves it, with its done rows."""
+    _rostered(store, root, name)
+    acquire_pending(store, generation=1, indexed_at_ns=LATE_NS)
+    reader = _reader(tmp_path)
+    (uri,) = reader.execute("SELECT unit_uri FROM unit").fetchone()
+    reader.execute(
+        "UPDATE unit SET state = 'settled', settled_gen = 1, part_count = 1 WHERE unit_uri = ?",
+        (uri,),
+    )
+    for operator in ("op.identify", "op.parse"):
+        reader.execute(
+            "INSERT INTO work(unit_uri, operator, op_version, cache_key, cost_class, status) "
+            "VALUES(?, ?, 1, 'k', 'free', 'done')",
+            (uri, operator),
+        )
+    reader.commit()
+    return str(uri)
+
+
+def test_an_edited_settled_file_is_marked_stale_and_read_again(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """D645, found by a probe: a PDF indexed, edited, then `ow add` and `ow ingest` again, and
+    neither read it. The old text answered and the new text was a confident `absent`. A settled
+    unit whose file changed is now stamped `stale_since` (gate 6 names it while the old document is
+    what a query reads), back to `discovered`, and read again: its done rows are gone."""
+    root = tmp_path / "src"
+    uri = _settled(store, tmp_path, root, "note.pdf")
+    assert discover_module.reenter_changed(store, generation=1, at_ns=5) == 0
+    (root / "note.pdf").write_bytes(b"the edited bytes, which are longer than before")
+    assert discover_module.reenter_changed(store, generation=1, at_ns=7) == 1
+    reader = _reader(tmp_path)
+    row = reader.execute(
+        "SELECT state, part_count, stale_since, acq_attempts_total FROM unit WHERE unit_uri = ?",
+        (uri,),
+    )
+    assert row.fetchone() == ("discovered", None, 7, 0)
+    assert reader.execute("SELECT count(*) FROM work").fetchone() == (0,)
+    assert acquire_pending(store, generation=1, indexed_at_ns=LATE_NS).acquired == 1
+
+
+def test_a_reentry_keeps_the_first_stale_stamp_and_skips_a_vanished_file(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """08:1891: `stale_since` is set on the first transition only, since it measures how long the
+    answer has been untrustworthy. A file that no longer stats is the deletion sweep's, not this."""
+    root = tmp_path / "src"
+    uri = _settled(store, tmp_path, root, "note.pdf")
+    reader = _reader(tmp_path)
+    reader.execute("UPDATE unit SET stale_since = 3 WHERE unit_uri = ?", (uri,))
+    reader.commit()
+    (root / "note.pdf").write_bytes(b"the edited bytes, which are longer than before")
+    assert discover_module.reenter_changed(store, generation=1, at_ns=9) == 1
+    row = _reader(tmp_path).execute("SELECT stale_since FROM unit WHERE unit_uri = ?", (uri,))
+    assert row.fetchone() == (3,)
+    gone = _settled(store, tmp_path, tmp_path / "other", "gone.pdf")
+    (tmp_path / "other" / "gone.pdf").unlink()
+    assert discover_module.reenter_changed(store, generation=1, at_ns=9) == 0
+    row = _reader(tmp_path).execute("SELECT state FROM unit WHERE unit_uri = ?", (gone,))
+    assert row.fetchone() == ("settled",)
+
+
+def _doc(
+    reader: Any, doc_ord: int, uri: str, key: str, *, fmt: str = "pdf", block: bool = False
+) -> None:
+    """One `doc` row whose `doc_key` is `key` (32 hex digits), and optionally one live block and
+    one live segment at its head generation."""
+    reader.execute(
+        "INSERT INTO doc(doc_ord, doc_key, source_sha256, uri, media_type, format, "
+        "format_evidence, source_bytes, gen, status, model_version, declared, achieved, x) "
+        "VALUES(?, ?, X'00', ?, 'application/pdf', ?, '{}', 1, 1, 'ok', '1.1', '{}', '{}', "
+        "'{\"x.ow.decrypted\": true}')",
+        (doc_ord, bytes.fromhex(key), uri, fmt),
+    )
+    if not block:
+        return
+    code = {
+        (domain, name): int(ord_)
+        for domain, name, ord_ in reader.execute("SELECT domain, name, ord FROM enum_val")
+    }
+    reader.execute(
+        "INSERT OR IGNORE INTO producer(producer_id, operator, op_version, code_fingerprint, "
+        "options_digest) VALUES(1, 'op.parse', 1, 'fp', X'00')"
+    )
+    reader.execute(
+        "INSERT INTO page(doc_ord, gen, page, page_kind, method, producer_id) "
+        "VALUES(?, 1, 1, ?, ?, 1)",
+        (doc_ord, code[("page_kind", "page")], code[("method", "native")]),
+    )
+    reader.execute(
+        "INSERT INTO block(block_id, doc_ord, gen, page, addr, cite, ord, kind, layer, label, "
+        "text, content_digest, os_kind, producer_id, method, trust, quote, origin_operator, "
+        "origin_driver, driver_schema_v, restriction_bits, state) VALUES(?, ?, 1, 1, 'p1/1', ?, "
+        "1, ?, ?, NULL, 'old text', X'00', ?, 1, ?, 2, 4, 'op.parse', 'drv', 1, 0, 0)",
+        (
+            doc_ord * 10,
+            doc_ord,
+            f"d{doc_ord}#1",
+            code[("kind", "paragraph")],
+            code[("layer", "body")],
+            code[("origin_span_kind", "none")],
+            code[("method", "native")],
+        ),
+    )
+    reader.execute(
+        "INSERT OR IGNORE INTO segmenter(segmenter_id, driver_id, driver_schema_v, params_digest) "
+        "VALUES(1, 'derive.segment.spine', 1, X'00')"
+    )
+    reader.execute(
+        "INSERT INTO segment(segment_id, doc_ord, gen, ord, segmenter_id, layer, heading_path, "
+        "n_blocks, n_tokens, n_chars, tokenizer_id, first_page, last_page, trust, quote_min, "
+        "kind_mask, content_digest, origin_operator, origin_driver, driver_schema_v) "
+        "VALUES(?, ?, 1, 1, 1, ?, '[]', 1, 2, 8, 'tok', 1, 1, 2, 4, 1, X'00', 'op.derive', "
+        "'derive.segment.spine', 1)",
+        (doc_ord * 10, doc_ord, code[("layer", "body")]),
+    )
+
+
+@pytest.mark.parametrize(("same_bytes", "reentered"), [(True, 0), (False, 1)])
+def test_a_file_only_too_recent_to_prove_fresh_is_hashed_and_not_parsed(
+    store: ow.StoreThread, tmp_path: Path, same_bytes: bool, reentered: int
+) -> None:
+    """D645. A file indexed within 2 s of its `mtime` fails `stat_fresh` with its size and `mtime`
+    unchanged, so every file indexed right after it was written would be parsed again. Its raw
+    bytes are hashed against the head document's `source_sha256` instead: equal, and only its
+    index time moves, so the next pass is free; different, and it is read again."""
+    import hashlib  # noqa: PLC0415 -- this test's own
+
+    root = tmp_path / "src"
+    uri = _settled(store, tmp_path, root, "note.pdf")
+    reader = _reader(tmp_path)
+    mtime, digest = reader.execute(
+        "SELECT mtime_ns, content_sha256 FROM unit WHERE unit_uri = ?", (uri,)
+    ).fetchone()
+    reader.execute("UPDATE unit SET indexed_at_ns = ? WHERE unit_uri = ?", (mtime, uri))
+    raw = hashlib.sha256((root / "note.pdf").read_bytes()).hexdigest()
+    _doc(reader, 1, uri, digest[:32])
+    reader.execute(
+        "UPDATE doc SET source_sha256 = ? WHERE doc_ord = 1",
+        (bytes.fromhex(raw if same_bytes else "00" * 32),),
+    )
+    reader.commit()
+    assert discover_module.reenter_changed(store, generation=1, at_ns=LATE_NS) == reentered
+    row = (
+        _reader(tmp_path)
+        .execute("SELECT state, indexed_at_ns FROM unit WHERE unit_uri = ?", (uri,))
+        .fetchone()
+    )
+    assert row == (("settled", LATE_NS) if same_bytes else ("discovered", mtime))
+    assert discover_module.reenter_changed(store, generation=1, at_ns=LATE_NS) == 0
+
+
+def test_settling_the_new_bytes_is_what_ends_the_stale_time(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """D645. 08:1891 keeps `stale_since` across a reset: a retry, a failure and a re-open leave
+    it. The new bytes settling is the one write that clears it (`parse.SETTLED_SQL`)."""
+    from omniweave.run.operators.parse import SETTLED_SQL  # noqa: PLC0415 -- this test's own
+
+    uri = _settled(store, tmp_path, tmp_path / "src", "note.pdf")
+    reader = _reader(tmp_path)
+    reader.execute("UPDATE unit SET state = 'planned', stale_since = 3 WHERE unit_uri = ?", (uri,))
+    reader.execute(SETTLED_SQL, {"unit_uri": uri, "gen": 2})
+    reader.commit()
+    row = _reader(tmp_path).execute(
+        "SELECT state, settled_gen, stale_since FROM unit WHERE unit_uri = ?", (uri,)
+    )
+    assert row.fetchone() == ("settled", 2, None)
+
+
+OLD, NEW, COPY = "aa" * 16, "bb" * 16, "cc" * 16
+
+
+def _unit_with(reader: Any, uri: str, digest: str | None, *, state: str = "settled") -> None:
+    reader.execute(
+        "INSERT INTO unit(unit_uri, state, last_seen_gen, trust_class, content_sha256) "
+        "VALUES(?, ?, 1, 'internal', ?)",
+        (uri, state, None if digest is None else digest + "0" * 32),
+    )
+
+
+def test_the_version_an_edit_replaced_leaves_every_read_and_its_cite_still_resolves(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """D645. A document is its bytes (03:162), so an edited file is a new document and the old one
+    kept answering with what the file used to say. It is retired the way `rebind()` retires a row:
+    `state = 1` and a `block_history` row (`source_deleted`, no successor), its segment with it, and
+    `doc.x` says so. Nothing is deleted, and a second pass retires nothing more."""
+    reader = _reader(tmp_path)
+    _unit_with(reader, "c:/docs/note.pdf", NEW)
+    _doc(reader, 1, "c:/docs/note.pdf", OLD, block=True)
+    _doc(reader, 2, "c:/docs/note.pdf", NEW)
+    reader.commit()
+    assert discover_module.retire_replaced(store) == 1
+    reader = _reader(tmp_path)
+    assert reader.execute("SELECT block_id, state FROM block").fetchall() == [(10, 1)]
+    assert reader.execute("SELECT state FROM segment").fetchall() == [(1,)]
+    assert reader.execute("SELECT * FROM block_history").fetchall() == [
+        (10, 1, 1, None, "source_deleted")
+    ]
+    xs = dict(reader.execute("SELECT doc_ord, x FROM doc").fetchall())
+    assert json.loads(xs[1]) == {
+        "x.ow.decrypted": True,
+        "x.ow.retired": {"reason": "source_deleted", "gen": 1},
+    }
+    assert json.loads(xs[2]) == {"x.ow.decrypted": True}
+    assert discover_module.retire_replaced(store) == 0
+
+
+def test_a_version_some_file_still_holds_is_not_retired(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """The three cases the scan exists to leave alone: a copy of the old bytes in another file; a
+    deleted file, whose unit is `out_of_scope` with its digest kept, since 05:370 and 08:1883 make
+    a deletion explicit and never inferred; and a document no unit rostered, or a job document."""
+    reader = _reader(tmp_path)
+    _unit_with(reader, "c:/docs/a.pdf", NEW)
+    _unit_with(reader, "c:/docs/copy-of-a.pdf", COPY)
+    _doc(reader, 1, "c:/docs/a.pdf", COPY)
+    _unit_with(reader, "c:/docs/deleted.pdf", OLD, state="out_of_scope")
+    _doc(reader, 2, "c:/docs/deleted.pdf", OLD)
+    _doc(reader, 3, "c:/kit/fixture.pdf", "dd" * 16)
+    _unit_with(reader, "c:/docs/b.pdf", NEW)
+    _doc(reader, 4, "c:/docs/b.pdf", "ee" * 16, fmt="owjob")
+    _unit_with(reader, "c:/docs/unread.pdf", None)
+    _doc(reader, 5, "c:/docs/unread.pdf", "ff" * 16)
+    reader.commit()
+    assert discover_module.retire_replaced(store) == 0
 
 
 def test_a_reopen_clears_the_attempt_count_so_the_fourth_read_still_happens(

@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D644: [ingest] max_parts compiled into gate.too-many-parts as @thresholds.max_parts; 05 fence, 05:446, 05:3037 and 13:1293 updated line-count-preserving
+# blessed-because: D645: 05 state machine and section 1.4 name the re-entry of a changed settled unit and the hash for an unproven one, line-count-preserving
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -31,7 +31,7 @@ documents-frozen  6ffc2070193630b39f15385fc8640ec7b1a3e242ef098426f2754d4070a802
 documents-frozen  7bf4220e75a23503a04139d4ba6d8b7774e57fd1774920104c4eb29c75a16c70  02-architecture.md
 documents-frozen  9ec0bb9988baf327069950ac46858ff0383238536255c9da4c729134d62fea72  03-document-model.md
 documents-frozen  53440cdfd7e5d4b02e35e720f13a9ad7a58c39a66194837cb7004d42ba00a3c4  04-driver-system.md
-documents-frozen  a4a94a6599c7c827108fc8d1423544e125907bb50060b19a8dceda08b75b1ba2  05-ingest-and-routing.md
+documents-frozen  58eeb69e5ed3d40f01c4f9afc0550778a3e88efc1c728c04f87d9e8fa1f6a572  05-ingest-and-routing.md
 documents-frozen  af878d7e1a795aded61af2ef27a5834654762f52bdafefb4955d4b4c75492031  06-structure-extraction.md
 documents-frozen  1579b9439073588028b3ff5a548f65698f787d9724474ae08b1d0ca6182a8e09  07-store-and-retrieval.md
 documents-frozen  8dbb83e6d1baa29901dad36b079a53c5459595e979799792ec3bd50eecc9661f  08-runtime.md

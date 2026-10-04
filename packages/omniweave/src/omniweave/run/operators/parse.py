@@ -166,11 +166,15 @@ DEFAULT_EGRESS_MODE: Final[str] = "granted"
 `egress.mode` key yet, so the shipped default is the only value there is to send (D584)."""
 
 SETTLED_SQL: Final[str] = """
-UPDATE unit SET state = 'settled', settled_gen = :gen
+UPDATE unit SET state = 'settled', settled_gen = :gen, stale_since = NULL
  WHERE unit_uri = :unit_uri AND state IN ('planned', 'running')
 """
 """05:404's `running -> settled`, *"every part terminal; doc.status in ok|partial"*. From
-`planned` as well, because this build moves no unit to `running` (D585)."""
+`planned` as well, because this build moves no unit to `running` (D585).
+
+`stale_since` is cleared, and this is the one statement that clears it (D645). 08:1891 keeps it
+*"across a reset, because it measures how long the answer has been untrustworthy"*: a retry, a
+failure and a re-open all keep it, and only the new bytes settling ends that time."""
 
 PARSE_FAILED_SQL: Final[str] = """
 UPDATE unit SET state = 'failed', acq_failure_class = :failure_class

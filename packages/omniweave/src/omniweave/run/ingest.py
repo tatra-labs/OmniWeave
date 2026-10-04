@@ -338,6 +338,11 @@ class IngestReport:
     receipt: Receipt | None = None
     passwords: tuple[str, ...] = ()
     """`Passwords.lines()`: each secret name this run looked up, and its source or why not."""
+    changed: int = 0
+    """Settled units read again this run because `stat_fresh` failed (D645): the file changed, or
+    it was written within `MTIME_GRANULARITY_NS` of its indexing, which 05:346 re-reads once."""
+    retired: int = 0
+    """Documents no file holds any more, taken out of every read this run (D645)."""
 
     @property
     def settled(self) -> int:
@@ -372,7 +377,13 @@ class IngestReport:
             f"  roster    {self.scopes} scopes, {self.files} files, {self.discovered} units, "
             f"{self.skipped} skipped, {self.unseen} unseen",
             f"  acquire   {acq.acquired} read, {acq.unchanged} unchanged, {acq.failed} failed, "
-            f"{acq.bytes_read} bytes",
+            f"{acq.bytes_read} bytes"
+            + (
+                f"; {self.changed} indexed file(s) read again: changed, or too recent to prove "
+                "unchanged"
+                if self.changed
+                else ""
+            ),
             f"  {identify}",
         ]
         if self.formats:
@@ -387,6 +398,11 @@ class IngestReport:
         if self.parsed is not None:
             out.extend(self.parsed.lines())
         out.extend(self.passwords)
+        if self.retired:
+            out.append(
+                f"  retire    {self.retired} earlier versions of changed files leave search; "
+                "their cites still resolve, and say so"
+            )
         if self.manifest:
             out.append(f"  manifest  {self.manifest}")
         if self.receipt is not None:
@@ -695,6 +711,11 @@ def _hops(
         regardless=discover.ACCEPT_PARTIAL_CLASSES if accept_partial else frozenset(),
         reopens=discover.reopens_of(None if passwords is None else passwords.reopens, raised),
     )
+    #  D645: a settled unit whose file changed is read again; its old document is served, under
+    #  gates 5 and 6, until the new one settles.
+    changed = discover.reenter_changed(
+        thread, generation=generation, at_ns=now_ns, plan_batch=plan_batch
+    )
     acquired = discover.acquire_pending(
         thread, generation=generation, indexed_at_ns=now_ns, plan_batch=plan_batch
     )
@@ -738,6 +759,8 @@ def _hops(
             book.stage(Stage.PARSE, opened)
     finally:
         executor.close()
+    #  D645: the documents whose file now says something else leave every read.
+    retired = discover.retire_replaced(thread)
     states, parts = _tally(thread, generation)
     formats = _formats(thread, generation)
     waiting = states.get(IDENTIFIED, 0) + states.get(PLANNED, 0)
@@ -761,6 +784,8 @@ def _hops(
         routed=routed,
         parsed=tally if (tally.parsed or tally.failed) else None,
         passwords=() if passwords is None else passwords.lines(),
+        changed=changed,
+        retired=retired,
     )
 
 
