@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "dde6ed7128cc1abcffd4126b31055f6bd429bc86dd543f14d4be5307e17fb7e5",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "bb13a29dcb9d61c7f6466fc567f943e7f348646b0b1786c8c786cd75710f9226",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The document `nda-northwind.docx` (page 0) states: \"Clause 7. Term. The confidentiality obligations survive for five (5) years after disclosure.\"  \nAnswer comes from `nda-northwind.docx` on page 0.",
+    "tool_uses": []
+  }
+}

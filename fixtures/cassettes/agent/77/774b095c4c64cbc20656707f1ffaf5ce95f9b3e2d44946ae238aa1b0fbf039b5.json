@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "4608d0accfb8e9162f0dc2a3a926722ca4049602f404c4ef0fc9392485860d22",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "774b095c4c64cbc20656707f1ffaf5ce95f9b3e2d44946ae238aa1b0fbf039b5",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND  \nSearched: \"What refund does the 2023 tax summary show?\" (Evidence shows date strings from CSV files like `statement-2023-03-003.csv` with page 0, but no refund amounts are present; verdict: `degraded` due to unsupported format for `tax-summary-2023.docx` being indexed)",
+    "tool_uses": []
+  }
+}

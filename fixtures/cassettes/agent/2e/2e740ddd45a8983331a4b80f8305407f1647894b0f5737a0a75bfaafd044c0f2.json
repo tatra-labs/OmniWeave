@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "915733883e7a86a3c9213f9b8fca02991250bd196ed505069156df3bae64f5cf",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "2e740ddd45a8983331a4b80f8305407f1647894b0f5737a0a75bfaafd044c0f2",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND. Searched with `ow_query` for \"What revenue did the company report for Q3 2024?\" in the default corpus.",
+    "tool_uses": []
+  }
+}

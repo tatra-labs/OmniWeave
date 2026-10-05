@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "5aed0007575f08536db4e8379f81aa6af2a857fb3e12fd09386df7f24cec2c46",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "dcaa356fae86cc72ba94bbc2220f35119b3cbcd8c5e9c8dd757263a6458fc6c0",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "1,250,000 Series B preferred shares — cap-table-2024.xlsx, p.0 (d77#11).",
+    "tool_uses": []
+  }
+}

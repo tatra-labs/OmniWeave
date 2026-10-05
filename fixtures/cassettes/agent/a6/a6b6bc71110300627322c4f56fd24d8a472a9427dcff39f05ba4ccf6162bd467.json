@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "d7f99f1e62e5ee0aabe8ca83a5c3813e9c79a52bd02973f0bf19a2bcd236c779",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "a6b6bc71110300627322c4f56fd24d8a472a9427dcff39f05ba4ccf6162bd467",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND. Searched: \"What does paragraph 3 of the Oakridge Property tenancy renewal letter say about the rent?\"",
+    "tool_uses": []
+  }
+}

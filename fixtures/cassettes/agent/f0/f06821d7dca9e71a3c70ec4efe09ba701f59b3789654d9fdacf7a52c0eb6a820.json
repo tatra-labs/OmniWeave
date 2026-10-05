@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "8f7f31dd86f35e73a2f68b20133e878edf6726e60523b6eb90202ecc20cd9eb3",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "f06821d7dca9e71a3c70ec4efe09ba701f59b3789654d9fdacf7a52c0eb6a820",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "Amendment No. 1 to the Master Services Agreement service credit percentage"
+        },
+        "id": "toolu_01XFpZYnDtcQ2UbdRB6GT5KV",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

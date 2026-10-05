@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "a074c49785ea2ef7a52a6c18da8d32ba1928b73b08f4fd654d7d0d7b682682c1",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "2c092a8ebf9417b222e1478010bddd97cc97d4a634b8c91e9ad6906f16b15c06",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "This document (amendment-1-2021.pdf) is encrypted and cannot be opened without a password, which I don't have access to.",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "find / -maxdepth 2 -iname \"*.toml\""
+        },
+        "id": "toolu_01KrgfHnkjpvRV9dXEKEu8d8",
+        "name": "Bash"
+      }
+    ]
+  }
+}

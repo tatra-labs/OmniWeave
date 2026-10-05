@@ -1,0 +1,37 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "3950631e8b80ab0a813ef063db22220827dd6908f83cae180ad7254ecf97cbfe",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "00ede7c7cd122e2a3b0b019e851eae802cbf1165169728cf3d19ed5ca5f18d7f",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "content",
+          "path": "{bench-cache}/legal_matter-full-aab2293e6925/project/docs",
+          "pattern": "Singapore"
+        },
+        "id": "toolu_01BMdZnwQoUYEspVS96ntD22",
+        "name": "Grep"
+      }
+    ]
+  }
+}

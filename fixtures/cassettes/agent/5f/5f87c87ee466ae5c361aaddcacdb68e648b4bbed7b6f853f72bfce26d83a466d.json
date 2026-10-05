@@ -1,0 +1,42 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "046f6c1f8ad91bd6dc04050149bf581e03f386bc01ce4647a49299c35d6e9310",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "5f87c87ee466ae5c361aaddcacdb68e648b4bbed7b6f853f72bfce26d83a466d",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "Q4 2024 revenue million board deck"
+        },
+        "id": "toolu_01BqEb7bY6jvaamSJowPS8Hn",
+        "name": "mcp__omniweave__ow_query"
+      },
+      {
+        "arguments": {
+          "path": "{bench-cache}/data_room-full-32e3e72ca082/project/docs",
+          "pattern": "Q4 2024"
+        },
+        "id": "toolu_01LXFMhKQkn2qSbwWwgBGiDd",
+        "name": "Grep"
+      }
+    ]
+  }
+}

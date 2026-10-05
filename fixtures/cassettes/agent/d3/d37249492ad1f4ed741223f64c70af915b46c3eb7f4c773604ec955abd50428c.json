@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "b346f3971c8e90b29f54f0439be61e8b2c0a907c7634f5c4d09d0d34732a2890",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "d37249492ad1f4ed741223f64c70af915b46c3eb7f4c773604ec955abd50428c",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "docs",
+          "query": "LDL cholesterol 2024 lab results LDL 2024 \"LDL\" \"cholesterol\" lab results 2024"
+        },
+        "id": "call_kvWXOJaH7YI0YqqXzzXe3kLA",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "fb6316da73ff60bd4c53e58735a9544583d41f4dbab3284306ca3cbb0b99fe0a",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "8ef422f3cec6e777e6524bce2dfdc6f6ffb31a5b5a0b78bcd3de65ed5d3208aa",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "kind:contract arbitration Singapore"
+        },
+        "id": "call_rPmmW3CUWtdt0RwMAwoKqy0Z",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "0cffa68ee23f5a3edf5cfbfa8b0752d309492955ec6d766f8b69be48e08bb54b",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "610d98886bc82c872d79dbaaf30fbdcf237215e1e3c4a2a94a18801f60b47e5a",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "docs",
+          "query": "When was the passport renewal application submitted?"
+        },
+        "id": "call_chkidc32",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

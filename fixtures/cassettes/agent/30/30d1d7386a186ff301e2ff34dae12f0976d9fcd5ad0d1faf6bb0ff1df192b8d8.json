@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "dc0e75d8b4cabdf3484a7757cf05449f1a9685e8e6da7349265a2071179f2dae",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "30d1d7386a186ff301e2ff34dae12f0976d9fcd5ad0d1faf6bb0ff1df192b8d8",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "No mention of a passport renewal application appears in these letters. No passport-related documents found at all.\n\nNOT FOUND — I searched the entire docs folder (including letters, receipts, insurance, medical, tax, and statement files) for \"passport\" and found no matches at all, and \"renewal\" only appears in unrelated contexts (insurance/lease renewals). There is no document referencing a passport renewal application or its submission date.",
+    "tool_uses": []
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "3c19d864ac21d25cf8295dde3fcba593e2acde7f1ff63d34a7cfe693df7764c5",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "f54b7abff042f9fc77e77489b460f27b4445e38be443d02c2d4eef78f56fb5e8",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The file `lab-results-2024.pdf` is confirmed corrupt (truncated, missing %%EOF marker) and cannot be opened by either the indexer or direct PDF reader.",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "cd \"{bench-cache}/personal_archive-full-chaos-7a86eb763d6b/project/docs/medical\" && ls -la && tail -c 500 lab-results-2024.pdf"
+        },
+        "id": "toolu_011MK6P3PTHxPRCGgaA42Dvw",
+        "name": "Bash"
+      }
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "06da07f5e0b5973c6932bf227a8b4e9bcc9db6551dcdf7e9b37750b0619f8623",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "204711027ca4a318442ad4ea7411f3ae35d5f0fc0695089dffc21f629ecafbfa",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "",
+          "query": "overall materiality 2023 audit report materiality overall 2023 audit report",
+          "scope": ""
+        },
+        "id": "call_RHm0LtDmkcQZYZHJQW5Muj9c",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

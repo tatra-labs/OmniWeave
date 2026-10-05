@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "93bb09e5a573492ef821982dd863d46ba9aa04c89deaa6c02d57e672b192787f",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "1d4074eecf5345ba7fd36a033f5d99859cf588fc4250712c0fe2c57819fd5774",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The 2024 capitalisation table shows **1,250,000 Series B preferred shares** (as of 30 September 2024).\n\nSource: `docs/finance/cap-table-2024.xlsx`",
+    "tool_uses": []
+  }
+}

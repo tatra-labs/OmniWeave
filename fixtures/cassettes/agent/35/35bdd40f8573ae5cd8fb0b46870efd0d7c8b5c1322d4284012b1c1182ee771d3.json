@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "be9c0cfbe39ab239d3f1e52a49862ee5fc1051b536fc82f9232ea544d2583eab",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "35bdd40f8573ae5cd8fb0b46870efd0d7c8b5c1322d4284012b1c1182ee771d3",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "docs",
+          "query": "2023 tax summary refund"
+        },
+        "id": "call_HdtBIiZKSthaSk0W65m7G0QK",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

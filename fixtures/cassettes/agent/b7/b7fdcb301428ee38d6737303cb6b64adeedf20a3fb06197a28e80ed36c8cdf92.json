@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "cdc202ba3c4725692e2f0c350e072d08d89c565d6736853fa5aeadf4c8eb45e8",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "b7fdcb301428ee38d6737303cb6b64adeedf20a3fb06197a28e80ed36c8cdf92",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "detail": "list"
+        },
+        "id": "toolu_01G526QWtD3Jqq7CYaPMoRi2",
+        "name": "mcp__omniweave__ow_corpora"
+      },
+      {
+        "arguments": {
+          "query": "most-favoured-nation pricing clause supplier agreement"
+        },
+        "id": "toolu_01RALhcEK8vG861DjERT1srB",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "b1fe931c0b1f13787e8eb2d5ce650d2d2833e4d837b2af8ca6f0e074cb28e68f",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "3ccb5f21439dea132667dc25d7a8ba0130aafefb8aeb7b8f33d1818523ceebf1",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "None of the pricing clauses across all 28 supplier agreements (numbered ones + Acme, Borealis, Corvid, Dunmore) mention MFN/most-favoured-nation pricing - they only contain either \"fixed for the term\" or \"indexed price cap\" pricing terms.\n\nNOT FOUND — I searched all supplier agreements in docs/suppliers/ (supplier-agreement-005 through -120, plus supplier-agreement-acme.docx, -borealis.docx, -corvid.docx, and -dunmore.docx) for \"most favoured/favored nation,\" \"MFN,\" \"best price,\" and \"lowest price\" language. Each agreement's Clause 6 (Pricing) states only either that unit prices are \"fixed for the term and are not indexed\" or \"subject to an indexed price cap, adjusted annually by the consumer price index and capped at four percent.\" No agreement contains a most-favoured-nation pricing clause.",
+    "tool_uses": []
+  }
+}

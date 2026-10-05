@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "3623e0d7d48596fc4bb2e49d9702a153f7fcf20505d23c30adc10335ec2f0b61",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "dbeb6b71ff7287366816777c887a375db3d858e8e68bc829df774d966250de56",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Found the snippet but truncated — let me get the full text of that passage.",
+    "tool_uses": [
+      {
+        "arguments": {
+          "ref": "msa-2019.pdf#p4"
+        },
+        "id": "toolu_01EmDUhhmwnsjPJnwXeaCs2m",
+        "name": "mcp__omniweave__ow_open"
+      }
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "ac6221ef8c2545800a991fead5a9ea4c7642fec0577248af4f88ebeafdb9c090",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "dca912105792f8c5531d12c6c1b14d3611218d58daded0208827faf62a1e5378",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND.\n\nWhat I searched:\n- Queried the indexed \"docs\" corpus with ow_query for:\n  - \"passport\" (verdict: absent)\n  - \"passport renewal application submitted\" (verdict: low_confidence; returned unrelated \"renewal\" fragments)\n- Searched the documents folder contents and text:\n  - Listed directories: letters/, receipts/, insurance/, medical/, statements/, tax/\n  - Inspected letters/ (letter-001.docx ... letter-052.docx, oakridge-renewal-2024.docx)\n  - Inspected receipts/ (receipt-002.pdf ... receipt-053.pdf, brightline-dental-2024-03.pdf)\n  - Inspected insurance/ (car-policy-2024.pdf, home-policy-2024.pdf)\n  - Ran grep for \"passport\" (case-insensitive) across letters/, receipts/, insurance/ and the whole docs folder — no matches\n  - Ran grep across docs for \"renewal application|passport renewal|passport application|application submitted|submitted\" — no matches\n\nBecause none of the indexed documents or files contain the submission date for a passport renewal application, I cannot provide it.",
+    "tool_uses": []
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "bb18556506e0555709061a0556e5ad7a1ee00052e914d218a4510f2abcadf52e",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "b3b6276a782e30bd16ab4b25f23f52cfbfcf91e4eceecadceaafbdddfb946c5f",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND.\n\nWhat I searched and tried (no readable passage with the refund was available):\n\n- ow_query: \"2023 tax summary refund\" and variants (\"tax summary 2023 refund\", \"Tax Summary\") against corpus \"docs\". Result: degraded; the query log shows the file\n  c:/users/user/appdata/local/temp/.../project/docs/tax/tax-summary-2023.docx was refused as unsupported_format (parse_gap_in_scope / OW_UNSUPPORTED_FORMAT), so it was not indexed and no refund line could be returned.\n\n- ow_add: attempted to add\n  c:/users/user/appdata/local/temp/.../project/docs/tax/tax-summary-2023.docx — add returned unchanged/queued but subsequent queries still show unsupported_format.\n\n- Grep over project/docs for \"tax summary\" and for \"refund\" (case-insensitive) — no matches.\n\n- Bash/ls: inspected project/docs/tax and confirmed the file name tax-summary-2023.docx is present.\n\n- Read attempts on project/docs/tax/tax-summary-2023.docx failed (file path resolution error: \"is not a file\").\n\nBecause the tax-summary-2023.docx could not be read/indexed, I cannot extract the refund amount. If you want, you can (a) provide a readable PDF/ TXT export of tax-summary-2023.docx, or (b) fix/restore the .docx so I can add and query it.",
+    "tool_uses": []
+  }
+}

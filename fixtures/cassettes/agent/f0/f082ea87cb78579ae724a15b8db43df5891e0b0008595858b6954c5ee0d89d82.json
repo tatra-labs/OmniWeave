@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "b7a6043ba90e3c24e285cdb1fd93c026a9e76c261809b24da12949b36ff7aedf",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "f082ea87cb78579ae724a15b8db43df5891e0b0008595858b6954c5ee0d89d82",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "arbitration clause \"arbitration\"",
+          "scope": ""
+        },
+        "id": "call_gVpYSH27euV80UO2a0sMMWCU",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

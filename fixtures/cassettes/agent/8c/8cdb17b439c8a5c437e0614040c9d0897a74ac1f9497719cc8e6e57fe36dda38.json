@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "f32796d20ff6e279c834a4e934a789c05d60fcba4df2ea17f935847b22b6224f",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "8cdb17b439c8a5c437e0614040c9d0897a74ac1f9497719cc8e6e57fe36dda38",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "board/board-deck-q3-2024.pptx"
+        },
+        "id": "toolu_019c9Mg4BB2k1Z2MzQsNF5VH",
+        "name": "Read"
+      },
+      {
+        "arguments": {
+          "command": "find finance -name \"budget-123.xlsx\""
+        },
+        "id": "toolu_01BZ23eav2xC99RegZXWREVd",
+        "name": "Bash"
+      }
+    ]
+  }
+}

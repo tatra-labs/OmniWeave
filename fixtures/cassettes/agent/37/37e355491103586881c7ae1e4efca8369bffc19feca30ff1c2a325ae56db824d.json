@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "f3a18966834ed783cdf8f38cd58778b968e2aa9ae1c4778ce410286c4654b2ec",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "37e355491103586881c7ae1e4efca8369bffc19feca30ff1c2a325ae56db824d",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Three suppliers have an indexed price cap clause in their supplier agreement (Clause 6, Pricing: \"Unit prices are subject to an indexed price cap, adjusted annually by the consumer price index and capped at four percent\"):\n\n1. **Acme Components** — supplier-agreement-acme.docx\n2. **Borealis Metals** — supplier-agreement-borealis.docx\n3. **Corvid Plastics** — supplier-agreement-corvid.docx\n\nAll other reviewed supplier agreements (Dunmore Industrial, and the numbered agreements 005, 010, 015, 020, 025, 030, 035, 040, 045, 050, 055, 060, 065) instead state under Clause 6 that \"Unit prices are fixed for the term and are not indexed\" — i.e., no price cap.\n\n(These are single-page docx files with no page numbers in the index; cited via document title only.)",
+    "tool_uses": []
+  }
+}

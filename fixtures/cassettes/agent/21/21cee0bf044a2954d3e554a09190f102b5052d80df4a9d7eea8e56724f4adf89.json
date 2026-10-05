@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "bddff5ef2cd8d69f328644f4d169434a0ca4e16c6f899a392dd3a08a1b826831",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "21cee0bf044a2954d3e554a09190f102b5052d80df4a9d7eea8e56724f4adf89",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Section 2.1 assigns \"all right, title and interest in the Assigned IP\" to the Company (ip-assignment.pdf — p.1; cite: d83#7).",
+    "tool_uses": []
+  }
+}

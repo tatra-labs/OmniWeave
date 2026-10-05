@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "c95e44faa7cf5ce7314353934851fce80822061374f200d209b7c6ade471fe00",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "a024dc7d46c2e5e181adaffe503ebfd9c5ef3bc194737343f198125764a93682",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "default",
+          "query": "Which office lease expires in 2027?"
+        },
+        "id": "call_1no47576",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

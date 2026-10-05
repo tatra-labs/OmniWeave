@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "9e91c66f33fd1be01af32218ebfd8d899d737ca82488bd4924532081e294840a",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "f3d98b7b38c3970b77122ff7822a1fcc10f954c8201be80a83ad6a4674453774",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "docs",
+          "query": "In which country does the Contoso data processing agreement say customer data is hosted?",
+          "scope": ""
+        },
+        "id": "call_2akitr3h",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

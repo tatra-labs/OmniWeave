@@ -1,0 +1,37 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "0726755dd0b06b3638bd2c6bd81f51d17165def5fd724fb3d1ba8c02ac8f8f12",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "5458d7d3fd3fd44b2afea8963479c832b3d3894b35c02e40079b5d7361e77a8a",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "files_with_matches",
+          "path": "{bench-cache}/data_room-full-32e3e72ca082/project/docs/suppliers",
+          "pattern": "favou|favor|MFN|most[- ]fav|no less|best price|lowest price|prefer"
+        },
+        "id": "call_pytIvYJgV1KGoQ699av56V6O",
+        "name": "Grep"
+      }
+    ]
+  }
+}

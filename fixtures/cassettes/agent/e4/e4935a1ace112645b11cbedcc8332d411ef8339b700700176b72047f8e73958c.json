@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "25e771e3d5f4c2f67ec8afb366777f2b71bdc8795d58cf73a1f6c09682e80d33",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "e4935a1ace112645b11cbedcc8332d411ef8339b700700176b72047f8e73958c",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND. Searched for \"2027\" in project/docs (output_mode: files_with_matches) and found no matches.",
+    "tool_uses": []
+  }
+}

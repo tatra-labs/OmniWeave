@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "740743761735376a392c4959b64a95a917759b816adc0a077aa59f52ed3c89ca",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "c7777be3cab5447b72ce57401a856155f14a03ee5af4685cb659642f41118718",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "Northwind NDA clause 7 confidentiality duration term how long"
+        },
+        "id": "toolu_01VmcgcPuvEQGfW9ZXpzyUJa",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

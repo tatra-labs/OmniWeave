@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "f26c7fa0615d268534ecb251345cfaa0d01b800ccb22ea36646325bd674bfe13",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "12223fc11ac883a8096d53cbbb4f4a91165caf22696fabe820aa71ff29ab33ea",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-32e3e72ca082/project/docs/board/board-deck-q3-2024.pptx"
+        },
+        "id": "toolu_012UpaNmvRXGz4Bh2KMoZvh8",
+        "name": "Read"
+      }
+    ]
+  }
+}

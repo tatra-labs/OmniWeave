@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "49db1eaf331e7ce554e2f55cb179437b9658c4cb209b7f755f4ce4607f8814b4",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "91e0af9e2e71db4d67208ac07c48a1e00623b10d5a2a40b7c8e76bbc3197712d",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The answer comes from `ow_query` output under `ow:evidence`. The suppliers with indexed price caps are:  \n**Acme Components**, **Borealis Metals**, and **Corvid Plastics** (all from supplier agreement documents with the clause \"Clause 6. Pricing. Unit prices are subject to an indexed price cap...\").  \nDocument: `supplier-agreement-acme.docx`, `supplier-agreement-borealis.docx`, `supplier-agreement-corvid.docx` (page 0).  \n\n**Answer**: Acme Components, Borealis Metals, Corvid Plastics.",
+    "tool_uses": []
+  }
+}

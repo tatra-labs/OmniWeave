@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "4f9684429722721ea8acc254ccabee2d165c5c654306dbb633df7963216f42cb",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "88f2818661737583d0727d3753aafd5500d25d1b2f90ba305827e740954d71bb",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "passport renewal application submitted date"
+        },
+        "id": "toolu_017MKdgzwPNrHmfLW2YX3mqc",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

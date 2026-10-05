@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "9204ac6d0416b38d241d66fdd75fe72e60d1ddf9c69626cb57ac0210d3a0d405",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "ca587501e703625aed068818d55416de1052d71ddee06d2436b9edac29361870",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "Master Services Agreement section 9.1 liability capped at each party's liability capped at 9.1",
+          "scope": "Master Services Agreement"
+        },
+        "id": "call_1FXxu6psxc4DRVqK1jH9l8QD",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

@@ -174,9 +174,13 @@ class HostTools:
             raise _RefusedError("a path is required")
         path = Path(text)
         path = (path if path.is_absolute() else self.root / path).resolve()
-        if path != self.root and not path.is_relative_to(self.root):
+        if not self._inside(path):
             raise _RefusedError(f"{text} is outside the documents folder {self.root.as_posix()}")
         return path
+
+    def _inside(self, path: Path) -> bool:
+        resolved = path.resolve()
+        return resolved == self.root or resolved.is_relative_to(self.root)
 
     # -- Read ----------------------------------------------------------------------------------
 
@@ -272,10 +276,13 @@ class HostTools:
                 {"command": command},
             )
         # Every word naming a path under the root is recorded absolute, so `reads_source` sees it.
+        # A word naming a path outside it is the command's to refuse, on every OS (D654): checked
+        # here, `/dev/null` was refused before `grep` ran on Linux, where it exists, and by `grep`
+        # on Windows, where it does not, and a recording made on one missed on the other.
         spelled = [name]
         for word in words[1:]:
             candidate = (self.root / word) if not Path(word).is_absolute() else Path(word)
-            if not word.startswith("-") and candidate.exists():
+            if not word.startswith("-") and self._inside(candidate) and candidate.exists():
                 spelled.append(self._resolve(word).as_posix())
             else:
                 spelled.append(word)

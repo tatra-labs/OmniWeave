@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "1a52e4c081ffeb177256fa66caa65a1ceb4c5613394181367307cbf4da1ebf1e",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "e68db0fdb5cae25e2d1d382d8786eb936acf468f69e2ded4b8856f6c3c50f002",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND  \nSearched for: \"What service credit percentage does Amendment No. 1 to the Master Services Agreement set?\"  \nDocument: `contracts/amendment-1-2021.pdf` is encrypted (refused as encrypted; needs password). The corpus shows degraded state with this gap. No verbatim evidence from Amendment No. 1 exists in the indexed documents.",
+    "tool_uses": []
+  }
+}

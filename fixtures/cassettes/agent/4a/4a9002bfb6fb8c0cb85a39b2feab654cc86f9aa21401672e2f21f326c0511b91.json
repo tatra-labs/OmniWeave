@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "7cddcf1062be14d58ca354313d02c636cb6f289cf284ceb4a7350246eb505b73",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "4a9002bfb6fb8c0cb85a39b2feab654cc86f9aa21401672e2f21f326c0511b91",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The only arbitration clause found specifies **London** (LCIA), found in the Master Services Agreement (docs/contracts/msa-2019.pdf, §14.3). A search across all documents (contracts, correspondence, depositions, exhibits, pleadings) for \"Singapore,\" \"arbitration,\" \"SIAC,\" and \"ICC\" found no reference to Singapore-seated arbitration.\n\n**NOT FOUND** — No document provides for arbitration seated in Singapore. The only arbitration clause located is in msa-2019.pdf (§14.3, p. ~page containing line 432), which specifies arbitration seated in **London** under the LCIA, not Singapore.",
+    "tool_uses": []
+  }
+}

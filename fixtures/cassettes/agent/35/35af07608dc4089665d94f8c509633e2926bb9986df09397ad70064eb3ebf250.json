@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "06c4bd1ebcb138c2430cfc7beb885be1ac2739bda3ea8b0779247c248b4a57bf",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "35af07608dc4089665d94f8c509633e2926bb9986df09397ad70064eb3ebf250",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The headcount-2024.xlsx file exists but is corrupted. Let me check if it can be read directly.",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "file docs/hr/headcount-2024.xlsx; ls -la docs/hr/; head -c 200 docs/hr/headcount-2024.xlsx | xxd | head -20"
+        },
+        "id": "toolu_012BKeVwPyhQXac44emCefZh",
+        "name": "Bash"
+      }
+    ]
+  }
+}

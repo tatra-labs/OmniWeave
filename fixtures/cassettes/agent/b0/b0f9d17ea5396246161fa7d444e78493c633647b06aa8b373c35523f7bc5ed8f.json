@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "524c34b5b607c3b1ecec84d5692f790b2e9565544f95aaabb22d88db06320282",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "b0f9d17ea5396246161fa7d444e78493c633647b06aa8b373c35523f7bc5ed8f",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND.\n\nWhat I searched\n- Queried the indexed corpus (docs) for MFN / most-favoured/-favored variants:\n  - ow_query: \"most-favoured-nation pricing clause supplier agreement\", and variations including \"most-favoured\", \"most-favored\", \"most favoured\", \"most favored\", \"most-favoured-nation\", \"most-favored-nation\", \"MFN\".\n- Opened the supplier agreements that are readable in the index:\n  - supplier-agreement-acme.docx (d134#2 / d134#3) — pages p.0–p.1\n  - supplier-agreement-borealis.docx (d135#2 / d135#3) — pages p.0–p.1\n  - supplier-agreement-corvid.docx (d136#2 / d136#3) — pages p.0–p.1\n  - supplier-agreement-dunmore.docx (d137#2 / d137#3) — pages p.0–p.1\n- Ran a file-system grep over the docs folder for patterns: most-fav|most favou|most-favou|most-favored|most-favor|\\bMFN\\b|most-favoured-nation|most-favored-nation\n\nFindings\n- None of the opened/read supplier-agreement files above contain any “most-favoured/-favored” or “MFN” text.\n- The index also listed many other supplier-agreement-00X files (e.g. supplier-agreement-005.docx through supplier-agreement-080.docx, refs d110#2..d125#2) as matched but “below the byte cliff” (not opened/read). Those unread files may contain the clause, but I could not read them.\n\nConclusion\n- No readable document in the corpus contained a most-favoured-nation pricing clause. If you want me to check the remaining supplier-agreement-00X files, I can try to add/open them (note: some are currently unreadable in the index).",
+    "tool_uses": []
+  }
+}

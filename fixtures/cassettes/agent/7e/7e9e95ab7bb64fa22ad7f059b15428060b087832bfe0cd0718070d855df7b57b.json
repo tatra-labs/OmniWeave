@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "53c81773c03ea46a7e09c8bab25a34223b53c59e7fda8cbf6508382ea2005771",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "7e9e95ab7bb64fa22ad7f059b15428060b087832bfe0cd0718070d855df7b57b",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "supplier shall offer prices no less favorable than offered to other customers comparable benchmark"
+        },
+        "id": "toolu_01537BLmm55XqHzDoazfyLVy",
+        "name": "mcp__omniweave__ow_query"
+      },
+      {
+        "arguments": {
+          "ref": "d137#8"
+        },
+        "id": "toolu_01Knqj9y8TKwzxBZs1fAcRPi",
+        "name": "mcp__omniweave__ow_open"
+      }
+    ]
+  }
+}

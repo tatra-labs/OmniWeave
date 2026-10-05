@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "905af2fa68c300d0b19b96ed8dcda63fd97f0735521f41d41108ae6623c0cc26",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "be2d70cbaaa8b6db5dab699d1816c8dfbf5975435fa9815906752f314bb8fab3",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "board/deck-119.pptx"
+        },
+        "id": "toolu_01PHM5PtCEdpzptGthLSsYWJ",
+        "name": "Read"
+      },
+      {
+        "arguments": {
+          "file_path": "board/deck-114.pptx"
+        },
+        "id": "toolu_01WAuvzwTbzkpeXB2myNanoJ",
+        "name": "Read"
+      }
+    ]
+  }
+}

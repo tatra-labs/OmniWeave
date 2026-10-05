@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "47521efc3a5cae97492def0e84f4122c3dc0a40e71b400b52d5d812736532e50",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "f77c562af07431947cfec15c7092e0b28f065de6e7500c560a431614d4f536b4",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "kind:document Singapore"
+        },
+        "id": "call_znUPjp5pXBpKsPogxDMRcf95",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

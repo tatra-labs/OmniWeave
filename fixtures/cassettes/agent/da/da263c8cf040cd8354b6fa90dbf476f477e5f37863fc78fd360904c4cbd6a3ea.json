@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "d49ae65e0c7f9d9865b05a0a10a3c5f4623af58b772505a6114da0a31d72785e",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "da263c8cf040cd8354b6fa90dbf476f477e5f37863fc78fd360904c4cbd6a3ea",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "contracts/amendment-1-2021.pdf"
+        },
+        "id": "toolu_01EM67dxw31K6tJ7jrb9UqNg",
+        "name": "Read"
+      }
+    ]
+  }
+}
