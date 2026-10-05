@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "d5fa9cf403627c56e3a6e9a85f5a2035d6d901684c009d1f9f81537d71ef77d6",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "617034fa7179c0c94fcf1836893fbb8106a7e179742d653531952917c4f8731c",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "page:lease office expires 2027",
+          "scope": ""
+        },
+        "id": "call_soNFiKAmGaVPK7AnwmRnG3Kz",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

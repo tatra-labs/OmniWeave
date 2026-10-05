@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "bfebb36daf894e2a06f54b37761bc69dfaac57c36c1cce461ccd36bfb5a27477",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "9e325cc1a9120064b698e159a792248c4278122f931aebc3ff471a8db907f579",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Per **Section 4.2** of the Master Services Agreement (*msa-2019.pdf*, page 5), **either party may terminate the Agreement for convenience upon ninety (90) days' written notice to the other party.**",
+    "tool_uses": []
+  }
+}

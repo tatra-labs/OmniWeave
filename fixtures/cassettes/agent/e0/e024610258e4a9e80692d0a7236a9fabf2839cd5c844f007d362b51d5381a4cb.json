@@ -1,0 +1,37 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "7897ab642d0ff3dda507d5ee18253a95fd997b2c5a8ba9272e5e851ab67d23c5",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "e024610258e4a9e80692d0a7236a9fabf2839cd5c844f007d362b51d5381a4cb",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "content",
+          "path": "{bench-cache}/legal_matter-full-aab2293e6925/project/docs/contracts/msa-2019.pdf",
+          "pattern": "Singapore|arbitrat"
+        },
+        "id": "toolu_01AwYwQezSvWhqzDKpENJKLw",
+        "name": "Grep"
+      }
+    ]
+  }
+}

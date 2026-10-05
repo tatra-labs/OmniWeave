@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "6876a66e622552bf3d40ffa1d8b01047b4e629c70aec59620bd840b58d7ccdc3",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "e809c9d05c38cd0cabf198fde1d95356bfc54a68a19de08300ad3ee62df9c679",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "find . -iname \"*audit*\" -o -iname \"*2023*\""
+        },
+        "id": "toolu_016YdsaNDoXQeasKrxE4QGUp",
+        "name": "Bash"
+      }
+    ]
+  }
+}

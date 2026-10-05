@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "fcd9b76336e1dc1df0c25d099b5b00343dcfa7d019906ee1180243c7c318cee4",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "88b01e2550818a6d0532889fa1f5cee6fe9ffd5a473f2972411e0726e8367db9",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "transfer to Harrow Savings"
+        },
+        "id": "toolu_01X7ABHJCJXiX2RpuMdNcWiq",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "7dbc61f74b10d0b6b8d246029996d3d7a28f3260977cadeae8bca036853cb7d5",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "848c869f2d98a1ed9bcba8825cd843a2cd600e45414373c7e9c81a6348050bbc",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "Singapore arbitration \"seated in\" \"Singapore\""
+        },
+        "id": "call_3aM0su6Ni2ZbmyShNQ6qPEU8",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

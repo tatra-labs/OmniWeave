@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "08c3eeca14e7213e066573e0cca155b24fcbba0cbb3c301f554de684b01c36bc",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "f881423db963d5c4fa29151537320b64ace71774fb2e31361c4dfee7f9bb0ab4",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The file headcount-2024.xlsx is confirmed to be corrupted (zip central directory missing/truncated), consistent with the ow_query result. This file cannot be read by any tool.\n\nNOT FOUND — The file `docs/hr/headcount-2024.xlsx` (\"2024 headcount report\") exists in the data room but is corrupted: it is refused as a malformed ZIP (\"ZIP central directory is missing or truncated / File is not a zip file\"), confirmed both by the omniweave index (`parse_gap_in_scope`, OW_MALFORMED) and by direct file access attempts. No other document in the corpus (searched via ow_query across HR, board decks, and policies) states a total headcount figure. The answer cannot be retrieved because the source file itself is unreadable/corrupt, not because the information is confirmed absent from the data room.",
+    "tool_uses": []
+  }
+}

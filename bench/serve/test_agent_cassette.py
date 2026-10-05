@@ -288,3 +288,19 @@ def test_an_answers_own_length_is_one_key_on_every_machine(tmp_path: Path) -> No
         keys.add(ca.request_key(request, model_key=MODEL_KEY, corpora=root)[0])
         assert "docs=4/17" in ca._neutral(text, ca._spellings(root))
     assert len(keys) == 1
+
+
+@pytest.mark.parametrize("tag", ["{bench-cache|casefold}", "{bench-cache|casefold|backslash}"])
+def test_a_case_folded_turn_recorded_on_windows_replays_as_a_path_on_linux(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tag: str
+) -> None:
+    """D654: `_forms` keeps a case-folded spelling apart only on Windows, so a Linux replay left
+    `{bench-cache|casefold}` in the model's tool call, the agent sent the tag back, and the next
+    request's key missed (three conversations of the recorded sets). On Linux the folder has one
+    spelling, so the tag is that, and the next key spells it `CORPORA` as on Windows."""
+    monkeypatch.setattr(ca.sys, "platform", "linux")
+    root = tmp_path / "Bench-Cache"
+    root.mkdir()
+    local = ca._local(f"open {tag}/docs/tax.docx", root)
+    assert "{bench-cache" not in local
+    assert ca._neutral(local, ca._spellings(root)) == f"open {ca.CORPORA}/docs/tax.docx"

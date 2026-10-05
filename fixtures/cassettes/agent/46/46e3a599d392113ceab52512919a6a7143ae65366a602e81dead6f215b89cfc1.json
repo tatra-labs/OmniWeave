@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "7fa2dca4c6bb1935f2c1826bcbffea45b6aabd11d9508115671924a951fc72e2",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "46e3a599d392113ceab52512919a6a7143ae65366a602e81dead6f215b89cfc1",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/personal_archive-full-mask_format-20b494cc9f45/project/docs/tax/tax-summary-2023.docx"
+        },
+        "id": "toolu_01HrzcccsKZDJsqHukWckBJv",
+        "name": "Read"
+      }
+    ]
+  }
+}

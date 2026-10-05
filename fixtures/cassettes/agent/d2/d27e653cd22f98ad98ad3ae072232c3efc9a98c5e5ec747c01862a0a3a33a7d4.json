@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "64b885b08c2272f3841c431cfd478fcba675a6a200bc17603f8743b067d52a67",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "d27e653cd22f98ad98ad3ae072232c3efc9a98c5e5ec747c01862a0a3a33a7d4",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-32e3e72ca082/project/docs/board/board-deck-q3-2024.pptx",
+          "limit": 200,
+          "offset": 1
+        },
+        "id": "call_L4gi89Y4e6D58aEFQ9AFWSVg",
+        "name": "Read"
+      }
+    ]
+  }
+}

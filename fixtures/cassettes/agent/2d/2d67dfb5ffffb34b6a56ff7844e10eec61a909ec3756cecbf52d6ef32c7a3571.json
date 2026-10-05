@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "73bf730bbde04f078f87fb4bf581db7472adc437c28582d9eb2ea6447fd64364",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "2d67dfb5ffffb34b6a56ff7844e10eec61a909ec3756cecbf52d6ef32c7a3571",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "docs",
+          "query": "price cap supplier agreement"
+        },
+        "id": "call_pdurzprw",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

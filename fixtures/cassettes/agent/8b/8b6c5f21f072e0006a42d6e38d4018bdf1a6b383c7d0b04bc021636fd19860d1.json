@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "4b9e055fc094f1ce9bf0accbc809a958a9ab8ac97c0813084e99f6922304de0d",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "8b6c5f21f072e0006a42d6e38d4018bdf1a6b383c7d0b04bc021636fd19860d1",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND. Searched: How much was due on the Brightline Dental invoice from March 2024? The query returned only dates (e.g., 2024-03-03) from CSV files like `statement-2024-03-015.csv`, but no monetary amounts. The `ow:notseen` section lists potential documents (e.g., `brightline-dental-2024-03.pdf`) that could contain the answer, but they were not retrieved in this query.",
+    "tool_uses": []
+  }
+}

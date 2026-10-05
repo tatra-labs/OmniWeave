@@ -1,0 +1,44 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "ad99fb48f1000ae5adcb6851b3a191e4bda759cdad4316e45c3a96c4104b7c4f",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "d8d73577f9862189ab533fb1263a866c93a70cca2ee3984c2d63b342c117f6be",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "glob": "supplier-agreement-*.docx",
+          "output_mode": "files_with_matches",
+          "pattern": "favour|favored|favorable nation|benchmark"
+        },
+        "id": "toolu_0145jeFrkpHXXrHM4wPgzNhy",
+        "name": "Grep"
+      },
+      {
+        "arguments": {
+          "command": "ls supplier-agreement-*.docx 2>/dev/null | wc -l; ls *.docx | grep -i supplier"
+        },
+        "id": "toolu_01GszayiBgSsfNYCCjQUbk1n",
+        "name": "Bash"
+      }
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "ec8c772854d1d3a2d3ba38c8a9a0164aa0271e1538d101633382812786f8ba02",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "d337f50687e3562a20b13973bff9789e890b5cbf766127d5086e2e6f8c87d324",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "docs",
+          "query": "What was the LDL cholesterol result in the 2024 lab results?",
+          "scope": "2024 lab results"
+        },
+        "id": "call_98tdvxcv",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

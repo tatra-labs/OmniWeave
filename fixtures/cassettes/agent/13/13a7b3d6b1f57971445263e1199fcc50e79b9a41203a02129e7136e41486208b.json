@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "869a35b7635d167b254208a711b67a58315ded68322b3d8ed471887b500b88fe",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "13a7b3d6b1f57971445263e1199fcc50e79b9a41203a02129e7136e41486208b",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "grep -A2 \"LDL\" medical/lab-results-2024.pdf"
+        },
+        "id": "toolu_019kgrfanSpS3iPsGmK98MDr",
+        "name": "Bash"
+      }
+    ]
+  }
+}

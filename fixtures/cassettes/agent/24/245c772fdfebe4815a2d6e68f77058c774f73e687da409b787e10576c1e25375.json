@@ -1,0 +1,43 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "03a22570d58da6d5f1fa42d46d08ca98c5a238d9ced02d8212f660f5c45b3fd1",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "245c772fdfebe4815a2d6e68f77058c774f73e687da409b787e10576c1e25375",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "find \"{bench-cache}/data_room-full-32e3e72ca082/project/docs\" -iname \"*lease*\""
+        },
+        "id": "toolu_01FYkZosmXADWyTYE2vPa9iP",
+        "name": "Bash"
+      },
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "files_with_matches",
+          "pattern": "lease"
+        },
+        "id": "toolu_01BjSx2kavTJ38kFNTa8gbHS",
+        "name": "Grep"
+      }
+    ]
+  }
+}

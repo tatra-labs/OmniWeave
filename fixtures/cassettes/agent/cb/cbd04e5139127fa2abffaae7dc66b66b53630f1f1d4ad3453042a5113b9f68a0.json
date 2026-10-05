@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "8b534889bd8915456321313cc4d65ee6ab1e286bd16e9535dc160db26a1384e1",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "cbd04e5139127fa2abffaae7dc66b66b53630f1f1d4ad3453042a5113b9f68a0",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Section 5 (\"Flood\") of the home insurance policy states: \"Flood damage is excluded unless the Flood Extension endorsement is purchased.\" (Source: home-policy-2024.pdf, page 3)",
+    "tool_uses": []
+  }
+}

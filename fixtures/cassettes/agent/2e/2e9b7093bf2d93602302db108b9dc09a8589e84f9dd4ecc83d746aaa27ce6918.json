@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "11b6f9c8d70d75378dfc1c8f5c461bf3463bdece530a5d2e17d3ed73bf3ce9be",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "2e9b7093bf2d93602302db108b9dc09a8589e84f9dd4ecc83d746aaa27ce6918",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/personal_archive-full-d0c84fd13364/project/docs/receipts/brightline-dental-2024-03.pdf"
+        },
+        "id": "toolu_01QBrj8dzehmeNsg6Mzt1eWL",
+        "name": "Read"
+      }
+    ]
+  }
+}

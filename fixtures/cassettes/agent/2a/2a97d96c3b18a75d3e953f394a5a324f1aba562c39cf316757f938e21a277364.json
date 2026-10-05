@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "e763c45e1a5d6dd957dd3e76054462ed831e2bcb6383a4958f3c84e7968d9543",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "2a97d96c3b18a75d3e953f394a5a324f1aba562c39cf316757f938e21a277364",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND  \nSearched for \"When was the passport renewal application submitted?\" in corpus `docs`; no document specifically mentions passport renewal applications in the indexed evidence (evidence shows home policy, receipt, and property renewal documents but no passport-related content).",
+    "tool_uses": []
+  }
+}

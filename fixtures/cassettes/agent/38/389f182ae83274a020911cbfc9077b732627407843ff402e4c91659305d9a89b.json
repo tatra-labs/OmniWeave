@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "aa1e29e7803fedc820a13376f9ac8f1b770719d6b1f93185fbb030a57628a10a",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "389f182ae83274a020911cbfc9077b732627407843ff402e4c91659305d9a89b",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "Series B preferred shares 2024 capitalisation table"
+        },
+        "id": "toolu_01Kp8mdW2uyXGYzPzxP6rFFe",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

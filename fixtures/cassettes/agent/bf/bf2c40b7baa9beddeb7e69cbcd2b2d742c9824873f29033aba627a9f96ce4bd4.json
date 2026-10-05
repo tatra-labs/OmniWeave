@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "4818e128924109a7b7283fb1e12cb386f9fb229532456ba06d46e896f7421bf0",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "bf2c40b7baa9beddeb7e69cbcd2b2d742c9824873f29033aba627a9f96ce4bd4",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "",
+          "query": "How much in damages does the plaintiff's complaint seek?",
+          "scope": ""
+        },
+        "id": "call_3s5ykrgf",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

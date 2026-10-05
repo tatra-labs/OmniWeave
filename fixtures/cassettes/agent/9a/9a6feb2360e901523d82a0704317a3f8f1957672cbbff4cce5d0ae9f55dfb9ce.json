@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "bae90713bc6cf0a1239ed8de10cc3d19d94ad8d80d9ec2a7ef38be81dd1362fe",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "9a6feb2360e901523d82a0704317a3f8f1957672cbbff4cce5d0ae9f55dfb9ce",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND.\n\nWhat I searched:\n- Searched the project docs folder for \"Amendment No. 1\" (case-insensitive) — hit: contracts/amendment-1-2021.pdf but the file could not be opened.\n- Searched the project docs folder for \"service credit\" (case-insensitive) — same hit: contracts/amendment-1-2021.pdf but the file could not be opened.\n\nFile and error:\n- contracts/amendment-1-2021.pdf (path: C:/Users/User/.../project/docs/contracts/amendment-1-2021.pdf) — could not be opened as a PDF: \"Failed to load document (PDFium: Incorrect password error).\"\n\nBecause the relevant PDF is encrypted/unreadable, I cannot extract the service credit percentage.",
+    "tool_uses": []
+  }
+}

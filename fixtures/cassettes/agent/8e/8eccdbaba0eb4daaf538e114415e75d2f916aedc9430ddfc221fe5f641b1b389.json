@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "0ff5d1de308041d0fb723e69bc0a8574ca1d44c19aea58c302c0c51595356c33",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "8eccdbaba0eb4daaf538e114415e75d2f916aedc9430ddfc221fe5f641b1b389",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "file \"docs/hr/headcount-2024.xlsx\"; ls -la docs/hr/"
+        },
+        "id": "toolu_01B5uKyWzGTbG6rAk7XAiN7N",
+        "name": "Bash"
+      }
+    ]
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "310c288915a29d5f2c6e5502cbe03576c4249b1bac4688caf804dc44f459d495",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "25f89c99c02649c2ea921cd08b47111add0b228274e233212a7c09ffad52fe2f",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "docs",
+          "source": "{bench-cache|casefold}/personal_archive-full-mask_format-20b494cc9f45/project/docs/tax/tax-summary-2023.docx"
+        },
+        "id": "call_lO38JdN2zqJO6FsPzTrULNlP",
+        "name": "mcp__omniweave__ow_add"
+      }
+    ]
+  }
+}

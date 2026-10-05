@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "7425dd8d35439c8404cf81f872b2ce812281178d9a1af03a7c1260de495691ba",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "93a133c813b41c4524ef72bc27661626952a77672204dabb74cef4ec12e91c73",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND - Searched for \"indexed price cap\" in project/docs, no matches found in the specified documents.",
+    "tool_uses": []
+  }
+}

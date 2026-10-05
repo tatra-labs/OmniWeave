@@ -1,0 +1,37 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "6ad0fbcbbc1ddf6ab8337401b59819e5701df08f37c3cdae6d33d3210f1afbee",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "fb830fc6d43d79b1ca75fdb38e4cd1ed729ede04be53ab276a2c90f72814e6ad",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The xlsx file is corrupted/truncated (only 748 bytes) and cannot be opened. Let me search other documents for headcount totals.",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "content",
+          "path": "{bench-cache}/data_room-full-chaos-116b70d4819d/project/docs/board",
+          "pattern": "headcount|employees|FTE|head count"
+        },
+        "id": "toolu_01FjWi5qAJzPp33TT4DvYPyg",
+        "name": "Grep"
+      }
+    ]
+  }
+}

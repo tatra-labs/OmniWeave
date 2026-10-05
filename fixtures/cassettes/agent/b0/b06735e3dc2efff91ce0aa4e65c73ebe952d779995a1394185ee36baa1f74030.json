@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "1a9adbf63e77ace3180e63572e4da635e2fda51ccd12fe165d8277bc8a4c3f4d",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "b06735e3dc2efff91ce0aa4e65c73ebe952d779995a1394185ee36baa1f74030",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "find . -iname \"*tax*\""
+        },
+        "id": "toolu_01HSQ6F91hiB6U6iJow7ZTom",
+        "name": "Bash"
+      }
+    ]
+  }
+}

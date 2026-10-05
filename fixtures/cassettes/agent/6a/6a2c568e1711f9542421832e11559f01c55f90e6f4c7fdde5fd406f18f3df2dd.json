@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "ffc5cf273abe979d276b19191027a5df007ea17c6824452d80e31ca8113643ee",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "6a2c568e1711f9542421832e11559f01c55f90e6f4c7fdde5fd406f18f3df2dd",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The plaintiff's complaint seeks **$4,850,000** in damages, together with interest and costs.\n\n**Source:** `pleadings/complaint.pdf` (line 154 of extracted text, corresponding to the prayer for relief).",
+    "tool_uses": []
+  }
+}

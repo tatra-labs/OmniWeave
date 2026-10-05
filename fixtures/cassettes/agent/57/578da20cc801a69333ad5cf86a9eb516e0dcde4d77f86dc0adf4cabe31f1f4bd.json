@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "461cec6984d2beee7648e0c34de144d1d8e8d5d9b33aea0a7ce909832e10d5eb",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "578da20cc801a69333ad5cf86a9eb516e0dcde4d77f86dc0adf4cabe31f1f4bd",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-32e3e72ca082/project/docs/finance/cap-table-2024.xlsx"
+        },
+        "id": "call_aLWPglpmGB257W3iJbVgGK7x",
+        "name": "Read"
+      }
+    ]
+  }
+}

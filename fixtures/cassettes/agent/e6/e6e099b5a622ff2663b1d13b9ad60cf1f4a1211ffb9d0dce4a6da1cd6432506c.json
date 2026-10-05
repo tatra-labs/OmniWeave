@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "cf017567e195d3471bb11233e65794163859ac9849fd9af88660f10a19a34485",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "e6e099b5a622ff2663b1d13b9ad60cf1f4a1211ffb9d0dce4a6da1cd6432506c",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Under Section 9.1 of the Master Services Agreement (msa-2019.pdf, page 11), each party's aggregate liability is capped at the fees paid in the twelve (12) months preceding the claim.",
+    "tool_uses": []
+  }
+}

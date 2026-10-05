@@ -63,6 +63,19 @@ settle in, and ST7 breaks a fused score's ties on it (07:1455), so on more worke
 one folder can rank tied hits apart and a recording replayed against the second misses. In the
 cache key: a corpus ingested before this setting is not reused."""
 
+FILE_MTIME_NS: Final[int] = 1_704_067_200_000_000_000
+"""Every generated file's mtime: 2024-01-01T00:00:00Z. **D654.**
+
+`ow add` will not trust a file modified within `MTIME_GRANULARITY_NS` (2 s) of its last index
+(05:341-343), and the bench ran it the moment the last file was written. On Linux the last files
+fell inside that window, so the damaged personal-archive scan was "changed" when the agent's
+`ow_add` met it again (`queued: 1`); on Windows, slower to start, they did not (`unchanged: 1`). A
+fixed instant long past is the same on every machine and never inside the window.
+
+**Not in the cache key.** The entry's folder name carries the key, and every path a conversation
+prints names that folder, so a new key misses every committed recording. A corpus made before this
+differs in its files' mtimes alone, which no answer prints."""
+
 ORDINALS: Final[bytes] = b"doc_ord reserved in unit_uri order (D654)\n"
 """In the cache key: a corpus numbered in the order its parses settled is not reused. **D654.**"""
 
@@ -204,6 +217,7 @@ def prepare(
         if document.path in damaged:
             data = INJECTORS[damaged[document.path]].transform(data)
         path.write_bytes(data)
+        os.utime(path, ns=(FILE_MTIME_NS, FILE_MTIME_NS))
     env = _env(base)
     log(f"  corpus    {shown}: generated {len(documents)} files; running ow add")
     started = time.perf_counter()

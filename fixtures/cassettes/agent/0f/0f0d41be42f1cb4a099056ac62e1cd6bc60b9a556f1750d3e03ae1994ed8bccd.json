@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "cddd2e64f1e4c0cced4fd0c9fcdf32d03970e453a5df09d4068e84676975969b",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "0f0d41be42f1cb4a099056ac62e1cd6bc60b9a556f1750d3e03ae1994ed8bccd",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/legal_matter-full-aab2293e6925/project/docs/pleadings/complaint.pdf",
+          "offset": 1
+        },
+        "id": "call_C3x8PAh6xy9MZNvMzby6EoOs",
+        "name": "Read"
+      }
+    ]
+  }
+}

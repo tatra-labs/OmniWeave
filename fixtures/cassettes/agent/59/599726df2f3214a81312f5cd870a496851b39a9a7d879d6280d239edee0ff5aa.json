@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "37a9a0ca9f4a57d5e8bef32cd7551971ac8e50a520cbc9eb11882afb177f5da0",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "599726df2f3214a81312f5cd870a496851b39a9a7d879d6280d239edee0ff5aa",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "find . -iname \"*Intellectual Property*\""
+        },
+        "id": "toolu_01LeqxEza1YGgjq1aqu4MGU1",
+        "name": "Bash"
+      }
+    ]
+  }
+}

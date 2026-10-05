@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "139a6c03204ea0d659ea51c06d88d26d516a22487918fab443715b79f7dcd647",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "c3acd4a16ef73adc1d24514d1d95166ecc8ff6d42a40573f8ddf146da28acfff",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The transfer to **Harrow Savings** appears in **statement-2024-05.csv** (dated 2024-05-14, amount -1500.00), located in the `statements` folder of the personal archive project docs.",
+    "tool_uses": []
+  }
+}

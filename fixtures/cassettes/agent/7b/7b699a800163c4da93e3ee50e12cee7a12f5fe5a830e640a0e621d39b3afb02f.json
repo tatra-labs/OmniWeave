@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "c5b60f7de868b617611436f3154ca6e56688ed052128c52f749ec8a82f1ea443",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "7b699a800163c4da93e3ee50e12cee7a12f5fe5a830e640a0e621d39b3afb02f",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "pattern": "pet"
+        },
+        "id": "toolu_01BG7s92wbWPEnQByk3qVrJ2",
+        "name": "Grep"
+      }
+    ]
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "abde3367d96ac9a45f29f9c056a24b279601ae1579b835d09eab04b8636ad8f1",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "fa970aece19206a85c1921f237c5280ba7057401356169003817d7269e3ffee0",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "find . -maxdepth 3 | head -200"
+        },
+        "id": "toolu_01Ka43hJvpnVqJsMmtPmqS5Q",
+        "name": "Bash"
+      },
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "pattern": "Q3 2024|third quarter|revenue"
+        },
+        "id": "toolu_01ELfgmGUXWRe1fPHWUW41Rw",
+        "name": "Grep"
+      }
+    ]
+  }
+}

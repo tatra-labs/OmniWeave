@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "8bb82b017f2ab53ee2298a6480e6096cf11dd1c6143ad32eb0b7d64b9382c22d",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "21cf7ec7742f678818320b2e95118461e3f064bb380babf4622d72ea7c221f4a",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND. I searched for files containing \"submitted\" in the project/docs folder and found no matches. The directory listing showed only \"docs\" (likely a subfolder), but no relevant document with the submission date details was identified.",
+    "tool_uses": []
+  }
+}
