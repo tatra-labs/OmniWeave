@@ -353,7 +353,7 @@ def _with_workspace(workspace: Path) -> tuple[Criterion, ...]:
         Coverage.PARTIAL,
         "the worker's peak of the driver that parses the fixture, one-sided, and an indication "
         "until `ow-bench-1` (D25); anydoc's fork tripwire moved to rss.office200_peak_bytes, "
-        "whose fixtures/office-200 does not exist yet (ADR-13 D13.2, D196)",
+        "which `tools/ow_bench.py inproc` measures over fixtures/office-200 (ADR-13 D13.2, D656)",
     )
     return (*CRITERIA[:9], v0110, v0111, *CRITERIA[11:])
 

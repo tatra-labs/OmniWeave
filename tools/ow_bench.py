@@ -67,6 +67,7 @@ import shutil
 import sys
 import tempfile
 import textwrap
+import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, TextIO
 
@@ -91,6 +92,7 @@ __all__ = [
     "PLAN_UNITS",
     "bench_lock",
     "main",
+    "report_inproc",
     "report_scheduler",
     "resolve",
     "subjects_table",
@@ -130,6 +132,17 @@ F8_TRIGGER_MS: Final = 1.0
 The B22 row reads *"F8 is the measurement and names p95 > 1 ms as the trigger for widening group
 commit"*, so this number is not a budget the bench enforces -- it has no verdict -- but the
 threshold whose crossing is the finding the bench exists to report."""
+
+REPO: Final = Path(__file__).resolve().parents[1]
+OFFICE_200: Final = REPO / "fixtures" / "generated" / "office-200"
+"""`fixtures/gen/gen_office200.py`'s default output, which `inproc` reads unless `--corpus` names
+another (D656)."""
+
+OFFICE_200_ROW: Final = "rss.office200_peak_bytes"
+K9_MARSHAL_SHARE: Final = 0.30
+"""17-risks.md K-9's first conjunct: *"F2 shows the anydoc eager marshal exceeding 30% of wall
+time"*. Printed against, never enforced: a bench has no verdict, and K-9's second conjunct -- the
+single-buffer return not dischargeable in four engineer-weeks -- is a judgement, not a number."""
 
 PERCENTILES: Final = ("p50", "p95", "p99")
 """What `--report` may name. Section 7.1 bolds the third: *"p50/p95/**p99**"*.
@@ -235,6 +248,96 @@ def report_scheduler(result: bench.SchedulerResult, out: TextIO) -> None:
         print(line, file=out)
 
 
+def _office_row() -> tuple[int, float] | None:
+    """`rss.office200_peak_bytes`'s `(value, tol_pct)` from `eval/perf.toml`, or `None`."""
+    table = tomllib.loads((REPO / "eval" / "perf.toml").read_text(encoding="utf-8"))
+    for row in table.get("budget", []):
+        if row.get("id") == OFFICE_200_ROW:
+            return int(row["value"]), float(row.get("tol_pct", 0))
+    return None
+
+
+def _mib(value: int | None) -> str:
+    return "unavailable" if value is None else f"{value / 2**20:8.0f} MiB"
+
+
+def report_inproc(result: object, out: TextIO) -> None:
+    """F2's table, K-9's line and `rss.office200_peak_bytes`, each with how it was measured."""
+    points = result.points  # type: ignore[attr-defined]
+    print(
+        f"ow bench inproc -- {result.documents} documents,"  # type: ignore[attr-defined]
+        f" {result.corpus_bytes / 2**20:.1f} MiB, {result.corpus}",  # type: ignore[attr-defined]
+        file=out,
+    )
+    print("", file=out)
+    print(
+        "  mode       threads     wall    docs/s    peak RSS   GIL held   idle floor   refused",
+        file=out,
+    )
+    for point in points:
+        print(
+            f"  {point.mode:<10} {point.threads:>7}  {point.wall_s:6.2f} s  {point.docs_per_s:8.1f}"
+            f"  {_mib(point.peak_rss)}   {point.gil_held:7.1%}   {point.gil_idle:9.1%}"
+            f"   {point.refused:>7}",
+            file=out,
+        )
+    print("", file=out)
+    print(
+        "  rust = to_markdown_bytes, the pure-Rust path; document = to_document, the marshal."
+        " GIL held: a probe looping",
+        file=out,
+    )
+    print(
+        "  on time.sleep(0) under a 100 us switch interval, its waits summed over the wall;"
+        " each child probes one idle",
+        file=out,
+    )
+    print("  second first, which is the floor. Peak RSS is each child's own.", file=out)
+    print("", file=out)
+    marshal = [p for p in points if p.mode == "document"]
+    if marshal:
+        worst = max(marshal, key=lambda p: p.gil_held)
+        over = [p.threads for p in marshal if p.gil_held - p.gil_idle > K9_MARSHAL_SHARE]
+        print(
+            f"  K-9 (17-risks.md): the marshal holds the GIL {worst.gil_held:.0%} of the wall at"
+            f" {worst.threads} thread(s);"
+            f" over {K9_MARSHAL_SHARE:.0%} above the floor at threads {over or 'none'}.",
+            file=out,
+        )
+        print(
+            "  K-9's second conjunct -- the single-buffer return not dischargeable in four"
+            " engineer-weeks -- is a judgement.",
+            file=out,
+        )
+    worker = result.worker  # type: ignore[attr-defined]
+    row = _office_row()
+    print("", file=out)
+    if worker is None:
+        print(f"  {OFFICE_200_ROW}: not measured (--no-worker)", file=out)
+    else:
+        print(
+            f"  {OFFICE_200_ROW}: {_mib(worker.peak_rss)} over {worker.done}/{worker.rows} anydoc"
+            f" rows done, ow add {worker.seconds} s; via {worker.how}",
+            file=out,
+        )
+        if row is not None and worker.peak_rss is not None:
+            ceiling = row[0] * (1 + row[1] / 100)
+            verdict = "under" if worker.peak_rss <= ceiling else "OVER: FORK-TRIGGER.md clause 2"
+            if worker.done < worker.rows:
+                verdict += (
+                    f"; {worker.rows - worker.done} rows did not settle, and a worker the card's"
+                    " memory_mb killed reads under any higher ceiling (D656)"
+                )
+            print(
+                f"  {'':<{len(OFFICE_200_ROW)}}  ceiling {ceiling / 2**20:.0f} MiB"
+                f" (value + {row[1]:.0f}%, one-sided): {verdict}; an indication until ow-bench-1",
+                file=out,
+            )
+    print("", file=out)
+    for line in _wrapped("  NOT PUBLISHED: ", bench.PUBLICATION):
+        print(line, file=out)
+
+
 def _findings(result: bench.SchedulerResult) -> list[str]:
     """The numbers a reader acts on, each naming the mechanism it belongs to.
 
@@ -319,6 +422,17 @@ def _parser() -> argparse.ArgumentParser:
         default="p50,p95,p99",
         help="accepted and asserted, not a projection: every percentile is always printed",
     )
+    parser.add_argument(
+        "--corpus",
+        type=Path,
+        default=OFFICE_200,
+        help="the folder `inproc` reads (default fixtures/generated/office-200)",
+    )
+    parser.add_argument(
+        "--no-worker",
+        action="store_true",
+        help="`inproc` without the `ow add` that measures rss.office200_peak_bytes",
+    )
     parser.add_argument("--root", type=Path, default=None, help="where to build the store")
     parser.add_argument("--home", type=Path, default=None, help=f"overrides ${HOME_ENV}")
     return parser
@@ -363,6 +477,53 @@ def resolve(args: argparse.Namespace) -> tuple[bench.Subject | None, list[str]]:
     return subject, []
 
 
+def _scheduler(
+    args: argparse.Namespace,
+    root: Path,
+    *,
+    temporary: bool,
+    lock: locks.FileScopedLock,
+    out: TextIO,
+) -> int:
+    """`scheduler`: the synthetic roster and the drain, then the report."""
+    try:
+        config = configmod.load(cwd=root, env={})
+        result = asyncio.run(
+            bench.scheduler(root, units=args.units, config=config, storage=args.storage)
+        )
+    except (OwError, ValueError) as exc:
+        print(f"DID NOT RUN: {exc}", file=out)
+        return EXIT_NOT_RUN
+    finally:
+        lock.release()
+        if temporary:
+            shutil.rmtree(root, ignore_errors=True)
+    report_scheduler(result, out)
+    return EXIT_CLEAN
+
+
+def _inproc(
+    args: argparse.Namespace,
+    root: Path,
+    *,
+    temporary: bool,
+    lock: locks.FileScopedLock,
+    out: TextIO,
+) -> int:
+    """`inproc`: it builds no store, and it releases the lock as `_scheduler` does."""
+    try:
+        measured = bench.inproc(args.corpus, workspace=root, worker=not args.no_worker)
+    except (ValueError, RuntimeError) as exc:
+        print(f"DID NOT RUN: {exc}", file=out)
+        return EXIT_NOT_RUN
+    finally:
+        lock.release()
+        if temporary:
+            shutil.rmtree(root, ignore_errors=True)
+    report_inproc(measured, out)
+    return EXIT_CLEAN
+
+
 def main(argv: Sequence[str] | None = None, *, out: TextIO = sys.stdout) -> int:
     """Take the lock, run one subject, print. 0 ran, 2 did not run, 7 another bench holds it."""
     import os  # noqa: PLC0415 -- the one environment read, kept beside its only use.
@@ -393,24 +554,8 @@ def main(argv: Sequence[str] | None = None, *, out: TextIO = sys.stdout) -> int:
 
     temporary = args.root is None
     root = Path(tempfile.mkdtemp(prefix="ow-bench-")) if temporary else Path(args.root)
-    try:
-        config = configmod.load(cwd=root, env={})
-        result = asyncio.run(
-            bench.scheduler(root, units=args.units, config=config, storage=args.storage)
-        )
-    except OwError as exc:
-        print(f"DID NOT RUN: {exc}", file=out)
-        return EXIT_NOT_RUN
-    except ValueError as exc:
-        print(f"DID NOT RUN: {exc}", file=out)
-        return EXIT_NOT_RUN
-    finally:
-        lock.release()
-        if temporary:
-            shutil.rmtree(root, ignore_errors=True)
-
-    report_scheduler(result, out)
-    return EXIT_CLEAN
+    run = _inproc if subject.name == "inproc" else _scheduler
+    return run(args, root, temporary=temporary, lock=lock, out=out)
 
 
 if __name__ == "__main__":  # pragma: no cover -- the CLI entry point.

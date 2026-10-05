@@ -93,7 +93,7 @@ def test_every_subject_names_itself_and_carries_all_three_of_its_cells() -> None
 
 def test_exactly_one_subject_runs_and_it_is_the_one_with_no_blocker() -> None:
     """`runnable` is derived from `blocked_by` and from nothing else, in both directions."""
-    assert bench.runnable() == ("scheduler",)
+    assert bench.runnable() == ("scheduler", "inproc")
     for subject in bench.SUBJECTS.values():
         assert subject.runnable == (not subject.blocked_by)
     assert bench.SUBJECTS["scheduler"].blocked_by == ""
@@ -110,11 +110,11 @@ def test_every_blocked_subject_names_what_is_in_the_way() -> None:
 
 
 def test_the_charter_four_are_the_four_the_roadmap_gives_this_cell() -> None:
-    """16-roadmap.md:550: `ow bench scheduler | inproc | service | rss`. Three are blocked."""
+    """16-roadmap.md:550: `ow bench scheduler | inproc | service | rss`. Two are blocked."""
     assert bench.CHARTER_FOUR == ("scheduler", "inproc", "service", "rss")
     assert set(bench.CHARTER_FOUR) <= set(bench.SUBJECTS)
     blocked = [n for n in bench.CHARTER_FOUR if not bench.SUBJECTS[n].runnable]
-    assert blocked == ["inproc", "service", "rss"]
+    assert blocked == ["service", "rss"]
 
 
 def test_rss_is_blocked_on_the_clause_it_is_blocked_on_and_says_which() -> None:

@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D655: ST7 breaks a tied score on reading order before block_id
+# blessed-because: D656: fixtures/office-200 is generated and ow bench inproc measures it
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -38,7 +38,7 @@ documents-frozen  8dbb83e6d1baa29901dad36b079a53c5459595e979799792ec3bd50eecc966
 documents-frozen  eddeb4634f5da1e2b056a002a7fa6eaa43d71836633b0a44d65301ac8b2d16e4  09-generation.md
 documents-frozen  d96985003690550f4d996e31a41306d21d6a8e2e7ff34076c0ad5cff5f3cb64e  10-interfaces.md
 documents-frozen  76a694bf0b19b60ba35d2246f6b36466ca990f318f51e0a292c388ec0e78bc68  11-repo-layout.md
-documents-frozen  5401c10b52003dd2a6e1d7475795686c53d0674236f048ef2c9fcc9c3cf7ecbb  12-performance.md
+documents-frozen  3edabb36d1bc3c54a9f44ca89f43589f1b3f63ce991399c7bd515b35f7a0752c  12-performance.md
 documents-frozen  196127cadc928edbf6a0ff8bf4b470671a6574b716f89987258979b71a2f03ed  13-quality.md
 documents-frozen  667161a8bd206b5805998a289f7679f80dc3a8ea6910c52ea8345bfe9562d721  14-security.md
 documents-frozen  b40c687bb38801907249eef6ec9af9a8ac7d26083be9c0290f356e89aaf48695  15-observability.md
@@ -588,7 +588,7 @@ documents-frozen  6b1a39d2e2a9a05139dfdabc2c501643da517f4760b3e6d8c55393957a43ac
 documents-frozen  d5d8133ea01598e711f1af5442b667523d4edbbcade788c4d99629e5c81a0cff  adr/0010-data-artefacts-and-weight-ceiling.md
 documents-frozen  03cc84af1248e0a1aa8a2453fed21cea7ea301908714f592994675d3d22d8f65  adr/0011-eval-register-reconciliation.md
 documents-frozen  67ab77cff65a136c53dc2a9ab596d47a79f1280f256ab2d4f2b0db27902d65fc  adr/0012-runtime-types-on-the-critical-path.md
-documents-frozen  fc21ea2c865e992052e420114b110df651c6e2434e665410cbd3e7d9ab0d6571  adr/0013-v01-acceptance-reconciliation.md
+documents-frozen  12fc0c8d85f1154acaf955a75e91aa494cc33da25579c4b3e0e45863f2a07c32  adr/0013-v01-acceptance-reconciliation.md
 documents-frozen  c8a782100e58dd58b26dd53cbd783ade2250631ca92cd8e7ad322044de82ba56  adr/0014-reference-corpora-and-control-arm.md
 documents-frozen  bb695279ba04a31dee3e3a386ef93c48ac64362faa86a58716083ebd9e940236  adr/0015-encrypted-pdfs-and-document-passwords.md
 documents-frozen  41b200ec6cf692f6265cc5faf822c1d501abbe84c9cadeaeb0331c7dbce5d06c  adr/README.md

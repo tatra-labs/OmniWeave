@@ -132,6 +132,7 @@ __all__ = [
     "Subject",
     "claim_batch_of",
     "identify_rows",
+    "inproc",
     "no_op",
     "open_store",
     "percentile",
@@ -216,10 +217,6 @@ SUBJECTS: Final[Mapping[str, Subject]] = MappingProxyType(
                 "pure-Rust path",
                 "fixtures/office-200",
                 "B02/B03; F2, whose fallback is the anydoc fork trigger",
-                blocked_by="fixtures/office-200, and ONLY that. packages/omniweave-office ships "
-                "the driver, host/inproc.py ships the seam and [runtime] max_inproc is a declared "
-                "key; the 200-document corpus 12 section 7.2 names has no generator and no "
-                "roadmap cell that acquires it. See D196",
             ),
             _subject(
                 "parse",
@@ -310,7 +307,7 @@ subject is a plan edit and not a function, which is what makes this a registry r
 dispatch table."""
 
 CHARTER_FOUR: Final = ("scheduler", "inproc", "service", "rss")
-"""The four the charter spells and 16-roadmap.md:550 gives W4.10. One of them runs; see `SUBJECTS`.
+"""The four the charter spells and 16-roadmap.md:550 gives W4.10. Two of them run; see `SUBJECTS`.
 
 Kept as its own tuple because the roadmap line and section 7.1's table are two different claims --
 "what this cell owes" and "what the verb accepts" -- and collapsing them would make the roadmap's
@@ -765,6 +762,18 @@ class SchedulerResult:
         this is a share of the run and not a share of some total CPU.
         """
         return (self.claim.total / 1e3) / self.drain_s if self.drain_s > 0 else math.nan
+
+
+def inproc(corpus: Path, *, workspace: Path, worker: bool = True) -> object:
+    """`ow bench inproc` over `fixtures/office-200`: `omniweave.run.inproc` measures it.
+
+    Its own module because every point runs in a child process that imports anydoc, and this one
+    imports the store and the Supervisor; the registry's function is the entry point 12 section
+    7.1 names, and it is a delegation. D656.
+    """
+    from omniweave.run import inproc as measure  # noqa: PLC0415 -- the inproc subject only
+
+    return measure.inproc(corpus, workspace=workspace, worker=worker)
 
 
 async def scheduler(
