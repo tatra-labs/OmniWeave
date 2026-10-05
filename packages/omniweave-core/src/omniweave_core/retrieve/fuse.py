@@ -26,6 +26,16 @@ unrepresentable rather than merely avoided.
 fusion at block level with the ceiling computed one level up, which 07:1474 calls *"precisely the
 drift `ceiling()` exists to prevent"*.
 
+## A tie is broken where the blocks sit in the corpus, not by `block_id` (D655)
+
+ST7's order was `(-score, block_id)`, which is total and stable inside one store. It is not
+reproducible across two: `block_id` is minted from a store-wide high-water mark in the order
+documents finish parsing, so two ingests of one folder number the same blocks differently, and two
+hits with equal scores came back in either order -- and an Answer cut at `k` kept either one. Each
+Channel hands over `ChannelResult.order`, the `(doc_ord, page, ord)` of every block it ranked, and
+that is the second key; D654 made `doc_ord` the folder's own order. `block_id` stays as the last
+key, for a block no Channel placed.
+
 ## `math.fsum`, because the score is a published sort key
 
 ST7 (07:3241) and P-10 (13:874) make a `FusedHit` sequence *"totally ordered on `(-score,
@@ -90,6 +100,9 @@ if TYPE_CHECKING:
 
 __all__ = ["fuse"]
 
+_UNPLACED: tuple[int, int, int] = (2**63, 0, 0)
+"""The reading order of a block no Channel placed: after every placed one with its score."""
+
 
 def _ranks(result: ChannelResult) -> dict[int, int]:
     """07:1386's rule over a whole Channel: `rank_of` where it has an entry, else 1 + position.
@@ -127,10 +140,13 @@ def fuse(
     """
     contributions: dict[int, dict[str, float]] = {}
     ranks: dict[int, dict[str, int]] = {}
+    placed: dict[int, tuple[int, int, int]] = {}
     for result in _channel_set(results):
         if result.status != ChannelStatus.OK:
             continue
         resolved = _weight(result, weights)
+        for block_id, where in result.order.items():
+            placed.setdefault(block_id, where)
         for block_id, rank in _ranks(result).items():
             contributions.setdefault(block_id, {})[result.name] = resolved / (k + rank)
             ranks.setdefault(block_id, {})[result.name] = rank
@@ -143,5 +159,5 @@ def fuse(
         )
         for block_id, terms in contributions.items()
     ]
-    hits.sort(key=lambda hit: (-hit.score, hit.block_id))
+    hits.sort(key=lambda hit: (-hit.score, placed.get(hit.block_id, _UNPLACED), hit.block_id))
     return hits

@@ -61,6 +61,7 @@ def _result(
     weight: float | None = None,
     reason: str = "",
     truncated_at_limit: bool = False,
+    order: Mapping[int, tuple[int, int, int]] | None = None,
 ) -> ChannelResult:
     """One `ChannelResult`, with 07:1232's `reason` supplied whenever the status needs one."""
     if status != OK and not reason:
@@ -70,6 +71,7 @@ def _result(
         status=status,
         ranked=ranked,
         rank_of=dict(rank_of or {}),
+        order=dict(order or {}),
         weight=weight,
         reason=reason,
         truncated_at_limit=truncated_at_limit,
@@ -319,6 +321,21 @@ def test_the_order_is_total_and_a_tie_breaks_on_block_id() -> None:
     assert hits[0].score == hits[1].score
     assert [hit.block_id for hit in hits] == [3, 9]
     assert [hit.block_id for hit in fuse(reversed(results))] == [3, 9]
+
+
+def test_a_tie_breaks_on_where_the_blocks_sit_and_block_id_only_for_one_unplaced() -> None:
+    """D655: `block_id` is minted in the order documents finish parsing, so two ingests of one
+    folder can give a pair of tied blocks either order of ids. Their `(doc_ord, page, ord)` is the
+    folder's own order, and the tie follows it; a block no Channel placed comes after."""
+    results = [
+        _result("lexical", ranked=(3,), order={3: (7, 0, 2)}),
+        _result("semantic", ranked=(9,), weight=1.0, order={9: (2, 4, 0)}),
+        _result("structural", ranked=(5,), weight=1.0),
+    ]
+    hits = fuse(results)
+    assert len({hit.score for hit in hits}) == 1
+    assert [hit.block_id for hit in hits] == [9, 3, 5]
+    assert [hit.block_id for hit in fuse(reversed(results))] == [9, 3, 5]
 
 
 def test_the_output_is_a_function_of_the_channel_set_and_not_of_its_order() -> None:

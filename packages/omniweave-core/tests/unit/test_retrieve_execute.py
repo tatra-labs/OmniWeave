@@ -759,3 +759,48 @@ def test_a_callers_degradation_reaches_the_trailer(built: Built) -> None:
     _seed(built, texts=LONG)
     _, document = _packed(built, degradations=("ledger_reset_by_compaction",))
     assert "degradations       = [ledger_reset_by_compaction]" in document
+
+
+@dataclass
+class Tying:
+    """A `Reader` whose lexical Channel places blocks 2 and 3 at one rank, as `semantic` places a
+    segment's members, and says block 3 is read first."""
+
+    inner: rd.SqliteReader
+
+    def snapshot(self):
+        return self.inner.snapshot()
+
+    def capabilities(self):
+        return self.inner.capabilities()
+
+    def narrow(self, s, f):
+        return self.inner.narrow(s, f)
+
+    def channel(self, s, spec, n):
+        outcome = self.inner.channel(s, spec, n)
+        if spec.name != "lexical":
+            return outcome
+        return replace(
+            outcome,
+            ranked=(2, 3),
+            rank_of={2: 1, 3: 1},
+            order={2: (1, 1, 4), 3: (1, 1, 0)},
+        )
+
+    def hydrate(self, s, ids):
+        return self.inner.hydrate(s, ids)
+
+    def coverage(self, s, f):
+        return self.inner.coverage(s, f)
+
+
+def test_a_tied_score_reaches_the_answer_in_the_order_the_channel_placed_it(built: Built) -> None:
+    """D655: `execute()` hands each Channel's `order` to `fuse()`, so two hits with one score are
+    answered in reading order and not in `block_id` order, which two ingests of one folder mint
+    differently."""
+    _seed(built)
+    reader = Tying(_reader(built))
+    response = retrieve(reader, Query(text="fees payable"), POLICY, monotonic_ns=_frozen)  # type: ignore[arg-type]
+    assert [hit.block_id for hit in response.hits][:2] == [3, 2]
+    assert response.hits[0].score == response.hits[1].score
