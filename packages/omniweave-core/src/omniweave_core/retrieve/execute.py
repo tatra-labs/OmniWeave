@@ -486,6 +486,7 @@ def _one(
         rank_of=outcome.rank_of,
         spans=outcome.spans,
         grades=outcome.grades,
+        order=outcome.order,
         weight=spec.weight,
         reason=reason,
         truncated_at_limit=outcome.truncated_at_limit,
