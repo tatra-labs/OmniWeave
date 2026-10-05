@@ -202,10 +202,10 @@ def test_the_generator_is_where_adr_14_says() -> None:
 def test_a_ready_entry_with_the_same_digest_is_reused_and_nothing_is_ingested(
     tmp_path: Path,
 ) -> None:
-    from corpora import ONE_WORKER, ORDINALS, prepare  # noqa: PLC0415 -- the cache half
+    from corpora import KEYED_D653, ORDINALS, prepare  # noqa: PLC0415 -- the cache half
 
     documents = gen.documents("personal_archive", "quick")
-    keyed = gen.manifest_bytes(documents) + ONE_WORKER.encode() + ORDINALS
+    keyed = gen.manifest_bytes(documents) + KEYED_D653 + ORDINALS
     digest = hashlib.sha256(keyed).hexdigest()
     base = tmp_path / f"personal_archive-quick-{digest[:12]}"
     (base / "project").mkdir(parents=True)
@@ -340,3 +340,11 @@ def test_every_generated_file_carries_the_fixed_mtime(
     files = [one for one in prepared.docs.rglob("*") if one.is_file()]
     assert files
     assert {one.stat().st_mtime_ns for one in files} == {corpora.FILE_MTIME_NS}
+
+
+def test_the_bench_ingests_on_the_workers_a_user_gets() -> None:
+    """D655: nothing an agent reads depends on the worker count any more, so the bench's project
+    sets none and `ow add` runs on `[drivers] max_workers`' defaults."""
+    from corpora import PROJECT  # noqa: PLC0415
+
+    assert "max_workers" not in tomllib.loads(PROJECT).get("drivers", {})

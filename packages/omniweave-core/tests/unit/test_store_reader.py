@@ -3427,3 +3427,84 @@ def test_the_post_filter_shrinks_the_grades_with_the_ranking(
     assert 45 not in outcome.ranked
     assert set(outcome.grades) == set(outcome.ranked)
     assert set(outcome.ranked) == {30, 40}
+
+
+@pytest.mark.parametrize("channel", ["exact", "lexical", "identity", "structural", "cut"])
+def test_a_channel_hands_fuse_where_each_block_it_ranked_sits(built: Built, channel: str) -> None:
+    """D655: `fuse()` breaks a tied score on `(doc_ord, page, ord)`, because `block_id` is the
+    order documents finished parsing in and two ingests of one folder mint different ones. Each
+    Channel reports that triple for every block it ranked and for nothing else, read from the same
+    rows it ranked."""
+    if channel == "exact":
+        _seed_refs(built)
+        spec = _exact_spec(refs=(("fig3", "figure"),))
+    elif channel == "lexical":
+        _seed_lexical(built)
+        spec = _lexical_spec(terms=("notice",))
+    elif channel == "identity":
+        _seed_identity(built)
+        spec = _identity_spec(idents=("Table 3.2",))
+    elif channel == "structural":
+        _seed_links(built)
+        spec = _structural_spec(seeds=(1,), expand=_expand())
+    else:  # a limit that cuts: the blocks past it are placed by nobody
+        _seed_links(built)
+        spec = _structural_spec(limit=2, seeds=(1,), expand=_expand())
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(state, spec, reader.narrow(state, Filters()))
+    assert outcome.status == "ok"
+    assert set(outcome.order) == set(outcome.ranked)
+    stored = {
+        int(block_id): (int(doc_ord), int(page), int(ord_))
+        for block_id, doc_ord, page, ord_ in built.writer.execute(
+            "SELECT block_id, doc_ord, page, ord FROM block"
+        )
+    }
+    assert dict(outcome.order) == {block_id: stored[block_id] for block_id in outcome.ranked}
+
+
+def test_the_beam_keeps_a_tied_neighbour_by_where_it_sits_not_by_its_block_id(
+    built: Built,
+) -> None:
+    """D655: the per-hop beam keeps the first `beam` of a hop, and two neighbours with the same
+    `(weight x trust) / log1p(degree)` were kept by `block_id`, which is the order documents
+    finished parsing in. Block 20 sits on page 5 and block 30 on page 1, so reading order keeps
+    30 and `block_id` would have kept 20."""
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    producer_id = _producer(conn)
+    _doc(conn, 1, uri="file:///corpus/graph.pdf")
+    for ord_, (block_id, page) in enumerate(((1, 0), (30, 1), (20, 5))):
+        _block(conn, block_id=block_id, doc_ord=1, producer_id=producer_id, page=page, ord_=ord_)
+    conn.execute(
+        "INSERT INTO relation_vocab(relation, symmetric, actor_rule, source) "
+        "VALUES(?, 0, 'source refers to target', 'builtin')",
+        (REFERS_TO,),
+    )
+    for dst in (20, 30):
+        conn.execute(
+            "INSERT INTO block_link(src_block, dst_block, relation, weight, producer_id, trust, "
+            "                       origin_operator, origin_driver, driver_schema_v) "
+            "VALUES(1, ?, ?, 1.0, ?, 2, 'op.link', 'drv', 1)",
+            (dst, REFERS_TO, producer_id),
+        )
+    conn.execute("COMMIT")
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        outcome = reader.channel(
+            state,
+            _structural_spec(seeds=(1,), expand=_expand(beam=1)),
+            reader.narrow(state, Filters()),
+        )
+    assert outcome.ranked == (30,)
+    assert outcome.truncated_at_limit is True
+
+
+def test_an_order_for_a_block_the_channel_did_not_return_is_refused() -> None:
+    """D655: `order` is where each RETURNED block sits, as `grades` is the tier each returned
+    block measured; a placement for anything else is a second result set."""
+    with pytest.raises(ValueError, match="placed blocks it did not rank"):
+        rd.ChannelOutcome(
+            name="lexical", status="ok", ranked=(1,), order={1: (1, 0, 0), 2: (1, 0, 1)}
+        )

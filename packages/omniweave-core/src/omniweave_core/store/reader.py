@@ -512,6 +512,8 @@ class ChannelOutcome:
     rank_of: Mapping[int, int] = MappingProxyType({})
     spans: Mapping[int, TextSpan] = MappingProxyType({})
     grades: Mapping[int, str] = MappingProxyType({})
+    order: Mapping[int, tuple[int, int, int]] = MappingProxyType({})
+    """Each ranked block's `(doc_ord, page, ord)`, which `fuse()` breaks a tied score on (D655)."""
     degradations: tuple[str, ...] = ()
     reason: str = ""
     truncated_at_limit: bool = False
@@ -535,6 +537,13 @@ class ChannelOutcome:
                 f"channel {self.name!r} graded blocks it did not rank ({ungraded}): `grades` is "
                 f"the tier ACTUALLY measured (07:1231), so a grade for a block the Channel did "
                 f"not return is a tier nothing measured"
+            )
+            raise ValueError(msg)
+        unplaced = sorted(set(self.order) - set(self.ranked))
+        if unplaced:
+            msg = (
+                f"channel {self.name!r} placed blocks it did not rank ({unplaced}): `order` is "
+                f"where each RETURNED block sits, which `fuse()` breaks a tie on (D655)"
             )
             raise ValueError(msg)
         unranked = sorted(set(self.rank_of) - set(self.ranked))
@@ -1129,6 +1138,13 @@ def _spines(
             current = nxt
         chains[block_id] = tuple(chain)
     return chains
+
+
+def _placed(
+    order: Mapping[int, tuple[int, int, int]], ranked: Sequence[int]
+) -> Mapping[int, tuple[int, int, int]]:
+    """`order` over the blocks a Channel returns, for `ChannelOutcome.order` (D655)."""
+    return MappingProxyType({block_id: order[block_id] for block_id in ranked if block_id in order})
 
 
 def _reading_order(
@@ -1779,6 +1795,7 @@ class SqliteReader:
             grades=MappingProxyType(
                 {block: tier for block, tier in outcome.grades.items() if block in keep}
             ),
+            order=_placed(outcome.order, kept),
         )
 
     def _post_filter(
@@ -1910,6 +1927,7 @@ class SqliteReader:
             status="ok",
             ranked=tuple(ranked),
             grades=MappingProxyType({block_id: graded[block_id] for block_id in ranked}),
+            order=_placed(order, ranked),
             truncated_at_limit=truncated,
         )
 
@@ -2117,6 +2135,7 @@ class SqliteReader:
             name=spec.name,
             status="ok",
             ranked=tuple(ranked),
+            order=_placed(order, ranked),
             truncated_at_limit=truncated,
         )
 
@@ -2266,6 +2285,7 @@ class SqliteReader:
             status="ok",
             ranked=tuple(ranked),
             rank_of=MappingProxyType(dict(rank_of)),
+            order=_placed(_reading_order(connection, sorted(ranked)), ranked),
             degradations=tuple(degradations),
             truncated_at_limit=truncated,
         )
@@ -2509,6 +2529,7 @@ class SqliteReader:
             name=spec.name,
             status="ok",
             ranked=tuple(ranked),
+            order=_placed(order, ranked),
             degradations=tuple(degradations),
             truncated_at_limit=truncated,
         )
@@ -2573,6 +2594,17 @@ class SqliteReader:
                 break
             ordered = sorted(fresh, key=lambda block_id: (-fresh[block_id], block_id))
             if len(ordered) > expand.beam:
+                #  D655: the beam keeps the first `beam` of a hop, and a tie at its edge was kept
+                #  by `block_id`, which is the order documents finished parsing in.
+                placed = _reading_order(connection, sorted(fresh))
+                ordered = sorted(
+                    fresh,
+                    key=lambda block_id: (
+                        -fresh[block_id],
+                        placed.get(block_id, (0, 0, 0)),
+                        block_id,
+                    ),
+                )
                 ordered, truncated = ordered[: expand.beam], True
             for block_id in ordered:
                 if block_id not in reached or fresh[block_id] > reached[block_id]:
@@ -2775,7 +2807,7 @@ class SqliteReader:
             narrow_join = f" JOIN {_TMP_NARROW} tn ON tn.block_id = b.block_id"
         scope_doc = None if bind is None else bind.scope_doc
         rows = connection.execute(
-            "SELECT block_id, ts_a, ts_b FROM ("  # noqa: S608
+            "SELECT block_id, ts_a, ts_b, doc_ord, page, ord FROM ("  # noqa: S608
             "  SELECT b.block_id AS block_id, 0 AS tier,"
             "         CASE a.scope WHEN 'corpus' THEN 0 ELSE 1 END AS scope_rank,"
             "         NULL AS ts_a, NULL AS ts_b, b.doc_ord AS doc_ord, b.page AS page,"
@@ -2798,13 +2830,15 @@ class SqliteReader:
 
         ranked: list[int] = []
         spans: dict[int, TextSpan] = {}
+        placed: dict[int, tuple[int, int, int]] = {}
         seen: set[int] = set()
-        for block_id, ts_a, ts_b in rows:
+        for block_id, ts_a, ts_b, doc_ord, page, ord_ in rows:
             key = int(block_id)
             if key in seen:
                 continue
             seen.add(key)
             ranked.append(key)
+            placed[key] = (int(doc_ord), int(page), int(ord_))
             if ts_a is not None and ts_b is not None:
                 spans[key] = TextSpan(int(ts_a), int(ts_b))
 
@@ -2823,6 +2857,7 @@ class SqliteReader:
             status="ok",
             ranked=tuple(ranked),
             spans=MappingProxyType(dict(spans)),
+            order=_placed(placed, ranked),
             truncated_at_limit=truncated,
         )
 

@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D654: begin_doc takes the doc_ord the ingest reserved in unit_uri order
+# blessed-because: D655: ST7 breaks a tied score on reading order before block_id
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -33,13 +33,13 @@ documents-frozen  3af6a53e2a3edbbd85dac7c7068d9429f73240aa4b4e0cc53118bc92cd6b6a
 documents-frozen  977058dcd3b1e6d48650cbaeab605918fbb82b65ee731ce8d6fae09dd142f240  04-driver-system.md
 documents-frozen  58eeb69e5ed3d40f01c4f9afc0550778a3e88efc1c728c04f87d9e8fa1f6a572  05-ingest-and-routing.md
 documents-frozen  af878d7e1a795aded61af2ef27a5834654762f52bdafefb4955d4b4c75492031  06-structure-extraction.md
-documents-frozen  55af49be738ca5358a6f52e666f9631fa9302c06084544dd1e7bb0e35a916bf5  07-store-and-retrieval.md
+documents-frozen  339b66bb6767bb6bbe713d246accb2cb7983d849ee1e3a9044d0bcad17eb5d8c  07-store-and-retrieval.md
 documents-frozen  8dbb83e6d1baa29901dad36b079a53c5459595e979799792ec3bd50eecc9661f  08-runtime.md
 documents-frozen  eddeb4634f5da1e2b056a002a7fa6eaa43d71836633b0a44d65301ac8b2d16e4  09-generation.md
 documents-frozen  d96985003690550f4d996e31a41306d21d6a8e2e7ff34076c0ad5cff5f3cb64e  10-interfaces.md
 documents-frozen  76a694bf0b19b60ba35d2246f6b36466ca990f318f51e0a292c388ec0e78bc68  11-repo-layout.md
 documents-frozen  5401c10b52003dd2a6e1d7475795686c53d0674236f048ef2c9fcc9c3cf7ecbb  12-performance.md
-documents-frozen  b88be329b12a5c365965791a3562fbdd7cf8914d49f09876160e6cf0edcaad0f  13-quality.md
+documents-frozen  196127cadc928edbf6a0ff8bf4b470671a6574b716f89987258979b71a2f03ed  13-quality.md
 documents-frozen  667161a8bd206b5805998a289f7679f80dc3a8ea6910c52ea8345bfe9562d721  14-security.md
 documents-frozen  b40c687bb38801907249eef6ec9af9a8ac7d26083be9c0290f356e89aaf48695  15-observability.md
 documents-frozen  8cb50c6254b2bf4a6c8fa7076b3382e55c92d1ad3791751c0e51e684d8bff0fc  16-roadmap.md
@@ -592,4 +592,4 @@ documents-frozen  fc21ea2c865e992052e420114b110df651c6e2434e665410cbd3e7d9ab0d65
 documents-frozen  c8a782100e58dd58b26dd53cbd783ade2250631ca92cd8e7ad322044de82ba56  adr/0014-reference-corpora-and-control-arm.md
 documents-frozen  bb695279ba04a31dee3e3a386ef93c48ac64362faa86a58716083ebd9e940236  adr/0015-encrypted-pdfs-and-document-passwords.md
 documents-frozen  41b200ec6cf692f6265cc5faf822c1d501abbe84c9cadeaeb0331c7dbce5d06c  adr/README.md
-documents-frozen  dc548ebdb22a1ba703b0ad2548e52d27691cffb7f4d8656289a3750bc10f4791  glossary.md
+documents-frozen  b10e6890485d5b4b2d4d5e763f2af0e9c4ae522ab988162c9caf3befbe2036fb  glossary.md

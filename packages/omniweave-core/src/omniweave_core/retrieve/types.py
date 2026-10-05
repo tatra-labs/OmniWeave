@@ -206,6 +206,8 @@ class ChannelResult:
     rank_of: Mapping[int, int] = field(default_factory=lambda: MappingProxyType({}))
     spans: Mapping[int, object] = field(default_factory=lambda: MappingProxyType({}))
     grades: Mapping[int, str] = field(default_factory=lambda: MappingProxyType({}))
+    order: Mapping[int, tuple[int, int, int]] = field(default_factory=lambda: MappingProxyType({}))
+    """Each ranked block's `(doc_ord, page, ord)`: where `fuse()` breaks a tie (D655)."""
     weight: float | None = None
     reason: str = ""
     truncated_at_limit: bool = False

@@ -54,14 +54,16 @@ __all__ = [
     "prepare",
 ]
 
-ONE_WORKER: Final[str] = "max_workers = { free = 1, local_compute = 1, billed_api = 1 }\n"
-"""`ow add` on one worker per cost class, so documents settle in claim order. **D653, D654.**
+KEYED_D653: Final[bytes] = b"max_workers = { free = 1, local_compute = 1, billed_api = 1 }\n"
+"""The bytes D653's cache key took for its one-worker ingest, kept in the key. **D653, D655.**
 
-D653 added it because `doc_ord` was the order parses settled in. D654 fixed that in the product:
-an ingest reserves each document's number in path order. `block_id` is still the order documents
-settle in, and ST7 breaks a fused score's ties on it (07:1455), so on more workers two ingests of
-one folder can rank tied hits apart and a recording replayed against the second misses. In the
-cache key: a corpus ingested before this setting is not reused."""
+D653 ingested on one worker per class because `doc_ord`, and so every cite, was the order parses
+finished in. D654 reserved `doc_ord` in path order and D655 broke ST7's ties on reading order, so
+the worker count no longer reaches anything an agent reads: replaying every recording against
+corpora ingested on the default workers, whose `block_id`s differ in 2,377 of the data room's
+2,676 blocks, missed nothing. The bench now ingests on the default workers, which is what a user
+runs. The bytes stay because the key names the entry's folder and every recorded path prints it:
+a new key would miss every recording for a corpus that is, by that measurement, the same one."""
 
 FILE_MTIME_NS: Final[int] = 1_704_067_200_000_000_000
 """Every generated file's mtime: 2024-01-01T00:00:00Z. **D654.**
@@ -79,9 +81,7 @@ differs in its files' mtimes alone, which no answer prints."""
 ORDINALS: Final[bytes] = b"doc_ord reserved in unit_uri order (D654)\n"
 """In the cache key: a corpus numbered in the order its parses settled is not reused. **D654.**"""
 
-PROJECT: Final[str] = FIRST_ANSWER_PROJECT.replace(
-    "inproc = []\n", "inproc = []\n" + ONE_WORKER
-) + (
+PROJECT: Final[str] = FIRST_ANSWER_PROJECT + (
     "[retrieval.budget]\nquery_ms = 5000\nhydration_reserve_ms = 500\n"
     "channel_ms = { identity = 150, exact = 250, lexical = 2000, structural = 400,"
     " semantic = 800 }\n"
@@ -185,7 +185,7 @@ def prepare(
     gen = generator()
     documents = gen.documents(corpus, scale)
     digest = hashlib.sha256(
-        gen.manifest_bytes(documents) + _damage_bytes(damage) + ONE_WORKER.encode() + ORDINALS
+        gen.manifest_bytes(documents) + _damage_bytes(damage) + KEYED_D653 + ORDINALS
     ).hexdigest()
     label = "-".join(name for _path, name in damage)
     base = cache_root / f"{corpus}-{scale}-{label + '-' if label else ''}{digest[:12]}"
