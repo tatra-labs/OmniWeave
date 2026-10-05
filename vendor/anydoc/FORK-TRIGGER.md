@@ -70,16 +70,27 @@ it, so the row bounds pdfium's worker and could never fire this clause (D629). T
 number as V01-11; the tripwire moved to an office corpus, which is what F2 measures (charter
 section 9.2 errata E96 and E97).
 
-**Until `fixtures/office-200` exists (D196)**, nothing measures the row, and the command below is run
-by hand before each release. **If it does not exist by the P10 exit**, when CI returns, this clause
-is re-homed to `parse.office.p50_ms`, the one office budget that runs, and this paragraph records
-the move.
+**`fixtures/office-200` exists since D656** (`fixtures/gen/gen_office200.py`, pinned in
+`fixtures/gen/EXPECTED.sha256`), so the fallback to `parse.office.p50_ms` is not needed. The row is
+run by hand before each release until CI returns at P10, and nightly after.
 
-**The test.**
+**The test.** `ow bench` is not a CLI verb yet, so the harness runs from `tools/`:
 
-    uv run ow bench inproc      # 12-performance.md:1471 — wall, peak RSS and GIL-held fraction
-                                #   at max_inproc in {1,2,4,8}, over fixtures/office-200,
-                                #   against the pure-Rust path
+    uv run python fixtures/gen/gen_office200.py   # writes fixtures/generated/office-200
+    uv run python tools/ow_bench.py inproc        # 12-performance.md:1471 — wall, peak RSS and
+                                                  #   GIL-held fraction at max_inproc in
+                                                  #   {1,2,4,8} against the pure-Rust path, then
+                                                  #   ow add for rss.office200_peak_bytes
+
+**What the first run measured (D656, one Windows machine, 32 cpus; an indication until
+`ow-bench-1`).** Over two runs the marshal held the GIL 27-28% of the wall on one thread and 47-65%
+on two, four and eight, against 1-3% on the pure-Rust path: **K-9's first conjunct holds at two
+threads and above.** `rss.office200_peak_bytes` read 1,078,231,040 bytes, and **that number is the card's ceiling, not
+anydoc's**: `driver.toml`'s `memory_mb = 1024` kills the worker at 1 GiB, below this clause's
+1.5 GiB, so the clause cannot fire as written. What fires instead is the host's memory watchdog, and
+nine to eleven spreadsheets of the 200 failed with it, small ones among them, because the kill fails
+every unit in the batch. Which of the three -- the clause's number, the card's `memory_mb`, or the batch's
+disposition -- moves first is the decision this file exists to have made in advance, and is owed.
 
 **Why this is a fork and clause 1 is not.** `py.detach` (`python/src/lib.rs:194`, the vendored
 warrant for the whole S1 seam) releases the GIL around *the decode* and nothing else. The marshal

@@ -35,6 +35,10 @@
 #                  ::test_every_reference_corpus_is_its_pin_at_both_scales
 #                  ~1.5 s for all six. ADR-14 D14.1's three corpora at both scales, each pinned
 #                  through its MANIFEST (`sha256  relpath` per file), as the roster is.
+#   office-200     packages/omniweave-office/tests/unit/test_gen_office200.py
+#                  ::test_the_pin_is_the_digest_of_a_freshly_generated_corpus
+#                  ~5 s. F2's 200 office documents (D656), pinned through a MANIFEST as the
+#                  reference corpora are; `uv run python fixtures/gen/gen_office200.py --print-sha256`.
 #   all of them    ::test_the_pin_file_names_every_generated_output_in_sha256sum_format asserts
 #                  that this file names exactly these outputs and nothing else.
 #
@@ -57,3 +61,4 @@ b8adadd720185a6f563a76347fff454e3ec2d7a4a5111572a20c183ee3e76820  fixtures/gener
 027f005720fb59a1af1e9597ee8a40e2660bc1c70d8b29d5178db9cce53aafbf  fixtures/generated/reference/data_room-quick.manifest
 7f308765d0099f149bfe5a5f06cf81460f95428b5da5107fd5faf91781f9b4d6  fixtures/generated/reference/personal_archive-full.manifest
 026a46036821d8229f41ef7cacded6e0fd541ad1d4e88cce63427e2688116769  fixtures/generated/reference/personal_archive-quick.manifest
+9e4cc7f1be74a8b0bb787c20931835b2c631c638d88f8b0143ed9c7eb27ba84a  fixtures/generated/office-200.manifest

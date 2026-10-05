@@ -605,6 +605,8 @@ def test_the_pin_file_names_every_generated_output_in_sha256sum_format() -> None
             for corpus in ("legal_matter", "data_room", "personal_archive")
             for scale in ("full", "quick")
         ),
+        #  F2's office corpus (D656), checked by omniweave-office's test_gen_office200.py.
+        "fixtures/generated/office-200.manifest",
     }
 
 
