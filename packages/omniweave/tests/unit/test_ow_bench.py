@@ -168,9 +168,9 @@ def test_a_blocked_subject_refuses_and_prints_what_is_in_the_way() -> None:
     assert any("model server" in line for line in refusal)
 
 
-@pytest.mark.parametrize("name", ["inproc", "service", "rss"])
-def test_the_three_blocked_charter_subjects_all_refuse(name: str) -> None:
-    """16-roadmap.md:550 gives this cell four. Three of them cannot run and each says so."""
+@pytest.mark.parametrize("name", ["service", "rss"])
+def test_the_two_blocked_charter_subjects_both_refuse(name: str) -> None:
+    """16-roadmap.md:550 gives this cell four. Two of them cannot run and each says so."""
     subject, refusal = runner.resolve(_args(subject=name))
     assert subject is None
     assert refusal
@@ -211,13 +211,13 @@ def test_a_refused_invocation_never_reaches_the_lock(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------------------------
 
 
-def test_list_names_every_subject_and_marks_the_runnable_one() -> None:
+def test_list_names_every_subject_and_marks_the_runnable_ones() -> None:
     code, output = _run(["--list"])
     assert code == runner.EXIT_CLEAN
     for name in bench.SUBJECTS:
         assert name in output
-    assert output.count("RUNS") == len(bench.runnable()) == 1
-    assert "13 subjects, 1 runnable" in output
+    assert output.count("RUNS") == len(bench.runnable()) == 2
+    assert "13 subjects, 2 runnable" in output
 
 
 def test_list_marks_the_charter_four_because_the_roadmap_line_names_them() -> None:
