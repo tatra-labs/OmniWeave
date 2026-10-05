@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "3328adfaf1ba90f5db54a75e3251d4d6eb303d305e4f1ece4a8bd5944ddb815d",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "d2cf18cdf22abc1dca4ba3cf0107f91e35e18440029a61b9829cd0fec366430b",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND. Searched for \"In which country does the Contoso data processing agreement say customer data is hosted?\" in corpus \"docs\" but the corpus has 0 documents (counts: {}).",
+    "tool_uses": []
+  }
+}

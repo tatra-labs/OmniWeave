@@ -1,0 +1,44 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "faabf7a0fc4345f36e7e74831643d44aa24aff90d1db0cd09b4ade5f7ca35a3f",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "1dd047b3454bca67fc9b1f4379e74e368064ae4e3ccee53eaa71d34b0d705145",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "most favored nation clause pricing best price guarantee supplier"
+        },
+        "id": "toolu_01Rg9sErHSgPNZ2UEoc8JHXN",
+        "name": "mcp__omniweave__ow_query"
+      },
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "files_with_matches",
+          "path": "{bench-cache}/data_room-full-32e3e72ca082/project/docs",
+          "pattern": "most.favo(u)?red nation|MFN"
+        },
+        "id": "toolu_01NFaAwKo8WFMMpist3EKmhZ",
+        "name": "Grep"
+      }
+    ]
+  }
+}

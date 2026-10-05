@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "2d43212901b5e4f06bd5001f889bc62ee09bf9081c920335b253f63b727645a0",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "dd25c8ac52300c70a408b8e630f2b803f73d05eec5f313290b7c62131a9bfa23",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "ls {bench-cache}/data_room-full-encrypt-284e8c90c692/project/docs/audit"
+        },
+        "id": "call_na7ndyih",
+        "name": "Bash"
+      }
+    ]
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "b7b31242a7267fa0310cc69695b88ad6078066687da534598e9a451ea7521eb2",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "9559ff95c8ded223c4958c3645397224320882ff62e85fca1f39eb173c3a8dc5",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "\"2024\" \"headcount report\" \"total\" kind:report title:headcount",
+          "scope": "docs"
+        },
+        "id": "call_BHsXU9RkVCoGV0ApXzVh3kBB",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

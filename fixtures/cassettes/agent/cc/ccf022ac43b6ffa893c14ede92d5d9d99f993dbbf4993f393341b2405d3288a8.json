@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "b2563adc3c9cfc7e2b6bf051f16d1af4084bd7d59e352d187953a740a20de5ec",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "ccf022ac43b6ffa893c14ede92d5d9d99f993dbbf4993f393341b2405d3288a8",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "head -n 30 medical/lab-results-2024.pdf"
+        },
+        "id": "toolu_01FpooFhrx13DZ77Yfvk8Mdv",
+        "name": "Bash"
+      }
+    ]
+  }
+}

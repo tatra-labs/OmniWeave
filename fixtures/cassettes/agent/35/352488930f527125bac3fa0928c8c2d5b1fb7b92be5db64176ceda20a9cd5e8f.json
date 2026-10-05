@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "134e6c55b5c0b2b768948373e092ea6481008b70e50a630f0af98c0735003edc",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "352488930f527125bac3fa0928c8c2d5b1fb7b92be5db64176ceda20a9cd5e8f",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "indexed price cap supplier agreement"
+        },
+        "id": "toolu_01Xka2Wa7bxJhvWUgQDRgsNp",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

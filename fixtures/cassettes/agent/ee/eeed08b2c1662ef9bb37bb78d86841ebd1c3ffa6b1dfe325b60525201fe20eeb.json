@@ -1,0 +1,37 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "9a815429f069433d9dc3502311ce866b206775a36f51bef4b0f8000a1a8cdad4",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "eeed08b2c1662ef9bb37bb78d86841ebd1c3ffa6b1dfe325b60525201fe20eeb",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "files_with_matches",
+          "path": "project/docs",
+          "pattern": "section 5 flood damage"
+        },
+        "id": "call_hoq3e5tb",
+        "name": "Grep"
+      }
+    ]
+  }
+}

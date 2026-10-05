@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "18c63c132bd79a79363501f3734044b7a59e33924330361ed76d6940c7cda288",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "e351c7965f01ff1b2f1070beb5d23d1f5d02c0d2de4b863884ec78edeb355820",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "Harrow Savings"
+        },
+        "id": "toolu_01GkJM2myFbmcxyYQkqMmRe9",
+        "name": "mcp__omniweave__ow_query"
+      },
+      {
+        "arguments": {
+          "command": "grep -ril \"Harrow Savings\" . 2>/dev/null"
+        },
+        "id": "toolu_01JxQVqQfXupB1A2VCrQmtNJ",
+        "name": "Bash"
+      }
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "e4f28f6ee7f4d05ff2b60eb7be2689fa7031abae49ed11d3d90038508cc51508",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "978bde62ab47fd43b433b3285641202408e77f695d77cd09df888096db4e97de",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-32e3e72ca082/project/docs/suppliers/supplier-agreement-corvid.docx",
+          "limit": 200,
+          "offset": 1
+        },
+        "id": "call_51oolqHucDvdvWCoNedT6M9h",
+        "name": "Read"
+      }
+    ]
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "82897b75fa43a3b858112a85754a841c2ca84da9b6eb23e0498464a66639f5c4",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "2fba978ef9c911d216255cc8c453c576b86fcfc34cc1b292fdf261e46434663e",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "pattern": "data processing agreement"
+        },
+        "id": "toolu_011fjtFebZHx1dZEW3qaUbEG",
+        "name": "Grep"
+      },
+      {
+        "arguments": {
+          "command": "find . -iname \"*contoso*\""
+        },
+        "id": "toolu_01SkgeY7Zu8LAhg6G1vopDmM",
+        "name": "Bash"
+      }
+    ]
+  }
+}

@@ -210,7 +210,9 @@ def test_two_first_batches_on_two_threads_build_one_parse_operator(
 
     monkeypatch.setattr(ingest_module, "ParseOperator", Slow)
     inputs = SimpleNamespace(catalog=None, resolving=None, passwords=None)
-    lazy = ingest_module._ParseLazily(None, None, None, inputs, tmp_path / "i.owstore", None, None)
+    lazy = ingest_module._ParseLazily(
+        None, None, None, inputs, tmp_path / "i.owstore", None, None, None
+    )
     together = threading.Barrier(2)
     got: list[object] = []
 

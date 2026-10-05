@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "f6555d2c7e9d35dd2b795512cb75a14a0174f028d2ec7d44ba9b520a823ce1d7",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "2f29fe29315ba18c10aef1289a0e81e43b3245045ecb0739e1f1cf9c2b856d1a",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Three suppliers have an indexed price cap clause in their supplier agreement (Clause 6, \"Pricing\" — unit prices subject to an indexed price cap, adjusted annually by CPI, capped at 4%):\n\n1. **Acme Components** — supplier-agreement-acme.docx (line 13)\n2. **Borealis Metals** — supplier-agreement-borealis.docx (line 13)\n3. **Corvid Plastics** — supplier-agreement-corvid.docx (line 13)\n\nNote: Dunmore Industrial's agreement (supplier-agreement-dunmore.docx) explicitly states prices are fixed for the term and **not** indexed, so it is excluded. The numbered supplier-agreement-XXX.docx files (005, 010, 015, etc.) did not contain an indexed price cap clause (they matched the \"index/cap\" search only incidentally, e.g., via words like \"update\" or \"approval\" containing no actual price-cap clause).",
+    "tool_uses": []
+  }
+}

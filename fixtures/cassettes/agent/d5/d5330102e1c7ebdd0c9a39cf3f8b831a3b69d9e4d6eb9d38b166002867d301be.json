@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "3b197153ed59b7ee51a573e6f2da32aee63ef771e2c71bdb922ab6dcd7894701",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "d5330102e1c7ebdd0c9a39cf3f8b831a3b69d9e4d6eb9d38b166002867d301be",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "",
+          "query": "kind:capitalisation page:2024 how many Series B preferred shares",
+          "scope": ""
+        },
+        "id": "call_ai3u10ma",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

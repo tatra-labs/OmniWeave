@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "74413820a2d73c6d138e48a0ad2849b81c28d9b9d8aeac921a7ae6a614bcaec3",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "b40b549402402d7595050879c466dafd68a4eb80ae0c863f799c198940e41428",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "2023 tax summary refund amount"
+        },
+        "id": "toolu_01Uc659ejCDNxN7E3JrXuaMP",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

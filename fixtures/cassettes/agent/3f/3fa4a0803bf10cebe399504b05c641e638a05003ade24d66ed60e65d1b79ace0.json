@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "f02a7c6b338621ccd89c3e67cb23e5a079423db1cfb0c6efa9521b562b405fd3",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "3fa4a0803bf10cebe399504b05c641e638a05003ade24d66ed60e65d1b79ace0",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND. Searched in corpus 'default' but it's not in the registry (error: `corpus 'default' is not in [corpora]; declared: docs`). Next step: use `ow_corpora` to check available corpora.",
+    "tool_uses": []
+  }
+}

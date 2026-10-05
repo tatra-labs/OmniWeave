@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "5a7d1ed4f505f08840fd68a0b00af298ac48ff5cc5b9d2a81c66ec53482f1413",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "59e6d66ff3aa8d1a3b66b04d589d47c2f7e897badd4ed68b41f580329ca5c70f",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND. Searched for \"Harrow Savings\" in PDF files within project/docs directory using case-insensitive pattern matching.",
+    "tool_uses": []
+  }
+}

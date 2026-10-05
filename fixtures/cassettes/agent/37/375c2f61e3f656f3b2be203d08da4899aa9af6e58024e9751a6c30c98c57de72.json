@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "a282365c748728db7ca0b7f8b1f36cfdfff4223041df4deb9506abfb8be73b73",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "375c2f61e3f656f3b2be203d08da4899aa9af6e58024e9751a6c30c98c57de72",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "find . -iname \"supplier-agreement-*.docx\" | wc -l"
+        },
+        "id": "toolu_01NAMhDAqSihWkc7a8vkeGWm",
+        "name": "Bash"
+      },
+      {
+        "arguments": {
+          "query": "exclusive supply exclusivity non-compete MFN clause lowest price any other customer"
+        },
+        "id": "toolu_018P1S3Ny3KRDePGwEqydR8J",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

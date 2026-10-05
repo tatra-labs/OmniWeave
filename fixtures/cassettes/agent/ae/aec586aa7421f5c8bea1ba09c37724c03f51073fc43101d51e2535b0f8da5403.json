@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "c57b843cffb91ea4fbca9f25ee9033c6d5ebf975f324885b3bc9aa0588f2be68",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "aec586aa7421f5c8bea1ba09c37724c03f51073fc43101d51e2535b0f8da5403",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND.\n\nI searched the documents folder C:/Users/User/AppData/Local/Temp/claude/.../project/docs for mentions of Q4 2024 and revenue using these patterns (case-insensitive):\n\n- \"Q4 2024|Q4 2024 revenue|Q4 24|quarter 4 2024|fourth quarter 2024|revenue for Q4 2024|Q4'24|Q4 2024\"\n- \"Q4|quarter|fourth quarter|2024\"\n- \"revenue\"\n- \"Q4\"\n\nThe searches returned no document text containing a clear \"Q4 2024\" revenue figure. Therefore I cannot provide the Q4 2024 revenue from the provided documents.",
+    "tool_uses": []
+  }
+}

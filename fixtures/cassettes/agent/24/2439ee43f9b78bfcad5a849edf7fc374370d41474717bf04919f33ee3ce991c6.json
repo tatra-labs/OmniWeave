@@ -1,0 +1,37 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "a264800f105df628c4691cfc9b29b846ca853812e1c22fcb8f2e52c91a6786ad",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "2439ee43f9b78bfcad5a849edf7fc374370d41474717bf04919f33ee3ce991c6",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "files_with_matches",
+          "path": "{bench-cache}/personal_archive-full-d0c84fd13364/project/docs/receipts",
+          "pattern": "passport"
+        },
+        "id": "call_RaF07gxPCCpDm6ijgfdANGuR",
+        "name": "Grep"
+      }
+    ]
+  }
+}

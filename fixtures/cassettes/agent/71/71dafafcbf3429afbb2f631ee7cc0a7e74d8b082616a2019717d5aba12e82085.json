@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "903f9eeaebeccaae3804637666ba389423e13e815ebecf5c8f557093e6bb05b1",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "71dafafcbf3429afbb2f631ee7cc0a7e74d8b082616a2019717d5aba12e82085",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-32e3e72ca082/project/docs/finance/cap-table-2024.xlsx"
+        },
+        "id": "toolu_016ugtopt83Mkra4s5DKxxWC",
+        "name": "Read"
+      }
+    ]
+  }
+}

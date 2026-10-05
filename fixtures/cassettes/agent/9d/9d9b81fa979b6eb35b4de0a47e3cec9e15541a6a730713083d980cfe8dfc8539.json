@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "931ce03107cd7a870693a48d477e311cea7621315455ed9cf8fc027e190c8b4e",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "9d9b81fa979b6eb35b4de0a47e3cec9e15541a6a730713083d980cfe8dfc8539",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "Section 9.1 liability cap each party's liability shall not exceed Master Services Agreement"
+        },
+        "id": "toolu_01JgBNu6Vps9kLERtofaGdsh",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

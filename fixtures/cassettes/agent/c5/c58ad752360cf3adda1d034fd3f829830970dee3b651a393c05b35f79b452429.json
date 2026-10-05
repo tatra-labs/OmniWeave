@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "3b9a0357212d988afda0a8f2f0f49362ca4bc1b1bd44be119f18963ae0e4bf74",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "c58ad752360cf3adda1d034fd3f829830970dee3b651a393c05b35f79b452429",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The audit report document (docs/audit/audit-report-2023.pdf) is password-protected and cannot be opened with the available tools, so NOT FOUND — I was unable to retrieve the overall materiality figure because the file is encrypted/password-protected and no other document in the data room contains this information.",
+    "tool_uses": []
+  }
+}

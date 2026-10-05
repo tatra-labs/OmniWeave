@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "05d44d24ab72619ebb0c95234f17a0287857bbe488467e629e0731d50d5ad5c1",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "b594ac16cf842d53defa2a2f23b64025b53e5ec7283157f737cafd0a1a377692",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-encrypt-284e8c90c692/project/docs/audit/audit-report-2023.pdf",
+          "limit": 500,
+          "offset": 1
+        },
+        "id": "call_jzmtheob",
+        "name": "Read"
+      }
+    ]
+  }
+}

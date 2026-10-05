@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "b90fac6cce3d610910c91600a626b6de85ee05fd56696c712c5abf3feb141887",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "dcb33254b776768b962f67358215f05bf8071dbc9ef3beb24bc9602b37ed9448",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "policy.pdf",
+          "query": "section 4.2 of the Master Services Agreement says about termination for convenience",
+          "scope": "policy.pdf"
+        },
+        "id": "call_jplnnqqe",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

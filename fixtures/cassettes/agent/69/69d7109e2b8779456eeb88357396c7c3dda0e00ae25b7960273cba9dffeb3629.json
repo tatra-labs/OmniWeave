@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "3f8b71b5b1f89d46edc4ee815437b44f827033465f7dd68a786cff2919a968bb",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "69d7109e2b8779456eeb88357396c7c3dda0e00ae25b7960273cba9dffeb3629",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Each party’s aggregate liability is capped at the fees paid in the twelve (12) months before the claim. Source: msa-2019.pdf, p.10 (d2#251).",
+    "tool_uses": []
+  }
+}

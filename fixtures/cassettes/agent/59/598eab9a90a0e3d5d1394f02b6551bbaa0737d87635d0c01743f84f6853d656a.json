@@ -1,0 +1,38 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "c88fd6a6056aea2a0924bbf1760afe0c689fb9200375631c75e729eab5b92d1a",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "598eab9a90a0e3d5d1394f02b6551bbaa0737d87635d0c01743f84f6853d656a",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "glob": "*.pdf",
+          "output_mode": "files_with_matches",
+          "path": "project/docs",
+          "pattern": "Harrow Savings"
+        },
+        "id": "call_8v90nvby",
+        "name": "Grep"
+      }
+    ]
+  }
+}

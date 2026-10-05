@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "81dc7ad92fe0e12f732ba529bf4cba37c0c093d49a5d1a9832d7908731107626",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "f1acabe184c07cf046bbbaf04115276045534ba3654ede857dfabb6f8df3826b",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND - Search for \"Brightline Dental\" in project/docs yielded no matches.",
+    "tool_uses": []
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "4d37089f0af35b998e6e0a92b12e6f184caa91ade75d5839c3de5330f1697467",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "77956e32e42b175afeadf78b0e5328f08290c6edebfdb02654ab10492d3232e7",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND. Searched for \"LDL cholesterol\" in files under project/docs using Grep and confirmed directory contents via `ls project/docs` (returned \"docs\"). No results found.",
+    "tool_uses": []
+  }
+}

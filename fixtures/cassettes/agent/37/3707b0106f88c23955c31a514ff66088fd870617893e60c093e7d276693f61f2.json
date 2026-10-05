@@ -1,0 +1,43 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "b98365e3cf0e6f593f2bd4d411e89ce2a77206190ab333da7f8bb11609aa979d",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "3707b0106f88c23955c31a514ff66088fd870617893e60c093e7d276693f61f2",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The indexed content for complaint.pdf only returned placeholder headers (\"Complaint - page N\") with no body text extracted. Let me check the raw file directly.",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "complaint.pdf"
+        },
+        "id": "toolu_011gSn5oLAg3KoHD24oMvJ7G",
+        "name": "Read"
+      },
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "content",
+          "pattern": "damages"
+        },
+        "id": "toolu_01WP6uKwHUpRX7jyapRQDwRX",
+        "name": "Grep"
+      }
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "4f9947caa096d8d8ddfcf28bd0226ca8dfcabca6503e19f04ca9538933b641f9",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "3a5ca98309f9aa6a6af2cb8d520014456c2b2476cb6e77ebe9c92e1cdd748876",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "No pet insurance policy found in these documents. There's only car and home insurance policies (car-policy-2024.pdf, home-policy-2024.pdf) in the insurance folder.\n\nNOT FOUND — I searched all documents (including the \"insurance\" folder, which contains only car-policy-2024.pdf and home-policy-2024.pdf) for \"pet\" and \"pet insurance\" and found no matches. There is no pet insurance document or policy number in this archive.",
+    "tool_uses": []
+  }
+}

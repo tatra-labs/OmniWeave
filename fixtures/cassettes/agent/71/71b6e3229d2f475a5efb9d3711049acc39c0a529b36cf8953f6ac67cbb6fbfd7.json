@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "0d7044d471ce929a63d68f963a84d14b75a7fe4369d1b9601617935ab95ebac2",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "71b6e3229d2f475a5efb9d3711049acc39c0a529b36cf8953f6ac67cbb6fbfd7",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND: The search for \"Master Services Agreement\" in project/docs returned no matches.",
+    "tool_uses": []
+  }
+}

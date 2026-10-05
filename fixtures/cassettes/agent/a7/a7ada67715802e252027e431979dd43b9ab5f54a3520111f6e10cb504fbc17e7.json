@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "f712ac311e5820e13f3eaa2d84f9bc3f978e56d37fe935fe7e07c02375c3df16",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "a7ada67715802e252027e431979dd43b9ab5f54a3520111f6e10cb504fbc17e7",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "No file named \"passport\" exists, and no indexed content mentions passport renewal specifically — the query results are synthetic/placeholder text (generic terms like \"renewal,\" \"letter,\" \"receipt\") with no actual passport-related content.\n\n**NOT FOUND** — I searched the full document set (letters, receipts, statements, insurance policies, medical, tax docs) via both `ow_query` (\"passport renewal application submitted\") and a filename search (`find . -iname \"*passport*\"`). No document mentions a passport renewal application or its submission date. The corpus contains no file with \"passport\" in its name or content.",
+    "tool_uses": []
+  }
+}

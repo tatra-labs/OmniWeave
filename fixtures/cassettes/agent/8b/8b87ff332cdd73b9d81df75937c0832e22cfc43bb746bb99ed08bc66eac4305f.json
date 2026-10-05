@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "940946e37286c715969a91918461e8c0be7bde33696ce5f8fa36204a98e551bf",
+    "sampling": {
+      "allow_tools": false,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "8b87ff332cdd73b9d81df75937c0832e22cfc43bb746bb99ed08bc66eac4305f",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Only one explicit revenue figure was found in the data room: the Q3 2024 board update. No document states a Q4 2024 revenue figure.\n\n**NOT FOUND** — I searched all board decks, minutes, finance budgets, and audit reports in the docs folder for \"revenue,\" \"Q4 2024,\" and \"fourth quarter.\" The only concrete revenue disclosure found is in **board/board-deck-q3-2024.pptx** (\"Q3 2024 revenue: $18.4 million\"); no document reports a Q4 2024 revenue figure.",
+    "tool_uses": []
+  }
+}

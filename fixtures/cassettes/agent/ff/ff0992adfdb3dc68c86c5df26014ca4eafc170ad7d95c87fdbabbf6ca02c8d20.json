@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "683dbce2418f7b7d1d038e47e59a858f9db14f41ba88e4fc3c5eaa8e91a6fea1",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "ff0992adfdb3dc68c86c5df26014ca4eafc170ad7d95c87fdbabbf6ca02c8d20",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "find . -iname \"*q4*\" -o -iname \"*board-deck*\""
+        },
+        "id": "toolu_01SA2fjdNhjJJHRij7Gi7HsL",
+        "name": "Bash"
+      },
+      {
+        "arguments": {
+          "query": "fourth quarter 2024 revenue results"
+        },
+        "id": "toolu_01TKbWWvTwKtd51P2WcmoiMQ",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

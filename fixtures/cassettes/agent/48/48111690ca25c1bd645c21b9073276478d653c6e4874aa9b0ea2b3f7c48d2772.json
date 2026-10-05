@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "d298fbc3c1ec0f6ae3888ffbc9bec1bd26424467073db3ed73997cdec6caa482",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "48111690ca25c1bd645c21b9073276478d653c6e4874aa9b0ea2b3f7c48d2772",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "insurance/home-policy-2024.pdf"
+        },
+        "id": "toolu_01Lf11xevp1JAhKbLwHKiaTC",
+        "name": "Read"
+      }
+    ]
+  }
+}

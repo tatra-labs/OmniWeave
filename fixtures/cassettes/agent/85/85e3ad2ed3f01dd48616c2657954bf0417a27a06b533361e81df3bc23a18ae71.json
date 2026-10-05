@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "9a153003b3839492694fb780de2ec5b32029b51ea759701bb1dfe400705cd978",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "85e3ad2ed3f01dd48616c2657954bf0417a27a06b533361e81df3bc23a18ae71",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "Brightline Dental invoice March 2024 amount due"
+        },
+        "id": "toolu_011aXYSQoqqzA861Cf9kTAna",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

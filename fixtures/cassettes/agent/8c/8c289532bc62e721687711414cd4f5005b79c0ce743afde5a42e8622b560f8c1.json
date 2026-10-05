@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "211052d05dd70362bb115b3e73cc6c5945f41bbdb96f77d427064554195d5ce4",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "8c289532bc62e721687711414cd4f5005b79c0ce743afde5a42e8622b560f8c1",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-32e3e72ca082/project/docs/legal/ip-assignment.pdf"
+        },
+        "id": "toolu_01CKsjDRDoMfmN2KQ1QjjrJo",
+        "name": "Read"
+      }
+    ]
+  }
+}

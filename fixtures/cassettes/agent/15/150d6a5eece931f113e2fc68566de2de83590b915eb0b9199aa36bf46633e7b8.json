@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "f90773a0d3c420d31595cab5e1915ab536a7af1260ed8bfb0c5aecf17b1c7573",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "150d6a5eece931f113e2fc68566de2de83590b915eb0b9199aa36bf46633e7b8",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The 2023 tax summary shows a **refund due of $1,240**.\n\nSource: `docs/tax/tax-summary-2023.docx`",
+    "tool_uses": []
+  }
+}

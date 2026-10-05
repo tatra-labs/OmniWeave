@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "48067bdd247d107986392d1ba11a410899db68ff95f78e9e261c1b439c5cdcac",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "3164a72feb2b417b4993f128fe62ef6564fb60f715472a10239fc51392b3048f",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND: Corpus 'docs' is degraded (card_stale: true) — index update pending for supplier agreements. Searched query: \"most-favoured-nation pricing clause\" in corpus=default.",
+    "tool_uses": []
+  }
+}

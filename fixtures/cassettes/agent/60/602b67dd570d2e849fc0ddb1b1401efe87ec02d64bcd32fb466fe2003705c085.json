@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "af19e3816da3128a0f5d027ae5c85634e5dd4fbdecd28b33baae34d458ff537e",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "602b67dd570d2e849fc0ddb1b1401efe87ec02d64bcd32fb466fe2003705c085",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Q3 2024 revenue: $18.4 million — board-deck-q3-2024.pptx, p.0 (cite: d2#3).",
+    "tool_uses": []
+  }
+}

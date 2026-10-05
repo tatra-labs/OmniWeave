@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "06da07f5e0b5973c6932bf227a8b4e9bcc9db6551dcdf7e9b37750b0619f8623",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "89c4a2752658402ffa7ba4435de6c94f588dbf90a87de4b93858aa0c2379836c",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND: searched using `ow_query` for \"What overall materiality does the 2023 audit report use?\"",
+    "tool_uses": []
+  }
+}

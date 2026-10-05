@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "237960b616735b0ab5aa48183d0836c6c294b67b632a5cf7493c4ac900af28ec",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "8e378f30071f9ba8552d9bf058a8d6b7c4875fa3d8ddc6a4450a805beed46654",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND: searched for \"Under section 9.1 of the Master Services Agreement, what is each party's liability capped at?\" in policy.pdf (scope published but not served by current build)",
+    "tool_uses": []
+  }
+}
