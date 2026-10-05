@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "670328b309f228b0460d60cf8a9e3e2409d33657bbba9017ca3c110b132c7f99",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "73647712fcb3fac2c3da809d491b3ab287b7483606cb0e998404f49ad1751373",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The document discussing Amendment No. 1 to the Master Services Agreement (contracts/amendment-1-2021.pdf) is password-protected/encrypted and cannot be opened with the tools available, so its contents (including any service credit percentage) cannot be retrieved.\n\nNOT FOUND — I searched for \"service credit\" across the document set and located the relevant file, contracts/amendment-1-2021.pdf, but it is encrypted and returns an \"Incorrect password\" error when attempting to read it, so the specific percentage cannot be confirmed from the available documents.",
+    "tool_uses": []
+  }
+}

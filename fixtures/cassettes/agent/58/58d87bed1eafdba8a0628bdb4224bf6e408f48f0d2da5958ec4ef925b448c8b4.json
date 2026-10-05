@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "35a71e67bec523c49ac673a991cfb3261b955a081a07d9b12aa309430bee81ad",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "58d87bed1eafdba8a0628bdb4224bf6e408f48f0d2da5958ec4ef925b448c8b4",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Only one file in that medical folder, and it's broken. No alternate copy exists.\n\nNOT FOUND — The document `medical/lab-results-2024.pdf` (the only candidate file for 2024 lab results) is corrupted/truncated (missing the PDF end-of-file marker) and cannot be opened either by the indexer (ow_add/ow_query) or by direct PDF reading (PDFium reports \"Data format error\"). I searched the indexed corpus for \"LDL cholesterol result 2024 lab results\" and only unrelated CSV bank statements (statement-2024-*.csv) were returned, with the actual lab-results PDF flagged as `parse_gap_in_scope`/`corrupt_input`. No other document in the docs folder contains LDL cholesterol data. The file would need to be repaired/replaced to retrieve this information.",
+    "tool_uses": []
+  }
+}

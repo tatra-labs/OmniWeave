@@ -1,0 +1,37 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "03ed231ff99ae884a7982e61b1993af372fc5b4dd260f29806a0fc30fd310b4e",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "7fb801fcd461ed19fb8fc3a0b7729f004a4fc8e02f76ee1151d06e8a6f246040",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "files_with_matches",
+          "path": "{bench-cache}/personal_archive-full-d0c84fd13364/project/docs",
+          "pattern": "Brightline Dental"
+        },
+        "id": "call_dUS3mSpTrU4N4BHXne20yHQd",
+        "name": "Grep"
+      }
+    ]
+  }
+}

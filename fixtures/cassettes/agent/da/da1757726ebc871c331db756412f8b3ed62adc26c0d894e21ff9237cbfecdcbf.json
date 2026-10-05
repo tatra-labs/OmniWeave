@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "901ec10cd3110c1a2b72e78f8f9d15c81ebc9b086a416b85a948830b4636b0f5",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "da1757726ebc871c331db756412f8b3ed62adc26c0d894e21ff9237cbfecdcbf",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND.\n\nWhat I searched:\n- Searched the docs folder for terms: \"2024 headcount report\", \"2024 Headcount\", \"Headcount 2024\", \"2024 headcount\" (case-insensitive) under:\n  C:/Users/User/AppData/Local/Temp/claude/.../project/docs\n\nResult:\n- Located file: project/docs/hr/headcount-2024.xlsx but it could not be read/converted: \"malformed document: not a readable workbook container\". Because the file cannot be opened, I cannot extract the total headcount from it.",
+    "tool_uses": []
+  }
+}

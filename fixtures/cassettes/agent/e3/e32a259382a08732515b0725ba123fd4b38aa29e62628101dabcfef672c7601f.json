@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "19ab3b51455c4d8dae17de850e51aa3baa798339b90aea33df5fac3da6b63c49",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "e32a259382a08732515b0725ba123fd4b38aa29e62628101dabcfef672c7601f",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The 2023 audit report (audit-report-2023.pdf, in /docs/audit/) is encrypted and could not be indexed or read — it requires a password that isn't available in this environment.\n\n**NOT FOUND** — I searched the corpus for \"2023 audit report overall materiality\" and confirmed via ow_corpora/ow_query that `audit-report-2023.pdf` exists but is password-protected/encrypted (`[OW_ENCRYPTED]` gate), so its contents (including any materiality figure) cannot be accessed with the current tools. No other indexed document (e.g., policy-087.pdf, policy-077.pdf, policy-097.pdf, policy-112.pdf) contains this information.",
+    "tool_uses": []
+  }
+}

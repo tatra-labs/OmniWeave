@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "748b344c48f24f79ba622de638478475321fb9d7ad5add4d6dd41afc3b7967db",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "4c811f458db8e03980754370d6817d82011cd10c9d121dac3193d1acb078b858",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "docs",
+          "query": "section 5 flood damage home insurance policy"
+        },
+        "id": "call_hntft4si",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

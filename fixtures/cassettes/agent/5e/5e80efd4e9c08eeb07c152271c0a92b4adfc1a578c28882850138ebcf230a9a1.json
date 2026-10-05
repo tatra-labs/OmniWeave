@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "75cfbcbccb94e21a0fabf497d261b8f361bb2f9420f32beb843198ff5ed4a160",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "5e80efd4e9c08eeb07c152271c0a92b4adfc1a578c28882850138ebcf230a9a1",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND: The audit-report-2023.pdf is password-protected and could not be opened as a PDF (Incorrect password error). Searched documents: audit-report-2023.pdf in project/docs/audit.",
+    "tool_uses": []
+  }
+}

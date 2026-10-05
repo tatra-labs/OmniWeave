@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "bfbf3d2224c8d5196cac61a28f2ea0ba87adcf92cf2613f7b88e8ff490a044b4",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "0a931cb917521380386c6c8e98e3e848f96b83124399eac3603a58ad03d65889",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-32e3e72ca082/project/docs/suppliers/supplier-agreement-dunmore.docx",
+          "limit": 200,
+          "offset": 1
+        },
+        "id": "call_atXgEr7vQSKfNwI2Dgcd5dgF",
+        "name": "Read"
+      }
+    ]
+  }
+}

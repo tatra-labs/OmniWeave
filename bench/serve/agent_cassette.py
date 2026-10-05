@@ -173,6 +173,25 @@ def _forms(root: Path) -> dict[str, str]:
     return forms
 
 
+def _all_forms(root: Path) -> dict[str, str]:
+    """Every placeholder a recorded turn may hold, as this machine spells it. **D654.**
+
+    `_forms` keeps a case-folded spelling apart only on Windows, so a turn recorded there can hold
+    `{bench-cache|casefold}` and one replayed on Linux must still give it back as a path: left as
+    the tag, the agent sends it back in its next request, where no spelling of the folder matches
+    it and the key misses. A POSIX folder is spelled one way, so each case-folded tag is that.
+    """
+    base = root.resolve().as_posix()
+    folded = base.casefold() if sys.platform == "win32" else base
+    return {
+        "{bench-cache|casefold|backslash}": folded.replace("/", "\\"),
+        "{bench-cache|casefold}": folded,
+        "{bench-cache|backslash}": base.replace("/", "\\"),
+        "{bench-cache|uri}": quote(base),
+        CORPORA: base,
+    }
+
+
 def _tagged(value: Any, root: Path | None) -> Any:
     """`value` with each of `_forms`' spellings as its own placeholder, and any other spelling
     `_spellings` matches as `CORPORA`, for a recorded turn."""
@@ -197,7 +216,7 @@ def _local(value: Any, root: Path | None) -> Any:
         value = _COMMAND_TAG.sub(lambda m: keystore.store_command(m[1]), value)
         if root is None:
             return value
-        for tag, spelled in _forms(root).items():
+        for tag, spelled in _all_forms(root).items():
             value = value.replace(tag, spelled)
         return value
     if isinstance(value, list):

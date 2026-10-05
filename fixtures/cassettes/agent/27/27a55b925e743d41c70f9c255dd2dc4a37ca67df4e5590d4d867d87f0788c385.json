@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "303fd3c83f81e74cf2aad89033a3348f1a50e99d4299bff0772dc5b7555be8b2",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "27a55b925e743d41c70f9c255dd2dc4a37ca67df4e5590d4d867d87f0788c385",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "detail": "list"
+        },
+        "id": "toolu_01HXcSqZ39fuy6Gyb8gQ9VcZ",
+        "name": "mcp__omniweave__ow_corpora"
+      }
+    ]
+  }
+}

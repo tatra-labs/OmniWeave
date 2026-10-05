@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "86317a087cf9f0929ac9dad01e2965e1dd9dc701131aa77679c5e24b16a59a62",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "e1bd138e05e0c7d5a99e675e548daff877d2264bb0fb2b101fedc878010189d3",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The target file `lab-results-2024.pdf` is flagged as corrupt (missing %%EOF). Let me try to read it directly and/or force ingestion.",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/personal_archive-full-chaos-7a86eb763d6b/project/docs/medical/lab-results-2024.pdf"
+        },
+        "id": "toolu_01FzvBqeWqCKaDJm1N69Ecun",
+        "name": "Read"
+      },
+      {
+        "arguments": {
+          "source": "{bench-cache}/personal_archive-full-chaos-7a86eb763d6b/project/docs/medical/lab-results-2024.pdf"
+        },
+        "id": "toolu_01JMWPsHgwN2M28jPNv8YhQM",
+        "name": "mcp__omniweave__ow_add"
+      }
+    ]
+  }
+}

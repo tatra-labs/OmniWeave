@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "dd010a7607714ec1baba0c6dbd385de403166d89d4d370240aae8518049d60b8",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "8843ebde27b75018c41a5df8a72716023a7c4ba00392e9abe4fe0f486276c468",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "docs",
+          "query": "What service credit percentage does Amendment No. 1 to the Master Services Agreement set?"
+        },
+        "id": "call_qf09u3mz",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

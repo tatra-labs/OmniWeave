@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "49407262ac288f0dc91db3935ce83e2888dd3546a05397be030c269eea7f1e64",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "17a690be0268516fecd540d61e182d15c46e79da4d15df635b6ab199cd238c8d",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The LDL cholesterol result was **118 mg/dL** (part of total cholesterol of 196 mg/dL), from the \"Laboratory results, April 2024\" document.\n\n**Source:** `docs/medical/lab-results-2024.pdf` (single-page document, April 2024 lab results)",
+    "tool_uses": []
+  }
+}

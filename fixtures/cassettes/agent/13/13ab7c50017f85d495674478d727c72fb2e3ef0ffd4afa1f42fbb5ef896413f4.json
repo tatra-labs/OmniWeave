@@ -1,0 +1,48 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "e62725291f3119db4c2fc0231dcacaff4cbc22da4868428955d973299b76d77a",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "13ab7c50017f85d495674478d727c72fb2e3ef0ffd4afa1f42fbb5ef896413f4",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "There are 3 leases: lisbon, madrid, porto. Let me read them.",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-32e3e72ca082/project/docs/leases/lease-lisbon.docx"
+        },
+        "id": "toolu_01GFWqUuNGXJ2JoWhV32MB3d",
+        "name": "Read"
+      },
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-32e3e72ca082/project/docs/leases/lease-madrid.docx"
+        },
+        "id": "toolu_01MFUgTXfunP5YLGBMQtGLrz",
+        "name": "Read"
+      },
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-32e3e72ca082/project/docs/leases/lease-porto.docx"
+        },
+        "id": "toolu_01EXsZUv9c4JgwF7AU6QZm5a",
+        "name": "Read"
+      }
+    ]
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "23804f8911e73e951ae0e92535a7b1857c4b71672d01922f8ec57897b03c70ef",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "bf0e8cb57559a0de6f0979bffb8cdea128be623d8ee1157c07c8d235ce3fd127",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "path": "project/docs",
+          "pattern": "LDL cholesterol"
+        },
+        "id": "call_dh2za23o",
+        "name": "Grep"
+      }
+    ]
+  }
+}

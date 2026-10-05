@@ -145,3 +145,17 @@ def test_a_long_listing_is_cut_at_the_same_line_however_long_the_root_is(tmp_pat
         prefix = HostTools(root).root.as_posix()
         cut.append([line.replace(prefix, "{root}") for line in result.text.splitlines()])
     assert cut[0] == cut[1]
+
+
+def test_a_file_outside_the_folder_is_the_commands_to_refuse_on_every_os(docs: Path) -> None:
+    """D654: the shell spelled each existing path absolute and refused one outside the folder
+    before the command ran, so `grep x /dev/null` was a shell error on Linux, where `/dev/null`
+    exists, and `grep`'s own refusal on Windows, where it does not. A Linux replay of a Windows
+    recording missed. Now the command refuses it on both, as Windows always did."""
+    outside = (docs.parent / "outside.txt").as_posix()
+    done = _call(HostTools(docs), "Bash", command=f"grep secret {outside}")
+    assert not done.result.is_error
+    assert done.result.text == (
+        f"grep: {outside} is outside the documents folder {docs.resolve().as_posix()}"
+    )
+    assert done.call.args == {"command": f"grep secret {outside}"}

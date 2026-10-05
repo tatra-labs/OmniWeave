@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "f26c6fd54b6afed7a8ec78bff3d3be314b6e6d73ac1cb10c49a7ff6139f8e777",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "781347955ec059b51d18184cbfa09e71c49a3244df99fe16c65e1f9cce675fd1",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Clause 7 (\"Term\") of the Northwind mutual non-disclosure agreement states that the confidentiality obligations survive for five (5) years after disclosure.\n\nSource: nda-northwind.docx (docs/legal/nda-northwind.docx), Clause 7.",
+    "tool_uses": []
+  }
+}

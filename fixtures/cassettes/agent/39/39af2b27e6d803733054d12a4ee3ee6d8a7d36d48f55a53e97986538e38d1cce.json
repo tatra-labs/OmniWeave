@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "c70f2884bad7c65c4e84e195814056c46281ab9bb95f3163c34dabc2d42febec",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "39af2b27e6d803733054d12a4ee3ee6d8a7d36d48f55a53e97986538e38d1cce",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Section 2.1 of the Intellectual Property Assignment Agreement states that **the Assignor assigns to the Company all right, title and interest in the Assigned IP.**\n\nSource: *ip-assignment.pdf*, page 1.",
+    "tool_uses": []
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "462bc49adee5d11923769749b5098fb95aab0c27ef893e7134d65d0d8cb6a49d",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "dfc366ac387004095adeaba4adf7ed0240922808d4791be87a1a2643d3a7ba22",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "find . -iname \"*.pdf\" -o -iname \"*.xlsx\" -o -iname \"*.docx\" | head -100"
+        },
+        "id": "toolu_01FoVS1i3dkWcpXXyJnQcxRY",
+        "name": "Bash"
+      },
+      {
+        "arguments": {
+          "output_mode": "files_with_matches",
+          "pattern": "Q4 2024|fourth quarter 2024"
+        },
+        "id": "toolu_01B7CdRg49DwfYk7xesekiL3",
+        "name": "Grep"
+      }
+    ]
+  }
+}

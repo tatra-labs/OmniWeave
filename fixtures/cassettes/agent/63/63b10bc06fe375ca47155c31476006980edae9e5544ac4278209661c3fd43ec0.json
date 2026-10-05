@@ -1,0 +1,37 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "66b21610673b85b6b3b5f92727fda5699a937938b87e5b60ffd1491c33dca64e",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "63b10bc06fe375ca47155c31476006980edae9e5544ac4278209661c3fd43ec0",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "case_insensitive": true,
+          "output_mode": "files_with_matches",
+          "path": "{bench-cache}/legal_matter-full-aab2293e6925/project/docs",
+          "pattern": "Master Services Agreement"
+        },
+        "id": "call_GAvJtGv32aN0b7s4NsI4vIXw",
+        "name": "Grep"
+      }
+    ]
+  }
+}

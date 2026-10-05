@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "973585b6bd1f9273e16f9f68d243d0fa5a21717594746b96fc0e698d47444461",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "2a0243c8d88ef7d751821fc3c39a507645f7cdcb08602fd37c7d749578f0479a",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The query matched a London-seated arbitration clause, not Singapore. Let me search more specifically.",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "Singapore arbitration clause dispute resolution"
+        },
+        "id": "toolu_01WH8NkUg52Es2UbqZRo25FF",
+        "name": "mcp__omniweave__ow_query"
+      },
+      {
+        "arguments": {
+          "query": "SIAC Singapore International Arbitration Centre"
+        },
+        "id": "toolu_011Sgb4xaEWEtYsHVRKnjR7q",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

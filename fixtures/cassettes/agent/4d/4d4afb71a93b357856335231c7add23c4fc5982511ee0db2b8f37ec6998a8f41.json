@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "5c7367b952222add6145f9a126710ec398fd4ace19a7dadd72980450b8772186",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "4d4afb71a93b357856335231c7add23c4fc5982511ee0db2b8f37ec6998a8f41",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The Contoso Data Processing Agreement states that customer data is hosted in **Ireland**.\n\nSource: *dpa-contoso.docx* (legal/dpa-contoso.docx), line/paragraph 5 (document has no page numbers; it's a single-page DOCX).",
+    "tool_uses": []
+  }
+}

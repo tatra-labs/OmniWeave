@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "e428bfc48a74636fe8f8e698040a5668c2c09edb38d8b009e8e52b4616739756",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "76fb7c218958695c69ae58a2a83ba78edf1ff17aa73bd836660a8cbd4018e273",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "NOT FOUND. Searched for \"2024\" in PDFs within project/docs with Grep (no matches) and listed directory contents (only showed \"docs\" indicating empty or no direct files).",
+    "tool_uses": []
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "52496bbdcd0167211eeea87912241cac8a06ac92b1de9e8983782e877d77a2e5",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "bf59a802c2dd3b5bc6eeff4de4a3a44e9a4d3ec6400b32c82e28d0a290f77f1c",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The amount due was **$285.40**, per *brightline-dental-2024-03.pdf* (page 1, labeled \"March 2024\" invoice).",
+    "tool_uses": []
+  }
+}

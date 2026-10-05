@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "0eb5d02353038e7fa573aecd779827457f32231dd52c010c10ced4c0595aae98",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "2b9179c707d4548289c73ce2e0450c57c251e2c982f38e93db9ea700dd970e94",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-32e3e72ca082/project/docs/suppliers/supplier-agreement-corvid.docx"
+        },
+        "id": "toolu_014C1WDibBD9yy24yk3R18b4",
+        "name": "Read"
+      },
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-32e3e72ca082/project/docs/suppliers/supplier-agreement-dunmore.docx"
+        },
+        "id": "toolu_01CAUUj3CW7aWGEDc2DkNBVi",
+        "name": "Read"
+      }
+    ]
+  }
+}

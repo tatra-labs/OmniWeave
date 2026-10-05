@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "9a1e835d2d50d6b56e1e1b4c0efc8a1d482d4b124abea7e3e9ef898e61d597a6",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "791e2d5aea778a758838b06bbb7bf50ddbc878570acd46c11796b44610024bfa",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Section 5 of **home-policy-2024.pdf** (page 2) covers Flood:\n\n> \"5. Flood. Flood damage is excluded unless the Flood Extension endorsement is purchased.\"\n\nIn short, flood damage is **excluded from the base policy** unless you've purchased the optional Flood Extension endorsement. (Source: home-policy-2024.pdf, p.2)",
+    "tool_uses": []
+  }
+}

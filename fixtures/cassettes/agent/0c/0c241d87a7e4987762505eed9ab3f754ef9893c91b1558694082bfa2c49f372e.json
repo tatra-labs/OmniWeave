@@ -1,0 +1,35 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "463ae37c0186e727f146e59e17c8baa6dd98b775124289e1f8d2be224873d912",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "0c241d87a7e4987762505eed9ab3f754ef9893c91b1558694082bfa2c49f372e",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "corpus": "docs",
+          "query": "clause 7 Northwind non-disclosure agreement confidentiality duration"
+        },
+        "id": "call_xwhfl93o",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

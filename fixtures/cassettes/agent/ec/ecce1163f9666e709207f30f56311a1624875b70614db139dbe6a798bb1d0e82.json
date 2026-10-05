@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "8fc416985acee7b03cb25fe4a533fd496bed75fd1359c0f83718764c26244233",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "ecce1163f9666e709207f30f56311a1624875b70614db139dbe6a798bb1d0e82",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "find . -iname \"*nda*\" -o -iname \"*non-disclosure*\" -o -iname \"*northwind*\""
+        },
+        "id": "toolu_01DJRFzNc5dgjvXwaozUknFs",
+        "name": "Bash"
+      }
+    ]
+  }
+}

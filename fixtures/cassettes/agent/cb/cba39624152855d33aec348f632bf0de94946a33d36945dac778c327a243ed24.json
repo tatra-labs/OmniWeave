@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/gpt-5-mini",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "86e6f78e428cd4307f61e1260427fe6384dad43249a4e615bfa8210cd01b68a4",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "cba39624152855d33aec348f632bf0de94946a33d36945dac778c327a243ed24",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "Suppliers with an indexed price cap (from their supplier agreements):\n\n- Supplier Agreement - Acme Components — page 1 (Clause 6: \"Unit prices are subject to an indexed price cap…\")  \n- Supplier Agreement - Borealis Metals — page 1 (Clause 6: \"Unit prices are subject to an indexed price cap…\")  \n- Supplier Agreement - Corvid Plastics — page 1 (Clause 6: \"Unit prices are subject to an indexed price cap…\")\n\nSource documents: supplier-agreement-acme.docx, supplier-agreement-borealis.docx, supplier-agreement-corvid.docx (each contains the clause on page 1).",
+    "tool_uses": []
+  }
+}

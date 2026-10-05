@@ -1,0 +1,34 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "625f1254bbd0164c1d3a9085da8ad298c8711c763f74611f77f02772026fec94",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "90f79e9b6d3525d4b9adb2e0e4c995849ada6b9970af61ee5a9c9ceaab13c69d",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "grep -o \"deck-[0-9]*\" /dev/null"
+        },
+        "id": "toolu_018ZAQW6nUsH38UoJidfpHzt",
+        "name": "Bash"
+      }
+    ]
+  }
+}

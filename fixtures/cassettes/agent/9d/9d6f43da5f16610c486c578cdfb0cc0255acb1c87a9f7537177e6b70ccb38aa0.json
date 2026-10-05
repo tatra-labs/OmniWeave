@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "openai/qwen3:4b",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "67b417f8d210653fc17b5ad31e5296195583b5dc45a72feefee2c36886b2194b",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 8192,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "9d6f43da5f16610c486c578cdfb0cc0255acb1c87a9f7537177e6b70ccb38aa0",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The answer comes from **home-policy-2024.pdf** on **page 2** (as shown in the `ow:evidence` section with citation `d2#20`). \n\n**Answer**: Section 5 states: *\"Flood damage is excluded unless the Flood Extension endorsement is purchased.\"*",
+    "tool_uses": []
+  }
+}

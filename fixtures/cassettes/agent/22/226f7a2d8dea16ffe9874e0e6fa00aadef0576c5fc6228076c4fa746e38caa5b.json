@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "83e827f60f246310fdfdea9f25389a2244ce1b8f5f07d9d28bd635f67814aab7",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "226f7a2d8dea16ffe9874e0e6fa00aadef0576c5fc6228076c4fa746e38caa5b",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "passport renewal"
+        },
+        "id": "toolu_01SqbxqtNFQFbSqW8BNB2CfF",
+        "name": "mcp__omniweave__ow_query"
+      },
+      {
+        "arguments": {
+          "command": "find . -iname \"*passport*\""
+        },
+        "id": "toolu_01NDUMquD8oKzmB31vfncKyf",
+        "name": "Bash"
+      }
+    ]
+  }
+}

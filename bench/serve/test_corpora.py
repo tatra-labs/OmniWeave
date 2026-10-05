@@ -202,10 +202,11 @@ def test_the_generator_is_where_adr_14_says() -> None:
 def test_a_ready_entry_with_the_same_digest_is_reused_and_nothing_is_ingested(
     tmp_path: Path,
 ) -> None:
-    from corpora import ONE_WORKER, prepare  # noqa: PLC0415 -- the cache half
+    from corpora import ONE_WORKER, ORDINALS, prepare  # noqa: PLC0415 -- the cache half
 
     documents = gen.documents("personal_archive", "quick")
-    digest = hashlib.sha256(gen.manifest_bytes(documents) + ONE_WORKER.encode()).hexdigest()
+    keyed = gen.manifest_bytes(documents) + ONE_WORKER.encode() + ORDINALS
+    digest = hashlib.sha256(keyed).hexdigest()
     base = tmp_path / f"personal_archive-quick-{digest[:12]}"
     (base / "project").mkdir(parents=True)
     (base / "project" / "omniweave.index.lock").write_text("# schema=1\n", encoding="utf-8")
@@ -319,3 +320,23 @@ def test_a_corpus_ow_add_left_unparsed_is_refused_and_a_damaged_file_is_not(
     from corpora import _not_parsed  # noqa: PLC0415
 
     assert _not_parsed(printed) == unparsed
+
+
+def test_every_generated_file_carries_the_fixed_mtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D654: `ow add` does not trust a file modified within 2 s of its index, so a corpus written
+    the moment before its ingest was "changed" on a fast machine and not on a slow one, and the
+    agent's `ow_add` printed `queued` on Linux where the recording printed `unchanged`."""
+    import corpora  # noqa: PLC0415
+    from omniweave_core.host.subproc import Captured  # noqa: PLC0415
+
+    def added(_argv: object, *, cwd: str, **_kw: object) -> Captured:
+        (Path(cwd) / "omniweave.index.lock").write_text("# schema=1\n", encoding="utf-8")
+        return Captured(0, b"completed 1   pending 0   deadline_reached false\n", b"", None)
+
+    monkeypatch.setattr(corpora, "run_captured", added)
+    prepared = corpora.prepare("personal_archive", "quick", cache_root=tmp_path)
+    files = [one for one in prepared.docs.rglob("*") if one.is_file()]
+    assert files
+    assert {one.stat().st_mtime_ns for one in files} == {corpora.FILE_MTIME_NS}

@@ -1,0 +1,42 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "9c47456397817ba5629f623a97ad042f9d6ad07d4f89dbd38199dab3c42fb983",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "0cf062ed40574b5c5a85b93dfbe5f86aa190ca93f30a68a3e151c142b978a7ca",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "command": "find . -maxdepth 3 -type f | head -100"
+        },
+        "id": "toolu_01AehSipZeh9EryrpL7jXEoS",
+        "name": "Bash"
+      },
+      {
+        "arguments": {
+          "output_mode": "files_with_matches",
+          "pattern": "Singapore"
+        },
+        "id": "toolu_0127LGgVK3vMHcCXLS11JikX",
+        "name": "Grep"
+      }
+    ]
+  }
+}

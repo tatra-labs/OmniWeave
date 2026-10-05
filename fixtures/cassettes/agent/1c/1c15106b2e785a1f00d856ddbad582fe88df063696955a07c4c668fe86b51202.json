@@ -1,0 +1,26 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "9ce0e06d5cec73a7101e962d35347d85795d62c87048af03a6f202cc80402a96",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "1c15106b2e785a1f00d856ddbad582fe88df063696955a07c4c668fe86b51202",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "The only board deck with a \"Q4\" label doesn't exist — only a Q3 2024 board deck is present (board-deck-q3-2024.pptx), plus numbered decks (deck-004.pptx through deck-119.pptx) that aren't labeled by quarter. No document in the data room contains \"Q4 2024\" text or a Q4 2024 revenue figure.\n\n**NOT FOUND** — I searched the indexed corpus (ow_query for \"Q4 2024 revenue\", \"fourth quarter 2024 revenue results\", \"Q4 2024 revenue million board deck\") and grepped the entire docs folder for \"Q4 2024\" and \"Q4\", finding no matches. The only quarterly revenue figure present is **Q3 2024 revenue: $18.4 million**, from `board-deck-q3-2024.pptx`. There is no board deck or financial document in this data room labeled Q4 2024 or containing a Q4 2024 revenue figure.",
+    "tool_uses": []
+  }
+}

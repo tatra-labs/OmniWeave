@@ -1,0 +1,36 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "25ffaa73ab38808449515c91b577e600fac6cab5b0805f44c5b1cabf3f585cb4",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "89a06458256117fe2298e3dbbe924cce68ddf6ad8e1e2b7b3aa1feb3f4cdcbd7",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "output_mode": "content",
+          "path": "board",
+          "pattern": "2024 revenue|Revenue:|Q4 2024|Q1 2025|fourth quarter"
+        },
+        "id": "toolu_017wmKmSpWBfxhZtYCXz5x4u",
+        "name": "Grep"
+      }
+    ]
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "20e2cb0417ab92a92b1c069f85672aac8b74edd297ca2268ea54bb2e4f22c8d0",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "67fb616bb35432253682de2d66042f392d63987d763f49ae4bf651263c6974ef",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "query": "Singapore"
+        },
+        "id": "toolu_01WQsdZ4b1qQwPN4ttnjefe8",
+        "name": "mcp__omniweave__ow_query"
+      },
+      {
+        "arguments": {
+          "query": "governing law venue jurisdiction arbitration clause other agreements besides MSA"
+        },
+        "id": "toolu_01AXq4Q3juZPgAyzHCgejXNY",
+        "name": "mcp__omniweave__ow_query"
+      }
+    ]
+  }
+}

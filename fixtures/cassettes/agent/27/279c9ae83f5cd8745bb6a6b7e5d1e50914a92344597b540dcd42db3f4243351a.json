@@ -1,0 +1,41 @@
+{
+  "contract_major": 1,
+  "inputs": {
+    "contract": [
+      "bench.agent",
+      1
+    ],
+    "model_key": "anthropic/claude-sonnet-5",
+    "payload_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "prompt_digest": "6134291151247eec9ca3e6f870cf69402e90eae168dfa1f6c3a5b0993ca33834",
+    "sampling": {
+      "allow_tools": true,
+      "max_tokens": 2048,
+      "temperature": null
+    },
+    "service": "agent"
+  },
+  "key": "279c9ae83f5cd8745bb6a6b7e5d1e50914a92344597b540dcd42db3f4243351a",
+  "prompt_version": "agent-prompt/2",
+  "record_version": 1,
+  "seam": "bench.agent",
+  "turn": {
+    "text": "",
+    "tool_uses": [
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-32e3e72ca082/project/docs/suppliers/supplier-agreement-acme.docx"
+        },
+        "id": "toolu_01LjXn2U9jd9EvPZErmm9FSw",
+        "name": "Read"
+      },
+      {
+        "arguments": {
+          "file_path": "{bench-cache}/data_room-full-32e3e72ca082/project/docs/suppliers/supplier-agreement-borealis.docx"
+        },
+        "id": "toolu_019pUgXJod1vcySZHuPB6cpA",
+        "name": "Read"
+      }
+    ]
+  }
+}
