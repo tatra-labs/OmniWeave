@@ -185,6 +185,11 @@ ban-relative-imports = "all"
 # from a homoglyph attack, and Q-G23 is the property that needs the fixture.
 "packages/omniweave-conform/tests/unit/test_conform_kit.py" = ["RUF001", "RUF002"]
 
+# Same rule again. `derive.anchor.defterm` reads curly double and single quotes and en/em-dash
+# separators as definition syntax (06 section 3.5, D666), and `key_form` must equal
+# `normalize_key` over the Greek and ligature cases `test_ident.py` already carries.
+"packages/omniweave-graph/tests/unit/test_defterm_rules.py" = ["RUF001", "RUF002"]
+
 # `read_verdict()` is 08-runtime.md section 4.5's six-clause read policy, and the clauses are
 # ORDERED: clause 2 precedes clause 4 because an artefact that does not parse cannot be asked
 # whether it is empty, and clause 5 precedes clause 6 because a unit mismatch is a bug report and
