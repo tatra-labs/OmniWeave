@@ -141,8 +141,10 @@ CRITERIA: tuple[Criterion, ...] = (
         (tool("gate_coldstart.py"),),
         Coverage.PARTIAL,
         "the import, `ow --version` and `ow --help` rows are timed against their ceilings "
-        "(the console script landed in W7.8l, D619); the 20-dist row needs a 20-dist "
-        "environment; the 25% band fails only on the pinned runner that calibrated the "
+        "(the console script landed in W7.8l, D619); the 20-dist row is measured by "
+        "`tools/env_twenty.py`, which builds that environment, and reads 18-21 ms against "
+        "its 20 ms on this unpinned machine -- at the budget, so it is not wired as a pass "
+        "here (D659); the 25% band fails only on the pinned runner that calibrated the "
         "baseline, and no runner is pinned until CI returns at P10, so OQ-4 is measured on one "
         "unpinned Windows machine and on no runner class (D622)",
     ),

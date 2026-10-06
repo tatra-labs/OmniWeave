@@ -1325,3 +1325,93 @@ def test_this_checkout_s_catalog_holds_the_installed_first_party_drivers() -> No
     from omniweave_core.discovery import catalog  # noqa: PLC0415
 
     assert {"parse.office.anydoc", "parse.pdf.pdfium"} <= set(catalog().cards)
+
+
+def test_a_distribution_s_identity_is_what_importlib_metadata_says_for_every_installed_one() -> (
+    None
+):
+    """D659: `_dist_identity` reads `Name` and `Version` off the header block itself rather than
+    through `email`. It must agree with `importlib.metadata` on every distribution this
+    environment holds -- a hundred real `METADATA` files from as many build backends."""
+    from importlib.metadata import Distribution  # noqa: PLC0415 - the whole environment, on purpose
+
+    from omniweave_core import discovery as module  # noqa: PLC0415
+
+    seen = 0
+    for dist in Distribution.discover():
+        expected = (dist.metadata["Name"] or "", dist.metadata["Version"] or "")
+        assert module._dist_identity(dist) == expected, dist
+        seen += 1
+    assert seen > 20, "the comparison is only as wide as the environment it ran in"
+
+
+def test_a_header_block_is_read_case_blind_and_stops_at_the_body(tmp_path: Path) -> None:
+    """A lower-case header name is the same header; a `Name:` in the body is not one."""
+    from importlib.metadata import Distribution  # noqa: PLC0415
+
+    from omniweave_core import discovery as module  # noqa: PLC0415
+
+    info = tmp_path / "odd-1.0.dist-info"
+    info.mkdir()
+    (info / "METADATA").write_text(
+        "Metadata-Version: 2.1\nname: odd\nSummary: x\nVERSION:  1.0 \n\nName: body\n",
+        encoding="utf-8",
+    )
+    (dist,) = list(Distribution.discover(path=[str(tmp_path)]))
+    assert module._dist_identity(dist) == ("odd", "1.0")
+
+
+def test_env_twenty_writes_twenty_cards_in_eighteen_distributions(tmp_path: Path) -> None:
+    """D659: `tools/env_twenty.py` builds section 4.4's first-row environment -- core and ports
+    plus these eighteen -- so the row's "20 drivers, 20 installed" holds only if the eighteen
+    really carry twenty cards that discovery loads without a fault."""
+    import importlib.util  # noqa: PLC0415
+    import sys  # noqa: PLC0415
+
+    tool = Path(__file__).resolve().parents[4] / "tools" / "env_twenty.py"
+    spec = importlib.util.spec_from_file_location("ow_env_twenty", tool)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    site = tmp_path / "site"
+    site.mkdir()
+    for index in range(module.DISTRIBUTIONS):
+        module._driver(site, index)
+    result = run(site)
+    assert len(dists(site)) == 18
+    assert len(ids(result)) == 20
+    assert result.faults == ()  # type: ignore[attr-defined]
+
+
+def test_only_a_distribution_with_an_omniweave_row_is_identified_and_only_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D659: discovery's cost scales with drivers, not with the environment. Three neighbours
+    with no omniweave row are never identified, and the one driver distribution is identified
+    once per pass -- not once by `entry_point_refs` and again by `entry_point_sources`."""
+    from omniweave_core import discovery as module  # noqa: PLC0415
+
+    site = tmp_path / "site"
+    package(site, "omniweave_driver_one", text=card("parse.one.only"))
+    dist_info(
+        site,
+        dist="omniweave-driver-one",
+        groups={DRIVER_GROUP: {"parse.one.only": "omniweave_driver_one"}},
+    )
+    for n in range(3):
+        dist_info(site, dist=f"neighbour-{n}", groups={"console_scripts": {f"n{n}": "x:y"}})
+    seen: list[str] = []
+    real = module._dist_identity
+
+    def counted(dist: object) -> tuple[str, str]:
+        found = real(dist)  # type: ignore[arg-type]
+        seen.append(found[0])
+        return found
+
+    monkeypatch.setattr(module, "_dist_identity", counted)
+    result = run(site)
+    assert ids(result) == ["parse.one.only"]
+    assert seen == ["omniweave-driver-one"]
