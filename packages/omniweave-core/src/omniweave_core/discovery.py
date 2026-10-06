@@ -44,7 +44,7 @@ import re
 import sys
 import time
 from dataclasses import dataclass, field
-from importlib.metadata import Distribution
+from importlib.metadata import Distribution, EntryPoint
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Protocol
@@ -610,20 +610,53 @@ def entry_point_refs(
     `OPERATOR_GROUP` is absent from the default and that is the reservation being kept: a group
     that quietly began working would make "reserved and uncreated" untrue.
     """
+    return _refs(_read(distributions, groups), groups)
+
+
+_READ_GROUPS: Final = (DRIVER_GROUP, TARGET_GROUP, BACKEND_GROUP)
+"""The groups one discovery pass reads. `entry_point_refs`' default, and `discover()`'s."""
+
+
+@dataclass(frozen=True, slots=True)
+class _Read:
+    """One distribution's rows in the groups being read, and who it is. D659.
+
+    Built once per distribution per pass, by `_read`. `Distribution.entry_points` re-reads and
+    re-parses `entry_points.txt` on every access and `dist.metadata` re-parses `METADATA`, so a pass
+    that let `entry_point_refs` and `entry_point_sources` each read for themselves paid every
+    distribution's two files twice -- and paid them for every distribution on the path, omniweave
+    rows or none. Only a distribution with a row gets its identity read at all.
+    """
+
+    dist: Distribution
+    entries: tuple[EntryPoint, ...]
+    name: str
+    version: str
+
+
+def _read(distributions: Iterable[Distribution], groups: Sequence[str]) -> list[_Read]:
     wanted = set(groups)
-    refs: dict[str, list[EntryPointRef]] = {group: [] for group in groups}
+    read: list[_Read] = []
     for dist in distributions:
-        name = _dist_name(dist)
-        version = _dist_version(dist)
-        for entry in dist.entry_points:
-            if entry.group in wanted:
+        entries = tuple(entry for entry in dist.entry_points if entry.group in wanted)
+        if entries:
+            name, version = _dist_identity(dist)
+            read.append(_Read(dist, entries, name, version))
+    return read
+
+
+def _refs(read: Sequence[_Read], groups: Sequence[str]) -> dict[str, list[EntryPointRef]]:
+    refs: dict[str, list[EntryPointRef]] = {group: [] for group in groups}
+    for one in read:
+        for entry in one.entries:
+            if entry.group in refs:
                 refs[entry.group].append(
                     EntryPointRef(
                         group=entry.group,
                         name=entry.name,
                         value=entry.value,
-                        dist_name=name,
-                        dist_version=version,
+                        dist_name=one.name,
+                        dist_version=one.version,
                     )
                 )
     return refs
@@ -644,8 +677,7 @@ def entry_point_sources(
     `driver_unavailable` degradation — stat'ing twice would price the same syscall twice on the
     path INV-3 holds to 80 ms.
     """
-    dists = list(distributions)
-    return _driver_group_sources(dists, {id(dist): is_editable(dist) for dist in dists})
+    return _driver_group_sources(_read(distributions, (DRIVER_GROUP,)))
 
 
 EDITABLE_LAYOUTS: Final[tuple[str, ...]] = ("src", "")
@@ -752,25 +784,44 @@ def is_editable(dist: Distribution) -> bool:
     return isinstance(dir_info, dict) and dir_info.get("editable") is True
 
 
-def _dist_name(dist: Distribution) -> str:
-    """The distribution's name, or `""` when its metadata is unreadable.
+def _dist_identity(dist: Distribution) -> tuple[str, str]:
+    """`(name, version)` from ONE parse of `METADATA`, or `""` for what is unreadable. D659.
 
     An unreadable `METADATA` is a broken neighbour, and section 4.5's rule is that a broken
     neighbour cannot stop a catalog. The empty name is honest: it makes the cache row for that
     distribution collide with nothing and it prints as an obviously wrong value in a report.
+
+    One read, and only for a distribution that has a row in a group being read. `dist.metadata`
+    runs `METADATA` through the `email` parser on every access and `dist.version` is a second
+    access, so the two helpers this replaces parsed it twice per call site and every distribution
+    on the path paid four parses, omniweave rows or none: 80 of them for the 20-distribution
+    environment of section 4.4's first row, and the largest single cost of `Catalog.build()` there.
+
+    **The two headers are read directly, not through `email`.** `Name` and `Version` are
+    single-line core-metadata fields in the header block, before the first blank line, and a
+    header name is case-insensitive; that is all this reads, and importing `email.parser` to read
+    it was the last import `Catalog.build()` paid for itself. `test_discovery.py` holds the reader
+    to `importlib.metadata`'s own answer for every distribution the test environment has.
     """
     try:
-        return dist.metadata["Name"] or ""
-    except (OSError, KeyError):  # pragma: no cover - a torn dist-info on the reference machine
-        return ""
-
-
-def _dist_version(dist: Distribution) -> str:
-    """The distribution's version, or `""`. Same reasoning as `_dist_name`."""
-    try:
-        return dist.version or ""
-    except (OSError, KeyError):  # pragma: no cover - a torn dist-info on the reference machine
-        return ""
+        text = dist.read_text("METADATA") or dist.read_text("PKG-INFO") or ""
+    except OSError:  # pragma: no cover - a torn dist-info on the reference machine
+        return ("", "")
+    name = version = ""
+    for line in text.splitlines():
+        if not line.strip():
+            break
+        key, colon, value = line.partition(":")
+        if not colon or line[:1].isspace():
+            continue
+        field_name = key.strip().lower()
+        if field_name == "name" and not name:
+            name = value.strip()
+        elif field_name == "version" and not version:
+            version = value.strip()
+        if name and version:
+            break
+    return (name, version)
 
 
 # --------------------------------------------------------------------------------------------
@@ -1132,8 +1183,9 @@ def discover(
 
     with _timed(timings, "entry_points", monotonic):
         dists = list(Distribution.discover() if distributions is None else distributions)
-        refs = entry_point_refs(dists)
-        ep_sources, ep_faults = entry_point_sources(dists)
+        read = _read(dists, _READ_GROUPS)
+        refs = _refs(read, _READ_GROUPS)
+        ep_sources, ep_faults = _driver_group_sources(read)
         faults.extend(ep_faults)
 
     with _timed(timings, "validity_key", monotonic):
@@ -1252,8 +1304,7 @@ def catalog(
 
 
 def _driver_group_sources(
-    dists: Sequence[Distribution],
-    editable: Mapping[int, bool],
+    read: Sequence[_Read],
 ) -> tuple[tuple[CardSource, ...], tuple[DiscoveryFault, ...]]:
     """One `CardSource` per legal `omniweave.drivers` row, plus a fault per illegal value.
 
@@ -1265,12 +1316,13 @@ def _driver_group_sources(
     """
     sources: list[CardSource] = []
     faults: list[DiscoveryFault] = []
-    for dist in dists:
-        name = _dist_name(dist)
-        version = _dist_version(dist)
-        for entry in dist.entry_points:
-            if entry.group != DRIVER_GROUP:
-                continue
+    for one in read:
+        entries = [entry for entry in one.entries if entry.group == DRIVER_GROUP]
+        if not entries:
+            continue
+        dist, name, version = one.dist, one.name, one.version
+        editable = is_editable(dist)
+        for entry in entries:
             ref = EntryPointRef(
                 group=entry.group,
                 name=entry.name,
@@ -1305,7 +1357,7 @@ def _driver_group_sources(
                     dist_name=name,
                     dist_version=version,
                     declared_id=entry.name,
-                    editable=editable.get(id(dist), False),
+                    editable=editable,
                 )
             )
     return tuple(sources), tuple(faults)
