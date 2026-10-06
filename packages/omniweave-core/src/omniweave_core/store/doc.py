@@ -623,6 +623,10 @@ class _PageState:
     record: PageRecord
     page_root_ord: int = 0
     blocks: list[_Pending] = field(default_factory=list)
+    index: dict[BlockId, _Pending] = field(default_factory=dict)
+    """`blocks` by id. A block's parent and a mark's block are looked up here, not scanned for:
+    the scan was linear in the page, so a 20,000-row sheet -- one table, 320,000 blocks on one page,
+    every cell a child of the same table -- spent 87% of its ingest in it (D658)."""
     satellites: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
 
 
@@ -908,6 +912,7 @@ class DocSink:
             quad=b.quad,
         )
         page.blocks.append(pending)
+        page.index[block_id] = pending
         self._minted[block_id] = _Minted(
             kind=b.kind, layer=layer, page=page.record.page, addr=addr, depth=depth
         )
@@ -1772,17 +1777,14 @@ class DocSink:
         when `end_page` runs, while a container that gains a child on a later page does not -- and
         03:1226-1230's query is exactly the set of the latter.
         """
-        page = self._require_page()
-        for pending in reversed(page.blocks):
-            if pending.block_id == parent_id:
-                pending.children.append(child.block_id)
-                return
+        pending = self._require_page().index.get(parent_id)
+        if pending is not None:
+            pending.children.append(child.block_id)
 
     def _text_of(self, b: BlockId) -> str | None:
-        page = self._require_page()
-        for pending in reversed(page.blocks):
-            if pending.block_id == b:
-                return pending.text
+        pending = self._require_page().index.get(b)
+        if pending is not None:
+            return pending.text
         msg = (
             f"block {int(b)} was not minted on the open page; a block's marks are staged in the "
             f"same transaction as the block (03:594)"
