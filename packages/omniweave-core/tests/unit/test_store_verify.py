@@ -616,6 +616,15 @@ def test_a_segment_content_digest_altered_in_the_row_is_caught(store: Path) -> N
     assert _run(store, VerifyClause.SEGMENT_DIGEST).state is ClauseState.PASSED
 
 
+def test_a_retired_segment_is_counted_and_not_recomputed(store: Path) -> None:
+    """D663: a retired Segment released its members, so its digest is history, not a finding."""
+    _add_cover(store, b"\x00" * COVER_BITS_BYTES)
+    _corrupt(store, ("UPDATE segment SET state = 1", ()))
+    result = _run(store, VerifyClause.SEGMENT_DIGEST)
+    assert result.state is ClauseState.PASSED
+    assert (result.checked, result.counts["retired"]) == (0, 1)
+
+
 # ---------------------------------------------------------------------------------------------
 # Clause 9 -- SCHEMA is single-homed. 07:3199-3211, ST23, ST24
 # ---------------------------------------------------------------------------------------------

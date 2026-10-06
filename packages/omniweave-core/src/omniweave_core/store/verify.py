@@ -585,6 +585,11 @@ def _segment_digest(connection: sqlite3.Connection) -> ClauseResult:
 
     P2 ships no `segment` rows (16-roadmap.md:449, "the tables exist and are empty"), so this
     clause normally passes over zero rows -- which is exactly why `checked` is in the report.
+
+    **Live Segments only (D663).** A retired Segment (`state = 1`) has released its
+    `segment_block` rows -- the table's key is `block_id`, and a block carried into a new
+    generation must be free to join its new Segment -- so its digest is history with no members
+    left to recompute it from. It is counted as `retired`, not checked and not failed.
     """
     if not _has_table(connection, "segment") or not _has_table(connection, "segmenter"):
         return _unchecked(
@@ -595,7 +600,8 @@ def _segment_digest(connection: sqlite3.Connection) -> ClauseResult:
     disagreements = 0
     for row in connection.execute(
         "SELECT s.segment_id, s.heading_path, s.content_digest, g.driver_id, g.driver_schema_v, "
-        "g.params_digest FROM segment s JOIN segmenter g ON g.segmenter_id = s.segmenter_id"
+        "g.params_digest FROM segment s JOIN segmenter g ON g.segmenter_id = s.segmenter_id "
+        "WHERE s.state = 0"
     ):
         checked += 1
         segment_id = int(row[0])
@@ -635,8 +641,13 @@ def _segment_digest(connection: sqlite3.Connection) -> ClauseResult:
                     f"{len(members)} members gives {derived.hex()}",
                 )
             )
+    [(retired,)] = connection.execute("SELECT count(*) FROM segment WHERE state <> 0")
     return _result(
-        VerifyClause.SEGMENT_DIGEST, checked, findings, member_order_disagreements=disagreements
+        VerifyClause.SEGMENT_DIGEST,
+        checked,
+        findings,
+        member_order_disagreements=disagreements,
+        retired=int(retired),
     )
 
 
