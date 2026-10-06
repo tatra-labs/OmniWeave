@@ -82,15 +82,22 @@ run by hand before each release until CI returns at P10, and nightly after.
                                                   #   {1,2,4,8} against the pure-Rust path, then
                                                   #   ow add for rss.office200_peak_bytes
 
-**What the first run measured (D656, one Windows machine, 32 cpus; an indication until
-`ow-bench-1`).** Over two runs the marshal held the GIL 27-28% of the wall on one thread and 47-65%
-on two, four and eight, against 1-3% on the pure-Rust path: **K-9's first conjunct holds at two
-threads and above.** `rss.office200_peak_bytes` read 1,078,231,040 bytes, and **that number is the card's ceiling, not
-anydoc's**: `driver.toml`'s `memory_mb = 1024` kills the worker at 1 GiB, below this clause's
-1.5 GiB, so the clause cannot fire as written. What fires instead is the host's memory watchdog, and
-nine to eleven spreadsheets of the 200 failed with it, small ones among them, because the kill fails
-every unit in the batch. Which of the three -- the clause's number, the card's `memory_mb`, or the batch's
-disposition -- moves first is the decision this file exists to have made in advance, and is owed.
+**What the runs measured (D656, D657; one Windows machine, 32 cpus; an indication until
+`ow-bench-1`).** Over three runs the marshal held the GIL 27-30% of the wall on one thread and
+47-76% on two, four and eight, against 1-3% on the pure-Rust path: **K-9's first conjunct holds at
+two threads and above.**
+
+`rss.office200_peak_bytes` reads **363 MiB** (D657): 199 of the 200 documents settle, and the
+largest peak any of them leaves is about a third of this clause's 1.5 GiB. The 200th, a 50,000-row
+spreadsheet, does not fit under `driver.toml`'s `memory_mb = 1024` even **alone**: the host refuses
+it at 1,077,637,120 bytes, `FAILED_PERMANENT{RESOURCE_LIMIT}`, and a refused row carries no peak.
+So the clause still cannot fire as written -- any worker that would cross 1.5 GiB is killed at
+1 GiB first -- but the reason is one document, not the corpus. D656's reading of 1,078,231,040 bytes,
+with nine to eleven spreadsheets failed, was a host bug D657 fixed: a worker over its cap was left
+running and handed the next batch, and a kill failed every unit in its batch rather than retrying
+them in smaller ones. Which number moves first -- this clause's, the card's `memory_mb`, or neither,
+leaving that one document refused -- is the decision this file exists to have made in advance, and
+is owed.
 
 **Why this is a fork and clause 1 is not.** `py.detach` (`python/src/lib.rs:194`, the vendored
 warrant for the whole S1 seam) releases the GIL around *the decode* and nothing else. The marshal

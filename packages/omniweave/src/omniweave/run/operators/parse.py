@@ -91,7 +91,7 @@ import os
 import shutil
 import sys
 import threading
-from collections import Counter
+from collections import Counter, deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
@@ -118,7 +118,14 @@ from omniweave_ports.types import (
 )
 
 from omniweave.run import pipeline
-from omniweave.run.dispatch import dispatch_key
+from omniweave.run.dispatch import (
+    AimdRegistry,
+    Regroup,
+    batch_event,
+    dispatch_key,
+    regroup,
+    start_batch,
+)
 from omniweave.run.routing import PORT as PARSE_PORT
 
 if TYPE_CHECKING:
@@ -367,6 +374,8 @@ class ParseTally:
     workers: int = 0
     inproc: int = 0
     """Driver objects built in the host's interpreter, one per `(driver_id, config_digest)`."""
+    regrouped: int = 0
+    """Units sent to a worker again in a smaller call after a memory verdict or a crash (D657)."""
 
     def emit(self, *, kind: object, fields: Mapping[str, object]) -> None:
         """`with_events`' sink. No trace sink is wired into `ow ingest` yet, so the `call.begin`
@@ -387,6 +396,11 @@ class ParseTally:
         if self.failed:
             classes = ", ".join(f"{name} {n}" for name, n in sorted(self.failed.items()))
             out.append(f"  parse     {sum(self.failed.values())} failed ({classes})")
+        if self.regrouped:
+            out.append(
+                f"  parse     {self.regrouped} unit(s) sent again in a smaller batch after a "
+                f"memory limit or a crash in theirs"
+            )
         if self.asset_links_dropped:
             out.append(
                 f"  parse     {self.asset_links_dropped} block->asset links not written: DocSink "
@@ -428,6 +442,8 @@ class ParseOperator:
     """
 
     __slots__ = (
+        "_aimd",
+        "_aimd_lock",
         "_cas",
         "_catalog",
         "_config",
@@ -488,6 +504,8 @@ class ParseOperator:
         self._drivers: dict[subproc.WorkerKey, object] = {}
         self._passwords = passwords
         self._ordinals = ordinals
+        self._aimd = AimdRegistry()
+        self._aimd_lock = threading.Lock()
 
     def _now_ms(self) -> int:
         return self._ctx.clock.monotonic_ns() // 1_000_000
@@ -523,27 +541,9 @@ class ParseOperator:
             one if isinstance(one, StepResult) else None for one in staged
         ]
         if ready:
-            sub = batch.rows if len(ready) == batch.size else tuple(batch.rows[i] for i in ready)
-            call = pipeline.Call(
-                batch=type(batch)(invoke_id=batch.invoke_id, rows=tuple(sub)),
-                units=tuple(cast("_Staged", staged[i]).unit for i in ready),
-                operator=operator,
-                deadline_ms=granted.card.isolation.wall_ms_hard,
-            )
-            ready_staged = [cast("_Staged", staged[i]) for i in ready]
-            host = (
-                pipeline.inproc_host(_Guarded(self, granted, ready_staged))
-                if granted.isolation is Isolation.INPROC
-                else pipeline.subproc_host(_Source(self, granted, ready_staged))
-            )
-            handler = pipeline.build(host, emit=self._tally.emit, isolation=str(granted.isolation))
-            try:
-                with self._lock(subproc.WorkerKey(driver, granted.config_digest)):
-                    reply = handler(call)
-            finally:
-                #  D15.4: the host deletes the invocation's tmpdir, and a password file with it.
-                shutil.rmtree(self._tmp / batch.invoke_id, ignore_errors=True)
-            for slot, index in enumerate(ready):
+            answers = self._answers(batch, ready, staged, granted=granted, operator=operator)
+            for index in ready:
+                reply, slot = answers[index]
                 results[index] = self._settle(
                     batch.rows[index],
                     cast("_Staged", staged[index]),
@@ -558,6 +558,107 @@ class ParseOperator:
             self._ledger.record(row.id, row.unit_uri, self._ctx.generation)
             out.append(result)
         return out
+
+    def _answers(
+        self,
+        batch: Batch,
+        ready: Sequence[int],
+        staged: Sequence[_Staged | StepResult],
+        *,
+        granted: _Granted,
+        operator: str,
+    ) -> dict[int, tuple[Reply, int]]:
+        """Each ready row's reply and its slot in it, over as many calls as that takes. **D657.**
+
+        While nothing goes wrong a claimed batch is one call. Under `subproc` it is first cut to
+        the size AIMD has learned for the worker key (08-runtime.md:760), and a call whose
+        verdicts `dispatch.regroup` reads as being about the company a unit kept -- a memory
+        verdict, a crash -- sends those units again in smaller calls, each under its own invoke id,
+        until each has an answer about itself. Before D657 the mechanisms existed and nothing
+        called them, so `ow add` over office-200 failed nine to eleven spreadsheets a run, small
+        ones among them, for sitting in a batch beside a large one; it now settles 199 of 200.
+
+        In process there is no shared worker memory to halve and a crash is the run's (04:1826),
+        so S1 makes the one call it always made.
+        """
+        key = subproc.WorkerKey(granted.card.identity.id, granted.config_digest)
+        localise = granted.isolation is Isolation.SUBPROC
+        ceiling = self._ceiling(granted) if localise else len(ready)
+        with self._aimd_lock:
+            size = self._aimd.size(key, ceiling=ceiling) if localise else len(ready)
+        todo = deque(Regroup(tuple(ready[i : i + size])) for i in range(0, len(ready), size))
+        answers: dict[int, tuple[Reply, int]] = {}
+        calls = 0
+        while todo:
+            group = todo.popleft()
+            invoke_id = batch.invoke_id if calls == 0 else f"{batch.invoke_id}.{calls}"
+            calls += 1
+            reply = self._call(
+                batch, invoke_id, group.slots, staged, granted=granted, operator=operator
+            )
+            failures = (
+                reply.report.failures if reply.report is not None else (None,) * len(group.slots)
+            )
+            again = regroup(group, failures) if localise else ()
+            if any(len(one.slots) >= len(group.slots) for one in again):
+                #  Every regroup must shrink, or this loop is a worker billed forever for one
+                #  batch. `adapt_batch` and `retry_batch_size` both shrink; this holds them to it.
+                raise RouteError(
+                    f"a call of {len(group.slots)} unit(s) was regrouped no smaller "
+                    f"({[len(one.slots) for one in again]}), which would never end",
+                    fix="dispatch.regroup must return calls smaller than the one they came from",
+                )
+            if localise:
+                with self._aimd_lock:
+                    self._aimd.observe(key, batch_event(failures), ceiling=ceiling)
+            going = {slot for one in again for slot in one.slots}
+            self._tally.regrouped += len(going)
+            for position, index in enumerate(group.slots):
+                if index not in going:
+                    answers[index] = (reply, position)
+            todo.extend(again)
+        return answers
+
+    def _call(
+        self,
+        batch: Batch,
+        invoke_id: str,
+        slots: Sequence[int],
+        staged: Sequence[_Staged | StepResult],
+        *,
+        granted: _Granted,
+        operator: str,
+    ) -> Reply:
+        """One `INVOKE` of the rows at `slots`, through the middleware chain."""
+        chosen = [cast("_Staged", staged[i]) for i in slots]
+        call = pipeline.Call(
+            batch=type(batch)(invoke_id=invoke_id, rows=tuple(batch.rows[i] for i in slots)),
+            units=tuple(one.unit for one in chosen),
+            operator=operator,
+            deadline_ms=granted.card.isolation.wall_ms_hard,
+        )
+        host = (
+            pipeline.inproc_host(_Guarded(self, granted, chosen))
+            if granted.isolation is Isolation.INPROC
+            else pipeline.subproc_host(_Source(self, granted, chosen))
+        )
+        handler = pipeline.build(host, emit=self._tally.emit, isolation=str(granted.isolation))
+        try:
+            with self._lock(subproc.WorkerKey(granted.card.identity.id, granted.config_digest)):
+                return handler(call)
+        finally:
+            #  D15.4: the host deletes the invocation's tmpdir, and a password file with it.
+            shutil.rmtree(self._tmp / invoke_id, ignore_errors=True)
+
+    def _ceiling(self, granted: _Granted) -> int:
+        """`start_batch()`: `[runtime.claim] batch` for the card's class, clamped by the card."""
+        from omniweave.run.supervisor import claim_batch_of  # noqa: PLC0415 -- no import cycle
+
+        card = granted.card
+        cost = card.cost_model.cost_class if card.cost_model is not None else "free"
+        return start_batch(
+            claim_batch_of(self._config), str(cost), card_max=card.isolation.batch_max_units
+        )
 
     def _lock(self, key: subproc.WorkerKey) -> threading.Lock:
         """One lock per worker key, held across the pool's acquire and the whole `INVOKE`.

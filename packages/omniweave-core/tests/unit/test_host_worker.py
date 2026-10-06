@@ -32,6 +32,8 @@ from omniweave_ports.types import ArtifactRef, DriverError, FailureClass, UnitRe
 FIXTURES = Path(__file__).resolve().parents[3] / "omniweave-office" / "fixtures"
 OFFICE = "parse.office.anydoc"
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+REPO = Path(__file__).resolve().parents[4]
 WINDOWS_ONLY = pytest.mark.skipif(sys.platform != "win32", reason="the named-pipe arm")
 
 
@@ -419,3 +421,104 @@ def test_the_host_launches_a_real_worker_that_parses_a_real_document(tmp_path: P
         assert report.progress_count > 0, "the office driver reports progress per top-level block"
     finally:
         assert worker.stop() == 0
+
+
+def test_a_memory_error_in_the_driver_is_resource_limit_on_memory_mb(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D657: an allocation past the job object's cap fails in the driver before the watchdog
+    samples it. That is the card's `memory_mb`, not a bug, and it is reported as one:
+    `resource_limit`, `limit = "memory_mb"`, at 08-runtime.md:567's first cooldown."""
+    from omniweave_core.work import Source, rung_for  # noqa: PLC0415
+    from omniweave_office.driver import AnydocParser  # noqa: PLC0415
+
+    def hungry(self: object, unit: UnitRef, parts: object, io: object) -> None:
+        del self, unit, parts, io
+        raise MemoryError
+
+    monkeypatch.setattr(AnydocParser, "parse", hungry)
+    host, box, thread, _order = _serve(monkeypatch)
+    host.send(wire.FrameKind.HELLO, _hello(tmp_path))
+    host.next()
+    unit = {"uri": "u", "part": "", "content_sha256": "0" * 64, "byte_len": 1}
+    host.send(wire.FrameKind.INVOKE, {"invoke_id": "i", "units": [unit], "deadline_ms": 0})
+    (result,) = host.until(wire.FrameKind.RESULT)
+    assert result.header["failure_class"] == "resource_limit"
+    assert result.header["limit"] == "memory_mb"
+    assert result.header["retry_after_ms"] == wk.MEMORY_COOLDOWN_MS
+    rung = rung_for("resource_limit", Source.DRIVER)
+    assert rung is not None
+    assert rung.first_cooldown_ms == wk.MEMORY_COOLDOWN_MS
+    host.send(wire.FrameKind.SHUTDOWN, {"grace_ms": 0})
+    thread.join(10)
+    assert box["outcome"]["status"] == 0
+
+
+@WINDOWS_ONLY
+def test_a_worker_the_watchdog_finds_over_memory_mb_is_ended_with_the_call(
+    tmp_path: Path,
+) -> None:
+    """D657: the verdict that ends a call ends the worker. Before, the child kept running the
+    unit it was given, over the cap and with a peak that never comes down, and the pool handed
+    it to the next batch -- whose first quiet tick failed every unit on the old peak. A 1 MiB
+    `memory_mb` puts any interpreter over the cap at the first sample, and the watchdog samples on
+    a tick with no frame, so the unit is office-200's 20,000-row spreadsheet: long enough to
+    leave one."""
+    import importlib.util  # noqa: PLC0415
+
+    spec = importlib.util.spec_from_file_location(
+        "omniweave_gen_office200_watchdog", REPO / "fixtures" / "gen" / "gen_office200.py"
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    gen = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = gen
+    spec.loader.exec_module(gen)
+    big = tmp_path / "big.xlsx"
+    big.write_bytes(gen.xlsx(gen._Stream("t:watchdog"), 20_000))
+    card = _card()
+    hello = _hello(tmp_path)
+    cas = BlobStore(tmp_path / "cas")
+    with big.open("rb") as source:
+        digest = cas.put(source)
+    address = f"\\\\.\\pipe\\ow-test-worker-{time.monotonic_ns()}"
+    settings = sp.HostSettings(
+        worker_idle_ttl_s=300, crash_threshold=3, crash_window_s=60, tick_ms=50,
+        max_workers={"free": 4},
+    )  # fmt: skip
+    worker, _ack = sp.launch(
+        sp.WorkerKey(OFFICE, "0" * 64),
+        sp.SpawnRequest(
+            argv=sp.worker_argv(sys.executable, address),
+            cwd=str(tmp_path),
+            env={key: os.environ[key] for key in ("SYSTEMROOT", "PATH") if key in os.environ},
+            address=address,
+        ),
+        hello=hello,
+        expect={"driver_id": OFFICE, "version": card.identity.version, "port": "parse/1"},
+        deadlines=sp.Deadlines(0, 60_000, 0),
+        settings=settings,
+        now_ms=lambda: time.monotonic_ns() // 1_000_000,
+        memory_mb=1024,
+    )  # fmt: skip
+    try:
+        unit = UnitRef(
+            uri=str(big), part="", content_sha256=digest.hex(),
+            byte_len=big.stat().st_size, media_type=XLSX,
+        )  # fmt: skip
+        report = worker.invoke(
+            sp.Invocation(
+                invoke_id="i1", units=(unit, unit), deadline_ms=60_000, budget_micros=0,
+                blob_refs=(format_ref(digest), format_ref(digest)),
+            ),
+            deadlines=sp.Deadlines(15_000, 60_000, 60_000),
+            memory_mb=1,
+        )  # fmt: skip
+        verdicts = [one for one in report.failures if one is not None]
+        assert verdicts, "a 1 MiB cap is over at the first sample"
+        assert {one.failure_class for one in verdicts} == {FailureClass.RESOURCE_LIMIT}
+        assert report.event is sp.BatchEvent.RESOURCE_LIMIT
+        assert worker.stopped is True
+        assert worker._proc.poll() is not None, "the child is gone, not left running the unit"
+    finally:
+        worker.stop()
