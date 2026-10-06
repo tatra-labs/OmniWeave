@@ -27,6 +27,8 @@ bench/serve/
 
 ```bash
 uv run python bench/serve/run.py            # the harness: replays the committed recordings
+uv run python bench/serve/run.py --provider openai --model gpt-5-mini --max-tokens 8192            # the GPT set
+uv run python bench/serve/run.py --provider openai --base-url http://localhost:11434/v1 --model qwen3:4b --max-tokens 8192   # the local set
 uv run python bench/serve/run.py --list     # the tasks, and which are held back and why
 uv run python bench/serve/run.py --record --provider openai     --base-url http://localhost:11434/v1 --model qwen3:8b --scale quick   # record, local, no key
 uv run pytest bench/serve -q                # the harness's own rules; offline, no key
