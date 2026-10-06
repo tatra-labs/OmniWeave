@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D656: fixtures/office-200 is generated and ow bench inproc measures it
+# blessed-because: D657: a memory verdict halves the batch and re-runs its units; only a unit killed alone keeps the permanent verdict
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -30,11 +30,11 @@ documents-frozen  47fddfabf24a37948ddd8b8f2d7da02e19864cfb4c42a352e951a85b3158ba
 documents-frozen  6ffc2070193630b39f15385fc8640ec7b1a3e242ef098426f2754d4070a8026d  01-principles.md
 documents-frozen  7bf4220e75a23503a04139d4ba6d8b7774e57fd1774920104c4eb29c75a16c70  02-architecture.md
 documents-frozen  3af6a53e2a3edbbd85dac7c7068d9429f73240aa4b4e0cc53118bc92cd6b6a18  03-document-model.md
-documents-frozen  977058dcd3b1e6d48650cbaeab605918fbb82b65ee731ce8d6fae09dd142f240  04-driver-system.md
+documents-frozen  5c183e17661b21cb32f59c9c90f5aa911a2bb0b7390996f508fc2f8cf5be8f1d  04-driver-system.md
 documents-frozen  58eeb69e5ed3d40f01c4f9afc0550778a3e88efc1c728c04f87d9e8fa1f6a572  05-ingest-and-routing.md
 documents-frozen  af878d7e1a795aded61af2ef27a5834654762f52bdafefb4955d4b4c75492031  06-structure-extraction.md
 documents-frozen  339b66bb6767bb6bbe713d246accb2cb7983d849ee1e3a9044d0bcad17eb5d8c  07-store-and-retrieval.md
-documents-frozen  8dbb83e6d1baa29901dad36b079a53c5459595e979799792ec3bd50eecc9661f  08-runtime.md
+documents-frozen  8ce49a72f05e3f649341613cf665ba0ef1a8131d93b9d3dfa45a8bdeb43411d2  08-runtime.md
 documents-frozen  eddeb4634f5da1e2b056a002a7fa6eaa43d71836633b0a44d65301ac8b2d16e4  09-generation.md
 documents-frozen  d96985003690550f4d996e31a41306d21d6a8e2e7ff34076c0ad5cff5f3cb64e  10-interfaces.md
 documents-frozen  76a694bf0b19b60ba35d2246f6b36466ca990f318f51e0a292c388ec0e78bc68  11-repo-layout.md

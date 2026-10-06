@@ -97,7 +97,7 @@ from omniweave_core.host.subproc import (
 )
 from omniweave_core.operator import ulid
 from omniweave_core.work import WorkRow
-from omniweave_ports.types import DriverResult, Isolation, UnitRef
+from omniweave_ports.types import DriverResult, FailureClass, Isolation, UnitRef
 
 if TYPE_CHECKING:  # pragma: no cover -- typing only; nothing here reads a clock or a price.
     from omniweave_core.clock import Clock
@@ -119,8 +119,10 @@ __all__ = [
     "BatchPolicy",
     "BatchVerdict",
     "Deferral",
+    "Regroup",
     "UnitOutcome",
     "apportion_micros",
+    "batch_event",
     "call_attributes",
     "check_apportionment",
     "defer_together",
@@ -131,6 +133,7 @@ __all__ = [
     "new_invoke_id",
     "partial_sequences",
     "regen_reprice_message",
+    "regroup",
     "sequence_claim_size",
     "session_failure",
     "start_batch",
@@ -594,6 +597,95 @@ class BatchPolicy:
     def aimd(self) -> AimdRegistry:
         """The registry, for the manifest. Read it; `observe()` is the only writer."""
         return self._aimd
+
+
+# =============================================================================================
+# 4b. The units a call leaves unanswered, and the smaller call they go again in (D657)
+# =============================================================================================
+
+
+@dataclass(frozen=True, slots=True)
+class Regroup:
+    """Units of one claimed batch that go to the worker again, together, as one smaller call.
+
+    `slots` are the caller's own indexes -- positions in the claimed batch -- so a regroup of a
+    regroup still names rows of the batch the claim returned. `attempt` counts the crash retries
+    these units have had, which is what `retry_batch_size` reads to say "once".
+    """
+
+    slots: tuple[int, ...]
+    attempt: int = 0
+
+
+def batch_event(failures: Sequence[HostVerdict | None]) -> BatchEvent:
+    """What one call did, as AIMD sees it, read off its per-unit verdicts.
+
+    A crash outranks a memory verdict and both outrank everything else, because each is the
+    stronger statement about the batch: `driver_crashed` goes to 1 and `resource_limit` only
+    halves. Read from the verdicts rather than from `InvokeReport.event`, because an S1 call's
+    report and an S4 call's are built by two hosts and this is the one rule for both.
+    """
+    classes = {one.failure_class for one in failures if one is not None}
+    if FailureClass.DRIVER_CRASHED in classes:
+        return BatchEvent.DRIVER_CRASHED
+    if FailureClass.RESOURCE_LIMIT in classes:
+        return BatchEvent.RESOURCE_LIMIT
+    return BatchEvent.CLEAN
+
+
+def regroup(group: Regroup, failures: Sequence[HostVerdict | None]) -> tuple[Regroup, ...]:
+    """The calls a batch's casualties go again in. Empty when nothing goes again. D657.
+
+    A batch is invisible to the failure taxonomy (I24), so a unit must not fail for the company
+    it was claimed in. Two verdicts say a unit may have done exactly that:
+
+    * **`resource_limit`.** The batch did not fit under `memory_mb`; whether THIS unit fits is
+      unknown. Its units go again at `adapt_batch`'s `max(1, batch // 2)` of the call's width
+      (08-runtime.md:567), so a batch of eight with one large document becomes calls of four,
+      then two, then one -- and only a unit that does not fit ALONE keeps the verdict, which is
+      then 04-driver-system.md:1730's `FAILED_PERMANENT{RESOURCE_LIMIT}` about that unit and
+      nothing else.
+    * **`driver_crashed`.** One unit carries the death and the rest were never answered. Each
+      goes again alone, ONCE, which is `retry_batch_size` -- 04:1721's *"retry once at
+      `batch = 1` to localise the poison unit"*.
+
+    A call of one unit is never regrouped: there is no smaller call, and its verdict is its own.
+    Every other verdict stands as the worker gave it -- a timeout does not finish sooner in a
+    smaller batch, and `encrypted` is not about the batch at all.
+    """
+    width = len(group.slots)
+    if len(failures) != width:
+        raise RouteError(
+            f"a call of {width} units came back with {len(failures)} verdicts",
+            fix="pass the report of this call; RESULT{unit_index} indexes the call",
+        )
+    if width <= 1:
+        return ()
+    crashed: list[int] = []
+    limited: list[int] = []
+    for slot, verdict in zip(group.slots, failures, strict=True):
+        if verdict is None:
+            continue
+        if verdict.failure_class is FailureClass.DRIVER_CRASHED:
+            crashed.append(slot)
+        elif verdict.failure_class is FailureClass.RESOURCE_LIMIT:
+            limited.append(slot)
+    again: list[Regroup] = []
+    if crashed:
+        size = retry_batch_size(BatchEvent.DRIVER_CRASHED, attempt=group.attempt)
+        if size is not None:
+            again.extend(
+                Regroup(tuple(crashed[i : i + size]), group.attempt + 1)
+                for i in range(0, len(crashed), size)
+            )
+    if limited:
+        state = AimdState(batch=width, clean_streak=0, card_max=width)
+        size = adapt_batch(state, BatchEvent.RESOURCE_LIMIT).batch
+        again.extend(
+            Regroup(tuple(limited[i : i + size]), group.attempt)
+            for i in range(0, len(limited), size)
+        )
+    return tuple(again)
 
 
 # =============================================================================================

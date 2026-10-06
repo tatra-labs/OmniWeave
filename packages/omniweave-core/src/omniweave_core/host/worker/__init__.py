@@ -89,6 +89,7 @@ if TYPE_CHECKING:
 __all__ = [
     "EGRESS_EVENTS",
     "HELLO_EXTRA_KEYS",
+    "MEMORY_COOLDOWN_MS",
     "MESSAGE_MAX_CHARS",
     "PORTS_SERVED",
     "Session",
@@ -125,6 +126,11 @@ MESSAGE_MAX_CHARS: Final[int] = 2_048
 """A failure message's ceiling on the wire. `DriverError.message` is the driver's own text and
 02:1060 says *"Nothing else crosses"* for a crash; a bounded message keeps a hostile or runaway
 `str(exc)` from filling `MAX_HEADER_BYTES` and turning a failure into a protocol error."""
+
+MEMORY_COOLDOWN_MS: Final[int] = 60_000
+"""08-runtime.md:567's first cooldown for `resource_limit`, which a `MemoryError` is reported as
+(`_bug`). `DriverError` requires one for a transient class; `work.py`'s ladder holds the same
+number and a test holds the two together."""
 
 _TMP_KEY: Final[str] = "tmp"
 _SOURCE_KEY: Final[str] = "source_ro"
@@ -381,7 +387,21 @@ def _bug(exc: BaseException) -> DriverError:
 
     Permanent, which is 02:1014's direction for a class the driver did not choose: the host cannot
     tell a bug that will recur from one that will not, and a retry of a bug is a second bill.
+
+    **Except a `MemoryError`, which is `resource_limit` on `memory_mb`** (D657). Under a job
+    object or an `RLIMIT_AS` cap an allocation past `[isolation] memory_mb` fails in the driver
+    before the host's watchdog samples it, so the cap reaches the host as this exception and not
+    as the watchdog's verdict -- the same ceiling by the other road. Filed as `driver_bug` it was
+    permanent and blamed the driver for a number on its card. As `resource_limit` it takes
+    08-runtime.md:567's row: transient at its first cooldown, and the batch halves.
     """
+    if isinstance(exc, MemoryError):
+        return DriverError(
+            cls=FailureClass.RESOURCE_LIMIT,
+            message=f"MemoryError under [isolation] memory_mb: {exc}"[:MESSAGE_MAX_CHARS],
+            retry_after_ms=MEMORY_COOLDOWN_MS,
+            limit="memory_mb",
+        )
     return DriverError(
         cls=FailureClass.DRIVER_BUG,
         message=f"{type(exc).__name__}: {exc}"[:MESSAGE_MAX_CHARS],
