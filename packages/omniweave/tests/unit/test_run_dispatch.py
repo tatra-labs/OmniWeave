@@ -47,8 +47,10 @@ from omniweave.run.dispatch import (
     AimdRegistry,
     Batch,
     BatchPolicy,
+    Regroup,
     UnitOutcome,
     apportion_micros,
+    batch_event,
     call_attributes,
     check_apportionment,
     defer_together,
@@ -59,6 +61,7 @@ from omniweave.run.dispatch import (
     new_invoke_id,
     partial_sequences,
     regen_reprice_message,
+    regroup,
     sequence_claim_size,
     session_failure,
     start_batch,
@@ -83,7 +86,7 @@ from omniweave_core.host.subproc import (
 from omniweave_core.store import migrate
 from omniweave_core.store import sqlite as ow
 from omniweave_core.work import CLAIM_SQL, WORK_COLUMNS, WORK_STATUSES, WorkRow
-from omniweave_ports.types import DriverMetrics, DriverResult, Isolation, UnitRef
+from omniweave_ports.types import DriverMetrics, DriverResult, FailureClass, Isolation, UnitRef
 
 if TYPE_CHECKING:
     from conftest import PlanDocs
@@ -1035,3 +1038,46 @@ def test_this_module_holds_no_event_loop_and_no_store_call() -> None:
     }
     assert "asyncio" not in imported
     assert "sqlite3" not in imported
+
+
+# ---------------------------------------------------------------------------------------------
+# D657: the units a call leaves to the company they kept go again, smaller
+# ---------------------------------------------------------------------------------------------
+
+OOM = HostVerdict.over_memory(observed_bytes=2 * 2**30, cap_mb=1024)
+CRASH = HostVerdict.crashed(exit_status=3, stderr_tail=b"")
+SEALED = HostVerdict(failure_class=FailureClass.ENCRYPTED, message="sealed", permanent=True)
+
+
+def test_a_memory_verdict_halves_the_call_until_a_unit_stands_alone() -> None:
+    """Eight units killed together go again as two calls of four; a call of four that is killed
+    again goes as two of two, and so on to one. Answered units do not go again."""
+    eight = Regroup(tuple(range(10, 18)))
+    first = regroup(eight, [None, None, OOM, OOM, OOM, OOM, OOM, OOM])
+    assert first == (Regroup((12, 13, 14, 15)), Regroup((16, 17)))
+    assert regroup(first[0], [OOM] * 4) == (Regroup((12, 13)), Regroup((14, 15)))
+    assert regroup(Regroup((12, 13)), [None, OOM]) == (Regroup((13,)),)
+    assert regroup(Regroup((13,)), [OOM]) == (), "alone, the verdict is the unit's own"
+
+
+def test_a_crash_sends_each_unanswered_unit_again_alone_and_only_once() -> None:
+    four = Regroup((0, 1, 2, 3))
+    again = regroup(four, [None, CRASH, CRASH, CRASH])
+    assert again == (Regroup((1,), 1), Regroup((2,), 1), Regroup((3,), 1))
+    assert all(
+        len(one.slots) == retry_batch_size(BatchEvent.DRIVER_CRASHED, attempt=0) for one in again
+    )
+    assert regroup(Regroup((1, 2), attempt=1), [CRASH, CRASH]) == (), "once is the word"
+
+
+def test_a_verdict_about_the_unit_itself_never_goes_again() -> None:
+    timeout = HostVerdict.timed_out("wall_ms_hard", elapsed_ms=1)
+    assert regroup(Regroup((0, 1, 2)), [SEALED, timeout, None]) == ()
+    with pytest.raises(RouteError, match="came back with 2 verdicts"):
+        regroup(Regroup((0, 1, 2)), [None, None])
+
+
+def test_the_batch_event_is_the_strongest_verdict_in_the_call() -> None:
+    assert batch_event([None, SEALED]) is BatchEvent.CLEAN
+    assert batch_event([SEALED, OOM, None]) is BatchEvent.RESOURCE_LIMIT
+    assert batch_event([OOM, CRASH]) is BatchEvent.DRIVER_CRASHED

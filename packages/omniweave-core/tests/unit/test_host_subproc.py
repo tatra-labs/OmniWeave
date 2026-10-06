@@ -2068,6 +2068,48 @@ def test_one_result_per_unit_makes_the_batch_invisible_to_the_ledgers() -> None:
     assert report.unanswered() == ()
 
 
+def test_a_later_verdict_about_one_unit_does_not_wash_out_the_batch_s_memory_event() -> None:
+    """D657: the event is the batch's, and a memory verdict on unit 0 is not undone by unit 1
+    being encrypted. Each RESULT used to overwrite it, so the order of two units decided whether
+    AIMD heard that the batch did not fit."""
+    channel = FakeChannel(
+        result_frame(
+            0, failure_class="resource_limit", message="MemoryError", retry_after_ms=60_000,
+            limit="memory_mb",
+        ),
+        result_frame(1, failure_class="encrypted", message="sealed"),
+    )  # fmt: skip
+    worker, proc, _clock = worker_on(channel)
+    report = worker.invoke(invocation(2), deadlines=deadlines())
+    assert report.event is sp.BatchEvent.RESOURCE_LIMIT
+    assert (worker.stopped, proc.kills) == (False, 0), "a unit's own failure ends no worker"
+
+
+@pytest.mark.parametrize("ending", ["memory", "fatal", "crash"])
+def test_a_verdict_that_ends_the_call_ends_the_worker(
+    ending: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D657: the watchdog's verdict, a `FATAL` and a death all leave units unanswered, and the
+    worker that left them is killed with the call -- not handed to the next batch over the cap,
+    or still talking about the batch it abandoned. A crash puts its verdict on one unit (04:1721)
+    and `fan_out` answers the rest; the other two answer every unit here."""
+    if ending == "memory":
+        monkeypatch.setattr(sp.Worker, "peak_rss", lambda _self: (2 * 2**30, "test"))
+        channel = FakeChannel(block_at_eof=True)
+    elif ending == "fatal":
+        channel = FakeChannel(
+            wire.encode(wire.FrameKind.FATAL, {"failure_class": "driver_bug", "detail": "x"})
+        )
+    else:
+        channel = FakeChannel()
+    worker, proc, _clock = worker_on(channel)
+    report = run_bounded(lambda: worker.invoke(invocation(2), deadlines=deadlines(), memory_mb=1))
+    assert report.failures[0] is not None
+    assert report.unanswered() == (() if ending != "crash" else (1,))
+    assert worker.stopped is True
+    assert proc.kills == 1
+
+
 def test_an_ok_partial_result_keeps_its_reason() -> None:
     """`ok_partial` requires `partial_reason` and the host carries the driver's own words."""
     channel = FakeChannel(result_frame(0, outcome="ok_partial", partial_reason="page 4 encrypted"))

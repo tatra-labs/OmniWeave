@@ -3141,6 +3141,12 @@ class Worker:
           04:1721 puts the death on **one** unit and the retry at `batch = 1` is what localises
           which; the host does not guess, it names the earliest candidate and lets
           `retry_batch_size` do the localisation.
+
+        **A verdict that ends the call ends the worker** (D657), by `_end`. Until D657 this
+        returned and left the child running: still inside the unit it was given, still over the
+        cap the watchdog had just read, and with a peak that never comes back down -- so the pool
+        handed the same worker to the next batch, whose first quiet tick read the old peak and
+        failed every unit in it, and whose `RESULT` reads could meet the abandoned call's frames.
         """
         self.touch()
         count = len(invocation.units)
@@ -3155,6 +3161,7 @@ class Worker:
             awaited = self._await_frame(countdown, memory_mb=memory_mb)
             if awaited.verdict is not None:
                 event = _assign_verdict(results, failures, awaited.verdict)
+                self._end(awaited.verdict)
                 break
             frame = awaited.frame
             if frame is None:
@@ -3168,7 +3175,9 @@ class Worker:
                 logs.append(frame.header)
                 continue
             if frame.kind is wire.FrameKind.FATAL:
-                event = _assign_verdict(results, failures, _fatal_verdict(frame))
+                fatal = _fatal_verdict(frame)
+                event = _assign_verdict(results, failures, fatal)
+                self._end(fatal)
                 break
             if frame.kind is not wire.FrameKind.RESULT:
                 raise DriverHostError(
@@ -3179,7 +3188,9 @@ class Worker:
             outcome, verdict = _result_of(frame)
             results[index] = _with_peak(outcome, self.peak_rss()[0])
             failures[index] = verdict
-            if verdict is not None:
+            if verdict is not None and event is BatchEvent.CLEAN:
+                #  The first verdict that moves the batch size is kept: a later `encrypted` on
+                #  another unit is not evidence that the batch fitted (D657).
                 event = _event_for(verdict)
         self.touch()
         return InvokeReport(
@@ -3200,6 +3211,20 @@ class Worker:
         cancellation does not depend on the driver's cooperation, only its promptness.
         """
         self.send(wire.FrameKind.CANCEL, {"invoke_id": invoke_id, "generation": generation})
+
+    def _end(self, verdict: HostVerdict) -> None:
+        """Take the worker out of service after a verdict that ended a call. D657.
+
+        A deadline gets 04:1728's ladder, `SHUTDOWN` and the uncatchable step at +5 s, because a
+        driver that is merely slow may still exit cleanly. Everything else is killed at once: a
+        worker over `memory_mb` is still allocating, a dead one has nothing to say, and one that
+        sent `FATAL` has said its last words. Either way the worker is `stopped`, so
+        `WorkerPool.acquire` builds the next batch a fresh one with a fresh peak.
+        """
+        if verdict.failure_class is FailureClass.TIMEOUT:
+            self.stop()
+        else:
+            self.kill()
 
     def stop(self, *, grace_ms: int = KILL_GRACE_MS) -> int | None:
         """`SHUTDOWN{grace_ms}`, then the uncatchable step. Returns the exit status.
