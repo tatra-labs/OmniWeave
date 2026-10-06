@@ -11,6 +11,7 @@ sockets afterwards. The hook itself, and the whole host-to-worker conversation t
 from __future__ import annotations
 
 import hashlib
+import io
 import os
 import socket
 import subprocess  # noqa: TID251 -- two tests run a real child
@@ -27,7 +28,7 @@ from omniweave_core.errors import DriverHostError
 from omniweave_core.host import subproc as sp
 from omniweave_core.host import wire
 from omniweave_core.host import worker as wk
-from omniweave_ports.types import ArtifactRef, DriverError, FailureClass, UnitRef
+from omniweave_ports.types import ArtifactRef, DeriveScope, DriverError, FailureClass, UnitRef
 
 FIXTURES = Path(__file__).resolve().parents[3] / "omniweave-office" / "fixtures"
 OFFICE = "parse.office.anydoc"
@@ -310,7 +311,8 @@ def test_a_driver_that_raises_anything_else_is_a_driver_bug_on_that_unit(
     ("change", "detail"),
     [
         ({"card_sha256": "sha256:" + "0" * 64}, "the host's card is"),
-        ({"port": "derive/1"}, "this worker serves parse/1"),
+        ({"port": "embed/1"}, "this worker serves derive/1 and parse/1"),
+        ({"port": "derive/1"}, "card declares parse/1, and HELLO says derive/1"),
         ({"driver_id": "parse.nobody.here"}, "no installed card"),
     ],
 )
@@ -325,6 +327,83 @@ def test_a_hello_the_worker_cannot_honour_is_fatal_before_any_driver_code_runs(
     thread.join(10)
     assert box["outcome"]["status"] == 1
     assert order == [], "neither the guard nor activate() ran for a card the worker refused"
+
+
+SEGMENTER = "derive.segment.spine"
+VIEW = (
+    b'{"t":"doc","doc":"d1","sections":{"/0001":"One"},"defaults":{"sec":"/0001"}}\n'
+    b'{"t":"block","cite":"d1#1","kind":"heading","text":"One"}\n'
+    b'{"t":"block","cite":"d1#2","kind":"paragraph","text":"A paragraph."}\n'
+)
+
+
+def test_a_derive_session_answers_each_unit_with_its_graph_items(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D664: `derive/1` is served. The `INVOKE`'s `lane` reaches the driver as `DeriveScope.lane`,
+    each unit is its own call and its own `RESULT`, and a unit that is not a view is that unit's
+    `corrupt_input`, not the batch's."""
+    card = catalog().cards.get(SEGMENTER)
+    assert card is not None, "omniweave-graph is a workspace member and ships the card"
+    from omniweave_graph.segment.driver import SpineSegmenter  # noqa: PLC0415
+
+    seen: list[tuple[str, int]] = []
+    real = SpineSegmenter.derive
+
+    def recording(self: Any, scope: Any, io_obj: Any) -> Any:
+        seen.append((scope.lane, len(scope.units)))
+        return real(self, scope, io_obj)
+
+    monkeypatch.setattr(SpineSegmenter, "derive", recording)
+    host, box, thread, _order = _serve(monkeypatch)
+    host.send(
+        wire.FrameKind.HELLO,
+        _hello(tmp_path, port="derive/1", driver_id=SEGMENTER, card_sha256=card.card_sha256),
+    )
+    ack = host.next()
+    assert (ack.kind, ack.header["port"]) == (wire.FrameKind.HELLO_ACK, "derive/1")
+    cas = BlobStore(tmp_path / "cas")
+    units = []
+    for body in (VIEW, b"not a view\n"):
+        digest = cas.put(io.BytesIO(body))
+        units.append(
+            {"uri": "view", "part": "", "content_sha256": digest.hex(), "byte_len": len(body),
+             "blob_ref": format_ref(digest)}
+        )  # fmt: skip
+    host.send(
+        wire.FrameKind.INVOKE,
+        {"invoke_id": "d1", "units": units, "deadline_ms": 60_000, "budget_micros": 0,
+         "lane": "segment"},
+    )  # fmt: skip
+    first, second = host.until(wire.FrameKind.RESULT, 2)
+    assert first.header["outcome"] == "ok"
+    produced = first.header["produced"]
+    assert produced == [{"kind": "graph_items", "byte_len": len(first.body), "inline": True}]
+    assert b'"t":"segment"' in first.body
+    assert b'"blocks":["d1#1","d1#2"]' in first.body
+    assert second.header["failure_class"] == "corrupt_input"
+    assert seen == [("segment", 1), ("segment", 1)], "the lane, one unit a call"
+    host.send(wire.FrameKind.SHUTDOWN, {"grace_ms": 0})
+    thread.join(10)
+    assert box["outcome"]["status"] == 0
+
+
+def test_derive_one_refuses_a_driver_without_derive_or_a_non_result() -> None:
+    scope = DeriveScope(lane="segment", units=(), allowed_cites=frozenset())
+    with pytest.raises(DriverError, match="no derive"):
+        wk.derive_one(None, scope, None)  # type: ignore[arg-type]
+    with pytest.raises(DriverError, match="returned NoneType"):
+        wk.derive_one(lambda _scope, _io: None, scope, None)  # type: ignore[arg-type]
+
+
+def test_lane_rides_the_invoke_header_only_when_there_is_one() -> None:
+    unit = UnitRef(uri="u", part="", content_sha256="0" * 64, byte_len=1)
+    parse = sp.Invocation(invoke_id="i", units=(unit,), deadline_ms=0, budget_micros=0)
+    derive = sp.Invocation(
+        invoke_id="i", units=(unit,), deadline_ms=0, budget_micros=0, lane="segment"
+    )
+    assert "lane" not in parse.as_header()
+    assert derive.as_header()["lane"] == "segment"
 
 
 def test_a_first_frame_that_is_not_hello_is_fatal(monkeypatch: pytest.MonkeyPatch) -> None:

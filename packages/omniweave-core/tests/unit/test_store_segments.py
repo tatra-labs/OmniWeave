@@ -78,7 +78,8 @@ def memo(second: str = "The second section's only paragraph.") -> list[dict[str,
 
     The list is what makes reading order differ from 06:1002's `(page, ord)`: its items are
     `ord` 0 and 1 under the list, beside a heading and a paragraph at `ord` 0 and 1 on the page.
-    The paragraph is `inferred` and `synthetic` (a claim no clamp raises) so a Segment's minima are not every member's value.
+    The paragraph is `inferred` and `synthetic` (a claim no clamp raises) so a Segment's minima
+    are not every member's value.
     """
     cells = [
         block(f"c{r}{c}", f"r{r}c{c}", "table_cell", parent="t", cell={"r": r, "c": c})
@@ -396,3 +397,96 @@ def test_a_wrong_answer_is_refused_whole(one: Any, tmp_path: Path, damage: Any, 
     damage(frames)
     with pytest.raises(GraphError, match=says):
         decode_segments(_body(frames), view)
+
+
+# ---------------------------------------------------------------------------
+# across a process boundary
+# ---------------------------------------------------------------------------
+
+
+def test_the_segmenter_runs_in_a_real_worker_and_its_answer_is_written(
+    one: Any, tmp_path: Path
+) -> None:
+    """D664, end to end: the view goes into the CAS, `launch()` spawns a real worker for the
+    discovered `derive.segment.spine` card, one `INVOKE` with `lane = "segment"` comes back as one
+    `RESULT` whose `graph_items` rode inline, and that answer decodes, writes and verifies exactly
+    as the in-process one does."""
+    import io  # noqa: PLC0415
+    import os  # noqa: PLC0415
+    import sys  # noqa: PLC0415
+    import time  # noqa: PLC0415
+
+    from omniweave_core.blobs import format_ref  # noqa: PLC0415
+    from omniweave_core.discovery import catalog  # noqa: PLC0415
+    from omniweave_core.host import subproc as sp  # noqa: PLC0415
+
+    path, blobs, _ = one
+    card = catalog().cards["derive.segment.spine"]
+    connection = ow.connect(path)
+    try:
+        view = build_view(connection, 1, 1)
+    finally:
+        connection.close()
+    digest = blobs.put(io.BytesIO(view.body))
+    (tmp_path / "tmp").mkdir()
+    address = f"\\\\.\\pipe\\ow-test-segment-{time.monotonic_ns()}"
+    worker, _ack = sp.launch(
+        sp.WorkerKey(card.identity.id, "0" * 64),
+        sp.SpawnRequest(
+            argv=sp.worker_argv(sys.executable, address),
+            cwd=str(tmp_path),
+            env={key: os.environ[key] for key in ("SYSTEMROOT", "PATH") if key in os.environ},
+            address=address,
+        ),
+        hello={
+            "port": "derive/1",
+            "card_schema": card.card_schema,
+            "card_sha256": card.card_sha256,
+            "driver_id": card.identity.id,
+            "effective_config": {},
+            "roots": {"source_ro": str(tmp_path), "tmp": str(tmp_path / "tmp")},
+            "blob_base": str(tmp_path / "cas"),
+            "isolation_granted": {"mode": "subproc"},
+            "traceparent": "",
+            "max_output_bytes": 64 * 1_048_576,
+            "egress_mode": "granted",
+        },
+        expect={
+            "driver_id": card.identity.id, "version": card.identity.version, "port": "derive/1"
+        },
+        deadlines=sp.Deadlines(0, 60_000, 0),
+        settings=sp.HostSettings(
+            worker_idle_ttl_s=300, crash_threshold=3, crash_window_s=60, tick_ms=50,
+            max_workers={"free": 4},
+        ),
+        now_ms=lambda: time.monotonic_ns() // 1_000_000,
+        memory_mb=1024,
+    )  # fmt: skip
+    try:
+        unit = UnitRef(uri="view", part="", content_sha256=digest.hex(), byte_len=len(view.body))
+        report = worker.invoke(
+            sp.Invocation(
+                invoke_id="seg1", units=(unit,), deadline_ms=60_000, budget_micros=0,
+                blob_refs=(format_ref(digest),), lane="segment",
+            ),
+            deadlines=sp.Deadlines(15_000, 60_000, 60_000),
+            memory_mb=1024,
+        )  # fmt: skip
+    finally:
+        assert worker.stop() == 0
+    assert report.failures == (None,)
+    [result] = report.results
+    assert result is not None
+    [ref] = result.produced
+    assert (ref.kind, ref.inline is not None) == ("graph_items", True)
+    assert ref.inline == answer(view, tmp_path / "inproc"), "a worker answers as the driver does"
+    decoded = decode_segments(ref.inline, view)
+    connection = ow.connect(path)
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        written = write_segments(connection, view, SPINE, decoded, origin_operator="derive.segment")
+        connection.execute("COMMIT")
+    finally:
+        connection.close()
+    assert written.created == 4
+    assert digests_verify(path) == 4
