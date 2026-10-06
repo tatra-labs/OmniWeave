@@ -176,6 +176,7 @@ from omniweave_core.model.spans import (
     TextSpan,
 )
 from omniweave_core.store.portable import read_block
+from omniweave_core.store.sections import derive_block_sec
 from omniweave_core.store.sqlite import BATCH_WAIT_MS, StoreThread, Unit
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only.
@@ -1918,6 +1919,13 @@ class DocSink:
         if quarantined:
             _execute(connection, [self._quarantine_diag(doc, report.ok, rebound)])
         else:
+            #  `block_sec` for the generation becoming the head, in its own transaction (D660).
+            #  `derive_block_sec`'s docstring always said this pass called it; nothing did, so
+            #  every store held zero rows: the lexical scorer's spine term fell back to a block's
+            #  own score, a `sec_path_prefix` filter matched nothing, and the segmenter (W8.1)
+            #  would have had no heading path to read.
+            sections = derive_block_sec(connection, doc.doc_ord, doc.target_gen)
+            _execute(connection, [(_DIAG_INSERT, _diag_bind(row)) for row in sections.diag_rows()])
             confidence = _confidence(connection, doc.doc_ord, doc.target_gen)
             achieved = _achieved(connection, doc, confidence)
             pages = connection.execute(
