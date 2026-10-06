@@ -139,6 +139,7 @@ from omniweave.run.operators.parse import (
     ParseTally,
     is_parse,
 )
+from omniweave.run.operators.segment import SegmentOperator, SegmentPlan, is_segment
 from omniweave.run.routing import (
     RouteTally,
     max_parts_of,
@@ -1217,6 +1218,8 @@ class _Executors:
             return self._identify(batch)
         if is_parse(operator):
             return self._parse.get()(batch)
+        if is_segment(operator):
+            return self._parse.segments()(batch)
         raise NoExecutorError(operator, batch.driver)
 
     def contribution(self, row_id: int, result: StepResultView) -> Sequence[Statement]:
@@ -1241,16 +1244,32 @@ class _ParseLazily:
     lock could not reach, because it is a lock INSIDE one Operator.
     """
 
-    __slots__ = ("_args", "_guard", "_operator")
+    __slots__ = ("_args", "_guard", "_operator", "_segment")
 
     def __init__(self, *args: object) -> None:
         self._args = args
         self._operator: ParseOperator | None = None
+        self._segment: SegmentOperator | None = None
         self._guard = threading.Lock()
 
     def get(self) -> ParseOperator:
         with self._guard:
             return self._built()
+
+    def segments(self) -> SegmentOperator:
+        """The `derive.segment` Operator, on the run's one parse Operator and its one pool (D665).
+
+        A `derive.segment` row exists only because a parse settled in this store, but a resumed
+        run can claim one before any parse batch: built here on demand either way."""
+        with self._guard:
+            if self._segment is None:
+                thread, _ctx, _config, _inputs, _store, _ledger, tally, _ordinals = self._args
+                self._segment = SegmentOperator(
+                    self._built(),
+                    thread,  # type: ignore[arg-type]
+                    tally,  # type: ignore[arg-type]
+                )
+            return self._segment
 
     def _built(self) -> ParseOperator:
         if self._operator is None:
@@ -1259,6 +1278,9 @@ class _ParseLazily:
             cas_root.mkdir(parents=True, exist_ok=True)
             from omniweave_core.blobs import BlobStore  # noqa: PLC0415 -- the parse path only
 
+            routing = cast("_RoutingInputs", inputs)
+            segments, why = SegmentPlan.of(routing.catalog, routing.resolving, ctx)  # type: ignore[arg-type]
+            cast("ParseTally", tally).segment_skipped = why
             self._operator = ParseOperator(
                 thread,  # type: ignore[arg-type]
                 ctx=ctx,  # type: ignore[arg-type]
@@ -1270,6 +1292,7 @@ class _ParseLazily:
                 tally=tally,  # type: ignore[arg-type]
                 passwords=cast("_RoutingInputs", inputs).passwords,
                 ordinals=ordinals,  # type: ignore[arg-type]
+                segments=segments,
             )
         return self._operator
 

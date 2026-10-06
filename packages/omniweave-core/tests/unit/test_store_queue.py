@@ -1197,3 +1197,60 @@ def test_a_held_row_beside_its_batch_mates_is_not_picked_with_them(
     rows = store.claim(batch=8, gen=7, worker=WORKER, lease_ms=600_000)
     assert first.id not in {row.id for row in rows}
     assert len(rows) == 2
+
+
+# ---------------------------------------------------------------------------------------------
+# D665: the routing columns' pairing
+# ---------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("op.identify", "free", False, False, False, True),
+        ("op.identify", "free", True, True, True, False),
+        ("op.identify", "free", True, False, False, False),
+        ("parse.pdf", "free", True, True, True, True),
+        ("parse.pdf", "free", False, True, True, False),
+        ("parse.pdf", "free", True, False, False, False),
+        ("derive.segment", "free", False, True, True, True),
+        ("derive.segment", "billed_api", False, True, True, False),
+        ("derive.segment", "free", False, True, False, False),
+    ],
+)
+def test_a_decision_is_required_of_every_routed_row_but_a_free_derive_one(
+    owstore: Path, case: tuple[str, str, bool, bool, bool, bool]
+) -> None:
+    """06 section 1.7's `PassIdentity.decision_id` is "NULL for a free Pass", and 02:452-461 still
+    makes every parse row and every billed derive row wait for its decision. An `op.*` row carries
+    no routing column at all, and a driver never travels without its `dispatch_key`."""
+    operator, cost_class, decision, driver, dispatch, admitted = case
+    connection = ow.connect(owstore)
+    try:
+        connection.execute(_UNIT_SQL, {"uri": URI})
+        connection.execute(_EVIDENCE_SQL)
+        if decision:
+            connection.execute(
+                _DECISION_SQL, {"decision_id": "dec_x", "unit_part": "", "cost_class": cost_class}
+            )
+        params = {
+            "uri": URI,
+            "part": "",
+            "operator": operator,
+            "decision_id": "dec_x" if decision else None,
+            "driver": "derive.segment.spine" if driver else None,
+            "cost_class": cost_class,
+            "dispatch_key": "dk" if dispatch else None,
+            "status": "pending",
+            "priority": 0,
+            "attempts_total": 0,
+            "attempts_today": 0,
+            "retry_after": None,
+        }
+        if admitted:
+            connection.execute(_WORK_SQL, params)
+        else:
+            with pytest.raises(sqlite3.IntegrityError, match="CHECK"):
+                connection.execute(_WORK_SQL, params)
+    finally:
+        connection.close()

@@ -248,20 +248,21 @@ def test_the_report_names_what_was_planned_and_what_stopped_it(tmp_path: Path) -
 
 
 def test_a_row_no_executor_serves_is_refused_by_name() -> None:
-    """D578, narrowed by W7.3z: `parse.*` rows have an executor now, and a row of any other family
-    -- `derive.*`, `embed.*` -- is still refused by name, so the Supervisor's crash path holds it
-    for the reaper rather than failing it for a driver that never ran."""
+    """D578, narrowed by W7.3z and D665: `parse.*` and `derive.segment` rows have an executor now,
+    and a row of any other family -- `embed.*`, another `derive.*` -- is still refused by name, so
+    the Supervisor's crash path holds it for the reaper rather than failing it for a driver that
+    never ran."""
     executors = ingest_module._Executors.__new__(ingest_module._Executors)
     row = WorkRow(
-        id=1, unit_uri="u", unit_part="", operator="derive.segment", op_version=1,
-        cache_key="k" * 64, decision_id="d", sequence_id=None, driver="derive.segment.spine",
+        id=1, unit_uri="u", unit_part="", operator="embed.text", op_version=1,
+        cache_key="k" * 64, decision_id="d", sequence_id=None, driver="embed.text.bge",
         cost_class="free", dispatch_key="0" * 16, service=None, staged_gen=None,
         status="claimed", failure_class=None, failure_message=None, retry_after=None,
         attempts_total=1, attempts_today=1, last_attempt_at=None, stale_since=None,
         claimed_by="w", claimed_gen=1, lease_expires=0, cost_micros=0, queued_ms=0, ran_ms=0,
         peak_rss_bytes=0, priority=200,
     )  # fmt: skip
-    with pytest.raises(ingest_module.NoExecutorError, match=r"derive\.segment"):
+    with pytest.raises(ingest_module.NoExecutorError, match=r"embed\.text"):
         executors(Batch(invoke_id="i", rows=(row,)))
 
 

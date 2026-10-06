@@ -15,10 +15,10 @@ op.identify -> unit.part_count, gated by the water mark."*
 > **No `parse.pdf` work row exists yet** -- see the ordering constraint above.
 
 The ordering constraint at `02:456-461` is forced by three CHECKs rather than chosen:
-`work.decision_id REFERENCES route_decision(decision_id)`, plus
-`CHECK ((operator LIKE 'op.%') = (decision_id IS NULL))` and the two that chain `driver` and
-`dispatch_key` to it. A `parse.*` row therefore **cannot exist before its route decision does** --
-the FK has no referent and the first CHECK fails -- so the expander task runs two modules in order:
+`work.decision_id REFERENCES route_decision(decision_id)`, plus the CHECKs that pair `driver` with
+`dispatch_key`, forbid both on an `op.*` row and require a decision of every other row but a free
+`derive.*` one (D665). A `parse.*` row therefore **cannot exist before its route decision does** --
+the FK has no referent and a CHECK fails -- so the expander task runs two modules in order:
 this one, then `omniweave.plan`'s single `INSERT` *"carrying `driver`, `decision_id`,
 `dispatch_key`, `cost_class` and the recorded `cache_key` together. There is no window in which a
 routed work row is half-populated, and there is no `UPDATE work SET driver = ...` anywhere in the
@@ -168,9 +168,10 @@ __all__ = [
 OP_IDENTIFY: Final[str] = "op.identify"
 """`work.operator`. The `op.` prefix is load-bearing: it is half of a CHECK.
 
-`0004_runtime.sql` carries `CHECK ((operator LIKE 'op.%') = (decision_id IS NULL))`, so the prefix
-is not a naming convention -- it is the column the database uses to decide whether a routing triple
-is required or forbidden. `04:2580` files the five that carry it: *"core-only Operators;
+`0004_runtime.sql` carries `CHECK ((operator LIKE 'op.%') = (driver IS NULL))` and a decision is
+only ever beside a driver, so the prefix is not a naming convention -- it is the column the database
+uses to decide whether a routing triple is required or forbidden. `04:2580` files the five that
+carry it: *"core-only Operators;
 `evaluate()` never runs for them, so their `work` rows carry NULL `decision_id`, `driver` and
 `dispatch_key`."*
 """
