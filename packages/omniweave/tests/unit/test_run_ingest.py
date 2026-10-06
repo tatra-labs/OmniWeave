@@ -209,9 +209,13 @@ def test_two_first_batches_on_two_threads_build_one_parse_operator(
             pass
 
     monkeypatch.setattr(ingest_module, "ParseOperator", Slow)
+    #  D665: building the parse Operator resolves the segmenter too; this test is about the lock.
+    monkeypatch.setattr(
+        ingest_module.SegmentPlan, "of", classmethod(lambda _cls, *_args: (None, ""))
+    )
     inputs = SimpleNamespace(catalog=None, resolving=None, passwords=None)
     lazy = ingest_module._ParseLazily(
-        None, None, None, inputs, tmp_path / "i.owstore", None, None, None
+        None, None, None, inputs, tmp_path / "i.owstore", None, ingest_module.ParseTally(), None
     )
     together = threading.Barrier(2)
     got: list[object] = []

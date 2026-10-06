@@ -120,11 +120,15 @@ CREATE TABLE work (
   -- ordinary operator that materialises part rows and `op.converge` must ship before the watcher;
   -- evaluate() never runs for either. Under NOT NULL columns neither could be enqueued without
   -- FABRICATING a route_decision row, which would then pollute route_scoreboard, route_spend and
-  -- the resolution_report. The three columns are nullable TOGETHER, and the CHECKs make the pairing
-  -- structural rather than a convention (charter.md:4046-4060):
-  CHECK ((operator LIKE 'op.%') = (decision_id IS NULL)),
-  CHECK ((decision_id IS NULL)  = (driver      IS NULL)),
-  CHECK ((driver      IS NULL)  = (dispatch_key IS NULL))
+  -- the resolution_report. The CHECKs make the pairing structural rather than a convention
+  -- (charter.md:4046-4060). A FREE `derive.*` row names its driver and has NO decision: 06 section
+  -- 1.7's `PassIdentity.decision_id` is "NULL for a free Pass" (D665), so only routed rows -- every
+  -- parse row, every billed derive row -- must point at one:
+  CHECK ((operator LIKE 'op.%') = (driver IS NULL)),
+  CHECK ((driver      IS NULL)  = (dispatch_key IS NULL)),
+  CHECK (decision_id IS NULL OR driver IS NOT NULL),
+  CHECK (decision_id IS NOT NULL OR driver IS NULL
+         OR (operator LIKE 'derive.%' AND cost_class = 'free'))
   -- cost_class STAYS NOT NULL and an `op.*` row declares its own: op.identify and op.converge are
   -- 'free', op.cluster is 'local_compute'. A core-only step invokes no driver; it does not follow
   -- that it costs nothing.

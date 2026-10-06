@@ -143,6 +143,7 @@ if TYPE_CHECKING:
     from omniweave_core.store.queue import StepResultView, WorkRow
 
     from omniweave.run.dispatch import Batch
+    from omniweave.run.operators.segment import SegmentPlan
     from omniweave.run.passwords import Passwords
     from omniweave.run.pipeline import Call, Reply
 
@@ -317,19 +318,27 @@ class ParseLedger:
     before `complete()` and the caller forgets them once the commit stuck.
     """
 
-    __slots__ = ("_rows",)
+    __slots__ = ("_follow", "_rows")
 
     def __init__(self) -> None:
         self._rows: dict[int, tuple[str, int]] = {}
+        self._follow: dict[int, Statement] = {}
 
     def __len__(self) -> int:
         return len(self._rows)
 
-    def record(self, row_id: int, unit_uri: str, generation: int) -> None:
+    def record(
+        self, row_id: int, unit_uri: str, generation: int, follow: Statement | None = None
+    ) -> None:
+        """`follow` is the `derive.segment` row a settled parse enqueues (D665), committed in the
+        transaction that settles the unit or not at all."""
         self._rows[row_id] = (unit_uri, generation)
+        if follow is not None:
+            self._follow[row_id] = follow
 
     def forget(self, row_id: int) -> None:
         self._rows.pop(row_id, None)
+        self._follow.pop(row_id, None)
 
     def __call__(self, row_id: int, result: StepResultView) -> Sequence[Statement]:
         known = self._rows.get(row_id)
@@ -337,6 +346,7 @@ class ParseLedger:
             return ()
         unit_uri, generation = known
         if result.outcome in (Outcome.OK, Outcome.OK_PARTIAL):
+            follow = self._follow.get(row_id)
             return (
                 Statement(
                     participant="derived_rows",
@@ -344,6 +354,7 @@ class ParseLedger:
                     sql=SETTLED_SQL,
                     params={"unit_uri": unit_uri, "gen": generation},
                 ),
+                *(() if follow is None else (follow,)),
             )
         if result.outcome == Outcome.FAILED_PERMANENT:
             return (
@@ -376,9 +387,18 @@ class ParseTally:
     inproc: int = 0
     """Driver objects built in the host's interpreter, one per `(driver_id, config_digest)`."""
     regrouped: int = 0
+    """Units sent to a worker again in a smaller call after a memory verdict or a crash (D657)."""
     quarantined: dict[str, int] = field(default_factory=dict)
     """Units held for the next run, per driver quarantined in this one (D661)."""
-    """Units sent to a worker again in a smaller call after a memory verdict or a crash (D657)."""
+    segmented: int = 0
+    """Documents `derive.segment` wrote Segments for (D665)."""
+    segments_created: int = 0
+    segments_kept: int = 0
+    segments_retired: int = 0
+    segment_failed: Counter[str] = field(default_factory=Counter)
+    segment_skipped: str = ""
+    """Why no `derive.segment` row was enqueued this run, when none could be: `resolve()`'s
+    rejection of the segmenter. Empty when it resolved."""
 
     def emit(self, *, kind: object, fields: Mapping[str, object]) -> None:
         """`with_events`' sink. No trace sink is wired into `ow ingest` yet, so the `call.begin`
@@ -390,6 +410,23 @@ class ParseTally:
     def lines(self) -> list[str]:
         if not (self.parsed or self.failed):
             return []
+        return [*self._parse_lines(), *self._segment_lines()]
+
+    def _segment_lines(self) -> list[str]:
+        out: list[str] = []
+        if self.segmented:
+            out.append(
+                f"  segment   {self.segmented} document(s): {self.segments_created} Segment(s) "
+                f"written, {self.segments_kept} kept, {self.segments_retired} retired"
+            )
+        if self.segment_failed:
+            classes = ", ".join(f"{k} {n}" for k, n in sorted(self.segment_failed.items()))
+            out.append(f"  segment   {sum(self.segment_failed.values())} failed ({classes})")
+        if self.segment_skipped and self.parsed:
+            out.append(f"  segment   none enqueued: {self.segment_skipped}")
+        return out
+
+    def _parse_lines(self) -> list[str]:
         drivers = ", ".join(f"{name} {n}" for name, n in sorted(self.parsed.items()))
         out = [
             f"  parse     {sum(self.parsed.values())} parsed ({drivers or 'none'}), "
@@ -468,6 +505,7 @@ class ParseOperator:
         "_pool",
         "_producers",
         "_resolving",
+        "_segments",
         "_settings",
         "_sink_lock",
         "_spawn",
@@ -491,7 +529,9 @@ class ParseOperator:
         spawn: Callable[..., subproc.WorkerProcess] = subproc.spawn_worker,
         passwords: Passwords | None = None,
         ordinals: Ordinals | None = None,
+        segments: SegmentPlan | None = None,
     ) -> None:
+        self._segments = segments
         self._thread = thread
         self._ctx = ctx
         self._config = config
@@ -569,9 +609,16 @@ class ParseOperator:
                     producer=producer,
                 )
         out: list[StepResult] = []
-        for row, result in zip(batch.rows, results, strict=True):
+        for row, result, one in zip(batch.rows, results, staged, strict=True):
             assert result is not None  # noqa: S101 -- every index is staged or settled above.
-            self._ledger.record(row.id, row.unit_uri, self._ctx.generation)
+            #  D665: the ledger emits it only for a row that settles `ok`; a row refused before its
+            #  call (no `_Staged`) has no unit to segment.
+            follow = (
+                self._segments.statement(one.unit)
+                if self._segments is not None and isinstance(one, _Staged)
+                else None
+            )
+            self._ledger.record(row.id, row.unit_uri, self._ctx.generation, follow)
             out.append(result)
         return out
 
