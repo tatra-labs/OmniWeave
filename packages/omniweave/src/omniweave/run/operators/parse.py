@@ -102,6 +102,7 @@ from omniweave_core.host import keystore, subproc
 from omniweave_core.limits import MAX_ASSET_TOTAL_BYTES, MAX_ENTRY_BYTES
 from omniweave_core.model.block import Capabilities
 from omniweave_core.model.records import Producer
+from omniweave_core.observe.degradation import Degradation
 from omniweave_core.operator import Outcome, StepMetrics, StepResult
 from omniweave_core.store import sqlite as ow
 from omniweave_core.store.doc import DocSink
@@ -375,6 +376,8 @@ class ParseTally:
     inproc: int = 0
     """Driver objects built in the host's interpreter, one per `(driver_id, config_digest)`."""
     regrouped: int = 0
+    quarantined: dict[str, int] = field(default_factory=dict)
+    """Units held for the next run, per driver quarantined in this one (D661)."""
     """Units sent to a worker again in a smaller call after a memory verdict or a crash (D657)."""
 
     def emit(self, *, kind: object, fields: Mapping[str, object]) -> None:
@@ -396,6 +399,11 @@ class ParseTally:
         if self.failed:
             classes = ", ".join(f"{name} {n}" for name, n in sorted(self.failed.items()))
             out.append(f"  parse     {sum(self.failed.values())} failed ({classes})")
+        for driver, held in sorted(self.quarantined.items()):
+            out.append(
+                f"  parse     {driver} quarantined after repeated crashes; {held} unit(s) held "
+                f"for the next run"
+            )
         if self.regrouped:
             out.append(
                 f"  parse     {self.regrouped} unit(s) sent again in a smaller batch after a "
@@ -447,6 +455,7 @@ class ParseOperator:
         "_cas",
         "_catalog",
         "_config",
+        "_crash_lock",
         "_ctx",
         "_drivers",
         "_executable",
@@ -506,6 +515,7 @@ class ParseOperator:
         self._ordinals = ordinals
         self._aimd = AimdRegistry()
         self._aimd_lock = threading.Lock()
+        self._crash_lock = threading.Lock()
 
     def _now_ms(self) -> int:
         return self._ctx.clock.monotonic_ns() // 1_000_000
@@ -543,7 +553,13 @@ class ParseOperator:
         if ready:
             answers = self._answers(batch, ready, staged, granted=granted, operator=operator)
             for index in ready:
-                reply, slot = answers[index]
+                answer = answers[index]
+                if answer is None:
+                    results[index] = self._held(
+                        batch.rows[index], cast("_Staged", staged[index]).unit, producer, driver
+                    )
+                    continue
+                reply, slot = answer
                 results[index] = self._settle(
                     batch.rows[index],
                     cast("_Staged", staged[index]),
@@ -567,7 +583,7 @@ class ParseOperator:
         *,
         granted: _Granted,
         operator: str,
-    ) -> dict[int, tuple[Reply, int]]:
+    ) -> dict[int, tuple[Reply, int] | None]:
         """Each ready row's reply and its slot in it, over as many calls as that takes. **D657.**
 
         While nothing goes wrong a claimed batch is one call. Under `subproc` it is first cut to
@@ -580,6 +596,12 @@ class ParseOperator:
 
         In process there is no shared worker memory to halve and a crash is the run's (04:1826),
         so S1 makes the one call it always made.
+
+        **A crash is counted, and three in 60 s quarantine the driver for the run** (D661, 04:1720).
+        A call whose verdicts carry a crash is one `WorkerPool.note_crash`, the retry at
+        `batch = 1` included -- 15:1867's worked trace counts that retry's crash as the third.
+        From then on no call is made: every row not yet answered is `None` here and settles as
+        `Outcome.HELD`, for the next run.
         """
         key = subproc.WorkerKey(granted.card.identity.id, granted.config_digest)
         localise = granted.isolation is Isolation.SUBPROC
@@ -587,10 +609,13 @@ class ParseOperator:
         with self._aimd_lock:
             size = self._aimd.size(key, ceiling=ceiling) if localise else len(ready)
         todo = deque(Regroup(tuple(ready[i : i + size])) for i in range(0, len(ready), size))
-        answers: dict[int, tuple[Reply, int]] = {}
+        answers: dict[int, tuple[Reply, int] | None] = {}
         calls = 0
         while todo:
             group = todo.popleft()
+            if localise and self._quarantined(key.driver_id):
+                answers.update(dict.fromkeys(group.slots))
+                continue
             invoke_id = batch.invoke_id if calls == 0 else f"{batch.invoke_id}.{calls}"
             calls += 1
             reply = self._call(
@@ -609,8 +634,12 @@ class ParseOperator:
                     fix="dispatch.regroup must return calls smaller than the one they came from",
                 )
             if localise:
+                event = batch_event(failures)
                 with self._aimd_lock:
-                    self._aimd.observe(key, batch_event(failures), ceiling=ceiling)
+                    self._aimd.observe(key, event, ceiling=ceiling)
+                if event is subproc.BatchEvent.DRIVER_CRASHED:
+                    with self._crash_lock:
+                        self._pool.note_crash(key.driver_id)
             going = {slot for one in again for slot in one.slots}
             self._tally.regrouped += len(going)
             for position, index in enumerate(group.slots):
@@ -618,6 +647,46 @@ class ParseOperator:
                     answers[index] = (reply, position)
             todo.extend(again)
         return answers
+
+    def _quarantined(self, driver_id: str) -> bool:
+        with self._crash_lock:
+            return driver_id in self._pool.quarantined()
+
+    def _held(self, row: WorkRow, unit: UnitRef, producer: Producer, driver: str) -> StepResult:
+        """A row its quarantined driver never ran: `held`, and the run's one record of why.
+
+        The `Degradation(kind="quarantine")` 04:1721 asks for rides on the first held row of each
+        driver and on no other, so the manifest counts one quarantine per driver, not one per row.
+        """
+        threshold = self._settings.crash_threshold
+        window = self._settings.crash_window_s
+        why = (
+            f"{driver} crashed {threshold} times in {window} s and is quarantined for this run "
+            f"([drivers] crash_quarantine); the unit is held for the next run"
+        )
+        first = driver not in self._tally.quarantined
+        self._tally.quarantined[driver] = self._tally.quarantined.get(driver, 0) + 1
+        degradations = (
+            (
+                Degradation(
+                    kind="quarantine",
+                    message=why,
+                    wanted_driver=driver,
+                    knob="drivers.crash_quarantine",
+                    fix_command=f"ow drivers explain {driver}",
+                ),
+            )
+            if first
+            else ()
+        )
+        return StepResult(
+            outcome=Outcome.HELD,
+            unit=unit,
+            identity=producer,
+            cache_key=row.cache_key,
+            failure_message=why,
+            degradations=degradations,
+        )
 
     def _call(
         self,

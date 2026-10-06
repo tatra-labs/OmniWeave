@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D657: a memory verdict halves the batch and re-runs its units; only a unit killed alone keeps the permanent verdict
+# blessed-because: D661: Outcome gains HELD, a quarantined driver's untried unit: pending, attempt refunded, claimed_by kept, claimable by the next run and never by its holder
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -34,7 +34,7 @@ documents-frozen  5c183e17661b21cb32f59c9c90f5aa911a2bb0b7390996f508fc2f8cf5be8f
 documents-frozen  58eeb69e5ed3d40f01c4f9afc0550778a3e88efc1c728c04f87d9e8fa1f6a572  05-ingest-and-routing.md
 documents-frozen  af878d7e1a795aded61af2ef27a5834654762f52bdafefb4955d4b4c75492031  06-structure-extraction.md
 documents-frozen  339b66bb6767bb6bbe713d246accb2cb7983d849ee1e3a9044d0bcad17eb5d8c  07-store-and-retrieval.md
-documents-frozen  8ce49a72f05e3f649341613cf665ba0ef1a8131d93b9d3dfa45a8bdeb43411d2  08-runtime.md
+documents-frozen  dc88abc954743bf4fd3891e28b08825463c10f6a49f0e9464c1f0f4fdad6aeaf  08-runtime.md
 documents-frozen  eddeb4634f5da1e2b056a002a7fa6eaa43d71836633b0a44d65301ac8b2d16e4  09-generation.md
 documents-frozen  d96985003690550f4d996e31a41306d21d6a8e2e7ff34076c0ad5cff5f3cb64e  10-interfaces.md
 documents-frozen  76a694bf0b19b60ba35d2246f6b36466ca990f318f51e0a292c388ec0e78bc68  11-repo-layout.md
@@ -592,4 +592,4 @@ documents-frozen  12fc0c8d85f1154acaf955a75e91aa494cc33da25579c4b3e0e45863f2a07c
 documents-frozen  c8a782100e58dd58b26dd53cbd783ade2250631ca92cd8e7ad322044de82ba56  adr/0014-reference-corpora-and-control-arm.md
 documents-frozen  bb695279ba04a31dee3e3a386ef93c48ac64362faa86a58716083ebd9e940236  adr/0015-encrypted-pdfs-and-document-passwords.md
 documents-frozen  41b200ec6cf692f6265cc5faf822c1d501abbe84c9cadeaeb0331c7dbce5d06c  adr/README.md
-documents-frozen  b10e6890485d5b4b2d4d5e763f2af0e9c4ae522ab988162c9caf3befbe2036fb  glossary.md
+documents-frozen  3ecc0df4a90f204ca0610c9464303659d22a9dc24455b18434b5b064edee5a74  glossary.md

@@ -141,12 +141,15 @@ _ERROR_OUTCOMES: Final = ("cancelled", "failed_permanent", "failed_transient")
 
 _UNSET_OUTCOMES: Final = (
     "deferred_budget",
+    "held",
     "ok",
     "ok_partial",
     "skipped_cached",
     "skipped_unchanged",
 )
-"""The other five of `Outcome`'s eight, sorted. Everything not in `_ERROR_OUTCOMES`."""
+"""The other six of `Outcome`'s nine, sorted. Everything not in `_ERROR_OUTCOMES`. `held` (D661)
+is a quarantined driver's untried unit, held for the next run: not a failure of the unit, so not
+red, on `deferred_budget`'s reasoning."""
 
 _UNROWED_OUTCOMES: Final = ("deferred_budget", "skipped_cached", "skipped_unchanged")
 """The three `Outcome` members 15:249's status table gives no row at all.

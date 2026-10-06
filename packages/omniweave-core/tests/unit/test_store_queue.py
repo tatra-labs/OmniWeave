@@ -326,23 +326,24 @@ def test_dep_kinds_are_exactly_the_dep_check_domain(owstore: Path) -> None:
 
 
 def test_the_transition_table_carries_one_row_per_outcome_and_no_other() -> None:
-    """Eight outcomes, eight rows, same order -- 08:179-183 makes the count a rejectable PR."""
-    assert len(OUTCOMES) == 8
+    """Nine outcomes, nine rows, same order -- 08:179-183 makes the count a rejectable PR."""
+    assert len(OUTCOMES) == 9
     assert tuple(TRANSITIONS) == OUTCOMES
     assert all(TRANSITIONS[outcome].outcome == outcome for outcome in OUTCOMES)
     assert {t.status for t in TRANSITIONS.values()} <= set(WORK_STATUSES)
 
 
-def test_the_two_decrementing_outcomes_reach_the_sql_as_the_plan_prints_them() -> None:
+def test_the_three_decrementing_outcomes_reach_the_sql_as_the_plan_prints_them() -> None:
     """`DECREMENTING` is derived from the table, and `COMPLETE_SQL` is built from `DECREMENTING`.
 
-    08:116-119 prints `:outcome IN ('deferred_budget','cancelled')`. The point of deriving the
-    IN-list rather than typing it is that a change to a `Transition` row's `decrements_attempts`
+    08:116-119 prints `:outcome IN ('deferred_budget','cancelled','held')` (D661). The point of
+    deriving the IN-list rather than typing it is that a change to a `Transition` row's
+    `decrements_attempts`
     cell reaches the statement; this asserts both that the derivation is right today and that the
     statement is what carries it.
     """
-    assert DECREMENTING == ("deferred_budget", "cancelled")
-    assert COMPLETE_SQL.count("IN ('deferred_budget','cancelled')") == 2
+    assert DECREMENTING == ("deferred_budget", "cancelled", "held")
+    assert COMPLETE_SQL.count("IN ('deferred_budget','cancelled','held')") == 2
 
 
 def test_max_work_attempts_is_the_number_the_charter_prints(plan: PlanDocs) -> None:
@@ -1157,3 +1158,42 @@ def test_work_row_refuses_a_tuple_of_the_wrong_width() -> None:
     """The guard that makes the named `RETURNING` projection safe against a later migration."""
     with pytest.raises(StoreError, match="columns"):
         WorkRow.from_row((1, 2, 3))
+
+
+def test_a_held_row_is_not_claimed_back_by_its_holder_and_is_by_the_next_run(
+    owstore: Path, opened: tuple[SqliteStore, ow.StoreThread]
+) -> None:
+    """D661: `held` is a quarantined driver's untried unit. It goes back to `pending` with its
+    attempt refunded and its holder kept, so this run's claim skips it -- and skips it in `head`,
+    or a held row at the head would make the claim return nothing while other rows wait -- and the
+    next run, a new process with a new identity, takes it."""
+    store, _ = opened
+    seed(owstore, [Queued(part="p0", dispatch_key="dk-held", priority=10), Queued(part="p1")])
+    first = claim_one(store)
+    assert first.dispatch_key == "dk-held", "the higher priority is claimed first"
+    assert store.complete(first.id, 7, result("held"))
+    after = read_work(owstore, first.id)
+    assert (after["status"], after["claimed_by"], after["attempts_total"]) == ("pending", WORKER, 0)
+
+    (other,) = store.claim(batch=8, gen=7, worker=WORKER, lease_ms=600_000)
+    assert other.id != first.id, "the holder never claims its held row back"
+    assert store.complete(other.id, 7, result("ok"))
+    assert store.claim(batch=8, gen=7, worker=WORKER, lease_ms=600_000) == []
+
+    (taken,) = store.claim(batch=8, gen=8, worker="host:2:2", lease_ms=600_000)
+    assert taken.id == first.id
+    assert read_work(owstore, first.id)["claimed_by"] == "host:2:2"
+
+
+def test_a_held_row_beside_its_batch_mates_is_not_picked_with_them(
+    owstore: Path, opened: tuple[SqliteStore, ow.StoreThread]
+) -> None:
+    """D661, the picked set's half: a held row sharing its dispatch key with claimable rows is
+    left behind when the head brings that key back, not swept into the batch."""
+    store, _ = opened
+    seed(owstore, [Queued(part="p0"), Queued(part="p1"), Queued(part="p2")])
+    first = claim_one(store)
+    assert store.complete(first.id, 7, result("held"))
+    rows = store.claim(batch=8, gen=7, worker=WORKER, lease_ms=600_000)
+    assert first.id not in {row.id for row in rows}
+    assert len(rows) == 2

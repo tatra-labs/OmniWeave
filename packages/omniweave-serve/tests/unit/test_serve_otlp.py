@@ -338,19 +338,24 @@ def test_cancelled_is_an_error_and_falls_back_to_the_outcome_when_unclassified()
 
 @pytest.mark.parametrize(
     "outcome",
-    [Outcome.SKIPPED_CACHED.value, Outcome.SKIPPED_UNCHANGED.value, Outcome.DEFERRED_BUDGET.value],
+    [
+        Outcome.SKIPPED_CACHED.value,
+        Outcome.SKIPPED_UNCHANGED.value,
+        Outcome.DEFERRED_BUDGET.value,
+        Outcome.HELD.value,
+    ],
 )
-def test_the_three_outcomes_with_no_row_are_unset_and_never_red(outcome: str) -> None:
-    """D360. 15:249's table covers five of `Outcome`'s eight members. `ERROR` would paint a
-    document red for having been cached."""
+def test_the_four_outcomes_with_no_row_are_unset_and_never_red(outcome: str) -> None:
+    """D360. 15:249's table covers five of `Outcome`'s nine members. `ERROR` would paint a
+    document red for having been cached, or held for a quarantined driver (D661)."""
     assert _unit(outcome).status_code == STATUS_CODE_UNSET
 
 
 def test_every_outcome_member_maps_somewhere() -> None:
-    """The count is the assertion: a ninth member added to `Outcome` without a decision here
-    would silently take the UNSET branch."""
+    """The count is the assertion: a tenth member added to `Outcome` without a decision here
+    would silently take the UNSET branch. The ninth, `held`, was decided (D661)."""
     codes = {member.value: _unit(member.value).status_code for member in Outcome}
-    assert len(codes) == 8
+    assert len(codes) == 9
     assert set(codes.values()) == {STATUS_CODE_UNSET, STATUS_CODE_ERROR}
 
 
