@@ -1,0 +1,137 @@
+# THE DRIVERCARD for `derive.segment.spine`. Read WITHOUT importing.
+#
+# ONE KEY PER LINE -- this file is `tomllib.load`ed and `;` is not a TOML separator. An unknown
+# TOP-LEVEL table is a HARD ERROR: a card is a contract, not config.
+#
+# 04-driver-system.md section 10.1's roster row: `derive/1`, `omniweave-graph`, first_party,
+# subproc, free, shipped. 06-structure-extraction.md section 3.2 is the specification and D662 the
+# readings; the host reads its input (`owgraph-segment/1`, document form) from the store and
+# writes what it answers (`segment` frames) through `omniweave_core.store.segments` (D663).
+#
+# [cost.measured], [quality] and attestation are ABSENT: they are written by `ow conform` and author
+# values are rejected by the publish gate (DR13).
+card_schema = 1
+
+[driver]
+id = "derive.segment.spine"
+port = "derive/1"
+version = "0.1.0"
+schema_version = 1                 # THE ONLY DRIVER VERSION IN A CACHE KEY, and an input to every
+                                   #   segment.content_digest (06:1002): bump it only with the
+                                   #   segment_recipe it implies.
+entrypoint = "omniweave_graph.segment.driver:SpineSegmenter"
+granularity = "document"           # One document view in, that document's Segments out.
+replay_class = "byte_exact"        # Arithmetic over the view's text: no model, no clock, no network.
+title = "Heading-scoped, table-atomic Segments (stdlib)"
+summary = "The one segmenter: zero-overlap, block-aligned Segments at a 1,200-token target under a 2,048 ceiling and 511 blocks, tables in whole rows."
+
+[capability]
+consumes = []                      # The host's own view over committed blocks, which no driver
+                                   #   produces; the closed artifact-kind vocabulary has no member
+                                   #   for it, and inventing one would bump card_schema.
+produces = ["graph_items"]
+
+[capability.derive]
+items = ["segment"]                # The one item kind it emits, as a `segment` frame (D662).
+grounding = "none"                 # A Segment is membership by cite, never a span or a quote.
+relations = "none"
+schema = "none"
+confidence = "none"
+coreference = false
+scripts = []
+scope_honoured = true              # Every cite it names is one the view handed it; the host
+                                   #   refuses any other (`decode_segments`, D663).
+
+[derive]
+implemented = true
+phase = 10                         # Lowest of the free passes: it creates the unit every other
+                                   #   Pass is billed against (06:825, 08:2035).
+max_items_per_segment = 2048       # Clamped by MAX_ITEMS_PER_SEGMENT; the segmenter emits one item
+                                   #   per Segment, so the bound never binds.
+
+[hardware]
+gpu            = "none"
+vram_gb_min    = 0
+ram_gb_min     = 0.25              # One document's text and its Block records.
+cpu_arch       = ["x86_64", "aarch64"]
+os             = ["linux", "darwin", "windows"]
+needs_network  = false
+needs_binaries = []
+imports_torch  = false
+install_bytes  = 60000             # This package's Python. No dependency beyond omniweave-ports.
+services       = []
+
+[isolation]
+requires        = "subproc"        # 04 section 10.1's `iso` column.
+memory_mb       = 1024             # A 4M-cell sheet is 4M Block records in the worker (D662).
+progress_ms     = 15000
+wall_ms_hard    = 120000
+batch_max_units = 16
+
+[limits]
+max_input_bytes = 134217728        # 128 MiB, the HOST_MAX. A 4M-cell sheet's view is larger, and is
+                                   #   refused host-side before INVOKE (DR20) -- recorded in D664.
+max_parts       = 1                # A document is one view.
+
+[licence.code]
+spdx = "Apache-2.0"
+redistribution = "allowed"
+output_share_alike = false
+competitor_bar = false
+requires_credential = false
+revenue_gate_usd = 0
+mau_gate = 0
+territory_excluded = []
+field_of_use_excluded = []
+attribution_per_output = false
+no_model_training = false
+remote_kill_switch = false
+clause_refs = []
+
+[deps]
+pins = []                          # The standard library and omniweave-ports only.
+
+[config]
+type = "object"
+additionalProperties = false
+required = []
+[config.properties.target_tokens]
+type = "integer"
+minimum = 1
+maximum = 2048
+default = 1200
+[config.properties.max_tokens]
+type = "integer"
+minimum = 1
+maximum = 2048
+default = 2048
+[config.properties.max_blocks]
+type = "integer"
+minimum = 2
+maximum = 512
+default = 512
+[config.properties.table_tokens]
+type = "integer"
+minimum = 1
+maximum = 2048
+default = 400
+[config.properties.table_max_segments]
+type = "integer"
+minimum = 1
+maximum = 32
+default = 32
+[config.properties.table_synopsis_cells]
+type = "integer"
+minimum = 1
+maximum = 20000
+default = 20000
+
+[cost.model]
+class   = "free"
+shape   = "linear_per_byte"
+unit    = "document"
+per_part    = { wall_ms = 1 }      # 100,000 paragraphs segment in ~50 ms (D662).
+per_session = { }
+scaling     = { key = "input_bytes", exponent = 1.0, reference = 65536 }
+tokens_out_p95_multiple = 1.0
+max_retries = 0                    # Retry is the runtime's, with the runtime's budget and ledger.
