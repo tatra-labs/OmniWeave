@@ -1812,3 +1812,44 @@ def test_the_generations_must_be_named_older_first(harness: Harness) -> None:
         _diff(harness, from_gen=2, to_gen=1)
     explicit = _diff(harness, from_gen=1, to_gen=2)
     assert (explicit.from_gen, explicit.to_gen) == (1, 2)
+
+
+class _NoScan(list):  # type: ignore[type-arg]
+    """A page's block list that refuses to be walked while `armed`. D658."""
+
+    armed = False
+
+    def __iter__(self) -> Any:
+        assert not self.armed, "the open page's blocks were scanned to add one block"
+        return super().__iter__()
+
+    def __reversed__(self) -> Any:
+        assert not self.armed, "the open page's blocks were scanned to add one block"
+        return super().__reversed__()
+
+
+def test_adding_a_block_or_its_marks_never_walks_the_open_page(harness: Harness) -> None:
+    """D658: the parent and a mark's block are found by id, not by scanning the page.
+
+    The scan was linear in the page, and a 20,000-row sheet is one table of 320,000 blocks on one
+    page, every cell a child of the same table: `ow add` over it spent 17 minutes, 87% of them in
+    `_same_page_parent`, against 55 s with the lookup. A timing test would be flaky; this asserts
+    the property instead -- 500 children and their marks are added with the page's list armed to
+    refuse any walk, and only `end_page`, which is one pass by design, may walk it."""
+    with open_store(harness) as thread:
+        writer = sink(harness, thread)
+        writer.begin_doc(doc_record())
+        writer.begin_page(page_record(0))
+        root = writer.add_block(root_draft())
+        page = writer._page
+        assert page is not None
+        guarded = _NoScan(page.blocks)
+        page.blocks = guarded
+        guarded.armed = True
+        for n in range(500):
+            child = writer.add_block(text_draft(root, Kind.PARAGRAPH, f"row {n}"))
+            writer.add_marks(child, [Mark(a=0, b=3, kind="bold")])
+        guarded.armed = False
+        writer.end_page({"blocks": 501})
+        writer.end_doc("ok")
+    assert counts(harness, "block", "mark") == {"block": 501, "mark": 500}
