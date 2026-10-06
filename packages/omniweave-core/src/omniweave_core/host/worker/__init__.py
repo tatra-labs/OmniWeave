@@ -67,6 +67,7 @@ from typing import TYPE_CHECKING, BinaryIO, Final
 
 from omniweave_ports.types import (
     ArtifactRef,
+    DeriveScope,
     DriverError,
     DriverIO,
     DriverResult,
@@ -95,6 +96,7 @@ __all__ = [
     "Session",
     "WorkerBlobs",
     "WorkerIO",
+    "derive_one",
     "egress_refusal",
     "install_egress_guard",
     "main",
@@ -104,10 +106,18 @@ __all__ = [
     "serve",
 ]
 
-PORTS_SERVED: Final[frozenset[str]] = frozenset({"parse/1"})
-"""The ports this bootstrap can dispatch. `parse/1` alone, and a card on another port is refused at
-`HELLO` rather than half-served: `acquire/1`, `derive/1` and `embed/1` each take a different input
-type through a different method, and each lands with the cell that routes to it."""
+PORTS_SERVED: Final[frozenset[str]] = frozenset({"parse/1", "derive/1"})
+"""The ports this bootstrap can dispatch. `parse/1`, and `derive/1` since D664 brought the first
+derive card (`derive.segment.spine`); a card on another port is refused at `HELLO` rather than
+half-served: `acquire/1` and `embed/1` each take a different input type through a different method,
+and each lands with the cell that routes to it.
+
+**A `derive/1` unit is one `DeriveScope`.** The `INVOKE` header's `lane` (`subproc.Invocation.lane`)
+names the lane and each unit is called alone, `derive(DeriveScope(lane, (unit,), frozenset()), io)`,
+so one `RESULT` per unit holds as it does for `parse/1`. `allowed_cites` is empty on the wire: the
+segmenter is the only derive driver, it reads the cites it may name from the view its unit is, and
+the host checks every one it answers (`store.segments.decode_segments`). A Pass that needs the set
+in hand carries it when it lands."""
 
 EGRESS_EVENTS: Final[frozenset[str]] = frozenset({"socket.connect", "socket.getaddrinfo"})
 """The PEP 578 events the armed hook refuses. 14:842 names `socket.connect`; `getaddrinfo` is the
@@ -323,19 +333,24 @@ class WorkerIO(DriverIO):
 # =============================================================================================
 
 
+_BODY_KINDS: Final = frozenset({"doc_fragment", "graph_items"})
+"""The artefact kinds that may ride in a `RESULT`'s body: each port's own answer."""
+
+
 def produced_header(
     produced: Sequence[ArtifactRef], blobs: WorkerBlobs
 ) -> tuple[list[dict[str, object]], bytes]:
     """`produced` as header entries plus the ONE inline body. The module docstring's rule.
 
-    The first inline `doc_fragment` keeps its place in the body; every other inline ref is put in
-    the CAS first. Order is preserved: the host rebuilds `produced` in this order, and the office
-    driver's asset records name their refs by position.
+    The first inline `doc_fragment` or `graph_items` -- the port's own answer, `parse/1`'s or
+    `derive/1`'s (D664) -- keeps its place in the body; every other inline ref is put in the CAS
+    first. Order is preserved: the host rebuilds `produced` in this order, and the office driver's
+    asset records name their refs by position.
     """
     entries: list[dict[str, object]] = []
     body = b""
     for ref in produced:
-        if ref.inline is not None and not body and ref.kind == "doc_fragment":
+        if ref.inline is not None and not body and ref.kind in _BODY_KINDS:
             body = ref.inline
             entries.append({"kind": ref.kind, "byte_len": ref.byte_len, "inline": True})
             continue
@@ -494,11 +509,19 @@ def _card(session: Session, find_card: Callable[[str], DriverCard | None] | None
     bytes, and `card_sha256` is how that is known rather than assumed (04:1696's mismatch row).
     """
     if session.port not in PORTS_SERVED:
-        raise _refuse(f"{session.driver_id} is a {session.port} driver; this worker serves parse/1")
+        served = " and ".join(sorted(PORTS_SERVED))
+        raise _refuse(
+            f"{session.driver_id} is a {session.port} driver; this worker serves {served}"
+        )
     lookup = find_card or _catalog_card
     card = lookup(session.driver_id)
     if card is None:
         raise _refuse(f"no installed card has id {session.driver_id!r}")
+    declared = f"{card.identity.port.value}/{card.identity.port_major}"
+    if declared != session.port:
+        raise _refuse(
+            f"{session.driver_id}'s card declares {declared}, and HELLO says {session.port}"
+        )
     if card.card_sha256 != session.card_sha256:
         raise DriverHostError(
             f"{session.driver_id}: the host's card is {session.card_sha256} and this worker's is "
@@ -564,7 +587,12 @@ def _invoke(
     units = _units(frame.header)
     aliases = {unit.content_sha256: blob for unit, blob in units if blob is not None}
     blobs = WorkerBlobs(cas, aliases)
-    parse = getattr(driver, "parse", None)
+    lane = frame.header.get("lane")
+    call = (
+        _derive_call(driver, str(lane or ""))
+        if session.port == "derive/1"
+        else _parse_call(getattr(driver, "parse", None))
+    )
     for index, (unit, _blob) in enumerate(units):
         scratch = Path(session.tmp) / invoke_id / str(index)
         scratch.mkdir(parents=True, exist_ok=True)
@@ -577,7 +605,7 @@ def _invoke(
         _CALLS[io_obj] = _Call(send=wired.send, invoke_id=invoke_id, unit_index=index)
         body = b""
         try:
-            result = parse_one(parse, unit, io_obj)
+            result = call(unit, io_obj)
             entries, body = produced_header(result.produced, blobs)
             header = result_header(invoke_id, index, result, entries)
         except DriverError as error:
@@ -592,6 +620,30 @@ def _invoke(
             shutil.rmtree(scratch, ignore_errors=True)
         wired.send(wire.FrameKind.RESULT, header, body)
     shutil.rmtree(Path(session.tmp) / invoke_id, ignore_errors=True)
+
+
+def _parse_call(parse: object) -> Callable[[UnitRef, DriverIO], DriverResult]:
+    return lambda unit, io_obj: parse_one(parse, unit, io_obj)
+
+
+def _derive_call(driver: object, lane: str) -> Callable[[UnitRef, DriverIO], DriverResult]:
+    derive = getattr(driver, "derive", None)
+    return lambda unit, io_obj: derive_one(
+        derive, DeriveScope(lane=lane, units=(unit,), allowed_cites=frozenset()), io_obj
+    )
+
+
+def derive_one(derive: object, scope: DeriveScope, io_obj: DriverIO) -> DriverResult:
+    """`derive(scope, io)`; anything but a `DriverResult` is the driver's bug, as `parse_one`."""
+    if not callable(derive):
+        raise DriverError(cls=FailureClass.DRIVER_BUG, message="the driver has no derive()")
+    result = derive(scope, io_obj)
+    if not isinstance(result, DriverResult):
+        raise DriverError(
+            cls=FailureClass.DRIVER_BUG,
+            message=f"derive() returned {type(result).__name__}, not a DriverResult",
+        )
+    return result
 
 
 def parse_one(parse: object, unit: UnitRef, io_obj: DriverIO) -> DriverResult:

@@ -2773,6 +2773,9 @@ class Invocation:
     body: bytes = b""
     inline_unit_index: int | None = None
     blob_refs: tuple[str | None, ...] = ()
+    lane: str | None = None
+    """`DeriveScope.lane` for a `derive/1` call (D664); `None`, and absent from the header, for
+    every other port."""
 
     def __post_init__(self) -> None:
         if self.blob_refs and len(self.blob_refs) != len(self.units):
@@ -2848,6 +2851,7 @@ class Invocation:
             "deadline_ms": self.deadline_ms,
             "budget_micros": self.budget_micros,
             "inline_unit_index": self.inline_unit_index,
+            **({"lane": self.lane} if self.lane is not None else {}),
         }
 
 
