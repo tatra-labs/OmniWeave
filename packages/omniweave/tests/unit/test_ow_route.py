@@ -73,14 +73,15 @@ def test_the_registry_it_builds_is_the_day_one_fifty_three() -> None:
     assert "layout.class_hist" not in keys
 
 
-def test_the_cards_it_finds_are_the_four_first_party_parse_drivers() -> None:
+def test_the_cards_it_finds_are_the_five_first_party_drivers() -> None:
     """W5.6 added the third. Before it, checks 9, 11 and 13 all deferred on `parse.page.olmocr`
     and the linter reported six undecidables; with the card on disk it reports three, and none of
     the three is olmocr's. D646 added the fourth, `parse.text.builtin`, whose card is one package
     deeper than the others (`omniweave_office/text/`), and the conformance kit's template card is
-    still not a driver."""
+    still not a driver. D664 added the fifth and first `derive/1` card, `derive.segment.spine`."""
     cards = tool.installed_cards()
     assert sorted(cards) == [
+        "derive.segment.spine",
         "parse.office.anydoc",
         "parse.page.olmocr",
         "parse.pdf.pdfium",

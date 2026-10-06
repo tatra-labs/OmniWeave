@@ -15,6 +15,12 @@ dependencies = [
   # NO THIRD PARTY. 11-repo-layout.md section 1.2.
 ]
 
+# THE ENTRY POINT. A DOTTED PACKAGE naming the package that holds `driver.toml`, which discovery
+# reads WITHOUT IMPORTING (11-repo-layout.md section 1.5). One package per driver, as
+# omniweave_office.text is: the seven passes will be seven keys here.
+[project.entry-points."omniweave.drivers"]
+"derive.segment.spine" = "omniweave_graph.segment"
+
 # The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
 [tool.hatch.build.targets.wheel]
 packages = ["src/omniweave_graph"]
