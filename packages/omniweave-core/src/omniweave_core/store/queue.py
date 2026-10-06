@@ -580,9 +580,9 @@ class SqliteStore:
         transition = TRANSITIONS.get(result.outcome)
         if transition is None:
             raise StoreError(
-                f"outcome {result.outcome!r} is not one of the eight the transition table "
+                f"outcome {result.outcome!r} is not one of the nine the transition table "
                 f"specifies: {OUTCOMES}",
-                fix="return one of the eight Outcome members from 08-runtime.md section 1.3",
+                fix="return one of the nine Outcome members from 08-runtime.md section 1.3",
             )
         metrics = result.metrics
         plan: list[Statement] = []
@@ -629,7 +629,7 @@ class SqliteStore:
         same row. Zero rows rolls the whole transaction back (charter.md:4105), which is why the
         signal out of the closure is a raise.
 
-        Every other refusal is an `OwError`: an `outcome` outside the eight, a `dep` kind outside
+        Every other refusal is an `OwError`: an `outcome` outside the nine, a `dep` kind outside
         `DEP_KINDS`, a dep key outside the invocation's input set, more than `MAX_DEPS_PER_UNIT`
         deps, and a `row_id` that names no `work` row at all. The last is worth naming: the
         charter's comment collapses it into superseded (*"ZERO ROWS => SUPERSEDED"*), but a comment

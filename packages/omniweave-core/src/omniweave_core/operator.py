@@ -276,18 +276,18 @@ class ServiceRegistryView(Protocol):
 
 
 # ---------------------------------------------------------------------------------------------
-# 3. `Outcome` -- eight members, and the count is load-bearing.
+# 3. `Outcome` -- nine members, and the count is load-bearing.
 # ---------------------------------------------------------------------------------------------
 
 
 class Outcome(StrEnum):
     """What the runner produced. 08:189-198, names, values and order verbatim.
 
-    **Eight, and the count is the specification** (08:179-183): *"`Store.complete(row_id, gen,
+    **Nine, and the count is the specification** (08:179-183): *"`Store.complete(row_id, gen,
     result: StepResult) -> bool` is typed against this block, and adding or removing a member is one
     edit to this enum **and** to section 1.2's transition table in the same change -- that table is
     the specification, and a member with no row in it is a rejectable PR."* `omniweave_core.work`
-    holds that table as `TRANSITIONS` and its eight `OUTCOMES` strings; `test_operator.py` asserts
+    holds that table as `TRANSITIONS` and its nine `OUTCOMES` strings; `test_operator.py` asserts
     this enum and those two agree, in both directions, which is what makes the rejectable PR a
     failing test instead of a reviewer's memory.
 
@@ -296,7 +296,7 @@ class Outcome(StrEnum):
     home that sentence forbids"*; a `StrEnum` member compares and binds equal to its value, so every
     check in that module accepts these members unchanged, and the `work` table stores the value.
 
-    Two of the eight are **not failures** and the distinction is load-bearing twice over.
+    Two of the nine are **not failures** and the distinction is load-bearing twice over.
     `DEFERRED_BUDGET` is 08:695's *"NOT a failure"* -- a deferred row keeps its attempt count, drops
     to priority -100 and is swept by the deferred sweeper, so a permanently-exhausted budget costs
     one probe per 30 minutes instead of a hot loop. `CANCELLED` has **two** producers, this enum's
@@ -319,6 +319,11 @@ class Outcome(StrEnum):
     """`deferred_dim` required; **NOT a failure**."""
     CANCELLED = "cancelled"
     """A `CancelToken`, or a superseded generation."""
+    HELD = "held"
+    """A unit a quarantined driver never ran: `pending` again, its attempt refunded, and claimable
+    by the next run but never by the run that held it (D661). 04:1720's quarantine is *"the
+    **driver** -- not the unit -- for the run"*, so the unit has done nothing that should cost it an
+    attempt, and nothing about it should stop a later run taking it."""
 
 
 # ---------------------------------------------------------------------------------------------

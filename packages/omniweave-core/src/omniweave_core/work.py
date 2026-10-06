@@ -212,8 +212,9 @@ OUTCOMES: Final[tuple[str, ...]] = (
     "failed_permanent",
     "deferred_budget",
     "cancelled",
+    "held",
 )
-"""The eight `Outcome` wire values, in 08:190-198's printed order.
+"""The nine `Outcome` wire values, in 08:190-198's printed order (`held` is D661's).
 
 **`Outcome` the `StrEnum` is NOT minted here.** 08:177-179 is explicit that its own block is *"the
 sole home of `Outcome`, `StepMetrics` and `StepResult`"* and 18-api-sketch.md:844 homes all three in
@@ -222,9 +223,9 @@ What the queue needs is the DOMAIN and the transition, and a tuple plus `TRANSIT
 that. A `StrEnum` member compares and binds equal to its value, so P4's real `Outcome` satisfies
 every check in this module the day `operator.py` lands.
 
-**Eight, and the count is load-bearing** (08:179-183): *"adding or removing a member is one edit to
+**Nine, and the count is load-bearing** (08:179-183): *"adding or removing a member is one edit to
 this enum **and** to section 1.2's transition table in the same change -- that table is the
-specification, and a member with no row in it is a rejectable PR."* `TRANSITIONS` has eight keys and
+specification, and a member with no row in it is a rejectable PR."* `TRANSITIONS` has nine keys and
 `test_work.py` asserts the two agree, in both directions.
 """
 
@@ -306,6 +307,15 @@ TRANSITIONS: Final[Mapping[str, Transition]] = MappingProxyType(
                 "via deferred_sweeper",
             ),
             Transition("cancelled", "pending", True, False, "released", "null", "immediately"),
+            Transition(
+                "held",
+                "pending",
+                True,
+                False,
+                "released",
+                "null",
+                "by the next run, not its holder",
+            ),
         )
     }
 )
@@ -1002,7 +1012,7 @@ WITH head AS (
   SELECT dispatch_key FROM work
    WHERE status IN ('pending','failed_transient')
      AND (retry_after IS NULL OR retry_after <= {STORE_NOW_MS})
-     AND attempts_total < {MAX_WORK_ATTEMPTS}
+     AND attempts_total < {MAX_WORK_ATTEMPTS} AND claimed_by IS NOT :worker
    ORDER BY priority DESC, dispatch_key, id LIMIT 1)
 UPDATE work SET
   status='claimed', claimed_by=:worker, claimed_gen=:gen,
@@ -1014,7 +1024,7 @@ UPDATE work SET
 WHERE id IN (SELECT w.id FROM work w JOIN head h ON w.dispatch_key IS h.dispatch_key
               WHERE w.status IN ('pending','failed_transient')
                 AND (w.retry_after IS NULL OR w.retry_after <= {STORE_NOW_MS})
-                AND w.attempts_total < {MAX_WORK_ATTEMPTS}
+                AND w.attempts_total < {MAX_WORK_ATTEMPTS} AND w.claimed_by IS NOT :worker
               ORDER BY w.priority DESC, w.id
               LIMIT IFNULL(
                 (SELECT CASE WHEN dispatch_key IS NULL THEN 1 ELSE :batch END FROM head), 0))
@@ -1047,6 +1057,12 @@ CTE is empty, the scalar subquery is NULL, and **SQLite raises `datatype mismatc
 
 **(c) `RETURNING` the named columns rather than `*`** -- `WORK_COLUMNS`' docstring.
 
+**(d) `claimed_by IS NOT :worker`, in `head` and in the picked set** (D661). A claimable row has
+`claimed_by` NULL except after `held`, which keeps its holder (`COMPLETE_SQL`), so the clause
+excludes exactly the rows this process held for a quarantined driver. It is in `head` too because a
+held row chosen as the head would pick nothing, and a polling claim that returns nothing is how a
+claimer decides the queue is empty.
+
 Everything else is the charter's, including the two properties it is shaped for. `ORDER BY priority
 DESC, dispatch_key, id` in `head` and `ORDER BY w.priority DESC, w.id` in the picked set are why
 *"priority survives batching"* (08:625-627) is a property and not a hope. `unixepoch('subsec')*1000`
@@ -1076,7 +1092,8 @@ UPDATE work SET
                              THEN MAX(0, attempts_today - 1) ELSE attempts_today END,
        retry_after = CASE WHEN :retry_after_ms IS NULL THEN NULL
                           ELSE {STORE_NOW_MS} + :retry_after_ms END,
-       claimed_by = NULL, claimed_gen = NULL, lease_expires = NULL,
+       claimed_by = CASE WHEN :outcome = 'held' THEN claimed_by END,
+       claimed_gen = NULL, lease_expires = NULL,
        cost_micros = cost_micros + :micros,
        queued_ms = :queued_ms, ran_ms = :ran_ms,
        peak_rss_bytes = MAX(peak_rss_bytes, :peak_rss_bytes),
@@ -1094,12 +1111,17 @@ actually keyed on -- `StepResult.cache_key`, *"sha256_canonical hex, 64 chars, f
 
 `retry_after` is computed from the STORE clock plus the caller's offset (08:597), which is why the
 `CASE` adds `:retry_after_ms` to `unixepoch('subsec')*1000` rather than binding a timestamp. NULL in
-gives NULL out, which is seven of the eight transitions. The offset a caller binds is
+gives NULL out, which is eight of the nine transitions. The offset a caller binds is
 `escalate(attempts_total, failure.cooldown_ms)`, so the ladder and the statement meet here and
 nowhere else.
 
 The `WHERE` clause is the commit predicate, printed identically at charter.md:4104 and 02:487.
 Zero rows means superseded and nothing else.
+
+**`held` keeps `claimed_by`** (D661), and it is the one transition that does: the holder's
+identity is what `CLAIM_SQL`'s `claimed_by IS NOT :worker` reads, so the run that held a row does
+not claim it straight back, and the next run -- a new process, so a new identity -- does. On every
+other transition the column is cleared, as 08:120 prints it.
 """
 
 COST_CLASS_SQL: Final = "SELECT cost_class FROM work WHERE id = :id"
