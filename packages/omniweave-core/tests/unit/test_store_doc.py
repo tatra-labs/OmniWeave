@@ -1853,3 +1853,24 @@ def test_adding_a_block_or_its_marks_never_walks_the_open_page(harness: Harness)
         writer.end_page({"blocks": 501})
         writer.end_doc("ok")
     assert counts(harness, "block", "mark") == {"block": 501, "mark": 500}
+
+
+def test_end_doc_derives_block_sec_for_the_generation_it_commits(harness: Harness) -> None:
+    """D660: `derive_block_sec`'s docstring said `end_doc` called it and nothing did, so every
+    store held zero `block_sec` rows -- the lexical scorer's spine term flat, a section-prefix
+    filter empty, and nothing for the segmenter to read. The committed generation now has a row
+    per block, the heading opens a section, and what follows it sits inside that section."""
+    written = write_happy_path(harness)
+    blocks = read(
+        harness,
+        "SELECT count(*) FROM block WHERE doc_ord = ? AND gen = ?",
+        (written.record.doc_ord, written.record.gen),
+    )[0][0]
+    query = "SELECT block_id, sec_id, sec_path FROM block_sec"
+    rows = {block_id: (sec_id, sec_path) for block_id, sec_id, sec_path in read(harness, query)}
+    assert len(rows) == blocks, rows
+    heading = int(written.heading)
+    assert rows[heading][0] == heading, "a section's defining block names itself"
+    for inside in (written.table, written.paragraph, *written.cells):
+        assert rows[int(inside)][0] == heading, (int(inside), rows)
+        assert rows[int(inside)][1].startswith(rows[heading][1]), rows
