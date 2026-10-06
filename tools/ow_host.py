@@ -761,16 +761,21 @@ def _quarantine(settings: sp.HostSettings, emit: Emit) -> Observation:
 
 
 def _silent(settings: sp.HostSettings, emit: Emit) -> Observation:
-    """A driver that says nothing: `TIMEOUT`, `limit = "progress_ms"`, and then the reap."""
+    """A driver that says nothing: `TIMEOUT`, `limit = "progress_ms"`, and then the reap.
+
+    The reap is the call's own since D657 -- `Worker.invoke` ends a worker whose call a verdict
+    ended, `SHUTDOWN` and the uncatchable step at +5 s for a deadline -- so the job's holding of
+    the child is read before the call, and the worker's state after it."""
     live = cycle("silent", settings=settings, tag="silent", emit=emit)
+    pids_before = live.job.pids()
     started = _now_ms()
     try:
         report = live.worker.invoke(
             _invocation("silent"),
             deadlines=sp.Deadlines(progress_ms=600, wall_ms_hard=30_000, deadline_ms=0),
         )
+        ended = live.worker.stopped
     finally:
-        pids_before = live.job.pids()
         live.worker.kill()
         live.listener.close()
     elapsed = _now_ms() - started
@@ -799,6 +804,11 @@ def _silent(settings: sp.HostSettings, emit: Emit) -> Observation:
                 "the job held the child before the reap (04:1728's process group)",
                 live.process.pid in pids_before,
                 f"job pids {pids_before}, child {live.process.pid}",
+            ),
+            Check(
+                "the call that timed out ended the worker (D657)",
+                ended,
+                f"stopped={ended}",
             ),
             Check(
                 "the child is gone after TerminateJobObject",

@@ -324,9 +324,11 @@ def report_inproc(result: object, out: TextIO) -> None:
             ceiling = row[0] * (1 + row[1] / 100)
             verdict = "under" if worker.peak_rss <= ceiling else "OVER: FORK-TRIGGER.md clause 2"
             if worker.done < worker.rows:
+                unsettled = worker.rows - worker.done
                 verdict += (
-                    f"; {worker.rows - worker.done} rows did not settle, and a worker the card's"
-                    " memory_mb killed reads under any higher ceiling (D656)"
+                    f"; {unsettled} row{'' if unsettled == 1 else 's'} did not settle, and a row"
+                    " the card's memory_mb refused carries no peak, so it reads under any higher"
+                    " ceiling (D656, D657)"
                 )
             print(
                 f"  {'':<{len(OFFICE_200_ROW)}}  ceiling {ceiling / 2**20:.0f} MiB"
