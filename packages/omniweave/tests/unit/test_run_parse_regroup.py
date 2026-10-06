@@ -20,14 +20,23 @@ from omniweave.run.operators import parse as parse_module
 from omniweave.run.operators.parse import ParseOperator, ParseTally
 from omniweave.run.pipeline import Reply
 from omniweave_core.errors import RouteError
-from omniweave_core.host.subproc import BatchEvent, HostVerdict, InvokeReport, WorkerKey
+from omniweave_core.host.subproc import (
+    BatchEvent,
+    HostSettings,
+    HostVerdict,
+    InvokeReport,
+    WorkerKey,
+    WorkerPool,
+)
+from omniweave_core.model.records import Producer
 from omniweave_core.operator import Outcome
-from omniweave_ports.types import DriverResult, Isolation
+from omniweave_ports.types import DriverResult, Isolation, UnitRef
 
 DRIVER = "parse.office.anydoc"
 DIGEST = "0" * 64
 KEY = WorkerKey(DRIVER, DIGEST)
 OOM = HostVerdict.over_memory(observed_bytes=2 * 2**30, cap_mb=1024)
+CRASH = HostVerdict.crashed(exit_status=3, stderr_tail=b"")
 OK = DriverResult(outcome="ok", produced=())
 
 
@@ -36,9 +45,16 @@ class _Worker:
 
     Set on the class as `_call`, and an instance is not a descriptor: no operator is passed."""
 
-    def __init__(self, *, large: frozenset[int] = frozenset(), huge: frozenset[int] = frozenset()):
+    def __init__(
+        self,
+        *,
+        large: frozenset[int] = frozenset(),
+        huge: frozenset[int] = frozenset(),
+        poison: frozenset[int] = frozenset(),
+    ):
         self.large = large
         self.huge = huge
+        self.poison = poison
         self.calls: list[tuple[str, tuple[int, ...]]] = []
 
     def __call__(
@@ -55,16 +71,20 @@ class _Worker:
         self.calls.append((invoke_id, tuple(slots)))
         results: list[DriverResult | None] = []
         failures: list[HostVerdict | None] = []
-        killed = False
+        killed = crashed = False
         for slot in slots:
+            crashed = crashed or slot in self.poison
             killed = killed or slot in self.huge or (slot in self.large and len(slots) > 1)
-            results.append(None if killed else OK)
-            failures.append(OOM if killed else None)
-        report = InvokeReport(
-            results=tuple(results),
-            failures=tuple(failures),
-            event=BatchEvent.RESOURCE_LIMIT if killed else BatchEvent.CLEAN,
+            results.append(None if killed or crashed else OK)
+            failures.append(CRASH if crashed else OOM if killed else None)
+        event = (
+            BatchEvent.DRIVER_CRASHED
+            if crashed
+            else BatchEvent.RESOURCE_LIMIT
+            if killed
+            else BatchEvent.CLEAN
         )
+        report = InvokeReport(results=tuple(results), failures=tuple(failures), event=event)
         outcomes = tuple(
             Outcome.OK if one is None else Outcome.FAILED_PERMANENT for one in failures
         )
@@ -78,7 +98,19 @@ def _operator(monkeypatch: pytest.MonkeyPatch, worker: _Worker, *, ceiling: int 
     operator._aimd = AimdRegistry()
     operator._aimd_lock = threading.Lock()
     operator._tally = ParseTally()
+    operator._settings = SETTINGS
+    operator._pool = WorkerPool(spawn=_no_spawn, settings=SETTINGS, now_ms=lambda: 0)
+    operator._crash_lock = threading.Lock()
     return operator
+
+
+SETTINGS = HostSettings(
+    worker_idle_ttl_s=300, crash_threshold=3, crash_window_s=60, tick_ms=50, max_workers={"free": 4}
+)
+
+
+def _no_spawn(*_args: object, **_kwargs: object) -> Any:  # pragma: no cover - never reached
+    raise AssertionError("no worker is spawned here; _call is the fake")
 
 
 def _granted(isolation: Isolation = Isolation.SUBPROC) -> Any:
@@ -185,3 +217,47 @@ def test_a_regroup_that_does_not_shrink_is_refused_rather_than_looped(
     with pytest.raises(RouteError, match="regrouped no smaller"):
         _answer(operator, range(4))
     assert len(worker.calls) == 1
+
+
+def test_three_crashes_quarantine_the_driver_and_its_untried_units_are_held(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """D661: the batch crashes (1), each poison unit crashes again alone (2, 3), and the driver is
+    quarantined for the run: the two units it never got to are held, with no further call, and a
+    later batch for the same driver is held whole."""
+    worker = _Worker(poison=frozenset({0, 1}))
+    operator = _operator(monkeypatch, worker)
+    answers = _answer(operator, range(4))
+    assert worker.calls == [("iv_a", (0, 1, 2, 3)), ("iv_a.1", (0,)), ("iv_a.2", (1,))]
+    assert _verdict(answers, 0) is CRASH
+    assert _verdict(answers, 1) is CRASH
+    assert answers[2] is None
+    assert answers[3] is None
+    assert operator._quarantined(DRIVER)
+
+    worker.calls.clear()
+    later = _answer(operator, range(3))
+    assert worker.calls == [], "a quarantined driver is not called again this run"
+    assert list(later.values()) == [None, None, None]
+
+
+def test_a_held_row_carries_the_quarantine_once_per_driver(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The degradation 04:1721 asks for is on the first held row and no other, and the report
+    names the driver and how many units it held."""
+    operator = _operator(monkeypatch, _Worker())
+    row = SimpleNamespace(cache_key="0" * 64)
+    unit = UnitRef(uri="u", part="", content_sha256="0" * 64, byte_len=1, media_type=None)
+    producer = Producer(
+        operator="parse.office", op_version=1, code_fingerprint="", options_digest=b""
+    )
+    first = operator._held(row, unit, producer, DRIVER)
+    second = operator._held(row, unit, producer, DRIVER)
+    assert first.outcome is Outcome.HELD
+    assert [d.kind for d in first.degradations] == ["quarantine"]
+    assert second.degradations == ()
+    assert "quarantined for this run" in (first.failure_message or "")
+    operator._tally.parsed[DRIVER] = 1
+    assert (
+        f"  parse     {DRIVER} quarantined after repeated crashes; 2 unit(s) held for the next run"
+        in operator._tally.lines()
+    )

@@ -127,7 +127,8 @@
           "failed_transient",
           "failed_permanent",
           "deferred_budget",
-          "cancelled"
+          "cancelled",
+          "held"
         ]
       },
       "additionalProperties": {
