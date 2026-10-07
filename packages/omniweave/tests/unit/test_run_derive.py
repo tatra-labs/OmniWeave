@@ -33,6 +33,7 @@ from omniweave_ports.types import UnitRef
 
 DEFTERM = "derive.anchor.defterm"
 XREF = "derive.xref.pattern"
+NATIVE = "derive.anchor.native"
 UNIT = UnitRef(uri="file:///docs/a.md", part="", content_sha256="ab" * 32, byte_len=10)
 OPEN = "[drivers]\nallow_unattested = true\nrequire_lock = false\ninproc = []\n"
 
@@ -94,7 +95,7 @@ def test_each_plan_is_its_own_pinned_driver_and_never_another_derive_driver(
     derives, why = DerivePlan.of(catalog(), policy, _ctx())
     assert derives is not None, why
     assert why == ""
-    assert [c.card.identity.id for c in derives.passes] == [DEFTERM, XREF]
+    assert [c.card.identity.id for c in derives.passes] == [NATIVE, DEFTERM, XREF]
     segments, why = SegmentPlan.of(catalog(), policy, _ctx())
     assert segments is not None, why
     assert segments.candidate.card.identity.id == SEGMENTER_ID
@@ -103,10 +104,10 @@ def test_each_plan_is_its_own_pinned_driver_and_never_another_derive_driver(
 def test_a_pass_resolve_refuses_is_no_plan_and_a_reason_naming_it(tmp_path: Path) -> None:
     derives, why = DerivePlan.of(catalog(), _policy(tmp_path, "[drivers]\n"), _ctx())
     assert derives is None
-    assert why.startswith(f"{DEFTERM}: not_in_lockfile"), why
+    assert f"{DEFTERM}: not_in_lockfile" in why, why
 
 
-def test_the_enqueued_row_is_the_family_operator_with_its_driver_and_no_decision(
+def test_each_enqueued_row_is_its_pass_with_its_driver_and_no_decision(
     tmp_path: Path,
 ) -> None:
     derives, _ = DerivePlan.of(catalog(), _policy(tmp_path), _ctx())
@@ -114,7 +115,7 @@ def test_the_enqueued_row_is_the_family_operator_with_its_driver_and_no_decision
     store = _store(tmp_path)
     connection = ow.connect(store)
     try:
-        assert derives.enqueue(connection, UNIT) == 2
+        assert derives.enqueue(connection, UNIT) == 3
         assert derives.enqueue(connection, UNIT) == 0, "a resumed run enqueues nothing twice"
     finally:
         connection.close()
@@ -124,7 +125,7 @@ def test_the_enqueued_row_is_the_family_operator_with_its_driver_and_no_decision
         "unit_part, dispatch_key FROM work ORDER BY operator",
     ) == [
         (
-            operator,
+            candidate.card.identity.id,
             1,
             candidate.card.identity.id,
             None,
@@ -138,9 +139,7 @@ def test_the_enqueued_row_is_the_family_operator_with_its_driver_and_no_decision
                 str(candidate.isolation_granted),
             ),
         )
-        for operator, candidate in zip(
-            ("derive.anchor", "derive.xref"), derives.passes, strict=True
-        )
+        for candidate in sorted(derives.passes, key=lambda c: c.card.identity.id)
     ]
 
 
@@ -189,7 +188,11 @@ def test_which_rows_are_a_free_pass_and_which_method_each_pass_has() -> None:
     assert is_derive("derive.anchor")
     assert not is_derive("derive.segment")
     assert not is_derive("parse.text")
-    assert FREE_PASSES == {DEFTERM: Method.HEURISTIC, XREF: Method.HEURISTIC}
+    assert FREE_PASSES == {
+        NATIVE: Method.NATIVE_XML,
+        DEFTERM: Method.HEURISTIC,
+        XREF: Method.HEURISTIC,
+    }
 
 
 def test_the_report_says_what_each_pass_did_and_why_one_did_not() -> None:
@@ -220,4 +223,4 @@ def test_a_refused_pass_is_never_replaced_by_another_derive_driver_that_resolved
     assert segments is not None, "the segmenter is locked and resolves"
     derives, why = DerivePlan.of(catalog(), policy, _ctx())
     assert derives is None
-    assert why.startswith(f"{DEFTERM}: "), why
+    assert f"{DEFTERM}: " in why, why

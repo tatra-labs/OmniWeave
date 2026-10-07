@@ -162,7 +162,7 @@ _READ_SEGMENT: Final = (
     "FROM segment WHERE segment_id = ?"
 )
 _READ_MEMBERS: Final = (
-    "SELECT sb.ord, b.block_id, b.cite, b.kind, b.layer, b.page, b.text, "
+    "SELECT sb.ord, b.block_id, b.cite, b.kind, b.layer, b.page, b.text, b.label, "
     "t.cite, c.r, c.c, m.header_rows, m.n_cols "
     "FROM segment_block sb JOIN block b ON b.block_id = sb.block_id "
     "LEFT JOIN cell c ON c.block_id = b.block_id "
@@ -170,6 +170,14 @@ _READ_MEMBERS: Final = (
     "LEFT JOIN table_meta m ON m.block_id = c.table_id "
     "WHERE sb.segment_id = ? ORDER BY sb.ord"
 )
+_READ_MARKS: Final = (
+    "SELECT k.block_id, k.a, k.b, k.kind, k.value FROM mark k "
+    "JOIN segment_block sb ON sb.block_id = k.block_id "
+    "WHERE sb.segment_id = ? ORDER BY k.block_id, k.a, k.b, k.mark_id"
+)
+"""06:1316 prints a block frame's `marks` as `[[a, b, kind, value]]`; `value` is the stored JSON
+decoded. D670 sends them because `derive.anchor.native` reads the `anchor` marks a parse driver
+recorded -- a bookmark, a heading's own id -- and a billed Pass reads the rest."""
 
 
 def build_segment_view(connection: sqlite3.Connection, segment_id: int) -> ItemView:
@@ -185,6 +193,11 @@ def build_segment_view(connection: sqlite3.Connection, segment_id: int) -> ItemV
     kinds = _names(connection, "kind")
     layers = _names(connection, "layer")
     members = connection.execute(_READ_MEMBERS, (segment_id,)).fetchall()
+    marks: dict[int, list[list[Any]]] = {}
+    for block_id, a, b, kind, value in connection.execute(_READ_MARKS, (segment_id,)):
+        marks.setdefault(int(block_id), []).append(
+            [int(a), int(b), str(kind), None if value is None else json.loads(value)]
+        )
     defaults = {
         "layer": _modal([layers[int(m[4])] for m in members], layers[int(layer_code)]),
         "page": _modal([int(m[5]) for m in members], 0),
@@ -204,7 +217,8 @@ def build_segment_view(connection: sqlite3.Connection, segment_id: int) -> ItemV
         }
     ]
     cites: dict[str, int] = {}
-    for ordinal, block_id, cite, kind, layer, page, text, table, r, c, header, n_cols in members:
+    for ordinal, block_id, cite, kind, layer, page, text, label, *cell in members:
+        table, r, c, header, n_cols = cell
         frame: dict[str, Any] = {"t": "block", "cite": cite, "kind": kinds[int(kind)]}
         frame["ord"] = int(ordinal)
         if layers[int(layer)] != defaults["layer"]:
@@ -213,6 +227,10 @@ def build_segment_view(connection: sqlite3.Connection, segment_id: int) -> ItemV
             frame["page"] = int(page)
         if text is not None:
             frame["text"] = text
+        if label is not None:
+            frame["label"] = label
+        if int(block_id) in marks:
+            frame["marks"] = marks[int(block_id)]
         if table is not None:
             frame["table"] = {
                 "table_cite": table,
