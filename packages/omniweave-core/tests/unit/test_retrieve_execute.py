@@ -556,7 +556,7 @@ def test_the_structural_channel_runs_when_the_query_binds_an_expand(built: Built
     for it would degrade (gate 2's `requested` clause)."""
     _seed(built)
     built.writer.execute(
-        "INSERT INTO relation_vocab(relation, symmetric, actor_rule, source) "
+        "INSERT OR IGNORE INTO relation_vocab(relation, symmetric, actor_rule, source) "
         "VALUES('refers_to', 0, 'source refers to target', 'builtin')"
     )
     built.writer.commit()

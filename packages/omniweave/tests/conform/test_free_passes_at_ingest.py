@@ -1,4 +1,4 @@
-"""D668-D670 end to end: `ow add` runs the free Passes over what it segments, in one drain.
+"""D668-D672 end to end: `ow add` runs the free Passes over what it segments, in one drain.
 
 A contract in Markdown through a real `ow add`: it is parsed, segmented, and the segmentation's
 transaction enqueues one row per free Pass, each its own operator (D670); the drain claims them,
@@ -6,8 +6,9 @@ real workers run `derive.anchor.native`, `derive.anchor.defterm` and `derive.xre
 document's Segments in one unit each, and the store holds a `derive_pass` row per card, one
 `derive_run` per Segment per Pass with its cover, the numbered headings and the schedule as declared
 anchors, the defined terms as anchors, entities and aliases, and the references as `ref_site`
-occurrences -- of which only the identifier, which nothing defines, is left in `ref_unresolved`.
-A second `ow add` over the same file derives nothing.
+occurrences -- of which only the identifier, which nothing defines, is left in `ref_unresolved`;
+the two that resolve are `block_link(refers_to)` rows from the referring block to the heading that
+defines the name (D672). A second `ow add` over the same file derives nothing.
 """
 
 from __future__ import annotations
@@ -147,6 +148,29 @@ def test_an_add_runs_every_free_pass_over_every_document_it_segments(tmp_path: P
     assert sorted(_rows(store, "SELECT akind, name_norm FROM ow_ref_resolved")) == [
         ("exhibit", "1"),
         ("section", "1"),
+    ]
+    assert _rows(
+        store,
+        "SELECT s.text, d.text, l.relation, l.bound_by, l.origin_operator, l.ambiguous "
+        "FROM block_link l JOIN block s ON s.block_id = l.src_block "
+        "JOIN block d ON d.block_id = l.dst_block ORDER BY 1",
+    ) == [
+        (
+            '"Lender" shall have the meaning set forth in Schedule 1.',
+            "Schedule 1 - Lenders",
+            "refers_to",
+            "1",
+            XREF,
+            0,
+        ),
+        (
+            "The Company pays IBM on each Business Day, subject to Section 1 and ref GL-4471.",
+            "1. Definitions",
+            "refers_to",
+            "1",
+            XREF,
+            0,
+        ),
     ]
 
     before = _rows(store, "SELECT run_id FROM derive_run ORDER BY 1")
