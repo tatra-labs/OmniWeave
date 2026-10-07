@@ -2771,6 +2771,14 @@ class SqliteReader:
         join a retired generation's occurrence would rank -- the same failure `ref_unresolved`'s
         `n.gen = dd.gen` predicate closes on the anchor side (0003_index.sql:250-252).
 
+        **A query bound to no document admits every document's definitions** (D674). 07:1279 prints
+        `WHERE n.scope = 'corpus' OR n.doc_ord = :scope_doc`, and nothing binds `scope_doc`, so as
+        printed a document-scoped anchor -- every section number, label and defined term shipped at
+        release 1 -- could never rank: `doc_ord = NULL` is never true. The clause is the reference
+        side's scope rule, which stops an occurrence in one document binding another's "Figure 3";
+        a corpus-wide question has no document to be scoped to. Bound, the clause is the printed
+        one; unbound, corpus-scoped definitions still rank first, by `scope_rank`.
+
         `spans` carries `ref_site`'s `(ts_a, ts_b)` as a `TextSpan`, which is exactly what
         `ChannelResult.spans` is for -- *"sub-block addressing"* (07:1229), and 07:2287-2290 names
         *"a `ref_site` `(ts_a, ts_b)` pair"* as one of its two sources. An `anchor` row has no span
@@ -2816,7 +2824,7 @@ class SqliteReader:
             "    JOIN doc dd ON dd.doc_ord = a.doc_ord AND a.gen = dd.gen"
             f"    JOIN {_TMP_REFS} r ON r.name_norm = a.name_norm AND r.akind = a.akind"
             f"    JOIN ow_block_head b ON b.block_id = a.block_id{narrow_join}"
-            "   WHERE a.scope = 'corpus' OR a.doc_ord = ?"
+            "   WHERE a.scope = 'corpus' OR ? IS NULL OR a.doc_ord = ?"
             "  UNION ALL"
             "  SELECT b.block_id, 1,"
             "         CASE s.scope WHEN 'corpus' THEN 0 ELSE 1 END,"
@@ -2825,7 +2833,7 @@ class SqliteReader:
             f"    JOIN {_TMP_REFS} r ON r.name_norm = s.name_norm AND r.akind = s.akind"
             f"    JOIN ow_block_head b ON b.block_id = s.block_id{narrow_join}"
             ") ORDER BY tier, scope_rank, doc_ord, page, ord, block_id",
-            (scope_doc,),
+            (scope_doc, scope_doc),
         ).fetchall()
 
         ranked: list[int] = []

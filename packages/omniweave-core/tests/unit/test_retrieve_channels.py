@@ -119,11 +119,16 @@ def test_stopwords_are_dropped_when_another_term_remains() -> None:
 
 
 def test_the_four_printed_shapes_are_lifted_and_three_of_them_carry_an_akind() -> None:
-    """07:1319's row. `d7#412` is the fourth and goes to `idents` -- D239."""
+    """07:1319's row. `d7#412` is the fourth and goes to `idents` -- D239.
+
+    The names are the document side's (D674): the pattern's first group under `normalize_key`, so
+    `Fig. 3a` is figure `3a` -- the name a `Figure 3a` caption's anchor carries -- and a `§` number
+    is a `section`, as D670 rules it on both sides.
+    """
     made = ch.sanitize(f"see {SECTION}4.2(b) and Fig. 3a and GL-4471 in d7#412")
     assert {akind: name for name, akind in made.refs} == {
-        "clause": "4_2_b",
-        "figure": "fig_3a",
+        "section": "4_2_b",
+        "figure": "3a",
         "identifier": "gl_4471",
     }
     assert made.idents == ("d7#412",)
@@ -206,7 +211,7 @@ def test_terms_past_max_query_terms_are_dropped_and_the_drop_is_reported() -> No
 
 def test_refs_past_max_query_refs_are_dropped_and_reported() -> None:
     """`MAX_QUERY_REFS = 16` is about the `exact` Channel's one-statement form (07:1283)."""
-    made = ch.sanitize(" ".join(f"GL-{index}" for index in range(MAX_QUERY_REFS + 3)))
+    made = ch.sanitize(" ".join(f"GL-{100 + index}" for index in range(MAX_QUERY_REFS + 3)))
     assert len(made.refs) == MAX_QUERY_REFS
     assert len(made.dropped) == 3
 
@@ -227,7 +232,7 @@ def test_the_lift_runs_before_the_fold_or_the_reference_would_be_destroyed() -> 
     """`TO_SPACE` holds `§` and `FTS_SYNTAX` holds `(` and `)`, so a fold-first sanitiser
     would hand the `exact` Channel nothing and FTS a handful of digits."""
     made = ch.sanitize(f"{SECTION}4.2(b)")
-    assert made.refs == (("4_2_b", "clause"),)
+    assert made.refs == (("4_2_b", "section"),)
     assert made.terms == ()
 
 
