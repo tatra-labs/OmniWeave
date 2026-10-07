@@ -62,6 +62,7 @@ if TYPE_CHECKING:
     from omniweave_ports.types import ArtifactRef
 
     from omniweave.run.dispatch import Batch
+    from omniweave.run.operators.derive import DerivePlan
     from omniweave.run.operators.parse import ParseOperator, ParseTally
 
 __all__ = [
@@ -116,8 +117,11 @@ class SegmentPlan:
     ) -> tuple[SegmentPlan | None, str]:
         """`resolve()`'s candidate for the pinned segmenter, or `None` and why it has none."""
         resolution = resolve(Requirement(port="derive/1", pinned=SEGMENTER_ID), catalog, policy)
-        if resolution.candidates:  # pinned: the segmenter, or nothing
-            return cls(resolution.candidates[0], ctx), ""
+        # `pinned` waives the attestation gate and filters nothing (resolve.py:506): every
+        # installed derive/1 driver is a candidate, so the segmenter is picked by id (D668).
+        for candidate in resolution.candidates:
+            if candidate.card.identity.id == SEGMENTER_ID:
+                return cls(candidate, ctx), ""
         why = [f"{r.code}: {r.detail}" for r in resolution.rejected if r.driver_id == SEGMENTER_ID]
         return None, (why[0] if why else f"{SEGMENTER_ID} is not installed")
 
@@ -156,12 +160,19 @@ class SegmentPlan:
 class SegmentOperator:
     """The `Dispatcher` for `derive.segment` rows: one call per claimed batch, one result a row."""
 
-    __slots__ = ("_parse", "_tally", "_thread")
+    __slots__ = ("_derives", "_parse", "_tally", "_thread")
 
-    def __init__(self, parse: ParseOperator, thread: ow.StoreThread, tally: ParseTally) -> None:
+    def __init__(
+        self,
+        parse: ParseOperator,
+        thread: ow.StoreThread,
+        tally: ParseTally,
+        derives: DerivePlan | None = None,
+    ) -> None:
         self._parse = parse
         self._thread = thread
         self._tally = tally
+        self._derives = derives
 
     def __call__(self, batch: Batch, /) -> Sequence[StepResult]:
         driver = batch.driver
@@ -287,14 +298,19 @@ class SegmentOperator:
             )  # fmt: skip
         try:
             decoded = decode_segments(self._body(items[0]), view)
+            derives = self._derives
+
+            def write(connection: Any) -> Any:
+                written = write_segments(
+                    connection, view, identity, decoded, origin_operator=SEGMENT_OPERATOR
+                )
+                if derives is not None:  # D668: the document's Pass rows, with its Segments
+                    derives.enqueue(connection, unit)
+                return written
+
             report = self._thread.run(
                 ow.Unit(
-                    name="segment.write",
-                    run=lambda c: write_segments(
-                        c, view, identity, decoded, origin_operator=SEGMENT_OPERATOR
-                    ),
-                    cost_class="free",
-                    wait_ms=ow.BATCH_WAIT_MS,
+                    name="segment.write", run=write, cost_class="free", wait_ms=ow.BATCH_WAIT_MS
                 )
             )
         except GraphError as refused:
