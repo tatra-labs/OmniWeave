@@ -216,6 +216,7 @@ class _Material:
 
     query: Query
     bound: ChannelInput
+    phrases: tuple[str, ...] = ()
 
 
 def _material(q: Query) -> _Material:
@@ -228,10 +229,12 @@ def _material(q: Query) -> _Material:
     """
     text = sanitize(q.text)
     refs: list[tuple[str, str]] = list(text.refs)
+    phrases: list[str] = list(text.phrases)
     idents: list[str] = list(text.idents)
     for ref in q.refs:
         lifted = sanitize(ref)
         refs.extend(lifted.refs)
+        phrases.extend(lifted.phrases)
         idents.extend(lifted.idents)
         if not lifted.refs and not lifted.idents and ref.strip():
             idents.append(ref.strip())
@@ -247,7 +250,7 @@ def _material(q: Query) -> _Material:
         expand=q.expand,
         filters=filters,
     )
-    return _Material(query=query, bound=bound)
+    return _Material(query=query, bound=bound, phrases=tuple(dict.fromkeys(phrases)))
 
 
 def _filters(base: Filters, text: Sanitized) -> Filters:
@@ -468,7 +471,7 @@ def _one(
     if spec.name == "structural":
         bind = dataclasses.replace(bind, seeds=_seeds(run, before))
     if spec.name == "lexical":
-        bind = dataclasses.replace(bind, terms=_with_unresolved(bind, run))
+        bind = dataclasses.replace(bind, terms=_with_unresolved(bind, run, material.phrases))
     began = monotonic_ns()
     outcome = r.channel(s, dataclasses.replace(spec, bind=bind), n)
     ran_ms = (monotonic_ns() - began) // _NS_PER_MS
@@ -494,7 +497,7 @@ def _one(
     )
 
 
-def _with_unresolved(bind: ChannelInput, run: _Run) -> tuple[str, ...]:
+def _with_unresolved(bind: ChannelInput, run: _Run, phrases: Sequence[str]) -> tuple[str, ...]:
     """The lexical terms, plus the text of each lifted token whose own Channel found nothing. D648.
 
     07:1318 lifts a reference out of the text because *"they belong to `exact`, and they are noise
@@ -506,7 +509,9 @@ def _with_unresolved(bind: ChannelInput, run: _Run) -> tuple[str, ...]:
     something stays lifted, as the plan has it.
 
     Each goes as one term, which `_fts_match` quotes into a phrase: `table_4` and `d1#3` search
-    for `table 4` and `d1 3` side by side, the narrower reading, and never for `4` alone.
+    for `table 4` and `d1 3` side by side, the narrower reading, and never for `4` alone. For a
+    ref that is its `phrase` -- the whole lifted run -- and not its resolvable name, which since
+    D674 is the pattern's group alone (`4`).
     """
     extra: list[str] = []
     identity = run.results.get("identity")
@@ -514,7 +519,7 @@ def _with_unresolved(bind: ChannelInput, run: _Run) -> tuple[str, ...]:
         extra.extend(plain_terms(" ".join(bind.idents)))
     exact = run.results.get("exact")
     if bind.refs and (exact is None or exact.status is not ChannelStatus.OK):
-        extra.extend(plain_terms(" ".join(key for key, _kind in bind.refs)))
+        extra.extend(plain_terms(" ".join(phrases)))
     return tuple(dict.fromkeys((*bind.terms, *extra)))[:MAX_QUERY_TERMS]
 
 

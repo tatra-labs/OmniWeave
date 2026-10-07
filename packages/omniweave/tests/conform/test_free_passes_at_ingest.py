@@ -8,7 +8,9 @@ document's Segments in one unit each, and the store holds a `derive_pass` row pe
 anchors, the defined terms as anchors, entities and aliases, and the references as `ref_site`
 occurrences -- of which only the identifier, which nothing defines, is left in `ref_unresolved`;
 the two that resolve are `block_link(refers_to)` rows from the referring block to the heading that
-defines the name (D672). A second `ow add` over the same file derives nothing. A third, after the
+defines the name (D672), and `ow query "Section 1"` answers through the `exact` Channel with the
+heading that defines it and then the clause that cites it (D674). A second `ow add` over the same
+file derives nothing. A third, after the
 definitions heading is renumbered, leaves the reference graph describing the edited file only: the
 old version's anchors, occurrences and links are gone, `Section 1` is honestly unresolved, and the
 residue holds one copy of each name, not one per version (D673).
@@ -16,6 +18,7 @@ residue holds one copy of each name, not one per version (D673).
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3  # noqa: TID251 -- the assertions read the store the run wrote.
 import sys
@@ -74,6 +77,29 @@ def _rows(store: Path, sql: str) -> list[tuple[object, ...]]:
         return connection.execute(sql).fetchall()
     finally:
         connection.close()
+
+
+def _answers_through_exact(project: Path, env: dict[str, str]) -> None:
+    """D674: a query naming a reference is answered by the `exact` Channel, definition first."""
+    for question, cited in (
+        (
+            "Section 1",
+            [
+                "1. Definitions",
+                "The Company pays IBM on each Business Day, subject to Section 1 and ref GL-4471.",
+            ],
+        ),
+        (
+            "Schedule 1",
+            ["Schedule 1 - Lenders", '"Lender" shall have the meaning set forth in Schedule 1.'],
+        ),
+    ):
+        code, shown = _run(project, env, "query", question, "--render", "json")
+        assert code == 0, shown[-3000:]
+        answer = json.loads(shown.strip().splitlines()[-1])
+        channels = dict(answer["trailer_extra"])["verdict.channels"]
+        assert "exact:ok" in channels.split(), (question, channels)
+        assert [item["text"] for item in answer["evidence"]] == cited, question
 
 
 def test_an_add_runs_every_free_pass_over_every_document_it_segments(tmp_path: Path) -> None:
@@ -175,6 +201,8 @@ def test_an_add_runs_every_free_pass_over_every_document_it_segments(tmp_path: P
             0,
         ),
     ]
+
+    _answers_through_exact(project, env)
 
     before = _rows(store, "SELECT run_id FROM derive_run ORDER BY 1")
     code, shown = _run(project, env, "add", "docs")

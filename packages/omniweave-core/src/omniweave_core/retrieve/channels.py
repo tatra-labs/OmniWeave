@@ -66,6 +66,7 @@ __all__ = [
     "FTS_OPERATORS",
     "FTS_SYNTAX",
     "IDENTITY_LADDER",
+    "REF_SHAPES",
     "SPINE_DECAY",
     "STOPWORDS",
     "TO_SPACE",
@@ -158,31 +159,47 @@ _URI: Final[re.Pattern[str]] = re.compile(r"^[a-z][a-z0-9+.-]*://|^[a-z]:[\\/]|^
 """A document URI, loosely: a scheme, a Windows drive, or an absolute path. Loose on purpose -- the
 tier-50 lookup is an equality against `doc.uri` and a false candidate costs one index probe."""
 
-_REF_SHAPES: Final[tuple[tuple[re.Pattern[str], str], ...]] = (
-    (re.compile(r"§+\s*\d[\d.]*(?:\([a-z0-9]+\))*"), "clause"),
-    (re.compile(r"\b(?:fig|figure)\.?\s*\d[\dA-Za-z.-]*", re.IGNORECASE), "figure"),
-    (re.compile(r"\b(?:tab|table)\.?\s*\d[\dA-Za-z.-]*", re.IGNORECASE), "table"),
-    (re.compile(r"\b(?:eq|equation)\.?\s*\d[\dA-Za-z.-]*", re.IGNORECASE), "equation"),
-    (re.compile(r"\b[A-Z]{2,}-\d+\b"), "identifier"),
-    (re.compile(r"\[[^\]\s]+\]"), "citekey"),
+REF_SHAPES: Final[tuple[tuple[re.Pattern[str], str], ...]] = (
+    (re.compile(r"(?:§§?|[Ss]ection|[Cc]lause)\s*([0-9]+(?:\.[0-9]+)*(?:\([a-z]\))?)"), "section"),
+    (
+        re.compile(
+            r"(?<![A-Za-z])(?:[Ee]xhibit|[Ss]chedule|[Aa]ppendix|[Aa]nnex)\s+([A-Z]{1,3}|[0-9]{1,3})\b"
+        ),
+        "exhibit",
+    ),
+    (re.compile(r"(?<![A-Za-z])(?:[Ff]ig(?:ure)?\.?)\s*([0-9]+[a-z]?(?:\.[0-9]+)?)"), "figure"),
+    (re.compile(r"(?<![A-Za-z])(?:[Tt]able|[Tt]ab\.)\s*([0-9]+[a-z]?(?:\.[0-9]+)?)"), "table"),
+    (
+        re.compile(r"(?<![A-Za-z])(?:[Ee]quation|[Ee]q\.)\s*\(?([0-9]+[a-z]?(?:\.[0-9]+)?)\)?"),
+        "equation",
+    ),
+    (re.compile(r"\b([A-Z]{2,5}-[0-9]{2,6})\b"), "identifier"),
+    (re.compile(r"\[([^\]\s]+)\]"), "citekey"),
 )
-r"""07:1316's four examples plus the two the same shapes imply, each with the `AnchorKind` member it
-resolves against (`model/enums.py:349-362`, the fourteen).
+r"""The reference shapes a query is lifted by, each with its `AnchorKind` member. **D674.**
 
-**Each tail must start with a digit**, and that one character is what keeps the patterns from
-eating prose: without it `(?:tab|table)\.?\s*[\dA-Za-z]+` lifts *"table shows"* out of a query as a
-reference to a table named `shows`, and the `lexical` Channel never sees either word. A reference
-without a number is not a reference.
+06:1095-1097: *"Query-side sanitisation lifts the same token shapes out of a query into `Query.refs`
+... one vocabulary, two consumers."* The first six ARE `derive.xref.pattern`'s pattern set
+(`omniweave_graph/xref/patterns.toml`, D669), expression for expression and in its order, and the
+lifted name is the expression's FIRST GROUP under `normalize_key`, exactly as the sink keys a
+`ref_site` -- so `Section 1` in a query is `('1', 'section')`, the key the document's own
+`Section 1` and its `1. Definitions` heading carry. This package may not import a driver, so the
+set is restated here, and `omniweave-graph`'s `test_xref_rules.py` holds the restatement equal to
+the TOML: a pattern changed on one side fails there until it changes on the other.
 
-**They are searched inside the text, not matched against a whitespace token.** Three of the six
-shapes carry a space -- `Fig. 3a`, `Table 3.2`, `§ 4.2` -- so a token-at-a-time lift finds `Fig.`
-and leaves `3a` behind as an FTS term, which is 07:1316's *"noise to FTS"* arriving anyway.
+Before D674 this tuple was its own vocabulary and only `identifier` agreed with the document side:
+`Section 1` lifted nothing, `§4.2(b)` was a `clause` (D670 rules a section number `section` on both
+sides), and `Fig. 3a` was named `fig_3a` where every figure anchor is named `3a`. The `exact`
+Channel resolved nothing it was built for.
 
-`§4.2(b)` is `clause` and not `section`: 06:1015 gives DOCX heading numbering `section` and a
-`w:sdt` clause tag `clause`, and a `§`-prefixed sub-paragraph is the second. `GL-4471` is
-`identifier`, which 06:1024 names in as many words -- *"an identifier of the form `GL-4471` ... is
-`scope='corpus'`"*. `d7#412` is in the plan's row and is NOT here: it is a cite and goes to
-`idents`. D239."""
+`citekey` is the one shape with no document-side producer at release 1 -- no shipped parse driver
+records a BibTeX sidecar (06:1021) -- and is kept, query-side only, so a bracketed key still leaves
+the FTS terms rather than becoming noise there.
+
+**A reference without a number is not a reference**, as before: every shape's name needs a digit,
+a capital or a bracket, so *"the table shows"* lifts nothing. **They are searched inside the text,
+not matched against a whitespace token**, since `Fig. 3a`, `Table 3.2` and `§ 4.2` carry a space.
+`d7#412` is a cite and goes to `idents` (D239)."""
 
 _CJK: Final[re.Pattern[str]] = re.compile(r"[぀-ヿ㐀-䶿一-鿿豈-﫿ｦ-ﾟ]+")
 """Hiragana, katakana, the two CJK ideograph blocks, compatibility ideographs and half-width kana.
@@ -204,6 +221,11 @@ class Sanitized:
     is a field rather than a log line because 07:1319's ceilings are query bounds a caller can hit
     with an ordinary paste -- *"`MAX_QUERY_TERMS = 64`, `MAX_QUERY_REFS = 16`, `MAX_QUERY_CHARS =
     4_000`"* -- and a query silently cut to 64 terms is a recall loss that presents as absence.
+
+    `phrases` holds, for each of `refs` in order, the whole lifted run under `normalize_key` --
+    `table_4` for `Table 4`, whose ref is `('4', 'table')`. A ref whose lookup finds nothing is
+    searched as that one phrase after all (D648), and its resolvable name alone, `4`, would be a far
+    wider search than the words the caller typed (D674).
     """
 
     terms: tuple[str, ...] = ()
@@ -211,6 +233,7 @@ class Sanitized:
     idents: tuple[str, ...] = ()
     fields: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
     dropped: tuple[str, ...] = ()
+    phrases: tuple[str, ...] = ()
 
     @property
     def truncated(self) -> bool:
@@ -242,7 +265,7 @@ def sanitize(text: str) -> Sanitized:
             idents.append(token)
             continue
         kept.append(token)
-    refs, residue = _lift_refs(" ".join(kept), dropped)
+    refs, phrases, residue = _lift_refs(" ".join(kept), dropped)
     terms = _content(_terms(residue))
     if len(terms) > MAX_QUERY_TERMS:
         dropped.extend(terms[MAX_QUERY_TERMS:])
@@ -253,6 +276,7 @@ def sanitize(text: str) -> Sanitized:
         idents=tuple(idents),
         fields=MappingProxyType(dict(fields)),
         dropped=tuple(dropped),
+        phrases=phrases,
     )
 
 
@@ -270,28 +294,32 @@ def _take_field(token: str, fields: dict[str, str]) -> bool:
     return True
 
 
-def _lift_refs(text: str, dropped: list[str]) -> tuple[tuple[tuple[str, str], ...], str]:
-    """Every reference-shaped run, and the text with those runs removed.
+def _lift_refs(
+    text: str, dropped: list[str]
+) -> tuple[tuple[tuple[str, str], ...], tuple[str, ...], str]:
+    """Every reference-shaped run as a ref and as a phrase, and the text with those runs removed.
 
-    One pass per shape, in `_REF_SHAPES` order, each replacing its matches with a space so a later
+    One pass per shape, in `REF_SHAPES` order, each replacing its matches with a space so a later
     shape cannot re-lift the same characters. `MAX_QUERY_REFS = 16` bounds the result and what it
     refuses lands in `dropped` -- the `exact` Channel's own statement is one query over a
     `tmp_refs` TEMP table (07:1283), so the ceiling is about the query plan rather than about
     memory, and a caller who exceeded it is told which refs did not travel.
     """
     refs: list[tuple[str, str]] = []
+    phrases: list[str] = []
     residue = text
-    for pattern, akind in _REF_SHAPES:
+    for pattern, akind in REF_SHAPES:
         found = list(pattern.finditer(residue))
         if not found:
             continue
         for match in found:
             if len(refs) < MAX_QUERY_REFS:
-                refs.append((normalize_key(match.group()), akind))
+                refs.append((normalize_key(match.group(1)), akind))
+                phrases.append(normalize_key(match.group()))
             else:
                 dropped.append(match.group())
         residue = pattern.sub(" ", residue)
-    return tuple(refs), residue
+    return tuple(refs), tuple(phrases), residue
 
 
 def _is_ident(token: str) -> bool:
