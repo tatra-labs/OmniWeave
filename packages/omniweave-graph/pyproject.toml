@@ -21,6 +21,7 @@ dependencies = [
 [project.entry-points."omniweave.drivers"]
 "derive.segment.spine" = "omniweave_graph.segment"
 "derive.anchor.defterm" = "omniweave_graph.defterm"
+"derive.xref.pattern" = "omniweave_graph.xref"
 
 # The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
 [tool.hatch.build.targets.wheel]

@@ -1,11 +1,12 @@
-"""D668 end to end: `ow add` derives the defined terms of what it segments, in the same drain.
+"""D668 and D669 end to end: `ow add` runs the free Passes over what it segments, in one drain.
 
 A contract in Markdown through a real `ow add`: it is parsed, segmented, and the segmentation's
-transaction enqueues one `derive.anchor` row; the drain claims it, a real worker runs the
-discovered `derive.anchor.defterm` over the document's Segments in one unit, and the store holds a
-`derive_pass` row from the card, one `derive_run` and two cover rows per live Segment, and the
-defined terms as anchors, entities and aliases. A second `ow add` over the same file derives
-nothing and writes no row.
+transaction enqueues one row per free Pass -- `derive.anchor` and `derive.xref`; the drain claims
+them, real workers run the discovered `derive.anchor.defterm` and `derive.xref.pattern` over the
+document's Segments in one unit each, and the store holds a `derive_pass` row per card, one
+`derive_run` per Segment per Pass with its cover, the defined terms as anchors, entities and
+aliases, and the references as `ref_site` occurrences that `ref_unresolved` reports -- nothing
+defines a section or a schedule yet. A second `ow add` over the same file derives nothing.
 """
 
 from __future__ import annotations
@@ -38,9 +39,10 @@ International Business Machines Corporation ("IBM") and Acme Holdings Ltd.
 
 ## 2. Payment
 
-The Company pays IBM on each Business Day.
+The Company pays IBM on each Business Day, subject to Section 1 and ref GL-4471.
 """
 DEFTERM = "derive.anchor.defterm"
+XREF = "derive.xref.pattern"
 TIMEOUT_S = 300
 
 
@@ -63,7 +65,7 @@ def _rows(store: Path, sql: str) -> list[tuple[object, ...]]:
         connection.close()
 
 
-def test_an_add_derives_the_defined_terms_of_every_document_it_segments(tmp_path: Path) -> None:
+def test_an_add_runs_every_free_pass_over_every_document_it_segments(tmp_path: Path) -> None:
     project = tmp_path / "project"
     (project / "docs").mkdir(parents=True)
     (project / "omniweave.toml").write_text(PROJECT, encoding="utf-8")
@@ -81,20 +83,30 @@ def test_an_add_derives_the_defined_terms_of_every_document_it_segments(tmp_path
     assert code == 0, shown[-3000:]
     assert "  segment   1 document(s): " in shown, shown[-3000:]
     assert f"  derive    {DEFTERM}: 1 document(s), " in shown, shown[-3000:]
+    assert f"  derive    {XREF}: 1 document(s), " in shown, shown[-3000:]
     store = project / ".omniweave" / "docs.owstore"
 
     assert _rows(
         store,
         "SELECT operator, driver, decision_id IS NULL, cost_class, status FROM work "
-        "WHERE operator = 'derive.anchor'",
-    ) == [("derive.anchor", DEFTERM, 1, "free", "done")]
-    assert _rows(store, "SELECT pass_id, cost_rank, phase, lanes FROM derive_pass") == [
-        (DEFTERM, 0, 30, '["anchor","entity"]')
+        "WHERE operator LIKE 'derive.%' AND operator <> 'derive.segment' ORDER BY 1",
+    ) == [
+        ("derive.anchor", DEFTERM, 1, "free", "done"),
+        ("derive.xref", XREF, 1, "free", "done"),
+    ]
+    assert _rows(store, "SELECT pass_id, cost_rank, phase, lanes FROM derive_pass ORDER BY 1") == [
+        (DEFTERM, 0, 30, '["anchor","entity"]'),
+        (XREF, 0, 30, '["xref"]'),
     ]
     live = _rows(store, "SELECT segment_id FROM segment WHERE state = 0 ORDER BY 1")
-    runs = _rows(store, "SELECT segment_id FROM derive_run WHERE pass_id = 'derive.anchor.defterm'")
-    assert sorted(runs) == live
-    assert _rows(store, "SELECT count(*) FROM derive_cover") == [(2 * len(live),)]
+    runs = _rows(store, "SELECT pass_id, segment_id FROM derive_run")
+    for pass_id in (DEFTERM, XREF):
+        assert sorted((s,) for p, s in runs if p == pass_id) == live, pass_id
+    assert _rows(store, "SELECT lane, count(*) FROM derive_cover GROUP BY 1 ORDER BY 1") == [
+        ("anchor", len(live)),
+        ("entity", len(live)),
+        ("xref", len(live)),
+    ]
     anchors = sorted(
         str(name)
         for (name,) in _rows(store, "SELECT name_norm FROM anchor WHERE akind = 'defined_term'")
@@ -103,9 +115,16 @@ def test_an_add_derives_the_defined_terms_of_every_document_it_segments(tmp_path
     assert ("International Business Machines Corporation", "expansion") in _rows(
         store, "SELECT surface, alias_kind FROM entity_alias"
     )
-    assert _rows(store, "SELECT DISTINCT origin_operator, origin_driver FROM derive_run") == [
-        ("derive.anchor", DEFTERM)
+    assert _rows(
+        store, "SELECT DISTINCT origin_operator, origin_driver FROM derive_run ORDER BY 1"
+    ) == [("derive.anchor", DEFTERM), ("derive.xref", XREF)]
+    sites = _rows(store, "SELECT akind, name_norm, surface FROM ref_site ORDER BY 1, 2")
+    assert sites == [
+        ("exhibit", "1", "Schedule 1"),
+        ("identifier", "gl_4471", "GL-4471"),
+        ("section", "1", "Section 1"),
     ]
+    assert _rows(store, "SELECT count(*) FROM ref_unresolved") == [(len(sites),)]
 
     before = _rows(store, "SELECT run_id FROM derive_run ORDER BY 1")
     code, shown = _run(project, env, "add", "docs")
