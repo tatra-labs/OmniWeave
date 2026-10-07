@@ -189,7 +189,7 @@ def _seed(connection: sqlite3.Connection) -> None:
     )
     for etype in ("org", "person"):
         connection.execute(
-            "INSERT INTO etype_vocab (etype, scope, resolution, source) "
+            "INSERT OR IGNORE INTO etype_vocab (etype, scope, resolution, source) "
             "VALUES (?, 'corpus', 'exact_only', 'builtin')",
             (etype,),
         )

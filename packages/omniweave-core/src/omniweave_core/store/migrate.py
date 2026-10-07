@@ -50,6 +50,7 @@ from typing import TYPE_CHECKING, Final
 from omniweave_core.config import KEYS
 from omniweave_core.contract import SCHEMA_STRING
 from omniweave_core.errors import StoreError
+from omniweave_core.store.graph import BUILTIN_ETYPES
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -459,6 +460,7 @@ def apply_pending(
         )
     if done:
         _seed_index_state(connection, corpus_id=corpus_id)
+    _seed_vocabularies(connection)
     return tuple(done)
 
 
@@ -612,6 +614,44 @@ def _seed_index_state(connection: sqlite3.Connection, *, corpus_id: str | None) 
     connection.execute("BEGIN IMMEDIATE")
     try:
         connection.executemany("INSERT OR IGNORE INTO index_state (k, v) VALUES (?, ?)", rows)
+    except BaseException:
+        if connection.in_transaction:
+            connection.execute("ROLLBACK")
+        raise
+    connection.execute("COMMIT")
+
+
+def _seed_vocabularies(connection: sqlite3.Connection) -> None:
+    """`etype_vocab`'s fifteen builtin rows, written whenever any is missing. **D667.**
+
+    0002_graph.sql creates the table empty (*"NOT seeded here"*) and leaves the rows to the runner,
+    as `index_state`'s are. Unlike those, this runs on every call and not only after a migration
+    applies: a store migrated before the seed existed has the table and no rows, and every entity a
+    Pass proposes into it would be `OW_GRAPH_ETYPE_OUT_OF_VOCAB`. The check is one read, so a
+    current store takes no write lock. `INSERT OR IGNORE`, so an operator's own row for a builtin
+    name -- a changed `resolution`, say -- is never overwritten.
+
+    `relation_vocab`'s thirteen are not seeded yet: 06 section 1.6 names them and prints only one
+    `actor_rule`, and no shipped Pass writes an edge or a `block_link`. They are seeded with the
+    first Pass that does.
+    """
+    if not _has_table(connection, "etype_vocab"):
+        return
+    names = [etype for etype, _, _ in BUILTIN_ETYPES]
+    marks = ",".join("?" * len(names))
+    (present,) = connection.execute(
+        f"SELECT COUNT(*) FROM etype_vocab WHERE etype IN ({marks})",  # noqa: S608 -- marks only
+        names,
+    ).fetchone()
+    if present == len(names):
+        return
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        connection.executemany(
+            "INSERT OR IGNORE INTO etype_vocab (etype, scope, resolution, source) "
+            "VALUES (?, ?, ?, 'builtin')",
+            BUILTIN_ETYPES,
+        )
     except BaseException:
         if connection.in_transaction:
             connection.execute("ROLLBACK")

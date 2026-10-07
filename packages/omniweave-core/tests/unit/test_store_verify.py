@@ -810,7 +810,7 @@ def test_the_fts_clause_leaves_no_shadow_table_behind_in_main(store: Path) -> No
 def _add_entities(path: Path) -> None:
     _corrupt(
         path,
-        "INSERT INTO etype_vocab(etype, scope, resolution, source) "
+        "INSERT OR IGNORE INTO etype_vocab(etype, scope, resolution, source) "
         "VALUES('org', 'corpus', 'fuzzy', 'builtin')",
         "INSERT INTO entity(entity_id, cite, scope, etype, key, title, canonical_id, "
         "resolution_method, trust, mention_digest) VALUES"
