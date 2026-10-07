@@ -148,6 +148,14 @@ def test_a_kind_without_prose_is_not_read(kind: str) -> None:
     assert refs("See Section 4.", kind=kind) == []
 
 
+def test_a_label_opening_a_heading_or_caption_defines_rather_than_refers() -> None:
+    """D670: `derive.anchor.native` defines `Schedule 2` from this heading: no occurrence."""
+    assert refs("Schedule 2 - Fees", kind="heading") == []
+    assert refs("  Figure 3: Revenue", kind="caption") == []
+    assert refs("Schedule 2 - Fees, see Section 4", kind="title") == [("section", "4", "Section 4")]
+    assert refs("Schedule 2 - Fees", kind="paragraph") == [("exhibit", "2", "Schedule 2")]
+
+
 @pytest.mark.parametrize("kind", ["heading", "paragraph", "list_item", "table_cell", "footnote"])
 def test_a_text_bearing_kind_is_read(kind: str) -> None:
     assert refs("See Section 4.", kind=kind) == [("section", "4", "Section 4")]

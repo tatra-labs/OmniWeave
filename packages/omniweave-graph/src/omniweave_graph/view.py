@@ -33,7 +33,7 @@ from omniweave_ports import DriverError, FailureClass
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
 
-__all__ = ["Cell", "Member", "SegmentView", "read_segment_view", "read_segment_views"]
+__all__ = ["Cell", "Mark", "Member", "SegmentView", "read_segment_view", "read_segment_views"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +49,19 @@ class Cell:
 
 
 @dataclass(frozen=True, slots=True)
+class Mark:
+    """One `mark` row over the member's text: 06:1316's `[a, b, kind, value]`. **D670.**
+
+    `kind` is open (0001's `mark.kind` is TEXT): `bold`, `link`, `note_ref`, `anchor`, ... and
+    `value` is the kind's own JSON -- an `anchor` mark's is `{"name": ..., "akind": ...}`."""
+
+    a: int
+    b: int
+    kind: str
+    value: object = None
+
+
+@dataclass(frozen=True, slots=True)
 class Member:
     """One member block of the Segment. `text` is `block.text` verbatim, so a span into it is a
     `TextSpan` the host can bounds-check without a second normalisation."""
@@ -59,6 +72,9 @@ class Member:
     layer: str = "body"
     covered: bool = False
     table: Cell | None = None
+    label: str | None = None
+    """`block.label`: a list item's printed marker, a picture's alt text (D670)."""
+    marks: tuple[Mark, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,9 +150,36 @@ def _member(frame: dict[str, Any], defaults: Mapping[str, Any]) -> Member:
         _corrupt(f"block frame {cite!r}: text is not a string")
     if not isinstance(covered, bool):
         _corrupt(f"block frame {cite!r}: covered is not a boolean")
+    label = frame.get("label")
+    if label is not None and not isinstance(label, str):
+        _corrupt(f"block frame {cite!r}: label is not a string")
     return Member(
-        cite=cite, kind=kind, text=text, layer=layer, covered=covered, table=_cell(cite, frame)
+        cite=cite,
+        kind=kind,
+        text=text,
+        layer=layer,
+        covered=covered,
+        table=_cell(cite, frame),
+        label=label,
+        marks=_marks(cite, frame.get("marks", [])),
     )
+
+
+def _marks(cite: str, raw: object) -> tuple[Mark, ...]:
+    if not isinstance(raw, list):
+        _corrupt(f"block frame {cite!r}: marks is not a list")
+    out: list[Mark] = []
+    for item in raw:
+        if (
+            not isinstance(item, list)
+            or len(item) != 4  # noqa: PLR2004 -- [a, b, kind, value]
+            or not all(type(v) is int and v >= 0 for v in item[:2])
+            or item[1] < item[0]
+            or not isinstance(item[2], str)
+        ):
+            _corrupt(f"block frame {cite!r}: a mark is not [a, b, kind, value] with a <= b")
+        out.append(Mark(a=item[0], b=item[1], kind=item[2], value=item[3]))
+    return tuple(out)
 
 
 def _cell(cite: str, frame: dict[str, Any]) -> Cell | None:
