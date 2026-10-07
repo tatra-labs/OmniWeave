@@ -41,10 +41,13 @@ What ships is therefore split:
   `AnchorSource`, and `ConvergeReport.complete` is `False` with it. That is 07:2949's own device one
   section earlier: `Verdict.freshness`'s `not_tracked`, *"deliberately not a gate: it is disclosed,
   not refused"*.
-* **The ADDED retry and the REMOVED unbind are not written here.** The retry reads `ref_unresolved`
-  (W8.2's view); the unbind writes `edge.bound_by` and `block_link.bound_by` under a roadmap row
-  literally titled *"unbind-on-`anchor_delta`-removal"*. Inventing either would be writing
-  statements against tables whose semantics their own cells have not fixed.
+* **The ADDED retry and the REMOVED unbind were not written here at P4.** The retry reads
+  `ref_unresolved` (W8.2's view); the unbind writes `edge.bound_by` and `block_link.bound_by` under
+  a roadmap row literally titled *"unbind-on-`anchor_delta`-removal"*. W8.3 has since fixed both:
+  the ADDED arm is the sink's own (`SqliteGraphSink.anchor` binds the occurrences already waiting,
+  D672), and the REMOVED arm for a RETIRED document is `unbind_document` below (D673). What is
+  still not tracked is the delta between two generations of one LIVE document, so `AnchorSource`
+  keeps no implementation and `anchors_tracked` stays the disclosure.
 
 The dep half has no such problem: `dep` rows got their producer in the same cell, which is FE3
 satisfied rather than violated.
@@ -132,6 +135,7 @@ __all__ = [
     "Baseline",
     "ConvergeReport",
     "Loss",
+    "Unbound",
     "UnexplainedLoss",
     "anchor_delta",
     "anchor_deltas",
@@ -139,6 +143,7 @@ __all__ = [
     "converge",
     "requeue",
     "requeue_params",
+    "unbind_document",
 ]
 
 
@@ -531,10 +536,12 @@ record will describe.
 
 
 class _Cursor(Protocol):
-    """The one attribute the requeue reads back: how many rows the `status IN` guard admitted."""
+    """What the statements read back: how many rows a write touched, and a read's rows."""
 
     @property
     def rowcount(self) -> int: ...
+
+    def fetchall(self) -> list[tuple[object, ...]]: ...
 
 
 class _Rows(Protocol):
@@ -630,7 +637,108 @@ def _runs_now(cost_class: str, trigger: str) -> bool:
 
 
 # --------------------------------------------------------------------------------------------
-# 5. The pass.
+# 5. The REMOVED arm for a retired document. D673.
+# --------------------------------------------------------------------------------------------
+
+_DOC_ANCHOR_NAMES_SQL: Final[str] = (
+    "SELECT DISTINCT name_norm FROM anchor WHERE doc_ord = :doc_ord ORDER BY name_norm"
+)
+
+_UNBIND_SQL: Final[str] = """
+DELETE FROM block_link
+ WHERE bound_by IS NOT NULL
+   AND (src_block IN (SELECT block_id FROM block WHERE doc_ord = :doc_ord)
+        OR dst_block IN (SELECT block_id FROM block WHERE doc_ord = :doc_ord))
+"""
+"""06:2299's UNBIND, for every name the document defined and every occurrence it held.
+
+`bound_by IS NOT NULL` is the rule 06:1249 writes down -- *"Only rows carrying it participate in
+`unbind` ... no stamp, never delete what we cannot restore"* -- so a link some other writer made
+without a binding anchor is left where it is. A link INTO the document is bound by one of its
+anchors; a link OUT of it is the consequence of one of its occurrences. Both ends are its blocks,
+and neither survives the document. `block_link_out` and `block_link_in` serve the two arms."""
+
+_RETIRE_OCCURRENCES_SQL: Final[str] = "DELETE FROM ref_site WHERE doc_ord = :doc_ord"
+_RETIRE_ANCHORS_SQL: Final[str] = "DELETE FROM anchor WHERE doc_ord = :doc_ord"
+
+_DISAMBIGUATE_SQL: Final[str] = """
+UPDATE block_link SET ambiguous = 0
+ WHERE ambiguous = 1 AND relation = 'refers_to' AND bound_by = :name
+   AND NOT EXISTS (
+       SELECT 1 FROM ref_site s
+        WHERE s.block_id = block_link.src_block AND s.name_norm = :name
+          AND (SELECT COUNT(*) FROM anchor n
+                 JOIN doc dd ON dd.doc_ord = n.doc_ord AND n.gen = dd.gen
+                WHERE n.name_norm = s.name_norm AND n.akind = s.akind
+                  AND (n.scope = 'corpus' OR n.doc_ord = s.doc_ord)) > 1)
+"""
+"""`ambiguous` back to 0 for a surviving link whose second target was the retired document's.
+
+The count is `SqliteGraphSink._bind`'s, predicate for predicate. Keyed on the NAME across every
+`akind` the source block references it under, because `block_link` carries no `akind`: a link stays
+ambiguous while any same-named occurrence in its block still has two targets, which can only err
+toward "ambiguous" -- ranked down, never dropped (0003:319)."""
+
+
+@dataclass(frozen=True, slots=True)
+class Unbound:
+    """What `unbind_document` took out of the live reference graph for one retired document."""
+
+    doc_ord: int
+    anchors: int
+    occurrences: int
+    links: int
+    disambiguated: int
+
+
+def unbind_document(connection: _Rows, doc_ord: int) -> Unbound:
+    """Take a RETIRED document out of the reference graph. 06 section 10.2's *"a whole document
+    deleted"* row: *"every d7 anchor removed -> unbind"*. **D673.**
+
+    Called inside the transaction that retires the document's blocks (`discover.retire_replaced`),
+    so the store never shows a retired document whose definitions still resolve. Without it both
+    reference views count the retired rows: `anchor`'s head-generation predicate reads the RETIRED
+    document's own `doc.gen`, which a retirement does not move, so its anchors keep resolving -- a
+    corpus-scoped one binds new references to a tombstoned block, and every link to a name its
+    successor redefines becomes `ambiguous` -- and `ref_unresolved` keeps its occurrences, so the
+    residue grows by one copy per edit.
+
+    **The anchor delta of a retired document is every name it defined**, `anchors(D, g)` against the
+    empty set, so the delta is not computed: the statements are keyed on the document.
+
+    **Rows deleted, not historied.** 06:2328's row says the document's items are *"historied"*, and
+    `graph_history`'s `kind` CHECK lists `entity`, `mention`, `edge`, `claim` and `community` --
+    not `anchor`, `ref_site` or `block_link`. Those three are recomputed from blocks a retirement
+    keeps (`state = 1`, every cite still resolving through `block_history`), so deleting them loses
+    nothing the blocks cannot give back; 06:2318-2322 is the same argument for STEP 2's DELETE. The
+    document's entities and mentions are W8.6's and are left as they are.
+
+    **Everything of the document, every generation.** A retirement is whole-document, and an older
+    generation's rows -- left by a `rebind()` that carried the document forward -- are no less
+    retired than the head's.
+    """
+    names = [
+        str(row[0])
+        for row in connection.execute(_DOC_ANCHOR_NAMES_SQL, {"doc_ord": doc_ord}).fetchall()
+    ]
+    params = {"doc_ord": doc_ord}
+    links = int(connection.execute(_UNBIND_SQL, params).rowcount)
+    occurrences = int(connection.execute(_RETIRE_OCCURRENCES_SQL, params).rowcount)
+    anchors = int(connection.execute(_RETIRE_ANCHORS_SQL, params).rowcount)
+    disambiguated = sum(
+        int(connection.execute(_DISAMBIGUATE_SQL, {"name": name}).rowcount) for name in names
+    )
+    return Unbound(
+        doc_ord=doc_ord,
+        anchors=anchors,
+        occurrences=occurrences,
+        links=links,
+        disambiguated=disambiguated,
+    )
+
+
+# --------------------------------------------------------------------------------------------
+# 6. The pass.
 # --------------------------------------------------------------------------------------------
 
 

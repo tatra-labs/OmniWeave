@@ -8,7 +8,10 @@ document's Segments in one unit each, and the store holds a `derive_pass` row pe
 anchors, the defined terms as anchors, entities and aliases, and the references as `ref_site`
 occurrences -- of which only the identifier, which nothing defines, is left in `ref_unresolved`;
 the two that resolve are `block_link(refers_to)` rows from the referring block to the heading that
-defines the name (D672). A second `ow add` over the same file derives nothing.
+defines the name (D672). A second `ow add` over the same file derives nothing. A third, after the
+definitions heading is renumbered, leaves the reference graph describing the edited file only: the
+old version's anchors, occurrences and links are gone, `Section 1` is honestly unresolved, and the
+residue holds one copy of each name, not one per version (D673).
 """
 
 from __future__ import annotations
@@ -178,3 +181,22 @@ def test_an_add_runs_every_free_pass_over_every_document_it_segments(tmp_path: P
     assert code == 0, shown[-3000:]
     assert "  derive    " not in shown, "an unchanged corpus derives nothing"
     assert _rows(store, "SELECT run_id FROM derive_run ORDER BY 1") == before
+
+    (project / "docs" / "loan.md").write_text(
+        CONTRACT.replace("## 1. Definitions", "## 3. Definitions"), encoding="utf-8"
+    )
+    code, shown = _run(project, env, "add", "docs")
+    assert code == 0, shown[-3000:]
+    (live_doc,) = _rows(store, "SELECT DISTINCT doc_ord FROM block WHERE state = 0")
+    assert _rows(store, "SELECT DISTINCT doc_ord FROM anchor") == [live_doc]
+    assert _rows(store, "SELECT DISTINCT doc_ord FROM ref_site") == [live_doc]
+    assert sorted(_rows(store, "SELECT akind, name_norm FROM ref_unresolved")) == [
+        ("identifier", "gl_4471"),
+        ("section", "1"),
+    ], "one copy per name, and the renumbered section's reference no longer resolves"
+    assert _rows(
+        store,
+        "SELECT s.text, d.text FROM block_link l JOIN block s ON s.block_id = l.src_block "
+        "JOIN block d ON d.block_id = l.dst_block WHERE s.state = 0 AND d.state = 0",
+    ) == [('"Lender" shall have the meaning set forth in Schedule 1.', "Schedule 1 - Lenders")]
+    assert _rows(store, "SELECT COUNT(*) FROM block_link") == [(1,)], "no link to a retired block"
