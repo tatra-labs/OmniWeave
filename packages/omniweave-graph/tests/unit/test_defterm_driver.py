@@ -14,7 +14,7 @@ import pytest
 from omniweave_conform.harness import MemoryBlobStore, make_io
 from omniweave_core.model.enums import MAX_TRUST_BY_METHOD, Method, Trust
 from omniweave_graph.defterm.driver import DRIVER_ID, EMPTY_REASON, LANES, DefinedTerms
-from omniweave_graph.view import Cell, Member, read_segment_view
+from omniweave_graph.view import Cell, Member, read_segment_view, read_segment_views
 from omniweave_ports import DriverError, FailureClass, ProbeStatus
 from omniweave_ports.types import DeriveScope, UnitRef
 
@@ -266,3 +266,42 @@ def test_a_document_form_view_is_refused_by_the_driver(tmp_path: Path) -> None:
     with pytest.raises(DriverError) as caught:
         run(tmp_path, view({"t": "doc", "doc": "d7"}, block("d7#1", '"Lender" means A.')))
     assert caught.value.cls is FailureClass.CORRUPT_INPUT
+
+
+# -- a document's Segments in one unit (D668) ----------------------------------------------------
+
+
+def test_a_document_view_is_its_segments_one_after_another() -> None:
+    raw = view(
+        seg("seg:aaaaaaaaaaaaaaaa"),
+        block("d7#1", "a"),
+        seg("seg:bbbbbbbbbbbbbbbb", heading_path=["Two"]),
+        block("d7#2", "b"),
+        block("d7#3", "c"),
+        seg("seg:cccccccccccccccc"),
+    )
+    views = read_segment_views(raw)
+    assert [(v.seg, v.heading_path, [m.cite for m in v.members]) for v in views] == [
+        ("seg:aaaaaaaaaaaaaaaa", ("Part II",), ["d7#1"]),
+        ("seg:bbbbbbbbbbbbbbbb", ("Two",), ["d7#2", "d7#3"]),
+        ("seg:cccccccccccccccc", ("Part II",), []),
+    ]
+    with pytest.raises(DriverError, match="holds 3 Segments where one was expected"):
+        read_segment_view(raw)
+
+
+def test_one_unit_of_many_segments_answers_each_under_its_own_seg_frame(tmp_path: Path) -> None:
+    frames = run(
+        tmp_path,
+        view(
+            seg("seg:aaaaaaaaaaaaaaaa"),
+            block("d7#1", '"Lender" means A.'),
+            seg("seg:bbbbbbbbbbbbbbbb"),
+            block("d7#2", "Nothing here."),
+        ),
+    )
+    heads = [i for i, f in enumerate(frames) if f["t"] == "seg"]
+    assert [frames[i]["seg"] for i in heads] == ["seg:aaaaaaaaaaaaaaaa", "seg:bbbbbbbbbbbbbbbb"]
+    first, second = frames[heads[0] : heads[1]], frames[heads[1] :]
+    assert [f["name"] for f in first if f["t"] == "anchor"] == ["Lender"]
+    assert [f["t"] for f in second[1:]] == ["cover_empty", "cover_empty"]

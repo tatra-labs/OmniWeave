@@ -44,7 +44,7 @@ import sqlite3
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Final, NoReturn, cast
+from typing import TYPE_CHECKING, Any, Final, NoReturn, cast
 
 from omniweave_core.errors import GraphError
 from omniweave_core.model.block import BlockId, Cite
@@ -69,14 +69,21 @@ from omniweave_core.store.graph import (
     XrefDraft,
 )
 
+if TYPE_CHECKING:
+    from omniweave_core.drivers.card import DriverCard
+
 __all__ = [
+    "ITEM_LANES",
     "Cover",
     "ItemView",
     "Rejected",
     "UnitItems",
     "build_segment_view",
     "decode_items",
+    "document_body",
+    "document_views",
     "drive_items",
+    "register_pass",
 ]
 
 _ITEM_KINDS: Final = frozenset({"entity", "alias", "mention", "edge", "claim", "anchor", "xref"})
@@ -228,6 +235,81 @@ def build_segment_view(connection: sqlite3.Connection, segment_id: int) -> ItemV
         seg=seg,
         body=body.encode("utf-8"),
         cites=cites,
+    )
+
+
+_LIVE_SEGMENTS: Final = (
+    "SELECT segment_id FROM segment WHERE doc_ord = ? AND gen = ? AND state = 0 ORDER BY ord"
+)
+
+
+def document_views(connection: sqlite3.Connection, doc_ord: int, gen: int) -> tuple[ItemView, ...]:
+    """Every live Segment of one generation, in `segment.ord` order. **D668.**"""
+    return tuple(
+        build_segment_view(connection, int(r[0]))
+        for r in connection.execute(_LIVE_SEGMENTS, (doc_ord, gen)).fetchall()
+    )
+
+
+def document_body(views: Sequence[ItemView]) -> bytes:
+    """A document-granularity Pass's one unit: its Segments' views, one after another (D668)."""
+    return b"".join(v.body for v in views)
+
+
+ITEM_LANES: Final[Mapping[str, str]] = {
+    "anchor": "anchor",
+    "xref": "xref",
+    "entity": "entity",
+    "alias": "entity",
+    "mention": "entity",
+    "edge": "entity",
+    "claim": "claim",
+    "summary": "summary",
+}
+"""`[capability.derive] items` to the derive lanes they serve. **D668.**
+
+`derive_pass.lanes` is *"a JSON array over the `lane` domain"* (0002:112) and the card has no
+`lanes` key -- 06:648's sample prints one, 04:620's table and `drivers/card.py` read `items` -- so
+the lanes are derived from the items: an anchor is the anchor lane's, a reference occurrence the
+xref lane's, an entity and everything addressing one (alias, mention, edge) the entity lane's, a
+claim the claim lane's. `segment` serves no lane (06:825) and `field` has no producer at release 1.
+"""
+
+_COST_RANKS: Final = {"free": 0, "local_compute": 1, "billed_api": 2}
+_REGISTRY_UPSERT: Final = """
+INSERT INTO derive_pass(pass_id, port, cost_class, cost_rank, phase, lanes, granularity,
+                        card_sha256, schema_version)
+VALUES(?, 'derive/1', ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(pass_id) DO UPDATE SET
+  cost_class = excluded.cost_class, cost_rank = excluded.cost_rank, phase = excluded.phase,
+  lanes = excluded.lanes, granularity = excluded.granularity,
+  card_sha256 = excluded.card_sha256, schema_version = excluded.schema_version
+"""
+
+
+def register_pass(connection: sqlite3.Connection, card: DriverCard) -> None:
+    """The `derive_pass` row a run of this card's Pass points at. **D668.**
+
+    Upserted from the card every time the Pass runs, so the registry is the card that last ran,
+    which is what `derive_run.pass_id` means. `enabled` is never written: it is an operator's.
+    `cost_rank` is derived from `cost_class` and never read off the card (06:713).
+    """
+    cost = "free" if card.cost_model is None else str(card.cost_model.cost_class)
+    items = card.derive.items if card.derive is not None else frozenset()
+    lanes = sorted({ITEM_LANES[i] for i in items if i in ITEM_LANES})
+    phase = card.derive_sibling.phase if card.derive_sibling is not None else 50
+    connection.execute(
+        _REGISTRY_UPSERT,
+        (
+            card.identity.id,
+            cost,
+            _COST_RANKS[cost],
+            phase,
+            json.dumps(lanes, separators=(",", ":")),
+            card.identity.granularity,
+            card.card_sha256,
+            card.identity.schema_version,
+        ),
     )
 
 
