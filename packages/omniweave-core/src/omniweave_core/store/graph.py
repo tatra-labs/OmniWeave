@@ -109,6 +109,7 @@ from omniweave_core.model.spans import TextSpan
 from omniweave_core.operator import SpendVector
 
 __all__ = [
+    "BUILTIN_ETYPES",
     "OW_GRAPH_COVERED_GROUND",
     "OW_GRAPH_DANGLING_CITE",
     "OW_GRAPH_DANGLING_TMP",
@@ -203,6 +204,34 @@ QUARANTINE_ROW_KINDS: Final[frozenset[str]] = frozenset(
 Eight, and `cover` is deliberately not among them: a cover row is written by the runner from the
 Segment it was handed, so a bad cover cite is the runner's defect and raises, while every kind here
 originates in a driver's frame and is DATA.
+"""
+
+BUILTIN_ETYPES: Final[tuple[tuple[str, str, str], ...]] = (
+    ("anchor", "document", "exact_only"),
+    ("defined_term", "document", "fuzzy"),
+    ("section", "document", "exact_only"),
+    ("figure", "document", "exact_only"),
+    ("table", "document", "exact_only"),
+    ("citation", "corpus", "exact_only"),
+    ("person", "corpus", "fuzzy"),
+    ("org", "corpus", "fuzzy"),
+    ("place", "corpus", "fuzzy"),
+    ("date", "corpus", "exact_only"),
+    ("money", "corpus", "exact_only"),
+    ("quantity", "corpus", "exact_only"),
+    ("product", "corpus", "fuzzy"),
+    ("group", "corpus", "fuzzy"),
+    ("unknown", "corpus", "none"),
+)
+"""`etype_vocab`'s fifteen builtin rows as `(etype, scope, resolution)`. 06 section 1.6. **D667.**
+
+0002_graph.sql creates the table empty and says the rows are *"NOT seeded here"*; the migration
+runner seeds them (`migrate._seed_vocabularies`), because without them every `EntityDraft` is
+`OW_GRAPH_ETYPE_OUT_OF_VOCAB`. Names and scopes are 06:291's. The resolution policy is 06:302-304
+where it speaks -- `date` and `money` `exact_only`, `defined_term` `fuzzy`, `unknown` `none` -- and
+D667's elsewhere: a label a document numbers (`anchor`, `section`, `figure`, `table`) and a
+`citation`, a `quantity` are matched exactly, because "Figure 3" near "Figure 8" is a different
+figure; names of people, organisations, places, products and groups drift in spelling and are fuzzy.
 """
 
 # The fourteen quarantine codes and the one Diag code this sink itself raises. 06:684-698 is the
