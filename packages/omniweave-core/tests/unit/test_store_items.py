@@ -45,7 +45,9 @@ from omniweave_core.store.items import (
     Rejected,
     build_segment_view,
     decode_items,
+    document_body,
     drive_items,
+    register_pass,
 )
 from omniweave_core.store.segments import (
     SegmenterIdentity,
@@ -140,7 +142,20 @@ def contract() -> list[dict[str, Any]]:
         block("t", None, "table", payload={"header_rows": 1}),
         *cells,
         block("h2", "2. Payment", "heading", payload={"level": 1}),
-        block("p2", "The Company pays IBM on each Business Day."),
+        block(
+            "p2",
+            "The Company pays IBM on each Business Day.",
+            marks=[
+                {"kind": "link", "a": 4, "b": 11, "target": "#recitals", "target_kind": "anchor"},
+                {
+                    "kind": "link",
+                    "a": 16,
+                    "b": 19,
+                    "target": "https://ibm.com",
+                    "target_kind": "external",
+                },
+            ],
+        ),
         {"t": "end", "status": "ok", "page_stats": {"0": {"blocks": 12}}},
     ]
 
@@ -339,7 +354,7 @@ def test_a_member_carries_its_marks_and_its_label(one: Any) -> None:
         [0, 13, "bold", None],
     ]
     assert by_text["Affiliate: any entity controlling a party."]["label"] == "(a)"
-    plain = by_text["The Company pays IBM on each Business Day."]
+    plain = by_text["Lender: the bank named in Schedule 1."]
     assert "marks" not in plain
     assert "label" not in plain
 
@@ -820,3 +835,44 @@ def test_an_answer_of_only_cover_is_an_empty_run(one: Any) -> None:
         connection.close()
     assert report.status == "empty"
     assert rows(path, "SELECT status, n_items FROM derive_run") == [("empty", 0)]
+
+
+def test_a_link_resolves_against_the_anchor_its_document_declares(one: Any, tmp_path: Path) -> None:
+    """D671 through the real host: `derive.anchor.native` declares `recitals` from its bookmark
+    mark, `derive.xref.native` writes the in-document link to it as a `ref_site`, and
+    `ow_ref_resolved` joins the two. The external link is no reference at all."""
+    from omniweave_core.discovery import catalog  # noqa: PLC0415
+    from omniweave_graph.links.driver import DocumentLinks  # noqa: PLC0415
+    from omniweave_graph.native.driver import DeclaredAnchors  # noqa: PLC0415
+
+    path, producer = one
+    for pass_id, driver in (
+        ("derive.anchor.native", DeclaredAnchors()),
+        ("derive.xref.native", DocumentLinks()),
+    ):
+        card = catalog().cards[pass_id]
+        vs = views(path)
+        units = decode_items(_answer(driver, [document_body(vs)], tmp_path / pass_id), vs)
+        identity = PassIdentity(
+            pass_id=pass_id,
+            producer_id=producer,
+            method=Method.NATIVE_XML,
+            origin_operator=pass_id,
+            origin_driver=pass_id,
+            driver_schema_v=1,
+            cost_class="free",
+        )
+        connection = ow.connect(path)
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            register_pass(connection, card)
+            for unit in units:
+                drive_items(connection, unit, identity, _Spend())
+            connection.execute("COMMIT")
+        finally:
+            connection.close()
+    assert rows(path, "SELECT name_norm, akind, surface FROM ref_site") == [
+        ("recitals", "bookmark", "Company")
+    ]
+    assert rows(path, "SELECT name_norm, akind FROM ow_ref_resolved") == [("recitals", "bookmark")]
+    assert rows(path, "SELECT count(*) FROM ref_unresolved") == [(0,)]
