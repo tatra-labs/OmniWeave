@@ -17,8 +17,13 @@ form, one after another (`omniweave_graph.view.read_segment_views`). The answer 
 Segment on its `seg` frames, and each Segment gets its own `derive_run` -- the grain 06:810 promises
 `derive_cover` -- in one write `Unit` with `derive_pass` upserted from the card that ran.
 
-**The row's operator is the driver's family** (`derive.anchor`), 08:2039's spelling and 08:1341's
-ownership grain, so `origin_operator` on every row it writes is the family too.
+**The row's operator is the Pass** (`derive.anchor.defterm`), and so is `origin_operator` on every
+row it writes; the `producer` row keeps the family (`derive.anchor`), 08:1341's memo grain. D668
+spelled the row by family, as 08:2039 prints it, and recorded that two Passes of one family on one
+document would then share `work_identity` -- the second enqueue a silent no-op -- and share
+`origin_operator`, so 06 section 10.2's owner-scoped replacement could not tell their rows apart.
+`derive.anchor.native` is the second `derive.anchor` Pass, so D670 rules it: the Pass is the unit of
+work and of ownership, and the family stays the unit of the memo.
 
 **It has a driver and no decision** (D665): the candidate is `resolve()`'s, pinned to the Pass, and
 a Pass the policy disables, a lockfile omits or a probe refuses enqueues nothing, with the report
@@ -77,6 +82,7 @@ __all__ = [
 ]
 
 FREE_PASSES: Final[dict[str, Method]] = {
+    "derive.anchor.native": Method.NATIVE_XML,
     "derive.anchor.defterm": Method.HEURISTIC,
     "derive.xref.pattern": Method.HEURISTIC,
 }
@@ -151,7 +157,7 @@ class DerivePlan:
                 ENQUEUE_SQL,
                 {
                     "unit_uri": unit.uri,
-                    "operator": operator,
+                    "operator": card.identity.id,
                     "op_version": card.identity.schema_version,
                     "cache_key": cache_key(
                         unit,
@@ -203,8 +209,7 @@ class DeriveOperator:
                 fix="remove it from [drivers] inproc",
             )
         card = granted.card
-        operator = operator_of(driver)
-        producer = _producer(operator, card, granted.config_digest)
+        producer = _producer(operator_of(driver), card, granted.config_digest)
         results: list[StepResult | None] = [None] * batch.size
         staged: list[tuple[int, tuple[ItemView, ...], UnitRef, str]] = []
         for index, row in enumerate(batch.rows):
@@ -224,12 +229,12 @@ class DeriveOperator:
             )
             staged.append((index, views, unit, format_ref(digest)))
         if staged:
-            reply = self._call(batch, staged, granted, operator)
+            reply = self._call(batch, staged, granted, driver)
             identity = PassIdentity(
                 pass_id=driver,
                 producer_id=self._producer_id(producer),
                 method=FREE_PASSES[driver],
-                origin_operator=operator,
+                origin_operator=driver,
                 origin_driver=driver,
                 driver_schema_v=card.identity.schema_version,
                 cost_class="free",
