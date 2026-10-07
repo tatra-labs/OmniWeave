@@ -32,6 +32,7 @@ from omniweave_core.store.items import ITEM_LANES, register_pass
 from omniweave_ports.types import UnitRef
 
 DEFTERM = "derive.anchor.defterm"
+XREF = "derive.xref.pattern"
 UNIT = UnitRef(uri="file:///docs/a.md", part="", content_sha256="ab" * 32, byte_len=10)
 OPEN = "[drivers]\nallow_unattested = true\nrequire_lock = false\ninproc = []\n"
 
@@ -93,7 +94,7 @@ def test_each_plan_is_its_own_pinned_driver_and_never_another_derive_driver(
     derives, why = DerivePlan.of(catalog(), policy, _ctx())
     assert derives is not None, why
     assert why == ""
-    assert [c.card.identity.id for c in derives.passes] == [DEFTERM]
+    assert [c.card.identity.id for c in derives.passes] == [DEFTERM, XREF]
     segments, why = SegmentPlan.of(catalog(), policy, _ctx())
     assert segments is not None, why
     assert segments.candidate.card.identity.id == SEGMENTER_ID
@@ -113,26 +114,32 @@ def test_the_enqueued_row_is_the_family_operator_with_its_driver_and_no_decision
     store = _store(tmp_path)
     connection = ow.connect(store)
     try:
-        assert derives.enqueue(connection, UNIT) == 1
+        assert derives.enqueue(connection, UNIT) == 2
         assert derives.enqueue(connection, UNIT) == 0, "a resumed run enqueues nothing twice"
     finally:
         connection.close()
-    [candidate] = derives.passes
     assert _rows(
         store,
         "SELECT operator, op_version, driver, decision_id, cost_class, status, priority, "
-        "unit_part, dispatch_key FROM work",
+        "unit_part, dispatch_key FROM work ORDER BY operator",
     ) == [
         (
-            "derive.anchor",
+            operator,
             1,
-            DEFTERM,
+            candidate.card.identity.id,
             None,
             "free",
             "pending",
             DERIVE_PRIORITY,
             "",
-            dispatch_key(DEFTERM, candidate.config_digest, str(candidate.isolation_granted)),
+            dispatch_key(
+                candidate.card.identity.id,
+                candidate.config_digest,
+                str(candidate.isolation_granted),
+            ),
+        )
+        for operator, candidate in zip(
+            ("derive.anchor", "derive.xref"), derives.passes, strict=True
         )
     ]
 
@@ -182,7 +189,7 @@ def test_which_rows_are_a_free_pass_and_which_method_each_pass_has() -> None:
     assert is_derive("derive.anchor")
     assert not is_derive("derive.segment")
     assert not is_derive("parse.text")
-    assert FREE_PASSES == {DEFTERM: Method.HEURISTIC}
+    assert FREE_PASSES == {DEFTERM: Method.HEURISTIC, XREF: Method.HEURISTIC}
 
 
 def test_the_report_says_what_each_pass_did_and_why_one_did_not() -> None:
