@@ -89,9 +89,9 @@ from types import MappingProxyType
 from typing import Any, Final, Literal, NewType, get_args
 
 from omniweave_core.canonical import JsonValue, canonical, ow128, sha256_canonical
-from omniweave_core.errors import GraphError
+from omniweave_core.errors import GraphError, ResourceLimit
 from omniweave_core.ident import normalize_k, normalize_key
-from omniweave_core.limits import MAX_ITEMS_PER_SEGMENT, MAX_SEGMENT_BLOCKS
+from omniweave_core.limits import MAX_ITEMS_PER_SEGMENT, MAX_LINKS_PER_BLOCK, MAX_SEGMENT_BLOCKS
 from omniweave_core.model.block import BlockId, Cite
 from omniweave_core.model.enums import (
     MAX_TRUST_BY_METHOD,
@@ -110,6 +110,7 @@ from omniweave_core.operator import SpendVector
 
 __all__ = [
     "BUILTIN_ETYPES",
+    "BUILTIN_RELATIONS",
     "OW_GRAPH_COVERED_GROUND",
     "OW_GRAPH_DANGLING_CITE",
     "OW_GRAPH_DANGLING_TMP",
@@ -234,6 +235,33 @@ D667's elsewhere: a label a document numbers (`anchor`, `section`, `figure`, `ta
 figure; names of people, organisations, places, products and groups drift in spelling and are fuzzy.
 """
 
+BUILTIN_RELATIONS: Final[tuple[tuple[str, int, str], ...]] = (
+    ("refers_to", 0, "source is the REFERRING block or entity; target is the one it points at."),
+    ("cites", 0, "source is the CITING entity; target is the CITED entity."),
+    ("defines", 0, "source is the DEFINING entity; target is the term or name it defines."),
+    ("part_of", 0, "source is the PART; target is the WHOLE it belongs to."),
+    ("member_of", 0, "source is the MEMBER; target is the GROUP it belongs to."),
+    ("party_to", 0, "source is the PARTY; target is the AGREEMENT or proceeding it is party to."),
+    ("supersedes", 0, "source is the NEWER entity; target is the OLDER one it replaces."),
+    ("amends", 0, "source is the AMENDING entity; target is the entity it changes."),
+    ("located_in", 0, "source is the LOCATED entity; target is the PLACE it is in."),
+    ("attributed_to", 0, "source is the STATEMENT or work; target is who it is attributed to."),
+    ("depends_on", 0, "source is the DEPENDENT entity; target is the entity it depends on."),
+    ("co_occurs_with", 1, "the two entities occur in one Segment; no direction is meant."),
+    ("related_to", 1, "the two are related in a way no other relation names; no direction."),
+)
+"""`relation_vocab`'s thirteen builtin rows as `(relation, symmetric, actor_rule)`. **D672.**
+
+06 section 1.6 names the thirteen and prints one `actor_rule` -- *"source is the CITING entity;
+target is the CITED entity."* -- which is `cites`'s. The other twelve are D672's, written in that
+one's shape: the source role in capitals, then the target's, at most 200 characters and fixed under
+`sanitize_label` (06:320), because the extraction prompt is generated from them. `co_occurs_with`
+and `related_to` are the two `symmetric` rows -- the first is a fact about two mentions sharing a
+Segment and the second is the relation with no direction to name -- so each is stored once, with
+`src < dst` (06:322). `block_link.relation` is a foreign key into this table, so `refers_to` must be
+present before the first resolved reference can be written as a link.
+"""
+
 # The fourteen quarantine codes and the one Diag code this sink itself raises. 06:684-698 is the
 # table; `quarantine.code`'s comment in 0002_graph.sql transcribes the same list.
 #
@@ -296,6 +324,11 @@ _METHOD_ORD: Final[Mapping[str, int]] = MappingProxyType(
 Read off `enum_val_rows()`, which 03 section 2.1 makes *"THE SINGLE SITE THAT APPLIES the ordinal
 rule"*. A second literal table here would be a second truth about what a stored `2` means.
 """
+
+_METHOD_BY_ORD: Final[Mapping[int, Method]] = MappingProxyType(
+    {ordinal: Method(name) for name, ordinal in _METHOD_ORD.items()}
+)
+"""The inverse: what a stored `derive_run.method` names, for a run's trust ceiling read back."""
 
 
 # `SpendVector` moved to `omniweave_core.operator` with P4's runtime vocabulary, and is imported
@@ -815,6 +848,53 @@ LIMIT 1
 # reports is the same split the view will report later; 0003's own comment records that both
 # predicates *"failed silently without them"*.
 
+_BINDABLE: Final = """
+SELECT s.block_id, n.block_id, s.name_norm, r.producer_id, r.method, r.origin_operator,
+       r.origin_driver, r.driver_schema_v, sb.restriction_bits | nb.restriction_bits,
+       sb.doc_ord, sb.gen,
+       (SELECT COUNT(*) FROM anchor m JOIN doc md ON md.doc_ord = m.doc_ord AND m.gen = md.gen
+        WHERE m.name_norm = s.name_norm AND m.akind = s.akind
+          AND (m.scope = 'corpus' OR m.doc_ord = s.doc_ord))
+FROM ref_site s
+JOIN anchor n   ON n.name_norm = s.name_norm AND n.akind = s.akind
+JOIN doc dd     ON dd.doc_ord = n.doc_ord AND n.gen = dd.gen
+JOIN derive_run r ON r.run_id = s.run_id
+JOIN block sb   ON sb.block_id = s.block_id AND sb.state = 0
+JOIN block nb   ON nb.block_id = n.block_id
+WHERE s.name_norm = ? AND s.akind = ? AND (n.scope = 'corpus' OR n.doc_ord = s.doc_ord)
+  AND n.block_id <> s.block_id
+"""
+# Every (occurrence, target) pair `ow_ref_resolved` holds for one (name_norm, akind), with what a
+# `block_link` row needs: the OBSERVING run's provenance (D672), both blocks' restriction bits and
+# the occurrence's target count, which is the `ambiguous` column. The occurrence's block must be
+# live; the view's own predicates, HEAD GENERATION ONLY and SCOPE IS HONOURED, are kept verbatim.
+_BINDABLE_AT_BLOCK: Final = _BINDABLE + "  AND s.block_id = ?\nORDER BY s.block_id, n.block_id"
+_BINDABLE_IN_SCOPE: Final = _BINDABLE + "  AND (? = 'corpus' OR s.doc_ord = ?)\nORDER BY 1, 2"
+
+_SELECT_LINK: Final = """
+SELECT ambiguous FROM block_link
+WHERE src_block = ? AND dst_block = ? AND relation = 'refers_to' AND producer_id = ?
+  AND IFNULL(site_block, -1) = ? AND IFNULL(via_entity, -1) = -1
+"""
+# `block_link_identity`'s six columns, sentinels included (0003:327-328).
+
+_COUNT_LINKS_OUT: Final = "SELECT COUNT(*) FROM block_link WHERE src_block = ?"
+
+_INSERT_LINK: Final = """
+INSERT OR IGNORE INTO block_link (src_block, dst_block, relation, site_block, via_entity, bound_by,
+                                  weight, ambiguous, producer_id, trust, origin_operator,
+                                  origin_driver, driver_schema_v, restriction_bits)
+VALUES (?, ?, 'refers_to', ?, NULL, ?, 1.0, ?, ?, ?, ?, ?, ?, ?)
+"""
+
+_MARK_LINK_AMBIGUOUS: Final = """
+UPDATE block_link SET ambiguous = 1
+WHERE src_block = ? AND dst_block = ? AND relation = 'refers_to' AND producer_id = ?
+  AND IFNULL(site_block, -1) = ? AND IFNULL(via_entity, -1) = -1
+"""
+# A second target can arrive after the first link: a corpus-scoped anchor in another document.
+# The column moves 0 -> 1 only; the link is KEPT and ranked down, never dropped (0003:319).
+
 _SELECT_SEGMENT_ORD: Final = "SELECT ord FROM segment_block WHERE block_id = ? AND segment_id = ?"
 
 _SELECT_COVER: Final = """
@@ -964,6 +1044,7 @@ class SqliteGraphSink:
         self._ungrounded = 0
         self._xrefs_bound = 0
         self._xrefs_unresolved = 0
+        self._link_capped: set[int] = set()
         self._dangled: list[str] = []
 
     def begin_run(self, seg: SegmentRef, p: PassIdentity, allowed_cites: frozenset[Cite]) -> RunId:
@@ -1214,6 +1295,10 @@ class SqliteGraphSink:
         `OW_GRAPH_UNPARSED_ITEM` with BOTH surfaces in the payload -- the document is ambiguous and
         picking one silently is wrong"* (06:115-118). The stored surface goes into `detail` and the
         rejected draft into `payload`, so both spellings are in the one row.
+
+        A new anchor also links every occurrence already waiting for it within its scope (`_bind`):
+        resolution is *"at write time and again on `anchor_delta`"* (06:1099), and a name defined
+        AFTER it is referenced -- a later Pass, a later document -- is the delta's ADDED arm.
         """
         self._require_open()
         self._inputs += 1
@@ -1247,14 +1332,17 @@ class SqliteGraphSink:
             ),
         )
         self._emitted += 1
+        self._bind(_BINDABLE_IN_SCOPE, (name_norm, str(d.akind), d.scope, seg.doc_ord))
 
     def xref(self, d: XrefDraft) -> None:
-        """Record one reference OCCURRENCE and count whether the name resolves.
+        """Record one reference OCCURRENCE, count whether the name resolves, and link it if so.
 
         `ref_site` has *"NO status column, EVER"* (0003:206): resolution is by string, so
         `ref_unresolved` is an anti-join VIEW and there is no lifecycle to go stale. This method
         therefore always writes the occurrence and reports the split through
-        `RunReport.xrefs_bound` / `xrefs_unresolved`, computed with the view's own predicate.
+        `RunReport.xrefs_bound` / `xrefs_unresolved`, computed with the view's own predicate. A
+        resolved occurrence is also written as a `block_link(refers_to, bound_by=name_norm)` from
+        its block to the anchor's (06:1101, `_bind`), which is what the `structural` Channel walks.
 
         **The `edge(bound_by=...)` arm is not constructible from this Draft, and that is a plan
         defect rather than a decision.** 06:474-477 says the sink resolves an `XrefDraft` to
@@ -1298,6 +1386,7 @@ class SqliteGraphSink:
         else:
             self._xrefs_bound += 1
         self._emitted += 1
+        self._bind(_BINDABLE_AT_BLOCK, (name_norm, str(d.akind), block.block_id))
 
     # -- coverage, disposal and diagnostics ----------------------------------------------------
 
@@ -1405,11 +1494,15 @@ class SqliteGraphSink:
         """
         self._require_open()
         seg = self._segment()
+        self._write_diag(seg.doc_ord, seg.gen, d)
+
+    def _write_diag(self, doc_ord: int, gen: int, d: Diag) -> None:
+        """The `diag` INSERT, against the document the diagnostic is about."""
         self._connection.execute(
             _INSERT_DIAG,
             (
-                seg.doc_ord,
-                seg.gen,
+                doc_ord,
+                gen,
                 d.page,
                 None if d.block is None else int(d.block),
                 d.part,
@@ -1750,6 +1843,103 @@ class SqliteGraphSink:
         )
         self._emitted += 1
         return EdgeId(int(cursor.lastrowid or 0))
+
+    def _bind(self, statement: str, params: tuple[object, ...]) -> None:
+        """Write the `block_link(refers_to)` each resolved occurrence makes. **D672.**
+
+        06:1099-1101: the sink *"looks `name_norm` up in `anchor` under the scope rule and writes
+        either an `edge(relation='refers_to', bound_by=name_norm)` plus a `block_link` row, or a
+        bare `ref_site` occurrence"*. The `edge` half needs entities an `XrefDraft` does not carry
+        (see `xref`); the `block_link` half needs only the two blocks, and is written here, from
+        the occurrence's block to the anchor's, with `bound_by` the name that resolved it -- the
+        stamp `anchor_delta`'s unbind keys on. The occurrence is kept either way: `ref_site` is the
+        record, the link is the traversable consequence, and `ow_ref_resolved` stays the authority.
+
+        **Both writes call this, so the order they land in does not matter.** `xref` binds its own
+        occurrence to every anchor already present; `anchor` binds every occurrence already present
+        in its scope. A Pass that runs first, or a document ingested later, leaves the same rows.
+
+        Readings the plan leaves open:
+
+        1. **The link is the OBSERVING run's.** `producer_id`, `origin_operator`, `origin_driver`
+           and `driver_schema_v` are the `derive_run` the occurrence's `run_id` names, whichever
+           write completed the binding, so one occurrence makes one link and its identity
+           (0003:327) does not depend on arrival order.
+        2. **`trust` is that run's `MAX_TRUST_BY_METHOD` ceiling.** An `XrefDraft` claims no trust,
+           and equality on a normalised name against an observed anchor adds no doubt of its own.
+        3. **`site_block` is the occurrence's block**, which for `refers_to` is the source too.
+        4. **`restriction_bits` is both blocks' OR**: a link discloses both of its ends.
+        5. **`ambiguous` is "more than one anchor resolves this occurrence"** -- possible only
+           through a corpus-scoped anchor -- and moves 0 -> 1 when a second target arrives later.
+        6. **`MAX_LINKS_PER_BLOCK` is enforced here** (07:1058): a source block at the ceiling gets
+           no further link and one `Diag(OW_RESOURCE_LIMIT)`, fatal as every limit breach is
+           (03:1824), against the source's own document. Its occurrence stays in `ref_site`.
+        7. **No link from a block to itself.** A name defined and referenced in one block resolves
+           in `ow_ref_resolved` as before, but a loop traverses nowhere and would only add to the
+           block's degree, which the `structural` Channel divides by.
+        """
+        for (
+            src,
+            dst,
+            name_norm,
+            producer_id,
+            method,
+            operator,
+            driver,
+            schema_v,
+            bits,
+            src_doc,
+            src_gen,
+            targets,
+        ) in self._connection.execute(statement, params).fetchall():
+            identity = (src, dst, producer_id, src)
+            found = self._connection.execute(_SELECT_LINK, identity).fetchone()
+            if found is not None:
+                if targets > 1 and not found[0]:
+                    self._connection.execute(_MARK_LINK_AMBIGUOUS, identity)
+                continue
+            (out,) = self._connection.execute(_COUNT_LINKS_OUT, (src,)).fetchone()
+            if out >= MAX_LINKS_PER_BLOCK:
+                self._link_cap(int(src), int(src_doc), int(src_gen))
+                continue
+            self._connection.execute(
+                _INSERT_LINK,
+                (
+                    src,
+                    dst,
+                    src,
+                    name_norm,
+                    int(targets > 1),
+                    producer_id,
+                    int(MAX_TRUST_BY_METHOD[_METHOD_BY_ORD[int(method)]]),
+                    operator,
+                    driver,
+                    schema_v,
+                    bits,
+                ),
+            )
+
+    def _link_cap(self, src: int, doc_ord: int, gen: int) -> None:
+        """One `Diag(OW_RESOURCE_LIMIT)` per source block per run: the breach is never silent."""
+        if src in self._link_capped:
+            return
+        self._link_capped.add(src)
+        self._write_diag(
+            doc_ord,
+            gen,
+            Diag(
+                code=ResourceLimit.SYMBOL,
+                severity="warning",
+                component="store.graph",
+                message=(
+                    f"block {src} already has {MAX_LINKS_PER_BLOCK} outgoing links; the references "
+                    f"it makes past that stay in ref_site unlinked"
+                ),
+                block=BlockId(src),
+                detail={"limit": "MAX_LINKS_PER_BLOCK", "value": MAX_LINKS_PER_BLOCK},
+                fatal=True,
+            ),
+        )
 
     def _write_claim(
         self,
