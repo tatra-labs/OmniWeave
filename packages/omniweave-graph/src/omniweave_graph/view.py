@@ -33,7 +33,7 @@ from omniweave_ports import DriverError, FailureClass
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
 
-__all__ = ["Cell", "Member", "SegmentView", "read_segment_view"]
+__all__ = ["Cell", "Member", "SegmentView", "read_segment_view", "read_segment_views"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,9 +71,33 @@ class SegmentView:
 
 def read_segment_view(raw: bytes) -> SegmentView:
     """Decode one Segment-form view. Anything else is `CORRUPT_INPUT`."""
-    lines = _lines(raw)
-    head = next(lines, None)
-    if head is None or head.get("t") != "segment" or not isinstance(head.get("seg"), str):
+    views = read_segment_views(raw)
+    if len(views) != 1:
+        _corrupt(f"the view holds {len(views)} Segments where one was expected")
+    return views[0]
+
+
+def read_segment_views(raw: bytes) -> tuple[SegmentView, ...]:
+    """Decode a document's Segments, each a `segment` header and its members, one after another.
+
+    **D668.** A document-granularity Pass is INVOKEd once per document (06:810), and an `INVOKE`
+    carries one unit per work row, so its unit is the document and its view is every live Segment
+    of it in this form, in `segment.ord` order. A document with no Segment is no view at all.
+    """
+    frames = list(_lines(raw))
+    if not frames or frames[0].get("t") != "segment":
+        _corrupt("the view does not open with a segment frame naming its Segment")
+    views: list[SegmentView] = []
+    start = 0
+    for end in range(1, len(frames) + 1):
+        if end == len(frames) or frames[end].get("t") == "segment":
+            views.append(_one(frames[start], frames[start + 1 : end]))
+            start = end
+    return tuple(views)
+
+
+def _one(head: dict[str, Any], blocks: list[dict[str, Any]]) -> SegmentView:
+    if not isinstance(head.get("seg"), str):
         _corrupt("the view does not open with a segment frame naming its Segment")
     path = head.get("heading_path", [])
     if not isinstance(path, list) or not all(isinstance(p, str) for p in path):
@@ -81,7 +105,7 @@ def read_segment_view(raw: bytes) -> SegmentView:
     defaults = head.get("defaults", {})
     if not isinstance(defaults, dict):
         _corrupt("defaults must be an object")
-    members = tuple(_member(frame, defaults) for frame in lines)
+    members = tuple(_member(frame, defaults) for frame in blocks)
     return SegmentView(seg=head["seg"], heading_path=tuple(path), members=members)
 
 

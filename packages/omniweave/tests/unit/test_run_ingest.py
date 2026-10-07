@@ -16,7 +16,7 @@ import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from omniweave.run import discover
@@ -209,9 +209,13 @@ def test_two_first_batches_on_two_threads_build_one_parse_operator(
             pass
 
     monkeypatch.setattr(ingest_module, "ParseOperator", Slow)
-    #  D665: building the parse Operator resolves the segmenter too; this test is about the lock.
+    #  D665 and D668: building the parse Operator resolves the segmenter and the free Passes too;
+    #  this test is about the lock.
     monkeypatch.setattr(
         ingest_module.SegmentPlan, "of", classmethod(lambda _cls, *_args: (None, ""))
+    )
+    monkeypatch.setattr(
+        ingest_module.DerivePlan, "of", classmethod(lambda _cls, *_args: (None, ""))
     )
     inputs = SimpleNamespace(catalog=None, resolving=None, passwords=None)
     lazy = ingest_module._ParseLazily(
@@ -231,6 +235,36 @@ def test_two_first_batches_on_two_threads_build_one_parse_operator(
         one.join()
     assert len(built) == 1
     assert got[0] is got[1] is built[0]
+
+
+def test_building_the_parse_operator_records_why_no_segment_or_pass_row_can_be_enqueued(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D665 and D668: the two plans are resolved once, with the parse Operator, and a plan that
+    resolves nothing leaves its reason on the tally for the report's `none enqueued` lines."""
+
+    class Quiet:
+        def __init__(self, *_args: object, **kwargs: object) -> None:
+            self.segments = kwargs["segments"]
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(ingest_module, "ParseOperator", Quiet)
+    monkeypatch.setattr(
+        ingest_module.SegmentPlan, "of", classmethod(lambda _cls, *_args: (None, "seg: why"))
+    )
+    monkeypatch.setattr(
+        ingest_module.DerivePlan, "of", classmethod(lambda _cls, *_args: (None, "pass: why"))
+    )
+    tally = ingest_module.ParseTally()
+    inputs = SimpleNamespace(catalog=None, resolving=None, passwords=None)
+    lazy = ingest_module._ParseLazily(
+        None, None, None, inputs, tmp_path / "i.owstore", None, tally, None
+    )
+    built = lazy.get()
+    assert cast("Any", built).segments is None
+    assert (tally.segment_skipped, tally.derive_skipped) == ("seg: why", "pass: why")
 
 
 def test_the_generation_bump_never_moves_the_counter_backwards(tmp_path: Path) -> None:
