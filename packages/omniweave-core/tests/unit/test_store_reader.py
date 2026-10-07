@@ -1626,7 +1626,7 @@ def _seed_links(built: Built) -> None:
         )
     for relation in (REFERS_TO, CITES):
         conn.execute(
-            "INSERT INTO relation_vocab(relation, symmetric, actor_rule, source) "
+            "INSERT OR IGNORE INTO relation_vocab(relation, symmetric, actor_rule, source) "
             "VALUES(?, 0, 'source refers to target', 'builtin')",
             (relation,),
         )
@@ -3478,7 +3478,7 @@ def test_the_beam_keeps_a_tied_neighbour_by_where_it_sits_not_by_its_block_id(
     for ord_, (block_id, page) in enumerate(((1, 0), (30, 1), (20, 5))):
         _block(conn, block_id=block_id, doc_ord=1, producer_id=producer_id, page=page, ord_=ord_)
     conn.execute(
-        "INSERT INTO relation_vocab(relation, symmetric, actor_rule, source) "
+        "INSERT OR IGNORE INTO relation_vocab(relation, symmetric, actor_rule, source) "
         "VALUES(?, 0, 'source refers to target', 'builtin')",
         (REFERS_TO,),
     )

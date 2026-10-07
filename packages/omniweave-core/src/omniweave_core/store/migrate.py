@@ -50,7 +50,7 @@ from typing import TYPE_CHECKING, Final
 from omniweave_core.config import KEYS
 from omniweave_core.contract import SCHEMA_STRING
 from omniweave_core.errors import StoreError
-from omniweave_core.store.graph import BUILTIN_ETYPES
+from omniweave_core.store.graph import BUILTIN_ETYPES, BUILTIN_RELATIONS
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -622,36 +622,51 @@ def _seed_index_state(connection: sqlite3.Connection, *, corpus_id: str | None) 
 
 
 def _seed_vocabularies(connection: sqlite3.Connection) -> None:
-    """`etype_vocab`'s fifteen builtin rows, written whenever any is missing. **D667.**
+    """`etype_vocab`'s fifteen and `relation_vocab`'s thirteen builtin rows. **D667, D672.**
 
-    0002_graph.sql creates the table empty (*"NOT seeded here"*) and leaves the rows to the runner,
-    as `index_state`'s are. Unlike those, this runs on every call and not only after a migration
-    applies: a store migrated before the seed existed has the table and no rows, and every entity a
-    Pass proposes into it would be `OW_GRAPH_ETYPE_OUT_OF_VOCAB`. The check is one read, so a
-    current store takes no write lock. `INSERT OR IGNORE`, so an operator's own row for a builtin
-    name -- a changed `resolution`, say -- is never overwritten.
-
-    `relation_vocab`'s thirteen are not seeded yet: 06 section 1.6 names them and prints only one
-    `actor_rule`, and no shipped Pass writes an edge or a `block_link`. They are seeded with the
-    first Pass that does.
+    0002_graph.sql creates both tables empty (*"NOT seeded here"*) and leaves the rows to the
+    runner, as `index_state`'s are. Unlike those, this runs on every call and not only after a
+    migration applies: a store migrated before the seed existed has the tables and no rows, and
+    every entity a Pass proposes would be `OW_GRAPH_ETYPE_OUT_OF_VOCAB`, every resolved reference
+    a `block_link` whose `relation` foreign key has nothing to point at. The check is two reads, so
+    a current store takes no write lock. `INSERT OR IGNORE`, so an operator's own row for a builtin
+    name -- a changed `resolution`, a reworded `actor_rule` -- is never overwritten.
     """
     if not _has_table(connection, "etype_vocab"):
         return
-    names = [etype for etype, _, _ in BUILTIN_ETYPES]
-    marks = ",".join("?" * len(names))
-    (present,) = connection.execute(
-        f"SELECT COUNT(*) FROM etype_vocab WHERE etype IN ({marks})",  # noqa: S608 -- marks only
-        names,
-    ).fetchone()
-    if present == len(names):
-        return
-    connection.execute("BEGIN IMMEDIATE")
-    try:
-        connection.executemany(
+    seeds = (
+        (
+            "etype_vocab",
+            "etype",
+            [etype for etype, _, _ in BUILTIN_ETYPES],
             "INSERT OR IGNORE INTO etype_vocab (etype, scope, resolution, source) "
             "VALUES (?, ?, ?, 'builtin')",
             BUILTIN_ETYPES,
-        )
+        ),
+        (
+            "relation_vocab",
+            "relation",
+            [relation for relation, _, _ in BUILTIN_RELATIONS],
+            "INSERT OR IGNORE INTO relation_vocab (relation, symmetric, actor_rule, source) "
+            "VALUES (?, ?, ?, 'builtin')",
+            BUILTIN_RELATIONS,
+        ),
+    )
+    missing = []
+    for table, column, names, insert, rows in seeds:
+        marks = ",".join("?" * len(names))
+        (present,) = connection.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE {column} IN ({marks})",  # noqa: S608 -- constants
+            names,
+        ).fetchone()
+        if present != len(names):
+            missing.append((insert, rows))
+    if not missing:
+        return
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        for insert, rows in missing:
+            connection.executemany(insert, rows)
     except BaseException:
         if connection.in_transaction:
             connection.execute("ROLLBACK")

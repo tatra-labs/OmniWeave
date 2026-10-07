@@ -194,11 +194,11 @@ def _seed(connection: sqlite3.Connection) -> None:
             (etype,),
         )
     connection.execute(
-        "INSERT INTO relation_vocab (relation, symmetric, actor_rule, source) "
+        "INSERT OR IGNORE INTO relation_vocab (relation, symmetric, actor_rule, source) "
         "VALUES ('party_to', 0, 'source is the party; target is the agreement', 'builtin')"
     )
     connection.execute(
-        "INSERT INTO relation_vocab (relation, symmetric, actor_rule, source) "
+        "INSERT OR IGNORE INTO relation_vocab (relation, symmetric, actor_rule, source) "
         "VALUES ('co_occurs_with', 1, 'symmetric; stored with src < dst', 'builtin')"
     )
 
@@ -624,7 +624,7 @@ def schema_lint(repo_root: Path) -> ModuleType:
 
 def test_gr15_holds_over_the_schema_this_sink_writes_into(schema_lint: ModuleType) -> None:
     """*"`mention` is the only table in the framework referencing both a `block_id` and an
-    `entity_id`"* (06:232). This sink writes into nine tables and creates none, so the property is
+    `entity_id`"* (06:232). This sink writes into ten tables and creates none, so the property is
     a property of the DDL -- and the assertion is made with the gate's own clause rather than a
     hand-rolled scan that could disagree with it.
 
@@ -647,9 +647,10 @@ def test_the_tables_this_sink_writes_are_the_ones_the_worked_trace_names(
 ) -> None:
     """02-architecture.md:488 lists what a Pass reaches through the sink; the happy path hits them.
 
-    `block_link` is on that list and has no Draft that produces one -- `EdgeDraft` is
-    entity-to-entity and `block_link` is block-to-block, which 06:238-243 homes in
-    [07] rather than here. Recorded rather than invented.
+    `block_link` is on that list and has no Draft of its own -- `EdgeDraft` is entity-to-entity
+    and `block_link` is block-to-block, which 06:238-243 homes in [07]. It is written as the
+    consequence of a RESOLVED `XrefDraft` (06:1101, D672): the happy path's reference names an
+    anchor the same run defines, so exactly one link, from the occurrence to the anchor.
     """
     _drive_happy_path(connection)
     written = {
@@ -664,6 +665,7 @@ def test_the_tables_this_sink_writes_are_the_ones_the_worked_trace_names(
             "mention",
             "edge",
             "claim",
+            "block_link",
         )
         if _rows(connection, table) > 0
     }
@@ -677,8 +679,9 @@ def test_the_tables_this_sink_writes_are_the_ones_the_worked_trace_names(
         "mention",
         "edge",
         "claim",
+        "block_link",
     }
-    assert _rows(connection, "block_link") == 0, "no Draft produces one; 07 owns that table"
+    assert _rows(connection, "block_link") == 1
 
 
 # ---------------------------------------------------------------------------------------------
@@ -753,7 +756,11 @@ def _drive_happy_path(conn: sqlite3.Connection) -> object:
 def test_the_full_happy_path_writes_one_row_per_item_and_leaves_the_store_sound(
     connection: sqlite3.Connection,
 ) -> None:
-    """The composition test: nine tables, no quarantine, and SQLite's own FK verdict."""
+    """The composition test: ten tables, no quarantine, and SQLite's own FK verdict.
+
+    `emitted` counts the eight Drafts written and not the `block_link` the resolved reference makes:
+    the link is the sink's consequence of one of them, not a ninth item the Pass proposed (D672).
+    """
     report = _drive_happy_path(connection)
     counts = {
         table: _rows(connection, table)
@@ -766,6 +773,7 @@ def test_the_full_happy_path_writes_one_row_per_item_and_leaves_the_store_sound(
             "claim",
             "anchor",
             "ref_site",
+            "block_link",
             "derive_cover",
             "quarantine",
             "diag",
@@ -780,6 +788,7 @@ def test_the_full_happy_path_writes_one_row_per_item_and_leaves_the_store_sound(
         "claim": 1,
         "anchor": 1,
         "ref_site": 1,
+        "block_link": 1,
         "derive_cover": 1,
         "quarantine": 0,
         "diag": 0,
