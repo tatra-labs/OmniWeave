@@ -34,6 +34,7 @@ from omniweave_ports.types import UnitRef
 DEFTERM = "derive.anchor.defterm"
 XREF = "derive.xref.pattern"
 NATIVE = "derive.anchor.native"
+LINKS = "derive.xref.native"
 UNIT = UnitRef(uri="file:///docs/a.md", part="", content_sha256="ab" * 32, byte_len=10)
 OPEN = "[drivers]\nallow_unattested = true\nrequire_lock = false\ninproc = []\n"
 
@@ -95,7 +96,7 @@ def test_each_plan_is_its_own_pinned_driver_and_never_another_derive_driver(
     derives, why = DerivePlan.of(catalog(), policy, _ctx())
     assert derives is not None, why
     assert why == ""
-    assert [c.card.identity.id for c in derives.passes] == [NATIVE, DEFTERM, XREF]
+    assert [c.card.identity.id for c in derives.passes] == [NATIVE, LINKS, DEFTERM, XREF]
     segments, why = SegmentPlan.of(catalog(), policy, _ctx())
     assert segments is not None, why
     assert segments.candidate.card.identity.id == SEGMENTER_ID
@@ -115,7 +116,7 @@ def test_each_enqueued_row_is_its_pass_with_its_driver_and_no_decision(
     store = _store(tmp_path)
     connection = ow.connect(store)
     try:
-        assert derives.enqueue(connection, UNIT) == 3
+        assert derives.enqueue(connection, UNIT) == 4
         assert derives.enqueue(connection, UNIT) == 0, "a resumed run enqueues nothing twice"
     finally:
         connection.close()
@@ -190,6 +191,7 @@ def test_which_rows_are_a_free_pass_and_which_method_each_pass_has() -> None:
     assert not is_derive("parse.text")
     assert FREE_PASSES == {
         NATIVE: Method.NATIVE_XML,
+        LINKS: Method.NATIVE_XML,
         DEFTERM: Method.HEURISTIC,
         XREF: Method.HEURISTIC,
     }
