@@ -14,7 +14,7 @@ import pytest
 from omniweave_conform.harness import MemoryBlobStore, make_io
 from omniweave_core.model.enums import MAX_TRUST_BY_METHOD, Method, Trust
 from omniweave_graph.defterm.driver import DRIVER_ID, EMPTY_REASON, LANES, DefinedTerms
-from omniweave_graph.view import Cell, Member, read_segment_view, read_segment_views
+from omniweave_graph.view import Cell, Mark, Member, read_segment_view, read_segment_views
 from omniweave_ports import DriverError, FailureClass, ProbeStatus
 from omniweave_ports.types import DeriveScope, UnitRef
 
@@ -203,7 +203,14 @@ def test_defaults_fill_what_a_block_frame_leaves_out() -> None:
     assert v.seg == "seg:9f2c1d4a77b03e51"
     assert v.heading_path == ("Part II",)
     assert v.members == (
-        Member(cite="d7#1", kind="paragraph", text="a", layer="note", covered=True),
+        Member(
+            cite="d7#1",
+            kind="paragraph",
+            text="a",
+            layer="note",
+            covered=True,
+            marks=(Mark(0, 1, "bold", None),),
+        ),
         Member(cite="d7#2", kind="paragraph", text="b", layer="body", covered=False),
         Member(cite="d7#3", kind="table", text=None, layer="note", covered=True),
     )

@@ -122,10 +122,20 @@ def contract() -> list[dict[str, Any]]:
             "p0",
             'International Business Machines Corporation ("IBM") and Acme Holdings Ltd. '
             '(hereinafter, the "Company") agree. "Lender" means Beta Bank.',
+            marks=[
+                {"kind": "anchor", "a": 0, "b": 0, "name": "recitals", "akind": "bookmark"},
+                {"kind": "bold", "a": 0, "b": 13},
+            ],
         ),
         block("h1", "1. Definitions", "heading", payload={"level": 1}),
         block("l", None, "list"),
-        block("li0", "Affiliate: any entity controlling a party.", "list_item", parent="l"),
+        block(
+            "li0",
+            "Affiliate: any entity controlling a party.",
+            "list_item",
+            parent="l",
+            label="(a)",
+        ),
         block("li1", "Lender: the bank named in Schedule 1.", "list_item", parent="l"),
         block("t", None, "table", payload={"header_rows": 1}),
         *cells,
@@ -315,6 +325,23 @@ def test_the_segment_form_is_the_segment_then_its_members_in_cover_order(one: An
     assert set(glossary.cites) == {f["cite"] for f in frames[1:]}
     decoded = read_segment_view(glossary.body)
     assert decoded.heading_path == ("1. Definitions",)
+
+
+def test_a_member_carries_its_marks_and_its_label(one: Any) -> None:
+    """D670: 06:1316's `marks` as `[a, b, kind, value]` with the stored JSON decoded, and
+    `block.label` when the block has one; a block with neither carries neither key."""
+    path, _ = one
+    frames = [json.loads(line) for v in views(path) for line in v.body.splitlines()]
+    by_text = {f.get("text", ""): f for f in frames if f["t"] == "block"}
+    recital = next(f for t, f in by_text.items() if t.startswith("International"))
+    assert recital["marks"] == [
+        [0, 0, "anchor", {"name": "recitals", "akind": "bookmark"}],
+        [0, 13, "bold", None],
+    ]
+    assert by_text["Affiliate: any entity controlling a party."]["label"] == "(a)"
+    plain = by_text["The Company pays IBM on each Business Day."]
+    assert "marks" not in plain
+    assert "label" not in plain
 
 
 def test_a_cell_carries_its_table_position_and_width(one: Any) -> None:

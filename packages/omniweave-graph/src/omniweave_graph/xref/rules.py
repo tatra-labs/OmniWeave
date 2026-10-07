@@ -14,9 +14,11 @@ tune it, at most `MAX_REF_SITES_PER_BLOCK = 32` occurrences per block, a breach 
    asserted non-overlapping in CI, but a corpus is not the fixture set; one occurrence is one
    `ref_site`, never two.
 3. **Every text-bearing kind is read except `code`, `formula`, `toc`, `toc_entry`, `page_header`
-   and `page_footer`** -- the same set `derive.anchor.defterm` skips (D666 reading 9). A heading is
-   read: `See Section 4` is rarely one, but `Schedule 2 -- Fees` is a heading and a reference
-   at once.
+   and `page_footer`** -- the same set `derive.anchor.defterm` skips (D666 reading 9). **But a
+   match that opens a `heading`, `title` or `caption` is that block's own label** -- `Schedule 2 --
+   Fees`, `Figure 3: Revenue` -- which `derive.anchor.native` defines (D670), so it is not an
+   occurrence: written as one, it was a `ref_site` resolving to its own block. D669 read it as both;
+   D670 narrows that. `See Schedule 2` in a heading is still a reference.
 4. **The occurrences are kept in reading order, and the first 32 of a block are written.**
 """
 
@@ -28,6 +30,8 @@ from dataclasses import dataclass, field
 from functools import cache
 from importlib.resources import files
 from typing import TYPE_CHECKING, Final
+
+from omniweave_graph.vocab import AKINDS
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -48,29 +52,11 @@ MAX_REF_SITES_PER_BLOCK: Final = 32
 """06:1095 and 0003_index.sql: a breach is `Diag(OW_REFSITE_TRUNCATED)` and is counted."""
 
 _TRUNCATED: Final = "OW_REFSITE_TRUNCATED"
+_LABELLED: Final = frozenset({"heading", "title", "caption"})
 _SKIP_KINDS: Final = frozenset(
     {"code", "formula", "toc", "toc_entry", "page_header", "page_footer"}
 )
-_AKINDS: Final = frozenset(
-    {
-        "section",
-        "clause",
-        "figure",
-        "table",
-        "equation",
-        "citekey",
-        "identifier",
-        "defined_term",
-        "footnote",
-        "exhibit",
-        "slide",
-        "sheet",
-        "glossary",
-        "bookmark",
-    }
-)
-"""`AnchorKind`'s fourteen values, which this package may not import from core;
-`tests/unit/test_xref_rules.py` holds the two equal."""
+_AKINDS: Final = AKINDS
 _MIN_FIXTURES: Final = 3
 
 
@@ -149,6 +135,9 @@ def find(members: Sequence[Member]) -> Found:
         if member.text is None or member.kind in _SKIP_KINDS:
             continue
         found = _block(member.cite, member.text)
+        if member.kind in _LABELLED:
+            label_at = len(member.text) - len(member.text.lstrip())
+            found = [r for r in found if r.span[0] != label_at]
         if len(found) > MAX_REF_SITES_PER_BLOCK:
             notices.append(
                 Notice(
