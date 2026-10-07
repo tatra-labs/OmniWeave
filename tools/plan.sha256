@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D666: derive.anchor.defterm's readings and the owgraph-items/1 item frames
+# blessed-because: D667: etype_vocab's builtin seed and the host half of owgraph-items/1
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -32,7 +32,7 @@ documents-frozen  1dad5c8ef798764c3bd3cc772210f6085569c8d38c4d272db6444575171efb
 documents-frozen  3af6a53e2a3edbbd85dac7c7068d9429f73240aa4b4e0cc53118bc92cd6b6a18  03-document-model.md
 documents-frozen  6e98c953433a016cb1ec27c4373ce9462f2c7ef2b2ff0337f80fff67c72ed29b  04-driver-system.md
 documents-frozen  58eeb69e5ed3d40f01c4f9afc0550778a3e88efc1c728c04f87d9e8fa1f6a572  05-ingest-and-routing.md
-documents-frozen  56c36df1d6d50218004ab8237f673c50f515cb2ebd84eeb383590338b6822a45  06-structure-extraction.md
+documents-frozen  1f27be797723bc7fec28b7093a6e6dbd77e6c595c274fa4859b101b0518ad497  06-structure-extraction.md
 documents-frozen  339b66bb6767bb6bbe713d246accb2cb7983d849ee1e3a9044d0bcad17eb5d8c  07-store-and-retrieval.md
 documents-frozen  dc88abc954743bf4fd3891e28b08825463c10f6a49f0e9464c1f0f4fdad6aeaf  08-runtime.md
 documents-frozen  eddeb4634f5da1e2b056a002a7fa6eaa43d71836633b0a44d65301ac8b2d16e4  09-generation.md
