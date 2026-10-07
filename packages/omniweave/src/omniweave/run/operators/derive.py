@@ -83,6 +83,7 @@ __all__ = [
 
 FREE_PASSES: Final[dict[str, Method]] = {
     "derive.anchor.native": Method.NATIVE_XML,
+    "derive.xref.native": Method.NATIVE_XML,
     "derive.anchor.defterm": Method.HEURISTIC,
     "derive.xref.pattern": Method.HEURISTIC,
 }
