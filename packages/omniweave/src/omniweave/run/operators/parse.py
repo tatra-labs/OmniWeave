@@ -374,6 +374,16 @@ class ParseLedger:
 
 
 @dataclass(slots=True)
+class DeriveCount:
+    """One free Pass's rows this run: documents derived, Segment runs, items written, held."""
+
+    documents: int = 0
+    runs: int = 0
+    items: int = 0
+    quarantined: int = 0
+
+
+@dataclass(slots=True)
 class ParseTally:
     """What the parse hops did, for `IngestReport`. Counts only; the rows are the record."""
 
@@ -399,6 +409,12 @@ class ParseTally:
     segment_skipped: str = ""
     """Why no `derive.segment` row was enqueued this run, when none could be: `resolve()`'s
     rejection of the segmenter. Empty when it resolved."""
+    derived: dict[str, DeriveCount] = field(default_factory=dict)
+    """Per free Pass, what its rows did (D668)."""
+    derive_failed: Counter[str] = field(default_factory=Counter)
+    """`"<pass> <failure_class>"` -> rows."""
+    derive_skipped: str = ""
+    """Why a free Pass enqueued nothing this run, when one could not: `resolve()`'s rejections."""
 
     def emit(self, *, kind: object, fields: Mapping[str, object]) -> None:
         """`with_events`' sink. No trace sink is wired into `ow ingest` yet, so the `call.begin`
@@ -424,6 +440,16 @@ class ParseTally:
             out.append(f"  segment   {sum(self.segment_failed.values())} failed ({classes})")
         if self.segment_skipped and self.parsed:
             out.append(f"  segment   none enqueued: {self.segment_skipped}")
+        for name, count in sorted(self.derived.items()):
+            out.append(
+                f"  derive    {name}: {count.documents} document(s), {count.runs} Segment run(s), "
+                f"{count.items} item(s) written, {count.quarantined} quarantined"
+            )
+        if self.derive_failed:
+            classes = ", ".join(f"{k} {n}" for k, n in sorted(self.derive_failed.items()))
+            out.append(f"  derive    {sum(self.derive_failed.values())} failed ({classes})")
+        if self.derive_skipped and self.segmented:
+            out.append(f"  derive    not enqueued: {self.derive_skipped}")
         return out
 
     def _parse_lines(self) -> list[str]:

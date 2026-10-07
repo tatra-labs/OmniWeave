@@ -13,8 +13,8 @@ them in order, and every hop but 18 is built:
   `run.routing.route_identified()` (W7.3y);
 - **hops 10-17**, dispatch, the pipeline, S4, the driver, `DocSink` and `complete()`: the parse
   Operator, drained by the same Supervisor (W7.3z);
-- **hop 18**, the seven free `derive/1` passes: **not built**, so no Segment exists and the
-  receipt's `n_segments` column is 0 on every line;
+- **hop 18**, the seven free `derive/1` passes: `derive.segment` (D665) and
+  `derive.anchor.defterm` (D668), drained by the same Supervisor; the other five are not built;
 - **hop 19**, `omniweave.run.manifest` and `omniweave.index.lock`: `_Book` and `_receipt()`,
   below.
 
@@ -132,6 +132,7 @@ from omniweave.run.manifest import (
     RunTally,
     manifest_path,
 )
+from omniweave.run.operators.derive import DeriveOperator, DerivePlan, is_derive
 from omniweave.run.operators.parse import (
     Ordinals,
     ParseLedger,
@@ -1220,6 +1221,8 @@ class _Executors:
             return self._parse.get()(batch)
         if is_segment(operator):
             return self._parse.segments()(batch)
+        if is_derive(operator):
+            return self._parse.derives()(batch)
         raise NoExecutorError(operator, batch.driver)
 
     def contribution(self, row_id: int, result: StepResultView) -> Sequence[Statement]:
@@ -1244,12 +1247,14 @@ class _ParseLazily:
     lock could not reach, because it is a lock INSIDE one Operator.
     """
 
-    __slots__ = ("_args", "_guard", "_operator", "_segment")
+    __slots__ = ("_args", "_derive", "_derives", "_guard", "_operator", "_segment")
 
     def __init__(self, *args: object) -> None:
         self._args = args
         self._operator: ParseOperator | None = None
         self._segment: SegmentOperator | None = None
+        self._derive: DeriveOperator | None = None
+        self._derives: DerivePlan | None = None
         self._guard = threading.Lock()
 
     def get(self) -> ParseOperator:
@@ -1264,12 +1269,26 @@ class _ParseLazily:
         with self._guard:
             if self._segment is None:
                 thread, _ctx, _config, _inputs, _store, _ledger, tally, _ordinals = self._args
+                parse = self._built()  # resolves self._derives too, so it goes first
                 self._segment = SegmentOperator(
+                    parse,
+                    thread,  # type: ignore[arg-type]
+                    tally,  # type: ignore[arg-type]
+                    self._derives,
+                )
+            return self._segment
+
+    def derives(self) -> DeriveOperator:
+        """The free Passes' Operator, on the same parse Operator and pool (D668)."""
+        with self._guard:
+            if self._derive is None:
+                thread, _ctx, _config, _inputs, _store, _ledger, tally, _ordinals = self._args
+                self._derive = DeriveOperator(
                     self._built(),
                     thread,  # type: ignore[arg-type]
                     tally,  # type: ignore[arg-type]
                 )
-            return self._segment
+            return self._derive
 
     def _built(self) -> ParseOperator:
         if self._operator is None:
@@ -1281,6 +1300,8 @@ class _ParseLazily:
             routing = cast("_RoutingInputs", inputs)
             segments, why = SegmentPlan.of(routing.catalog, routing.resolving, ctx)  # type: ignore[arg-type]
             cast("ParseTally", tally).segment_skipped = why
+            self._derives, skipped = DerivePlan.of(routing.catalog, routing.resolving, ctx)  # type: ignore[arg-type]
+            cast("ParseTally", tally).derive_skipped = skipped
             self._operator = ParseOperator(
                 thread,  # type: ignore[arg-type]
                 ctx=ctx,  # type: ignore[arg-type]

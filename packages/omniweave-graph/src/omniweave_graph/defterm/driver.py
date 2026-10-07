@@ -2,8 +2,10 @@
 
 ## What it reads
 
-`owgraph-segment/1`'s Segment form, one view per `UnitRef` (`omniweave_graph.view`). 06:810 runs a
-document-granularity free Pass *"once, INVOKEd with the document's Segments as units"*.
+`owgraph-segment/1`'s Segment form (`omniweave_graph.view`). 06:810 runs a document-granularity
+free Pass *"once, INVOKEd with the document's Segments as units"*; an `INVOKE` carries one unit per
+work row, so a unit is one document and its view holds every live Segment of it, each under its own
+`segment` header (D668). A view of one Segment is the one-Segment case of the same form.
 
 ## What it emits -- `owgraph-items/1`
 
@@ -57,7 +59,7 @@ from omniweave_ports import (
 )
 
 from omniweave_graph.defterm.rules import Definition, Notice, find
-from omniweave_graph.view import read_segment_view
+from omniweave_graph.view import read_segment_views
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -112,14 +114,14 @@ class DefinedTerms:
             with io.blobs.open(unit.content_sha256) as handle:
                 raw = handle.read()
             read += len(raw)
-            view = read_segment_view(raw)
-            found = find(view.members, view.heading_path)
-            frames.append({"t": "seg", "seg": view.seg})
-            for definition in found.definitions:
-                tmp += 1
-                frames += _definition_frames(definition, f"e{tmp}")
-            frames += _cover_frames(found.definitions)
-            frames += (_diag_frame(n) for n in found.notices)
+            for view in read_segment_views(raw):
+                found = find(view.members, view.heading_path)
+                frames.append({"t": "seg", "seg": view.seg})
+                for definition in found.definitions:
+                    tmp += 1
+                    frames += _definition_frames(definition, f"e{tmp}")
+                frames += _cover_frames(found.definitions)
+                frames += (_diag_frame(n) for n in found.notices)
             io.progress(done + 1, len(scope.units))
         payload = "".join(
             json.dumps(f, separators=(",", ":"), ensure_ascii=False) + "\n" for f in frames
