@@ -76,7 +76,10 @@ __all__ = [
     "is_derive",
 ]
 
-FREE_PASSES: Final[dict[str, Method]] = {"derive.anchor.defterm": Method.HEURISTIC}
+FREE_PASSES: Final[dict[str, Method]] = {
+    "derive.anchor.defterm": Method.HEURISTIC,
+    "derive.xref.pattern": Method.HEURISTIC,
+}
 """The shipped Segment-grained free Passes and each one's `Method`, in `(cost_rank, phase)` order.
 
 06 section 3.1's roster grows into this map one Pass at a time. **The method is here and not on the
