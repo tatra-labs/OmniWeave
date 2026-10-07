@@ -1472,6 +1472,91 @@ def test_the_version_an_edit_replaced_leaves_every_read_and_its_cite_still_resol
     assert discover_module.retire_replaced(store) == 0
 
 
+def _graph(reader: Any) -> dict[str, list[tuple[Any, ...]]]:
+    return {
+        "anchor": reader.execute("SELECT doc_ord, name_norm FROM anchor ORDER BY 1").fetchall(),
+        "ref_site": reader.execute("SELECT doc_ord, name_norm FROM ref_site ORDER BY 1").fetchall(),
+        "block_link": reader.execute(
+            "SELECT src_block, dst_block, bound_by FROM block_link ORDER BY 1, 2"
+        ).fetchall(),
+    }
+
+
+def _references(reader: Any) -> None:
+    """Document 1 (block 10) defines `section 1`; document 2 (block 20) references it and is
+    linked to it; document 1 references document 2's corpus identifier and is linked to it."""
+    reader.execute(
+        "INSERT INTO derive_pass(pass_id, port, cost_class, cost_rank, phase, lanes, "
+        "granularity, card_sha256, schema_version) VALUES('derive.anchor.native', 'derive/1', "
+        "'free', 0, 20, '[\"anchor\"]', 'document', 'sha', 1)"
+    )
+    reader.execute(
+        "INSERT INTO derive_run(run_id, segment_id, pass_id, at_gen, producer_id, method, "
+        "origin_operator, origin_driver, driver_schema_v, cost_class, input_digest, cache_key, "
+        "status) VALUES(1, NULL, 'derive.anchor.native', 1, 1, 0, 'derive.anchor.native', "
+        "'derive.anchor.native', 1, 'free', X'00', 'k', 'ok')"
+    )
+    reader.execute(
+        "INSERT INTO anchor(doc_ord, gen, name_norm, akind, surface, block_id, scope, run_id) "
+        "VALUES(1, 1, '1', 'section', '1', 10, 'corpus', 1), "
+        "(2, 1, 'gl_4471', 'identifier', 'GL-4471', 20, 'corpus', 1)"
+    )
+    reader.execute(
+        "INSERT INTO ref_site(name_norm, akind, doc_ord, block_id, ts_a, ts_b, surface, scope, "
+        "origin_operator) VALUES('1', 'section', 2, 20, 0, 9, 'Section 1', 'document', 'x'), "
+        "('gl_4471', 'identifier', 1, 10, 0, 7, 'GL-4471', 'document', 'x')"
+    )
+    reader.execute(
+        "INSERT INTO block_link(src_block, dst_block, relation, site_block, bound_by, "
+        "producer_id, trust, origin_operator, origin_driver, driver_schema_v) "
+        "VALUES(20, 10, 'refers_to', 20, '1', 1, 2, 'x', 'x', 1), "
+        "(10, 20, 'refers_to', 10, 'gl_4471', 1, 2, 'x', 'x', 1)"
+    )
+
+
+def test_the_version_an_edit_replaced_leaves_the_reference_graph_in_the_same_unit(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """D673. A retired document whose anchors still resolved kept binding references to tombstoned
+    blocks, and its occurrences stayed in `ref_unresolved` one copy per edit. Retiring it now takes
+    its anchors, its occurrences and every link either makes out of the live graph."""
+    reader = _reader(tmp_path)
+    _unit_with(reader, "c:/docs/note.pdf", NEW)
+    _doc(reader, 1, "c:/docs/note.pdf", OLD, block=True)
+    _unit_with(reader, "c:/docs/other.pdf", COPY)
+    _doc(reader, 2, "c:/docs/other.pdf", COPY, block=True)
+    _references(reader)
+    reader.commit()
+    assert discover_module.retire_replaced(store) == 1
+    assert _graph(_reader(tmp_path)) == {
+        "anchor": [(2, "gl_4471")],
+        "ref_site": [(2, "1")],
+        "block_link": [],
+    }
+    assert _reader(tmp_path).execute("SELECT name_norm FROM ref_unresolved").fetchall() == [("1",)]
+
+
+def test_a_document_retired_before_the_unbind_existed_is_unbound_on_the_next_pass(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """D673. A store whose documents were retired by D645 alone still holds their reference rows;
+    the next `retire_replaced` takes them out, though it retires nothing new."""
+    reader = _reader(tmp_path)
+    _doc(reader, 1, "c:/docs/note.pdf", OLD, block=True)
+    _unit_with(reader, "c:/docs/other.pdf", COPY)
+    _doc(reader, 2, "c:/docs/other.pdf", COPY, block=True)
+    _references(reader)
+    reader.execute(
+        "UPDATE doc SET x = json_set(x, '$.\"x.ow.retired\"', json_object('reason', "
+        "'source_deleted', 'gen', 1)) WHERE doc_ord = 1"
+    )
+    reader.execute("UPDATE block SET state = 1 WHERE doc_ord = 1")
+    reader.commit()
+    assert discover_module.retire_replaced(store) == 0
+    assert _graph(_reader(tmp_path))["anchor"] == [(2, "gl_4471")]
+    assert _graph(_reader(tmp_path))["block_link"] == []
+
+
 def test_a_version_some_file_still_holds_is_not_retired(
     store: ow.StoreThread, tmp_path: Path
 ) -> None:

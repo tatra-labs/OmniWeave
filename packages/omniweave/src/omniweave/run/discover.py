@@ -157,6 +157,8 @@ from omniweave_core.store.sqlite import BATCH_WAIT_MS, Unit
 from omniweave_core.work import MAX_ATTEMPTS_TODAY, STORE_NOW_MS
 from omniweave_ports.types import DriverError, FailureClass
 
+from omniweave.run.converge import unbind_document
+
 if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from collections.abc import Iterator, Mapping, Sequence
 
@@ -1341,6 +1343,17 @@ _RETIRE_BLOCKS_SQL: Final[str] = (
 _RETIRE_SEGMENTS_SQL: Final[str] = (
     "UPDATE segment SET state = 1 WHERE doc_ord = :doc_ord AND gen = :gen AND state = 0"
 )
+_RETIRED_WITH_REFERENCES_SQL: Final[str] = """
+SELECT d.doc_ord FROM doc AS d
+ WHERE json_extract(d.x, :retired) IS NOT NULL
+   AND (EXISTS (SELECT 1 FROM anchor WHERE doc_ord = d.doc_ord)
+        OR EXISTS (SELECT 1 FROM ref_site WHERE doc_ord = d.doc_ord))
+ ORDER BY d.doc_ord
+"""
+"""Every retired document the reference graph still holds rows for. **D673.**
+
+The ones this pass just retired, and any retired before `unbind_document` existed."""
+
 _RETIRE_DOC_SQL: Final[str] = """
 UPDATE doc SET x = json_set(x, :retired, json_object('reason', 'source_deleted', 'gen', :gen))
  WHERE doc_ord = :doc_ord
@@ -1357,6 +1370,12 @@ def retire_replaced(thread: StoreThread, *, wait_ms: int = BATCH_WAIT_MS) -> int
     successor"*, because the new document is other bytes and `rebind()` matches within one
     document only. Its segments go to `state = 1` with it, and `doc.x` records it (`RETIRED_X`),
     which is what gate 9 and the coverage counts read. One transaction for the lot.
+
+    **And out of the reference graph, in the same transaction** (D673): `converge.unbind_document`
+    removes the document's anchors and occurrences and unbinds every link they made, so no reader
+    ever sees a retired document whose definitions still resolve. It also runs for a document
+    retired before that existed and still holding reference rows (`_RETIRED_WITH_REFERENCES_SQL`),
+    so a store built earlier converges on its next `ow add`.
     """
     retired = 0
     key = f'$."{RETIRED_X}"'
@@ -1371,6 +1390,10 @@ def retire_replaced(thread: StoreThread, *, wait_ms: int = BATCH_WAIT_MS) -> int
             connection.execute(_RETIRE_SEGMENTS_SQL, params)
             connection.execute(_RETIRE_DOC_SQL, params | {"retired": key})
             retired += 1
+        for (doc_ord,) in connection.execute(
+            _RETIRED_WITH_REFERENCES_SQL, {"retired": key}
+        ).fetchall():
+            unbind_document(connection, int(doc_ord))
 
     thread.run(Unit(name="discover.retire_replaced", run=run, cost_class="free", wait_ms=wait_ms))
     return retired
