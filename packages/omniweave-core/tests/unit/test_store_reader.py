@@ -980,27 +980,30 @@ def test_the_exact_channel_honours_the_channel_local_limit(built: Built) -> None
     assert set(outcome.spans) == {4}
 
 
-def test_a_document_scoped_anchor_never_resolves_another_documents_reference(
+def test_a_document_scoped_anchor_is_a_definition_for_its_own_document_and_an_unscoped_query(
     built: Built,
 ) -> None:
     """0003_index.sql:250-252's second predicate, on the Channel path rather than in the view.
 
     *"A `scope='document'` anchor in document A resolves a `ref_site` in document B: 'Figure 3' in
-    one contract binding 'Figure 3' in another. That is the single most common false merge in a
-    document corpus."* With `scope_doc` unset, only a corpus-scoped anchor may be a definition.
+    one contract binding 'Figure 3' in another."* Scoped to document 2, document 1's definition
+    does not rank. **Unscoped, it does** (D674): `scope_doc` is bound by nothing, and as printed
+    the clause kept every document-scoped definition -- every one shipped at release 1 -- out of
+    every query. A corpus-wide question has no document to be scoped to.
     """
     _seed_refs(built)
     built.writer.execute("UPDATE anchor SET scope = 'document'")
     built.writer.commit()
     reader = _reader(built)
+    refs = (("fig3", "figure"),)
     with reader.snapshot() as state:
         narrowing = reader.narrow(state, Filters())
-        unscoped = reader.channel(state, _exact_spec(refs=(("fig3", "figure"),)), narrowing)
-        scoped = reader.channel(
-            state, _exact_spec(refs=(("fig3", "figure"),), scope_doc=1), narrowing
-        )
-    assert unscoped.ranked == (4, 3)
-    assert scoped.ranked == (9, 4, 3)
+        unscoped = reader.channel(state, _exact_spec(refs=refs), narrowing)
+        own = reader.channel(state, _exact_spec(refs=refs, scope_doc=1), narrowing)
+        other = reader.channel(state, _exact_spec(refs=refs, scope_doc=2), narrowing)
+    assert unscoped.ranked == (9, 4, 3)
+    assert own.ranked == (9, 4, 3)
+    assert other.ranked == (4, 3)
 
 
 def test_the_exact_channel_is_empty_and_not_off_when_nothing_matches(built: Built) -> None:

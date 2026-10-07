@@ -288,6 +288,15 @@ def test_a_reference_whose_anchor_is_missing_is_searched_after_all(built: Built)
     )
 
 
+def test_a_callers_unresolved_ref_is_searched_as_its_words_too(built: Built) -> None:
+    """D674: `Query.refs` lifts through the same sanitiser, and its fallback phrase travels with it.
+
+    The ref's resolvable name is `4`; searched alone it would match block 3's bare `4.`."""
+    _seed(built, texts={1: "Revenue by table", 2: "Table 4 shows revenue by region.", 3: "4."})
+    hits = _ask(built, Query(text="", refs=("Table 4",))).hits
+    assert [(hit.block_id, hit.channel_ranks) for hit in hits] == [(2, {"lexical": 1})]
+
+
 def test_a_question_s_stopwords_do_not_outrank_its_content_words(built: Built) -> None:
     """D649: the probe's case. The block matching only *the* and *does* ranked first, and the one
     that answers the question second."""

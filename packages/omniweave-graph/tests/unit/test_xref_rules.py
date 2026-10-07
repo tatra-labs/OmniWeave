@@ -168,3 +168,29 @@ def test_a_pathological_block_costs_linear_time() -> None:
     started = time.perf_counter()
     find([Member(cite="d1#1", kind="paragraph", text=text)])
     assert time.perf_counter() - started < 2.0
+
+
+# -- one vocabulary, two consumers (D674) ----------------------------------------------------------
+
+
+def test_the_query_lifter_restates_this_pattern_set_expression_for_expression() -> None:
+    """06:1095-1097: query-side sanitisation lifts *"the same token shapes"* -- *"one vocabulary,
+    two consumers"*. Core may not import this package, so `REF_SHAPES` restates the set; this holds
+    the restatement equal, in order. `citekey` is the one query-only shape after it."""
+    from omniweave_core.retrieve.channels import REF_SHAPES  # noqa: PLC0415 -- this test's own
+
+    assert [(shape.pattern, shape.flags, akind) for shape, akind in REF_SHAPES[: len(ALL)]] == [
+        (p.expression.pattern, p.expression.flags, p.akind) for p in ALL
+    ]
+    assert [akind for _, akind in REF_SHAPES[len(ALL) :]] == ["citekey"]
+
+
+@pytest.mark.parametrize("text", [text for p in ALL for text in p.yes])
+def test_a_query_naming_a_reference_lifts_the_key_its_ref_site_carries(text: str) -> None:
+    """The keys, not only the expressions: what `ow query` lifts from a `yes` fixture is exactly
+    the `(name_norm, akind)` the sink writes for the same words in a document."""
+    from omniweave_core.ident import normalize_key  # noqa: PLC0415 -- this test's own
+    from omniweave_core.retrieve.channels import sanitize  # noqa: PLC0415
+
+    written = [(normalize_key(name), akind) for akind, name, _surface in refs(text)]
+    assert list(sanitize(text).refs) == written
