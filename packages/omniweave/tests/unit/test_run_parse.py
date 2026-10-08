@@ -169,7 +169,14 @@ def test_the_first_parse_writes_the_receipt_and_moves_the_generation(tmp_path: P
     raw = path.read_bytes()
     assert b"\r" not in raw, "11 section 1.9: the line ending is written, never inherited"
     header, line = raw.decode("ascii").splitlines()
-    assert header == f"# schema={SCHEMA} scorer={SCORER_VERSION} segmenter=none space=none"
+    ((driver, version, params),) = _rows(
+        store, "SELECT driver_id, driver_schema_v, lower(hex(params_digest)) FROM segmenter"
+    )
+    assert driver == "derive.segment.spine"
+    segmenter = f"{driver}@{version}:{str(params)[:4]}"
+    assert header == (
+        f"# schema={SCHEMA} scorer={SCORER_VERSION} segmenter={segmenter} space=none"
+    ), "D677: the header names the segmenter that cut the Segments its row counts"
     key, gen, status, blocks, segments, digest, uri = line.split(FIELD_SEP)
     ((doc_key, root),) = _rows(
         store,
