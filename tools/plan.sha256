@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D675: canonical_projection and a retired document's entities
+# blessed-because: D676: a drain ends when it is drained
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -34,7 +34,7 @@ documents-frozen  6e98c953433a016cb1ec27c4373ce9462f2c7ef2b2ff0337f80fff67c72ed2
 documents-frozen  58eeb69e5ed3d40f01c4f9afc0550778a3e88efc1c728c04f87d9e8fa1f6a572  05-ingest-and-routing.md
 documents-frozen  55018bd937030053b07b14c9d0d056796b686276e525a36b5aba15bf25b037c6  06-structure-extraction.md
 documents-frozen  6fe8fa87523a1d8986a1e99e027ed8437368aa43046724067d1e76173e682137  07-store-and-retrieval.md
-documents-frozen  dc88abc954743bf4fd3891e28b08825463c10f6a49f0e9464c1f0f4fdad6aeaf  08-runtime.md
+documents-frozen  f475c1a7d671d504ad6ddc13aebd5a4be02ac6e42381888dd88e4ddfaf66f3a5  08-runtime.md
 documents-frozen  eddeb4634f5da1e2b056a002a7fa6eaa43d71836633b0a44d65301ac8b2d16e4  09-generation.md
 documents-frozen  d96985003690550f4d996e31a41306d21d6a8e2e7ff34076c0ad5cff5f3cb64e  10-interfaces.md
 documents-frozen  76a694bf0b19b60ba35d2246f6b36466ca990f318f51e0a292c388ec0e78bc68  11-repo-layout.md

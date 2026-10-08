@@ -102,6 +102,27 @@ def test_a_directory_is_walked_read_and_identified_and_the_run_says_where_it_sto
     assert units == [(IDENTIFIED, 1, 1), (IDENTIFIED, 1, 1)]
 
 
+def test_a_drained_queue_ends_the_drain_without_waiting_out_the_sweep(tmp_path: Path) -> None:
+    """D676, D564's tail. `[runtime] deferred_sweep_ms` is five seconds shipped, and every drain
+    used to end two of them after its last row. Ingest promises the Supervisor a closed queue, so
+    at ten seconds a sweep this run still finishes well inside one."""
+    store, config = _project(tmp_path, "a.txt")
+    began = time.perf_counter()
+    report = ingest(
+        store,
+        config=config,
+        source_root=tmp_path,
+        output_root=tmp_path / ".omniweave" / "out",
+        cache_root=tmp_path / ".omniweave" / "cache",
+        argv=["ingest"],
+        paths=(tmp_path / "docs",),
+        sweep_ms=10_000,
+    )
+    seconds = time.perf_counter() - began
+    assert report.drained is not None and report.drained.completed == 1
+    assert seconds < 8.0, f"{seconds:.1f} s: the drain waited out a ten-second sweep"
+
+
 def test_the_run_row_names_its_manifest_and_leaves_one_column_empty(tmp_path: Path) -> None:
     """Hop 1 and hop 19. `manifest_path` is the manifest's from the first statement; `lock_digest`
     is empty because this run commits no document, so no receipt exists (D593); `pricebook_digest`
