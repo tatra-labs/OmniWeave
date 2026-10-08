@@ -94,6 +94,7 @@ from omniweave_core.model import Kind, Layer, Quote, RelKind
 from omniweave_core.model.block import Addr
 from omniweave_core.store.indexlock import (
     LOCK_PATH,
+    NO_SEGMENTER,
     LockFile,
     LockHeader,
     LockRow,
@@ -119,6 +120,7 @@ __all__ = [
     "VerifyClause",
     "VerifyReport",
     "derive_lock",
+    "segmenter_token",
     "verify_doc",
     "verify_store",
 ]
@@ -1410,11 +1412,12 @@ def _lock_store_match(
     exists to show -- the same argument the merge driver makes for treating a row as opaque text
     (07:3132).
 
-    **The header is compared on the two fields the store actually holds.** `schema` and `scorer`
-    come from `index_state`; `segmenter` and `space` are *"opaque tokens owned elsewhere"*
-    (`indexlock`'s docstring, INV-21) with no rendering in this tree and no row in a P2 store, so
-    they are carried through from the file rather than re-derived, and the clause says so in
-    `counts`. Inventing a rendering here would be a second home for two facts.
+    **The header is compared on the three fields the store actually holds.** `schema` and
+    `scorer` come from `index_state`, and `segmenter` from the `segmenter` rows behind the
+    Segments the rows count (`segmenter_token`, D677). `space` is an *"opaque token owned
+    elsewhere"* (`indexlock`'s docstring, INV-21) with no rendering in this tree and no
+    `embed_space` row, so it is carried through from the file rather than re-derived. Inventing a
+    rendering here would be a second home for the fact.
     """
     if lock_text is None:
         return _unchecked(
@@ -1506,9 +1509,9 @@ def derive_lock(
       a digest and a reviewer reads as "no root", rather than making the whole receipt
       underivable.
 
-    `header` is the caller's, for the reason `_lock_store_match` documents: two of its four
-    fields are owned elsewhere. `index_state`'s `schema` and `scorer_version` override the two
-    that the store does hold, so a receipt claiming the wrong scorer is caught.
+    `header` is the caller's, for the reason `_lock_store_match` documents: `space` is owned
+    elsewhere. `index_state`'s `schema` and `scorer_version`, and `segmenter_token`, override the
+    three that the store does hold, so a receipt claiming the wrong scorer or segmenter is caught.
     """
     header = _store_header(connection, header)
     rows: list[LockRow] = []
@@ -1561,7 +1564,10 @@ def _receipt_uri(uri: str, root: str | None) -> str:
 
 
 def _store_header(connection: sqlite3.Connection, header: LockHeader) -> LockHeader:
-    """The caller's header with the two fields `index_state` actually holds substituted in."""
+    """The caller's header with the three fields the store actually holds substituted in."""
+    segmenter = segmenter_token(connection)
+    if segmenter is not None:
+        header = header._replace(segmenter=segmenter)
     if not _has_table(connection, _SCHEMA_HOME):
         return header
     state = {
@@ -1576,6 +1582,37 @@ def _store_header(connection: sqlite3.Connection, header: LockHeader) -> LockHea
         space=header.space,
         schema=int(schema.split(".")[0]) if schema.split(".")[0].isdigit() else header.schema,
     )
+
+
+_PARAMS_HEX: Final = 4
+"""The params digest's hex prefix in a segmenter token: 07:3117 prints `spine@3:9c1e`, and
+03:2887's `view_id` cuts its `options_digest` at the same four (D677)."""
+
+_HEAD_SEGMENTERS: Final = (
+    "SELECT DISTINCT g.driver_id, g.driver_schema_v, g.params_digest FROM segment s "
+    "JOIN doc d ON d.doc_ord = s.doc_ord AND d.gen = s.gen "
+    "JOIN segmenter g ON g.segmenter_id = s.segmenter_id WHERE s.state = 0"
+)
+"""The segmenters behind exactly the Segments `derive_lock` counts: live, at a head generation."""
+
+
+def segmenter_token(connection: sqlite3.Connection) -> str | None:
+    """The receipt header's `segmenter`: who cut the Segments its rows count. **D677.**
+
+    One segmenter renders as 07:3117 prints it, `<driver_id>@<driver_schema_v>:<params>`, the
+    params digest cut to `_PARAMS_HEX` hex. A corpus whose head Segments came from more than one
+    -- a config changed and only some documents were re-cut -- renders each, sorted, joined by
+    `+`: it is segmented by neither alone, and a header naming one would let the merge driver join
+    it to a corpus that is. No live head Segment is `NO_SEGMENTER`. `None` means the store has no
+    `segment` table to ask (schema below 0002), and the caller's token stands.
+    """
+    if not _has_table(connection, "segment") or not _has_table(connection, "segmenter"):
+        return None
+    tokens = {
+        f"{driver_id}@{int(schema_v)}:{bytes(params).hex()[:_PARAMS_HEX]}"
+        for driver_id, schema_v, params in connection.execute(_HEAD_SEGMENTERS)
+    }
+    return "+".join(sorted(tokens)) or NO_SEGMENTER
 
 
 # --------------------------------------------------------------------------------------------

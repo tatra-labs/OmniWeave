@@ -118,7 +118,7 @@ from omniweave_core.operator import (
 )
 from omniweave_core.store import migrate
 from omniweave_core.store import sqlite as ow
-from omniweave_core.store.indexlock import LOCK_PATH, LockHeader, read_lock
+from omniweave_core.store.indexlock import LOCK_PATH, NO_SEGMENTER, LockHeader, read_lock
 from omniweave_core.store.queue import SqliteStore
 from omniweave_ports.types import DriverError, FailureClass
 
@@ -279,17 +279,18 @@ class Source:
     directory: bool
 
 
-NO_SEGMENTER: Final[str] = "none"
 NO_SPACE: Final[str] = "none"
-"""The receipt header's `segmenter` and `space` tokens in a build that has neither (D595).
+"""The receipt header's `space` token in a build that has none (D595).
 
-07:3117 prints `segmenter=derive.segment.spine@3:9c1e space=bge-m3@a1b2c3/768/cosine/i8`: the
-segmenter's identity and the embedding space's. Hop 18 is not built, so no Segment was ever cut,
-and no `embed/1` driver ships, so there is no space. `none` says exactly that, is a token
-`LockHeader.validate` accepts, and cannot be mistaken for an identity -- which an invented one
-could. The header is where 07:3130 catches *"two corpora indexed by different scorers"*; the
-first build that segments or embeds changes these two words, and the merge driver then refuses to
-merge a receipt from before it, which is the refusal the header exists for."""
+07:3117 prints `space=bge-m3@a1b2c3/768/cosine/i8`, the embedding space's identity. No `embed/1`
+driver ships, so there is no space. `none` says exactly that, is a token `LockHeader.validate`
+accepts, and cannot be mistaken for an identity -- which an invented one could. The header is
+where 07:3130 catches *"two corpora indexed by different scorers"*; the first build that embeds
+changes this word, and the merge driver then refuses to merge a receipt from before it.
+
+`segmenter` is not the caller's to say: `derive_lock` reads it from the store's `segmenter` rows
+(`store.verify.segmenter_token`, D677), and `NO_SEGMENTER`, re-exported here, is its word for a
+corpus with no Segment."""
 
 
 @dataclass(frozen=True, slots=True)
