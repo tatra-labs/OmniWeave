@@ -117,7 +117,10 @@ def test_every_routed_document_reaches_a_terminal_row_in_one_run(tmp_path: Path)
     assert report.parsed is not None
     assert dict(report.parsed.parsed) == {"parse.office.anydoc": len(PARSEABLE)}
     assert dict(report.parsed.failed) == {"corrupt_input": 1, "empty_result": 1, "encrypted": 1}
-    assert report.parsed.workers == 1, "one worker per (driver_id, config_digest), reused"
+    assert report.parsed.workers == 6, (
+        "one worker per (driver_id, config_digest), reused: the office parse, the segmenter and "
+        "the four free Passes -- which, before D676, this run never reached"
+    )
     assert report.parsed.calls >= 2, "thirteen rows over batch_max_units = 8 is two batches"
     for name in PARSEABLE:
         assert _state(store, name) == ("settled", None), name
@@ -174,7 +177,9 @@ def test_the_first_parse_writes_the_receipt_and_moves_the_generation(tmp_path: P
         " ON b.doc_ord = d.doc_ord AND b.gen = d.gen AND b.addr = 'doc'",
     )
     assert (key, digest) == (str(doc_key).lower(), str(root).lower())
-    assert (gen, status, segments, uri) == ("1", "ok", "0", "docs/rich.docx")
+    ((live,),) = _rows(store, "SELECT count(*) FROM segment WHERE state = 0")
+    assert int(live) > 0, "D676: the run segments what it parsed before it writes the receipt"
+    assert (gen, status, segments, uri) == ("1", "ok", str(live), "docs/rich.docx")
     assert int(blocks) > 0
     assert _generation(store) == str(report.generation) == "1"
     sha = hashlib.sha256(raw).hexdigest()
@@ -197,7 +202,9 @@ def test_the_first_parse_writes_the_receipt_and_moves_the_generation(tmp_path: P
     assert not unrooted.ok, "without the root the store derives the absolute uri"
 
     manifest = json.loads(Path(report.manifest).read_bytes())
-    assert manifest["outcomes"] == {"ok": 2}, "one op.identify and one parse.office commit"
+    assert manifest["outcomes"] == {"ok": 7}, (
+        "one op.identify, one parse.office, one segmentation and the four free Passes (D676)"
+    )
     assert manifest["stage_entries"] == {"discover": 1, "plan": 1, "parse": 1}
     assert manifest["provenance"]["lock_digest"] == sha
 
@@ -227,12 +234,15 @@ def test_a_run_that_changes_no_row_keeps_the_receipt_and_the_generation(tmp_path
 
 def test_the_cas_is_beside_the_store_and_holds_the_source_and_the_asset(tmp_path: Path) -> None:
     """D582: the unit's raw bytes are staged into `.omniweave/cas/` at dispatch, and the office
-    driver's asset lands there through the worker's `io.blobs.put()`."""
+    driver's asset lands there through the worker's `io.blobs.put()`. Two more since D676, which
+    lets the run reach the stages after parse: the segmenter's unit (`segment.py`) and the one
+    unit the four free Passes share (`derive.py`), each staged once because the CAS is keyed by
+    content."""
     store, config = _project(tmp_path, ("rich.docx",))
     _run(tmp_path, store, config)
     cas = store.parent / ingest_module.CAS_DIR
     blobs = [path for path in cas.rglob("*") if path.is_file() and len(path.name) == 64]
-    assert len(blobs) == 2, blobs
+    assert len(blobs) == 4, blobs
     ((ref,),) = _rows(store, "SELECT store_ref FROM asset")
     assert str(ref).startswith("cas://")
 
@@ -336,8 +346,10 @@ def test_a_released_office_driver_parses_in_process_and_commits_what_a_worker_co
     s1 = _run(inproc_root, s1_store, s1_config)
 
     assert s1.parsed is not None and s4.parsed is not None
-    assert (s1.parsed.workers, s1.parsed.inproc) == (0, 1)
-    assert (s4.parsed.workers, s4.parsed.inproc) == (1, 0)
+    #  D676: the segmenter and the four free Passes are workers under both seams; only the office
+    #  parse moves in process.
+    assert (s1.parsed.workers, s1.parsed.inproc) == (5, 1)
+    assert (s4.parsed.workers, s4.parsed.inproc) == (6, 0)
     assert any(line.endswith(" and 1 in process") for line in s1.lines()), s1.lines()
     keys = "SELECT DISTINCT dispatch_key FROM work WHERE operator = 'parse.office'"
     assert _rows(s1_store, keys) != _rows(s4_store, keys), "the isolation is in the key"

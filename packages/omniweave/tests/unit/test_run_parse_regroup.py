@@ -100,7 +100,7 @@ def _operator(monkeypatch: pytest.MonkeyPatch, worker: _Worker, *, ceiling: int 
     operator._tally = ParseTally()
     operator._settings = SETTINGS
     operator._pool = WorkerPool(spawn=_no_spawn, settings=SETTINGS, now_ms=lambda: 0)
-    operator._crash_lock = threading.Lock()
+    operator._pool_lock = threading.Lock()
     return operator
 
 

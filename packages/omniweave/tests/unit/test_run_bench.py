@@ -213,11 +213,16 @@ def test_every_op_identify_row_pays_a_whole_claim_statement(tmp_path: Path) -> N
     are three in a hundred thousand and the ratio reads 1.00; at forty they are three in
     forty-three and it reads 0.93. The ratio is the honest one to REPORT and the wrong one to
     assert a mechanism with.
+
+    Since D676 a batch that finishes wakes the claimer, so the last batches in flight can each
+    cost one more empty claim before the quiet tail: at most one per batch that can be in flight,
+    which is one per worker plus a full inbox of the same size.
     """
     result = _run(tmp_path)
     assert result.claim_rows == SMALL, "every unit was claimed"
     empty = result.claim.n - result.claim_rows
-    assert 0 <= empty <= QUIET_TAIL, f"{result.claim.n} claims for {SMALL} rows"
+    in_flight = 2 * sum(result.workers.values())
+    assert 0 <= empty <= QUIET_TAIL + in_flight, f"{result.claim.n} claims for {SMALL} rows"
     assert result.rows_per_claim <= 1.0, "a claim never returned two rows"
 
 

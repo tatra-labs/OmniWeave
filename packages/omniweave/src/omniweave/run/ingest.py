@@ -1416,6 +1416,9 @@ async def _drain(
         timings=timings,
         worker=sup.worker_identity(),
         claim_batch=sup.claim_batch_of(config),
+        #  D676: this run enqueues before it drains and plans between drains, so a drained queue
+        #  is a finished drain, not a pause before a producer's next batch.
+        closed_queue=True,
     )
     return await supervisor.run()
 

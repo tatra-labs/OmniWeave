@@ -518,7 +518,6 @@ class ParseOperator:
         "_cas",
         "_catalog",
         "_config",
-        "_crash_lock",
         "_ctx",
         "_drivers",
         "_executable",
@@ -529,6 +528,7 @@ class ParseOperator:
         "_ordinals",
         "_passwords",
         "_pool",
+        "_pool_lock",
         "_producers",
         "_resolving",
         "_segments",
@@ -581,7 +581,9 @@ class ParseOperator:
         self._ordinals = ordinals
         self._aimd = AimdRegistry()
         self._aimd_lock = threading.Lock()
-        self._crash_lock = threading.Lock()
+        self._pool_lock = threading.Lock()
+        #  D676: `WorkerPool` is not thread-safe (`_lock`'s docstring), and per-key locks keep two
+        #  batches of ONE key apart but not two keys. Every pool access takes this one.
 
     def _now_ms(self) -> int:
         return self._ctx.clock.monotonic_ns() // 1_000_000
@@ -711,7 +713,7 @@ class ParseOperator:
                 with self._aimd_lock:
                     self._aimd.observe(key, event, ceiling=ceiling)
                 if event is subproc.BatchEvent.DRIVER_CRASHED:
-                    with self._crash_lock:
+                    with self._pool_lock:
                         self._pool.note_crash(key.driver_id)
             going = {slot for one in again for slot in one.slots}
             self._tally.regrouped += len(going)
@@ -722,7 +724,7 @@ class ParseOperator:
         return answers
 
     def _quarantined(self, driver_id: str) -> bool:
-        with self._crash_lock:
+        with self._pool_lock:
             return driver_id in self._pool.quarantined()
 
     def _held(self, row: WorkRow, unit: UnitRef, producer: Producer, driver: str) -> StepResult:
@@ -1219,9 +1221,15 @@ class ParseOperator:
             self._tally.workers += 1
             return worker
 
-        if self._pool.get(key) is None and self._pool.full(str(cost)):
-            self._make_room(str(cost), key)
-        return self._pool.acquire(key, cost_class=str(cost), build=build)
+        #  D676: the room `_make_room` frees and the worker `acquire` builds in it are one step.
+        #  Apart, a second key's batch on another thread could take the freed place between
+        #  them -- the class is then full again and the pool refuses this one, crashing its batch
+        #  and stranding its rows `claimed`. Stages that overlap (a segmentation beside four free
+        #  Passes) are where two first workers of a class are wanted at once.
+        with self._pool_lock:
+            if self._pool.get(key) is None and self._pool.full(str(cost)):
+                self._make_room(str(cost), key)
+            return self._pool.acquire(key, cost_class=str(cost), build=build)
 
     def _make_room(self, cost_class: str, key: subproc.WorkerKey) -> None:
         """Retire the least recently used worker of a full class that nobody is calling. **D653.**
