@@ -1620,6 +1620,36 @@ def test_a_retired_document_holding_only_entities_is_swept(
     assert _entity_states(_reader(tmp_path)) == ([(1, 2)], [(1, 1)])
 
 
+def test_retire_document_alone_takes_a_deleted_document_out_of_the_reads_and_the_graph(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """D678. `ow store rm --doc` will issue `retire_document` and no `retire_replaced` follows it,
+    so the function must do the whole of 06:2335's deletion row by itself -- not lean on the next
+    pass's sweep for the retired, which would repair a half-done retirement and hide it. GR8's
+    deletions run it exactly so: one transaction, then nothing."""
+    del store  # the fixture creates the store; the function runs on a bare connection
+    reader = _reader(tmp_path)
+    _doc(reader, 1, "c:/docs/note.pdf", OLD, block=True)
+    _doc(reader, 2, "c:/docs/other.pdf", COPY, block=True)
+    _references(reader)
+    _owned_entity(reader)
+    reader.commit()
+    discover_module.retire_document(reader, 1, 1)
+    reader.commit()
+    after = _reader(tmp_path)
+    assert after.execute("SELECT doc_ord, state FROM block ORDER BY 1").fetchall() == [
+        (1, 1),
+        (2, 0),
+    ]
+    assert after.execute("SELECT block_id, reason FROM block_history").fetchall() == [
+        (10, "source_deleted")
+    ]
+    assert _graph(after) == {"anchor": [(2, "gl_4471")], "ref_site": [(2, "1")], "block_link": []}
+    assert _entity_states(after) == ([(1, 2)], [(1, 1)])
+    retired = after.execute("SELECT json_extract(x, '$.\"x.ow.retired\".reason') FROM doc")
+    assert retired.fetchall() == [("source_deleted",), (None,)]
+
+
 def test_a_version_some_file_still_holds_is_not_retired(
     store: ow.StoreThread, tmp_path: Path
 ) -> None:

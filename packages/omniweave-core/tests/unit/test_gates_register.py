@@ -143,6 +143,14 @@ QG_SERIES_SCRIPTS: dict[str, str] = {
     "tools/gate_budgets.py": "Q-G15 (13-quality.md:354-355, :368-371, :1999)",
 }
 
+GR_SERIES_SCRIPTS: dict[str, str] = {
+    "tools/gate_incremental_graph.py": "GR8 (06-structure-extraction.md section 10.4; 16:803)",
+}
+"""The graph gates' scripts. **D678.** The `GR` series is 06-structure-extraction.md's, numbered
+there and registered in no `tools/gates.toml` row: that register is the `G` series, append-by-ADR
+(its header), and a `GR` gate taking a `G<n>` would be a number no ADR minted. Cited by the
+document that owns it, so it is not the uncitable blocking check the sweep exists to catch."""
+
 # The register keeps TOML values ASCII (house style); section 6.4's cells do not. Exactly this
 # table, applied to the markdown side before comparing, and applied nowhere else. An em dash is
 # not folded to text at all -- it is an EMPTY cell, and becomes a false boolean or an absent key.
@@ -435,8 +443,22 @@ def test_every_gate_script_on_disk_is_registered(
     for row in [*gates, *register["job_assertion"]]:
         named.update(_runners(row))
         named.update(_planned(row))
-    missing = on_disk - named - set(QG_SERIES_SCRIPTS)
+    missing = on_disk - named - set(QG_SERIES_SCRIPTS) - set(GR_SERIES_SCRIPTS)
     assert not missing, f"unregistered gate scripts: {sorted(missing)}"
+
+
+def test_the_gr_scripts_exist_and_no_g_row_names_them(
+    gates: list[dict[str, Any]], register: dict[str, Any], repo_root: Path
+) -> None:
+    """`GR_SERIES_SCRIPTS`' two directions, as `QG_SERIES_SCRIPTS`' are: an exemption for a script
+    that is gone is stale, and one a `G` row also names is no exemption at all."""
+    named: set[str] = set()
+    for row in [*gates, *register["job_assertion"]]:
+        named.update(_runners(row))
+        named.update(_planned(row))
+    assert not named & set(GR_SERIES_SCRIPTS)
+    for path in GR_SERIES_SCRIPTS:
+        assert (repo_root / path).is_file(), f"{path} is exempted and not on disk"
 
 
 def test_the_q_g_scripts_are_registered_in_the_other_register_and_not_this_one(
