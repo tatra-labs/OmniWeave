@@ -1,4 +1,4 @@
-"""`converge.unbind_document`: a retired document leaves the reference graph. **D673.**
+"""A retired document leaves the graph: `unbind_document` (D673), `retire_document_entities` (D675).
 
 06 section 10.2's *"a whole document deleted"* row -- *"every d7 anchor removed -> unbind"* -- over
 a real migrated store, with the rows written by hand so each test names exactly the graph it starts
@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from omniweave.run.converge import Unbound, unbind_document
+from omniweave.run.converge import Retired, Unbound, retire_document_entities, unbind_document
 from omniweave_core.store import migrate
 from omniweave_core.store import sqlite as ow
 
@@ -183,3 +183,100 @@ def test_another_documents_link_bound_by_the_same_name_is_left_alone(connection:
     unbind_document(connection, 1)
     assert _links(connection) == [(21, 20, "1", 0)]
     assert connection.execute("SELECT doc_ord FROM anchor").fetchall() == [(2,)]
+
+
+# ---------------------------------------------------------------------------------------------
+# retire_document_entities (D675)
+# ---------------------------------------------------------------------------------------------
+
+
+def _segment(conn: Any, doc_ord: int) -> int:
+    conn.execute(
+        "INSERT OR IGNORE INTO segmenter(segmenter_id, driver_id, driver_schema_v, params_digest) "
+        "VALUES(1, 'derive.segment.spine', 1, X'00')"
+    )
+    conn.execute(
+        "INSERT INTO segment(segment_id, doc_ord, gen, ord, segmenter_id, layer, heading_path, "
+        "n_blocks, n_tokens, n_chars, tokenizer_id, first_page, last_page, trust, quote_min, "
+        "kind_mask, content_digest, origin_operator, origin_driver, driver_schema_v) "
+        "VALUES(?, ?, 1, 0, 1, 0, '[]', 1, 2, 8, 'tok', 0, 0, 2, 4, 1, X'00', 'op.segment', "
+        "'derive.segment.spine', 1)",
+        (doc_ord, doc_ord),
+    )
+    return doc_ord
+
+
+def _entity(conn: Any, entity_id: int, scope: int, key: str) -> None:
+    conn.execute(
+        "INSERT INTO entity(entity_id, cite, scope, etype, key, title, canonical_id, "
+        "resolution_method, trust, mention_digest) "
+        "VALUES(?, ?, ?, 'defined_term', ?, ?, ?, 0, 2, X'00')",
+        (entity_id, f"e{entity_id}", scope, key, key, entity_id),
+    )
+
+
+def _mention(conn: Any, entity_id: int, doc_ord: int) -> None:
+    conn.execute(
+        "INSERT INTO mention(entity_id, block_id, segment_id, ts_a, ts_b, surface, run_id, trust, "
+        "digest) VALUES(?, ?, ?, 0, 4, 'text', 1, 2, X'00')",
+        (entity_id, doc_ord * 10, doc_ord),
+    )
+
+
+def _states(conn: Any, table: str, key: str) -> list[tuple[int, int]]:
+    return [
+        (int(row[0]), int(row[1]))
+        for row in conn.execute(f"SELECT {key}, state FROM {table} ORDER BY 1")  # noqa: S608
+    ]
+
+
+def _two_documents(conn: Any) -> None:
+    """Document 1 owns entity 1 and mentions corpus entities 3 and 4; document 2 owns entity 2
+    and also mentions entity 4, so 3's only mention is in document 1 and 4 has one elsewhere."""
+    for doc_ord in (1, 2):
+        _doc(conn, doc_ord)
+        _segment(conn, doc_ord)
+    _entity(conn, 1, 1, "lender")
+    _entity(conn, 2, 2, "notice")
+    _entity(conn, 3, 0, "acme")
+    _entity(conn, 4, 0, "beta")
+    for entity_id, doc_ord in ((1, 1), (3, 1), (4, 1), (2, 2), (4, 2)):
+        _mention(conn, entity_id, doc_ord)
+
+
+def test_a_retired_documents_mentions_and_the_entities_it_took_with_it_are_historied(
+    connection: Any,
+) -> None:
+    """Its own entity and the corpus entity whose last mention it held: retired. The rest: live."""
+    _two_documents(connection)
+    report = retire_document_entities(connection, 1)
+    assert report == Retired(doc_ord=1, mentions=3, entities=2)
+    assert _states(connection, "entity", "entity_id") == [(1, 2), (2, 0), (3, 2), (4, 0)]
+    assert sorted(
+        (int(m), int(s))
+        for m, s in connection.execute(
+            "SELECT m.entity_id, m.state FROM mention m JOIN block b ON b.block_id = m.block_id "
+            "WHERE b.doc_ord = 1"
+        )
+    ) == [(1, 1), (3, 1), (4, 1)]
+    history = connection.execute(
+        "SELECT kind, retired_gen, superseded_by, reason FROM graph_history ORDER BY kind, row_id"
+    ).fetchall()
+    assert [tuple(row) for row in history] == [
+        ("entity", 1, None, "source_deleted"),
+        ("entity", 1, None, "source_deleted"),
+        ("mention", 1, None, "source_deleted"),
+        ("mention", 1, None, "source_deleted"),
+        ("mention", 1, None, "source_deleted"),
+    ]
+    (payload,) = connection.execute(
+        "SELECT payload FROM graph_history WHERE kind = 'entity' AND row_id = 1"
+    ).fetchone()
+    assert '"key":"lender"' in payload
+
+
+def test_retiring_twice_retires_nothing_more(connection: Any) -> None:
+    _two_documents(connection)
+    retire_document_entities(connection, 1)
+    assert retire_document_entities(connection, 1) == Retired(doc_ord=1, mentions=0, entities=0)
+    assert connection.execute("SELECT COUNT(*) FROM graph_history").fetchone() == (5,)

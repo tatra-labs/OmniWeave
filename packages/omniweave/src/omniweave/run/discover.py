@@ -157,7 +157,7 @@ from omniweave_core.store.sqlite import BATCH_WAIT_MS, Unit
 from omniweave_core.work import MAX_ATTEMPTS_TODAY, STORE_NOW_MS
 from omniweave_ports.types import DriverError, FailureClass
 
-from omniweave.run.converge import unbind_document
+from omniweave.run.converge import retire_document_entities, unbind_document
 
 if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from collections.abc import Iterator, Mapping, Sequence
@@ -1347,10 +1347,13 @@ _RETIRED_WITH_REFERENCES_SQL: Final[str] = """
 SELECT d.doc_ord FROM doc AS d
  WHERE json_extract(d.x, :retired) IS NOT NULL
    AND (EXISTS (SELECT 1 FROM anchor WHERE doc_ord = d.doc_ord)
-        OR EXISTS (SELECT 1 FROM ref_site WHERE doc_ord = d.doc_ord))
+        OR EXISTS (SELECT 1 FROM ref_site WHERE doc_ord = d.doc_ord)
+        OR EXISTS (SELECT 1 FROM entity WHERE scope = d.doc_ord AND state = 0)
+        OR EXISTS (SELECT 1 FROM mention m JOIN block b ON b.block_id = m.block_id
+                    WHERE b.doc_ord = d.doc_ord AND m.state = 0))
  ORDER BY d.doc_ord
 """
-"""Every retired document the reference graph still holds rows for. **D673.**
+"""Every retired document the graph still holds live rows for. **D673, D675.**
 
 The ones this pass just retired, and any retired before `unbind_document` existed."""
 
@@ -1373,7 +1376,8 @@ def retire_replaced(thread: StoreThread, *, wait_ms: int = BATCH_WAIT_MS) -> int
 
     **And out of the reference graph, in the same transaction** (D673): `converge.unbind_document`
     removes the document's anchors and occurrences and unbinds every link they made, so no reader
-    ever sees a retired document whose definitions still resolve. It also runs for a document
+    ever sees a retired document whose definitions still resolve; `retire_document_entities`
+    histories its mentions and the entities it took with it (D675). It also runs for a document
     retired before that existed and still holding reference rows (`_RETIRED_WITH_REFERENCES_SQL`),
     so a store built earlier converges on its next `ow add`.
     """
@@ -1394,6 +1398,7 @@ def retire_replaced(thread: StoreThread, *, wait_ms: int = BATCH_WAIT_MS) -> int
             _RETIRED_WITH_REFERENCES_SQL, {"retired": key}
         ).fetchall():
             unbind_document(connection, int(doc_ord))
+            retire_document_entities(connection, int(doc_ord))
 
     thread.run(Unit(name="discover.retire_replaced", run=run, cost_class="free", wait_ms=wait_ms))
     return retired
