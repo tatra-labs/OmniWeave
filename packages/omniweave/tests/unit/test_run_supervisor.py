@@ -687,6 +687,7 @@ def harness(
     claim_batch: Mapping[str, int] | None = None,
     sweep: Any = None,
     worker: str = "host:1:2",
+    closed_queue: bool = False,
 ) -> Harness:
     events: list[tuple[str, Mapping[str, object]]] = []
     adm = admission if admission is not None else loop_admission()
@@ -710,6 +711,7 @@ def harness(
         worker=worker,
         claim_batch=claim_batch or {"free": 256, "local_compute": 32, "billed_api": 8},
         emit=emit,
+        closed_queue=closed_queue,
         **kwargs,
     )
     return Harness(supervisor, queue, events)
@@ -1436,3 +1438,81 @@ def test_the_only_mutable_module_state_is_the_process_latch() -> None:
 
     assert mutable == {}, mutable
     assert type(module._ONE_PER_PROCESS).__name__ == "_Exclusion"
+
+
+# -- when a drain ends (D676) -------------------------------------------------
+
+
+def _timed(built: Harness) -> tuple[RunReport, float]:
+    began = time.perf_counter()
+    report = asyncio.run(built.supervisor.run())
+    return report, time.perf_counter() - began
+
+
+def test_a_closed_queue_that_is_drained_ends_without_its_quiet_tail() -> None:
+    """D564's owed end condition. Nothing pending, transient, claimed or deferred, and the caller
+    promised nothing else enqueues: the drain ends on the empty claim, not two sweeps later."""
+    queue = FakeQueue([[work_row(1)]])
+    built = harness(queue, timings=loop_timings(deferred_sweep_ms=5_000), closed_queue=True)
+    report, seconds = _timed(built)
+    assert report.completed == 1
+    assert seconds < 2.0, f"{seconds:.2f} s: the run waited out a five-second sweep"
+    #  The row's claim, perhaps one empty claim while it was in flight (which counts toward
+    #  nothing), and the empty claim that ended the drain.
+    assert 2 <= len(queue.widths) <= 3, queue.widths
+
+
+def test_an_open_queue_still_waits_its_quiet_tail() -> None:
+    """A caller that may stream rows in beside the loop keeps 08:915's two quiet polls."""
+    queue = FakeQueue([[work_row(1)]])
+    report, seconds = _timed(harness(queue, timings=loop_timings(deferred_sweep_ms=200)))
+    assert report.completed == 1
+    #  Two settles of 200 ms before the third counted empty claim ends it; the lower bound leaves
+    #  room for the platform timer firing a little early.
+    assert seconds >= 0.3, f"{seconds:.2f} s"
+    assert len(queue.widths) >= 1 + QUIET_POLLS_BEFORE_SHED + 1
+
+
+def test_a_closed_queue_holding_a_deferred_row_keeps_its_quiet_tail() -> None:
+    """A `deferred` row is one the sweeper may still release, so the queue is not drained."""
+    queue = FakeQueue([[work_row(1)]], counts={"deferred": 1})
+    built = harness(queue, timings=loop_timings(deferred_sweep_ms=200), closed_queue=True)
+    _report, seconds = _timed(built)
+    assert seconds >= 0.3, f"{seconds:.2f} s"
+
+
+def test_the_next_stage_a_slow_batch_enqueues_is_claimed_in_the_same_drain() -> None:
+    """An empty claim counts toward the end only while nothing is in flight. A batch slower than
+    the whole quiet tail used to outlive the claimer, and the rows it enqueued waited for the next
+    run: a parse's segmentation, a segmentation's free Passes."""
+    queue = FakeQueue([[work_row(1)]])
+
+    def parse_then_enqueue(batch: Any) -> Sequence[StepResult]:
+        time.sleep(0.3)
+        if any(row.id == 1 for row in batch.rows):
+            queue.claims.append([work_row(2)])
+        return [step_result(row) for row in batch.rows]
+
+    report, _ = _timed(harness(queue, dispatch=parse_then_enqueue))
+    assert [row_id for row_id, _, _ in queue.completed] == [1, 2]
+    assert report.completed == 2
+
+
+def test_a_finished_batch_wakes_the_claimer() -> None:
+    """The next stage is claimed when the batch that enqueued it finishes, not a sweep later."""
+    queue = FakeQueue([[work_row(1)]])
+
+    def enqueue_next(batch: Any) -> Sequence[StepResult]:
+        if any(row.id == 1 for row in batch.rows):
+            queue.claims.append([work_row(2)])
+        return [step_result(row) for row in batch.rows]
+
+    built = harness(
+        queue,
+        dispatch=enqueue_next,
+        timings=loop_timings(deferred_sweep_ms=5_000),
+        closed_queue=True,
+    )
+    report, seconds = _timed(built)
+    assert report.completed == 2
+    assert seconds < 2.0, f"{seconds:.2f} s: the second stage waited for a sweep"

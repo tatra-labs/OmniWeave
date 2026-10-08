@@ -102,7 +102,6 @@ and 5.4, and 16-roadmap.md:542 (P4 W4.2).
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import os
 import shutil
 import socket
@@ -171,6 +170,13 @@ RENDER_CPU_RESERVE: Final = 2
 Two, not one and not a fraction: the loop itself needs a CPU and so does the store thread, and both
 are doing work that a rasteriser starving them would make slower overall. `max(1, ...)` is what
 keeps a single-core container rendering at all rather than dividing by zero into a deadlock."""
+
+_LIVE_STATUSES: Final = ("pending", "failed_transient", "claimed", "deferred")
+"""The `work.status` values a row this run could still claim can hold. D676.
+
+`pending` and `failed_transient` are the claim predicate's own (08:127-131); `claimed` is a lease
+another worker or a crashed one holds, which the reaper returns; `deferred` is a row the sweeper
+may release. `done` and `failed_permanent` are terminal."""
 
 QUIET_POLLS_BEFORE_SHED: Final = 2
 """08:915: *"Two poll cycles are required before the run ends."*
@@ -1027,6 +1033,7 @@ class Supervisor:
         "_admission",
         "_batches",
         "_claimed",
+        "_closed_queue",
         "_closing",
         "_completed",
         "_crashed",
@@ -1034,10 +1041,12 @@ class Supervisor:
         "_dispatch",
         "_emit",
         "_gates",
+        "_in_flight",
         "_inbox",
         "_lag_breach_ms",
         "_mint",
         "_polls",
+        "_progress",
         "_queue",
         "_reaped",
         "_stall",
@@ -1063,6 +1072,7 @@ class Supervisor:
         sweep: Callable[[int], int] = no_sweep,
         emit: Callable[..., object] = no_emit,
         mint: Callable[[], str] | None = None,
+        closed_queue: bool = False,
     ) -> None:
         """`worker` is `'<host>:<pid>:<process_create_time>'` -- 08:465's `claimed_by`.
 
@@ -1075,6 +1085,12 @@ class Supervisor:
         `claim_batch` is `[runtime.claim] batch`, per cost class and already clamped by the card
         where the caller knows it (`dispatch.start_batch()`). `_next_width` says why the claim reads
         the narrowest of the three rather than the one it is about to get.
+
+        `closed_queue` is the caller's promise that nothing outside this loop enqueues while it
+        runs -- every row it could still claim is in the queue already or will be written by a
+        batch it serves. `ow ingest` makes it: it enqueues, then drains, then plans, then drains.
+        A caller streaming rows in beside the loop (08:880's producer behind `PauseGate`, as
+        `tools/gate_scale.py` runs one) does not, and its drain keeps the quiet-poll end. D676.
         """
         self._ctx = ctx
         self._queue = queue
@@ -1085,6 +1101,7 @@ class Supervisor:
         self._start_batch = dict(claim_batch)
         self._sweep = sweep
         self._emit = emit
+        self._closed_queue = closed_queue
         self._mint = mint if mint is not None else _default_mint(ctx)
         self._gates: Mapping[str, _ClassGate] = {
             name: _ClassGate(sem, admission.inflight.get(name, 1))
@@ -1093,6 +1110,8 @@ class Supervisor:
         self._workers = max(1, sum(admission.workers.values()))
         self._inbox: asyncio.Queue[object] = asyncio.Queue(maxsize=self._workers)
         self._closing = asyncio.Event()
+        self._progress = asyncio.Event()
+        self._in_flight = 0
         self._claimed = 0
         self._batches = 0
         self._completed = 0
@@ -1211,11 +1230,26 @@ class Supervisor:
         batch still being served can still produce a `failed_transient` row for the next pass. So
         the end needs the same two conditions the stall detector needs: the inbox empty, and
         `QUIET_POLLS_BEFORE_SHED` consecutive empty claims.
+
+        **Unless nothing could ever become claimable** (D676, D564's owed end condition). For a
+        caller that promised `closed_queue`, with the inbox empty and no batch in flight,
+        `_drained()` reads `counts_by_status()`: no `pending`, `failed_transient`, `claimed` or
+        `deferred` row means no row this run could still claim -- the only other writer is a batch
+        this loop serves, and the run holds the store's write lock -- so the drain ends on that
+        claim rather than two sweep intervals later. A row in any of the four statuses, or a caller
+        that streams rows in beside the loop, keeps the quiet-poll path exactly as it was.
+
+        **An empty claim counts only while nothing is in flight**, and a batch finishing wakes the
+        claimer (`_settle`). A served batch enqueues the next stage's rows -- a parse its
+        segmentation, a segmentation its free Passes -- so a claimer that counted empty claims
+        while batches ran could end a drain with their follow-on work unclaimed, and one that slept
+        a full sweep interval after every batch made each stage wait five seconds for the last.
         """
         from omniweave.run.dispatch import form_batches  # noqa: PLC0415
 
         empty = 0
         while not self._ctx.cancel.cancelled() and not self._closing.is_set():
+            self._progress.clear()
             rows = await asyncio.to_thread(
                 self._queue.claim,
                 self._next_width(),
@@ -1224,9 +1258,12 @@ class Supervisor:
                 self._timings.lease_ms,
             )
             if not rows:
-                empty += 1
-                if self._inbox.empty() and empty > QUIET_POLLS_BEFORE_SHED:
-                    return
+                if self._inbox.empty() and self._in_flight == 0:
+                    empty += 1
+                    if empty > QUIET_POLLS_BEFORE_SHED or (
+                        self._closed_queue and await self._drained()
+                    ):
+                        return
                 await self._settle()
                 continue
             empty = 0
@@ -1234,6 +1271,7 @@ class Supervisor:
             self._announce_claim(rows)
             for batch in form_batches(rows, mint=self._mint):
                 self._batches += 1
+                self._in_flight += 1
                 await self._inbox.put(batch)
 
     def _next_width(self) -> int:
@@ -1249,11 +1287,25 @@ class Supervisor:
         return max(1, min(self._start_batch.values(), default=1))
 
     async def _settle(self) -> None:
-        """One quiet pass: wait a sweep interval, or until the run closes, whichever comes first."""
-        with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(
-                self._closing.wait(), timeout=self._timings.deferred_sweep_ms / 1000
+        """One quiet pass: a sweep interval, or until the run closes or a batch finishes. D676."""
+        waits = {
+            asyncio.ensure_future(self._closing.wait()),
+            asyncio.ensure_future(self._progress.wait()),
+        }
+        try:
+            await asyncio.wait(
+                waits,
+                timeout=self._timings.deferred_sweep_ms / 1000,
+                return_when=asyncio.FIRST_COMPLETED,
             )
+        finally:
+            for wait in waits:
+                wait.cancel()
+
+    async def _drained(self) -> bool:
+        """No row in any status a claim, a sweep or a reap could still turn into work. D676."""
+        counts = await asyncio.to_thread(self._queue.counts_by_status)
+        return all(counts.get(status, 0) == 0 for status in _LIVE_STATUSES)
 
     async def _worker_loop(self) -> None:
         """One long-lived worker. Catches everything a batch can raise; re-raises cancellation.
@@ -1267,15 +1319,20 @@ class Supervisor:
             if item is _STOP:
                 return
             batch = cast("Batch", item)
-            if self._ctx.cancel.cancelled():
-                self._abandon(batch)
-                continue
             try:
-                await self._serve(batch)
-            except asyncio.CancelledError:
-                raise
-            except BaseException as exc:  # 02:653; see the class docstring.
-                self._crash(batch, exc)
+                if self._ctx.cancel.cancelled():
+                    self._abandon(batch)
+                    continue
+                try:
+                    await self._serve(batch)
+                except asyncio.CancelledError:
+                    raise
+                except BaseException as exc:  # 02:653; see the class docstring.
+                    self._crash(batch, exc)
+            finally:
+                #  D676: what the claimer reads to know a batch is done, and to wake for it.
+                self._in_flight -= 1
+                self._progress.set()
 
     async def _serve(self, batch: Batch) -> None:
         """admit -> dispatch, for one batch, then `_commit`. The only place all three meet.
