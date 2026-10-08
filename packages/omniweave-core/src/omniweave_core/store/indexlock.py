@@ -46,9 +46,9 @@ as printed, not `SCHEMA_STRING`. **`scorer` is where the retrieval weights are p
 are pinned in `omniweave.index.lock`'s header line (`scorer=1`)"* (07:1500), so the header pins the
 weight SET BY VERSION and does not enumerate the weights themselves; an eval run against unpinned
 weights is published `UNRANKED` (07:1501, Q-G8). `segmenter` and `space` are opaque tokens owned
-elsewhere (`derive.segment.spine`'s identity, and `embed_space`'s rendering at 07:2080); this module
-validates their SHAPE and never their grammar, because a second grammar here would be a second home
-for a fact (INV-21).
+elsewhere (the `segmenter` rows, rendered by `store.verify.segmenter_token`, and `embed_space`'s
+rendering at 07:2080); this module validates their SHAPE and never their grammar, because a second
+grammar here would be a second home for a fact (INV-21).
 
 BYTE STABILITY -- what makes it true rather than usually true (01-principles.md:688)
 ------------------------------------------------------------------------------------
@@ -182,6 +182,7 @@ __all__ = (
     "LOCK_PATH",
     "MARKERS",
     "MERGE_DRIVER_NAME",
+    "NO_SEGMENTER",
     "LockFile",
     "LockHeader",
     "LockRow",
@@ -286,6 +287,13 @@ HEADER_PREFIX: Final = "# "
 
 HEADER_KEYS: Final = ("schema", "scorer", "segmenter", "space")
 """The header's four keys in the order 07:3117 prints them, which is therefore the byte order."""
+
+NO_SEGMENTER: Final = "none"
+"""The `segmenter` token of a corpus with no live Segment at any head generation (D595, D677).
+
+A token `LockHeader.validate` accepts that cannot be mistaken for an identity, which always has
+an `@`. A store whose documents are all unsegmented -- every parse failed, or nothing was added --
+still writes a header, and this is its word for "no segmenter cut anything here"."""
 
 DOC_STATUSES: Final = ("ok", "partial", "failed", "skipped")
 """`doc.status`'s closed vocabulary, from `DocRecord.status` at 03-document-model.md:408.
