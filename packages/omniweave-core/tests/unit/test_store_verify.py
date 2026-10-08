@@ -49,7 +49,7 @@ from omniweave_core.model.spans import OriginBytes
 from omniweave_core.store import migrate
 from omniweave_core.store import sqlite as ow
 from omniweave_core.store.doc import DocSink
-from omniweave_core.store.indexlock import LockHeader, has_conflict_markers, write_lock
+from omniweave_core.store.indexlock import LockHeader, has_conflict_markers
 from omniweave_core.store.verify import (
     _SCHEMA_COLUMN_EXEMPT,
     ALL_CLAUSES,
@@ -63,6 +63,7 @@ from omniweave_core.store.verify import (
     VerifyClause,
     VerifyReport,
     derive_lock,
+    segmenter_token,
     verify_doc,
     verify_store,
 )
@@ -77,7 +78,8 @@ PART_SHA256 = hashlib.sha256(PART_BYTES).digest()
 with what it streamed (`OW_ASSET_DIGEST_MISMATCH`), so the fixture cannot lie about it."""
 
 HEADER = LockHeader(scorer=1, segmenter="derive.segment.spine@3:9c1e", space="none@0/0/none/i8")
-"""A receipt header. `segmenter` and `space` are opaque tokens owned elsewhere (INV-21)."""
+"""A receipt header. `space` is an opaque token owned elsewhere (INV-21); `segmenter` is the
+store's (D677), and is the token `_add_cover`'s segmenter row renders as -- 07:3117's own."""
 
 
 FLOOR = Capabilities(
@@ -267,7 +269,7 @@ def test_a_clean_store_passes_every_clause_it_can_check(store: Path, cas: BlobSt
             now_ns=NOW_NS,
             clauses=ALL_CLAUSES,
             blobs=cas,
-            lock_text=write_lock(HEADER, derive_lock(connection, header=HEADER).rows),
+            lock_text=derive_lock(connection, header=HEADER).render(),
         )
     finally:
         connection.close()
@@ -857,7 +859,7 @@ def test_a_user_split_overwritten_by_an_automatic_merge_is_caught(store: Path) -
 def _lock_text(path: Path) -> str:
     connection = _open(path)
     try:
-        return write_lock(HEADER, derive_lock(connection, header=HEADER).rows)
+        return derive_lock(connection, header=HEADER).render()
     finally:
         connection.close()
 
@@ -924,6 +926,80 @@ def test_a_receipt_header_pinning_the_wrong_scorer_is_caught(store: Path) -> Non
     assert result.state is ClauseState.FAILED
     assert result.findings[0].where.endswith("header")
     assert "scorer=2" in result.findings[0].detail
+
+
+def _header(path: Path) -> LockHeader:
+    connection = _open(path)
+    try:
+        return derive_lock(connection, header=HEADER).header
+    finally:
+        connection.close()
+
+
+def test_the_receipt_header_names_the_segmenter_that_cut_its_segments(store: Path) -> None:
+    """D677: `segmenter` is read from the store, not taken from the caller. 07:3117 prints
+    `derive.segment.spine@3:9c1e`, and the segmenter row `(spine, 3, 9c1e)` renders as exactly
+    that; a store that cut no Segment says `none` whatever the caller passed."""
+    assert HEADER.segmenter != "none"
+    assert _header(store).segmenter == "none"
+    _add_cover(store, b"\x00" * COVER_BITS_BYTES)
+    assert _header(store).segmenter == "derive.segment.spine@3:9c1e"
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["UPDATE segment SET state = 1", "UPDATE segment SET gen = 2"],
+    ids=["retired", "not-the-head-generation"],
+)
+def test_the_header_names_only_the_segments_the_rows_count(store: Path, change: str) -> None:
+    """`n_segments` counts live Segments at the head generation, and so does the header: a
+    retired Segment, or one cut for a generation the document left, named no one."""
+    _add_cover(store, b"\x00" * COVER_BITS_BYTES)
+    _corrupt(store, change)
+    assert _header(store).segmenter == "none"
+
+
+def test_a_corpus_cut_by_two_segmenters_names_both_sorted(store: Path) -> None:
+    """Re-cut half a corpus under new params and it is segmented by neither alone. A real
+    `params_digest` is 32 bytes, and the token keeps its first four hex, as `view_id` keeps
+    `options_digest`'s (03:2887)."""
+    _add_cover(store, b"\x00" * COVER_BITS_BYTES)
+    _corrupt(
+        store,
+        (
+            "INSERT INTO segmenter(segmenter_id, driver_id, driver_schema_v, params_digest) "
+            "VALUES(2, 'derive.segment.spine', 1, ?)",
+            (bytes.fromhex("0abc") + bytes(30),),
+        ),
+        "INSERT INTO segment(segment_id, doc_ord, gen, ord, segmenter_id, layer, heading_path, "
+        "n_blocks, n_tokens, n_chars, tokenizer_id, first_page, last_page, trust, quote_min, "
+        "kind_mask, content_digest, origin_operator, origin_driver, driver_schema_v) "
+        "SELECT 2, doc_ord, gen, 1, 2, layer, heading_path, n_blocks, n_tokens, n_chars, "
+        "tokenizer_id, first_page, last_page, trust, quote_min, kind_mask, content_digest, "
+        "origin_operator, origin_driver, 1 FROM segment WHERE segment_id = 1",
+    )
+    assert _header(store).segmenter == "derive.segment.spine@1:0abc+derive.segment.spine@3:9c1e"
+
+
+def test_a_receipt_header_naming_the_wrong_segmenter_is_caught(store: Path) -> None:
+    """A receipt written before the corpus was segmented, checked against the store after it:
+    the header is where a merge between the two is refused, so verify must see it too."""
+    before = _lock_text(store)
+    assert " segmenter=none " in before
+    _add_cover(store, b"\x00" * COVER_BITS_BYTES)
+    result = _run(store, VerifyClause.LOCK_STORE_MATCH, lock_text=before)
+    assert result.state is ClauseState.FAILED
+    assert result.findings[0].where.endswith("header")
+    assert "segmenter=derive.segment.spine@3:9c1e" in result.findings[0].detail
+
+
+def test_a_store_with_no_segment_table_keeps_the_callers_token() -> None:
+    """Below schema 0002 there is nothing to ask, and `None` says so rather than `none`."""
+    connection = sqlite3.connect(":memory:")
+    try:
+        assert segmenter_token(connection) is None
+    finally:
+        connection.close()
 
 
 def test_the_derived_receipt_counts_live_head_blocks_and_names_the_root_digest(

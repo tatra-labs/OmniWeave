@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D676: a drain ends when it is drained
+# blessed-because: D677: 07:3121 records that the receipt header's segmenter token is derived from the store
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -33,7 +33,7 @@ documents-frozen  3af6a53e2a3edbbd85dac7c7068d9429f73240aa4b4e0cc53118bc92cd6b6a
 documents-frozen  6e98c953433a016cb1ec27c4373ce9462f2c7ef2b2ff0337f80fff67c72ed29b  04-driver-system.md
 documents-frozen  58eeb69e5ed3d40f01c4f9afc0550778a3e88efc1c728c04f87d9e8fa1f6a572  05-ingest-and-routing.md
 documents-frozen  55018bd937030053b07b14c9d0d056796b686276e525a36b5aba15bf25b037c6  06-structure-extraction.md
-documents-frozen  6fe8fa87523a1d8986a1e99e027ed8437368aa43046724067d1e76173e682137  07-store-and-retrieval.md
+documents-frozen  c09bd59f22d6d0ab452f46dd73ba3982e62f749c38e076f80e530a9850739c7f  07-store-and-retrieval.md
 documents-frozen  f475c1a7d671d504ad6ddc13aebd5a4be02ac6e42381888dd88e4ddfaf66f3a5  08-runtime.md
 documents-frozen  eddeb4634f5da1e2b056a002a7fa6eaa43d71836633b0a44d65301ac8b2d16e4  09-generation.md
 documents-frozen  d96985003690550f4d996e31a41306d21d6a8e2e7ff34076c0ad5cff5f3cb64e  10-interfaces.md
