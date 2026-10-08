@@ -135,6 +135,7 @@ __all__ = [
     "Baseline",
     "ConvergeReport",
     "Loss",
+    "Retired",
     "Unbound",
     "UnexplainedLoss",
     "anchor_delta",
@@ -143,6 +144,7 @@ __all__ = [
     "converge",
     "requeue",
     "requeue_params",
+    "retire_document_entities",
     "unbind_document",
 ]
 
@@ -711,7 +713,7 @@ def unbind_document(connection: _Rows, doc_ord: int) -> Unbound:
     not `anchor`, `ref_site` or `block_link`. Those three are recomputed from blocks a retirement
     keeps (`state = 1`, every cite still resolving through `block_history`), so deleting them loses
     nothing the blocks cannot give back; 06:2318-2322 is the same argument for STEP 2's DELETE. The
-    document's entities and mentions are W8.6's and are left as they are.
+    document's entities and mentions ARE historied, by `retire_document_entities` (D675).
 
     **Everything of the document, every generation.** A retirement is whole-document, and an older
     generation's rows -- left by a `rebind()` that carried the document forward -- are no less
@@ -735,6 +737,91 @@ def unbind_document(connection: _Rows, doc_ord: int) -> Unbound:
         links=links,
         disambiguated=disambiguated,
     )
+
+
+_DOC_GEN_SQL: Final[str] = "SELECT gen FROM doc WHERE doc_ord = :doc_ord"
+
+_HISTORY_MENTIONS_SQL: Final[str] = """
+INSERT OR IGNORE INTO graph_history(kind, row_id, retired_gen, superseded_by, reason, payload)
+SELECT 'mention', m.mention_id, :gen, NULL, 'source_deleted',
+       json_object('entity_id', m.entity_id, 'block_id', m.block_id, 'ts_a', m.ts_a,
+                   'ts_b', m.ts_b, 'surface', m.surface)
+  FROM mention m JOIN block b ON b.block_id = m.block_id
+ WHERE b.doc_ord = :doc_ord AND m.state = 0
+"""
+
+_ORPHAN_MENTIONS_SQL: Final[str] = """
+UPDATE mention SET state = 1
+ WHERE state = 0 AND block_id IN (SELECT block_id FROM block WHERE doc_ord = :doc_ord)
+"""
+"""06:2291's STEP 3: *"a mention whose block retired becomes state=1"* -- `1` is the DDL's
+*"orphaned (the block retired, no successor)"*, and a replaced document's blocks have none."""
+
+_RETIRING_ENTITIES_SQL: Final[str] = """
+SELECT e.entity_id FROM entity e
+ WHERE e.state = 0
+   AND (e.scope = :doc_ord
+        OR (e.scope = 0
+            AND EXISTS (SELECT 1 FROM mention m JOIN block b ON b.block_id = m.block_id
+                         WHERE m.entity_id = e.entity_id AND b.doc_ord = :doc_ord)
+            AND NOT EXISTS (SELECT 1 FROM mention m
+                             WHERE m.entity_id = e.entity_id AND m.state = 0)))
+ ORDER BY e.entity_id
+"""
+"""The entities the document took with it, read AFTER its mentions are orphaned: every one it owns
+(`scope` is the owning `doc_ord`), and a corpus-wide one whose last live mention was in it."""
+
+_HISTORY_ENTITY_SQL: Final[str] = """
+INSERT OR IGNORE INTO graph_history(kind, row_id, retired_gen, superseded_by, reason, payload)
+SELECT 'entity', entity_id, :gen, NULL, 'source_deleted',
+       json_object('scope', scope, 'etype', etype, 'key', key, 'title', title)
+  FROM entity WHERE entity_id = :entity_id
+"""
+
+_RETIRE_ENTITY_SQL: Final[str] = "UPDATE entity SET state = 2 WHERE entity_id = :entity_id"
+"""`2` is the DDL's *"retired"* (0002:261), which `ow_entity_head` excludes."""
+
+
+@dataclass(frozen=True, slots=True)
+class Retired:
+    """What `retire_document_entities` historied for one retired document."""
+
+    doc_ord: int
+    mentions: int
+    entities: int
+
+
+def retire_document_entities(connection: _Rows, doc_ord: int) -> Retired:
+    """06 section 10.1's STEP 3 for a RETIRED document: its mentions and entities. **D675.**
+
+    *"Retired blocks: items to graph_history with a reason; a mention whose block retired becomes
+    state=1 ... Silence is never an option."* GR8's projection found the omission: after an edit,
+    the old version's defined terms were still live entities, scoped to a document no file holds,
+    so an incremental store held each of them twice where a full rebuild held it once.
+
+    **Historied, not deleted** -- the opposite of `unbind_document`'s rows, for the reason the DDL
+    gives: `graph_history.kind` lists `entity` and `mention`, because an entity can carry a billed
+    `summary` and a merge decision that a re-derivation would not give back. Every row goes to
+    `graph_history` first, `reason = 'source_deleted'` (the reason `retire_replaced` gives its
+    blocks) and `superseded_by` NULL, then moves state: a mention to `1` (orphaned), an entity to
+    `2` (retired).
+
+    **Which entities.** Every one the document owns, and a corpus-wide one whose last live mention
+    was in it -- a full rebuild of the current corpus would not contain it either. A corpus-wide
+    entity still mentioned elsewhere stays live; its `frequency`, `doc_count` and `mention_digest`
+    are STEP 7's salience pass, W8.6's, and are not recomputed here.
+    """
+    params = {"doc_ord": doc_ord}
+    found = connection.execute(_DOC_GEN_SQL, params).fetchall()
+    gen = int(str(found[0][0])) if found else 0
+    connection.execute(_HISTORY_MENTIONS_SQL, params | {"gen": gen})
+    mentions = int(connection.execute(_ORPHAN_MENTIONS_SQL, params).rowcount)
+    retiring = connection.execute(_RETIRING_ENTITIES_SQL, params).fetchall()
+    ids = [int(str(row[0])) for row in retiring]
+    for entity_id in ids:
+        connection.execute(_HISTORY_ENTITY_SQL, {"entity_id": entity_id, "gen": gen})
+        connection.execute(_RETIRE_ENTITY_SQL, {"entity_id": entity_id})
+    return Retired(doc_ord=doc_ord, mentions=mentions, entities=len(ids))
 
 
 # --------------------------------------------------------------------------------------------

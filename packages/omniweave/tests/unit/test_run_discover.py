@@ -1557,6 +1557,69 @@ def test_a_document_retired_before_the_unbind_existed_is_unbound_on_the_next_pas
     assert _graph(_reader(tmp_path))["block_link"] == []
 
 
+def _owned_entity(reader: Any) -> None:
+    """Document 1 (block 10, segment 10) owns the defined term `lender`, mentioned once."""
+    reader.execute(
+        "INSERT INTO derive_pass(pass_id, port, cost_class, cost_rank, phase, lanes, "
+        "granularity, card_sha256, schema_version) VALUES('derive.anchor.defterm', 'derive/1', "
+        "'free', 0, 30, '[\"entity\"]', 'document', 'sha', 1)"
+    )
+    reader.execute(
+        "INSERT INTO derive_run(run_id, segment_id, pass_id, at_gen, producer_id, method, "
+        "origin_operator, origin_driver, driver_schema_v, cost_class, input_digest, cache_key, "
+        "status) VALUES(7, NULL, 'derive.anchor.defterm', 1, 1, 0, 'derive.anchor.defterm', "
+        "'derive.anchor.defterm', 1, 'free', X'00', 'k', 'ok')"
+    )
+    reader.execute(
+        "INSERT INTO entity(entity_id, cite, scope, etype, key, title, canonical_id, "
+        "resolution_method, trust, mention_digest) "
+        "VALUES(1, 'e1', 1, 'defined_term', 'lender', 'Lender', 1, 0, 2, X'00')"
+    )
+    reader.execute(
+        "INSERT INTO mention(entity_id, block_id, segment_id, ts_a, ts_b, surface, run_id, trust, "
+        "digest) VALUES(1, 10, 10, 0, 4, 'text', 7, 2, X'00')"
+    )
+
+
+def _entity_states(reader: Any) -> tuple[list[tuple[Any, ...]], list[tuple[Any, ...]]]:
+    return (
+        reader.execute("SELECT entity_id, state FROM entity").fetchall(),
+        reader.execute("SELECT entity_id, state FROM mention").fetchall(),
+    )
+
+
+def test_the_replaced_versions_defined_terms_are_retired_with_it(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """D675. An edited file's old version kept its defined terms as live entities, so a store built
+    through an edit held each of them twice; GR8's projection is what saw it."""
+    reader = _reader(tmp_path)
+    _unit_with(reader, "c:/docs/note.pdf", NEW)
+    _doc(reader, 1, "c:/docs/note.pdf", OLD, block=True)
+    _owned_entity(reader)
+    reader.commit()
+    assert discover_module.retire_replaced(store) == 1
+    assert _entity_states(_reader(tmp_path)) == ([(1, 2)], [(1, 1)])
+
+
+def test_a_retired_document_holding_only_entities_is_swept(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """D675. The sweep's own condition: no anchor, no occurrence and no live mention -- the mention
+    was orphaned already -- only a live entity the document owns."""
+    reader = _reader(tmp_path)
+    _doc(reader, 1, "c:/docs/note.pdf", OLD, block=True)
+    _owned_entity(reader)
+    reader.execute("UPDATE mention SET state = 1")
+    reader.execute(
+        "UPDATE doc SET x = json_set(x, '$.\"x.ow.retired\"', json_object('reason', "
+        "'source_deleted', 'gen', 1)) WHERE doc_ord = 1"
+    )
+    reader.commit()
+    assert discover_module.retire_replaced(store) == 0
+    assert _entity_states(_reader(tmp_path)) == ([(1, 2)], [(1, 1)])
+
+
 def test_a_version_some_file_still_holds_is_not_retired(
     store: ow.StoreThread, tmp_path: Path
 ) -> None:
