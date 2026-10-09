@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from omniweave_core.config import load
 from omniweave_core.errors import UsageError
-from omniweave_core.limits import PREFILTER_MAX
+from omniweave_core.limits import MAX_SNAPSHOT_MS, PREFILTER_MAX
 from omniweave_core.model.enums import Method
 from omniweave_core.retrieve import plan as pl
 from omniweave_core.retrieve.types import (
@@ -35,6 +35,7 @@ from omniweave_core.retrieve.types import (
     RetrievalPolicy,
     Rule,
 )
+from omniweave_core.store import sqlite
 from omniweave_core.store.types import Expand, Filters, IndexCaps, Narrowing
 
 if TYPE_CHECKING:
@@ -137,6 +138,7 @@ def test_the_threshold_substitution_already_happened_in_the_fence(policy: Retrie
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.shipped_budgets
 def test_plan_1_the_ordinary_mixed_query_runs_all_five_in_the_canonical_order(
     policy: RetrievalPolicy,
 ) -> None:
@@ -266,6 +268,7 @@ def test_a_stale_stat_forces_the_semantic_channel_to_the_maximum_clamp(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.shipped_budgets
 def test_the_shipped_budgets_fit_under_query_ms_with_the_hydration_reserve(
     policy: RetrievalPolicy,
 ) -> None:
@@ -277,6 +280,7 @@ def test_the_shipped_budgets_fit_under_query_ms_with_the_hydration_reserve(
     assert pl.plan(Query(text="anything at all"), _caps(), policy).budget_ms == 210
 
 
+@pytest.mark.shipped_budgets
 def test_a_budget_whose_channels_outspend_the_query_deadline_is_refused() -> None:
     """Every query under it would end at the query deadline with Channels reporting
     `OFF(query_deadline)` -- the disclosure that is NOT a failure, arriving on every query."""
@@ -300,6 +304,7 @@ def test_a_channel_with_no_budget_of_its_own_is_refused() -> None:
     assert "channel_ms" in str(caught.value)
 
 
+@pytest.mark.shipped_budgets
 def test_the_querys_own_budget_wins_over_the_policys(policy: RetrievalPolicy) -> None:
     """07:2343 makes `Query.budget = None` mean *"the retrieval policy's default budget"*, and
     D238 records that the printed `RetrievalPolicy` has no budget for it to mean."""
@@ -672,3 +677,32 @@ def test_the_budget_a_query_spends_is_the_projects(tmp_path: Path) -> None:
     }  # fmt: skip
     made = pl.plan(Query(text="parental leave"), _caps(), RetrievalPolicy(budget=budget))
     assert {spec.name: spec.budget_ms for spec in made.channels}["lexical"] == 400
+
+
+_SHIPPED_CHANNEL_MS = {"identity": 15, "exact": 25, "lexical": 50, "structural": 40, "semantic": 80}
+
+
+def test_a_content_test_runs_on_generous_budgets_and_the_shipped_arithmetic(
+    tmp_path: Path,
+) -> None:
+    """D689: `packages/conftest.py` multiplies every latency budget, so a stalled test worker
+    cannot fail an assertion about what a query finds. Every reader of the defaults sees it: the
+    built-in `QueryBudget()`, an empty project's `[retrieval.budget]`, and the snapshot deadline.
+    The plan's arithmetic is kept: the Channels plus the reserve spend exactly `query_ms`."""
+    budget = QueryBudget()
+    assert dict(budget.channel_ms) == {name: ms * 20 for name, ms in _SHIPPED_CHANNEL_MS.items()}
+    assert sum(budget.channel_ms.values()) + budget.hydration_reserve_ms == budget.query_ms
+    assert budget.snapshot_ms == MAX_SNAPSHOT_MS == sqlite._snapshot_ms(None)
+    home = {"OMNIWEAVE_HOME": str(tmp_path / "absent")}
+    assert pl.budget_of(load(cwd=tmp_path, env=home)) == budget
+
+
+@pytest.mark.shipped_budgets
+def test_a_marked_test_runs_on_the_shipped_budgets(tmp_path: Path) -> None:
+    """...and `@pytest.mark.shipped_budgets` takes it away, everywhere at once."""
+    budget = QueryBudget()
+    assert dict(budget.channel_ms) == _SHIPPED_CHANNEL_MS
+    assert (budget.query_ms, budget.hydration_reserve_ms) == (250, 40)
+    assert budget.snapshot_ms == 2_000 == sqlite._snapshot_ms(None)
+    home = {"OMNIWEAVE_HOME": str(tmp_path / "absent")}
+    assert pl.budget_of(load(cwd=tmp_path, env=home)) == budget
