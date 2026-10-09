@@ -3267,7 +3267,13 @@ class Worker:
                 self._proc.kill()
         try:
             status = self._proc.wait(timeout=KILL_GRACE_MS / 1000)
-        except subprocess.TimeoutExpired:  # pragma: no cover -- TerminateProcess does not fail
+        except subprocess.TimeoutExpired:
+            #  D686: TerminateJobObject does not fail, but the exit it orders is asynchronous,
+            #  and on a saturated machine it outlasted KILL_GRACE_MS. Returning without the
+            #  status left a Popen nobody would ever wait on -- `_make_room` retires through here
+            #  and forgets the worker -- and CPython reports that as a ResourceWarning in whatever
+            #  code runs when it is collected. The process is dying; a thread reads its status.
+            reap_in_background(self._proc, name=self.key.driver_id)
             status = None
         self.close()
         return status
@@ -3277,6 +3283,27 @@ class Worker:
         self._channel.close()
         if self._job is not None and not self._job.closed:
             self._job.close()
+
+
+def reap_in_background(proc: WorkerProcess, *, name: str) -> threading.Thread:
+    """Read a killed child's exit status on a daemon thread, so it is never dropped unread. D686.
+
+    `Popen.__del__` warns *"subprocess N is still running"* whenever `returncode` was never read,
+    and the warning is raised in whatever code is running when the object is collected -- which is
+    how a full suite under load reported it against unrelated ingest tests, on master and every
+    branch, for six cells. The host never needs the status of a worker it has given up on; it only
+    must not abandon the handle. A blocking wait here would stall `_make_room` under the pool lock
+    for as long as the dying process takes, so the wait is the thread's, and the thread holds the
+    only reference until the child is gone.
+    """
+    thread = threading.Thread(target=_reap, args=(proc,), name=f"ow-s4-reap-{name}", daemon=True)
+    thread.start()
+    return thread
+
+
+def _reap(proc: WorkerProcess) -> None:
+    with contextlib.suppress(OSError):
+        proc.wait()
 
 
 def _assign_verdict(
@@ -3784,6 +3811,7 @@ def launch(
         listener.close()
         with contextlib.suppress(OSError):
             proc.kill()
+        reap_in_background(proc, name=key.driver_id)  # D686: killed, and still to be read
         if job is not None:
             job.close()
         raise
@@ -3854,6 +3882,7 @@ __all__ = [
     "pipe_names",
     "priority_class",
     "produced_total",
+    "reap_in_background",
     "retry_batch_size",
     "run_captured",
     "spawn_worker",
