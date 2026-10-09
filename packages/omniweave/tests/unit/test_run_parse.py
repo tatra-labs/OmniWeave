@@ -117,11 +117,11 @@ def test_every_routed_document_reaches_a_terminal_row_in_one_run(tmp_path: Path)
     assert report.parsed is not None
     assert dict(report.parsed.parsed) == {"parse.office.anydoc": len(PARSEABLE)}
     assert dict(report.parsed.failed) == {"corrupt_input": 1, "empty_result": 1, "encrypted": 1}
-    assert report.parsed.workers >= 6, (
+    assert report.parsed.workers >= 7, (
         "at least one worker per (driver_id, config_digest): the office parse, the segmenter and "
-        "the four free Passes -- which, before D676, this run never reached. `workers` counts "
-        "spawns, and six keys share a capped class, so an idle worker `_make_room` retired is "
-        "spawned again when its key's next batch comes: 7 in 2 runs of 80 (D680)"
+        "the five free Passes (D681) -- which, before D676, this run never reached. `workers` "
+        "counts spawns, and the keys share a capped class, so an idle worker `_make_room` retired "
+        "is spawned again when its key's next batch comes (D680)"
     )
     assert report.parsed.calls >= 2, "thirteen rows over batch_max_units = 8 is two batches"
     for name in PARSEABLE:
@@ -240,8 +240,8 @@ def test_the_first_parse_writes_the_receipt_and_moves_the_generation(tmp_path: P
     assert not unrooted.ok, "without the root the store derives the absolute uri"
 
     manifest = json.loads(Path(report.manifest).read_bytes())
-    assert manifest["outcomes"] == {"ok": 7}, (
-        "one op.identify, one parse.office, one segmentation and the four free Passes (D676)"
+    assert manifest["outcomes"] == {"ok": 8}, (
+        "one op.identify, one parse.office, one segmentation and the five free Passes (D676, D681)"
     )
     assert manifest["stage_entries"] == {"discover": 1, "plan": 1, "parse": 1}
     assert manifest["provenance"]["lock_digest"] == sha
@@ -274,7 +274,7 @@ def test_the_cas_is_beside_the_store_and_holds_the_source_and_the_asset(tmp_path
     """D582: the unit's raw bytes are staged into `.omniweave/cas/` at dispatch, and the office
     driver's asset lands there through the worker's `io.blobs.put()`. Two more since D676, which
     lets the run reach the stages after parse: the segmenter's unit (`segment.py`) and the one
-    unit the four free Passes share (`derive.py`), each staged once because the CAS is keyed by
+    unit the five free Passes share (`derive.py`), each staged once because the CAS is keyed by
     content."""
     store, config = _project(tmp_path, ("rich.docx",))
     _run(tmp_path, store, config)
@@ -384,11 +384,11 @@ def test_a_released_office_driver_parses_in_process_and_commits_what_a_worker_co
     s1 = _run(inproc_root, s1_store, s1_config)
 
     assert s1.parsed is not None and s4.parsed is not None
-    #  D676: the segmenter and the four free Passes are workers under both seams; only the office
+    #  D676: the segmenter and the five free Passes are workers under both seams; only the office
     #  parse moves in process. At least, because a worker retired for room is spawned again (D680).
-    assert s1.parsed.workers >= 5
+    assert s1.parsed.workers >= 6
     assert s1.parsed.inproc == 1
-    assert s4.parsed.workers >= 6
+    assert s4.parsed.workers >= 7
     assert s4.parsed.inproc == 0
     assert any(line.endswith(" and 1 in process") for line in s1.lines()), s1.lines()
     keys = "SELECT DISTINCT dispatch_key FROM work WHERE operator = 'parse.office'"

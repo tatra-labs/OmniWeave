@@ -371,6 +371,19 @@ def test_a_two_column_table_row_under_a_glossary_heading() -> None:
     assert kinds(found[0]) == [("Escrow Agent", "canonical")]
 
 
+def test_a_paragraph_in_a_glossary_cell_is_the_same_row() -> None:
+    """D681. The office parse puts a cell's text in a child paragraph, and the view gives that
+    paragraph its cell's position (06:1316); the rule reads the position, not the block kind."""
+    members = [
+        Member("d1#3", "paragraph", text="Escrow Agent", table=Cell("d1#0", 1, 0, 1, 2)),
+        Member("d1#4", "paragraph", text="The bank.", table=Cell("d1#0", 1, 1, 1, 2)),
+    ]
+    found = find(members, ["Definitions"]).definitions
+    assert [(d.cite, d.term, d.description) for d in found] == [
+        ("d1#3", "Escrow Agent", "The bank.")
+    ]
+
+
 @pytest.mark.parametrize(
     "member",
     [

@@ -60,12 +60,14 @@ foreign key written here, and two of its decisions shape the code rather than me
 
 `normalize_key` is the BLOCKING-KEY normaliser and `normalize_k` is the GROUNDING normaliser; their
 docstrings in `omniweave_core.ident` say so and the names differ by four characters on purpose.
-This module picks deliberately at four sites:
+This module picks deliberately at five sites:
 
 * `entity.key` -- `normalize_key`. The DDL calls the column *"normalize_key(canonical surface). A
   BLOCKING key, NOT an id"* (0002:242) and 06:107 makes it GR7.
 * `entity_alias.name_norm` and `anchor.name_norm` -- `normalize_key`. 0002:291 fixes it as *"ONE
   SPELLING for a normalised name across `anchor`, `ref_site` and here"*.
+* `claim.predicate` -- `normalize_key` (D681). 06:1152 prints `normalize_key(header)` for the
+  table Pass, and one spelling for every producer is the same rule pointed at a predicate.
 * `ground()` -- `normalize_k`, and only through `ground()`. 03:2930 makes `ground()` *"the only
   producer of a `ts_a`/`ts_b` anywhere in this plan"* and forbids its two callers from touching
   `normalize_k` or `str.find` themselves: an offset `.find()` returns lives in normalised space,
@@ -146,6 +148,7 @@ __all__ = [
     "TmpRef",
     "XrefDraft",
     "ground",
+    "restamp_mention_digest",
 ]
 
 
@@ -996,6 +999,18 @@ def _mention_merkle(digests: Sequence[bytes]) -> bytes:
     return ow128(_ENTITY_MENTION_DIGEST_DOMAIN, sorted(digest.hex() for digest in digests))
 
 
+def restamp_mention_digest(connection: sqlite3.Connection, entity_id: int) -> None:
+    """Re-merkle one entity's `mention_digest` over its live mentions. **D681.**
+
+    The sink keeps the merkle current as it ADDS mentions (`_roll_up`); a path that takes
+    mentions away -- `converge.replace_prior_runs` -- calls this so the digest the `summary`
+    cache keys on names the mentions that are there. It removes nothing.
+    """
+    rows = connection.execute(_LIVE_MENTION_DIGESTS, (entity_id,)).fetchall()
+    merkle = _mention_merkle(tuple(bytes(row[0]) for row in rows))
+    connection.execute(_STAMP_ENTITY_BITS, (0, merkle, entity_id))
+
+
 # ---------------------------------------------------------------------------------------------
 # 7. The sink. Twelve public methods, and there is no thirteenth.
 # ---------------------------------------------------------------------------------------------
@@ -1255,7 +1270,13 @@ class SqliteGraphSink:
         return self._write_edge(d, endpoints, located)
 
     def claim(self, d: ClaimDraft) -> ClaimId:
-        """Write one `claim`, with `t_precision` DERIVED and `quote_tier` copied.
+        """Write one `claim`: `t_precision` DERIVED, `quote_tier` copied, `predicate` normalised.
+
+        **`predicate` is stored as `normalize_key(predicate)`** (D681), as an entity's key and an
+        anchor's name are: 06:1152 prints `predicate=normalize_key(header)` for the table Pass,
+        and a driver has no `normalize_key` of its own, so the sink applies the one spelling for
+        every claim producer -- a model's `"Governed by"` and a header's `Governed By` are one
+        predicate.
 
         The three CHECKs 0002:414-417 carries are validated here as well, *"because a CHECK
         violation is an exception and a quarantine is data -- and a malformed draft must produce
@@ -1976,7 +1997,7 @@ class SqliteGraphSink:
                 d.object_literal,
                 d.object_datatype,
                 d.claim_type,
-                d.predicate,
+                normalize_key(d.predicate),
                 d.description,
                 d.status,
                 d.t_start,
