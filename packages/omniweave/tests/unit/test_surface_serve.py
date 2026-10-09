@@ -167,6 +167,7 @@ def test_the_sessions_directory_is_the_one_the_precompact_hook_writes(tmp_path: 
     assert Path(sessions) == tmp_path.resolve() / ".omniweave" / "sessions"
 
 
+@pytest.mark.shipped_budgets
 def test_the_projects_budget_reaches_the_server(tmp_path: Path) -> None:
     """D650: `[retrieval.budget]` is the budget every `omniweave_query` spends."""
     served = Recorder()

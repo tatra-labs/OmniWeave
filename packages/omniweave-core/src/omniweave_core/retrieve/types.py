@@ -53,6 +53,7 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import Final, Literal
 
+from omniweave_core.config import KEYS
 from omniweave_core.operator import SpendVector
 from omniweave_core.store.types import ChannelSpec, Expand, Filters
 
@@ -334,6 +335,22 @@ class FusedHit:
                 raise ValueError(msg)
 
 
+def _shipped_ms(key: str) -> int:
+    """A budget key's declared default, as the int every declaration of one is."""
+    value = KEYS[key].default
+    if not isinstance(value, int):  # pragma: no cover - every budget key is declared "int"
+        raise TypeError(f"{key} declares {value!r}; a budget is a whole number of milliseconds")
+    return value
+
+
+def _shipped_channel_ms() -> Mapping[str, int]:
+    """`[retrieval.budget] channel_ms`'s declared default, read-only as the field promises."""
+    table = KEYS["retrieval.budget.channel_ms"].default
+    if not isinstance(table, Mapping):  # pragma: no cover - the key is declared a table
+        raise TypeError(f"retrieval.budget.channel_ms declares {table!r}; it is a table")
+    return MappingProxyType({str(name): int(ms) for name, ms in table.items()})  # type: ignore[call-overload]
+
+
 @dataclass(frozen=True, slots=True)
 class QueryBudget:
     """07:3313. `query_ms` bounds the SNAPSHOT-HELD phase only. `embed_ms` is outside it.
@@ -343,18 +360,21 @@ class QueryBudget:
     `query_ms` -- `15 + 25 + 50 + 40 + 80 = 210, + 40 reserved = 250`, exactly equal and therefore
     passing a `<=`. `snapshot_ms` is a WAL-valve safety parameter clamped below `MAX_SNAPSHOT_MS`,
     never a UX one: 07:1822 records 30 s of pinned WAL producing 22 GB of WAL and exit 137.
+
+    **D689.** The four fields that have a config key default to that key's declared default, read
+    when the budget is built, so `QueryBudget()` and `budget_of()` of an empty project are one
+    budget and its numbers have one home. `store/sqlite.py`'s `_snapshot_ms` reads its default the
+    same way.
     """
 
-    query_ms: int = 250
-    hydration_reserve_ms: int = 40
-    embed_ms: int = 120
-    snapshot_ms: int = 2_000
-    federate_ms: int = 40
-    channel_ms: Mapping[str, int] = field(
-        default_factory=lambda: MappingProxyType(
-            {"identity": 15, "exact": 25, "lexical": 50, "structural": 40, "semantic": 80}
-        )
+    query_ms: int = field(default_factory=lambda: _shipped_ms("retrieval.budget.query_ms"))
+    hydration_reserve_ms: int = field(
+        default_factory=lambda: _shipped_ms("retrieval.budget.hydration_reserve_ms")
     )
+    embed_ms: int = 120
+    snapshot_ms: int = field(default_factory=lambda: _shipped_ms("retrieval.snapshot_ms"))
+    federate_ms: int = 40
+    channel_ms: Mapping[str, int] = field(default_factory=_shipped_channel_ms)
     max_micros: int = 0
 
     @property

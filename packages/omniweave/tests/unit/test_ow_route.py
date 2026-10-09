@@ -123,6 +123,7 @@ def test_the_olmocr_card_decides_every_check_that_deferred_on_it(tmp_path: Path)
     assert "parse.page.olmocr" not in report
 
 
+@pytest.mark.shipped_budgets
 def test_the_retrieval_budget_is_the_declared_default() -> None:
     budget = tool.retrieval_budget()
     assert sorted(budget) == [

@@ -235,6 +235,7 @@ def test_the_gate_enumerator_and_the_loader_agree_on_the_leaves() -> None:
 # ---------------------------------------------------------------------------------------------
 
 
+@pytest.mark.shipped_budgets
 def test_every_value_round_trips_through_its_declared_coercion_to_its_default() -> None:
     """The file is "the shipped defaults", so every value must equal the value zero configuration
     would have produced -- through the DECLARED coercion, because `coerce` is what turns a TOML
