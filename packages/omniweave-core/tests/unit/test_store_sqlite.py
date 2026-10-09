@@ -41,7 +41,8 @@ from __future__ import annotations
 import inspect
 import sqlite3  # noqa: TID251 -- see the module docstring's last paragraph.
 import threading
-from typing import TYPE_CHECKING, Any
+import time
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from omniweave_core.contract import SCHEMA, SCHEMA_MINOR, SCHEMA_STRING
@@ -64,6 +65,7 @@ from omniweave_core.store.sqlite import (
     SchemaAction,
     StoreThread,
     Unit,
+    _index_state,
     connect,
     connect_readonly,
     heal_wal,
@@ -1127,3 +1129,105 @@ def test_the_snapshot_ends_in_rollback_and_leaves_no_transaction_open(tmp_path: 
         assert not reader.in_transaction
     finally:
         reader.close()
+
+
+# ---------------------------------------------------------------------------------------------
+# D687: a deadline that fires outside the body still ends the snapshot, and says so
+# ---------------------------------------------------------------------------------------------
+
+GRIND = (
+    "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 200000000) "
+    "SELECT count(*) FROM c"
+)
+
+
+class _Slowed:
+    """A real connection whose first `index_state` read is slowed: by `pause_s` of Python, or by a
+    long interruptible statement first. Everything else, `interrupt()` included, is the real one's.
+    Under load either happened by accident; here it happens every time."""
+
+    def __init__(self, real: sqlite3.Connection, *, pause_s: float = 0.0, grind: bool = False):
+        self._real = real
+        self._pause_s = pause_s
+        self._grind = grind
+        self._slowed = False
+
+    def execute(self, sql: str, *args: Any) -> sqlite3.Cursor:
+        if "index_state" in sql and not self._slowed:
+            self._slowed = True
+            if self._pause_s:
+                time.sleep(self._pause_s)
+            if self._grind:
+                self._real.execute(GRIND).fetchone()
+        return self._real.execute(sql, *args)
+
+    def interrupt(self) -> None:
+        self._real.interrupt()
+
+    @property
+    def in_transaction(self) -> bool:
+        return self._real.in_transaction
+
+
+def _as_connection(proxy: _Slowed) -> sqlite3.Connection:
+    """`snapshot()` takes a `Connection`; the proxy is one in every way it uses."""
+    return cast("sqlite3.Connection", proxy)
+
+
+def test_a_deadline_firing_on_the_first_read_is_expiry_and_not_a_missing_row(
+    tmp_path: Path,
+) -> None:
+    """The full-suite failure: `_index_state` swallowed the interrupt as "no such table", so the
+    snapshot reported `index_state has no 'generation' row` -- `OW_STORE` -- for a healthy store."""
+    reader = connect_readonly(fresh_store(tmp_path))
+    slowed = _as_connection(_Slowed(reader, grind=True))
+    try:
+        with pytest.raises(StoreError) as caught, snapshot(slowed, snapshot_ms=20):
+            pytest.fail("the body must not run on an expired snapshot")
+        assert caught.value.code() == "OW_SNAPSHOT_EXPIRED", caught.value
+        assert not reader.in_transaction
+    finally:
+        reader.close()
+
+
+def test_a_budget_spent_during_setup_never_starts_the_body(tmp_path: Path) -> None:
+    """The deadline fires while no statement runs, so the interrupt is discarded. The body used to
+    start anyway, on a snapshot already past its WAL-valve budget."""
+    reader = connect_readonly(fresh_store(tmp_path))
+    entered: list[int] = []
+    try:
+        with (
+            pytest.raises(StoreError) as caught,
+            snapshot(_as_connection(_Slowed(reader, pause_s=0.15)), snapshot_ms=20),
+        ):
+            entered.append(1)
+        assert caught.value.code() == "OW_SNAPSHOT_EXPIRED"
+        assert entered == []
+    finally:
+        reader.close()
+
+
+def test_a_statement_started_after_the_deadline_is_still_interrupted(tmp_path: Path) -> None:
+    """The body spends its budget in Python, then starts a long statement. One interrupt, fired
+    in between, was discarded and the statement ran to completion -- ten seconds here, the WAL
+    pinned throughout. Repeated every `INTERRUPT_REPEAT_MS`, it stops within a tick."""
+    reader = connect_readonly(fresh_store(tmp_path))
+    try:
+        started = time.monotonic()
+        with pytest.raises(StoreError) as caught, snapshot(reader, snapshot_ms=20):
+            time.sleep(0.15)
+            reader.execute(GRIND).fetchone()
+        assert caught.value.code() == "OW_SNAPSHOT_EXPIRED"
+        assert time.monotonic() - started < 3.0
+        assert not reader.in_transaction
+    finally:
+        reader.close()
+
+
+def test_an_interrupt_is_not_an_absent_table() -> None:
+    """`_index_state` still forgives the table's absence (a store before 0003), and only that."""
+    connection = sqlite3.connect(":memory:")
+    try:
+        assert _index_state(connection, "generation") is None
+    finally:
+        connection.close()
