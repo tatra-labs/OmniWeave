@@ -59,6 +59,7 @@ import json
 import sys
 from collections import Counter
 from dataclasses import dataclass, field, replace
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Protocol, TypeAlias, cast
 
 from omniweave_core.budget import Admitted
@@ -282,8 +283,16 @@ def resolve_policy(
 
     `offline` is `ow add --offline` (18:897), carried into `ProbeEnv.offline` (04:150), so a card
     declaring `[hardware] needs_network = true` resolves out as `HARDWARE_ABSENT` (D631).
+
+    `driver_config` is every `[drivers."<id>".config]` table (`Config.driver_config`), which
+    `resolve()` validates against the card's `[config]` and digests into `config_digest`, and
+    which the parse Operator re-reads to rebuild the row's `dispatch_key`. **It was never
+    passed (D680):** `Policy.driver_config` defaulted to empty, so every table a user wrote was
+    silently dropped -- the driver ran on its card's defaults, the digest never moved, and an
+    invalid value was never refused. D679's re-parse on a moved config is what found it.
     """
     get = config.get
+    supplied = {name: config.driver_config(name) for name in config.subkeys("drivers")}
     return Policy(
         locked_ids=locked_ids,
         require_lock=bool(get("drivers.require_lock")),
@@ -293,6 +302,9 @@ def resolve_policy(
         enabled=frozenset(str(d) for d in get("drivers.enabled")),  # type: ignore[union-attr]
         isolation_floor=Isolation(str(get("drivers.isolation_floor"))),
         host_env=probe_env((), offline=offline),
+        driver_config=MappingProxyType(
+            {name: MappingProxyType(dict(table)) for name, table in supplied.items() if table}
+        ),
     )
 
 

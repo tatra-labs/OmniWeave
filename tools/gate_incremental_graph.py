@@ -25,23 +25,35 @@ THE RULINGS THE PLAN LEAVES OPEN, AND HOW THEY ARE TAKEN HERE
    06:2336's matrix lists that the plan's mix does not, and the one that exercises the
    `ref_unresolved` retry (a reference made before its definition existed). So `INITIAL = 60 - 14
    = 46` documents are added first, 14 arrive one per step, and 58 remain at the end.
-2. **The corpus is generated, deterministically, from `SEED`.** Contracts in markdown with numbered
-   headings, defined terms drawn from one shared pool (so a term is defined in one document and
-   used in others), party aliases, `Section`/`Schedule` references that resolve and some that do
-   not, and `GL-` identifiers. The steps are shuffled by the same seed, and each edit or deletion
-   targets a document present at that step.
+2. **The corpus is the ten office fixtures and fifty generated contracts.** The contracts are
+   markdown, generated deterministically from `SEED`: numbered headings, defined terms drawn from
+   one shared pool (so a term is defined in one document and used in others), party aliases,
+   `Section`/`Schedule` references that resolve and some that do not, and `GL-` identifiers.
+   Markdown is `parse.text.builtin`'s, a card with no `[config]` to move, so the driver step
+   (ruling 4) needs documents another driver parses: `OFFICE`, the fixtures
+   `parse.office.anydoc` parses in `test_run_parse.py`, all in the initial roster (D679). The
+   steps are shuffled by the same seed; each deletion targets a document present at its step,
+   and each edit a markdown one, since an edit is a text change.
 3. **A deletion is the file removed AND `discover.retire_document` run for it.** 06:2348:
    *"`ow store rm --doc d7` is tier-blind and explicit; deletion is never inferred"*, and a file
    that disappears only makes its unit `out_of_scope` (05:365-372). That verb is not dispatched,
    so the gate issues what it will -- G19's precedent (`tools/incremental_index.py`, *"what runs
    here is the statement that verb will issue"*). The function is the one `retire_replaced` runs
    for an edited file's old document, so the two paths cannot drift.
-4. **The driver-version re-parse is NOT RUN, and the gate says so.** 06:2334's matrix says what it
-   must do -- *"a parse driver bumped, same text: 0 Segments, 0 rows deleted"* -- but no mechanism
-   re-parses a settled document because its parse driver moved: the change-detection ladder keys
-   on the bytes, and `ow add` has no re-parse switch. Until one exists the step is recorded as an
-   absence, the other nineteen still run, and the exit code is 2 (DID NOT RUN), never 0. A gate
-   that passed without its hardest step is how the weaker gate becomes the only gate.
+4. **The driver-version re-parse moves the parse driver's key through its config** (D679).
+   06:2334: *"a parse driver bumped, same text"* must leave the graph where it was. What re-parses
+   a settled document is its parse driver's key moving -- 08:1550's `schema_version` bump or a
+   semantic config key; a `driver_version` alone moves nothing and nothing runs -- and the
+   shipped card's `schema_version` cannot move without rebuilding it, so the step writes
+   `[drivers."parse.office.anydoc".config] max_asset_bytes` to a value off its default: the
+   same producer key, `options_digest` where a bump moves `op_version`. `discover
+   .reenter_reparsed` sees it and every live document that driver parsed parses at its next
+   generation. The full side is built under the final config. **The step is checked to have
+   run:** at least one live document was parsed by the bumped driver, and every one of them has
+   a later generation after it, or the gate did not run. Its first version targeted a driver no
+   markdown document reaches and re-parsed nothing, which this check is what caught.
+   `ABSENT` stays, empty, for the next step kind that has no mechanism: such a step is recorded,
+   the rest still run, and the exit code is 2, never 0.
 
 Run it:
 
@@ -49,7 +61,8 @@ Run it:
     uv run tools/gate_incremental_graph.py --keep DIR   # ... leaving both projects in DIR
 
 Exit codes: `0` the projections are equal and every step ran, `1` they differ, `2` did not run
-(an `ow add` failed, or a step kind has no mechanism).
+(an `ow add` failed, the driver bump did not re-parse every live document its driver parsed, or
+a step kind has no mechanism).
 """
 
 from __future__ import annotations
@@ -101,13 +114,24 @@ MIX: Final[Mapping[str, int]] = {"edit": 3, "delete": 2, "driver_version": 1, "a
 INITIAL: Final = DOCUMENTS - MIX["add"]
 SEED: Final = 8
 
-ABSENT: Final[Mapping[str, str]] = {
-    "driver_version": (
-        "no mechanism re-parses a settled document because its parse driver moved: the "
-        "change-detection ladder keys on the bytes and `ow add` has no re-parse switch (D678)"
-    ),
-}
-"""Step kinds the gate cannot run yet, each with the reason it prints (ruling 4)."""
+ABSENT: Final[Mapping[str, str]] = {}
+"""Step kinds the gate cannot run yet, each with the reason it prints (ruling 4). D679 emptied
+it: the driver-version re-parse was the one entry."""
+
+PARSE_DRIVER: Final = "parse.office.anydoc"
+PARSE_OPERATOR: Final = "parse.office"
+"""The driver the bump moves, and the operator its documents' `producer` rows name."""
+
+FIXTURES: Final = Path(__file__).resolve().parents[1] / "packages" / "omniweave-office" / "fixtures"
+OFFICE: Final = (
+    "rich.docx", "sheet.xlsx", "deck.pptx", "rows.csv", "book.epub",
+    "memo.rtf", "notes.odt", "sheet.xls", "deck.odp", "sheet.ods",
+)  # fmt: skip
+"""Ruling 2: the fixtures `PARSE_DRIVER` parses (`test_run_parse.py`'s `PARSEABLE`)."""
+
+BUMP: Final = f'\n[drivers."{PARSE_DRIVER}".config]\nmax_asset_bytes = 33554431\n'
+"""Ruling 4's config change: one byte under the card's default, so the effective config and its
+digest move and nothing the driver reads from a markdown file does."""
 
 EXIT_CLEAN: Final = 0
 EXIT_FAIL: Final = 1
@@ -231,10 +255,16 @@ def _document(index: int, rng: _Draw) -> str:
     return "\n".join(lines)
 
 
-def corpus(seed: int = SEED, documents: int = DOCUMENTS) -> dict[str, str]:
-    """Every document the corpus ever holds, by file name, in arrival order."""
+def corpus(
+    seed: int = SEED, documents: int = DOCUMENTS, office: Sequence[str] = OFFICE
+) -> dict[str, bytes]:
+    """Every document the corpus ever holds, by file name, in arrival order: the office
+    fixtures first, so the initial roster holds them, then the generated contracts."""
     rng = _Draw(f"{GATE}:{seed}:corpus")
-    return {f"agreement-{index:03d}.md": _document(index, rng) for index in range(documents)}
+    files = {name: (FIXTURES / name).read_bytes() for name in office}
+    for index in range(documents - len(office)):
+        files[f"agreement-{index:03d}.md"] = _document(index, rng).encode("utf-8")
+    return files
 
 
 _EDITS: Final[tuple[Callable[[str], str], ...]] = (
@@ -282,10 +312,11 @@ def script(
         if kind == "add":
             name = arriving.pop(0)
             present.append(name)
-        elif kind in {"edit", "delete"}:
+        elif kind == "edit":
+            name = rng.choice(sorted(one for one in present if one.endswith(".md")))
+        elif kind == "delete":
             name = rng.choice(sorted(present))
-            if kind == "delete":
-                present.remove(name)
+            present.remove(name)
         else:
             name = ""
         steps.append(Step(kind, name))
@@ -307,6 +338,8 @@ class Report:
     sizes: dict[str, int] = field(default_factory=dict)
     differences: dict[str, tuple[list[object], list[object]]] = field(default_factory=dict)
     full_s: float = 0.0
+    reparsed: int = 0
+    """Live documents whose generation advanced across the driver-version step."""
 
     def exit_code(self) -> int:
         if self.differences:
@@ -328,11 +361,11 @@ def _environment(root: Path) -> dict[str, str]:
     }
 
 
-def _project(root: Path, files: Mapping[str, str]) -> Path:
+def _project(root: Path, files: Mapping[str, bytes], toml: str = PROJECT) -> Path:
     (root / "docs").mkdir(parents=True)
-    (root / "omniweave.toml").write_bytes(PROJECT.encode("utf-8"))
-    for name, text in files.items():
-        (root / "docs" / name).write_bytes(text.encode("utf-8"))
+    (root / "omniweave.toml").write_bytes(toml.encode("utf-8"))
+    for name, body in files.items():
+        (root / "docs" / name).write_bytes(body)
     return root
 
 
@@ -371,6 +404,23 @@ def _delete(project: Path, name: str) -> None:
         connection.close()
 
 
+def _heads(project: Path, operator: str | None = None) -> dict[str, int]:
+    """Each live document's head generation, by `doc_key`; with `operator`, only the documents
+    whose head generation that parse operator wrote."""
+    connection = sqlite3.connect(project / STORE)
+    try:
+        rows = connection.execute(
+            "SELECT DISTINCT lower(hex(d.doc_key)), d.gen FROM doc AS d "
+            "JOIN page AS g ON g.doc_ord = d.doc_ord AND g.gen = d.gen "
+            "JOIN producer AS p ON p.producer_id = g.producer_id "
+            "WHERE json_extract(d.x, ?) IS NULL AND (? IS NULL OR p.operator = ?)",
+            (f'$."{RETIRED_X}"', operator, operator),
+        ).fetchall()
+    finally:
+        connection.close()
+    return {str(key): int(gen) for key, gen in rows}
+
+
 def _projection(project: Path) -> CanonicalProjection:
     connection = sqlite3.connect(project / STORE)
     try:
@@ -379,22 +429,52 @@ def _projection(project: Path) -> CanonicalProjection:
         connection.close()
 
 
+def _apply(
+    project: Path,
+    step: Step,
+    files: Mapping[str, bytes],
+    current: dict[str, bytes],
+    *,
+    toml: str,
+    edits: int,
+) -> tuple[str, int]:
+    """One step's change to the incremental project, and to `current`, the files it holds.
+    Returns the project's config text and how many edits have been made."""
+    if step.kind == "add":
+        current[step.name] = files[step.name]
+    elif step.kind == "edit":
+        text = _EDITS[edits % len(_EDITS)](current[step.name].decode("utf-8"))
+        current[step.name] = text.encode("utf-8")
+        edits += 1
+    elif step.kind == "delete":
+        del current[step.name]
+        _delete(project, step.name)
+    elif step.kind == "driver_version":
+        toml += BUMP
+        (project / "omniweave.toml").write_bytes(toml.encode("utf-8"))
+    if step.kind in {"add", "edit"}:
+        (project / "docs" / step.name).write_bytes(current[step.name])
+    return toml, edits
+
+
 def run(
     root: Path,
     *,
     documents: int = DOCUMENTS,
     mix: Mapping[str, int] = MIX,
     seed: int = SEED,
+    office: Sequence[str] = OFFICE,
     out: TextIO | None = None,
 ) -> Report:
     """Both sides under `root`, and their comparison."""
     report = Report()
     say = (lambda line: print(line, file=out, flush=True)) if out is not None else (lambda _: None)
-    files = corpus(seed, documents)
+    files = corpus(seed, documents, office)
     initial, steps = script(tuple(files), mix, seed)
     env = _environment(root)
     incremental = _project(root / "incremental", {name: files[name] for name in initial})
     current = {name: files[name] for name in initial}
+    toml = PROJECT
 
     started = time.perf_counter()
     if failure := _add(incremental, env):
@@ -404,28 +484,30 @@ def run(
     edits = 0
     for number, step in enumerate(steps, start=1):
         started = time.perf_counter()
+        before = _heads(incremental, PARSE_OPERATOR) if step.kind == "driver_version" else {}
         if step.kind in ABSENT:
             report.absent.append(step)
-        elif step.kind == "add":
-            current[step.name] = files[step.name]
-            (incremental / "docs" / step.name).write_bytes(files[step.name].encode("utf-8"))
-        elif step.kind == "edit":
-            current[step.name] = _EDITS[edits % len(_EDITS)](current[step.name])
-            edits += 1
-            (incremental / "docs" / step.name).write_bytes(current[step.name].encode("utf-8"))
-        elif step.kind == "delete":
-            del current[step.name]
-            _delete(incremental, step.name)
+        else:
+            toml, edits = _apply(incremental, step, files, current, toml=toml, edits=edits)
         if failure := _add(incremental, env):
             report.failure = f"step {number} ({step.render()}): {failure}"
             return report
+        if step.kind == "driver_version":
+            after = _heads(incremental)
+            report.reparsed = sum(after.get(key, 0) > gen for key, gen in before.items())
+            if not before or report.reparsed != len(before):
+                report.failure = (
+                    f"step {number} ({step.render()}): the driver bump re-parsed "
+                    f"{report.reparsed} of the {len(before)} live documents {PARSE_DRIVER} parsed"
+                )
+                return report
         elapsed = time.perf_counter() - started
         report.steps.append((step, elapsed))
         note = "  NOT RUN" if step.kind in ABSENT else ""
         say(f"  step {number:2d}   {step.render():<28} {elapsed:6.1f} s{note}")
 
     started = time.perf_counter()
-    full = _project(root / "full", current)
+    full = _project(root / "full", current, toml)
     if failure := _add(full, env):
         report.failure = f"the full rebuild: {failure}"
         return report
@@ -445,6 +527,8 @@ def render(report: Report, out: TextIO) -> None:
         "  projection  " + ", ".join(f"{k} {v}" for k, v in report.sizes.items()),
         file=out,
     )
+    if report.reparsed:
+        print(f"  driver    {report.reparsed} live documents re-parsed by the bump", file=out)
     for step in report.absent:
         print(f"  NOT RUN  {step.render()}: {ABSENT[step.kind]}", file=out)
     if report.failure:
