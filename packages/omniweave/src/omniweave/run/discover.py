@@ -188,6 +188,7 @@ __all__ = [
     "REOPEN_SCAN_SQL",
     "REOPEN_SQL",
     "REOPEN_WORK_SQL",
+    "REPARSE_SCAN_SQL",
     "REPLACED_SCAN_SQL",
     "RESET_ACQUIRING_SQL",
     "SKIP_REASON_CLASSES",
@@ -215,6 +216,7 @@ __all__ = [
     "raised_parts",
     "raw",
     "reenter_changed",
+    "reenter_reparsed",
     "reopen_changed_failures",
     "reopens_of",
     "reset_stale_acquiring",
@@ -1305,6 +1307,105 @@ def reenter_changed(
                     reentered += 1
 
         thread.run(Unit(name="discover.reenter", run=reenter, cost_class="free", wait_ms=wait_ms))
+
+
+REPARSE_SCAN_SQL: Final[str] = """
+WITH page_of AS (
+  SELECT unit_uri FROM unit
+   WHERE connector = :connector AND last_seen_gen = :generation AND state = 'settled'
+     AND unit_uri > :after
+   ORDER BY unit_uri LIMIT :limit)
+SELECT u.unit_uri, w.driver, p.op_version, lower(hex(p.options_digest))
+  FROM page_of AS u
+  LEFT JOIN doc AS d ON d.uri = u.unit_uri AND json_extract(d.x, :retired) IS NULL
+  LEFT JOIN page AS g ON g.doc_ord = d.doc_ord AND g.gen = d.gen
+  LEFT JOIN producer AS p ON p.producer_id = g.producer_id
+  LEFT JOIN work AS w ON w.unit_uri = u.unit_uri AND w.operator = p.operator
+       AND w.status = 'done' AND w.driver IS NOT NULL
+ GROUP BY 1, 2, 3, 4
+ ORDER BY 1
+"""
+"""Each settled unit this walk saw, with the parse driver that wrote its head generation and
+the key that driver wrote it under. **D679.**
+
+The key is the head generation's `page` rows' `producer`: `op_version` is the card's
+`schema_version` and `options_digest` the effective config's digest, exactly what
+`ParseOperator` stamps (`Producer(op_version=schema_version, options_digest=config_digest)`),
+and the two inputs 08:1550-1556 says a parse driver's upgrade or config moves. The driver is the
+`done` work row of the producer's operator. A unit is one row per distinct key, NULLs where it
+has none (a unit identified as nothing parseable), so a page of units is one `LIMIT` of units
+and never splits one across two pages."""
+
+
+def reenter_reparsed(
+    thread: StoreThread,
+    keys: Mapping[str, tuple[int, str]],
+    *,
+    generation: int,
+    connector: str = CONNECTOR,
+    plan_batch: int = PLAN_BATCH,
+    wait_ms: int = BATCH_WAIT_MS,
+) -> int:
+    """Read each settled unit again whose parse driver now keys it differently. **D679.**
+
+    `keys` maps a driver id to the `(schema_version, config_digest)` it would parse under in
+    this run (`ingest._parse_keys`). 08 section 4.8: a `schema_version` bump or a semantic
+    config change moves the parse's key -- *"a re-parse of affected units"* -- while a
+    `driver_version` bump moves nothing and nothing runs. Neither touches the bytes, so the
+    change-detection ladder never sees it, and before this nothing re-parsed a settled unit
+    under a driver that had moved: its document stayed what the old driver made of it for
+    good. GR8's driver-version step is this (06:2405).
+
+    The re-entry is `reenter_changed`'s -- `REENTER_SQL` and `REOPEN_WORK_SQL` -- without
+    `stale_since`: the answer is not older than its source, it was made by another driver.
+    The same bytes are read, so the same `doc_key` parses at its next generation and
+    `rebind()` carries every cite whose content did not move (03:1205: `producer_id` is not a
+    digest input, *"how a re-parse by a better driver carries the cite"*). A driver this
+    run's catalog does not hold is left alone: there is nothing to re-parse it with, and
+    routing is what answers a driver that went away. Returns how many units.
+    """
+    reentered = 0
+    after = ""
+    retired = f'$."{RETIRED_X}"'
+    while True:
+        rows: list[tuple[str, str | None, int | None, str | None]] = []
+        params = {
+            "connector": connector,
+            "generation": generation,
+            "after": after,
+            "limit": plan_batch,
+            "retired": retired,
+        }
+
+        def scan(
+            connection: _Rows,
+            params: Mapping[str, object] = params,
+            rows: list[tuple[str, str | None, int | None, str | None]] = rows,
+        ) -> None:
+            rows.extend(connection.execute(REPARSE_SCAN_SQL, params).fetchall())
+
+        thread.run(Unit(name="discover.reparse.scan", run=scan, cost_class="free", wait_ms=wait_ms))
+        if not rows:
+            return reentered
+        after = rows[-1][0]
+        moved = sorted(
+            {
+                str(uri)
+                for uri, driver, version, digest in rows
+                if driver is not None and driver in keys and (version, digest) != keys[driver]
+            }
+        )
+        if not moved:
+            continue
+
+        def reenter(connection: _Rows, uris: Sequence[str] = tuple(moved)) -> None:
+            nonlocal reentered
+            for uri in uris:
+                if connection.execute(REENTER_SQL, {"unit_uri": uri}).rowcount == 1:
+                    connection.execute(REOPEN_WORK_SQL, {"unit_uri": uri})
+                    reentered += 1
+
+        thread.run(Unit(name="discover.reparse", run=reenter, cost_class="free", wait_ms=wait_ms))
 
 
 REPLACED_SCAN_SQL: Final[str] = """

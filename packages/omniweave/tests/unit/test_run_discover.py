@@ -1650,6 +1650,122 @@ def test_retire_document_alone_takes_a_deleted_document_out_of_the_reads_and_the
     assert retired.fetchall() == [("source_deleted",), (None,)]
 
 
+# ---------------------------------------------------------------------------------------------
+# D679: a settled unit whose parse driver moved its key is read again
+# ---------------------------------------------------------------------------------------------
+
+DRIVER = "parse.office.anydoc"
+DIGEST = "aa" * 32
+
+
+def _parsed(
+    reader: Any, doc_ord: int, uri: str, key: str, *, version: int = 1, digest: str = DIGEST
+) -> None:
+    """A settled unit, its live document, and the parse that wrote it: the head page's producer
+    is `(parse.office, version, digest)` and a `done` routed row names the driver."""
+    _unit_with(reader, uri, key)
+    _doc(reader, doc_ord, uri, key, block=True)
+    reader.execute(
+        "INSERT INTO producer(producer_id, operator, op_version, code_fingerprint, options_digest) "
+        "VALUES(?, 'parse.office', ?, '', ?)",
+        (100 + doc_ord, version, bytes.fromhex(digest)),
+    )
+    reader.execute("UPDATE page SET producer_id = ? WHERE doc_ord = ?", (100 + doc_ord, doc_ord))
+    reader.execute(
+        "INSERT OR IGNORE INTO route_evidence(evidence_digest, payload, first_seen_at) "
+        "VALUES('ev', X'00', 1)"
+    )
+    reader.execute(
+        "INSERT OR IGNORE INTO route_decision(decision_id, content_sha256, unit_part, lane, rung, "
+        "policy_digest, pricebook_digest, hints_digest, read_set_digest, driver, cost_class, "
+        "rule_id, rule_origin, cause, reason, slice_key, evidence_digest, est_spend, est_micros, "
+        "reserved_micros, admission, generation, decided_at) VALUES('dec_p', 'c0', '', 'text', 0, "
+        "'pd', '', '', '', ?, 'free', 'decode.office-native', 'builtin', '', '', '', 'ev', '{}', "
+        "0, 0, 'admitted', 1, 1)",
+        (DRIVER,),
+    )
+    reader.execute(
+        "INSERT INTO work(unit_uri, unit_part, operator, op_version, cache_key, cost_class, "
+        "status, priority, driver, decision_id, dispatch_key) VALUES(?, '', 'parse.office', ?, "
+        "'k', 'free', 'done', 200, ?, 'dec_p', 'dk')",
+        (uri, version, DRIVER),
+    )
+
+
+def _units(reader: Any) -> list[tuple[Any, ...]]:
+    return reader.execute("SELECT unit_uri, state, stale_since FROM unit ORDER BY 1").fetchall()
+
+
+def test_a_unit_parsed_under_the_drivers_current_key_is_left_alone(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """D679. The common case, every `ow add`: the key matches, nothing is read again."""
+    reader = _reader(tmp_path)
+    _parsed(reader, 1, "c:/docs/note.pdf", OLD)
+    reader.commit()
+    assert discover_module.reenter_reparsed(store, {DRIVER: (1, DIGEST)}, generation=1) == 0
+    assert _units(_reader(tmp_path)) == [("c:/docs/note.pdf", "settled", None)]
+
+
+@pytest.mark.parametrize(
+    "now",
+    [(1, "bb" * 32), (2, DIGEST)],
+    ids=["its-config-moved", "its-schema-version-moved"],
+)
+def test_a_unit_whose_parse_driver_moved_its_key_is_read_again(
+    store: ow.StoreThread, tmp_path: Path, now: tuple[int, str]
+) -> None:
+    """D679, 08:1550's two rows that re-parse: a semantic config change and a `schema_version`
+    bump. The unit goes back to `discovered` with its terminal work rows cleared, as D645's
+    re-entry does; its document stays live until the new parse settles; and `stale_since` is not
+    set, because the answer is not older than the file -- another driver made it."""
+    reader = _reader(tmp_path)
+    _parsed(reader, 1, "c:/docs/note.pdf", OLD)
+    reader.commit()
+    assert discover_module.reenter_reparsed(store, {DRIVER: now}, generation=1) == 1
+    after = _reader(tmp_path)
+    assert _units(after) == [("c:/docs/note.pdf", "discovered", None)]
+    assert after.execute("SELECT count(*) FROM work").fetchall() == [(0,)]
+    assert after.execute("SELECT count(*) FROM block WHERE state = 0").fetchall() == [(1,)]
+
+
+def test_a_driver_this_run_does_not_hold_re_parses_nothing(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """There is nothing to re-parse with. Routing answers a driver that went away."""
+    reader = _reader(tmp_path)
+    _parsed(reader, 1, "c:/docs/note.pdf", OLD)
+    reader.commit()
+    assert discover_module.reenter_reparsed(store, {}, generation=1) == 0
+    assert _units(_reader(tmp_path))[0][1] == "settled"
+
+
+def test_only_the_units_this_walk_saw_are_asked(store: ow.StoreThread, tmp_path: Path) -> None:
+    """`ow add docs/a` does not re-parse `docs/b`: a unit not seen this generation is outside the
+    command's scope, as it is for `reenter_changed`."""
+    reader = _reader(tmp_path)
+    _parsed(reader, 1, "c:/docs/note.pdf", OLD)
+    reader.commit()
+    assert discover_module.reenter_reparsed(store, {DRIVER: (2, DIGEST)}, generation=2) == 0
+
+
+def test_every_page_of_units_is_asked(store: ow.StoreThread, tmp_path: Path) -> None:
+    """Paged by unit at `plan_batch`: a moved unit on the second page is found, and a unit with
+    two keys -- two producers on its head pages -- is never split across two pages."""
+    reader = _reader(tmp_path)
+    _parsed(reader, 1, "c:/docs/a.pdf", OLD)
+    _parsed(reader, 2, "c:/docs/b.pdf", COPY, digest="bb" * 32)
+    reader.commit()
+    assert (
+        discover_module.reenter_reparsed(store, {DRIVER: (1, DIGEST)}, generation=1, plan_batch=1)
+        == 1
+    )
+    assert [state for _uri, state, _stale in _units(_reader(tmp_path))] == [
+        "settled",
+        "discovered",
+    ]
+
+
 def test_a_version_some_file_still_holds_is_not_retired(
     store: ow.StoreThread, tmp_path: Path
 ) -> None:

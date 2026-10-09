@@ -53,6 +53,8 @@ def test_the_script_is_the_mix_shuffled_and_every_target_is_present() -> None:
             present.add(step.name)
         elif step.kind in {"edit", "delete"}:
             assert step.name in present, f"{step.render()} names a file that is not there"
+            if step.kind == "edit":
+                assert step.name.endswith(".md"), "an edit is a text change"
             if step.kind == "delete":
                 present.remove(step.name)
         else:
@@ -69,16 +71,26 @@ def test_the_corpus_and_the_script_are_functions_of_the_seed() -> None:
 def test_the_corpus_shares_its_defined_terms_across_documents() -> None:
     """A term defined in one document and used in another is what makes a deletion move another
     document's graph; a corpus without one would let the deletion path go untested."""
-    files = g.corpus()
+    texts = [body.decode("utf-8") for name, body in g.corpus().items() if name.endswith(".md")]
     defined: Counter[str] = Counter()
-    for text in files.values():
+    for text in texts:
         defined.update({term for term in g._TERMS if f'"{term}" ' in text})
     assert any(count > 1 for count in defined.values())
-    assert sum("Section" in text for text in files.values()) == g.DOCUMENTS
+    assert len(texts) == g.DOCUMENTS - len(g.OFFICE)
+    assert all("Section" in text for text in texts)
+
+
+def test_the_office_fixtures_are_in_the_initial_roster() -> None:
+    """Ruling 2 (D679): the driver step re-parses what `PARSE_DRIVER` parsed, so those documents
+    must be there when it runs, wherever the shuffle puts it."""
+    names = tuple(g.corpus())
+    initial, _steps = g.script(names)
+    assert set(g.OFFICE) <= set(initial)
+    assert all((g.FIXTURES / name).is_file() for name in g.OFFICE)
 
 
 def test_each_edit_changes_the_text_it_is_given() -> None:
-    text = next(iter(g.corpus().values()))
+    text = next(body.decode("utf-8") for name, body in g.corpus().items() if name.endswith(".md"))
     for edit in g._EDITS:
         assert edit(text) != text
 
@@ -99,7 +111,18 @@ def test_the_exit_code(differences: Any, absent: Any, failure: str, code: int) -
     assert report.exit_code() == code
 
 
-def test_the_driver_version_step_is_absent_and_says_why() -> None:
-    """Ruling 4: no mechanism re-parses a settled document for a driver bump, so it is NOT RUN."""
-    assert set(g.ABSENT) == {"driver_version"}
-    assert "no mechanism" in g.ABSENT["driver_version"]
+def test_every_step_kind_runs_now() -> None:
+    """D679 gave the driver-version step its mechanism, so nothing is absent."""
+    assert dict(g.ABSENT) == {}
+
+
+def test_the_bump_moves_the_parse_drivers_config_off_its_default() -> None:
+    """Ruling 4: the step moves the parse driver's key through its config. A value equal to
+    the card's default would move nothing and the step would re-parse nothing."""
+    from omniweave_core.discovery import catalog  # noqa: PLC0415
+
+    card = catalog().cards[g.PARSE_DRIVER]
+    default = card.config.effective({})
+    assert f'[drivers."{g.PARSE_DRIVER}".config]' in g.BUMP
+    assert "max_asset_bytes = 33554431" in g.BUMP
+    assert default["max_asset_bytes"] != 33554431

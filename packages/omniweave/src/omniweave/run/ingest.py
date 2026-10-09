@@ -352,6 +352,9 @@ class IngestReport:
     it was written within `MTIME_GRANULARITY_NS` of its indexing, which 05:346 re-reads once."""
     retired: int = 0
     """Documents no file holds any more, taken out of every read this run (D645)."""
+    reparsed: int = 0
+    """Settled units read again because the parse driver that wrote them now keys them
+    differently: its `schema_version` or its effective config moved (D679)."""
 
     @property
     def settled(self) -> int:
@@ -391,6 +394,11 @@ class IngestReport:
                 f"; {self.changed} indexed file(s) read again: changed, or too recent to prove "
                 "unchanged"
                 if self.changed
+                else ""
+            )
+            + (
+                f"; {self.reparsed} indexed file(s) read again: their parse driver changed"
+                if self.reparsed
                 else ""
             ),
             f"  {identify}",
@@ -725,18 +733,23 @@ def _hops(
     changed = discover.reenter_changed(
         thread, generation=generation, at_ns=now_ns, plan_batch=plan_batch
     )
-    acquired = discover.acquire_pending(
-        thread, generation=generation, indexed_at_ns=now_ns, plan_batch=plan_batch
-    )
-    opened = book.stage(Stage.DISCOVER, opened)
-    context = _context(run_id, generation, config=config, roots=roots, clock=clock)
-    enqueued, unsalted = _enqueue(thread, context, plan_batch=plan_batch)
     inputs = replace(
         _routing_inputs(config, offline=offline),
         ignore_evidence_cache=ignore_evidence_cache,
         accept_partial=accept_partial,
         passwords=passwords,
     )
+    #  D679: a settled unit whose parse driver moved its key -- a schema_version bump, a
+    #  semantic config change -- is read again and re-parsed at its next generation.
+    reparsed = discover.reenter_reparsed(
+        thread, _parse_keys(inputs), generation=generation, plan_batch=plan_batch
+    )
+    acquired = discover.acquire_pending(
+        thread, generation=generation, indexed_at_ns=now_ns, plan_batch=plan_batch
+    )
+    opened = book.stage(Stage.DISCOVER, opened)
+    context = _context(run_id, generation, config=config, roots=roots, clock=clock)
+    enqueued, unsalted = _enqueue(thread, context, plan_batch=plan_batch)
     book.catalog(inputs.catalog.catalog_digest)
     context = replace(
         context,
@@ -807,6 +820,7 @@ def _hops(
         passwords=() if passwords is None else passwords.lines(),
         changed=changed,
         retired=retired,
+        reparsed=reparsed,
     )
 
 
@@ -830,6 +844,24 @@ class _RoutingInputs:
     """`ow ingest --accept-partial`: a failed structural check does not refuse (D641)."""
     passwords: Passwords | None = None
     """The run's password mapping, read by routing and by the parse Operator (ADR-15 D15.4)."""
+
+
+def _parse_keys(inputs: _RoutingInputs) -> dict[str, tuple[int, str]]:
+    """Each driver's `(schema_version, config_digest)` this run: the key `ParseOperator`
+    stamps on a document's `producer` (`_granted`'s digest, over the same card and the same
+    `[drivers]` config). A card whose config does not validate is left out: `resolve()` rejects
+    it, so nothing would parse under it. **D679.**"""
+    from omniweave_core.canonical import sha256_canonical  # noqa: PLC0415
+    from omniweave_core.errors import ConfigError  # noqa: PLC0415
+
+    keys: dict[str, tuple[int, str]] = {}
+    for driver, card in inputs.catalog.cards.items():
+        try:
+            effective = card.config.effective(inputs.resolving.driver_config.get(driver, {}))
+        except ConfigError:
+            continue
+        keys[driver] = (card.identity.schema_version, sha256_canonical(effective))
+    return keys
 
 
 def _routing_inputs(config: Config, *, offline: bool = False) -> _RoutingInputs:
