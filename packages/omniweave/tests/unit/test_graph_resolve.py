@@ -7,16 +7,22 @@ import sqlite3  # noqa: TID251 -- the assertions read and edit the store a run w
 from pathlib import Path
 
 import pytest
+from omniweave.graph import fuzzy
 from omniweave.graph import resolve as module
 from omniweave.graph.resolve import (
+    Evidence,
     Node,
     Pair,
     TypeGate,
     closure,
+    cohesive,
+    eligible,
     funnel,
+    fuzzy_stage,
     resolve,
     total_order,
 )
+from omniweave.run.ingest import IngestReport
 from omniweave_core.errors import ResourceLimit
 from omniweave_core.model.enums import Method, Trust
 from omniweave_core.store.verify import VerifyClause, verify_store
@@ -383,6 +389,207 @@ def test_a_merge_writes_one_corpus_run_and_registers_the_pass(ingested: Path) ->
         assert _rows_of(connection, runs) == [(90, "ok", 1, None)]
         registry = "SELECT port, granularity, phase FROM derive_pass WHERE pass_id = 'op.resolve'"
         assert _rows_of(connection, registry) == [("op", "corpus", 50)]
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+# ---------------------------------------------------------------------------------------------
+# D685: the fuzzy stages
+# ---------------------------------------------------------------------------------------------
+
+FUZZY = TypeGate(resolution={"org": "fuzzy", "date": "exact_only"})
+
+
+def org(entity_id: int, key: str, *, scope: int = 0, etype: str = "org") -> Node:
+    return Node(entity_id, scope, etype, key, frozenset({key}))
+
+
+def test_eligibility_is_a_fuzzy_etype_and_enough_entropy() -> None:
+    assert eligible(org(1, "acme_holdings_ltd"), FUZZY)
+    assert not eligible(org(2, "acme"), FUZZY), "2.0 bits: stage [3] keeps it out"
+    assert not eligible(org(3, "acme_holdings_ltd", etype="date"), FUZZY), "exact_only"
+
+
+def test_a_near_spelling_across_documents_merges_inferred_with_its_score() -> None:
+    nodes = {1: org(1, "acme_holdings_ltd"), 2: org(2, "acme_holdings_limited")}
+    evidence = {1: Evidence(docs=frozenset({7})), 2: Evidence(docs=frozenset({8}))}
+    found = fuzzy_stage(nodes, FUZZY, [(1, 2)], evidence)
+    [pair] = found.pairs
+    assert (pair.a, pair.b, pair.stage, pair.trust, pair.score_kind) == (
+        2, 1, "lsh_jw", Trust.INFERRED, "jaro_winkler",
+    )  # fmt: skip
+    assert pair.score == pytest.approx(93.65, abs=0.01), "plain Jaro: long, and two documents"
+    assert "prefix_containment" in pair.guards and "scoped_label_crossdoc" in pair.guards
+
+
+def test_what_the_fuzzy_stage_refuses_and_counts() -> None:
+    nodes = {
+        1: org(1, "acme_holdings_ltd", scope=7),
+        2: org(2, "acme_holdings_limited", scope=9),
+        3: org(3, "schedule_4_parties"),
+        4: org(4, "schedule_5_parties"),
+        5: org(5, "northwind_traders"),
+        6: org(6, "northwind_trading_co"),
+    }
+    found = fuzzy_stage(nodes, FUZZY, [(1, 2), (3, 4), (5, 6), (1, 1), (1, 99)], {})
+    assert found.pairs == ()
+    assert dict(found.guarded) == {"scoped_label_crossdoc": 1, "numeric_tokens_differ": 1}
+    assert found.ambiguous == 1, "northwind traders / trading co scores in [75, 92): left"
+    assert found.candidates == 3
+
+
+def test_a_shared_segment_raises_the_bar_to_ninety_seven() -> None:
+    """06:1834: two entities mentioned distinctly in one Segment are asserted different."""
+    nodes = {1: org(1, "acme_holdings_ltd"), 2: org(2, "acme_holdings_limited")}
+    together = {
+        1: Evidence(docs=frozenset({7}), segments=frozenset({70})),
+        2: Evidence(docs=frozenset({7}), segments=frozenset({70})),
+    }
+    found = fuzzy_stage(nodes, FUZZY, [(1, 2)], together)
+    assert found.pairs == ()
+    assert dict(found.guarded) == {"cooccurrence_in_segment": 1}
+
+
+def test_a_pair_the_exact_stage_joined_is_not_scored_again() -> None:
+    nodes = {1: org(1, "acme_holdings_ltd"), 2: org(2, "acme_holdings_limited")}
+    found = fuzzy_stage(nodes, FUZZY, [(1, 2)], {}, exact=[exact(2, 1)])
+    assert found.pairs == ()
+
+
+def fuzzy_pair(a: int, b: int, score: float = 95.0) -> Pair:
+    return Pair(a=a, b=b, stage="lsh_jw", trust=Trust.INFERRED, method=Method.HEURISTIC,
+                score=score, score_kind="jaro_winkler")  # fmt: skip
+
+
+def test_cohesion_drops_a_drifted_members_fuzzy_pairs_and_is_idempotent() -> None:
+    """06:1784 and ruling 11: `zeta` reached the cluster through a fuzzy chain and scores under
+    82 against the survivor, so its fuzzy pair goes; an exact pair to a far key stays."""
+    nodes = [
+        org(1, "acme_holdings_ltd"),
+        org(2, "acme_holdings_limited"),
+        org(3, "zeta_partners_group"),
+        org(4, "ibm"),
+    ]
+    pairs = [fuzzy_pair(1, 2), fuzzy_pair(2, 3, 92.5), exact(1, 4)]
+    found, dropped = cohesive(nodes, pairs)
+    assert [(p.a, p.b, member) for p, member, _score in dropped] == [(2, 3, 3)]
+    assert found.canonical[3] == 3, "split out"
+    assert found.canonical[4] == found.canonical[1], "an exact pair is never scored on keys"
+    assert found.canonical[2] == found.canonical[1]
+    again, none = cohesive(nodes, list(found.kept))
+    assert none == ()
+    assert again.canonical == found.canonical
+
+
+def test_a_loose_members_exact_pair_survives_its_fuzzy_pairs_going() -> None:
+    """Ruling 11: `zeta` is split from the Acmes, and keeps the exact pair to its own alias."""
+    nodes = [
+        org(1, "acme_holdings_ltd"),
+        org(2, "acme_holdings_limited"),
+        org(3, "zeta_partners_group"),
+        org(6, "zeta_partners_grp"),
+    ]
+    found, dropped = cohesive(nodes, [fuzzy_pair(1, 2), fuzzy_pair(2, 3), exact(3, 6)])
+    assert [(p.a, p.b) for p, _m, _s in dropped] == [(2, 3)]
+    assert found.canonical[6] == found.canonical[3] != found.canonical[1]
+
+
+def test_cohesion_repeats_until_a_new_survivor_holds_no_loose_member() -> None:
+    """06:1790's idempotence, earned: the first pass splits `zulu` off `aaron_brook`, which leaves
+    `aaron_brook_ventures_holdings` the survivor of its own part -- and against it `aarons` scores
+    80.1, so a second pass splits that too. One pass would have left it merged."""
+    nodes = [
+        org(1, "aaron_brook"),
+        org(2, "aaron_brookes"),
+        org(3, "zulu_partners"),
+        org(4, "aaron_brook_ventures_holdings"),
+        org(5, "aarons"),
+    ]
+    pairs = [fuzzy_pair(1, 2), fuzzy_pair(2, 3), fuzzy_pair(3, 4), fuzzy_pair(4, 5)]
+    found, dropped = cohesive(nodes, pairs)
+    assert found.canonical == {1: 1, 2: 1, 3: 3, 4: 4, 5: 5}
+    assert [(p.a, p.b, member) for p, member, _s in dropped] == [(2, 3, 3), (3, 4, 3), (4, 5, 5)]
+
+
+PAIRS_A = "Party,Role\nAcme Holdings Ltd,Seller\nBeta Corp,Buyer\n"
+PAIRS_B = "Party,Role\nAcme Holdings Limited,Seller\nDelta Partners LLC,Agent\n"
+
+
+@pytest.fixture(scope="module")
+def spelled(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, IngestReport]:
+    tmp_path = tmp_path_factory.mktemp("fuzzy")
+    store, config = _project(tmp_path, ())
+    (tmp_path / "docs" / "a.csv").write_text(PAIRS_A, encoding="utf-8")
+    (tmp_path / "docs" / "b.csv").write_text(PAIRS_B, encoding="utf-8")
+    report = _run(tmp_path, store, config)
+    assert report.status == "ok", report.lines()
+    return store, report
+
+
+def test_one_ingest_merges_two_spellings_of_one_party(
+    spelled: tuple[Path, IngestReport],
+) -> None:
+    store, report = spelled
+    resolved = report.resolved
+    assert resolved is not None
+    assert (resolved.clusters, resolved.merged, resolved.fuzzy, resolved.added) == (1, 1, 1, 1)
+    assert any("(1 fuzzy)" in line for line in report.lines()), report.lines()
+    [(stage, trust, score, kind)] = _rows(
+        store, "SELECT stage, trust, round(score, 2), score_kind FROM entity_merge"
+    )
+    assert (stage, trust, score, kind) == ("lsh_jw", int(Trust.INFERRED), 93.65, "jaro_winkler")
+    heads = sorted(str(k) for (k,) in _rows(store, "SELECT key FROM ow_entity_head"))
+    assert heads == ["acme_holdings_limited", "beta_corp", "delta_partners_llc"]
+    assert _rows(store, "SELECT DISTINCT resolution_trust FROM entity WHERE key LIKE 'acme%'") == [
+        (int(Trust.INFERRED),)
+    ]
+    eligible_count = 4  # every org key here carries 2.5 bits or more
+    assert _rows(store, "SELECT count(*) FROM entity_band") == [(fuzzy.BANDS * eligible_count,)]
+    assert _rows(store, "SELECT count(*) FROM meta WHERE k = 'graph.resolve_signature'") == [(1,)]
+
+
+def test_a_signature_change_rebuilds_the_bands_and_an_unchanged_one_writes_nothing(
+    spelled: tuple[Path, IngestReport], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store, _report = spelled
+    connection = sqlite3.connect(store)
+    try:
+        same = resolve(connection, gen=90)
+        assert (same.rebanded, same.added, same.retired, same.changed) == (False, 0, 0, 0)
+        assert connection.total_changes == 0, "an unchanged corpus writes nothing"
+        monkeypatch.setattr(module, "_SIGNATURE", b'{"changed": true}')
+        moved = resolve(connection, gen=91)
+        assert moved.rebanded
+        assert (moved.added, moved.retired) == (0, 0)
+        assert _rows_of(connection, "SELECT count(DISTINCT entity_id) FROM entity_band") == [(4,)]
+        connection.execute("UPDATE entity SET state = 2 WHERE key = 'beta_corp'")
+        resolve(connection, gen=92)
+        banded = "SELECT count(DISTINCT entity_id) FROM entity_band"
+        assert _rows_of(connection, banded) == [(3,)], "a retired entity's bands leave"
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def test_a_cohesion_split_is_quarantined_once(
+    spelled: tuple[Path, IngestReport], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A floor of 97 (the delta at -5) splits the two Acmes: one quarantine row, not one a run."""
+    store, _report = spelled
+    monkeypatch.setattr(fuzzy, "COHESION_SPLIT_DELTA", -5.0)
+    connection = sqlite3.connect(store)
+    try:
+        first = resolve(connection, gen=90)
+        assert (first.split, first.fuzzy, first.retired) == (1, 0, 1)
+        again = resolve(connection, gen=91)
+        assert again.split == 1
+        rows = _rows_of(
+            connection,
+            "SELECT code, row_kind, json_extract(detail, '$.member') FROM quarantine",
+        )
+        assert rows == [("OW_GRAPH_COHESION_SPLIT", "merge", "acme_holdings_ltd")]
+        _closure_ok(connection)
     finally:
         connection.rollback()
         connection.close()
