@@ -132,6 +132,7 @@ from omniweave.run.manifest import (
     RunTally,
     manifest_path,
 )
+from omniweave.run.operators import lexicon as op_lexicon
 from omniweave.run.operators.derive import DeriveOperator, DerivePlan, is_derive
 from omniweave.run.operators.parse import (
     Ordinals,
@@ -355,6 +356,8 @@ class IngestReport:
     reparsed: int = 0
     """Settled units read again because the parse driver that wrote them now keys them
     differently: its `schema_version` or its effective config moved (D679)."""
+    lexicon: op_lexicon.LexiconReport | None = None
+    """`op.lexicon`'s build after the drain, and the gazetteer rows it queued (D683)."""
 
     @property
     def settled(self) -> int:
@@ -414,6 +417,10 @@ class IngestReport:
             out.extend(self.routed.lines())
         if self.parsed is not None:
             out.extend(self.parsed.lines())
+        if self.lexicon is not None and (
+            self.lexicon.names or self.lexicon.moved or self.lexicon.drain
+        ):
+            out.append(self.lexicon.line())
         out.extend(self.passwords)
         if self.retired:
             out.append(
@@ -781,6 +788,7 @@ def _hops(
             )
         )
 
+    relexed: sup.RunReport | None = None
     try:
         drained = drain() if enqueued else None
         routed = _route(thread, context, inputs=inputs, roots=roots, clock=clock)
@@ -791,14 +799,20 @@ def _hops(
             ordinals.reserve(thread)
             drain()
             book.stage(Stage.PARSE, opened)
+        #  D645: the documents whose file now says something else leave every read.
+        retired = discover.retire_replaced(thread)
+        #  D683: op.lexicon after every document Pass and every retirement, then the gazetteer
+        #  rows it queued or re-opened, in this run.
+        lexicon = _lexicon(thread, context, inputs=inputs, store=store, clock=clock)
+        relexed = drain() if lexicon.drain else None
     finally:
         executor.close()
-    #  D645: the documents whose file now says something else leave every read.
-    retired = discover.retire_replaced(thread)
     states, parts = _tally(thread, generation)
     formats = _formats(thread, generation)
     waiting = states.get(IDENTIFIED, 0) + states.get(PLANNED, 0)
-    status = "partial" if waiting or (drained is not None and drained.status != "done") else "ok"
+    #  D683: a batch that crashed left its rows claimed, so the drain ended without them.
+    stopped = any(r is not None and (r.status != "done" or r.crashed) for r in (drained, relexed))
+    status = "partial" if waiting or stopped else "ok"
     return IngestReport(
         run_id=run_id,
         generation=generation,
@@ -821,6 +835,21 @@ def _hops(
         changed=changed,
         retired=retired,
         reparsed=reparsed,
+        lexicon=lexicon,
+    )
+
+
+def _lexicon(
+    thread: ow.StoreThread, ctx: RunContext, *, inputs: _RoutingInputs, store: Path, clock: Clock
+) -> op_lexicon.LexiconReport:
+    """`op.lexicon` over the store as the drain left it. D683."""
+    from omniweave_core.blobs import BlobStore  # noqa: PLC0415 -- as `_ParseLazily._built`
+
+    cas_root = store.parent / CAS_DIR
+    cas_root.mkdir(parents=True, exist_ok=True)
+    derives, _why = DerivePlan.of(inputs.catalog, inputs.resolving, ctx)
+    return op_lexicon.rebuild(
+        thread, BlobStore(cas_root), now_ms=clock.wall_ns() // 1_000_000, derives=derives
     )
 
 

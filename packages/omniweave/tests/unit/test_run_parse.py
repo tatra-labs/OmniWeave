@@ -240,8 +240,9 @@ def test_the_first_parse_writes_the_receipt_and_moves_the_generation(tmp_path: P
     assert not unrooted.ok, "without the root the store derives the absolute uri"
 
     manifest = json.loads(Path(report.manifest).read_bytes())
-    assert manifest["outcomes"] == {"ok": 8}, (
-        "one op.identify, one parse.office, one segmentation and the five free Passes (D676, D681)"
+    assert manifest["outcomes"] == {"ok": 9}, (
+        "one op.identify, one parse.office, one segmentation, the five free Passes (D676, D681) "
+        "and the gazetteer op.lexicon queued after them (D683)"
     )
     assert manifest["stage_entries"] == {"discover": 1, "plan": 1, "parse": 1}
     assert manifest["provenance"]["lock_digest"] == sha
@@ -275,12 +276,13 @@ def test_the_cas_is_beside_the_store_and_holds_the_source_and_the_asset(tmp_path
     driver's asset lands there through the worker's `io.blobs.put()`. Two more since D676, which
     lets the run reach the stages after parse: the segmenter's unit (`segment.py`) and the one
     unit the five free Passes share (`derive.py`), each staged once because the CAS is keyed by
-    content."""
+    content. Two more since D683: `op.lexicon`'s artefact, and the gazetteer's unit, which is the
+    same view behind a frame naming it."""
     store, config = _project(tmp_path, ("rich.docx",))
     _run(tmp_path, store, config)
     cas = store.parent / ingest_module.CAS_DIR
     blobs = [path for path in cas.rglob("*") if path.is_file() and len(path.name) == 64]
-    assert len(blobs) == 4, blobs
+    assert len(blobs) == 6, blobs
     ((ref,),) = _rows(store, "SELECT store_ref FROM asset")
     assert str(ref).startswith("cas://")
 
