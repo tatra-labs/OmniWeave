@@ -117,9 +117,11 @@ def test_every_routed_document_reaches_a_terminal_row_in_one_run(tmp_path: Path)
     assert report.parsed is not None
     assert dict(report.parsed.parsed) == {"parse.office.anydoc": len(PARSEABLE)}
     assert dict(report.parsed.failed) == {"corrupt_input": 1, "empty_result": 1, "encrypted": 1}
-    assert report.parsed.workers == 6, (
-        "one worker per (driver_id, config_digest), reused: the office parse, the segmenter and "
-        "the four free Passes -- which, before D676, this run never reached"
+    assert report.parsed.workers >= 6, (
+        "at least one worker per (driver_id, config_digest): the office parse, the segmenter and "
+        "the four free Passes -- which, before D676, this run never reached. `workers` counts "
+        "spawns, and six keys share a capped class, so an idle worker `_make_room` retired is "
+        "spawned again when its key's next batch comes: 7 in 2 runs of 80 (D680)"
     )
     assert report.parsed.calls >= 2, "thirteen rows over batch_max_units = 8 is two batches"
     for name in PARSEABLE:
@@ -134,6 +136,35 @@ def test_every_routed_document_reaches_a_terminal_row_in_one_run(tmp_path: Path)
     lines = report.lines()
     assert "  settled   10 units have a committed document" in lines
     assert all(line.isascii() for line in lines)
+
+
+def test_a_parse_driver_whose_config_moved_re_parses_every_document_once(tmp_path: Path) -> None:
+    """D679. 08:1550: a semantic config change moves the parse's key, and the units it parsed are
+    re-parsed -- the same bytes, so the same documents at their next generation, every cite
+    carried by `rebind()` (03:1205). The next run, under the same config, re-parses nothing: the
+    new generation's producer carries the new key, so the comparison does not loop."""
+    names = ("rich.docx", "rows.csv")
+    store, config = _project(tmp_path, names)
+    _run(tmp_path, store, config)
+    cites = _rows(store, "SELECT cite FROM block WHERE state = 0 ORDER BY cite")
+    assert _rows(store, "SELECT gen FROM doc ORDER BY doc_ord") == [(1,), (1,)]
+
+    (tmp_path / "omniweave.toml").write_text(
+        PROJECT + OPT_IN + '[drivers."parse.office.anydoc".config]\nmax_asset_bytes = 33554431\n',
+        encoding="utf-8",
+    )
+    moved = load(cwd=tmp_path, env={"OMNIWEAVE_HOME": str(tmp_path / "owhome")})
+    second = _run(tmp_path, store, moved)
+    assert second.reparsed == len(names)
+    assert "2 indexed file(s) read again: their parse driver changed" in "\n".join(second.lines())
+    assert _rows(store, "SELECT gen FROM doc ORDER BY doc_ord") == [(2,), (2,)]
+    assert _rows(store, "SELECT cite FROM block WHERE state = 0 ORDER BY cite") == cites
+    for name in names:
+        assert _state(store, name) == ("settled", None), name
+
+    third = _run(tmp_path, store, moved)
+    assert third.reparsed == 0
+    assert _rows(store, "SELECT gen FROM doc ORDER BY doc_ord") == [(2,), (2,)]
 
 
 def test_a_second_run_parses_nothing_and_writes_no_second_generation(tmp_path: Path) -> None:
@@ -354,9 +385,11 @@ def test_a_released_office_driver_parses_in_process_and_commits_what_a_worker_co
 
     assert s1.parsed is not None and s4.parsed is not None
     #  D676: the segmenter and the four free Passes are workers under both seams; only the office
-    #  parse moves in process.
-    assert (s1.parsed.workers, s1.parsed.inproc) == (5, 1)
-    assert (s4.parsed.workers, s4.parsed.inproc) == (6, 0)
+    #  parse moves in process. At least, because a worker retired for room is spawned again (D680).
+    assert s1.parsed.workers >= 5
+    assert s1.parsed.inproc == 1
+    assert s4.parsed.workers >= 6
+    assert s4.parsed.inproc == 0
     assert any(line.endswith(" and 1 in process") for line in s1.lines()), s1.lines()
     keys = "SELECT DISTINCT dispatch_key FROM work WHERE operator = 'parse.office'"
     assert _rows(s1_store, keys) != _rows(s4_store, keys), "the isolation is in the key"
