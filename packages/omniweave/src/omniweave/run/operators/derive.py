@@ -59,6 +59,7 @@ from omniweave_ports.types import FailureClass, UnitRef
 from omniweave.plan import operator_of
 from omniweave.route.spend import Spend
 from omniweave.run import pipeline
+from omniweave.run.converge import replace_prior_runs
 from omniweave.run.dispatch import dispatch_key
 from omniweave.run.operators.parse import DeriveCount
 
@@ -84,6 +85,7 @@ __all__ = [
 FREE_PASSES: Final[dict[str, Method]] = {
     "derive.anchor.native": Method.NATIVE_XML,
     "derive.xref.native": Method.NATIVE_XML,
+    "derive.entity.table": Method.NATIVE_XML,
     "derive.anchor.defterm": Method.HEURISTIC,
     "derive.xref.pattern": Method.HEURISTIC,
 }
@@ -341,7 +343,12 @@ class DeriveOperator:
 
             def write(connection: Any) -> list[Any]:
                 register_pass(connection, card)
-                return [drive_items(connection, u, identity, spend) for u in units]
+                written = [drive_items(connection, u, identity, spend) for u in units]
+                #  D681: a whole answer replaces this Pass's earlier runs on each Segment.
+                for report in written:
+                    if report.status in {"ok", "empty"}:
+                        replace_prior_runs(connection, report.run_id)
+                return written
 
             reports = cast(
                 "list[Any]",

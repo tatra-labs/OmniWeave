@@ -109,6 +109,7 @@ from typing import TYPE_CHECKING, Final, Literal, Protocol, TypeAlias
 from omniweave_core.deps import invalidate
 from omniweave_core.errors import RouteError
 from omniweave_core.events import EventKind, Stage
+from omniweave_core.store.graph import restamp_mention_digest
 from omniweave_core.store.maintenance import rederive_stat_on
 from omniweave_core.store.sqlite import BATCH_WAIT_MS, Unit
 from omniweave_ports.types import FailureClass
@@ -135,6 +136,7 @@ __all__ = [
     "Baseline",
     "ConvergeReport",
     "Loss",
+    "Replaced",
     "Retired",
     "Unbound",
     "UnexplainedLoss",
@@ -142,6 +144,7 @@ __all__ = [
     "anchor_deltas",
     "attribution_guard",
     "converge",
+    "replace_prior_runs",
     "requeue",
     "requeue_params",
     "retire_document_entities",
@@ -780,6 +783,102 @@ SELECT 'entity', entity_id, :gen, NULL, 'source_deleted',
 
 _RETIRE_ENTITY_SQL: Final[str] = "UPDATE entity SET state = 2 WHERE entity_id = :entity_id"
 """`2` is the DDL's *"retired"* (0002:261), which `ow_entity_head` excludes."""
+
+_PRIOR_RUNS_SQL: Final[str] = """
+SELECT p.run_id FROM derive_run AS r
+  JOIN derive_run AS p ON p.segment_id = r.segment_id AND p.pass_id = r.pass_id
+                      AND p.origin_operator = r.origin_operator AND p.run_id <> r.run_id
+ WHERE r.run_id = :run_id
+ ORDER BY p.run_id
+"""
+"""This run's Pass's earlier runs on this Segment, filtered on `origin_operator` (ST11): the owner.
+A Segment kept across a re-parse keeps its `segment_id` (D663), so they are found at its earlier
+generations: `derive_run_identity` allows one run per Pass, Segment and generation."""
+
+_RUN_GEN_SQL: Final[str] = "SELECT at_gen FROM derive_run WHERE run_id = :run_id"
+
+_REPLACED_ENTITIES_SQL: Final[str] = "SELECT DISTINCT entity_id FROM mention WHERE run_id = :prior"
+
+_HISTORY_REPLACED_SQL: Final[dict[str, str]] = {
+    "claim": """
+INSERT OR IGNORE INTO graph_history(kind, row_id, retired_gen, superseded_by, reason, payload)
+SELECT 'claim', claim_id, :gen, NULL, 'pass_replaced',
+       json_object('subject_entity', subject_entity, 'object_entity', object_entity,
+                   'object_literal', object_literal, 'object_datatype', object_datatype,
+                   'claim_type', claim_type, 'predicate', predicate, 'status', status,
+                   'observed_block', observed_block, 'ts_a', ts_a, 'ts_b', ts_b, 'run_id', run_id)
+  FROM claim WHERE run_id = :prior
+""",
+    "edge": """
+INSERT OR IGNORE INTO graph_history(kind, row_id, retired_gen, superseded_by, reason, payload)
+SELECT 'edge', edge_id, :gen, NULL, 'pass_replaced',
+       json_object('src_entity', src_entity, 'dst_entity', dst_entity, 'relation', relation,
+                   'observed_block', observed_block, 'run_id', run_id)
+  FROM edge WHERE run_id = :prior
+""",
+    "mention": """
+INSERT OR IGNORE INTO graph_history(kind, row_id, retired_gen, superseded_by, reason, payload)
+SELECT 'mention', mention_id, :gen, NULL, 'pass_replaced',
+       json_object('entity_id', entity_id, 'block_id', block_id, 'ts_a', ts_a, 'ts_b', ts_b,
+                   'surface', surface, 'run_id', run_id)
+  FROM mention WHERE run_id = :prior
+""",
+}
+"""`graph_history`'s `pass_replaced` reason (0002:519), the row its payload, written BEFORE the row
+leaves: retirement, not deletion. Edges before mentions, as `edge_evidence` names both."""
+
+_DELETE_REPLACED_SQL: Final[dict[str, str]] = {
+    "claim": "DELETE FROM claim WHERE run_id = :prior",
+    "edge": "DELETE FROM edge WHERE run_id = :prior",
+    "mention": "DELETE FROM mention WHERE run_id = :prior",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class Replaced:
+    """What `replace_prior_runs` retired for one run's Pass and Segment."""
+
+    runs: int
+    claims: int
+    edges: int
+    mentions: int
+
+
+def replace_prior_runs(connection: _Rows, run_id: int) -> Replaced:
+    """Retire the claims, edges and mentions of this run's Pass's earlier runs on its Segment.
+
+    **D681.** 08 section 4.8's second cascade rule: *"Replacement is owner-scoped"*, and the
+    sink's own docstring puts the `DELETE`s *"on the maintenance path, filtered on
+    `origin_operator`"* -- the sink removes nothing (INV-25). A document re-parsed at its next
+    generation keeps every Segment whose content did not move, and its Passes run again on them:
+    without this the earlier run's claims and mentions stayed live beside the new ones, because
+    their observed blocks are carried and nothing retired them, and GR8 counted every table claim
+    twice after its driver step. Entities upsert and aliases are keyed, so a re-run duplicates
+    neither; anchors are per generation and stay. The derive operator calls this in the
+    transaction that wrote the run, and only for a run that finished `ok` or `empty`.
+    """
+    found = connection.execute(_RUN_GEN_SQL, {"run_id": run_id}).fetchall()
+    if not found:
+        return Replaced(0, 0, 0, 0)
+    gen = int(str(found[0][0]))
+    prior = [
+        int(str(row[0]))
+        for row in connection.execute(_PRIOR_RUNS_SQL, {"run_id": run_id}).fetchall()
+    ]
+    counts = {"claim": 0, "edge": 0, "mention": 0}
+    touched: set[int] = set()
+    for one in prior:
+        params = {"prior": one, "gen": gen}
+        touched.update(
+            int(str(row[0]))
+            for row in connection.execute(_REPLACED_ENTITIES_SQL, params).fetchall()
+        )
+        for kind in ("claim", "edge", "mention"):
+            connection.execute(_HISTORY_REPLACED_SQL[kind], params)
+            counts[kind] += int(connection.execute(_DELETE_REPLACED_SQL[kind], params).rowcount)
+    for entity_id in sorted(touched):
+        restamp_mention_digest(connection, entity_id)  # type: ignore[arg-type]
+    return Replaced(len(prior), counts["claim"], counts["edge"], counts["mention"])
 
 
 @dataclass(frozen=True, slots=True)

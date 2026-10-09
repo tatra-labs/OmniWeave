@@ -161,15 +161,37 @@ _READ_SEGMENT: Final = (
     "SELECT doc_ord, gen, heading_path, layer, atom, n_blocks, n_tokens, content_digest, state "
     "FROM segment WHERE segment_id = ?"
 )
+_CELL_DEPTH: Final = 16
+"""How far above a member the view looks for its cell. A cell's text sits in a paragraph or a
+list item one or two levels down; sixteen bounds the climb, not the documents. **D681.**"""
+
 _READ_MEMBERS: Final = (
+    "WITH RECURSIVE up(member, node, depth) AS ("
+    " SELECT sb.block_id, sb.block_id, 0 FROM segment_block sb WHERE sb.segment_id = :segment"
+    " UNION ALL SELECT up.member, p.parent_id, up.depth + 1 FROM up"
+    " JOIN block p ON p.block_id = up.node"
+    " WHERE p.parent_id IS NOT NULL AND up.depth < :depth"
+    " AND NOT EXISTS (SELECT 1 FROM cell WHERE cell.block_id = up.node)),"
+    " near AS (SELECT member, node FROM up"
+    " WHERE EXISTS (SELECT 1 FROM cell WHERE cell.block_id = up.node)) "
     "SELECT sb.ord, b.block_id, b.cite, b.kind, b.layer, b.page, b.text, b.label, "
     "t.cite, c.r, c.c, m.header_rows, m.n_cols "
     "FROM segment_block sb JOIN block b ON b.block_id = sb.block_id "
-    "LEFT JOIN cell c ON c.block_id = b.block_id "
+    "LEFT JOIN near n ON n.member = b.block_id "
+    "LEFT JOIN cell c ON c.block_id = n.node "
     "LEFT JOIN block t ON t.block_id = c.table_id "
     "LEFT JOIN table_meta m ON m.block_id = c.table_id "
-    "WHERE sb.segment_id = ? ORDER BY sb.ord"
+    "WHERE sb.segment_id = :segment ORDER BY sb.ord"
 )
+"""Each member, and the position of the NEAREST cell at or above it. **D681.**
+
+06:1316 prints a `paragraph` frame carrying `table`: a cell's text is not the cell's. The office
+parse writes a cell as a container block with `text IS NULL` and its text as child paragraphs,
+and the segmenter takes text-bearing blocks, so a member is the paragraph and the cell never is.
+Joining `cell` on the member alone therefore gave no member of any real table a position, and
+every rule that reads one -- `defterm`'s glossary rows, `derive.entity.table` -- never fired on
+a parsed document. The climb stops at the first cell, so a table nested in a cell is placed in
+the inner one."""
 _READ_MARKS: Final = (
     "SELECT k.block_id, k.a, k.b, k.kind, k.value FROM mark k "
     "JOIN segment_block sb ON sb.block_id = k.block_id "
@@ -192,7 +214,9 @@ def build_segment_view(connection: sqlite3.Connection, segment_id: int) -> ItemV
     doc_ord, gen, path, layer_code, atom, n_blocks, n_tokens, digest, _ = row
     kinds = _names(connection, "kind")
     layers = _names(connection, "layer")
-    members = connection.execute(_READ_MEMBERS, (segment_id,)).fetchall()
+    members = connection.execute(
+        _READ_MEMBERS, {"segment": segment_id, "depth": _CELL_DEPTH}
+    ).fetchall()
     marks: dict[int, list[list[Any]]] = {}
     for block_id, a, b, kind, value in connection.execute(_READ_MARKS, (segment_id,)):
         marks.setdefault(int(block_id), []).append(

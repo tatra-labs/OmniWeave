@@ -373,7 +373,7 @@ def _glossary(member: Member, members: Sequence[Member]) -> Iterator[Definition]
             yield _glossary_definition(member.cite, text, found, _trailing(text, match.end()))
         return
     cell = member.table
-    if member.kind != "table_cell" or cell is None:
+    if cell is None:  # a paragraph IN a cell carries the cell's position (06:1316, D681)
         return
     if cell.n_cols != _GLOSSARY_COLS or cell.c != 0 or cell.r < cell.header_rows:
         return

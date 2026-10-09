@@ -1,0 +1,102 @@
+# THE DRIVERCARD for `derive.entity.table`. Read WITHOUT importing.
+#
+# ONE KEY PER LINE -- this file is `tomllib.load`ed and `;` is not a TOML separator. An unknown
+# TOP-LEVEL table is a HARD ERROR: a card is a contract, not config.
+#
+# 04-driver-system.md section 10.1's roster row: `derive/1`, `omniweave-graph`, first_party,
+# subproc, free, shipped. 06-structure-extraction.md section 3.6 is the specification and D681 the
+# readings; the host reads its input (`owgraph-segment/1`, Segment form, a document's Segments per
+# unit -- D668) from the store and writes what it answers through `omniweave_core.store.items`
+# (D667).
+#
+# [cost.measured], [quality] and attestation are ABSENT: they are written by `ow conform` and author
+# values are rejected by the publish gate (DR13).
+card_schema = 1
+
+[driver]
+id = "derive.entity.table"
+port = "derive/1"
+version = "0.1.0"
+schema_version = 1                 # THE ONLY DRIVER VERSION IN A CACHE KEY.
+entrypoint = "omniweave_graph.table.driver:TableEntities"
+granularity = "document"           # One document's Segments in, its tables' rows out (06:810).
+replay_class = "byte_exact"        # Arithmetic over cells: no model, clock or network.
+title = "Table rows as entities and attribute claims (stdlib)"
+summary = "A table with a header row is a relation: per data row, its subject as an entity with a canonical alias and a mention, and one attribute claim per other cell, observed at that cell, with cover on the entity and claim lanes."
+
+[capability]
+consumes = []                      # The host's own view over committed Segments (as the
+                                   #   segmenter's card says of its document view).
+produces = ["graph_items"]
+
+[capability.derive]
+items = ["entity", "alias", "mention", "claim"]   # 06:962. Lanes read off these: entity, claim.
+grounding = "offsets"              # Every mention and claim carries a span into block.text.
+relations = "none"
+schema = "none"
+confidence = "none"
+coreference = false
+scripts = ["Latin"]                # The header words it recognises are English (rules.py).
+scope_honoured = true              # Every cite it names is one the view handed it.
+
+[derive]
+implemented = true
+phase = 20                         # 06 section 2.3's row 4: rank 0, phase 20.
+max_items_per_segment = 2048       # MAX_ITEMS_PER_SEGMENT: a table is one Segment (table-atomic),
+                                   #   and the sink bounds it again.
+
+[hardware]
+gpu            = "none"
+vram_gb_min    = 0
+ram_gb_min     = 0.25
+cpu_arch       = ["x86_64", "aarch64"]
+os             = ["linux", "darwin", "windows"]
+needs_network  = false
+needs_binaries = []
+imports_torch  = false
+install_bytes  = 40000             # This package's Python. No dependency beyond omniweave-ports.
+services       = []
+
+[isolation]
+requires        = "subproc"
+memory_mb       = 512
+progress_ms     = 15000
+wall_ms_hard    = 120000
+batch_max_units = 16
+
+[limits]
+max_input_bytes = 134217728        # 128 MiB, the HOST_MAX, as the segmenter's.
+max_parts       = 1                # A document is one view.
+
+[licence.code]
+spdx = "Apache-2.0"
+redistribution = "allowed"
+output_share_alike = false
+competitor_bar = false
+requires_credential = false
+revenue_gate_usd = 0
+mau_gate = 0
+territory_excluded = []
+field_of_use_excluded = []
+attribution_per_output = false
+no_model_training = false
+remote_kill_switch = false
+clause_refs = []
+
+[deps]
+pins = []                          # The standard library and omniweave-ports only.
+
+[config]
+type = "object"
+additionalProperties = false
+required = []
+
+[cost.model]
+class   = "free"
+shape   = "linear_per_byte"
+unit    = "document"
+per_part    = { wall_ms = 1 }      # 06:828: cpu_ms ~= 3 per 1k cells.
+per_session = { }
+scaling     = { key = "input_bytes", exponent = 1.0, reference = 65536 }
+tokens_out_p95_multiple = 1.0
+max_retries = 0
