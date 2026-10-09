@@ -122,6 +122,7 @@ from omniweave_core.store.indexlock import LOCK_PATH, NO_SEGMENTER, LockHeader, 
 from omniweave_core.store.queue import SqliteStore
 from omniweave_ports.types import DriverError, FailureClass
 
+from omniweave.graph import resolve as op_resolve
 from omniweave.route.detect import Detection, detect
 from omniweave.run import discover, expand
 from omniweave.run import supervisor as sup
@@ -358,6 +359,8 @@ class IngestReport:
     differently: its `schema_version` or its effective config moved (D679)."""
     lexicon: op_lexicon.LexiconReport | None = None
     """`op.lexicon`'s build after the drain, and the gazetteer rows it queued (D683)."""
+    resolved: op_resolve.ResolveReport | None = None
+    """`op.resolve` after the lexicon's drain: the merge log and the closure (D684)."""
 
     @property
     def settled(self) -> int:
@@ -421,6 +424,8 @@ class IngestReport:
             self.lexicon.names or self.lexicon.moved or self.lexicon.drain
         ):
             out.append(self.lexicon.line())
+        if self.resolved is not None and self.resolved.shown:
+            out.append(self.resolved.line())
         out.extend(self.passwords)
         if self.retired:
             out.append(
@@ -805,6 +810,18 @@ def _hops(
         #  rows it queued or re-opened, in this run.
         lexicon = _lexicon(thread, context, inputs=inputs, store=store, clock=clock)
         relexed = drain() if lexicon.drain else None
+        #  D684: op.resolve last, at 06:832's phase 50, over every entity the drains left.
+        resolved = cast(
+            "op_resolve.ResolveReport",
+            thread.run(
+                ow.Unit(
+                    name="graph.resolve",
+                    run=lambda c: op_resolve.resolve(c, gen=generation),
+                    cost_class="free",
+                    wait_ms=BATCH_WAIT_MS,
+                )
+            ),
+        )
     finally:
         executor.close()
     states, parts = _tally(thread, generation)
@@ -836,6 +853,7 @@ def _hops(
         retired=retired,
         reparsed=reparsed,
         lexicon=lexicon,
+        resolved=resolved,
     )
 
 
