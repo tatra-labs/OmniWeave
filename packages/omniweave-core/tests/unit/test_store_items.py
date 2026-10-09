@@ -160,8 +160,10 @@ def contract() -> list[dict[str, Any]]:
     ]
 
 
-def store(tmp_path: Path) -> tuple[Path, int]:
-    """A migrated store, one parsed and segmented generation, and the Pass's producer row."""
+def store(tmp_path: Path, frames: list[dict[str, Any]] | None = None) -> tuple[Path, int]:
+    """A migrated store, one parsed and segmented generation, and the Pass's producer row.
+
+    `frames` is the parsed document, `contract()` unless a test hands it another."""
     path = tmp_path / "index.owstore"
     (tmp_path / "cas").mkdir()
     connection = ow.connect(path)
@@ -201,7 +203,7 @@ def store(tmp_path: Path) -> tuple[Path, int]:
             declared=DECLARED,
             model_version="1.1",
         )
-        gen = decode(contract(), sink=sink, doc=doc).record.gen
+        gen = decode(contract() if frames is None else frames, sink=sink, doc=doc).record.gen
     connection = ow.connect(path)
     try:
         view = build_view(connection, 1, gen)
