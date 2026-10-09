@@ -3732,3 +3732,87 @@ def test_a_trampoline_s_own_peak_is_megabytes_and_the_job_s_is_the_interpreter()
         if child.stdout is not None:
             child.stdout.close()
         job.close()
+
+
+# ---------------------------------------------------------------------------------------------
+# D686: a child the host gives up on is still reaped
+# ---------------------------------------------------------------------------------------------
+
+
+class SlowDyingProcess(FakeProcess):
+    """A child whose exit outlasts every bounded wait: TerminateJobObject on a saturated machine.
+
+    A bounded `wait` times out until `exit()` is called; an unbounded one blocks until then and
+    records that the status was read -- the read whose absence CPython warns about."""
+
+    def __init__(self) -> None:
+        super().__init__(status=None)
+        self.gone = threading.Event()
+        self.read = threading.Event()
+
+    def exit(self) -> None:
+        self.status = 1
+        self.gone.set()
+
+    def wait(self, timeout: float | None = None) -> int:
+        self.waited.append(timeout)
+        if timeout is not None and not self.gone.is_set():
+            raise subprocess.TimeoutExpired("slow-worker", timeout)
+        self.gone.wait()
+        self.read.set()
+        return 1
+
+
+def _reapers() -> list[threading.Thread]:
+    return [t for t in threading.enumerate() if t.name.startswith("ow-s4-reap-")]
+
+
+def test_a_kill_whose_wait_times_out_hands_the_child_to_a_reaper() -> None:
+    """The leak, measured under a full suite: `_make_room` -> `retire` -> `stop` (wait times out)
+    -> `kill` (wait times out) returned with the status unread, and the pool forgot the worker.
+    Now the kill returns at once as before, and a daemon thread reads the status when the child
+    finally goes."""
+    proc = SlowDyingProcess()
+    worker, _proc, _clock = worker_on(FakeChannel(), proc=proc)
+    assert worker.kill() is None, "the bounded wait still bounds the caller"
+    assert sp.KILL_GRACE_MS / 1000 in proc.waited
+    assert not proc.read.is_set()
+    [reaper] = [t for t in _reapers() if t.name == f"ow-s4-reap-{DRIVER_ID}"]
+    assert reaper.daemon
+    proc.exit()
+    reaper.join(timeout=5)
+    assert proc.read.is_set() and not reaper.is_alive()
+
+
+def test_reap_in_background_returns_at_once_and_reads_an_exited_child() -> None:
+    proc = FakeProcess(status=0)
+    thread = sp.reap_in_background(proc, name="done")
+    thread.join(timeout=5)
+    assert proc.waited == [None]
+
+
+@WINDOWS_ONLY
+def test_a_spawn_nobody_connects_to_is_killed_and_reaped(tmp_path: Path) -> None:
+    """`launch`'s promise -- *"a raise with the child already reaped"* -- kept on the accept
+    failure too: the child is killed, and its status read rather than dropped."""
+    proc = SlowDyingProcess()
+    request = sp.SpawnRequest(
+        argv=("never-run",), cwd=str(tmp_path), env={}, address=pipe_address("orphan")
+    )
+    with pytest.raises(DriverHostError):
+        sp.launch(
+            sp.WorkerKey(driver_id="orphan.driver", config_digest=DIGEST_A),
+            request,
+            hello={},
+            expect={},
+            deadlines=deadlines(),
+            settings=settings(),
+            now_ms=Clock(),
+            spawn=lambda _request, **_kw: proc,
+            accept_ms=200,
+        )
+    assert proc.kills == 1
+    [reaper] = [t for t in _reapers() if t.name == "ow-s4-reap-orphan.driver"]
+    proc.exit()
+    reaper.join(timeout=5)
+    assert proc.read.is_set()
