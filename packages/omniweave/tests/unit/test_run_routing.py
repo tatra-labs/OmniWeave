@@ -341,6 +341,20 @@ def test_the_resolve_policy_is_the_drivers_block_with_this_host(tmp_path: Path) 
         frozenset(),
     )
     assert policy.host_env is not None
+    assert dict(policy.driver_config) == {}, 'no [drivers."<id>".config] table, none carried'
+
+
+def test_a_drivers_config_table_reaches_resolve(tmp_path: Path) -> None:
+    """D680. `[drivers."<id>".config]` is what `resolve()` validates and digests into
+    `config_digest`, and `Policy.driver_config` was never filled: every table was dropped. The
+    `[drivers]` block's own keys -- `inproc`, `require_lock` -- are not driver ids, carry none."""
+    table = '[drivers."parse.office.anydoc".config]\nmax_asset_bytes = 1024\n'
+    (tmp_path / "omniweave.toml").write_text(HANDBOOK + OPT_IN + table, encoding="utf-8")
+    config = load(cwd=tmp_path, env={"OMNIWEAVE_HOME": str(tmp_path / "h")})
+    policy = resolve_policy(config)
+    assert {k: dict(v) for k, v in policy.driver_config.items()} == {
+        "parse.office.anydoc": {"max_asset_bytes": 1024}
+    }
 
 
 def test_the_operator_is_the_driver_s_port_family() -> None:
