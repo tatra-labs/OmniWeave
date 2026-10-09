@@ -1052,6 +1052,49 @@ def test_max_snapshot_ms_aborts_with_ow_s_010(tmp_path: Path) -> None:
         reader.close()
 
 
+_SETUP_STEPS = (
+    "BEGIN",
+    "the generation read",
+    "the corpus_id read",
+    "the schema read",
+    "the attach check",
+)
+
+
+def _account(error: StoreError) -> list[str]:
+    """The step names of an expiry's account, in order: `(spent: BEGIN 0 ms, ...)`."""
+    text = str(error)
+    spent = text[text.index("(spent: ") + len("(spent: ") : text.rindex(")")]
+    return [part.rsplit(" ", 2)[0] for part in spent.split(", ")]
+
+
+def test_an_expiry_says_where_the_budget_went(tmp_path: Path) -> None:
+    """D688. Under full-suite load a snapshot's SETUP measured past its 2 s budget, and the message
+    said only "outlived its budget". It now accounts for each step, so a slow setup (the machine)
+    and a slow body (the query) are told apart."""
+    reader = connect_readonly(fresh_store(tmp_path))
+    try:
+        in_setup = iter([0, 10_000_000_000])
+        with (
+            pytest.raises(StoreError) as caught,
+            snapshot(  # spent before the body starts
+                reader, snapshot_ms=50, monotonic_ns=lambda: next(in_setup)
+            ),
+        ):
+            pytest.fail("the body must not start on a spent budget")
+        assert _account(caught.value) == list(_SETUP_STEPS)
+
+        in_body = iter([0, 0, 10_000_000_000])
+        with (
+            pytest.raises(StoreError) as caught,
+            snapshot(reader, snapshot_ms=50, monotonic_ns=lambda: next(in_body)),
+        ):
+            pass
+        assert _account(caught.value) == [*_SETUP_STEPS, "the body"]
+    finally:
+        reader.close()
+
+
 def test_max_snapshot_ms_interrupts_a_long_statement_inside_the_snapshot(tmp_path: Path) -> None:
     """The other half: `Connection.interrupt()` from a timer, against a statement that is running.
 
