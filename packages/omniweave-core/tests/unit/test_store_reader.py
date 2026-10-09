@@ -48,6 +48,7 @@ from typing import NamedTuple
 import pytest
 from omniweave_core.errors import StoreError, UsageError
 from omniweave_core.model.enums import Kind, Layer, Method, Quote, Trust
+from omniweave_core.retrieve.types import QueryBudget
 from omniweave_core.store import Reader, migrate
 from omniweave_core.store import reader as rd
 from omniweave_core.store import sqlite as ow
@@ -1661,16 +1662,25 @@ def _expand(**over: object) -> Expand:
     return Expand(**fields)  # type: ignore[arg-type]
 
 
-def _structural_spec(limit: int = 20, budget_ms: int = 40, **bind: object) -> ChannelSpec:
+def _structural_spec(limit: int = 20, budget_ms: int | None = None, **bind: object) -> ChannelSpec:
+    """`budget_ms` defaults to `[retrieval.budget] channel_ms.structural`'s declared default, so
+    these content tests run on `packages/conftest.py`'s generous budget (D689): the hop loop is
+    the one place in this module that enforces a Channel's own deadline. A literal 40 here failed
+    `test_only_the_named_relations_are_traversed` once in eight full runs."""
     return ChannelSpec(
         name="structural",
-        budget_ms=budget_ms,
+        budget_ms=QueryBudget().channel_ms["structural"] if budget_ms is None else budget_ms,
         limit=limit,
         overfetch=1,
         weight=None,
         params={},
         bind=ChannelInput(**bind),  # type: ignore[arg-type]
     )
+
+
+def test_the_structural_specs_here_spend_the_generous_test_budget() -> None:
+    """D689: 20 times the shipped 40 ms, never a literal a stalled worker can outrun."""
+    assert _structural_spec().budget_ms == QueryBudget().channel_ms["structural"] == 800
 
 
 def test_the_structural_channel_ranks_by_weight_times_trust_over_log1p_degree(
