@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D681: 06:1155 records derive.entity.table's rulings
+# blessed-because: D682: 06:1000 records the segmenter view placing cell text
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -32,7 +32,7 @@ documents-frozen  1dad5c8ef798764c3bd3cc772210f6085569c8d38c4d272db6444575171efb
 documents-frozen  3af6a53e2a3edbbd85dac7c7068d9429f73240aa4b4e0cc53118bc92cd6b6a18  03-document-model.md
 documents-frozen  6e98c953433a016cb1ec27c4373ce9462f2c7ef2b2ff0337f80fff67c72ed29b  04-driver-system.md
 documents-frozen  58eeb69e5ed3d40f01c4f9afc0550778a3e88efc1c728c04f87d9e8fa1f6a572  05-ingest-and-routing.md
-documents-frozen  2baa5321e6697d317231b99801fa6f1a77dcd3d260dfbfdb41ed5bd2d0d58502  06-structure-extraction.md
+documents-frozen  97757833e979913de136ee2af86f050cfd77f33163fcd48e7f0b58d8dc705b33  06-structure-extraction.md
 documents-frozen  c09bd59f22d6d0ab452f46dd73ba3982e62f749c38e076f80e530a9850739c7f  07-store-and-retrieval.md
 documents-frozen  f475c1a7d671d504ad6ddc13aebd5a4be02ac6e42381888dd88e4ddfaf66f3a5  08-runtime.md
 documents-frozen  eddeb4634f5da1e2b056a002a7fa6eaa43d71836633b0a44d65301ac8b2d16e4  09-generation.md
