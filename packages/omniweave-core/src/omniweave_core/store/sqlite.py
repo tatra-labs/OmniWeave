@@ -281,6 +281,14 @@ set makes "which of the three" answerable at one site. `CostClass` itself is P4'
 and 07:2740's test is a synthetic billed operator for exactly that reason.
 """
 
+INTERRUPT_REPEAT_MS: Final = 10
+"""How often an expired `snapshot()` interrupts again until it closes. **D687.**
+
+`Connection.interrupt()` reaches only a statement that is running; one fired between statements is
+discarded. Repeating it bounds how long a statement started after the deadline can run: by this,
+not by the statement. Ten milliseconds is one tick of a coarse Windows timer, and the cost is one
+C call per tick for a snapshot that has already failed."""
+
 INTERRUPTED: Final = "SQLITE_INTERRUPT"
 """`sqlite3.Error.sqlite_errorname` for a statement stopped by `Connection.interrupt()`.
 
@@ -681,7 +689,12 @@ def _index_state(connection: sqlite3.Connection, key: str) -> str | None:
     """
     try:
         row = connection.execute("SELECT v FROM index_state WHERE k = ?", (key,)).fetchone()
-    except sqlite3.Error:
+    except sqlite3.Error as error:
+        #  D687: an interrupt is not an absent table. Swallowed, a `snapshot()` whose deadline fired
+        #  during its first read reported "index_state has no 'generation' row" (OW_STORE) for a
+        #  healthy store, or carried an empty `corpus_id` it had not read.
+        if getattr(error, "sqlite_errorname", "") == INTERRUPTED:
+            raise
         return None
     return None if row is None else str(row[0])
 
@@ -1175,10 +1188,23 @@ def snapshot(
     opened_ns = monotonic_ns()
     connection.execute("BEGIN DEFERRED")
     expired = threading.Event()
+    closed = threading.Event()
+    guard = threading.Lock()
 
     def _interrupt() -> None:
-        expired.set()
-        connection.interrupt()
+        #  D687: once the budget is spent, interrupt AGAIN every INTERRUPT_REPEAT_MS until the
+        #  snapshot closes. One call is not sticky: fired while no statement runs -- during setup,
+        #  or in Python between two statements -- it is discarded, and the next statement, however
+        #  long, ran to completion with the WAL pinned. Under the lock, so it never lands on the
+        #  ROLLBACK that ends the snapshot.
+        while True:
+            with guard:
+                if closed.is_set():
+                    return
+                expired.set()
+                connection.interrupt()
+            if closed.wait(INTERRUPT_REPEAT_MS / 1000):
+                return
 
     timer = threading.Timer(budget_ms / 1000, _interrupt)
     timer.daemon = True
@@ -1193,6 +1219,8 @@ def snapshot(
             vec_attached=_vec_attached(connection),
             opened_ns=opened_ns,
         )
+        #  D687: a budget spent on the setup reads is spent; the body is not started on it.
+        _refuse_expired(expired, opened_ns, monotonic_ns(), budget_ms)
         yield state
         _refuse_expired(expired, opened_ns, monotonic_ns(), budget_ms)
     except sqlite3.Error as error:
@@ -1200,6 +1228,8 @@ def snapshot(
             raise _expired(budget_ms) from error
         raise
     finally:
+        with guard:
+            closed.set()
         timer.cancel()
         with suppress(sqlite3.Error):
             connection.execute("ROLLBACK")
