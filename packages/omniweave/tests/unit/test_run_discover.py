@@ -1766,6 +1766,84 @@ def test_every_page_of_units_is_asked(store: ow.StoreThread, tmp_path: Path) -> 
     ]
 
 
+def _runs_on_one_segment(reader: Any) -> None:
+    """Segment 10 of document 1, kept across a re-parse: the table Pass ran on it at generation 1
+    (run 21) and again at 2 (run 22), and defterm once (run 23, generation 1). `derive_run`'s
+    identity is one run per Pass, Segment and generation. Each run wrote one mention of entity 1
+    and one claim about it."""
+    _doc(reader, 1, "c:/docs/note.pdf", OLD, block=True)
+    reader.execute(
+        "INSERT INTO entity(entity_id, cite, scope, etype, key, title, canonical_id, "
+        "resolution_method, trust, mention_digest) "
+        "VALUES(1, 'e1', 0, 'org', 'acme', 'Acme', 1, 0, 2, X'00')"
+    )
+    for pass_id in ("derive.entity.table", "derive.anchor.defterm"):
+        reader.execute(
+            "INSERT INTO derive_pass(pass_id, port, cost_class, cost_rank, phase, lanes, "
+            "granularity, card_sha256, schema_version) VALUES(?, 'derive/1', 'free', 0, 20, "
+            "'[\"entity\"]', 'document', 'sha', 1)",
+            (pass_id,),
+        )
+    for run_id, pass_id, gen in ((21, "derive.entity.table", 1), (22, "derive.entity.table", 2),
+                                 (23, "derive.anchor.defterm", 1)):  # fmt: skip
+        reader.execute(
+            "INSERT INTO derive_run(run_id, segment_id, pass_id, at_gen, producer_id, method, "
+            "origin_operator, origin_driver, driver_schema_v, cost_class, input_digest, "
+            "cache_key, status) VALUES(?, 10, ?, ?, 1, 0, ?, ?, 1, 'free', X'00', 'k', 'ok')",
+            (run_id, pass_id, gen, pass_id, pass_id),
+        )
+        reader.execute(
+            "INSERT INTO mention(entity_id, block_id, segment_id, ts_a, ts_b, surface, run_id, "
+            "trust, digest) VALUES(1, 10, 10, 0, 4, 'Acme', ?, 2, ?)",
+            (run_id, bytes([run_id]) * 16),
+        )
+        reader.execute(
+            "INSERT INTO claim(claim_id, cite, subject_entity, object_literal, object_datatype, "
+            "claim_type, predicate, description, status, observed_block, ts_a, ts_b, quote_tier, "
+            "run_id, trust) VALUES(?, ?, 1, '17', 'string', 'attribute', 'units', 'd', "
+            "'asserted', 10, 0, 2, 4, ?, 2)",
+            (run_id, f"k{run_id}", run_id),
+        )
+
+
+def test_a_passes_later_run_retires_its_earlier_runs_rows_on_the_segment(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """D681, 08 section 4.8's owner-scoped replacement: run 22 retires run 21's claim and mention
+    to `graph_history` as `pass_replaced`, keeps its own, and leaves defterm's run 23 alone."""
+    from omniweave.run.converge import Replaced, replace_prior_runs  # noqa: PLC0415
+
+    del store
+    reader = _reader(tmp_path)
+    _runs_on_one_segment(reader)
+    reader.commit()
+    before = reader.execute("SELECT mention_digest FROM entity").fetchone()
+    assert replace_prior_runs(reader, 22) == Replaced(runs=1, claims=1, edges=0, mentions=1)
+    reader.commit()
+    after = _reader(tmp_path)
+    assert after.execute("SELECT run_id FROM claim ORDER BY 1").fetchall() == [(22,), (23,)]
+    assert after.execute("SELECT run_id FROM mention ORDER BY 1").fetchall() == [(22,), (23,)]
+    assert after.execute(
+        "SELECT kind, row_id, retired_gen, reason, json_extract(payload, '$.run_id') "
+        "FROM graph_history ORDER BY 1"
+    ).fetchall() == [("claim", 21, 2, "pass_replaced", 21), ("mention", 1, 2, "pass_replaced", 21)]
+    assert after.execute("SELECT mention_digest FROM entity").fetchone() != before
+    assert replace_prior_runs(after, 22) == Replaced(runs=1, claims=0, edges=0, mentions=0), (
+        "idempotent: a second call finds the run and nothing left of it"
+    )
+
+
+def test_the_first_run_on_a_segment_replaces_nothing(store: ow.StoreThread, tmp_path: Path) -> None:
+    from omniweave.run.converge import Replaced, replace_prior_runs  # noqa: PLC0415
+
+    del store
+    reader = _reader(tmp_path)
+    _runs_on_one_segment(reader)
+    reader.commit()
+    assert replace_prior_runs(reader, 23) == Replaced(runs=0, claims=0, edges=0, mentions=0)
+    assert replace_prior_runs(reader, 99) == Replaced(runs=0, claims=0, edges=0, mentions=0)
+
+
 def test_a_version_some_file_still_holds_is_not_retired(
     store: ow.StoreThread, tmp_path: Path
 ) -> None:

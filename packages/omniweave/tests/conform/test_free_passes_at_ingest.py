@@ -57,6 +57,7 @@ DEFTERM = "derive.anchor.defterm"
 XREF = "derive.xref.pattern"
 NATIVE = "derive.anchor.native"
 LINKS = "derive.xref.native"
+TABLE = "derive.entity.table"
 TIMEOUT_S = 300
 
 
@@ -123,6 +124,7 @@ def test_an_add_runs_every_free_pass_over_every_document_it_segments(tmp_path: P
     assert f"  derive    {XREF}: 1 document(s), " in shown, shown[-3000:]
     assert f"  derive    {NATIVE}: 1 document(s), " in shown, shown[-3000:]
     assert f"  derive    {LINKS}: 1 document(s), " in shown, shown[-3000:]
+    assert f"  derive    {TABLE}: 1 document(s), " in shown, shown[-3000:]
     store = project / ".omniweave" / "docs.owstore"
 
     assert _rows(
@@ -132,22 +134,25 @@ def test_an_add_runs_every_free_pass_over_every_document_it_segments(tmp_path: P
     ) == [
         (DEFTERM, DEFTERM, 1, "free", "done"),
         (NATIVE, NATIVE, 1, "free", "done"),
+        (TABLE, TABLE, 1, "free", "done"),
         (LINKS, LINKS, 1, "free", "done"),
         (XREF, XREF, 1, "free", "done"),
     ]
     assert _rows(store, "SELECT pass_id, cost_rank, phase, lanes FROM derive_pass ORDER BY 1") == [
         (DEFTERM, 0, 30, '["anchor","entity"]'),
         (NATIVE, 0, 20, '["anchor"]'),
+        (TABLE, 0, 20, '["claim","entity"]'),
         (LINKS, 0, 20, '["xref"]'),
         (XREF, 0, 30, '["xref"]'),
     ]
     live = _rows(store, "SELECT segment_id FROM segment WHERE state = 0 ORDER BY 1")
     runs = _rows(store, "SELECT pass_id, segment_id FROM derive_run")
-    for pass_id in (NATIVE, LINKS, DEFTERM, XREF):
+    for pass_id in (NATIVE, LINKS, TABLE, DEFTERM, XREF):
         assert sorted((s,) for p, s in runs if p == pass_id) == live, pass_id
     assert _rows(store, "SELECT lane, count(*) FROM derive_cover GROUP BY 1 ORDER BY 1") == [
         ("anchor", 2 * len(live)),
-        ("entity", len(live)),
+        ("claim", len(live)),
+        ("entity", 2 * len(live)),
         ("xref", 2 * len(live)),
     ]
     anchors = sorted(
@@ -160,7 +165,7 @@ def test_an_add_runs_every_free_pass_over_every_document_it_segments(tmp_path: P
     )
     assert _rows(
         store, "SELECT DISTINCT origin_operator, origin_driver FROM derive_run ORDER BY 1"
-    ) == [(DEFTERM, DEFTERM), (NATIVE, NATIVE), (LINKS, LINKS), (XREF, XREF)]
+    ) == [(DEFTERM, DEFTERM), (NATIVE, NATIVE), (TABLE, TABLE), (LINKS, LINKS), (XREF, XREF)]
     declared = _rows(
         store, "SELECT akind, name_norm FROM anchor WHERE akind <> 'defined_term' ORDER BY 1, 2"
     )
