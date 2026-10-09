@@ -218,6 +218,7 @@ __all__ = [
     "reopen_changed_failures",
     "reopens_of",
     "reset_stale_acquiring",
+    "retire_document",
     "retire_replaced",
     "roster_rows",
     "stale_params",
@@ -1363,6 +1364,27 @@ UPDATE doc SET x = json_set(x, :retired, json_object('reason', 'source_deleted',
 """
 
 
+def retire_document(connection: _Rows, doc_ord: int, gen: int) -> None:
+    """Take one document out of every read and out of the graph, in the caller's transaction.
+
+    What `retire_replaced` does to each document no file holds any more, and what 06:2335's first
+    row asks of a whole document deleted: its blocks and segments to `state = 1` with a
+    `block_history` row each, `doc.x` marked (`RETIRED_X`), its anchors and occurrences removed
+    and every link they made unbound (D673), and its mentions and the entities it took with it
+    historied (D675). `reason` is `source_deleted` throughout. **D678** factored it out so the
+    explicit deletion `ow store rm --doc` will issue (06:2348, *"deletion is never inferred"*)
+    is this function and not a second copy of it; `tools/gate_incremental_graph.py` runs it for
+    GR8's two deletions until that verb is dispatched.
+    """
+    params = {"doc_ord": doc_ord, "gen": gen}
+    connection.execute(_RETIRE_HISTORY_SQL, params)
+    connection.execute(_RETIRE_BLOCKS_SQL, params)
+    connection.execute(_RETIRE_SEGMENTS_SQL, params)
+    connection.execute(_RETIRE_DOC_SQL, params | {"retired": f'$."{RETIRED_X}"'})
+    unbind_document(connection, doc_ord)
+    retire_document_entities(connection, doc_ord)
+
+
 def retire_replaced(thread: StoreThread, *, wait_ms: int = BATCH_WAIT_MS) -> int:
     """Take each document no file holds any more out of every read. **D645.** Returns how many.
 
@@ -1388,11 +1410,7 @@ def retire_replaced(thread: StoreThread, *, wait_ms: int = BATCH_WAIT_MS) -> int
         nonlocal retired
         found = connection.execute(REPLACED_SCAN_SQL, {"retired": key}).fetchall()
         for doc_ord, gen in found:
-            params = {"doc_ord": int(doc_ord), "gen": int(gen)}
-            connection.execute(_RETIRE_HISTORY_SQL, params)
-            connection.execute(_RETIRE_BLOCKS_SQL, params)
-            connection.execute(_RETIRE_SEGMENTS_SQL, params)
-            connection.execute(_RETIRE_DOC_SQL, params | {"retired": key})
+            retire_document(connection, int(doc_ord), int(gen))
             retired += 1
         for (doc_ord,) in connection.execute(
             _RETIRED_WITH_REFERENCES_SQL, {"retired": key}
