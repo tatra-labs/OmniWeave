@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D687: snapshot deadline repeat-interrupt annotated in 07 section 7
+# blessed-because: D689: 13:140 notes the shared test conftest is packages/conftest.py, not the root (pyright resolves a bare conftest against the root first)
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -39,7 +39,7 @@ documents-frozen  eddeb4634f5da1e2b056a002a7fa6eaa43d71836633b0a44d65301ac8b2d16
 documents-frozen  d96985003690550f4d996e31a41306d21d6a8e2e7ff34076c0ad5cff5f3cb64e  10-interfaces.md
 documents-frozen  76a694bf0b19b60ba35d2246f6b36466ca990f318f51e0a292c388ec0e78bc68  11-repo-layout.md
 documents-frozen  3edabb36d1bc3c54a9f44ca89f43589f1b3f63ce991399c7bd515b35f7a0752c  12-performance.md
-documents-frozen  196127cadc928edbf6a0ff8bf4b470671a6574b716f89987258979b71a2f03ed  13-quality.md
+documents-frozen  fe8bc8d5b5409c94554d90a999ba115c575a03e3f0a9dca85dfda966891001ab  13-quality.md
 documents-frozen  667161a8bd206b5805998a289f7679f80dc3a8ea6910c52ea8345bfe9562d721  14-security.md
 documents-frozen  b40c687bb38801907249eef6ec9af9a8ac7d26083be9c0290f356e89aaf48695  15-observability.md
 documents-frozen  8cb50c6254b2bf4a6c8fa7076b3382e55c92d1ad3791751c0e51e684d8bff0fc  16-roadmap.md

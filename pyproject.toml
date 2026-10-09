@@ -18,6 +18,9 @@ package = false
 
 [tool.uv.workspace]
 members = ["packages/*"]
+# packages/conftest.py (D689) is shared by every member's tests, and pytest compiles it into
+# packages/__pycache__/, which the glob above would otherwise read as a member with no pyproject.
+exclude = ["packages/__pycache__"]
 
 # One row per sibling. Without these, uv refuses to resolve a first-party edge that names a
 # workspace member (11-repo-layout.md section 2.2: [tool.uv.sources] governs WHERE a member

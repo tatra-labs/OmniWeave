@@ -86,6 +86,7 @@ def test_the_two_admission_keys_carry_the_defaults_10_958_prints() -> None:
     assert KEYS[KEY_QUEUED].axis == "operational"
 
 
+@pytest.mark.shipped_budgets
 def test_the_estimate_and_its_ceiling_are_keys_that_already_existed() -> None:
     """Neither number is coined here. 250 is B27's committed p95 and G10's ceiling; 2,000 is the
     clamp on one read transaction's life, which is what an admitted call holds."""
