@@ -43,6 +43,7 @@ from omniweave_core.errors import GraphError, RouteError
 from omniweave_core.model.enums import Method
 from omniweave_core.model.records import Producer
 from omniweave_core.operator import Outcome, StepMetrics, StepResult
+from omniweave_core.store import lexicon
 from omniweave_core.store import sqlite as ow
 from omniweave_core.store.graph import PassIdentity
 from omniweave_core.store.items import (
@@ -59,8 +60,9 @@ from omniweave_ports.types import FailureClass, UnitRef
 from omniweave.plan import operator_of
 from omniweave.route.spend import Spend
 from omniweave.run import pipeline
-from omniweave.run.converge import replace_prior_runs
+from omniweave.run.converge import replace_prior_runs, replace_run_at
 from omniweave.run.dispatch import dispatch_key
+from omniweave.run.operators.lexicon import empty_digest
 from omniweave.run.operators.parse import DeriveCount
 
 if TYPE_CHECKING:
@@ -77,6 +79,7 @@ if TYPE_CHECKING:
 __all__ = [
     "DERIVE_PRIORITY",
     "FREE_PASSES",
+    "LEXICON_READERS",
     "DeriveOperator",
     "DerivePlan",
     "is_derive",
@@ -88,6 +91,7 @@ FREE_PASSES: Final[dict[str, Method]] = {
     "derive.entity.table": Method.NATIVE_XML,
     "derive.anchor.defterm": Method.HEURISTIC,
     "derive.xref.pattern": Method.HEURISTIC,
+    "derive.entity.gazetteer": Method.HEURISTIC,
 }
 """The shipped Segment-grained free Passes and each one's `Method`, in `(cost_rank, phase)` order.
 
@@ -95,6 +99,17 @@ FREE_PASSES: Final[dict[str, Method]] = {
 card** (D668): `derive_run.method` is *"ONE METHOD PER PASS"* (0002:179) and the clamp the sink
 applies reads it, but `[capability.derive]` and `[derive]` declare none, so the roster's `method`
 column is the one source. A third-party Pass needs a card key before it can be scheduled here."""
+LEXICON_READERS: Final = frozenset({"derive.entity.gazetteer"})
+"""The Passes whose view opens with `op.lexicon`'s artefact (D683), and whose committed answer
+records the `dep` 06:1189 obliges. Here and not on the card for `FREE_PASSES`' reason: no card key
+says it.
+
+**A reader's row is enqueued by `op.lexicon`, not by the segmentation** (D683). Enqueued with the
+others it would run in the drain before the lexicon was built -- on a first ingest, over nothing --
+and again when the build moved it, so every document would be derived twice and counted twice.
+`enqueue_readers` runs after the build, for every segmented unit that has no reader row: a new
+document, a re-parsed one (`discover.REOPEN_WORK_SQL` took its rows), and one ingested before the
+reader existed."""
 DERIVE_PRIORITY: Final = 100
 """08:2035's `priority` for every derive row; a Pass's row exists only after its document's
 Segments do, so it never competes with the `derive.segment` row it follows."""
@@ -108,6 +123,14 @@ ON CONFLICT(unit_uri, unit_part, operator, op_version) DO NOTHING
 """
 
 _UNIT_SQL: Final = "SELECT content_sha256 FROM unit WHERE unit_uri = ?"
+_UNSERVED_SQL: Final = """
+SELECT u.unit_uri, u.content_sha256, IFNULL(u.bytes, 0) FROM unit AS u
+ WHERE EXISTS (SELECT 1 FROM work WHERE unit_uri = u.unit_uri AND unit_part = ''
+                AND operator = 'derive.segment' AND status = 'done')
+   AND NOT EXISTS (SELECT 1 FROM work WHERE unit_uri = u.unit_uri AND unit_part = ''
+                    AND operator = :reader)
+ ORDER BY u.unit_uri
+"""
 _DOC_SQL: Final = "SELECT doc_ord, gen FROM doc WHERE doc_key = ?"
 _PRODUCER_INSERT_SQL: Final = """
 INSERT OR IGNORE INTO producer(operator, op_version, code_fingerprint, options_digest)
@@ -151,9 +174,35 @@ class DerivePlan:
         return (cls(tuple(passes), ctx) if passes else None), "; ".join(why)
 
     def enqueue(self, connection: Any, unit: UnitRef) -> int:
-        """Every Pass's row for a document whose Segments were just written. Returns how many."""
+        """Every Pass's row for a document whose Segments were just written, but a lexicon
+        reader's. Returns how many."""
+        return self._enqueue(
+            connection, unit, [c for c in self.passes if c.card.identity.id not in LEXICON_READERS]
+        )
+
+    def enqueue_readers(self, connection: Any) -> int:
+        """A lexicon reader's row for every segmented unit that has none (D683). Returns how many.
+
+        The unit's digest is its stored content's: a reader's real input is the document's
+        Segments and the lexicon, and the `dep` row, not the key, is what re-opens it.
+        """
         added = 0
         for candidate in self.passes:
+            reader = candidate.card.identity.id
+            if reader not in LEXICON_READERS:
+                continue
+            for uri, digest, size in connection.execute(
+                _UNSERVED_SQL, {"reader": reader}
+            ).fetchall():
+                unit = UnitRef(
+                    uri=str(uri), part="", content_sha256=str(digest or ""), byte_len=int(size)
+                )
+                added += self._enqueue(connection, unit, [candidate])
+        return added
+
+    def _enqueue(self, connection: Any, unit: UnitRef, passes: Sequence[Candidate]) -> int:
+        added = 0
+        for candidate in passes:
             card = candidate.card
             operator = operator_of(card.identity.id)
             added += connection.execute(
@@ -191,12 +240,13 @@ def _producer(operator: str, card: Any, config_digest: str) -> Producer:
 class DeriveOperator:
     """The `Dispatcher` for a free Pass's rows: one call per claimed batch, one result a row."""
 
-    __slots__ = ("_parse", "_tally", "_thread")
+    __slots__ = ("_empty", "_parse", "_tally", "_thread")
 
     def __init__(self, parse: ParseOperator, thread: ow.StoreThread, tally: ParseTally) -> None:
         self._parse = parse
         self._thread = thread
         self._tally = tally
+        self._empty: str | None = None
 
     def __call__(self, batch: Batch, /) -> Sequence[StepResult]:
         driver = batch.driver
@@ -215,6 +265,7 @@ class DeriveOperator:
         producer = _producer(operator_of(driver), card, granted.config_digest)
         results: list[StepResult | None] = [None] * batch.size
         staged: list[tuple[int, tuple[ItemView, ...], UnitRef, str]] = []
+        read = self._lexicon() if driver in LEXICON_READERS else None
         for index, row in enumerate(batch.rows):
             views = self._views(row.unit_uri)
             if not views:
@@ -226,6 +277,8 @@ class DeriveOperator:
             from omniweave_core.blobs import format_ref  # noqa: PLC0415
 
             body = document_body(views)
+            if read is not None:  # D683: the view opens with the lexicon this row reads
+                body = lexicon.frame(read) + body
             digest = self._parse._cas.put(io.BytesIO(body))
             unit = UnitRef(
                 uri=row.unit_uri, part="", content_sha256=digest.hex(), byte_len=len(body)
@@ -245,9 +298,23 @@ class DeriveOperator:
             for slot, (index, views, unit, _ref) in enumerate(staged):
                 results[index] = self._settle(
                     batch.rows[index], unit, views, reply=reply, slot=slot, producer=producer,
-                    identity=identity, card=card,
+                    identity=identity, card=card, read=read,
                 )  # fmt: skip
         return [cast("StepResult", one) for one in results]
+
+    def _lexicon(self) -> str:
+        """The digest of the lexicon a gazetteer batch reads: the current one, else the empty."""
+        found = self._thread.run(
+            ow.Unit(
+                name="derive.lexicon", run=lexicon.current, cost_class="free",
+                wait_ms=ow.BATCH_WAIT_MS,
+            )
+        )  # fmt: skip
+        if found is not None:
+            return str(found)
+        if self._empty is None:
+            self._empty = empty_digest(self._parse._cas)
+        return self._empty
 
     def _views(self, unit_uri: str) -> tuple[ItemView, ...]:
         def read(connection: Any) -> tuple[ItemView, ...]:
@@ -320,6 +387,7 @@ class DeriveOperator:
         producer: Producer,
         identity: PassIdentity,
         card: Any,
+        read: str | None = None,
     ) -> StepResult:
         driver = identity.pass_id
         outcome = reply.outcomes[slot]
@@ -343,11 +411,16 @@ class DeriveOperator:
 
             def write(connection: Any) -> list[Any]:
                 register_pass(connection, card)
+                if read is not None:  # D683: re-run at the same generation, the old run leaves
+                    for u in units:
+                        replace_run_at(connection, driver, u.view.ref.segment_id, u.view.ref.gen)
                 written = [drive_items(connection, u, identity, spend) for u in units]
                 #  D681: a whole answer replaces this Pass's earlier runs on each Segment.
                 for report in written:
                     if report.status in {"ok", "empty"}:
                         replace_prior_runs(connection, report.run_id)
+                if read is not None:  # D683: with the rows it read the lexicon for
+                    lexicon.record_dep(connection, row.id, read)
                 return written
 
             reports = cast(

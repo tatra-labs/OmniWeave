@@ -16,6 +16,7 @@ from omniweave.run.dispatch import dispatch_key
 from omniweave.run.operators.derive import (
     DERIVE_PRIORITY,
     FREE_PASSES,
+    LEXICON_READERS,
     DerivePlan,
     is_derive,
 )
@@ -36,6 +37,7 @@ XREF = "derive.xref.pattern"
 NATIVE = "derive.anchor.native"
 LINKS = "derive.xref.native"
 TABLE = "derive.entity.table"
+GAZETTEER = "derive.entity.gazetteer"
 UNIT = UnitRef(uri="file:///docs/a.md", part="", content_sha256="ab" * 32, byte_len=10)
 OPEN = "[drivers]\nallow_unattested = true\nrequire_lock = false\ninproc = []\n"
 
@@ -97,7 +99,9 @@ def test_each_plan_is_its_own_pinned_driver_and_never_another_derive_driver(
     derives, why = DerivePlan.of(catalog(), policy, _ctx())
     assert derives is not None, why
     assert why == ""
-    assert [c.card.identity.id for c in derives.passes] == [NATIVE, LINKS, TABLE, DEFTERM, XREF]
+    assert [c.card.identity.id for c in derives.passes] == [
+        NATIVE, LINKS, TABLE, DEFTERM, XREF, GAZETTEER
+    ]  # fmt: skip
     segments, why = SegmentPlan.of(catalog(), policy, _ctx())
     assert segments is not None, why
     assert segments.candidate.card.identity.id == SEGMENTER_ID
@@ -117,7 +121,7 @@ def test_each_enqueued_row_is_its_pass_with_its_driver_and_no_decision(
     store = _store(tmp_path)
     connection = ow.connect(store)
     try:
-        assert derives.enqueue(connection, UNIT) == 5
+        assert derives.enqueue(connection, UNIT) == 5, "all but the lexicon reader (D683)"
         assert derives.enqueue(connection, UNIT) == 0, "a resumed run enqueues nothing twice"
     finally:
         connection.close()
@@ -142,6 +146,7 @@ def test_each_enqueued_row_is_its_pass_with_its_driver_and_no_decision(
             ),
         )
         for candidate in sorted(derives.passes, key=lambda c: c.card.identity.id)
+        if candidate.card.identity.id != GAZETTEER
     ]
 
 
@@ -196,7 +201,9 @@ def test_which_rows_are_a_free_pass_and_which_method_each_pass_has() -> None:
         TABLE: Method.NATIVE_XML,
         DEFTERM: Method.HEURISTIC,
         XREF: Method.HEURISTIC,
+        GAZETTEER: Method.HEURISTIC,
     }
+    assert frozenset({GAZETTEER}) == LEXICON_READERS
 
 
 def test_the_report_says_what_each_pass_did_and_why_one_did_not() -> None:
