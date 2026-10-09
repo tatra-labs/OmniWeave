@@ -1186,7 +1186,9 @@ def snapshot(
     """
     budget_ms = _snapshot_ms(snapshot_ms)
     opened_ns = monotonic_ns()
+    spent = _Spent()
     connection.execute("BEGIN DEFERRED")
+    spent.mark("BEGIN")
     expired = threading.Event()
     closed = threading.Event()
     guard = threading.Lock()
@@ -1211,21 +1213,29 @@ def snapshot(
     timer.start()
     try:
         generation = _require_index_state(connection, "generation")
+        spent.mark("the generation read")
+        corpus_id = _index_state(connection, "corpus_id") or ""
+        spent.mark("the corpus_id read")
+        schema = _schema_major(connection)
+        spent.mark("the schema read")
         state = Snapshot(
             token=connection,
             generation=int(generation),
-            corpus_id=_index_state(connection, "corpus_id") or "",
-            schema=_schema_major(connection),
+            corpus_id=corpus_id,
+            schema=schema,
             vec_attached=_vec_attached(connection),
             opened_ns=opened_ns,
         )
+        spent.mark("the attach check")
         #  D687: a budget spent on the setup reads is spent; the body is not started on it.
-        _refuse_expired(expired, opened_ns, monotonic_ns(), budget_ms)
+        _refuse_expired(expired, opened_ns, monotonic_ns(), budget_ms, spent)
         yield state
-        _refuse_expired(expired, opened_ns, monotonic_ns(), budget_ms)
+        spent.mark("the body")
+        _refuse_expired(expired, opened_ns, monotonic_ns(), budget_ms, spent)
     except sqlite3.Error as error:
         if getattr(error, "sqlite_errorname", "") == INTERRUPTED or expired.is_set():
-            raise _expired(budget_ms) from error
+            spent.mark("the interrupted statement")
+            raise _expired(budget_ms, spent) from error
         raise
     finally:
         with guard:
@@ -1235,19 +1245,50 @@ def snapshot(
             connection.execute("ROLLBACK")
 
 
-def _refuse_expired(expired: threading.Event, opened_ns: int, now_ns: int, budget_ms: int) -> None:
+class _Spent:
+    """Where a snapshot's budget went, step by step, for the expiry's message. **D688.**
+
+    An `OW-S-010` that says only "outlived its 2000 ms budget" cannot tell a slow body from a slow
+    `BEGIN`, and the two have different remedies: a body is narrowed, a setup that waited on a lock
+    is the machine's. Under full-suite load the setup alone measured past 2 s, and nothing said so.
+    The marks read the real clock, never the injected `monotonic_ns`: the account is a diagnostic
+    and decides nothing, so it must not consume a test's scripted readings."""
+
+    __slots__ = ("_last", "_steps")
+
+    def __init__(self) -> None:
+        self._last = time.monotonic_ns()
+        self._steps: list[tuple[str, int]] = []
+
+    def mark(self, step: str) -> None:
+        now = time.monotonic_ns()
+        self._steps.append((step, (now - self._last) // 1_000_000))
+        self._last = now
+
+    def account(self) -> str:
+        return ", ".join(f"{step} {ms} ms" for step, ms in self._steps)
+
+
+def _refuse_expired(
+    expired: threading.Event,
+    opened_ns: int,
+    now_ns: int,
+    budget_ms: int,
+    spent: _Spent | None = None,
+) -> None:
     """Raise `OW-S-010` when the snapshot outlived its budget, whether or not a statement
     noticed."""
     if expired.is_set() or (now_ns - opened_ns) > budget_ms * 1_000_000:
-        raise _expired(budget_ms)
+        raise _expired(budget_ms, spent)
 
 
-def _expired(budget_ms: int) -> StoreError:
+def _expired(budget_ms: int, spent: _Spent | None = None) -> StoreError:
     """`OW-S-010` / `OW_SNAPSHOT_EXPIRED`, with the reason the deadline is not negotiable."""
     return StoreError(
         f"the read snapshot outlived its {budget_ms} ms budget and was interrupted: a held read "
         f"transaction pins the WAL, so the deadline is a WAL-valve safety parameter and the "
-        f"query is degraded rather than served late",
+        f"query is degraded rather than served late"
+        + (f" (spent: {spent.account()})" if spent is not None else ""),
         symbol="OW_SNAPSHOT_EXPIRED",
         fix="[retrieval] snapshot_ms, or narrow the query",
     )
