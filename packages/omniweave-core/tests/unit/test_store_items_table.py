@@ -161,3 +161,80 @@ def test_the_table_pass_through_the_host_writes_entities_claims_and_mentions(
     assert rows(path, "SELECT count(*) FROM quarantine") == [(0,)]
     aliases = rows(path, "SELECT alias_kind, count(*) FROM entity_alias GROUP BY 1")
     assert aliases == [("canonical", 2)]
+
+
+def test_an_office_table_is_cut_as_a_table_segment(table: Any) -> None:
+    """D682. The segmenter's view places a cell's paragraphs in their cell as the derive view does,
+    so the spine packs the table by rows into a `table` atom rather than reading it as prose."""
+    path, _ = table
+    segments = rows(
+        path,
+        "SELECT s.atom, group_concat(b.text, '|') FROM segment s "
+        "JOIN segment_block sb ON sb.segment_id = s.segment_id "
+        "JOIN block b ON b.block_id = sb.block_id WHERE s.state = 0 "
+        "GROUP BY s.segment_id ORDER BY s.ord",
+    )
+    assert segments == [
+        (None, "Signatories"),
+        (
+            "table",
+            "Party|Signed|Fee (EUR)|Acme Holdings Ltd.|2026-06-30|1,250|Beta Bank plc|"
+            "30 June 2026|waived",
+        ),
+    ]
+
+
+def nested_table() -> list[dict[str, Any]]:
+    """An outer table whose first cell holds a whole two-by-two table: the climb stops at the INNER
+    cell. Every grid is complete -- a sparse one fails the parse's own checks and the generation is
+    never promoted, which is what D681's first try at this fixture ran into."""
+    frames: list[dict[str, Any]] = [
+        {"t": "doc", "format": "docx", "media_type": "application/x-test", "page_count": 1},
+        {"t": "page", "page": 0, "page_kind": "stream", "method": "native_xml"},
+        block("h0", "Nested", "heading", payload={"level": 1}),
+        block("T", None, "table", payload={"header_rows": 0}),
+        block("o00", None, "table_cell", parent="T", cell={"r": 0, "c": 0}),
+        block("t", None, "table", parent="o00", payload={"header_rows": 1}),
+    ]
+    for r in range(2):
+        for c in range(2):
+            frames.append(block(f"i{r}{c}", None, "table_cell", parent="t", cell={"r": r, "c": c}))
+            frames.append(block(f"p{r}{c}", f"inner {r}{c}", "paragraph", parent=f"i{r}{c}"))
+    frames += [
+        block("o01", None, "table_cell", parent="T", cell={"r": 0, "c": 1}),
+        block("outer", "outer text", "paragraph", parent="o01"),
+        {"t": "end", "status": "ok", "page_stats": {"0": {"blocks": 15}}},
+    ]
+    return frames
+
+
+def test_a_nested_table_is_placed_in_its_inner_cells_and_cut_on_its_own(tmp_path: Path) -> None:
+    """The derive view places each inner paragraph in its inner cell, once; the inner table is its
+    own `table` Segment; and the outer table's cell met after it is prose (spine reading 7)."""
+    path, _ = store(tmp_path, nested_table())
+    placed = {
+        text: (frame["table"]["r"], frame["table"]["c"], frame["table"]["header_rows"])
+        for text, frame in _members(path).items()
+        if "table" in frame
+    }
+    assert placed == {
+        "inner 00": (0, 0, 1),
+        "inner 01": (0, 1, 1),
+        "inner 10": (1, 0, 1),
+        "inner 11": (1, 1, 1),
+        "outer text": (0, 1, 0),
+    }
+    frames = [f for v in views(path) for f in map(json.loads, v.body.splitlines())]
+    assert sum(1 for f in frames if f.get("text") == "inner 00") == 1
+    segments = rows(
+        path,
+        "SELECT s.atom, group_concat(b.text, '|') FROM segment s "
+        "JOIN segment_block sb ON sb.segment_id = s.segment_id "
+        "JOIN block b ON b.block_id = sb.block_id WHERE s.state = 0 "
+        "GROUP BY s.segment_id ORDER BY s.ord",
+    )
+    assert segments == [
+        (None, "Nested"),
+        ("table", "inner 00|inner 01|inner 10|inner 11"),
+        (None, "outer text"),
+    ]
