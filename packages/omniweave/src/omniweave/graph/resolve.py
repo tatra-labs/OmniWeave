@@ -10,8 +10,11 @@ this cell builds the two that every other stage stands on:
   order, the survivor rule, `polarity = -1` as a blocking pair, `stage='user'` applied last, and
   `entity.canonical_id` and `entity.resolution_trust` recomputed from the log.
 
-Stages [3]-[8] -- entropy, MinHash blocking, Jaro-Winkler, the community boost, the nine guards,
-the LLM band -- and [10], the cohesion re-check, add pairs to the same log and change nothing here.
+**D685 adds stages [3]-[5], [7] and [10]**: the entropy gate, MinHash blocking over bands
+persisted in `entity_band`, Jaro-Winkler verification at 92.0, the guards, and the cohesion
+re-check (`omniweave.graph.fuzzy` holds the arithmetic and its rulings). Stage [6], the community
+boost, waits for `op.cluster`; stage [8], the LLM band, is billed and not built -- a pair scoring
+in `[75, 92)` is counted and left, never merged.
 
 **Pure over its inputs** (06:1696). `funnel()` and `closure()` take plain records and return plain
 records; `resolve()` is the one function that reads and writes the store, in the caller's
@@ -44,6 +47,19 @@ updates two derived columns on `entity`. It never inserts or deletes an entity.
 7. **`loser_id` and `winner_id` order the pair, not the cluster.** `winner_id` is the endpoint
    first in identity order. The survivor is the closure's, and a row never names it, because the
    survivor of a cluster can change when a later pair joins it while the row stays as it was.
+9. **Fuzzy evidence is the entity's live mentions** (D685). Two entities are cross-document --
+   so a long label is scored with plain Jaro -- when no document holds a live mention of both;
+   an entity with no live mention is cross-document to everything. They co-occur, and need 97,
+   when one Segment holds a live mention of each.
+10. **`scoped_label_crossdoc` blocks two document-scoped entities of different documents** at
+    the fuzzy stage too; the exact stage never meets the pair, because it groups by scope.
+11. **The cohesion re-check drops fuzzy pairs only** (D685). 06:1784 drops every pair scoring
+    below 82 against the survivor, but an `exact` or `user` pair joins two entities whose keys
+    may share nothing (`ibm` / `international_business_machines`, by an alias); scoring those
+    against a key would split what the exact stage and a human decided. So a member whose key
+    scores below 82 against the survivor's loses its `lsh_jw` pairs, union-find runs again, and
+    the check repeats until nothing drops -- which is what makes it idempotent. A dropped pair is
+    one `quarantine` row (`OW_GRAPH_COHESION_SPLIT`, `row_kind='merge'`), written once.
 8. **A run row only when there is a new merge to point it at.** `entity_merge.run_id` needs
    one; nothing else does. An unchanged corpus therefore writes nothing at all -- the
    property `test_free_passes_at_ingest` asserts of every Pass -- and a retirement or a
@@ -60,6 +76,8 @@ from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_core.errors import ResourceLimit
 from omniweave_core.model.enums import Method, Taint, Trust, enum_val_rows
+
+from omniweave.graph import fuzzy
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
@@ -79,7 +97,8 @@ __all__ = [
 ]
 
 OP_RESOLVE: Final = "op.resolve"
-RESOLVE_VERSION: Final = 1
+RESOLVE_VERSION: Final = 2
+"""2 since D685: the fuzzy stages."""
 RESOLVE_PHASE: Final = 50
 """06:832's row 9: rank 0, phase 50 -- after `op.lexicon`'s 40."""
 MAX_CANDIDATE_PAIRS: Final = 5_000_000
@@ -87,6 +106,9 @@ MAX_CANDIDATE_PAIRS: Final = 5_000_000
 resolution depend on which pairs came first, which is what GR6 exists to rule out."""
 SCORE_WHEN_NULL: Final = 100.0
 """06:1735's `COALESCE(score, 100.0)`: an exact merge has no score and is the most certain."""
+SIGNATURE_KEY: Final = "graph.resolve_signature"
+"""`meta`'s key (0001:63, 06:1811): what the persisted bands were built under."""
+COHESION_CODE: Final = "OW_GRAPH_COHESION_SPLIT"
 
 _METHOD_ORD: Final = {
     name: ordinal for domain, ordinal, name in enum_val_rows() if domain == "method"
@@ -188,6 +210,142 @@ def funnel(nodes: Sequence[Node], gate: TypeGate) -> list[Pair]:
     return list(pairs.values())
 
 
+@dataclass(frozen=True, slots=True)
+class Evidence:
+    """Where an entity is mentioned (ruling 9): its live mentions' documents and Segments."""
+
+    docs: frozenset[int] = frozenset()
+    segments: frozenset[int] = frozenset()
+
+
+@dataclass(frozen=True, slots=True)
+class Fuzzy:
+    """Stages [3]-[5] and [7] over the band candidates."""
+
+    pairs: tuple[Pair, ...]
+    candidates: int
+    ambiguous: int
+    """Pairs in `[75, threshold)`: the LLM band's, not built, so left (D685)."""
+    guarded: Mapping[str, int]
+    """Guard name -> candidate pairs it blocked."""
+
+
+def eligible(node: Node, gate: TypeGate) -> bool:
+    """Stage [3] and the type's policy: a `fuzzy` etype and a key of `ENTROPY_MIN` or more."""
+    return (
+        gate.resolution.get(node.etype) == "fuzzy" and fuzzy.entropy(node.key) >= fuzzy.ENTROPY_MIN
+    )
+
+
+def fuzzy_stage(
+    nodes: Mapping[int, Node],
+    gate: TypeGate,
+    candidates: Iterable[tuple[int, int]],
+    evidence: Mapping[int, Evidence],
+    *,
+    exact: Iterable[Pair] = (),
+) -> Fuzzy:
+    """Verify each band candidate: type gate, scope, guards, then the score (rulings 9-10)."""
+    joined = {frozenset((p.a, p.b)) for p in exact}
+    pairs: list[Pair] = []
+    guarded: dict[str, int] = defaultdict(int)
+    ambiguous = 0
+    seen = 0
+    none = Evidence()
+    for left_id, right_id in sorted(set(candidates)):
+        if left_id not in nodes or right_id not in nodes or left_id == right_id:
+            continue
+        seen += 1
+        first, second = sorted((nodes[left_id], nodes[right_id]), key=lambda n: n.identity)
+        if frozenset((first.entity_id, second.entity_id)) in joined:
+            continue
+        if not (eligible(first, gate) and eligible(second, gate)):
+            continue
+        if not gate.admits(first.etype, second.etype):
+            continue
+        if first.scope and second.scope and first.scope != second.scope:
+            guarded["scoped_label_crossdoc"] += 1
+            continue
+        left, right = fuzzy.label(first.key), fuzzy.label(second.key)
+        guard = fuzzy.blocked_by(left, right)
+        if guard is not None:
+            guarded[guard] += 1
+            continue
+        here, there = evidence.get(first.entity_id, none), evidence.get(second.entity_id, none)
+        score = round(fuzzy.verify(left, right, cross_document=not (here.docs & there.docs)), 4)
+        together = bool(here.segments & there.segments)
+        threshold = fuzzy.COOCCURRENCE_THRESHOLD if together else fuzzy.MERGE_THRESHOLD
+        if score < threshold:
+            if score >= fuzzy.AMBIGUOUS_LOW:
+                ambiguous += 1
+            if together and score >= fuzzy.MERGE_THRESHOLD:
+                guarded["cooccurrence_in_segment"] += 1
+            continue
+        pairs.append(
+            Pair(
+                a=first.entity_id,
+                b=second.entity_id,
+                stage="lsh_jw",
+                trust=Trust.INFERRED,
+                method=Method.HEURISTIC,
+                score=score,
+                score_kind="jaro_winkler",
+                guards=(
+                    *(name for name, _ in fuzzy.GUARDS),
+                    "scoped_label_crossdoc",
+                    "cooccurrence_in_segment",
+                ),
+            )
+        )
+    return Fuzzy(pairs=tuple(pairs), candidates=seen, ambiguous=ambiguous, guarded=dict(guarded))
+
+
+def cohesive(
+    nodes: Sequence[Node],
+    pairs: Sequence[Pair],
+    *,
+    user_merges: Iterable[Pair] = (),
+    user_splits: Iterable[tuple[int, int]] = (),
+) -> tuple[Closure, tuple[tuple[Pair, int, float], ...]]:
+    """Stages [9] and [10] (ruling 11): the closure, re-run until no fuzzy pair drops.
+
+    Returns the final closure and every dropped pair with the member it was dropped for and that
+    member's score against its survivor.
+    """
+    by_id = {node.entity_id: node for node in nodes}
+    users = tuple(user_merges)
+    splits = tuple(user_splits)
+    live = list(pairs)
+    dropped: list[tuple[Pair, int, float]] = []
+    floor = fuzzy.MERGE_THRESHOLD - fuzzy.COHESION_SPLIT_DELTA
+    for _ in range(len(live) + 1):
+        found = closure(nodes, live, user_merges=users, user_splits=splits)
+        loose: dict[int, float] = {}
+        for member, survivor in sorted(found.canonical.items()):
+            if member == survivor or not any(
+                p.stage == "lsh_jw" and member in (p.a, p.b) for p in found.kept
+            ):
+                continue
+            score = fuzzy.verify(
+                fuzzy.label(by_id[member].key),
+                fuzzy.label(by_id[survivor].key),
+                cross_document=False,
+            )
+            if score < floor:
+                loose[member] = round(score, 4)
+        if not loose:
+            return found, tuple(dropped)
+        keep: list[Pair] = []
+        for pair in live:
+            member = pair.a if pair.a in loose else pair.b if pair.b in loose else None
+            if pair.stage == "lsh_jw" and member is not None:
+                dropped.append((pair, member, loose[member]))
+            else:
+                keep.append(pair)
+        live = keep
+    return closure(nodes, live, user_merges=users, user_splits=splits), tuple(dropped)
+
+
 def total_order(pairs: Iterable[Pair], nodes: Mapping[int, Node]) -> list[Pair]:
     """06:1733: `(-COALESCE(score, 100.0), min(identity), max(identity))`."""
 
@@ -272,6 +430,31 @@ SELECT a.entity_id, a.name_norm FROM entity_alias AS a JOIN entity AS e ON e.ent
  WHERE e.state = 0 AND NOT (a.taint & :untrusted AND a.doc_count = 1)
 """
 _VOCAB_SQL: Final = "SELECT etype, resolution, compatible FROM etype_vocab"
+_EVIDENCE_SQL: Final = """
+SELECT m.entity_id, m.segment_id, b.doc_ord FROM mention AS m
+  JOIN block AS b ON b.block_id = m.block_id AND b.state = 0
+ WHERE m.state = 0
+"""
+_META_SQL: Final = "SELECT v FROM meta WHERE k = :k"
+_META_SET_SQL: Final = (
+    "INSERT INTO meta(k, v) VALUES(:k, :v) ON CONFLICT(k) DO UPDATE SET v = excluded.v"
+)
+_BANDED_SQL: Final = "SELECT DISTINCT entity_id FROM entity_band"
+_UNBAND_SQL: Final = "DELETE FROM entity_band WHERE entity_id = :entity_id"
+_UNBAND_ALL_SQL: Final = "DELETE FROM entity_band"
+_BAND_SQL: Final = (
+    "INSERT OR IGNORE INTO entity_band(band, bucket, etype, entity_id)"
+    " VALUES(:band, :bucket, :etype, :entity_id)"
+)
+_CANDIDATES_SQL: Final = """
+SELECT DISTINCT a.entity_id, b.entity_id FROM entity_band AS a
+  JOIN entity_band AS b ON b.band = a.band AND b.bucket = a.bucket AND b.entity_id > a.entity_id
+"""
+_QUARANTINED_SQL: Final = "SELECT payload FROM quarantine WHERE code = :code"
+_QUARANTINE_SQL: Final = """
+INSERT INTO quarantine(code, run_id, row_kind, payload, block_id, detail, at_gen)
+VALUES(:code, :run_id, 'merge', :payload, NULL, :detail, :gen)
+"""
 _USER_SQL: Final = """
 SELECT loser_id, winner_id, polarity, trust FROM entity_merge
  WHERE stage = 'user' AND retired_at_gen IS NULL
@@ -325,7 +508,19 @@ UPDATE derive_run SET status = :status, n_items = :n_items, input_digest = :inpu
  WHERE run_id = :run_id
 """
 _SIGNATURE: Final = json.dumps(
-    {"pass": OP_RESOLVE, "version": RESOLVE_VERSION, "stages": ["exact"]}, sort_keys=True
+    {
+        "pass": OP_RESOLVE,
+        "version": RESOLVE_VERSION,
+        "stages": ["exact", "lsh_jw"],
+        "entropy_min": fuzzy.ENTROPY_MIN,
+        "num_perm": fuzzy.NUM_PERM,
+        "bands": fuzzy.BANDS,
+        "lsh_threshold": fuzzy.LSH_THRESHOLD,
+        "shingle_k": fuzzy.SHINGLE_K,
+        "merge_threshold": fuzzy.MERGE_THRESHOLD,
+        "minhash": "blake2b-8, (a*x+b) mod 2**61-1",
+    },
+    sort_keys=True,
 ).encode()
 """What this pass's decisions are a function of besides the rows: its stages. A new stage is a new
 signature, so the `producer` row a run points at says which funnel decided."""
@@ -346,13 +541,27 @@ class ResolveReport:
     blocked: int
     changed: int
     """Entities whose `canonical_id` or `resolution_trust` this run rewrote."""
+    fuzzy: int = 0
+    """Live `lsh_jw` merges (D685)."""
+    candidates: int = 0
+    ambiguous: int = 0
+    guarded: Mapping[str, int] = field(default_factory=dict)
+    split: int = 0
+    """Fuzzy pairs the cohesion re-check dropped this run."""
+    rebanded: bool = False
+    """The bands were rebuilt: the stored signature was another's, or there was none."""
 
     def line(self) -> str:
+        guards = ", ".join(f"{k} {v}" for k, v in sorted(self.guarded.items()))
         return (
             f"  resolve   {self.entities} entities, {self.clusters} cluster(s) holding "
-            f"{self.merged} merged; {self.kept} live merge(s): {self.added} new, "
-            f"{self.retired} retired"
+            f"{self.merged} merged; {self.kept} live merge(s) ({self.fuzzy} fuzzy): {self.added} "
+            f"new, {self.retired} retired"
             + (f", {self.blocked} blocked by a user split" if self.blocked else "")
+            + (f"; {self.candidates} fuzzy candidate(s)" if self.candidates else "")
+            + (f", {self.ambiguous} left in the unbuilt LLM band" if self.ambiguous else "")
+            + (f", guarded: {guards}" if guards else "")
+            + (f", {self.split} split for cohesion" if self.split else "")
         )
 
     @property
@@ -371,8 +580,21 @@ def resolve(connection: Any, *, gen: int) -> ResolveReport:
         if int(r[2]) == 1
     ]
     splits = [(int(r[0]), int(r[1])) for r in users if int(r[2]) == -1]
-    found = closure(nodes, funnel(nodes, gate), user_merges=user_merges, user_splits=splits)
     by_id = {node.entity_id: node for node in nodes}
+    exact = funnel(nodes, gate)
+    rebanded = _bands(connection, nodes, gate)
+    candidates = [(int(a), int(b)) for a, b in connection.execute(_CANDIDATES_SQL).fetchall()]
+    if len(candidates) > MAX_CANDIDATE_PAIRS:
+        raise ResourceLimit(
+            f"op.resolve's bands produced {len(candidates)} candidate pairs",
+            limit="MAX_CANDIDATE_PAIRS",
+            fix="set etype_vocab.resolution = 'exact_only' for the etype with the most entities, "
+            "then ow ingest again",
+        )
+    fuzzed = fuzzy_stage(by_id, gate, candidates, _evidence(connection), exact=exact)
+    found, dropped = cohesive(
+        nodes, [*exact, *fuzzed.pairs], user_merges=user_merges, user_splits=splits
+    )
     wanted = {(p.b, p.a, p.stage): p for p in found.kept}
     live = {
         (int(r[1]), int(r[2]), str(r[3])): int(r[0])
@@ -406,6 +628,27 @@ def resolve(connection: Any, *, gen: int) -> ResolveReport:
             },
         )
         added += 1
+    split = 0
+    if dropped:
+        known = {str(r[0]) for r in connection.execute(_QUARANTINED_SQL, {"code": COHESION_CODE})}
+        for pair, member, score in dropped:
+            payload = json.dumps(
+                {"a": by_id[pair.a].key, "b": by_id[pair.b].key, "etype": by_id[pair.a].etype,
+                 "score": pair.score},
+                sort_keys=True,
+            )  # fmt: skip
+            split += 1
+            if payload in known:
+                continue
+            if run_id is None:
+                run_id = _run(connection, gen, found.kept)
+            detail = {"member": by_id[member].key, "survivor_score": score}
+            connection.execute(
+                _QUARANTINE_SQL,
+                {"code": COHESION_CODE, "run_id": run_id, "payload": payload,
+                 "detail": json.dumps(detail, sort_keys=True), "gen": gen},
+            )  # fmt: skip
+            known.add(payload)
     trust = _resolution_trust(found, user_merges)
     changed = 0
     for entity_id in sorted(by_id):
@@ -429,7 +672,54 @@ def resolve(connection: Any, *, gen: int) -> ResolveReport:
         kept=len(found.kept),
         blocked=len(found.blocked),
         changed=changed,
+        fuzzy=sum(1 for p in found.kept if p.stage == "lsh_jw"),
+        candidates=fuzzed.candidates,
+        ambiguous=fuzzed.ambiguous,
+        guarded=fuzzed.guarded,
+        split=split,
+        rebanded=rebanded,
     )
+
+
+def _evidence(connection: Any) -> dict[int, Evidence]:
+    docs: dict[int, set[int]] = defaultdict(set)
+    segments: dict[int, set[int]] = defaultdict(set)
+    for entity_id, segment_id, doc_ord in connection.execute(_EVIDENCE_SQL).fetchall():
+        docs[int(entity_id)].add(int(doc_ord))
+        if segment_id is not None:
+            segments[int(entity_id)].add(int(segment_id))
+    return {
+        e: Evidence(docs=frozenset(docs[e]), segments=frozenset(segments.get(e, ()))) for e in docs
+    }
+
+
+def _bands(connection: Any, nodes: Sequence[Node], gate: TypeGate) -> bool:
+    """Keep `entity_band` the bands of exactly the eligible live entities. Returns whether it was
+    rebuilt whole: 06:1811 -- a signature mismatch REBUILDS rather than warns.
+
+    Incremental otherwise, and that is the point of persisting them: an entity's key never changes
+    (it is the `UNIQUE (scope, etype, key)` identity), so its bands never do, and a run that added
+    no entity computes no signature and writes no row.
+    """
+    current = hashlib.sha256(_SIGNATURE).hexdigest()
+    stored = connection.execute(_META_SQL, {"k": SIGNATURE_KEY}).fetchone()
+    rebuilt = stored is None or str(stored[0]) != current
+    if rebuilt:
+        connection.execute(_UNBAND_ALL_SQL)
+        connection.execute(_META_SET_SQL, {"k": SIGNATURE_KEY, "v": current})
+    banded = {int(r[0]) for r in connection.execute(_BANDED_SQL).fetchall()}
+    wanted = {node.entity_id: node for node in nodes if eligible(node, gate)}
+    for entity_id in sorted(banded - set(wanted)):
+        connection.execute(_UNBAND_SQL, {"entity_id": entity_id})
+    for entity_id in sorted(set(wanted) - banded):
+        node = wanted[entity_id]
+        sig = fuzzy.signature(fuzzy.shingles(fuzzy.label(node.key)))
+        for band, bucket in enumerate(fuzzy.bands(sig)):
+            connection.execute(
+                _BAND_SQL,
+                {"band": band, "bucket": bucket, "etype": node.etype, "entity_id": entity_id},
+            )
+    return rebuilt
 
 
 def _nodes(connection: Any) -> list[Node]:
