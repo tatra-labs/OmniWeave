@@ -23,6 +23,7 @@ dependencies = [
 "derive.anchor.native" = "omniweave_graph.native"
 "derive.anchor.defterm" = "omniweave_graph.defterm"
 "derive.entity.table" = "omniweave_graph.table"
+"derive.entity.gazetteer" = "omniweave_graph.gazetteer"
 "derive.xref.native" = "omniweave_graph.links"
 "derive.xref.pattern" = "omniweave_graph.xref"
 

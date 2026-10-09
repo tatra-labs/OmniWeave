@@ -145,6 +145,7 @@ __all__ = [
     "attribution_guard",
     "converge",
     "replace_prior_runs",
+    "replace_run_at",
     "requeue",
     "requeue_params",
     "retire_document_entities",
@@ -487,6 +488,8 @@ UPDATE work
        claimed_gen = NULL,
        lease_expires = NULL,
        retry_after = NULL,
+       attempts_total = 0,
+       attempts_today = 0,
        stale_since = COALESCE(stale_since, :now_ms)
  WHERE id = :id
    AND status IN ('done', 'failed_permanent', 'deferred')
@@ -504,7 +507,10 @@ answer at all. `run/discover.py`'s `MARK_STALE_SQL` carries the identical `COALE
 The lease columns are cleared **together**: *"THE CLAIM IS THE LEASE"* (I23, charter.md:4105), so a
 pending row holding a `claimed_by` is a row the reaper would count as leased and a second claimer
 would refuse. `retry_after` goes too, because a re-derivation ordered by an invalidation is not a
-retry of the failure that set it.
+retry of the failure that set it -- and for the same reason so do the attempt counters (D683). The
+claim adds one to `attempts_total` and refuses a row at `MAX_WORK_ATTEMPTS`, so without the reset a
+row re-opened by its fifth invalidation -- the gazetteer's, once per lexicon move -- could never be
+claimed again, and would sit `pending` reading a lexicon five moves old.
 
 The `status IN` guard is what makes this idempotent across two converge passes: a row already
 `pending` or `claimed` is being worked, and re-opening it would clear a live lease. `rowcount` is
@@ -876,6 +882,46 @@ def replace_prior_runs(connection: _Rows, run_id: int) -> Replaced:
         for kind in ("claim", "edge", "mention"):
             connection.execute(_HISTORY_REPLACED_SQL[kind], params)
             counts[kind] += int(connection.execute(_DELETE_REPLACED_SQL[kind], params).rowcount)
+    for entity_id in sorted(touched):
+        restamp_mention_digest(connection, entity_id)  # type: ignore[arg-type]
+    return Replaced(len(prior), counts["claim"], counts["edge"], counts["mention"])
+
+
+_RUN_AT_SQL: Final[str] = """
+SELECT run_id FROM derive_run
+ WHERE pass_id = :pass_id AND segment_id = :segment_id AND at_gen = :gen
+   AND origin_operator = :pass_id
+"""
+"""The one run `derive_run_identity` allows this Pass on this Segment at this generation."""
+
+_DELETE_RUN_SQL: Final[str] = "DELETE FROM derive_run WHERE run_id = :prior"
+"""Its cover and quarantine rows go with it (`ON DELETE CASCADE`); its items are historied first."""
+
+
+def replace_run_at(connection: _Rows, pass_id: str, segment_id: int, gen: int) -> Replaced:
+    """Retire a Pass's run on a Segment at a generation, before the Pass runs there again. **D683.**
+
+    `replace_prior_runs` serves a Pass that runs again because its Segment moved to a new
+    generation; `derive_run_identity` then admits the new run beside the old. A lexicon reader runs
+    again at the SAME generation -- its Segment is unchanged and the lexicon it read is not -- and
+    the identity refuses the second run, so the first must leave first. 06 section 10.2's row *"the
+    lexicon rebuilt"* names exactly this: *"`derive.entity.gazetteer`'s rows on the Segments its
+    `dep` reverse index names"* are the rows deleted. Owner-scoped on `origin_operator` (ST11), in
+    the caller's transaction, items historied as `pass_replaced` before the run row goes.
+    """
+    params = {"pass_id": pass_id, "segment_id": segment_id, "gen": gen}
+    prior = [int(str(row[0])) for row in connection.execute(_RUN_AT_SQL, params).fetchall()]
+    counts = {"claim": 0, "edge": 0, "mention": 0}
+    touched: set[int] = set()
+    for one in prior:
+        found = {"prior": one, "gen": gen}
+        touched.update(
+            int(str(row[0])) for row in connection.execute(_REPLACED_ENTITIES_SQL, found).fetchall()
+        )
+        for kind in ("claim", "edge", "mention"):
+            connection.execute(_HISTORY_REPLACED_SQL[kind], found)
+            counts[kind] += int(connection.execute(_DELETE_REPLACED_SQL[kind], found).rowcount)
+        connection.execute(_DELETE_RUN_SQL, found)
     for entity_id in sorted(touched):
         restamp_mention_digest(connection, entity_id)  # type: ignore[arg-type]
     return Replaced(len(prior), counts["claim"], counts["edge"], counts["mention"])
