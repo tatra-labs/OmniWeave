@@ -170,6 +170,10 @@ _READ_CELLS: Final = (
 )
 
 
+_CELL_DEPTH: Final = 16
+"""How far above a text block the view looks for its cell: `store.items`' bound. **D682.**"""
+
+
 @dataclass(frozen=True, slots=True)
 class _Row:
     block_id: int
@@ -256,8 +260,9 @@ def build_view(connection: sqlite3.Connection, doc_ord: int, gen: int) -> Segmen
             n_rows, n_cols, header_rows = grids[row.block_id]
             frame["grid"] = {"n_rows": n_rows, "n_cols": n_cols, "header_rows": header_rows}
             tables[row.cite] = row.block_id
-        if row.block_id in cells and cells[row.block_id][0] in rows:
-            table_id, r, c = cells[row.block_id]
+        placed = None if row.block_id in grids else _cell_of(row, rows, cells)
+        if placed is not None:
+            table_id, r, c = placed
             table = rows[table_id].cite
             frame["table"] = {"table_cite": table, "r": r, "c": c}
         if row.text is not None:
@@ -283,6 +288,32 @@ def build_view(connection: sqlite3.Connection, doc_ord: int, gen: int) -> Segmen
     return SegmentView(
         doc_ord=doc_ord, gen=gen, body=body.encode("utf-8"), members=members, tables=tables
     )
+
+
+def _cell_of(
+    row: _Row, rows: Mapping[int, _Row], cells: Mapping[int, tuple[int, int, int]]
+) -> tuple[int, int, int] | None:
+    """`(table_id, r, c)` of the nearest cell at or above `row`, or `None`. **D682.**
+
+    The office parse writes a cell as a container with no text and its text as child
+    paragraphs, so the view's text blocks are never cells themselves. Before D682 only a cell
+    block got a `table`, none was shown, and the spine met a table followed by paragraphs it
+    could not place: every parsed table was packed as prose, and the table rules -- whole
+    rows, header rows repeated, the synopsis past `TABLE_SYNOPSIS_CELLS` -- never ran on a
+    parsed document. `store.items` climbs the same way for the derive view (D681).
+
+    A `table` block is never placed (the caller skips it): a table nested in a cell opens its
+    own run, and its outer table's later cells are prose, the spine's reading 7.
+    """
+    node: _Row | None = row
+    for _ in range(_CELL_DEPTH + 1):
+        if node is None:
+            return None
+        if node.block_id in cells:
+            found = cells[node.block_id]
+            return found if found[0] in rows else None
+        node = None if node.parent_id is None else rows.get(node.parent_id)
+    return None
 
 
 def _reading_order(rows: Mapping[int, _Row]) -> list[_Row]:
