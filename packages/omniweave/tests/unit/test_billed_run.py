@@ -18,6 +18,7 @@ from __future__ import annotations
 import http.server
 import json
 import threading
+import time
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
@@ -43,6 +44,7 @@ class _Model(http.server.BaseHTTPRequestHandler):
     """A model server: `/health`, `/v1/models`, and an answer naming what the blocks name."""
 
     asked: ClassVar[list[dict[str, Any]]] = []
+    delay_s: ClassVar[float] = 0.0
 
     def do_GET(self) -> None:
         if self.path == "/health":
@@ -55,6 +57,7 @@ class _Model(http.server.BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         type(self).asked.append(request)
+        time.sleep(type(self).delay_s)
         answer = {"entities": _named(request), "relations": [], "more_available": False}
         self._reply(
             200,
@@ -95,7 +98,7 @@ def _named(request: dict[str, Any]) -> list[dict[str, Any]]:
 
 @pytest.fixture
 def model() -> Iterator[str]:
-    _Model.asked = []
+    _Model.asked, _Model.delay_s = [], 0.0
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Model)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
@@ -105,7 +108,7 @@ def model() -> Iterator[str]:
         server.server_close()
 
 
-def _project(tmp_path: Path, endpoint: str) -> tuple[Path, Any]:
+def _project(tmp_path: Path, endpoint: str, extra: str = "") -> tuple[Path, Any]:
     (tmp_path / "docs").mkdir()
     (tmp_path / "docs" / "memo.md").write_text(MEMO, encoding="utf-8")
     listed = {
@@ -121,6 +124,7 @@ def _project(tmp_path: Path, endpoint: str) -> tuple[Path, Any]:
         + f"[graph.passes]\nenable = {json.dumps(listed['passes'])}\n"
         + f'[services.llm]\nmodel_id = "{MODEL}"\nmodel_revision = "{REV}"\n'
         + f'endpoint = "{endpoint}"\n'
+        + extra
     )
     (tmp_path / "omniweave.toml").write_text(toml, encoding="utf-8")
     config = load(cwd=tmp_path, env={"OMNIWEAVE_HOME": str(tmp_path / "owhome")})
@@ -292,3 +296,32 @@ def test_the_cards_watchdog_outlasts_one_service_call() -> None:
     assert spec.progress_ms >= call_ms
     assert spec.wall_ms_hard >= spec.batch_max_units * call_ms
     assert spec.batch_max_units == 4
+
+
+def test_a_batch_longer_than_its_lease_is_extended_and_lands(tmp_path: Path, model: str) -> None:
+    """D719, 08:462-470: the drain's own claims outlive `lease_ms` and are extended, never reaped.
+
+    A 600 ms lease against a model that answers in 1.5 s a call: every billed batch outlives its
+    lease, and so does any worker's start-up. A reap would return the rows to `pending` and
+    supersede their answers; an extension lets each batch land.
+    """
+    _Model.delay_s = 1.5
+    store, config = _project(
+        tmp_path, model, extra="[runtime]\nlease_ms = 600\nlease_extend_ms = 200\n"
+    )
+    report = _run(tmp_path, store, config)
+    assert report.status == "ok", report.lines()
+    assert _rows(
+        store, "SELECT DISTINCT status FROM work WHERE operator = 'derive.entity.llm'"
+    ) == [("done",)]
+    assert _rows(store, "SELECT count(*) FROM work WHERE status <> 'done'") == [(0,)]
+    keys = {
+        k
+        for (k,) in _rows(
+            store,
+            "SELECT e.key FROM mention AS m JOIN derive_run AS r ON r.run_id = m.run_id"
+            " JOIN entity AS e ON e.entity_id = m.entity_id"
+            " WHERE r.pass_id = 'derive.entity.llm'",
+        )
+    }
+    assert keys == {"acme_holdings", "beta_corp"}

@@ -111,7 +111,7 @@ from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, Literal, Protocol, cast
+from typing import TYPE_CHECKING, Final, Literal, Protocol, cast, runtime_checkable
 
 from omniweave_core.errors import ConfigError, RouteError, StoreError
 from omniweave_core.events import EventKind
@@ -607,6 +607,17 @@ answer out of its driver, which is `driver_unavailable` -- and the message carri
 type, because 15's rule 1 is that the prose says what happened."""
 
 
+@runtime_checkable
+class LeaseExtender(Protocol):
+    """A queue that can extend a live holder's expired claims (D719, 08:462-470).
+
+    Apart from `Store` and not on it: `Store`'s four methods are frozen (02:702), and the reaper
+    asks for this by name. `SqliteStore` has it. A queue that has not is reaped as before.
+    """
+
+    def extend_live_leases(self, holder: str, now_ms: int, until_ms: int) -> tuple[int, ...]: ...
+
+
 class Dispatcher(Protocol):
     """A `Batch` in, one `StepResult` per row out, in batch order. The loop's dispatch step.
 
@@ -877,6 +888,8 @@ class RunReport:
     abandoned: int = 0
     crashed: int = 0
     reaped: int = 0
+    extended: int = 0
+    """Claims of this loop's own held past their lease and extended, never stolen (D719)."""
     swept: int = 0
     polls: int = 0
     stall: StallVerdict | None = None
@@ -1040,6 +1053,7 @@ class Supervisor:
         "_ctx",
         "_dispatch",
         "_emit",
+        "_extended",
         "_gates",
         "_in_flight",
         "_inbox",
@@ -1119,6 +1133,7 @@ class Supervisor:
         self._abandoned = 0
         self._crashed = 0
         self._reaped = 0
+        self._extended = 0
         self._swept = 0
         self._polls = 0
         self._lag_breach_ms = 0
@@ -1472,14 +1487,41 @@ class Supervisor:
         """
         async for _ in self._every(self._timings.lease_extend_ms):
             now_ms = self._ctx.clock.wall_ns() // 1_000_000
-            sweep = asyncio.ensure_future(
-                asyncio.to_thread(self._queue.reap_expired_leases, now_ms)
-            )
+            sweep = asyncio.ensure_future(asyncio.to_thread(self._lease_sweep, now_ms))
             try:
-                self._reaped += await asyncio.shield(sweep)
+                kept, reaped = await asyncio.shield(sweep)
             except asyncio.CancelledError:
-                self._reaped += await sweep
+                kept, reaped = await sweep
+                self._count_sweep(kept, reaped)
                 raise
+            self._count_sweep(kept, reaped)
+
+    def _lease_sweep(self, now_ms: int) -> tuple[tuple[int, ...], int]:
+        """This loop's own expired claims extended, then every other expired claim reaped. D719.
+
+        **This loop is the one live holder.** `store.write` admits one ingest per store, so every
+        other `claimed_by` belongs to a run that is gone. The worker identity's third component
+        reads `unavailable` on Windows (`locks.process_create_time`), so liveness is not probed per
+        row: the holder that is this process is live by construction. A claim of this loop's that
+        outlived `lease_ms` is a batch still running, a local model's or a slow parse's. 08:462-470
+        forbids the steal: the reap would return its rows to `pending` and supersede its answers.
+        """
+        kept: tuple[int, ...] = ()
+        if isinstance(self._queue, LeaseExtender):
+            kept = self._queue.extend_live_leases(
+                self._worker, now_ms, now_ms + self._timings.lease_extend_ms
+            )
+        return kept, self._queue.reap_expired_leases(now_ms)
+
+    def _count_sweep(self, kept: tuple[int, ...], reaped: int) -> None:
+        """`work.lease_extend` per extended claim, named by `work_id` (08:466's WARNING)."""
+        self._reaped += reaped
+        self._extended += len(kept)
+        for work_id in kept:
+            self._emit(
+                kind=EventKind.WORK_LEASE_EXTEND,
+                fields={"work_id": work_id, "lease_ms": self._timings.lease_extend_ms},
+            )
 
     async def _deferred_sweeper(self) -> None:
         """08:139's *"an ordinary TaskGroup task"*, at `[runtime] deferred_sweep_ms`.
@@ -1650,6 +1692,7 @@ class Supervisor:
             abandoned=self._abandoned,
             crashed=self._crashed,
             reaped=self._reaped,
+            extended=self._extended,
             swept=self._swept,
             polls=self._polls,
             stall=self._stall,
