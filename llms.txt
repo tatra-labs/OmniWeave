@@ -258,6 +258,8 @@ cli.graph.merges: ow graph merges [--entity ENTITY]
 cli.graph.merges.actions: graph.merges
 cli.graph.residue: ow graph residue [--akind AKIND]
 cli.graph.residue.actions: graph.residue
+cli.graph.review: ow graph review
+cli.graph.review.actions: graph.review
 cli.graph.split: ow graph split ENTITY [--into INTO] [--reason REASON]
 cli.graph.split.actions: graph.split
 cli.graph.why: ow graph why [--cite CITE]

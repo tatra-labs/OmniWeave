@@ -55,6 +55,7 @@ key can grant one.
 | `graph.merge` | — | `ow graph merge` | — | `free` | Record that two entities are one, with a reason, and settle the graph again: the closure, the communities and the salience, as an ingest would |
 | `graph.merges` | — | `ow graph merges` | — | `free` | Show the resolution decision log: each closure's members, and every merge or split decision with its stage, score, guards and the generation it was decided in |
 | `graph.residue` | — | `ow graph residue` | — | `free` | Show what the graph could not place: unresolved references grouped by kind and name, and quarantined rows grouped by code and kind |
+| `graph.review` | — | `ow graph review` | — | `free` | Show what the graph holds below extracted, weakest first: fuzzy-merged closures, tainted and overloaded entities, and the mentions and edges to check |
 | `graph.split` | — | `ow graph split` | — | `free` | Record that one entity is two or more, named by the blocks each is witnessed in, with a reason, and settle the graph again as an ingest would |
 | `graph.why` | — | `ow graph why` | — | `free` | List every entity, edge and claim the graph says one block asserts, each with its span in the block's text |
 | `hooks.check` | `ow_hooks_check` | `ow hooks check` | — | `free` | Run each installed hook command as its host would, with a probe payload in a scratch project, and say which failed and why |

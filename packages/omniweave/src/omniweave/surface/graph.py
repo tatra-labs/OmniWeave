@@ -56,6 +56,7 @@ if TYPE_CHECKING:
     from omniweave_core.model.merges import Decided, MergeLog
     from omniweave_core.model.observed import Observed
     from omniweave_core.model.residue import GraphResidue
+    from omniweave_core.model.review import Review
 
 __all__ = [
     "GRAPH_WORD",
@@ -65,6 +66,7 @@ __all__ = [
     "merges_document",
     "observed_document",
     "residue_document",
+    "review_document",
 ]
 
 GRAPH_WORD: Final[str] = "graph"
@@ -82,6 +84,7 @@ _SPLIT: Final[str] = "graph.split"
 _SPLIT_FIX: Final[str] = 'ow graph split e412 --into d7#412,d19#88 --reason "why they are two"'
 _RESIDUE: Final[str] = "graph.residue"
 _RESIDUE_FIX: Final[str] = "ow graph residue --akind identifier"
+_REVIEW: Final[str] = "graph.review"
 
 
 def main(
@@ -553,7 +556,127 @@ def _residue_text(document: Mapping[str, Any]) -> list[str]:
     return lines
 
 
-_VERBS: Final = {_WHY: _why, _MERGES: _merges, _MERGE: _merge, _SPLIT: _split, _RESIDUE: _residue}
+def _review(
+    parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, stdout: TextIO
+) -> int:
+    """`ow graph review`: the four review lists, weakest first, from one read snapshot."""
+    _refuse_unserved(parsed, verb="ow graph review", fix="ow graph review")
+    explicit = Path(parsed.config) if parsed.config else None
+    config = load(cwd=cwd, env=env, explicit=explicit)
+    name = corpus_for(config, [], parsed.corpus, verb="ow graph review")
+    store = store_of(config, name, cwd=cwd)
+    document = review_document(_reviewed(store), corpus=name, qualify=len(corpora(config)) > 1)
+    if parsed.render == "json":
+        stdout.write(json.dumps(document, ensure_ascii=False) + "\n")
+    else:
+        stdout.write("\n".join(_review_text(document)) + "\n")
+    return 0
+
+
+def _reviewed(store: Path) -> Review:
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415 -- a usage error never pays
+    from omniweave_core.store import reader as store_reader  # noqa: PLC0415
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+    from omniweave_core.store.review import review  # noqa: PLC0415
+
+    connection = store_sqlite.connect_readonly(store)
+    try:
+        reader = store_reader.SqliteReader(connection, now_ns=SystemClock().wall_ns())
+        with reader.snapshot():
+            return review(connection)
+    finally:
+        connection.close()
+
+
+def review_document(found: Review, *, corpus: str, qualify: bool) -> dict[str, Any]:
+    """The JSON render: `Review` as it is, every cite qualified when two corpora exist."""
+    from dataclasses import asdict  # noqa: PLC0415
+
+    def cite(text: str) -> str:
+        return f"{corpus}:{text}" if qualify else text
+
+    document = {"schema": _SCHEMA, **asdict(found)}
+    for row in document["closures"]:
+        row["head"] = cite(row["head"])
+    for row in document["entities"]:
+        row["entity"] = cite(row["entity"])
+    for row in document["mentions"]:
+        row["entity"], row["cite"] = cite(row["entity"]), cite(row["cite"])
+    for row in document["edges"]:
+        row["src"], row["dst"], row["cite"] = cite(row["src"]), cite(row["dst"]), cite(row["cite"])
+    return document
+
+
+def _review_text(document: Mapping[str, Any]) -> list[str]:
+    from omniweave_core.model.enums import Trust  # noqa: PLC0415
+
+    def named(trust: int) -> str:
+        return Trust(trust).name.lower()
+
+    def tainted(taint: int) -> str:
+        return f", taint {taint}" if taint else ""
+
+    lines = [
+        f"review: {document['closures_total']} closure(s) resolved below extracted, "
+        f"{document['entities_total']} entities tainted or overloaded, "
+        f"{document['mentions_total']} mention(s), {document['edges_total']} edge(s)"
+    ]
+    sections: list[tuple[str, str, list[str]]] = [
+        (
+            "closures",
+            "closures_total",
+            [
+                f"    {c['head']}  {c['title']} ({c['etype']})  {c['members']} members  "
+                f"{named(c['resolution_trust'])}"
+                for c in document["closures"]
+            ],
+        ),
+        (
+            "entities",
+            "entities_total",
+            [
+                f"    {e['entity']}  {e['title']} ({e['etype']})  "
+                + ("overloaded" if e["overloaded"] else f"trust {named(e['trust'])}")
+                + tainted(e["taint"])
+                for e in document["entities"]
+            ],
+        ),
+        (
+            "mentions",
+            "mentions_total",
+            [
+                f"    m{m['mention']}  {m['entity']}  {m['cite']}  {m['surface']!r}  "
+                f"{named(m['trust'])}{tainted(m['taint'])}"
+                for m in document["mentions"]
+            ],
+        ),
+        (
+            "edges",
+            "edges_total",
+            [
+                f"    g{g['edge']}  {g['src']} {g['relation']} {g['dst']}  {g['cite']}  "
+                f"{named(g['trust'])}{tainted(g['taint'])}"
+                for g in document["edges"]
+            ],
+        ),
+    ]
+    for title, total, rows in sections:
+        if not rows:
+            continue
+        lines.extend([f"  {title}", *rows])
+        if document[total] > len(rows):
+            lines.append(f"    the first {len(rows)} of {document[total]}")
+    return lines
+
+
+_VERBS: Final = {
+    _WHY: _why,
+    _MERGES: _merges,
+    _MERGE: _merge,
+    _SPLIT: _split,
+    _RESIDUE: _residue,
+    _REVIEW: _review,
+}
 """Each Action's handler; `graph.locate` is the default, as the first verb built."""
 
 

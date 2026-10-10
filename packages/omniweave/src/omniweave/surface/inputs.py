@@ -97,6 +97,7 @@ __all__ = [
     "OpenIn",
     "QueryIn",
     "ResidueIn",
+    "ReviewIn",
     "ServeIn",
     "SkillsCheckIn",
     "SkillsHashIn",
@@ -369,6 +370,16 @@ class ResidueIn:
     """
 
     akind: str | None = None
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewIn:
+    """`ow graph review`. 06:2520.
+
+    06 prints `[--over-merge]`; this cell builds the review surface without it (`store.review`).
+    """
+
     corpus: str | None = None
 
 

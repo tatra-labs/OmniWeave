@@ -107,7 +107,7 @@ GLOBAL_FLAGS: Final[tuple[Argument, ...]] = (
 
 GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
-    "graph": "locate · merge · merges · residue · split · why",
+    "graph": "locate · merge · merges · residue · review · split · why",
     "hooks": "check",
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
@@ -329,6 +329,15 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 metavar="AKIND",
             ),
         ),
+    ),
+    Command(
+        words=("graph", "review"),
+        actions=("graph.review",),
+        help=(
+            "Show what the graph holds below extracted, weakest first: fuzzy-merged closures, "
+            "tainted and overloaded entities, and the mentions and edges to check"
+        ),
+        arguments=(),
     ),
     Command(
         words=("graph", "split"),
