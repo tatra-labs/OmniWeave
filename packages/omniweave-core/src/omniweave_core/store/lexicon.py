@@ -14,11 +14,16 @@ query that finds the rows a moved lexicon invalidates. `omniweave.run.operators.
 
 ## Rulings (the ledger's D683)
 
-1. **Only corpus-scoped, live entities.** The gazetteer binds a hit by proposing the entity again
-   (06:628), and a `document`-scoped proposal is scoped to the document it is made in: a hit on
-   another document's defined term would mint a new entity there, where 06:1216 allows none. So the
-   lexicon is `entity.scope = 0 AND entity.state = 0`; an overloaded entity (`state = 1`) is not a
-   target either.
+1. **Only corpus-scoped entities that are not retired.** The gazetteer binds a hit by proposing
+   the entity again (06:628), and a `document`-scoped proposal is scoped to the document it is made
+   in: a hit on another document's defined term would mint a new entity there, where 06:1216
+   allows none. So the lexicon is `entity.scope = 0 AND entity.state IN (0, 1)`. **An overloaded
+   entity (`state = 1`) stays a target** (D693, amending this ruling's first form, which kept it
+   out). Overload is judged on an entity's own mentions, the gazetteer's included (06:1205 names
+   the gazetteer as the largest producer of overloaded entities), so a lexicon that dropped it
+   would retire the very mentions that overloaded it, and the entity would flip once a run: the
+   loop ruling 2 exists to prevent. An overloaded entity keeps every mention (06:164); it leaves
+   ranking, resolution and clustering, not the text.
 2. **`doc_count` is counted, not read.** `entity_alias.doc_count` is written as 1 and never
    maintained, because the sink leaves every count to GR16's recount (`graph.py` `_roll_up`). The
    lexicon counts a name's documents itself: the live documents holding a live mention of an entity
@@ -123,13 +128,13 @@ gazetteer row records a digest, and the first build that finds a name moves it."
 _ALIASES_SQL: Final = """
 SELECT a.name_norm, e.etype, e.key, e.title, min(a.taint & :untrusted)
   FROM entity_alias AS a JOIN entity AS e ON e.entity_id = a.entity_id
- WHERE e.scope = 0 AND e.state = 0 AND length(a.name_norm) >= :min_len
+ WHERE e.scope = 0 AND e.state IN (0, 1) AND length(a.name_norm) >= :min_len
  GROUP BY a.name_norm, e.entity_id
 """
 _DOCS_SQL: Final = """
 SELECT a.name_norm, count(DISTINCT b.doc_ord)
   FROM entity_alias AS a
-  JOIN entity AS e ON e.entity_id = a.entity_id AND e.scope = 0 AND e.state = 0
+  JOIN entity AS e ON e.entity_id = a.entity_id AND e.scope = 0 AND e.state IN (0, 1)
   JOIN mention AS m ON m.entity_id = e.entity_id AND m.state = 0
   JOIN derive_run AS r ON r.run_id = m.run_id AND r.origin_operator <> :self
   JOIN block AS b ON b.block_id = m.block_id AND b.state = 0
