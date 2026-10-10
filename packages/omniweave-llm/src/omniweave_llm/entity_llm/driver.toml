@@ -1,0 +1,97 @@
+# derive.entity.llm -- the billed entity lane. 06 section 2.3's row 11; section 4. D711.
+card_schema = 1
+
+[driver]
+id = "derive.entity.llm"
+port = "derive/1"
+version = "0.1.0"
+schema_version = 1                 # THE ONLY DRIVER VERSION IN A CACHE KEY -- and 06:1614's
+                                   #   paid_key leaves it out: a bug-fix release never re-bills.
+entrypoint = "omniweave_llm.entity_llm.driver:EntityLLM"
+granularity = "part"               # One Segment per decision (06:807): unit_part = 'seg:<hex16>'.
+replay_class = "unpinnable"        # A hosted model's answer is not reproducible from its inputs;
+                                   #   replay is the cassette's (06:1609), not the driver's.
+title = "Entities and relations by a language model (billed)"
+summary = "One prompt per Segment rendered from the corpus vocabulary, an answer constrained by the entity lane's JSON Schema, one glean on more_available, every item grounded by quote at the sink."
+
+[capability]
+consumes = []                      # The host's billed Segment view (D709).
+produces = ["graph_items"]
+
+[capability.derive]
+items = ["entity", "mention", "edge"]   # 06:1399-1421. The lane is entity.
+grounding = "quote"                # A quote the host's ground() locates (06 section 1.7).
+relations = "closed_vocab"         # The relation enum is relation_vocab's, rendered per corpus.
+schema = "json_schema"             # 06 section 4.3, strict.
+confidence = "none"                # 06:1376-1385: never a self-reported number.
+coreference = false
+scripts = ["Latin"]                # The authored role text is English.
+scope_honoured = true
+
+[derive]
+implemented = true
+phase = 10                         # 06 section 2.3's row 11: rank 2, phase 10.
+max_items_per_segment = 160        # 40 entities and 40 relations per attempt, two attempts.
+prompt_version = "1"                # The authored role text's revision; prompt_fp is the rendered one.
+schema_path = "schemas/entity.json"
+
+[hardware]
+gpu            = "none"            # The model is the service's, not this process's.
+vram_gb_min    = 0
+ram_gb_min     = 0.25
+cpu_arch       = ["x86_64", "aarch64"]
+os             = ["linux", "darwin", "windows"]
+needs_network  = true              # It posts to a model server; the egress hook must not arm.
+needs_binaries = []
+imports_torch  = false
+install_bytes  = 60000
+services       = ["model:llm"]
+
+[isolation]
+requires        = "subproc"
+memory_mb       = 512
+progress_ms     = 120000           # One model call per Segment, and a call may take a minute.
+wall_ms_hard    = 600000
+batch_max_units = 20               # 06:1514: twenty Segments' units in one INVOKE.
+
+[limits]
+max_input_bytes = 134217728
+max_parts       = 1
+
+[licence.code]
+spdx = "Apache-2.0"
+redistribution = "allowed"
+output_share_alike = false
+competitor_bar = false
+requires_credential = false
+revenue_gate_usd = 0
+mau_gate = 0
+territory_excluded = []
+field_of_use_excluded = []
+attribution_per_output = false
+no_model_training = false
+remote_kill_switch = false
+clause_refs = []
+
+[deps]
+pins = []
+
+[config]
+type = "object"
+additionalProperties = false
+required = []
+
+[config.properties.service]
+type = "string"
+maxLength = 64
+default = "llm"                    # The [services.<name>] table the model is behind.
+
+[cost.model]
+class   = "billed_api"             # 06 section 2.3: the model is hosted and priced per token.
+shape   = "linear_per_part"
+unit    = "part"
+per_part    = { tokens_in = 3989, tokens_out = 806, calls = 1 }
+per_session = { }
+scaling     = { key = "input_bytes", exponent = 1.0, reference = 8192 }
+tokens_out_p95_multiple = 2.0      # A glean at 0.35 and a response near its 40-item bound.
+max_retries = 0                    # The glean is attempt 2 of the same decision, not a retry.
