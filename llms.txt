@@ -256,6 +256,8 @@ cli.graph.merge: ow graph merge FIRST SECOND [--reason REASON]
 cli.graph.merge.actions: graph.merge
 cli.graph.merges: ow graph merges [--entity ENTITY]
 cli.graph.merges.actions: graph.merges
+cli.graph.split: ow graph split ENTITY [--into INTO] [--reason REASON]
+cli.graph.split.actions: graph.split
 cli.graph.why: ow graph why [--cite CITE]
 cli.graph.why.actions: graph.why
 cli.hooks.check: ow hooks check

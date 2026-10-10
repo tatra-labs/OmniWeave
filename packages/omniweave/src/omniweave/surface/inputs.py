@@ -104,6 +104,7 @@ __all__ = [
     "SkillsRemoveIn",
     "SkillsUpdateIn",
     "SkillsVerifyIn",
+    "SplitIn",
     "SurfaceEmitIn",
     "UninstallIn",
     "WhyIn",
@@ -354,6 +355,23 @@ class MergeIn:
 
     first: str
     second: str
+    reason: str | None = None
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SplitIn:
+    """`ow graph split e412 --into d7#412,d19#88 --reason "..."`. 06:1892 and 06:1907-1913.
+
+    The entity is a positional, any member of the closure to split; `--into` takes block cites, one
+    per side, because *"at the moment of a split the two real-world things do not yet have separate
+    entity ids, so the operator names them by where they are witnessed"*. Each resolves as `ow open`
+    resolves a ref, to exactly one block. `into` is one comma-separated string, as 06:1892 spells
+    it, so an example can show it (a scalar, 10:136). `reason` is `MergeIn`'s.
+    """
+
+    entity: str
+    into: str | None = None
     reason: str | None = None
     corpus: str | None = None
 

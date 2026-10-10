@@ -62,7 +62,11 @@ class Decided:
     """User rows this decision appended: none when the same live decision already stood."""
     retired: int
     """Opposing user rows it retired: a merge retires the split between the two, and back."""
-    joined: bool
-    """Whether the closure now holds both, for a merge, or neither holds the other, for a split.
-    False when another user decision keeps the graph from following."""
+    followed: bool
+    """Whether the graph follows the decision: the closure holds both ends, for a merge; no side
+    shares a head with another, for a split. False when another user decision keeps it from
+    following."""
     log: MergeLog
+    unassigned: tuple[str, ...] = ()
+    """A split's members no side could claim, by a tie: with the head's side, or with none when
+    the head is one of them (D698)."""

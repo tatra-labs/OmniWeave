@@ -68,7 +68,7 @@ def test_a_merge_is_one_user_row_and_the_graph_settled_after_it(parties: Path) -
             (ids["gamma_inc"], ids["beta_corp"], run_id),
         )
         decided = decide.merge(connection, first=gamma, second=acme, reason="one party")
-        assert (decided.polarity, decided.written, decided.retired, decided.joined) == (
+        assert (decided.polarity, decided.written, decided.retired, decided.followed) == (
             1,
             1,
             0,
@@ -113,7 +113,7 @@ def test_the_same_decision_twice_writes_nothing(parties: Path) -> None:
         [decision] = once.log.closures[0].decisions
         assert (decision.winner, decision.loser) == (acme, gamma), "either argv order: identity"
         again = decide.merge(connection, first=gamma, second=acme, reason="still one")
-        assert (again.written, again.joined) == (0, True)
+        assert (again.written, again.followed) == (0, True)
         count = connection.execute(
             "SELECT count(*) FROM entity_merge WHERE stage = 'user'"
         ).fetchone()
@@ -145,7 +145,7 @@ def test_a_merge_retires_the_split_between_the_same_two(parties: Path) -> None:
             second=_cite(connection, "gamma_inc"),
             reason="one after all",
         )
-        assert (decided.retired, decided.joined) == (1, True)
+        assert (decided.retired, decided.followed) == (1, True)
         retired = connection.execute(
             "SELECT retired_at_gen FROM entity_merge WHERE polarity = -1"
         ).fetchone()
@@ -174,7 +174,7 @@ def test_a_merge_a_split_elsewhere_blocks_is_written_and_reported(parties: Path)
             second=_cite(connection, "beta_corp"),
             reason="same group",
         )
-        assert (decided.written, decided.joined) == (1, False)
+        assert (decided.written, decided.followed) == (1, False)
         heads = _heads(connection)
         assert heads["beta_corp"] != heads["acme_holdings"]
     finally:
@@ -237,7 +237,7 @@ def test_the_verb_commits_the_decision_and_an_ingest_keeps_it(tmp_path: Path) ->
     )
     assert (code, err) == (0, ""), err
     document: dict[str, Any] = json.loads(out)
-    assert (document["written"], document["joined"], document["polarity"]) == (1, True, 1)
+    assert (document["written"], document["followed"], document["polarity"]) == (1, True, 1)
     assert document["closures"][0]["decisions"][0]["reason"] == "one party"
     code, out, _err = _verb(["merge", acme, gamma, "--reason", "again"], project)
     assert code == 0 and out.startswith("merge already stood: nothing written; the graph follows")

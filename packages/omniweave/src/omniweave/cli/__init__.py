@@ -107,7 +107,7 @@ GLOBAL_FLAGS: Final[tuple[Argument, ...]] = (
 
 GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
-    "graph": "locate · merge · merges · why",
+    "graph": "locate · merge · merges · split · why",
     "hooks": "check",
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
@@ -313,6 +313,28 @@ COMMANDS: Final[tuple[Command, ...]] = (
             Argument(
                 spelling=("--entity",),
                 metavar="ENTITY",
+            ),
+        ),
+    ),
+    Command(
+        words=("graph", "split"),
+        actions=("graph.split",),
+        help=(
+            "Record that one entity is two or more, named by the blocks each is witnessed in, "
+            "with a reason, and settle the graph again as an ingest would"
+        ),
+        arguments=(
+            Argument(
+                spelling=("entity",),
+                metavar="ENTITY",
+            ),
+            Argument(
+                spelling=("--into",),
+                metavar="INTO",
+            ),
+            Argument(
+                spelling=("--reason",),
+                metavar="REASON",
             ),
         ),
     ),

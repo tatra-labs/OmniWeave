@@ -153,6 +153,7 @@ from omniweave.surface.inputs import (
     SkillsRemoveIn,
     SkillsUpdateIn,
     SkillsVerifyIn,
+    SplitIn,
     SurfaceEmitIn,
     UninstallIn,
     WhyIn,
@@ -1375,6 +1376,34 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=Decided,
             advanced=frozenset(),
             cli=("graph", "merge"),
+        ),
+        #  06:1892, the other user decision. Not `destructive` for `graph.merge`'s reason: it
+        #  appends rows and retires only the user merges it contradicts, and a merge undoes it
+        #  (D698). No `mcp_name`, as `graph.merge`.
+        ActionSpec(
+            name="graph.split",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Record that one entity is two or more, named by the blocks each is witnessed in, "
+                "with a reason, and settle the graph again as an ingest would"
+            ),
+            decision="resolution made one party of two, and you can show where each is witnessed",
+            example={
+                "entity": "e412",
+                "into": "d7#412,d19#88",
+                "reason": "two parties",
+                "corpus": "handbook",
+            },
+            inp=SplitIn,
+            out=Decided,
+            advanced=frozenset(),
+            cli=("graph", "split"),
         ),
         ActionSpec(
             name="corpus.coverage",
