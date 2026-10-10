@@ -58,9 +58,12 @@ if TYPE_CHECKING:
     from omniweave_core.model.residue import GraphResidue
     from omniweave_core.model.review import Review
 
+    from omniweave.sdk.reports import GraphDoctorReport
+
 __all__ = [
     "GRAPH_WORD",
     "decided_document",
+    "doctor_document",
     "located_document",
     "main",
     "merges_document",
@@ -85,6 +88,8 @@ _SPLIT_FIX: Final[str] = 'ow graph split e412 --into d7#412,d19#88 --reason "why
 _RESIDUE: Final[str] = "graph.residue"
 _RESIDUE_FIX: Final[str] = "ow graph residue --akind identifier"
 _REVIEW: Final[str] = "graph.review"
+_DOCTOR: Final[str] = "graph.doctor"
+_DOCTOR_FIX: Final[str] = "ow graph doctor --check dangling_tmp,trust_clamped,ungrounded"
 
 
 def main(
@@ -708,6 +713,77 @@ def _over_merge_text(document: Mapping[str, Any]) -> list[str]:
     return lines
 
 
+def _doctor(
+    parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, stdout: TextIO
+) -> int:
+    """`ow graph doctor`: the eleven checks, or those `--check` names; exit 1 when one fails.
+
+    `--quiet` is served, as `ow doctor` serves it: nothing printed, the exit code alone.
+    """
+    if parsed.render in ("jsonl", "rows"):
+        raise UsageError(
+            f"--render {parsed.render} is parsed and not served by ow graph doctor", fix=_DOCTOR_FIX
+        )
+    checks = None
+    if parsed.check is not None:
+        checks = [one.strip() for one in str(parsed.check).split(",") if one.strip()]
+        if not checks:
+            raise UsageError("--check names no check", fix=_DOCTOR_FIX)
+    explicit = Path(parsed.config) if parsed.config else None
+    config = load(cwd=cwd, env=env, explicit=explicit)
+    name = corpus_for(config, [], parsed.corpus, verb="ow graph doctor")
+    report = _diagnosed(store_of(config, name, cwd=cwd), checks)
+    if not parsed.quiet:
+        if parsed.render == "json":
+            stdout.write(json.dumps(doctor_document(report), ensure_ascii=False) + "\n")
+        else:
+            stdout.write("\n".join(_doctor_text(report)) + "\n")
+    return 1 if report.failed else 0
+
+
+def _diagnosed(store: Path, checks: Sequence[str] | None) -> GraphDoctorReport:
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415 -- a usage error never pays
+    from omniweave_core.errors import NotFoundError  # noqa: PLC0415
+    from omniweave_core.store import reader as store_reader  # noqa: PLC0415
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+
+    from omniweave.graph.doctor import doctor  # noqa: PLC0415
+
+    if not store.exists():
+        raise NotFoundError(f"no store at {store}", fix="ow add <source> first")
+    connection = store_sqlite.connect_readonly(store)
+    try:
+        reader = store_reader.SqliteReader(connection, now_ns=SystemClock().wall_ns())
+        with reader.snapshot():
+            try:
+                return doctor(connection, checks=checks)
+            except ValueError as error:
+                raise UsageError(str(error), fix=_DOCTOR_FIX) from error
+    finally:
+        connection.close()
+
+
+def doctor_document(report: GraphDoctorReport) -> dict[str, Any]:
+    """The JSON render: the three tuples, each finding a mapping."""
+    from dataclasses import asdict  # noqa: PLC0415
+
+    return {"schema": _SCHEMA, **asdict(report)}
+
+
+def _doctor_text(report: GraphDoctorReport) -> list[str]:
+    lines: list[str] = []
+    for label, group in (("FAIL", report.failed), ("warn", report.warned), ("ok", report.ok)):
+        for one in group:
+            lines.append(f"{label:4} {one.check}: {one.detail}")
+            if one.fix:
+                lines.append(f"     fix: {one.fix}")
+    ran = len(report.ok) + len(report.warned) + len(report.failed)
+    lines.append(
+        f"graph doctor: {'fails' if report.failed else 'passes'} the {ran} check(s) it ran"
+    )
+    return lines
+
+
 _VERBS: Final = {
     _WHY: _why,
     _MERGES: _merges,
@@ -715,6 +791,7 @@ _VERBS: Final = {
     _SPLIT: _split,
     _RESIDUE: _residue,
     _REVIEW: _review,
+    _DOCTOR: _doctor,
 }
 """Each Action's handler; `graph.locate` is the default, as the first verb built."""
 

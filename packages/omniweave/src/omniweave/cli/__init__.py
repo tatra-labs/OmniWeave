@@ -107,7 +107,7 @@ GLOBAL_FLAGS: Final[tuple[Argument, ...]] = (
 
 GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
-    "graph": "locate · merge · merges · residue · review · split · why",
+    "graph": "doctor · locate · merge · merges · residue · review · split · why",
     "hooks": "check",
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
@@ -249,6 +249,20 @@ COMMANDS: Final[tuple[Command, ...]] = (
             Argument(
                 spelling=("code",),
                 metavar="CODE",
+            ),
+        ),
+    ),
+    Command(
+        words=("graph", "doctor"),
+        actions=("graph.doctor",),
+        help=(
+            "Check the graph's operability: the residue signals against their thresholds, the "
+            "trust clamp, the entropy gate, anchor counts, candidate pairs and report states"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--check",),
+                metavar="CHECK",
             ),
         ),
     ),

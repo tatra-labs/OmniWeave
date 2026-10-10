@@ -51,6 +51,7 @@ key can grant one.
 | `doc.grid` | `ow_grid` | `ow doc grid` | full | `free` | Read one table as an exactly-once grid: every cell at its slot, the header row and column, and the merges that would otherwise be counted twice |
 | `doctor` | `ow_doctor` | `ow doctor` | full | `free` | Check this deployment: every resolved configuration value with its source, the driver and toolchain probes, and a fix command for every warning |
 | `explain` | `ow_explain` | `ow explain` | full | `free` | Resolve an OW-* code or symbol to what it means and the exact command that clears it; reads no corpus, so it answers on a machine with no store at all |
+| `graph.doctor` | — | `ow graph doctor` | — | `free` | Check the graph's operability: the residue signals against their thresholds, the trust clamp, the entropy gate, anchor counts, candidate pairs and report states |
 | `graph.locate` | `ow_locate` | `ow graph locate` | full | `free` | Find where on the page an entity, claim, edge or mention was witnessed: one location per witness, with its page, its span and its polygon or the reason none |
 | `graph.merge` | — | `ow graph merge` | — | `free` | Record that two entities are one, with a reason, and settle the graph again: the closure, the communities and the salience, as an ingest would |
 | `graph.merges` | — | `ow graph merges` | — | `free` | Show the resolution decision log: each closure's members, and every merge or split decision with its stage, score, guards and the generation it was decided in |
