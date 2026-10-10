@@ -1,4 +1,8 @@
-"""`ow graph locate`: where on the page an entity, claim, edge or mention was witnessed. D694.
+"""`ow graph locate` and `ow graph why`: the two walks between the graph and the page. D694, D695.
+
+`ow graph locate` is D694's, from an assertion to where it was witnessed; `ow graph why --cite`
+is D695's, from a block to every assertion observed in it (06:2119-2121). Both resolve the
+corpus, open one read snapshot, and print what `omniweave_core.store` read.
 
 10:811 gives `ow_locate` one row -- *"where on the page a mention, edge or claim was witnessed
 (`Locus`)"* -- and 06:2521 the verb: `ow graph locate --edge/--mention/--claim/--entity <id>`,
@@ -17,9 +21,14 @@
 or qualified with its corpus (`handbook:e412`), or its number; `--edge` and `--mention` take the
 number. None, or two, is exit 1 naming them.
 
-**Refused by name**, exit 1, as `ow doc grid` refuses them: `--quiet`, `--render jsonl` and
-`--render rows`. Every other `ow graph` verb is rostered (`registry.CLI_ROSTER`) and has no
-`ActionSpec` yet, so the parse refuses it.
+**`ow graph why --cite <ref>`** resolves `ref` as `ow open` does, to exactly one block, and prints
+`store.observed.observed()`: the block's live mentions (each with its entity and that entity's
+head), the edges and the claims observed in it, each with its span. `--render json` is that
+`Observed`; `--render text` is a head line and one line per row.
+
+**Refused by name**, exit 1, for both verbs, as `ow doc grid` refuses them: `--quiet`,
+`--render jsonl` and `--render rows`. The other fourteen `ow graph` verbs are rostered
+(`registry.CLI_ROSTER`) and have no `ActionSpec` yet, so the parse refuses them.
 
 Exits: 0; 1 for usage; 2 for a cite or id that names nothing, or an undeclared corpus; 6 for a
 qualified cite and a `--corpus` that disagree (`OW-A-015`).
@@ -44,14 +53,17 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from omniweave_core.model.locus import Located, Locus
+    from omniweave_core.model.observed import Observed
 
-__all__ = ["GRAPH_WORD", "located_document", "main"]
+__all__ = ["GRAPH_WORD", "located_document", "main", "observed_document"]
 
 GRAPH_WORD: Final[str] = "graph"
 
 _SCHEMA: Final[int] = 1
 _SELECTORS: Final[tuple[str, ...]] = ("entity", "claim", "edge", "mention")
 _FIX: Final[str] = "ow graph locate --entity e412"
+_WHY_FIX: Final[str] = "ow graph why --cite d7#412"
+_WHY: Final[str] = "graph.why"
 
 
 def main(
@@ -68,6 +80,8 @@ def main(
         return parsed
     try:
         check(GRAPH_WORD, parsed)
+        if parsed.ow_action == _WHY:
+            return _why(parsed, env=env, cwd=cwd, stdout=stdout)
         return _locate(parsed, env=env, cwd=cwd, stdout=stdout)
     except OwError as error:
         return report(error, parsed, stdout=stdout, stderr=stderr)
@@ -76,13 +90,7 @@ def main(
 def _locate(
     parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, stdout: TextIO
 ) -> int:
-    named = ["--quiet"] if parsed.quiet else []
-    if parsed.render in ("jsonl", "rows"):
-        named.append(f"--render {parsed.render}")
-    if named:
-        raise UsageError(
-            f"{', '.join(named)} is parsed and not served by ow graph locate", fix=_FIX
-        )
+    _refuse_unserved(parsed, verb="ow graph locate", fix=_FIX)
     given = [name for name in _SELECTORS if getattr(parsed, name) is not None]
     if len(given) != 1:
         spelled = ", ".join(f"--{name}" for name in given) or "none"
@@ -111,6 +119,132 @@ def _locate(
     else:
         stdout.write("\n".join(_text(document)) + "\n")
     return 0
+
+
+def _refuse_unserved(parsed: argparse.Namespace, *, verb: str, fix: str) -> None:
+    named = ["--quiet"] if parsed.quiet else []
+    if parsed.render in ("jsonl", "rows"):
+        named.append(f"--render {parsed.render}")
+    if named:
+        raise UsageError(f"{', '.join(named)} is parsed and not served by {verb}", fix=fix)
+
+
+def _why(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, stdout: TextIO) -> int:
+    _refuse_unserved(parsed, verb="ow graph why", fix=_WHY_FIX)
+    if parsed.cite is None or not str(parsed.cite).strip():
+        raise UsageError("ow graph why needs --cite, a block's cite", fix=_WHY_FIX)
+    explicit = Path(parsed.config) if parsed.config else None
+    config = load(cwd=cwd, env=env, explicit=explicit)
+    ref = str(parsed.cite)
+    name = corpus_for(config, [ref], parsed.corpus, verb="ow graph why")
+    store = store_of(config, name, cwd=cwd)
+    found = _observe(store, ref)
+    document = observed_document(found, corpus=name, qualify=len(corpora(config)) > 1)
+    if parsed.render == "json":
+        stdout.write(json.dumps(document, ensure_ascii=False) + "\n")
+    else:
+        stdout.write("\n".join(_why_text(document)) + "\n")
+    return 0
+
+
+def _observe(store: Path, ref: str) -> Observed:
+    """`ref` to one block, through `ow open`'s ladder, then the reverse walk: one snapshot."""
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415 -- a usage error never pays
+    from omniweave_core.errors import NotFoundError  # noqa: PLC0415
+    from omniweave_core.model.enums import Layer  # noqa: PLC0415
+    from omniweave_core.store import reader as store_reader  # noqa: PLC0415
+    from omniweave_core.store import resolve  # noqa: PLC0415
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+    from omniweave_core.store.observed import observed  # noqa: PLC0415
+
+    connection = store_sqlite.connect_readonly(store)
+    try:
+        reader = store_reader.SqliteReader(connection, now_ns=SystemClock().wall_ns())
+        with reader.snapshot() as s:
+            (found,) = reader.resolve_refs(s, [ref], context=0, layers=frozenset(Layer))
+            if isinstance(found, resolve.Missed):
+                raise found.error
+            if len(found.block_ids) != 1:
+                raise UsageError(
+                    f"{ref} names {len(found.block_ids)} blocks, and ow graph why reads one",
+                    fix="ow graph why --cite <one block's cite>   # ow open lists them",
+                )
+            result = observed(connection, int(found.block_ids[0]))
+            if result is None:  # pragma: no cover -- resolve_refs returned it from this snapshot
+                raise NotFoundError(f"no block {ref}", fix=_WHY_FIX)
+            return result
+    finally:
+        connection.close()
+
+
+def observed_document(found: Observed, *, corpus: str, qualify: bool) -> dict[str, Any]:
+    """The JSON render: `Observed`'s three lists, every cite qualified when two corpora exist."""
+
+    def cite(text: str) -> str:
+        return f"{corpus}:{text}" if qualify else text
+
+    return {
+        "schema": _SCHEMA,
+        "cite": cite(found.cite),
+        "mentions": [
+            {
+                "mention": m.mention,
+                "entity": cite(m.entity),
+                "head": cite(m.head),
+                "etype": m.etype,
+                "key": m.key,
+                "span": list(m.span),
+                "surface": m.surface,
+                "trust": m.trust,
+            }
+            for m in found.mentions
+        ],
+        "edges": [
+            {
+                "edge": e.edge,
+                "src": cite(e.src),
+                "dst": cite(e.dst),
+                "relation": e.relation,
+                "span": None if e.span is None else list(e.span),
+                "trust": e.trust,
+            }
+            for e in found.edges
+        ],
+        "claims": [
+            {
+                "claim": cite(c.claim),
+                "subject": cite(c.subject),
+                "claim_type": c.claim_type,
+                "predicate": c.predicate,
+                "object": c.object,
+                "status": c.status,
+                "span": list(c.span),
+                "trust": c.trust,
+            }
+            for c in found.claims
+        ],
+    }
+
+
+def _why_text(document: Mapping[str, Any]) -> list[str]:
+    lines = [
+        f"{document['cite']}  {len(document['mentions'])} mention(s), "
+        f"{len(document['edges'])} edge(s), {len(document['claims'])} claim(s)"
+    ]
+    for m in document["mentions"]:
+        lines.append(
+            f"  mention {m['entity']} ({m['etype']} {m['key']})  [{m['span'][0]}, {m['span'][1]})"
+            f"  {m['surface']!r}"
+        )
+    for e in document["edges"]:
+        where = "whole block" if e["span"] is None else f"[{e['span'][0]}, {e['span'][1]})"
+        lines.append(f"  edge {e['edge']}  {e['src']} {e['relation']} {e['dst']}  {where}")
+    for c in document["claims"]:
+        lines.append(
+            f"  claim {c['claim']}  {c['subject']} {c['predicate']} = {c['object']!r}  "
+            f"{c['status']}  [{c['span'][0]}, {c['span'][1]})"
+        )
+    return lines
 
 
 def _qualified(value: str) -> tuple[str | None, str]:

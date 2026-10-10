@@ -113,6 +113,7 @@ from omniweave_core.answer import Answer
 from omniweave_core.errors import SurfaceError, UsageError
 from omniweave_core.model import Grid
 from omniweave_core.model.locus import Located
+from omniweave_core.model.observed import Observed
 from omniweave_core.model.rebind import RebindReport
 from omniweave_core.retrieve.verdict import Coverage
 from omniweave_ports import CostClass
@@ -151,6 +152,7 @@ from omniweave.surface.inputs import (
     SkillsVerifyIn,
     SurfaceEmitIn,
     UninstallIn,
+    WhyIn,
 )
 
 if TYPE_CHECKING:
@@ -1296,6 +1298,29 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=Located,
             advanced=frozenset({"edge", "mention"}),
             cli=("graph", "locate"),
+        ),
+        #  06:2120's reverse walk. No `mcp_name`: 10:807's roster names none (`ow_why` is
+        #  `route.explain`), so an agent reaches it through a shell, as llms.txt says of every
+        #  verb without a tool. D695.
+        ActionSpec(
+            name="graph.why",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "List every entity, edge and claim the graph says one block asserts, each with its "
+                "span in the block's text"
+            ),
+            decision="you hold a block cite and need what it asserts",
+            example={"cite": "d7#412", "corpus": "handbook"},
+            inp=WhyIn,
+            out=Observed,
+            advanced=frozenset(),
+            cli=("graph", "why"),
         ),
         ActionSpec(
             name="corpus.coverage",
