@@ -99,7 +99,7 @@ def test_a_word_that_is_no_root_still_names_what_is(tmp_path: Path) -> None:
     refused = _ow(tmp_path, "frobnicate")
     assert refused.returncode == 1
     named = (
-        b"(choose from 'add', 'corpora', 'doc', 'doctor', 'explain', 'hooks', 'install', "
+        b"(choose from 'add', 'corpora', 'doc', 'doctor', 'explain', 'graph', 'hooks', 'install', "
         b"'open', 'query', 'serve', 'skills', 'surface', 'uninstall')"
     )
     assert named in refused.stderr

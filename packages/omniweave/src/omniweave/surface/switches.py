@@ -69,6 +69,7 @@ _ROOTS: Final[tuple[str, ...]] = (
     "doc",
     "doctor",
     "explain",
+    "graph",
     "hooks",
     "install",
     "open",
@@ -85,7 +86,7 @@ _READS_ALL: Final[frozenset[str]] = frozenset({"json_errors"})
 """Every root writes its refusals through `report()`, which reads `--json-errors`."""
 
 _READER: Final[frozenset[str]] = frozenset({"config", "corpus", "render", "quiet", "json_errors"})
-"""What the six read-and-print verbs read: they resolve a corpus from a configuration, and each
+"""What the seven read-and-print verbs read: they resolve a corpus from a configuration, and each
 refuses the `--render` modes and the `--quiet` it has no writer for, naming them."""
 
 READS: Final[Mapping[str, frozenset[str]]] = {
@@ -94,6 +95,7 @@ READS: Final[Mapping[str, frozenset[str]]] = {
     "open": _READER,
     "corpora": _READER,
     "doc": _READER,
+    "graph": _READER,
     "explain": _READS_ALL | {"render", "quiet"},
     "doctor": _READS_ALL | {"config", "quiet"},
     "serve": _READS_ALL | {"config"},

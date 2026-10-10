@@ -100,12 +100,13 @@ rather than budget: the default surface is measured at 850 tokens of a 1,900 cei
 
 MCP_NAMES = ("ow_add", "ow_corpora", "ow_open", "ow_query")
 
-NARROW_NAMES = ("corpus.coverage", "doc.diff", "doc.grid", "doctor", "explain")
-"""The five of 10:807's eighteen that have rows, sorted as `listed()` returns them.
+NARROW_NAMES = ("corpus.coverage", "doc.diff", "doc.grid", "doctor", "explain", "graph.locate")
+"""The six of 10:807's eighteen that have rows, sorted as `listed()` returns them.
 
-Five and not eighteen because `ActionSpec.out` is a `type` and thirteen output types have no home
-in this process yet -- seven in P8, two in P9, three forward-referenced by their own document, and
-`route.explain`'s deferred for a measured import cost (D298). `_unrostered_full()` names them."""
+Six and not eighteen because `ActionSpec.out` is a `type` and twelve output types have no home
+in this process yet -- six in P8, two in P9, three forward-referenced by their own document, and
+`route.explain`'s deferred for a measured import cost (D298). `_unrostered_full()` names them.
+`graph.locate` was P8's first: its `Located` landed in D694."""
 
 FULL_ROSTER_NAMES = (
     "doc.outline",
@@ -602,6 +603,7 @@ def test_the_required_parameter_of_each_tool_is_the_one_the_schema_requires() ->
         "corpora": set(),
         "add": {"source"},
         "doc.grid": {"ref"},
+        "graph.locate": set(),
         "corpus.coverage": set(),
         "doc.diff": {"ref"},
         "doctor": set(),
@@ -783,6 +785,7 @@ def test_this_package_can_write_no_file_at_all() -> None:
         "dispatch.py",
         "doc.py",
         "explain.py",
+        "graph.py",
         "ingest.py",
         "inputs.py",
         "opening.py",
@@ -846,7 +849,7 @@ def test_the_roster_names_each_action_once_and_each_tool_once() -> None:
     assert len({mcp for mcp, _ in FULL_ROSTER}) == len(FULL_ROSTER)
 
 
-def test_thirteen_of_the_eighteen_are_still_waiting_on_an_output_type() -> None:
+def test_twelve_of_the_eighteen_are_still_waiting_on_an_output_type() -> None:
     """`_unrostered_full()` is schedule, not defect, and reports in the table's order.
 
     The day this becomes `()` is the day 10:833's `ow surface budget --bless` has its condition:
@@ -857,7 +860,6 @@ def test_thirteen_of_the_eighteen_are_still_waiting_on_an_output_type() -> None:
         "doc.outline",
         "extract.fields",
         "graph.entities",
-        "graph.locate",
         "graph.neighbors",
         "graph.report",
         "graph.claims",
@@ -870,7 +872,7 @@ def test_thirteen_of_the_eighteen_are_still_waiting_on_an_output_type() -> None:
     )
 
 
-def test_the_landed_five_are_the_roster_minus_the_thirteen() -> None:
+def test_the_landed_six_are_the_roster_minus_the_twelve() -> None:
     waiting = set(_unrostered_full(ACTIONS))
     landed = tuple(sorted(name for _, name in FULL_ROSTER if name not in waiting))
     assert landed == NARROW_NAMES
@@ -1021,7 +1023,7 @@ def test_the_shipped_roots_still_contain_no_trailing_s_collision() -> None:
     roots = {spec.cli[0] for spec in ACTIONS.values() if spec.cli}
     assert roots == {
         "query", "open", "corpora", "add", "doc", "doctor", "explain", "install", "uninstall",
-        "hooks", "skills", "serve", "surface",
+        "hooks", "skills", "serve", "surface", "graph",
     }  # fmt: skip
     assert not {root for root in roots if root + "s" in roots}
     assert roots <= GROUPS
@@ -1301,11 +1303,11 @@ def test_every_shipped_row_resolves_to_a_spelling_the_generator_can_emit() -> No
 def test_the_unrostered_cli_count_is_the_distance_to_the_registry() -> None:
     """10:857's *"roughly 110 further Actions"*, minus what has landed, plus what it undercounts.
 
-    137 rather than 110, and the gap is D293's: the roster is transcribed from the plan's own
+    136 rather than 110, and the gap is D293's: the roster is transcribed from the plan's own
     tables and usage rather than from a numeral, and a numeral is a second copy of an enumeration.
     """
     waiting = _unrostered_cli(ACTIONS)
-    assert len(waiting) == 137, "W7.1e landed `ow surface emit` (D334)"
+    assert len(waiting) == 136, "D694 landed `ow graph locate`"
     have = {spec.cli for spec in ACTIONS.values()}
     assert not set(waiting) & have
     assert len(waiting) + len(have) == sum(max(1, len(v)) for v in CLI_ROSTER.values())

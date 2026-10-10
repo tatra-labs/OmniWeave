@@ -9,8 +9,8 @@ decision.
 ## Before deciding a capability is missing
 
 default     ow_add, ow_corpora, ow_open, ow_query
-full        ow_add, ow_corpora, ow_coverage, ow_diff, ow_doctor, ow_explain, ow_grid, ow_open,
-            ow_query
+full        ow_add, ow_corpora, ow_coverage, ow_diff, ow_doctor, ow_explain, ow_grid, ow_locate,
+            ow_open, ow_query
 
 an unlisted tool is DEFINED and DISPATCHABLE when enabled, never refused for being unlisted.
 Widen with OMNIWEAVE_MCP_LISTED, authorise with OMNIWEAVE_MCP_ENABLED.
@@ -97,6 +97,18 @@ cost        free
 pick it     you have a code from an error and need what clears it
 it does     Resolve an OW-* code or symbol to what it means and the exact command that clears
             it; reads no corpus, so it answers on a machine with no store at all
+
+## ow graph
+
+### ow_locate
+
+action      graph.locate
+cli         ow graph locate
+listed      full
+cost        free
+pick it     an answer cited an entity or a claim and you need the page
+it does     Find where on the page an entity, claim, edge or mention was witnessed: one location
+            per witness, with its page, its span and its polygon or the reason none
 
 ## ow hooks
 
