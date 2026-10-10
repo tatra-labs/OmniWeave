@@ -202,6 +202,15 @@ def test_a_billed_pass_runs_per_segment_and_writes_under_its_decision(
     }
     assert keys == {"acme_holdings", "beta_corp"}, keys
     assert len(_Model.asked) == segments, "one call per Segment, and no glean"
+    spends = [
+        json.loads(s)
+        for (s,) in _rows(store, "SELECT spend FROM derive_run WHERE pass_id = 'derive.entity.llm'")
+    ]
+    assert len(spends) == segments
+    assert all(
+        (s["calls"], s["tokens_in"], s["tokens_out"]) == (1, 120, 30) and s["bytes_egress"] > 0
+        for s in spends
+    ), "D730: each run carries the call its Segment cost, as the provider reported it"
     assert {request["model"] for request in _Model.asked} == {MODEL}
 
 
@@ -452,6 +461,13 @@ def test_a_segment_another_file_holds_is_answered_from_the_call_cache(
         "SELECT count(*), min(layer), min(cost_class), sum(hits) FROM cache_index"
         " WHERE driver = 'derive.entity.llm'",
     ) == [(calls, "call", "billed_api", 0)], "ruling 10: every answer that parsed is kept"
+    kept = [
+        json.loads(s)
+        for (s,) in _rows(
+            store, "SELECT spend_json FROM cache_index WHERE driver = 'derive.entity.llm'"
+        )
+    ]
+    assert all((k["calls"], k["tokens_in"], k["tokens_out"]) == (1, 120, 30) for k in kept), kept
     (tmp_path / "docs" / "copy.md").write_text(COPY, encoding="utf-8")
     report = _run(tmp_path, store, config)
     assert report.status == "ok", report.lines()

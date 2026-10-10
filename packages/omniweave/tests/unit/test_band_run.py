@@ -162,10 +162,17 @@ def test_the_band_is_asked_once_and_its_merge_joins_the_closure(tmp_path: Path, 
     lines = report.lines()
     assert f"  band      {MERGE}: 1 pair(s) in 1 batch(es), 1 queued" in lines, lines
     assert any("1 by the LLM band" in line for line in lines), lines
+    assert any(", 1 in the LLM band, " in line for line in lines), "D730: built, so not unbuilt"
     assert any(line.startswith(f"  band      {MERGE}: 1 row(s), 1 call(s)") for line in lines), (
         lines
     )
     assert report.resolved is not None and report.resolved.band == ()
+    [(spend,)] = _rows(store, f"SELECT spend FROM derive_run WHERE pass_id = '{MERGE}'")  # noqa: S608
+    run = json.loads(spend)
+    assert (run["calls"], run["tokens_in"], run["tokens_out"]) == (1, 400, 40), run
+    assert run["bytes_egress"] > 0
+    [(share,)] = _rows(store, f"SELECT spend_json FROM cache_index WHERE driver = '{MERGE}'")  # noqa: S608
+    assert json.loads(share)["tokens_in"] == 400, "one pair: the whole batch's Spend"
     assert (
         head == _rows(store, "SELECT entity_id FROM entity WHERE key = 'northwind_traders'")[0][0]
     )

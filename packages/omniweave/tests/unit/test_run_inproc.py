@@ -12,6 +12,7 @@ import hashlib
 from pathlib import Path
 
 import pytest
+from omniweave.route.spend import Spend
 from omniweave.run import pipeline
 from omniweave.run.dispatch import Batch
 from omniweave.run.routing import PORT, resolve_policy
@@ -29,6 +30,7 @@ from omniweave_ports.types import (
     BlobStore,
     DriverError,
     DriverIO,
+    DriverMetrics,
     DriverResult,
     FailureClass,
     Isolation,
@@ -280,3 +282,29 @@ def test_produced_is_the_shape_a_result_frame_carries(granted: Candidate, tmp_pa
     assert (asset.kind, asset.inline, asset.byte_len) == ("asset", None, 3)
     assert asset.blob == format_ref(hashlib.sha256(b"PNG").digest())
     assert source.store.put_bytes == [b"PNG"]
+
+
+def test_the_reply_carries_each_units_measured_spend(granted: Candidate, tmp_path: Path) -> None:
+    """D730: a driver's `DriverMetrics` reach `Reply.spend` field for field, unpriced (INV-15),
+    and a unit that failed spent nothing a driver reported."""
+
+    def metered(io: DriverIO) -> DriverResult:
+        return DriverResult(
+            outcome="ok",
+            produced=(ArtifactRef.of("doc_fragment", b"{}", io),),
+            metrics=DriverMetrics(
+                wall_ms=5, cpu_ms=4, tokens_in=7, tokens_out=3, calls=1, bytes_egress=11,
+                bytes_read=99,
+            ),
+        )  # fmt: skip
+
+    def bug(_io: DriverIO) -> DriverResult:
+        raise KeyError("oops")
+
+    guard = DriverGuard(granted, deadlines=Deadlines())
+    reply = pipeline.inproc_host(_Source(guard, [metered, bug], tmp_path))(_call(2))  # type: ignore[arg-type]
+    assert reply.spend == (
+        Spend(wall_ms=5, cpu_ms=4, tokens_in=7, tokens_out=3, calls=1, bytes_egress=11),
+        Spend(),
+    )
+    assert pipeline.spend_of(None) == Spend()
