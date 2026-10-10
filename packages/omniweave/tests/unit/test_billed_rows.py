@@ -201,3 +201,65 @@ def test_a_document_whose_segmentation_has_not_settled_is_not_in_scope(
     finally:
         connection.rollback()
         connection.close()
+
+
+CLAIM_LLM = "derive.claim.llm"
+
+
+@pytest.fixture(scope="module")
+def both(tmp_path_factory: pytest.TempPathFactory) -> DerivePlan:
+    """A plan holding both billed Passes, as a run that names both in both lists builds it."""
+    from omniweave.run.routing import resolve_policy  # noqa: PLC0415
+    from omniweave_core.config import SHIPPED_DRIVERS, load  # noqa: PLC0415
+
+    root = tmp_path_factory.mktemp("both")
+    drivers = json.dumps([*SHIPPED_DRIVERS, LLM, CLAIM_LLM])
+    (root / "omniweave.toml").write_text(
+        "[drivers]\nallow_unattested = true\nrequire_lock = false\ninproc = []\n"
+        f"enabled = {drivers}\n"
+        '[drivers.cost]\nallow_classes = ["free", "local_compute", "billed_api"]\n',
+        encoding="utf-8",
+    )
+    policy = resolve_policy(load(cwd=root, env={}))
+    derives, why = DerivePlan.of(catalog(), policy, _ctx(), enable=(CLAIM_LLM, LLM))
+    assert derives is not None and len(derives.billed) == 2, why
+    return derives
+
+
+def test_the_billed_passes_are_grouped_by_place_cheapest_first(both: DerivePlan) -> None:
+    """D724: entity at (2, 10) before claim at (2, 20), whatever order the plan holds them in."""
+    from omniweave.run.operators.billed import billed_phases  # noqa: PLC0415
+
+    assert billed_phases(both) == [(LLM,), (CLAIM_LLM,)]
+
+
+def test_an_enqueue_names_the_passes_it_writes_and_the_claim_lane_binds(
+    contract: Path, both: DerivePlan
+) -> None:
+    """Only the named Passes are enqueued; the claim lane only where entity cover was found."""
+    connection = sqlite3.connect(_store(contract))
+    try:
+        connection.execute("DELETE FROM derive_cover")
+        entity_only = enqueue_billed(connection, both, floor=0.6, now_ms=7, passes=(LLM,))
+        assert set(entity_only.eligible) == {LLM}
+        assert (
+            enqueue_billed(connection, both, floor=0.6, now_ms=7, passes=(CLAIM_LLM,)).eligible[
+                CLAIM_LLM
+            ]
+            == 0
+        ), "no entity cover yet, so nothing to bind a claim to"
+        [(segment,)] = connection.execute(
+            "SELECT segment_id FROM segment WHERE state = 0 ORDER BY segment_id LIMIT 1"
+        ).fetchall()
+        _cover(connection, int(segment), _run_of(connection, 2, 10), [0])
+        claims = enqueue_billed(connection, both, floor=0.6, now_ms=7, passes=(CLAIM_LLM,))
+        assert (claims.eligible[CLAIM_LLM], claims.queued[CLAIM_LLM]) == (1, 1)
+        merged = entity_only.merged(claims)
+        assert (merged.eligible[LLM], merged.eligible[CLAIM_LLM]) == (
+            entity_only.eligible[LLM],
+            1,
+        )
+        assert merged.documents == entity_only.documents + claims.documents
+    finally:
+        connection.rollback()
+        connection.close()

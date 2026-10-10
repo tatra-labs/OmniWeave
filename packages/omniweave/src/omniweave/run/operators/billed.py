@@ -29,7 +29,11 @@ for each one, the three rows of 05:1103's *"write route_decision -- BEFORE anyth
    whose text changed has a new part and so a new decision and a new row.
 6. **A document is in scope once it is segmented** (its `derive.segment` row is `done`), at its
    head generation. The order inside a run is the caller's: every cheaper Pass's cover must be
-   written first, or the selector reads a ledger that is still filling.
+   written first, or the selector reads a ledger that is still filling. D724 makes that order the
+   run's (`billed_phases`): the billed Passes are enqueued and drained one place at a time, in
+   `(cost_rank, phase)` order, so a Pass at phase 20 reads the cover a Pass at phase 10 wrote in
+   the same run.
+7. **A Pass that binds runs only where its lane has cover** (D724, coverage ruling 10).
 """
 
 from __future__ import annotations
@@ -54,7 +58,7 @@ from omniweave.run.operators.derive import DERIVE_PRIORITY
 from omniweave.run.routing import INGEST_HINTS_DIGEST, decision_rows
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Collection, Mapping
 
     from omniweave_core.drivers.resolve import Candidate
     from omniweave_core.store.coverage import BilledPass, Eligible
@@ -69,6 +73,7 @@ __all__ = [
     "RULE_ID",
     "RULE_ORIGIN",
     "BilledQueued",
+    "billed_phases",
     "enqueue_billed",
 ]
 
@@ -104,6 +109,14 @@ class BilledQueued:
     queued: Counter[str] = field(default_factory=Counter)
     documents: Counter[str] = field(default_factory=Counter)
 
+    def merged(self, other: BilledQueued) -> BilledQueued:
+        """This enqueue's counts and `other`'s, one phase's after another's (D724)."""
+        return BilledQueued(
+            self.eligible + other.eligible,
+            self.queued + other.queued,
+            self.documents + other.documents,
+        )
+
     def lines(self) -> list[str]:
         """One report line per billed Pass the plan held (D716)."""
         return [
@@ -114,12 +127,32 @@ class BilledQueued:
         ]
 
 
-def enqueue_billed(connection: Any, plan: DerivePlan, *, floor: float, now_ms: int) -> BilledQueued:
-    """Rulings 1-6 for every billed Pass the plan holds, over every segmented document."""
+def billed_phases(plan: DerivePlan) -> list[tuple[str, ...]]:
+    """The plan's billed Passes grouped by place, cheapest first (ruling 6, D724)."""
+    by_id = {billed.pass_id: billed for billed in BILLED_PASSES}
+    places: dict[tuple[int, int], list[str]] = {}
+    for candidate in plan.billed:
+        pass_id = candidate.card.identity.id
+        places.setdefault(by_id[pass_id].place, []).append(pass_id)
+    return [tuple(places[place]) for place in sorted(places)]
+
+
+def enqueue_billed(
+    connection: Any,
+    plan: DerivePlan,
+    *,
+    floor: float,
+    now_ms: int,
+    passes: Collection[str] | None = None,
+) -> BilledQueued:
+    """Rulings 1-7 for every billed Pass the plan holds, or those `passes` names, over every
+    segmented document."""
     out = BilledQueued()
     by_id = {billed.pass_id: billed for billed in BILLED_PASSES}
     units = connection.execute(_SEGMENTED_SQL).fetchall()
     for candidate in plan.billed:
+        if passes is not None and candidate.card.identity.id not in passes:
+            continue
         billed = by_id[candidate.card.identity.id]
         place = place_of(connection, billed)
         for uri, sha, size in units:
@@ -128,7 +161,12 @@ def enqueue_billed(connection: Any, plan: DerivePlan, *, floor: float, now_ms: i
                 continue
             handed = list(
                 eligible(
-                    connection, doc_ord=int(found[0]), lane=billed.lane, before=place, floor=floor
+                    connection,
+                    doc_ord=int(found[0]),
+                    lane=billed.lane,
+                    before=place,
+                    floor=floor,
+                    bound=billed.binds,
                 )
             )
             if handed:
@@ -139,9 +177,15 @@ def enqueue_billed(connection: Any, plan: DerivePlan, *, floor: float, now_ms: i
                 )
                 out.eligible[billed.pass_id] += 1
                 out.queued[billed.pass_id] += _write(
-                    connection, plan, candidate=candidate, billed=billed, unit=unit, one=one,
-                    floor=floor, now_ms=now_ms,
-                )  # fmt: skip
+                    connection,
+                    plan,
+                    candidate=candidate,
+                    billed=billed,
+                    unit=unit,
+                    one=one,
+                    floor=floor,
+                    now_ms=now_ms,
+                )
     return out
 
 
