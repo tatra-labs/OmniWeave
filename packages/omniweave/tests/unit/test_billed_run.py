@@ -660,3 +660,24 @@ def test_a_priced_run_bills_each_call_and_records_what_the_cache_saved(
     again = _run(tmp_path, store, config)
     assert again.status == "ok", again.lines()
     assert f"  cost      120 micros USD billed; the cache saved {120 * calls} more" in again.lines()
+
+
+def test_the_exit_check_reads_the_billed_lane_it_now_has(tmp_path: Path, model: str) -> None:
+    """D735, 16:805's fifth exit command: `ow graph doctor --check dangling_tmp,trust_clamped,
+    ungrounded` exits 0 over a billed run, and no longer vacuously -- the clamp fired on every
+    billed item, as 06:899-901 expects of a model that claims `extracted`."""
+    import sqlite3  # noqa: PLC0415, TID251 -- the check reads the store the run wrote.
+
+    from omniweave.graph.doctor import doctor  # noqa: PLC0415
+
+    store, config = _project(tmp_path, model)
+    assert _run(tmp_path, store, config).status == "ok"
+    connection = sqlite3.connect(store)
+    try:
+        report = doctor(connection, checks=["dangling_tmp", "trust_clamped", "ungrounded"])
+    finally:
+        connection.close()
+    assert report.failed == (), report.failed
+    by_check = {f.check: f.detail for f in (*report.ok, *report.warned)}
+    assert by_check["trust_clamped"].startswith("1.00 of "), by_check
+    assert "no billed pass has run" not in by_check["ungrounded"], by_check
