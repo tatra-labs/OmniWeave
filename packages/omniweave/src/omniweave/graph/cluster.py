@@ -47,7 +47,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_core.canonical import canonical, ow128
@@ -136,6 +136,21 @@ class ClusterReport:
     @property
     def shown(self) -> bool:
         return bool(self.communities or self.added or self.changed or self.retired)
+
+    @property
+    def moved(self) -> bool:
+        """Whether a community was written or retired (D691)."""
+        return bool(self.added or self.changed or self.retired)
+
+    def after(self, earlier: ClusterReport) -> ClusterReport:
+        """This run's report with an earlier round's writes added in (D691)."""
+        return replace(
+            self,
+            added=earlier.added + self.added,
+            changed=earlier.changed + self.changed,
+            retired=earlier.retired + self.retired,
+            stale=earlier.stale + self.stale,
+        )
 
 
 def plan(

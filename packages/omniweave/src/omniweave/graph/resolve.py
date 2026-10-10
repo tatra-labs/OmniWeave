@@ -12,9 +12,9 @@ this cell builds the two that every other stage stands on:
 
 **D685 adds stages [3]-[5], [7] and [10]**: the entropy gate, MinHash blocking over bands
 persisted in `entity_band`, Jaro-Winkler verification at 92.0, the guards, and the cohesion
-re-check (`omniweave.graph.fuzzy` holds the arithmetic and its rulings). Stage [6], the community
-boost, waits for `op.cluster`; stage [8], the LLM band, is billed and not built -- a pair scoring
-in `[75, 92)` is counted and left, never merged.
+re-check (`omniweave.graph.fuzzy` holds the arithmetic and its rulings). **D691 adds stage [6]**,
+the community boost over `op.cluster`'s communities (rulings 12-15). Stage [8], the LLM band, is
+billed and not built -- a pair scoring in `[75, 92)` is counted and left, never merged.
 
 **Pure over its inputs** (06:1696). `funnel()` and `closure()` take plain records and return plain
 records; `resolve()` is the one function that reads and writes the store, in the caller's
@@ -60,6 +60,26 @@ updates two derived columns on `entity`. It never inserts or deletes an entity.
     scores below 82 against the survivor's loses its `lsh_jw` pairs, union-find runs again, and
     the check repeats until nothing drops -- which is what makes it idempotent. A dropped pair is
     one `quarantine` row (`OW_GRAPH_COHESION_SPLIT`, `row_kind='merge'`), written once.
+12. **"One community" is one leaf** (D691): the finest community each entity's head belongs to,
+    a community no live community names as its parent. Every head is in exactly one leaf, and a
+    root can hold a whole component, which would make the boost a component test.
+13. **The boost is graphify's arithmetic** (`dedup.py:745-749`): `+COMMUNITY_BOOST` to the score
+    when both are in one leaf and both labels are `BOOST_MIN_LEN` long, before the bar (92, or 97
+    together) is applied. The stored score is the boosted one, because it is the score that
+    decided, and the total order (06:1746) sorts on it.
+14. **`stage = 'community_boost'` when the boost decided**: the unboosted score is under the bar
+    and the boosted one is over it. A pair that clears the bar alone stays `lsh_jw`, with its
+    score boosted all the same. The cohesion re-check (ruling 11) covers both stages: each is a
+    fuzzy decision scored against a key.
+15. **Communities are the store's when resolve runs**, which `ow ingest` makes this run's by
+    alternating the two passes (D691, `run.ingest`): a merge moves the graph, and the graph moves
+    the communities.
+16. **A boosted merge is its own evidence afterwards.** Membership is read through the head
+    (`community_member` holds heads only, D690 ruling 8), so once two entities merge they are one
+    node in one leaf, and the boost holds on every later run. That is the stable reading: read
+    through the entity itself, a merged member has no leaf, its pair would retire, the next
+    cluster would split it out, and the run after would merge it again. A re-cluster therefore
+    cannot withdraw a boost; a user split (`polarity = -1`) is what undoes one.
 8. **A run row only when there is a new merge to point it at.** `entity_merge.run_id` needs
    one; nothing else does. An unchanged corpus therefore writes nothing at all -- the
    property `test_free_passes_at_ingest` asserts of every Pass -- and a retirement or a
@@ -71,7 +91,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_core.errors import ResourceLimit
@@ -97,8 +117,8 @@ __all__ = [
 ]
 
 OP_RESOLVE: Final = "op.resolve"
-RESOLVE_VERSION: Final = 2
-"""2 since D685: the fuzzy stages."""
+RESOLVE_VERSION: Final = 3
+"""2 since D685: the fuzzy stages. 3 since D691: the community boost."""
 RESOLVE_PHASE: Final = 50
 """06:832's row 9: rank 0, phase 50 -- after `op.lexicon`'s 40."""
 MAX_CANDIDATE_PAIRS: Final = 5_000_000
@@ -109,6 +129,8 @@ SCORE_WHEN_NULL: Final = 100.0
 SIGNATURE_KEY: Final = "graph.resolve_signature"
 """`meta`'s key (0001:63, 06:1811): what the persisted bands were built under."""
 COHESION_CODE: Final = "OW_GRAPH_COHESION_SPLIT"
+FUZZY_STAGES: Final = frozenset({"lsh_jw", "community_boost"})
+"""The stages a score decided, which the cohesion re-check covers (rulings 11 and 14)."""
 
 _METHOD_ORD: Final = {
     name: ordinal for domain, ordinal, name in enum_val_rows() if domain == "method"
@@ -244,8 +266,14 @@ def fuzzy_stage(
     evidence: Mapping[int, Evidence],
     *,
     exact: Iterable[Pair] = (),
+    leaves: Mapping[int, int] | None = None,
 ) -> Fuzzy:
-    """Verify each band candidate: type gate, scope, guards, then the score (rulings 9-10)."""
+    """Verify each band candidate: type gate, scope, guards, then the score (rulings 9-10, 12-14).
+
+    `leaves` maps an entity to its head's leaf community (ruling 12); an entity it does not hold
+    is in none.
+    """
+    leaf = leaves or {}
     joined = {frozenset((p.a, p.b)) for p in exact}
     pairs: list[Pair] = []
     guarded: dict[str, int] = defaultdict(int)
@@ -272,9 +300,15 @@ def fuzzy_stage(
             guarded[guard] += 1
             continue
         here, there = evidence.get(first.entity_id, none), evidence.get(second.entity_id, none)
-        score = round(fuzzy.verify(left, right, cross_document=not (here.docs & there.docs)), 4)
+        raw = fuzzy.verify(left, right, cross_document=not (here.docs & there.docs))
         together = bool(here.segments & there.segments)
         threshold = fuzzy.COOCCURRENCE_THRESHOLD if together else fuzzy.MERGE_THRESHOLD
+        boosted = (
+            leaf.get(first.entity_id) is not None
+            and leaf.get(first.entity_id) == leaf.get(second.entity_id)
+            and min(len(left), len(right)) >= fuzzy.BOOST_MIN_LEN
+        )
+        score = round(raw + fuzzy.COMMUNITY_BOOST if boosted else raw, 4)
         if score < threshold:
             if score >= fuzzy.AMBIGUOUS_LOW:
                 ambiguous += 1
@@ -285,7 +319,7 @@ def fuzzy_stage(
             Pair(
                 a=first.entity_id,
                 b=second.entity_id,
-                stage="lsh_jw",
+                stage="community_boost" if boosted and raw < threshold else "lsh_jw",
                 trust=Trust.INFERRED,
                 method=Method.HEURISTIC,
                 score=score,
@@ -323,7 +357,7 @@ def cohesive(
         loose: dict[int, float] = {}
         for member, survivor in sorted(found.canonical.items()):
             if member == survivor or not any(
-                p.stage == "lsh_jw" and member in (p.a, p.b) for p in found.kept
+                p.stage in FUZZY_STAGES and member in (p.a, p.b) for p in found.kept
             ):
                 continue
             score = fuzzy.verify(
@@ -338,7 +372,7 @@ def cohesive(
         keep: list[Pair] = []
         for pair in live:
             member = pair.a if pair.a in loose else pair.b if pair.b in loose else None
-            if pair.stage == "lsh_jw" and member is not None:
+            if pair.stage in FUZZY_STAGES and member is not None:
                 dropped.append((pair, member, loose[member]))
             else:
                 keep.append(pair)
@@ -450,6 +484,14 @@ _CANDIDATES_SQL: Final = """
 SELECT DISTINCT a.entity_id, b.entity_id FROM entity_band AS a
   JOIN entity_band AS b ON b.band = a.band AND b.bucket = a.bucket AND b.entity_id > a.entity_id
 """
+_LEAVES_SQL: Final = """
+SELECT e.entity_id, m.community_id FROM entity AS e
+  JOIN community_member AS m ON m.entity_id = e.canonical_id
+  JOIN community AS c ON c.community_id = m.community_id AND c.state = 0
+ WHERE e.state = 0
+   AND NOT EXISTS (SELECT 1 FROM community AS k WHERE k.parent = c.community_id AND k.state = 0)
+"""
+"""Ruling 12: each live entity's head's leaf -- the community no live community is a child of."""
 _QUARANTINED_SQL: Final = "SELECT payload FROM quarantine WHERE code = :code"
 _QUARANTINE_SQL: Final = """
 INSERT INTO quarantine(code, run_id, row_kind, payload, block_id, detail, at_gen)
@@ -511,7 +553,9 @@ _SIGNATURE: Final = json.dumps(
     {
         "pass": OP_RESOLVE,
         "version": RESOLVE_VERSION,
-        "stages": ["exact", "lsh_jw"],
+        "stages": ["exact", "lsh_jw", "community_boost"],
+        "community_boost": fuzzy.COMMUNITY_BOOST,
+        "boost_min_len": fuzzy.BOOST_MIN_LEN,
         "entropy_min": fuzzy.ENTROPY_MIN,
         "num_perm": fuzzy.NUM_PERM,
         "bands": fuzzy.BANDS,
@@ -542,7 +586,9 @@ class ResolveReport:
     changed: int
     """Entities whose `canonical_id` or `resolution_trust` this run rewrote."""
     fuzzy: int = 0
-    """Live `lsh_jw` merges (D685)."""
+    """Live `lsh_jw` and `community_boost` merges (D685, D691)."""
+    boosted: int = 0
+    """Of those, the merges the community boost decided (D691)."""
     candidates: int = 0
     ambiguous: int = 0
     guarded: Mapping[str, int] = field(default_factory=dict)
@@ -562,11 +608,27 @@ class ResolveReport:
             + (f", {self.ambiguous} left in the unbuilt LLM band" if self.ambiguous else "")
             + (f", guarded: {guards}" if guards else "")
             + (f", {self.split} split for cohesion" if self.split else "")
+            + (f", {self.boosted} by the community boost" if self.boosted else "")
         )
 
     @property
     def shown(self) -> bool:
         return bool(self.kept or self.added or self.retired or self.blocked or self.changed)
+
+    @property
+    def moved(self) -> bool:
+        """Whether this run wrote the merge log or the closure (D691)."""
+        return bool(self.added or self.retired or self.changed)
+
+    def after(self, earlier: ResolveReport) -> ResolveReport:
+        """This run's report with an earlier round's writes added in (D691)."""
+        return replace(
+            self,
+            added=earlier.added + self.added,
+            retired=earlier.retired + self.retired,
+            changed=earlier.changed + self.changed,
+            split=earlier.split + self.split,
+        )
 
 
 def resolve(connection: Any, *, gen: int) -> ResolveReport:
@@ -591,7 +653,8 @@ def resolve(connection: Any, *, gen: int) -> ResolveReport:
             fix="set etype_vocab.resolution = 'exact_only' for the etype with the most entities, "
             "then ow ingest again",
         )
-    fuzzed = fuzzy_stage(by_id, gate, candidates, _evidence(connection), exact=exact)
+    leaves = {int(e): int(c) for e, c in connection.execute(_LEAVES_SQL).fetchall()}
+    fuzzed = fuzzy_stage(by_id, gate, candidates, _evidence(connection), exact=exact, leaves=leaves)
     found, dropped = cohesive(
         nodes, [*exact, *fuzzed.pairs], user_merges=user_merges, user_splits=splits
     )
@@ -672,7 +735,8 @@ def resolve(connection: Any, *, gen: int) -> ResolveReport:
         kept=len(found.kept),
         blocked=len(found.blocked),
         changed=changed,
-        fuzzy=sum(1 for p in found.kept if p.stage == "lsh_jw"),
+        fuzzy=sum(1 for p in found.kept if p.stage in FUZZY_STAGES),
+        boosted=sum(1 for p in found.kept if p.stage == "community_boost"),
         candidates=fuzzed.candidates,
         ambiguous=fuzzed.ambiguous,
         guarded=fuzzed.guarded,

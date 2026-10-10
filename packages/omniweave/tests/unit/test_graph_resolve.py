@@ -5,14 +5,17 @@ from __future__ import annotations
 import hashlib
 import sqlite3  # noqa: TID251 -- the assertions read and edit the store a run wrote.
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+from omniweave.graph import cluster as cluster_module
 from omniweave.graph import fuzzy
 from omniweave.graph import resolve as module
 from omniweave.graph.resolve import (
     Evidence,
     Node,
     Pair,
+    ResolveReport,
     TypeGate,
     closure,
     cohesive,
@@ -22,11 +25,16 @@ from omniweave.graph.resolve import (
     resolve,
     total_order,
 )
+from omniweave.run import ingest as ingest_module
 from omniweave.run.ingest import IngestReport
 from omniweave_core.errors import ResourceLimit
 from omniweave_core.model.enums import Method, Trust
 from omniweave_core.store.verify import VerifyClause, verify_store
+from test_graph_cluster import _edge
 from test_run_parse import _project, _rows, _run
+
+if TYPE_CHECKING:
+    from omniweave_core.config import Config
 
 GATE = TypeGate(
     resolution={"org": "fuzzy", "product": "fuzzy", "unknown": "none", "group": "fuzzy"},
@@ -593,3 +601,205 @@ def test_a_cohesion_split_is_quarantined_once(
     finally:
         connection.rollback()
         connection.close()
+
+
+# ---------------------------------------------------------------------------------------------
+# D691: stage [6], the community boost
+# ---------------------------------------------------------------------------------------------
+
+APART = {1: Evidence(docs=frozenset({7})), 2: Evidence(docs=frozenset({8}))}
+
+
+def test_one_leaf_lifts_a_long_near_spelling_over_the_bar() -> None:
+    """Ruling 13: plain Jaro 88.24 across documents is the LLM band's alone; +5.0 merges it."""
+    nodes = {1: org(1, "northwind_traders"), 2: org(2, "northwind_trading")}
+    alone = fuzzy_stage(nodes, FUZZY, [(1, 2)], APART)
+    assert (alone.pairs, alone.ambiguous) == ((), 1)
+    found = fuzzy_stage(nodes, FUZZY, [(1, 2)], APART, leaves={1: 40, 2: 40})
+    [pair] = found.pairs
+    assert (pair.a, pair.b, pair.stage, pair.trust) == (1, 2, "community_boost", Trust.INFERRED)
+    assert pair.score == pytest.approx(88.24 + fuzzy.COMMUNITY_BOOST, abs=0.01)
+    assert found.ambiguous == 0
+
+
+def test_the_boost_needs_one_leaf_and_two_long_labels(monkeypatch: pytest.MonkeyPatch) -> None:
+    nodes = {1: org(1, "northwind_traders"), 2: org(2, "northwind_trading")}
+    assert fuzzy_stage(nodes, FUZZY, [(1, 2)], APART, leaves={1: 40, 2: 41}).pairs == ()
+    assert fuzzy_stage(nodes, FUZZY, [(1, 2)], APART, leaves={1: 40}).pairs == ()
+    monkeypatch.setattr(fuzzy, "BOOST_MIN_LEN", len("northwind traders") + 1)
+    assert fuzzy_stage(nodes, FUZZY, [(1, 2)], APART, leaves={1: 40, 2: 40}).pairs == ()
+    monkeypatch.setattr(fuzzy, "BOOST_MIN_LEN", len("northwind traders"))
+    assert len(fuzzy_stage(nodes, FUZZY, [(1, 2)], APART, leaves={1: 40, 2: 40}).pairs) == 1
+
+
+def test_a_pair_over_the_bar_alone_stays_lsh_jw_and_keeps_its_boosted_score() -> None:
+    """Ruling 14: the boost did not decide, so the stage is `lsh_jw`; the score is the boosted one,
+    because the total order sorts on the score that decided."""
+    nodes = {1: org(1, "acme_holdings_ltd"), 2: org(2, "acme_holdings_limited")}
+    [pair] = fuzzy_stage(nodes, FUZZY, [(1, 2)], APART, leaves={1: 3, 2: 3}).pairs
+    assert pair.stage == "lsh_jw"
+    assert pair.score == pytest.approx(93.65 + fuzzy.COMMUNITY_BOOST, abs=0.01)
+
+
+def test_a_shared_segment_still_needs_ninety_seven_after_the_boost() -> None:
+    nodes = {1: org(1, "northwind_traders"), 2: org(2, "northwind_trading")}
+    together = {
+        1: Evidence(docs=frozenset({7}), segments=frozenset({70})),
+        2: Evidence(docs=frozenset({8}), segments=frozenset({70})),
+    }
+    assert fuzzy_stage(nodes, FUZZY, [(1, 2)], together, leaves={1: 4, 2: 4}).pairs == ()
+
+
+def test_the_cohesion_check_covers_a_boosted_pair() -> None:
+    """Ruling 14: a member a boosted pair brought in, under 82 against the survivor, goes."""
+    nodes = [org(1, "northwind_traders"), org(2, "northwind_trading"), org(3, "zenith_partners")]
+    boosted = [
+        Pair(a=1, b=2, stage="community_boost", trust=Trust.INFERRED, method=Method.HEURISTIC,
+             score=93.24, score_kind="jaro_winkler"),
+        Pair(a=2, b=3, stage="community_boost", trust=Trust.INFERRED, method=Method.HEURISTIC,
+             score=92.5, score_kind="jaro_winkler"),
+    ]  # fmt: skip
+    found, dropped = cohesive(nodes, boosted)
+    assert dict(found.canonical) == {1: 1, 2: 1, 3: 3}
+    assert [(pair.b, member) for pair, member, _score in dropped] == [(3, 3)]
+
+
+NORTH_A = "Party,Role\nNorthwind Traders,Seller\nContoso Bank,Lender\nLitware Group,Agent\n"
+NORTH_B = "Party,Role\nNorthwind Trading,Seller\nFabrikam Mills,Buyer\n"
+
+
+def _north(tmp_path: Path) -> tuple[Path, Config]:
+    store, config = _project(tmp_path, ())
+    (tmp_path / "docs" / "a.csv").write_text(NORTH_A, encoding="utf-8")
+    (tmp_path / "docs" / "b.csv").write_text(NORTH_B, encoding="utf-8")
+    first = _run(tmp_path, store, config)
+    assert first.resolved is not None
+    assert (first.resolved.kept, first.resolved.ambiguous) == (0, 1), "the LLM band's, alone"
+    connection = sqlite3.connect(store)
+    try:
+        for left, right in [
+            ("northwind_traders", "contoso_bank"),
+            ("northwind_trading", "contoso_bank"),
+            ("northwind_traders", "northwind_trading"),
+            ("contoso_bank", "litware_group"),
+        ]:
+            _edge(connection, left, right)
+        connection.commit()
+    finally:
+        connection.close()
+    return store, config
+
+
+def test_one_ingest_merges_two_spellings_their_community_brings_together(tmp_path: Path) -> None:
+    """D691: round 1 clusters the new edges, round 2's resolve boosts on those communities, and
+    the run ends when a resolve writes nothing."""
+    store, config = _north(tmp_path)
+    report = _run(tmp_path, store, config)
+    assert report.status == "ok", report.lines()
+    assert (report.graph_rounds, report.graph_settled) == (2, True)
+    assert report.resolved is not None and report.resolved.boosted == 1
+    assert any("ran 2 round(s)" in line for line in report.lines()), report.lines()
+    [(stage, trust, score)] = _rows(store, "SELECT stage, trust, round(score, 2) FROM entity_merge")
+    assert (stage, trust, score) == ("community_boost", int(Trust.INFERRED), 93.24)
+    heads = sorted(str(k) for (k,) in _rows(store, "SELECT key FROM ow_entity_head"))
+    assert "northwind_trading" not in heads and "northwind_traders" in heads
+    again = _run(tmp_path, store, config)
+    assert (again.graph_rounds, again.graph_settled) == (1, True)
+    assert not any("round(s)" in line for line in again.lines())
+    assert again.resolved is not None and not again.resolved.moved
+
+
+def test_a_graph_still_moving_at_the_bound_says_so(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store, config = _north(tmp_path)
+    monkeypatch.setattr(ingest_module, "GRAPH_ROUNDS", 1)
+    report = _run(tmp_path, store, config)
+    assert (report.graph_rounds, report.graph_settled) == (1, False)
+    assert any("still moved: run ow ingest again" in line for line in report.lines())
+    assert _rows(store, "SELECT count(*) FROM entity_merge") == [(0,)]
+    monkeypatch.setattr(ingest_module, "GRAPH_ROUNDS", 4)
+    assert _run(tmp_path, store, config).resolved.boosted == 1  # type: ignore[union-attr]
+
+
+def _community(
+    connection: sqlite3.Connection,
+    community_id: int,
+    keys: list[str],
+    *,
+    parent: int | None = None,
+    state: int = 0,
+) -> None:
+    run = connection.execute("SELECT MIN(run_id) FROM derive_run").fetchone()[0]
+    connection.execute(
+        "INSERT INTO community(community_id, cite, level, parent, component_ord, cluster_run, size,"
+        " cohesion, member_digest, run_id, trust, taint, state)"
+        " VALUES(?, ?, ?, ?, 0, 1, ?, 1.0, ?, ?, 1, 0, ?)",
+        (community_id, f"c{community_id}", 0 if parent is None else 1, parent, len(keys),
+         bytes([community_id]), run, state),
+    )  # fmt: skip
+    connection.executemany(
+        "INSERT INTO community_member(community_id, entity_id)"
+        " SELECT ?, entity_id FROM entity WHERE key = ?",
+        [(community_id, key) for key in keys],
+    )
+
+
+@pytest.mark.parametrize(
+    ("leaves", "retired", "boosted"),
+    [
+        ([["northwind_traders"], ["northwind_trading", "contoso_bank"]], (), 0),
+        ([["northwind_traders"], ["northwind_trading", "contoso_bank"]], (2, 3), 1),
+        ([["northwind_traders", "northwind_trading"], ["contoso_bank"]], (), 1),
+    ],
+    ids=["one_root_two_leaves", "the_leaves_retired", "one_leaf"],
+)
+def test_one_community_is_one_leaf_not_one_root(
+    tmp_path: Path, leaves: list[list[str]], retired: tuple[int, ...], boosted: int
+) -> None:
+    """Ruling 12: under one root, two leaves are two communities; a retired leaf is none, so a
+    root whose children all retired is a leaf itself. The root takes the highest id, so a
+    reading that let it count would see it last."""
+    store, _config = _north(tmp_path)
+    connection = sqlite3.connect(store)
+    try:
+        _community(connection, 9, ["northwind_traders", "northwind_trading", "contoso_bank"])
+        for community_id, keys in enumerate(leaves, start=2):
+            _community(connection, community_id, keys, parent=9)
+        connection.executemany(
+            "UPDATE community SET state = 1 WHERE community_id = ?", [(c,) for c in retired]
+        )
+        assert resolve(connection, gen=90).boosted == boosted
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def test_a_boosted_merge_is_its_own_evidence_afterwards(tmp_path: Path) -> None:
+    """Ruling 16: once merged, the two are one head and so in one leaf; a re-cluster cannot
+    withdraw the boost, and a user split is what undoes it."""
+    store, config = _north(tmp_path)
+    _run(tmp_path, store, config)
+    connection = sqlite3.connect(store)
+    try:
+        live = (
+            "SELECT count(*) FROM community_member m JOIN entity e USING (entity_id)"
+            " JOIN community c USING (community_id) WHERE c.state = 0 AND e.key = ?"
+        )
+        assert connection.execute(live, ("northwind_trading",)).fetchone() == (0,), "not a head"
+        assert resolve(connection, gen=90).boosted == 1, "read through its head's leaf"
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def test_a_later_rounds_report_carries_the_earlier_rounds_writes() -> None:
+    first = ResolveReport(4, 1, 1, 2, 1, 1, 0, 3, split=1)
+    second = ResolveReport(4, 1, 2, 1, 2, 2, 0, 1, split=0, boosted=1)
+    summed = second.after(first)
+    assert (summed.added, summed.retired, summed.changed, summed.split) == (3, 3, 4, 1)
+    assert (summed.kept, summed.boosted) == (2, 1), "what is live is the latest round's"
+    one = cluster_module.ClusterReport(5, 4, 1, 2, 1, added=2, changed=0, retired=0, stale=0)
+    two = cluster_module.ClusterReport(5, 4, 1, 2, 1, added=0, changed=2, retired=1, stale=2)
+    both = two.after(one)
+    assert (both.added, both.changed, both.retired, both.stale) == (2, 2, 1, 2)

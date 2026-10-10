@@ -75,6 +75,10 @@ ROWS: Final = NUM_PERM // BANDS
 SHINGLE_K: Final = 3
 LONG_LABEL: Final = 12
 """06:1720 and 06:1828: `max(len) >= 12` is plain Jaro across documents; under 12 is short."""
+COMMUNITY_BOOST: Final = 5.0
+"""06:1722, graphify's `_COMMUNITY_BOOST` (`dedup.py:247`): added when both are in one community."""
+BOOST_MIN_LEN: Final = 12
+"""06:1723: the boost needs both labels this long (graphify's `min(len) >= 12`, `dedup.py:747`)."""
 COOCCURRENCE_THRESHOLD: Final = 97.0
 """06:1834: two entities mentioned distinctly in one Segment need 97, not 92."""
 AMBIGUOUS_LOW: Final = 75.0

@@ -364,6 +364,10 @@ class IngestReport:
     """`op.resolve` after the lexicon's drain: the merge log and the closure (D684)."""
     clustered: op_cluster.ClusterReport | None = None
     """`op.cluster` after `op.resolve`: the community tree, re-clustered whole (D690)."""
+    graph_rounds: int = 0
+    """How many rounds of `op.resolve` then `op.cluster` ran before neither moved (D691)."""
+    graph_settled: bool = True
+    """False when they still moved after `GRAPH_ROUNDS` rounds (D691)."""
 
     @property
     def settled(self) -> int:
@@ -392,6 +396,11 @@ class IngestReport:
             out.append(self.resolved.line())
         if self.clustered is not None and self.clustered.shown:
             out.append(self.clustered.line())
+        if self.graph_rounds > 1 or not self.graph_settled:
+            out.append(
+                f"  graph     op.resolve and op.cluster ran {self.graph_rounds} round(s)"
+                + ("" if self.graph_settled else ", and still moved: run ow ingest again")
+            )
         return out
 
     def lines(self) -> tuple[str, ...]:
@@ -821,30 +830,9 @@ def _hops(
         #  rows it queued or re-opened, in this run.
         lexicon = _lexicon(thread, context, inputs=inputs, store=store, clock=clock)
         relexed = drain() if lexicon.drain else None
-        #  D684: op.resolve last, at 06:832's phase 50, over every entity the drains left.
-        resolved = cast(
-            "op_resolve.ResolveReport",
-            thread.run(
-                ow.Unit(
-                    name="graph.resolve",
-                    run=lambda c: op_resolve.resolve(c, gen=generation),
-                    cost_class="free",
-                    wait_ms=BATCH_WAIT_MS,
-                )
-            ),
-        )
-        #  D690: op.cluster at rank 1 (06:834), the whole graph every run (06 STEP 6).
-        clustered = cast(
-            "op_cluster.ClusterReport",
-            thread.run(
-                ow.Unit(
-                    name="graph.cluster",
-                    run=lambda c: op_cluster.cluster(c, gen=generation),
-                    cost_class="local_compute",
-                    wait_ms=BATCH_WAIT_MS,
-                )
-            ),
-        )
+        #  D684, D690, D691: op.resolve over every entity the drains left, then op.cluster
+        #  over the graph it leaves, alternating until neither moves.
+        graph = _resolve_and_cluster(thread, generation)
     finally:
         executor.close()
     states, parts = _tally(thread, generation)
@@ -876,9 +864,78 @@ def _hops(
         retired=retired,
         reparsed=reparsed,
         lexicon=lexicon,
-        resolved=resolved,
-        clustered=clustered,
+        resolved=graph.resolved,
+        clustered=graph.clustered,
+        graph_rounds=graph.rounds,
+        graph_settled=graph.settled,
     )
+
+
+GRAPH_ROUNDS: Final = 4
+"""D691: the most rounds of `op.resolve` then `op.cluster` one ingest runs."""
+
+
+@dataclass(frozen=True, slots=True)
+class _Graph:
+    resolved: op_resolve.ResolveReport
+    clustered: op_cluster.ClusterReport
+    rounds: int
+    settled: bool
+
+
+def _resolve_and_cluster(thread: ow.StoreThread, generation: int) -> _Graph:
+    """`op.resolve`, then `op.cluster`, then again while the communities move. D691.
+
+    The community boost (06:1722) reads the communities, and a merge moves the graph they are
+    cut from, so one run of each in a fixed order leaves an ingest that is one step behind
+    itself: a full build would boost nothing on its first run while an incremental one boosts on
+    the previous run's communities, and GR8 compares the two. As `op.lexicon`'s drain does
+    (D683), one ingest runs the pair to a fixed point: a round ends the loop when `op.resolve`
+    writes nothing, or when `op.cluster` moves no community. The counts are summed over the
+    rounds; `GRAPH_ROUNDS` bounds it, and the report says when the bound was reached.
+    """
+
+    def resolve() -> op_resolve.ResolveReport:
+        return cast(
+            "op_resolve.ResolveReport",
+            thread.run(
+                ow.Unit(
+                    name="graph.resolve",
+                    run=lambda c: op_resolve.resolve(c, gen=generation),
+                    cost_class="free",
+                    wait_ms=BATCH_WAIT_MS,
+                )
+            ),
+        )
+
+    def cluster() -> op_cluster.ClusterReport:
+        #  D690: rank 1 (06:834), the whole graph every time (06 STEP 6).
+        return cast(
+            "op_cluster.ClusterReport",
+            thread.run(
+                ow.Unit(
+                    name="graph.cluster",
+                    run=lambda c: op_cluster.cluster(c, gen=generation),
+                    cost_class="local_compute",
+                    wait_ms=BATCH_WAIT_MS,
+                )
+            ),
+        )
+
+    resolved = resolve()
+    latest = clustered = cluster()
+    rounds = 1
+    while latest.moved:  # the latest round's: a cluster that moved nothing is a fixed point
+        if rounds == GRAPH_ROUNDS:
+            return _Graph(resolved, clustered, rounds, settled=False)
+        again = resolve()
+        if not again.moved:
+            break
+        rounds += 1
+        resolved = again.after(resolved)
+        latest = cluster()
+        clustered = latest.after(clustered)
+    return _Graph(resolved, clustered, rounds, settled=True)
 
 
 def _lexicon(
