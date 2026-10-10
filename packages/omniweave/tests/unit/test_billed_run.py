@@ -147,6 +147,8 @@ def test_a_billed_pass_runs_per_segment_and_writes_under_its_decision(
         f"{segments} queued"
     )
     assert line in report.lines(), report.lines()
+    derived = f"  derive    {LLM}: 1 document(s), {segments} Segment run(s), "
+    assert any(one.startswith(derived) for one in report.lines()), "D720: a document, not a row"
     assert _rows(
         store, "SELECT status, count(*) FROM work WHERE operator = 'derive.entity.llm'"
     ) == [("done", segments)]

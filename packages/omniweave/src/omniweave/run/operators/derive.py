@@ -571,7 +571,9 @@ class DeriveOperator:
                 driver, row, unit, producer, failure=FailureClass.DRIVER_BUG, message=str(refused)
             )
         count = self._tally.derived.setdefault(driver, DeriveCount())
-        count.documents += 1
+        if unit.uri not in count.units:  # D720: a billed row is a Segment, not a document
+            count.units.add(unit.uri)
+            count.documents += 1
         count.runs += len(reports)
         count.items += sum(r.emitted for r in reports)
         count.quarantined += sum(r.quarantined for r in reports)

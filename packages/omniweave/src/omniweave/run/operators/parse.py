@@ -375,12 +375,18 @@ class ParseLedger:
 
 @dataclass(slots=True)
 class DeriveCount:
-    """One free Pass's rows this run: documents derived, Segment runs, items written, held."""
+    """One Pass's rows this run: documents derived, Segment runs, items written, held.
+
+    `documents` counts distinct units (D720). A billed Pass's row is one Segment, and a free
+    Pass's reader can be re-run on a document in the same run, so rows are not documents.
+    """
 
     documents: int = 0
     runs: int = 0
     items: int = 0
     quarantined: int = 0
+    units: set[str] = field(default_factory=set)
+    """The units counted into `documents`, so each document is counted once."""
 
 
 @dataclass(slots=True)
