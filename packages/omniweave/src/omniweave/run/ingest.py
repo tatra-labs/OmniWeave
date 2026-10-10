@@ -138,6 +138,7 @@ from omniweave.run.manifest import (
     manifest_path,
 )
 from omniweave.run.operators import lexicon as op_lexicon
+from omniweave.run.operators.band import BandQueued, enqueue_band, manifest, put_manifest
 from omniweave.run.operators.billed import BilledQueued, billed_phases, enqueue_billed
 from omniweave.run.operators.derive import DeriveOperator, DerivePlan, is_derive
 from omniweave.run.operators.parse import (
@@ -169,10 +170,12 @@ if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from omniweave_core.work import WorkRow
     from omniweave_ports.types import UnitRef
 
+    from omniweave.graph.resolve import Band
     from omniweave.route.evidence import SignalRegistry
     from omniweave.route.policy import RoutePolicy
     from omniweave.run.dispatch import Batch
     from omniweave.run.manifest import RunStatus, Timings
+    from omniweave.run.operators.band import Manifest
     from omniweave.run.passwords import Passwords
 
 __all__ = [
@@ -376,6 +379,8 @@ class IngestReport:
     """STEP 7 after the graph passes: the four salience columns, recounted (D692)."""
     billed: BilledQueued | None = None
     """The billed Passes' rows, enqueued after every free Pass's cover is written (D716)."""
+    band: BandQueued | None = None
+    """The LLM band's row, enqueued after `op.resolve` hands the band on (D729)."""
 
     @property
     def settled(self) -> int:
@@ -402,6 +407,8 @@ class IngestReport:
             out.append(self.lexicon.line())
         if self.billed is not None:
             out.extend(self.billed.lines())
+        if self.band is not None:
+            out.extend(self.band.lines())
         if self.resolved is not None and self.resolved.shown:
             out.append(self.resolved.line())
         if self.clustered is not None and self.clustered.shown:
@@ -833,6 +840,8 @@ def _hops(
     relexed: sup.RunReport | None = None
     rebilled: list[sup.RunReport] = []
     billed: BilledQueued | None = None
+    band: BandQueued | None = None
+    rebanded: sup.RunReport | None = None
     try:
         drained = drain() if enqueued else None
         routed = _route(thread, context, inputs=inputs, roots=roots, clock=clock)
@@ -859,6 +868,11 @@ def _hops(
         #  D684, D690, D691: op.resolve over every entity the drains left, then op.cluster
         #  over the graph it leaves, alternating until neither moves.
         graph = _resolve_and_cluster(thread, generation)
+        #  D729: the band op.resolve could not decide, asked of the model once its graph has
+        #  settled. A `same` answer is a merge the next resolve reads back into the closure.
+        band, rebanded, graph = _band_stage(
+            thread, context, inputs=inputs, store=store, clock=clock, drain=drain, graph=graph,
+        )  # fmt: skip
         #  D692: STEP 7, the salience of what the graph passes left, and GR16's recount in the
         #  same transaction: a disagreement rolls the write back and fails the run.
         salient = cast(
@@ -879,7 +893,8 @@ def _hops(
     waiting = states.get(IDENTIFIED, 0) + states.get(PLANNED, 0)
     #  D683: a batch that crashed left its rows claimed, so the drain ended without them.
     stopped = any(
-        r is not None and (r.status != "done" or r.crashed) for r in (drained, relexed, *rebilled)
+        r is not None and (r.status != "done" or r.crashed)
+        for r in (drained, relexed, *rebilled, rebanded)
     )
     status = "partial" if waiting or stopped else "ok"
     return IngestReport(
@@ -911,6 +926,7 @@ def _hops(
         graph_settled=graph.settled,
         salience=salient,
         billed=billed,
+        band=band,
     )
 
 
@@ -981,6 +997,58 @@ def _billed_stage(
         if sum(queued.queued.values()):
             drains.append(drain())
     return billed, drains
+
+
+def _band_stage(
+    thread: ow.StoreThread,
+    ctx: RunContext,
+    *,
+    inputs: _RoutingInputs,
+    store: Path,
+    clock: Clock,
+    drain: Callable[[], sup.RunReport],
+    graph: Settled,
+) -> tuple[BandQueued | None, sup.RunReport | None, Settled]:
+    """The LLM band's row, enqueued and drained, and the graph resolved again when it ran (D728,
+    D729). No row and no drain when the plan holds no merge Pass, so a run that enabled none
+    says nothing about it."""
+    from omniweave_core.blobs import BlobStore  # noqa: PLC0415 -- as `_lexicon`
+
+    derives, _why = DerivePlan.of(inputs.catalog, inputs.resolving, ctx, enable=inputs.passes)
+    if derives is None or derives.merge is None:
+        return None, None, graph
+    band: Sequence[Band] = () if graph.resolved is None else graph.resolved.band
+    found = cast(
+        "Manifest | None",
+        thread.run(
+            ow.Unit(
+                name="band.manifest",
+                run=lambda connection: manifest(connection, band),
+                cost_class="free",
+                wait_ms=BATCH_WAIT_MS,
+            )
+        ),
+    )
+    if found is not None:
+        cas_root = store.parent / CAS_DIR
+        cas_root.mkdir(parents=True, exist_ok=True)
+        put_manifest(BlobStore(cas_root), found)
+    now_ms = clock.wall_ns() // 1_000_000
+    queued = cast(
+        "BandQueued",
+        thread.run(
+            ow.Unit(
+                name="band.enqueue",
+                run=lambda connection: enqueue_band(connection, derives, found, now_ms=now_ms),
+                cost_class="free",
+                wait_ms=BATCH_WAIT_MS,
+            )
+        ),
+    )
+    if not queued.queued:
+        return queued, None, graph
+    drained = drain()
+    return queued, drained, _resolve_and_cluster(thread, ctx.generation)
 
 
 def _billed_plan(ctx: RunContext, *, inputs: _RoutingInputs) -> DerivePlan | None:
