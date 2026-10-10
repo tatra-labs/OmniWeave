@@ -14,7 +14,10 @@ this cell builds the two that every other stage stands on:
 persisted in `entity_band`, Jaro-Winkler verification at 92.0, the guards, and the cohesion
 re-check (`omniweave.graph.fuzzy` holds the arithmetic and its rulings). **D691 adds stage [6]**,
 the community boost over `op.cluster`'s communities (rulings 12-15). Stage [8], the LLM band, is
-billed and not built -- a pair scoring in `[75, 92)` is counted and left, never merged.
+billed: **D727 makes it data** (rulings 20-23). A pair scoring in `[75, 92)` across Segments is
+`Fuzzy.band`, the pairs the closure has not joined are `ResolveReport.band`, and an `llm_band` merge
+the model decided is kept in the closure while its pair is still in the band. The Pass that asks
+the model and writes those merges is not built.
 
 **Pure over its inputs** (06:1696). `funnel()` and `closure()` take plain records and return plain
 records; `resolve()` is the one function that reads and writes the store, in the caller's
@@ -95,6 +98,21 @@ updates two derived columns on `entity`. It never inserts or deletes an entity.
 19. **One `OW_GRAPH_ENTITY_OVERLOADED` quarantine row per entity, ever** (`row_kind = 'entity'`),
     naming the incidence that fired, its value, the cap and the documents. A reversal writes none,
     and a second overload of the same entity is not a second row.
+20. **The band is data** (D727). A pair scoring in `[AMBIGUOUS_LOW, MERGE_THRESHOLD)` that no
+    Segment holds both ends of is a `Band`, with the score that put it there (boosted, as ruling
+    13 stores it). A pair two Segments share needs 97 to merge, and below that the
+    `cooccurrence_in_segment` guard holds it apart, so it is not offered: 06's guards are applied
+    again before stage [8]. `ambiguous` still counts every pair in `[75, threshold)`.
+21. **An `llm_band` merge lives while its pair is in the band.** The merge Pass writes it. Each
+    pass reads the live rows back into the closure, in the total order at their own score, while
+    its funnel still puts the pair in the band, and retires them when it does not. A pair whose
+    score rose over the bar is merged by its own stage. One that fell under 75, or behind a guard,
+    is no longer the model's question.
+22. **The cohesion re-check does not drop an `llm_band` pair**, for ruling 11's reason: it is a
+    decision, as an `exact` or `user` pair is, and not a score against a key.
+23. **The band offered is the pairs the closure has not joined**, and not two clusters a user split
+    keeps apart. Asking whether two entities already one are one, or whether a human's split was
+    wrong, buys nothing.
 8. **A run row only when there is a new merge to point it at.** `entity_merge.run_id` needs
    one; nothing else does. An unchanged corpus therefore writes nothing at all -- the
    property `test_free_passes_at_ingest` asserts of every Pass -- and a retirement or a
@@ -121,6 +139,7 @@ if TYPE_CHECKING:
 __all__ = [
     "MAX_CANDIDATE_PAIRS",
     "OP_RESOLVE",
+    "Band",
     "Closure",
     "Node",
     "Pair",
@@ -135,8 +154,9 @@ __all__ = [
 ]
 
 OP_RESOLVE: Final = "op.resolve"
-RESOLVE_VERSION: Final = 3
-"""2 since D685: the fuzzy stages. 3 since D691: the community boost."""
+RESOLVE_VERSION: Final = 4
+"""2 since D685: the fuzzy stages. 3 since D691: the community boost. 4 since D727: an `llm_band`
+merge is kept while its pair is in the band (ruling 21)."""
 RESOLVE_PHASE: Final = 50
 """06:832's row 9: rank 0, phase 50 -- after `op.lexicon`'s 40."""
 MAX_CANDIDATE_PAIRS: Final = 5_000_000
@@ -186,6 +206,15 @@ class Pair:
     score: float | None = None
     score_kind: str | None = None
     guards: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class Band:
+    """A pair in the LLM band (ruling 20): `a` before `b` in identity order, and its score."""
+
+    a: int
+    b: int
+    score: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -271,6 +300,8 @@ class Fuzzy:
     """Pairs in `[75, threshold)`: the LLM band's, not built, so left (D685)."""
     guarded: Mapping[str, int]
     """Guard name -> candidate pairs it blocked."""
+    band: tuple[Band, ...] = ()
+    """Ruling 20: the pairs in `[75, 92)` that no Segment holds both ends of."""
 
 
 def eligible(node: Node, gate: TypeGate) -> bool:
@@ -298,6 +329,7 @@ def fuzzy_stage(
     joined = {frozenset((p.a, p.b)) for p in exact}
     pairs: list[Pair] = []
     guarded: dict[str, int] = defaultdict(int)
+    band: list[Band] = []
     ambiguous = 0
     seen = 0
     none = Evidence()
@@ -333,6 +365,8 @@ def fuzzy_stage(
         if score < threshold:
             if score >= fuzzy.AMBIGUOUS_LOW:
                 ambiguous += 1
+                if not together:  # ruling 20: the co-occurrence guard holds the rest apart
+                    band.append(Band(a=first.entity_id, b=second.entity_id, score=score))
             if together and score >= fuzzy.MERGE_THRESHOLD:
                 guarded["cooccurrence_in_segment"] += 1
             continue
@@ -352,7 +386,13 @@ def fuzzy_stage(
                 ),
             )
         )
-    return Fuzzy(pairs=tuple(pairs), candidates=seen, ambiguous=ambiguous, guarded=dict(guarded))
+    return Fuzzy(
+        pairs=tuple(pairs),
+        candidates=seen,
+        ambiguous=ambiguous,
+        guarded=dict(guarded),
+        band=tuple(band),
+    )
 
 
 def cohesive(
@@ -552,6 +592,10 @@ _USER_SQL: Final = """
 SELECT loser_id, winner_id, polarity, trust FROM entity_merge
  WHERE stage = 'user' AND retired_at_gen IS NULL
 """
+_LLM_SQL: Final = """
+SELECT loser_id, winner_id, trust, score, score_kind, guards FROM entity_merge
+ WHERE stage = 'llm_band' AND polarity = 1 AND retired_at_gen IS NULL
+"""
 _LIVE_SQL: Final = """
 SELECT merge_id, loser_id, winner_id, stage FROM entity_merge
  WHERE stage <> 'user' AND polarity = 1 AND retired_at_gen IS NULL
@@ -651,6 +695,10 @@ class ResolveReport:
     """Fuzzy pairs the cohesion re-check dropped this run."""
     rebanded: bool = False
     """The bands were rebuilt: the stored signature was another's, or there was none."""
+    llm: int = 0
+    """Live `llm_band` merges this pass kept, their pairs still in the band (ruling 21)."""
+    band: tuple[Band, ...] = ()
+    """Ruling 23: the band's pairs the closure has not joined, for the model to decide."""
 
     def line(self) -> str:
         guards = ", ".join(f"{k} {v}" for k, v in sorted(self.guarded.items()))
@@ -664,6 +712,7 @@ class ResolveReport:
             + (f", guarded: {guards}" if guards else "")
             + (f", {self.split} split for cohesion" if self.split else "")
             + (f", {self.boosted} by the community boost" if self.boosted else "")
+            + (f", {self.llm} by the LLM band" if self.llm else "")
             + (f"; {self.overloaded} overloaded" if self.overloaded else "")
         )
 
@@ -721,8 +770,17 @@ def resolve(connection: Any, *, gen: int) -> ResolveReport:
         )
     leaves = {int(e): int(c) for e, c in connection.execute(_LEAVES_SQL).fetchall()}
     fuzzed = fuzzy_stage(by_id, gate, candidates, _evidence(connection), exact=exact, leaves=leaves)
+    in_band = {frozenset((b.a, b.b)) for b in fuzzed.band}
+    decided = [  # ruling 21: the model's merges, while their pairs are in the band
+        Pair(
+            a=int(r[1]), b=int(r[0]), stage="llm_band", trust=Trust(int(r[2])), method=Method.LLM,
+            score=r[3], score_kind=r[4], guards=tuple(json.loads(str(r[5]))),
+        )
+        for r in connection.execute(_LLM_SQL).fetchall()
+        if frozenset((int(r[0]), int(r[1]))) in in_band
+    ]  # fmt: skip
     found, dropped = cohesive(
-        nodes, [*exact, *fuzzed.pairs], user_merges=user_merges, user_splits=splits
+        nodes, [*exact, *fuzzed.pairs, *decided], user_merges=user_merges, user_splits=splits
     )
     wanted = {(p.b, p.a, p.stage): p for p in found.kept}
     live = {
@@ -800,6 +858,21 @@ def resolve(connection: Any, *, gen: int) -> ResolveReport:
         rebanded=rebanded,
         overloaded=overloaded,
         flagged=flagged,
+        llm=sum(1 for p in found.kept if p.stage == "llm_band"),
+        band=_offered(fuzzed.band, found.canonical, splits),
+    )
+
+
+def _offered(
+    band: Iterable[Band], canonical: Mapping[int, int], splits: Iterable[tuple[int, int]]
+) -> tuple[Band, ...]:
+    """Ruling 23: the band's pairs in two clusters that no user split keeps apart."""
+    apart = {frozenset((canonical.get(x, x), canonical.get(y, y))) for x, y in splits}
+    return tuple(
+        b
+        for b in band
+        if canonical[b.a] != canonical[b.b]
+        and frozenset((canonical[b.a], canonical[b.b])) not in apart
     )
 
 

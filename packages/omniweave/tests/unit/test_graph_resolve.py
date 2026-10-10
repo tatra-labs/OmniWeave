@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import sqlite3  # noqa: TID251 -- the assertions read and edit the store a run wrote.
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -804,3 +805,174 @@ def test_a_later_rounds_report_carries_the_earlier_rounds_writes() -> None:
     two = cluster_module.ClusterReport(5, 4, 1, 2, 1, added=0, changed=2, retired=1, stale=2)
     both = two.after(one)
     assert (both.added, both.changed, both.retired, both.stale) == (2, 2, 1, 2)
+
+
+# ---------------------------------------------------------------------------------------------
+# D727: the LLM band as data, and the model's merges kept while their pairs are in it
+# ---------------------------------------------------------------------------------------------
+
+
+def test_the_band_is_the_pairs_in_75_to_92_that_no_segment_holds_both_of() -> None:
+    """Ruling 20: the score that put the pair there, and nothing a guard or the bar decided."""
+    nodes = {1: org(1, "northwind_traders"), 2: org(2, "northwind_trading")}
+    [band] = fuzzy_stage(nodes, FUZZY, [(1, 2)], APART).band
+    assert (band.a, band.b) == (1, 2)
+    assert band.score == pytest.approx(88.24, abs=0.01)
+    together = {
+        1: Evidence(docs=frozenset({7}), segments=frozenset({70})),
+        2: Evidence(docs=frozenset({8}), segments=frozenset({70})),
+    }
+    held = fuzzy_stage(nodes, FUZZY, [(1, 2)], together)
+    assert (held.band, held.ambiguous) == ((), 1), "the co-occurrence guard holds it apart"
+    assert fuzzy_stage(nodes, FUZZY, [(1, 2)], APART, leaves={1: 40, 2: 40}).band == ()
+    over = {1: org(1, "acme_holdings_ltd"), 2: org(2, "acme_holdings_limited")}
+    assert fuzzy_stage(over, FUZZY, [(1, 2)], APART).band == ()
+    guarded = {1: org(1, "schedule_4_parties"), 2: org(2, "schedule_5_parties")}
+    assert fuzzy_stage(guarded, FUZZY, [(1, 2)], APART).band == ()
+
+
+def test_cohesion_does_not_drop_the_models_merge() -> None:
+    """Ruling 22: a decision is not re-scored against a key; the same pair as `lsh_jw` drops."""
+    nodes = [org(1, "northwind_traders"), org(2, "zenith_partners")]
+    decided = Pair(a=1, b=2, stage="llm_band", trust=Trust.INFERRED, method=Method.LLM,
+                   score=80.0, score_kind="jaro_winkler")  # fmt: skip
+    found, dropped = cohesive(nodes, [decided])
+    assert (dict(found.canonical), dropped) == ({1: 1, 2: 1}, ())
+    scored = replace(decided, stage="lsh_jw", method=Method.HEURISTIC)
+    found, dropped = cohesive(nodes, [scored])
+    assert (found.canonical[2], len(dropped)) == (2, 1)
+
+
+@pytest.fixture
+def banded(tmp_path: Path) -> tuple[Path, ResolveReport]:
+    """Two documents whose Northwind spellings score 88.24 across them: the band's, alone."""
+    store, config = _project(tmp_path, ())
+    (tmp_path / "docs" / "a.csv").write_text(NORTH_A, encoding="utf-8")
+    (tmp_path / "docs" / "b.csv").write_text(NORTH_B, encoding="utf-8")
+    report = _run(tmp_path, store, config)
+    assert report.status == "ok", report.lines()
+    assert report.resolved is not None
+    return store, report.resolved
+
+
+def _decide(connection: sqlite3.Connection, loser: str, winner: str, *, gen: int) -> None:
+    """An `llm_band` merge as the merge Pass will write it, under a corpus run of `gen`."""
+    ids = _ids(connection)
+    connection.execute(
+        "INSERT INTO entity_merge(loser_id, winner_id, polarity, stage, method, trust, score,"
+        " score_kind, guards, reason, run_id, decided_at_gen)"
+        " VALUES(?, ?, 1, 'llm_band', ?, ?, 88.24, 'jaro_winkler', '[]', 'one company', ?, ?)",
+        (ids[loser], ids[winner], module._METHOD_ORD["llm"], int(Trust.INFERRED),
+         module.run_row(connection, gen), gen),
+    )  # fmt: skip
+
+
+def test_a_run_offers_the_band_it_could_not_decide(banded: tuple[Path, ResolveReport]) -> None:
+    """Ruling 23: the one pair in the band, in two clusters, is offered."""
+    store, resolved = banded
+    connection = sqlite3.connect(store)
+    try:
+        ids = _ids(connection)
+    finally:
+        connection.close()
+    [band] = resolved.band
+    assert {band.a, band.b} == {ids["northwind_traders"], ids["northwind_trading"]}
+    assert band.score == pytest.approx(88.24, abs=0.01)
+    assert resolved.llm == 0
+
+
+def test_the_models_merge_holds_while_its_pair_is_in_the_band(
+    banded: tuple[Path, ResolveReport],
+) -> None:
+    """Ruling 21: read back into the closure, not retired, and the band offers it no more."""
+    store, _resolved = banded
+    connection = sqlite3.connect(store)
+    try:
+        _decide(connection, "northwind_trading", "northwind_traders", gen=91)
+        held = resolve(connection, gen=91)
+        assert (held.llm, held.retired, held.added, held.band) == (1, 0, 0, ())
+        assert "1 by the LLM band" in held.line()
+        ids = _ids(connection)
+        assert _rows_of(
+            connection,
+            "SELECT DISTINCT canonical_id, resolution_trust FROM entity"
+            " WHERE key IN ('northwind_traders', 'northwind_trading')",
+        ) == [(ids["northwind_traders"], int(Trust.INFERRED))]
+        again = resolve(connection, gen=92)
+        assert (again.llm, again.retired, again.added, again.changed) == (1, 0, 0, 0)
+        _closure_ok(connection)
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def test_the_models_merge_is_retired_once_its_pair_leaves_the_band(
+    banded: tuple[Path, ResolveReport],
+) -> None:
+    """Ruling 21: a pair the funnel no longer bands is no longer the model's question."""
+    store, _resolved = banded
+    connection = sqlite3.connect(store)
+    try:
+        _decide(connection, "contoso_bank", "northwind_traders", gen=91)
+        gone = resolve(connection, gen=91)
+        assert (gone.llm, gone.retired) == (0, 1)
+        assert _rows_of(
+            connection,
+            "SELECT count(*) FROM entity_merge WHERE stage = 'llm_band' AND retired_at_gen = 91",
+        ) == [(1,)]
+        assert len(gone.band) == 1, "the band's own pair is still offered"
+        _closure_ok(connection)
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def test_a_band_pair_a_user_split_keeps_apart_is_not_offered(
+    banded: tuple[Path, ResolveReport],
+) -> None:
+    """Ruling 23: a human's split is not the model's to overturn."""
+    store, _resolved = banded
+    connection = sqlite3.connect(store)
+    try:
+        ids = _ids(connection)
+        connection.execute(
+            "INSERT INTO entity_merge(loser_id, winner_id, polarity, stage, method, trust, guards,"
+            " reason, run_id, decided_at_gen) VALUES(?, ?, -1, 'user', 0, 2, '[]', 'two firms',"
+            " ?, 91)",
+            (ids["northwind_trading"], ids["northwind_traders"], module.run_row(connection, 91)),
+        )
+        assert resolve(connection, gen=91).band == ()
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def test_a_model_merge_a_split_retired_stays_retired_when_the_split_is_lifted(
+    banded: tuple[Path, ResolveReport],
+) -> None:
+    """Ruling 21: a retired row is the log's past. The pair is offered again, and only the merge
+    Pass writes an `llm_band` row: `op.resolve` never revives one."""
+    store, _resolved = banded
+    connection = sqlite3.connect(store)
+    try:
+        _decide(connection, "northwind_trading", "northwind_traders", gen=91)
+        ids = _ids(connection)
+        connection.execute(
+            "INSERT INTO entity_merge(loser_id, winner_id, polarity, stage, method, trust, guards,"
+            " reason, run_id, decided_at_gen) VALUES(?, ?, -1, 'user', 0, 2, '[]', 'two firms',"
+            " ?, 92)",
+            (ids["northwind_trading"], ids["northwind_traders"], module.run_row(connection, 92)),
+        )
+        split = resolve(connection, gen=92)
+        assert (split.llm, split.retired) == (0, 1)
+        connection.execute("UPDATE entity_merge SET retired_at_gen = 93 WHERE stage = 'user'")
+        lifted = resolve(connection, gen=93)
+        assert (lifted.llm, lifted.added, len(lifted.band)) == (0, 0, 1)
+        assert _rows_of(
+            connection,
+            "SELECT count(*) FROM entity_merge WHERE stage = 'llm_band' AND retired_at_gen IS NULL",
+        ) == [(0,)]
+        _closure_ok(connection)
+    finally:
+        connection.rollback()
+        connection.close()
