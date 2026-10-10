@@ -53,9 +53,10 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from omniweave_core.model.locus import Located, Locus
+    from omniweave_core.model.merges import MergeLog
     from omniweave_core.model.observed import Observed
 
-__all__ = ["GRAPH_WORD", "located_document", "main", "observed_document"]
+__all__ = ["GRAPH_WORD", "located_document", "main", "merges_document", "observed_document"]
 
 GRAPH_WORD: Final[str] = "graph"
 
@@ -64,6 +65,8 @@ _SELECTORS: Final[tuple[str, ...]] = ("entity", "claim", "edge", "mention")
 _FIX: Final[str] = "ow graph locate --entity e412"
 _WHY_FIX: Final[str] = "ow graph why --cite d7#412"
 _WHY: Final[str] = "graph.why"
+_MERGES: Final[str] = "graph.merges"
+_MERGES_FIX: Final[str] = "ow graph merges --entity e412"
 
 
 def main(
@@ -82,6 +85,8 @@ def main(
         check(GRAPH_WORD, parsed)
         if parsed.ow_action == _WHY:
             return _why(parsed, env=env, cwd=cwd, stdout=stdout)
+        if parsed.ow_action == _MERGES:
+            return _merges(parsed, env=env, cwd=cwd, stdout=stdout)
         return _locate(parsed, env=env, cwd=cwd, stdout=stdout)
     except OwError as error:
         return report(error, parsed, stdout=stdout, stderr=stderr)
@@ -244,6 +249,110 @@ def _why_text(document: Mapping[str, Any]) -> list[str]:
             f"  claim {c['claim']}  {c['subject']} {c['predicate']} = {c['object']!r}  "
             f"{c['status']}  [{c['span'][0]}, {c['span'][1]})"
         )
+    return lines
+
+
+def _merges(
+    parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, stdout: TextIO
+) -> int:
+    _refuse_unserved(parsed, verb="ow graph merges", fix=_MERGES_FIX)
+    prefix, bare = (None, None) if parsed.entity is None else _qualified(str(parsed.entity))
+    if prefix is not None and parsed.corpus is not None and prefix != parsed.corpus:
+        raise PolicyRefusal(
+            f"--entity {parsed.entity} names corpus {prefix!r} and --corpus names "
+            f"{parsed.corpus!r}",
+            symbol="OW_CROSS_CORPUS_UNSUPPORTED",
+            fix="run ow graph merges once per corpus",
+        )
+    explicit = Path(parsed.config) if parsed.config else None
+    config = load(cwd=cwd, env=env, explicit=explicit)
+    name = corpus_for(config, [], prefix or parsed.corpus, verb="ow graph merges")
+    store = store_of(config, name, cwd=cwd)
+    log = _log(store, bare)
+    document = merges_document(log, corpus=name, qualify=len(corpora(config)) > 1)
+    if parsed.render == "json":
+        stdout.write(json.dumps(document, ensure_ascii=False) + "\n")
+    else:
+        stdout.write("\n".join(_merges_text(document)) + "\n")
+    return 0
+
+
+def _log(store: Path, entity: str | None) -> MergeLog:
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415 -- a usage error never pays
+    from omniweave_core.store import reader as store_reader  # noqa: PLC0415
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+    from omniweave_core.store.merges import merge_log  # noqa: PLC0415
+
+    connection = store_sqlite.connect_readonly(store)
+    try:
+        reader = store_reader.SqliteReader(connection, now_ns=SystemClock().wall_ns())
+        with reader.snapshot():
+            try:
+                return merge_log(connection, entity)
+            except ValueError as error:
+                raise UsageError(str(error), fix=_MERGES_FIX) from error
+    finally:
+        connection.close()
+
+
+def merges_document(log: MergeLog, *, corpus: str, qualify: bool) -> dict[str, Any]:
+    """The JSON render: `MergeLog`'s closures, every cite qualified when two corpora exist."""
+
+    def cite(text: str) -> str:
+        return f"{corpus}:{text}" if qualify else text
+
+    return {
+        "schema": _SCHEMA,
+        "entity": None if log.entity is None else cite(log.entity),
+        "closures": [
+            {
+                "head": cite(closure.head),
+                "members": [cite(m) for m in closure.members],
+                "decisions": [
+                    {
+                        "merge": d.merge,
+                        "loser": cite(d.loser),
+                        "winner": cite(d.winner),
+                        "polarity": d.polarity,
+                        "stage": d.stage,
+                        "method": d.method,
+                        "trust": d.trust,
+                        "score": d.score,
+                        "score_kind": d.score_kind,
+                        "guards": list(d.guards),
+                        "reason": d.reason,
+                        "decided_at_gen": d.decided_at_gen,
+                        "retired_at_gen": d.retired_at_gen,
+                    }
+                    for d in closure.decisions
+                ],
+            }
+            for closure in log.closures
+        ],
+    }
+
+
+def _merges_text(document: Mapping[str, Any]) -> list[str]:
+    closures = document["closures"]
+    if not closures:
+        return ["no closure of two or more: nothing is merged"]
+    lines: list[str] = []
+    for closure in closures:
+        lines.append(
+            f"{closure['head']}  {len(closure['members'])} member(s): "
+            f"{' '.join(closure['members'])}  {len(closure['decisions'])} decision(s)"
+        )
+        for d in closure["decisions"]:
+            verb = "merge" if d["polarity"] == 1 else "split"
+            score = "" if d["score"] is None else f"  {d['score_kind']} {d['score']}"
+            state = (
+                "live" if d["retired_at_gen"] is None else f"retired at gen {d['retired_at_gen']}"
+            )
+            why = "" if d["reason"] is None else f"  reason {d['reason']!r}"
+            lines.append(
+                f"  {verb} {d['merge']}  {d['loser']} -> {d['winner']}  {d['stage']}{score}  "
+                f"gen {d['decided_at_gen']}, {state}{why}"
+            )
     return lines
 
 

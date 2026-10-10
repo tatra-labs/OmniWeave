@@ -107,7 +107,7 @@ GLOBAL_FLAGS: Final[tuple[Argument, ...]] = (
 
 GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
-    "graph": "locate · why",
+    "graph": "locate · merges · why",
     "hooks": "check",
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
@@ -277,6 +277,20 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 spelling=("--mention",),
                 kind="int",
                 metavar="MENTION",
+            ),
+        ),
+    ),
+    Command(
+        words=("graph", "merges"),
+        actions=("graph.merges",),
+        help=(
+            "Show the resolution decision log: each closure's members, and every merge or "
+            "split decision with its stage, score, guards and the generation it was decided in"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--entity",),
+                metavar="ENTITY",
             ),
         ),
     ),
