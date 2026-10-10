@@ -49,6 +49,11 @@ class PairsView:
     body: str
     """The `pair` frames as received: the prompt's part 5, which the model reads."""
 
+    @property
+    def source(self) -> str:
+        """The name the prompt's untrusted block is labelled with (D731, `DecisionPass`)."""
+        return self.batch
+
 
 def read_pairs(body: bytes) -> PairsView:
     """Ruling 1: one unit's batch.

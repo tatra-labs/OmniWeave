@@ -22,6 +22,7 @@ dependencies = [
 "derive.entity.llm" = "omniweave_llm.entity_llm"
 "derive.claim.llm" = "omniweave_llm.claim_llm"
 "derive.merge.llm" = "omniweave_llm.merge_llm"
+"derive.report.llm" = "omniweave_llm.report_llm"
 
 # The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
 [tool.hatch.build.targets.wheel]

@@ -1,0 +1,97 @@
+# derive.report.llm -- a community report on first descent. 06 section 2.3's row 14; 6.2-6.3. D731.
+card_schema = 1
+
+[driver]
+id = "derive.report.llm"
+port = "derive/1"
+version = "0.1.0"
+schema_version = 1
+entrypoint = "omniweave_llm.report_llm.driver:ReportLLM"
+granularity = "corpus"             # 04:727: a community's members come from documents across the corpus.
+replay_class = "unpinnable"        # A hosted model's answer is not reproducible from its inputs.
+title = "Community reports by a language model (billed)"
+summary = "One community a prompt, from the members, internal edges and claims the host fits into 8,000 tokens with no identifier, or a parent's children's summaries: a title, a summary, findings and a rating, written on first descent and never eagerly."
+
+[capability]
+consumes = []                      # The host's community context (report ruling 1).
+produces = ["graph_items", "witness_set"]   # 04:2519: a billed corpus driver emits its witness set.
+
+[capability.derive]
+items = ["summary"]                # A community report: D7's ladder's summary, never on the item wire.
+grounding = "none"                 # A report cites no block: no cite reaches its context (INV-8).
+relations = "none"
+schema = "json_schema"             # 06:1479, strict.
+confidence = "none"                # 06:1376-1385: never a self-reported number.
+coreference = false
+scripts = ["Latin"]                # The authored role text is English.
+scope_honoured = true
+
+[derive]
+implemented = true
+phase = 40                         # 06 section 2.3's row 14: rank 2, phase 40.
+max_items_per_segment = 1          # One report a community.
+prompt_version = "1"                # The authored role text's revision; prompt_fp is the rendered one.
+schema_path = "schemas/report.json"
+
+[hardware]
+gpu            = "none"            # The model is the service's, not this process's.
+vram_gb_min    = 0
+ram_gb_min     = 0.25
+cpu_arch       = ["x86_64", "aarch64"]
+os             = ["linux", "darwin", "windows"]
+needs_network  = true              # It posts to a model server; the egress hook must not arm.
+needs_binaries = []
+imports_torch  = false
+install_bytes  = 60000
+services       = ["model:llm"]
+
+[isolation]
+requires        = "subproc"
+memory_mb       = 512
+# D718's timing, as the extraction lanes have it: PROGRESS comes between communities and never inside
+# one model call, so the watchdog must outlast one call at the Service's request_timeout_s.
+progress_ms     = 600000
+wall_ms_hard    = 2400000
+batch_max_units = 4
+
+[limits]
+max_input_bytes = 134217728
+max_parts       = 1
+
+[licence.code]
+spdx = "Apache-2.0"
+redistribution = "allowed"
+output_share_alike = false
+competitor_bar = false
+requires_credential = false
+revenue_gate_usd = 0
+mau_gate = 0
+territory_excluded = []
+field_of_use_excluded = []
+attribution_per_output = false
+no_model_training = false
+remote_kill_switch = false
+clause_refs = []
+
+[deps]
+pins = []
+
+[config]
+type = "object"
+additionalProperties = false
+required = []
+
+[config.properties.service]
+type = "string"
+maxLength = 64
+default = "llm"                    # The [services.<name>] table the model is behind.
+
+[cost.model]
+class   = "billed_api"             # 06 section 2.3: the model is hosted and priced per token.
+shape   = "linear_per_part"
+unit    = "part"                   # One community is one part.
+per_part    = { tokens_in = 8000, tokens_out = 2000, calls = 1 }  # 06:843, per community, at the bounds.
+per_session = { }
+scaling     = { key = "input_bytes", exponent = 1.0, reference = 32768 }
+tokens_out_p95_multiple = 1.0      # 06:843's 2,000 is the schema's bound, not a mean.
+max_retries = 0
