@@ -88,7 +88,7 @@ from omniweave.route.decision import RouteDecision
 from omniweave.route.rung import Rung
 from omniweave.run.dispatch import dispatch_key, new_invoke_id
 from omniweave.run.operators.billed import BILLED_ENQUEUE_SQL, DECODE, estimate, service_table
-from omniweave.run.operators.derive import DERIVE_PRIORITY, MERGE_LLM
+from omniweave.run.operators.derive import DERIVE_PRIORITY, MERGE_LLM, as_spend
 from omniweave.run.routing import INGEST_HINTS_DIGEST, decision_rows
 
 if TYPE_CHECKING:
@@ -97,6 +97,7 @@ if TYPE_CHECKING:
     from omniweave_core.blobs import BlobStore
     from omniweave_core.drivers.resolve import Candidate
     from omniweave_core.host.subproc import ServiceGrant
+    from omniweave_core.operator import SpendVector
     from omniweave_core.store.queue import WorkRow
 
     from omniweave.graph.resolve import Band
@@ -420,6 +421,20 @@ UPDATE derive_run
 """
 
 
+def _spend_of(spend_json: str) -> dict[str, int]:
+    """The Spend a pair's cache entry recorded, as a hit replays it (D733)."""
+    try:
+        kept = json.loads(spend_json)
+        return {k: int(v) for k, v in kept.items() if k in _DIMENSIONS}
+    except (ValueError, TypeError, AttributeError):
+        return {}
+
+
+_DIMENSIONS: Final = frozenset(
+    {"wall_ms", "cpu_ms", "gpu_ms", "tokens_in", "tokens_out", "calls", "bytes_egress"}
+)
+
+
 def pair_key(card: Any, a: Mapping[str, Any], b: Mapping[str, Any], model_id: str,
              model_rev: str) -> str:  # fmt: skip
     """Ruling 9: one pair's `paid_key`, over what the model is shown of it."""
@@ -532,7 +547,7 @@ class BandRun:
             return op._failed(BAND_PASS, row, unit, producer, failure=FailureClass.EMPTY_RESULT,
                               message=f"the manifest {row.unit_part} names is gone")  # fmt: skip
         keys = [pair_key(card, a, b, grants[0].model_id, grants[0].model_rev) for a, b in one.sides]
-        answers = self._cached(keys)
+        answers, replayed = self._cached(keys)
         count = op._tally.band
         count.rows += 1
         count.cached += len(answers)
@@ -556,6 +571,7 @@ class BandRun:
             count.asked += len(positions)
         merged = self._land(row, one, card=card, producer=producer, answers=answers, held=held,
                             spent=spent)  # fmt: skip
+        billed = spent if asks else replayed
         count.merged += merged
         count.quarantined += len(held)
         return StepResult(
@@ -564,7 +580,11 @@ class BandRun:
             identity=producer,
             cache_key=row.cache_key,
             produced=(),
-            metrics=StepMetrics(rows_written=merged),
+            metrics=StepMetrics(
+                spend=cast("SpendVector", as_spend(billed)),
+                was_cache_hit=not asks,
+                rows_written=merged,
+            ),
         )
 
     def _manifest(self, row: WorkRow) -> Manifest | None:
@@ -588,12 +608,14 @@ class BandRun:
         except (OSError, ValueError, KeyError, OwError):
             return None
 
-    def _cached(self, keys: Sequence[str]) -> dict[int, tuple[bool, str]]:
-        """Ruling 13: each pair the cache holds an answer for, by position."""
+    def _cached(self, keys: Sequence[str]) -> tuple[dict[int, tuple[bool, str]], dict[str, int]]:
+        """Ruling 13: each pair the cache holds an answer for, by position, and the Spend the hits
+        replay (D733)."""
         op = self._op
         index = SqliteCacheIndex(op._thread, clock=op._parse._ctx.clock)
         found = index.get_many(list(dict.fromkeys(keys)))
         out: dict[int, tuple[bool, str]] = {}
+        replayed: dict[str, int] = {}
         for i, key in enumerate(keys):
             entry = found.get(key)
             answer = None if entry is None else self._answer(entry.ref)
@@ -606,7 +628,9 @@ class BandRun:
                 continue
             out[i] = answer
             index.touch(key)
-        return out
+            for dim, value in _spend_of(cast("Any", entry).spend_json).items():
+                replayed[dim] = replayed.get(dim, 0) + value
+        return out, replayed
 
     def _answer(self, ref: str) -> tuple[bool, str] | None:
         try:

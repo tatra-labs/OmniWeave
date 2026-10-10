@@ -211,6 +211,16 @@ def test_a_billed_pass_runs_per_segment_and_writes_under_its_decision(
         (s["calls"], s["tokens_in"], s["tokens_out"]) == (1, 120, 30) and s["bytes_egress"] > 0
         for s in spends
     ), "D730: each run carries the call its Segment cost, as the provider reported it"
+    billed = _rows(
+        store,
+        "SELECT r.attempt, r.provider, r.tokens_in, r.tokens_out, r.calls, r.bytes_egress > 0,"
+        " r.micros, r.was_cache_hit, r.would_have_been_micros, r.outcome FROM route_spend AS r"
+        " JOIN work AS w ON w.decision_id = r.decision_id"
+        " WHERE w.operator = 'derive.entity.llm'",
+    )
+    assert billed == [(1, "", 120, 30, 1, 1, 0, 0, 0, "ok")] * segments, (
+        "D733: one bill an attempt, in the completion's transaction, unpriced"
+    )
     assert {request["model"] for request in _Model.asked} == {MODEL}
 
 
@@ -482,6 +492,14 @@ def test_a_segment_another_file_holds_is_answered_from_the_call_cache(
     assert set(memo[1].split(",")) == set(copy[1].split(",")) == {"acme_holdings", "beta_corp"}
     assert (memo[2], copy[2]) == (2, 3), "the copy's two replayed mentions and its new one"
     assert _rows(store, _KEPT) == [(calls + 1, calls)], "a hit adds no entry and counts on its own"
+    hits = _rows(
+        store,
+        "SELECT r.attempt, r.tokens_in, r.tokens_out, r.calls, r.was_cache_hit, r.outcome"
+        " FROM route_spend AS r WHERE r.was_cache_hit = 1",
+    )
+    assert hits == [(1, 120, 30, 1, 1, "skipped_cached")] * calls, (
+        "D733: a hit replays the Spend it cached and bills nothing"
+    )
     runs = _rows(
         store,
         "SELECT r.status, r.cost_class, w.status FROM derive_run AS r"
