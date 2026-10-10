@@ -173,6 +173,12 @@ def test_the_band_is_asked_once_and_its_merge_joins_the_closure(tmp_path: Path, 
     assert run["bytes_egress"] > 0
     [(share,)] = _rows(store, f"SELECT spend_json FROM cache_index WHERE driver = '{MERGE}'")  # noqa: S608
     assert json.loads(share)["tokens_in"] == 400, "one pair: the whole batch's Spend"
+    assert _rows(
+        store,
+        "SELECT r.attempt, r.tokens_in, r.tokens_out, r.calls, r.was_cache_hit, r.outcome"
+        " FROM route_spend AS r JOIN work AS w ON w.decision_id = r.decision_id"
+        " WHERE w.operator = 'derive.merge.llm'",
+    ) == [(1, 400, 40, 1, 0, "ok")], "D733: the band's one bill"
     assert (
         head == _rows(store, "SELECT entity_id FROM entity WHERE key = 'northwind_traders'")[0][0]
     )
@@ -207,6 +213,13 @@ def test_a_row_the_cache_answers_whole_calls_nothing(tmp_path: Path, judge: str)
     ]
     assert [r[-1] for r in _rows(store, MERGES)].count(None) == 1, "landed again from the cache"
     assert _rows(store, f"SELECT status FROM work WHERE operator = '{MERGE}'") == [("done",)]  # noqa: S608
+    assert _rows(
+        store,
+        "SELECT attempt, tokens_in, tokens_out, calls, was_cache_hit, outcome FROM route_spend"
+        " ORDER BY attempt",
+    ) == [(1, 400, 40, 1, 0, "ok"), (2, 400, 40, 1, 1, "skipped_cached")], (
+        "D733: the same decision's second attempt, a hit replaying the pair's Spend"
+    )
 
 
 def test_a_pair_the_model_keeps_apart_is_not_merged_nor_asked_again(

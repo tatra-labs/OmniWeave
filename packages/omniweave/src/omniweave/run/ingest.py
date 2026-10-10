@@ -156,6 +156,7 @@ from omniweave.run.routing import (
     route_identified,
     route_layers,
 )
+from omniweave.run.spend_rows import spend_row
 
 if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from collections.abc import Callable, Mapping, Sequence
@@ -1736,7 +1737,12 @@ async def _drain(
         )
     )
     queue = _Forgetting(
-        SqliteStore(thread, wait_ms=BATCH_WAIT_MS, derived_rows=executors.contribution),
+        SqliteStore(
+            thread,
+            wait_ms=BATCH_WAIT_MS,
+            derived_rows=executors.contribution,
+            spend_row=spend_row,
+        ),
         executors,
         tally,
     )

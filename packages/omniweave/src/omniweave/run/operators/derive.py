@@ -33,6 +33,7 @@ saying which.
 from __future__ import annotations
 
 import io
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Final, cast
@@ -92,6 +93,7 @@ __all__ = [
     "MERGE_LLM",
     "DeriveOperator",
     "DerivePlan",
+    "as_spend",
     "is_derive",
 ]
 
@@ -456,6 +458,7 @@ class DeriveOperator:
                 row, unit, views, body, producer=producer, card=card, read=None,
                 identity=replace(identity, decision_id=row.decision_id), spend=Spend(),
                 produced=(), outcome=Outcome.SKIPPED_CACHED,
+                replays=_kept(cast("CacheEntry", entry).spend_json),
             )  # fmt: skip
             results[at] = landed
             if landed.outcome is Outcome.SKIPPED_CACHED:
@@ -709,9 +712,11 @@ class DeriveOperator:
         spend: Any,
         produced: tuple[ArtifactRef, ...],
         outcome: Outcome,
+        replays: Any = None,
     ) -> StepResult:
         """One answer's frames written under `identity`. D725 split it off `_settle`, so an answer
-        replayed from the call cache lands exactly as a fresh one does."""
+        replayed from the call cache lands exactly as a fresh one does. `replays` is the cached
+        Spend a hit replays into `route_spend` (D733): the run itself spent nothing."""
         driver = identity.pass_id
         try:
             units = decode_items(body, views)
@@ -755,7 +760,11 @@ class DeriveOperator:
             identity=producer,
             cache_key=row.cache_key,
             produced=produced,
-            metrics=StepMetrics(rows_written=sum(r.emitted for r in reports)),
+            metrics=StepMetrics(
+                spend=spend if replays is None else replays,
+                was_cache_hit=replays is not None,
+                rows_written=sum(r.emitted for r in reports),
+            ),
         )
 
     def _body(self, ref: ArtifactRef) -> bytes:
@@ -785,6 +794,33 @@ class DeriveOperator:
             failure_class=failure,
             failure_message=message[:2_048],
         )
+
+
+def _kept(spend_json: str) -> Spend:
+    """The Spend a cache entry recorded (D725), as a hit replays it (D733)."""
+    try:
+        kept = {k: int(v) for k, v in json.loads(spend_json).items() if k in _SPEND_DIMENSIONS}
+    except (ValueError, TypeError, AttributeError):
+        return Spend()
+    return as_spend(kept)
+
+
+def as_spend(dims: Mapping[str, int]) -> Spend:
+    """A Spend from its named dimensions, a missing one zero (D733)."""
+    return Spend(
+        wall_ms=dims.get("wall_ms", 0),
+        cpu_ms=dims.get("cpu_ms", 0),
+        gpu_ms=dims.get("gpu_ms", 0),
+        tokens_in=dims.get("tokens_in", 0),
+        tokens_out=dims.get("tokens_out", 0),
+        calls=dims.get("calls", 0),
+        bytes_egress=dims.get("bytes_egress", 0),
+    )
+
+
+_SPEND_DIMENSIONS: Final = frozenset(
+    {"wall_ms", "cpu_ms", "gpu_ms", "tokens_in", "tokens_out", "calls", "bytes_egress"}
+)
 
 
 def _lane(items: Sequence[str]) -> str:
