@@ -9,6 +9,7 @@ D739 builds `constructs`: `ConstructTable.load()`, the contract as data, asserte
 D740 builds `brief`: the locked `Brief` and `parse_brief()`. D741 builds `plan`: `OutUnit`, `Plan`,
 the seven `UnitOutcome`s, `ManualReason` and the total `classify_and_assert()`. D742 builds
 `rules`: `RuleSpec`, `RuleCtx`, `DocIndex`, `Box`, `TextMeasure` and the two-pass `run_pack()`.
+D743 adds `nsig()`, the canonical subtree digest, and the definition dependency to `report`.
 """
 
 from omniweave_core.out.brief import Brief, Prohibition, baseline_rows, parse_brief
@@ -34,7 +35,17 @@ from omniweave_core.out.plan import (
     UnitOutcome,
     classify_and_assert,
 )
-from omniweave_core.out.report import OutReport, SkippedCheck, il_digest, render
+from omniweave_core.out.report import (
+    OutReport,
+    SkippedCheck,
+    changed_definitions,
+    definitions,
+    il_digest,
+    nsig,
+    referenced_ids,
+    render,
+    unchanged,
+)
 from omniweave_core.out.rules import (
     Box,
     DocIndex,
@@ -78,13 +89,18 @@ __all__ = [
     "Truncation",
     "UnitOutcome",
     "baseline_rows",
+    "changed_definitions",
     "classify_and_assert",
+    "definitions",
     "gate_status",
     "html_carrier",
     "il_digest",
+    "nsig",
     "parse_brief",
     "parse_selector",
+    "referenced_ids",
     "render",
     "run_pack",
     "svg_carrier",
+    "unchanged",
 ]
