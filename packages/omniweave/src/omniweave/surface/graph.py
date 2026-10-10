@@ -50,7 +50,7 @@ from omniweave.surface.switches import check, report
 
 if TYPE_CHECKING:
     import argparse
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
     from omniweave_core.model.locus import Located, Locus
     from omniweave_core.model.merges import Decided, MergeLog
@@ -76,6 +76,8 @@ _MERGES: Final[str] = "graph.merges"
 _MERGES_FIX: Final[str] = "ow graph merges --entity e412"
 _MERGE: Final[str] = "graph.merge"
 _MERGE_FIX: Final[str] = 'ow graph merge e412 e997 --reason "why they are one"'
+_SPLIT: Final[str] = "graph.split"
+_SPLIT_FIX: Final[str] = 'ow graph split e412 --into d7#412,d19#88 --reason "why they are two"'
 
 
 def main(
@@ -92,13 +94,10 @@ def main(
         return parsed
     try:
         check(GRAPH_WORD, parsed)
-        if parsed.ow_action == _WHY:
-            return _why(parsed, env=env, cwd=cwd, stdout=stdout)
-        if parsed.ow_action == _MERGES:
-            return _merges(parsed, env=env, cwd=cwd, stdout=stdout)
-        if parsed.ow_action == _MERGE:
-            return _merge(parsed, env=env, cwd=cwd, stdout=stdout)
-        return _locate(parsed, env=env, cwd=cwd, stdout=stdout)
+        verb = {_WHY: _why, _MERGES: _merges, _MERGE: _merge, _SPLIT: _split}.get(
+            parsed.ow_action, _locate
+        )
+        return verb(parsed, env=env, cwd=cwd, stdout=stdout)
     except OwError as error:
         return report(error, parsed, stdout=stdout, stderr=stderr)
 
@@ -386,8 +385,45 @@ def _merge(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, std
     config = load(cwd=cwd, env=env, explicit=explicit)
     name = corpus_for(config, [], next(iter(named), None), verb="ow graph merge")
     store = store_of(config, name, cwd=cwd)
-    decided = _decide(store, first=first, second=second, reason=str(parsed.reason))
-    document = decided_document(decided, corpus=name, qualify=len(corpora(config)) > 1)
+    reason = str(parsed.reason)
+    decided = _decide(
+        store, _MERGE, lambda decide, c: decide.merge(c, first=first, second=second, reason=reason)
+    )
+    return _decided(decided, parsed, config=config, corpus=name, stdout=stdout)
+
+
+def _split(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, stdout: TextIO) -> int:
+    """`ow graph split`: the user's partition of one closure, under the store's write lock."""
+    _refuse_unserved(parsed, verb="ow graph split", fix=_SPLIT_FIX)
+    if parsed.reason is None or not str(parsed.reason).strip():
+        raise UsageError("ow graph split needs --reason, the user's grounds for it", fix=_SPLIT_FIX)
+    refs = [one.strip() for one in str(parsed.into or "").split(",") if one.strip()]
+    if len(refs) < 2:  # noqa: PLR2004 -- a split has two sides
+        raise UsageError(
+            "ow graph split needs --into, a block cite per side and two at least", fix=_SPLIT_FIX
+        )
+    prefix, entity = _qualified(str(parsed.entity))
+    if prefix is not None and parsed.corpus is not None and prefix != parsed.corpus:
+        raise PolicyRefusal(
+            f"{parsed.entity} names corpus {prefix!r} and --corpus names {parsed.corpus!r}",
+            symbol="OW_CROSS_CORPUS_UNSUPPORTED",
+            fix=_SPLIT_FIX,
+        )
+    explicit = Path(parsed.config) if parsed.config else None
+    config = load(cwd=cwd, env=env, explicit=explicit)
+    name = corpus_for(config, refs, prefix or parsed.corpus, verb="ow graph split")
+    store = store_of(config, name, cwd=cwd)
+    reason = str(parsed.reason)
+    decided = _decide(
+        store, _SPLIT, lambda decide, c: decide.split(c, entity=entity, into=refs, reason=reason)
+    )
+    return _decided(decided, parsed, config=config, corpus=name, stdout=stdout)
+
+
+def _decided(
+    decided: Decided, parsed: argparse.Namespace, *, config: Any, corpus: str, stdout: TextIO
+) -> int:
+    document = decided_document(decided, corpus=corpus, qualify=len(corpora(config)) > 1)
     if parsed.render == "json":
         stdout.write(json.dumps(document, ensure_ascii=False) + "\n")
     else:
@@ -395,8 +431,8 @@ def _merge(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, std
     return 0
 
 
-def _decide(store: Path, *, first: str, second: str, reason: str) -> Decided:
-    """One unit under the store's write lock: the row, then the graph settled, or neither."""
+def _decide(store: Path, name: str, decision: Callable[[Any, Any], Decided]) -> Decided:
+    """One unit under the store's write lock: the rows, then the graph settled, or neither."""
     from omniweave_core.clock import SystemClock  # noqa: PLC0415 -- a usage error never pays
     from omniweave_core.errors import NotFoundError  # noqa: PLC0415
     from omniweave_core.locks import store_write_lock  # noqa: PLC0415
@@ -411,11 +447,7 @@ def _decide(store: Path, *, first: str, second: str, reason: str) -> Decided:
         return cast(
             "Decided",
             thread.run(
-                store_sqlite.Unit(
-                    name="graph.merge",
-                    run=lambda c: decide.merge(c, first=first, second=second, reason=reason),
-                    cost_class="free",
-                )
+                store_sqlite.Unit(name=name, run=lambda c: decision(decide, c), cost_class="free")
             ),
         )
 
@@ -426,7 +458,8 @@ def decided_document(decided: Decided, *, corpus: str, qualify: bool) -> dict[st
         "polarity": decided.polarity,
         "written": decided.written,
         "retired": decided.retired,
-        "joined": decided.joined,
+        "followed": decided.followed,
+        "unassigned": [f"{corpus}:{cite}" if qualify else cite for cite in decided.unassigned],
         **merges_document(decided.log, corpus=corpus, qualify=qualify),
     }
 
@@ -437,10 +470,13 @@ def _decided_text(document: Mapping[str, Any]) -> list[str]:
     retired = f"; {document['retired']} opposing decision(s) retired" if document["retired"] else ""
     took = (
         "the graph follows"
-        if document["joined"]
+        if document["followed"]
         else "another user decision keeps the graph from following: ow graph merges shows it"
     )
-    return [f"{verb} {wrote}{retired}; {took}", *_merges_text(document)]
+    lines = [f"{verb} {wrote}{retired}; {took}"]
+    if document["unassigned"]:
+        lines.append("  unassigned, a tie between sides: " + " ".join(document["unassigned"]))
+    return [*lines, *_merges_text(document)]
 
 
 def _qualified(value: str) -> tuple[str | None, str]:

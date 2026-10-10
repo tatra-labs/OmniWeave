@@ -54,6 +54,7 @@ key can grant one.
 | `graph.locate` | `ow_locate` | `ow graph locate` | full | `free` | Find where on the page an entity, claim, edge or mention was witnessed: one location per witness, with its page, its span and its polygon or the reason none |
 | `graph.merge` | — | `ow graph merge` | — | `free` | Record that two entities are one, with a reason, and settle the graph again: the closure, the communities and the salience, as an ingest would |
 | `graph.merges` | — | `ow graph merges` | — | `free` | Show the resolution decision log: each closure's members, and every merge or split decision with its stage, score, guards and the generation it was decided in |
+| `graph.split` | — | `ow graph split` | — | `free` | Record that one entity is two or more, named by the blocks each is witnessed in, with a reason, and settle the graph again as an ingest would |
 | `graph.why` | — | `ow graph why` | — | `free` | List every entity, edge and claim the graph says one block asserts, each with its span in the block's text |
 | `hooks.check` | `ow_hooks_check` | `ow hooks check` | — | `free` | Run each installed hook command as its host would, with a probe payload in a scratch project, and say which failed and why |
 | `install` | — | `ow install` | — | `free` | Wire agent hosts to omniweave: the MCP entry, one permission wildcard, the instruction block, hooks and the core skill, each recorded in a receipt |
