@@ -32,7 +32,6 @@ from types import MappingProxyType
 from typing import Any
 
 import pytest
-from conftest import PlanDocs
 from omniweave_core.archive.owcheck import (
     Clause,
     ClauseResult,
@@ -63,6 +62,8 @@ from omniweave_core.store.doc import (
     DocSink,
     _diag_bind,
 )
+
+from conftest import PlanDocs
 
 NOW_NS = 1_757_400_000_000_000_000
 """A fixed wall clock. `time.time` is banned in library code and injected everywhere in the

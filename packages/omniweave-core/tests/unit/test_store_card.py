@@ -35,7 +35,6 @@ import sqlite3  # noqa: TID251 -- see the note below
 from typing import TYPE_CHECKING
 
 import pytest
-from conftest import migration_files
 from omniweave_core.errors import StoreError, load_register
 from omniweave_core.model.enums import Quote, Trust
 from omniweave_core.retrieve.verdict import ABSENCE_BLOCKING_DIAGS
@@ -52,6 +51,8 @@ from omniweave_core.store.card import (
     read_card,
     write_card,
 )
+
+from conftest import migration_files
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from pathlib import Path

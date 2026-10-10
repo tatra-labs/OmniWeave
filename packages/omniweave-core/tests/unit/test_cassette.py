@@ -57,7 +57,6 @@ from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
-from conftest import Interpreter, PlanDocs, SourceIndex
 from omniweave_core.cassette import (
     CASSETTE_ROOT,
     SEAMS,
@@ -87,6 +86,8 @@ from omniweave_core.cassette import (
 from omniweave_core.contract import CONTRACT
 from omniweave_core.errors import QualityError, check_register
 from omniweave_core.modelserver import MODELS_PATH, SERVICE_API_MAJOR
+
+from conftest import Interpreter, PlanDocs, SourceIndex
 
 # ---------------------------------------------------------------------------
 # The live channel that must never be entered

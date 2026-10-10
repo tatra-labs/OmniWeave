@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 import pytest
+
 from conftest import MIGRATIONS_DIR as MIGRATIONS
 
 GRAPH = MIGRATIONS / "0002_graph.sql"

@@ -59,8 +59,9 @@ from omniweave_core.locks import LockHolder, inspect
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from conftest import PlanDocs
     from omniweave.install.receipt import InstallLock
+
+    from conftest import PlanDocs
 
 INTERFACES = "10-interfaces.md"
 PID = 4242

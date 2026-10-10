@@ -40,8 +40,9 @@ import re
 import sqlite3  # noqa: TID251 -- see WHY THIS APPLIES THE MIGRATIONS, in the docstring.
 
 import pytest
-from conftest import MIGRATIONS_DIR as MIGRATIONS
 from omniweave_core.model.enums import ENUM_DOMAINS, enum_val_rows
+
+from conftest import MIGRATIONS_DIR as MIGRATIONS
 
 # 03-document-model.md:2311's list, verbatim and in its order. Transcribed rather than taken from
 # ENUM_DOMAINS, because a test that reads its expectation out of the module it checks asserts only

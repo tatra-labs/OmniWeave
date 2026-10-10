@@ -18,7 +18,6 @@ import ast
 import inspect
 
 import pytest
-from conftest import REPO_ROOT as REPO
 from omniweave_core.contract import SCHEMA
 from omniweave_core.errors import StoreError
 from omniweave_core.store import indexlock
@@ -39,6 +38,8 @@ from omniweave_core.store.indexlock import (
     read_lock,
     write_lock,
 )
+
+from conftest import REPO_ROOT as REPO
 
 # The header from the printed fence at 07:3117, verbatim in its three token values.
 HEADER = LockHeader(
