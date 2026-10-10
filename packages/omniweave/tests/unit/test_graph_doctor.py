@@ -63,6 +63,7 @@ def _billed_run(connection: sqlite3.Connection, items: int, quarantined: int = 0
         if row[1] != "run_id"
     ]
     values = {
+        "segment_id": "(SELECT min(segment_id) FROM segment)",
         "cost_class": "'billed_api'",
         "n_items": str(items),
         "n_quarantined": str(quarantined),
@@ -130,10 +131,12 @@ def test_check_selects_and_refuses(contract: Path) -> None:
 
 
 def test_the_billed_signals(contract: Path) -> None:
-    """Rulings 4 and 5: an unclamped billed pass fails; a clamped one reports its rate."""
+    """Rulings 4, 5 and 10-11: an unclamped billed pass fails; a clamped one reports its rate.
+    The run is the sink's, on a Segment, and it counts its 20 clamp rows among its 20 quarantined,
+    as the sink does (D735)."""
     connection = sqlite3.connect(_store(contract))
     try:
-        run_id = _billed_run(connection, 15, quarantined=5)
+        run_id = _billed_run(connection, 20, quarantined=20)
         found = _all(doctor(connection))
         assert (found["trust_clamped"].severity, found["trust_clamped"].fix) == (
             "error",
@@ -146,6 +149,12 @@ def test_the_billed_signals(contract: Path) -> None:
         found = _all(report)
         assert report.failed == ()
         assert found["trust_clamped"].detail.startswith("1.00 of 20 billed items clamped")
+        refusals = _one(
+            connection, "SELECT count(*) FROM quarantine WHERE code <> 'OW_GRAPH_TRUST_CLAMPED'"
+        )
+        assert found["quarantine"].detail.startswith(f"{refusals} quarantine rows per "), (
+            "ruling 10: a clamp row annotates an item, it does not refuse one"
+        )
         assert found["ungrounded"].severity == "ok", "3 of 20 is 0.15, and the bar is strict"
         assert found["dangling_tmp"].detail.startswith("1 Segment(s) quarantined whole")
         _quarantine(connection, "OW_GRAPH_UNGROUNDED", run_id, 1)
@@ -155,6 +164,10 @@ def test_the_billed_signals(contract: Path) -> None:
         )
         _quarantine(connection, "OW_GRAPH_UNGROUNDED", free, 50)
         assert _all(doctor(connection))["ungrounded"].detail.startswith("4 of 20"), "billed only"
+        _quarantine(connection, "OW_GRAPH_TRUST_CLAMPED", free, 5)
+        assert _all(doctor(connection))["trust_clamped"].detail.startswith("1.00 of 20"), (
+            "ruling 10: only the billed runs' clamp rows leave the billed count"
+        )
     finally:
         connection.rollback()
         connection.close()

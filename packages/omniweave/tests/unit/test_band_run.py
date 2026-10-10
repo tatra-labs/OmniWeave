@@ -336,3 +336,24 @@ def test_a_decision_is_kept_by_its_position_in_the_batch_sent() -> None:
     found, held = decided(body, 2)
     assert found == {0: (True, "one firm")}
     assert [f["pair"] for f in held] == [1, 2]
+
+
+def test_the_bands_merges_are_not_billed_items_the_clamp_should_have_seen(
+    tmp_path: Path, judge: str
+) -> None:
+    """D735: the band's run is `billed_api`, but its merges never pass the sink, so neither the
+    trust clamp nor grounding applies to them. Counting them as billed items made a band-only store
+    read "0.00 clamped: the clamp is not running", the doctor's one failing check."""
+    from omniweave.graph.doctor import doctor  # noqa: PLC0415
+
+    store, config = _project(tmp_path, judge)
+    assert _run(tmp_path, store, config).status == "ok"
+    assert len(_rows(store, MERGES)) == 1
+    connection = sqlite3.connect(store)
+    try:
+        report = doctor(connection, checks=["dangling_tmp", "trust_clamped", "ungrounded"])
+    finally:
+        connection.close()
+    assert report.failed == (), report.failed
+    by_check = {f.check: f.detail for f in report.ok}
+    assert by_check["trust_clamped"] == "no billed pass has run", by_check

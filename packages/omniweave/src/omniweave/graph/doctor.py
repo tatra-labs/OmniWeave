@@ -32,6 +32,19 @@ warning never fails (10:1436).
 9. **`stale_reports` counts live communities by report state**, and **`summary` says whether
    anything wrote `entity.summary`**, which has no producer at release 1 (06:176-181): a row that
    has one is a warning, because nothing should have written it.
+
+## Over billed runs that ran (D735)
+
+10. **A clamped item is one item, not two.** The sink writes it at `INFERRED` (`n_items`) and keeps
+    the over-claim as an `OW_GRAPH_TRUST_CLAMPED` row (`n_quarantined`). So admitted items are
+    `n_items + n_quarantined` less the clamp rows, and the quarantine rate counts the rows that
+    refused an item, not the ones that annotate it. 06:892's table says so: a clamp rate of 1.00
+    beside a quarantine p50 of 24 per 1,000. Counting both made a model's run read 0.50 clamped
+    and over 500 quarantined per 1,000.
+11. **The billed signals are the sink's billed runs**: `billed_api` runs on a Segment. The LLM
+    band's run is `billed_api` and corpus-grained, and its merges never reach the sink, so neither
+    the clamp nor grounding applies to them. Counting them made a store whose only billed run was
+    the band's read "0.00 clamped: the clamp is not running", the one check that fails.
 """
 
 from __future__ import annotations
@@ -64,7 +77,15 @@ COVER_EMPTY_WARN: Final = 0.98
 """`cover_empty` as a share of `derive_cover` rows, GR3's (06:894)."""
 
 _RESIDUE: Final = "ow graph residue"
-_BILLED: Final = "cost_class = 'billed_api'"
+_BILLED: Final = "cost_class = 'billed_api' AND segment_id IS NOT NULL"
+"""Ruling 11: the billed runs the sink judged, on a Segment (D735)."""
+_CLAMPED: Final = "OW_GRAPH_TRUST_CLAMPED"
+_CLAMPED_SQL: Final = "SELECT count(*) FROM quarantine WHERE code = ?"
+_CLAMPED_BILLED_SQL: Final = (
+    "SELECT count(*) FROM quarantine AS q JOIN derive_run AS r ON r.run_id = q.run_id"
+    " WHERE q.code = ? AND r.cost_class = 'billed_api' AND r.segment_id IS NOT NULL"
+)
+"""Ruling 10's clamp rows, over ruling 11's runs: `_BILLED`, spelled out for one join."""
 
 
 def _ok(check: str, detail: str) -> DoctorFinding:
@@ -81,8 +102,11 @@ def _one(connection: Any, sql: str, *params: Any) -> int:
 
 
 def _admitted(connection: Any, *, billed: bool) -> int:
+    """Ruling 4, and ruling 10: a clamped item counted once."""
     where = f" WHERE {_BILLED}" if billed else ""
-    return _one(connection, f"SELECT sum(n_items + n_quarantined) FROM derive_run{where}")  # noqa: S608
+    handed = _one(connection, f"SELECT sum(n_items + n_quarantined) FROM derive_run{where}")  # noqa: S608
+    clamped = _one(connection, _CLAMPED_BILLED_SQL if billed else _CLAMPED_SQL, _CLAMPED)
+    return handed - clamped
 
 
 def _billed_rows(connection: Any, code: str) -> int:
@@ -112,7 +136,7 @@ def _unresolved(connection: Any) -> DoctorFinding:
 
 
 def _quarantine(connection: Any) -> DoctorFinding:
-    rows = _one(connection, "SELECT count(*) FROM quarantine")
+    rows = _one(connection, "SELECT count(*) FROM quarantine WHERE code <> ?", _CLAMPED)
     admitted = _admitted(connection, billed=False)
     if not admitted:
         return _ok("quarantine", f"nothing admitted yet; {rows} quarantine rows")
@@ -168,7 +192,7 @@ def _trust_clamped(connection: Any) -> DoctorFinding:
     billed = _admitted(connection, billed=True)
     if not billed:
         return _ok("trust_clamped", "no billed pass has run")
-    rows = _billed_rows(connection, "OW_GRAPH_TRUST_CLAMPED")
+    rows = _billed_rows(connection, _CLAMPED)
     if not rows:
         return DoctorFinding(
             check="trust_clamped",
