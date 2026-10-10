@@ -88,6 +88,7 @@ __all__ = [
     "DiffIn",
     "DoctorIn",
     "ExplainIn",
+    "GraphDoctorIn",
     "GridIn",
     "HooksCheckIn",
     "InstallIn",
@@ -358,6 +359,18 @@ class MergeIn:
     first: str
     second: str
     reason: str | None = None
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class GraphDoctorIn:
+    """`ow graph doctor [--check <names>]`. 06:2519 and 16:805.
+
+    `check` is one comma-separated string of `omniweave.graph.doctor.CHECKS` names, as 16:805
+    spells `--check dangling_tmp,trust_clamped,ungrounded`; none runs all eleven.
+    """
+
+    check: str | None = None
     corpus: str | None = None
 
 

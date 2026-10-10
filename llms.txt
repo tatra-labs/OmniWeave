@@ -249,6 +249,8 @@ cli.doctor: ow doctor [--runtime]
 cli.doctor.actions: doctor
 cli.explain: ow explain CODE
 cli.explain.actions: explain
+cli.graph.doctor: ow graph doctor [--check CHECK]
+cli.graph.doctor.actions: graph.doctor
 cli.graph.locate: ow graph locate [--entity ENTITY] [--claim CLAIM] [--edge EDGE] [--mention
   MENTION]
 cli.graph.locate.actions: graph.locate

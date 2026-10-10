@@ -126,6 +126,7 @@ from omniweave.sdk.reports import (
     CodeRow,
     CorporaReport,
     DoctorReport,
+    GraphDoctorReport,
     HooksCheckReport,
     InstallReport,
     ServeReport,
@@ -139,6 +140,7 @@ from omniweave.surface.inputs import (
     DiffIn,
     DoctorIn,
     ExplainIn,
+    GraphDoctorIn,
     GridIn,
     HooksCheckIn,
     InstallIn,
@@ -1452,6 +1454,28 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=Review,
             advanced=frozenset(),
             cli=("graph", "review"),
+        ),
+        #  06:2519, the graph's subsystem doctor 15:1561 names. Read-only; no `mcp_name`, as 10:807
+        #  names none (D702).
+        ActionSpec(
+            name="graph.doctor",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Check the graph's operability: the residue signals against their thresholds, the "
+                "trust clamp, the entropy gate, anchor counts, candidate pairs and report states"
+            ),
+            decision="an ingest finished and you need to know whether the graph is healthy",
+            example={"check": "dangling_tmp,trust_clamped,ungrounded", "corpus": "handbook"},
+            inp=GraphDoctorIn,
+            out=GraphDoctorReport,
+            advanced=frozenset(),
+            cli=("graph", "doctor"),
         ),
         ActionSpec(
             name="corpus.coverage",
