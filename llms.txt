@@ -252,6 +252,8 @@ cli.explain.actions: explain
 cli.graph.locate: ow graph locate [--entity ENTITY] [--claim CLAIM] [--edge EDGE] [--mention
   MENTION]
 cli.graph.locate.actions: graph.locate
+cli.graph.merges: ow graph merges [--entity ENTITY]
+cli.graph.merges.actions: graph.merges
 cli.graph.why: ow graph why [--cite CITE]
 cli.graph.why.actions: graph.why
 cli.hooks.check: ow hooks check

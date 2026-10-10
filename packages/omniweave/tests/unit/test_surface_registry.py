@@ -274,11 +274,12 @@ def test_the_human_only_actions_are_the_install_and_skills_verbs_and_none_of_the
     is the transport a call would arrive on (D513). `surface.emit` matches row 1 -- what it
     writes is the steering surface -- and the roster leaves it out, as it leaves `install`
     (D334). `graph.why` is read-only and has no `mcp_name` because 10:807's roster names no
-    tool for it, although 06:2119 calls it what an agent uses (D695)."""
+    tool for it, although 06:2119 calls it what an agent uses (D695). `graph.merges` is the
+    same: a read-only user verb 10:807 gives no tool (D696)."""
     unreachable = [spec.name for spec in ACTIONS.values() if spec.human_only]
     assert unreachable == [
-        "graph.why", "install", "uninstall", "serve", "skills.install", "skills.remove",
-        "skills.update", "surface.emit",
+        "graph.why", "graph.merges", "install", "uninstall", "serve", "skills.install",
+        "skills.remove", "skills.update", "surface.emit",
     ]  # fmt: skip
     assert set(ACTIONS) & HUMAN_ONLY == {"uninstall", "skills.remove"}
     assert not any(ACTIONS[name].human_only for name in LISTED_NAMES)
@@ -606,6 +607,7 @@ def test_the_required_parameter_of_each_tool_is_the_one_the_schema_requires() ->
         "doc.grid": {"ref"},
         "graph.locate": set(),
         "graph.why": set(),
+        "graph.merges": set(),
         "corpus.coverage": set(),
         "doc.diff": {"ref"},
         "doctor": set(),
@@ -1305,11 +1307,11 @@ def test_every_shipped_row_resolves_to_a_spelling_the_generator_can_emit() -> No
 def test_the_unrostered_cli_count_is_the_distance_to_the_registry() -> None:
     """10:857's *"roughly 110 further Actions"*, minus what has landed, plus what it undercounts.
 
-    135 rather than 110, and the gap is D293's: the roster is transcribed from the plan's own
+    134 rather than 110, and the gap is D293's: the roster is transcribed from the plan's own
     tables and usage rather than from a numeral, and a numeral is a second copy of an enumeration.
     """
     waiting = _unrostered_cli(ACTIONS)
-    assert len(waiting) == 135, "D695 landed `ow graph why`"
+    assert len(waiting) == 134, "D696 landed `ow graph merges`"
     have = {spec.cli for spec in ACTIONS.values()}
     assert not set(waiting) & have
     assert len(waiting) + len(have) == sum(max(1, len(v)) for v in CLI_ROSTER.values())

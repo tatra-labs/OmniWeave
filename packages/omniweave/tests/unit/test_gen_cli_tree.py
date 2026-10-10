@@ -133,8 +133,9 @@ def test_the_arity_rule_is_reported_and_not_raised() -> None:
     #  `hooks` joined with its one published verb (W7.5i). D306 already names it a breach.
     #  `skills` had two of its seven rostered verbs at W7.6b, six at W7.6c, and all seven now.
     #  `surface` joined with `emit`, one of the four `CLI_ROSTER` carries (W7.1e, D334).
-    #  `graph` joined with `locate`, one of its sixteen (D694), and `why` followed (D695).
-    assert unrostered_groups() == ("doc (2)", "graph (2)", "hooks (1)", "surface (1)")
+    #  `graph` joined with `locate`, one of its sixteen (D694), and `why` (D695); `merges`
+    #  (D696) made it three, the arity 10:1413 asks for, so it left this list.
+    assert unrostered_groups() == ("doc (2)", "hooks (1)", "surface (1)")
     assert _grammar_failures() == ()
 
 
@@ -360,7 +361,7 @@ def test_a_group_advertises_the_verbs_it_has_and_not_the_ones_it_is_owed() -> No
     against a parser with neither is LEANN's `llms.txt` in one line, and G25 is named after it."""
     assert GROUP_HELP == {
         "doc": "diff · grid",
-        "graph": "locate · why",
+        "graph": "locate · merges · why",
         "hooks": "check",
         "skills": "check · hash · install · ls · remove · update · verify",
         "surface": "emit",

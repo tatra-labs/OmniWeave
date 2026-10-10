@@ -92,6 +92,7 @@ __all__ = [
     "HooksCheckIn",
     "InstallIn",
     "LocateIn",
+    "MergesIn",
     "OpenIn",
     "QueryIn",
     "ServeIn",
@@ -324,6 +325,20 @@ class WhyIn:
     """
 
     cite: str | None = None
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MergesIn:
+    """`ow graph merges [--entity e412]`. 06:1891.
+
+    With `entity`, the closure it is in and every decision touching it, retired ones included; with
+    none, every closure of two or more and its live decisions (`store.merges` rulings 1-2). The
+    entity is a cite, bare or qualified with its corpus, or its number, as `ow graph locate` reads
+    one.
+    """
+
+    entity: str | None = None
     corpus: str | None = None
 
 

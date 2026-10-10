@@ -113,6 +113,7 @@ from omniweave_core.answer import Answer
 from omniweave_core.errors import SurfaceError, UsageError
 from omniweave_core.model import Grid
 from omniweave_core.model.locus import Located
+from omniweave_core.model.merges import MergeLog
 from omniweave_core.model.observed import Observed
 from omniweave_core.model.rebind import RebindReport
 from omniweave_core.retrieve.verdict import Coverage
@@ -140,6 +141,7 @@ from omniweave.surface.inputs import (
     HooksCheckIn,
     InstallIn,
     LocateIn,
+    MergesIn,
     OpenIn,
     QueryIn,
     ServeIn,
@@ -1321,6 +1323,28 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=Observed,
             advanced=frozenset(),
             cli=("graph", "why"),
+        ),
+        #  06:1891, the first of 06 section 5.5's three user verbs: read before a merge or a split.
+        #  No `mcp_name`, as 10:807 names none (D696).
+        ActionSpec(
+            name="graph.merges",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Show the resolution decision log: each closure's members, and every merge or "
+                "split decision with its stage, score, guards and the generation it was decided in"
+            ),
+            decision="two entities are one, or are not, and you need why",
+            example={"entity": "e412", "corpus": "handbook"},
+            inp=MergesIn,
+            out=MergeLog,
+            advanced=frozenset(),
+            cli=("graph", "merges"),
         ),
         ActionSpec(
             name="corpus.coverage",
