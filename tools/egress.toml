@@ -181,6 +181,12 @@ value = 'www\.w3\.org'
 path = "packages/omniweave/src/omniweave/route/detect.py"
 why = "The SVG namespace, `http://www.w3.org/2000/svg`, escaped inside the regex 05:684's `svg` probe matches an `xmlns` attribute against. A pattern over the unit's own HEAD bytes, never a destination."
 
+[[literal]]
+value = "www.w3.org"
+path = "packages/omniweave-core/src/omniweave_core/out/carrier/xml.py"
+why = """
+Three XML namespace NAMES, never URLs anything fetches: SVG's (`http://www.w3.org/2000/svg`), XLink's and the reserved `xml:` namespace. The `svg` carrier compares the namespace expat reports for each element and attribute against them, to spell `svg|text`, `xlink:href` and `xml:space` (09 section 3.1 rule 2). Expat runs with parameter entities never parsed and refuses every DOCTYPE and external entity reference before reading one, so no namespace in an IL file is ever resolved either (D738)."""
+
 [[client]]
 module = "asyncio"
 path = "packages/omniweave/src/omniweave/run/supervisor.py"
