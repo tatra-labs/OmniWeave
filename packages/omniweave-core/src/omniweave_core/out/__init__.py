@@ -7,7 +7,8 @@ D737 builds the diagnostic and the gate: `finding` (`Severity`, `Provenance`, `F
 `html_carrier()`, the types a rule is written against, the selector grammar and the splice.
 D739 builds `constructs`: `ConstructTable.load()`, the contract as data, asserted as it loads.
 D740 builds `brief`: the locked `Brief` and `parse_brief()`. D741 builds `plan`: `OutUnit`, `Plan`,
-the seven `UnitOutcome`s, `ManualReason` and the total `classify_and_assert()`.
+the seven `UnitOutcome`s, `ManualReason` and the total `classify_and_assert()`. D742 builds
+`rules`: `RuleSpec`, `RuleCtx`, `DocIndex`, `Box`, `TextMeasure` and the two-pass `run_pack()`.
 """
 
 from omniweave_core.out.brief import Brief, Prohibition, baseline_rows, parse_brief
@@ -34,8 +35,18 @@ from omniweave_core.out.plan import (
     classify_and_assert,
 )
 from omniweave_core.out.report import OutReport, SkippedCheck, il_digest, render
+from omniweave_core.out.rules import (
+    Box,
+    DocIndex,
+    PackRun,
+    RuleCtx,
+    RuleSpec,
+    TextMeasure,
+    run_pack,
+)
 
 __all__ = [
+    "Box",
     "Brief",
     "CarrierDoc",
     "CarrierNode",
@@ -44,6 +55,7 @@ __all__ = [
     "Construct",
     "ConstructTable",
     "Disposition",
+    "DocIndex",
     "Finding",
     "FindingSet",
     "GateStatus",
@@ -51,14 +63,18 @@ __all__ = [
     "ManualReason",
     "OutReport",
     "OutUnit",
+    "PackRun",
     "ParseError",
     "Plan",
     "Prohibition",
     "Provenance",
     "RoundTrip",
+    "RuleCtx",
+    "RuleSpec",
     "Severity",
     "SkippedCheck",
     "Splice",
+    "TextMeasure",
     "Truncation",
     "UnitOutcome",
     "baseline_rows",
@@ -69,5 +85,6 @@ __all__ = [
     "parse_brief",
     "parse_selector",
     "render",
+    "run_pack",
     "svg_carrier",
 ]
