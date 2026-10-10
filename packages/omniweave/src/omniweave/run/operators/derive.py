@@ -37,7 +37,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Final, cast
 
-from omniweave_core.cache import cache_key
+from omniweave_core.cache import CacheEntry, CacheLayer, CacheVerdict, cache_key, read_verdict
+from omniweave_core.canonical import canonical
 from omniweave_core.config import SHIPPED_PASSES
 from omniweave_core.drivers.resolve import CostClass, Isolation, Requirement, resolve
 from omniweave_core.errors import GraphError, OwError, RouteError
@@ -46,6 +47,7 @@ from omniweave_core.model.records import Producer
 from omniweave_core.operator import Outcome, StepMetrics, StepResult
 from omniweave_core.store import lexicon
 from omniweave_core.store import sqlite as ow
+from omniweave_core.store.cache import SqliteCacheIndex
 from omniweave_core.store.coverage import BILLED_PASSES, place_of
 from omniweave_core.store.graph import PassIdentity
 from omniweave_core.store.items import (
@@ -70,7 +72,7 @@ from omniweave.run.operators.lexicon import empty_digest
 from omniweave.run.operators.parse import DeriveCount
 
 if TYPE_CHECKING:
-    from collections.abc import Collection
+    from collections.abc import Collection, Mapping
 
     from omniweave_core.drivers.catalog import Catalog
     from omniweave_core.drivers.resolve import Candidate, Policy
@@ -360,17 +362,29 @@ class DeriveOperator:
                     failure=FailureClass.UPSTREAM_UNAVAILABLE, message=refused,
                 )  # fmt: skip
             staged = []
+        if not staged:
+            return [cast("StepResult", one) for one in results]
+        identity = PassIdentity(
+            pass_id=driver,
+            producer_id=self._producer_id(producer),
+            method=FREE_PASSES[driver] if billed is None else Method.LLM,
+            origin_operator=driver,
+            origin_driver=driver,
+            driver_schema_v=card.identity.schema_version,
+            cost_class="free" if billed is None else "billed_api",
+        )
+        keys: dict[int, str] = {}
+        if billed is not None and grants:  # D725: a paid answer is bought once
+            from omniweave.run.operators.billed import paid_key  # noqa: PLC0415 -- a cycle
+
+            keys = {
+                index: paid_key(card, views[0], grants[0].model_id, grants[0].model_rev)
+                for index, views, _unit, _ref in staged
+            }
+            staged = self._replay(batch, staged, keys, identity, card=card, producer=producer,
+                                  results=results)  # fmt: skip
         if staged:
             reply = self._call(batch, staged, granted, driver, grants)
-            identity = PassIdentity(
-                pass_id=driver,
-                producer_id=self._producer_id(producer),
-                method=FREE_PASSES[driver] if billed is None else Method.LLM,
-                origin_operator=driver,
-                origin_driver=driver,
-                driver_schema_v=card.identity.schema_version,
-                cost_class="free" if billed is None else "billed_api",
-            )
             for slot, (index, views, unit, _ref) in enumerate(staged):
                 decided = (
                     identity
@@ -381,7 +395,118 @@ class DeriveOperator:
                     batch.rows[index], unit, views, reply=reply, slot=slot, producer=producer,
                     identity=decided, card=card, read=read,
                 )  # fmt: skip
+            if keys:
+                self._remember(batch, staged, reply, keys, card=card, granted=granted,
+                               results=results)  # fmt: skip
         return [cast("StepResult", one) for one in results]
+
+    def _replay(
+        self,
+        batch: Batch,
+        staged: list[tuple[int, tuple[ItemView, ...], UnitRef, str]],
+        keys: Mapping[int, str],
+        identity: PassIdentity,
+        *,
+        card: Any,
+        producer: Producer,
+        results: list[StepResult | None],
+    ) -> list[tuple[int, tuple[ItemView, ...], UnitRef, str]]:
+        """D725: each row whose `paid_key` the cache holds is answered from it; the rest return.
+
+        08:1439's six clauses judge the entry, with clause 5 asked of the Segment's part (billed
+        ruling 12): `paid_key` names no file, so the same text in another file is a hit."""
+        index = SqliteCacheIndex(self._thread, clock=self._parse._ctx.clock)
+        found = index.get_many([keys[at] for at, *_ in staged])
+        left: list[tuple[int, tuple[ItemView, ...], UnitRef, str]] = []
+        for slot in staged:
+            at, views, unit, _ref = slot
+            row = batch.rows[at]
+            entry = found.get(keys[at])
+            body = None if entry is None else self._cached(entry.ref, views[0])
+            asked = (row.unit_uri if entry is None else entry.unit_uri, row.unit_part)
+            verdict = read_verdict(entry, asked_for=asked, blob_ok=body is not None)
+            if verdict is not CacheVerdict.HIT or body is None:
+                left.append(slot)
+                continue
+            landed = self._land(
+                row, unit, views, body, producer=producer, card=card, read=None,
+                identity=replace(identity, decision_id=row.decision_id), spend=Spend(),
+                produced=(), outcome=Outcome.SKIPPED_CACHED,
+            )  # fmt: skip
+            results[at] = landed
+            if landed.outcome is Outcome.SKIPPED_CACHED:
+                index.touch(keys[at])
+                self._tally.derived.setdefault(identity.pass_id, DeriveCount()).cached += 1
+        return left
+
+    def _cached(self, ref: str, view: ItemView) -> bytes | None:
+        """The cached answer at `ref` replayed onto `view`, or `None`: clause 2's miss, never a
+        failure, so the next success overwrites it."""
+        from omniweave.run.operators.billed import replayed  # noqa: PLC0415 -- a cycle
+
+        try:
+            with self._parse._cas.open_ref(ref) as handle:
+                return replayed(handle.read(), view)
+        except (OSError, ValueError, OwError):
+            return None
+
+    def _remember(
+        self,
+        batch: Batch,
+        staged: list[tuple[int, tuple[ItemView, ...], UnitRef, str]],
+        reply: pipeline.Reply,
+        keys: Mapping[int, str],
+        *,
+        card: Any,
+        granted: Any,
+        results: list[StepResult | None],
+    ) -> None:
+        """D725: each answer that landed and parsed, kept under its `paid_key` for the next ask."""
+        from omniweave_core.blobs import format_ref  # noqa: PLC0415
+
+        from omniweave.run.operators.billed import remembered  # noqa: PLC0415 -- a cycle
+
+        entries: list[CacheEntry] = []
+        for slot, (at, views, _unit, _ref) in enumerate(staged):
+            landed = results[at]
+            produced = reply.produced[slot] if reply.produced else ()
+            items = [ref for ref in produced if ref.kind == "graph_items"]
+            if landed is None or landed.outcome is not Outcome.OK or len(items) != 1:
+                continue
+            kept = remembered(views[0], self._body(items[0]))
+            if kept is None:
+                continue
+            row = batch.rows[at]
+            spend = reply.spend[slot] if reply.spend else Spend()
+            entries.append(
+                CacheEntry(
+                    cache_key=keys[at],
+                    layer=CacheLayer.CALL,
+                    cost_class="billed_api",
+                    ref=format_ref(self._parse._cas.put(io.BytesIO(kept))),
+                    bytes=len(kept),
+                    unit_uri=row.unit_uri,
+                    unit_part=row.unit_part,
+                    driver=card.identity.id,
+                    driver_schema_v=card.identity.schema_version,
+                    config_digest=granted.config_digest,
+                    origin_operator=card.identity.id,
+                    spend_json=canonical(
+                        {
+                            "tokens_in": int(getattr(spend, "tokens_in", 0)),
+                            "tokens_out": int(getattr(spend, "tokens_out", 0)),
+                            "calls": int(getattr(spend, "calls", 0)),
+                            "bytes_egress": int(getattr(spend, "bytes_egress", 0)),
+                        }
+                    ).decode("utf-8"),
+                    micros=0,
+                )
+            )
+        if entries:
+            allowed = frozenset((row.unit_uri, row.unit_part) for row in batch.rows)
+            SqliteCacheIndex(self._thread, clock=self._parse._ctx.clock).put(
+                entries, allowed_units=allowed
+            )
 
     def _grants(self, card: Any) -> tuple[tuple[subproc.ServiceGrant, ...], str]:
         """The card's Services granted for this call, or why they cannot be. **D713.**
@@ -541,8 +666,31 @@ class DeriveOperator:
                 message=f"{driver} produced {len(items)} graph_items refs; one is an answer",
             )  # fmt: skip
         spend = cast("SpendVector", reply.spend[slot] if reply.spend else Spend())
+        return self._land(
+            row, unit, views, self._body(items[0]), producer=producer, identity=identity,
+            card=card, read=read, spend=spend, produced=tuple(produced), outcome=Outcome.OK,
+        )  # fmt: skip
+
+    def _land(
+        self,
+        row: WorkRow,
+        unit: UnitRef,
+        views: tuple[ItemView, ...],
+        body: bytes,
+        *,
+        producer: Producer,
+        identity: PassIdentity,
+        card: Any,
+        read: str | None,
+        spend: Any,
+        produced: tuple[ArtifactRef, ...],
+        outcome: Outcome,
+    ) -> StepResult:
+        """One answer's frames written under `identity`. D725 split it off `_settle`, so an answer
+        replayed from the call cache lands exactly as a fresh one does."""
+        driver = identity.pass_id
         try:
-            units = decode_items(self._body(items[0]), views)
+            units = decode_items(body, views)
 
             def write(connection: Any) -> list[Any]:
                 register_pass(connection, card)
@@ -578,11 +726,11 @@ class DeriveOperator:
         count.items += sum(r.emitted for r in reports)
         count.quarantined += sum(r.quarantined for r in reports)
         return StepResult(
-            outcome=Outcome.OK,
+            outcome=outcome,
             unit=unit,
             identity=producer,
             cache_key=row.cache_key,
-            produced=tuple(produced),
+            produced=produced,
             metrics=StepMetrics(rows_written=sum(r.emitted for r in reports)),
         )
 

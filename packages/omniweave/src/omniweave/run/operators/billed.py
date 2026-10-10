@@ -22,8 +22,8 @@ for each one, the three rows of 05:1103's *"write route_decision -- BEFORE anyth
    `admitted`, because nothing yet holds a reservation to defer it against.
 4. **The work row is `billed_api`, `pending`, and names its decision and its Service.** `service`
    is the table the card's first `[hardware] services` entry names (D713). The cache key is the
-   free rows' recipe over the Segment's `UnitRef`, part included; `paid_key` (06:1609) replaces it
-   when the call cache lands.
+   free rows' recipe over the Segment's `UnitRef`, part included. It stays so under D725:
+   `paid_key` (06:1636) names the served model, which is known only once the row runs (ruling 8).
 5. **Idempotent by identity.** The decision converges on `route_decision_identity`, and the work
    row on `work_identity`. A second enqueue over an unchanged store writes no row, and a Segment
    whose text changed has a new part and so a new decision and a new row.
@@ -34,16 +34,43 @@ for each one, the three rows of 05:1103's *"write route_decision -- BEFORE anyth
    `(cost_rank, phase)` order, so a Pass at phase 20 reads the cover a Pass at phase 10 wrote in
    the same run.
 7. **A Pass that binds runs only where its lane has cover** (D724, coverage ruling 10).
+
+## The call cache (D725, 06 section 4.6)
+
+8. **`paid_key` is 06:1636's recipe over what the host can know, taken when the row runs.** The
+   Service is attached then, and its grant names the model the probe found. The pass, its
+   `schema_version`,
+   the Segment's `content_digest`, the model id and revision the grant names, the decode
+   configuration (`DECODE`) and the vocabulary the billed view carries. In `prompt_fp`'s place
+   stands the card's `prompt_version`: the prompt is rendered in the driver, by a package
+   `omniweave` may not import, and `omniweave-llm`'s golden test pins each lane's rendered
+   `prompt_fp` to the card's `prompt_version`, so editing a prompt without bumping the version
+   fails CI.
+   `driver_version` is left out, as 06:1614 has it: a bug-fix release never re-bills.
+9. **What is cached is the Segment's frames and the cites they were answered against.** A Segment
+   with the same `content_digest` in another document holds the same blocks in the same order
+   under other cites, so a hit is replayed by position: the stored cites map onto the current
+   view's, and nothing else in the frames is touched. A view whose block count differs is a miss.
+10. **Only an answer that parsed is cached.** An unparsed answer is a malformed frame the model may
+    not repeat, and caching it would replay a failure forever.
+11. **A hit is `skipped_cached`**: the row is `done`, its run is written under the row's own
+    decision, its Spend is zero, and no call is made.
+12. **The read policy's clause 5 is asked of the Segment's part, not its file.** 08:1439's six
+    clauses judge every entry (`cache.read_verdict`), and clause 5 calls a recorded unit other than
+    the one asked for a collision. `paid_key` names no file, by 06:1636's recipe, so the same text
+    in a second file is the same question and not a collision. The part is `seg:` and the
+    `content_digest`'s first 16 hex, so a part that differs is still refused as clause 5 refuses it.
 """
 
 from __future__ import annotations
 
+import json
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_core.cache import cache_key
-from omniweave_core.canonical import sha256_canonical
+from omniweave_core.canonical import canonical, sha256_canonical
 from omniweave_core.drivers.resolve import CostClass
 from omniweave_core.model.records import Producer
 from omniweave_core.store.coverage import BILLED_PASSES, eligible, place_of
@@ -62,6 +89,7 @@ if TYPE_CHECKING:
 
     from omniweave_core.drivers.resolve import Candidate
     from omniweave_core.store.coverage import BilledPass, Eligible
+    from omniweave_core.store.items import ItemView
 
     from omniweave.run.operators.derive import DerivePlan
     from omniweave.run.routing import ReadSet
@@ -69,12 +97,16 @@ if TYPE_CHECKING:
 __all__ = [
     "BILLED_ENQUEUE_SQL",
     "COVERED_KEY",
+    "DECODE",
     "FLOOR_KEY",
     "RULE_ID",
     "RULE_ORIGIN",
     "BilledQueued",
     "billed_phases",
     "enqueue_billed",
+    "paid_key",
+    "remembered",
+    "replayed",
 ]
 
 RULE_ID: Final = "graph.eligible"
@@ -125,6 +157,87 @@ class BilledQueued:
             f"{self.queued[pass_id]} queued"
             for pass_id in sorted({*self.eligible, *self.queued, *self.documents})
         ]
+
+
+DECODE: Final = {"temperature": 0, "response_format": "json_schema", "strict": True, "decodable": 1}
+"""Ruling 8: the decode configuration `LanePass` sends (D711, D717), as `paid_key`'s `decode_digest`
+input. Changing what is sent changes the answer, so it changes this, and every key with it."""
+
+
+def paid_key(card: Any, view: ItemView, model_id: str, model_rev: str) -> str:
+    """Ruling 8: 06:1636's `paid_key` for one Segment, as 64 hex."""
+    header = json.loads(view.body.split(b"\n", 1)[0])
+    sibling = card.derive_sibling
+    return sha256_canonical(
+        {
+            "pass": card.identity.id,
+            "schema_version": card.identity.schema_version,
+            "segment": view.ref.content_digest.hex(),
+            "prompt_version": "" if sibling is None else sibling.prompt_version,
+            "model_id": model_id,
+            "model_rev": model_rev,
+            "decode": DECODE,
+            "vocab": {
+                "etypes": header.get("etypes", []),
+                "document_scoped": header.get("document_scoped", []),
+                "relations": header.get("relations", []),
+            },
+        }
+    )
+
+
+def _cites(view: ItemView) -> list[str]:
+    """The view's member cites, in block order."""
+    found = []
+    for line in view.body.splitlines():
+        frame = json.loads(line)
+        if frame.get("t") == "block":
+            found.append(str(frame["cite"]))
+    return found
+
+
+def remembered(view: ItemView, body: bytes) -> bytes | None:
+    """Rulings 9-10: what the cache keeps of one Segment's answer; `None` when it did not parse."""
+    frames = [json.loads(line) for line in body.splitlines() if line.strip()]
+    if any("unparsed" in frame for frame in frames):
+        return None
+    return canonical({"cites": _cites(view), "frames": frames})
+
+
+def replayed(payload: bytes, view: ItemView) -> bytes | None:
+    """Ruling 9: a cached answer replayed onto `view`'s cites by position, or `None` (a miss)."""
+    try:
+        kept = json.loads(payload)
+        cites, frames = list(kept["cites"]), list(kept["frames"])
+    except (ValueError, KeyError, TypeError):
+        return None
+    now = _cites(view)
+    if len(now) != len(cites) or not all(isinstance(frame, dict) for frame in frames):
+        return None
+    moved = dict(zip(cites, now, strict=True))
+    lines = []
+    for frame in frames:
+        moved_frame = _remap(frame, moved)
+        if moved_frame.get("t") == "seg":
+            moved_frame["seg"] = view.seg
+        lines.append(json.dumps(moved_frame, separators=(",", ":"), ensure_ascii=False))
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
+def _remap(node: Any, moved: Mapping[str, str]) -> Any:
+    if isinstance(node, dict):
+        out: dict[str, Any] = {}
+        for key, value in node.items():
+            if key == "cite" and isinstance(value, str):
+                out[key] = moved.get(value, value)
+            elif key == "cites" and isinstance(value, list):
+                out[key] = [moved.get(str(c), c) for c in value]
+            else:
+                out[key] = _remap(value, moved)
+        return out
+    if isinstance(node, list):
+        return [_remap(value, moved) for value in node]
+    return node
 
 
 def billed_phases(plan: DerivePlan) -> list[tuple[str, ...]]:

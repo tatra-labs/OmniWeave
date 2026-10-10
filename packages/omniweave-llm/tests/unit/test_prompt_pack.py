@@ -168,3 +168,32 @@ def test_a_corpus_with_no_relation_decodes_an_empty_relation_list() -> None:
     assert named["properties"]["entities"]["items"]["properties"]["etype"]["enum"] == [
         *ETYPES, "unknown", None
     ]  # fmt: skip
+
+
+PINNED: dict[tuple[str, str], str] = {
+    ("entity", "1"): "65fec620c19c",
+    ("claim", "1"): "b3bcafec528f",
+}
+"""Each extraction lane's `prompt_fp` with no vocabulary, under its card's `prompt_version` (D725).
+
+The host's `paid_key` reads `prompt_version` off the card, because `omniweave` may not import the
+package that renders the prompt. This table is what makes the version mean the text: a prompt that
+moves under an unchanged version would replay answers to a question no longer asked."""
+
+
+@pytest.mark.parametrize("lane", EXTRACTION_LANES)
+def test_each_lanes_rendered_prompt_is_pinned_to_its_cards_prompt_version(lane: str) -> None:
+    """D725: edit `prompts/<lane>.md` or `schemas/<lane>.json` and this fails until the card's
+    `[derive] prompt_version` is bumped and the new fingerprint pinned beside it."""
+    import tomllib  # noqa: PLC0415
+    from importlib import resources  # noqa: PLC0415
+
+    card = tomllib.loads(
+        (resources.files(f"omniweave_llm.{lane}_llm") / "driver.toml").read_text(encoding="utf-8")
+    )
+    version = str(card["derive"]["prompt_version"])
+    fp = render(lane, body="", source="seg:0000000000000000").fp
+    assert PINNED.get((lane, version)) == fp, (
+        f"the {lane} prompt renders {fp} at prompt_version {version}: bump the card's "
+        "[derive] prompt_version and pin the new fingerprint under it"
+    )

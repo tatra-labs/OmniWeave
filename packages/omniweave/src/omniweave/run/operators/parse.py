@@ -387,6 +387,8 @@ class DeriveCount:
     quarantined: int = 0
     units: set[str] = field(default_factory=set)
     """The units counted into `documents`, so each document is counted once."""
+    cached: int = 0
+    """Rows answered from the call cache (D725): a billed Pass's Segments not bought twice."""
 
 
 @dataclass(slots=True)
@@ -450,6 +452,7 @@ class ParseTally:
             out.append(
                 f"  derive    {name}: {count.documents} document(s), {count.runs} Segment run(s), "
                 f"{count.items} item(s) written, {count.quarantined} quarantined"
+                + (f", {count.cached} from the call cache" if count.cached else "")
             )
         if self.derive_failed:
             classes = ", ".join(f"{k} {n}" for k, n in sorted(self.derive_failed.items()))
