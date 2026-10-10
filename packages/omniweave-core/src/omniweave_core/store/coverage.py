@@ -44,6 +44,10 @@ read one function.
    sixteen hex of its `content_digest` (06:807, 04:727), the work row's `unit_part`. `uncovered`
    is `member & ~cheaper`, the 64-byte blob the sink's covered-ground gate reads (D709).
    `covered` is the Segment's `covered_frac`, the reading its decision records (D715).
+10. **A Pass that binds to another lane runs only where that lane has cover** (D724, 06:841:
+    `derive.claim.llm` *"Runs only where `entity` cover exists to bind subjects"*). The cover must
+    claim at least one block; a `cover_empty` row is a Pass that looked and found nothing to bind
+    to. `BilledPass.binds` names the lane, and `eligible(bound=...)` applies it.
 """
 
 from __future__ import annotations
@@ -90,11 +94,13 @@ class BilledPass:
     calls: Decimal
     tokens_in: int
     tokens_out: int
+    binds: str = ""
+    """Ruling 10: the lane whose cover a Segment needs before this Pass may run on it."""
 
 
 BILLED_PASSES: Final = (
     BilledPass("derive.entity.llm", "entity", (2, 10), Decimal("1.35"), 3989, 806),
-    BilledPass("derive.claim.llm", "claim", (2, 20), Decimal("1.0"), 3100, 480),
+    BilledPass("derive.claim.llm", "claim", (2, 20), Decimal("1.0"), 3100, 480, binds="entity"),
 )
 """06:837-838, rows 11 and 12: the two billed Passes that write cover, at their projected Spend."""
 
@@ -233,6 +239,9 @@ SELECT s.segment_id, s.n_blocks, s.content_digest, dc.cover_bits, dp.cost_rank, 
   LEFT JOIN derive_pass AS dp ON dp.pass_id = dr.pass_id
  WHERE s.state = 0 AND s.doc_ord = :doc_ord AND s.layer IN ({layers})
    AND (s.kind_mask & :want_kinds) <> 0 AND (s.restriction_bits & :deny) = 0
+   AND (:bound = '' OR EXISTS (SELECT 1 FROM derive_cover AS b
+                                WHERE b.segment_id = s.segment_id AND b.lane = :bound
+                                  AND b.n_covered > 0))
  ORDER BY s.segment_id
 """
 
@@ -246,6 +255,7 @@ def eligible(
     floor: float,
     layers: frozenset[Layer] = BILLED_LAYERS,
     deny_bits: int = 0,
+    bound: str = "",
 ) -> Iterator[Eligible]:
     """06:744-773 for one document's live Segments at its head generation: those a billed Pass
     placed at `before` may run on, because cheaper cover leaves them under `floor`.
@@ -255,7 +265,13 @@ def eligible(
     """
     codes = _ords("layer")
     inlined = ",".join(str(codes[layer.value]) for layer in sorted(layers)) or "NULL"
-    params = {"lane": lane, "doc_ord": doc_ord, "want_kinds": LANE_KINDS[lane], "deny": deny_bits}
+    params = {
+        "lane": lane,
+        "doc_ord": doc_ord,
+        "want_kinds": LANE_KINDS[lane],
+        "deny": deny_bits,
+        "bound": bound,
+    }
     segment: int | None = None
     n_blocks = 0
     digest = b""

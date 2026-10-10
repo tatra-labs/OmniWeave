@@ -249,3 +249,25 @@ def test_an_ingest_names_the_gate_that_kept_a_billed_pass_out(tmp_path: Path) ->
     lines = _run(tmp_path, store, config).lines()
     expected = f"{LLM}: [graph.passes] enable names it, [drivers] enabled does not"
     assert any(line.startswith("  derive    not enqueued: ") and expected in line for line in lines)
+
+
+def test_a_binding_lane_hands_over_only_segments_its_bound_lane_covered(contract: Path) -> None:
+    """D724, 06:841: the claim lane runs only where `entity` cover exists to bind subjects."""
+    connection = sqlite3.connect(_store(contract))
+    try:
+        connection.execute("DELETE FROM derive_cover")
+        live = _live(connection)
+        doc = live[0][2]
+        bound, empty, bare = [s for s, _n, d, _c in live if d == doc][:3]
+        run = _run_of(connection, 2, 10)
+        _cover(connection, bound, run, [0])
+        _cover(connection, empty, run, [])
+        found = _found(connection, doc, lane="claim", before=(2, 20), bound="entity")
+        assert bound in found
+        assert empty not in found, "a Pass that looked and found nothing binds nothing"
+        assert bare not in found
+        unbound = _found(connection, doc, lane="claim", before=(2, 20))
+        assert {bound, empty, bare} <= set(unbound)
+    finally:
+        connection.rollback()
+        connection.close()

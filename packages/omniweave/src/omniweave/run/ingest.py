@@ -138,7 +138,7 @@ from omniweave.run.manifest import (
     manifest_path,
 )
 from omniweave.run.operators import lexicon as op_lexicon
-from omniweave.run.operators.billed import BilledQueued, enqueue_billed
+from omniweave.run.operators.billed import BilledQueued, billed_phases, enqueue_billed
 from omniweave.run.operators.derive import DeriveOperator, DerivePlan, is_derive
 from omniweave.run.operators.parse import (
     Ordinals,
@@ -831,7 +831,7 @@ def _hops(
         )
 
     relexed: sup.RunReport | None = None
-    rebilled: sup.RunReport | None = None
+    rebilled: list[sup.RunReport] = []
     billed: BilledQueued | None = None
     try:
         drained = drain() if enqueued else None
@@ -851,8 +851,11 @@ def _hops(
         relexed = drain() if lexicon.drain else None
         #  D716: the billed Passes, once every cheaper Pass's cover is written -- the selector
         #  reads that ledger -- and before op.resolve, which reads what they extract.
-        billed = _billed(thread, context, inputs=inputs, config=config, clock=clock)
-        rebilled = drain() if billed is not None and sum(billed.queued.values()) else None
+        #  D724: one place at a time, in (cost_rank, phase) order, each drained before the next is
+        #  enqueued, so a Pass at phase 20 reads the cover a Pass at phase 10 wrote.
+        billed, rebilled = _billed_stage(
+            thread, context, inputs=inputs, config=config, clock=clock, drain=drain
+        )
         #  D684, D690, D691: op.resolve over every entity the drains left, then op.cluster
         #  over the graph it leaves, alternating until neither moves.
         graph = _resolve_and_cluster(thread, generation)
@@ -876,7 +879,7 @@ def _hops(
     waiting = states.get(IDENTIFIED, 0) + states.get(PLANNED, 0)
     #  D683: a batch that crashed left its rows claimed, so the drain ended without them.
     stopped = any(
-        r is not None and (r.status != "done" or r.crashed) for r in (drained, relexed, rebilled)
+        r is not None and (r.status != "done" or r.crashed) for r in (drained, relexed, *rebilled)
     )
     status = "partial" if waiting or stopped else "ok"
     return IngestReport(
@@ -952,19 +955,50 @@ def _resolve_and_cluster(thread: ow.StoreThread, generation: int) -> Settled:
     return settle(resolve, cluster, bound=GRAPH_ROUNDS)
 
 
-def _billed(
+def _billed_stage(
     thread: ow.StoreThread,
     ctx: RunContext,
     *,
     inputs: _RoutingInputs,
     config: Config,
     clock: Clock,
-) -> BilledQueued | None:
-    """Every billed Pass's rows over the store the free drains left (D715, D716). `None` when the
-    plan holds no billed Pass, so a run that enabled none says nothing about them."""
+    drain: Callable[[], sup.RunReport],
+) -> tuple[BilledQueued | None, list[sup.RunReport]]:
+    """The billed Passes, one place at a time in `(cost_rank, phase)` order (D724).
+
+    Each place is enqueued and drained before the next is enqueued, so a Pass at phase 20 reads
+    the cover a Pass at phase 10 wrote in the same run. `None` and no drain when the plan holds no
+    billed Pass.
+    """
+    derives = _billed_plan(ctx, inputs=inputs)
+    if derives is None:
+        return None, []
+    billed: BilledQueued | None = None
+    drains: list[sup.RunReport] = []
+    for passes in billed_phases(derives):
+        queued = _billed(thread, derives, passes=passes, config=config, clock=clock)
+        billed = queued if billed is None else billed.merged(queued)
+        if sum(queued.queued.values()):
+            drains.append(drain())
+    return billed, drains
+
+
+def _billed_plan(ctx: RunContext, *, inputs: _RoutingInputs) -> DerivePlan | None:
+    """The run's plan when it holds a billed Pass; `None` when it holds none, so a run that enabled
+    none says nothing about them (D716)."""
     derives, _why = DerivePlan.of(inputs.catalog, inputs.resolving, ctx, enable=inputs.passes)
-    if derives is None or not derives.billed:
-        return None
+    return derives if derives is not None and derives.billed else None
+
+
+def _billed(
+    thread: ow.StoreThread,
+    derives: DerivePlan,
+    *,
+    passes: tuple[str, ...],
+    config: Config,
+    clock: Clock,
+) -> BilledQueued:
+    """One place's billed Passes' rows over the store the drains so far left (D715, D716, D724)."""
     floor = float(config.get("graph.llm_coverage_floor"))  # type: ignore[arg-type]
     now_ms = clock.wall_ns() // 1_000_000
     return cast(
@@ -973,7 +1007,7 @@ def _billed(
             ow.Unit(
                 name="derive.billed",
                 run=lambda connection: enqueue_billed(
-                    connection, derives, floor=floor, now_ms=now_ms
+                    connection, derives, floor=floor, now_ms=now_ms, passes=passes
                 ),
                 cost_class="free",
                 wait_ms=BATCH_WAIT_MS,

@@ -35,7 +35,8 @@ MODEL = "qwen3:4b"
 REV = "0123456789abcdef0123456789abcdef01234567"
 MEMO = (
     "# Memo\n\nAcme Holdings will deliver the goods in June.\n\n"
-    "## Payment\n\nBeta Corp pays on delivery.\n"
+    "## Payment\n\nBeta Corp pays on delivery.\n\n"
+    "## Notes\n\nNothing else is agreed.\n"
 )
 NAMES = ("Acme Holdings", "Beta Corp")
 
@@ -370,8 +371,12 @@ def test_the_claim_pass_runs_beside_the_entity_pass_and_binds_its_subjects(
     assert _rows(store, "SELECT DISTINCT status FROM work WHERE operator = 'derive.claim.llm'") == [
         ("done",)
     ]
-    lanes = {request["response_format"]["json_schema"]["name"] for request in _Model.asked}
-    assert lanes == {"owgraph_entity", "owgraph_claim"}
+    lanes = [request["response_format"]["json_schema"]["name"] for request in _Model.asked]
+    #  D724: the entity place drains before the claim place is enqueued, and a claim is offered
+    #  only where an entity was found -- not the Notes Segment, which names nobody.
+    entity_calls, claim_calls = lanes.count("owgraph_entity"), lanes.count("owgraph_claim")
+    assert lanes == ["owgraph_entity"] * entity_calls + ["owgraph_claim"] * claim_calls, lanes
+    assert (claim_calls, entity_calls) == (2, 3)
     claims = _rows(
         store,
         "SELECT DISTINCT e.key, c.predicate FROM claim AS c"
