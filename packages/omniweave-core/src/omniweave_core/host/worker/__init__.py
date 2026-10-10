@@ -61,7 +61,7 @@ import sys
 import threading
 import weakref
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Final
 
@@ -76,7 +76,7 @@ from omniweave_ports.types import (
     UnitRef,
 )
 
-from omniweave_core.errors import DriverHostError
+from omniweave_core.errors import DriverHostError, OwError
 from omniweave_core.host import subproc, wire
 
 if TYPE_CHECKING:
@@ -285,6 +285,8 @@ class _Call:
     invoke_id: str
     unit_index: int
     cancelled: bool = False
+    services: Mapping[str, Mapping[str, object]] = field(default_factory=dict)
+    """The `INVOKE`'s Service grants by name (D712)."""
 
 
 _CALLS: weakref.WeakKeyDictionary[DriverIO, _Call] = weakref.WeakKeyDictionary()
@@ -297,11 +299,22 @@ class WorkerIO(DriverIO):
     __slots__ = ()
 
     def service(self, name: str) -> ServiceHandle:
-        """No Service is attached to a worker yet: 08 section 3.2's handles land with S3."""
-        raise DriverError(
-            cls=FailureClass.DRIVER_BUG,
-            message=f"service({name!r}): no Service is attached to this S4 worker",
-        )
+        """The handle the `INVOKE` granted for `name` (D712), or a refusal naming it.
+
+        The grant's fields rebuild `modelserver.Handle`, whose `post()` is the one HTTP client a
+        Service is reached by; its deadline is this call's and its cancellation this call's.
+        """
+        call = _CALLS.get(self)
+        grant = None if call is None else call.services.get(name)
+        if grant is None:
+            raise DriverError(
+                cls=FailureClass.DRIVER_BUG,
+                message=(
+                    f"service({name!r}): no Service of that name is granted to this call; the "
+                    "card's [hardware] services and the run's [services.<name>] decide which are"
+                ),
+            )
+        return _GrantedHandle(grant, deadline_ms=self.deadline_ms, cancelled=self.cancelled)
 
     def cancelled(self) -> bool:
         call = _CALLS.get(self)
@@ -588,6 +601,7 @@ def _invoke(
     aliases = {unit.content_sha256: blob for unit, blob in units if blob is not None}
     blobs = WorkerBlobs(cas, aliases)
     lane = frame.header.get("lane")
+    services = _services(frame.header)
     call = (
         _derive_call(driver, str(lane or ""))
         if session.port == "derive/1"
@@ -602,7 +616,9 @@ def _invoke(
             deadline_ms=deadline_ms,
             max_output_bytes=session.max_output_bytes,
         )
-        _CALLS[io_obj] = _Call(send=wired.send, invoke_id=invoke_id, unit_index=index)
+        _CALLS[io_obj] = _Call(
+            send=wired.send, invoke_id=invoke_id, unit_index=index, services=services
+        )
         body = b""
         try:
             result = call(unit, io_obj)
@@ -620,6 +636,103 @@ def _invoke(
             shutil.rmtree(scratch, ignore_errors=True)
         wired.send(wire.FrameKind.RESULT, header, body)
     shutil.rmtree(Path(session.tmp) / invoke_id, ignore_errors=True)
+
+
+_SERVICE_RETRY_MS: Final = 1000
+"""How long a call waits before retrying a Service that did not answer (D712)."""
+
+
+def _services(header: Mapping[str, object]) -> dict[str, Mapping[str, object]]:
+    """The `INVOKE`'s grants by name (D712). An entry that is not an object with a name grants
+    nothing, so a malformed grant is a refusal at `service()`, never a guess."""
+    found = header.get("services") or []
+    if not isinstance(found, list):
+        return {}
+    return {
+        str(entry["name"]): entry
+        for entry in found
+        if isinstance(entry, dict) and isinstance(entry.get("name"), str)
+    }
+
+
+class _GrantedHandle:
+    """`modelserver.Handle` built from a grant, its HTTP failure a `DriverError` (D712).
+
+    `Handle.post` raises core's `DriverHostError`, which a driver cannot name: it imports
+    `omniweave_ports` alone. So a Service that does not answer, or answers outside 2xx, is
+    `UPSTREAM_UNAVAILABLE` here, transient, with a retry delay, which is the class a driver and the
+    runtime both read.
+    """
+
+    __slots__ = ("_handle",)
+
+    def __init__(
+        self, grant: Mapping[str, object], *, deadline_ms: int, cancelled: Callable[[], bool]
+    ) -> None:
+        from omniweave_core.modelserver import Handle  # noqa: PLC0415 -- a granted call only
+
+        try:
+            self._handle = Handle(
+                name=str(grant["name"]),
+                base_url=str(grant["base_url"]),
+                token=str(grant["token"]),
+                model_id=str(grant["model_id"]),
+                model_rev=str(grant["model_rev"]),
+                capacity=int(grant.get("capacity", 1)),  # type: ignore[call-overload]
+                traceparent=str(grant.get("traceparent", "")),
+                deadline_ms=deadline_ms,
+                _cancelled=cancelled,
+                _timeout_s=float(grant.get("request_timeout_s", 600)),  # type: ignore[arg-type]
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            raise DriverError(
+                cls=FailureClass.DRIVER_BUG, message=f"a malformed Service grant: {error}"
+            ) from error
+
+    @property
+    def name(self) -> str:
+        return self._handle.name
+
+    @property
+    def base_url(self) -> str:
+        return self._handle.base_url
+
+    @property
+    def token(self) -> str:
+        return self._handle.token
+
+    @property
+    def model_id(self) -> str:
+        return self._handle.model_id
+
+    @property
+    def model_rev(self) -> str:
+        return self._handle.model_rev
+
+    @property
+    def capacity(self) -> int:
+        return self._handle.capacity
+
+    @property
+    def traceparent(self) -> str:
+        return self._handle.traceparent
+
+    @property
+    def deadline_ms(self) -> int:
+        return self._handle.deadline_ms
+
+    def post(self, path: str, body: bytes, *, headers: Mapping[str, str] | None = None) -> bytes:
+        try:
+            return self._handle.post(path, body, headers=headers)
+        except OwError as error:
+            raise DriverError(
+                cls=FailureClass.UPSTREAM_UNAVAILABLE,
+                message=str(error),
+                retry_after_ms=_SERVICE_RETRY_MS,
+            ) from error
+
+    def cancelled(self) -> bool:
+        return self._handle.cancelled()
 
 
 def _parse_call(parse: object) -> Callable[[UnitRef, DriverIO], DriverResult]:
