@@ -21,6 +21,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, ClassVar
 
 import pytest
@@ -810,3 +811,23 @@ def test_service_issues_only_the_named_grant_under_the_calls_deadline(tmp_path: 
     assert handle.cancelled() is True
     with pytest.raises(DriverError, match=r"service\('llm'\): no Service of that name"):
         io_obj.service("llm")
+
+
+def test_a_grant_is_made_from_the_handle_the_registry_issued() -> None:
+    """D713: the handle's fields, and its request timeout; a handle with none keeps 600."""
+    from omniweave_core.modelserver import Handle  # noqa: PLC0415
+
+    bearer = "ab"
+    handle = Handle(
+        name="llm", base_url="http://127.0.0.1:9", token=bearer, model_id="m", model_rev="r",
+        capacity=3, traceparent="00-t", deadline_ms=0, _timeout_s=42.0,
+    )  # fmt: skip
+    assert sp.ServiceGrant.of(handle) == sp.ServiceGrant(
+        name="llm", base_url="http://127.0.0.1:9", token=bearer, model_id="m", model_rev="r",
+        capacity=3, traceparent="00-t", request_timeout_s=42,
+    )  # fmt: skip
+    bare = SimpleNamespace(
+        name="llm", base_url="http://127.0.0.1:9", token="", model_id="m", model_rev="r",
+        capacity=1, traceparent="",
+    )  # fmt: skip
+    assert sp.ServiceGrant.of(bare).request_timeout_s == 600  # type: ignore[arg-type]

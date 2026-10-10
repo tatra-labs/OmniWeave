@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Any, Final, cast
 
 from omniweave_core.cache import cache_key
 from omniweave_core.drivers.resolve import Isolation, Requirement, resolve
-from omniweave_core.errors import GraphError, RouteError
+from omniweave_core.errors import GraphError, OwError, RouteError
 from omniweave_core.model.enums import Method
 from omniweave_core.model.records import Producer
 from omniweave_core.operator import Outcome, StepMetrics, StepResult
@@ -284,8 +284,16 @@ class DeriveOperator:
                 uri=row.unit_uri, part="", content_sha256=digest.hex(), byte_len=len(body)
             )
             staged.append((index, views, unit, format_ref(digest)))
+        grants, refused = self._grants(card) if staged else ((), "")
+        if refused:  # D713: a Service that will not attach fails the rows, never the drain
+            for index, _views, unit, _ref in staged:
+                results[index] = self._failed(
+                    driver, batch.rows[index], unit, producer,
+                    failure=FailureClass.UPSTREAM_UNAVAILABLE, message=refused,
+                )  # fmt: skip
+            staged = []
         if staged:
-            reply = self._call(batch, staged, granted, driver)
+            reply = self._call(batch, staged, granted, driver, grants)
             identity = PassIdentity(
                 pass_id=driver,
                 producer_id=self._producer_id(producer),
@@ -301,6 +309,35 @@ class DeriveOperator:
                     identity=identity, card=card, read=read,
                 )  # fmt: skip
         return [cast("StepResult", one) for one in results]
+
+    def _grants(self, card: Any) -> tuple[tuple[subproc.ServiceGrant, ...], str]:
+        """The card's Services granted for this call, or why they cannot be. **D713.**
+
+        A card's `[hardware] services` names the Services its driver may reach. The run's registry
+        attaches each one on the first call that needs it (08:1180), and the grant rides the
+        `INVOKE` for the worker's `io.service()` to build its handle from (D712).
+
+        **A Service that will not attach fails this batch's rows** with the attach's own refusal
+        and its fix. Raised, it would leave the pipeline and end the drain, and the other Passes'
+        rows are not this Service's to stop. A run with no registry refuses the same way, naming it.
+        """
+        declared = tuple(card.hardware.services)
+        if not declared:
+            return (), ""
+        from omniweave_core.host import subproc  # noqa: PLC0415
+        from omniweave_core.modelserver import service_name  # noqa: PLC0415
+
+        registry = self._parse._ctx.services
+        if registry is None:
+            return (), (
+                f"{card.identity.id} reaches the Services {list(declared)}, and this run carries "
+                "no ServiceRegistry to attach them"
+            )
+        try:
+            handles = [registry.get(service_name(one)) for one in declared]
+        except OwError as error:
+            return (), f"{error} (fix: {error.fix})"
+        return tuple(subproc.ServiceGrant.of(handle) for handle in handles), ""
 
     def _lexicon(self) -> str:
         """The digest of the lexicon a gazetteer batch reads: the current one, else the empty."""
@@ -356,6 +393,7 @@ class DeriveOperator:
         staged: Sequence[tuple[int, tuple[ItemView, ...], UnitRef, str]],
         granted: Any,
         operator: str,
+        grants: tuple[subproc.ServiceGrant, ...] = (),
     ) -> pipeline.Reply:
         from omniweave_core.host import subproc  # noqa: PLC0415
 
@@ -369,7 +407,7 @@ class DeriveOperator:
         )
         lanes = sorted(granted.card.derive.items) if granted.card.derive is not None else []
         host = pipeline.subproc_host(
-            _Source(self._parse, granted, tuple(ref for *_x, ref in staged), _lane(lanes))
+            _Source(self._parse, granted, tuple(ref for *_x, ref in staged), _lane(lanes), grants)
         )
         handler = pipeline.build(host, emit=self._tally.emit, isolation=str(granted.isolation))
         key = subproc.WorkerKey(granted.card.identity.id, granted.config_digest)
@@ -485,17 +523,24 @@ def _lane(items: Sequence[str]) -> str:
 
 
 class _Source:
-    """`pipeline.WorkerSource` for one derive batch: the run's worker, an `INVOKE` with a lane."""
+    """`pipeline.WorkerSource` for one derive batch: the run's worker, and an `INVOKE` with a lane
+    and the card's Service grants (D713)."""
 
-    __slots__ = ("_blob_refs", "_granted", "_lane", "_parse")
+    __slots__ = ("_blob_refs", "_granted", "_grants", "_lane", "_parse")
 
     def __init__(
-        self, parse: ParseOperator, granted: Any, blob_refs: tuple[str, ...], lane: str
+        self,
+        parse: ParseOperator,
+        granted: Any,
+        blob_refs: tuple[str, ...],
+        lane: str,
+        grants: tuple[subproc.ServiceGrant, ...] = (),
     ) -> None:
         self._parse = parse
         self._granted = granted
         self._blob_refs = blob_refs
         self._lane = lane
+        self._grants = grants
 
     def worker(self, call: pipeline.Call) -> subproc.Worker:
         del call
@@ -511,6 +556,7 @@ class _Source:
             budget_micros=call.budget_micros,
             blob_refs=self._blob_refs,
             lane=self._lane or None,
+            services=self._grants,
         )
 
     def deadlines(self, call: pipeline.Call) -> subproc.Deadlines:
