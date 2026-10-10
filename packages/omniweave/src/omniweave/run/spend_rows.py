@@ -21,6 +21,13 @@ participant since P2 (`store.queue`'s module table). This module fills it, and `
 4. **A hit is `was_cache_hit = 1` with the Spend it replays** (05:2556-2572: *"a hit replays the
    cached `Spend` and bills 0"*). `would_have_been_micros` is 0 until a `PriceBook` prices it too.
 5. **`outcome` is the `StepResult`'s wire value**, so a failed attempt is a row as a paid one is.
+
+## Pricing (D734)
+
+6. **The runner prices each attempt at commit, from the run's `PriceBook`**: `micros` is the
+   attempt's `Spend.micros(book)`, INV-15's one site. A hit bills 0, and its
+   `would_have_been_micros` is the Spend it replays, priced the same way (05:2556). With no book
+   both are 0, because unpriced is not free (05:2410), and the result's own `micros` stands.
 """
 
 from __future__ import annotations
@@ -30,10 +37,14 @@ from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_core.store.queue import Statement
 
-if TYPE_CHECKING:
-    from omniweave_core.store.queue import StepResultView
+from omniweave.route.spend import Spend
 
-__all__ = ["SPEND_SQL", "spend_row"]
+if TYPE_CHECKING:
+    from omniweave_core.store.queue import Contribution, StepResultView
+
+    from omniweave.route.spend import PriceBook
+
+__all__ = ["SPEND_SQL", "priced", "spend_row"]
 
 SPEND_SQL: Final = """
 INSERT INTO route_spend(decision_id, attempt, provider, wall_ms, cpu_ms, gpu_ms, tokens_in,
@@ -43,7 +54,7 @@ SELECT w.decision_id,
        (SELECT IFNULL(MAX(s.attempt), 0) + 1 FROM route_spend AS s
          WHERE s.decision_id = w.decision_id),
        :provider, :wall_ms, :cpu_ms, :gpu_ms, :tokens_in, :tokens_out, :calls, :bytes_egress,
-       :micros, :was_cache_hit, 0, :outcome
+       :micros, :was_cache_hit, :would_have_been_micros, :outcome
   FROM work AS w
  WHERE w.id = :id AND w.decision_id IS NOT NULL
 """
@@ -60,19 +71,37 @@ _DIMENSIONS: Final = (
 )
 
 
+def priced(book: PriceBook | None) -> Contribution:
+    """`SqliteStore`'s `spend_row` contribution, pricing through `book` (ruling 6)."""
+
+    def contribute(row_id: int, result: StepResultView) -> tuple[Statement, ...]:
+        return _row(row_id, result, book)
+
+    return contribute
+
+
 def spend_row(row_id: int, result: StepResultView) -> tuple[Statement, ...]:
-    """`SqliteStore`'s `spend_row` contribution: the attempt's row, or none when nothing was
-    measured (ruling 1)."""
+    """The contribution with no book: the attempt's row, unpriced (rulings 1-5)."""
+    return _row(row_id, result, None)
+
+
+def _row(row_id: int, result: StepResultView, book: PriceBook | None) -> tuple[Statement, ...]:
+    """The attempt's row, or none when nothing was measured (ruling 1)."""
     metrics: Any = result.metrics
     spend = getattr(metrics, "spend", None)
     if spend is None:
         return ()
-    params: dict[str, object] = {d: int(getattr(spend, d, 0)) for d in _DIMENSIONS}
+    dims = {d: int(getattr(spend, d, 0)) for d in _DIMENSIONS}
+    provider = str(getattr(spend, "provider", ""))
+    hit = bool(getattr(metrics, "was_cache_hit", False))
+    worth = 0 if book is None else Spend(**dims, provider=provider).micros(book)
+    params: dict[str, object] = dict(dims)
     params.update(
         id=row_id,
-        provider=str(getattr(spend, "provider", "")),
-        micros=int(getattr(metrics, "micros", 0)),
-        was_cache_hit=int(bool(getattr(metrics, "was_cache_hit", False))),
+        provider=provider,
+        micros=int(getattr(metrics, "micros", 0)) if book is None else (0 if hit else worth),
+        was_cache_hit=int(hit),
+        would_have_been_micros=worth if hit else 0,
         outcome=str(result.outcome),
     )
     return (

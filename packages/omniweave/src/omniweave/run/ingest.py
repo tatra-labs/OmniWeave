@@ -156,7 +156,7 @@ from omniweave.run.routing import (
     route_identified,
     route_layers,
 )
-from omniweave.run.spend_rows import spend_row
+from omniweave.run.spend_rows import priced
 
 if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from collections.abc import Callable, Mapping, Sequence
@@ -174,6 +174,7 @@ if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from omniweave.graph.resolve import Band
     from omniweave.route.evidence import SignalRegistry
     from omniweave.route.policy import RoutePolicy
+    from omniweave.route.spend import PriceBook
     from omniweave.run.dispatch import Batch
     from omniweave.run.manifest import RunStatus, Timings
     from omniweave.run.operators.band import Manifest
@@ -382,6 +383,8 @@ class IngestReport:
     """The billed Passes' rows, enqueued after every free Pass's cover is written (D716)."""
     band: BandQueued | None = None
     """The LLM band's row, enqueued after `op.resolve` hands the band on (D729)."""
+    bill: Bill | None = None
+    """This generation's bill, when a `PriceBook` priced it (D734)."""
 
     @property
     def settled(self) -> int:
@@ -410,6 +413,8 @@ class IngestReport:
             out.extend(self.billed.lines())
         if self.band is not None:
             out.extend(self.band.lines())
+        if self.bill is not None:
+            out.append(self.bill.line())
         if self.resolved is not None and self.resolved.shown:
             out.append(self.resolved.line())
         if self.clustered is not None and self.clustered.shown:
@@ -793,6 +798,7 @@ def _hops(
         ignore_evidence_cache=ignore_evidence_cache,
         accept_partial=accept_partial,
         passwords=passwords,
+        prices=pricebook(store),
     )
     #  D679: a settled unit whose parse driver moved its key -- a schema_version bump, a
     #  semantic config change -- is read again and re-parsed at its next generation.
@@ -812,6 +818,7 @@ def _hops(
         context,
         policy_digest=inputs.policy.policy_digest,
         catalog_digest=inputs.catalog.catalog_digest,
+        pricebook_digest="" if inputs.prices is None else inputs.prices.digest,
     )
     tally = ParseTally()
     ordinals = Ordinals()
@@ -889,6 +896,7 @@ def _hops(
         )
     finally:
         executor.close()
+    bill = _bill(thread, book, generation, inputs.prices)
     states, parts = _tally(thread, generation)
     formats = _formats(thread, generation)
     waiting = states.get(IDENTIFIED, 0) + states.get(PLANNED, 0)
@@ -928,6 +936,7 @@ def _hops(
         salience=salient,
         billed=billed,
         band=band,
+        bill=bill,
     )
 
 
@@ -1052,6 +1061,64 @@ def _band_stage(
     return queued, drained, _resolve_and_cluster(thread, ctx.generation)
 
 
+@dataclass(frozen=True, slots=True)
+class Bill:
+    """One generation's bill (D734): what `route_spend` holds for its decisions, in micros."""
+
+    billed_micros: int
+    would_have_been_micros: int
+    """What the hits would have cost at this book: the cache's saving, 08:2298's third number."""
+    currency: str
+
+    def line(self) -> str:
+        return (
+            f"  cost      {self.billed_micros} micros {self.currency} billed; the cache saved "
+            f"{self.would_have_been_micros} more"
+        )
+
+
+def _bill(
+    thread: ow.StoreThread, book: _Book, generation: int, prices: PriceBook | None
+) -> Bill | None:
+    """D734: the generation's bill, summed from `route_spend`, into the manifest's cost block.
+    `None` with no book: nothing was priced, which is not the same as free."""
+    if prices is None:
+        return None
+    row = cast(
+        "tuple[int, int]",
+        thread.run(
+            ow.Unit(
+                name="run.bill",
+                run=lambda c: c.execute(BILL_SQL, {"generation": generation}).fetchone(),
+                cost_class="free",
+                wait_ms=BATCH_WAIT_MS,
+            )
+        ),
+    )
+    bill = Bill(int(row[0]), int(row[1]), prices.currency)
+    book.tally.spent(bill.billed_micros, would_have_been_micros=bill.would_have_been_micros)
+    return bill
+
+
+BILL_SQL: Final = """
+SELECT COALESCE(SUM(s.micros), 0), COALESCE(SUM(s.would_have_been_micros), 0)
+  FROM route_spend AS s
+  JOIN route_decision AS d ON d.decision_id = s.decision_id
+ WHERE d.generation = :generation
+"""
+"""`manifest.BILLED_MICROS_SQL` with the hits' figure beside it, and its D158 limit: a decision a
+later generation re-bills is counted under the generation that first decided it."""
+
+
+def pricebook(store: Path) -> PriceBook | None:
+    """`.omniweave/pricebook.toml`, the operator's `PriceBook` beside the store (05:2386), or `None`
+    when there is none: every attempt is then unpriced, which is not free (D734)."""
+    from omniweave.route.spend import PriceBook  # noqa: PLC0415 -- a priced run only
+
+    path = store.parent / PRICEBOOK_FILE
+    return PriceBook.load(path) if path.is_file() else None
+
+
 def _billed_plan(ctx: RunContext, *, inputs: _RoutingInputs) -> DerivePlan | None:
     """The run's plan when it holds a billed Pass; `None` when it holds none, so a run that enabled
     none says nothing about them (D716)."""
@@ -1121,6 +1188,9 @@ class _RoutingInputs:
     """The run's password mapping, read by routing and by the parse Operator (ADR-15 D15.4)."""
     passes: frozenset[str] = frozenset(SHIPPED_PASSES)
     """`[graph.passes] enable`: with `[drivers] enabled`, what gates a billed Pass (D714)."""
+    prices: PriceBook | None = None
+    """The `PriceBook` beside the store, when there is one (D734): its digest enters each
+    decision's identity, and the runner prices every attempt through it."""
 
 
 def _parse_keys(inputs: _RoutingInputs) -> dict[str, tuple[int, str]]:
@@ -1521,7 +1591,7 @@ class _Executors:
     it recorded -- `IdentifyLedger`'s docstring: *"the map is the dispatch"*.
     """
 
-    __slots__ = ("_identify", "_identify_ledger", "_parse", "_parse_ledger")
+    __slots__ = ("_identify", "_identify_ledger", "_parse", "_parse_ledger", "prices")
 
     def __init__(
         self,
@@ -1534,6 +1604,7 @@ class _Executors:
         tally: ParseTally,
         ordinals: Ordinals | None = None,
     ) -> None:
+        self.prices = inputs.prices
         self._identify_ledger = expand.IdentifyLedger()
         self._parse_ledger = ParseLedger()
         self._identify = _Identify(thread, self._identify_ledger)
@@ -1658,6 +1729,8 @@ CAS_DIR: Final[str] = "cas"
 `roots.cache/cas/...`; the two are not the same path under the shipped `roots.cache =
 ".omniweave/cache"`, and the store documents win because the CAS is what `asset.store_ref` and
 `part.store_ref` point into, which is the store's contract (D582)."""
+PRICEBOOK_FILE: Final[str] = "pricebook.toml"
+"""`.omniweave/pricebook.toml` (05:2386): the operator's `PriceBook`, beside the store (D734)."""
 
 
 class _Forgetting:
@@ -1741,7 +1814,7 @@ async def _drain(
             thread,
             wait_ms=BATCH_WAIT_MS,
             derived_rows=executors.contribution,
-            spend_row=spend_row,
+            spend_row=priced(executors.prices),
         ),
         executors,
         tally,

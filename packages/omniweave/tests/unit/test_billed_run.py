@@ -622,3 +622,41 @@ def test_the_report_card_is_corpus_grained_billed_and_declares_its_witness_set()
     )
     assert report_card.isolation == entity_card.isolation
     assert report_card.degradations == ()
+
+
+PRICEBOOK = (
+    'version = 1\ncurrency = "USD"\neffective_from = "2026-10-01"\n'
+    "[local]\ntokens_in_micros = 0.5\ntokens_out_micros = 2.0\n"
+)
+
+
+def test_a_priced_run_bills_each_call_and_records_what_the_cache_saved(
+    tmp_path: Path, model: str
+) -> None:
+    """D734: with `.omniweave/pricebook.toml` beside the store, each attempt is priced at commit,
+    each decision names the book, and the run's bill reaches the manifest and the report. 120
+    tokens in at 0.5 and 30 out at 2.0 is 120 micros a Segment."""
+    from omniweave.route.spend import PriceBook  # noqa: PLC0415
+
+    store, config = _project(tmp_path, model)
+    store.parent.mkdir(parents=True, exist_ok=True)
+    (store.parent / "pricebook.toml").write_text(PRICEBOOK, encoding="utf-8")
+    report = _run(tmp_path, store, config)
+    assert report.status == "ok", report.lines()
+    calls = len(_Model.asked)
+    assert _rows(store, "SELECT DISTINCT micros, would_have_been_micros FROM route_spend") == [
+        (120, 0)
+    ]
+    digest = PriceBook.loads(PRICEBOOK).digest
+    assert _rows(
+        store,
+        "SELECT DISTINCT d.pricebook_digest FROM route_decision AS d"
+        " JOIN work AS w ON w.decision_id = d.decision_id WHERE w.operator = 'derive.entity.llm'",
+    ) == [(digest,)]
+    assert f"  cost      {120 * calls} micros USD billed; the cache saved 0 more" in report.lines()
+    written = json.loads(tmp_path.joinpath(report.manifest).read_text(encoding="utf-8"))
+    assert written["cost"]["billed_micros"] == 120 * calls
+    (tmp_path / "docs" / "copy.md").write_text(COPY, encoding="utf-8")
+    again = _run(tmp_path, store, config)
+    assert again.status == "ok", again.lines()
+    assert f"  cost      120 micros USD billed; the cache saved {120 * calls} more" in again.lines()
