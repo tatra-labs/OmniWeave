@@ -283,6 +283,29 @@ class PriceBook:
         return tuple(missing)
 
     @property
+    def digest(self) -> str:
+        """`pricebook_digest` (05:2424), over the book as the operator wrote it. D734.
+
+        Each rate enters as its `Decimal`'s text, which is what the operator typed (`loads()`), so
+        two machines reading one file agree. A price change is a new digest, and the digest is in
+        `route_decision`'s identity, so a re-priced run decides afresh and history stays as it was
+        billed.
+        """
+        from omniweave_core.canonical import sha256_canonical  # noqa: PLC0415
+
+        return sha256_canonical(
+            {
+                "version": self.version,
+                "currency": self.currency,
+                "effective_from": self.effective_from,
+                "rates": {
+                    table: {dim: str(rate) for dim, rate in sorted(rates.items())}
+                    for table, rates in sorted(self.rates.items())
+                },
+            }
+        )
+
+    @property
     def providers(self) -> tuple[str, ...]:
         """Every `[provider.<name>]` table in the book, sorted. `[local]` is not one of them."""
         prefix = f"{PROVIDER_PREFIX}."

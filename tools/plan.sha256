@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D733: route_spend written, annotated on 05's route_spend section
+# blessed-because: D734: pricing at commit, annotated on 05 section 6.2
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -31,7 +31,7 @@ documents-frozen  6ffc2070193630b39f15385fc8640ec7b1a3e242ef098426f2754d4070a802
 documents-frozen  1dad5c8ef798764c3bd3cc772210f6085569c8d38c4d272db6444575171efbff  02-architecture.md
 documents-frozen  3af6a53e2a3edbbd85dac7c7068d9429f73240aa4b4e0cc53118bc92cd6b6a18  03-document-model.md
 documents-frozen  6e98c953433a016cb1ec27c4373ce9462f2c7ef2b2ff0337f80fff67c72ed29b  04-driver-system.md
-documents-frozen  e4d4fb32f3abc266cbbbdb94f39a29bae18a1d06511ab6a3aa9df629336c0549  05-ingest-and-routing.md
+documents-frozen  1647e6e4767fba2ba95d97423b8a1ded0aef9b7bf63c470e4a7af08a5057ed8a  05-ingest-and-routing.md
 documents-frozen  f7d51bd911d01828adcc32d572c276e5312d08f3340f48550660800efe6dfff3  06-structure-extraction.md
 documents-frozen  62b8cacb2329d804ee9a66ef43c145389a0321b3605c31424280a87d1ec7f28d  07-store-and-retrieval.md
 documents-frozen  3b78dc5495b60c008dea14242c2dd56a9ee67f8996e1f61b66791fc5e78a1d0f  08-runtime.md
