@@ -918,6 +918,10 @@ class Handle:
         request_timeout_s)` of"*: a deadline that outlived the run's would let a driver hold a slot
         past cancellation, and a `request_timeout_s` ignored in favour of a long deadline would let
         one wedged request hold it forever.
+
+        **A `deadline_ms` of 0 is no deadline (D712)**, as `subproc.Deadlines` reads it, so
+        `request_timeout_s` alone bounds the request. Taking the `min` with 0 would make every
+        request from a call with no deadline time out before it connects.
         """
         import http.client  # noqa: PLC0415 -- see the module docstring: one import, two sites.
 
@@ -928,7 +932,11 @@ class Handle:
             "Content-Type": "application/json",
         }
         sent.update(headers or {})
-        timeout = min(self._timeout_s, max(0.0, self.deadline_ms / 1000))
+        timeout = (
+            self._timeout_s
+            if self.deadline_ms == 0
+            else min(self._timeout_s, max(0.0, self.deadline_ms / 1000))
+        )
         connection = http.client.HTTPConnection(host, port, timeout=timeout)
         try:
             connection.request("POST", path, body=body, headers=sent)
