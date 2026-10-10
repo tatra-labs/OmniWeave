@@ -1443,7 +1443,7 @@ class SqliteGraphSink:
         bits = bytearray(self._cover_bits(lane))
         for cite in cites:
             ordinal = self._cover_ord(cite)
-            bits[ordinal // 8] |= 1 << (ordinal % 8)
+            bits[ordinal // 8] |= 0x80 >> (ordinal % 8)  # 06:776: ord k is bit 511 - k, big-endian
             self._covered.add(ordinal)
         if not cites:
             self._cover_empty += 1
