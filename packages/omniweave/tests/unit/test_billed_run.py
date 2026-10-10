@@ -572,3 +572,35 @@ def test_the_merge_card_is_corpus_grained_billed_and_declares_its_witness_set() 
     assert (merge_card.derive_sibling.phase, merge_card.derive_sibling.prompt_version) == (30, "1")
     assert merge_card.isolation == entity_card.isolation
     assert merge_card.degradations == ()
+
+
+def test_the_report_card_is_corpus_grained_billed_and_declares_its_witness_set() -> None:
+    """D731: 06:843's row 14, rank 2 phase 40 at `corpus` granularity, per community at the
+    bounds; 04:2519's witness set; a report is a `summary`; D718's timing."""
+    from omniweave_core.discovery import catalog  # noqa: PLC0415
+    from omniweave_ports.types import ArtifactKind  # noqa: PLC0415
+
+    cards = catalog().cards
+    report_card, entity_card = cards.get("derive.report.llm"), cards.get(LLM)
+    assert report_card is not None and entity_card is not None
+    assert report_card.identity.granularity == "corpus"
+    assert report_card.identity.entrypoint == "omniweave_llm.report_llm.driver:ReportLLM"
+    assert set(report_card.capability.produces) == {
+        ArtifactKind.GRAPH_ITEMS,
+        ArtifactKind.WITNESS_SET,
+    }
+    assert report_card.derive is not None and sorted(report_card.derive.items) == ["summary"]
+    assert report_card.cost_model is not None
+    assert report_card.cost_model.cost_class == "billed_api"
+    assert dict(report_card.cost_model.per_part) == {
+        "tokens_in": 8000,
+        "tokens_out": 2000,
+        "calls": 1,
+    }
+    assert report_card.derive_sibling is not None
+    assert (report_card.derive_sibling.phase, report_card.derive_sibling.prompt_version) == (
+        40,
+        "1",
+    )
+    assert report_card.isolation == entity_card.isolation
+    assert report_card.degradations == ()

@@ -174,6 +174,7 @@ PINNED: dict[tuple[str, str], str] = {
     ("entity", "1"): "65fec620c19c",
     ("claim", "1"): "b3bcafec528f",
     ("merge", "1"): "4af7eaae87ec",
+    ("report", "1"): "01fa55ff791a",
 }
 """Each carded lane's `prompt_fp` with no vocabulary, under its card's `prompt_version` (D725).
 
@@ -182,7 +183,7 @@ package that renders the prompt. This table is what makes the version mean the t
 moves under an unchanged version would replay answers to a question no longer asked."""
 
 
-@pytest.mark.parametrize("lane", [*EXTRACTION_LANES, "merge"])
+@pytest.mark.parametrize("lane", LANES)
 def test_each_lanes_rendered_prompt_is_pinned_to_its_cards_prompt_version(lane: str) -> None:
     """D725: edit `prompts/<lane>.md` or `schemas/<lane>.json` and this fails until the card's
     `[derive] prompt_version` is bumped and the new fingerprint pinned beside it."""
