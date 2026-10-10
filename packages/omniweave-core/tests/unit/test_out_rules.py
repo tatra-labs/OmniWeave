@@ -171,11 +171,9 @@ def test_pass_a_folds_each_unit_and_pass_b_reads_the_completed_index() -> None:
     assert run.index.els == {"u01": frozenset({"u01/e1"}), "u02": frozenset()}
     assert run.index.cites["u02"] == frozenset({"d7#4", "d7#5"})
     assert run.index.slots["u02"] == frozenset({SLOT})
-    assert (dict(run.index.nsigs), run.index.markers, dict(run.index.value_occurrences)) == (
-        {},
-        (),
-        {},
-    )
+    section = html_carrier("il/u01.html", U1, strict=True).root()
+    assert dict(run.index.nsigs) == {"u01/e1": section.nsig}, "D743: one nsig a stamped element"
+    assert (run.index.markers, dict(run.index.value_occurrences)) == ((), {})
 
 
 def test_rules_run_in_order_then_id() -> None:

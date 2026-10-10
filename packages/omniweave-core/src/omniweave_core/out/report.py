@@ -26,32 +26,61 @@ gate reads.
     reaches `gate_status()` as `unsupported-schema`, not as `unreadable`.
 16. **A finding no rule owns has `rule = ""`**, as it has `unit = ""` (ruling 3). The console prints
     neither.
+
+## `nsig` (the ledger's D743)
+
+17. **`nsig` is computed over a canonical copy**, never the parsed tree, which a rule may still be
+    reading: the six normalizations rewrite and collapse.
+18. **Normalization 2 is the identity.** ppt-master rewrote a file path to `asset-slot:`; OUT9 makes
+    `asset-slot:<sha256>` the only asset syntax an IL holds, so there is no other spelling to fold.
+19. **A clone prefix and the edited assets are arguments**, both empty by default: the prefix a
+    cloned asset's ids carry and the ledger's edited digests are facts of the asset ledger, not of
+    the tree. A cloned id, `url(#id)` and `href="#id"` lose the prefix; an edited slot gains
+    `:edited:<sha256>`.
+20. **The framing is ppt-master's `semantic_subtree_sha256`**: the tag, the attributes sorted, text
+    only where it is not whitespace, the children in order. Indentation and attribute order are not
+    content; a tail is. Normalizations 4 and 5 apply below the measured element, never to it.
+21. **The shared definitions are the direct children with an id of the root's direct `<defs>`**,
+    as ppt-master's `_direct_defs`. `changed_definitions()` is computed once a unit, and
+    `unchanged()` is the two-factor test: the subtree's own `nsig` AND no changed definition it
+    references.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields
 from hashlib import sha256
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_core.errors import OwError, load_register
 from omniweave_core.out.finding import Finding, FindingSet, Provenance, Severity, Truncation
 from omniweave_core.out.gate import REPORT_SCHEMA, GateStatus, clears, exit_code, gate_status
 from omniweave_core.out.job import ILFile
 
+if TYPE_CHECKING:
+    from omniweave_core.out.carrier.tree import Node
+
 __all__ = [
+    "NSIG_HEX",
     "STAGES",
     "OutReport",
     "SkippedCheck",
+    "canonical_subtree",
+    "changed_definitions",
+    "definitions",
     "il_digest",
+    "nsig",
     "parse_digest",
+    "referenced_ids",
     "render",
     "report_path",
+    "unchanged",
 ]
 
 STAGES: Final = ("early", "first-unit", "unit", "final")
@@ -499,3 +528,181 @@ def _numerics() -> Mapping[str, str]:
         return {symbol: row.numeric for symbol, row in load_register().by_symbol.items()}
     except OwError:
         return {}
+
+
+# ---------------------------------------------------------------------------
+# nsig (09 section 8.2), D743
+# ---------------------------------------------------------------------------
+
+NSIG_HEX: Final = 8
+"""32 bits: a change detector, not an identity (09 section 8.2's birthday arithmetic)."""
+
+_EL: Final = "data-ow-el"
+_URL_ID: Final = re.compile(r"url\(\s*(['\"]?)#([^)'\"\s]+)\1\s*\)")
+_SLOT_VALUE: Final = re.compile(r"asset-slot:([0-9a-f]{64})")
+_FILTER_TARGETS: Final = frozenset({"svg|circle", "svg|image", "svg|path", "svg|rect", "svg|text"})
+_NON_VISUAL: Final = frozenset({"svg|defs", "svg|desc", "svg|metadata", "svg|title"})
+_EMPTY_EDITS: Final[Mapping[str, str]] = MappingProxyType({})
+
+
+@dataclass(slots=True)
+class _Canon:
+    """A canonical copy of one element: never the parsed tree, which a rule may still read."""
+
+    tag: str
+    attrs: dict[str, str]
+    content: list[_Canon | str]
+
+
+def canonical_subtree(
+    node: Node, *, clone_prefix: str | None = None, edited: Mapping[str, str] = _EMPTY_EDITS
+) -> bytes:
+    """09 section 8.2's six normalizations, then ppt-master's semantic framing (rulings 17-20)."""
+    canon = _copy(node, clone_prefix, edited)
+    _lower_filters(canon)
+    _collapse(canon)
+    out = bytearray()
+    _frame(canon, out)
+    return bytes(out)
+
+
+def nsig(
+    node: Node, *, clone_prefix: str | None = None, edited: Mapping[str, str] = _EMPTY_EDITS
+) -> str:
+    """`hex(sha256(canonical_subtree(el)))[:8]`."""
+    return sha256(canonical_subtree(node, clone_prefix=clone_prefix, edited=edited)).hexdigest()[
+        :NSIG_HEX
+    ]
+
+
+def referenced_ids(node: Node) -> frozenset[str]:
+    """Every local definition id the subtree references: `url(#id)` anywhere, `href="#id"`."""
+    found: set[str] = set()
+    stack: list[Node | str] = [node]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, str):
+            found.update(m.group(2) for m in _URL_ID.finditer(item))
+            continue
+        for name, value in item.attrs().items():
+            found.update(m.group(2) for m in _URL_ID.finditer(value))
+            if name.rpartition(":")[2] == "href" and value.startswith("#"):
+                found.add(value[1:])
+        stack.extend(item.content)
+    return frozenset(found)
+
+
+def definitions(root: Node) -> dict[str, str]:
+    """Ruling 21: each direct child of the root's direct `<defs>` that has an id, to its nsig."""
+    defs = next((c for c in root.children() if c.tag == "svg|defs"), None)
+    if defs is None:
+        return {}
+    return {child.attr("id") or "": nsig(child) for child in defs.children() if child.attr("id")}
+
+
+def changed_definitions(before: Mapping[str, str], after: Mapping[str, str]) -> frozenset[str]:
+    """Ids added, removed or whose nsig moved. Computed once a unit: O(definitions)."""
+    return frozenset(i for i in set(before) | set(after) if before.get(i) != after.get(i))
+
+
+def unchanged(node: Node, then: str, changed: frozenset[str]) -> bool:
+    """The two-factor test: the subtree's own nsig AND no changed definition it references."""
+    return nsig(node) == then and not (changed & referenced_ids(node))
+
+
+def _copy(node: Node, prefix: str | None, edited: Mapping[str, str]) -> _Canon:
+    """Normalizations 1, 2, 3 and 6, element by element."""
+    attrs: dict[str, str] = {}
+    for name, value in node.attrs().items():
+        if name == _EL:
+            continue
+        attrs[name] = _value(name, value, prefix, edited)
+    content: list[_Canon | str] = [
+        item if isinstance(item, str) else _copy(item, prefix, edited) for item in node.content
+    ]
+    return _Canon(node.tag, attrs, content)
+
+
+def _value(name: str, value: str, prefix: str | None, edited: Mapping[str, str]) -> str:
+    if prefix:
+        if name == "id" and value.startswith(prefix):
+            value = value[len(prefix) :]
+        value = _URL_ID.sub(lambda m: _strip_ref(m, prefix), value)
+        if name.rpartition(":")[2] == "href" and value.startswith("#" + prefix):
+            value = "#" + value[len(prefix) + 1 :]
+    if edited:
+        value = _SLOT_VALUE.sub(
+            lambda m: (
+                m.group(0) + (f":edited:{edited[m.group(1)]}" if m.group(1) in edited else "")
+            ),
+            value,
+        )
+    return value
+
+
+def _strip_ref(match: re.Match[str], prefix: str) -> str:
+    quote, ref = match.group(1), match.group(2)
+    return f"url({quote}#{ref.removeprefix(prefix)}{quote})"
+
+
+def _lower_filters(root: _Canon) -> None:
+    """Normalization 4: a filter on a bare group with one visual child moves to the child."""
+    stack = [root]
+    while stack:
+        item = stack.pop()
+        children = [c for c in item.content if isinstance(c, _Canon)]
+        stack.extend(children)
+        if item.tag != "svg|g" or set(item.attrs) != {"filter"} or _has_text(item):
+            continue
+        visual = [c for c in children if c.tag not in _NON_VISUAL]
+        if (
+            len(visual) == 1
+            and visual[0].tag in _FILTER_TARGETS
+            and "filter" not in visual[0].attrs
+        ):
+            visual[0].attrs["filter"] = item.attrs.pop("filter")
+
+
+def _collapse(root: _Canon) -> None:
+    """Normalization 5: an attribute-free one-child `<g>` is its child; never the root."""
+    stack = [root]
+    while stack:
+        parent = stack.pop()
+        changed = True
+        while changed:
+            changed = False
+            for index, child in enumerate(parent.content):
+                if not isinstance(child, _Canon):
+                    continue
+                inner = [c for c in child.content if isinstance(c, _Canon)]
+                if (
+                    child.tag == "svg|g"
+                    and not child.attrs
+                    and len(inner) == 1
+                    and not _has_text(child)
+                ):
+                    parent.content[index] = inner[0]
+                    changed = True
+                    break
+        stack.extend(c for c in parent.content if isinstance(c, _Canon))
+
+
+def _has_text(item: _Canon) -> bool:
+    return any(isinstance(c, str) and c.strip() for c in item.content)
+
+
+def _frame(item: _Canon, out: bytearray) -> None:
+    """ppt-master's `semantic_subtree_sha256` framing: tag, sorted attributes, text, children."""
+    out += item.tag.encode("utf-8")
+    for name, value in sorted(item.attrs.items()):
+        out += b"\x00a" + name.encode("utf-8") + b"\x00" + value.encode("utf-8")
+    seen_child = False
+    for piece in item.content:
+        if isinstance(piece, str):
+            if piece.strip():
+                out += (b"\x00l" if seen_child else b"\x00t") + piece.encode("utf-8")
+        else:
+            out += b"\x00c"
+            _frame(piece, out)
+            seen_child = True
+    out += b"\x00e"

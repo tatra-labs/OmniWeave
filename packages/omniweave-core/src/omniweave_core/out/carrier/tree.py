@@ -33,6 +33,7 @@ class Node:
     __slots__ = (
         "_at",
         "_attrs",
+        "_nsig",
         "content",
         "end",
         "parent",
@@ -64,6 +65,7 @@ class Node:
         self.self_closing = False
         self.parent = parent
         self.content: list[Node | str] = []
+        self._nsig: str | None = None
         """Character data and child elements, in document order."""
 
     @property
@@ -73,6 +75,15 @@ class Node:
     @property
     def el(self) -> str | None:
         return self._attrs.get(EL_ATTRIBUTE)
+
+    @property
+    def nsig(self) -> str:
+        """09 section 8.2's subtree half, computed once and memoized (D743)."""
+        if self._nsig is None:
+            from omniweave_core.out.report import nsig  # noqa: PLC0415 -- report types tree.
+
+            self._nsig = nsig(self)
+        return self._nsig
 
     def attr(self, name: str) -> str | None:
         return self._attrs.get(name)

@@ -28,8 +28,8 @@ inline-style splitter `@style|<prop>` reads, and the transactional splice.
 6. **Overlapping splices are refused before any is applied, and so are two at one offset**: two
    edits to one place are two opinions (09 section 8.3 pt 3). An offset outside the source or
    inside a UTF-8 sequence is refused the same way, as the caller's error, not the file's.
-7. **`nsig` and `place_marker()` arrive with the marker** (09 section 8.2): `nsig` needs the
-   six-normalisation canonicaliser, and placement needs the `OWC1` grammar.
+7. **`place_marker()` arrives with the marker** (09 section 8.2), because placement needs the
+   `OWC1` grammar. `nsig` arrived with D743's canonicaliser in `omniweave_core.out.report`.
 """
 
 from __future__ import annotations
@@ -72,6 +72,14 @@ class CarrierNode(Protocol):
     @property
     def el(self) -> str | None:
         """The `data-ow-el` address, `None` until `ow out stamp` has minted one."""
+        ...
+
+    @property
+    def nsig(self) -> str:
+        """8 hex over this node's canonical subtree (09 section 8.2), memoized per node.
+
+        The subtree half only: the shared-definition half is the resolver's, once a unit.
+        """
         ...
 
     @property

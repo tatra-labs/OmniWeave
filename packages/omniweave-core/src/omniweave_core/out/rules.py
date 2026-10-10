@@ -29,9 +29,9 @@ the rules, so a target that could run its own gate could not skip it.
    and the need, and the fix is the caller's per need, which only the target knows
    (`uv pip install 'omniweave-target-pptx[measure]'`).
 8. **`DocIndex` is filled from what a stamped tree shows.** `els`, `cites`, `slots` and
-   `construct_counts` are collected per unit. `nsigs` waits for the canonicaliser, `markers` for
-   the `OWC1` scan, and `value_occurrences` for the rules that count values. Each is an empty
-   mapping until then, never absent.
+   `construct_counts` are collected per unit, and `nsigs` (D743) per stamped element. `markers`
+   waits for the `OWC1` scan and `value_occurrences` for the rules that count values. Each is
+   empty until then, never absent.
 9. **`rule_timings_ms` is read from the injected `Clock`**, `SystemClock` unless the caller
    passes one. Library code reads no ambient clock (`omniweave-no-time-time-in-library-code`).
 """
@@ -325,15 +325,18 @@ class _Index:
         self.cites: dict[str, frozenset[str]] = {}
         self.slots: dict[str, frozenset[str]] = {}
         self.constructs: dict[str, Counter[str]] = {}
+        self.nsigs: dict[str, str] = {}
 
     def add(self, unit: str, doc: CarrierDoc, table: ConstructTable | None) -> None:
         els: set[str] = set()
+        nsigs: dict[str, str] = {}
         cites: set[str] = set()
         slots: set[str] = set()
         counts: Counter[str] = Counter()
         for node in doc.select("@data-ow-el"):
             if node.el:
                 els.add(node.el)
+                nsigs[node.el] = node.nsig
         for node in doc.select(f"@{_CITE_ATTRIBUTE}"):
             cites.update((node.attr(_CITE_ATTRIBUTE) or "").split())
         slots.update(_SLOT.findall(doc.source()))
@@ -342,6 +345,7 @@ class _Index:
                 counts[row.id] += len(doc.select(row.selector))
             counts = +counts
         self.els[unit] = frozenset(els)
+        self.nsigs.update(nsigs)
         self.cites[unit] = frozenset(cites)
         self.slots[unit] = frozenset(slots)
         self.constructs[unit] = counts
@@ -350,7 +354,7 @@ class _Index:
         return DocIndex(
             units=self.units,
             els=MappingProxyType(dict(self.els)),
-            nsigs=MappingProxyType({}),
+            nsigs=MappingProxyType(dict(self.nsigs)),
             construct_counts=MappingProxyType(dict(self.constructs)),
             cites=MappingProxyType(dict(self.cites)),
             slots=MappingProxyType(dict(self.slots)),
