@@ -125,6 +125,7 @@ from omniweave_ports.types import DriverError, FailureClass
 from omniweave.graph import cluster as op_cluster
 from omniweave.graph import resolve as op_resolve
 from omniweave.graph import salience as op_salience
+from omniweave.graph.settle import Settled, settle
 from omniweave.route.detect import Detection, detect
 from omniweave.run import discover, expand
 from omniweave.run import supervisor as sup
@@ -894,24 +895,11 @@ GRAPH_ROUNDS: Final = 4
 """D691: the most rounds of `op.resolve` then `op.cluster` one ingest runs."""
 
 
-@dataclass(frozen=True, slots=True)
-class _Graph:
-    resolved: op_resolve.ResolveReport
-    clustered: op_cluster.ClusterReport
-    rounds: int
-    settled: bool
-
-
-def _resolve_and_cluster(thread: ow.StoreThread, generation: int) -> _Graph:
+def _resolve_and_cluster(thread: ow.StoreThread, generation: int) -> Settled:
     """`op.resolve`, then `op.cluster`, then again while the communities move. D691.
 
-    The community boost (06:1722) reads the communities, and a merge moves the graph they are
-    cut from, so one run of each in a fixed order leaves an ingest that is one step behind
-    itself: a full build would boost nothing on its first run while an incremental one boosts on
-    the previous run's communities, and GR8 compares the two. As `op.lexicon`'s drain does
-    (D683), one ingest runs the pair to a fixed point: a round ends the loop when `op.resolve`
-    writes nothing, or when `op.cluster` moves no community. The counts are summed over the
-    rounds; `GRAPH_ROUNDS` bounds it, and the report says when the bound was reached.
+    `graph.settle` is the loop (D697 moved it there, for a user decision to share); here each pass
+    is its own store unit, and `GRAPH_ROUNDS` bounds the rounds.
     """
 
     def resolve() -> op_resolve.ResolveReport:
@@ -941,20 +929,7 @@ def _resolve_and_cluster(thread: ow.StoreThread, generation: int) -> _Graph:
             ),
         )
 
-    resolved = resolve()
-    latest = clustered = cluster()
-    rounds = 1
-    while latest.moved:  # the latest round's: a cluster that moved nothing is a fixed point
-        if rounds == GRAPH_ROUNDS:
-            return _Graph(resolved, clustered, rounds, settled=False)
-        again = resolve()
-        if not again.moved:
-            break
-        rounds += 1
-        resolved = again.after(resolved)
-        latest = cluster()
-        clustered = latest.after(clustered)
-    return _Graph(resolved, clustered, rounds, settled=True)
+    return settle(resolve, cluster, bound=GRAPH_ROUNDS)
 
 
 def _lexicon(

@@ -130,6 +130,7 @@ __all__ = [
     "funnel",
     "overload",
     "resolve",
+    "run_row",
     "total_order",
 ]
 
@@ -962,7 +963,18 @@ def _resolution_trust(found: Closure, user_merges: Sequence[Pair]) -> dict[int, 
     return out
 
 
-def _run(connection: Any, gen: int, kept: Sequence[Pair]) -> int:
+def run_row(connection: Any, gen: int) -> int:
+    """The corpus run row at `gen`, made if there is none and never re-stamped (D697).
+
+    A user's decision points its `entity_merge.run_id` here: the run that applies user rows is this
+    pass's, and a decision made between two ingests belongs to the generation it was made in. The
+    row's counts stay what the last resolve at `gen` wrote; the resolve that follows the decision
+    stamps them again.
+    """
+    return _run(connection, gen, (), stamp=False)
+
+
+def _run(connection: Any, gen: int, kept: Sequence[Pair], *, stamp: bool = True) -> int:
     """The corpus-level `derive_run` every row this pass writes points at (`segment_id` NULL)."""
     digest = hashlib.sha256(_SIGNATURE).digest()
     connection.execute(
@@ -991,5 +1003,6 @@ def _run(connection: Any, gen: int, kept: Sequence[Pair]) -> int:
     }
     connection.execute(_RUN_SQL, params)
     run_id = int(connection.execute(_RUN_ID_SQL, params).fetchone()[0])
-    connection.execute(_RUN_UPDATE_SQL, {**params, "run_id": run_id})
+    if stamp:
+        connection.execute(_RUN_UPDATE_SQL, {**params, "run_id": run_id})
     return run_id
