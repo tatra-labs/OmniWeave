@@ -277,3 +277,18 @@ def test_a_billed_view_is_its_rows_live_segment_or_nothing(tmp_path: Path, model
         connection.rollback()
     finally:
         connection.close()
+
+
+def test_the_cards_watchdog_outlasts_one_service_call() -> None:
+    """D718: PROGRESS comes between Segments, so `progress_ms` must cover one call at its bound,
+    the Service's `request_timeout_s`. `wall_ms_hard` covers the whole INVOKE at that bound."""
+    from omniweave_core.discovery import catalog  # noqa: PLC0415
+    from omniweave_core.modelserver import ServiceSpec  # noqa: PLC0415
+
+    card = catalog().cards.get(LLM)
+    assert card is not None
+    spec = card.isolation
+    call_ms = ServiceSpec(name="llm", model_id=MODEL, model_revision=REV).request_timeout_s * 1000
+    assert spec.progress_ms >= call_ms
+    assert spec.wall_ms_hard >= spec.batch_max_units * call_ms
+    assert spec.batch_max_units == 4
