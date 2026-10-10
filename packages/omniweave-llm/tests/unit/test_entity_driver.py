@@ -9,7 +9,7 @@ import pytest
 from omniweave_conform.harness import MemoryBlobStore, make_io
 from omniweave_llm.entity import answer_frames
 from omniweave_llm.entity_llm.driver import CHAT_PATH, DRIVER_ID, GLEAN, EntityLLM
-from omniweave_llm.prompt import render
+from omniweave_llm.prompt import decodable, render
 from omniweave_llm.view import read_views
 from omniweave_ports import DriverError, FailureClass, ProbeStatus
 from omniweave_ports.types import DeriveScope, UnitRef
@@ -130,7 +130,11 @@ def test_one_segment_is_one_constrained_call(tmp_path: Path) -> None:
     assert request["messages"] == [{"role": "user", "content": prompt.text}]
     assert request["response_format"] == {
         "type": "json_schema",
-        "json_schema": {"name": "owgraph_entity", "schema": prompt.schema, "strict": True},
+        "json_schema": {
+            "name": "owgraph_entity",
+            "schema": decodable(prompt.schema),
+            "strict": True,
+        },
     }
     assert (metrics.calls, metrics.tokens_in, metrics.tokens_out) == (1, 321, 45)
     assert metrics.bytes_egress == size and metrics.bytes_read == len(_view())
