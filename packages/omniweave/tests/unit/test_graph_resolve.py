@@ -794,10 +794,11 @@ def test_a_boosted_merge_is_its_own_evidence_afterwards(tmp_path: Path) -> None:
 
 
 def test_a_later_rounds_report_carries_the_earlier_rounds_writes() -> None:
-    first = ResolveReport(4, 1, 1, 2, 1, 1, 0, 3, split=1)
-    second = ResolveReport(4, 1, 2, 1, 2, 2, 0, 1, split=0, boosted=1)
+    first = ResolveReport(4, 1, 1, 2, 1, 1, 0, 3, split=1, flagged=2)
+    second = ResolveReport(4, 1, 2, 1, 2, 2, 0, 1, split=0, boosted=1, flagged=1)
     summed = second.after(first)
     assert (summed.added, summed.retired, summed.changed, summed.split) == (3, 3, 4, 1)
+    assert summed.flagged == 3
     assert (summed.kept, summed.boosted) == (2, 1), "what is live is the latest round's"
     one = cluster_module.ClusterReport(5, 4, 1, 2, 1, added=2, changed=0, retired=0, stale=0)
     two = cluster_module.ClusterReport(5, 4, 1, 2, 1, added=0, changed=2, retired=1, stale=2)
