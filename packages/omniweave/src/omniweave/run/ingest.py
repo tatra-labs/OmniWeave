@@ -122,6 +122,7 @@ from omniweave_core.store.indexlock import LOCK_PATH, NO_SEGMENTER, LockHeader, 
 from omniweave_core.store.queue import SqliteStore
 from omniweave_ports.types import DriverError, FailureClass
 
+from omniweave.graph import cluster as op_cluster
 from omniweave.graph import resolve as op_resolve
 from omniweave.route.detect import Detection, detect
 from omniweave.run import discover, expand
@@ -361,6 +362,8 @@ class IngestReport:
     """`op.lexicon`'s build after the drain, and the gazetteer rows it queued (D683)."""
     resolved: op_resolve.ResolveReport | None = None
     """`op.resolve` after the lexicon's drain: the merge log and the closure (D684)."""
+    clustered: op_cluster.ClusterReport | None = None
+    """`op.cluster` after `op.resolve`: the community tree, re-clustered whole (D690)."""
 
     @property
     def settled(self) -> int:
@@ -377,6 +380,19 @@ class IngestReport:
     @property
     def failed(self) -> int:
         return self.states.get(discover.FAILED, 0)
+
+    def _graph_lines(self) -> list[str]:
+        """The corpus-level graph passes' lines, each only when it has something to say."""
+        out: list[str] = []
+        if self.lexicon is not None and (
+            self.lexicon.names or self.lexicon.moved or self.lexicon.drain
+        ):
+            out.append(self.lexicon.line())
+        if self.resolved is not None and self.resolved.shown:
+            out.append(self.resolved.line())
+        if self.clustered is not None and self.clustered.shown:
+            out.append(self.clustered.line())
+        return out
 
     def lines(self) -> tuple[str, ...]:
         """The report, one line per hop. ASCII only: a piped child's stdout on Windows is cp1252."""
@@ -420,12 +436,7 @@ class IngestReport:
             out.extend(self.routed.lines())
         if self.parsed is not None:
             out.extend(self.parsed.lines())
-        if self.lexicon is not None and (
-            self.lexicon.names or self.lexicon.moved or self.lexicon.drain
-        ):
-            out.append(self.lexicon.line())
-        if self.resolved is not None and self.resolved.shown:
-            out.append(self.resolved.line())
+        out.extend(self._graph_lines())
         out.extend(self.passwords)
         if self.retired:
             out.append(
@@ -822,6 +833,18 @@ def _hops(
                 )
             ),
         )
+        #  D690: op.cluster at rank 1 (06:834), the whole graph every run (06 STEP 6).
+        clustered = cast(
+            "op_cluster.ClusterReport",
+            thread.run(
+                ow.Unit(
+                    name="graph.cluster",
+                    run=lambda c: op_cluster.cluster(c, gen=generation),
+                    cost_class="local_compute",
+                    wait_ms=BATCH_WAIT_MS,
+                )
+            ),
+        )
     finally:
         executor.close()
     states, parts = _tally(thread, generation)
@@ -854,6 +877,7 @@ def _hops(
         reparsed=reparsed,
         lexicon=lexicon,
         resolved=resolved,
+        clustered=clustered,
     )
 
 
