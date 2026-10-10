@@ -409,3 +409,122 @@ def test_the_claim_card_is_placed_after_the_entity_card_and_timed_alike() -> Non
     assert places["derive.claim.llm"] == (2, 20) > places[LLM]
     assert claim_card.derive_sibling is not None and entity_card.derive_sibling is not None
     assert (claim_card.derive_sibling.phase, entity_card.derive_sibling.phase) == (20, 10)
+
+
+# ---------------------------------------------------------------------------------------------
+# D725: the call cache
+# ---------------------------------------------------------------------------------------------
+
+COPY = MEMO + "\n## Extra\n\nBeta Corp signs.\n"
+"""A second file whose first three Segments are the memo's, and a fourth that is new."""
+
+_MENTIONS_BY_DOC = (
+    "SELECT b.doc_ord, group_concat(DISTINCT e.key), count(*) FROM mention AS m"
+    " JOIN block AS b ON b.block_id = m.block_id JOIN segment AS s ON s.segment_id = m.segment_id"
+    " JOIN entity AS e ON e.entity_id = m.entity_id JOIN derive_run AS r ON r.run_id = m.run_id"
+    " WHERE r.pass_id = 'derive.entity.llm' AND b.doc_ord = s.doc_ord"
+    " GROUP BY b.doc_ord ORDER BY b.doc_ord"
+)
+_KEPT = "SELECT count(*), sum(hits) FROM cache_index WHERE driver = 'derive.entity.llm'"
+
+
+def _write(store: Path, sql: str) -> None:
+    import sqlite3  # noqa: PLC0415, TID251 -- the test edits the cache the run wrote.
+
+    connection = sqlite3.connect(store)
+    try:
+        connection.execute(sql)
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def test_a_segment_another_file_holds_is_answered_from_the_call_cache(
+    tmp_path: Path, model: str
+) -> None:
+    """D725, rulings 9 and 11: the copy's first three Segments are the memo's questions, so only
+    the new one is bought, and the replayed mentions land on the copy's blocks under its rows."""
+    store, config = _project(tmp_path, model)
+    assert _run(tmp_path, store, config).status == "ok"
+    calls = len(_Model.asked)
+    assert _rows(
+        store,
+        "SELECT count(*), min(layer), min(cost_class), sum(hits) FROM cache_index"
+        " WHERE driver = 'derive.entity.llm'",
+    ) == [(calls, "call", "billed_api", 0)], "ruling 10: every answer that parsed is kept"
+    (tmp_path / "docs" / "copy.md").write_text(COPY, encoding="utf-8")
+    report = _run(tmp_path, store, config)
+    assert report.status == "ok", report.lines()
+    assert len(_Model.asked) == calls + 1, "only the Extra Segment is bought"
+    assert "Beta Corp signs." in json.dumps(_Model.asked[-1])
+    assert any(
+        line.startswith(f"  derive    {LLM}: 1 document(s), {calls + 1} Segment run(s), ")
+        and line.endswith(f", {calls} from the call cache")
+        for line in report.lines()
+    ), report.lines()
+    memo, copy = _rows(store, _MENTIONS_BY_DOC)
+    assert set(memo[1].split(",")) == set(copy[1].split(",")) == {"acme_holdings", "beta_corp"}
+    assert (memo[2], copy[2]) == (2, 3), "the copy's two replayed mentions and its new one"
+    assert _rows(store, _KEPT) == [(calls + 1, calls)], "a hit adds no entry and counts on its own"
+    runs = _rows(
+        store,
+        "SELECT r.status, r.cost_class, w.status FROM derive_run AS r"
+        " JOIN work AS w ON w.decision_id = r.decision_id AND w.operator = r.pass_id"
+        " JOIN segment AS s ON s.segment_id = r.segment_id"
+        " WHERE r.pass_id = 'derive.entity.llm' AND s.doc_ord = (SELECT max(doc_ord) FROM doc)",
+    )
+    assert len(runs) == calls + 1, runs
+    assert {r[1:] for r in runs} == {("billed_api", "done")}
+    assert {r[0] for r in runs} <= {"ok", "empty"}
+
+
+def test_a_new_generation_of_one_document_rebills_nothing(tmp_path: Path, model: str) -> None:
+    """06:2395: a Segment that re-enters on a new generation with its text unchanged is a hit.
+
+    A second file of the same bytes is the same document at a new generation, and its billed rows
+    are new rows; the cache answers every one."""
+    store, config = _project(tmp_path, model)
+    assert _run(tmp_path, store, config).status == "ok"
+    calls = len(_Model.asked)
+    (tmp_path / "docs" / "again.md").write_text(MEMO, encoding="utf-8")
+    report = _run(tmp_path, store, config)
+    assert report.status == "ok", report.lines()
+    assert len(_Model.asked) == calls
+    assert any(line.endswith(f", {calls} from the call cache") for line in report.lines())
+
+
+def test_an_entry_recorded_for_another_segment_is_not_replayed(tmp_path: Path, model: str) -> None:
+    """Billed ruling 12: clause 5 is asked of the Segment's part, so a part that differs is a
+    collision and the model is asked."""
+    store, config = _project(tmp_path, model)
+    assert _run(tmp_path, store, config).status == "ok"
+    calls = len(_Model.asked)
+    _write(store, "UPDATE cache_index SET unit_part = 'seg:0000000000000000'")
+    (tmp_path / "docs" / "copy.md").write_text(COPY, encoding="utf-8")
+    report = _run(tmp_path, store, config)
+    assert report.status == "ok", report.lines()
+    assert len(_Model.asked) == 2 * calls + 1
+    assert not any("from the call cache" in line for line in report.lines()), report.lines()
+
+
+def test_an_entry_whose_blob_is_gone_is_a_miss_and_the_next_answer_heals_it(
+    tmp_path: Path, model: str
+) -> None:
+    """08:1439 clause 2: a corrupt entry is a miss, never a failure, and the next success
+    overwrites it."""
+    store, config = _project(tmp_path, model)
+    assert _run(tmp_path, store, config).status == "ok"
+    calls = len(_Model.asked)
+    _write(store, "UPDATE cache_index SET ref = 'cas://00/00/' || printf('%064d', 0)")
+    (tmp_path / "docs" / "copy.md").write_text(COPY, encoding="utf-8")
+    report = _run(tmp_path, store, config)
+    assert report.status == "ok", report.lines()
+    assert len(_Model.asked) == 2 * calls + 1
+    assert _rows(store, "SELECT count(*) FROM cache_index WHERE ref LIKE 'cas://00/00/0000%'") == [
+        (0,)
+    ]
+    (tmp_path / "docs" / "third.md").write_text(
+        COPY + "\nAcme Holdings agrees.\n", encoding="utf-8"
+    )
+    assert _run(tmp_path, store, config).status == "ok"
+    assert len(_Model.asked) == 2 * calls + 2, "the healed entries answer the third file"
