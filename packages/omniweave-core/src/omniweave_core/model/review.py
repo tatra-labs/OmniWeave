@@ -9,7 +9,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-__all__ = ["Review", "ReviewClosure", "ReviewEdge", "ReviewEntity", "ReviewMention"]
+__all__ = [
+    "OverMerge",
+    "OverMergeMember",
+    "Review",
+    "ReviewClosure",
+    "ReviewEdge",
+    "ReviewEntity",
+    "ReviewMention",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +70,32 @@ class ReviewEdge:
 
 
 @dataclass(frozen=True, slots=True)
+class OverMergeMember:
+    """One member of a suspect closure: where its own neighbours sit, and a block naming it."""
+
+    entity: str
+    communities: tuple[str, ...]
+    """The top-level communities its own live neighbours' heads are in, by cite."""
+    witness: str | None
+    """A live block that mentions this member and no other member of its closure: an `--into`."""
+
+
+@dataclass(frozen=True, slots=True)
+class OverMerge:
+    """A closure whose members' neighbourhoods fall apart: two people, one name (06:1870)."""
+
+    head: str
+    title: str
+    etype: str
+    doc_count: int
+    communities: int
+    """How many top-level communities its members' neighbours reach, between them."""
+    members: tuple[OverMergeMember, ...]
+    apart: tuple[str, str]
+    """The first two members, in id order, whose neighbourhoods do not meet."""
+
+
+@dataclass(frozen=True, slots=True)
 class Review:
     """`graph.review`'s answer: four lists, each weakest first and cut at `limit`, with totals."""
 
@@ -74,3 +108,6 @@ class Review:
     mentions_total: int
     edges: tuple[ReviewEdge, ...]
     edges_total: int
+    over_merges: tuple[OverMerge, ...] | None = None
+    """`--over-merge`'s ranking, or `None` when it was not asked for."""
+    over_merges_total: int = 0
