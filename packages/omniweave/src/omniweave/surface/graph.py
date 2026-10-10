@@ -52,6 +52,7 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Callable, Mapping, Sequence
 
+    from omniweave_core.model.coverage import GraphPlan
     from omniweave_core.model.locus import Located, Locus
     from omniweave_core.model.merges import Decided, MergeLog
     from omniweave_core.model.observed import Observed
@@ -68,6 +69,7 @@ __all__ = [
     "main",
     "merges_document",
     "observed_document",
+    "plan_document",
     "residue_document",
     "review_document",
 ]
@@ -89,6 +91,7 @@ _RESIDUE: Final[str] = "graph.residue"
 _RESIDUE_FIX: Final[str] = "ow graph residue --akind identifier"
 _REVIEW: Final[str] = "graph.review"
 _DOCTOR: Final[str] = "graph.doctor"
+_PLAN: Final[str] = "graph.plan"
 _DOCTOR_FIX: Final[str] = "ow graph doctor --check dangling_tmp,trust_clamped,ungrounded"
 
 
@@ -784,6 +787,69 @@ def _doctor_text(report: GraphDoctorReport) -> list[str]:
     return lines
 
 
+def _plan(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, stdout: TextIO) -> int:
+    """`ow graph plan`: per billed lane, coverage and the projected Spend, in one snapshot."""
+    _refuse_unserved(parsed, verb="ow graph plan", fix="ow graph plan")
+    explicit = Path(parsed.config) if parsed.config else None
+    config = load(cwd=cwd, env=env, explicit=explicit)
+    name = corpus_for(config, [], parsed.corpus, verb="ow graph plan")
+    floor = float(cast("float", config.get("graph.llm_coverage_floor")))
+    document = plan_document(_planned(store_of(config, name, cwd=cwd), floor))
+    if parsed.render == "json":
+        stdout.write(json.dumps(document, ensure_ascii=False) + "\n")
+    else:
+        stdout.write("\n".join(_plan_text(document)) + "\n")
+    return 0
+
+
+def _planned(store: Path, floor: float) -> GraphPlan:
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415 -- a usage error never pays
+    from omniweave_core.errors import NotFoundError  # noqa: PLC0415
+    from omniweave_core.store import reader as store_reader  # noqa: PLC0415
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+    from omniweave_core.store.coverage import graph_plan  # noqa: PLC0415
+
+    if not store.exists():
+        raise NotFoundError(f"no store at {store}", fix="ow add <source> first")
+    connection = store_sqlite.connect_readonly(store)
+    try:
+        reader = store_reader.SqliteReader(connection, now_ns=SystemClock().wall_ns())
+        with reader.snapshot():
+            return graph_plan(connection, floor=floor)
+    finally:
+        connection.close()
+
+
+def plan_document(found: GraphPlan) -> dict[str, Any]:
+    """The JSON render: `GraphPlan`, each lane's coverage with its billed share."""
+    from dataclasses import asdict  # noqa: PLC0415
+
+    document = {"schema": _SCHEMA, **asdict(found)}
+    for row, lane in zip(document["lanes"], found.lanes, strict=True):
+        row["coverage"]["billed_share"] = lane.coverage.billed_share
+    return document
+
+
+def _plan_text(document: Mapping[str, Any]) -> list[str]:
+    lines = [
+        f"plan: llm_coverage_floor {document['floor']:.2f}; a projection, never a price (06:821)"
+    ]
+    for lane in document["lanes"]:
+        c = lane["coverage"]
+        uncovered = (
+            f", {c['mean_uncovered_billed']:.2f} uncovered on average among them"
+            if c["mean_uncovered_billed"] is not None
+            else ""
+        )
+        lines.append(
+            f"  {c['lane']}  {lane['pass_id']}  {c['segments']} segments, "
+            f"{c['mean_covered']:.2f} covered on average; {c['billed']} billed "
+            f"({c['billed_share']:.2f}){uncovered}; projected {lane['calls']} calls, "
+            f"{lane['tokens_in']} tokens in, {lane['tokens_out']} out; {c['rows']} rows scanned"
+        )
+    return lines
+
+
 _VERBS: Final = {
     _WHY: _why,
     _MERGES: _merges,
@@ -792,6 +858,7 @@ _VERBS: Final = {
     _RESIDUE: _residue,
     _REVIEW: _review,
     _DOCTOR: _doctor,
+    _PLAN: _plan,
 }
 """Each Action's handler; `graph.locate` is the default, as the first verb built."""
 

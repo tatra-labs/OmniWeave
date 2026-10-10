@@ -107,7 +107,7 @@ GLOBAL_FLAGS: Final[tuple[Argument, ...]] = (
 
 GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
-    "graph": "doctor · locate · merge · merges · residue · review · split · why",
+    "graph": "doctor · locate · merge · merges · plan · residue · review · split · why",
     "hooks": "check",
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
@@ -329,6 +329,15 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 metavar="ENTITY",
             ),
         ),
+    ),
+    Command(
+        words=("graph", "plan"),
+        actions=("graph.plan",),
+        help=(
+            "Show, per billed lane, how much the free passes covered, the share a billed pass "
+            "would be handed, and the calls and tokens that projects, before anything runs"
+        ),
+        arguments=(),
     ),
     Command(
         words=("graph", "residue"),

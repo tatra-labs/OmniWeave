@@ -89,6 +89,7 @@ __all__ = [
     "DoctorIn",
     "ExplainIn",
     "GraphDoctorIn",
+    "GraphPlanIn",
     "GridIn",
     "HooksCheckIn",
     "InstallIn",
@@ -371,6 +372,13 @@ class GraphDoctorIn:
     """
 
     check: str | None = None
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class GraphPlanIn:
+    """`ow graph plan`. 06:2518: *"before anything runs"*, so it takes the corpus alone."""
+
     corpus: str | None = None
 
 
