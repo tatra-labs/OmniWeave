@@ -124,6 +124,7 @@ from omniweave_ports.types import DriverError, FailureClass
 
 from omniweave.graph import cluster as op_cluster
 from omniweave.graph import resolve as op_resolve
+from omniweave.graph import salience as op_salience
 from omniweave.route.detect import Detection, detect
 from omniweave.run import discover, expand
 from omniweave.run import supervisor as sup
@@ -368,6 +369,8 @@ class IngestReport:
     """How many rounds of `op.resolve` then `op.cluster` ran before neither moved (D691)."""
     graph_settled: bool = True
     """False when they still moved after `GRAPH_ROUNDS` rounds (D691)."""
+    salience: op_salience.SalienceReport | None = None
+    """STEP 7 after the graph passes: the four salience columns, recounted (D692)."""
 
     @property
     def settled(self) -> int:
@@ -401,6 +404,8 @@ class IngestReport:
                 f"  graph     op.resolve and op.cluster ran {self.graph_rounds} round(s)"
                 + ("" if self.graph_settled else ", and still moved: run ow ingest again")
             )
+        if self.salience is not None and self.salience.moved:
+            out.append(self.salience.line())
         return out
 
     def lines(self) -> tuple[str, ...]:
@@ -833,6 +838,19 @@ def _hops(
         #  D684, D690, D691: op.resolve over every entity the drains left, then op.cluster
         #  over the graph it leaves, alternating until neither moves.
         graph = _resolve_and_cluster(thread, generation)
+        #  D692: STEP 7, the salience of what the graph passes left, and GR16's recount in the
+        #  same transaction: a disagreement rolls the write back and fails the run.
+        salient = cast(
+            "op_salience.SalienceReport",
+            thread.run(
+                ow.Unit(
+                    name="graph.salience",
+                    run=op_salience.recount_and_check,
+                    cost_class="free",
+                    wait_ms=BATCH_WAIT_MS,
+                )
+            ),
+        )
     finally:
         executor.close()
     states, parts = _tally(thread, generation)
@@ -868,6 +886,7 @@ def _hops(
         clustered=graph.clustered,
         graph_rounds=graph.rounds,
         graph_settled=graph.settled,
+        salience=salient,
     )
 
 
