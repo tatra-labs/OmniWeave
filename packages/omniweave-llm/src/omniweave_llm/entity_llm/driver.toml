@@ -50,9 +50,15 @@ services       = ["model:llm"]
 [isolation]
 requires        = "subproc"
 memory_mb       = 512
-progress_ms     = 120000           # One model call per Segment, and a call may take a minute.
-wall_ms_hard    = 600000
-batch_max_units = 20               # 06:1514: twenty Segments' units in one INVOKE.
+# D718. PROGRESS comes between Segments and never inside one model call, so the silent-hang
+# watchdog must outlast one call, which the Service's request_timeout_s bounds (600 s by default).
+# A local qwen3:4b took 56 s on one Segment and more than 120 s on the next.
+progress_ms     = 600000
+# The INVOKE's whole budget: every unit's call at its bound.
+wall_ms_hard    = 2400000
+# 06:1514's twenty fits a hosted API, at seconds a call. A local model is minutes a call, and a
+# smaller batch commits its answers sooner.
+batch_max_units = 4
 
 [limits]
 max_input_bytes = 134217728
