@@ -20,6 +20,7 @@ dependencies = [
 # billed passes will be four keys here. D711 lands the first.
 [project.entry-points."omniweave.drivers"]
 "derive.entity.llm" = "omniweave_llm.entity_llm"
+"derive.claim.llm" = "omniweave_llm.claim_llm"
 
 # The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
 [tool.hatch.build.targets.wheel]

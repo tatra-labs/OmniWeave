@@ -14,11 +14,17 @@ module translates and does not judge.
 2. **A claim's subject is an entity frame, one per distinct `(subject, subject_etype)`.** A null
    type is `unknown`. Scope is the type's (D710 ruling 4). The frame carries no mention: the
    claim's own `observed` is its grounding, and a subject named in passing is not a mention of it.
-3. **An object is an entity only when `object_is_entity` says so and the object is named**; it is
-   then an entity frame of type `unknown`. Every other object is a literal of datatype `string`
-   (06:1165: *"A guess is `string`"*). A null object is neither: a claim may name no object.
-4. **The time's precision is its shape**: `YYYY` is `year`, `YYYY-MM` is `month`, `YYYY-MM-DD` is
-   `day`. The schema's pattern admits nothing else, and the validator holds it (D710).
+3. **A claim has exactly one object** (D722, correcting D721). The sink's `claim` is bipartite:
+   `object_entity` XOR `object_literal` (06:212). D721 sent a null object as neither, and the sink
+   refused it, which only a real ingest showed:
+   - an object is an entity only when `object_is_entity` says so and the object is named; it is
+     then an entity frame of type `unknown`;
+   - every other named object is a literal, typed by 06:1457's *"same closed rules as §3.6"*
+     (`datatype`), with the predicate in the header's place;
+   - a null object says the predicate holds of the subject, so it is the literal `true`, typed
+     `xsd:boolean`, 06:1172's checkbox datatype.
+4. **The time's precision is the sink's to derive** (06:1455, *"rather than asked for"*). D722
+   sends `t_start` and `t_end` as given and no `t_precision`.
 5. **A null description is the empty string.** `ClaimDraft.description` is not optional.
 6. **Trust is claimed `extracted`**, for the runner's clamp to lower (D710 ruling 5).
 7. **Cover is the uncovered members the claims cite**, or `cover_empty` with a reason (GR3).
@@ -26,6 +32,8 @@ module translates and does not judge.
 
 from __future__ import annotations
 
+import datetime as dt
+import re
 from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_llm.entity import TRUST_CLAIM, parse_answer
@@ -35,20 +43,73 @@ if TYPE_CHECKING:
 
     from omniweave_llm.view import SegmentView
 
-__all__ = ["LANE", "answer_frames", "parse_answer", "precision", "unparsed_frames"]
+__all__ = ["HOLDS", "LANE", "answer_frames", "datatype", "parse_answer", "unparsed_frames"]
 
 LANE: Final = "claim"
+HOLDS: Final = ("true", "xsd:boolean")
+"""Ruling 3: a claim with no object says its predicate holds of its subject."""
 _NO_ITEMS: Final = "the model returned no claim on uncovered ground"
 _UNPARSED: Final = "the model's answer did not parse against the lane's schema"
-_PRECISION: Final = {4: "year", 7: "month", 10: "day"}
-"""Ruling 4: a date's length is its precision, for the three shapes the schema admits."""
+
+# --- 06 section 3.6's closed rules, restated (ruling 3). `omniweave_graph.table.rules.datatype`
+# --- is the other copy: a Pass imports `omniweave_ports` alone, so neither can import the other,
+# --- and `test_claim_datatype.py` holds the two to one answer over every rule.
+_NUMERIC_WORDS: Final = frozenset(
+    {
+        "amount", "total", "quantity", "qty", "count", "number", "price", "rate", "value",
+        "percent", "percentage", "balance", "units", "sum", "fee", "fees", "cost",
+    }
+)  # fmt: skip
+_CURRENCY_CODES: Final = frozenset(
+    {
+        "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD", "CNY", "HKD", "SGD", "INR",
+        "SEK", "NOK", "DKK", "ZAR", "BRL", "MXN", "KRW",
+    }
+)  # fmt: skip
+_CURRENCY_SIGNS: Final = {"\u20ac": "EUR", "\u00a3": "GBP"}
+_MONTHS: Final = (
+    "january|february|march|april|may|june|july|august|september|october|november|december"
+)
+_ISO_DATE: Final = re.compile(r"\d{4}-\d{2}-\d{2}\Z")
+_DAY_MONTH_YEAR: Final = re.compile(rf"\d{{1,2}} (?:{_MONTHS}) \d{{4}}\Z", re.IGNORECASE)
+_MONTH_DAY_YEAR: Final = re.compile(rf"(?:{_MONTHS}) \d{{1,2}}, \d{{4}}\Z", re.IGNORECASE)
+_NUMBER: Final = re.compile(r"[-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?\Z")
+_CODE_TOKEN: Final = re.compile(r"\b[A-Z]{3}\b")
+_WORD: Final = re.compile(r"[^\W\d_]+")
 
 
-def precision(start: str | None, end: str | None) -> str | None:
-    """Ruling 4: the finer of the two dates' precisions, or `None` when neither is given."""
-    found = [_PRECISION[len(v)] for v in (start, end) if v is not None and len(v) in _PRECISION]
-    order = list(_PRECISION.values())
-    return max(found, key=order.index) if found else None
+def datatype(literal: str, header: str) -> str:
+    """06 section 3.6: `xsd:date`, `money:<ISO4217>`, `xsd:decimal`, else `string`.
+
+    Closed and conservative: a guess is `string` (06:1165). `header` is what names the value. For a
+    table it is the column's header; for a claim it is the predicate.
+    """
+    if _is_date(literal):
+        return "xsd:date"
+    if any(ch.isdigit() for ch in literal):
+        code = _currency(literal) or _currency(header)
+        if code is not None:
+            return f"money:{code}"
+    if _NUMBER.match(literal) and _NUMERIC_WORDS & set(_WORD.findall(header.casefold())):
+        return "xsd:decimal"
+    return "string"
+
+
+def _is_date(text: str) -> bool:
+    if _ISO_DATE.match(text):
+        try:
+            dt.date.fromisoformat(text)
+        except ValueError:
+            return False
+        return True
+    return bool(_DAY_MONTH_YEAR.match(text) or _MONTH_DAY_YEAR.match(text))
+
+
+def _currency(text: str) -> str | None:
+    for code in _CODE_TOKEN.findall(text):
+        if code in _CURRENCY_CODES:
+            return code
+    return next((code for sign, code in _CURRENCY_SIGNS.items() if sign in text), None)
 
 
 def unparsed_frames(view: SegmentView, raw: str, problems: list[str]) -> list[dict[str, Any]]:
@@ -99,11 +160,12 @@ def answer_frames(view: SegmentView, answer: Mapping[str, Any]) -> list[dict[str
         if obj is not None and item.get("object_is_entity"):
             claim["object_entity"] = entity(obj, "unknown")
         elif obj is not None:
-            claim |= {"object_literal": obj, "object_datatype": "string"}
-        start, end = item.get("t_start"), item.get("t_end")
-        when = precision(start, end)
-        if when is not None:
-            claim |= {"t_start": start, "t_end": end, "t_precision": when}
+            claim |= {"object_literal": obj, "object_datatype": datatype(obj, item["predicate"])}
+        else:
+            claim |= {"object_literal": HOLDS[0], "object_datatype": HOLDS[1]}
+        for key in ("t_start", "t_end"):
+            if item.get(key) is not None:
+                claim[key] = item[key]
         frames.append(claim)
         cited.add(item["cite"])
     claimed = sorted(b.cite for b in view.blocks if b.cite in cited and not b.covered)

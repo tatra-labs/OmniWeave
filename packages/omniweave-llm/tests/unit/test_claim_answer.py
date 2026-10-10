@@ -6,7 +6,14 @@ import json
 from typing import Any
 
 import pytest
-from omniweave_llm.claim import LANE, answer_frames, parse_answer, precision, unparsed_frames
+from omniweave_llm.claim import (
+    HOLDS,
+    LANE,
+    answer_frames,
+    datatype,
+    parse_answer,
+    unparsed_frames,
+)
 from omniweave_llm.entity import TRUST_CLAIM
 from omniweave_llm.prompt import schema
 from omniweave_llm.view import read_views
@@ -59,7 +66,7 @@ def _frames(*claims: dict[str, Any]) -> list[dict[str, Any]]:
     return answer_frames(_view(), value)
 
 
-def test_a_literal_object_is_a_string_literal_and_its_subject_an_entity_frame() -> None:
+def test_a_literal_object_is_typed_and_its_subject_an_entity_frame() -> None:
     frames = _frames(_claim())
     assert frames[0] == {"t": "seg", "seg": "seg:1b2c3d4e5f607182"}
     assert frames[1] == {
@@ -70,7 +77,7 @@ def test_a_literal_object_is_a_string_literal_and_its_subject_an_entity_frame() 
         "t": "claim", "subject": "t1", "claim_type": "obligation", "predicate": "pays",
         "description": "", "status": "asserted",
         "observed": {"cite": "d1#5", "quote": "Acme pays Beta"}, "trust": TRUST_CLAIM,
-        "object_literal": "4,000 EUR", "object_datatype": "string",
+        "object_literal": "4,000 EUR", "object_datatype": "money:EUR",
     }  # fmt: skip
     assert frames[3] == {"t": "cover", "lane": LANE, "cites": ["d1#5"]}
     assert len(frames) == 4, "no mention: the claim's own observed is its grounding"
@@ -92,16 +99,45 @@ def test_an_entity_object_is_an_entity_frame_and_subjects_group_by_name_and_type
     claims = [f for f in frames if f["t"] == "claim"]
     assert [(c["subject"], c.get("object_entity"), c.get("object_literal")) for c in claims] == [
         ("t1", "t2", None),
-        ("t1", None, None),
-        ("t3", None, None),
-    ], "ACME is Acme; a null object is neither an entity nor a literal"
+        ("t1", None, "true"),
+        ("t3", None, "true"),
+    ], "ACME is Acme; a claim with no object says its predicate holds"
     assert claims[0]["description"] == "Payment terms."
     assert claims[2]["status"] == "denied"
 
 
-def test_an_entity_object_that_is_null_is_no_object() -> None:
-    [claim] = [f for f in _frames(_claim(object=None, object_is_entity=True)) if f["t"] == "claim"]
-    assert "object_entity" not in claim and "object_literal" not in claim
+@pytest.mark.parametrize("is_entity", [True, False])
+def test_a_claim_with_no_object_says_its_predicate_holds(is_entity: bool) -> None:
+    """D722, correcting D721: the sink's claim is bipartite, so no object is `true`, a boolean."""
+    [claim] = [
+        f for f in _frames(_claim(object=None, object_is_entity=is_entity)) if f["t"] == "claim"
+    ]
+    assert "object_entity" not in claim
+    assert (claim["object_literal"], claim["object_datatype"]) == HOLDS == ("true", "xsd:boolean")
+
+
+@pytest.mark.parametrize(
+    ("literal", "predicate", "expected"),
+    [
+        ("2026-06-30", "due", "xsd:date"),
+        ("30 June 2026", "due", "xsd:date"),
+        ("June 30, 2026", "due", "xsd:date"),
+        ("2026-02-30", "due", "string"),
+        ("4,000 EUR", "pays", "money:EUR"),
+        ("\u00a3 12", "pays", "money:GBP"),
+        ("12", "fee in EUR", "money:EUR"),
+        ("$ 12", "pays", "string"),
+        ("1,250", "amount", "xsd:decimal"),
+        ("1,250", "pays", "string"),
+        ("Seller", "role", "string"),
+    ],
+)
+def test_a_literals_datatype_is_section_3_6s_with_the_predicate_as_its_header(
+    literal: str, predicate: str, expected: str
+) -> None:
+    assert datatype(literal, predicate) == expected
+    [claim] = [f for f in _frames(_claim(object=literal, predicate=predicate)) if f["t"] == "claim"]
+    assert (claim["object_literal"], claim["object_datatype"]) == (literal, expected)
 
 
 def test_a_null_subject_type_is_unknown() -> None:
@@ -110,24 +146,15 @@ def test_a_null_subject_type_is_unknown() -> None:
 
 
 @pytest.mark.parametrize(
-    ("start", "end", "expected"),
-    [
-        (None, None, None),
-        ("2026", None, "year"),
-        ("2026-06", None, "month"),
-        ("2026", "2026-06-30", "day"),
-        ("2026-06-01", "2027", "day"),
-    ],
+    ("start", "end"), [(None, None), ("2026", None), (None, "2026-06"), ("2026", "2026-06-30")]
 )
-def test_the_times_precision_is_the_finer_dates_shape(
-    start: str | None, end: str | None, expected: str | None
+def test_the_times_are_sent_as_given_and_their_precision_is_the_sinks(
+    start: str | None, end: str | None
 ) -> None:
-    assert precision(start, end) == expected
+    """D722, correcting D721: 06:1455 has the sink derive `t_precision`, not the model."""
     [claim] = [f for f in _frames(_claim(t_start=start, t_end=end)) if f["t"] == "claim"]
-    if expected is None:
-        assert "t_precision" not in claim and "t_start" not in claim
-    else:
-        assert (claim["t_start"], claim["t_end"], claim["t_precision"]) == (start, end, expected)
+    assert "t_precision" not in claim
+    assert (claim.get("t_start"), claim.get("t_end")) == (start, end)
 
 
 def test_a_covered_block_is_not_claimed_and_no_claim_is_cover_empty() -> None:
