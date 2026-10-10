@@ -88,6 +88,14 @@ def test_the_billed_header_carries_what_a_prompt_renders(parties: Path) -> None:
         )
         assert header["etypes"] == [*kept, "unknown"]
         assert "covenant" not in header["etypes"] and "warrant" in header["etypes"]
+        scoped = [
+            str(e)
+            for (e,) in connection.execute(
+                "SELECT etype FROM etype_vocab WHERE source <> 'proposed' AND scope = 'document'"
+                " ORDER BY etype"
+            )
+        ]
+        assert header["document_scoped"] == scoped and "defined_term" in scoped, "D710"
         relations = connection.execute(
             "SELECT relation, actor_rule FROM relation_vocab ORDER BY relation"
         ).fetchall()
