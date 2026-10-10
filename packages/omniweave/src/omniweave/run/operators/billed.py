@@ -104,6 +104,15 @@ class BilledQueued:
     queued: Counter[str] = field(default_factory=Counter)
     documents: Counter[str] = field(default_factory=Counter)
 
+    def lines(self) -> list[str]:
+        """One report line per billed Pass the plan held (D716)."""
+        return [
+            f"  billed    {pass_id}: {self.eligible[pass_id]} Segment(s) of "
+            f"{self.documents[pass_id]} document(s) under the coverage floor, "
+            f"{self.queued[pass_id]} queued"
+            for pass_id in sorted({*self.eligible, *self.queued, *self.documents})
+        ]
+
 
 def enqueue_billed(connection: Any, plan: DerivePlan, *, floor: float, now_ms: int) -> BilledQueued:
     """Rulings 1-6 for every billed Pass the plan holds, over every segmented document."""

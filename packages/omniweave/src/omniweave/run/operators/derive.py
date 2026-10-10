@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import io
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Final, cast
 
 from omniweave_core.cache import cache_key
@@ -46,11 +46,13 @@ from omniweave_core.model.records import Producer
 from omniweave_core.operator import Outcome, StepMetrics, StepResult
 from omniweave_core.store import lexicon
 from omniweave_core.store import sqlite as ow
-from omniweave_core.store.coverage import BILLED_PASSES
+from omniweave_core.store.coverage import BILLED_PASSES, place_of
 from omniweave_core.store.graph import PassIdentity
 from omniweave_core.store.items import (
     ITEM_LANES,
+    BilledLane,
     ItemView,
+    build_segment_view,
     decode_items,
     document_body,
     document_views,
@@ -74,6 +76,7 @@ if TYPE_CHECKING:
     from omniweave_core.drivers.resolve import Candidate, Policy
     from omniweave_core.host import subproc
     from omniweave_core.operator import RunContext, SpendVector
+    from omniweave_core.store.coverage import BilledPass
     from omniweave_core.store.queue import WorkRow
     from omniweave_ports.types import ArtifactRef
 
@@ -136,6 +139,12 @@ SELECT u.unit_uri, u.content_sha256, IFNULL(u.bytes, 0) FROM unit AS u
  ORDER BY u.unit_uri
 """
 _DOC_SQL: Final = "SELECT doc_ord, gen FROM doc WHERE doc_key = ?"
+_PART_SQL: Final = """
+SELECT s.segment_id FROM segment AS s
+  JOIN doc AS d ON d.doc_ord = s.doc_ord AND d.gen = s.gen
+ WHERE d.doc_key = ? AND s.state = 0 AND substr(lower(hex(s.content_digest)), 1, 16) = ?
+"""
+_BILLED: Final = {billed.pass_id: billed for billed in BILLED_PASSES}
 _PRODUCER_INSERT_SQL: Final = """
 INSERT OR IGNORE INTO producer(operator, op_version, code_fingerprint, options_digest)
 VALUES(:operator, :op_version, :code_fingerprint, :options_digest)
@@ -285,7 +294,16 @@ def _producer(operator: str, card: Any, config_digest: str) -> Producer:
 
 
 class DeriveOperator:
-    """The `Dispatcher` for a free Pass's rows: one call per claimed batch, one result a row."""
+    """The `Dispatcher` for a derive Pass's rows: one call per claimed batch, one result a row.
+
+    **D716: a billed Pass's row is one Segment.** Its `unit_part` is the Segment's `seg:` part
+    (D715), and its unit is that Segment's billed view, covered against the Pass's place
+    (`build_segment_view(billed=...)`, D709). Its answer is written under the row's own
+    `route_decision`, with `Method.LLM` and `cost_class = "billed_api"` on `PassIdentity`, so
+    every row the run writes resolves to the decision that billed it (06:152-153). A row whose
+    Segment is no longer live -- its document re-segmented between the enqueue and the claim --
+    fails `empty_result`, and the next run's selector decides the new Segment afresh.
+    """
 
     __slots__ = ("_empty", "_parse", "_tally", "_thread")
 
@@ -297,9 +315,10 @@ class DeriveOperator:
 
     def __call__(self, batch: Batch, /) -> Sequence[StepResult]:
         driver = batch.driver
-        if driver is None or driver not in FREE_PASSES:
+        billed = _BILLED.get(driver or "")
+        if driver is None or (driver not in FREE_PASSES and billed is None):
             raise RouteError(
-                f"invoke {batch.invoke_id} names {driver!r}, which is no shipped free Pass",
+                f"invoke {batch.invoke_id} names {driver!r}, which is no shipped Pass",
                 fix="ow ingest again: the row is re-enqueued when its document is segmented again",
             )
         granted = self._parse._granted(driver, batch.dispatch_key or "")
@@ -314,11 +333,12 @@ class DeriveOperator:
         staged: list[tuple[int, tuple[ItemView, ...], UnitRef, str]] = []
         read = self._lexicon() if driver in LEXICON_READERS else None
         for index, row in enumerate(batch.rows):
-            views = self._views(row.unit_uri)
+            views = self._views(row.unit_uri) if billed is None else self._billed_view(row, billed)
             if not views:
                 results[index] = self._failed(
                     driver, row, _unit_of(row), producer, failure=FailureClass.EMPTY_RESULT,
-                    message="the unit's document has no live Segment",
+                    message="the unit's document has no live Segment" if billed is None else
+                    f"no live Segment is {row.unit_part}: its document was segmented again",
                 )  # fmt: skip
                 continue
             from omniweave_core.blobs import format_ref  # noqa: PLC0415
@@ -328,8 +348,9 @@ class DeriveOperator:
                 body = lexicon.frame(read) + body
             digest = self._parse._cas.put(io.BytesIO(body))
             unit = UnitRef(
-                uri=row.unit_uri, part="", content_sha256=digest.hex(), byte_len=len(body)
-            )
+                uri=row.unit_uri, part=row.unit_part, content_sha256=digest.hex(),
+                byte_len=len(body),
+            )  # fmt: skip
             staged.append((index, views, unit, format_ref(digest)))
         grants, refused = self._grants(card) if staged else ((), "")
         if refused:  # D713: a Service that will not attach fails the rows, never the drain
@@ -344,16 +365,21 @@ class DeriveOperator:
             identity = PassIdentity(
                 pass_id=driver,
                 producer_id=self._producer_id(producer),
-                method=FREE_PASSES[driver],
+                method=FREE_PASSES[driver] if billed is None else Method.LLM,
                 origin_operator=driver,
                 origin_driver=driver,
                 driver_schema_v=card.identity.schema_version,
-                cost_class="free",
+                cost_class="free" if billed is None else "billed_api",
             )
             for slot, (index, views, unit, _ref) in enumerate(staged):
+                decided = (
+                    identity
+                    if billed is None
+                    else replace(identity, decision_id=batch.rows[index].decision_id)
+                )
                 results[index] = self._settle(
                     batch.rows[index], unit, views, reply=reply, slot=slot, producer=producer,
-                    identity=identity, card=card, read=read,
+                    identity=decided, card=card, read=read,
                 )  # fmt: skip
         return [cast("StepResult", one) for one in results]
 
@@ -416,6 +442,30 @@ class DeriveOperator:
                 ow.Unit(name="derive.view", run=read, cost_class="free", wait_ms=ow.BATCH_WAIT_MS)
             ),
         )
+
+    def _billed_view(self, row: WorkRow, billed: BilledPass) -> tuple[ItemView, ...]:
+        """The row's one Segment as the billed Pass reads it, or nothing when it is gone (D716)."""
+
+        def read(connection: Any) -> tuple[ItemView, ...]:
+            unit = connection.execute(_UNIT_SQL, (row.unit_uri,)).fetchone()
+            if unit is None or not unit[0] or not row.unit_part.startswith("seg:"):
+                return ()
+            key = (bytes.fromhex(str(unit[0]))[:16], row.unit_part.removeprefix("seg:"))
+            found = connection.execute(_PART_SQL, key).fetchone()
+            if found is None:
+                return ()
+            lane = BilledLane(billed.lane, place_of(connection, billed))
+            return (build_segment_view(connection, int(found[0]), billed=lane),)
+
+        return cast(
+            "tuple[ItemView, ...]",
+            self._thread.run(
+                ow.Unit(
+                    name="derive.billed_view", run=read, cost_class="free",
+                    wait_ms=ow.BATCH_WAIT_MS,
+                )
+            ),
+        )  # fmt: skip
 
     def _producer_id(self, producer: Producer) -> int:
         params = {

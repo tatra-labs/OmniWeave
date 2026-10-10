@@ -138,6 +138,7 @@ from omniweave.run.manifest import (
     manifest_path,
 )
 from omniweave.run.operators import lexicon as op_lexicon
+from omniweave.run.operators.billed import BilledQueued, enqueue_billed
 from omniweave.run.operators.derive import DeriveOperator, DerivePlan, is_derive
 from omniweave.run.operators.parse import (
     Ordinals,
@@ -373,6 +374,8 @@ class IngestReport:
     """False when they still moved after `GRAPH_ROUNDS` rounds (D691)."""
     salience: op_salience.SalienceReport | None = None
     """STEP 7 after the graph passes: the four salience columns, recounted (D692)."""
+    billed: BilledQueued | None = None
+    """The billed Passes' rows, enqueued after every free Pass's cover is written (D716)."""
 
     @property
     def settled(self) -> int:
@@ -397,6 +400,8 @@ class IngestReport:
             self.lexicon.names or self.lexicon.moved or self.lexicon.drain
         ):
             out.append(self.lexicon.line())
+        if self.billed is not None:
+            out.extend(self.billed.lines())
         if self.resolved is not None and self.resolved.shown:
             out.append(self.resolved.line())
         if self.clustered is not None and self.clustered.shown:
@@ -826,6 +831,8 @@ def _hops(
         )
 
     relexed: sup.RunReport | None = None
+    rebilled: sup.RunReport | None = None
+    billed: BilledQueued | None = None
     try:
         drained = drain() if enqueued else None
         routed = _route(thread, context, inputs=inputs, roots=roots, clock=clock)
@@ -842,6 +849,10 @@ def _hops(
         #  rows it queued or re-opened, in this run.
         lexicon = _lexicon(thread, context, inputs=inputs, store=store, clock=clock)
         relexed = drain() if lexicon.drain else None
+        #  D716: the billed Passes, once every cheaper Pass's cover is written -- the selector
+        #  reads that ledger -- and before op.resolve, which reads what they extract.
+        billed = _billed(thread, context, inputs=inputs, config=config, clock=clock)
+        rebilled = drain() if billed is not None and sum(billed.queued.values()) else None
         #  D684, D690, D691: op.resolve over every entity the drains left, then op.cluster
         #  over the graph it leaves, alternating until neither moves.
         graph = _resolve_and_cluster(thread, generation)
@@ -864,7 +875,9 @@ def _hops(
     formats = _formats(thread, generation)
     waiting = states.get(IDENTIFIED, 0) + states.get(PLANNED, 0)
     #  D683: a batch that crashed left its rows claimed, so the drain ended without them.
-    stopped = any(r is not None and (r.status != "done" or r.crashed) for r in (drained, relexed))
+    stopped = any(
+        r is not None and (r.status != "done" or r.crashed) for r in (drained, relexed, rebilled)
+    )
     status = "partial" if waiting or stopped else "ok"
     return IngestReport(
         run_id=run_id,
@@ -894,6 +907,7 @@ def _hops(
         graph_rounds=graph.rounds,
         graph_settled=graph.settled,
         salience=salient,
+        billed=billed,
     )
 
 
@@ -936,6 +950,36 @@ def _resolve_and_cluster(thread: ow.StoreThread, generation: int) -> Settled:
         )
 
     return settle(resolve, cluster, bound=GRAPH_ROUNDS)
+
+
+def _billed(
+    thread: ow.StoreThread,
+    ctx: RunContext,
+    *,
+    inputs: _RoutingInputs,
+    config: Config,
+    clock: Clock,
+) -> BilledQueued | None:
+    """Every billed Pass's rows over the store the free drains left (D715, D716). `None` when the
+    plan holds no billed Pass, so a run that enabled none says nothing about them."""
+    derives, _why = DerivePlan.of(inputs.catalog, inputs.resolving, ctx, enable=inputs.passes)
+    if derives is None or not derives.billed:
+        return None
+    floor = float(config.get("graph.llm_coverage_floor"))  # type: ignore[arg-type]
+    now_ms = clock.wall_ns() // 1_000_000
+    return cast(
+        "BilledQueued",
+        thread.run(
+            ow.Unit(
+                name="derive.billed",
+                run=lambda connection: enqueue_billed(
+                    connection, derives, floor=floor, now_ms=now_ms
+                ),
+                cost_class="free",
+                wait_ms=BATCH_WAIT_MS,
+            )
+        ),
+    )
 
 
 def _lexicon(
