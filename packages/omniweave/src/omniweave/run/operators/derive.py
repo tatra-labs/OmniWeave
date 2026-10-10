@@ -89,6 +89,7 @@ __all__ = [
     "DERIVE_PRIORITY",
     "FREE_PASSES",
     "LEXICON_READERS",
+    "MERGE_LLM",
     "DeriveOperator",
     "DerivePlan",
     "is_derive",
@@ -108,6 +109,9 @@ FREE_PASSES: Final[dict[str, Method]] = {
 card** (D668): `derive_run.method` is *"ONE METHOD PER PASS"* (0002:179) and the clamp the sink
 applies reads it, but `[capability.derive]` and `[derive]` declare none, so the roster's `method`
 column is the one source. A third-party Pass needs a card key before it can be scheduled here."""
+MERGE_LLM: Final = "derive.merge.llm"
+"""The LLM band's Pass (D726, D728): billed and corpus-grained, so it is planned beside the
+Segment Passes and enqueued by `run.operators.band`, never by a document's segmentation."""
 LEXICON_READERS: Final = frozenset({"derive.entity.gazetteer"})
 """The Passes whose view opens with `op.lexicon`'s artefact (D683), and whose committed answer
 records the `dep` 06:1189 obliges. Here and not on the card for `FREE_PASSES`' reason: no card key
@@ -173,6 +177,9 @@ class DerivePlan:
     ctx: RunContext
     billed: tuple[Candidate, ...] = ()
     """The billed Passes both activation lists name and `resolve()` admitted (D714)."""
+    merge: Candidate | None = None
+    """`MERGE_LLM`, when both lists name it and `resolve()` admitted it, as a billed Pass is
+    (D728)."""
 
     @classmethod
     def of(
@@ -202,20 +209,20 @@ class DerivePlan:
             else:
                 why.append(refused)
         billed: list[Candidate] = []
-        for one in BILLED_PASSES:
-            if one.pass_id not in enable:
+        for pass_id in (*(one.pass_id for one in BILLED_PASSES), MERGE_LLM):
+            if pass_id not in enable:
                 continue
-            if one.pass_id not in policy.enabled:
-                why.append(
-                    f"{one.pass_id}: [graph.passes] enable names it, [drivers] enabled does not"
-                )
+            if pass_id not in policy.enabled:
+                why.append(f"{pass_id}: [graph.passes] enable names it, [drivers] enabled does not")
                 continue
-            found, refused = _pinned(one.pass_id, catalog, policy, CostClass.BILLED_API)
+            found, refused = _pinned(pass_id, catalog, policy, CostClass.BILLED_API)
             if found is not None:
                 billed.append(found)
             else:
                 why.append(refused)
-        plan = cls(tuple(passes), ctx, tuple(billed)) if passes or billed else None
+        merge = next((c for c in billed if c.card.identity.id == MERGE_LLM), None)
+        segment = tuple(c for c in billed if c.card.identity.id != MERGE_LLM)
+        plan = cls(tuple(passes), ctx, segment, merge) if passes or billed else None
         return plan, "; ".join(why)
 
     def enqueue(self, connection: Any, unit: UnitRef) -> int:

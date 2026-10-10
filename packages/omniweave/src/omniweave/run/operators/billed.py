@@ -104,9 +104,11 @@ __all__ = [
     "BilledQueued",
     "billed_phases",
     "enqueue_billed",
+    "estimate",
     "paid_key",
     "remembered",
     "replayed",
+    "service_table",
 ]
 
 RULE_ID: Final = "graph.eligible"
@@ -342,7 +344,7 @@ def _write(
                 "dispatch_key": dispatch_key(
                     billed.pass_id, candidate.config_digest, str(candidate.isolation_granted)
                 ),
-                "service": _service(services[0]) if services else None,
+                "service": service_table(services[0]) if services else None,
             },
         ).rowcount
     )
@@ -370,12 +372,12 @@ def _decision(
         terminal=True,
         cause=f"{COVERED_KEY}={one.covered:.2f}<{floor:.2f}",
         cost_class=CostClass.BILLED_API,
-        est_spend=_spend(per_part),
+        est_spend=estimate(per_part),
     )
     return decision, read_set
 
 
-def _spend(per_part: Mapping[str, float]) -> Spend:
+def estimate(per_part: Mapping[str, float]) -> Spend:
     """Ruling 3: the card's `per_part`, dimension by dimension; one it does not name is 0."""
 
     def dim(name: str) -> int:
@@ -392,7 +394,7 @@ def _spend(per_part: Mapping[str, float]) -> Spend:
     )
 
 
-def _service(declared: str) -> str:
+def service_table(declared: str) -> str:
     from omniweave_core.modelserver import service_name  # noqa: PLC0415 -- a billed row only
 
     return service_name(declared)
