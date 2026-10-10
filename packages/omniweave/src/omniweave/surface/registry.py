@@ -116,6 +116,7 @@ from omniweave_core.model.locus import Located
 from omniweave_core.model.merges import Decided, MergeLog
 from omniweave_core.model.observed import Observed
 from omniweave_core.model.rebind import RebindReport
+from omniweave_core.model.residue import GraphResidue
 from omniweave_core.retrieve.verdict import Coverage
 from omniweave_ports import CostClass
 
@@ -145,6 +146,7 @@ from omniweave.surface.inputs import (
     MergesIn,
     OpenIn,
     QueryIn,
+    ResidueIn,
     ServeIn,
     SkillsCheckIn,
     SkillsHashIn,
@@ -1404,6 +1406,28 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=Decided,
             advanced=frozenset(),
             cli=("graph", "split"),
+        ),
+        #  06:2521, the operability number 06:885 names: what the graph could not place. Read-only,
+        #  and no `mcp_name`, as 10:807 names none (D699).
+        ActionSpec(
+            name="graph.residue",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Show what the graph could not place: unresolved references grouped by kind and "
+                "name, and quarantined rows grouped by code and kind"
+            ),
+            decision="a reference never links, or extracted rows went missing, and you need which",
+            example={"akind": "identifier", "corpus": "handbook"},
+            inp=ResidueIn,
+            out=GraphResidue,
+            advanced=frozenset(),
+            cli=("graph", "residue"),
         ),
         ActionSpec(
             name="corpus.coverage",

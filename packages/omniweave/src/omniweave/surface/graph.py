@@ -55,6 +55,7 @@ if TYPE_CHECKING:
     from omniweave_core.model.locus import Located, Locus
     from omniweave_core.model.merges import Decided, MergeLog
     from omniweave_core.model.observed import Observed
+    from omniweave_core.model.residue import GraphResidue
 
 __all__ = [
     "GRAPH_WORD",
@@ -63,6 +64,7 @@ __all__ = [
     "main",
     "merges_document",
     "observed_document",
+    "residue_document",
 ]
 
 GRAPH_WORD: Final[str] = "graph"
@@ -78,6 +80,8 @@ _MERGE: Final[str] = "graph.merge"
 _MERGE_FIX: Final[str] = 'ow graph merge e412 e997 --reason "why they are one"'
 _SPLIT: Final[str] = "graph.split"
 _SPLIT_FIX: Final[str] = 'ow graph split e412 --into d7#412,d19#88 --reason "why they are two"'
+_RESIDUE: Final[str] = "graph.residue"
+_RESIDUE_FIX: Final[str] = "ow graph residue --akind identifier"
 
 
 def main(
@@ -94,9 +98,7 @@ def main(
         return parsed
     try:
         check(GRAPH_WORD, parsed)
-        verb = {_WHY: _why, _MERGES: _merges, _MERGE: _merge, _SPLIT: _split}.get(
-            parsed.ow_action, _locate
-        )
+        verb = _VERBS.get(parsed.ow_action, _locate)
         return verb(parsed, env=env, cwd=cwd, stdout=stdout)
     except OwError as error:
         return report(error, parsed, stdout=stdout, stderr=stderr)
@@ -477,6 +479,82 @@ def _decided_text(document: Mapping[str, Any]) -> list[str]:
     if document["unassigned"]:
         lines.append("  unassigned, a tie between sides: " + " ".join(document["unassigned"]))
     return [*lines, *_merges_text(document)]
+
+
+def _residue(
+    parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, stdout: TextIO
+) -> int:
+    """`ow graph residue`: both halves of 06:885's residue, grouped, from one read snapshot."""
+    _refuse_unserved(parsed, verb="ow graph residue", fix=_RESIDUE_FIX)
+    explicit = Path(parsed.config) if parsed.config else None
+    config = load(cwd=cwd, env=env, explicit=explicit)
+    name = corpus_for(config, [], parsed.corpus, verb="ow graph residue")
+    store = store_of(config, name, cwd=cwd)
+    document = residue_document(_residual(store, parsed.akind))
+    if parsed.render == "json":
+        stdout.write(json.dumps(document, ensure_ascii=False) + "\n")
+    else:
+        stdout.write("\n".join(_residue_text(document)) + "\n")
+    return 0
+
+
+def _residual(store: Path, akind: str | None) -> GraphResidue:
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415 -- a usage error never pays
+    from omniweave_core.store import reader as store_reader  # noqa: PLC0415
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+    from omniweave_core.store.graph_residue import graph_residue  # noqa: PLC0415
+
+    connection = store_sqlite.connect_readonly(store)
+    try:
+        reader = store_reader.SqliteReader(connection, now_ns=SystemClock().wall_ns())
+        with reader.snapshot():
+            try:
+                return graph_residue(connection, akind=akind)
+            except ValueError as error:
+                raise UsageError(str(error), fix=_RESIDUE_FIX) from error
+    finally:
+        connection.close()
+
+
+def residue_document(found: GraphResidue) -> dict[str, Any]:
+    """The JSON render: `GraphResidue` as it is, every group a mapping."""
+    from dataclasses import asdict  # noqa: PLC0415
+
+    return {"schema": _SCHEMA, **asdict(found)}
+
+
+def _residue_text(document: Mapping[str, Any]) -> list[str]:
+    kind = f" ({document['akind']})" if document["akind"] else ""
+    groups = document["unresolved"]
+    lines = [
+        f"residue{kind}: {document['unresolved_sites']} unresolved of {document['sites']} "
+        f"reference site(s), {document['quarantined']} quarantined row(s)"
+    ]
+    if groups:
+        lines.append("  unresolved")
+        lines.extend(
+            f"    {g['akind']}  {g['name_norm']}  {g['sites']} site(s) in {g['docs']} "
+            f"document(s)  {g['surface']!r}"
+            for g in groups
+        )
+        if document["truncated"]:
+            lines.append(f"    the first {len(groups)} groups; more names are unresolved")
+    else:
+        lines.append("  nothing unresolved")
+    if document["quarantine"]:
+        lines.append("  quarantined")
+        lines.extend(
+            f"    {g['code']}  {g['row_kind']}  {g['rows']} row(s) from {g['runs']} run(s), "
+            f"generations {g['first_gen']}-{g['last_gen']}"
+            for g in document["quarantine"]
+        )
+    else:
+        lines.append("  nothing quarantined")
+    return lines
+
+
+_VERBS: Final = {_WHY: _why, _MERGES: _merges, _MERGE: _merge, _SPLIT: _split, _RESIDUE: _residue}
+"""Each Action's handler; `graph.locate` is the default, as the first verb built."""
 
 
 def _qualified(value: str) -> tuple[str | None, str]:
