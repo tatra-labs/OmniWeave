@@ -647,7 +647,26 @@ symbol  = "OW_TARGET_CONSTRUCTS_INVALID"
 meaning = "a constructs.toml ConstructTable.load() refuses: an unknown key, a missing or forbidden key for the row's disposition, a normalize row not pointing at a native row, a normalizer the target does not ship, a duplicate id, a missing mandatory attribute, or unknown_construct other than forbidden"
 fix     = "ow out constructs <target>   # loads the table and names the row and the key"
 raised_by = "TargetError"
-sites   = ["09-generation.md:493", "09-generation.md:509"]
+sites   = ["09-generation.md:493", "09-generation.md:502"]
+
+# ── D742. Two rows the rule runner mints, appended under 09 section 15's "+" rule: order 0's parse
+# failure (the invalid band) and section 14.4's raising rule (contract meta).
+
+[[code]]
+numeric = "OW-T-010"
+symbol  = "OW_TARGET_RULE_RAISED"
+meaning = "a rule raised instead of returning findings; run_pack() records one framework error naming the rule and the exception type, the run goes on, and the gate is failed"
+fix     = "ow out check --target <target> --stage final --json   # names the rule; report it to its target"
+raised_by = "TargetError"
+sites   = ["09-generation.md:2682"]
+
+[[code]]
+numeric = "OW-T-400"
+symbol  = "OW_TARGET_IL_MALFORMED"
+meaning = "an IL file the carrier's parse refuses or had to recover: order 0, one error a problem at its position, and the unit's remaining rules are skipped"
+fix     = "ow out check --target <target> --stage unit --unit <id>   # after repairing the named line"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1166", "09-generation.md:2681"]
 
 [[code]]
 numeric = "OW-T-101"
