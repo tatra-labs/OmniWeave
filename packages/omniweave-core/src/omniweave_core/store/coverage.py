@@ -39,7 +39,7 @@ from omniweave_core.model.coverage import GraphPlan, LaneCoverage, LanePlan
 if TYPE_CHECKING:
     import sqlite3
 
-__all__ = ["BILLED_PASSES", "BilledPass", "graph_plan", "lane_coverage"]
+__all__ = ["BILLED_PASSES", "BilledPass", "cheaper_cover", "graph_plan", "lane_coverage"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +61,13 @@ BILLED_PASSES: Final = (
 """06:837-838, rows 11 and 12: the two billed Passes that write cover, at their projected Spend."""
 
 _PLACE: Final = "SELECT cost_rank, phase FROM derive_pass WHERE pass_id = ?"
+_SEGMENT_COVER: Final = """
+SELECT dc.cover_bits, dp.cost_rank, dp.phase
+  FROM derive_cover AS dc
+  JOIN derive_run AS dr ON dr.run_id = dc.run_id
+  JOIN derive_pass AS dp ON dp.pass_id = dr.pass_id
+ WHERE dc.segment_id = ? AND dc.lane = ?
+"""
 
 _SELECTOR: Final = """
 SELECT s.segment_id, s.n_blocks, dc.cover_bits, dp.cost_rank, dp.phase
@@ -106,6 +113,21 @@ def lane_coverage(
         billed=len(billed),
         mean_uncovered_billed=sum(1 - f for f in billed) / len(billed) if billed else None,
     )
+
+
+def cheaper_cover(
+    connection: sqlite3.Connection, segment_id: int, *, lane: str, before: tuple[int, int]
+) -> int:
+    """Ruling 1's `cheaper` for one Segment (D709): its lane's cover from Passes placed before.
+
+    The integer reading of the big-endian blob, so ord `k` is bit `511 - k` (06:776, D703). A cover
+    row whose Pass has no `derive_pass` row orders nowhere and is not counted (ruling 3).
+    """
+    cheaper = 0
+    for bits, rank, phase in connection.execute(_SEGMENT_COVER, (segment_id, lane)):
+        if (int(rank), int(phase)) < before:
+            cheaper |= int.from_bytes(bytes(bits), "big")
+    return cheaper
 
 
 def graph_plan(connection: sqlite3.Connection, *, floor: float) -> GraphPlan:

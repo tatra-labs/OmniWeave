@@ -1652,11 +1652,12 @@ class SqliteGraphSink:
     def _locate(self, row_kind: str, draft: object, at: Grounded) -> tuple[_Block, int, int] | None:
         """Turn a `Grounded` into `(block, ts_a, ts_b)`, or quarantine the reason it cannot be.
 
-        Three refusals, three codes, and the order is scope before existence before grounding: a
-        cite outside `allowed_cites` is `OW_GRAPH_OUT_OF_SCOPE_BLOCK` (GR9) whether or not the
-        block exists, because the containment answer must not depend on what else is in the store;
-        a cite in scope naming no live row is `OW_GRAPH_DANGLING_CITE`; and a quote the block's own
-        text cannot witness is `OW_GRAPH_UNGROUNDED`.
+        Four refusals, four codes, and the order is scope before existence before cover before
+        grounding: a cite outside `allowed_cites` is `OW_GRAPH_OUT_OF_SCOPE_BLOCK` (GR9) whether or
+        not the block exists, because the containment answer must not depend on what else is in
+        the store; a cite in scope naming no live row is `OW_GRAPH_DANGLING_CITE`; a billed run's
+        cite on ground a cheaper Pass covered is `OW_GRAPH_COVERED_GROUND` (D709, 06:788-797);
+        and a quote the block's own text cannot witness is `OW_GRAPH_UNGROUNDED`.
         """
         cite, where = at
         if cite not in self._allowed:
@@ -1665,6 +1666,9 @@ class SqliteGraphSink:
         block = self._block(cite)
         if block is None:
             self._reject(row_kind, OW_GRAPH_DANGLING_CITE, draft, {"cite": str(cite)})
+            return None
+        if self._covered_ground(cite):
+            self._reject(row_kind, OW_GRAPH_COVERED_GROUND, draft, {"cite": str(cite)})
             return None
         if isinstance(where, TextSpan):
             return self._bounded(row_kind, draft, cite, block, where)
@@ -2058,6 +2062,19 @@ class SqliteGraphSink:
                 )
         self._blocks[key] = found
         return found
+
+    def _covered_ground(self, cite: Cite) -> bool:
+        """Whether `cite` is ground a cheaper Pass covered, for a billed run (D709, 06:788-797).
+
+        A free run's `SegmentRef.uncovered` is `None`, and nothing is covered for it. A billed run's
+        is the members' bits less the cheaper cover, big-endian (06:776, D703): a member whose bit
+        is clear there was covered before this Pass was handed the Segment.
+        """
+        uncovered = self._segment().uncovered
+        if uncovered is None:
+            return False
+        ordinal = self._cover_ord(cite)
+        return not uncovered[ordinal // 8] & (0x80 >> (ordinal % 8))
 
     def _cover_ord(self, cite: Cite) -> int:
         """The `segment_block.ord` a cite occupies -- *"IS the cover_bits bit index"* (06:112)."""
