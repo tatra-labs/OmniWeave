@@ -96,7 +96,7 @@ Action it was meant to protect. D291 is the entry, and `_unrostered_human_only()
 without failing, because failing would make the four-row cell unimportable for a roster gap that is
 schedule rather than defect.
 
-`_unrostered_full()` is the same shape over `FULL_ROSTER` and reports thirteen; `_duplicate_cli()`
+`_unrostered_full()` is the same shape over `FULL_ROSTER` and reports twelve; `_duplicate_cli()`
 is the shape check 9 does not have, and it already names a real pair. `_roster_failures()` is the
 one of the three that RAISES, because its four clauses are all about declarations this file
 carries -- a roster and a row that disagree is a defect in shipped source, which is the line
@@ -112,6 +112,7 @@ from typing import TYPE_CHECKING, Final, Literal, get_args
 from omniweave_core.answer import Answer
 from omniweave_core.errors import SurfaceError, UsageError
 from omniweave_core.model import Grid
+from omniweave_core.model.locus import Located
 from omniweave_core.model.rebind import RebindReport
 from omniweave_core.retrieve.verdict import Coverage
 from omniweave_ports import CostClass
@@ -137,6 +138,7 @@ from omniweave.surface.inputs import (
     GridIn,
     HooksCheckIn,
     InstallIn,
+    LocateIn,
     OpenIn,
     QueryIn,
     ServeIn,
@@ -757,10 +759,11 @@ the eighteen `ActionSpec`s exist, not typed by hand"*. So this tuple is what tel
 its day has come: `len(FULL_ROSTER) == len(listed("full")) - len(listed("default"))` is the
 condition, and `_unrostered_full()` is the distance from it.
 
-**Five have rows today and thirteen do not**, and the reason is never that the Action is unclear. It
+**Six have rows today and twelve do not**, and the reason is never that the Action is unclear. It
 is that `ActionSpec.out` is a `type` -- an OBJECT, evaluated at import -- so a row cannot be written
-before something in this process can name what it returns. Seven of the thirteen wait on P8's L3
-types and two on P9's OUT framework (16:190-191), both of which exit after v0.1 ships at week 42;
+before something in this process can name what it returns. Seven of the thirteen once waited on
+P8's L3 types, and `graph.locate` landed with its `Located` (D694); six still do, as
+do two on P9's OUT framework (16:190-191), both of which exit after v0.1 ships at week 42;
 three -- `ow_verify`, `ow_fields` and `ow_cost` -- wait on a shape no module defines, and one of
 those three is `QuoteVerdict` (03:1706), which `omniweave_core/model/doc.py` already
 forward-references twice under `noqa: F821`. The thirteenth, `route.explain`, waits on nothing but
@@ -958,7 +961,7 @@ def _cli_roster_failures(actions: Mapping[str, ActionSpec]) -> tuple[str, ...]:
 def _unrostered_cli(actions: Mapping[str, ActionSpec]) -> tuple[tuple[str, ...], ...]:
     """Every `CLI_ROSTER` spelling with no `ActionSpec` row, sorted. The distance to the registry.
 
-    `_unrostered_full()` counts thirteen and `_unrostered_human_only()` counts five; this one
+    `_unrostered_full()` counts twelve and `_unrostered_human_only()` counts five; this one
     counts what is left of 10:857's *"roughly 110 further Actions"* after the rows that have
     landed, and it is the number that says how far P7 W7.1 still has to run. It reports rather than
     raises for the same reason both of those do, and for one more: 10:857's roster is blocked on
@@ -1101,7 +1104,7 @@ def _unrostered_full(actions: Mapping[str, ActionSpec]) -> tuple[str, ...]:
     The companion to `_unrostered_human_only()` and reported on the same terms: a missing row here
     is schedule, not defect, and raising would make the registry unimportable for an Action whose
     output type ships two phases from now. A test asserts this function's exact answer, so the day
-    the thirteenth lands the assertion becomes `()` in one place and `ow surface budget --bless`
+    the last lands the assertion becomes `()` in one place and `ow surface budget --bless`
     (10:833) has its condition.
 
     Order is `FULL_ROSTER`'s rather than sorted, because the thing a reader wants from this tuple is
@@ -1273,6 +1276,26 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=Grid,
             advanced=frozenset(),
             cli=("doc", "grid"),
+        ),
+        ActionSpec(
+            name="graph.locate",
+            mcp_name="ow_locate",
+            listed_in=_FULL_ONLY,
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Find where on the page an entity, claim, edge or mention was witnessed: one "
+                "location per witness, with its page, its span and its polygon or the reason none"
+            ),
+            decision="an answer cited an entity or a claim and you need the page",
+            example={"entity": "e412", "corpus": "handbook"},
+            inp=LocateIn,
+            out=Located,
+            advanced=frozenset({"edge", "mention"}),
+            cli=("graph", "locate"),
         ),
         ActionSpec(
             name="corpus.coverage",

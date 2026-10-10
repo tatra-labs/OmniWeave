@@ -193,7 +193,9 @@ def test_omitted_is_unpublished_narrowed_to_a_profile() -> None:
     for profile in PROFILES:
         assert set(omitted(profile)) <= set(unpublished())
     assert omitted(DEFAULT_PROFILE) == (), "the default profile must render whole"
-    assert omitted("full") == ("ow_coverage", "ow_diff", "ow_doctor", "ow_explain", "ow_grid")
+    assert omitted("full") == (
+        "ow_coverage", "ow_diff", "ow_doctor", "ow_explain", "ow_grid", "ow_locate",
+    )  # fmt: skip
 
 
 def test_no_listed_action_declares_corpus_advanced() -> None:

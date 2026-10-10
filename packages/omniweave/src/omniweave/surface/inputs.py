@@ -91,6 +91,7 @@ __all__ = [
     "GridIn",
     "HooksCheckIn",
     "InstallIn",
+    "LocateIn",
     "OpenIn",
     "QueryIn",
     "ServeIn",
@@ -289,6 +290,26 @@ class DiffIn:
     corpus: str | None = None
     from_gen: int | None = None
     to_gen: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class LocateIn:
+    """`ow_locate` / `ow graph locate`. 10:811, 06:2521.
+
+    06:2521 prints the verb as `ow graph locate --edge/--mention/--claim/--entity <id>`, and
+    those are the four fields: exactly one is given, and a second is a usage error naming both.
+    An entity and a claim carry cites an answer prints (`e412`, `k9001`, 10:2547), so those two
+    take a cite or its number; an edge and a mention have no cite, and an agent meets their ids
+    only through a graph read, so those two take the number. There is no `ref`: a block cite says
+    where, not what was asserted there, and `ow graph why --cite` is the verb for that direction
+    (06:2120).
+    """
+
+    entity: str | None = None
+    claim: str | None = None
+    edge: int | None = None
+    mention: int | None = None
+    corpus: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

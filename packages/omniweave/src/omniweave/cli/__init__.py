@@ -107,6 +107,7 @@ GLOBAL_FLAGS: Final[tuple[Argument, ...]] = (
 
 GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
+    "graph": "locate",
     "hooks": "check",
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
@@ -248,6 +249,34 @@ COMMANDS: Final[tuple[Command, ...]] = (
             Argument(
                 spelling=("code",),
                 metavar="CODE",
+            ),
+        ),
+    ),
+    Command(
+        words=("graph", "locate"),
+        actions=("graph.locate",),
+        help=(
+            "Find where on the page an entity, claim, edge or mention was witnessed: one "
+            "location per witness, with its page, its span and its polygon or the reason none"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--entity",),
+                metavar="ENTITY",
+            ),
+            Argument(
+                spelling=("--claim",),
+                metavar="CLAIM",
+            ),
+            Argument(
+                spelling=("--edge",),
+                kind="int",
+                metavar="EDGE",
+            ),
+            Argument(
+                spelling=("--mention",),
+                kind="int",
+                metavar="MENTION",
             ),
         ),
     ),
