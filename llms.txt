@@ -266,6 +266,8 @@ cli.graph.review: ow graph review [--over-merge]
 cli.graph.review.actions: graph.review
 cli.graph.split: ow graph split ENTITY [--into INTO] [--reason REASON]
 cli.graph.split.actions: graph.split
+cli.graph.types: ow graph types [--promote PROMOTE] [--reason REASON] [--propose]
+cli.graph.types.actions: graph.types
 cli.graph.why: ow graph why [--cite CITE]
 cli.graph.why.actions: graph.why
 cli.hooks.check: ow hooks check

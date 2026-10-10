@@ -113,6 +113,7 @@ from omniweave_core.answer import Answer
 from omniweave_core.errors import SurfaceError, UsageError
 from omniweave_core.model import Grid
 from omniweave_core.model.coverage import GraphPlan
+from omniweave_core.model.etypes import TypeVocab
 from omniweave_core.model.locus import Located
 from omniweave_core.model.merges import Decided, MergeLog
 from omniweave_core.model.observed import Observed
@@ -163,6 +164,7 @@ from omniweave.surface.inputs import (
     SkillsVerifyIn,
     SplitIn,
     SurfaceEmitIn,
+    TypesIn,
     UninstallIn,
     WhyIn,
 )
@@ -1500,6 +1502,29 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=GraphPlan,
             advanced=frozenset(),
             cli=("graph", "plan"),
+        ),
+        #  06:1667-1668, an operator's promotion of a proposed entity type. A writer, and not
+        #  `destructive`: it changes `source` and records why, and nothing is removed. No
+        #  `mcp_name`, as 10:807 names none (D706).
+        ActionSpec(
+            name="graph.types",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "List the entity-type vocabulary with each type's live entities, or promote "
+                "proposed types into it, with a reason"
+            ),
+            decision="a tuning run proposed entity types and you have decided which to keep",
+            example={"promote": "defined_term,covenant", "reason": "the credit agreements"},
+            inp=TypesIn,
+            out=TypeVocab,
+            advanced=frozenset(),
+            cli=("graph", "types"),
         ),
         ActionSpec(
             name="corpus.coverage",

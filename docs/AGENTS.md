@@ -59,6 +59,7 @@ key can grant one.
 | `graph.residue` | — | `ow graph residue` | — | `free` | Show what the graph could not place: unresolved references grouped by kind and name, and quarantined rows grouped by code and kind |
 | `graph.review` | — | `ow graph review` | — | `free` | Show what the graph holds below extracted, weakest first: fuzzy-merged closures, tainted and overloaded entities, and the mentions and edges to check |
 | `graph.split` | — | `ow graph split` | — | `free` | Record that one entity is two or more, named by the blocks each is witnessed in, with a reason, and settle the graph again as an ingest would |
+| `graph.types` | — | `ow graph types` | — | `free` | List the entity-type vocabulary with each type's live entities, or promote proposed types into it, with a reason |
 | `graph.why` | — | `ow graph why` | — | `free` | List every entity, edge and claim the graph says one block asserts, each with its span in the block's text |
 | `hooks.check` | `ow_hooks_check` | `ow hooks check` | — | `free` | Run each installed hook command as its host would, with a probe payload in a scratch project, and say which failed and why |
 | `install` | — | `ow install` | — | `free` | Wire agent hosts to omniweave: the MCP entry, one permission wildcard, the instruction block, hooks and the core skill, each recorded in a receipt |

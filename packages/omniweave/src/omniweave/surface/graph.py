@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, TextIO, cast
+from typing import TYPE_CHECKING, Any, Final, TextIO, TypeVar, cast
 
 from omniweave_core.config import load
 from omniweave_core.errors import OwError, PolicyRefusal, UsageError
@@ -53,6 +53,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
 
     from omniweave_core.model.coverage import GraphPlan
+    from omniweave_core.model.etypes import TypeVocab
     from omniweave_core.model.locus import Located, Locus
     from omniweave_core.model.merges import Decided, MergeLog
     from omniweave_core.model.observed import Observed
@@ -72,11 +73,13 @@ __all__ = [
     "plan_document",
     "residue_document",
     "review_document",
+    "types_document",
 ]
 
 GRAPH_WORD: Final[str] = "graph"
 
 _SCHEMA: Final[int] = 1
+_T = TypeVar("_T")
 _SELECTORS: Final[tuple[str, ...]] = ("entity", "claim", "edge", "mention")
 _FIX: Final[str] = "ow graph locate --entity e412"
 _WHY_FIX: Final[str] = "ow graph why --cite d7#412"
@@ -92,6 +95,8 @@ _RESIDUE_FIX: Final[str] = "ow graph residue --akind identifier"
 _REVIEW: Final[str] = "graph.review"
 _DOCTOR: Final[str] = "graph.doctor"
 _PLAN: Final[str] = "graph.plan"
+_TYPES: Final[str] = "graph.types"
+_TYPES_FIX: Final[str] = "ow graph types --promote defined_term,covenant --reason 'why'"
 _DOCTOR_FIX: Final[str] = "ow graph doctor --check dangling_tmp,trust_clamped,ungrounded"
 
 
@@ -399,8 +404,10 @@ def _merge(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, std
     name = corpus_for(config, [], next(iter(named), None), verb="ow graph merge")
     store = store_of(config, name, cwd=cwd)
     reason = str(parsed.reason)
-    decided = _decide(
-        store, _MERGE, lambda decide, c: decide.merge(c, first=first, second=second, reason=reason)
+    from omniweave.graph import decide  # noqa: PLC0415 -- a usage error never pays
+
+    decided = _write(
+        store, _MERGE, lambda c: decide.merge(c, first=first, second=second, reason=reason)
     )
     return _decided(decided, parsed, config=config, corpus=name, stdout=stdout)
 
@@ -427,8 +434,10 @@ def _split(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, std
     name = corpus_for(config, refs, prefix or parsed.corpus, verb="ow graph split")
     store = store_of(config, name, cwd=cwd)
     reason = str(parsed.reason)
-    decided = _decide(
-        store, _SPLIT, lambda decide, c: decide.split(c, entity=entity, into=refs, reason=reason)
+    from omniweave.graph import decide  # noqa: PLC0415 -- a usage error never pays
+
+    decided = _write(
+        store, _SPLIT, lambda c: decide.split(c, entity=entity, into=refs, reason=reason)
     )
     return _decided(decided, parsed, config=config, corpus=name, stdout=stdout)
 
@@ -444,25 +453,18 @@ def _decided(
     return 0
 
 
-def _decide(store: Path, name: str, decision: Callable[[Any, Any], Decided]) -> Decided:
-    """One unit under the store's write lock: the rows, then the graph settled, or neither."""
+def _write(store: Path, name: str, run: Callable[[Any], _T]) -> _T:
+    """One unit under the store's write lock: every row the verb writes, or none of them."""
     from omniweave_core.clock import SystemClock  # noqa: PLC0415 -- a usage error never pays
     from omniweave_core.errors import NotFoundError  # noqa: PLC0415
     from omniweave_core.locks import store_write_lock  # noqa: PLC0415
     from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
 
-    from omniweave.graph import decide  # noqa: PLC0415
-
     if not store.exists():
         raise NotFoundError(f"no store at {store}", fix="ow add <source> first")
     lock = store_write_lock(store, now_ns=SystemClock().wall_ns)
     with store_sqlite.StoreThread(lambda: store_sqlite.connect(store), lock=lock) as thread:
-        return cast(
-            "Decided",
-            thread.run(
-                store_sqlite.Unit(name=name, run=lambda c: decision(decide, c), cost_class="free")
-            ),
-        )
+        return cast("_T", thread.run(store_sqlite.Unit(name=name, run=run, cost_class="free")))
 
 
 def decided_document(decided: Decided, *, corpus: str, qualify: bool) -> dict[str, Any]:
@@ -850,6 +852,97 @@ def _plan_text(document: Mapping[str, Any]) -> list[str]:
     return lines
 
 
+def _types(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, stdout: TextIO) -> int:
+    """`ow graph types`: the vocabulary, or a promotion under the store's write lock."""
+    _refuse_unserved(parsed, verb="ow graph types", fix=_TYPES_FIX)
+    if parsed.propose:
+        raise UsageError(
+            "--propose is parsed and not served yet: it makes one billed call per sampled Segment "
+            "under derive.entity.llm (06:1661), which W8.8 builds",
+            fix="ow graph types   # the vocabulary as it stands",
+        )
+    names = None
+    if parsed.promote is not None:
+        names = [one.strip() for one in str(parsed.promote).split(",") if one.strip()]
+        if not names:
+            raise UsageError("--promote names no type", fix=_TYPES_FIX)
+        if parsed.reason is None or not str(parsed.reason).strip():
+            raise UsageError(
+                "ow graph types --promote needs --reason, the grounds for it", fix=_TYPES_FIX
+            )
+    elif parsed.reason is not None:
+        raise UsageError("--reason goes with --promote", fix=_TYPES_FIX)
+    explicit = Path(parsed.config) if parsed.config else None
+    config = load(cwd=cwd, env=env, explicit=explicit)
+    name = corpus_for(config, [], parsed.corpus, verb="ow graph types")
+    store = store_of(config, name, cwd=cwd)
+    if names is None:
+        found = _vocab(store)
+    else:
+        from omniweave_core.store.etypes import promote  # noqa: PLC0415
+
+        reason = str(parsed.reason)
+        found = _write(store, _TYPES, lambda c: promote(c, etypes=names, reason=reason))
+    document = types_document(found)
+    if parsed.render == "json":
+        stdout.write(json.dumps(document, ensure_ascii=False) + "\n")
+    else:
+        stdout.write("\n".join(_types_text(document)) + "\n")
+    return 0
+
+
+def _vocab(store: Path) -> TypeVocab:
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415 -- a usage error never pays
+    from omniweave_core.errors import NotFoundError  # noqa: PLC0415
+    from omniweave_core.store import reader as store_reader  # noqa: PLC0415
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+    from omniweave_core.store.etypes import type_vocab  # noqa: PLC0415
+
+    if not store.exists():
+        raise NotFoundError(f"no store at {store}", fix="ow add <source> first")
+    connection = store_sqlite.connect_readonly(store)
+    try:
+        reader = store_reader.SqliteReader(connection, now_ns=SystemClock().wall_ns())
+        with reader.snapshot():
+            return type_vocab(connection)
+    finally:
+        connection.close()
+
+
+def types_document(found: TypeVocab) -> dict[str, Any]:
+    """The JSON render: `TypeVocab` as it is."""
+    from dataclasses import asdict  # noqa: PLC0415
+
+    return {"schema": _SCHEMA, **asdict(found)}
+
+
+def _types_text(document: Mapping[str, Any]) -> list[str]:
+    rows = document["etypes"]
+    counts = {s: sum(1 for r in rows if r["source"] == s) for s in ("builtin", "user", "proposed")}
+    lines = [
+        f"types: {counts['builtin']} builtin, {counts['user']} user, {counts['proposed']} proposed"
+    ]
+    for r in rows:
+        line = (
+            f"  {r['etype']}  {r['scope']}  {r['resolution']}  {r['source']}  "
+            f"{r['entities']} entities"
+        )
+        if r["promoted"]:
+            line += f"  promoted at generation {r['promoted']['gen']}: {r['promoted']['reason']}"
+        lines.append(line)
+    proposed = [r["etype"] for r in rows if r["source"] == "proposed"]
+    if proposed:
+        lines.append(
+            f"  to keep them: ow graph types --promote {','.join(proposed)} --reason '<why>'"
+        )
+    if document["promoted"]:
+        lines.append(
+            f"promoted {', '.join(document['promoted'])}: the vocabulary a billed prompt renders "
+            "from changed (06:1680); ow graph plan prints what that would re-bill"
+        )
+    return lines
+
+
 _VERBS: Final = {
     _WHY: _why,
     _MERGES: _merges,
@@ -859,6 +952,7 @@ _VERBS: Final = {
     _REVIEW: _review,
     _DOCTOR: _doctor,
     _PLAN: _plan,
+    _TYPES: _types,
 }
 """Each Action's handler; `graph.locate` is the default, as the first verb built."""
 

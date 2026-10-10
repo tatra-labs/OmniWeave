@@ -28,6 +28,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     graph.residue     ResidueIn           GraphResidue
     graph.review      ReviewIn            Review
     graph.split       SplitIn             Decided
+    graph.types       TypesIn             TypeVocab
     graph.why         WhyIn               Observed
     hooks.check       HooksCheckIn        HooksCheckReport
     install           InstallIn           InstallReport
