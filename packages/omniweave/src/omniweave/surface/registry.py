@@ -117,6 +117,7 @@ from omniweave_core.model.merges import Decided, MergeLog
 from omniweave_core.model.observed import Observed
 from omniweave_core.model.rebind import RebindReport
 from omniweave_core.model.residue import GraphResidue
+from omniweave_core.model.review import Review
 from omniweave_core.retrieve.verdict import Coverage
 from omniweave_ports import CostClass
 
@@ -147,6 +148,7 @@ from omniweave.surface.inputs import (
     OpenIn,
     QueryIn,
     ResidueIn,
+    ReviewIn,
     ServeIn,
     SkillsCheckIn,
     SkillsHashIn,
@@ -1428,6 +1430,28 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=GraphResidue,
             advanced=frozenset(),
             cli=("graph", "residue"),
+        ),
+        #  06:2520, the review surface 06:85-87 makes of the three `*_review` partial indexes.
+        #  Read-only, and no `mcp_name`, as 10:807 names none (D700).
+        ActionSpec(
+            name="graph.review",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Show what the graph holds below extracted, weakest first: fuzzy-merged closures, "
+                "tainted and overloaded entities, and the mentions and edges to check"
+            ),
+            decision="you are about to trust the graph and want to see its weakest rows first",
+            example={"corpus": "handbook"},
+            inp=ReviewIn,
+            out=Review,
+            advanced=frozenset(),
+            cli=("graph", "review"),
         ),
         ActionSpec(
             name="corpus.coverage",

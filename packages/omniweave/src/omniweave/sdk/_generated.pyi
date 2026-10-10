@@ -24,6 +24,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     graph.merge       MergeIn             Decided
     graph.merges      MergesIn            MergeLog
     graph.residue     ResidueIn           GraphResidue
+    graph.review      ReviewIn            Review
     graph.split       SplitIn             Decided
     graph.why         WhyIn               Observed
     hooks.check       HooksCheckIn        HooksCheckReport
