@@ -107,7 +107,7 @@ GLOBAL_FLAGS: Final[tuple[Argument, ...]] = (
 
 GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
-    "graph": "locate · merge · merges · split · why",
+    "graph": "locate · merge · merges · residue · split · why",
     "hooks": "check",
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
@@ -313,6 +313,20 @@ COMMANDS: Final[tuple[Command, ...]] = (
             Argument(
                 spelling=("--entity",),
                 metavar="ENTITY",
+            ),
+        ),
+    ),
+    Command(
+        words=("graph", "residue"),
+        actions=("graph.residue",),
+        help=(
+            "Show what the graph could not place: unresolved references grouped by kind and "
+            "name, and quarantined rows grouped by code and kind"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--akind",),
+                metavar="AKIND",
             ),
         ),
     ),

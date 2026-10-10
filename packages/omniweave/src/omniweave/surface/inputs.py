@@ -96,6 +96,7 @@ __all__ = [
     "MergesIn",
     "OpenIn",
     "QueryIn",
+    "ResidueIn",
     "ServeIn",
     "SkillsCheckIn",
     "SkillsHashIn",
@@ -356,6 +357,18 @@ class MergeIn:
     first: str
     second: str
     reason: str | None = None
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ResidueIn:
+    """`ow graph residue [--akind <k>]`. 06:2521.
+
+    `akind` narrows both halves to one `AnchorKind` (`store.graph_residue` ruling 4); a kind outside
+    the fourteen is a usage error naming them.
+    """
+
+    akind: str | None = None
     corpus: str | None = None
 
 
