@@ -325,7 +325,7 @@ class DeriveOperator:
     def __call__(self, batch: Batch, /) -> Sequence[StepResult]:
         driver = batch.driver
         billed = _BILLED.get(driver or "")
-        if driver is None or (driver not in FREE_PASSES and billed is None):
+        if driver is None or (driver not in FREE_PASSES and billed is None and driver != MERGE_LLM):
             raise RouteError(
                 f"invoke {batch.invoke_id} names {driver!r}, which is no shipped Pass",
                 fix="ow ingest again: the row is re-enqueued when its document is segmented again",
@@ -338,29 +338,12 @@ class DeriveOperator:
             )
         card = granted.card
         producer = _producer(operator_of(driver), card, granted.config_digest)
-        results: list[StepResult | None] = [None] * batch.size
-        staged: list[tuple[int, tuple[ItemView, ...], UnitRef, str]] = []
-        read = self._lexicon() if driver in LEXICON_READERS else None
-        for index, row in enumerate(batch.rows):
-            views = self._views(row.unit_uri) if billed is None else self._billed_view(row, billed)
-            if not views:
-                results[index] = self._failed(
-                    driver, row, _unit_of(row), producer, failure=FailureClass.EMPTY_RESULT,
-                    message="the unit's document has no live Segment" if billed is None else
-                    f"no live Segment is {row.unit_part}: its document was segmented again",
-                )  # fmt: skip
-                continue
-            from omniweave_core.blobs import format_ref  # noqa: PLC0415
+        if driver == MERGE_LLM:  # D729: the LLM band's row, run batch by batch
+            from omniweave.run.operators.band import BandRun  # noqa: PLC0415 -- a cycle
 
-            body = document_body(views)
-            if read is not None:  # D683: the view opens with the lexicon this row reads
-                body = lexicon.frame(read) + body
-            digest = self._parse._cas.put(io.BytesIO(body))
-            unit = UnitRef(
-                uri=row.unit_uri, part=row.unit_part, content_sha256=digest.hex(),
-                byte_len=len(body),
-            )  # fmt: skip
-            staged.append((index, views, unit, format_ref(digest)))
+            return BandRun(self)(batch, granted=granted, card=card, producer=producer)
+        results: list[StepResult | None] = [None] * batch.size
+        staged, read = self._stage(batch, billed, producer, results)
         grants, refused = self._grants(card) if staged else ((), "")
         if refused:  # D713: a Service that will not attach fails the rows, never the drain
             for index, _views, unit, _ref in staged:
@@ -406,6 +389,40 @@ class DeriveOperator:
                 self._remember(batch, staged, reply, keys, card=card, granted=granted,
                                results=results)  # fmt: skip
         return [cast("StepResult", one) for one in results]
+
+    def _stage(
+        self,
+        batch: Batch,
+        billed: BilledPass | None,
+        producer: Producer,
+        results: list[StepResult | None],
+    ) -> tuple[list[tuple[int, tuple[ItemView, ...], UnitRef, str]], str | None]:
+        """Each row's view, put in the CAS as the unit its driver reads, and the lexicon a
+        reader's view opens with (D683). A row with no view fails into `results`."""
+        driver = str(batch.driver)
+        staged: list[tuple[int, tuple[ItemView, ...], UnitRef, str]] = []
+        read = self._lexicon() if driver in LEXICON_READERS else None
+        for index, row in enumerate(batch.rows):
+            views = self._views(row.unit_uri) if billed is None else self._billed_view(row, billed)
+            if not views:
+                results[index] = self._failed(
+                    driver, row, _unit_of(row), producer, failure=FailureClass.EMPTY_RESULT,
+                    message="the unit's document has no live Segment" if billed is None else
+                    f"no live Segment is {row.unit_part}: its document was segmented again",
+                )  # fmt: skip
+                continue
+            from omniweave_core.blobs import format_ref  # noqa: PLC0415
+
+            body = document_body(views)
+            if read is not None:  # D683: the view opens with the lexicon this row reads
+                body = lexicon.frame(read) + body
+            digest = self._parse._cas.put(io.BytesIO(body))
+            unit = UnitRef(
+                uri=row.unit_uri, part=row.unit_part, content_sha256=digest.hex(),
+                byte_len=len(body),
+            )  # fmt: skip
+            staged.append((index, views, unit, format_ref(digest)))
+        return staged, read
 
     def _replay(
         self,

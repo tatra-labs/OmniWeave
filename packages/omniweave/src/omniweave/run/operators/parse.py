@@ -392,6 +392,27 @@ class DeriveCount:
 
 
 @dataclass(slots=True)
+class BandCount:
+    """The LLM band's rows this run (D729): what was asked, what the cache answered, what merged."""
+
+    rows: int = 0
+    calls: int = 0
+    asked: int = 0
+    """Pairs sent to the model."""
+    cached: int = 0
+    """Pairs answered from the call cache."""
+    merged: int = 0
+    quarantined: int = 0
+
+    def line(self) -> str:
+        return (
+            f"  band      derive.merge.llm: {self.rows} row(s), {self.calls} call(s) for "
+            f"{self.asked} pair(s), {self.cached} from the call cache, {self.merged} merged, "
+            f"{self.quarantined} held"
+        )
+
+
+@dataclass(slots=True)
 class ParseTally:
     """What the parse hops did, for `IngestReport`. Counts only; the rows are the record."""
 
@@ -423,6 +444,8 @@ class ParseTally:
     """`"<pass> <failure_class>"` -> rows."""
     derive_skipped: str = ""
     """Why a free Pass enqueued nothing this run, when one could not: `resolve()`'s rejections."""
+    band: BandCount = field(default_factory=BandCount)
+    """The LLM band's rows (D729)."""
 
     def emit(self, *, kind: object, fields: Mapping[str, object]) -> None:
         """`with_events`' sink. No trace sink is wired into `ow ingest` yet, so the `call.begin`
@@ -459,6 +482,8 @@ class ParseTally:
             out.append(f"  derive    {sum(self.derive_failed.values())} failed ({classes})")
         if self.derive_skipped and self.segmented:
             out.append(f"  derive    not enqueued: {self.derive_skipped}")
+        if self.band.rows:
+            out.append(self.band.line())
         return out
 
     def _parse_lines(self) -> list[str]:
