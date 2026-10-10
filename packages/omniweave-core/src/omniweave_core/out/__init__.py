@@ -6,8 +6,10 @@ D737 builds the diagnostic and the gate: `finding` (`Severity`, `Provenance`, `F
 `OutReport`, the one render). D738 builds `carrier`: the two stdlib carriers, `svg_carrier()` and
 `html_carrier()`, the types a rule is written against, the selector grammar and the splice.
 D739 builds `constructs`: `ConstructTable.load()`, the contract as data, asserted as it loads.
+D740 builds `brief`: the locked `Brief` and `parse_brief()`.
 """
 
+from omniweave_core.out.brief import Brief, Prohibition, baseline_rows, parse_brief
 from omniweave_core.out.carrier import (
     CarrierDoc,
     CarrierNode,
@@ -25,6 +27,7 @@ from omniweave_core.out.job import ILFile
 from omniweave_core.out.report import OutReport, SkippedCheck, il_digest, render
 
 __all__ = [
+    "Brief",
     "CarrierDoc",
     "CarrierNode",
     "CarrierParseError",
@@ -37,15 +40,18 @@ __all__ = [
     "ILFile",
     "OutReport",
     "ParseError",
+    "Prohibition",
     "Provenance",
     "RoundTrip",
     "Severity",
     "SkippedCheck",
     "Splice",
     "Truncation",
+    "baseline_rows",
     "gate_status",
     "html_carrier",
     "il_digest",
+    "parse_brief",
     "parse_selector",
     "render",
     "svg_carrier",
