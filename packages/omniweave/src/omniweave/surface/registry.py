@@ -113,7 +113,7 @@ from omniweave_core.answer import Answer
 from omniweave_core.errors import SurfaceError, UsageError
 from omniweave_core.model import Grid
 from omniweave_core.model.locus import Located
-from omniweave_core.model.merges import MergeLog
+from omniweave_core.model.merges import Decided, MergeLog
 from omniweave_core.model.observed import Observed
 from omniweave_core.model.rebind import RebindReport
 from omniweave_core.retrieve.verdict import Coverage
@@ -141,6 +141,7 @@ from omniweave.surface.inputs import (
     HooksCheckIn,
     InstallIn,
     LocateIn,
+    MergeIn,
     MergesIn,
     OpenIn,
     QueryIn,
@@ -1345,6 +1346,35 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=MergeLog,
             advanced=frozenset(),
             cli=("graph", "merges"),
+        ),
+        #  06:1893, a user's resolution decision. A writer, and not `destructive`: it appends one
+        #  row and retires at most an opposing user row, and a split undoes it (D697). No
+        #  `mcp_name`: 10:807 names none, and a write an agent can make unasked is 10:53's
+        #  question, not this cell's.
+        ActionSpec(
+            name="graph.merge",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Record that two entities are one, with a reason, and settle the graph again: the "
+                "closure, the communities and the salience, as an ingest would"
+            ),
+            decision="resolution left one party as two, and you know they are one",
+            example={
+                "first": "e412",
+                "second": "e997",
+                "reason": "same party",
+                "corpus": "handbook",
+            },
+            inp=MergeIn,
+            out=Decided,
+            advanced=frozenset(),
+            cli=("graph", "merge"),
         ),
         ActionSpec(
             name="corpus.coverage",

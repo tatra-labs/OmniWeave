@@ -21,6 +21,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     doctor            DoctorIn            DoctorReport
     explain           ExplainIn           CodeRow
     graph.locate      LocateIn            Located
+    graph.merge       MergeIn             Decided
     graph.merges      MergesIn            MergeLog
     graph.why         WhyIn               Observed
     hooks.check       HooksCheckIn        HooksCheckReport

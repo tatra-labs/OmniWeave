@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-__all__ = ["Decision", "MergeClosure", "MergeLog"]
+__all__ = ["Decided", "Decision", "MergeClosure", "MergeLog"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,3 +50,19 @@ class MergeLog:
     entity: str | None
     """The cite asked about, or `None` for the whole log."""
     closures: tuple[MergeClosure, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class Decided:
+    """`graph.merge`'s and `graph.split`'s answer: what the decision wrote and the log after it."""
+
+    polarity: int
+    """`1` for a merge, `-1` for a split."""
+    written: int
+    """User rows this decision appended: none when the same live decision already stood."""
+    retired: int
+    """Opposing user rows it retired: a merge retires the split between the two, and back."""
+    joined: bool
+    """Whether the closure now holds both, for a merge, or neither holds the other, for a split.
+    False when another user decision keeps the graph from following."""
+    log: MergeLog

@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, TextIO
+from typing import TYPE_CHECKING, Any, Final, TextIO, cast
 
 from omniweave_core.config import load
 from omniweave_core.errors import OwError, PolicyRefusal, UsageError
@@ -53,10 +53,17 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from omniweave_core.model.locus import Located, Locus
-    from omniweave_core.model.merges import MergeLog
+    from omniweave_core.model.merges import Decided, MergeLog
     from omniweave_core.model.observed import Observed
 
-__all__ = ["GRAPH_WORD", "located_document", "main", "merges_document", "observed_document"]
+__all__ = [
+    "GRAPH_WORD",
+    "decided_document",
+    "located_document",
+    "main",
+    "merges_document",
+    "observed_document",
+]
 
 GRAPH_WORD: Final[str] = "graph"
 
@@ -67,6 +74,8 @@ _WHY_FIX: Final[str] = "ow graph why --cite d7#412"
 _WHY: Final[str] = "graph.why"
 _MERGES: Final[str] = "graph.merges"
 _MERGES_FIX: Final[str] = "ow graph merges --entity e412"
+_MERGE: Final[str] = "graph.merge"
+_MERGE_FIX: Final[str] = 'ow graph merge e412 e997 --reason "why they are one"'
 
 
 def main(
@@ -87,6 +96,8 @@ def main(
             return _why(parsed, env=env, cwd=cwd, stdout=stdout)
         if parsed.ow_action == _MERGES:
             return _merges(parsed, env=env, cwd=cwd, stdout=stdout)
+        if parsed.ow_action == _MERGE:
+            return _merge(parsed, env=env, cwd=cwd, stdout=stdout)
         return _locate(parsed, env=env, cwd=cwd, stdout=stdout)
     except OwError as error:
         return report(error, parsed, stdout=stdout, stderr=stderr)
@@ -354,6 +365,82 @@ def _merges_text(document: Mapping[str, Any]) -> list[str]:
                 f"gen {d['decided_at_gen']}, {state}{why}"
             )
     return lines
+
+
+def _merge(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, stdout: TextIO) -> int:
+    """`ow graph merge`: the one `ow graph` verb that writes, under the store's write lock."""
+    _refuse_unserved(parsed, verb="ow graph merge", fix=_MERGE_FIX)
+    if parsed.reason is None or not str(parsed.reason).strip():
+        raise UsageError("ow graph merge needs --reason, the user's grounds for it", fix=_MERGE_FIX)
+    first_prefix, first = _qualified(str(parsed.first))
+    second_prefix, second = _qualified(str(parsed.second))
+    named = {p for p in (first_prefix, second_prefix, parsed.corpus) if p is not None}
+    if len(named) > 1:
+        raise PolicyRefusal(
+            f"these cites and --corpus name {len(named)} corpora ({', '.join(sorted(named))}); a "
+            "merge is within one",
+            symbol="OW_CROSS_CORPUS_UNSUPPORTED",
+            fix=_MERGE_FIX,
+        )
+    explicit = Path(parsed.config) if parsed.config else None
+    config = load(cwd=cwd, env=env, explicit=explicit)
+    name = corpus_for(config, [], next(iter(named), None), verb="ow graph merge")
+    store = store_of(config, name, cwd=cwd)
+    decided = _decide(store, first=first, second=second, reason=str(parsed.reason))
+    document = decided_document(decided, corpus=name, qualify=len(corpora(config)) > 1)
+    if parsed.render == "json":
+        stdout.write(json.dumps(document, ensure_ascii=False) + "\n")
+    else:
+        stdout.write("\n".join(_decided_text(document)) + "\n")
+    return 0
+
+
+def _decide(store: Path, *, first: str, second: str, reason: str) -> Decided:
+    """One unit under the store's write lock: the row, then the graph settled, or neither."""
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415 -- a usage error never pays
+    from omniweave_core.errors import NotFoundError  # noqa: PLC0415
+    from omniweave_core.locks import store_write_lock  # noqa: PLC0415
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+
+    from omniweave.graph import decide  # noqa: PLC0415
+
+    if not store.exists():
+        raise NotFoundError(f"no store at {store}", fix="ow add <source> first")
+    lock = store_write_lock(store, now_ns=SystemClock().wall_ns)
+    with store_sqlite.StoreThread(lambda: store_sqlite.connect(store), lock=lock) as thread:
+        return cast(
+            "Decided",
+            thread.run(
+                store_sqlite.Unit(
+                    name="graph.merge",
+                    run=lambda c: decide.merge(c, first=first, second=second, reason=reason),
+                    cost_class="free",
+                )
+            ),
+        )
+
+
+def decided_document(decided: Decided, *, corpus: str, qualify: bool) -> dict[str, Any]:
+    """The JSON render: what the decision wrote, and the closure's log after it."""
+    return {
+        "polarity": decided.polarity,
+        "written": decided.written,
+        "retired": decided.retired,
+        "joined": decided.joined,
+        **merges_document(decided.log, corpus=corpus, qualify=qualify),
+    }
+
+
+def _decided_text(document: Mapping[str, Any]) -> list[str]:
+    verb = "merge" if document["polarity"] == 1 else "split"
+    wrote = "written" if document["written"] else "already stood: nothing written"
+    retired = f"; {document['retired']} opposing decision(s) retired" if document["retired"] else ""
+    took = (
+        "the graph follows"
+        if document["joined"]
+        else "another user decision keeps the graph from following: ow graph merges shows it"
+    )
+    return [f"{verb} {wrote}{retired}; {took}", *_merges_text(document)]
 
 
 def _qualified(value: str) -> tuple[str | None, str]:

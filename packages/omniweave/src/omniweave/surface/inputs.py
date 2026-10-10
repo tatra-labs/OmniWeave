@@ -92,6 +92,7 @@ __all__ = [
     "HooksCheckIn",
     "InstallIn",
     "LocateIn",
+    "MergeIn",
     "MergesIn",
     "OpenIn",
     "QueryIn",
@@ -339,6 +340,21 @@ class MergesIn:
     """
 
     entity: str | None = None
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MergeIn:
+    """`ow graph merge e412 e997 --reason "..."`. 06:1893.
+
+    The two entities are positionals, as 06 prints them; `reason` is required by the writer
+    (0002:443) and spelled `--reason` as 06 spells it, so it has a default and a missing one is a
+    usage error naming it. Cites as `ow graph locate` reads them: bare, qualified, or numbers.
+    """
+
+    first: str
+    second: str
+    reason: str | None = None
     corpus: str | None = None
 
 
