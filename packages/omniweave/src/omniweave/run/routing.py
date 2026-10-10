@@ -106,12 +106,15 @@ if TYPE_CHECKING:
     from omniweave.run.passwords import Passwords
 
 __all__ = [
+    "INGEST_HINTS_DIGEST",
     "LANE",
     "MAX_PARTS_KEY",
     "PHASE",
     "RUNGS",
     "Compute",
+    "ReadSet",
     "RouteTally",
+    "decision_rows",
     "max_parts_of",
     "resolve_policy",
     "route_identified",
@@ -767,59 +770,15 @@ class _Router:
         admission: str = "admitted",
     ) -> list[tuple[str, Mapping[str, object]]]:
         """05:1103's *"write route_decision -- BEFORE anything runs"*, with its evidence first."""
-        unavailable = sorted(key for key, _v, value in read_set if value is None)
-        decision_id = decision.decision_id()
-        return [
-            (
-                EVIDENCE_SQL,
-                {
-                    "digest": decision.read_set_digest,
-                    "payload": payload_bytes(read_set),
-                    "at": self.now_ms,
-                },
-            ),
-            (
-                DECISION_SQL,
-                {
-                    "decision_id": decision_id,
-                    "content_sha256": decision.content_sha256,
-                    "unit_part": decision.unit_part,
-                    "lane": decision.lane,
-                    "rung": int(decision.rung),
-                    "policy_digest": decision.policy_digest,
-                    "pricebook_digest": decision.pricebook_digest,
-                    "hints_digest": decision.hints_digest,
-                    "read_set_digest": decision.read_set_digest,
-                    "driver": driver,
-                    "cost_class": str(decision.cost_class),
-                    "rule_id": decision.rule_id,
-                    "rule_origin": decision.rule_origin,
-                    "cause": decision.cause,
-                    "reason": decision.reason,
-                    "slice_key": decision.slice_key,
-                    "evidence_digest": decision.read_set_digest,
-                    "est_spend": canonical(_spend_json(decision)).decode("utf-8"),
-                    "admission": admission,
-                    "degraded": 1 if unavailable else 0,
-                    "degradations": json.dumps(
-                        [{"kind": "signal_unavailable", "key": key} for key in unavailable],
-                        separators=(",", ":"),
-                    ),
-                    "generation": self.ctx.generation,
-                    "decided_at": self.now_ms,
-                },
-            ),
-            (
-                UNIT_DECISION_SQL,
-                {
-                    "unit_uri": unit_uri,
-                    "unit_part": decision.unit_part,
-                    "lane": decision.lane,
-                    "decision_id": decision_id,
-                    "at": self.now_ms,
-                },
-            ),
-        ]
+        return decision_rows(
+            unit_uri,
+            decision,
+            read_set,
+            driver=driver,
+            generation=self.ctx.generation,
+            now_ms=self.now_ms,
+            admission=admission,
+        )
 
     def _report(self, resolution: Resolution) -> None:
         payload = resolution_report(resolution)
@@ -905,6 +864,77 @@ def _hints_digest(hints: RouteHints) -> str:
     )
 
 
+def decision_rows(
+    unit_uri: str,
+    decision: RouteDecision,
+    read_set: ReadSet,
+    *,
+    driver: str,
+    generation: int,
+    now_ms: int,
+    admission: str = "admitted",
+) -> list[tuple[str, Mapping[str, object]]]:
+    """A decision's three rows, evidence first: `route_evidence`, `route_decision` and
+    `route_unit_decision`. 05:1103's *"write route_decision -- BEFORE anything runs"*.
+
+    A function and not the router's method since D715, because a billed Pass's Segment is decided
+    by the selector and not by `evaluate()`, and its rows are these rows.
+    """
+    unavailable = sorted(key for key, _v, value in read_set if value is None)
+    decision_id = decision.decision_id()
+    return [
+        (
+            EVIDENCE_SQL,
+            {
+                "digest": decision.read_set_digest,
+                "payload": payload_bytes(read_set),
+                "at": now_ms,
+            },
+        ),
+        (
+            DECISION_SQL,
+            {
+                "decision_id": decision_id,
+                "content_sha256": decision.content_sha256,
+                "unit_part": decision.unit_part,
+                "lane": decision.lane,
+                "rung": int(decision.rung),
+                "policy_digest": decision.policy_digest,
+                "pricebook_digest": decision.pricebook_digest,
+                "hints_digest": decision.hints_digest,
+                "read_set_digest": decision.read_set_digest,
+                "driver": driver,
+                "cost_class": str(decision.cost_class),
+                "rule_id": decision.rule_id,
+                "rule_origin": decision.rule_origin,
+                "cause": decision.cause,
+                "reason": decision.reason,
+                "slice_key": decision.slice_key,
+                "evidence_digest": decision.read_set_digest,
+                "est_spend": canonical(_spend_json(decision)).decode("utf-8"),
+                "admission": admission,
+                "degraded": 1 if unavailable else 0,
+                "degradations": json.dumps(
+                    [{"kind": "signal_unavailable", "key": key} for key in unavailable],
+                    separators=(",", ":"),
+                ),
+                "generation": generation,
+                "decided_at": now_ms,
+            },
+        ),
+        (
+            UNIT_DECISION_SQL,
+            {
+                "unit_uri": unit_uri,
+                "unit_part": decision.unit_part,
+                "lane": decision.lane,
+                "decision_id": decision_id,
+                "at": now_ms,
+            },
+        ),
+    ]
+
+
 def _spend_json(decision: RouteDecision) -> dict[str, JsonValue]:
     spend = decision.est_spend
     return {
@@ -917,6 +947,10 @@ def _spend_json(decision: RouteDecision) -> dict[str, JsonValue]:
         "bytes_egress": spend.bytes_egress,
         "provider": spend.provider,
     }
+
+
+INGEST_HINTS_DIGEST: Final[str] = _hints_digest(HINTS)
+"""The `hints_digest` of every decision an `ow ingest` writes: `HINTS`', which are none."""
 
 
 def route_identified(

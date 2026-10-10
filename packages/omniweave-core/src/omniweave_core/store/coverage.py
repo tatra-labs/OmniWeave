@@ -43,6 +43,7 @@ read one function.
 9. **The answer is the Segment, its part and what is uncovered.** The part is `seg:` and the first
    sixteen hex of its `content_digest` (06:807, 04:727), the work row's `unit_part`. `uncovered`
    is `member & ~cheaper`, the 64-byte blob the sink's covered-ground gate reads (D709).
+   `covered` is the Segment's `covered_frac`, the reading its decision records (D715).
 """
 
 from __future__ import annotations
@@ -75,6 +76,7 @@ __all__ = [
     "graph_plan",
     "kind_bits",
     "lane_coverage",
+    "place_of",
 ]
 
 
@@ -219,6 +221,7 @@ class Eligible:
     segment_id: int
     part: str
     uncovered: bytes
+    covered: float
 
 
 _ELIGIBLE: Final = """
@@ -262,10 +265,11 @@ def eligible(
         if segment is None or not n_blocks:
             return None
         member = ((1 << n_blocks) - 1) << (MAX_SEGMENT_BLOCKS - n_blocks)
-        if (cheaper & member).bit_count() / n_blocks >= floor:
+        covered = (cheaper & member).bit_count() / n_blocks
+        if covered >= floor:
             return None
         uncovered = (member & ~cheaper).to_bytes(MAX_SEGMENT_BLOCKS // 8, "big")
-        return Eligible(segment, f"seg:{digest.hex()[:16]}", uncovered)
+        return Eligible(segment, f"seg:{digest.hex()[:16]}", uncovered, covered)
 
     for segment_id, n, found, bits, rank, phase in connection.execute(
         _ELIGIBLE.format(layers=inlined), params
@@ -282,12 +286,17 @@ def eligible(
         yield done
 
 
+def place_of(connection: sqlite3.Connection, billed: BilledPass) -> tuple[int, int]:
+    """Ruling 5: the Pass's `derive_pass` row's `(cost_rank, phase)`, else its projected place."""
+    row = connection.execute(_PLACE, (billed.pass_id,)).fetchone()
+    return billed.place if row is None else (int(row[0]), int(row[1]))
+
+
 def graph_plan(connection: sqlite3.Connection, *, floor: float) -> GraphPlan:
     """Ruling 5: each billed Pass's lane at `floor`, and the Spend its billed Segments project."""
     lanes = []
     for billed in BILLED_PASSES:
-        row = connection.execute(_PLACE, (billed.pass_id,)).fetchone()
-        place = billed.place if row is None else (int(row[0]), int(row[1]))
+        place = place_of(connection, billed)
         coverage = lane_coverage(connection, lane=billed.lane, before=place, floor=floor)
         n = coverage.billed
         lanes.append(
