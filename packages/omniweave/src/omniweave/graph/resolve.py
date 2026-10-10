@@ -708,7 +708,7 @@ class ResolveReport:
             f"new, {self.retired} retired"
             + (f", {self.blocked} blocked by a user split" if self.blocked else "")
             + (f"; {self.candidates} fuzzy candidate(s)" if self.candidates else "")
-            + (f", {self.ambiguous} left in the unbuilt LLM band" if self.ambiguous else "")
+            + (f", {self.ambiguous} in the LLM band" if self.ambiguous else "")
             + (f", guarded: {guards}" if guards else "")
             + (f", {self.split} split for cohesion" if self.split else "")
             + (f", {self.boosted} by the community boost" if self.boosted else "")
