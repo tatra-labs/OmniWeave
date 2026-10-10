@@ -173,15 +173,16 @@ def test_a_corpus_with_no_relation_decodes_an_empty_relation_list() -> None:
 PINNED: dict[tuple[str, str], str] = {
     ("entity", "1"): "65fec620c19c",
     ("claim", "1"): "b3bcafec528f",
+    ("merge", "1"): "4af7eaae87ec",
 }
-"""Each extraction lane's `prompt_fp` with no vocabulary, under its card's `prompt_version` (D725).
+"""Each carded lane's `prompt_fp` with no vocabulary, under its card's `prompt_version` (D725).
 
 The host's `paid_key` reads `prompt_version` off the card, because `omniweave` may not import the
 package that renders the prompt. This table is what makes the version mean the text: a prompt that
 moves under an unchanged version would replay answers to a question no longer asked."""
 
 
-@pytest.mark.parametrize("lane", EXTRACTION_LANES)
+@pytest.mark.parametrize("lane", [*EXTRACTION_LANES, "merge"])
 def test_each_lanes_rendered_prompt_is_pinned_to_its_cards_prompt_version(lane: str) -> None:
     """D725: edit `prompts/<lane>.md` or `schemas/<lane>.json` and this fails until the card's
     `[derive] prompt_version` is bumped and the new fingerprint pinned beside it."""
