@@ -112,6 +112,7 @@ from typing import TYPE_CHECKING, Final, Literal, get_args
 from omniweave_core.answer import Answer
 from omniweave_core.errors import SurfaceError, UsageError
 from omniweave_core.model import Grid
+from omniweave_core.model.coverage import GraphPlan
 from omniweave_core.model.locus import Located
 from omniweave_core.model.merges import Decided, MergeLog
 from omniweave_core.model.observed import Observed
@@ -141,6 +142,7 @@ from omniweave.surface.inputs import (
     DoctorIn,
     ExplainIn,
     GraphDoctorIn,
+    GraphPlanIn,
     GridIn,
     HooksCheckIn,
     InstallIn,
@@ -1476,6 +1478,28 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=GraphDoctorReport,
             advanced=frozenset(),
             cli=("graph", "doctor"),
+        ),
+        #  06:2518, what a billed run would be handed, before it runs. Read-only; no `mcp_name`, as
+        #  10:807 names none (D705).
+        ActionSpec(
+            name="graph.plan",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Show, per billed lane, how much the free passes covered, the share a billed pass "
+                "would be handed, and the calls and tokens that projects, before anything runs"
+            ),
+            decision="you are about to enable a billed pass and need to know what it would cost",
+            example={"corpus": "handbook"},
+            inp=GraphPlanIn,
+            out=GraphPlan,
+            advanced=frozenset(),
+            cli=("graph", "plan"),
         ),
         ActionSpec(
             name="corpus.coverage",

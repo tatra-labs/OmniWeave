@@ -24,6 +24,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     graph.locate      LocateIn            Located
     graph.merge       MergeIn             Decided
     graph.merges      MergesIn            MergeLog
+    graph.plan        GraphPlanIn         GraphPlan
     graph.residue     ResidueIn           GraphResidue
     graph.review      ReviewIn            Review
     graph.split       SplitIn             Decided

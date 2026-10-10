@@ -55,6 +55,7 @@ key can grant one.
 | `graph.locate` | `ow_locate` | `ow graph locate` | full | `free` | Find where on the page an entity, claim, edge or mention was witnessed: one location per witness, with its page, its span and its polygon or the reason none |
 | `graph.merge` | — | `ow graph merge` | — | `free` | Record that two entities are one, with a reason, and settle the graph again: the closure, the communities and the salience, as an ingest would |
 | `graph.merges` | — | `ow graph merges` | — | `free` | Show the resolution decision log: each closure's members, and every merge or split decision with its stage, score, guards and the generation it was decided in |
+| `graph.plan` | — | `ow graph plan` | — | `free` | Show, per billed lane, how much the free passes covered, the share a billed pass would be handed, and the calls and tokens that projects, before anything runs |
 | `graph.residue` | — | `ow graph residue` | — | `free` | Show what the graph could not place: unresolved references grouped by kind and name, and quarantined rows grouped by code and kind |
 | `graph.review` | — | `ow graph review` | — | `free` | Show what the graph holds below extracted, weakest first: fuzzy-merged closures, tainted and overloaded entities, and the mentions and edges to check |
 | `graph.split` | — | `ow graph split` | — | `free` | Record that one entity is two or more, named by the blocks each is witnessed in, with a reason, and settle the graph again as an ingest would |
