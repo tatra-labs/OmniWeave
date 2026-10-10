@@ -38,7 +38,6 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
-from conftest import PlanDocs
 from omniweave_core.errors import ResourceLimit, StoreError
 from omniweave_core.limits import MAX_DEPS_PER_UNIT
 from omniweave_core.operator import (
@@ -76,6 +75,8 @@ from omniweave_core.work import (
     WorkRow,
 )
 from omniweave_ports.types import UnitRef
+
+from conftest import PlanDocs
 
 # `import sqlite3` is banned outside `omniweave_core/store/` by ruff's TID251 (INV-17), and this
 # file takes the escape deliberately. It drives a REAL store: the seeding below writes `unit`,

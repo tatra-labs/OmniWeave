@@ -69,8 +69,9 @@ from omniweave_core.model.enums import Kind, Layer, Quote, Trust
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from conftest import PlanDocs
     from omniweave_core.config import Scalar
+
+    from conftest import PlanDocs
 
 CHARTER = "_notes/charter.md"
 INTERFACES = "10-interfaces.md"

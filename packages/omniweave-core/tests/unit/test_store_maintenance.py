@@ -39,11 +39,12 @@ import sqlite3  # noqa: TID251
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from conftest import migration_files
 from omniweave_core.errors import StoreError
 from omniweave_core.store import NO_JOB_DOCS
 from omniweave_core.store import maintenance as m
 from omniweave_core.store import sqlite as ow
+
+from conftest import migration_files
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from pathlib import Path
