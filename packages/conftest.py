@@ -30,6 +30,12 @@ Not reached:
 * a fixture wider than a function. One built before this fixture runs (a module-scoped
   `RetrievalPolicy(budget=QueryBudget())`, say) holds the shipped numbers.
 
+**The `ci` Hypothesis profile (D707).** 16:633 runs `pytest ... --hypothesis-profile=ci` and
+glosses it *"derandomize=True @ 200"*. Hypothesis ships a `ci` profile of its own -- derandomized,
+no deadline, no database -- at 100 examples, so the flag never failed and never meant 200. It is
+re-registered here on top of the shipped one with `max_examples = CI_EXAMPLES`. This file is an
+ancestor of every collected test, so pytest imports it before the plugin loads the profile.
+
 **Why `packages/` and not the repository root.** 58 test modules import names from their
 package's `conftest` for the type checker, and pyright resolves a bare `conftest` against the
 root first, so a root `conftest.py` turns those into unknown-symbol errors. Every
@@ -42,11 +48,19 @@ from collections.abc import Mapping
 from dataclasses import replace
 
 import pytest
+from hypothesis import settings
 from omniweave_core import config as ow_config
 from omniweave_core.config import KEYS
 from omniweave_core.limits import MAX_SNAPSHOT_MS
 
 BUDGET_SCALE = 20
+CI_PROFILE = "ci"
+CI_EXAMPLES = 200
+"""16:633's `--hypothesis-profile=ci  # derandomize=True @ 200`."""
+
+settings.register_profile(
+    CI_PROFILE, parent=settings.get_profile(CI_PROFILE), max_examples=CI_EXAMPLES
+)
 SCALED_KEYS = (
     "retrieval.budget.query_ms",
     "retrieval.budget.hydration_reserve_ms",
