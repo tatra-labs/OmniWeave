@@ -38,13 +38,15 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, cast
 
 from omniweave_core.cache import cache_key
-from omniweave_core.drivers.resolve import Isolation, Requirement, resolve
+from omniweave_core.config import SHIPPED_PASSES
+from omniweave_core.drivers.resolve import CostClass, Isolation, Requirement, resolve
 from omniweave_core.errors import GraphError, OwError, RouteError
 from omniweave_core.model.enums import Method
 from omniweave_core.model.records import Producer
 from omniweave_core.operator import Outcome, StepMetrics, StepResult
 from omniweave_core.store import lexicon
 from omniweave_core.store import sqlite as ow
+from omniweave_core.store.coverage import BILLED_PASSES
 from omniweave_core.store.graph import PassIdentity
 from omniweave_core.store.items import (
     ITEM_LANES,
@@ -66,6 +68,8 @@ from omniweave.run.operators.lexicon import empty_digest
 from omniweave.run.operators.parse import DeriveCount
 
 if TYPE_CHECKING:
+    from collections.abc import Collection
+
     from omniweave_core.drivers.catalog import Catalog
     from omniweave_core.drivers.resolve import Candidate, Policy
     from omniweave_core.host import subproc
@@ -151,27 +155,57 @@ def is_derive(operator: str) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class DerivePlan:
-    """The run's resolved free Passes, and the rows each segmented document earns."""
+    """The run's resolved free Passes, and the rows each segmented document earns; and the billed
+    Passes the run may schedule (D714)."""
 
     passes: tuple[Candidate, ...]
     ctx: RunContext
+    billed: tuple[Candidate, ...] = ()
+    """The billed Passes both activation lists name and `resolve()` admitted (D714)."""
 
     @classmethod
-    def of(cls, catalog: Catalog, policy: Policy, ctx: RunContext) -> tuple[DerivePlan | None, str]:
-        """Each Pass's pinned candidate; `None` and why when none resolves."""
+    def of(
+        cls,
+        catalog: Catalog,
+        policy: Policy,
+        ctx: RunContext,
+        *,
+        enable: Collection[str] = SHIPPED_PASSES,
+    ) -> tuple[DerivePlan | None, str]:
+        """Each Pass's pinned candidate; `None` and why when none resolves.
+
+        **D714: a billed Pass is opt-in, and both lists gate it** (08:1977-1979). `enable` is
+        `[graph.passes] enable`, and `[drivers] enabled` is `policy.enabled`. A billed Pass
+        `enable` does not name is not planned and not reported, because the shipped default names
+        none. A billed Pass it names is reported, as a refused free Pass is, when `[drivers]
+        enabled` does not name it or `resolve()` refuses it. `resolve()` refuses `billed_api`
+        outside `[drivers.cost] allow_classes`, a card that needs the network on an offline run,
+        and a card nothing installed.
+        """
         passes: list[Candidate] = []
         why: list[str] = []
         for pass_id in FREE_PASSES:
-            resolution = resolve(Requirement(port="derive/1", pinned=pass_id), catalog, policy)
-            found = [c for c in resolution.candidates if c.card.identity.id == pass_id]
-            if found:  # `pinned` filters nothing (resolve.py:506): the Pass is picked by id
-                passes.append(found[0])
+            found, refused = _pinned(pass_id, catalog, policy, CostClass.LOCAL_COMPUTE)
+            if found is not None:
+                passes.append(found)
+            else:
+                why.append(refused)
+        billed: list[Candidate] = []
+        for one in BILLED_PASSES:
+            if one.pass_id not in enable:
                 continue
-            refused = [
-                f"{r.code}: {r.detail}" for r in resolution.rejected if r.driver_id == pass_id
-            ]
-            why.append(f"{pass_id}: {refused[0] if refused else 'not installed'}")
-        return (cls(tuple(passes), ctx) if passes else None), "; ".join(why)
+            if one.pass_id not in policy.enabled:
+                why.append(
+                    f"{one.pass_id}: [graph.passes] enable names it, [drivers] enabled does not"
+                )
+                continue
+            found, refused = _pinned(one.pass_id, catalog, policy, CostClass.BILLED_API)
+            if found is not None:
+                billed.append(found)
+            else:
+                why.append(refused)
+        plan = cls(tuple(passes), ctx, tuple(billed)) if passes or billed else None
+        return plan, "; ".join(why)
 
     def enqueue(self, connection: Any, unit: UnitRef) -> int:
         """Every Pass's row for a document whose Segments were just written, but a lexicon
@@ -226,6 +260,19 @@ class DerivePlan:
                 },
             ).rowcount
         return added
+
+
+def _pinned(
+    pass_id: str, catalog: Catalog, policy: Policy, ceiling: CostClass
+) -> tuple[Candidate | None, str]:
+    """`pass_id`'s candidate under `ceiling`, or `None` and the refusal that names it."""
+    requirement = Requirement(port="derive/1", pinned=pass_id, max_cost_class=ceiling)
+    resolution = resolve(requirement, catalog, policy)
+    found = [c for c in resolution.candidates if c.card.identity.id == pass_id]
+    if found:  # `pinned` filters nothing (resolve.py:506): the Pass is picked by id
+        return found[0], ""
+    refused = [f"{r.code}: {r.detail}" for r in resolution.rejected if r.driver_id == pass_id]
+    return None, f"{pass_id}: {refused[0] if refused else 'not installed'}"
 
 
 def _producer(operator: str, card: Any, config_digest: str) -> Producer:

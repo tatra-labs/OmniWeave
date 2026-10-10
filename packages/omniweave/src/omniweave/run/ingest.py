@@ -104,6 +104,7 @@ from omniweave_core.acquire import (
     write_roster,
 )
 from omniweave_core.clock import SystemClock
+from omniweave_core.config import SHIPPED_PASSES
 from omniweave_core.contract import CONTRACT
 from omniweave_core.errors import RouteError, StoreError
 from omniweave_core.events import Stage
@@ -945,7 +946,7 @@ def _lexicon(
 
     cas_root = store.parent / CAS_DIR
     cas_root.mkdir(parents=True, exist_ok=True)
-    derives, _why = DerivePlan.of(inputs.catalog, inputs.resolving, ctx)
+    derives, _why = DerivePlan.of(inputs.catalog, inputs.resolving, ctx, enable=inputs.passes)
     return op_lexicon.rebuild(
         thread, BlobStore(cas_root), now_ms=clock.wall_ns() // 1_000_000, derives=derives
     )
@@ -971,6 +972,8 @@ class _RoutingInputs:
     """`ow ingest --accept-partial`: a failed structural check does not refuse (D641)."""
     passwords: Passwords | None = None
     """The run's password mapping, read by routing and by the parse Operator (ADR-15 D15.4)."""
+    passes: frozenset[str] = frozenset(SHIPPED_PASSES)
+    """`[graph.passes] enable`: with `[drivers] enabled`, what gates a billed Pass (D714)."""
 
 
 def _parse_keys(inputs: _RoutingInputs) -> dict[str, tuple[int, str]]:
@@ -1011,6 +1014,7 @@ def _routing_inputs(config: Config, *, offline: bool = False) -> _RoutingInputs:
         policy=compile_policy(route_layers(config), registry=registry),
         resolving=resolve_policy(config, offline=offline),
         computers=dict(installed.computers),
+        passes=frozenset(str(p) for p in config.get("graph.passes.enable")),  # type: ignore[union-attr]
     )
 
 
@@ -1477,7 +1481,9 @@ class _ParseLazily:
             routing = cast("_RoutingInputs", inputs)
             segments, why = SegmentPlan.of(routing.catalog, routing.resolving, ctx)  # type: ignore[arg-type]
             cast("ParseTally", tally).segment_skipped = why
-            self._derives, skipped = DerivePlan.of(routing.catalog, routing.resolving, ctx)  # type: ignore[arg-type]
+            self._derives, skipped = DerivePlan.of(
+                routing.catalog, routing.resolving, cast("RunContext", ctx), enable=routing.passes
+            )
             cast("ParseTally", tally).derive_skipped = skipped
             self._operator = ParseOperator(
                 thread,  # type: ignore[arg-type]
