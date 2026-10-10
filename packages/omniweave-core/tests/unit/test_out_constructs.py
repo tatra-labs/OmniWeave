@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from omniweave_core.errors import TargetError
+from omniweave_core.errors import TargetError, explain
 from omniweave_core.out import html_carrier
 from omniweave_core.out.constructs import ConstructTable, Disposition, RoundTrip
 
@@ -312,3 +312,15 @@ def test_forbidden_when_is_evaluated_per_unit_by_the_framework() -> None:
     )
     assert table.conditional(plain) == ()
     assert [row.id for row in table.conditional(styled)] == ["attr.id"]
+
+
+def test_a_refusal_names_a_registered_code_whose_fix_runs() -> None:
+    """D740: the loader raised the area default `OW_TARGET` with `ow explain OW_TARGET`, which no
+    `codes.toml` row answers, so the fix command it printed failed. OW-T-009 is its row now."""
+    raw = _raw()
+    raw["unknown_construct"] = "warning"
+    error = _refused(raw, "not configurable")
+    assert error.code() == "OW_TARGET_CONSTRUCTS_INVALID"
+    command, _, argument = error.fix.partition(" explain ")
+    assert command == "ow"
+    assert explain(argument).symbol == error.code()

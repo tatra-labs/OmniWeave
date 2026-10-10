@@ -74,7 +74,7 @@ _BAKE_KEYS: Final = frozenset({"renderer", "dpi", "role"})
 _SYMBOL: Final = re.compile(r"OW_[A-Z0-9_]+")
 _VERSION: Final = re.compile(r"\d+\.\d+\.\d+")
 _FIX: Final = "ow explain OW-T-007"
-_TABLE_FIX: Final = "ow explain OW_TARGET"
+_TABLE_FIX: Final = "ow explain OW-T-009"
 
 
 class Disposition(StrEnum):
@@ -352,4 +352,4 @@ def _strings(value: object, where: str) -> list[str]:
 
 
 def _fail(msg: str) -> Never:
-    raise TargetError(msg, symbol="OW_TARGET", fix=_TABLE_FIX)
+    raise TargetError(msg, symbol="OW_TARGET_CONSTRUCTS_INVALID", fix=_TABLE_FIX)
