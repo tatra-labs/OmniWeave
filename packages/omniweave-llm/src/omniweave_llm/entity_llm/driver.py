@@ -41,7 +41,7 @@ from omniweave_ports import (
 )
 
 from omniweave_llm.entity import LANE, answer_frames, parse_answer, unparsed_frames
-from omniweave_llm.prompt import render
+from omniweave_llm.prompt import decodable, render
 from omniweave_llm.view import read_views
 
 if TYPE_CHECKING:
@@ -180,7 +180,11 @@ def _call(
             "temperature": 0,
             "response_format": {
                 "type": "json_schema",
-                "json_schema": {"name": "owgraph_entity", "schema": schema, "strict": True},
+                "json_schema": {
+                    "name": "owgraph_entity",
+                    "schema": decodable(schema),
+                    "strict": True,
+                },
             },
         },
         separators=(",", ":"),

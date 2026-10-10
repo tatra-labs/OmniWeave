@@ -19,12 +19,14 @@ from __future__ import annotations
 
 import ast
 import dataclasses
+import http.server
 import json
 import re
 import stat
 import sys
+import threading
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import omniweave_core.modelserver as ms
 import pytest
@@ -102,8 +104,8 @@ class _Probe:
         self.asked.append((base_url, token))
         return self._healthy
 
-    def model_id(self, base_url: str, *, token: str, timeout_s: float) -> str:
-        del base_url, token, timeout_s
+    def model_id(self, base_url: str, *, token: str, timeout_s: float, wanted: str = "") -> str:
+        del base_url, token, timeout_s, wanted
         return self._reported
 
 
@@ -906,3 +908,141 @@ def test_a_handle_reports_the_request_timeout_it_is_bounded_by(tmp_path: Path) -
     write_sentinel(tmp_path / sentinel_name("vlm", DIGEST), sentinel())
     got = registry(tmp_path, specs={"vlm": spec(request_timeout_s=42)}).handle("vlm")
     assert got.request_timeout_s == 42.0
+
+
+# =============================================================================================
+# D717: a pinned local OpenAI-compatible server -- no /health, several models
+# =============================================================================================
+
+
+class _Local(http.server.BaseHTTPRequestHandler):
+    """A local model server as Ollama and LM Studio are: the health and models answers scripted."""
+
+    health: ClassVar[int] = 404
+    listed: ClassVar[int] = 200
+    models: ClassVar[list[str]] = []
+
+    def do_GET(self) -> None:
+        if self.path == HEALTH_PATH:
+            self._answer(type(self).health, b"{}")
+        elif self.path == MODELS_PATH:
+            body = json.dumps({"object": "list", "data": [{"id": m} for m in type(self).models]})
+            self._answer(type(self).listed, body.encode())
+        else:
+            self._answer(404, b"{}")
+
+    def _answer(self, status: int, body: bytes) -> None:
+        self.send_response(status)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 -- the base's name
+        del format, args
+
+
+def _local(health: int = 404, listed: int = 200, models: tuple[str, ...] = (MODEL,)) -> Any:
+    _Local.health, _Local.listed, _Local.models = health, listed, list(models)
+    server = http.server.ThreadingHTTPServer((LOOPBACK, 0), _Local)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def _url(server: Any) -> str:
+    return f"http://{LOOPBACK}:{server.server_address[1]}"
+
+
+@pytest.mark.parametrize(
+    ("health", "listed", "up"),
+    [(404, 200, True), (404, 500, False), (503, 200, False), (200, 500, True)],
+    ids=["no-health-path", "no-health-and-no-models", "unhealthy", "healthy"],
+)
+def test_a_server_with_no_health_path_is_up_when_its_models_answer(
+    health: int, listed: int, up: bool
+) -> None:
+    """D717: only a 404 falls through to the models path; any other answer is the answer."""
+    server = _local(health=health, listed=listed)
+    try:
+        assert ms.HttpProbe().healthy(_url(server), token="", timeout_s=5.0) is up
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_a_refused_connection_is_down_and_never_a_fallback() -> None:
+    server = _local()
+    url = _url(server)
+    server.shutdown()
+    server.server_close()
+    assert ms.HttpProbe().healthy(url, token="", timeout_s=2.0) is False
+
+
+def test_a_server_listing_several_models_reports_the_wanted_one_when_it_lists_it() -> None:
+    """D717: Ollama lists every model pulled; each request names its own."""
+    server = _local(models=("llama3:8b", MODEL))
+    try:
+        probe, url = ms.HttpProbe(), _url(server)
+        assert probe.model_id(url, token="", timeout_s=5.0, wanted=MODEL) == MODEL
+        assert probe.model_id(url, token="", timeout_s=5.0, wanted="absent:1b") == "llama3:8b"
+        assert probe.model_id(url, token="", timeout_s=5.0) == "llama3:8b"
+        _Local.models = []
+        assert probe.model_id(url, token="", timeout_s=5.0, wanted=MODEL) == ""
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_a_pinned_local_server_attaches_when_it_lists_the_model_and_is_refused_when_not(
+    tmp_path: Path,
+) -> None:
+    """Step 0 against a server shaped like Ollama: no `/health`, two models."""
+    server = _local(models=("llama3:8b", MODEL))
+    try:
+        url = _url(server)
+        attached = attach_or_spawn(
+            spec(endpoint=url), services_root=tmp_path, config_digest=DIGEST, probe=ms.HttpProbe()
+        )
+        assert (attached.base_url, attached.model_id, attached.how) == (url, MODEL, "pinned")
+        _Local.models = ["llama3:8b"]
+        with pytest.raises(ConfigError, match="reports 'llama3:8b'"):
+            attach_or_spawn(
+                spec(endpoint=url), services_root=tmp_path, config_digest=DIGEST,
+                probe=ms.HttpProbe(),
+            )  # fmt: skip
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_a_sentinel_server_listing_several_models_attaches_for_the_wanted_one(
+    tmp_path: Path,
+) -> None:
+    """Step 1 asks for the configured model too, so both branches verify alike (D717)."""
+    server = _local(health=200, models=("llama3:8b", MODEL))
+    try:
+        port = int(server.server_address[1])
+        write_sentinel(tmp_path / sentinel_name("vlm", DIGEST), sentinel(port=port, token=""))
+        attached = attach_or_spawn(
+            spec(), services_root=tmp_path, config_digest=DIGEST, probe=ms.HttpProbe()
+        )
+        assert (attached.base_url, attached.how) == (_url(server), "sentinel")
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@pytest.mark.parametrize("body", [b"not json", b'{"data": "qwen3"}', b'{"data": [{"name": "x"}]}'])
+def test_a_models_answer_that_is_not_a_list_of_ids_reports_nothing(body: bytes) -> None:
+    """An unreadable list is `""`, so `refuse_unverified` refuses it -- `wanted` is never echoed."""
+
+    class _Raw(_Local):
+        def do_GET(self) -> None:
+            self._answer(200, body)
+
+    server = http.server.ThreadingHTTPServer((LOOPBACK, 0), _Raw)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        assert ms.HttpProbe().model_id(_url(server), token="", timeout_s=5.0, wanted=MODEL) == ""
+    finally:
+        server.shutdown()
+        server.server_close()

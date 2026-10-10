@@ -29,6 +29,14 @@ and no path lets the schema permit what the prompt never named.
    field, so the prose cannot drift from what the decoder enforces.
 5. **No geometry and no identifier in parts 1-4** (GR11): no `p<n>/<n>` address, no bare number
    that is not a bound, no path. A test renders every lane and greps.
+6. **The server decodes against `decodable(schema)`; the answer is validated against `schema`**
+   (D717). Ollama 0.20.7's schema-to-grammar crashes the server on a `pattern`: an access
+   violation inside `SchemaToGrammar`, measured against the cite pattern and against a bare
+   `^d[0-9]+#[0-9]+$`. On an empty `enum` it decodes invalid JSON. So the decoder's copy drops
+   every `pattern`. An `enum` with no member is also dropped, and the nearest array around it
+   gets `maxItems: 0`. A corpus with no relation then decodes `"relations": []`, the one
+   answer the full schema admits. The full schema stays the contract the prompt renders and the
+   validator applies, so a cite outside the pattern is still a malformed answer (D710).
 """
 
 from __future__ import annotations
@@ -44,7 +52,16 @@ from omniweave_llm.wrap import wrap_untrusted
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-__all__ = ["EXTRACTION_LANES", "LANES", "Prompt", "prompt_fp", "render", "role", "schema"]
+__all__ = [
+    "EXTRACTION_LANES",
+    "LANES",
+    "Prompt",
+    "decodable",
+    "prompt_fp",
+    "render",
+    "role",
+    "schema",
+]
 
 LANES: Final = ("entity", "claim", "merge", "report")
 EXTRACTION_LANES: Final = ("entity", "claim")
@@ -99,6 +116,32 @@ def _fill(node: Any, markers: Mapping[str, list[str]]) -> Any:
                 out.append(_fill(value, markers))
         return out
     return node
+
+
+def decodable(full: Mapping[str, Any]) -> dict[str, Any]:
+    """Ruling 6: `full` as a server's constrained decoder compiles it. `full` is not changed."""
+    out, _empty = _decodable(full)
+    return out
+
+
+def _decodable(node: Any) -> tuple[Any, bool]:
+    """`(node without patterns or empty enums, whether it can hold no value)`."""
+    if isinstance(node, list):
+        return [_decodable(value)[0] for value in node], False
+    if not isinstance(node, dict):
+        return node, False
+    empty = node.get("enum") == []
+    out: dict[str, Any] = {}
+    for key, value in node.items():
+        if key == "pattern" or (key == "enum" and value == []):
+            continue
+        child, child_empty = _decodable(value)
+        out[key] = child
+        empty = empty or child_empty
+    if out.get("type") == "array" and empty:
+        out["maxItems"] = 0
+        return out, False
+    return out, empty
 
 
 def prompt_fp(text: str) -> str:

@@ -7,7 +7,15 @@ import re
 from typing import Any
 
 import pytest
-from omniweave_llm.prompt import EXTRACTION_LANES, LANES, prompt_fp, render, role, schema
+from omniweave_llm.prompt import (
+    EXTRACTION_LANES,
+    LANES,
+    decodable,
+    prompt_fp,
+    render,
+    role,
+    schema,
+)
 from omniweave_llm.wrap import OPENING
 
 ETYPES = ["defined_term", "person", "org"]
@@ -126,3 +134,37 @@ def test_the_extraction_roles_carry_06s_three_rules() -> None:
 def test_an_unknown_lane_is_refused() -> None:
     with pytest.raises(ValueError, match="entity, claim, merge, report"):
         render("summary", body="", source="x")
+
+
+def _keys(node: Any) -> list[str]:
+    if isinstance(node, dict):
+        return [key for key, value in node.items() for key in (key, *_keys(value))]
+    if isinstance(node, list):
+        return [key for value in node for key in _keys(value)]
+    return []
+
+
+@pytest.mark.parametrize("lane", LANES)
+def test_the_decoder_never_sees_a_pattern_and_the_contract_keeps_every_one(lane: str) -> None:
+    """Ruling 6 (D717): Ollama's schema-to-grammar crashes on a `pattern`."""
+    full = schema(lane, etypes=ETYPES, relations=[name for name, _ in RELATIONS])
+    before = json.dumps(full, sort_keys=True)
+    decoded = decodable(full)
+    assert "pattern" not in _keys(decoded)
+    assert json.dumps(full, sort_keys=True) == before, "the contract is not changed"
+    assert ("pattern" in _keys(full)) == (lane in EXTRACTION_LANES), "the cite pattern is kept"
+
+
+def test_a_corpus_with_no_relation_decodes_an_empty_relation_list() -> None:
+    """Ruling 6: an enum with no member is dropped and its array can hold nothing."""
+    decoded = decodable(schema("entity", etypes=ETYPES, relations=[]))
+    relations = decoded["properties"]["relations"]
+    assert relations["maxItems"] == 0
+    assert "enum" not in relations["items"]["properties"]["relation"]
+    assert decoded["properties"]["entities"]["maxItems"] == 40, "only the empty one is closed"
+    named = decodable(schema("entity", etypes=ETYPES, relations=["cites"]))
+    assert named["properties"]["relations"]["maxItems"] == 40
+    assert named["properties"]["relations"]["items"]["properties"]["relation"]["enum"] == ["cites"]
+    assert named["properties"]["entities"]["items"]["properties"]["etype"]["enum"] == [
+        *ETYPES, "unknown", None
+    ]  # fmt: skip

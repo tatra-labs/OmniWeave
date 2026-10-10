@@ -425,8 +425,11 @@ class ServiceProbe(Protocol):
         """Whether `{base_url}/health` answered. Never raises: unreachable is an answer."""
         ...
 
-    def model_id(self, base_url: str, *, token: str, timeout_s: float) -> str:
-        """The id `{base_url}/v1/models` reports, or `""` when it could not be read."""
+    def model_id(self, base_url: str, *, token: str, timeout_s: float, wanted: str = "") -> str:
+        """The id `{base_url}/v1/models` reports for `wanted`, or `""` when it could not be read.
+
+        `wanted` when the server lists it, else the first id it lists (D717).
+        """
         ...
 
 
@@ -741,7 +744,8 @@ def _attach_pinned(spec: ServiceSpec, endpoint: str, *, probe: ServiceProbe) -> 
     timeout = float(spec.request_timeout_s)
     if not probe.healthy(endpoint, token="", timeout_s=timeout):
         raise refuse_unreachable(spec, endpoint)
-    refuse_unverified(spec, probe.model_id(endpoint, token="", timeout_s=timeout), where="endpoint")
+    reported = probe.model_id(endpoint, token="", timeout_s=timeout, wanted=spec.model_id)
+    refuse_unverified(spec, reported, where="endpoint")
     return Attachment(
         spec=spec,
         base_url=endpoint,
@@ -760,7 +764,9 @@ def _attach_sentinel(spec: ServiceSpec, path: Path, *, probe: ServiceProbe) -> A
     timeout = float(spec.request_timeout_s)
     if not probe.healthy(sentinel.base_url, token=sentinel.token, timeout_s=timeout):
         return None
-    reported = probe.model_id(sentinel.base_url, token=sentinel.token, timeout_s=timeout)
+    reported = probe.model_id(
+        sentinel.base_url, token=sentinel.token, timeout_s=timeout, wanted=spec.model_id
+    )
     refuse_unverified(spec, reported, where="sentinel's server")
     return Attachment(
         spec=spec,
@@ -781,6 +787,10 @@ def _attach_sentinel(spec: ServiceSpec, path: Path, *, probe: ServiceProbe) -> A
 HTTP_OK: Final = 200
 HTTP_REDIRECT: Final = 300
 """The 2xx band `/health` has to answer in. A refused connection reports 0 and is not in it."""
+
+
+_NOT_FOUND: Final = 404
+"""The status a server that answered gives for a path it does not serve (D717)."""
 
 
 def _ok(status: int) -> bool:
@@ -836,11 +846,20 @@ class HttpProbe:
     __slots__ = ()
 
     def healthy(self, base_url: str, *, token: str, timeout_s: float) -> bool:
-        """`GET /health`. Any 2xx is up; anything else, a refused connection included."""
+        """`GET /health`. Any 2xx is up; anything else, a refused connection included.
+
+        **D717: a server that answers and serves no `/health` is up when `/v1/models` is.**
+        Ollama and LM Studio are OpenAI-compatible and serve no `/health`, so they answer it 404.
+        A 404 is a server that answered, which a refused connection is not. So on a 404 alone,
+        the models path is the health check, and its 2xx is the same evidence of a live server.
+        Any other answer, and no answer, stays down.
+        """
         status, _ = self._get(base_url, HEALTH_PATH, token=token, timeout_s=timeout_s)
+        if status == _NOT_FOUND:
+            status, _ = self._get(base_url, MODELS_PATH, token=token, timeout_s=timeout_s)
         return _ok(status)
 
-    def model_id(self, base_url: str, *, token: str, timeout_s: float) -> str:
+    def model_id(self, base_url: str, *, token: str, timeout_s: float, wanted: str = "") -> str:
         """`GET /v1/models` and the reported id, or `""` when it could not be read.
 
         `""` rather than a raise for the same reason `healthy()` does not raise: the disposition
@@ -849,19 +868,24 @@ class HttpProbe:
         wrong thing."*
 
         The shape is OpenAI's `{"data": [{"id": ...}]}`, which is what a vLLM-compatible server
-        serves and what surya's clients read. A first element and no more: a server hosting several
-        models is a server this Service did not ask for, and taking the first is how the mismatch
-        becomes visible to the check rather than being searched for.
+        serves and what surya's clients read.
+
+        **D717: `wanted` when the server lists it, else the first id.** A spawned engine serves one
+        model, and its first id is the one it runs, so a mismatch is still the first id. An
+        attached Ollama lists every model pulled, in an order of its own. Each request names its
+        model (`ServiceHandle.model_id`), so the server answers with the configured model when it
+        lists it. Taking the first would refuse a server that serves the configured model.
         """
         status, body = self._get(base_url, MODELS_PATH, token=token, timeout_s=timeout_s)
         if not _ok(status):
             return ""
         try:
-            payload = json.loads(body)
-            data = payload["data"]
-            return str(data[0]["id"])
-        except (ValueError, KeyError, IndexError, TypeError):
+            ids = [str(one["id"]) for one in json.loads(body)["data"]]
+        except (ValueError, KeyError, TypeError):
             return ""
+        if wanted and wanted in ids:
+            return wanted
+        return ids[0] if ids else ""
 
     def _get(self, base_url: str, path: str, *, token: str, timeout_s: float) -> tuple[int, bytes]:
         """One GET. Returns `(status, body)`; a connection failure is `(0, b"")`."""
