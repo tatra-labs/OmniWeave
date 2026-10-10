@@ -337,7 +337,13 @@ COMMANDS: Final[tuple[Command, ...]] = (
             "Show what the graph holds below extracted, weakest first: fuzzy-merged closures, "
             "tainted and overloaded entities, and the mentions and edges to check"
         ),
-        arguments=(),
+        arguments=(
+            Argument(
+                spelling=("--over-merge",),
+                kind="switch",
+                default=False,
+            ),
+        ),
     ),
     Command(
         words=("graph", "split"),

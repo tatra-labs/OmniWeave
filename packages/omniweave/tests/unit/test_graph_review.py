@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import io
 import json
+import shlex
 import sqlite3  # noqa: TID251 -- the assertions read and edit the store a run wrote.
 from typing import TYPE_CHECKING, Any
 
 import pytest
+from omniweave.graph import decide
 from omniweave.surface import graph as verb
 from omniweave.surface.graph import review_document
 from omniweave.surface.registry import ACTIONS
@@ -201,6 +203,237 @@ def test_the_verb_renders_the_four_lists(tmp_path: Path) -> None:
 def test_the_verbs_exits(parties: Path, argv: list[str], code: int) -> None:
     got, _out, err = _verb(argv, parties)
     assert got == code, err
+
+
+TRIANGLES = [
+    ("acme_holdings", "beta_corp"),
+    ("acme_holdings", "delta_partners"),
+    ("beta_corp", "delta_partners"),
+    ("epsilon_trust", "gamma_inc"),
+    ("zeta_group", "gamma_inc"),
+    ("epsilon_trust", "zeta_group"),
+]
+"""Two triangles; merging acme and gamma joins them through one head. Gamma is only ever an edge's
+destination, so a reach read off one end alone would miss it."""
+
+
+def _two_people_one_name(
+    connection: sqlite3.Connection, extra: Sequence[tuple[str, str]] = ()
+) -> None:
+    """The triangles' edges, then a user merge of acme and gamma, settled with communities."""
+    ids = _ids(connection)
+    for src, dst in [*TRIANGLES, *extra]:
+        connection.execute(
+            "INSERT INTO edge(src_entity, dst_entity, relation, observed_block, run_id, trust)"
+            " SELECT ?, ?, 'related_to', MIN(block_id), MIN(run_id), 2 FROM block, derive_run"
+            " WHERE block.state = 0",
+            (ids[src], ids[dst]),
+        )
+    cite = _cites(connection)
+    decide.merge(
+        connection, first=cite["acme_holdings"], second=cite["gamma_inc"], reason="one party"
+    )
+
+
+def test_over_merge_finds_members_whose_neighbourhoods_fall_apart(parties: Path) -> None:
+    """Rulings 6-8: acme's neighbours are one community and gamma's another."""
+    connection = sqlite3.connect(_store(parties))
+    try:
+        _two_people_one_name(connection)
+        cite = _cites(connection)
+        assert review(connection).over_merges is None, "not asked for"
+        found = review(connection, over_merge=True)
+        assert found.over_merges is not None
+        [suspect] = found.over_merges
+        assert found.over_merges_total == 1
+        assert suspect.apart == (cite["acme_holdings"], cite["gamma_inc"])
+        assert suspect.communities == 2
+        acme, gamma = suspect.members
+        assert (acme.entity, gamma.entity) == suspect.apart
+        assert len(acme.communities) == len(gamma.communities) == 1
+        assert acme.communities != gamma.communities
+        roots = {
+            str(c)
+            for (c,) in connection.execute(
+                "SELECT cite FROM community WHERE state = 0 AND parent IS NULL"
+            )
+        }
+        assert {*acme.communities, *gamma.communities} <= roots
+        named = {
+            str(b): {str(e) for (e,) in connection.execute(
+                "SELECT 'e' || entity_id FROM mention WHERE block_id ="
+                " (SELECT block_id FROM block WHERE cite = ?) AND state = 0", (b,)
+            )}
+            for b in (acme.witness, gamma.witness)
+        }  # fmt: skip
+        assert cite["acme_holdings"] in named[str(acme.witness)]
+        assert cite["gamma_inc"] not in named[str(acme.witness)], "a witness names one member"
+        assert found.closures == review(connection).closures, "a fifth list, not a mode"
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def _suspect(connection: sqlite3.Connection) -> Any:
+    found = review(connection, over_merge=True).over_merges
+    assert found is not None
+    [suspect] = found
+    return suspect
+
+
+def test_what_reaches_is_live_and_outside_the_closure(parties: Path) -> None:
+    """Ruling 6: a child community, a retired root, a dead block's edge and an edge inside the
+    closure change nothing."""
+    connection = sqlite3.connect(_store(parties))
+    try:
+        _two_people_one_name(connection, [("acme_holdings", "gamma_inc")])
+        before = _suspect(connection)
+        ids = _ids(connection)
+        for key, level, state in [("beta_corp", 1, 0), ("epsilon_trust", 0, 1)]:
+            connection.execute(
+                "INSERT INTO community(cite, level, parent, component_ord, cluster_run, size,"
+                " member_digest, run_id, trust, state)"
+                " SELECT 'c9' || ?, ?, CASE WHEN ? = 1 THEN c.community_id END, c.component_ord,"
+                " c.cluster_run, 1, randomblob(16), c.run_id, c.trust, ?"
+                " FROM community AS c JOIN community_member AS m USING (community_id)"
+                " WHERE m.entity_id = ? AND c.parent IS NULL AND c.state = 0",
+                (ids[key], level, level, state, ids[key]),
+            )
+            connection.execute(
+                "INSERT INTO community_member(community_id, entity_id)"
+                " VALUES(last_insert_rowid(), ?)",
+                (ids[key],),
+            )
+        [(quiet,)] = connection.execute(
+            "SELECT max(block_id) FROM block WHERE block_id NOT IN (SELECT block_id FROM mention)"
+        ).fetchall()
+        connection.execute(
+            "INSERT INTO edge(src_entity, dst_entity, relation, observed_block, run_id, trust)"
+            " SELECT ?, ?, 'related_to', ?, MIN(run_id), 2 FROM derive_run",
+            (ids["gamma_inc"], ids["beta_corp"], quiet),
+        )
+        connection.execute("UPDATE block SET state = 1 WHERE block_id = ?", (quiet,))
+        assert _suspect(connection) == before
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def test_a_member_with_no_neighbours_is_not_evidence(parties: Path) -> None:
+    """Ruling 7: iota touches nothing, so acme and iota are not two things by this test."""
+    connection = sqlite3.connect(_store(parties))
+    try:
+        ids = _ids(connection)
+        for src, dst in TRIANGLES:
+            connection.execute(
+                "INSERT INTO edge(src_entity, dst_entity, relation, observed_block, run_id, trust)"
+                " SELECT ?, ?, 'related_to', MIN(block_id), MIN(run_id), 2 FROM block, derive_run"
+                " WHERE block.state = 0",
+                (ids[src], ids[dst]),
+            )
+        cite = _cites(connection)
+        decide.merge(connection, first=cite["acme_holdings"], second=cite["iota_works"], reason="x")
+        found = review(connection, over_merge=True)
+        assert (found.over_merges, found.over_merges_total) == ((), 0)
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def test_the_first_witness_by_block_and_the_cut(parties: Path) -> None:
+    """Rulings 8 and 5: the lowest block naming acme alone, and a total the cut leaves whole."""
+    connection = sqlite3.connect(_store(parties))
+    try:
+        _two_people_one_name(connection)
+        ids = _ids(connection)
+        connection.execute(
+            "INSERT INTO mention(entity_id, block_id, segment_id, ts_a, ts_b, surface, run_id,"
+            " trust, digest) SELECT ?, block_id, segment_id, 0, 1, 'A', run_id, trust,"
+            " randomblob(16) FROM mention WHERE entity_id = ? AND state = 0",
+            (ids["acme_holdings"], ids["beta_corp"]),
+        )
+        [(first,)] = connection.execute(
+            "SELECT b.cite FROM mention AS m JOIN block AS b USING (block_id)"
+            " WHERE m.entity_id = ? AND m.state = 0 AND m.block_id NOT IN"
+            " (SELECT block_id FROM mention WHERE entity_id = ? AND state = 0)"
+            " ORDER BY m.block_id LIMIT 1",
+            (ids["acme_holdings"], ids["gamma_inc"]),
+        ).fetchall()
+        acme_blocks = connection.execute(
+            "SELECT count(DISTINCT block_id) FROM mention WHERE entity_id = ? AND state = 0",
+            (ids["acme_holdings"],),
+        ).fetchone()
+        assert acme_blocks[0] >= 2
+        assert _suspect(connection).members[0].witness == first
+        cut = review(connection, over_merge=True, limit=0)
+        assert (cut.over_merges, cut.over_merges_total) == ((), 1)
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def test_a_member_reaching_both_sides_is_a_hub_not_two_things(parties: Path) -> None:
+    """Ruling 7: gamma also touches beta, so its reach meets acme's."""
+    connection = sqlite3.connect(_store(parties))
+    try:
+        _two_people_one_name(connection, [("gamma_inc", "beta_corp")])
+        found = review(connection, over_merge=True)
+        assert (found.over_merges, found.over_merges_total) == ((), 0)
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def test_a_witness_names_no_other_member(parties: Path) -> None:
+    """Ruling 8: once every block naming gamma also names acme, gamma has no witness."""
+    connection = sqlite3.connect(_store(parties))
+    try:
+        _two_people_one_name(connection)
+        ids = _ids(connection)
+        connection.execute(
+            "INSERT INTO mention(entity_id, block_id, segment_id, ts_a, ts_b, surface, run_id,"
+            " trust, digest) SELECT ?, block_id, segment_id, 0, 1, 'A', run_id, trust,"
+            " randomblob(16)"
+            " FROM mention WHERE entity_id = ? AND state = 0",
+            (ids["acme_holdings"], ids["gamma_inc"]),
+        )
+        suspects = review(connection, over_merge=True).over_merges
+        assert suspects is not None
+        [suspect] = suspects
+        assert [m.witness is None for m in suspect.members] == [False, True]
+        document = review_document(review(connection, over_merge=True), corpus="h", qualify=False)
+        assert document["over_merges"][0]["split"] is None
+    finally:
+        connection.rollback()
+        connection.close()
+
+
+def test_the_suggested_split_runs(tmp_path: Path) -> None:
+    """The text's `try:` line is a command `ow graph split` takes, and it parts the two."""
+    project = _ingested(tmp_path)
+    connection = sqlite3.connect(_store(project))
+    try:
+        _two_people_one_name(connection)
+        connection.commit()
+        cite = _cites(connection)
+    finally:
+        connection.close()
+    code, out, err = _verb(["review", "--over-merge", "--render", "json"], project)
+    assert (code, err) == (0, ""), err
+    split = json.loads(out)["over_merges"][0]["split"]
+    assert split.startswith(f"ow graph split {cite['acme_holdings']} --into d")
+    code, out, err = _verb(["review", "--over-merge"], project)
+    assert (code, err) == (0, ""), err
+    assert f"      try: {split}" in out.splitlines()
+    argv = shlex.split(split.replace('"..."', '"two parties"'))[2:]
+    code, _out, err = _verb(argv, project)
+    assert (code, err) == (0, ""), err
+    connection = sqlite3.connect(_store(project))
+    try:
+        heads = dict(connection.execute("SELECT key, canonical_id FROM entity"))
+        assert heads["acme_holdings"] != heads["gamma_inc"]
+    finally:
+        connection.close()
 
 
 def test_the_action_reads_and_has_no_tool() -> None:

@@ -375,11 +375,13 @@ class ResidueIn:
 
 @dataclass(frozen=True, slots=True)
 class ReviewIn:
-    """`ow graph review`. 06:2520.
+    """`ow graph review [--over-merge]`. 06:2520 and 06:1870.
 
-    06 prints `[--over-merge]`; this cell builds the review surface without it (`store.review`).
+    `over_merge` adds the fifth list, the closures whose members' neighbourhoods fall apart
+    (`store.review` rulings 6-9); it reads every live edge, so it is asked for.
     """
 
+    over_merge: bool = False
     corpus: str | None = None
 
 

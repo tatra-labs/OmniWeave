@@ -565,7 +565,8 @@ def _review(
     config = load(cwd=cwd, env=env, explicit=explicit)
     name = corpus_for(config, [], parsed.corpus, verb="ow graph review")
     store = store_of(config, name, cwd=cwd)
-    document = review_document(_reviewed(store), corpus=name, qualify=len(corpora(config)) > 1)
+    found = _reviewed(store, over_merge=bool(parsed.over_merge))
+    document = review_document(found, corpus=name, qualify=len(corpora(config)) > 1)
     if parsed.render == "json":
         stdout.write(json.dumps(document, ensure_ascii=False) + "\n")
     else:
@@ -573,7 +574,7 @@ def _review(
     return 0
 
 
-def _reviewed(store: Path) -> Review:
+def _reviewed(store: Path, *, over_merge: bool) -> Review:
     from omniweave_core.clock import SystemClock  # noqa: PLC0415 -- a usage error never pays
     from omniweave_core.store import reader as store_reader  # noqa: PLC0415
     from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
@@ -583,7 +584,7 @@ def _reviewed(store: Path) -> Review:
     try:
         reader = store_reader.SqliteReader(connection, now_ns=SystemClock().wall_ns())
         with reader.snapshot():
-            return review(connection)
+            return review(connection, over_merge=over_merge)
     finally:
         connection.close()
 
@@ -604,6 +605,20 @@ def review_document(found: Review, *, corpus: str, qualify: bool) -> dict[str, A
         row["entity"], row["cite"] = cite(row["entity"]), cite(row["cite"])
     for row in document["edges"]:
         row["src"], row["dst"], row["cite"] = cite(row["src"]), cite(row["dst"]), cite(row["cite"])
+    for row in document["over_merges"] or ():
+        row["head"] = cite(row["head"])
+        for member in row["members"]:
+            member["entity"] = cite(member["entity"])
+            member["communities"] = [cite(c) for c in member["communities"]]
+            member["witness"] = None if member["witness"] is None else cite(member["witness"])
+        row["apart"] = [cite(a) for a in row["apart"]]
+        witness = {m["entity"]: m["witness"] for m in row["members"]}
+        sides = [witness[a] for a in row["apart"]]
+        row["split"] = (
+            f'ow graph split {row["head"]} --into {",".join(sides)} --reason "..."'
+            if all(sides)
+            else None
+        )
     return document
 
 
@@ -666,6 +681,30 @@ def _review_text(document: Mapping[str, Any]) -> list[str]:
         lines.extend([f"  {title}", *rows])
         if document[total] > len(rows):
             lines.append(f"    the first {len(rows)} of {document[total]}")
+    if document["over_merges"] is not None:
+        lines.extend(_over_merge_text(document))
+    return lines
+
+
+def _over_merge_text(document: Mapping[str, Any]) -> list[str]:
+    suspects = document["over_merges"]
+    if not suspects:
+        return ["  over-merge: no closure's members fall apart"]
+    lines = [f"  over-merge: {document['over_merges_total']} closure(s) whose members fall apart"]
+    for row in suspects:
+        lines.append(
+            f"    {row['head']}  {row['title']} ({row['etype']})  {len(row['members'])} members in "
+            f"{row['doc_count']} document(s), reaching {row['communities']} top-level communities"
+        )
+        lines.extend(
+            f"      {m['entity']}  {' '.join(m['communities']) or 'no neighbours'}  "
+            f"witness {m['witness'] or 'none alone'}"
+            for m in row["members"]
+        )
+        if row["split"]:
+            lines.append(f"      try: {row['split']}")
+    if document["over_merges_total"] > len(suspects):
+        lines.append(f"    the first {len(suspects)} of {document['over_merges_total']}")
     return lines
 
 
