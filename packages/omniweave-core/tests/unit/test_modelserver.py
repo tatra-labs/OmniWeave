@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 
 import omniweave_core.modelserver as ms
 import pytest
+from omniweave_core.config import Config, load
 from omniweave_core.errors import ConfigError, DriverHostError
 from omniweave_core.limits import MAX_AUTO_PARALLEL
 from omniweave_core.modelserver import (
@@ -61,6 +62,9 @@ from omniweave_core.modelserver import (
     sentinel_name,
     server_argv,
     service_capacity,
+    service_name,
+    service_specs,
+    services_root,
     spawn_env,
     write_sentinel,
 )
@@ -839,3 +843,66 @@ def test_there_is_no_ambient_registry() -> None:
     assert not hasattr(ms, "get_default_manager")
     assert not hasattr(ms, "default_registry")
     assert not [name for name in vars(ms) if name.isupper() and "REGISTRY" in name]
+
+
+# =============================================================================================
+# D713: the run's registry is built from [services.*], and a card's entry names a table
+# =============================================================================================
+
+
+def _config(tmp_path: Path, body: str) -> Config:
+    path = tmp_path / "omniweave.toml"
+    path.write_text(body, encoding="utf-8")
+    return load(cwd=tmp_path, env={"OMNIWEAVE_HOME": str(tmp_path / "absent")}, explicit=path)
+
+
+def test_every_services_table_is_a_spec_and_its_keys_are_its_fields(tmp_path: Path) -> None:
+    cfg = _config(
+        tmp_path,
+        "[services.llm]\n"
+        'model_id = "qwen3:4b"\n'
+        f'model_revision = "{REV}"\n'
+        'endpoint = "http://127.0.0.1:11434"\n'
+        "autostart = false\ncapacity = 3\nbatch_wait_ms = 7\nmax_batch = 9\nkeep_alive_s = 11\n"
+        "[services.vlm]\n"
+        f'model_id = "{MODEL}"\nmodel_revision = "{REV}"\n',
+    )
+    specs = service_specs(cfg)
+    assert specs == {
+        "llm": ServiceSpec(
+            name="llm", model_id="qwen3:4b", model_revision=REV,
+            endpoint="http://127.0.0.1:11434", autostart=False, capacity=3, batch_wait_ms=7,
+            max_batch=9, keep_alive_s=11,
+        ),
+        "vlm": ServiceSpec(name="vlm", model_id=MODEL, model_revision=REV),
+    }  # fmt: skip
+
+
+def test_no_services_table_is_no_spec(tmp_path: Path) -> None:
+    assert service_specs(_config(tmp_path, "")) == {}
+
+
+def test_a_branch_named_as_a_revision_is_refused_when_the_specs_are_built(tmp_path: Path) -> None:
+    cfg = _config(tmp_path, '[services.llm]\nmodel_id = "m"\nmodel_revision = "main"\n')
+    with pytest.raises(ConfigError, match="branch and not a revision"):
+        service_specs(cfg)
+
+
+def test_a_card_entry_names_its_services_table() -> None:
+    """05:2456 spells an entry `model:<name>`; the prefix goes once, and a bare name is itself."""
+    assert service_name("model:llm") == "llm"
+    assert service_name("llm") == "llm"
+    assert service_name("model:model:x") == "model:x"
+
+
+def test_the_services_root_is_under_the_home_the_config_file_is() -> None:
+    assert services_root({"OMNIWEAVE_HOME": "h", "HOME": "u"}) == Path("h") / "services"
+    assert services_root({"HOME": "u"}) == Path("u") / ".omniweave" / "services"
+    assert services_root({"USERPROFILE": "w"}) == Path("w") / ".omniweave" / "services"
+    assert services_root({}) is None
+
+
+def test_a_handle_reports_the_request_timeout_it_is_bounded_by(tmp_path: Path) -> None:
+    write_sentinel(tmp_path / sentinel_name("vlm", DIGEST), sentinel())
+    got = registry(tmp_path, specs={"vlm": spec(request_timeout_s=42)}).handle("vlm")
+    assert got.request_timeout_s == 42.0

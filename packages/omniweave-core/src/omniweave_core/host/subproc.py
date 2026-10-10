@@ -209,6 +209,7 @@ from omniweave_ports.types import (
     DriverResult,
     FailureClass,
     Isolation,
+    ServiceHandle,
     UnitRef,
 )
 
@@ -2772,6 +2773,25 @@ class ServiceGrant:
     capacity: int = 1
     traceparent: str = ""
     request_timeout_s: int = 600
+
+    @classmethod
+    def of(cls, handle: ServiceHandle) -> ServiceGrant:
+        """The grant for a handle the run's registry issued (D713).
+
+        `request_timeout_s` is core's `Handle`'s. A handle that is not one has none, so its grant
+        keeps `ServiceSpec`'s default, 600.
+        """
+        timeout = getattr(handle, "request_timeout_s", None)
+        return cls(
+            name=handle.name,
+            base_url=handle.base_url,
+            token=handle.token,
+            model_id=handle.model_id,
+            model_rev=handle.model_rev,
+            capacity=handle.capacity,
+            traceparent=handle.traceparent,
+            request_timeout_s=600 if timeout is None else int(timeout),
+        )
 
     def as_header(self) -> dict[str, object]:
         return {

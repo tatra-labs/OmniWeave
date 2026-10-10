@@ -546,6 +546,7 @@ def ingest(
     ignore_evidence_cache: bool = False,
     accept_partial: bool = False,
     passwords: Passwords | None = None,
+    services_root: Path | None = None,
 ) -> IngestReport:
     """Run hops 1-4 over one store, under `store.write`, and report where every unit stopped.
 
@@ -600,6 +601,7 @@ def ingest(
                 ignore_evidence_cache=ignore_evidence_cache,
                 accept_partial=accept_partial,
                 passwords=passwords,
+                services_root=cache_root / "services" if services_root is None else services_root,
             )
             pending = _receipt(thread, source_root=source_root)
         except BaseException:
@@ -747,6 +749,7 @@ def _hops(
     ignore_evidence_cache: bool = False,
     accept_partial: bool = False,
     passwords: Passwords | None = None,
+    services_root: Path,
 ) -> IngestReport:
     now_ns = clock.wall_ns()
     plan_batch = int(config.get("runtime.plan_batch"))  # type: ignore[arg-type]
@@ -786,7 +789,9 @@ def _hops(
         thread, generation=generation, indexed_at_ns=now_ns, plan_batch=plan_batch
     )
     opened = book.stage(Stage.DISCOVER, opened)
-    context = _context(run_id, generation, config=config, roots=roots, clock=clock)
+    context = _context(
+        run_id, generation, config=config, roots=roots, clock=clock, services_root=services_root
+    )
     enqueued, unsalted = _enqueue(thread, context, plan_batch=plan_batch)
     book.catalog(inputs.catalog.catalog_digest)
     context = replace(
@@ -1125,15 +1130,28 @@ def row_as_explicit(row: RosterRow) -> RosterRow:
 
 
 def _context(
-    run_id: str, generation: int, *, config: Config, roots: Roots, clock: Clock
+    run_id: str,
+    generation: int,
+    *,
+    config: Config,
+    roots: Roots,
+    clock: Clock,
+    services_root: Path,
 ) -> RunContext:
-    """The `RunContext` for hop 4. Four fields are `None`, and the type says each is unread.
+    """The `RunContext` for hop 4. Three fields are `None`, and the type says each is unread.
 
-    `limits`, `services`, `budget` and `events` are what a parse, a model call, a billed admission
-    and a trace would read, and `op.identify` is none of them: it is free, core-only, and its answer
-    is a store column (08:861). `admission` is the loop's own and is set by `_drain()`. A plausible
-    stub for any of them would claim a coverage this run does not have.
+    `limits`, `budget` and `events` are what a parse, a billed admission and a trace would read, and
+    `op.identify` is none of them: it is free, core-only, and its answer is a store column (08:861).
+    `admission` is the loop's own and is set by `_drain()`. A plausible stub for any of them would
+    claim a coverage this run does not have.
+
+    **`services` is the run's `ServiceRegistry`** (D713), over every `[services.<name>]` table.
+    Building it attaches nothing (08:1179): a Service is attached on the first call that names it.
+    `services_root` is where sentinels are read from; `ow ingest` and `ow add` pass
+    `$OMNIWEAVE_HOME/services`, and a caller with no home keeps them beside its cache.
     """
+    from omniweave_core.modelserver import ServiceRegistry, service_specs  # noqa: PLC0415
+
     return RunContext(
         run_id=run_id,
         generation=generation,
@@ -1146,7 +1164,11 @@ def _context(
         catalog_digest="",
         limits=None,  # type: ignore[arg-type]
         admission=None,  # type: ignore[arg-type]
-        services=None,  # type: ignore[arg-type]
+        services=ServiceRegistry(
+            service_specs(config),
+            services_root=services_root,
+            config_digest=config.config_digest,
+        ),
         budget=None,  # type: ignore[arg-type]
         cancel=CancelToken("run", run_id, clock),
         clock=clock,
