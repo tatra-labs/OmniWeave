@@ -43,7 +43,9 @@ names the lane and the Pass's place (`BilledLane`):
    carries the key, as `layer` and `page` do. `SegmentRef.uncovered` is the members' bits less
    `cheaper`, 64 bytes big-endian, so the sink can refuse covered ground (06:788-797).
 8. **`etypes` is the corpus vocabulary a prompt may render**: `etype_vocab` rows whose `source` is
-   `builtin` or `user`, never `proposed` (06:1675), by name with `unknown` last.
+   `builtin` or `user`, never `proposed` (06:1675), by name with `unknown` last. `document_scoped`
+   names those whose `scope` is `document` (D710), because a driver states each entity's scope and
+   the sink takes it as given.
 9. **`relations` is every `relation_vocab` row as `{relation, actor_rule}`**, by name: the rule is
    what part 3 of the prompt prints (06:1350).
 10. **`doc` carries what the store holds**: `format` and `media_type`. 06:1311's `lang`,
@@ -188,6 +190,10 @@ class UnitItems:
 _ETYPES: Final = (
     "SELECT etype FROM etype_vocab WHERE source IN ('builtin', 'user')"
     " ORDER BY etype = 'unknown', etype"
+)
+_DOCUMENT_SCOPED: Final = (
+    "SELECT etype FROM etype_vocab WHERE source IN ('builtin', 'user') AND scope = 'document'"
+    " ORDER BY etype"
 )
 _RELATIONS: Final = "SELECT relation, actor_rule FROM relation_vocab ORDER BY relation"
 _DOC: Final = "SELECT format, media_type FROM doc WHERE doc_ord = ?"
@@ -335,6 +341,7 @@ def _billed_header(connection: sqlite3.Connection, doc_ord: int) -> dict[str, An
     doc = connection.execute(_DOC, (doc_ord,)).fetchone()
     return {
         "etypes": [str(r[0]) for r in connection.execute(_ETYPES)],
+        "document_scoped": [str(r[0]) for r in connection.execute(_DOCUMENT_SCOPED)],
         "relations": [
             {"relation": str(r), "actor_rule": str(rule)}
             for r, rule in connection.execute(_RELATIONS)
