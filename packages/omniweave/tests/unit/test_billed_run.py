@@ -528,3 +528,31 @@ def test_an_entry_whose_blob_is_gone_is_a_miss_and_the_next_answer_heals_it(
     )
     assert _run(tmp_path, store, config).status == "ok"
     assert len(_Model.asked) == 2 * calls + 2, "the healed entries answer the third file"
+
+
+def test_the_merge_card_is_corpus_grained_billed_and_declares_its_witness_set() -> None:
+    """D726: 06:842's row 13, rank 2 phase 30 at `corpus` granularity, per 30-pair batch; 04:2519's
+    witness set, which resolve() would otherwise refuse as `NO_WITNESS_SET`; D718's timing."""
+    from omniweave_core.discovery import catalog  # noqa: PLC0415
+    from omniweave_ports.types import ArtifactKind  # noqa: PLC0415
+
+    cards = catalog().cards
+    merge_card, entity_card = cards.get("derive.merge.llm"), cards.get(LLM)
+    assert merge_card is not None and entity_card is not None
+    assert merge_card.identity.granularity == "corpus"
+    assert merge_card.identity.entrypoint == "omniweave_llm.merge_llm.driver:MergeLLM"
+    assert set(merge_card.capability.produces) == {
+        ArtifactKind.GRAPH_ITEMS,
+        ArtifactKind.WITNESS_SET,
+    }
+    assert merge_card.cost_model is not None
+    assert merge_card.cost_model.cost_class == "billed_api"
+    assert dict(merge_card.cost_model.per_part) == {
+        "tokens_in": 2100,
+        "tokens_out": 240,
+        "calls": 1,
+    }
+    assert merge_card.derive_sibling is not None
+    assert (merge_card.derive_sibling.phase, merge_card.derive_sibling.prompt_version) == (30, "1")
+    assert merge_card.isolation == entity_card.isolation
+    assert merge_card.degradations == ()

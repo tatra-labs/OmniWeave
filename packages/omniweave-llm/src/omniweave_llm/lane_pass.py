@@ -60,7 +60,7 @@ if TYPE_CHECKING:
 
     from omniweave_llm.view import SegmentView
 
-__all__ = ["CHAT_PATH", "GLEAN", "MAX_ATTEMPTS", "LanePass"]
+__all__ = ["CHAT_PATH", "GLEAN", "MAX_ATTEMPTS", "LanePass", "Tally", "chat"]
 
 CHAT_PATH: Final = "/v1/chat/completions"
 MAX_ATTEMPTS: Final = 2
@@ -112,7 +112,7 @@ class LanePass:
         """
         handle = io.service(self.service)
         frames: list[dict[str, Any]] = []
-        spend = _Spend()
+        spend = Tally()
         read = 0
         for done, unit in enumerate(scope.units):
             with io.blobs.open(unit.content_sha256) as blob:
@@ -145,7 +145,7 @@ class LanePass:
         return b'"t":"seg"' in ref.head(_HEAD_WINDOW)
 
     def _segment(
-        self, view: SegmentView, handle: ServiceHandle, io: DriverIO, spend: _Spend
+        self, view: SegmentView, handle: ServiceHandle, io: DriverIO, spend: Tally
     ) -> list[dict[str, Any]]:
         """Ruling 3: the first answer, and the glean it asks for, as one Segment's frames."""
         prompt = render(
@@ -154,7 +154,7 @@ class LanePass:
         )  # fmt: skip
         messages: list[dict[str, str]] = [{"role": "user", "content": prompt.text}]
         name = f"owgraph_{self.LANE}"
-        first_text = _call(handle, io, messages, prompt.schema, spend, name=name)
+        first_text = chat(handle, io, messages, prompt.schema, spend, name=name)
         first, problems = parse_answer(first_text, prompt.schema)
         if first is None:
             return self._unparsed(view, first_text, problems)
@@ -164,7 +164,7 @@ class LanePass:
             {"role": "assistant", "content": first_text},
             {"role": "user", "content": GLEAN},
         ]
-        second_text = _call(handle, io, messages, prompt.schema, spend, name=name)
+        second_text = chat(handle, io, messages, prompt.schema, spend, name=name)
         second, problems = parse_answer(second_text, prompt.schema)
         if second is None:
             frames = self._frames(view, first)
@@ -175,17 +175,20 @@ class LanePass:
         return self._frames(view, {**both, "more_available": False})
 
 
-class _Spend:
+class Tally:
+    """Ruling 4's Spend as one INVOKE's calls add it up. Public since D726, which shares `chat`
+    with `derive.merge.llm`."""
+
     def __init__(self) -> None:
         self.calls = self.tokens_in = self.tokens_out = self.egress = 0
 
 
-def _call(
+def chat(
     handle: ServiceHandle,
     io: DriverIO,
     messages: list[dict[str, str]],
     schema: Mapping[str, Any],
-    spend: _Spend,
+    spend: Tally,
     *,
     name: str,
 ) -> str:

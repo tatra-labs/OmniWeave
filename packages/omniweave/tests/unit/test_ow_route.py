@@ -73,7 +73,7 @@ def test_the_registry_it_builds_is_the_day_one_fifty_three() -> None:
     assert "layout.class_hist" not in keys
 
 
-def test_the_cards_it_finds_are_the_thirteen_first_party_drivers() -> None:
+def test_the_cards_it_finds_are_the_fourteen_first_party_drivers() -> None:
     """W5.6 added the third. Before it, checks 9, 11 and 13 all deferred on `parse.page.olmocr`
     and the linter reported six undecidables; with the card on disk it reports three, and none of
     the three is olmocr's. D646 added the fourth, `parse.text.builtin`, whose card is one package
@@ -82,7 +82,8 @@ def test_the_cards_it_finds_are_the_thirteen_first_party_drivers() -> None:
     D668 the sixth, `derive.anchor.defterm`, D669 the seventh, `derive.xref.pattern`, and D670
     the eighth, `derive.anchor.native`; D671 the ninth, `derive.xref.native`; D681 the tenth,
     `derive.entity.table`; D683 the eleventh, `derive.entity.gazetteer`; D711 the twelfth and first
-    billed one, `derive.entity.llm`; D722 the thirteenth, `derive.claim.llm`."""
+    billed one, `derive.entity.llm`; D722 the thirteenth, `derive.claim.llm`; D726 the fourteenth,
+    `derive.merge.llm`."""
     cards = tool.installed_cards()
     assert sorted(cards) == [
         "derive.anchor.defterm",
@@ -91,6 +92,7 @@ def test_the_cards_it_finds_are_the_thirteen_first_party_drivers() -> None:
         "derive.entity.gazetteer",
         "derive.entity.llm",
         "derive.entity.table",
+        "derive.merge.llm",
         "derive.segment.spine",
         "derive.xref.native",
         "derive.xref.pattern",
