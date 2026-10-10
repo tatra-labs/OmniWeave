@@ -110,6 +110,7 @@ __all__ = [
     "SkillsVerifyIn",
     "SplitIn",
     "SurfaceEmitIn",
+    "TypesIn",
     "UninstallIn",
     "WhyIn",
 ]
@@ -403,6 +404,21 @@ class ReviewIn:
     """
 
     over_merge: bool = False
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TypesIn:
+    """`ow graph types [--promote <etypes> --reason "..."]`. 06:1667-1668 and 06:289-290.
+
+    `promote` is one comma-separated string of proposed types, as 06 spells it; `reason` is
+    required with it. `propose` is 06:1653's `--propose`, parsed and refused until W8.8 builds the
+    billed calls it makes.
+    """
+
+    promote: str | None = None
+    reason: str | None = None
+    propose: bool = False
     corpus: str | None = None
 
 

@@ -107,7 +107,7 @@ GLOBAL_FLAGS: Final[tuple[Argument, ...]] = (
 
 GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
-    "graph": "doctor · locate · merge · merges · plan · residue · review · split · why",
+    "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
     "hooks": "check",
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
@@ -387,6 +387,29 @@ COMMANDS: Final[tuple[Command, ...]] = (
             Argument(
                 spelling=("--reason",),
                 metavar="REASON",
+            ),
+        ),
+    ),
+    Command(
+        words=("graph", "types"),
+        actions=("graph.types",),
+        help=(
+            "List the entity-type vocabulary with each type's live entities, or promote "
+            "proposed types into it, with a reason"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--promote",),
+                metavar="PROMOTE",
+            ),
+            Argument(
+                spelling=("--reason",),
+                metavar="REASON",
+            ),
+            Argument(
+                spelling=("--propose",),
+                kind="switch",
+                default=False,
             ),
         ),
     ),
