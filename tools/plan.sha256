@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D722: derive.claim.llm, and D721 corrected
+# blessed-because: D723: the CAS annotation, on one line
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -33,7 +33,7 @@ documents-frozen  3af6a53e2a3edbbd85dac7c7068d9429f73240aa4b4e0cc53118bc92cd6b6a
 documents-frozen  6e98c953433a016cb1ec27c4373ce9462f2c7ef2b2ff0337f80fff67c72ed29b  04-driver-system.md
 documents-frozen  58eeb69e5ed3d40f01c4f9afc0550778a3e88efc1c728c04f87d9e8fa1f6a572  05-ingest-and-routing.md
 documents-frozen  d3f295c2ff892e699995715a7988c34076e08753c01dc6c1060529803e7b0c39  06-structure-extraction.md
-documents-frozen  6e8fac09c2b53a2816b594ae755f279e9868d32e3912b99e87f1bf2697bb7180  07-store-and-retrieval.md
+documents-frozen  62b8cacb2329d804ee9a66ef43c145389a0321b3605c31424280a87d1ec7f28d  07-store-and-retrieval.md
 documents-frozen  3b78dc5495b60c008dea14242c2dd56a9ee67f8996e1f61b66791fc5e78a1d0f  08-runtime.md
 documents-frozen  eddeb4634f5da1e2b056a002a7fa6eaa43d71836633b0a44d65301ac8b2d16e4  09-generation.md
 documents-frozen  d96985003690550f4d996e31a41306d21d6a8e2e7ff34076c0ad5cff5f3cb64e  10-interfaces.md

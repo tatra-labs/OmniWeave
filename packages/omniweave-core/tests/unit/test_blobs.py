@@ -1141,3 +1141,81 @@ def test_a_denied_replace_with_no_object_there_still_raises(
     with pytest.raises(PermissionError):
         store.put(io.BytesIO(b"never stored"))
     assert list(store.tmp_root.iterdir()) == []
+
+
+# ---------------------------------------------------------------------------------------------
+# D723: an existing blob is never replaced, and a read waits out a moment's denial
+# ---------------------------------------------------------------------------------------------
+
+
+def test_putting_a_blob_that_is_there_does_not_replace_it(
+    store: BlobStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The name IS the digest, so the object there already holds these bytes: no rename at all."""
+    body = b"the same view body " * 100
+    digest = store.put(io.BytesIO(body))
+    leftovers = set(store.tmp_root.iterdir())
+
+    def refuse(_self: Path, _target: Path) -> None:
+        raise AssertionError("an existing blob was replaced")
+
+    monkeypatch.setattr(Path, "replace", refuse)
+    assert store.put(io.BytesIO(body)) == digest
+    assert set(store.tmp_root.iterdir()) == leftovers, "the staged copy is not left behind"
+    with store.open(digest) as fh:
+        assert fh.read() == body
+
+
+def test_a_reader_is_never_denied_while_the_same_blob_is_put_again(store: BlobStore) -> None:
+    """D723, GR8's failure: on Windows, replacing a blob denied a reader for a moment (EACCES)."""
+    import threading  # noqa: PLC0415
+
+    body = b"the same view body " * 5000
+    digest = store.put(io.BytesIO(body))
+    stop, errors = threading.Event(), []
+
+    def read() -> None:
+        while not stop.is_set():
+            try:
+                with store.open(digest) as fh:
+                    fh.read()
+            except OSError as error:
+                errors.append(error)
+
+    def put() -> None:
+        while not stop.is_set():
+            store.put(io.BytesIO(body))
+
+    threads = [threading.Thread(target=f) for f in (read, read, put, put)]
+    for thread in threads:
+        thread.start()
+    stop.wait(1.5)
+    stop.set()
+    for thread in threads:
+        thread.join()
+    assert errors == []
+
+
+def test_a_read_waits_out_a_moments_denial_and_raises_a_lasting_one(
+    store: BlobStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omniweave_core import blobs  # noqa: PLC0415
+
+    digest = store.put(io.BytesIO(b"bytes"))
+    opened = Path.open
+    denials = [2]
+
+    def flaky(self: Path, *args: object, **kwargs: object) -> object:
+        if denials[0] > 0:
+            denials[0] -= 1
+            raise PermissionError(errno.EACCES, "Permission denied", str(self))
+        return opened(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(blobs, "_SETTLE_PAUSE_S", 0.0)
+    monkeypatch.setattr(Path, "open", flaky)
+    with store.open(digest) as fh:
+        assert fh.read() == b"bytes"
+    denials[0] = 10**6
+    with pytest.raises(PermissionError):
+        store.open(digest)
+    assert denials[0] == 10**6 - blobs._SETTLE_TRIES

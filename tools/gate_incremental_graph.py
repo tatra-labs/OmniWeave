@@ -340,6 +340,9 @@ class Report:
     full_s: float = 0.0
     reparsed: int = 0
     """Live documents whose generation advanced across the driver-version step."""
+    unfinished: dict[str, list[tuple[str, str, str, str, int]]] = field(default_factory=dict)
+    """Each side's work rows left other than `done`, as `(operator, status, failure_class, message,
+    count)`. A side with any did not finish its work, so the comparison is not of finished runs."""
 
     def exit_code(self) -> int:
         if self.differences:
@@ -419,6 +422,21 @@ def _heads(project: Path, operator: str | None = None) -> dict[str, int]:
     finally:
         connection.close()
     return {str(key): int(gen) for key, gen in rows}
+
+
+def _unfinished(project: Path) -> list[tuple[str, str, str, str, int]]:
+    """The work rows not `done`, grouped. `ow add` exits 0 on a `partial` run (08:911), so this is
+    the only place a batch that did not land shows."""
+    connection = sqlite3.connect(project / STORE)
+    try:
+        rows = connection.execute(
+            "SELECT operator, status, IFNULL(failure_class, ''),"
+            " substr(IFNULL(failure_message, ''), 1, 160), count(*) FROM work"
+            " WHERE status <> 'done' GROUP BY 1, 2, 3, 4 ORDER BY 1, 2, 3, 4"
+        ).fetchall()
+    finally:
+        connection.close()
+    return [(str(o), str(s), str(c), str(m), int(n)) for o, s, c, m, n in rows]
 
 
 def _projection(project: Path) -> CanonicalProjection:
@@ -514,6 +532,9 @@ def run(
     report.full_s = time.perf_counter() - started
     say(f"  full      {len(current)} documents  {report.full_s:6.1f} s")
 
+    for side, project in (("incremental", incremental), ("full", full)):
+        if rows := _unfinished(project):
+            report.unfinished[side] = rows
     after, rebuilt = _projection(incremental), _projection(full)
     report.sizes = {name: len(getattr(rebuilt, name)) for name in _MEMBERS}
     report.differences = after.differences(rebuilt)
@@ -533,6 +554,12 @@ def render(report: Report, out: TextIO) -> None:
         print(f"  NOT RUN  {step.render()}: {ABSENT[step.kind]}", file=out)
     if report.failure:
         print(f"  DID NOT RUN  {report.failure}", file=out)
+    for side, rows in report.unfinished.items():
+        for operator, status, failure, message, count in rows:
+            print(
+                f"  UNFINISHED  {side}: {operator} {status} {failure or '-'} x{count}  {message}",
+                file=out,
+            )
     for member, (only_incremental, only_full) in report.differences.items():
         print(f"  DIFFERS  {member}", file=out)
         for row in only_incremental[:10]:
