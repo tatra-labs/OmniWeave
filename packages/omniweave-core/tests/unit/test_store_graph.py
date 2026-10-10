@@ -243,7 +243,7 @@ def _segment_ref() -> SegmentRef:
         doc_ord=DOC_ORD,
         gen=GEN,
         content_digest=b"\x04",
-        uncovered=bytes(64),
+        uncovered=None,  # a free Pass has no floor (SegmentRef); D709's gate reads it
     )
 
 

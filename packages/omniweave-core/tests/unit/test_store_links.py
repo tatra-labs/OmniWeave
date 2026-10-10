@@ -157,7 +157,7 @@ def _run(
             doc_ord=doc_ord,
             gen=GEN,
             content_digest=b"\x04",
-            uncovered=bytes(64),
+            uncovered=None,  # a free Pass has no floor (SegmentRef); D709's gate reads it
         ),
         PassIdentity(
             pass_id=pass_id,
