@@ -58,7 +58,12 @@ class _Model(http.server.BaseHTTPRequestHandler):
         request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         type(self).asked.append(request)
         time.sleep(type(self).delay_s)
-        answer = {"entities": _named(request), "relations": [], "more_available": False}
+        lane = request["response_format"]["json_schema"]["name"]
+        answer = (
+            {"claims": _claimed(request), "more_available": False}
+            if lane == "owgraph_claim"
+            else {"entities": _named(request), "relations": [], "more_available": False}
+        )
         self._reply(
             200,
             {
@@ -77,6 +82,29 @@ class _Model(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 -- the base's name
         del format, args
+
+
+def _blocks(request: dict[str, Any]) -> list[dict[str, Any]]:
+    """The blocks the prompt showed, as the view renders them."""
+    return [
+        json.loads(line)
+        for message in request["messages"]
+        for line in str(message.get("content", "")).splitlines()
+        if line.startswith('{"t":"block"')
+    ]
+
+
+def _claimed(request: dict[str, Any]) -> list[dict[str, Any]]:
+    """One claim per name a shown block's text holds: the name is a party, quoted by its block."""
+    return [
+        {"subject": name, "subject_etype": "org", "claim_type": "attribute",
+         "predicate": "is_party", "object": None, "object_is_entity": False,
+         "status": "asserted", "t_start": None, "t_end": None, "description": None,
+         "cite": block["cite"], "quote": name}
+        for block in _blocks(request)
+        for name in NAMES
+        if name in str(block.get("text", ""))
+    ]  # fmt: skip
 
 
 def _named(request: dict[str, Any]) -> list[dict[str, Any]]:
@@ -108,13 +136,15 @@ def model() -> Iterator[str]:
         server.server_close()
 
 
-def _project(tmp_path: Path, endpoint: str, extra: str = "") -> tuple[Path, Any]:
+def _project(
+    tmp_path: Path, endpoint: str, extra: str = "", billed: tuple[str, ...] = (LLM,)
+) -> tuple[Path, Any]:
     (tmp_path / "docs").mkdir()
     (tmp_path / "docs" / "memo.md").write_text(MEMO, encoding="utf-8")
     listed = {
-        "enabled": [*SHIPPED_DRIVERS, LLM],
+        "enabled": [*SHIPPED_DRIVERS, *billed],
         "classes": ["free", "local_compute", "billed_api"],
-        "passes": [*SHIPPED_PASSES, LLM],
+        "passes": [*SHIPPED_PASSES, *billed],
     }
     toml = (
         PROJECT
@@ -327,3 +357,50 @@ def test_a_batch_longer_than_its_lease_is_extended_and_lands(tmp_path: Path, mod
         )
     }
     assert keys == {"acme_holdings", "beta_corp"}
+
+
+def test_the_claim_pass_runs_beside_the_entity_pass_and_binds_its_subjects(
+    tmp_path: Path, model: str
+) -> None:
+    """D722: `derive.claim.llm` in a real ingest, its claims on the entities the names are."""
+    claim_llm = "derive.claim.llm"
+    store, config = _project(tmp_path, model, billed=(LLM, claim_llm))
+    report = _run(tmp_path, store, config)
+    assert report.status == "ok", report.lines()
+    assert _rows(store, "SELECT DISTINCT status FROM work WHERE operator = 'derive.claim.llm'") == [
+        ("done",)
+    ]
+    lanes = {request["response_format"]["json_schema"]["name"] for request in _Model.asked}
+    assert lanes == {"owgraph_entity", "owgraph_claim"}
+    claims = _rows(
+        store,
+        "SELECT DISTINCT e.key, c.predicate FROM claim AS c"
+        " JOIN entity AS e ON e.entity_id = c.subject_entity"
+        " JOIN derive_run AS r ON r.run_id = c.run_id WHERE r.pass_id = 'derive.claim.llm'"
+        " ORDER BY e.key",
+    )
+    assert claims == [("acme_holdings", "is_party"), ("beta_corp", "is_party")]
+    assert any(line.startswith(f"  billed    {claim_llm}: ") for line in report.lines())
+
+
+def test_the_claim_card_is_placed_after_the_entity_card_and_timed_alike() -> None:
+    """D722: 06:841's row 12, rank 2 phase 20; its subjects are entity frames; D718's timing."""
+    from omniweave_core.discovery import catalog  # noqa: PLC0415
+    from omniweave_core.store.coverage import BILLED_PASSES  # noqa: PLC0415
+
+    cards = catalog().cards
+    entity_card, claim_card = cards.get(LLM), cards.get("derive.claim.llm")
+    assert entity_card is not None and claim_card is not None
+    assert claim_card.derive is not None and sorted(claim_card.derive.items) == ["claim", "entity"]
+    assert claim_card.cost_model is not None
+    assert dict(claim_card.cost_model.per_part) == {
+        "tokens_in": 3100,
+        "tokens_out": 480,
+        "calls": 1,
+    }
+    assert claim_card.isolation == entity_card.isolation
+    assert claim_card.identity.entrypoint == "omniweave_llm.claim_llm.driver:ClaimLLM"
+    places = {b.pass_id: b.place for b in BILLED_PASSES}
+    assert places["derive.claim.llm"] == (2, 20) > places[LLM]
+    assert claim_card.derive_sibling is not None and entity_card.derive_sibling is not None
+    assert (claim_card.derive_sibling.phase, entity_card.derive_sibling.phase) == (20, 10)
