@@ -190,10 +190,11 @@ def test_the_actions_with_no_sdk_entry_point_are_the_document_pair_and_the_insta
     two `ow skills` verbs are the same gap, and so is `serve`, which 18 prints as a command
     (18:916) and never as a method, and `surface.emit`, which 10:1430 prints only as a verb.
     `graph.locate` is the same gap: 18:3375's `GraphView` prints `evidence(edge)` and no
-    `locate` (D694)."""
+    `locate` (D694), and no `why` (D695)."""
     missing = sorted(name for name, spec in ACTIONS.items() if spec.cli and name not in SDK_HOMES)
     assert missing == [
-        "doc.diff", "doc.grid", "graph.locate", "hooks.check", "install", "serve", "skills.check",
+        "doc.diff", "doc.grid", "graph.locate", "graph.why", "hooks.check", "install", "serve",
+        "skills.check",
         "skills.hash",
         "skills.install", "skills.ls", "skills.remove", "skills.update", "skills.verify",
         "surface.emit", "uninstall",

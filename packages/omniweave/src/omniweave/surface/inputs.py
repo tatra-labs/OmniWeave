@@ -104,6 +104,7 @@ __all__ = [
     "SkillsVerifyIn",
     "SurfaceEmitIn",
     "UninstallIn",
+    "WhyIn",
 ]
 
 
@@ -309,6 +310,20 @@ class LocateIn:
     claim: str | None = None
     edge: int | None = None
     mention: int | None = None
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class WhyIn:
+    """`ow graph why --cite`. 06:2120, 06:2524.
+
+    06 prints the verb with `--cite`, so the field has a default and the generated tree publishes
+    it as an option, not a positional; a missing one is a usage error naming it. `cite` is anything
+    `ow open` resolves to one block -- a cite, an address -- by the same ladder (10:437), and a
+    ref naming more than one block is a usage error, as `ow doc grid`'s is.
+    """
+
+    cite: str | None = None
     corpus: str | None = None
 
 

@@ -107,7 +107,7 @@ GLOBAL_FLAGS: Final[tuple[Argument, ...]] = (
 
 GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
-    "graph": "locate",
+    "graph": "locate · why",
     "hooks": "check",
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
@@ -277,6 +277,20 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 spelling=("--mention",),
                 kind="int",
                 metavar="MENTION",
+            ),
+        ),
+    ),
+    Command(
+        words=("graph", "why"),
+        actions=("graph.why",),
+        help=(
+            "List every entity, edge and claim the graph says one block asserts, each with its "
+            "span in the block's text"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--cite",),
+                metavar="CITE",
             ),
         ),
     ),
