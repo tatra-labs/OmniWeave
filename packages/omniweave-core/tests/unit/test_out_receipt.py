@@ -11,6 +11,7 @@ from dataclasses import replace
 from typing import Any
 
 import pytest
+from omniweave_core.errors import TargetError
 from omniweave_core.out.gate import GateStatus
 from omniweave_core.out.opc import part_digest
 from omniweave_core.out.plan import UnitOutcome
@@ -203,8 +204,6 @@ def test_the_bytes_read_back_through_json() -> None:
 
 
 def _corrupt(raw: object) -> str:
-    from omniweave_core.errors import TargetError  # noqa: PLC0415
-
     with pytest.raises(TargetError) as caught:
         Receipt.from_json(raw)
     assert caught.value.code() == "OW_TARGET_PACKAGE_CORRUPT"

@@ -59,6 +59,7 @@ __all__ = [
     "AddReport",
     "ArtifactListing",
     "ArtifactsReport",
+    "BackReport",
     "CodeRow",
     "CompileReport",
     "ConstructBake",
@@ -527,6 +528,26 @@ class CompileReport:
     hit: bool = False
     postflight: str | None = None
     restricted: tuple[RestrictedItem, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class BackReport:
+    """What `ow out back` restored, and whether the contract moved since the seal. D777.
+
+    `contract_unchanged` compares the artefact's recorded `constructs_digest` with the installed
+    table's. On a difference the rows that moved cannot be listed: 09 section 3.6 counts them from
+    the artefact's recorded table version, and nothing records that version (D776).
+    """
+
+    slug: str
+    from_gen: int
+    artifact_gen: int
+    job_dir: str
+    run_id: str
+    contract_unchanged: bool
+    recorded_digest: str
+    installed_digest: str
+    units: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)

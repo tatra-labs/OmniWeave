@@ -300,6 +300,8 @@ cli.install.actions: install
 cli.open: ow open REF... [--context CONTEXT] [--layers LAYERS] [--max-chars MAX_CHARS] [--raw]
   [--want-impact]
 cli.open.actions: open
+cli.out.back: ow out back SLUG [--gen GEN]
+cli.out.back.actions: out.back
 cli.out.check: ow out check [--stage STAGE] [--unit UNIT] [--job JOB] [--target TARGET]
 cli.out.check.actions: out.check
 cli.out.compile: ow out compile [--accept-manual] [--job JOB]

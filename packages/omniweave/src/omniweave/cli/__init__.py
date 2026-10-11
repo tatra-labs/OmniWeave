@@ -109,7 +109,10 @@ GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
     "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
     "hooks": "check",
-    "out": "check · compile · constructs · list · normalize · scaffold · stamp · targets · verify",
+    "out": (
+        "back · check · compile · constructs · list · normalize · scaffold · stamp · targets · "
+        "verify"
+    ),
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
 }
@@ -530,6 +533,25 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 spelling=("--want-impact",),
                 kind="switch",
                 help="ow:impact for a batch; a single-block ref gets it anyway",
+            ),
+        ),
+    ),
+    Command(
+        words=("out", "back"),
+        actions=("out.back",),
+        help=(
+            "Restore a sealed artefact's retained IL, Brief and assets into a new JobDir for "
+            "its next generation, saying first whether the contract moved"
+        ),
+        arguments=(
+            Argument(
+                spelling=("slug",),
+                metavar="SLUG",
+            ),
+            Argument(
+                spelling=("--gen",),
+                kind="int",
+                metavar="GEN",
             ),
         ),
     ),

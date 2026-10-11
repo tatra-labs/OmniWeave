@@ -1,6 +1,6 @@
 """`ow out <verb>`: the OUT verbs this build dispatches: `targets` (D761), `constructs` (D762),
 `scaffold` (D765), `check` (D766), `stamp` (D767), `normalize` (D768), `list` (D769), `compile`
-(D773) and `verify` (D774).
+(D773), `verify` (D774) and `back` (D777).
 
 09-generation.md section 1 (`omniweave.targets` exists "so `ow out targets` can list an artefact
 kind without resolving a driver"), section 12.4 ("`ow out targets` prints the target, the flag and
@@ -24,8 +24,8 @@ documentation", with `--group` and `--construct` selecting from it.
 4. **Refused by name, exit 1:** `--quiet`, because neither verb declares a scalar, and
    `--render jsonl|rows`, which have no writer here (the `explain` precedent).
 5. **Only `targets`, `constructs`, `scaffold`, `check`, `stamp`, `normalize`, `list`,
-   `compile` and `verify` are served.** The other three `out` verbs are rostered without an
-   Action, so the generated tree never parses them and this module never sees them.
+   `compile`, `verify` and `back` are served.** The other two `out` verbs are rostered without
+   an Action, so the generated tree never parses them and this module never sees them.
 6. **`constructs` documents the one card that declares the target**, found as `targets` finds
    cards, whether or not `[targets] enabled` lists it: documentation is how an agent learns a
    target before anyone enables it. No card is `OW_TARGET_UNKNOWN` (exit 2), naming the kinds
@@ -105,6 +105,14 @@ documentation", with `--group` and `--construct` selecting from it.
     frozen assets, and only the IL is retained, so the JobDir that compiled the artefact supplies
     them, each held to the row's digest. A failing law exits 8, and `--corpus` is refused, as
     `check` refuses it.
+22. **`back` restores a sealed generation into a new JobDir for the next one**
+    (`out.retain.restore`, D776). The corpus is `--corpus`, else the default, and the
+    generation is `--gen`, else the newest. The Brief is the retained one (D775): a row sealed
+    before D775 has none in CAS, and that is `StoreError` naming the JobDir that compiled it.
+    The run id, the trace context and the clock are minted here, as `scaffold` mints them, and
+    the next generation is one past the store's newest. The text form prints the contract line
+    first, as 09 section 3.6 rule 5 asks. That line says only whether the table's digest moved,
+    because no recorded table version exists to list the rows that moved (D776).
 """
 
 from __future__ import annotations
@@ -120,6 +128,7 @@ from omniweave_core.errors import ConfigError, NotFoundError, OwError, TargetErr
 from omniweave.sdk.reports import (
     ArtifactListing,
     ArtifactsReport,
+    BackReport,
     CompileReport,
     ConstructBake,
     ConstructListing,
@@ -157,6 +166,7 @@ __all__ = [
     "OUT_WORD",
     "Checked",
     "artifacts_report",
+    "back_report",
     "check_report",
     "compile_report",
     "constructs_report",
@@ -176,6 +186,7 @@ _NORMALIZE_FIX: Final[str] = "ow out normalize [--stage S] [--unit U] [--constru
 _CHECK_FIX: Final[str] = "ow out check --stage early|first-unit|unit|final [--unit U] [--job DIR]"
 _COMPILE_FIX: Final[str] = "ow out compile [--accept-manual] [--job DIR]"
 _VERIFY_FIX: Final[str] = "ow out verify [--job DIR]"
+_BACK_FIX: Final[str] = "ow out back <slug> [--gen N] [--corpus C]"
 _CONSTRUCTS_FIX: Final[str] = (
     "ow out constructs <target> [--format md] [--group G | --construct ID]"
 )
@@ -367,6 +378,32 @@ def _compile(
     return built.exit
 
 
+def _back(
+    parsed: argparse.Namespace,
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    del stderr
+    _refuse_unserved(parsed, verb="ow out back", fix=_BACK_FIX)
+    built = back_report(
+        cwd=cwd,
+        env=env,
+        explicit=_explicit(parsed),
+        slug=str(parsed.slug),
+        gen=None if parsed.gen is None else int(parsed.gen),
+        corpus=parsed.corpus,
+    )
+    if parsed.render == "json":
+        stdout.write(json.dumps(_backed(built), ensure_ascii=False) + "\n")
+    else:
+        for line in _back_lines(built):
+            stdout.write(line + "\n")
+    return 0
+
+
 def _verify(
     parsed: argparse.Namespace,
     *,
@@ -489,6 +526,7 @@ _VERBS: Final[Mapping[str, Callable[..., int]]] = {
     "out.check": _check,
     "out.compile": _compile,
     "out.verify": _verify,
+    "out.back": _back,
     "out.stamp": _stamp,
     "out.normalize": _normalize,
     "out.list": _list,
@@ -1096,6 +1134,121 @@ def _compile_lines(built: CompileReport) -> list[str]:
     if built.hit:
         return [*lines, f"lookup hit: {named} is an earlier compile's bytes, placed again"]
     return [*lines, f"sealed {named} ({built.delivery}) at {built.path}"]
+
+
+def back_report(
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    explicit: Path | None,
+    slug: str,
+    gen: int | None,
+    corpus: str | None,
+    entropy: Callable[[int], bytes] = os.urandom,
+) -> BackReport:
+    """Ruling 22: one sealed generation restored into the next one's JobDir."""
+    from omniweave_core import config  # noqa: PLC0415 -- only this verb pays
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415
+    from omniweave_core.events import traceparent  # noqa: PLC0415
+    from omniweave_core.operator import ULID_ENTROPY_BYTES, new_run_id  # noqa: PLC0415
+    from omniweave_core.out.agentdoc import load_table  # noqa: PLC0415
+    from omniweave_core.out.job import job_path  # noqa: PLC0415
+    from omniweave_core.out.retain import fetch_brief, restore  # noqa: PLC0415
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+    from omniweave_core.store.artifact import SqliteArtifactStore  # noqa: PLC0415
+
+    from omniweave.run.out_compile import store_cas  # noqa: PLC0415
+    from omniweave.surface.opening import corpus_for  # noqa: PLC0415
+    from omniweave.surface.query import store_of  # noqa: PLC0415
+
+    resolved = config.load(cwd=cwd, env=env, explicit=explicit)
+    name = corpus_for(resolved, [], corpus, verb="ow out back")
+    store = store_of(resolved, name, cwd=cwd)
+    clock = SystemClock()
+    with store_sqlite.StoreThread(lambda: store_sqlite.connect_readonly(store)) as thread:
+        artifacts = SqliteArtifactStore(thread, clock=clock)
+        newest = artifacts.latest(slug)
+        if newest == 0:
+            raise NotFoundError(
+                f"no artefact {slug!r} is sealed in corpus {name!r}",
+                fix=f"ow out list --corpus {name}",
+            )
+        row = artifacts.get(slug, newest if gen is None else gen)
+        sealed = artifacts.units(row.artifact_id)
+        assets = artifacts.ledger(row.artifact_id)
+    driver, card = _one_card(_discover(resolved, env).cards, row.target)
+    table = load_table(Path(driver.source), card)
+    blobs = store_cas(store)
+    if row.brief_digest is None:
+        raise NotFoundError(
+            f"{slug}@{row.artifact_gen} names no Brief, so its edit has no contract to restore",
+            fix=f"ow out scaffold {row.target} --brief brief.md --slug {slug}",
+        )
+    brief = fetch_brief(row.brief_digest, blobs)
+    run_id = new_run_id(clock, entropy(ULID_ENTROPY_BYTES))
+    where = job_path(_cache_root(resolved, cwd), run_id, slug, newest + 1)
+    job = restore(
+        where,
+        il_store_ref=row.il_store_ref,
+        blobs=blobs,
+        brief=brief,
+        sealed=sealed,
+        assets=assets,
+        card=card,
+        card_sha256=driver.card_sha256,
+        table=table,
+        slug=slug,
+        artifact_gen=newest + 1,
+        corpus=name,
+        traceparent=traceparent(entropy(16).hex(), entropy(8).hex()),
+        clock_ns=clock.wall_ns(),
+    )
+    return BackReport(
+        slug=slug,
+        from_gen=row.artifact_gen,
+        artifact_gen=job.plan.artifact_gen,
+        job_dir=str(where),
+        run_id=run_id,
+        contract_unchanged=row.constructs_digest == table.digest(),
+        recorded_digest=row.constructs_digest,
+        installed_digest=table.digest(),
+        units=tuple(u.id for u in job.plan.units),
+    )
+
+
+def _backed(built: BackReport) -> dict[str, Any]:
+    return {
+        "slug": built.slug,
+        "from_gen": built.from_gen,
+        "artifact_gen": built.artifact_gen,
+        "job_dir": built.job_dir,
+        "run_id": built.run_id,
+        "contract_unchanged": built.contract_unchanged,
+        "recorded_digest": built.recorded_digest,
+        "installed_digest": built.installed_digest,
+        "units": list(built.units),
+    }
+
+
+def _back_lines(built: BackReport) -> list[str]:
+    """Ruling 22: the contract line first, then what was restored and the next command."""
+    if built.contract_unchanged:
+        contract = (
+            f"contract: unchanged since {built.slug}@{built.from_gen} ({built.installed_digest})"
+        )
+    else:
+        contract = (
+            f"contract: CHANGED: {built.slug}@{built.from_gen} was compiled against "
+            f"{built.recorded_digest}, and the installed table digests to "
+            f"{built.installed_digest}. No recorded table version names the rows that moved; "
+            "ow out check reports what the installed table finds"
+        )
+    return [
+        contract,
+        f"restored {built.slug}@{built.from_gen} into {built.job_dir} as "
+        f"{built.slug}@{built.artifact_gen} ({len(built.units)} unit(s))",
+        f"edit il/, then: ow out check --stage final --job {built.job_dir}",
+    ]
 
 
 def verify_report(

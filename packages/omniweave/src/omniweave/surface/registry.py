@@ -126,6 +126,7 @@ from omniweave_ports import CostClass
 from omniweave.sdk.reports import (
     AddReport,
     ArtifactsReport,
+    BackReport,
     CodeRow,
     CompileReport,
     ConstructsReport,
@@ -147,6 +148,7 @@ from omniweave.sdk.reports import (
 from omniweave.surface.inputs import (
     AddIn,
     ArtifactsIn,
+    BackIn,
     CheckIn,
     CompileIn,
     ConstructsIn,
@@ -2006,6 +2008,26 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=StampReport,
             advanced=frozenset(),
             cli=("out", "stamp"),
+        ),
+        ActionSpec(
+            name="out.back",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=False,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Restore a sealed artefact's retained IL, Brief and assets into a new JobDir "
+                "for its next generation, saying first whether the contract moved"
+            ),
+            decision="you need to edit an artefact omniweave already sealed",
+            example={"slug": "q3-board"},
+            inp=BackIn,
+            out=BackReport,
+            advanced=frozenset(),
+            cli=("out", "back"),
         ),
         ActionSpec(
             name="out.verify",
