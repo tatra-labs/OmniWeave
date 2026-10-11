@@ -1,5 +1,5 @@
 """`ow out <verb>`: the OUT verbs this build dispatches: `targets` (D761), `constructs` (D762),
-`scaffold` (D765), `check` (D766), `stamp` (D767) and `normalize` (D768).
+`scaffold` (D765), `check` (D766), `stamp` (D767), `normalize` (D768) and `list` (D769).
 
 09-generation.md section 1 (`omniweave.targets` exists "so `ow out targets` can list an artefact
 kind without resolving a driver"), section 12.4 ("`ow out targets` prints the target, the flag and
@@ -22,9 +22,9 @@ documentation", with `--group` and `--construct` selecting from it.
    command that names each one, the way `doctor`'s D-08 reports the same faults.
 4. **Refused by name, exit 1:** `--quiet`, because neither verb declares a scalar, and
    `--render jsonl|rows`, which have no writer here (the `explain` precedent).
-5. **Only `targets`, `constructs`, `scaffold`, `check`, `stamp` and `normalize` are served.**
-   The other six `out` verbs are rostered without an Action, so the generated tree never
-   parses them and this module never sees them.
+5. **Only `targets`, `constructs`, `scaffold`, `check`, `stamp`, `normalize` and `list` are
+   served.** The other five `out` verbs are rostered without an Action, so the generated
+   tree never parses them and this module never sees them.
 6. **`constructs` documents the one card that declares the target**, found as `targets` finds
    cards, whether or not `[targets] enabled` lists it: documentation is how an agent learns a
    target before anyone enables it. No card is `OW_TARGET_UNKNOWN` (exit 2), naming the kinds
@@ -70,6 +70,10 @@ documentation", with `--group` and `--construct` selecting from it.
     `--construct` narrow it; 09's positional IL path is the `--unit` option, because a
     positional cannot be optional in the generated grammar. It exits 0 whether or not it
     changed anything, and ends with the re-check command.
+15. **`list` reads one corpus's sealed `artifact` rows**, by slug then generation, through
+    `connect_readonly()`. `--render json` is the bare array of rows, as for `targets`. An
+    empty corpus is an empty list and exit 0. 14's `ow out list --erased` needs a
+    `contains_erased` mark that `0005_out.sql` does not carry, so it is not built.
 """
 
 from __future__ import annotations
@@ -83,6 +87,8 @@ from typing import TYPE_CHECKING, Any, Final, TextIO, cast
 from omniweave_core.errors import ConfigError, NotFoundError, OwError, TargetError, UsageError
 
 from omniweave.sdk.reports import (
+    ArtifactListing,
+    ArtifactsReport,
     ConstructBake,
     ConstructListing,
     ConstructsReport,
@@ -112,6 +118,7 @@ if TYPE_CHECKING:
 __all__ = [
     "OUT_WORD",
     "Checked",
+    "artifacts_report",
     "check_report",
     "constructs_report",
     "main",
@@ -124,6 +131,7 @@ __all__ = [
 OUT_WORD: Final[str] = "out"
 _SCAFFOLD_FIX: Final[str] = "ow out scaffold <target> --brief brief.md --slug q3-board"
 _STAMP_FIX: Final[str] = "ow out stamp [--job DIR]"
+_LIST_FIX: Final[str] = "ow out list [--slug S] [--corpus N] [--render json]"
 _NORMALIZE_FIX: Final[str] = "ow out normalize [--stage S] [--unit U] [--construct ID] [--job DIR]"
 _CHECK_FIX: Final[str] = "ow out check --stage early|first-unit|unit|final [--unit U] [--job DIR]"
 _CONSTRUCTS_FIX: Final[str] = (
@@ -351,6 +359,28 @@ def _normalize(
     return 0
 
 
+def _list(
+    parsed: argparse.Namespace,
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    del stderr
+    _refuse_unserved(parsed, verb="ow out list", fix=_LIST_FIX)
+    listing = artifacts_report(
+        cwd=cwd, env=env, explicit=_explicit(parsed), slug=parsed.slug, corpus=parsed.corpus
+    )
+    if parsed.render == "json":
+        rows = [_artifact(one) for one in listing.artifacts]
+        stdout.write(json.dumps(rows, ensure_ascii=False) + "\n")
+    else:
+        for line in _artifact_lines(listing, parsed.slug):
+            stdout.write(line + "\n")
+    return 0
+
+
 _VERBS: Final[Mapping[str, Callable[..., int]]] = {
     "out.targets": _targets,
     "out.constructs": _constructs,
@@ -358,6 +388,7 @@ _VERBS: Final[Mapping[str, Callable[..., int]]] = {
     "out.check": _check,
     "out.stamp": _stamp,
     "out.normalize": _normalize,
+    "out.list": _list,
 }
 
 
@@ -910,4 +941,82 @@ def _normalize_lines(built: NormalizeReport, stage: str | None) -> list[str]:
         f"normalized {total} value(s) in {len(built.written)} file(s)",
         *(f"  {r.unit}  {r.construct}  x{r.count}" for r in built.changed),
         f"re-check: ow out check --stage {stage or 'early'}",
+    ]
+
+
+def artifacts_report(
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    explicit: Path | None,
+    slug: str | None,
+    corpus: str | None,
+) -> ArtifactsReport:
+    """Ruling 15: one corpus's sealed rows, read-only."""
+    from omniweave_core import config  # noqa: PLC0415 -- only this verb pays
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+    from omniweave_core.store.artifact import artifact_rows  # noqa: PLC0415
+
+    from omniweave.surface.opening import corpus_for  # noqa: PLC0415
+    from omniweave.surface.query import store_of  # noqa: PLC0415
+
+    resolved = config.load(cwd=cwd, env=env, explicit=explicit)
+    name = corpus_for(resolved, [], corpus, verb="ow out list")
+    connection = store_sqlite.connect_readonly(store_of(resolved, name, cwd=cwd))
+    try:
+        rows = artifact_rows(connection, slug)
+    finally:
+        connection.close()
+    return ArtifactsReport(
+        corpus=name,
+        artifacts=tuple(
+            ArtifactListing(
+                slug=row.slug,
+                artifact_gen=row.artifact_gen,
+                parent_artifact_gen=row.parent_artifact_gen,
+                origin=row.origin,
+                target=row.target,
+                compile_driver=row.compile_driver,
+                delivery=row.delivery,
+                gate_status=row.gate_status.value,
+                media_type=row.media_type,
+                path=row.path,
+                byte_len=row.byte_len,
+                restriction_bits=row.restriction_bits,
+                read_back_doc_ord=row.read_back_doc_ord,
+                sealed_at_ns=row.sealed_at_ns,
+            )
+            for row in rows
+        ),
+    )
+
+
+def _artifact(one: ArtifactListing) -> dict[str, Any]:
+    return {
+        "slug": one.slug,
+        "artifact_gen": one.artifact_gen,
+        "parent_artifact_gen": one.parent_artifact_gen,
+        "origin": one.origin,
+        "target": one.target,
+        "compile_driver": one.compile_driver,
+        "delivery": one.delivery,
+        "gate_status": one.gate_status,
+        "media_type": one.media_type,
+        "path": one.path,
+        "byte_len": one.byte_len,
+        "restriction_bits": one.restriction_bits,
+        "read_back_doc_ord": one.read_back_doc_ord,
+        "sealed_at_ns": one.sealed_at_ns,
+    }
+
+
+def _artifact_lines(listing: ArtifactsReport, slug: str | None) -> list[str]:
+    if not listing.artifacts:
+        what = f"artefact {slug!r}" if slug is not None else "artefact"
+        return [f"no {what} has been sealed in corpus {listing.corpus}"]
+    return [
+        f"{one.slug}@{one.artifact_gen}  {one.target:<8} {one.delivery:<7} {one.gate_status:<15} "
+        f"{one.path}  read_back "
+        + ("-" if one.read_back_doc_ord is None else f"d{one.read_back_doc_ord}")
+        for one in listing.artifacts
     ]

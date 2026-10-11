@@ -84,6 +84,7 @@ __all__ = [
     "SOURCE_MAX",
     "WANTS",
     "AddIn",
+    "ArtifactsIn",
     "CheckIn",
     "ConstructsIn",
     "CorporaIn",
@@ -496,6 +497,19 @@ class HooksCheckIn:
     installed, read back out of the files the receipt names (10:2078, *"resolves the installed
     command string"*). A command given on argv would be a command that was not installed.
     """
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactsIn:
+    """`ow_artifacts` / `ow out list [--slug S]`. 10-interfaces.md's `full` roster. D769.
+
+    `slug` narrows the list to one artefact's generations. `corpus` is the store the
+    artefacts were sealed into, because an `artifact` row lives beside the documents
+    its cites resolve in.
+    """
+
+    slug: str | None = None
+    corpus: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -26,8 +26,8 @@ mcp.instructions: delivered on `initialize`, <= 1000 chars, generated, bound to 
 # Listing model — READ THIS BEFORE ASSUMING A TOOL DOES NOT EXIST
 mcp.profiles: default, full
 mcp.profile.default: ow_add, ow_corpora, ow_open, ow_query
-mcp.profile.full: ow_add, ow_corpora, ow_coverage, ow_diff, ow_doctor, ow_explain, ow_grid,
-  ow_locate, ow_open, ow_query, ow_targets
+mcp.profile.full: ow_add, ow_artifacts, ow_corpora, ow_coverage, ow_diff, ow_doctor, ow_explain,
+  ow_grid, ow_locate, ow_open, ow_query, ow_targets
 mcp.listed_note: an unlisted tool is DEFINED and DISPATCHABLE when enabled, never refused for
   being unlisted. Widen with OMNIWEAVE_MCP_LISTED, authorise with OMNIWEAVE_MCP_ENABLED.
 mcp.enabled_default: read_only+add
@@ -36,12 +36,13 @@ mcp.human_only_note: these have no MCP name and are unreachable from any agent s
 
 # Tools — every Action with an MCP name. `listed_in` says which profiles LIST it;
 # every one of them is DISPATCHABLE when enabled, listed or not.
-mcp.tools: ow_add, ow_corpora, ow_coverage, ow_diff, ow_doctor, ow_explain, ow_grid,
-  ow_hooks_check, ow_locate, ow_open, ow_query, ow_skills_check, ow_skills_hash, ow_skills_ls,
-  ow_skills_verify, ow_targets
-mcp.tools.unbounded: ow_coverage, ow_diff, ow_doctor, ow_explain, ow_grid, ow_hooks_check,
-  ow_locate, ow_skills_check, ow_skills_hash, ow_skills_ls, ow_skills_verify, ow_targets — no
-  inputSchema is published for these yet, so their input lines carry a type and no bounds
+mcp.tools: ow_add, ow_artifacts, ow_corpora, ow_coverage, ow_diff, ow_doctor, ow_explain,
+  ow_grid, ow_hooks_check, ow_locate, ow_open, ow_query, ow_skills_check, ow_skills_hash,
+  ow_skills_ls, ow_skills_verify, ow_targets
+mcp.tools.unbounded: ow_artifacts, ow_coverage, ow_diff, ow_doctor, ow_explain, ow_grid,
+  ow_hooks_check, ow_locate, ow_skills_check, ow_skills_hash, ow_skills_ls, ow_skills_verify,
+  ow_targets — no inputSchema is published for these yet, so their input lines carry a type and
+  no bounds
 
 mcp.tool.ow_add.action: add
 mcp.tool.ow_add.description: Index files, directories or URLs into a corpus so ow_query can cite
@@ -58,6 +59,18 @@ mcp.tool.ow_add.output: schema/add-out-v1.json
 mcp.tool.ow_add.note: idempotent — identical bytes are never re-parsed. Returns within
   add_deadline_ms (default 20000) with anything still running listed under `pending`. Cost
   approval is CLI-only: `ow add <src> --allow-cost <micros>`.
+
+mcp.tool.ow_artifacts.action: out.list
+mcp.tool.ow_artifacts.description: List the compiled artefacts sealed in a corpus, with each
+  generation's gate status, delivery and read_back_doc_ord
+mcp.tool.ow_artifacts.decision: you want to know which artefacts were compiled and how they
+  stand
+mcp.tool.ow_artifacts.listed_in: full
+mcp.tool.ow_artifacts.state_changing: false
+mcp.tool.ow_artifacts.cost_class: free
+mcp.tool.ow_artifacts.input.slug: string, optional
+mcp.tool.ow_artifacts.input.corpus: string, optional
+mcp.tool.ow_artifacts.output: ArtifactsReport, no outputSchema declared
 
 mcp.tool.ow_corpora.action: corpora
 mcp.tool.ow_corpora.description: List what this server can read and what is in each corpus:
@@ -292,6 +305,8 @@ cli.out.check.actions: out.check
 cli.out.constructs: ow out constructs TARGET [--format FORMAT] [--group GROUP] [--construct
   CONSTRUCT]
 cli.out.constructs.actions: out.constructs
+cli.out.list: ow out list [--slug SLUG]
+cli.out.list.actions: out.list
 cli.out.normalize: ow out normalize [--stage STAGE] [--unit UNIT] [--construct CONSTRUCT] [--job
   JOB]
 cli.out.normalize.actions: out.normalize

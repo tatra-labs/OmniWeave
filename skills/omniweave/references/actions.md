@@ -9,8 +9,8 @@ decision.
 ## Before deciding a capability is missing
 
 default     ow_add, ow_corpora, ow_open, ow_query
-full        ow_add, ow_corpora, ow_coverage, ow_diff, ow_doctor, ow_explain, ow_grid, ow_locate,
-            ow_open, ow_query, ow_targets
+full        ow_add, ow_artifacts, ow_corpora, ow_coverage, ow_diff, ow_doctor, ow_explain,
+            ow_grid, ow_locate, ow_open, ow_query, ow_targets
 
 an unlisted tool is DEFINED and DISPATCHABLE when enabled, never refused for being unlisted.
 Widen with OMNIWEAVE_MCP_LISTED, authorise with OMNIWEAVE_MCP_ENABLED.
@@ -135,6 +135,16 @@ it does     Fetch the exact passages behind an address you already hold: a cite,
             or a whole document
 
 ## ow out
+
+### ow_artifacts
+
+action      out.list
+cli         ow out list
+listed      full
+cost        free
+pick it     you want to know which artefacts were compiled and how they stand
+it does     List the compiled artefacts sealed in a corpus, with each generation's gate status,
+            delivery and read_back_doc_ord
 
 ### ow_targets
 

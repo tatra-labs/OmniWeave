@@ -34,6 +34,7 @@ from omniweave_core.store.artifact import (
     Restricted,
     SqliteArtifactStore,
     UnitRow,
+    artifact_rows,
     latest_generation,
 )
 
@@ -383,6 +384,28 @@ def test_latest_generation_reads_a_read_only_store_and_one_from_before_0005(
         readonly.close()
 
 
+def test_artifact_rows_are_every_seal_by_slug_then_generation(
+    store: SqliteArtifactStore, owstore: Path, tmp_path: Path
+) -> None:
+    """D769: `ow out list` reads them read-only; a store from before 0005 has none."""
+    old = ow.connect(tmp_path / "old.owstore")
+    try:
+        assert artifact_rows(old) == ()
+    finally:
+        old.close()
+    first = store.seal(draft()).row
+    second = store.seal(draft(artifact_gen=2, key=key(brief_digest=d(55)))).row
+    #  Sealed last, listed first: the order is slug then generation, never insertion.
+    memo = store.seal(draft(key=key(slug="a-memo"), path="a-memo@1/a-memo.pptx")).row
+    readonly = ow.connect_readonly(owstore)
+    try:
+        assert artifact_rows(readonly) == (memo, first, second)
+        assert artifact_rows(readonly, "q3-board") == (first, second)
+        assert artifact_rows(readonly, "q4-board") == ()
+    finally:
+        readonly.close()
+
+
 def test_a_draft_and_a_release_of_one_input_are_two_rows(store: SqliteArtifactStore) -> None:
     store.seal(draft())
     second = store.seal(
@@ -560,7 +583,7 @@ def test_which_released_decks_quote_page_14(store: SqliteArtifactStore, owstore:
 def test_get_names_what_it_did_not_find(store: SqliteArtifactStore) -> None:
     with pytest.raises(NotFoundError, match="no artefact q3-board@4") as caught:
         store.get("q3-board", 4)
-    assert caught.value.fix == "ow out list q3-board"
+    assert caught.value.fix == "ow out list --slug q3-board"
 
 
 # ---------------------------------------------------------------------------

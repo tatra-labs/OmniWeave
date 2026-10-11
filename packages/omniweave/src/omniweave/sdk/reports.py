@@ -57,6 +57,8 @@ __all__ = [
     "AddCompleted",
     "AddPending",
     "AddReport",
+    "ArtifactListing",
+    "ArtifactsReport",
     "CodeRow",
     "ConstructBake",
     "ConstructListing",
@@ -437,6 +439,39 @@ class TargetsReport:
     """
 
     targets: tuple[TargetListing, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactListing:
+    """One sealed artefact generation, as `ow out list` prints it. D769.
+
+    10's roster row names three things, and they are all here: the artefact, its gate
+    status, and `read_back_doc_ord`, the foreign key that closes the loop. The digests are
+    the row's own and are `ow out verify`'s business, so they are not repeated.
+    """
+
+    slug: str
+    artifact_gen: int
+    parent_artifact_gen: int | None
+    origin: str
+    target: str
+    compile_driver: str
+    delivery: str
+    gate_status: str
+    media_type: str
+    path: str
+    byte_len: int
+    restriction_bits: int
+    read_back_doc_ord: int | None
+    sealed_at_ns: int
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactsReport:
+    """What `ow_artifacts` / `ow out list` returns: one corpus's sealed artefacts. D769."""
+
+    corpus: str
+    artifacts: tuple[ArtifactListing, ...]
 
 
 @dataclass(frozen=True, slots=True)

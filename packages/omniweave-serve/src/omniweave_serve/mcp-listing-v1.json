@@ -20,6 +20,7 @@
         "ow_query"
       ],
       "unpublished": [
+        "ow_artifacts",
         "ow_coverage",
         "ow_diff",
         "ow_doctor",
