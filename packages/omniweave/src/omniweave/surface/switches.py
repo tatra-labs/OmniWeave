@@ -98,7 +98,7 @@ READS: Final[Mapping[str, frozenset[str]]] = {
     "doc": _READER,
     "graph": _READER,
     "explain": _READS_ALL | {"render", "quiet"},
-    "out": _READS_ALL | {"config", "render", "quiet"},
+    "out": _READS_ALL | {"config", "corpus", "render", "quiet"},
     "doctor": _READS_ALL | {"config", "quiet"},
     "serve": _READS_ALL | {"config"},
     "install": _READS_ALL,
@@ -110,7 +110,9 @@ READS: Final[Mapping[str, frozenset[str]]] = {
 """The flags each root reads. `add` carries `--offline` into routing's `ProbeEnv`, so a card with
 `[hardware] needs_network = true` resolves out (04:150). `doctor` loads `--config` and prints
 nothing under `--quiet` (10:1543). `serve` loads `--config`. `out` loads `--config` for
-`[targets] enabled` and the project's `.omniweave/drivers/` (D761)."""
+`[targets] enabled` and the project's `.omniweave/drivers/` (D761), and `--corpus` for
+`ow out scaffold`'s store (D765). `targets` and `constructs` print nothing that depends on
+`--corpus`, so they accept it, as an inert flag is accepted."""
 
 INERT: Final[Mapping[str, Mapping[str, str]]] = {
     root: {
@@ -124,11 +126,6 @@ INERT: Final[Mapping[str, Mapping[str, str]]] = {
             if root in ("explain", "surface")
             else {}
         ),
-        **(
-            {"corpus": "`ow out` compiles from a JobDir and resolves no corpus"}
-            if root == "out"
-            else {}
-        ),
     }
     for root in _ROOTS
 }
@@ -140,8 +137,7 @@ INERT: Final[Mapping[str, Mapping[str, str]]] = {
   routes, and nothing fetches: `ow add` refuses a URL, no toolchain installer exists, and the
   server does step (a) of `ow_add` only (D554).
 - `--config` and `--corpus` on `explain` (`codes.toml`, found from the package) and `surface`
-  (`ACTIONS`).
-- `--corpus` on `out`: a compile reads a JobDir and the cards, never a corpus's store (D761)."""
+  (`ACTIONS`)."""
 
 
 def unserved(root: str, parsed: argparse.Namespace) -> tuple[str, ...]:

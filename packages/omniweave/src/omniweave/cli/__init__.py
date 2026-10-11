@@ -109,7 +109,7 @@ GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
     "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
     "hooks": "check",
-    "out": "constructs · targets",
+    "out": "constructs · scaffold · targets",
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
 }
@@ -557,6 +557,28 @@ COMMANDS: Final[tuple[Command, ...]] = (
             Argument(
                 spelling=("--construct",),
                 metavar="CONSTRUCT",
+            ),
+        ),
+    ),
+    Command(
+        words=("out", "scaffold"),
+        actions=("out.scaffold",),
+        help=(
+            "Create the JobDir one artefact is authored in: job.json with the roster the Brief "
+            "commissions, the frozen brief.md, il/il.toml and empty assets"
+        ),
+        arguments=(
+            Argument(
+                spelling=("target",),
+                metavar="TARGET",
+            ),
+            Argument(
+                spelling=("--brief",),
+                metavar="BRIEF",
+            ),
+            Argument(
+                spelling=("--slug",),
+                metavar="SLUG",
             ),
         ),
     ),

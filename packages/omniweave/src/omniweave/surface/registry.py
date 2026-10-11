@@ -132,6 +132,7 @@ from omniweave.sdk.reports import (
     GraphDoctorReport,
     HooksCheckReport,
     InstallReport,
+    ScaffoldReport,
     ServeReport,
     SkillsReport,
     SurfaceReport,
@@ -157,6 +158,7 @@ from omniweave.surface.inputs import (
     QueryIn,
     ResidueIn,
     ReviewIn,
+    ScaffoldIn,
     ServeIn,
     SkillsCheckIn,
     SkillsHashIn,
@@ -1912,6 +1914,26 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=ConstructsReport,
             advanced=frozenset(),
             cli=("out", "constructs"),
+        ),
+        ActionSpec(
+            name="out.scaffold",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=False,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Create the JobDir one artefact is authored in: job.json with the roster the "
+                "Brief commissions, the frozen brief.md, il/il.toml and empty assets"
+            ),
+            decision="you have a confirmed Brief and are about to author IL for a target",
+            example={"target": "owtext", "brief": "brief.md", "slug": "q3-board"},
+            inp=ScaffoldIn,
+            out=ScaffoldReport,
+            advanced=frozenset(),
+            cli=("out", "scaffold"),
         ),
     )
 )

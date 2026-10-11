@@ -34,6 +34,7 @@ from omniweave_core.store.artifact import (
     Restricted,
     SqliteArtifactStore,
     UnitRow,
+    latest_generation,
 )
 
 if TYPE_CHECKING:
@@ -363,6 +364,23 @@ def test_latest_is_the_newest_sealed_generation_of_a_slug(store: SqliteArtifactS
     store.seal(draft(artifact_gen=2, key=key(brief_digest=d(55))))
     assert store.latest("q3-board") == 2
     assert store.latest("q4-board") == 0
+
+
+def test_latest_generation_reads_a_read_only_store_and_one_from_before_0005(
+    store: SqliteArtifactStore, owstore: Path, tmp_path: Path
+) -> None:
+    """D765: `ow out scaffold` opens the store read-only, and an unmigrated one sealed nothing."""
+    old = ow.connect(tmp_path / "old.owstore")
+    try:
+        assert latest_generation(old, "q3-board") == 0
+    finally:
+        old.close()
+    store.seal(draft())
+    readonly = ow.connect_readonly(owstore)
+    try:
+        assert latest_generation(readonly, "q3-board") == 1
+    finally:
+        readonly.close()
 
 
 def test_a_draft_and_a_release_of_one_input_are_two_rows(store: SqliteArtifactStore) -> None:

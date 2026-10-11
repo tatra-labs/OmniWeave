@@ -34,6 +34,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     install           InstallIn           InstallReport
     open              OpenIn              Answer
     out.constructs    ConstructsIn        ConstructsReport
+    out.scaffold      ScaffoldIn          ScaffoldReport
     out.targets       TargetsIn           TargetsReport
     query             QueryIn             Answer
     serve             ServeIn             ServeReport

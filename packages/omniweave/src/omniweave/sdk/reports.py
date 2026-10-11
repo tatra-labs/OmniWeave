@@ -69,6 +69,8 @@ __all__ = [
     "GraphDoctorReport",
     "HooksCheckReport",
     "InstallReport",
+    "ScaffoldReport",
+    "ScaffoldUnit",
     "ServeReport",
     "SkillsReport",
     "SurfaceReport",
@@ -430,6 +432,34 @@ class TargetsReport:
     """
 
     targets: tuple[TargetListing, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ScaffoldUnit:
+    """One commissioned unit of a scaffolded JobDir: `OutUnit`'s four plan-time fields. D765."""
+
+    id: str
+    ord: int
+    il_path: str
+    anchor: str
+
+
+@dataclass(frozen=True, slots=True)
+class ScaffoldReport:
+    """What `ow out scaffold` returns: the JobDir it wrote and the roster it commissioned. D765.
+
+    `job_dir` is absolute. `artifact_gen` is the proposed generation, one past the corpus
+    store's newest; the seal allocates the real one (09 section 5.4).
+    """
+
+    job_dir: str
+    run_id: str
+    target: str
+    slug: str
+    artifact_gen: int
+    corpus: str
+    traceparent: str
+    units: tuple[ScaffoldUnit, ...]
 
 
 @dataclass(frozen=True, slots=True)

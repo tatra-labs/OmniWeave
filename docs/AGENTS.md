@@ -65,6 +65,7 @@ key can grant one.
 | `install` | — | `ow install` | — | `free` | Wire agent hosts to omniweave: the MCP entry, one permission wildcard, the instruction block, hooks and the core skill, each recorded in a receipt |
 | `open` | `ow_open` | `ow open` | default, full | `free` | Fetch the exact passages behind an address you already hold: a cite, a page range, or a whole document |
 | `out.constructs` | — | `ow out constructs` | — | `free` | Print a target's construct table, a line a row, one row in full, or as the agent document an IL author writes against (--format md) |
+| `out.scaffold` | — | `ow out scaffold` | — | `free` | Create the JobDir one artefact is authored in: job.json with the roster the Brief commissions, the frozen brief.md, il/il.toml and empty assets |
 | `out.targets` | `ow_targets` | `ow out targets` | full | `free` | List the artefact kinds this deployment can compile, whether each is implemented and enabled, and the determinism class its card declares |
 | `query` | `ow_query` | `ow query` | default, full | `local_compute` | Ask an indexed corpus a question and get cited passages, a verdict, and the gaps that could be hiding an answer |
 | `serve` | — | `ow serve` | — | `free` | Serve the MCP surface to an agent host over stdio, from the [serve] configuration startup step 5 resolves; runs until the host closes the stream |

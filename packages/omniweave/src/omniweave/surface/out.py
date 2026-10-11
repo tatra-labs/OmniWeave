@@ -1,4 +1,5 @@
-"""`ow out <verb>`: the OUT verbs this build dispatches. D761: `targets`. D762: `constructs`.
+"""`ow out <verb>`: the OUT verbs this build dispatches: `targets` (D761), `constructs` (D762)
+and `scaffold` (D765).
 
 09-generation.md section 1 (`omniweave.targets` exists "so `ow out targets` can list an artefact
 kind without resolving a driver"), section 12.4 ("`ow out targets` prints the target, the flag and
@@ -21,8 +22,9 @@ documentation", with `--group` and `--construct` selecting from it.
    command that names each one, the way `doctor`'s D-08 reports the same faults.
 4. **Refused by name, exit 1:** `--quiet`, because neither verb declares a scalar, and
    `--render jsonl|rows`, which have no writer here (the `explain` precedent).
-5. **Only `targets` and `constructs` are served.** The other ten `out` verbs are rostered without
-   an Action, so the generated tree never parses them and this module never sees them.
+5. **Only `targets`, `constructs` and `scaffold` are served.** The other nine `out` verbs are
+   rostered without an Action, so the generated tree never parses them and this module never
+   sees them.
 6. **`constructs` documents the one card that declares the target**, found as `targets` finds
    cards, whether or not `[targets] enabled` lists it: documentation is how an agent learns a
    target before anyone enables it. No card is `OW_TARGET_UNKNOWN` (exit 2), naming the kinds
@@ -33,20 +35,35 @@ documentation", with `--group` and `--construct` selecting from it.
    key of the one row `--construct` names. `md` is `agentdoc.agent_doc()`. `--render json` is the
    report object, and it refuses `--format md`, since that would be two documents. `--group` and
    `--construct` are two selections, so passing both is refused.
+8. **`scaffold` resolves what `out.job.scaffold()` takes, and writes nothing before the last
+   refusal.** The order is `--brief` and `--slug` (both required), the corpus and its
+   store (which must exist), the one card and its table, the Brief parsed against the
+   table's baseline, the generation, and the slug's grammar. Only then is a byte written.
+   - The generation is one past the store's newest seal for the slug, read through
+     `connect_readonly()`. The seal still allocates the real one (09 section 5.4).
+   - `<cache_root>` is `[roots] cache`, resolved as D527 resolves a corpus path: against
+     the directory of the file that declared it, else `cwd`.
+   - The run id, the trace context and `clock_ns` are minted here, at the runtime edge,
+     as `new_run_id()`'s docstring and G8's `secrets` rule place them.
+9. **`--corpus` is read by `scaffold` alone.** `targets` and `constructs` print nothing that
+   depends on it and accept it, which is what an inert flag is.
 """
 
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, TextIO
 
-from omniweave_core.errors import ConfigError, NotFoundError, OwError, UsageError
+from omniweave_core.errors import ConfigError, NotFoundError, OwError, TargetError, UsageError
 
 from omniweave.sdk.reports import (
     ConstructBake,
     ConstructListing,
     ConstructsReport,
+    ScaffoldReport,
+    ScaffoldUnit,
     TargetListing,
     TargetsReport,
 )
@@ -63,9 +80,10 @@ if TYPE_CHECKING:
     from omniweave_core.out.card import CompileCard
     from omniweave_core.out.constructs import Construct, ConstructTable
 
-__all__ = ["OUT_WORD", "constructs_report", "main", "targets_report"]
+__all__ = ["OUT_WORD", "constructs_report", "main", "scaffold_report", "targets_report"]
 
 OUT_WORD: Final[str] = "out"
+_SCAFFOLD_FIX: Final[str] = "ow out scaffold <target> --brief brief.md --slug q3-board"
 _CONSTRUCTS_FIX: Final[str] = (
     "ow out constructs <target> [--format md] [--group G | --construct ID]"
 )
@@ -151,9 +169,40 @@ def _constructs(
     return 0
 
 
+def _scaffold(
+    parsed: argparse.Namespace,
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    del stderr
+    _refuse_unserved(parsed, verb="ow out scaffold", fix=_SCAFFOLD_FIX)
+    missing = [f"--{name}" for name in ("brief", "slug") if getattr(parsed, name) is None]
+    if missing:
+        raise UsageError(f"ow out scaffold needs {' and '.join(missing)}", fix=_SCAFFOLD_FIX)
+    built = scaffold_report(
+        cwd=cwd,
+        env=env,
+        explicit=_explicit(parsed),
+        target=str(parsed.target),
+        brief=Path(str(parsed.brief)),
+        slug=str(parsed.slug),
+        corpus=parsed.corpus,
+    )
+    if parsed.render == "json":
+        stdout.write(json.dumps(_scaffolded(built), ensure_ascii=False) + "\n")
+    else:
+        for line in _scaffold_lines(built):
+            stdout.write(line + "\n")
+    return 0
+
+
 _VERBS: Final[Mapping[str, Callable[..., int]]] = {
     "out.targets": _targets,
     "out.constructs": _constructs,
+    "out.scaffold": _scaffold,
 }
 
 
@@ -201,8 +250,8 @@ def constructs_report(
     from omniweave_core.out.agentdoc import group_of, load_table, select  # noqa: PLC0415
 
     resolved = config.load(cwd=cwd, env=env, explicit=explicit)
-    path, card = _one_card(_discover(resolved, env).cards, target)
-    table = load_table(path, card)
+    driver, card = _one_card(_discover(resolved, env).cards, target)
+    table = load_table(Path(driver.source), card)
     rows = select(table, target, group=group, construct=construct)
     by_symbol = load_register().by_symbol
     listing = ConstructsReport(
@@ -242,14 +291,12 @@ def constructs_report(
     return listing, card, table, rows
 
 
-def _one_card(cards: Sequence[DriverCard], target: str) -> tuple[Path, CompileCard]:
+def _one_card(cards: Sequence[DriverCard], target: str) -> tuple[DriverCard, CompileCard]:
     """Ruling 6: exactly one compile card declares `target`."""
     from omniweave_core.out.card import CompileCard  # noqa: PLC0415
 
     compiled = [
-        (Path(card.source), CompileCard.of(card))
-        for card in cards
-        if str(card.identity.port) == "compile"
+        (card, CompileCard.of(card)) for card in cards if str(card.identity.port) == "compile"
     ]
     claiming = [(path, one) for path, one in compiled if one.target == target]
     if not claiming:
@@ -396,3 +443,119 @@ def _row_block(row: ConstructListing) -> list[str]:
         )
         lines.append(f"{key:<15} {shown}")
     return lines
+
+
+def scaffold_report(
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    explicit: Path | None,
+    target: str,
+    brief: Path,
+    slug: str,
+    corpus: str | None,
+    entropy: Callable[[int], bytes] = os.urandom,
+) -> ScaffoldReport:
+    """Ruling 8: resolve, refuse, and only then write the JobDir."""
+    from omniweave_core import config  # noqa: PLC0415 -- only this verb pays
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415
+    from omniweave_core.events import traceparent  # noqa: PLC0415
+    from omniweave_core.operator import ULID_ENTROPY_BYTES, new_run_id  # noqa: PLC0415
+    from omniweave_core.out.agentdoc import load_table  # noqa: PLC0415
+    from omniweave_core.out.brief import baseline_rows, parse_brief  # noqa: PLC0415
+    from omniweave_core.out.job import job_path, scaffold  # noqa: PLC0415
+    from omniweave_core.store import artifact  # noqa: PLC0415
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+
+    from omniweave.surface.opening import corpus_for  # noqa: PLC0415
+    from omniweave.surface.query import store_of  # noqa: PLC0415
+
+    resolved = config.load(cwd=cwd, env=env, explicit=explicit)
+    name = corpus_for(resolved, [], corpus, verb="ow out scaffold")
+    store = store_of(resolved, name, cwd=cwd)
+    driver, card = _one_card(_discover(resolved, env).cards, target)
+    table = load_table(Path(driver.source), card)
+    text = _brief_text(brief if brief.is_absolute() else cwd / brief)
+    parsed = parse_brief(text, baseline=baseline_rows(table))
+    connection = store_sqlite.connect_readonly(store)
+    try:
+        gen = artifact.latest_generation(connection, slug) + 1
+    finally:
+        connection.close()
+    clock = SystemClock()
+    run_id = new_run_id(clock, entropy(ULID_ENTROPY_BYTES))
+    where = job_path(_cache_root(resolved, cwd), run_id, slug, gen)
+    job = scaffold(
+        where,
+        card=card,
+        card_sha256=driver.card_sha256,
+        table=table,
+        brief_text=text,
+        brief=parsed,
+        slug=slug,
+        artifact_gen=gen,
+        corpus=name,
+        traceparent=traceparent(entropy(16).hex(), entropy(8).hex()),
+        clock_ns=clock.wall_ns(),
+    )
+    return ScaffoldReport(
+        job_dir=str(where),
+        run_id=run_id,
+        target=card.target,
+        slug=slug,
+        artifact_gen=gen,
+        corpus=name,
+        traceparent=job.traceparent,
+        units=tuple(
+            ScaffoldUnit(id=u.id, ord=u.ord, il_path=u.il_path, anchor=u.anchor)
+            for u in job.plan.units
+        ),
+    )
+
+
+def _brief_text(path: Path) -> str:
+    """The Brief's file, UTF-8. Missing is 2; unreadable is the Brief's own code."""
+    try:
+        return path.read_bytes().decode("utf-8")
+    except FileNotFoundError:
+        raise NotFoundError(f"no Brief at {path}", fix=_SCAFFOLD_FIX) from None
+    except (OSError, UnicodeDecodeError) as exc:
+        raise TargetError(
+            f"{path.name} does not read as UTF-8 text: {type(exc).__name__}",
+            symbol="OW_TARGET_BRIEF_INVALID",
+            fix=_SCAFFOLD_FIX,
+        ) from None
+
+
+def _cache_root(resolved: config.Config, cwd: Path) -> Path:
+    """Ruling 8: `[roots] cache`, against its declaring file's directory, else `cwd` (D527)."""
+    raw = Path(str(resolved.get("roots.cache")))
+    declared = resolved.source_of("roots.cache").path
+    base = declared.parent if declared is not None else cwd
+    return raw if raw.is_absolute() else (base / raw).resolve()
+
+
+def _scaffolded(built: ScaffoldReport) -> dict[str, Any]:
+    return {
+        "job_dir": built.job_dir,
+        "run_id": built.run_id,
+        "target": built.target,
+        "slug": built.slug,
+        "artifact_gen": built.artifact_gen,
+        "corpus": built.corpus,
+        "traceparent": built.traceparent,
+        "units": [
+            {"id": u.id, "ord": u.ord, "il_path": u.il_path, "anchor": u.anchor}
+            for u in built.units
+        ],
+    }
+
+
+def _scaffold_lines(built: ScaffoldReport) -> list[str]:
+    return [
+        f"scaffolded {built.target} {built.slug}@{built.artifact_gen} in corpus {built.corpus}",
+        f"  job dir  {built.job_dir}",
+        f"  run      {built.run_id}",
+        *(f"  {u.id}  {u.il_path}  {u.anchor}".rstrip() for u in built.units),
+        "next: write each unit's file under il/ and add its [[unit]] row to il/il.toml",
+    ]
