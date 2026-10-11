@@ -20,6 +20,7 @@ from omniweave_core.out.brief import (
     Prohibition,
     baseline_rows,
     parse_brief,
+    render_brief,
 )
 from omniweave_core.out.constructs import ConstructTable
 
@@ -303,3 +304,29 @@ def _bad(change: dict[str, object]) -> dict[str, object]:
 def test_a_record_that_is_not_a_briefs_is_refused(record: object, named: str) -> None:
     with pytest.raises(ValueError, match=named):
         Brief.from_record(record)
+
+
+# ---------------------------------------------------------------------------------------------
+# Ruling 9 (D776): a Brief rendered back to brief/1 text
+# ---------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "tail",
+    ["", f"## template\n- ref: {SLOT}\n- units: u01, u02\n", f"## template\n- ref: {SLOT}\n"],
+)
+def test_a_rendered_brief_parses_back_as_itself(tail: str) -> None:
+    brief = _brief(BRIEF + tail)
+    text = render_brief(brief)
+    assert parse_brief(text, baseline=(SCRIPT,)) == brief
+    assert text.startswith(f"{BRIEF_SCHEMA}\n## canvas\n- format: 16:9\n- unit: slide\n")
+    assert f"## forbidden\n- {SCRIPT}\n- no shadows and no glow anywhere (user)\n" in text
+    assert text.endswith(tail or "(user)\n")
+
+
+def test_an_empty_value_renders_as_a_bare_key() -> None:
+    brief = _brief(BRIEF.replace("## direction\n", "## direction\n- note:\n"))
+    assert brief.value("direction", "note") == ""
+    text = render_brief(brief)
+    assert "\n- note:\n" in text
+    assert parse_brief(text, baseline=(SCRIPT,)) == brief

@@ -37,6 +37,13 @@ only `## section` headings and `- key: value` rows, with `## forbidden` holding 
    The record keeps every value and loses the file's order, which nothing reads: the roster is
    numeric (D764) and the digest sorts. `Template.units` of `None` and of `()` share one record,
    as they share one digest, and read back as `None`, meaning every unit.
+
+## Rulings (the ledger's D776)
+
+9. **`render_brief()` writes a Brief back as `brief/1` text**, in 09's section order with
+   `## template` last. `parse_brief()` reads it back as the same Brief when it is given the
+   Brief's own baseline rows. `ow out back` writes it as the restored JobDir's `brief.md`, so the
+   file the authoring agent re-reads is the Brief the artefact was compiled against.
 """
 
 from __future__ import annotations
@@ -58,6 +65,7 @@ __all__ = [
     "Template",
     "baseline_rows",
     "parse_brief",
+    "render_brief",
 ]
 
 BRIEF_SCHEMA: Final = "<!-- omniweave-schema: brief/1 -->"
@@ -191,6 +199,22 @@ def _closed(raw: object, where: str, keys: frozenset[str]) -> dict[str, Any]:
         got = sorted(raw) if isinstance(raw, dict) else type(raw).__name__
         raise ValueError(f"{where} has {got}, not {sorted(keys)}")
     return raw
+
+
+def render_brief(brief: Brief) -> str:
+    """Ruling 9: `brief/1` text that `parse_brief()` reads back as `brief` (D776)."""
+    lines = [BRIEF_SCHEMA]
+    for name in SECTIONS:
+        lines.append(f"## {name}")
+        if name == "forbidden":
+            lines += [f"- {p.text}{_USER if p.tier == 'user' else ''}" for p in brief.forbidden]
+            continue
+        lines += [f"- {key}: {value}".rstrip() for key, value in brief.sections[name].items()]
+    if brief.template is not None:
+        lines += ["## template", f"- ref: {brief.template.ref}"]
+        if brief.template.units:
+            lines.append(f"- units: {', '.join(brief.template.units)}")
+    return "\n".join(lines) + "\n"
 
 
 def baseline_rows(table: ConstructTable) -> tuple[str, ...]:
