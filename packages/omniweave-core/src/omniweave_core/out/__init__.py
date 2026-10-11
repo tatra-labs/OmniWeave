@@ -16,6 +16,8 @@ D745 builds `marker`: the `OWC1` grammar, `scan()`, `resolve()`, `apply_reverse(
 D747 builds `opc`: the only ZIP-for-write, `part_digest()` and section 5.3's package checks.
 D748 builds `receipt`: `CheckValue`, `Receipt`, `ArtefactDeterminism` and the report status.
 D749 builds `compile` (`CompileV1`, `check()`) and `ledger` (`AssetLedger`, `slot()`).
+D752 builds `retain`: the IL bundle frozen into CAS (`retain.freeze()`) and fetched back
+verified (`retain.fetch()`). Both stay module-qualified: a bare `fetch` says nothing here.
 """
 
 from omniweave_core.out.brief import Brief, Prohibition, baseline_rows, parse_brief
@@ -73,6 +75,7 @@ from omniweave_core.out.report import (
     render,
     unchanged,
 )
+from omniweave_core.out.retain import Retained
 from omniweave_core.out.rules import (
     Box,
     DocIndex,
@@ -119,6 +122,7 @@ __all__ = [
     "Prohibition",
     "Provenance",
     "Receipt",
+    "Retained",
     "RoundTrip",
     "RuleCtx",
     "RuleSpec",

@@ -839,6 +839,16 @@ fix     = "ow out compile --target <target>   # a new artifact_gen; the sealed r
 raised_by = "TargetError"
 sites   = ["09-generation.md:1474"]
 
+# ── D752. The retained bundle's refusal, appended under 09 section 15's "+" rule.
+
+[[code]]
+numeric = "OW-T-512"
+symbol  = "OW_TARGET_IL_MOVED"
+meaning = "an IL file's bytes differ from the row the gate passed when the compile freezes the bundle into CAS, or the row is past MAX_IL_FILE_BYTES: the compile never seals bytes no gate saw"
+fix     = "ow out check --stage final"
+raised_by = "TargetError"
+sites   = ["09-generation.md:199"]
+
 # ── W1.5, the driver card grammar (04-driver-system.md sections 2.1-2.8, 4.5, 5.3, 7.5). The
 # three discovery-point refusals of section 5.3 step 1, plus the two numerics the plan already
 # binds. `meaning` and `fix` are FILLED here rather than deferred to W1.3: these five are raised
