@@ -27,9 +27,12 @@ D756 builds `manual`: `ManualRegion`, `manual_regions()`, `ManualEvidence` and
 `EvidenceRegion`, so an `ow:manual` region reaches the gate, the classifier and the seal.
 D757 builds `roundtrip`: `r1` ... `r7` as predicates and `applicable()`, imported
 module-qualified by the conformance suite.
+D760 builds `card`: `CompileCard`, `[compile]` read strictly, and `targets()`, the rows
+`ow out targets` prints.
 """
 
 from omniweave_core.out.brief import Brief, Prohibition, baseline_rows, parse_brief
+from omniweave_core.out.card import CompileCard, TargetRow, targets
 from omniweave_core.out.carrier import (
     CarrierDoc,
     CarrierNode,
@@ -125,6 +128,7 @@ __all__ = [
     "CiteResolver",
     "CitedBlock",
     "Classified",
+    "CompileCard",
     "CompileV1",
     "Construct",
     "ConstructTable",
@@ -159,6 +163,7 @@ __all__ = [
     "Severity",
     "SkippedCheck",
     "Splice",
+    "TargetRow",
     "TextMeasure",
     "Truncation",
     "UnitOutcome",
@@ -189,6 +194,7 @@ __all__ = [
     "scan",
     "slot",
     "svg_carrier",
+    "targets",
     "unchanged",
     "verbatim",
     "write_opc",
