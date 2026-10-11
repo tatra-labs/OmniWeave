@@ -918,6 +918,16 @@ meaning = "a class attribute outside its construct's canonical form"
 fix     = "ow out check --stage unit --unit <unit>"
 sites   = ["18-api-sketch.md:2378"]
 
+# ── D760. The unimplemented target's refusal (09-generation.md section 12.4).
+
+[[code]]
+numeric = "OW-T-514"
+symbol  = "OW_TARGET_NOT_IMPLEMENTED"
+meaning = "a call into a target whose card says [compile] implemented = false; the refusal carries the card's reason (D760, appended under 09 section 15's \"+\" rule)"
+fix     = "ow out targets"
+raised_by = "TargetError"
+sites   = ["09-generation.md:2351"]
+
 # ── W1.5, the driver card grammar (04-driver-system.md sections 2.1-2.8, 4.5, 5.3, 7.5). The
 # three discovery-point refusals of section 5.3 step 1, plus the two numerics the plan already
 # binds. `meaning` and `fix` are FILLED here rather than deferred to W1.3: these five are raised

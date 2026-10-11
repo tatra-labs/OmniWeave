@@ -73,7 +73,7 @@ def test_the_registry_it_builds_is_the_day_one_fifty_three() -> None:
     assert "layout.class_hist" not in keys
 
 
-def test_the_cards_it_finds_are_the_fifteen_first_party_drivers() -> None:
+def test_the_cards_it_finds_are_the_sixteen_first_party_drivers() -> None:
     """W5.6 added the third. Before it, checks 9, 11 and 13 all deferred on `parse.page.olmocr`
     and the linter reported six undecidables; with the card on disk it reports three, and none of
     the three is olmocr's. D646 added the fourth, `parse.text.builtin`, whose card is one package
@@ -83,9 +83,11 @@ def test_the_cards_it_finds_are_the_fifteen_first_party_drivers() -> None:
     the eighth, `derive.anchor.native`; D671 the ninth, `derive.xref.native`; D681 the tenth,
     `derive.entity.table`; D683 the eleventh, `derive.entity.gazetteer`; D711 the twelfth and first
     billed one, `derive.entity.llm`; D722 the thirteenth, `derive.claim.llm`; D726 the fourteenth,
-    `derive.merge.llm`; D731 the fifteenth, `derive.report.llm`."""
+    `derive.merge.llm`; D731 the fifteenth, `derive.report.llm`; D760 the sixteenth and first
+    `compile/1` card, `compile.video.native`, which says `implemented = false`."""
     cards = tool.installed_cards()
     assert sorted(cards) == [
+        "compile.video.native",
         "derive.anchor.defterm",
         "derive.anchor.native",
         "derive.claim.llm",
