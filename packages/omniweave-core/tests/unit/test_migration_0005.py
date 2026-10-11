@@ -148,13 +148,57 @@ def test_a_new_generation_is_a_new_row(store: sqlite3.Connection) -> None:
 
 
 def test_artifact_pure_keys_six_digests_with_slug_and_delivery(store: sqlite3.Connection) -> None:
-    """A draft and a release of one input coexist; a second release of it is the cache hit."""
+    """A draft and a release of one input coexist; a second release of it is the cache hit.
+
+    D751 amended the index to hold `brief_digest`, the sixth digest 09 section 5.4 printed
+    without: a new brief over one IL is a new row.
+    """
     _artifact(store)
     _artifact(store, artifact_gen=2, delivery="draft", gate_status="manual-required")
     _artifact(store, artifact_gen=3, slug="q3-board-copy")
     with pytest.raises(sqlite3.IntegrityError, match="UNIQUE"):
         _artifact(store, artifact_gen=4)
     _artifact(store, artifact_gen=5, toolchain_digest=b"\x09" * 32)
+    _artifact(store, artifact_gen=6, brief_digest=b"\x05" * 32)
+    with pytest.raises(sqlite3.IntegrityError, match="UNIQUE"):
+        _artifact(store, artifact_gen=7, brief_digest=b"\x05" * 32)
+
+
+def test_the_loop_closes_once_and_nothing_else_moves(store: sqlite3.Connection) -> None:
+    """D751's amendment: `read_back_doc_ord` goes from NULL to a document once."""
+    artifact_id = _artifact(store)
+    store.execute(
+        "INSERT INTO doc(doc_ord, doc_key, source_sha256, uri, media_type, format,"
+        " format_evidence, source_bytes, status, model_version, declared, achieved)"
+        " VALUES (3, ?, ?, 'file:///out/q3-board.pptx', 'application/x', 'pptx', '{}', 1, 'ok',"
+        " '1.1', '{}', '{}')",
+        (b"\x03" * 16, HEX),
+    )
+    for statement in (
+        "UPDATE artifact SET read_back_doc_ord = 3, gate_status = 'failed' WHERE artifact_id = ?",
+        "UPDATE artifact SET read_back_doc_ord = NULL WHERE artifact_id = ?",
+    ):
+        with pytest.raises(sqlite3.IntegrityError, match="OW-T-511"):
+            store.execute(statement, (artifact_id,))
+    store.execute("UPDATE artifact SET read_back_doc_ord = 3 WHERE artifact_id = ?", (artifact_id,))
+    for value in (3, None):
+        with pytest.raises(sqlite3.IntegrityError, match=r"OW-T-511 .* read back once"):
+            store.execute(
+                "UPDATE artifact SET read_back_doc_ord = ? WHERE artifact_id = ?",
+                (value, artifact_id),
+            )
+
+
+def test_the_sealed_trigger_names_every_column_but_the_loop(store: sqlite3.Connection) -> None:
+    """A column `UPDATE OF` omits is a column a sealed row lets anyone patch."""
+    (sql,) = store.execute(
+        "SELECT sql FROM sqlite_master WHERE name = 'artifact_sealed_no_update'"
+    ).fetchone()
+    listed = re.search(r"UPDATE OF\s+(.*?)\s+ON artifact", sql, re.DOTALL)
+    assert listed is not None
+    named = [c.strip() for c in listed.group(1).split(",")]
+    columns = [row[1] for row in store.execute("PRAGMA table_info(artifact)")]
+    assert sorted(named) == sorted(c for c in columns if c != "read_back_doc_ord")
 
 
 @pytest.mark.parametrize(
