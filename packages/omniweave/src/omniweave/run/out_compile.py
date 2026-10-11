@@ -81,6 +81,17 @@ that module imports `omniweave_core.out`, so `out` importing it back would be a 
 13. **The worker's output ceiling is `MAX_CONTAINER_TOTAL_BYTES`.** No limit names an artefact's
     size, and an artefact is the container a parse reads back: a compile that wrote more than a
     parse accepts would be one `ow out verify` could not open.
+14. **D773: the Plan's `gate_status` is the gate this call order decided.** A scaffolded Plan
+    says `not-provided` (`out.job` ruling 26), and the target writes its receipt's gate from the
+    Plan, so the Plan `lower()` sees carries the status the report gave, beside the units
+    ruling 9 refreshes.
+15. **D773: a run's CAS is the corpus store's sibling `cas/`**, the directory `ingest` writes,
+    created on first use: a store that was only migrated has none, and the worker writes the
+    artefact into it before the seal.
+16. **D773: a CLI compile's Plan is `job.json`'s, with what the compile computes put in.**
+    A scaffolded Plan carries the scaffold's `il_digest` and an empty ledger's digest (`out.job`
+    ruling 26), so `plan_of()` puts in the bundle's, the table's and the ledger's, and the
+    delivery `--accept-manual` asks for. Ruling 2 still holds a Plan a caller computed itself.
 """
 
 from __future__ import annotations
@@ -125,13 +136,14 @@ from omniweave.run.pipeline import compile_host
 
 if TYPE_CHECKING:
     from omniweave_core.blobs import BlobStore
+    from omniweave_core.canonical import JsonValue
     from omniweave_core.drivers.card import DriverCard
     from omniweave_core.out.card import CompileCard
     from omniweave_core.out.cites import CitedBlock, CiteResolver
     from omniweave_core.out.constructs import ConstructTable
     from omniweave_core.out.ledger import AssetLedger, BlobReader
     from omniweave_core.store.ledger import SqliteAssetLedger
-    from omniweave_ports import DriverIO, Scalar
+    from omniweave_ports import DriverIO
 
 __all__ = [
     "CompileHost",
@@ -142,6 +154,8 @@ __all__ = [
     "compile_artifact",
     "in_process",
     "lowered",
+    "plan_of",
+    "store_cas",
 ]
 
 _SLOT: Final = "asset-slot:"
@@ -249,6 +263,7 @@ def compile_artifact(
             replace(mine, nsig=theirs.nsig, manual_reason=theirs.manual_reason)
             for mine, theirs in zip(plan.units, bundle.units, strict=True)
         ),
+        gate_status=status,
     )
     ledger.assert_frozen(_slots(bundle))
     cited = _cited(bundle, compiler)
@@ -376,7 +391,7 @@ class CompileWorker:
     """
 
     card: DriverCard
-    effective_config: Mapping[str, Scalar]
+    effective_config: Mapping[str, JsonValue]
     blobs: BlobStore
     tmp: Path
     settings: subproc.HostSettings
@@ -465,6 +480,35 @@ class CompileWorker:
             spawn=self.spawn,
         )
         return worker
+
+
+def plan_of(
+    scaffolded: Plan,
+    *,
+    bundle: ILBundle,
+    constructs: ConstructTable,
+    ledger: AssetLedger,
+    draft: bool,
+) -> Plan:
+    """Ruling 16: `job.json`'s Plan with what a compile computes put in, and the delivery asked."""
+    return replace(
+        scaffolded,
+        delivery="draft" if draft else "release",
+        il_digest=bundle.il_digest,
+        constructs_digest=constructs.digest(),
+        ledger_digest=ledger.digest(),
+    )
+
+
+def store_cas(store: Path) -> BlobStore:
+    """Ruling 15: the corpus store's CAS, `ingest.CAS_DIR` beside it, created on first use."""
+    from omniweave_core.blobs import BlobStore  # noqa: PLC0415 -- the runtime type, here only
+
+    from omniweave.run.ingest import CAS_DIR  # noqa: PLC0415 -- one name for the directory
+
+    root = store.parent / CAS_DIR
+    root.mkdir(parents=True, exist_ok=True)
+    return BlobStore(root)
 
 
 def lowered(report: subproc.InvokeReport, blobs: BlobReader) -> Lowered:

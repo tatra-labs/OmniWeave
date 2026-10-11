@@ -109,7 +109,7 @@ GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
     "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
     "hooks": "check",
-    "out": "check · constructs · list · normalize · scaffold · stamp · targets",
+    "out": "check · compile · constructs · list · normalize · scaffold · stamp · targets",
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
 }
@@ -556,6 +556,25 @@ COMMANDS: Final[tuple[Command, ...]] = (
             Argument(
                 spelling=("--target",),
                 metavar="TARGET",
+            ),
+        ),
+    ),
+    Command(
+        words=("out", "compile"),
+        actions=("out.compile",),
+        help=(
+            "Lower a JobDir whose final gate passed into its artefact in an S4 worker, seal "
+            "the artifact row, and place the bytes under [roots] output"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--accept-manual",),
+                kind="switch",
+                default=False,
+            ),
+            Argument(
+                spelling=("--job",),
+                metavar="JOB",
             ),
         ),
     ),

@@ -127,6 +127,7 @@ from omniweave.sdk.reports import (
     AddReport,
     ArtifactsReport,
     CodeRow,
+    CompileReport,
     ConstructsReport,
     CorporaReport,
     DoctorReport,
@@ -146,6 +147,7 @@ from omniweave.surface.inputs import (
     AddIn,
     ArtifactsIn,
     CheckIn,
+    CompileIn,
     ConstructsIn,
     CorporaIn,
     CoverageIn,
@@ -1962,6 +1964,26 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=OutCheckReport,
             advanced=frozenset(),
             cli=("out", "check"),
+        ),
+        ActionSpec(
+            name="out.compile",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Lower a JobDir whose final gate passed into its artefact in an S4 worker, seal "
+                "the artifact row, and place the bytes under [roots] output"
+            ),
+            decision="ow out check --stage final passed and you want the artefact",
+            example={},
+            inp=CompileIn,
+            out=CompileReport,
+            advanced=frozenset(),
+            cli=("out", "compile"),
         ),
         ActionSpec(
             name="out.stamp",

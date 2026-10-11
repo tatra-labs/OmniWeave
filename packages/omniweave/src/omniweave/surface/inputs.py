@@ -86,6 +86,7 @@ __all__ = [
     "AddIn",
     "ArtifactsIn",
     "CheckIn",
+    "CompileIn",
     "ConstructsIn",
     "CorporaIn",
     "CoverageIn",
@@ -559,6 +560,19 @@ class ScaffoldIn:
     brief: str | None = None
     slug: str | None = None
     corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CompileIn:
+    """`ow out compile [--accept-manual] [--job DIR]`. 09 sections 2 and 9. D773.
+
+    `accept_manual` asks for a draft of a `manual-required` gate (09 section 9). The API
+    sketch's positional IL directory, `--target` and `--slug` are the scaffold's to take: a
+    JobDir's `job.json` already names the target, the slug and the corpus.
+    """
+
+    accept_manual: bool = False
+    job: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

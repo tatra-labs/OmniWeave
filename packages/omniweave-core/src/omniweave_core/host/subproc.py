@@ -3828,6 +3828,17 @@ that never connects is refused by `NamedPipeListener.accept`, naming the pipe, r
 waited on."""
 
 
+def local_address(name: str) -> str:
+    """A worker's base address for `name`: a named pipe on Windows, a socket path elsewhere.
+
+    One spelling for every caller that launches a worker (the parse Operator, `ow out compile`),
+    so the address a listener binds is built one way. D773.
+    """
+    if sys.platform == "win32":
+        return f"\\\\.\\pipe\\{name}"
+    return f"/tmp/{name}.sock"  # noqa: S108 -- pragma: POSIX arm, untested here
+
+
 def worker_argv(executable: str, address: str) -> tuple[str, ...]:
     """`(python, -m, omniweave_core.host.worker, <base address>)`. The address is the argv's last
     element because `pipe_names` derives both pipe names from it on the child's side."""
@@ -3946,6 +3957,7 @@ __all__ = [
     "grant_isolation",
     "launch",
     "listener_for",
+    "local_address",
     "lower_priority",
     "next_frame",
     "owner_only_sddl",

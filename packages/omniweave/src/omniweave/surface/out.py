@@ -1,5 +1,6 @@
 """`ow out <verb>`: the OUT verbs this build dispatches: `targets` (D761), `constructs` (D762),
-`scaffold` (D765), `check` (D766), `stamp` (D767), `normalize` (D768) and `list` (D769).
+`scaffold` (D765), `check` (D766), `stamp` (D767), `normalize` (D768), `list` (D769) and `compile`
+(D773).
 
 09-generation.md section 1 (`omniweave.targets` exists "so `ow out targets` can list an artefact
 kind without resolving a driver"), section 12.4 ("`ow out targets` prints the target, the flag and
@@ -22,9 +23,9 @@ documentation", with `--group` and `--construct` selecting from it.
    command that names each one, the way `doctor`'s D-08 reports the same faults.
 4. **Refused by name, exit 1:** `--quiet`, because neither verb declares a scalar, and
    `--render jsonl|rows`, which have no writer here (the `explain` precedent).
-5. **Only `targets`, `constructs`, `scaffold`, `check`, `stamp`, `normalize` and `list` are
-   served.** The other five `out` verbs are rostered without an Action, so the generated
-   tree never parses them and this module never sees them.
+5. **Only `targets`, `constructs`, `scaffold`, `check`, `stamp`, `normalize`, `list` and
+   `compile` are served.** The other four `out` verbs are rostered without an Action, so the
+   generated tree never parses them and this module never sees them.
 6. **`constructs` documents the one card that declares the target**, found as `targets` finds
    cards, whether or not `[targets] enabled` lists it: documentation is how an agent learns a
    target before anyone enables it. No card is `OW_TARGET_UNKNOWN` (exit 2), naming the kinds
@@ -74,6 +75,29 @@ documentation", with `--group` and `--construct` selecting from it.
     `connect_readonly()`. `--render json` is the bare array of rows, as for `targets`. An
     empty corpus is an empty list and exit 0. 14's `ow out list --erased` needs a
     `contains_erased` mark that `0005_out.sql` does not carry, so it is not built.
+16. **`compile` is `run.out_compile.compile_artifact()` over a JobDir** (`--job`, else `cwd`),
+    lowered by a `CompileWorker`: the target's `lower()` and `postflight()` run in an S4 worker,
+    because every compile card asks for `subproc`. The host still builds the target in this
+    process for its `carrier()`, as `check` does (D771's finding).
+17. **The Plan is `job.json`'s with what the compile computes put in.** A scaffolded Plan carries
+    the scaffold's `il_digest` and an empty ledger's digest (`out.job` ruling 26). `compile`
+    recomputes `il_digest`, `constructs_digest` and `ledger_digest`, and the gate comes from
+    `validation/final.json`, held to the bundle's `il_digest`, so a report that describes other
+    bytes is `stale`. `job.json` is not rewritten: it is the scaffold's record, and the job
+    record the worker is sent is the Plan compiled.
+18. **`--accept-manual` is the draft.** It asks for a `manual-required` gate's draft (09
+    section 9); against a gate that passed it is a usage error, because the answer is a
+    release.
+19. **One corpus store, written per unit under its write lock.** The ledger, the cite resolver,
+    the restriction aggregate and the seal share one `StoreThread`, whose lock is taken per unit
+    (`StoreThread`'s 07:2730 rule), so a worker's run does not hold the store. The CAS is the
+    store's sibling `cas/` (`store_cas()`), the producer is `ensure_producer()`'s row for the card's
+    identity, the output root is `[roots] output`, and the worker's scratch is
+    `<cache_root>/tmp/compile`.
+20. **The exit is the compile's.** 0 for a seal or a lookup hit, otherwise the closed gate's
+    exit from 09 section 15, with nothing lowered: 6 `restricted`, naming each barred asset and
+    cite, and the gate's own code for the rest. A worker's refusal is raised under the target's
+    symbol and any other failure is `OW_TARGET_COMPILE_FAILED`.
 """
 
 from __future__ import annotations
@@ -89,12 +113,14 @@ from omniweave_core.errors import ConfigError, NotFoundError, OwError, TargetErr
 from omniweave.sdk.reports import (
     ArtifactListing,
     ArtifactsReport,
+    CompileReport,
     ConstructBake,
     ConstructListing,
     ConstructsReport,
     NormalizedRow,
     NormalizeReport,
     OutCheckReport,
+    RestrictedItem,
     ScaffoldReport,
     ScaffoldUnit,
     StampedUnit,
@@ -114,12 +140,16 @@ if TYPE_CHECKING:
     from omniweave_core.drivers.card import DriverCard
     from omniweave_core.out.card import CompileCard
     from omniweave_core.out.constructs import Construct, ConstructTable
+    from omniweave_core.out.plan import Plan
+
+    from omniweave.run.out_compile import Compiled
 
 __all__ = [
     "OUT_WORD",
     "Checked",
     "artifacts_report",
     "check_report",
+    "compile_report",
     "constructs_report",
     "main",
     "normalize_report",
@@ -134,6 +164,7 @@ _STAMP_FIX: Final[str] = "ow out stamp [--job DIR]"
 _LIST_FIX: Final[str] = "ow out list [--slug S] [--corpus N] [--render json]"
 _NORMALIZE_FIX: Final[str] = "ow out normalize [--stage S] [--unit U] [--construct ID] [--job DIR]"
 _CHECK_FIX: Final[str] = "ow out check --stage early|first-unit|unit|final [--unit U] [--job DIR]"
+_COMPILE_FIX: Final[str] = "ow out compile [--accept-manual] [--job DIR]"
 _CONSTRUCTS_FIX: Final[str] = (
     "ow out constructs <target> [--format md] [--group G | --construct ID]"
 )
@@ -295,6 +326,36 @@ def _check(
     return checked.summary.exit
 
 
+def _compile(
+    parsed: argparse.Namespace,
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    del stderr
+    _refuse_unserved(parsed, verb="ow out compile", fix=_COMPILE_FIX)
+    if parsed.corpus is not None:
+        raise UsageError(
+            "--corpus is not served by ow out compile: the JobDir's job.json names its corpus",
+            fix=_COMPILE_FIX,
+        )
+    built = compile_report(
+        cwd=cwd,
+        env=env,
+        explicit=_explicit(parsed),
+        job=None if parsed.job is None else Path(str(parsed.job)),
+        accept_manual=bool(parsed.accept_manual),
+    )
+    if parsed.render == "json":
+        stdout.write(json.dumps(_compiled(built), ensure_ascii=False) + "\n")
+    else:
+        for line in _compile_lines(built):
+            stdout.write(line + "\n")
+    return built.exit
+
+
 def _stamp(
     parsed: argparse.Namespace,
     *,
@@ -386,6 +447,7 @@ _VERBS: Final[Mapping[str, Callable[..., int]]] = {
     "out.constructs": _constructs,
     "out.scaffold": _scaffold,
     "out.check": _check,
+    "out.compile": _compile,
     "out.stamp": _stamp,
     "out.normalize": _normalize,
     "out.list": _list,
@@ -825,6 +887,174 @@ def check_report(
         ),
         document=result.report.as_json(),
     )
+
+
+def compile_report(
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    explicit: Path | None,
+    job: Path | None,
+    accept_manual: bool,
+) -> CompileReport:
+    """Rulings 16-20: one compile over one JobDir, lowered in an S4 worker."""
+    import sys  # noqa: PLC0415 -- only this verb pays
+
+    from omniweave_core import config  # noqa: PLC0415
+    from omniweave_core.canonical import sha256_canonical  # noqa: PLC0415
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415
+    from omniweave_core.host import subproc  # noqa: PLC0415
+    from omniweave_core.host.activate import construct  # noqa: PLC0415
+    from omniweave_core.locks import store_write_lock  # noqa: PLC0415
+    from omniweave_core.model.records import Producer  # noqa: PLC0415
+    from omniweave_core.out.agentdoc import load_table  # noqa: PLC0415
+    from omniweave_core.out.compile import CompileV1  # noqa: PLC0415
+    from omniweave_core.out.job import ILBundle, Job  # noqa: PLC0415
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+    from omniweave_core.store.artifact import (  # noqa: PLC0415
+        SqliteArtifactStore,
+        ensure_producer,
+    )
+    from omniweave_core.store.cites import SqliteCiteResolver  # noqa: PLC0415
+    from omniweave_core.store.ledger import SqliteAssetLedger  # noqa: PLC0415
+
+    from omniweave.run.operators.parse import worker_env  # noqa: PLC0415
+    from omniweave.run.out_compile import (  # noqa: PLC0415
+        CompileHost,
+        CompileWorker,
+        compile_artifact,
+        plan_of,
+        store_cas,
+    )
+    from omniweave.surface.ingest import root_of  # noqa: PLC0415
+    from omniweave.surface.query import store_of  # noqa: PLC0415
+
+    job_dir = cwd if job is None else (job if job.is_absolute() else cwd / job)
+    scaffolded = Job.load(job_dir).plan
+    resolved = config.load(cwd=cwd, env=env, explicit=explicit)
+    driver, card = _one_card(_discover(resolved, env).cards, scaffolded.target)
+    table = load_table(Path(driver.source), card)
+    effective = driver.config.effective()
+    compiler = cast("CompileV1", construct(driver, effective))
+    store = store_of(resolved, scaffolded.corpus, cwd=cwd)
+    blobs = store_cas(store)
+    clock = SystemClock()
+    lowering = CompileWorker(
+        card=driver,
+        effective_config=effective,
+        blobs=blobs,
+        tmp=_cache_root(resolved, cwd) / "tmp" / "compile",
+        settings=subproc.HostSettings.from_config(resolved),
+        executable=sys.executable,
+        env=worker_env(),
+        address=subproc.local_address(
+            f"ow-{os.getpid()}-compile-{scaffolded.slug}-{scaffolded.artifact_gen}"
+        ),
+        now_ms=lambda: clock.monotonic_ns() // 1_000_000,
+    )
+    producer = Producer(
+        operator=driver.identity.id,
+        op_version=driver.identity.schema_version,
+        code_fingerprint="",
+        options_digest=bytes.fromhex(sha256_canonical(dict(effective))),
+    )
+    lock = store_write_lock(store, now_ns=clock.wall_ns)
+    with store_sqlite.StoreThread(lambda: store_sqlite.connect(store), lock=lock) as thread:
+        ledger = SqliteAssetLedger(thread, blobs, job_dir=job_dir)
+        bundle = ILBundle.load(job_dir / "il", carrier=compiler.carrier, constructs=table)
+        plan = plan_of(
+            scaffolded, bundle=bundle, constructs=table, ledger=ledger, draft=accept_manual
+        )
+        producer_id = cast(
+            "int",
+            thread.run(
+                store_sqlite.Unit(
+                    name="out.compile.producer",
+                    run=lambda connection: ensure_producer(connection, producer),
+                    cost_class="free",
+                )
+            ),
+        )
+        compiled = compile_artifact(
+            job_dir,
+            compiler,
+            plan,
+            host=CompileHost.of(driver, card, producer_id=producer_id),
+            constructs=table,
+            ledger=ledger,
+            cites=SqliteCiteResolver(thread, corpus=plan.corpus),
+            artifacts=SqliteArtifactStore(thread, clock=clock),
+            blobs=blobs,
+            lowering=lowering,
+            output_root=root_of(resolved, "roots.output", cwd),
+        )
+    return _compile_summary(job_dir, plan, compiled)
+
+
+def _compile_summary(job_dir: Path, plan: Plan, compiled: Compiled) -> CompileReport:
+    """Ruling 20: the compile's status and exit, and the sealed row when there is one."""
+    from omniweave_core.out.receipt import console_line  # noqa: PLC0415
+    from omniweave_core.out.report import OutReport, report_path  # noqa: PLC0415
+
+    sealed = compiled.sealed
+    row = None if sealed is None else sealed.row
+    postflight = None
+    if compiled.receipt is not None:
+        final = OutReport.load(report_path(job_dir, "final"))
+        introduced = 0 if final is None else final.gate()[1]
+        postflight = console_line(compiled.receipt, introduced)
+    return CompileReport(
+        target=plan.target,
+        slug=plan.slug,
+        delivery=plan.delivery,
+        status=compiled.status.value,
+        exit=compiled.exit,
+        artifact_gen=None if row is None else row.artifact_gen,
+        path=None if compiled.path is None else str(compiled.path),
+        sha256=None if row is None else row.sha256,
+        hit=sealed is not None and sealed.hit,
+        postflight=postflight,
+        restricted=tuple(
+            RestrictedItem(what=one.what, id=one.id, bits=one.bits, cite=one.cite)
+            for one in compiled.restricted
+        ),
+    )
+
+
+def _compiled(built: CompileReport) -> dict[str, Any]:
+    return {
+        "target": built.target,
+        "slug": built.slug,
+        "delivery": built.delivery,
+        "status": built.status,
+        "exit": built.exit,
+        "artifact_gen": built.artifact_gen,
+        "path": built.path,
+        "sha256": built.sha256,
+        "hit": built.hit,
+        "postflight": built.postflight,
+        "restricted": [
+            {"what": one.what, "id": one.id, "bits": one.bits, "cite": one.cite}
+            for one in built.restricted
+        ],
+    }
+
+
+def _compile_lines(built: CompileReport) -> list[str]:
+    if built.path is None:
+        lines = [f"gate {built.status}: nothing was lowered (exit {built.exit})"]
+        lines += [
+            f"  barred {one.what} {one.cite or one.id}: restriction bits {one.bits}"
+            for one in built.restricted
+        ]
+        if built.status == "manual-required":
+            return [*lines, "a draft: ow out compile --accept-manual"]
+        return [*lines, "re-check: ow out check --stage final"]
+    lines = [] if built.postflight is None else built.postflight.splitlines()
+    named = f"{built.slug}@{built.artifact_gen}"
+    if built.hit:
+        return [*lines, f"lookup hit: {named} is an earlier compile's bytes, placed again"]
+    return [*lines, f"sealed {named} ({built.delivery}) at {built.path}"]
 
 
 def stamp_report(
