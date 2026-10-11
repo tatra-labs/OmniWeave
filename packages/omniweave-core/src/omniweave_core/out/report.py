@@ -191,7 +191,7 @@ def _truncation_finding(truncation: Truncation, target: str) -> Finding:
         rule=truncation.rule or "",
         unit="",
         msg=msg,
-        fix=f"ow out check --target {target} --stage final --json",
+        fix=f"ow out check --target {target} --stage final --render json",
     )
 
 

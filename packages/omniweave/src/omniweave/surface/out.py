@@ -1,5 +1,5 @@
-"""`ow out <verb>`: the OUT verbs this build dispatches: `targets` (D761), `constructs` (D762)
-and `scaffold` (D765).
+"""`ow out <verb>`: the OUT verbs this build dispatches: `targets` (D761), `constructs` (D762),
+`scaffold` (D765) and `check` (D766).
 
 09-generation.md section 1 (`omniweave.targets` exists "so `ow out targets` can list an artefact
 kind without resolving a driver"), section 12.4 ("`ow out targets` prints the target, the flag and
@@ -22,9 +22,9 @@ documentation", with `--group` and `--construct` selecting from it.
    command that names each one, the way `doctor`'s D-08 reports the same faults.
 4. **Refused by name, exit 1:** `--quiet`, because neither verb declares a scalar, and
    `--render jsonl|rows`, which have no writer here (the `explain` precedent).
-5. **Only `targets`, `constructs` and `scaffold` are served.** The other nine `out` verbs are
-   rostered without an Action, so the generated tree never parses them and this module never
-   sees them.
+5. **Only `targets`, `constructs`, `scaffold` and `check` are served.** The other eight `out`
+   verbs are rostered without an Action, so the generated tree never parses them and this
+   module never sees them.
 6. **`constructs` documents the one card that declares the target**, found as `targets` finds
    cards, whether or not `[targets] enabled` lists it: documentation is how an agent learns a
    target before anyone enables it. No card is `OW_TARGET_UNKNOWN` (exit 2), naming the kinds
@@ -46,15 +46,30 @@ documentation", with `--group` and `--construct` selecting from it.
    - The run id, the trace context and `clock_ns` are minted here, at the runtime edge,
      as `new_run_id()`'s docstring and G8's `secrets` rule place them.
 9. **`--corpus` is read by `scaffold` alone.** `targets` and `constructs` print nothing that
-   depends on it and accept it, which is what an inert flag is.
+   depends on it and accept it, which is what an inert flag is. `check` refuses it by name,
+   because the JobDir's `job.json` already names the corpus its cites resolve in.
+10. **`check` is `out.compile.check()` over a JobDir** (`--job`, else `cwd`). The target, the
+    corpus, the Brief and the commissioned roster come from its `job.json`. `--target`
+    must match when given: 09 prints it in every fix. The compiler is the target's own
+    class, built through `host.activate.construct()` with the card's `[config]` defaults,
+    because the framework runs the target's `rules()` and the target has no `validate()`.
+11. **The stages read what 09 section 4.3 lists.** `early`, `first-unit` and `unit` read
+    the IL and the table. `final` adds the Brief, the Plan's roster (held to the bundle both
+    ways) and a `CiteResolver` over the corpus's store, opened read-only.
+12. **The exit is the stage's, and the report's `gate` block is the release's.** `final`
+    exits as `gate_status()` decides (0, 6, 8 or 64). A non-final stage exits 8 on any error
+    finding and 0 otherwise, as 09 section 4.3's table has it. Its report still says
+    `non-final`, because no early report may release anything, and the text form says so
+    under the trailer. `--render json` prints `validation/<stage>.json`'s document.
 """
 
 from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final, TextIO
+from typing import TYPE_CHECKING, Any, Final, TextIO, cast
 
 from omniweave_core.errors import ConfigError, NotFoundError, OwError, TargetError, UsageError
 
@@ -62,6 +77,7 @@ from omniweave.sdk.reports import (
     ConstructBake,
     ConstructListing,
     ConstructsReport,
+    OutCheckReport,
     ScaffoldReport,
     ScaffoldUnit,
     TargetListing,
@@ -80,10 +96,19 @@ if TYPE_CHECKING:
     from omniweave_core.out.card import CompileCard
     from omniweave_core.out.constructs import Construct, ConstructTable
 
-__all__ = ["OUT_WORD", "constructs_report", "main", "scaffold_report", "targets_report"]
+__all__ = [
+    "OUT_WORD",
+    "Checked",
+    "check_report",
+    "constructs_report",
+    "main",
+    "scaffold_report",
+    "targets_report",
+]
 
 OUT_WORD: Final[str] = "out"
 _SCAFFOLD_FIX: Final[str] = "ow out scaffold <target> --brief brief.md --slug q3-board"
+_CHECK_FIX: Final[str] = "ow out check --stage early|first-unit|unit|final [--unit U] [--job DIR]"
 _CONSTRUCTS_FIX: Final[str] = (
     "ow out constructs <target> [--format md] [--group G | --construct ID]"
 )
@@ -199,10 +224,57 @@ def _scaffold(
     return 0
 
 
+def _check(
+    parsed: argparse.Namespace,
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    del stderr
+    from omniweave_core.out.report import STAGES, render  # noqa: PLC0415 -- only this verb pays
+
+    _refuse_unserved(parsed, verb="ow out check", fix=_CHECK_FIX)
+    if parsed.corpus is not None:
+        raise UsageError(
+            "--corpus is not served by ow out check: the JobDir's job.json names its corpus",
+            fix=_CHECK_FIX,
+        )
+    stage = parsed.stage
+    if stage not in STAGES:
+        raise UsageError(f"ow out check needs --stage, one of {', '.join(STAGES)}", fix=_CHECK_FIX)
+    if (stage == "unit") != (parsed.unit is not None):
+        raise UsageError(
+            "--unit names the one unit --stage unit checks, and only it", fix=_CHECK_FIX
+        )
+    checked = check_report(
+        cwd=cwd,
+        env=env,
+        explicit=_explicit(parsed),
+        job=None if parsed.job is None else Path(str(parsed.job)),
+        target=parsed.target,
+        stage=str(stage),
+        unit=parsed.unit,
+    )
+    document = checked.document
+    if parsed.render == "json":
+        stdout.write(json.dumps(document, ensure_ascii=False) + "\n")
+    else:
+        stdout.write(render(document))
+        if stage != "final":
+            stdout.write(
+                f"stage {stage}: {checked.summary.errors} error(s), exit {checked.summary.exit}; "
+                "only --stage final is a release gate\n"
+            )
+    return checked.summary.exit
+
+
 _VERBS: Final[Mapping[str, Callable[..., int]]] = {
     "out.targets": _targets,
     "out.constructs": _constructs,
     "out.scaffold": _scaffold,
+    "out.check": _check,
 }
 
 
@@ -559,3 +631,83 @@ def _scaffold_lines(built: ScaffoldReport) -> list[str]:
         *(f"  {u.id}  {u.il_path}  {u.anchor}".rstrip() for u in built.units),
         "next: write each unit's file under il/ and add its [[unit]] row to il/il.toml",
     ]
+
+
+@dataclass(frozen=True, slots=True)
+class Checked:
+    """`check_report()`'s answer: the summary the registry returns and the document printed."""
+
+    summary: OutCheckReport
+    document: Mapping[str, Any]
+
+
+def check_report(
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    explicit: Path | None,
+    job: Path | None,
+    target: str | None,
+    stage: str,
+    unit: str | None,
+) -> Checked:
+    """Rulings 10-12: one stage of the gate over one JobDir."""
+    from omniweave_core import config  # noqa: PLC0415 -- only this verb pays
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415
+    from omniweave_core.host.activate import construct  # noqa: PLC0415
+    from omniweave_core.out.agentdoc import load_table  # noqa: PLC0415
+    from omniweave_core.out.compile import CompileV1, check  # noqa: PLC0415
+    from omniweave_core.out.job import Job  # noqa: PLC0415
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+    from omniweave_core.store.cites import SqliteCiteResolver  # noqa: PLC0415
+
+    from omniweave.surface.query import store_of  # noqa: PLC0415
+
+    job_dir = cwd if job is None else (job if job.is_absolute() else cwd / job)
+    plan = Job.load(job_dir).plan
+    if target is not None and target != plan.target:
+        raise UsageError(
+            f"--target {target} is not this JobDir's target, {plan.target}",
+            fix=f"ow out check --target {plan.target} --stage {stage}",
+        )
+    resolved = config.load(cwd=cwd, env=env, explicit=explicit)
+    driver, card = _one_card(_discover(resolved, env).cards, plan.target)
+    table = load_table(Path(driver.source), card)
+    compiler = cast("CompileV1", construct(driver, driver.config.effective()))
+    final = stage == "final"
+    thread = None
+    if final:
+        store = store_of(resolved, plan.corpus, cwd=cwd)
+        thread = store_sqlite.StoreThread(lambda: store_sqlite.connect_readonly(store)).start()
+    try:
+        result = check(
+            job_dir,
+            compiler,
+            target=plan.target,
+            constructs=table,
+            stage=stage,
+            unit=unit,
+            plan_units=[u.id for u in plan.units] if final else None,
+            brief=plan.brief if final else None,
+            clock=SystemClock(),
+            cites=None if thread is None else SqliteCiteResolver(thread, corpus=plan.corpus),
+        )
+    finally:
+        if thread is not None:
+            thread.close()
+    counts = result.report.counts
+    errors = counts.get("error", 0)
+    code = result.exit if final else (8 if errors else 0)
+    return Checked(
+        summary=OutCheckReport(
+            stage=stage,
+            target=plan.target,
+            status=result.status.value,
+            exit=code,
+            report_path=str(result.path),
+            errors=errors,
+            warnings=counts.get("warning", 0),
+            infos=counts.get("info", 0),
+        ),
+        document=result.report.as_json(),
+    )

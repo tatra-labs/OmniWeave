@@ -33,6 +33,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     hooks.check       HooksCheckIn        HooksCheckReport
     install           InstallIn           InstallReport
     open              OpenIn              Answer
+    out.check         CheckIn             OutCheckReport
     out.constructs    ConstructsIn        ConstructsReport
     out.scaffold      ScaffoldIn          ScaffoldReport
     out.targets       TargetsIn           TargetsReport

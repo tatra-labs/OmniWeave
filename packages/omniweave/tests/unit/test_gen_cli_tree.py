@@ -365,7 +365,7 @@ def test_a_group_advertises_the_verbs_it_has_and_not_the_ones_it_is_owed() -> No
         "doc": "diff · grid",
         "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
         "hooks": "check",
-        "out": "constructs · scaffold · targets",
+        "out": "check · constructs · scaffold · targets",
         "skills": "check · hash · install · ls · remove · update · verify",
         "surface": "emit",
     }
