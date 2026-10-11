@@ -11,6 +11,8 @@ the seven `UnitOutcome`s, `ManualReason` and the total `classify_and_assert()`. 
 `rules`: `RuleSpec`, `RuleCtx`, `DocIndex`, `Box`, `TextMeasure` and the two-pass `run_pack()`.
 D743 adds `nsig()`, the canonical subtree digest, and the definition dependency to `report`.
 D744 adds `ILBundle` to `job`: `il.toml`, the roster check, and both digests over one parse.
+D745 builds `marker`: the `OWC1` grammar, `scan()`, `resolve()`, `apply_reverse()`,
+`assert_clean()`.
 """
 
 from omniweave_core.out.brief import Brief, Prohibition, baseline_rows, parse_brief
@@ -28,6 +30,15 @@ from omniweave_core.out.constructs import Construct, ConstructTable, Disposition
 from omniweave_core.out.finding import Finding, FindingSet, Provenance, Severity, Truncation
 from omniweave_core.out.gate import GateStatus, gate_status
 from omniweave_core.out.job import ILBundle, ILFile
+from omniweave_core.out.marker import (
+    Marker,
+    MarkerEdit,
+    Payload,
+    apply_reverse,
+    assert_clean,
+    resolve,
+    scan,
+)
 from omniweave_core.out.plan import (
     Classified,
     ManualReason,
@@ -74,10 +85,13 @@ __all__ = [
     "ILBundle",
     "ILFile",
     "ManualReason",
+    "Marker",
+    "MarkerEdit",
     "OutReport",
     "OutUnit",
     "PackRun",
     "ParseError",
+    "Payload",
     "Plan",
     "Prohibition",
     "Provenance",
@@ -90,6 +104,8 @@ __all__ = [
     "TextMeasure",
     "Truncation",
     "UnitOutcome",
+    "apply_reverse",
+    "assert_clean",
     "baseline_rows",
     "changed_definitions",
     "classify_and_assert",
@@ -102,7 +118,9 @@ __all__ = [
     "parse_selector",
     "referenced_ids",
     "render",
+    "resolve",
     "run_pack",
+    "scan",
     "svg_carrier",
     "unchanged",
 ]
