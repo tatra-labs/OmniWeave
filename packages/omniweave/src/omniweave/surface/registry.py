@@ -142,6 +142,7 @@ from omniweave.sdk.reports import (
     StampReport,
     SurfaceReport,
     TargetsReport,
+    VerifyReport,
 )
 from omniweave.surface.inputs import (
     AddIn,
@@ -182,6 +183,7 @@ from omniweave.surface.inputs import (
     TargetsIn,
     TypesIn,
     UninstallIn,
+    VerifyIn,
     WhyIn,
 )
 
@@ -2004,6 +2006,26 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=StampReport,
             advanced=frozenset(),
             cli=("out", "stamp"),
+        ),
+        ActionSpec(
+            name="out.verify",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Recompile a sealed artefact from its retained IL in an S4 worker and compare it "
+                "at its declared determinism classes (R1), and count its units (R7)"
+            ),
+            decision="you need proof a sealed artefact is what its retained IL compiles to",
+            example={},
+            inp=VerifyIn,
+            out=VerifyReport,
+            advanced=frozenset(),
+            cli=("out", "verify"),
         ),
         ActionSpec(
             name="out.normalize",

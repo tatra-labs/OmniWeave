@@ -121,6 +121,7 @@ __all__ = [
     "TargetsIn",
     "TypesIn",
     "UninstallIn",
+    "VerifyIn",
     "WhyIn",
 ]
 
@@ -572,6 +573,18 @@ class CompileIn:
     """
 
     accept_manual: bool = False
+    job: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class VerifyIn:
+    """`ow out verify [--job DIR]`. 09 section 11.1's R1 and R7. D774.
+
+    The API sketch prints `ow out verify <artefact>`. R1 recompiles over the Brief, the clock
+    and the frozen assets as well as the IL, and only the IL is retained, so the verb reads the
+    rest from the JobDir that compiled the artefact.
+    """
+
     job: str | None = None
 
 
