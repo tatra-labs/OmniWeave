@@ -113,6 +113,7 @@ __all__ = [
     "SkillsUpdateIn",
     "SkillsVerifyIn",
     "SplitIn",
+    "StampIn",
     "SurfaceEmitIn",
     "TargetsIn",
     "TypesIn",
@@ -543,6 +544,17 @@ class ScaffoldIn:
     brief: str | None = None
     slug: str | None = None
     corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class StampIn:
+    """`ow out stamp [--job DIR]`. 09 section 4.3. D767.
+
+    The JobDir is `--job`, else `cwd`, as for `ow out check`. Everything else is in it: the
+    target in `job.json` and the roster in `il/il.toml`.
+    """
+
+    job: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -136,6 +136,7 @@ from omniweave.sdk.reports import (
     ScaffoldReport,
     ServeReport,
     SkillsReport,
+    StampReport,
     SurfaceReport,
     TargetsReport,
 )
@@ -170,6 +171,7 @@ from omniweave.surface.inputs import (
     SkillsUpdateIn,
     SkillsVerifyIn,
     SplitIn,
+    StampIn,
     SurfaceEmitIn,
     TargetsIn,
     TypesIn,
@@ -1956,6 +1958,26 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=OutCheckReport,
             advanced=frozenset(),
             cli=("out", "check"),
+        ),
+        ActionSpec(
+            name="out.stamp",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Mint a data-ow-el address on every citable, text-bearing IL element that "
+                "has none, never renumbering one, all units or none"
+            ),
+            decision="you authored units and need element addresses before checking",
+            example={},
+            inp=StampIn,
+            out=StampReport,
+            advanced=frozenset(),
+            cli=("out", "stamp"),
         ),
     )
 )
