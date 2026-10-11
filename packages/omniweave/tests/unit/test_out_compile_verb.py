@@ -262,3 +262,108 @@ def test_the_console_script_routes_compile(
     captured = capsys.readouterr()
     assert (code, captured.err) == (8, "")
     assert json.loads(captured.out)["status"] == "not-provided"
+
+
+# ---------------------------------------------------------------------------------------------
+# D779: `[licence] deny_restrictions` is the restriction aggregate's barred mask
+# ---------------------------------------------------------------------------------------------
+
+U01_CITED = (
+    '<section data-ow-el="u01/e1">\n'
+    '  <p data-ow-el="u01/e2" data-ow-cite="d7#1" class="lead">Revenue rose 12% in Q3.</p>\n'
+    "</section>\n"
+)
+
+
+def _cited_block(project: Path, bits: int) -> None:
+    """Document 7 with one page and one block, `d7#1`, carrying `bits`."""
+    from omniweave_core.model.enums import enum_val_rows  # noqa: PLC0415
+
+    ordinal = {(domain, name): n for domain, n, name in enum_val_rows()}
+    connection = store_sqlite.connect(project / ".omniweave" / "index.owstore")
+    try:
+        connection.execute("BEGIN IMMEDIATE")
+        connection.execute(
+            "INSERT INTO producer(producer_id, operator, op_version, code_fingerprint,"
+            " options_digest) VALUES (1, 'parse.pdf', 1, 'f', x'00')"
+        )
+        connection.execute(
+            "INSERT INTO doc(doc_ord, doc_key, source_sha256, uri, media_type, format,"
+            " format_evidence, source_bytes, status, model_version, declared, achieved)"
+            " VALUES (7, ?, ?, 'file:///c/contract.pdf', 'application/pdf', 'pdf', '{}', 10,"
+            " 'ok', '1.1', '{}', '{}')",
+            (b"\x07" * 16, b"\x00" * 32),
+        )
+        connection.execute(
+            "INSERT INTO page(doc_ord, gen, page, page_kind, method, producer_id)"
+            " VALUES (7, 1, 1, ?, ?, 1)",
+            (ordinal["page_kind", "page"], ordinal["method", "native_xml"]),
+        )
+        connection.execute(
+            "INSERT INTO block(block_id, doc_ord, gen, page, addr, cite, ord, kind, layer, text,"
+            " content_digest, os_kind, producer_id, method, trust, quote, origin_operator,"
+            " origin_driver, driver_schema_v, restriction_bits)"
+            " VALUES (101, 7, 1, 1, 'p1/101', 'd7#1', 1, ?, ?, 'Revenue rose 12% in Q3.',"
+            " x'00', ?, 1, ?, 2, 0, 'parse.pdf', 'parse.pdf.text', 1, ?)",
+            (
+                ordinal["kind", "paragraph"],
+                ordinal["layer", "body"],
+                ordinal["origin_span_kind", "none"],
+                ordinal["method", "native_xml"],
+                bits,
+            ),
+        )
+        connection.execute("COMMIT")
+    finally:
+        connection.close()
+
+
+def _cited_job(project: Path) -> Path:
+    job = _job(project)
+    (job / "il" / "u01.html").write_text(U01_CITED, encoding="utf-8", newline="")
+    code, _out, err = _run(["check", "--stage", "final", "--job", str(job)], project)
+    assert (code, err) == (0, ""), err
+    return job
+
+
+def test_a_cite_the_policy_bars_is_restricted_and_nothing_is_lowered(project: Path) -> None:
+    """INV-16's compile-side refusal, through the verbs: a block carrying a barred bit is cited,
+    the gate passed, and the compile refuses before `lower()` with exit 6 naming the cite."""
+    from omniweave_ports import Restriction  # noqa: PLC0415
+
+    _cited_block(project, Restriction.OUTPUT_SHARE_ALIKE.bit | Restriction.MAU_GATE.bit)
+    toml = project / "omniweave.toml"
+    toml.write_text(
+        toml.read_text(encoding="utf-8")
+        + '\n[licence]\ndeny_restrictions = ["output_share_alike"]\n',
+        encoding="utf-8",
+    )
+    job = _cited_job(project)
+    code, out, err = _run(["compile", "--job", str(job)], project)
+    assert (code, err) == (6, "")
+    bits = Restriction.OUTPUT_SHARE_ALIKE.bit | Restriction.MAU_GATE.bit
+    assert out.splitlines() == [
+        "gate restricted: nothing was lowered (exit 6)",
+        f"  barred cite d7#1: restriction bits {bits}",
+        "re-check: ow out check --stage final",
+    ]
+    code, document = _compile(project, job)
+    assert (code, document["status"], document["path"]) == (6, "restricted", None)
+    assert document["restricted"] == [{"what": "cite", "id": 101, "bits": bits, "cite": "d7#1"}]
+    assert not (project / ".omniweave" / "out").exists()
+
+
+@WINDOWS_ONLY
+def test_a_cite_the_policy_does_not_bar_compiles(project: Path) -> None:
+    from omniweave_ports import Restriction  # noqa: PLC0415
+
+    _cited_block(project, Restriction.MAU_GATE.bit)
+    toml = project / "omniweave.toml"
+    toml.write_text(
+        toml.read_text(encoding="utf-8")
+        + '\n[licence]\ndeny_restrictions = ["output_share_alike"]\n',
+        encoding="utf-8",
+    )
+    job = _cited_job(project)
+    code, document = _compile(project, job)
+    assert (code, document["status"], document["restricted"]) == (0, "passed", [])

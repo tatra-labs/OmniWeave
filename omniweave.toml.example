@@ -188,6 +188,9 @@ allow_tiers   = ["open"]               # open | restricted | commercial | forbid
                                        #   LICENCE_TIER_NOT_ALLOWED
 jurisdiction  = "DE"                   # checked against a card's territory_excluded
 fields_of_use = ["enterprise_documents"]   # checked against field_of_use_excluded
+deny_restrictions = []                 # Restriction names a source may NOT carry into a compiled
+                                       #   artefact: `ow out compile` is `restricted` (exit 6)
+                                       #   and names each barred asset and cite
 
 # =============================================================================================
 # [targets] -- an ARTEFACT-KIND allowlist. [drivers] enabled still applies; NEITHER BYPASSES THE

@@ -150,6 +150,7 @@ __all__ = [
     "load_acks",
     "require_computed_tier",
     "restriction_bits",
+    "restriction_mask",
     "restrictions_of",
     "seeds_from_tombstones",
     "stored_tier_mismatch",
@@ -311,6 +312,22 @@ def restriction_bits(facts: LicenceFacts) -> int:
     for restriction in restrictions_of(facts):
         bits |= restriction.bit
     return bits
+
+
+def restriction_mask(names: Iterable[str]) -> int:
+    """The OR of each named `Restriction`'s bit: `[licence] deny_restrictions` as a mask. D779.
+
+    09 section 7.3's restriction aggregate bars a source whose `restriction_bits` meet this mask,
+    at plan time and again at compile time. A name `Restriction` does not have is a `ValueError`:
+    config validation has already refused it, so reaching here with one is a caller's bug.
+    """
+    mask = 0
+    for name in names:
+        try:
+            mask |= Restriction[name.upper()].bit
+        except KeyError:
+            raise ValueError(f"{name!r} names no Restriction") from None
+    return mask
 
 
 # --------------------------------------------------------------------------------------------

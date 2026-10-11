@@ -15,7 +15,6 @@ subset validator in ``omniweave`` and ``omniweave-conform``, off the hot path
 from __future__ import annotations
 
 import difflib
-import hashlib
 import json
 import math
 import posixpath
@@ -24,7 +23,10 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import IntEnum
 from pathlib import Path, PurePosixPath
-from typing import Final, Literal, TypeAlias
+from typing import Final, Literal, TypeAlias, cast
+
+from omniweave_core.canonical import JsonValue, sha256_canonical
+from omniweave_core.errors import ConfigError
 
 __all__ = [
     "CONFIG_AXES",
@@ -36,6 +38,7 @@ __all__ = [
     "KEYS",
     "NON_KEY_ENV_VARS",
     "REQUIRED",
+    "RESTRICTION_NAMES",
     "SHIPPED_DRIVERS",
     "SHIPPED_PASSES",
     "Config",
@@ -60,59 +63,14 @@ __all__ = [
     "split_key",
 ]
 
-# --------------------------------------------------------------------------------------------
-# Cross-module seams. `errors.py` is W1.3 and `canonical.py` is W1.2 (16-roadmap.md section 4);
-# both are eager modules of this same distribution. Until they land, the two shims below stand in
-# with EXACTLY the signature and the recipe those documents print, so no caller and no test sees
-# a different shape when they arrive. Reported as a deviation.
-# --------------------------------------------------------------------------------------------
-try:  # pragma: no cover - which branch runs depends on whether W1.3 has landed
-    from omniweave_core.errors import ConfigError
-except ImportError:  # pragma: no cover - bootstrap until W1.3
-
-    class ConfigError(Exception):  # type: ignore[no-redef]
-        """``OW-C-*``: a configuration or startup failure, raised ONLY during resolution.
-
-        The two-level tree and this constructor are printed in 18-api-sketch.md section 0.3;
-        ``fix`` is THE EXACT COMMAND THAT CLEARS IT and an empty one raises ``ValueError``.
-        """
-
-        SYMBOL: str = "OW_CONFIG"
-        EXIT: int = 1
-
-        def __init__(self, message: str, *, symbol: str | None = None, fix: str) -> None:
-            if not fix:
-                raise ValueError("an OwError names the exact command that clears it")
-            super().__init__(message)
-            self.fix = fix
-            self._symbol = symbol or self.SYMBOL
-
-        def code(self) -> str:
-            return self._symbol
-
-        def is_fatal(self) -> bool:
-            return True
-
 
 def _sha256_canonical(obj: object) -> str:
     """``sha256(canonical(obj))`` as 64-char hex (glossary.md; 02-architecture.md section 8.3).
 
-    Delegates to ``omniweave_core.canonical`` once it exists (module row 3 owns the encoding).
-    The inline recipe is the one 02-architecture.md section 8.3 states -- sorted keys, no
-    whitespace, ``allow_nan=False`` -- and is replaced by the import when W1.2 lands.
+    ``omniweave_core.canonical`` owns the encoding (module row 3). D779 retired the bootstrap
+    shims that stood in for it and for ``errors.py`` before W1.2 and W1.3 landed.
     """
-    try:  # pragma: no cover - exercised once canonical.py lands
-        from omniweave_core.canonical import sha256_canonical
-    except ImportError:  # pragma: no cover - bootstrap until W1.2
-        blob = json.dumps(
-            obj,
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-            allow_nan=False,
-        ).encode("utf-8")
-        return hashlib.sha256(blob).hexdigest()
-    return sha256_canonical(obj)
+    return sha256_canonical(cast("JsonValue", obj))
 
 
 # --------------------------------------------------------------------------------------------
@@ -702,6 +660,25 @@ def _key(
     )
 
 
+RESTRICTION_NAMES: Final[tuple[str, ...]] = (
+    "output_share_alike",
+    "competitor_bar",
+    "territory_excluded",
+    "field_of_use_excluded",
+    "revenue_gate",
+    "mau_gate",
+    "no_redistribution",
+    "no_model_training",
+    "attribution_per_output",
+    "remote_kill_switch",
+    "copyleft_network",
+    "copyleft_strong",
+)
+"""`omniweave_ports.Restriction`'s twelve members, lower-case and in bit order: the values
+`[licence] deny_restrictions` takes (D779). Mirrored rather than imported, because this module
+is read at every CLI start and `omniweave_ports.types` is not; a test holds the two equal."""
+
+
 _DECLARATIONS: Final[tuple[ConfigKey, ...]] = (
     _key("schema", "int", CONFIG_SCHEMA, "operational"),
     # [roots] -- THREE ROOTS, ALWAYS SEPARATE
@@ -796,6 +773,16 @@ _DECLARATIONS: Final[tuple[ConfigKey, ...]] = (
     _key("licence.jurisdiction", "str", "DE", "operational"),
     _key(
         "licence.fields_of_use", "list", ("enterprise_documents",), "operational", item_kind="str"
+    ),
+    #  D779: the restriction bits this deployment bars from a compiled artefact (09 section 7.3's
+    #  `:barred_mask`, which 14 leaves to "the effective policy" and prints no key for).
+    _key(
+        "licence.deny_restrictions",
+        "list",
+        (),
+        "operational",
+        choices=RESTRICTION_NAMES,
+        item_kind="enum",
     ),
     # [targets] -- an artefact-kind allowlist; `targets.*.*` is SEMANTIC
     _key("targets.enabled", "list", ("pptx",), "operational", item_kind="str"),

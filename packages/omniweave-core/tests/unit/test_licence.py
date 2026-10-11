@@ -1699,3 +1699,20 @@ def test_a_grant_is_not_active_at_the_instant_it_expires() -> None:
     assert not grant.is_active(expiry)
     assert grant.is_active(expiry - dt.timedelta(microseconds=1))
     assert not grant.is_active(expiry + dt.timedelta(microseconds=1))
+
+
+# ---------------------------------------------------------------------------------------------
+# D779: `[licence] deny_restrictions` as a mask
+# ---------------------------------------------------------------------------------------------
+
+
+def test_the_deny_list_is_the_or_of_each_named_restrictions_bit() -> None:
+    mask = licence_module.restriction_mask(["output_share_alike", "copyleft_strong"])
+    assert mask == Restriction.OUTPUT_SHARE_ALIKE.bit | Restriction.COPYLEFT_STRONG.bit
+    assert licence_module.restriction_mask(()) == 0
+    assert licence_module.restriction_mask(["mau_gate", "mau_gate"]) == Restriction.MAU_GATE.bit
+
+
+def test_a_name_no_restriction_has_is_a_callers_bug() -> None:
+    with pytest.raises(ValueError, match="'house_rules' names no Restriction"):
+        licence_module.restriction_mask(["house_rules"])
