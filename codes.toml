@@ -870,6 +870,54 @@ meaning = "a data-ow-manual value outside ManualReason: a framework error findin
 fix     = "ow out constructs --construct ow:manual"
 sites   = ["09-generation.md:1956"]
 
+# ── D758. The reference target's construct codes (18-api-sketch.md section 6.2's
+# constructs.toml), appended under 09 section 15's "+" rule. Its table holds SYMBOLS and "the
+# numeric OW-T-nnn is resolved from codes.toml at RENDER time", so every symbol a shipped
+# ConstructTable names is registered. Each numeric sits in the band its siblings use: 1xx cites,
+# 2xx normalize, 3xx bake, 4xx constructs.
+
+[[code]]
+numeric = "OW-T-103"
+symbol  = "OW_TARGET_CITE_MALFORMED"
+meaning = "a data-ow-cite value that is not a space-separated list of cite tokens"
+fix     = "ow out check --stage unit --unit <unit>"
+sites   = ["18-api-sketch.md:2315"]
+
+[[code]]
+numeric = "OW-T-211"
+symbol  = "OW_TARGET_CLASS_NOT_LOWER"
+meaning = "owtext/1's normalize row: a class attribute that is not lower-case ASCII; a warning, folded"
+fix     = "ow out normalize <il file>"
+sites   = ["18-api-sketch.md:2387", "18-api-sketch.md:2484"]
+
+[[code]]
+numeric = "OW-T-312"
+symbol  = "OW_TARGET_SHADOW_REQUIRES_BAKE"
+meaning = "owtext/1's bake row: text-shadow has no native mapping and needs a bake the card says is unavailable"
+fix     = "ow out normalize <il file>   # drop the shadow"
+sites   = ["18-api-sketch.md:2407"]
+
+[[code]]
+numeric = "OW-T-403"
+symbol  = "OW_TARGET_UNIT_MALFORMED"
+meaning = "a unit's root is not the one element its target's unit construct names"
+fix     = "ow out check --stage unit --unit <unit>"
+sites   = ["18-api-sketch.md:2345"]
+
+[[code]]
+numeric = "OW-T-404"
+symbol  = "OW_TARGET_TEXT_INVALID"
+meaning = "block text that is not NFC, or that nests a block element"
+fix     = "ow out check --stage unit --unit <unit>"
+sites   = ["18-api-sketch.md:2355"]
+
+[[code]]
+numeric = "OW-T-406"
+symbol  = "OW_TARGET_CLASS_INVALID"
+meaning = "a class attribute outside its construct's canonical form"
+fix     = "ow out check --stage unit --unit <unit>"
+sites   = ["18-api-sketch.md:2378"]
+
 # ── W1.5, the driver card grammar (04-driver-system.md sections 2.1-2.8, 4.5, 5.3, 7.5). The
 # three discovery-point refusals of section 5.3 step 1, plus the two numerics the plan already
 # binds. `meaning` and `fix` are FILLED here rather than deferred to W1.3: these five are raised

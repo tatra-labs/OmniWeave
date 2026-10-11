@@ -22,6 +22,9 @@ from typing import Any, BinaryIO, ClassVar
 import pytest
 from omniweave.run.out_compile import CompileHost, compile_artifact
 from omniweave_conform.harness import MemoryBlobStore, make_io
+from omniweave_conform.suites.target.owtext.driver import HERE as OWTEXT
+from omniweave_conform.suites.target.owtext.driver import OwTextCompiler
+from omniweave_conform.suites.target.owtext.normalizers import lower_ascii
 from omniweave_core.blobs import BlobStore
 from omniweave_core.errors import TargetError, UsageError
 from omniweave_core.model.doc import Doc
@@ -315,18 +318,18 @@ class World:
         base.update(fields)
         return Plan(**base)
 
-    def compile(self, target: _Text, plan: Plan, **kw: Any) -> Any:
+    def compile(self, target: Any, plan: Plan, **kw: Any) -> Any:
         return compile_artifact(
             self.job,
             target,
             plan,
             host=kw.pop("host", HOST),
-            constructs=CONSTRUCTS,
+            constructs=kw.pop("constructs", CONSTRUCTS),
             ledger=self.ledger,
             cites=self.cites,
             artifacts=self.artifacts,
             blobs=self.blobs,
-            io=make_io(self.kit, self.tmp / f"io{target.lowered}"),
+            io=make_io(self.kit, self.tmp / "io"),
             output_root=self.out,
             **kw,
         )
@@ -688,3 +691,26 @@ def test_the_plans_units_are_rebuilt_from_the_bundle(world: World) -> None:
     assert [r.nsig for r in world.artifacts.units(done.sealed.row.artifact_id)] == [
         u.nsig for u in bundle.units
     ]
+
+
+# ---------------------------------------------------------------------------
+# D758: the reference target, end to end through the runner
+# ---------------------------------------------------------------------------
+
+
+def test_the_reference_target_compiles_and_seals(world: World) -> None:
+    """`compile.text.owtext` (09 section 12.5) from check to seal, with nothing faked."""
+    owtext = ConstructTable.load(OWTEXT / "constructs.toml", {"lower_ascii": lower_ascii})
+    target = OwTextCompiler()
+    gate = check(
+        world.job, target, target="owtext", constructs=owtext, stage="final", cites=world.cites
+    )
+    assert gate.status is GateStatus.PASSED, gate.report.findings
+    bundle = ILBundle.load(world.job / "il", carrier=target.carrier, constructs=owtext)
+    plan = world.plan(bundle, constructs_digest=owtext.digest())
+    done = world.compile(target, plan, constructs=owtext)
+    assert (done.status, done.exit) == (GateStatus.PASSED, 0)
+    assert done.path.read_bytes() == (
+        f"== u01 ==\nRevenue\n== u02 ==\nMargins\n{slot(LOGO_SHA)}\n".encode()
+    )
+    assert done.sealed.row.determinism == ("byte", "part")
