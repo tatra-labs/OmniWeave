@@ -12,6 +12,9 @@
 -- (0005_out.sql), so the v0.1 -> v1.0 upgrade is additive DDL plus passes and never a re-parse".
 -- This file adds tables and no column to any earlier table, so it is no SCHEMA minor.
 --
+-- TWO AMENDMENTS, both D751 and each stated where it lands: artifact_pure carries brief_digest,
+-- and the sealed-row trigger admits the one write read_back makes.
+--
 -- EVERY REFERENCE IS BACKWARD: producer, doc, block and asset are 0001_init.sql's, and every
 -- artifact_* child names artifact, created first below.
 --
@@ -61,15 +64,30 @@ CREATE TABLE artifact (
 -- Identical inputs => identical bytes. slug and delivery are in the key because three cases are
 -- "the same six digests, a second row": --accept-manual's draft, a recompile after the gate
 -- clears, and one IL compiled under two slugs (09-generation.md section 5.4).
+-- AMENDED (D751): 09 section 5.4 prints this index with five of the six digests. brief_digest
+-- is the sixth, lower() receives the Brief inside the Plan, and without it two briefs over one
+-- IL would share a row and the second compile would be handed the first one's bytes.
 CREATE UNIQUE INDEX artifact_pure ON artifact(
-  target, slug, delivery, il_digest, constructs_digest, ledger_digest, card_sha256,
-  IFNULL(toolchain_digest, x''));
+  target, slug, delivery, il_digest, constructs_digest, ledger_digest,
+  IFNULL(brief_digest, x''), card_sha256, IFNULL(toolchain_digest, x''));
 
 -- OUT24 made structural: sealed_at_ns is NOT NULL, so every row is sealed the moment it exists,
 -- and a sealed row is neither updated nor deleted. gate_status advances on a NEW artifact_gen.
-CREATE TRIGGER artifact_sealed_no_update BEFORE UPDATE ON artifact
+-- AMENDED (D751): the one write a sealed row admits is the loop closing. 02-architecture.md
+-- routes a re-ingested artefact by "a matching artifact row with read_back_doc_ord IS NULL",
+-- so that column is NULL at the seal and set once when read_back runs. Every other column is in
+-- the UPDATE OF list below, and a column added to artifact later must be added to it.
+CREATE TRIGGER artifact_sealed_no_update BEFORE UPDATE OF
+  artifact_id, slug, artifact_gen, parent_artifact_gen, origin, target, compile_driver,
+  media_type, path, sha256, byte_len, part_digest, il_digest, il_store_ref, constructs_digest,
+  ledger_digest, brief_digest, card_sha256, toolchain_digest, determinism, gate_status,
+  delivery, report_sha256, receipt_sha256, restriction_bits, producer_id, degradations,
+  sealed_at_ns ON artifact
   WHEN OLD.sealed_at_ns IS NOT NULL
   BEGIN SELECT RAISE(ABORT,'OW-T-511 a sealed artifact row is never patched'); END;
+CREATE TRIGGER artifact_read_back_once BEFORE UPDATE OF read_back_doc_ord ON artifact
+  WHEN OLD.read_back_doc_ord IS NOT NULL OR NEW.read_back_doc_ord IS NULL
+  BEGIN SELECT RAISE(ABORT,'OW-T-511 a sealed artifact row is read back once'); END;
 CREATE TRIGGER artifact_sealed_no_delete BEFORE DELETE ON artifact
   WHEN OLD.sealed_at_ns IS NOT NULL
   BEGIN SELECT RAISE(ABORT,'OW-T-511 a sealed artifact row is never deleted'); END;
