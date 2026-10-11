@@ -195,6 +195,7 @@ def test_omitted_is_unpublished_narrowed_to_a_profile() -> None:
     assert omitted(DEFAULT_PROFILE) == (), "the default profile must render whole"
     assert omitted("full") == (
         "ow_coverage", "ow_diff", "ow_doctor", "ow_explain", "ow_grid", "ow_locate",
+        "ow_targets",
     )  # fmt: skip
 
 

@@ -25,7 +25,8 @@
         "ow_doctor",
         "ow_explain",
         "ow_grid",
-        "ow_locate"
+        "ow_locate",
+        "ow_targets"
       ]
     }
   },

@@ -33,6 +33,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     hooks.check       HooksCheckIn        HooksCheckReport
     install           InstallIn           InstallReport
     open              OpenIn              Answer
+    out.targets       TargetsIn           TargetsReport
     query             QueryIn             Answer
     serve             ServeIn             ServeReport
     skills.check      SkillsCheckIn       SkillsReport

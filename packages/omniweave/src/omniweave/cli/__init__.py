@@ -109,6 +109,7 @@ GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
     "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
     "hooks": "check",
+    "out": "targets",
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
 }
@@ -531,6 +532,15 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 help="ow:impact for a batch; a single-block ref gets it anyway",
             ),
         ),
+    ),
+    Command(
+        words=("out", "targets"),
+        actions=("out.targets",),
+        help=(
+            "List the artefact kinds this deployment can compile, whether each is implemented "
+            "and enabled, and the determinism class its card declares"
+        ),
+        arguments=(),
     ),
     Command(
         words=("query",),

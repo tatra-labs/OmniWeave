@@ -132,6 +132,9 @@ def test_targets_lists_every_compile_card_with_its_flag_and_reason() -> None:
     assert video_row["implemented"] is False
     assert video_row["reason"].startswith("the hyperframes mining")
     assert json.loads(json.dumps([r.as_json() for r in rows]))[1]["target"] == "video"
+    #  The determinism class 10's roster names, as the card declares it (D761).
+    assert rows[0].determinism == ("part", "byte")
+    assert rows[0].as_json()["determinism"] == ["part", "byte"]
     assert rows[1].line().startswith("video    compile.video.native")
     assert "implemented = false: the hyperframes" in rows[1].line()
 

@@ -24,7 +24,9 @@ is where they are read, and it reads them the way 09 says.
    is dropped and recorded as a degradation on the `CompileCard`, never an error, because an
    unknown member can only shrink a set-valued floor.
 4. **`targets()` lists compile cards as rows**, sorted by target and then driver. Each row carries
-   the target, the driver, the flag, the reason, the carrier, the IL, the fidelity and the laws:
+   the target, the driver, the flag, the reason, the carrier, the IL, the fidelity, the laws and
+   the declared determinism (D761: 10-interfaces.md's `ow_targets` row lists "their determinism
+   class"):
    what `ow out targets` prints, and in `as_json()` the shape `--render json` emits. Two cards
    claiming one target are both listed, because choosing one is the registry's decision.
 """
@@ -209,6 +211,7 @@ class TargetRow:
     il: str
     fidelity: str
     laws: tuple[str, ...]
+    determinism: tuple[str, ...] = ()
 
     def as_json(self) -> dict[str, Any]:
         return {
@@ -220,6 +223,7 @@ class TargetRow:
             "il": self.il,
             "fidelity": self.fidelity,
             "laws": list(self.laws),
+            "determinism": list(self.determinism),
         }
 
     def line(self) -> str:
@@ -236,7 +240,15 @@ def targets(cards: Iterable[DriverCard]) -> tuple[TargetRow, ...]:
         c = CompileCard.of(card)
         rows.append(
             TargetRow(
-                c.target, c.driver, c.implemented, c.reason, c.carrier, c.il, c.fidelity, c.laws
+                c.target,
+                c.driver,
+                c.implemented,
+                c.reason,
+                c.carrier,
+                c.il,
+                c.fidelity,
+                c.laws,
+                c.determinism,
             )
         )
     return tuple(sorted(rows, key=lambda r: (r.target, r.driver)))

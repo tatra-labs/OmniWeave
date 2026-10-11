@@ -110,6 +110,7 @@ __all__ = [
     "SkillsVerifyIn",
     "SplitIn",
     "SurfaceEmitIn",
+    "TargetsIn",
     "TypesIn",
     "UninstallIn",
     "WhyIn",
@@ -484,6 +485,17 @@ class HooksCheckIn:
     Which commands to check is not an argument: they are the ones the install receipt says were
     installed, read back out of the files the receipt names (10:2078, *"resolves the installed
     command string"*). A command given on argv would be a command that was not installed.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class TargetsIn:
+    """`ow_targets` / `ow out targets`. 10-interfaces.md's `full` roster; 09-generation.md section
+    12.4. D761.
+
+    No field. Which targets exist is a fact about the installed and configured drivers, not an
+    argument: the cards are discovered, `[targets] enabled` is read from the configuration, and
+    `--render` is global. There is no `corpus`, because no store is opened.
     """
 
 

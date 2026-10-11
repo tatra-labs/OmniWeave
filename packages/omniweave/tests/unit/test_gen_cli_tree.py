@@ -135,7 +135,8 @@ def test_the_arity_rule_is_reported_and_not_raised() -> None:
     #  `surface` joined with `emit`, one of the four `CLI_ROSTER` carries (W7.1e, D334).
     #  `graph` joined with `locate`, one of its sixteen (D694), and `why` (D695); `merges`
     #  (D696) made it three, the arity 10:1413 asks for, so it left this list.
-    assert unrostered_groups() == ("doc (2)", "hooks (1)", "surface (1)")
+    #  `out` joined with `targets`, one of its twelve (D761).
+    assert unrostered_groups() == ("doc (2)", "hooks (1)", "out (1)", "surface (1)")
     assert _grammar_failures() == ()
 
 
@@ -363,6 +364,7 @@ def test_a_group_advertises_the_verbs_it_has_and_not_the_ones_it_is_owed() -> No
         "doc": "diff · grid",
         "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
         "hooks": "check",
+        "out": "targets",
         "skills": "check · hash · install · ls · remove · update · verify",
         "surface": "emit",
     }
