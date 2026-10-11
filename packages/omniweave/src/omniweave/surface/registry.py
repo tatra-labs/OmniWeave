@@ -2041,8 +2041,8 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             destructive=False,
             cost_class=CostClass.FREE,
             summary=(
-                "Restore a sealed artefact's retained IL, Brief and assets into a new JobDir "
-                "for its next generation, saying first whether the contract moved"
+                "Read a sealed artefact back into the corpus once, then restore its retained "
+                "IL, Brief and assets into a JobDir for its next generation"
             ),
             decision="you need to edit an artefact omniweave already sealed",
             example={"slug": "q3-board"},

@@ -146,6 +146,7 @@ __all__ = [
     "decision_of",
     "inproc_host",
     "prober",
+    "read_back_host",
     "spend_of",
     "subproc_host",
     "verdict_of",
@@ -1637,5 +1638,23 @@ def compile_host(
     first (OUT12). A `free` target reserves no budget, and one unit has nothing to retry inside a
     semaphore. The call is still made here, so that 02:74's *"the ONLY caller of
     DriverHost.invoke()"* stays a fact about one file.
+    """
+    return worker.invoke(invocation, deadlines=deadlines, memory_mb=memory_mb)
+
+
+# =============================================================================================
+# 16. A read-back's one `INVOKE` (D788)
+# =============================================================================================
+
+
+def read_back_host(
+    worker: Worker, invocation: Invocation, *, deadlines: Deadlines, memory_mb: int
+) -> InvokeReport:
+    """`Worker.invoke()` for one read-back: the fourth `DriverHost.invoke()` in this file.
+
+    `ow out back` parses one sealed artefact with its target's `read_back`, a `parse/1` card
+    reached by name (09 Q4). Like a compile it has no `Batch`, because no work row was claimed,
+    and no cache, because the loop closes once per generation. A read-back costs what one
+    parse costs and is retried by running the verb again.
     """
     return worker.invoke(invocation, deadlines=deadlines, memory_mb=memory_mb)

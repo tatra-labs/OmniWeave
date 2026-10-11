@@ -1116,6 +1116,17 @@ fix     = "ow out assets --slot <slot>   # then freeze the picture in a format t
 raised_by = "TargetError"
 sites   = ["09-generation.md:2330"]
 
+# ── D788. `ow out back` closes the loop through the target's read_back (02-architecture.md
+# section 4.3, 09-generation.md Q4).
+
+[[code]]
+numeric = "OW-T-529"
+symbol  = "OW_TARGET_READ_BACK_FAILED"
+meaning = "ow out back ran the target's read_back over a sealed artefact and could not close the loop: the worker failed, its fragment was refused, an address stood on two blocks or named no sealed unit, or the store quarantined the read-back as a re-parse of a document it already held; read_back_doc_ord stays NULL and no artifact_el row is written (D788)"
+fix     = "ow explain OW-T-529"
+raised_by = "TargetError"
+sites   = ["02-architecture.md:631"]
+
 # ── W1.5, the driver card grammar (04-driver-system.md sections 2.1-2.8, 4.5, 5.3, 7.5). The
 # three discovery-point refusals of section 5.3 step 1, plus the two numerics the plan already
 # binds. `meaning` and `fix` are FILLED here rather than deferred to W1.3: these five are raised
