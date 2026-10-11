@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schema/receipt-v1.json",
+  "title": "Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "description": "09 section 5.3's receipt, refused unless consistent (ruling 1).",
+  "required": [
+    "schema",
+    "target",
+    "slug",
+    "artifact_gen",
+    "output",
+    "part_digest",
+    "determinism",
+    "gate_status",
+    "delivery",
+    "checks",
+    "units",
+    "counts",
+    "portability",
+    "normalizations",
+    "degradations",
+    "skipped_checks",
+    "truncations"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "enum": [
+        "omniweave.out-receipt/1"
+      ]
+    },
+    "target": {
+      "type": "string"
+    },
+    "slug": {
+      "type": "string"
+    },
+    "artifact_gen": {
+      "type": "integer"
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "part_digest": {
+      "type": "string"
+    },
+    "determinism": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "part",
+          "byte",
+          "frame",
+          "render"
+        ]
+      }
+    },
+    "gate_status": {
+      "type": "string",
+      "enum": [
+        "not-provided",
+        "unreadable",
+        "unsupported-schema",
+        "non-final",
+        "unverified",
+        "failed",
+        "stale",
+        "restricted",
+        "manual-required",
+        "passed"
+      ]
+    },
+    "delivery": {
+      "type": "string",
+      "enum": [
+        "release",
+        "draft"
+      ]
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/CheckValue"
+      }
+    },
+    "units": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "enum": [
+          "native",
+          "baked",
+          "passthrough",
+          "cloned_passthrough",
+          "patched",
+          "rebuilt",
+          "manual_required"
+        ]
+      }
+    },
+    "counts": {
+      "type": "object",
+      "propertyNames": {
+        "enum": [
+          "native",
+          "baked",
+          "passthrough",
+          "cloned_passthrough",
+          "patched",
+          "rebuilt",
+          "manual_required"
+        ]
+      },
+      "additionalProperties": {
+        "type": "integer"
+      }
+    },
+    "portability": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "normalizations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    },
+    "degradations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": {}
+      }
+    },
+    "skipped_checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    },
+    "truncations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": {}
+      }
+    }
+  },
+  "$defs": {
+    "CheckValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One row of `Receipt.checks`, written after `lower()`, against the artefact.",
+      "required": [
+        "name",
+        "value",
+        "detail",
+        "fixture"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string",
+          "enum": [
+            "passed",
+            "warning",
+            "failed",
+            "enforced-at-build",
+            "not-applicable",
+            "skipped"
+          ]
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fixture": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

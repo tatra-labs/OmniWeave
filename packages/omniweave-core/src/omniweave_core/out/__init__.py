@@ -14,6 +14,7 @@ D744 adds `ILBundle` to `job`: `il.toml`, the roster check, and both digests ove
 D745 builds `marker`: the `OWC1` grammar, `scan()`, `resolve()`, `apply_reverse()`,
 `assert_clean()`. D746 adds `place()` and `Insertion`, and frames `nsig`'s text collapsed.
 D747 builds `opc`: the only ZIP-for-write, `part_digest()` and section 5.3's package checks.
+D748 builds `receipt`: `CheckValue`, `Receipt`, `ArtefactDeterminism` and the report status.
 """
 
 from omniweave_core.out.brief import Brief, Prohibition, baseline_rows, parse_brief
@@ -51,6 +52,13 @@ from omniweave_core.out.plan import (
     UnitOutcome,
     classify_and_assert,
 )
+from omniweave_core.out.receipt import (
+    ArtefactDeterminism,
+    CheckValue,
+    Receipt,
+    console_line,
+    report_status,
+)
 from omniweave_core.out.report import (
     OutReport,
     SkippedCheck,
@@ -73,11 +81,13 @@ from omniweave_core.out.rules import (
 )
 
 __all__ = [
+    "ArtefactDeterminism",
     "Box",
     "Brief",
     "CarrierDoc",
     "CarrierNode",
     "CarrierParseError",
+    "CheckValue",
     "Classified",
     "Construct",
     "ConstructTable",
@@ -100,6 +110,7 @@ __all__ = [
     "Plan",
     "Prohibition",
     "Provenance",
+    "Receipt",
     "RoundTrip",
     "RuleCtx",
     "RuleSpec",
@@ -115,6 +126,7 @@ __all__ = [
     "changed_definitions",
     "check_package",
     "classify_and_assert",
+    "console_line",
     "definitions",
     "gate_status",
     "html_carrier",
@@ -126,6 +138,7 @@ __all__ = [
     "place",
     "referenced_ids",
     "render",
+    "report_status",
     "resolve",
     "run_pack",
     "scan",
