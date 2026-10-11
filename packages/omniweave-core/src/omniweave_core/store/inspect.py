@@ -79,11 +79,11 @@ DEFECTS
 **DEFECT 1 -- 07:957 cannot be enforced against 07:960-990's table, because that table is not the
 whole register.** ":957" says *"an index that appears in `sqlite_master` without a register row
 fails CI"*. Section 3.13's table has twenty-nine rows and says so at 07:994 ("Twenty-nine index
-rows"); the four shipped migrations create **seventy-six** indexes, of which twenty-six have a
-register row -- `rel_src`, `mark_block`, `entity_rank`, `work_claimable`, `cache_gc`,
-`route_decision_slice` and forty-four more are shipped indexes with no row in that table, and
-three register rows (`artifact_cite_block`, `retrieval_event_ts`, `retrieval_event_bad`) name
-objects no shipped migration creates. So :957's second clause is a rule about `tools/indexes.toml`,
+rows"); the five shipped migrations create **seventy-eight** indexes (measured at D750), of which
+twenty-seven have a register row -- `rel_src`, `mark_block`, `entity_rank`, `work_claimable`,
+`cache_gc`, `route_decision_slice` and forty-five more are shipped indexes with no row in that
+table, and two register rows (`retrieval_event_ts`, `retrieval_event_bad`) name objects no
+shipped migration creates. So :957's second clause is a rule about `tools/indexes.toml`,
 which is corpus-wide and does not exist, and NOT about section 3.13's table, which is the query
 path's subset. `explain_indexes` therefore checks the register FORWARD only -- every register row
 must resolve to a live index -- and reports the reverse direction as `ExplainReport.unregistered`,
@@ -698,13 +698,20 @@ name when it renders, which is where the byte-diff gate needs the order and wher
 order is not a fact about the store.
 """
 
-_MIGRATION_OWNERS: Final[dict[str, int]] = {"0001": 1, "0002": 2, "0003": 3, "0004": 4}
+_MIGRATION_OWNERS: Final[dict[str, int]] = {
+    "0001": 1,
+    "0002": 2,
+    "0003": 3,
+    "0004": 4,
+    "09-generation": 5,
+}
 """Register owners that name a shipped migration, mapped to `migration.version`.
 
 `0003_index.sql:435` declares `migration(version INTEGER PRIMARY KEY, ...)`, so the applied set
-is a set of ints and a register cell spelled `0001` has to be resolved against it. Every other
-owner value -- `09-generation`, `events` -- names something that is not one of the four shipped
-files, which is `PENDING` below and never a failure.
+is a set of ints and a register cell spelled `0001` has to be resolved against it.
+`09-generation` is 07 section 3.13's owner for `artifact_cite_block`, and 09's tables are
+`0005_out.sql` (D750), so it resolves to version 5. The other owner, `events`, names a separate
+database file, which is `PENDING` below and never a failure.
 """
 
 OK: Final = "ok"
@@ -725,9 +732,9 @@ would make `explain --golden` byte-identical before and after an index was silen
 PENDING: Final = "pending"
 """The owning migration is not applied to this store, or the owner is not a shipped migration.
 
-Three register rows are in this state on every P2 store and legitimately so: `artifact_cite` is
-09-generation's table and lands in `0005_out.sql` at P9, and `retrieval_event` lives in
-`events.owstore`, a separate database file (07 section 3.10). Reported, never failed on, and
+Two register rows are in this state on every store and legitimately so: `retrieval_event` lives
+in `events.owstore`, a separate database file (07 section 3.10). `artifact_cite_block` left this
+state when `0005_out.sql` shipped (D750). Reported, never failed on, and
 NEVER silent -- a pending row is a line in the golden output like any other.
 """
 
@@ -852,7 +859,7 @@ def _pending_reason(entry: RegisteredIndex, version: int | None) -> str:
     """Why a register row could not be checked against this store. Never "skipped"."""
     if version is None:
         return (
-            f"owner {entry.owner!r} is not one of the four shipped migrations, so "
+            f"owner {entry.owner!r} is not one of the five shipped migrations, so "
             f"{entry.table!r} is not a table of this database file "
             f"(07-store-and-retrieval.md:958)"
         )

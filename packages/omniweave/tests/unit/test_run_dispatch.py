@@ -634,7 +634,7 @@ def test_sequence_len_sql_counts_exactly_the_two_claimable_statuses(tmp_path: Pa
     path = tmp_path / "index.owstore"
     connection = ow.connect(path)
     try:
-        assert len(migrate.apply_pending(connection, now_ns=NOW_NS)) == 4
+        assert len(migrate.apply_pending(connection, now_ns=NOW_NS)) == 5
         connection.execute(
             "INSERT INTO unit(unit_uri, state, trust_class, last_seen_gen) "
             "VALUES(:uri,'planned','internal',1)",
