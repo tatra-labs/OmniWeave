@@ -785,6 +785,7 @@ def test_the_provenance_part_is_written_even_with_nothing_cited(tmp_path: Path) 
         "artifact_gen": 1,
         "cites": [],
         "corpus": "acme",
+        "els": {},
         "schema": "omniweave.out-provenance/1",
         "slug": "memo",
     }
@@ -850,3 +851,27 @@ def test_a_package_without_its_provenance_part_is_a_failed_row(tmp_path: Path) -
     [row] = [c for c in DocxCompiler().postflight(str(stripped), out.plan).checks
              if c.name == "citations_channel"]  # fmt: skip
     assert (row.value, row.detail) == ("failed", f"no {PROVENANCE} in the package")
+
+
+def test_the_part_maps_every_address_to_its_construct(tmp_path: Path) -> None:
+    """D786: a bookmark cannot say whether `u01/e1` is the section or the heading it opens with;
+    the construct can, through `kind_map.toml`, for `parse.docx.native`."""
+    out = lowered(
+        tmp_path,
+        section(
+            '<h1 data-ow-el="u01/e2">A</h1><p data-ow-el="u01/e3">b <strong data-ow-el="u01/e4">'
+            'c</strong><a data-ow-note="n1"></a></p><table data-ow-el="u01/e5"><tr>'
+            '<td data-ow-el="u01/e6">d</td></tr></table>'
+            '<aside data-ow-footnote="n1" data-ow-el="u01/e7"><p>e</p></aside>',
+            el="u01/e1",
+        ),
+    )
+    assert _provenance(out)["els"] == {
+        "u01/e1": "ow.unit",
+        "u01/e2": "block.h1",
+        "u01/e3": "block.p",
+        "u01/e4": "inline.strong",
+        "u01/e5": "table.table",
+        "u01/e6": "table.td",
+        "u01/e7": "note.footnote",
+    }

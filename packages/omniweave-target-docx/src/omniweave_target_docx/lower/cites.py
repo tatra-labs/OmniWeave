@@ -4,13 +4,17 @@
 `provenance_part`. It holds one row for each cited element and cite, in document order. A row
 gives the element's `data-ow-el`, the canonical cite, the `doc_gen` the compile pinned it at
 (`Plan.cites`), and its kind and span where the IL states them, with the corpus once for the
-part. The part is written whether or not anything is cited, so a reader can tell an artefact with
-no cites from one that is not omniweave's. Visible text is never a citation.
+part. D786: it also maps every `data-ow-el` in the artefact to its construct (`els`). A
+bookmark's two ends sit in the first and last paragraphs its element made, so the bookmark
+alone cannot say whether `u01/e1` is a section or the heading it opens with. The construct can,
+through `kind_map.toml`, and `parse.docx.native` reads it here. The part is written whether or
+not anything is cited, so a reader can tell an artefact with no cites from one that is not
+omniweave's. Visible text is never a citation.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Final
 
 from docx.opc.packuri import PackURI
@@ -50,6 +54,7 @@ def provenance_part(
     document: Document,
     rows: Sequence[dict[str, JsonValue]],
     *,
+    addresses: Mapping[str, str],
     name: str,
     corpus: str,
     slug: str,
@@ -65,6 +70,7 @@ def provenance_part(
         "slug": slug,
         "artifact_gen": artifact_gen,
         "cites": list(rows),
+        "els": dict(sorted(addresses.items())),
     }
     part = Part(PackURI(f"/{name}"), MEDIA_TYPE, canonical(body), package)
     package.relate_to(part, RELATIONSHIP)
