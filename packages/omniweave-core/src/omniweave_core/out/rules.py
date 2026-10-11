@@ -29,9 +29,9 @@ the rules, so a target that could run its own gate could not skip it.
    and the need, and the fix is the caller's per need, which only the target knows
    (`uv pip install 'omniweave-target-pptx[measure]'`).
 8. **`DocIndex` is filled from what a stamped tree shows.** `els`, `cites`, `slots` and
-   `construct_counts` are collected per unit, and `nsigs` (D743) per stamped element. `markers`
-   waits for the `OWC1` scan and `value_occurrences` for the rules that count values. Each is
-   empty until then, never absent.
+   `construct_counts` are collected per unit, `nsigs` (D743) per stamped element and `markers`
+   (D745) from the `OWC1` scan. `value_occurrences` waits for the rules that count values; it
+   is empty until then, never absent.
 9. **`rule_timings_ms` is read from the injected `Clock`**, `SystemClock` unless the caller
    passes one. Library code reads no ambient clock (`omniweave-no-time-time-in-library-code`).
 """
@@ -51,6 +51,7 @@ from omniweave_core.limits import MAX_FINDINGS_PER_RULE
 from omniweave_core.out.carrier import CarrierDoc, CarrierNode, CarrierParseError, ParseError
 from omniweave_core.out.constructs import ConstructTable
 from omniweave_core.out.finding import Finding, FindingSet, Provenance, Severity, Truncation
+from omniweave_core.out.marker import Marker, scan
 from omniweave_core.out.plan import OutUnit
 from omniweave_core.out.report import SkippedCheck
 
@@ -105,7 +106,7 @@ class DocIndex:
     construct_counts: Mapping[str, Counter[str]]
     cites: Mapping[str, frozenset[str]]
     slots: Mapping[str, frozenset[str]]
-    markers: tuple[object, ...]
+    markers: tuple[Marker, ...]
     value_occurrences: Mapping[str, Counter[str]]
 
 
@@ -326,6 +327,7 @@ class _Index:
         self.slots: dict[str, frozenset[str]] = {}
         self.constructs: dict[str, Counter[str]] = {}
         self.nsigs: dict[str, str] = {}
+        self.markers: list[Marker] = []
 
     def add(self, unit: str, doc: CarrierDoc, table: ConstructTable | None) -> None:
         els: set[str] = set()
@@ -346,6 +348,7 @@ class _Index:
             counts = +counts
         self.els[unit] = frozenset(els)
         self.nsigs.update(nsigs)
+        self.markers.extend(scan(doc))
         self.cites[unit] = frozenset(cites)
         self.slots[unit] = frozenset(slots)
         self.constructs[unit] = counts
@@ -358,6 +361,6 @@ class _Index:
             construct_counts=MappingProxyType(dict(self.constructs)),
             cites=MappingProxyType(dict(self.cites)),
             slots=MappingProxyType(dict(self.slots)),
-            markers=(),
+            markers=tuple(self.markers),
             value_occurrences=MappingProxyType({}),
         )
