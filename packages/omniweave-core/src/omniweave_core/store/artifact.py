@@ -109,6 +109,7 @@ __all__ = [
     "Sealed",
     "SqliteArtifactStore",
     "UnitRow",
+    "artifact_rows",
     "latest_generation",
 ]
 
@@ -553,6 +554,28 @@ def _lookup(connection: sqlite3.Connection, key: PureKey) -> ArtifactRow | None:
     return None if row is None else ArtifactRow.of(row)
 
 
+def artifact_rows(
+    connection: sqlite3.Connection, slug: str | None = None
+) -> tuple[ArtifactRow, ...]:
+    """Every sealed row, or one slug's, by slug then generation. D769, for `ow out list`.
+
+    Readable on a read-only connection, as `latest_generation()` is, and empty on a store
+    from before `0005_out.sql`, which has sealed nothing.
+    """
+    if not _has_artifacts(connection):
+        return ()
+    where, args = (" WHERE slug = ?", (slug,)) if slug is not None else ("", ())
+    rows = connection.execute(f"{_SELECT}{where} ORDER BY slug, artifact_gen", args)
+    return tuple(ArtifactRow.of(row) for row in rows)
+
+
+def _has_artifacts(connection: sqlite3.Connection) -> bool:
+    present = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'artifact'"
+    ).fetchone()
+    return present is not None
+
+
 def latest_generation(connection: sqlite3.Connection, slug: str) -> int:
     """The newest sealed generation of `slug` on any connection, read-only included, or 0.
 
@@ -560,10 +583,7 @@ def latest_generation(connection: sqlite3.Connection, slug: str) -> int:
     migrating it, so a store from before `0005_out.sql` has no `artifact` table and has
     sealed nothing (D765).
     """
-    present = connection.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'artifact'"
-    ).fetchone()
-    return 0 if present is None else _latest(connection, slug)
+    return _latest(connection, slug) if _has_artifacts(connection) else 0
 
 
 def _latest(connection: sqlite3.Connection, slug: str) -> int:
@@ -612,7 +632,7 @@ class SqliteArtifactStore:
         found = self._run("out.get", run)
         if not isinstance(found, ArtifactRow):
             raise NotFoundError(
-                f"no artefact {slug}@{artifact_gen} in this store", fix=f"ow out list {slug}"
+                f"no artefact {slug}@{artifact_gen} in this store", fix=f"ow out list --slug {slug}"
             )
         return found
 

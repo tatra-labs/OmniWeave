@@ -125,6 +125,7 @@ from omniweave_ports import CostClass
 
 from omniweave.sdk.reports import (
     AddReport,
+    ArtifactsReport,
     CodeRow,
     ConstructsReport,
     CorporaReport,
@@ -143,6 +144,7 @@ from omniweave.sdk.reports import (
 )
 from omniweave.surface.inputs import (
     AddIn,
+    ArtifactsIn,
     CheckIn,
     ConstructsIn,
     CorporaIn,
@@ -2000,6 +2002,26 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=NormalizeReport,
             advanced=frozenset(),
             cli=("out", "normalize"),
+        ),
+        ActionSpec(
+            name="out.list",
+            mcp_name="ow_artifacts",
+            listed_in=_FULL_ONLY,
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "List the compiled artefacts sealed in a corpus, with each generation's "
+                "gate status, delivery and read_back_doc_ord"
+            ),
+            decision="you want to know which artefacts were compiled and how they stand",
+            example={},
+            inp=ArtifactsIn,
+            out=ArtifactsReport,
+            advanced=frozenset(),
+            cli=("out", "list"),
         ),
     )
 )

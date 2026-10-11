@@ -109,7 +109,7 @@ GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
     "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
     "hooks": "check",
-    "out": "check · constructs · normalize · scaffold · stamp · targets",
+    "out": "check · constructs · list · normalize · scaffold · stamp · targets",
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
 }
@@ -583,6 +583,20 @@ COMMANDS: Final[tuple[Command, ...]] = (
             Argument(
                 spelling=("--construct",),
                 metavar="CONSTRUCT",
+            ),
+        ),
+    ),
+    Command(
+        words=("out", "list"),
+        actions=("out.list",),
+        help=(
+            "List the compiled artefacts sealed in a corpus, with each generation's gate "
+            "status, delivery and read_back_doc_ord"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--slug",),
+                metavar="SLUG",
             ),
         ),
     ),
