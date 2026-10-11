@@ -26,12 +26,25 @@ from docx.opc.constants import RELATIONSHIP_TYPE
 from docx.oxml.ns import qn
 from docx.shared import Inches, Mm, Pt, RGBColor
 from lxml import etree  # type: ignore[attr-defined] -- lxml ships no stubs
+from omniweave_core.canonical import JsonValue
 from omniweave_core.errors import TargetError
+from omniweave_core.model.block import Cite
 from omniweave_core.out.carrier import parse_selector
 from omniweave_core.out.constructs import ConstructTable, Disposition
 from omniweave_core.out.opc import write_opc
 
-from omniweave_target_docx.lower import blocks, ids, inline, lists, manual, media, tables, units
+from omniweave_target_docx.lower import (
+    blocks,
+    cites,
+    ids,
+    inline,
+    lists,
+    manual,
+    media,
+    notes,
+    tables,
+    units,
+)
 from omniweave_target_docx.lower._emit import (
     CODE_FONT,
     Emitter,
@@ -41,6 +54,7 @@ from omniweave_target_docx.lower._emit import (
     walk,
 )
 from omniweave_target_docx.lower._numbering import Numbering
+from omniweave_target_docx.lower._stories import KINDS, STYLE_IDS, Notes
 
 if TYPE_CHECKING:
     from docx.document import Document
@@ -53,7 +67,7 @@ __all__ = ["FAMILIES", "PAGES", "build", "page_of"]
 FAMILIES: Final = MappingProxyType(
     {
         f"lower.{module.__name__.rpartition('.')[2]}": module
-        for module in (blocks, ids, inline, lists, manual, media, tables, units)
+        for module in (blocks, cites, ids, inline, lists, manual, media, notes, tables, units)
     }
 )
 """The modules a `maps_to` may name, imported here and never by name (INV-4)."""
@@ -86,6 +100,7 @@ def build(
     normalizers: Mapping[str, Callable[[str], str]],
     clock_ns: int,
     max_units: int,
+    provenance: str,
 ) -> bytes:
     """Preflight, then every unit in Plan order, then the package's bytes."""
     _rosters(plan, il, max_units)
@@ -94,6 +109,7 @@ def build(
     refuse_unmapped(unmapped(roots, rows, FAMILIES))
     _normalized(roots, table, normalizers)
     assets = _assets(roots, ledger)
+    cited = _cited(roots, plan)
     document = _document(plan)
     section = document.sections[0]
     width = int(section.page_width or 0) - int(section.left_margin or 0)
@@ -104,12 +120,23 @@ def build(
         assets,
         Numbering(document),
         width - int(section.right_margin or 0),
+        notes=Notes(),
     )
     for n, root in enumerate(roots):
         if n:
             em.end_paragraph()
             document.add_section(WD_SECTION.CONTINUOUS)
+        em.bodies = _bodies(root)
         em.block(root)
+    em.notes.attach(document)
+    cites.provenance_part(
+        document,
+        cited,
+        name=provenance,
+        corpus=plan.corpus,
+        slug=plan.slug,
+        artifact_gen=plan.artifact_gen,
+    )
     _core(document, plan.slug, clock_ns)
     return _package(document)
 
@@ -188,6 +215,60 @@ def _assets(roots: Sequence[CarrierNode], ledger: AssetLedger) -> dict[str, byte
     return out
 
 
+def _cited(roots: Sequence[CarrierNode], plan: Plan) -> list[dict[str, JsonValue]]:
+    """The provenance part's rows: every cited element has an address and every cite a pin."""
+    rows: list[dict[str, JsonValue]] = []
+    for root in roots:
+        for node in walk(root):
+            tokens = (node.attr("data-ow-cite") or "").split()
+            if not tokens:
+                continue
+            if not node.el:
+                raise TargetError(
+                    f"{node.at}: an element cites {' '.join(tokens)} and carries no data-ow-el, "
+                    "so its provenance row has no address",
+                    symbol="OW_TARGET_IL_MALFORMED",
+                    fix="ow out stamp",
+                )
+            facts = _facts(node, single=len(tokens) == 1)
+            for token in tokens:
+                cite = token.removeprefix(f"{plan.corpus}:")
+                pinned = plan.cites.get(Cite(cite))
+                if pinned is None:
+                    raise TargetError(
+                        f"{node.at}: cite {token!r} has no generation pinned in the Plan",
+                        symbol="OW_TARGET_CITE_UNRESOLVED",
+                        fix=f"ow open {token}",
+                    )
+                rows.append({"el": node.el, "cite": cite, "doc_gen": pinned, **facts})
+    return rows
+
+
+def _facts(node: CarrierNode, *, single: bool) -> dict[str, JsonValue]:
+    """A cite's kind and span as the IL states them; a span names one cite's text, so it is
+    read only beside a single cite, as the compile's `artifact_cite` rows read it."""
+    raw_kind, raw_span = node.attr("data-ow-cite-kind"), node.attr("data-ow-cite-span")
+    try:
+        kind = None if raw_kind is None else cites.kind(raw_kind)
+        span = None if raw_span is None or not single else cites.span(raw_span)
+    except ValueError as exc:
+        raise TargetError(
+            f"{node.at}: {exc}", symbol="OW_TARGET_IL_MALFORMED", fix="ow out check --stage final"
+        ) from None
+    return {"kind": kind, "span": None if span is None else list(span)}
+
+
+def _bodies(root: CarrierNode) -> dict[str, CarrierNode]:
+    """The unit's note bodies by id: the gate held each id to one body."""
+    out: dict[str, CarrierNode] = {}
+    for node in walk(root):
+        for kind in KINDS:
+            note = node.attr(f"data-ow-{kind}") if node.tag == "html|aside" else None
+            if note is not None:
+                out.setdefault(note, node)
+    return out
+
+
 # -- the document ---------------------------------------------------------------------------------
 
 
@@ -208,6 +289,17 @@ def _document(plan: Plan) -> Document:
     code.font.name = CODE_FONT
     code.font.size = Pt(10)
     code.paragraph_format.space_after = Pt(0)
+    for name, style_id in STYLE_IDS.items():
+        if name.endswith("text"):
+            text = cast("ParagraphStyle", styles.add_style(name, WD_STYLE_TYPE.PARAGRAPH))
+            text.base_style = cast("ParagraphStyle", styles["Normal"])
+            text.font.size = Pt(10)
+            text.paragraph_format.space_after = Pt(0)
+            text.style_id = style_id
+        else:
+            mark = cast("CharacterStyle", styles.add_style(name, WD_STYLE_TYPE.CHARACTER))
+            mark.font.superscript = True
+            mark.style_id = style_id
     page = page_of(plan.brief.value("canvas", "format"))
     if page is not None:
         section = document.sections[0]

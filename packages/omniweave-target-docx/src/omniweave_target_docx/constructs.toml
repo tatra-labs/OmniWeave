@@ -11,7 +11,7 @@ ignore = []
 # `code` holds the SYMBOL; the numeric OW-T-nnn is resolved from codes.toml at RENDER time.
 # `since` is MANDATORY and MONOTONE.
 
-[[construct]]                          # ── the MANDATORY four, and one normalize
+[[construct]]                          # ── the MANDATORY four, and a cite's facts
 id = "ow.cite"
 selector = "@data-ow-cite"
 disposition = "native"
@@ -30,6 +30,26 @@ round_trip = "normalized"
 canonical = "single spaces between cite tokens, none at either end"
 code = "OW_TARGET_CITE_SPACING"
 severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "ow.cite.kind"
+selector = "@data-ow-cite-kind"
+disposition = "native"
+round_trip = "exact"
+canonical = "quote | paraphrase | derived | data"
+maps_to = "lower.cites:kind"
+code = "OW_TARGET_IL_MALFORMED"
+since = "0.1.0"
+
+[[construct]]
+id = "ow.cite.span"
+selector = "@data-ow-cite-span"
+disposition = "native"
+round_trip = "exact"
+canonical = "a:b, a < b, into the cited block's text"
+maps_to = "lower.cites:span"
+code = "OW_TARGET_IL_MALFORMED"
 since = "0.1.0"
 
 [[construct]]

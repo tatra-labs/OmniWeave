@@ -32,7 +32,6 @@ from omniweave_target_docx.driver import (
     CARD,
     HERE,
     NORMALIZERS,
-    REASON,
     DocxCompiler,
     table,
 )
@@ -180,10 +179,9 @@ def test_the_card_is_the_flow_target_section_12_3_prints() -> None:
     )
 
 
-def test_the_card_says_not_implemented_and_why_and_names_its_table() -> None:
-    assert not COMPILED.implemented
-    assert COMPILED.reason == REASON
-    assert "notes and embedded citations" in REASON
+def test_the_card_is_implemented_and_names_its_table() -> None:
+    """D783: notes and embedded citations were the last constructs without a lowering."""
+    assert (COMPILED.implemented, COMPILED.reason) == (True, "")
     assert COMPILED.constructs_digest == TABLE.digest()
     assert COMPILED.agent_doc_tokens_max > 0
 
@@ -201,7 +199,7 @@ def test_the_package_declares_the_driver_and_the_target() -> None:
 
 
 def test_the_table_is_owflow_1_with_the_mandatory_constructs() -> None:
-    assert (TABLE.carrier, TABLE.il, len(TABLE.rows)) == ("html", "owflow/1", 83)
+    assert (TABLE.carrier, TABLE.il, len(TABLE.rows)) == ("html", "owflow/1", 85)
     ids = {row.id for row in TABLE.rows}
     assert {"ow.cite", "ow.el", "ow.manual", "ow.unit"} <= ids
     assert TABLE.row("ow.unit").selector == "html|section"
@@ -282,20 +280,19 @@ def test_each_normalizer_settles_in_one_step(
 # ---------------------------------------------------------------------------------------------
 
 
-def test_the_compiler_is_a_compile_v1_whose_probe_names_the_reason() -> None:
+def test_the_compiler_is_a_compile_v1_whose_probe_is_ok() -> None:
     compiler: CompileV1 = DocxCompiler()
     assert compiler.PORT == "compile/1"
     assert compiler.measure() is None
     verdict = DocxCompiler.probe(None)  # type: ignore[arg-type]
-    assert verdict.status is ProbeStatus.UNAVAILABLE
-    assert REASON in verdict.detail
+    assert verdict.status is ProbeStatus.OK
 
 
-def test_project_is_refused_with_the_cards_reason() -> None:
-    """D782 lowers and post-flights; no Doc-to-owflow/1 projection is built."""
-    with pytest.raises(TargetError, match="implemented = false") as caught:
+def test_project_is_refused_by_name() -> None:
+    """No Doc-to-owflow/1 projection is built, and the card says `project = false`."""
+    with pytest.raises(TargetError, match="project = false") as caught:
         DocxCompiler().project(None, None)  # type: ignore[arg-type]
-    assert caught.value.code() == "OW_TARGET_NOT_IMPLEMENTED"
+    assert caught.value.code() == "OW_TARGET_PROJECT_UNAVAILABLE"
 
 
 def test_a_note_body_is_no_part_of_its_units_visible_text() -> None:
@@ -523,3 +520,22 @@ def test_the_content_model_and_three_values(body: str, said: str) -> None:
 def test_a_picture_is_a_frozen_slot_and_nothing_else(src: str) -> None:
     found = _codes(f'<img src="{src}" alt="a">')
     assert [c for c, _ in found] == ["OW_TARGET_IL_ASSET_URI"]
+
+
+@pytest.mark.parametrize(
+    ("body", "said"),
+    [
+        ('<p data-ow-cite="d7#1" data-ow-cite-kind="hearsay">x</p>', "is not one of"),
+        ('<p data-ow-cite="d7#1" data-ow-cite-span="7:3">x</p>', "is not a:b with a < b"),
+        ('<p data-ow-cite="d7#1" data-ow-cite-span="x">x</p>', "is not a:b with a < b"),
+    ],
+)
+def test_a_cites_kind_and_span_hold_their_grammar(body: str, said: str) -> None:
+    """D783: the rows that declare them, and the rule that says what the compile would refuse."""
+    found = [(c, m) for c, m in _codes(body) if c == "OW_TARGET_IL_MALFORMED"]
+    assert [said in m for _, m in found] == [True]
+
+
+def test_a_stated_kind_and_span_pass() -> None:
+    body = '<p data-ow-cite="d7#1" data-ow-cite-kind="quote" data-ow-cite-span="0:7">x</p>'
+    assert _codes(body) == []

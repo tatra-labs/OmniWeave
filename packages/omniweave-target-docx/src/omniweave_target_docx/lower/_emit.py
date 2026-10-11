@@ -166,6 +166,10 @@ class Emitter:
     """Inside `pre`: every space and line break is kept."""
     lists: list[int] = field(default_factory=list)
     """The `numId` of each list the walk is inside, outermost first."""
+    notes: Any = None
+    """The notes parts (`_stories.Notes`), which a note's reference writes its body into."""
+    bodies: dict[str, CarrierNode] = field(default_factory=dict)
+    """The current unit's note bodies, by the id their references name."""
     bookmarks: int = 0
     buffer: list[str] = field(default_factory=list)
     buffer_marks: Marks = field(default_factory=Marks)
@@ -239,11 +243,56 @@ class Emitter:
             if isinstance(item, str):
                 if self.paragraph is not None or _SPACE.sub("", item):
                     self.text(item)
+            elif self.hidden(item):
+                continue
             elif item.tag in _BLOCK_TAGS:
                 self.block(item)
             else:
                 self.inline(item)
         self.end_paragraph()
+
+    def hidden(self, node: CarrierNode) -> bool:
+        """A construct whose row says `visible = false`: a note body, written where its reference
+        is met and never where it stands."""
+        return any(
+            not row.construct.visible
+            and row.selector.kind == "element"
+            and row.selector.matches(node)
+            for row in self.rows
+        )
+
+    @contextmanager
+    def detached(self) -> Iterator[None]:
+        """The walk's place set aside while another story is written, then given back: the
+        paragraph, the open link, the marks, `pre`, the lists and the scopes."""
+        self.flush()
+        saved = (
+            self.scopes,
+            self.paragraph,
+            self.run_parent,
+            self.marks,
+            self.preserve,
+            self.lists,
+            self.at_start,
+            self.pending,
+        )
+        self.scopes = [_Scope(self.document, self.document.element.body)]
+        self.paragraph, self.run_parent, self.marks = None, None, Marks()
+        self.preserve, self.lists, self.at_start, self.pending = False, [], True, ""
+        try:
+            yield
+        finally:
+            self.end_paragraph()
+            (
+                self.scopes,
+                self.paragraph,
+                self.run_parent,
+                self.marks,
+                self.preserve,
+                self.lists,
+                self.at_start,
+                self.pending,
+            ) = saved
 
     def inline_children(self, node: CarrierNode) -> None:
         for item in node.contents():

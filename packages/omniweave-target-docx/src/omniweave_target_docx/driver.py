@@ -1,12 +1,11 @@
-"""`compile.docx.native`, the flow target: owflow/1's carrier, rules and lowering. **D781, D782.**
+"""`compile.docx.native`, the flow target: owflow/1's carrier, rules and lowering. **D781-D783.**
 
 09-generation.md section 12.3. *"It is the falsification test. A flow document has no canvas, no
 z-order, no `viewBox`, no absolute geometry and no bake tier."* The card, `constructs.toml`,
 `kind_map.toml` and `normalizers.py` sit beside this file, and `lower/` beside them. D781
 built what `ow out check` runs: the carrier, the ConstructTable's rules and the six section 12.3
-names. D782 builds `lower()` and `postflight()`. Notes and embedded citations are not lowered
-yet, so preflight check 1 refuses a unit that uses one, and the card says `implemented = false`
-until they are.
+names. D782 builds `lower()` and `postflight()`, and D783 notes and embedded citations, which
+make the card `implemented = true`.
 
 ## Rulings
 
@@ -38,17 +37,30 @@ until they are.
 7. **A canvas format with no page is a receipt warning, not a refusal.** The Brief's
    `## canvas - format` is free text, and a Brief written for a deck says `16:9`. The page is
    then the template's letter, and the receipt's `page_box` row says which page was used and why.
+
+## Rulings (D783)
+
+8. **The probe is OK.** python-docx and lxml are the distribution's own dependencies, so an
+   installed target has them, and nothing else is needed: no Node, no browser, no service.
+9. **`project()` refuses by name**, as owtext's does: the card says `[compile.round_trip]
+   project = false`, because no Doc-to-owflow/1 projection is built. `read_back` is a parse
+   driver's, `parse.docx.native`.
+10. **The receipt's `citations_channel` is read from the part.** The provenance part is written
+    whether or not anything is cited, so postflight counts its rows. A package without it is a
+    `failed` row, never a refusal: the four hard preconditions are 09 section 5.3's, and
+    postflight decides no gate.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import tomllib
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from functools import cache
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Final, NoReturn
+from typing import TYPE_CHECKING, ClassVar, Final
 
 from docx.oxml.ns import qn
 from lxml import etree  # type: ignore[attr-defined] -- lxml ships no stubs
@@ -85,13 +97,23 @@ if TYPE_CHECKING:
     )
     from omniweave_ports import DriverIO
 
-__all__ = ["BLOCKS", "CARD", "HERE", "MAX_UNITS", "NORMALIZERS", "REASON", "DocxCompiler", "table"]
+__all__ = [
+    "BLOCKS",
+    "CARD",
+    "HERE",
+    "MAX_UNITS",
+    "NORMALIZERS",
+    "PROVENANCE",
+    "DocxCompiler",
+    "table",
+]
 
 HERE: Final = Path(__file__).parent
 CARD: Final = HERE / "driver.toml"
 _COMPILE: Final = tomllib.loads(CARD.read_text(encoding="utf-8"))["compile"]
-REASON: Final[str] = _COMPILE["reason"]
 MAX_UNITS: Final[int] = _COMPILE["max_units"]
+PROVENANCE: Final[str] = _COMPILE["provenance_part"]
+"""`customXml/omniweave-provenance.json`: the embedded channel, named once, by the card."""
 _DOCUMENT: Final = "word/document.xml"
 _SECT: Final = qn("w:sectPr")
 _PARSER: Final = etree.XMLParser(resolve_entities=False, no_network=True)
@@ -119,14 +141,6 @@ def _invisible() -> frozenset[str]:
     )
 
 
-def _refuse(what: str) -> NoReturn:
-    raise TargetError(
-        f"compile.docx.native cannot {what}: [compile] implemented = false, because {REASON}",
-        symbol="OW_TARGET_NOT_IMPLEMENTED",
-        fix="ow out check --target docx --stage early   # the gate runs; the compile does not",
-    )
-
-
 class DocxCompiler:
     """owflow/1's carrier, rules and lowering; the card says what is not lowered yet."""
 
@@ -136,12 +150,7 @@ class DocxCompiler:
     @classmethod
     def probe(cls, env: ProbeEnv) -> ProbeVerdict:
         del env
-        return ProbeVerdict(
-            status=ProbeStatus.UNAVAILABLE,
-            detail=f"implemented = false: {REASON}",
-            missing=("notes", "embedded citations"),
-            fix_hint="ow out targets",
-        )
+        return ProbeVerdict(status=ProbeStatus.OK, detail="python-docx and lxml only (ruling 8)")
 
     def __init__(self, **config: Scalar) -> None:
         """STATIC CONFIG ONLY. Loads nothing, opens nothing (ruling 3)."""
@@ -169,6 +178,7 @@ class DocxCompiler:
             normalizers=NORMALIZERS,
             clock_ns=Job.load(Path(il.root).parent).determinism.clock_ns,
             max_units=MAX_UNITS,
+            provenance=PROVENANCE,
         )
         return DriverResult(outcome="ok", produced=(ArtifactRef.of("artifact", payload, io),))
 
@@ -206,6 +216,7 @@ class DocxCompiler:
                     "passed" if page is not None else "warning",
                     page or f"canvas format {canvas!r} names no page; the page is letter",
                 ),
+                _citations(members),
                 CheckValue("bake_used", "not-applicable", "owflow/1 has no bake row"),
                 CheckValue("measure_available", "not-applicable", 'measure = "none"'),
             ),
@@ -224,5 +235,20 @@ class DocxCompiler:
         )
 
     def project(self, doc: Doc, io: DriverIO) -> ILBundle:
+        """Ruling 9: `[compile.round_trip] project = false`, refused by name."""
         del doc, io
-        _refuse("project a Doc to owflow/1")
+        raise TargetError(
+            "compile.docx.native cannot project a Doc back to owflow/1: its card says "
+            "[compile.round_trip] project = false",
+            symbol="OW_TARGET_PROJECT_UNAVAILABLE",
+            fix="ow out back <slug> --gen <gen>   # edit from the retained IL, not a projection",
+        )
+
+
+def _citations(members: Mapping[str, bytes]) -> CheckValue:
+    """Ruling 10: the embedded channel's rows, counted from the part itself."""
+    raw = members.get(PROVENANCE)
+    if raw is None:
+        return CheckValue("citations_channel", "failed", f"no {PROVENANCE} in the package")
+    rows = json.loads(raw).get("cites", [])
+    return CheckValue("citations_channel", "passed", f"embedded: {len(rows)} cite row(s)")

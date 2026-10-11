@@ -126,12 +126,20 @@ def test_a_table_the_card_does_not_vouch_for_is_the_cards_error(tmp_path: Path) 
     assert caught.value.code() == "OW_CARD_INVALID"
 
 
-def test_a_target_not_yet_implemented_may_name_its_table() -> None:
-    """Ruling 3, narrowed by D781: docx's table loads, held to its card's digest."""
-    [(card, compiled)] = [(d, c) for d, c in _compile_cards() if c.target == "docx"]
+def test_a_target_not_yet_implemented_may_name_its_table(tmp_path: Path) -> None:
+    """Ruling 3, narrowed by D781: an unimplemented card that names a table has it read, held
+    to its digest. docx was that card from D781 to D783; owtext's, marked so, stands in."""
+    here = _copy(tmp_path)
+    card_path = here / "driver.toml"
+    text = card_path.read_text(encoding="utf-8")
+    card_path.write_text(
+        text.replace("implemented = true\n", 'implemented = false\nreason = "not yet"\n'),
+        encoding="utf-8",
+    )
+    compiled = _card_at(here)
     assert not compiled.implemented
-    table = load_table(Path(card.source), compiled)
-    assert (table.il, table.digest()) == ("owflow/1", compiled.constructs_digest)
+    table = load_table(card_path, compiled)
+    assert table.digest() == compiled.constructs_digest
 
 
 def test_an_unimplemented_target_has_no_table() -> None:

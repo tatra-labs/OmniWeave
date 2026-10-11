@@ -15,6 +15,7 @@ import os
 import struct
 import subprocess  # noqa: TID251 - a second interpreter is the only witness for PYTHONHASHSEED.
 import sys
+import tomllib
 import zipfile
 import zlib
 from collections.abc import Mapping, Sequence
@@ -28,16 +29,18 @@ from docx.image.image import Image
 from lxml import etree  # type: ignore[attr-defined] -- lxml ships no stubs
 from omniweave_conform.harness import MemoryBlobStore, make_io
 from omniweave_core.errors import TargetError
+from omniweave_core.model.block import Cite
 from omniweave_core.out.brief import BRIEF_SCHEMA, parse_brief
 from omniweave_core.out.compile import lower_job
+from omniweave_core.out.constructs import ConstructTable
 from omniweave_core.out.gate import GateStatus
 from omniweave_core.out.job import ILBundle, Job, JobDeterminism
 from omniweave_core.out.ledger import FrozenLedger, LedgerRow, ledger_digest, slot, write_index
-from omniweave_core.out.opc import part_digest
+from omniweave_core.out.opc import part_digest, write_opc
 from omniweave_core.out.plan import Plan, UnitOutcome
 from omniweave_core.out.receipt import Receipt
 from omniweave_ports import ArtifactKind
-from omniweave_target_docx.driver import DocxCompiler, table
+from omniweave_target_docx.driver import HERE, NORMALIZERS, PROVENANCE, DocxCompiler, table
 from omniweave_target_docx.lower import _pack
 from omniweave_target_docx.lower._emit import resolve
 
@@ -101,6 +104,7 @@ def _job(
     assets: Sequence[bytes] = (),
     canvas: str = "A4",
     plan_units: Sequence[str] | None = None,
+    cites: Mapping[str, int] | None = None,
 ) -> tuple[Path, Plan, FrozenLedger, MemoryBlobStore]:
     job = tmp_path / "job"
     il = job / "il"
@@ -138,7 +142,7 @@ def _job(
         unit_count=len(roster),
         brief=brief,
         corpus="acme",
-        cites={},
+        cites={Cite(k): v for k, v in (cites or {}).items()},
         gate_status=GateStatus.MANUAL_REQUIRED,
         il_digest=bundle.il_digest,
         constructs_digest=TABLE.digest(),
@@ -182,19 +186,11 @@ def _ptext(p: Any) -> str:
 # OUT1: the table's maps_to and lower/'s public functions, both ways
 # ---------------------------------------------------------------------------------------------
 
-PENDING = {
-    "lower.notes:reference",
-    "lower.notes:footnote",
-    "lower.notes:endnote",
-    "lower.cites:provenance_part",
-}
-"""What D783 lowers. Until then preflight refuses a unit that uses one."""
 
-
-def test_every_maps_to_resolves_but_the_pending_four() -> None:
+def test_every_maps_to_resolves() -> None:
+    """D783 lowered the last four: notes and the provenance part."""
     named = {row.maps_to for row in TABLE.rows if row.maps_to}
-    unresolved = {m for m in named if resolve(m, _pack.FAMILIES) is None}
-    assert unresolved == PENDING
+    assert {m for m in named if resolve(m, _pack.FAMILIES) is None} == set()
 
 
 def test_every_public_lowering_function_is_one_a_row_names() -> None:
@@ -211,18 +207,27 @@ def test_every_public_lowering_function_is_one_a_row_names() -> None:
 # ---------------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    ("body", "construct"),
-    [
-        ('<p>x<a data-ow-note="n1"></a></p><aside data-ow-footnote="n1">y</aside>', "note.ref"),
-        ('<p data-ow-cite="d7#1">x</p>', "ow.cite"),
-    ],
-)
-def test_a_construct_not_yet_lowered_is_refused_before_a_byte(
-    tmp_path: Path, body: str, construct: str
-) -> None:
-    with pytest.raises(TargetError, match=construct) as caught:
-        lowered(tmp_path, section(body))
+def test_a_row_whose_function_is_not_built_is_refused_before_a_byte(tmp_path: Path) -> None:
+    """Preflight 1 is the table resolving: a `maps_to` this `lower/` lacks names its row."""
+    raw = tomllib.loads((HERE / "constructs.toml").read_text(encoding="utf-8"))
+    [row] = [r for r in raw["construct"] if r["id"] == "inline.mark"]
+    row["maps_to"] = "lower.inline:glow"
+    drifted = ConstructTable.parse(raw, NORMALIZERS, source="constructs.toml")
+    job, plan, ledger, _ = _job(tmp_path, [section("<p>a <mark>b</mark></p>")])
+    compiler = DocxCompiler()
+    bundle = ILBundle.load(job / "il", carrier=compiler.carrier, constructs=TABLE)
+    with pytest.raises(TargetError, match=r"inline.mark \(lower.inline:glow\)") as caught:
+        _pack.build(
+            plan,
+            bundle,
+            ledger,
+            carrier=compiler.carrier,
+            table=drifted,
+            normalizers=NORMALIZERS,
+            clock_ns=CLOCK_NS,
+            max_units=64,
+            provenance=PROVENANCE,
+        )
     assert caught.value.code() == "OW_TARGET_CONSTRUCT_UNMAPPED"
 
 
@@ -274,6 +279,7 @@ def test_the_cards_max_units_is_a_ceiling(tmp_path: Path) -> None:
             normalizers={},
             clock_ns=CLOCK_NS,
             max_units=1,
+            provenance=PROVENANCE,
         )
     assert caught.value.code() == "OW_TARGET_TOO_MANY_UNITS"
 
@@ -289,7 +295,8 @@ def test_the_package_holds_owflows_parts_and_none_of_the_templates_baggage(
     out = lowered(tmp_path, section("<p>a</p>"))
     names = set(out.members)
     assert {"word/document.xml", "word/styles.xml", "docProps/core.xml"} <= names
-    assert not [n for n in names if "thumbnail" in n or "customXml" in n or "Effects" in n]
+    assert not [n for n in names if "thumbnail" in n or "item1" in n or "Effects" in n]
+    assert [n for n in names if n.startswith("customXml/")] == [PROVENANCE]
     assert list(out.members)[:2] == ["[Content_Types].xml", "_rels/.rels"]
 
 
@@ -660,3 +667,186 @@ def test_a_picture_fits_the_text_column_in_whole_emus(tmp_path: Path) -> None:
     assert descr == ["a wide chart", "small", "again"]
     media = [n for n in out.members if n.startswith("word/media/")]
     assert len(media) == 2
+
+
+# ---------------------------------------------------------------------------------------------
+# D783: notes
+# ---------------------------------------------------------------------------------------------
+
+
+def _notes(out: Lowered, kind: str = "footnote") -> list[Any]:
+    root = out.xml(f"word/{kind}s.xml")
+    return [n for n in root.findall(f"{W}{kind}") if n.get(f"{W}type") is None]
+
+
+def test_a_footnote_is_a_reference_in_the_text_and_a_body_in_its_part(tmp_path: Path) -> None:
+    out = lowered(
+        tmp_path,
+        section(
+            '<p>Rose.<a data-ow-note="n1"></a> Held.</p>'
+            '<aside data-ow-footnote="n1"><p>Audited.</p></aside>'
+        ),
+    )
+    assert texts(out) == ["Rose. Held."]
+    [marker] = out.xml().iter(f"{W}footnoteReference")
+    assert marker.get(f"{W}id") == "1"
+    [note] = _notes(out)
+    assert (note.get(f"{W}id"), _ptext(note)) == ("1", " Audited.")
+    assert note.find(f".//{W}footnoteRef") is not None
+    separators = [n.get(f"{W}type") for n in out.xml("word/footnotes.xml").findall(f"{W}footnote")]
+    assert separators[:2] == ["separator", "continuationSeparator"]
+    types = out.members["[Content_Types].xml"].decode()
+    assert "wordprocessingml.footnotes+xml" in types
+    assert "word/endnotes.xml" not in out.members
+
+
+def test_notes_are_numbered_in_reference_order_and_each_part_counts_its_own(
+    tmp_path: Path,
+) -> None:
+    out = lowered(
+        tmp_path,
+        section(
+            '<aside data-ow-footnote="b"><p>second</p></aside>'
+            '<aside data-ow-endnote="c"><p>end</p></aside>'
+            '<aside data-ow-footnote="a"><p>first</p></aside>'
+            '<p>x<a data-ow-note="a"></a> y<a data-ow-note="b"></a> z<a data-ow-note="c"></a></p>'
+        ),
+    )
+    assert [(n.get(f"{W}id"), _ptext(n).strip()) for n in _notes(out)] == [
+        ("1", "first"),
+        ("2", "second"),
+    ]
+    assert [(n.get(f"{W}id"), _ptext(n).strip()) for n in _notes(out, "endnote")] == [("1", "end")]
+    refs = [
+        (etree.QName(r).localname, r.get(f"{W}id"))
+        for r in out.xml().iter(f"{W}footnoteReference", f"{W}endnoteReference")
+    ]
+    assert refs == [
+        ("footnoteReference", "1"),
+        ("footnoteReference", "2"),
+        ("endnoteReference", "1"),
+    ]
+
+
+def test_a_note_is_its_own_story(tmp_path: Path) -> None:
+    """Nothing the reference stands inside reaches the body: no list, no bold, no alignment."""
+    out = lowered(
+        tmp_path,
+        section(
+            '<ul><li style="text-align: center"><strong>x<a data-ow-note="n1"></a></strong>'
+            ' y</li></ul><aside data-ow-footnote="n1"><p>body</p><table><tr><td>t</td></tr>'
+            "</table></aside>"
+        ),
+    )
+    [note] = _notes(out)
+    first = note.find(f"{W}p")
+    assert first.find(f"{W}pPr/{W}pStyle").get(f"{W}val") == "FootnoteText"
+    assert first.find(f"{W}pPr/{W}numPr") is None
+    assert first.find(f"{W}pPr/{W}jc") is None
+    assert first.find(f".//{W}b") is None
+    assert note.find(f"{W}tbl") is not None
+    assert etree.QName(note[-1]).localname == "p"
+    [item] = [p for p in out.xml().iter(f"{W}p") if _ptext(p).strip().startswith("x")]
+    assert item.find(f"{W}pPr/{W}numPr") is not None
+    assert texts(out)[0] == "x y"
+
+
+def test_a_note_bodys_address_is_a_bookmark_inside_it(tmp_path: Path) -> None:
+    out = lowered(
+        tmp_path,
+        section(
+            '<p>x<a data-ow-note="n1"></a></p>'
+            '<aside data-ow-footnote="n1" data-ow-el="u01/e9"><p>body</p></aside>'
+        ),
+    )
+    [note] = _notes(out)
+    [start] = note.iter(f"{W}bookmarkStart")
+    assert start.get(f"{W}name") == "ow_u01_e9"
+
+
+def test_the_note_styles_are_words_own_ids(tmp_path: Path) -> None:
+    out = lowered(tmp_path, section("<p>a</p>"))
+    ids = {s.get(f"{W}styleId") for s in out.xml("word/styles.xml").iter(f"{W}style")}
+    assert {"FootnoteText", "FootnoteReference", "EndnoteText", "EndnoteReference"} <= ids
+
+
+# ---------------------------------------------------------------------------------------------
+# D783: the provenance part
+# ---------------------------------------------------------------------------------------------
+
+
+def _provenance(out: Lowered) -> dict[str, Any]:
+    return json.loads(out.members[PROVENANCE])
+
+
+def test_the_provenance_part_is_written_even_with_nothing_cited(tmp_path: Path) -> None:
+    out = lowered(tmp_path, section("<p>a</p>"))
+    assert _provenance(out) == {
+        "artifact_gen": 1,
+        "cites": [],
+        "corpus": "acme",
+        "schema": "omniweave.out-provenance/1",
+        "slug": "memo",
+    }
+    rels = out.members["_rels/.rels"].decode()
+    assert 'Type="urn:omniweave:relationship:provenance"' in rels
+    assert 'Target="customXml/omniweave-provenance.json"' in rels
+    assert "application/json" in out.members["[Content_Types].xml"].decode()
+    [row] = [c for c in out.receipt().checks if c.name == "citations_channel"]
+    assert (row.value, row.detail) == ("passed", "embedded: 0 cite row(s)")
+
+
+def test_each_cite_is_a_row_with_its_pinned_generation(tmp_path: Path) -> None:
+    out = lowered(
+        tmp_path,
+        section(
+            '<p data-ow-el="u01/e2" data-ow-cite="d7#1 acme:d7#2">x</p>'
+            '<p data-ow-el="u01/e3" data-ow-cite="d7#1" data-ow-cite-kind="quote"'
+            ' data-ow-cite-span="0:7">y</p>'
+            '<p data-ow-el="u01/e4" data-ow-cite="d7#1 d7#2" data-ow-cite-span="0:1">z</p>'
+        ),
+        cites={"d7#1": 3, "d7#2": 5},
+    )
+    assert _provenance(out)["cites"] == [
+        {"cite": "d7#1", "doc_gen": 3, "el": "u01/e2", "kind": None, "span": None},
+        {"cite": "d7#2", "doc_gen": 5, "el": "u01/e2", "kind": None, "span": None},
+        {"cite": "d7#1", "doc_gen": 3, "el": "u01/e3", "kind": "quote", "span": [0, 7]},
+        {"cite": "d7#1", "doc_gen": 3, "el": "u01/e4", "kind": None, "span": None},
+        {"cite": "d7#2", "doc_gen": 5, "el": "u01/e4", "kind": None, "span": None},
+    ]
+    [row] = [c for c in out.receipt().checks if c.name == "citations_channel"]
+    assert row.detail == "embedded: 5 cite row(s)"
+    assert texts(out) == ["x", "y", "z"]
+
+
+@pytest.mark.parametrize(
+    ("body", "code", "said"),
+    [
+        ('<p data-ow-cite="d7#1">x</p>', "OW_TARGET_IL_MALFORMED", "carries no data-ow-el"),
+        ('<p data-ow-el="u01/e2" data-ow-cite="d7#9">x</p>', "OW_TARGET_CITE_UNRESOLVED", "d7#9"),
+        (
+            '<p data-ow-el="u01/e2" data-ow-cite="d7#1" data-ow-cite-kind="rumour">x</p>',
+            "OW_TARGET_IL_MALFORMED",
+            "is not one of",
+        ),
+    ],
+)
+def test_a_cite_the_part_cannot_state_is_refused(
+    tmp_path: Path, body: str, code: str, said: str
+) -> None:
+    with pytest.raises(TargetError, match=said) as caught:
+        lowered(tmp_path, section(body), cites={"d7#1": 3})
+    assert caught.value.code() == code
+
+
+def test_a_package_without_its_provenance_part_is_a_failed_row(tmp_path: Path) -> None:
+    out = lowered(tmp_path, section("<p>a</p>"))
+    members = {k: v for k, v in out.members.items() if k != PROVENANCE}
+    rels = members["_rels/.rels"].decode()
+    start = rels.index("<Relationship", rels.index("urn:omniweave") - 200)
+    members["_rels/.rels"] = (rels[:start] + rels[rels.index("/>", start) + 2 :]).encode()
+    stripped = tmp_path / "stripped.docx"
+    stripped.write_bytes(write_opc(members))
+    [row] = [c for c in DocxCompiler().postflight(str(stripped), out.plan).checks
+             if c.name == "citations_channel"]  # fmt: skip
+    assert (row.value, row.detail) == ("failed", f"no {PROVENANCE} in the package")

@@ -88,10 +88,10 @@ def test_render_json_is_a_bare_array_and_video_is_listed_unimplemented(tmp_path:
     owtext = rows["owtext"]
     assert (owtext["implemented"], owtext["reason"]) == (True, "")
     assert owtext["driver"] == "compile.text.owtext"
-    #  D781: docx's table and rules are built and its lowering is not, and its card says so.
+    #  D783: docx lowers every owflow/1 construct, so its card is implemented.
     docx = rows["docx"]
-    assert (docx["implemented"], docx["driver"]) == (False, "compile.docx.native")
-    assert docx["reason"] == _card("docx", env).reason
+    assert (docx["implemented"], docx["reason"]) == (True, "")
+    assert docx["driver"] == "compile.docx.native"
 
 
 def test_a_row_carries_the_cards_determinism_class_and_the_ten_keys_in_order(
@@ -163,7 +163,7 @@ def test_the_text_form_says_which_of_the_two_stops_a_kind(tmp_path: Path) -> Non
     assert (code, err) == (0, "")
     docx, owtext, video = out.splitlines()
     assert docx.startswith("docx     not ready compile.docx.native")
-    assert docx.endswith(f"implemented = false: {_card('docx', env).reason}")
+    assert docx.endswith("not in [targets] enabled")
     assert owtext.startswith("owtext   not ready compile.text.owtext")
     assert owtext.endswith("not in [targets] enabled")
     assert "html/owtext" in owtext
