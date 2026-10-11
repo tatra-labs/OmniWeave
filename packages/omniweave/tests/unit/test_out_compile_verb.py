@@ -19,6 +19,7 @@ import omniweave.__main__ as launcher
 import omniweave_conform.suites.target as target_suites
 import pytest
 from omniweave.surface import out as verb
+from omniweave_core.errors import TargetError
 from omniweave_core.out.brief import BRIEF_SCHEMA
 from omniweave_core.store import migrate
 from omniweave_core.store import sqlite as store_sqlite
@@ -180,6 +181,27 @@ def test_no_final_report_is_not_provided_and_lowers_nothing(project: Path) -> No
         "gate not-provided: nothing was lowered (exit 8)",
         "re-check: ow out check --stage final",
     ]
+    assert not (project / ".omniweave" / "out").exists()
+
+
+def test_a_target_gated_but_not_yet_lowering_is_refused_before_its_gate(project: Path) -> None:
+    """Ruling 24 (D781): docx's table and rules gate its IL, and its card says it cannot lower."""
+    code, out, err = _run(
+        ["scaffold", "docx", "--brief", "brief.md", "--slug", "memo", "--render", "json"], project
+    )
+    assert (code, err) == (0, "")
+    job = Path(json.loads(out)["job_dir"])
+    (job / "il" / "u01.html").write_text(
+        "<section><h1>Memo</h1><p>Revenue rose.</p></section>", encoding="utf-8", newline=""
+    )
+    il = job / "il" / "il.toml"
+    il.write_text(il.read_text(encoding="utf-8") + ROW.format(unit="u01", ord=1), "utf-8")
+    code, _out, err = _run(["check", "--stage", "final", "--job", str(job)], project)
+    assert (code, err) == (0, "")
+    code, out, err = _run(["compile", "--job", str(job)], project)
+    assert (code, out) == (TargetError.EXIT, "")
+    assert err.startswith("ow: OW-T-514: compile.docx.native cannot compile: [compile] implemented")
+    assert "fix: ow out check --target docx --stage final" in err
     assert not (project / ".omniweave" / "out").exists()
 
 

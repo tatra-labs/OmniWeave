@@ -32,6 +32,12 @@ dependencies = [
   "lxml",
 ]
 
+[project.entry-points."omniweave.drivers"]
+"compile.docx.native" = "omniweave_target_docx"
+
+[project.entry-points."omniweave.targets"]
+"docx" = "omniweave_target_docx"
+
 # The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
 [tool.hatch.build.targets.wheel]
 packages = ["src/omniweave_target_docx"]

@@ -19,7 +19,10 @@ is this verb, which *"loads the table and names the row and the key"*.
 2. **A table whose digest is not the card's `constructs_digest` is the card's error**,
    `OW_CARD_INVALID`. The compile refuses that pairing, so documenting it would describe a contract
    nothing enforces.
-3. **An unimplemented target has no table to read**, and refuses with `OW-T-514` and its reason.
+3. **A card that names no table has none to read**, and refuses with `OW-T-514` and its reason.
+   That is an unimplemented target such as video, whose table "was never written". D781 narrows
+   the refusal from every unimplemented card: docx's table and rules are built before its
+   lowering, and `ow out check` gates IL against them while `ow out compile` still refuses.
 4. **A group is the id's first dotted segment**: `attr`, `elem`, `style`, as 09's `--group text`
    names one. Groups follow the order the table first uses them, and rows keep table order, which
    is the author's (the mandatory rows first).
@@ -64,7 +67,7 @@ _PREAMBLE: Final = (
 
 def load_table(card_path: Path, card: CompileCard) -> ConstructTable:
     """Rulings 1-3: the table beside `card_path`, held to the card's digest."""
-    if not card.implemented:
+    if not card.constructs:
         raise TargetError(
             f"{card.driver} has no construct table: [compile] implemented = false, because "
             f"{card.reason}",

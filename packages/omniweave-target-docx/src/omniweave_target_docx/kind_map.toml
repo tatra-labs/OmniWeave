@@ -1,0 +1,33 @@
+# kind_map.toml — owflow/1's construct -> Kind map, R2's comparator (09-generation.md section 1
+# row 8). Many-to-one where WordprocessingML keeps one structure for several spellings: six
+# heading levels are one `heading`, three list containers one `list`, and a `read_back` may stamp
+# Trust.EXTRACTED only on a one-to-one row (OUT22).
+schema = "omniweave.out-kind-map/1"
+
+[kind]
+"ow.unit" = "section"
+"block.h1" = "heading"
+"block.h2" = "heading"
+"block.h3" = "heading"
+"block.h4" = "heading"
+"block.h5" = "heading"
+"block.h6" = "heading"
+"block.p" = "paragraph"
+"block.blockquote" = "blockquote"
+"block.pre" = "code"
+"block.hr" = "rule"
+"list.ul" = "list"
+"list.ol" = "list"
+"list.dl" = "list"
+"list.li" = "list_item"
+"list.dt" = "list_item"
+"list.dd" = "list_item"
+"table.table" = "table"
+"table.th" = "table_cell"
+"table.td" = "table_cell"
+"table.caption" = "caption"
+"note.footnote" = "footnote"
+"note.endnote" = "endnote"
+"media.img" = "picture"
+"media.figure" = "figure"
+"media.figcaption" = "caption"

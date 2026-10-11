@@ -29,9 +29,11 @@ is where they are read, and it reads them the way 09 says.
    class"). That is what `ow out targets` prints, and `as_json()` is the shape `--render json`
    emits. Two cards claiming one target are both listed, because choosing one is the
    registry's decision.
-5. **An implemented target declares `agent_doc_tokens_max`** (D762). 09 section 3.5 item 5
-   gates every target's agent document at it, so an implemented card without one would have
-   no gate. An unimplemented target has no table to document and may leave it out.
+5. **A target that names a table declares `agent_doc_tokens_max`** (D762). 09 section 3.5 item
+   5 gates every target's agent document at it, so a table without one would have no gate. An
+   implemented target names a table, so it always declares one. D781: an unimplemented target
+   may name its table too (docx, gated before it lowers), and then declares its budget; one
+   with no table has nothing to document and may leave it out.
 6. **An implemented target declares `media_type` and `suffix`** (D770). The artefact row's
    `media_type` is `NOT NULL` and its path is `<slug>@<gen>/<slug><suffix>` (D755), and
    no printed card names either: the API sketch's `[capability] formats` is the parse
@@ -208,8 +210,10 @@ class CompileCard:
             not built.constructs or _DIGEST.fullmatch(built.constructs_digest) is None
         ):
             _invalid(source, "an implemented target names its constructs and a sha256 digest")
-        if implemented and not built.agent_doc_tokens_max:
-            _invalid(source, "an implemented target declares agent_doc_tokens_max (09 section 3.5)")
+        if built.constructs and not built.agent_doc_tokens_max:
+            _invalid(
+                source, "a target naming a table declares agent_doc_tokens_max (09 section 3.5)"
+            )
         if implemented and not (built.media_type and built.suffix):
             _invalid(source, "an implemented target declares its media_type and suffix (D770)")
         return built

@@ -126,8 +126,16 @@ def test_a_table_the_card_does_not_vouch_for_is_the_cards_error(tmp_path: Path) 
     assert caught.value.code() == "OW_CARD_INVALID"
 
 
+def test_a_target_not_yet_implemented_may_name_its_table() -> None:
+    """Ruling 3, narrowed by D781: docx's table loads, held to its card's digest."""
+    [(card, compiled)] = [(d, c) for d, c in _compile_cards() if c.target == "docx"]
+    assert not compiled.implemented
+    table = load_table(Path(card.source), compiled)
+    assert (table.il, table.digest()) == ("owflow/1", compiled.constructs_digest)
+
+
 def test_an_unimplemented_target_has_no_table() -> None:
-    """Ruling 3: video, with its reason."""
+    """Ruling 3: video, which names none, with its reason."""
     [(card, compiled)] = [(d, c) for d, c in _compile_cards() if c.target == "video"]
     with pytest.raises(
         TargetError, match=r"implemented = false, because the hyperframes"
@@ -254,11 +262,12 @@ def _encoder() -> Any:
         pytest.skip(f"cl100k_base could not be resolved offline: {exc}")
 
 
-def test_every_implemented_targets_agent_doc_is_under_its_budget_whole_and_per_group() -> None:
+def test_every_tabled_targets_agent_doc_is_under_its_budget_whole_and_per_group() -> None:
+    """Every card that names a table, implemented or not (D781): docx is gated before it lowers."""
     encode = _encoder()
-    implemented = [(d, c) for d, c in _compile_cards() if c.implemented]
-    assert implemented, "no implemented compile card was discovered"
-    for driver_card, card in implemented:
+    tabled = [(d, c) for d, c in _compile_cards() if c.constructs]
+    assert {c.target for _, c in tabled} >= {"owtext", "docx"}
+    for driver_card, card in tabled:
         table = load_table(Path(driver_card.source), card)
         assert card.agent_doc_tokens_max > 0
         whole = len(encode(agent_doc(card, table)))
