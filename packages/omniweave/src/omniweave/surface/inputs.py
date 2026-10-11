@@ -85,6 +85,7 @@ __all__ = [
     "WANTS",
     "AddIn",
     "ArtifactsIn",
+    "BackIn",
     "CheckIn",
     "CompileIn",
     "ConstructsIn",
@@ -574,6 +575,19 @@ class CompileIn:
 
     accept_manual: bool = False
     job: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class BackIn:
+    """`ow out back <slug> [--gen N]`. 09 sections 3.6 and 3.7. D777.
+
+    `slug` names the artefact, and `gen` the generation to edit, the newest when omitted.
+    `corpus` is the store it was sealed into: the global `--corpus` on the CLI.
+    """
+
+    slug: str
+    gen: int | None = None
+    corpus: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

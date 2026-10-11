@@ -22,11 +22,19 @@ contract's refusal branches in CI without a browser: `citations = "sidecar"`, `f
    `OW-T` code.
 4. **`project()` refuses by name.** The card says `project = false`, so the call is
    `OW_TARGET_PROJECT_UNAVAILABLE` naming the card key: the honest answer for `fidelity = none`.
+5. **The receipt reports the framework's classification** (D777). The sketch writes each unit
+   `native`, or `manual_required` where a reason stands, which holds on the create path only.
+   An edit (`ow out back`) carries each unit's source, and the framework then classifies it
+   `passthrough`, `cloned_passthrough`, `patched` or `rebuilt`, and refuses a receipt that says
+   otherwise (`OW_TARGET_UNIT_UNCLASSIFIED`, OUT8). So `postflight()` reports
+   `classify_and_assert()`'s answer, with the runner's defaults: nothing baked, every edited
+   unit visually changed. owtext rewrites every byte it emits, so it has no part to keep.
 """
 
 from __future__ import annotations
 
 import hashlib
+from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import ClassVar, Final
@@ -47,7 +55,7 @@ from omniweave_core.out import (
     RuleSpec,
     Severity,
     TextMeasure,
-    UnitOutcome,
+    classify_and_assert,
     html_carrier,
     part_digest,
 )
@@ -267,6 +275,7 @@ class OwTextCompiler:
     def postflight(self, artifact: str, plan: Plan) -> Receipt:
         """Reads the artefact back and records the checks; it never decides the gate (OUT23)."""
         data = Path(artifact).read_bytes()
+        classified = classify_and_assert(plan, baked={}, visual_changed=lambda _unit: True)
         return Receipt(
             schema="omniweave.out-receipt/1",
             target="owtext",
@@ -294,11 +303,8 @@ class OwTextCompiler:
                 ),
                 CheckValue("measure_available", "not-applicable", 'measure = "none"'),
             ),
-            units={
-                u.id: UnitOutcome.MANUAL_REQUIRED if u.manual_reason else UnitOutcome.NATIVE
-                for u in plan.units
-            },
-            counts=_counts(plan),
+            units={unit: c.outcome for unit, c in classified.items()},
+            counts=dict(Counter(c.outcome for c in classified.values())),
             portability={
                 "generic_only_font_stacks": (),
                 "unresolved_brief_tokens": (),
@@ -320,11 +326,3 @@ class OwTextCompiler:
             symbol="OW_TARGET_PROJECT_UNAVAILABLE",
             fix="ow out compile --target owtext   # from the retained IL, not a projection",
         )
-
-
-def _counts(plan: Plan) -> dict[UnitOutcome, int]:
-    counts: dict[UnitOutcome, int] = {}
-    for u in plan.units:
-        outcome = UnitOutcome.MANUAL_REQUIRED if u.manual_reason else UnitOutcome.NATIVE
-        counts[outcome] = counts.get(outcome, 0) + 1
-    return counts

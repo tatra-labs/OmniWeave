@@ -64,6 +64,7 @@ key can grant one.
 | `hooks.check` | `ow_hooks_check` | `ow hooks check` | — | `free` | Run each installed hook command as its host would, with a probe payload in a scratch project, and say which failed and why |
 | `install` | — | `ow install` | — | `free` | Wire agent hosts to omniweave: the MCP entry, one permission wildcard, the instruction block, hooks and the core skill, each recorded in a receipt |
 | `open` | `ow_open` | `ow open` | default, full | `free` | Fetch the exact passages behind an address you already hold: a cite, a page range, or a whole document |
+| `out.back` | — | `ow out back` | — | `free` | Restore a sealed artefact's retained IL, Brief and assets into a new JobDir for its next generation, saying first whether the contract moved |
 | `out.check` | — | `ow out check` | — | `free` | Run the target's rules over a JobDir's IL at one stage, write validation/<stage>.json, and print each finding with its fix |
 | `out.compile` | — | `ow out compile` | — | `free` | Lower a JobDir whose final gate passed into its artefact in an S4 worker, seal the artifact row, and place the bytes under [roots] output |
 | `out.constructs` | — | `ow out constructs` | — | `free` | Print a target's construct table, a line a row, one row in full, or as the agent document an IL author writes against (--format md) |

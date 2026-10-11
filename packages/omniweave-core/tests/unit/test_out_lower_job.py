@@ -78,7 +78,15 @@ def _gated(tmp_path: Path, *, u01: str | None = None) -> tuple[Path, Job]:
     if u01 is not None:
         (job_dir / "il" / "u01.html").write_text(u01, encoding="utf-8", newline="")
     bundle = ILBundle.load(job_dir / "il", carrier=OwTextCompiler().carrier, constructs=table)
-    plan = replace(job.plan, il_digest=bundle.il_digest, gate_status=GateStatus.PASSED)
+    plan = replace(
+        job.plan,
+        il_digest=bundle.il_digest,
+        gate_status=GateStatus.PASSED,
+        units=tuple(
+            replace(mine, nsig=theirs.nsig, manual_reason=theirs.manual_reason)
+            for mine, theirs in zip(job.plan.units, bundle.units, strict=True)
+        ),
+    )
     return job_dir, replace(job, plan=plan)
 
 
@@ -128,7 +136,8 @@ def test_the_worker_lowers_stages_and_postflights_the_gated_job(tmp_path: Path) 
         "sha256": hashlib.sha256(TEXT).hexdigest(),
     }
     assert (receipt.slug, receipt.artifact_gen, receipt.gate_status) == ("q3", 1, "passed")
-    assert receipt.units == {"u01": UnitOutcome.NATIVE, "u02": UnitOutcome.NATIVE}
+    assert receipt.units == {"u01": UnitOutcome.NATIVE, "u02": UnitOutcome.MANUAL_REQUIRED}
+    #  The golden u02 holds an ow:manual region, and the receipt reports the classifier (D777).
 
 
 def test_the_artefact_ref_is_lowers_own(tmp_path: Path) -> None:

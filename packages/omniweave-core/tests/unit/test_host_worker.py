@@ -25,12 +25,28 @@ from types import SimpleNamespace
 from typing import Any, ClassVar
 
 import pytest
+from omniweave_conform.suites.target.owtext.driver import HERE, OwTextCompiler
 from omniweave_core.blobs import BlobStore, format_ref
 from omniweave_core.discovery import catalog
+from omniweave_core.drivers.card import load_card, read_card_bytes
 from omniweave_core.errors import DriverHostError
+from omniweave_core.events import traceparent
 from omniweave_core.host import subproc as sp
 from omniweave_core.host import wire
 from omniweave_core.host import worker as wk
+
+#  At module scope, every module whose errors a worker catches: `test_errors.py` reloads
+#  `omniweave_core.errors`, and a module first imported after that raises classes the
+#  worker's `except OwError` was not bound to, in whatever order xdist deals the files (D777).
+from omniweave_core.modelserver import Handle
+from omniweave_core.out import agentdoc
+from omniweave_core.out.agentdoc import load_table
+from omniweave_core.out.brief import BRIEF_SCHEMA, parse_brief
+from omniweave_core.out.card import CompileCard
+from omniweave_core.out.compile import refusal_of
+from omniweave_core.out.gate import GateStatus
+from omniweave_core.out.job import ILBundle, job_unit, scaffold
+from omniweave_core.out.receipt import Receipt
 from omniweave_ports.types import ArtifactRef, DeriveScope, DriverError, FailureClass, UnitRef
 
 FIXTURES = Path(__file__).resolve().parents[3] / "omniweave-office" / "fixtures"
@@ -817,8 +833,6 @@ def test_service_issues_only_the_named_grant_under_the_calls_deadline(tmp_path: 
 
 def test_a_grant_is_made_from_the_handle_the_registry_issued() -> None:
     """D713: the handle's fields, and its request timeout; a handle with none keeps 600."""
-    from omniweave_core.modelserver import Handle  # noqa: PLC0415
-
     bearer = "ab"
     handle = Handle(
         name="llm", base_url="http://127.0.0.1:9", token=bearer, model_id="m", model_rev="r",
@@ -848,8 +862,6 @@ TEXT = b"== u01 ==\nRevenue rose 12% in Q3.\n== u02 ==\nMargins held.\n"
 
 
 def _owtext_card() -> Any:
-    from omniweave_conform.suites.target.owtext.driver import HERE  # noqa: PLC0415
-    from omniweave_core.drivers.card import load_card, read_card_bytes  # noqa: PLC0415
 
     path = HERE / "driver.toml"
     return load_card(read_card_bytes(path), origin="driver_path", source=str(path))
@@ -873,14 +885,6 @@ def _compile_job(tmp_path: Path) -> tuple[Path, Any]:
     import shutil  # noqa: PLC0415
     from dataclasses import replace  # noqa: PLC0415
 
-    from omniweave_conform.suites.target.owtext.driver import OwTextCompiler  # noqa: PLC0415
-    from omniweave_core.events import traceparent  # noqa: PLC0415
-    from omniweave_core.out.agentdoc import load_table  # noqa: PLC0415
-    from omniweave_core.out.brief import BRIEF_SCHEMA, parse_brief  # noqa: PLC0415
-    from omniweave_core.out.card import CompileCard  # noqa: PLC0415
-    from omniweave_core.out.gate import GateStatus  # noqa: PLC0415
-    from omniweave_core.out.job import ILBundle, scaffold  # noqa: PLC0415
-
     card = _owtext_card()
     compiled = CompileCard.of(card)
     table = load_table(Path(card.source), compiled)
@@ -900,12 +904,19 @@ def _compile_job(tmp_path: Path) -> tuple[Path, Any]:
     for name in ("il.toml", "u01.html", "u02.html"):
         shutil.copyfile(GOLDEN / name, job_dir / "il" / name)
     bundle = ILBundle.load(job_dir / "il", carrier=OwTextCompiler().carrier, constructs=table)
-    plan = replace(job.plan, il_digest=bundle.il_digest, gate_status=GateStatus.PASSED)
+    plan = replace(
+        job.plan,
+        il_digest=bundle.il_digest,
+        gate_status=GateStatus.PASSED,
+        units=tuple(
+            replace(mine, nsig=theirs.nsig, manual_reason=theirs.manual_reason)
+            for mine, theirs in zip(job.plan.units, bundle.units, strict=True)
+        ),
+    )
     return job_dir, replace(job, plan=plan)
 
 
 def _compile_invoke(job: Any, job_dir: Path, /, **changes: object) -> dict[str, object]:
-    from omniweave_core.out.job import job_unit  # noqa: PLC0415
 
     unit = job_unit(job)
     header: dict[str, object] = {
@@ -946,7 +957,6 @@ def test_a_compile_session_lowers_the_job_in_the_worker(
 ) -> None:
     """The card is the one the HELLO names; the artefact and the receipt come back through the
     CAS, the frame's body empty, and the worker's scratch is gone before the RESULT."""
-    from omniweave_core.out.receipt import Receipt  # noqa: PLC0415
 
     host, box, thread, order = _compile_session(tmp_path, monkeypatch)
     assert order == ["guard", "activate"]
@@ -970,7 +980,6 @@ def test_a_compile_session_lowers_the_job_in_the_worker(
 
 
 def _refusal(result: wire.Frame) -> Any:
-    from omniweave_core.out.compile import refusal_of  # noqa: PLC0415
 
     assert result.header["failure_class"] == "corrupt_input"
     refused = refusal_of(str(result.header["message"]))
@@ -1027,7 +1036,6 @@ def test_a_job_that_does_not_load_is_refused_with_its_symbol(
 def test_a_compile_bug_is_the_drivers_bug_not_a_refusal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from omniweave_conform.suites.target.owtext.driver import OwTextCompiler  # noqa: PLC0415
 
     def broken(*_args: object, **_kwargs: object) -> object:
         raise KeyError("u03")
@@ -1070,7 +1078,6 @@ def test_a_compile_card_whose_table_does_not_load_is_fatal_at_hello(
 ) -> None:
     """The table is read once, after the driver activates: a table the card's digest does not
     describe is refused at HELLO, before any INVOKE."""
-    from omniweave_core.out import agentdoc  # noqa: PLC0415
 
     def refusing(*_args: object) -> object:
         raise DriverHostError(
