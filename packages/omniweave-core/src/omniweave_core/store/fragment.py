@@ -73,6 +73,15 @@ for each (INV-21), so a draft that `add_block` refuses raises out of `add_block`
   A retained part whose bytes the host does not hold is stored with `store_ref` NULL, which is the
   DDL's own *"bytes were not retained"* (03:602-604), and `owcheck` then says which part.
 
+## A block's `x` (D785)
+
+`BlockDraft.x` is 03 section 2.6's extension map, and the decoder never carried a block record's:
+every driver's block reached the store with `x = {}`. A read-back (`read_back`, 09 section 11)
+says in `x` which IL element a block came from and what it cited, and R2 reads both there. So the
+decoder carries a block record's `x` and refuses only one that is not an object. Its keys are
+`DocSink`'s to judge (`_validate_x`), as every other draft field's rules are, so the grammar and
+the reserved `ow` segment keep one home.
+
 Specified in 03-document-model.md sections 2.7, 2.10, 13.5 and 17 (P1, P2), 04-driver-system.md
 section 6.5, and 02-architecture.md section 4.1 row 16.
 """
@@ -431,6 +440,7 @@ def _block(item: Mapping[str, Any], *, sink: DocSink, state: _State) -> None:
         quad=_quad(item.get("quad"), state.frame, tmp),
         payload=item.get("payload"),
         cell=None if cell is None else CellPos(**cell),
+        x=_x(item.get("x"), tmp),
     )
     block = sink.add_block(draft)
     state.ids[tmp] = block
@@ -443,6 +453,15 @@ def _block(item: Mapping[str, Any], *, sink: DocSink, state: _State) -> None:
     if draft.cell is not None and parent is not None and parent in state.tables:
         state.tables[parent][1].append(_Cell(block, draft.cell))
     _resolve_rels(sink, state)
+
+
+def _x(raw: object, tmp: str) -> dict[str, Any]:
+    """The block's `x`, carried. Its keys are the sink's to judge (D785)."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise _refuse("OW_MODEL", f"block {tmp!r}: x is {type(raw).__name__}, not an object")
+    return dict(raw)
 
 
 def _mark(raw: Mapping[str, Any], block: BlockId, state: _State) -> Mark:
