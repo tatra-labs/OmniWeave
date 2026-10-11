@@ -124,6 +124,11 @@ documentation", with `--group` and `--construct` selecting from it.
     the bare digest. Exactly one form is given, `--gen` and `--explain` belong to `--slug`,
     and the query is this corpus's: a store holds one corpus, so "every corpus" is one
     `--corpus` at a time.
+24. **`compile` refuses an unimplemented target before its gate** (D781). A card with
+    `implemented = false` may still name its table, which `check` and `constructs` read
+    (D762 ruling 3, narrowed). `compile` would otherwise gate the IL and send it to a
+    worker whose `lower()` refuses, so it refuses first, with `OW-T-514` and the card's
+    reason, and touches no store.
 """
 
 from __future__ import annotations
@@ -1072,6 +1077,12 @@ def compile_report(
     scaffolded = Job.load(job_dir).plan
     resolved = config.load(cwd=cwd, env=env, explicit=explicit)
     driver, card = _one_card(_discover(resolved, env).cards, scaffolded.target)
+    if not card.implemented:
+        raise TargetError(
+            f"{card.driver} cannot compile: [compile] implemented = false, because {card.reason}",
+            symbol="OW_TARGET_NOT_IMPLEMENTED",
+            fix=f"ow out check --target {card.target} --stage final   # the gate still runs",
+        )
     table = load_table(Path(driver.source), card)
     effective = driver.config.effective()
     compiler = cast("CompileV1", construct(driver, effective))

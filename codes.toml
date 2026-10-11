@@ -1032,6 +1032,80 @@ fix     = "ow out verify --job <the JobDir that compiled it>"
 raised_by = "TargetError"
 sites   = ["09-generation.md:2131"]
 
+# ── D781. owflow/1, the docx target's table and rules (09-generation.md section 12.3), and the
+# closed set every table promises (section 3.5 item 1). Each numeric sits in its siblings' band:
+# 2xx normalize, 4xx constructs.
+
+[[code]]
+numeric = "OW-T-212"
+symbol  = "OW_TARGET_CITE_SPACING"
+meaning = "owflow/1's normalize row: a data-ow-cite list with more than one space between tokens, or any at either end; a warning, folded"
+fix     = "ow out normalize --construct ow.cite.spacing"
+sites   = ["09-generation.md:2324"]
+
+[[code]]
+numeric = "OW-T-213"
+symbol  = "OW_TARGET_SPAN_NOT_CANONICAL"
+meaning = "owflow/1's normalize rows: a colspan or rowspan written with a sign, a space or a leading zero; a warning, folded"
+fix     = "ow out normalize --construct table.colspan.form"
+sites   = ["09-generation.md:2324"]
+
+[[code]]
+numeric = "OW-T-214"
+symbol  = "OW_TARGET_LANG_CASE"
+meaning = "owflow/1's normalize row: a lang tag outside BCP-47's conventional case; a warning, folded"
+fix     = "ow out normalize --construct lang.tag.case"
+sites   = ["09-generation.md:2324"]
+
+[[code]]
+numeric = "OW-T-412"
+symbol  = "OW_TARGET_CONSTRUCT_NOT_IN_TABLE"
+meaning = "an element, attribute or style property no row of the target's ConstructTable declares: unknown_construct = \"forbidden\" (D781)"
+fix     = "ow out constructs <target>   # the constructs its IL has"
+sites   = ["09-generation.md:527"]
+
+[[code]]
+numeric = "OW-T-413"
+symbol  = "OW_TARGET_HEADING_SKIP"
+meaning = "a heading more than one level deeper than the heading before it in its unit, an h1 followed by an h3"
+fix     = "ow out check --stage unit --unit <unit>"
+sites   = ["09-generation.md:2324"]
+
+[[code]]
+numeric = "OW-T-414"
+symbol  = "OW_TARGET_TABLE_TOPOLOGY"
+meaning = "a table whose cells do not cover one grid exactly: rows of different widths, overlapping cells, a rowspan past its group, a span that is not an integer from 1, or a row or cell outside its parent"
+fix     = "ow out check --stage unit --unit <unit>"
+sites   = ["09-generation.md:2324"]
+
+[[code]]
+numeric = "OW-T-415"
+symbol  = "OW_TARGET_NOTE_UNRESOLVED"
+meaning = "a note reference with no body in its unit, a body referenced other than once, a duplicate note id, a reference with content, or a body that is not a child of the unit's section"
+fix     = "ow out check --stage unit --unit <unit>"
+sites   = ["09-generation.md:2324"]
+
+[[code]]
+numeric = "OW-T-416"
+symbol  = "OW_TARGET_LIST_MALFORMED"
+meaning = "a list nested past the declared depth (nine, WordprocessingML's levels), a list item outside its container, another child inside one, or a start that is not a decimal integer on an ol"
+fix     = "ow out check --stage unit --unit <unit>"
+sites   = ["09-generation.md:2324"]
+
+[[code]]
+numeric = "OW-T-417"
+symbol  = "OW_TARGET_POSITIONING_FORBIDDEN"
+meaning = "a positioning or geometry construct in a flow carrier's IL: position, float, an offset, a transform, a z-index, a width or height, a page break, or align"
+fix     = "ow out constructs docx --group pos"
+sites   = ["09-generation.md:2324"]
+
+[[code]]
+numeric = "OW-T-418"
+symbol  = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+meaning = "a construct the target's ConstructTable declares forbidden, with no more specific code; the row's msg says what to write instead"
+fix     = "ow out constructs <target> --construct <id>"
+sites   = ["09-generation.md:2324"]
+
 # ── W1.5, the driver card grammar (04-driver-system.md sections 2.1-2.8, 4.5, 5.3, 7.5). The
 # three discovery-point refusals of section 5.3 step 1, plus the two numerics the plan already
 # binds. `meaning` and `fix` are FILLED here rather than deferred to W1.3: these five are raised

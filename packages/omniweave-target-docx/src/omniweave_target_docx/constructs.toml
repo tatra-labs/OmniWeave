@@ -1,0 +1,820 @@
+# constructs.toml — THE IL CONTRACT AS DATA. ONE KEY PER LINE.
+# owflow/1, the docx target's IL (09-generation.md section 12.3): block structure, the declared
+# inline marks, notes, and a <section> a unit. A FLOW carrier: no row's selector names geometry,
+# and the pos.* rows are the forbidden ones that make "this is a flow carrier" checkable.
+schema = "omniweave.out-constructs/1"
+carrier = "html"
+il = "owflow/1"
+version = 1
+unknown_construct = "forbidden"        # FAIL CLOSED. NOT CONFIGURABLE.
+ignore = []
+# `code` holds the SYMBOL; the numeric OW-T-nnn is resolved from codes.toml at RENDER time.
+# `since` is MANDATORY and MONOTONE.
+
+[[construct]]                          # ── the MANDATORY four, and one normalize
+id = "ow.cite"
+selector = "@data-ow-cite"
+disposition = "native"
+round_trip = "exact"
+canonical = "cite tokens, one space apart"
+maps_to = "lower.cites:provenance_part"
+code = "OW_TARGET_CITE_MALFORMED"
+since = "0.1.0"
+
+[[construct]]
+id = "ow.cite.spacing"
+normalizes_to = "ow.cite"
+disposition = "normalize"
+normalizer = "collapse_space"
+round_trip = "normalized"
+canonical = "single spaces between cite tokens, none at either end"
+code = "OW_TARGET_CITE_SPACING"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "ow.el"
+selector = "@data-ow-el"
+disposition = "native"
+round_trip = "exact"
+canonical = "u<NN>/e<N>, minted once, unique per artefact"
+maps_to = "lower.ids:bookmark"
+code = "OW_TARGET_EL_DUPLICATE"
+since = "0.1.0"
+
+[[construct]]
+id = "ow.manual"
+selector = "html|div[data-ow-manual]"
+disposition = "native"
+round_trip = "exact"
+canonical = "a ManualReason member as the value"
+maps_to = "lower.manual:placeholder"
+code = "OW_TARGET_MANUAL_REASON_UNKNOWN"
+since = "0.1.0"
+
+[[construct]]
+id = "ow.unit"
+selector = "html|section"
+disposition = "native"
+round_trip = "exact"
+canonical = "the unit root: one <section>, never nested"
+maps_to = "lower.units:section"
+code = "OW_TARGET_UNIT_MALFORMED"
+since = "0.1.0"
+
+[[construct]]                          # ── blocks
+id = "block.h1"
+selector = "html|h1"
+disposition = "native"
+round_trip = "exact"
+canonical = "level 1: at most one deeper than the heading before it"
+maps_to = "lower.blocks:heading"
+code = "OW_TARGET_HEADING_SKIP"
+since = "0.1.0"
+
+[[construct]]
+id = "block.h2"
+selector = "html|h2"
+disposition = "native"
+round_trip = "exact"
+canonical = "level 2: at most one deeper than the heading before it"
+maps_to = "lower.blocks:heading"
+code = "OW_TARGET_HEADING_SKIP"
+since = "0.1.0"
+
+[[construct]]
+id = "block.h3"
+selector = "html|h3"
+disposition = "native"
+round_trip = "exact"
+canonical = "level 3: at most one deeper than the heading before it"
+maps_to = "lower.blocks:heading"
+code = "OW_TARGET_HEADING_SKIP"
+since = "0.1.0"
+
+[[construct]]
+id = "block.h4"
+selector = "html|h4"
+disposition = "native"
+round_trip = "exact"
+canonical = "level 4: at most one deeper than the heading before it"
+maps_to = "lower.blocks:heading"
+code = "OW_TARGET_HEADING_SKIP"
+since = "0.1.0"
+
+[[construct]]
+id = "block.h5"
+selector = "html|h5"
+disposition = "native"
+round_trip = "exact"
+canonical = "level 5: at most one deeper than the heading before it"
+maps_to = "lower.blocks:heading"
+code = "OW_TARGET_HEADING_SKIP"
+since = "0.1.0"
+
+[[construct]]
+id = "block.h6"
+selector = "html|h6"
+disposition = "native"
+round_trip = "exact"
+canonical = "level 6: at most one deeper than the heading before it"
+maps_to = "lower.blocks:heading"
+code = "OW_TARGET_HEADING_SKIP"
+since = "0.1.0"
+
+[[construct]]
+id = "block.p"
+selector = "html|p"
+disposition = "native"
+round_trip = "exact"
+canonical = "a paragraph of inline content"
+maps_to = "lower.blocks:paragraph"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "block.blockquote"
+selector = "html|blockquote"
+disposition = "native"
+round_trip = "exact"
+canonical = "a quotation of blocks"
+maps_to = "lower.blocks:quote"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "block.pre"
+selector = "html|pre"
+disposition = "native"
+round_trip = "exact"
+canonical = "preformatted text, whitespace kept"
+maps_to = "lower.blocks:code_block"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "block.hr"
+selector = "html|hr"
+disposition = "native"
+round_trip = "normalized"
+canonical = "an empty thematic break"
+maps_to = "lower.blocks:rule"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "block.align"
+selector = "@style|text-align"
+disposition = "native"
+round_trip = "exact"
+canonical = "start | center | end | justify"
+maps_to = "lower.blocks:alignment"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]                          # ── inline marks
+id = "inline.strong"
+selector = "html|strong"
+disposition = "native"
+round_trip = "exact"
+canonical = "strong importance"
+maps_to = "lower.inline:bold"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "inline.em"
+selector = "html|em"
+disposition = "native"
+round_trip = "exact"
+canonical = "stress emphasis"
+maps_to = "lower.inline:italic"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "inline.u"
+selector = "html|u"
+disposition = "native"
+round_trip = "exact"
+canonical = "an underlined span"
+maps_to = "lower.inline:underline"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "inline.s"
+selector = "html|s"
+disposition = "native"
+round_trip = "exact"
+canonical = "a struck span"
+maps_to = "lower.inline:strike"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "inline.code"
+selector = "html|code"
+disposition = "native"
+round_trip = "exact"
+canonical = "a code span"
+maps_to = "lower.inline:code"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "inline.sub"
+selector = "html|sub"
+disposition = "native"
+round_trip = "exact"
+canonical = "a subscript"
+maps_to = "lower.inline:subscript"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "inline.sup"
+selector = "html|sup"
+disposition = "native"
+round_trip = "exact"
+canonical = "a superscript"
+maps_to = "lower.inline:superscript"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "inline.mark"
+selector = "html|mark"
+disposition = "native"
+round_trip = "exact"
+canonical = "a highlighted span"
+maps_to = "lower.inline:highlight"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "inline.link"
+selector = "html|a[href]"
+disposition = "native"
+round_trip = "exact"
+canonical = "an http(s): or mailto: URI, or #<data-ow-el>"
+maps_to = "lower.inline:hyperlink"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "inline.br"
+selector = "html|br"
+disposition = "native"
+round_trip = "exact"
+canonical = "a line break inside a block"
+maps_to = "lower.inline:line_break"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "inline.span"
+selector = "html|span[lang]"
+disposition = "native"
+round_trip = "exact"
+canonical = "a run in another language"
+maps_to = "lower.inline:language_run"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]                          # ── language and direction
+id = "lang.tag"
+selector = "@lang"
+disposition = "native"
+round_trip = "exact"
+canonical = "a canonical BCP-47 tag"
+maps_to = "lower.inline:language"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "lang.tag.case"
+normalizes_to = "lang.tag"
+disposition = "normalize"
+normalizer = "bcp47_case"
+round_trip = "normalized"
+canonical = "BCP-47 case: language lower, Script title, REGION upper"
+code = "OW_TARGET_LANG_CASE"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "lang.dir"
+selector = "@dir"
+disposition = "native"
+round_trip = "exact"
+canonical = "ltr | rtl"
+maps_to = "lower.blocks:bidi"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]                          # ── lists
+id = "list.ul"
+selector = "html|ul"
+disposition = "native"
+round_trip = "exact"
+canonical = "a bulleted list of <li>"
+maps_to = "lower.lists:bulleted"
+code = "OW_TARGET_LIST_MALFORMED"
+since = "0.1.0"
+
+[[construct]]
+id = "list.ol"
+selector = "html|ol"
+disposition = "native"
+round_trip = "exact"
+canonical = "a numbered list of <li>"
+maps_to = "lower.lists:numbered"
+code = "OW_TARGET_LIST_MALFORMED"
+since = "0.1.0"
+
+[[construct]]
+id = "list.li"
+selector = "html|li"
+disposition = "native"
+round_trip = "exact"
+canonical = "an item, inside <ul> or <ol> only"
+maps_to = "lower.lists:item"
+code = "OW_TARGET_LIST_MALFORMED"
+since = "0.1.0"
+
+[[construct]]
+id = "list.start"
+selector = "@start"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal integer on <ol>"
+maps_to = "lower.lists:start_at"
+code = "OW_TARGET_LIST_MALFORMED"
+since = "0.1.0"
+
+[[construct]]
+id = "list.dl"
+selector = "html|dl"
+disposition = "native"
+round_trip = "lossy"
+canonical = "terms and descriptions"
+maps_to = "lower.lists:definitions"
+code = "OW_TARGET_LIST_MALFORMED"
+since = "0.1.0"
+
+[[construct]]
+id = "list.dt"
+selector = "html|dt"
+disposition = "native"
+round_trip = "lossy"
+canonical = "a term, inside <dl> only"
+maps_to = "lower.lists:term"
+code = "OW_TARGET_LIST_MALFORMED"
+since = "0.1.0"
+
+[[construct]]
+id = "list.dd"
+selector = "html|dd"
+disposition = "native"
+round_trip = "lossy"
+canonical = "a description, inside <dl> only"
+maps_to = "lower.lists:description"
+code = "OW_TARGET_LIST_MALFORMED"
+since = "0.1.0"
+
+[[construct]]                          # ── tables
+id = "table.table"
+selector = "html|table"
+disposition = "native"
+round_trip = "exact"
+canonical = "rows that cover one grid exactly"
+maps_to = "lower.tables:table"
+code = "OW_TARGET_TABLE_TOPOLOGY"
+since = "0.1.0"
+
+[[construct]]
+id = "table.caption"
+selector = "html|caption"
+disposition = "native"
+round_trip = "exact"
+canonical = "the first child of <table>"
+maps_to = "lower.tables:caption"
+code = "OW_TARGET_TABLE_TOPOLOGY"
+since = "0.1.0"
+
+[[construct]]
+id = "table.thead"
+selector = "html|thead"
+disposition = "native"
+round_trip = "exact"
+canonical = "the header rows"
+maps_to = "lower.tables:header_rows"
+code = "OW_TARGET_TABLE_TOPOLOGY"
+since = "0.1.0"
+
+[[construct]]
+id = "table.tbody"
+selector = "html|tbody"
+disposition = "native"
+round_trip = "exact"
+canonical = "a group of body rows"
+maps_to = "lower.tables:body_rows"
+code = "OW_TARGET_TABLE_TOPOLOGY"
+since = "0.1.0"
+
+[[construct]]
+id = "table.tr"
+selector = "html|tr"
+disposition = "native"
+round_trip = "exact"
+canonical = "a row of <th> and <td>"
+maps_to = "lower.tables:row"
+code = "OW_TARGET_TABLE_TOPOLOGY"
+since = "0.1.0"
+
+[[construct]]
+id = "table.th"
+selector = "html|th"
+disposition = "native"
+round_trip = "exact"
+canonical = "a header cell"
+maps_to = "lower.tables:header_cell"
+code = "OW_TARGET_TABLE_TOPOLOGY"
+since = "0.1.0"
+
+[[construct]]
+id = "table.td"
+selector = "html|td"
+disposition = "native"
+round_trip = "exact"
+canonical = "a data cell"
+maps_to = "lower.tables:cell"
+code = "OW_TARGET_TABLE_TOPOLOGY"
+since = "0.1.0"
+
+[[construct]]
+id = "table.colspan"
+selector = "@colspan"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal integer from 1, no leading zero"
+maps_to = "lower.tables:grid_span"
+code = "OW_TARGET_TABLE_TOPOLOGY"
+since = "0.1.0"
+
+[[construct]]
+id = "table.rowspan"
+selector = "@rowspan"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal integer from 1, no leading zero"
+maps_to = "lower.tables:vertical_merge"
+code = "OW_TARGET_TABLE_TOPOLOGY"
+since = "0.1.0"
+
+[[construct]]
+id = "table.colspan.form"
+normalizes_to = "table.colspan"
+disposition = "normalize"
+normalizer = "int_text"
+round_trip = "normalized"
+canonical = "a decimal integer with no sign, space or leading zero"
+code = "OW_TARGET_SPAN_NOT_CANONICAL"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "table.rowspan.form"
+normalizes_to = "table.rowspan"
+disposition = "normalize"
+normalizer = "int_text"
+round_trip = "normalized"
+canonical = "a decimal integer with no sign, space or leading zero"
+code = "OW_TARGET_SPAN_NOT_CANONICAL"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]                          # ── notes: a reference, and its body
+id = "note.ref"
+selector = "html|a[data-ow-note]"
+disposition = "native"
+round_trip = "exact"
+canonical = "an empty <a> naming its body's id"
+maps_to = "lower.notes:reference"
+code = "OW_TARGET_NOTE_UNRESOLVED"
+since = "0.1.0"
+
+[[construct]]
+id = "note.footnote"
+selector = "html|aside[data-ow-footnote]"
+disposition = "native"
+round_trip = "exact"
+canonical = "a footnote body; its id is the attribute's value"
+maps_to = "lower.notes:footnote"
+code = "OW_TARGET_NOTE_UNRESOLVED"
+visible = false
+since = "0.1.0"
+
+[[construct]]
+id = "note.endnote"
+selector = "html|aside[data-ow-endnote]"
+disposition = "native"
+round_trip = "exact"
+canonical = "an endnote body; its id is the attribute's value"
+maps_to = "lower.notes:endnote"
+code = "OW_TARGET_NOTE_UNRESOLVED"
+visible = false
+since = "0.1.0"
+
+[[construct]]                          # ── media: a picture is a frozen asset
+id = "media.img"
+selector = "html|img[src]"
+disposition = "native"
+round_trip = "exact"
+canonical = "src is asset-slot:<sha256 hex>"
+maps_to = "lower.media:picture"
+code = "OW_TARGET_IL_ASSET_URI"
+since = "0.1.0"
+
+[[construct]]
+id = "media.alt"
+selector = "@alt"
+disposition = "native"
+round_trip = "exact"
+canonical = "the picture's text alternative"
+maps_to = "lower.media:alt_text"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "media.figure"
+selector = "html|figure"
+disposition = "native"
+round_trip = "normalized"
+canonical = "a picture or table with its caption"
+maps_to = "lower.media:figure"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "media.figcaption"
+selector = "html|figcaption"
+disposition = "native"
+round_trip = "normalized"
+canonical = "a caption, inside <figure> only"
+maps_to = "lower.media:caption"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]                          # ── FORBIDDEN: positioning and geometry
+id = "pos.position"
+selector = "@style|position"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_POSITIONING_FORBIDDEN"
+msg = "a flow carrier has no geometry: the renderer lays the page out"
+since = "0.1.0"
+
+[[construct]]
+id = "pos.float"
+selector = "@style|float"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_POSITIONING_FORBIDDEN"
+msg = "a flow carrier has no geometry: the renderer lays the page out"
+since = "0.1.0"
+
+[[construct]]
+id = "pos.top"
+selector = "@style|top"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_POSITIONING_FORBIDDEN"
+msg = "a flow carrier has no geometry: the renderer lays the page out"
+since = "0.1.0"
+
+[[construct]]
+id = "pos.left"
+selector = "@style|left"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_POSITIONING_FORBIDDEN"
+msg = "a flow carrier has no geometry: the renderer lays the page out"
+since = "0.1.0"
+
+[[construct]]
+id = "pos.transform"
+selector = "@style|transform"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_POSITIONING_FORBIDDEN"
+msg = "a flow carrier has no geometry: the renderer lays the page out"
+since = "0.1.0"
+
+[[construct]]
+id = "pos.z-index"
+selector = "@style|z-index"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_POSITIONING_FORBIDDEN"
+msg = "a flow document has no z-order"
+since = "0.1.0"
+
+[[construct]]
+id = "pos.width"
+selector = "@style|width"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_POSITIONING_FORBIDDEN"
+msg = "a flow carrier has no geometry: the renderer lays the page out"
+since = "0.1.0"
+
+[[construct]]
+id = "pos.height"
+selector = "@style|height"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_POSITIONING_FORBIDDEN"
+msg = "a flow carrier has no geometry: the renderer lays the page out"
+since = "0.1.0"
+
+[[construct]]
+id = "pos.break-before"
+selector = "@style|break-before"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_POSITIONING_FORBIDDEN"
+msg = "page breaks are the renderer's, never an authoring address"
+since = "0.1.0"
+
+[[construct]]
+id = "pos.page-break"
+selector = "@style|page-break-before"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_POSITIONING_FORBIDDEN"
+msg = "page breaks are the renderer's, never an authoring address"
+since = "0.1.0"
+
+[[construct]]
+id = "pos.width-attr"
+selector = "@width"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_POSITIONING_FORBIDDEN"
+msg = "a flow carrier has no geometry: the renderer lays the page out"
+since = "0.1.0"
+
+[[construct]]
+id = "pos.height-attr"
+selector = "@height"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_POSITIONING_FORBIDDEN"
+msg = "a flow carrier has no geometry: the renderer lays the page out"
+since = "0.1.0"
+
+[[construct]]
+id = "pos.align"
+selector = "@align"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_POSITIONING_FORBIDDEN"
+msg = "write style=\"text-align: ...\""
+since = "0.1.0"
+
+[[construct]]                          # ── FORBIDDEN: no WordprocessingML mapping
+id = "forbid.script"
+selector = "html|script"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_SCRIPT_FORBIDDEN"
+msg = "executable content has no mapping"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.style"
+selector = "html|style"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "a cascade has no mapping; marks are elements"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.class"
+selector = "@class"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "no cascade: a mark is its element"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.id"
+selector = "@id"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "the address is data-ow-el; a second one drifts"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.iframe"
+selector = "html|iframe"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "an embedded page has no mapping"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.object"
+selector = "html|object"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "an embedded object has no mapping"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.video"
+selector = "html|video"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "time-based media has no mapping"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.audio"
+selector = "html|audio"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "time-based media has no mapping"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.canvas"
+selector = "html|canvas"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "a script-drawn surface has no mapping"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.svg"
+selector = "html|svg"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "inline vector art: freeze it as an asset"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.form"
+selector = "html|form"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "an interactive form has no mapping"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.b"
+selector = "html|b"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "write <strong>"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.i"
+selector = "html|i"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "write <em>"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.ins"
+selector = "html|ins"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "change tracking has no owflow/1 representation at release 1"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.del"
+selector = "html|del"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "change tracking has no owflow/1 representation at release 1"
+since = "0.1.0"
