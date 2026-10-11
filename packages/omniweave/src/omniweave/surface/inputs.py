@@ -72,6 +72,7 @@ if TYPE_CHECKING:
     from omniweave.route import RouteHints
 
 __all__ = [
+    "CONSTRUCT_FORMATS",
     "CONTEXT_DEFAULT",
     "CONTEXT_MAX",
     "CONTEXT_MIN",
@@ -83,6 +84,7 @@ __all__ = [
     "SOURCE_MAX",
     "WANTS",
     "AddIn",
+    "ConstructsIn",
     "CorporaIn",
     "CoverageIn",
     "DiffIn",
@@ -162,6 +164,10 @@ WANTS: Final[tuple[str, ...]] = ("passages", "table", "fields", "outline", "rela
 `passages`, because a caller who asked for `table` and got prose has been lied to"*. The default is
 the first member, which is why the tuple is ordered rather than a frozenset.
 """
+
+CONSTRUCT_FORMATS: Final[tuple[str, ...]] = ("text", "md")
+"""`ow out constructs --format`: a line a row, or 09-generation.md section 3.3's agent
+document. The default is the first member."""
 
 CORPORA_DETAILS: Final[tuple[str, ...]] = ("list", "card", "coverage", "actions")
 """`ow_corpora`'s `detail`, 18:1352. `actions` is how an agent discovers the narrow-Action catalog
@@ -486,6 +492,22 @@ class HooksCheckIn:
     installed, read back out of the files the receipt names (10:2078, *"resolves the installed
     command string"*). A command given on argv would be a command that was not installed.
     """
+
+
+@dataclass(frozen=True, slots=True)
+class ConstructsIn:
+    """`ow out constructs <target>`. 09-generation.md section 3.3. D762.
+
+    `target` is the artefact kind, as `ow out targets` lists it. `--format md` is the agent
+    document 09 gates at the card's `agent_doc_tokens_max`; `--group` renders one group (the
+    id's first dotted segment) under the same ceiling; `--construct` is one row, every key of
+    it, which `OW-T-009`'s fix names. No `corpus`: a construct table is a target's data.
+    """
+
+    target: str
+    format: str = CONSTRUCT_FORMATS[0]
+    group: str | None = None
+    construct: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

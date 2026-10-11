@@ -26,9 +26,12 @@ is where they are read, and it reads them the way 09 says.
 4. **`targets()` lists compile cards as rows**, sorted by target and then driver. Each row carries
    the target, the driver, the flag, the reason, the carrier, the IL, the fidelity, the laws and
    the declared determinism (D761: 10-interfaces.md's `ow_targets` row lists "their determinism
-   class"):
-   what `ow out targets` prints, and in `as_json()` the shape `--render json` emits. Two cards
-   claiming one target are both listed, because choosing one is the registry's decision.
+   class"). That is what `ow out targets` prints, and `as_json()` is the shape `--render json`
+   emits. Two cards claiming one target are both listed, because choosing one is the
+   registry's decision.
+5. **An implemented target declares `agent_doc_tokens_max`** (D762). 09 section 3.5 item 5
+   gates every target's agent document at it, so an implemented card without one would have
+   no gate. An unimplemented target has no table to document and may leave it out.
 """
 
 from __future__ import annotations
@@ -107,6 +110,8 @@ class CompileCard:
     kind_map: str
     determinism: tuple[str, ...]
     assets: tuple[str, ...]
+    agent_doc_tokens_max: int = 0
+    """Ruling 5: the ceiling on `ow out constructs --format md`; 0 only when not implemented."""
     degradations: tuple[str, ...] = ()
     """Ruling 3: what `[capability.compile]` named and this core does not know."""
 
@@ -163,6 +168,11 @@ class CompileCard:
             toolchain=str(sibling.get("toolchain", "")),
             implemented=implemented,
             max_units=_positive(source, sibling, "max_units"),
+            agent_doc_tokens_max=(
+                _positive(source, sibling, "agent_doc_tokens_max")
+                if "agent_doc_tokens_max" in sibling
+                else 0
+            ),
             reason=reason,
             read_back=str(rt["read_back"]),
             project=_bool(source, rt, "project"),
@@ -177,6 +187,8 @@ class CompileCard:
             not built.constructs or _DIGEST.fullmatch(built.constructs_digest) is None
         ):
             _invalid(source, "an implemented target names its constructs and a sha256 digest")
+        if implemented and not built.agent_doc_tokens_max:
+            _invalid(source, "an implemented target declares agent_doc_tokens_max (09 section 3.5)")
         return built
 
 

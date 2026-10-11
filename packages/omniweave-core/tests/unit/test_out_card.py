@@ -102,6 +102,21 @@ def test_an_implemented_target_may_not_carry_a_reason_or_lack_a_table() -> None:
         CompileCard.of(card(unreasoned))
 
 
+def test_an_implemented_target_declares_its_agent_doc_budget() -> None:
+    """Ruling 5 (D762): 09 section 3.5 item 5 gates every target's agent document at it."""
+    owtext = (OWTEXT / "driver.toml").read_text(encoding="utf-8")
+    assert CompileCard.of(card(owtext)).agent_doc_tokens_max == 1200
+    line = "agent_doc_tokens_max = 1200"
+    assert owtext.count(line) == 1
+    with pytest.raises(DriverHostError, match=r"declares agent_doc_tokens_max \(09 section 3.5\)"):
+        CompileCard.of(card(owtext.replace(line, "# " + line)))
+    with pytest.raises(DriverHostError, match="agent_doc_tokens_max = 0 is not a positive"):
+        CompileCard.of(card(owtext.replace(line, "agent_doc_tokens_max = 0")))
+    #  An unimplemented target has no table to document, so it may leave the key out.
+    assert "agent_doc_tokens_max" not in VIDEO_TEXT
+    assert CompileCard.of(card(VIDEO_TEXT)).agent_doc_tokens_max == 0
+
+
 def test_capability_compile_ignores_what_it_does_not_know_and_records_it() -> None:
     c = CompileCard.of(
         video(

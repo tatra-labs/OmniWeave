@@ -29,6 +29,9 @@ D757 builds `roundtrip`: `r1` ... `r7` as predicates and `applicable()`, importe
 module-qualified by the conformance suite.
 D760 builds `card`: `CompileCard`, `[compile]` read strictly, and `targets()`, the rows
 `ow out targets` prints.
+D762 builds `agentdoc`: `load_table()` finds a target's table beside its card and imports none of
+its code, and `select()`, `groups()` and `agent_doc()` produce what `ow out constructs` prints.
+It is imported module-qualified, as `roundtrip` is.
 """
 
 from omniweave_core.out.brief import Brief, Prohibition, baseline_rows, parse_brief

@@ -126,6 +126,7 @@ from omniweave_ports import CostClass
 from omniweave.sdk.reports import (
     AddReport,
     CodeRow,
+    ConstructsReport,
     CorporaReport,
     DoctorReport,
     GraphDoctorReport,
@@ -138,6 +139,7 @@ from omniweave.sdk.reports import (
 )
 from omniweave.surface.inputs import (
     AddIn,
+    ConstructsIn,
     CorporaIn,
     CoverageIn,
     DiffIn,
@@ -1890,6 +1892,26 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=TargetsReport,
             advanced=frozenset(),
             cli=("out", "targets"),
+        ),
+        ActionSpec(
+            name="out.constructs",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Print a target's construct table, a line a row, one row in full, or as the "
+                "agent document an IL author writes against (--format md)"
+            ),
+            decision="you are about to author IL for a target and need what it accepts",
+            example={"target": "owtext", "format": "md"},
+            inp=ConstructsIn,
+            out=ConstructsReport,
+            advanced=frozenset(),
+            cli=("out", "constructs"),
         ),
     )
 )

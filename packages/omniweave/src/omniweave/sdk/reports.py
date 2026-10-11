@@ -58,6 +58,9 @@ __all__ = [
     "AddPending",
     "AddReport",
     "CodeRow",
+    "ConstructBake",
+    "ConstructListing",
+    "ConstructsReport",
     "CorporaReport",
     "CorpusCard",
     "DoctorFinding",
@@ -427,3 +430,60 @@ class TargetsReport:
     """
 
     targets: tuple[TargetListing, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ConstructBake:
+    """A `bake` row's `{ renderer, dpi, role }`. D762."""
+
+    renderer: str
+    dpi: int
+    role: str
+
+
+@dataclass(frozen=True, slots=True)
+class ConstructListing:
+    """One ConstructTable row, as `ow out constructs` prints it. D762.
+
+    `omniweave_core.out.constructs.Construct`'s fields, plus `group` (the id's first dotted
+    segment, 09-generation.md section 3.3's `--group`) and `numeric`, the register's spelling of
+    `code`, resolved at render time as the table's own file comment says. A separate class for
+    `TargetListing`'s reason: the registry's type graph does not import `omniweave_core.out`.
+    """
+
+    id: str
+    group: str
+    disposition: str
+    round_trip: str
+    code: str
+    numeric: str
+    since: str
+    selector: str
+    canonical: str | None
+    maps_to: str | None
+    normalizes_to: str | None
+    normalizer: str | None
+    bake: ConstructBake | None
+    forbidden_when: str | None
+    msg: str | None
+    severity: str | None
+    visible: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ConstructsReport:
+    """What `ow out constructs <target>` returns: the target's table and the rows selected. D762.
+
+    09-generation.md section 3.3. `agent_doc_tokens_max` is the card's ceiling on the
+    `--format md` document, counted in CI and never at runtime (`omniweave_core.out.agentdoc`).
+    """
+
+    target: str
+    driver: str
+    il: str
+    carrier: str
+    version: int
+    digest: str
+    agent_doc_tokens_max: int
+    ignore: tuple[str, ...]
+    rows: tuple[ConstructListing, ...]
