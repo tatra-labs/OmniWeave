@@ -10,6 +10,7 @@ D740 builds `brief`: the locked `Brief` and `parse_brief()`. D741 builds `plan`:
 the seven `UnitOutcome`s, `ManualReason` and the total `classify_and_assert()`. D742 builds
 `rules`: `RuleSpec`, `RuleCtx`, `DocIndex`, `Box`, `TextMeasure` and the two-pass `run_pack()`.
 D743 adds `nsig()`, the canonical subtree digest, and the definition dependency to `report`.
+D744 adds `ILBundle` to `job`: `il.toml`, the roster check, and both digests over one parse.
 """
 
 from omniweave_core.out.brief import Brief, Prohibition, baseline_rows, parse_brief
@@ -26,7 +27,7 @@ from omniweave_core.out.carrier.xml import svg_carrier
 from omniweave_core.out.constructs import Construct, ConstructTable, Disposition, RoundTrip
 from omniweave_core.out.finding import Finding, FindingSet, Provenance, Severity, Truncation
 from omniweave_core.out.gate import GateStatus, gate_status
-from omniweave_core.out.job import ILFile
+from omniweave_core.out.job import ILBundle, ILFile
 from omniweave_core.out.plan import (
     Classified,
     ManualReason,
@@ -70,6 +71,7 @@ __all__ = [
     "Finding",
     "FindingSet",
     "GateStatus",
+    "ILBundle",
     "ILFile",
     "ManualReason",
     "OutReport",

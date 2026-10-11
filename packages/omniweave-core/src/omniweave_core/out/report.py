@@ -44,6 +44,9 @@ gate reads.
     as ppt-master's `_direct_defs`. `changed_definitions()` is computed once a unit, and
     `unchanged()` is the two-factor test: the subtree's own `nsig` AND no changed definition it
     references.
+22. **`il_digest_rt` elides by selector, over the canonical copy** (09 section 11.3). An element
+    selector drops the matching element, an attribute selector the attribute, and a sub-property
+    selector one declaration from `style`. Which selectors is `job.elided(table)`'s to derive.
 """
 
 from __future__ import annotations
@@ -59,6 +62,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_core.errors import OwError, load_register
+from omniweave_core.out.carrier import Selector, parse_selector, style_declarations
 from omniweave_core.out.finding import Finding, FindingSet, Provenance, Severity, Truncation
 from omniweave_core.out.gate import REPORT_SCHEMA, GateStatus, clears, exit_code, gate_status
 from omniweave_core.out.job import ILFile
@@ -555,10 +559,20 @@ class _Canon:
 
 
 def canonical_subtree(
-    node: Node, *, clone_prefix: str | None = None, edited: Mapping[str, str] = _EMPTY_EDITS
+    node: Node,
+    *,
+    clone_prefix: str | None = None,
+    edited: Mapping[str, str] = _EMPTY_EDITS,
+    elide: Sequence[str] = (),
 ) -> bytes:
-    """09 section 8.2's six normalizations, then ppt-master's semantic framing (rulings 17-20)."""
+    """09 section 8.2's six normalizations, then ppt-master's semantic framing (rulings 17-20).
+
+    `elide` is `il_digest_rt`'s (09 section 11.3, ruling 22): the selectors whose payload the
+    round-trip digest leaves out, an element, an attribute or one style declaration.
+    """
     canon = _copy(node, clone_prefix, edited)
+    if elide:
+        _elide(canon, [parse_selector(s, node.tag.split("|", 1)[0]) for s in elide])
     _lower_filters(canon)
     _collapse(canon)
     out = bytearray()
@@ -685,6 +699,35 @@ def _collapse(root: _Canon) -> None:
                     changed = True
                     break
         stack.extend(c for c in parent.content if isinstance(c, _Canon))
+
+
+def _elide(root: _Canon, selectors: Sequence[Selector]) -> None:
+    """Ruling 22: drop each matching element, attribute and style declaration from the copy."""
+    stack = [root]
+    while stack:
+        item = stack.pop()
+        item.content = [
+            c
+            for c in item.content
+            if isinstance(c, str) or not any(_element(s, c) for s in selectors)
+        ]
+        for s in selectors:
+            if s.kind == "attribute":
+                item.attrs.pop(s.name, None)
+            elif s.kind == "subproperty" and "style" in item.attrs:
+                kept = [
+                    f"{p}: {v}" for p, v in style_declarations(item.attrs["style"]) if p != s.prop
+                ]
+                item.attrs["style"] = "; ".join(kept)
+        stack.extend(c for c in item.content if isinstance(c, _Canon))
+
+
+def _element(selector: Selector, item: _Canon) -> bool:
+    return (
+        selector.kind == "element"
+        and item.tag == selector.tag
+        and (not selector.name or selector.name in item.attrs)
+    )
 
 
 def _has_text(item: _Canon) -> bool:
