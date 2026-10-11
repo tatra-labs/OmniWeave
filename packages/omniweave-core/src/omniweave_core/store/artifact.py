@@ -83,7 +83,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 from omniweave_core.errors import NotFoundError, StoreError, TargetError
 from omniweave_core.model.enums import Quote
 from omniweave_core.out.gate import GateStatus
-from omniweave_core.out.ledger import SLOT_PREFIX
+from omniweave_core.out.ledger import ROLES, SLOT_PREFIX
 from omniweave_core.out.plan import UnitOutcome
 from omniweave_core.store.sqlite import INTERACTIVE_WAIT_MS, StoreThread, Unit
 
@@ -118,8 +118,6 @@ CiteKind = Literal["quote", "paraphrase", "derived", "data"]
 ORIGINS: Final = frozenset({"authored", "feedback", "read_back", "rebase"})
 DELIVERIES: Final = frozenset({"release", "draft"})
 CITE_KINDS: Final = frozenset({"quote", "paraphrase", "derived", "data"})
-ROLES: Final = frozenset({"image", "bake", "font", "video", "audio", "ole", "thumbnail"})
-"""`artifact_asset.role`'s comment in `0005_out.sql`, which 09 section 7 prints."""
 
 RESTRICTION_MASK: Final = (1 << 32) - 1
 """09 section 7.3: "32 reserved `restriction_bits`"."""

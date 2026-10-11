@@ -352,6 +352,17 @@ meaning = "a fragment names a page outside the PartSelector it was given; nothin
 raised_by = "ModelError"
 sites   = ["03-document-model.md:2986", "04-driver-system.md:204", "04-driver-system.md:1797"]
 
+# ── D753. A symbol store/doc.py raised from P2 and nothing registered, appended now that the
+# asset ledger raises it too. 03 and 09 name it; neither gives it a number.
+
+[[code]]
+numeric = "OW-M-035"
+symbol  = "OW_ASSET_DIGEST_MISMATCH"
+meaning = "an asset whose claimed sha256 disagrees with the stream the host hashed; the asset is rejected, because a content-addressed store with an unverified writer is a substitution oracle"
+fix     = "re-export the asset and freeze it again"
+raised_by = "ModelError"
+sites   = ["03-document-model.md:2131", "09-generation.md:1657"]
+
 [[code]]
 numeric = "OW-P-016"
 symbol  = "OW_EGRESS_GRANT_MISSING"
