@@ -32,6 +32,8 @@ D760 builds `card`: `CompileCard`, `[compile]` read strictly, and `targets()`, t
 D762 builds `agentdoc`: `load_table()` finds a target's table beside its card and imports none of
 its code, and `select()`, `groups()` and `agent_doc()` produce what `ow out constructs` prints.
 It is imported module-qualified, as `roundtrip` is.
+D763 adds `Job` and `JobDeterminism` to `job`: `job.json`, schema `omniweave.out-job/1`, closed
+at every level, which closes 09 Q11. `schema/job-v1.json` is generated from it.
 """
 
 from omniweave_core.out.brief import Brief, Prohibition, baseline_rows, parse_brief

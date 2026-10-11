@@ -37,7 +37,7 @@ import sys
 import types
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, NewType
 
 import pytest
 
@@ -185,14 +185,17 @@ def _entry(module: str, symbol: str | None, *, file: str = "sample-v1.json", roo
 def live(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     """A module named `_fake_decls` carrying `Sample`, with `schema/` pointed at `tmp_path`."""
     module = types.ModuleType("_fake_decls")
-    module.Sample = Sample
-    module.SelfRef = SelfRef
-    module.HasBytes = HasBytes
-    module.HasComplex = HasComplex
-    module.HasIntKeys = HasIntKeys
-    module.HasMixedEnum = HasMixedEnum
-    module.NoDoc = NoDoc
-    module.NOT_A_CLASS = (1, 2, 3)
+    #  Through the namespace dict: a `ModuleType` declares no such attributes, and pyright says so.
+    vars(module).update(
+        Sample=Sample,
+        SelfRef=SelfRef,
+        HasBytes=HasBytes,
+        HasComplex=HasComplex,
+        HasIntKeys=HasIntKeys,
+        HasMixedEnum=HasMixedEnum,
+        NoDoc=NoDoc,
+        NOT_A_CLASS=(1, 2, 3),
+    )
     monkeypatch.setitem(sys.modules, "_fake_decls", module)
     monkeypatch.setattr(schemagen, "SCHEMA_DIR", tmp_path)
     monkeypatch.setattr(schemagen, "EXPECTED_DIR", tmp_path / "expected")
@@ -571,6 +574,32 @@ def test_an_unreflectable_declaration_raises_naming_the_field(
     message = str(excinfo.value)
     assert fragment in message
     assert declaration.__name__ in message or "." in message
+
+
+Token = NewType("Token", str)
+Count = NewType("Count", int)
+
+
+@dataclass(frozen=True, slots=True)
+class HasNewTypeKeys:
+    by_token: dict[Token, int]
+
+
+@dataclass(frozen=True, slots=True)
+class HasIntNewTypeKeys:
+    by_count: dict[Count, str]
+
+
+def test_a_new_type_key_is_its_supertype() -> None:
+    """D763: `Plan.cites` is `Mapping[Cite, int]`. A `NewType` over `str` is a plain string key,
+    and one over `int` is refused as `int` itself is."""
+    schema = schemagen.build_schema(_entry("_fake_decls", "HasNewTypeKeys"), HasNewTypeKeys)
+    assert schema["properties"]["by_token"] == {
+        "type": "object",
+        "additionalProperties": {"type": "integer"},
+    }
+    with pytest.raises(schemagen.UnsupportedDeclarationError, match="must be `str`"):
+        schemagen.build_schema(_entry("_fake_decls", "HasIntNewTypeKeys"), HasIntNewTypeKeys)
 
 
 def test_a_non_dataclass_declaration_is_refused_naming_the_row() -> None:
