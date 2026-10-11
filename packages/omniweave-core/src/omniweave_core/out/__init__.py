@@ -13,6 +13,7 @@ D743 adds `nsig()`, the canonical subtree digest, and the definition dependency 
 D744 adds `ILBundle` to `job`: `il.toml`, the roster check, and both digests over one parse.
 D745 builds `marker`: the `OWC1` grammar, `scan()`, `resolve()`, `apply_reverse()`,
 `assert_clean()`. D746 adds `place()` and `Insertion`, and frames `nsig`'s text collapsed.
+D747 builds `opc`: the only ZIP-for-write, `part_digest()` and section 5.3's package checks.
 """
 
 from omniweave_core.out.brief import Brief, Prohibition, baseline_rows, parse_brief
@@ -41,6 +42,7 @@ from omniweave_core.out.marker import (
     resolve,
     scan,
 )
+from omniweave_core.out.opc import check_package, part_digest, write_opc
 from omniweave_core.out.plan import (
     Classified,
     ManualReason,
@@ -111,6 +113,7 @@ __all__ = [
     "assert_clean",
     "baseline_rows",
     "changed_definitions",
+    "check_package",
     "classify_and_assert",
     "definitions",
     "gate_status",
@@ -119,6 +122,7 @@ __all__ = [
     "nsig",
     "parse_brief",
     "parse_selector",
+    "part_digest",
     "place",
     "referenced_ids",
     "render",
@@ -127,4 +131,5 @@ __all__ = [
     "scan",
     "svg_carrier",
     "unchanged",
+    "write_opc",
 ]
