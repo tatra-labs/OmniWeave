@@ -960,6 +960,22 @@ fix     = "ow explain OW-T-518"
 raised_by = "TargetError"
 sites   = ["09-generation.md:2894"]
 
+[[code]]
+numeric = "OW-T-519"
+symbol  = "OW_TARGET_SLUG_INVALID"
+meaning = "an artefact slug that is not lower-case letters, digits and hyphens, 1 to 64 long: it becomes the JobDir's <slug>@<gen> segment and artifact.slug, and the plan gives it no grammar (D764)"
+fix     = "ow out scaffold <target> --slug q3-board"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1496"]
+
+[[code]]
+numeric = "OW-T-520"
+symbol  = "OW_TARGET_JOB_EXISTS"
+meaning = "a JobDir, or its staged copy, already exists where a scaffold would write one: a scaffold never writes over a JobDir (D764)"
+fix     = "ow out scaffold <target> --slug <slug>   # a fresh run id"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1496"]
+
 # ── W1.5, the driver card grammar (04-driver-system.md sections 2.1-2.8, 4.5, 5.3, 7.5). The
 # three discovery-point refusals of section 5.3 step 1, plus the two numerics the plan already
 # binds. `meaning` and `fix` are FILLED here rather than deferred to W1.3: these five are raised
