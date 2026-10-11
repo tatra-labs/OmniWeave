@@ -59,6 +59,10 @@ that module imports `omniweave_core.out`, so `out` importing it back would be a 
    re-place them), the row names `<slug>@<gen>/<slug><suffix>`, and the placed copy is written to a
    sibling and renamed. The receipt lands at `out/receipt.json` in the JobDir, and the row stores
    the sha256 of exactly those bytes.
+9. **D756: once preflight check 3 holds, `plan.units` are the bundle's** (09 section 3.7 note
+   4). Each unit's `nsig` and `manual_reason` are copied from the parse the gate was decided on,
+   so the classifier and the seal never read a Plan's stale or absent copy. A unit the carrier
+   refused has no `nsig`, and `classify_and_assert()` raises `OW-T-005` for it.
 """
 
 from __future__ import annotations
@@ -67,7 +71,7 @@ import hashlib
 import json
 import shutil
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -170,6 +174,13 @@ def compile_artifact(
 
     assert_clean(bundle)
     _same_roster(plan, bundle)
+    plan = replace(
+        plan,
+        units=tuple(
+            replace(mine, nsig=theirs.nsig, manual_reason=theirs.manual_reason)
+            for mine, theirs in zip(plan.units, bundle.units, strict=True)
+        ),
+    )
     ledger.assert_frozen(_slots(bundle))
     cited = _cited(bundle, compiler)
     resolved = cites.by_cites(tuple(sorted({c for _, _, tokens, _, _ in cited for c in tokens})))
@@ -242,7 +253,7 @@ def compile_artifact(
                 outcome=classified[u.id].outcome,
                 il_path=u.il_path,
                 il_sha256=retained.units[u.id],
-                nsig=u.nsig or "",
+                nsig=u.nsig or "",  # a unit with no nsig is OW-T-005 above
                 reason=classified[u.id].reason,
             )
             for u in plan.units

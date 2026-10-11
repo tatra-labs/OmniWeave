@@ -13,6 +13,7 @@ import io
 import json
 import sqlite3  # noqa: TID251 -- the assertions read the rows the seal wrote.
 import tomllib
+from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -173,7 +174,10 @@ class _Text:
 
     def postflight(self, artifact: str, plan: Plan) -> Receipt:
         data = Path(artifact).read_bytes()
-        units = {u.id: UnitOutcome.NATIVE for u in plan.units}
+        units = {
+            u.id: UnitOutcome.MANUAL_REQUIRED if u.manual_reason else UnitOutcome.NATIVE
+            for u in plan.units
+        }
         fields: dict[str, Any] = {
             "schema": "omniweave.out-receipt/1",
             "target": plan.target,
@@ -190,7 +194,7 @@ class _Text:
             "delivery": plan.delivery,
             "checks": (),
             "units": units,
-            "counts": {UnitOutcome.NATIVE: len(units)},
+            "counts": dict(Counter(units.values())),
             "portability": {},
             "normalizations": (),
             "degradations": (),
@@ -627,3 +631,60 @@ def test_a_quote_the_store_disproves_is_a_quote_but_not_verbatim(world: World) -
     assert world.rows(
         "SELECT kind, span_a, span_b, verbatim FROM artifact_cite WHERE unit='u01'"
     ) == [("quote", 0, 8, 0)]
+
+
+# ---------------------------------------------------------------------------
+# D756: a manual region, and the Plan's units rebuilt from the bundle
+# ---------------------------------------------------------------------------
+
+MANUAL_U02 = U02.replace(
+    "</section>", '<div data-ow-el="u02/e9" data-ow-manual="unverifiable_data">?</div></section>'
+)
+
+
+def _manual(world: World, target: _Text) -> ILBundle:
+    world.write_il(**{"u02.html": MANUAL_U02})
+    result = check(world.job, target, target="owtext", constructs=CONSTRUCTS, stage="final")
+    assert result.status is GateStatus.MANUAL_REQUIRED
+    return ILBundle.load(world.job / "il", carrier=target.carrier, constructs=CONSTRUCTS)
+
+
+def test_a_release_of_a_manual_unit_is_a_closed_gate(world: World) -> None:
+    target = _Text()
+    plan = world.plan(_manual(world, target))
+    done = world.compile(target, plan)
+    assert (done.status, done.exit, target.lowered) == (GateStatus.MANUAL_REQUIRED, 8, 0)
+
+
+def test_a_draft_of_a_manual_unit_seals_its_reason(world: World) -> None:
+    """09 section 9: the draft is a second row with a different delivery, never a pass."""
+    target = _Text()
+    bundle = _manual(world, target)
+    plan = world.plan(
+        bundle,
+        units=tuple(replace(u, manual_reason=None) for u in bundle.units),
+        delivery="draft",
+        gate_status=GateStatus.MANUAL_REQUIRED,
+    )
+    done = world.compile(target, plan)
+    assert done.sealed is not None
+    assert (done.sealed.row.delivery, done.sealed.row.gate_status) == (
+        "draft",
+        GateStatus.MANUAL_REQUIRED,
+    )
+    assert world.rows("SELECT unit, outcome, reason FROM artifact_unit") == [
+        ("u01", "native", None),
+        ("u02", "manual_required", "unverifiable_data"),
+    ]
+
+
+def test_the_plans_units_are_rebuilt_from_the_bundle(world: World) -> None:
+    """09 section 3.7 note 4: a Plan with no nsig, or a stale one, seals the bundle's."""
+    target = _Text()
+    bundle = world.checked(target)
+    blind = tuple(replace(u, nsig=None) for u in bundle.units)
+    done = world.compile(target, world.plan(bundle, units=blind))
+    assert done.sealed is not None
+    assert [r.nsig for r in world.artifacts.units(done.sealed.row.artifact_id)] == [
+        u.nsig for u in bundle.units
+    ]

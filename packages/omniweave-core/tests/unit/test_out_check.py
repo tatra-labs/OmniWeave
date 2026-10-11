@@ -437,3 +437,38 @@ def test_a_rule_that_reads_cites_undeclared_fails_loudly(tmp_path: Path) -> None
     )
     assert {f.code for f in result.report.findings} == {"OW_TARGET_RULE_RAISED"}
     assert result.status is GateStatus.FAILED
+
+
+# ---------------------------------------------------------------------------
+# D756: ow:manual regions reach the gate
+# ---------------------------------------------------------------------------
+
+MANUAL = (
+    '<section data-ow-el="u02/e1"><div data-ow-el="u02/e2" data-ow-manual="{}">?</div></section>'
+)
+
+
+def test_a_known_manual_region_makes_the_gate_manual_required(tmp_path: Path) -> None:
+    job = _job(tmp_path, **{"u02.html": MANUAL.format("unverifiable_data")})
+    result = check(job, _Measured(), target="owtext", constructs=CONSTRUCTS, stage="final")
+    assert (result.status, result.exit) == (GateStatus.MANUAL_REQUIRED, 8)
+    assert result.report.manual_units == (
+        {"unit": "u02", "el": "u02/e2", "reason": "unverifiable_data"},
+    )
+    assert result.report.findings == ()
+
+
+def test_an_unknown_manual_reason_fails_the_gate(tmp_path: Path) -> None:
+    job = _job(tmp_path, **{"u02.html": MANUAL.format("ask-someone")})
+    result = check(job, _Measured(), target="owtext", constructs=CONSTRUCTS, stage="final")
+    assert result.status is GateStatus.FAILED
+    assert [(f.code, f.unit, f.el) for f in result.report.findings] == [
+        ("OW_TARGET_MANUAL_REASON_UNKNOWN", "u02", "u02/e2")
+    ]
+    assert result.report.manual_units == ()
+
+
+def test_a_region_outside_the_stage_roster_is_not_this_stages(tmp_path: Path) -> None:
+    job = _job(tmp_path, **{"u02.html": MANUAL.format("unverifiable_data")})
+    result = check(job, _Measured(), target="owtext", constructs=CONSTRUCTS, stage="first-unit")
+    assert result.report.manual_units == ()

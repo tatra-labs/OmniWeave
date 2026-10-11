@@ -860,6 +860,16 @@ fix     = "ow out check --stage final"
 raised_by = "TargetError"
 sites   = ["09-generation.md:199"]
 
+# ── D756. The ow:manual reader's refusal, appended under 09 section 15's "+" rule. The reference
+# target's ConstructTable already names the symbol (18-api-sketch.md's elem.ow-manual row).
+
+[[code]]
+numeric = "OW-T-513"
+symbol  = "OW_TARGET_MANUAL_REASON_UNKNOWN"
+meaning = "a data-ow-manual value outside ManualReason: a framework error finding, so the gate fails instead of asking a human to act on an undefined reason"
+fix     = "ow out constructs --construct ow:manual"
+sites   = ["09-generation.md:1956"]
+
 # ── W1.5, the driver card grammar (04-driver-system.md sections 2.1-2.8, 4.5, 5.3, 7.5). The
 # three discovery-point refusals of section 5.3 step 1, plus the two numerics the plan already
 # binds. `meaning` and `fix` are FILLED here rather than deferred to W1.3: these five are raised

@@ -28,6 +28,10 @@ that could run its own gate could not skip it.
    `skipped_checks` as `needs = "marker"`, which is what moves `gate_status()`.
 8. **`RuleCtx.measure(n)` is exactly `m.box(n) if m is not None else None`** over the one
    estimator `measure()` returned, read once a check (OUT2): one wrapper, no second path.
+9. **D756: every `ow:manual` region of the roster reaches the report.** A region with a known
+   reason is a `manual_units` row (unit, `el`, reason), which is what makes the gate
+   `manual-required`. A value outside `ManualReason` is the framework's error finding, so the
+   gate fails rather than asking a human to act on a word nobody defined.
 """
 
 from __future__ import annotations
@@ -46,6 +50,7 @@ from omniweave_core.out.brief import Brief
 from omniweave_core.out.carrier import CarrierDoc, CarrierNode
 from omniweave_core.out.cites import NO_CITES, CiteResolver
 from omniweave_core.out.constructs import ConstructTable
+from omniweave_core.out.finding import FindingSet
 from omniweave_core.out.gate import GateStatus, exit_code
 from omniweave_core.out.job import ILBundle
 from omniweave_core.out.ledger import AssetLedger
@@ -170,14 +175,17 @@ def check(
         for m in run.index.markers
         if m.state == "corrupt"
     ]
+    regions = [r for u in roster for r in bundle.manual.get(u.id, ())]
+    unknown = [r.finding() for r in regions if r.reason is None]
     report = OutReport.build(
         stage=stage,
         target=target,
         constructs_digest=constructs.digest(),
         files=bundle.files,
         units=[u.id for u in roster],
-        findings=run.findings,
+        findings=FindingSet((*run.findings.findings, *unknown)) if unknown else run.findings,
         skipped=(*run.skipped, *corrupt),
+        manual=[r.as_json() for r in regions if r.reason is not None],
         markers=[m.as_json() for m in run.index.markers],
         timings=run.timings,
     )
