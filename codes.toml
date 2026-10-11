@@ -668,6 +668,16 @@ fix     = "ow out check --target <target> --stage unit --unit <id>   # after rep
 raised_by = "TargetError"
 sites   = ["09-generation.md:1166", "09-generation.md:2681"]
 
+# ── D744. The bundle's own roster file, appended under 09 section 15's "+" rule.
+
+[[code]]
+numeric = "OW-T-011"
+symbol  = "OW_TARGET_IL_TOML_INVALID"
+meaning = "an il/il.toml ILBundle.load() refuses: unreadable, another schema, no il or constructs_digest, an origin other than project, an unknown key, a [[unit]] that is not an OutUnit with a basename file, ords that are not 1..n, a repeated id or file, or a template.nsig line that is not 8 hex"
+fix     = "ow out scaffold <target>   # writes il.toml; the authoring agent adds [[unit]] rows"
+raised_by = "TargetError"
+sites   = ["09-generation.md:388", "09-generation.md:677"]
+
 [[code]]
 numeric = "OW-T-101"
 symbol  = "OW_TARGET_CITE_UNRESOLVED"
