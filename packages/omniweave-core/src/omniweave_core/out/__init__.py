@@ -25,6 +25,8 @@ D754 builds `cites`: `CiteResolver`, `CitedBlock`, the refusing `NO_CITES` and `
 `store.cites`'s.
 D756 builds `manual`: `ManualRegion`, `manual_regions()`, `ManualEvidence` and
 `EvidenceRegion`, so an `ow:manual` region reaches the gate, the classifier and the seal.
+D757 builds `roundtrip`: `r1` ... `r7` as predicates and `applicable()`, imported
+module-qualified by the conformance suite.
 """
 
 from omniweave_core.out.brief import Brief, Prohibition, baseline_rows, parse_brief
