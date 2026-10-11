@@ -16,8 +16,10 @@ from typing import ClassVar
 import pytest
 from omniweave_core.errors import TargetError
 from omniweave_core.model.doc import Doc
+from omniweave_core.model.enums import Quote
 from omniweave_core.out.carrier import CarrierDoc, CarrierNode
 from omniweave_core.out.carrier.html import html_carrier
+from omniweave_core.out.cites import CitedBlock
 from omniweave_core.out.compile import check
 from omniweave_core.out.constructs import ConstructTable
 from omniweave_core.out.finding import Finding, Provenance, Severity
@@ -319,3 +321,119 @@ def test_an_edit_after_the_check_makes_the_report_stale(tmp_path: Path) -> None:
         gate_status(OutReport.load(result.path), parse_digest(bundle.il_digest))[0]
         is GateStatus.STALE
     )
+
+
+# ---------------------------------------------------------------------------
+# D754: the cites need, met by a CiteResolver
+# ---------------------------------------------------------------------------
+
+
+class _Cites:
+    """A `CiteResolver` over a dict: `d7#1` resolves, nothing else does."""
+
+    def __init__(self) -> None:
+        self.batches: list[tuple[str, ...]] = []
+
+    def by_cite(self, cite: str) -> CitedBlock | None:
+        return self.by_cites((cite,))[cite]
+
+    def by_cites(self, cites: tuple[str, ...]) -> Mapping[str, CitedBlock | None]:
+        self.batches.append(cites)
+        known = CitedBlock("d7#1", 101, 7, 2, "short", Quote.VERBATIM, 0)
+        return {c: known if c == "d7#1" else None for c in cites}
+
+
+def rule_cite_resolves(ctx: RuleCtx) -> Iterator[Finding]:
+    """The API sketch's reference rule, batched once a unit as 09 section 10 asks."""
+    assert ctx.doc is not None and ctx.unit is not None
+    nodes = ctx.doc.select("@data-ow-cite")
+    tokens = tuple(dict.fromkeys(c for n in nodes for c in (n.attr("data-ow-cite") or "").split()))
+    found = ctx.cites.by_cites(tokens) if tokens else {}
+    for token, block in found.items():
+        if block is None:
+            yield Finding(
+                code="OW_TARGET_CITE_UNRESOLVED",
+                severity=Severity.ERROR,
+                provenance=Provenance.INTRODUCED,
+                rule="owtext.attr.ow-cite@1",
+                unit=ctx.unit.id,
+                msg=f"{token} names no live block in this corpus",
+                fix=f"ow open {token}",
+            )
+
+
+def rule_reads_cites_undeclared(ctx: RuleCtx) -> Iterator[Finding]:
+    ctx.cites.by_cite("d7#1")
+    return iter(())
+
+
+class _Cited(_Measured):
+    undeclared: ClassVar[bool] = False
+
+    def rules(self) -> Mapping[str, Sequence[RuleSpec]]:
+        spec = (
+            RuleSpec(
+                "owtext.attr.ow-cite.undeclared@1",
+                80,
+                "unit",
+                frozenset({"OW_TARGET_CITE_UNRESOLVED"}),
+                rule_reads_cites_undeclared,
+            )
+            if self.undeclared
+            else RuleSpec(
+                "owtext.attr.ow-cite@1",
+                80,
+                "unit",
+                frozenset({"OW_TARGET_CITE_UNRESOLVED"}),
+                rule_cite_resolves,
+                needs=frozenset({"cites"}),
+            )
+        )
+        return {**super().rules(), "cross-reference": (spec,)}
+
+
+class _CitedUndeclared(_Cited):
+    undeclared: ClassVar[bool] = True
+
+
+CITED = {
+    "u01.html": '<section data-ow-el="u01/e1"><p data-ow-cite="d7#1 d7#9">short</p></section>',
+    "u02.html": '<section><p data-ow-cite="d7#1">tiny</p></section>',
+}
+
+
+def test_a_cites_rule_runs_on_the_resolver_it_was_handed(tmp_path: Path) -> None:
+    cites = _Cites()
+    result = check(
+        _job(tmp_path, **CITED),
+        _Cited(),
+        target="owtext",
+        constructs=CONSTRUCTS,
+        stage="final",
+        cites=cites,
+    )
+    assert [(f.code, f.unit) for f in result.report.findings] == [
+        ("OW_TARGET_CITE_UNRESOLVED", "u01")
+    ]
+    assert result.report.skipped_checks == ()
+    assert cites.batches == [("d7#1", "d7#9"), ("d7#1",)]
+
+
+def test_without_a_resolver_the_cites_rule_is_a_recorded_skip(tmp_path: Path) -> None:
+    result = check(
+        _job(tmp_path, **CITED), _Cited(), target="owtext", constructs=CONSTRUCTS, stage="final"
+    )
+    assert (result.status, result.exit) == (GateStatus.UNVERIFIED, 64)
+    assert [(s.rule, s.needs) for s in result.report.skipped_checks] == [
+        ("owtext.attr.ow-cite@1", "cites")
+    ]
+
+
+def test_a_rule_that_reads_cites_undeclared_fails_loudly(tmp_path: Path) -> None:
+    """`NO_CITES` refuses, so an undeclared read is a raised rule, never an empty pass."""
+    compiler = _CitedUndeclared()
+    result = check(
+        _job(tmp_path, **CITED), compiler, target="owtext", constructs=CONSTRUCTS, stage="final"
+    )
+    assert {f.code for f in result.report.findings} == {"OW_TARGET_RULE_RAISED"}
+    assert result.status is GateStatus.FAILED

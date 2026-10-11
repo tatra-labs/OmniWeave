@@ -18,6 +18,7 @@ from omniweave_core.errors import ResourceLimit, TargetError
 from omniweave_core.out import rules as rules_module
 from omniweave_core.out.carrier import CarrierDoc, CarrierNode, tree
 from omniweave_core.out.carrier.html import html_carrier
+from omniweave_core.out.cites import NO_CITES, CiteResolver
 from omniweave_core.out.constructs import ConstructTable
 from omniweave_core.out.finding import Finding, Provenance, Severity
 from omniweave_core.out.gate import GateStatus
@@ -50,6 +51,7 @@ class _Ctx:
     unit: OutUnit | None
     index: DocIndex
     limits: Mapping[str, int] = field(default_factory=dict)
+    cites: CiteResolver = NO_CITES
 
     def measure(self, n: CarrierNode) -> Box | None:  # noqa: ARG002 -- the protocol's shape.
         return None

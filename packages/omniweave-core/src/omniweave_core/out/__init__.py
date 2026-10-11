@@ -20,6 +20,9 @@ D752 builds `retain`: the IL bundle frozen into CAS (`retain.freeze()`) and fetc
 verified (`retain.fetch()`). Both stay module-qualified: a bare `fetch` says nothing here.
 D753 adds the ledger's JobDir half to `ledger` (`AssetLicence`, `ledger_digest()`, the
 `assets/index.json` reader and writer). The store-backed class is `store.ledger`'s.
+D754 builds `cites`: `CiteResolver`, `CitedBlock`, the refusing `NO_CITES` and `verbatim()`,
+09 section 10's predicate. `RuleCtx.cites` is one, and the store-backed resolver is
+`store.cites`'s.
 """
 
 from omniweave_core.out.brief import Brief, Prohibition, baseline_rows, parse_brief
@@ -34,6 +37,7 @@ from omniweave_core.out.carrier import (
 )
 from omniweave_core.out.carrier.html import html_carrier
 from omniweave_core.out.carrier.xml import svg_carrier
+from omniweave_core.out.cites import NO_CITES, CitedBlock, CiteResolver, verbatim
 from omniweave_core.out.compile import CheckResult, CompileV1, check
 from omniweave_core.out.constructs import Construct, ConstructTable, Disposition, RoundTrip
 from omniweave_core.out.finding import Finding, FindingSet, Provenance, Severity, Truncation
@@ -96,6 +100,7 @@ from omniweave_core.out.rules import (
 )
 
 __all__ = [
+    "NO_CITES",
     "ArtefactDeterminism",
     "AssetLedger",
     "AssetLicence",
@@ -107,6 +112,8 @@ __all__ = [
     "CarrierParseError",
     "CheckResult",
     "CheckValue",
+    "CiteResolver",
+    "CitedBlock",
     "Classified",
     "CompileV1",
     "Construct",
@@ -169,5 +176,6 @@ __all__ = [
     "slot",
     "svg_carrier",
     "unchanged",
+    "verbatim",
     "write_opc",
 ]
