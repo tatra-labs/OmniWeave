@@ -661,7 +661,7 @@ def test_every_register_row_whose_owner_migration_is_applied_resolves_to_a_live_
         connection.close()
     assert report.ok, [f"{r.index.name}: {r.reason}" for r in report.failures]
     checked = [r for r in report.rows if r.status in (OK, UNUSED)]
-    assert len(checked) == 26, "twenty-six of the twenty-nine register rows are in a P2 store"
+    assert len(checked) == 27, "twenty-seven of the twenty-nine register rows are in this store"
 
 
 def test_an_index_the_register_names_and_sqlite_master_lacks_is_a_reported_failure(
@@ -707,7 +707,7 @@ def test_a_register_row_whose_owner_is_not_a_shipped_migration_is_pending_and_st
     finally:
         connection.close()
     pending = {r.index.name for r in report.rows if r.status == PENDING}
-    assert pending == {"artifact_cite_block", "retrieval_event_ts", "retrieval_event_bad"}
+    assert pending == {"retrieval_event_ts", "retrieval_event_bad"}
     for name in sorted(pending):
         assert f"{name}\t" in text
     assert report.ok, "a pending owner is not a failure"
@@ -774,8 +774,9 @@ def test_shipped_indexes_with_no_register_row_are_listed_and_do_not_fail(
 ) -> None:
     """DEFECT 1: 07:957's reverse clause cannot hold against section 3.13's twenty-nine rows.
 
-    The four shipped migrations create seventy-six indexes. Reporting the fifty with no register
-    row keeps the fact visible without failing every build until `tools/indexes.toml` lands.
+    The five shipped migrations create seventy-eight indexes. Reporting the fifty-one with no
+    register row keeps the fact visible without failing every build until `tools/indexes.toml`
+    lands.
     """
     connection = ow.connect_readonly(corpus)
     try:

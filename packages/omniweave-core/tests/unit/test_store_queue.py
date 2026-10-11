@@ -173,7 +173,7 @@ def owstore(tmp_path: Path) -> Path:
     connection = ow.connect(path)
     try:
         applied = migrate.apply_pending(connection, now_ns=NOW_NS)
-        assert len(applied) == 4, f"expected four migrations, applied {len(applied)}"
+        assert len(applied) == 5, f"expected five migrations, applied {len(applied)}"
     finally:
         connection.close()
     return path

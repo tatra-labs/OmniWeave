@@ -398,8 +398,8 @@ bytes and this is ten."""
 PR_POINTS: Final = 3
 """G21's assertion is *"kill-9 at three points"*; its nightly cell reads `full matrix`."""
 
-SHIPPED_MIGRATIONS: Final = 4
-"""`store/schema/migrations/` holds `0001..0004`. A fixture store that applied a different number
+SHIPPED_MIGRATIONS: Final = 5
+"""`store/schema/migrations/` holds `0001..0005`. A fixture store that applied a different number
 applied a different schema, and every column name below would be a guess."""
 
 _TRANSACTION_BEGIN: Final = 2

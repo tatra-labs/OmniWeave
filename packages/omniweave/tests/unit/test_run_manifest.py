@@ -774,7 +774,7 @@ def _ledger(tmp_path: Path) -> Any:
     step around would not be one.
     """
     connection = ow.connect(tmp_path / "index.owstore")
-    assert len(migrate.apply_pending(connection, now_ns=1)) == 4
+    assert len(migrate.apply_pending(connection, now_ns=1)) == 5
     return connection
 
 
