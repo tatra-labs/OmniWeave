@@ -19,7 +19,10 @@ that could run its own gate could not skip it.
 6. **A need is met when the compile has what it names**: `measure` when `CompileV1.measure()`
    returns an estimator, `cites` and `assets` when the caller hands a resolver and a ledger. Today
    neither is built, so a rule needing them is a recorded skip and the gate `unverified`, which is
-   OUT3's honest answer and never a pass.
+   OUT3's honest answer and never a pass. D754: `cites` is met by the `CiteResolver` the caller
+   hands `check(cites=...)`, which `RuleCtx.cites` then is. Without one, `RuleCtx.cites` is
+   `NO_CITES`, which refuses, so a rule that reads cites without declaring the need raises
+   rather than passing on an empty answer.
 7. **A corrupt marker is a recorded skip**: 09 section 8.1 makes it a `FRAMEWORK` info finding and
    the gate `unverified`, because a marker nobody can read may be a `must`. It joins
    `skipped_checks` as `needs = "marker"`, which is what moves `gate_status()`.
@@ -41,6 +44,7 @@ from omniweave_core.errors import TargetError
 from omniweave_core.model.doc import Doc
 from omniweave_core.out.brief import Brief
 from omniweave_core.out.carrier import CarrierDoc, CarrierNode
+from omniweave_core.out.cites import NO_CITES, CiteResolver
 from omniweave_core.out.constructs import ConstructTable
 from omniweave_core.out.gate import GateStatus, exit_code
 from omniweave_core.out.job import ILBundle
@@ -103,6 +107,7 @@ class _Ctx:
     brief: Brief | None
     limits: Mapping[str, int]
     estimator: TextMeasure | None = field(default=None, repr=False)
+    cites: CiteResolver = field(default=NO_CITES, repr=False)
 
     def measure(self, n: CarrierNode) -> Box | None:
         return self.estimator.box(n) if self.estimator is not None else None
@@ -132,15 +137,20 @@ def check(
     fixes: Mapping[str, str] | None = None,
     limits: Mapping[str, int] | None = None,
     clock: Clock | None = None,
+    cites: CiteResolver | None = None,
 ) -> CheckResult:
     """Rulings 4-8: load, run the pack over the stage's roster, fold, gate, write the report."""
     bundle = ILBundle.load(job_dir / "il", carrier=compiler.carrier, constructs=constructs)
     roster = _roster(bundle, stage, unit, plan_units)
     estimator = compiler.measure()
-    met = frozenset({"measure"} if estimator is not None else set())
+    met = frozenset(
+        ({"measure"} if estimator is not None else set())
+        | ({"cites"} if cites is not None else set())
+    )
+    resolver = NO_CITES if cites is None else cites
 
     def mk_ctx(u: OutUnit | None, doc: CarrierDoc | None, index: DocIndex) -> RuleCtx:
-        return _Ctx(doc, u, index, constructs, brief, limits or {}, estimator)
+        return _Ctx(doc, u, index, constructs, brief, limits or {}, estimator, resolver)
 
     run = run_pack(
         compiler.rules(),

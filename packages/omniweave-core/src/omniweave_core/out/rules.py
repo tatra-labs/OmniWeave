@@ -49,6 +49,7 @@ from omniweave_core.clock import Clock, SystemClock
 from omniweave_core.errors import TargetError
 from omniweave_core.limits import MAX_FINDINGS_PER_RULE
 from omniweave_core.out.carrier import CarrierDoc, CarrierNode, CarrierParseError, ParseError
+from omniweave_core.out.cites import CiteResolver
 from omniweave_core.out.constructs import ConstructTable
 from omniweave_core.out.finding import Finding, FindingSet, Provenance, Severity, Truncation
 from omniweave_core.out.marker import Marker, scan
@@ -124,6 +125,11 @@ class RuleCtx(Protocol):
 
     @property
     def limits(self) -> Mapping[str, int]: ...
+
+    @property
+    def cites(self) -> CiteResolver:
+        """`by_cite()` and `by_cites()` only (D754). `NO_CITES`, which refuses, when unmet."""
+        ...
 
     def measure(self, n: CarrierNode) -> Box | None: ...
 
