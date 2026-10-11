@@ -8,17 +8,26 @@ written document of one valid `Job` with one key changed, so each test names exa
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
 
 import pytest
+from omniweave_core.canonical import canonical
 from omniweave_core.errors import TargetError
 from omniweave_core.events import traceparent
 from omniweave_core.model.block import Cite
 from omniweave_core.out.brief import BRIEF_SCHEMA, parse_brief
 from omniweave_core.out.gate import GateStatus
-from omniweave_core.out.job import JOB_JSON, JOB_SCHEMA, Job, JobDeterminism
+from omniweave_core.out.job import (
+    JOB_JSON,
+    JOB_MEDIA_TYPE,
+    JOB_SCHEMA,
+    Job,
+    JobDeterminism,
+    job_unit,
+)
 from omniweave_core.out.plan import ManualReason, OutUnit, Plan
 
 REPO = Path(__file__).resolve().parents[4]
@@ -269,3 +278,29 @@ def test_the_committed_schema_requires_every_key_the_document_carries() -> None:
     broken = _with(("plan", "extra"), 1)
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(broken, schema)
+
+
+# ---------------------------------------------------------------------------------------------
+# Ruling 27 (D771): the job document a compile worker is invoked over
+# ---------------------------------------------------------------------------------------------
+
+
+def test_the_job_unit_is_the_synthetic_document_09_prints() -> None:
+    job = _job()
+    data = canonical(job.as_json())
+    digest = hashlib.sha256(data).hexdigest()
+    unit = job_unit(job)
+    assert unit.uri == f"ow-job://handbook/q3-board/{digest}"
+    assert (unit.part, unit.content_sha256, unit.byte_len) == ("", digest, len(data))
+    assert unit.media_type == JOB_MEDIA_TYPE == "application/vnd.omniweave.job+json"
+
+
+def test_a_job_that_differs_anywhere_is_another_unit() -> None:
+    job = _job()
+    later = _job(determinism=JobDeterminism(1_700_000_000_000_000_001))
+    assert job_unit(job) == job_unit(Job.from_json(job.as_json()))
+    crossed = Job.from_json(json.loads(json.dumps(job.as_json(), sort_keys=True)))
+    assert crossed.to_bytes() != job.to_bytes(), "the Brief's sections are not in sorted order"
+    assert job_unit(crossed) == job_unit(job), "a frame's sorted keys are the same record"
+    assert job_unit(later).content_sha256 != job_unit(job).content_sha256
+    assert job_unit(later).uri.rsplit("/", 1)[0] == job_unit(job).uri.rsplit("/", 1)[0]

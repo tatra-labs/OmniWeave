@@ -34,6 +34,13 @@ JobDir half here because it needs no table.
    `assets/` (with `index.json`) in the data plane, and no store row can hold them earlier,
    because `artifact_asset` needs an `artifact_id` and only the seal mints one. The file is written
    to a sibling and renamed over the old one, so a reader never sees half of it.
+
+## Rulings (the ledger's D771)
+
+8. **A compile worker reads the ledger and never writes it.** `FrozenLedger` is the rows of
+   `assets/index.json` over the CAS a worker is handed: `digest()` and `open()` as
+   `SqliteAssetLedger` answers them, and `freeze()` refused, because the worker has no store
+   handle (INV-6) and every asset is frozen before the gate it compiles behind.
 """
 
 from __future__ import annotations
@@ -59,6 +66,8 @@ __all__ = [
     "AssetLedger",
     "AssetLicence",
     "AssetSource",
+    "BlobReader",
+    "FrozenLedger",
     "LedgerRow",
     "ledger_digest",
     "read_index",
@@ -221,3 +230,51 @@ def _bad_index(why: str) -> Never:
         symbol="OW_TARGET_ASSET_UNFROZEN",
         fix=_FIX_FREEZE,
     )
+
+
+class BlobReader(Protocol):
+    """The CAS read by digest: the one method a frozen ledger and an artefact read need, which
+    the store's `BlobStore` and a driver's `io.blobs` both have."""
+
+    def open(self, digest: str) -> BinaryIO: ...
+
+
+class FrozenLedger:
+    """Ruling 8: the frozen rows over a CAS, read-only. The ledger a compile worker hands
+    `lower()`."""
+
+    __slots__ = ("_blobs", "_rows")
+
+    def __init__(self, rows: Iterable[LedgerRow], blobs: BlobReader) -> None:
+        self._rows = tuple(rows)
+        self._blobs = blobs
+
+    @classmethod
+    def of(cls, job_dir: Path, blobs: BlobReader) -> FrozenLedger:
+        """The JobDir's `assets/index.json`, whose rows the gate was decided against."""
+        return cls(read_index(job_dir), blobs)
+
+    def slot(self, sha256: str) -> str:
+        return slot(sha256)
+
+    def freeze(self, src: AssetSource, *, role: str, unit: str) -> LedgerRow:
+        del src
+        raise TargetError(
+            f"lower() asked to freeze a {role} asset for {unit}; a compile reads the ledger "
+            "frozen before its gate, and writes none",
+            symbol="OW_TARGET_ASSET_UNFROZEN",
+            fix=_FIX_FREEZE,
+        )
+
+    def digest(self) -> str:
+        return ledger_digest(self._rows)
+
+    def open(self, slot: str) -> BinaryIO:
+        for row in self._rows:
+            if row.slot == slot:
+                return self._blobs.open(row.sha256)
+        raise TargetError(
+            f"{slot} is not in this compile's ledger",
+            symbol="OW_TARGET_ASSET_UNFROZEN",
+            fix=_FIX_FREEZE,
+        )

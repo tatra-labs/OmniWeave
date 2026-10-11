@@ -72,7 +72,6 @@ that module imports `omniweave_core.out`, so `out` importing it back would be a 
 from __future__ import annotations
 
 import hashlib
-import json
 import shutil
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
@@ -81,7 +80,7 @@ from typing import TYPE_CHECKING, Final
 
 from omniweave_core.errors import TargetError, UsageError
 from omniweave_core.out.cites import verbatim
-from omniweave_core.out.compile import CompileV1
+from omniweave_core.out.compile import CompileV1, artefact
 from omniweave_core.out.gate import GateStatus, exit_code, gate_status
 from omniweave_core.out.job import ILBundle
 from omniweave_core.out.marker import assert_clean
@@ -100,7 +99,6 @@ from omniweave_core.store.artifact import (
     SqliteArtifactStore,
     UnitRow,
 )
-from omniweave_ports import ArtifactKind
 
 if TYPE_CHECKING:
     from omniweave_core.blobs import BlobStore
@@ -109,7 +107,7 @@ if TYPE_CHECKING:
     from omniweave_core.out.cites import CitedBlock, CiteResolver
     from omniweave_core.out.constructs import ConstructTable
     from omniweave_core.store.ledger import SqliteAssetLedger
-    from omniweave_ports import DriverIO, DriverResult
+    from omniweave_ports import DriverIO
 
 __all__ = ["CompileHost", "Compiled", "compile_artifact"]
 
@@ -249,7 +247,7 @@ def compile_artifact(
         return Compiled(status, 0, Sealed(earlier, hit=True), _place(earlier, blobs, output_root))
 
     result = compiler.lower(plan, bundle, ledger, io)
-    body = _artefact(result, io)
+    _, body = artefact(result, io.blobs)
     staged = Path(io.tmpdir) / f"{plan.slug}{host.suffix}"
     staged.write_bytes(body)
     receipt = compiler.postflight(str(staged), plan)
@@ -263,7 +261,7 @@ def compile_artifact(
     retained = freeze(bundle, blobs)
     with staged.open("rb") as handle:
         sha = blobs.put(handle).hex()
-    receipt_bytes = (json.dumps(receipt.as_json(), sort_keys=True, indent=1) + "\n").encode()
+    receipt_bytes = receipt.to_bytes()
     receipt_path = job_dir / "out" / "receipt.json"
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
     receipt_path.write_bytes(receipt_bytes)
@@ -415,22 +413,6 @@ def _span(unit: str, el: str, text: str | None) -> tuple[int, int] | None:
             fix=f"ow out check --stage unit --unit {unit}",
         )
     return int(a), int(b)
-
-
-def _artefact(result: DriverResult, io: DriverIO) -> bytes:
-    """Ruling 6: exactly one `artifact` ref, read from inline bytes or the driver's CAS."""
-    refs = [r for r in result.produced if r.kind == ArtifactKind.ARTIFACT]
-    if len(refs) != 1:
-        raise TargetError(
-            f"lower() returned {len(refs)} artifact refs; a compile produces exactly one",
-            symbol="OW_TARGET_PACKAGE_CORRUPT",
-            fix="report the target: its lower() must return one artifact",
-        )
-    ref = refs[0]
-    if ref.inline is not None:
-        return ref.inline
-    with io.blobs.open((ref.blob or "").removeprefix("cas://")) as handle:
-        return handle.read()
 
 
 def _receipt_agrees(
