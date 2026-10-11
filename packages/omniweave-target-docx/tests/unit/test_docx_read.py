@@ -312,3 +312,23 @@ def test_bytes_that_are_not_a_package_are_corrupt(tmp_path: Path) -> None:
     with pytest.raises(DriverError, match="not a package") as caught:
         _parse_bytes(tmp_path, b"not a zip")
     assert caught.value.cls is FailureClass.CORRUPT_INPUT
+
+
+def test_a_comment_is_an_annotation_block_and_a_manual_regions_text_its_own(
+    tmp_path: Path,
+) -> None:
+    """D787: the reason in the comment, the region's text in its paragraph, which R2 can hold."""
+    out = lowered(
+        tmp_path,
+        section('<div data-ow-el="u01/e2" data-ow-manual="unverifiable_data">a chart</div>'),
+    )
+    blocks = _blocks(_read(out, tmp_path))
+    [comment] = [b for b in blocks if b["kind"] == "comment"]
+    assert (comment["layer"], comment["parent"], comment["text"]) == (
+        "annotation",
+        None,
+        "ow:manual unverifiable_data",
+    )
+    assert comment["payload"] == {"author": "omniweave"}
+    region = _by_el(_read(out, tmp_path / "again"))["u01/e2"]
+    assert (region["kind"], region["text"]) == ("paragraph", "a chart")

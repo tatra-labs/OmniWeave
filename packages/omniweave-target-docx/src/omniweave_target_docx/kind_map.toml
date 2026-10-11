@@ -13,6 +13,7 @@ schema = "omniweave.out-kind-map/1"
 "block.h5" = "heading"
 "block.h6" = "heading"
 "block.p" = "paragraph"
+"ow.manual" = "paragraph"               # D787: the region's own text, its reason a comment
 "block.blockquote" = "blockquote"
 "block.pre" = "code"
 "block.hr" = "rule"

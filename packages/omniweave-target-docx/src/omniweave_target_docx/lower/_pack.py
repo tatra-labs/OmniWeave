@@ -122,7 +122,7 @@ def build(
         assets,
         Numbering(document),
         width - int(section.right_margin or 0),
-        notes=Notes(),
+        notes=Notes(_stamp(clock_ns)),
     )
     for n, root in enumerate(roots):
         if n:
@@ -316,13 +316,20 @@ def _document(plan: Plan) -> Document:
             text.style_id = style_id
         else:
             mark = cast("CharacterStyle", styles.add_style(name, WD_STYLE_TYPE.CHARACTER))
-            mark.font.superscript = True
+            mark.font.superscript = name != "annotation reference"
             mark.style_id = style_id
     page = page_of(plan.brief.value("canvas", "format"))
     if page is not None:
         section = document.sections[0]
         section.page_width, section.page_height = PAGES[page]
     return document
+
+
+def _stamp(clock_ns: int) -> str:
+    """The job's clock as a W3C date-time, the form `dcterms` and a comment's `w:date` take."""
+    return dt.datetime.fromtimestamp(clock_ns // 1_000_000_000, tz=dt.UTC).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
 
 
 def _core(document: Document, title: str, clock_ns: int) -> None:

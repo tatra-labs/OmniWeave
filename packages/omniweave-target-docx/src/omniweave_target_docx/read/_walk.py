@@ -34,7 +34,7 @@ from typing import Any, Final
 
 from docx.oxml.ns import qn
 
-__all__ = ["Node", "Notes", "read_body", "read_notes"]
+__all__ = ["Node", "Notes", "read_body", "read_comments", "read_notes"]
 
 _EL: Final = re.compile(r"ow_(u\d{2,})_(e\d+)")
 _HEADING: Final = re.compile(r"Heading([1-9])")
@@ -154,6 +154,20 @@ def read_notes(root: Any | None, kind: str, notes: Notes) -> None:
             first = node.children[0]
             first.text = first.text.removeprefix(" ")
         notes.by_id[kind, note.get(_ID, "")] = node
+
+
+def read_comments(root: Any | None) -> list[Node]:
+    """Every comment, a `comment` block on `Layer.ANNOTATION` (09 section 12.3: comments survive a
+    read and have no authoring construct). Its author is its payload."""
+    if root is None:
+        return []
+    out = []
+    for comment in root.findall(qn("w:comment")):
+        node = Node("comment", layer="annotation", payload={"author": comment.get(qn("w:author"))})
+        for p in comment.findall(_P):
+            node.add(_leaf(p, "paragraph", [])).layer = "annotation"
+        out.append(node)
+    return out
 
 
 def _close(body: _Body) -> None:

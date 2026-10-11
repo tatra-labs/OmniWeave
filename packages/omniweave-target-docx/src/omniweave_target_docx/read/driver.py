@@ -22,6 +22,9 @@ wrote (`_walk`) and emits `owdoc-fragment/1`.
 5. **`sniff()` is "not mine" to every stream.** 09 Q4: the routing policy does not prefer a
    target's own `read_back`, which is reached by name. A guess here would contend with
    `parse.office.anydoc` for every `.docx` a corpus ingests.
+6. **A comment is a `comment` block on `Layer.ANNOTATION`** (D787), after the notes. 09
+   section 12.3: comments round-trip as `Kind.COMMENT` and have no authoring construct. A manual
+   region's reason is one, written by `lower/` as `ow:manual <reason>`.
 """
 
 from __future__ import annotations
@@ -46,7 +49,13 @@ from omniweave_ports import (
     ProbeVerdict,
 )
 
-from omniweave_target_docx.read._walk import Node, Notes, read_body, read_notes
+from omniweave_target_docx.read._walk import (
+    Node,
+    Notes,
+    read_body,
+    read_comments,
+    read_notes,
+)
 
 if TYPE_CHECKING:
     from omniweave_ports.detect import StreamHint
@@ -127,10 +136,11 @@ class DocxReader:
         notes = Notes()
         for kind, name in _NOTES:
             read_notes(_xml(members, name), kind, notes)
+        comments = read_comments(_xml(members, "word/comments.xml"))
         _place(sections, notes, embedded, kinds())
         if io.cancelled():
             raise DriverError(cls=FailureClass.TIMEOUT, message="cancelled", retry_after_ms=0)
-        body = _records(sections, notes)
+        body = _records(sections, notes, comments)
         io.progress(done=len(sections), total=len(sections))
         records = [
             {
@@ -204,12 +214,13 @@ def _place(
                     target.cites = cites.get(el, [])
 
 
-def _records(sections: list[Node], notes: Notes) -> list[dict[str, Any]]:
-    """The body's blocks in order, then the notes; every `tmp` assigned first, so a reference
-    can name a note body defined after it (ruling 3)."""
+def _records(sections: list[Node], notes: Notes, comments: list[Node]) -> list[dict[str, Any]]:
+    """The body's blocks in order, then the notes, then the comments; every `tmp` assigned
+    first, so a reference can name a note body defined after it (ruling 3)."""
     order = [n for root in sections for n in root.walk()]
     note_roots = list(notes.by_id.values())
     order += [n for root in note_roots for n in root.walk()]
+    order += [n for root in comments for n in root.walk()]
     tmps = {id(node): f"b{n}" for n, node in enumerate(order, 1)}
     by_note = {key: tmps[id(node)] for key, node in notes.by_id.items()}
     labels = {key: str(n) for n, key in enumerate(notes.by_id, 1)}
