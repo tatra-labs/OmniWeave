@@ -583,6 +583,11 @@ class SqliteArtifactStore:
         found = self._run("out.lookup", lambda connection: _lookup(connection, key))
         return found if isinstance(found, ArtifactRow) else None
 
+    def latest(self, slug: str) -> int:
+        """The newest sealed generation of `slug`, or 0. `ow out scaffold` proposes one past it."""
+        found = self._run("out.latest", lambda connection: _latest(connection, slug))
+        return found if isinstance(found, int) else 0
+
     def get(self, slug: str, artifact_gen: int) -> ArtifactRow:
         def run(connection: sqlite3.Connection) -> object:
             row = connection.execute(

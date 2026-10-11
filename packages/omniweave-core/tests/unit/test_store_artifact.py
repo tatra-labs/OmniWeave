@@ -355,6 +355,16 @@ def test_a_new_brief_is_a_new_generation(store: SqliteArtifactStore) -> None:
     assert second.row.artifact_gen == 2
 
 
+def test_latest_is_the_newest_sealed_generation_of_a_slug(store: SqliteArtifactStore) -> None:
+    """D764: `ow out scaffold` proposes one past it, and a slug never sealed has 0."""
+    assert store.latest("q3-board") == 0
+    store.seal(draft())
+    assert store.latest("q3-board") == 1
+    store.seal(draft(artifact_gen=2, key=key(brief_digest=d(55))))
+    assert store.latest("q3-board") == 2
+    assert store.latest("q4-board") == 0
+
+
 def test_a_draft_and_a_release_of_one_input_are_two_rows(store: SqliteArtifactStore) -> None:
     store.seal(draft())
     second = store.seal(

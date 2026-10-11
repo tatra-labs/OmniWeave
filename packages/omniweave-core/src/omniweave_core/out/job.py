@@ -1,4 +1,5 @@
-"""The JobDir layout: `ILFile` (**D737**), `ILBundle` (**D744**) and `Job` (**D763**).
+"""The JobDir layout: `ILFile` (**D737**), `ILBundle` (**D744**), `Job` (**D763**) and
+`scaffold()` (**D764**).
 
 09-generation.md section 3.7 prints both here. `ILFile` is one row a file under `il/`, and
 `il_digest` (09 section 4.5) is a function of those rows and of nothing else. `ILBundle` is the
@@ -66,6 +67,32 @@ generation: `il.toml`'s roster checked against the filesystem, every unit parsed
 21. **The embedded `Brief` must digest to `plan.brief_digest`.** `job.json` holds the frozen
     Brief that 13.3's stage diagram freezes, and `brief.md` is its readable copy. A plan
     whose Brief and digest disagree has no single answer to what was commissioned.
+
+## Rulings (the ledger's D764)
+
+22. **`scaffold()` writes the JobDir 02 section 5 row 2 lists:** `job.json`, `brief.md`,
+    `il/il.toml`, `assets/index.json`, `validation/` and `out/`. It stages the whole
+    directory beside its final name and renames it in, so a JobDir either exists whole or
+    not at all. A failure removes the staged copy, and an existing JobDir or staged copy
+    is `OW_TARGET_JOB_EXISTS` (`OW-T-520`), because a scaffold never writes over one.
+23. **The path is `<cache_root>/jobs/<run_id>/<slug>@<gen>/`** (09 section 5.4). The
+    slug becomes a directory name and `artifact.slug`, so it must be lower-case letters,
+    digits and hyphens, 1 to 64 long (`OW_TARGET_SLUG_INVALID`, `OW-T-519`), the shape
+    of 09's `q3-board`. The plan gives the slug no grammar.
+24. **The commissioned roster is the Brief's `## rhythm` rows**, in numeric id order, each
+    with its anchor. 09 section 3.2 writes `plan.units` "from the Brief's unit count",
+    13.1's second scoping question is that count, and `## rhythm` is the one section
+    keyed by unit. A rhythm with no row commissions nothing and is
+    `OW_TARGET_BRIEF_INVALID`. A unit's file is `il/<id>.<carrier>`.
+25. **`il/il.toml` starts with no `[[unit]]` row.** Section 3.2 has the authoring agent edit
+    it "as units are added", and the early stage checks "every unit authored so far". A
+    row with no file is `OW-T-507`, so a scaffold that wrote every row would fail every
+    check until the last unit was written.
+26. **The scaffolded `Plan` says what a scaffold knows.** `gate_status` is `not-provided`,
+    `cites` is empty and `delivery` is `release`. `il_digest` is the scaffolded `il/`
+    (`il.toml` alone), `ledger_digest` is the empty ledger's, and `toolchain_digest` is
+    `None`: a Toolchain's digest is resolved when it is installed, not when a job is
+    named. A check and a compile replace what they compute.
 """
 
 from __future__ import annotations
@@ -74,12 +101,13 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import tomllib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Final, Literal, Never
+from typing import TYPE_CHECKING, Any, Final, Literal, Never
 
 from omniweave_core.errors import ResourceLimit, TargetError
 from omniweave_core.events import TRACEPARENT_RE
@@ -90,11 +118,17 @@ from omniweave_core.out.carrier import CarrierDoc, CarrierParseError, ParseError
 from omniweave_core.out.carrier.tree import Node
 from omniweave_core.out.constructs import ConstructTable, Disposition, RoundTrip
 from omniweave_core.out.gate import GateStatus
+from omniweave_core.out.ledger import ledger_digest, write_index
 from omniweave_core.out.manual import ManualRegion, manual_regions
-from omniweave_core.out.plan import ManualReason, OutUnit, Plan
+from omniweave_core.out.plan import PLAN_SCHEMA, ManualReason, OutUnit, Plan
+
+if TYPE_CHECKING:
+    from omniweave_core.out.card import CompileCard
 
 __all__ = [
+    "BRIEF_MD",
     "IL_SCHEMA",
+    "JOBS_DIR",
     "JOB_JSON",
     "JOB_SCHEMA",
     "UNPARSED_HEX",
@@ -104,7 +138,9 @@ __all__ = [
     "Job",
     "JobDeterminism",
     "elided",
+    "job_path",
     "read_il_files",
+    "scaffold",
 ]
 
 UNREADABLE: Final = "unreadable"
@@ -711,3 +747,120 @@ def _optional_integer(row: Mapping[str, Any], key: str, where: str) -> int | Non
 
 def _job_invalid(msg: str) -> Never:
     raise TargetError(f"{JOB_JSON}: {msg}", symbol="OW_TARGET_JOB_INVALID", fix=_JOB_FIX)
+
+
+# ---------------------------------------------------------------------------------------------
+# The scaffold: one JobDir, written whole (D764)
+# ---------------------------------------------------------------------------------------------
+
+BRIEF_MD: Final = "brief.md"
+JOBS_DIR: Final = "jobs"
+_SLUG: Final = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
+_RUN_ID: Final = re.compile(r"r_[0-9A-HJKMNP-TV-Z]{26}")
+
+
+def job_path(cache_root: Path, run_id: str, slug: str, artifact_gen: int) -> Path:
+    """`<cache_root>/jobs/<run_id>/<artifact_slug>@<gen>/` (09 section 5.4; ruling 23)."""
+    if _RUN_ID.fullmatch(run_id) is None:
+        raise ValueError(f"run id {run_id!r} is not r_ and 26 Crockford base32 characters")
+    _slug(slug)
+    if artifact_gen < 1:
+        raise ValueError(f"artifact_gen {artifact_gen} is below 1")
+    return cache_root / JOBS_DIR / run_id / f"{slug}@{artifact_gen}"
+
+
+def scaffold(
+    job_dir: Path,
+    *,
+    card: CompileCard,
+    card_sha256: str,
+    table: ConstructTable,
+    brief_text: str,
+    brief: Brief,
+    slug: str,
+    artifact_gen: int,
+    corpus: str,
+    traceparent: str,
+    clock_ns: int,
+) -> Job:
+    """Rulings 22-26: the JobDir `ow out scaffold` writes, staged beside it and renamed in."""
+    from omniweave_core.out.report import il_digest  # noqa: PLC0415 -- report imports this module
+
+    _slug(slug)
+    units = _commissioned(brief, card.carrier)
+    staged = job_dir.with_name(job_dir.name + ".tmp")
+    for path in (job_dir, staged):
+        if path.exists():
+            raise TargetError(
+                f"{path} exists; a scaffold never writes over a JobDir",
+                symbol="OW_TARGET_JOB_EXISTS",
+                fix=f"ow out scaffold {card.target} --slug {slug}   # a fresh run id",
+            )
+    #  Every digest before the first write: none of them is inside the cleanup's `except`
+    #  (G8's `omniweave-no-bare-except-around-identity`). `il/` holds `il.toml` alone, so its
+    #  `il_digest` is that file's row, the one `read_il_files()` would record.
+    il_toml = (
+        f'schema = "{IL_SCHEMA}"\nil = "{table.il}"\nconstructs_digest = "{table.digest()}"\n'
+    ).encode()
+    scaffolded = ILFile(IL_TOML, hashlib.sha256(il_toml).hexdigest(), len(il_toml))
+    job = Job(
+        schema=JOB_SCHEMA,
+        plan=Plan(
+            schema=PLAN_SCHEMA,
+            target=card.target,
+            slug=slug,
+            artifact_gen=artifact_gen,
+            delivery="release",
+            units=units,
+            unit_count=len(units),
+            brief=brief,
+            corpus=corpus,
+            cites=MappingProxyType({}),
+            gate_status=GateStatus.NOT_PROVIDED,
+            il_digest=il_digest((scaffolded,)),
+            constructs_digest=table.digest(),
+            ledger_digest=ledger_digest(()),
+            brief_digest=brief.digest(),
+            card_sha256=card_sha256,
+            toolchain_digest=None,
+        ),
+        traceparent=traceparent,
+        determinism=JobDeterminism(clock_ns),
+    )
+    job_dir.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        for part in ("il", "validation", "out"):
+            (staged / part).mkdir(parents=True)
+        (staged / BRIEF_MD).write_bytes(brief_text.encode("utf-8"))
+        (staged / "il" / IL_TOML).write_bytes(il_toml)
+        write_index(staged, ())
+        job.write(staged)
+        staged.rename(job_dir)
+    except BaseException:
+        shutil.rmtree(staged, ignore_errors=True)
+        raise
+    return job
+
+
+def _commissioned(brief: Brief, carrier: str) -> tuple[OutUnit, ...]:
+    """Ruling 24: one unit a `## rhythm` row, in numeric id order, each with its anchor."""
+    ids = sorted(brief.rhythm(), key=lambda unit: int(unit[1:]))
+    if not ids:
+        raise TargetError(
+            f"{BRIEF_MD}: ## rhythm commissions no unit; the unit count is its rows",
+            symbol="OW_TARGET_BRIEF_INVALID",
+            fix="add one `- u01: { anchor: cover }` row a unit under ## rhythm",
+        )
+    return tuple(
+        OutUnit(id=unit, ord=n, il_path=f"il/{unit}.{carrier}", anchor=brief.anchor(unit))
+        for n, unit in enumerate(ids, start=1)
+    )
+
+
+def _slug(slug: str) -> None:
+    if _SLUG.fullmatch(slug) is None:
+        raise TargetError(
+            f"slug {slug!r} is not lower-case letters, digits and hyphens, 1 to 64 long",
+            symbol="OW_TARGET_SLUG_INVALID",
+            fix="ow out scaffold <target> --slug q3-board",
+        )
