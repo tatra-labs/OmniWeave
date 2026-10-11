@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
 from omniweave_core.errors import ResourceLimit, TargetError
@@ -430,3 +431,31 @@ def test_a_random_batch_leaves_the_file_parseable_or_unchanged() -> None:
             outcomes["refused"] += 1
         assert doc.source() == SVG
     assert min(outcomes.values()) >= 50, outcomes  # both branches, measured at 75 and 925
+
+
+@pytest.mark.parametrize(
+    ("parse", "text", "tag"),
+    [
+        (
+            lambda t: html_carrier("il/u01.html", t, strict=True),
+            '<p b="2" a="1">x <em>y</em> z</p>',
+            "html|em",
+        ),
+        (
+            lambda t: svg_carrier("il/u01.svg", t, strict=True),
+            '<svg xmlns="http://www.w3.org/2000/svg" b="2" a="1">x <g>y</g> z</svg>',
+            "svg|g",
+        ),
+    ],
+)
+def test_a_node_lists_its_attributes_and_its_contents_in_order(
+    parse: Any, text: str, tag: str
+) -> None:
+    """D781's `attrs()` and D782's `contents()`, on both carriers: source order, and the text
+    between elements kept where it stands."""
+    root = parse(text).root()
+    assert [k for k in root.attrs() if k in {"a", "b"}] == ["b", "a"]
+    before, element, after = root.contents()
+    assert (before, after) == ("x ", " z")
+    assert not isinstance(element, str)
+    assert (element.tag, element.text_content()) == (tag, "y")

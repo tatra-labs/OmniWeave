@@ -1106,6 +1106,16 @@ meaning = "a construct the target's ConstructTable declares forbidden, with no m
 fix     = "ow out constructs <target> --construct <id>"
 sites   = ["09-generation.md:2324"]
 
+# ── D782. The docx target's lowering (09-generation.md section 12.3).
+
+[[code]]
+numeric = "OW-T-528"
+symbol  = "OW_TARGET_ASSET_FORMAT"
+meaning = "a frozen asset whose bytes the target cannot hold: for docx, a picture that is not PNG, JPEG, GIF, BMP or TIFF; refused by preflight before a byte is written (D782)"
+fix     = "ow out assets --slot <slot>   # then freeze the picture in a format the target holds"
+raised_by = "TargetError"
+sites   = ["09-generation.md:2330"]
+
 # ── W1.5, the driver card grammar (04-driver-system.md sections 2.1-2.8, 4.5, 5.3, 7.5). The
 # three discovery-point refusals of section 5.3 step 1, plus the two numerics the plan already
 # binds. `meaning` and `fix` are FILLED here rather than deferred to W1.3: these five are raised

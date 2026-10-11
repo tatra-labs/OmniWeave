@@ -1,8 +1,8 @@
 # compile.docx.native — the flow target (09-generation.md section 12.3; 16-roadmap.md W9.4).
 # "The honest test that the abstraction is not one implementation wearing an interface": a flow
 # carrier, no canvas, no z-order, no bake. D781 builds its table, carrier and rules, so
-# `ow out check` gates owflow/1; lowering to WordprocessingML follows, and until it lands the
-# card says implemented = false and why.
+# `ow out check` gates owflow/1; D782 lowers it to WordprocessingML, all but notes and embedded
+# citations, and until those land the card says implemented = false and why.
 card_schema = 1
 
 [driver]
@@ -43,7 +43,7 @@ max_units = 64
 agent_doc_tokens_max = 3000                # 2,376 cl100k_base tokens at D781: 29 a row
 media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 suffix = ".docx"
-reason = "owflow/1's table, carrier and rules are built and ow out check gates them, but lower() to WordprocessingML is not yet written"
+reason = "lower() writes every owflow/1 construct but notes and embedded citations, which preflight refuses as unmapped until they are lowered"
 
 [compile.round_trip]
 read_back = "parse.docx.native"

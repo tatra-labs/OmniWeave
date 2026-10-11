@@ -13,7 +13,6 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from importlib.metadata import entry_points
 from pathlib import Path
-from typing import Any
 
 import pytest
 from omniweave_core.drivers.card import DriverCard, load_card
@@ -184,7 +183,7 @@ def test_the_card_is_the_flow_target_section_12_3_prints() -> None:
 def test_the_card_says_not_implemented_and_why_and_names_its_table() -> None:
     assert not COMPILED.implemented
     assert COMPILED.reason == REASON
-    assert "lower()" in REASON
+    assert "notes and embedded citations" in REASON
     assert COMPILED.constructs_digest == TABLE.digest()
     assert COMPILED.agent_doc_tokens_max > 0
 
@@ -292,17 +291,10 @@ def test_the_compiler_is_a_compile_v1_whose_probe_names_the_reason() -> None:
     assert REASON in verdict.detail
 
 
-@pytest.mark.parametrize(
-    "call",
-    [
-        lambda c: c.lower(None, None, None, None),
-        lambda c: c.postflight("x.docx", None),
-        lambda c: c.project(None, None),
-    ],
-)
-def test_the_compile_is_refused_with_the_cards_reason(call: Callable[[Any], object]) -> None:
+def test_project_is_refused_with_the_cards_reason() -> None:
+    """D782 lowers and post-flights; no Doc-to-owflow/1 projection is built."""
     with pytest.raises(TargetError, match="implemented = false") as caught:
-        call(DocxCompiler())
+        DocxCompiler().project(None, None)  # type: ignore[arg-type]
     assert caught.value.code() == "OW_TARGET_NOT_IMPLEMENTED"
 
 
