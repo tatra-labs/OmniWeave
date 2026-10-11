@@ -92,6 +92,10 @@ that module imports `omniweave_core.out`, so `out` importing it back would be a 
     A scaffolded Plan carries the scaffold's `il_digest` and an empty ledger's digest (`out.job`
     ruling 26), so `plan_of()` puts in the bundle's, the table's and the ledger's, and the
     delivery `--accept-manual` asks for. Ruling 2 still holds a Plan a caller computed itself.
+17. **D775: the Brief is retained beside the IL, before the seal.** `out.retain.freeze_brief()`
+    puts the Plan's Brief into CAS as `brief_digest`'s preimage, so the row's `brief_digest`
+    names the Brief this compile read. A lookup hit retains nothing: the compile it reuses
+    already did.
 """
 
 from __future__ import annotations
@@ -118,7 +122,7 @@ from omniweave_core.out.marker import assert_clean
 from omniweave_core.out.plan import Classified, OutUnit, Plan, classify_and_assert
 from omniweave_core.out.receipt import Receipt
 from omniweave_core.out.report import OutReport, parse_digest, report_path
-from omniweave_core.out.retain import freeze
+from omniweave_core.out.retain import freeze, freeze_brief
 from omniweave_core.store.artifact import (
     CITE_KINDS,
     ArtifactDraft,
@@ -304,6 +308,7 @@ def compile_artifact(
     _receipt_agrees(receipt, plan, body, classified, status)
 
     retained = freeze(bundle, blobs)
+    freeze_brief(plan.brief, blobs)
     sha = blobs.put(BytesIO(body)).hex()
     receipt_bytes = receipt.to_bytes()
     receipt_path = job_dir / "out" / "receipt.json"

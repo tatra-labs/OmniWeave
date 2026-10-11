@@ -28,6 +28,15 @@ only `## section` headings and `- key: value` rows, with `## forbidden` holding 
 7. **`digest()` is over the parsed Brief**, `sha256:` and `sha256_canonical` of its sections and
    rules. A blank line or a CRLF checkout does not move `brief_digest`, one of the six purity
    inputs, and every value does.
+
+## Rulings (the ledger's D775)
+
+8. **`record()` is `brief_digest`'s preimage, and `from_record()` reads it back.** A compile
+   retains the canonical bytes of `record()` in CAS, where their digest is `brief_digest` itself,
+   as the IL bundle's manifest is `il_digest`'s (D752). `from_record()` is closed at every level.
+   The record keeps every value and loses the file's order, which nothing reads: the roster is
+   numeric (D764) and the digest sorts. `Template.units` of `None` and of `()` share one record,
+   as they share one digest, and read back as `None`, meaning every unit.
 """
 
 from __future__ import annotations
@@ -35,7 +44,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Final, Literal, Never
+from typing import Any, Final, Literal, Never
 
 from omniweave_core.canonical import sha256_canonical
 from omniweave_core.errors import TargetError
@@ -125,17 +134,63 @@ class Brief:
         """`OutUnit.anchor`: the unit's rhythm anchor, or `""` when the Brief declared none."""
         return self.rhythm().get(unit, {}).get("anchor", "")
 
+    def record(self) -> dict[str, Any]:
+        """Ruling 8: the object `digest()` hashes, `brief_digest`'s preimage (D775)."""
+        return {
+            "sections": {name: dict(rows) for name, rows in self.sections.items()},
+            "forbidden": [[p.tier, p.text] for p in self.forbidden],
+            "template": None
+            if self.template is None
+            else {"ref": self.template.ref, "units": list(self.template.units or ())},
+        }
+
     def digest(self) -> str:
         """Ruling 7: `brief_digest`."""
-        return "sha256:" + sha256_canonical(
-            {
-                "sections": {name: dict(rows) for name, rows in self.sections.items()},
-                "forbidden": [[p.tier, p.text] for p in self.forbidden],
-                "template": None
-                if self.template is None
-                else {"ref": self.template.ref, "units": list(self.template.units or ())},
-            }
+        return "sha256:" + sha256_canonical(self.record())
+
+    @classmethod
+    def from_record(cls, raw: object) -> Brief:
+        """Ruling 8: `record()` read back, closed at every level; `ValueError` otherwise."""
+        top = _closed(raw, "brief", frozenset({"sections", "forbidden", "template"}))
+        sections = top["sections"]
+        if not isinstance(sections, dict) or not all(
+            isinstance(name, str)
+            and isinstance(rows, dict)
+            and all(isinstance(k, str) and isinstance(v, str) for k, v in rows.items())
+            for name, rows in sections.items()
+        ):
+            raise ValueError("brief.sections is not an object of string-to-string objects")
+        forbidden = top["forbidden"]
+        if not isinstance(forbidden, list) or not all(
+            isinstance(row, list)
+            and len(row) == 2  # noqa: PLR2004 -- a [tier, text] pair
+            and row[0] in {"baseline", "user"}
+            and isinstance(row[1], str)
+            for row in forbidden
+        ):
+            raise ValueError("brief.forbidden is not a list of [baseline|user, text] pairs")
+        raw_template = top["template"]
+        template = None
+        if raw_template is not None:
+            row = _closed(raw_template, "brief.template", frozenset({"ref", "units"}))
+            units = row["units"]
+            if not isinstance(row["ref"], str) or not (
+                isinstance(units, list) and all(isinstance(u, str) for u in units)
+            ):
+                raise ValueError("brief.template is not a ref and a list of unit ids")
+            template = Template(ref=row["ref"], units=tuple(units) or None)
+        return cls(
+            sections={name: dict(rows) for name, rows in sections.items()},
+            forbidden=tuple(Prohibition(text=text, tier=tier) for tier, text in forbidden),
+            template=template,
         )
+
+
+def _closed(raw: object, where: str, keys: frozenset[str]) -> dict[str, Any]:
+    if not isinstance(raw, dict) or set(raw) != keys:
+        got = sorted(raw) if isinstance(raw, dict) else type(raw).__name__
+        raise ValueError(f"{where} has {got}, not {sorted(keys)}")
+    return raw
 
 
 def baseline_rows(table: ConstructTable) -> tuple[str, ...]:

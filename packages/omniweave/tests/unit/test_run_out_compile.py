@@ -469,6 +469,18 @@ def test_a_passed_gate_compiles_seals_and_places_the_artefact(world: World) -> N
     ]
 
 
+def test_the_sealed_rows_brief_digest_names_the_retained_brief(world: World) -> None:
+    """Ruling 17 (D775): the Brief the compile read is in CAS under the row's `brief_digest`."""
+    from omniweave_core.out.retain import fetch_brief  # noqa: PLC0415
+
+    target = _Text()
+    done = world.compile(target, world.plan(world.checked(target)))
+    assert done.sealed is not None
+    digest = done.sealed.row.brief_digest
+    assert digest == BRIEF.digest()
+    assert fetch_brief(digest, world.blobs).record() == BRIEF.record()
+
+
 def test_an_identical_compile_is_the_lookup_and_lowers_nothing(world: World) -> None:
     """OUT12: the second compile is the first one's row, and its bytes are placed again."""
     target = _Text()

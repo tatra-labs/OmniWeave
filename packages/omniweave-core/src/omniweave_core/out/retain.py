@@ -34,12 +34,25 @@ half and runs before the seal, which stores what it returns. `fetch()` is the ed
    the fix.
 6. **A fetch writes into a new directory only.** An existing destination is refused, so a
    retained bundle is never merged into a working one.
+
+## Rulings (the ledger's D775)
+
+7. **The Brief is retained beside the IL, as its digest's preimage.** `freeze_brief()` puts the
+   canonical bytes of `Brief.record()` into CAS, so `artifact.brief_digest` names the object
+   and no column is added, as `il_store_ref` is `il_digest`'s. 09 makes `brief_digest` a purity
+   input, and a recompile from the artefact (R1) or an edit of it (`ow out back`) needs the Brief
+   the compile read, which the JobDir alone held until now.
+8. **A fetched Brief is verified before it is returned.** The object is read bounded by
+   `MAX_IL_FILE_BYTES`, hashed against the digest, parsed as JSON and read back closed
+   (`Brief.from_record`). A missing object, other bytes, or a record that does not read back is
+   `StoreError`, with `ow store fsck --cas` as the fix.
 """
 
 from __future__ import annotations
 
 import hashlib
 import io
+import json
 import re
 import shutil
 from dataclasses import dataclass
@@ -47,8 +60,10 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, BinaryIO, Final
 
 from omniweave_core.blobs import format_ref, parse_ref
+from omniweave_core.canonical import canonical
 from omniweave_core.errors import StoreError, TargetError, UsageError
 from omniweave_core.limits import MAX_IL_FILE_BYTES
+from omniweave_core.out.brief import Brief
 from omniweave_core.out.job import ILFile, read_il_files
 
 if TYPE_CHECKING:
@@ -57,7 +72,7 @@ if TYPE_CHECKING:
     from omniweave_core.blobs import BlobStore
     from omniweave_core.out.job import ILBundle
 
-__all__ = ["Retained", "fetch", "freeze", "manifest"]
+__all__ = ["Retained", "fetch", "fetch_brief", "freeze", "freeze_brief", "manifest"]
 
 _CHUNK: Final = 1 << 16
 _FIX_FSCK: Final = "ow store fsck --cas"
@@ -136,6 +151,37 @@ def fetch(il_store_ref: str, blobs: BlobStore, dest: Path) -> tuple[ILFile, ...]
         shutil.rmtree(dest, ignore_errors=True)
         raise
     return read_il_files(dest)
+
+
+def freeze_brief(brief: Brief, blobs: BlobStore) -> str:
+    """Ruling 7: the Brief's record into CAS, named by `brief_digest`. Returns its `cas://` ref."""
+    digest = blobs.put(io.BytesIO(canonical(brief.record())))
+    if "sha256:" + digest.hex() != brief.digest():  # pragma: no cover -- ruling 7's identity.
+        raise StoreError("the record is not brief_digest's preimage", fix="report this as a bug")
+    return format_ref(digest)
+
+
+def fetch_brief(brief_digest: str, blobs: BlobStore) -> Brief:
+    """Ruling 8: the retained Brief, hashed and read back before it is returned."""
+    hexdigest = brief_digest.removeprefix("sha256:")
+    if _HEX64.fullmatch(hexdigest) is None:
+        raise UsageError(
+            f"{brief_digest!r} is not sha256:<64 lower-case hex>", fix="ow out list --render json"
+        )
+    with blobs.open(hexdigest) as handle:
+        body = handle.read(MAX_IL_FILE_BYTES + 1)
+    if len(body) > MAX_IL_FILE_BYTES:
+        raise _brief_corrupt(brief_digest, f"it runs past {MAX_IL_FILE_BYTES} bytes")
+    if hashlib.sha256(body).hexdigest() != hexdigest:
+        raise _brief_corrupt(brief_digest, "its bytes do not hash to its name")
+    try:
+        return Brief.from_record(json.loads(body))
+    except ValueError as exc:
+        raise _brief_corrupt(brief_digest, f"it does not read back: {exc}") from exc
+
+
+def _brief_corrupt(digest: str, why: str) -> StoreError:
+    return StoreError(f"retained Brief {digest}: {why}", fix=_FIX_FSCK)
 
 
 def _rows(body: bytes, ref: str) -> list[tuple[str, str]]:
