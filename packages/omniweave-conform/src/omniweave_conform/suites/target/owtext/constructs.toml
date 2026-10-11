@@ -1,0 +1,112 @@
+# constructs.toml — THE IL CONTRACT AS DATA. TEN ROWS. ONE KEY PER LINE.
+# owtext/1, the reference target's IL (18-api-sketch.md section 6.2, 09-generation.md section 12.5).
+schema = "omniweave.out-constructs/1"
+carrier = "html"
+il = "owtext/1"
+version = 1
+unknown_construct = "forbidden"        # FAIL CLOSED. NOT CONFIGURABLE.
+ignore = ["html|head", "html|meta"]    # the sketch prints `html:head`; the grammar is `ns|local`
+# `code` holds the SYMBOL, never the numeric: this file is DATA read by the validator, the
+# compiler, the doc generator and the kit, and the symbol is the stored form. The numeric
+# OW-T-nnn is resolved from codes.toml at RENDER time.
+# `since` is MANDATORY and MONOTONE: it is what makes `ow out back`'s contract delta computable.
+
+[[construct]]                          # ── the three MANDATORY rows every ConstructTable carries
+id = "attr.ow-cite"
+selector = "@data-ow-cite"
+disposition = "native"
+round_trip = "exact"
+canonical = "a space-separated list of cite tokens"
+maps_to = "lower.cites:sidecar"
+code = "OW_TARGET_CITE_MALFORMED"
+since = "0.1.0"
+
+[[construct]]
+id = "attr.ow-el"
+selector = "@data-ow-el"
+disposition = "native"
+round_trip = "exact"
+canonical = "u<NN>e<NN>, minted once, unique per artefact"
+maps_to = "lower.ids:passthrough"
+code = "OW_TARGET_EL_DUPLICATE"
+since = "0.1.0"
+
+[[construct]]
+id = "elem.ow-manual"
+selector = "html|div[data-ow-manual]"
+disposition = "native"
+round_trip = "exact"
+canonical = "a ManualReason member as the attribute value"
+maps_to = "lower.manual:placeholder"
+code = "OW_TARGET_MANUAL_REASON_UNKNOWN"
+since = "0.1.0"
+
+[[construct]]                          # ── the unit and its content
+id = "elem.section"
+selector = "html|section"
+disposition = "native"
+round_trip = "exact"
+canonical = "one <section data-ow-unit> per output unit"
+maps_to = "lower.units:section"
+code = "OW_TARGET_UNIT_MALFORMED"
+since = "0.1.0"
+
+[[construct]]
+id = "elem.p"
+selector = "html|p"
+disposition = "native"
+round_trip = "exact"
+canonical = "block text, NFC-normalised, no nested block elements"
+maps_to = "lower.text:paragraph"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]                          # ── native, but INVALID IN ONE CONTEXT: forbidden_when
+id = "attr.id"
+selector = "@id"
+disposition = "native"
+forbidden_when = "html|style"          # an `id` is fine until a <style> block exists
+round_trip = "exact"
+canonical = "unique within the unit, lower-case ASCII"
+maps_to = "lower.ids:anchor"
+code = "OW_TARGET_ID_WITH_STYLE"
+since = "0.1.0"
+
+[[construct]]
+id = "attr.class"
+selector = "@class"
+disposition = "native"
+round_trip = "exact"
+canonical = "lower-case ASCII"
+maps_to = "lower.text:classes"
+code = "OW_TARGET_CLASS_INVALID"
+since = "0.1.0"
+
+[[construct]]                          # ── normalize: ONE documented alias, ONE deterministic fix
+id = "attr.class.upper"
+normalizes_to = "attr.class"
+disposition = "normalize"
+normalizer = "lower_ascii"             # a pure function in normalizers.py
+round_trip = "normalized"
+code = "OW_TARGET_CLASS_NOT_LOWER"
+severity = "warning"                   # a normalize row is a WARNING, NEVER an error
+canonical = "lower-case ASCII class names"
+since = "0.1.0"
+
+[[construct]]                          # ── forbidden, unconditionally
+id = "elem.script"
+selector = "html|script"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_SCRIPT_FORBIDDEN"
+msg = "executable content in an authored artefact; no text mapping exists"
+since = "0.1.0"
+
+[[construct]]                          # ── bake, against bake = "unavailable" => a REFUSAL
+id = "style.text-shadow"
+selector = "@style|text-shadow"
+disposition = "bake"
+bake = { renderer = "raster", dpi = 192, role = "bake" }
+round_trip = "lossy"
+code = "OW_TARGET_SHADOW_REQUIRES_BAKE"
+since = "0.1.0"
