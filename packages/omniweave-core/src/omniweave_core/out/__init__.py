@@ -37,6 +37,8 @@ at every level, which closes 09 Q11. `schema/job-v1.json` is generated from it.
 D764 adds `scaffold()` and `job_path()` to `job`: one JobDir, written whole.
 D767 builds `stamp`: `data-ow-el` minted once on every citable, text-bearing element, under
 `il/.stamp.lock`, all units or none. It is imported module-qualified.
+D768 builds `normalize`: each `normalize` row's normalizer applied through the splice, all
+units or none; `host.activate.normalizers()` loads the target's `normalizers.py`.
 """
 
 from omniweave_core.out.brief import Brief, Prohibition, baseline_rows, parse_brief

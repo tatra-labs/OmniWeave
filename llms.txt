@@ -292,6 +292,9 @@ cli.out.check.actions: out.check
 cli.out.constructs: ow out constructs TARGET [--format FORMAT] [--group GROUP] [--construct
   CONSTRUCT]
 cli.out.constructs.actions: out.constructs
+cli.out.normalize: ow out normalize [--stage STAGE] [--unit UNIT] [--construct CONSTRUCT] [--job
+  JOB]
+cli.out.normalize.actions: out.normalize
 cli.out.scaffold: ow out scaffold TARGET [--brief BRIEF] [--slug SLUG]
 cli.out.scaffold.actions: out.scaffold
 cli.out.stamp: ow out stamp [--job JOB]

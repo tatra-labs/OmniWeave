@@ -35,6 +35,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     open              OpenIn              Answer
     out.check         CheckIn             OutCheckReport
     out.constructs    ConstructsIn        ConstructsReport
+    out.normalize     NormalizeIn         NormalizeReport
     out.scaffold      ScaffoldIn          ScaffoldReport
     out.stamp         StampIn             StampReport
     out.targets       TargetsIn           TargetsReport

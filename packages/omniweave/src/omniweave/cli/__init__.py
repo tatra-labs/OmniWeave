@@ -109,7 +109,7 @@ GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
     "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
     "hooks": "check",
-    "out": "check · constructs · scaffold · stamp · targets",
+    "out": "check · constructs · normalize · scaffold · stamp · targets",
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
 }
@@ -583,6 +583,32 @@ COMMANDS: Final[tuple[Command, ...]] = (
             Argument(
                 spelling=("--construct",),
                 metavar="CONSTRUCT",
+            ),
+        ),
+    ),
+    Command(
+        words=("out", "normalize"),
+        actions=("out.normalize",),
+        help=(
+            "Apply each normalize row's normalizer to the IL values it selects, through the "
+            "transactional splice, all units or none"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--stage",),
+                metavar="STAGE",
+            ),
+            Argument(
+                spelling=("--unit",),
+                metavar="UNIT",
+            ),
+            Argument(
+                spelling=("--construct",),
+                metavar="CONSTRUCT",
+            ),
+            Argument(
+                spelling=("--job",),
+                metavar="JOB",
             ),
         ),
     ),

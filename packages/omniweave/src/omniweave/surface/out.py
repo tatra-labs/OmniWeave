@@ -1,5 +1,5 @@
 """`ow out <verb>`: the OUT verbs this build dispatches: `targets` (D761), `constructs` (D762),
-`scaffold` (D765), `check` (D766) and `stamp` (D767).
+`scaffold` (D765), `check` (D766), `stamp` (D767) and `normalize` (D768).
 
 09-generation.md section 1 (`omniweave.targets` exists "so `ow out targets` can list an artefact
 kind without resolving a driver"), section 12.4 ("`ow out targets` prints the target, the flag and
@@ -22,9 +22,9 @@ documentation", with `--group` and `--construct` selecting from it.
    command that names each one, the way `doctor`'s D-08 reports the same faults.
 4. **Refused by name, exit 1:** `--quiet`, because neither verb declares a scalar, and
    `--render jsonl|rows`, which have no writer here (the `explain` precedent).
-5. **Only `targets`, `constructs`, `scaffold`, `check` and `stamp` are served.** The other
-   seven `out` verbs are rostered without an Action, so the generated tree never parses them
-   and this module never sees them.
+5. **Only `targets`, `constructs`, `scaffold`, `check`, `stamp` and `normalize` are served.**
+   The other six `out` verbs are rostered without an Action, so the generated tree never
+   parses them and this module never sees them.
 6. **`constructs` documents the one card that declares the target**, found as `targets` finds
    cards, whether or not `[targets] enabled` lists it: documentation is how an agent learns a
    target before anyone enables it. No card is `OW_TARGET_UNKNOWN` (exit 2), naming the kinds
@@ -65,6 +65,11 @@ documentation", with `--group` and `--construct` selecting from it.
     own carrier, so the stamped text is reparsed by the parser the check uses. It exits 0
     whether or not it minted anything (09 section 15). Its text form ends with the re-check
     command, because a stamp moves `il_digest` and leaves any standing report `stale`.
+14. **`normalize` is `out.normalize.normalize()` over a JobDir** with the target's carrier
+    and its own normalizers, loaded by `host.activate.normalizers()`. `--unit` and
+    `--construct` narrow it; 09's positional IL path is the `--unit` option, because a
+    positional cannot be optional in the generated grammar. It exits 0 whether or not it
+    changed anything, and ends with the re-check command.
 """
 
 from __future__ import annotations
@@ -81,6 +86,8 @@ from omniweave.sdk.reports import (
     ConstructBake,
     ConstructListing,
     ConstructsReport,
+    NormalizedRow,
+    NormalizeReport,
     OutCheckReport,
     ScaffoldReport,
     ScaffoldUnit,
@@ -108,6 +115,7 @@ __all__ = [
     "check_report",
     "constructs_report",
     "main",
+    "normalize_report",
     "scaffold_report",
     "stamp_report",
     "targets_report",
@@ -116,6 +124,7 @@ __all__ = [
 OUT_WORD: Final[str] = "out"
 _SCAFFOLD_FIX: Final[str] = "ow out scaffold <target> --brief brief.md --slug q3-board"
 _STAMP_FIX: Final[str] = "ow out stamp [--job DIR]"
+_NORMALIZE_FIX: Final[str] = "ow out normalize [--stage S] [--unit U] [--construct ID] [--job DIR]"
 _CHECK_FIX: Final[str] = "ow out check --stage early|first-unit|unit|final [--unit U] [--job DIR]"
 _CONSTRUCTS_FIX: Final[str] = (
     "ow out constructs <target> [--format md] [--group G | --construct ID]"
@@ -306,12 +315,49 @@ def _stamp(
     return 0
 
 
+def _normalize(
+    parsed: argparse.Namespace,
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    del stderr
+    from omniweave_core.out.report import STAGES  # noqa: PLC0415 -- only this verb pays
+
+    _refuse_unserved(parsed, verb="ow out normalize", fix=_NORMALIZE_FIX)
+    if parsed.corpus is not None:
+        raise UsageError(
+            "--corpus is not served by ow out normalize: it reads only the JobDir",
+            fix=_NORMALIZE_FIX,
+        )
+    if parsed.stage is not None and parsed.stage not in STAGES:
+        raise UsageError(f"--stage is one of {', '.join(STAGES)}", fix=_NORMALIZE_FIX)
+    built = normalize_report(
+        cwd=cwd,
+        env=env,
+        explicit=_explicit(parsed),
+        job=None if parsed.job is None else Path(str(parsed.job)),
+        stage=parsed.stage,
+        unit=parsed.unit,
+        construct=parsed.construct,
+    )
+    if parsed.render == "json":
+        stdout.write(json.dumps(_normalized(built), ensure_ascii=False) + "\n")
+    else:
+        for line in _normalize_lines(built, parsed.stage):
+            stdout.write(line + "\n")
+    return 0
+
+
 _VERBS: Final[Mapping[str, Callable[..., int]]] = {
     "out.targets": _targets,
     "out.constructs": _constructs,
     "out.scaffold": _scaffold,
     "out.check": _check,
     "out.stamp": _stamp,
+    "out.normalize": _normalize,
 }
 
 
@@ -800,4 +846,68 @@ def _stamp_lines(built: StampReport) -> list[str]:
         f"stamped {minted} address(es) in {len(built.written)} file(s)",
         *(f"  {u.unit}  {' '.join(u.addresses)}" for u in built.units),
         "re-check: ow out check --stage early",
+    ]
+
+
+def normalize_report(
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    explicit: Path | None,
+    job: Path | None,
+    stage: str | None,
+    unit: str | None,
+    construct: str | None,
+) -> NormalizeReport:
+    """Ruling 14: one normalize over one JobDir, with the target's carrier and normalizers."""
+    from omniweave_core import config  # noqa: PLC0415 -- only this verb pays
+    from omniweave_core.host.activate import construct as build  # noqa: PLC0415
+    from omniweave_core.host.activate import normalizers  # noqa: PLC0415
+    from omniweave_core.out.agentdoc import load_table  # noqa: PLC0415
+    from omniweave_core.out.compile import CompileV1  # noqa: PLC0415
+    from omniweave_core.out.job import Job  # noqa: PLC0415
+    from omniweave_core.out.normalize import normalize  # noqa: PLC0415
+
+    job_dir = cwd if job is None else (job if job.is_absolute() else cwd / job)
+    plan = Job.load(job_dir).plan
+    resolved = config.load(cwd=cwd, env=env, explicit=explicit)
+    driver, card = _one_card(_discover(resolved, env).cards, plan.target)
+    table = load_table(Path(driver.source), card)
+    compiler = cast("CompileV1", build(driver, driver.config.effective()))
+    done = normalize(
+        job_dir,
+        carrier=compiler.carrier,
+        constructs=table,
+        normalizers=normalizers(driver),
+        stage=stage,
+        construct=construct,
+        unit=unit,
+    )
+    return NormalizeReport(
+        written=done.written,
+        changed=tuple(
+            NormalizedRow(unit=one, construct=row, count=count)
+            for one, rows in done.changed.items()
+            for row, count in rows.items()
+        ),
+    )
+
+
+def _normalized(built: NormalizeReport) -> dict[str, Any]:
+    return {
+        "written": list(built.written),
+        "changed": [
+            {"unit": r.unit, "construct": r.construct, "count": r.count} for r in built.changed
+        ],
+    }
+
+
+def _normalize_lines(built: NormalizeReport, stage: str | None) -> list[str]:
+    if not built.changed:
+        return ["no value needed normalizing; nothing was written"]
+    total = sum(r.count for r in built.changed)
+    return [
+        f"normalized {total} value(s) in {len(built.written)} file(s)",
+        *(f"  {r.unit}  {r.construct}  x{r.count}" for r in built.changed),
+        f"re-check: ow out check --stage {stage or 'early'}",
     ]
