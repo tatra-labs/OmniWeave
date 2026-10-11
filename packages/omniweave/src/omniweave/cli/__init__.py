@@ -109,7 +109,7 @@ GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
     "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
     "hooks": "check",
-    "out": "check · constructs · scaffold · targets",
+    "out": "check · constructs · scaffold · stamp · targets",
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
 }
@@ -605,6 +605,20 @@ COMMANDS: Final[tuple[Command, ...]] = (
             Argument(
                 spelling=("--slug",),
                 metavar="SLUG",
+            ),
+        ),
+    ),
+    Command(
+        words=("out", "stamp"),
+        actions=("out.stamp",),
+        help=(
+            "Mint a data-ow-el address on every citable, text-bearing IL element that has "
+            "none, never renumbering one, all units or none"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--job",),
+                metavar="JOB",
             ),
         ),
     ),

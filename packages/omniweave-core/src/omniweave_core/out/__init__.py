@@ -34,6 +34,9 @@ its code, and `select()`, `groups()` and `agent_doc()` produce what `ow out cons
 It is imported module-qualified, as `roundtrip` is.
 D763 adds `Job` and `JobDeterminism` to `job`: `job.json`, schema `omniweave.out-job/1`, closed
 at every level, which closes 09 Q11. `schema/job-v1.json` is generated from it.
+D764 adds `scaffold()` and `job_path()` to `job`: one JobDir, written whole.
+D767 builds `stamp`: `data-ow-el` minted once on every citable, text-bearing element, under
+`il/.stamp.lock`, all units or none. It is imported module-qualified.
 """
 
 from omniweave_core.out.brief import Brief, Prohibition, baseline_rows, parse_brief

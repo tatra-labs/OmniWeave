@@ -1,5 +1,5 @@
 """`ow out <verb>`: the OUT verbs this build dispatches: `targets` (D761), `constructs` (D762),
-`scaffold` (D765) and `check` (D766).
+`scaffold` (D765), `check` (D766) and `stamp` (D767).
 
 09-generation.md section 1 (`omniweave.targets` exists "so `ow out targets` can list an artefact
 kind without resolving a driver"), section 12.4 ("`ow out targets` prints the target, the flag and
@@ -22,9 +22,9 @@ documentation", with `--group` and `--construct` selecting from it.
    command that names each one, the way `doctor`'s D-08 reports the same faults.
 4. **Refused by name, exit 1:** `--quiet`, because neither verb declares a scalar, and
    `--render jsonl|rows`, which have no writer here (the `explain` precedent).
-5. **Only `targets`, `constructs`, `scaffold` and `check` are served.** The other eight `out`
-   verbs are rostered without an Action, so the generated tree never parses them and this
-   module never sees them.
+5. **Only `targets`, `constructs`, `scaffold`, `check` and `stamp` are served.** The other
+   seven `out` verbs are rostered without an Action, so the generated tree never parses them
+   and this module never sees them.
 6. **`constructs` documents the one card that declares the target**, found as `targets` finds
    cards, whether or not `[targets] enabled` lists it: documentation is how an agent learns a
    target before anyone enables it. No card is `OW_TARGET_UNKNOWN` (exit 2), naming the kinds
@@ -61,6 +61,10 @@ documentation", with `--group` and `--construct` selecting from it.
     finding and 0 otherwise, as 09 section 4.3's table has it. Its report still says
     `non-final`, because no early report may release anything, and the text form says so
     under the trailer. `--render json` prints `validation/<stage>.json`'s document.
+13. **`stamp` is `out.stamp.stamp()` over a JobDir** (`--job`, else `cwd`), with the target's
+    own carrier, so the stamped text is reparsed by the parser the check uses. It exits 0
+    whether or not it minted anything (09 section 15). Its text form ends with the re-check
+    command, because a stamp moves `il_digest` and leaves any standing report `stale`.
 """
 
 from __future__ import annotations
@@ -80,6 +84,8 @@ from omniweave.sdk.reports import (
     OutCheckReport,
     ScaffoldReport,
     ScaffoldUnit,
+    StampedUnit,
+    StampReport,
     TargetListing,
     TargetsReport,
 )
@@ -103,11 +109,13 @@ __all__ = [
     "constructs_report",
     "main",
     "scaffold_report",
+    "stamp_report",
     "targets_report",
 ]
 
 OUT_WORD: Final[str] = "out"
 _SCAFFOLD_FIX: Final[str] = "ow out scaffold <target> --brief brief.md --slug q3-board"
+_STAMP_FIX: Final[str] = "ow out stamp [--job DIR]"
 _CHECK_FIX: Final[str] = "ow out check --stage early|first-unit|unit|final [--unit U] [--job DIR]"
 _CONSTRUCTS_FIX: Final[str] = (
     "ow out constructs <target> [--format md] [--group G | --construct ID]"
@@ -270,11 +278,40 @@ def _check(
     return checked.summary.exit
 
 
+def _stamp(
+    parsed: argparse.Namespace,
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    del stderr
+    _refuse_unserved(parsed, verb="ow out stamp", fix=_STAMP_FIX)
+    if parsed.corpus is not None:
+        raise UsageError(
+            "--corpus is not served by ow out stamp: a stamp reads only the JobDir", fix=_STAMP_FIX
+        )
+    built = stamp_report(
+        cwd=cwd,
+        env=env,
+        explicit=_explicit(parsed),
+        job=None if parsed.job is None else Path(str(parsed.job)),
+    )
+    if parsed.render == "json":
+        stdout.write(json.dumps(_stamped(built), ensure_ascii=False) + "\n")
+    else:
+        for line in _stamp_lines(built):
+            stdout.write(line + "\n")
+    return 0
+
+
 _VERBS: Final[Mapping[str, Callable[..., int]]] = {
     "out.targets": _targets,
     "out.constructs": _constructs,
     "out.scaffold": _scaffold,
     "out.check": _check,
+    "out.stamp": _stamp,
 }
 
 
@@ -711,3 +748,56 @@ def check_report(
         ),
         document=result.report.as_json(),
     )
+
+
+def stamp_report(
+    *, cwd: Path, env: Mapping[str, str], explicit: Path | None, job: Path | None
+) -> StampReport:
+    """Ruling 13: one stamp over one JobDir, with the target's own carrier."""
+    from omniweave_core import config  # noqa: PLC0415 -- only this verb pays
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415
+    from omniweave_core.host.activate import construct  # noqa: PLC0415
+    from omniweave_core.out.agentdoc import load_table  # noqa: PLC0415
+    from omniweave_core.out.compile import CompileV1  # noqa: PLC0415
+    from omniweave_core.out.job import Job  # noqa: PLC0415
+    from omniweave_core.out.stamp import stamp  # noqa: PLC0415
+
+    job_dir = cwd if job is None else (job if job.is_absolute() else cwd / job)
+    plan = Job.load(job_dir).plan
+    resolved = config.load(cwd=cwd, env=env, explicit=explicit)
+    driver, card = _one_card(_discover(resolved, env).cards, plan.target)
+    table = load_table(Path(driver.source), card)
+    compiler = cast("CompileV1", construct(driver, driver.config.effective()))
+    stamped = stamp(job_dir, carrier=compiler.carrier, constructs=table, clock=SystemClock())
+    return StampReport(
+        written=stamped.written,
+        units=tuple(
+            StampedUnit(unit=unit, addresses=addresses)
+            for unit, addresses in stamped.minted.items()
+        ),
+        stale_lock=stamped.stale_lock,
+    )
+
+
+def _stamped(built: StampReport) -> dict[str, Any]:
+    return {
+        "written": list(built.written),
+        "units": [{"unit": u.unit, "addresses": list(u.addresses)} for u in built.units],
+        "stale_lock": built.stale_lock,
+    }
+
+
+def _stamp_lines(built: StampReport) -> list[str]:
+    lines = ["replaced a stale il/.stamp.lock"] if built.stale_lock else []
+    if not built.units:
+        return [
+            *lines,
+            "every citable, text-bearing element already has an address; nothing was written",
+        ]
+    minted = sum(len(u.addresses) for u in built.units)
+    return [
+        *lines,
+        f"stamped {minted} address(es) in {len(built.written)} file(s)",
+        *(f"  {u.unit}  {' '.join(u.addresses)}" for u in built.units),
+        "re-check: ow out check --stage early",
+    ]

@@ -74,6 +74,8 @@ __all__ = [
     "ScaffoldUnit",
     "ServeReport",
     "SkillsReport",
+    "StampReport",
+    "StampedUnit",
     "SurfaceReport",
     "TargetListing",
     "TargetsReport",
@@ -452,6 +454,23 @@ class OutCheckReport:
     errors: int
     warnings: int
     infos: int
+
+
+@dataclass(frozen=True, slots=True)
+class StampedUnit:
+    """One unit a stamp wrote: the addresses it minted, in document order. D767."""
+
+    unit: str
+    addresses: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class StampReport:
+    """What `ow out stamp` did. Nothing minted is a success that wrote nothing. D767."""
+
+    written: tuple[str, ...]
+    units: tuple[StampedUnit, ...]
+    stale_lock: bool
 
 
 @dataclass(frozen=True, slots=True)

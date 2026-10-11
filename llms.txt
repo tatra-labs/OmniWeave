@@ -294,6 +294,8 @@ cli.out.constructs: ow out constructs TARGET [--format FORMAT] [--group GROUP] [
 cli.out.constructs.actions: out.constructs
 cli.out.scaffold: ow out scaffold TARGET [--brief BRIEF] [--slug SLUG]
 cli.out.scaffold.actions: out.scaffold
+cli.out.stamp: ow out stamp [--job JOB]
+cli.out.stamp.actions: out.stamp
 cli.out.targets: ow out targets
 cli.out.targets.actions: out.targets
 cli.query: ow query QUERY [--scope SCOPE] [--want passages|table|fields|outline|related]

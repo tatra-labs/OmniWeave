@@ -210,15 +210,15 @@ def test_add_is_the_one_writer_and_the_only_open_world_action() -> None:
     starts runs `ow_add`, and it has no `mcp_name` because it IS the transport (D513).
     `surface.emit` writes the generated artefacts, omniweave's own steering surface, and has no
     `mcp_name` by the same row 1 (D334). `out.scaffold` writes a JobDir under the cache root
-    and is a command, not a tool (D765), and `out.check` writes its stage's report into the
-    JobDir (D766).
+    and is a command, not a tool (D765), `out.check` writes its stage's report into the
+    JobDir (D766), and `out.stamp` writes addresses into its IL (D767).
     """
     writers = [spec.name for spec in ACTIONS.values() if not spec.read_only]
     open_world = [spec.name for spec in ACTIONS.values() if spec.open_world]
     assert writers == [
         "add", "graph.merge", "graph.split", "graph.types", "install", "uninstall", "serve",
         "skills.install", "skills.remove", "skills.update", "surface.emit", "out.scaffold",
-        "out.check",
+        "out.check", "out.stamp",
     ]  # fmt: skip
     assert [name for name in writers if ACTIONS[name].mcp_name is not None] == ["add"]
     #  `hooks.check` runs the installed commands, which are outside the store (10:157-158); it
@@ -297,7 +297,7 @@ def test_the_human_only_actions_are_the_install_and_skills_verbs_and_none_of_the
         "graph.why", "graph.merges", "graph.merge", "graph.split", "graph.residue",
         "graph.review", "graph.doctor", "graph.plan", "graph.types", "install", "uninstall",
         "serve", "skills.install", "skills.remove", "skills.update", "surface.emit",
-        "out.constructs", "out.scaffold", "out.check",
+        "out.constructs", "out.scaffold", "out.check", "out.stamp",
     ]  # fmt: skip
     assert set(ACTIONS) & HUMAN_ONLY == {"uninstall", "skills.remove"}
     assert not any(ACTIONS[name].human_only for name in LISTED_NAMES)
@@ -641,6 +641,7 @@ def test_the_required_parameter_of_each_tool_is_the_one_the_schema_requires() ->
         "out.constructs": {"target"},
         "out.scaffold": {"target"},
         "out.check": set(),
+        "out.stamp": set(),
         "install": set(),
         "uninstall": set(),
         "serve": set(),
@@ -1154,13 +1155,13 @@ def test_two_actions_need_no_corpus_and_both_reasons_are_stated() -> None:
     `surface.emit` reads the registry and writes repository files; no store is involved.
     `out.targets` reads the cards and the configuration, never a store (D761), and
     `out.constructs` reads a card and the table beside it (D762), and `out.check` takes its corpus
-    from the JobDir's `job.json` (D766)."""
+    from the JobDir's `job.json` (D766), as `out.stamp` does (D767)."""
     without_corpus = sorted(
         name for name, spec in ACTIONS.items() if "corpus" not in {f.name for f in fields(spec.inp)}
     )
     assert without_corpus == [
         "doctor", "explain", "hooks.check", "install", "out.check", "out.constructs",
-        "out.targets",
+        "out.stamp", "out.targets",
         "serve", "skills.check", "skills.hash",
         "skills.install", "skills.ls", "skills.remove", "skills.update", "skills.verify",
         "surface.emit", "uninstall",
@@ -1345,7 +1346,7 @@ def test_the_unrostered_cli_count_is_the_distance_to_the_registry() -> None:
     tables and usage rather than from a numeral, and a numeral is a second copy of an enumeration.
     """
     waiting = _unrostered_cli(ACTIONS)
-    assert len(waiting) == 123, "D766 landed `ow out check`"
+    assert len(waiting) == 122, "D767 landed `ow out stamp`"
     have = {spec.cli for spec in ACTIONS.values()}
     assert not set(waiting) & have
     assert len(waiting) + len(have) == sum(max(1, len(v)) for v in CLI_ROSTER.values())

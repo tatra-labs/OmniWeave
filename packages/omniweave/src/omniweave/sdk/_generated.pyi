@@ -36,6 +36,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     out.check         CheckIn             OutCheckReport
     out.constructs    ConstructsIn        ConstructsReport
     out.scaffold      ScaffoldIn          ScaffoldReport
+    out.stamp         StampIn             StampReport
     out.targets       TargetsIn           TargetsReport
     query             QueryIn             Answer
     serve             ServeIn             ServeReport
