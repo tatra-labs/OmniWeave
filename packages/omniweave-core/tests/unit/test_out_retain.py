@@ -14,14 +14,15 @@ import tomllib
 from pathlib import Path
 
 import pytest
-from omniweave_core.blobs import BlobStore
+from omniweave_core.blobs import BlobStore, format_ref
 from omniweave_core.errors import StoreError, TargetError, UsageError, explain
 from omniweave_core.out import retain as retain_module
+from omniweave_core.out.brief import BRIEF_SCHEMA, parse_brief
 from omniweave_core.out.carrier import CarrierDoc
 from omniweave_core.out.carrier.html import html_carrier
 from omniweave_core.out.constructs import ConstructTable
 from omniweave_core.out.job import ILBundle, read_il_files
-from omniweave_core.out.retain import fetch, freeze, manifest
+from omniweave_core.out.retain import fetch, fetch_brief, freeze, freeze_brief, manifest
 
 TABLE = """\
 schema = "omniweave.out-constructs/1"
@@ -262,3 +263,66 @@ def test_the_fetched_files_are_the_ones_read_il_files_sees(
     files = fetch(retained.il_store_ref, blobs, tmp_path / "edit")
     assert files == read_il_files(tmp_path / "edit")
     assert [f.name for f in files] == ["il.toml", "u01.html", "u02.html"]
+
+
+# ---------------------------------------------------------------------------------------------
+# Rulings 7 and 8 (D775): the Brief, retained as its digest's preimage
+# ---------------------------------------------------------------------------------------------
+
+BRIEF_TEXT = (
+    f"{BRIEF_SCHEMA}\n## canvas\n- format: 16:9\n- unit: slide\n## communication\n"
+    "- primary_language: en-GB\n## direction\n## density\n- per_unit: light\n## motion\n"
+    "- level: static\n## typography\n## rhythm\n- u01: { anchor: cover }\n## forbidden\n"
+    "- no glow (user)\n"
+)
+
+
+def test_a_retained_brief_is_named_by_its_digest_and_fetched_back(blobs: BlobStore) -> None:
+    brief = parse_brief(BRIEF_TEXT, baseline=())
+    ref = freeze_brief(brief, blobs)
+    assert ref == format_ref(brief.digest().removeprefix("sha256:"))
+    assert freeze_brief(brief, blobs) == ref, "retaining twice is one object"
+    fetched = fetch_brief(brief.digest(), blobs)
+    assert fetched.digest() == brief.digest()
+    assert fetched.record() == brief.record()
+
+
+def test_a_brief_nothing_retained_is_a_dangling_row(blobs: BlobStore) -> None:
+    with pytest.raises(StoreError, match="no CAS blob"):
+        fetch_brief("sha256:" + "0" * 64, blobs)
+
+
+def test_a_digest_that_is_not_one_is_a_usage_error(blobs: BlobStore) -> None:
+    with pytest.raises(UsageError, match="is not sha256"):
+        fetch_brief("sha256:abc", blobs)
+
+
+def _stored(blobs: BlobStore, body: bytes) -> str:
+    return "sha256:" + blobs.put(io.BytesIO(body)).hex()
+
+
+@pytest.mark.parametrize("body", [b"{not json", b'{"sections": {}}', b"[]"])
+def test_a_retained_object_that_is_no_brief_is_corrupt(blobs: BlobStore, body: bytes) -> None:
+    with pytest.raises(StoreError, match="does not read back") as caught:
+        fetch_brief(_stored(blobs, body), blobs)
+    assert caught.value.fix == "ow store fsck --cas"
+
+
+def test_an_object_whose_bytes_changed_is_corrupt(blobs: BlobStore) -> None:
+    brief = parse_brief(BRIEF_TEXT, baseline=())
+    freeze_brief(brief, blobs)
+    path = blobs.path(brief.digest().removeprefix("sha256:"))
+    path.chmod(0o644)
+    path.write_bytes(b'{"sections":{},"forbidden":[],"template":null}')
+    with pytest.raises(StoreError, match="do not hash to its name"):
+        fetch_brief(brief.digest(), blobs)
+
+
+def test_an_object_past_the_bound_is_corrupt(
+    blobs: BlobStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    brief = parse_brief(BRIEF_TEXT, baseline=())
+    freeze_brief(brief, blobs)
+    monkeypatch.setattr(retain_module, "MAX_IL_FILE_BYTES", 16)
+    with pytest.raises(StoreError, match="runs past 16 bytes"):
+        fetch_brief(brief.digest(), blobs)

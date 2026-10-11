@@ -8,11 +8,19 @@ section 4.1 (the optional `## template`). The fixture is 09's own example, less 
 
 from __future__ import annotations
 
+import json
 import tomllib
 
 import pytest
+from omniweave_core.canonical import sha256_canonical
 from omniweave_core.errors import TargetError, explain
-from omniweave_core.out.brief import BRIEF_SCHEMA, Prohibition, baseline_rows, parse_brief
+from omniweave_core.out.brief import (
+    BRIEF_SCHEMA,
+    Brief,
+    Prohibition,
+    baseline_rows,
+    parse_brief,
+)
 from omniweave_core.out.constructs import ConstructTable
 
 SCRIPT = "elem.script: executable content in an authored artefact"
@@ -228,3 +236,70 @@ def test_the_refusal_fix_runs() -> None:
     command, _, argument = error.fix.partition(" explain ")
     assert command == "ow"
     assert explain(argument).symbol == "OW_TARGET_BRIEF_INVALID"
+
+
+# ---------------------------------------------------------------------------------------------
+# Ruling 8 (D775): the record is the digest's preimage, and reads back
+# ---------------------------------------------------------------------------------------------
+
+SLOT = "asset-slot:" + "9f" * 32
+
+
+def _brief(text: str = BRIEF) -> Brief:
+    return parse_brief(text, baseline=(SCRIPT,))
+
+
+@pytest.mark.parametrize(
+    "tail",
+    ["", f"## template\n- ref: {SLOT}\n- units: u01, u02\n", f"## template\n- ref: {SLOT}\n"],
+)
+def test_the_record_is_the_digests_preimage_and_reads_back(tail: str) -> None:
+    brief = _brief(BRIEF + tail)
+    assert brief.digest() == "sha256:" + sha256_canonical(brief.record())
+    again = Brief.from_record(json.loads(json.dumps(brief.record())))
+    assert again == brief
+    assert again.digest() == brief.digest()
+
+
+def test_the_record_carries_both_forbidden_tiers_in_order() -> None:
+    record = _brief().record()
+    assert record["forbidden"] == [
+        ["baseline", SCRIPT],
+        ["user", "no shadows and no glow anywhere"],
+    ]
+    assert record["template"] is None
+
+
+def test_an_empty_template_unit_list_reads_back_as_every_unit() -> None:
+    record = {**_brief().record(), "template": {"ref": SLOT, "units": []}}
+    template = Brief.from_record(record).template
+    assert template is not None
+    assert template.units is None
+
+
+def _bad(change: dict[str, object]) -> dict[str, object]:
+    return {**_brief().record(), **change}
+
+
+@pytest.mark.parametrize(
+    ("record", "named"),
+    [
+        ([], "list"),
+        (_bad({"title": "x"}), "title"),
+        ({"sections": {}, "forbidden": []}, "template"),
+        (_bad({"sections": []}), "sections"),
+        (_bad({"sections": {"canvas": {"format": 1}}}), "sections"),
+        (_bad({"sections": {"canvas": "16:9"}}), "sections"),
+        (_bad({"forbidden": [["baseline"]]}), "forbidden"),
+        (_bad({"forbidden": [["house", "x"]]}), "forbidden"),
+        (_bad({"forbidden": [["user", 1]]}), "forbidden"),
+        (_bad({"forbidden": "x"}), "forbidden"),
+        (_bad({"template": {"ref": SLOT}}), "brief.template has"),
+        (_bad({"template": {"ref": 1, "units": []}}), "brief.template is not"),
+        (_bad({"template": {"ref": SLOT, "units": [1]}}), "brief.template is not"),
+        (_bad({"template": {"ref": SLOT, "units": "u01"}}), "brief.template is not"),
+    ],
+)
+def test_a_record_that_is_not_a_briefs_is_refused(record: object, named: str) -> None:
+    with pytest.raises(ValueError, match=named):
+        Brief.from_record(record)
