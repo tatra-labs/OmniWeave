@@ -198,7 +198,7 @@ def test_the_actions_with_no_sdk_entry_point_are_the_document_pair_and_the_insta
         "doc.diff", "doc.grid", "graph.doctor", "graph.locate", "graph.merge", "graph.merges",
         "graph.plan", "graph.residue", "graph.review", "graph.split", "graph.types", "graph.why",
         "hooks.check",
-        "install", "serve", "skills.check",
+        "install", "out.targets", "serve", "skills.check",
         "skills.hash",
         "skills.install", "skills.ls", "skills.remove", "skills.update", "skills.verify",
         "surface.emit", "uninstall",

@@ -134,6 +134,7 @@ from omniweave.sdk.reports import (
     ServeReport,
     SkillsReport,
     SurfaceReport,
+    TargetsReport,
 )
 from omniweave.surface.inputs import (
     AddIn,
@@ -164,6 +165,7 @@ from omniweave.surface.inputs import (
     SkillsVerifyIn,
     SplitIn,
     SurfaceEmitIn,
+    TargetsIn,
     TypesIn,
     UninstallIn,
     WhyIn,
@@ -1868,6 +1870,26 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=CodeRow,
             advanced=frozenset(),
             cli=("explain",),
+        ),
+        ActionSpec(
+            name="out.targets",
+            mcp_name="ow_targets",
+            listed_in=_FULL_ONLY,
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "List the artefact kinds this deployment can compile, whether each is "
+                "implemented and enabled, and the determinism class its card declares"
+            ),
+            decision="you want to know which artefacts `ow out compile` can make here",
+            example={},
+            inp=TargetsIn,
+            out=TargetsReport,
+            advanced=frozenset(),
+            cli=("out", "targets"),
         ),
     )
 )

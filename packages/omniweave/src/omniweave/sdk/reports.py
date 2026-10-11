@@ -69,6 +69,8 @@ __all__ = [
     "ServeReport",
     "SkillsReport",
     "SurfaceReport",
+    "TargetListing",
+    "TargetsReport",
 ]
 
 
@@ -391,3 +393,37 @@ class CodeRow:
     meaning: str
     fix: str
     owner_doc: str
+
+
+@dataclass(frozen=True, slots=True)
+class TargetListing:
+    """One artefact kind this deployment knows: what `ow out targets` prints a row of. D761.
+
+    `omniweave_core.out.card.TargetRow`'s fields, plus `enabled`: whether `[targets] enabled`
+    lists the kind (09-generation.md section 1's artefact-kind allowlist). It is a separate class
+    so the registry's type graph does not import `omniweave_core.out`, the reason
+    `HooksCheckReport` gives for the same arrangement.
+    """
+
+    target: str
+    driver: str
+    implemented: bool
+    reason: str
+    enabled: bool
+    determinism: tuple[str, ...]
+    carrier: str
+    il: str
+    fidelity: str
+    laws: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class TargetsReport:
+    """What `ow_targets` / `ow out targets` returns: every compile card, one row each. D761.
+
+    10-interfaces.md's `full` roster: "which artefact kinds this deployment can compile, and their
+    determinism class". A kind can compile when it is `implemented` and `enabled`. Each row says
+    which of the two is missing, so a `video` row names its reason rather than vanishing.
+    """
+
+    targets: tuple[TargetListing, ...]

@@ -90,6 +90,7 @@ def test_the_full_profile_says_which_listed_tools_it_cannot_send() -> None:
     assert sent == ["ow_add", "ow_corpora", "ow_open", "ow_query"]
     assert unpublished("full") == (
         "ow_coverage", "ow_diff", "ow_doctor", "ow_explain", "ow_grid", "ow_locate",
+        "ow_targets",
     )  # fmt: skip
     assert unpublished("default") == ()
 

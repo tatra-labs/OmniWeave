@@ -27,7 +27,7 @@ mcp.instructions: delivered on `initialize`, <= 1000 chars, generated, bound to 
 mcp.profiles: default, full
 mcp.profile.default: ow_add, ow_corpora, ow_open, ow_query
 mcp.profile.full: ow_add, ow_corpora, ow_coverage, ow_diff, ow_doctor, ow_explain, ow_grid,
-  ow_locate, ow_open, ow_query
+  ow_locate, ow_open, ow_query, ow_targets
 mcp.listed_note: an unlisted tool is DEFINED and DISPATCHABLE when enabled, never refused for
   being unlisted. Widen with OMNIWEAVE_MCP_LISTED, authorise with OMNIWEAVE_MCP_ENABLED.
 mcp.enabled_default: read_only+add
@@ -38,10 +38,10 @@ mcp.human_only_note: these have no MCP name and are unreachable from any agent s
 # every one of them is DISPATCHABLE when enabled, listed or not.
 mcp.tools: ow_add, ow_corpora, ow_coverage, ow_diff, ow_doctor, ow_explain, ow_grid,
   ow_hooks_check, ow_locate, ow_open, ow_query, ow_skills_check, ow_skills_hash, ow_skills_ls,
-  ow_skills_verify
+  ow_skills_verify, ow_targets
 mcp.tools.unbounded: ow_coverage, ow_diff, ow_doctor, ow_explain, ow_grid, ow_hooks_check,
-  ow_locate, ow_skills_check, ow_skills_hash, ow_skills_ls, ow_skills_verify — no inputSchema is
-  published for these yet, so their input lines carry a type and no bounds
+  ow_locate, ow_skills_check, ow_skills_hash, ow_skills_ls, ow_skills_verify, ow_targets — no
+  inputSchema is published for these yet, so their input lines carry a type and no bounds
 
 mcp.tool.ow_add.action: add
 mcp.tool.ow_add.description: Index files, directories or URLs into a corpus so ow_query can cite
@@ -232,6 +232,15 @@ mcp.tool.ow_skills_verify.cost_class: free
 mcp.tool.ow_skills_verify.input.all: boolean, optional, default=false
 mcp.tool.ow_skills_verify.output: SkillsReport, no outputSchema declared
 
+mcp.tool.ow_targets.action: out.targets
+mcp.tool.ow_targets.description: List the artefact kinds this deployment can compile, whether
+  each is implemented and enabled, and the determinism class its card declares
+mcp.tool.ow_targets.decision: you want to know which artefacts `ow out compile` can make here
+mcp.tool.ow_targets.listed_in: full
+mcp.tool.ow_targets.state_changing: false
+mcp.tool.ow_targets.cost_class: free
+mcp.tool.ow_targets.output: TargetsReport, no outputSchema declared
+
 # CLI (every MCP tool has a CLI twin, and the CLI publishes verbs the MCP surface does not list)
 cli.global: [--config PATH] [--corpus NAME] [--render text|json|jsonl|rows] [--quiet]
   [--verbose] [--no-color] [--offline] [--json-errors]
@@ -278,6 +287,8 @@ cli.install.actions: install
 cli.open: ow open REF... [--context CONTEXT] [--layers LAYERS] [--max-chars MAX_CHARS] [--raw]
   [--want-impact]
 cli.open.actions: open
+cli.out.targets: ow out targets
+cli.out.targets.actions: out.targets
 cli.query: ow query QUERY [--scope SCOPE] [--want passages|table|fields|outline|related]
   [--max-rung gate|decode|repair|page|regen|degrade|enrich] [--max-chars MAX_CHARS] [--k N]
   [--mode find|cite|explore|prove_absent] [--fail-on STATE[,STATE]] [--explain]
