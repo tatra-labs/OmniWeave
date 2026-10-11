@@ -1392,10 +1392,7 @@ class _Guarded:
 
 def _address(run_id: str, ordinal: int) -> str:
     """One worker's base address: a named pipe on Windows, a socket path elsewhere."""
-    name = f"ow-{os.getpid()}-{run_id[-10:].lower()}-{ordinal}"
-    if sys.platform == "win32":
-        return f"\\\\.\\pipe\\{name}"
-    return str(Path("/tmp") / f"{name}.sock")  # noqa: S108 -- pragma: POSIX arm, untested here
+    return subproc.local_address(f"ow-{os.getpid()}-{run_id[-10:].lower()}-{ordinal}")
 
 
 _WORKER_ENV_KEYS: Final[tuple[str, ...]] = ("SYSTEMROOT", "PATH", "TEMP", "TMP")

@@ -302,6 +302,8 @@ cli.open: ow open REF... [--context CONTEXT] [--layers LAYERS] [--max-chars MAX_
 cli.open.actions: open
 cli.out.check: ow out check [--stage STAGE] [--unit UNIT] [--job JOB] [--target TARGET]
 cli.out.check.actions: out.check
+cli.out.compile: ow out compile [--accept-manual] [--job JOB]
+cli.out.compile.actions: out.compile
 cli.out.constructs: ow out constructs TARGET [--format FORMAT] [--group GROUP] [--construct
   CONSTRUCT]
 cli.out.constructs.actions: out.constructs

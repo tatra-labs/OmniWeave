@@ -34,6 +34,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     install           InstallIn           InstallReport
     open              OpenIn              Answer
     out.check         CheckIn             OutCheckReport
+    out.compile       CompileIn           CompileReport
     out.constructs    ConstructsIn        ConstructsReport
     out.list          ArtifactsIn         ArtifactsReport
     out.normalize     NormalizeIn         NormalizeReport

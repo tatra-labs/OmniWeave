@@ -65,6 +65,7 @@ key can grant one.
 | `install` | — | `ow install` | — | `free` | Wire agent hosts to omniweave: the MCP entry, one permission wildcard, the instruction block, hooks and the core skill, each recorded in a receipt |
 | `open` | `ow_open` | `ow open` | default, full | `free` | Fetch the exact passages behind an address you already hold: a cite, a page range, or a whole document |
 | `out.check` | — | `ow out check` | — | `free` | Run the target's rules over a JobDir's IL at one stage, write validation/<stage>.json, and print each finding with its fix |
+| `out.compile` | — | `ow out compile` | — | `free` | Lower a JobDir whose final gate passed into its artefact in an S4 worker, seal the artifact row, and place the bytes under [roots] output |
 | `out.constructs` | — | `ow out constructs` | — | `free` | Print a target's construct table, a line a row, one row in full, or as the agent document an IL author writes against (--format md) |
 | `out.list` | `ow_artifacts` | `ow out list` | full | `free` | List the compiled artefacts sealed in a corpus, with each generation's gate status, delivery and read_back_doc_ord |
 | `out.normalize` | — | `ow out normalize` | — | `free` | Apply each normalize row's normalizer to the IL values it selects, through the transactional splice, all units or none |

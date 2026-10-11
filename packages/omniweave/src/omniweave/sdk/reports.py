@@ -60,6 +60,7 @@ __all__ = [
     "ArtifactListing",
     "ArtifactsReport",
     "CodeRow",
+    "CompileReport",
     "ConstructBake",
     "ConstructListing",
     "ConstructsReport",
@@ -74,6 +75,7 @@ __all__ = [
     "NormalizeReport",
     "NormalizedRow",
     "OutCheckReport",
+    "RestrictedItem",
     "ScaffoldReport",
     "ScaffoldUnit",
     "ServeReport",
@@ -491,6 +493,38 @@ class OutCheckReport:
     errors: int
     warnings: int
     infos: int
+
+
+@dataclass(frozen=True, slots=True)
+class RestrictedItem:
+    """One barred source the restriction aggregate named: an asset or a cited block. D773."""
+
+    what: str
+    id: int
+    bits: int
+    cite: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class CompileReport:
+    """What `ow out compile` decided, and the artefact it sealed when it sealed one. D773.
+
+    A closed gate is a status and an exit, never a raise (10 section 9.3): `exit` is
+    09 section 15's, `path` is `None` and nothing was lowered. `hit` is the lookup-before-build's
+    answer: the bytes are an earlier compile's, placed again and not rebuilt (OUT12).
+    """
+
+    target: str
+    slug: str
+    delivery: str
+    status: str
+    exit: int
+    artifact_gen: int | None = None
+    path: str | None = None
+    sha256: str | None = None
+    hit: bool = False
+    postflight: str | None = None
+    restricted: tuple[RestrictedItem, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
