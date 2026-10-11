@@ -1,4 +1,4 @@
-"""The JobDir layout: `ILFile` (**D737**) and `ILBundle` (**D744**).
+"""The JobDir layout: `ILFile` (**D737**), `ILBundle` (**D744**) and `Job` (**D763**).
 
 09-generation.md section 3.7 prints both here. `ILFile` is one row a file under `il/`, and
 `il_digest` (09 section 4.5) is a function of those rows and of nothing else. `ILBundle` is the
@@ -45,11 +45,33 @@ generation: `il.toml`'s roster checked against the filesystem, every unit parsed
     on `ILBundle.manual` for the gate, and the first region with a known reason becomes
     `OutUnit.manual_reason`, which is what `classify_and_assert()` reads. A unit the carrier
     refuses has no regions, because a unit nobody parsed asserts nothing.
+
+## Rulings (the ledger's D763)
+
+18. **`job.json` is `Job`: `schema`, `plan`, `traceparent` and `determinism`, and nothing
+    else.** 09 Q11 asked for it to be printed with schema `omniweave.out-job/1`. The four
+    keys are the ones the plan names inside `job.json`: section 3.7's `Plan`, 15
+    section 2.5's S2 `traceparent`, and section 12.3's `determinism.clock_ns`. A Toolchain
+    child may read all four. It refuses an unknown `schema` or `plan.schema` before reading
+    anything else, echoes `traceparent` into its receipt, and writes every OPC timestamp
+    as `clock_ns`. The JobDir's other files (`brief.md`, `il/`, `assets/`, `validation/`,
+    `out/`) are named by layout, never by a key.
+19. **Closed at every level**, `OW_TARGET_JOB_INVALID` (`OW-T-518`, appended): an
+    unknown key, a missing one (a nullable key included, because a producer writes every
+    key), a value outside its grammar, or a `Plan` that `Plan` itself refuses. This is
+    `[compile]`'s hard-error-on-unknown-key rule, as Q11 asks.
+20. **The bytes are fixed:** UTF-8, two-space indent, LF, the cites sorted, and one
+    trailing newline. The file is written to a sibling and renamed over, so a reader never
+    sees half a job.
+21. **The embedded `Brief` must digest to `plan.brief_digest`.** `job.json` holds the frozen
+    Brief that 13.3's stage diagram freezes, and `brief.md` is its readable copy. A plan
+    whose Brief and digest disagree has no single answer to what was commissioned.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import tomllib
@@ -57,22 +79,30 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import MappingProxyType
-from typing import Final, Never
+from typing import Any, Final, Literal, Never
 
 from omniweave_core.errors import ResourceLimit, TargetError
+from omniweave_core.events import TRACEPARENT_RE
 from omniweave_core.limits import MAX_IL_FILE_BYTES
+from omniweave_core.model.block import Cite
+from omniweave_core.out.brief import Brief, Prohibition, Template
 from omniweave_core.out.carrier import CarrierDoc, CarrierParseError, ParseError
 from omniweave_core.out.carrier.tree import Node
 from omniweave_core.out.constructs import ConstructTable, Disposition, RoundTrip
+from omniweave_core.out.gate import GateStatus
 from omniweave_core.out.manual import ManualRegion, manual_regions
-from omniweave_core.out.plan import OutUnit
+from omniweave_core.out.plan import ManualReason, OutUnit, Plan
 
 __all__ = [
     "IL_SCHEMA",
+    "JOB_JSON",
+    "JOB_SCHEMA",
     "UNPARSED_HEX",
     "UNREADABLE",
     "ILBundle",
     "ILFile",
+    "Job",
+    "JobDeterminism",
     "elided",
     "read_il_files",
 ]
@@ -378,3 +408,306 @@ def _name(il_path: str) -> str:
 
 def _invalid(msg: str) -> Never:
     raise TargetError(msg, symbol="OW_TARGET_IL_TOML_INVALID", fix="ow explain OW-T-011")
+
+
+# ---------------------------------------------------------------------------------------------
+# job.json, the JobDir's envelope (D763)
+# ---------------------------------------------------------------------------------------------
+
+JOB_SCHEMA: Final = "omniweave.out-job/1"
+JOB_JSON: Final = "job.json"
+_JOB_FIX: Final = "ow explain OW-T-518"
+_CITE_TOKEN: Final = re.compile(r"d\d+#\d+")
+_TRACEPARENT: Final = re.compile(TRACEPARENT_RE)
+
+
+@dataclass(frozen=True, slots=True)
+class JobDeterminism:
+    """`job.json`'s `determinism`: the instant every OPC timestamp is written as (09 section 12.3).
+
+    `dcterms:created == dcterms:modified == job.determinism.clock_ns`, so the wall clock never
+    reaches a part. It is read once from the injected `Clock` when the job is scaffolded.
+    """
+
+    clock_ns: int
+
+
+@dataclass(frozen=True, slots=True)
+class Job:
+    """`job.json` (`omniweave.out-job/1`): the `Plan`, the trace context and the clock (09 Q11).
+
+    09 Q11 found that `Plan` was versioned and its envelope was not, so a Toolchain child could
+    refuse an unknown `plan.schema` and could not refuse an unknown envelope.
+    """
+
+    schema: Literal["omniweave.out-job/1"]
+    plan: Plan
+    traceparent: str
+    determinism: JobDeterminism
+
+    def __post_init__(self) -> None:
+        if self.schema != JOB_SCHEMA:
+            _job_invalid(f"schema {self.schema!r} is not {JOB_SCHEMA!r}")
+        if _TRACEPARENT.fullmatch(self.traceparent) is None:
+            _job_invalid(f"traceparent {self.traceparent!r} is not 00-<32 hex>-<16 hex>-01")
+        clock = self.determinism.clock_ns
+        if isinstance(clock, bool) or not isinstance(clock, int) or clock < 0:
+            _job_invalid(f"determinism.clock_ns {clock!r} is not a non-negative integer")
+        if self.plan.brief.digest() != self.plan.brief_digest:
+            _job_invalid(
+                f"plan.brief digests to {self.plan.brief.digest()}, not plan.brief_digest "
+                f"{self.plan.brief_digest}"
+            )
+
+    def as_json(self) -> dict[str, Any]:
+        """Every key, `None` as `null`: the shape `schema/job-v1.json` requires."""
+        plan = self.plan
+        return {
+            "schema": self.schema,
+            "plan": {
+                "schema": plan.schema,
+                "target": plan.target,
+                "slug": plan.slug,
+                "artifact_gen": plan.artifact_gen,
+                "delivery": plan.delivery,
+                "units": [_unit_json(unit) for unit in plan.units],
+                "unit_count": plan.unit_count,
+                "brief": _brief_json(plan.brief),
+                "corpus": plan.corpus,
+                "cites": {str(cite): gen for cite, gen in sorted(plan.cites.items())},
+                "gate_status": plan.gate_status.value,
+                "il_digest": plan.il_digest,
+                "constructs_digest": plan.constructs_digest,
+                "ledger_digest": plan.ledger_digest,
+                "brief_digest": plan.brief_digest,
+                "card_sha256": plan.card_sha256,
+                "toolchain_digest": plan.toolchain_digest,
+            },
+            "traceparent": self.traceparent,
+            "determinism": {"clock_ns": self.determinism.clock_ns},
+        }
+
+    def to_bytes(self) -> bytes:
+        """Ruling 20: UTF-8, two-space indent, LF, one trailing newline. Byte-stable."""
+        return (json.dumps(self.as_json(), ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+    @classmethod
+    def from_json(cls, raw: object) -> Job:
+        """Ruling 19: closed at every level. A key unknown or missing anywhere is a refusal."""
+        top = _object(raw, "job.json", _JOB_KEYS)
+        plan = _object(top["plan"], "plan", _PLAN_KEYS)
+        determinism = _object(top["determinism"], "determinism", frozenset({"clock_ns"}))
+        try:
+            built = Plan(
+                schema=_string(plan, "schema", "plan"),  # type: ignore[arg-type]
+                target=_string(plan, "target", "plan"),
+                slug=_string(plan, "slug", "plan"),
+                artifact_gen=_integer(plan, "artifact_gen", "plan"),
+                delivery=_string(plan, "delivery", "plan"),  # type: ignore[arg-type]
+                units=tuple(_unit(one, n) for n, one in enumerate(_array(plan, "units", "plan"))),
+                unit_count=_integer(plan, "unit_count", "plan"),
+                brief=_brief(plan["brief"]),
+                corpus=_string(plan, "corpus", "plan"),
+                cites=_cites(plan["cites"]),
+                gate_status=_gate(plan["gate_status"]),
+                il_digest=_string(plan, "il_digest", "plan"),
+                constructs_digest=_string(plan, "constructs_digest", "plan"),
+                ledger_digest=_string(plan, "ledger_digest", "plan"),
+                brief_digest=_string(plan, "brief_digest", "plan"),
+                card_sha256=_string(plan, "card_sha256", "plan"),
+                toolchain_digest=_optional_string(plan, "toolchain_digest", "plan"),
+            )
+        except ValueError as exc:
+            _job_invalid(f"plan: {exc}")
+        return cls(
+            schema=_string(top, "schema", "job.json"),  # type: ignore[arg-type]
+            plan=built,
+            traceparent=_string(top, "traceparent", "job.json"),
+            determinism=JobDeterminism(_integer(determinism, "clock_ns", "determinism")),
+        )
+
+    @classmethod
+    def load(cls, job_dir: Path) -> Job:
+        """`<job_dir>/job.json`, read and asserted."""
+        path = job_dir / JOB_JSON
+        try:
+            raw = json.loads(_bounded(path).decode("utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            _job_invalid(f"{JOB_JSON} does not load: {type(exc).__name__}: {exc}")
+        return cls.from_json(raw)
+
+    def write(self, job_dir: Path) -> Path:
+        """Ruling 20's bytes at `<job_dir>/job.json`, written whole or not at all."""
+        path = job_dir / JOB_JSON
+        staged = path.with_name(path.name + ".tmp")
+        staged.write_bytes(self.to_bytes())
+        staged.replace(path)
+        return path
+
+
+_JOB_KEYS: Final = frozenset({"schema", "plan", "traceparent", "determinism"})
+_PLAN_KEYS: Final = frozenset(
+    {
+        "schema", "target", "slug", "artifact_gen", "delivery", "units", "unit_count", "brief",
+        "corpus", "cites", "gate_status", "il_digest", "constructs_digest", "ledger_digest",
+        "brief_digest", "card_sha256", "toolchain_digest",
+    }
+)  # fmt: skip
+_OUT_UNIT_KEYS: Final = frozenset(
+    {
+        "id", "ord", "il_path", "anchor", "nsig", "source_part", "source_nsig", "source_ord",
+        "manual_reason",
+    }
+)  # fmt: skip
+_BRIEF_KEYS: Final = frozenset({"sections", "forbidden", "template"})
+
+
+def _unit_json(unit: OutUnit) -> dict[str, Any]:
+    return {
+        "id": unit.id,
+        "ord": unit.ord,
+        "il_path": unit.il_path,
+        "anchor": unit.anchor,
+        "nsig": unit.nsig,
+        "source_part": unit.source_part,
+        "source_nsig": unit.source_nsig,
+        "source_ord": unit.source_ord,
+        "manual_reason": None if unit.manual_reason is None else unit.manual_reason.value,
+    }
+
+
+def _brief_json(brief: Brief) -> dict[str, Any]:
+    template = brief.template
+    return {
+        "sections": {name: dict(rows) for name, rows in brief.sections.items()},
+        "forbidden": [{"text": one.text, "tier": one.tier} for one in brief.forbidden],
+        "template": None
+        if template is None
+        else {
+            "ref": template.ref,
+            "units": None if template.units is None else list(template.units),
+        },
+    }
+
+
+def _unit(raw: object, n: int) -> OutUnit:
+    where = f"plan.units[{n}]"
+    row = _object(raw, where, _OUT_UNIT_KEYS)
+    reason = _optional_string(row, "manual_reason", where)
+    try:
+        manual = None if reason is None else ManualReason(reason)
+    except ValueError:
+        _job_invalid(f"{where}: manual_reason {reason!r} is not a ManualReason")
+    return OutUnit(
+        id=_string(row, "id", where),
+        ord=_integer(row, "ord", where),
+        il_path=_string(row, "il_path", where),
+        anchor=_string(row, "anchor", where),
+        nsig=_optional_string(row, "nsig", where),
+        source_part=_optional_string(row, "source_part", where),
+        source_nsig=_optional_string(row, "source_nsig", where),
+        source_ord=_optional_integer(row, "source_ord", where),
+        manual_reason=manual,
+    )
+
+
+def _brief(raw: object) -> Brief:
+    row = _object(raw, "plan.brief", _BRIEF_KEYS)
+    sections = row["sections"]
+    if not isinstance(sections, dict) or not all(
+        isinstance(name, str)
+        and isinstance(rows, dict)
+        and all(isinstance(k, str) and isinstance(v, str) for k, v in rows.items())
+        for name, rows in sections.items()
+    ):
+        _job_invalid("plan.brief.sections is not an object of string-to-string objects")
+    forbidden = []
+    for n, one in enumerate(_array(row, "forbidden", "plan.brief")):
+        where = f"plan.brief.forbidden[{n}]"
+        item = _object(one, where, frozenset({"text", "tier"}))
+        tier = _string(item, "tier", where)
+        if tier not in ("baseline", "user"):
+            _job_invalid(f"{where}: tier {tier!r} is baseline or user")
+        forbidden.append(Prohibition(_string(item, "text", where), tier))  # type: ignore[arg-type]
+    template = None
+    if row["template"] is not None:
+        item = _object(row["template"], "plan.brief.template", frozenset({"ref", "units"}))
+        units = item["units"]
+        if units is not None and (
+            not isinstance(units, list) or not all(isinstance(u, str) for u in units)
+        ):
+            _job_invalid("plan.brief.template.units is neither null nor a list of unit ids")
+        template = Template(
+            _string(item, "ref", "plan.brief.template"), None if units is None else tuple(units)
+        )
+    return Brief(
+        sections=MappingProxyType(
+            {name: MappingProxyType(dict(rows)) for name, rows in sections.items()}
+        ),
+        forbidden=tuple(forbidden),
+        template=template,
+    )
+
+
+def _cites(raw: object) -> Mapping[Cite, int]:
+    if not isinstance(raw, dict):
+        _job_invalid("plan.cites is not an object")
+    out: dict[Cite, int] = {}
+    for token, gen in raw.items():
+        if _CITE_TOKEN.fullmatch(token) is None:
+            _job_invalid(f"plan.cites: {token!r} is not a cite token d<N>#<N>")
+        if isinstance(gen, bool) or not isinstance(gen, int) or gen < 1:
+            _job_invalid(f"plan.cites[{token!r}]: doc_gen {gen!r} is not a positive integer")
+        out[Cite(token)] = gen
+    return MappingProxyType(out)
+
+
+def _gate(raw: object) -> GateStatus:
+    try:
+        return GateStatus(raw)
+    except ValueError:
+        _job_invalid(f"plan.gate_status {raw!r} is not one of the ten GateStatus values")
+
+
+def _object(raw: object, where: str, keys: frozenset[str]) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        _job_invalid(f"{where} is not an object")
+    unknown, missing = sorted(set(raw) - keys), sorted(keys - set(raw))
+    if unknown:
+        _job_invalid(f"{where} has unknown key(s) {unknown}: the envelope is closed")
+    if missing:
+        _job_invalid(f"{where} is missing {missing}")
+    return raw
+
+
+def _array(row: Mapping[str, Any], key: str, where: str) -> list[Any]:
+    value = row[key]
+    if not isinstance(value, list):
+        _job_invalid(f"{where}.{key} is not an array")
+    return value
+
+
+def _string(row: Mapping[str, Any], key: str, where: str) -> str:
+    value = row[key]
+    if not isinstance(value, str):
+        _job_invalid(f"{where}.{key} = {value!r} is not a string")
+    return value
+
+
+def _optional_string(row: Mapping[str, Any], key: str, where: str) -> str | None:
+    return None if row[key] is None else _string(row, key, where)
+
+
+def _integer(row: Mapping[str, Any], key: str, where: str) -> int:
+    value = row[key]
+    if isinstance(value, bool) or not isinstance(value, int):
+        _job_invalid(f"{where}.{key} = {value!r} is not an integer")
+    return value
+
+
+def _optional_integer(row: Mapping[str, Any], key: str, where: str) -> int | None:
+    return None if row[key] is None else _integer(row, key, where)
+
+
+def _job_invalid(msg: str) -> Never:
+    raise TargetError(f"{JOB_JSON}: {msg}", symbol="OW_TARGET_JOB_INVALID", fix=_JOB_FIX)

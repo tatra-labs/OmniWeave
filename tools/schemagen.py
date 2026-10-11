@@ -669,7 +669,14 @@ def _property_names(key: object, ctx: _Ctx) -> dict[str, object] | None:
 
     Anything else raises, with the message this function replaced: a JSON object key must be a
     string, and a `Mapping[int, X]` is a type whose wire form the declaration has not decided.
+
+    A `NewType` key is its supertype, as `_schema_new_type` rules for a value: `Plan.cites` is
+    `Mapping[Cite, int]` (09-generation.md section 3.7), and a `Cite` on the wire is a string
+    (D763).
     """
+    supertype = getattr(key, "__supertype__", None)
+    if supertype is not None:
+        return _property_names(supertype, ctx)
     if key is str:
         return None
     schema: dict[str, object] | None = None

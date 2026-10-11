@@ -952,6 +952,14 @@ fix     = "keep one card for the target on OMNIWEAVE_DRIVER_PATH or in .omniweav
 raised_by = "ConfigError"
 sites   = ["09-generation.md:439"]
 
+[[code]]
+numeric = "OW-T-518"
+symbol  = "OW_TARGET_JOB_INVALID"
+meaning = "a job.json Job.load() refuses: unreadable, another schema, an unknown or missing key at any level (a nullable one included), a value outside its grammar, a Plan that Plan refuses, or an embedded Brief that does not digest to plan.brief_digest (D763, closing 09 Q11)"
+fix     = "ow explain OW-T-518"
+raised_by = "TargetError"
+sites   = ["09-generation.md:2894"]
+
 # ── W1.5, the driver card grammar (04-driver-system.md sections 2.1-2.8, 4.5, 5.3, 7.5). The
 # three discovery-point refusals of section 5.3 step 1, plus the two numerics the plan already
 # binds. `meaning` and `fix` are FILLED here rather than deferred to W1.3: these five are raised
