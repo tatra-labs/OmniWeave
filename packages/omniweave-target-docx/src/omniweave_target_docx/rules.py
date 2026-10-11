@@ -39,6 +39,11 @@ holds the rest, in 09 section 4.4's bands.
    heading, `pre`, `dt`, a caption and every inline mark hold inline content only. A block inside
    one, a `figcaption` outside `figure`, and a value outside its row's `canonical` (`text-align`,
    `dir`, a link's target) are `OW_TARGET_TEXT_INVALID`.
+7. **A cite's kind and span are checked where the gate can say so** (D783). The compile already
+   refuses a `data-ow-cite-kind` outside the four kinds and a `data-ow-cite-span` that is not
+   `a:b` with `a < b`, as `OW_TARGET_IL_MALFORMED` (`run.out_compile` ruling 7). The rows that
+   declare the two attributes arrived with D783, so this rule reports the same values with the
+   same code at check time, where `ow out check` can name them before a compile is tried.
 """
 
 from __future__ import annotations
@@ -50,6 +55,7 @@ from typing import Final
 
 from omniweave_core.out import Finding, Provenance, RuleCtx, RuleSpec, Severity
 from omniweave_core.out.carrier import CarrierNode, style_declarations
+from omniweave_core.store.artifact import CITE_KINDS
 
 __all__ = ["BLOCKS", "LIST_DEPTH_MAX", "rules"]
 
@@ -140,6 +146,13 @@ def rules() -> Mapping[str, Sequence[RuleSpec]]:
                 "unit",
                 frozenset({"OW_TARGET_IL_ASSET_URI"}),
                 media_src,
+            ),
+            RuleSpec(
+                "docx.cite.facts@1",
+                46,
+                "unit",
+                frozenset({"OW_TARGET_IL_MALFORMED"}),
+                cite_facts,
             ),
         ),
         "cross-reference": (
@@ -382,6 +395,35 @@ def media_src(ctx: RuleCtx) -> Iterator[Finding]:
                 construct="media.img",
                 msg=f"src={src[:80]!r} is not asset-slot:<sha256 hex>; freeze the asset and "
                 "write its slot",
+            )
+
+
+def cite_facts(ctx: RuleCtx) -> Iterator[Finding]:
+    """Ruling 7: `data-ow-cite-kind` is one of four, and `data-ow-cite-span` is `a:b`, `a < b`."""
+    if ctx.doc is None or ctx.unit is None:
+        return
+    for n in ctx.doc.select("@data-ow-cite-kind"):
+        value = n.attr("data-ow-cite-kind") or ""
+        if value not in CITE_KINDS:
+            yield _finding(
+                ctx,
+                n,
+                rule="docx.cite.facts@1",
+                code="OW_TARGET_IL_MALFORMED",
+                construct="ow.cite.kind",
+                msg=f"data-ow-cite-kind={value!r} is not one of {sorted(CITE_KINDS)}",
+            )
+    for n in ctx.doc.select("@data-ow-cite-span"):
+        value = n.attr("data-ow-cite-span") or ""
+        a, sep, b = value.partition(":")
+        if not sep or not a.isdecimal() or not b.isdecimal() or int(a) >= int(b):
+            yield _finding(
+                ctx,
+                n,
+                rule="docx.cite.facts@1",
+                code="OW_TARGET_IL_MALFORMED",
+                construct="ow.cite.span",
+                msg=f"data-ow-cite-span={value!r} is not a:b with a < b",
             )
 
 

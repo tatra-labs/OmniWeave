@@ -1,8 +1,7 @@
 # compile.docx.native — the flow target (09-generation.md section 12.3; 16-roadmap.md W9.4).
 # "The honest test that the abstraction is not one implementation wearing an interface": a flow
-# carrier, no canvas, no z-order, no bake. D781 builds its table, carrier and rules, so
-# `ow out check` gates owflow/1; D782 lowers it to WordprocessingML, all but notes and embedded
-# citations, and until those land the card says implemented = false and why.
+# carrier, no canvas, no z-order, no bake. D781 builds its table, carrier and rules, D782 its
+# lowering to WordprocessingML, and D783 its notes and embedded citations.
 card_schema = 1
 
 [driver]
@@ -31,19 +30,18 @@ unit = "section"                       # a run of flowed content between section
 carrier = "html"
 il = "owflow/1"
 constructs = "constructs.toml"
-constructs_digest = "sha256:cbe2215e820981294a6f50cf1cd19745a207e4143092216977e2eb9a2b472b94"
+constructs_digest = "sha256:1bd027ae6b7c4f99c930e1666f3753a1af7ae1fd35ed5dcafb62315e5085d9b8"
 citations = "embedded"                 # the OOXML provenance part, 09 section 10
 provenance_part = "customXml/omniweave-provenance.json"
 bake = "unavailable"                   # a flow carrier has no bake tier
 measure = "none"                       # line and page breaks are the renderer's
 runtime_rules = false
 toolchain = ""                         # pure Python: python-docx and lxml
-implemented = false
+implemented = true
 max_units = 64
 agent_doc_tokens_max = 3000                # 2,376 cl100k_base tokens at D781: 29 a row
 media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 suffix = ".docx"
-reason = "lower() writes every owflow/1 construct but notes and embedded citations, which preflight refuses as unmapped until they are lowered"
 
 [compile.round_trip]
 read_back = "parse.docx.native"

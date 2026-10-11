@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D782: the docx lowering annotated at 09 section 12.3's compiler paragraph
+# blessed-because: D783: docx notes, the provenance part and the host's cite pin annotated at 09 sections 10 and 12.3
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -35,7 +35,7 @@ documents-frozen  1647e6e4767fba2ba95d97423b8a1ded0aef9b7bf63c470e4a7af08a5057ed
 documents-frozen  7c4c7946cad37746e602ef662e72d6a75ee43cc6b9367173c906cddc6d9f763e  06-structure-extraction.md
 documents-frozen  be2cb657a6c7e22e061fb7d4b5e4a70aaa69aecca6b637d86f7c81e2aed35a44  07-store-and-retrieval.md
 documents-frozen  3b78dc5495b60c008dea14242c2dd56a9ee67f8996e1f61b66791fc5e78a1d0f  08-runtime.md
-documents-frozen  9bc807a1aada4fae67add10f2e41ab2563f6799aa89965e56b9f2f4d398fbb95  09-generation.md
+documents-frozen  1aa29b1c7688b603f78004a83bc15af51fb38f211ab1be54cfd3eef986f9e446  09-generation.md
 documents-frozen  3855e9d5a833d34c6f0da3cb8f93f19769032cbb730615b591ed34ff0d92edca  10-interfaces.md
 documents-frozen  76a694bf0b19b60ba35d2246f6b36466ca990f318f51e0a292c388ec0e78bc68  11-repo-layout.md
 documents-frozen  3edabb36d1bc3c54a9f44ca89f43589f1b3f63ce991399c7bd515b35f7a0752c  12-performance.md

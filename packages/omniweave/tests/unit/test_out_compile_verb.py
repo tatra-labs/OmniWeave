@@ -12,6 +12,7 @@ import io
 import json
 import shutil
 import sys
+import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -184,25 +185,61 @@ def test_no_final_report_is_not_provided_and_lowers_nothing(project: Path) -> No
     assert not (project / ".omniweave" / "out").exists()
 
 
-def test_a_target_gated_but_not_yet_lowering_is_refused_before_its_gate(project: Path) -> None:
-    """Ruling 24 (D781): docx's table and rules gate its IL, and its card says it cannot lower."""
+def _docx(project: Path) -> Path:
+    """A scaffolded docx JobDir with one owflow/1 unit authored and checked at `final`."""
     code, out, err = _run(
         ["scaffold", "docx", "--brief", "brief.md", "--slug", "memo", "--render", "json"], project
     )
     assert (code, err) == (0, "")
     job = Path(json.loads(out)["job_dir"])
     (job / "il" / "u01.html").write_text(
-        "<section><h1>Memo</h1><p>Revenue rose.</p></section>", encoding="utf-8", newline=""
+        '<section><h1>Memo</h1><p>Revenue rose.<a data-ow-note="n1"></a></p>'
+        '<aside data-ow-footnote="n1"><p>Audited.</p></aside></section>',
+        encoding="utf-8",
+        newline="",
     )
     il = job / "il" / "il.toml"
     il.write_text(il.read_text(encoding="utf-8") + ROW.format(unit="u01", ord=1), "utf-8")
     code, _out, err = _run(["check", "--stage", "final", "--job", str(job)], project)
     assert (code, err) == (0, "")
+    return job
+
+
+def test_an_unimplemented_target_is_refused_before_its_gate(project: Path) -> None:
+    """Ruling 24 (D781): a JobDir naming video, whose card says it cannot lower."""
+    job = _docx(project)
+    document = json.loads((job / "job.json").read_bytes())
+    document["plan"]["target"] = "video"
+    (job / "job.json").write_text(json.dumps(document), encoding="utf-8")
     code, out, err = _run(["compile", "--job", str(job)], project)
     assert (code, out) == (TargetError.EXIT, "")
-    assert err.startswith("ow: OW-T-514: compile.docx.native cannot compile: [compile] implemented")
-    assert "fix: ow out check --target docx --stage final" in err
+    assert err.startswith(
+        "ow: OW-T-514: compile.video.native cannot compile: [compile] implemented"
+    )
+    assert "fix: ow out check --target video --stage final" in err
     assert not (project / ".omniweave" / "out").exists()
+
+
+@WINDOWS_ONLY
+def test_a_docx_job_compiles_in_a_worker_and_seals(project: Path) -> None:
+    """D783: owflow/1 through the S4 worker, sealed, placed, and a Word package with its note."""
+    job = _docx(project)
+    code, out, err = _run(["compile", "--job", str(job)], project)
+    assert (code, err) == (0, "")
+    placed = project / ".omniweave" / "out" / "memo@1" / "memo.docx"
+    assert out.splitlines()[-1] == f"sealed memo@1 (release) at {placed}"
+    with zipfile.ZipFile(placed) as zf:
+        names = set(zf.namelist())
+        document = zf.read("word/document.xml").decode()
+    assert {"word/document.xml", "word/footnotes.xml", "customXml/omniweave-provenance.json"} <= (
+        names
+    )
+    assert "Revenue rose." in document
+    assert "<w:footnoteReference" in document
+    code, listed, err = _run(["list", "--corpus", "handbook", "--render", "json"], project)
+    assert (code, err) == (0, "")
+    [row] = json.loads(listed)
+    assert (row["slug"], row["target"]) == ("memo", "docx")
 
 
 def test_il_edited_after_the_check_is_stale(project: Path) -> None:
