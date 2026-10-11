@@ -63,7 +63,7 @@ import weakref
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, BinaryIO, Final
+from typing import TYPE_CHECKING, BinaryIO, Final, cast
 
 from omniweave_ports.types import (
     ArtifactRef,
@@ -76,7 +76,7 @@ from omniweave_ports.types import (
     UnitRef,
 )
 
-from omniweave_core.errors import DriverHostError, OwError
+from omniweave_core.errors import DriverHostError, OwError, TargetError
 from omniweave_core.host import subproc, wire
 
 if TYPE_CHECKING:
@@ -86,6 +86,8 @@ if TYPE_CHECKING:
 
     from omniweave_core.blobs import BlobStore as CasStore
     from omniweave_core.drivers.card import DriverCard
+    from omniweave_core.out.compile import CompileV1
+    from omniweave_core.out.constructs import ConstructTable
 
 __all__ = [
     "EGRESS_EVENTS",
@@ -106,11 +108,16 @@ __all__ = [
     "serve",
 ]
 
-PORTS_SERVED: Final[frozenset[str]] = frozenset({"parse/1", "derive/1"})
-"""The ports this bootstrap can dispatch. `parse/1`, and `derive/1` since D664 brought the first
-derive card (`derive.segment.spine`); a card on another port is refused at `HELLO` rather than
-half-served: `acquire/1` and `embed/1` each take a different input type through a different method,
-and each lands with the cell that routes to it.
+PORTS_SERVED: Final[frozenset[str]] = frozenset({"parse/1", "derive/1", "compile/1"})
+"""The ports this bootstrap can dispatch. `parse/1`, `derive/1` since D664 brought the first
+derive card (`derive.segment.spine`), and `compile/1` since D771; a card on another port is refused
+at `HELLO` rather than half-served: `acquire/1` and `embed/1` each take a different input type
+through a different method, and each lands with the cell that routes to it.
+
+**A `compile/1` unit is the job document** (`out.job.job_unit`), and the `INVOKE` header carries
+the `job` itself and its `job_dir`. The worker runs `out.compile.lower_job()`: the target's
+`carrier()`, `lower()` and `postflight()`, which are the card's `subproc` methods. The gate, the
+lookup and the seal are the host's, which holds the store (D771).
 
 **A `derive/1` unit is one `DeriveScope`.** The `INVOKE` header's `lane` (`subproc.Invocation.lane`)
 names the lane and each unit is called alone, `derive(DeriveScope(lane, (unit,), frozenset()), io)`,
@@ -123,8 +130,19 @@ EGRESS_EVENTS: Final[frozenset[str]] = frozenset({"socket.connect", "socket.geta
 """The PEP 578 events the armed hook refuses. 14:842 names `socket.connect`; `getaddrinfo` is the
 resolver lookup that precedes every named connection and is egress on its own. D584."""
 
-HELLO_EXTRA_KEYS: Final[tuple[str, ...]] = ("max_output_bytes", "egress_mode")
-"""The two `HELLO` keys beyond 04:1695's nine, each owed to the plan (D583).
+HELLO_EXTRA_KEYS: Final[tuple[str, ...]] = (
+    "max_output_bytes",
+    "egress_mode",
+    "card_source",
+    "card_origin",
+)
+"""The `HELLO` keys beyond 04:1695's nine, each owed to the plan (D583, D771).
+
+`card_source` and `card_origin` are the file the host read the card from and discovery's origin
+for it. A worker that is handed them reads that one file and checks its digest, instead of building
+a catalog of its own. A catalog built with no environment has no `OMNIWEAVE_DRIVER_PATH` card,
+so a worker could not find a card the host resolved there, and the reference target is one.
+Without them, the worker looks the id up in `catalog()`, as before.
 
 `max_output_bytes` is `DriverIO`'s fourth field and the host's number (04:1795 -- *"on the host's
 number, not by the driver's own check"*); no printed frame carries it, and a worker that picked its
@@ -197,6 +215,9 @@ class Session:
     isolation_granted: Mapping[str, object]
     max_output_bytes: int
     egress_mode: str
+    card_source: str = ""
+    """The card's file, when the host names it (D771); empty means look the id up."""
+    card_origin: str = ""
 
     @classmethod
     def of(cls, header: Mapping[str, object]) -> Session:
@@ -214,6 +235,7 @@ class Session:
         ceiling = header.get("max_output_bytes")
         if not isinstance(ceiling, int) or isinstance(ceiling, bool) or ceiling < 1:
             raise _refuse(f"HELLO max_output_bytes is {ceiling!r}, not a positive integer")
+        source = header.get("card_source")
         return cls(
             driver_id=_text(header, "driver_id"),
             port=_text(header, "port"),
@@ -225,6 +247,8 @@ class Session:
             isolation_granted=dict(granted),
             max_output_bytes=ceiling,
             egress_mode=str(header.get("egress_mode") or "granted"),
+            card_source="" if source is None else _text(header, "card_source"),
+            card_origin="" if source is None else _text(header, "card_origin"),
         )
 
 
@@ -487,7 +511,8 @@ def serve(
     guard(armed=not card.hardware.needs_network or session.egress_mode == "none")
     try:
         driver = _construct(card, session)
-    except DriverHostError as refused:
+        compiling = _compile_context(card) if session.port == "compile/1" else None
+    except OwError as refused:
         _fatal(wired, str(refused))
         return 1
     wired.send(
@@ -507,7 +532,7 @@ def serve(
         if frame is None or frame.kind is wire.FrameKind.SHUTDOWN:
             return 0
         if frame.kind is wire.FrameKind.INVOKE:
-            _invoke(wired, driver, session, cas, frame)
+            _invoke(wired, driver, session, cas, frame, compiling=compiling)
             continue
         if frame.kind is wire.FrameKind.CANCEL:
             continue  # between units there is nothing in flight to cancel: `_invoke` is synchronous
@@ -522,14 +547,17 @@ def _card(session: Session, find_card: Callable[[str], DriverCard | None] | None
     bytes, and `card_sha256` is how that is known rather than assumed (04:1696's mismatch row).
     """
     if session.port not in PORTS_SERVED:
-        served = " and ".join(sorted(PORTS_SERVED))
+        *rest, last = sorted(PORTS_SERVED)
+        served = f"{', '.join(rest)} and {last}"
         raise _refuse(
             f"{session.driver_id} is a {session.port} driver; this worker serves {served}"
         )
     lookup = find_card or _catalog_card
-    card = lookup(session.driver_id)
+    card = _card_at(session) if session.card_source else lookup(session.driver_id)
     if card is None:
         raise _refuse(f"no installed card has id {session.driver_id!r}")
+    if card.identity.id != session.driver_id:
+        raise _refuse(f"{session.card_source} declares {card.identity.id}, not {session.driver_id}")
     declared = f"{card.identity.port.value}/{card.identity.port_major}"
     if declared != session.port:
         raise _refuse(
@@ -549,6 +577,30 @@ def _catalog_card(driver_id: str) -> DriverCard | None:
     from omniweave_core.discovery import catalog  # noqa: PLC0415 -- a worker's first act only
 
     return catalog().cards.get(driver_id)
+
+
+def _card_at(session: Session) -> DriverCard:
+    """The one card the host names (D771): read, never imported (INV-4), and digest-checked by
+    `_card()` as a catalog card is."""
+    from omniweave_core.drivers.card import (  # noqa: PLC0415 -- a worker's first act only
+        CARD_ORIGINS,
+        DriverCard,
+        load_card,
+        read_card_bytes,
+    )
+
+    if session.card_origin not in CARD_ORIGINS:
+        raise _refuse(
+            f"HELLO card_origin {session.card_origin!r} is not one of {sorted(CARD_ORIGINS)}"
+        )
+    try:
+        raw = read_card_bytes(Path(session.card_source))
+    except OSError as error:
+        raise _refuse(f"HELLO card_source {session.card_source} does not read: {error}") from error
+    card = load_card(raw, origin=session.card_origin, source=session.card_source)  # type: ignore[arg-type]
+    if not isinstance(card, DriverCard):
+        raise _refuse(f"{session.card_source} is a tombstone, not a driver card")
+    return card
 
 
 def _construct(card: DriverCard, session: Session) -> object:
@@ -592,7 +644,13 @@ def _units(header: Mapping[str, object]) -> tuple[tuple[UnitRef, str | None], ..
 
 
 def _invoke(
-    wired: _Channel, driver: object, session: Session, cas: CasStore, frame: wire.Frame
+    wired: _Channel,
+    driver: object,
+    session: Session,
+    cas: CasStore,
+    frame: wire.Frame,
+    *,
+    compiling: _Compile | None = None,
 ) -> None:
     """One `INVOKE`: one `RESULT` per unit, in unit order, whatever each unit did (04:1715)."""
     invoke_id = str(frame.header.get("invoke_id", ""))
@@ -602,11 +660,12 @@ def _invoke(
     blobs = WorkerBlobs(cas, aliases)
     lane = frame.header.get("lane")
     services = _services(frame.header)
-    call = (
-        _derive_call(driver, str(lane or ""))
-        if session.port == "derive/1"
-        else _parse_call(getattr(driver, "parse", None))
-    )
+    if session.port == "derive/1":
+        call = _derive_call(driver, str(lane or ""))
+    elif compiling is not None:
+        call = _compile_call(driver, compiling, frame.header)
+    else:
+        call = _parse_call(getattr(driver, "parse", None))
     for index, (unit, _blob) in enumerate(units):
         scratch = Path(session.tmp) / invoke_id / str(index)
         scratch.mkdir(parents=True, exist_ok=True)
@@ -744,6 +803,63 @@ def _derive_call(driver: object, lane: str) -> Callable[[UnitRef, DriverIO], Dri
     return lambda unit, io_obj: derive_one(
         derive, DeriveScope(lane=lane, units=(unit,), allowed_cites=frozenset()), io_obj
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _Compile:
+    """What a `compile/1` session reads off its card once, at `HELLO` (D771)."""
+
+    constructs: ConstructTable
+    suffix: str
+
+
+def _compile_context(card: DriverCard) -> _Compile:
+    """The card's construct table, held to its digest, and its artefact suffix. A card whose
+    table does not load is refused at `HELLO`, as a card that does not activate is."""
+    from omniweave_core.out.agentdoc import load_table  # noqa: PLC0415 -- a compile worker's
+    from omniweave_core.out.card import CompileCard  # noqa: PLC0415
+
+    compiled = CompileCard.of(card)
+    return _Compile(load_table(Path(card.source), compiled), compiled.suffix)
+
+
+def _compile_call(
+    compiler: object, compiling: _Compile, header: Mapping[str, object]
+) -> Callable[[UnitRef, DriverIO], DriverResult]:
+    """One `compile/1` unit: the header's job, held to the unit it was invoked over, lowered.
+
+    A refusal the compile raises names its own symbol, so it crosses as `corrupt_input`, the
+    input this call was given, with the symbol and fix leading the message
+    (`out.compile.refusal_message`). Anything else a target raises is `_bug`'s, as for a parse.
+    """
+    from omniweave_core.out.compile import lower_job, refusal_message  # noqa: PLC0415
+    from omniweave_core.out.job import Job, job_unit  # noqa: PLC0415
+
+    def call(unit: UnitRef, io_obj: DriverIO) -> DriverResult:
+        try:
+            job = Job.from_json(header.get("job"))
+            directory = header.get("job_dir")
+            if job_unit(job) != unit or not isinstance(directory, str) or not directory:
+                raise TargetError(
+                    "a compile INVOKE carries its job, a job_dir, and the job's document as its "
+                    f"one unit; this one carries {unit.uri} and job_dir {directory!r}",
+                    symbol="OW_TARGET_JOB_INVALID",
+                    fix="ow explain OW-T-518",
+                )
+            return lower_job(
+                cast("CompileV1", compiler),
+                job,
+                Path(directory),
+                constructs=compiling.constructs,
+                suffix=compiling.suffix,
+                io=io_obj,
+            )
+        except OwError as refused:
+            raise DriverError(
+                cls=FailureClass.CORRUPT_INPUT, message=refusal_message(refused)
+            ) from refused
+
+    return call
 
 
 def derive_one(derive: object, scope: DeriveScope, io_obj: DriverIO) -> DriverResult:

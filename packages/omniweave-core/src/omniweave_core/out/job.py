@@ -93,6 +93,17 @@ generation: `il.toml`'s roster checked against the filesystem, every unit parsed
     (`il.toml` alone), `ledger_digest` is the empty ledger's, and `toolchain_digest` is
     `None`: a Toolchain's digest is resolved when it is installed, not when a job is
     named. A check and a compile replace what they compute.
+
+## Rulings (the ledger's D771)
+
+27. **A compile worker is invoked over one unit, the job document.** 09 section 7.1 gives a
+    compile job a synthetic document: `uri` `ow-job://<corpus>/<artifact_slug>/<job_digest>`,
+    `media_type` `application/vnd.omniweave.job+json`, and digests over "the canonical job
+    record". That record is `canonical(job.as_json())`, sorted keys and no whitespace, and not
+    ruling 20's file bytes, which keep the Brief's section order: a frame's header is encoded
+    with sorted keys, so a job that crossed one writes other file bytes and the same record.
+    `job_unit()` is the `UnitRef` whose `content_sha256` is the record's sha256, and a worker
+    that is handed a `job` whose record digests otherwise refuses it.
 """
 
 from __future__ import annotations
@@ -109,6 +120,9 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, Literal, Never
 
+from omniweave_ports import UnitRef
+
+from omniweave_core.canonical import canonical
 from omniweave_core.errors import ResourceLimit, TargetError
 from omniweave_core.events import TRACEPARENT_RE
 from omniweave_core.limits import MAX_IL_FILE_BYTES
@@ -130,6 +144,7 @@ __all__ = [
     "IL_SCHEMA",
     "JOBS_DIR",
     "JOB_JSON",
+    "JOB_MEDIA_TYPE",
     "JOB_SCHEMA",
     "UNPARSED_HEX",
     "UNREADABLE",
@@ -139,6 +154,7 @@ __all__ = [
     "JobDeterminism",
     "elided",
     "job_path",
+    "job_unit",
     "read_il_files",
     "scaffold",
 ]
@@ -757,6 +773,24 @@ BRIEF_MD: Final = "brief.md"
 JOBS_DIR: Final = "jobs"
 _SLUG: Final = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 _RUN_ID: Final = re.compile(r"r_[0-9A-HJKMNP-TV-Z]{26}")
+
+
+JOB_MEDIA_TYPE: Final = "application/vnd.omniweave.job+json"
+"""The synthetic job document's media type (09 section 7.1)."""
+
+
+def job_unit(job: Job) -> UnitRef:
+    """Ruling 27: the job document as the `UnitRef` a compile worker answers for."""
+    data = canonical(job.as_json())
+    digest = hashlib.sha256(data).hexdigest()
+    plan = job.plan
+    return UnitRef(
+        uri=f"ow-job://{plan.corpus}/{plan.slug}/{digest}",
+        part="",
+        content_sha256=digest,
+        byte_len=len(data),
+        media_type=JOB_MEDIA_TYPE,
+    )
 
 
 def job_path(cache_root: Path, run_id: str, slug: str, artifact_gen: int) -> Path:
