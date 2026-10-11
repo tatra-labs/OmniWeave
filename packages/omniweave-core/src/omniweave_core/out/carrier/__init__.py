@@ -28,8 +28,7 @@ inline-style splitter `@style|<prop>` reads, and the transactional splice.
 6. **Overlapping splices are refused before any is applied, and so are two at one offset**: two
    edits to one place are two opinions (09 section 8.3 pt 3). An offset outside the source or
    inside a UTF-8 sequence is refused the same way, as the caller's error, not the file's.
-7. **`place_marker()` arrives with the marker** (09 section 8.2), because placement needs the
-   `OWC1` grammar. `nsig` arrived with D743's canonicaliser in `omniweave_core.out.report`.
+7. **`place_marker()` and `Insertion` arrived with D746**, and `nsig` with D743's canonicaliser.
 """
 
 from __future__ import annotations
@@ -47,6 +46,7 @@ __all__ = [
     "CarrierDoc",
     "CarrierNode",
     "CarrierParseError",
+    "Insertion",
     "ParseError",
     "Selector",
     "Splice",
@@ -127,6 +127,10 @@ class CarrierDoc(Protocol):
         """The carrier's definition of the visible text (09 section 3.1's table)."""
         ...
 
+    def place_marker(self, n: CarrierNode) -> Insertion:
+        """Where a marker for `n` would go: its container's first child, on its own line."""
+        ...
+
 
 @dataclass(frozen=True, slots=True)
 class Splice:
@@ -139,6 +143,26 @@ class Splice:
     def __post_init__(self) -> None:
         if self.start < 0 or self.end < self.start:
             raise ValueError(f"splice [{self.start}, {self.end}) is not a byte range")
+
+
+@dataclass(frozen=True, slots=True)
+class Insertion:
+    """Where a marker line lands (09 section 3.1). Offsets are `Splice`'s byte space."""
+
+    at_byte: int
+    """Where the marker's text is spliced in."""
+    line: int
+    """The 1-based line the marker then occupies."""
+    el: str
+    """The address the marker is written against."""
+    container_el: str | None
+    """The ancestor that carries it, set iff hoisted."""
+    hoisted: bool
+    """The anchor was self-closing, so the note may refer to a child of the container."""
+    prefix: str
+    """What precedes the marker so that it sits on its own line: a newline when the container's
+    start tag does not end its line, else the next line's indentation (D746 ruling 8)."""
+    suffix: str = "\n"
 
 
 @dataclass(frozen=True, slots=True)

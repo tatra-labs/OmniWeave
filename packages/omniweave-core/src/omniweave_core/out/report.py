@@ -37,9 +37,15 @@ gate reads.
     cloned asset's ids carry and the ledger's edited digests are facts of the asset ledger, not of
     the tree. A cloned id, `url(#id)` and `href="#id"` lose the prefix; an edited slot gains
     `:edited:<sha256>`.
-20. **The framing is ppt-master's `semantic_subtree_sha256`**: the tag, the attributes sorted, text
-    only where it is not whitespace, the children in order. Indentation and attribute order are not
-    content; a tail is. Normalizations 4 and 5 apply below the measured element, never to it.
+20. **The framing is ppt-master's `semantic_subtree_sha256`**: the tag, the attributes sorted, the
+    character data, the children in order. Indentation and attribute order are not content; a tail
+    is. Normalizations 4 and 5 apply below the measured element, never to it. **Amended by D746**:
+    each run of character data is framed whitespace-collapsed (runs to one space, ends stripped),
+    not raw, everywhere. An `OWC1` marker sits on its own line as an element's first child, so
+    placing or removing one adds or drops whitespace beside the element's text; framed raw, that
+    would move the very `nsig` the marker records. A whitespace-only edit is therefore no change,
+    which is the price, and 09's own: `nsig` is a change detector whose failure mode is a
+    reviewable edit, not an identity.
 21. **The shared definitions are the direct children with an id of the root's direct `<defs>`**,
     as ppt-master's `_direct_defs`. `changed_definitions()` is computed once a unit, and
     `unchanged()` is the two-factor test: the subtree's own `nsig` AND no changed definition it
@@ -63,6 +69,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_core.errors import OwError, load_register
 from omniweave_core.out.carrier import Selector, parse_selector, style_declarations
+from omniweave_core.out.carrier.tree import collapse
 from omniweave_core.out.finding import Finding, FindingSet, Provenance, Severity, Truncation
 from omniweave_core.out.gate import REPORT_SCHEMA, GateStatus, clears, exit_code, gate_status
 from omniweave_core.out.job import ILFile
@@ -742,8 +749,9 @@ def _frame(item: _Canon, out: bytearray) -> None:
     seen_child = False
     for piece in item.content:
         if isinstance(piece, str):
-            if piece.strip():
-                out += (b"\x00l" if seen_child else b"\x00t") + piece.encode("utf-8")
+            text = collapse(piece)
+            if text:
+                out += (b"\x00l" if seen_child else b"\x00t") + text.encode("utf-8")
         else:
             out += b"\x00c"
             _frame(piece, out)

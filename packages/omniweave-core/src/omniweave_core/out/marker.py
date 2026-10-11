@@ -30,6 +30,25 @@ no side table, so the tracker and the artefact cannot disagree.
    `OW_TARGET_MARKER_UNRESOLVED` naming each unit and marker id, corrupt ones included: a marker
    nobody can read may be a `must`. Scanning is line-based, so no carrier is needed; both release-1
    carriers' delimiters are `<!--` and `-->`, the defaults.
+
+## Placement (the ledger's D746)
+
+8. **A marker is its container's first child, on its own line.** The container is the anchor,
+   or its nearest non-self-closing ancestor when the anchor is self-closing (`hoisted`). When the
+   container's start tag ends its line the marker opens the next line at that line's indent, so
+   a whole-line removal restores the file byte for byte; when it does not, a newline goes first
+   and stays after removal, as whitespace that `nsig`'s collapsed framing does not see.
+9. **The `nsig` a marker records is its anchor's before the splice, and the splice does not move
+   it**: the marker line adds only whitespace beside text, which `nsig` frames collapsed (D746's
+   amendment to `report`'s ruling 20). A marker its own placement made stale would be stale the
+   moment it was written; the tests hold both insertion forms to it.
+10. **A text target is ambiguous when the anchor has two runs of text and `prev` cannot pick
+    one**: no `prev`, or a `prev` found in more or fewer than one run is
+    `OW_TARGET_MARKER_AMBIGUOUS`, refused and never guessed (OUT18). An anchor with one run, or
+    none, is not ambiguous.
+11. **A placement is refused, never degraded**: no element at the address is
+    `OW_TARGET_MARKER_ORPHAN`, two are `OW_TARGET_EL_DUPLICATE`, and the 257th note is
+    `OW_TARGET_MARKER_BUDGET`. The timestamp is the caller's: library code reads no clock.
 """
 
 from __future__ import annotations
@@ -41,11 +60,12 @@ import json
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Final, Literal
+from typing import Final, Literal, Never
 
 from omniweave_core.errors import ResourceLimit, TargetError
 from omniweave_core.limits import MAX_MARKER_PAYLOAD_BYTES, MAX_MARKERS_PER_UNIT
-from omniweave_core.out.carrier import CarrierDoc, CarrierNode, ParseError, Splice
+from omniweave_core.out.carrier import CarrierDoc, CarrierNode, Insertion, ParseError, Splice
+from omniweave_core.out.carrier.tree import Node, collapse
 from omniweave_core.out.job import ILBundle
 
 __all__ = [
@@ -61,6 +81,7 @@ __all__ = [
     "format_marker",
     "marker_id",
     "over_budget",
+    "place",
     "resolve",
     "scan",
     "scan_text",
@@ -278,3 +299,46 @@ def assert_clean(bundle: ILBundle) -> None:
 def over_budget(doc: CarrierDoc) -> bool:
     """`MAX_MARKERS_PER_UNIT`: a 257th note is refused (09 section 8.2)."""
     return len(scan(doc)) >= MAX_MARKERS_PER_UNIT
+
+
+def place(
+    doc: CarrierDoc, el: str, payload: Payload, ts: str
+) -> tuple[str, Insertion] | ParseError:
+    """Rulings 8-11: the file with one more marker, and where it went; or the reparse's error."""
+    nodes = [n for n in doc.select("@data-ow-el") if n.el == el]
+    if not nodes:
+        _refuse(f"no element carries {el}", "OW_TARGET_MARKER_ORPHAN")
+    if len(nodes) > 1:
+        _refuse(f"{len(nodes)} elements carry {el}", "OW_TARGET_EL_DUPLICATE")
+    if over_budget(doc):
+        _refuse(f"the unit already holds {MAX_MARKERS_PER_UNIT} markers", "OW_TARGET_MARKER_BUDGET")
+    node = nodes[0]
+    _unambiguous(node, payload)
+    where = doc.place_marker(node)
+    nsig = node.nsig
+    line = where.prefix + format_marker(doc, el, nsig, ts, payload) + where.suffix
+    out = doc.splice([Splice(where.at_byte, where.at_byte, line)])
+    if isinstance(out, ParseError):
+        return out
+    return out, where
+
+
+def _unambiguous(node: CarrierNode, payload: Payload) -> None:
+    """Ruling 10: two runs of text and no `prev` that picks exactly one."""
+    if not isinstance(node, Node):
+        return
+    runs = [collapse(c) for c in node.content if isinstance(c, str) and collapse(c)]
+    if len(runs) < 2:  # noqa: PLR2004 -- one run is unambiguous by definition.
+        return
+    hits = 0 if payload.prev is None else sum(payload.prev in run for run in runs)
+    if hits != 1:
+        _refuse(
+            f"{node.el} holds {len(runs)} runs of text and prev {payload.prev!r} picks {hits}",
+            "OW_TARGET_MARKER_AMBIGUOUS",
+        )
+
+
+def _refuse(msg: str, code: str) -> Never:
+    raise TargetError(
+        msg, symbol=code, fix="ow out check --markers   # names every marker and its el"
+    )

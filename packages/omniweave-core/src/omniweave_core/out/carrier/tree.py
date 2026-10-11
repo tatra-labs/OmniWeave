@@ -15,6 +15,7 @@ from omniweave_core.errors import ResourceLimit
 from omniweave_core.limits import MAX_IL_DEPTH, MAX_IL_FILE_BYTES, MAX_IL_NODES
 from omniweave_core.out.carrier import (
     CarrierNode,
+    Insertion,
     ParseError,
     Splice,
     apply_splices,
@@ -276,6 +277,35 @@ class Doc:
 
     def source(self) -> str:
         return self._text
+
+    def place_marker(self, n: CarrierNode) -> Insertion:
+        """D746 ruling 8: the first child of `n`, or of its nearest non-self-closing ancestor."""
+        if not isinstance(n, Node):
+            raise TypeError(f"{n!r} is not a node of this carrier")
+        container: Node | None = n
+        while container is not None and container.self_closing:
+            container = container.parent
+        if container is None or n.el is None:
+            raise ValueError(f"{n!r} has no address or no container a marker can live in")
+        data = self._text.encode("utf-8")
+        at = container.start_end
+        if data[at : at + 1] == b"\n":
+            at += 1
+            indent = data[at:].split(b"\n", 1)[0]
+            prefix = indent[: len(indent) - len(indent.lstrip(b" \t"))].decode("ascii")
+            line = data[:at].count(b"\n") + 1
+        else:
+            prefix = "\n"
+            line = data[:at].count(b"\n") + 2
+        hoisted = container is not n
+        return Insertion(
+            at_byte=at,
+            line=line,
+            el=n.el,
+            container_el=container.el if hoisted else None,
+            hoisted=hoisted,
+            prefix=prefix,
+        )
 
     def splice(self, edits: Sequence[Splice]) -> str | ParseError:
         """Ruling 4: a document the read had to recover is never written."""

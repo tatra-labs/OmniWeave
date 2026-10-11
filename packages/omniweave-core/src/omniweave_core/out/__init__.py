@@ -12,7 +12,7 @@ the seven `UnitOutcome`s, `ManualReason` and the total `classify_and_assert()`. 
 D743 adds `nsig()`, the canonical subtree digest, and the definition dependency to `report`.
 D744 adds `ILBundle` to `job`: `il.toml`, the roster check, and both digests over one parse.
 D745 builds `marker`: the `OWC1` grammar, `scan()`, `resolve()`, `apply_reverse()`,
-`assert_clean()`.
+`assert_clean()`. D746 adds `place()` and `Insertion`, and frames `nsig`'s text collapsed.
 """
 
 from omniweave_core.out.brief import Brief, Prohibition, baseline_rows, parse_brief
@@ -20,6 +20,7 @@ from omniweave_core.out.carrier import (
     CarrierDoc,
     CarrierNode,
     CarrierParseError,
+    Insertion,
     ParseError,
     Splice,
     parse_selector,
@@ -36,6 +37,7 @@ from omniweave_core.out.marker import (
     Payload,
     apply_reverse,
     assert_clean,
+    place,
     resolve,
     scan,
 )
@@ -84,6 +86,7 @@ __all__ = [
     "GateStatus",
     "ILBundle",
     "ILFile",
+    "Insertion",
     "ManualReason",
     "Marker",
     "MarkerEdit",
@@ -116,6 +119,7 @@ __all__ = [
     "nsig",
     "parse_brief",
     "parse_selector",
+    "place",
     "referenced_ids",
     "render",
     "resolve",
