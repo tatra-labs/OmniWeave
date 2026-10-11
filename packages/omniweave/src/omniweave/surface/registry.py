@@ -132,6 +132,7 @@ from omniweave.sdk.reports import (
     GraphDoctorReport,
     HooksCheckReport,
     InstallReport,
+    NormalizeReport,
     OutCheckReport,
     ScaffoldReport,
     ServeReport,
@@ -157,6 +158,7 @@ from omniweave.surface.inputs import (
     LocateIn,
     MergeIn,
     MergesIn,
+    NormalizeIn,
     OpenIn,
     QueryIn,
     ResidueIn,
@@ -1978,6 +1980,26 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=StampReport,
             advanced=frozenset(),
             cli=("out", "stamp"),
+        ),
+        ActionSpec(
+            name="out.normalize",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Apply each normalize row's normalizer to the IL values it selects, "
+                "through the transactional splice, all units or none"
+            ),
+            decision="a check warned of a normalize row and you want its fix applied",
+            example={"stage": "early"},
+            inp=NormalizeIn,
+            out=NormalizeReport,
+            advanced=frozenset(),
+            cli=("out", "normalize"),
         ),
     )
 )

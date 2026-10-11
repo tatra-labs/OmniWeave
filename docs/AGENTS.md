@@ -66,6 +66,7 @@ key can grant one.
 | `open` | `ow_open` | `ow open` | default, full | `free` | Fetch the exact passages behind an address you already hold: a cite, a page range, or a whole document |
 | `out.check` | — | `ow out check` | — | `free` | Run the target's rules over a JobDir's IL at one stage, write validation/<stage>.json, and print each finding with its fix |
 | `out.constructs` | — | `ow out constructs` | — | `free` | Print a target's construct table, a line a row, one row in full, or as the agent document an IL author writes against (--format md) |
+| `out.normalize` | — | `ow out normalize` | — | `free` | Apply each normalize row's normalizer to the IL values it selects, through the transactional splice, all units or none |
 | `out.scaffold` | — | `ow out scaffold` | — | `free` | Create the JobDir one artefact is authored in: job.json with the roster the Brief commissions, the frozen brief.md, il/il.toml and empty assets |
 | `out.stamp` | — | `ow out stamp` | — | `free` | Mint a data-ow-el address on every citable, text-bearing IL element that has none, never renumbering one, all units or none |
 | `out.targets` | `ow_targets` | `ow out targets` | full | `free` | List the artefact kinds this deployment can compile, whether each is implemented and enabled, and the determinism class its card declares |

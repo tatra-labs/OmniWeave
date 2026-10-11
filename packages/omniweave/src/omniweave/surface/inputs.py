@@ -99,6 +99,7 @@ __all__ = [
     "LocateIn",
     "MergeIn",
     "MergesIn",
+    "NormalizeIn",
     "OpenIn",
     "QueryIn",
     "ResidueIn",
@@ -544,6 +545,22 @@ class ScaffoldIn:
     brief: str | None = None
     slug: str | None = None
     corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class NormalizeIn:
+    """`ow out normalize [--stage S] [--unit U] [--construct ID] [--job DIR]`. 09 4.3. D768.
+
+    `stage` names the report whose findings choose the rows; without it every `normalize`
+    row runs. `unit` and `construct` narrow the run. 09 prints the unit as a positional IL
+    path and the construct as `--construct`, and a positional cannot be optional in the
+    generated grammar, so both are options.
+    """
+
+    stage: str | None = None
+    unit: str | None = None
+    construct: str | None = None
+    job: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

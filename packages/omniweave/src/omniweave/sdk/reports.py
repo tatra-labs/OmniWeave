@@ -69,6 +69,8 @@ __all__ = [
     "GraphDoctorReport",
     "HooksCheckReport",
     "InstallReport",
+    "NormalizeReport",
+    "NormalizedRow",
     "OutCheckReport",
     "ScaffoldReport",
     "ScaffoldUnit",
@@ -454,6 +456,23 @@ class OutCheckReport:
     errors: int
     warnings: int
     infos: int
+
+
+@dataclass(frozen=True, slots=True)
+class NormalizedRow:
+    """One unit and one `normalize` row: how many values were rewritten. D768."""
+
+    unit: str
+    construct: str
+    count: int
+
+
+@dataclass(frozen=True, slots=True)
+class NormalizeReport:
+    """What `ow out normalize` did. Nothing changed is a success that wrote nothing. D768."""
+
+    written: tuple[str, ...]
+    changed: tuple[NormalizedRow, ...]
 
 
 @dataclass(frozen=True, slots=True)

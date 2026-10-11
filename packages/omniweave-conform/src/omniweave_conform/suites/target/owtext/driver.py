@@ -82,7 +82,7 @@ def rule_no_script(ctx: RuleCtx) -> Iterable[Finding]:
             unit=ctx.unit.id,
             construct="elem.script",
             msg="<script> has no text mapping and is forbidden by owtext/1",
-            fix=f"ow out normalize {ctx.unit.il_path} --drop html|script",
+            fix="ow out constructs owtext --construct elem.script",
             at=n.at,
             el=n.el,
         )
@@ -102,7 +102,7 @@ def rule_id_with_style(ctx: RuleCtx) -> Iterable[Finding]:
             unit=ctx.unit.id,
             construct="attr.id",
             msg=f"id={n.attr('id')!r} with a <style> block present in the same unit",
-            fix=f"ow out normalize {ctx.unit.il_path} --scope-styles",
+            fix="ow out constructs owtext --construct attr.id",
             at=n.at,
             el=n.el,
         )
@@ -123,7 +123,7 @@ def rule_el_unique(ctx: RuleCtx) -> Iterable[Finding]:
                 unit=ctx.unit.id,
                 construct="attr.ow-el",
                 msg=f"data-ow-el={el!r} appears at {seen[el]} and {n.at}",
-                fix=f"ow out stamp --unit {ctx.unit.id} --remint",
+                fix="ow out constructs owtext --construct attr.ow-el",
                 at=n.at,
                 el=el,
             )
@@ -145,7 +145,7 @@ def rule_class_lower(ctx: RuleCtx) -> Iterable[Finding]:
             construct="attr.class.upper",
             canonical="lower-case ASCII class names",
             msg=f"{len(bad)} class attributes are not lower-case ASCII",
-            fix=f"ow out normalize {ctx.unit.il_path}",
+            fix=f"ow out normalize --unit {ctx.unit.id} --construct attr.class.upper",
             count=len(bad),
             examples=tuple(n.attr("class") or "" for n in bad[:3]),
             at=bad[0].at,
@@ -257,8 +257,7 @@ class OwTextCompiler:
                     f"{unit.id}: text-shadow needs its bake row, and this card's bake is "
                     f'"unavailable" (at {shadowed[0].at})',
                     symbol="OW_TARGET_BAKE_UNAVAILABLE",
-                    fix=f"ow out normalize {unit.il_path}   # drop the shadow, or pick a target "
-                    "that bakes",
+                    fix="ow out constructs owtext --construct style.text-shadow",
                 )
             body = self.newline.join(n.text_content() for n in doc.select("html|p"))
             out.append(f"== {unit.id} ==" + self.newline + body)
