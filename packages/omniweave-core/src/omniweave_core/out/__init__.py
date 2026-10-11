@@ -23,6 +23,8 @@ D753 adds the ledger's JobDir half to `ledger` (`AssetLicence`, `ledger_digest()
 D754 builds `cites`: `CiteResolver`, `CitedBlock`, the refusing `NO_CITES` and `verbatim()`,
 09 section 10's predicate. `RuleCtx.cites` is one, and the store-backed resolver is
 `store.cites`'s.
+D756 builds `manual`: `ManualRegion`, `manual_regions()`, `ManualEvidence` and
+`EvidenceRegion`, so an `ow:manual` region reaches the gate, the classifier and the seal.
 """
 
 from omniweave_core.out.brief import Brief, Prohibition, baseline_rows, parse_brief
@@ -50,6 +52,12 @@ from omniweave_core.out.ledger import (
     LedgerRow,
     ledger_digest,
     slot,
+)
+from omniweave_core.out.manual import (
+    EvidenceRegion,
+    ManualEvidence,
+    ManualRegion,
+    manual_regions,
 )
 from omniweave_core.out.marker import (
     Marker,
@@ -120,6 +128,7 @@ __all__ = [
     "ConstructTable",
     "Disposition",
     "DocIndex",
+    "EvidenceRegion",
     "Finding",
     "FindingSet",
     "GateStatus",
@@ -127,7 +136,9 @@ __all__ = [
     "ILFile",
     "Insertion",
     "LedgerRow",
+    "ManualEvidence",
     "ManualReason",
+    "ManualRegion",
     "Marker",
     "MarkerEdit",
     "OutReport",
@@ -162,6 +173,7 @@ __all__ = [
     "html_carrier",
     "il_digest",
     "ledger_digest",
+    "manual_regions",
     "nsig",
     "parse_brief",
     "parse_selector",

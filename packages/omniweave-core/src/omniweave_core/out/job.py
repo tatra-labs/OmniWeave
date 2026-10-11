@@ -38,6 +38,13 @@ generation: `il.toml`'s roster checked against the filesystem, every unit parsed
 16. **`text()` and `data()` re-read from `root`, `take(N+1)`-then-check**, so no bundle holds
     bytes (09 section 3.7 decision 1). Undecodable text raises `CarrierParseError`, which is
     order 0's to record, and a file past `MAX_IL_FILE_BYTES` raises `ResourceLimit`.
+
+## Rulings (the ledger's D756)
+
+17. **The one parse also reads each unit's `ow:manual` regions** (`out.manual`). They are kept
+    on `ILBundle.manual` for the gate, and the first region with a known reason becomes
+    `OutUnit.manual_reason`, which is what `classify_and_assert()` reads. A unit the carrier
+    refuses has no regions, because a unit nobody parsed asserts nothing.
 """
 
 from __future__ import annotations
@@ -57,6 +64,7 @@ from omniweave_core.limits import MAX_IL_FILE_BYTES
 from omniweave_core.out.carrier import CarrierDoc, CarrierParseError, ParseError
 from omniweave_core.out.carrier.tree import Node
 from omniweave_core.out.constructs import ConstructTable, Disposition, RoundTrip
+from omniweave_core.out.manual import ManualRegion, manual_regions
 from omniweave_core.out.plan import OutUnit
 
 __all__ = [
@@ -159,6 +167,8 @@ class ILBundle:
     origin: str | None = None
     """`"project"` when the bundle came out of `project()` (09 section 4.1's `IMPORTED`)."""
     template_nsigs: frozenset[str] = frozenset()
+    manual: Mapping[str, tuple[ManualRegion, ...]] = MappingProxyType({})
+    """D756: unit -> its `ow:manual` regions, in document order (09 section 9)."""
 
     @classmethod
     def load(
@@ -179,6 +189,7 @@ class ILBundle:
         units: list[OutUnit] = []
         rt: dict[str, ILFile] = dict(by_name)
         els: dict[str, frozenset[str]] = {}
+        manual: dict[str, tuple[ManualRegion, ...]] = {}
         for unit in roster.units:
             name = unit.il_path.removeprefix("il/")
             file = by_name[name]
@@ -189,7 +200,11 @@ class ILBundle:
                     rt[name] = ILFile(name, UNPARSED_HEX, file.byte_len)
                 continue
             els[unit.id] = frozenset(n.el for n in doc.select("@data-ow-el") if n.el)
-            units.append(replace(unit, nsig=doc.root().nsig))
+            regions = manual_regions(unit.id, doc)
+            if regions:
+                manual[unit.id] = regions
+            reason = next((r.reason for r in regions if r.reason is not None), None)
+            units.append(replace(unit, nsig=doc.root().nsig, manual_reason=reason))
             rt[name] = ILFile(name, _rt_hex(doc, constructs), file.byte_len)
         return cls(
             schema=IL_SCHEMA,
@@ -203,6 +218,7 @@ class ILBundle:
             els=MappingProxyType(els),
             origin=roster.origin,
             template_nsigs=_template(root / TEMPLATE_NSIG),
+            manual=MappingProxyType(manual),
         )
 
     def data(self, il_path: str) -> bytes:
