@@ -102,6 +102,7 @@ __all__ = [
     "QueryIn",
     "ResidueIn",
     "ReviewIn",
+    "ScaffoldIn",
     "ServeIn",
     "SkillsCheckIn",
     "SkillsHashIn",
@@ -508,6 +509,23 @@ class ConstructsIn:
     format: str = CONSTRUCT_FORMATS[0]
     group: str | None = None
     construct: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ScaffoldIn:
+    """`ow out scaffold <target> --brief PATH --slug S`. 02 section 5 row 2; 09 section 5.4. D765.
+
+    `target` is the artefact kind. `brief` is the confirmed Brief's file, frozen into the
+    JobDir as `brief.md`. `slug` names the artefact (`<slug>@<gen>`). Both are required,
+    but they are options rather than positionals, as 18's `ow make` prints them
+    (`--brief <path>`, `--slug S`). `corpus` is where the cites will resolve and whose
+    store proposes the generation: the global `--corpus` on the CLI.
+    """
+
+    target: str
+    brief: str | None = None
+    slug: str | None = None
+    corpus: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

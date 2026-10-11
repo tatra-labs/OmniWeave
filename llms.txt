@@ -290,6 +290,8 @@ cli.open.actions: open
 cli.out.constructs: ow out constructs TARGET [--format FORMAT] [--group GROUP] [--construct
   CONSTRUCT]
 cli.out.constructs.actions: out.constructs
+cli.out.scaffold: ow out scaffold TARGET [--brief BRIEF] [--slug SLUG]
+cli.out.scaffold.actions: out.scaffold
 cli.out.targets: ow out targets
 cli.out.targets.actions: out.targets
 cli.query: ow query QUERY [--scope SCOPE] [--want passages|table|fields|outline|related]

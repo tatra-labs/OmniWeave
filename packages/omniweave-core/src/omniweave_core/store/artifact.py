@@ -109,6 +109,7 @@ __all__ = [
     "Sealed",
     "SqliteArtifactStore",
     "UnitRow",
+    "latest_generation",
 ]
 
 Origin = Literal["authored", "feedback", "read_back", "rebase"]
@@ -550,6 +551,19 @@ def _ids(values: Iterable[int]) -> str:
 def _lookup(connection: sqlite3.Connection, key: PureKey) -> ArtifactRow | None:
     row = connection.execute(LOOKUP_SQL, key.params()).fetchone()
     return None if row is None else ArtifactRow.of(row)
+
+
+def latest_generation(connection: sqlite3.Connection, slug: str) -> int:
+    """The newest sealed generation of `slug` on any connection, read-only included, or 0.
+
+    `ow out scaffold` reads it through `connect_readonly()`, which opens a store without
+    migrating it, so a store from before `0005_out.sql` has no `artifact` table and has
+    sealed nothing (D765).
+    """
+    present = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'artifact'"
+    ).fetchone()
+    return 0 if present is None else _latest(connection, slug)
 
 
 def _latest(connection: sqlite3.Connection, slug: str) -> int:
