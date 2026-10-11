@@ -63,6 +63,10 @@ that module imports `omniweave_core.out`, so `out` importing it back would be a 
    4). Each unit's `nsig` and `manual_reason` are copied from the parse the gate was decided on,
    so the classifier and the seal never read a Plan's stale or absent copy. A unit the carrier
    refused has no `nsig`, and `classify_and_assert()` raises `OW-T-005` for it.
+10. **D770: `CompileHost.of()` reads a real run's host off the card.** The media type and
+    suffix are `[compile]`'s, the stamp is the OR of the card's licence tables'
+    restriction bits, the producer is the store's row, and the policy's `barred_mask`
+    is 0 until a policy carries one.
 """
 
 from __future__ import annotations
@@ -100,6 +104,8 @@ from omniweave_ports import ArtifactKind
 
 if TYPE_CHECKING:
     from omniweave_core.blobs import BlobStore
+    from omniweave_core.drivers.card import DriverCard
+    from omniweave_core.out.card import CompileCard
     from omniweave_core.out.cites import CitedBlock, CiteResolver
     from omniweave_core.out.constructs import ConstructTable
     from omniweave_core.store.ledger import SqliteAssetLedger
@@ -124,6 +130,38 @@ class CompileHost:
     """The card's stamp (INV-16); the seal ORs in every source's."""
     barred_mask: int
     """The effective policy's `restriction_bits` mask (14-security.md); 0 bars nothing."""
+
+    @classmethod
+    def of(
+        cls,
+        card: DriverCard,
+        compiled: CompileCard,
+        *,
+        producer_id: int,
+        barred_mask: int = 0,
+    ) -> CompileHost:
+        """Ruling 10 (D770): every field a real run reads off the card, or is handed.
+
+        The media type and suffix are the card's `[compile]` keys. The restriction bits are
+        the card's stamp (INV-16): the OR over its code and weights licence tables, as
+        `drivers.licence.restriction_bits()` reads one. `producer_id` is the store's row
+        (`store.artifact.ensure_producer`). `barred_mask` is the policy's, and no shipped
+        policy carries one yet (09 section 7.3 leaves it to 14, which prints none), so it
+        defaults to 0, which bars nothing.
+        """
+        from omniweave_core.drivers.licence import restriction_bits  # noqa: PLC0415
+
+        bits = restriction_bits(card.licence_code)
+        if card.licence_weights is not None:
+            bits |= restriction_bits(card.licence_weights)
+        return cls(
+            compile_driver=compiled.driver,
+            media_type=compiled.media_type,
+            suffix=compiled.suffix,
+            producer_id=producer_id,
+            restriction_bits=bits,
+            barred_mask=barred_mask,
+        )
 
 
 @dataclass(frozen=True, slots=True)

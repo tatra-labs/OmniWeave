@@ -117,6 +117,42 @@ def test_an_implemented_target_declares_its_agent_doc_budget() -> None:
     assert CompileCard.of(card(VIDEO_TEXT)).agent_doc_tokens_max == 0
 
 
+@pytest.mark.parametrize(
+    ("old", "new", "said"),
+    [
+        (
+            'media_type = "text/plain"',
+            '# media_type = "text/plain"',
+            "declares its media_type and suffix",
+        ),
+        ('suffix = ".txt"', '# suffix = ".txt"', "declares its media_type and suffix"),
+        (
+            'media_type = "text/plain"',
+            'media_type = "plain text"',
+            "media_type = 'plain text' does not match",
+        ),
+        ('suffix = ".txt"', 'suffix = "txt"', "suffix = 'txt' does not match"),
+        ('suffix = ".txt"', 'suffix = ".TXT"', "suffix = '.TXT' does not match"),
+    ],
+)
+def test_an_implemented_target_declares_its_artefacts_media_type_and_suffix(
+    old: str, new: str, said: str
+) -> None:
+    """Ruling 6 (D770): the row's NOT NULL media_type and the path's suffix."""
+    owtext = (OWTEXT / "driver.toml").read_text(encoding="utf-8")
+    c = CompileCard.of(card(owtext))
+    assert (c.media_type, c.suffix) == ("text/plain", ".txt")
+    assert owtext.count(old) == 1
+    with pytest.raises(DriverHostError, match=re.escape(said)):
+        CompileCard.of(card(owtext.replace(old, new)))
+
+
+def test_an_unimplemented_target_may_leave_its_media_type_out() -> None:
+    assert "media_type" not in VIDEO_TEXT
+    c = CompileCard.of(card(VIDEO_TEXT))
+    assert (c.media_type, c.suffix) == ("", "")
+
+
 def test_capability_compile_ignores_what_it_does_not_know_and_records_it() -> None:
     c = CompileCard.of(
         video(
