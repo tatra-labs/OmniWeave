@@ -192,13 +192,13 @@ def test_the_actions_with_no_sdk_entry_point_are_the_document_pair_and_the_insta
     `graph.locate` is the same gap: 18:3375's `GraphView` prints `evidence(edge)` and no
     `locate` (D694), no `why` (D695), no `merges` (D696), no `merge` (D697), no `split` (D698),
     no `residue` (D699), no `review` (D700), no `doctor` (D702), no `plan` (D705) and no `types`
-    (D706)."""
+    (D706). `out.constructs` is a gap too: 18 prints no SDK method for it (D762)."""
     missing = sorted(name for name, spec in ACTIONS.items() if spec.cli and name not in SDK_HOMES)
     assert missing == [
         "doc.diff", "doc.grid", "graph.doctor", "graph.locate", "graph.merge", "graph.merges",
         "graph.plan", "graph.residue", "graph.review", "graph.split", "graph.types", "graph.why",
         "hooks.check",
-        "install", "out.targets", "serve", "skills.check",
+        "install", "out.constructs", "out.targets", "serve", "skills.check",
         "skills.hash",
         "skills.install", "skills.ls", "skills.remove", "skills.update", "skills.verify",
         "surface.emit", "uninstall",

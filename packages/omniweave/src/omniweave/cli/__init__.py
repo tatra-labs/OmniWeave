@@ -109,7 +109,7 @@ GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
     "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
     "hooks": "check",
-    "out": "targets",
+    "out": "constructs · targets",
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
 }
@@ -530,6 +530,33 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 spelling=("--want-impact",),
                 kind="switch",
                 help="ow:impact for a batch; a single-block ref gets it anyway",
+            ),
+        ),
+    ),
+    Command(
+        words=("out", "constructs"),
+        actions=("out.constructs",),
+        help=(
+            "Print a target's construct table, a line a row, one row in full, or as the agent "
+            "document an IL author writes against (--format md)"
+        ),
+        arguments=(
+            Argument(
+                spelling=("target",),
+                metavar="TARGET",
+            ),
+            Argument(
+                spelling=("--format",),
+                metavar="FORMAT",
+                default="text",
+            ),
+            Argument(
+                spelling=("--group",),
+                metavar="GROUP",
+            ),
+            Argument(
+                spelling=("--construct",),
+                metavar="CONSTRUCT",
             ),
         ),
     ),

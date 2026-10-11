@@ -280,12 +280,15 @@ def test_the_human_only_actions_are_the_install_and_skills_verbs_and_none_of_the
     tool for it, although 06:2119 calls it what an agent uses (D695). `graph.merges` is the
     same: a read-only user verb 10:807 gives no tool (D696), as are `graph.residue` (D699),
     `graph.review` (D700), `graph.doctor` (D702) and `graph.plan` (D705), and so are
-    `graph.merge`, `graph.split` and `graph.types`, a user's writes (D697, D698, D706)."""
+    `graph.merge`, `graph.split` and `graph.types`, a user's writes (D697, D698, D706).
+    `out.constructs` is read-only and 10:807 names no tool for it either: 02's step 3 has
+    the agent run it as a command (D762)."""
     unreachable = [spec.name for spec in ACTIONS.values() if spec.human_only]
     assert unreachable == [
         "graph.why", "graph.merges", "graph.merge", "graph.split", "graph.residue",
         "graph.review", "graph.doctor", "graph.plan", "graph.types", "install", "uninstall",
         "serve", "skills.install", "skills.remove", "skills.update", "surface.emit",
+        "out.constructs",
     ]  # fmt: skip
     assert set(ACTIONS) & HUMAN_ONLY == {"uninstall", "skills.remove"}
     assert not any(ACTIONS[name].human_only for name in LISTED_NAMES)
@@ -626,6 +629,7 @@ def test_the_required_parameter_of_each_tool_is_the_one_the_schema_requires() ->
         "doctor": set(),
         "explain": {"code"},
         "out.targets": set(),
+        "out.constructs": {"target"},
         "install": set(),
         "uninstall": set(),
         "serve": set(),
@@ -1137,13 +1141,14 @@ def test_two_actions_need_no_corpus_and_both_reasons_are_stated() -> None:
     nor do the two `ow skills` verbs, which copy bundles between directories. `serve` resolves
     `[serve] default_corpus` itself, at startup step 5, so a `corpus` argument has no meaning.
     `surface.emit` reads the registry and writes repository files; no store is involved.
-    `out.targets` reads the cards and the configuration, never a store (D761)."""
+    `out.targets` reads the cards and the configuration, never a store (D761), and
+    `out.constructs` reads a card and the table beside it (D762)."""
     without_corpus = sorted(
         name for name, spec in ACTIONS.items() if "corpus" not in {f.name for f in fields(spec.inp)}
     )
     assert without_corpus == [
-        "doctor", "explain", "hooks.check", "install", "out.targets", "serve", "skills.check",
-        "skills.hash",
+        "doctor", "explain", "hooks.check", "install", "out.constructs", "out.targets",
+        "serve", "skills.check", "skills.hash",
         "skills.install", "skills.ls", "skills.remove", "skills.update", "skills.verify",
         "surface.emit", "uninstall",
     ]  # fmt: skip
@@ -1327,7 +1332,7 @@ def test_the_unrostered_cli_count_is_the_distance_to_the_registry() -> None:
     tables and usage rather than from a numeral, and a numeral is a second copy of an enumeration.
     """
     waiting = _unrostered_cli(ACTIONS)
-    assert len(waiting) == 126, "D761 landed `ow out targets`"
+    assert len(waiting) == 125, "D762 landed `ow out constructs`"
     have = {spec.cli for spec in ACTIONS.values()}
     assert not set(waiting) & have
     assert len(waiting) + len(have) == sum(max(1, len(v)) for v in CLI_ROSTER.values())

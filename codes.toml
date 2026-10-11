@@ -928,6 +928,30 @@ fix     = "ow out targets"
 raised_by = "TargetError"
 sites   = ["09-generation.md:2351"]
 
+[[code]]
+numeric = "OW-T-515"
+symbol  = "OW_TARGET_UNKNOWN"
+meaning = "a target no discovered compile card declares; the refusal names the kinds the cards found do declare (D762, appended under 09 section 15's \"+\" rule)"
+fix     = "ow out targets"
+raised_by = "NotFoundError"
+sites   = ["09-generation.md:439"]
+
+[[code]]
+numeric = "OW-T-516"
+symbol  = "OW_CONSTRUCT_UNKNOWN"
+meaning = "a --group or --construct no row of the target's ConstructTable carries; the refusal names the groups or the ids the table has (D762)"
+fix     = "ow out constructs <target>"
+raised_by = "NotFoundError"
+sites   = ["09-generation.md:439"]
+
+[[code]]
+numeric = "OW-T-517"
+symbol  = "OW_TARGET_AMBIGUOUS"
+meaning = "two or more compile cards declare one target, so which table documents it is not this verb's choice; the refusal names every driver (D762)"
+fix     = "keep one card for the target on OMNIWEAVE_DRIVER_PATH or in .omniweave/drivers/"
+raised_by = "ConfigError"
+sites   = ["09-generation.md:439"]
+
 # ── W1.5, the driver card grammar (04-driver-system.md sections 2.1-2.8, 4.5, 5.3, 7.5). The
 # three discovery-point refusals of section 5.3 step 1, plus the two numerics the plan already
 # binds. `meaning` and `fix` are FILLED here rather than deferred to W1.3: these five are raised
