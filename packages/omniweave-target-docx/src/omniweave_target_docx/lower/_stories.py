@@ -1,8 +1,12 @@
-"""The notes parts: `word/footnotes.xml` and `word/endnotes.xml`, and a container over one note.
+"""The notes and comments parts, and a container over one note.
 
 A note body is written through the same walk as the document, into a `w:footnote` or
 `w:endnote` instead of the body, so a `Story` gives that element the two methods the walk's
 scopes call, `add_paragraph()` and `add_table()`, as python-docx's `_Cell` gives a `w:tc`.
+
+D787: `word/comments.xml` holds the comment a manual region's reason is written in. python-docx
+1.2's `add_comment()` stamps each comment's `w:date` from the wall clock, so the part is built
+here, with the job's clock, as the notes parts are.
 """
 
 from __future__ import annotations
@@ -33,12 +37,17 @@ STYLE_IDS: Final = {
     "footnote reference": "FootnoteReference",
     "endnote text": "EndnoteText",
     "endnote reference": "EndnoteReference",
+    "annotation text": "CommentText",
+    "annotation reference": "CommentReference",
 }
 """Word's own style ids for its four note styles, which python-docx's template does not define."""
 _PART: Final = {
     "footnote": (CONTENT_TYPE.WML_FOOTNOTES, RELATIONSHIP_TYPE.FOOTNOTES),
     "endnote": (CONTENT_TYPE.WML_ENDNOTES, RELATIONSHIP_TYPE.ENDNOTES),
+    "comment": (CONTENT_TYPE.WML_COMMENTS, RELATIONSHIP_TYPE.COMMENTS),
 }
+AUTHOR: Final = ("omniweave", "ow")
+"""A comment's `w:author` and `w:initials`: the framework wrote it, and no person did."""
 _SEPARATORS: Final = (("-1", "separator"), ("0", "continuationSeparator"))
 """The two notes Word draws the rule above the notes area with, ids -1 and 0."""
 
@@ -74,11 +83,43 @@ class Story:
 class Notes:
     """Both notes parts, made on first use, and where each note id was placed."""
 
-    def __init__(self) -> None:
+    def __init__(self, stamp: str = "") -> None:
         self._roots: dict[str, Any] = {}
         self._counts: dict[str, int] = dict.fromkeys(KINDS, 0)
+        self._stamp = stamp
+        """Every comment's `w:date`: the job's clock as W3C date-time, never the wall clock."""
         self.placed: dict[str, tuple[str, int]] = {}
         """IL note id to `(kind, w:id)`: what a reference names."""
+
+    def comment(self, text: str) -> int:
+        """A comment holding `text`, numbered from 0 in the order the walk writes them."""
+        root = self._roots.get("comment")
+        if root is None:
+            root = self._roots["comment"] = OxmlElement("w:comments")
+        number = len(root)
+        comment = OxmlElement("w:comment")
+        comment.set(qn("w:id"), str(number))
+        comment.set(qn("w:author"), AUTHOR[0])
+        comment.set(qn("w:initials"), AUTHOR[1])
+        comment.set(qn("w:date"), self._stamp)
+        p = OxmlElement("w:p")
+        ppr = OxmlElement("w:pPr")
+        ppr.append(_val("w:pStyle", STYLE_IDS["annotation text"]))
+        p.append(ppr)
+        mark_run = OxmlElement("w:r")
+        rpr = OxmlElement("w:rPr")
+        rpr.append(_val("w:rStyle", STYLE_IDS["annotation reference"]))
+        mark_run.append(rpr)
+        mark_run.append(OxmlElement("w:annotationRef"))
+        p.append(mark_run)
+        body = OxmlElement("w:r")
+        t = OxmlElement("w:t")
+        t.text = text
+        body.append(t)
+        p.append(body)
+        comment.append(p)
+        root.append(comment)
+        return number
 
     def new(self, kind: str) -> tuple[int, Any]:
         """The next `w:footnote` or `w:endnote`, numbered in reference order from 1."""
@@ -93,7 +134,7 @@ class Notes:
 
     def attach(self, document: Document) -> None:
         """Each part that holds a note, related from the document in a fixed order."""
-        for kind in KINDS:
+        for kind in (*KINDS, "comment"):
             root = self._roots.get(kind)
             if root is None:
                 continue
@@ -134,6 +175,12 @@ def mark(note: Any, kind: str) -> None:
     else:
         first.insert(0, number)
     number.addnext(space)
+
+
+def _val(tag: str, value: str) -> Any:
+    element = OxmlElement(tag)
+    element.set(qn("w:val"), value)
+    return element
 
 
 def _root(kind: str) -> Any:

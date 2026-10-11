@@ -511,10 +511,23 @@ def test_lang_and_dir_pass_down_and_text_align_is_the_paragraphs(tmp_path: Path)
     assert paragraphs[2].find(f"{W}pPr/{W}bidi") is None
 
 
-def test_a_manual_region_is_a_highlighted_placeholder(tmp_path: Path) -> None:
+def test_a_manual_region_is_its_own_text_highlighted_with_its_reason_in_a_comment(
+    tmp_path: Path,
+) -> None:
+    """D787: the text is the region's, which R2 holds it to; the reason is the comment's."""
     out = lowered(tmp_path, section('<div data-ow-manual="unverifiable_data">a chart</div>'))
-    assert texts(out) == ["[manual: unverifiable_data] a chart"]
-    assert len(out.xml().findall(f".//{W}highlight")) == 2
+    assert texts(out) == ["a chart"]
+    assert len(out.xml().findall(f".//{W}highlight")) == 1
+    p = next(p for p in out.xml().iter(f"{W}p") if _ptext(p) == "a chart")
+    order = [etree.QName(c).localname for c in p]
+    assert order[0] == "commentRangeStart"
+    assert order[-2:] == ["commentRangeEnd", "r"]
+    assert p[-1].find(f"{W}commentReference") is not None
+    [comment] = out.xml("word/comments.xml").findall(f"{W}comment")
+    assert _ptext(comment) == "ow:manual unverifiable_data"
+    assert (comment.get(f"{W}author"), comment.get(f"{W}initials")) == ("omniweave", "ow")
+    assert comment.get(f"{W}date") == "2023-11-14T22:13:20Z", "the job's clock, not the wall's"
+    assert "comments+xml" in out.members["[Content_Types].xml"].decode()
 
 
 # ---------------------------------------------------------------------------------------------
