@@ -73,7 +73,7 @@ def test_the_registry_it_builds_is_the_day_one_fifty_three() -> None:
     assert "layout.class_hist" not in keys
 
 
-def test_the_cards_it_finds_are_the_seventeen_first_party_drivers() -> None:
+def test_the_cards_it_finds_are_the_eighteen_first_party_drivers() -> None:
     """W5.6 added the third. Before it, checks 9, 11 and 13 all deferred on `parse.page.olmocr`
     and the linter reported six undecidables; with the card on disk it reports three, and none of
     the three is olmocr's. D646 added the fourth, `parse.text.builtin`, whose card is one package
@@ -85,7 +85,8 @@ def test_the_cards_it_finds_are_the_seventeen_first_party_drivers() -> None:
     billed one, `derive.entity.llm`; D722 the thirteenth, `derive.claim.llm`; D726 the fourteenth,
     `derive.merge.llm`; D731 the fifteenth, `derive.report.llm`; D760 the sixteenth and first
     `compile/1` card, `compile.video.native`, which says `implemented = false`; D781 the
-    seventeenth, `compile.docx.native`, whose table gates owflow/1 before it lowers."""
+    seventeenth, `compile.docx.native`, whose table gates owflow/1 before it lowers; D786 the
+    eighteenth, `parse.docx.native`, its read_back."""
     cards = tool.installed_cards()
     assert sorted(cards) == [
         "compile.docx.native",
@@ -101,6 +102,7 @@ def test_the_cards_it_finds_are_the_seventeen_first_party_drivers() -> None:
         "derive.segment.spine",
         "derive.xref.native",
         "derive.xref.pattern",
+        "parse.docx.native",
         "parse.office.anydoc",
         "parse.page.olmocr",
         "parse.pdf.pdfium",

@@ -34,6 +34,9 @@ dependencies = [
 
 [project.entry-points."omniweave.drivers"]
 "compile.docx.native" = "omniweave_target_docx"
+# The read_back (09 section 11): its own package, because an entry point names the package that
+# holds `driver.toml`, and a package holds one.
+"parse.docx.native" = "omniweave_target_docx.read"
 
 [project.entry-points."omniweave.targets"]
 "docx" = "omniweave_target_docx"

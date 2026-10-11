@@ -48,6 +48,7 @@ from omniweave_target_docx.lower import (
 from omniweave_target_docx.lower._emit import (
     CODE_FONT,
     Emitter,
+    Row,
     refuse_unmapped,
     rows_of,
     unmapped,
@@ -110,6 +111,7 @@ def build(
     _normalized(roots, table, normalizers)
     assets = _assets(roots, ledger)
     cited = _cited(roots, plan)
+    addresses = _addresses(roots, rows_of(table))
     document = _document(plan)
     section = document.sections[0]
     width = int(section.page_width or 0) - int(section.left_margin or 0)
@@ -132,6 +134,7 @@ def build(
     cites.provenance_part(
         document,
         cited,
+        addresses=addresses,
         name=provenance,
         corpus=plan.corpus,
         slug=plan.slug,
@@ -212,6 +215,21 @@ def _assets(roots: Sequence[CarrierNode], ledger: AssetLedger) -> dict[str, byte
                     fix="ow out assets --slot " + slot,
                 ) from None
             out[slot] = blob
+    return out
+
+
+def _addresses(roots: Sequence[CarrierNode], rows: Sequence[Row]) -> dict[str, str]:
+    """Every `data-ow-el` and the construct its element is: the first native element row it
+    matches, as the walk dispatches it (D786)."""
+    out: dict[str, str] = {}
+    for root in roots:
+        for node in walk(root):
+            if not node.el:
+                continue
+            for row in rows:
+                if row.selector.kind == "element" and row.selector.matches(node):
+                    out[node.el] = row.construct.id
+                    break
     return out
 
 
