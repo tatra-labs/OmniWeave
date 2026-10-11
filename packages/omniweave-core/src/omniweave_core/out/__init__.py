@@ -18,6 +18,8 @@ D748 builds `receipt`: `CheckValue`, `Receipt`, `ArtefactDeterminism` and the re
 D749 builds `compile` (`CompileV1`, `check()`) and `ledger` (`AssetLedger`, `slot()`).
 D752 builds `retain`: the IL bundle frozen into CAS (`retain.freeze()`) and fetched back
 verified (`retain.fetch()`). Both stay module-qualified: a bare `fetch` says nothing here.
+D753 adds the ledger's JobDir half to `ledger` (`AssetLicence`, `ledger_digest()`, the
+`assets/index.json` reader and writer). The store-backed class is `store.ledger`'s.
 """
 
 from omniweave_core.out.brief import Brief, Prohibition, baseline_rows, parse_brief
@@ -37,7 +39,14 @@ from omniweave_core.out.constructs import Construct, ConstructTable, Disposition
 from omniweave_core.out.finding import Finding, FindingSet, Provenance, Severity, Truncation
 from omniweave_core.out.gate import GateStatus, gate_status
 from omniweave_core.out.job import ILBundle, ILFile
-from omniweave_core.out.ledger import AssetLedger, AssetSource, LedgerRow, slot
+from omniweave_core.out.ledger import (
+    AssetLedger,
+    AssetLicence,
+    AssetSource,
+    LedgerRow,
+    ledger_digest,
+    slot,
+)
 from omniweave_core.out.marker import (
     Marker,
     MarkerEdit,
@@ -89,6 +98,7 @@ from omniweave_core.out.rules import (
 __all__ = [
     "ArtefactDeterminism",
     "AssetLedger",
+    "AssetLicence",
     "AssetSource",
     "Box",
     "Brief",
@@ -144,6 +154,7 @@ __all__ = [
     "gate_status",
     "html_carrier",
     "il_digest",
+    "ledger_digest",
     "nsig",
     "parse_brief",
     "parse_selector",
