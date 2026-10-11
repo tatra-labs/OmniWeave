@@ -85,6 +85,7 @@ __all__ = [
     "WANTS",
     "AddIn",
     "ArtifactsIn",
+    "AssetsIn",
     "BackIn",
     "CheckIn",
     "CompileIn",
@@ -575,6 +576,23 @@ class CompileIn:
 
     accept_manual: bool = False
     job: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AssetsIn:
+    """`ow out assets --slug S [--gen N] [--explain] | --slot SHA`. 09 section 7.2. D778.
+
+    09 prints `ow out assets <slug>` and `ow out assets --slot <sha256>`. A positional cannot be
+    optional in the generated grammar, and the `--slot` form takes no slug, so the slug is an
+    option. `explain` names each asset's licence and restrictions, which is what 09 section 7.3
+    sends a `restricted` gate to.
+    """
+
+    slug: str | None = None
+    gen: int | None = None
+    slot: str | None = None
+    explain: bool = False
+    corpus: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

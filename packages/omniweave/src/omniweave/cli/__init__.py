@@ -110,8 +110,8 @@ GROUP_HELP: Final[dict[str, str]] = {
     "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
     "hooks": "check",
     "out": (
-        "back · check · compile · constructs · list · normalize · scaffold · stamp · targets · "
-        "verify"
+        "assets · back · check · compile · constructs · list · normalize · scaffold · stamp · "
+        "targets · verify"
     ),
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
@@ -533,6 +533,34 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 spelling=("--want-impact",),
                 kind="switch",
                 help="ow:impact for a batch; a single-block ref gets it anyway",
+            ),
+        ),
+    ),
+    Command(
+        words=("out", "assets"),
+        actions=("out.assets",),
+        help=(
+            "List a sealed artefact's frozen assets with their licences and restrictions, or "
+            "every artefact and document that holds one asset's bytes"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--slug",),
+                metavar="SLUG",
+            ),
+            Argument(
+                spelling=("--gen",),
+                kind="int",
+                metavar="GEN",
+            ),
+            Argument(
+                spelling=("--slot",),
+                metavar="SLOT",
+            ),
+            Argument(
+                spelling=("--explain",),
+                kind="switch",
+                default=False,
             ),
         ),
     ),

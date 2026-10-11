@@ -1,6 +1,6 @@
 """`ow out <verb>`: the OUT verbs this build dispatches: `targets` (D761), `constructs` (D762),
 `scaffold` (D765), `check` (D766), `stamp` (D767), `normalize` (D768), `list` (D769), `compile`
-(D773), `verify` (D774) and `back` (D777).
+(D773), `verify` (D774), `back` (D777) and `assets` (D778).
 
 09-generation.md section 1 (`omniweave.targets` exists "so `ow out targets` can list an artefact
 kind without resolving a driver"), section 12.4 ("`ow out targets` prints the target, the flag and
@@ -23,9 +23,10 @@ documentation", with `--group` and `--construct` selecting from it.
    command that names each one, the way `doctor`'s D-08 reports the same faults.
 4. **Refused by name, exit 1:** `--quiet`, because neither verb declares a scalar, and
    `--render jsonl|rows`, which have no writer here (the `explain` precedent).
-5. **Only `targets`, `constructs`, `scaffold`, `check`, `stamp`, `normalize`, `list`,
-   `compile`, `verify` and `back` are served.** The other two `out` verbs are rostered without
-   an Action, so the generated tree never parses them and this module never sees them.
+5. **Every `out` verb but `project` is served**: `targets`, `constructs`, `scaffold`,
+   `check`, `stamp`, `normalize`, `list`, `compile`, `verify`, `back` and `assets`. `project` is
+   rostered without an Action, so the generated tree never parses it and this module never sees
+   it.
 6. **`constructs` documents the one card that declares the target**, found as `targets` finds
    cards, whether or not `[targets] enabled` lists it: documentation is how an agent learns a
    target before anyone enables it. No card is `OW_TARGET_UNKNOWN` (exit 2), naming the kinds
@@ -113,12 +114,22 @@ documentation", with `--group` and `--construct` selecting from it.
     the next generation is one past the store's newest. The text form prints the contract line
     first, as 09 section 3.6 rule 5 asks. That line says only whether the table's digest moved,
     because no recorded table version exists to list the rows that moved (D776).
+23. **`assets` reads one store, through `connect_readonly()`, in one of two forms.**
+    `--slug` (with `--gen`, else the newest) lists that generation's frozen assets: slot,
+    role, units, bytes and owning document, and with `--explain` each asset's licence and
+    the names of its restriction bits, which is where 09 section 15 sends a `restricted`
+    gate. `--slot` is 09 section 7.2's reuse query: every artefact generation that slots
+    those bytes and every corpus document that owns them. It takes `asset-slot:<sha256>` or
+    the bare digest. Exactly one form is given, `--gen` and `--explain` belong to `--slug`,
+    and the query is this corpus's: a store holds one corpus, so "every corpus" is one
+    `--corpus` at a time.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, TextIO, cast
@@ -128,6 +139,8 @@ from omniweave_core.errors import ConfigError, NotFoundError, OwError, TargetErr
 from omniweave.sdk.reports import (
     ArtifactListing,
     ArtifactsReport,
+    AssetListing,
+    AssetsReport,
     BackReport,
     CompileReport,
     ConstructBake,
@@ -139,6 +152,8 @@ from omniweave.sdk.reports import (
     RestrictedItem,
     ScaffoldReport,
     ScaffoldUnit,
+    SlotOwner,
+    SlotUser,
     StampedUnit,
     StampReport,
     TargetListing,
@@ -166,6 +181,7 @@ __all__ = [
     "OUT_WORD",
     "Checked",
     "artifacts_report",
+    "assets_report",
     "back_report",
     "check_report",
     "compile_report",
@@ -187,6 +203,8 @@ _CHECK_FIX: Final[str] = "ow out check --stage early|first-unit|unit|final [--un
 _COMPILE_FIX: Final[str] = "ow out compile [--accept-manual] [--job DIR]"
 _VERIFY_FIX: Final[str] = "ow out verify [--job DIR]"
 _BACK_FIX: Final[str] = "ow out back <slug> [--gen N] [--corpus C]"
+_ASSETS_FIX: Final[str] = "ow out assets --slug S [--gen N] [--explain] | --slot SHA256"
+_SHA256: Final = re.compile(r"[0-9a-f]{64}")
 _CONSTRUCTS_FIX: Final[str] = (
     "ow out constructs <target> [--format md] [--group G | --construct ID]"
 )
@@ -378,6 +396,45 @@ def _compile(
     return built.exit
 
 
+def _assets(
+    parsed: argparse.Namespace,
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    del stderr
+    _refuse_unserved(parsed, verb="ow out assets", fix=_ASSETS_FIX)
+    if (parsed.slug is None) == (parsed.slot is None):
+        raise UsageError("ow out assets takes --slug or --slot, exactly one", fix=_ASSETS_FIX)
+    if parsed.slot is not None and (parsed.gen is not None or parsed.explain):
+        raise UsageError(
+            "--gen and --explain read an artefact: they go with --slug", fix=_ASSETS_FIX
+        )
+    slot = None if parsed.slot is None else str(parsed.slot).removeprefix("asset-slot:")
+    if slot is not None and _SHA256.fullmatch(slot) is None:
+        raise UsageError(
+            f"--slot {parsed.slot!r} is not asset-slot:<sha256> or 64 lower-case hex",
+            fix=_ASSETS_FIX,
+        )
+    built = assets_report(
+        cwd=cwd,
+        env=env,
+        explicit=_explicit(parsed),
+        slug=parsed.slug,
+        gen=None if parsed.gen is None else int(parsed.gen),
+        slot=slot,
+        corpus=parsed.corpus,
+    )
+    if parsed.render == "json":
+        stdout.write(json.dumps(_assets_document(built), ensure_ascii=False) + "\n")
+    else:
+        for line in _assets_lines(built, explain=bool(parsed.explain)):
+            stdout.write(line + "\n")
+    return 0
+
+
 def _back(
     parsed: argparse.Namespace,
     *,
@@ -527,6 +584,7 @@ _VERBS: Final[Mapping[str, Callable[..., int]]] = {
     "out.compile": _compile,
     "out.verify": _verify,
     "out.back": _back,
+    "out.assets": _assets,
     "out.stamp": _stamp,
     "out.normalize": _normalize,
     "out.list": _list,
@@ -1134,6 +1192,139 @@ def _compile_lines(built: CompileReport) -> list[str]:
     if built.hit:
         return [*lines, f"lookup hit: {named} is an earlier compile's bytes, placed again"]
     return [*lines, f"sealed {named} ({built.delivery}) at {built.path}"]
+
+
+def assets_report(
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    explicit: Path | None,
+    slug: str | None,
+    gen: int | None,
+    slot: str | None,
+    corpus: str | None,
+) -> AssetsReport:
+    """Ruling 23: one artefact's ledger, or one slot's users and owners, from one store."""
+    from omniweave_core import config  # noqa: PLC0415 -- only this verb pays
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+    from omniweave_core.store.artifact import SqliteArtifactStore  # noqa: PLC0415
+
+    from omniweave.surface.opening import corpus_for  # noqa: PLC0415
+    from omniweave.surface.query import store_of  # noqa: PLC0415
+
+    resolved = config.load(cwd=cwd, env=env, explicit=explicit)
+    name = corpus_for(resolved, [], corpus, verb="ow out assets")
+    store = store_of(resolved, name, cwd=cwd)
+    with store_sqlite.StoreThread(lambda: store_sqlite.connect_readonly(store)) as thread:
+        artifacts = SqliteArtifactStore(thread, clock=SystemClock())
+        if slot is not None:
+            users, owners = artifacts.slot_use(slot)
+            return AssetsReport(
+                slug=None,
+                artifact_gen=None,
+                slot="asset-slot:" + slot,
+                users=tuple(SlotUser(u.slug, u.artifact_gen, u.role, u.units) for u in users),
+                owners=tuple(SlotOwner(o.doc_ord, o.uri, o.asset_id) for o in owners),
+            )
+        assert slug is not None  # noqa: S101 -- `_assets` gives exactly one of the two
+        newest = artifacts.latest(slug)
+        if newest == 0:
+            raise NotFoundError(
+                f"no artefact {slug!r} is sealed in corpus {name!r}",
+                fix=f"ow out list --corpus {name}",
+            )
+        row = artifacts.get(slug, newest if gen is None else gen)
+        frozen = artifacts.assets(row.artifact_id)
+    return AssetsReport(
+        slug=slug,
+        artifact_gen=row.artifact_gen,
+        slot=None,
+        assets=tuple(
+            AssetListing(
+                asset_id=a.asset_id,
+                sha256=a.sha256,
+                slot=a.slot,
+                role=a.role,
+                units=a.units,
+                media_type=a.media_type,
+                byte_len=a.byte_len,
+                doc_ord=a.doc_ord,
+                licence=a.licence,
+                spdx=a.spdx,
+                restriction_bits=a.restriction_bits,
+                restrictions=_restrictions(a.restriction_bits),
+            )
+            for a in frozen
+        ),
+    )
+
+
+def _restrictions(bits: int) -> tuple[str, ...]:
+    """Ruling 23: each set bit by its `Restriction` name, an unallocated one as `bit_<n>`."""
+    from omniweave_ports import Restriction  # noqa: PLC0415
+
+    names = {r.value: r.name.lower() for r in Restriction}
+    return tuple(names.get(n, f"bit_{n}") for n in range(bits.bit_length()) if bits >> n & 1)
+
+
+def _assets_document(built: AssetsReport) -> dict[str, Any]:
+    return {
+        "slug": built.slug,
+        "artifact_gen": built.artifact_gen,
+        "slot": built.slot,
+        "assets": [
+            {
+                "asset_id": a.asset_id,
+                "sha256": a.sha256,
+                "slot": a.slot,
+                "role": a.role,
+                "units": list(a.units),
+                "media_type": a.media_type,
+                "byte_len": a.byte_len,
+                "doc_ord": a.doc_ord,
+                "licence": a.licence,
+                "spdx": a.spdx,
+                "restriction_bits": a.restriction_bits,
+                "restrictions": list(a.restrictions),
+            }
+            for a in built.assets
+        ],
+        "users": [
+            {"slug": u.slug, "artifact_gen": u.artifact_gen, "role": u.role, "units": list(u.units)}
+            for u in built.users
+        ],
+        "owners": [
+            {"doc_ord": o.doc_ord, "uri": o.uri, "asset_id": o.asset_id} for o in built.owners
+        ],
+    }
+
+
+def _assets_lines(built: AssetsReport, *, explain: bool) -> list[str]:
+    if built.slot is not None:
+        return [
+            f"{built.slot}: {len(built.users)} artefact generation(s), "
+            f"{len(built.owners)} corpus document(s)",
+            *(
+                f"  artefact {u.slug}@{u.artifact_gen}  {u.role}  {','.join(u.units)}"
+                for u in built.users
+            ),
+            *(f"  document d{o.doc_ord}  {o.uri}  (asset {o.asset_id})" for o in built.owners),
+        ]
+    named = f"{built.slug}@{built.artifact_gen}"
+    if not built.assets:
+        return [f"{named}: no frozen asset"]
+    lines = [f"{named}: {len(built.assets)} frozen asset(s)"]
+    for a in built.assets:
+        lines.append(
+            f"  {a.slot}  {a.role}  {','.join(a.units)}  {a.media_type}  {a.byte_len} bytes  "
+            f"d{a.doc_ord}"
+        )
+        if explain:
+            licence = a.spdx or a.licence or "no licence recorded"
+            restricted = ", ".join(a.restrictions) or "none"
+            lines.append(f"    licence: {licence}; restrictions: {restricted}")
+    return lines
 
 
 def back_report(
