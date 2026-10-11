@@ -142,6 +142,7 @@ __all__ = [
     "build",
     "cache_layer_for",
     "chaos_fires",
+    "compile_host",
     "decision_of",
     "inproc_host",
     "prober",
@@ -1619,3 +1620,22 @@ def build(
         driver_schema_v=driver_schema_v,
         isolation=isolation,
     )
+
+
+# =============================================================================================
+# 15. A compile's one `INVOKE` (D772)
+# =============================================================================================
+
+
+def compile_host(
+    worker: Worker, invocation: Invocation, *, deadlines: Deadlines, memory_mb: int
+) -> InvokeReport:
+    """`Worker.invoke()` for one compile: the third `DriverHost.invoke()` G8 confines to this file.
+
+    A compile has no layer above its call, and each layer's absence has a reason. It has no `Batch`
+    (no work rows were claimed), and its cache is the lookup-before-build `compile_artifact()` runs
+    first (OUT12). A `free` target reserves no budget, and one unit has nothing to retry inside a
+    semaphore. The call is still made here, so that 02:74's *"the ONLY caller of
+    DriverHost.invoke()"* stays a fact about one file.
+    """
+    return worker.invoke(invocation, deadlines=deadlines, memory_mb=memory_mb)
