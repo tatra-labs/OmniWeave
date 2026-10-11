@@ -568,8 +568,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("out", "back"),
         actions=("out.back",),
         help=(
-            "Restore a sealed artefact's retained IL, Brief and assets into a new JobDir for "
-            "its next generation, saying first whether the contract moved"
+            "Read a sealed artefact back into the corpus once, then restore its retained IL, "
+            "Brief and assets into a JobDir for its next generation"
         ),
         arguments=(
             Argument(

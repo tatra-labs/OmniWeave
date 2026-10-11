@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import json
+import sqlite3  # noqa: TID251 -- the assertions read the rows the loop wrote.
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -20,6 +21,8 @@ import pytest
 from omniweave.surface import out as verb
 from omniweave_conform.suites.target.owtext.driver import HERE
 from omniweave_conform.suites.target.owtext.normalizers import lower_ascii
+from omniweave_core.errors import TargetError
+from omniweave_core.model.enums import enum_val_rows
 from omniweave_core.out.brief import BRIEF_SCHEMA, parse_brief
 from omniweave_core.out.constructs import ConstructTable
 from omniweave_core.out.job import Job
@@ -37,6 +40,12 @@ BRIEF = (
     "- level: static\n## typography\n## rhythm\n- u01: { anchor: cover }\n## forbidden\n"
     "- no glow (user)\n"
 )
+MEMO = (
+    '<section data-ow-el="u01/e1"><h1 data-ow-el="u01/e2">Memo</h1>'
+    '<p data-ow-el="u01/e3">Revenue rose.</p></section>'
+)
+OPEN = "parse.text.owtext, compile.text.owtext's read_back, is not installed"
+"""Ruling 25: owtext, the reference target, names a read_back nothing ships."""
 U01 = (
     '<section data-ow-el="u01/e1">\n'
     '  <p data-ow-el="u01/e2" class="lead" id="intro">Revenue rose 12% in Q3.</p>\n'
@@ -113,9 +122,10 @@ def test_back_restores_the_newest_generation_into_the_next_ones_jobdir(project: 
     out = _ok(["back", "q3"], project)
     lines = out.splitlines()
     assert lines[0].startswith("contract: unchanged since q3@1 (sha256:")
-    restored = Path(lines[1].split(" into ", 1)[1].split(" as ", 1)[0])
-    assert lines[1] == f"restored q3@1 into {restored} as q3@2 (1 unit(s))"
-    assert lines[2] == f"edit il/, then: ow out check --stage final --job {restored}"
+    assert lines[1] == f"loop: open: {OPEN}"
+    restored = Path(lines[2].split(" into ", 1)[1].split(" as ", 1)[0])
+    assert lines[2] == f"restored q3@1 into {restored} as q3@2 (1 unit(s))"
+    assert lines[3] == f"edit il/, then: ow out check --stage final --job {restored}"
     assert restored.name == "q3@2"
     assert restored.parent.parent == first.parent.parent, "a new run under the same jobs root"
     for name in ("il.toml", "u01.html"):
@@ -147,6 +157,12 @@ def test_the_json_report_names_both_generations_and_the_contract(project: Path) 
     assert document["recorded_digest"] == document["installed_digest"]
     assert document["units"] == ["u01"]
     assert document["run_id"] in document["job_dir"]
+    assert (document["read_back"], document["read_back_doc_ord"], document["els"]) == (
+        "parse.text.owtext",
+        None,
+        0,
+    )
+    assert document["loop_open"] == OPEN
 
 
 @WINDOWS_ONLY
@@ -198,6 +214,87 @@ def test_a_moved_contract_is_said_first(project: Path, monkeypatch: pytest.Monke
     assert lines[0].startswith("contract: CHANGED: q3@1 was compiled against sha256:")
     assert f"the installed table digests to {table.digest()}" in lines[0]
     assert lines[0].endswith("ow out check reports what the installed table finds")
+
+
+# ---------------------------------------------------------------------------------------------
+# Ruling 25: the loop, closed once through the target's read_back
+# ---------------------------------------------------------------------------------------------
+
+
+def _memo(project: Path) -> Path:
+    """`memo@1`, a docx generation with three addresses, compiled and placed."""
+    out = _ok(
+        ["scaffold", "docx", "--brief", "brief.md", "--slug", "memo", "--render", "json"], project
+    )
+    job = Path(json.loads(out)["job_dir"])
+    (job / "il" / "u01.html").write_text(MEMO, encoding="utf-8", newline="")
+    il = job / "il" / "il.toml"
+    il.write_text(
+        il.read_text(encoding="utf-8") + '\n[[unit]]\nid = "u01"\nord = 1\nfile = "u01.html"\n',
+        encoding="utf-8",
+    )
+    _ok(["check", "--stage", "final", "--job", str(job)], project)
+    _ok(["compile", "--job", str(job)], project)
+    return job
+
+
+def _store_rows(project: Path, sql: str, *params: object) -> list[tuple[Any, ...]]:
+    connection = sqlite3.connect(project / ".omniweave" / "index.owstore")
+    try:
+        return connection.execute(sql, params).fetchall()
+    finally:
+        connection.close()
+
+
+@WINDOWS_ONLY
+def test_a_docx_generation_is_read_back_once_and_its_addresses_mapped(project: Path) -> None:
+    """D788: parse.docx.native in an S4 worker, one corpus document, one block per address."""
+    _memo(project)
+    document = json.loads(_ok(["back", "memo", "--render", "json"], project))
+    doc_ord = document["read_back_doc_ord"]
+    assert isinstance(doc_ord, int)
+    assert (document["read_back"], document["els"], document["loop_open"]) == (
+        "parse.docx.native",
+        3,
+        "",
+    )
+    assert _store_rows(project, "SELECT read_back_doc_ord FROM artifact") == [(doc_ord,)]
+    mapped = _store_rows(
+        project,
+        "SELECT e.unit, e.el, b.kind, b.text, b.doc_ord, b.origin_driver FROM artifact_el e"
+        " JOIN block b ON b.block_id = e.block_id ORDER BY e.el",
+    )
+    kinds = {name: ordinal for domain, ordinal, name in enum_val_rows() if domain == "kind"}
+    assert mapped == [
+        ("u01", "u01/e1", kinds["section"], "Memo\nRevenue rose.", doc_ord, "parse.docx.native"),
+        ("u01", "u01/e2", kinds["heading"], "Memo", doc_ord, "parse.docx.native"),
+        ("u01", "u01/e3", kinds["paragraph"], "Revenue rose.", doc_ord, "parse.docx.native"),
+    ]
+    placed = project / ".omniweave" / "out" / "memo@1" / "memo.docx"
+    assert _store_rows(project, "SELECT uri FROM doc WHERE doc_ord = ?", doc_ord) == [
+        (str(placed),)
+    ]
+    lines = _ok(["back", "memo"], project).splitlines()
+    assert lines[1] == (
+        f"loop: memo@1 read back by parse.docx.native as document {doc_ord}, 3 address(es) mapped"
+    )
+    assert _store_rows(project, "SELECT count(*), max(gen) FROM doc") == [(1, 1)], "read once"
+
+
+@WINDOWS_ONLY
+def test_a_failed_read_back_restores_nothing(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omniweave.run.out_back import ReadWorker  # noqa: PLC0415
+
+    _memo(project)
+    monkeypatch.setattr(ReadWorker, "__call__", lambda *_: b"{not json\n")
+    code, out, err = _run(["back", "memo"], project)
+    assert (code, out) == (TargetError.EXIT, "")
+    assert err.startswith("ow: OW-T-529: the read-back by parse.docx.native failed")
+    assert _store_rows(project, "SELECT read_back_doc_ord FROM artifact") == [(None,)]
+    jobs = {p.name for p in (project / ".omniweave").rglob("memo@*") if p.is_dir()}
+    assert "memo@2" not in jobs, "nothing was restored"
 
 
 # ---------------------------------------------------------------------------------------------

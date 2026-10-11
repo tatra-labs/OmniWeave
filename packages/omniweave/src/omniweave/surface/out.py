@@ -129,6 +129,14 @@ documentation", with `--group` and `--construct` selecting from it.
     (D762 ruling 3, narrowed). `compile` would otherwise gate the IL and send it to a
     worker whose `lower()` refuses, so it refuses first, with `OW-T-514` and the card's
     reason, and touches no store.
+25. **`back` closes the loop before it restores** (D788, 02 section 4.3, 09 Q4). When the
+    generation's `read_back_doc_ord` is NULL and its card's `read_back` is installed,
+    `run.out_back.read_back_artifact()` reads the sealed bytes in an S4 worker, writes the
+    document, and sets `artifact_el`, under the store's write lock. A loop already closed is
+    reported, not read again. A card naming no read_back, or one not installed, leaves the loop
+    open and the report says why: the restore does not need it. A read-back that fails raises
+    `OW_TARGET_READ_BACK_FAILED` before anything is restored. The text form prints the loop line
+    second, after the contract.
 """
 
 from __future__ import annotations
@@ -180,6 +188,7 @@ if TYPE_CHECKING:
     from omniweave_core.out.card import CompileCard
     from omniweave_core.out.constructs import Construct, ConstructTable
     from omniweave_core.out.plan import Plan
+    from omniweave_core.store.artifact import ArtifactRow, UnitRow
 
     from omniweave.run.out_compile import Compiled
 
@@ -1387,7 +1396,9 @@ def back_report(
         row = artifacts.get(slug, newest if gen is None else gen)
         sealed = artifacts.units(row.artifact_id)
         assets = artifacts.ledger(row.artifact_id)
-    driver, card = _one_card(_discover(resolved, env).cards, row.target)
+        mapped = len(artifacts.els(row.artifact_id))
+    cards = _discover(resolved, env).cards
+    driver, card = _one_card(cards, row.target)
     table = load_table(Path(driver.source), card)
     blobs = store_cas(store)
     if row.brief_digest is None:
@@ -1396,6 +1407,10 @@ def back_report(
             fix=f"ow out scaffold {row.target} --brief brief.md --slug {slug}",
         )
     brief = fetch_brief(row.brief_digest, blobs)
+    if row.read_back_doc_ord is None:
+        loop = _read_back(row, sealed, card, cards, resolved=resolved, cwd=cwd, store=store)
+    else:
+        loop = (row.read_back_doc_ord, mapped, "")
     run_id = new_run_id(clock, entropy(ULID_ENTROPY_BYTES))
     where = job_path(_cache_root(resolved, cwd), run_id, slug, newest + 1)
     job = restore(
@@ -1424,7 +1439,68 @@ def back_report(
         recorded_digest=row.constructs_digest,
         installed_digest=table.digest(),
         units=tuple(u.id for u in job.plan.units),
+        read_back=card.read_back,
+        read_back_doc_ord=loop[0],
+        els=loop[1],
+        loop_open=loop[2],
     )
+
+
+def _read_back(
+    row: ArtifactRow,
+    sealed: Sequence[UnitRow],
+    card: CompileCard,
+    cards: Sequence[DriverCard],
+    *,
+    resolved: config.Config,
+    cwd: Path,
+    store: Path,
+) -> tuple[int | None, int, str]:
+    """Ruling 25: the sealed bytes read back in an S4 worker and the loop closed, or why not."""
+    import sys  # noqa: PLC0415 -- only this verb pays
+
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415
+    from omniweave_core.host import subproc  # noqa: PLC0415
+    from omniweave_core.locks import store_write_lock  # noqa: PLC0415
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+    from omniweave_core.store.artifact import SqliteArtifactStore  # noqa: PLC0415
+
+    from omniweave.run.operators.parse import worker_env  # noqa: PLC0415
+    from omniweave.run.out_back import ReadWorker, read_back_artifact, reader_card  # noqa: PLC0415
+    from omniweave.run.out_compile import store_cas  # noqa: PLC0415
+    from omniweave.surface.ingest import root_of  # noqa: PLC0415
+
+    reader = reader_card(cards, card)
+    if isinstance(reader, str):
+        return None, 0, reader
+    effective = reader.config.effective()
+    blobs = store_cas(store)
+    clock = SystemClock()
+    reading = ReadWorker(
+        card=reader,
+        effective_config=effective,
+        blobs=blobs,
+        tmp=_cache_root(resolved, cwd) / "tmp" / "read-back",
+        settings=subproc.HostSettings.from_config(resolved),
+        executable=sys.executable,
+        env=worker_env(),
+        address=subproc.local_address(f"ow-{os.getpid()}-back-{row.slug}-{row.artifact_gen}"),
+        now_ms=lambda: clock.monotonic_ns() // 1_000_000,
+    )
+    lock = store_write_lock(store, now_ns=clock.wall_ns)
+    with store_sqlite.StoreThread(lambda: store_sqlite.connect(store), lock=lock) as thread:
+        closed = read_back_artifact(
+            row,
+            units=sealed,
+            card=reader,
+            effective_config=effective,
+            reading=reading,
+            thread=thread,
+            blobs=blobs,
+            artifacts=SqliteArtifactStore(thread, clock=clock),
+            uri=str(root_of(resolved, "roots.output", cwd) / row.path),
+        )
+    return closed.row.read_back_doc_ord, len(closed.els), ""
 
 
 def _backed(built: BackReport) -> dict[str, Any]:
@@ -1438,6 +1514,10 @@ def _backed(built: BackReport) -> dict[str, Any]:
         "recorded_digest": built.recorded_digest,
         "installed_digest": built.installed_digest,
         "units": list(built.units),
+        "read_back": built.read_back,
+        "read_back_doc_ord": built.read_back_doc_ord,
+        "els": built.els,
+        "loop_open": built.loop_open,
     }
 
 
@@ -1454,8 +1534,16 @@ def _back_lines(built: BackReport) -> list[str]:
             f"{built.installed_digest}. No recorded table version names the rows that moved; "
             "ow out check reports what the installed table finds"
         )
+    if built.read_back_doc_ord is None:
+        loop = f"loop: open: {built.loop_open}"
+    else:
+        loop = (
+            f"loop: {built.slug}@{built.from_gen} read back by {built.read_back} as document "
+            f"{built.read_back_doc_ord}, {built.els} address(es) mapped"
+        )
     return [
         contract,
+        loop,
         f"restored {built.slug}@{built.from_gen} into {built.job_dir} as "
         f"{built.slug}@{built.artifact_gen} ({len(built.units)} unit(s))",
         f"edit il/, then: ow out check --stage final --job {built.job_dir}",
