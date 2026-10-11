@@ -92,6 +92,7 @@ __all__ = [
     "artefact",
     "check",
     "lower_job",
+    "ref_bytes",
     "refusal_message",
     "refusal_of",
 ]
@@ -314,11 +315,16 @@ def artefact(result: DriverResult, blobs: BlobReader) -> tuple[ArtifactRef, byte
             fix="report the target: its lower() must return one artifact",
         )
     [ref] = refs
+    return ref, ref_bytes(ref, blobs)
+
+
+def ref_bytes(ref: ArtifactRef, blobs: BlobReader) -> bytes:
+    """One ref's bytes: inline, or out of the CAS by its digest (D772)."""
     if ref.inline is not None:
-        return ref, ref.inline
+        return ref.inline
     #  `cas://<hex>` or the sharded `cas://bb/18/<hex>` a worker's put returns: the digest is last.
     with blobs.open((ref.blob or "").rsplit("/", 1)[-1]) as handle:
-        return ref, handle.read()
+        return handle.read()
 
 
 def refusal_message(error: OwError) -> str:
