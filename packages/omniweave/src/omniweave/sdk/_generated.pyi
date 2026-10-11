@@ -41,6 +41,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     out.scaffold      ScaffoldIn          ScaffoldReport
     out.stamp         StampIn             StampReport
     out.targets       TargetsIn           TargetsReport
+    out.verify        VerifyIn            VerifyReport
     query             QueryIn             Answer
     serve             ServeIn             ServeReport
     skills.check      SkillsCheckIn       SkillsReport

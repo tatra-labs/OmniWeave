@@ -1024,6 +1024,14 @@ fix     = "ow explain OW-T-526"
 raised_by = "TargetError"
 sites   = ["09-generation.md:173"]
 
+[[code]]
+numeric = "OW-T-527"
+symbol  = "OW_TARGET_VERIFY_INPUTS"
+meaning = "ow out verify was asked to recompile an artefact over inputs other than the ones it was sealed over: the JobDir names another slug or target, its Brief or ledger digests otherwise, or the installed card or construct table is not the one that compiled it (D774)"
+fix     = "ow out verify --job <the JobDir that compiled it>"
+raised_by = "TargetError"
+sites   = ["09-generation.md:2131"]
+
 # ── W1.5, the driver card grammar (04-driver-system.md sections 2.1-2.8, 4.5, 5.3, 7.5). The
 # three discovery-point refusals of section 5.3 step 1, plus the two numerics the plan already
 # binds. `meaning` and `fix` are FILLED here rather than deferred to W1.3: these five are raised

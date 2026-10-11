@@ -109,7 +109,7 @@ GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
     "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
     "hooks": "check",
-    "out": "check · compile · constructs · list · normalize · scaffold · stamp · targets",
+    "out": "check · compile · constructs · list · normalize · scaffold · stamp · targets · verify",
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
 }
@@ -689,6 +689,20 @@ COMMANDS: Final[tuple[Command, ...]] = (
             "and enabled, and the determinism class its card declares"
         ),
         arguments=(),
+    ),
+    Command(
+        words=("out", "verify"),
+        actions=("out.verify",),
+        help=(
+            "Recompile a sealed artefact from its retained IL in an S4 worker and compare it "
+            "at its declared determinism classes (R1), and count its units (R7)"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--job",),
+                metavar="JOB",
+            ),
+        ),
     ),
     Command(
         words=("query",),

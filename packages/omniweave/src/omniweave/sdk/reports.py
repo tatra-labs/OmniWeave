@@ -85,6 +85,8 @@ __all__ = [
     "SurfaceReport",
     "TargetListing",
     "TargetsReport",
+    "VerifiedClass",
+    "VerifyReport",
 ]
 
 
@@ -525,6 +527,32 @@ class CompileReport:
     hit: bool = False
     postflight: str | None = None
     restricted: tuple[RestrictedItem, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class VerifiedClass:
+    """One declared determinism class and what the recompile found: `held`, `differs`, or
+    `unchecked` for a class no comparison here can reach. D774."""
+
+    name: str
+    held: str
+
+
+@dataclass(frozen=True, slots=True)
+class VerifyReport:
+    """What `ow out verify` found: R1 class by class, and R7's two counts. D774.
+
+    A law that fails is a status and an exit, 8, never a raise (10 section 9.3).
+    """
+
+    slug: str
+    artifact_gen: int
+    exit: int
+    r1: bool
+    classes: tuple[VerifiedClass, ...]
+    r7: bool
+    units_sealed: int
+    unit_count: int
 
 
 @dataclass(frozen=True, slots=True)

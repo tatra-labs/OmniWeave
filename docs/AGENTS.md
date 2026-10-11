@@ -72,6 +72,7 @@ key can grant one.
 | `out.scaffold` | — | `ow out scaffold` | — | `free` | Create the JobDir one artefact is authored in: job.json with the roster the Brief commissions, the frozen brief.md, il/il.toml and empty assets |
 | `out.stamp` | — | `ow out stamp` | — | `free` | Mint a data-ow-el address on every citable, text-bearing IL element that has none, never renumbering one, all units or none |
 | `out.targets` | `ow_targets` | `ow out targets` | full | `free` | List the artefact kinds this deployment can compile, whether each is implemented and enabled, and the determinism class its card declares |
+| `out.verify` | — | `ow out verify` | — | `free` | Recompile a sealed artefact from its retained IL in an S4 worker and compare it at its declared determinism classes (R1), and count its units (R7) |
 | `query` | `ow_query` | `ow query` | default, full | `local_compute` | Ask an indexed corpus a question and get cited passages, a verdict, and the gaps that could be hiding an answer |
 | `serve` | — | `ow serve` | — | `free` | Serve the MCP surface to an agent host over stdio, from the [serve] configuration startup step 5 resolves; runs until the host closes the stream |
 | `skills.check` | `ow_skills_check` | `ow skills check` | — | `free` | Say whether the installed skills are this release's: a stale or missing core skill fails, an outdated or orphaned on-demand one is reported |

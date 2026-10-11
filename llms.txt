@@ -318,6 +318,8 @@ cli.out.stamp: ow out stamp [--job JOB]
 cli.out.stamp.actions: out.stamp
 cli.out.targets: ow out targets
 cli.out.targets.actions: out.targets
+cli.out.verify: ow out verify [--job JOB]
+cli.out.verify.actions: out.verify
 cli.query: ow query QUERY [--scope SCOPE] [--want passages|table|fields|outline|related]
   [--max-rung gate|decode|repair|page|regen|degrade|enrich] [--max-chars MAX_CHARS] [--k N]
   [--mode find|cite|explore|prove_absent] [--fail-on STATE[,STATE]] [--explain]

@@ -1,6 +1,6 @@
 """`ow out <verb>`: the OUT verbs this build dispatches: `targets` (D761), `constructs` (D762),
-`scaffold` (D765), `check` (D766), `stamp` (D767), `normalize` (D768), `list` (D769) and `compile`
-(D773).
+`scaffold` (D765), `check` (D766), `stamp` (D767), `normalize` (D768), `list` (D769), `compile`
+(D773) and `verify` (D774).
 
 09-generation.md section 1 (`omniweave.targets` exists "so `ow out targets` can list an artefact
 kind without resolving a driver"), section 12.4 ("`ow out targets` prints the target, the flag and
@@ -23,9 +23,9 @@ documentation", with `--group` and `--construct` selecting from it.
    command that names each one, the way `doctor`'s D-08 reports the same faults.
 4. **Refused by name, exit 1:** `--quiet`, because neither verb declares a scalar, and
    `--render jsonl|rows`, which have no writer here (the `explain` precedent).
-5. **Only `targets`, `constructs`, `scaffold`, `check`, `stamp`, `normalize`, `list` and
-   `compile` are served.** The other four `out` verbs are rostered without an Action, so the
-   generated tree never parses them and this module never sees them.
+5. **Only `targets`, `constructs`, `scaffold`, `check`, `stamp`, `normalize`, `list`,
+   `compile` and `verify` are served.** The other three `out` verbs are rostered without an
+   Action, so the generated tree never parses them and this module never sees them.
 6. **`constructs` documents the one card that declares the target**, found as `targets` finds
    cards, whether or not `[targets] enabled` lists it: documentation is how an agent learns a
    target before anyone enables it. No card is `OW_TARGET_UNKNOWN` (exit 2), naming the kinds
@@ -98,6 +98,13 @@ documentation", with `--group` and `--construct` selecting from it.
     exit from 09 section 15, with nothing lowered: 6 `restricted`, naming each barred asset and
     cite, and the gate's own code for the rest. A worker's refusal is raised under the target's
     symbol and any other failure is `OW_TARGET_COMPILE_FAILED`.
+21. **`verify` is `run.out_verify.verify_artifact()` over a JobDir's sealed generation**
+    (`--job`, else `cwd`): the row its `job.json` names, read through `connect_readonly()`,
+    recompiled from its retained IL by a `CompileWorker`, and compared at each declared class.
+    The API sketch prints `ow out verify <artefact>`; R1 also needs the Brief, the clock and the
+    frozen assets, and only the IL is retained, so the JobDir that compiled the artefact supplies
+    them, each held to the row's digest. A failing law exits 8, and `--corpus` is refused, as
+    `check` refuses it.
 """
 
 from __future__ import annotations
@@ -127,6 +134,8 @@ from omniweave.sdk.reports import (
     StampReport,
     TargetListing,
     TargetsReport,
+    VerifiedClass,
+    VerifyReport,
 )
 from omniweave.surface.inputs import CONSTRUCT_FORMATS
 from omniweave.surface.query import parse
@@ -156,6 +165,7 @@ __all__ = [
     "scaffold_report",
     "stamp_report",
     "targets_report",
+    "verify_report",
 ]
 
 OUT_WORD: Final[str] = "out"
@@ -165,6 +175,7 @@ _LIST_FIX: Final[str] = "ow out list [--slug S] [--corpus N] [--render json]"
 _NORMALIZE_FIX: Final[str] = "ow out normalize [--stage S] [--unit U] [--construct ID] [--job DIR]"
 _CHECK_FIX: Final[str] = "ow out check --stage early|first-unit|unit|final [--unit U] [--job DIR]"
 _COMPILE_FIX: Final[str] = "ow out compile [--accept-manual] [--job DIR]"
+_VERIFY_FIX: Final[str] = "ow out verify [--job DIR]"
 _CONSTRUCTS_FIX: Final[str] = (
     "ow out constructs <target> [--format md] [--group G | --construct ID]"
 )
@@ -356,6 +367,35 @@ def _compile(
     return built.exit
 
 
+def _verify(
+    parsed: argparse.Namespace,
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    stdout: TextIO,
+    stderr: TextIO,
+) -> int:
+    del stderr
+    _refuse_unserved(parsed, verb="ow out verify", fix=_VERIFY_FIX)
+    if parsed.corpus is not None:
+        raise UsageError(
+            "--corpus is not served by ow out verify: the JobDir's job.json names its corpus",
+            fix=_VERIFY_FIX,
+        )
+    built = verify_report(
+        cwd=cwd,
+        env=env,
+        explicit=_explicit(parsed),
+        job=None if parsed.job is None else Path(str(parsed.job)),
+    )
+    if parsed.render == "json":
+        stdout.write(json.dumps(_verified(built), ensure_ascii=False) + "\n")
+    else:
+        for line in _verify_lines(built):
+            stdout.write(line + "\n")
+    return built.exit
+
+
 def _stamp(
     parsed: argparse.Namespace,
     *,
@@ -448,6 +488,7 @@ _VERBS: Final[Mapping[str, Callable[..., int]]] = {
     "out.scaffold": _scaffold,
     "out.check": _check,
     "out.compile": _compile,
+    "out.verify": _verify,
     "out.stamp": _stamp,
     "out.normalize": _normalize,
     "out.list": _list,
@@ -1055,6 +1096,101 @@ def _compile_lines(built: CompileReport) -> list[str]:
     if built.hit:
         return [*lines, f"lookup hit: {named} is an earlier compile's bytes, placed again"]
     return [*lines, f"sealed {named} ({built.delivery}) at {built.path}"]
+
+
+def verify_report(
+    *, cwd: Path, env: Mapping[str, str], explicit: Path | None, job: Path | None
+) -> VerifyReport:
+    """Ruling 21: R1 and R7 over the sealed generation a JobDir names."""
+    import sys  # noqa: PLC0415 -- only this verb pays
+
+    from omniweave_core import config  # noqa: PLC0415
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415
+    from omniweave_core.host import subproc  # noqa: PLC0415
+    from omniweave_core.host.activate import construct  # noqa: PLC0415
+    from omniweave_core.out.agentdoc import load_table  # noqa: PLC0415
+    from omniweave_core.out.compile import CompileV1  # noqa: PLC0415
+    from omniweave_core.out.job import Job  # noqa: PLC0415
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+    from omniweave_core.store.artifact import SqliteArtifactStore  # noqa: PLC0415
+
+    from omniweave.run.operators.parse import worker_env  # noqa: PLC0415
+    from omniweave.run.out_compile import CompileWorker, store_cas  # noqa: PLC0415
+    from omniweave.run.out_verify import verify_artifact  # noqa: PLC0415
+    from omniweave.surface.query import store_of  # noqa: PLC0415
+
+    job_dir = cwd if job is None else (job if job.is_absolute() else cwd / job)
+    plan = Job.load(job_dir).plan
+    resolved = config.load(cwd=cwd, env=env, explicit=explicit)
+    driver, card = _one_card(_discover(resolved, env).cards, plan.target)
+    table = load_table(Path(driver.source), card)
+    effective = driver.config.effective()
+    compiler = cast("CompileV1", construct(driver, effective))
+    store = store_of(resolved, plan.corpus, cwd=cwd)
+    clock = SystemClock()
+    with store_sqlite.StoreThread(lambda: store_sqlite.connect_readonly(store)) as thread:
+        artifacts = SqliteArtifactStore(thread, clock=clock)
+        row = artifacts.get(plan.slug, plan.artifact_gen)
+        units = artifacts.units(row.artifact_id)
+    blobs = store_cas(store)
+    named = f"{plan.slug}@{plan.artifact_gen}"
+    verified = verify_artifact(
+        job_dir,
+        row=row,
+        units=units,
+        card_sha256=driver.card_sha256,
+        constructs=table,
+        carrier=compiler.carrier,
+        blobs=blobs,
+        lowering=CompileWorker(
+            card=driver,
+            effective_config=effective,
+            blobs=blobs,
+            tmp=_cache_root(resolved, cwd) / "tmp" / "compile",
+            settings=subproc.HostSettings.from_config(resolved),
+            executable=sys.executable,
+            env=worker_env(),
+            address=subproc.local_address(
+                f"ow-{os.getpid()}-verify-{plan.slug}-{plan.artifact_gen}"
+            ),
+            now_ms=lambda: clock.monotonic_ns() // 1_000_000,
+        ),
+        scratch=_cache_root(resolved, cwd) / "tmp" / "verify" / named,
+    )
+    return VerifyReport(
+        slug=plan.slug,
+        artifact_gen=plan.artifact_gen,
+        exit=0 if verified.passed else 8,
+        r1=verified.r1,
+        classes=tuple(VerifiedClass(name, held) for name, held in verified.classes.items()),
+        r7=verified.r7,
+        units_sealed=verified.units_sealed,
+        unit_count=verified.unit_count,
+    )
+
+
+def _verified(built: VerifyReport) -> dict[str, Any]:
+    return {
+        "slug": built.slug,
+        "artifact_gen": built.artifact_gen,
+        "exit": built.exit,
+        "r1": built.r1,
+        "classes": {one.name: one.held for one in built.classes},
+        "r7": built.r7,
+        "units_sealed": built.units_sealed,
+        "unit_count": built.unit_count,
+    }
+
+
+def _verify_lines(built: VerifyReport) -> list[str]:
+    named = f"{built.slug}@{built.artifact_gen}"
+    classes = ", ".join(f"{one.name} {one.held}" for one in built.classes)
+    return [
+        f"R1 retained-IL identity   {'PASS' if built.r1 else 'FAIL'}   "
+        f"{named} recompiled from its retained IL: {classes}",
+        f"R7 total classification   {'PASS' if built.r7 else 'FAIL'}   "
+        f"{built.units_sealed} unit row(s) sealed, {built.unit_count} commissioned",
+    ]
 
 
 def stamp_report(
