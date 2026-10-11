@@ -496,6 +496,12 @@ class RetrievalPolicy:
     `RetrievalPolicy` has no budget to default to. `None` here falls through to
     `QueryBudget()`'s own defaults, which are §16's printed numbers and the shipped
     `retrieval.toml`'s."""
+    deny_restriction_bits: int = 0
+    """**Not in 07:3327's printed shape either**, and D780 is why. DR17 makes
+    `Filters.deny_restriction_bits` *"set by POLICY, never by the caller"* (07:1576, 14:101
+    boundary B6), and no printed policy shape carried it, which `plan()` named D261's missing
+    carrier. It is `[licence] deny_restrictions` (D779) as a mask, and `plan()` attaches it to
+    every plan's filters. 0 denies nothing."""
 
 
 @dataclass(frozen=True, slots=True)

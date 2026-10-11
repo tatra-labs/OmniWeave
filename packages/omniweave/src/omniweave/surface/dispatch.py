@@ -67,6 +67,7 @@ class ServeEntry(Protocol):
         sources: Mapping[str, str],
         sessions: str | None,
         budget: QueryBudget | None = None,
+        deny_restriction_bits: int = 0,
     ) -> int:
         """Serve until the host closes the stream; return the process exit code."""
         ...
