@@ -40,6 +40,8 @@ toolchain = ""                         # pure Python: no node, no browser
 implemented = true
 max_units = 64
 agent_doc_tokens_max = 1200
+media_type = "text/plain"              # the artefact's, the row's NOT NULL media_type
+suffix = ".txt"                        # <slug>@<gen>/<slug>.txt
 
 [compile.round_trip]
 read_back = "parse.text.owtext"

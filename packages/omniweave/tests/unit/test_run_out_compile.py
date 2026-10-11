@@ -121,6 +121,44 @@ U02 = (
     '<section data-ow-el="u02/e1"><p data-ow-el="u02/e2" data-ow-cite="d7#2">Margins</p>'
     f"<p>{slot(LOGO_SHA)}</p></section>"
 )
+
+
+def _owtext_card(text: str | None = None) -> Any:
+    from omniweave_core.drivers.card import load_card  # noqa: PLC0415
+
+    raw = text if text is not None else (OWTEXT / "driver.toml").read_text(encoding="utf-8")
+    return load_card(raw.encode("utf-8"), origin="driver_path", source="driver.toml")
+
+
+def test_the_host_of_a_real_run_is_read_off_the_card() -> None:
+    """Ruling 10 (D770): `[compile]`'s media type and suffix, the card's stamp, 0 barred."""
+    from omniweave_core.out.card import CompileCard  # noqa: PLC0415
+
+    driver = _owtext_card()
+    host = CompileHost.of(driver, CompileCard.of(driver), producer_id=7)
+    assert host == CompileHost(
+        compile_driver="compile.text.owtext",
+        media_type="text/plain",
+        suffix=".txt",
+        producer_id=7,
+        restriction_bits=0,
+        barred_mask=0,
+    )
+
+
+def test_the_hosts_stamp_is_the_cards_licence_restrictions() -> None:
+    """A share-alike output licence is a restriction the seal must carry (INV-16)."""
+    from omniweave_core.drivers.licence import restriction_bits  # noqa: PLC0415
+    from omniweave_core.out.card import CompileCard  # noqa: PLC0415
+
+    text = (OWTEXT / "driver.toml").read_text(encoding="utf-8")
+    assert text.count("output_share_alike = false") == 1
+    driver = _owtext_card(text.replace("output_share_alike = false", "output_share_alike = true"))
+    host = CompileHost.of(driver, CompileCard.of(driver), producer_id=1, barred_mask=BARRED)
+    assert host.restriction_bits == restriction_bits(driver.licence_code) != 0
+    assert host.barred_mask == BARRED
+
+
 HOST = CompileHost(
     compile_driver="compile.text.owtext",
     media_type="text/plain",

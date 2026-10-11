@@ -35,6 +35,7 @@ from omniweave_core.store.artifact import (
     SqliteArtifactStore,
     UnitRow,
     artifact_rows,
+    ensure_producer,
     latest_generation,
 )
 
@@ -404,6 +405,28 @@ def test_artifact_rows_are_every_seal_by_slug_then_generation(
         assert artifact_rows(readonly, "q4-board") == ()
     finally:
         readonly.close()
+
+
+def test_ensure_producer_is_one_row_per_identity(owstore: Path) -> None:
+    """D770: the compile path's producer, inserted once and found again."""
+    from omniweave_core.model.records import Producer  # noqa: PLC0415
+
+    owtext = Producer(
+        operator="compile.text.owtext", op_version=1, code_fingerprint="", options_digest=b"\x01"
+    )
+    connection = ow.connect(owstore)
+    try:
+        sql = "SELECT count(*) FROM producer WHERE operator = 'compile.text.owtext'"
+        (seeded,) = connection.execute(sql).fetchone()
+        first = ensure_producer(connection, owtext)
+        assert ensure_producer(connection, owtext) == first
+        other = ensure_producer(connection, dataclasses.replace(owtext, op_version=2))
+        assert other != first
+        (count,) = connection.execute(sql).fetchone()
+        #  The seed already holds one with another identity: two new rows, not one per call.
+        assert count == seeded + 2
+    finally:
+        connection.close()
 
 
 def test_a_draft_and_a_release_of_one_input_are_two_rows(store: SqliteArtifactStore) -> None:

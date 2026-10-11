@@ -32,6 +32,11 @@ is where they are read, and it reads them the way 09 says.
 5. **An implemented target declares `agent_doc_tokens_max`** (D762). 09 section 3.5 item 5
    gates every target's agent document at it, so an implemented card without one would have
    no gate. An unimplemented target has no table to document and may leave it out.
+6. **An implemented target declares `media_type` and `suffix`** (D770). The artefact row's
+   `media_type` is `NOT NULL` and its path is `<slug>@<gen>/<slug><suffix>` (D755), and
+   no printed card names either: the API sketch's `[capability] formats` is the parse
+   routing key, a media type a driver reads, not one it writes. `media_type` is a
+   `type/subtype` token and `suffix` a dot and 1 to 8 lower-case letters or digits.
 """
 
 from __future__ import annotations
@@ -68,16 +73,22 @@ COMPILE_KEYS: Final = frozenset(
         "implemented",
         "max_units",
         "agent_doc_tokens_max",
+        "media_type",
+        "suffix",
         "reason",
         "round_trip",
     }
 )
 """`[compile]`'s keys: the API sketch's card, plus `reason` (ruling 2)."""
 ROUND_TRIP_KEYS: Final = frozenset({"read_back", "project", "fidelity", "laws", "kind_map"})
-_OPTIONAL: Final = frozenset({"reason", "provenance_part", "toolchain", "agent_doc_tokens_max"})
+_OPTIONAL: Final = frozenset(
+    {"reason", "provenance_part", "toolchain", "agent_doc_tokens_max", "media_type", "suffix"}
+)
 _TOKEN: Final = re.compile(r"[a-z][a-z0-9_-]{0,31}")
 _IL: Final = re.compile(r"[a-z][a-z0-9_-]{0,31}/[1-9][0-9]*")
 _DIGEST: Final = re.compile(r"sha256:[0-9a-f]{64}")
+_MEDIA_TYPE: Final = re.compile(r"[a-z0-9][a-z0-9!#$&^_.+-]{0,63}/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}")
+_SUFFIX: Final = re.compile(r"\.[a-z0-9]{1,8}")
 _CARRIERS: Final = frozenset({"svg", "html"})
 _CITATIONS: Final = frozenset({"embedded", "sidecar"})
 _BAKE: Final = frozenset({"available", "unavailable"})
@@ -111,6 +122,10 @@ class CompileCard:
     determinism: tuple[str, ...]
     assets: tuple[str, ...]
     agent_doc_tokens_max: int = 0
+    media_type: str = ""
+    """Ruling 6: the artefact's media type; `""` only when not implemented."""
+    suffix: str = ""
+    """Ruling 6: the artefact's file suffix, `.txt`; `""` only when not implemented."""
     """Ruling 5: the ceiling on `ow out constructs --format md`; 0 only when not implemented."""
     degradations: tuple[str, ...] = ()
     """Ruling 3: what `[capability.compile]` named and this core does not know."""
@@ -173,6 +188,12 @@ class CompileCard:
                 if "agent_doc_tokens_max" in sibling
                 else 0
             ),
+            media_type=(
+                _match(source, sibling, "media_type", _MEDIA_TYPE)
+                if "media_type" in sibling
+                else ""
+            ),
+            suffix=_match(source, sibling, "suffix", _SUFFIX) if "suffix" in sibling else "",
             reason=reason,
             read_back=str(rt["read_back"]),
             project=_bool(source, rt, "project"),
@@ -189,6 +210,8 @@ class CompileCard:
             _invalid(source, "an implemented target names its constructs and a sha256 digest")
         if implemented and not built.agent_doc_tokens_max:
             _invalid(source, "an implemented target declares agent_doc_tokens_max (09 section 3.5)")
+        if implemented and not (built.media_type and built.suffix):
+            _invalid(source, "an implemented target declares its media_type and suffix (D770)")
         return built
 
 

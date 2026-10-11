@@ -91,6 +91,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
 
     from omniweave_core.clock import Clock
+    from omniweave_core.model.records import Producer
 
 __all__ = [
     "ARTIFACT_COLUMNS",
@@ -110,6 +111,7 @@ __all__ = [
     "SqliteArtifactStore",
     "UnitRow",
     "artifact_rows",
+    "ensure_producer",
     "latest_generation",
 ]
 
@@ -567,6 +569,35 @@ def artifact_rows(
     where, args = (" WHERE slug = ?", (slug,)) if slug is not None else ("", ())
     rows = connection.execute(f"{_SELECT}{where} ORDER BY slug, artifact_gen", args)
     return tuple(ArtifactRow.of(row) for row in rows)
+
+
+def ensure_producer(connection: sqlite3.Connection, producer: Producer) -> int:
+    """The `producer_id` of `producer`, inserting its row the first time. D770.
+
+    Every `artifact` row names its producer (`producer_id NOT NULL`), as every `block` row
+    does. This is the parse and derive operators' statement pair, INSERT OR IGNORE then
+    SELECT over the `producer_identity` columns, for the compile path's one driver: the
+    model, runtime and prompt columns are NULL, because a compile names no model.
+    """
+    params = {
+        "operator": producer.operator,
+        "op_version": producer.op_version,
+        "code_fingerprint": producer.code_fingerprint,
+        "options_digest": producer.options_digest,
+    }
+    connection.execute(
+        "INSERT OR IGNORE INTO producer(operator, op_version, code_fingerprint,"
+        " options_digest) VALUES(:operator, :op_version, :code_fingerprint, :options_digest)",
+        params,
+    )
+    (found,) = connection.execute(
+        "SELECT producer_id FROM producer WHERE operator = :operator"
+        " AND op_version = :op_version AND code_fingerprint = :code_fingerprint"
+        " AND options_digest = :options_digest AND model_id IS NULL AND model_rev IS NULL"
+        " AND runtime IS NULL AND runtime_version IS NULL AND prompt_fp IS NULL",
+        params,
+    ).fetchone()
+    return int(found)
 
 
 def _has_artifacts(connection: sqlite3.Connection) -> bool:
