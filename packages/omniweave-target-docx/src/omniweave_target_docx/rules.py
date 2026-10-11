@@ -51,7 +51,7 @@ from typing import Final
 from omniweave_core.out import Finding, Provenance, RuleCtx, RuleSpec, Severity
 from omniweave_core.out.carrier import CarrierNode, style_declarations
 
-__all__ = ["LIST_DEPTH_MAX", "rules"]
+__all__ = ["BLOCKS", "LIST_DEPTH_MAX", "rules"]
 
 LIST_DEPTH_MAX: Final = 9
 """Ruling 3: `w:ilvl` is 0-8."""
@@ -74,15 +74,16 @@ _INLINE_ONLY: Final = frozenset(
         "html|s", "html|code", "html|sub", "html|sup", "html|mark", "html|a", "html|span",
     }
 )  # fmt: skip
-_BLOCKS: Final = frozenset(
+BLOCKS: Final = frozenset(
     {
-        "html|section", "html|p", "html|h1", "html|h2", "html|h3", "html|h4", "html|h5",
-        "html|h6", "html|blockquote", "html|pre", "html|hr", "html|ul", "html|ol", "html|li",
-        "html|dl", "html|dt", "html|dd", "html|table", "html|caption", "html|thead",
-        "html|tbody", "html|tr", "html|th", "html|td", "html|figure", "html|figcaption",
-        "html|div", "html|aside",
+        "section", "h1", "h2", "h3", "h4", "h5", "h6", "p", "blockquote", "pre", "hr", "ul",
+        "ol", "li", "dl", "dt", "dd", "table", "caption", "thead", "tbody", "tr", "th", "td",
+        "figure", "figcaption", "div", "aside",
     }
 )  # fmt: skip
+"""owflow/1's block constructs by local name: the carrier's block set, this module's content
+model and the lowering's split between a block and a run all read this one set."""
+_BLOCKS: Final = frozenset(f"html|{b}" for b in BLOCKS)
 _CONSTRUCTS: Final = "ow out constructs docx --construct"
 
 

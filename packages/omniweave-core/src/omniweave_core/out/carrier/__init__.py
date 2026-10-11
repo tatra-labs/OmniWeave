@@ -32,6 +32,9 @@ inline-style splitter `@style|<prop>` reads, and the transactional splice.
 8. **`CarrierNode.attrs()` arrived with D781.** 09 prints `attr(name)` and nothing that lists a
    node's attributes, so no rule written against the protocol could find an attribute its table
    does not name, which `unknown_construct = "forbidden"` asks. Both carriers' nodes had one.
+9. **`CarrierNode.contents()` arrived with D782.** `text_content()` joins a subtree's text, and
+   `children()` drops it, so neither can lower `Revenue <strong>rose</strong> 12%.` into three
+   runs in order. Both carriers' nodes hold that list already.
 """
 
 from __future__ import annotations
@@ -100,6 +103,11 @@ class CarrierNode(Protocol):
 
     def children(self) -> Iterator[CarrierNode]:
         """The element children, in document order."""
+        ...
+
+    def contents(self) -> tuple[str | CarrierNode, ...]:
+        """Character data and element children, in document order (ruling 9): what `lower/` walks
+        to keep a paragraph's runs in their places."""
         ...
 
     def text_content(self) -> str:
