@@ -695,3 +695,23 @@ def test_every_refusal_is_a_registered_code() -> None:
     }
     for symbol in symbols:
         assert explain(symbol).symbol == symbol
+
+
+def test_the_ledger_is_one_row_per_unit_of_each_frozen_asset(store: SqliteArtifactStore) -> None:
+    """D776: `ow out back` writes these as the restored `assets/index.json`."""
+    from omniweave_core.out.ledger import LedgerRow, slot  # noqa: PLC0415
+
+    sealed = store.seal(
+        draft(
+            assets=(
+                AssetJoin(202, slot(SHA_B), "bake", ("u02",)),
+                AssetJoin(201, slot(SHA_A), "image", ("u01", "u02")),
+            )
+        )
+    )
+    assert store.ledger(sealed.row.artifact_id) == (
+        LedgerRow(201, SHA_A, slot(SHA_A), "image", "u01"),
+        LedgerRow(201, SHA_A, slot(SHA_A), "image", "u02"),
+        LedgerRow(202, SHA_B, slot(SHA_B), "bake", "u02"),
+    )
+    assert store.ledger(sealed.row.artifact_id + 1) == ()

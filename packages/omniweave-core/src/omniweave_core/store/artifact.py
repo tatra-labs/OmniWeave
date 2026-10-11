@@ -83,7 +83,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 from omniweave_core.errors import NotFoundError, StoreError, TargetError
 from omniweave_core.model.enums import Quote
 from omniweave_core.out.gate import GateStatus
-from omniweave_core.out.ledger import ROLES, SLOT_PREFIX
+from omniweave_core.out.ledger import ROLES, SLOT_PREFIX, LedgerRow
 from omniweave_core.out.plan import UnitOutcome
 from omniweave_core.store.sqlite import INTERACTIVE_WAIT_MS, StoreThread, Unit
 
@@ -690,6 +690,32 @@ class SqliteArtifactStore:
 
         rows = self._run("out.units", run)
         return rows if isinstance(rows, tuple) else ()
+
+    def ledger(self, artifact_id: int) -> tuple[LedgerRow, ...]:
+        """The artefact's frozen assets as ledger rows: one per `artifact_asset` unit. D776.
+
+        `ow out back` writes them as the restored JobDir's `assets/index.json`, so the edit
+        compiles against the bytes the artefact slotted, and `ledger_digest()` over them is the
+        sealed row's.
+        """
+
+        def run(connection: sqlite3.Connection) -> object:
+            rows: list[LedgerRow] = []
+            for asset_id, sha, slot_, role, units in connection.execute(
+                "SELECT aa.asset_id, a.sha256, aa.slot, aa.role, aa.units"
+                " FROM artifact_asset aa JOIN asset a ON a.asset_id = aa.asset_id"
+                " WHERE aa.artifact_id = ? ORDER BY aa.slot, aa.role, aa.asset_id",
+                (artifact_id,),
+            ):
+                rows += [
+                    LedgerRow(asset_id=asset_id, sha256=bytes(sha).hex(), slot=slot_, role=role,
+                              unit=unit)
+                    for unit in json.loads(units)
+                ]  # fmt: skip
+            return tuple(rows)
+
+        found = self._run("out.ledger", run)
+        return found if isinstance(found, tuple) else ()
 
     def restricted(
         self, *, asset_ids: Iterable[int], block_ids: Iterable[int], barred_mask: int

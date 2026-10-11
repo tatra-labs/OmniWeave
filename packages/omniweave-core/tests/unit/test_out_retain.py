@@ -15,14 +15,29 @@ from pathlib import Path
 
 import pytest
 from omniweave_core.blobs import BlobStore, format_ref
+from omniweave_core.drivers.card import DriverCard, load_card, read_card_bytes
 from omniweave_core.errors import StoreError, TargetError, UsageError, explain
+from omniweave_core.events import traceparent
 from omniweave_core.out import retain as retain_module
 from omniweave_core.out.brief import BRIEF_SCHEMA, parse_brief
+from omniweave_core.out.card import CompileCard
 from omniweave_core.out.carrier import CarrierDoc
 from omniweave_core.out.carrier.html import html_carrier
 from omniweave_core.out.constructs import ConstructTable
-from omniweave_core.out.job import ILBundle, read_il_files
-from omniweave_core.out.retain import fetch, fetch_brief, freeze, freeze_brief, manifest
+from omniweave_core.out.gate import GateStatus
+from omniweave_core.out.job import ILBundle, Job, read_il_files
+from omniweave_core.out.ledger import LedgerRow, ledger_digest, read_index, slot
+from omniweave_core.out.plan import OutUnit, UnitOutcome
+from omniweave_core.out.retain import (
+    edit_roster,
+    fetch,
+    fetch_brief,
+    freeze,
+    freeze_brief,
+    manifest,
+    restore,
+)
+from omniweave_core.store.artifact import UnitRow
 
 TABLE = """\
 schema = "omniweave.out-constructs/1"
@@ -326,3 +341,132 @@ def test_an_object_past_the_bound_is_corrupt(
     monkeypatch.setattr(retain_module, "MAX_IL_FILE_BYTES", 16)
     with pytest.raises(StoreError, match="runs past 16 bytes"):
         fetch_brief(brief.digest(), blobs)
+
+
+# ---------------------------------------------------------------------------------------------
+# Rulings 9 and 10 (D776): the JobDir an edit is authored in
+# ---------------------------------------------------------------------------------------------
+
+BACK_BRIEF = (
+    f"{BRIEF_SCHEMA}\n## canvas\n- format: 16:9\n- unit: slide\n## communication\n"
+    "- primary_language: en-GB\n## direction\n## density\n- per_unit: light\n## motion\n"
+    "- level: static\n## typography\n## rhythm\n- u01: { anchor: cover }\n"
+    "- u02: { anchor: content }\n## forbidden\n- no glow (user)\n"
+)
+SHA_A = "a" * 64
+
+
+def _owtext() -> CompileCard:
+    from omniweave_conform.suites.target.owtext.driver import HERE  # noqa: PLC0415
+
+    card = load_card(read_card_bytes(HERE / "driver.toml"), origin="driver_path", source="x")
+    assert isinstance(card, DriverCard)
+    return CompileCard.of(card)
+
+
+def _sealed() -> tuple[UnitRow, ...]:
+    return (
+        UnitRow("u01", 1, UnitOutcome.NATIVE, "il/u01.html", "sha256:" + "1" * 64, "ab12cd34"),
+        UnitRow("u02", 2, UnitOutcome.NATIVE, "il/u02.html", "sha256:" + "2" * 64, "ef56ab78"),
+    )
+
+
+def _restore(job: Path, il: Path, blobs: BlobStore, **changes: object) -> Job:
+    retained = freeze(bundle_at(il), blobs)
+    arguments: dict[str, object] = {
+        "il_store_ref": retained.il_store_ref,
+        "blobs": blobs,
+        "brief": parse_brief(BACK_BRIEF, baseline=()),
+        "sealed": _sealed(),
+        "assets": (LedgerRow(201, SHA_A, slot(SHA_A), "image", "u02"),),
+        "card": _owtext(),
+        "card_sha256": "sha256:" + "4" * 64,
+        "table": CONSTRUCTS,
+        "slug": "q3",
+        "artifact_gen": 2,
+        "corpus": "handbook",
+        "traceparent": traceparent("4bf92f3577b34da6a3ce929d0e0e4736", "00f067aa0ba902b7"),
+        "clock_ns": 1_700_000_000_000_000_000,
+    }
+    arguments.update(changes)
+    return restore(job, **arguments)  # type: ignore[arg-type]
+
+
+def test_a_restore_writes_the_next_generations_jobdir(
+    il: Path, blobs: BlobStore, tmp_path: Path
+) -> None:
+    job_dir = tmp_path / "back" / "q3@2"
+    job = _restore(job_dir, il, blobs)
+    assert Job.load(job_dir) == job
+    assert sorted(p.name for p in (job_dir / "il").iterdir()) == ["il.toml", "u01.html", "u02.html"]
+    assert (job_dir / "il" / "il.toml").read_text(encoding="utf-8") == IL_TOML, (
+        "the restored il.toml keeps the constructs_digest it was compiled against"
+    )
+    assert parse_brief((job_dir / "brief.md").read_text(encoding="utf-8"), baseline=()) == (
+        parse_brief(BACK_BRIEF, baseline=())
+    )
+    assert read_index(job_dir) == (LedgerRow(201, SHA_A, slot(SHA_A), "image", "u02"),)
+    assert sorted(p.name for p in job_dir.iterdir()) == [
+        "assets", "brief.md", "il", "job.json", "out", "validation",
+    ]  # fmt: skip
+    plan = job.plan
+    assert (plan.target, plan.slug, plan.artifact_gen, plan.corpus) == (
+        "owtext",
+        "q3",
+        2,
+        "handbook",
+    )
+    assert (plan.delivery, plan.gate_status) == ("release", GateStatus.NOT_PROVIDED)
+    assert plan.il_digest == bundle_at(il).il_digest
+    assert plan.constructs_digest == CONSTRUCTS.digest()
+    assert plan.ledger_digest == ledger_digest(read_index(job_dir))
+    assert plan.brief_digest == parse_brief(BACK_BRIEF, baseline=()).digest()
+    assert plan.card_sha256 == "sha256:" + "4" * 64
+    assert job.determinism.clock_ns == 1_700_000_000_000_000_000
+    assert not job_dir.with_name("q3@2.tmp").exists()
+
+
+def test_an_edits_roster_names_the_units_it_edits() -> None:
+    brief = parse_brief(BACK_BRIEF, baseline=())
+    first, second = edit_roster(_sealed(), brief)
+    assert first == OutUnit(
+        id="u01", ord=1, il_path="il/u01.html", anchor="cover", source_part="il/u01.html",
+        source_nsig="ab12cd34", source_ord=1,
+    )  # fmt: skip
+    assert (second.anchor, second.source_nsig, second.source_ord) == ("content", "ef56ab78", 2)
+    assert (first.nsig, first.manual_reason) == (None, None), "the check fills these"
+
+
+@pytest.mark.parametrize("taken", ["q3@2", "q3@2.tmp"])
+def test_a_restore_never_writes_over_a_jobdir_or_its_stage(
+    il: Path, blobs: BlobStore, tmp_path: Path, taken: str
+) -> None:
+    job_dir = tmp_path / "back" / "q3@2"
+    (tmp_path / "back" / taken).mkdir(parents=True)
+    with pytest.raises(TargetError, match="never writes over a JobDir") as caught:
+        _restore(job_dir, il, blobs)
+    assert caught.value.code() == "OW_TARGET_JOB_EXISTS"
+    assert caught.value.fix == "ow out back q3   # a fresh run id"
+
+
+def test_a_restore_that_fails_leaves_nothing(il: Path, blobs: BlobStore, tmp_path: Path) -> None:
+    job_dir = tmp_path / "back" / "q3@2"
+    with pytest.raises(StoreError, match="no CAS blob"):
+        _restore(job_dir, il, blobs, il_store_ref=format_ref("0" * 64))
+    assert not job_dir.exists()
+    assert not job_dir.with_name("q3@2.tmp").exists()
+
+
+def test_a_restore_that_fails_after_the_fetch_removes_its_stage(
+    il: Path, blobs: BlobStore, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    job_dir = tmp_path / "back" / "q3@2"
+
+    def failing(*_args: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(retain_module, "write_index", failing)
+    with pytest.raises(OSError, match="disk full"):
+        _restore(job_dir, il, blobs)
+    assert not job_dir.exists()
+    assert not job_dir.with_name("q3@2.tmp").exists()
