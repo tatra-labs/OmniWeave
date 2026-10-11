@@ -715,3 +715,78 @@ def test_the_ledger_is_one_row_per_unit_of_each_frozen_asset(store: SqliteArtifa
         LedgerRow(202, SHA_B, slot(SHA_B), "bake", "u02"),
     )
     assert store.ledger(sealed.row.artifact_id + 1) == ()
+
+
+def test_the_assets_are_each_slot_with_its_asset_rows_facts(
+    store: SqliteArtifactStore, owstore: Path
+) -> None:
+    """D778: what `ow out assets --slug` prints, in slot order."""
+    from omniweave_core.store.artifact import ArtifactAsset  # noqa: PLC0415
+
+    connection = sqlite3.connect(owstore)
+    try:
+        connection.execute(
+            "UPDATE asset SET spdx = 'CC-BY-4.0', licence = 'cc' WHERE asset_id = 201"
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    sealed = store.seal(
+        draft(
+            assets=(
+                AssetJoin(202, "asset-slot:" + SHA_B, "bake", ("u02",)),
+                AssetJoin(201, "asset-slot:" + SHA_A, "image", ("u01", "u02")),
+            )
+        )
+    )
+    first, second = store.assets(sealed.row.artifact_id)
+    assert first == ArtifactAsset(
+        asset_id=201, sha256=SHA_A, slot="asset-slot:" + SHA_A, role="image",
+        units=("u01", "u02"), media_type="image/png", byte_len=5, doc_ord=7, licence="cc",
+        spdx="CC-BY-4.0", restriction_bits=0,
+    )  # fmt: skip
+    assert (second.asset_id, second.role, second.restriction_bits) == (202, "bake", BARRED | 2)
+    assert store.assets(sealed.row.artifact_id + 1) == ()
+
+
+def test_the_slot_use_is_every_artefact_and_every_owning_document(
+    store: SqliteArtifactStore, owstore: Path
+) -> None:
+    """D778: 09 section 7.2's reuse query, over one store."""
+    from omniweave_core.store.artifact import SlotArtifact, SlotDocument  # noqa: PLC0415
+
+    connection = sqlite3.connect(owstore)
+    try:
+        connection.execute(
+            "INSERT INTO doc(doc_ord, doc_key, source_sha256, uri, media_type, format,"
+            " format_evidence, source_bytes, status, model_version, declared, achieved)"
+            " VALUES (8, ?, ?, 'file:///c/logo.png', 'image/png', 'png', '{}', 5, 'ok',"
+            " '1.1', '{}', '{}')",
+            (b"\x08" * 16, b"\x00" * 32),
+        )
+        connection.execute(
+            "INSERT INTO asset(asset_id, doc_ord, media_type, sha256, byte_len, store_ref)"
+            " VALUES (203, 8, 'image/png', ?, 5, 'cas://x')",
+            (bytes.fromhex(SHA_A),),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    store.seal(draft())
+    store.seal(
+        draft(
+            key=key(slug="q4-board"),
+            path="q4-board@1/q4-board.pptx",
+            assets=(AssetJoin(203, "asset-slot:" + SHA_A, "thumbnail", ("u02",)),),
+        )
+    )
+    users, owners = store.slot_use(SHA_A)
+    assert users == (
+        SlotArtifact("q3-board", 1, "image", ("u01",)),
+        SlotArtifact("q4-board", 1, "thumbnail", ("u02",)),
+    )
+    assert owners == (
+        SlotDocument(7, "file:///c/contract.pdf", 201),
+        SlotDocument(8, "file:///c/logo.png", 203),
+    )
+    assert store.slot_use("c" * 64) == ((), ())

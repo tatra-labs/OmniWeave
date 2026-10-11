@@ -126,6 +126,7 @@ from omniweave_ports import CostClass
 from omniweave.sdk.reports import (
     AddReport,
     ArtifactsReport,
+    AssetsReport,
     BackReport,
     CodeRow,
     CompileReport,
@@ -148,6 +149,7 @@ from omniweave.sdk.reports import (
 from omniweave.surface.inputs import (
     AddIn,
     ArtifactsIn,
+    AssetsIn,
     BackIn,
     CheckIn,
     CompileIn,
@@ -2008,6 +2010,26 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=StampReport,
             advanced=frozenset(),
             cli=("out", "stamp"),
+        ),
+        ActionSpec(
+            name="out.assets",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "List a sealed artefact's frozen assets with their licences and restrictions, "
+                "or every artefact and document that holds one asset's bytes"
+            ),
+            decision="a compile was restricted, or you need to know where an asset is reused",
+            example={"slug": "q3-board"},
+            inp=AssetsIn,
+            out=AssetsReport,
+            advanced=frozenset(),
+            cli=("out", "assets"),
         ),
         ActionSpec(
             name="out.back",

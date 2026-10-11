@@ -59,6 +59,8 @@ __all__ = [
     "AddReport",
     "ArtifactListing",
     "ArtifactsReport",
+    "AssetListing",
+    "AssetsReport",
     "BackReport",
     "CodeRow",
     "CompileReport",
@@ -81,6 +83,8 @@ __all__ = [
     "ScaffoldUnit",
     "ServeReport",
     "SkillsReport",
+    "SlotOwner",
+    "SlotUser",
     "StampReport",
     "StampedUnit",
     "SurfaceReport",
@@ -528,6 +532,56 @@ class CompileReport:
     hit: bool = False
     postflight: str | None = None
     restricted: tuple[RestrictedItem, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class AssetListing:
+    """One frozen asset of one artefact, with its licence and its named restrictions. D778."""
+
+    asset_id: int
+    sha256: str
+    slot: str
+    role: str
+    units: tuple[str, ...]
+    media_type: str
+    byte_len: int
+    doc_ord: int
+    licence: str | None
+    spdx: str | None
+    restriction_bits: int
+    restrictions: tuple[str, ...]
+    """Each set bit's `Restriction` name, lower-case; an unallocated bit is `bit_<n>`."""
+
+
+@dataclass(frozen=True, slots=True)
+class SlotUser:
+    """One artefact generation that slots the bytes `--slot` names. D778."""
+
+    slug: str
+    artifact_gen: int
+    role: str
+    units: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SlotOwner:
+    """One corpus document that owns an `asset` row of those bytes. D778."""
+
+    doc_ord: int
+    uri: str
+    asset_id: int
+
+
+@dataclass(frozen=True, slots=True)
+class AssetsReport:
+    """What `ow out assets` read: one artefact's ledger, or one slot's users and owners. D778."""
+
+    slug: str | None
+    artifact_gen: int | None
+    slot: str | None
+    assets: tuple[AssetListing, ...] = ()
+    users: tuple[SlotUser, ...] = ()
+    owners: tuple[SlotOwner, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
