@@ -15,6 +15,7 @@ D745 builds `marker`: the `OWC1` grammar, `scan()`, `resolve()`, `apply_reverse(
 `assert_clean()`. D746 adds `place()` and `Insertion`, and frames `nsig`'s text collapsed.
 D747 builds `opc`: the only ZIP-for-write, `part_digest()` and section 5.3's package checks.
 D748 builds `receipt`: `CheckValue`, `Receipt`, `ArtefactDeterminism` and the report status.
+D749 builds `compile` (`CompileV1`, `check()`) and `ledger` (`AssetLedger`, `slot()`).
 """
 
 from omniweave_core.out.brief import Brief, Prohibition, baseline_rows, parse_brief
@@ -29,10 +30,12 @@ from omniweave_core.out.carrier import (
 )
 from omniweave_core.out.carrier.html import html_carrier
 from omniweave_core.out.carrier.xml import svg_carrier
+from omniweave_core.out.compile import CheckResult, CompileV1, check
 from omniweave_core.out.constructs import Construct, ConstructTable, Disposition, RoundTrip
 from omniweave_core.out.finding import Finding, FindingSet, Provenance, Severity, Truncation
 from omniweave_core.out.gate import GateStatus, gate_status
 from omniweave_core.out.job import ILBundle, ILFile
+from omniweave_core.out.ledger import AssetLedger, AssetSource, LedgerRow, slot
 from omniweave_core.out.marker import (
     Marker,
     MarkerEdit,
@@ -82,13 +85,17 @@ from omniweave_core.out.rules import (
 
 __all__ = [
     "ArtefactDeterminism",
+    "AssetLedger",
+    "AssetSource",
     "Box",
     "Brief",
     "CarrierDoc",
     "CarrierNode",
     "CarrierParseError",
+    "CheckResult",
     "CheckValue",
     "Classified",
+    "CompileV1",
     "Construct",
     "ConstructTable",
     "Disposition",
@@ -99,6 +106,7 @@ __all__ = [
     "ILBundle",
     "ILFile",
     "Insertion",
+    "LedgerRow",
     "ManualReason",
     "Marker",
     "MarkerEdit",
@@ -124,6 +132,7 @@ __all__ = [
     "assert_clean",
     "baseline_rows",
     "changed_definitions",
+    "check",
     "check_package",
     "classify_and_assert",
     "console_line",
@@ -142,6 +151,7 @@ __all__ = [
     "resolve",
     "run_pack",
     "scan",
+    "slot",
     "svg_carrier",
     "unchanged",
     "write_opc",
