@@ -132,6 +132,7 @@ from omniweave.sdk.reports import (
     GraphDoctorReport,
     HooksCheckReport,
     InstallReport,
+    OutCheckReport,
     ScaffoldReport,
     ServeReport,
     SkillsReport,
@@ -140,6 +141,7 @@ from omniweave.sdk.reports import (
 )
 from omniweave.surface.inputs import (
     AddIn,
+    CheckIn,
     ConstructsIn,
     CorporaIn,
     CoverageIn,
@@ -1934,6 +1936,26 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=ScaffoldReport,
             advanced=frozenset(),
             cli=("out", "scaffold"),
+        ),
+        ActionSpec(
+            name="out.check",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Run the target's rules over a JobDir's IL at one stage, write "
+                "validation/<stage>.json, and print each finding with its fix"
+            ),
+            decision="you authored IL and need the gate's verdict before going on",
+            example={"stage": "early"},
+            inp=CheckIn,
+            out=OutCheckReport,
+            advanced=frozenset(),
+            cli=("out", "check"),
         ),
     )
 )

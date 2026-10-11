@@ -84,6 +84,7 @@ __all__ = [
     "SOURCE_MAX",
     "WANTS",
     "AddIn",
+    "CheckIn",
     "ConstructsIn",
     "CorporaIn",
     "CoverageIn",
@@ -493,6 +494,22 @@ class HooksCheckIn:
     installed, read back out of the files the receipt names (10:2078, *"resolves the installed
     command string"*). A command given on argv would be a command that was not installed.
     """
+
+
+@dataclass(frozen=True, slots=True)
+class CheckIn:
+    """`ow out check --stage S [--unit U] [--job DIR] [--target T]`. 09 section 4.3. D766.
+
+    `stage` is one of the four, `early`, `first-unit`, `unit` and `final`, each with its own
+    report path. `unit` names the one unit `--stage unit` checks. `job` is the JobDir, `cwd`
+    by default, since a Toolchain child runs with `cwd = job_dir`. `target` is optional and
+    must be the JobDir's own when given: 09 prints it in every fix command.
+    """
+
+    stage: str | None = None
+    unit: str | None = None
+    job: str | None = None
+    target: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

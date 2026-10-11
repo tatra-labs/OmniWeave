@@ -109,7 +109,7 @@ GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
     "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
     "hooks": "check",
-    "out": "constructs · scaffold · targets",
+    "out": "check · constructs · scaffold · targets",
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
 }
@@ -530,6 +530,32 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 spelling=("--want-impact",),
                 kind="switch",
                 help="ow:impact for a batch; a single-block ref gets it anyway",
+            ),
+        ),
+    ),
+    Command(
+        words=("out", "check"),
+        actions=("out.check",),
+        help=(
+            "Run the target's rules over a JobDir's IL at one stage, write "
+            "validation/<stage>.json, and print each finding with its fix"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--stage",),
+                metavar="STAGE",
+            ),
+            Argument(
+                spelling=("--unit",),
+                metavar="UNIT",
+            ),
+            Argument(
+                spelling=("--job",),
+                metavar="JOB",
+            ),
+            Argument(
+                spelling=("--target",),
+                metavar="TARGET",
             ),
         ),
     ),

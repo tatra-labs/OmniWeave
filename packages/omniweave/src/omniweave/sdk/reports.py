@@ -69,6 +69,7 @@ __all__ = [
     "GraphDoctorReport",
     "HooksCheckReport",
     "InstallReport",
+    "OutCheckReport",
     "ScaffoldReport",
     "ScaffoldUnit",
     "ServeReport",
@@ -432,6 +433,25 @@ class TargetsReport:
     """
 
     targets: tuple[TargetListing, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class OutCheckReport:
+    """What `ow out check` decides: the stage, the gate status and the exit. D766.
+
+    The findings are `validation/<stage>.json`'s, at `report_path`. `--render json` prints
+    that whole document (09 section 4.2), so this is the summary an SDK caller reads, and
+    the status is returned, never raised (10 section 9.3).
+    """
+
+    stage: str
+    target: str
+    status: str
+    exit: int
+    report_path: str
+    errors: int
+    warnings: int
+    infos: int
 
 
 @dataclass(frozen=True, slots=True)

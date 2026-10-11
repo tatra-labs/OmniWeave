@@ -226,6 +226,9 @@ def test_a_truncation_is_a_framework_finding_and_keeps_the_gate_unverified() -> 
     assert exit_code(GateStatus.UNVERIFIED, report) == 8, (
         "a truncation is the rule's defect, not an engine's"
     )
+    #  D766: the fix is a command the CLI parses, the global `--render json` and not `--json`.
+    [truncated] = [f for f in report.findings if f.code == "OW_TARGET_FINDINGS_TRUNCATED"]
+    assert truncated.fix.endswith("--stage final --render json")
 
 
 def test_summary_buckets_units_and_counts_count_findings() -> None:
@@ -410,7 +413,7 @@ def test_a_report_round_trips_through_its_file(tmp_path: Path) -> None:
         "status": "failed",
         "introduced_warning_count": 1,
         "exit": 8,
-        "fix": "ow out check --target pptx --stage final --json",
+        "fix": "ow out check --target pptx --stage final --render json",
     }
     assert doc["skipped_checks"] == [skip.as_json()]
     assert list(doc["rule_timings_ms"]) == ["a@1", "b@1"]
@@ -521,7 +524,7 @@ def test_the_console_renders_the_json_and_resolves_the_numeric() -> None:
     assert lines[warning_at].endswith("x200")
     assert lines[-2:] == [
         "1 blocking. Release refused: gate = failed.",
-        "Clear with: ow out check --target pptx --stage final --json      (exit 8)",
+        "Clear with: ow out check --target pptx --stage final --render json      (exit 8)",
     ]
     loaded = json.loads(json.dumps(report.as_json()))
     assert render(loaded) == text, "the console is a function of the JSON alone"
