@@ -94,7 +94,8 @@ documentation", with `--group` and `--construct` selecting from it.
     (`StoreThread`'s 07:2730 rule), so a worker's run does not hold the store. The CAS is the
     store's sibling `cas/` (`store_cas()`), the producer is `ensure_producer()`'s row for the card's
     identity, the output root is `[roots] output`, and the worker's scratch is
-    `<cache_root>/tmp/compile`.
+    `<cache_root>/tmp/compile`. D779: the restriction aggregate's barred mask is
+    `[licence] deny_restrictions`, each named `Restriction`'s bit ORed.
 20. **The exit is the compile's.** 0 for a seal or a lookup hit, otherwise the closed gate's
     exit from 09 section 15, with nothing lowered: 6 `restricted`, naming each barred asset and
     cite, and the gate's own code for the rest. A worker's refusal is raised under the target's
@@ -1040,6 +1041,7 @@ def compile_report(
     from omniweave_core import config  # noqa: PLC0415
     from omniweave_core.canonical import sha256_canonical  # noqa: PLC0415
     from omniweave_core.clock import SystemClock  # noqa: PLC0415
+    from omniweave_core.drivers.licence import restriction_mask  # noqa: PLC0415
     from omniweave_core.host import subproc  # noqa: PLC0415
     from omniweave_core.host.activate import construct  # noqa: PLC0415
     from omniweave_core.locks import store_write_lock  # noqa: PLC0415
@@ -1116,7 +1118,14 @@ def compile_report(
             job_dir,
             compiler,
             plan,
-            host=CompileHost.of(driver, card, producer_id=producer_id),
+            host=CompileHost.of(
+                driver,
+                card,
+                producer_id=producer_id,
+                barred_mask=restriction_mask(
+                    cast("tuple[str, ...]", resolved.get("licence.deny_restrictions"))
+                ),
+            ),
             constructs=table,
             ledger=ledger,
             cites=SqliteCiteResolver(thread, corpus=plan.corpus),
