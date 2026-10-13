@@ -3,7 +3,7 @@
 09-generation.md section 12.1: "`lower/drawingml/` per DrawingML family ... `pack.py` builds the
 part graph and calls `write_opc()`". Each module here is one family a `maps_to` names
 (`lower.shapes:rect`), and `_pack.build()` is the compile. D795 lands the slide, groups, preset
-shapes, solid paint, lines and transforms. Freeforms, text, gradients, patterns, effects,
-pictures, links and citations are later cells, and until each lands preflight check 1 refuses a
-unit that uses it.
+shapes, solid paint, lines and transforms, and D796 freeforms: paths, polygons and polylines.
+Text, gradients, patterns, effects, pictures, links and citations are later cells, and until each
+lands preflight check 1 refuses a unit that uses it.
 """

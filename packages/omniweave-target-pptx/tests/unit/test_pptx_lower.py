@@ -11,179 +11,45 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
-import io
 import json
 import os
 import re
 import subprocess  # noqa: TID251 - a second interpreter is the only witness for PYTHONHASHSEED.
 import sys
-import zipfile
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
-from typing import Any
 
-import pptx
 import pytest
+from lowerkit import (  # type: ignore[import-not-found]  # tests/lowerkit.py
+    CLOCK_NS,
+    INK,
+    RECT,
+    TABLE,
+    A,
+    P,
+    box,
+    job_dir,
+    line_of,
+    lowered,
+    outline,
+    slide,
+    turn,
+    u,
+)
 from lxml import etree  # type: ignore[attr-defined] -- lxml ships no stubs
-from omniweave_conform.harness import MemoryBlobStore, make_io
+from omniweave_conform.harness import make_io
 from omniweave_core.errors import TargetError
-from omniweave_core.out.brief import BRIEF_SCHEMA, parse_brief
 from omniweave_core.out.compile import lower_job
-from omniweave_core.out.gate import GateStatus
-from omniweave_core.out.job import ILBundle, Job, JobDeterminism
-from omniweave_core.out.ledger import FrozenLedger, ledger_digest, write_index
+from omniweave_core.out.job import ILBundle, Job
 from omniweave_core.out.lowering import resolve
 from omniweave_core.out.opc import part_digest, write_opc
-from omniweave_core.out.plan import Plan, UnitOutcome
+from omniweave_core.out.plan import UnitOutcome
 from omniweave_core.out.receipt import Receipt
 from omniweave_ports import ArtifactKind
-from omniweave_target_pptx.driver import NORMALIZERS, PptxCompiler, table
+from omniweave_target_pptx.driver import NORMALIZERS, PptxCompiler
 from omniweave_target_pptx.lower import _pack
 from pptx.enum.shapes import MSO_SHAPE, MSO_SHAPE_TYPE
-
-TABLE = table()
-CLOCK_NS = 1_700_000_000_123_456_789
-TRACEPARENT = "00-" + "1" * 32 + "-" + "2" * 16 + "-01"
-P = "{http://schemas.openxmlformats.org/presentationml/2006/main}"
-A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
-BRIEF = parse_brief(
-    f"{BRIEF_SCHEMA}\n## canvas\n- format: 16:9\n- unit: slide\n## communication\n"
-    "- primary_language: en-GB\n## direction\n## density\n- per_unit: light\n## motion\n"
-    "- level: static\n## typography\n## rhythm\n## forbidden\n",
-    baseline=(),
-)
-RECT = '<rect width="1" height="1"/>'
-INK = 'stroke="#000000"'
-
-
-def u(n: float) -> int:
-    """`n` user units in EMU."""
-    return round(n * 9525)
-
-
-def slide(body: str, *, box: str = "0 0 1280 720") -> str:
-    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{box}">{body}</svg>'
-
-
-@dataclass(frozen=True, slots=True)
-class Lowered:
-    data: bytes
-    members: Mapping[str, bytes]
-    plan: Plan
-    path: Path
-
-    def xml(self, name: str) -> Any:
-        return etree.fromstring(self.members[name])
-
-    def tree(self, n: int = 1) -> Any:
-        """Slide `n`'s `p:spTree`."""
-        return self.xml(f"ppt/slides/slide{n}.xml").find(f"{P}cSld/{P}spTree")
-
-    def shapes(self, n: int = 1) -> list[Any]:
-        """Slide `n`'s top-level shapes and groups."""
-        return [c for c in self.tree(n) if c.tag in (f"{P}sp", f"{P}grpSp")]
-
-    def first(self) -> Any:
-        """The first `p:sp` on slide 1, at any depth."""
-        return next(self.tree().iter(f"{P}sp"))
-
-    def deck(self) -> Any:
-        return pptx.Presentation(io.BytesIO(self.data))
-
-    def receipt(self) -> Receipt:
-        return PptxCompiler().postflight(str(self.path), self.plan)
-
-
-def _job(
-    tmp_path: Path, units: Sequence[str], *, plan_units: Sequence[str] | None = None
-) -> tuple[Path, Plan, FrozenLedger, MemoryBlobStore]:
-    job = tmp_path / "job"
-    il = job / "il"
-    il.mkdir(parents=True)
-    rows = "".join(
-        f'\n[[unit]]\nid = "u{n:02d}"\nord = {n}\nfile = "u{n:02d}.svg"\n'
-        for n in range(1, len(units) + 1)
-    )
-    (il / "il.toml").write_text(
-        f'schema = "omniweave.out-il/1"\nil = "owsvg/1"\nconstructs_digest = "{TABLE.digest()}"\n'
-        + rows,
-        encoding="utf-8",
-    )
-    for n, text in enumerate(units, 1):
-        (il / f"u{n:02d}.svg").write_text(text, encoding="utf-8", newline="")
-    store = MemoryBlobStore(tmp_path / "cas")
-    write_index(job, [])
-    bundle = ILBundle.load(il, carrier=PptxCompiler().carrier, constructs=TABLE)
-    roster = bundle.units
-    if plan_units is not None:
-        roster = tuple(u for u in bundle.units if u.id in plan_units)
-    plan = Plan(
-        schema="omniweave.out-plan/1",
-        target="pptx",
-        slug="deck",
-        artifact_gen=1,
-        delivery="release",
-        units=roster,
-        unit_count=len(roster),
-        brief=BRIEF,
-        corpus="acme",
-        cites={},
-        gate_status=GateStatus.PASSED,
-        il_digest=bundle.il_digest,
-        constructs_digest=TABLE.digest(),
-        ledger_digest=ledger_digest([]),
-        brief_digest=BRIEF.digest(),
-        card_sha256="sha256:" + "4" * 64,
-    )
-    Job("omniweave.out-job/1", plan, TRACEPARENT, JobDeterminism(CLOCK_NS)).write(job)
-    return job, plan, FrozenLedger([], store), store
-
-
-def lowered(tmp_path: Path, *units: str, **kwargs: Any) -> Lowered:
-    job, plan, ledger, store = _job(tmp_path, units, **kwargs)
-    compiler = PptxCompiler()
-    bundle = ILBundle.load(job / "il", carrier=compiler.carrier, constructs=TABLE)
-    result = compiler.lower(plan, bundle, ledger, make_io(store, tmp_path / "io"))
-    [ref] = result.produced
-    assert ref.kind == ArtifactKind.ARTIFACT
-    data = ref.inline if ref.inline is not None else store.open(ref.blob or "").read()
-    path = tmp_path / "deck.pptx"
-    path.write_bytes(data)
-    with zipfile.ZipFile(io.BytesIO(data)) as zf:
-        members = {info.filename: zf.read(info) for info in zf.infolist()}
-    return Lowered(data, members, plan, path)
-
-
-def outline(element: Any) -> list[str]:
-    """`element` and everything under it, in order: each local name and its attributes."""
-    return [
-        " ".join([etree.QName(e).localname, *(f"{k}={v}" for k, v in e.attrib.items())])
-        for e in element.iter()
-        if isinstance(e.tag, str)
-    ]
-
-
-def frame(shape: Any) -> Any:
-    """A shape's or a group's `a:xfrm`."""
-    own = f"{P}spPr" if shape.tag == f"{P}sp" else f"{P}grpSpPr"
-    return shape.find(f"{own}/{A}xfrm")
-
-
-def box(shape: Any) -> tuple[int, int, int, int]:
-    made = frame(shape)
-    off, ext = made.find(f"{A}off"), made.find(f"{A}ext")
-    return (int(off.get("x")), int(off.get("y")), int(ext.get("cx")), int(ext.get("cy")))
-
-
-def turn(shape: Any) -> tuple[str | None, str | None, str | None]:
-    made = frame(shape)
-    return (made.get("rot"), made.get("flipH"), made.get("flipV"))
-
-
-def line_of(shape: Any) -> Any:
-    return shape.find(f"{P}spPr/{A}ln")
-
 
 # ---------------------------------------------------------------------------------------------
 # OUT1: the table's maps_to and lower/'s public functions, for the families D795 lowers
@@ -203,13 +69,17 @@ BUILT = frozenset(
         "lower.paint:fill_alpha",
         "lower.paint:line",
         "lower.paint:line_alpha",
+        "lower.paths:commands",
+        "lower.paths:freeform",
         "lower.shapes:centre",
         "lower.shapes:corner",
         "lower.shapes:ellipse",
         "lower.shapes:endpoint",
+        "lower.shapes:freeform",
         "lower.shapes:line",
         "lower.shapes:radius",
         "lower.shapes:rect",
+        "lower.shapes:vertices",
         "lower.slide:size",
         "lower.slide:slide",
         "lower.stroke:cap",
@@ -222,7 +92,8 @@ BUILT = frozenset(
 )
 
 
-def test_the_rows_d795_lowers_resolve_and_no_others_do() -> None:
+def test_the_rows_lowered_so_far_resolve_and_no_others_do() -> None:
+    """D795's 26 functions and D796's freeforms."""
     assert {m for m in NAMED if resolve(m, _pack.FAMILIES) is not None} == BUILT
 
 
@@ -243,8 +114,9 @@ def test_every_public_lowering_function_is_one_a_row_names() -> None:
     ("body", "named"),
     [
         ('<text x="0" y="10">a</text>', "text.text (lower.text:text_box)"),
-        ('<path d="M 0 0 L 10 10"/>', "shape.path (lower.paths:freeform)"),
-        ('<polygon points="0,0 10,0 10,10"/>', "shape.polygon (lower.shapes:freeform)"),
+        ('<image width="1" height="1"/>', "shape.image (lower.media:picture)"),
+        ('<a href="#u02"><rect width="1" height="1"/></a>', "shape.a (lower.links:hyperlink)"),
+        ('<use href="#r"/>', "def.use (lower.defs:use)"),
         (
             '<defs><clipPath id="c"><rect width="1" height="1"/></clipPath></defs>',
             "effect.clip-def (lower.effects:crop)",
@@ -294,7 +166,7 @@ def test_the_plans_roster_is_the_bundles(tmp_path: Path) -> None:
 
 
 def test_the_cards_max_units_is_a_ceiling(tmp_path: Path) -> None:
-    job, plan, ledger, _ = _job(tmp_path, [slide(RECT), slide(RECT)])
+    job, plan, ledger, _ = job_dir(tmp_path, [slide(RECT), slide(RECT)])
     compiler = PptxCompiler()
     bundle = ILBundle.load(job / "il", carrier=compiler.carrier, constructs=TABLE)
 
@@ -441,7 +313,7 @@ def test_two_compiles_are_one_package_byte_for_byte(tmp_path: Path) -> None:
 _CHILD = """
 import sys
 sys.path.insert(0, sys.argv[1])
-from test_pptx_lower import lowered, slide
+from lowerkit import lowered, slide
 from pathlib import Path
 from omniweave_core.out.opc import part_digest
 out = lowered(Path(sys.argv[2]), slide('<g opacity="0.5"><rect width="9" height="4"/></g>'))
@@ -454,7 +326,7 @@ def test_the_part_digest_holds_under_another_hash_seed(tmp_path: Path) -> None:
     here = lowered(tmp_path / "here", slide('<g opacity="0.5"><rect width="9" height="4"/></g>'))
     env = {**os.environ, "PYTHONHASHSEED": "1"}
     child = subprocess.run(  # noqa: S603 -- this interpreter, this test's own module
-        [sys.executable, "-c", _CHILD, str(Path(__file__).parent), str(tmp_path / "there")],
+        [sys.executable, "-c", _CHILD, str(Path(__file__).parents[1]), str(tmp_path / "there")],
         capture_output=True,
         text=True,
         env=env,
@@ -539,9 +411,9 @@ def test_a_presentation_with_no_slide_size_says_none(tmp_path: Path) -> None:
     assert size.detail == "none"
 
 
-def test_lower_job_runs_the_worker_half_over_a_pptx_job(tmp_path: Path) -> None:
+def test_lower_job_runs_the_worker_half_over_a_pptxjob_dir(tmp_path: Path) -> None:
     """D771's `lower_job()`: the JobDir's digests held, lowered, staged, post-flighted."""
-    job, plan, _, store = _job(tmp_path, [slide(RECT)])
+    job, plan, _, store = job_dir(tmp_path, [slide(RECT)])
     result = lower_job(
         PptxCompiler(),
         Job.load(job),
