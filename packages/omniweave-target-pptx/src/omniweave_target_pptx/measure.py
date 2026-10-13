@@ -37,6 +37,9 @@ units, the `viewBox`'s, which for owsvg/1 are CSS px.
 7. **uharfbuzz is imported here and nowhere else in the target** (09 section 4.4's one-module
    rule). The driver imports this module when `measure()` is first called, so a missing
    uharfbuzz is a recorded skip and not an import error.
+
+D797: rulings 3 and 4's model (a text's style, its positioned lines and their runs) moved to
+`omniweave_target_pptx.textlines`, free of uharfbuzz, so `lower.text` reads the same lines.
 """
 
 from __future__ import annotations
@@ -49,7 +52,16 @@ from typing import TYPE_CHECKING, Any, Final
 
 import uharfbuzz
 from omniweave_core.out import Box
-from omniweave_core.out.carrier import style_declarations
+
+from omniweave_target_pptx.textlines import (
+    DEFAULT_SIZE,
+    REGULAR,
+    TEXT,
+    TSPAN,
+    lines,
+    preserved,
+    style,
+)
 
 if TYPE_CHECKING:
     from omniweave_core.out.carrier import CarrierNode
@@ -59,17 +71,10 @@ __all__ = ["DEFAULT_SIZE", "Face", "FontBook", "HarfBuzzMeasure"]
 hb: Final[Any] = uharfbuzz
 """uharfbuzz's compiled module ships no type information, so it is read as `Any`, once."""
 
-DEFAULT_SIZE: Final = 16.0
-"""CSS's initial `font-size`, in px."""
 _EXTENSIONS: Final = frozenset({".ttf", ".otf", ".ttc", ".otc"})
 _FAMILY_IDS: Final = (16, 1)
-_REGULAR: Final = 400
-_BOLD: Final = 700
 _ITALIC_AT: Final = 0.5
 """harfbuzz's `ital` style value: 1 for an italic face, 0 for an upright one."""
-_TEXT: Final = "svg|text"
-_TSPAN: Final = "svg|tspan"
-_STARTS_LINE: Final = ("x", "dy")
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,15 +132,6 @@ class FontBook:
 
 
 @dataclass(frozen=True, slots=True)
-class _Style:
-    families: tuple[str, ...]
-    size: float
-    weight: int
-    italic: bool
-    spacing: float
-
-
-@dataclass(frozen=True, slots=True)
 class _Line:
     advance: float
     ascent: float
@@ -150,44 +146,44 @@ class HarfBuzzMeasure:
 
     def box(self, n: CarrierNode) -> Box | None:
         """Rulings 4-6."""
-        if n.tag not in (_TEXT, _TSPAN):
+        if n.tag not in (TEXT, TSPAN):
             return None
-        own = _style(n)
+        own = style(n)
         face = self.book.find(own.families, own.weight, italic=own.italic)
         if face is None:
             return None
-        lines: list[_Line] = []
-        for runs in _lines(n, preserve=_preserved(n)):
-            line = self._line(runs)
+        shaped: list[_Line] = []
+        for found in lines(n, preserve=preserved(n)):
+            line = self._line(found.runs)
             if line is None:
                 return None
-            lines.append(line)
+            shaped.append(line)
         scale = own.size / face.upem
         leading = (face.ascender - face.descender + face.line_gap) * scale
-        ascent, descent = lines[0].ascent, lines[-1].descent
+        ascent, descent = shaped[0].ascent, shaped[-1].descent
         return Box(
-            advance=max(line.advance for line in lines),
-            height=ascent + descent + (len(lines) - 1) * leading,
+            advance=max(line.advance for line in shaped),
+            height=ascent + descent + (len(shaped) - 1) * leading,
             ascent=ascent,
             descent=descent,
-            lines=len(lines),
+            lines=len(shaped),
             overflow=False,
         )
 
     def _line(self, runs: Sequence[tuple[str, CarrierNode]]) -> _Line | None:
         advance = ascent = descent = 0.0
         for text, owner in runs:
-            style = _style(owner)
-            face = self.book.find(style.families, style.weight, italic=style.italic)
+            own = style(owner)
+            face = self.book.find(own.families, own.weight, italic=own.italic)
             if face is None:
                 return None
-            scale = style.size / face.upem
+            scale = own.size / face.upem
             buf = hb.Buffer()
             buf.add_str(text)
             buf.guess_segment_properties()
             hb.shape(self.book.font(face), buf, {})
             advance += sum(p.x_advance for p in buf.glyph_positions) * scale
-            advance += style.spacing * len(text)
+            advance += own.spacing * len(text)
             ascent = max(ascent, face.ascender * scale)
             descent = max(descent, -face.descender * scale)
         if not runs:
@@ -229,7 +225,7 @@ def _read(paths: Iterable[Path]) -> Iterator[Face]:
                 path=path,
                 index=index,
                 families=families,
-                weight=round(weight) if math.isfinite(weight) else _REGULAR,
+                weight=round(weight) if math.isfinite(weight) else REGULAR,
                 italic=math.isfinite(italic) and italic >= _ITALIC_AT,
                 upem=int(face.upem),
                 ascender=int(extents.ascender),
@@ -240,99 +236,3 @@ def _read(paths: Iterable[Path]) -> Iterator[Face]:
 
 def _key(family: str) -> str:
     return " ".join(family.strip().strip("'\"").split()).casefold()
-
-
-def _declared(n: CarrierNode, prop: str) -> str | None:
-    """`prop` on `n` itself: its `style` declaration, else its attribute."""
-    for name, value in style_declarations(n.attr("style") or ""):
-        if name == prop:
-            return value
-    return n.attr(prop)
-
-
-def _inherited(n: CarrierNode, prop: str) -> str | None:
-    """Ruling 3: `prop` on `n` or its nearest ancestor that states it."""
-    node: CarrierNode | None = n
-    while node is not None:
-        value = _declared(node, prop)
-        if value is not None:
-            return value
-        node = getattr(node, "parent", None)
-    return None
-
-
-def _style(n: CarrierNode) -> _Style:
-    families = tuple(f for f in ((_inherited(n, "font-family") or "").split(",")) if f.strip())
-    weight_text = (_inherited(n, "font-weight") or "normal").strip()
-    weight = {"normal": _REGULAR, "bold": _BOLD}.get(weight_text)
-    return _Style(
-        families=families,
-        size=_length(_inherited(n, "font-size"), DEFAULT_SIZE),
-        weight=weight
-        if weight is not None
-        else int(weight_text)
-        if weight_text.isdigit()
-        else _REGULAR,
-        italic=(_inherited(n, "font-style") or "normal").strip() == "italic",
-        spacing=_length(_inherited(n, "letter-spacing"), 0.0),
-    )
-
-
-def _length(text: str | None, default: float) -> float:
-    if text is None:
-        return default
-    stripped = text.strip().removesuffix("px")
-    try:
-        return float(stripped)
-    except ValueError:
-        return default
-
-
-def _preserved(n: CarrierNode) -> bool:
-    return (_inherited(n, "xml:space") or "default").strip() == "preserve"
-
-
-def _lines(n: CarrierNode, *, preserve: bool) -> list[list[tuple[str, CarrierNode]]]:
-    """Ruling 4: the positioned lines, each a list of `(text, owner)` runs."""
-    raw: list[list[tuple[str, CarrierNode]]] = [[]]
-
-    def gather(node: CarrierNode, *, first: bool) -> None:
-        if not first and any(node.attr(a) is not None for a in _STARTS_LINE):
-            raw.append([])
-        for item in node.contents():
-            if isinstance(item, str):
-                raw[-1].append((item, node))
-            elif item.tag == _TSPAN:
-                gather(item, first=False)
-
-    gather(n, first=True)
-    return [_collapsed(line, preserve=preserve) for line in raw]
-
-
-def _collapsed(
-    runs: Sequence[tuple[str, CarrierNode]], *, preserve: bool
-) -> list[tuple[str, CarrierNode]]:
-    """SVG's default whitespace: newlines dropped, tabs to spaces, runs of spaces to one, the
-    line's ends trimmed, each character kept with the run it came from."""
-    chars: list[tuple[str, CarrierNode]] = []
-    for text, owner in runs:
-        for ch in text:
-            if preserve:
-                chars.append((" " if ch in "\t\n\r" else ch, owner))
-            elif ch in "\n\r":
-                continue
-            elif ch in " \t":
-                if chars and chars[-1][0] != " ":
-                    chars.append((" ", owner))
-            else:
-                chars.append((ch, owner))
-    if not preserve:
-        while chars and chars[-1][0] == " ":
-            chars.pop()
-    out: list[tuple[str, CarrierNode]] = []
-    for ch, owner in chars:
-        if out and out[-1][1] is owner:
-            out[-1] = (out[-1][0] + ch, owner)
-        else:
-            out.append((ch, owner))
-    return out

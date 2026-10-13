@@ -87,13 +87,25 @@ BUILT = frozenset(
         "lower.stroke:join",
         "lower.stroke:scaling",
         "lower.stroke:width",
+        "lower.text:anchor",
+        "lower.text:baseline",
+        "lower.text:decoration",
+        "lower.text:italic",
+        "lower.text:run",
+        "lower.text:shift",
+        "lower.text:size",
+        "lower.text:spacing",
+        "lower.text:text_box",
+        "lower.text:typeface",
+        "lower.text:weight",
+        "lower.text:whitespace",
         "lower.transform:transform",
     }
 )
 
 
 def test_the_rows_lowered_so_far_resolve_and_no_others_do() -> None:
-    """D795's 26 functions and D796's freeforms."""
+    """D795's 26 functions, D796's freeforms and D797's text."""
     assert {m for m in NAMED if resolve(m, _pack.FAMILIES) is not None} == BUILT
 
 
@@ -113,7 +125,11 @@ def test_every_public_lowering_function_is_one_a_row_names() -> None:
 @pytest.mark.parametrize(
     ("body", "named"),
     [
-        ('<text x="0" y="10">a</text>', "text.text (lower.text:text_box)"),
+        (
+            '<defs><linearGradient id="g"><stop offset="0" stop-color="#FFFFFF"/>'
+            "</linearGradient></defs>",
+            "def.linear (lower.gradients:linear)",
+        ),
         ('<image width="1" height="1"/>', "shape.image (lower.media:picture)"),
         ('<a href="#u02"><rect width="1" height="1"/></a>', "shape.a (lower.links:hyperlink)"),
         ('<use href="#r"/>', "def.use (lower.defs:use)"),
