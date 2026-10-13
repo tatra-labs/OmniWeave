@@ -35,7 +35,7 @@ constructs_digest = "sha256:442922968a173aa1a76fcbfe0ab3a41f6809cb3912fe241904de
 citations = "embedded"                 # the OOXML provenance part, 09 section 10
 provenance_part = "customXml/omniweave-provenance.json"
 bake = "unavailable"                   # cairosvg and svglib are LGPL-3.0 (09 section 12.1)
-measure = "none"                       # measure.py, uharfbuzz's shaping, lands with the 60-79 band
+measure = "uharfbuzz"                  # measure.py: shaping over the faces font_dirs names
 runtime_rules = false
 toolchain = ""                         # pure Python: python-pptx, XlsxWriter, skia-pathops
 implemented = false
@@ -51,6 +51,16 @@ project = false                        # 09 Q2: nothing mined invents an SVG sub
 fidelity = "passthrough"               # R4(a): zero edits copy every part
 laws = ["r1", "r2", "r3", "r4", "r5", "r6", "r7"]
 kind_map = "kind_map.toml"
+
+[config]
+type = "object"
+additionalProperties = false
+required = []
+
+[config.properties.font_dirs]           # D792: the faces measure.py shapes with, and no others
+type = "array"
+items = { type = "string" }
+default = []
 
 [hardware]
 gpu            = "none"

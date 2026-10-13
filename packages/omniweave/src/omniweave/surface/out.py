@@ -137,6 +137,12 @@ documentation", with `--group` and `--construct` selecting from it.
     open and the report says why: the restore does not need it. A read-back that fails raises
     `OW_TARGET_READ_BACK_FAILED` before anything is restored. The text form prints the loop line
     second, after the contract.
+26. **`check`, `stamp` and `normalize` build the target with its `[drivers."<id>".config]`**
+    (D792). Each used the card's defaults alone, so no setting a target declares reached it:
+    pptx's `font_dirs`, which `measure.py` shapes with, could not be set. `compile`, `verify`
+    and `back`'s read-back keep the defaults. The effective config is not one of a compile's six
+    purity inputs, so a compile under another config would find, and place, the bytes an earlier
+    config built. The three verbs that honour it write no artefact.
 """
 
 from __future__ import annotations
@@ -1001,7 +1007,10 @@ def check_report(
     resolved = config.load(cwd=cwd, env=env, explicit=explicit)
     driver, card = _one_card(_discover(resolved, env).cards, plan.target)
     table = load_table(Path(driver.source), card)
-    compiler = cast("CompileV1", construct(driver, driver.config.effective()))
+    compiler = cast(
+        "CompileV1",
+        construct(driver, driver.config.effective(resolved.driver_config(driver.identity.id))),
+    )
     final = stage == "final"
     thread = None
     if final:
@@ -1662,7 +1671,10 @@ def stamp_report(
     resolved = config.load(cwd=cwd, env=env, explicit=explicit)
     driver, card = _one_card(_discover(resolved, env).cards, plan.target)
     table = load_table(Path(driver.source), card)
-    compiler = cast("CompileV1", construct(driver, driver.config.effective()))
+    compiler = cast(
+        "CompileV1",
+        construct(driver, driver.config.effective(resolved.driver_config(driver.identity.id))),
+    )
     stamped = stamp(job_dir, carrier=compiler.carrier, constructs=table, clock=SystemClock())
     return StampReport(
         written=stamped.written,
@@ -1722,7 +1734,10 @@ def normalize_report(
     resolved = config.load(cwd=cwd, env=env, explicit=explicit)
     driver, card = _one_card(_discover(resolved, env).cards, plan.target)
     table = load_table(Path(driver.source), card)
-    compiler = cast("CompileV1", build(driver, driver.config.effective()))
+    compiler = cast(
+        "CompileV1",
+        build(driver, driver.config.effective(resolved.driver_config(driver.identity.id))),
+    )
     done = normalize(
         job_dir,
         carrier=compiler.carrier,
