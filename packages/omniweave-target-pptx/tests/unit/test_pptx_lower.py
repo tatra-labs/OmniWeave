@@ -62,6 +62,14 @@ BUILT = frozenset(
         "lower.defs:definitions",
         "lower.geometry:extent",
         "lower.geometry:offset",
+        "lower.gradients:focus",
+        "lower.gradients:linear",
+        "lower.gradients:position",
+        "lower.gradients:radial",
+        "lower.gradients:stop",
+        "lower.gradients:stop_alpha",
+        "lower.gradients:stop_colour",
+        "lower.gradients:units",
         "lower.group:group",
         "lower.ids:shape_name",
         "lower.paint:alpha",
@@ -71,6 +79,10 @@ BUILT = frozenset(
         "lower.paint:line_alpha",
         "lower.paths:commands",
         "lower.paths:freeform",
+        "lower.patterns:background",
+        "lower.patterns:foreground",
+        "lower.patterns:pattern",
+        "lower.patterns:preset",
         "lower.shapes:centre",
         "lower.shapes:corner",
         "lower.shapes:ellipse",
@@ -105,7 +117,7 @@ BUILT = frozenset(
 
 
 def test_the_rows_lowered_so_far_resolve_and_no_others_do() -> None:
-    """D795's 26 functions, D796's freeforms and D797's text."""
+    """D795's 26 functions, D796's freeforms and D797's text and D798's paint servers."""
     assert {m for m in NAMED if resolve(m, _pack.FAMILIES) is not None} == BUILT
 
 
@@ -126,9 +138,8 @@ def test_every_public_lowering_function_is_one_a_row_names() -> None:
     ("body", "named"),
     [
         (
-            '<defs><linearGradient id="g"><stop offset="0" stop-color="#FFFFFF"/>'
-            "</linearGradient></defs>",
-            "def.linear (lower.gradients:linear)",
+            '<defs><filter id="f"><feGaussianBlur stdDeviation="2"/></filter></defs>',
+            "effect.filter-def (lower.effects:effect)",
         ),
         ('<image width="1" height="1"/>', "shape.image (lower.media:picture)"),
         ('<a href="#u02"><rect width="1" height="1"/></a>', "shape.a (lower.links:hyperlink)"),
@@ -225,10 +236,21 @@ def test_an_element_no_native_row_declares_is_refused_by_name(tmp_path: Path) ->
     assert caught.value.code() == "OW_TARGET_CONSTRUCT_UNMAPPED"
 
 
-def test_a_paint_server_is_refused_until_gradients_land(tmp_path: Path) -> None:
-    with pytest.raises(TargetError, match=r"url\(#nowhere\) names a gradient") as caught:
-        lowered(tmp_path, slide('<rect width="1" height="1" fill="url(#nowhere)"/>'))
-    assert caught.value.code() == "OW_TARGET_CONSTRUCT_UNMAPPED"
+@pytest.mark.parametrize(
+    ("body", "said"),
+    [
+        ('<rect width="1" height="1" fill="url(#nowhere)"/>', r"url\(#nowhere\) names no id"),
+        (
+            '<rect id="r" width="1" height="1"/><rect width="1" height="1" stroke="url(#r)"/>',
+            r"url\(#r\) names a <rect>",
+        ),
+        ('<rect width="1" height="1" fill="url(nowhere)"/>', "names no id"),
+    ],
+)
+def test_a_paint_that_names_no_paint_is_refused(tmp_path: Path, body: str, said: str) -> None:
+    with pytest.raises(TargetError, match=said) as caught:
+        lowered(tmp_path, slide(body))
+    assert caught.value.code() == "OW_TARGET_REFERENCE_UNRESOLVED"
 
 
 # ---------------------------------------------------------------------------------------------

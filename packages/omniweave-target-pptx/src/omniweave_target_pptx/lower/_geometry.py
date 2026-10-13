@@ -19,7 +19,17 @@ from omniweave_target_pptx.rules.transform import operations
 if TYPE_CHECKING:
     from omniweave_core.out.carrier import CarrierNode
 
-__all__ = ["EMU_PER_UNIT", "IDENTITY", "Matrix", "Placed", "chain", "emu", "place", "rotation"]
+__all__ = [
+    "EMU_PER_UNIT",
+    "IDENTITY",
+    "Matrix",
+    "Placed",
+    "angle",
+    "chain",
+    "emu",
+    "place",
+    "rotation",
+]
 
 EMU_PER_UNIT: Final = 9525
 FULL_TURN: Final = 21_600_000
@@ -72,8 +82,8 @@ def _parsed(text: str) -> Matrix:
         elif name == "scale":
             step = Matrix(a=args[0], d=args[1] if len(args) > 1 else args[0])
         elif name == "rotate":
-            angle = math.radians(args[0])
-            cos, sin = math.cos(angle), math.sin(angle)
+            radians = math.radians(args[0])
+            cos, sin = math.cos(radians), math.sin(radians)
             step = Matrix(cos, sin, -sin, cos)
             if len(args) == 3:  # noqa: PLR2004 -- rotate(a, cx, cy)
                 cx, cy = args[1], args[2]
@@ -99,6 +109,11 @@ def emu(value: float) -> int:
     return round(value * EMU_PER_UNIT)
 
 
+def angle(m: Matrix) -> float:
+    """The matrix's rotation in degrees, as `place()` reads it."""
+    return math.degrees(math.atan2(m.b, m.a))
+
+
 def rotation(degrees: float) -> int:
     """Degrees to DrawingML's `rot`, within one turn."""
     return round(degrees * 60_000) % FULL_TURN
@@ -122,7 +137,7 @@ def place(m: Matrix, x: float, y: float, w: float, h: float) -> Placed:
     its centre, which is where DrawingML turns a shape."""
     sx = math.hypot(m.a, m.b)
     sy = (m.a * m.d - m.b * m.c) / sx if sx else 0.0
-    angle = math.degrees(math.atan2(m.b, m.a))
+    turned = angle(m)
     cx, cy = m.apply(x + w / 2, y + h / 2)
     width, height = w * sx, h * abs(sy)
     return Placed(
@@ -130,6 +145,6 @@ def place(m: Matrix, x: float, y: float, w: float, h: float) -> Placed:
         y=emu(cy - height / 2),
         cx=emu(width),
         cy=emu(height),
-        rot=rotation(angle),
+        rot=rotation(turned),
         flip_v=sy < 0,
     )

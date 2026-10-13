@@ -270,7 +270,7 @@ def test_a_run_with_no_language_names_none() -> None:
     doc = PptxCompiler().carrier("il/u01.svg", slide('<text y="40">a</text>'))
     [text] = doc.root().children()
     paragraph = etree.Element(qn("a:p"))
-    run(paragraph, (doc.root(), text), text, "a", lang="", scale=1.0)
+    run(paragraph, (doc.root(), text), text, "a", lang="", scale=1.0, definitions={})
     assert dict(paragraph.find(f"{A}r/{A}rPr").attrib) == {"sz": "1200"}
 
 

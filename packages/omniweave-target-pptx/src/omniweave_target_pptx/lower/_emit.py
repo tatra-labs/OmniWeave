@@ -19,7 +19,7 @@ from omniweave_core.errors import TargetError
 from omniweave_core.out.lowering import Row, refuse_unmapped, resolve
 
 from omniweave_target_pptx.lower import paint, stroke
-from omniweave_target_pptx.lower._geometry import Matrix, Placed, emu
+from omniweave_target_pptx.lower._geometry import Matrix, Placed, angle, emu
 from omniweave_target_pptx.lower._style import element
 from omniweave_target_pptx.lower.ids import shape_name
 
@@ -45,6 +45,8 @@ class Emitter:
     tree: Any
     lang: str = ""
     """The Brief's primary language, each run's `lang` (D797)."""
+    definitions: Mapping[str, CarrierNode] = field(default_factory=dict)
+    """The slide's elements by `id`: what a `url(#id)` paint names (D798)."""
     next_id: int = FIRST_ID
     boxes: list[list[Placed]] = field(default_factory=lambda: [[]])
     handlers: dict[str, Handler] = field(default_factory=dict)
@@ -115,12 +117,13 @@ class Emitter:
         body = element("p:spPr", made)
         xfrm(placed, body)
         geometry(body)
+        turn = 0.0 if placed.rot else angle(m)  # a freeform's or a line's points carry it
         if filled:
-            paint.fill(chain, body)
+            paint.fill(chain, body, definitions=self.definitions, turn=turn)
         else:
             element("a:noFill", body)
         line = element("a:ln", body, cap=stroke.cap(chain))
-        drawn = paint.line(chain, line)
+        drawn = paint.line(chain, line, definitions=self.definitions, turn=turn)
         grown = m.scale if stroke.scaling(chain) else 1.0
         line.set("w", str(emu(stroke.width(chain) * grown) if drawn else 0))
         stroke.dash(chain, line)

@@ -36,6 +36,7 @@ from omniweave_core.out.lowering import (
     refuse_unmapped,
     rows_of,
     unmapped,
+    walk,
 )
 from omniweave_core.out.opc import check_package, write_opc
 from pptx import Presentation
@@ -46,10 +47,12 @@ from pptx.util import Emu
 from omniweave_target_pptx.lower import (
     defs,
     geometry,
+    gradients,
     group,
     ids,
     paint,
     paths,
+    patterns,
     shapes,
     slide,
     stroke,
@@ -71,10 +74,12 @@ FAMILIES: Final = MappingProxyType(
         for module in (
             defs,
             geometry,
+            gradients,
             group,
             ids,
             paint,
             paths,
+            patterns,
             shapes,
             slide,
             stroke,
@@ -119,7 +124,8 @@ def build(
     lang = plan.brief.value("communication", "primary_language") or ""
     for root in roots:
         made = deck.slides.add_slide(blank)
-        em = Emitter(rows, FAMILIES, ignored, _tree(made), lang)
+        defined = {n.attr("id") or "": n for n in walk(root) if n.attr("id")}
+        em = Emitter(rows, FAMILIES, ignored, _tree(made), lang, defined)
         em.handler(root)(em, root, (root,))
     _core(deck, plan.slug, clock_ns)
     return _package(deck)

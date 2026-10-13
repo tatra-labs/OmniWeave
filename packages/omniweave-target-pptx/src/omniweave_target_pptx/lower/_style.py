@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "ALPHA_FULL",
+    "colour",
     "declared",
     "element",
     "inherited",
@@ -72,11 +73,18 @@ def number(text: str | None, default: float) -> float:
         return default
 
 
-def solid(colour: str, alpha: float, parent: Any = None) -> Any:
-    """`a:solidFill` of `#RRGGBB`, with `a:alpha` when `alpha`, 0 to 1, is not opaque."""
+def solid(value: str, alpha: float, parent: Any = None) -> Any:
+    """`a:solidFill` of `colour()`."""
     fill = element("a:solidFill", parent)
-    rgb = element("a:srgbClr", fill, val=upper_hex(colour).removeprefix("#"))
+    colour(value, alpha, fill)
+    return fill
+
+
+def colour(value: str, alpha: float, parent: Any) -> Any:
+    """`a:srgbClr` of `#RRGGBB`, with `a:alpha` when `alpha`, 0 to 1, is not opaque: a solid
+    fill's colour, a gradient stop's and a pattern's."""
+    rgb = element("a:srgbClr", parent, val=upper_hex(value).removeprefix("#"))
     level = round(alpha * ALPHA_FULL)
     if level < ALPHA_FULL:
         element("a:alpha", rgb, val=str(level))
-    return fill
+    return rgb

@@ -28,7 +28,7 @@ alone (section 6), so nothing here measures a glyph.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from itertools import pairwise
 from typing import TYPE_CHECKING, Any, Final
 
@@ -144,7 +144,15 @@ def text_box(em: Emitter, node: CarrierNode, chain: Chain) -> None:
         spaced = element("a:lnSpc", element("a:pPr", paragraph, algn=align))
         element("a:spcPts", spaced, val=str(round(pitch * m.scale * HUNDREDTHS)))
         for text, owner in line.runs:
-            run(paragraph, chains[id(owner)], owner, text, lang=em.lang, scale=m.scale)
+            run(
+                paragraph,
+                chains[id(owner)],
+                owner,
+                text,
+                lang=em.lang,
+                scale=m.scale,
+                definitions=em.definitions,
+            )
         _end(paragraph, own * m.scale, em.lang)
     em.add(made, placed)
 
@@ -157,6 +165,7 @@ def run(
     *,
     lang: str,
     scale: float,
+    definitions: Mapping[str, CarrierNode],
 ) -> None:
     """One `a:r`: its owner's properties and its text."""
     underline, strike = decoration(owner)
@@ -178,12 +187,12 @@ def run(
     made = element("a:r", paragraph)
     properties = element("a:rPr", made, **attrs)
     line = element("a:ln", properties)
-    if paint.line(chain, line):
+    if paint.line(chain, line, definitions=definitions):
         grown = scale if stroke.scaling(chain) else 1.0
         line.set("w", str(emu(stroke.width(chain) * grown)))
     else:
         properties.remove(line)
-    paint.fill(chain, properties)
+    paint.fill(chain, properties, definitions=definitions)
     face = typeface(owner)
     if face is not None:
         for tag in ("a:latin", "a:ea", "a:cs"):
