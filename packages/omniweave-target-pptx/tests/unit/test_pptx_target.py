@@ -190,7 +190,7 @@ def test_the_card_is_the_slide_target_section_12_1_prints() -> None:
 def test_the_card_says_not_implemented_and_why_and_names_its_table() -> None:
     assert not COMPILED.implemented
     assert COMPILED.reason == REASON
-    assert "lowering to DrawingML" in REASON
+    assert "lowering to DrawingML draws shapes" in REASON
     assert COMPILED.constructs_digest == TABLE.digest()
     assert COMPILED.agent_doc_tokens_max == 6000, "09 section 3.3"
 
@@ -319,18 +319,11 @@ def test_the_compiler_is_a_compile_v1_whose_probe_names_the_reason() -> None:
     assert REASON in verdict.detail
 
 
-@pytest.mark.parametrize(
-    "call",
-    [
-        lambda c: c.lower(None, None, None, None),
-        lambda c: c.postflight("x.pptx", None),
-        lambda c: c.project(None, None),
-    ],
-)
-def test_the_compile_is_refused_with_the_cards_reason(call: Callable[[Any], object]) -> None:
-    with pytest.raises(TargetError, match="implemented = false") as caught:
-        call(PptxCompiler())
-    assert caught.value.code() == "OW_TARGET_NOT_IMPLEMENTED"
+def test_projecting_a_doc_back_is_refused_by_name() -> None:
+    """D795 ruling 7: the card's `[compile.round_trip] project = false`."""
+    with pytest.raises(TargetError, match="project = false") as caught:
+        PptxCompiler().project(None, None)  # type: ignore[arg-type]
+    assert caught.value.code() == "OW_TARGET_PROJECT_UNAVAILABLE"
 
 
 def test_a_slides_visible_text_is_a_line_a_text_box() -> None:
