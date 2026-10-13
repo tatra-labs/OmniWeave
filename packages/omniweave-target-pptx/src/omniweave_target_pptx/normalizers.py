@@ -11,6 +11,7 @@ written as a percentage.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Mapping
 from decimal import Decimal
 from typing import Final
 
@@ -49,3 +50,12 @@ def opacity_fraction(value: str) -> str:
         return value
     fraction = (Decimal(m[1]) / _HUNDRED).normalize()
     return format(fraction, "f")
+
+
+BY_NAME: Final[Mapping[str, Callable[[str], str]]] = {
+    "collapse_space": collapse_space,
+    "opacity_fraction": opacity_fraction,
+    "px_length": px_length,
+    "upper_hex": upper_hex,
+}
+"""Each normalizer by the name a `normalize` row gives it: the host's map and the rules'. D790."""

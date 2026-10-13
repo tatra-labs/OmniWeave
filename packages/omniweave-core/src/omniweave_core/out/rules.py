@@ -39,6 +39,10 @@ the rules, so a target that could run its own gate could not skip it.
     could read it. `ow out check` gives the Plan's Brief at the final stage and `None` before,
     so a rule that reads it says nothing until then. owsvg/1's canvas rule is the first reader:
     the `viewBox` matches the Brief's `canvas format`.
+11. **D790: `RuleCtx.constructs` is the table the check runs under.** 09 section 4.4 prints it
+    beside `brief`, and the framework's context carried it. A grammar rule reads its rows to
+    know which values a `normalize` row settles, so a value the normalize row will rewrite is that
+    row's warning and not also the grammar rule's error, without a second copy of the table.
 """
 
 from __future__ import annotations
@@ -137,6 +141,11 @@ class RuleCtx(Protocol):
     @property
     def brief(self) -> Brief | None:
         """Ruling 10: the Plan's Brief at the final stage; `None` before it."""
+        ...
+
+    @property
+    def constructs(self) -> ConstructTable:
+        """Ruling 11: the target's ConstructTable, as `check()` loaded it."""
         ...
 
     @property
