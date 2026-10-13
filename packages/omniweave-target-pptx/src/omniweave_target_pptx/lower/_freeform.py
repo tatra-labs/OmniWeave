@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from omniweave_target_pptx.lower._emit import Emitter
     from omniweave_target_pptx.lower._style import Chain
 
-__all__ = ["Op", "Point", "custom"]
+__all__ = ["Op", "Point", "custom", "drawn"]
 
 Point = tuple[float, float]
 Op = tuple[str, tuple[Point, ...]]
@@ -43,24 +43,24 @@ def custom(em: Emitter, node: CarrierNode, chain: Chain, ops: Sequence[Op]) -> N
     every = [p for _, points in placed_ops for p in points]
     left, top = min(x for x, _ in every), min(y for _, y in every)
     placed = Placed(left, top, max(x for x, _ in every) - left, max(y for _, y in every) - top)
+    local = [(kind, tuple((x - left, y - top) for x, y in points)) for kind, points in placed_ops]
+    em.shape(node, chain, placed, m, lambda parent: drawn(parent, local, placed.cx, placed.cy))
 
-    def geometry(parent: Any) -> None:
-        made = element("a:custGeom", parent)
-        for tag in _GUIDES:
-            element(tag, made)
-        element("a:rect", made, l="l", t="t", r="r", b="b")
-        path = element(
-            "a:path",
-            element("a:pathLst", made),
-            w=str(placed.cx or 1),
-            h=str(placed.cy or 1),
-        )
-        for kind, points in placed_ops:
-            if kind == "Z":
-                element("a:close", path)
-                continue
-            step = element(STEPS[kind], path)
-            for x, y in points:
-                element("a:pt", step, x=str(x - left), y=str(y - top))
 
-    em.shape(node, chain, placed, m, geometry)
+def drawn(
+    parent: Any, ops: Sequence[tuple[str, tuple[tuple[int, int], ...]]], width: int, height: int
+) -> None:
+    """`a:custGeom` of `ops`, each point in EMU from the box's corner, in a box `width` by
+    `height` (one EMU across an axis with no extent)."""
+    made = element("a:custGeom", parent)
+    for tag in _GUIDES:
+        element(tag, made)
+    element("a:rect", made, l="l", t="t", r="r", b="b")
+    path = element("a:path", element("a:pathLst", made), w=str(width or 1), h=str(height or 1))
+    for kind, points in ops:
+        if kind == "Z":
+            element("a:close", path)
+            continue
+        step = element(STEPS[kind], path)
+        for x, y in points:
+            element("a:pt", step, x=str(x), y=str(y))

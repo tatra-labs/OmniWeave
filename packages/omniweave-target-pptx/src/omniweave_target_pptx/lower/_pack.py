@@ -42,6 +42,7 @@ from omniweave_core.out.opc import check_package, write_opc
 from pptx import Presentation
 from pptx.opc.constants import RELATIONSHIP_TYPE
 from pptx.oxml.ns import qn
+from pptx.parts.image import Image
 from pptx.util import Emu
 
 from omniweave_target_pptx.lower import (
@@ -51,6 +52,7 @@ from omniweave_target_pptx.lower import (
     gradients,
     group,
     ids,
+    media,
     paint,
     paths,
     patterns,
@@ -60,7 +62,7 @@ from omniweave_target_pptx.lower import (
     text,
     transform,
 )
-from omniweave_target_pptx.lower._emit import Emitter
+from omniweave_target_pptx.lower._emit import Asset, Emitter
 from omniweave_target_pptx.lower._geometry import emu
 
 if TYPE_CHECKING:
@@ -79,6 +81,7 @@ FAMILIES: Final = MappingProxyType(
             gradients,
             group,
             ids,
+            media,
             paint,
             paths,
             patterns,
@@ -111,12 +114,12 @@ def build(
     max_units: int,
 ) -> bytes:
     """Preflight, then a slide for every unit in Plan order, then the package's bytes."""
-    del ledger  # no picture is lowered yet; preflight 1 refuses a unit with one
     _rosters(plan, il, max_units)
     roots = [carrier(u.il_path, il.text(u.il_path)).root() for u in plan.units]
     rows = rows_of(table)
     refuse_unmapped(unmapped(roots, rows, FAMILIES), "pptx")
     refuse_normalizable(roots, table, normalizers)
+    assets = _assets(roots, ledger)
     width, height = _size(roots)
     deck = Presentation()
     _drop(deck)
@@ -127,7 +130,7 @@ def build(
     for root in roots:
         made = deck.slides.add_slide(blank)
         defined = {n.attr("id") or "": n for n in walk(root) if n.attr("id")}
-        em = Emitter(rows, FAMILIES, ignored, _tree(made), lang, defined)
+        em = Emitter(rows, FAMILIES, ignored, _tree(made), lang, defined, assets, _embedder(made))
         em.handler(root)(em, root, (root,))
     _core(deck, plan.slug, clock_ns)
     return _package(deck)
@@ -167,6 +170,31 @@ def _size(roots: Sequence[CarrierNode]) -> tuple[int, int]:
     return first
 
 
+def _assets(roots: Sequence[CarrierNode], ledger: AssetLedger) -> dict[str, Asset]:
+    """Check 2: every picture's slot is frozen, and its bytes are a picture PowerPoint holds."""
+    out: dict[str, Asset] = {}
+    for root in roots:
+        for node in walk(root):
+            slot = node.attr("href") if node.tag == "svg|image" else None
+            if slot is None or slot in out:
+                continue
+            with ledger.open(slot) as stream:
+                blob = stream.read()
+            try:
+                image = Image.from_blob(blob)
+                width, height = image.size
+                image.ext  # noqa: B018 -- python-pptx refuses a format PowerPoint does not hold
+            except (OSError, ValueError):
+                raise TargetError(
+                    f"{slot} at {node.at} is not a picture PowerPoint holds: PNG, JPEG, GIF, BMP, "
+                    "TIFF or WMF",
+                    symbol="OW_TARGET_ASSET_FORMAT",
+                    fix="ow out assets --slot " + slot,
+                ) from None
+            out[slot] = Asset(blob, width, height)
+    return out
+
+
 # -- the package ----------------------------------------------------------------------------------
 
 
@@ -177,6 +205,16 @@ def _drop(deck: Any) -> None:
         for rid, rel in list(rels.items()):
             if rel.reltype in _DROPPED:
                 rels.pop(rid)
+
+
+def _embedder(made: Any) -> Callable[[bytes], str]:
+    """A picture's bytes as an image part of the slide `made`, by python-pptx's own dedupe."""
+
+    def embed(blob: bytes) -> str:
+        _, rid = made.part.get_or_add_image_part(io.BytesIO(blob))
+        return str(rid)
+
+    return embed
 
 
 def _tree(made: Any) -> Any:

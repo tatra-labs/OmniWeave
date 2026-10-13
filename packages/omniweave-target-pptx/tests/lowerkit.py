@@ -1,16 +1,21 @@
 """What the owsvg/1 lowering tests share: a JobDir, a compile, and the package read back. D796.
 
 `lowered(tmp_path, *units)` builds a JobDir in `tmp_path` (`job.json`, `il/`, `assets/index.json`),
-lowers it with `PptxCompiler` over an empty `FrozenLedger`, and returns the package's bytes and
+lowers it with `PptxCompiler` over a `FrozenLedger` of its `assets`, and returns the package's
+bytes and
 members. The rest read a shape's DrawingML: `outline()` its elements and attributes in order,
 `box()` and `turn()` its frame, and `line_of()` its `a:ln`. D795 wrote these in
-`test_pptx_lower.py`; D796's path tests share them.
+`test_pptx_lower.py`; D796's path tests share them. D800: `assets` freezes pictures into the
+ledger, each at `slot(sha256)`, and `png()` makes one.
 """
 
 from __future__ import annotations
 
+import hashlib
 import io
+import struct
 import zipfile
+import zlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,7 +27,7 @@ from omniweave_conform.harness import MemoryBlobStore, make_io
 from omniweave_core.out.brief import BRIEF_SCHEMA, parse_brief
 from omniweave_core.out.gate import GateStatus
 from omniweave_core.out.job import ILBundle, Job, JobDeterminism
-from omniweave_core.out.ledger import FrozenLedger, ledger_digest, write_index
+from omniweave_core.out.ledger import FrozenLedger, LedgerRow, ledger_digest, slot, write_index
 from omniweave_core.out.plan import Plan
 from omniweave_core.out.receipt import Receipt
 from omniweave_ports import ArtifactKind
@@ -67,8 +72,8 @@ class Lowered:
         return self.xml(f"ppt/slides/slide{n}.xml").find(f"{P}cSld/{P}spTree")
 
     def shapes(self, n: int = 1) -> list[Any]:
-        """Slide `n`'s top-level shapes and groups."""
-        return [c for c in self.tree(n) if c.tag in (f"{P}sp", f"{P}grpSp")]
+        """Slide `n`'s top-level shapes, groups and pictures."""
+        return [c for c in self.tree(n) if c.tag in (f"{P}sp", f"{P}grpSp", f"{P}pic")]
 
     def first(self) -> Any:
         """The first `p:sp` on slide 1, at any depth."""
@@ -81,8 +86,34 @@ class Lowered:
         return PptxCompiler().postflight(str(self.path), self.plan)
 
 
+def png(width: int, height: int) -> bytes:
+    """A `width` by `height` RGB PNG, every pixel one colour."""
+    raw = b"".join(b"\x00" + b"\x10\x20\x30" * width for _ in range(height))
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        crc = struct.pack(">I", zlib.crc32(kind + data))
+        return struct.pack(">I", len(data)) + kind + data + crc
+
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(raw))
+        + chunk(b"IEND", b"")
+    )
+
+
+def picture_slot(blob: bytes) -> str:
+    """The slot `assets=[blob]` freezes `blob` at."""
+    return slot(hashlib.sha256(blob).hexdigest())
+
+
 def job_dir(
-    tmp_path: Path, units: Sequence[str], *, plan_units: Sequence[str] | None = None
+    tmp_path: Path,
+    units: Sequence[str],
+    *,
+    plan_units: Sequence[str] | None = None,
+    assets: Sequence[bytes] = (),
 ) -> tuple[Path, Plan, FrozenLedger, MemoryBlobStore]:
     job = tmp_path / "job"
     il = job / "il"
@@ -99,7 +130,11 @@ def job_dir(
     for n, text in enumerate(units, 1):
         (il / f"u{n:02d}.svg").write_text(text, encoding="utf-8", newline="")
     store = MemoryBlobStore(tmp_path / "cas")
-    write_index(job, [])
+    frozen = [
+        LedgerRow(n, (sha := store.add(blob)), slot(sha), "image", "u01")
+        for n, blob in enumerate(assets, 1)
+    ]
+    write_index(job, frozen)
     bundle = ILBundle.load(il, carrier=PptxCompiler().carrier, constructs=TABLE)
     roster = bundle.units
     if plan_units is not None:
@@ -118,12 +153,12 @@ def job_dir(
         gate_status=GateStatus.PASSED,
         il_digest=bundle.il_digest,
         constructs_digest=TABLE.digest(),
-        ledger_digest=ledger_digest([]),
+        ledger_digest=ledger_digest(frozen),
         brief_digest=BRIEF.digest(),
         card_sha256="sha256:" + "4" * 64,
     )
     Job("omniweave.out-job/1", plan, TRACEPARENT, JobDeterminism(CLOCK_NS)).write(job)
-    return job, plan, FrozenLedger([], store), store
+    return job, plan, FrozenLedger(frozen, store), store
 
 
 def lowered(tmp_path: Path, *units: str, **kwargs: Any) -> Lowered:
@@ -151,8 +186,8 @@ def outline(element: Any) -> list[str]:
 
 
 def frame(shape: Any) -> Any:
-    """A shape's or a group's `a:xfrm`."""
-    own = f"{P}spPr" if shape.tag == f"{P}sp" else f"{P}grpSpPr"
+    """A shape's, a picture's or a group's `a:xfrm`."""
+    own = f"{P}grpSpPr" if shape.tag == f"{P}grpSp" else f"{P}spPr"
     return shape.find(f"{own}/{A}xfrm")
 
 

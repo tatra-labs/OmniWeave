@@ -2,8 +2,9 @@
 
 `<defs>` holds gradients, patterns, filters, markers, clips and symbols, each drawn only where a
 `url(#id)` or an `href` names it. This family's two functions are the walk's: `definitions`
-lowers a `<defs>` to nothing, and `definition_id` reads the `id` a reference resolves by. `use`,
-`symbol` and `reference` are later families.
+lowers a `<defs>` to nothing, and `definition_id` reads the `id` a reference resolves by. D800
+adds `reference`, an `href` as written: a picture's `asset-slot:` (`lower.media`). `use` and
+`symbol` are a later cell's.
 """
 
 from __future__ import annotations
@@ -15,12 +16,17 @@ if TYPE_CHECKING:
 
     from omniweave_target_pptx.lower._style import Chain
 
-__all__ = ["definition_id", "definitions"]
+__all__ = ["definition_id", "definitions", "reference"]
 
 
 def definitions(em: Any, node: CarrierNode, chain: Chain) -> None:
     """A `<defs>` draws nothing where it stands."""
     del em, node, chain
+
+
+def reference(node: CarrierNode) -> str:
+    """`href` as written: a picture's `asset-slot:`, or `#id` for a `<use>`."""
+    return node.attr("href") or ""
 
 
 def definition_id(node: CarrierNode) -> str | None:

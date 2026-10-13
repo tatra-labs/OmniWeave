@@ -28,11 +28,26 @@ if TYPE_CHECKING:
 
     from omniweave_target_pptx.lower._style import Chain
 
-__all__ = ["Emitter", "Handler"]
+__all__ = ["Asset", "Emitter", "Handler"]
 
 Handler = Callable[["Emitter", "CarrierNode", "Chain"], None]
 FIRST_ID: Final = 2
 """02-architecture.md's compile walkthrough: "shape ids from a per-unit counter seeded at 2"."""
+
+
+@dataclass(frozen=True, slots=True)
+class Asset:
+    """A frozen picture: its bytes and its size in pixels (preflight check 2, D800)."""
+
+    blob: bytes
+    width: int
+    height: int
+
+
+def _unembedded(blob: bytes) -> str:
+    """No slide to embed in: an `Emitter` built outside `_pack.build()` holds no picture."""
+    del blob
+    return ""
 
 
 @dataclass
@@ -47,6 +62,10 @@ class Emitter:
     """The Brief's primary language, each run's `lang` (D797)."""
     definitions: Mapping[str, CarrierNode] = field(default_factory=dict)
     """The slide's elements by `id`: what a `url(#id)` paint names (D798)."""
+    assets: Mapping[str, Asset] = field(default_factory=dict)
+    """Each picture's frozen asset by its slot (D800)."""
+    embed: Callable[[bytes], str] = _unembedded
+    """A picture's bytes as an image part of the slide: its relationship's id (D800)."""
     next_id: int = FIRST_ID
     boxes: list[list[Placed]] = field(default_factory=lambda: [[]])
     handlers: dict[str, Handler] = field(default_factory=dict)
