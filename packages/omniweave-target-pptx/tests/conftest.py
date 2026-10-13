@@ -34,6 +34,11 @@ class RuleContext:
     limits: dict[str, int] = field(default_factory=dict)
     brief: Any = None
     constructs: Any = field(default_factory=table)
+    estimator: Any = None
+
+    def measure(self, n: Any) -> Any:
+        """`RuleCtx.measure(n)`, as `check()` builds it: the estimator's box, or `None`."""
+        return None if self.estimator is None else self.estimator.box(n)
 
 
 Run = Callable[[RuleSpec, str], list[Finding]]
@@ -76,3 +81,19 @@ def font_dir(tmp_path: Path) -> Path:
     write_font(root, "nested/other.otf", tiny_font("Other Serif", advance=400, line_gap=100))
     (root / "readme.txt").write_text("not a font", encoding="utf-8")
     return root
+
+
+@pytest.fixture
+def measured(font_dir: Path) -> Run:
+    """`measured(SPEC, body)`: as `slide`, with `measure.py`'s estimator over `font_dir`. A
+    `body` that is a whole `<svg>` is read as the document."""
+    from omniweave_target_pptx.measure import FontBook, HarfBuzzMeasure  # noqa: PLC0415
+
+    estimator = HarfBuzzMeasure(FontBook((font_dir,)))
+
+    def run(spec: RuleSpec, body: str) -> list[Finding]:
+        text = body if body.startswith("<svg") else f"{SLIDE_OPEN}{body}</svg>"
+        doc = PptxCompiler().carrier("il/u01.svg", text)
+        return list(spec.fn(RuleContext(doc, estimator=estimator)))  # type: ignore[arg-type]
+
+    return run

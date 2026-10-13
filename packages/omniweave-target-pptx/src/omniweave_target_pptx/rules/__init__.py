@@ -1,11 +1,11 @@
-"""owsvg/1's hand-written rules, one rule a file. **D789, D790, D791.**
+"""owsvg/1's hand-written rules, one rule a file. **D789-D791, D793.**
 
 16-roadmap.md W9.2 asks for "`rules/` at one rule per file with one test per file", and 09
 section 12.1 lists the bands they fill. D789 built the structural band (orders 10-19), D790 the
 grammar band (40-49) and D791 the references and effects (50-52). The forbidden, conditional,
 closed-set, normalize and bake rows are the table's own rules
 (`omniweave_core.out.conformance.table_pack()`), the cite facts and the cite batch are
-`cite_pack()`'s, and the measurement band is a later cell.
+`cite_pack()`'s. D793 adds the line rule (53) and the measurement band (60).
 
 ## Rulings
 
@@ -53,6 +53,13 @@ closed-set, normalize and bake rows are the table's own rules
 10. **D791: a definition stands in `<defs>` with an id, and a pattern names a DrawingML preset**
     (`definitions`, 52). ppt-master falls back to `ltUpDiag` for a pattern with no preset;
     owsvg/1 refuses, because a fallback draws a pattern the author did not choose.
+11. **D793: a positioned line is a paragraph of its own text box** (`text_lines`, 53). It is a
+    direct child of its `<text>`, at the text's `x`: DrawingML's paragraphs share their box's
+    position, and no paragraph begins inside a run.
+12. **D793: a text's measured lines stay on the slide** (`text_canvas`, 60,
+    `needs={"measure"}`). Its model is ppt-master's, stated in every message: single-line width
+    per positioned line, vertical wrapping not modeled. A rotated or scaled text is outside the
+    model, and a text with no face is the framework's recorded skip.
 """
 
 from __future__ import annotations
@@ -75,6 +82,8 @@ from omniweave_target_pptx.rules import (
     points,
     reference,
     stroke,
+    text_canvas,
+    text_lines,
     transform,
     unit_root,
 )
@@ -101,5 +110,6 @@ def rules() -> Mapping[str, Sequence[RuleSpec]]:
             font.SPEC,
             gradient.SPEC,
         ),
-        "reference": (reference.SPEC, effect.SPEC, definitions.SPEC),
+        "reference": (reference.SPEC, effect.SPEC, definitions.SPEC, text_lines.SPEC),
+        "measurement": (text_canvas.SPEC,),
     }

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fontkit import tiny_font, write_font  # type: ignore[import-not-found]  # tests/fontkit.py
 from omniweave_core.drivers.card import DriverCard, load_card
 from omniweave_core.errors import TargetError, explain
 from omniweave_core.host.activate import normalizers as host_normalizers
@@ -72,7 +73,7 @@ CLEAN = {
         '<stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#1F4E79"/>'
         "</linearGradient></defs>\n"
         '  <rect x="0" y="0" width="1280" height="720" fill="url(#sky)"/>\n'
-        '  <text data-ow-el="u01/e2" x="64" y="120" font-family="Arial" font-size="44" '
+        '  <text data-ow-el="u01/e2" x="64" y="120" font-family="Probe Sans" font-size="44" '
         'fill="#1A1A1A">Revenue <tspan font-weight="bold">rose</tspan></text>\n'
         f'  <image href="{SLOT}" x="900" y="400" width="300" height="200"/>\n'
         '  <path d="M 0 700 L 1280 700" stroke="#C00000" stroke-width="2"/>\n'
@@ -80,7 +81,8 @@ CLEAN = {
     ),
     "u02.svg": (
         f"{SVG}>"
-        '<g data-ow-manual="unverifiable_data"><text x="64" y="120">a figure nobody can verify'
+        '<g data-ow-manual="unverifiable_data"><text x="64" y="120" font-family="Probe Sans">'
+        "a figure nobody can verify"
         "</text></g></svg>"
     ),
 }
@@ -109,11 +111,18 @@ class _Cites:
         return {c: known if c == "d7#1" else None for c in cites}
 
 
+def _measured(tmp_path: Path) -> PptxCompiler:
+    """D793: a compiler whose estimator has one face, `Probe Sans`, 500 units a glyph."""
+    fonts = tmp_path / "fonts"
+    write_font(fonts, "probe.ttf", tiny_font("Probe Sans"))
+    return PptxCompiler(font_dirs=[str(fonts)])
+
+
 def _check(tmp_path: Path, u01: str | None = None, *, cites: _Cites | None = None) -> CheckResult:
     files = {} if u01 is None else {"u01.svg": u01}
     return check(
         _job(tmp_path, **files),
-        PptxCompiler(),
+        _measured(tmp_path),
         target="pptx",
         constructs=TABLE,
         stage="final",
@@ -129,6 +138,10 @@ class _Ctx:
     limits: dict[str, int] = field(default_factory=dict)
     brief: Any = None
     constructs: Any = TABLE
+
+    def measure(self, n: Any) -> None:
+        """No estimator: these tests read the table's and the grammar's codes."""
+        del n
 
 
 def _codes(body: str) -> list[str]:
@@ -332,7 +345,9 @@ def test_a_slides_visible_text_is_a_line_a_text_box() -> None:
 def test_a_clean_deck_is_a_manual_required_gate_with_one_cite_batch(tmp_path: Path) -> None:
     cites = _Cites()
     result = _check(
-        tmp_path, f'{SVG}><text data-ow-cite="d7#1" x="1" y="1">a</text></svg>', cites=cites
+        tmp_path,
+        f'{SVG}><text data-ow-cite="d7#1" x="1" y="40" font-family="Probe Sans">a</text></svg>',
+        cites=cites,
     )
     assert [(f.code, f.msg) for f in result.report.findings] == []
     assert result.status is GateStatus.MANUAL_REQUIRED, "u02's manual region"
@@ -342,7 +357,12 @@ def test_a_clean_deck_is_a_manual_required_gate_with_one_cite_batch(tmp_path: Pa
 def test_without_a_resolver_the_cite_batch_is_a_recorded_skip(tmp_path: Path) -> None:
     """D791: pptx's cite rules are the framework's `cite_pack()`, under pptx's rule ids."""
     result = check(
-        _job(tmp_path), PptxCompiler(), target="pptx", constructs=TABLE, stage="final", brief=BRIEF
+        _job(tmp_path),
+        _measured(tmp_path),
+        target="pptx",
+        constructs=TABLE,
+        stage="final",
+        brief=BRIEF,
     )
     assert result.status is GateStatus.UNVERIFIED
     assert [(s.rule, s.needs) for s in result.report.skipped_checks] == [
@@ -353,7 +373,8 @@ def test_without_a_resolver_the_cite_batch_is_a_recorded_skip(tmp_path: Path) ->
 def test_an_unresolved_cite_and_a_cite_kind_fail_the_gate(tmp_path: Path) -> None:
     result = _check(
         tmp_path,
-        f'{SVG}><text data-ow-cite="d7#9" data-ow-cite-kind="hearsay" x="1" y="1">a</text></svg>',
+        f'{SVG}><text data-ow-cite="d7#9" data-ow-cite-kind="hearsay" x="1" y="40"'
+        ' font-family="Probe Sans">a</text></svg>',
     )
     assert result.status is GateStatus.FAILED
     assert {(f.rule, f.code) for f in result.report.findings} == {
@@ -441,3 +462,29 @@ def test_the_normalize_rows_warn_and_the_gate_still_passes(tmp_path: Path) -> No
         "OW_TARGET_OPACITY_PERCENT",
     ]
     assert result.introduced_warning_count == 4
+
+
+# ---------------------------------------------------------------------------------------------
+# D793: the measurement band, through the framework
+# ---------------------------------------------------------------------------------------------
+
+
+def test_text_measured_off_the_slide_fails_the_gate(tmp_path: Path) -> None:
+    result = _check(
+        tmp_path, f'{SVG}><text x="1270" y="40" font-family="Probe Sans">wide</text></svg>'
+    )
+    assert result.status is GateStatus.FAILED
+    [found] = [f for f in result.report.findings if f.code == "OW_TARGET_TEXT_OFF_CANVAS"]
+    assert found.rule == "pptx.text.canvas@1"
+    assert "past its right edge" in found.msg
+
+
+def test_text_with_no_face_is_a_recorded_skip_naming_its_element(tmp_path: Path) -> None:
+    result = _check(
+        tmp_path,
+        f'{SVG}><text data-ow-el="u01/e9" x="1" y="40" font-family="Nowhere">a</text></svg>',
+    )
+    assert result.status is GateStatus.UNVERIFIED, "never passed over text nobody measured"
+    assert [(s.rule, s.needs, s.el) for s in result.report.skipped_checks] == [
+        ("pptx.text.canvas@1", "measure", "u01/e9")
+    ]
