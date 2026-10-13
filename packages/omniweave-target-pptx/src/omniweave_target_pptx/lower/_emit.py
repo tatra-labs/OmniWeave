@@ -43,6 +43,8 @@ class Emitter:
     families: Mapping[str, ModuleType]
     ignored: Sequence[Selector]
     tree: Any
+    lang: str = ""
+    """The Brief's primary language, each run's `lang` (D797)."""
     next_id: int = FIRST_ID
     boxes: list[list[Placed]] = field(default_factory=lambda: [[]])
     handlers: dict[str, Handler] = field(default_factory=dict)

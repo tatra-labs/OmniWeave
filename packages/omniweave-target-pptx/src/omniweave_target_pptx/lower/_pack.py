@@ -53,6 +53,7 @@ from omniweave_target_pptx.lower import (
     shapes,
     slide,
     stroke,
+    text,
     transform,
 )
 from omniweave_target_pptx.lower._emit import Emitter
@@ -77,6 +78,7 @@ FAMILIES: Final = MappingProxyType(
             shapes,
             slide,
             stroke,
+            text,
             transform,
         )
     }
@@ -114,9 +116,10 @@ def build(
     deck.slide_width, deck.slide_height = Emu(emu(width)), Emu(emu(height))
     blank = next(layout for layout in deck.slide_layouts if layout.name == _BLANK)
     ignored = tuple(parse_selector(s, table.carrier) for s in table.ignore)
+    lang = plan.brief.value("communication", "primary_language") or ""
     for root in roots:
         made = deck.slides.add_slide(blank)
-        em = Emitter(rows, FAMILIES, ignored, _tree(made))
+        em = Emitter(rows, FAMILIES, ignored, _tree(made), lang)
         em.handler(root)(em, root, (root,))
     _core(deck, plan.slug, clock_ns)
     return _package(deck)
@@ -225,6 +228,6 @@ def _app(data: bytes) -> bytes:
     namespace = etree.QName(root).namespace
     for child in list(root):
         root.remove(child)
-    for tag, text in _APP:
-        etree.SubElement(root, f"{{{namespace}}}{tag}").text = text
+    for tag, value in _APP:
+        etree.SubElement(root, f"{{{namespace}}}{tag}").text = value
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
