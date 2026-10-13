@@ -21,8 +21,13 @@ lowering.
    `bake = "unavailable"` (09 section 3.3).
 3. **The table is read once, when the rules are first asked for.** `__init__` loads nothing, as
    every Port's constructor (18-api-sketch.md section 6.2).
-4. **`measure()` is `None` until `measure.py` lands.** The card says `measure = "none"`, and no
-   rule yet declares `needs={"measure"}`, so nothing is skipped for want of one.
+4. **`measure()` is `measure.py`'s one estimator, over the faces the config names** (D792).
+   `[drivers."compile.pptx.native".config] font_dirs` lists absolute directories, and an empty
+   list, the default, or a uharfbuzz that will not import, is `None`: every rule declaring
+   `needs={"measure"}` is then a recorded skip and the gate `unverified`, never `passed`.
+   Repeated calls return the identical object, which the kit asserts (09 section 4.4), and the
+   fonts are read on first use, not in `__init__`. A relative directory is refused when the
+   compiler is built, because a target resolves no path against the working directory (G8).
 """
 
 from __future__ import annotations
@@ -33,7 +38,7 @@ from functools import cache
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, Final, NoReturn
 
-from omniweave_core.errors import TargetError
+from omniweave_core.errors import ConfigError, TargetError
 from omniweave_core.out import ConstructTable
 from omniweave_core.out.carrier.xml import svg_carrier
 from omniweave_core.out.conformance import cite_pack, table_pack
@@ -97,9 +102,21 @@ class PptxCompiler:
             fix_hint="ow out targets",
         )
 
-    def __init__(self, **config: Scalar) -> None:
-        """STATIC CONFIG ONLY. Loads nothing, opens nothing (ruling 3)."""
+    def __init__(self, **config: Scalar | list[str]) -> None:
+        """STATIC CONFIG ONLY. Loads nothing, opens nothing (rulings 3 and 4)."""
         self.config = config
+        raw = config.get("font_dirs") or []
+        dirs = [Path(str(d)) for d in (raw if isinstance(raw, list) else [raw])]
+        relative = [str(d) for d in dirs if not d.is_absolute()]
+        if relative:
+            raise ConfigError(
+                f"font_dirs {relative} are not absolute: a target resolves no path against the "
+                "working directory",
+                fix='ow config set drivers."compile.pptx.native".config.font_dirs '
+                '["<absolute directory>"]',
+            )
+        self._font_dirs = tuple(dirs)
+        self._measure: TextMeasure | None = None
 
     def carrier(self, path: str, text: str) -> CarrierDoc:
         """Ruling 1."""
@@ -114,8 +131,19 @@ class PptxCompiler:
         }
 
     def measure(self) -> TextMeasure | None:
-        """Ruling 4."""
-        return None
+        """Ruling 4: one estimator a compiler, or `None` without fonts or uharfbuzz."""
+        if not self._font_dirs:
+            return None
+        if self._measure is None:
+            try:
+                from omniweave_target_pptx.measure import (  # noqa: PLC0415 -- ruling 4
+                    FontBook,
+                    HarfBuzzMeasure,
+                )
+            except ImportError:
+                return None
+            self._measure = HarfBuzzMeasure(FontBook(self._font_dirs))
+        return self._measure
 
     def lower(self, plan: Plan, il: ILBundle, ledger: AssetLedger, io: DriverIO) -> DriverResult:
         del plan, il, ledger, io

@@ -9,9 +9,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import pytest
+from fontkit import tiny_font, write_font  # type: ignore[import-not-found]  # tests/fontkit.py
 from omniweave_core.out.carrier import CarrierDoc
 from omniweave_core.out.finding import Finding
 from omniweave_core.out.plan import OutUnit
@@ -57,3 +59,20 @@ def document() -> Run:
         return list(spec.fn(RuleContext(doc)))  # type: ignore[arg-type]
 
     return run
+
+
+@pytest.fixture
+def font_dir(tmp_path: Path) -> Path:
+    """D792: four faces in one directory, as `font_dirs` would name it.
+
+    `Probe Sans` regular (`A` 600 units, `B` 400, the rest 500), bold (550 a glyph) and italic
+    (450 a glyph), and `Other Serif` (400 a glyph), each 1000 units to the em, ascender 800 and
+    descender -200, so a size of 10 makes each unit a hundredth of a user unit.
+    """
+    root = tmp_path / "fonts"
+    write_font(root, "probe.ttf", tiny_font("Probe Sans", widths={"A": 600, "B": 400}))
+    write_font(root, "probe-bold.ttf", tiny_font("Probe Sans", advance=550, weight=700))
+    write_font(root, "probe-italic.TTF", tiny_font("Probe Sans", advance=450, italic=True))
+    write_font(root, "nested/other.otf", tiny_font("Other Serif", advance=400, line_gap=100))
+    (root / "readme.txt").write_text("not a font", encoding="utf-8")
+    return root
