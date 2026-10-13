@@ -15,7 +15,7 @@ whitespace rule's state, the numbering and the bookmark counter.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from types import ModuleType
@@ -26,8 +26,8 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.text.run import Run
 from omniweave_core.errors import TargetError
-from omniweave_core.out.carrier import CarrierNode, Selector, parse_selector, style_declarations
-from omniweave_core.out.constructs import Construct, ConstructTable, Disposition
+from omniweave_core.out.carrier import CarrierNode, style_declarations
+from omniweave_core.out.lowering import Row, refuse_unmapped, resolve, rows_of, unmapped, walk
 
 from omniweave_target_docx.lower.blocks import alignment, bidi
 from omniweave_target_docx.lower.ids import bookmark
@@ -43,7 +43,6 @@ __all__ = [
     "Emitter",
     "Marks",
     "Row",
-    "refuse_unmapped",
     "resolve",
     "rows_of",
     "unmapped",
@@ -74,65 +73,6 @@ class Marks:
     highlight: bool = False
     lang: str | None = None
     rtl: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class Row:
-    """One native row with its selector parsed: what a node matches for the row's function."""
-
-    construct: Construct
-    selector: Selector
-
-
-def rows_of(table: ConstructTable) -> tuple[Row, ...]:
-    """The table's native rows, in table order."""
-    return tuple(
-        Row(row, parse_selector(row.selector, table.carrier))
-        for row in table.rows
-        if row.disposition is Disposition.NATIVE
-    )
-
-
-def resolve(maps_to: str, families: Mapping[str, ModuleType]) -> Callable[..., Any] | None:
-    """`lower.blocks:heading` to its function, or `None` when it is not built (preflight 1)."""
-    module, _, symbol = maps_to.partition(":")
-    family = families.get(module)
-    if family is None or symbol.startswith("_") or symbol not in getattr(family, "__all__", ()):
-        return None
-    found = getattr(family, symbol)  # a name the table holds and the module exports
-    return found if callable(found) else None
-
-
-def walk(root: CarrierNode) -> Iterator[CarrierNode]:
-    """`root` and every element below it, in document order."""
-    stack = [root]
-    while stack:
-        node = stack.pop()
-        yield node
-        stack.extend(reversed(list(node.children())))
-
-
-def unmapped(
-    roots: Sequence[CarrierNode], rows: Sequence[Row], families: Mapping[str, ModuleType]
-) -> list[Construct]:
-    """Preflight 1: each row the units use whose `maps_to` this `lower/` does not define."""
-    used: dict[str, Construct] = {}
-    for root in roots:
-        for node in walk(root):
-            for row in rows:
-                if row.selector.matches(node):
-                    used.setdefault(row.construct.id, row.construct)
-    return [c for c in used.values() if resolve(c.maps_to or "", families) is None]
-
-
-def refuse_unmapped(missing: Sequence[Construct]) -> None:
-    if missing:
-        named = ", ".join(f"{c.id} ({c.maps_to})" for c in missing)
-        raise TargetError(
-            f"the units use constructs this compiler cannot lower: {named}",
-            symbol="OW_TARGET_CONSTRUCT_UNMAPPED",
-            fix=f"ow out constructs docx --construct {missing[0].id}",
-        )
 
 
 @dataclass
@@ -191,7 +131,7 @@ class Emitter:
                 if maps_to not in self.handlers:
                     found = resolve(maps_to, self.families)
                     if found is None:
-                        refuse_unmapped([row.construct])
+                        refuse_unmapped([row.construct], "docx")
                     self.handlers[maps_to] = found  # type: ignore[assignment]
                 return self.handlers[maps_to]
         raise TargetError(

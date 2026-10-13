@@ -29,8 +29,8 @@ from lxml import etree  # type: ignore[attr-defined] -- lxml ships no stubs
 from omniweave_core.canonical import JsonValue
 from omniweave_core.errors import TargetError
 from omniweave_core.model.block import Cite
-from omniweave_core.out.carrier import parse_selector
-from omniweave_core.out.constructs import ConstructTable, Disposition
+from omniweave_core.out.constructs import ConstructTable
+from omniweave_core.out.lowering import refuse_normalizable, refuse_unmapped
 from omniweave_core.out.opc import write_opc
 
 from omniweave_target_docx.lower import (
@@ -49,7 +49,6 @@ from omniweave_target_docx.lower._emit import (
     CODE_FONT,
     Emitter,
     Row,
-    refuse_unmapped,
     rows_of,
     unmapped,
     walk,
@@ -107,8 +106,8 @@ def build(
     _rosters(plan, il, max_units)
     roots = [carrier(u.il_path, il.text(u.il_path)).root() for u in plan.units]
     rows = rows_of(table)
-    refuse_unmapped(unmapped(roots, rows, FAMILIES))
-    _normalized(roots, table, normalizers)
+    refuse_unmapped(unmapped(roots, rows, FAMILIES), "docx")
+    refuse_normalizable(roots, table, normalizers)
     assets = _assets(roots, ledger)
     cited = _cited(roots, plan)
     addresses = _addresses(roots, rows_of(table))
@@ -167,31 +166,6 @@ def _rosters(plan: Plan, il: ILBundle, max_units: int) -> None:
             f"{len(planned)} units, and the card's [compile] max_units is {max_units}",
             symbol="OW_TARGET_TOO_MANY_UNITS",
             fix="ow out targets   # the card's limit",
-        )
-
-
-def _normalized(
-    roots: Sequence[CarrierNode],
-    table: ConstructTable,
-    normalizers: Mapping[str, Callable[[str], str]],
-) -> None:
-    """09 section 5.3: a value a `normalize` row would rewrite does not reach the package."""
-    found: list[str] = []
-    for row in table.rows:
-        if row.disposition is not Disposition.NORMALIZE:
-            continue
-        name = parse_selector(row.selector, table.carrier).name
-        fix = normalizers[row.normalizer or ""]
-        for root in roots:
-            for node in walk(root):
-                value = node.attr(name)
-                if value is not None and fix(value) != value:
-                    found.append(f"{row.id} at {node.at}")
-    if found:
-        raise TargetError(
-            f"{len(found)} value(s) are not in canonical form: {', '.join(found[:3])}",
-            symbol="OW_TARGET_NORMALIZE_AT_COMPILE",
-            fix="ow out normalize   # then check and compile again",
         )
 
 

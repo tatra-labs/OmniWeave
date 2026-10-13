@@ -4,10 +4,10 @@
 root is one slide."* The card, `constructs.toml`, `kind_map.toml` and `normalizers.py` sit beside
 this file, and the hand-written rules in `rules/`, one rule a file. This cell builds what
 `ow out check` runs: the carrier, the table's rules and the structural band; D790 adds the
-grammar band, and D791 the references, effects and cite rules. `measure.py` and the lowering to
-DrawingML are later cells, so the card says `implemented = false` with that reason, and
-`lower()`, `postflight()` and `project()` refuse with it, as `compile.docx.native` did before its
-lowering.
+grammar band, and D791 the references, effects and cite rules. D792 adds `measure.py`, and D795
+the lowering's first families (`lower/`). The rest of the lowering is later cells, so the card
+says `implemented = false` with that reason, and `ow out make` refuses with it before `lower()`
+is called; `lower()` itself refuses a unit that uses a family not yet lowered.
 
 ## Rulings
 
@@ -28,23 +28,56 @@ lowering.
    Repeated calls return the identical object, which the kit asserts (09 section 4.4), and the
    fonts are read on first use, not in `__init__`. A relative directory is refused when the
    compiler is built, because a target resolves no path against the working directory (G8).
+
+## Rulings (D795)
+
+5. **`lower()` is `lower._pack.build()`, over the job's clock.** 09 section 12.1 writes the
+   package's `dcterms` from `job.determinism.clock_ns`, and `lower()`'s four arguments carry no
+   clock, so the clock is the JobDir's own, `il.root`'s parent, as docx reads it. Families not yet
+   lowered are preflight check 1's refusal (`omniweave_core.out.lowering`), so the card stays
+   `implemented = false` while they land.
+6. **`postflight()` re-reads the package and asserts 09 section 5.3's preconditions.**
+   `check_package()` raises on a member that does not decompress, a dangling relationship or a
+   part with no content type, and `slide_count` is the presentation's `p:sldId` count against
+   `plan.unit_count`. 09 section 12.1 names the rows: `zip_integrity`, `slide_count`, and
+   `internal_relationships: enforced-at-build`, whose fixture is the test that breaks the part
+   graph and watches `lower._pack` raise. The receipt reports `classify_and_assert()`'s outcomes
+   with every edited unit visually changed: `lower()` rebuilds every slide, and patches none in
+   place.
+7. **`project()` is refused by name**, as docx's is: the card says `[compile.round_trip]
+   project = false` (09 Q2).
 """
 
 from __future__ import annotations
 
+import hashlib
 import tomllib
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from functools import cache
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Final, NoReturn
+from typing import TYPE_CHECKING, ClassVar, Final
 
+from lxml import etree  # type: ignore[attr-defined] -- lxml ships no stubs
 from omniweave_core.errors import ConfigError, TargetError
-from omniweave_core.out import ConstructTable
+from omniweave_core.out import (
+    ArtefactDeterminism,
+    CheckValue,
+    ConstructTable,
+    Receipt,
+    classify_and_assert,
+    part_digest,
+)
 from omniweave_core.out.carrier.xml import svg_carrier
 from omniweave_core.out.conformance import cite_pack, table_pack
-from omniweave_ports import ProbeEnv, ProbeStatus, ProbeVerdict, Scalar
+from omniweave_core.out.job import Job
+from omniweave_core.out.opc import check_package, check_unit_count
+from omniweave_core.out.receipt import receipt_part_digest
+from omniweave_ports import ArtifactRef, DriverResult, ProbeEnv, ProbeStatus, ProbeVerdict, Scalar
+from pptx.oxml.ns import qn
 
 from omniweave_target_pptx import normalizers, rules
+from omniweave_target_pptx.lower._pack import build
 
 if TYPE_CHECKING:
     from omniweave_core.model.doc import Doc
@@ -53,13 +86,12 @@ if TYPE_CHECKING:
         CarrierDoc,
         ILBundle,
         Plan,
-        Receipt,
         RuleSpec,
         TextMeasure,
     )
-    from omniweave_ports import DriverIO, DriverResult
+    from omniweave_ports import DriverIO
 
-__all__ = ["BAKE", "CARD", "HERE", "NORMALIZERS", "REASON", "PptxCompiler", "table"]
+__all__ = ["BAKE", "CARD", "HERE", "MAX_UNITS", "NORMALIZERS", "REASON", "PptxCompiler", "table"]
 
 HERE: Final = Path(__file__).parent
 CARD: Final = HERE / "driver.toml"
@@ -68,6 +100,16 @@ REASON: Final[str] = _COMPILE["reason"]
 """The card's own sentence, read once: the refusal and `ow out targets` say the same thing."""
 BAKE: Final[str] = _COMPILE["bake"]
 """Ruling 2: the card's `[compile] bake`, which decides a bake row's severity."""
+MAX_UNITS: Final[int] = _COMPILE["max_units"]
+_PRESENTATION: Final = "ppt/presentation.xml"
+_SLIDE_ID: Final = qn("p:sldId")
+_SLIDE_SIZE: Final = qn("p:sldSz")
+_PARSER: Final = etree.XMLParser(resolve_entities=False, no_network=True)
+_ENFORCED: Final = (
+    "packages/omniweave-target-pptx/tests/unit/test_pptx_lower.py"
+    "::test_a_dangling_relationship_is_refused_at_build"
+)
+"""Ruling 6: the kit test that proves `internal_relationships` is enforced at build."""
 
 NORMALIZERS: Final[Mapping[str, Callable[[str], str]]] = normalizers.BY_NAME
 
@@ -78,16 +120,9 @@ def table() -> ConstructTable:
     return ConstructTable.load(HERE / "constructs.toml", NORMALIZERS)
 
 
-def _refuse(what: str) -> NoReturn:
-    raise TargetError(
-        f"compile.pptx.native cannot {what}: [compile] implemented = false, because {REASON}",
-        symbol="OW_TARGET_NOT_IMPLEMENTED",
-        fix="ow out check --target pptx --stage early   # the gate runs; the compile does not",
-    )
-
-
 class PptxCompiler:
-    """owsvg/1's carrier and rules; the compile itself is refused until it is built."""
+    """owsvg/1's carrier, rules and lowering; `ow out make` refuses it until the card is
+    implemented."""
 
     PORT: ClassVar[str] = "compile/1"
     SCHEMA_VERSION: ClassVar[int] = 1
@@ -98,7 +133,7 @@ class PptxCompiler:
         return ProbeVerdict(
             status=ProbeStatus.UNAVAILABLE,
             detail=f"implemented = false: {REASON}",
-            missing=("lower() to DrawingML",),
+            missing=("lower/ for text, paths, paints, effects, pictures and links",),
             fix_hint="ow out targets",
         )
 
@@ -146,13 +181,85 @@ class PptxCompiler:
         return self._measure
 
     def lower(self, plan: Plan, il: ILBundle, ledger: AssetLedger, io: DriverIO) -> DriverResult:
-        del plan, il, ledger, io
-        _refuse("lower a Plan")
+        """Ruling 5: preflight, a slide for every unit in Plan order, then one `.pptx`."""
+        payload = build(
+            plan,
+            il,
+            ledger,
+            carrier=self.carrier,
+            table=table(),
+            normalizers=NORMALIZERS,
+            clock_ns=Job.load(Path(il.root).parent).determinism.clock_ns,
+            max_units=MAX_UNITS,
+        )
+        return DriverResult(outcome="ok", produced=(ArtifactRef.of("artifact", payload, io),))
 
     def postflight(self, artifact: str, plan: Plan) -> Receipt:
-        del artifact, plan
-        _refuse("read an artefact back")
+        """Ruling 6: the package re-read, never the gate re-run (OUT23)."""
+        data = Path(artifact).read_bytes()
+        members = check_package(data)
+        deck = etree.fromstring(members[_PRESENTATION], _PARSER)
+        slides = sum(1 for _ in deck.iter(_SLIDE_ID))
+        check_unit_count(slides, plan.unit_count)
+        size = deck.find(_SLIDE_SIZE)
+        classified = classify_and_assert(plan, baked={}, visual_changed=lambda _unit: True)
+        return Receipt(
+            schema="omniweave.out-receipt/1",
+            target="pptx",
+            slug=plan.slug,
+            artifact_gen=plan.artifact_gen,
+            output={
+                "path": artifact,
+                "bytes": len(data),
+                "sha256": hashlib.sha256(data).hexdigest(),
+            },
+            part_digest=receipt_part_digest(part_digest(members)),
+            determinism=(ArtefactDeterminism.PART, ArtefactDeterminism.BYTE),
+            gate_status=plan.gate_status,
+            delivery=plan.delivery,
+            checks=(
+                CheckValue("zip_integrity", "passed", f"{len(members)} members decompress"),
+                CheckValue("slide_count", "passed", f"{slides} slides == unit_count"),
+                CheckValue(
+                    "internal_relationships",
+                    "enforced-at-build",
+                    "lower._pack checks the package it builds",
+                    fixture=_ENFORCED,
+                ),
+                CheckValue("content_types", "passed", "every part has a content type"),
+                CheckValue(
+                    "slide_size",
+                    "passed",
+                    "none" if size is None else f"{size.get('cx')}x{size.get('cy')} EMU",
+                ),
+                CheckValue("citations_channel", "skipped", "the provenance part is not built"),
+                CheckValue("bake_used", "not-applicable", 'bake = "unavailable"'),
+                CheckValue(
+                    "measure_available",
+                    "not-applicable",
+                    "the lowering shapes no text; measurement is the gate's",
+                ),
+            ),
+            units={unit: c.outcome for unit, c in classified.items()},
+            counts=dict(Counter(c.outcome for c in classified.values())),
+            portability={
+                "generic_only_font_stacks": (),
+                "unresolved_brief_tokens": (),
+                "external_asset_refs": (),
+                "unsafe_exported_faces": (),
+            },
+            normalizations=(),
+            degradations=(),
+            skipped_checks=(),
+            truncations=(),
+        )
 
     def project(self, doc: Doc, io: DriverIO) -> ILBundle:
+        """Ruling 7: `[compile.round_trip] project = false`, refused by name."""
         del doc, io
-        _refuse("project a Doc to owsvg/1")
+        raise TargetError(
+            "compile.pptx.native cannot project a Doc back to owsvg/1: its card says "
+            "[compile.round_trip] project = false",
+            symbol="OW_TARGET_PROJECT_UNAVAILABLE",
+            fix="ow out back <slug> --gen <gen>   # edit from the retained IL, not a projection",
+        )
