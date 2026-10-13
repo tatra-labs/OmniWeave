@@ -1,8 +1,8 @@
 # compile.pptx.native — the flagship target (09-generation.md section 12.1; 16-roadmap.md W9.2).
 # "The only working round trip in the collection; zero Node": a closed SVG subset, one <svg> a
 # slide, lowered to DrawingML in pure Python. D789 builds its table, carrier and structural
-# rules, and D790 its grammar band; measure.py, the reference band and the lowering are later
-# cells, so it is not implemented.
+# rules, D790 its grammar band and D791 its references and effects; measure.py and the
+# lowering are later cells, so it is not implemented.
 card_schema = 1
 
 [driver]
@@ -39,7 +39,7 @@ measure = "none"                       # measure.py, uharfbuzz's shaping, lands 
 runtime_rules = false
 toolchain = ""                         # pure Python: python-pptx, XlsxWriter, skia-pathops
 implemented = false
-reason = "owsvg/1's table, carrier, structural and grammar rules are built; measure.py, the reference rules and the lowering to DrawingML are not"
+reason = "owsvg/1's table, carrier and rules are built; measure.py and the lowering to DrawingML are not"
 max_units = 2000                       # 09 section 14.2: a 2000-unit roster, streamed
 agent_doc_tokens_max = 6000            # 09 section 3.3: about 33 tokens a row over ~180 rows
 media_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"

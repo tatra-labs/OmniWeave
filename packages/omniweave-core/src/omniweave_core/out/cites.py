@@ -38,7 +38,12 @@ from omniweave_core.errors import TargetError
 from omniweave_core.ident import nfc
 from omniweave_core.model.enums import Quote
 
-__all__ = ["NO_CITES", "CiteResolver", "CitedBlock", "verbatim"]
+__all__ = ["CITE_KINDS", "NO_CITES", "CiteResolver", "CitedBlock", "verbatim"]
+
+CITE_KINDS: Final = frozenset({"quote", "paraphrase", "derived", "data"})
+"""09 section 10's four citation kinds. `store.artifact` re-exports them for its
+`artifact_cite` rows, and the cite rules read them here, because `out` imports nothing
+from `store` (D791)."""
 
 
 @dataclass(frozen=True, slots=True)

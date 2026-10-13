@@ -10,7 +10,7 @@ name until lowering lands.
 from __future__ import annotations
 
 import tomllib
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from importlib.metadata import entry_points
 from pathlib import Path
@@ -20,10 +20,11 @@ import pytest
 from omniweave_core.drivers.card import DriverCard, load_card
 from omniweave_core.errors import TargetError, explain
 from omniweave_core.host.activate import normalizers as host_normalizers
-from omniweave_core.model.enums import Kind
+from omniweave_core.model.enums import Kind, Quote
 from omniweave_core.out.brief import BRIEF_SCHEMA, parse_brief
 from omniweave_core.out.card import CompileCard
 from omniweave_core.out.carrier import CarrierDoc
+from omniweave_core.out.cites import CitedBlock
 from omniweave_core.out.compile import CheckResult, CompileV1, check
 from omniweave_core.out.constructs import Disposition
 from omniweave_core.out.gate import GateStatus
@@ -93,7 +94,22 @@ def _job(tmp_path: Path, **files: str) -> Path:
     return tmp_path
 
 
-def _check(tmp_path: Path, u01: str | None = None) -> CheckResult:
+class _Cites:
+    """A resolver that knows `d7#1` and records each batch it is asked."""
+
+    def __init__(self) -> None:
+        self.batches: list[tuple[str, ...]] = []
+
+    def by_cite(self, cite: str) -> CitedBlock | None:
+        return self.by_cites((cite,))[cite]
+
+    def by_cites(self, cites: tuple[str, ...]) -> Mapping[str, CitedBlock | None]:
+        self.batches.append(cites)
+        known = CitedBlock("d7#1", 101, 7, 1, "Revenue rose 12%.", Quote.VERBATIM, 0)
+        return {c: known if c == "d7#1" else None for c in cites}
+
+
+def _check(tmp_path: Path, u01: str | None = None, *, cites: _Cites | None = None) -> CheckResult:
     files = {} if u01 is None else {"u01.svg": u01}
     return check(
         _job(tmp_path, **files),
@@ -102,6 +118,7 @@ def _check(tmp_path: Path, u01: str | None = None) -> CheckResult:
         constructs=TABLE,
         stage="final",
         brief=BRIEF,
+        cites=cites if cites is not None else _Cites(),
     )
 
 
@@ -312,10 +329,37 @@ def test_a_slides_visible_text_is_a_line_a_text_box() -> None:
 # ---------------------------------------------------------------------------------------------
 
 
-def test_a_clean_deck_is_a_manual_required_gate(tmp_path: Path) -> None:
-    result = _check(tmp_path)
+def test_a_clean_deck_is_a_manual_required_gate_with_one_cite_batch(tmp_path: Path) -> None:
+    cites = _Cites()
+    result = _check(
+        tmp_path, f'{SVG}><text data-ow-cite="d7#1" x="1" y="1">a</text></svg>', cites=cites
+    )
     assert [(f.code, f.msg) for f in result.report.findings] == []
     assert result.status is GateStatus.MANUAL_REQUIRED, "u02's manual region"
+    assert cites.batches == [("d7#1",)]
+
+
+def test_without_a_resolver_the_cite_batch_is_a_recorded_skip(tmp_path: Path) -> None:
+    """D791: pptx's cite rules are the framework's `cite_pack()`, under pptx's rule ids."""
+    result = check(
+        _job(tmp_path), PptxCompiler(), target="pptx", constructs=TABLE, stage="final", brief=BRIEF
+    )
+    assert result.status is GateStatus.UNVERIFIED
+    assert [(s.rule, s.needs) for s in result.report.skipped_checks] == [
+        ("pptx.cite.resolves@1", "cites")
+    ]
+
+
+def test_an_unresolved_cite_and_a_cite_kind_fail_the_gate(tmp_path: Path) -> None:
+    result = _check(
+        tmp_path,
+        f'{SVG}><text data-ow-cite="d7#9" data-ow-cite-kind="hearsay" x="1" y="1">a</text></svg>',
+    )
+    assert result.status is GateStatus.FAILED
+    assert {(f.rule, f.code) for f in result.report.findings} == {
+        ("pptx.cite.resolves@1", "OW_TARGET_CITE_UNRESOLVED"),
+        ("pptx.cite.facts@1", "OW_TARGET_IL_MALFORMED"),
+    }
 
 
 @pytest.mark.parametrize(
@@ -358,7 +402,7 @@ def test_the_structural_and_grammar_rules_and_a_bake_row_fail_the_gate(
         ('<text x="1" y="1"><textPath>a</textPath></text>', "OW_TARGET_CONSTRUCT_FORBIDDEN"),
         ("<mask/>", "OW_TARGET_CONSTRUCT_FORBIDDEN"),
         ("<animate/>", "OW_TARGET_CONSTRUCT_FORBIDDEN"),
-        ('<use xlink:href="#a" xmlns:xlink="http://www.w3.org/1999/xlink"/>',
+        ('<g xlink:href="#a" xmlns:xlink="http://www.w3.org/1999/xlink"/>',
          "OW_TARGET_CONSTRUCT_FORBIDDEN"),
         ('<path d="M0 0" fill-rule="evenodd"/>', "OW_TARGET_CONSTRUCT_FORBIDDEN"),
         ('<rect width="1" height="1" style="filter: url(#f)"/>', "OW_TARGET_CONSTRUCT_FORBIDDEN"),

@@ -14,9 +14,10 @@ make the card `implemented = true`.
    row). The blocks are the table's block constructs, and the invisible elements are the tags of
    its `visible = false` rows: a note body renders in the notes area, never in the text.
 2. **The pack is two halves.** `omniweave_core.out.conformance.table_pack()` builds the
-   forbidden rows, the closed set and the normalize warnings from the table, and `rules.py` holds
-   the structural and grammar rules. The `pos.*` forbidden rows are section 12.3's sixth rule,
-   *"no positioning construct present"*.
+   forbidden rows, the closed set and the normalize warnings from the table, and `cite_pack()`
+   the cite facts and the cite batch (D791). `rules.py` holds the structural and grammar rules.
+   The `pos.*` forbidden rows are section 12.3's sixth rule, *"no positioning construct
+   present"*.
 3. **The table is read once, when the rules are first asked for.** `__init__` loads nothing, as
    every Port's constructor (18-api-sketch.md section 6.2), so the table is read lazily and kept.
 4. **`measure()` is `None`.** A flow document's line breaks are the renderer's, and no owflow/1
@@ -75,7 +76,7 @@ from omniweave_core.out import (
     part_digest,
 )
 from omniweave_core.out.carrier import parse_selector
-from omniweave_core.out.conformance import table_pack
+from omniweave_core.out.conformance import cite_pack, table_pack
 from omniweave_core.out.job import Job
 from omniweave_core.out.opc import check_package, check_unit_count
 from omniweave_core.out.receipt import receipt_part_digest
@@ -160,8 +161,12 @@ class DocxCompiler:
         return html_carrier(path, text, strict=False, blocks=BLOCKS, invisible=_invisible())
 
     def rules(self) -> Mapping[str, Sequence[RuleSpec]]:
-        """Ruling 2: the table's half under `construct`, then `rules.py`'s."""
-        return {"construct": table_pack(table(), "docx", NORMALIZERS), **rules.rules()}
+        """Ruling 2: the table's halves under `construct` and `cite`, then `rules.py`'s."""
+        return {
+            "construct": table_pack(table(), "docx", NORMALIZERS),
+            "cite": cite_pack(table(), "docx"),
+            **rules.rules(),
+        }
 
     def measure(self) -> TextMeasure | None:
         """Ruling 4."""

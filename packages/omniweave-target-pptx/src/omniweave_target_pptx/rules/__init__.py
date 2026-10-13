@@ -1,10 +1,11 @@
-"""owsvg/1's hand-written rules, one rule a file. **D789, D790.**
+"""owsvg/1's hand-written rules, one rule a file. **D789, D790, D791.**
 
 16-roadmap.md W9.2 asks for "`rules/` at one rule per file with one test per file", and 09
-section 12.1 lists the bands they fill. D789 built the structural band (orders 10-19) and D790
-the grammar band (40-49). The forbidden, conditional, closed-set, normalize and bake rows are
-the table's own rules (`omniweave_core.out.conformance.table_pack()`), and the measurement and
-reference bands are later cells.
+section 12.1 lists the bands they fill. D789 built the structural band (orders 10-19), D790 the
+grammar band (40-49) and D791 the references and effects (50-52). The forbidden, conditional,
+closed-set, normalize and bake rows are the table's own rules
+(`omniweave_core.out.conformance.table_pack()`), the cite facts and the cite batch are
+`cite_pack()`'s, and the measurement band is a later cell.
 
 ## Rulings
 
@@ -39,6 +40,19 @@ reference bands are later cells.
    polyline, `d` on a path, `text-anchor` on a `<text>`, `baseline-shift` on a `<tspan>`, and
    `xml:space` on text. DrawingML has nowhere to put the others, and a value the compiler would
    drop is a value the author believes is honoured.
+8. **D791: every local reference resolves to what it needs** (`reference`, 50). An id is
+   defined once in the slide. A `fill` names a gradient or a pattern, a `stroke` a gradient,
+   `filter`, `marker-start`, `marker-end` and `clip-path` a `<filter>`, `<marker>` and
+   `<clipPath>`, and a `<use>` a local shape, group, text, image or symbol. An `<image>` names
+   its picture as `asset-slot:<sha256>`, and an `<a>` links to `#u<NN>` or an `https:` page.
+   Resolution is in the slide: a unit is one `<svg>`, and an id in another slide is another
+   document's.
+9. **D791: one effect of each kind DrawingML has** (`effect`, 51). A filter holds one drop
+   shadow or one blur, a marker one shape, a clip one shape. A line end stands on a `<line>` or
+   `<path>`, a clip on an `<image>`, and an image takes a filter or a clip, not both.
+10. **D791: a definition stands in `<defs>` with an id, and a pattern names a DrawingML preset**
+    (`definitions`, 52). ppt-master falls back to `ltUpDiag` for a pattern with no preset;
+    owsvg/1 refuses, because a fallback draws a pattern the author did not choose.
 """
 
 from __future__ import annotations
@@ -48,6 +62,8 @@ from typing import TYPE_CHECKING
 
 from omniweave_target_pptx.rules import (
     canvas,
+    definitions,
+    effect,
     el_unique,
     enums,
     font,
@@ -57,6 +73,7 @@ from omniweave_target_pptx.rules import (
     paint,
     path_data,
     points,
+    reference,
     stroke,
     transform,
     unit_root,
@@ -84,4 +101,5 @@ def rules() -> Mapping[str, Sequence[RuleSpec]]:
             font.SPEC,
             gradient.SPEC,
         ),
+        "reference": (reference.SPEC, effect.SPEC, definitions.SPEC),
     }
