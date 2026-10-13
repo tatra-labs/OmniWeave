@@ -5,6 +5,6 @@ part graph and calls `write_opc()`". Each module here is one family a `maps_to` 
 (`lower.shapes:rect`), and `_pack.build()` is the compile. D795 lands the slide, groups, preset
 shapes, solid paint, lines and transforms, D796 freeforms (paths, polygons and polylines), and
 D797 text, D798 gradients and patterns, D799 shadows, glows and line ends, D800 pictures and
-clips, and D801 `<use>` and links. Manual regions and citations are a later cell, and until it
-lands preflight check 1 refuses a unit that uses one.
+clips, D801 `<use>` and links, and D802 manual regions and citations, the last of the table's
+families.
 """

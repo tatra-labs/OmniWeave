@@ -16,6 +16,7 @@ import os
 import re
 import subprocess  # noqa: TID251 - a second interpreter is the only witness for PYTHONHASHSEED.
 import sys
+import tomllib
 from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -41,117 +42,34 @@ from lxml import etree  # type: ignore[attr-defined] -- lxml ships no stubs
 from omniweave_conform.harness import make_io
 from omniweave_core.errors import TargetError
 from omniweave_core.out.compile import lower_job
+from omniweave_core.out.constructs import ConstructTable
 from omniweave_core.out.job import ILBundle, Job
 from omniweave_core.out.lowering import resolve
 from omniweave_core.out.opc import part_digest, write_opc
 from omniweave_core.out.plan import UnitOutcome
 from omniweave_core.out.receipt import Receipt
 from omniweave_ports import ArtifactKind
-from omniweave_target_pptx.driver import NORMALIZERS, PptxCompiler
+from omniweave_target_pptx.driver import HERE, NORMALIZERS, PROVENANCE, PptxCompiler
 from omniweave_target_pptx.lower import _pack
 from pptx.enum.shapes import MSO_SHAPE, MSO_SHAPE_TYPE
 
 # ---------------------------------------------------------------------------------------------
-# OUT1: the table's maps_to and lower/'s public functions, for the families D795 lowers
+# OUT1: the table's maps_to and lower/'s public functions, both ways
 # ---------------------------------------------------------------------------------------------
 
 NAMED = frozenset(row.maps_to for row in TABLE.rows if row.maps_to)
-BUILT = frozenset(
-    {
-        "lower.defs:definition_id",
-        "lower.defs:definitions",
-        "lower.defs:reference",
-        "lower.defs:symbol",
-        "lower.defs:use",
-        "lower.effects:apply",
-        "lower.effects:crop",
-        "lower.effects:crop_picture",
-        "lower.effects:crop_units",
-        "lower.effects:effect",
-        "lower.effects:end_anchor",
-        "lower.effects:end_size",
-        "lower.effects:end_units",
-        "lower.effects:glow",
-        "lower.effects:head",
-        "lower.effects:line_end",
-        "lower.effects:orient",
-        "lower.effects:outer_shadow",
-        "lower.effects:radius",
-        "lower.effects:shadow_alpha",
-        "lower.effects:shadow_colour",
-        "lower.effects:tail",
-        "lower.effects:units",
-        "lower.geometry:extent",
-        "lower.geometry:offset",
-        "lower.gradients:focus",
-        "lower.gradients:linear",
-        "lower.gradients:position",
-        "lower.gradients:radial",
-        "lower.gradients:stop",
-        "lower.gradients:stop_alpha",
-        "lower.gradients:stop_colour",
-        "lower.gradients:units",
-        "lower.group:group",
-        "lower.ids:shape_name",
-        "lower.links:hyperlink",
-        "lower.media:aspect",
-        "lower.media:picture",
-        "lower.paint:alpha",
-        "lower.paint:fill",
-        "lower.paint:fill_alpha",
-        "lower.paint:line",
-        "lower.paint:line_alpha",
-        "lower.paths:commands",
-        "lower.paths:freeform",
-        "lower.patterns:background",
-        "lower.patterns:foreground",
-        "lower.patterns:pattern",
-        "lower.patterns:preset",
-        "lower.shapes:centre",
-        "lower.shapes:corner",
-        "lower.shapes:ellipse",
-        "lower.shapes:endpoint",
-        "lower.shapes:freeform",
-        "lower.shapes:line",
-        "lower.shapes:radius",
-        "lower.shapes:rect",
-        "lower.shapes:vertices",
-        "lower.slide:size",
-        "lower.slide:slide",
-        "lower.stroke:cap",
-        "lower.stroke:dash",
-        "lower.stroke:join",
-        "lower.stroke:scaling",
-        "lower.stroke:width",
-        "lower.text:anchor",
-        "lower.text:baseline",
-        "lower.text:decoration",
-        "lower.text:italic",
-        "lower.text:run",
-        "lower.text:shift",
-        "lower.text:size",
-        "lower.text:spacing",
-        "lower.text:text_box",
-        "lower.text:typeface",
-        "lower.text:weight",
-        "lower.text:whitespace",
-        "lower.transform:transform",
-    }
-)
 
 
-def test_the_rows_lowered_so_far_resolve_and_no_others_do() -> None:
-    """D795's 26 functions, then D796's freeforms, D797's text, D798's paint servers and
-    D799's effects, D800's pictures, and D801's `<use>` and links."""
-    assert {m for m in NAMED if resolve(m, _pack.FAMILIES) is not None} == BUILT
+def test_every_maps_to_resolves() -> None:
+    """D802 lowered the last of the table's families."""
+    assert {m for m in NAMED if resolve(m, _pack.FAMILIES) is None} == set()
 
 
 def test_every_public_lowering_function_is_one_a_row_names() -> None:
     """OUT1's other direction: `lower/` has no function the table does not declare."""
     for family, module in _pack.FAMILIES.items():
         exported = {f"{family}:{n}" for n in module.__all__ if callable(getattr(module, n))}
-        assert exported, family
-        assert exported <= NAMED, (family, sorted(exported - NAMED))
+        assert exported == {m for m in NAMED if m.startswith(f"{family}:")}, family
 
 
 # ---------------------------------------------------------------------------------------------
@@ -159,32 +77,30 @@ def test_every_public_lowering_function_is_one_a_row_names() -> None:
 # ---------------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    ("body", "named"),
-    [
-        (
-            '<g data-ow-manual="unverifiable_data"><rect width="1" height="1"/></g>',
-            "ow.manual (lower.manual:placeholder)",
-        ),
-        (
-            '<rect width="1" height="1" data-ow-cite="c1"/>',
-            "ow.cite (lower.cites:provenance_part)",
-        ),
-        (
-            '<rect width="1" height="1" data-ow-cite-kind="quote"/>',
-            "ow.cite.kind (lower.cites:kind)",
-        ),
-    ],
-)
-def test_a_construct_not_yet_lowered_is_refused_before_a_byte(
-    tmp_path: Path, body: str, named: str
-) -> None:
-    with pytest.raises(TargetError, match=re.escape(named)) as caught:
-        lowered(tmp_path, slide(f"{RECT}{body}"))
+def test_a_row_whose_function_is_not_built_is_refused_before_a_byte(tmp_path: Path) -> None:
+    """Preflight 1 is the table resolving: a `maps_to` this `lower/` lacks names its row."""
+    raw = tomllib.loads((HERE / "constructs.toml").read_text(encoding="utf-8"))
+    [row] = [r for r in raw["construct"] if r["id"] == "shape.circle"]
+    row["maps_to"] = "lower.shapes:glow"
+    drifted = ConstructTable.parse(raw, NORMALIZERS, source="constructs.toml")
+    job, plan, ledger, _ = job_dir(tmp_path, [slide(f'{RECT}<circle r="1"/>')])
+    compiler = PptxCompiler()
+    bundle = ILBundle.load(job / "il", carrier=compiler.carrier, constructs=TABLE)
+    with pytest.raises(TargetError, match=re.escape(f"{row['id']} (lower.shapes:glow)")) as caught:
+        _pack.build(
+            plan,
+            bundle,
+            ledger,
+            carrier=compiler.carrier,
+            table=drifted,
+            normalizers=NORMALIZERS,
+            clock_ns=CLOCK_NS,
+            max_units=64,
+            provenance=PROVENANCE,
+        )
     assert caught.value.code() == "OW_TARGET_CONSTRUCT_UNMAPPED"
     assert "shape.rect" not in str(caught.value)
-    assert (caught.value.fix or "").startswith("ow out constructs pptx --construct ")
-    assert not (tmp_path / "deck.pptx").exists()
+    assert caught.value.fix == f"ow out constructs pptx --construct {row['id']}"
 
 
 @pytest.mark.parametrize(
@@ -233,6 +149,7 @@ def test_the_cards_max_units_is_a_ceiling(tmp_path: Path) -> None:
             normalizers=NORMALIZERS,
             clock_ns=CLOCK_NS,
             max_units=max_units,
+            provenance=PROVENANCE,
         )
 
     assert build(2).startswith(b"PK")
@@ -420,7 +337,7 @@ def test_postflight_checks_the_package_and_reports_the_classification(tmp_path: 
     checks = {c.name: (c.value, c.detail) for c in receipt.checks}
     assert checks["slide_count"] == ("passed", "2 slides == unit_count")
     assert checks["slide_size"] == ("passed", "12192000x6858000 EMU")
-    assert checks["citations_channel"][0] == "skipped"
+    assert checks["citations_channel"] == ("passed", "embedded: 0 cite row(s)")
     assert (checks["bake_used"][0], checks["measure_available"][0]) == (
         "not-applicable",
         "not-applicable",

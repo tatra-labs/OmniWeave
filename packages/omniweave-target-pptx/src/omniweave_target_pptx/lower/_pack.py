@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from lxml import etree  # type: ignore[attr-defined] -- lxml ships no stubs
 from omniweave_core.errors import TargetError
+from omniweave_core.out import provenance as channel
 from omniweave_core.out.carrier import parse_selector
 from omniweave_core.out.lowering import (
     refuse_normalizable,
@@ -46,6 +47,7 @@ from pptx.parts.image import Image
 from pptx.util import Emu
 
 from omniweave_target_pptx.lower import (
+    cites,
     defs,
     effects,
     geometry,
@@ -53,6 +55,7 @@ from omniweave_target_pptx.lower import (
     group,
     ids,
     links,
+    manual,
     media,
     paint,
     paths,
@@ -76,6 +79,7 @@ FAMILIES: Final = MappingProxyType(
     {
         f"lower.{module.__name__.rpartition('.')[2]}": module
         for module in (
+            cites,
             defs,
             effects,
             geometry,
@@ -83,6 +87,7 @@ FAMILIES: Final = MappingProxyType(
             group,
             ids,
             links,
+            manual,
             media,
             paint,
             paths,
@@ -114,6 +119,7 @@ def build(
     normalizers: Mapping[str, Callable[[str], str]],
     clock_ns: int,
     max_units: int,
+    provenance: str,
 ) -> bytes:
     """Preflight, then a slide for every unit in Plan order, then the package's bytes."""
     _rosters(plan, il, max_units)
@@ -122,6 +128,8 @@ def build(
     refuse_unmapped(unmapped(roots, rows, FAMILIES), "pptx")
     refuse_normalizable(roots, table, normalizers)
     assets = _assets(roots, ledger)
+    cited = channel.cited(roots, plan)
+    addresses = channel.addresses(roots, rows)
     width, height = _size(roots)
     deck = Presentation()
     _drop(deck)
@@ -145,6 +153,15 @@ def build(
             _linker(made, by_unit),
         )
         em.handler(root)(em, root, (root,))
+    cites.provenance_part(
+        deck,
+        cited,
+        addresses=addresses,
+        name=provenance,
+        corpus=plan.corpus,
+        slug=plan.slug,
+        artifact_gen=plan.artifact_gen,
+    )
     _core(deck, plan.slug, clock_ns)
     return _package(deck)
 

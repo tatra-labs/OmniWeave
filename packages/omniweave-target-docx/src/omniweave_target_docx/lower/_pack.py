@@ -26,9 +26,8 @@ from docx.opc.constants import RELATIONSHIP_TYPE
 from docx.oxml.ns import qn
 from docx.shared import Inches, Mm, Pt, RGBColor
 from lxml import etree  # type: ignore[attr-defined] -- lxml ships no stubs
-from omniweave_core.canonical import JsonValue
 from omniweave_core.errors import TargetError
-from omniweave_core.model.block import Cite
+from omniweave_core.out import provenance as channel
 from omniweave_core.out.constructs import ConstructTable
 from omniweave_core.out.lowering import refuse_normalizable, refuse_unmapped
 from omniweave_core.out.opc import write_opc
@@ -48,7 +47,6 @@ from omniweave_target_docx.lower import (
 from omniweave_target_docx.lower._emit import (
     CODE_FONT,
     Emitter,
-    Row,
     rows_of,
     unmapped,
     walk,
@@ -109,8 +107,8 @@ def build(
     refuse_unmapped(unmapped(roots, rows, FAMILIES), "docx")
     refuse_normalizable(roots, table, normalizers)
     assets = _assets(roots, ledger)
-    cited = _cited(roots, plan)
-    addresses = _addresses(roots, rows_of(table))
+    cited = channel.cited(roots, plan)
+    addresses = channel.addresses(roots, rows_of(table))
     document = _document(plan)
     section = document.sections[0]
     width = int(section.page_width or 0) - int(section.left_margin or 0)
@@ -190,64 +188,6 @@ def _assets(roots: Sequence[CarrierNode], ledger: AssetLedger) -> dict[str, byte
                 ) from None
             out[slot] = blob
     return out
-
-
-def _addresses(roots: Sequence[CarrierNode], rows: Sequence[Row]) -> dict[str, str]:
-    """Every `data-ow-el` and the construct its element is: the first native element row it
-    matches, as the walk dispatches it (D786)."""
-    out: dict[str, str] = {}
-    for root in roots:
-        for node in walk(root):
-            if not node.el:
-                continue
-            for row in rows:
-                if row.selector.kind == "element" and row.selector.matches(node):
-                    out[node.el] = row.construct.id
-                    break
-    return out
-
-
-def _cited(roots: Sequence[CarrierNode], plan: Plan) -> list[dict[str, JsonValue]]:
-    """The provenance part's rows: every cited element has an address and every cite a pin."""
-    rows: list[dict[str, JsonValue]] = []
-    for root in roots:
-        for node in walk(root):
-            tokens = (node.attr("data-ow-cite") or "").split()
-            if not tokens:
-                continue
-            if not node.el:
-                raise TargetError(
-                    f"{node.at}: an element cites {' '.join(tokens)} and carries no data-ow-el, "
-                    "so its provenance row has no address",
-                    symbol="OW_TARGET_IL_MALFORMED",
-                    fix="ow out stamp",
-                )
-            facts = _facts(node, single=len(tokens) == 1)
-            for token in tokens:
-                cite = token.removeprefix(f"{plan.corpus}:")
-                pinned = plan.cites.get(Cite(cite))
-                if pinned is None:
-                    raise TargetError(
-                        f"{node.at}: cite {token!r} has no generation pinned in the Plan",
-                        symbol="OW_TARGET_CITE_UNRESOLVED",
-                        fix=f"ow open {token}",
-                    )
-                rows.append({"el": node.el, "cite": cite, "doc_gen": pinned, **facts})
-    return rows
-
-
-def _facts(node: CarrierNode, *, single: bool) -> dict[str, JsonValue]:
-    """A cite's kind and span as the IL states them; a span names one cite's text, so it is
-    read only beside a single cite, as the compile's `artifact_cite` rows read it."""
-    raw_kind, raw_span = node.attr("data-ow-cite-kind"), node.attr("data-ow-cite-span")
-    try:
-        kind = None if raw_kind is None else cites.kind(raw_kind)
-        span = None if raw_span is None or not single else cites.span(raw_span)
-    except ValueError as exc:
-        raise TargetError(
-            f"{node.at}: {exc}", symbol="OW_TARGET_IL_MALFORMED", fix="ow out check --stage final"
-        ) from None
-    return {"kind": kind, "span": None if span is None else list(span)}
 
 
 def _bodies(root: CarrierNode) -> dict[str, CarrierNode]:

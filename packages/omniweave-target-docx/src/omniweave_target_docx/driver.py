@@ -55,7 +55,6 @@ make the card `implemented = true`.
 from __future__ import annotations
 
 import hashlib
-import json
 import tomllib
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
@@ -74,6 +73,7 @@ from omniweave_core.out import (
     classify_and_assert,
     html_carrier,
     part_digest,
+    provenance,
 )
 from omniweave_core.out.carrier import parse_selector
 from omniweave_core.out.conformance import cite_pack, table_pack
@@ -221,7 +221,7 @@ class DocxCompiler:
                     "passed" if page is not None else "warning",
                     page or f"canvas format {canvas!r} names no page; the page is letter",
                 ),
-                _citations(members),
+                provenance.citations(members, PROVENANCE),
                 CheckValue("bake_used", "not-applicable", "owflow/1 has no bake row"),
                 CheckValue("measure_available", "not-applicable", 'measure = "none"'),
             ),
@@ -248,12 +248,3 @@ class DocxCompiler:
             symbol="OW_TARGET_PROJECT_UNAVAILABLE",
             fix="ow out back <slug> --gen <gen>   # edit from the retained IL, not a projection",
         )
-
-
-def _citations(members: Mapping[str, bytes]) -> CheckValue:
-    """Ruling 10: the embedded channel's rows, counted from the part itself."""
-    raw = members.get(PROVENANCE)
-    if raw is None:
-        return CheckValue("citations_channel", "failed", f"no {PROVENANCE} in the package")
-    rows = json.loads(raw).get("cites", [])
-    return CheckValue("citations_channel", "passed", f"embedded: {len(rows)} cite row(s)")

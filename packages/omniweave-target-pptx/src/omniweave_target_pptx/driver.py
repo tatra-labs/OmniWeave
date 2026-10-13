@@ -4,10 +4,9 @@
 root is one slide."* The card, `constructs.toml`, `kind_map.toml` and `normalizers.py` sit beside
 this file, and the hand-written rules in `rules/`, one rule a file. This cell builds what
 `ow out check` runs: the carrier, the table's rules and the structural band; D790 adds the
-grammar band, and D791 the references, effects and cite rules. D792 adds `measure.py`, and D795
-the lowering's first families (`lower/`). The rest of the lowering is later cells, so the card
-says `implemented = false` with that reason, and `ow out make` refuses with it before `lower()`
-is called; `lower()` itself refuses a unit that uses a family not yet lowered.
+grammar band, and D791 the references, effects and cite rules. D792 adds `measure.py`, D795 to
+D801 the lowering family by family (`lower/`), and D802 its manual regions and citations, the
+last of the table's families: the card says `implemented = true`.
 
 ## Rulings
 
@@ -68,6 +67,7 @@ from omniweave_core.out import (
     classify_and_assert,
     part_digest,
 )
+from omniweave_core.out import provenance as channel
 from omniweave_core.out.carrier.xml import svg_carrier
 from omniweave_core.out.conformance import cite_pack, table_pack
 from omniweave_core.out.job import Job
@@ -91,13 +91,22 @@ if TYPE_CHECKING:
     )
     from omniweave_ports import DriverIO
 
-__all__ = ["BAKE", "CARD", "HERE", "MAX_UNITS", "NORMALIZERS", "REASON", "PptxCompiler", "table"]
+__all__ = [
+    "BAKE",
+    "CARD",
+    "HERE",
+    "MAX_UNITS",
+    "NORMALIZERS",
+    "PROVENANCE",
+    "PptxCompiler",
+    "table",
+]
 
 HERE: Final = Path(__file__).parent
 CARD: Final = HERE / "driver.toml"
 _COMPILE: Final = tomllib.loads(CARD.read_text(encoding="utf-8"))["compile"]
-REASON: Final[str] = _COMPILE["reason"]
-"""The card's own sentence, read once: the refusal and `ow out targets` say the same thing."""
+PROVENANCE: Final[str] = _COMPILE["provenance_part"]
+"""`customXml/omniweave-provenance.json`: the embedded channel, named once, by the card."""
 BAKE: Final[str] = _COMPILE["bake"]
 """Ruling 2: the card's `[compile] bake`, which decides a bake row's severity."""
 MAX_UNITS: Final[int] = _COMPILE["max_units"]
@@ -121,8 +130,7 @@ def table() -> ConstructTable:
 
 
 class PptxCompiler:
-    """owsvg/1's carrier, rules and lowering; `ow out make` refuses it until the card is
-    implemented."""
+    """owsvg/1's carrier, rules and lowering to DrawingML, and the package read back."""
 
     PORT: ClassVar[str] = "compile/1"
     SCHEMA_VERSION: ClassVar[int] = 1
@@ -131,10 +139,8 @@ class PptxCompiler:
     def probe(cls, env: ProbeEnv) -> ProbeVerdict:
         del env
         return ProbeVerdict(
-            status=ProbeStatus.UNAVAILABLE,
-            detail=f"implemented = false: {REASON}",
-            missing=("lower/ for manual regions and citations",),
-            fix_hint="ow out targets",
+            status=ProbeStatus.OK,
+            detail="python-pptx and lxml; uharfbuzz measures where font_dirs names faces",
         )
 
     def __init__(self, **config: Scalar | list[str]) -> None:
@@ -191,6 +197,7 @@ class PptxCompiler:
             normalizers=NORMALIZERS,
             clock_ns=Job.load(Path(il.root).parent).determinism.clock_ns,
             max_units=MAX_UNITS,
+            provenance=PROVENANCE,
         )
         return DriverResult(outcome="ok", produced=(ArtifactRef.of("artifact", payload, io),))
 
@@ -232,7 +239,7 @@ class PptxCompiler:
                     "passed",
                     "none" if size is None else f"{size.get('cx')}x{size.get('cy')} EMU",
                 ),
-                CheckValue("citations_channel", "skipped", "the provenance part is not built"),
+                channel.citations(members, PROVENANCE),
                 CheckValue("bake_used", "not-applicable", 'bake = "unavailable"'),
                 CheckValue(
                     "measure_available",

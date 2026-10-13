@@ -10,7 +10,7 @@ filter (D799) is its `p:grpSpPr`'s `a:effectLst`, turned by the matrix its child
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from omniweave_target_pptx.lower import effects
 from omniweave_target_pptx.lower._emit import xfrm
@@ -32,9 +32,9 @@ def group(em: Emitter, node: CarrierNode, chain: Chain) -> None:
     framed(em, node, chain, lambda: em.children(node, chain))
 
 
-def framed(em: Emitter, node: CarrierNode, chain: Chain, draw: Callable[[], None]) -> None:
+def framed(em: Emitter, node: CarrierNode, chain: Chain, draw: Callable[[], None]) -> Any:
     """A `p:grpSp` named by `node`, holding what `draw` lowers: a `<g>`'s children, or the
-    clone a `<use>` draws (D801)."""
+    clone a `<use>` draws (D801). The group is returned, for a manual region to describe."""
     group_id = em.take_id()
     made = element("p:grpSp")
     properties = element("p:nvGrpSpPr", made)
@@ -44,7 +44,7 @@ def framed(em: Emitter, node: CarrierNode, chain: Chain, draw: Callable[[], None
     frame = element("p:grpSpPr", made)
     with em.group(made) as boxes:
         draw()
-    box = _bounds(boxes)
+    box = bounds(boxes)
     frame.append(xfrm(box, None, child=box))
     found = effects.apply(node, em.definitions)
     if found is not None:
@@ -52,9 +52,11 @@ def framed(em: Emitter, node: CarrierNode, chain: Chain, draw: Callable[[], None
         fill = inherited(chain, "fill")
         effects.effect(found, frame, scale=m.scale, turn=angle(m), fill=fill)
     em.add(made, box)
+    return made
 
 
-def _bounds(boxes: list[Placed]) -> Placed:
+def bounds(boxes: list[Placed]) -> Placed:
+    """The box `boxes` take together; an empty list is a box at the origin with no extent."""
     if not boxes:
         return Placed(0, 0, 0, 0)
     left = min(b.x for b in boxes)
