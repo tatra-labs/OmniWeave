@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_core.errors import TargetError
 
-from omniweave_target_pptx.lower import paint, stroke
+from omniweave_target_pptx.lower import effects, paint, stroke
 from omniweave_target_pptx.lower._emit import xfrm
 from omniweave_target_pptx.lower._geometry import emu, place
 from omniweave_target_pptx.lower._style import element
@@ -112,6 +112,7 @@ def text_box(em: Emitter, node: CarrierNode, chain: Chain) -> None:
         shift(n)  # a `dx` anywhere in the text is refused, as the gate refuses it
     chains = {id(n): c for n, c in nodes}
     found = lines(node, preserve=whitespace(node))
+    filtered = effects.apply(node, em.definitions)
     sizes = [
         max((size(owner) for _, owner in line.runs), default=size(line.node)) for line in found
     ]
@@ -152,6 +153,7 @@ def text_box(em: Emitter, node: CarrierNode, chain: Chain) -> None:
                 lang=em.lang,
                 scale=m.scale,
                 definitions=em.definitions,
+                effect=filtered,
             )
         _end(paragraph, own * m.scale, em.lang)
     em.add(made, placed)
@@ -166,8 +168,9 @@ def run(
     lang: str,
     scale: float,
     definitions: Mapping[str, CarrierNode],
+    effect: CarrierNode | None = None,
 ) -> None:
-    """One `a:r`: its owner's properties and its text."""
+    """One `a:r`: its owner's properties, its text's filter (D799), and its text."""
     underline, strike = decoration(owner)
     attrs = {"sz": str(round(size(owner) * scale * HUNDREDTHS))}
     if lang:
@@ -193,6 +196,9 @@ def run(
     else:
         properties.remove(line)
     paint.fill(chain, properties, definitions=definitions)
+    if effect is not None:
+        fill = inherited(owner, "fill")
+        effects.effect(effect, properties, scale=scale, turn=0.0, fill=fill)
     face = typeface(owner)
     if face is not None:
         for tag in ("a:latin", "a:ea", "a:cs"):

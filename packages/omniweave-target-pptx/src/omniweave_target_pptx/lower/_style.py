@@ -5,14 +5,20 @@ from a node's `style` declaration before its attribute (CSS outranks a presentat
 and an inherited property from the nearest node in the chain that states it. `opacity` is not
 inherited: a group's composes with its children's, so a node's is the product down its chain,
 the alpha ppt-master pushes down to a group's children (`svg_contracts.py:449-471`).
+
+`named()` (D799) resolves a `url(#id)` property, a paint, a filter or a marker, to the definition
+its id names in the slide, and refuses an id that names nothing or the wrong kind of definition,
+as `pptx.reference@1` does (`OW_TARGET_REFERENCE_UNRESOLVED`).
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import re
+from collections.abc import Collection, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Final
 
 from lxml import etree  # type: ignore[attr-defined] -- lxml ships no stubs
+from omniweave_core.errors import TargetError
 from omniweave_core.out.carrier import style_declarations
 from pptx.oxml.ns import qn
 
@@ -27,6 +33,7 @@ __all__ = [
     "declared",
     "element",
     "inherited",
+    "named",
     "number",
     "solid",
 ]
@@ -35,6 +42,7 @@ ALPHA_FULL: Final = 100_000
 """DrawingML's `a:alpha` is in thousandths of a percent."""
 
 Chain = Sequence["CarrierNode"]
+_URL: Final = re.compile(r"url\(#([^)\s]+)\)")
 
 
 def element(tag: str, parent: Any = None, **attrs: str) -> Any:
@@ -61,6 +69,26 @@ def inherited(chain: Chain, prop: str) -> str | None:
         if found is not None:
             return found
     return None
+
+
+def named(
+    stated: str,
+    definitions: Mapping[str, CarrierNode],
+    tags: Collection[str],
+    *,
+    what: str,
+) -> CarrierNode:
+    """The definition `url(#id)` names, of one of `tags`; refused when it names nothing else."""
+    m = _URL.fullmatch(stated.strip())
+    found = None if m is None else definitions.get(m[1])
+    if found is None or found.tag not in tags:
+        named_ = "no id in this slide" if found is None else f"a <{found.tag.partition('|')[2]}>"
+        raise TargetError(
+            f"{stated} names {named_}; it must name {what}",
+            symbol="OW_TARGET_REFERENCE_UNRESOLVED",
+            fix="ow out check --stage final   # pptx.reference@1 names the same problem",
+        )
+    return found
 
 
 def number(text: str | None, default: float) -> float:
