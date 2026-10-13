@@ -4,9 +4,10 @@
 root is one slide."* The card, `constructs.toml`, `kind_map.toml` and `normalizers.py` sit beside
 this file, and the hand-written rules in `rules/`, one rule a file. This cell builds what
 `ow out check` runs: the carrier, the table's rules and the structural band; D790 adds the
-grammar band. `measure.py`, the reference band and the lowering to DrawingML are later cells, so
-the card says `implemented = false` with that reason, and `lower()`, `postflight()` and
-`project()` refuse with it, as `compile.docx.native` did before its lowering.
+grammar band, and D791 the references, effects and cite rules. `measure.py` and the lowering to
+DrawingML are later cells, so the card says `implemented = false` with that reason, and
+`lower()`, `postflight()` and `project()` refuse with it, as `compile.docx.native` did before its
+lowering.
 
 ## Rulings
 
@@ -15,8 +16,9 @@ the card says `implemented = false` with that reason, and `lower()`, `postflight
    `ow out stamp` addresses and R2 compares.
 2. **The pack is two halves.** `omniweave_core.out.conformance.table_pack()` builds the forbidden
    rows, `id` with `<style>` (`OW-T-402`), the closed set, the normalize warnings and the bake
-   rows from the table. `rules/` holds the structural rules. The card's `bake` is the pack's, so
-   a bake construct is an error while `bake = "unavailable"` (09 section 3.3).
+   rows from the table, and `cite_pack()` the cite facts and the cite batch (D791). `rules/`
+   holds the rest. The card's `bake` is the pack's, so a bake construct is an error while
+   `bake = "unavailable"` (09 section 3.3).
 3. **The table is read once, when the rules are first asked for.** `__init__` loads nothing, as
    every Port's constructor (18-api-sketch.md section 6.2).
 4. **`measure()` is `None` until `measure.py` lands.** The card says `measure = "none"`, and no
@@ -34,7 +36,7 @@ from typing import TYPE_CHECKING, ClassVar, Final, NoReturn
 from omniweave_core.errors import TargetError
 from omniweave_core.out import ConstructTable
 from omniweave_core.out.carrier.xml import svg_carrier
-from omniweave_core.out.conformance import table_pack
+from omniweave_core.out.conformance import cite_pack, table_pack
 from omniweave_ports import ProbeEnv, ProbeStatus, ProbeVerdict, Scalar
 
 from omniweave_target_pptx import normalizers, rules
@@ -104,8 +106,12 @@ class PptxCompiler:
         return svg_carrier(path, text, strict=False)
 
     def rules(self) -> Mapping[str, Sequence[RuleSpec]]:
-        """Ruling 2: the table's half under `construct`, then `rules/`'s."""
-        return {"construct": table_pack(table(), "pptx", NORMALIZERS, bake=BAKE), **rules.rules()}
+        """Ruling 2: the table's halves under `construct` and `cite`, then `rules/`'s."""
+        return {
+            "construct": table_pack(table(), "pptx", NORMALIZERS, bake=BAKE),
+            "cite": cite_pack(table(), "pptx"),
+            **rules.rules(),
+        }
 
     def measure(self) -> TextMeasure | None:
         """Ruling 4."""

@@ -36,6 +36,15 @@ where a second copy of a row's selector could disagree with the row.
    is `available`, and an `error` when it is `unavailable`. The row has no `msg` (09 section 3.4
    forbids one), so the finding names its renderer and dpi. Without this rule a bake construct
    passed the gate and was refused only at preflight 5, after the gate had said `passed`.
+7. **D791: the cite rules are the framework's, built from the table** (`cite_pack()`). `ow:cite`
+   is mandatory in every table, so its two checks are every target's, and a copy in each target
+   could disagree with the next (INV-21). `<target>.cite.facts@1` (order 58, the grammar band's
+   last) holds `data-ow-cite-kind` to the four kinds and `data-ow-cite-span` to `a:b` with
+   `a < b`, as the compile will (`run.out_compile` ruling 7), each only where the table has
+   that row. `<target>.cite.resolves@1` (order 80, `needs={"cites"}`) resolves every cite on the
+   unit in one batch (09 section 10). Each finding names the row the table gives the
+   attribute. The reference target, owtext, keeps its own: 18-api-sketch.md section 6.2
+   prints that driver whole.
 """
 
 from __future__ import annotations
@@ -45,13 +54,19 @@ from typing import Final
 
 from omniweave_core.errors import TargetError
 from omniweave_core.out.carrier import CarrierNode, Selector, parse_selector, style_declarations
+from omniweave_core.out.cites import CITE_KINDS
 from omniweave_core.out.constructs import Construct, ConstructTable, Disposition
 from omniweave_core.out.finding import Finding, Provenance, Severity
 from omniweave_core.out.rules import RuleCtx, RuleSpec
 
-__all__ = ["NOT_IN_TABLE", "table_pack", "undeclared"]
+__all__ = ["CITE_FACTS", "CITE_UNRESOLVED", "NOT_IN_TABLE", "cite_pack", "table_pack", "undeclared"]
 
 NOT_IN_TABLE: Final = "OW_TARGET_CONSTRUCT_NOT_IN_TABLE"
+CITE_FACTS: Final = "OW_TARGET_IL_MALFORMED"
+CITE_UNRESOLVED: Final = "OW_TARGET_CITE_UNRESOLVED"
+_CITE: Final = "data-ow-cite"
+_CITE_KIND: Final = "data-ow-cite-kind"
+_CITE_SPAN: Final = "data-ow-cite-span"
 _STYLE: Final = "style"
 
 
@@ -127,6 +142,106 @@ def table_pack(
             )
         )
     return tuple(specs)
+
+
+def cite_pack(table: ConstructTable, target: str) -> tuple[RuleSpec, ...]:
+    """Ruling 7: the cite facts and the cite batch, named for `target` (`docx`, `pptx`)."""
+    rows = {
+        r.selector.removeprefix("@"): r.id
+        for r in table.rows
+        if r.disposition is Disposition.NATIVE and r.selector.startswith("@data-ow-cite")
+    }
+    specs: list[RuleSpec] = []
+    if _CITE_KIND in rows or _CITE_SPAN in rows:
+        specs.append(
+            RuleSpec(
+                f"{target}.cite.facts@1",
+                58,
+                "unit",
+                frozenset({CITE_FACTS}),
+                _cite_facts(rows, target, f"{target}.cite.facts@1"),
+            )
+        )
+    specs.append(
+        RuleSpec(
+            f"{target}.cite.resolves@1",
+            80,
+            "unit",
+            frozenset({CITE_UNRESOLVED}),
+            _cite_resolves(rows.get(_CITE, "ow.cite"), f"{target}.cite.resolves@1"),
+            needs=frozenset({"cites"}),
+        )
+    )
+    return tuple(specs)
+
+
+def _cite_facts(
+    rows: Mapping[str, str], target: str, rule: str
+) -> Callable[[RuleCtx], Iterable[Finding]]:
+    def fn(ctx: RuleCtx) -> Iterator[Finding]:
+        if ctx.doc is None or ctx.unit is None:
+            return
+        if _CITE_KIND in rows:
+            for n in ctx.doc.select(f"@{_CITE_KIND}"):
+                value = n.attr(_CITE_KIND) or ""
+                if value not in CITE_KINDS:
+                    msg = f"{_CITE_KIND}={value!r} is not one of {sorted(CITE_KINDS)}"
+                    fix = f"ow out constructs {target} --construct {rows[_CITE_KIND]}"
+                    yield _cite_finding(
+                        ctx, n, code=CITE_FACTS, construct=rows[_CITE_KIND], rule=rule, msg=msg,
+                        fix=fix,
+                    )  # fmt: skip
+        if _CITE_SPAN in rows:
+            for n in ctx.doc.select(f"@{_CITE_SPAN}"):
+                value = n.attr(_CITE_SPAN) or ""
+                a, sep, b = value.partition(":")
+                if not sep or not a.isdecimal() or not b.isdecimal() or int(a) >= int(b):
+                    msg = f"{_CITE_SPAN}={value!r} is not a:b with a < b"
+                    fix = f"ow out constructs {target} --construct {rows[_CITE_SPAN]}"
+                    yield _cite_finding(
+                        ctx, n, code=CITE_FACTS, construct=rows[_CITE_SPAN], rule=rule, msg=msg,
+                        fix=fix,
+                    )  # fmt: skip
+
+    return fn
+
+
+def _cite_resolves(construct: str, rule: str) -> Callable[[RuleCtx], Iterable[Finding]]:
+    def fn(ctx: RuleCtx) -> Iterator[Finding]:
+        if ctx.doc is None or ctx.unit is None:
+            return
+        nodes = ctx.doc.select(f"@{_CITE}")
+        tokens = tuple(dict.fromkeys(c for n in nodes for c in (n.attr(_CITE) or "").split()))
+        if not tokens:
+            return
+        found = ctx.cites.by_cites(tokens)
+        for n in nodes:
+            for c in (n.attr(_CITE) or "").split():
+                if found.get(c) is None:
+                    msg = f"cite {c!r} resolves to no live block in this corpus"
+                    yield _cite_finding(
+                        ctx, n, code=CITE_UNRESOLVED, construct=construct, rule=rule, msg=msg,
+                        fix=f"ow open {c}",
+                    )  # fmt: skip
+
+    return fn
+
+
+def _cite_finding(
+    ctx: RuleCtx, n: CarrierNode, *, code: str, construct: str, rule: str, msg: str, fix: str
+) -> Finding:
+    return Finding(
+        code=code,
+        severity=Severity.ERROR,
+        provenance=Provenance.INTRODUCED,
+        rule=rule,
+        unit=ctx.unit.id if ctx.unit is not None else "",
+        construct=construct,
+        msg=msg,
+        fix=fix,
+        at=n.at,
+        el=n.el,
+    )
 
 
 def undeclared(table: ConstructTable, root: CarrierNode) -> Iterator[tuple[CarrierNode, str]]:
