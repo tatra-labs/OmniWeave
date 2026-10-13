@@ -3,10 +3,10 @@
 09-generation.md section 12.1. *"A closed SVG subset. The `viewBox` is the canvas and one `<svg>`
 root is one slide."* The card, `constructs.toml`, `kind_map.toml` and `normalizers.py` sit beside
 this file, and the hand-written rules in `rules/`, one rule a file. This cell builds what
-`ow out check` runs: the carrier, the table's rules and the structural band. The grammar band,
-`measure.py` and the lowering to DrawingML are later cells, so the card says
-`implemented = false` with that reason, and `lower()`, `postflight()` and `project()` refuse with
-it, as `compile.docx.native` did before its lowering.
+`ow out check` runs: the carrier, the table's rules and the structural band; D790 adds the
+grammar band. `measure.py`, the reference band and the lowering to DrawingML are later cells, so
+the card says `implemented = false` with that reason, and `lower()`, `postflight()` and
+`project()` refuse with it, as `compile.docx.native` did before its lowering.
 
 ## Rulings
 
@@ -62,12 +62,7 @@ REASON: Final[str] = _COMPILE["reason"]
 BAKE: Final[str] = _COMPILE["bake"]
 """Ruling 2: the card's `[compile] bake`, which decides a bake row's severity."""
 
-NORMALIZERS: Final[Mapping[str, Callable[[str], str]]] = {
-    "collapse_space": normalizers.collapse_space,
-    "opacity_fraction": normalizers.opacity_fraction,
-    "px_length": normalizers.px_length,
-    "upper_hex": normalizers.upper_hex,
-}
+NORMALIZERS: Final[Mapping[str, Callable[[str], str]]] = normalizers.BY_NAME
 
 
 @cache

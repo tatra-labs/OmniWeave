@@ -111,6 +111,7 @@ class _Ctx:
     unit: OutUnit | None = UNIT
     limits: dict[str, int] = field(default_factory=dict)
     brief: Any = None
+    constructs: Any = TABLE
 
 
 def _codes(body: str) -> list[str]:
@@ -330,9 +331,15 @@ def test_a_clean_deck_is_a_manual_required_gate(tmp_path: Path) -> None:
         ),
         (f'{SVG}><circle cx="1" cy="1" r="1" style="mix-blend-mode: multiply"/></svg>',
          "OW_TARGET_BLEND_REQUIRES_BAKE"),
+        (f'{SVG}><rect width="1" height="1" fill="red"/></svg>', "OW_TARGET_FILL_INVALID"),
+        (f'{SVG}><path d="M0 0 L"/></svg>', "OW_TARGET_PATH_INVALID"),
+        (f'{SVG}><rect width="1" height="1" transform="skewX(5)"/></svg>',
+         "OW_TARGET_TRANSFORM_INVALID"),
+        (f'{SVG}><defs><linearGradient id="g"><stop offset="0" stop-color="#FFFFFF"/>'
+         "</linearGradient></defs></svg>", "OW_TARGET_GRADIENT_INVALID"),
     ],
 )  # fmt: skip
-def test_the_structural_rules_and_a_bake_row_fail_the_gate(
+def test_the_structural_and_grammar_rules_and_a_bake_row_fail_the_gate(
     tmp_path: Path, u01: str, code: str
 ) -> None:
     result = _check(tmp_path, u01)
