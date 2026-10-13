@@ -274,7 +274,7 @@ def test_every_tabled_targets_agent_doc_is_under_its_budget_whole_and_per_group(
     """Every card that names a table, implemented or not (D781): docx is gated before it lowers."""
     encode = _encoder()
     tabled = [(d, c) for d, c in _compile_cards() if c.constructs]
-    assert {c.target for _, c in tabled} >= {"owtext", "docx"}
+    assert {c.target for _, c in tabled} >= {"owtext", "docx", "pptx"}
     for driver_card, card in tabled:
         table = load_table(Path(driver_card.source), card)
         assert card.agent_doc_tokens_max > 0

@@ -8,11 +8,12 @@ where a second copy of a row's selector could disagree with the row.
 
 ## Rulings
 
-1. **Four rules, each present only when the table has rows for it.** Order 20 reports every node a
+1. **Five rules, each present only when the table has rows for it.** Order 20 reports every node a
    `forbidden` row's selector matches, with the row's code and `msg`. Order 21 reports every node
    a `forbidden_when` row's selector matches in a unit where the condition holds, through
    `ConstructTable.conditional()`, so the condition is evaluated in one place (09 section 3.1
    rule 5). Order 22 is the closed set. Order 23 is one folded warning per `normalize` row.
+   Order 24 reports every node a `bake` row's selector matches (ruling 6).
 2. **The closed set is three questions about each node.** Does an element row match the element?
    Does an attribute row, or the qualifier of an element row that matched, name each attribute?
    Does a `@style|<prop>` row name each property its `style` declares? A table with no
@@ -30,6 +31,11 @@ where a second copy of a row's selector could disagree with the row.
    applies (D768 ruling 4). A `normalize` row whose inherited selector is an element or a style
    property names no value, and `ow out normalize` refuses it, so `table_pack()` refuses it too,
    as `OW_TARGET_CONSTRUCTS_INVALID`, when the pack is built.
+6. **A `bake` row is order 24, and its severity is the card's** (D789). 09 section 3.3's table:
+   a construct with a defined raster degradation is a `warning` when the card's `[compile] bake`
+   is `available`, and an `error` when it is `unavailable`. The row has no `msg` (09 section 3.4
+   forbids one), so the finding names its renderer and dpi. Without this rule a bake construct
+   passed the gate and was refused only at preflight 5, after the gate had said `passed`.
 """
 
 from __future__ import annotations
@@ -50,10 +56,16 @@ _STYLE: Final = "style"
 
 
 def table_pack(
-    table: ConstructTable, target: str, normalizers: Mapping[str, Callable[[str], str]]
+    table: ConstructTable,
+    target: str,
+    normalizers: Mapping[str, Callable[[str], str]],
+    *,
+    bake: str = "unavailable",
 ) -> tuple[RuleSpec, ...]:
-    """Ruling 1's rules for one table, in order. `normalizers` is the target's by name."""
+    """Ruling 1's rules for one table, in order. `normalizers` is the target's by name, and
+    `bake` the card's `[compile] bake` (ruling 6)."""
     forbidden = tuple(r for r in table.rows if r.disposition is Disposition.FORBIDDEN)
+    baked = tuple(r for r in table.rows if r.disposition is Disposition.BAKE)
     conditional = tuple(r for r in table.rows if r.forbidden_when is not None)
     normalize = tuple(r for r in table.rows if r.disposition is Disposition.NORMALIZE)
     for row in normalize:
@@ -102,6 +114,16 @@ def table_pack(
                 "unit",
                 frozenset(r.code for r in normalize),
                 _normalize_rule(table, normalize, normalizers, f"ow.{target}.normalize@1"),
+            )
+        )
+    if baked:
+        specs.append(
+            RuleSpec(
+                f"ow.{target}.bake@1",
+                24,
+                "unit",
+                frozenset(r.code for r in baked),
+                _bake_rule(baked, target, f"ow.{target}.bake@1", available=bake == "available"),
             )
         )
     return tuple(specs)
@@ -242,12 +264,43 @@ def _normalize_rule(
     return fn
 
 
+def _bake_rule(
+    rows: Sequence[Construct], target: str, rule: str, *, available: bool
+) -> Callable[[RuleCtx], Iterable[Finding]]:
+    severity = Severity.WARNING if available else Severity.ERROR
+
+    def fn(ctx: RuleCtx) -> Iterator[Finding]:
+        if ctx.doc is None or ctx.unit is None:
+            return
+        for row in rows:
+            how = "" if row.bake is None else f" ({row.bake.renderer} at {row.bake.dpi} dpi)"
+            msg = (
+                f"{row.selector} is baked{how}, a lossy raster degradation"
+                if available
+                else f"{row.selector} needs the bake tier{how}, and this target's bake is "
+                "unavailable"
+            )
+            for n in ctx.doc.select(row.selector):
+                yield _row_finding(
+                    row, n, unit=ctx.unit.id, target=target, rule=rule, msg=msg, severity=severity
+                )
+
+    return fn
+
+
 def _row_finding(
-    row: Construct, n: CarrierNode, *, unit: str, target: str, rule: str, msg: str
+    row: Construct,
+    n: CarrierNode,
+    *,
+    unit: str,
+    target: str,
+    rule: str,
+    msg: str,
+    severity: Severity = Severity.ERROR,
 ) -> Finding:
     return Finding(
         code=row.code,
-        severity=Severity.ERROR,
+        severity=severity,
         provenance=Provenance.INTRODUCED,
         rule=rule,
         unit=unit,

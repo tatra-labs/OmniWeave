@@ -1127,6 +1127,94 @@ fix     = "ow explain OW-T-529"
 raised_by = "TargetError"
 sites   = ["02-architecture.md:631"]
 
+# ── D789. owsvg/1, the pptx target's table and structural rules (09-generation.md section
+# 12.1). 2xx normalize, 4xx constructs; the grammar codes are named by the table's rows now
+# and emitted by the grammar band.
+
+[[code]]
+numeric = "OW-T-215"
+symbol  = "OW_TARGET_LENGTH_UNIT"
+meaning = "owsvg/1's normalize rows: a user-unit length or font size written with a px suffix, which an owsvg/1 user unit already is; a warning, folded"
+fix     = "ow out normalize --construct geom.x.px"
+sites   = ["09-generation.md:2232"]
+
+[[code]]
+numeric = "OW-T-216"
+symbol  = "OW_TARGET_OPACITY_PERCENT"
+meaning = "owsvg/1's normalize rows: an opacity written as a percentage, whose canonical form is a fraction 0-1; a warning, folded"
+fix     = "ow out normalize --construct paint.opacity.percent"
+sites   = ["09-generation.md:2232"]
+
+[[code]]
+numeric = "OW-T-419"
+symbol  = "OW_TARGET_CANVAS_MISMATCH"
+meaning = "an owsvg/1 slide whose root viewBox is not '0 0 W H' in positive integers, whose W or H is outside a PowerPoint slide's 96-5376 user units, whose root transform, width or height rescales it, or whose W:H is not the Brief's canvas format (D789)"
+fix     = "ow out constructs pptx --construct canvas.viewbox"
+sites   = ["09-generation.md:2230"]
+
+[[code]]
+numeric = "OW-T-420"
+symbol  = "OW_TARGET_GEOMETRY_INVALID"
+meaning = "an owsvg/1 length, point list or aspect value outside its row's grammar: a negative width, a polygon of two points, an unknown preserveAspectRatio"
+fix     = "ow out constructs pptx --group geom"
+sites   = ["09-generation.md:2232"]
+
+[[code]]
+numeric = "OW-T-421"
+symbol  = "OW_TARGET_PATH_INVALID"
+meaning = "owsvg/1 path data that is incomplete or outside SVG's command grammar: a path not starting with M, a command missing an argument"
+fix     = "ow out constructs pptx --construct geom.d"
+sites   = ["09-generation.md:2232"]
+
+[[code]]
+numeric = "OW-T-422"
+symbol  = "OW_TARGET_TRANSFORM_INVALID"
+meaning = "an owsvg/1 transform outside the four operations DrawingML can hold (translate, scale, rotate, matrix), a skew or shear, or a matrix on text"
+fix     = "ow out constructs pptx --construct geom.transform"
+sites   = ["09-generation.md:2232"]
+
+[[code]]
+numeric = "OW-T-423"
+symbol  = "OW_TARGET_OPACITY_INVALID"
+meaning = "an owsvg/1 opacity that is not a number from 0 to 1"
+fix     = "ow out constructs pptx --group paint"
+sites   = ["09-generation.md:2232"]
+
+[[code]]
+numeric = "OW-T-424"
+symbol  = "OW_TARGET_STROKE_INVALID"
+meaning = "an owsvg/1 stroke value outside its row's grammar: a negative width, a dash array with a zero or negative entry, an unknown cap, join or vector-effect"
+fix     = "ow out constructs pptx --group stroke"
+sites   = ["09-generation.md:2232"]
+
+[[code]]
+numeric = "OW-T-425"
+symbol  = "OW_TARGET_FONT_INVALID"
+meaning = "an owsvg/1 text property outside its row's grammar: a font size DrawingML cannot hold, a weight that is not 100-900, text-anchor on a tspan"
+fix     = "ow out constructs pptx --group text"
+sites   = ["09-generation.md:2232"]
+
+[[code]]
+numeric = "OW-T-426"
+symbol  = "OW_TARGET_GRADIENT_INVALID"
+meaning = "an owsvg/1 gradient DrawingML cannot hold: fewer than two stops, offsets that decrease, coordinates outside the bounding box, a focus outside the circle"
+fix     = "ow out constructs pptx --group def"
+sites   = ["09-generation.md:2232"]
+
+[[code]]
+numeric = "OW-T-427"
+symbol  = "OW_TARGET_REFERENCE_UNRESOLVED"
+meaning = "an owsvg/1 url(#id) or href=\"#id\" naming no local definition of the kind it needs, or a link target that is neither #u<NN> nor https:"
+fix     = "ow out constructs pptx --construct geom.href"
+sites   = ["09-generation.md:2234"]
+
+[[code]]
+numeric = "OW-T-428"
+symbol  = "OW_TARGET_EFFECT_INVALID"
+meaning = "an owsvg/1 filter, marker or clip path DrawingML cannot hold: more than one effect primitive, a marker on a shape that is not a line or path, a clip on a shape that is not an image"
+fix     = "ow out constructs pptx --group effect"
+sites   = ["09-generation.md:2232"]
+
 # ── W1.5, the driver card grammar (04-driver-system.md sections 2.1-2.8, 4.5, 5.3, 7.5). The
 # three discovery-point refusals of section 5.3 step 1, plus the two numerics the plan already
 # binds. `meaning` and `fix` are FILLED here rather than deferred to W1.3: these five are raised

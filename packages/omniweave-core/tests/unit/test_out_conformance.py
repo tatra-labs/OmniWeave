@@ -304,3 +304,51 @@ def test_a_normalize_row_over_an_element_or_a_property_is_refused_at_build() -> 
     with pytest.raises(TargetError, match="names no attribute value") as caught:
         table_pack(table, "owtest", NORMALIZERS)
     assert caught.value.code() == "OW_TARGET_CONSTRUCTS_INVALID"
+
+
+# ---------------------------------------------------------------------------------------------
+# ruling 6: a bake row is order 24, and its severity is the card's (D789)
+# ---------------------------------------------------------------------------------------------
+
+BAKE_ROW: dict[str, Any] = {
+    "id": "style.shadow",
+    "selector": "@style|text-shadow",
+    "disposition": "bake",
+    "round_trip": "lossy",
+    "code": "OW_TARGET_SHADOW_REQUIRES_BAKE",
+    "bake": {"renderer": "raster", "dpi": 192, "role": "bake"},
+    "since": "0.1.0",
+}
+SHADOWED = '<section><p style="text-shadow: 1px 1px red">x</p><p>y</p></section>'
+
+
+def _baked(bake: str) -> RuleSpec:
+    raw = _raw()
+    raw["construct"].append(BAKE_ROW)
+    table = ConstructTable.parse(raw, NORMALIZERS, source="baked.toml")
+    [spec] = [s for s in table_pack(table, "owtest", NORMALIZERS, bake=bake) if s.order == 24]
+    return spec
+
+
+def test_a_bake_row_is_an_error_while_the_cards_bake_is_unavailable() -> None:
+    spec = _baked("unavailable")
+    assert (spec.id, spec.codes) == ("ow.owtest.bake@1", {"OW_TARGET_SHADOW_REQUIRES_BAKE"})
+    [found] = _run(spec, SHADOWED)
+    assert (found.severity, found.construct, found.fix) == (
+        Severity.ERROR,
+        "style.shadow",
+        "ow out constructs owtest --construct style.shadow",
+    )
+    assert found.msg == (
+        "<p>: @style|text-shadow needs the bake tier (raster at 192 dpi), and this target's bake "
+        "is unavailable"
+    )
+
+
+def test_a_bake_row_is_a_warning_once_the_cards_bake_is_available() -> None:
+    [found] = _run(_baked("available"), SHADOWED)
+    assert (found.severity, found.msg) == (
+        Severity.WARNING,
+        "<p>: @style|text-shadow is baked (raster at 192 dpi), a lossy raster degradation",
+    )
+    assert _run(_baked("available"), "<section><p>y</p></section>") == []
