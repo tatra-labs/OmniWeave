@@ -6,7 +6,8 @@ bytes and
 members. The rest read a shape's DrawingML: `outline()` its elements and attributes in order,
 `box()` and `turn()` its frame, and `line_of()` its `a:ln`. D795 wrote these in
 `test_pptx_lower.py`; D796's path tests share them. D800: `assets` freezes pictures into the
-ledger, each at `slot(sha256)`, and `png()` makes one.
+ledger, each at `slot(sha256)`, and `png()` makes one. D802: `cites` pins each cite's
+generation in the Plan, and `draft` makes it a draft whose gate is `manual-required`.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from typing import Any
 import pptx
 from lxml import etree  # type: ignore[attr-defined] -- lxml ships no stubs
 from omniweave_conform.harness import MemoryBlobStore, make_io
+from omniweave_core.model.block import Cite
 from omniweave_core.out.brief import BRIEF_SCHEMA, parse_brief
 from omniweave_core.out.gate import GateStatus
 from omniweave_core.out.job import ILBundle, Job, JobDeterminism
@@ -114,6 +116,8 @@ def job_dir(
     *,
     plan_units: Sequence[str] | None = None,
     assets: Sequence[bytes] = (),
+    cites: Mapping[str, int] | None = None,
+    draft: bool = False,
 ) -> tuple[Path, Plan, FrozenLedger, MemoryBlobStore]:
     job = tmp_path / "job"
     il = job / "il"
@@ -144,13 +148,13 @@ def job_dir(
         target="pptx",
         slug="deck",
         artifact_gen=1,
-        delivery="release",
+        delivery="draft" if draft else "release",
         units=roster,
         unit_count=len(roster),
         brief=BRIEF,
         corpus="acme",
-        cites={},
-        gate_status=GateStatus.PASSED,
+        cites={Cite(k): v for k, v in (cites or {}).items()},
+        gate_status=GateStatus.MANUAL_REQUIRED if draft else GateStatus.PASSED,
         il_digest=bundle.il_digest,
         constructs_digest=TABLE.digest(),
         ledger_digest=ledger_digest(frozen),

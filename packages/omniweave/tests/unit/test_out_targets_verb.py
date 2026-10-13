@@ -92,10 +92,10 @@ def test_render_json_is_a_bare_array_and_video_is_listed_unimplemented(tmp_path:
     docx = rows["docx"]
     assert (docx["implemented"], docx["reason"]) == (True, "")
     assert docx["driver"] == "compile.docx.native"
-    #  D789: owsvg/1's table and structural rules are built and its lowering is not.
+    #  D802: pptx lowers every owsvg/1 construct, so its card is implemented.
     pptx = rows["pptx"]
-    assert (pptx["implemented"], pptx["driver"]) == (False, "compile.pptx.native")
-    assert pptx["reason"] == _card("pptx", env).reason
+    assert (pptx["implemented"], pptx["reason"]) == (True, "")
+    assert pptx["driver"] == "compile.pptx.native"
 
 
 def test_a_row_carries_the_cards_determinism_class_and_the_ten_keys_in_order(
@@ -170,6 +170,7 @@ def test_the_text_form_says_which_of_the_two_stops_a_kind(tmp_path: Path) -> Non
     assert (code, err) == (0, "")
     docx, owtext, pptx, video = out.splitlines()
     assert pptx.startswith("pptx     not ready compile.pptx.native")
+    assert pptx.endswith("not in [targets] enabled")
     assert docx.startswith("docx     not ready compile.docx.native")
     assert docx.endswith("not in [targets] enabled")
     assert owtext.startswith("owtext   not ready compile.text.owtext")

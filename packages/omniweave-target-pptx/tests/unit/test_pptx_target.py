@@ -3,8 +3,8 @@
 The card loads through `load_card()` and `CompileCard.of()`, the table through
 `ConstructTable.load()` with the target's own normalizers, and the gate runs through
 `omniweave_core.out.compile.check()`, the framework's half, over a JobDir in `tmp_path`. Each
-structural rule has its own test file, `test_pptx_rule_<rule>.py`. The compile is refused by
-name until lowering lands.
+structural rule has its own test file, `test_pptx_rule_<rule>.py`. The lowering's tests are
+`test_pptx_lower*.py`.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ from omniweave_core.out.gate import GateStatus
 from omniweave_core.out.plan import OutUnit
 from omniweave_core.out.roundtrip import applicable
 from omniweave_ports import ProbeStatus
-from omniweave_target_pptx.driver import CARD, HERE, NORMALIZERS, REASON, PptxCompiler, table
+from omniweave_target_pptx.driver import CARD, HERE, NORMALIZERS, PptxCompiler, table
 from omniweave_target_pptx.normalizers import (
     collapse_space,
     opacity_fraction,
@@ -187,10 +187,9 @@ def test_the_card_is_the_slide_target_section_12_1_prints() -> None:
     )
 
 
-def test_the_card_says_not_implemented_and_why_and_names_its_table() -> None:
-    assert not COMPILED.implemented
-    assert COMPILED.reason == REASON
-    assert "lowering to DrawingML draws shapes" in REASON
+def test_the_card_says_implemented_and_names_its_table() -> None:
+    """D802: the last of the table's families lowered, the card says `implemented = true`."""
+    assert (COMPILED.implemented, COMPILED.reason) == (True, "")
     assert COMPILED.constructs_digest == TABLE.digest()
     assert COMPILED.agent_doc_tokens_max == 6000, "09 section 3.3"
 
@@ -310,13 +309,13 @@ def test_each_normalizer_settles_in_one_step(
 # ---------------------------------------------------------------------------------------------
 
 
-def test_the_compiler_is_a_compile_v1_whose_probe_names_the_reason() -> None:
+def test_the_compiler_is_a_compile_v1_whose_probe_is_ok() -> None:
     compiler: CompileV1 = PptxCompiler()
     assert compiler.PORT == "compile/1"
     assert compiler.measure() is None
     verdict = PptxCompiler.probe(None)  # type: ignore[arg-type]
-    assert verdict.status is ProbeStatus.UNAVAILABLE
-    assert REASON in verdict.detail
+    assert verdict.status is ProbeStatus.OK
+    assert "python-pptx" in verdict.detail
 
 
 def test_projecting_a_doc_back_is_refused_by_name() -> None:
