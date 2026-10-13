@@ -133,7 +133,7 @@ class PptxCompiler:
         return ProbeVerdict(
             status=ProbeStatus.UNAVAILABLE,
             detail=f"implemented = false: {REASON}",
-            missing=("lower/ for <use>, links and citations",),
+            missing=("lower/ for manual regions and citations",),
             fix_hint="ow out targets",
         )
 

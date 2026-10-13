@@ -61,6 +61,8 @@ BUILT = frozenset(
         "lower.defs:definition_id",
         "lower.defs:definitions",
         "lower.defs:reference",
+        "lower.defs:symbol",
+        "lower.defs:use",
         "lower.effects:apply",
         "lower.effects:crop",
         "lower.effects:crop_picture",
@@ -91,6 +93,7 @@ BUILT = frozenset(
         "lower.gradients:units",
         "lower.group:group",
         "lower.ids:shape_name",
+        "lower.links:hyperlink",
         "lower.media:aspect",
         "lower.media:picture",
         "lower.paint:alpha",
@@ -139,7 +142,7 @@ BUILT = frozenset(
 
 def test_the_rows_lowered_so_far_resolve_and_no_others_do() -> None:
     """D795's 26 functions, then D796's freeforms, D797's text, D798's paint servers and
-    D799's effects, and D800's pictures."""
+    D799's effects, D800's pictures, and D801's `<use>` and links."""
     assert {m for m in NAMED if resolve(m, _pack.FAMILIES) is not None} == BUILT
 
 
@@ -160,18 +163,16 @@ def test_every_public_lowering_function_is_one_a_row_names() -> None:
     ("body", "named"),
     [
         (
-            '<defs><symbol id="s"><rect width="1" height="1"/></symbol></defs>',
-            "def.symbol (lower.defs:symbol)",
-        ),
-        (
             '<g data-ow-manual="unverifiable_data"><rect width="1" height="1"/></g>',
             "ow.manual (lower.manual:placeholder)",
         ),
-        ('<a href="#u02"><rect width="1" height="1"/></a>', "shape.a (lower.links:hyperlink)"),
-        ('<use href="#r"/>', "def.use (lower.defs:use)"),
         (
             '<rect width="1" height="1" data-ow-cite="c1"/>',
             "ow.cite (lower.cites:provenance_part)",
+        ),
+        (
+            '<rect width="1" height="1" data-ow-cite-kind="quote"/>',
+            "ow.cite.kind (lower.cites:kind)",
         ),
     ],
 )

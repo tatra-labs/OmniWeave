@@ -23,7 +23,6 @@ take a filter or a clip, not both.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Final
 
@@ -32,11 +31,10 @@ from pptx.oxml.ns import qn
 from omniweave_target_pptx.lower import effects, paint
 from omniweave_target_pptx.lower._emit import xfrm
 from omniweave_target_pptx.lower._freeform import Op, Point, drawn
-from omniweave_target_pptx.lower._geometry import angle, place
+from omniweave_target_pptx.lower._geometry import angle, fitting, place
 from omniweave_target_pptx.lower._style import ALPHA_FULL, declared, element, number
 from omniweave_target_pptx.lower.defs import reference
 from omniweave_target_pptx.lower.geometry import extent, offset
-from omniweave_target_pptx.lower.ids import shape_name
 from omniweave_target_pptx.lower.paths import commands
 from omniweave_target_pptx.lower.shapes import (
     centre,
@@ -58,9 +56,7 @@ if TYPE_CHECKING:
 __all__ = ["aspect", "picture"]
 
 Box = tuple[float, float, float, float]
-ALIGN: Final = {"Min": 0.0, "Mid": 0.5, "Max": 1.0}
 CROP_FULL: Final = 100_000
-_ASPECT: Final = re.compile(r"x(Min|Mid|Max)Y(Min|Mid|Max)(?: (meet|slice))?")
 _ROUND: Final = frozenset({"svg|circle", "svg|ellipse"})
 
 
@@ -79,7 +75,8 @@ def picture(em: Emitter, node: CarrierNode, chain: Chain) -> None:
     picture_id = em.take_id()
     made = element("p:pic")
     properties = element("p:nvPicPr", made)
-    element("p:cNvPr", properties, id=str(picture_id), name=shape_name(node, picture_id))
+    named = element("p:cNvPr", properties, id=str(picture_id), name=em.name(node, picture_id))
+    em.click(named)
     element("a:picLocks", element("p:cNvPicPr", properties), noChangeAspect="1")
     element("p:nvPr", properties)
     fill = element("p:blipFill", made)
@@ -106,14 +103,8 @@ def picture(em: Emitter, node: CarrierNode, chain: Chain) -> None:
 
 
 def aspect(node: CarrierNode) -> tuple[float, float, str]:
-    """`preserveAspectRatio`: the x and y alignment, 0, 0.5 or 1, and `meet`, `slice` or `none`."""
-    stated = (node.attr("preserveAspectRatio") or "").strip()
-    if stated == "none":
-        return (0.0, 0.0, "none")
-    m = _ASPECT.fullmatch(stated)
-    if m is None:
-        return (0.5, 0.5, "meet")
-    return (ALIGN[m[1]], ALIGN[m[2]], m[3] or "meet")
+    """`preserveAspectRatio`, as `_geometry.fitting` reads it for a picture and a symbol."""
+    return fitting(node)
 
 
 def _shown(node: CarrierNode, viewport: Box, width: int, height: int) -> Box:

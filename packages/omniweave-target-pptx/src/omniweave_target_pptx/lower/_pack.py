@@ -52,6 +52,7 @@ from omniweave_target_pptx.lower import (
     gradients,
     group,
     ids,
+    links,
     media,
     paint,
     paths,
@@ -81,6 +82,7 @@ FAMILIES: Final = MappingProxyType(
             gradients,
             group,
             ids,
+            links,
             media,
             paint,
             paths,
@@ -127,10 +129,21 @@ def build(
     blank = next(layout for layout in deck.slide_layouts if layout.name == _BLANK)
     ignored = tuple(parse_selector(s, table.carrier) for s in table.ignore)
     lang = plan.brief.value("communication", "primary_language") or ""
-    for root in roots:
-        made = deck.slides.add_slide(blank)
+    slides = [deck.slides.add_slide(blank) for _ in roots]  # first, so a link can jump to any
+    by_unit = dict(zip((u.id for u in plan.units), slides, strict=True))
+    for root, made in zip(roots, slides, strict=True):
         defined = {n.attr("id") or "": n for n in walk(root) if n.attr("id")}
-        em = Emitter(rows, FAMILIES, ignored, _tree(made), lang, defined, assets, _embedder(made))
+        em = Emitter(
+            rows,
+            FAMILIES,
+            ignored,
+            _tree(made),
+            lang,
+            defined,
+            assets,
+            _embedder(made),
+            _linker(made, by_unit),
+        )
         em.handler(root)(em, root, (root,))
     _core(deck, plan.slug, clock_ns)
     return _package(deck)
@@ -215,6 +228,26 @@ def _embedder(made: Any) -> Callable[[bytes], str]:
         return str(rid)
 
     return embed
+
+
+def _linker(made: Any, slides: Mapping[str, Any]) -> Callable[[str], tuple[str, str]]:
+    """A link's `href` as a relationship of the slide `made` (`lower.links`): `#u<NN>` jumps to
+    that unit's slide, and a page is an external hyperlink."""
+
+    def link(href: str) -> tuple[str, str]:
+        if not href.startswith("#"):
+            rid = made.part.relate_to(href, RELATIONSHIP_TYPE.HYPERLINK, is_external=True)
+            return (str(rid), "")
+        target = slides.get(href[1:])
+        if target is None:
+            raise TargetError(
+                f"a link to {href} names no slide in this deck",
+                symbol="OW_TARGET_REFERENCE_UNRESOLVED",
+                fix="ow out check --stage final   # a link names #u<NN>, a unit of the deck",
+            )
+        return (str(made.part.relate_to(target.part, RELATIONSHIP_TYPE.SLIDE)), links.JUMP)
+
+    return link
 
 
 def _tree(made: Any) -> Any:

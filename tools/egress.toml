@@ -134,6 +134,14 @@ The module that holds them cannot reach them. `omniweave/gen/llms.py` is a pure 
 
 The row exists rather than an edit to the constants because the two values are the project's own repository and issue tracker as the plan prints them, and a manifest that named neither would leave an agent with a defect and nowhere to report it."""
 
+[[literal]]
+value = "ppaction://"
+path = "packages/omniweave-target-pptx/src/omniweave_target_pptx/lower/links.py"
+why = """
+PowerPoint's own action verb, written into a slide's XML as the `action` of an `a:hlinkClick`: `ppaction://hlinksldjump` is the click that jumps to the slide its relationship names. ECMA-376 spells it as a URI, so it reads as a scheme to clause 1's pattern, but it addresses no machine and no process here dials it -- it is a string the compiler writes into an OPC part, as docx writes `w:anchor`, and PowerPoint reads it as an instruction to move between two slides of one file.
+
+The module that holds it cannot reach anything: `lower/links.py` imports only `lower.defs`, and the whole target is a purity island under G8. The deck's external links are the IL's own `https:` values, which `pptx.reference@1` holds to its grammar and the compiler writes as relationship targets, never as literals in shipped code."""
+
 # ---------------------------------------------------------------------------
 # 2. Denied outright. A value here is a finding even with a [[literal]] row.
 # ---------------------------------------------------------------------------
