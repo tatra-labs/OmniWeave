@@ -133,7 +133,7 @@ class PptxCompiler:
         return ProbeVerdict(
             status=ProbeStatus.UNAVAILABLE,
             detail=f"implemented = false: {REASON}",
-            missing=("lower/ for gradients, patterns, effects, pictures and links",),
+            missing=("lower/ for effects, pictures and links",),
             fix_hint="ow out targets",
         )
 
