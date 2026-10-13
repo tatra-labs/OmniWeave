@@ -4,12 +4,16 @@ ppt-master's commands are `MmLlHhVvCcSsQqTtAaZz`. Data starts with M or m, each 
 its arguments in whole segments, an arc's flags are 0 or 1 (and may be written without a
 separator), and an arc's radii are never negative (`drawingml/paths.py:35-246`). Numbers may use
 SVG's full grammar here: ppt-master only advises on their spelling in path data.
+
+D796: `segments()` reads data `problem()` passes into its commands and their numbers, for
+`lower.paths`. Both walk the data with `_segment()`, so the lowering reads exactly the grammar
+the gate admits.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from typing import TYPE_CHECKING, Final
 
 from omniweave_core.out import RuleSpec
@@ -19,7 +23,7 @@ from omniweave_target_pptx.rules._common import said, values
 if TYPE_CHECKING:
     from omniweave_core.out import Finding, RuleCtx
 
-__all__ = ["SPEC", "path_data", "problem"]
+__all__ = ["SPEC", "path_data", "problem", "segments"]
 
 RULE: Final = "pptx.path@1"
 CODE: Final = "OW_TARGET_PATH_INVALID"
@@ -45,7 +49,7 @@ def problem(d: str) -> str | None:
         pos = _skip(d, pos + 1)
         segments = 0
         while count and pos < len(d) and not d[pos].isalpha():
-            pos, why = _segment(d, pos, command, count)
+            pos, why, _ = _segment(d, pos, command, count)
             if why is not None:
                 return why
             segments += 1
@@ -54,22 +58,43 @@ def problem(d: str) -> str | None:
     return None
 
 
-def _segment(d: str, pos: int, command: str, count: int) -> tuple[int, str | None]:
-    """One segment of `command`'s arguments from `pos`: where it ends, or why it cannot."""
+def segments(d: str) -> Iterator[tuple[str, Sequence[tuple[float, ...]]]]:
+    """Each command in `d` with its segments' numbers, an arc's flags as 0.0 or 1.0. `d` is data
+    `problem()` passes; `Z` has no segments."""
+    pos = _skip(d, 0)
+    while pos < len(d):
+        command = d[pos]
+        count = ARGUMENTS[command.lower()]
+        pos = _skip(d, pos + 1)
+        runs: list[tuple[float, ...]] = []
+        while count and pos < len(d) and not d[pos].isalpha():
+            pos, _, numbers = _segment(d, pos, command, count)
+            runs.append(numbers)
+        yield command, runs
+
+
+def _segment(
+    d: str, pos: int, command: str, count: int
+) -> tuple[int, str | None, tuple[float, ...]]:
+    """One segment of `command`'s arguments from `pos`: where it ends, why it cannot, and its
+    numbers."""
     arc = command in "Aa"
+    numbers: list[float] = []
     for k in range(count):
         if arc and k in _ARC_FLAGS:
             if d[pos : pos + 1] not in ("0", "1"):
-                return pos, f"an arc flag is 0 or 1, at offset {pos}"
+                return pos, f"an arc flag is 0 or 1, at offset {pos}", ()
+            numbers.append(float(d[pos]))
             pos = _skip(d, pos + 1)
             continue
         m = _NUMBER.match(d, pos)
         if m is None:
-            return pos, f"{command} takes {count} numbers a segment; offset {pos} has none"
+            return pos, f"{command} takes {count} numbers a segment; offset {pos} has none", ()
         if arc and k in _ARC_RADII and m[0].startswith("-"):
-            return pos, f"an arc radius is never negative, {m[0]} at offset {pos}"
+            return pos, f"an arc radius is never negative, {m[0]} at offset {pos}", ()
+        numbers.append(float(m[0]))
         pos = _skip(d, m.end())
-    return pos, None
+    return pos, None, tuple(numbers)
 
 
 def path_data(ctx: RuleCtx) -> Iterator[Finding]:

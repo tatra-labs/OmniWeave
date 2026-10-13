@@ -1,4 +1,5 @@
-"""`lower.shapes`: rectangles, ellipses and lines as DrawingML preset shapes. D795.
+"""`lower.shapes`: rectangles, ellipses and lines as preset shapes, and polygons and polylines as
+freeforms. D795, D796.
 
 - **A rectangle** is `rect`, or `roundRect` when it states `rx` or `ry`. DrawingML rounds every
   corner alike, by `adj`, the radius as a share of the shorter side in thousandths of a percent,
@@ -9,16 +10,25 @@
   stroke, as SVG's does.
 
 A preset shape keeps its own box and takes the matrix as `_geometry.place` decomposes it.
+
+- **A polygon or a polyline** (D796) is one freeform (`_freeform.custom`): a move to its first
+  point and a line to each other, and a polygon's close. Both are filled, as SVG fills an open
+  polyline, and each point takes the matrix. Its points are `rules.points.pairs`, the gate's
+  grammar, and a list that is not x,y pairs is refused (`OW_TARGET_GEOMETRY_INVALID`).
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Final
 
+from omniweave_core.errors import TargetError
+
+from omniweave_target_pptx.lower._freeform import Op, Point, custom
 from omniweave_target_pptx.lower._geometry import Placed, emu, place
 from omniweave_target_pptx.lower._style import declared, element, number
 from omniweave_target_pptx.lower.geometry import extent, offset
 from omniweave_target_pptx.lower.transform import transform
+from omniweave_target_pptx.rules.points import pairs
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -28,7 +38,17 @@ if TYPE_CHECKING:
     from omniweave_target_pptx.lower._emit import Emitter
     from omniweave_target_pptx.lower._style import Chain
 
-__all__ = ["centre", "corner", "ellipse", "endpoint", "line", "radius", "rect"]
+__all__ = [
+    "centre",
+    "corner",
+    "ellipse",
+    "endpoint",
+    "freeform",
+    "line",
+    "radius",
+    "rect",
+    "vertices",
+]
 
 _ADJ_FULL: Final = 100_000
 _ADJ_MAX: Final = 50_000
@@ -91,6 +111,27 @@ def line(em: Emitter, node: CarrierNode, chain: Chain) -> None:
         flip_v=y2 < y1,
     )
     em.shape(node, chain, placed, m, _preset("line", 0), filled=False)
+
+
+def vertices(node: CarrierNode) -> list[Point]:
+    """`points` as x,y pairs, by the gate's grammar."""
+    found = pairs(node.attr("points") or "")
+    if not found:
+        raise TargetError(
+            f"<{node.tag.partition('|')[2]}> at {node.at}: points are not x,y pairs",
+            symbol="OW_TARGET_GEOMETRY_INVALID",
+            fix="ow out check --stage final   # pptx.points@1 names the same problem",
+        )
+    return found
+
+
+def freeform(em: Emitter, node: CarrierNode, chain: Chain) -> None:
+    """A `<polygon>` or a `<polyline>` as one freeform."""
+    first, *rest = vertices(node)
+    ops: list[Op] = [("M", (first,)), *(("L", (p,)) for p in rest)]
+    if node.tag == "svg|polygon":
+        ops.append(("Z", ()))
+    custom(em, node, chain, ops)
 
 
 def _preset(name: str, adj: int) -> Callable[[Any], None]:

@@ -49,6 +49,7 @@ from omniweave_target_pptx.lower import (
     group,
     ids,
     paint,
+    paths,
     shapes,
     slide,
     stroke,
@@ -66,7 +67,18 @@ __all__ = ["FAMILIES", "build"]
 FAMILIES: Final = MappingProxyType(
     {
         f"lower.{module.__name__.rpartition('.')[2]}": module
-        for module in (defs, geometry, group, ids, paint, shapes, slide, stroke, transform)
+        for module in (
+            defs,
+            geometry,
+            group,
+            ids,
+            paint,
+            paths,
+            shapes,
+            slide,
+            stroke,
+            transform,
+        )
     }
 )
 """The modules a `maps_to` may name, imported here and never by name (INV-4)."""
