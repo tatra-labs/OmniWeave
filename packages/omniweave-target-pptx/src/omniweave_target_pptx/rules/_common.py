@@ -23,6 +23,7 @@ __all__ = [
     "CONSTRUCTS",
     "NUMBER",
     "Value",
+    "ancestry",
     "finding",
     "lineage",
     "local",
@@ -75,6 +76,17 @@ def lineage(root: CarrierNode) -> Iterator[tuple[CarrierNode, tuple[str, ...]]]:
         node, above = stack.pop()
         yield node, above
         stack.extend((child, (*above, node.tag)) for child in reversed(list(node.children())))
+
+
+def ancestry(root: CarrierNode) -> Iterator[tuple[CarrierNode, tuple[CarrierNode, ...]]]:
+    """Every node under `root`, `root` excluded, with its ancestor nodes, `root` first."""
+    stack: list[tuple[CarrierNode, tuple[CarrierNode, ...]]] = [
+        (child, (root,)) for child in reversed(list(root.children()))
+    ]
+    while stack:
+        node, above = stack.pop()
+        yield node, above
+        stack.extend((child, (*above, node)) for child in reversed(list(node.children())))
 
 
 def local(tag: str) -> str:

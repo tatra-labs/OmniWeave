@@ -1215,6 +1215,15 @@ meaning = "an owsvg/1 filter, marker or clip path DrawingML cannot hold: more th
 fix     = "ow out constructs pptx --group effect"
 sites   = ["09-generation.md:2232"]
 
+# ── D793. owsvg/1's measurement band (09-generation.md section 12.1).
+
+[[code]]
+numeric = "OW-T-429"
+symbol  = "OW_TARGET_TEXT_OFF_CANVAS"
+meaning = "an owsvg/1 <text> whose measured lines run past the slide's viewBox, under measure.py's shaping: single-line width per positioned line, vertical wrapping not modeled (D793)"
+fix     = "ow out constructs pptx --construct text.text"
+sites   = ["09-generation.md:2233"]
+
 # ── W1.5, the driver card grammar (04-driver-system.md sections 2.1-2.8, 4.5, 5.3, 7.5). The
 # three discovery-point refusals of section 5.3 step 1, plus the two numerics the plan already
 # binds. `meaning` and `fix` are FILLED here rather than deferred to W1.3: these five are raised

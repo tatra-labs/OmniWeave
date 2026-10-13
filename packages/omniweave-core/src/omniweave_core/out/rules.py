@@ -43,6 +43,13 @@ the rules, so a target that could run its own gate could not skip it.
     beside `brief`, and the framework's context carried it. A grammar rule reads its rows to
     know which values a `normalize` row settles, so a value the normalize row will rewrite is that
     row's warning and not also the grammar rule's error, without a second copy of the table.
+12. **D793: an unmeasurable node is a recorded skip, naming the rule and the element.** 09
+    section 4.4: `TextMeasure.box(n) -> None` means *this node* cannot be measured, "the rule
+    emits nothing for that node and the framework records one skip naming the rule and the
+    `el`". A rule that needs `measure` is handed a context whose `measure(n)` records that
+    skip whenever the estimator answers `None`, once per rule and element, so the gate is
+    `unverified` and never `passed` over text nobody measured. An element with no address is
+    recorded once a rule, with no `el`.
 """
 
 from __future__ import annotations
@@ -312,8 +319,9 @@ def _run(
                 )
             continue
         started = tally.clock.monotonic_ns()
+        seen = _Measured(ctx, spec.id, tally, fixes) if "measure" in spec.needs else ctx
         try:
-            emitted = list(spec.fn(ctx))
+            emitted = list(spec.fn(seen))
         except Exception as exc:
             out.append(_raised(spec, unit, exc))
             continue
@@ -331,6 +339,62 @@ def _run(
             if tally.emitted[spec.id] <= MAX_FINDINGS_PER_RULE:
                 out.append(finding)
     return out
+
+
+class _Measured:
+    """Ruling 12: `ctx` for one rule that needs `measure`, recording each node it cannot."""
+
+    __slots__ = ("_ctx", "_fixes", "_rule", "_tally")
+
+    def __init__(self, ctx: RuleCtx, rule: str, tally: _Tally, fixes: Mapping[str, str]) -> None:
+        self._ctx = ctx
+        self._rule = rule
+        self._tally = tally
+        self._fixes = fixes
+
+    @property
+    def doc(self) -> CarrierDoc | None:
+        return self._ctx.doc
+
+    @property
+    def unit(self) -> OutUnit | None:
+        return self._ctx.unit
+
+    @property
+    def index(self) -> DocIndex:
+        return self._ctx.index
+
+    @property
+    def limits(self) -> Mapping[str, int]:
+        return self._ctx.limits
+
+    @property
+    def brief(self) -> Brief | None:
+        return self._ctx.brief
+
+    @property
+    def constructs(self) -> ConstructTable:
+        return self._ctx.constructs
+
+    @property
+    def cites(self) -> CiteResolver:
+        return self._ctx.cites
+
+    def measure(self, n: CarrierNode) -> Box | None:
+        box = self._ctx.measure(n)
+        if box is None:
+            self._tally.skipped.setdefault(
+                f"{self._rule}:measure:{n.el or ''}",
+                SkippedCheck(
+                    self._rule,
+                    "measure",
+                    "the estimator cannot measure this node: no face resolves for it, or it "
+                    "declares nothing to measure",
+                    self._fixes.get("measure", _NEED_FIX),
+                    el=n.el,
+                ),
+            )
+        return box
 
 
 def _raised(spec: RuleSpec, unit: str, exc: Exception) -> Finding:
