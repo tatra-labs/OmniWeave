@@ -80,10 +80,8 @@ def rect(em: Emitter, node: CarrierNode, chain: Chain) -> None:
     x, y = offset(node, "x"), offset(node, "y")
     w, h = extent(node, "width"), extent(node, "height")
     m = transform(chain)
-    r = corner(node)
-    short = min(w, h)
-    adj = min(round(r / short * _ADJ_FULL), _ADJ_MAX) if r and short else 0
-    em.shape(node, chain, place(m, x, y, w, h), m, _preset("roundRect" if adj else "rect", adj))
+    adj = rounding(corner(node), w, h)
+    em.shape(node, chain, place(m, x, y, w, h), m, preset("roundRect" if adj else "rect", adj))
 
 
 def ellipse(em: Emitter, node: CarrierNode, chain: Chain) -> None:
@@ -94,7 +92,7 @@ def ellipse(em: Emitter, node: CarrierNode, chain: Chain) -> None:
     else:
         rx, ry = number(declared(node, "rx"), 0.0), number(declared(node, "ry"), 0.0)
     m = transform(chain)
-    em.shape(node, chain, place(m, cx - rx, cy - ry, 2 * rx, 2 * ry), m, _preset("ellipse", 0))
+    em.shape(node, chain, place(m, cx - rx, cy - ry, 2 * rx, 2 * ry), m, preset("ellipse", 0))
 
 
 def line(em: Emitter, node: CarrierNode, chain: Chain) -> None:
@@ -110,7 +108,7 @@ def line(em: Emitter, node: CarrierNode, chain: Chain) -> None:
         flip_h=x2 < x1,
         flip_v=y2 < y1,
     )
-    em.shape(node, chain, placed, m, _preset("line", 0), filled=False)
+    em.shape(node, chain, placed, m, preset("line", 0), filled=False)
 
 
 def vertices(node: CarrierNode) -> list[Point]:
@@ -134,7 +132,16 @@ def freeform(em: Emitter, node: CarrierNode, chain: Chain) -> None:
     custom(em, node, chain, ops)
 
 
-def _preset(name: str, adj: int) -> Callable[[Any], None]:
+def rounding(radius_: float, width: float, height: float) -> int:
+    """`roundRect`'s `adj` for a corner of `radius_` on a `width` by `height` box: the radius
+    as a share of the shorter side, capped at half of it, or 0 for a square corner."""
+    short = min(width, height)
+    return min(round(radius_ / short * _ADJ_FULL), _ADJ_MAX) if radius_ and short else 0
+
+
+def preset(name: str, adj: int) -> Callable[[Any], None]:
+    """A preset geometry, `adj` its one guide when it is not 0; a clip's shape is one too."""
+
     def geometry(parent: Any) -> None:
         made = element("a:prstGeom", parent, prst=name)
         guides = element("a:avLst", made)

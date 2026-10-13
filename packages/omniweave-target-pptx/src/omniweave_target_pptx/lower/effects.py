@@ -23,6 +23,9 @@
   widths is `sm`, up to 4 `med`, and more `lg`. A DrawingML end points away from its line, as
   `orient="auto-start-reverse"` draws a start; `auto` at the start is drawn the same. `refX` and
   `refY` have no DrawingML equivalent: an end sits at its line's end.
+- **A clip** (D800) crops a picture, the one shape `pptx.effect@1` lets take one: `clip-path` is
+  the picture's own property, never inherited, and names a `<clipPath>` that holds one shape,
+  read in `clipPathUnits`, `userSpaceOnUse` by default (`lower.media`).
 """
 
 from __future__ import annotations
@@ -49,6 +52,9 @@ if TYPE_CHECKING:
 
 __all__ = [
     "apply",
+    "crop",
+    "crop_picture",
+    "crop_units",
     "effect",
     "end_anchor",
     "end_size",
@@ -77,6 +83,7 @@ _BLACK: Final = "#000000"
 _DIAMOND: Final = 4
 _FILTERS: Final = frozenset({"svg|filter"})
 _MARKERS: Final = frozenset({"svg|marker"})
+_CLIPS: Final = frozenset({"svg|clipPath"})
 
 
 def apply(node: CarrierNode, definitions: Mapping[str, CarrierNode]) -> CarrierNode | None:
@@ -180,6 +187,24 @@ def orient(marker: CarrierNode) -> str:
 def end_anchor(marker: CarrierNode) -> tuple[float, float]:
     """`refX` and `refY`, which DrawingML cannot hold (module docstring)."""
     return (number(marker.attr("refX"), 0.0), number(marker.attr("refY"), 0.0))
+
+
+def crop_picture(node: CarrierNode, definitions: Mapping[str, CarrierNode]) -> CarrierNode | None:
+    """The `<clipPath>` the node's own `clip-path` names, or `None`."""
+    stated = node.attr("clip-path")
+    if stated is None or stated.strip() == "none":
+        return None
+    return named(stated, definitions, _CLIPS, what="a <clipPath>")
+
+
+def crop(clip: CarrierNode) -> CarrierNode | None:
+    """The one shape a `<clipPath>` holds, or `None` for an empty one."""
+    return next(iter(clip.children()), None)
+
+
+def crop_units(clip: CarrierNode) -> str:
+    """`clipPathUnits`: `userSpaceOnUse` by default, or `objectBoundingBox`."""
+    return (clip.attr("clipPathUnits") or "userSpaceOnUse").strip()
 
 
 def _marker(chain: Chain, prop: str, definitions: Mapping[str, CarrierNode]) -> CarrierNode | None:

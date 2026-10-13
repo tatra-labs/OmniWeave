@@ -60,7 +60,11 @@ BUILT = frozenset(
     {
         "lower.defs:definition_id",
         "lower.defs:definitions",
+        "lower.defs:reference",
         "lower.effects:apply",
+        "lower.effects:crop",
+        "lower.effects:crop_picture",
+        "lower.effects:crop_units",
         "lower.effects:effect",
         "lower.effects:end_anchor",
         "lower.effects:end_size",
@@ -87,6 +91,8 @@ BUILT = frozenset(
         "lower.gradients:units",
         "lower.group:group",
         "lower.ids:shape_name",
+        "lower.media:aspect",
+        "lower.media:picture",
         "lower.paint:alpha",
         "lower.paint:fill",
         "lower.paint:fill_alpha",
@@ -133,7 +139,7 @@ BUILT = frozenset(
 
 def test_the_rows_lowered_so_far_resolve_and_no_others_do() -> None:
     """D795's 26 functions, then D796's freeforms, D797's text, D798's paint servers and
-    D799's effects."""
+    D799's effects, and D800's pictures."""
     assert {m for m in NAMED if resolve(m, _pack.FAMILIES) is not None} == BUILT
 
 
@@ -157,12 +163,15 @@ def test_every_public_lowering_function_is_one_a_row_names() -> None:
             '<defs><symbol id="s"><rect width="1" height="1"/></symbol></defs>',
             "def.symbol (lower.defs:symbol)",
         ),
-        ('<image width="1" height="1"/>', "shape.image (lower.media:picture)"),
+        (
+            '<g data-ow-manual="unverifiable_data"><rect width="1" height="1"/></g>',
+            "ow.manual (lower.manual:placeholder)",
+        ),
         ('<a href="#u02"><rect width="1" height="1"/></a>', "shape.a (lower.links:hyperlink)"),
         ('<use href="#r"/>', "def.use (lower.defs:use)"),
         (
-            '<defs><clipPath id="c"><rect width="1" height="1"/></clipPath></defs>',
-            "effect.clip-def (lower.effects:crop)",
+            '<rect width="1" height="1" data-ow-cite="c1"/>',
+            "ow.cite (lower.cites:provenance_part)",
         ),
     ],
 )
