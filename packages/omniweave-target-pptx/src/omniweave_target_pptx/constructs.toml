@@ -1,0 +1,1902 @@
+# constructs.toml — THE IL CONTRACT AS DATA. ONE KEY PER LINE.
+# owsvg/1, the pptx target's IL (09-generation.md section 12.1): a closed SVG subset, one <svg>
+# root a slide, its viewBox the canvas. The authoring surface is inline attributes and the closed
+# set of @style|<prop> rows below, and nothing a cascade would have to resolve.
+schema = "omniweave.out-constructs/1"
+carrier = "svg"
+il = "owsvg/1"
+version = 1
+unknown_construct = "forbidden"        # FAIL CLOSED. NOT CONFIGURABLE.
+ignore = ["svg|desc", "svg|title", "svg|metadata", "@version"]   # version="1.1" says nothing
+# `code` holds the SYMBOL; the numeric OW-T-nnn is resolved from codes.toml at RENDER time.
+# `since` is MANDATORY and MONOTONE.
+
+[[construct]]                          # ── the MANDATORY four, and a cite's facts
+id = "ow.cite"
+selector = "@data-ow-cite"
+disposition = "native"
+round_trip = "exact"
+canonical = "cite tokens, one space apart"
+maps_to = "lower.cites:provenance_part"
+code = "OW_TARGET_CITE_MALFORMED"
+since = "0.1.0"
+
+[[construct]]
+id = "ow.cite.spacing"
+normalizes_to = "ow.cite"
+disposition = "normalize"
+normalizer = "collapse_space"
+round_trip = "normalized"
+canonical = "single spaces between cite tokens, none at either end"
+code = "OW_TARGET_CITE_SPACING"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "ow.cite.kind"
+selector = "@data-ow-cite-kind"
+disposition = "native"
+round_trip = "exact"
+canonical = "quote | paraphrase | derived | data"
+maps_to = "lower.cites:kind"
+code = "OW_TARGET_IL_MALFORMED"
+since = "0.1.0"
+
+[[construct]]
+id = "ow.cite.span"
+selector = "@data-ow-cite-span"
+disposition = "native"
+round_trip = "exact"
+canonical = "a:b, a < b, into the cited block's text"
+maps_to = "lower.cites:span"
+code = "OW_TARGET_IL_MALFORMED"
+since = "0.1.0"
+
+[[construct]]
+id = "ow.el"
+selector = "@data-ow-el"
+disposition = "native"
+round_trip = "exact"
+canonical = "u<NN>/e<N>, minted once, unique per artefact"
+maps_to = "lower.ids:shape_name"
+code = "OW_TARGET_EL_DUPLICATE"
+since = "0.1.0"
+
+[[construct]]
+id = "ow.manual"
+selector = "svg|g[data-ow-manual]"
+disposition = "native"
+round_trip = "exact"
+canonical = "a ManualReason member as the value"
+maps_to = "lower.manual:placeholder"
+code = "OW_TARGET_MANUAL_REASON_UNKNOWN"
+since = "0.1.0"
+
+[[construct]]
+id = "ow.unit"
+selector = "svg|svg"
+disposition = "native"
+round_trip = "exact"
+canonical = "the slide: one root <svg>, never nested"
+maps_to = "lower.slide:slide"
+code = "OW_TARGET_UNIT_MALFORMED"
+since = "0.1.0"
+
+[[construct]]                          # ── the canvas
+id = "canvas.viewbox"
+selector = "@viewBox"
+disposition = "native"
+round_trip = "exact"
+canonical = "0 0 W H, integers, W:H the Brief's format"
+maps_to = "lower.slide:size"
+code = "OW_TARGET_CANVAS_MISMATCH"
+since = "0.1.0"
+
+[[construct]]                          # ── shapes
+id = "shape.g"
+selector = "svg|g"
+disposition = "native"
+round_trip = "exact"
+canonical = "a group of shapes"
+maps_to = "lower.group:group"
+code = "OW_TARGET_UNIT_MALFORMED"
+since = "0.1.0"
+
+[[construct]]
+id = "shape.a"
+selector = "svg|a"
+disposition = "native"
+round_trip = "exact"
+canonical = "a group linking to href: #u<NN> or https:"
+maps_to = "lower.links:hyperlink"
+code = "OW_TARGET_REFERENCE_UNRESOLVED"
+since = "0.1.0"
+
+[[construct]]
+id = "shape.rect"
+selector = "svg|rect"
+disposition = "native"
+round_trip = "exact"
+canonical = "width height [rx ry]"
+maps_to = "lower.shapes:rect"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "shape.circle"
+selector = "svg|circle"
+disposition = "native"
+round_trip = "exact"
+canonical = "cx cy r"
+maps_to = "lower.shapes:ellipse"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "shape.ellipse"
+selector = "svg|ellipse"
+disposition = "native"
+round_trip = "exact"
+canonical = "cx cy rx ry"
+maps_to = "lower.shapes:ellipse"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "shape.line"
+selector = "svg|line"
+disposition = "native"
+round_trip = "exact"
+canonical = "x1 y1 x2 y2"
+maps_to = "lower.shapes:line"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "shape.polyline"
+selector = "svg|polyline"
+disposition = "native"
+round_trip = "exact"
+canonical = "points: two pairs or more"
+maps_to = "lower.shapes:freeform"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "shape.polygon"
+selector = "svg|polygon"
+disposition = "native"
+round_trip = "exact"
+canonical = "points: three pairs or more"
+maps_to = "lower.shapes:freeform"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "shape.path"
+selector = "svg|path"
+disposition = "native"
+round_trip = "exact"
+canonical = "d: path data from M"
+maps_to = "lower.paths:freeform"
+code = "OW_TARGET_PATH_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "shape.image"
+selector = "svg|image"
+disposition = "native"
+round_trip = "exact"
+canonical = "href is asset-slot:<sha256>, width and height"
+maps_to = "lower.media:picture"
+code = "OW_TARGET_IL_ASSET_URI"
+since = "0.1.0"
+
+[[construct]]                          # ── text
+id = "text.text"
+selector = "svg|text"
+disposition = "native"
+round_trip = "exact"
+canonical = "one text box at x y"
+maps_to = "lower.text:text_box"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "text.tspan"
+selector = "svg|tspan"
+disposition = "native"
+round_trip = "exact"
+canonical = "a run; with x or dy, a new line"
+maps_to = "lower.text:run"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "text.font-family"
+selector = "@font-family"
+disposition = "native"
+round_trip = "exact"
+canonical = "family[, family...]: a system font stack"
+maps_to = "lower.text:typeface"
+code = "OW_TARGET_FONT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "text.font-size"
+selector = "@font-size"
+disposition = "native"
+round_trip = "exact"
+canonical = "a number > 0, user units; 1-4000 pt once scaled"
+maps_to = "lower.text:size"
+code = "OW_TARGET_FONT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "text.font-weight"
+selector = "@font-weight"
+disposition = "native"
+round_trip = "exact"
+canonical = "normal | bold | 100-900 by 100"
+maps_to = "lower.text:weight"
+code = "OW_TARGET_FONT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "text.font-style"
+selector = "@font-style"
+disposition = "native"
+round_trip = "exact"
+canonical = "normal | italic"
+maps_to = "lower.text:italic"
+code = "OW_TARGET_FONT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "text.text-anchor"
+selector = "@text-anchor"
+disposition = "native"
+round_trip = "exact"
+canonical = "start | middle | end, on <text> only"
+maps_to = "lower.text:anchor"
+code = "OW_TARGET_FONT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "text.text-decoration"
+selector = "@text-decoration"
+disposition = "native"
+round_trip = "exact"
+canonical = "none | underline | line-through | underline line-through"
+maps_to = "lower.text:decoration"
+code = "OW_TARGET_FONT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "text.letter-spacing"
+selector = "@letter-spacing"
+disposition = "native"
+round_trip = "exact"
+canonical = "a number, user units"
+maps_to = "lower.text:spacing"
+code = "OW_TARGET_FONT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "text.baseline-shift"
+selector = "@baseline-shift"
+disposition = "native"
+round_trip = "exact"
+canonical = "super | sub, on <tspan> only"
+maps_to = "lower.text:baseline"
+code = "OW_TARGET_FONT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "text.space"
+selector = "@xml:space"
+disposition = "native"
+round_trip = "exact"
+canonical = "default | preserve"
+maps_to = "lower.text:whitespace"
+code = "OW_TARGET_TEXT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "text.font-size.px"
+normalizes_to = "text.font-size"
+disposition = "normalize"
+normalizer = "px_length"
+round_trip = "normalized"
+canonical = "a bare number: user units are px"
+code = "OW_TARGET_LENGTH_UNIT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]                          # ── geometry
+id = "geom.x"
+selector = "@x"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal number, user units"
+maps_to = "lower.geometry:offset"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.y"
+selector = "@y"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal number, user units"
+maps_to = "lower.geometry:offset"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.width"
+selector = "@width"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal number >= 0, user units"
+maps_to = "lower.geometry:extent"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.height"
+selector = "@height"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal number >= 0, user units"
+maps_to = "lower.geometry:extent"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.rx"
+selector = "@rx"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal number >= 0, user units"
+maps_to = "lower.shapes:corner"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.ry"
+selector = "@ry"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal number >= 0, user units"
+maps_to = "lower.shapes:corner"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.cx"
+selector = "@cx"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal number, user units"
+maps_to = "lower.shapes:centre"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.cy"
+selector = "@cy"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal number, user units"
+maps_to = "lower.shapes:centre"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.r"
+selector = "@r"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal number >= 0, user units"
+maps_to = "lower.shapes:radius"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.x1"
+selector = "@x1"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal number, user units"
+maps_to = "lower.shapes:endpoint"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.y1"
+selector = "@y1"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal number, user units"
+maps_to = "lower.shapes:endpoint"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.x2"
+selector = "@x2"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal number, user units"
+maps_to = "lower.shapes:endpoint"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.y2"
+selector = "@y2"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal number, user units"
+maps_to = "lower.shapes:endpoint"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.dx"
+selector = "@dx"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal number, user units"
+maps_to = "lower.text:shift"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.dy"
+selector = "@dy"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal number, user units"
+maps_to = "lower.text:shift"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.x.px"
+normalizes_to = "geom.x"
+disposition = "normalize"
+normalizer = "px_length"
+round_trip = "normalized"
+canonical = "a bare number: user units are px"
+code = "OW_TARGET_LENGTH_UNIT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.y.px"
+normalizes_to = "geom.y"
+disposition = "normalize"
+normalizer = "px_length"
+round_trip = "normalized"
+canonical = "a bare number: user units are px"
+code = "OW_TARGET_LENGTH_UNIT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.width.px"
+normalizes_to = "geom.width"
+disposition = "normalize"
+normalizer = "px_length"
+round_trip = "normalized"
+canonical = "a bare number: user units are px"
+code = "OW_TARGET_LENGTH_UNIT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.height.px"
+normalizes_to = "geom.height"
+disposition = "normalize"
+normalizer = "px_length"
+round_trip = "normalized"
+canonical = "a bare number: user units are px"
+code = "OW_TARGET_LENGTH_UNIT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.rx.px"
+normalizes_to = "geom.rx"
+disposition = "normalize"
+normalizer = "px_length"
+round_trip = "normalized"
+canonical = "a bare number: user units are px"
+code = "OW_TARGET_LENGTH_UNIT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.ry.px"
+normalizes_to = "geom.ry"
+disposition = "normalize"
+normalizer = "px_length"
+round_trip = "normalized"
+canonical = "a bare number: user units are px"
+code = "OW_TARGET_LENGTH_UNIT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.cx.px"
+normalizes_to = "geom.cx"
+disposition = "normalize"
+normalizer = "px_length"
+round_trip = "normalized"
+canonical = "a bare number: user units are px"
+code = "OW_TARGET_LENGTH_UNIT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.cy.px"
+normalizes_to = "geom.cy"
+disposition = "normalize"
+normalizer = "px_length"
+round_trip = "normalized"
+canonical = "a bare number: user units are px"
+code = "OW_TARGET_LENGTH_UNIT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.r.px"
+normalizes_to = "geom.r"
+disposition = "normalize"
+normalizer = "px_length"
+round_trip = "normalized"
+canonical = "a bare number: user units are px"
+code = "OW_TARGET_LENGTH_UNIT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.x1.px"
+normalizes_to = "geom.x1"
+disposition = "normalize"
+normalizer = "px_length"
+round_trip = "normalized"
+canonical = "a bare number: user units are px"
+code = "OW_TARGET_LENGTH_UNIT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.y1.px"
+normalizes_to = "geom.y1"
+disposition = "normalize"
+normalizer = "px_length"
+round_trip = "normalized"
+canonical = "a bare number: user units are px"
+code = "OW_TARGET_LENGTH_UNIT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.x2.px"
+normalizes_to = "geom.x2"
+disposition = "normalize"
+normalizer = "px_length"
+round_trip = "normalized"
+canonical = "a bare number: user units are px"
+code = "OW_TARGET_LENGTH_UNIT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.y2.px"
+normalizes_to = "geom.y2"
+disposition = "normalize"
+normalizer = "px_length"
+round_trip = "normalized"
+canonical = "a bare number: user units are px"
+code = "OW_TARGET_LENGTH_UNIT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.dx.px"
+normalizes_to = "geom.dx"
+disposition = "normalize"
+normalizer = "px_length"
+round_trip = "normalized"
+canonical = "a bare number: user units are px"
+code = "OW_TARGET_LENGTH_UNIT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.dy.px"
+normalizes_to = "geom.dy"
+disposition = "normalize"
+normalizer = "px_length"
+round_trip = "normalized"
+canonical = "a bare number: user units are px"
+code = "OW_TARGET_LENGTH_UNIT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.points"
+selector = "@points"
+disposition = "native"
+round_trip = "exact"
+canonical = "x,y pairs, space-separated"
+maps_to = "lower.shapes:vertices"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.d"
+selector = "@d"
+disposition = "native"
+round_trip = "exact"
+canonical = "M L H V C S Q T A Z, absolute or relative"
+maps_to = "lower.paths:commands"
+code = "OW_TARGET_PATH_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.transform"
+selector = "@transform"
+disposition = "native"
+round_trip = "normalized"
+canonical = "translate | scale | rotate | matrix"
+maps_to = "lower.transform:transform"
+code = "OW_TARGET_TRANSFORM_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.aspect"
+selector = "@preserveAspectRatio"
+disposition = "native"
+round_trip = "exact"
+canonical = "none | x{Min,Mid,Max}Y{...} meet|slice"
+maps_to = "lower.media:aspect"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.href"
+selector = "@href"
+disposition = "native"
+round_trip = "exact"
+canonical = "#id local, asset-slot:, or a link target"
+maps_to = "lower.defs:reference"
+code = "OW_TARGET_REFERENCE_UNRESOLVED"
+since = "0.1.0"
+
+[[construct]]
+id = "geom.id"
+selector = "@id"
+disposition = "native"
+round_trip = "exact"
+canonical = "unique in the unit; a url(#id) or href target"
+maps_to = "lower.defs:definition_id"
+forbidden_when = "svg|style"
+code = "OW_TARGET_ID_WITH_STYLE"
+since = "0.1.0"
+
+[[construct]]                          # ── paint and opacity
+id = "paint.fill"
+selector = "@fill"
+disposition = "native"
+round_trip = "exact"
+canonical = "#RRGGBB upper-case | none | url(#id)"
+maps_to = "lower.paint:fill"
+code = "OW_TARGET_FILL_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "paint.stroke"
+selector = "@stroke"
+disposition = "native"
+round_trip = "exact"
+canonical = "#RRGGBB upper-case | none | url(#id)"
+maps_to = "lower.paint:line"
+code = "OW_TARGET_FILL_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "paint.stop-color"
+selector = "@stop-color"
+disposition = "native"
+round_trip = "exact"
+canonical = "#RRGGBB upper-case"
+maps_to = "lower.gradients:stop_colour"
+code = "OW_TARGET_FILL_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "paint.flood-color"
+selector = "@flood-color"
+disposition = "native"
+round_trip = "exact"
+canonical = "#RRGGBB upper-case"
+maps_to = "lower.effects:shadow_colour"
+code = "OW_TARGET_FILL_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "paint.fill.hex"
+normalizes_to = "paint.fill"
+disposition = "normalize"
+normalizer = "upper_hex"
+round_trip = "normalized"
+canonical = "#RRGGBB, six upper-case hex digits"
+code = "OW_TARGET_FILL_NOT_UPPER_HEX"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "paint.stroke.hex"
+normalizes_to = "paint.stroke"
+disposition = "normalize"
+normalizer = "upper_hex"
+round_trip = "normalized"
+canonical = "#RRGGBB, six upper-case hex digits"
+code = "OW_TARGET_FILL_NOT_UPPER_HEX"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "paint.stop-color.hex"
+normalizes_to = "paint.stop-color"
+disposition = "normalize"
+normalizer = "upper_hex"
+round_trip = "normalized"
+canonical = "#RRGGBB, six upper-case hex digits"
+code = "OW_TARGET_FILL_NOT_UPPER_HEX"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "paint.flood-color.hex"
+normalizes_to = "paint.flood-color"
+disposition = "normalize"
+normalizer = "upper_hex"
+round_trip = "normalized"
+canonical = "#RRGGBB, six upper-case hex digits"
+code = "OW_TARGET_FILL_NOT_UPPER_HEX"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "paint.opacity"
+selector = "@opacity"
+disposition = "native"
+round_trip = "exact"
+canonical = "a number 0-1"
+maps_to = "lower.paint:alpha"
+code = "OW_TARGET_OPACITY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "paint.fill-opacity"
+selector = "@fill-opacity"
+disposition = "native"
+round_trip = "exact"
+canonical = "a number 0-1"
+maps_to = "lower.paint:fill_alpha"
+code = "OW_TARGET_OPACITY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "paint.stroke-opacity"
+selector = "@stroke-opacity"
+disposition = "native"
+round_trip = "exact"
+canonical = "a number 0-1"
+maps_to = "lower.paint:line_alpha"
+code = "OW_TARGET_OPACITY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "paint.stop-opacity"
+selector = "@stop-opacity"
+disposition = "native"
+round_trip = "exact"
+canonical = "a number 0-1"
+maps_to = "lower.gradients:stop_alpha"
+code = "OW_TARGET_OPACITY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "paint.flood-opacity"
+selector = "@flood-opacity"
+disposition = "native"
+round_trip = "exact"
+canonical = "a number 0-1"
+maps_to = "lower.effects:shadow_alpha"
+code = "OW_TARGET_OPACITY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "paint.opacity.percent"
+normalizes_to = "paint.opacity"
+disposition = "normalize"
+normalizer = "opacity_fraction"
+round_trip = "normalized"
+canonical = "a fraction 0-1, never a percentage"
+code = "OW_TARGET_OPACITY_PERCENT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "paint.fill-opacity.percent"
+normalizes_to = "paint.fill-opacity"
+disposition = "normalize"
+normalizer = "opacity_fraction"
+round_trip = "normalized"
+canonical = "a fraction 0-1, never a percentage"
+code = "OW_TARGET_OPACITY_PERCENT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "paint.stroke-opacity.percent"
+normalizes_to = "paint.stroke-opacity"
+disposition = "normalize"
+normalizer = "opacity_fraction"
+round_trip = "normalized"
+canonical = "a fraction 0-1, never a percentage"
+code = "OW_TARGET_OPACITY_PERCENT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "paint.stop-opacity.percent"
+normalizes_to = "paint.stop-opacity"
+disposition = "normalize"
+normalizer = "opacity_fraction"
+round_trip = "normalized"
+canonical = "a fraction 0-1, never a percentage"
+code = "OW_TARGET_OPACITY_PERCENT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]
+id = "paint.flood-opacity.percent"
+normalizes_to = "paint.flood-opacity"
+disposition = "normalize"
+normalizer = "opacity_fraction"
+round_trip = "normalized"
+canonical = "a fraction 0-1, never a percentage"
+code = "OW_TARGET_OPACITY_PERCENT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]                          # ── stroke
+id = "stroke.width"
+selector = "@stroke-width"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal number >= 0, user units"
+maps_to = "lower.stroke:width"
+code = "OW_TARGET_STROKE_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "stroke.dasharray"
+selector = "@stroke-dasharray"
+disposition = "native"
+round_trip = "exact"
+canonical = "none | dash gap [dash gap], numbers > 0"
+maps_to = "lower.stroke:dash"
+code = "OW_TARGET_STROKE_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "stroke.linecap"
+selector = "@stroke-linecap"
+disposition = "native"
+round_trip = "exact"
+canonical = "butt | round | square"
+maps_to = "lower.stroke:cap"
+code = "OW_TARGET_STROKE_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "stroke.linejoin"
+selector = "@stroke-linejoin"
+disposition = "native"
+round_trip = "exact"
+canonical = "miter | round | bevel"
+maps_to = "lower.stroke:join"
+code = "OW_TARGET_STROKE_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "stroke.vector-effect"
+selector = "@vector-effect"
+disposition = "native"
+round_trip = "exact"
+canonical = "none | non-scaling-stroke"
+maps_to = "lower.stroke:scaling"
+code = "OW_TARGET_STROKE_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "stroke.width.px"
+normalizes_to = "stroke.width"
+disposition = "normalize"
+normalizer = "px_length"
+round_trip = "normalized"
+canonical = "a bare number: user units are px"
+code = "OW_TARGET_LENGTH_UNIT"
+severity = "warning"
+since = "0.1.0"
+
+[[construct]]                          # ── definitions: gradients, patterns, symbols
+id = "def.defs"
+selector = "svg|defs"
+disposition = "native"
+round_trip = "exact"
+canonical = "definitions only, each with an id"
+maps_to = "lower.defs:definitions"
+code = "OW_TARGET_REFERENCE_UNRESOLVED"
+since = "0.1.0"
+
+[[construct]]
+id = "def.use"
+selector = "svg|use"
+disposition = "native"
+round_trip = "normalized"
+canonical = "href=\"#id\" to a local definition"
+maps_to = "lower.defs:use"
+code = "OW_TARGET_REFERENCE_UNRESOLVED"
+since = "0.1.0"
+
+[[construct]]
+id = "def.symbol"
+selector = "svg|symbol"
+disposition = "native"
+round_trip = "normalized"
+canonical = "a use target with a viewBox"
+maps_to = "lower.defs:symbol"
+code = "OW_TARGET_REFERENCE_UNRESOLVED"
+since = "0.1.0"
+
+[[construct]]
+id = "def.linear"
+selector = "svg|linearGradient"
+disposition = "native"
+round_trip = "exact"
+canonical = "two stops or more, x1 y1 x2 y2 in 0-1"
+maps_to = "lower.gradients:linear"
+code = "OW_TARGET_GRADIENT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "def.radial"
+selector = "svg|radialGradient"
+disposition = "native"
+round_trip = "exact"
+canonical = "two stops or more, cx cy r in 0-1"
+maps_to = "lower.gradients:radial"
+code = "OW_TARGET_GRADIENT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "def.stop"
+selector = "svg|stop"
+disposition = "native"
+round_trip = "exact"
+canonical = "offset, stop-color [stop-opacity]"
+maps_to = "lower.gradients:stop"
+code = "OW_TARGET_GRADIENT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "def.offset"
+selector = "@offset"
+disposition = "native"
+round_trip = "exact"
+canonical = "0-1, never decreasing"
+maps_to = "lower.gradients:position"
+code = "OW_TARGET_GRADIENT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "def.units"
+selector = "@gradientUnits"
+disposition = "native"
+round_trip = "exact"
+canonical = "objectBoundingBox"
+maps_to = "lower.gradients:units"
+code = "OW_TARGET_GRADIENT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "def.fx"
+selector = "@fx"
+disposition = "native"
+round_trip = "exact"
+canonical = "0-1, inside the circle"
+maps_to = "lower.gradients:focus"
+code = "OW_TARGET_GRADIENT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "def.fy"
+selector = "@fy"
+disposition = "native"
+round_trip = "exact"
+canonical = "0-1, inside the circle"
+maps_to = "lower.gradients:focus"
+code = "OW_TARGET_GRADIENT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "def.pattern"
+selector = "svg|pattern"
+disposition = "native"
+round_trip = "exact"
+canonical = "a DrawingML preset pattern"
+maps_to = "lower.patterns:pattern"
+code = "OW_TARGET_FILL_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "def.preset"
+selector = "@data-ow-preset"
+disposition = "native"
+round_trip = "exact"
+canonical = "a DrawingML ST_PresetPatternVal name"
+maps_to = "lower.patterns:preset"
+code = "OW_TARGET_FILL_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "def.fg"
+selector = "@data-ow-fg"
+disposition = "native"
+round_trip = "exact"
+canonical = "#RRGGBB upper-case"
+maps_to = "lower.patterns:foreground"
+code = "OW_TARGET_FILL_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "def.bg"
+selector = "@data-ow-bg"
+disposition = "native"
+round_trip = "exact"
+canonical = "#RRGGBB upper-case"
+maps_to = "lower.patterns:background"
+code = "OW_TARGET_FILL_INVALID"
+since = "0.1.0"
+
+[[construct]]                          # ── effects: one shadow or glow, markers, clips
+id = "effect.filter-def"
+selector = "svg|filter"
+disposition = "native"
+round_trip = "exact"
+canonical = "one feDropShadow or one feGaussianBlur"
+maps_to = "lower.effects:effect"
+code = "OW_TARGET_EFFECT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "effect.shadow"
+selector = "svg|feDropShadow"
+disposition = "native"
+round_trip = "normalized"
+canonical = "dx dy stdDeviation flood-*"
+maps_to = "lower.effects:outer_shadow"
+code = "OW_TARGET_EFFECT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "effect.blur"
+selector = "svg|feGaussianBlur"
+disposition = "native"
+round_trip = "lossy"
+canonical = "stdDeviation: a glow"
+maps_to = "lower.effects:glow"
+code = "OW_TARGET_EFFECT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "effect.filter"
+selector = "@filter"
+disposition = "native"
+round_trip = "exact"
+canonical = "url(#id) to a <filter>"
+maps_to = "lower.effects:apply"
+code = "OW_TARGET_EFFECT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "effect.deviation"
+selector = "@stdDeviation"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal number >= 0, user units"
+maps_to = "lower.effects:radius"
+code = "OW_TARGET_EFFECT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "effect.units"
+selector = "@primitiveUnits"
+disposition = "native"
+round_trip = "exact"
+canonical = "userSpaceOnUse"
+maps_to = "lower.effects:units"
+code = "OW_TARGET_EFFECT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "effect.marker-def"
+selector = "svg|marker"
+disposition = "native"
+round_trip = "normalized"
+canonical = "one child: arrow, oval or diamond"
+maps_to = "lower.effects:line_end"
+code = "OW_TARGET_EFFECT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "effect.marker-start"
+selector = "@marker-start"
+disposition = "native"
+round_trip = "exact"
+canonical = "url(#id), on <line> or <path>"
+maps_to = "lower.effects:head"
+code = "OW_TARGET_EFFECT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "effect.marker-end"
+selector = "@marker-end"
+disposition = "native"
+round_trip = "exact"
+canonical = "url(#id), on <line> or <path>"
+maps_to = "lower.effects:tail"
+code = "OW_TARGET_EFFECT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "effect.orient"
+selector = "@orient"
+disposition = "native"
+round_trip = "exact"
+canonical = "auto | auto-start-reverse"
+maps_to = "lower.effects:orient"
+code = "OW_TARGET_EFFECT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "effect.marker-width"
+selector = "@markerWidth"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal number >= 0, user units"
+maps_to = "lower.effects:end_size"
+code = "OW_TARGET_EFFECT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "effect.marker-height"
+selector = "@markerHeight"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal number >= 0, user units"
+maps_to = "lower.effects:end_size"
+code = "OW_TARGET_EFFECT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "effect.marker-units"
+selector = "@markerUnits"
+disposition = "native"
+round_trip = "exact"
+canonical = "strokeWidth | userSpaceOnUse"
+maps_to = "lower.effects:end_units"
+code = "OW_TARGET_EFFECT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "effect.ref-x"
+selector = "@refX"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal number, user units"
+maps_to = "lower.effects:end_anchor"
+code = "OW_TARGET_EFFECT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "effect.ref-y"
+selector = "@refY"
+disposition = "native"
+round_trip = "exact"
+canonical = "a decimal number, user units"
+maps_to = "lower.effects:end_anchor"
+code = "OW_TARGET_EFFECT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "effect.clip-def"
+selector = "svg|clipPath"
+disposition = "native"
+round_trip = "exact"
+canonical = "one circle, ellipse, rect, path or polygon"
+maps_to = "lower.effects:crop"
+code = "OW_TARGET_EFFECT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "effect.clip"
+selector = "@clip-path"
+disposition = "native"
+round_trip = "exact"
+canonical = "url(#id), on <image> only"
+maps_to = "lower.effects:crop_picture"
+code = "OW_TARGET_EFFECT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "effect.clip-units"
+selector = "@clipPathUnits"
+disposition = "native"
+round_trip = "exact"
+canonical = "userSpaceOnUse | objectBoundingBox"
+maps_to = "lower.effects:crop_units"
+code = "OW_TARGET_EFFECT_INVALID"
+since = "0.1.0"
+
+[[construct]]                          # ── the closed inline-style set
+id = "style.fill"
+selector = "@style|fill"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @fill attribute"
+maps_to = "lower.paint:fill"
+code = "OW_TARGET_FILL_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.stroke"
+selector = "@style|stroke"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @stroke attribute"
+maps_to = "lower.paint:line"
+code = "OW_TARGET_FILL_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.stop-color"
+selector = "@style|stop-color"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @stop-color attribute"
+maps_to = "lower.gradients:stop_colour"
+code = "OW_TARGET_FILL_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.flood-color"
+selector = "@style|flood-color"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @flood-color attribute"
+maps_to = "lower.effects:shadow_colour"
+code = "OW_TARGET_FILL_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.opacity"
+selector = "@style|opacity"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @opacity attribute"
+maps_to = "lower.paint:alpha"
+code = "OW_TARGET_OPACITY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.fill-opacity"
+selector = "@style|fill-opacity"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @fill-opacity attribute"
+maps_to = "lower.paint:fill_alpha"
+code = "OW_TARGET_OPACITY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.stroke-opacity"
+selector = "@style|stroke-opacity"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @stroke-opacity attribute"
+maps_to = "lower.paint:line_alpha"
+code = "OW_TARGET_OPACITY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.stop-opacity"
+selector = "@style|stop-opacity"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @stop-opacity attribute"
+maps_to = "lower.gradients:stop_alpha"
+code = "OW_TARGET_OPACITY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.flood-opacity"
+selector = "@style|flood-opacity"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @flood-opacity attribute"
+maps_to = "lower.effects:shadow_alpha"
+code = "OW_TARGET_OPACITY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.stroke-width"
+selector = "@style|stroke-width"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @stroke-width attribute"
+maps_to = "lower.stroke:width"
+code = "OW_TARGET_STROKE_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.stroke-dasharray"
+selector = "@style|stroke-dasharray"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @stroke-dasharray attribute"
+maps_to = "lower.stroke:dash"
+code = "OW_TARGET_STROKE_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.stroke-linecap"
+selector = "@style|stroke-linecap"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @stroke-linecap attribute"
+maps_to = "lower.stroke:cap"
+code = "OW_TARGET_STROKE_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.stroke-linejoin"
+selector = "@style|stroke-linejoin"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @stroke-linejoin attribute"
+maps_to = "lower.stroke:join"
+code = "OW_TARGET_STROKE_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.vector-effect"
+selector = "@style|vector-effect"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @vector-effect attribute"
+maps_to = "lower.stroke:scaling"
+code = "OW_TARGET_STROKE_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.font-family"
+selector = "@style|font-family"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @font-family attribute"
+maps_to = "lower.text:typeface"
+code = "OW_TARGET_FONT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.font-size"
+selector = "@style|font-size"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @font-size attribute"
+maps_to = "lower.text:size"
+code = "OW_TARGET_FONT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.font-weight"
+selector = "@style|font-weight"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @font-weight attribute"
+maps_to = "lower.text:weight"
+code = "OW_TARGET_FONT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.font-style"
+selector = "@style|font-style"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @font-style attribute"
+maps_to = "lower.text:italic"
+code = "OW_TARGET_FONT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.text-anchor"
+selector = "@style|text-anchor"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @text-anchor attribute"
+maps_to = "lower.text:anchor"
+code = "OW_TARGET_FONT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.text-decoration"
+selector = "@style|text-decoration"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @text-decoration attribute"
+maps_to = "lower.text:decoration"
+code = "OW_TARGET_FONT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.letter-spacing"
+selector = "@style|letter-spacing"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @letter-spacing attribute"
+maps_to = "lower.text:spacing"
+code = "OW_TARGET_FONT_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.x"
+selector = "@style|x"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @x attribute"
+maps_to = "lower.geometry:offset"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.y"
+selector = "@style|y"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @y attribute"
+maps_to = "lower.geometry:offset"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.width"
+selector = "@style|width"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @width attribute"
+maps_to = "lower.geometry:extent"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.height"
+selector = "@style|height"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @height attribute"
+maps_to = "lower.geometry:extent"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.cx"
+selector = "@style|cx"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @cx attribute"
+maps_to = "lower.shapes:centre"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.cy"
+selector = "@style|cy"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @cy attribute"
+maps_to = "lower.shapes:centre"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.r"
+selector = "@style|r"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @r attribute"
+maps_to = "lower.shapes:radius"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.rx"
+selector = "@style|rx"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @rx attribute"
+maps_to = "lower.shapes:corner"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]
+id = "style.ry"
+selector = "@style|ry"
+disposition = "native"
+round_trip = "exact"
+canonical = "as the @ry attribute"
+maps_to = "lower.shapes:corner"
+code = "OW_TARGET_GEOMETRY_INVALID"
+since = "0.1.0"
+
+[[construct]]                          # ── FORBIDDEN: script, cascade and markup with no DrawingML mapping
+id = "forbid.script"
+selector = "svg|script"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_SCRIPT_FORBIDDEN"
+msg = "executable content has no mapping"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.onload"
+selector = "@onload"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_SCRIPT_FORBIDDEN"
+msg = "an event attribute is executable content"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.onclick"
+selector = "@onclick"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_SCRIPT_FORBIDDEN"
+msg = "an event attribute is executable content"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.onmouseover"
+selector = "@onmouseover"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_SCRIPT_FORBIDDEN"
+msg = "an event attribute is executable content"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.onmouseout"
+selector = "@onmouseout"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_SCRIPT_FORBIDDEN"
+msg = "an event attribute is executable content"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.onfocus"
+selector = "@onfocus"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_SCRIPT_FORBIDDEN"
+msg = "an event attribute is executable content"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.onbegin"
+selector = "@onbegin"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_SCRIPT_FORBIDDEN"
+msg = "an event attribute is executable content"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.style"
+selector = "svg|style"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "write inline attributes: a cascade has no DrawingML equivalent"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.class"
+selector = "@class"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "write inline attributes: no cascade"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.link"
+selector = "svg|link"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "external CSS: write inline attributes"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.foreign-object"
+selector = "svg|foreignObject"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "use <tspan> for manual line breaks"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.text-path"
+selector = "svg|textPath"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "path text has no PowerPoint equivalent"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.mask"
+selector = "svg|mask"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "use overlay shapes, a clipped <image> or a frozen picture with alpha"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.mask-ref"
+selector = "@mask"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "a mask has no DrawingML equivalent"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.mask-style"
+selector = "@style|mask"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "a mask has no DrawingML equivalent"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.switch"
+selector = "svg|switch"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "conditional rendering has no mapping"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.animate"
+selector = "svg|animate"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "SMIL animation is not exported: motion is the Brief's, never the IL's"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.animatetransform"
+selector = "svg|animateTransform"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "SMIL animation is not exported: motion is the Brief's, never the IL's"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.animatemotion"
+selector = "svg|animateMotion"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "SMIL animation is not exported: motion is the Brief's, never the IL's"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.set"
+selector = "svg|set"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "SMIL animation is not exported: motion is the Brief's, never the IL's"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.xlink-href"
+selector = "@xlink:href"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "write href"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.filter-style"
+selector = "@style|filter"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "write the filter attribute"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.fill-rule"
+selector = "@fill-rule"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "DrawingML fills nonzero: draw the hole as its own path"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.clip-rule"
+selector = "@clip-rule"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "DrawingML clips nonzero"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.shape-rendering"
+selector = "@shape-rendering"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "no DrawingML mapping"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.shape-rendering-style"
+selector = "@style|shape-rendering"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "no DrawingML mapping"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.gradient-transform"
+selector = "@gradientTransform"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "write the gradient's own x1 y1 x2 y2"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.spread-method"
+selector = "@spreadMethod"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "DrawingML gradients pad"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.pattern-transform"
+selector = "@patternTransform"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "a preset pattern has no transform"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.dominant-baseline"
+selector = "@dominant-baseline"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "position the baseline with y"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.dominant-baseline-style"
+selector = "@style|dominant-baseline"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "position the baseline with y"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.line-height"
+selector = "@style|line-height"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "write each line as a <tspan> with x and dy"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.writing-mode"
+selector = "@writing-mode"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "vertical text has no owsvg/1 form at release 1"
+since = "0.1.0"
+
+[[construct]]
+id = "forbid.word-spacing"
+selector = "@style|word-spacing"
+disposition = "forbidden"
+round_trip = "dropped"
+code = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+msg = "no DrawingML mapping"
+since = "0.1.0"
+
+[[construct]]                          # ── BAKE: no DrawingML mapping, and a raster degradation
+id = "bake.blend"
+selector = "@mix-blend-mode"
+disposition = "bake"
+round_trip = "lossy"
+code = "OW_TARGET_BLEND_REQUIRES_BAKE"
+bake = { renderer = "raster", dpi = 192, role = "bake" }
+since = "0.1.0"
+
+[[construct]]
+id = "bake.blend-style"
+selector = "@style|mix-blend-mode"
+disposition = "bake"
+round_trip = "lossy"
+code = "OW_TARGET_BLEND_REQUIRES_BAKE"
+bake = { renderer = "raster", dpi = 192, role = "bake" }
+since = "0.1.0"
+
+[[construct]]
+id = "bake.isolation-style"
+selector = "@style|isolation"
+disposition = "bake"
+round_trip = "lossy"
+code = "OW_TARGET_BLEND_REQUIRES_BAKE"
+bake = { renderer = "raster", dpi = 192, role = "bake" }
+since = "0.1.0"
+
+[[construct]]
+id = "bake.backdrop-style"
+selector = "@style|backdrop-filter"
+disposition = "bake"
+round_trip = "lossy"
+code = "OW_TARGET_BLEND_REQUIRES_BAKE"
+bake = { renderer = "raster", dpi = 192, role = "bake" }
+since = "0.1.0"

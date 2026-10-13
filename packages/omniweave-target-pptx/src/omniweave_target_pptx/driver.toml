@@ -1,0 +1,87 @@
+# compile.pptx.native — the flagship target (09-generation.md section 12.1; 16-roadmap.md W9.2).
+# "The only working round trip in the collection; zero Node": a closed SVG subset, one <svg> a
+# slide, lowered to DrawingML in pure Python. D789 builds its table, carrier and structural
+# rules; the grammar band, measure.py and the lowering are later cells, so it is not implemented.
+card_schema = 1
+
+[driver]
+id = "compile.pptx.native"
+port = "compile/1"
+version = "0.1.0"
+schema_version = 1
+entrypoint = "omniweave_target_pptx.driver:PptxCompiler"
+granularity = "document"
+replay_class = "byte_exact"
+title = "owsvg/1 to a .pptx (DrawingML)"
+summary = "A slide deck from a closed SVG subset: one <svg> a slide, shapes, text, gradients, one shadow or glow, and frozen pictures, each element addressed for the round trip."
+
+[capability]
+consumes = ["il_bundle", "asset"]
+produces = ["artifact", "receipt"]
+
+[capability.compile]
+determinism = ["part", "byte"]         # `part` is MANDATORY; `byte` is RECORDED and NEVER PROMISED
+assets = ["image"]
+
+[compile]
+# IDENTITY, LIMITS AND SWITCHES. An unknown key here is a hard error.
+target = "pptx"
+unit = "slide"                         # one <svg> root, its viewBox the canvas
+carrier = "svg"
+il = "owsvg/1"
+constructs = "constructs.toml"
+constructs_digest = "sha256:442922968a173aa1a76fcbfe0ab3a41f6809cb3912fe241904de20d4e4d95cfe"
+citations = "embedded"                 # the OOXML provenance part, 09 section 10
+provenance_part = "customXml/omniweave-provenance.json"
+bake = "unavailable"                   # cairosvg and svglib are LGPL-3.0 (09 section 12.1)
+measure = "none"                       # measure.py, uharfbuzz's shaping, lands with the 60-79 band
+runtime_rules = false
+toolchain = ""                         # pure Python: python-pptx, XlsxWriter, skia-pathops
+implemented = false
+reason = "owsvg/1's table, carrier and structural rules are built; its grammar rules, measure.py and the lowering to DrawingML are not"
+max_units = 2000                       # 09 section 14.2: a 2000-unit roster, streamed
+agent_doc_tokens_max = 6000            # 09 section 3.3: about 33 tokens a row over ~180 rows
+media_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+suffix = ".pptx"
+
+[compile.round_trip]
+read_back = "parse.pptx.native"
+project = false                        # 09 Q2: nothing mined invents an SVG subset from DrawingML
+fidelity = "passthrough"               # R4(a): zero edits copy every part
+laws = ["r1", "r2", "r3", "r4", "r5", "r6", "r7"]
+kind_map = "kind_map.toml"
+
+[hardware]
+gpu            = "none"
+vram_gb_min    = 0
+ram_gb_min     = 1
+cpu_arch       = ["x86_64", "aarch64"]
+os             = ["linux", "darwin", "windows"]
+needs_network  = false
+needs_binaries = []
+imports_torch  = false
+install_bytes  = 60000000              # python-pptx, XlsxWriter, skia-pathops, uharfbuzz, Pillow
+services       = []
+
+[isolation]
+requires        = "subproc"
+memory_mb       = 2048
+progress_ms     = 15000
+wall_ms_hard    = 600000
+batch_max_units = 2000
+
+[limits]
+max_input_bytes = 4194304              # MAX_IL_FILE_BYTES: one IL file at a time
+max_parts       = 2000                 # [compile] max_units
+
+[licence.code]
+spdx = "Apache-2.0"
+redistribution = "allowed"
+output_share_alike = false
+competitor_bar = false
+requires_credential = false
+revenue_gate_usd = 0
+mau_gate = 0
+territory_excluded = []
+field_of_use_excluded = []
+attribution_per_output = false

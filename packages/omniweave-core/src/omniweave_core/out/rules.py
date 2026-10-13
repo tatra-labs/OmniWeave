@@ -34,6 +34,11 @@ the rules, so a target that could run its own gate could not skip it.
    is empty until then, never absent.
 9. **`rule_timings_ms` is read from the injected `Clock`**, `SystemClock` unless the caller
    passes one. Library code reads no ambient clock (`omniweave-no-time-time-in-library-code`).
+10. **D789: `RuleCtx.brief` is the Brief the check was given.** 09 section 4.4 prints `brief` on
+    `RuleCtx`, and the framework's context always carried it, but the Protocol did not, so no rule
+    could read it. `ow out check` gives the Plan's Brief at the final stage and `None` before,
+    so a rule that reads it says nothing until then. owsvg/1's canvas rule is the first reader:
+    the `viewBox` matches the Brief's `canvas format`.
 """
 
 from __future__ import annotations
@@ -43,7 +48,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Final, Literal, Protocol
+from typing import TYPE_CHECKING, Final, Literal, Protocol
 
 from omniweave_core.clock import Clock, SystemClock
 from omniweave_core.errors import TargetError
@@ -55,6 +60,9 @@ from omniweave_core.out.finding import Finding, FindingSet, Provenance, Severity
 from omniweave_core.out.marker import Marker, scan
 from omniweave_core.out.plan import OutUnit
 from omniweave_core.out.report import SkippedCheck
+
+if TYPE_CHECKING:
+    from omniweave_core.out.brief import Brief
 
 __all__ = [
     "Box",
@@ -125,6 +133,11 @@ class RuleCtx(Protocol):
 
     @property
     def limits(self) -> Mapping[str, int]: ...
+
+    @property
+    def brief(self) -> Brief | None:
+        """Ruling 10: the Plan's Brief at the final stage; `None` before it."""
+        ...
 
     @property
     def cites(self) -> CiteResolver:
