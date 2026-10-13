@@ -25,7 +25,7 @@ from omniweave_core.out.gate import GateStatus
 from omniweave_core.out.job import ILFile
 from omniweave_core.out.plan import OutUnit
 from omniweave_core.out.report import OutReport
-from omniweave_core.out.rules import Box, DocIndex, RuleCtx, RuleSpec, run_pack
+from omniweave_core.out.rules import TYPE_SIZE, Box, DocIndex, RuleCtx, RuleSpec, run_pack
 
 SLOT = "a" * 64
 
@@ -177,7 +177,7 @@ def test_pass_a_folds_each_unit_and_pass_b_reads_the_completed_index() -> None:
     assert run.index.slots["u02"] == frozenset({SLOT})
     section = html_carrier("il/u01.html", U1, strict=True).root()
     assert dict(run.index.nsigs) == {"u01/e1": section.nsig}, "D743: one nsig a stamped element"
-    assert (run.index.markers, dict(run.index.value_occurrences)) == ((), {})
+    assert (run.index.markers, dict(run.index.value_occurrences)) == ((), {"type_size": {}})
 
 
 def test_rules_run_in_order_then_id() -> None:
@@ -511,3 +511,20 @@ def test_an_unmeasurable_node_is_one_skip_naming_the_rule_and_the_element() -> N
         ("m@1", "measure", None, "uv pip install 'omniweave-target-pptx[measure]'"),
     ], "once a rule and element; a rule that does not need measure records nothing"
     assert "cannot measure this node" in run.skipped[0].reason
+
+
+# ---------------------------------------------------------------------------
+# Ruling 13: each stated type size, counted across the roster (D794)
+# ---------------------------------------------------------------------------
+
+
+def test_every_stated_font_size_is_counted_across_units_by_its_value() -> None:
+    texts = {
+        "il/u01.html": '<section><p style="font-size: 20px">a</p><p style="font-size:13">b</p>'
+        '<p style="color: red">c</p></section>',
+        "il/u02.html": '<section><p style="font-size: 20.0">d</p><p style="font-size: 1em">e</p>'
+        '<p style="font-size: 13px; font-size: 13">f</p></section>',
+    }
+    run = _run(texts, {})
+    assert run.index.value_occurrences == {"type_size": {"20": 2, "13": 3}}
+    assert TYPE_SIZE == "type_size"

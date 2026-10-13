@@ -28,6 +28,7 @@ from omniweave_core.out.carrier import CarrierDoc
 from omniweave_core.out.cites import CitedBlock
 from omniweave_core.out.compile import CheckResult, CompileV1, check
 from omniweave_core.out.constructs import Disposition
+from omniweave_core.out.finding import Severity
 from omniweave_core.out.gate import GateStatus
 from omniweave_core.out.plan import OutUnit
 from omniweave_core.out.roundtrip import applicable
@@ -488,3 +489,47 @@ def test_text_with_no_face_is_a_recorded_skip_naming_its_element(tmp_path: Path)
     assert [(s.rule, s.needs, s.el) for s in result.report.skipped_checks] == [
         ("pptx.text.canvas@1", "measure", "u01/e9")
     ]
+
+
+# ---------------------------------------------------------------------------------------------
+# D794: the type-size budget, counted across the deck
+# ---------------------------------------------------------------------------------------------
+
+
+def test_an_undeclared_size_across_slides_is_a_warning_then_an_error(tmp_path: Path) -> None:
+    brief = parse_brief(
+        f"{BRIEF_SCHEMA}\n## canvas\n- format: 16:9\n- unit: slide\n## communication\n"
+        "- primary_language: en-GB\n## direction\n## density\n- per_unit: light\n## motion\n"
+        "- level: static\n## typography\n- body: 20\n- title: 44\n## rhythm\n## forbidden\n",
+        baseline=(),
+    )
+    texts = [
+        f'<text x="1" y="{40 * n}" font-family="Probe Sans" font-size="13">a</text>' for n in (1, 2)
+    ]
+    u01 = f"{SVG}>{''.join(texts)}</svg>"
+
+    def gate(u02_sizes: int) -> CheckResult:
+        u02 = (
+            f"{SVG}>"
+            + "".join(
+                f'<text x="1" y="{40 * n}" font-family="Probe Sans" font-size="13">b</text>'
+                for n in range(1, u02_sizes + 1)
+            )
+            + "</svg>"
+        )
+        job = _job(tmp_path / str(u02_sizes), **{"u01.svg": u01, "u02.svg": u02})
+        return check(
+            job, _measured(tmp_path), target="pptx", constructs=TABLE, stage="final",
+            brief=brief, cites=_Cites(),
+        )  # fmt: skip
+
+    warned = gate(0)
+    assert [(f.code, f.severity) for f in warned.report.findings] == [
+        ("OW_TARGET_TYPE_SIZE_UNDECLARED", Severity.WARNING)
+    ]
+    assert warned.status is GateStatus.PASSED, "a warning does not fail the gate"
+    failed = gate(1)
+    assert [(f.code, f.severity) for f in failed.report.findings] == [
+        ("OW_TARGET_TYPE_SIZE_UNDECLARED", Severity.ERROR)
+    ]
+    assert failed.status is GateStatus.FAILED
