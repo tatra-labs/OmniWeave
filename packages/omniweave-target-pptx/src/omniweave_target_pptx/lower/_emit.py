@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_core.errors import TargetError
 from omniweave_core.out.lowering import Row, refuse_unmapped, resolve
+from pptx.oxml.ns import qn
 
 from omniweave_target_pptx.lower import effects, paint, stroke
 from omniweave_target_pptx.lower._geometry import Matrix, Placed, angle, emu
@@ -50,6 +51,12 @@ def _unembedded(blob: bytes) -> str:
     return ""
 
 
+def _unlinked(href: str) -> tuple[str, str]:
+    """No slide to link from: an `Emitter` built outside `_pack.build()` holds no link."""
+    del href
+    return ("", "")
+
+
 @dataclass
 class Emitter:
     """One slide's walk: where shapes go, the next id, and each open group's child boxes."""
@@ -66,6 +73,14 @@ class Emitter:
     """Each picture's frozen asset by its slot (D800)."""
     embed: Callable[[bytes], str] = _unembedded
     """A picture's bytes as an image part of the slide: its relationship's id (D800)."""
+    linker: Callable[[str], tuple[str, str]] = _unlinked
+    """A link's `href` as the slide's relationship id and its action, `""` for a page (D801)."""
+    linked: str | None = None
+    """The `href` of the `<a>` the walk is inside, if any (D801)."""
+    using: tuple[str, ...] = ()
+    """The ids each open `<use>` clones, innermost last: a `<use>` may not reach itself."""
+    cloning: int = 0
+    """How many `<use>`s deep the walk is: a clone's shapes take no address (D801)."""
     next_id: int = FIRST_ID
     boxes: list[list[Placed]] = field(default_factory=lambda: [[]])
     handlers: dict[str, Handler] = field(default_factory=dict)
@@ -93,6 +108,23 @@ class Emitter:
             if any(s.matches(child) for s in self.ignored):
                 continue
             self.handler(child)(self, child, (*chain, child))
+
+    def name(self, node: CarrierNode, shape_id: int) -> str:
+        """A shape's `p:cNvPr` name: its address (`lower.ids`), or its kind and id inside a
+        clone, which shares its original's address and may not repeat it."""
+        if self.cloning:
+            return f"{node.tag.partition('|')[2]} {shape_id}"
+        return shape_name(node, shape_id)
+
+    def click(self, named: Any) -> None:
+        """`a:hlinkClick` on a shape's `p:cNvPr` while the walk is inside an `<a>`."""
+        if self.linked is None:
+            return
+        rid, action = self.linker(self.linked)
+        made = element("a:hlinkClick", named)
+        made.set(qn("r:id"), rid)
+        if action:
+            made.set("action", action)
 
     def take_id(self) -> int:
         taken = self.next_id
@@ -130,7 +162,8 @@ class Emitter:
         shape_id = self.take_id()
         made = element("p:sp")
         properties = element("p:nvSpPr", made)
-        element("p:cNvPr", properties, id=str(shape_id), name=shape_name(node, shape_id))
+        named = element("p:cNvPr", properties, id=str(shape_id), name=self.name(node, shape_id))
+        self.click(named)
         element("p:cNvSpPr", properties)
         element("p:nvPr", properties)
         body = element("p:spPr", made)

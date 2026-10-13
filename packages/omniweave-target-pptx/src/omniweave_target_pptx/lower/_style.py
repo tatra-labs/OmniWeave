@@ -42,7 +42,8 @@ ALPHA_FULL: Final = 100_000
 """DrawingML's `a:alpha` is in thousandths of a percent."""
 
 Chain = Sequence["CarrierNode"]
-_URL: Final = re.compile(r"url\(#([^)\s]+)\)")
+_URL: Final = re.compile(r"url\(#([^)\s]+)\)|#(\S+)")
+"""`url(#id)`, a property's spelling, or `#id`, an `href`'s (D801)."""
 
 
 def element(tag: str, parent: Any = None, **attrs: str) -> Any:
@@ -80,7 +81,7 @@ def named(
 ) -> CarrierNode:
     """The definition `url(#id)` names, of one of `tags`; refused when it names nothing else."""
     m = _URL.fullmatch(stated.strip())
-    found = None if m is None else definitions.get(m[1])
+    found = None if m is None else definitions.get(m[1] or m[2])
     if found is None or found.tag not in tags:
         named_ = "no id in this slide" if found is None else f"a <{found.tag.partition('|')[2]}>"
         raise TargetError(

@@ -9,13 +9,13 @@ filter (D799) is its `p:grpSpPr`'s `a:effectLst`, turned by the matrix its child
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from omniweave_target_pptx.lower import effects
 from omniweave_target_pptx.lower._emit import xfrm
 from omniweave_target_pptx.lower._geometry import Placed, angle
 from omniweave_target_pptx.lower._style import element, inherited
-from omniweave_target_pptx.lower.ids import shape_name
 from omniweave_target_pptx.lower.transform import transform
 
 if TYPE_CHECKING:
@@ -29,15 +29,21 @@ __all__ = ["group"]
 
 def group(em: Emitter, node: CarrierNode, chain: Chain) -> None:
     """A `<g>` as `p:grpSp`, its children lowered into it."""
+    framed(em, node, chain, lambda: em.children(node, chain))
+
+
+def framed(em: Emitter, node: CarrierNode, chain: Chain, draw: Callable[[], None]) -> None:
+    """A `p:grpSp` named by `node`, holding what `draw` lowers: a `<g>`'s children, or the
+    clone a `<use>` draws (D801)."""
     group_id = em.take_id()
     made = element("p:grpSp")
     properties = element("p:nvGrpSpPr", made)
-    element("p:cNvPr", properties, id=str(group_id), name=shape_name(node, group_id))
+    em.click(element("p:cNvPr", properties, id=str(group_id), name=em.name(node, group_id)))
     element("p:cNvGrpSpPr", properties)
     element("p:nvPr", properties)
     frame = element("p:grpSpPr", made)
     with em.group(made) as boxes:
-        em.children(node, chain)
+        draw()
     box = _bounds(boxes)
     frame.append(xfrm(box, None, child=box))
     found = effects.apply(node, em.definitions)

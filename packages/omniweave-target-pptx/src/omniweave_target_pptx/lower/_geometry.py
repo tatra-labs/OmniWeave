@@ -10,10 +10,12 @@ decomposes exactly.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final
 
+from omniweave_target_pptx.lower._style import declared, number
 from omniweave_target_pptx.rules.transform import operations
 
 if TYPE_CHECKING:
@@ -27,11 +29,15 @@ __all__ = [
     "angle",
     "chain",
     "emu",
+    "fitting",
     "place",
     "rotation",
 ]
 
 EMU_PER_UNIT: Final = 9525
+ALIGN: Final = {"Min": 0.0, "Mid": 0.5, "Max": 1.0}
+_ASPECT: Final = re.compile(r"x(Min|Mid|Max)Y(Min|Mid|Max)(?: (meet|slice))?")
+_SEPARATOR: Final = re.compile(r"[\s,]+")
 FULL_TURN: Final = 21_600_000
 """DrawingML's `rot` runs 0 to 21,600,000: a degree is 60,000."""
 
@@ -94,14 +100,54 @@ def _parsed(text: str) -> Matrix:
     return out
 
 
-def chain(nodes: Iterable[CarrierNode]) -> Matrix:
-    """The matrix of `nodes`, outermost first, the slide root's own transform left out."""
+def chain(nodes: Sequence[CarrierNode]) -> Matrix:
+    """The matrix of `nodes`, outermost first, the slide root's own transform left out. A
+    `<use>`'s `x` and `y` move what it clones, and a `<symbol>` maps its `viewBox` into the box
+    of the `<use>` before it (D801)."""
     out = IDENTITY
     for n, node in enumerate(nodes):
         stated = node.attr("transform")
         if stated is not None and n:
             out = out.then(_parsed(stated))
+        if node.tag == "svg|use":
+            moved = Matrix(e=number(declared(node, "x"), 0.0), f=number(declared(node, "y"), 0.0))
+            out = out.then(moved)
+        elif node.tag == "svg|symbol" and n:
+            out = out.then(_viewed(node, nodes[n - 1]))
     return out
+
+
+def fitting(node: CarrierNode) -> tuple[float, float, str]:
+    """`preserveAspectRatio`: the x and y alignment, 0, 0.5 or 1, and `meet`, `slice` or `none`,
+    `xMidYMid meet` when unstated or unread."""
+    stated = (node.attr("preserveAspectRatio") or "").strip()
+    if stated == "none":
+        return (0.0, 0.0, "none")
+    m = _ASPECT.fullmatch(stated)
+    if m is None:
+        return (0.5, 0.5, "meet")
+    return (ALIGN[m[1]], ALIGN[m[2]], m[3] or "meet")
+
+
+def _viewed(symbol: CarrierNode, use: CarrierNode) -> Matrix:
+    """A `<symbol>`'s `viewBox` fitted into its `<use>`'s `width` and `height`, which default to
+    the `viewBox`'s own size; a symbol with no `viewBox` maps nothing."""
+    parts = _SEPARATOR.split((symbol.attr("viewBox") or "").strip())
+    try:
+        left, top, wide, tall = [float(p) for p in parts]
+    except ValueError:  # not four numbers
+        return IDENTITY
+    if not (wide and tall):
+        return IDENTITY
+    w, h = number(declared(use, "width"), wide), number(declared(use, "height"), tall)
+    across, down, mode = fitting(symbol)
+    if mode == "none":
+        sx, sy = w / wide, h / tall
+    else:
+        sx = sy = (min if mode == "meet" else max)(w / wide, h / tall)
+    return Matrix(
+        a=sx, d=sy, e=across * (w - wide * sx) - left * sx, f=down * (h - tall * sy) - top * sy
+    )
 
 
 def emu(value: float) -> int:

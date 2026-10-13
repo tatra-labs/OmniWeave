@@ -39,7 +39,6 @@ from omniweave_target_pptx.lower._emit import xfrm
 from omniweave_target_pptx.lower._geometry import emu, place
 from omniweave_target_pptx.lower._style import element
 from omniweave_target_pptx.lower.geometry import offset
-from omniweave_target_pptx.lower.ids import shape_name
 from omniweave_target_pptx.lower.transform import transform
 from omniweave_target_pptx.textlines import (
     TSPAN,
@@ -126,7 +125,8 @@ def text_box(em: Emitter, node: CarrierNode, chain: Chain) -> None:
     shape_id = em.take_id()
     made = element("p:sp")
     properties = element("p:nvSpPr", made)
-    element("p:cNvPr", properties, id=str(shape_id), name=shape_name(node, shape_id))
+    named = element("p:cNvPr", properties, id=str(shape_id), name=em.name(node, shape_id))
+    em.click(named)
     element("p:cNvSpPr", properties, txBox="1")
     element("p:nvPr", properties)
     body = element("p:spPr", made)
