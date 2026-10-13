@@ -1224,6 +1224,13 @@ meaning = "an owsvg/1 <text> whose measured lines run past the slide's viewBox, 
 fix     = "ow out constructs pptx --construct text.text"
 sites   = ["09-generation.md:2233"]
 
+[[code]]
+numeric = "OW-T-430"
+symbol  = "OW_TARGET_TYPE_SIZE_UNDECLARED"
+meaning = "a type size within 2 user units of no typography anchor in the Brief, counted across the deck: the second occurrence a warning, the third an error, as RuleCtx.limits[\"undeclared_size_max\"] = 2 sets (D794)"
+fix     = "ow out check --stage final   # after naming the size in brief.md's ## typography"
+sites   = ["09-generation.md:2235"]
+
 # ── W1.5, the driver card grammar (04-driver-system.md sections 2.1-2.8, 4.5, 5.3, 7.5). The
 # three discovery-point refusals of section 5.3 step 1, plus the two numerics the plan already
 # binds. `meaning` and `fix` are FILLED here rather than deferred to W1.3: these five are raised

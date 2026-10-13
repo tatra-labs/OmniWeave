@@ -1,11 +1,12 @@
-"""owsvg/1's hand-written rules, one rule a file. **D789-D791, D793.**
+"""owsvg/1's hand-written rules, one rule a file. **D789-D791, D793, D794.**
 
 16-roadmap.md W9.2 asks for "`rules/` at one rule per file with one test per file", and 09
 section 12.1 lists the bands they fill. D789 built the structural band (orders 10-19), D790 the
 grammar band (40-49) and D791 the references and effects (50-52). The forbidden, conditional,
 closed-set, normalize and bake rows are the table's own rules
 (`omniweave_core.out.conformance.table_pack()`), the cite facts and the cite batch are
-`cite_pack()`'s. D793 adds the line rule (53) and the measurement band (60).
+`cite_pack()`'s. D793 adds the line rule (53) and the measurement band (60), and D794 the
+document band (90).
 
 ## Rulings
 
@@ -60,6 +61,11 @@ closed-set, normalize and bake rows are the table's own rules
     `needs={"measure"}`). Its model is ppt-master's, stated in every message: single-line width
     per positioned line, vertical wrapping not modeled. A rotated or scaled text is outside the
     model, and a text with no face is the framework's recorded skip.
+13. **D794: an undeclared type size may stay a one-off, never a pattern** (`type_budget`, 90,
+    a document rule at the final stage). A size within 2 of a Brief typography anchor is
+    declared. Any other is counted across the deck by the framework, and its second occurrence
+    is a warning and its third an error (`limits["undeclared_size_max"]`, 2). A Brief that names
+    no size sets no budget.
 """
 
 from __future__ import annotations
@@ -85,6 +91,7 @@ from omniweave_target_pptx.rules import (
     text_canvas,
     text_lines,
     transform,
+    type_budget,
     unit_root,
 )
 
@@ -112,4 +119,5 @@ def rules() -> Mapping[str, Sequence[RuleSpec]]:
         ),
         "reference": (reference.SPEC, effect.SPEC, definitions.SPEC, text_lines.SPEC),
         "measurement": (text_canvas.SPEC,),
+        "document": (type_budget.SPEC,),
     }

@@ -31,7 +31,7 @@ the rules, so a target that could run its own gate could not skip it.
 8. **`DocIndex` is filled from what a stamped tree shows.** `els`, `cites`, `slots` and
    `construct_counts` are collected per unit, `nsigs` (D743) per stamped element and `markers`
    (D745) from the `OWC1` scan. `value_occurrences` waits for the rules that count values; it
-   is empty until then, never absent.
+   is empty until then, never absent. D794: it holds `type_size`, ruling 13's.
 9. **`rule_timings_ms` is read from the injected `Clock`**, `SystemClock` unless the caller
    passes one. Library code reads no ambient clock (`omniweave-no-time-time-in-library-code`).
 10. **D789: `RuleCtx.brief` is the Brief the check was given.** 09 section 4.4 prints `brief` on
@@ -50,21 +50,35 @@ the rules, so a target that could run its own gate could not skip it.
     skip whenever the estimator answers `None`, once per rule and element, so the gate is
     `unverified` and never `passed` over text nobody measured. An element with no address is
     recorded once a rule, with no `el`.
+13. **D794: `value_occurrences["type_size"]` counts every `font-size` a unit states**, attribute
+    or `style` declaration, by its value in user units (`20px` and `20` are one value, written
+    `20`), summed across the roster. 09 section 12.1's document band reads it: "the third
+    occurrence of an undeclared type size is an error", which a unit rule cannot see when the
+    first two were on other slides. Type size is CSS's `font-size` in both carriers, so the
+    framework counts it once rather than each target. A value that is not a number is the
+    grammar's to refuse and is not counted.
 """
 
 from __future__ import annotations
 
 import re
 from collections import Counter
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
+from decimal import Decimal
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal, Protocol
 
 from omniweave_core.clock import Clock, SystemClock
 from omniweave_core.errors import TargetError
 from omniweave_core.limits import MAX_FINDINGS_PER_RULE
-from omniweave_core.out.carrier import CarrierDoc, CarrierNode, CarrierParseError, ParseError
+from omniweave_core.out.carrier import (
+    CarrierDoc,
+    CarrierNode,
+    CarrierParseError,
+    ParseError,
+    style_declarations,
+)
 from omniweave_core.out.cites import CiteResolver
 from omniweave_core.out.constructs import ConstructTable
 from omniweave_core.out.finding import Finding, FindingSet, Provenance, Severity, Truncation
@@ -76,6 +90,7 @@ if TYPE_CHECKING:
     from omniweave_core.out.brief import Brief
 
 __all__ = [
+    "TYPE_SIZE",
     "Box",
     "DocIndex",
     "PackRun",
@@ -95,6 +110,10 @@ _BANDS: Final[dict[str, range]] = {
 }
 _SLOT: Final = re.compile(r"asset-slot:([0-9a-f]{64})")
 _CITE_ATTRIBUTE: Final = "data-ow-cite"
+_FONT_SIZE: Final = "font-size"
+_SIZE: Final = re.compile(r"[0-9]+(?:\.[0-9]+)?|\.[0-9]+")
+TYPE_SIZE: Final = "type_size"
+"""Ruling 13: `DocIndex.value_occurrences`'s key for the stated type sizes."""
 _NEED_FIX: Final = "ow out targets   # names the extra each target's needs require"
 
 
@@ -420,6 +439,7 @@ class _Index:
         self.constructs: dict[str, Counter[str]] = {}
         self.nsigs: dict[str, str] = {}
         self.markers: list[Marker] = []
+        self.sizes: Counter[str] = Counter()
 
     def add(self, unit: str, doc: CarrierDoc, table: ConstructTable | None) -> None:
         els: set[str] = set()
@@ -444,6 +464,7 @@ class _Index:
         self.cites[unit] = frozenset(cites)
         self.slots[unit] = frozenset(slots)
         self.constructs[unit] = counts
+        self.sizes.update(_type_sizes(doc))
 
     def snapshot(self) -> DocIndex:
         return DocIndex(
@@ -454,5 +475,16 @@ class _Index:
             cites=MappingProxyType(dict(self.cites)),
             slots=MappingProxyType(dict(self.slots)),
             markers=tuple(self.markers),
-            value_occurrences=MappingProxyType({}),
+            value_occurrences=MappingProxyType({TYPE_SIZE: Counter(self.sizes)}),
         )
+
+
+def _type_sizes(doc: CarrierDoc) -> Iterator[str]:
+    """Ruling 13: each `font-size` the unit states, as a canonical number in user units."""
+    stated = [n.attr(_FONT_SIZE) for n in doc.select(f"@{_FONT_SIZE}")]
+    for n in doc.select(f"@style|{_FONT_SIZE}"):
+        stated += [v for p, v in style_declarations(n.attr("style") or "") if p == _FONT_SIZE]
+    for value in stated:
+        text = (value or "").strip().removesuffix("px").strip()
+        if _SIZE.fullmatch(text):
+            yield format(Decimal(text).normalize(), "f")
