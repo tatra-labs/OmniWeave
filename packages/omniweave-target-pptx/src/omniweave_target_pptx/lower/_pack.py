@@ -46,6 +46,7 @@ from pptx.util import Emu
 
 from omniweave_target_pptx.lower import (
     defs,
+    effects,
     geometry,
     gradients,
     group,
@@ -73,6 +74,7 @@ FAMILIES: Final = MappingProxyType(
         f"lower.{module.__name__.rpartition('.')[2]}": module
         for module in (
             defs,
+            effects,
             geometry,
             gradients,
             group,

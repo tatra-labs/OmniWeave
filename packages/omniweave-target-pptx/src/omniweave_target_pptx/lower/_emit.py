@@ -18,9 +18,9 @@ from typing import TYPE_CHECKING, Any, Final
 from omniweave_core.errors import TargetError
 from omniweave_core.out.lowering import Row, refuse_unmapped, resolve
 
-from omniweave_target_pptx.lower import paint, stroke
+from omniweave_target_pptx.lower import effects, paint, stroke
 from omniweave_target_pptx.lower._geometry import Matrix, Placed, angle, emu
-from omniweave_target_pptx.lower._style import element
+from omniweave_target_pptx.lower._style import element, inherited
 from omniweave_target_pptx.lower.ids import shape_name
 
 if TYPE_CHECKING:
@@ -128,6 +128,17 @@ class Emitter:
         line.set("w", str(emu(stroke.width(chain) * grown) if drawn else 0))
         stroke.dash(chain, line)
         stroke.join(chain, line)
+        ends = (
+            (effects.head(chain, self.definitions), "a:headEnd"),
+            (effects.tail(chain, self.definitions), "a:tailEnd"),
+        )
+        for marker, tag in ends:
+            if marker is not None:
+                effects.line_end(marker, line, tag, width=stroke.width(chain))
+        found = effects.apply(node, self.definitions)
+        if found is not None:
+            fill = inherited(chain, "fill")
+            effects.effect(found, body, scale=m.scale, turn=turn, fill=fill)
         self.add(made, placed)
 
 

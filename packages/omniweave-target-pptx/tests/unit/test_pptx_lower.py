@@ -60,6 +60,21 @@ BUILT = frozenset(
     {
         "lower.defs:definition_id",
         "lower.defs:definitions",
+        "lower.effects:apply",
+        "lower.effects:effect",
+        "lower.effects:end_anchor",
+        "lower.effects:end_size",
+        "lower.effects:end_units",
+        "lower.effects:glow",
+        "lower.effects:head",
+        "lower.effects:line_end",
+        "lower.effects:orient",
+        "lower.effects:outer_shadow",
+        "lower.effects:radius",
+        "lower.effects:shadow_alpha",
+        "lower.effects:shadow_colour",
+        "lower.effects:tail",
+        "lower.effects:units",
         "lower.geometry:extent",
         "lower.geometry:offset",
         "lower.gradients:focus",
@@ -117,7 +132,8 @@ BUILT = frozenset(
 
 
 def test_the_rows_lowered_so_far_resolve_and_no_others_do() -> None:
-    """D795's 26 functions, D796's freeforms and D797's text and D798's paint servers."""
+    """D795's 26 functions, then D796's freeforms, D797's text, D798's paint servers and
+    D799's effects."""
     assert {m for m in NAMED if resolve(m, _pack.FAMILIES) is not None} == BUILT
 
 
@@ -138,8 +154,8 @@ def test_every_public_lowering_function_is_one_a_row_names() -> None:
     ("body", "named"),
     [
         (
-            '<defs><filter id="f"><feGaussianBlur stdDeviation="2"/></filter></defs>',
-            "effect.filter-def (lower.effects:effect)",
+            '<defs><symbol id="s"><rect width="1" height="1"/></symbol></defs>',
+            "def.symbol (lower.defs:symbol)",
         ),
         ('<image width="1" height="1"/>', "shape.image (lower.media:picture)"),
         ('<a href="#u02"><rect width="1" height="1"/></a>', "shape.a (lower.links:hyperlink)"),

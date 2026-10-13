@@ -15,15 +15,20 @@ box does not (`lower.gradients`).
 from __future__ import annotations
 
 import math
-import re
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
-from omniweave_core.errors import TargetError
-
 from omniweave_target_pptx.lower import gradients, patterns
-from omniweave_target_pptx.lower._style import Chain, declared, element, inherited, number, solid
+from omniweave_target_pptx.lower._style import (
+    Chain,
+    declared,
+    element,
+    inherited,
+    named,
+    number,
+    solid,
+)
 
 if TYPE_CHECKING:
     from omniweave_core.out.carrier import CarrierNode
@@ -32,7 +37,7 @@ __all__ = ["alpha", "fill", "fill_alpha", "line", "line_alpha"]
 
 _BLACK: Final = "#000000"
 _NONE: Final = "none"
-_URL: Final = re.compile(r"url\(#([^)\s]+)\)")
+PAINTS: Final = frozenset({"svg|linearGradient", "svg|radialGradient", "svg|pattern"})
 NO_DEFINITIONS: Final[Mapping[str, CarrierNode]] = MappingProxyType({})
 
 
@@ -104,19 +109,10 @@ def _server(
     turn: float,
 ) -> None:
     """A `url(#id)` paint: the gradient or pattern its id names."""
-    m = _URL.fullmatch(stated.strip())
-    found = None if m is None else definitions.get(m[1])
-    tag = "" if found is None else found.tag
-    if found is not None and tag == "svg|linearGradient":
+    found = named(stated, definitions, PAINTS, what="a gradient or a pattern")
+    if found.tag == "svg|linearGradient":
         gradients.linear(found, level, parent, turn=turn)
-    elif found is not None and tag == "svg|radialGradient":
+    elif found.tag == "svg|radialGradient":
         gradients.radial(found, level, parent)
-    elif found is not None and tag == "svg|pattern":
-        patterns.pattern(found, level, parent)
     else:
-        named = "no id in this slide" if found is None else f"a <{tag.partition('|')[2]}>"
-        raise TargetError(
-            f"paint {stated} names {named}; a paint names a gradient or a pattern",
-            symbol="OW_TARGET_REFERENCE_UNRESOLVED",
-            fix="ow out check --stage final   # pptx.reference@1 names the same problem",
-        )
+        patterns.pattern(found, level, parent)

@@ -3,7 +3,7 @@
 # slide, lowered to DrawingML in pure Python. D789 builds its table, carrier and structural
 # rules, D790 its grammar band, D791 its references and effects, D792 measure.py and D793
 # its measurement band, D794 its type budget, D795 the lowering's first families, D796
-# its freeforms, D797 its text and D798 its gradients and patterns;
+# its freeforms, D797 its text, D798 its gradients and patterns and D799 its effects;
 # the rest of the lowering is later cells, so it is not implemented.
 card_schema = 1
 
@@ -41,7 +41,7 @@ measure = "uharfbuzz"                  # measure.py: shaping over the faces font
 runtime_rules = false
 toolchain = ""                         # pure Python: python-pptx, XlsxWriter, skia-pathops
 implemented = false
-reason = "owsvg/1's table, carrier, rules and measure.py are built, and the lowering to DrawingML draws shapes, freeforms, text, groups, paint, gradients, patterns and strokes but not yet effects, pictures or links"
+reason = "owsvg/1's table, carrier, rules and measure.py are built, and the lowering to DrawingML draws shapes, freeforms, text, groups, paint, gradients, patterns, strokes, shadows, glows and line ends but not yet pictures, clips or links"
 max_units = 2000                       # 09 section 14.2: a 2000-unit roster, streamed
 agent_doc_tokens_max = 6000            # 09 section 3.3: about 33 tokens a row over ~180 rows
 media_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
