@@ -13,6 +13,14 @@ _plan/
 # repoints it at the checkout still gets no tracked bytes.
 .omniweave-home/
 
+# --- the evaluation store and its staging ----------------------------------
+# 13-quality.md section 11.1: "The `.oweval` file itself is generated and `.gitignore`d", and
+# section 13.5 gives `eval/staging/*.ndjson`, one file per xdist worker, the same treatment: a
+# job's scratch, read once by `ow eval import` (D815). The published numbers are the committed
+# `eval/results/**.json` tree, never the file behind it.
+*.oweval*
+eval/staging/
+
 # --- generated package data ------------------------------------------------
 # The first-party release manifest is generated into src/ by tools/gen_first_party.py during
 # the `build` job (11-repo-layout.md section 7.2), so a workspace checkout has none and every

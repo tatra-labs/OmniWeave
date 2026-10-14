@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D814: build note on 13-quality section 2.10, the .oweval store module, its own schema chain, eval_perf and eval_run rulings
+# blessed-because: D815: build note on 13-quality section 2.10, eval staging and the one-transaction import
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -39,7 +39,7 @@ documents-frozen  be04e76a5fed4eab2256414da0fe06ee96a0d12943d0cc1c4897742d692e77
 documents-frozen  3855e9d5a833d34c6f0da3cb8f93f19769032cbb730615b591ed34ff0d92edca  10-interfaces.md
 documents-frozen  76a694bf0b19b60ba35d2246f6b36466ca990f318f51e0a292c388ec0e78bc68  11-repo-layout.md
 documents-frozen  3edabb36d1bc3c54a9f44ca89f43589f1b3f63ce991399c7bd515b35f7a0752c  12-performance.md
-documents-frozen  6fe089e7689c9c101d3558cb271680a2c894d37309a2c21a48686f5f8a774eee  13-quality.md
+documents-frozen  2d3dabdb2642f3daefd4b8cb073003f6e0a5bfb67f0369b030a49dbaea34d0d5  13-quality.md
 documents-frozen  667161a8bd206b5805998a289f7679f80dc3a8ea6910c52ea8345bfe9562d721  14-security.md
 documents-frozen  b40c687bb38801907249eef6ec9af9a8ac7d26083be9c0290f356e89aaf48695  15-observability.md
 documents-frozen  e655ac4169f71a1c1be40a0bacc632c3b873bb77c03a3f185d3858b29eb12436  16-roadmap.md
