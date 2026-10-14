@@ -1,6 +1,6 @@
 """`compile.pptx.native`'s address map: where each `data-ow-el` landed in the deck. D803.
 
-The provenance part's `at` names, for each address, its unit, its shape's `p:cNvPr` id, and for a
+The provenance part's `at` names, for each address, its slide, its shape's `p:cNvPr` id, and for a
 `<tspan>` its paragraph and the run range its text took, since a run has no name to carry one.
 `parse.pptx.native` reads it. The last test holds each located run range to R2's text clause:
 read back from the package, it is the element's own `visible_text()`.
@@ -46,16 +46,16 @@ def test_every_kind_of_address_lands_where_its_reader_looks(tmp_path: Path) -> N
         unit(2, '<rect data-ow-el="u02/e2" width="1" height="1"/>'),
     )
     assert at(out) == {
-        "u01/e1": {"unit": "u01"},
-        "u01/e2": {"unit": "u01", "shape": 2},
-        "u01/e3": {"unit": "u01", "shape": 3},
-        "u01/e4": {"unit": "u01", "shape": 4},
-        "u01/e5": {"unit": "u01", "shape": 4, "line": 0, "runs": [1, 2]},
-        "u01/e6": {"unit": "u01", "shape": 4, "line": 1, "runs": [0, 1]},
-        "u01/e7": {"unit": "u01", "shape": 5},
-        "u01/e8": {"unit": "u01", "shape": 6},
-        "u02/e1": {"unit": "u02"},
-        "u02/e2": {"unit": "u02", "shape": 2},
+        "u01/e1": {"slide": 1},
+        "u01/e2": {"slide": 1, "shape": 2},
+        "u01/e3": {"slide": 1, "shape": 3},
+        "u01/e4": {"slide": 1, "shape": 4},
+        "u01/e5": {"slide": 1, "shape": 4, "line": 0, "runs": [1, 2]},
+        "u01/e6": {"slide": 1, "shape": 4, "line": 1, "runs": [0, 1]},
+        "u01/e7": {"slide": 1, "shape": 5},
+        "u01/e8": {"slide": 1, "shape": 6},
+        "u02/e1": {"slide": 2},
+        "u02/e2": {"slide": 2, "shape": 2},
     }
 
 
@@ -87,7 +87,7 @@ def test_a_clone_lands_nowhere_and_its_use_where_it_stands(tmp_path: Path) -> No
             '</text></defs><use data-ow-el="u01/e4" href="#t"/>',
         ),
     )
-    assert at(out) == {"u01/e1": {"unit": "u01"}, "u01/e4": {"unit": "u01", "shape": 2}}
+    assert at(out) == {"u01/e1": {"slide": 1}, "u01/e4": {"slide": 1, "shape": 2}}
 
 
 @pytest.mark.parametrize(

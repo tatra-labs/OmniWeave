@@ -26,7 +26,7 @@ built it for itself (D782, D786). A deck needs the same channel, so it lives her
    with its row count, or failed when the package holds no part.
 6. **A target whose markup cannot name every address lists where each landed** (`at`, D803). A
    document's bookmarks carry its addresses; a deck's runs have nothing to carry one, so a deck
-   writes each address's unit, shape, line and runs, and its reader reads them. `at` is written
+   writes each address's slide, shape, line and runs, and its reader reads them. `at` is written
    only by a target that passes it.
 """
 

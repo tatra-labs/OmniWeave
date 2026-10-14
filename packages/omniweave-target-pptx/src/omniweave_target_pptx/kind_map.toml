@@ -2,7 +2,7 @@
 # Every construct `ow out stamp` can address has a row: an element whose visible text is not
 # empty, or one that carries a cite (D767). A slide is a `section`, a text box and each of its
 # lines a `paragraph`, a group a `container`, and a drawn shape a `diagram`. parse.pptx.native
-# (W9.3) is the reader these kinds are written for, and is not built yet.
+# (W9.3, D804) is the reader these kinds are written for.
 schema = "omniweave.out-kind-map/1"
 
 [kind]
