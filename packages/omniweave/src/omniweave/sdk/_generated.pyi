@@ -19,6 +19,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     doc.diff          DiffIn              RebindReport
     doc.grid          GridIn              Grid
     doctor            DoctorIn            DoctorReport
+    eval.publish      EvalPublishIn       EvalPublishReport
     explain           ExplainIn           CodeRow
     graph.doctor      GraphDoctorIn       GraphDoctorReport
     graph.locate      LocateIn            Located

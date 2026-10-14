@@ -103,6 +103,8 @@ _GRAPH_ROOT: Final[str] = "graph"
 
 _OUT_ROOT: Final[str] = "out"
 
+_EVAL_ROOT: Final[str] = "eval"
+
 DISPATCHED: Final[frozenset[str]] = frozenset(
     {
         HOOK_WORD,
@@ -119,12 +121,14 @@ DISPATCHED: Final[frozenset[str]] = frozenset(
         _DOC_ROOT,
         _GRAPH_ROOT,
         _OUT_ROOT,
+        _EVAL_ROOT,
     }
 )
 """The roots this build can run. `ingest` joined in W7.3w; nothing spawns it yet (D433, D554).
 `surface` joined in W7.1e (D334), `doctor` in W7.8c (D610), `query` in W7.8g (D614), `add` in
 W7.8h (D615), `open` in W7.8i (D616), `corpora` in W7.8j (D617), `explain` in W7.8k
-(D618), `doc` in W7.8n (D621), `graph` in D694, and `out` in D761 (`ow out targets`)."""
+(D618), `doc` in W7.8n (D621), `graph` in D694, `out` in D761 (`ow out targets`), and `eval` in
+D833 (`ow eval publish`)."""
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -175,6 +179,8 @@ def _route(root: str, args: list[str]) -> int:  # noqa: PLR0911, PLR0912 -- one 
         return _graph(args)
     if root == _OUT_ROOT:
         return _out(args)
+    if root == _EVAL_ROOT:
+        return _eval(args)
 
     from omniweave_core.errors import InternalError  # noqa: PLC0415 -- only the refusal pays
 
@@ -329,6 +335,15 @@ def _out(args: list[str]) -> int:
     _utf8()
     #  The twelfth read of the working directory under D435's exemption: `./omniweave.toml`,
     #  for `[targets] enabled` and the project's `.omniweave/drivers/`.
+    return run(args, env=os.environ, cwd=Path.cwd(), stdout=sys.stdout, stderr=sys.stderr)
+
+
+def _eval(args: list[str]) -> int:
+    from omniweave.surface.eval import main as run  # noqa: PLC0415 -- the hook path never pays
+
+    _utf8()
+    #  The thirteenth read of the working directory under D435's exemption: `ow eval publish`'s
+    #  default `.oweval` and results tree are relative to it.
     return run(args, env=os.environ, cwd=Path.cwd(), stdout=sys.stdout, stderr=sys.stderr)
 
 
