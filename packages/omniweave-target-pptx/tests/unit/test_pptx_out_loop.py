@@ -9,6 +9,7 @@ verbs as `test_out_back_verb.py` drives docx's.
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 import sqlite3  # noqa: TID251 -- the assertions read the rows the loop wrote.
@@ -20,10 +21,14 @@ from typing import Any
 import pytest
 from fontkit import tiny_font, write_font  # type: ignore[import-not-found]  # tests/fontkit.py
 from omniweave.surface import out as verb
+from omniweave.surface.out import _need_fixes  # pyright: ignore[reportPrivateUsage]
+from omniweave_core.drivers.card import DriverCard, load_card
 from omniweave_core.model.enums import enum_val_rows
 from omniweave_core.out.brief import BRIEF_SCHEMA
+from omniweave_core.out.card import CompileCard
 from omniweave_core.store import migrate
 from omniweave_core.store import sqlite as store_sqlite
+from omniweave_target_pptx.driver import CARD
 
 WINDOWS_ONLY = pytest.mark.skipif(sys.platform != "win32", reason="the named-pipe arm")
 BRIEF = (
@@ -110,6 +115,12 @@ def test_without_a_font_dir_the_deck_is_unverified(tmp_path: Path) -> None:
     assert code == 64
     report = json.loads(out)
     assert report["gate"]["status"] == "unverified"
+    fix = (
+        'ow config set drivers."compile.pptx.native".config.font_dir <value>   '
+        "# what uharfbuzz measures with; then check again"
+    )
+    assert [(s["needs"], s["fix"]) for s in report["skipped_checks"]] == [("measure", fix)]
+    assert {f["fix"] for f in report["findings"]} == {fix}, "D807: the skip names the setting"
 
 
 def test_with_its_font_dir_the_deck_passes_the_gate(tmp_path: Path) -> None:
@@ -149,3 +160,20 @@ def test_a_deck_is_compiled_and_read_back_once_its_addresses_mapped(tmp_path: Pa
     assert _store_rows(project, "SELECT page_kind FROM page") == [
         (next(o for d, o, n in enum_val_rows() if (d, n) == ("page_kind", "slide")),)
     ]
+
+
+def test_a_skipped_measurement_names_the_settings_the_card_declares() -> None:
+    """D807 (surface ruling 27): the fix sets the card's `[config]` keys, or is left alone."""
+    driver = load_card(CARD.read_bytes(), origin="driver_path", source=str(CARD))
+    assert isinstance(driver, DriverCard)
+    card = CompileCard.of(driver)
+    [fix] = _need_fixes(driver, card).values()
+    assert fix.startswith('ow config set drivers."compile.pptx.native".config.font_dir <value>')
+    both = dataclasses.replace(
+        driver.config, properties={"font_dir": {"type": "string"}, "hinting": {"type": "string"}}
+    )
+    [fix] = _need_fixes(dataclasses.replace(driver, config=both), card).values()
+    assert ".config.{font_dir|hinting} <value>" in fix
+    bare = dataclasses.replace(driver, config=dataclasses.replace(driver.config, properties={}))
+    assert _need_fixes(bare, card) == {}, "no setting to name: the framework's fix stands"
+    assert _need_fixes(driver, dataclasses.replace(card, measure="none")) == {}

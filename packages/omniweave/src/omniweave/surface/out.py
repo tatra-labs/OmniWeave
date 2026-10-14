@@ -143,6 +143,12 @@ documentation", with `--group` and `--construct` selecting from it.
     and `back`'s read-back keep the defaults. The effective config is not one of a compile's six
     purity inputs, so a compile under another config would find, and place, the bytes an earlier
     config built. The three verbs that honour it write no artefact.
+27. **A skipped measurement names the card's own settings** (D807). A check that needs
+    `measure` is skipped when the target, built from its config, has no estimator, and the
+    framework's fix pointed at `ow out targets`, which names no setting. When the card
+    declares a `measure` other than `none` and a `[config]`, `check` hands the framework a
+    fix that sets those keys: pptx's is `font_dir`. A need the card names no setting for keeps
+    the framework's fix.
 """
 
 from __future__ import annotations
@@ -723,6 +729,18 @@ def _one_card(cards: Sequence[DriverCard], target: str) -> tuple[DriverCard, Com
     return one
 
 
+def _need_fixes(driver: DriverCard, card: CompileCard) -> dict[str, str]:
+    """Ruling 27: a skipped measurement's fix, the settings the card's `[config]` declares."""
+    keys = sorted(driver.config.properties)
+    if card.measure == "none" or not keys:
+        return {}
+    key = keys[0] if len(keys) == 1 else "{" + "|".join(keys) + "}"
+    return {
+        "measure": f'ow config set drivers."{card.driver}".config.{key} <value>   '
+        f"# what {card.measure} measures with; then check again"
+    }
+
+
 def _discover(resolved: config.Config, env: Mapping[str, str]) -> Any:
     from omniweave_core.discovery import discover  # noqa: PLC0415
 
@@ -1028,6 +1046,7 @@ def check_report(
             brief=plan.brief if final else None,
             clock=SystemClock(),
             cites=None if thread is None else SqliteCiteResolver(thread, corpus=plan.corpus),
+            fixes=_need_fixes(driver, card),
         )
     finally:
         if thread is not None:
