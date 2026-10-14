@@ -108,7 +108,7 @@ import dataclasses
 import math
 from collections import OrderedDict
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 from omniweave_core.canonical import sha256_canonical
 from omniweave_core.errors import UsageError
@@ -406,9 +406,12 @@ def _refuse_policy_only_filters(filters: Filters) -> None:
     (07:3327) and a `Rule`'s `then` half is a channel list, weights, a short-circuit and gate
     modifiers (07:1712-1756); neither names a filter, and `config.py`'s `[retrieval]` register has
     no key for a restriction mask. So a non-zero value arriving here came from the one source the
-    boundary excludes, and D261 is the missing carrier. When it lands, this refusal becomes a
-    substitution -- policy's value replacing the caller's -- and until then refusing is the only
-    reading that does not let a caller own a mask policy is supposed to own.
+    boundary excludes, and D261 is the missing carrier.
+
+    **D780: the carrier is `RetrievalPolicy.deny_restriction_bits`**, `[licence]
+    deny_restrictions` as a mask, and `plan()` attaches it. The refusal stays: a caller still
+    may not set the field, so a caller's value is refused rather than silently replaced, and
+    the plan's filters carry the policy's value alone.
     """
     if filters.deny_restriction_bits:
         msg = (
@@ -427,9 +430,15 @@ def plan(q: Query, caps: IndexCaps, pol: RetrievalPolicy) -> QueryPlan:
     calls of the same shape return the same digest by arithmetic rather than by cache.
 
     The filters are the caller's, attached and not memoised (`_Shape` says why), with the one
-    field DR17 reserves to policy refused before anything else runs.
+    field DR17 reserves to policy refused before anything else runs, and then set from the
+    policy (D780): the caller's object when the policy denies nothing, else a copy carrying it.
     """
     _refuse_policy_only_filters(q.filters)
+    filters = (
+        q.filters
+        if pol.deny_restriction_bits == 0
+        else dataclasses.replace(q.filters, deny_restriction_bits=pol.deny_restriction_bits)
+    )
     budget = q.budget or pol.budget or QueryBudget()
     rule = select(pol, evidence(q, caps))
     key = memo_key(q, caps, pol, rule, budget)
@@ -443,7 +452,7 @@ def plan(q: Query, caps: IndexCaps, pol: RetrievalPolicy) -> QueryPlan:
         _MEMO.move_to_end(key)
     return QueryPlan(
         channels=shape.channels,
-        filters=q.filters,
+        filters=filters,
         fusion=shape.fusion,
         pack=shape.pack,
         gates=shape.gates,
@@ -613,6 +622,17 @@ def _afford(names: tuple[str, ...], budget: QueryBudget) -> None:
             "query would end at the query deadline with Channels reporting OFF(query_deadline)",
             fix=_FIX,
         )
+
+
+def deny_of(config: Config) -> int:
+    """`[licence] deny_restrictions` as `RetrievalPolicy.deny_restriction_bits`. **D780.**
+
+    The same mask `ow out compile` bars a source by (D779), read once here so `ow query` and
+    `ow serve` build one policy from one key.
+    """
+    from omniweave_core.drivers.licence import restriction_mask  # noqa: PLC0415 -- the CLI only
+
+    return restriction_mask(cast("tuple[str, ...]", config.get("licence.deny_restrictions")))
 
 
 def budget_of(config: Config) -> QueryBudget:

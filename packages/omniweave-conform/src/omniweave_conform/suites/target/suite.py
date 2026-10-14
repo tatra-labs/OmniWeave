@@ -40,30 +40,73 @@ checking and compiling the golden fixture in a scratch directory.
 8. **R6 and the reader laws are `unknown` until there is a source artefact and a reader.** R6 is
    about parts a source artefact carries that IL cannot represent. A golden fixture is IL alone,
    so R6 has no case to judge. R2, R3 and R4 read an artefact back.
+
+## Rulings (D784)
+
+9. **A golden fixture may freeze assets.** Each file under `<golden>/assets/` is a frozen
+   `image` asset, slotted by its sha256, in a `FrozenLedger` the golden compile reads, and the
+   Plan's `ledger_digest` is that ledger's. A fixture with no `assets/` gets the empty ledger, so
+   a read is still the target's refusal. docx's golden needs one: `media.img` is an `exact` row,
+   and R5 asks the golden to use every exact row.
+10. **The scratch JobDir has its `job.json`.** A target may read the job's clock there (09
+    section 12.3), as docx does for `dcterms`. The clock is fixed, so R1's two compiles are of one
+    job, as a recompile of one JobDir is.
+11. **The golden Plan pins its cites as the compile does** (`run.out_compile` ruling 18): each
+    cite the IL names, resolved through `cites.json`, at the generation it resolved at. A target
+    that embeds its citations reads them there.
+13. **R2 runs when a reader is given** (D787). The suite has the target's compiler and not its
+    `read_back`, which is a separate `parse/1` card, so the caller hands the reader in. The
+    golden is compiled once and read back, and R2 is judged over every element of the golden IL
+    that carries a `data-ow-el`, each under its construct (the first native element row that
+    matches it, as a target's walk dispatches it) and the card's own `kind_map.toml`. A block's
+    cites are its `x.ow.cites` (D785). With no reader, R2 is `unknown` and says why.
+14. **R3 names its missing half.** R3 compiles `project(read_back(compile(I)))`. A card with
+    `[compile.round_trip] project = false` declares no projection, so R3 is `unknown` naming that
+    key rather than the reader.
+12. **R5's exemption names the table's own address row.** owtext calls it `attr.ow-el` and docx
+    `ow.el`; the exemption is by selector, `@data-ow-el`, and the reason now says which row.
 """
 
 from __future__ import annotations
 
 import hashlib
+import io as io_module
 import json
 import shutil
+import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal
 
 from omniweave_core.errors import TargetError
+from omniweave_core.events import traceparent
+from omniweave_core.model.block import Cite
 from omniweave_core.model.enums import Quote
 from omniweave_core.out.brief import BRIEF_SCHEMA, parse_brief
+from omniweave_core.out.carrier import parse_selector
 from omniweave_core.out.carrier.tree import Node
 from omniweave_core.out.cites import CitedBlock
 from omniweave_core.out.compile import check
 from omniweave_core.out.constructs import Disposition, RoundTrip
 from omniweave_core.out.gate import GateStatus
-from omniweave_core.out.job import ILBundle
+from omniweave_core.out.job import JOB_SCHEMA, ILBundle, Job, JobDeterminism
+from omniweave_core.out.ledger import FrozenLedger, LedgerRow, slot
 from omniweave_core.out.plan import Plan, classify_and_assert
-from omniweave_core.out.roundtrip import Failure, LawResult, applicable, r1, r5, r7
+from omniweave_core.out.roundtrip import (
+    Failure,
+    ILElement,
+    LawResult,
+    ReadBlock,
+    applicable,
+    r1,
+    r2,
+    r5,
+    r7,
+)
+from omniweave_core.store.fragment import records_of
 from omniweave_ports import ArtifactKind
+from omniweave_ports.types import PartSelector, UnitRef
 
 from omniweave_conform.harness import MemoryBlobStore, make_io
 from omniweave_conform.result import Verdict
@@ -74,12 +117,16 @@ if TYPE_CHECKING:
     from omniweave_core.drivers.card import DriverCard
     from omniweave_core.out.compile import CompileV1
     from omniweave_core.out.constructs import Construct, ConstructTable
-    from omniweave_core.out.ledger import AssetSource, LedgerRow
-    from omniweave_ports import DriverResult
+    from omniweave_core.out.ledger import AssetLedger
+    from omniweave_ports import DriverResult, ParseV1
 
-__all__ = ["CITES", "LawOutcome", "TargetReport", "run_target"]
+__all__ = ["ASSETS", "CITES", "GOLDEN_CLOCK_NS", "LawOutcome", "TargetReport", "run_target"]
 
 CITES: Final = "cites.json"
+ASSETS: Final = "assets"
+GOLDEN_CLOCK_NS: Final = 1_700_000_000_000_000_000
+"""Ruling 10: the instant every golden compile's `job.json` names."""
+_TRACEPARENT: Final = traceparent("0" * 31 + "1", "0" * 15 + "1")
 _EL_SELECTOR: Final = "@data-ow-el"
 _MUTANT: Final = ' data-ow-mutant=""'
 _BRIEF: Final = parse_brief(
@@ -130,6 +177,7 @@ def run_target(
     golden: Path,
     *,
     workdir: Path,
+    reader: ParseV1 | None = None,
 ) -> TargetReport:
     """Rulings 2-8 over one golden fixture, in `workdir` and never in the fixture itself."""
     sibling = dict(card.compile_sibling)
@@ -153,7 +201,17 @@ def run_target(
         return _report(target, checked.status, outcomes)
 
     bundle = ILBundle.load(job / "il", carrier=compiler.carrier, constructs=constructs)
-    plan = _plan(target, bundle, constructs, checked.status)
+    ledger = _golden_ledger(golden / ASSETS, bundle)
+    cites = _FixtureCites(golden / CITES)
+    plan = _plan(
+        target,
+        bundle,
+        constructs,
+        checked.status,
+        ledger=ledger,
+        pins=_pins(bundle, compiler, cites),
+    )
+    Job(JOB_SCHEMA, plan, _TRACEPARENT, JobDeterminism(GOLDEN_CLOCK_NS)).write(job)
     capability = dict(card.compile_capability)
     declared = tuple(str(c) for c in capability.get("determinism", ()))  # type: ignore[union-attr]
     for law in claim.applies:
@@ -166,6 +224,10 @@ def run_target(
             declared=declared,
             job=job,
             workdir=workdir,
+            ledger=ledger,
+            reader=reader,
+            kind_map_path=Path(str(card.source)).parent / str(round_trip.get("kind_map", "")),
+            projects=bool(round_trip.get("project", False)),
         )
     return _report(target, checked.status, outcomes)
 
@@ -184,22 +246,133 @@ def _law(
     declared: tuple[str, ...],
     job: Path,
     workdir: Path,
+    ledger: AssetLedger,
+    reader: ParseV1 | None,
+    kind_map_path: Path,
+    projects: bool,
 ) -> LawOutcome:
+    if law == "r2" and reader is not None:
+        return _r2(
+            compiler=compiler,
+            plan=plan,
+            bundle=bundle,
+            constructs=constructs,
+            ledger=ledger,
+            reader=reader,
+            kind_map_path=kind_map_path,
+            workdir=workdir,
+        )
+    if law == "r3" and not projects:
+        return LawOutcome(
+            "r3",
+            "unknown",
+            reason="R3 compiles project(read_back(compile(I))), and the card says "
+            "[compile.round_trip] project = false",
+        )
     if law == "r1":
-        first = _compile(compiler, plan, bundle, workdir / "r1-a")
-        second = _compile(compiler, plan, bundle, workdir / "r1-b")
+        first = _compile(compiler, plan, bundle, ledger, workdir / "r1-a")
+        second = _compile(compiler, plan, bundle, ledger, workdir / "r1-b")
         return LawOutcome("r1", "checked", r1(declared, first[0], second[0]))
     if law == "r7":
-        return LawOutcome("r7", "checked", _r7(compiler, plan, bundle, workdir / "r7"))
+        return LawOutcome("r7", "checked", _r7(compiler, plan, bundle, ledger, workdir / "r7"))
     if law == "r5":
         return _r5(constructs, compiler, bundle, job, workdir / "r5")
     reason = {
         "r6": "R6 judges a source artefact's unrepresented parts; a golden fixture is IL alone",
-    }.get(law, f"{law} reads the artefact back, and this suite invokes no read_back driver yet")
+    }.get(law, f"{law} reads the artefact back, and no read_back driver was given")
     return LawOutcome(law, "unknown", reason=reason)
 
 
-def _plan(target: str, bundle: ILBundle, constructs: ConstructTable, gate: GateStatus) -> Plan:
+def _r2(
+    *,
+    compiler: CompileV1,
+    plan: Plan,
+    bundle: ILBundle,
+    constructs: ConstructTable,
+    ledger: AssetLedger,
+    reader: ParseV1,
+    kind_map_path: Path,
+    workdir: Path,
+) -> LawOutcome:
+    """Ruling 13: the golden compiled once, read back, and R2 over its addressed elements."""
+    if not kind_map_path.is_file():
+        return LawOutcome("r2", "unknown", reason=f"no kind_map at {kind_map_path.name}")
+    kind_map = {
+        str(k): str(v)
+        for k, v in tomllib.loads(kind_map_path.read_text(encoding="utf-8"))["kind"].items()
+    }
+    scratch = workdir / "r2"
+    _compile(compiler, plan, bundle, ledger, scratch)
+    body = (scratch / f"{plan.slug}.artefact").read_bytes()
+    store = MemoryBlobStore(scratch / "read")
+    unit = UnitRef(
+        uri=f"golden:{plan.slug}",
+        part="",
+        content_sha256=store.add(body),
+        byte_len=len(body),
+    )
+    io = make_io(store, scratch / "read-io")
+    fragment = reader.parse(unit, PartSelector(), io)
+    blocks = [
+        ReadBlock(
+            el=(record.get("x") or {}).get("x.ow.el"),
+            kind=str(record.get("kind")),
+            text=record.get("text"),
+            cites=frozenset((record.get("x") or {}).get("x.ow.cites", ())),
+        )
+        for ref in fragment.produced
+        if ref.kind == ArtifactKind.DOC_FRAGMENT
+        for record in records_of(_bytes(ref, io))
+        if record.get("t") == "block"
+    ]
+    return LawOutcome(
+        "r2", "checked", r2(_addressed(bundle, compiler, constructs), blocks, kind_map)
+    )
+
+
+def _addressed(
+    bundle: ILBundle, compiler: CompileV1, constructs: ConstructTable
+) -> list[ILElement]:
+    """Ruling 13: every element carrying `data-ow-el`, under its construct."""
+    rows = [
+        (row.id, parse_selector(row.selector, constructs.carrier))
+        for row in constructs.rows
+        if row.disposition is Disposition.NATIVE
+    ]
+    out: list[ILElement] = []
+    for unit in bundle.units:
+        doc = compiler.carrier(unit.il_path, bundle.text(unit.il_path))
+        for node in doc.select(_EL_SELECTOR):
+            construct = next(
+                (rid for rid, s in rows if s.kind == "element" and s.matches(node)), ""
+            )
+            out.append(
+                ILElement(
+                    el=node.el or "",
+                    construct=construct,
+                    visible_text=doc.visible_text(node),
+                    cites=frozenset((node.attr("data-ow-cite") or "").split()),
+                )
+            )
+    return out
+
+
+def _bytes(ref: Any, io: Any) -> bytes:
+    if ref.inline is not None:
+        return ref.inline
+    with io.blobs.open((ref.blob or "").removeprefix("cas://")) as handle:
+        return handle.read()
+
+
+def _plan(
+    target: str,
+    bundle: ILBundle,
+    constructs: ConstructTable,
+    gate: GateStatus,
+    *,
+    ledger: AssetLedger,
+    pins: Mapping[Cite, int],
+) -> Plan:
     """Ruling 2: a release of a passed gate, a draft of a manual-required one."""
     return Plan(
         schema="omniweave.out-plan/1",
@@ -211,22 +384,22 @@ def _plan(target: str, bundle: ILBundle, constructs: ConstructTable, gate: GateS
         unit_count=len(bundle.units),
         brief=_BRIEF,
         corpus="golden",
-        cites={},
+        cites=dict(pins),
         gate_status=gate,
         il_digest=bundle.il_digest,
         constructs_digest=constructs.digest(),
-        ledger_digest="sha256:" + hashlib.sha256(b"[]").hexdigest(),
+        ledger_digest=ledger.digest(),
         brief_digest=_BRIEF.digest(),
         card_sha256="sha256:" + "0" * 64,
     )
 
 
 def _compile(
-    compiler: CompileV1, plan: Plan, bundle: ILBundle, scratch: Path
+    compiler: CompileV1, plan: Plan, bundle: ILBundle, ledger: AssetLedger, scratch: Path
 ) -> tuple[dict[str, str], Any]:
     """Ruling 4: one in-process compile, and the digests R1 compares."""
     io = make_io(MemoryBlobStore(scratch / "kit"), scratch / "io")
-    body = _artefact(compiler.lower(plan, bundle, _NO_ASSETS, io), io)
+    body = _artefact(compiler.lower(plan, bundle, ledger, io), io)
     staged = scratch / f"{plan.slug}.artefact"
     staged.write_bytes(body)
     receipt = compiler.postflight(str(staged), plan)
@@ -251,7 +424,9 @@ def _artefact(result: DriverResult, io: Any) -> bytes:
         return handle.read()
 
 
-def _r7(compiler: CompileV1, plan: Plan, bundle: ILBundle, scratch: Path) -> LawResult:
+def _r7(
+    compiler: CompileV1, plan: Plan, bundle: ILBundle, ledger: AssetLedger, scratch: Path
+) -> LawResult:
     """Ruling 5: the classifier places every unit, and the receipt says the same."""
     try:
         classified = classify_and_assert(plan, baked={}, visual_changed=lambda _u: True)
@@ -259,7 +434,7 @@ def _r7(compiler: CompileV1, plan: Plan, bundle: ILBundle, scratch: Path) -> Law
         return LawResult("r7", (Failure("unclassified", plan.slug, str(exc)),))
     outcomes = {u: c.outcome for u, c in classified.items()}
     result = r7([u.id for u in plan.units], outcomes)
-    _, receipt = _compile(compiler, plan, bundle, scratch)
+    _, receipt = _compile(compiler, plan, bundle, ledger, scratch)
     said = dict(receipt.units)
     if said == outcomes:
         return result
@@ -311,7 +486,8 @@ def _r5(
         "r5",
         "unknown",
         result,
-        "clauses 3 and 4 hold (attr.ow-el exempt from clause 4: canonical_subtree drops the "
+        f"clauses 3 and 4 hold ({_address_row(constructs)} exempt from clause 4: "
+        "canonical_subtree drops the "
         "address, and its survival is R2's); clauses 1 and 2 need a read_back driver",
     )
 
@@ -382,29 +558,47 @@ class _FixtureCites:
         return {c: self._blocks.get(c) for c in cites}
 
 
-class _NoAssets:
-    """The ledger a golden compile is handed: nothing frozen, so any read is the target's bug."""
+class _GoldenBlobs:
+    """Ruling 9: the fixture's asset files, as the blob reader a `FrozenLedger` opens."""
 
-    def slot(self, sha256: str) -> str:
-        return "asset-slot:" + sha256
+    def __init__(self, blobs: Mapping[str, bytes]) -> None:
+        self._blobs = dict(blobs)
 
-    def freeze(self, src: AssetSource, *, role: str, unit: str) -> LedgerRow:
-        del src  # nothing is read: a golden compile freezes nothing
-        raise TargetError(
-            f"a golden compile freezes nothing ({role} for {unit})",
-            symbol="OW_TARGET_ASSET_UNFROZEN",
-            fix="freeze golden assets into the fixture, not during the compile",
-        )
-
-    def digest(self) -> str:
-        return "sha256:" + hashlib.sha256(b"[]").hexdigest()
-
-    def open(self, slot: str) -> BinaryIO:
-        raise TargetError(
-            f"{slot} is not in a golden compile's ledger",
-            symbol="OW_TARGET_ASSET_UNFROZEN",
-            fix="freeze golden assets into the fixture, not during the compile",
-        )
+    def open(self, digest: str) -> BinaryIO:
+        return io_module.BytesIO(self._blobs[digest])
 
 
-_NO_ASSETS: Final = _NoAssets()
+def _golden_ledger(directory: Path, bundle: ILBundle) -> FrozenLedger:
+    """Ruling 9: each file under `assets/`, frozen as an `image` for the first unit that slots
+    it (the roster's first when none does)."""
+    blobs: dict[str, bytes] = {}
+    rows: list[LedgerRow] = []
+    files = sorted(directory.iterdir()) if directory.is_dir() else []
+    for n, path in enumerate(files, 1):
+        data = path.read_bytes()
+        sha = hashlib.sha256(data).hexdigest()
+        users = [u.id for u in bundle.units if slot(sha) in bundle.text(u.il_path)]
+        blobs[sha] = data
+        rows.append(LedgerRow(n, sha, slot(sha), "image", (users or [bundle.units[0].id])[0]))
+    return FrozenLedger(rows, _GoldenBlobs(blobs))
+
+
+def _pins(bundle: ILBundle, compiler: CompileV1, cites: _FixtureCites) -> dict[Cite, int]:
+    """Ruling 11: every cite the IL names, at the generation `cites.json` resolves it at."""
+    tokens = sorted(
+        {
+            token
+            for unit in bundle.units
+            for node in compiler.carrier(unit.il_path, bundle.text(unit.il_path)).select(
+                "@data-ow-cite"
+            )
+            for token in (node.attr("data-ow-cite") or "").split()
+        }
+    )
+    found = cites.by_cites(tuple(tokens))
+    return {Cite(b.cite): b.doc_gen for b in found.values() if b is not None}
+
+
+def _address_row(constructs: ConstructTable) -> str:
+    """Ruling 12: the table's own name for its `@data-ow-el` row."""
+    return next((r.id for r in constructs.rows if r.selector == _EL_SELECTOR), _EL_SELECTOR)

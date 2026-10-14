@@ -96,6 +96,13 @@ that module imports `omniweave_core.out`, so `out` importing it back would be a 
     puts the Plan's Brief into CAS as `brief_digest`'s preimage, so the row's `brief_digest`
     names the Brief this compile read. A lookup hit retains nothing: the compile it reuses
     already did.
+18. **D783: the Plan `lower()` sees carries the pinned cites.** 09 section 3.7 prints
+    `Plan.cites` as each cite token's `doc_gen`, *"PINNED at plan time"*, and nothing filled
+    it: a scaffolded Plan's map is empty, because the IL is not yet written. This call order's
+    resolution is the pin, so the map is each resolved block's canonical cite and the
+    generation it resolved at, the one the seal's `artifact_cite` rows carry. A target that
+    embeds its citations (docx) reads them from the Plan, so the part it writes and the rows the
+    store keeps name the same generations.
 """
 
 from __future__ import annotations
@@ -114,6 +121,7 @@ from omniweave_core.canonical import sha256_canonical
 from omniweave_core.errors import TargetError, UsageError
 from omniweave_core.host import subproc
 from omniweave_core.limits import MAX_CONTAINER_TOTAL_BYTES
+from omniweave_core.model.block import Cite
 from omniweave_core.out.cites import verbatim
 from omniweave_core.out.compile import CompileV1, artefact, ref_bytes, refusal_of
 from omniweave_core.out.gate import GateStatus, exit_code, gate_status
@@ -273,6 +281,8 @@ def compile_artifact(
     cited = _cited(bundle, compiler)
     resolved = cites.by_cites(tuple(sorted({c for _, _, tokens, _, _ in cited for c in tokens})))
     _all_resolve(resolved)
+    pinned = {Cite(b.cite): b.doc_gen for b in resolved.values() if b is not None}
+    plan = replace(plan, cites=dict(sorted(pinned.items())))
 
     restricted = artifacts.restricted(
         asset_ids=[r.asset_id for r in ledger.rows()],

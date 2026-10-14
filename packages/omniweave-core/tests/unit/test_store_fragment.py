@@ -9,6 +9,7 @@ decoder's own idea of the sink. The first test runs the office driver's real out
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3  # noqa: TID251 -- the assertions read the rows the sink wrote.
 from collections.abc import Mapping
 from pathlib import Path
@@ -469,3 +470,51 @@ def test_an_origin_or_a_quad_the_model_refuses_refuses_the_document(
     records = [*head, _block("b1", method="text_layer", **block), END]
     with pytest.raises(ModelError, match=said):
         _run(tmp_path, records)
+
+
+# ---------------------------------------------------------------------------------------------
+# D785: a block's x, and the two keys only a read-back may write
+# ---------------------------------------------------------------------------------------------
+
+
+def _x_of(path: Path) -> Any:
+    [(raw,)] = _rows(path, "SELECT x FROM block WHERE text = 'words'")
+    return json.loads(raw)
+
+
+def test_a_blocks_x_is_carried_and_a_vendors_key_kept(tmp_path: Path) -> None:
+    _decoded, path = _run(tmp_path, [*HEAD, _block("b1", x={"x.acme.score": 3}), END])
+    assert _x_of(path) == {"x.acme.score": 3}
+
+
+def test_a_block_with_no_x_stores_an_empty_map(tmp_path: Path) -> None:
+    _decoded, path = _run(tmp_path, [*HEAD, _block("b1"), END])
+    assert _x_of(path) == {}
+
+
+def test_a_read_back_block_carries_its_address_and_its_cites(tmp_path: Path) -> None:
+    x = {"x.ow.el": "u01/e3", "x.ow.cites": ["d7#1", "d7#2"]}
+    _decoded, path = _run(tmp_path, [*HEAD, _block("b1", method="roundtrip", x=x), END])
+    assert _x_of(path) == x
+
+
+@pytest.mark.parametrize(
+    ("x", "method", "message"),
+    [
+        ({"x.ow.cite": "d1#5"}, "roundtrip", "reserved `ow` vendor segment"),
+        ({"x.ow.addr": "b1"}, "roundtrip", "reserved `ow` vendor segment"),
+        ({"x.ow.unknown": {}}, "native_xml", "reserved `ow` vendor segment"),
+        ({"x.ow.el": "u01/e3"}, "native_xml", "is a read-back's"),
+        ({"x.ow.cites": ["d7#1"]}, "native_xml", "is a read-back's"),
+        ({"x.ow.el": "e3"}, "roundtrip", "is not a data-ow-el address"),
+        ({"x.ow.cites": "d7#1"}, "roundtrip", "is not a list of cite tokens"),
+        ({"x.ow.cites": ["d7#1", ""]}, "roundtrip", "is not a list of cite tokens"),
+        ({"X.acme.k": 1}, "native_xml", "is not x.<vendor>.<key>"),
+        ([["x.acme.k", 1]], "native_xml", "not an object"),
+    ],
+)
+def test_an_x_the_rules_refuse_refuses_the_document(
+    tmp_path: Path, x: Any, method: str, message: str
+) -> None:
+    with pytest.raises(ModelError, match=message):
+        _run(tmp_path, [*HEAD, _block("b1", method=method, x=x), END])

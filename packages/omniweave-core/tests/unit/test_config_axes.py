@@ -43,17 +43,17 @@ SHIPPED = Path(__file__).parent / "shipped_config_example.toml"
 # `sys.path[0]`; the two imports below are what E402 flags and what makes the gate testable at all.
 sys.path.insert(0, str(REPO / "tools"))
 
-import gate_config_axes  # noqa: E402
-import gen_config_axes  # noqa: E402
+import gate_config_axes  # type: ignore[import-not-found]  # noqa: E402
+import gen_config_axes  # type: ignore[import-not-found]  # noqa: E402
 
 AxisRow = gate_config_axes.AxisRow
 
-# The fifteen declared keys the shipped configuration does not instantiate. They are real keys
+# The declared keys the shipped configuration does not instantiate. They are real keys
 # with real defaults -- 18-api-sketch.md section 4 carries a row for ten, ADR-3 decision 3 adds
-# `[drivers.resolve]`, and 08-runtime.md:2598-2606's "New keys this document introduces" adds the
-# last four -- so the gap is in the fixture, not in the registry. The ROOT
-# `omniweave.toml.example` carries all fifteen already; this fixture quotes charter.md:462-670,
-# which predates every one of them.
+# `[drivers.resolve]`, 08-runtime.md:2598-2606's "New keys this document introduces" adds four,
+# and D779 adds `licence.deny_restrictions` -- so the gap is in the fixture, not in the registry.
+# The ROOT `omniweave.toml.example` carries every one; this fixture quotes charter.md:462-670,
+# which predates them.
 #
 # The four `[runtime]` rows arrive one cell at a time, by the rule D149 set: a key is declared by
 # the cell that READS it, never by the cell that notices it is missing. `max_sequence_units` came
@@ -82,6 +82,7 @@ OWED_BY_THE_EXAMPLE = frozenset(
         "runtime.shutdown_grace_ms",
         "runtime.deferred_sweep_ms",
         "runtime.stall_poll_ms",
+        "licence.deny_restrictions",
     }
 )
 
@@ -90,7 +91,7 @@ def _shipped_document() -> dict[str, object]:
     return tomllib.loads(SHIPPED.read_text(encoding="utf-8"))
 
 
-def _committed_rows() -> tuple[AxisRow, ...]:
+def _committed_rows() -> tuple[gate_config_axes.AxisRow, ...]:
     rows, findings = gate_config_axes.read_rows(gen_config_axes.OUTPUT_PATH.read_text("utf-8"))
     assert findings == (), findings
     return rows
@@ -601,7 +602,7 @@ def _document_of(names: frozenset[str]) -> dict[str, object]:
     """Build the TOML document those keys would be written as, tables inline."""
     root: dict[str, object] = {}
     for name in sorted(names):
-        node = root
+        node: dict[str, object] = root
         segments = split_key(name)
         for segment in segments[:-1]:
             node = node.setdefault(segment, {})  # type: ignore[assignment]
@@ -700,9 +701,16 @@ CHARTER_OPERATIONAL = (
 # `never` makes `quote = 'verbatim'` unreachable (INV-10), which changes what a produced row says.
 CHARTER_REFINED = frozenset({"store.retain_parts"})
 
-# The declared keys no charter pattern reaches at all: two are post-charter, one is ADR-3's.
+# The declared keys no charter pattern reaches at all: post-charter keys and ADR-3's. D779's
+# `licence.deny_restrictions` is 09 section 7.3's `:barred_mask`, which no charter row names.
 CHARTER_SILENT = frozenset(
-    {"retrieval.event_log_query", "drivers.resolve.*", "ingest.max_parts", "ingest.password_file"}
+    {
+        "retrieval.event_log_query",
+        "drivers.resolve.*",
+        "ingest.max_parts",
+        "ingest.password_file",
+        "licence.deny_restrictions",
+    }
 )
 
 _CHARTER_ROWS = tuple(
@@ -723,7 +731,8 @@ def test_the_charter_block_is_sixty_patterns() -> None:
     above is wrong and every comparison below is worthless."""
     assert len(CHARTER_SEMANTIC) + len(CHARTER_OPERATIONAL) == 60
     assert len(set(CHARTER_SEMANTIC) | set(CHARTER_OPERATIONAL)) == 60
-    assert len(_CHARTER_ROWS) + len(CHARTER_SILENT & set(KEYS)) == 64
+    #  60 the charter speaks to, plus the five it does not (D779 added the fifth).
+    assert len(_CHARTER_ROWS) + len(CHARTER_SILENT & set(KEYS)) == 65
 
 
 def test_no_charter_pattern_double_matches_a_declared_key() -> None:

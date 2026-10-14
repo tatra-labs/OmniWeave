@@ -238,3 +238,24 @@ def test_python_m_omniweave_dispatches_query(
     monkeypatch.setattr("os.environ", {})
     assert launcher.main(["query", "terminate", "--quiet"]) == 0
     assert capsys.readouterr().out == "low_confidence\n"
+
+
+def test_the_projects_deny_policy_reaches_the_policy(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D780: `[licence] deny_restrictions` is the mask `ow query` denies (DR17)."""
+    from omniweave_core.retrieve import execute as execute_module  # noqa: PLC0415
+
+    seen: list[Any] = []
+    real = execute_module.execute
+
+    def spy(reader: Any, query: Any, policy: Any, **kwargs: Any) -> Any:
+        seen.append(policy)
+        return real(reader, query, policy, **kwargs)
+
+    monkeypatch.setattr(execute_module, "execute", spy)
+    (project / "omniweave.toml").write_text(
+        PROJECT + '[licence]\ndeny_restrictions = ["mau_gate"]\n', encoding="utf-8"
+    )
+    _run(["terminate"], project)
+    assert seen[0].deny_restriction_bits == 1 << 5

@@ -1,0 +1,98 @@
+# THE DRIVERCARD for `parse.docx.native`: compile.docx.native's read_back (09-generation.md
+# sections 11 and 12.3; 16-roadmap.md W9.4b). Read WITHOUT importing.
+#
+# It reads a .docx THIS TARGET BUILT, and nothing else well: its blocks come from the styles,
+# numbering, bookmarks, notes and provenance part `lower/` writes. 09 Q4: the routing policy does
+# not prefer a target's read_back, so this card is reached by name, through the target suite and
+# `ow out back`, and `sniff()` answers "not mine" to every stream.
+card_schema = 1
+
+[driver]
+id = "parse.docx.native"
+port = "parse/1"
+version = "0.1.0"
+schema_version = 1                 # THE ONLY DRIVER VERSION IN A CACHE KEY. Bump it whenever the
+                                   #   output bytes change for the same input.
+entrypoint = "omniweave_target_docx.read.driver:DocxReader"
+granularity = "document"
+replay_class = "byte_exact"        # python-docx's own lxml over the package's own parts.
+title = "read_back for owflow/1 artefacts (.docx this target compiled)"
+summary = "A .docx compile.docx.native built, read back by its own spelling: sections, blocks, lists, tables and notes, each address and cite where the IL put it."
+
+[capability]
+formats = ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
+consumes = ["raw_bytes"]
+produces = ["doc_fragment"]
+
+[capability.parse]
+spatial = "none"                   # A flow document has no geometry to report.
+origin_span = "none"               # A block's text is the runs' text, not a byte range.
+text_span = false
+marks = false                      # Emphasis is not lifted into marks; a note reference is.
+reading_order = "source"           # The body's own order.
+sections = "outline_from_source"   # Word's Heading 1-6 styles, as `lower/` wrote them.
+tables = "cells_with_spans"        # `w:gridSpan` and `w:vMerge`.
+math = []
+assets = "none"                    # A picture is a block with its alternative text, not bytes.
+asset_origin = false
+notes = "linked"                   # Each reference is a NOTE_REF to its body on Layer.NOTE.
+confidence = "none"
+furniture = "destroyed"            # `lower/` writes no header or footer, so there is none.
+round_trip = "structure"           # Kinds, levels, lists, spans and addresses.
+forfeits = []
+format_tokens = [
+  { media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document", token = "docx" },
+]
+
+[hardware]
+gpu            = "none"
+vram_gb_min    = 0
+ram_gb_min     = 0.25
+cpu_arch       = ["x86_64", "aarch64"]
+os             = ["linux", "darwin", "windows"]
+needs_network  = false
+needs_binaries = []
+imports_torch  = false
+install_bytes  = 20000000          # python-docx and lxml, shared with the compile card.
+services       = []
+
+[isolation]
+requires        = "subproc"
+memory_mb       = 512
+progress_ms     = 15000
+wall_ms_hard    = 120000
+batch_max_units = 16
+
+[limits]
+max_input_bytes = 33554432         # 32 MiB: a .docx past this is not one this target built.
+max_parts       = 1
+
+[licence.code]
+spdx = "Apache-2.0"
+redistribution = "allowed"
+output_share_alike = false
+competitor_bar = false
+requires_credential = false
+revenue_gate_usd = 0
+mau_gate = 0
+territory_excluded = []
+field_of_use_excluded = []
+attribution_per_output = false
+no_model_training = false
+remote_kill_switch = false
+clause_refs = []
+
+[config]
+type = "object"
+additionalProperties = false
+required = []
+
+[cost.model]
+class   = "free"
+shape   = "linear_per_byte"
+unit    = "document"
+per_part    = { wall_ms = 20 }
+per_session = { }
+scaling     = { key = "input_bytes", exponent = 1.0, reference = 65536 }
+tokens_out_p95_multiple = 1.0
+max_retries = 0

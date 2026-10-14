@@ -761,6 +761,21 @@ class SqliteArtifactStore:
         found = self._run("out.ledger", run)
         return found if isinstance(found, tuple) else ()
 
+    def els(self, artifact_id: int) -> tuple[ElRow, ...]:
+        """The artefact's `artifact_el` map, by address: empty until the loop closes. D788."""
+
+        def run(connection: sqlite3.Connection) -> object:
+            return tuple(
+                ElRow(unit=unit, el=el, block_id=block_id)
+                for unit, el, block_id in connection.execute(
+                    "SELECT unit, el, block_id FROM artifact_el WHERE artifact_id = ? ORDER BY el",
+                    (artifact_id,),
+                )
+            )
+
+        found = self._run("out.els", run)
+        return found if isinstance(found, tuple) else ()
+
     def assets(self, artifact_id: int) -> tuple[ArtifactAsset, ...]:
         """The artefact's frozen assets, each with its `asset` row's facts. D778."""
 

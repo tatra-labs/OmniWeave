@@ -50,7 +50,7 @@ AXES = REPO / "tools" / "config_axes.toml"
 # `sys.path[0]`, and it is the sibling suite's precedent (test_config_axes.py).
 sys.path.insert(0, str(REPO / "tools"))
 
-import gate_config_axes  # noqa: E402
+import gate_config_axes  # type: ignore[import-not-found]  # noqa: E402
 
 # The declared patterns instantiate to EXACTLY ONE key each in this file: every glob is given
 # exactly one instance, and `[corpora.contracts]` is a COMMENTED illustration rather than a second
@@ -59,7 +59,7 @@ import gate_config_axes  # noqa: E402
 # than change a count nobody reads -- and the number is written ONCE, here, because a count
 # repeated in a docstring is a second copy of an enumeration and drifts from it in silence (D293:
 # the three sentences below said 127 while this constant said 130).
-EXPECTED_KEYS = 134
+EXPECTED_KEYS = 135
 
 # The one key in the example whose value is NOT its declared default, and the locus that puts it
 # there. 04-driver-system.md:2779 names this exact stanza as the shipped example's own -- "which

@@ -142,7 +142,7 @@ def _retrieve(store: Path, parsed: argparse.Namespace, config: Config | None = N
     """One read-only `execute()` over one store, as `ow_query` makes it (serve's `_retrieve`)."""
     from omniweave_core.clock import SystemClock  # noqa: PLC0415
     from omniweave_core.retrieve.execute import execute  # noqa: PLC0415
-    from omniweave_core.retrieve.plan import budget_of  # noqa: PLC0415
+    from omniweave_core.retrieve.plan import budget_of, deny_of  # noqa: PLC0415
     from omniweave_core.retrieve.types import Query, RetrievalPolicy  # noqa: PLC0415
     from omniweave_core.store import reader as store_reader  # noqa: PLC0415
     from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
@@ -156,8 +156,13 @@ def _retrieve(store: Path, parsed: argparse.Namespace, config: Config | None = N
     connection = store_sqlite.connect_readonly(store)
     try:
         reader = store_reader.SqliteReader(connection, now_ns=clock.wall_ns())
-        #  D650: the project's `[retrieval.budget]`, which no query read until now.
-        policy = RetrievalPolicy() if config is None else RetrievalPolicy(budget=budget_of(config))
+        #  D650: the project's `[retrieval.budget]`, which no query read until now. D780: its
+        #  `[licence] deny_restrictions`, the mask DR17 reserves to policy.
+        policy = (
+            RetrievalPolicy()
+            if config is None
+            else RetrievalPolicy(budget=budget_of(config), deny_restriction_bits=deny_of(config))
+        )
         return execute(reader, Query(**fields), policy)
     finally:
         connection.close()

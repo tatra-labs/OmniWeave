@@ -29,6 +29,12 @@ inline-style splitter `@style|<prop>` reads, and the transactional splice.
    edits to one place are two opinions (09 section 8.3 pt 3). An offset outside the source or
    inside a UTF-8 sequence is refused the same way, as the caller's error, not the file's.
 7. **`place_marker()` and `Insertion` arrived with D746**, and `nsig` with D743's canonicaliser.
+8. **`CarrierNode.attrs()` arrived with D781.** 09 prints `attr(name)` and nothing that lists a
+   node's attributes, so no rule written against the protocol could find an attribute its table
+   does not name, which `unknown_construct = "forbidden"` asks. Both carriers' nodes had one.
+9. **`CarrierNode.contents()` arrived with D782.** `text_content()` joins a subtree's text, and
+   `children()` drops it, so neither can lower `Revenue <strong>rose</strong> 12%.` into three
+   runs in order. Both carriers' nodes hold that list already.
 """
 
 from __future__ import annotations
@@ -91,8 +97,17 @@ class CarrierNode(Protocol):
         """`None` when absent, `""` when present and empty."""
         ...
 
+    def attrs(self) -> dict[str, str]:
+        """Every attribute, in source order (ruling 8): what the closed-set rule enumerates."""
+        ...
+
     def children(self) -> Iterator[CarrierNode]:
         """The element children, in document order."""
+        ...
+
+    def contents(self) -> tuple[str | CarrierNode, ...]:
+        """Character data and element children, in document order (ruling 9): what `lower/` walks
+        to keep a paragraph's runs in their places."""
         ...
 
     def text_content(self) -> str:

@@ -112,9 +112,20 @@ def test_an_implemented_target_declares_its_agent_doc_budget() -> None:
         CompileCard.of(card(owtext.replace(line, "# " + line)))
     with pytest.raises(DriverHostError, match="agent_doc_tokens_max = 0 is not a positive"):
         CompileCard.of(card(owtext.replace(line, "agent_doc_tokens_max = 0")))
-    #  An unimplemented target has no table to document, so it may leave the key out.
+    #  An unimplemented target with no table has nothing to document, so it may leave the key out.
     assert "agent_doc_tokens_max" not in VIDEO_TEXT
     assert CompileCard.of(card(VIDEO_TEXT)).agent_doc_tokens_max == 0
+
+
+def test_an_unimplemented_target_that_names_a_table_declares_its_budget() -> None:
+    """Ruling 5, as D781 reads it: a table is documented under a budget, implemented or not."""
+    tabled = video('constructs = ""', 'constructs = "constructs.toml"')
+    with pytest.raises(DriverHostError, match=r"naming a table declares agent_doc_tokens_max"):
+        CompileCard.of(tabled)
+    budgeted = VIDEO_TEXT.replace('constructs = ""', 'constructs = "constructs.toml"').replace(
+        "\nmax_units = 64\n", "\nmax_units = 64\nagent_doc_tokens_max = 900\n"
+    )
+    assert CompileCard.of(card(budgeted)).agent_doc_tokens_max == 900
 
 
 @pytest.mark.parametrize(

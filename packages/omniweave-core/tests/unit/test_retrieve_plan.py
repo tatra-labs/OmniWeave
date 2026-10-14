@@ -706,3 +706,44 @@ def test_a_marked_test_runs_on_the_shipped_budgets(tmp_path: Path) -> None:
     assert budget.snapshot_ms == 2_000 == sqlite._snapshot_ms(None)
     home = {"OMNIWEAVE_HOME": str(tmp_path / "absent")}
     assert pl.budget_of(load(cwd=tmp_path, env=home)) == budget
+
+
+# ---------------------------------------------------------------------------------------------
+# D780: `[licence] deny_restrictions` is the policy's restriction mask
+# ---------------------------------------------------------------------------------------------
+
+
+def test_the_policys_restriction_mask_is_attached_to_every_plan(policy: RetrievalPolicy) -> None:
+    """DR17's carrier: the plan's filters carry the policy's mask, the caller's other filters
+    untouched, and a policy that denies nothing hands back the caller's own object."""
+    filters = Filters(deny_methods=frozenset({Method.ROUNDTRIP}))
+    query = Query(text="parental leave", filters=filters)
+    barred = dataclasses.replace(policy, deny_restriction_bits=0b101)
+    made = pl.plan(query, _caps(), barred)
+    assert made.filters.deny_restriction_bits == 0b101
+    assert made.filters.deny_methods == frozenset({Method.ROUNDTRIP})
+    assert pl.plan(query, _caps(), policy).filters is filters
+    assert (
+        pl.plan(query, _caps(), barred).plan_digest == pl.plan(query, _caps(), policy).plan_digest
+    )
+
+
+def test_a_caller_set_mask_is_refused_even_under_a_policy_mask(policy: RetrievalPolicy) -> None:
+    """D780 keeps the refusal: a caller still may not set the field, and its value is refused
+    rather than silently replaced."""
+    barred = dataclasses.replace(policy, deny_restriction_bits=0b1)
+    with pytest.raises(UsageError, match="only policy may set it"):
+        pl.plan(Query(filters=Filters(deny_restriction_bits=0b10)), _caps(), barred)
+
+
+def test_the_mask_a_query_denies_is_the_projects(tmp_path: Path) -> None:
+    home = {"OMNIWEAVE_HOME": str(tmp_path / "absent")}
+    (tmp_path / "plain").mkdir()
+    assert pl.deny_of(load(cwd=tmp_path / "plain", env=home)) == 0
+    barred = tmp_path / "barred"
+    barred.mkdir()
+    (barred / "omniweave.toml").write_text(
+        '[licence]\ndeny_restrictions = ["output_share_alike", "copyleft_strong"]\n',
+        encoding="utf-8",
+    )
+    assert pl.deny_of(load(cwd=barred, env=home)) == 1 | 1 << 11
