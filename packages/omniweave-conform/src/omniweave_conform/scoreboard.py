@@ -46,13 +46,13 @@ Specified in 13-quality.md sections 8.3, 11.1 and 11.3, and 16-roadmap.md W10.7.
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_core.drivers.card import MEASURED_ON_FIELDS, MeasuredOn
 from omniweave_core.errors import QualityError
-from omniweave_core.store.oweval import runs, scoreboard
+from omniweave_core.store.oweval import open_oweval, runs, scoreboard
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -61,8 +61,10 @@ if TYPE_CHECKING:
 __all__ = [
     "PAIRS",
     "REQUIRED",
+    "Publication",
     "check",
     "export",
+    "publish",
     "stale",
     "tree",
     "unmeasured",
@@ -172,6 +174,45 @@ def tree(root: Path) -> dict[str, str]:
         for p in sorted(root.rglob("*.json"))
         if p.is_file()
     }
+
+
+@dataclass(frozen=True, slots=True)
+class Publication:
+    """What `publish()` did: the export's files and rows, what differed, and whether it wrote."""
+
+    files: tuple[str, ...]
+    rows: int
+    changed: tuple[str, ...]
+    written: bool
+
+
+def publish(oweval: Path, root: Path, *, check: bool) -> Publication:
+    """`ow eval publish` (13:1877): export `oweval`, compare it with the tree under `root`, and
+    unless `check`, make the tree exactly the export. D833.
+
+    Exactly means an extra `*.json` under `root`, one no export names, is removed. A file left
+    behind would be a published row no `.oweval` reproduces, which Q-G19's byte clause fails.
+    `check` is that clause: it compares and writes nothing. A missing `oweval` is refused rather
+    than opened, because `open_oweval()` would create an empty one and publish nothing.
+    """
+    if not oweval.is_file():
+        raise QualityError(
+            f"no .oweval at {oweval}",
+            fix="run the eval suites to write one, or pass --oweval PATH",
+        )
+    connection = open_oweval(oweval)
+    try:
+        files = export(connection)
+    finally:
+        connection.close()
+    changed = stale(root, files)
+    if changed and not check:
+        write(root, files)
+        for path in changed:
+            if path not in files:
+                (root / path).unlink()
+    rows = sum(len(json.loads(text)) for text in files.values())
+    return Publication(tuple(sorted(files)), rows, changed, bool(changed) and not check)
 
 
 def write(root: Path, files: Mapping[str, str]) -> None:

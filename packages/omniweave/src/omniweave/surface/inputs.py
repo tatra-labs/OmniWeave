@@ -94,6 +94,7 @@ __all__ = [
     "CoverageIn",
     "DiffIn",
     "DoctorIn",
+    "EvalPublishIn",
     "ExplainIn",
     "GraphDoctorIn",
     "GraphPlanIn",
@@ -778,6 +779,23 @@ class SurfaceEmitIn:
 
     check: bool = False
     bless: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class EvalPublishIn:
+    """`ow eval publish`. 13-quality.md:1877, section 11.1 and Q-G19's byte clause. D833.
+
+    `oweval` is the store the scoreboard is exported from and `results` the committed tree it is
+    exported into, both relative to the working directory. Neither is fixed by the plan, so both
+    default to the repository's `eval/` (13:1624: the `.oweval` is generated and `.gitignore`d
+    beside the committed tree). `--check` compares the tree with the export and writes nothing,
+    the way `ow surface emit --check` does. 13:1877's `--channel pre|release` is not here: no
+    plan text says where a `pre` tree lives.
+    """
+
+    oweval: str = "eval/omniweave.oweval"
+    results: str = "eval/results"
+    check: bool = False
 
 
 @dataclass(frozen=True, slots=True)
