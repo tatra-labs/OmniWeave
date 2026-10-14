@@ -142,6 +142,7 @@ SHARED_RUNNERS: dict[str, tuple[str, ...]] = {
 QG_SERIES_SCRIPTS: dict[str, str] = {
     "tools/gate_budgets.py": "Q-G15 (13-quality.md:354-355, :368-371, :1999)",
     "tools/gate_metric_rot.py": "Q-G27 (13-quality.md:103, :1143-1146, :1832, :2011)",
+    "tools/gate_gate_rot.py": "Q-G17 (13-quality.md:97, :544-547, :1082-1084, :2001)",
 }
 
 GR_SERIES_SCRIPTS: dict[str, str] = {
