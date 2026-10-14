@@ -1025,6 +1025,18 @@ symbol  = "OW_CARD_CODE_MISMATCH"
 meaning = "the loaded class or the worker's HELLO_ACK disagrees with the card on port, schema_version, driver_id or version. Checked twice on purpose - an inproc driver has no HELLO_ACK, an exec driver has no importable class, and a subproc worker may be a different build than the card the host read from disk. Refused BEFORE any work"
 sites   = ["04-driver-system.md:1544", "04-driver-system.md:1548", "04-driver-system.md:1568"]
 
+[[code]]
+numeric = "OW-G-001"
+symbol  = "OW_GRAPH_TOO_LARGE"
+meaning = "op.cluster refuses a graph above MAX_CLUSTER_EDGES = 8,000,000 node pairs: pure-Python Louvain stops at the cap, and omniweave-driver-leiden is the driver seam named above it"
+raised_by = "GraphError"
+fix     = "ow config set graph.passes.enable <the roster without the Pass writing the most edges>   # or omniweave-driver-leiden, the seam above MAX_CLUSTER_EDGES"
+# The numeric is minted here, because the plan allocates the symbol and no numeric: the mirror of
+# OW-S-060, whose symbol was minted for a plan-allocated numeric. It is the first OW-G row. The
+# leiden driver is out of tree and its licence unverified (charter F40), so the fix names the
+# roster first. D690.
+sites   = ["06-structure-extraction.md:702", "06-structure-extraction.md:1944", "12-performance.md:1149"]
+
 # ---------------------------------------------------------------------------
 # THE EXIT TABLE. 18-api-sketch.md section 2.3; 10-interfaces.md section 6.2.
 #

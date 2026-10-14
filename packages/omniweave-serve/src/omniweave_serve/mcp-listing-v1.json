@@ -24,7 +24,8 @@
         "ow_diff",
         "ow_doctor",
         "ow_explain",
-        "ow_grid"
+        "ow_grid",
+        "ow_locate"
       ]
     }
   },

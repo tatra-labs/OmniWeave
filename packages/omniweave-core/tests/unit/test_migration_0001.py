@@ -43,7 +43,6 @@ import sqlite3  # noqa: TID251
 from typing import TYPE_CHECKING
 
 import pytest
-from conftest import MIGRATIONS_DIR
 from omniweave_core.limits import MIN_SQLITE
 from omniweave_core.model.enums import (
     ENUM_DOMAINS,
@@ -58,6 +57,8 @@ from omniweave_core.model.enums import (
     Trust,
     enum_val_rows,
 )
+
+from conftest import MIGRATIONS_DIR
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from conftest import PlanDocs

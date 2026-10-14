@@ -188,10 +188,18 @@ def test_the_actions_with_no_sdk_entry_point_are_the_document_pair_and_the_insta
     `install` and `uninstall` are a gap. 10:32-33 gives every Action an SDK method and the plan
     prints no signature for either, so there is nothing to transcribe into `SDK_HOMES` (D470). The
     two `ow skills` verbs are the same gap, and so is `serve`, which 18 prints as a command
-    (18:916) and never as a method, and `surface.emit`, which 10:1430 prints only as a verb."""
+    (18:916) and never as a method, and `surface.emit`, which 10:1430 prints only as a verb.
+    `graph.locate` is the same gap: 18:3375's `GraphView` prints `evidence(edge)` and no
+    `locate` (D694), no `why` (D695), no `merges` (D696), no `merge` (D697), no `split` (D698),
+    no `residue` (D699), no `review` (D700), no `doctor` (D702), no `plan` (D705) and no `types`
+    (D706)."""
     missing = sorted(name for name, spec in ACTIONS.items() if spec.cli and name not in SDK_HOMES)
     assert missing == [
-        "doc.diff", "doc.grid", "hooks.check", "install", "serve", "skills.check", "skills.hash",
+        "doc.diff", "doc.grid", "graph.doctor", "graph.locate", "graph.merge", "graph.merges",
+        "graph.plan", "graph.residue", "graph.review", "graph.split", "graph.types", "graph.why",
+        "hooks.check",
+        "install", "serve", "skills.check",
+        "skills.hash",
         "skills.install", "skills.ls", "skills.remove", "skills.update", "skills.verify",
         "surface.emit", "uninstall",
     ]  # fmt: skip

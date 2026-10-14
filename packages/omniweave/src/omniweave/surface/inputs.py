@@ -88,11 +88,18 @@ __all__ = [
     "DiffIn",
     "DoctorIn",
     "ExplainIn",
+    "GraphDoctorIn",
+    "GraphPlanIn",
     "GridIn",
     "HooksCheckIn",
     "InstallIn",
+    "LocateIn",
+    "MergeIn",
+    "MergesIn",
     "OpenIn",
     "QueryIn",
+    "ResidueIn",
+    "ReviewIn",
     "ServeIn",
     "SkillsCheckIn",
     "SkillsHashIn",
@@ -101,8 +108,11 @@ __all__ = [
     "SkillsRemoveIn",
     "SkillsUpdateIn",
     "SkillsVerifyIn",
+    "SplitIn",
     "SurfaceEmitIn",
+    "TypesIn",
     "UninstallIn",
+    "WhyIn",
 ]
 
 
@@ -289,6 +299,144 @@ class DiffIn:
     corpus: str | None = None
     from_gen: int | None = None
     to_gen: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class LocateIn:
+    """`ow_locate` / `ow graph locate`. 10:811, 06:2521.
+
+    06:2521 prints the verb as `ow graph locate --edge/--mention/--claim/--entity <id>`, and
+    those are the four fields: exactly one is given, and a second is a usage error naming both.
+    An entity and a claim carry cites an answer prints (`e412`, `k9001`, 10:2547), so those two
+    take a cite or its number; an edge and a mention have no cite, and an agent meets their ids
+    only through a graph read, so those two take the number. There is no `ref`: a block cite says
+    where, not what was asserted there, and `ow graph why --cite` is the verb for that direction
+    (06:2120).
+    """
+
+    entity: str | None = None
+    claim: str | None = None
+    edge: int | None = None
+    mention: int | None = None
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class WhyIn:
+    """`ow graph why --cite`. 06:2120, 06:2524.
+
+    06 prints the verb with `--cite`, so the field has a default and the generated tree publishes
+    it as an option, not a positional; a missing one is a usage error naming it. `cite` is anything
+    `ow open` resolves to one block -- a cite, an address -- by the same ladder (10:437), and a
+    ref naming more than one block is a usage error, as `ow doc grid`'s is.
+    """
+
+    cite: str | None = None
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MergesIn:
+    """`ow graph merges [--entity e412]`. 06:1891.
+
+    With `entity`, the closure it is in and every decision touching it, retired ones included; with
+    none, every closure of two or more and its live decisions (`store.merges` rulings 1-2). The
+    entity is a cite, bare or qualified with its corpus, or its number, as `ow graph locate` reads
+    one.
+    """
+
+    entity: str | None = None
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class MergeIn:
+    """`ow graph merge e412 e997 --reason "..."`. 06:1893.
+
+    The two entities are positionals, as 06 prints them; `reason` is required by the writer
+    (0002:443) and spelled `--reason` as 06 spells it, so it has a default and a missing one is a
+    usage error naming it. Cites as `ow graph locate` reads them: bare, qualified, or numbers.
+    """
+
+    first: str
+    second: str
+    reason: str | None = None
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class GraphDoctorIn:
+    """`ow graph doctor [--check <names>]`. 06:2519 and 16:805.
+
+    `check` is one comma-separated string of `omniweave.graph.doctor.CHECKS` names, as 16:805
+    spells `--check dangling_tmp,trust_clamped,ungrounded`; none runs all eleven.
+    """
+
+    check: str | None = None
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class GraphPlanIn:
+    """`ow graph plan`. 06:2518: *"before anything runs"*, so it takes the corpus alone."""
+
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ResidueIn:
+    """`ow graph residue [--akind <k>]`. 06:2521.
+
+    `akind` narrows both halves to one `AnchorKind` (`store.graph_residue` ruling 4); a kind outside
+    the fourteen is a usage error naming them.
+    """
+
+    akind: str | None = None
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewIn:
+    """`ow graph review [--over-merge]`. 06:2520 and 06:1870.
+
+    `over_merge` adds the fifth list, the closures whose members' neighbourhoods fall apart
+    (`store.review` rulings 6-9); it reads every live edge, so it is asked for.
+    """
+
+    over_merge: bool = False
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TypesIn:
+    """`ow graph types [--promote <etypes> --reason "..."]`. 06:1667-1668 and 06:289-290.
+
+    `promote` is one comma-separated string of proposed types, as 06 spells it; `reason` is
+    required with it. `propose` is 06:1653's `--propose`, parsed and refused until W8.8 builds the
+    billed calls it makes.
+    """
+
+    promote: str | None = None
+    reason: str | None = None
+    propose: bool = False
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SplitIn:
+    """`ow graph split e412 --into d7#412,d19#88 --reason "..."`. 06:1892 and 06:1907-1913.
+
+    The entity is a positional, any member of the closure to split; `--into` takes block cites, one
+    per side, because *"at the moment of a split the two real-world things do not yet have separate
+    entity ids, so the operator names them by where they are witnessed"*. Each resolves as `ow open`
+    resolves a ref, to exactly one block. `into` is one comma-separated string, as 06:1892 spells
+    it, so an example can show it (a scalar, 10:136). `reason` is `MergeIn`'s.
+    """
+
+    entity: str
+    into: str | None = None
+    reason: str | None = None
+    corpus: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

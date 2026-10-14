@@ -37,7 +37,7 @@ from omniweave_core.model.spans import OriginSpan, Quad, TextSpan
 if TYPE_CHECKING:
     from omniweave_core.model.block import Addr, Block, Cite
 
-__all__ = ["NO_SPATIAL", "Locus", "LocusPrecision", "locate"]
+__all__ = ["NO_SPATIAL", "Located", "Locus", "LocusPrecision", "Witness", "locate"]
 
 NO_SPATIAL: Final[str] = "none"
 """`Capabilities.spatial`'s value for a driver that supplies no geometry (03:1556-1561)."""
@@ -86,6 +86,35 @@ class Locus:
         if self.reason is not None and not self.reason.strip():
             msg = "Locus.reason must name why there is no quad, not be blank (INV-9)"
             raise ValueError(msg)
+
+
+@dataclass(frozen=True, slots=True)
+class Witness:
+    """One place a graph assertion was observed, and where it is on the page (06:2088). D694.
+
+    `kind` is what witnessed it: a `mention`, a `claim` (its own observed span), or, for an edge
+    that recorded no `edge_evidence`, the `edge`'s own observed span.
+    """
+
+    kind: str
+    id: int
+    slot: str | None
+    """`edge_evidence.slot` -- `src`, `dst` or `predicate` -- for an edge's mention; else `None`."""
+    entity: str | None
+    """The mentioned entity's cite (`e412`), for a mention; else `None`."""
+    surface: str
+    """The witnessed text as the block holds it: `block.text[span]`."""
+    locus: Locus
+
+
+@dataclass(frozen=True, slots=True)
+class Located:
+    """`graph.locate`'s answer: what was asked for, and one `Witness` per place it was observed."""
+
+    subject: str
+    """What was located, as the caller can name it again: `e412`, `k9001`, `edge 88207` or
+    `mention 55101`."""
+    witnesses: tuple[Witness, ...]
 
 
 def locate(block: Block, *, declared_spatial: str, span: TextSpan | None = None) -> Locus:

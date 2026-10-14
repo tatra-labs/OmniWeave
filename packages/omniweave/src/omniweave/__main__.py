@@ -99,6 +99,8 @@ _EXPLAIN_ROOT: Final[str] = "explain"
 
 _DOC_ROOT: Final[str] = "doc"
 
+_GRAPH_ROOT: Final[str] = "graph"
+
 DISPATCHED: Final[frozenset[str]] = frozenset(
     {
         HOOK_WORD,
@@ -113,12 +115,13 @@ DISPATCHED: Final[frozenset[str]] = frozenset(
         _CORPORA_ROOT,
         _EXPLAIN_ROOT,
         _DOC_ROOT,
+        _GRAPH_ROOT,
     }
 )
 """The roots this build can run. `ingest` joined in W7.3w; nothing spawns it yet (D433, D554).
 `surface` joined in W7.1e (D334), `doctor` in W7.8c (D610), `query` in W7.8g (D614), `add` in
 W7.8h (D615), `open` in W7.8i (D616), `corpora` in W7.8j (D617), `explain` in W7.8k
-(D618), and `doc` in W7.8n (D621)."""
+(D618), `doc` in W7.8n (D621), and `graph` in D694."""
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -165,6 +168,8 @@ def _route(root: str, args: list[str]) -> int:  # noqa: PLR0911 -- one per root
         return _explain(args)
     if root == _DOC_ROOT:
         return _doc(args)
+    if root == _GRAPH_ROOT:
+        return _graph(args)
 
     from omniweave_core.errors import InternalError  # noqa: PLC0415 -- only the refusal pays
 
@@ -300,6 +305,15 @@ def _doc(args: list[str]) -> int:
     #  A cell's text is document text, `query`'s reason for the reconfigure.
     _utf8()
     #  The tenth read of the working directory under D435's exemption: `./omniweave.toml`.
+    return run(args, env=os.environ, cwd=Path.cwd(), stdout=sys.stdout, stderr=sys.stderr)
+
+
+def _graph(args: list[str]) -> int:
+    from omniweave.surface.graph import main as run  # noqa: PLC0415 -- the hook path never pays
+
+    #  A witness's text is document text, `doc`'s reason for the reconfigure.
+    _utf8()
+    #  The eleventh read of the working directory under D435's exemption: `./omniweave.toml`.
     return run(args, env=os.environ, cwd=Path.cwd(), stdout=sys.stdout, stderr=sys.stderr)
 
 

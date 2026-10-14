@@ -20,6 +20,16 @@ The Actions this surface comes from, with the declaration behind each promise:
     doc.grid          GridIn              Grid
     doctor            DoctorIn            DoctorReport
     explain           ExplainIn           CodeRow
+    graph.doctor      GraphDoctorIn       GraphDoctorReport
+    graph.locate      LocateIn            Located
+    graph.merge       MergeIn             Decided
+    graph.merges      MergesIn            MergeLog
+    graph.plan        GraphPlanIn         GraphPlan
+    graph.residue     ResidueIn           GraphResidue
+    graph.review      ReviewIn            Review
+    graph.split       SplitIn             Decided
+    graph.types       TypesIn             TypeVocab
+    graph.why         WhyIn               Observed
     hooks.check       HooksCheckIn        HooksCheckReport
     install           InstallIn           InstallReport
     open              OpenIn              Answer

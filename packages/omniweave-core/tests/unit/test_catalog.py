@@ -30,7 +30,6 @@ from pathlib import Path
 from typing import get_args
 
 import pytest
-from conftest import INTERPRETER
 from hypothesis import given
 from hypothesis import strategies as st
 from omniweave_core.canonical import sha256_canonical
@@ -55,6 +54,8 @@ from omniweave_core.drivers.catalog import (
 )
 from omniweave_core.errors import ConfigError, InternalError
 from omniweave_ports.types import ProbeStatus, TrustTier
+
+from conftest import INTERPRETER
 
 DOC = "04-driver-system.md"
 

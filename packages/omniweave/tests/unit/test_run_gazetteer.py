@@ -237,15 +237,21 @@ def test_an_untrusted_alias_seen_in_one_document_stays_out(ingested: Path) -> No
     "edit",
     [
         "UPDATE entity SET scope = 1 WHERE key = 'beta_corp'",
-        "UPDATE entity SET state = 1 WHERE key = 'beta_corp'",
         "UPDATE entity SET state = 2 WHERE key = 'beta_corp'",
     ],
-    ids=["document_scoped", "overloaded", "retired"],
+    ids=["document_scoped", "retired"],
 )
-def test_only_live_corpus_entities_are_targets(ingested: Path, edit: str) -> None:
+def test_only_corpus_entities_not_retired_are_targets(ingested: Path, edit: str) -> None:
     """Ruling 1: a document-scoped proposal would mint a new entity in the reader's document."""
     built = _build(ingested, edit)
     assert (_names(built), built.candidates) == (["acme_holdings_ltd"], 1)
+
+
+def test_an_overloaded_entity_stays_a_target(ingested: Path) -> None:
+    """Ruling 1 as D693 amends it: overload is judged on the gazetteer's mentions, so dropping an
+    overloaded name would retire the mentions that overloaded it."""
+    built = _build(ingested, "UPDATE entity SET state = 1 WHERE key = 'beta_corp'")
+    assert _names(built) == ["acme_holdings_ltd", "beta_corp"]
 
 
 def test_a_name_whose_evidence_left_stays_out(ingested: Path) -> None:

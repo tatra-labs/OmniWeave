@@ -96,7 +96,7 @@ Action it was meant to protect. D291 is the entry, and `_unrostered_human_only()
 without failing, because failing would make the four-row cell unimportable for a roster gap that is
 schedule rather than defect.
 
-`_unrostered_full()` is the same shape over `FULL_ROSTER` and reports thirteen; `_duplicate_cli()`
+`_unrostered_full()` is the same shape over `FULL_ROSTER` and reports twelve; `_duplicate_cli()`
 is the shape check 9 does not have, and it already names a real pair. `_roster_failures()` is the
 one of the three that RAISES, because its four clauses are all about declarations this file
 carries -- a roster and a row that disagree is a defect in shipped source, which is the line
@@ -112,7 +112,14 @@ from typing import TYPE_CHECKING, Final, Literal, get_args
 from omniweave_core.answer import Answer
 from omniweave_core.errors import SurfaceError, UsageError
 from omniweave_core.model import Grid
+from omniweave_core.model.coverage import GraphPlan
+from omniweave_core.model.etypes import TypeVocab
+from omniweave_core.model.locus import Located
+from omniweave_core.model.merges import Decided, MergeLog
+from omniweave_core.model.observed import Observed
 from omniweave_core.model.rebind import RebindReport
+from omniweave_core.model.residue import GraphResidue
+from omniweave_core.model.review import Review
 from omniweave_core.retrieve.verdict import Coverage
 from omniweave_ports import CostClass
 
@@ -121,6 +128,7 @@ from omniweave.sdk.reports import (
     CodeRow,
     CorporaReport,
     DoctorReport,
+    GraphDoctorReport,
     HooksCheckReport,
     InstallReport,
     ServeReport,
@@ -134,11 +142,18 @@ from omniweave.surface.inputs import (
     DiffIn,
     DoctorIn,
     ExplainIn,
+    GraphDoctorIn,
+    GraphPlanIn,
     GridIn,
     HooksCheckIn,
     InstallIn,
+    LocateIn,
+    MergeIn,
+    MergesIn,
     OpenIn,
     QueryIn,
+    ResidueIn,
+    ReviewIn,
     ServeIn,
     SkillsCheckIn,
     SkillsHashIn,
@@ -147,8 +162,11 @@ from omniweave.surface.inputs import (
     SkillsRemoveIn,
     SkillsUpdateIn,
     SkillsVerifyIn,
+    SplitIn,
     SurfaceEmitIn,
+    TypesIn,
     UninstallIn,
+    WhyIn,
 )
 
 if TYPE_CHECKING:
@@ -757,10 +775,11 @@ the eighteen `ActionSpec`s exist, not typed by hand"*. So this tuple is what tel
 its day has come: `len(FULL_ROSTER) == len(listed("full")) - len(listed("default"))` is the
 condition, and `_unrostered_full()` is the distance from it.
 
-**Five have rows today and thirteen do not**, and the reason is never that the Action is unclear. It
+**Six have rows today and twelve do not**, and the reason is never that the Action is unclear. It
 is that `ActionSpec.out` is a `type` -- an OBJECT, evaluated at import -- so a row cannot be written
-before something in this process can name what it returns. Seven of the thirteen wait on P8's L3
-types and two on P9's OUT framework (16:190-191), both of which exit after v0.1 ships at week 42;
+before something in this process can name what it returns. Seven of the thirteen once waited on
+P8's L3 types, and `graph.locate` landed with its `Located` (D694); six still do, as
+do two on P9's OUT framework (16:190-191), both of which exit after v0.1 ships at week 42;
 three -- `ow_verify`, `ow_fields` and `ow_cost` -- wait on a shape no module defines, and one of
 those three is `QuoteVerdict` (03:1706), which `omniweave_core/model/doc.py` already
 forward-references twice under `noqa: F821`. The thirteenth, `route.explain`, waits on nothing but
@@ -958,7 +977,7 @@ def _cli_roster_failures(actions: Mapping[str, ActionSpec]) -> tuple[str, ...]:
 def _unrostered_cli(actions: Mapping[str, ActionSpec]) -> tuple[tuple[str, ...], ...]:
     """Every `CLI_ROSTER` spelling with no `ActionSpec` row, sorted. The distance to the registry.
 
-    `_unrostered_full()` counts thirteen and `_unrostered_human_only()` counts five; this one
+    `_unrostered_full()` counts twelve and `_unrostered_human_only()` counts five; this one
     counts what is left of 10:857's *"roughly 110 further Actions"* after the rows that have
     landed, and it is the number that says how far P7 W7.1 still has to run. It reports rather than
     raises for the same reason both of those do, and for one more: 10:857's roster is blocked on
@@ -1101,7 +1120,7 @@ def _unrostered_full(actions: Mapping[str, ActionSpec]) -> tuple[str, ...]:
     The companion to `_unrostered_human_only()` and reported on the same terms: a missing row here
     is schedule, not defect, and raising would make the registry unimportable for an Action whose
     output type ships two phases from now. A test asserts this function's exact answer, so the day
-    the thirteenth lands the assertion becomes `()` in one place and `ow surface budget --bless`
+    the last lands the assertion becomes `()` in one place and `ow surface budget --bless`
     (10:833) has its condition.
 
     Order is `FULL_ROSTER`'s rather than sorted, because the thing a reader wants from this tuple is
@@ -1273,6 +1292,239 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=Grid,
             advanced=frozenset(),
             cli=("doc", "grid"),
+        ),
+        ActionSpec(
+            name="graph.locate",
+            mcp_name="ow_locate",
+            listed_in=_FULL_ONLY,
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Find where on the page an entity, claim, edge or mention was witnessed: one "
+                "location per witness, with its page, its span and its polygon or the reason none"
+            ),
+            decision="an answer cited an entity or a claim and you need the page",
+            example={"entity": "e412", "corpus": "handbook"},
+            inp=LocateIn,
+            out=Located,
+            advanced=frozenset({"edge", "mention"}),
+            cli=("graph", "locate"),
+        ),
+        #  06:2120's reverse walk. No `mcp_name`: 10:807's roster names none (`ow_why` is
+        #  `route.explain`), so an agent reaches it through a shell, as llms.txt says of every
+        #  verb without a tool. D695.
+        ActionSpec(
+            name="graph.why",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "List every entity, edge and claim the graph says one block asserts, each with its "
+                "span in the block's text"
+            ),
+            decision="you hold a block cite and need what it asserts",
+            example={"cite": "d7#412", "corpus": "handbook"},
+            inp=WhyIn,
+            out=Observed,
+            advanced=frozenset(),
+            cli=("graph", "why"),
+        ),
+        #  06:1891, the first of 06 section 5.5's three user verbs: read before a merge or a split.
+        #  No `mcp_name`, as 10:807 names none (D696).
+        ActionSpec(
+            name="graph.merges",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Show the resolution decision log: each closure's members, and every merge or "
+                "split decision with its stage, score, guards and the generation it was decided in"
+            ),
+            decision="two entities are one, or are not, and you need why",
+            example={"entity": "e412", "corpus": "handbook"},
+            inp=MergesIn,
+            out=MergeLog,
+            advanced=frozenset(),
+            cli=("graph", "merges"),
+        ),
+        #  06:1893, a user's resolution decision. A writer, and not `destructive`: it appends one
+        #  row and retires at most an opposing user row, and a split undoes it (D697). No
+        #  `mcp_name`: 10:807 names none, and a write an agent can make unasked is 10:53's
+        #  question, not this cell's.
+        ActionSpec(
+            name="graph.merge",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Record that two entities are one, with a reason, and settle the graph again: the "
+                "closure, the communities and the salience, as an ingest would"
+            ),
+            decision="resolution left one party as two, and you know they are one",
+            example={
+                "first": "e412",
+                "second": "e997",
+                "reason": "same party",
+                "corpus": "handbook",
+            },
+            inp=MergeIn,
+            out=Decided,
+            advanced=frozenset(),
+            cli=("graph", "merge"),
+        ),
+        #  06:1892, the other user decision. Not `destructive` for `graph.merge`'s reason: it
+        #  appends rows and retires only the user merges it contradicts, and a merge undoes it
+        #  (D698). No `mcp_name`, as `graph.merge`.
+        ActionSpec(
+            name="graph.split",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Record that one entity is two or more, named by the blocks each is witnessed in, "
+                "with a reason, and settle the graph again as an ingest would"
+            ),
+            decision="resolution made one party of two, and you can show where each is witnessed",
+            example={
+                "entity": "e412",
+                "into": "d7#412,d19#88",
+                "reason": "two parties",
+                "corpus": "handbook",
+            },
+            inp=SplitIn,
+            out=Decided,
+            advanced=frozenset(),
+            cli=("graph", "split"),
+        ),
+        #  06:2521, the operability number 06:885 names: what the graph could not place. Read-only,
+        #  and no `mcp_name`, as 10:807 names none (D699).
+        ActionSpec(
+            name="graph.residue",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Show what the graph could not place: unresolved references grouped by kind and "
+                "name, and quarantined rows grouped by code and kind"
+            ),
+            decision="a reference never links, or extracted rows went missing, and you need which",
+            example={"akind": "identifier", "corpus": "handbook"},
+            inp=ResidueIn,
+            out=GraphResidue,
+            advanced=frozenset(),
+            cli=("graph", "residue"),
+        ),
+        #  06:2520, the review surface 06:85-87 makes of the three `*_review` partial indexes.
+        #  Read-only, and no `mcp_name`, as 10:807 names none (D700).
+        ActionSpec(
+            name="graph.review",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Show what the graph holds below extracted, weakest first: fuzzy-merged closures, "
+                "tainted and overloaded entities, and the mentions and edges to check"
+            ),
+            decision="you are about to trust the graph and want to see its weakest rows first",
+            example={"corpus": "handbook"},
+            inp=ReviewIn,
+            out=Review,
+            advanced=frozenset(),
+            cli=("graph", "review"),
+        ),
+        #  06:2519, the graph's subsystem doctor 15:1561 names. Read-only; no `mcp_name`, as 10:807
+        #  names none (D702).
+        ActionSpec(
+            name="graph.doctor",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Check the graph's operability: the residue signals against their thresholds, the "
+                "trust clamp, the entropy gate, anchor counts, candidate pairs and report states"
+            ),
+            decision="an ingest finished and you need to know whether the graph is healthy",
+            example={"check": "dangling_tmp,trust_clamped,ungrounded", "corpus": "handbook"},
+            inp=GraphDoctorIn,
+            out=GraphDoctorReport,
+            advanced=frozenset(),
+            cli=("graph", "doctor"),
+        ),
+        #  06:2518, what a billed run would be handed, before it runs. Read-only; no `mcp_name`, as
+        #  10:807 names none (D705).
+        ActionSpec(
+            name="graph.plan",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Show, per billed lane, how much the free passes covered, the share a billed pass "
+                "would be handed, and the calls and tokens that projects, before anything runs"
+            ),
+            decision="you are about to enable a billed pass and need to know what it would cost",
+            example={"corpus": "handbook"},
+            inp=GraphPlanIn,
+            out=GraphPlan,
+            advanced=frozenset(),
+            cli=("graph", "plan"),
+        ),
+        #  06:1667-1668, an operator's promotion of a proposed entity type. A writer, and not
+        #  `destructive`: it changes `source` and records why, and nothing is removed. No
+        #  `mcp_name`, as 10:807 names none (D706).
+        ActionSpec(
+            name="graph.types",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "List the entity-type vocabulary with each type's live entities, or promote "
+                "proposed types into it, with a reason"
+            ),
+            decision="a tuning run proposed entity types and you have decided which to keep",
+            example={"promote": "defined_term,covenant", "reason": "the credit agreements"},
+            inp=TypesIn,
+            out=TypeVocab,
+            advanced=frozenset(),
+            cli=("graph", "types"),
         ),
         ActionSpec(
             name="corpus.coverage",

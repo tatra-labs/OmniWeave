@@ -107,6 +107,7 @@ GLOBAL_FLAGS: Final[tuple[Argument, ...]] = (
 
 GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
+    "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
     "hooks": "check",
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
@@ -248,6 +249,181 @@ COMMANDS: Final[tuple[Command, ...]] = (
             Argument(
                 spelling=("code",),
                 metavar="CODE",
+            ),
+        ),
+    ),
+    Command(
+        words=("graph", "doctor"),
+        actions=("graph.doctor",),
+        help=(
+            "Check the graph's operability: the residue signals against their thresholds, the "
+            "trust clamp, the entropy gate, anchor counts, candidate pairs and report states"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--check",),
+                metavar="CHECK",
+            ),
+        ),
+    ),
+    Command(
+        words=("graph", "locate"),
+        actions=("graph.locate",),
+        help=(
+            "Find where on the page an entity, claim, edge or mention was witnessed: one "
+            "location per witness, with its page, its span and its polygon or the reason none"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--entity",),
+                metavar="ENTITY",
+            ),
+            Argument(
+                spelling=("--claim",),
+                metavar="CLAIM",
+            ),
+            Argument(
+                spelling=("--edge",),
+                kind="int",
+                metavar="EDGE",
+            ),
+            Argument(
+                spelling=("--mention",),
+                kind="int",
+                metavar="MENTION",
+            ),
+        ),
+    ),
+    Command(
+        words=("graph", "merge"),
+        actions=("graph.merge",),
+        help=(
+            "Record that two entities are one, with a reason, and settle the graph again: the "
+            "closure, the communities and the salience, as an ingest would"
+        ),
+        arguments=(
+            Argument(
+                spelling=("first",),
+                metavar="FIRST",
+            ),
+            Argument(
+                spelling=("second",),
+                metavar="SECOND",
+            ),
+            Argument(
+                spelling=("--reason",),
+                metavar="REASON",
+            ),
+        ),
+    ),
+    Command(
+        words=("graph", "merges"),
+        actions=("graph.merges",),
+        help=(
+            "Show the resolution decision log: each closure's members, and every merge or "
+            "split decision with its stage, score, guards and the generation it was decided in"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--entity",),
+                metavar="ENTITY",
+            ),
+        ),
+    ),
+    Command(
+        words=("graph", "plan"),
+        actions=("graph.plan",),
+        help=(
+            "Show, per billed lane, how much the free passes covered, the share a billed pass "
+            "would be handed, and the calls and tokens that projects, before anything runs"
+        ),
+        arguments=(),
+    ),
+    Command(
+        words=("graph", "residue"),
+        actions=("graph.residue",),
+        help=(
+            "Show what the graph could not place: unresolved references grouped by kind and "
+            "name, and quarantined rows grouped by code and kind"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--akind",),
+                metavar="AKIND",
+            ),
+        ),
+    ),
+    Command(
+        words=("graph", "review"),
+        actions=("graph.review",),
+        help=(
+            "Show what the graph holds below extracted, weakest first: fuzzy-merged closures, "
+            "tainted and overloaded entities, and the mentions and edges to check"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--over-merge",),
+                kind="switch",
+                default=False,
+            ),
+        ),
+    ),
+    Command(
+        words=("graph", "split"),
+        actions=("graph.split",),
+        help=(
+            "Record that one entity is two or more, named by the blocks each is witnessed in, "
+            "with a reason, and settle the graph again as an ingest would"
+        ),
+        arguments=(
+            Argument(
+                spelling=("entity",),
+                metavar="ENTITY",
+            ),
+            Argument(
+                spelling=("--into",),
+                metavar="INTO",
+            ),
+            Argument(
+                spelling=("--reason",),
+                metavar="REASON",
+            ),
+        ),
+    ),
+    Command(
+        words=("graph", "types"),
+        actions=("graph.types",),
+        help=(
+            "List the entity-type vocabulary with each type's live entities, or promote "
+            "proposed types into it, with a reason"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--promote",),
+                metavar="PROMOTE",
+            ),
+            Argument(
+                spelling=("--reason",),
+                metavar="REASON",
+            ),
+            Argument(
+                spelling=("--propose",),
+                kind="switch",
+                default=False,
+            ),
+        ),
+    ),
+    Command(
+        words=("graph", "why"),
+        actions=("graph.why",),
+        help=(
+            "List every entity, edge and claim the graph says one block asserts, each with its "
+            "span in the block's text"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--cite",),
+                metavar="CITE",
             ),
         ),
     ),

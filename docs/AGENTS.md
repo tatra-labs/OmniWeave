@@ -51,6 +51,16 @@ key can grant one.
 | `doc.grid` | `ow_grid` | `ow doc grid` | full | `free` | Read one table as an exactly-once grid: every cell at its slot, the header row and column, and the merges that would otherwise be counted twice |
 | `doctor` | `ow_doctor` | `ow doctor` | full | `free` | Check this deployment: every resolved configuration value with its source, the driver and toolchain probes, and a fix command for every warning |
 | `explain` | `ow_explain` | `ow explain` | full | `free` | Resolve an OW-* code or symbol to what it means and the exact command that clears it; reads no corpus, so it answers on a machine with no store at all |
+| `graph.doctor` | — | `ow graph doctor` | — | `free` | Check the graph's operability: the residue signals against their thresholds, the trust clamp, the entropy gate, anchor counts, candidate pairs and report states |
+| `graph.locate` | `ow_locate` | `ow graph locate` | full | `free` | Find where on the page an entity, claim, edge or mention was witnessed: one location per witness, with its page, its span and its polygon or the reason none |
+| `graph.merge` | — | `ow graph merge` | — | `free` | Record that two entities are one, with a reason, and settle the graph again: the closure, the communities and the salience, as an ingest would |
+| `graph.merges` | — | `ow graph merges` | — | `free` | Show the resolution decision log: each closure's members, and every merge or split decision with its stage, score, guards and the generation it was decided in |
+| `graph.plan` | — | `ow graph plan` | — | `free` | Show, per billed lane, how much the free passes covered, the share a billed pass would be handed, and the calls and tokens that projects, before anything runs |
+| `graph.residue` | — | `ow graph residue` | — | `free` | Show what the graph could not place: unresolved references grouped by kind and name, and quarantined rows grouped by code and kind |
+| `graph.review` | — | `ow graph review` | — | `free` | Show what the graph holds below extracted, weakest first: fuzzy-merged closures, tainted and overloaded entities, and the mentions and edges to check |
+| `graph.split` | — | `ow graph split` | — | `free` | Record that one entity is two or more, named by the blocks each is witnessed in, with a reason, and settle the graph again as an ingest would |
+| `graph.types` | — | `ow graph types` | — | `free` | List the entity-type vocabulary with each type's live entities, or promote proposed types into it, with a reason |
+| `graph.why` | — | `ow graph why` | — | `free` | List every entity, edge and claim the graph says one block asserts, each with its span in the block's text |
 | `hooks.check` | `ow_hooks_check` | `ow hooks check` | — | `free` | Run each installed hook command as its host would, with a probe payload in a scratch project, and say which failed and why |
 | `install` | — | `ow install` | — | `free` | Wire agent hosts to omniweave: the MCP entry, one permission wildcard, the instruction block, hooks and the core skill, each recorded in a receipt |
 | `open` | `ow_open` | `ow open` | default, full | `free` | Fetch the exact passages behind an address you already hold: a cite, a page range, or a whole document |

@@ -122,7 +122,10 @@ from omniweave_core.store.indexlock import LOCK_PATH, NO_SEGMENTER, LockHeader, 
 from omniweave_core.store.queue import SqliteStore
 from omniweave_ports.types import DriverError, FailureClass
 
+from omniweave.graph import cluster as op_cluster
 from omniweave.graph import resolve as op_resolve
+from omniweave.graph import salience as op_salience
+from omniweave.graph.settle import Settled, settle
 from omniweave.route.detect import Detection, detect
 from omniweave.run import discover, expand
 from omniweave.run import supervisor as sup
@@ -361,6 +364,14 @@ class IngestReport:
     """`op.lexicon`'s build after the drain, and the gazetteer rows it queued (D683)."""
     resolved: op_resolve.ResolveReport | None = None
     """`op.resolve` after the lexicon's drain: the merge log and the closure (D684)."""
+    clustered: op_cluster.ClusterReport | None = None
+    """`op.cluster` after `op.resolve`: the community tree, re-clustered whole (D690)."""
+    graph_rounds: int = 0
+    """How many rounds of `op.resolve` then `op.cluster` ran before neither moved (D691)."""
+    graph_settled: bool = True
+    """False when they still moved after `GRAPH_ROUNDS` rounds (D691)."""
+    salience: op_salience.SalienceReport | None = None
+    """STEP 7 after the graph passes: the four salience columns, recounted (D692)."""
 
     @property
     def settled(self) -> int:
@@ -377,6 +388,26 @@ class IngestReport:
     @property
     def failed(self) -> int:
         return self.states.get(discover.FAILED, 0)
+
+    def _graph_lines(self) -> list[str]:
+        """The corpus-level graph passes' lines, each only when it has something to say."""
+        out: list[str] = []
+        if self.lexicon is not None and (
+            self.lexicon.names or self.lexicon.moved or self.lexicon.drain
+        ):
+            out.append(self.lexicon.line())
+        if self.resolved is not None and self.resolved.shown:
+            out.append(self.resolved.line())
+        if self.clustered is not None and self.clustered.shown:
+            out.append(self.clustered.line())
+        if self.graph_rounds > 1 or not self.graph_settled:
+            out.append(
+                f"  graph     op.resolve and op.cluster ran {self.graph_rounds} round(s)"
+                + ("" if self.graph_settled else ", and still moved: run ow ingest again")
+            )
+        if self.salience is not None and self.salience.moved:
+            out.append(self.salience.line())
+        return out
 
     def lines(self) -> tuple[str, ...]:
         """The report, one line per hop. ASCII only: a piped child's stdout on Windows is cp1252."""
@@ -420,12 +451,7 @@ class IngestReport:
             out.extend(self.routed.lines())
         if self.parsed is not None:
             out.extend(self.parsed.lines())
-        if self.lexicon is not None and (
-            self.lexicon.names or self.lexicon.moved or self.lexicon.drain
-        ):
-            out.append(self.lexicon.line())
-        if self.resolved is not None and self.resolved.shown:
-            out.append(self.resolved.line())
+        out.extend(self._graph_lines())
         out.extend(self.passwords)
         if self.retired:
             out.append(
@@ -810,13 +836,17 @@ def _hops(
         #  rows it queued or re-opened, in this run.
         lexicon = _lexicon(thread, context, inputs=inputs, store=store, clock=clock)
         relexed = drain() if lexicon.drain else None
-        #  D684: op.resolve last, at 06:832's phase 50, over every entity the drains left.
-        resolved = cast(
-            "op_resolve.ResolveReport",
+        #  D684, D690, D691: op.resolve over every entity the drains left, then op.cluster
+        #  over the graph it leaves, alternating until neither moves.
+        graph = _resolve_and_cluster(thread, generation)
+        #  D692: STEP 7, the salience of what the graph passes left, and GR16's recount in the
+        #  same transaction: a disagreement rolls the write back and fails the run.
+        salient = cast(
+            "op_salience.SalienceReport",
             thread.run(
                 ow.Unit(
-                    name="graph.resolve",
-                    run=lambda c: op_resolve.resolve(c, gen=generation),
+                    name="graph.salience",
+                    run=op_salience.recount_and_check,
                     cost_class="free",
                     wait_ms=BATCH_WAIT_MS,
                 )
@@ -853,8 +883,53 @@ def _hops(
         retired=retired,
         reparsed=reparsed,
         lexicon=lexicon,
-        resolved=resolved,
+        resolved=graph.resolved,
+        clustered=graph.clustered,
+        graph_rounds=graph.rounds,
+        graph_settled=graph.settled,
+        salience=salient,
     )
+
+
+GRAPH_ROUNDS: Final = 4
+"""D691: the most rounds of `op.resolve` then `op.cluster` one ingest runs."""
+
+
+def _resolve_and_cluster(thread: ow.StoreThread, generation: int) -> Settled:
+    """`op.resolve`, then `op.cluster`, then again while the communities move. D691.
+
+    `graph.settle` is the loop (D697 moved it there, for a user decision to share); here each pass
+    is its own store unit, and `GRAPH_ROUNDS` bounds the rounds.
+    """
+
+    def resolve() -> op_resolve.ResolveReport:
+        return cast(
+            "op_resolve.ResolveReport",
+            thread.run(
+                ow.Unit(
+                    name="graph.resolve",
+                    run=lambda c: op_resolve.resolve(c, gen=generation),
+                    cost_class="free",
+                    wait_ms=BATCH_WAIT_MS,
+                )
+            ),
+        )
+
+    def cluster() -> op_cluster.ClusterReport:
+        #  D690: rank 1 (06:834), the whole graph every time (06 STEP 6).
+        return cast(
+            "op_cluster.ClusterReport",
+            thread.run(
+                ow.Unit(
+                    name="graph.cluster",
+                    run=lambda c: op_cluster.cluster(c, gen=generation),
+                    cost_class="local_compute",
+                    wait_ms=BATCH_WAIT_MS,
+                )
+            ),
+        )
+
+    return settle(resolve, cluster, bound=GRAPH_ROUNDS)
 
 
 def _lexicon(
