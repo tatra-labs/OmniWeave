@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import json
-from dataclasses import replace
+from dataclasses import asdict, replace
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from omniweave_conform.scoreboard import REQUIRED, check, export, stale, write
+from omniweave_conform.scoreboard import REQUIRED, check, export, stale, unmeasured, write
 from omniweave_core.drivers.card import MeasuredOn
 from omniweave_core.errors import QualityError
 from omniweave_core.store.oweval import Batch, Corpus, Metric, Run, open_oweval
@@ -262,3 +262,48 @@ def test_stale_names_changed_missing_and_extra_files(
     fewer = {k: v for k, v in published.items() if "anydoc" not in k}
     assert "parse/parse.office.anydoc.json" in stale(root, fewer)
     assert stale(tmp_path / "none", published) == tuple(sorted(published))
+
+
+# --- Q-G8's static half (D831) ---------------------------------------------------------------
+
+
+def _measured(**over: Any) -> dict[str, Any]:
+    fields = asdict(_MEASURED)
+    fields.update(over)
+    return {"metric": "m", "measured_on": fields}
+
+
+def test_a_complete_measured_on_is_measured(published: dict[str, str]) -> None:
+    assert unmeasured(_measured()) is None
+    rows = [r for text in published.values() for r in json.loads(text)]
+    assert rows
+    assert [unmeasured(r) for r in rows] == [None] * len(rows)
+
+
+@pytest.mark.parametrize(
+    ("row", "why"),
+    [
+        ({"metric": "m"}, "measured_on is not an object"),
+        ({"measured_on": ["n/a"] * 10}, "measured_on is not an object"),
+        ({"measured_on": "n/a"}, "measured_on is not an object"),
+        (
+            {"measured_on": {k: v for k, v in asdict(_MEASURED).items() if k != "corpus_digest"}},
+            "measured_on has missing ['corpus_digest']",
+        ),
+        (_measured(seed="7"), "measured_on has unknown ['seed']"),
+        (
+            {
+                "measured_on": {
+                    **{k: v for k, v in asdict(_MEASURED).items() if k != "runtime"},
+                    "a": "x",
+                }
+            },
+            "measured_on has missing ['runtime'] and unknown ['a']",
+        ),
+        (_measured(runtime=""), "MeasuredOn.runtime must be a non-empty string, not ''"),
+        (_measured(hardware=7), "MeasuredOn.hardware must be a non-empty string, not 7"),
+        (_measured(weights_revision="main"), "MeasuredOn.weights_revision must be an exact sha"),
+    ],
+)
+def test_q_g8_names_why_a_row_is_unmeasured(row: dict[str, Any], why: str) -> None:
+    assert (unmeasured(row) or "").startswith(why)
