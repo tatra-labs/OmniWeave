@@ -107,10 +107,11 @@ CRITERIA: tuple[Criterion, ...] = (
             tool("gate_results.py"),
             tool("gate_placement.py"),
             tool("gate_metric_rot.py"),
+            tool("gate_flake.py", "--window", "30d"),
         ),
         Coverage.PARTIAL,
         "no `v*` tag to be green on and no `ow eval release-check`; G13 and G25 have no runner "
-        "and G29 is planned only; Q-G1, 2, 4, 16, 18, 20, 22, 24 and 26 have no instrument and "
+        "and G29 is planned only; Q-G1, 2, 4, 16, 20, 22, 24 and 26 have no instrument and "
         "Q-G8, 19 and 25 run their static halves only; the `gates` CI job is off. This row runs "
         "the Q-G scripts that exist, and the register test, not every G runner",
     ),
