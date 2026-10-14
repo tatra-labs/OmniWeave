@@ -253,7 +253,7 @@ def test_a_page_link_is_an_external_hyperlink_on_its_shape(tmp_path: Path) -> No
             '<rect width="1" height="1"/>'
         ),
     )
-    assert clicks(out.tree()) == [("rect 2", ""), ("rect 3", None)]
+    assert clicks(out.tree()) == [("a 2", None), ("rect 3", ""), ("rect 4", None)]
     click = out.tree().find(f".//{A}hlinkClick")
     rel = _rels(out)[click.get(qn("r:id"))]
     assert (rel["Target"], rel["TargetMode"], rel["Type"].rpartition("/")[2]) == (
@@ -262,7 +262,7 @@ def test_a_page_link_is_an_external_hyperlink_on_its_shape(tmp_path: Path) -> No
         "hyperlink",
     )
     [linked, _] = out.deck().slides[0].shapes
-    assert linked.click_action.hyperlink.address == "https:example.org/x"
+    assert linked.shapes[0].click_action.hyperlink.address == "https:example.org/x"
 
 
 def test_a_unit_link_jumps_to_its_slide(tmp_path: Path) -> None:
@@ -271,7 +271,10 @@ def test_a_unit_link_jumps_to_its_slide(tmp_path: Path) -> None:
         slide('<a href="#u02"><rect width="1" height="1"/></a>'),
         slide('<a href="#u01"><rect width="1" height="1"/></a>'),
     )
-    assert clicks(out.tree(1)) == [("rect 2", "ppaction://hlinksldjump")]
+    assert clicks(out.tree(1)) == [
+        ("a 2", None),
+        ("rect 3", "ppaction://hlinksldjump"),
+    ]
     click = out.tree(1).find(f".//{A}hlinkClick")
     rel = _rels(out)[click.get(qn("r:id"))]
     assert (rel["Target"], rel["Type"].rpartition("/")[2], "TargetMode" in rel) == (
@@ -280,8 +283,8 @@ def test_a_unit_link_jumps_to_its_slide(tmp_path: Path) -> None:
         False,
     )
     first, second = out.deck().slides
-    assert first.shapes[0].click_action.target_slide == second
-    assert second.shapes[0].click_action.target_slide == first
+    assert first.shapes[0].shapes[0].click_action.target_slide == second
+    assert second.shapes[0].shapes[0].click_action.target_slide == first
 
 
 def test_a_link_to_a_unit_the_deck_lacks_is_refused(tmp_path: Path) -> None:
@@ -302,11 +305,13 @@ def test_every_shape_a_link_holds_clicks_and_an_inner_link_wins(tmp_path: Path) 
         assets=[blob],
     )
     assert clicks(out.tree()) == [
-        ("g 2", ""),
-        ("rect 3", ""),
-        ("text 4", ""),
-        ("image 5", ""),
-        ("circle 6", "ppaction://hlinksldjump"),
+        ("a 2", None),
+        ("g 3", None),
+        ("rect 4", ""),
+        ("text 5", ""),
+        ("image 6", ""),
+        ("a 7", None),
+        ("circle 8", "ppaction://hlinksldjump"),
     ]
 
 

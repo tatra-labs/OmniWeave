@@ -49,6 +49,7 @@ def test_the_part_is_written_even_with_nothing_cited(tmp_path: Path) -> None:
         "artifact_gen": 1,
         "cites": [],
         "els": {},
+        "at": {},
     }
     root = etree.fromstring(out.members["_rels/.rels"])
     assert [

@@ -5,7 +5,8 @@
 `data-ow-cite-kind` and `data-ow-cite-span`, its address map and its body are the framework's
 (`omniweave_core.out.provenance`), which docx writes too. This module puts the body in the
 deck's package, related from its root, and writes it whether or not anything is cited. A cite
-never draws: visible text is never a citation.
+never draws: visible text is never a citation. D803: the part also lists where each address
+landed (`at`), since a deck's runs have no name of their own to carry one.
 """
 
 from __future__ import annotations
@@ -32,8 +33,9 @@ def provenance_part(
     corpus: str,
     slug: str,
     artifact_gen: int,
+    at: Mapping[str, Mapping[str, JsonValue]],
 ) -> None:
     """The part, canonical JSON, related from the package root."""
     package = deck.part.package  # type: ignore[attr-defined] -- a python-pptx Presentation
-    data = body(rows, addresses, corpus=corpus, slug=slug, artifact_gen=artifact_gen)
+    data = body(rows, addresses, corpus=corpus, slug=slug, artifact_gen=artifact_gen, at=at)
     package.relate_to(Part(PackURI(f"/{name}"), MEDIA_TYPE, package, data), RELATIONSHIP)

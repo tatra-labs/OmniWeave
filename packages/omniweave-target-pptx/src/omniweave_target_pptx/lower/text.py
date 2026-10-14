@@ -156,6 +156,10 @@ def text_box(em: Emitter, node: CarrierNode, chain: Chain) -> None:
                 effect=filtered,
             )
         _end(paragraph, own * m.scale, em.lang)
+    if not em.cloning:  # D803: where each addressed run's text landed
+        for n, _ in nodes:
+            if n is not node and n.el:
+                em.at[n.el] = {"unit": em.unit, "shape": shape_id, **_lined(n, found, chains)}
     em.add(made, placed)
 
 
@@ -301,6 +305,21 @@ def _end(paragraph: Any, points: float, lang: str) -> None:
     if lang:
         attrs["lang"] = lang
     element("a:endParaRPr", paragraph, **attrs)
+
+
+def _lined(tspan: CarrierNode, found: list[Line], chains: Mapping[int, Chain]) -> dict[str, Any]:
+    """Where a `<tspan>`'s text landed (D803): its paragraph, and the run range its own text and
+    its descendants' took; an empty one is the line it starts, or the first, with no runs."""
+    for index, line in enumerate(found):
+        hits = [
+            k
+            for k, (_, owner) in enumerate(line.runs)
+            if any(c is tspan for c in chains[id(owner)])
+        ]
+        if hits:
+            return {"line": index, "runs": [hits[0], hits[-1] + 1]}
+    start = next((i for i, line in enumerate(found) if line.node is tspan), 0)
+    return {"line": start, "runs": [0, 0]}
 
 
 def _chains(node: CarrierNode, chain: Chain) -> Iterator[tuple[CarrierNode, Chain]]:
