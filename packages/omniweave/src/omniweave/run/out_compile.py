@@ -221,11 +221,9 @@ class CompileHost:
         policy carries one yet (09 section 7.3 leaves it to 14, which prints none), so it
         defaults to 0, which bars nothing.
         """
-        from omniweave_core.drivers.licence import restriction_bits  # noqa: PLC0415
+        from omniweave_core.drivers.licence import card_restriction_bits  # noqa: PLC0415
 
-        bits = restriction_bits(card.licence_code)
-        if card.licence_weights is not None:
-            bits |= restriction_bits(card.licence_weights)
+        bits = card_restriction_bits(card.licence_code, card.licence_weights)
         return cls(
             compile_driver=compiled.driver,
             media_type=compiled.media_type,
