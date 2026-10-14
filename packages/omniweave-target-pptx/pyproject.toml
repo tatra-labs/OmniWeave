@@ -17,6 +17,7 @@ dependencies = [
   # driver cannot pin the framework" (02-architecture.md section 3.2 rule 4).
   "omniweave-ports >=1,<2",
   "python-pptx",
+  "lxml",  # D812: imported directly by the read_back and the lowering, not only via python-pptx
   "XlsxWriter",
   "skia-pathops",
   "uharfbuzz",

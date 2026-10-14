@@ -21,10 +21,16 @@ wrote (`_walk`) and emits `owdoc-fragment/1`.
    were one.
 5. **`sniff()` is "not mine" to every stream.** 09 Q4: the routing policy does not prefer a
    target's own `read_back`, which is reached by name. A guess here would contend with
-   `parse.office.anydoc` for every `.docx` a corpus ingests.
+   `parse.office.anydoc` for every `.docx` a corpus ingests. So the card declares no
+   `format_tokens` either: core's table maps the media type, and a pair is a claim the
+   conformance kit holds `sniff()` to (D812).
 6. **A comment is a `comment` block on `Layer.ANNOTATION`** (D787), after the notes. 09
    section 12.3: comments round-trip as `Kind.COMMENT` and have no authoring construct. A manual
    region's reason is one, written by `lower/` as `ow:manual <reason>`.
+7. **A cancelled read stops between the body and the records** (D812). The body is read in one
+   pass, so the read reports progress after it and checks `io.cancelled()` before placing the
+   addresses, as the kit's contract suite asks of every driver at its loop tops. The card says
+   `marks = true`, because a note reference is a mark (the kit's P14 refused the `false` it said).
 """
 
 from __future__ import annotations
@@ -79,7 +85,7 @@ ACHIEVED: Final[dict[str, object]] = {
     "spatial": "none",
     "origin_span": "none",
     "text_span": False,
-    "marks": False,
+    "marks": True,
     "reading_order": "source",
     "math": [],
     "assets": "none",
@@ -137,11 +143,12 @@ class DocxReader:
         for kind, name in _NOTES:
             read_notes(_xml(members, name), kind, notes)
         comments = read_comments(_xml(members, "word/comments.xml"))
-        _place(sections, notes, embedded, kinds())
-        if io.cancelled():
+        io.progress(done=1, total=2)
+        if io.cancelled():  # ruling 7: the body read, a loop top before the records
             raise DriverError(cls=FailureClass.TIMEOUT, message="cancelled", retry_after_ms=0)
+        _place(sections, notes, embedded, kinds())
         body = _records(sections, notes, comments)
-        io.progress(done=len(sections), total=len(sections))
+        io.progress(done=2, total=2)
         records = [
             {
                 "t": "doc",

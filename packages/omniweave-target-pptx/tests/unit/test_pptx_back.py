@@ -129,6 +129,26 @@ def test_the_card_is_an_ordinary_parse_card_reached_by_name() -> None:
     assert PptxReader.probe(None).status is ProbeStatus.OK  # type: ignore[arg-type]
     hint = StreamHint(filename="d.pptx", extension=".pptx", declared_media_type=None, byte_len=9)
     assert PptxReader().sniff(b"PK\x03\x04", hint) == (), "ruling 5: never by content"
+    assert card.parse is not None and card.parse.format_tokens == (), "D812: no pair to back"
+    assert card.limits.max_input_bytes == 64 << 20, "D812: under the host's ceiling"
+
+
+def test_each_slide_is_a_loop_top_and_a_cancelled_read_stops(tmp_path: Path) -> None:
+    """D812 (ruling 6), the kit's contract suite: progress after each slide, and a read
+    cancelled after the first slide or the last stops as `TIMEOUT`."""
+    out = _deck(tmp_path, UNIT, SECOND)
+    store = MemoryBlobStore(tmp_path / "cancel")
+    sha = store.add(out.data)
+    unit = UnitRef(uri="file:///d.pptx", part="", content_sha256=sha, byte_len=len(out.data))
+    whole = make_io(store, tmp_path / "whole")
+    PptxReader().parse(unit, PartSelector(), whole)
+    assert whole.call().progress == [(1, 2), (2, 2)]
+    for after in (1, 2):
+        cut = make_io(store, tmp_path / f"cut{after}", cancel_after_progress=after)
+        with pytest.raises(DriverError, match="cancelled") as caught:
+            PptxReader().parse(unit, PartSelector(), cut)
+        assert caught.value.cls is FailureClass.TIMEOUT
+        assert len(cut.call().progress) == after, "nothing read past the cancel"
 
 
 def test_a_read_back_is_valid_and_nonempty_by_its_blocks(tmp_path: Path) -> None:
