@@ -1204,7 +1204,8 @@ def _peak_rss_linux(pid: int) -> tuple[int | None, str]:  # pragma: no cover -- 
     if len(parts) <= _STATM_RSS_FIELD:
         return (None, f"/proc/{pid}/statm had {len(parts)} fields")
     pages = int(parts[_STATM_RSS_FIELD])
-    return (pages * os.sysconf("SC_PAGE_SIZE"), "/proc/<pid>/statm rss pages")
+    page = os.sysconf("SC_PAGE_SIZE")  # type: ignore[attr-defined] -- POSIX; this arm is Linux's
+    return (pages * page, "/proc/<pid>/statm rss pages")
 
 
 def peak_rss_bytes(pid: int) -> tuple[int | None, str]:
@@ -2834,8 +2835,18 @@ class Invocation:
     services: tuple[ServiceGrant, ...] = ()
     """The Services this call may reach (D712); empty, and absent from the header, for a driver
     that declares none. A second extension of 04:1699's four keys, as `lane` is the first."""
+    job: Mapping[str, object] | None = None
+    """A `compile/1` call's `job.json` record, `Job.as_json()` (D772); `None`, and absent from the
+    header, for every other port. The worker lowers this Plan, over `job_dir`."""
+    job_dir: str | None = None
+    """The JobDir a `compile/1` worker reads (D772); set exactly when `job` is."""
 
     def __post_init__(self) -> None:
+        if (self.job is None) != (self.job_dir is None):
+            raise DriverHostError(
+                "a compile INVOKE carries its job and its job_dir together, or neither",
+                fix="pass job=Job.as_json() and job_dir=str(job_dir) to a compile/1 Invocation",
+            )
         if self.blob_refs and len(self.blob_refs) != len(self.units):
             raise DriverHostError(
                 f"{len(self.blob_refs)} blob_refs for {len(self.units)} units",
@@ -2911,6 +2922,7 @@ class Invocation:
             "inline_unit_index": self.inline_unit_index,
             **({"lane": self.lane} if self.lane is not None else {}),
             **({"services": [g.as_header() for g in self.services]} if self.services else {}),
+            **({"job": dict(self.job), "job_dir": self.job_dir} if self.job is not None else {}),
         }
 
 
@@ -3816,6 +3828,17 @@ that never connects is refused by `NamedPipeListener.accept`, naming the pipe, r
 waited on."""
 
 
+def local_address(name: str) -> str:
+    """A worker's base address for `name`: a named pipe on Windows, a socket path elsewhere.
+
+    One spelling for every caller that launches a worker (the parse Operator, `ow out compile`),
+    so the address a listener binds is built one way. D773.
+    """
+    if sys.platform == "win32":
+        return f"\\\\.\\pipe\\{name}"
+    return f"/tmp/{name}.sock"  # noqa: S108 -- pragma: POSIX arm, untested here
+
+
 def worker_argv(executable: str, address: str) -> tuple[str, ...]:
     """`(python, -m, omniweave_core.host.worker, <base address>)`. The address is the argv's last
     element because `pipe_names` derives both pipe names from it on the child's side."""
@@ -3934,6 +3957,7 @@ __all__ = [
     "grant_isolation",
     "launch",
     "listener_for",
+    "local_address",
     "lower_priority",
     "next_frame",
     "owner_only_sddl",

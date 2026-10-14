@@ -24,9 +24,9 @@
 
 # Schemes omniweave coined. None addresses a machine: `cas://` is a content-addressed blob path,
 # `stream://` an identity for a stream that was never a file, `cassette://` a replay handle that
-# 14:1278 deliberately makes undialable, and `file://` a local path. A URL under one of these is
-# not reported at all.
-internal_schemes = ["cas", "cassette", "file", "stream"]
+# 14:1278 deliberately makes undialable, `file://` a local path, and `ow-job://` the synthetic job
+# document 09 section 7.1 names (D771). A URL under one of these is not reported at all.
+internal_schemes = ["cas", "cassette", "file", "ow-job", "stream"]
 
 # Schemes that DO address a machine. A URL under one of these has its host extracted and must be
 # registered below. A scheme on neither list is itself a finding — the gate refuses to guess,

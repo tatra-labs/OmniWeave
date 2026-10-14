@@ -72,6 +72,7 @@ if TYPE_CHECKING:
     from omniweave.route import RouteHints
 
 __all__ = [
+    "CONSTRUCT_FORMATS",
     "CONTEXT_DEFAULT",
     "CONTEXT_MAX",
     "CONTEXT_MIN",
@@ -83,6 +84,12 @@ __all__ = [
     "SOURCE_MAX",
     "WANTS",
     "AddIn",
+    "ArtifactsIn",
+    "AssetsIn",
+    "BackIn",
+    "CheckIn",
+    "CompileIn",
+    "ConstructsIn",
     "CorporaIn",
     "CoverageIn",
     "DiffIn",
@@ -96,10 +103,12 @@ __all__ = [
     "LocateIn",
     "MergeIn",
     "MergesIn",
+    "NormalizeIn",
     "OpenIn",
     "QueryIn",
     "ResidueIn",
     "ReviewIn",
+    "ScaffoldIn",
     "ServeIn",
     "SkillsCheckIn",
     "SkillsHashIn",
@@ -109,9 +118,12 @@ __all__ = [
     "SkillsUpdateIn",
     "SkillsVerifyIn",
     "SplitIn",
+    "StampIn",
     "SurfaceEmitIn",
+    "TargetsIn",
     "TypesIn",
     "UninstallIn",
+    "VerifyIn",
     "WhyIn",
 ]
 
@@ -161,6 +173,10 @@ WANTS: Final[tuple[str, ...]] = ("passages", "table", "fields", "outline", "rela
 `passages`, because a caller who asked for `table` and got prose has been lied to"*. The default is
 the first member, which is why the tuple is ordered rather than a frozenset.
 """
+
+CONSTRUCT_FORMATS: Final[tuple[str, ...]] = ("text", "md")
+"""`ow out constructs --format`: a line a row, or 09-generation.md section 3.3's agent
+document. The default is the first member."""
 
 CORPORA_DETAILS: Final[tuple[str, ...]] = ("list", "card", "coverage", "actions")
 """`ow_corpora`'s `detail`, 18:1352. `actions` is how an agent discovers the narrow-Action catalog
@@ -484,6 +500,161 @@ class HooksCheckIn:
     Which commands to check is not an argument: they are the ones the install receipt says were
     installed, read back out of the files the receipt names (10:2078, *"resolves the installed
     command string"*). A command given on argv would be a command that was not installed.
+    """
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactsIn:
+    """`ow_artifacts` / `ow out list [--slug S]`. 10-interfaces.md's `full` roster. D769.
+
+    `slug` narrows the list to one artefact's generations. `corpus` is the store the
+    artefacts were sealed into, because an `artifact` row lives beside the documents
+    its cites resolve in.
+    """
+
+    slug: str | None = None
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CheckIn:
+    """`ow out check --stage S [--unit U] [--job DIR] [--target T]`. 09 section 4.3. D766.
+
+    `stage` is one of the four, `early`, `first-unit`, `unit` and `final`, each with its own
+    report path. `unit` names the one unit `--stage unit` checks. `job` is the JobDir, `cwd`
+    by default, since a Toolchain child runs with `cwd = job_dir`. `target` is optional and
+    must be the JobDir's own when given: 09 prints it in every fix command.
+    """
+
+    stage: str | None = None
+    unit: str | None = None
+    job: str | None = None
+    target: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ConstructsIn:
+    """`ow out constructs <target>`. 09-generation.md section 3.3. D762.
+
+    `target` is the artefact kind, as `ow out targets` lists it. `--format md` is the agent
+    document 09 gates at the card's `agent_doc_tokens_max`; `--group` renders one group (the
+    id's first dotted segment) under the same ceiling; `--construct` is one row, every key of
+    it, which `OW-T-009`'s fix names. No `corpus`: a construct table is a target's data.
+    """
+
+    target: str
+    format: str = CONSTRUCT_FORMATS[0]
+    group: str | None = None
+    construct: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ScaffoldIn:
+    """`ow out scaffold <target> --brief PATH --slug S`. 02 section 5 row 2; 09 section 5.4. D765.
+
+    `target` is the artefact kind. `brief` is the confirmed Brief's file, frozen into the
+    JobDir as `brief.md`. `slug` names the artefact (`<slug>@<gen>`). Both are required,
+    but they are options rather than positionals, as 18's `ow make` prints them
+    (`--brief <path>`, `--slug S`). `corpus` is where the cites will resolve and whose
+    store proposes the generation: the global `--corpus` on the CLI.
+    """
+
+    target: str
+    brief: str | None = None
+    slug: str | None = None
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CompileIn:
+    """`ow out compile [--accept-manual] [--job DIR]`. 09 sections 2 and 9. D773.
+
+    `accept_manual` asks for a draft of a `manual-required` gate (09 section 9). The API
+    sketch's positional IL directory, `--target` and `--slug` are the scaffold's to take: a
+    JobDir's `job.json` already names the target, the slug and the corpus.
+    """
+
+    accept_manual: bool = False
+    job: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AssetsIn:
+    """`ow out assets --slug S [--gen N] [--explain] | --slot SHA`. 09 section 7.2. D778.
+
+    09 prints `ow out assets <slug>` and `ow out assets --slot <sha256>`. A positional cannot be
+    optional in the generated grammar, and the `--slot` form takes no slug, so the slug is an
+    option. `explain` names each asset's licence and restrictions, which is what 09 section 7.3
+    sends a `restricted` gate to.
+    """
+
+    slug: str | None = None
+    gen: int | None = None
+    slot: str | None = None
+    explain: bool = False
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class BackIn:
+    """`ow out back <slug> [--gen N]`. 09 sections 3.6 and 3.7. D777.
+
+    `slug` names the artefact, and `gen` the generation to edit, the newest when omitted.
+    `corpus` is the store it was sealed into: the global `--corpus` on the CLI.
+    """
+
+    slug: str
+    gen: int | None = None
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class VerifyIn:
+    """`ow out verify [--job DIR]`. 09 section 11.1's R1 and R7. D774.
+
+    The API sketch prints `ow out verify <artefact>`. R1 recompiles over the Brief, the clock
+    and the frozen assets as well as the IL, and only the IL is retained, so the verb reads the
+    rest from the JobDir that compiled the artefact.
+    """
+
+    job: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class NormalizeIn:
+    """`ow out normalize [--stage S] [--unit U] [--construct ID] [--job DIR]`. 09 4.3. D768.
+
+    `stage` names the report whose findings choose the rows; without it every `normalize`
+    row runs. `unit` and `construct` narrow the run. 09 prints the unit as a positional IL
+    path and the construct as `--construct`, and a positional cannot be optional in the
+    generated grammar, so both are options.
+    """
+
+    stage: str | None = None
+    unit: str | None = None
+    construct: str | None = None
+    job: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class StampIn:
+    """`ow out stamp [--job DIR]`. 09 section 4.3. D767.
+
+    The JobDir is `--job`, else `cwd`, as for `ow out check`. Everything else is in it: the
+    target in `job.json` and the roster in `il/il.toml`.
+    """
+
+    job: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TargetsIn:
+    """`ow_targets` / `ow out targets`. 10-interfaces.md's `full` roster; 09-generation.md section
+    12.4. D761.
+
+    No field. Which targets exist is a fact about the installed and configured drivers, not an
+    argument: the cards are discovered, `[targets] enabled` is read from the configuration, and
+    `--render` is global. There is no `corpus`, because no store is opened.
     """
 
 

@@ -137,6 +137,7 @@ def test_the_five_narrow_rows_that_landed_are_not_published_yet() -> None:
     distance to a complete artefact is a number rather than a memory.
     """
     assert mcp_tools_module.unpublished() == (
+        "ow_artifacts",
         "ow_coverage",
         "ow_diff",
         "ow_doctor",
@@ -148,6 +149,7 @@ def test_the_five_narrow_rows_that_landed_are_not_published_yet() -> None:
         "ow_skills_hash",
         "ow_skills_ls",
         "ow_skills_verify",
+        "ow_targets",
     )
 
 

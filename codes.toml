@@ -870,6 +870,168 @@ meaning = "a data-ow-manual value outside ManualReason: a framework error findin
 fix     = "ow out constructs --construct ow:manual"
 sites   = ["09-generation.md:1956"]
 
+# ── D758. The reference target's construct codes (18-api-sketch.md section 6.2's
+# constructs.toml), appended under 09 section 15's "+" rule. Its table holds SYMBOLS and "the
+# numeric OW-T-nnn is resolved from codes.toml at RENDER time", so every symbol a shipped
+# ConstructTable names is registered. Each numeric sits in the band its siblings use: 1xx cites,
+# 2xx normalize, 3xx bake, 4xx constructs.
+
+[[code]]
+numeric = "OW-T-103"
+symbol  = "OW_TARGET_CITE_MALFORMED"
+meaning = "a data-ow-cite value that is not a space-separated list of cite tokens"
+fix     = "ow out check --stage unit --unit <unit>"
+sites   = ["18-api-sketch.md:2315"]
+
+[[code]]
+numeric = "OW-T-211"
+symbol  = "OW_TARGET_CLASS_NOT_LOWER"
+meaning = "owtext/1's normalize row: a class attribute that is not lower-case ASCII; a warning, folded"
+fix     = "ow out normalize <il file>"
+sites   = ["18-api-sketch.md:2387", "18-api-sketch.md:2484"]
+
+[[code]]
+numeric = "OW-T-312"
+symbol  = "OW_TARGET_SHADOW_REQUIRES_BAKE"
+meaning = "owtext/1's bake row: text-shadow has no native mapping and needs a bake the card says is unavailable"
+fix     = "ow out normalize <il file>   # drop the shadow"
+sites   = ["18-api-sketch.md:2407"]
+
+[[code]]
+numeric = "OW-T-403"
+symbol  = "OW_TARGET_UNIT_MALFORMED"
+meaning = "a unit's root is not the one element its target's unit construct names"
+fix     = "ow out check --stage unit --unit <unit>"
+sites   = ["18-api-sketch.md:2345"]
+
+[[code]]
+numeric = "OW-T-404"
+symbol  = "OW_TARGET_TEXT_INVALID"
+meaning = "block text that is not NFC, or that nests a block element"
+fix     = "ow out check --stage unit --unit <unit>"
+sites   = ["18-api-sketch.md:2355"]
+
+[[code]]
+numeric = "OW-T-406"
+symbol  = "OW_TARGET_CLASS_INVALID"
+meaning = "a class attribute outside its construct's canonical form"
+fix     = "ow out check --stage unit --unit <unit>"
+sites   = ["18-api-sketch.md:2378"]
+
+# ── D760. The unimplemented target's refusal (09-generation.md section 12.4).
+
+[[code]]
+numeric = "OW-T-514"
+symbol  = "OW_TARGET_NOT_IMPLEMENTED"
+meaning = "a call into a target whose card says [compile] implemented = false; the refusal carries the card's reason (D760, appended under 09 section 15's \"+\" rule)"
+fix     = "ow out targets"
+raised_by = "TargetError"
+sites   = ["09-generation.md:2351"]
+
+[[code]]
+numeric = "OW-T-515"
+symbol  = "OW_TARGET_UNKNOWN"
+meaning = "a target no discovered compile card declares; the refusal names the kinds the cards found do declare (D762, appended under 09 section 15's \"+\" rule)"
+fix     = "ow out targets"
+raised_by = "NotFoundError"
+sites   = ["09-generation.md:439"]
+
+[[code]]
+numeric = "OW-T-516"
+symbol  = "OW_CONSTRUCT_UNKNOWN"
+meaning = "a --group or --construct no row of the target's ConstructTable carries; the refusal names the groups or the ids the table has (D762)"
+fix     = "ow out constructs <target>"
+raised_by = "NotFoundError"
+sites   = ["09-generation.md:439"]
+
+[[code]]
+numeric = "OW-T-517"
+symbol  = "OW_TARGET_AMBIGUOUS"
+meaning = "two or more compile cards declare one target, so which table documents it is not this verb's choice; the refusal names every driver (D762)"
+fix     = "keep one card for the target on OMNIWEAVE_DRIVER_PATH or in .omniweave/drivers/"
+raised_by = "ConfigError"
+sites   = ["09-generation.md:439"]
+
+[[code]]
+numeric = "OW-T-518"
+symbol  = "OW_TARGET_JOB_INVALID"
+meaning = "a job.json Job.load() refuses: unreadable, another schema, an unknown or missing key at any level (a nullable one included), a value outside its grammar, a Plan that Plan refuses, or an embedded Brief that does not digest to plan.brief_digest (D763, closing 09 Q11)"
+fix     = "ow explain OW-T-518"
+raised_by = "TargetError"
+sites   = ["09-generation.md:2894"]
+
+[[code]]
+numeric = "OW-T-519"
+symbol  = "OW_TARGET_SLUG_INVALID"
+meaning = "an artefact slug that is not lower-case letters, digits and hyphens, 1 to 64 long: it becomes the JobDir's <slug>@<gen> segment and artifact.slug, and the plan gives it no grammar (D764)"
+fix     = "ow out scaffold <target> --slug q3-board"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1496"]
+
+[[code]]
+numeric = "OW-T-520"
+symbol  = "OW_TARGET_JOB_EXISTS"
+meaning = "a JobDir, or its staged copy, already exists where a scaffold would write one: a scaffold never writes over a JobDir (D764)"
+fix     = "ow out scaffold <target> --slug <slug>   # a fresh run id"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1496"]
+
+[[code]]
+numeric = "OW-T-521"
+symbol  = "OW_TARGET_STAMP_LOCKED"
+meaning = "il/.stamp.lock is held by a stamp younger than 300 s: two stampers would both mint max(existing ordinal) + 1 (D767)"
+fix     = "wait for the other ow out stamp, or delete il/.stamp.lock if no stamp runs"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1038"]
+
+[[code]]
+numeric = "OW-T-522"
+symbol  = "OW_TARGET_STAMP_REFUSED"
+meaning = "a unit ow out stamp cannot write: its read had to recover, its bytes do not decode, or the stamped text does not reparse; nothing was written (D767)"
+fix     = "ow out check --stage unit --unit <id>"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1028"]
+
+[[code]]
+numeric = "OW-T-523"
+symbol  = "OW_TARGET_NORMALIZE_STALE"
+meaning = "ow out normalize was given a stage whose validation/<stage>.json is absent, unreadable, or describes other bytes than the bundle's (D768)"
+fix     = "ow out check --stage <stage>"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1031"]
+
+[[code]]
+numeric = "OW-T-524"
+symbol  = "OW_TARGET_NORMALIZE_REFUSED"
+meaning = "a normalize nothing may write: a normalizer that is not idempotent on a value or is not loaded, a row selecting an element or a style sub-property, an attribute without quotes, or a unit that does not read or reparse (D768)"
+fix     = "ow out check --stage early"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1029"]
+
+[[code]]
+numeric = "OW-T-525"
+symbol  = "OW_TARGET_JOB_CHANGED"
+meaning = "a compile worker found a JobDir other than the one the host gated: its il_digest, constructs_digest or ledger_digest is not the Plan's, so nothing is lowered (D771)"
+fix     = "ow out check --stage final"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1701"]
+
+[[code]]
+numeric = "OW-T-526"
+symbol  = "OW_TARGET_COMPILE_FAILED"
+meaning = "a compile worker answered with a failure that is not a target refusal: it crashed, timed out, ran past a resource limit or raised a bug, or never answered; nothing was sealed and no artefact was placed (D772)"
+fix     = "ow explain OW-T-526"
+raised_by = "TargetError"
+sites   = ["09-generation.md:173"]
+
+[[code]]
+numeric = "OW-T-527"
+symbol  = "OW_TARGET_VERIFY_INPUTS"
+meaning = "ow out verify was asked to recompile an artefact over inputs other than the ones it was sealed over: the JobDir names another slug or target, its Brief or ledger digests otherwise, or the installed card or construct table is not the one that compiled it (D774)"
+fix     = "ow out verify --job <the JobDir that compiled it>"
+raised_by = "TargetError"
+sites   = ["09-generation.md:2131"]
+
 # ── W1.5, the driver card grammar (04-driver-system.md sections 2.1-2.8, 4.5, 5.3, 7.5). The
 # three discovery-point refusals of section 5.3 step 1, plus the two numerics the plan already
 # binds. `meaning` and `fix` are FILLED here rather than deferred to W1.3: these five are raised

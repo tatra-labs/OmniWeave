@@ -25,12 +25,28 @@ from types import SimpleNamespace
 from typing import Any, ClassVar
 
 import pytest
+from omniweave_conform.suites.target.owtext.driver import HERE, OwTextCompiler
 from omniweave_core.blobs import BlobStore, format_ref
 from omniweave_core.discovery import catalog
+from omniweave_core.drivers.card import load_card, read_card_bytes
 from omniweave_core.errors import DriverHostError
+from omniweave_core.events import traceparent
 from omniweave_core.host import subproc as sp
 from omniweave_core.host import wire
 from omniweave_core.host import worker as wk
+
+#  At module scope, every module whose errors a worker catches: `test_errors.py` reloads
+#  `omniweave_core.errors`, and a module first imported after that raises classes the
+#  worker's `except OwError` was not bound to, in whatever order xdist deals the files (D777).
+from omniweave_core.modelserver import Handle
+from omniweave_core.out import agentdoc
+from omniweave_core.out.agentdoc import load_table
+from omniweave_core.out.brief import BRIEF_SCHEMA, parse_brief
+from omniweave_core.out.card import CompileCard
+from omniweave_core.out.compile import refusal_of
+from omniweave_core.out.gate import GateStatus
+from omniweave_core.out.job import ILBundle, job_unit, scaffold
+from omniweave_core.out.receipt import Receipt
 from omniweave_ports.types import ArtifactRef, DeriveScope, DriverError, FailureClass, UnitRef
 
 FIXTURES = Path(__file__).resolve().parents[3] / "omniweave-office" / "fixtures"
@@ -90,6 +106,8 @@ def test_the_armed_hook_refuses_the_two_egress_events_and_nothing_else() -> None
         ({"max_output_bytes": True}, "max_output_bytes"),
         ({"driver_id": ""}, "driver_id"),
         ({"effective_config": [1]}, "effective_config"),
+        ({"card_source": "driver.toml"}, "card_origin"),
+        ({"card_source": "", "card_origin": "driver_path"}, "card_source"),
     ],
 )
 def test_a_hello_missing_what_the_worker_acts_on_is_refused(
@@ -314,7 +332,7 @@ def test_a_driver_that_raises_anything_else_is_a_driver_bug_on_that_unit(
     ("change", "detail"),
     [
         ({"card_sha256": "sha256:" + "0" * 64}, "the host's card is"),
-        ({"port": "embed/1"}, "this worker serves derive/1 and parse/1"),
+        ({"port": "embed/1"}, "this worker serves compile/1, derive/1 and parse/1"),
         ({"port": "derive/1"}, "card declares parse/1, and HELLO says derive/1"),
         ({"driver_id": "parse.nobody.here"}, "no installed card"),
     ],
@@ -815,8 +833,6 @@ def test_service_issues_only_the_named_grant_under_the_calls_deadline(tmp_path: 
 
 def test_a_grant_is_made_from_the_handle_the_registry_issued() -> None:
     """D713: the handle's fields, and its request timeout; a handle with none keeps 600."""
-    from omniweave_core.modelserver import Handle  # noqa: PLC0415
-
     bearer = "ab"
     handle = Handle(
         name="llm", base_url="http://127.0.0.1:9", token=bearer, model_id="m", model_rev="r",
@@ -831,3 +847,249 @@ def test_a_grant_is_made_from_the_handle_the_registry_issued() -> None:
         capacity=1, traceparent="",
     )  # fmt: skip
     assert sp.ServiceGrant.of(bare).request_timeout_s == 600  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------------------------
+# 7. compile/1 (D771): the job document, lowered in the worker
+# ---------------------------------------------------------------------------------------------
+
+OWTEXT = "compile.text.owtext"
+GOLDEN = REPO / "fixtures" / "out" / "golden" / "owtext" / "il"
+TOMBSTONE = (
+    REPO / "packages" / "omniweave-core" / "src" / "omniweave_core" / "drivers" / "tombstones"
+) / "parse.doc.omniparse.toml"
+TEXT = b"== u01 ==\nRevenue rose 12% in Q3.\n== u02 ==\nMargins held.\n"
+
+
+def _owtext_card() -> Any:
+
+    path = HERE / "driver.toml"
+    return load_card(read_card_bytes(path), origin="driver_path", source=str(path))
+
+
+def _compile_hello(tmp_path: Path, **overrides: object) -> dict[str, object]:
+    card = _owtext_card()
+    fields: dict[str, object] = {
+        "port": "compile/1",
+        "driver_id": OWTEXT,
+        "card_sha256": card.card_sha256,
+        "card_source": card.source,
+        "card_origin": "driver_path",
+    }
+    fields.update(overrides)
+    return _hello(tmp_path, **fields)
+
+
+def _compile_job(tmp_path: Path) -> tuple[Path, Any]:
+    """A scaffolded owtext JobDir holding the golden IL, and the Job its host gated."""
+    import shutil  # noqa: PLC0415
+    from dataclasses import replace  # noqa: PLC0415
+
+    card = _owtext_card()
+    compiled = CompileCard.of(card)
+    table = load_table(Path(card.source), compiled)
+    brief = (
+        f"{BRIEF_SCHEMA}\n## canvas\n- format: 16:9\n- unit: section\n## communication\n"
+        "- primary_language: en-GB\n## direction\n## density\n- per_unit: light\n## motion\n"
+        "- level: static\n## typography\n## rhythm\n- u01: { anchor: cover }\n"
+        "- u02: { anchor: content }\n## forbidden\n"
+    )
+    job_dir = tmp_path / "job"
+    job = scaffold(
+        job_dir, card=compiled, card_sha256=card.card_sha256, table=table, brief_text=brief,
+        brief=parse_brief(brief, baseline=()), slug="q3", artifact_gen=1, corpus="handbook",
+        traceparent=traceparent("4bf92f3577b34da6a3ce929d0e0e4736", "00f067aa0ba902b7"),
+        clock_ns=1_700_000_000_000_000_000,
+    )  # fmt: skip
+    for name in ("il.toml", "u01.html", "u02.html"):
+        shutil.copyfile(GOLDEN / name, job_dir / "il" / name)
+    bundle = ILBundle.load(job_dir / "il", carrier=OwTextCompiler().carrier, constructs=table)
+    plan = replace(
+        job.plan,
+        il_digest=bundle.il_digest,
+        gate_status=GateStatus.PASSED,
+        units=tuple(
+            replace(mine, nsig=theirs.nsig, manual_reason=theirs.manual_reason)
+            for mine, theirs in zip(job.plan.units, bundle.units, strict=True)
+        ),
+    )
+    return job_dir, replace(job, plan=plan)
+
+
+def _compile_invoke(job: Any, job_dir: Path, /, **changes: object) -> dict[str, object]:
+
+    unit = job_unit(job)
+    header: dict[str, object] = {
+        "invoke_id": "c1",
+        "units": [
+            {"uri": unit.uri, "part": unit.part, "content_sha256": unit.content_sha256,
+             "byte_len": unit.byte_len, "media_type": unit.media_type}
+        ],
+        "deadline_ms": 60_000,
+        "budget_micros": 0,
+        "job": job.as_json(),
+        "job_dir": str(job_dir),
+    }  # fmt: skip
+    header.update(changes)
+    return header
+
+
+def _compile_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[_Host, dict[str, Any], threading.Thread, list[str]]:
+    served = _serve(monkeypatch)
+    host = served[0]
+    host.send(wire.FrameKind.HELLO, _compile_hello(tmp_path))
+    ack = host.next()
+    assert (ack.kind, ack.header["port"]) == (wire.FrameKind.HELLO_ACK, "compile/1")
+    assert ack.header["driver_id"] == OWTEXT
+    return served
+
+
+def _shut(host: _Host, thread: threading.Thread, box: dict[str, Any]) -> None:
+    host.send(wire.FrameKind.SHUTDOWN, {"grace_ms": 0})
+    thread.join(10)
+    assert box["outcome"]["status"] == 0
+
+
+def test_a_compile_session_lowers_the_job_in_the_worker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The card is the one the HELLO names; the artefact and the receipt come back through the
+    CAS, the frame's body empty, and the worker's scratch is gone before the RESULT."""
+
+    host, box, thread, order = _compile_session(tmp_path, monkeypatch)
+    assert order == ["guard", "activate"]
+    assert box["armed"] is True, "owtext declares needs_network = false"
+    job_dir, job = _compile_job(tmp_path)
+    host.send(wire.FrameKind.INVOKE, _compile_invoke(job, job_dir))
+    [result] = host.until(wire.FrameKind.RESULT)
+    assert result.header["outcome"] == "ok"
+    assert result.body == b""
+    produced: Any = result.header["produced"]
+    assert [entry["kind"] for entry in produced] == ["artifact", "receipt"]
+    cas = BlobStore(tmp_path / "cas")
+    with cas.open_ref(str(produced[0]["blob"])) as handle:
+        assert handle.read() == TEXT
+    with cas.open_ref(str(produced[1]["blob"])) as handle:
+        receipt = Receipt.from_json(json.loads(handle.read()))
+    assert receipt.output["sha256"] == hashlib.sha256(TEXT).hexdigest()
+    assert receipt.slug == "q3"
+    assert not (tmp_path / "tmp" / "c1").exists()
+    _shut(host, thread, box)
+
+
+def _refusal(result: wire.Frame) -> Any:
+
+    assert result.header["failure_class"] == "corrupt_input"
+    refused = refusal_of(str(result.header["message"]))
+    assert refused is not None
+    return refused
+
+
+def test_a_job_dir_changed_after_the_gate_is_refused_with_its_symbol(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    host, box, thread, _order = _compile_session(tmp_path, monkeypatch)
+    job_dir, job = _compile_job(tmp_path)
+    (job_dir / "il" / "u02.html").write_text("<section><p>Margins fell.</p></section>\n")
+    host.send(wire.FrameKind.INVOKE, _compile_invoke(job, job_dir))
+    [result] = host.until(wire.FrameKind.RESULT)
+    refused = _refusal(result)
+    assert (refused.code(), refused.fix) == ("OW_TARGET_JOB_CHANGED", "ow out check --stage final")
+    assert "il_digest" in str(refused)
+    _shut(host, thread, box)
+
+
+@pytest.mark.parametrize(
+    ("changes", "named"),
+    [
+        ({"job_dir": ""}, "job_dir ''"),
+        ({"job_dir": None}, "job_dir None"),
+        ({"units": [{"uri": "ow-job://x", "part": "", "content_sha256": "0" * 64}]}, "ow-job://x"),
+    ],
+)
+def test_an_invoke_that_does_not_carry_its_job_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, changes: dict[str, object], named: str
+) -> None:
+    host, box, thread, _order = _compile_session(tmp_path, monkeypatch)
+    job_dir, job = _compile_job(tmp_path)
+    host.send(wire.FrameKind.INVOKE, _compile_invoke(job, job_dir, **changes))
+    [result] = host.until(wire.FrameKind.RESULT)
+    refused = _refusal(result)
+    assert refused.code() == "OW_TARGET_JOB_INVALID"
+    assert named in str(refused)
+    _shut(host, thread, box)
+
+
+def test_a_job_that_does_not_load_is_refused_with_its_symbol(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    host, box, thread, _order = _compile_session(tmp_path, monkeypatch)
+    job_dir, job = _compile_job(tmp_path)
+    host.send(wire.FrameKind.INVOKE, _compile_invoke(job, job_dir, job={"schema": "x"}))
+    [result] = host.until(wire.FrameKind.RESULT)
+    assert _refusal(result).code() == "OW_TARGET_JOB_INVALID"
+    _shut(host, thread, box)
+
+
+def test_a_compile_bug_is_the_drivers_bug_not_a_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+
+    def broken(*_args: object, **_kwargs: object) -> object:
+        raise KeyError("u03")
+
+    monkeypatch.setattr(OwTextCompiler, "lower", broken)
+    host, box, thread, _order = _compile_session(tmp_path, monkeypatch)
+    job_dir, job = _compile_job(tmp_path)
+    host.send(wire.FrameKind.INVOKE, _compile_invoke(job, job_dir))
+    [result] = host.until(wire.FrameKind.RESULT)
+    assert result.header["failure_class"] == "driver_bug"
+    assert result.header["message"] == "KeyError: 'u03'"
+    _shut(host, thread, box)
+
+
+@pytest.mark.parametrize(
+    ("change", "detail"),
+    [
+        ({"driver_id": "compile.text.other"}, "declares compile.text.owtext, not"),
+        ({"card_origin": "nowhere"}, "card_origin 'nowhere' is not one of"),
+        ({"card_source": "no/such/driver.toml"}, "does not read"),
+        ({"card_sha256": "sha256:" + "0" * 64}, "the host's card is"),
+        ({"card_source": str(TOMBSTONE), "card_origin": "tombstone"}, "is a tombstone"),
+    ],
+)
+def test_a_named_card_the_worker_cannot_honour_is_fatal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: dict[str, object], detail: str
+) -> None:
+    host, box, thread, order = _serve(monkeypatch)
+    host.send(wire.FrameKind.HELLO, _compile_hello(tmp_path, **change))
+    fatal = host.next()
+    assert fatal.kind is wire.FrameKind.FATAL
+    assert detail in str(fatal.header["detail"])
+    thread.join(10)
+    assert box["outcome"]["status"] == 1
+    assert order == []
+
+
+def test_a_compile_card_whose_table_does_not_load_is_fatal_at_hello(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The table is read once, after the driver activates: a table the card's digest does not
+    describe is refused at HELLO, before any INVOKE."""
+
+    def refusing(*_args: object) -> object:
+        raise DriverHostError(
+            "constructs.toml digests otherwise", symbol="OW_CARD_INVALID", fix="f"
+        )
+
+    monkeypatch.setattr(agentdoc, "load_table", refusing)
+    host, box, thread, order = _serve(monkeypatch)
+    host.send(wire.FrameKind.HELLO, _compile_hello(tmp_path))
+    fatal = host.next()
+    assert fatal.kind is wire.FrameKind.FATAL
+    assert "digests otherwise" in str(fatal.header["detail"])
+    thread.join(10)
+    assert box["outcome"]["status"] == 1
+    assert order == ["guard", "activate"]

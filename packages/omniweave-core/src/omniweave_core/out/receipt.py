@@ -24,10 +24,18 @@ neither blocking nor ownership, and nothing that writes one may gate.
    every portability list empty and no normalization; `passed-with-warnings` otherwise. It takes
    the signals and not a `Receipt`, because a receipt never carries `failed` (ruling 2) and
    `ow out check` prints the status before any receipt exists.
+
+## Rulings (the ledger's D771)
+
+6. **A receipt read back from JSON is built again.** `from_json()` is `as_json()`'s inverse, closed
+   at the top and in each check row, and it builds the receipt through `__post_init__`, so a
+   receipt that crosses from a compile worker is held to ruling 1 on the host. One that does not
+   read back is `OW_TARGET_PACKAGE_CORRUPT`. `to_bytes()` is `out/receipt.json`'s one spelling.
 """
 
 from __future__ import annotations
 
+import json
 import re
 from collections import Counter
 from collections.abc import Mapping
@@ -35,6 +43,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Final, Literal
 
+from omniweave_core.errors import TargetError
 from omniweave_core.out.gate import GateStatus
 from omniweave_core.out.plan import UnitOutcome
 
@@ -163,6 +172,117 @@ class Receipt:
             "skipped_checks": [dict(s) for s in self.skipped_checks],
             "truncations": [dict(t) for t in self.truncations],
         }
+
+    def to_bytes(self) -> bytes:
+        """`out/receipt.json`'s bytes: sorted keys, a one-space indent, one trailing newline."""
+        return (json.dumps(self.as_json(), sort_keys=True, indent=1) + "\n").encode("utf-8")
+
+    @classmethod
+    def from_json(cls, raw: object) -> Receipt:
+        """Ruling 6: `as_json()` read back, closed at every level (D771).
+
+        A compile worker sends its receipt this way, so the host builds it again through
+        `__post_init__` and does not trust the worker's word that it is consistent.
+        """
+        if not isinstance(raw, dict) or set(raw) != _RECEIPT_KEYS:
+            got = sorted(raw) if isinstance(raw, dict) else type(raw).__name__
+            raise _corrupt(f"its keys are {got}, not {sorted(_RECEIPT_KEYS)}")
+        try:
+            return cls(
+                schema=_typed(raw, "schema", str),
+                target=_typed(raw, "target", str),
+                slug=_typed(raw, "slug", str),
+                artifact_gen=_typed(raw, "artifact_gen", int),
+                output={k: _scalar(v) for k, v in _typed(raw, "output", dict).items()},
+                part_digest=_typed(raw, "part_digest", str),
+                determinism=tuple(ArtefactDeterminism(v) for v in _typed(raw, "determinism", list)),
+                gate_status=GateStatus(raw["gate_status"]),
+                delivery=_typed(raw, "delivery", str),
+                checks=tuple(_check(row) for row in _typed(raw, "checks", list)),
+                units={_text(u): UnitOutcome(o) for u, o in _typed(raw, "units", dict).items()},
+                counts={UnitOutcome(o): _count(n) for o, n in _typed(raw, "counts", dict).items()},
+                portability={
+                    _text(k): tuple(_text(one) for one in _list(v))
+                    for k, v in _typed(raw, "portability", dict).items()
+                },
+                normalizations=tuple(_texts(n) for n in _typed(raw, "normalizations", list)),
+                degradations=tuple(_object(d) for d in _typed(raw, "degradations", list)),
+                skipped_checks=tuple(_texts(s) for s in _typed(raw, "skipped_checks", list)),
+                truncations=tuple(_object(t) for t in _typed(raw, "truncations", list)),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise _corrupt(str(exc)) from exc
+
+
+_RECEIPT_KEYS: Final = frozenset(
+    {
+        "schema", "target", "slug", "artifact_gen", "output", "part_digest", "determinism",
+        "gate_status", "delivery", "checks", "units", "counts", "portability", "normalizations",
+        "degradations", "skipped_checks", "truncations",
+    }
+)  # fmt: skip
+_CHECK_KEYS: Final = frozenset({"name", "value", "detail", "fixture"})
+
+
+def _typed(row: Mapping[str, Any], key: str, kind: type) -> Any:
+    value = row[key]
+    if not isinstance(value, kind) or (kind is int and isinstance(value, bool)):
+        raise TypeError(f"{key} is {value!r}, not {kind.__name__}")
+    return value
+
+
+def _text(value: object) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"{value!r} is not a string")
+    return value
+
+
+def _list(value: object) -> list[Any]:
+    if not isinstance(value, list):
+        raise TypeError(f"{value!r} is not a list")
+    return value
+
+
+def _object(value: object) -> dict[str, Any]:
+    if not isinstance(value, dict) or not all(isinstance(k, str) for k in value):
+        raise TypeError(f"{value!r} is not an object")
+    return value
+
+
+def _texts(value: object) -> dict[str, str]:
+    return {k: _text(v) for k, v in _object(value).items()}
+
+
+def _scalar(value: object) -> int | str:
+    if isinstance(value, bool) or not isinstance(value, int | str):
+        raise TypeError(f"output value {value!r} is not an integer or a string")
+    return value
+
+
+def _count(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"count {value!r} is not an integer")
+    return value
+
+
+def _check(value: object) -> CheckValue:
+    row = _object(value)
+    if not {"name", "value"} <= set(row) <= _CHECK_KEYS:
+        raise ValueError(f"check {sorted(row)} is not name, value and optional detail, fixture")
+    return CheckValue(
+        name=_text(row["name"]),
+        value=_text(row["value"]),  # type: ignore[arg-type]
+        detail=None if row.get("detail") is None else _text(row["detail"]),
+        fixture=None if row.get("fixture") is None else _text(row["fixture"]),
+    )
+
+
+def _corrupt(why: str) -> TargetError:
+    return TargetError(
+        f"a receipt does not read back: {why}",
+        symbol="OW_TARGET_PACKAGE_CORRUPT",
+        fix="report the target: postflight() returns a Receipt and its as_json() crosses",
+    )
 
 
 def receipt_part_digest(prefixed: str) -> str:

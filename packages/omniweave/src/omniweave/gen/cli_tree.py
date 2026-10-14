@@ -778,7 +778,12 @@ def render() -> bytes:
         lines.extend(_flag_lines(flag, "    "))
     lines.extend([")", "", "GROUP_HELP: Final[dict[str, str]] = {"])
     for root, verbs in group_help().items():
-        lines.append(f"    {_literal(root)}: {_literal(verbs)},")
+        line = f"    {_literal(root)}: {_literal(verbs)},"
+        #  D777: a group's verb list past the line width wraps as a long `help=` does.
+        fits = len(line) <= _WIDTH
+        lines.extend(
+            [line] if fits else [f"    {_literal(root)}: (", *_wrap(verbs, " " * 8), "    ),"]
+        )
     lines.extend(["}", "", "COMMANDS: Final[tuple[Command, ...]] = ("])
     for words, names, summary, flags in commands():
         lines.append("    Command(")

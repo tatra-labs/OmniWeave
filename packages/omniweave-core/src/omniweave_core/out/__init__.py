@@ -27,9 +27,22 @@ D756 builds `manual`: `ManualRegion`, `manual_regions()`, `ManualEvidence` and
 `EvidenceRegion`, so an `ow:manual` region reaches the gate, the classifier and the seal.
 D757 builds `roundtrip`: `r1` ... `r7` as predicates and `applicable()`, imported
 module-qualified by the conformance suite.
+D760 builds `card`: `CompileCard`, `[compile]` read strictly, and `targets()`, the rows
+`ow out targets` prints.
+D762 builds `agentdoc`: `load_table()` finds a target's table beside its card and imports none of
+its code, and `select()`, `groups()` and `agent_doc()` produce what `ow out constructs` prints.
+It is imported module-qualified, as `roundtrip` is.
+D763 adds `Job` and `JobDeterminism` to `job`: `job.json`, schema `omniweave.out-job/1`, closed
+at every level, which closes 09 Q11. `schema/job-v1.json` is generated from it.
+D764 adds `scaffold()` and `job_path()` to `job`: one JobDir, written whole.
+D767 builds `stamp`: `data-ow-el` minted once on every citable, text-bearing element, under
+`il/.stamp.lock`, all units or none. It is imported module-qualified.
+D768 builds `normalize`: each `normalize` row's normalizer applied through the splice, all
+units or none; `host.activate.normalizers()` loads the target's `normalizers.py`.
 """
 
 from omniweave_core.out.brief import Brief, Prohibition, baseline_rows, parse_brief
+from omniweave_core.out.card import CompileCard, TargetRow, targets
 from omniweave_core.out.carrier import (
     CarrierDoc,
     CarrierNode,
@@ -125,6 +138,7 @@ __all__ = [
     "CiteResolver",
     "CitedBlock",
     "Classified",
+    "CompileCard",
     "CompileV1",
     "Construct",
     "ConstructTable",
@@ -159,6 +173,7 @@ __all__ = [
     "Severity",
     "SkippedCheck",
     "Splice",
+    "TargetRow",
     "TextMeasure",
     "Truncation",
     "UnitOutcome",
@@ -189,6 +204,7 @@ __all__ = [
     "scan",
     "slot",
     "svg_carrier",
+    "targets",
     "unchanged",
     "verbatim",
     "write_opc",

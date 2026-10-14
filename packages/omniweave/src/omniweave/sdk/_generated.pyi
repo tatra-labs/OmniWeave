@@ -33,6 +33,17 @@ The Actions this surface comes from, with the declaration behind each promise:
     hooks.check       HooksCheckIn        HooksCheckReport
     install           InstallIn           InstallReport
     open              OpenIn              Answer
+    out.assets        AssetsIn            AssetsReport
+    out.back          BackIn              BackReport
+    out.check         CheckIn             OutCheckReport
+    out.compile       CompileIn           CompileReport
+    out.constructs    ConstructsIn        ConstructsReport
+    out.list          ArtifactsIn         ArtifactsReport
+    out.normalize     NormalizeIn         NormalizeReport
+    out.scaffold      ScaffoldIn          ScaffoldReport
+    out.stamp         StampIn             StampReport
+    out.targets       TargetsIn           TargetsReport
+    out.verify        VerifyIn            VerifyReport
     query             QueryIn             Answer
     serve             ServeIn             ServeReport
     skills.check      SkillsCheckIn       SkillsReport

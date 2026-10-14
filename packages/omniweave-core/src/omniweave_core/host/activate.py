@@ -48,13 +48,15 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import inspect
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 from omniweave_core.drivers.resolve import RejectCode
 from omniweave_core.errors import DriverHostError
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Callable, Iterable, Mapping
     from pathlib import Path
 
     from omniweave_core.drivers.card import DriverCard
@@ -66,6 +68,7 @@ __all__ = [
     "code_fingerprint",
     "construct",
     "entrypoint_parts",
+    "normalizers",
 ]
 
 
@@ -239,3 +242,59 @@ def code_fingerprint(files: Iterable[Path]) -> str:
         digest.update(len(body).to_bytes(8, "little"))
         digest.update(body)
     return digest.hexdigest()
+
+
+def normalizers(card: DriverCard) -> Mapping[str, Callable[[str], str]]:
+    """The target's `normalizers.py` beside its entrypoint module: name to pure function. D768.
+
+    09 section 1's ninth file, which `ow out normalize` runs. It is imported here because this is
+    the one module allowed to import a driver's code (INV-4). A target with no `normalizers` module
+    has none, which is an empty mapping, and `ConstructTable.load()` holds every `normalize` row
+    against that. A module that does not import is the driver failing, as for `activate()`. The
+    mapping holds the module's own public functions, never one it imported from elsewhere.
+    """
+    module_name, _ = entrypoint_parts(card)
+    #  Beside the entrypoint: inside it when it is a package, else in the package that holds it.
+    #  A top-level module has no package, so it has no sibling to import.
+    home = module_name if _is_package(card, module_name) else module_name.rpartition(".")[0]
+    if not home:
+        return MappingProxyType({})
+    name = f"{home}.normalizers"
+    try:
+        module = importlib.import_module(name)
+    except ModuleNotFoundError as exc:
+        if exc.name == name:
+            return MappingProxyType({})
+        raise DriverHostError(
+            f"{card.identity.id}: importing {name!r} raised ModuleNotFoundError: {exc}",
+            symbol=ACTIVATION_FAILED,
+            fix=f"ow drivers verify {card.identity.id}",
+        ) from exc
+    except BaseException as exc:  # a driver's module body may raise literally anything.
+        raise DriverHostError(
+            f"{card.identity.id}: importing {name!r} raised {type(exc).__name__}: {exc}",
+            symbol=ACTIVATION_FAILED,
+            fix=f"ow drivers verify {card.identity.id}",
+        ) from exc
+    return MappingProxyType(
+        {
+            key: value
+            for key, value in vars(module).items()
+            if not key.startswith("_")
+            and inspect.isfunction(value)
+            and value.__module__ == module.__name__
+        }
+    )
+
+
+def _is_package(card: DriverCard, module_name: str) -> bool:
+    """Whether the entrypoint module is a package, which imports it as `activate()` would."""
+    try:
+        module = importlib.import_module(module_name)
+    except BaseException as exc:  # a driver's module body may raise literally anything.
+        raise DriverHostError(
+            f"{card.identity.id}: importing {module_name!r} raised {type(exc).__name__}: {exc}",
+            symbol=ACTIVATION_FAILED,
+            fix=f"ow drivers verify {card.identity.id}",
+        ) from exc
+    return hasattr(module, "__path__")

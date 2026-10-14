@@ -64,6 +64,17 @@ key can grant one.
 | `hooks.check` | `ow_hooks_check` | `ow hooks check` | — | `free` | Run each installed hook command as its host would, with a probe payload in a scratch project, and say which failed and why |
 | `install` | — | `ow install` | — | `free` | Wire agent hosts to omniweave: the MCP entry, one permission wildcard, the instruction block, hooks and the core skill, each recorded in a receipt |
 | `open` | `ow_open` | `ow open` | default, full | `free` | Fetch the exact passages behind an address you already hold: a cite, a page range, or a whole document |
+| `out.assets` | — | `ow out assets` | — | `free` | List a sealed artefact's frozen assets with their licences and restrictions, or every artefact and document that holds one asset's bytes |
+| `out.back` | — | `ow out back` | — | `free` | Restore a sealed artefact's retained IL, Brief and assets into a new JobDir for its next generation, saying first whether the contract moved |
+| `out.check` | — | `ow out check` | — | `free` | Run the target's rules over a JobDir's IL at one stage, write validation/<stage>.json, and print each finding with its fix |
+| `out.compile` | — | `ow out compile` | — | `free` | Lower a JobDir whose final gate passed into its artefact in an S4 worker, seal the artifact row, and place the bytes under [roots] output |
+| `out.constructs` | — | `ow out constructs` | — | `free` | Print a target's construct table, a line a row, one row in full, or as the agent document an IL author writes against (--format md) |
+| `out.list` | `ow_artifacts` | `ow out list` | full | `free` | List the compiled artefacts sealed in a corpus, with each generation's gate status, delivery and read_back_doc_ord |
+| `out.normalize` | — | `ow out normalize` | — | `free` | Apply each normalize row's normalizer to the IL values it selects, through the transactional splice, all units or none |
+| `out.scaffold` | — | `ow out scaffold` | — | `free` | Create the JobDir one artefact is authored in: job.json with the roster the Brief commissions, the frozen brief.md, il/il.toml and empty assets |
+| `out.stamp` | — | `ow out stamp` | — | `free` | Mint a data-ow-el address on every citable, text-bearing IL element that has none, never renumbering one, all units or none |
+| `out.targets` | `ow_targets` | `ow out targets` | full | `free` | List the artefact kinds this deployment can compile, whether each is implemented and enabled, and the determinism class its card declares |
+| `out.verify` | — | `ow out verify` | — | `free` | Recompile a sealed artefact from its retained IL in an S4 worker and compare it at its declared determinism classes (R1), and count its units (R7) |
 | `query` | `ow_query` | `ow query` | default, full | `local_compute` | Ask an indexed corpus a question and get cited passages, a verdict, and the gaps that could be hiding an answer |
 | `serve` | — | `ow serve` | — | `free` | Serve the MCP surface to an agent host over stdio, from the [serve] configuration startup step 5 resolves; runs until the host closes the stream |
 | `skills.check` | `ow_skills_check` | `ow skills check` | — | `free` | Say whether the installed skills are this release's: a stale or missing core skill fails, an outdated or orphaned on-demand one is reported |

@@ -87,6 +87,7 @@ import threading
 import time
 from collections.abc import Callable
 from io import StringIO
+from operator import attrgetter
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -490,7 +491,8 @@ def invocation(count: int = 2, **overrides: object) -> sp.Invocation:
 
 
 def result_frame(index: int, **header: object) -> bytes:
-    return wire.encode(wire.FrameKind.RESULT, {"invoke_id": "inv-1", "unit_index": index, **header})
+    frame = {"invoke_id": "inv-1", "unit_index": index, **header}
+    return wire.encode(wire.FrameKind.RESULT, frame)  # type: ignore[arg-type]
 
 
 def deadlines(progress: int = 400, wall: int = 5_000, caller: int = 0) -> sp.Deadlines:
@@ -717,7 +719,7 @@ def test_subproc_declares_no_constant_twice() -> None:
     assert duplicates == []
 
 
-@pytest.mark.parametrize("kind", sorted(wire.DRIVER_TO_HOST, key=lambda item: item.name))
+@pytest.mark.parametrize("kind", sorted(wire.DRIVER_TO_HOST, key=attrgetter("name")))
 def test_the_host_refuses_to_send_any_of_the_six_driver_to_host_kinds(
     kind: wire.FrameKind,
 ) -> None:
@@ -733,7 +735,7 @@ def test_the_host_refuses_to_send_any_of_the_six_driver_to_host_kinds(
     assert bytes(channel.sent) == b""
 
 
-@pytest.mark.parametrize("kind", sorted(wire.HOST_TO_DRIVER, key=lambda item: item.name))
+@pytest.mark.parametrize("kind", sorted(wire.HOST_TO_DRIVER, key=attrgetter("name")))
 def test_the_host_may_send_each_of_the_five_host_to_driver_kinds(kind: wire.FrameKind) -> None:
     """The other half of the same closed set, so the refusal above is not a refusal of
     everything."""
@@ -791,6 +793,23 @@ def test_a_unit_carries_its_blob_ref_only_when_the_caller_staged_one() -> None:
     assert second["media_type"] == "text/csv"
     with pytest.raises(DriverHostError, match="1 blob_refs for 2 units"):
         sp.Invocation(invoke_id="i", units=units, deadline_ms=0, budget_micros=0, blob_refs=("x",))
+
+
+def test_a_compile_invoke_carries_its_job_and_job_dir_and_no_other_does() -> None:
+    """D772: a `compile/1` call's job record and JobDir ride the header together; every other
+    call's header has neither key."""
+    job = {"schema": "omniweave.out-job/1", "plan": {"slug": "q3"}}
+    header = invocation(1, job=job, job_dir="C:/jobs/q3@1").as_header()
+    assert (header["job"], header["job_dir"]) == (job, "C:/jobs/q3@1")
+    plain = invocation(1).as_header()
+    assert "job" not in plain
+    assert "job_dir" not in plain
+
+
+@pytest.mark.parametrize("given", [{"job": {"schema": "x"}}, {"job_dir": "C:/jobs/q3@1"}])
+def test_a_job_without_its_job_dir_or_the_reverse_is_refused(given: dict[str, object]) -> None:
+    with pytest.raises(DriverHostError, match="its job and its job_dir together"):
+        invocation(1, **given)
 
 
 def test_an_invoke_with_two_inline_bodies_is_refused_because_the_grammar_cannot_express_it() -> (
@@ -906,7 +925,7 @@ def test_a_zero_deadline_is_unbounded_by_that_limit_and_only_that_one(field: str
     carries that as `0`. Parametrised over all three, because zero has to mean the same thing in
     each and a single case would not show it.
     """
-    values = dict.fromkeys(LIMIT_NAMES, 10_000)
+    values: dict[str, int] = dict.fromkeys(LIMIT_NAMES, 10_000)
     values[field] = 0
     countdown = sp.Countdown(sp.Deadlines(**values), started_ms=0)  # type: ignore[arg-type]
     assert countdown.expired(9_999) is None
@@ -1938,7 +1957,7 @@ def test_a_progress_flood_cannot_extend_the_wall_clock_when_the_queue_is_never_e
     """
     worker, _proc, clock = worker_on(FakeChannel(), clock=Clock(step=50))
     reader = ReadyReader(one_frame(wire.FrameKind.PROGRESS, {"done": 1, "total": 2}))
-    worker._reader = reader  # the queue IS the race, so this test removes the queue
+    worker._reader = reader  # type: ignore[assignment] -- the queue IS the race; none here
     report = invoke_bounded(
         worker, invocation(1), limits=deadlines(progress=100_000, wall=400), patience_s=5.0
     )
@@ -2242,7 +2261,7 @@ def hello_ack(**overrides: object) -> bytes:
         "isolation_granted": {"mode": "subproc"},
     }
     header.update(overrides)
-    return wire.encode(wire.FrameKind.HELLO_ACK, header)
+    return wire.encode(wire.FrameKind.HELLO_ACK, header)  # type: ignore[arg-type]
 
 
 def test_the_handshake_sends_hello_and_reads_the_acks_five_keys() -> None:

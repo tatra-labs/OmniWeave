@@ -115,7 +115,7 @@ def test_the_verbs_the_body_names_without_a_row_are_listed() -> None:
 
     Five at W7.6a; `skills.install` landed in W7.6b, and the body's `ow skills install` is now the
     registry's spelling -- the same bytes, which `router.check` confirms."""
-    assert router.unregistered() == ("out.targets", "out.check", "ingest", "route.explain")
+    assert router.unregistered() == ("ingest", "route.explain")
     assert ACTIONS["skills.install"].cli == ("skills", "install")
 
 
