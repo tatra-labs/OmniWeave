@@ -14,6 +14,7 @@ import io
 import json
 import sqlite3  # noqa: TID251 -- the assertions read the rows the loop wrote.
 import sys
+import zipfile
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -160,6 +161,70 @@ def test_a_deck_is_compiled_and_read_back_once_its_addresses_mapped(tmp_path: Pa
     assert _store_rows(project, "SELECT page_kind FROM page") == [
         (next(o for d, o, n in enum_val_rows() if (d, n) == ("page_kind", "slide")),)
     ]
+
+
+def _slide(n: int, words: str) -> str:
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-ow-el="u0{n}/e1">'
+        f'<text data-ow-el="u0{n}/e2" x="60" y="100" font-family="Probe Sans" font-size="28">'
+        f"{words}</text></svg>"
+    )
+
+
+def _members(path: Path) -> dict[str, bytes]:
+    with zipfile.ZipFile(path) as zf:
+        return {info.filename: zf.read(info) for info in zf.infolist()}
+
+
+@WINDOWS_ONLY
+def test_an_edited_slide_is_rebuilt_and_its_neighbour_copied_byte_for_byte(tmp_path: Path) -> None:
+    """D809, P9's demo: one slide's IL edited by hand and recompiled. The untouched slide is
+    `passthrough`, its part its parent's, and the row names the generation it edits."""
+    project = _project(tmp_path, font_dir=True)
+    two = BRIEF.replace(
+        "- u01: { anchor: cover }\n", "- u01: { anchor: cover }\n- u02: { anchor: body }\n"
+    )
+    (project / "two.md").write_text(two, encoding="utf-8")
+    out = _ok(
+        ["scaffold", "pptx", "--brief", "two.md", "--slug", "deck", "--render", "json"], project
+    )
+    job = Path(json.loads(out)["job_dir"])
+    for n, words in ((1, "Revenue"), (2, "Margins")):
+        (job / "il" / f"u0{n}.svg").write_text(_slide(n, words), encoding="utf-8", newline="")
+    il = job / "il" / "il.toml"
+    il.write_text(
+        il.read_text(encoding="utf-8")
+        + '\n[[unit]]\nid = "u01"\nord = 1\nfile = "u01.svg"\n'
+        + '\n[[unit]]\nid = "u02"\nord = 2\nfile = "u02.svg"\n',
+        encoding="utf-8",
+    )
+    _ok(["check", "--stage", "final", "--job", str(job)], project)
+    _ok(["compile", "--job", str(job)], project)
+    edit = Path(json.loads(_ok(["back", "deck", "--render", "json"], project))["job_dir"])
+    plan = json.loads((edit / "job.json").read_text(encoding="utf-8"))["plan"]
+    assert plan["parent_gen"] == 1
+    assert [u["source_part"] for u in plan["units"]] == [
+        "ppt/slides/slide1.xml",
+        "ppt/slides/slide2.xml",
+    ]
+    (edit / "il" / "u02.svg").write_text(_slide(2, "Margins held"), encoding="utf-8", newline="")
+    _ok(["check", "--stage", "final", "--job", str(edit)], project)
+    _ok(["compile", "--job", str(edit)], project)
+    assert _store_rows(
+        project,
+        "SELECT a.artifact_gen, a.parent_artifact_gen, u.unit, u.outcome FROM artifact_unit u"
+        " JOIN artifact a USING(artifact_id) ORDER BY 1, 3",
+    ) == [
+        (1, None, "u01", "native"),
+        (1, None, "u02", "native"),
+        (2, 1, "u01", "passthrough"),
+        (2, 1, "u02", "rebuilt"),
+    ]
+    out_root = project / ".omniweave" / "out"
+    first = _members(out_root / "deck@1" / "deck.pptx")
+    second = _members(out_root / "deck@2" / "deck.pptx")
+    assert first["ppt/slides/slide1.xml"] == second["ppt/slides/slide1.xml"]
+    assert first["ppt/slides/slide2.xml"] != second["ppt/slides/slide2.xml"]
 
 
 def test_a_skipped_measurement_names_the_settings_the_card_declares() -> None:

@@ -62,7 +62,7 @@ from omniweave_core.out.roundtrip import applicable
 if TYPE_CHECKING:
     from omniweave_core.drivers.card import DriverCard
 
-__all__ = ["COMPILE_KEYS", "ROUND_TRIP_KEYS", "CompileCard", "TargetRow", "targets"]
+__all__ = ["COMPILE_KEYS", "ROUND_TRIP_KEYS", "CompileCard", "TargetRow", "part_of", "targets"]
 
 COMPILE_KEYS: Final = frozenset(
     {
@@ -146,7 +146,7 @@ class CompileCard:
 
     def part_of(self, ord_: int) -> str:
         """Ruling 7: the package member the unit at `ord_` lowers to."""
-        return self.unit_part.replace(_ORD, str(ord_))
+        return part_of(self.unit_part, ord_)
 
     @classmethod
     def of(cls, card: DriverCard) -> CompileCard:
@@ -235,6 +235,11 @@ class CompileCard:
         if implemented and not (built.media_type and built.suffix):
             _invalid(source, "an implemented target declares its media_type and suffix (D770)")
         return built
+
+
+def part_of(unit_part: str, ord_: int) -> str:
+    """Ruling 7: `unit_part` filled with a unit's `ord`, the member it lowers to."""
+    return unit_part.replace(_ORD, str(ord_))
 
 
 def _unit_part(source: str, rt: Mapping[str, Any], fidelity: str) -> str:

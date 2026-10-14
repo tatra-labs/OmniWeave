@@ -22,6 +22,12 @@ every unit exactly one outcome or writes nothing.
 4. **`Classified` holds the `artifact_unit` CHECK**: `manual_required` and `baked` need a reason.
 5. **The sum is asserted over the outcomes, not over the roster**, so a classifier that reported a
    unit twice or dropped one fails `OW-T-005` as the charter says, and the artefact is not written.
+6. **An edit's Plan names the generation it edits** (D809), `parent_gen`. OUT24 makes every
+   edit a new `artifact_gen`, and `artifact.parent_artifact_gen` is the column that says
+   which one it came from, which nothing filled. 09 section 3.7's Plan names no such field,
+   and a unit's `source_part` names a part without saying whose. So `ow out back` writes
+   the generation it restored, and the compile reads the parent's parts by it (R4(a) at the
+   seal). It is `None` on the create path and an earlier generation on an edit.
 """
 
 from __future__ import annotations
@@ -125,6 +131,8 @@ class Plan:
     brief_digest: str
     card_sha256: str
     toolchain_digest: str | None = None
+    parent_gen: int | None = None
+    """Ruling 6: the generation an edit restores; `None` on the create path."""
 
     def __post_init__(self) -> None:
         if self.schema != PLAN_SCHEMA:
@@ -133,6 +141,10 @@ class Plan:
             raise ValueError(f"delivery {self.delivery!r} is release or draft")
         if self.artifact_gen < 1:
             raise ValueError(f"artifact_gen {self.artifact_gen} is below 1")
+        if self.parent_gen is not None and not 1 <= self.parent_gen < self.artifact_gen:
+            raise ValueError(
+                f"parent_gen {self.parent_gen} is not a generation before {self.artifact_gen}"
+            )
         if self.unit_count != len(self.units):
             raise ValueError(f"unit_count {self.unit_count} is not the roster's {len(self.units)}")
         ords = [u.ord for u in self.units]

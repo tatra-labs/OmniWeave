@@ -129,6 +129,8 @@ def test_an_out_unit_takes_its_anchor_from_the_brief() -> None:
         ({"units": (_unit(1), _unit(3, ord=3))}, "1..2"),
         ({"units": (_unit(2, ord=2), _unit(1, ord=1))}, "1..2"),
         ({"units": (_unit(1), _unit(1, ord=2))}, "repeat"),
+        ({"parent_gen": 0}, "not a generation before"),
+        ({"parent_gen": 1}, "not a generation before 1"),
     ],
 )
 def test_a_plan_refuses_a_malformed_roster(fields: dict[str, Any], match: str) -> None:

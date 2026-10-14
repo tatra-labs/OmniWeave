@@ -384,6 +384,7 @@ def _restore(job: Path, il: Path, blobs: BlobStore, **changes: object) -> Job:
         "table": CONSTRUCTS,
         "slug": "q3",
         "artifact_gen": 2,
+        "parent_gen": 1,
         "corpus": "handbook",
         "traceparent": traceparent("4bf92f3577b34da6a3ce929d0e0e4736", "00f067aa0ba902b7"),
         "clock_ns": 1_700_000_000_000_000_000,
@@ -422,8 +423,20 @@ def test_a_restore_writes_the_next_generations_jobdir(
     assert plan.ledger_digest == ledger_digest(read_index(job_dir))
     assert plan.brief_digest == parse_brief(BACK_BRIEF, baseline=()).digest()
     assert plan.card_sha256 == "sha256:" + "4" * 64
+    assert plan.parent_gen == 1, "D809: the generation it restores"
     assert job.determinism.clock_ns == 1_700_000_000_000_000_000
     assert not job_dir.with_name("q3@2.tmp").exists()
+
+
+def test_an_edits_roster_names_the_container_part_when_the_card_does() -> None:
+    """Ruling 10 (D809): 09 section 3.7's `source_part`, `ppt/slides/slide3.xml`."""
+    brief = parse_brief(BACK_BRIEF, baseline=())
+    first, second = edit_roster(_sealed(), brief, lambda n: f"ppt/slides/slide{n}.xml")
+    assert (first.source_part, second.source_part) == (
+        "ppt/slides/slide1.xml",
+        "ppt/slides/slide2.xml",
+    )
+    assert (second.source_nsig, second.source_ord) == ("ef56ab78", 2)
 
 
 def test_an_edits_roster_names_the_units_it_edits() -> None:
