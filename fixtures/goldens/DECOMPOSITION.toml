@@ -1,0 +1,65 @@
+# fixtures/goldens/DECOMPOSITION.toml -- byte-diff gated. Read by the churn classifier.
+#
+# 13-quality.md section 5.4. `page_wise = true` means: the `shape` counter is exactly the sum of a
+# per-page quantity over pages, and therefore a `pages` change with no `shape` change is
+# arithmetically impossible. A row whose `page_wise` is false says why, because the cheapest way
+# to make an `unexplained` failure go away is to add one.
+#
+# One row per family `omniweave_conform.reduce` writes, and no row it does not: a `shape` counter
+# with no row here is a build failure, and so is a row no counter matches (D819). The plan's table
+# names nine families; `blocks.layer.*`, `pages.total` and `achieved.*` are the three more the
+# reducer writes. `diag.*` is the plan's one row this file reverses, with its reason below.
+
+[[counter]]
+id = "blocks.total"
+page_wise = true
+
+[[counter]]
+id = "blocks.kind.*"
+page_wise = true
+
+[[counter]]
+id = "blocks.layer.*"
+page_wise = true
+
+[[counter]]
+id = "trust.*"
+page_wise = true
+
+[[counter]]
+id = "quote.*"
+page_wise = true
+
+[[counter]]
+id = "marks.kind.*"
+page_wise = true
+
+[[counter]]
+id = "diag.*"
+page_wise = false
+reason = "a diag may have no page: it counts in `shape` and on no page line (D818), so the per-page sum can fall short of the document's count"
+
+[[counter]]
+id = "grid.tables_with_merges"
+page_wise = false
+reason = "a table may span pages; the per-page sum double-counts it"
+
+[[counter]]
+id = "rel.kind.*"
+page_wise = false
+reason = "a relation is a document-level edge and has no page to be counted on"
+
+[[counter]]
+id = "quad.present_frac"
+page_wise = false
+reason = "a fraction, not a count; the page-wise sum is meaningless"
+
+[[counter]]
+id = "pages.total"
+page_wise = false
+reason = "the document's page count, read from its header, not a sum over the pages that hold a block"
+
+[[counter]]
+id = "achieved.*"
+page_wise = false
+reason = "a capability value the host computed for the document, not a count"
