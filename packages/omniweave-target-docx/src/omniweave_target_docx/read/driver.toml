@@ -28,7 +28,7 @@ produces = ["doc_fragment"]
 spatial = "none"                   # A flow document has no geometry to report.
 origin_span = "none"               # A block's text is the runs' text, not a byte range.
 text_span = false
-marks = false                      # Emphasis is not lifted into marks; a note reference is.
+marks = true                       # A note reference is a mark (D812); emphasis is not lifted.
 reading_order = "source"           # The body's own order.
 sections = "outline_from_source"   # Word's Heading 1-6 styles, as `lower/` wrote them.
 tables = "cells_with_spans"        # `w:gridSpan` and `w:vMerge`.
@@ -40,9 +40,8 @@ confidence = "none"
 furniture = "destroyed"            # `lower/` writes no header or footer, so there is none.
 round_trip = "structure"           # Kinds, levels, lists, spans and addresses.
 forfeits = []
-format_tokens = [
-  { media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document", token = "docx" },
-]
+# No format_tokens (D812): core's media-type table maps this type already, and a pair is a
+# claim sniff() must back, which a read_back reached by name never does.
 
 [hardware]
 gpu            = "none"

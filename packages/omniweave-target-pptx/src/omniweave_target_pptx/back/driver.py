@@ -23,7 +23,12 @@ wrote (`_walk`) and emits `owdoc-fragment/1`, held by R2 to its IL (09 section 1
    were one.
 5. **`sniff()` is "not mine" to every stream.** 09 Q4: the routing policy does not prefer a
    target's own `read_back`, which is reached by name. A guess here would contend with
-   `parse.office.anydoc` for every `.pptx` a corpus ingests.
+   `parse.office.anydoc` for every `.pptx` a corpus ingests. So the card declares no
+   `format_tokens` either: core's table maps the media type, and a pair is a claim the
+   conformance kit holds `sniff()` to (D812).
+6. **A cancelled read stops at the next slide** (D812). Each slide is a loop top: the
+   read checks `io.cancelled()` before it and reports progress after it, as the kit's
+   contract suite asks of every driver.
 """
 
 from __future__ import annotations
@@ -137,15 +142,15 @@ class PptxReader:
         slides = _slides(members, presentation)
         roots: list[Node] = []
         for page, name in enumerate(slides):
+            _stop_if_cancelled(io)
             tree = _xml(members, name).find(_SP_TREE)
             section, *notes = read_slide(tree, page, _located(at, page + 1), lookup)
             section.el = next((el for el, p in at.items() if p == {"slide": page + 1}), None)
             roots += [section, *notes]
+            io.progress(done=page + 1, total=len(slides))
+        _stop_if_cancelled(io)
         _cite(roots, embedded.get("cites", []))
-        if io.cancelled():
-            raise DriverError(cls=FailureClass.TIMEOUT, message="cancelled", retry_after_ms=0)
         body = _records(roots)
-        io.progress(done=len(slides), total=len(slides))
         width, height = _size(presentation)
         records = [
             {
@@ -184,6 +189,12 @@ class PptxReader:
 
     def is_valid_nonempty(self, ref: ArtifactRef) -> bool:
         return b'"t":"block"' in ref.head(_HEAD_WINDOW)
+
+
+def _stop_if_cancelled(io: DriverIO) -> None:
+    """Ruling 6: a loop top."""
+    if io.cancelled():
+        raise DriverError(cls=FailureClass.TIMEOUT, message="cancelled", retry_after_ms=0)
 
 
 def _members(raw: bytes) -> dict[str, bytes]:

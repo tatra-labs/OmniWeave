@@ -41,9 +41,8 @@ confidence = "none"
 furniture = "destroyed"            # `lower/` writes no layout placeholder, so there is none.
 round_trip = "structure"           # Kinds, the tree, the text and the addresses.
 forfeits = []
-format_tokens = [
-  { media_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation", token = "pptx" },
-]
+# No format_tokens (D812): core's media-type table maps this type already, and a pair is a
+# claim sniff() must back, which a read_back reached by name never does.
 
 [hardware]
 gpu            = "none"
@@ -65,7 +64,9 @@ wall_ms_hard    = 120000
 batch_max_units = 16
 
 [limits]
-max_input_bytes = 134217728        # 128 MiB: a deck's pictures make it the larger artefact.
+max_input_bytes = 67108864         # 64 MiB, half the host's MAX_ENTRY_BYTES (D812): a deck's
+                                   #   pictures make it the larger artefact, and the host's
+                                   #   ceiling would declare no limit of the driver's own.
 max_parts       = 1
 
 [licence.code]
