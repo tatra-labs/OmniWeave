@@ -8,8 +8,9 @@
 > `packages/omniweave/src/omniweave/run/bench.py`, so adding a subject is one function plus one row
 > in the closed set.
 
-`SUBJECTS` is that closed set, all thirteen rows of section 7.1's table transcribed. Twelve of them
-carry a `blocked_by` naming what they need and do not have; `scheduler` does not, and is here.
+`SUBJECTS` is that closed set, all thirteen rows of section 7.1's table transcribed. Ten of them
+carry a `blocked_by` naming what they need and do not have; `scheduler` does not and is here,
+`inproc` joined it at D656, and `pacer` at D822 (section 5 below).
 
 ## Why the set is here and only one function is
 
@@ -83,6 +84,7 @@ from __future__ import annotations
 import array
 import asyncio
 import contextlib
+import hashlib
 import math
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -103,6 +105,8 @@ from omniweave_core.operator import (
 )
 from omniweave_core.store import migrate
 from omniweave_core.store import sqlite as ow
+from omniweave_core.store.oweval import Perf
+from omniweave_core.store.pacer import sqlite_round
 from omniweave_core.store.queue import SqliteStore
 
 from omniweave.run import expand
@@ -118,7 +122,11 @@ if TYPE_CHECKING:  # pragma: no cover -- annotations only.
 __all__ = [
     "CACHE_KEY",
     "CHARTER_FOUR",
+    "INSTABILITY_PCT",
     "NOW_NS",
+    "PACER_HASH_BYTES",
+    "PACER_LOOP",
+    "PACER_ROWS",
     "PRODUCER_POLL_MS",
     "PUBLICATION",
     "SHIPPED_MIGRATIONS",
@@ -126,20 +134,25 @@ __all__ = [
     "SUBJECTS",
     "SWEEP_MS",
     "URI_FORMAT",
+    "PacerReading",
     "Samples",
     "SchedulerResult",
     "Series",
     "Subject",
     "claim_batch_of",
+    "disagreement",
     "identify_rows",
     "inproc",
     "no_op",
     "open_store",
+    "paced",
+    "pacer",
     "percentile",
     "run_context",
     "runnable",
     "scheduler",
     "synthetic_roster",
+    "time_ratio",
     "worker_identity",
 ]
 
@@ -190,8 +203,6 @@ SUBJECTS: Final[Mapping[str, Subject]] = MappingProxyType(
                 "the Pacer workload alone, N times",
                 "none",
                 "the Runner's baseline; a Runner change is a baseline reset",
-                blocked_by="the Pacer workload itself: [pacer] runner names ow-bench-1 and "
-                "nothing in this tree defines the workload it runs",
             ),
             _subject(
                 "cold",
@@ -318,9 +329,10 @@ STORAGE_MEDIA: Final = ("nvme", "spinning", "smb", "unknown")
 
 PUBLICATION: Final = (
     "12-performance.md section 7.4 publishes a bench through an `eval_perf` row into a committed "
-    "`eval/results/**.json` tree, byte-diff gated. Neither exists: `eval/` holds gates.toml, "
-    "perf.toml and baselines/ and no results, and no migration creates `eval_perf`. A result is "
-    "returned as a value for the caller to render, and a number printed here reaches no scoreboard."
+    "`eval/results/**.json` tree, byte-diff gated. The row's table is `.oweval`'s since D814 and "
+    "`paced()` builds one since D822, but no bench writes it and the tree does not exist: `eval/` "
+    "holds gates.toml, perf.toml and baselines/ and no results. A result is returned as a value "
+    "for the caller to render, and a number printed here reaches no scoreboard."
 )
 """Why `scheduler()` returns a value instead of writing one. Printed by the runner, not a comment.
 
@@ -890,4 +902,148 @@ async def scheduler(
         inflight=dict(admission.inflight),
         claim_batch=batch_widths,
         cpus=host.cpus,
+    )
+
+
+# =============================================================================================
+# 5. `ow bench pacer`: the Pacer, and the ratio every time budget is (D822)
+# =============================================================================================
+
+PACER_HASH_BYTES: Final = 64 * 1024 * 1024
+"""12:73: *"`blake2b` over 64 MiB"*."""
+
+PACER_LOOP: Final = 2_000_000
+"""12:73: *"a 2M-iteration integer loop"*."""
+
+PACER_ROWS: Final = 200_000
+"""12:74: *"200k SQLite insert+select"*."""
+
+INSTABILITY_PCT: Final = 15
+"""12:75 and `eval/perf.toml`'s `[pacer] instability_pct`: before and after disagreeing by more
+than this is `unstable`, *"neither a pass nor a fail"*. A test holds the two equal."""
+
+_CHUNK: Final = b"\x00" * (1024 * 1024)
+_LCG_A: Final = 6_364_136_223_846_793_005
+_LCG_C: Final = 1_442_695_040_888_963_407
+_MASK: Final = (1 << 64) - 1
+
+
+@dataclass(frozen=True, slots=True)
+class PacerReading:
+    """One Pacer run: each third's wall time, their sum, and what each third computed.
+
+    The three results are the run's proof that it did the work it timed: a digest of the hashed
+    bytes, the loop's last value and the SQLite round's key sum. A run whose result differs from
+    another's at the same sizes did different work, and its time compares to nothing.
+    """
+
+    hash_ns: int
+    loop_ns: int
+    sqlite_ns: int
+    digest: str
+    loop_value: int
+    key_sum: int
+
+    @property
+    def total_ns(self) -> int:
+        return self.hash_ns + self.loop_ns + self.sqlite_ns
+
+
+def pacer(
+    workspace: Path,
+    *,
+    clock: Clock | None = None,
+    hash_bytes: int = PACER_HASH_BYTES,
+    loop: int = PACER_LOOP,
+    rows: int = PACER_ROWS,
+) -> PacerReading:
+    """`ow bench pacer`: one run of the three thirds, each timed by the injected clock.
+
+    The sizes are the plan's and a test may shrink them; `eval_perf` rows come only from the
+    defaults. The hash reads the same 1 MiB of zeros 64 times rather than allocating 64 MiB, since
+    blake2b's cost does not depend on the bytes. The loop is a 64-bit linear congruential step, an
+    integer multiply, add and mask that CPython cannot fold away. The SQLite third is
+    `store.pacer.sqlite_round()` over a fresh file under `workspace`, which this call removes.
+    """
+    timer = clock if clock is not None else SystemClock()
+    start = timer.monotonic_ns()
+    hasher = hashlib.blake2b()
+    whole, rest = divmod(hash_bytes, len(_CHUNK))
+    for _ in range(whole):
+        hasher.update(_CHUNK)
+    hasher.update(_CHUNK[:rest])
+    digest = hasher.hexdigest()
+    hashed = timer.monotonic_ns()
+    value = 0
+    for _ in range(loop):
+        value = (value * _LCG_A + _LCG_C) & _MASK
+    looped = timer.monotonic_ns()
+    path = workspace / "pacer.owstore"
+    try:
+        key_sum = sqlite_round(path, rows)
+    finally:
+        for suffix in ("", "-wal", "-shm"):
+            with contextlib.suppress(FileNotFoundError):
+                path.with_name(path.name + suffix).unlink()
+    done = timer.monotonic_ns()
+    return PacerReading(
+        hash_ns=hashed - start,
+        loop_ns=looped - hashed,
+        sqlite_ns=done - looped,
+        digest=digest,
+        loop_value=value,
+        key_sum=key_sum,
+    )
+
+
+def disagreement(before_ns: int, after_ns: int) -> float:
+    """12:75's measure: `abs(before - after) / mean(before, after)`, as a fraction."""
+    mean = (before_ns + after_ns) / 2
+    if mean <= 0:
+        raise ValueError(f"a Pacer reading must be positive, not {before_ns} and {after_ns}")
+    return abs(before_ns - after_ns) / mean
+
+
+def time_ratio(work_ns: int, before_ns: int, after_ns: int) -> float:
+    """12:75: `work_ns / mean(pacer_before_ns, pacer_after_ns)`."""
+    mean = (before_ns + after_ns) / 2
+    if mean <= 0:
+        raise ValueError(f"a Pacer reading must be positive, not {before_ns} and {after_ns}")
+    return work_ns / mean
+
+
+def paced(
+    work: Callable[[], object],
+    *,
+    run_id: str,
+    budget_id: str,
+    workspace: Path,
+    clock: Clock | None = None,
+    sizes: Mapping[str, int] | None = None,
+) -> Perf:
+    """One `eval_perf` row: the Pacer, the timed work, the Pacer again (12:1621-1626).
+
+    The status is `unstable` when the two readings disagree past `INSTABILITY_PCT`, and `unknown`
+    otherwise: a pass or a fail is a comparison with the budget's 7-run rolling median, which is
+    the nightly's to make and not one measurement's. The peaks are `None`, not measured, because
+    this call reads neither an RSS nor a WAL (D814: a reading not taken is NULL, never 0).
+    """
+    timer = clock if clock is not None else SystemClock()
+    shrink = dict(sizes or {})
+    before = pacer(workspace, clock=timer, **shrink).total_ns
+    start = timer.monotonic_ns()
+    work()
+    work_ns = timer.monotonic_ns() - start
+    after = pacer(workspace, clock=timer, **shrink).total_ns
+    unstable = disagreement(before, after) * 100 > INSTABILITY_PCT
+    return Perf(
+        run_id=run_id,
+        budget_id=budget_id,
+        pacer_before_ns=before,
+        pacer_after_ns=after,
+        work_ns=work_ns,
+        time_ratio=time_ratio(work_ns, before, after),
+        peak_rss_bytes=None,
+        peak_wal_bytes=None,
+        status="unstable" if unstable else "unknown",
     )

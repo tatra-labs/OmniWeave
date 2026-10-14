@@ -1068,6 +1068,10 @@ def test_codes_toml_still_carries_no_ow_q_row_which_is_the_gap_this_module_repor
     When the integration agent appends the two rows named in this module's report, this test must
     be replaced by one that asserts the symbol resolves -- which is the point of failing rather
     than of tolerating both states.
+
+    D819 appended the register's first `OW-Q` row, `OW-Q-012` (unexplained golden churn), which
+    is not one of the two. The tripwire now names the two it is about, so it still goes red when
+    THEIR gap closes and not when a neighbouring row lands.
     """
     register = tomllib.loads((repo_root / "codes.toml").read_text(encoding="utf-8"))
     areas = register["area"]
@@ -1075,7 +1079,8 @@ def test_codes_toml_still_carries_no_ow_q_row_which_is_the_gap_this_module_repor
 
     assert "Q" in areas
     assert areas["Q"]["error_class"] == "QualityError"
-    assert [n for n in numerics if n.startswith("OW-Q-")] == []
+    assert {"OW-Q-004", "OW-Q-017"} & set(numerics) == set()
+    assert "OW-Q-012" in numerics
     assert len(numerics) == len(set(numerics))
 
 
