@@ -16,7 +16,9 @@ This script reads TOML and compares dates. It imports nothing from `omniweave`, 
    - `eval/gates.toml`: each `[[gate]]`.
    - `eval/counters.toml`: its one `[gate]` table, which owns every `[[counter]]` (D823's shape;
      the charter prints counters without an owner each).
-   - `eval/quarantine.toml`: each `[[quarantine]]`.
+   - `eval/quarantine.toml`: its `[gate]` table, and each `[[quarantined]]` row, whose clock is
+     `expires` rather than `review_by`: 13:282-296 prints the register that way, and *"past
+     `expires` the row fails the build"* (D836, which corrected D830's `[[quarantine]]`).
    - `tools/gates.toml`: each `[[gate]]` and `[[job_assertion]]`. A `[[gate.clause]]` belongs to
      its gate and carries no date of its own.
 2. **A register that does not exist yet is named `absent`, not passed in silence.**
@@ -80,10 +82,19 @@ EXIT_NOT_RUN: Final = 2
 REGISTERS: Final = (
     ("eval/gates.toml", ("gate",)),
     ("eval/counters.toml", ("[gate]",)),
-    ("eval/quarantine.toml", ("quarantine",)),
+    ("eval/quarantine.toml", ("[gate]", "quarantined")),
     ("tools/gates.toml", ("gate", "job_assertion")),
 )
 """Ruling 1: a register's path and the tables its rows are. `[gate]` is a single table."""
+
+CLOCKS: Final = {"quarantined": "expires"}
+"""Ruling 1: a table whose rows' date is not `review_by`, and the key that is."""
+
+_FIXES: Final = {
+    "review_by": "review the row, then move review_by forward or change its class in a reviewed "
+    "diff",
+    "expires": "return the test to its tier, or delete the row with the reason (13:296)",
+}
 
 _DATE: Final = re.compile(r"\d{4}-\d{2}-\d{2}")
 """Ruling 5's spelling. `date.fromisoformat` alone would also take `20261203`."""
@@ -103,6 +114,7 @@ class Row:
     label: str
     owner: object
     review_by: object
+    clock: str = "review_by"
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,7 +178,8 @@ def rows(root: Path) -> Scan:
             for at, entry in enumerate(listed, start=1):
                 row = entry if isinstance(entry, dict) else {}
                 label = _label(row, table, at)
-                found.append(Row(rel, label, row.get("owner"), row.get("review_by")))
+                key = CLOCKS.get(table, "review_by")
+                found.append(Row(rel, label, row.get("owner"), row.get(key), key))
     sidecars = sorted(path for pattern in SIDECARS for path in root.glob(pattern))
     for path in sidecars:
         fixture = _load(path).get("fixture", {})
@@ -188,7 +201,7 @@ def audit(found: tuple[Row, ...], now: dt.date) -> list[Finding]:
                 Finding(
                     row.register,
                     row.label,
-                    f"review_by {row.review_by!r} is not a YYYY-MM-DD date; give it one",
+                    f"{row.clock} {row.review_by!r} is not a YYYY-MM-DD date; give it one",
                 )
             )
         elif due <= now:
@@ -196,8 +209,8 @@ def audit(found: tuple[Row, ...], now: dt.date) -> list[Finding]:
                 Finding(
                     row.register,
                     row.label,
-                    f"review_by {due.isoformat()} is not after {now.isoformat()}; review the row, "
-                    "then move review_by forward or change its class in a reviewed diff",
+                    f"{row.clock} {due.isoformat()} is not after {now.isoformat()}; "
+                    f"{_FIXES[row.clock]}",
                 )
             )
     return out
