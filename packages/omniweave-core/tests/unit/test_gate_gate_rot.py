@@ -57,11 +57,18 @@ id = "blocks_written"
 class = "exact"
 """
 QUARANTINE = """\
-[[quarantine]]
-test_id = "tests/unit/test_x.py::test_y"
+[gate]
 owner = "quality"
-review_by = "2026-11-01"
+review_by = "2027-06-01"
+
+[[quarantined]]
+test_id = "tests/unit/test_x.py::test_y"
+since = "2026-09-02"
+expires = "2026-11-01"
+owner = "quality"
+reason = "one run in forty"
 """
+"""13:282-296's shape (D836): a `[gate]` table, and rows whose clock is `expires`."""
 TOOLS_GATES = """\
 [[gate]]
 id = "G1"
@@ -135,7 +142,8 @@ def test_every_register_and_external_sidecar_is_a_row(tmp_path: Path) -> None:
         ("eval/gates.toml", "gate span_exact_rate"),
         ("eval/gates.toml", "gate degradation_detection"),
         ("eval/counters.toml", "[gate]"),
-        ("eval/quarantine.toml", "quarantine tests/unit/test_x.py::test_y"),
+        ("eval/quarantine.toml", "[gate]"),
+        ("eval/quarantine.toml", "quarantined tests/unit/test_x.py::test_y"),
         ("tools/gates.toml", "gate G1"),
         ("tools/gates.toml", "job_assertion ci-ok.skips_declared"),
         ("fixtures/scan.pdf.meta.toml", "fixture"),
@@ -188,9 +196,9 @@ def test_a_row_fails_on_its_date_and_not_the_day_before(
     code, out = _run(root, capsys, "2026-11-01")
     assert code == GATE.EXIT_FAIL
     assert out.splitlines()[-2:] == [
-        "  eval/quarantine.toml  quarantine tests/unit/test_x.py::test_y: review_by 2026-11-01 "
-        "is not after 2026-11-01; review the row, then move review_by forward or change its "
-        "class in a reviewed diff",
+        "  eval/quarantine.toml  quarantined tests/unit/test_x.py::test_y: expires 2026-11-01 "
+        "is not after 2026-11-01; return the test to its tier, or delete the row with the "
+        "reason (13:296)",
         "Q-G17 FAIL  1 finding(s)",
     ]
 
@@ -204,7 +212,7 @@ def test_the_report_names_each_registers_next_due_date(
         f"Q-G17  as of {NOW}",
         "  eval/gates.toml        2 row(s), next due 2026-12-10 (57 days)",
         "  eval/counters.toml     1 row(s), next due 2027-06-01 (230 days)",
-        "  eval/quarantine.toml   1 row(s), next due 2026-11-01 (18 days)",
+        "  eval/quarantine.toml   2 row(s), next due 2026-11-01 (18 days)",
         "  tools/gates.toml       2 row(s), next due 2026-12-03 (50 days)",
         "  fixture sidecars       2 read, 1 with an external provenance, next due 2027-09-01 "
         "(322 days)",

@@ -88,6 +88,7 @@ __all__ = [
     "Run",
     "Standing",
     "Verdict",
+    "flakes",
     "open_oweval",
     "runs",
     "scoreboard",
@@ -563,6 +564,17 @@ def runs(connection: sqlite3.Connection) -> dict[str, dict[str, Any]]:
             "fairness": json.loads(fairness),
         }
     return out
+
+
+def flakes(connection: sqlite3.Connection) -> tuple[Flake, ...]:
+    """Every `eval_flake` row in key order (D836). Q-G18's window is its reader's to cut, so the
+    store returns days it does not interpret."""
+    return tuple(
+        Flake(str(test_id), str(day), int(runs), int(fails), int(green))
+        for test_id, day, runs, fails, green in connection.execute(
+            "SELECT test_id, day, runs, fails, reran_green FROM eval_flake ORDER BY test_id, day"
+        )
+    )
 
 
 def scoreboard(connection: sqlite3.Connection) -> tuple[Standing, ...]:
