@@ -98,6 +98,7 @@ __all__ = [
     "OUTLINE_MAX_PAGES",
     "PAGES_FORMAT",
     "PREVIEW_CHARS",
+    "SHAPE_FAMILIES",
     "SHAPE_FORMAT",
     "Reducible",
     "reduce_outline",
@@ -116,6 +117,22 @@ PREVIEW_CHARS: Final = 48
 DIGEST_HEX: Final = 8
 """`cdig[:8]` and `ldig[:8]` (13:640): 32 bits of a digest, a line's identity and not its proof."""
 NO_DIGEST: Final = "-"
+SHAPE_FAMILIES: Final = (
+    "achieved.*",
+    "blocks.kind.*",
+    "blocks.layer.*",
+    "blocks.total",
+    "diag.*",
+    "grid.tables_with_merges",
+    "marks.kind.*",
+    "pages.total",
+    "quad.present_frac",
+    "quote.*",
+    "rel.kind.*",
+    "trust.*",
+)
+"""Every counter family `shape_counters()` writes, as `fnmatch` patterns. The decomposition table
+must hold exactly these (D819); a test holds this list to what the function writes."""
 
 
 class Reducible(Protocol):

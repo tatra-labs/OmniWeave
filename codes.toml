@@ -1524,6 +1524,17 @@ fix     = "ow config set graph.passes.enable <the roster without the Pass writin
 # roster first. D690.
 sites   = ["06-structure-extraction.md:702", "06-structure-extraction.md:1944", "12-performance.md:1149"]
 
+# ── D819. The first OW-Q row: 13-quality.md section 13.2 allocates OW-Q-012..018 with
+# their meanings, and section 5.4 makes 012 the class that fails the golden build.
+
+[[code]]
+numeric = "OW-Q-012"
+symbol  = "OW_GOLDEN_CHURN_UNEXPLAINED"
+meaning = "unexplained golden churn: a pages or outline change with an empty shape delta, or a shape delta the page-wise sums of pages contradict; a non-deterministic reducer, an order leak or a rollup that disagrees with the counters it sums to. There is no override (D819)"
+fix     = "ow eval golden --explain <file>"
+raised_by = "QualityError"
+sites   = ["13-quality.md:1845", "13-quality.md:737"]
+
 # ---------------------------------------------------------------------------
 # THE EXIT TABLE. 18-api-sketch.md section 2.3; 10-interfaces.md section 6.2.
 #
