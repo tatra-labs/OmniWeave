@@ -7,7 +7,7 @@ from dataclasses import asdict, replace
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from omniweave_conform.scoreboard import REQUIRED, check, export, stale, unmeasured, write
+from omniweave_conform.scoreboard import REQUIRED, check, export, stale, unmeasured, unpaired, write
 from omniweave_core.drivers.card import MeasuredOn
 from omniweave_core.errors import QualityError
 from omniweave_core.store.oweval import Batch, Corpus, Metric, Run, open_oweval
@@ -111,6 +111,7 @@ def published(tmp_path: Path) -> dict[str, str]:
                 ci_hi=None,
                 method="none",
             ),
+            _metric("r1", metric="doc_acc", value=0.2, truth_kind="human"),
             _metric("r2"),
             _metric("r3"),
         ),
@@ -143,6 +144,7 @@ def test_every_direction_is_published(published: dict[str, str]) -> None:
     rows = json.loads(published["parse/parse.pdf.pdfium.json"])
     states = {r["metric"]: (r["standing"], r["value"]) for r in rows}
     assert states == {
+        "doc_acc": ("RANKED", 0.2),
         "field_acc": ("UNKNOWN", None),
         "order_acc": ("RANKED", 0.9),
         "table_rel_acc": ("RANKED", 0.6),
@@ -158,7 +160,7 @@ def test_the_bytes_are_canonical(published: dict[str, str]) -> None:
     text = published["parse/parse.pdf.pdfium.json"]
     assert text.endswith("\n")
     rows = json.loads(text)
-    assert [r["metric"] for r in rows] == ["field_acc", "order_acc", "table_rel_acc"]
+    assert [r["metric"] for r in rows] == ["doc_acc", "field_acc", "order_acc", "table_rel_acc"]
     assert json.dumps(rows, sort_keys=True, indent=2, ensure_ascii=False) + "\n" == text
 
 
@@ -307,3 +309,65 @@ def test_a_complete_measured_on_is_measured(published: dict[str, str]) -> None:
 )
 def test_q_g8_names_why_a_row_is_unmeasured(row: dict[str, Any], why: str) -> None:
     assert (unmeasured(row) or "").startswith(why)
+
+
+# --- Q-G21's pairing (D832) ------------------------------------------------------------------
+
+
+def _pair_row(metric: str, run_id: str = "r1", slice_key: str = "__macro__") -> dict[str, Any]:
+    return {"metric": metric, "run_id": run_id, "slice_key": slice_key}
+
+
+def test_each_pair_shipped_together_passes() -> None:
+    rows = [
+        _pair_row(m)
+        for m in (
+            "field_acc",
+            "doc_acc",
+            "hallucination_rate",
+            "source_reread_rate",
+            "task_accuracy",
+        )
+    ]
+    assert unpaired(rows) == ()
+    assert unpaired([_pair_row("order_acc")]) == ()
+
+
+@pytest.mark.parametrize(
+    ("metrics", "alone"),
+    [
+        (("field_acc",), ["field_acc@__macro__ in run r1 ships without doc_acc"]),
+        (
+            ("hallucination_rate",),
+            ["hallucination_rate@__macro__ in run r1 ships without field_acc"],
+        ),
+        (
+            ("hallucination_rate", "field_acc"),
+            ["field_acc@__macro__ in run r1 ships without doc_acc"],
+        ),
+        (
+            ("source_reread_rate", "doc_acc"),
+            ["source_reread_rate@__macro__ in run r1 ships without task_accuracy"],
+        ),
+    ],
+)
+def test_a_metric_without_its_partner_is_named(metrics: tuple[str, ...], alone: list[str]) -> None:
+    assert list(unpaired([_pair_row(m) for m in metrics])) == alone
+
+
+def test_a_partner_counts_only_in_its_own_run_and_slice() -> None:
+    rows = [
+        _pair_row("field_acc", "r1", "office/*"),
+        _pair_row("doc_acc", "r1", "pdf/*"),
+        _pair_row("doc_acc", "r2", "office/*"),
+    ]
+    assert unpaired(rows) == ("field_acc@office/* in run r1 ships without doc_acc",)
+
+
+def test_export_refuses_a_metric_without_its_partner(tmp_path: Path) -> None:
+    connection = _oweval(tmp_path, (_run("r1"),), (_metric("r1", metric="field_acc"),))
+    try:
+        with pytest.raises(QualityError, match=r"Q-G21: parse/parse.pdf.pdfium.json: field_acc@"):
+            export(connection)
+    finally:
+        connection.close()
