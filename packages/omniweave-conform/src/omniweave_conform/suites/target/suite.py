@@ -65,6 +65,10 @@ checking and compiling the golden fixture in a scratch directory.
     key rather than the reader.
 12. **R5's exemption names the table's own address row.** owtext calls it `attr.ow-el` and docx
     `ow.el`; the exemption is by selector, `@data-ow-el`, and the reason now says which row.
+15. **R4 names what it needs** (D805). R4 recompiles from an artefact read back, with zero
+    edits and then with confined ones, and compares what the recompile copies. The suite
+    compiles the golden from IL alone, so R4 is `unknown` saying so, with a reader or
+    without. pptx is the first card to claim it (`fidelity = "passthrough"`).
 """
 
 from __future__ import annotations
@@ -278,6 +282,8 @@ def _law(
     if law == "r5":
         return _r5(constructs, compiler, bundle, job, workdir / "r5")
     reason = {
+        "r4": "R4 recompiles from an artefact read back and compares what it copies; a golden "
+        "fixture is compiled from IL alone",
         "r6": "R6 judges a source artefact's unrepresented parts; a golden fixture is IL alone",
     }.get(law, f"{law} reads the artefact back, and no read_back driver was given")
     return LawOutcome(law, "unknown", reason=reason)
