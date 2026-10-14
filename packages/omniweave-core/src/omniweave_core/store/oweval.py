@@ -351,6 +351,7 @@ class Standing:
     suite: str
     subject: str
     subject_version: str
+    corpus_id: str
     corpus_version: str
     witness: str
     unpinned: bool
@@ -569,7 +570,8 @@ def scoreboard(connection: sqlite3.Connection) -> tuple[Standing, ...]:
     names = [f.name for f in fields(Standing)]
     rows = connection.execute(
         f"SELECT {', '.join(names)} FROM eval_scoreboard "  # noqa: S608
-        "ORDER BY metric, slice_key, suite, subject, subject_version, corpus_version, run_id"
+        "ORDER BY metric, slice_key, suite, subject, subject_version, corpus_id, corpus_version, "
+        "run_id"
     ).fetchall()
     flags = [names.index(name) for name in ("unpinned", "entrant_bias", "publishable")]
     out = []

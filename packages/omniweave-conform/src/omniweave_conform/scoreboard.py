@@ -10,14 +10,15 @@ is missing or empty"*. Section 11.3: *"`ow eval publish` has no filter on direct
 W10.7 is the work item.
 
 `export()` builds the tree's files from an `.oweval` connection; `check()` is Q-G19's row clause;
-`stale()` is its byte-diff clause against a committed tree; `write()` lays the files down.
+`stale()` is its byte-diff clause against a committed tree; `write()` lays the files down and
+`tree()` reads them back, for Q-G27 (`omniweave_conform.rot`, D829).
 
 ## Rulings
 
 1. **One file per `(suite, subject)`**, at `<suite>/<subject>.json`. A subject that would leave
    its directory -- a path separator, `..`, or nothing -- is refused rather than escaped.
 2. **A file is canonical JSON**: a list of rows in `oweval.scoreboard()`'s order, which within one
-   file is metric, slice, subject version, corpus version and run; keys sorted, two-space
+   file is metric, slice, subject version, corpus, corpus version and run; keys sorted, two-space
    indented for a reviewer's diff, ending in a newline. The same `.oweval` writes the same bytes.
 3. **Every view row is published, whatever its direction.** A `regressed` or `UNKNOWN` row is a
    row; there is no flag, filter or draft state (section 11.3).
@@ -45,7 +46,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
     from pathlib import Path
 
-__all__ = ["REQUIRED", "check", "export", "stale", "write"]
+__all__ = ["REQUIRED", "check", "export", "stale", "tree", "write"]
 
 REQUIRED: Final = (
     "value",
@@ -124,6 +125,16 @@ def stale(root: Path, files: Mapping[str, str]) -> tuple[str, ...]:
         }
         out.extend(sorted(committed - set(files)))
     return tuple(out)
+
+
+def tree(root: Path) -> dict[str, str]:
+    """A committed tree's files, `relative path -> text`, as `export()` names them. An absent
+    tree publishes nothing and reads as no files, which `Path.rglob` already gives."""
+    return {
+        str(p.relative_to(root)).replace("\\", "/"): p.read_bytes().decode("utf-8")
+        for p in sorted(root.rglob("*.json"))
+        if p.is_file()
+    }
 
 
 def write(root: Path, files: Mapping[str, str]) -> None:
