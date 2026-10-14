@@ -70,8 +70,10 @@ __all__ = [
     "Row",
     "classify",
     "load_decomposition",
+    "parse_pages",
     "refuse_unexplained",
     "shape_delta",
+    "suppressed",
 ]
 
 ChurnClass = Literal["unchanged", "incidental", "structural", "unexplained"]
@@ -272,7 +274,7 @@ def _printed(key: str) -> bool:
     return key == "blocks.total" or key.startswith(tuple(PAGE_FIELDS.values()))
 
 
-def _suppressed(text: str) -> dict[str, str] | None:
+def suppressed(text: str) -> dict[str, str] | None:
     """A SUPPRESSED file's `name=value` fields, or `None` for a whole one."""
     first = text.split("\n", 1)[0]
     parts = first.split(" ")
@@ -283,7 +285,7 @@ def _suppressed(text: str) -> dict[str, str] | None:
 
 def _compare_suppressed(kind: str, unit: str, old: str, new: str) -> _Compared | None:
     """Ruling 7, or `None` when neither side is suppressed."""
-    a, b = _suppressed(old), _suppressed(new)
+    a, b = suppressed(old), suppressed(new)
     if a is None and b is None:
         return None
     if a is not None and b is not None and a.get(unit) == b.get(unit):
@@ -293,10 +295,10 @@ def _compare_suppressed(kind: str, unit: str, old: str, new: str) -> _Compared |
 
 
 def _compare_pages(old: str, new: str) -> _Compared:
-    suppressed = _compare_suppressed(PAGES_FORMAT, "pages", old, new)
-    if suppressed is not None:
-        return suppressed
-    before, after = _pages(old), _pages(new)
+    one_line = _compare_suppressed(PAGES_FORMAT, "pages", old, new)
+    if one_line is not None:
+        return one_line
+    before, after = parse_pages(old), parse_pages(new)
     sums: Counter[str] = Counter()
     for label in before.keys() | after.keys():
         for key, value in _page_counts(after.get(label, {})).items():
@@ -311,9 +313,9 @@ def _compare_pages(old: str, new: str) -> _Compared:
 
 
 def _compare_outline(old: str, new: str) -> _Compared:
-    suppressed = _compare_suppressed(OUTLINE_FORMAT, "blocks", old, new)
-    if suppressed is not None:
-        return suppressed
+    one_line = _compare_suppressed(OUTLINE_FORMAT, "blocks", old, new)
+    if one_line is not None:
+        return one_line
     before, after = _outline(old), _outline(new)
     moved = before != after
     digest_only = before.keys() == after.keys() and all(
@@ -324,7 +326,9 @@ def _compare_outline(old: str, new: str) -> _Compared:
     return _Compared(moved, digest_only, None, ())
 
 
-def _pages(text: str) -> dict[str, dict[str, str]]:
+def parse_pages(text: str) -> dict[str, dict[str, str]]:
+    """A whole `pages` file's lines as `label -> {field: value}`, a histogram's value being the
+    text inside its braces. Shared with the differ (D821), so the two read one format one way."""
     out = {}
     for line in text.splitlines()[1:]:
         label, *fields = line.split(" ")
