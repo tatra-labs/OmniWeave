@@ -38,7 +38,7 @@ def framed(em: Emitter, node: CarrierNode, chain: Chain, draw: Callable[[], None
     group_id = em.take_id()
     made = element("p:grpSp")
     properties = element("p:nvGrpSpPr", made)
-    em.click(element("p:cNvPr", properties, id=str(group_id), name=em.name(node, group_id)))
+    element("p:cNvPr", properties, id=str(group_id), name=em.name(node, group_id))
     element("p:cNvGrpSpPr", properties)
     element("p:nvPr", properties)
     frame = element("p:grpSpPr", made)

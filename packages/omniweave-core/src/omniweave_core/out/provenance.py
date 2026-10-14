@@ -24,6 +24,10 @@ built it for itself (D782, D786). A deck needs the same channel, so it lives her
    is never a citation.
 5. **`citations()` is the receipt's `citations_channel` row, read from the part itself**: passed
    with its row count, or failed when the package holds no part.
+6. **A target whose markup cannot name every address lists where each landed** (`at`, D803). A
+   document's bookmarks carry its addresses; a deck's runs have nothing to carry one, so a deck
+   writes each address's unit, shape, line and runs, and its reader reads them. `at` is written
+   only by a target that passes it.
 """
 
 from __future__ import annotations
@@ -128,8 +132,9 @@ def body(
     corpus: str,
     slug: str,
     artifact_gen: int,
+    at: Mapping[str, Mapping[str, JsonValue]] | None = None,
 ) -> bytes:
-    """Ruling 4: the part's canonical JSON."""
+    """Ruling 4: the part's canonical JSON; ruling 6: `at`, where a target passes it."""
     document: JsonValue = {
         "schema": SCHEMA,
         "corpus": corpus,
@@ -138,6 +143,8 @@ def body(
         "cites": [dict(row) for row in rows],
         "els": dict(els),  # canonical JSON sorts every object's keys
     }
+    if at is not None:
+        document["at"] = {el: dict(place) for el, place in at.items()}
     return canonical(document)
 
 

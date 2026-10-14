@@ -13,6 +13,12 @@ free of uharfbuzz, for `lower.text` to read as well. D792's rulings 3 and 4 are 
   carrier's `visible_text` reads it (09 section 3.1). Whitespace collapses unless
   `xml:space="preserve"`. A line keeps the node that starts it, the text or its `<tspan>`, and
   each run keeps the node whose text it is.
+- **Whitespace is the carrier's** (D803), `omniweave_core.out.carrier.tree.collapse`, applied
+  character by character so each keeps its run. A space, a tab, a newline, a carriage return or
+  a form feed is whitespace; each run of them is one space, and a line's ends are trimmed.
+  `xml:space="preserve"` keeps every character as written, as `Lines.render` does. D792 dropped a
+  newline, as SVG 1.1 does, so `Revenue` and `rose` on two source lines measured and lowered as
+  `Revenuerose`, while the carrier's `visible_text`, which R2 compares, reads `Revenue rose`.
 """
 
 from __future__ import annotations
@@ -33,6 +39,7 @@ __all__ = [
     "STARTS_LINE",
     "TEXT",
     "TSPAN",
+    "WHITESPACE",
     "Line",
     "TextStyle",
     "collapsed",
@@ -51,6 +58,8 @@ BOLD: Final = 700
 TEXT: Final = "svg|text"
 TSPAN: Final = "svg|tspan"
 STARTS_LINE: Final = ("x", "dy")
+WHITESPACE: Final = frozenset(" \t\n\r\f")
+"""The carrier's whitespace, `tree._SPACE`'s five characters."""
 
 Run = tuple[str, "CarrierNode"]
 
@@ -140,20 +149,16 @@ def lines(n: CarrierNode, *, preserve: bool) -> list[Line]:
 
 
 def collapsed(runs: Sequence[Run], *, preserve: bool) -> list[Run]:
-    """SVG's default whitespace: newlines dropped, tabs to spaces, runs of spaces to one, the
-    line's ends trimmed, each character kept with the run it came from."""
+    """The carrier's whitespace (module docstring): each run of whitespace one space and the
+    line's ends trimmed, or every character kept under `preserve`, each character kept with the
+    run it came from."""
     chars: list[Run] = []
     for text, owner in runs:
         for ch in text:
-            if preserve:
-                chars.append((" " if ch in "\t\n\r" else ch, owner))
-            elif ch in "\n\r":
-                continue
-            elif ch in " \t":
-                if chars and chars[-1][0] != " ":
-                    chars.append((" ", owner))
-            else:
+            if preserve or ch not in WHITESPACE:
                 chars.append((ch, owner))
+            elif chars and chars[-1][0] != " ":
+                chars.append((" ", owner))
     if not preserve:
         while chars and chars[-1][0] == " ":
             chars.pop()

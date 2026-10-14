@@ -170,7 +170,10 @@ def test_an_empty_line_keeps_its_size_at_its_end(tmp_path: Path) -> None:
     ("body", "lines"),
     [
         ("<text y='10'>  a \n  b  </text>", ["a b"]),
-        ("<text y='10' xml:space='preserve'>  a \n  b  </text>", ["  a    b  "]),
+        ("<text y='10'>a\nb\r\nc\td</text>", ["a b c d"]),
+        # XML turns a source CR into LF; a character reference is how a CR reaches the carrier
+        ("<text y='10'>a&#13;b</text>", ["a b"]),
+        ("<text y='10' xml:space='preserve'>  a \n  b  </text>", ["  a \n  b  "]),
         ("<text y='10'>a <tspan>b</tspan> c</text>", ["a b c"]),
     ],
 )
@@ -178,6 +181,25 @@ def test_whitespace_collapses_as_the_checker_reads_it(
     tmp_path: Path, body: str, lines: list[str]
 ) -> None:
     assert text_of(lowered(tmp_path, slide(body)).first()) == lines
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "<text y='40'>Revenue\n  rose <tspan font-weight='bold'>12%</tspan> in Q3</text>",
+        "<text y='40'>a<tspan x='0' dy='20'>b <tspan>c</tspan></tspan>d"
+        "<tspan x='0' dy='9'> e</tspan></text>",
+        "<text y='40'><tspan x='0' dy='20'>first</tspan></text>",
+        "<text y='40' xml:space='preserve'> a  b </text>",
+    ],
+)
+def test_a_text_boxs_paragraphs_are_the_carriers_visible_text(tmp_path: Path, body: str) -> None:
+    """R2's text clause at the lowering: the paragraphs, joined a line each, ends trimmed of empty
+    lines, are `visible_text()` of the `<text>` (D803)."""
+    shape = lowered(tmp_path, slide(body)).first()
+    doc = PptxCompiler().carrier("il/u01.svg", slide(body))
+    [text] = doc.root().children()
+    assert "\n".join(text_of(shape)).strip("\n") == doc.visible_text(text)
 
 
 # ---------------------------------------------------------------------------------------------

@@ -29,6 +29,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
 from lxml import etree  # type: ignore[attr-defined] -- lxml ships no stubs
+from omniweave_core.canonical import JsonValue
 from omniweave_core.errors import TargetError
 from omniweave_core.out import provenance as channel
 from omniweave_core.out.carrier import parse_selector
@@ -139,7 +140,10 @@ def build(
     lang = plan.brief.value("communication", "primary_language") or ""
     slides = [deck.slides.add_slide(blank) for _ in roots]  # first, so a link can jump to any
     by_unit = dict(zip((u.id for u in plan.units), slides, strict=True))
-    for root, made in zip(roots, slides, strict=True):
+    at: dict[str, dict[str, JsonValue]] = {}
+    for unit, root, made in zip(plan.units, roots, slides, strict=True):
+        if root.el:
+            at[root.el] = {"unit": unit.id}
         defined = {n.attr("id") or "": n for n in walk(root) if n.attr("id")}
         em = Emitter(
             rows,
@@ -151,6 +155,8 @@ def build(
             assets,
             _embedder(made),
             _linker(made, by_unit),
+            unit=unit.id,
+            at=at,
         )
         em.handler(root)(em, root, (root,))
     cites.provenance_part(
@@ -161,6 +167,7 @@ def build(
         corpus=plan.corpus,
         slug=plan.slug,
         artifact_gen=plan.artifact_gen,
+        at=at,
     )
     _core(deck, plan.slug, clock_ns)
     return _package(deck)
