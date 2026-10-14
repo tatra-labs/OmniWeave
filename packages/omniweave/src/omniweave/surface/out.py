@@ -139,7 +139,7 @@ documentation", with `--group` and `--construct` selecting from it.
     second, after the contract.
 26. **`check`, `stamp` and `normalize` build the target with its `[drivers."<id>".config]`**
     (D792). Each used the card's defaults alone, so no setting a target declares reached it:
-    pptx's `font_dirs`, which `measure.py` shapes with, could not be set. `compile`, `verify`
+    pptx's `font_dir`, which `measure.py` shapes with, could not be set. `compile`, `verify`
     and `back`'s read-back keep the defaults. The effective config is not one of a compile's six
     purity inputs, so a compile under another config would find, and place, the bytes an earlier
     config built. The three verbs that honour it write no artefact.

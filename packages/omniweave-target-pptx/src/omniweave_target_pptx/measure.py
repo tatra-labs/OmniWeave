@@ -6,12 +6,13 @@ units, the `viewBox`'s, which for owsvg/1 are CSS px.
 
 ## Rulings
 
-1. **The faces are the ones the card's config names, and no others.** `font_dirs` lists absolute
-   directories, and every `.ttf`, `.otf`, `.ttc` and `.otc` under each is read once, in sorted
-   path order. No system font directory is read. A target is a purity island (G8), and a
-   measurement that depended on whatever fonts a host happens to hold would differ across the
-   nine platform cells its output is compared on (OUT13). ppt-master scans the host's font
-   roots (`svg_to_pptx/text_outline.py:679-740`); owsvg/1 does not.
+1. **The faces are the ones the card's config names, and no others.** `font_dir` names one
+   absolute directory (D806), and every `.ttf`, `.otf`, `.ttc` and `.otc` under it, its
+   subdirectories included, is read once, in sorted path order. No system font directory is
+   read. A target is a purity island (G8), and a measurement that depended on whatever fonts a
+   host happens to hold would differ across the nine platform cells its output is compared on
+   (OUT13). ppt-master scans the host's font roots (`svg_to_pptx/text_outline.py:679-740`);
+   owsvg/1 does not.
 2. **A face is found by family, then weight and style.** A face's families are its name IDs 16
    then 1, compared without case and with whitespace collapsed. The first family in the stack
    that names a face wins. Among its faces, an italic request takes an italic face first, and

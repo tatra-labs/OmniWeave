@@ -116,7 +116,7 @@ def _measured(tmp_path: Path) -> PptxCompiler:
     """D793: a compiler whose estimator has one face, `Probe Sans`, 500 units a glyph."""
     fonts = tmp_path / "fonts"
     write_font(fonts, "probe.ttf", tiny_font("Probe Sans"))
-    return PptxCompiler(font_dirs=[str(fonts)])
+    return PptxCompiler(font_dir=str(fonts))
 
 
 def _check(tmp_path: Path, u01: str | None = None, *, cites: _Cites | None = None) -> CheckResult:

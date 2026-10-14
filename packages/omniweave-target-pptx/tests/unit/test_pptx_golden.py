@@ -51,7 +51,7 @@ def _measured(tmp_path: Path) -> PptxCompiler:
     """The golden's face, `Probe Sans`, so every text is measured."""
     fonts = tmp_path / "fonts"
     write_font(fonts, "probe.ttf", tiny_font("Probe Sans"))
-    return PptxCompiler(font_dirs=[str(fonts)])
+    return PptxCompiler(font_dir=str(fonts))
 
 
 def _docs() -> list[Any]:
