@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D822: build note on 12-performance section 1.2, the Pacer workload and paced eval_perf rows
+# blessed-because: D823: build note on 13-quality section 2.8, eval/counters.toml and its sources
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -39,7 +39,7 @@ documents-frozen  be04e76a5fed4eab2256414da0fe06ee96a0d12943d0cc1c4897742d692e77
 documents-frozen  3855e9d5a833d34c6f0da3cb8f93f19769032cbb730615b591ed34ff0d92edca  10-interfaces.md
 documents-frozen  76a694bf0b19b60ba35d2246f6b36466ca990f318f51e0a292c388ec0e78bc68  11-repo-layout.md
 documents-frozen  d76dfb51c73ab81579af4ed8d1a595cca7c4430d37eecd5f52ab110fe478864e  12-performance.md
-documents-frozen  1d6b4c9186aef0b6e3734dcb41f97c78280cbad1f494b95650d4ca8d36bd8732  13-quality.md
+documents-frozen  c307391713fbaf2d18362de03a126a14ce38e761c8d7fefb9204d8132c5f1e12  13-quality.md
 documents-frozen  667161a8bd206b5805998a289f7679f80dc3a8ea6910c52ea8345bfe9562d721  14-security.md
 documents-frozen  b40c687bb38801907249eef6ec9af9a8ac7d26083be9c0290f356e89aaf48695  15-observability.md
 documents-frozen  e655ac4169f71a1c1be40a0bacc632c3b873bb77c03a3f185d3858b29eb12436  16-roadmap.md

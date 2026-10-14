@@ -1,0 +1,125 @@
+# eval/counters.toml -- EXACT BY DEFAULT. The gate that catches what a clock cannot.
+#
+# 13-quality.md section 2.8: time is the LAST signal. A silent re-render, a re-billed free operator
+# and a 100% cache miss all leave a clock untouched, so this file is evaluated before
+# eval/perf.toml and a counter delta fails without a bless (OW-Q-005). Read by
+# omniweave_conform.counters (D823) and, when it lands, Q-G5's gate script.
+#
+# THIS FILE IS A REGISTER. The fifteen counter rows are the charter's (charter:7511-7562),
+# transcribed with their class and tolerance unchanged. Section 2.8 says "the charter's sixteen rows
+# stand unchanged and this document adds none"; the charter prints fifteen, and the sixteenth is
+# not missing from this file -- it was never written (D823).
+#
+# THE ROW SCHEMA. An unknown key is a hard error at load.
+#
+#   id         str, a counter name or a `name.*` family                 required, unique
+#   class      "exact" | "ratchet"                                      required
+#   tolerance  float in (0, 1): a ratchet's allowed rise                iff class = "ratchet"
+#   source     "manifest" | "route_spend" | "driver_observation" | "ci" required
+#   note       str                                                      optional
+#
+# `exact` fails a delta of one in either direction. `ratchet` fails a rise past `tolerance` and
+# passes a fall, which becomes the next baseline.
+#
+# SOURCE is ADR-11 decision 8's key, and the plan maps no charter row to one. D823 rules each by
+# where a run records the count: route_spend holds `tokens_out` and `calls` as columns and is the
+# billing table, so it sources tokens_out, llm_calls and rebilled_units; driver_observation is one
+# row per (run, driver, outcome), so it sources driver_activations; every other count is the run
+# manifest's. A `ci` row never reaches eval_counter, whose run_id is NOT NULL (13:313-321).
+
+[gate]
+owner = "team@particle6.com"
+review_by = "2027-06-01"
+
+[[counter]]
+id = "blocks_written"
+class = "exact"
+source = "manifest"
+
+[[counter]]
+id = "pages_committed"
+class = "exact"
+source = "manifest"
+
+[[counter]]
+id = "page_renders"
+class = "exact"
+source = "manifest"
+note = "a driver upgrade silently re-rendering"
+
+[[counter]]
+id = "signal_computations"
+class = "exact"
+source = "manifest"
+note = "RT4 generalised to every signal"
+
+[[counter]]
+id = "subprocess_spawns"
+class = "exact"
+source = "manifest"
+
+[[counter]]
+id = "service_attaches"
+class = "exact"
+source = "manifest"
+note = "A CLEAN DIGITAL PDF MUST START NO GPU"
+
+[[counter]]
+id = "driver_activations"
+class = "exact"
+source = "driver_observation"
+
+[[counter]]
+id = "escalations"
+class = "exact"
+source = "manifest"
+
+[[counter]]
+id = "degradations"
+class = "exact"
+source = "manifest"
+
+[[counter]]
+id = "llm_calls"
+class = "exact"
+source = "route_spend"
+
+[[counter]]
+id = "cache_hits"
+class = "exact"
+source = "manifest"
+note = "graphrag's permanent silent 100% miss"
+
+[[counter]]
+id = "cache_misses"
+class = "exact"
+source = "manifest"
+
+[[counter]]
+id = "rebilled_units"
+class = "exact"
+source = "route_spend"
+note = "a free re-run re-billing a paid operator"
+
+[[counter]]
+id = "tokens_out"
+class = "ratchet"
+tolerance = 0.02
+source = "route_spend"
+
+[[counter]]
+id = "store_rows_read"
+class = "ratchet"
+tolerance = 0.05
+source = "manifest"
+
+# 11-repo-layout.md section 6.2 and ADR-11 decision 8: each CI job's wall time, ratcheting. The
+# plan gives no tolerance. 0.25 is D823's: CI wall time on shared runners varies by more than the
+# 2% and 5% the charter gives counted quantities, and a ratchet tighter than the runner's noise
+# fails on noise and teaches everyone to bless.
+[[counter]]
+id = "ci.job_seconds.*"
+class = "ratchet"
+tolerance = 0.25
+source = "ci"
+note = "the slow accumulation no timeout-minutes trips"
