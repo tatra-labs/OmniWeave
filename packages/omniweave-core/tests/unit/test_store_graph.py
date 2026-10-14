@@ -217,7 +217,7 @@ def connection(tmp_path: Path) -> Iterator[sqlite3.Connection]:
     conn = ow.connect(path)
     try:
         applied = migrate.apply_pending(conn, now_ns=NOW_NS)
-        assert len(applied) == 4, f"expected four migrations, applied {len(applied)}"
+        assert len(applied) == 5, f"expected five migrations, applied {len(applied)}"
         conn.execute("BEGIN IMMEDIATE")
         _seed(conn)
         yield conn

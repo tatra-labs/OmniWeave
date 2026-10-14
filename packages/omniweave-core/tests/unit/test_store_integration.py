@@ -65,7 +65,7 @@ def store(tmp_path: Path) -> Path:
     connection = ow.connect(path)
     try:
         applied = migrate.apply_pending(connection, now_ns=NOW_NS)
-        assert len(applied) == 4, f"expected four migrations, applied {len(applied)}"
+        assert len(applied) == 5, f"expected five migrations, applied {len(applied)}"
     finally:
         connection.close()
     return path
@@ -217,11 +217,6 @@ def test_the_maintenance_operations_run_against_a_real_store(store: Path) -> Non
 # ("verified by `grep -oh 'CREATE TABLE [a-z_]*' charter.md | sort -u | wc -l`"). The three FTS5
 # virtual tables are `CREATE VIRTUAL TABLE` and are therefore outside it in both places.
 DEFERRED_TO_A_LATER_PHASE: dict[str, str] = {
-    "artifact": "P9, 0005_out.sql (16-roadmap.md:428 -- 'one appended file')",
-    "artifact_asset": "P9, 0005_out.sql",
-    "artifact_cite": "P9, 0005_out.sql",
-    "artifact_el": "P9, 0005_out.sql",
-    "artifact_unit": "P9, 0005_out.sql",
     "serve_emission": "P7, omniweave-serve",
 }
 

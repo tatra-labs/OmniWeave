@@ -181,6 +181,18 @@ value = 'www\.w3\.org'
 path = "packages/omniweave/src/omniweave/route/detect.py"
 why = "The SVG namespace, `http://www.w3.org/2000/svg`, escaped inside the regex 05:684's `svg` probe matches an `xmlns` attribute against. A pattern over the unit's own HEAD bytes, never a destination."
 
+[[literal]]
+value = "schemas.openxmlformats.org"
+path = "packages/omniweave-core/src/omniweave_core/out/opc.py"
+why = """
+Two OPC namespace NAMES, never URLs anything fetches: the package relationships namespace and the content-types namespace (ECMA-376 Part 2). `check_package()` compares the namespace expat reports for each element of a `.rels` part and of `[Content_Types].xml` against them, to find each `Relationship` and each `Default`/`Override`. It reads the package's own members and nothing else, and a DOCTYPE or an entity declaration in either part is refused before anything is resolved (D747)."""
+
+[[literal]]
+value = "www.w3.org"
+path = "packages/omniweave-core/src/omniweave_core/out/carrier/xml.py"
+why = """
+Three XML namespace NAMES, never URLs anything fetches: SVG's (`http://www.w3.org/2000/svg`), XLink's and the reserved `xml:` namespace. The `svg` carrier compares the namespace expat reports for each element and attribute against them, to spell `svg|text`, `xlink:href` and `xml:space` (09 section 3.1 rule 2). Expat runs with parameter entities never parsed and refuses every DOCTYPE and external entity reference before reading one, so no namespace in an IL file is ever resolved either (D738)."""
+
 [[client]]
 module = "asyncio"
 path = "packages/omniweave/src/omniweave/run/supervisor.py"

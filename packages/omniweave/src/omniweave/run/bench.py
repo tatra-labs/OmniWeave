@@ -480,8 +480,8 @@ NOW_NS: Final = 0
 two runs' ledgers are byte-identical -- which costs nothing and removes one reason a store differs.
 """
 
-SHIPPED_MIGRATIONS: Final = 4
-"""`0001`-`0004`. Asserted rather than assumed: a store one migration short would claim out of a
+SHIPPED_MIGRATIONS: Final = 5
+"""`0001`-`0005`. Asserted rather than assumed: a store one migration short would claim out of a
 `work` table with no `work_claimable` partial index, and the bench would report an index scan."""
 
 URI_FORMAT: Final = "file:///scale/{index:06d}.bin"
