@@ -534,6 +534,7 @@ class Job:
                 "brief_digest": plan.brief_digest,
                 "card_sha256": plan.card_sha256,
                 "toolchain_digest": plan.toolchain_digest,
+                "parent_gen": plan.parent_gen,
             },
             "traceparent": self.traceparent,
             "determinism": {"clock_ns": self.determinism.clock_ns},
@@ -568,6 +569,7 @@ class Job:
                 brief_digest=_string(plan, "brief_digest", "plan"),
                 card_sha256=_string(plan, "card_sha256", "plan"),
                 toolchain_digest=_optional_string(plan, "toolchain_digest", "plan"),
+                parent_gen=_optional_integer(plan, "parent_gen", "plan"),
             )
         except ValueError as exc:
             _job_invalid(f"plan: {exc}")
@@ -602,7 +604,7 @@ _PLAN_KEYS: Final = frozenset(
     {
         "schema", "target", "slug", "artifact_gen", "delivery", "units", "unit_count", "brief",
         "corpus", "cites", "gate_status", "il_digest", "constructs_digest", "ledger_digest",
-        "brief_digest", "card_sha256", "toolchain_digest",
+        "brief_digest", "card_sha256", "toolchain_digest", "parent_gen",
     }
 )  # fmt: skip
 _OUT_UNIT_KEYS: Final = frozenset(

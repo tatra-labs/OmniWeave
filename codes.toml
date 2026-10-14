@@ -1127,6 +1127,17 @@ fix     = "ow explain OW-T-529"
 raised_by = "TargetError"
 sites   = ["02-architecture.md:631"]
 
+# ── D809. R4(a) at the seal: a copied unit's part is its parent's (09-generation.md
+# section 5.5).
+
+[[code]]
+numeric = "OW-T-530"
+symbol  = "OW_TARGET_COPY_MOVED"
+meaning = "an edit's compile classified a unit passthrough or cloned_passthrough, whose part the card's unit_part names, and that part is not byte for byte the part its source_ord lowered to in the parent generation, or one of the two packages lacks it; nothing is sealed (D809)"
+fix     = "ow explain OW-T-530"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1509"]
+
 # ── D789. owsvg/1, the pptx target's table and structural rules (09-generation.md section
 # 12.1). 2xx normalize, 4xx constructs; the grammar codes are named by the table's rows now
 # and emitted by the grammar band.

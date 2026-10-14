@@ -1453,6 +1453,7 @@ def back_report(
         table=table,
         slug=slug,
         artifact_gen=newest + 1,
+        parent_gen=row.artifact_gen,
         corpus=name,
         traceparent=traceparent(entropy(16).hex(), entropy(8).hex()),
         clock_ns=clock.wall_ns(),

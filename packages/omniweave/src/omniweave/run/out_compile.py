@@ -103,6 +103,16 @@ that module imports `omniweave_core.out`, so `out` importing it back would be a 
     generation it resolved at, the one the seal's `artifact_cite` rows carry. A target that
     embeds its citations (docx) reads them from the Plan, so the part it writes and the rows the
     store keeps name the same generations.
+19. **D809: a copied unit's part is its parent's, byte for byte, or nothing is sealed.** 09
+    section 5.5 defines `passthrough` as the source's container part copied, its sha256
+    "asserted equal to the source's", and the classifier decides it from the nsig alone. So
+    for an edit (`Plan.parent_gen`) of a target whose card names its units' parts
+    (`unit_part`), the parent's artefact is read from CAS. Each `passthrough` or
+    `cloned_passthrough` unit's part must then be byte for byte the part its `source_ord`
+    lowered to. A part that moved, or that either package lacks, is
+    `OW_TARGET_COPY_MOVED` (`OW-T-530`), R4(a)'s failures named.
+20. **D809: the row names the generation it edits**, `parent_artifact_gen`, from
+    `Plan.parent_gen`. A create names none.
 """
 
 from __future__ import annotations
@@ -111,6 +121,7 @@ import hashlib
 import json
 import shutil
 import sys
+import zipfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from io import BytesIO
@@ -122,15 +133,17 @@ from omniweave_core.errors import TargetError, UsageError
 from omniweave_core.host import subproc
 from omniweave_core.limits import MAX_CONTAINER_TOTAL_BYTES
 from omniweave_core.model.block import Cite
+from omniweave_core.out.card import part_of
 from omniweave_core.out.cites import verbatim
 from omniweave_core.out.compile import CompileV1, artefact, ref_bytes, refusal_of
 from omniweave_core.out.gate import GateStatus, exit_code, gate_status
 from omniweave_core.out.job import ILBundle, Job, job_unit
 from omniweave_core.out.marker import assert_clean
-from omniweave_core.out.plan import Classified, OutUnit, Plan, classify_and_assert
+from omniweave_core.out.plan import Classified, OutUnit, Plan, UnitOutcome, classify_and_assert
 from omniweave_core.out.receipt import Receipt
 from omniweave_core.out.report import OutReport, parse_digest, report_path
 from omniweave_core.out.retain import freeze, freeze_brief
+from omniweave_core.out.roundtrip import r4a
 from omniweave_core.store.artifact import (
     CITE_KINDS,
     ArtifactDraft,
@@ -187,6 +200,8 @@ class CompileHost:
     """The card's stamp (INV-16); the seal ORs in every source's."""
     barred_mask: int
     """The effective policy's `restriction_bits` mask (14-security.md); 0 bars nothing."""
+    unit_part: str = ""
+    """Ruling 19: the member each unit lowers to, `[compile.round_trip] unit_part`."""
 
     @classmethod
     def of(
@@ -218,6 +233,7 @@ class CompileHost:
             producer_id=producer_id,
             restriction_bits=bits,
             barred_mask=barred_mask,
+            unit_part=compiled.unit_part,
         )
 
 
@@ -316,6 +332,7 @@ def compile_artifact(
         visual_changed=visual_changed or (lambda _u: True),
     )
     _receipt_agrees(receipt, plan, body, classified, status)
+    _copies_hold(plan, classified, body, host.unit_part, artifacts=artifacts, blobs=blobs)
 
     retained = freeze(bundle, blobs)
     freeze_brief(plan.brief, blobs)
@@ -328,6 +345,7 @@ def compile_artifact(
     draft = ArtifactDraft(
         key=key,
         artifact_gen=plan.artifact_gen,
+        parent_artifact_gen=plan.parent_gen,
         origin="authored",
         compile_driver=host.compile_driver,
         media_type=host.media_type,
@@ -711,6 +729,51 @@ def _receipt_agrees(
             symbol="OW_TARGET_UNIT_UNCLASSIFIED",
             fix="report the target: the framework classifies, the receipt reports (OUT8)",
         )
+
+
+_COPIED: Final = frozenset({UnitOutcome.PASSTHROUGH, UnitOutcome.CLONED_PASSTHROUGH})
+
+
+def _copies_hold(
+    plan: Plan,
+    classified: Mapping[str, Classified],
+    body: bytes,
+    unit_part: str,
+    *,
+    artifacts: SqliteArtifactStore,
+    blobs: BlobStore,
+) -> None:
+    """Ruling 19: each copied unit's part, byte for byte its parent's (R4(a) at the seal)."""
+    if plan.parent_gen is None or not unit_part:
+        return
+    parent = artifacts.get(plan.slug, plan.parent_gen)
+    with blobs.open(parent.sha256.removeprefix("sha256:")) as handle:
+        source = _members(handle.read())
+    members = _members(body)
+    kept = {u: c.outcome for u, c in classified.items() if c.outcome in _COPIED}
+    copied: dict[str, tuple[str, str]] = {}
+    for unit in plan.units:
+        new = members.get(part_of(unit_part, unit.ord))
+        old = source.get(part_of(unit_part, unit.source_ord or 0))
+        if unit.id in kept and new is not None and old is not None:
+            copied[unit.id] = (hashlib.sha256(new).hexdigest(), hashlib.sha256(old).hexdigest())
+    result = r4a(kept, copied)
+    if not result.passed:
+        raise TargetError(
+            f"{plan.slug}@{plan.artifact_gen} copies from @{plan.parent_gen}, and "
+            + "; ".join(f.msg for f in result.failures),
+            symbol="OW_TARGET_COPY_MOVED",
+            fix="ow explain OW-T-530",
+        )
+
+
+def _members(body: bytes) -> dict[str, bytes]:
+    """Ruling 19: a package's members by name; none for bytes that are not one."""
+    try:
+        with zipfile.ZipFile(BytesIO(body)) as zf:
+            return {info.filename: zf.read(info) for info in zf.infolist()}
+    except zipfile.BadZipFile:
+        return {}
 
 
 def _place(row: ArtifactRow, blobs: BlobStore, output_root: Path) -> Path:

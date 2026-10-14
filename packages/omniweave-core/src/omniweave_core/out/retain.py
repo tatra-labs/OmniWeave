@@ -61,10 +61,12 @@ half and runs before the seal, which stores what it returns. `fetch()` is the ed
      its `il_digest` the bundle's and its `ledger_digest` the assets', with the gate
      `not-provided` until a check runs.
 10. **An edit's roster is the sealed roster.** Each unit keeps its id, `ord` and `il_path`,
-    takes its anchor from the Brief, and records where it came from: `source_part` is the
-    sealed `il_path`, `source_nsig` its `nsig` and `source_ord` its `ord`. 09 section 3.7 has
-    `ow out back` fill them "from the `artifact_unit` rows of the artefact being edited", and
-    those rows carry no other part name.
+    takes its anchor from the Brief, and records where it came from: `source_nsig` is its
+    `nsig` and `source_ord` its `ord`. `source_part` is the container part 09 section 3.7
+    names (`ppt/slides/slide3.xml`) when the card names one (`unit_part`, D809), and the
+    sealed `il_path` when it does not: `artifact_unit` rows carry no other part name.
+11. **The edit's Plan names the generation it restores** (D809, `Plan.parent_gen`), which
+    the compile reads the parent's parts by and the seal writes as `parent_artifact_gen`.
 """
 
 from __future__ import annotations
@@ -97,7 +99,7 @@ from omniweave_core.out.ledger import LedgerRow, ledger_digest, write_index
 from omniweave_core.out.plan import PLAN_SCHEMA, OutUnit, Plan
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
     from omniweave_core.blobs import BlobStore
     from omniweave_core.out.card import CompileCard
@@ -242,7 +244,9 @@ class SealedUnit(Protocol):
     def nsig(self) -> str: ...
 
 
-def edit_roster(sealed: Sequence[SealedUnit], brief: Brief) -> tuple[OutUnit, ...]:
+def edit_roster(
+    sealed: Sequence[SealedUnit], brief: Brief, part_of: Callable[[int], str] | None = None
+) -> tuple[OutUnit, ...]:
     """Ruling 10: the sealed roster, each unit naming the unit it edits."""
     return tuple(
         OutUnit(
@@ -250,7 +254,7 @@ def edit_roster(sealed: Sequence[SealedUnit], brief: Brief) -> tuple[OutUnit, ..
             ord=row.ord,
             il_path=row.il_path,
             anchor=brief.anchor(row.unit),
-            source_part=row.il_path,
+            source_part=row.il_path if part_of is None else part_of(row.ord),
             source_nsig=row.nsig,
             source_ord=row.ord,
         )
@@ -271,6 +275,7 @@ def restore(
     table: ConstructTable,
     slug: str,
     artifact_gen: int,
+    parent_gen: int,
     corpus: str,
     traceparent: str,
     clock_ns: int,
@@ -286,7 +291,7 @@ def restore(
             )
     #  Every digest before the first write: none is inside the cleanup's `except` (G8's
     #  `omniweave-no-bare-except-around-identity`), as in `out.job.scaffold()`.
-    units = edit_roster(sealed, brief)
+    units = edit_roster(sealed, brief, card.part_of if card.unit_part else None)
     job = Job(
         schema=JOB_SCHEMA,
         plan=Plan(
@@ -307,6 +312,7 @@ def restore(
             brief_digest=brief.digest(),
             card_sha256=card_sha256,
             toolchain_digest=None,
+            parent_gen=parent_gen,
         ),
         traceparent=traceparent,
         determinism=JobDeterminism(clock_ns),

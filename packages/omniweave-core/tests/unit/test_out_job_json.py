@@ -71,6 +71,7 @@ def _plan(**changes: Any) -> Plan:
         "brief_digest": BRIEF.digest(),
         "card_sha256": "sha256:" + "4" * 64,
         "toolchain_digest": None,
+        "parent_gen": 1,
     }
     fields.update(changes)
     return Plan(**fields)
@@ -125,6 +126,7 @@ def test_every_key_is_written_and_none_is_null() -> None:
     document = _document()
     assert list(document) == ["schema", "plan", "traceparent", "determinism"]
     assert document["plan"]["toolchain_digest"] is None
+    assert document["plan"]["parent_gen"] == 1, "D809: an edit names its parent"
     assert document["plan"]["units"][0]["source_part"] is None
     assert document["plan"]["brief"]["template"] is None
     assert document["plan"]["brief"]["forbidden"] == [{"text": "no clip art", "tier": "user"}]
@@ -195,6 +197,7 @@ def test_an_unknown_key_anywhere_is_refused(path: tuple[Any, ...], said: str) ->
         ((), "traceparent"),
         (("plan",), "cites"),
         (("plan",), "toolchain_digest"),
+        (("plan",), "parent_gen"),
         (("plan", "units", 1), "manual_reason"),
         (("determinism",), "clock_ns"),
         (("plan", "brief"), "template"),
