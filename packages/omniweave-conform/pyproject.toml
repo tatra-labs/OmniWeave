@@ -21,6 +21,13 @@ dependencies = [
   # extra: that is exactly how test-only weight lands in a production install.
 ]
 
+# `ow eval <verb>` reaches this distribution through this group, because `omniweave` may not
+# import it (tools/layers.toml): the Action rows stay in `omniweave`'s ACTIONS whether or not this
+# is installed, and the dispatcher loads the verb by name at call time (10-interfaces.md section
+# 2.5, D512's entry-point route). One entry point per verb; builtin values cross. D833.
+[project.entry-points."omniweave.eval"]
+publish = "omniweave_conform.entry:publish"
+
 # The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
 [tool.hatch.build.targets.wheel]
 packages = ["src/omniweave_conform"]

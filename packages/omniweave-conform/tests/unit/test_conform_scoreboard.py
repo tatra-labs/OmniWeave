@@ -7,7 +7,19 @@ from dataclasses import asdict, replace
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from omniweave_conform.scoreboard import REQUIRED, check, export, stale, unmeasured, unpaired, write
+from omniweave_conform import entry
+from omniweave_conform.scoreboard import (
+    REQUIRED,
+    Publication,
+    check,
+    export,
+    publish,
+    stale,
+    tree,
+    unmeasured,
+    unpaired,
+    write,
+)
 from omniweave_core.drivers.card import MeasuredOn
 from omniweave_core.errors import QualityError
 from omniweave_core.store.oweval import Batch, Corpus, Metric, Run, open_oweval
@@ -371,3 +383,54 @@ def test_export_refuses_a_metric_without_its_partner(tmp_path: Path) -> None:
             export(connection)
     finally:
         connection.close()
+
+
+# --- publish() and its entry point (D833) ----------------------------------------------------
+
+
+def _store(tmp_path: Path) -> Path:
+    metrics = (_metric("r1"), _metric("r1", metric="table_rel_acc"))
+    connection = _oweval(tmp_path, (_run("r1"),), metrics)
+    connection.close()
+    return tmp_path / "e.oweval"
+
+
+def test_publish_lays_the_tree_down_exactly(tmp_path: Path) -> None:
+    oweval, root = _store(tmp_path), tmp_path / "results"
+    stray = root / "parse" / "old.json"
+    stray.parent.mkdir(parents=True)
+    stray.write_bytes(b"[]\n")
+    done = publish(oweval, root, check=False)
+    assert done == Publication(
+        files=("parse/parse.pdf.pdfium.json",),
+        rows=2,
+        changed=("parse/parse.pdf.pdfium.json", "parse/old.json"),
+        written=True,
+    )
+    assert not stray.exists()
+    assert stale(root, tree(root)) == ()
+    again = publish(oweval, root, check=False)
+    assert (again.changed, again.written) == ((), False)
+
+
+def test_publish_check_writes_nothing(tmp_path: Path) -> None:
+    oweval, root = _store(tmp_path), tmp_path / "results"
+    done = publish(oweval, root, check=True)
+    assert (done.changed, done.written) == (("parse/parse.pdf.pdfium.json",), False)
+    assert not root.exists()
+
+
+def test_publish_refuses_a_missing_oweval_rather_than_creating_one(tmp_path: Path) -> None:
+    with pytest.raises(QualityError, match=r"no .oweval at"):
+        publish(tmp_path / "none.oweval", tmp_path / "results", check=False)
+    assert not (tmp_path / "none.oweval").exists()
+
+
+def test_the_entry_point_returns_builtins(tmp_path: Path) -> None:
+    oweval, root = _store(tmp_path), tmp_path / "results"
+    assert entry.publish(oweval=str(oweval), results=str(root), check=False) == {
+        "files": ["parse/parse.pdf.pdfium.json"],
+        "rows": 2,
+        "changed": ["parse/parse.pdf.pdfium.json"],
+        "written": True,
+    }

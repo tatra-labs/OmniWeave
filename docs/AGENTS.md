@@ -50,6 +50,7 @@ key can grant one.
 | `doc.diff` | `ow_diff` | `ow doc diff` | full | `free` | Compare two generations of one document: what carried, what was revised, what is new, and whether the newer generation was quarantined rather than committed |
 | `doc.grid` | `ow_grid` | `ow doc grid` | full | `free` | Read one table as an exactly-once grid: every cell at its slot, the header row and column, and the merges that would otherwise be counted twice |
 | `doctor` | `ow_doctor` | `ow doctor` | full | `free` | Check this deployment: every resolved configuration value with its source, the driver and toolchain probes, and a fix command for every warning |
+| `eval.publish` | — | `ow eval publish` | — | `free` | Export the .oweval scoreboard into the committed eval/results tree, every row whatever its direction, or with --check report which files differ |
 | `explain` | `ow_explain` | `ow explain` | full | `free` | Resolve an OW-* code or symbol to what it means and the exact command that clears it; reads no corpus, so it answers on a machine with no store at all |
 | `graph.doctor` | — | `ow graph doctor` | — | `free` | Check the graph's operability: the residue signals against their thresholds, the trust clamp, the entropy gate, anchor counts, candidate pairs and report states |
 | `graph.locate` | `ow_locate` | `ow graph locate` | full | `free` | Find where on the page an entity, claim, edge or mention was witnessed: one location per witness, with its page, its span and its polygon or the reason none |

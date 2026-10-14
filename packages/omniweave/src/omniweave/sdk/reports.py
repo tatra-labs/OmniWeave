@@ -71,6 +71,7 @@ __all__ = [
     "CorpusCard",
     "DoctorFinding",
     "DoctorReport",
+    "EvalPublishReport",
     "Gap",
     "GraphDoctorReport",
     "HooksCheckReport",
@@ -758,3 +759,20 @@ class ConstructsReport:
     agent_doc_tokens_max: int
     ignore: tuple[str, ...]
     rows: tuple[ConstructListing, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class EvalPublishReport:
+    """What `ow eval publish` returns. D833.
+
+    `files` and `rows` are the export's: every `<suite>/<subject>.json` the `.oweval` publishes,
+    and how many rows they hold. `changed` is Q-G19's byte clause, `scoreboard.stale()`: each
+    file whose committed bytes differed from the export, were missing, or were extra. `written`
+    says whether the tree was rewritten to match. It never is under `--check`, and never when
+    nothing differed.
+    """
+
+    files: tuple[str, ...]
+    rows: int
+    changed: tuple[str, ...]
+    written: bool
