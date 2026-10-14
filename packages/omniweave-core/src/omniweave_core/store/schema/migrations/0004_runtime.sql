@@ -137,6 +137,16 @@ CREATE UNIQUE INDEX work_identity  ON work(unit_uri, unit_part, operator, op_ver
 CREATE INDEX work_claimable ON work(cost_class, status, retry_after, priority DESC,
                                     dispatch_key, id)
   WHERE status IN ('pending','failed_transient');
+-- THE TWO THE SHIPPED CLAIM CAN SEEK (D837). `work_claimable` leads on `cost_class`, which only
+-- 08:2478's wider `claim` constrains; the narrow claim that ships (07:57, store/queue.py) does not,
+-- so it scanned and sorted the whole claimable set twice per claim: 14 ms at the 50,000-row
+-- `queue_high_water` the backpressure holds the queue at (D190). `work_claim_head` serves the
+-- `head` CTE in its own ORDER BY, so LIMIT 1 stops at the first eligible row; `work_claim_key`
+-- seeks the head's `dispatch_key` for the rows claimed beside it. 0.2 ms at the same depth.
+CREATE INDEX work_claim_head ON work(priority DESC, dispatch_key, id)
+  WHERE status IN ('pending','failed_transient');
+CREATE INDEX work_claim_key  ON work(dispatch_key, priority DESC, id)
+  WHERE status IN ('pending','failed_transient');
 CREATE INDEX work_leases ON work(lease_expires) WHERE status = 'claimed';
 CREATE INDEX work_unit   ON work(unit_uri);
 -- NO COUNTER TABLE: `SELECT status, count(*) FROM work GROUP BY status` is exact and cannot drift.
