@@ -11,7 +11,9 @@ W10.7 is the work item.
 
 `export()` builds the tree's files from an `.oweval` connection; `check()` is Q-G19's row clause;
 `stale()` is its byte-diff clause against a committed tree; `write()` lays the files down and
-`tree()` reads them back, for Q-G27 (`omniweave_conform.rot`, D829).
+`tree()` reads them back, for Q-G27 (`omniweave_conform.rot`, D829). `unmeasured()` is Q-G8's
+static half over one committed row (D831): its `measured_on` must construct a `MeasuredOn`, so
+the committed bytes are held to the dataclass's rule by the dataclass itself.
 
 ## Rulings
 
@@ -39,6 +41,7 @@ import json
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any, Final
 
+from omniweave_core.drivers.card import MEASURED_ON_FIELDS, MeasuredOn
 from omniweave_core.errors import QualityError
 from omniweave_core.store.oweval import runs, scoreboard
 
@@ -46,7 +49,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
     from pathlib import Path
 
-__all__ = ["REQUIRED", "check", "export", "stale", "tree", "write"]
+__all__ = ["REQUIRED", "check", "export", "stale", "tree", "unmeasured", "write"]
 
 REQUIRED: Final = (
     "value",
@@ -143,6 +146,33 @@ def write(root: Path, files: Mapping[str, str]) -> None:
         target = root / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(text.encode("utf-8"))
+
+
+def unmeasured(row: Mapping[str, Any]) -> str | None:
+    """Why a committed row's `measured_on` is not a complete ten-field `MeasuredOn`, or `None`.
+
+    Q-G8's static half (13-quality.md:95): *"no committed row without a complete ten-field
+    `MeasuredOn`"*. A missing or extra field is named first, because a `TypeError` from the
+    constructor would name only one; then the row is built, so each value meets
+    `MeasuredOn.__post_init__`'s rule: a non-empty string, and `weights_revision` never `main`.
+    """
+    measured = row.get("measured_on")
+    if not isinstance(measured, dict):
+        return "measured_on is not an object"
+    named = []
+    missing = [name for name in MEASURED_ON_FIELDS if name not in measured]
+    if missing:
+        named.append(f"missing {missing}")
+    extra = sorted(set(measured) - set(MEASURED_ON_FIELDS))
+    if extra:
+        named.append(f"unknown {extra}")
+    if named:
+        return f"measured_on has {' and '.join(named)}"
+    try:
+        MeasuredOn(**measured)
+    except ValueError as exc:
+        return str(exc)
+    return None
 
 
 def _path(suite: str, subject: str) -> str:
