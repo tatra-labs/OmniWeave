@@ -195,10 +195,12 @@ def test_the_actions_with_no_sdk_entry_point_are_the_document_pair_and_the_insta
     (D706). `out.constructs` and `out.scaffold` are gaps too: 18 prints no SDK method for
     either (D762, D765). `out.check` is a gap 10:2191 names without a signature (D766), and
     `out.stamp` and `out.normalize` ones 18 never prints (D767, D768), as are `out.list` (D769),
-    `out.compile` (D773), `out.verify` (D774), `out.back` (D777) and `out.assets` (D778)."""
+    `out.compile` (D773), `out.verify` (D774), `out.back` (D777) and `out.assets` (D778).
+    `eval.publish` is a command 18 never prints as a method (D833)."""
     missing = sorted(name for name, spec in ACTIONS.items() if spec.cli and name not in SDK_HOMES)
     assert missing == [
-        "doc.diff", "doc.grid", "graph.doctor", "graph.locate", "graph.merge", "graph.merges",
+        "doc.diff", "doc.grid", "eval.publish",
+        "graph.doctor", "graph.locate", "graph.merge", "graph.merges",
         "graph.plan", "graph.residue", "graph.review", "graph.split", "graph.types", "graph.why",
         "hooks.check",
         "install", "out.assets", "out.back", "out.check", "out.compile", "out.constructs",

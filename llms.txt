@@ -269,6 +269,8 @@ cli.doc.grid: ow doc grid REF
 cli.doc.grid.actions: doc.grid
 cli.doctor: ow doctor [--runtime]
 cli.doctor.actions: doctor
+cli.eval.publish: ow eval publish [--oweval OWEVAL] [--results RESULTS] [--check]
+cli.eval.publish.actions: eval.publish
 cli.explain: ow explain CODE
 cli.explain.actions: explain
 cli.graph.doctor: ow graph doctor [--check CHECK]

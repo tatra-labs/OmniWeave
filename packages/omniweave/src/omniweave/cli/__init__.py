@@ -107,6 +107,7 @@ GLOBAL_FLAGS: Final[tuple[Argument, ...]] = (
 
 GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
+    "eval": "publish",
     "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
     "hooks": "check",
     "out": (
@@ -237,6 +238,31 @@ COMMANDS: Final[tuple[Command, ...]] = (
         arguments=(
             Argument(
                 spelling=("--runtime",),
+                kind="switch",
+                default=False,
+            ),
+        ),
+    ),
+    Command(
+        words=("eval", "publish"),
+        actions=("eval.publish",),
+        help=(
+            "Export the .oweval scoreboard into the committed eval/results tree, every row "
+            "whatever its direction, or with --check report which files differ"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--oweval",),
+                metavar="OWEVAL",
+                default="eval/omniweave.oweval",
+            ),
+            Argument(
+                spelling=("--results",),
+                metavar="RESULTS",
+                default="eval/results",
+            ),
+            Argument(
+                spelling=("--check",),
                 kind="switch",
                 default=False,
             ),

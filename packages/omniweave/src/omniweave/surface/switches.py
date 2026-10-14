@@ -68,6 +68,7 @@ _ROOTS: Final[tuple[str, ...]] = (
     "corpora",
     "doc",
     "doctor",
+    "eval",
     "explain",
     "graph",
     "hooks",
@@ -98,6 +99,7 @@ READS: Final[Mapping[str, frozenset[str]]] = {
     "doc": _READER,
     "graph": _READER,
     "explain": _READS_ALL | {"render", "quiet"},
+    "eval": _READS_ALL | {"render"},
     "out": _READS_ALL | {"config", "corpus", "render", "quiet"},
     "doctor": _READS_ALL | {"config", "quiet"},
     "serve": _READS_ALL | {"config"},
@@ -112,7 +114,8 @@ READS: Final[Mapping[str, frozenset[str]]] = {
 nothing under `--quiet` (10:1543). `serve` loads `--config`. `out` loads `--config` for
 `[targets] enabled` and the project's `.omniweave/drivers/` (D761), and `--corpus` for
 `ow out scaffold`'s store (D765). `targets` and `constructs` print nothing that depends on
-`--corpus`, so they accept it, as an inert flag is accepted."""
+`--corpus`, so they accept it, as an inert flag is accepted. `eval` reads `--render` for
+`ow eval publish`'s JSON report (D833)."""
 
 INERT: Final[Mapping[str, Mapping[str, str]]] = {
     root: {
@@ -123,7 +126,7 @@ INERT: Final[Mapping[str, Mapping[str, str]]] = {
                 "config": f"`ow {root}` reads no configuration",
                 "corpus": f"`ow {root}` resolves no corpus",
             }
-            if root in ("explain", "surface")
+            if root in ("eval", "explain", "surface")
             else {}
         ),
     }
@@ -136,8 +139,8 @@ INERT: Final[Mapping[str, Mapping[str, str]]] = {
 - `--offline`: 18:897 *"refuses every fetch, a toolchain install included"*. No root but `add`
   routes, and nothing fetches: `ow add` refuses a URL, no toolchain installer exists, and the
   server does step (a) of `ow_add` only (D554).
-- `--config` and `--corpus` on `explain` (`codes.toml`, found from the package) and `surface`
-  (`ACTIONS`)."""
+- `--config` and `--corpus` on `explain` (`codes.toml`, found from the package), `surface`
+  (`ACTIONS`) and `eval` (an `.oweval` and a results tree, both named by path; D833)."""
 
 
 def unserved(root: str, parsed: argparse.Namespace) -> tuple[str, ...]:

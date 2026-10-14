@@ -133,6 +133,7 @@ from omniweave.sdk.reports import (
     ConstructsReport,
     CorporaReport,
     DoctorReport,
+    EvalPublishReport,
     GraphDoctorReport,
     HooksCheckReport,
     InstallReport,
@@ -158,6 +159,7 @@ from omniweave.surface.inputs import (
     CoverageIn,
     DiffIn,
     DoctorIn,
+    EvalPublishIn,
     ExplainIn,
     GraphDoctorIn,
     GraphPlanIn,
@@ -2110,6 +2112,26 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=ArtifactsReport,
             advanced=frozenset(),
             cli=("out", "list"),
+        ),
+        ActionSpec(
+            name="eval.publish",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            destructive=True,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Export the .oweval scoreboard into the committed eval/results tree, every row "
+                "whatever its direction, or with --check report which files differ"
+            ),
+            decision="a nightly or release eval run finished and the scoreboard must move",
+            example={},
+            inp=EvalPublishIn,
+            out=EvalPublishReport,
+            advanced=frozenset(),
+            cli=("eval", "publish"),
         ),
     )
 )
