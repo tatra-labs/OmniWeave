@@ -1,13 +1,26 @@
-"""`omniweave_conform.reduce`: the frozen `shape` Reduction. D817."""
+"""`omniweave_conform.reduce`: the frozen `shape` (D817) and the tracked `pages` and `outline`
+(D818) Reductions."""
 
 from __future__ import annotations
 
+import hashlib
+from collections import Counter
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
-from omniweave_conform.reduce import SHAPE_FORMAT, reduce_shape, shape_counters
+from omniweave_conform.reduce import (
+    OUTLINE_FORMAT,
+    OUTLINE_MAX_PAGES,
+    PAGES_FORMAT,
+    SHAPE_FORMAT,
+    reduce_outline,
+    reduce_pages,
+    reduce_shape,
+    shape_counters,
+)
 from omniweave_core.archive.owdoc import BlockExport, DocHeader, GridRow, RelRow
 from omniweave_core.contract import SCHEMA
+from omniweave_core.limits import MAX_REDUCTION_BYTES
 from omniweave_core.model import (
     Addr,
     Block,
@@ -267,3 +280,150 @@ def test_an_empty_histogram_bucket_is_not_printed() -> None:
     assert "trust.ambiguous" not in counters
     assert "quote.verbatim" not in counters
     assert "rel.kind.caption_of" not in counters
+
+
+# --- pages (D818) ----------------------------------------------------------------------------
+
+
+def _digest(*rows: tuple[str, bytes]) -> str:
+    """Ruling 7's page digest, restated: sha256 over `addr hex` lines, first 8 hex."""
+    return hashlib.sha256("".join(f"{a} {d.hex()}\n" for a, d in rows).encode()).hexdigest()[:8]
+
+
+def _pages(source: Source, **kw: Any) -> str:
+    return reduce_pages(source, corpus="core@2026.09", driver="parse.office.anydoc@0.2.4", **kw)
+
+
+def _outline(source: Source, **kw: Any) -> str:
+    return reduce_outline(source, corpus="core@2026.09", driver="parse.office.anydoc@0.2.4", **kw)
+
+
+def test_the_pages_of_a_small_document() -> None:
+    zero = bytes(16)
+    lines = _pages(_document()).splitlines()
+    assert lines[0].startswith(f"{PAGES_FORMAT}  corpus=core@2026.09  doc={_KEY}  ")
+    assert lines[1:] == [
+        "p0000 n=4 kind{document:1,heading:1,paragraph:2} layer{body:4}"
+        " trust{extracted:3,inferred:1} quote{normalized:2,reflowed:1,synthetic:1}"
+        f" cdig={_digest(('doc', zero), ('p0/0', zero), ('p0/1', zero), ('p0/2', zero))}"
+        f" ldig={_digest(('doc', b''), ('p0/0', b''), ('p0/1', b''), ('p0/2', b''))}"
+        " diag{}",
+        "p0001 n=1 kind{paragraph:1} layer{furniture:1} trust{extracted:1}"
+        f" quote{{normalized:1}} cdig={_digest(('p1/0', zero))} ldig={_digest(('p1/0', b''))}"
+        " diag{}",
+    ]
+
+
+def test_the_page_histograms_sum_to_the_shape() -> None:
+    """The arithmetic the churn classifier will rest on: per-page kinds sum to `shape`'s."""
+    shape = shape_counters(_document())
+    total: Counter[str] = Counter()
+    for line in _pages(_document()).splitlines()[1:]:
+        inner = line.split("kind{", 1)[1].split("}", 1)[0]
+        for pair in filter(None, inner.split(",")):
+            key, value = pair.split(":")
+            total[key] += int(value)
+    assert {f"blocks.kind.{k}": str(v) for k, v in total.items()} == {
+        k: v for k, v in shape.items() if k.startswith("blocks.kind.")
+    }
+
+
+def test_a_paged_diag_lands_on_its_page_and_may_make_one() -> None:
+    source = _document()
+    paged = Source(
+        source.blocks(),
+        diags=[
+            {"code": "OW_X", "page": 1},
+            {"code": "OW_X", "page": 1},
+            {"code": "OW_Y", "page": 7},
+        ],
+    )
+    lines = _pages(paged).splitlines()[1:]
+    assert lines[1].endswith("diag{OW_X:2}")
+    assert lines[2].startswith("p0007 n=0 kind{} layer{} trust{} quote{} cdig=")
+    assert lines[2].endswith("diag{OW_Y:1}")
+
+
+def test_pages_run_in_numeric_order_past_four_digits() -> None:
+    blocks = [_block("p10000/0", page=10_000), _block("p9999/0", page=9_999)]
+    labels = [line.split(" ", 1)[0] for line in _pages(Source(blocks)).splitlines()[1:]]
+    assert labels == ["p9999", "p10000"]
+
+
+def test_a_text_fix_moves_only_its_pages_cdig() -> None:
+    """Section 5.4's `incidental` shape: one digest moves, every count stays."""
+    before = _pages(_document()).splitlines()
+    blocks = list(_document().blocks())
+    blocks[4] = replace(blocks[4], block=replace(blocks[4].block, content_digest=b"\x01" * 16))
+    after = _pages(Source(blocks)).splitlines()
+    assert before[:2] == after[:2]
+    changed = [(b, a) for b, a in zip(before, after, strict=True) if b != a]
+    assert len(changed) == 1
+    old, new = (line.split(" ") for line in changed[0])
+    assert [i for i, (x, y) in enumerate(zip(old, new, strict=True)) if x != y] == [6]
+
+
+def test_pages_over_the_byte_cap_are_one_line() -> None:
+    text = _pages(_document(), max_bytes=100)
+    size = len(_pages(_document()).encode())
+    assert text == f"{PAGES_FORMAT} SUPPRESSED reason=bytes pages=2 would_be_bytes={size}\n"
+
+
+# --- outline (D818) --------------------------------------------------------------------------
+
+
+def test_the_outline_of_a_small_document() -> None:
+    lines = _outline(_document()).splitlines()
+    assert lines[0].startswith(f"{OUTLINE_FORMAT}  corpus=core@2026.09  doc={_KEY}  ")
+    zero = "0" * 8
+    assert lines[1:] == [
+        f"doc document body extracted synthetic {zero} -",
+        f"p0/0 heading body extracted normalized {zero} - SECRET body text",
+        f"p0/1 paragraph body extracted normalized {zero} - SECRET body text",
+        f"p0/2 paragraph body inferred reflowed {zero} - SECRET body text",
+        f"p1/0 paragraph furniture extracted normalized {zero} - SECRET body text",
+    ]
+
+
+def test_an_outline_preview_is_one_line_of_48() -> None:
+    text = "  Master\tServices\n\nAgreement " + "x" * 80
+    block = _block("p0/0", text=text)
+    block = replace(block, block=replace(block.block, layout_digest=bytes.fromhex("aa03f7de" * 4)))
+    line = _outline(Source([block])).splitlines()[1]
+    preview = ("Master Services Agreement " + "x" * 80)[:48]
+    assert line == f"p0/0 paragraph body extracted normalized {'0' * 8} aa03f7de {preview}"
+
+
+def test_the_outline_keeps_the_sources_order() -> None:
+    forward = _outline(_document()).splitlines()[1:]
+    backward = _outline(Source(reversed(tuple(_document().blocks())))).splitlines()[1:]
+    assert backward == forward[::-1]
+
+
+def test_the_outline_is_suppressed_above_five_hundred_pages() -> None:
+    blocks = list(_document().blocks())
+    assert _outline(Source(blocks, page_count=500)).count("\n") == 6
+    assert _outline(Source(blocks, page_count=501)) == (
+        f"{OUTLINE_FORMAT} SUPPRESSED reason=pages pages=501 blocks=5\n"
+    )
+
+
+def test_the_outline_over_the_byte_cap_is_one_line() -> None:
+    size = len(_outline(_document()).encode())
+    assert _outline(_document(), max_bytes=size) == _outline(_document())
+    assert _outline(_document(), max_bytes=size - 1) == (
+        f"{OUTLINE_FORMAT} SUPPRESSED reason=bytes blocks=5 would_be_bytes={size}\n"
+    )
+
+
+def test_the_tracked_kinds_never_count_a_tombstone() -> None:
+    source = _document()
+    tomb = _block("p1/1", page=1, kind=Kind.TABLE, tombstoned=True)
+    with_tomb = Source([*source.blocks(), tomb])
+    assert _pages(with_tomb) == _pages(Source(source.blocks()))
+    assert _outline(with_tomb) == _outline(Source(source.blocks()))
+
+
+def test_the_cap_is_the_registers_and_the_guard_is_five_hundred() -> None:
+    assert MAX_REDUCTION_BYTES == 262_144
+    assert OUTLINE_MAX_PAGES == 500
