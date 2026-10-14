@@ -3,15 +3,19 @@
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 from collections import Counter
 from dataclasses import replace
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from omniweave_conform.churn import Reductions, classify, load_decomposition
 from omniweave_conform.reduce import (
     OUTLINE_FORMAT,
     OUTLINE_MAX_PAGES,
     PAGES_FORMAT,
+    SHAPE_FAMILIES,
     SHAPE_FORMAT,
     reduce_outline,
     reduce_pages,
@@ -427,3 +431,46 @@ def test_the_tracked_kinds_never_count_a_tombstone() -> None:
 def test_the_cap_is_the_registers_and_the_guard_is_five_hundred() -> None:
     assert MAX_REDUCTION_BYTES == 262_144
     assert OUTLINE_MAX_PAGES == 500
+
+
+# --- the families and the classifier, over real Reductions (D819) ----------------------------
+
+_TABLE = Path(__file__).resolve().parents[4] / "fixtures" / "goldens" / "DECOMPOSITION.toml"
+
+
+def test_every_counter_falls_in_one_family_and_every_family_is_written() -> None:
+    """`SHAPE_FAMILIES` is what `shape_counters()` writes, both ways, on a document that
+    exercises every family."""
+    keys = shape_counters(_document())
+    hit = set()
+    for key in keys:
+        families = [f for f in SHAPE_FAMILIES if fnmatch.fnmatchcase(key, f)]
+        assert len(families) == 1, key
+        hit.add(families[0])
+    assert hit == set(SHAPE_FAMILIES)
+
+
+def _reduced(source: Source) -> Reductions:
+    return Reductions(_shape(source), _pages(source), _outline(source))
+
+
+def test_the_classifier_reads_what_the_reducers_write() -> None:
+    """A text fix is `incidental`, an added block `structural`, through the real reducers."""
+    table = load_decomposition(_TABLE)
+    source = _document()
+    blocks = list(source.blocks())
+    fixed = replace(blocks[2], block=replace(blocks[2].block, content_digest=b"\x07" * 16))
+    edited = Source(
+        [*blocks[:2], fixed, *blocks[3:]],
+        rels=source.rels(),
+        grids=source.grids(),
+        diags=source.diags(),
+    )
+    assert classify(_reduced(source), _reduced(edited), table).cls == "incidental"
+    grown = Source(
+        [*blocks, _block("p1/1", page=1, kind=Kind.HEADING)],
+        rels=source.rels(),
+        grids=source.grids(),
+        diags=source.diags(),
+    )
+    assert classify(_reduced(source), _reduced(grown), table).cls == "structural"
