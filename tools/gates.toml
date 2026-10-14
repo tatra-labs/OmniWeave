@@ -572,10 +572,12 @@ release        = true
 # THIS ROW IS RED ON THE MACHINE THAT LANDED IT (D193): peak claimable and supervisor RSS hold --
 # RSS is FLAT in the roster, which is I31 observed rather than asserted -- and `>= 2,000
 # transitions/s` does not. The cause is not the scheduler. `work_claimable` leads on `cost_class`,
-# which the shipped four-parameter `claim` does not constrain, so every claim SCANs and sorts the
+# which the shipped four-parameter `claim` does not constrain, so every claim SCANned and sorted the
 # whole claimable set twice (D190: 11.9 ms at `queue_high_water = 50000`, which is the depth the
-# backpressure holds the queue AT); and a NULL `dispatch_key` claims one row per statement, so
-# `op.identify` pays that whole scan per row (D191). `_next_width()`'s `min()` is the third (D192).
+# backpressure holds the queue AT). D837 added `work_claim_head` and `work_claim_key`, which the
+# claim seeks: 0.28 ms at that depth, and the run went from 81 to 504 transitions/s. What is left
+# is that a NULL `dispatch_key` claims one row per statement, so `op.identify` pays a claim per
+# row (D191), and `_next_width()`'s `min()` (D192); both are rulings owed to the plan.
 #
 # Red is the correct state for it. A nightly cell with `jobs = []` blocks the release (section 7.6
 # step 11) and no merge, and section 6.8 refuses the alternative: "There is no --warn-only

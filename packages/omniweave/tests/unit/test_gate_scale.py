@@ -556,20 +556,15 @@ def test_the_claim_width_table_measures_one_row_per_width_and_costs_less_as_it_w
     assert costs == sorted(costs, reverse=True), "a wider claim costs LESS per row, always"
 
 
-def test_the_queue_depth_table_shows_a_claim_reading_the_whole_claimable_set(
-    tmp_path: Path,
-) -> None:
-    """D190, measured: a claim costs O(claimable), not O(batch), and the plan gives it 0.45 ms.
+def test_the_queue_depth_table_measures_one_claim_at_each_depth(tmp_path: Path) -> None:
+    """The diagnostic's shape: deepest first, forty one-row claims at each depth.
 
-    `work_claimable`'s leading column is `cost_class` and the shipped four-parameter `claim` does
-    not constrain it, so `EXPLAIN QUERY PLAN` reads `SCAN work USING INDEX work_claimable` plus
-    `USE TEMP B-TREE FOR ORDER BY` -- twice, once for the `head` CTE and once for the `picked`
-    subquery. What that predicts is a claim cost that RISES with the depth, and rises roughly
-    linearly, which is what the two assertions below are.
-
-    The depths here are two orders of magnitude below the shipped `queue_high_water = 50,000`,
-    because a unit test that seeded fifty thousand rows would pay the very cost it is asserting.
-    The gate's own defaults are the real ones; this asserts the SHAPE.
+    D190 measured a claim costing O(claimable), because `work_claimable` leads on a column the
+    shipped claim does not constrain, and this test asserted that a deeper queue cost more. D837
+    gave the claim two indexes it seeks, and `test_store_queue.py` now asserts the plan itself.
+    Whether one depth is cheaper than another is timing, and that is the gate's report, not this
+    test's. The depths stay two orders of magnitude below `queue_high_water`, because a unit test
+    that seeded fifty thousand rows would pay a cost it does not assert.
     """
     depths = gate.claim_depths(tmp_path, depths=(250, 2_000), claims=40)
     assert [depth.claimable for depth in depths] == [2_000, 250], "deepest first"
@@ -577,8 +572,6 @@ def test_the_queue_depth_table_shows_a_claim_reading_the_whole_claimable_set(
         assert depth.claims == 40
         assert depth.rows == 40, "one row per claim: a NULL dispatch_key batches alone"
         assert depth.ms_per_claim > 0
-    deep, shallow = depths
-    assert deep.ms_per_claim > shallow.ms_per_claim, "a deeper queue costs MORE per claim"
 
 
 def test_the_depth_probe_uses_its_own_store_and_never_the_verdicts(tmp_path: Path) -> None:
@@ -722,8 +715,8 @@ def test_the_report_renders_both_diagnostic_tables(tmp_path: Path, monkeypatch) 
     )
     monkeypatch.setattr(gate, "run_scale", _returns(measured))
     _code, output = _run(["--roster", "100000", "--root", str(tmp_path)])
-    assert "CLAIM_SQL is O(n), not O(batch)" in output
-    assert "USE TEMP B-TREE FOR ORDER BY" in output
+    assert "CLAIM_SQL seeks two indexes" in output
+    assert "`work_claim_head` and `work_claim_key` (D837)" in output
     assert "n =  50,000" in output
     assert "<- queue_high_water" in output
     assert output.count("<- queue_high_water") == 1, "only the depth that reaches the mark"

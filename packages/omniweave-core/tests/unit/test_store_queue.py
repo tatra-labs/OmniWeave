@@ -294,6 +294,30 @@ def ddl(path: Path, name: str) -> str:
     return "\n".join(line.split("--")[0] for line in text.splitlines())
 
 
+def test_the_claim_seeks_its_two_indexes_and_never_sorts_the_claimable_set(owstore: Path) -> None:
+    """D837, over D190's finding. `work_claimable` leads on `cost_class`, which the narrow claim
+    does not constrain, so the planner scanned and sorted the whole claimable set twice per claim.
+    `work_claim_head` serves the `head` CTE in its own ORDER BY, and `work_claim_key` seeks the
+    head's `dispatch_key`. The one sort left is over the few rows of that one key."""
+    connection = ow.connect(owstore)
+    try:
+        plan = [
+            str(row[-1])
+            for row in connection.execute(
+                f"EXPLAIN QUERY PLAN {CLAIM_SQL}",
+                {"worker": "w", "gen": 1, "lease_ms": 1000, "batch": 8},
+            )
+        ]
+    finally:
+        connection.close()
+    assert "SCAN work USING INDEX work_claim_head" in plan, plan
+    assert "SEARCH w USING INDEX work_claim_key (dispatch_key=?)" in plan, plan
+    assert not [line for line in plan if "work_claimable" in line], plan
+    assert plan.count("USE TEMP B-TREE FOR ORDER BY") == 1, plan
+    head = plan.index("SCAN work USING INDEX work_claim_head")
+    assert plan[head + 1] != "USE TEMP B-TREE FOR ORDER BY", "the head walks its index in order"
+
+
 def test_work_columns_are_exactly_the_columns_the_shipped_ddl_declares(owstore: Path) -> None:
     """`WORK_COLUMNS` is `work`'s column list in DDL order, and `WorkRow`'s fields match it.
 
