@@ -141,9 +141,9 @@ def build(
     slides = [deck.slides.add_slide(blank) for _ in roots]  # first, so a link can jump to any
     by_unit = dict(zip((u.id for u in plan.units), slides, strict=True))
     at: dict[str, dict[str, JsonValue]] = {}
-    for unit, root, made in zip(plan.units, roots, slides, strict=True):
+    for number, (root, made) in enumerate(zip(roots, slides, strict=True), 1):
         if root.el:
-            at[root.el] = {"unit": unit.id}
+            at[root.el] = {"slide": number}
         defined = {n.attr("id") or "": n for n in walk(root) if n.attr("id")}
         em = Emitter(
             rows,
@@ -155,7 +155,7 @@ def build(
             assets,
             _embedder(made),
             _linker(made, by_unit),
-            unit=unit.id,
+            slide=number,
             at=at,
         )
         em.handler(root)(em, root, (root,))

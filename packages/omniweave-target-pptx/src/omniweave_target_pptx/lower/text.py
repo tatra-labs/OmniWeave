@@ -157,9 +157,13 @@ def text_box(em: Emitter, node: CarrierNode, chain: Chain) -> None:
             )
         _end(paragraph, own * m.scale, em.lang)
     if not em.cloning:  # D803: where each addressed run's text landed
+        kept = {"preserve": True} if whitespace(node) else {}  # D804: the reader keeps it too
+        if node.el:
+            em.at[node.el].update(kept)
         for n, _ in nodes:
             if n is not node and n.el:
-                em.at[n.el] = {"unit": em.unit, "shape": shape_id, **_lined(n, found, chains)}
+                em.at[n.el] = {"slide": em.slide, "shape": shape_id, **_lined(n, found, chains)}
+                em.at[n.el].update(kept)
     em.add(made, placed)
 
 

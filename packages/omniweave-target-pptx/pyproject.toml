@@ -25,6 +25,9 @@ dependencies = [
 
 [project.entry-points."omniweave.drivers"]
 "compile.pptx.native" = "omniweave_target_pptx"
+# The read_back (09 section 11): its own package, because an entry point names the package that
+# holds `driver.toml`, and a package holds one.
+"parse.pptx.native" = "omniweave_target_pptx.back"
 
 [project.entry-points."omniweave.targets"]
 "pptx" = "omniweave_target_pptx"

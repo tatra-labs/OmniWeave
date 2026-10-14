@@ -82,8 +82,8 @@ class Emitter:
     """The ids each open `<use>` clones, innermost last: a `<use>` may not reach itself."""
     cloning: int = 0
     """How many `<use>`s deep the walk is: a clone's shapes take no address (D801)."""
-    unit: str = ""
-    """The unit this slide is, each address's `at` (D803)."""
+    slide: int = 0
+    """This slide's number in the deck, 1-based, each address's `at` (D803, D804)."""
     at: dict[str, dict[str, JsonValue]] = field(default_factory=dict)
     """Where each address landed, the deck's, shared by every slide's walk (D803)."""
     next_id: int = FIRST_ID
@@ -117,12 +117,12 @@ class Emitter:
     def name(self, node: CarrierNode, shape_id: int) -> str:
         """A shape's `p:cNvPr` name: its address (`lower.ids`), or its kind and id inside a
         clone, which shares its original's address and may not repeat it. D803: an address is
-        also recorded where it landed, its unit and its shape's id, which the provenance part
+        also recorded where it landed, its slide and its shape's id, which the provenance part
         lists as `at` for the reader."""
         if self.cloning:
             return f"{node.tag.partition('|')[2]} {shape_id}"
         if node.el:
-            self.at[node.el] = {"unit": self.unit, "shape": shape_id}
+            self.at[node.el] = {"slide": self.slide, "shape": shape_id}
         return shape_name(node, shape_id)
 
     def click(self, named: Any) -> None:
