@@ -104,6 +104,7 @@ from omniweave_core.acquire import (
     write_roster,
 )
 from omniweave_core.clock import SystemClock
+from omniweave_core.config import SHIPPED_PASSES
 from omniweave_core.contract import CONTRACT
 from omniweave_core.errors import RouteError, StoreError
 from omniweave_core.events import Stage
@@ -137,6 +138,8 @@ from omniweave.run.manifest import (
     manifest_path,
 )
 from omniweave.run.operators import lexicon as op_lexicon
+from omniweave.run.operators.band import BandQueued, enqueue_band, manifest, put_manifest
+from omniweave.run.operators.billed import BilledQueued, billed_phases, enqueue_billed
 from omniweave.run.operators.derive import DeriveOperator, DerivePlan, is_derive
 from omniweave.run.operators.parse import (
     Ordinals,
@@ -153,6 +156,7 @@ from omniweave.run.routing import (
     route_identified,
     route_layers,
 )
+from omniweave.run.spend_rows import priced
 
 if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from collections.abc import Callable, Mapping, Sequence
@@ -167,10 +171,13 @@ if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from omniweave_core.work import WorkRow
     from omniweave_ports.types import UnitRef
 
+    from omniweave.graph.resolve import Band
     from omniweave.route.evidence import SignalRegistry
     from omniweave.route.policy import RoutePolicy
+    from omniweave.route.spend import PriceBook
     from omniweave.run.dispatch import Batch
     from omniweave.run.manifest import RunStatus, Timings
+    from omniweave.run.operators.band import Manifest
     from omniweave.run.passwords import Passwords
 
 __all__ = [
@@ -372,6 +379,12 @@ class IngestReport:
     """False when they still moved after `GRAPH_ROUNDS` rounds (D691)."""
     salience: op_salience.SalienceReport | None = None
     """STEP 7 after the graph passes: the four salience columns, recounted (D692)."""
+    billed: BilledQueued | None = None
+    """The billed Passes' rows, enqueued after every free Pass's cover is written (D716)."""
+    band: BandQueued | None = None
+    """The LLM band's row, enqueued after `op.resolve` hands the band on (D729)."""
+    bill: Bill | None = None
+    """This generation's bill, when a `PriceBook` priced it (D734)."""
 
     @property
     def settled(self) -> int:
@@ -396,6 +409,12 @@ class IngestReport:
             self.lexicon.names or self.lexicon.moved or self.lexicon.drain
         ):
             out.append(self.lexicon.line())
+        if self.billed is not None:
+            out.extend(self.billed.lines())
+        if self.band is not None:
+            out.extend(self.band.lines())
+        if self.bill is not None:
+            out.append(self.bill.line())
         if self.resolved is not None and self.resolved.shown:
             out.append(self.resolved.line())
         if self.clustered is not None and self.clustered.shown:
@@ -546,6 +565,7 @@ def ingest(
     ignore_evidence_cache: bool = False,
     accept_partial: bool = False,
     passwords: Passwords | None = None,
+    services_root: Path | None = None,
 ) -> IngestReport:
     """Run hops 1-4 over one store, under `store.write`, and report where every unit stopped.
 
@@ -600,6 +620,7 @@ def ingest(
                 ignore_evidence_cache=ignore_evidence_cache,
                 accept_partial=accept_partial,
                 passwords=passwords,
+                services_root=cache_root / "services" if services_root is None else services_root,
             )
             pending = _receipt(thread, source_root=source_root)
         except BaseException:
@@ -747,6 +768,7 @@ def _hops(
     ignore_evidence_cache: bool = False,
     accept_partial: bool = False,
     passwords: Passwords | None = None,
+    services_root: Path,
 ) -> IngestReport:
     now_ns = clock.wall_ns()
     plan_batch = int(config.get("runtime.plan_batch"))  # type: ignore[arg-type]
@@ -776,6 +798,7 @@ def _hops(
         ignore_evidence_cache=ignore_evidence_cache,
         accept_partial=accept_partial,
         passwords=passwords,
+        prices=pricebook(store),
     )
     #  D679: a settled unit whose parse driver moved its key -- a schema_version bump, a
     #  semantic config change -- is read again and re-parsed at its next generation.
@@ -786,13 +809,16 @@ def _hops(
         thread, generation=generation, indexed_at_ns=now_ns, plan_batch=plan_batch
     )
     opened = book.stage(Stage.DISCOVER, opened)
-    context = _context(run_id, generation, config=config, roots=roots, clock=clock)
+    context = _context(
+        run_id, generation, config=config, roots=roots, clock=clock, services_root=services_root
+    )
     enqueued, unsalted = _enqueue(thread, context, plan_batch=plan_batch)
     book.catalog(inputs.catalog.catalog_digest)
     context = replace(
         context,
         policy_digest=inputs.policy.policy_digest,
         catalog_digest=inputs.catalog.catalog_digest,
+        pricebook_digest="" if inputs.prices is None else inputs.prices.digest,
     )
     tally = ParseTally()
     ordinals = Ordinals()
@@ -820,6 +846,10 @@ def _hops(
         )
 
     relexed: sup.RunReport | None = None
+    rebilled: list[sup.RunReport] = []
+    billed: BilledQueued | None = None
+    band: BandQueued | None = None
+    rebanded: sup.RunReport | None = None
     try:
         drained = drain() if enqueued else None
         routed = _route(thread, context, inputs=inputs, roots=roots, clock=clock)
@@ -836,9 +866,21 @@ def _hops(
         #  rows it queued or re-opened, in this run.
         lexicon = _lexicon(thread, context, inputs=inputs, store=store, clock=clock)
         relexed = drain() if lexicon.drain else None
+        #  D716: the billed Passes, once every cheaper Pass's cover is written -- the selector
+        #  reads that ledger -- and before op.resolve, which reads what they extract.
+        #  D724: one place at a time, in (cost_rank, phase) order, each drained before the next is
+        #  enqueued, so a Pass at phase 20 reads the cover a Pass at phase 10 wrote.
+        billed, rebilled = _billed_stage(
+            thread, context, inputs=inputs, config=config, clock=clock, drain=drain
+        )
         #  D684, D690, D691: op.resolve over every entity the drains left, then op.cluster
         #  over the graph it leaves, alternating until neither moves.
         graph = _resolve_and_cluster(thread, generation)
+        #  D729: the band op.resolve could not decide, asked of the model once its graph has
+        #  settled. A `same` answer is a merge the next resolve reads back into the closure.
+        band, rebanded, graph = _band_stage(
+            thread, context, inputs=inputs, store=store, clock=clock, drain=drain, graph=graph,
+        )  # fmt: skip
         #  D692: STEP 7, the salience of what the graph passes left, and GR16's recount in the
         #  same transaction: a disagreement rolls the write back and fails the run.
         salient = cast(
@@ -854,11 +896,15 @@ def _hops(
         )
     finally:
         executor.close()
+    bill = _bill(thread, book, generation, inputs.prices)
     states, parts = _tally(thread, generation)
     formats = _formats(thread, generation)
     waiting = states.get(IDENTIFIED, 0) + states.get(PLANNED, 0)
     #  D683: a batch that crashed left its rows claimed, so the drain ended without them.
-    stopped = any(r is not None and (r.status != "done" or r.crashed) for r in (drained, relexed))
+    stopped = any(
+        r is not None and (r.status != "done" or r.crashed)
+        for r in (drained, relexed, *rebilled, rebanded)
+    )
     status = "partial" if waiting or stopped else "ok"
     return IngestReport(
         run_id=run_id,
@@ -888,6 +934,9 @@ def _hops(
         graph_rounds=graph.rounds,
         graph_settled=graph.settled,
         salience=salient,
+        billed=billed,
+        band=band,
+        bill=bill,
     )
 
 
@@ -932,6 +981,177 @@ def _resolve_and_cluster(thread: ow.StoreThread, generation: int) -> Settled:
     return settle(resolve, cluster, bound=GRAPH_ROUNDS)
 
 
+def _billed_stage(
+    thread: ow.StoreThread,
+    ctx: RunContext,
+    *,
+    inputs: _RoutingInputs,
+    config: Config,
+    clock: Clock,
+    drain: Callable[[], sup.RunReport],
+) -> tuple[BilledQueued | None, list[sup.RunReport]]:
+    """The billed Passes, one place at a time in `(cost_rank, phase)` order (D724).
+
+    Each place is enqueued and drained before the next is enqueued, so a Pass at phase 20 reads
+    the cover a Pass at phase 10 wrote in the same run. `None` and no drain when the plan holds no
+    billed Pass.
+    """
+    derives = _billed_plan(ctx, inputs=inputs)
+    if derives is None:
+        return None, []
+    billed: BilledQueued | None = None
+    drains: list[sup.RunReport] = []
+    for passes in billed_phases(derives):
+        queued = _billed(thread, derives, passes=passes, config=config, clock=clock)
+        billed = queued if billed is None else billed.merged(queued)
+        if sum(queued.queued.values()):
+            drains.append(drain())
+    return billed, drains
+
+
+def _band_stage(
+    thread: ow.StoreThread,
+    ctx: RunContext,
+    *,
+    inputs: _RoutingInputs,
+    store: Path,
+    clock: Clock,
+    drain: Callable[[], sup.RunReport],
+    graph: Settled,
+) -> tuple[BandQueued | None, sup.RunReport | None, Settled]:
+    """The LLM band's row, enqueued and drained, and the graph resolved again when it ran (D728,
+    D729). No row and no drain when the plan holds no merge Pass, so a run that enabled none
+    says nothing about it."""
+    from omniweave_core.blobs import BlobStore  # noqa: PLC0415 -- as `_lexicon`
+
+    derives, _why = DerivePlan.of(inputs.catalog, inputs.resolving, ctx, enable=inputs.passes)
+    if derives is None or derives.merge is None:
+        return None, None, graph
+    band: Sequence[Band] = () if graph.resolved is None else graph.resolved.band
+    found = cast(
+        "Manifest | None",
+        thread.run(
+            ow.Unit(
+                name="band.manifest",
+                run=lambda connection: manifest(connection, band),
+                cost_class="free",
+                wait_ms=BATCH_WAIT_MS,
+            )
+        ),
+    )
+    if found is not None:
+        cas_root = store.parent / CAS_DIR
+        cas_root.mkdir(parents=True, exist_ok=True)
+        put_manifest(BlobStore(cas_root), found)
+    now_ms = clock.wall_ns() // 1_000_000
+    queued = cast(
+        "BandQueued",
+        thread.run(
+            ow.Unit(
+                name="band.enqueue",
+                run=lambda connection: enqueue_band(connection, derives, found, now_ms=now_ms),
+                cost_class="free",
+                wait_ms=BATCH_WAIT_MS,
+            )
+        ),
+    )
+    if not queued.queued:
+        return queued, None, graph
+    drained = drain()
+    return queued, drained, _resolve_and_cluster(thread, ctx.generation)
+
+
+@dataclass(frozen=True, slots=True)
+class Bill:
+    """One generation's bill (D734): what `route_spend` holds for its decisions, in micros."""
+
+    billed_micros: int
+    would_have_been_micros: int
+    """What the hits would have cost at this book: the cache's saving, 08:2298's third number."""
+    currency: str
+
+    def line(self) -> str:
+        return (
+            f"  cost      {self.billed_micros} micros {self.currency} billed; the cache saved "
+            f"{self.would_have_been_micros} more"
+        )
+
+
+def _bill(
+    thread: ow.StoreThread, book: _Book, generation: int, prices: PriceBook | None
+) -> Bill | None:
+    """D734: the generation's bill, summed from `route_spend`, into the manifest's cost block.
+    `None` with no book: nothing was priced, which is not the same as free."""
+    if prices is None:
+        return None
+    row = cast(
+        "tuple[int, int]",
+        thread.run(
+            ow.Unit(
+                name="run.bill",
+                run=lambda c: c.execute(BILL_SQL, {"generation": generation}).fetchone(),
+                cost_class="free",
+                wait_ms=BATCH_WAIT_MS,
+            )
+        ),
+    )
+    bill = Bill(int(row[0]), int(row[1]), prices.currency)
+    book.tally.spent(bill.billed_micros, would_have_been_micros=bill.would_have_been_micros)
+    return bill
+
+
+BILL_SQL: Final = """
+SELECT COALESCE(SUM(s.micros), 0), COALESCE(SUM(s.would_have_been_micros), 0)
+  FROM route_spend AS s
+  JOIN route_decision AS d ON d.decision_id = s.decision_id
+ WHERE d.generation = :generation
+"""
+"""`manifest.BILLED_MICROS_SQL` with the hits' figure beside it, and its D158 limit: a decision a
+later generation re-bills is counted under the generation that first decided it."""
+
+
+def pricebook(store: Path) -> PriceBook | None:
+    """`.omniweave/pricebook.toml`, the operator's `PriceBook` beside the store (05:2386), or `None`
+    when there is none: every attempt is then unpriced, which is not free (D734)."""
+    from omniweave.route.spend import PriceBook  # noqa: PLC0415 -- a priced run only
+
+    path = store.parent / PRICEBOOK_FILE
+    return PriceBook.load(path) if path.is_file() else None
+
+
+def _billed_plan(ctx: RunContext, *, inputs: _RoutingInputs) -> DerivePlan | None:
+    """The run's plan when it holds a billed Pass; `None` when it holds none, so a run that enabled
+    none says nothing about them (D716)."""
+    derives, _why = DerivePlan.of(inputs.catalog, inputs.resolving, ctx, enable=inputs.passes)
+    return derives if derives is not None and derives.billed else None
+
+
+def _billed(
+    thread: ow.StoreThread,
+    derives: DerivePlan,
+    *,
+    passes: tuple[str, ...],
+    config: Config,
+    clock: Clock,
+) -> BilledQueued:
+    """One place's billed Passes' rows over the store the drains so far left (D715, D716, D724)."""
+    floor = float(config.get("graph.llm_coverage_floor"))  # type: ignore[arg-type]
+    now_ms = clock.wall_ns() // 1_000_000
+    return cast(
+        "BilledQueued",
+        thread.run(
+            ow.Unit(
+                name="derive.billed",
+                run=lambda connection: enqueue_billed(
+                    connection, derives, floor=floor, now_ms=now_ms, passes=passes
+                ),
+                cost_class="free",
+                wait_ms=BATCH_WAIT_MS,
+            )
+        ),
+    )
+
+
 def _lexicon(
     thread: ow.StoreThread, ctx: RunContext, *, inputs: _RoutingInputs, store: Path, clock: Clock
 ) -> op_lexicon.LexiconReport:
@@ -940,7 +1160,7 @@ def _lexicon(
 
     cas_root = store.parent / CAS_DIR
     cas_root.mkdir(parents=True, exist_ok=True)
-    derives, _why = DerivePlan.of(inputs.catalog, inputs.resolving, ctx)
+    derives, _why = DerivePlan.of(inputs.catalog, inputs.resolving, ctx, enable=inputs.passes)
     return op_lexicon.rebuild(
         thread, BlobStore(cas_root), now_ms=clock.wall_ns() // 1_000_000, derives=derives
     )
@@ -966,6 +1186,11 @@ class _RoutingInputs:
     """`ow ingest --accept-partial`: a failed structural check does not refuse (D641)."""
     passwords: Passwords | None = None
     """The run's password mapping, read by routing and by the parse Operator (ADR-15 D15.4)."""
+    passes: frozenset[str] = frozenset(SHIPPED_PASSES)
+    """`[graph.passes] enable`: with `[drivers] enabled`, what gates a billed Pass (D714)."""
+    prices: PriceBook | None = None
+    """The `PriceBook` beside the store, when there is one (D734): its digest enters each
+    decision's identity, and the runner prices every attempt through it."""
 
 
 def _parse_keys(inputs: _RoutingInputs) -> dict[str, tuple[int, str]]:
@@ -1006,6 +1231,7 @@ def _routing_inputs(config: Config, *, offline: bool = False) -> _RoutingInputs:
         policy=compile_policy(route_layers(config), registry=registry),
         resolving=resolve_policy(config, offline=offline),
         computers=dict(installed.computers),
+        passes=frozenset(str(p) for p in config.get("graph.passes.enable")),  # type: ignore[union-attr]
     )
 
 
@@ -1125,15 +1351,28 @@ def row_as_explicit(row: RosterRow) -> RosterRow:
 
 
 def _context(
-    run_id: str, generation: int, *, config: Config, roots: Roots, clock: Clock
+    run_id: str,
+    generation: int,
+    *,
+    config: Config,
+    roots: Roots,
+    clock: Clock,
+    services_root: Path,
 ) -> RunContext:
-    """The `RunContext` for hop 4. Four fields are `None`, and the type says each is unread.
+    """The `RunContext` for hop 4. Three fields are `None`, and the type says each is unread.
 
-    `limits`, `services`, `budget` and `events` are what a parse, a model call, a billed admission
-    and a trace would read, and `op.identify` is none of them: it is free, core-only, and its answer
-    is a store column (08:861). `admission` is the loop's own and is set by `_drain()`. A plausible
-    stub for any of them would claim a coverage this run does not have.
+    `limits`, `budget` and `events` are what a parse, a billed admission and a trace would read, and
+    `op.identify` is none of them: it is free, core-only, and its answer is a store column (08:861).
+    `admission` is the loop's own and is set by `_drain()`. A plausible stub for any of them would
+    claim a coverage this run does not have.
+
+    **`services` is the run's `ServiceRegistry`** (D713), over every `[services.<name>]` table.
+    Building it attaches nothing (08:1179): a Service is attached on the first call that names it.
+    `services_root` is where sentinels are read from; `ow ingest` and `ow add` pass
+    `$OMNIWEAVE_HOME/services`, and a caller with no home keeps them beside its cache.
     """
+    from omniweave_core.modelserver import ServiceRegistry, service_specs  # noqa: PLC0415
+
     return RunContext(
         run_id=run_id,
         generation=generation,
@@ -1146,7 +1385,11 @@ def _context(
         catalog_digest="",
         limits=None,  # type: ignore[arg-type]
         admission=None,  # type: ignore[arg-type]
-        services=None,  # type: ignore[arg-type]
+        services=ServiceRegistry(
+            service_specs(config),
+            services_root=services_root,
+            config_digest=config.config_digest,
+        ),
         budget=None,  # type: ignore[arg-type]
         cancel=CancelToken("run", run_id, clock),
         clock=clock,
@@ -1348,7 +1591,7 @@ class _Executors:
     it recorded -- `IdentifyLedger`'s docstring: *"the map is the dispatch"*.
     """
 
-    __slots__ = ("_identify", "_identify_ledger", "_parse", "_parse_ledger")
+    __slots__ = ("_identify", "_identify_ledger", "_parse", "_parse_ledger", "prices")
 
     def __init__(
         self,
@@ -1361,6 +1604,7 @@ class _Executors:
         tally: ParseTally,
         ordinals: Ordinals | None = None,
     ) -> None:
+        self.prices = inputs.prices
         self._identify_ledger = expand.IdentifyLedger()
         self._parse_ledger = ParseLedger()
         self._identify = _Identify(thread, self._identify_ledger)
@@ -1455,7 +1699,9 @@ class _ParseLazily:
             routing = cast("_RoutingInputs", inputs)
             segments, why = SegmentPlan.of(routing.catalog, routing.resolving, ctx)  # type: ignore[arg-type]
             cast("ParseTally", tally).segment_skipped = why
-            self._derives, skipped = DerivePlan.of(routing.catalog, routing.resolving, ctx)  # type: ignore[arg-type]
+            self._derives, skipped = DerivePlan.of(
+                routing.catalog, routing.resolving, cast("RunContext", ctx), enable=routing.passes
+            )
             cast("ParseTally", tally).derive_skipped = skipped
             self._operator = ParseOperator(
                 thread,  # type: ignore[arg-type]
@@ -1483,6 +1729,8 @@ CAS_DIR: Final[str] = "cas"
 `roots.cache/cas/...`; the two are not the same path under the shipped `roots.cache =
 ".omniweave/cache"`, and the store documents win because the CAS is what `asset.store_ref` and
 `part.store_ref` point into, which is the store's contract (D582)."""
+PRICEBOOK_FILE: Final[str] = "pricebook.toml"
+"""`.omniweave/pricebook.toml` (05:2386): the operator's `PriceBook`, beside the store (D734)."""
 
 
 class _Forgetting:
@@ -1518,6 +1766,10 @@ class _Forgetting:
 
     def reap_expired_leases(self, now_ms: int) -> int:
         return self._inner.reap_expired_leases(now_ms)
+
+    def extend_live_leases(self, holder: str, now_ms: int, until_ms: int) -> tuple[int, ...]:
+        """D719: the drain's own expired claims, extended rather than reaped."""
+        return self._inner.extend_live_leases(holder, now_ms, until_ms)
 
     def counts_by_status(self) -> Mapping[str, int]:
         return self._inner.counts_by_status()
@@ -1558,7 +1810,12 @@ async def _drain(
         )
     )
     queue = _Forgetting(
-        SqliteStore(thread, wait_ms=BATCH_WAIT_MS, derived_rows=executors.contribution),
+        SqliteStore(
+            thread,
+            wait_ms=BATCH_WAIT_MS,
+            derived_rows=executors.contribution,
+            spend_row=priced(executors.prices),
+        ),
         executors,
         tally,
     )

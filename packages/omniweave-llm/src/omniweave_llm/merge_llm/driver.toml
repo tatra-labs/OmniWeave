@@ -1,0 +1,97 @@
+# derive.merge.llm -- the resolution funnel's [75, 92) band. 06 section 2.3's row 13; 5.1 stage [8]. D726.
+card_schema = 1
+
+[driver]
+id = "derive.merge.llm"
+port = "derive/1"
+version = "0.1.0"
+schema_version = 1
+entrypoint = "omniweave_llm.merge_llm.driver:MergeLLM"
+granularity = "corpus"             # 04:727: a batch's pairs come from entities across the corpus.
+replay_class = "unpinnable"        # A hosted model's answer is not reproducible from its inputs.
+title = "Entity merges in the ambiguous band by a language model (billed)"
+summary = "Up to thirty entity pairs from the resolution funnel's [75, 92) band in one prompt, each side a surface, a type and its other names and no identifier, each answered by its position: same or not, with a reason."
+
+[capability]
+consumes = []                      # The host's pair batch (merge ruling 1).
+produces = ["graph_items", "witness_set"]   # 04:2519: a billed corpus driver emits its witness set.
+
+[capability.derive]
+items = []                         # A decision is an entity_merge row, not an item the wire carries.
+grounding = "none"                 # A decision cites no block.
+relations = "none"
+schema = "json_schema"             # 06:1464-1473, strict.
+confidence = "none"                # 06:1376-1385: never a self-reported number.
+coreference = false
+scripts = ["Latin"]                # The authored role text is English.
+scope_honoured = true
+
+[derive]
+implemented = true
+phase = 30                         # 06 section 2.3's row 13: rank 2, phase 30.
+max_items_per_segment = 30         # One decision per pair, LLM_BATCH pairs a batch.
+prompt_version = "1"                # The authored role text's revision; prompt_fp is the rendered one.
+schema_path = "schemas/merge.json"
+
+[hardware]
+gpu            = "none"            # The model is the service's, not this process's.
+vram_gb_min    = 0
+ram_gb_min     = 0.25
+cpu_arch       = ["x86_64", "aarch64"]
+os             = ["linux", "darwin", "windows"]
+needs_network  = true              # It posts to a model server; the egress hook must not arm.
+needs_binaries = []
+imports_torch  = false
+install_bytes  = 60000
+services       = ["model:llm"]
+
+[isolation]
+requires        = "subproc"
+memory_mb       = 512
+# D718's timing, as the extraction lanes have it: PROGRESS comes between batches and never inside
+# one model call, so the watchdog must outlast one call at the Service's request_timeout_s.
+progress_ms     = 600000
+wall_ms_hard    = 2400000
+batch_max_units = 4
+
+[limits]
+max_input_bytes = 134217728
+max_parts       = 1
+
+[licence.code]
+spdx = "Apache-2.0"
+redistribution = "allowed"
+output_share_alike = false
+competitor_bar = false
+requires_credential = false
+revenue_gate_usd = 0
+mau_gate = 0
+territory_excluded = []
+field_of_use_excluded = []
+attribution_per_output = false
+no_model_training = false
+remote_kill_switch = false
+clause_refs = []
+
+[deps]
+pins = []
+
+[config]
+type = "object"
+additionalProperties = false
+required = []
+
+[config.properties.service]
+type = "string"
+maxLength = 64
+default = "llm"                    # The [services.<name>] table the model is behind.
+
+[cost.model]
+class   = "billed_api"             # 06 section 2.3: the model is hosted and priced per token.
+shape   = "linear_per_part"
+unit    = "part"                   # One batch is one part.
+per_part    = { tokens_in = 2100, tokens_out = 240, calls = 1 }   # 06:842, per 30-pair batch.
+per_session = { }
+scaling     = { key = "input_bytes", exponent = 1.0, reference = 4096 }
+tokens_out_p95_multiple = 1.5      # Thirty decisions with reasons bounded at 200 characters.
+max_retries = 0

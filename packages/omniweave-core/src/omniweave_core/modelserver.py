@@ -122,6 +122,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Sequence
     from pathlib import Path
 
+    from omniweave_core.config import Config
+
 __all__ = [
     "BASELINE_MAX_BATCHED_TOKENS",
     "BASELINE_MAX_NUM_SEQS",
@@ -149,6 +151,9 @@ __all__ = [
     "sentinel_name",
     "server_argv",
     "service_capacity",
+    "service_name",
+    "service_specs",
+    "services_root",
 ]
 
 
@@ -420,8 +425,11 @@ class ServiceProbe(Protocol):
         """Whether `{base_url}/health` answered. Never raises: unreachable is an answer."""
         ...
 
-    def model_id(self, base_url: str, *, token: str, timeout_s: float) -> str:
-        """The id `{base_url}/v1/models` reports, or `""` when it could not be read."""
+    def model_id(self, base_url: str, *, token: str, timeout_s: float, wanted: str = "") -> str:
+        """The id `{base_url}/v1/models` reports for `wanted`, or `""` when it could not be read.
+
+        `wanted` when the server lists it, else the first id it lists (D717).
+        """
         ...
 
 
@@ -736,7 +744,8 @@ def _attach_pinned(spec: ServiceSpec, endpoint: str, *, probe: ServiceProbe) -> 
     timeout = float(spec.request_timeout_s)
     if not probe.healthy(endpoint, token="", timeout_s=timeout):
         raise refuse_unreachable(spec, endpoint)
-    refuse_unverified(spec, probe.model_id(endpoint, token="", timeout_s=timeout), where="endpoint")
+    reported = probe.model_id(endpoint, token="", timeout_s=timeout, wanted=spec.model_id)
+    refuse_unverified(spec, reported, where="endpoint")
     return Attachment(
         spec=spec,
         base_url=endpoint,
@@ -755,7 +764,9 @@ def _attach_sentinel(spec: ServiceSpec, path: Path, *, probe: ServiceProbe) -> A
     timeout = float(spec.request_timeout_s)
     if not probe.healthy(sentinel.base_url, token=sentinel.token, timeout_s=timeout):
         return None
-    reported = probe.model_id(sentinel.base_url, token=sentinel.token, timeout_s=timeout)
+    reported = probe.model_id(
+        sentinel.base_url, token=sentinel.token, timeout_s=timeout, wanted=spec.model_id
+    )
     refuse_unverified(spec, reported, where="sentinel's server")
     return Attachment(
         spec=spec,
@@ -776,6 +787,10 @@ def _attach_sentinel(spec: ServiceSpec, path: Path, *, probe: ServiceProbe) -> A
 HTTP_OK: Final = 200
 HTTP_REDIRECT: Final = 300
 """The 2xx band `/health` has to answer in. A refused connection reports 0 and is not in it."""
+
+
+_NOT_FOUND: Final = 404
+"""The status a server that answered gives for a path it does not serve (D717)."""
 
 
 def _ok(status: int) -> bool:
@@ -831,11 +846,20 @@ class HttpProbe:
     __slots__ = ()
 
     def healthy(self, base_url: str, *, token: str, timeout_s: float) -> bool:
-        """`GET /health`. Any 2xx is up; anything else, a refused connection included."""
+        """`GET /health`. Any 2xx is up; anything else, a refused connection included.
+
+        **D717: a server that answers and serves no `/health` is up when `/v1/models` is.**
+        Ollama and LM Studio are OpenAI-compatible and serve no `/health`, so they answer it 404.
+        A 404 is a server that answered, which a refused connection is not. So on a 404 alone,
+        the models path is the health check, and its 2xx is the same evidence of a live server.
+        Any other answer, and no answer, stays down.
+        """
         status, _ = self._get(base_url, HEALTH_PATH, token=token, timeout_s=timeout_s)
+        if status == _NOT_FOUND:
+            status, _ = self._get(base_url, MODELS_PATH, token=token, timeout_s=timeout_s)
         return _ok(status)
 
-    def model_id(self, base_url: str, *, token: str, timeout_s: float) -> str:
+    def model_id(self, base_url: str, *, token: str, timeout_s: float, wanted: str = "") -> str:
         """`GET /v1/models` and the reported id, or `""` when it could not be read.
 
         `""` rather than a raise for the same reason `healthy()` does not raise: the disposition
@@ -844,19 +868,24 @@ class HttpProbe:
         wrong thing."*
 
         The shape is OpenAI's `{"data": [{"id": ...}]}`, which is what a vLLM-compatible server
-        serves and what surya's clients read. A first element and no more: a server hosting several
-        models is a server this Service did not ask for, and taking the first is how the mismatch
-        becomes visible to the check rather than being searched for.
+        serves and what surya's clients read.
+
+        **D717: `wanted` when the server lists it, else the first id.** A spawned engine serves one
+        model, and its first id is the one it runs, so a mismatch is still the first id. An
+        attached Ollama lists every model pulled, in an order of its own. Each request names its
+        model (`ServiceHandle.model_id`), so the server answers with the configured model when it
+        lists it. Taking the first would refuse a server that serves the configured model.
         """
         status, body = self._get(base_url, MODELS_PATH, token=token, timeout_s=timeout_s)
         if not _ok(status):
             return ""
         try:
-            payload = json.loads(body)
-            data = payload["data"]
-            return str(data[0]["id"])
-        except (ValueError, KeyError, IndexError, TypeError):
+            ids = [str(one["id"]) for one in json.loads(body)["data"]]
+        except (ValueError, KeyError, TypeError):
             return ""
+        if wanted and wanted in ids:
+            return wanted
+        return ids[0] if ids else ""
 
     def _get(self, base_url: str, path: str, *, token: str, timeout_s: float) -> tuple[int, bytes]:
         """One GET. Returns `(status, body)`; a connection failure is `(0, b"")`."""
@@ -918,6 +947,10 @@ class Handle:
         request_timeout_s)` of"*: a deadline that outlived the run's would let a driver hold a slot
         past cancellation, and a `request_timeout_s` ignored in favour of a long deadline would let
         one wedged request hold it forever.
+
+        **A `deadline_ms` of 0 is no deadline (D712)**, as `subproc.Deadlines` reads it, so
+        `request_timeout_s` alone bounds the request. Taking the `min` with 0 would make every
+        request from a call with no deadline time out before it connects.
         """
         import http.client  # noqa: PLC0415 -- see the module docstring: one import, two sites.
 
@@ -928,7 +961,11 @@ class Handle:
             "Content-Type": "application/json",
         }
         sent.update(headers or {})
-        timeout = min(self._timeout_s, max(0.0, self.deadline_ms / 1000))
+        timeout = (
+            self._timeout_s
+            if self.deadline_ms == 0
+            else min(self._timeout_s, max(0.0, self.deadline_ms / 1000))
+        )
         connection = http.client.HTTPConnection(host, port, timeout=timeout)
         try:
             connection.request("POST", path, body=body, headers=sent)
@@ -957,6 +994,83 @@ class Handle:
         for a test and the wrong one for a run -- so `ServiceRegistry` always supplies one.
         """
         return self._cancelled()
+
+    @property
+    def request_timeout_s(self) -> float:
+        """The Service's `request_timeout_s`, which bounds every `post()` (D713).
+
+        Read when a grant is made (`subproc.ServiceGrant.of`): a worker rebuilds this handle from
+        the grant, and its `post()` is bounded by the same timeout as this one.
+        """
+        return self._timeout_s
+
+
+SERVICE_PREFIX: Final = "model:"
+"""How a card's `[hardware] services` entry names a model Service: `model:<name>` (05:2456)."""
+
+
+def service_name(declared: str) -> str:
+    """The `[services.<name>]` a card's `[hardware] services` entry names (D713).
+
+    05:2456 and the shipped cards spell an entry `model:<name>`. The prefix says what kind of
+    Service it is, and the rest is the table's name. An entry without the prefix is the name itself.
+    """
+    return declared.removeprefix(SERVICE_PREFIX)
+
+
+def service_specs(config: Config) -> dict[str, ServiceSpec]:
+    """Every `[services.<name>]` table as a `ServiceSpec`: what the run's registry is built from.
+
+    **D713.** `Config.subkeys("services")` is the set (02 section 8.4 decision (f)), and the eight
+    declared keys are the fields. The spec's other fields keep their defaults, because no config
+    key sets them yet. A table without `model_id` or `model_revision` never reaches here: startup
+    refuses it, naming the key. A revision of `main` does reach here, and `ServiceSpec` refuses it.
+    """
+    from omniweave_core.config import join_key  # noqa: PLC0415 -- config imports none of this
+
+    specs: dict[str, ServiceSpec] = {}
+    for name in config.subkeys("services"):
+        values = {key: config.get(join_key(("services", name, key))) for key in _SPEC_KEYS}
+        specs[name] = ServiceSpec(
+            name=name,
+            model_id=str(values["model_id"]),
+            model_revision=str(values["model_revision"]),
+            endpoint=str(values["endpoint"]),
+            autostart=bool(values["autostart"]),
+            capacity=int(values["capacity"]),  # type: ignore[arg-type]
+            batch_wait_ms=int(values["batch_wait_ms"]),  # type: ignore[arg-type]
+            max_batch=int(values["max_batch"]),  # type: ignore[arg-type]
+            keep_alive_s=int(values["keep_alive_s"]),  # type: ignore[arg-type]
+        )
+    return specs
+
+
+_SPEC_KEYS: Final = (
+    "model_id",
+    "model_revision",
+    "endpoint",
+    "autostart",
+    "capacity",
+    "batch_wait_ms",
+    "max_batch",
+    "keep_alive_s",
+)
+"""The eight `services.*` keys `config.py` declares, each a `ServiceSpec` field of the same name."""
+
+
+def services_root(env: Mapping[str, str]) -> Path | None:
+    """`$OMNIWEAVE_HOME/services`, else `~/.omniweave/services`, read from `env` (D713).
+
+    Where the sentinels and the server logs live (08:1060). It follows `config.py`'s rule for the
+    user's config file, and `None` when `env` names no home, so the caller decides what to use.
+    """
+    from pathlib import Path  # noqa: PLC0415 -- the TYPE_CHECKING import is the annotation's
+
+    home = env.get("OMNIWEAVE_HOME")
+    if home:
+        return Path(home) / "services"
+    user = env.get("HOME") or env.get("USERPROFILE")
+    return Path(user) / ".omniweave" / "services" if user else None
 
 
 ServiceHandle = Handle

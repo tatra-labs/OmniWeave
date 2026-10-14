@@ -145,6 +145,7 @@ __all__ = [
     "decision_of",
     "inproc_host",
     "prober",
+    "spend_of",
     "subproc_host",
     "verdict_of",
     "with_budget",
@@ -1380,9 +1381,32 @@ def subproc_host(source: WorkerSource) -> Handler:
             outcomes=outcomes,
             report=report,
             produced=tuple(() if one.result is None else one.result.produced for one in answered),
+            spend=tuple(spend_of(one.result) for one in answered),
         )
 
     return host
+
+
+def spend_of(result: DriverResult | None) -> Spend:
+    """A unit's Spend, as its driver measured it in `DriverMetrics` (D730).
+
+    The seven physical units carry over field for field, and nothing is priced (INV-15). A unit
+    with no result spent nothing a driver reported: its `HostVerdict` is the record of what
+    happened. Before D730 both hosts left `Reply.spend` empty, so every run wrote a zero Spend and
+    the call span carried none, whatever the model had been sent.
+    """
+    if result is None:
+        return Spend()
+    m = result.metrics
+    return Spend(
+        wall_ms=m.wall_ms,
+        cpu_ms=m.cpu_ms,
+        gpu_ms=m.gpu_ms,
+        tokens_in=m.tokens_in,
+        tokens_out=m.tokens_out,
+        calls=m.calls,
+        bytes_egress=m.bytes_egress,
+    )
 
 
 # =============================================================================================
@@ -1475,6 +1499,7 @@ def inproc_host(source: GuardSource) -> Handler:
             outcomes=tuple(_outcome_of(r, v) for r, v in zip(results, failures, strict=True)),
             report=report,
             produced=tuple(() if one is None else one.produced for one in results),
+            spend=tuple(spend_of(one) for one in results),
         )
 
     return host

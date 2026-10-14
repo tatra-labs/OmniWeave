@@ -315,7 +315,10 @@ def test_the_ledger_settles_a_success_fails_a_permanent_and_leaves_a_transient()
 
 def _operator(tmp_path: Path, store: Path, config: Config, thread: ow.StoreThread) -> ParseOperator:
     roots = Roots(source=tmp_path, output=tmp_path / "out", cache=tmp_path / ".omniweave" / "cache")
-    ctx = ingest_module._context("r_test", 2, config=config, roots=roots, clock=SystemClock())
+    ctx = ingest_module._context(
+        "r_test", 2, config=config, roots=roots, clock=SystemClock(),
+        services_root=tmp_path / "services",
+    )  # fmt: skip
     cas = store.parent / "cas"
     cas.mkdir(exist_ok=True)
     return ParseOperator(

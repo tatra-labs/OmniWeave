@@ -1516,3 +1516,39 @@ def test_a_finished_batch_wakes_the_claimer() -> None:
     report, seconds = _timed(built)
     assert report.completed == 2
     assert seconds < 2.0, f"{seconds:.2f} s: the second stage waited for a sweep"
+
+
+def test_the_reaper_extends_its_own_expired_claims_before_it_reaps() -> None:
+    """D719, 08:462-470: this loop's claims are extended and named, never stolen; then the reap."""
+    calls: list[tuple[str, str, int, int]] = []
+
+    class Extending(FakeQueue):
+        def extend_live_leases(self, holder: str, now_ms: int, until_ms: int) -> tuple[int, ...]:
+            calls.append(("extend", holder, now_ms, until_ms))
+            return (11, 12)
+
+        def reap_expired_leases(self, now_ms: int) -> int:
+            calls.append(("reap", "", now_ms, 0))
+            return super().reap_expired_leases(now_ms)
+
+    queue = Extending(reaps=1)
+    supervisor, _, events = harness(
+        queue, worker="host:7:8", timings=loop_timings(lease_extend_ms=5)
+    )
+    kept, reaped = supervisor._lease_sweep(1_000)
+    supervisor._count_sweep(kept, reaped)
+    assert [c[0] for c in calls] == ["extend", "reap"], "the extension first, then the reap"
+    assert calls[0][1:] == ("host:7:8", 1_000, 1_005), "this loop's claims, by lease_extend_ms"
+    assert (supervisor._extended, supervisor._reaped) == (2, 1)
+    assert (supervisor._report().extended, supervisor._report().reaped) == (2, 1)
+    assert [f for k, f in events if k == "work.lease_extend"] == [
+        {"work_id": 11, "lease_ms": 5},
+        {"work_id": 12, "lease_ms": 5},
+    ]
+
+
+def test_a_queue_that_cannot_extend_is_only_reaped() -> None:
+    queue = FakeQueue(reaps=3)
+    supervisor, _, events = harness(queue)
+    assert supervisor._lease_sweep(1_000) == ((), 3)
+    assert "work.lease_extend" not in kinds(events)

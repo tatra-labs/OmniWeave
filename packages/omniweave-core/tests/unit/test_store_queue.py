@@ -1255,3 +1255,73 @@ def test_a_decision_is_required_of_every_routed_row_but_a_free_derive_one(
                 connection.execute(_WORK_SQL, params)
     finally:
         connection.close()
+
+
+# ---------------------------------------------------------------------------------------------
+# D719: a live holder's expired lease is extended, never stolen (08:462-470)
+# ---------------------------------------------------------------------------------------------
+
+
+def _reserve(owstore: Path, *work_ids: int) -> None:
+    connection = ow.connect(owstore)
+    try:
+        connection.execute(
+            "INSERT INTO run(run_id, generation, trigger, argv, config_digest, semantic_digest,"
+            " policy_digest, pricebook_digest, lock_digest, omniweave_version, contract, schema,"
+            " started_ns, status, manifest_path)"
+            " VALUES('r_1', 1, 'cli', '[]', 'c', 's', 'p', 'pb', 'l', '0.1', 1, 1, 1,"
+            " 'running', 'm')"
+        )
+        for index, work_id in enumerate(work_ids):
+            connection.execute(
+                "INSERT INTO budget_reservation(reservation_id, run_id, work_id, decision_id,"
+                " dim, amount, scope, scope_key, claimed_gen, expires_ms, state)"
+                " VALUES(?, 'r_1', ?, ?, 'micros', 10, 'run', '', 7, 1, 'held')",
+                (f"res_{index}", work_id, f"dec_p{index}"),
+            )
+    finally:
+        connection.close()
+
+
+def test_a_live_holders_expired_lease_is_extended_and_only_the_others_are_reaped(
+    owstore: Path, opened: tuple[SqliteStore, ow.StoreThread]
+) -> None:
+    """D719: the live holder's rows and their reservations move to `until`; a dead one's reap."""
+    store, _ = opened
+    seed(owstore, [Queued(part="p0"), Queued(part="p1", dispatch_key="dk2")])
+    [mine] = store.claim(batch=1, gen=7, worker=WORKER, lease_ms=1_000)
+    [theirs] = store.claim(batch=1, gen=7, worker="gone:99:1.0", lease_ms=1_000)
+    _reserve(owstore, mine.id, theirs.id)
+    now = max(int(read_work(owstore, r.id)["lease_expires"]) for r in (mine, theirs)) + 1  # type: ignore[call-overload]
+    until = now + 60_000
+
+    assert store.extend_live_leases(WORKER, now, until) == (mine.id,)
+    assert read_work(owstore, mine.id)["lease_expires"] == until
+    expires = "SELECT expires_ms FROM budget_reservation WHERE reservation_id = ?"
+    assert (scalar(owstore, expires, ("res_0",)), scalar(owstore, expires, ("res_1",))) == (
+        until,
+        1,
+    )
+    assert store.reap_expired_leases(now) == 1
+    assert (read_work(owstore, mine.id)["status"], read_work(owstore, theirs.id)["status"]) == (
+        "claimed",
+        "pending",
+    )
+    state = "SELECT state FROM budget_reservation WHERE reservation_id = ?"
+    assert (scalar(owstore, state, ("res_0",)), scalar(owstore, state, ("res_1",))) == (
+        "held",
+        "released",
+    )
+
+
+def test_a_live_holders_unexpired_lease_is_left_where_it_is(
+    owstore: Path, opened: tuple[SqliteStore, ow.StoreThread]
+) -> None:
+    """One extension per expiry: a lease still running is not pushed out ahead of time."""
+    store, _ = opened
+    seed(owstore, [Queued(part="p0")])
+    [mine] = store.claim(batch=1, gen=7, worker=WORKER, lease_ms=600_000)
+    lease = int(read_work(owstore, mine.id)["lease_expires"])  # type: ignore[call-overload]
+    assert store.extend_live_leases(WORKER, lease, lease + 60_000) == ()
+    assert read_work(owstore, mine.id)["lease_expires"] == lease
+    assert store.extend_live_leases("another:1:1.0", lease + 1, lease + 60_000) == ()

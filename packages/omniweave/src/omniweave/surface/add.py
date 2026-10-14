@@ -131,6 +131,7 @@ def _add(
 ) -> int:
     from omniweave_core.acquire import add_sources  # noqa: PLC0415 -- a usage error never pays
     from omniweave_core.clock import SystemClock  # noqa: PLC0415
+    from omniweave_core.modelserver import services_root  # noqa: PLC0415
 
     from omniweave.run import discover  # noqa: PLC0415
     from omniweave.run.routing import max_parts_of  # noqa: PLC0415
@@ -170,6 +171,7 @@ def _add(
             sweep_ms=sweep_ms,
             offline=parsed.offline,
             passwords=passwords,
+            services_root=services_root(env),
         )
         if not parsed.quiet:
             #  10:1565: a long verb's progress is stderr's, so stdout stays the report alone.
@@ -257,6 +259,7 @@ def _drain(
     sweep_ms: int | None,
     offline: bool = False,
     passwords: Passwords | None = None,
+    services_root: Path | None = None,
 ) -> tuple[str, ...]:
     """Step (b): the drain `ow ingest <path>...` runs, over the paths (a) just rostered.
 
@@ -277,6 +280,7 @@ def _drain(
         sweep_ms=sweep_ms,
         offline=offline,
         passwords=passwords,
+        services_root=services_root,
     )
     return report.lines()
 

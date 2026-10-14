@@ -11,7 +11,9 @@ sockets afterwards. The hook itself, and the whole host-to-worker conversation t
 from __future__ import annotations
 
 import hashlib
+import http.server
 import io
+import json
 import os
 import socket
 import subprocess  # noqa: TID251 -- two tests run a real child
@@ -19,7 +21,8 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, ClassVar
 
 import pytest
 from omniweave_core.blobs import BlobStore, format_ref
@@ -601,3 +604,230 @@ def test_a_worker_the_watchdog_finds_over_memory_mb_is_ended_with_the_call(
         assert worker._proc.poll() is not None, "the child is gone, not left running the unit"
     finally:
         worker.stop()
+
+
+# ---------------------------------------------------------------------------------------------
+# D712: a Service granted on the INVOKE, reached through io.service()
+# ---------------------------------------------------------------------------------------------
+
+ENTITY_LLM = "derive.entity.llm"
+BILLED_VIEW = (
+    json.dumps(
+        {
+            "t": "segment", "seg": "seg:9f2c1d4a77b03e51", "heading_path": [], "n_blocks": 1,
+            "n_tokens": 5, "layer": "body", "atom": None,
+            "defaults": {"layer": "body", "page": 1, "covered": False},
+            "etypes": ["org", "unknown"], "document_scoped": [], "relations": [],
+            "doc": {"format": "md", "media_type": "text/markdown"},
+        }
+    )
+    + "\n"
+    + json.dumps({"t": "block", "cite": "d1#4", "kind": "paragraph", "ord": 0,
+                  "text": "Acme pays Beta."})
+    + "\n"
+).encode()  # fmt: skip
+ANSWER = {
+    "entities": [{"name": "Acme", "etype": "org", "cite": "d1#4", "quote": "Acme pays",
+                  "description": None}],
+    "relations": [],
+    "more_available": False,
+}  # fmt: skip
+
+
+class _Model(http.server.BaseHTTPRequestHandler):
+    """A chat-completion server answering from a script, and recording what it was sent."""
+
+    replies: ClassVar[list[tuple[int, bytes]]] = []
+    seen: ClassVar[list[dict[str, Any]]] = []
+
+    def do_POST(self) -> None:
+        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        type(self).seen.append(
+            {"path": self.path, "auth": self.headers.get("Authorization"), "body": body}
+        )
+        status, payload = type(self).replies.pop(0)
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 -- the base's name
+        del format, args
+
+
+def _model(replies: list[tuple[int, bytes]]) -> tuple[str, http.server.ThreadingHTTPServer]:
+    _Model.replies, _Model.seen = list(replies), []
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Model)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return f"http://127.0.0.1:{server.server_address[1]}", server
+
+
+def _completion(answer: dict[str, Any]) -> bytes:
+    return json.dumps(
+        {
+            "choices": [{"message": {"role": "assistant", "content": json.dumps(answer)}}],
+            "usage": {"prompt_tokens": 11, "completion_tokens": 7},
+        }
+    ).encode()
+
+
+def _billed_invoke(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    services: list[dict[str, object]],
+    deadline_ms: int = 60_000,
+) -> Any:
+    card = catalog().cards.get(ENTITY_LLM)
+    assert card is not None, "omniweave-llm ships the card (D711)"
+    host, box, thread, _order = _serve(monkeypatch)
+    host.send(
+        wire.FrameKind.HELLO,
+        _hello(tmp_path, port="derive/1", driver_id=ENTITY_LLM, card_sha256=card.card_sha256),
+    )
+    assert host.next().kind is wire.FrameKind.HELLO_ACK
+    cas = BlobStore(tmp_path / "cas")
+    digest = cas.put(io.BytesIO(BILLED_VIEW))
+    unit = {"uri": "seg", "part": "", "content_sha256": digest.hex(),
+            "byte_len": len(BILLED_VIEW), "blob_ref": format_ref(digest)}  # fmt: skip
+    header: dict[str, object] = {
+        "invoke_id": "b1", "units": [unit], "deadline_ms": deadline_ms, "budget_micros": 0,
+        "lane": "entity", "services": services,
+    }  # fmt: skip
+    host.send(wire.FrameKind.INVOKE, header)
+    [result] = host.until(wire.FrameKind.RESULT, 1)
+    host.send(wire.FrameKind.SHUTDOWN, {"grace_ms": 0})
+    thread.join(10)
+    assert box["outcome"]["status"] == 0
+    return result
+
+
+def _grant(base_url: str) -> dict[str, object]:
+    return sp.ServiceGrant(
+        name="llm", base_url=base_url, token="ab" * 32, model_id="qwen3:4b",
+        model_rev="0123456789abcdef", capacity=2, traceparent="00-trace",
+    ).as_header()  # fmt: skip
+
+
+def test_services_ride_the_invoke_header_only_when_granted() -> None:
+    unit = UnitRef(uri="u", part="", content_sha256="0" * 64, byte_len=1)
+    bare = sp.Invocation(invoke_id="i", units=(unit,), deadline_ms=0, budget_micros=0)
+    grant = sp.ServiceGrant(name="llm", base_url="http://127.0.0.1:1", token="t",  # noqa: S106
+                            model_id="m", model_rev="r")  # fmt: skip
+    granted = sp.Invocation(
+        invoke_id="i", units=(unit,), deadline_ms=0, budget_micros=0, services=(grant,)
+    )
+    assert "services" not in bare.as_header()
+    assert granted.as_header()["services"] == [
+        {"name": "llm", "base_url": "http://127.0.0.1:1", "token": "t", "model_id": "m",
+         "model_rev": "r", "capacity": 1, "traceparent": "", "request_timeout_s": 600}
+    ]  # fmt: skip
+
+
+@pytest.mark.parametrize("deadline_ms", [60_000, 0], ids=["deadline", "no-deadline"])
+def test_a_granted_service_is_reached_and_its_answer_is_the_units_items(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, deadline_ms: int
+) -> None:
+    """D712: the grant rebuilds the handle; the token, the model and the path reach the server.
+
+    An `INVOKE` with no deadline (0, as `subproc.Deadlines` reads it) still reaches the Service: the
+    request timeout alone bounds the call, never a timeout of 0.
+    """
+    base_url, server = _model([(200, _completion(ANSWER))])
+    try:
+        result = _billed_invoke(tmp_path, monkeypatch, [_grant(base_url)], deadline_ms)
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert result.header["outcome"] == "ok", result.header
+    assert b'"t":"entity"' in result.body and b'"title":"Acme"' in result.body
+    [seen] = _Model.seen
+    assert (seen["path"], seen["auth"]) == ("/v1/chat/completions", "Bearer " + "ab" * 32)
+    assert seen["body"]["model"] == "qwen3:4b"
+
+
+def test_a_service_not_granted_is_the_drivers_bug_and_names_itself(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    result = _billed_invoke(tmp_path, monkeypatch, [])
+    assert result.header["failure_class"] == "driver_bug"
+    assert "no Service of that name is granted" in str(result.header.get("message", ""))
+
+
+def test_a_service_that_fails_is_upstream_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The handle's core error becomes the ports class a driver and the runtime read."""
+    base_url, server = _model([(500, b'{"error":"overloaded"}')])
+    try:
+        result = _billed_invoke(tmp_path, monkeypatch, [_grant(base_url)])
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert result.header["failure_class"] == "upstream_unavailable"
+
+
+def test_a_malformed_grant_grants_nothing() -> None:
+    assert wk._services({"services": "llm"}) == {}
+    assert wk._services({"services": 7}) == {}
+    assert wk._services({"services": [{"base_url": "x"}, "llm", {"name": "llm"}]}) == {
+        "llm": {"name": "llm"}
+    }
+
+
+def test_the_granted_handle_is_the_calls_deadline_cancellation_and_timeout() -> None:
+    """The deadline and the cancellation are the call's; the timeout is the Service's own."""
+    grant = {**_grant("http://127.0.0.1:1"), "request_timeout_s": 7}
+    handle = wk._GrantedHandle(grant, deadline_ms=5, cancelled=lambda: True)
+    assert (handle.deadline_ms, handle.cancelled(), handle._handle._timeout_s) == (5, True, 7.0)
+    assert (handle.name, handle.model_id, handle.model_rev) == (
+        "llm",
+        "qwen3:4b",
+        "0" + "123456789abcdef",
+    )
+    assert (handle.capacity, handle.traceparent, handle.token) == (2, "00-trace", "ab" * 32)
+    with pytest.raises(DriverError) as caught:
+        wk._GrantedHandle({"name": "llm"}, deadline_ms=0, cancelled=bool)
+    assert caught.value.cls is FailureClass.DRIVER_BUG
+
+
+def test_service_issues_only_the_named_grant_under_the_calls_deadline(tmp_path: Path) -> None:
+    io_obj = wk.WorkerIO(
+        blobs=wk.WorkerBlobs(BlobStore(tmp_path)),
+        tmpdir=str(tmp_path),
+        deadline_ms=4321,
+        max_output_bytes=1,
+    )
+    call = wk._Call(
+        send=lambda *_: None,
+        invoke_id="i",
+        unit_index=0,
+        services={"vlm": _grant("http://127.0.0.1:1")},
+    )
+    wk._CALLS[io_obj] = call
+    handle = io_obj.service("vlm")
+    assert (handle.deadline_ms, handle.cancelled()) == (4321, False)
+    call.cancelled = True
+    assert handle.cancelled() is True
+    with pytest.raises(DriverError, match=r"service\('llm'\): no Service of that name"):
+        io_obj.service("llm")
+
+
+def test_a_grant_is_made_from_the_handle_the_registry_issued() -> None:
+    """D713: the handle's fields, and its request timeout; a handle with none keeps 600."""
+    from omniweave_core.modelserver import Handle  # noqa: PLC0415
+
+    bearer = "ab"
+    handle = Handle(
+        name="llm", base_url="http://127.0.0.1:9", token=bearer, model_id="m", model_rev="r",
+        capacity=3, traceparent="00-t", deadline_ms=0, _timeout_s=42.0,
+    )  # fmt: skip
+    assert sp.ServiceGrant.of(handle) == sp.ServiceGrant(
+        name="llm", base_url="http://127.0.0.1:9", token=bearer, model_id="m", model_rev="r",
+        capacity=3, traceparent="00-t", request_timeout_s=42,
+    )  # fmt: skip
+    bare = SimpleNamespace(
+        name="llm", base_url="http://127.0.0.1:9", token="", model_id="m", model_rev="r",
+        capacity=1, traceparent="",
+    )  # fmt: skip
+    assert sp.ServiceGrant.of(bare).request_timeout_s == 600  # type: ignore[arg-type]

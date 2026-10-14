@@ -209,6 +209,7 @@ from omniweave_ports.types import (
     DriverResult,
     FailureClass,
     Isolation,
+    ServiceHandle,
     UnitRef,
 )
 
@@ -2752,6 +2753,60 @@ class HelloAck(NamedTuple):
 
 
 @dataclass(frozen=True, slots=True)
+class ServiceGrant:
+    """One Service a call may reach: what the worker's `io.service(name)` builds its handle from.
+
+    **D712.** 08:967's `ServiceHandle` is a base URL, a token, the verified model id and revision,
+    a capacity and a `traceparent`, and the worker is a separate process, so the handle crosses as
+    these fields and the worker rebuilds `modelserver.Handle` from them. `request_timeout_s` is
+    the Service's own (`ServiceSpec`), which the registry's handle is bounded by, so the worker's is
+    bounded by it too. The deadline is the `INVOKE`'s own and is not repeated. A grant names one
+    Service the host attached for this run (`ServiceRegistry.handle`); a name the driver asks for
+    and the `INVOKE` does not grant is a refusal in the worker, not a lookup elsewhere.
+    """
+
+    name: str
+    base_url: str
+    token: str
+    model_id: str
+    model_rev: str
+    capacity: int = 1
+    traceparent: str = ""
+    request_timeout_s: int = 600
+
+    @classmethod
+    def of(cls, handle: ServiceHandle) -> ServiceGrant:
+        """The grant for a handle the run's registry issued (D713).
+
+        `request_timeout_s` is core's `Handle`'s. A handle that is not one has none, so its grant
+        keeps `ServiceSpec`'s default, 600.
+        """
+        timeout = getattr(handle, "request_timeout_s", None)
+        return cls(
+            name=handle.name,
+            base_url=handle.base_url,
+            token=handle.token,
+            model_id=handle.model_id,
+            model_rev=handle.model_rev,
+            capacity=handle.capacity,
+            traceparent=handle.traceparent,
+            request_timeout_s=600 if timeout is None else int(timeout),
+        )
+
+    def as_header(self) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "base_url": self.base_url,
+            "token": self.token,
+            "model_id": self.model_id,
+            "model_rev": self.model_rev,
+            "capacity": self.capacity,
+            "traceparent": self.traceparent,
+            "request_timeout_s": self.request_timeout_s,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class Invocation:
     """`INVOKE{invoke_id, units, deadline_ms, budget_micros}` -- 04-driver-system.md:1699's four
     keys and no others. NOT 08-runtime.md's `Batch`; see the module docstring.
@@ -2776,6 +2831,9 @@ class Invocation:
     lane: str | None = None
     """`DeriveScope.lane` for a `derive/1` call (D664); `None`, and absent from the header, for
     every other port."""
+    services: tuple[ServiceGrant, ...] = ()
+    """The Services this call may reach (D712); empty, and absent from the header, for a driver
+    that declares none. A second extension of 04:1699's four keys, as `lane` is the first."""
 
     def __post_init__(self) -> None:
         if self.blob_refs and len(self.blob_refs) != len(self.units):
@@ -2852,6 +2910,7 @@ class Invocation:
             "budget_micros": self.budget_micros,
             "inline_unit_index": self.inline_unit_index,
             **({"lane": self.lane} if self.lane is not None else {}),
+            **({"services": [g.as_header() for g in self.services]} if self.services else {}),
         }
 
 

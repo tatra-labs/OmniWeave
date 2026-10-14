@@ -105,6 +105,8 @@ __all__ = [
     "DECREMENTING",
     "DIAG_UNCLASSIFIED",
     "ESCALATION_MS",
+    "EXTEND_RESERVATIONS_SQL",
+    "EXTEND_SQL",
     "FIRST_COOLDOWN_MS",
     "LADDER",
     "MAX_ATTEMPTS_TODAY",
@@ -1196,6 +1198,28 @@ predicate is what ships and `lease_reaper` -- 08's, in `omniweave/run/`, W4.2 --
 check and the extension. `sqlite.py.process_create_time` is already the probe it needs. Recorded so
 nobody reads the missing check as a bug in the store's method.
 """
+
+EXTEND_RESERVATIONS_SQL: Final = """
+UPDATE budget_reservation SET expires_ms = :until_ms
+ WHERE state = 'held'
+   AND work_id IN (SELECT id FROM work WHERE status = 'claimed' AND claimed_by = :holder
+                    AND lease_expires < :now_ms)
+"""
+"""D719: a live holder's held reservations move with its leases, before the leases do.
+
+08:463 keeps *"every `expires_ms` == its work row's `lease_expires`"*. The reservations are moved
+first because their selector reads the rows' old `lease_expires`, which `EXTEND_SQL` changes."""
+
+EXTEND_SQL: Final = """
+UPDATE work SET lease_expires = :until_ms
+ WHERE status = 'claimed' AND claimed_by = :holder AND lease_expires < :now_ms
+RETURNING id
+"""
+"""D719, 08:462-470: *"A live holder past its lease gets one extension with a WARNING naming it,
+never a steal."* One extension per expiry: a row past its lease is moved to `until_ms`, and a holder
+still working when that passes is extended again at the next sweep, so its lease is never stolen.
+`claimed_by` names the holder. The store cannot tell a live one from a dead one, so the caller names
+the live holder; `REAP_SQL` stays the plan's predicate for every other row."""
 
 COUNTS_SQL: Final = "SELECT status, count(*) FROM work GROUP BY status"
 """ONE query, and 0004_runtime.sql:137 is the comment that forbids the alternative.

@@ -462,6 +462,10 @@ class Samples:
         self.reaps += 1
         return self._inner.reap_expired_leases(now_ms)
 
+    def extend_live_leases(self, holder: str, now_ms: int, until_ms: int) -> tuple[int, ...]:
+        """D719: forwarded, uncounted -- the bench's numbers are the four `Store` methods'."""
+        return self._inner.extend_live_leases(holder, now_ms, until_ms)
+
     def counts_by_status(self) -> Mapping[str, int]:
         self.counts += 1
         return self._inner.counts_by_status()

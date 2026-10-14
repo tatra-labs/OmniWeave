@@ -102,6 +102,7 @@ from omniweave_core.model.enums import (
     ClaimStatus,
     Lane,
     Method,
+    Taint,
     TimePrecision,
     Trust,
     enum_val_rows,
@@ -109,6 +110,7 @@ from omniweave_core.model.enums import (
 from omniweave_core.model.records import Diag
 from omniweave_core.model.spans import TextSpan
 from omniweave_core.operator import SpendVector
+from omniweave_core.store import injection
 
 __all__ = [
     "BUILTIN_ETYPES",
@@ -753,13 +755,13 @@ _INSERT_ENTITY: Final = """
 INSERT INTO entity (entity_id, cite, scope, etype, key, title, raw_etype, canonical_id,
                     resolution_trust, resolution_method, trust, taint, restriction_bits,
                     frequency, degree, doc_count, mention_digest, description, summary, state, x)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 0, 0, 0, 0, 0, ?, ?, NULL, 0, '{}')
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 0, 0, 0, 0, ?, ?, NULL, 0, '{}')
 """
 
 _LOWER_ENTITY_TRUST: Final = "UPDATE entity SET trust = MIN(trust, ?) WHERE entity_id = ?"
 
 _STAMP_ENTITY_BITS: Final = """
-UPDATE entity SET restriction_bits = restriction_bits | ?, mention_digest = ?
+UPDATE entity SET restriction_bits = restriction_bits | ?, taint = taint | ?, mention_digest = ?
 WHERE entity_id = ?
 """
 
@@ -770,9 +772,10 @@ SELECT digest FROM mention WHERE entity_id = ? AND state = 0 ORDER BY mention_id
 _INSERT_ALIAS: Final = """
 INSERT INTO entity_alias (entity_id, name_norm, surface, alias_kind, run_id, trust, taint,
                           doc_count)
-VALUES (?, ?, ?, ?, ?, ?, 0, 1)
+VALUES (?, ?, ?, ?, ?, ?, ?, 1)
 ON CONFLICT (entity_id, name_norm, alias_kind)
-DO UPDATE SET trust = MIN(entity_alias.trust, excluded.trust)
+DO UPDATE SET trust = MIN(entity_alias.trust, excluded.trust),
+              taint = entity_alias.taint | excluded.taint
 """
 # MIN and never MAX: *"A migration may only downgrade"* (06:88), and corroboration is not
 # promotion. An alias seen twice cannot talk its way up a tier.
@@ -780,7 +783,7 @@ DO UPDATE SET trust = MIN(entity_alias.trust, excluded.trust)
 _INSERT_MENTION: Final = """
 INSERT OR IGNORE INTO mention (entity_id, block_id, segment_id, ts_a, ts_b, surface, run_id,
                                trust, score, score_kind, taint, restriction_bits, digest, state)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 0)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
 """
 
 _SELECT_MENTION: Final = """
@@ -800,7 +803,7 @@ _INSERT_EDGE: Final = """
 INSERT INTO edge (src_entity, dst_entity, relation, role, observed_block, ts_a, ts_b, bound_by,
                   weight, combined_degree, corroborations, run_id, trust, score, score_kind,
                   taint, restriction_bits, x)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?, ?, ?, 0, ?, '{}')
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?, ?, ?, ?, ?, '{}')
 """
 
 _CORROBORATE_EDGE: Final = "UPDATE edge SET corroborations = corroborations + 1 WHERE edge_id = ?"
@@ -817,7 +820,7 @@ INSERT INTO claim (claim_id, cite, subject_entity, object_entity, object_literal
                    claim_type, predicate, description, status, t_start, t_end, t_precision,
                    observed_block, ts_a, ts_b, quote_tier, run_id, trust, score, score_kind,
                    taint, restriction_bits, x)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, '{}')
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}')
 """
 
 _SELECT_ANCHOR: Final = """
@@ -1008,7 +1011,7 @@ def restamp_mention_digest(connection: sqlite3.Connection, entity_id: int) -> No
     """
     rows = connection.execute(_LIVE_MENTION_DIGESTS, (entity_id,)).fetchall()
     merkle = _mention_merkle(tuple(bytes(row[0]) for row in rows))
-    connection.execute(_STAMP_ENTITY_BITS, (0, merkle, entity_id))
+    connection.execute(_STAMP_ENTITY_BITS, (0, 0, merkle, entity_id))
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1061,6 +1064,8 @@ class SqliteGraphSink:
         self._xrefs_unresolved = 0
         self._link_capped: set[int] = set()
         self._dangled: list[str] = []
+        self._taint = 0
+        """D736: the run's taint, ORed into every row it writes (`_scan`)."""
 
     def begin_run(self, seg: SegmentRef, p: PassIdentity, allowed_cites: frozenset[Cite]) -> RunId:
         """Open one `derive_run` and fix the cite scope for its whole length.
@@ -1110,7 +1115,33 @@ class SqliteGraphSink:
             ),
         )
         self._run_id = int(cursor.lastrowid or 0)
+        if p.method is Method.LLM:
+            self._scan()
         return RunId(self._run_id)
+
+    def _scan(self) -> None:
+        """Layer 5, judged over the Segment a billed prompt wrapped (D736, `store.injection`).
+
+        A sentinel in any member block taints every row the run writes `SENTINEL`, because the
+        wrapped copy is the whole Segment (06 section 9.5). A forged closing delimiter is also held,
+        one `OW_GRAPH_INJECTION_SUSPECT` row per block that carries one, at `row_kind = 'mention'`:
+        the row a block's text becomes. Only a run that prompted a model is scanned. A free Pass's
+        text reaches no prompt, so there is nothing for a sentinel in it to forge.
+        """
+        for cite in sorted(self._allowed, key=str):
+            block = self._block(cite)
+            if block is None:
+                continue
+            found = injection.scan(block.text)
+            if found.sentinel:
+                self._taint |= int(Taint.SENTINEL)
+            for forged in found.forged:
+                self.quarantine(
+                    "mention",
+                    OW_GRAPH_INJECTION_SUSPECT,
+                    {"cite": str(cite), "forged": forged},
+                    block_id=block.block_id,
+                )
 
     def end_run(self, status: RunStatus, spend: SpendVector) -> RunReport:
         """Finish the `derive_run` row and report. The store thread's `COMMIT` follows.
@@ -1216,6 +1247,7 @@ class SqliteGraphSink:
                 d.alias_kind,
                 self._run_id,
                 int(trust),
+                self._taint,
             ),
         )
         self._emitted += 1
@@ -1652,11 +1684,12 @@ class SqliteGraphSink:
     def _locate(self, row_kind: str, draft: object, at: Grounded) -> tuple[_Block, int, int] | None:
         """Turn a `Grounded` into `(block, ts_a, ts_b)`, or quarantine the reason it cannot be.
 
-        Three refusals, three codes, and the order is scope before existence before grounding: a
-        cite outside `allowed_cites` is `OW_GRAPH_OUT_OF_SCOPE_BLOCK` (GR9) whether or not the
-        block exists, because the containment answer must not depend on what else is in the store;
-        a cite in scope naming no live row is `OW_GRAPH_DANGLING_CITE`; and a quote the block's own
-        text cannot witness is `OW_GRAPH_UNGROUNDED`.
+        Four refusals, four codes, and the order is scope before existence before cover before
+        grounding: a cite outside `allowed_cites` is `OW_GRAPH_OUT_OF_SCOPE_BLOCK` (GR9) whether or
+        not the block exists, because the containment answer must not depend on what else is in
+        the store; a cite in scope naming no live row is `OW_GRAPH_DANGLING_CITE`; a billed run's
+        cite on ground a cheaper Pass covered is `OW_GRAPH_COVERED_GROUND` (D709, 06:788-797);
+        and a quote the block's own text cannot witness is `OW_GRAPH_UNGROUNDED`.
         """
         cite, where = at
         if cite not in self._allowed:
@@ -1665,6 +1698,9 @@ class SqliteGraphSink:
         block = self._block(cite)
         if block is None:
             self._reject(row_kind, OW_GRAPH_DANGLING_CITE, draft, {"cite": str(cite)})
+            return None
+        if self._covered_ground(cite):
+            self._reject(row_kind, OW_GRAPH_COVERED_GROUND, draft, {"cite": str(cite)})
             return None
         if isinstance(where, TextSpan):
             return self._bounded(row_kind, draft, cite, block, where)
@@ -1775,6 +1811,7 @@ class SqliteGraphSink:
                 entity_id,
                 _METHOD_ORD[self._identity().method.name.lower()],
                 int(trust),
+                self._taint,
                 _mention_merkle(()),
                 d.description,
             ),
@@ -1801,6 +1838,7 @@ class SqliteGraphSink:
                 int(trust),
                 d.score,
                 d.score_kind,
+                self._taint,
                 block.restriction_bits,
                 digest,
             ),
@@ -1859,6 +1897,7 @@ class SqliteGraphSink:
                 int(self._clamp("edge", d, d.trust_claim)),
                 d.score,
                 d.score_kind,
+                self._taint,
                 block.restriction_bits,
             ),
         )
@@ -2011,6 +2050,7 @@ class SqliteGraphSink:
                 int(self._clamp("claim", d, d.trust_claim)),
                 d.score,
                 d.score_kind,
+                self._taint,
                 block.restriction_bits,
             ),
         )
@@ -2028,7 +2068,9 @@ class SqliteGraphSink:
         """
         rows = self._connection.execute(_LIVE_MENTION_DIGESTS, (entity_id,)).fetchall()
         merkle = _mention_merkle(tuple(bytes(row[0]) for row in rows))
-        self._connection.execute(_STAMP_ENTITY_BITS, (restriction_bits, merkle, entity_id))
+        self._connection.execute(
+            _STAMP_ENTITY_BITS, (restriction_bits, self._taint, merkle, entity_id)
+        )
         self._connection.execute(_LOWER_ENTITY_TRUST, (int(trust), entity_id))
 
     # -- private: reads ------------------------------------------------------------------------
@@ -2058,6 +2100,19 @@ class SqliteGraphSink:
                 )
         self._blocks[key] = found
         return found
+
+    def _covered_ground(self, cite: Cite) -> bool:
+        """Whether `cite` is ground a cheaper Pass covered, for a billed run (D709, 06:788-797).
+
+        A free run's `SegmentRef.uncovered` is `None`, and nothing is covered for it. A billed run's
+        is the members' bits less the cheaper cover, big-endian (06:776, D703): a member whose bit
+        is clear there was covered before this Pass was handed the Segment.
+        """
+        uncovered = self._segment().uncovered
+        if uncovered is None:
+            return False
+        ordinal = self._cover_ord(cite)
+        return not uncovered[ordinal // 8] & (0x80 >> (ordinal % 8))
 
     def _cover_ord(self, cite: Cite) -> int:
         """The `segment_block.ord` a cite occupies -- *"IS the cover_bits bit index"* (06:112)."""

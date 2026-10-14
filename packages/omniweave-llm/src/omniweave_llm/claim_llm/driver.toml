@@ -1,0 +1,103 @@
+# derive.claim.llm -- the billed claim lane. 06 section 2.3's row 12; section 4. D722.
+card_schema = 1
+
+[driver]
+id = "derive.claim.llm"
+port = "derive/1"
+version = "0.1.0"
+schema_version = 1                 # THE ONLY DRIVER VERSION IN A CACHE KEY -- and 06:1614's
+                                   #   paid_key leaves it out: a bug-fix release never re-bills.
+entrypoint = "omniweave_llm.claim_llm.driver:ClaimLLM"
+granularity = "part"               # One Segment per decision (06:807): unit_part = 'seg:<hex16>'.
+replay_class = "unpinnable"        # A hosted model's answer is not reproducible from its inputs;
+                                   #   replay is the cassette's (06:1609), not the driver's.
+title = "Claims about entities by a language model (billed)"
+summary = "One prompt per Segment rendered from the corpus vocabulary, an answer constrained by the claim lane's JSON Schema, one glean on more_available, each claim bound to the entity its subject names and grounded by quote at the sink."
+
+[capability]
+consumes = []                      # The host's billed Segment view (D709).
+produces = ["graph_items"]
+
+[capability.derive]
+items = ["claim", "entity"]       # 06:1430-1460. The lane is claim; entity frames are subjects.
+grounding = "quote"                # A quote the host's ground() locates (06 section 1.7).
+relations = "none"                # A claim is subject, predicate, object: no relation edge.
+schema = "json_schema"             # 06 section 4.3, strict.
+confidence = "none"                # 06:1376-1385: never a self-reported number.
+coreference = false
+scripts = ["Latin"]                # The authored role text is English.
+scope_honoured = true
+
+[derive]
+implemented = true
+phase = 20                         # 06 section 2.3's row 12: rank 2, phase 20, after entity.
+max_items_per_segment = 160        # 40 claims and up to 40 subject frames per attempt, twice.
+prompt_version = "1"                # The authored role text's revision; prompt_fp is the rendered one.
+schema_path = "schemas/claim.json"
+
+[hardware]
+gpu            = "none"            # The model is the service's, not this process's.
+vram_gb_min    = 0
+ram_gb_min     = 0.25
+cpu_arch       = ["x86_64", "aarch64"]
+os             = ["linux", "darwin", "windows"]
+needs_network  = true              # It posts to a model server; the egress hook must not arm.
+needs_binaries = []
+imports_torch  = false
+install_bytes  = 60000
+services       = ["model:llm"]
+
+[isolation]
+requires        = "subproc"
+memory_mb       = 512
+# D718. PROGRESS comes between Segments and never inside one model call, so the silent-hang
+# watchdog must outlast one call, which the Service's request_timeout_s bounds (600 s by default).
+# A local qwen3:4b took 56 s on one Segment and more than 120 s on the next.
+progress_ms     = 600000
+# The INVOKE's whole budget: every unit's call at its bound.
+wall_ms_hard    = 2400000
+# 06:1514's twenty fits a hosted API, at seconds a call. A local model is minutes a call, and a
+# smaller batch commits its answers sooner.
+batch_max_units = 4
+
+[limits]
+max_input_bytes = 134217728
+max_parts       = 1
+
+[licence.code]
+spdx = "Apache-2.0"
+redistribution = "allowed"
+output_share_alike = false
+competitor_bar = false
+requires_credential = false
+revenue_gate_usd = 0
+mau_gate = 0
+territory_excluded = []
+field_of_use_excluded = []
+attribution_per_output = false
+no_model_training = false
+remote_kill_switch = false
+clause_refs = []
+
+[deps]
+pins = []
+
+[config]
+type = "object"
+additionalProperties = false
+required = []
+
+[config.properties.service]
+type = "string"
+maxLength = 64
+default = "llm"                    # The [services.<name>] table the model is behind.
+
+[cost.model]
+class   = "billed_api"             # 06 section 2.3: the model is hosted and priced per token.
+shape   = "linear_per_part"
+unit    = "part"
+per_part    = { tokens_in = 3100, tokens_out = 480, calls = 1 }   # 06:841.
+per_session = { }
+scaling     = { key = "input_bytes", exponent = 1.0, reference = 8192 }
+tokens_out_p95_multiple = 2.0      # A glean at 0.35 and a response near its 40-item bound.
+max_retries = 0                    # The glean is attempt 2 of the same decision, not a retry.
