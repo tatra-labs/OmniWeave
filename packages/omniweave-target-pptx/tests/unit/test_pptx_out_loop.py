@@ -1,0 +1,151 @@
+"""A deck through `ow out`: checked with its `font_dir`, compiled, and read back. D806.
+
+`[drivers."compile.pptx.native".config] font_dir` names the faces `measure.py` shapes with. Until
+D806 the card declared a list, which the config layer refuses (a driver's configuration is flat
+scalars), so no deck could pass `ow out check` and nothing reached `compile` or `back`. Each test
+writes its face with `fontkit` into the project, names it in `omniweave.toml`, and drives the
+verbs as `test_out_back_verb.py` drives docx's.
+"""
+
+from __future__ import annotations
+
+import io
+import json
+import sqlite3  # noqa: TID251 -- the assertions read the rows the loop wrote.
+import sys
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Any
+
+import pytest
+from fontkit import tiny_font, write_font  # type: ignore[import-not-found]  # tests/fontkit.py
+from omniweave.surface import out as verb
+from omniweave_core.model.enums import enum_val_rows
+from omniweave_core.out.brief import BRIEF_SCHEMA
+from omniweave_core.store import migrate
+from omniweave_core.store import sqlite as store_sqlite
+
+WINDOWS_ONLY = pytest.mark.skipif(sys.platform != "win32", reason="the named-pipe arm")
+BRIEF = (
+    f"{BRIEF_SCHEMA}\n## canvas\n- format: 16:9\n- unit: slide\n## communication\n"
+    "- primary_language: en-GB\n## direction\n## density\n- per_unit: light\n## motion\n"
+    "- level: static\n## typography\n## rhythm\n- u01: { anchor: cover }\n## forbidden\n"
+)
+SLIDE = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-ow-el="u01/e1">'
+    '<g data-ow-el="u01/e2"><text data-ow-el="u01/e3" x="60" y="100" font-family="Probe Sans" '
+    'font-size="28">Revenue <tspan data-ow-el="u01/e4" font-weight="bold">rose</tspan></text>'
+    '<rect data-ow-el="u01/e5" x="60" y="200" width="200" height="100" fill="#1F4E79"/></g>'
+    "</svg>"
+)
+
+
+def _project(tmp_path: Path, *, font_dir: bool) -> Path:
+    fonts = tmp_path / "fonts"
+    write_font(fonts, "probe.ttf", tiny_font("Probe Sans"))
+    config = (
+        f'\n[drivers."compile.pptx.native".config]\nfont_dir = "{fonts.as_posix()}"\n'
+        if font_dir
+        else ""
+    )
+    (tmp_path / "omniweave.toml").write_text(
+        '[corpora.handbook]\npath = ".omniweave/index.owstore"\n' + config, encoding="utf-8"
+    )
+    (tmp_path / ".omniweave").mkdir()
+    connection = store_sqlite.connect(tmp_path / ".omniweave" / "index.owstore")
+    try:
+        migrate.apply_pending(connection, now_ns=1)
+    finally:
+        connection.close()
+    (tmp_path / "brief.md").write_text(BRIEF, encoding="utf-8")
+    return tmp_path
+
+
+def _run(argv: Sequence[str], cwd: Path) -> tuple[int, str, str]:
+    out, err = io.StringIO(), io.StringIO()
+    env = {
+        "OMNIWEAVE_HOME": str(cwd / "owhome"),
+        "HOME": str(cwd / "home"),
+        "USERPROFILE": str(cwd / "home"),
+    }
+    code = verb.main(["out", *argv], cwd=cwd, env=env, stdout=out, stderr=err)
+    return code, out.getvalue(), err.getvalue()
+
+
+def _ok(argv: Sequence[str], cwd: Path) -> str:
+    code, out, err = _run(argv, cwd)
+    assert (code, err) == (0, ""), out + err
+    return out
+
+
+def _authored(project: Path) -> Path:
+    """`deck@1` scaffolded, its one slide written; returns its JobDir."""
+    out = _ok(
+        ["scaffold", "pptx", "--brief", "brief.md", "--slug", "deck", "--render", "json"], project
+    )
+    job = Path(json.loads(out)["job_dir"])
+    (job / "il" / "u01.svg").write_text(SLIDE, encoding="utf-8", newline="")
+    il = job / "il" / "il.toml"
+    il.write_text(
+        il.read_text(encoding="utf-8") + '\n[[unit]]\nid = "u01"\nord = 1\nfile = "u01.svg"\n',
+        encoding="utf-8",
+    )
+    return job
+
+
+def _store_rows(project: Path, sql: str) -> list[tuple[Any, ...]]:
+    connection = sqlite3.connect(project / ".omniweave" / "index.owstore")
+    try:
+        return connection.execute(sql).fetchall()
+    finally:
+        connection.close()
+
+
+def test_without_a_font_dir_the_deck_is_unverified(tmp_path: Path) -> None:
+    project = _project(tmp_path, font_dir=False)
+    job = _authored(project)
+    code, out, _ = _run(
+        ["check", "--stage", "final", "--job", str(job), "--render", "json"], project
+    )
+    assert code == 64
+    report = json.loads(out)
+    assert report["gate"]["status"] == "unverified"
+
+
+def test_with_its_font_dir_the_deck_passes_the_gate(tmp_path: Path) -> None:
+    project = _project(tmp_path, font_dir=True)
+    job = _authored(project)
+    out = _ok(["check", "--stage", "final", "--job", str(job), "--render", "json"], project)
+    assert json.loads(out)["gate"]["status"] == "passed"
+
+
+@WINDOWS_ONLY
+def test_a_deck_is_compiled_and_read_back_once_its_addresses_mapped(tmp_path: Path) -> None:
+    """D806: the loop D788 closed for docx, through parse.pptx.native in an S4 worker."""
+    project = _project(tmp_path, font_dir=True)
+    job = _authored(project)
+    _ok(["check", "--stage", "final", "--job", str(job)], project)
+    _ok(["compile", "--job", str(job)], project)
+    document = json.loads(_ok(["back", "deck", "--render", "json"], project))
+    doc_ord = document["read_back_doc_ord"]
+    assert isinstance(doc_ord, int)
+    assert (document["read_back"], document["els"], document["loop_open"]) == (
+        "parse.pptx.native",
+        5,
+        "",
+    )
+    kinds = {name: ordinal for domain, ordinal, name in enum_val_rows() if domain == "kind"}
+    assert _store_rows(
+        project,
+        "SELECT e.el, b.kind, b.text, b.origin_driver FROM artifact_el e"
+        " JOIN block b ON b.block_id = e.block_id ORDER BY e.el",
+    ) == [
+        ("u01/e1", kinds["section"], "Revenue rose", "parse.pptx.native"),
+        ("u01/e2", kinds["container"], "Revenue rose", "parse.pptx.native"),
+        ("u01/e3", kinds["paragraph"], "Revenue rose", "parse.pptx.native"),
+        ("u01/e4", kinds["paragraph"], "rose", "parse.pptx.native"),
+        ("u01/e5", kinds["diagram"], None, "parse.pptx.native"),
+    ]
+    assert _store_rows(project, "SELECT page_kind FROM page") == [
+        (next(o for d, o, n in enum_val_rows() if (d, n) == ("page_kind", "slide")),)
+    ]

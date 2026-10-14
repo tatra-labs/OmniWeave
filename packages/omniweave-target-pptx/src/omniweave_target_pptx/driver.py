@@ -21,8 +21,11 @@ last of the table's families: the card says `implemented = true`.
 3. **The table is read once, when the rules are first asked for.** `__init__` loads nothing, as
    every Port's constructor (18-api-sketch.md section 6.2).
 4. **`measure()` is `measure.py`'s one estimator, over the faces the config names** (D792).
-   `[drivers."compile.pptx.native".config] font_dirs` lists absolute directories, and an empty
-   list, the default, or a uharfbuzz that will not import, is `None`: every rule declaring
+   `[drivers."compile.pptx.native".config] font_dir` names one absolute directory, read with
+   its subdirectories. It is a flat scalar, as every Port's configuration is (D806): the list
+   D792 declared was refused by the config layer, so no face could be named and no deck
+   passed `ow out check`. Unset or empty, the default, or with a uharfbuzz that will not
+   import, `measure()` is `None`: every rule declaring
    `needs={"measure"}` is then a recorded skip and the gate `unverified`, never `passed`.
    Repeated calls return the identical object, which the kit asserts (09 section 4.4), and the
    fonts are read on first use, not in `__init__`. A relative directory is refused when the
@@ -140,23 +143,22 @@ class PptxCompiler:
         del env
         return ProbeVerdict(
             status=ProbeStatus.OK,
-            detail="python-pptx and lxml; uharfbuzz measures where font_dirs names faces",
+            detail="python-pptx and lxml; uharfbuzz measures where font_dir names faces",
         )
 
-    def __init__(self, **config: Scalar | list[str]) -> None:
+    def __init__(self, **config: Scalar) -> None:
         """STATIC CONFIG ONLY. Loads nothing, opens nothing (rulings 3 and 4)."""
         self.config = config
-        raw = config.get("font_dirs") or []
-        dirs = [Path(str(d)) for d in (raw if isinstance(raw, list) else [raw])]
-        relative = [str(d) for d in dirs if not d.is_absolute()]
-        if relative:
+        raw = config.get("font_dir")
+        root = Path(str(raw)) if raw else None
+        if root is not None and not root.is_absolute():
             raise ConfigError(
-                f"font_dirs {relative} are not absolute: a target resolves no path against the "
+                f"font_dir {str(root)!r} is not absolute: a target resolves no path against the "
                 "working directory",
-                fix='ow config set drivers."compile.pptx.native".config.font_dirs '
-                '["<absolute directory>"]',
+                fix='ow config set drivers."compile.pptx.native".config.font_dir '
+                '"<absolute directory>"',
             )
-        self._font_dirs = tuple(dirs)
+        self._font_dir = root
         self._measure: TextMeasure | None = None
 
     def carrier(self, path: str, text: str) -> CarrierDoc:
@@ -173,7 +175,7 @@ class PptxCompiler:
 
     def measure(self) -> TextMeasure | None:
         """Ruling 4: one estimator a compiler, or `None` without fonts or uharfbuzz."""
-        if not self._font_dirs:
+        if self._font_dir is None:
             return None
         if self._measure is None:
             try:
@@ -183,7 +185,7 @@ class PptxCompiler:
                 )
             except ImportError:
                 return None
-            self._measure = HarfBuzzMeasure(FontBook(self._font_dirs))
+            self._measure = HarfBuzzMeasure(FontBook((self._font_dir,)))
         return self._measure
 
     def lower(self, plan: Plan, il: ILBundle, ledger: AssetLedger, io: DriverIO) -> DriverResult:

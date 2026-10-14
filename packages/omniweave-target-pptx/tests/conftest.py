@@ -68,7 +68,7 @@ def document() -> Run:
 
 @pytest.fixture
 def font_dir(tmp_path: Path) -> Path:
-    """D792: four faces in one directory, as `font_dirs` would name it.
+    """D792: four faces in one directory, as `font_dir` would name it.
 
     `Probe Sans` regular (`A` 600 units, `B` 400, the rest 500), bold (550 a glyph) and italic
     (450 a glyph), and `Other Serif` (400 a glyph), each 1000 units to the em, ascender 800 and

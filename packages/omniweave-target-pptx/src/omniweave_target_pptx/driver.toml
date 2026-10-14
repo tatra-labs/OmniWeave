@@ -37,7 +37,7 @@ constructs_digest = "sha256:e60ed8ed4db03dcebad40d4c0e005777e8378d5d703a847237e9
 citations = "embedded"                 # the OOXML provenance part, 09 section 10
 provenance_part = "customXml/omniweave-provenance.json"
 bake = "unavailable"                   # cairosvg and svglib are LGPL-3.0 (09 section 12.1)
-measure = "uharfbuzz"                  # measure.py: shaping over the faces font_dirs names
+measure = "uharfbuzz"                  # measure.py: shaping over the faces font_dir holds
 runtime_rules = false
 toolchain = ""                         # pure Python: python-pptx, XlsxWriter, skia-pathops
 implemented = true
@@ -58,10 +58,9 @@ type = "object"
 additionalProperties = false
 required = []
 
-[config.properties.font_dirs]           # D792: the faces measure.py shapes with, and no others
-type = "array"
-items = { type = "string" }
-default = []
+[config.properties.font_dir]            # D792, D806: one absolute directory, a flat scalar,
+type = "string"                         #   whose faces measure.py shapes with, and no others
+default = ""
 
 [hardware]
 gpu            = "none"

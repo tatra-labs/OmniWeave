@@ -1,4 +1,4 @@
-"""`measure.py`: owsvg/1's one `TextMeasure`, over the faces `font_dirs` names. D792.
+"""`measure.py`: owsvg/1's one `TextMeasure`, over the faces `font_dir` holds. D792.
 
 Every face is `tests/fontkit.py`'s, built from its tables, so each width below is arithmetic:
 at a size of 10 and 1000 units to the em, a glyph of 600 units is 6 user units wide.
@@ -177,22 +177,22 @@ def test_a_node_with_no_face_or_no_text_is_unmeasurable(font_dir: Path, body: st
 # ---------------------------------------------------------------------------------------------
 
 
-def test_without_font_dirs_there_is_no_estimator() -> None:
+def test_without_a_font_dir_there_is_no_estimator() -> None:
     assert PptxCompiler().measure() is None
-    assert PptxCompiler(font_dirs=[]).measure() is None
+    assert PptxCompiler(font_dir="").measure() is None
 
 
 def test_one_compiler_has_one_estimator(font_dir: Path) -> None:
-    compiler = PptxCompiler(font_dirs=[str(font_dir)])
+    compiler = PptxCompiler(font_dir=str(font_dir))
     first = compiler.measure()
     assert isinstance(first, HarfBuzzMeasure)
     assert compiler.measure() is first, "09 section 4.4: the kit asserts the identical object"
 
 
 def test_a_relative_font_dir_is_refused_when_the_compiler_is_built() -> None:
-    with pytest.raises(ConfigError, match=r"font_dirs \['fonts'\] are not absolute") as caught:
-        PptxCompiler(font_dirs=["fonts"])
-    assert "font_dirs" in caught.value.fix
+    with pytest.raises(ConfigError, match="font_dir 'fonts' is not absolute") as caught:
+        PptxCompiler(font_dir="fonts")
+    assert caught.value.fix.endswith('config.font_dir "<absolute directory>"')
 
 
 def test_without_uharfbuzz_there_is_no_estimator(
@@ -200,7 +200,7 @@ def test_without_uharfbuzz_there_is_no_estimator(
 ) -> None:
     monkeypatch.setitem(sys.modules, "uharfbuzz", None)
     monkeypatch.delitem(sys.modules, "omniweave_target_pptx.measure")
-    assert PptxCompiler(font_dirs=[str(font_dir)]).measure() is None
+    assert PptxCompiler(font_dir=str(font_dir)).measure() is None
 
 
 def test_a_style_declaration_outranks_the_attribute_beside_it(font_dir: Path) -> None:
