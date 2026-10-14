@@ -11,12 +11,13 @@ filled out to sixty-four hex, because a reader validated only against a manifest
 itself is a reader validated against nothing.
 
 `toolchain` is LAZY (G17). Nothing here imports it from an eager module, and nothing here spawns:
-W1.6 scopes this module to the manifest reader, so `run()`, node resolution and the process-group
-reap have no tests because they have no code.
+this file is the manifest reader's. D810's `run()` is `test_toolchain_run.py`'s before a child
+starts and `tests/conform/test_toolchain_process.py`'s once one does.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -73,7 +74,7 @@ NODE_ROW = {
 }
 
 
-def _render(table: str, row: dict[str, object]) -> str:
+def _render(table: str, row: Mapping[str, object]) -> str:
     """One TOML table, with backslashes escaped so a value survives the basic-string grammar.
 
     Without it, a TOML basic string decodes a backslash-r pair into a carriage return, so the
@@ -533,15 +534,15 @@ def test_the_key_sets_are_the_ones_section_3_2_prints() -> None:
     assert MANIFEST_NAME == "toolchains.toml"
 
 
-def test_the_reader_imports_no_subprocess_and_opens_no_socket() -> None:
-    """ "It NEVER reads the network" (section 3.2's manifest header), and W1.6 is the reader only.
+def test_the_module_opens_no_socket_and_reads_no_url() -> None:
+    """ "It NEVER reads the network" (section 3.2's manifest header).
 
-    `toolchain.py` is one of two modules `pyproject.toml` permits `subprocess` in; the allowance is
-    unused until `run()` lands, and the module source is the witness. A grep rather than an import
-    trace because `subprocess` is stdlib and may already be in `sys.modules` for another reason.
+    `toolchain.py` is one of two modules `pyproject.toml` permits `subprocess` in, and D810's
+    `run()` uses it; the network stays out. A grep rather than an import trace because the stdlib
+    modules may already be in `sys.modules` for another reason.
     """
     source = (
         Path(__file__).resolve().parents[2] / "src" / "omniweave_core" / "toolchain.py"
     ).read_text(encoding="utf-8")
-    for banned in ("import subprocess", "import socket", "import urllib", "import http"):
-        assert banned not in source, f"toolchain.py carries `{banned}` at W1.6"
+    for banned in ("import socket", "import urllib", "import http"):
+        assert banned not in source, f"toolchain.py carries `{banned}`"
