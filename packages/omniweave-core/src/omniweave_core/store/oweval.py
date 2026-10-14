@@ -55,6 +55,7 @@ the charter's section D10.
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from dataclasses import asdict, dataclass, fields
@@ -88,6 +89,7 @@ __all__ = [
     "Standing",
     "Verdict",
     "open_oweval",
+    "runs",
     "scoreboard",
     "user_version",
     "write",
@@ -343,6 +345,7 @@ class Batch:
 class Standing:
     """One `eval_scoreboard` row: the view's columns, `standing` computed in SQL and never here."""
 
+    run_id: str
     metric: str
     slice_key: str
     suite: str
@@ -545,12 +548,28 @@ def _json(value: JsonValue) -> str:
 # --------------------------------------------------------------------------------------------
 
 
+def runs(connection: sqlite3.Connection) -> dict[str, dict[str, Any]]:
+    """Each run's published fields, its JSON columns parsed (D828): what a scoreboard row carries
+    beside the view's own columns, keyed by the `run_id` the view now names."""
+    out = {}
+    for run_id, measured_on, not_measured, confounders, fairness in connection.execute(
+        "SELECT run_id, measured_on, not_measured, confounders, fairness FROM eval_run"
+    ):
+        out[str(run_id)] = {
+            "measured_on": json.loads(measured_on),
+            "not_measured": json.loads(not_measured),
+            "confounders": json.loads(confounders),
+            "fairness": json.loads(fairness),
+        }
+    return out
+
+
 def scoreboard(connection: sqlite3.Connection) -> tuple[Standing, ...]:
     """`eval_scoreboard`'s rows in its first six columns' order. `standing` is the view's."""
     names = [f.name for f in fields(Standing)]
     rows = connection.execute(
         f"SELECT {', '.join(names)} FROM eval_scoreboard "  # noqa: S608
-        "ORDER BY metric, slice_key, suite, subject, subject_version, corpus_version"
+        "ORDER BY metric, slice_key, suite, subject, subject_version, corpus_version, run_id"
     ).fetchall()
     flags = [names.index(name) for name in ("unpinned", "entrant_bias", "publishable")]
     out = []
