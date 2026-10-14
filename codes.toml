@@ -352,6 +352,17 @@ meaning = "a fragment names a page outside the PartSelector it was given; nothin
 raised_by = "ModelError"
 sites   = ["03-document-model.md:2986", "04-driver-system.md:204", "04-driver-system.md:1797"]
 
+# ── D753. A symbol store/doc.py raised from P2 and nothing registered, appended now that the
+# asset ledger raises it too. 03 and 09 name it; neither gives it a number.
+
+[[code]]
+numeric = "OW-M-035"
+symbol  = "OW_ASSET_DIGEST_MISMATCH"
+meaning = "an asset whose claimed sha256 disagrees with the stream the host hashed; the asset is rejected, because a content-addressed store with an unverified writer is a substitution oracle"
+fix     = "re-export the asset and freeze it again"
+raised_by = "ModelError"
+sites   = ["03-document-model.md:2131", "09-generation.md:1657"]
+
 [[code]]
 numeric = "OW-P-016"
 symbol  = "OW_EGRESS_GRANT_MISSING"
@@ -631,6 +642,53 @@ symbol  = "OW_TARGET_SELECTOR_INVALID"
 meaning = "a selector, a forbidden_when or a select() literal that does not parse as §3.1's carrier selector grammar; raised, never an empty match"
 sites   = ["09-generation.md:372", "09-generation.md:511", "09-generation.md:2735"]
 
+# ── D740. Two contract-meta rows the OUT loaders raise, appended under 09 section 15's "+" rule.
+
+[[code]]
+numeric = "OW-T-008"
+symbol  = "OW_TARGET_BRIEF_INVALID"
+meaning = "a Brief parse_brief() refuses: line 1 is not the brief/1 comment, a line outside the two productions, a missing, unknown or repeated section, a missing required key, a closed value outside its set, a primary_language that is not canonical BCP-47 or is und or script-less Chinese, an untagged prohibition outside the ConstructTable's baseline, or a malformed ## template"
+fix     = "ow out check --target <target> --stage early   # names the Brief line; the authoring agent does not edit the Brief"
+raised_by = "TargetError"
+sites   = ["09-generation.md:2465", "09-generation.md:2475"]
+
+[[code]]
+numeric = "OW-T-009"
+symbol  = "OW_TARGET_CONSTRUCTS_INVALID"
+meaning = "a constructs.toml ConstructTable.load() refuses: an unknown key, a missing or forbidden key for the row's disposition, a normalize row not pointing at a native row, a normalizer the target does not ship, a duplicate id, a missing mandatory attribute, or unknown_construct other than forbidden"
+fix     = "ow out constructs <target>   # loads the table and names the row and the key"
+raised_by = "TargetError"
+sites   = ["09-generation.md:493", "09-generation.md:502"]
+
+# ── D742. Two rows the rule runner mints, appended under 09 section 15's "+" rule: order 0's parse
+# failure (the invalid band) and section 14.4's raising rule (contract meta).
+
+[[code]]
+numeric = "OW-T-010"
+symbol  = "OW_TARGET_RULE_RAISED"
+meaning = "a rule raised instead of returning findings; run_pack() records one framework error naming the rule and the exception type, the run goes on, and the gate is failed"
+fix     = "ow out check --target <target> --stage final --json   # names the rule; report it to its target"
+raised_by = "TargetError"
+sites   = ["09-generation.md:2682"]
+
+[[code]]
+numeric = "OW-T-400"
+symbol  = "OW_TARGET_IL_MALFORMED"
+meaning = "an IL file the carrier's parse refuses or had to recover: order 0, one error a problem at its position, and the unit's remaining rules are skipped"
+fix     = "ow out check --target <target> --stage unit --unit <id>   # after repairing the named line"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1166", "09-generation.md:2681"]
+
+# ── D744. The bundle's own roster file, appended under 09 section 15's "+" rule.
+
+[[code]]
+numeric = "OW-T-011"
+symbol  = "OW_TARGET_IL_TOML_INVALID"
+meaning = "an il/il.toml ILBundle.load() refuses: unreadable, another schema, no il or constructs_digest, an origin other than project, an unknown key, a [[unit]] that is not an OutUnit with a basename file, ords that are not 1..n, a repeated id or file, or a template.nsig line that is not 8 hex"
+fix     = "ow out scaffold <target>   # writes il.toml; the authoring agent adds [[unit]] rows"
+raised_by = "TargetError"
+sites   = ["09-generation.md:388", "09-generation.md:677"]
+
 [[code]]
 numeric = "OW-T-101"
 symbol  = "OW_TARGET_CITE_UNRESOLVED"
@@ -781,6 +839,36 @@ numeric = "OW-T-510"
 symbol  = "OW_TARGET_GEN_CONTENDED"
 meaning = "§5.4 rule 2"
 sites   = ["09-generation.md:2759"]
+
+# ── D750. The sealed-row trigger's code, appended under 09 section 15's "+" rule.
+
+[[code]]
+numeric = "OW-T-511"
+symbol  = "OW_TARGET_ARTIFACT_SEALED"
+meaning = "an UPDATE or DELETE of a sealed artifact row, refused by 0005_out.sql's triggers: OUT edits always write a new artifact_gen and a sealed generation is never patched (OUT24)"
+fix     = "ow out compile --target <target>   # a new artifact_gen; the sealed row stays as it is"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1474"]
+
+# ── D752. The retained bundle's refusal, appended under 09 section 15's "+" rule.
+
+[[code]]
+numeric = "OW-T-512"
+symbol  = "OW_TARGET_IL_MOVED"
+meaning = "an IL file's bytes differ from the row the gate passed when the compile freezes the bundle into CAS, or the row is past MAX_IL_FILE_BYTES: the compile never seals bytes no gate saw"
+fix     = "ow out check --stage final"
+raised_by = "TargetError"
+sites   = ["09-generation.md:199"]
+
+# ── D756. The ow:manual reader's refusal, appended under 09 section 15's "+" rule. The reference
+# target's ConstructTable already names the symbol (18-api-sketch.md's elem.ow-manual row).
+
+[[code]]
+numeric = "OW-T-513"
+symbol  = "OW_TARGET_MANUAL_REASON_UNKNOWN"
+meaning = "a data-ow-manual value outside ManualReason: a framework error finding, so the gate fails instead of asking a human to act on an undefined reason"
+fix     = "ow out constructs --construct ow:manual"
+sites   = ["09-generation.md:1956"]
 
 # ── W1.5, the driver card grammar (04-driver-system.md sections 2.1-2.8, 4.5, 5.3, 7.5). The
 # three discovery-point refusals of section 5.3 step 1, plus the two numerics the plan already

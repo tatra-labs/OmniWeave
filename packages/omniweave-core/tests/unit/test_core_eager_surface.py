@@ -103,6 +103,8 @@ FILLED_HOMES: dict[str, str] = {
     " in the package rather than in a module",
     "answer": "P6 W6.6c -- render.py, and the three names 18-api-sketch.md:842 homes at the"
     " package plus the four shapes schema/answer-v1.json is reflected through",
+    "out": "P9 W9.1 -- finding.py, gate.py, job.py and report.py (D737), re-exported at the"
+    " package as 18-api-sketch.md:847 homes them",
 }
 
 
