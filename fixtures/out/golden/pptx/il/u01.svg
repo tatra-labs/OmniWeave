@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-ow-el="u01/e1">
+  <defs>
+    <linearGradient id="sky" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#1F4E79" stop-opacity="1"/>
+      <stop offset="1" style="stop-color: #9DC3E6; stop-opacity: 0.5"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5" fx="0.4" fy="0.4">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#2E75B6"/>
+    </radialGradient>
+    <pattern id="grid" data-ow-preset="pct50" data-ow-fg="#000000" data-ow-bg="#FFFFFF"/>
+    <clipPath id="round" clipPathUnits="userSpaceOnUse"><circle cx="1100" cy="560" r="60"/></clipPath>
+  </defs>
+  <g data-ow-el="u01/e2" opacity="0.9">
+    <rect data-ow-el="u01/e3" x="40" y="40" width="400" height="200" rx="12" ry="12" fill="url(#sky)" stroke="#1F4E79" stroke-width="2" stroke-dasharray="4 2" stroke-linejoin="round" fill-opacity="0.8" stroke-opacity="0.9"/>
+    <text data-ow-el="u01/e4" x="60" y="100" font-family="Probe Sans" font-size="28" font-weight="bold" font-style="italic" text-anchor="start" text-decoration="underline" letter-spacing="1" fill="#FFFFFF" data-ow-cite="d7#1" data-ow-cite-kind="quote" data-ow-cite-span="0:23">Revenue rose 12% in Q3.</text>
+    <text data-ow-el="u01/e5" x="60" y="160" font-family="Probe Sans" font-size="20" fill="#FFFFFF" xml:space="preserve">Up <tspan data-ow-el="u01/e6" baseline-shift="super">2</tspan><tspan data-ow-el="u01/e7" x="60" dx="0" dy="24">and steady</tspan></text>
+  </g>
+  <circle data-ow-el="u01/e8" cx="640" cy="160" r="60" fill="url(#sun)"/>
+  <rect data-ow-el="u01/e9" x="760" y="100" width="120" height="120" fill="url(#grid)"/>
+  <line data-ow-el="u01/e10" x1="40" y1="320" x2="440" y2="320" stroke="#404040" stroke-width="3" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+  <path data-ow-el="u01/e11" d="M500 300 L600 360 L700 300" fill="none" stroke="#404040" stroke-width="2"/>
+  <a data-ow-el="u01/e12" href="#u02"><text data-ow-el="u01/e13" x="60" y="420" font-family="Probe Sans" font-size="20" fill="#1F4E79">Next: the regions</text></a>
+  <image data-ow-el="u01/e14" href="asset-slot:d49f80f301b74b0f7e5d5afdf48877f8c32a207ec0c05bfd4e2dae2fe33aa579" x="1040" y="500" width="120" height="120" preserveAspectRatio="xMidYMid slice" clip-path="url(#round)"/>
+</svg>

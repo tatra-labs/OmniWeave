@@ -25,7 +25,7 @@ from omniweave_core.out.gate import GateStatus
 from omniweave_core.out.job import ILFile
 from omniweave_core.out.plan import OutUnit
 from omniweave_core.out.report import OutReport
-from omniweave_core.out.rules import Box, DocIndex, RuleCtx, RuleSpec, run_pack
+from omniweave_core.out.rules import TYPE_SIZE, Box, DocIndex, RuleCtx, RuleSpec, run_pack
 
 SLOT = "a" * 64
 
@@ -52,6 +52,8 @@ class _Ctx:
     index: DocIndex
     limits: Mapping[str, int] = field(default_factory=dict)
     cites: CiteResolver = NO_CITES
+    brief: Any = None
+    constructs: Any = None
 
     def measure(self, n: CarrierNode) -> Box | None:  # noqa: ARG002 -- the protocol's shape.
         return None
@@ -175,7 +177,7 @@ def test_pass_a_folds_each_unit_and_pass_b_reads_the_completed_index() -> None:
     assert run.index.slots["u02"] == frozenset({SLOT})
     section = html_carrier("il/u01.html", U1, strict=True).root()
     assert dict(run.index.nsigs) == {"u01/e1": section.nsig}, "D743: one nsig a stamped element"
-    assert (run.index.markers, dict(run.index.value_occurrences)) == ((), {})
+    assert (run.index.markers, dict(run.index.value_occurrences)) == ((), {"type_size": {}})
 
 
 def test_rules_run_in_order_then_id() -> None:
@@ -455,3 +457,74 @@ def test_rule_timings_are_read_from_the_injected_clock() -> None:
     texts = {"il/u01.html": U1, "il/u02.html": U2}
     run = _run(texts, clock=_Ticks())
     assert run.timings == {"t.class@1": 2, "t.roster@1": 1, "t.script@1": 2}
+
+
+# ---------------------------------------------------------------------------
+# Ruling 12: an unmeasurable node is a recorded skip (D793)
+# ---------------------------------------------------------------------------
+
+BOXED = Box(advance=1.0, height=1.0, ascent=1.0, descent=0.0, lines=1, overflow=False)
+
+
+@dataclass
+class _Measuring(_Ctx):
+    """An estimator that can measure `u01/e2` and nothing else."""
+
+    def measure(self, n: CarrierNode) -> Box | None:
+        return BOXED if n.el == "u01/e2" else None
+
+
+def _measuring(unit: OutUnit | None, doc: CarrierDoc | None, index: DocIndex) -> RuleCtx:
+    return _Measuring(doc, unit, index)
+
+
+def test_an_unmeasurable_node_is_one_skip_naming_the_rule_and_the_element() -> None:
+    seen: list[Box | None] = []
+
+    def measured(ctx: RuleCtx) -> Iterable[Finding]:
+        assert ctx.doc is not None
+        seen.extend(ctx.measure(n) for n in ctx.doc.select("html|p"))
+        return ()
+
+    pack = {
+        "g": (
+            RuleSpec("m@1", 60, "node", frozenset({"X"}), measured, needs=frozenset({"measure"})),
+            RuleSpec("plain@1", 61, "node", frozenset({"X"}), measured),
+        )
+    }
+    text = (
+        '<section><p data-ow-el="u01/e2">a</p><p data-ow-el="u01/e3">b</p>'
+        '<p data-ow-el="u01/e3">c</p><p>d</p><p>e</p></section>'
+    )
+    run = run_pack(
+        pack,
+        _Bundle({"il/u01.html": text}),
+        _measuring,
+        carrier=_carrier,
+        stage="final",
+        met=frozenset({"measure"}),
+        fixes={"measure": "uv pip install 'omniweave-target-pptx[measure]'"},
+    )
+    assert seen == [BOXED, None, None, None, None] * 2, "the rule sees the estimator's answer"
+    assert [(s.rule, s.needs, s.el, s.fix) for s in run.skipped] == [
+        ("m@1", "measure", "u01/e3", "uv pip install 'omniweave-target-pptx[measure]'"),
+        ("m@1", "measure", None, "uv pip install 'omniweave-target-pptx[measure]'"),
+    ], "once a rule and element; a rule that does not need measure records nothing"
+    assert "cannot measure this node" in run.skipped[0].reason
+
+
+# ---------------------------------------------------------------------------
+# Ruling 13: each stated type size, counted across the roster (D794)
+# ---------------------------------------------------------------------------
+
+
+def test_every_stated_font_size_is_counted_across_units_by_its_value() -> None:
+    texts = {
+        "il/u01.html": '<section><p style="font-size: 20px">a</p><p style="font-size:13">b</p>'
+        '<p style="color: red">c</p></section>',
+        "il/u02.html": '<section><p style="font-size: 20.0">d</p><p style="font-size: 1em">e</p>'
+        '<p style="font-size: 13px; font-size: 13">f</p></section>',
+    }
+    run = _run(texts, {})
+    assert run.index.value_occurrences == {"type_size": {"20": 2, "13": 3}}
+    assert TYPE_SIZE == "type_size"

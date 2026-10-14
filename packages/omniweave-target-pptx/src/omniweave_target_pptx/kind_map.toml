@@ -1,0 +1,23 @@
+# kind_map.toml — owsvg/1's construct -> Kind map, R2's comparator (09-generation.md section 11.1).
+# Every construct `ow out stamp` can address has a row: an element whose visible text is not
+# empty, or one that carries a cite (D767). A slide is a `section`, a text box and each of its
+# lines a `paragraph`, a group a `container`, and a drawn shape a `diagram`. parse.pptx.native
+# (W9.3, D804) is the reader these kinds are written for.
+schema = "omniweave.out-kind-map/1"
+
+[kind]
+"ow.unit" = "section"
+"ow.manual" = "paragraph"
+"shape.g" = "container"
+"shape.a" = "container"
+"def.use" = "container"
+"text.text" = "paragraph"
+"text.tspan" = "paragraph"
+"shape.image" = "picture"
+"shape.rect" = "diagram"
+"shape.circle" = "diagram"
+"shape.ellipse" = "diagram"
+"shape.line" = "diagram"
+"shape.polyline" = "diagram"
+"shape.polygon" = "diagram"
+"shape.path" = "diagram"

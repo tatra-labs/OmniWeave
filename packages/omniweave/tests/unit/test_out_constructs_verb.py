@@ -155,10 +155,11 @@ def test_documentation_does_not_need_the_target_enabled(tmp_path: Path) -> None:
 
 
 def test_a_target_no_card_declares_is_not_found_and_names_the_kinds(tmp_path: Path) -> None:
-    code, out, err = _run(["pptx"], tmp_path, _env(tmp_path, SUITES))
+    code, out, err = _run(["deck"], tmp_path, _env(tmp_path, SUITES))
     assert (code, out) == (NotFoundError.EXIT, "")
     assert (
-        "no compile card declares target 'pptx'; the cards found declare docx, owtext, video" in err
+        "no compile card declares target 'deck'; the cards found declare docx, owtext, pptx, video"
+        in err
     )
     assert "OW-T-515" in err
     assert "fix: ow out targets" in err

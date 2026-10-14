@@ -82,6 +82,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 
 from omniweave_core.errors import NotFoundError, StoreError, TargetError
 from omniweave_core.model.enums import Quote
+from omniweave_core.out.cites import CITE_KINDS
 from omniweave_core.out.gate import GateStatus
 from omniweave_core.out.ledger import ROLES, SLOT_PREFIX, LedgerRow
 from omniweave_core.out.plan import UnitOutcome
@@ -124,7 +125,6 @@ CiteKind = Literal["quote", "paraphrase", "derived", "data"]
 
 ORIGINS: Final = frozenset({"authored", "feedback", "read_back", "rebase"})
 DELIVERIES: Final = frozenset({"release", "draft"})
-CITE_KINDS: Final = frozenset({"quote", "paraphrase", "derived", "data"})
 
 RESTRICTION_MASK: Final = (1 << 32) - 1
 """09 section 7.3: "32 reserved `restriction_bits`"."""

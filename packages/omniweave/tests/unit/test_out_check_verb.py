@@ -18,7 +18,7 @@ import omniweave_conform.suites.target as target_suites
 import pytest
 from omniweave.surface import out as verb
 from omniweave_conform.suites.target.suite import _FixtureCites
-from omniweave_core.errors import TargetError, UsageError
+from omniweave_core.errors import ConfigError, TargetError, UsageError
 from omniweave_core.out.brief import BRIEF_SCHEMA
 from omniweave_core.store import cites as store_cites
 from omniweave_core.store import migrate
@@ -288,3 +288,26 @@ def test_the_console_script_routes_check(
     captured = capsys.readouterr()
     assert (code, captured.err) == (0, "")
     assert json.loads(captured.out)["stage"] == "early"
+
+
+# ---------------------------------------------------------------------------------------------
+# Ruling 26: the verbs that write no artefact build the target with its configuration (D792)
+# ---------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["check", "--stage", "early"], ["stamp"], ["normalize", "--stage", "early"]],
+)
+def test_a_targets_drivers_config_reaches_check_stamp_and_normalize(
+    project: Path, argv: list[str]
+) -> None:
+    """owtext declares no `[config]`, so a key under its table is refused by name, which is
+    only possible once the verb reads the table at all."""
+    job = _job(project)
+    assert _check(["--stage", "early"], project, job)[0] == 0, "normalize reads a standing report"
+    with (project / "omniweave.toml").open("a", encoding="utf-8") as toml:
+        toml.write('\n[drivers."compile.text.owtext".config]\nnewline = "crlf"\n')
+    code, out, err = _run([*argv, "--job", str(job)], project)
+    assert (code, out) == (ConfigError.EXIT, "")
+    assert "config keys ['newline'] are not declared by this driver's [config] schema" in err

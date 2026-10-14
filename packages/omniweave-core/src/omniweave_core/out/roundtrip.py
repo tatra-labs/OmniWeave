@@ -32,6 +32,11 @@ artefact or a hand-built counterexample through one door.
    reports every law the card does not declare as not applicable, so the claim's weakness is
    visible. It refuses `r4` without `fidelity = "passthrough"`, and `r2` or `r3` with `fidelity =
    "none"`, because those laws are not meaningful there.
+8. **R4 passes over a `manual_required` unit** (D808). Section 5.5's classifier places a
+   unit with an `ow:manual` region before any copy, whatever its edits, and its part is a
+   placeholder a human replaces. So zero edits cannot make it `passthrough`, and an edit
+   elsewhere cannot make it local. R4(a)'s "100 %" and R4(b)'s "never `rebuilt`" are
+   judged over the other units.
 """
 
 from __future__ import annotations
@@ -223,6 +228,8 @@ def r4a(outcomes: Mapping[str, UnitOutcome], copied: Mapping[str, tuple[str, str
     """Zero edits: every unit copied, and each copied part's sha256 equal to its source's."""
     failures = []
     for unit, outcome in sorted(outcomes.items()):
+        if outcome is UnitOutcome.MANUAL_REQUIRED:
+            continue  # ruling 8
         if outcome not in _COPIED:
             failures.append(Failure("not-copied", unit, f"{unit} is {outcome} after zero edits"))
             continue
@@ -244,8 +251,8 @@ def r4b(
     """Ruling 5: a unit whose source-refs and definition deps miss the edit is never rebuilt."""
     failures = []
     for unit, outcome in sorted(outcomes.items()):
-        if dependencies.get(unit, frozenset()) & edited:
-            continue
+        if outcome is UnitOutcome.MANUAL_REQUIRED or dependencies.get(unit, frozenset()) & edited:
+            continue  # ruling 8, or a unit the edit touches
         if outcome not in {UnitOutcome.PASSTHROUGH, UnitOutcome.PATCHED}:
             failures.append(
                 Failure("not-local", unit, f"{unit} shares nothing with the edit and is {outcome}")

@@ -1,0 +1,100 @@
+# THE DRIVERCARD for `parse.pptx.native`: compile.pptx.native's read_back (09-generation.md
+# sections 11 and 12.1; 16-roadmap.md W9.3). Read WITHOUT importing.
+#
+# It reads a .pptx THIS TARGET BUILT, and nothing else well: its blocks come from the slides,
+# shape trees and provenance part `lower/` writes, whose `at` names where each address landed.
+# 09 Q4: the routing policy does not prefer a target's read_back, so this card is reached by
+# name, through the target suite and `ow out back`, and `sniff()` answers "not mine" to every
+# stream.
+card_schema = 1
+
+[driver]
+id = "parse.pptx.native"
+port = "parse/1"
+version = "0.1.0"
+schema_version = 1                 # THE ONLY DRIVER VERSION IN A CACHE KEY. Bump it whenever the
+                                   #   output bytes change for the same input.
+entrypoint = "omniweave_target_pptx.back.driver:PptxReader"
+granularity = "document"
+replay_class = "byte_exact"        # lxml over the package's own parts.
+title = "read_back for owsvg/1 artefacts (.pptx this target compiled)"
+summary = "A .pptx compile.pptx.native built, read back by its own spelling: a slide a section, its groups, text boxes, shapes and pictures, each address and cite where the IL put it."
+
+[capability]
+formats = ["application/vnd.openxmlformats-officedocument.presentationml.presentation"]
+consumes = ["raw_bytes"]
+produces = ["doc_fragment"]
+
+[capability.parse]
+spatial = "none"                   # A shape's frame is not reported, only its place in the tree.
+origin_span = "none"               # A block's text is the runs' text, not a byte range.
+text_span = false
+marks = false                      # Emphasis is not lifted into marks.
+reading_order = "source"           # The shape tree's own order.
+sections = "outline_from_source"   # A slide is a section, as `lower/` wrote one a unit.
+tables = "none"                    # owsvg/1 has no table.
+math = []
+assets = "none"                    # A picture is a block, not bytes.
+asset_origin = false
+notes = "none"                     # `lower/` writes no notes page.
+confidence = "none"
+furniture = "destroyed"            # `lower/` writes no layout placeholder, so there is none.
+round_trip = "structure"           # Kinds, the tree, the text and the addresses.
+forfeits = []
+# No format_tokens (D812): core's media-type table maps this type already, and a pair is a
+# claim sniff() must back, which a read_back reached by name never does.
+
+[hardware]
+gpu            = "none"
+vram_gb_min    = 0
+ram_gb_min     = 0.25
+cpu_arch       = ["x86_64", "aarch64"]
+os             = ["linux", "darwin", "windows"]
+needs_network  = false
+needs_binaries = []
+imports_torch  = false
+install_bytes  = 20000000          # python-pptx and lxml, shared with the compile card.
+services       = []
+
+[isolation]
+requires        = "subproc"
+memory_mb       = 512
+progress_ms     = 15000
+wall_ms_hard    = 120000
+batch_max_units = 16
+
+[limits]
+max_input_bytes = 67108864         # 64 MiB, half the host's MAX_ENTRY_BYTES (D812): a deck's
+                                   #   pictures make it the larger artefact, and the host's
+                                   #   ceiling would declare no limit of the driver's own.
+max_parts       = 1
+
+[licence.code]
+spdx = "Apache-2.0"
+redistribution = "allowed"
+output_share_alike = false
+competitor_bar = false
+requires_credential = false
+revenue_gate_usd = 0
+mau_gate = 0
+territory_excluded = []
+field_of_use_excluded = []
+attribution_per_output = false
+no_model_training = false
+remote_kill_switch = false
+clause_refs = []
+
+[config]
+type = "object"
+additionalProperties = false
+required = []
+
+[cost.model]
+class   = "free"
+shape   = "linear_per_byte"
+unit    = "document"
+per_part    = { wall_ms = 20 }
+per_session = { }
+scaling     = { key = "input_bytes", exponent = 1.0, reference = 65536 }
+tokens_out_p95_multiple = 1.0
+max_retries = 0

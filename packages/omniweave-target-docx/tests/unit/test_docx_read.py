@@ -85,6 +85,24 @@ def test_the_card_is_an_ordinary_parse_card_reached_by_name() -> None:
     assert DocxReader.probe(None).status is ProbeStatus.OK  # type: ignore[arg-type]
     hint = StreamHint(filename="m.docx", extension=".docx", declared_media_type=None, byte_len=9)
     assert DocxReader().sniff(b"PK\x03\x04", hint) == (), "ruling 5: never by content"
+    assert card.parse is not None and card.parse.format_tokens == (), "D812: no pair to back"
+    assert card.parse.marks, "D812: a note reference is a mark"
+
+
+def test_a_read_cancelled_after_the_body_stops(tmp_path: Path) -> None:
+    """D812 (ruling 7), the kit's contract suite: progress after the body and after the
+    records, and a read cancelled after the body stops as `TIMEOUT`."""
+    out = lowered(tmp_path, UNIT, cites={"d7#1": 3})
+    store = MemoryBlobStore(tmp_path / "cancel")
+    sha = store.add(out.data)
+    unit = UnitRef(uri="file:///m.docx", part="", content_sha256=sha, byte_len=len(out.data))
+    whole = make_io(store, tmp_path / "whole")
+    DocxReader().parse(unit, PartSelector(), whole)
+    assert whole.call().progress == [(1, 2), (2, 2)]
+    cut = make_io(store, tmp_path / "cut", cancel_after_progress=1)
+    with pytest.raises(DriverError, match="cancelled") as caught:
+        DocxReader().parse(unit, PartSelector(), cut)
+    assert caught.value.cls is FailureClass.TIMEOUT
 
 
 # ---------------------------------------------------------------------------------------------
@@ -202,7 +220,7 @@ def test_the_store_takes_the_read_back_as_an_ingest_would(tmp_path: Path) -> Non
         spatial="none",
         origin_span="none",
         text_span=False,
-        marks=False,
+        marks=True,
         reading_order="source",
         sections="outline_from_source",
         tables="cells_with_spans",

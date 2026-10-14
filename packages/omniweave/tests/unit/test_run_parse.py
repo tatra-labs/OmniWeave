@@ -41,12 +41,15 @@ from omniweave_core.clock import SystemClock
 from omniweave_core.config import Config, load
 from omniweave_core.contract import SCHEMA
 from omniweave_core.discovery import catalog
+from omniweave_core.drivers.catalog import Catalog
+from omniweave_core.drivers.licence import Restriction, restriction_mask
 from omniweave_core.errors import RouteError
 from omniweave_core.host.keystore import PASSWORD_FILENAME
 from omniweave_core.model.records import Producer
 from omniweave_core.operator import Outcome, Roots
 from omniweave_core.retrieve.types import SCORER_VERSION
 from omniweave_core.store import sqlite as ow
+from omniweave_core.store.artifact import SqliteArtifactStore
 from omniweave_core.store.indexlock import FIELD_SEP, LOCK_PATH
 from omniweave_core.store.queue import SqliteStore
 from omniweave_core.store.verify import VerifyClause, verify_store
@@ -406,6 +409,54 @@ def test_a_released_office_driver_parses_in_process_and_commits_what_a_worker_co
     assert len(s1_receipt.splitlines()) == 1 + 2, "a header and the two settled documents"
 
 
+def test_a_restricted_card_stamps_what_it_parses_and_the_compile_bars_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, released_catalog: Any
+) -> None:
+    """INV-16, parse -> derive -> compile (D811). The office card is given a licence fact that
+    adds a restriction bit without moving its tier, `no_model_training`. Every block and asset the
+    ingest writes carries the card's stamp, every segment derived from them carries it too, and
+    the compile's restriction aggregate bars each cited block under a policy that denies it, and
+    none under one that does not."""
+    office = "parse.office.anydoc"
+    card = released_catalog.cards[office]
+    restricted = dataclasses.replace(
+        card, licence_code=dataclasses.replace(card.licence_code, no_model_training=True)
+    )
+    stamped = Catalog.assemble(
+        validity_key=released_catalog.validity_key,
+        cards={**released_catalog.cards, office: restricted},
+        probe_status={k: str(v) for k, v in released_catalog.probe_status.items()},
+        trust=dict(released_catalog.trust),
+        tombstones=released_catalog.tombstones.values(),
+    )
+    monkeypatch.setattr("omniweave_core.discovery.catalog", lambda: stamped)
+    root = tmp_path / "project"
+    (root / "docs").mkdir(parents=True)
+    shutil.copy(FIXTURES / "rich.docx", root / "docs" / "rich.docx")
+    released = "[drivers]\nallow_unattested = true\nrequire_lock = false\n"
+    (root / "omniweave.toml").write_text(PROJECT + released, encoding="utf-8")
+    config = load(cwd=root, env={"OMNIWEAVE_HOME": str(root / "owhome")})
+    store = root / ".omniweave" / "index.owstore"
+    _run(root, store, config)
+    bit = Restriction.NO_MODEL_TRAINING.bit
+    assert _rows(store, "SELECT DISTINCT restriction_bits FROM block") == [(bit,)]
+    assert _rows(store, "SELECT DISTINCT restriction_bits FROM asset") in ([], [(bit,)])
+    assert _rows(store, "SELECT DISTINCT restriction_bits FROM segment") == [(bit,)], "derived"
+    cited = [
+        block_id
+        for (block_id,) in _rows(store, "SELECT block_id FROM block WHERE cite IS NOT NULL")
+    ]
+    assert cited
+    with ow.StoreThread(lambda: ow.connect(store)) as thread:
+        artifacts = SqliteArtifactStore(thread, clock=SystemClock())
+        barred = artifacts.restricted(
+            asset_ids=(), block_ids=cited, barred_mask=restriction_mask(["no_model_training"])
+        )
+        allowed = artifacts.restricted(asset_ids=(), block_ids=cited, barred_mask=0)
+    assert {(r.what, r.id, r.bits) for r in barred} == {("cite", b, bit) for b in cited}
+    assert allowed == ()
+
+
 def test_a_source_that_changed_after_identify_is_not_parsed_under_its_old_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -578,5 +629,5 @@ def test_in_process_the_password_is_written_into_the_tmpdir_the_guard_hands_the_
     call = SimpleNamespace(units=_units("locked.pdf"))
     work = parse_module._Guarded(operator, None, []).work(call, 0)  # type: ignore[arg-type]
     with pytest.raises(RuntimeError, match="the file was read"):
-        work(SimpleNamespace(tmpdir=str(tmp_path / "scratch")))
+        work(SimpleNamespace(tmpdir=str(tmp_path / "scratch")))  # type: ignore[arg-type]
     assert seen == [b"s3cret"]

@@ -14,9 +14,18 @@ from typing import Any
 
 import pytest
 from omniweave_core.errors import TargetError
+from omniweave_core.model.enums import Quote
 from omniweave_core.out.carrier import CarrierDoc
 from omniweave_core.out.carrier.html import html_carrier
-from omniweave_core.out.conformance import NOT_IN_TABLE, table_pack, undeclared
+from omniweave_core.out.cites import CitedBlock
+from omniweave_core.out.conformance import (
+    CITE_FACTS,
+    CITE_UNRESOLVED,
+    NOT_IN_TABLE,
+    cite_pack,
+    table_pack,
+    undeclared,
+)
 from omniweave_core.out.constructs import ConstructTable
 from omniweave_core.out.finding import Finding, Severity
 from omniweave_core.out.plan import OutUnit
@@ -304,3 +313,139 @@ def test_a_normalize_row_over_an_element_or_a_property_is_refused_at_build() -> 
     with pytest.raises(TargetError, match="names no attribute value") as caught:
         table_pack(table, "owtest", NORMALIZERS)
     assert caught.value.code() == "OW_TARGET_CONSTRUCTS_INVALID"
+
+
+# ---------------------------------------------------------------------------------------------
+# ruling 6: a bake row is order 24, and its severity is the card's (D789)
+# ---------------------------------------------------------------------------------------------
+
+BAKE_ROW: dict[str, Any] = {
+    "id": "style.shadow",
+    "selector": "@style|text-shadow",
+    "disposition": "bake",
+    "round_trip": "lossy",
+    "code": "OW_TARGET_SHADOW_REQUIRES_BAKE",
+    "bake": {"renderer": "raster", "dpi": 192, "role": "bake"},
+    "since": "0.1.0",
+}
+SHADOWED = '<section><p style="text-shadow: 1px 1px red">x</p><p>y</p></section>'
+
+
+def _baked(bake: str) -> RuleSpec:
+    raw = _raw()
+    raw["construct"].append(BAKE_ROW)
+    table = ConstructTable.parse(raw, NORMALIZERS, source="baked.toml")
+    [spec] = [s for s in table_pack(table, "owtest", NORMALIZERS, bake=bake) if s.order == 24]
+    return spec
+
+
+def test_a_bake_row_is_an_error_while_the_cards_bake_is_unavailable() -> None:
+    spec = _baked("unavailable")
+    assert (spec.id, spec.codes) == ("ow.owtest.bake@1", {"OW_TARGET_SHADOW_REQUIRES_BAKE"})
+    [found] = _run(spec, SHADOWED)
+    assert (found.severity, found.construct, found.fix) == (
+        Severity.ERROR,
+        "style.shadow",
+        "ow out constructs owtest --construct style.shadow",
+    )
+    assert found.msg == (
+        "<p>: @style|text-shadow needs the bake tier (raster at 192 dpi), and this target's bake "
+        "is unavailable"
+    )
+
+
+def test_a_bake_row_is_a_warning_once_the_cards_bake_is_available() -> None:
+    [found] = _run(_baked("available"), SHADOWED)
+    assert (found.severity, found.msg) == (
+        Severity.WARNING,
+        "<p>: @style|text-shadow is baked (raster at 192 dpi), a lossy raster degradation",
+    )
+    assert _run(_baked("available"), "<section><p>y</p></section>") == []
+
+
+# ---------------------------------------------------------------------------------------------
+# ruling 7: the cite rules, every target's, built from the table (D791)
+# ---------------------------------------------------------------------------------------------
+
+
+class _Cites:
+    def __init__(self) -> None:
+        self.batches: list[tuple[str, ...]] = []
+
+    def by_cite(self, cite: str) -> CitedBlock | None:
+        return self.by_cites((cite,))[cite]
+
+    def by_cites(self, cites: tuple[str, ...]) -> Mapping[str, CitedBlock | None]:
+        self.batches.append(cites)
+        known = CitedBlock("d7#1", 101, 7, 1, "Revenue rose.", Quote.VERBATIM, 0)
+        return {c: known if c == "d7#1" else None for c in cites}
+
+
+@dataclass
+class _CiteCtx:
+    doc: CarrierDoc | None
+    cites: _Cites
+    unit: OutUnit | None = UNIT
+
+
+def _with_facts() -> ConstructTable:
+    raw = _raw()
+    raw["construct"] += [
+        _native("cite.kind", "@data-ow-cite-kind"),
+        _native("cite.span", "@data-ow-cite-span"),
+    ]
+    return ConstructTable.parse(raw, NORMALIZERS, source="facts.toml")
+
+
+def _cited(spec: RuleSpec, text: str, cites: _Cites | None = None) -> list[Finding]:
+    doc = html_carrier("il/u01.html", text, strict=True)
+    return list(spec.fn(_CiteCtx(doc, cites or _Cites())))  # type: ignore[arg-type]
+
+
+def test_the_cite_pack_is_named_for_its_target_and_has_facts_only_where_rows_do() -> None:
+    assert [(s.id, s.order, s.needs) for s in cite_pack(_with_facts(), "pptx")] == [
+        ("pptx.cite.facts@1", 58, frozenset()),
+        ("pptx.cite.resolves@1", 80, frozenset({"cites"})),
+    ]
+    assert [s.id for s in cite_pack(TABLE, "owtest")] == ["owtest.cite.resolves@1"]
+    [facts, resolves] = cite_pack(_with_facts(), "pptx")
+    assert (facts.codes, resolves.codes) == ({CITE_FACTS}, {CITE_UNRESOLVED})
+
+
+def test_every_cite_on_a_unit_resolves_in_one_batch() -> None:
+    cites = _Cites()
+    [resolves] = cite_pack(TABLE, "owtest")
+    found = _cited(
+        resolves,
+        '<section><p data-ow-cite="d7#1 d7#9">a</p><p data-ow-cite="d7#9 d7#1">b</p></section>',
+        cites,
+    )
+    assert cites.batches == [("d7#1", "d7#9")]
+    assert [(f.construct, f.msg, f.fix) for f in found] == [
+        ("ow.cite", "cite 'd7#9' resolves to no live block in this corpus", "ow open d7#9")
+    ] * 2
+    assert _cited(resolves, "<section><p>x</p></section>", cites) == []
+    assert cites.batches == [("d7#1", "d7#9")], "a unit with no cite asks nothing"
+
+
+@pytest.mark.parametrize(
+    ("attrs", "construct", "said"),
+    [
+        ('data-ow-cite-kind="hearsay"', "cite.kind", "data-ow-cite-kind='hearsay' is not one of"),
+        ('data-ow-cite-span="4:4"', "cite.span", "data-ow-cite-span='4:4' is not a:b with a < b"),
+        ('data-ow-cite-span="a:9"', "cite.span", "data-ow-cite-span='a:9'"),
+        ('data-ow-cite-span="9"', "cite.span", "data-ow-cite-span='9'"),
+    ],
+)
+def test_a_cites_facts_are_its_rows(attrs: str, construct: str, said: str) -> None:
+    [facts, _] = cite_pack(_with_facts(), "pptx")
+    [found] = _cited(facts, f'<section><p data-ow-cite="d7#1" {attrs}>x</p></section>')
+    assert (found.code, found.construct) == (CITE_FACTS, construct)
+    assert said in found.msg
+    assert found.fix == f"ow out constructs pptx --construct {construct}"
+
+
+def test_stated_facts_pass() -> None:
+    [facts, _] = cite_pack(_with_facts(), "pptx")
+    good = '<section><p data-ow-cite-kind="quote" data-ow-cite-span="0:12">x</p></section>'
+    assert _cited(facts, good) == []

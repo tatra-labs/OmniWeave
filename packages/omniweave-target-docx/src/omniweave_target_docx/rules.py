@@ -42,8 +42,10 @@ holds the rest, in 09 section 4.4's bands.
 7. **A cite's kind and span are checked where the gate can say so** (D783). The compile already
    refuses a `data-ow-cite-kind` outside the four kinds and a `data-ow-cite-span` that is not
    `a:b` with `a < b`, as `OW_TARGET_IL_MALFORMED` (`run.out_compile` ruling 7). The rows that
-   declare the two attributes arrived with D783, so this rule reports the same values with the
-   same code at check time, where `ow out check` can name them before a compile is tried.
+   declare the two attributes arrived with D783, so a rule reports the same values with the
+   same code at check time, where `ow out check` can name them before a compile is tried. D791
+   moves that rule and the cite batch to `omniweave_core.out.conformance.cite_pack()`, every
+   target's, under their docx rule ids.
 """
 
 from __future__ import annotations
@@ -55,7 +57,6 @@ from typing import Final
 
 from omniweave_core.out import Finding, Provenance, RuleCtx, RuleSpec, Severity
 from omniweave_core.out.carrier import CarrierNode, style_declarations
-from omniweave_core.store.artifact import CITE_KINDS
 
 __all__ = ["BLOCKS", "LIST_DEPTH_MAX", "rules"]
 
@@ -146,23 +147,6 @@ def rules() -> Mapping[str, Sequence[RuleSpec]]:
                 "unit",
                 frozenset({"OW_TARGET_IL_ASSET_URI"}),
                 media_src,
-            ),
-            RuleSpec(
-                "docx.cite.facts@1",
-                46,
-                "unit",
-                frozenset({"OW_TARGET_IL_MALFORMED"}),
-                cite_facts,
-            ),
-        ),
-        "cross-reference": (
-            RuleSpec(
-                "docx.cite.resolves@1",
-                80,
-                "unit",
-                frozenset({"OW_TARGET_CITE_UNRESOLVED"}),
-                cite_resolves,
-                needs=frozenset({"cites"}),
             ),
         ),
     }
@@ -396,66 +380,6 @@ def media_src(ctx: RuleCtx) -> Iterator[Finding]:
                 msg=f"src={src[:80]!r} is not asset-slot:<sha256 hex>; freeze the asset and "
                 "write its slot",
             )
-
-
-def cite_facts(ctx: RuleCtx) -> Iterator[Finding]:
-    """Ruling 7: `data-ow-cite-kind` is one of four, and `data-ow-cite-span` is `a:b`, `a < b`."""
-    if ctx.doc is None or ctx.unit is None:
-        return
-    for n in ctx.doc.select("@data-ow-cite-kind"):
-        value = n.attr("data-ow-cite-kind") or ""
-        if value not in CITE_KINDS:
-            yield _finding(
-                ctx,
-                n,
-                rule="docx.cite.facts@1",
-                code="OW_TARGET_IL_MALFORMED",
-                construct="ow.cite.kind",
-                msg=f"data-ow-cite-kind={value!r} is not one of {sorted(CITE_KINDS)}",
-            )
-    for n in ctx.doc.select("@data-ow-cite-span"):
-        value = n.attr("data-ow-cite-span") or ""
-        a, sep, b = value.partition(":")
-        if not sep or not a.isdecimal() or not b.isdecimal() or int(a) >= int(b):
-            yield _finding(
-                ctx,
-                n,
-                rule="docx.cite.facts@1",
-                code="OW_TARGET_IL_MALFORMED",
-                construct="ow.cite.span",
-                msg=f"data-ow-cite-span={value!r} is not a:b with a < b",
-            )
-
-
-# ---------------------------------------------------------------------------------------------
-# order 80-89: cross-reference
-# ---------------------------------------------------------------------------------------------
-
-
-def cite_resolves(ctx: RuleCtx) -> Iterator[Finding]:
-    """Every cite on the unit resolves, in one batch (09 section 10)."""
-    if ctx.doc is None or ctx.unit is None:
-        return
-    nodes = ctx.doc.select("@data-ow-cite")
-    tokens = tuple(dict.fromkeys(c for n in nodes for c in (n.attr("data-ow-cite") or "").split()))
-    if not tokens:
-        return
-    found = ctx.cites.by_cites(tokens)
-    for n in nodes:
-        for c in (n.attr("data-ow-cite") or "").split():
-            if found.get(c) is None:
-                yield Finding(
-                    code="OW_TARGET_CITE_UNRESOLVED",
-                    severity=Severity.ERROR,
-                    provenance=Provenance.INTRODUCED,
-                    rule="docx.cite.resolves@1",
-                    unit=ctx.unit.id,
-                    construct="ow.cite",
-                    msg=f"cite {c!r} resolves to no live block in this corpus",
-                    fix=f"ow open {c}",
-                    at=n.at,
-                    el=n.el,
-                )
 
 
 # ---------------------------------------------------------------------------------------------
