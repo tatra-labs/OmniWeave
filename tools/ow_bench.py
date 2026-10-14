@@ -113,6 +113,10 @@ machine, and a bench that took the store's lock would block an ingest it is not 
 HOME_ENV: Final = "OMNIWEAVE_HOME"
 """Where section 1.2 puts `bench.lock`. Read from the environment, never from an ambient default."""
 
+DEFAULT_PACER_RUNS: Final = 5
+"""`ow bench pacer`'s N (12:1468, *"the Pacer workload alone, N times"*); five is enough to see a
+spread and short of the seven nights a baseline reset takes."""
+
 DEFAULT_UNITS: Final = 20_000
 """Units when `--units` is absent.
 
@@ -435,6 +439,12 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="`inproc` without the `ow add` that measures rss.office200_peak_bytes",
     )
+    parser.add_argument(
+        "--runs",
+        type=int,
+        default=DEFAULT_PACER_RUNS,
+        help=f"how many times `pacer` runs its workload (default {DEFAULT_PACER_RUNS})",
+    )
     parser.add_argument("--root", type=Path, default=None, help="where to build the store")
     parser.add_argument("--home", type=Path, default=None, help=f"overrides ${HOME_ENV}")
     return parser
@@ -526,6 +536,56 @@ def _inproc(
     return EXIT_CLEAN
 
 
+def _pacer(
+    args: argparse.Namespace,
+    root: Path,
+    *,
+    temporary: bool,
+    lock: locks.FileScopedLock,
+    out: TextIO,
+) -> int:
+    """`pacer`: the workload alone, `--runs` times, then each run's thirds and the spread (D822)."""
+    try:
+        if args.runs < 1:
+            print(f"DID NOT RUN: --runs {args.runs}; the Pacer runs at least once", file=out)
+            return EXIT_NOT_RUN
+        root.mkdir(parents=True, exist_ok=True)
+        readings = [bench.pacer(root) for _ in range(args.runs)]
+    except (OwError, ValueError) as exc:
+        print(f"DID NOT RUN: {exc}", file=out)
+        return EXIT_NOT_RUN
+    finally:
+        lock.release()
+        if temporary:
+            shutil.rmtree(root, ignore_errors=True)
+    report_pacer(readings, out)
+    return EXIT_CLEAN
+
+
+def report_pacer(readings: Sequence[bench.PacerReading], out: TextIO) -> None:
+    """Each run's three thirds and total, then the widest disagreement between two runs."""
+    print(
+        f"ow bench pacer -- {len(readings)} run(s) of 12-performance.md section 1.2's workload",
+        file=out,
+    )
+    print("", file=out)
+    print("  run     blake2b      loop    sqlite     total", file=out)
+    for n, one in enumerate(readings, 1):
+        print(
+            f"  {n:>3}  {one.hash_ns / 1e6:8.1f}  {one.loop_ns / 1e6:8.1f}"
+            f"  {one.sqlite_ns / 1e6:8.1f}  {one.total_ns / 1e6:8.1f} ms",
+            file=out,
+        )
+    totals = [one.total_ns for one in readings]
+    spread = bench.disagreement(min(totals), max(totals)) * 100
+    print("", file=out)
+    print(
+        f"  widest disagreement {spread:.1f}% against instability_pct = {bench.INSTABILITY_PCT}:"
+        f" {'UNSTABLE, fix the Runner' if spread > bench.INSTABILITY_PCT else 'stable'}",
+        file=out,
+    )
+
+
 def main(argv: Sequence[str] | None = None, *, out: TextIO = sys.stdout) -> int:
     """Take the lock, run one subject, print. 0 ran, 2 did not run, 7 another bench holds it."""
     import os  # noqa: PLC0415 -- the one environment read, kept beside its only use.
@@ -556,7 +616,7 @@ def main(argv: Sequence[str] | None = None, *, out: TextIO = sys.stdout) -> int:
 
     temporary = args.root is None
     root = Path(tempfile.mkdtemp(prefix="ow-bench-")) if temporary else Path(args.root)
-    run = _inproc if subject.name == "inproc" else _scheduler
+    run = {"inproc": _inproc, "pacer": _pacer}.get(subject.name, _scheduler)
     return run(args, root, temporary=temporary, lock=lock, out=out)
 
 
