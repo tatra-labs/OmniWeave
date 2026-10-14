@@ -1535,6 +1535,17 @@ fix     = "ow eval golden --explain <file>"
 raised_by = "QualityError"
 sites   = ["13-quality.md:1845", "13-quality.md:737"]
 
+# ── D834. Q-G25's marker check: 13-quality.md section 13.2's fourteenth row, printed by
+# tools/gate_placement.py over every test file it finds misplaced.
+
+[[code]]
+numeric = "OW-Q-014"
+symbol  = "OW_TEST_MISPLACED"
+meaning = "a test marked for a tier lives outside that tier's directory, or a test file inside a tier's directory does not carry its marker, so the tier selection runs it in the wrong job (Q-G25)"
+fix     = "move the test, do not move the marker"
+raised_by = "QualityError"
+sites   = ["13-quality.md:1849", "13-quality.md:266", "13-quality.md:1830"]
+
 # ---------------------------------------------------------------------------
 # THE EXIT TABLE. 18-api-sketch.md section 2.3; 10-interfaces.md section 6.2.
 #
