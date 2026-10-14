@@ -135,6 +135,7 @@ def test_a_row_carries_the_view_and_its_runs_fields(published: dict[str, str]) -
     assert order["confounders"] == ["one embedder"]
     assert order["fairness"] == {"judge_kappa": 0.81}
     assert order["run_id"] == "r1"
+    assert (order["corpus_id"], order["corpus_version"]) == ("golden", "2026.09")
 
 
 def test_every_direction_is_published(published: dict[str, str]) -> None:

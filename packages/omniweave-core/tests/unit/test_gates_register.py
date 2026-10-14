@@ -141,6 +141,7 @@ SHARED_RUNNERS: dict[str, tuple[str, ...]] = {
 # which is why the second column is the plan citation and not a file offset.
 QG_SERIES_SCRIPTS: dict[str, str] = {
     "tools/gate_budgets.py": "Q-G15 (13-quality.md:354-355, :368-371, :1999)",
+    "tools/gate_metric_rot.py": "Q-G27 (13-quality.md:103, :1143-1146, :1832, :2011)",
 }
 
 GR_SERIES_SCRIPTS: dict[str, str] = {
