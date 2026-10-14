@@ -49,12 +49,11 @@ The consequence is stated rather than left to be discovered: **a green G22 here 
 A run that reports only "84 transitions/s" has found something and named nothing. So the gate
 measures the claim from both sides, and the two tables compose into one sentence.
 
-**`claim_depths()` -- what one claim COSTS, against a claimable set of n.** `work_claimable`'s
-leading column is `cost_class` and the shipped four-parameter `claim` does not constrain it, so the
-index cannot be seeked: `EXPLAIN QUERY PLAN` shows `SCAN work USING INDEX work_claimable` plus
-`USE TEMP B-TREE FOR ORDER BY`, **twice** -- once for the `head` CTE and once for the `picked`
-subquery. A claim is therefore O(claimable), not O(batch), and the cost is paid AT the depth
-`[runtime] queue_high_water` holds the queue at. D190.
+**`claim_depths()` -- what one claim COSTS, against a claimable set of n.** D190 found
+`work_claimable` leading on `cost_class`, which the shipped four-parameter `claim` does not
+constrain, so the claim scanned and sorted the whole claimable set twice: O(claimable), paid AT
+the depth `[runtime] queue_high_water` holds the queue at. D837 gave the claim two indexes it
+seeks, `work_claim_head` and `work_claim_key`, and this table is now what shows the cost flat.
 
 **`claim_widths()` -- what one claim BUYS for that cost.** `op.identify` carries
 `dispatch_key IS NULL`, and `CLAIM_SQL`'s `LIMIT` subquery collapses to `1` for a NULL head
@@ -188,7 +187,7 @@ The three are chosen against the knob: **50,000** is `[runtime] queue_high_water
 depth the plan's own backpressure holds the queue AT, so it is where every long run spends its time
 and not a pathological one -- **10,000** is a fifth of it, and **1,000** is where a unit test lives.
 Claiming down from the largest gives all three from one seeded store, because a claimed row leaves
-`work_claimable`'s partial index and the depth falls with it."""
+the claimable partial indexes and the depth falls with it."""
 
 WIDTH_PROBE_ROWS: Final = 2_048
 WIDTH_PROBE_WIDTHS: Final = (1, 8, 32, 256)
@@ -435,8 +434,8 @@ class Depth:
     def us_per_claimable_row(self) -> float:
         """The scan rate: microseconds of claim per row waiting in the queue.
 
-        Flat across the three depths is what a full scan looks like, and it is the number that
-        turns "a claim is slow" into "a claim reads the whole claimable set." D190."""
+        Flat across the three depths is what a full scan looks like (D190); falling as the depth
+        rises is what a seek looks like, which is what D837's indexes give."""
         return self.ms_per_claim * 1e3 / self.claimable if self.claimable else 0.0
 
 
@@ -985,10 +984,10 @@ def _split_lines(measured: Measured) -> list[str]:
     ]
     if measured.depths:
         lines.append("")
-        lines.append("  ONE claim, against a claimable set of n. CLAIM_SQL is O(n), not O(batch):")
+        lines.append("  ONE claim, against a claimable set of n. CLAIM_SQL seeks two indexes,")
         lines.append(
-            "  `SCAN work USING INDEX work_claimable` + `USE TEMP B-TREE FOR ORDER BY`, TWICE"
-            " -- D190"
+            "  `work_claim_head` and `work_claim_key` (D837); before them it scanned the whole set"
+            " twice -- D190"
         )
         for depth in measured.depths:
             at_the_mark = depth.claimable >= measured.high_water
