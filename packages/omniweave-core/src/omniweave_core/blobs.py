@@ -385,6 +385,29 @@ class SweepReport:
 _TMP_SEQUENCE = count()
 
 
+_SETTLE_TRIES: Final = 20
+_SETTLE_PAUSE_S: Final = 0.01
+"""D723: how long a read waits out a blob another writer is replacing -- 20 x 10 ms."""
+
+
+def _open_settled(path: Path) -> BinaryIO:
+    """`path.open("rb")`, retrying a moment's `PermissionError` while the blob is there. D723.
+
+    `put` no longer replaces a blob that exists, but two writers of one new blob can still both find
+    it absent and both rename: the second rename then replaces the first's blob under a reader that
+    already holds its digest. That denial lasts as long as the rename, so it is waited out.
+    A denial that outlasts the wait is the file's permissions, and is raised.
+    """
+    for attempt in range(_SETTLE_TRIES):
+        try:
+            return path.open("rb")
+        except PermissionError:
+            if attempt == _SETTLE_TRIES - 1:
+                raise
+            time.sleep(_SETTLE_PAUSE_S)
+    raise AssertionError("unreachable")  # pragma: no cover -- the loop returns or raises
+
+
 class BlobStore:
     """The CAS under one `cas/` root: `put`, `path`, `open`, the two sweeps, the headroom file.
 
@@ -494,7 +517,7 @@ class BlobStore:
                 fix=_FIX_FSCK,
             )
         try:
-            return real.open("rb")
+            return _open_settled(real)
         except FileNotFoundError as exc:
             raise StoreError(
                 f"no CAS blob at {format_ref(digest)}: the row is dangling", fix=_FIX_FSCK
@@ -564,6 +587,17 @@ class BlobStore:
             # reader's open file.
             final = self.path(digest)
             final.parent.mkdir(parents=True, exist_ok=True)
+            if final.is_file():
+                # D723: the object is there and its name is this digest, so it already holds these
+                # bytes, and the write is done. Replacing it was a no-op on POSIX and is NOT one on
+                # Windows: `MoveFileEx` over an existing file leaves the old one delete-pending for
+                # a moment, and a reader opening it in that moment is denied (EACCES). Every free
+                # Pass of a document puts the same view body, so a worker reading one Pass's blob
+                # was denied while the host re-put it for the next Pass. GR8 failed 2 of 3 runs on
+                # this; 2 readers against 2 writers re-putting one blob saw 466 denials in 5 s.
+                tmp_path.unlink(missing_ok=True)
+                self._fsync_dir(final.parent)
+                return digest
             try:
                 tmp_path.replace(final)
             except PermissionError:

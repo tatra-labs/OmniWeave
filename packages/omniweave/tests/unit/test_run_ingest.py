@@ -233,12 +233,12 @@ def test_two_first_batches_on_two_threads_build_one_parse_operator(
     #  D665 and D668: building the parse Operator resolves the segmenter and the free Passes too;
     #  this test is about the lock.
     monkeypatch.setattr(
-        ingest_module.SegmentPlan, "of", classmethod(lambda _cls, *_args: (None, ""))
+        ingest_module.SegmentPlan, "of", classmethod(lambda _cls, *_args, **_kw: (None, ""))
     )
     monkeypatch.setattr(
-        ingest_module.DerivePlan, "of", classmethod(lambda _cls, *_args: (None, ""))
+        ingest_module.DerivePlan, "of", classmethod(lambda _cls, *_args, **_kw: (None, ""))
     )
-    inputs = SimpleNamespace(catalog=None, resolving=None, passwords=None)
+    inputs = SimpleNamespace(catalog=None, resolving=None, passwords=None, passes=frozenset())
     lazy = ingest_module._ParseLazily(
         None, None, None, inputs, tmp_path / "i.owstore", None, ingest_module.ParseTally(), None
     )
@@ -276,10 +276,10 @@ def test_building_the_parse_operator_records_why_no_segment_or_pass_row_can_be_e
         ingest_module.SegmentPlan, "of", classmethod(lambda _cls, *_args: (None, "seg: why"))
     )
     monkeypatch.setattr(
-        ingest_module.DerivePlan, "of", classmethod(lambda _cls, *_args: (None, "pass: why"))
+        ingest_module.DerivePlan, "of", classmethod(lambda _cls, *_args, **_kw: (None, "pass: why"))
     )
     tally = ingest_module.ParseTally()
-    inputs = SimpleNamespace(catalog=None, resolving=None, passwords=None)
+    inputs = SimpleNamespace(catalog=None, resolving=None, passwords=None, passes=frozenset())
     lazy = ingest_module._ParseLazily(
         None, None, None, inputs, tmp_path / "i.owstore", None, tally, None
     )

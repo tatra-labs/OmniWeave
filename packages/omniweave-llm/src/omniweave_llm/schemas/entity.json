@@ -1,0 +1,42 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["entities", "relations", "more_available"],
+  "properties": {
+    "entities": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 40,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "etype", "cite", "quote", "description"],
+        "properties": {
+          "name": {"type": ["string", "null"], "maxLength": 200},
+          "etype": {"type": ["string", "null"], "enum": ["$ETYPES", null]},
+          "cite": {"type": "string", "pattern": "^(?:[a-z0-9][a-z0-9_-]{0,31}:)?d[0-9]+#[0-9]+$"},
+          "quote": {"type": "string", "minLength": 3, "maxLength": 300},
+          "description": {"type": ["string", "null"], "maxLength": 400}
+        }
+      }
+    },
+    "relations": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 40,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source", "target", "relation", "cite", "quote"],
+        "properties": {
+          "source": {"type": "string", "maxLength": 200},
+          "target": {"type": "string", "maxLength": 200},
+          "relation": {"type": "string", "enum": ["$RELATIONS"]},
+          "cite": {"type": "string", "pattern": "^(?:[a-z0-9][a-z0-9_-]{0,31}:)?d[0-9]+#[0-9]+$"},
+          "quote": {"type": "string", "minLength": 3, "maxLength": 300}
+        }
+      }
+    },
+    "more_available": {"type": "boolean"}
+  }
+}

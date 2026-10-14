@@ -33,22 +33,29 @@ saying which.
 from __future__ import annotations
 
 import io
+import json
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Final, cast
 
-from omniweave_core.cache import cache_key
-from omniweave_core.drivers.resolve import Isolation, Requirement, resolve
-from omniweave_core.errors import GraphError, RouteError
+from omniweave_core.cache import CacheEntry, CacheLayer, CacheVerdict, cache_key, read_verdict
+from omniweave_core.canonical import canonical
+from omniweave_core.config import SHIPPED_PASSES
+from omniweave_core.drivers.resolve import CostClass, Isolation, Requirement, resolve
+from omniweave_core.errors import GraphError, OwError, RouteError
 from omniweave_core.model.enums import Method
 from omniweave_core.model.records import Producer
 from omniweave_core.operator import Outcome, StepMetrics, StepResult
 from omniweave_core.store import lexicon
 from omniweave_core.store import sqlite as ow
+from omniweave_core.store.cache import SqliteCacheIndex
+from omniweave_core.store.coverage import BILLED_PASSES, place_of
 from omniweave_core.store.graph import PassIdentity
 from omniweave_core.store.items import (
     ITEM_LANES,
+    BilledLane,
     ItemView,
+    build_segment_view,
     decode_items,
     document_body,
     document_views,
@@ -66,10 +73,13 @@ from omniweave.run.operators.lexicon import empty_digest
 from omniweave.run.operators.parse import DeriveCount
 
 if TYPE_CHECKING:
+    from collections.abc import Collection, Mapping
+
     from omniweave_core.drivers.catalog import Catalog
     from omniweave_core.drivers.resolve import Candidate, Policy
     from omniweave_core.host import subproc
     from omniweave_core.operator import RunContext, SpendVector
+    from omniweave_core.store.coverage import BilledPass
     from omniweave_core.store.queue import WorkRow
     from omniweave_ports.types import ArtifactRef
 
@@ -80,8 +90,10 @@ __all__ = [
     "DERIVE_PRIORITY",
     "FREE_PASSES",
     "LEXICON_READERS",
+    "MERGE_LLM",
     "DeriveOperator",
     "DerivePlan",
+    "as_spend",
     "is_derive",
 ]
 
@@ -99,6 +111,9 @@ FREE_PASSES: Final[dict[str, Method]] = {
 card** (D668): `derive_run.method` is *"ONE METHOD PER PASS"* (0002:179) and the clamp the sink
 applies reads it, but `[capability.derive]` and `[derive]` declare none, so the roster's `method`
 column is the one source. A third-party Pass needs a card key before it can be scheduled here."""
+MERGE_LLM: Final = "derive.merge.llm"
+"""The LLM band's Pass (D726, D728): billed and corpus-grained, so it is planned beside the
+Segment Passes and enqueued by `run.operators.band`, never by a document's segmentation."""
 LEXICON_READERS: Final = frozenset({"derive.entity.gazetteer"})
 """The Passes whose view opens with `op.lexicon`'s artefact (D683), and whose committed answer
 records the `dep` 06:1189 obliges. Here and not on the card for `FREE_PASSES`' reason: no card key
@@ -132,6 +147,12 @@ SELECT u.unit_uri, u.content_sha256, IFNULL(u.bytes, 0) FROM unit AS u
  ORDER BY u.unit_uri
 """
 _DOC_SQL: Final = "SELECT doc_ord, gen FROM doc WHERE doc_key = ?"
+_PART_SQL: Final = """
+SELECT s.segment_id FROM segment AS s
+  JOIN doc AS d ON d.doc_ord = s.doc_ord AND d.gen = s.gen
+ WHERE d.doc_key = ? AND s.state = 0 AND substr(lower(hex(s.content_digest)), 1, 16) = ?
+"""
+_BILLED: Final = {billed.pass_id: billed for billed in BILLED_PASSES}
 _PRODUCER_INSERT_SQL: Final = """
 INSERT OR IGNORE INTO producer(operator, op_version, code_fingerprint, options_digest)
 VALUES(:operator, :op_version, :code_fingerprint, :options_digest)
@@ -151,27 +172,60 @@ def is_derive(operator: str) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class DerivePlan:
-    """The run's resolved free Passes, and the rows each segmented document earns."""
+    """The run's resolved free Passes, and the rows each segmented document earns; and the billed
+    Passes the run may schedule (D714)."""
 
     passes: tuple[Candidate, ...]
     ctx: RunContext
+    billed: tuple[Candidate, ...] = ()
+    """The billed Passes both activation lists name and `resolve()` admitted (D714)."""
+    merge: Candidate | None = None
+    """`MERGE_LLM`, when both lists name it and `resolve()` admitted it, as a billed Pass is
+    (D728)."""
 
     @classmethod
-    def of(cls, catalog: Catalog, policy: Policy, ctx: RunContext) -> tuple[DerivePlan | None, str]:
-        """Each Pass's pinned candidate; `None` and why when none resolves."""
+    def of(
+        cls,
+        catalog: Catalog,
+        policy: Policy,
+        ctx: RunContext,
+        *,
+        enable: Collection[str] = SHIPPED_PASSES,
+    ) -> tuple[DerivePlan | None, str]:
+        """Each Pass's pinned candidate; `None` and why when none resolves.
+
+        **D714: a billed Pass is opt-in, and both lists gate it** (08:1977-1979). `enable` is
+        `[graph.passes] enable`, and `[drivers] enabled` is `policy.enabled`. A billed Pass
+        `enable` does not name is not planned and not reported, because the shipped default names
+        none. A billed Pass it names is reported, as a refused free Pass is, when `[drivers]
+        enabled` does not name it or `resolve()` refuses it. `resolve()` refuses `billed_api`
+        outside `[drivers.cost] allow_classes`, a card that needs the network on an offline run,
+        and a card nothing installed.
+        """
         passes: list[Candidate] = []
         why: list[str] = []
         for pass_id in FREE_PASSES:
-            resolution = resolve(Requirement(port="derive/1", pinned=pass_id), catalog, policy)
-            found = [c for c in resolution.candidates if c.card.identity.id == pass_id]
-            if found:  # `pinned` filters nothing (resolve.py:506): the Pass is picked by id
-                passes.append(found[0])
+            found, refused = _pinned(pass_id, catalog, policy, CostClass.LOCAL_COMPUTE)
+            if found is not None:
+                passes.append(found)
+            else:
+                why.append(refused)
+        billed: list[Candidate] = []
+        for pass_id in (*(one.pass_id for one in BILLED_PASSES), MERGE_LLM):
+            if pass_id not in enable:
                 continue
-            refused = [
-                f"{r.code}: {r.detail}" for r in resolution.rejected if r.driver_id == pass_id
-            ]
-            why.append(f"{pass_id}: {refused[0] if refused else 'not installed'}")
-        return (cls(tuple(passes), ctx) if passes else None), "; ".join(why)
+            if pass_id not in policy.enabled:
+                why.append(f"{pass_id}: [graph.passes] enable names it, [drivers] enabled does not")
+                continue
+            found, refused = _pinned(pass_id, catalog, policy, CostClass.BILLED_API)
+            if found is not None:
+                billed.append(found)
+            else:
+                why.append(refused)
+        merge = next((c for c in billed if c.card.identity.id == MERGE_LLM), None)
+        segment = tuple(c for c in billed if c.card.identity.id != MERGE_LLM)
+        plan = cls(tuple(passes), ctx, segment, merge) if passes or billed else None
+        return plan, "; ".join(why)
 
     def enqueue(self, connection: Any, unit: UnitRef) -> int:
         """Every Pass's row for a document whose Segments were just written, but a lexicon
@@ -228,6 +282,19 @@ class DerivePlan:
         return added
 
 
+def _pinned(
+    pass_id: str, catalog: Catalog, policy: Policy, ceiling: CostClass
+) -> tuple[Candidate | None, str]:
+    """`pass_id`'s candidate under `ceiling`, or `None` and the refusal that names it."""
+    requirement = Requirement(port="derive/1", pinned=pass_id, max_cost_class=ceiling)
+    resolution = resolve(requirement, catalog, policy)
+    found = [c for c in resolution.candidates if c.card.identity.id == pass_id]
+    if found:  # `pinned` filters nothing (resolve.py:506): the Pass is picked by id
+        return found[0], ""
+    refused = [f"{r.code}: {r.detail}" for r in resolution.rejected if r.driver_id == pass_id]
+    return None, f"{pass_id}: {refused[0] if refused else 'not installed'}"
+
+
 def _producer(operator: str, card: Any, config_digest: str) -> Producer:
     return Producer(
         operator=operator,
@@ -238,7 +305,16 @@ def _producer(operator: str, card: Any, config_digest: str) -> Producer:
 
 
 class DeriveOperator:
-    """The `Dispatcher` for a free Pass's rows: one call per claimed batch, one result a row."""
+    """The `Dispatcher` for a derive Pass's rows: one call per claimed batch, one result a row.
+
+    **D716: a billed Pass's row is one Segment.** Its `unit_part` is the Segment's `seg:` part
+    (D715), and its unit is that Segment's billed view, covered against the Pass's place
+    (`build_segment_view(billed=...)`, D709). Its answer is written under the row's own
+    `route_decision`, with `Method.LLM` and `cost_class = "billed_api"` on `PassIdentity`, so
+    every row the run writes resolves to the decision that billed it (06:152-153). A row whose
+    Segment is no longer live -- its document re-segmented between the enqueue and the claim --
+    fails `empty_result`, and the next run's selector decides the new Segment afresh.
+    """
 
     __slots__ = ("_empty", "_parse", "_tally", "_thread")
 
@@ -250,9 +326,10 @@ class DeriveOperator:
 
     def __call__(self, batch: Batch, /) -> Sequence[StepResult]:
         driver = batch.driver
-        if driver is None or driver not in FREE_PASSES:
+        billed = _BILLED.get(driver or "")
+        if driver is None or (driver not in FREE_PASSES and billed is None and driver != MERGE_LLM):
             raise RouteError(
-                f"invoke {batch.invoke_id} names {driver!r}, which is no shipped free Pass",
+                f"invoke {batch.invoke_id} names {driver!r}, which is no shipped Pass",
                 fix="ow ingest again: the row is re-enqueued when its document is segmented again",
             )
         granted = self._parse._granted(driver, batch.dispatch_key or "")
@@ -263,15 +340,77 @@ class DeriveOperator:
             )
         card = granted.card
         producer = _producer(operator_of(driver), card, granted.config_digest)
+        if driver == MERGE_LLM:  # D729: the LLM band's row, run batch by batch
+            from omniweave.run.operators.band import BandRun  # noqa: PLC0415 -- a cycle
+
+            return BandRun(self)(batch, granted=granted, card=card, producer=producer)
         results: list[StepResult | None] = [None] * batch.size
+        staged, read = self._stage(batch, billed, producer, results)
+        grants, refused = self._grants(card) if staged else ((), "")
+        if refused:  # D713: a Service that will not attach fails the rows, never the drain
+            for index, _views, unit, _ref in staged:
+                results[index] = self._failed(
+                    driver, batch.rows[index], unit, producer,
+                    failure=FailureClass.UPSTREAM_UNAVAILABLE, message=refused,
+                )  # fmt: skip
+            staged = []
+        if not staged:
+            return [cast("StepResult", one) for one in results]
+        identity = PassIdentity(
+            pass_id=driver,
+            producer_id=self._producer_id(producer),
+            method=FREE_PASSES[driver] if billed is None else Method.LLM,
+            origin_operator=driver,
+            origin_driver=driver,
+            driver_schema_v=card.identity.schema_version,
+            cost_class="free" if billed is None else "billed_api",
+        )
+        keys: dict[int, str] = {}
+        if billed is not None and grants:  # D725: a paid answer is bought once
+            from omniweave.run.operators.billed import paid_key  # noqa: PLC0415 -- a cycle
+
+            keys = {
+                index: paid_key(card, views[0], grants[0].model_id, grants[0].model_rev)
+                for index, views, _unit, _ref in staged
+            }
+            staged = self._replay(batch, staged, keys, identity, card=card, producer=producer,
+                                  results=results)  # fmt: skip
+        if staged:
+            reply = self._call(batch, staged, granted, driver, grants)
+            for slot, (index, views, unit, _ref) in enumerate(staged):
+                decided = (
+                    identity
+                    if billed is None
+                    else replace(identity, decision_id=batch.rows[index].decision_id)
+                )
+                results[index] = self._settle(
+                    batch.rows[index], unit, views, reply=reply, slot=slot, producer=producer,
+                    identity=decided, card=card, read=read,
+                )  # fmt: skip
+            if keys:
+                self._remember(batch, staged, reply, keys, card=card, granted=granted,
+                               results=results)  # fmt: skip
+        return [cast("StepResult", one) for one in results]
+
+    def _stage(
+        self,
+        batch: Batch,
+        billed: BilledPass | None,
+        producer: Producer,
+        results: list[StepResult | None],
+    ) -> tuple[list[tuple[int, tuple[ItemView, ...], UnitRef, str]], str | None]:
+        """Each row's view, put in the CAS as the unit its driver reads, and the lexicon a
+        reader's view opens with (D683). A row with no view fails into `results`."""
+        driver = str(batch.driver)
         staged: list[tuple[int, tuple[ItemView, ...], UnitRef, str]] = []
         read = self._lexicon() if driver in LEXICON_READERS else None
         for index, row in enumerate(batch.rows):
-            views = self._views(row.unit_uri)
+            views = self._views(row.unit_uri) if billed is None else self._billed_view(row, billed)
             if not views:
                 results[index] = self._failed(
                     driver, row, _unit_of(row), producer, failure=FailureClass.EMPTY_RESULT,
-                    message="the unit's document has no live Segment",
+                    message="the unit's document has no live Segment" if billed is None else
+                    f"no live Segment is {row.unit_part}: its document was segmented again",
                 )  # fmt: skip
                 continue
             from omniweave_core.blobs import format_ref  # noqa: PLC0415
@@ -281,26 +420,149 @@ class DeriveOperator:
                 body = lexicon.frame(read) + body
             digest = self._parse._cas.put(io.BytesIO(body))
             unit = UnitRef(
-                uri=row.unit_uri, part="", content_sha256=digest.hex(), byte_len=len(body)
-            )
+                uri=row.unit_uri, part=row.unit_part, content_sha256=digest.hex(),
+                byte_len=len(body),
+            )  # fmt: skip
             staged.append((index, views, unit, format_ref(digest)))
-        if staged:
-            reply = self._call(batch, staged, granted, driver)
-            identity = PassIdentity(
-                pass_id=driver,
-                producer_id=self._producer_id(producer),
-                method=FREE_PASSES[driver],
-                origin_operator=driver,
-                origin_driver=driver,
-                driver_schema_v=card.identity.schema_version,
-                cost_class="free",
+        return staged, read
+
+    def _replay(
+        self,
+        batch: Batch,
+        staged: list[tuple[int, tuple[ItemView, ...], UnitRef, str]],
+        keys: Mapping[int, str],
+        identity: PassIdentity,
+        *,
+        card: Any,
+        producer: Producer,
+        results: list[StepResult | None],
+    ) -> list[tuple[int, tuple[ItemView, ...], UnitRef, str]]:
+        """D725: each row whose `paid_key` the cache holds is answered from it; the rest return.
+
+        08:1439's six clauses judge the entry, with clause 5 asked of the Segment's part (billed
+        ruling 12): `paid_key` names no file, so the same text in another file is a hit."""
+        index = SqliteCacheIndex(self._thread, clock=self._parse._ctx.clock)
+        found = index.get_many([keys[at] for at, *_ in staged])
+        left: list[tuple[int, tuple[ItemView, ...], UnitRef, str]] = []
+        for slot in staged:
+            at, views, unit, _ref = slot
+            row = batch.rows[at]
+            entry = found.get(keys[at])
+            body = None if entry is None else self._cached(entry.ref, views[0])
+            asked = (row.unit_uri if entry is None else entry.unit_uri, row.unit_part)
+            verdict = read_verdict(entry, asked_for=asked, blob_ok=body is not None)
+            if verdict is not CacheVerdict.HIT or body is None:
+                left.append(slot)
+                continue
+            landed = self._land(
+                row, unit, views, body, producer=producer, card=card, read=None,
+                identity=replace(identity, decision_id=row.decision_id), spend=Spend(),
+                produced=(), outcome=Outcome.SKIPPED_CACHED,
+                replays=_kept(cast("CacheEntry", entry).spend_json),
+            )  # fmt: skip
+            results[at] = landed
+            if landed.outcome is Outcome.SKIPPED_CACHED:
+                index.touch(keys[at])
+                self._tally.derived.setdefault(identity.pass_id, DeriveCount()).cached += 1
+        return left
+
+    def _cached(self, ref: str, view: ItemView) -> bytes | None:
+        """The cached answer at `ref` replayed onto `view`, or `None`: clause 2's miss, never a
+        failure, so the next success overwrites it."""
+        from omniweave.run.operators.billed import replayed  # noqa: PLC0415 -- a cycle
+
+        try:
+            with self._parse._cas.open_ref(ref) as handle:
+                return replayed(handle.read(), view)
+        except (OSError, ValueError, OwError):
+            return None
+
+    def _remember(
+        self,
+        batch: Batch,
+        staged: list[tuple[int, tuple[ItemView, ...], UnitRef, str]],
+        reply: pipeline.Reply,
+        keys: Mapping[int, str],
+        *,
+        card: Any,
+        granted: Any,
+        results: list[StepResult | None],
+    ) -> None:
+        """D725: each answer that landed and parsed, kept under its `paid_key` for the next ask."""
+        from omniweave_core.blobs import format_ref  # noqa: PLC0415
+
+        from omniweave.run.operators.billed import remembered  # noqa: PLC0415 -- a cycle
+
+        entries: list[CacheEntry] = []
+        for slot, (at, views, _unit, _ref) in enumerate(staged):
+            landed = results[at]
+            produced = reply.produced[slot] if reply.produced else ()
+            items = [ref for ref in produced if ref.kind == "graph_items"]
+            if landed is None or landed.outcome is not Outcome.OK or len(items) != 1:
+                continue
+            kept = remembered(views[0], self._body(items[0]))
+            if kept is None:
+                continue
+            row = batch.rows[at]
+            spend = reply.spend[slot] if reply.spend else Spend()
+            entries.append(
+                CacheEntry(
+                    cache_key=keys[at],
+                    layer=CacheLayer.CALL,
+                    cost_class="billed_api",
+                    ref=format_ref(self._parse._cas.put(io.BytesIO(kept))),
+                    bytes=len(kept),
+                    unit_uri=row.unit_uri,
+                    unit_part=row.unit_part,
+                    driver=card.identity.id,
+                    driver_schema_v=card.identity.schema_version,
+                    config_digest=granted.config_digest,
+                    origin_operator=card.identity.id,
+                    spend_json=canonical(
+                        {
+                            "tokens_in": int(getattr(spend, "tokens_in", 0)),
+                            "tokens_out": int(getattr(spend, "tokens_out", 0)),
+                            "calls": int(getattr(spend, "calls", 0)),
+                            "bytes_egress": int(getattr(spend, "bytes_egress", 0)),
+                        }
+                    ).decode("utf-8"),
+                    micros=0,
+                )
             )
-            for slot, (index, views, unit, _ref) in enumerate(staged):
-                results[index] = self._settle(
-                    batch.rows[index], unit, views, reply=reply, slot=slot, producer=producer,
-                    identity=identity, card=card, read=read,
-                )  # fmt: skip
-        return [cast("StepResult", one) for one in results]
+        if entries:
+            allowed = frozenset((row.unit_uri, row.unit_part) for row in batch.rows)
+            SqliteCacheIndex(self._thread, clock=self._parse._ctx.clock).put(
+                entries, allowed_units=allowed
+            )
+
+    def _grants(self, card: Any) -> tuple[tuple[subproc.ServiceGrant, ...], str]:
+        """The card's Services granted for this call, or why they cannot be. **D713.**
+
+        A card's `[hardware] services` names the Services its driver may reach. The run's registry
+        attaches each one on the first call that needs it (08:1180), and the grant rides the
+        `INVOKE` for the worker's `io.service()` to build its handle from (D712).
+
+        **A Service that will not attach fails this batch's rows** with the attach's own refusal
+        and its fix. Raised, it would leave the pipeline and end the drain, and the other Passes'
+        rows are not this Service's to stop. A run with no registry refuses the same way, naming it.
+        """
+        declared = tuple(card.hardware.services)
+        if not declared:
+            return (), ""
+        from omniweave_core.host import subproc  # noqa: PLC0415
+        from omniweave_core.modelserver import service_name  # noqa: PLC0415
+
+        registry = self._parse._ctx.services
+        if registry is None:
+            return (), (
+                f"{card.identity.id} reaches the Services {list(declared)}, and this run carries "
+                "no ServiceRegistry to attach them"
+            )
+        try:
+            handles = [registry.get(service_name(one)) for one in declared]
+        except OwError as error:
+            return (), f"{error} (fix: {error.fix})"
+        return tuple(subproc.ServiceGrant.of(handle) for handle in handles), ""
 
     def _lexicon(self) -> str:
         """The digest of the lexicon a gazetteer batch reads: the current one, else the empty."""
@@ -333,6 +595,30 @@ class DeriveOperator:
             ),
         )
 
+    def _billed_view(self, row: WorkRow, billed: BilledPass) -> tuple[ItemView, ...]:
+        """The row's one Segment as the billed Pass reads it, or nothing when it is gone (D716)."""
+
+        def read(connection: Any) -> tuple[ItemView, ...]:
+            unit = connection.execute(_UNIT_SQL, (row.unit_uri,)).fetchone()
+            if unit is None or not unit[0] or not row.unit_part.startswith("seg:"):
+                return ()
+            key = (bytes.fromhex(str(unit[0]))[:16], row.unit_part.removeprefix("seg:"))
+            found = connection.execute(_PART_SQL, key).fetchone()
+            if found is None:
+                return ()
+            lane = BilledLane(billed.lane, place_of(connection, billed))
+            return (build_segment_view(connection, int(found[0]), billed=lane),)
+
+        return cast(
+            "tuple[ItemView, ...]",
+            self._thread.run(
+                ow.Unit(
+                    name="derive.billed_view", run=read, cost_class="free",
+                    wait_ms=ow.BATCH_WAIT_MS,
+                )
+            ),
+        )  # fmt: skip
+
     def _producer_id(self, producer: Producer) -> int:
         params = {
             "operator": producer.operator,
@@ -356,6 +642,7 @@ class DeriveOperator:
         staged: Sequence[tuple[int, tuple[ItemView, ...], UnitRef, str]],
         granted: Any,
         operator: str,
+        grants: tuple[subproc.ServiceGrant, ...] = (),
     ) -> pipeline.Reply:
         from omniweave_core.host import subproc  # noqa: PLC0415
 
@@ -369,7 +656,7 @@ class DeriveOperator:
         )
         lanes = sorted(granted.card.derive.items) if granted.card.derive is not None else []
         host = pipeline.subproc_host(
-            _Source(self._parse, granted, tuple(ref for *_x, ref in staged), _lane(lanes))
+            _Source(self._parse, granted, tuple(ref for *_x, ref in staged), _lane(lanes), grants)
         )
         handler = pipeline.build(host, emit=self._tally.emit, isolation=str(granted.isolation))
         key = subproc.WorkerKey(granted.card.identity.id, granted.config_digest)
@@ -406,8 +693,33 @@ class DeriveOperator:
                 message=f"{driver} produced {len(items)} graph_items refs; one is an answer",
             )  # fmt: skip
         spend = cast("SpendVector", reply.spend[slot] if reply.spend else Spend())
+        return self._land(
+            row, unit, views, self._body(items[0]), producer=producer, identity=identity,
+            card=card, read=read, spend=spend, produced=tuple(produced), outcome=Outcome.OK,
+        )  # fmt: skip
+
+    def _land(
+        self,
+        row: WorkRow,
+        unit: UnitRef,
+        views: tuple[ItemView, ...],
+        body: bytes,
+        *,
+        producer: Producer,
+        identity: PassIdentity,
+        card: Any,
+        read: str | None,
+        spend: Any,
+        produced: tuple[ArtifactRef, ...],
+        outcome: Outcome,
+        replays: Any = None,
+    ) -> StepResult:
+        """One answer's frames written under `identity`. D725 split it off `_settle`, so an answer
+        replayed from the call cache lands exactly as a fresh one does. `replays` is the cached
+        Spend a hit replays into `route_spend` (D733): the run itself spent nothing."""
+        driver = identity.pass_id
         try:
-            units = decode_items(self._body(items[0]), views)
+            units = decode_items(body, views)
 
             def write(connection: Any) -> list[Any]:
                 register_pass(connection, card)
@@ -436,17 +748,23 @@ class DeriveOperator:
                 driver, row, unit, producer, failure=FailureClass.DRIVER_BUG, message=str(refused)
             )
         count = self._tally.derived.setdefault(driver, DeriveCount())
-        count.documents += 1
+        if unit.uri not in count.units:  # D720: a billed row is a Segment, not a document
+            count.units.add(unit.uri)
+            count.documents += 1
         count.runs += len(reports)
         count.items += sum(r.emitted for r in reports)
         count.quarantined += sum(r.quarantined for r in reports)
         return StepResult(
-            outcome=Outcome.OK,
+            outcome=outcome,
             unit=unit,
             identity=producer,
             cache_key=row.cache_key,
-            produced=tuple(produced),
-            metrics=StepMetrics(rows_written=sum(r.emitted for r in reports)),
+            produced=produced,
+            metrics=StepMetrics(
+                spend=spend if replays is None else replays,
+                was_cache_hit=replays is not None,
+                rows_written=sum(r.emitted for r in reports),
+            ),
         )
 
     def _body(self, ref: ArtifactRef) -> bytes:
@@ -478,6 +796,33 @@ class DeriveOperator:
         )
 
 
+def _kept(spend_json: str) -> Spend:
+    """The Spend a cache entry recorded (D725), as a hit replays it (D733)."""
+    try:
+        kept = {k: int(v) for k, v in json.loads(spend_json).items() if k in _SPEND_DIMENSIONS}
+    except (ValueError, TypeError, AttributeError):
+        return Spend()
+    return as_spend(kept)
+
+
+def as_spend(dims: Mapping[str, int]) -> Spend:
+    """A Spend from its named dimensions, a missing one zero (D733)."""
+    return Spend(
+        wall_ms=dims.get("wall_ms", 0),
+        cpu_ms=dims.get("cpu_ms", 0),
+        gpu_ms=dims.get("gpu_ms", 0),
+        tokens_in=dims.get("tokens_in", 0),
+        tokens_out=dims.get("tokens_out", 0),
+        calls=dims.get("calls", 0),
+        bytes_egress=dims.get("bytes_egress", 0),
+    )
+
+
+_SPEND_DIMENSIONS: Final = frozenset(
+    {"wall_ms", "cpu_ms", "gpu_ms", "tokens_in", "tokens_out", "calls", "bytes_egress"}
+)
+
+
 def _lane(items: Sequence[str]) -> str:
     """`DeriveScope.lane`: the first lane the Pass's items serve, `anchor` before `entity`."""
     lanes = sorted({ITEM_LANES[i] for i in items if i in ITEM_LANES})
@@ -485,17 +830,24 @@ def _lane(items: Sequence[str]) -> str:
 
 
 class _Source:
-    """`pipeline.WorkerSource` for one derive batch: the run's worker, an `INVOKE` with a lane."""
+    """`pipeline.WorkerSource` for one derive batch: the run's worker, and an `INVOKE` with a lane
+    and the card's Service grants (D713)."""
 
-    __slots__ = ("_blob_refs", "_granted", "_lane", "_parse")
+    __slots__ = ("_blob_refs", "_granted", "_grants", "_lane", "_parse")
 
     def __init__(
-        self, parse: ParseOperator, granted: Any, blob_refs: tuple[str, ...], lane: str
+        self,
+        parse: ParseOperator,
+        granted: Any,
+        blob_refs: tuple[str, ...],
+        lane: str,
+        grants: tuple[subproc.ServiceGrant, ...] = (),
     ) -> None:
         self._parse = parse
         self._granted = granted
         self._blob_refs = blob_refs
         self._lane = lane
+        self._grants = grants
 
     def worker(self, call: pipeline.Call) -> subproc.Worker:
         del call
@@ -511,6 +863,7 @@ class _Source:
             budget_micros=call.budget_micros,
             blob_refs=self._blob_refs,
             lane=self._lane or None,
+            services=self._grants,
         )
 
     def deadlines(self, call: pipeline.Call) -> subproc.Deadlines:

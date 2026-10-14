@@ -136,7 +136,7 @@ import sqlite3
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Final, Protocol
+from typing import Final, Protocol, cast
 
 from omniweave_core.deps import DEP_KINDS as _DEP_KINDS
 from omniweave_core.errors import ResourceLimit, StoreError
@@ -147,6 +147,8 @@ from omniweave_core.work import (
     COMPLETE_SQL,
     COST_CLASS_SQL,
     COUNTS_SQL,
+    EXTEND_RESERVATIONS_SQL,
+    EXTEND_SQL,
     OUTCOMES,
     REAP_RESERVATIONS_SQL,
     REAP_SQL,
@@ -703,6 +705,25 @@ class SqliteStore:
         return str(row[0])  # type: ignore[index]
 
     # -- reap ----------------------------------------------------------------------------------
+
+    def extend_live_leases(self, holder: str, now_ms: int, until_ms: int) -> tuple[int, ...]:
+        """`holder`'s expired claims moved to `until_ms`, reservations with them. D719.
+
+        08:462-470's extension for a live holder past its lease, never a steal. One transaction,
+        reservations first (`EXTEND_RESERVATIONS_SQL`). Returns the ids extended, which the
+        supervisor names in `work.lease_extend`. Not on the `Store` protocol, whose four methods
+        are frozen (02:702): a caller that knows a live holder asks for this by name.
+        """
+        params = {"holder": holder, "now_ms": now_ms, "until_ms": until_ms}
+
+        def run(connection: sqlite3.Connection) -> object:
+            connection.execute(EXTEND_RESERVATIONS_SQL, params)
+            return tuple(int(row[0]) for row in connection.execute(EXTEND_SQL, params).fetchall())
+
+        extended = self._thread.run(
+            Unit(name="store.extend", run=run, cost_class="free", wait_ms=self._wait_ms)
+        )
+        return cast("tuple[int, ...]", extended)
 
     def reap_expired_leases(self, now_ms: int) -> int:
         """Return every expired claim to `pending`, decremented, releasing its reservations. 07:59.

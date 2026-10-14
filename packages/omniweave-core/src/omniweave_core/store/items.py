@@ -30,8 +30,26 @@ ends on the host's side, as `segments.py` is for the segmenter:
    and the sink overrides it to `quarantined` on a dangling `tmp`. `partial` and `failed` are a
    runner's to report about a run it cut short; this function always finishes the run it opens.
 6. **The view's `defaults` are the modal `layer` and `page`, and `covered: false`.** A free Pass
-   has no floor (06:345), so nothing is covered for it; a billed Pass's view will mark the bits of
-   `SegmentRef.uncovered` when one exists.
+   has no floor (06:345), so nothing is covered for it.
+
+## The billed view (the ledger's D709)
+
+A billed Pass reads the same form with four additions, all 06:1305-1316's, and only when the caller
+names the lane and the Pass's place (`BilledLane`):
+
+7. **`covered` is per block, against the cover cheaper than this Pass.** `cheaper` is
+   `store.coverage.cheaper_cover()`, the arithmetic `ow graph plan` reports (D705); a member's bit
+   is set in it or not. `defaults.covered` is the modal value, and a block whose value differs
+   carries the key, as `layer` and `page` do. `SegmentRef.uncovered` is the members' bits less
+   `cheaper`, 64 bytes big-endian, so the sink can refuse covered ground (06:788-797).
+8. **`etypes` is the corpus vocabulary a prompt may render**: `etype_vocab` rows whose `source` is
+   `builtin` or `user`, never `proposed` (06:1675), by name with `unknown` last. `document_scoped`
+   names those whose `scope` is `document` (D710), because a driver states each entity's scope and
+   the sink takes it as given.
+9. **`relations` is every `relation_vocab` row as `{relation, actor_rule}`**, by name: the rule is
+   what part 3 of the prompt prints (06:1350).
+10. **`doc` carries what the store holds**: `format` and `media_type`. 06:1311's `lang`,
+    `trust_class` and `outline` have no column on `doc`, and the view does not invent them.
 
 `import sqlite3` is for the `Connection` type, as in `segments.py`; this module opens no connection
 and starts no transaction (07:2717).
@@ -47,10 +65,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, NoReturn, cast
 
 from omniweave_core.errors import GraphError
+from omniweave_core.limits import MAX_SEGMENT_BLOCKS
 from omniweave_core.model.block import BlockId, Cite
 from omniweave_core.model.enums import AnchorKind, Trust
 from omniweave_core.model.records import Diag
 from omniweave_core.model.spans import TextSpan
+from omniweave_core.store.coverage import cheaper_cover
 from omniweave_core.store.graph import (
     OW_GRAPH_UNPARSED_ITEM,
     AliasDraft,
@@ -74,6 +94,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "ITEM_LANES",
+    "BilledLane",
     "Cover",
     "ItemView",
     "Rejected",
@@ -109,6 +130,15 @@ class ItemView:
     body: bytes
     cites: Mapping[str, int]
     """Every member's cite to its `block_id`: the `allowed_cites` of the run."""
+
+
+@dataclass(frozen=True, slots=True)
+class BilledLane:
+    """A billed Pass's lane and place: what its view is covered against (rulings 7-10)."""
+
+    lane: str
+    before: tuple[int, int]
+    """The Pass's `(cost_rank, phase)`: cover from a Pass placed before it is cheaper."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,6 +187,16 @@ class UnitItems:
 # The view
 # ---------------------------------------------------------------------------
 
+_ETYPES: Final = (
+    "SELECT etype FROM etype_vocab WHERE source IN ('builtin', 'user')"
+    " ORDER BY etype = 'unknown', etype"
+)
+_DOCUMENT_SCOPED: Final = (
+    "SELECT etype FROM etype_vocab WHERE source IN ('builtin', 'user') AND scope = 'document'"
+    " ORDER BY etype"
+)
+_RELATIONS: Final = "SELECT relation, actor_rule FROM relation_vocab ORDER BY relation"
+_DOC: Final = "SELECT format, media_type FROM doc WHERE doc_ord = ?"
 _READ_SEGMENT: Final = (
     "SELECT doc_ord, gen, heading_path, layer, atom, n_blocks, n_tokens, content_digest, state "
     "FROM segment WHERE segment_id = ?"
@@ -202,8 +242,13 @@ decoded. D670 sends them because `derive.anchor.native` reads the `anchor` marks
 recorded -- a bookmark, a heading's own id -- and a billed Pass reads the rest."""
 
 
-def build_segment_view(connection: sqlite3.Connection, segment_id: int) -> ItemView:
-    """One live Segment as the Segment form of `owgraph-segment/1` (06:1305, D666)."""
+def build_segment_view(
+    connection: sqlite3.Connection, segment_id: int, *, billed: BilledLane | None = None
+) -> ItemView:
+    """One live Segment as the Segment form of `owgraph-segment/1` (06:1305, D666).
+
+    With `billed`, the billed Pass's view (rulings 7-10); without it, a free Pass's.
+    """
     row = connection.execute(_READ_SEGMENT, (segment_id,)).fetchone()
     if row is None or int(row[8]) != 0:
         raise GraphError(
@@ -228,23 +273,34 @@ def build_segment_view(connection: sqlite3.Connection, segment_id: int) -> ItemV
     }
     digest = bytes(digest)
     seg = f"seg:{digest.hex()[:16]}"
-    frames: list[dict[str, Any]] = [
-        {
-            "t": "segment",
-            "seg": seg,
-            "heading_path": json.loads(path),
-            "n_blocks": int(n_blocks),
-            "n_tokens": int(n_tokens),
-            "layer": layers[int(layer_code)],
-            "atom": atom,
-            "defaults": {**defaults, "covered": False},
-        }
-    ]
+    cheaper = (
+        0
+        if billed is None
+        else cheaper_cover(connection, segment_id, lane=billed.lane, before=billed.before)
+    )
+    covered = {
+        int(m[0]): bool(cheaper >> (MAX_SEGMENT_BLOCKS - 1 - int(m[0])) & 1) for m in members
+    }
+    header: dict[str, Any] = {
+        "t": "segment",
+        "seg": seg,
+        "heading_path": json.loads(path),
+        "n_blocks": int(n_blocks),
+        "n_tokens": int(n_tokens),
+        "layer": layers[int(layer_code)],
+        "atom": atom,
+        "defaults": {**defaults, "covered": _modal(list(covered.values()), False)},
+    }
+    if billed is not None:
+        header.update(_billed_header(connection, int(doc_ord)))
+    frames: list[dict[str, Any]] = [header]
     cites: dict[str, int] = {}
     for ordinal, block_id, cite, kind, layer, page, text, label, *cell in members:
-        table, r, c, header, n_cols = cell
+        table, r, c, header_rows, n_cols = cell
         frame: dict[str, Any] = {"t": "block", "cite": cite, "kind": kinds[int(kind)]}
         frame["ord"] = int(ordinal)
+        if covered[int(ordinal)] != header["defaults"]["covered"]:
+            frame["covered"] = covered[int(ordinal)]
         if layers[int(layer)] != defaults["layer"]:
             frame["layer"] = layers[int(layer)]
         if int(page) != defaults["page"]:
@@ -260,7 +316,7 @@ def build_segment_view(connection: sqlite3.Connection, segment_id: int) -> ItemV
                 "table_cite": table,
                 "r": int(r),
                 "c": int(c),
-                "header_rows": int(header or 0),
+                "header_rows": int(header_rows or 0),
                 "n_cols": int(n_cols or 0),
             }
         frames.append(frame)
@@ -272,12 +328,34 @@ def build_segment_view(connection: sqlite3.Connection, segment_id: int) -> ItemV
             doc_ord=int(doc_ord),
             gen=int(gen),
             content_digest=digest,
-            uncovered=None,
+            uncovered=None if billed is None else _uncovered(covered, cheaper),
         ),
         seg=seg,
         body=body.encode("utf-8"),
         cites=cites,
     )
+
+
+def _billed_header(connection: sqlite3.Connection, doc_ord: int) -> dict[str, Any]:
+    """Rulings 8-10: the vocabularies a billed prompt renders, and what the store holds of `doc`."""
+    doc = connection.execute(_DOC, (doc_ord,)).fetchone()
+    return {
+        "etypes": [str(r[0]) for r in connection.execute(_ETYPES)],
+        "document_scoped": [str(r[0]) for r in connection.execute(_DOCUMENT_SCOPED)],
+        "relations": [
+            {"relation": str(r), "actor_rule": str(rule)}
+            for r, rule in connection.execute(_RELATIONS)
+        ],
+        "doc": {"format": str(doc[0]), "media_type": str(doc[1])},
+    }
+
+
+def _uncovered(covered: Mapping[int, bool], cheaper: int) -> bytes:
+    """Ruling 7: the members' bits less `cheaper`, 64 bytes big-endian (06:776, D703)."""
+    members = 0
+    for ordinal in covered:
+        members |= 1 << (MAX_SEGMENT_BLOCKS - 1 - ordinal)
+    return (members & ~cheaper).to_bytes(MAX_SEGMENT_BLOCKS // 8, "big")
 
 
 _LIVE_SEGMENTS: Final = (
