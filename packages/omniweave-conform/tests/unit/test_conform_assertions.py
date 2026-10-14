@@ -63,8 +63,8 @@ def _strings(seed: str, n: int) -> str:
 # --- the types -------------------------------------------------------------------------------
 
 
-def test_the_three_types_and_the_owdoc_rows() -> None:
-    assert {"present", "absent", "order"} == TEXT_TYPES
+def test_the_four_types_and_the_owdoc_rows() -> None:
+    assert {"present", "absent", "order", "table"} == TEXT_TYPES
     assert {"footnote", "cell_rel", "span", "cite", "roundtrip"} == OWDOC_ONLY
 
 
@@ -204,7 +204,7 @@ def test_order_honours_the_budget() -> None:
 # --- what it does not judge ------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("kind", ["table", "math", "baseline", "format"])
+@pytest.mark.parametrize("kind", ["math", "baseline", "format"])
 def test_a_type_not_yet_judged_is_refused_by_name(kind: str) -> None:
     with pytest.raises(QualityError, match=f"does not judge '{kind}' yet"):
         evaluate_text(_assertion(kind, {}), "text")
