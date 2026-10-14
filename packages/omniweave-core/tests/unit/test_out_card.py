@@ -24,6 +24,10 @@ OWTEXT = (
     PACKAGES / "omniweave-conform" / "src" / "omniweave_conform" / "suites" / "target" / "owtext"
 )
 VIDEO_TEXT = VIDEO.read_text(encoding="utf-8")
+PPTX_TEXT = (
+    PACKAGES / "omniweave-target-pptx" / "src" / "omniweave_target_pptx" / "driver.toml"
+).read_text(encoding="utf-8")
+UNIT_PART = 'unit_part = "ppt/slides/slide{ord}.xml"'
 
 
 def card(text: str, source: str = "driver.toml") -> DriverCard:
@@ -156,6 +160,38 @@ def test_an_implemented_target_declares_its_artefacts_media_type_and_suffix(
     assert owtext.count(old) == 1
     with pytest.raises(DriverHostError, match=re.escape(said)):
         CompileCard.of(card(owtext.replace(old, new)))
+
+
+def test_a_passthrough_card_names_the_part_each_unit_lowers_to() -> None:
+    """Ruling 7 (D808): R4 compares a unit's part with its source's, so pptx names it."""
+    c = CompileCard.of(card(PPTX_TEXT))
+    assert (c.fidelity, c.unit_part) == ("passthrough", "ppt/slides/slide{ord}.xml")
+    assert c.part_of(3) == "ppt/slides/slide3.xml"
+    assert CompileCard.of(card(VIDEO_TEXT)).unit_part == "", "fidelity none: no part"
+
+
+@pytest.mark.parametrize(
+    ("text", "old", "new", "said"),
+    [
+        (PPTX_TEXT, UNIT_PART, "", "unit_part is required exactly when fidelity = passthrough"),
+        (
+            VIDEO_TEXT,
+            'kind_map = ""',
+            'kind_map = ""\nunit_part = "scene{ord}.html"',
+            "unit_part is required exactly when fidelity = passthrough",
+        ),
+        (PPTX_TEXT, UNIT_PART, 'unit_part = "ppt/slides/slide1.xml"', "holding {ord} once"),
+        (PPTX_TEXT, UNIT_PART, 'unit_part = "ppt/{ord}/slide{ord}.xml"', "holding {ord} once"),
+        (PPTX_TEXT, UNIT_PART, 'unit_part = "/ppt/slide{ord}.xml"', "is not a member path"),
+        (PPTX_TEXT, UNIT_PART, 'unit_part = "ppt//slide{ord}.xml"', "is not a member path"),
+    ],
+)
+def test_unit_part_is_a_member_path_and_only_a_passthrough_cards(
+    text: str, old: str, new: str, said: str
+) -> None:
+    assert text.count(old) == 1
+    with pytest.raises(DriverHostError, match=re.escape(said)):
+        CompileCard.of(card(text.replace(old, new)))
 
 
 def test_an_unimplemented_target_may_leave_its_media_type_out() -> None:

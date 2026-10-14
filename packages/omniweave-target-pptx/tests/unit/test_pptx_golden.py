@@ -4,11 +4,17 @@
 table (R5 asks for each), a manual region (so the gate is `manual-required` and the compile a
 draft), a cite with its kind and span, and a frozen picture. Its text names `Probe Sans`, the face
 `fontkit` writes, so the measurement band runs rather than skips and the gate is not `unverified`.
+Its `edit/` is `u02` with one word changed, which R4(b) recompiles (D808).
 """
 
 from __future__ import annotations
 
+import dataclasses
+import shutil
 import tomllib
+import zipfile
+from collections import Counter
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +25,9 @@ from omniweave_core.drivers.card import DriverCard, load_card
 from omniweave_core.out.constructs import Disposition, RoundTrip
 from omniweave_core.out.gate import GateStatus
 from omniweave_core.out.job import elided
-from omniweave_ports import ArtifactRef, DriverResult
+from omniweave_core.out.opc import write_opc
+from omniweave_core.out.plan import UnitOutcome
+from omniweave_ports import ArtifactKind, ArtifactRef, DriverResult
 from omniweave_target_pptx.back.driver import PptxReader
 from omniweave_target_pptx.driver import CARD, PptxCompiler, table
 
@@ -82,7 +90,7 @@ def test_every_declared_law_is_checked_or_says_why_not(tmp_path: Path) -> None:
         "r1": "checked",
         "r2": "checked",
         "r3": "unknown",
-        "r4": "unknown",
+        "r4": "checked",
         "r5": "unknown",
         "r6": "unknown",
         "r7": "checked",
@@ -90,12 +98,12 @@ def test_every_declared_law_is_checked_or_says_why_not(tmp_path: Path) -> None:
     assert report.law("r1").verdict is Verdict.PASS, "part and byte, twice, one package"
     assert report.law("r2").verdict is Verdict.PASS, "every address read back, in place"
     assert report.law("r7").verdict is Verdict.PASS
+    assert report.law("r4").verdict is Verdict.PASS, "D808: zero edits copy, an edit stays local"
     r5 = report.law("r5")
     assert r5.result is not None and r5.result.passed, "every exact row used, and seen"
     assert "ow.el exempt" in r5.reason
     assert "project = false" in report.law("r3").reason
-    assert "compiled from IL alone" in report.law("r4").reason
-    assert report.verdict is Verdict.UNKNOWN, "R3, R4, R5's reader clauses and R6 wait"
+    assert report.verdict is Verdict.UNKNOWN, "R3, R5's reader clauses and R6 wait"
 
 
 def test_unmeasured_the_golden_is_unverified_and_nothing_is_lowered(tmp_path: Path) -> None:
@@ -114,7 +122,7 @@ def test_without_a_reader_r2_says_why_not(tmp_path: Path) -> None:
         "unknown",
         "r2 reads the artefact back, and no read_back driver was given",
     )
-    assert "compiled from IL alone" in report.law("r4").reason, "with a reader or without"
+    assert report.law("r4").verdict is Verdict.PASS, "R4 reads nothing back"
 
 
 class _Forgetful(PptxReader):
@@ -141,6 +149,92 @@ def test_a_reader_that_loses_an_address_fails_r2_naming_it(tmp_path: Path) -> No
     assert r2.verdict is Verdict.FAIL
     assert r2.result is not None
     assert [(f.kind, f.subject) for f in r2.result.failures] == [("missing", "u02/e9")]
+
+
+class _Drifting(PptxCompiler):
+    """A compile whose next generation moves a copied slide's bytes: R4 must say which."""
+
+    def lower(self, plan: Any, il: Any, ledger: Any, io: Any) -> Any:
+        result = super().lower(plan, il, ledger, io)
+        if plan.artifact_gen == 1:
+            return result
+        [ref] = [r for r in result.produced if r.kind == ArtifactKind.ARTIFACT]
+        body = ref.inline if ref.inline is not None else io.blobs.open(ref.blob).read()
+        with zipfile.ZipFile(BytesIO(body)) as zf:
+            members = {i.filename: zf.read(i) for i in zf.infolist()}
+        members["ppt/slides/slide1.xml"] += b"\n"
+        drifted = ArtifactRef.of("artifact", write_opc(members), io)
+        rest = tuple(r for r in result.produced if r is not ref)
+        return DriverResult(outcome="ok", produced=(drifted, *rest))
+
+
+def test_a_copied_part_that_moved_fails_r4_naming_its_unit(tmp_path: Path) -> None:
+    """D808: R4(a) and R4(b) each compare u01's slide with its source's, and both see it move."""
+    fonts = tmp_path / "fonts"
+    write_font(fonts, "probe.ttf", tiny_font("Probe Sans"))
+    report = run_target(
+        _Drifting(font_dir=str(fonts)), _card(), table(), GOLDEN, workdir=tmp_path / "work"
+    )
+    r4 = report.law("r4")
+    assert r4.verdict is Verdict.FAIL
+    assert r4.result is not None
+    assert [(f.kind, f.subject) for f in r4.result.failures] == [
+        ("bytes-moved", "u01"),
+        ("bytes-moved", "u01"),
+    ]
+
+
+class _Rebuilding(PptxCompiler):
+    """A compile whose next generation reports an untouched unit rebuilt."""
+
+    def postflight(self, artifact: str, plan: Any) -> Any:
+        receipt = super().postflight(artifact, plan)
+        if plan.artifact_gen == 1:
+            return receipt
+        units = {**receipt.units, "u01": UnitOutcome.REBUILT}
+        return dataclasses.replace(receipt, units=units, counts=Counter(units.values()))
+
+
+def test_a_unit_the_compile_rebuilds_untouched_fails_r4(tmp_path: Path) -> None:
+    """D808: R4 reads the receipt's outcomes, so (a) finds u01 not copied and (b) not local."""
+    fonts = tmp_path / "fonts"
+    write_font(fonts, "probe.ttf", tiny_font("Probe Sans"))
+    report = run_target(
+        _Rebuilding(font_dir=str(fonts)), _card(), table(), GOLDEN, workdir=tmp_path / "work"
+    )
+    r4 = report.law("r4")
+    assert r4.result is not None
+    assert [(f.kind, f.subject) for f in r4.result.failures] == [
+        ("not-copied", "u01"),
+        ("not-local", "u01"),
+    ]
+
+
+def test_without_an_edit_r4_says_what_it_did_not_check(tmp_path: Path) -> None:
+    golden = tmp_path / "golden"
+    shutil.copytree(GOLDEN, golden)
+    shutil.rmtree(golden / "edit")
+    report = run_target(_measured(tmp_path), _card(), table(), golden, workdir=tmp_path / "work")
+    r4 = report.law("r4")
+    assert (r4.status, r4.reason) == (
+        "unknown",
+        "R4(a) holds; R4(b) recompiles the golden's edit/, which it does not carry",
+    )
+    assert r4.result is not None and r4.result.passed
+    drifting = _Drifting(font_dir=str(tmp_path / "fonts"))
+    failed = run_target(drifting, _card(), table(), golden, workdir=tmp_path / "again")
+    assert failed.law("r4").verdict is Verdict.FAIL, "R4(a) failing is an answer, not unknown"
+
+
+def test_an_edit_that_changes_nothing_fails_r4(tmp_path: Path) -> None:
+    """D808: R4(b) over an `edit/` that leaves its unit as it was would hold of no edit."""
+    golden = tmp_path / "golden"
+    shutil.copytree(GOLDEN, golden)
+    shutil.copyfile(golden / "il" / "u02.svg", golden / "edit" / "u02.svg")
+    report = run_target(_measured(tmp_path), _card(), table(), golden, workdir=tmp_path / "work")
+    r4 = report.law("r4")
+    assert r4.result is not None
+    assert [(f.kind, f.subject) for f in r4.result.failures] == [("unedited", "u02")]
 
 
 def test_the_golden_uses_every_exact_row() -> None:

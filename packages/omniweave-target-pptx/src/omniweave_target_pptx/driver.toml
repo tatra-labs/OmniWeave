@@ -52,6 +52,7 @@ project = false                        # 09 Q2: nothing mined invents an SVG sub
 fidelity = "passthrough"               # R4(a): zero edits copy every part
 laws = ["r1", "r2", "r3", "r4", "r5", "r6", "r7"]
 kind_map = "kind_map.toml"
+unit_part = "ppt/slides/slide{ord}.xml"   # D808: R4 compares a unit's slide with its source's
 
 [config]
 type = "object"

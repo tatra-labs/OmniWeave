@@ -65,20 +65,32 @@ checking and compiling the golden fixture in a scratch directory.
     key rather than the reader.
 12. **R5's exemption names the table's own address row.** owtext calls it `attr.ow-el` and docx
     `ow.el`; the exemption is by selector, `@data-ow-el`, and the reason now says which row.
-15. **R4 names what it needs** (D805). R4 recompiles from an artefact read back, with zero
-    edits and then with confined ones, and compares what the recompile copies. The suite
-    compiles the golden from IL alone, so R4 is `unknown` saying so, with a reader or
-    without. pptx is the first card to claim it (`fidelity = "passthrough"`).
+15. **R4 named what it needed** (D805) until D808 built it (ruling 16). pptx is the first card
+    to claim it (`fidelity = "passthrough"`).
+16. **R4 recompiles the golden as its own next generation** (D808). A card claiming R4 names
+    each unit's part (`[compile.round_trip] unit_part`, the card's ruling 7), and its
+    artefact is a package of members. R4(a): the golden is compiled, then compiled again as
+    the next generation with each unit edited from itself (its source part, nsig and ord
+    the first compile's), so every unit must be copied, each unit's part its source's byte
+    for byte. R4(b): a golden may carry `edit/`, IL files that replace their units.
+    Recompiled against the first compile, each unit the edit does not touch must be
+    `passthrough` or `patched`, and a copied unit's part its source's. The outcomes are the
+    receipt's, what the compile reports. An `edit/` file that leaves its unit's nsig where
+    it was is an `unedited` failure, since R4(b) would then hold of no edit. A golden with no
+    `edit/` leaves R4 `unknown` when (a) holds, saying so. R4 reads no artefact back: an
+    owsvg/1 edit restores the retained IL, and so does this.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import io as io_module
 import json
 import shutil
 import tomllib
-from collections.abc import Mapping
+import zipfile
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal
@@ -88,6 +100,7 @@ from omniweave_core.events import traceparent
 from omniweave_core.model.block import Cite
 from omniweave_core.model.enums import Quote
 from omniweave_core.out.brief import BRIEF_SCHEMA, parse_brief
+from omniweave_core.out.card import CompileCard
 from omniweave_core.out.carrier import parse_selector
 from omniweave_core.out.carrier.tree import Node
 from omniweave_core.out.cites import CitedBlock
@@ -96,7 +109,7 @@ from omniweave_core.out.constructs import Disposition, RoundTrip
 from omniweave_core.out.gate import GateStatus
 from omniweave_core.out.job import JOB_SCHEMA, ILBundle, Job, JobDeterminism
 from omniweave_core.out.ledger import FrozenLedger, LedgerRow, slot
-from omniweave_core.out.plan import Plan, classify_and_assert
+from omniweave_core.out.plan import Plan, UnitOutcome, classify_and_assert
 from omniweave_core.out.roundtrip import (
     Failure,
     ILElement,
@@ -105,6 +118,8 @@ from omniweave_core.out.roundtrip import (
     applicable,
     r1,
     r2,
+    r4a,
+    r4b,
     r5,
     r7,
 )
@@ -124,10 +139,13 @@ if TYPE_CHECKING:
     from omniweave_core.out.ledger import AssetLedger
     from omniweave_ports import DriverResult, ParseV1
 
-__all__ = ["ASSETS", "CITES", "GOLDEN_CLOCK_NS", "LawOutcome", "TargetReport", "run_target"]
+__all__ = ["ASSETS", "CITES", "EDIT", "GOLDEN_CLOCK_NS", "LawOutcome", "TargetReport", "run_target"]
 
 CITES: Final = "cites.json"
 ASSETS: Final = "assets"
+EDIT: Final = "edit"
+"""Ruling 16: the golden's edited units, one IL file each, which R4(b) recompiles."""
+_COPIED: Final = frozenset({UnitOutcome.PASSTHROUGH, UnitOutcome.CLONED_PASSTHROUGH})
 GOLDEN_CLOCK_NS: Final = 1_700_000_000_000_000_000
 """Ruling 10: the instant every golden compile's `job.json` names."""
 _TRACEPARENT: Final = traceparent("0" * 31 + "1", "0" * 15 + "1")
@@ -232,6 +250,8 @@ def run_target(
             reader=reader,
             kind_map_path=Path(str(card.source)).parent / str(round_trip.get("kind_map", "")),
             projects=bool(round_trip.get("project", False)),
+            part_of=CompileCard.of(card).part_of,
+            golden=golden,
         )
     return _report(target, checked.status, outcomes)
 
@@ -254,6 +274,8 @@ def _law(
     reader: ParseV1 | None,
     kind_map_path: Path,
     projects: bool,
+    part_of: Callable[[int], str],
+    golden: Path,
 ) -> LawOutcome:
     if law == "r2" and reader is not None:
         return _r2(
@@ -266,13 +288,6 @@ def _law(
             kind_map_path=kind_map_path,
             workdir=workdir,
         )
-    if law == "r3" and not projects:
-        return LawOutcome(
-            "r3",
-            "unknown",
-            reason="R3 compiles project(read_back(compile(I))), and the card says "
-            "[compile.round_trip] project = false",
-        )
     if law == "r1":
         first = _compile(compiler, plan, bundle, ledger, workdir / "r1-a")
         second = _compile(compiler, plan, bundle, ledger, workdir / "r1-b")
@@ -281,12 +296,143 @@ def _law(
         return LawOutcome("r7", "checked", _r7(compiler, plan, bundle, ledger, workdir / "r7"))
     if law == "r5":
         return _r5(constructs, compiler, bundle, job, workdir / "r5")
-    reason = {
-        "r4": "R4 recompiles from an artefact read back and compares what it copies; a golden "
-        "fixture is compiled from IL alone",
+    if law == "r4":
+        return _r4(
+            compiler=compiler,
+            plan=plan,
+            bundle=bundle,
+            constructs=constructs,
+            ledger=ledger,
+            part_of=part_of,
+            edits=golden / EDIT,
+            job=job,
+            workdir=workdir / "r4",
+        )
+    reasons = {
         "r6": "R6 judges a source artefact's unrepresented parts; a golden fixture is IL alone",
-    }.get(law, f"{law} reads the artefact back, and no read_back driver was given")
+    }
+    if not projects:
+        reasons["r3"] = (
+            "R3 compiles project(read_back(compile(I))), and the card says "
+            "[compile.round_trip] project = false"
+        )
+    reason = reasons.get(law, f"{law} reads the artefact back, and no read_back driver was given")
     return LawOutcome(law, "unknown", reason=reason)
+
+
+def _r4(
+    *,
+    compiler: CompileV1,
+    plan: Plan,
+    bundle: ILBundle,
+    constructs: ConstructTable,
+    ledger: AssetLedger,
+    part_of: Callable[[int], str],
+    edits: Path,
+    job: Path,
+    workdir: Path,
+) -> LawOutcome:
+    """Ruling 16: R4(a) over a recompile with zero edits, and R4(b) over the golden's edit."""
+    _compile(compiler, plan, bundle, ledger, workdir / "source")
+    source = _members(workdir / "source" / f"{plan.slug}.artefact")
+    outcomes, copied = _recompiled(
+        compiler=compiler,
+        plan=_edit_of(plan, bundle, bundle, part_of),
+        bundle=bundle,
+        ledger=ledger,
+        source=source,
+        part_of=part_of,
+        scratch=workdir / "zero",
+    )
+    failures = list(r4a(outcomes, copied).failures)
+    if not edits.is_dir():
+        result = LawResult("r4", tuple(failures))
+        if failures:
+            return LawOutcome("r4", "checked", result)
+        return LawOutcome(
+            "r4",
+            "unknown",
+            result,
+            f"R4(a) holds; R4(b) recompiles the golden's {EDIT}/, which it does not carry",
+        )
+    shutil.copytree(job, workdir / "edit")  # its job.json too: a target may read the clock
+    il = workdir / "edit" / "il"
+    names = sorted(p.name for p in edits.iterdir() if p.is_file())
+    for name in names:
+        shutil.copyfile(edits / name, il / name)
+    edited = ILBundle.load(il, carrier=compiler.carrier, constructs=constructs)
+    touched = frozenset(u.id for u in edited.units if u.il_path.removeprefix("il/") in names)
+    sealed = {u.id: u.nsig for u in bundle.units}
+    failures += [
+        Failure("unedited", u.id, f"{EDIT}/ leaves {u.id} as it was: R4(b) holds of no edit")
+        for u in edited.units
+        if u.id in touched and u.nsig == sealed[u.id]
+    ]
+    outcomes, copied = _recompiled(
+        compiler=compiler,
+        plan=_edit_of(plan, bundle, edited, part_of),
+        bundle=edited,
+        ledger=ledger,
+        source=source,
+        part_of=part_of,
+        scratch=workdir / "edited",
+    )
+    failures += r4b(outcomes, {u: frozenset({u}) for u in outcomes}, touched).failures
+    kept = {u: o for u, o in outcomes.items() if o in _COPIED}
+    failures += r4a(kept, copied).failures
+    return LawOutcome("r4", "checked", LawResult("r4", tuple(failures)))
+
+
+def _edit_of(plan: Plan, source: ILBundle, edited: ILBundle, part_of: Callable[[int], str]) -> Plan:
+    """Ruling 16: the next generation of `plan`, each unit edited from its own in `source`."""
+    sealed = {u.id: u for u in source.units}
+    units = tuple(
+        dataclasses.replace(
+            u,
+            source_part=part_of(sealed[u.id].ord),
+            source_nsig=sealed[u.id].nsig,
+            source_ord=sealed[u.id].ord,
+        )
+        for u in edited.units
+    )
+    return dataclasses.replace(plan, artifact_gen=plan.artifact_gen + 1, units=units)
+
+
+def _recompiled(
+    *,
+    compiler: CompileV1,
+    plan: Plan,
+    bundle: ILBundle,
+    ledger: AssetLedger,
+    source: Mapping[str, bytes],
+    part_of: Callable[[int], str],
+    scratch: Path,
+) -> tuple[dict[str, UnitOutcome], dict[str, tuple[str, str]]]:
+    """Ruling 16: each unit's outcome as the receipt reports it, and each copied unit's part
+    beside its source's."""
+    _, receipt = _compile(compiler, plan, bundle, ledger, scratch)
+    members = _members(scratch / f"{plan.slug}.artefact")
+    outcomes = dict(receipt.units)
+    copied: dict[str, tuple[str, str]] = {}
+    for unit in plan.units:
+        new = members.get(part_of(unit.ord))
+        old = source.get(part_of(unit.source_ord or 0))
+        if outcomes[unit.id] in _COPIED and new is not None and old is not None:
+            copied[unit.id] = (_sha(new), _sha(old))
+    return outcomes, copied
+
+
+def _members(path: Path) -> dict[str, bytes]:
+    """Ruling 16: a package's members by name; none for an artefact that is not one."""
+    try:
+        with zipfile.ZipFile(path) as zf:
+            return {info.filename: zf.read(info) for info in zf.infolist()}
+    except zipfile.BadZipFile:
+        return {}
+
+
+def _sha(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
 
 
 def _r2(
