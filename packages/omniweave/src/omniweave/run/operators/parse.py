@@ -157,6 +157,7 @@ __all__ = [
     "ParseLedger",
     "ParseOperator",
     "ParseTally",
+    "declared",
     "is_parse",
     "worker_env",
 ]
@@ -984,7 +985,7 @@ class ParseOperator:
                         normalizer=staged.normalizer,
                         uri=unit.uri,
                         source_bytes=unit.byte_len,
-                        declared=_declared(granted.card),
+                        declared=declared(granted.card),
                         model_version=MODEL_VERSION,
                         format_evidence=staged.format_evidence,
                     ),
@@ -1422,7 +1423,7 @@ def _evidence_of(derived: object) -> Mapping[str, Any]:
     return evidence if isinstance(evidence, dict) else {}
 
 
-def _declared(card: DriverCard) -> Capabilities:
+def declared(card: DriverCard) -> Capabilities:
     """The card's `[capability.parse]`, as the fifteen `Capabilities` fields (03 section 2.9)."""
     caps = card.parse
     names = Capabilities.__dataclass_fields__

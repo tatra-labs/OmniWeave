@@ -131,7 +131,7 @@ class ILElement:
 
 @dataclass(frozen=True, slots=True)
 class ReadBlock:
-    """A read-back Block, as R2 reads it: `x.ow.el`, the kind, the text, `x.ow.cite`."""
+    """A read-back Block, as R2 reads it: `x.ow.el`, the kind, the text, `x.ow.cites` (D785)."""
 
     el: str | None
     kind: str

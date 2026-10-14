@@ -556,7 +556,9 @@ def test_the_shipped_drivers_enabled_is_thirteen_ids(tmp_path: Path) -> None:
     assert isinstance(enabled, tuple)
     assert len(enabled) == 13
     assert set(enabled) == set(SHIPPED_DRIVERS)
-    assert set(cfg.get("graph.passes.enable")) <= set(enabled)
+    passes = cfg.get("graph.passes.enable")
+    assert isinstance(passes, tuple)
+    assert set(passes) <= set(enabled)
     assert cfg.axis_of("drivers.enabled") == "operational"
 
 
@@ -777,3 +779,38 @@ def test_the_module_imports_only_the_standard_library() -> None:
     foreign = roots - set(sys.stdlib_module_names) - {"omniweave_core", "omniweave_ports"}
     assert not foreign, f"config.py imports outside the stdlib: {sorted(foreign)}"
     assert math.isfinite(1.0)  # the one third-party-looking import is stdlib `math`
+
+
+# ---------------------------------------------------------------------------------------------
+# D779: `[licence] deny_restrictions`
+# ---------------------------------------------------------------------------------------------
+
+
+def test_the_restriction_names_mirror_the_ports_enum_in_bit_order() -> None:
+    from omniweave_core.config import RESTRICTION_NAMES
+    from omniweave_ports.types import Restriction
+
+    assert tuple(r.name.lower() for r in sorted(Restriction)) == RESTRICTION_NAMES
+
+
+def test_deny_restrictions_defaults_to_none_and_takes_restriction_names(tmp_path: Path) -> None:
+    root = _project(tmp_path)
+    env = {"OMNIWEAVE_HOME": str(tmp_path / "absent")}
+    assert load(cwd=root, env=env).get("licence.deny_restrictions") == ()
+    (root / "omniweave.toml").write_text(
+        '[licence]\ndeny_restrictions = ["copyleft_network", "output_share_alike"]\n',
+        encoding="utf-8",
+    )
+    assert load(cwd=root, env=env).get("licence.deny_restrictions") == (
+        "copyleft_network",
+        "output_share_alike",
+    )
+
+
+def test_a_deny_restriction_that_names_no_restriction_is_refused(tmp_path: Path) -> None:
+    root = _project(tmp_path)
+    (root / "omniweave.toml").write_text(
+        '[licence]\ndeny_restrictions = ["house_rules"]\n', encoding="utf-8"
+    )
+    with pytest.raises(ConfigError, match="house_rules"):
+        load(cwd=root, env={"OMNIWEAVE_HOME": str(tmp_path / "absent")})

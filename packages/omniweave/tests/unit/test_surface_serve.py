@@ -46,6 +46,7 @@ class Recorder:
     sessions: list[str | None] = field(default_factory=list)
     sources: list[dict[str, str]] = field(default_factory=list)
     budgets: list[QueryBudget | None] = field(default_factory=list)
+    denies: list[int] = field(default_factory=list)
 
     def __call__(
         self,
@@ -58,9 +59,11 @@ class Recorder:
         sources: Mapping[str, str],
         sessions: str | None,
         budget: QueryBudget | None = None,
+        deny_restriction_bits: int = 0,
     ) -> int:
         self.sessions.append(sessions)
         self.budgets.append(budget)
+        self.denies.append(deny_restriction_bits)
         self.sources.append(dict(sources))
         self.calls.append(
             {"profile": profile, "compact": compact, "corpus_resolves": corpus_resolves}
@@ -359,3 +362,15 @@ def test_the_lookup_happens_at_call_time_and_not_at_import() -> None:
     ]
     assert len(nested) == 1
     assert (SERVE_GROUP, SERVE_NAME) == ("omniweave.serve", "mcp")
+
+
+def test_the_projects_deny_policy_reaches_the_server(tmp_path: Path) -> None:
+    """D780: `[licence] deny_restrictions` is the mask every `omniweave_query` denies."""
+    plain, barred = Recorder(), Recorder()
+    for name in ("plain", "barred"):
+        (tmp_path / name).mkdir()
+    _run(tmp_path / "plain", ["--mcp"], body=HANDBOOK, rows=[Row(plain)])
+    body = HANDBOOK + '[licence]\ndeny_restrictions = ["no_redistribution"]\n'
+    _run(tmp_path / "barred", ["--mcp"], body=body, rows=[Row(barred)])
+    assert plain.denies == [0]
+    assert barred.denies == [1 << 6]

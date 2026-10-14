@@ -549,8 +549,12 @@ def test_the_mask_is_thirty_two_bits(store: SqliteArtifactStore, mask: int) -> N
 
 def test_the_loop_closes_once(store: SqliteArtifactStore, owstore: Path) -> None:
     sealed = store.seal(draft())
+    assert store.els(sealed.row.artifact_id) == ()
     closed = store.close_loop(sealed.row.artifact_id, 7, [ElRow("u01", "u01/e2", 101)])
     assert closed.read_back_doc_ord == 7
+    assert store.els(sealed.row.artifact_id) == (ElRow("u01", "u01/e2", 101),)
+    other = store.seal(draft(key=key(il_digest=d(9)), artifact_gen=2))
+    assert store.els(other.row.artifact_id) == (), "the map is one artefact's"
     assert dataclasses.replace(closed, read_back_doc_ord=None) == sealed.row
     assert rows(owstore, "SELECT unit, el, block_id FROM artifact_el") == [("u01", "u01/e2", 101)]
     with pytest.raises(TargetError, match="already read back") as caught:

@@ -30,7 +30,7 @@
 # for, which is what lets `store.retain_parts` carry the `semantic` axis its own row in
 # 18-api-sketch.md section 4 gives it. The classification rule above is unchanged by the grain.
 #
-# 134 patterns from the omniweave_core.config registry: 13 semantic, 121 operational.
+# 135 patterns from the omniweave_core.config registry: 13 semantic, 122 operational.
 
 [semantic]    # enters cache keys AND sets the full-scan latch
 keys = [
@@ -84,6 +84,7 @@ keys = [
   "licence.allow_tiers",
   "licence.jurisdiction",
   "licence.fields_of_use",
+  "licence.deny_restrictions",
   "targets.enabled",
   "budget.max_inflight",
   "runtime.queue_high_water",
@@ -217,6 +218,7 @@ keys = [
 "licence.allow_tiers" = "OMNIWEAVE_LICENCE_ALLOW_TIERS"
 "licence.jurisdiction" = "OMNIWEAVE_LICENCE_JURISDICTION"
 "licence.fields_of_use" = "OMNIWEAVE_LICENCE_FIELDS_OF_USE"
+"licence.deny_restrictions" = "OMNIWEAVE_LICENCE_DENY_RESTRICTIONS"
 "targets.enabled" = "OMNIWEAVE_TARGETS_ENABLED"
 "targets.video.ffmpeg" = "OMNIWEAVE_TARGETS_VIDEO_FFMPEG"
 "targets.video.codec" = "OMNIWEAVE_TARGETS_VIDEO_CODEC"

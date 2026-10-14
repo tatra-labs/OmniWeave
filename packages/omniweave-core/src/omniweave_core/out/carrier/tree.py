@@ -96,6 +96,10 @@ class Node:
     def children(self) -> Iterator[Node]:
         return (c for c in self.content if isinstance(c, Node))
 
+    def contents(self) -> tuple[str | Node, ...]:
+        """Character data and element children, in document order."""
+        return tuple(self.content)
+
     def text_content(self) -> str:
         return "".join(_texts(self))
 

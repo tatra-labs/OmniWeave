@@ -139,6 +139,7 @@ from omniweave_core.model.enums import (
     MAX_TRUST_BY_METHOD,
     Kind,
     Layer,
+    Method,
     OsKind,
     PageKind,
     Quote,
@@ -163,6 +164,7 @@ from omniweave_core.model.records import (
     QUAD_ORIGINS,
     AssetDraft,
     Diag,
+    DocKey,
     DocRecord,
     PageRecord,
 )
@@ -300,6 +302,9 @@ _MAX_ADDR_CHARS: Final = 512
 _MAX_RAW_KIND_CHARS: Final = 128
 _X_KEY_SEGMENTS: Final = 3
 _RESERVED_X_VENDOR: Final = "ow"
+READ_BACK_X: Final = frozenset({"x.ow.el", "x.ow.cites"})
+"""The two `ow` keys a read-back writes, on a `roundtrip` block alone (D785)."""
+_EL_ADDRESS: Final = re.compile(r"u\d{2,}/e\d+")
 _MIN_HEADING_LEVEL: Final = 1
 _MAX_HEADING_LEVEL: Final = 9
 _CONFIDENCE_COMPONENTS: Final = ("parse", "layout", "table", "ocr")
@@ -857,7 +862,7 @@ class DocSink:
         text = self._resolved_text(b)
         payload = self._validated_payload(b)
         self._validate_score(b)
-        self._validate_x(b.x)
+        self._validate_x(b.x, b.method)
         if b.raw_kind is not None and len(b.raw_kind) > _MAX_RAW_KIND_CHARS:
             msg = f"raw_kind is {len(b.raw_kind)} chars; the CHECK caps it at {_MAX_RAW_KIND_CHARS}"
             raise _refuse("OW_MODEL", msg)
@@ -1690,11 +1695,19 @@ class DocSink:
         if b.score_kind is not None and b.score_kind not in self._score_kinds:
             raise _refuse(SCORE_KIND_UNREGISTERED, self._unregistered(b.score_kind))
 
-    def _validate_x(self, x: Mapping[str, Any]) -> None:
+    def _validate_x(self, x: Mapping[str, Any], method: Method) -> None:
         """`x.<vendor>.<key>`, vendor `ow` reserved, `canonical(x)` capped. 03:308.
 
         *"Keys MUST match `x\\.[a-z0-9_]+\\.[a-z0-9_]+`; the vendor segment `ow` is reserved for the
         framework. Not a digest input. `MAX_X_BYTES` caps `canonical(x)`."*
+
+        D785: the framework writes two keys in its own segment through a read-back, `x.ow.el`
+        (the `data-ow-el` address) and `x.ow.cites` (the element's cite tokens), and only on a
+        block whose method is `roundtrip` (OUT22). A native parse that claimed an omniweave
+        address would be inventing one, so they are refused anywhere else, as every other `ow`
+        key still is. 09 section 11.1 prints R2's key as `x.ow.cite`, which `archive/owdoc.py`
+        already uses to carry a block's own durable cite and strips on export, so the read-back
+        key is `x.ow.cites`.
         """
         if not x:
             return
@@ -1709,8 +1722,7 @@ class DocSink:
                 msg = f"extension key {key!r} is not x.<vendor>.<key> (03:308)"
                 raise _refuse("OW_MODEL", msg)
             if parts[1] == _RESERVED_X_VENDOR:
-                msg = f"extension key {key!r} uses the reserved `ow` vendor segment (03:308)"
-                raise _refuse("OW_MODEL", msg)
+                _read_back_key(key, x[key], method)
         size = len(canonical(dict(x)))
         if size > MAX_X_BYTES:
             msg = f"canonical(x) is {size} bytes"
@@ -2064,6 +2076,25 @@ class DocSink:
 # ---------------------------------------------------------------------------
 
 _X_SEGMENT: Final = re.compile(r"[a-z0-9_]+")
+
+
+def _read_back_key(key: str, value: object, method: Method) -> None:
+    """D785: an `ow` key is a read-back's two, on a `roundtrip` block, or it is refused."""
+    if key not in READ_BACK_X:
+        msg = f"extension key {key!r} uses the reserved `ow` vendor segment (03:308)"
+        raise _refuse("OW_MODEL", msg)
+    if method is not Method.ROUNDTRIP:
+        msg = f"{key} is a read-back's, and this block's method is {method.value} (OUT22)"
+        raise _refuse("OW_MODEL", msg)
+    if key == "x.ow.el" and (not isinstance(value, str) or not _EL_ADDRESS.fullmatch(value)):
+        msg = f"x.ow.el {value!r} is not a data-ow-el address, u<NN>/e<N>"
+        raise _refuse("OW_MODEL", msg)
+    if key == "x.ow.cites" and (
+        not isinstance(value, list) or not all(isinstance(c, str) and c for c in value)
+    ):
+        msg = f"x.ow.cites {value!r} is not a list of cite tokens"
+        raise _refuse("OW_MODEL", msg)
+
 
 _BLOCK_COLUMNS: Final = (
     "block_id",
@@ -2502,7 +2533,7 @@ def _read_doc_record(connection: sqlite3.Connection, doc_ord: int) -> DocRecord:
     ).fetchone()
     return DocRecord(
         doc_ord=int(row[0]),
-        doc_key=bytes(row[1]),
+        doc_key=DocKey(bytes(row[1])),
         gen=int(row[2]),
         source_sha256=bytes(row[3]),
         normalizer=row[4],

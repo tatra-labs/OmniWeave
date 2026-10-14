@@ -87,6 +87,7 @@ def run(
     sessions: str | None,
     stderr: TextIO | None = None,
     budget: QueryBudget | None = None,
+    deny_restriction_bits: int = 0,
 ) -> int:
     """The `omniweave.serve` entry point: select, report, bind this process's stdio, serve.
 
@@ -110,7 +111,8 @@ def run(
         session=session,
         sources={name: Path(path) for name, path in sources.items()},
         #  D650: the project's `[retrieval.budget]`; an `ow` that passes none gets 07's.
-        policy=RetrievalPolicy() if budget is None else RetrievalPolicy(budget=budget),
+        #  D780: and its `[licence] deny_restrictions`, the mask DR17 reserves to policy.
+        policy=RetrievalPolicy(budget=budget, deny_restriction_bits=deny_restriction_bits),
     )
     dispatcher = McpDispatcher.create(surface, caller=caller)
     err = stderr or sys.stderr

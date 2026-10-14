@@ -7,6 +7,7 @@ case changes exactly one thing: the target, its card, its table or a copy of the
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import shutil
 import tomllib
 from pathlib import Path
@@ -16,11 +17,17 @@ import pytest
 from omniweave_conform.result import Verdict
 from omniweave_conform.suites.target.owtext.driver import HERE, OwTextCompiler
 from omniweave_conform.suites.target.owtext.normalizers import lower_ascii
-from omniweave_conform.suites.target.suite import TargetReport, run_target
+from omniweave_conform.suites.target.suite import (
+    ASSETS,
+    GOLDEN_CLOCK_NS,
+    TargetReport,
+    run_target,
+)
 from omniweave_core.drivers.card import DriverCard, load_card
 from omniweave_core.out.constructs import ConstructTable
 from omniweave_core.out.gate import GateStatus
-from omniweave_core.out.job import ILBundle
+from omniweave_core.out.job import ILBundle, Job
+from omniweave_core.out.ledger import LedgerRow, ledger_digest, slot
 from omniweave_core.out.plan import Plan, UnitOutcome
 from omniweave_core.out.receipt import Receipt
 from omniweave_ports import ArtifactRef, DriverResult
@@ -83,6 +90,34 @@ def test_the_reference_target_reports_every_law(tmp_path: Path) -> None:
     assert r5.result is not None and r5.result.passed, "clauses 3 and 4 hold"
     assert "attr.ow-el exempt" in r5.reason
     assert report.verdict is Verdict.UNKNOWN, "a law nobody could check is never a pass"
+
+
+def test_the_scratch_jobdir_has_its_job_with_the_fixed_clock_and_the_pinned_cites(
+    tmp_path: Path,
+) -> None:
+    """Rulings 10 and 11 (D784): a target may read its clock from `job.json`, and the Plan
+    carries each cite at the generation `cites.json` resolves it at, as a compile pins it."""
+    run(tmp_path)
+    job = Job.load(tmp_path / "work" / "job")
+    assert job.determinism.clock_ns == GOLDEN_CLOCK_NS
+    assert dict(job.plan.cites) == {"d7#1": 1}
+    assert job.plan.ledger_digest == ledger_digest([])
+
+
+def test_a_goldens_assets_are_the_ledger_its_compile_reads(tmp_path: Path) -> None:
+    """Ruling 9: each file under `assets/` is a frozen image, slotted for the unit naming it."""
+    copy = golden_copy(tmp_path)
+    data = b"GIF89a-not-read-by-owtext"
+    sha = hashlib.sha256(data).hexdigest()
+    (copy / ASSETS).mkdir()
+    (copy / ASSETS / "logo.gif").write_bytes(data)
+    u02 = (copy / "il" / "u02.html").read_text(encoding="utf-8")
+    (copy / "il" / "u02.html").write_text(
+        u02.replace("Margins held.", f"Margins held. {slot(sha)}"), encoding="utf-8", newline=""
+    )
+    run(tmp_path, golden=copy)
+    job = Job.load(tmp_path / "work" / "job")
+    assert job.plan.ledger_digest == ledger_digest([LedgerRow(1, sha, slot(sha), "image", "u02")])
 
 
 def test_the_fixture_itself_is_never_written(tmp_path: Path) -> None:

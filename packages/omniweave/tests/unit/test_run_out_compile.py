@@ -469,6 +469,25 @@ def test_a_passed_gate_compiles_seals_and_places_the_artefact(world: World) -> N
     ]
 
 
+def test_the_plan_lowered_carries_each_cite_pinned_at_its_generation(world: World) -> None:
+    """Ruling 18 (D783): the resolution is the pin, so `lower()` reads what the seal writes."""
+    target = _Text()
+    bundle = world.checked(target)
+    inner = in_process(target, make_io(world.kit, world.tmp / "io"), HOST.suffix)
+    seen: list[Plan] = []
+
+    def spy(job_dir: Path, plan: Plan, *rest: Any) -> Lowered:
+        seen.append(plan)
+        return inner(job_dir, plan, *rest)
+
+    assert world.plan(bundle).cites == {}
+    world.compile(target, world.plan(bundle), lowering=spy)
+    [lowered] = seen
+    assert dict(lowered.cites) == {"d7#1": 1, "d7#2": 1}
+    pinned = world.rows("SELECT cite, doc_gen FROM artifact_cite ORDER BY cite")
+    assert sorted(lowered.cites.items()) == pinned
+
+
 def test_the_sealed_rows_brief_digest_names_the_retained_brief(world: World) -> None:
     """Ruling 17 (D775): the Brief the compile read is in CAS under the row's `brief_digest`."""
     from omniweave_core.out.retain import fetch_brief  # noqa: PLC0415

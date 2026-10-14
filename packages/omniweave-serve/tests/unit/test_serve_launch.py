@@ -112,6 +112,38 @@ def test_a_bad_profile_raises_before_stdio_is_bound(monkeypatch: pytest.MonkeyPa
         )
 
 
+class _StopError(Exception):
+    """Raised by the spy below once it has the caller's policy, so `run()` binds no stdio."""
+
+
+@pytest.mark.parametrize("bits", [0, 1 << 6])
+def test_the_deny_mask_is_the_query_callers_policy(
+    monkeypatch: pytest.MonkeyPatch, bits: int
+) -> None:
+    """D780: the mask `ow serve` passes is the one every `omniweave_query` plans with."""
+    seen: list[object] = []
+
+    def spy(**kwargs: object) -> None:
+        seen.append(kwargs["policy"])
+        raise _StopError
+
+    monkeypatch.setattr(launch_module, "QueryCaller", spy)
+    with pytest.raises(_StopError):
+        run(
+            profile="default",
+            compact=True,
+            corpus_resolves=True,
+            corpus=None,
+            corpora={},
+            sources={},
+            sessions=None,
+            stderr=io.StringIO(),
+            deny_restriction_bits=bits,
+        )
+    [policy] = seen
+    assert policy.deny_restriction_bits == bits  # type: ignore[attr-defined]
+
+
 # ---------------------------------------------------------------------------------------------
 # the contract across the boundary
 # ---------------------------------------------------------------------------------------------
@@ -139,6 +171,8 @@ def test_runs_signature_is_the_protocol_the_cli_calls() -> None:
     ] == required
     assert all(one.kind is inspect.Parameter.KEYWORD_ONLY for one in ours.parameters.values())
     assert ours.parameters["budget"].default is theirs.parameters["budget"].default is None
+    deny = "deny_restriction_bits"
+    assert ours.parameters[deny].default == theirs.parameters[deny].default == 0
     for name in wanted:
         assert ours.parameters[name].annotation == theirs.parameters[name].annotation
     assert ours.return_annotation == theirs.return_annotation == "int"

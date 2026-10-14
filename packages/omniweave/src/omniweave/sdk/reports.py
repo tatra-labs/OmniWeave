@@ -591,6 +591,9 @@ class BackReport:
     `contract_unchanged` compares the artefact's recorded `constructs_digest` with the installed
     table's. On a difference the rows that moved cannot be listed: 09 section 3.6 counts them from
     the artefact's recorded table version, and nothing records that version (D776).
+
+    D788: the loop is closed first. The sealed bytes are read back by the card's `read_back`
+    into a corpus document, and the IL's addresses are mapped to its blocks.
     """
 
     slug: str
@@ -602,6 +605,14 @@ class BackReport:
     recorded_digest: str
     installed_digest: str
     units: tuple[str, ...]
+    read_back: str = ""
+    """The card's `[compile.round_trip] read_back`: the parse driver that closes the loop. D788."""
+    read_back_doc_ord: int | None = None
+    """The document the generation was read back as; `None` while the loop is open."""
+    els: int = 0
+    """The `artifact_el` rows mapping the IL's addresses to that document's blocks."""
+    loop_open: str = ""
+    """Why the loop is open; `""` once `read_back_doc_ord` is set."""
 
 
 @dataclass(frozen=True, slots=True)

@@ -20,6 +20,11 @@ recovering one records (ruling 4).
     row says `visible = false`. `constructs.py` is not built, so `html_carrier()` takes both sets,
     defaulting to HTML's block-level elements and to the elements a browser never renders (`head`,
     `script`, `style`, `template`).
+14. **An invisible element's own text is its content** (D786). 09's `html` row has an element
+    whose row says `visible = false` *"contributing nothing"*: to the text of the elements around
+    it, because it renders elsewhere (a footnote body in the notes area). Asked for its own text,
+    it has its content, which is what R2 compares a note body's read-back block against. The
+    elements inside it that are themselves invisible still contribute nothing.
 """
 
 from __future__ import annotations
@@ -73,16 +78,16 @@ class HtmlDoc(Doc):
         self._invisible = invisible
 
     def visible_text(self, n: CarrierNode) -> str:
-        """09 section 3.1's `html` row, under ruling 13's sets."""
+        """09 section 3.1's `html` row, under ruling 13's sets, and ruling 14."""
         if not isinstance(n, Node):
             raise TypeError(f"{n!r} is not a node of this carrier")
         lines = Lines()
-        self._gather(n, lines)
+        self._gather(n, lines, own=True)
         return lines.render()
 
-    def _gather(self, node: Node, lines: Lines) -> None:
+    def _gather(self, node: Node, lines: Lines, *, own: bool = False) -> None:
         local = node.tag.removeprefix("html|")
-        if local in self._invisible:
+        if local in self._invisible and not own:
             return
         if local == "br":
             lines.hard()

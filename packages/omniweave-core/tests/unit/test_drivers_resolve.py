@@ -55,8 +55,10 @@ import importlib.util
 import re
 import sys
 import tomllib
+from collections.abc import Mapping
 from io import StringIO
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from omniweave_core.canonical import sha256_canonical
@@ -184,7 +186,7 @@ GATE_NAMES_IN_ORDER = (
 # CONTENTS are `card.py`'s and are imported, since the rungs are one fact with one home (INV-21).
 # `compile` is absent: 04-driver-system.md section 10.3 leaves `[capability.compile]` to
 # 09-generation.md and `FLOOR_KINDS[Port.COMPILE]` is empty by intent.
-PORT_LADDERS = {
+PORT_LADDERS: dict[Port, Mapping[str, tuple[str, ...]]] = {
     Port.PARSE: PARSE_LADDERS,
     Port.ACQUIRE: ACQUIRE_LADDERS,
     Port.DERIVE: DERIVE_LADDERS,
@@ -1045,7 +1047,7 @@ def test_each_ordered_parse_ladder_is_compared_with_greater_or_equal(name: str) 
             assert meets_floor(Port.PARSE, name, rung, floor) is (index >= floor_index)
 
 
-@pytest.mark.parametrize("port", sorted(PORT_LADDERS, key=lambda p: p.value))
+@pytest.mark.parametrize("port", sorted(PORT_LADDERS, key=str))
 def test_an_ordered_field_compared_as_a_boolean_would_pass_every_floor_and_does_not(
     port: Port,
 ) -> None:
@@ -1143,6 +1145,7 @@ def test_an_absent_ladder_key_reads_as_the_least_capable_rung() -> None:
 
 def test_an_unknown_forfeits_member_is_a_match_failure_and_not_an_ignore() -> None:
     subject = card('\n[capability.parse]\nforfeits = ["blocks", "invented_thing"]\n')
+    assert subject.parse is not None
     assert "invented_thing" in subject.parse.forfeits
     rejection = only_rejection(resolve(parse_requirement(), catalog_of(subject), policy()))
     assert rejection.code is RejectCode.CAPABILITY_BELOW_FLOOR
@@ -1704,6 +1707,7 @@ def test_an_ack_over_the_code_licence_never_acknowledges_the_weights_licence() -
     """
     subject = card(licence=PERMISSIVE_CODE_RESTRICTIVE_WEIGHTS)
     assert subject.licence_code.spdx == "Apache-2.0"
+    assert subject.licence_weights is not None
     weights_digest = subject.licence_weights.licence_sha256
     rejection = only_rejection(
         resolve(
@@ -1722,6 +1726,7 @@ def test_an_ack_over_the_code_licence_never_acknowledges_the_weights_licence() -
 
 def test_an_ack_bound_to_the_weights_licence_activates_the_datalab_shaped_driver() -> None:
     subject = card(licence=PERMISSIVE_CODE_RESTRICTIVE_WEIGHTS)
+    assert subject.licence_weights is not None
     resolution = resolve(
         parse_requirement(),
         catalog_of(subject),
@@ -2212,7 +2217,7 @@ def test_the_report_row_stores_the_enums_own_lower_case_wire_value() -> None:
         policy(),
     )
     report = resolution_report(resolution)
-    rejected = report["report_json"]["rejected"]  # type: ignore[index]
+    rejected = cast("list[dict[str, Any]]", report["report_json"]["rejected"])  # type: ignore[index]
     assert rejected[0]["code"] == "format_unsupported"
     assert rejected[0]["symbol"] == "OW_DRIVER_FORMAT_UNSUPPORTED"
     assert rejected[0]["gate"] == "format_supported"
@@ -2675,4 +2680,10 @@ def test_the_office_card_passes_the_hardware_gate_on_a_windows_x64_host() -> Non
     media = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     policy = Policy(host_env=env, allow_unattested=True, require_lock=False)
     found = resolve(Requirement(port="parse/1", format=media), catalog(), policy)
-    assert [one.driver_id for one in found.candidates] == ["parse.office.anydoc"]
+    #  D786: compile.docx.native's read_back serves the same media type, so it is a candidate too.
+    #  `decode.office-native` names parse.office.anydoc, and routing takes the rule's driver
+    #  (09 Q4: a target's read_back is reached by name), so a .docx ingest is not moved by it.
+    assert [one.driver_id for one in found.candidates] == [
+        "parse.docx.native",
+        "parse.office.anydoc",
+    ]
