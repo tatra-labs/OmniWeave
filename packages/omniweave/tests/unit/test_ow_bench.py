@@ -216,8 +216,37 @@ def test_list_names_every_subject_and_marks_the_runnable_ones() -> None:
     assert code == runner.EXIT_CLEAN
     for name in bench.SUBJECTS:
         assert name in output
-    assert output.count("RUNS") == len(bench.runnable()) == 2
-    assert "13 subjects, 2 runnable" in output
+    assert output.count("RUNS") == len(bench.runnable()) == 3
+    assert "13 subjects, 3 runnable" in output
+
+
+def test_pacer_runs_its_workload_n_times_and_reports_the_spread(tmp_path: Path) -> None:
+    """D822: `ow bench pacer --runs N`, a table of each run's thirds and the widest spread."""
+    code, output = _run(["pacer", "--runs", "2", "--home", str(tmp_path)])
+    assert code == runner.EXIT_CLEAN
+    assert "ow bench pacer -- 2 run(s)" in output
+    rows = [line for line in output.splitlines() if line.strip().endswith(" ms")]
+    assert len(rows) == 2
+    assert "widest disagreement" in output
+    assert f"instability_pct = {bench.INSTABILITY_PCT}" in output
+
+
+def test_pacer_refuses_zero_runs(tmp_path: Path) -> None:
+    code, output = _run(["pacer", "--runs", "0", "--home", str(tmp_path)])
+    assert code == runner.EXIT_NOT_RUN
+    assert "the Pacer runs at least once" in output
+
+
+def test_the_pacer_report_calls_a_wide_spread_unstable() -> None:
+    def reading(total: int) -> bench.PacerReading:
+        return bench.PacerReading(
+            hash_ns=total, loop_ns=0, sqlite_ns=0, digest="d", loop_value=0, key_sum=0
+        )
+
+    out = StringIO()
+    runner.report_pacer([reading(1_000_000), reading(1_200_000)], out)
+    assert "widest disagreement 18.2%" in out.getvalue()
+    assert "UNSTABLE, fix the Runner" in out.getvalue()
 
 
 def test_list_marks_the_charter_four_because_the_roadmap_line_names_them() -> None:
