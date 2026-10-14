@@ -13,7 +13,8 @@ W10.7 is the work item.
 `stale()` is its byte-diff clause against a committed tree; `write()` lays the files down and
 `tree()` reads them back, for Q-G27 (`omniweave_conform.rot`, D829). `unmeasured()` is Q-G8's
 static half over one committed row (D831): its `measured_on` must construct a `MeasuredOn`, so
-the committed bytes are held to the dataclass's rule by the dataclass itself.
+the committed bytes are held to the dataclass's rule by the dataclass itself. `unpaired()` is
+Q-G21's pairing (D832), which `export()` also refuses on.
 
 ## Rulings
 
@@ -31,14 +32,22 @@ the committed bytes are held to the dataclass's rule by the dataclass itself.
    `confounders`.** `value`, `ci_lo` and `ci_hi` are required as keys and may be `null` exactly
    when `method` is `none`: an UNKNOWN row has no number, and a `0.0` in its place would be a
    claim. `measured_on` must be a non-empty object.
+6. **Q-G21: a metric in `PAIRS` never ships without its partner in the same run and slice**
+   (13:99, :1124-1126, :1385). `export()` refuses such a file, because export is where a metric
+   ships. A partner that failed to compute is still present as an UNKNOWN row, so a missing
+   partner means it was never measured. `hallucination_rate`'s partner is `field_acc`. That is
+   D832's reading of *"may never ship alone"*: the paragraph stating it is about per-field
+   accuracy collapsing per document, so a hallucination rate needs the field accuracy it was
+   measured beside, and `field_acc` in turn needs `doc_acc`.
 
-Specified in 13-quality.md sections 11.1 and 11.3, and 16-roadmap.md W10.7.
+Specified in 13-quality.md sections 8.3, 11.1 and 11.3, and 16-roadmap.md W10.7.
 """
 
 from __future__ import annotations
 
 import json
 from dataclasses import asdict
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_core.drivers.card import MEASURED_ON_FIELDS, MeasuredOn
@@ -49,7 +58,17 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
     from pathlib import Path
 
-__all__ = ["REQUIRED", "check", "export", "stale", "tree", "unmeasured", "write"]
+__all__ = [
+    "PAIRS",
+    "REQUIRED",
+    "check",
+    "export",
+    "stale",
+    "tree",
+    "unmeasured",
+    "unpaired",
+    "write",
+]
 
 REQUIRED: Final = (
     "value",
@@ -68,6 +87,15 @@ REQUIRED: Final = (
     "standing",
 )
 """13:1627-1640's required fields, in the table's order."""
+
+PAIRS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "field_acc": "doc_acc",
+        "hallucination_rate": "field_acc",
+        "source_reread_rate": "task_accuracy",
+    }
+)
+"""Q-G21 (ruling 6): a metric, and the metric it may not ship without."""
 
 _NUMBERS: Final = ("value", "ci_lo", "ci_hi")
 _LISTS: Final = ("not_measured", "confounders")
@@ -89,6 +117,12 @@ def export(connection: Any) -> dict[str, str]:
     out = {}
     for path, rows in sorted(grouped.items()):
         check(rows)
+        alone = unpaired(rows)
+        if alone:
+            raise QualityError(
+                f"Q-G21: {path}: {'; '.join(alone)}",
+                fix="measure the partner in the same run, then ow eval publish again",
+            )
         out[path] = json.dumps(rows, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
     return out
 
@@ -181,6 +215,17 @@ def _path(suite: str, subject: str) -> str:
         if not part or part in (".", "..") or any(c in part for c in "/\\\x00"):
             _refuse(f"{part!r} cannot name a results file")
     return f"{suite}/{subject}.json"
+
+
+def unpaired(rows: Iterable[Mapping[str, Any]]) -> tuple[str, ...]:
+    """Q-G21 (ruling 6): each metric shipped without its partner in the same run and slice."""
+    published = {(row.get("run_id"), row.get("slice_key"), row.get("metric")) for row in rows}
+    out = []
+    for run_id, slice_key, metric in sorted(published, key=str):
+        partner = PAIRS.get(str(metric))
+        if partner is not None and (run_id, slice_key, partner) not in published:
+            out.append(f"{metric}@{slice_key} in run {run_id} ships without {partner}")
+    return tuple(out)
 
 
 def _refuse(message: str) -> None:
