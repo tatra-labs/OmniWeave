@@ -1,0 +1,13 @@
+schema = "omniweave.out-il/1"
+il = "owsvg/1"
+constructs_digest = "sha256:e60ed8ed4db03dcebad40d4c0e005777e8378d5d703a847237e952a47f2b4b7b"
+
+[[unit]]
+id = "u01"
+ord = 1
+file = "u01.svg"
+
+[[unit]]
+id = "u02"
+ord = 2
+file = "u02.svg"
