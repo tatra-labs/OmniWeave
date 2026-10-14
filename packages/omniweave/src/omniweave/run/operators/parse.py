@@ -79,6 +79,16 @@ scratch after its call; this Operator removes the invocation's whole directory a
 whatever the worker did, so a crashed worker leaves no password behind. The secret is in no
 `INVOKE` header, no `HELLO`, no `effective_config` and no digest.
 
+## The card's restriction bits (INV-16, D811)
+
+*"`restriction_bits` is stamped by the runner from the producing card onto every block, segment,
+entity, mention, edge, claim, asset and artefact"* (charter INV-16). The sink is handed the
+granted card's stamp, the OR over its `[licence.code]` and `[licence.weights]` tables
+(`drivers.licence.card_restriction_bits`), so every block and asset of the document carries it.
+The derived rows read it from their sources (`store.segments`, `store.graph`), and the compile's
+restriction aggregate (OUT11) reads it from the blocks an artefact cites. Until D811 the sink was
+handed nothing, so every ingested block carried 0 and the aggregate had nothing to bar.
+
 Specified in 02-architecture.md section 4.1 rows 10-17, 08-runtime.md sections 1.3 and 6.1, and
 04-driver-system.md section 6.2.
 """
@@ -97,6 +107,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, BinaryIO, Final, cast
 
+from omniweave_core.drivers.licence import card_restriction_bits
 from omniweave_core.errors import ModelError, RouteError
 from omniweave_core.host import keystore, subproc
 from omniweave_core.limits import MAX_ASSET_TOTAL_BYTES, MAX_ENTRY_BYTES
@@ -962,6 +973,9 @@ class ParseOperator:
             origin_operator=producer.operator,
             origin_driver=granted.card.identity.id,
             driver_schema_v=granted.card.identity.schema_version,
+            restriction_bits=card_restriction_bits(
+                granted.card.licence_code, granted.card.licence_weights
+            ),
             blobs=self._cas,
             decision_id=row.decision_id,
             cost_class=row.cost_class,

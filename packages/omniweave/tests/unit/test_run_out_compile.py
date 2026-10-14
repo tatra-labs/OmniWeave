@@ -171,6 +171,11 @@ def test_the_hosts_stamp_is_the_cards_licence_restrictions() -> None:
     host = CompileHost.of(driver, CompileCard.of(driver), producer_id=1, barred_mask=BARRED)
     assert host.restriction_bits == restriction_bits(driver.licence_code) != 0
     assert host.barred_mask == BARRED
+    weights = replace(driver.licence_code, output_share_alike=False, no_model_training=True)
+    weighted = replace(driver, licence_weights=weights)
+    stamp = CompileHost.of(weighted, CompileCard.of(weighted), producer_id=1).restriction_bits
+    assert stamp == restriction_bits(driver.licence_code) | restriction_bits(weights), "D811"
+    assert stamp != host.restriction_bits, "the weights table adds its own bit"
 
 
 HOST = CompileHost(
