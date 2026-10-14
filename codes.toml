@@ -1138,6 +1138,33 @@ fix     = "ow explain OW-T-530"
 raised_by = "TargetError"
 sites   = ["09-generation.md:1509"]
 
+# ── D810. `omniweave_core.toolchain.run()`: seam S2, one Toolchain invocation over
+# omniweave-target/1 (11-repo-layout.md section 3.2, 02-architecture.md section 2 row 16).
+
+[[code]]
+numeric = "OW-T-531"
+symbol  = "OW_TARGET_TOOLCHAIN_MISSING"
+meaning = "a Toolchain target cannot run: no node satisfies its node_range on the ladder (OMNIWEAVE_NODE, an installed runtime, node on PATH), its bundle is not installed, or the child exited 64 because its own runtime is missing; the target is pruned, never an ImportError (D810)"
+fix     = "ow targets install <name>"
+raised_by = "CapabilityMissing"
+sites   = ["11-repo-layout.md:851"]
+
+[[code]]
+numeric = "OW-T-532"
+symbol  = "OW_TARGET_TOOLCHAIN_DIGEST"
+meaning = "an installed Toolchain bundle does not hash to the register's full sha256, or is too large to verify; it is not run and nothing is fetched (D810)"
+fix     = "ow targets install <name>   # a fresh copy, verified against the register"
+raised_by = "TargetError"
+sites   = ["11-repo-layout.md:858"]
+
+[[code]]
+numeric = "OW-T-533"
+symbol  = "OW_TARGET_TOOLCHAIN_FAILED"
+meaning = "a Toolchain child broke omniweave-target/1: it would not start, its bundle held no entry, a stdout line was not a JSON object or stdout passed 1 MiB, its first frame was not its ready, it answered with something other than progress and one result, it missed its deadline, or its exit status disagreed with its receipt; the child is reaped and nothing is sealed (D810)"
+fix     = "ow explain OW-T-533"
+raised_by = "TargetError"
+sites   = ["11-repo-layout.md:860"]
+
 # ── D789. owsvg/1, the pptx target's table and structural rules (09-generation.md section
 # 12.1). 2xx normalize, 4xx constructs; the grammar codes are named by the table's rows now
 # and emitted by the grammar band.

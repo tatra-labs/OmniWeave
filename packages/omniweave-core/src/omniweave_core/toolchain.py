@@ -7,9 +7,8 @@ engine (11-repo-layout.md section 3.1). This module is the Python half's entry p
 it is **the manifest reader only**: `ToolchainSpec`, `NodeRuntime`, the two-table grammar and its
 validation. Node resolution, the full-sha256 verification of a downloaded bundle, the spawn and the
 SIGTERM -> SIGKILL + 5 s process-group reap are `run(spec, job_dir, *, timeout_s, ctx)`'s
-(02-architecture.md section 2 row 16) and are not implemented here -- so this module imports no
-`subprocess`, and the `TID251` allowance `pyproject.toml` reserves for it stays unused until the
-runner lands.
+(02-architecture.md section 2 row 16), which D810 adds below, and with it this module's
+`subprocess`: one of the two homes G8's rule gives it.
 
 **It NEVER reads the network.** The register's whole purpose is that the digest is in-tree and in
 the wheel: "if the digest were fetched alongside the bundle, verifying it would prove only that the
@@ -29,32 +28,98 @@ touches (11-repo-layout.md section 1.3). Nothing eager may import this module.
 
 Specified in 11-repo-layout.md section 3.2 (the manifest, printed) and section 1.7 (why it is
 in-tree), 02-architecture.md section 2 row 16 and glossary.md (`ToolchainSpec`).
+
+## Rulings (D810): `run()`
+
+1. **One request, one fresh child.** `run(spec, job_dir, *, timeout_s, ctx, verb, request)`
+   resolves node, verifies the bundle, spawns, exchanges one request and reaps. A Toolchain is
+   a one-shot child (glossary.md), so nothing is kept between calls.
+2. **The node ladder is section 3.2's.** It tries `$OMNIWEAVE_NODE` as named, then each
+   register row for this platform whose version the range accepts, installed at
+   `$OMNIWEAVE_HOME/node/<version>-<platform>/bin/node[.exe]`, and then `node` on `PATH` if
+   `node --version` satisfies the range. On Windows only `node.exe` is ever looked for, never
+   a `.cmd` shim. With no rung, the result is `CapabilityMissing`, exit 64, naming
+   `ow targets install <name>`: the target is pruned, never an `ImportError`.
+3. **The digest is in the path and checked on every invocation.** The install directory is
+   `$OMNIWEAVE_HOME/toolchains/<name>@<version>-<sha256>/` (02 section 2), holding the
+   verified archive, `bundle.tar.gz`. `run()` hashes the whole archive against the register's
+   full sha256, then writes its `entry` member to `ctx.scratch` and runs those bytes. Running
+   what was just verified, rather than an extracted copy, leaves nothing to swap between
+   check and use. A mismatch is `OW_TARGET_TOOLCHAIN_DIGEST` and never fetches; a missing
+   archive is `CapabilityMissing`.
+4. **`cwd` is the JobDir, and the environment is constructed.** The child gets only
+   `ENV_ALLOWLIST`'s variables the host has (the OS's own and the temp directory), so no
+   token, proxy or `NODE_OPTIONS` reaches it. On Windows it is born suspended in a job
+   object, as an S4 worker is (D636); on POSIX it leads a new session.
+5. **stdout is control and stderr is a log.** Each stdout line must be one JSON object, under
+   1 MiB in all; anything else ends the call. stderr is drained into a bounded ring, kept for
+   the result and never parsed.
+6. **The frames.** The host sends `hello` (`proto`, `verb`). The child answers `ready`,
+   naming the spec's toolchain and version. The host sends the request (`t` = the verb, plus
+   its fields), the child sends `progress`* (`done`, `total`) and one `result` whose `status`
+   is `ok` or `blocked`, the host sends `bye`, and the child exits. A `compile` exits 0 iff it
+   wrote `out/receipt.json`; another verb answered `ok` exits 0. A child exiting 64, even
+   before its `ready`, has no runtime of its own: `CapabilityMissing`. Every other break is
+   `OW_TARGET_TOOLCHAIN_FAILED`.
+   `blocked` is a frame outcome, not a gate: the framework computes `GateStatus` itself
+   (09 section 12.2).
+7. **One deadline, from `ctx.clock`.** `timeout_s` bounds the whole exchange, the exit
+   included. Past it, or on any break, the child is reaped: on POSIX SIGTERM to its group,
+   then SIGKILL at +5 s; on Windows the job object terminates the tree.
 """
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
+import io
+import json
+import os
+import queue
 import re
+import shutil
+import signal
+import subprocess
+import sys
+import tarfile
+import threading
 import tomllib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Any, Final, Literal
 
-from omniweave_core.errors import ConfigError
+from omniweave_core.errors import CapabilityMissing, ConfigError, TargetError
+from omniweave_core.host.subproc import CREATE_SUSPENDED, JobObject, StderrRing
+
+if TYPE_CHECKING:
+    from omniweave_core.clock import Clock
 
 __all__ = [
+    "BUNDLE_FILE",
+    "ENV_ALLOWLIST",
     "MANIFEST_NAME",
     "NODE_KEYS",
     "NODE_PLATFORMS",
+    "PROTOCOL",
     "RANGE_OPERATORS",
+    "RECEIPT",
+    "STDOUT_MAX_BYTES",
     "TOOLCHAIN_KEYS",
     "TOOLCHAIN_MANIFEST_SCHEMAS",
+    "VERBS",
     "NodeRange",
     "NodeRuntime",
+    "ToolchainContext",
     "ToolchainManifest",
+    "ToolchainResult",
     "ToolchainSpec",
     "VersionClause",
+    "install_dir",
     "parse_manifest",
     "read_manifest",
+    "resolve_node",
+    "run",
 ]
 
 
@@ -572,3 +637,403 @@ def read_manifest(path: Path) -> ToolchainManifest:
             fix=f"restore {MANIFEST_NAME}, or reinstall the distribution that carries it",
         ) from exc
     return parse_manifest(text, source=str(path))
+
+
+# --------------------------------------------------------------------------------------------
+# 5. `run()`: one Toolchain invocation over `omniweave-target/1`. D810.
+# --------------------------------------------------------------------------------------------
+
+PROTOCOL: Final[str] = "omniweave-target/1"
+"""The control protocol's name, sent in the host's `hello` (glossary.md, `omniweave-target/1`)."""
+
+VERBS: Final[frozenset[str]] = frozenset({"validate", "compile", "project"})
+"""The three requests section 3.2 prints between `ready` and `progress*`."""
+
+BUNDLE_FILE: Final[str] = "bundle.tar.gz"
+"""Ruling 3: the verified archive kept in the install directory, re-hashed on every invocation."""
+
+RECEIPT: Final[str] = "out/receipt.json"
+"""Ruling 6: the receipt a `compile` writes, JobDir-relative. Exit 0 iff it was written."""
+
+STDOUT_MAX_BYTES: Final[int] = 1 << 20
+"""Ruling 5: stdout is control only, "under 1 MiB per invocation"."""
+
+BUNDLE_MAX_BYTES: Final[int] = 256 << 20
+"""Ruling 3: the most of an archive read into memory to hash it and take its entry."""
+
+GRACE_NS: Final[int] = 5_000_000_000
+"""Ruling 7: SIGKILL at +5 s after the SIGTERM a timeout sends."""
+
+ENV_ALLOWLIST: Final[tuple[str, ...]] = ("SYSTEMROOT", "WINDIR", "TEMP", "TMP", "TMPDIR")
+"""Ruling 4: what the child's environment may carry from the host's, and nothing else."""
+
+_EXIT_MISSING: Final[int] = 64
+_FIX_FAILED: Final[str] = "ow explain OW-T-533"
+
+
+@dataclass(frozen=True, slots=True)
+class ToolchainContext:
+    """What `run()` reads of the host: its home, its environment, its node rows and its clock."""
+
+    home: Path
+    """`$OMNIWEAVE_HOME`: the installed bundles and runtimes live under it (ruling 3)."""
+    env: Mapping[str, str]
+    """The host's environment, read for `OMNIWEAVE_NODE`, `PATH` and the allowlist (ruling 4)."""
+    nodes: tuple[NodeRuntime, ...]
+    """The register's `[[node]]` rows; the ladder's second rung looks for an installed one."""
+    platform: str
+    """This host's `NODE_PLATFORMS` tag, `win-x64`."""
+    scratch: Path
+    """Where the verified entry is written for this invocation (ruling 3)."""
+    clock: Clock
+    """The deadline's clock (ruling 7): library code reads no ambient time."""
+
+
+@dataclass(frozen=True, slots=True)
+class ToolchainResult:
+    """One completed request: the child's `result` frame and what the host observed of it."""
+
+    status: Literal["ok", "blocked"]
+    result: Mapping[str, Any]
+    """The `result` frame without its `t`: what the request returned."""
+    progress: tuple[tuple[int, int], ...]
+    exit_code: int
+    receipt: Path | None
+    node: Path
+    stderr_tail: str
+    """The last of the child's stderr, kept for a human and never parsed (ruling 5)."""
+
+
+def install_dir(spec: ToolchainSpec, home: Path) -> Path:
+    """Ruling 3: `$OMNIWEAVE_HOME/toolchains/<name>@<version>-<sha256>/`, the digest in the path."""
+    digest = spec.bundle_sha256.removeprefix("sha256:")
+    return home / "toolchains" / f"{spec.name}@{spec.version}-{digest}"
+
+
+def resolve_node(spec: ToolchainSpec, ctx: ToolchainContext) -> Path:
+    """Ruling 2: section 3.2's ladder, or `CapabilityMissing` naming the install."""
+    explicit = ctx.env.get("OMNIWEAVE_NODE", "")
+    if explicit:
+        path = Path(explicit)
+        if not path.is_file():
+            raise CapabilityMissing(
+                f"OMNIWEAVE_NODE names {explicit}, which is not a file",
+                missing=("node",),
+                fix="unset OMNIWEAVE_NODE, or point it at a node executable",
+                symbol="OW_TARGET_TOOLCHAIN_MISSING",
+            )
+        return path
+    binary = "node.exe" if ctx.platform.startswith("win-") else "node"
+    for row in ctx.nodes:
+        if row.platform != ctx.platform or not spec.node_range.accepts(row.version):
+            continue
+        installed = ctx.home / "node" / f"{row.version}-{row.platform}" / "bin" / binary
+        if installed.is_file():
+            return installed
+    found = shutil.which(binary, path=ctx.env.get("PATH", ""))
+    if found is not None and spec.node_range.accepts(_node_version(Path(found), ctx)):
+        return Path(found)
+    raise CapabilityMissing(
+        f"no node satisfies {spec.name}'s node_range {spec.node_range.text!r}",
+        missing=("node",),
+        fix=f"ow targets install {spec.name}",
+        symbol="OW_TARGET_TOOLCHAIN_MISSING",
+    )
+
+
+def _node_version(node: Path, ctx: ToolchainContext) -> str:
+    """What `node --version` prints, or `""` for a binary that will not say (ruling 2)."""
+    try:
+        done = subprocess.run(  # noqa: S603 -- argv is a list, shell=False
+            [str(node), "--version"],
+            capture_output=True,
+            env=_child_env(ctx),
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return done.stdout.decode("ascii", "replace").strip()
+
+
+def _child_env(ctx: ToolchainContext) -> dict[str, str]:
+    """Ruling 4: the allowlist's variables the host has, and no others."""
+    return {key: ctx.env[key] for key in ENV_ALLOWLIST if key in ctx.env}
+
+
+def _verified_entry(spec: ToolchainSpec, ctx: ToolchainContext) -> Path:
+    """Ruling 3: the archive's full sha256 checked, and its entry written out to run."""
+    archive = install_dir(spec, ctx.home) / BUNDLE_FILE
+    if not archive.is_file():
+        raise CapabilityMissing(
+            f"{spec.name}@{spec.version} is not installed: no {archive}",
+            missing=(f"toolchain:{spec.name}",),
+            fix=f"ow targets install {spec.name}",
+            symbol="OW_TARGET_TOOLCHAIN_MISSING",
+        )
+    if archive.stat().st_size > BUNDLE_MAX_BYTES:
+        raise _digest_refused(spec, f"{archive} is over {BUNDLE_MAX_BYTES} bytes")
+    data = archive.read_bytes()
+    actual = "sha256:" + hashlib.sha256(data).hexdigest()
+    if actual != spec.bundle_sha256:
+        raise _digest_refused(spec, f"{archive} hashes to {actual}, not {spec.bundle_sha256}")
+    try:
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as bundle:
+            member = bundle.getmember(spec.entry)
+            handle = bundle.extractfile(member)
+            body = b"" if handle is None else handle.read()
+    except (KeyError, tarfile.TarError, OSError) as exc:
+        raise _failed(f"{archive} holds no file {spec.entry}: {type(exc).__name__}") from exc
+    if handle is None:
+        raise _failed(f"{archive}'s {spec.entry} is not a file")
+    entry = ctx.scratch / f"{spec.name}@{spec.version}" / spec.entry
+    entry.parent.mkdir(parents=True, exist_ok=True)
+    entry.write_bytes(body)
+    return entry
+
+
+def _digest_refused(spec: ToolchainSpec, detail: str) -> TargetError:
+    return TargetError(
+        f"{spec.name}@{spec.version}'s bundle fails its digest: {detail}; nothing is fetched",
+        symbol="OW_TARGET_TOOLCHAIN_DIGEST",
+        fix=f"ow targets install {spec.name}   # a fresh copy, verified against the register",
+    )
+
+
+def _failed(detail: str) -> TargetError:
+    return TargetError(detail, symbol="OW_TARGET_TOOLCHAIN_FAILED", fix=_FIX_FAILED)
+
+
+def run(
+    spec: ToolchainSpec,
+    job_dir: Path,
+    *,
+    timeout_s: float,
+    ctx: ToolchainContext,
+    verb: str = "compile",
+    request: Mapping[str, Any] | None = None,
+) -> ToolchainResult:
+    """Rulings 1-7: one request to a fresh child, its `result`, and the child reaped."""
+    if verb not in VERBS:
+        raise ValueError(f"verb {verb!r} is not one of {sorted(VERBS)}")
+    node = resolve_node(spec, ctx)
+    entry = _verified_entry(spec, ctx)
+    deadline = ctx.clock.monotonic_ns() + int(timeout_s * 1e9)
+    child = _Child.spawn((str(node), str(entry)), job_dir, _child_env(ctx))
+    try:
+        child.send({"t": "hello", "proto": PROTOCOL, "verb": verb})
+        _ready(spec, child.frame(deadline, ctx.clock))
+        child.send({**(request or {}), "t": verb})
+        progress: list[tuple[int, int]] = []
+        frame = child.frame(deadline, ctx.clock)
+        while frame.get("t") == "progress":
+            progress.append((int(frame.get("done", 0)), int(frame.get("total", 0))))
+            frame = child.frame(deadline, ctx.clock)
+        _result(spec, verb, frame)
+        child.send({"t": "bye"})
+        code = child.exit(deadline, ctx.clock)
+    except BaseException as exc:
+        child.reap()
+        if child.proc.returncode == _EXIT_MISSING:
+            raise _missing(spec) from exc
+        raise
+    receipt = job_dir / RECEIPT
+    written = receipt.is_file()
+    if code == _EXIT_MISSING:
+        raise _missing(spec)
+    if verb == "compile" and (code == 0) != written:
+        raise _failed(
+            f"{spec.name} exited {code} {'with' if written else 'without'} {RECEIPT}: "
+            "a compile exits 0 iff it wrote a receipt"
+        )
+    if verb != "compile" and frame["status"] == "ok" and code != 0:
+        raise _failed(f"{spec.name} answered {verb} ok and exited {code}")
+    return ToolchainResult(
+        status=frame["status"],
+        result={k: v for k, v in frame.items() if k != "t"},
+        progress=tuple(progress),
+        exit_code=code,
+        receipt=receipt if written else None,
+        node=node,
+        stderr_tail=child.stderr.tail().decode("utf-8", "replace"),
+    )
+
+
+def _missing(spec: ToolchainSpec) -> CapabilityMissing:
+    """Ruling 6: a child exiting 64, at any point, has no runtime of its own."""
+    return CapabilityMissing(
+        f"{spec.name} exited 64: its own runtime is missing",
+        missing=(f"toolchain:{spec.name}",),
+        fix=f"ow targets install {spec.name}",
+        symbol="OW_TARGET_TOOLCHAIN_MISSING",
+    )
+
+
+def _ready(spec: ToolchainSpec, frame: Mapping[str, Any]) -> None:
+    """Ruling 6: the child's first frame names the spec's toolchain and version."""
+    if (frame.get("t"), frame.get("toolchain"), frame.get("version")) != (
+        "ready",
+        spec.name,
+        spec.version,
+    ):
+        raise _failed(f"{spec.name}'s first frame is not its ready: {_shown(frame)}")
+
+
+def _result(spec: ToolchainSpec, verb: str, frame: Mapping[str, Any]) -> None:
+    """Ruling 6: after the progress frames, one `result` whose status is `ok` or `blocked`."""
+    if frame.get("t") != "result" or frame.get("status") not in {"ok", "blocked"}:
+        raise _failed(f"{spec.name} answered {verb} with {_shown(frame)}")
+
+
+_SHOWN_MAX: Final[int] = 200
+"""The most of a frame a refusal quotes."""
+
+
+def _shown(frame: Mapping[str, Any]) -> str:
+    text = json.dumps(dict(frame), sort_keys=True)
+    return text if len(text) <= _SHOWN_MAX else text[:_SHOWN_MAX] + "..."
+
+
+class _Child:
+    """One spawned Toolchain: its pipes, its frames, its stderr ring, and how to reap it."""
+
+    def __init__(self, proc: subprocess.Popen[bytes], job: JobObject | None) -> None:
+        self.proc = proc
+        self.job = job
+        self.stderr = StderrRing()
+        self.frames: queue.Queue[dict[str, Any] | str | None] = queue.Queue()
+        threading.Thread(target=self._read, name="ow-s2-stdout", daemon=True).start()
+        threading.Thread(target=self._drain, name="ow-s2-stderr", daemon=True).start()
+
+    @classmethod
+    def spawn(cls, argv: tuple[str, ...], cwd: Path, env: Mapping[str, str]) -> _Child:
+        """Ruling 4: `cwd` the JobDir, the allowlisted env, and the whole tree reapable."""
+        windows = sys.platform == "win32"
+        job = JobObject() if windows else None
+        try:
+            proc = subprocess.Popen(  # noqa: S603 -- argv is a tuple, shell=False, cwd is explicit
+                list(argv),
+                cwd=cwd,
+                env=dict(env),
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                shell=False,
+                close_fds=True,
+                creationflags=CREATE_SUSPENDED if windows else 0,
+                start_new_session=not windows,
+            )
+        except OSError as exc:
+            if job is not None:
+                job.close()
+            raise _failed(f"{argv[0]} would not start: {type(exc).__name__}") from exc
+        if job is not None:
+            try:
+                job.admit(proc.pid)
+            except BaseException:
+                proc.kill()
+                proc.wait()
+                job.close()
+                raise
+        return cls(proc, job)
+
+    def _read(self) -> None:
+        """Ruling 5: each stdout line a frame, and no more than `STDOUT_MAX_BYTES` of them."""
+        seen = 0
+        stream = self.proc.stdout
+        try:
+            while stream is not None:
+                line = stream.readline(STDOUT_MAX_BYTES - seen + 1)
+                if not line:
+                    break
+                seen += len(line)
+                if seen > STDOUT_MAX_BYTES:
+                    self.frames.put(f"stdout passed {STDOUT_MAX_BYTES} bytes")
+                    return
+                try:
+                    frame = json.loads(line)
+                except ValueError:
+                    self.frames.put("a stdout line is not a JSON frame")
+                    return
+                if not isinstance(frame, dict):
+                    self.frames.put("a stdout frame is not a JSON object")
+                    return
+                self.frames.put(frame)
+        except (OSError, ValueError):  # pragma: no cover -- the pipe closed under us
+            pass
+        finally:
+            self.frames.put(None)
+
+    def _drain(self) -> None:
+        """Ruling 5: stderr into its ring until EOF, never parsed."""
+        stream = self.proc.stderr
+        try:
+            for chunk in iter(lambda: stream.read(4096), b"") if stream is not None else ():
+                self.stderr.feed(chunk)
+        except (OSError, ValueError):  # pragma: no cover -- the pipe closed under us
+            pass
+
+    def send(self, frame: Mapping[str, Any]) -> None:
+        stream = self.proc.stdin
+        if stream is None:  # pragma: no cover -- PIPE was requested
+            raise _failed("the child has no stdin")
+        try:
+            stream.write(json.dumps(dict(frame), separators=(",", ":")).encode("utf-8") + b"\n")
+            stream.flush()
+        except OSError as exc:
+            raise _failed(f"the child closed its stdin before {frame.get('t')}") from exc
+
+    def frame(self, deadline: int, clock: Clock) -> dict[str, Any]:
+        """Ruling 7: the next frame before `deadline`, or the refusal saying why there is none."""
+        left = (deadline - clock.monotonic_ns()) / 1e9
+        try:
+            got = self.frames.get(timeout=max(left, 0.0))
+        except queue.Empty:
+            raise _failed(
+                f"the child sent no frame before its deadline ({left:.1f} s left)"
+            ) from None
+        if got is None:
+            raise _failed("the child closed stdout before its result")
+        if isinstance(got, str):
+            raise _failed(got)
+        return got
+
+    def exit(self, deadline: int, clock: Clock) -> int:
+        """Ruling 7: the child's exit status after `bye`, within what is left of the deadline."""
+        try:
+            code = self.proc.wait(timeout=max((deadline - clock.monotonic_ns()) / 1e9, 0.0))
+        except subprocess.TimeoutExpired:
+            raise _failed("the child did not exit after bye before its deadline") from None
+        self._close()
+        return code
+
+    def reap(self) -> None:
+        """Ruling 7: SIGTERM, SIGKILL at +5 s, the whole tree; a job object on Windows."""
+        if self.proc.poll() is None:
+            if self.job is not None:
+                self.job.terminate()
+            elif sys.platform != "win32":  # pragma: no cover -- POSIX
+                _kill_group(self.proc)
+            self.proc.wait()
+        self._close()
+
+    def _close(self) -> None:
+        for stream in (self.proc.stdin, self.proc.stdout, self.proc.stderr):
+            if stream is not None:
+                with contextlib.suppress(OSError):
+                    stream.close()
+        if self.job is not None and not self.job.closed:
+            self.job.close()
+
+
+if sys.platform != "win32":  # pragma: no cover -- POSIX
+
+    def _kill_group(proc: subprocess.Popen[bytes]) -> None:
+        """Ruling 7's POSIX half: SIGTERM to the group, SIGKILL at +5 s."""
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGTERM)
+        try:
+            proc.wait(timeout=GRACE_NS / 1e9)
+        except subprocess.TimeoutExpired:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGKILL)
