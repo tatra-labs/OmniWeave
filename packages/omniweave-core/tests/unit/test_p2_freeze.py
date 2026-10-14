@@ -143,7 +143,6 @@ from pathlib import Path
 from typing import Final, NamedTuple
 
 import pytest
-from conftest import MIGRATIONS_DIR
 from omniweave_core.archive import owdoc as owdoc_module
 from omniweave_core.archive.owdoc import ROOT_ADDR, WIRE_KEYS, parent_addr
 from omniweave_core.limits import MAX_BLOCK_DEPTH
@@ -155,6 +154,8 @@ from omniweave_core.store import verify as verify_module
 from omniweave_core.store.doc import _MAX_ADDR_CHARS
 from omniweave_core.store.migrate import apply_pending
 from omniweave_core.store.sqlite import connect
+
+from conftest import MIGRATIONS_DIR
 
 UNIT_DIR: Final = Path(__file__).resolve().parent
 """This directory. Every pinned test lives here, which is what makes a row resolvable by name."""

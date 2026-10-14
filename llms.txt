@@ -27,7 +27,7 @@ mcp.instructions: delivered on `initialize`, <= 1000 chars, generated, bound to 
 mcp.profiles: default, full
 mcp.profile.default: ow_add, ow_corpora, ow_open, ow_query
 mcp.profile.full: ow_add, ow_corpora, ow_coverage, ow_diff, ow_doctor, ow_explain, ow_grid,
-  ow_open, ow_query
+  ow_locate, ow_open, ow_query
 mcp.listed_note: an unlisted tool is DEFINED and DISPATCHABLE when enabled, never refused for
   being unlisted. Widen with OMNIWEAVE_MCP_LISTED, authorise with OMNIWEAVE_MCP_ENABLED.
 mcp.enabled_default: read_only+add
@@ -37,11 +37,11 @@ mcp.human_only_note: these have no MCP name and are unreachable from any agent s
 # Tools — every Action with an MCP name. `listed_in` says which profiles LIST it;
 # every one of them is DISPATCHABLE when enabled, listed or not.
 mcp.tools: ow_add, ow_corpora, ow_coverage, ow_diff, ow_doctor, ow_explain, ow_grid,
-  ow_hooks_check, ow_open, ow_query, ow_skills_check, ow_skills_hash, ow_skills_ls,
+  ow_hooks_check, ow_locate, ow_open, ow_query, ow_skills_check, ow_skills_hash, ow_skills_ls,
   ow_skills_verify
 mcp.tools.unbounded: ow_coverage, ow_diff, ow_doctor, ow_explain, ow_grid, ow_hooks_check,
-  ow_skills_check, ow_skills_hash, ow_skills_ls, ow_skills_verify — no inputSchema is published
-  for these yet, so their input lines carry a type and no bounds
+  ow_locate, ow_skills_check, ow_skills_hash, ow_skills_ls, ow_skills_verify — no inputSchema is
+  published for these yet, so their input lines carry a type and no bounds
 
 mcp.tool.ow_add.action: add
 mcp.tool.ow_add.description: Index files, directories or URLs into a corpus so ow_query can cite
@@ -138,6 +138,22 @@ mcp.tool.ow_hooks_check.state_changing: false
 mcp.tool.ow_hooks_check.cost_class: free
 mcp.tool.ow_hooks_check.output: HooksCheckReport, no outputSchema declared
 
+mcp.tool.ow_locate.action: graph.locate
+mcp.tool.ow_locate.description: Find where on the page an entity, claim, edge or mention was
+  witnessed: one location per witness, with its page, its span and its polygon or the reason
+  none
+mcp.tool.ow_locate.decision: an answer cited an entity or a claim and you need the page
+mcp.tool.ow_locate.listed_in: full
+mcp.tool.ow_locate.state_changing: false
+mcp.tool.ow_locate.cost_class: free
+mcp.tool.ow_locate.advanced: edge, mention
+mcp.tool.ow_locate.input.entity: string, optional
+mcp.tool.ow_locate.input.claim: string, optional
+mcp.tool.ow_locate.input.edge: integer, optional
+mcp.tool.ow_locate.input.mention: integer, optional
+mcp.tool.ow_locate.input.corpus: string, optional
+mcp.tool.ow_locate.output: Located, no outputSchema declared
+
 mcp.tool.ow_open.action: open
 mcp.tool.ow_open.description: Fetch the exact passages behind an address you already hold: a
   cite, a page range, or a whole document
@@ -233,6 +249,27 @@ cli.doctor: ow doctor [--runtime]
 cli.doctor.actions: doctor
 cli.explain: ow explain CODE
 cli.explain.actions: explain
+cli.graph.doctor: ow graph doctor [--check CHECK]
+cli.graph.doctor.actions: graph.doctor
+cli.graph.locate: ow graph locate [--entity ENTITY] [--claim CLAIM] [--edge EDGE] [--mention
+  MENTION]
+cli.graph.locate.actions: graph.locate
+cli.graph.merge: ow graph merge FIRST SECOND [--reason REASON]
+cli.graph.merge.actions: graph.merge
+cli.graph.merges: ow graph merges [--entity ENTITY]
+cli.graph.merges.actions: graph.merges
+cli.graph.plan: ow graph plan
+cli.graph.plan.actions: graph.plan
+cli.graph.residue: ow graph residue [--akind AKIND]
+cli.graph.residue.actions: graph.residue
+cli.graph.review: ow graph review [--over-merge]
+cli.graph.review.actions: graph.review
+cli.graph.split: ow graph split ENTITY [--into INTO] [--reason REASON]
+cli.graph.split.actions: graph.split
+cli.graph.types: ow graph types [--promote PROMOTE] [--reason REASON] [--propose]
+cli.graph.types.actions: graph.types
+cli.graph.why: ow graph why [--cite CITE]
+cli.graph.why.actions: graph.why
 cli.hooks.check: ow hooks check
 cli.hooks.check.actions: hooks.check
 cli.install: ow install [--target TARGET] [--location LOCATION] [--hooks HOOKS] [--skills

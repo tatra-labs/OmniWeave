@@ -68,8 +68,9 @@ if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from collections.abc import Iterator, Sequence
     from pathlib import Path
 
-    from conftest import PlanDocs
     from omniweave_core.operator import RunContext
+
+    from conftest import PlanDocs
 
 
 DIGEST = "9f" * 32

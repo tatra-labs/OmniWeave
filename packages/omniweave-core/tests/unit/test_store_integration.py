@@ -39,7 +39,6 @@ from types import MappingProxyType
 from typing import Any
 
 import pytest
-from conftest import MIGRATIONS_DIR
 from omniweave_core.blobs import BlobStore
 from omniweave_core.model import Capabilities, Kind, Layer, Method, PageKind, Quote, Trust
 from omniweave_core.model.block import BlockDraft
@@ -50,6 +49,8 @@ from omniweave_core.store import sqlite as ow
 from omniweave_core.store.doc import DocSink
 from omniweave_core.store.maintenance import maintenance_window, planner_statistics
 from omniweave_core.store.reader import SqliteReader
+
+from conftest import MIGRATIONS_DIR
 
 # A fixed timestamp. `time.time()` is banned in library code and injected everywhere in the store,
 # so a test that reads the ambient clock would be asserting against a value the production path

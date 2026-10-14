@@ -63,6 +63,7 @@ __all__ = [
     "DoctorFinding",
     "DoctorReport",
     "Gap",
+    "GraphDoctorReport",
     "HooksCheckReport",
     "InstallReport",
     "ServeReport",
@@ -287,6 +288,21 @@ class DoctorReport:
     config_sources: Mapping[str, str]
     config_digest: str
     semantic_digest: str
+
+
+@dataclass(frozen=True, slots=True)
+class GraphDoctorReport:
+    """What `ow graph doctor` returns: `DoctorReport`'s three tuples, for the graph alone. D702.
+
+    06:2519 prints the verb, *"Pass-level operability"*, and 15:1561 makes it a subsystem doctor
+    that `ow doctor` names rather than re-runs. The shape is `DoctorReport`'s without the
+    configuration, for the same reason: `failed` being non-empty is the exit 1, a warning never
+    fails, and the three are disjoint and their union is every check that ran.
+    """
+
+    ok: tuple[DoctorFinding, ...]
+    warned: tuple[DoctorFinding, ...]
+    failed: tuple[DoctorFinding, ...]
 
 
 @dataclass(frozen=True, slots=True)

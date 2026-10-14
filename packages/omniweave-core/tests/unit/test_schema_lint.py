@@ -46,6 +46,7 @@ import textwrap
 from typing import TYPE_CHECKING
 
 import pytest
+
 from conftest import MIGRATIONS_DIR
 
 if TYPE_CHECKING:

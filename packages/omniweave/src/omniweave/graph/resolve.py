@@ -12,9 +12,9 @@ this cell builds the two that every other stage stands on:
 
 **D685 adds stages [3]-[5], [7] and [10]**: the entropy gate, MinHash blocking over bands
 persisted in `entity_band`, Jaro-Winkler verification at 92.0, the guards, and the cohesion
-re-check (`omniweave.graph.fuzzy` holds the arithmetic and its rulings). Stage [6], the community
-boost, waits for `op.cluster`; stage [8], the LLM band, is billed and not built -- a pair scoring
-in `[75, 92)` is counted and left, never merged.
+re-check (`omniweave.graph.fuzzy` holds the arithmetic and its rulings). **D691 adds stage [6]**,
+the community boost over `op.cluster`'s communities (rulings 12-15). Stage [8], the LLM band, is
+billed and not built -- a pair scoring in `[75, 92)` is counted and left, never merged.
 
 **Pure over its inputs** (06:1696). `funnel()` and `closure()` take plain records and return plain
 records; `resolve()` is the one function that reads and writes the store, in the caller's
@@ -60,6 +60,41 @@ updates two derived columns on `entity`. It never inserts or deletes an entity.
     scores below 82 against the survivor's loses its `lsh_jw` pairs, union-find runs again, and
     the check repeats until nothing drops -- which is what makes it idempotent. A dropped pair is
     one `quarantine` row (`OW_GRAPH_COHESION_SPLIT`, `row_kind='merge'`), written once.
+12. **"One community" is one leaf** (D691): the finest community each entity's head belongs to,
+    a community no live community names as its parent. Every head is in exactly one leaf, and a
+    root can hold a whole component, which would make the boost a component test.
+13. **The boost is graphify's arithmetic** (`dedup.py:745-749`): `+COMMUNITY_BOOST` to the score
+    when both are in one leaf and both labels are `BOOST_MIN_LEN` long, before the bar (92, or 97
+    together) is applied. The stored score is the boosted one, because it is the score that
+    decided, and the total order (06:1746) sorts on it.
+14. **`stage = 'community_boost'` when the boost decided**: the unboosted score is under the bar
+    and the boosted one is over it. A pair that clears the bar alone stays `lsh_jw`, with its
+    score boosted all the same. The cohesion re-check (ruling 11) covers both stages: each is a
+    fuzzy decision scored against a key.
+15. **Communities are the store's when resolve runs**, which `ow ingest` makes this run's by
+    alternating the two passes (D691, `run.ingest`): a merge moves the graph, and the graph moves
+    the communities.
+16. **A boosted merge is its own evidence afterwards.** Membership is read through the head
+    (`community_member` holds heads only, D690 ruling 8), so once two entities merge they are one
+    node in one leaf, and the boost holds on every later run. That is the stable reading: read
+    through the entity itself, a merged member has no leaf, its pair would retire, the next
+    cluster would split it out, and the run after would merge it again. A re-cluster therefore
+    cannot withdraw a boost; a user split (`polarity = -1`) is what undoes one.
+17. **Overload is judged on the entity's own live incidence** (D693, 06:164-172): its own live
+    mentions' distinct Segments (`frequency`), its own distinct live neighbours over live edges
+    (`degree`), and its own documents. Not on the `frequency`/`degree` columns: those are the
+    closure's (D692), and an overloaded entity leaves its closure, so a judgment on them would undo
+    itself the next run. The entity's own numbers do not move when resolution does, so the
+    judgment runs first in every resolve and is a fixed point at once.
+18. **It fires when either incidence exceeds `MAX_ENTITY_DEGREE` and the documents are at most
+    one**, frequency checked first, and it reverses when that stops being true: overload is a
+    function of the corpus as it stands, which is what lets a full and an incremental build agree.
+    An overloaded entity becomes its own head (`canonical_id = entity_id`) and leaves the funnel,
+    the closure, the communities (`state = 0` everywhere) and `entity_rank`; it keeps every
+    mention, and the lexicon keeps it (`store.lexicon` ruling 1).
+19. **One `OW_GRAPH_ENTITY_OVERLOADED` quarantine row per entity, ever** (`row_kind = 'entity'`),
+    naming the incidence that fired, its value, the cap and the documents. A reversal writes none,
+    and a second overload of the same entity is not a second row.
 8. **A run row only when there is a new merge to point it at.** `entity_merge.run_id` needs
    one; nothing else does. An unchanged corpus therefore writes nothing at all -- the
    property `test_free_passes_at_ingest` asserts of every Pass -- and a retirement or a
@@ -71,10 +106,11 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_core.errors import ResourceLimit
+from omniweave_core.limits import MAX_ENTITY_DEGREE
 from omniweave_core.model.enums import Method, Taint, Trust, enum_val_rows
 
 from omniweave.graph import fuzzy
@@ -92,13 +128,15 @@ __all__ = [
     "TypeGate",
     "closure",
     "funnel",
+    "overload",
     "resolve",
+    "run_row",
     "total_order",
 ]
 
 OP_RESOLVE: Final = "op.resolve"
-RESOLVE_VERSION: Final = 2
-"""2 since D685: the fuzzy stages."""
+RESOLVE_VERSION: Final = 3
+"""2 since D685: the fuzzy stages. 3 since D691: the community boost."""
 RESOLVE_PHASE: Final = 50
 """06:832's row 9: rank 0, phase 50 -- after `op.lexicon`'s 40."""
 MAX_CANDIDATE_PAIRS: Final = 5_000_000
@@ -109,6 +147,11 @@ SCORE_WHEN_NULL: Final = 100.0
 SIGNATURE_KEY: Final = "graph.resolve_signature"
 """`meta`'s key (0001:63, 06:1811): what the persisted bands were built under."""
 COHESION_CODE: Final = "OW_GRAPH_COHESION_SPLIT"
+OVERLOADED: Final = 1
+"""`entity.state` of a template artefact (06:164)."""
+OVERLOAD_CODE: Final = "OW_GRAPH_ENTITY_OVERLOADED"
+FUZZY_STAGES: Final = frozenset({"lsh_jw", "community_boost"})
+"""The stages a score decided, which the cohesion re-check covers (rulings 11 and 14)."""
 
 _METHOD_ORD: Final = {
     name: ordinal for domain, ordinal, name in enum_val_rows() if domain == "method"
@@ -244,8 +287,14 @@ def fuzzy_stage(
     evidence: Mapping[int, Evidence],
     *,
     exact: Iterable[Pair] = (),
+    leaves: Mapping[int, int] | None = None,
 ) -> Fuzzy:
-    """Verify each band candidate: type gate, scope, guards, then the score (rulings 9-10)."""
+    """Verify each band candidate: type gate, scope, guards, then the score (rulings 9-10, 12-14).
+
+    `leaves` maps an entity to its head's leaf community (ruling 12); an entity it does not hold
+    is in none.
+    """
+    leaf = leaves or {}
     joined = {frozenset((p.a, p.b)) for p in exact}
     pairs: list[Pair] = []
     guarded: dict[str, int] = defaultdict(int)
@@ -272,9 +321,15 @@ def fuzzy_stage(
             guarded[guard] += 1
             continue
         here, there = evidence.get(first.entity_id, none), evidence.get(second.entity_id, none)
-        score = round(fuzzy.verify(left, right, cross_document=not (here.docs & there.docs)), 4)
+        raw = fuzzy.verify(left, right, cross_document=not (here.docs & there.docs))
         together = bool(here.segments & there.segments)
         threshold = fuzzy.COOCCURRENCE_THRESHOLD if together else fuzzy.MERGE_THRESHOLD
+        boosted = (
+            leaf.get(first.entity_id) is not None
+            and leaf.get(first.entity_id) == leaf.get(second.entity_id)
+            and min(len(left), len(right)) >= fuzzy.BOOST_MIN_LEN
+        )
+        score = round(raw + fuzzy.COMMUNITY_BOOST if boosted else raw, 4)
         if score < threshold:
             if score >= fuzzy.AMBIGUOUS_LOW:
                 ambiguous += 1
@@ -285,7 +340,7 @@ def fuzzy_stage(
             Pair(
                 a=first.entity_id,
                 b=second.entity_id,
-                stage="lsh_jw",
+                stage="community_boost" if boosted and raw < threshold else "lsh_jw",
                 trust=Trust.INFERRED,
                 method=Method.HEURISTIC,
                 score=score,
@@ -323,7 +378,7 @@ def cohesive(
         loose: dict[int, float] = {}
         for member, survivor in sorted(found.canonical.items()):
             if member == survivor or not any(
-                p.stage == "lsh_jw" and member in (p.a, p.b) for p in found.kept
+                p.stage in FUZZY_STAGES and member in (p.a, p.b) for p in found.kept
             ):
                 continue
             score = fuzzy.verify(
@@ -338,7 +393,7 @@ def cohesive(
         keep: list[Pair] = []
         for pair in live:
             member = pair.a if pair.a in loose else pair.b if pair.b in loose else None
-            if pair.stage == "lsh_jw" and member is not None:
+            if pair.stage in FUZZY_STAGES and member is not None:
                 dropped.append((pair, member, loose[member]))
             else:
                 keep.append(pair)
@@ -450,11 +505,49 @@ _CANDIDATES_SQL: Final = """
 SELECT DISTINCT a.entity_id, b.entity_id FROM entity_band AS a
   JOIN entity_band AS b ON b.band = a.band AND b.bucket = a.bucket AND b.entity_id > a.entity_id
 """
+_LEAVES_SQL: Final = """
+SELECT e.entity_id, m.community_id FROM entity AS e
+  JOIN community_member AS m ON m.entity_id = e.canonical_id
+  JOIN community AS c ON c.community_id = m.community_id AND c.state = 0
+ WHERE e.state = 0
+   AND NOT EXISTS (SELECT 1 FROM community AS k WHERE k.parent = c.community_id AND k.state = 0)
+"""
+"""Ruling 12: each live entity's head's leaf -- the community no live community is a child of."""
 _QUARANTINED_SQL: Final = "SELECT payload FROM quarantine WHERE code = :code"
 _QUARANTINE_SQL: Final = """
 INSERT INTO quarantine(code, run_id, row_kind, payload, block_id, detail, at_gen)
-VALUES(:code, :run_id, 'merge', :payload, NULL, :detail, :gen)
+VALUES(:code, :run_id, :row_kind, :payload, NULL, :detail, :gen)
 """
+_INCIDENCE_SQL: Final = """
+WITH live AS (
+  SELECT m.entity_id, m.segment_id, b.doc_ord FROM mention AS m
+    JOIN block AS b ON b.block_id = m.block_id AND b.state = 0
+   WHERE m.state = 0
+), ends AS (
+  SELECT g.src_entity AS a, g.dst_entity AS b FROM edge AS g
+    JOIN block AS k ON k.block_id = g.observed_block AND k.state = 0
+   WHERE g.src_entity <> g.dst_entity
+), pairs AS (
+  SELECT a, b FROM ends UNION SELECT b, a FROM ends
+), degrees AS (
+  SELECT p.a AS entity_id, COUNT(*) AS degree FROM pairs AS p
+    JOIN entity AS t ON t.entity_id = p.b AND t.state IN (0, 1)
+   GROUP BY p.a
+)
+SELECT e.entity_id, e.state, e.scope, e.etype, e.key, COUNT(DISTINCT l.segment_id),
+       IFNULL(d.degree, 0), COUNT(DISTINCT l.doc_ord)
+  FROM entity AS e
+  LEFT JOIN live AS l ON l.entity_id = e.entity_id
+  LEFT JOIN degrees AS d ON d.entity_id = e.entity_id
+ WHERE e.state IN (0, 1)
+ GROUP BY e.entity_id
+"""
+"""Ruling 17: each entity's own live incidence, not its closure's."""
+_OVERLOAD_SQL: Final = (
+    "UPDATE entity SET state = 1, canonical_id = entity_id, resolution_trust = 0"
+    " WHERE entity_id = :entity_id"
+)
+_RELEASE_SQL: Final = "UPDATE entity SET state = 0 WHERE entity_id = :entity_id"
 _USER_SQL: Final = """
 SELECT loser_id, winner_id, polarity, trust FROM entity_merge
  WHERE stage = 'user' AND retired_at_gen IS NULL
@@ -511,7 +604,9 @@ _SIGNATURE: Final = json.dumps(
     {
         "pass": OP_RESOLVE,
         "version": RESOLVE_VERSION,
-        "stages": ["exact", "lsh_jw"],
+        "stages": ["exact", "lsh_jw", "community_boost"],
+        "community_boost": fuzzy.COMMUNITY_BOOST,
+        "boost_min_len": fuzzy.BOOST_MIN_LEN,
         "entropy_min": fuzzy.ENTROPY_MIN,
         "num_perm": fuzzy.NUM_PERM,
         "bands": fuzzy.BANDS,
@@ -542,7 +637,13 @@ class ResolveReport:
     changed: int
     """Entities whose `canonical_id` or `resolution_trust` this run rewrote."""
     fuzzy: int = 0
-    """Live `lsh_jw` merges (D685)."""
+    """Live `lsh_jw` and `community_boost` merges (D685, D691)."""
+    boosted: int = 0
+    """Of those, the merges the community boost decided (D691)."""
+    overloaded: int = 0
+    """Entities overloaded once this run had judged (D693)."""
+    flagged: int = 0
+    """Entities this run overloaded or released (D693)."""
     candidates: int = 0
     ambiguous: int = 0
     guarded: Mapping[str, int] = field(default_factory=dict)
@@ -562,15 +663,42 @@ class ResolveReport:
             + (f", {self.ambiguous} left in the unbuilt LLM band" if self.ambiguous else "")
             + (f", guarded: {guards}" if guards else "")
             + (f", {self.split} split for cohesion" if self.split else "")
+            + (f", {self.boosted} by the community boost" if self.boosted else "")
+            + (f"; {self.overloaded} overloaded" if self.overloaded else "")
         )
 
     @property
     def shown(self) -> bool:
-        return bool(self.kept or self.added or self.retired or self.blocked or self.changed)
+        return bool(
+            self.kept
+            or self.added
+            or self.retired
+            or self.blocked
+            or self.changed
+            or self.overloaded
+            or self.flagged
+        )
+
+    @property
+    def moved(self) -> bool:
+        """Whether this run wrote the merge log or the closure (D691)."""
+        return bool(self.added or self.retired or self.changed or self.flagged)
+
+    def after(self, earlier: ResolveReport) -> ResolveReport:
+        """This run's report with an earlier round's writes added in (D691)."""
+        return replace(
+            self,
+            added=earlier.added + self.added,
+            retired=earlier.retired + self.retired,
+            changed=earlier.changed + self.changed,
+            split=earlier.split + self.split,
+            flagged=earlier.flagged + self.flagged,
+        )
 
 
 def resolve(connection: Any, *, gen: int) -> ResolveReport:
     """Read the live entities, run the funnel and the closure, write the log and the closure."""
+    overloaded, flagged, fresh = _overload(connection)
     nodes = _nodes(connection)
     gate = _gate(connection)
     users = connection.execute(_USER_SQL).fetchall()
@@ -591,7 +719,8 @@ def resolve(connection: Any, *, gen: int) -> ResolveReport:
             fix="set etype_vocab.resolution = 'exact_only' for the etype with the most entities, "
             "then ow ingest again",
         )
-    fuzzed = fuzzy_stage(by_id, gate, candidates, _evidence(connection), exact=exact)
+    leaves = {int(e): int(c) for e, c in connection.execute(_LEAVES_SQL).fetchall()}
+    fuzzed = fuzzy_stage(by_id, gate, candidates, _evidence(connection), exact=exact, leaves=leaves)
     found, dropped = cohesive(
         nodes, [*exact, *fuzzed.pairs], user_merges=user_merges, user_splits=splits
     )
@@ -605,13 +734,11 @@ def resolve(connection: Any, *, gen: int) -> ResolveReport:
         if identity not in wanted:
             connection.execute(_RETIRE_SQL, {"gen": gen, "merge_id": merge_id})
             retired += 1
+    run = _RunRow(connection, gen, found.kept)  # ruling 8: made only when something is written
     added = 0
-    run_id: int | None = None
     for identity, pair in wanted.items():
         if identity in live:
             continue
-        if run_id is None:  # ruling 8: a run row only for a run that decides something
-            run_id = _run(connection, gen, found.kept)
         connection.execute(
             _INSERT_SQL,
             {
@@ -623,32 +750,24 @@ def resolve(connection: Any, *, gen: int) -> ResolveReport:
                 "score": pair.score,
                 "score_kind": pair.score_kind,
                 "guards": json.dumps(list(pair.guards)),
-                "run_id": run_id,
+                "run_id": run.id(),
                 "gen": gen,
             },
         )
         added += 1
-    split = 0
-    if dropped:
-        known = {str(r[0]) for r in connection.execute(_QUARANTINED_SQL, {"code": COHESION_CODE})}
-        for pair, member, score in dropped:
-            payload = json.dumps(
+    split = [
+        (
+            json.dumps(
                 {"a": by_id[pair.a].key, "b": by_id[pair.b].key, "etype": by_id[pair.a].etype,
                  "score": pair.score},
                 sort_keys=True,
-            )  # fmt: skip
-            split += 1
-            if payload in known:
-                continue
-            if run_id is None:
-                run_id = _run(connection, gen, found.kept)
-            detail = {"member": by_id[member].key, "survivor_score": score}
-            connection.execute(
-                _QUARANTINE_SQL,
-                {"code": COHESION_CODE, "run_id": run_id, "payload": payload,
-                 "detail": json.dumps(detail, sort_keys=True), "gen": gen},
-            )  # fmt: skip
-            known.add(payload)
+            ),
+            json.dumps({"member": by_id[member].key, "survivor_score": score}, sort_keys=True),
+        )
+        for pair, member, score in dropped
+    ]  # fmt: skip
+    _quarantine_once(connection, run, COHESION_CODE, "merge", split)
+    _quarantine_once(connection, run, OVERLOAD_CODE, "entity", fresh)
     trust = _resolution_trust(found, user_merges)
     changed = 0
     for entity_id in sorted(by_id):
@@ -672,13 +791,92 @@ def resolve(connection: Any, *, gen: int) -> ResolveReport:
         kept=len(found.kept),
         blocked=len(found.blocked),
         changed=changed,
-        fuzzy=sum(1 for p in found.kept if p.stage == "lsh_jw"),
+        fuzzy=sum(1 for p in found.kept if p.stage in FUZZY_STAGES),
+        boosted=sum(1 for p in found.kept if p.stage == "community_boost"),
         candidates=fuzzed.candidates,
         ambiguous=fuzzed.ambiguous,
         guarded=fuzzed.guarded,
-        split=split,
+        split=len(split),
         rebanded=rebanded,
+        overloaded=overloaded,
+        flagged=flagged,
     )
+
+
+class _RunRow:
+    """The corpus run row every row this pass writes points at, made the first time one asks."""
+
+    def __init__(self, connection: Any, gen: int, kept: Sequence[Pair]) -> None:
+        self._connection, self.gen, self._kept = connection, gen, kept
+        self._id: int | None = None
+
+    def id(self) -> int:
+        if self._id is None:
+            self._id = _run(self._connection, self.gen, self._kept)
+        return self._id
+
+
+def _quarantine_once(
+    connection: Any, run: _RunRow, code: str, row_kind: str, rows: Sequence[tuple[str, str]]
+) -> None:
+    """One quarantine row per payload, ever: a payload already held under `code` is not written
+    again (rulings 11 and 19)."""
+    if not rows:
+        return
+    known = {str(r[0]) for r in connection.execute(_QUARANTINED_SQL, {"code": code})}
+    for payload, detail in rows:
+        if payload in known:
+            continue
+        connection.execute(
+            _QUARANTINE_SQL,
+            {"code": code, "run_id": run.id(), "row_kind": row_kind, "payload": payload,
+             "detail": detail, "gen": run.gen},
+        )  # fmt: skip
+        known.add(payload)
+
+
+def overload(frequency: int, degree: int, docs: int, *, cap: int | None = None) -> str | None:
+    """Ruling 18: the incidence that overloads an entity, or `None`. Frequency is checked first."""
+    limit = MAX_ENTITY_DEGREE if cap is None else cap
+    if docs > 1:
+        return None
+    if frequency > limit:
+        return "frequency"
+    if degree > limit:
+        return "degree"
+    return None
+
+
+def _overload(connection: Any) -> tuple[int, int, list[tuple[str, str]]]:
+    """Rulings 17-18: judge every entity that is not retired, and move the ones that changed.
+
+    Returns how many are overloaded now, how many this run moved either way, and the quarantine
+    payloads of the ones it overloaded.
+    """
+    now = flagged = 0
+    fresh: list[tuple[str, str]] = []
+    rows = connection.execute(_INCIDENCE_SQL).fetchall()
+    for entity_id, state, scope, etype, key, frequency, degree, docs in rows:
+        fired = overload(int(frequency), int(degree), int(docs))
+        if fired is None:
+            if int(state) == OVERLOADED:
+                connection.execute(_RELEASE_SQL, {"entity_id": int(entity_id)})
+                flagged += 1
+            continue
+        now += 1
+        if int(state) == OVERLOADED:
+            continue
+        connection.execute(_OVERLOAD_SQL, {"entity_id": int(entity_id)})
+        flagged += 1
+        value = int(frequency) if fired == "frequency" else int(degree)
+        payload = json.dumps({"etype": str(etype), "key": str(key), "scope": int(scope)},
+                             sort_keys=True)  # fmt: skip
+        detail = json.dumps(
+            {"cap": MAX_ENTITY_DEGREE, "doc_count": int(docs), "incidence": fired, "value": value},
+            sort_keys=True,
+        )
+        fresh.append((payload, detail))
+    return now, flagged, fresh
 
 
 def _evidence(connection: Any) -> dict[int, Evidence]:
@@ -765,7 +963,18 @@ def _resolution_trust(found: Closure, user_merges: Sequence[Pair]) -> dict[int, 
     return out
 
 
-def _run(connection: Any, gen: int, kept: Sequence[Pair]) -> int:
+def run_row(connection: Any, gen: int) -> int:
+    """The corpus run row at `gen`, made if there is none and never re-stamped (D697).
+
+    A user's decision points its `entity_merge.run_id` here: the run that applies user rows is this
+    pass's, and a decision made between two ingests belongs to the generation it was made in. The
+    row's counts stay what the last resolve at `gen` wrote; the resolve that follows the decision
+    stamps them again.
+    """
+    return _run(connection, gen, (), stamp=False)
+
+
+def _run(connection: Any, gen: int, kept: Sequence[Pair], *, stamp: bool = True) -> int:
     """The corpus-level `derive_run` every row this pass writes points at (`segment_id` NULL)."""
     digest = hashlib.sha256(_SIGNATURE).digest()
     connection.execute(
@@ -794,5 +1003,6 @@ def _run(connection: Any, gen: int, kept: Sequence[Pair]) -> int:
     }
     connection.execute(_RUN_SQL, params)
     run_id = int(connection.execute(_RUN_ID_SQL, params).fetchone()[0])
-    connection.execute(_RUN_UPDATE_SQL, {**params, "run_id": run_id})
+    if stamp:
+        connection.execute(_RUN_UPDATE_SQL, {**params, "run_id": run_id})
     return run_id

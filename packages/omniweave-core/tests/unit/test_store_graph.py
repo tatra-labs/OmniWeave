@@ -37,7 +37,6 @@ from pathlib import Path
 from types import ModuleType
 
 import pytest
-from conftest import MIGRATIONS_DIR
 from omniweave_core.errors import GraphError
 from omniweave_core.model.block import Cite
 from omniweave_core.model.enums import MAX_TRUST_BY_METHOD, AnchorKind, Method, Trust
@@ -74,6 +73,8 @@ from omniweave_core.store.graph import (
     XrefDraft,
     ground,
 )
+
+from conftest import MIGRATIONS_DIR
 
 NOW_NS = 1_757_400_000_000_000_000
 """A fixed timestamp: `time.time()` is banned in library code and injected everywhere in the
@@ -437,12 +438,20 @@ def test_cover_with_an_empty_cite_set_and_a_reason_succeeds_and_stores_the_reaso
 def test_cover_sets_one_bit_per_cited_block_at_its_segment_block_ord(
     connection: sqlite3.Connection,
 ) -> None:
-    """*"`ord` IS the cover_bits bit index"* (06:112). Two cites, two bits, and no third."""
+    """*"`ord` IS the cover_bits bit index"* (06:112). Two cites, two bits, and no third.
+
+    The literal bytes pin the order (D703): 06:776 makes ord `k` bit `511 - k` of the big-endian
+    blob, so ord 0 is the high bit of byte 0 -- the convention D256 shipped for `vseg.live` -- and
+    `int.from_bytes(bits, "big")` reads the bitmap left to right in reading order.
+    """
     sink = _open(connection)
     sink.cover("entity", (Cite("d7#1"), Cite("d7#3")))
     bits, covered = connection.execute("SELECT cover_bits, n_covered FROM derive_cover").fetchone()
     assert covered == 2
-    assert bits[0] == 0b101, "ords 0 and 2, and nothing between them"
+    assert bits[0] == 0b1010_0000, "ords 0 and 2, high bit first, and nothing between them"
+    assert bits[1:] == bytes(63)
+    as_int = int.from_bytes(bits, "big")
+    assert [k for k in range(512) if as_int >> (511 - k) & 1] == [0, 2], "06:776's reading"
     report = sink.end_run("ok", _Spend())
     assert report.coverage_frac == pytest.approx(2 / 3), "two of the Segment's three blocks"
 
