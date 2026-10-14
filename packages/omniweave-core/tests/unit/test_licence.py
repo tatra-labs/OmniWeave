@@ -1716,3 +1716,13 @@ def test_the_deny_list_is_the_or_of_each_named_restrictions_bit() -> None:
 def test_a_name_no_restriction_has_is_a_callers_bug() -> None:
     with pytest.raises(ValueError, match="'house_rules' names no Restriction"):
         licence_module.restriction_mask(["house_rules"])
+
+
+def test_a_cards_stamp_is_its_code_and_its_weights_ored() -> None:
+    """D811: the one stamp the parse operator and the compile host both read off a card."""
+    code = facts(no_model_training=True)
+    weights = facts(attribution_per_output=True)
+    both = Restriction.NO_MODEL_TRAINING.bit | Restriction.ATTRIBUTION_PER_OUTPUT.bit
+    assert licence_module.card_restriction_bits(code, weights) == both
+    assert licence_module.card_restriction_bits(code, None) == Restriction.NO_MODEL_TRAINING.bit
+    assert licence_module.card_restriction_bits(facts(), facts()) == 0

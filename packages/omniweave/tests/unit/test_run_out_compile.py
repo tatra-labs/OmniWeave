@@ -16,9 +16,11 @@ import sqlite3  # noqa: TID251 -- the assertions read the rows the seal wrote.
 import sys
 import time
 import tomllib
+import zipfile
 from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
+from io import BytesIO
 from pathlib import Path
 from typing import Any, BinaryIO, ClassVar
 
@@ -36,10 +38,12 @@ from omniweave_conform.suites.target.owtext.driver import HERE as OWTEXT
 from omniweave_conform.suites.target.owtext.driver import OwTextCompiler
 from omniweave_conform.suites.target.owtext.normalizers import lower_ascii
 from omniweave_core.blobs import BlobStore, format_ref
+from omniweave_core.discovery import discover
 from omniweave_core.errors import TargetError, UsageError
 from omniweave_core.model.doc import Doc
 from omniweave_core.model.enums import Quote, enum_val_rows
 from omniweave_core.out.brief import BRIEF_SCHEMA, parse_brief
+from omniweave_core.out.card import CompileCard
 from omniweave_core.out.carrier import CarrierDoc
 from omniweave_core.out.carrier.html import html_carrier
 from omniweave_core.out.compile import check
@@ -48,7 +52,7 @@ from omniweave_core.out.gate import GateStatus
 from omniweave_core.out.job import ILBundle
 from omniweave_core.out.ledger import AssetLedger, AssetLicence, slot
 from omniweave_core.out.marker import Payload, format_marker
-from omniweave_core.out.plan import Plan, UnitOutcome
+from omniweave_core.out.plan import Plan, UnitOutcome, classify_and_assert
 from omniweave_core.out.receipt import ArtefactDeterminism, Receipt
 from omniweave_core.out.rules import RuleSpec, TextMeasure
 from omniweave_core.store import migrate
@@ -167,6 +171,11 @@ def test_the_hosts_stamp_is_the_cards_licence_restrictions() -> None:
     host = CompileHost.of(driver, CompileCard.of(driver), producer_id=1, barred_mask=BARRED)
     assert host.restriction_bits == restriction_bits(driver.licence_code) != 0
     assert host.barred_mask == BARRED
+    weights = replace(driver.licence_code, output_share_alike=False, no_model_training=True)
+    weighted = replace(driver, licence_weights=weights)
+    stamp = CompileHost.of(weighted, CompileCard.of(weighted), producer_id=1).restriction_bits
+    assert stamp == restriction_bits(driver.licence_code) | restriction_bits(weights), "D811"
+    assert stamp != host.restriction_bits, "the weights table adds its own bit"
 
 
 HOST = CompileHost(
@@ -773,6 +782,137 @@ def test_the_plans_units_are_rebuilt_from_the_bundle(world: World) -> None:
     assert [r.nsig for r in world.artifacts.units(done.sealed.row.artifact_id)] == [
         u.nsig for u in bundle.units
     ]
+
+
+# ---------------------------------------------------------------------------
+# Rulings 19 and 20 (D809): an edit's copies, held to its parent's parts
+# ---------------------------------------------------------------------------
+
+ZIPPED = replace(HOST, unit_part="unit{ord}.txt")
+
+
+class _Zipped(_Text):
+    """A package, one member a unit, classified as the framework classifies. `drift` moves
+    that unit's part in every generation after the first."""
+
+    def __init__(self, **config: Scalar) -> None:
+        super().__init__(**config)
+        self.drift = ""
+
+    def lower(self, plan: Plan, il: ILBundle, ledger: AssetLedger, io: DriverIO) -> DriverResult:
+        del ledger
+        self.lowered += 1
+        buffer = BytesIO()
+        with zipfile.ZipFile(buffer, "w") as zf:
+            for unit in plan.units:
+                moved = plan.artifact_gen > 1 and unit.id == self.drift
+                data = il.data(unit.il_path) + (b"~" if moved else b"")
+                zf.writestr(zipfile.ZipInfo(f"unit{unit.ord}.txt"), data)
+        return DriverResult(
+            outcome="ok", produced=(ArtifactRef.of("artifact", buffer.getvalue(), io),)
+        )
+
+    def postflight(self, artifact: str, plan: Plan) -> Receipt:
+        receipt = super().postflight(artifact, plan)
+        classified = classify_and_assert(plan, baked={}, visual_changed=lambda _u: True)
+        units = {u: c.outcome for u, c in classified.items()}
+        return replace(receipt, units=units, counts=dict(Counter(units.values())))
+
+
+def _edit(world: World, target: _Zipped, host: CompileHost = ZIPPED) -> Plan:
+    """`q3@1` sealed, then `u02` edited: `q3@2`'s Plan, each unit naming its source."""
+    first = world.checked(target)
+    assert world.compile(target, world.plan(first), host=host).sealed is not None
+    world.write_il(**{"u02.html": U02.replace("Margins", "Margins held")})
+    edited = world.checked(target)
+    units = tuple(
+        replace(u, source_part=f"unit{s.ord}.txt", source_nsig=s.nsig, source_ord=s.ord)
+        for u, s in zip(edited.units, first.units, strict=True)
+    )
+    return world.plan(edited, artifact_gen=2, parent_gen=1, units=units)
+
+
+def test_an_edit_seals_its_parent_and_copies_its_parents_parts(world: World) -> None:
+    target = _Zipped()
+    done = world.compile(target, _edit(world, target), host=ZIPPED)
+    assert done.sealed is not None and not done.sealed.hit
+    assert done.sealed.row.parent_artifact_gen == 1, "ruling 20"
+    assert world.rows(
+        "SELECT a.artifact_gen, a.parent_artifact_gen, u.unit, u.outcome FROM artifact_unit u"
+        " JOIN artifact a USING(artifact_id) ORDER BY 1, 3"
+    ) == [
+        (1, None, "u01", "native"),
+        (1, None, "u02", "native"),
+        (2, 1, "u01", "passthrough"),
+        (2, 1, "u02", "rebuilt"),
+    ]
+
+
+def test_a_copy_whose_part_moved_seals_nothing(world: World) -> None:
+    """Ruling 19: section 5.5's sha256 assertion, at the seal."""
+    target = _Zipped()
+    plan = _edit(world, target)
+    target.drift = "u01"
+    with pytest.raises(TargetError, match="u01's copied part is not its source's") as caught:
+        world.compile(target, plan, host=ZIPPED)
+    assert caught.value.code() == "OW_TARGET_COPY_MOVED"
+    assert caught.value.fix == "ow explain OW-T-530"
+    assert world.rows("SELECT artifact_gen FROM artifact") == [(1,)]
+
+
+def test_a_reordered_unit_is_held_to_the_part_its_source_ord_lowered_to(world: World) -> None:
+    """Ruling 19: `cloned_passthrough` copies from the source's place, not its own new one."""
+    target = _Zipped()
+    first = world.checked(target)
+    assert world.compile(target, world.plan(first), host=ZIPPED).sealed is not None
+    swapped = (
+        IL_TOML.replace('id = "u01"\nord = 1', 'id = "u02"\nord = 1', 1)
+        .replace('id = "u02"\nord = 2\nfile = "u02.html"', 'id = "u01"\nord = 2\nfile = "u01.html"')
+        .replace('ord = 1\nfile = "u01.html"', 'ord = 1\nfile = "u02.html"', 1)
+    )
+    world.write_il(**{"il.toml": swapped})
+    moved = world.checked(target)
+    sealed = {u.id: u for u in first.units}
+    units = tuple(
+        replace(
+            u,
+            source_part=f"unit{sealed[u.id].ord}.txt",
+            source_nsig=sealed[u.id].nsig,
+            source_ord=sealed[u.id].ord,
+        )
+        for u in moved.units
+    )
+    assert [u.id for u in units] == ["u02", "u01"]
+    plan = world.plan(moved, artifact_gen=2, parent_gen=1, units=units)
+    done = world.compile(target, plan, host=ZIPPED)
+    assert done.sealed is not None
+    assert world.rows(
+        "SELECT u.unit, u.ord, u.outcome FROM artifact_unit u JOIN artifact a USING(artifact_id)"
+        " WHERE a.artifact_gen = 2 ORDER BY u.ord"
+    ) == [("u02", 1, "cloned_passthrough"), ("u01", 2, "cloned_passthrough")]
+
+
+def test_the_host_of_a_passthrough_card_names_its_units_part() -> None:
+    [pptx] = [c for c in discover(env={}).cards if c.identity.id == "compile.pptx.native"]
+    host = CompileHost.of(pptx, CompileCard.of(pptx), producer_id=1)
+    assert host.unit_part == "ppt/slides/slide{ord}.xml"
+
+
+def test_a_part_neither_package_holds_seals_nothing(world: World) -> None:
+    target = _Zipped()
+    plan = _edit(world, target)
+    elsewhere = replace(ZIPPED, unit_part="slide{ord}.xml")
+    with pytest.raises(TargetError, match="u01 has no part digest to compare"):
+        world.compile(target, plan, host=elsewhere)
+
+
+def test_a_target_naming_no_part_is_not_held_to_one(world: World) -> None:
+    """Ruling 19 applies where the card names its units' parts, and only there."""
+    target = _Zipped()
+    plan = _edit(world, target, host=HOST)
+    target.drift = "u01"
+    done = world.compile(target, plan, host=HOST)
+    assert done.sealed is not None and done.sealed.row.parent_artifact_gen == 1
 
 
 # ---------------------------------------------------------------------------

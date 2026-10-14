@@ -144,6 +144,7 @@ __all__ = [
     "Grant",
     "LicenceSeeds",
     "TierMismatch",
+    "card_restriction_bits",
     "check_ack",
     "compute_tier",
     "licence_sha256",
@@ -312,6 +313,16 @@ def restriction_bits(facts: LicenceFacts) -> int:
     for restriction in restrictions_of(facts):
         bits |= restriction.bit
     return bits
+
+
+def card_restriction_bits(code: LicenceFacts, weights: LicenceFacts | None) -> int:
+    """One card's stamp: the OR over its code table and, where it has one, its weights table.
+
+    INV-16 stamps it onto everything the card produces, so the parse operator and the
+    compile host read it through this one function rather than each OR-ing the two tables
+    itself (D811).
+    """
+    return restriction_bits(code) | (0 if weights is None else restriction_bits(weights))
 
 
 def restriction_mask(names: Iterable[str]) -> int:

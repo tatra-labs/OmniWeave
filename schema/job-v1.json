@@ -173,7 +173,8 @@
         "ledger_digest",
         "brief_digest",
         "card_sha256",
-        "toolchain_digest"
+        "toolchain_digest",
+        "parent_gen"
       ],
       "properties": {
         "schema": {
@@ -252,6 +253,12 @@
         "toolchain_digest": {
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "parent_gen": {
+          "type": [
+            "integer",
             "null"
           ]
         }

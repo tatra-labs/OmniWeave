@@ -137,6 +137,18 @@ documentation", with `--group` and `--construct` selecting from it.
     open and the report says why: the restore does not need it. A read-back that fails raises
     `OW_TARGET_READ_BACK_FAILED` before anything is restored. The text form prints the loop line
     second, after the contract.
+26. **`check`, `stamp` and `normalize` build the target with its `[drivers."<id>".config]`**
+    (D792). Each used the card's defaults alone, so no setting a target declares reached it:
+    pptx's `font_dir`, which `measure.py` shapes with, could not be set. `compile`, `verify`
+    and `back`'s read-back keep the defaults. The effective config is not one of a compile's six
+    purity inputs, so a compile under another config would find, and place, the bytes an earlier
+    config built. The three verbs that honour it write no artefact.
+27. **A skipped measurement names the card's own settings** (D807). A check that needs
+    `measure` is skipped when the target, built from its config, has no estimator, and the
+    framework's fix pointed at `ow out targets`, which names no setting. When the card
+    declares a `measure` other than `none` and a `[config]`, `check` hands the framework a
+    fix that sets those keys: pptx's is `font_dir`. A need the card names no setting for keeps
+    the framework's fix.
 """
 
 from __future__ import annotations
@@ -717,6 +729,18 @@ def _one_card(cards: Sequence[DriverCard], target: str) -> tuple[DriverCard, Com
     return one
 
 
+def _need_fixes(driver: DriverCard, card: CompileCard) -> dict[str, str]:
+    """Ruling 27: a skipped measurement's fix, the settings the card's `[config]` declares."""
+    keys = sorted(driver.config.properties)
+    if card.measure == "none" or not keys:
+        return {}
+    key = keys[0] if len(keys) == 1 else "{" + "|".join(keys) + "}"
+    return {
+        "measure": f'ow config set drivers."{card.driver}".config.{key} <value>   '
+        f"# what {card.measure} measures with; then check again"
+    }
+
+
 def _discover(resolved: config.Config, env: Mapping[str, str]) -> Any:
     from omniweave_core.discovery import discover  # noqa: PLC0415
 
@@ -1001,7 +1025,10 @@ def check_report(
     resolved = config.load(cwd=cwd, env=env, explicit=explicit)
     driver, card = _one_card(_discover(resolved, env).cards, plan.target)
     table = load_table(Path(driver.source), card)
-    compiler = cast("CompileV1", construct(driver, driver.config.effective()))
+    compiler = cast(
+        "CompileV1",
+        construct(driver, driver.config.effective(resolved.driver_config(driver.identity.id))),
+    )
     final = stage == "final"
     thread = None
     if final:
@@ -1019,6 +1046,7 @@ def check_report(
             brief=plan.brief if final else None,
             clock=SystemClock(),
             cites=None if thread is None else SqliteCiteResolver(thread, corpus=plan.corpus),
+            fixes=_need_fixes(driver, card),
         )
     finally:
         if thread is not None:
@@ -1425,6 +1453,7 @@ def back_report(
         table=table,
         slug=slug,
         artifact_gen=newest + 1,
+        parent_gen=row.artifact_gen,
         corpus=name,
         traceparent=traceparent(entropy(16).hex(), entropy(8).hex()),
         clock_ns=clock.wall_ns(),
@@ -1662,7 +1691,10 @@ def stamp_report(
     resolved = config.load(cwd=cwd, env=env, explicit=explicit)
     driver, card = _one_card(_discover(resolved, env).cards, plan.target)
     table = load_table(Path(driver.source), card)
-    compiler = cast("CompileV1", construct(driver, driver.config.effective()))
+    compiler = cast(
+        "CompileV1",
+        construct(driver, driver.config.effective(resolved.driver_config(driver.identity.id))),
+    )
     stamped = stamp(job_dir, carrier=compiler.carrier, constructs=table, clock=SystemClock())
     return StampReport(
         written=stamped.written,
@@ -1722,7 +1754,10 @@ def normalize_report(
     resolved = config.load(cwd=cwd, env=env, explicit=explicit)
     driver, card = _one_card(_discover(resolved, env).cards, plan.target)
     table = load_table(Path(driver.source), card)
-    compiler = cast("CompileV1", build(driver, driver.config.effective()))
+    compiler = cast(
+        "CompileV1",
+        build(driver, driver.config.effective(resolved.driver_config(driver.identity.id))),
+    )
     done = normalize(
         job_dir,
         carrier=compiler.carrier,

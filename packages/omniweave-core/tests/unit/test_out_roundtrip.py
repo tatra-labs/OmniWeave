@@ -205,6 +205,13 @@ def test_r4b_a_unit_the_edit_never_touches_is_never_rebuilt() -> None:
     ]
 
 
+def test_r4_passes_over_a_manual_required_unit() -> None:
+    """D808: section 5.5 places it first, whatever the edits, so no copy can be asked of it."""
+    m = UnitOutcome.MANUAL_REQUIRED
+    assert r4a({"u01": P, "u02": m}, {"u01": ("x", "x")}).passed
+    assert r4b({"u01": P, "u02": m}, {}, frozenset({"u03/e1"})).passed
+
+
 def test_r4b_a_definition_dependency_counts_as_touched() -> None:
     """09: a unit referencing a changed `<defs>` entry is changed though its bytes are not."""
     deps = {"u02": frozenset({"u02/e1", "defs/grad3"})}

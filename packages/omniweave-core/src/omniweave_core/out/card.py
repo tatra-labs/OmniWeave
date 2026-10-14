@@ -39,6 +39,12 @@ is where they are read, and it reads them the way 09 says.
    no printed card names either: the API sketch's `[capability] formats` is the parse
    routing key, a media type a driver reads, not one it writes. `media_type` is a
    `type/subtype` token and `suffix` a dot and 1 to 8 lower-case letters or digits.
+7. **A `passthrough` card names each unit's part** (D808). R4 compares the part a unit
+   lowers to with the part its source lowered to, and 09 section 11.4 makes R4 meaningful
+   only where container parts are copyable. So `[compile.round_trip] unit_part` is
+   required exactly when `fidelity = "passthrough"`: a package member path that
+   holds `{ord}` once, which `part_of()` fills with a unit's `ord`. pptx's is
+   `ppt/slides/slide{ord}.xml`.
 """
 
 from __future__ import annotations
@@ -56,7 +62,7 @@ from omniweave_core.out.roundtrip import applicable
 if TYPE_CHECKING:
     from omniweave_core.drivers.card import DriverCard
 
-__all__ = ["COMPILE_KEYS", "ROUND_TRIP_KEYS", "CompileCard", "TargetRow", "targets"]
+__all__ = ["COMPILE_KEYS", "ROUND_TRIP_KEYS", "CompileCard", "TargetRow", "part_of", "targets"]
 
 COMPILE_KEYS: Final = frozenset(
     {
@@ -83,6 +89,8 @@ COMPILE_KEYS: Final = frozenset(
 )
 """`[compile]`'s keys: the API sketch's card, plus `reason` (ruling 2)."""
 ROUND_TRIP_KEYS: Final = frozenset({"read_back", "project", "fidelity", "laws", "kind_map"})
+UNIT_PART: Final = "unit_part"
+"""Ruling 7: `[compile.round_trip]`'s one optional key, required with `passthrough`."""
 _OPTIONAL: Final = frozenset(
     {"reason", "provenance_part", "toolchain", "agent_doc_tokens_max", "media_type", "suffix"}
 )
@@ -91,6 +99,8 @@ _IL: Final = re.compile(r"[a-z][a-z0-9_-]{0,31}/[1-9][0-9]*")
 _DIGEST: Final = re.compile(r"sha256:[0-9a-f]{64}")
 _MEDIA_TYPE: Final = re.compile(r"[a-z0-9][a-z0-9!#$&^_.+-]{0,63}/[a-z0-9][a-z0-9!#$&^_.+-]{0,126}")
 _SUFFIX: Final = re.compile(r"\.[a-z0-9]{1,8}")
+_PART: Final = re.compile(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*")
+_ORD: Final = "{ord}"
 _CARRIERS: Final = frozenset({"svg", "html"})
 _CITATIONS: Final = frozenset({"embedded", "sidecar"})
 _BAKE: Final = frozenset({"available", "unavailable"})
@@ -131,6 +141,12 @@ class CompileCard:
     """Ruling 5: the ceiling on `ow out constructs --format md`; 0 only when not implemented."""
     degradations: tuple[str, ...] = ()
     """Ruling 3: what `[capability.compile]` named and this core does not know."""
+    unit_part: str = ""
+    """Ruling 7: the member a unit lowers to, `{ord}` its place; `""` unless `passthrough`."""
+
+    def part_of(self, ord_: int) -> str:
+        """Ruling 7: the package member the unit at `ord_` lowers to."""
+        return part_of(self.unit_part, ord_)
 
     @classmethod
     def of(cls, card: DriverCard) -> CompileCard:
@@ -156,11 +172,12 @@ class CompileCard:
         if not isinstance(round_trip, Mapping):
             _invalid(source, "[compile.round_trip] is not a table")
         rt = dict(round_trip)
-        if set(rt) != ROUND_TRIP_KEYS:
+        if set(rt) - {UNIT_PART} != ROUND_TRIP_KEYS:
             _invalid(
                 source, f"[compile.round_trip] keys {sorted(rt)} are not {sorted(ROUND_TRIP_KEYS)}"
             )
         fidelity = str(rt["fidelity"])
+        unit_part = _unit_part(source, rt, fidelity)
         raw_laws = rt["laws"]
         if not isinstance(raw_laws, list) or not all(isinstance(law, str) for law in raw_laws):
             _invalid(source, "[compile.round_trip] laws is not a list of law names")
@@ -205,6 +222,7 @@ class CompileCard:
             determinism=determinism,
             assets=assets,
             degradations=degraded,
+            unit_part=unit_part,
         )
         if implemented and (
             not built.constructs or _DIGEST.fullmatch(built.constructs_digest) is None
@@ -217,6 +235,30 @@ class CompileCard:
         if implemented and not (built.media_type and built.suffix):
             _invalid(source, "an implemented target declares its media_type and suffix (D770)")
         return built
+
+
+def part_of(unit_part: str, ord_: int) -> str:
+    """Ruling 7: `unit_part` filled with a unit's `ord`, the member it lowers to."""
+    return unit_part.replace(_ORD, str(ord_))
+
+
+def _unit_part(source: str, rt: Mapping[str, Any], fidelity: str) -> str:
+    """Ruling 7: required with `passthrough`, refused without, and holding `{ord}` once."""
+    passthrough = fidelity == "passthrough"
+    if (UNIT_PART in rt) != passthrough:
+        _invalid(
+            source,
+            "[compile.round_trip] unit_part is required exactly when fidelity = passthrough",
+        )
+    if not passthrough:
+        return ""
+    part = str(rt[UNIT_PART])
+    if part.count(_ORD) != 1 or _PART.fullmatch(part.replace(_ORD, "1")) is None:
+        _invalid(
+            source,
+            f"[compile.round_trip] unit_part {part!r} is not a member path holding {_ORD} once",
+        )
+    return part
 
 
 def _capability(

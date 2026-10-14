@@ -17,11 +17,21 @@ dependencies = [
   # driver cannot pin the framework" (02-architecture.md section 3.2 rule 4).
   "omniweave-ports >=1,<2",
   "python-pptx",
+  "lxml",  # D812: imported directly by the read_back and the lowering, not only via python-pptx
   "XlsxWriter",
   "skia-pathops",
   "uharfbuzz",
   "Pillow",
 ]
+
+[project.entry-points."omniweave.drivers"]
+"compile.pptx.native" = "omniweave_target_pptx"
+# The read_back (09 section 11): its own package, because an entry point names the package that
+# holds `driver.toml`, and a package holds one.
+"parse.pptx.native" = "omniweave_target_pptx.back"
+
+[project.entry-points."omniweave.targets"]
+"pptx" = "omniweave_target_pptx"
 
 # The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
 [tool.hatch.build.targets.wheel]

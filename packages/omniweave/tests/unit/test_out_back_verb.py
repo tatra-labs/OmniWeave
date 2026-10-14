@@ -196,6 +196,12 @@ def test_gen_names_an_older_generation_and_the_next_is_still_one_past_the_newest
     _ok(["compile", "--job", str(restored)], project)
     document = _back(project, "--gen", "1")
     assert (document["from_gen"], document["artifact_gen"]) == (1, 3)
+    plan = Job.load(Path(document["job_dir"])).plan
+    assert plan.parent_gen == 1, "D809: the generation it restores, not the newest"
+    sealed = _store_rows(
+        project, "SELECT artifact_gen, parent_artifact_gen FROM artifact ORDER BY 1"
+    )
+    assert sealed == [(1, None), (2, 1)]
 
 
 @WINDOWS_ONLY

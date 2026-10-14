@@ -31,24 +31,54 @@ the rules, so a target that could run its own gate could not skip it.
 8. **`DocIndex` is filled from what a stamped tree shows.** `els`, `cites`, `slots` and
    `construct_counts` are collected per unit, `nsigs` (D743) per stamped element and `markers`
    (D745) from the `OWC1` scan. `value_occurrences` waits for the rules that count values; it
-   is empty until then, never absent.
+   is empty until then, never absent. D794: it holds `type_size`, ruling 13's.
 9. **`rule_timings_ms` is read from the injected `Clock`**, `SystemClock` unless the caller
    passes one. Library code reads no ambient clock (`omniweave-no-time-time-in-library-code`).
+10. **D789: `RuleCtx.brief` is the Brief the check was given.** 09 section 4.4 prints `brief` on
+    `RuleCtx`, and the framework's context always carried it, but the Protocol did not, so no rule
+    could read it. `ow out check` gives the Plan's Brief at the final stage and `None` before,
+    so a rule that reads it says nothing until then. owsvg/1's canvas rule is the first reader:
+    the `viewBox` matches the Brief's `canvas format`.
+11. **D790: `RuleCtx.constructs` is the table the check runs under.** 09 section 4.4 prints it
+    beside `brief`, and the framework's context carried it. A grammar rule reads its rows to
+    know which values a `normalize` row settles, so a value the normalize row will rewrite is that
+    row's warning and not also the grammar rule's error, without a second copy of the table.
+12. **D793: an unmeasurable node is a recorded skip, naming the rule and the element.** 09
+    section 4.4: `TextMeasure.box(n) -> None` means *this node* cannot be measured, "the rule
+    emits nothing for that node and the framework records one skip naming the rule and the
+    `el`". A rule that needs `measure` is handed a context whose `measure(n)` records that
+    skip whenever the estimator answers `None`, once per rule and element, so the gate is
+    `unverified` and never `passed` over text nobody measured. An element with no address is
+    recorded once a rule, with no `el`.
+13. **D794: `value_occurrences["type_size"]` counts every `font-size` a unit states**, attribute
+    or `style` declaration, by its value in user units (`20px` and `20` are one value, written
+    `20`), summed across the roster. 09 section 12.1's document band reads it: "the third
+    occurrence of an undeclared type size is an error", which a unit rule cannot see when the
+    first two were on other slides. Type size is CSS's `font-size` in both carriers, so the
+    framework counts it once rather than each target. A value that is not a number is the
+    grammar's to refuse and is not counted.
 """
 
 from __future__ import annotations
 
 import re
 from collections import Counter
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
+from decimal import Decimal
 from types import MappingProxyType
-from typing import Final, Literal, Protocol
+from typing import TYPE_CHECKING, Final, Literal, Protocol
 
 from omniweave_core.clock import Clock, SystemClock
 from omniweave_core.errors import TargetError
 from omniweave_core.limits import MAX_FINDINGS_PER_RULE
-from omniweave_core.out.carrier import CarrierDoc, CarrierNode, CarrierParseError, ParseError
+from omniweave_core.out.carrier import (
+    CarrierDoc,
+    CarrierNode,
+    CarrierParseError,
+    ParseError,
+    style_declarations,
+)
 from omniweave_core.out.cites import CiteResolver
 from omniweave_core.out.constructs import ConstructTable
 from omniweave_core.out.finding import Finding, FindingSet, Provenance, Severity, Truncation
@@ -56,7 +86,11 @@ from omniweave_core.out.marker import Marker, scan
 from omniweave_core.out.plan import OutUnit
 from omniweave_core.out.report import SkippedCheck
 
+if TYPE_CHECKING:
+    from omniweave_core.out.brief import Brief
+
 __all__ = [
+    "TYPE_SIZE",
     "Box",
     "DocIndex",
     "PackRun",
@@ -76,6 +110,10 @@ _BANDS: Final[dict[str, range]] = {
 }
 _SLOT: Final = re.compile(r"asset-slot:([0-9a-f]{64})")
 _CITE_ATTRIBUTE: Final = "data-ow-cite"
+_FONT_SIZE: Final = "font-size"
+_SIZE: Final = re.compile(r"[0-9]+(?:\.[0-9]+)?|\.[0-9]+")
+TYPE_SIZE: Final = "type_size"
+"""Ruling 13: `DocIndex.value_occurrences`'s key for the stated type sizes."""
 _NEED_FIX: Final = "ow out targets   # names the extra each target's needs require"
 
 
@@ -125,6 +163,16 @@ class RuleCtx(Protocol):
 
     @property
     def limits(self) -> Mapping[str, int]: ...
+
+    @property
+    def brief(self) -> Brief | None:
+        """Ruling 10: the Plan's Brief at the final stage; `None` before it."""
+        ...
+
+    @property
+    def constructs(self) -> ConstructTable:
+        """Ruling 11: the target's ConstructTable, as `check()` loaded it."""
+        ...
 
     @property
     def cites(self) -> CiteResolver:
@@ -290,8 +338,9 @@ def _run(
                 )
             continue
         started = tally.clock.monotonic_ns()
+        seen = _Measured(ctx, spec.id, tally, fixes) if "measure" in spec.needs else ctx
         try:
-            emitted = list(spec.fn(ctx))
+            emitted = list(spec.fn(seen))
         except Exception as exc:
             out.append(_raised(spec, unit, exc))
             continue
@@ -309,6 +358,62 @@ def _run(
             if tally.emitted[spec.id] <= MAX_FINDINGS_PER_RULE:
                 out.append(finding)
     return out
+
+
+class _Measured:
+    """Ruling 12: `ctx` for one rule that needs `measure`, recording each node it cannot."""
+
+    __slots__ = ("_ctx", "_fixes", "_rule", "_tally")
+
+    def __init__(self, ctx: RuleCtx, rule: str, tally: _Tally, fixes: Mapping[str, str]) -> None:
+        self._ctx = ctx
+        self._rule = rule
+        self._tally = tally
+        self._fixes = fixes
+
+    @property
+    def doc(self) -> CarrierDoc | None:
+        return self._ctx.doc
+
+    @property
+    def unit(self) -> OutUnit | None:
+        return self._ctx.unit
+
+    @property
+    def index(self) -> DocIndex:
+        return self._ctx.index
+
+    @property
+    def limits(self) -> Mapping[str, int]:
+        return self._ctx.limits
+
+    @property
+    def brief(self) -> Brief | None:
+        return self._ctx.brief
+
+    @property
+    def constructs(self) -> ConstructTable:
+        return self._ctx.constructs
+
+    @property
+    def cites(self) -> CiteResolver:
+        return self._ctx.cites
+
+    def measure(self, n: CarrierNode) -> Box | None:
+        box = self._ctx.measure(n)
+        if box is None:
+            self._tally.skipped.setdefault(
+                f"{self._rule}:measure:{n.el or ''}",
+                SkippedCheck(
+                    self._rule,
+                    "measure",
+                    "the estimator cannot measure this node: no face resolves for it, or it "
+                    "declares nothing to measure",
+                    self._fixes.get("measure", _NEED_FIX),
+                    el=n.el,
+                ),
+            )
+        return box
 
 
 def _raised(spec: RuleSpec, unit: str, exc: Exception) -> Finding:
@@ -334,6 +439,7 @@ class _Index:
         self.constructs: dict[str, Counter[str]] = {}
         self.nsigs: dict[str, str] = {}
         self.markers: list[Marker] = []
+        self.sizes: Counter[str] = Counter()
 
     def add(self, unit: str, doc: CarrierDoc, table: ConstructTable | None) -> None:
         els: set[str] = set()
@@ -358,6 +464,7 @@ class _Index:
         self.cites[unit] = frozenset(cites)
         self.slots[unit] = frozenset(slots)
         self.constructs[unit] = counts
+        self.sizes.update(_type_sizes(doc))
 
     def snapshot(self) -> DocIndex:
         return DocIndex(
@@ -368,5 +475,16 @@ class _Index:
             cites=MappingProxyType(dict(self.cites)),
             slots=MappingProxyType(dict(self.slots)),
             markers=tuple(self.markers),
-            value_occurrences=MappingProxyType({}),
+            value_occurrences=MappingProxyType({TYPE_SIZE: Counter(self.sizes)}),
         )
+
+
+def _type_sizes(doc: CarrierDoc) -> Iterator[str]:
+    """Ruling 13: each `font-size` the unit states, as a canonical number in user units."""
+    stated = [n.attr(_FONT_SIZE) for n in doc.select(f"@{_FONT_SIZE}")]
+    for n in doc.select(f"@style|{_FONT_SIZE}"):
+        stated += [v for p, v in style_declarations(n.attr("style") or "") if p == _FONT_SIZE]
+    for value in stated:
+        text = (value or "").strip().removesuffix("px").strip()
+        if _SIZE.fullmatch(text):
+            yield format(Decimal(text).normalize(), "f")

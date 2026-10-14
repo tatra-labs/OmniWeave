@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-ow-el="u02/e1">
+  <defs>
+    <filter id="lift" primitiveUnits="userSpaceOnUse">
+      <feDropShadow dx="3" dy="3" stdDeviation="2" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
+    <filter id="halo"><feGaussianBlur stdDeviation="3"/></filter>
+    <marker id="arrow" orient="auto" markerWidth="6" markerHeight="6" markerUnits="strokeWidth" refX="3" refY="3">
+      <path d="M0 0 L6 3 L0 6 Z"/>
+    </marker>
+    <symbol id="dot" viewBox="0 0 10 10"><circle cx="5" cy="5" r="5" fill="#C00000"/></symbol>
+  </defs>
+  <rect data-ow-el="u02/e2" style="x: 40; y: 40; width: 300; height: 120; rx: 8; ry: 8; fill: #DEEBF7; stroke: #1F4E79; stroke-width: 2; stroke-dasharray: 6 3; stroke-linecap: square; stroke-linejoin: bevel; opacity: 0.95; fill-opacity: 0.9; stroke-opacity: 0.8; vector-effect: non-scaling-stroke"/>
+  <rect data-ow-el="u02/e3" x="380" y="40" width="160" height="120" fill="#FFFFFF" filter="url(#lift)"/>
+  <circle data-ow-el="u02/e4" style="cx: 660; cy: 100; r: 40" fill="#2E75B6" filter="url(#halo)"/>
+  <ellipse data-ow-el="u02/e5" cx="840" cy="100" rx="80" ry="40" fill="#9DC3E6"/>
+  <polyline data-ow-el="u02/e6" points="40,240 140,300 240,240" fill="none" stroke="#404040"/>
+  <polygon data-ow-el="u02/e7" points="300,300 360,240 420,300" fill="#70AD47"/>
+  <line data-ow-el="u02/e8" x1="480" y1="270" x2="760" y2="270" stroke="#404040" stroke-width="3" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text data-ow-el="u02/e9" x="40" y="400" style="font-family: Probe Sans; font-size: 24px; font-weight: bold; font-style: italic; text-anchor: start; text-decoration: underline; letter-spacing: 1px" fill="#000000">Styled</text>
+  <use data-ow-el="u02/e10" href="#dot" x="600" y="380" width="20" height="20"/>
+  <g data-ow-el="u02/e11" data-ow-manual="unverifiable_data">
+    <text data-ow-el="u02/e12" x="40" y="520" font-family="Probe Sans" font-size="20">Margin to be confirmed</text>
+  </g>
+</svg>

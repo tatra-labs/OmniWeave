@@ -79,7 +79,7 @@ def test_render_json_is_a_bare_array_and_video_is_listed_unimplemented(tmp_path:
     | .implemented == false'`."""
     env = _env(tmp_path, SUITES)
     rows = _rows(tmp_path, env)
-    assert sorted(rows) == ["docx", "owtext", "video"]
+    assert sorted(rows) == ["docx", "owtext", "pptx", "video"]
     video = rows["video"]
     assert video["implemented"] is False
     assert video["reason"] == _card("video", env).reason
@@ -92,6 +92,10 @@ def test_render_json_is_a_bare_array_and_video_is_listed_unimplemented(tmp_path:
     docx = rows["docx"]
     assert (docx["implemented"], docx["reason"]) == (True, "")
     assert docx["driver"] == "compile.docx.native"
+    #  D802: pptx lowers every owsvg/1 construct, so its card is implemented.
+    pptx = rows["pptx"]
+    assert (pptx["implemented"], pptx["reason"]) == (True, "")
+    assert pptx["driver"] == "compile.pptx.native"
 
 
 def test_a_row_carries_the_cards_determinism_class_and_the_ten_keys_in_order(
@@ -117,7 +121,7 @@ def test_a_row_carries_the_cards_determinism_class_and_the_ten_keys_in_order(
 def test_without_the_suite_on_the_path_only_the_installed_cards_are_listed(
     tmp_path: Path,
 ) -> None:
-    assert sorted(_rows(tmp_path, _env(tmp_path))) == ["docx", "video"]
+    assert sorted(_rows(tmp_path, _env(tmp_path))) == ["docx", "pptx", "video"]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -126,11 +130,12 @@ def test_without_the_suite_on_the_path_only_the_installed_cards_are_listed(
 
 
 def test_enabled_is_whether_targets_enabled_lists_the_kind(tmp_path: Path) -> None:
-    """The default `[targets] enabled` is `["pptx"]`, so neither shipped kind is enabled."""
+    """The default `[targets] enabled` is `["pptx"]`, so pptx alone is enabled (D789)."""
     env = _env(tmp_path, SUITES)
     assert {t: r["enabled"] for t, r in _rows(tmp_path, env).items()} == {
         "docx": False,
         "owtext": False,
+        "pptx": True,
         "video": False,
     }
     (tmp_path / "omniweave.toml").write_text(
@@ -139,6 +144,7 @@ def test_enabled_is_whether_targets_enabled_lists_the_kind(tmp_path: Path) -> No
     assert {t: r["enabled"] for t, r in _rows(tmp_path, env).items()} == {
         "docx": False,
         "owtext": True,
+        "pptx": False,
         "video": True,
     }
 
@@ -152,6 +158,7 @@ def test_config_names_the_file_enabled_is_read_from(tmp_path: Path) -> None:
     assert {r["target"]: r["enabled"] for r in json.loads(out)} == {
         "docx": False,
         "owtext": True,
+        "pptx": False,
         "video": False,
     }
 
@@ -161,7 +168,9 @@ def test_the_text_form_says_which_of_the_two_stops_a_kind(tmp_path: Path) -> Non
     env = _env(tmp_path, SUITES)
     code, out, err = _run([], tmp_path, env)
     assert (code, err) == (0, "")
-    docx, owtext, video = out.splitlines()
+    docx, owtext, pptx, video = out.splitlines()
+    assert pptx.startswith("pptx     not ready compile.pptx.native")
+    assert pptx.endswith("not in [targets] enabled")
     assert docx.startswith("docx     not ready compile.docx.native")
     assert docx.endswith("not in [targets] enabled")
     assert owtext.startswith("owtext   not ready compile.text.owtext")
@@ -187,7 +196,7 @@ def test_a_driver_vendored_into_the_project_is_listed(tmp_path: Path) -> None:
     )
     (tmp_path / "omniweave.toml").write_text('[targets]\nenabled = ["owtext"]\n', encoding="utf-8")
     rows = _rows(tmp_path, _env(tmp_path))
-    assert sorted(rows) == ["docx", "owtext", "video"]
+    assert sorted(rows) == ["docx", "owtext", "pptx", "video"]
     assert rows["owtext"]["enabled"] is True
 
 
@@ -203,7 +212,7 @@ def test_a_card_discovery_refuses_is_counted_on_stderr_and_not_listed(tmp_path: 
     env = _env(tmp_path, SUITES, tmp_path / "broken")
     code, out, err = _run(["--render", "json"], tmp_path, env)
     assert code == 0
-    assert sorted(r["target"] for r in json.loads(out)) == ["docx", "owtext", "video"]
+    assert sorted(r["target"] for r in json.loads(out)) == ["docx", "owtext", "pptx", "video"]
     assert err == "ow out targets: 1 card(s) were refused; `ow doctor` names each\n"
 
 
@@ -251,7 +260,7 @@ def test_corpus_is_inert_and_verbose_is_refused(tmp_path: Path) -> None:
     env = _env(tmp_path, SUITES)
     code, out, _ = _run(["--render", "json", "--corpus", "handbook"], tmp_path, env)
     assert code == 0
-    assert sorted(r["target"] for r in json.loads(out)) == ["docx", "owtext", "video"]
+    assert sorted(r["target"] for r in json.loads(out)) == ["docx", "owtext", "pptx", "video"]
     code, _, err = _run(["-v"], tmp_path, env)
     assert code == UsageError.EXIT
     assert "--verbose is parsed and not served by ow out" in err
