@@ -1,0 +1,132 @@
+"""`tools/acceptance_v10.py`: v1.0's seventeen, rolled up. D835.
+
+The verdict logic is `tools/acceptance_v01.py`'s, and `test_acceptance_v01.py` holds it. This
+file holds the table to the plan: seventeen rows in order, every named file in the tree, a
+coverage judgement that agrees with its instruments, and an exit of 1 until every row passes. It
+also checks the machinery really is the v0.1 script's and not a copy.
+
+Loaded by file path under the name it is run by, as `test_acceptance_v01.py` loads its tool.
+"""
+
+from __future__ import annotations
+
+import ast
+import importlib.util
+import json
+import sys
+from pathlib import Path
+from types import ModuleType
+from typing import TYPE_CHECKING
+
+import pytest
+
+if TYPE_CHECKING:
+    from conftest import PlanDocs
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
+TOOL = REPO_ROOT / "tools" / "acceptance_v10.py"
+
+
+def _load() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("acceptance_v10", TOOL)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+a = _load()
+
+
+def test_the_table_is_the_plans_seventeen_in_order() -> None:
+    """16:985 and 00-vision.md section 9.2: V10-1 .. V10-17, nothing added, nothing dropped."""
+    assert [row.id for row in a.CRITERIA] == [f"V10-{n}" for n in range(1, 18)]
+
+
+def test_the_plan_prints_exactly_these_seventeen(plan: PlanDocs) -> None:
+    """00-vision.md section 9.2's rows, read from the plan, are the table's ids."""
+    plan.require()
+    text = plan.text("00-vision.md")
+    rows = [line for line in text.splitlines() if line.startswith("| V10-")]
+    assert [line.split("|")[1].strip() for line in rows] == [row.id for row in a.CRITERIA]
+
+
+def test_every_file_an_instrument_names_exists() -> None:
+    """A pytest node names a file, and a tool names a script: each must be in the tree."""
+    for row in a.CRITERIA:
+        for instrument in row.instruments:
+            named = [
+                one.split("::", 1)[0]
+                for one in instrument.argv
+                if one.endswith(".py") or ".py::" in one
+            ]
+            for rel in named:
+                assert (REPO_ROOT / rel).is_file(), f"{row.id}: {rel}"
+
+
+def test_every_test_node_an_instrument_names_is_defined_in_its_file() -> None:
+    """A misspelled `file::test` collects nothing and fails its row at acceptance time; it is
+    cheaper to fail here. Each node's name must be a top-level `def` in that file."""
+    for row in a.CRITERIA:
+        for instrument in row.instruments:
+            for one in instrument.argv:
+                if ".py::" not in one:
+                    continue
+                rel, name = one.split("::", 1)
+                tree = ast.parse((REPO_ROOT / rel).read_text(encoding="utf-8"))
+                defined = {node.name for node in tree.body if isinstance(node, ast.FunctionDef)}
+                assert name in defined, f"{row.id}: {one}"
+
+
+def test_the_machinery_is_acceptance_v01s() -> None:
+    """One definition of PASS: the types and `judge` are v0.1's, loaded, not copied."""
+    v01 = a.V01
+    assert a.Criterion is v01.Criterion
+    assert a.Coverage is v01.Coverage
+    assert a.Verdict is v01.Verdict
+    assert a.judge is v01.judge
+    assert a.evaluate is v01.evaluate
+
+
+def test_no_row_claims_full_coverage_it_does_not_have() -> None:
+    """A FULL row has no gap and at least one instrument; every other row names its gap."""
+    for row in a.CRITERIA:
+        if row.coverage is a.Coverage.FULL:
+            assert row.instruments and not row.gap, row.id
+        else:
+            assert row.gap, row.id
+
+
+def test_anything_short_of_every_row_passing_exits_one(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    unmeasured = next(row.id for row in a.CRITERIA if row.coverage is a.Coverage.NONE)
+    assert a.main(["--only", unmeasured]) == 1
+    out = capsys.readouterr().out
+    assert f"UNMEASURED {unmeasured}" in out
+    assert out.splitlines()[-1].startswith("V10: PASS 0  PARTIAL 0  FAIL 0  UNMEASURED 1  of 1")
+
+
+def test_a_slow_row_is_unmeasured_without_slow(capsys: pytest.CaptureFixture[str]) -> None:
+    """V10-7's 100k-roster run takes minutes, so it is not run, and the row says how to run it."""
+    assert a.main(["--only", "V10-7"]) == 1
+    out = capsys.readouterr().out
+    assert "UNMEASURED V10-7" in out
+    assert "gap: slow: pass --slow." in out
+    assert "exit " not in out
+
+
+def test_json_prints_every_result(capsys: pytest.CaptureFixture[str]) -> None:
+    assert a.main(["--json", "--only", "V10-3,V10-14"]) == 1
+    rows = json.loads(capsys.readouterr().out)
+    assert [(row["id"], row["verdict"], row["ran"]) for row in rows] == [
+        ("V10-3", "UNMEASURED", []),
+        ("V10-14", "UNMEASURED", []),
+    ]
+
+
+def test_an_unknown_id_is_a_usage_error() -> None:
+    with pytest.raises(SystemExit) as stop:
+        a.main(["--only", "V10-99"])
+    assert stop.value.code == 2
