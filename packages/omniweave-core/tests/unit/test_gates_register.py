@@ -145,6 +145,7 @@ QG_SERIES_SCRIPTS: dict[str, str] = {
     "tools/gate_gate_rot.py": "Q-G17 (13-quality.md:97, :544-547, :1082-1084, :2001)",
     "tools/gate_measured_on.py": "Q-G8's static half (13-quality.md:95, :1992; 16-roadmap.md:981)",
     "tools/gate_results.py": "Q-G19's row clause and Q-G21 (13-quality.md:98-99, :2003, :2005)",
+    "tools/gate_placement.py": "Q-G25's marker check (13-quality.md:101, :259-268, :1830, :2009)",
 }
 
 GR_SERIES_SCRIPTS: dict[str, str] = {

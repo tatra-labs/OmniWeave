@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D833: build note on 10-interfaces section 2.5, ow eval publish's dispatch
+# blessed-because: D834: the build note names OW-Q-014 without its symbol, as the plan's OW-Q blocks do
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -39,7 +39,7 @@ documents-frozen  be04e76a5fed4eab2256414da0fe06ee96a0d12943d0cc1c4897742d692e77
 documents-frozen  29dede9032961fe4626fd71ee38b394d3154faabf67c17aafbea15015044e781  10-interfaces.md
 documents-frozen  76a694bf0b19b60ba35d2246f6b36466ca990f318f51e0a292c388ec0e78bc68  11-repo-layout.md
 documents-frozen  d76dfb51c73ab81579af4ed8d1a595cca7c4430d37eecd5f52ab110fe478864e  12-performance.md
-documents-frozen  90d3a0de3bbb8ebd2f715e01107687114805a4857b291758fe2395bddab71cee  13-quality.md
+documents-frozen  d46237acd45ec7a5eca84d4338c46ac3c3dc0c121da6d82bb5ef7a94623c3d6a  13-quality.md
 documents-frozen  667161a8bd206b5805998a289f7679f80dc3a8ea6910c52ea8345bfe9562d721  14-security.md
 documents-frozen  b40c687bb38801907249eef6ec9af9a8ac7d26083be9c0290f356e89aaf48695  15-observability.md
 documents-frozen  e655ac4169f71a1c1be40a0bacc632c3b873bb77c03a3f185d3858b29eb12436  16-roadmap.md
