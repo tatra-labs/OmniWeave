@@ -83,7 +83,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 from omniweave_core.errors import NotFoundError, StoreError, TargetError
 from omniweave_core.model.enums import Quote
 from omniweave_core.out.gate import GateStatus
-from omniweave_core.out.ledger import ROLES, SLOT_PREFIX
+from omniweave_core.out.ledger import ROLES, SLOT_PREFIX, LedgerRow
 from omniweave_core.out.plan import UnitOutcome
 from omniweave_core.store.sqlite import INTERACTIVE_WAIT_MS, StoreThread, Unit
 
@@ -91,6 +91,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
 
     from omniweave_core.clock import Clock
+    from omniweave_core.model.records import Producer
 
 __all__ = [
     "ARTIFACT_COLUMNS",
@@ -98,6 +99,7 @@ __all__ = [
     "QUOTING_SQL",
     "RESTRICTION_SQL",
     "SEAL_SQL",
+    "ArtifactAsset",
     "ArtifactDraft",
     "ArtifactRow",
     "AssetJoin",
@@ -107,8 +109,13 @@ __all__ = [
     "Quoting",
     "Restricted",
     "Sealed",
+    "SlotArtifact",
+    "SlotDocument",
     "SqliteArtifactStore",
     "UnitRow",
+    "artifact_rows",
+    "ensure_producer",
+    "latest_generation",
 ]
 
 Origin = Literal["authored", "feedback", "read_back", "rebase"]
@@ -532,6 +539,47 @@ class Restricted:
 
 
 @dataclass(frozen=True, slots=True)
+class ArtifactAsset:
+    """One frozen asset of one artefact, as `ow out assets --slug` prints it. D778.
+
+    The `artifact_asset` join's slot, role and units, and the `asset` row's facts: its bytes,
+    the corpus document that owns it, its licence and its restriction bits.
+    """
+
+    asset_id: int
+    sha256: str
+    """64 lower-case hex, the CAS name."""
+    slot: str
+    role: str
+    units: tuple[str, ...]
+    media_type: str
+    byte_len: int
+    doc_ord: int
+    licence: str | None
+    spdx: str | None
+    restriction_bits: int
+
+
+@dataclass(frozen=True, slots=True)
+class SlotArtifact:
+    """One artefact generation that slots a byte-identical asset (09 section 7.2's reuse)."""
+
+    slug: str
+    artifact_gen: int
+    role: str
+    units: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SlotDocument:
+    """One corpus document that owns an `asset` row of those bytes."""
+
+    doc_ord: int
+    uri: str
+    asset_id: int
+
+
+@dataclass(frozen=True, slots=True)
 class Quoting:
     """One row of 09 section 10's "which decks quote this page?" query."""
 
@@ -550,6 +598,67 @@ def _ids(values: Iterable[int]) -> str:
 def _lookup(connection: sqlite3.Connection, key: PureKey) -> ArtifactRow | None:
     row = connection.execute(LOOKUP_SQL, key.params()).fetchone()
     return None if row is None else ArtifactRow.of(row)
+
+
+def artifact_rows(
+    connection: sqlite3.Connection, slug: str | None = None
+) -> tuple[ArtifactRow, ...]:
+    """Every sealed row, or one slug's, by slug then generation. D769, for `ow out list`.
+
+    Readable on a read-only connection, as `latest_generation()` is, and empty on a store
+    from before `0005_out.sql`, which has sealed nothing.
+    """
+    if not _has_artifacts(connection):
+        return ()
+    where, args = (" WHERE slug = ?", (slug,)) if slug is not None else ("", ())
+    rows = connection.execute(f"{_SELECT}{where} ORDER BY slug, artifact_gen", args)
+    return tuple(ArtifactRow.of(row) for row in rows)
+
+
+def ensure_producer(connection: sqlite3.Connection, producer: Producer) -> int:
+    """The `producer_id` of `producer`, inserting its row the first time. D770.
+
+    Every `artifact` row names its producer (`producer_id NOT NULL`), as every `block` row
+    does. This is the parse and derive operators' statement pair, INSERT OR IGNORE then
+    SELECT over the `producer_identity` columns, for the compile path's one driver: the
+    model, runtime and prompt columns are NULL, because a compile names no model.
+    """
+    params = {
+        "operator": producer.operator,
+        "op_version": producer.op_version,
+        "code_fingerprint": producer.code_fingerprint,
+        "options_digest": producer.options_digest,
+    }
+    connection.execute(
+        "INSERT OR IGNORE INTO producer(operator, op_version, code_fingerprint,"
+        " options_digest) VALUES(:operator, :op_version, :code_fingerprint, :options_digest)",
+        params,
+    )
+    (found,) = connection.execute(
+        "SELECT producer_id FROM producer WHERE operator = :operator"
+        " AND op_version = :op_version AND code_fingerprint = :code_fingerprint"
+        " AND options_digest = :options_digest AND model_id IS NULL AND model_rev IS NULL"
+        " AND runtime IS NULL AND runtime_version IS NULL AND prompt_fp IS NULL",
+        params,
+    ).fetchone()
+    return int(found)
+
+
+def _has_artifacts(connection: sqlite3.Connection) -> bool:
+    present = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'artifact'"
+    ).fetchone()
+    return present is not None
+
+
+def latest_generation(connection: sqlite3.Connection, slug: str) -> int:
+    """The newest sealed generation of `slug` on any connection, read-only included, or 0.
+
+    `ow out scaffold` reads it through `connect_readonly()`, which opens a store without
+    migrating it, so a store from before `0005_out.sql` has no `artifact` table and has
+    sealed nothing (D765).
+    """
+    return _latest(connection, slug) if _has_artifacts(connection) else 0
 
 
 def _latest(connection: sqlite3.Connection, slug: str) -> int:
@@ -583,6 +692,11 @@ class SqliteArtifactStore:
         found = self._run("out.lookup", lambda connection: _lookup(connection, key))
         return found if isinstance(found, ArtifactRow) else None
 
+    def latest(self, slug: str) -> int:
+        """The newest sealed generation of `slug`, or 0. `ow out scaffold` proposes one past it."""
+        found = self._run("out.latest", lambda connection: _latest(connection, slug))
+        return found if isinstance(found, int) else 0
+
     def get(self, slug: str, artifact_gen: int) -> ArtifactRow:
         def run(connection: sqlite3.Connection) -> object:
             row = connection.execute(
@@ -593,7 +707,7 @@ class SqliteArtifactStore:
         found = self._run("out.get", run)
         if not isinstance(found, ArtifactRow):
             raise NotFoundError(
-                f"no artefact {slug}@{artifact_gen} in this store", fix=f"ow out list {slug}"
+                f"no artefact {slug}@{artifact_gen} in this store", fix=f"ow out list --slug {slug}"
             )
         return found
 
@@ -620,6 +734,98 @@ class SqliteArtifactStore:
 
         rows = self._run("out.units", run)
         return rows if isinstance(rows, tuple) else ()
+
+    def ledger(self, artifact_id: int) -> tuple[LedgerRow, ...]:
+        """The artefact's frozen assets as ledger rows: one per `artifact_asset` unit. D776.
+
+        `ow out back` writes them as the restored JobDir's `assets/index.json`, so the edit
+        compiles against the bytes the artefact slotted, and `ledger_digest()` over them is the
+        sealed row's.
+        """
+
+        def run(connection: sqlite3.Connection) -> object:
+            rows: list[LedgerRow] = []
+            for asset_id, sha, slot_, role, units in connection.execute(
+                "SELECT aa.asset_id, a.sha256, aa.slot, aa.role, aa.units"
+                " FROM artifact_asset aa JOIN asset a ON a.asset_id = aa.asset_id"
+                " WHERE aa.artifact_id = ? ORDER BY aa.slot, aa.role, aa.asset_id",
+                (artifact_id,),
+            ):
+                rows += [
+                    LedgerRow(asset_id=asset_id, sha256=bytes(sha).hex(), slot=slot_, role=role,
+                              unit=unit)
+                    for unit in json.loads(units)
+                ]  # fmt: skip
+            return tuple(rows)
+
+        found = self._run("out.ledger", run)
+        return found if isinstance(found, tuple) else ()
+
+    def assets(self, artifact_id: int) -> tuple[ArtifactAsset, ...]:
+        """The artefact's frozen assets, each with its `asset` row's facts. D778."""
+
+        def run(connection: sqlite3.Connection) -> object:
+            return tuple(
+                ArtifactAsset(
+                    asset_id=asset_id,
+                    sha256=bytes(sha).hex(),
+                    slot=slot_,
+                    role=role,
+                    units=tuple(json.loads(units)),
+                    media_type=media_type,
+                    byte_len=byte_len,
+                    doc_ord=doc_ord,
+                    licence=licence,
+                    spdx=spdx,
+                    restriction_bits=bits,
+                )
+                for (asset_id, sha, slot_, role, units, media_type, byte_len, doc_ord, licence,
+                     spdx, bits) in connection.execute(
+                    "SELECT aa.asset_id, a.sha256, aa.slot, aa.role, aa.units, a.media_type,"
+                    " a.byte_len, a.doc_ord, a.licence, a.spdx, a.restriction_bits"
+                    " FROM artifact_asset aa JOIN asset a ON a.asset_id = aa.asset_id"
+                    " WHERE aa.artifact_id = ? ORDER BY aa.slot, aa.role, aa.asset_id",
+                    (artifact_id,),
+                )
+            )  # fmt: skip
+
+        found = self._run("out.assets", run)
+        return found if isinstance(found, tuple) else ()
+
+    def slot_use(self, sha256: str) -> tuple[tuple[SlotArtifact, ...], tuple[SlotDocument, ...]]:
+        """09 section 7.2's reuse query: who holds these bytes, in this store. D778.
+
+        Every artefact generation whose `artifact_asset` row slots an asset of `sha256`, by slug
+        then generation, and every document that owns an `asset` row of it, by `doc_ord`. One
+        byte-identical asset may be many `asset` rows: the ledger deduplicates bytes, never
+        permission.
+        """
+        digest = bytes.fromhex(sha256)
+
+        def run(connection: sqlite3.Connection) -> object:
+            artifacts = tuple(
+                SlotArtifact(slug, gen, role, tuple(json.loads(units)))
+                for slug, gen, role, units in connection.execute(
+                    "SELECT ar.slug, ar.artifact_gen, aa.role, aa.units FROM artifact_asset aa"
+                    " JOIN asset a ON a.asset_id = aa.asset_id"
+                    " JOIN artifact ar ON ar.artifact_id = aa.artifact_id"
+                    " WHERE a.sha256 = ? ORDER BY ar.slug, ar.artifact_gen, aa.role",
+                    (digest,),
+                )
+            )
+            documents = tuple(
+                SlotDocument(doc_ord, uri, asset_id)
+                for doc_ord, uri, asset_id in connection.execute(
+                    "SELECT d.doc_ord, d.uri, a.asset_id FROM asset a"
+                    " JOIN doc d ON d.doc_ord = a.doc_ord"
+                    " WHERE a.sha256 = ? ORDER BY d.doc_ord, a.asset_id",
+                    (digest,),
+                )
+            )
+            return artifacts, documents
+
+        found = self._run("out.slot_use", run)
+        return found if isinstance(found, tuple) else ((), ())  # type: ignore[return-value]
 
     def restricted(
         self, *, asset_ids: Iterable[int], block_ids: Iterable[int], barred_mask: int

@@ -1,0 +1,7 @@
+# kind_map.toml — owtext/1's construct -> Kind map, R2's comparator (09-generation.md section 1 row 8).
+# Every row is one-to-one, so a `read_back` may stamp Trust.EXTRACTED on any of them (OUT22).
+schema = "omniweave.out-kind-map/1"
+
+[kind]
+"elem.section" = "section"
+"elem.p" = "paragraph"

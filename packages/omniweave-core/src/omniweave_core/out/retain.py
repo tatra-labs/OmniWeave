@@ -34,30 +34,87 @@ half and runs before the seal, which stores what it returns. `fetch()` is the ed
    the fix.
 6. **A fetch writes into a new directory only.** An existing destination is refused, so a
    retained bundle is never merged into a working one.
+
+## Rulings (the ledger's D775)
+
+7. **The Brief is retained beside the IL, as its digest's preimage.** `freeze_brief()` puts the
+   canonical bytes of `Brief.record()` into CAS, so `artifact.brief_digest` names the object
+   and no column is added, as `il_store_ref` is `il_digest`'s. 09 makes `brief_digest` a purity
+   input, and a recompile from the artefact (R1) or an edit of it (`ow out back`) needs the Brief
+   the compile read, which the JobDir alone held until now.
+8. **A fetched Brief is verified before it is returned.** The object is read bounded by
+   `MAX_IL_FILE_BYTES`, hashed against the digest, parsed as JSON and read back closed
+   (`Brief.from_record`). A missing object, other bytes, or a record that does not read back is
+   `StoreError`, with `ow store fsck --cas` as the fix.
+
+## Rulings (the ledger's D776)
+
+9. **`restore()` writes the JobDir an edit of a sealed artefact is authored in**, the
+   `ow out back` half of 09 section 3.6. It is staged beside the destination and renamed in, as
+   `out.job.scaffold()` stages a create, and an existing destination or stage is refused the
+   same way (`OW_TARGET_JOB_EXISTS`).
+   - `il/` is the retained bundle, fetched and verified. Its `il.toml` keeps the
+     `constructs_digest` it was compiled against (09 section 3.6 rule 2).
+   - `brief.md` is the retained Brief, rendered (`out.brief.render_brief`).
+   - `assets/index.json` is the artefact's frozen assets.
+   - `job.json`'s Plan names the next generation, its units the sealed ones (`edit_roster`),
+     its `il_digest` the bundle's and its `ledger_digest` the assets', with the gate
+     `not-provided` until a check runs.
+10. **An edit's roster is the sealed roster.** Each unit keeps its id, `ord` and `il_path`,
+    takes its anchor from the Brief, and records where it came from: `source_part` is the
+    sealed `il_path`, `source_nsig` its `nsig` and `source_ord` its `ord`. 09 section 3.7 has
+    `ow out back` fill them "from the `artifact_unit` rows of the artefact being edited", and
+    those rows carry no other part name.
 """
 
 from __future__ import annotations
 
 import hashlib
 import io
+import json
 import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, BinaryIO, Final
+from types import MappingProxyType
+from typing import TYPE_CHECKING, BinaryIO, Final, Protocol
 
 from omniweave_core.blobs import format_ref, parse_ref
+from omniweave_core.canonical import canonical
 from omniweave_core.errors import StoreError, TargetError, UsageError
 from omniweave_core.limits import MAX_IL_FILE_BYTES
-from omniweave_core.out.job import ILFile, read_il_files
+from omniweave_core.out.brief import Brief, render_brief
+from omniweave_core.out.gate import GateStatus
+from omniweave_core.out.job import (
+    BRIEF_MD,
+    JOB_SCHEMA,
+    ILFile,
+    Job,
+    JobDeterminism,
+    read_il_files,
+)
+from omniweave_core.out.ledger import LedgerRow, ledger_digest, write_index
+from omniweave_core.out.plan import PLAN_SCHEMA, OutUnit, Plan
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
     from omniweave_core.blobs import BlobStore
+    from omniweave_core.out.card import CompileCard
+    from omniweave_core.out.constructs import ConstructTable
     from omniweave_core.out.job import ILBundle
 
-__all__ = ["Retained", "fetch", "freeze", "manifest"]
+__all__ = [
+    "Retained",
+    "SealedUnit",
+    "edit_roster",
+    "fetch",
+    "fetch_brief",
+    "freeze",
+    "freeze_brief",
+    "manifest",
+    "restore",
+]
 
 _CHUNK: Final = 1 << 16
 _FIX_FSCK: Final = "ow store fsck --cas"
@@ -136,6 +193,137 @@ def fetch(il_store_ref: str, blobs: BlobStore, dest: Path) -> tuple[ILFile, ...]
         shutil.rmtree(dest, ignore_errors=True)
         raise
     return read_il_files(dest)
+
+
+def freeze_brief(brief: Brief, blobs: BlobStore) -> str:
+    """Ruling 7: the Brief's record into CAS, named by `brief_digest`. Returns its `cas://` ref."""
+    digest = blobs.put(io.BytesIO(canonical(brief.record())))
+    if "sha256:" + digest.hex() != brief.digest():  # pragma: no cover -- ruling 7's identity.
+        raise StoreError("the record is not brief_digest's preimage", fix="report this as a bug")
+    return format_ref(digest)
+
+
+def fetch_brief(brief_digest: str, blobs: BlobStore) -> Brief:
+    """Ruling 8: the retained Brief, hashed and read back before it is returned."""
+    hexdigest = brief_digest.removeprefix("sha256:")
+    if _HEX64.fullmatch(hexdigest) is None:
+        raise UsageError(
+            f"{brief_digest!r} is not sha256:<64 lower-case hex>", fix="ow out list --render json"
+        )
+    with blobs.open(hexdigest) as handle:
+        body = handle.read(MAX_IL_FILE_BYTES + 1)
+    if len(body) > MAX_IL_FILE_BYTES:
+        raise _brief_corrupt(brief_digest, f"it runs past {MAX_IL_FILE_BYTES} bytes")
+    if hashlib.sha256(body).hexdigest() != hexdigest:
+        raise _brief_corrupt(brief_digest, "its bytes do not hash to its name")
+    try:
+        return Brief.from_record(json.loads(body))
+    except ValueError as exc:
+        raise _brief_corrupt(brief_digest, f"it does not read back: {exc}") from exc
+
+
+def _brief_corrupt(digest: str, why: str) -> StoreError:
+    return StoreError(f"retained Brief {digest}: {why}", fix=_FIX_FSCK)
+
+
+class SealedUnit(Protocol):
+    """What `edit_roster()` reads of an `artifact_unit` row (`store.artifact.UnitRow`)."""
+
+    @property
+    def unit(self) -> str: ...
+
+    @property
+    def ord(self) -> int: ...
+
+    @property
+    def il_path(self) -> str: ...
+
+    @property
+    def nsig(self) -> str: ...
+
+
+def edit_roster(sealed: Sequence[SealedUnit], brief: Brief) -> tuple[OutUnit, ...]:
+    """Ruling 10: the sealed roster, each unit naming the unit it edits."""
+    return tuple(
+        OutUnit(
+            id=row.unit,
+            ord=row.ord,
+            il_path=row.il_path,
+            anchor=brief.anchor(row.unit),
+            source_part=row.il_path,
+            source_nsig=row.nsig,
+            source_ord=row.ord,
+        )
+        for row in sealed
+    )
+
+
+def restore(
+    job_dir: Path,
+    *,
+    il_store_ref: str,
+    blobs: BlobStore,
+    brief: Brief,
+    sealed: Sequence[SealedUnit],
+    assets: Sequence[LedgerRow],
+    card: CompileCard,
+    card_sha256: str,
+    table: ConstructTable,
+    slug: str,
+    artifact_gen: int,
+    corpus: str,
+    traceparent: str,
+    clock_ns: int,
+) -> Job:
+    """Ruling 9: the edit's JobDir, staged beside `job_dir` and renamed in."""
+    staged = job_dir.with_name(job_dir.name + ".tmp")
+    for path in (job_dir, staged):
+        if path.exists():
+            raise TargetError(
+                f"{path} exists; a restore never writes over a JobDir",
+                symbol="OW_TARGET_JOB_EXISTS",
+                fix=f"ow out back {slug}   # a fresh run id",
+            )
+    #  Every digest before the first write: none is inside the cleanup's `except` (G8's
+    #  `omniweave-no-bare-except-around-identity`), as in `out.job.scaffold()`.
+    units = edit_roster(sealed, brief)
+    job = Job(
+        schema=JOB_SCHEMA,
+        plan=Plan(
+            schema=PLAN_SCHEMA,
+            target=card.target,
+            slug=slug,
+            artifact_gen=artifact_gen,
+            delivery="release",
+            units=units,
+            unit_count=len(units),
+            brief=brief,
+            corpus=corpus,
+            cites=MappingProxyType({}),
+            gate_status=GateStatus.NOT_PROVIDED,
+            il_digest="sha256:" + parse_ref(il_store_ref).hex(),
+            constructs_digest=table.digest(),
+            ledger_digest=ledger_digest(assets),
+            brief_digest=brief.digest(),
+            card_sha256=card_sha256,
+            toolchain_digest=None,
+        ),
+        traceparent=traceparent,
+        determinism=JobDeterminism(clock_ns),
+    )
+    job_dir.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fetch(il_store_ref, blobs, staged / "il")
+        for part in ("validation", "out"):
+            (staged / part).mkdir()
+        (staged / BRIEF_MD).write_bytes(render_brief(brief).encode("utf-8"))
+        write_index(staged, assets)
+        job.write(staged)
+        staged.rename(job_dir)
+    except BaseException:
+        shutil.rmtree(staged, ignore_errors=True)
+        raise
+    return job
 
 
 def _rows(body: bytes, ref: str) -> list[tuple[str, str]]:

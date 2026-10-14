@@ -34,6 +34,9 @@ from omniweave_core.store.artifact import (
     Restricted,
     SqliteArtifactStore,
     UnitRow,
+    artifact_rows,
+    ensure_producer,
+    latest_generation,
 )
 
 if TYPE_CHECKING:
@@ -355,6 +358,77 @@ def test_a_new_brief_is_a_new_generation(store: SqliteArtifactStore) -> None:
     assert second.row.artifact_gen == 2
 
 
+def test_latest_is_the_newest_sealed_generation_of_a_slug(store: SqliteArtifactStore) -> None:
+    """D764: `ow out scaffold` proposes one past it, and a slug never sealed has 0."""
+    assert store.latest("q3-board") == 0
+    store.seal(draft())
+    assert store.latest("q3-board") == 1
+    store.seal(draft(artifact_gen=2, key=key(brief_digest=d(55))))
+    assert store.latest("q3-board") == 2
+    assert store.latest("q4-board") == 0
+
+
+def test_latest_generation_reads_a_read_only_store_and_one_from_before_0005(
+    store: SqliteArtifactStore, owstore: Path, tmp_path: Path
+) -> None:
+    """D765: `ow out scaffold` opens the store read-only, and an unmigrated one sealed nothing."""
+    old = ow.connect(tmp_path / "old.owstore")
+    try:
+        assert latest_generation(old, "q3-board") == 0
+    finally:
+        old.close()
+    store.seal(draft())
+    readonly = ow.connect_readonly(owstore)
+    try:
+        assert latest_generation(readonly, "q3-board") == 1
+    finally:
+        readonly.close()
+
+
+def test_artifact_rows_are_every_seal_by_slug_then_generation(
+    store: SqliteArtifactStore, owstore: Path, tmp_path: Path
+) -> None:
+    """D769: `ow out list` reads them read-only; a store from before 0005 has none."""
+    old = ow.connect(tmp_path / "old.owstore")
+    try:
+        assert artifact_rows(old) == ()
+    finally:
+        old.close()
+    first = store.seal(draft()).row
+    second = store.seal(draft(artifact_gen=2, key=key(brief_digest=d(55)))).row
+    #  Sealed last, listed first: the order is slug then generation, never insertion.
+    memo = store.seal(draft(key=key(slug="a-memo"), path="a-memo@1/a-memo.pptx")).row
+    readonly = ow.connect_readonly(owstore)
+    try:
+        assert artifact_rows(readonly) == (memo, first, second)
+        assert artifact_rows(readonly, "q3-board") == (first, second)
+        assert artifact_rows(readonly, "q4-board") == ()
+    finally:
+        readonly.close()
+
+
+def test_ensure_producer_is_one_row_per_identity(owstore: Path) -> None:
+    """D770: the compile path's producer, inserted once and found again."""
+    from omniweave_core.model.records import Producer  # noqa: PLC0415
+
+    owtext = Producer(
+        operator="compile.text.owtext", op_version=1, code_fingerprint="", options_digest=b"\x01"
+    )
+    connection = ow.connect(owstore)
+    try:
+        sql = "SELECT count(*) FROM producer WHERE operator = 'compile.text.owtext'"
+        (seeded,) = connection.execute(sql).fetchone()
+        first = ensure_producer(connection, owtext)
+        assert ensure_producer(connection, owtext) == first
+        other = ensure_producer(connection, dataclasses.replace(owtext, op_version=2))
+        assert other != first
+        (count,) = connection.execute(sql).fetchone()
+        #  The seed already holds one with another identity: two new rows, not one per call.
+        assert count == seeded + 2
+    finally:
+        connection.close()
+
+
 def test_a_draft_and_a_release_of_one_input_are_two_rows(store: SqliteArtifactStore) -> None:
     store.seal(draft())
     second = store.seal(
@@ -532,7 +606,7 @@ def test_which_released_decks_quote_page_14(store: SqliteArtifactStore, owstore:
 def test_get_names_what_it_did_not_find(store: SqliteArtifactStore) -> None:
     with pytest.raises(NotFoundError, match="no artefact q3-board@4") as caught:
         store.get("q3-board", 4)
-    assert caught.value.fix == "ow out list q3-board"
+    assert caught.value.fix == "ow out list --slug q3-board"
 
 
 # ---------------------------------------------------------------------------
@@ -621,3 +695,98 @@ def test_every_refusal_is_a_registered_code() -> None:
     }
     for symbol in symbols:
         assert explain(symbol).symbol == symbol
+
+
+def test_the_ledger_is_one_row_per_unit_of_each_frozen_asset(store: SqliteArtifactStore) -> None:
+    """D776: `ow out back` writes these as the restored `assets/index.json`."""
+    from omniweave_core.out.ledger import LedgerRow, slot  # noqa: PLC0415
+
+    sealed = store.seal(
+        draft(
+            assets=(
+                AssetJoin(202, slot(SHA_B), "bake", ("u02",)),
+                AssetJoin(201, slot(SHA_A), "image", ("u01", "u02")),
+            )
+        )
+    )
+    assert store.ledger(sealed.row.artifact_id) == (
+        LedgerRow(201, SHA_A, slot(SHA_A), "image", "u01"),
+        LedgerRow(201, SHA_A, slot(SHA_A), "image", "u02"),
+        LedgerRow(202, SHA_B, slot(SHA_B), "bake", "u02"),
+    )
+    assert store.ledger(sealed.row.artifact_id + 1) == ()
+
+
+def test_the_assets_are_each_slot_with_its_asset_rows_facts(
+    store: SqliteArtifactStore, owstore: Path
+) -> None:
+    """D778: what `ow out assets --slug` prints, in slot order."""
+    from omniweave_core.store.artifact import ArtifactAsset  # noqa: PLC0415
+
+    connection = sqlite3.connect(owstore)
+    try:
+        connection.execute(
+            "UPDATE asset SET spdx = 'CC-BY-4.0', licence = 'cc' WHERE asset_id = 201"
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    sealed = store.seal(
+        draft(
+            assets=(
+                AssetJoin(202, "asset-slot:" + SHA_B, "bake", ("u02",)),
+                AssetJoin(201, "asset-slot:" + SHA_A, "image", ("u01", "u02")),
+            )
+        )
+    )
+    first, second = store.assets(sealed.row.artifact_id)
+    assert first == ArtifactAsset(
+        asset_id=201, sha256=SHA_A, slot="asset-slot:" + SHA_A, role="image",
+        units=("u01", "u02"), media_type="image/png", byte_len=5, doc_ord=7, licence="cc",
+        spdx="CC-BY-4.0", restriction_bits=0,
+    )  # fmt: skip
+    assert (second.asset_id, second.role, second.restriction_bits) == (202, "bake", BARRED | 2)
+    assert store.assets(sealed.row.artifact_id + 1) == ()
+
+
+def test_the_slot_use_is_every_artefact_and_every_owning_document(
+    store: SqliteArtifactStore, owstore: Path
+) -> None:
+    """D778: 09 section 7.2's reuse query, over one store."""
+    from omniweave_core.store.artifact import SlotArtifact, SlotDocument  # noqa: PLC0415
+
+    connection = sqlite3.connect(owstore)
+    try:
+        connection.execute(
+            "INSERT INTO doc(doc_ord, doc_key, source_sha256, uri, media_type, format,"
+            " format_evidence, source_bytes, status, model_version, declared, achieved)"
+            " VALUES (8, ?, ?, 'file:///c/logo.png', 'image/png', 'png', '{}', 5, 'ok',"
+            " '1.1', '{}', '{}')",
+            (b"\x08" * 16, b"\x00" * 32),
+        )
+        connection.execute(
+            "INSERT INTO asset(asset_id, doc_ord, media_type, sha256, byte_len, store_ref)"
+            " VALUES (203, 8, 'image/png', ?, 5, 'cas://x')",
+            (bytes.fromhex(SHA_A),),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    store.seal(draft())
+    store.seal(
+        draft(
+            key=key(slug="q4-board"),
+            path="q4-board@1/q4-board.pptx",
+            assets=(AssetJoin(203, "asset-slot:" + SHA_A, "thumbnail", ("u02",)),),
+        )
+    )
+    users, owners = store.slot_use(SHA_A)
+    assert users == (
+        SlotArtifact("q3-board", 1, "image", ("u01",)),
+        SlotArtifact("q4-board", 1, "thumbnail", ("u02",)),
+    )
+    assert owners == (
+        SlotDocument(7, "file:///c/contract.pdf", 201),
+        SlotDocument(8, "file:///c/logo.png", 203),
+    )
+    assert store.slot_use("c" * 64) == ((), ())

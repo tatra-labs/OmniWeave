@@ -109,6 +109,10 @@ GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
     "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
     "hooks": "check",
+    "out": (
+        "assets · back · check · compile · constructs · list · normalize · scaffold · stamp · "
+        "targets · verify"
+    ),
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
 }
@@ -529,6 +533,224 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 spelling=("--want-impact",),
                 kind="switch",
                 help="ow:impact for a batch; a single-block ref gets it anyway",
+            ),
+        ),
+    ),
+    Command(
+        words=("out", "assets"),
+        actions=("out.assets",),
+        help=(
+            "List a sealed artefact's frozen assets with their licences and restrictions, or "
+            "every artefact and document that holds one asset's bytes"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--slug",),
+                metavar="SLUG",
+            ),
+            Argument(
+                spelling=("--gen",),
+                kind="int",
+                metavar="GEN",
+            ),
+            Argument(
+                spelling=("--slot",),
+                metavar="SLOT",
+            ),
+            Argument(
+                spelling=("--explain",),
+                kind="switch",
+                default=False,
+            ),
+        ),
+    ),
+    Command(
+        words=("out", "back"),
+        actions=("out.back",),
+        help=(
+            "Restore a sealed artefact's retained IL, Brief and assets into a new JobDir for "
+            "its next generation, saying first whether the contract moved"
+        ),
+        arguments=(
+            Argument(
+                spelling=("slug",),
+                metavar="SLUG",
+            ),
+            Argument(
+                spelling=("--gen",),
+                kind="int",
+                metavar="GEN",
+            ),
+        ),
+    ),
+    Command(
+        words=("out", "check"),
+        actions=("out.check",),
+        help=(
+            "Run the target's rules over a JobDir's IL at one stage, write "
+            "validation/<stage>.json, and print each finding with its fix"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--stage",),
+                metavar="STAGE",
+            ),
+            Argument(
+                spelling=("--unit",),
+                metavar="UNIT",
+            ),
+            Argument(
+                spelling=("--job",),
+                metavar="JOB",
+            ),
+            Argument(
+                spelling=("--target",),
+                metavar="TARGET",
+            ),
+        ),
+    ),
+    Command(
+        words=("out", "compile"),
+        actions=("out.compile",),
+        help=(
+            "Lower a JobDir whose final gate passed into its artefact in an S4 worker, seal "
+            "the artifact row, and place the bytes under [roots] output"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--accept-manual",),
+                kind="switch",
+                default=False,
+            ),
+            Argument(
+                spelling=("--job",),
+                metavar="JOB",
+            ),
+        ),
+    ),
+    Command(
+        words=("out", "constructs"),
+        actions=("out.constructs",),
+        help=(
+            "Print a target's construct table, a line a row, one row in full, or as the agent "
+            "document an IL author writes against (--format md)"
+        ),
+        arguments=(
+            Argument(
+                spelling=("target",),
+                metavar="TARGET",
+            ),
+            Argument(
+                spelling=("--format",),
+                metavar="FORMAT",
+                default="text",
+            ),
+            Argument(
+                spelling=("--group",),
+                metavar="GROUP",
+            ),
+            Argument(
+                spelling=("--construct",),
+                metavar="CONSTRUCT",
+            ),
+        ),
+    ),
+    Command(
+        words=("out", "list"),
+        actions=("out.list",),
+        help=(
+            "List the compiled artefacts sealed in a corpus, with each generation's gate "
+            "status, delivery and read_back_doc_ord"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--slug",),
+                metavar="SLUG",
+            ),
+        ),
+    ),
+    Command(
+        words=("out", "normalize"),
+        actions=("out.normalize",),
+        help=(
+            "Apply each normalize row's normalizer to the IL values it selects, through the "
+            "transactional splice, all units or none"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--stage",),
+                metavar="STAGE",
+            ),
+            Argument(
+                spelling=("--unit",),
+                metavar="UNIT",
+            ),
+            Argument(
+                spelling=("--construct",),
+                metavar="CONSTRUCT",
+            ),
+            Argument(
+                spelling=("--job",),
+                metavar="JOB",
+            ),
+        ),
+    ),
+    Command(
+        words=("out", "scaffold"),
+        actions=("out.scaffold",),
+        help=(
+            "Create the JobDir one artefact is authored in: job.json with the roster the Brief "
+            "commissions, the frozen brief.md, il/il.toml and empty assets"
+        ),
+        arguments=(
+            Argument(
+                spelling=("target",),
+                metavar="TARGET",
+            ),
+            Argument(
+                spelling=("--brief",),
+                metavar="BRIEF",
+            ),
+            Argument(
+                spelling=("--slug",),
+                metavar="SLUG",
+            ),
+        ),
+    ),
+    Command(
+        words=("out", "stamp"),
+        actions=("out.stamp",),
+        help=(
+            "Mint a data-ow-el address on every citable, text-bearing IL element that has "
+            "none, never renumbering one, all units or none"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--job",),
+                metavar="JOB",
+            ),
+        ),
+    ),
+    Command(
+        words=("out", "targets"),
+        actions=("out.targets",),
+        help=(
+            "List the artefact kinds this deployment can compile, whether each is implemented "
+            "and enabled, and the determinism class its card declares"
+        ),
+        arguments=(),
+    ),
+    Command(
+        words=("out", "verify"),
+        actions=("out.verify",),
+        help=(
+            "Recompile a sealed artefact from its retained IL in an S4 worker and compare it "
+            "at its declared determinism classes (R1), and count its units (R7)"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--job",),
+                metavar="JOB",
             ),
         ),
     ),

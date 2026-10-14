@@ -101,6 +101,8 @@ _DOC_ROOT: Final[str] = "doc"
 
 _GRAPH_ROOT: Final[str] = "graph"
 
+_OUT_ROOT: Final[str] = "out"
+
 DISPATCHED: Final[frozenset[str]] = frozenset(
     {
         HOOK_WORD,
@@ -116,12 +118,13 @@ DISPATCHED: Final[frozenset[str]] = frozenset(
         _EXPLAIN_ROOT,
         _DOC_ROOT,
         _GRAPH_ROOT,
+        _OUT_ROOT,
     }
 )
 """The roots this build can run. `ingest` joined in W7.3w; nothing spawns it yet (D433, D554).
 `surface` joined in W7.1e (D334), `doctor` in W7.8c (D610), `query` in W7.8g (D614), `add` in
 W7.8h (D615), `open` in W7.8i (D616), `corpora` in W7.8j (D617), `explain` in W7.8k
-(D618), `doc` in W7.8n (D621), and `graph` in D694."""
+(D618), `doc` in W7.8n (D621), `graph` in D694, and `out` in D761 (`ow out targets`)."""
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -140,7 +143,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     return _tree(args)
 
 
-def _route(root: str, args: list[str]) -> int:  # noqa: PLR0911 -- one per root
+def _route(root: str, args: list[str]) -> int:  # noqa: PLR0911, PLR0912 -- one per root
     """Run `root` over `args`, the whole command line after `ow`, or refuse it with exit 70.
 
     `args` starts at the root word unless `_tree` routed a command line that starts with a global
@@ -170,6 +173,8 @@ def _route(root: str, args: list[str]) -> int:  # noqa: PLR0911 -- one per root
         return _doc(args)
     if root == _GRAPH_ROOT:
         return _graph(args)
+    if root == _OUT_ROOT:
+        return _out(args)
 
     from omniweave_core.errors import InternalError  # noqa: PLC0415 -- only the refusal pays
 
@@ -314,6 +319,16 @@ def _graph(args: list[str]) -> int:
     #  A witness's text is document text, `doc`'s reason for the reconfigure.
     _utf8()
     #  The eleventh read of the working directory under D435's exemption: `./omniweave.toml`.
+    return run(args, env=os.environ, cwd=Path.cwd(), stdout=sys.stdout, stderr=sys.stderr)
+
+
+def _out(args: list[str]) -> int:
+    from omniweave.surface.out import main as run  # noqa: PLC0415 -- the hook path never pays
+
+    #  A card's reason and a driver's id are printed as written.
+    _utf8()
+    #  The twelfth read of the working directory under D435's exemption: `./omniweave.toml`,
+    #  for `[targets] enabled` and the project's `.omniweave/drivers/`.
     return run(args, env=os.environ, cwd=Path.cwd(), stdout=sys.stdout, stderr=sys.stderr)
 
 

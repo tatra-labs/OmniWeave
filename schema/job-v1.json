@@ -1,0 +1,305 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "schema/job-v1.json",
+  "title": "Job",
+  "type": "object",
+  "additionalProperties": false,
+  "description": "`job.json` (`omniweave.out-job/1`): the `Plan`, the trace context and the clock (09 Q11).",
+  "required": [
+    "schema",
+    "plan",
+    "traceparent",
+    "determinism"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "enum": [
+        "omniweave.out-job/1"
+      ]
+    },
+    "plan": {
+      "$ref": "#/$defs/Plan"
+    },
+    "traceparent": {
+      "type": "string"
+    },
+    "determinism": {
+      "$ref": "#/$defs/JobDeterminism"
+    }
+  },
+  "$defs": {
+    "Brief": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A parsed `brief/1`. The role that consumes it cannot write it, so it is frozen.",
+      "required": [
+        "sections",
+        "forbidden",
+        "template"
+      ],
+      "properties": {
+        "sections": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "forbidden": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Prohibition"
+          }
+        },
+        "template": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Template"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "JobDeterminism": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`job.json`'s `determinism`: the instant every OPC timestamp is written as (09 section 12.3).",
+      "required": [
+        "clock_ns"
+      ],
+      "properties": {
+        "clock_ns": {
+          "type": "integer"
+        }
+      }
+    },
+    "OutUnit": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One unit of a roster (09 section 3.7). It carries no outcome: that is the receipt's.",
+      "required": [
+        "id",
+        "ord",
+        "il_path",
+        "anchor",
+        "nsig",
+        "source_part",
+        "source_nsig",
+        "source_ord",
+        "manual_reason"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "ord": {
+          "type": "integer"
+        },
+        "il_path": {
+          "type": "string"
+        },
+        "anchor": {
+          "type": "string"
+        },
+        "nsig": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_part": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_nsig": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_ord": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "manual_reason": {
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": [
+                "unverifiable_wording",
+                "unverifiable_identity",
+                "unverifiable_data",
+                "insufficient_source",
+                "unrepresentable",
+                "licence_barred",
+                "measurement_failed"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "Plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The commissioned roster, the gate's status and the six purity inputs (09 section 3.7).",
+      "required": [
+        "schema",
+        "target",
+        "slug",
+        "artifact_gen",
+        "delivery",
+        "units",
+        "unit_count",
+        "brief",
+        "corpus",
+        "cites",
+        "gate_status",
+        "il_digest",
+        "constructs_digest",
+        "ledger_digest",
+        "brief_digest",
+        "card_sha256",
+        "toolchain_digest"
+      ],
+      "properties": {
+        "schema": {
+          "type": "string",
+          "enum": [
+            "omniweave.out-plan/1"
+          ]
+        },
+        "target": {
+          "type": "string"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "artifact_gen": {
+          "type": "integer"
+        },
+        "delivery": {
+          "type": "string",
+          "enum": [
+            "release",
+            "draft"
+          ]
+        },
+        "units": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OutUnit"
+          }
+        },
+        "unit_count": {
+          "type": "integer"
+        },
+        "brief": {
+          "$ref": "#/$defs/Brief"
+        },
+        "corpus": {
+          "type": "string"
+        },
+        "cites": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "gate_status": {
+          "type": "string",
+          "enum": [
+            "not-provided",
+            "unreadable",
+            "unsupported-schema",
+            "non-final",
+            "unverified",
+            "failed",
+            "stale",
+            "restricted",
+            "manual-required",
+            "passed"
+          ]
+        },
+        "il_digest": {
+          "type": "string"
+        },
+        "constructs_digest": {
+          "type": "string"
+        },
+        "ledger_digest": {
+          "type": "string"
+        },
+        "brief_digest": {
+          "type": "string"
+        },
+        "card_sha256": {
+          "type": "string"
+        },
+        "toolchain_digest": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "Prohibition": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "One `## forbidden` row (09 section 13.2's three tiers, less the template's).",
+      "required": [
+        "text",
+        "tier"
+      ],
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "tier": {
+          "type": "string",
+          "enum": [
+            "baseline",
+            "user"
+          ]
+        }
+      }
+    },
+    "Template": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "`## template`: the frozen template and the units derived from it (09 section 4.1).",
+      "required": [
+        "ref",
+        "units"
+      ],
+      "properties": {
+        "ref": {
+          "type": "string"
+        },
+        "units": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

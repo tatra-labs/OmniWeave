@@ -29,6 +29,7 @@ from omniweave_core.host.activate import (
     check_card_code,
     code_fingerprint,
     entrypoint_parts,
+    normalizers,
 )
 
 if TYPE_CHECKING:
@@ -109,7 +110,7 @@ def test_activate_returns_the_class_the_entrypoint_names(tmp_path: Path) -> None
     loaded = activate(_card(tmp_path, "ok"))
     assert isinstance(loaded, type)
     assert loaded.__name__ == "Driver"
-    assert loaded.PORT == "parse/1"
+    assert vars(loaded)["PORT"] == "parse/1"
 
 
 def test_activate_is_the_only_place_a_driver_module_runs(tmp_path: Path) -> None:
@@ -257,3 +258,61 @@ def test_code_fingerprint_is_order_independent(tmp_path: Path) -> None:
 def test_code_fingerprint_of_nothing_is_the_empty_digest() -> None:
     """An unlocatable distribution yields `()`, and `()` must produce a definite value."""
     assert code_fingerprint([]) == hashlib.sha256(b"").hexdigest()
+
+
+# ---------------------------------------------------------------------------------------------
+# normalizers(): the target's `normalizers.py`, beside its entrypoint (D768)
+# ---------------------------------------------------------------------------------------------
+
+NORMALIZERS = """from string import capwords
+
+def lower(value):
+    return value.lower()
+
+def _private(value):
+    return value
+
+LIMIT = 3
+"""
+
+
+def test_normalizers_are_the_modules_own_public_functions(tmp_path: Path) -> None:
+    """Inside a package entrypoint; never an import, a private name or a constant."""
+    card = _card(tmp_path, "norm")
+    (tmp_path / "owtestdrv_norm" / "normalizers.py").write_text(NORMALIZERS, encoding="utf-8")
+    found = normalizers(card)
+    assert sorted(found) == ["lower"]
+    assert found["lower"]("ABC") == "abc"
+
+
+def test_a_target_with_no_normalizers_module_has_none(tmp_path: Path) -> None:
+    assert dict(normalizers(_card(tmp_path, "bare"))) == {}
+
+
+def test_a_module_entrypoint_finds_the_sibling_in_its_package() -> None:
+    """owtext's entrypoint is `...owtext.driver`, so its normalizers are `...owtext.normalizers`."""
+    from omniweave_conform.suites.target.owtext.normalizers import lower_ascii  # noqa: PLC0415
+    from omniweave_core.discovery import discover  # noqa: PLC0415
+
+    suites = Path(__file__).resolve().parents[3] / "omniweave-conform" / "src"
+    target = suites / "omniweave_conform" / "suites" / "target"
+    [card] = [
+        c for c in discover(env={"OMNIWEAVE_DRIVER_PATH": str(target)}).cards
+        if c.identity.id == "compile.text.owtext"
+    ]  # fmt: skip
+    assert dict(normalizers(card)) == {"lower_ascii": lower_ascii}
+
+
+@pytest.mark.parametrize(
+    "body", ["raise RuntimeError('boom')\n", "import owtestdrv_missing_dependency\n"]
+)
+def test_a_normalizers_module_that_does_not_import_is_the_driver_failing(
+    body: str, tmp_path: Path
+) -> None:
+    card = _card(tmp_path, f"broken{len(body)}")
+    (tmp_path / f"owtestdrv_broken{len(body)}" / "normalizers.py").write_text(
+        body, encoding="utf-8"
+    )
+    with pytest.raises(DriverHostError, match="normalizers") as caught:
+        normalizers(card)
+    assert caught.value.code() == ACTIVATION_FAILED

@@ -63,6 +63,39 @@ that module imports `omniweave_core.out`, so `out` importing it back would be a 
    4). Each unit's `nsig` and `manual_reason` are copied from the parse the gate was decided on,
    so the classifier and the seal never read a Plan's stale or absent copy. A unit the carrier
    refused has no `nsig`, and `classify_and_assert()` raises `OW-T-005` for it.
+10. **D770: `CompileHost.of()` reads a real run's host off the card.** The media type and
+    suffix are `[compile]`'s, the stamp is the OR of the card's licence tables'
+    restriction bits, the producer is the store's row, and the policy's `barred_mask`
+    is 0 until a policy carries one.
+11. **D772: `lower()` and `postflight()` are a `Lowering`, and where it runs is the caller's.**
+    `in_process()` runs the target here, staged in `io.tmpdir`: the conformance kit's seam and
+    the tests'. `CompileWorker` runs it in an S4 worker, launched for one compile and stopped
+    after it, because every compile card asks for `subproc` (04 section 6.1). The worker reads the
+    JobDir against the Plan's digests (D771), so a `Lowering` takes the Plan this call order
+    refreshed and the JobDir it gated.
+12. **A worker's answer is read back as the in-process one is.** Its one `RESULT` names one
+    `artifact` and one `receipt` ref, both read from the run's CAS, and the receipt is built
+    again (`Receipt.from_json`). A failure whose message is a refusal raises that refusal under
+    its own symbol. Any other failure (a crash, a timeout, a resource limit, a driver bug) is
+    `OW_TARGET_COMPILE_FAILED`, naming its class. Nothing is sealed either way.
+13. **The worker's output ceiling is `MAX_CONTAINER_TOTAL_BYTES`.** No limit names an artefact's
+    size, and an artefact is the container a parse reads back: a compile that wrote more than a
+    parse accepts would be one `ow out verify` could not open.
+14. **D773: the Plan's `gate_status` is the gate this call order decided.** A scaffolded Plan
+    says `not-provided` (`out.job` ruling 26), and the target writes its receipt's gate from the
+    Plan, so the Plan `lower()` sees carries the status the report gave, beside the units
+    ruling 9 refreshes.
+15. **D773: a run's CAS is the corpus store's sibling `cas/`**, the directory `ingest` writes,
+    created on first use: a store that was only migrated has none, and the worker writes the
+    artefact into it before the seal.
+16. **D773: a CLI compile's Plan is `job.json`'s, with what the compile computes put in.**
+    A scaffolded Plan carries the scaffold's `il_digest` and an empty ledger's digest (`out.job`
+    ruling 26), so `plan_of()` puts in the bundle's, the table's and the ledger's, and the
+    delivery `--accept-manual` asks for. Ruling 2 still holds a Plan a caller computed itself.
+17. **D775: the Brief is retained beside the IL, before the seal.** `out.retain.freeze_brief()`
+    puts the Plan's Brief into CAS as `brief_digest`'s preimage, so the row's `brief_digest`
+    names the Brief this compile read. A lookup hit retains nothing: the compile it reuses
+    already did.
 """
 
 from __future__ import annotations
@@ -70,21 +103,26 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import sys
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
+from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Protocol
 
+from omniweave_core.canonical import sha256_canonical
 from omniweave_core.errors import TargetError, UsageError
+from omniweave_core.host import subproc
+from omniweave_core.limits import MAX_CONTAINER_TOTAL_BYTES
 from omniweave_core.out.cites import verbatim
-from omniweave_core.out.compile import CompileV1
+from omniweave_core.out.compile import CompileV1, artefact, ref_bytes, refusal_of
 from omniweave_core.out.gate import GateStatus, exit_code, gate_status
-from omniweave_core.out.job import ILBundle
+from omniweave_core.out.job import ILBundle, Job, job_unit
 from omniweave_core.out.marker import assert_clean
 from omniweave_core.out.plan import Classified, OutUnit, Plan, classify_and_assert
 from omniweave_core.out.receipt import Receipt
 from omniweave_core.out.report import OutReport, parse_digest, report_path
-from omniweave_core.out.retain import freeze
+from omniweave_core.out.retain import freeze, freeze_brief
 from omniweave_core.store.artifact import (
     CITE_KINDS,
     ArtifactDraft,
@@ -96,16 +134,33 @@ from omniweave_core.store.artifact import (
     SqliteArtifactStore,
     UnitRow,
 )
-from omniweave_ports import ArtifactKind
+from omniweave_ports import ArtifactKind, Isolation
+
+from omniweave.run.pipeline import compile_host
 
 if TYPE_CHECKING:
     from omniweave_core.blobs import BlobStore
+    from omniweave_core.canonical import JsonValue
+    from omniweave_core.drivers.card import DriverCard
+    from omniweave_core.out.card import CompileCard
     from omniweave_core.out.cites import CitedBlock, CiteResolver
     from omniweave_core.out.constructs import ConstructTable
+    from omniweave_core.out.ledger import AssetLedger, BlobReader
     from omniweave_core.store.ledger import SqliteAssetLedger
-    from omniweave_ports import DriverIO, DriverResult
+    from omniweave_ports import DriverIO
 
-__all__ = ["CompileHost", "Compiled", "compile_artifact"]
+__all__ = [
+    "CompileHost",
+    "CompileWorker",
+    "Compiled",
+    "Lowered",
+    "Lowering",
+    "compile_artifact",
+    "in_process",
+    "lowered",
+    "plan_of",
+    "store_cas",
+]
 
 _SLOT: Final = "asset-slot:"
 _FIX_CHECK: Final = "ow out check --stage final"
@@ -124,6 +179,38 @@ class CompileHost:
     """The card's stamp (INV-16); the seal ORs in every source's."""
     barred_mask: int
     """The effective policy's `restriction_bits` mask (14-security.md); 0 bars nothing."""
+
+    @classmethod
+    def of(
+        cls,
+        card: DriverCard,
+        compiled: CompileCard,
+        *,
+        producer_id: int,
+        barred_mask: int = 0,
+    ) -> CompileHost:
+        """Ruling 10 (D770): every field a real run reads off the card, or is handed.
+
+        The media type and suffix are the card's `[compile]` keys. The restriction bits are
+        the card's stamp (INV-16): the OR over its code and weights licence tables, as
+        `drivers.licence.restriction_bits()` reads one. `producer_id` is the store's row
+        (`store.artifact.ensure_producer`). `barred_mask` is the policy's, and no shipped
+        policy carries one yet (09 section 7.3 leaves it to 14, which prints none), so it
+        defaults to 0, which bars nothing.
+        """
+        from omniweave_core.drivers.licence import restriction_bits  # noqa: PLC0415
+
+        bits = restriction_bits(card.licence_code)
+        if card.licence_weights is not None:
+            bits |= restriction_bits(card.licence_weights)
+        return cls(
+            compile_driver=compiled.driver,
+            media_type=compiled.media_type,
+            suffix=compiled.suffix,
+            producer_id=producer_id,
+            restriction_bits=bits,
+            barred_mask=barred_mask,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,12 +236,12 @@ def compile_artifact(
     cites: CiteResolver,
     artifacts: SqliteArtifactStore,
     blobs: BlobStore,
-    io: DriverIO,
+    lowering: Lowering,
     output_root: Path,
     baked: Mapping[str, str] | None = None,
     visual_changed: Callable[[OutUnit], bool] | None = None,
 ) -> Compiled:
-    """09 section 2's call order from the gate to the seal (rulings 1-8)."""
+    """09 section 2's call order from the gate to the seal (rulings 1-8, 11)."""
     bundle = ILBundle.load(job_dir / "il", carrier=compiler.carrier, constructs=constructs)
     report = OutReport.load(report_path(job_dir, "final"))
     status, _ = gate_status(report, parse_digest(bundle.il_digest))
@@ -180,6 +267,7 @@ def compile_artifact(
             replace(mine, nsig=theirs.nsig, manual_reason=theirs.manual_reason)
             for mine, theirs in zip(plan.units, bundle.units, strict=True)
         ),
+        gate_status=status,
     )
     ledger.assert_frozen(_slots(bundle))
     cited = _cited(bundle, compiler)
@@ -210,11 +298,8 @@ def compile_artifact(
     if earlier is not None:
         return Compiled(status, 0, Sealed(earlier, hit=True), _place(earlier, blobs, output_root))
 
-    result = compiler.lower(plan, bundle, ledger, io)
-    body = _artefact(result, io)
-    staged = Path(io.tmpdir) / f"{plan.slug}{host.suffix}"
-    staged.write_bytes(body)
-    receipt = compiler.postflight(str(staged), plan)
+    done = lowering(job_dir, plan, bundle, ledger)
+    body, receipt = done.body, done.receipt
     classified = classify_and_assert(
         plan,
         baked=baked or {},
@@ -223,9 +308,9 @@ def compile_artifact(
     _receipt_agrees(receipt, plan, body, classified, status)
 
     retained = freeze(bundle, blobs)
-    with staged.open("rb") as handle:
-        sha = blobs.put(handle).hex()
-    receipt_bytes = (json.dumps(receipt.as_json(), sort_keys=True, indent=1) + "\n").encode()
+    freeze_brief(plan.brief, blobs)
+    sha = blobs.put(BytesIO(body)).hex()
+    receipt_bytes = receipt.to_bytes()
     receipt_path = job_dir / "out" / "receipt.json"
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
     receipt_path.write_bytes(receipt_bytes)
@@ -265,6 +350,207 @@ def compile_artifact(
     )
     sealed = artifacts.seal(draft)
     return Compiled(status, 0, sealed, _place(sealed.row, blobs, output_root), receipt)
+
+
+@dataclass(frozen=True, slots=True)
+class Lowered:
+    """What a `Lowering` returns: the artefact's bytes and the receipt `postflight()` wrote."""
+
+    body: bytes
+    receipt: Receipt
+
+
+class Lowering(Protocol):
+    """Ruling 11: `lower()` then `postflight()` over the gated bundle, wherever the target runs."""
+
+    def __call__(
+        self, job_dir: Path, plan: Plan, bundle: ILBundle, ledger: AssetLedger
+    ) -> Lowered: ...
+
+
+def in_process(compiler: CompileV1, io: DriverIO, suffix: str) -> Lowering:
+    """Ruling 11: the target in this process, its artefact staged in `io.tmpdir`."""
+
+    def lowering(job_dir: Path, plan: Plan, bundle: ILBundle, ledger: AssetLedger) -> Lowered:
+        del job_dir
+        result = compiler.lower(plan, bundle, ledger, io)
+        _, body = artefact(result, io.blobs)
+        staged = Path(io.tmpdir) / f"{plan.slug}{suffix}"
+        staged.write_bytes(body)
+        return Lowered(body, compiler.postflight(str(staged), plan))
+
+    return lowering
+
+
+_HELLO_DEADLINES: Final = subproc.Deadlines(progress_ms=0, wall_ms_hard=60_000, deadline_ms=0)
+"""The `HELLO` exchange's bound, the parse Operator's: a minute to start and activate."""
+
+
+@dataclass(frozen=True, slots=True)
+class CompileWorker:
+    """Ruling 11: the target in an S4 worker, launched for one compile and stopped after it.
+
+    The caller names what only the caller knows: the interpreter, the environment the worker
+    inherits (`operators.parse.worker_env()`), the transport's address and the scratch root.
+    `blobs` is the run's CAS, which the worker writes the artefact and the receipt into.
+    """
+
+    card: DriverCard
+    effective_config: Mapping[str, JsonValue]
+    blobs: BlobStore
+    tmp: Path
+    settings: subproc.HostSettings
+    executable: str
+    env: Mapping[str, str]
+    address: str
+    now_ms: Callable[[], int]
+    deadline_ms: int = 0
+    spawn: Callable[..., subproc.WorkerProcess] = field(default=subproc.spawn_worker)
+
+    def __call__(self, job_dir: Path, plan: Plan, bundle: ILBundle, ledger: AssetLedger) -> Lowered:
+        del bundle, ledger  # the worker loads both from the JobDir, held to the Plan's digests
+        job = replace(Job.load(job_dir), plan=plan)
+        unit = job_unit(job)
+        spec = self.card.isolation
+        worker = self._launch(job_dir)
+        try:
+            report = compile_host(
+                worker,
+                subproc.Invocation(
+                    invoke_id=f"compile-{unit.content_sha256[:16]}",
+                    units=(unit,),
+                    deadline_ms=self.deadline_ms,
+                    budget_micros=0,
+                    job=job.as_json(),
+                    job_dir=str(job_dir),
+                ),
+                deadlines=subproc.Deadlines(
+                    progress_ms=spec.progress_ms,
+                    wall_ms_hard=spec.wall_ms_hard,
+                    deadline_ms=self.deadline_ms,
+                ),
+                memory_mb=spec.memory_mb,
+            )
+        finally:
+            worker.stop()
+        return lowered(report, self.blobs)
+
+    def _launch(self, job_dir: Path) -> subproc.Worker:
+        card = self.card
+        self.tmp.mkdir(parents=True, exist_ok=True)
+        isolation, _shortfalls = subproc.grant_isolation(
+            mode=Isolation.SUBPROC,
+            batch_max_units=card.isolation.batch_max_units,
+            platform=sys.platform,
+            address_space_capped=sys.platform == "win32" and card.isolation.memory_mb > 0,
+            net_blocked_requested=not card.hardware.needs_network,
+            cpu_cap_requested=False,
+            fd_cap_requested=False,
+        )
+        port = f"{card.identity.port.value}/{card.identity.port_major}"
+        hello = {
+            "port": port,
+            "card_schema": card.card_schema,
+            "card_sha256": card.card_sha256,
+            "driver_id": card.identity.id,
+            "effective_config": dict(self.effective_config),
+            "roots": {"source_ro": str(job_dir), "tmp": str(self.tmp)},
+            "blob_base": str(self.blobs.root),
+            "isolation_granted": dict(isolation.as_header()),
+            "traceparent": "",
+            "max_output_bytes": MAX_CONTAINER_TOTAL_BYTES,
+            "egress_mode": "granted",
+            "card_source": card.source,
+            "card_origin": card.origin,
+        }
+        worker, _ack = subproc.launch(
+            subproc.WorkerKey(card.identity.id, sha256_canonical(dict(self.effective_config))),
+            subproc.SpawnRequest(
+                argv=subproc.worker_argv(self.executable, self.address),
+                cwd=str(self.tmp),
+                env=dict(self.env),
+                address=self.address,
+            ),
+            hello=hello,
+            expect={
+                "driver_id": card.identity.id,
+                "version": card.identity.version,
+                "schema_version": card.identity.schema_version,
+                "port": port,
+            },
+            deadlines=_HELLO_DEADLINES,
+            settings=self.settings,
+            now_ms=self.now_ms,
+            memory_mb=card.isolation.memory_mb,
+            spawn=self.spawn,
+        )
+        return worker
+
+
+def plan_of(
+    scaffolded: Plan,
+    *,
+    bundle: ILBundle,
+    constructs: ConstructTable,
+    ledger: AssetLedger,
+    draft: bool,
+) -> Plan:
+    """Ruling 16: `job.json`'s Plan with what a compile computes put in, and the delivery asked."""
+    return replace(
+        scaffolded,
+        delivery="draft" if draft else "release",
+        il_digest=bundle.il_digest,
+        constructs_digest=constructs.digest(),
+        ledger_digest=ledger.digest(),
+    )
+
+
+def store_cas(store: Path) -> BlobStore:
+    """Ruling 15: the corpus store's CAS, `ingest.CAS_DIR` beside it, created on first use."""
+    from omniweave_core.blobs import BlobStore  # noqa: PLC0415 -- the runtime type, here only
+
+    from omniweave.run.ingest import CAS_DIR  # noqa: PLC0415 -- one name for the directory
+
+    root = store.parent / CAS_DIR
+    root.mkdir(parents=True, exist_ok=True)
+    return BlobStore(root)
+
+
+def lowered(report: subproc.InvokeReport, blobs: BlobReader) -> Lowered:
+    """Ruling 12: the worker's one `RESULT` as the artefact and its receipt, or its failure."""
+    result, failure = report.results[0], report.failures[0]
+    if failure is not None:
+        refused = refusal_of(failure.message)
+        if refused is not None:
+            raise refused
+        raise _failed(f"{failure.failure_class.value}: {failure.message}")
+    if result is None:
+        raise _failed("the worker never answered the job's unit")
+    _, body = artefact(result, blobs)
+    receipts = [r for r in result.produced if r.kind == ArtifactKind.RECEIPT]
+    if len(receipts) != 1:
+        raise TargetError(
+            f"the worker returned {len(receipts)} receipt refs; a compile returns exactly one",
+            symbol="OW_TARGET_PACKAGE_CORRUPT",
+            fix="report the target: postflight() writes one receipt",
+        )
+    try:
+        document = json.loads(ref_bytes(receipts[0], blobs))
+    except ValueError as exc:
+        raise TargetError(
+            f"the worker's receipt is not JSON: {exc}",
+            symbol="OW_TARGET_PACKAGE_CORRUPT",
+            fix="report the target: postflight() writes one receipt",
+        ) from exc
+    return Lowered(body, Receipt.from_json(document))
+
+
+def _failed(detail: str) -> TargetError:
+    return TargetError(
+        f"the compile worker failed, and nothing was sealed: {detail}",
+        symbol="OW_TARGET_COMPILE_FAILED",
+        fix="ow explain OW-T-526",
+    )
 
 
 _ALLOWED: Final[Mapping[str, frozenset[GateStatus]]] = {
@@ -377,22 +663,6 @@ def _span(unit: str, el: str, text: str | None) -> tuple[int, int] | None:
             fix=f"ow out check --stage unit --unit {unit}",
         )
     return int(a), int(b)
-
-
-def _artefact(result: DriverResult, io: DriverIO) -> bytes:
-    """Ruling 6: exactly one `artifact` ref, read from inline bytes or the driver's CAS."""
-    refs = [r for r in result.produced if r.kind == ArtifactKind.ARTIFACT]
-    if len(refs) != 1:
-        raise TargetError(
-            f"lower() returned {len(refs)} artifact refs; a compile produces exactly one",
-            symbol="OW_TARGET_PACKAGE_CORRUPT",
-            fix="report the target: its lower() must return one artifact",
-        )
-    ref = refs[0]
-    if ref.inline is not None:
-        return ref.inline
-    with io.blobs.open((ref.blob or "").removeprefix("cas://")) as handle:
-        return handle.read()
 
 
 def _receipt_agrees(

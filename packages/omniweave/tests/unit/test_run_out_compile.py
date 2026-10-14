@@ -11,7 +11,10 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import sqlite3  # noqa: TID251 -- the assertions read the rows the seal wrote.
+import sys
+import time
 import tomllib
 from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
@@ -20,9 +23,19 @@ from pathlib import Path
 from typing import Any, BinaryIO, ClassVar
 
 import pytest
-from omniweave.run.out_compile import CompileHost, compile_artifact
+from omniweave.run.out_compile import (
+    CompileHost,
+    CompileWorker,
+    Lowered,
+    compile_artifact,
+    in_process,
+    lowered,
+)
 from omniweave_conform.harness import MemoryBlobStore, make_io
-from omniweave_core.blobs import BlobStore
+from omniweave_conform.suites.target.owtext.driver import HERE as OWTEXT
+from omniweave_conform.suites.target.owtext.driver import OwTextCompiler
+from omniweave_conform.suites.target.owtext.normalizers import lower_ascii
+from omniweave_core.blobs import BlobStore, format_ref
 from omniweave_core.errors import TargetError, UsageError
 from omniweave_core.model.doc import Doc
 from omniweave_core.model.enums import Quote, enum_val_rows
@@ -118,6 +131,44 @@ U02 = (
     '<section data-ow-el="u02/e1"><p data-ow-el="u02/e2" data-ow-cite="d7#2">Margins</p>'
     f"<p>{slot(LOGO_SHA)}</p></section>"
 )
+
+
+def _owtext_card(text: str | None = None) -> Any:
+    from omniweave_core.drivers.card import load_card  # noqa: PLC0415
+
+    raw = text if text is not None else (OWTEXT / "driver.toml").read_text(encoding="utf-8")
+    return load_card(raw.encode("utf-8"), origin="driver_path", source="driver.toml")
+
+
+def test_the_host_of_a_real_run_is_read_off_the_card() -> None:
+    """Ruling 10 (D770): `[compile]`'s media type and suffix, the card's stamp, 0 barred."""
+    from omniweave_core.out.card import CompileCard  # noqa: PLC0415
+
+    driver = _owtext_card()
+    host = CompileHost.of(driver, CompileCard.of(driver), producer_id=7)
+    assert host == CompileHost(
+        compile_driver="compile.text.owtext",
+        media_type="text/plain",
+        suffix=".txt",
+        producer_id=7,
+        restriction_bits=0,
+        barred_mask=0,
+    )
+
+
+def test_the_hosts_stamp_is_the_cards_licence_restrictions() -> None:
+    """A share-alike output licence is a restriction the seal must carry (INV-16)."""
+    from omniweave_core.drivers.licence import restriction_bits  # noqa: PLC0415
+    from omniweave_core.out.card import CompileCard  # noqa: PLC0415
+
+    text = (OWTEXT / "driver.toml").read_text(encoding="utf-8")
+    assert text.count("output_share_alike = false") == 1
+    driver = _owtext_card(text.replace("output_share_alike = false", "output_share_alike = true"))
+    host = CompileHost.of(driver, CompileCard.of(driver), producer_id=1, barred_mask=BARRED)
+    assert host.restriction_bits == restriction_bits(driver.licence_code) != 0
+    assert host.barred_mask == BARRED
+
+
 HOST = CompileHost(
     compile_driver="compile.text.owtext",
     media_type="text/plain",
@@ -315,18 +366,21 @@ class World:
         base.update(fields)
         return Plan(**base)
 
-    def compile(self, target: _Text, plan: Plan, **kw: Any) -> Any:
+    def compile(self, target: Any, plan: Plan, **kw: Any) -> Any:
+        host = kw.pop("host", HOST)
         return compile_artifact(
             self.job,
             target,
             plan,
-            host=kw.pop("host", HOST),
-            constructs=CONSTRUCTS,
+            host=host,
+            constructs=kw.pop("constructs", CONSTRUCTS),
             ledger=self.ledger,
             cites=self.cites,
             artifacts=self.artifacts,
             blobs=self.blobs,
-            io=make_io(self.kit, self.tmp / f"io{target.lowered}"),
+            lowering=kw.pop(
+                "lowering", in_process(target, make_io(self.kit, self.tmp / "io"), host.suffix)
+            ),
             output_root=self.out,
             **kw,
         )
@@ -413,6 +467,18 @@ def test_a_passed_gate_compiles_seals_and_places_the_artefact(world: World) -> N
         ("u01", "u01/e2", "d7#1", 101, 1, "quote", 0, 7, 1),
         ("u02", "u02/e2", "d7#2", 102, 1, "derived", None, None, 0),
     ]
+
+
+def test_the_sealed_rows_brief_digest_names_the_retained_brief(world: World) -> None:
+    """Ruling 17 (D775): the Brief the compile read is in CAS under the row's `brief_digest`."""
+    from omniweave_core.out.retain import fetch_brief  # noqa: PLC0415
+
+    target = _Text()
+    done = world.compile(target, world.plan(world.checked(target)))
+    assert done.sealed is not None
+    digest = done.sealed.row.brief_digest
+    assert digest == BRIEF.digest()
+    assert fetch_brief(digest, world.blobs).record() == BRIEF.record()
 
 
 def test_an_identical_compile_is_the_lookup_and_lowers_nothing(world: World) -> None:
@@ -688,3 +754,233 @@ def test_the_plans_units_are_rebuilt_from_the_bundle(world: World) -> None:
     assert [r.nsig for r in world.artifacts.units(done.sealed.row.artifact_id)] == [
         u.nsig for u in bundle.units
     ]
+
+
+# ---------------------------------------------------------------------------
+# D758: the reference target, end to end through the runner
+# ---------------------------------------------------------------------------
+
+
+def test_the_reference_target_compiles_and_seals(world: World) -> None:
+    """`compile.text.owtext` (09 section 12.5) from check to seal, with nothing faked."""
+    owtext = ConstructTable.load(OWTEXT / "constructs.toml", {"lower_ascii": lower_ascii})
+    target = OwTextCompiler()
+    gate = check(
+        world.job, target, target="owtext", constructs=owtext, stage="final", cites=world.cites
+    )
+    assert gate.status is GateStatus.PASSED, gate.report.findings
+    bundle = ILBundle.load(world.job / "il", carrier=target.carrier, constructs=owtext)
+    plan = world.plan(bundle, constructs_digest=owtext.digest())
+    done = world.compile(target, plan, constructs=owtext)
+    assert (done.status, done.exit) == (GateStatus.PASSED, 0)
+    assert done.path.read_bytes() == (
+        f"== u01 ==\nRevenue\n== u02 ==\nMargins\n{slot(LOGO_SHA)}\n".encode()
+    )
+    assert done.sealed.row.determinism == ("byte", "part")
+
+
+# ---------------------------------------------------------------------------
+# Rulings 11-13 (D772): the lowering in an S4 worker, and its answer read back
+# ---------------------------------------------------------------------------
+
+
+def _answer_receipt() -> Receipt:
+    body = b"== u01 ==\nRevenue\n"
+    return Receipt(
+        schema="omniweave.out-receipt/1",
+        target="owtext",
+        slug="q3",
+        artifact_gen=1,
+        output={"path": "q3.txt", "bytes": len(body), "sha256": hashlib.sha256(body).hexdigest()},
+        part_digest="a" * 64,
+        determinism=(ArtefactDeterminism.PART,),
+        gate_status=GateStatus.PASSED,
+        delivery="release",
+        checks=(),
+        units={"u01": UnitOutcome.NATIVE},
+        counts={UnitOutcome.NATIVE: 1},
+        portability={},
+        normalizations=(),
+        degradations=(),
+        skipped_checks=(),
+        truncations=(),
+    )
+
+
+def _cas(tmp_path: Path) -> BlobStore:
+    (tmp_path / "answer-cas").mkdir()
+    return BlobStore(tmp_path / "answer-cas")
+
+
+def _put(cas: BlobStore, kind: str, body: bytes) -> ArtifactRef:
+    """A ref as a worker's `put()` names it: sharded, `cas://bb/18/<hex>`."""
+    return ArtifactRef(kind=kind, byte_len=len(body), blob=format_ref(cas.put(io.BytesIO(body))))
+
+
+def _report(result: DriverResult | None, failure: Any = None) -> Any:
+    from omniweave_core.host import subproc  # noqa: PLC0415
+
+    return subproc.InvokeReport(
+        results=(result,), failures=(failure,), event=subproc.BatchEvent.CLEAN
+    )
+
+
+def test_a_workers_answer_is_its_artefact_and_its_receipt(tmp_path: Path) -> None:
+    cas = _cas(tmp_path)
+    receipt = _answer_receipt()
+    result = DriverResult(
+        "ok",
+        (_put(cas, "artifact", b"== u01 ==\nRevenue\n"), _put(cas, "receipt", receipt.to_bytes())),
+    )
+    done = lowered(_report(result), cas)
+    assert done == Lowered(b"== u01 ==\nRevenue\n", receipt)
+
+
+def test_an_inline_receipt_reads_back_too(tmp_path: Path) -> None:
+    cas = _cas(tmp_path)
+    receipt = _answer_receipt()
+    data = receipt.to_bytes()
+    inline = ArtifactRef(kind="receipt", byte_len=len(data), inline=data)
+    done = lowered(_report(DriverResult("ok", (_put(cas, "artifact", b"x"), inline))), cas)
+    assert done.receipt == receipt
+
+
+def test_a_refusal_from_the_worker_is_raised_under_its_own_symbol(tmp_path: Path) -> None:
+    from omniweave_core.host.subproc import HostVerdict  # noqa: PLC0415
+    from omniweave_core.out.compile import refusal_message  # noqa: PLC0415
+    from omniweave_ports import FailureClass  # noqa: PLC0415
+
+    sent = TargetError("u01: text-shadow", symbol="OW_TARGET_BAKE_UNAVAILABLE", fix="ow out x")
+    verdict = HostVerdict(
+        failure_class=FailureClass.CORRUPT_INPUT, message=refusal_message(sent), permanent=True
+    )
+    with pytest.raises(TargetError) as caught:
+        lowered(_report(None, verdict), _cas(tmp_path))
+    assert (caught.value.code(), caught.value.fix, str(caught.value)) == (
+        "OW_TARGET_BAKE_UNAVAILABLE",
+        "ow out x",
+        "u01: text-shadow",
+    )
+
+
+def test_a_crash_is_compile_failed_and_names_its_class(tmp_path: Path) -> None:
+    from omniweave_core.host.subproc import HostVerdict  # noqa: PLC0415
+
+    crashed = HostVerdict.crashed(exit_status=3, stderr_tail=b"")
+    with pytest.raises(TargetError, match="driver_crashed: worker died") as caught:
+        lowered(_report(None, crashed), _cas(tmp_path))
+    assert caught.value.code() == "OW_TARGET_COMPILE_FAILED"
+    assert "nothing was sealed" in str(caught.value)
+
+
+def test_a_unit_the_worker_never_answered_is_compile_failed(tmp_path: Path) -> None:
+    with pytest.raises(TargetError, match="never answered") as caught:
+        lowered(_report(None), _cas(tmp_path))
+    assert caught.value.code() == "OW_TARGET_COMPILE_FAILED"
+
+
+@pytest.mark.parametrize("count", [0, 2])
+def test_anything_but_one_receipt_is_corrupt(tmp_path: Path, count: int) -> None:
+    cas = _cas(tmp_path)
+    receipts = tuple(_put(cas, "receipt", _answer_receipt().to_bytes()) for _ in range(count))
+    result = DriverResult("ok", (_put(cas, "artifact", b"x"), *receipts))
+    with pytest.raises(TargetError, match=f"returned {count} receipt refs") as caught:
+        lowered(_report(result), cas)
+    assert caught.value.code() == "OW_TARGET_PACKAGE_CORRUPT"
+
+
+def test_a_receipt_that_is_not_json_is_corrupt(tmp_path: Path) -> None:
+    cas = _cas(tmp_path)
+    result = DriverResult("ok", (_put(cas, "artifact", b"x"), _put(cas, "receipt", b"{not json")))
+    with pytest.raises(TargetError, match="not JSON") as caught:
+        lowered(_report(result), cas)
+    assert caught.value.code() == "OW_TARGET_PACKAGE_CORRUPT"
+
+
+def _real_owtext() -> Any:
+    from omniweave_core.drivers.card import load_card, read_card_bytes  # noqa: PLC0415
+
+    path = OWTEXT / "driver.toml"
+    return load_card(read_card_bytes(path), origin="driver_path", source=str(path))
+
+
+def _worker(world: World, card: Any) -> CompileWorker:
+    from omniweave_core.host import subproc  # noqa: PLC0415
+
+    return CompileWorker(
+        card=card,
+        effective_config=card.config.effective(),
+        blobs=world.blobs,
+        tmp=world.tmp / "s4",
+        settings=subproc.HostSettings(
+            worker_idle_ttl_s=300,
+            crash_threshold=3,
+            crash_window_s=60,
+            tick_ms=50,
+            max_workers={"free": 4},
+        ),
+        executable=sys.executable,
+        env={key: os.environ[key] for key in ("SYSTEMROOT", "PATH") if key in os.environ},
+        address=f"\\\\.\\pipe\\ow-test-compile-{time.monotonic_ns()}",
+        now_ms=lambda: time.monotonic_ns() // 1_000_000,
+    )
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the named-pipe arm")
+def test_the_reference_target_compiles_in_an_s4_worker(world: World) -> None:
+    """Rulings 11-13 across a process boundary: the host gates, the worker lowers and
+    post-flights the job document, and the host seals and places what came back."""
+    from omniweave_core.events import traceparent  # noqa: PLC0415
+    from omniweave_core.out.job import JOB_SCHEMA, Job, JobDeterminism  # noqa: PLC0415
+
+    owtext = ConstructTable.load(OWTEXT / "constructs.toml", {"lower_ascii": lower_ascii})
+    target = OwTextCompiler()
+    gate = check(
+        world.job, target, target="owtext", constructs=owtext, stage="final", cites=world.cites
+    )
+    assert gate.status is GateStatus.PASSED, gate.report.findings
+    bundle = ILBundle.load(world.job / "il", carrier=target.carrier, constructs=owtext)
+    plan = world.plan(bundle, constructs_digest=owtext.digest())
+    Job(
+        schema=JOB_SCHEMA,
+        plan=replace(plan, gate_status=GateStatus.NOT_PROVIDED),
+        traceparent=traceparent("4bf92f3577b34da6a3ce929d0e0e4736", "00f067aa0ba902b7"),
+        determinism=JobDeterminism(NOW_NS),
+    ).write(world.job)
+    done = world.compile(target, plan, constructs=owtext, lowering=_worker(world, _real_owtext()))
+    assert (done.status, done.exit) == (GateStatus.PASSED, 0)
+    expected = f"== u01 ==\nRevenue\n== u02 ==\nMargins\n{slot(LOGO_SHA)}\n".encode()
+    assert done.path.read_bytes() == expected
+    assert done.sealed.row.sha256 == "sha256:" + hashlib.sha256(expected).hexdigest()
+    assert done.receipt.output["sha256"] == hashlib.sha256(expected).hexdigest()
+    assert not any((world.tmp / "s4").iterdir()), "the worker's scratch is gone"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the named-pipe arm")
+def test_a_refusal_in_the_worker_reaches_the_compile_and_seals_nothing(world: World) -> None:
+    """A JobDir edited after the host loaded it: the worker's refusal is the compile's error."""
+    from omniweave_core.events import traceparent  # noqa: PLC0415
+    from omniweave_core.out.job import JOB_SCHEMA, Job, JobDeterminism  # noqa: PLC0415
+
+    owtext = ConstructTable.load(OWTEXT / "constructs.toml", {"lower_ascii": lower_ascii})
+    target = OwTextCompiler()
+    check(world.job, target, target="owtext", constructs=owtext, stage="final", cites=world.cites)
+    bundle = ILBundle.load(world.job / "il", carrier=target.carrier, constructs=owtext)
+    plan = world.plan(bundle, constructs_digest=owtext.digest())
+    Job(
+        schema=JOB_SCHEMA,
+        plan=replace(plan, gate_status=GateStatus.NOT_PROVIDED),
+        traceparent=traceparent("4bf92f3577b34da6a3ce929d0e0e4736", "00f067aa0ba902b7"),
+        determinism=JobDeterminism(NOW_NS),
+    ).write(world.job)
+    inner = _worker(world, _real_owtext())
+
+    def edited_then_lowered(job_dir: Path, *args: Any) -> Lowered:
+        (job_dir / "il" / "u01.html").write_text(U01.replace("Revenue", "Profit"))
+        return inner(job_dir, *args)
+
+    with pytest.raises(TargetError) as caught:
+        world.compile(target, plan, constructs=owtext, lowering=edited_then_lowered)
+    assert caught.value.code() == "OW_TARGET_JOB_CHANGED"
+    assert world.rows("SELECT count(*) FROM artifact") == [(0,)]
+    assert not world.out.exists()

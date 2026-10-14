@@ -32,19 +32,46 @@ that could run its own gate could not skip it.
    reason is a `manual_units` row (unit, `el`, reason), which is what makes the gate
    `manual-required`. A value outside `ManualReason` is the framework's error finding, so the
    gate fails rather than asking a human to act on a word nobody defined.
+
+## Rulings (the ledger's D771)
+
+10. **`lower_job()` is the half of the call order a compile worker runs**: `ILBundle.load()` with
+    the target's own carrier, `lower()` over `FrozenLedger`, the one artefact staged in
+    `io.tmpdir`, then `postflight()`. The card's `[isolation] requires = "subproc"` puts these in
+    the S4 worker, and the gate, the lookup, the restriction aggregate and the seal stay with the
+    host, which holds the store (INV-6). The `DriverResult` is `lower()`'s own: its one artefact
+    ref, which the meter has already counted, then the receipt's bytes as a `receipt` ref.
+11. **The worker lowers only the JobDir the host gated.** It recomputes `il_digest`,
+    `constructs_digest` and `ledger_digest` and refuses any that differs from the Plan's, as
+    `OW_TARGET_JOB_CHANGED`, because the host seals the Plan's digests and a file edited between
+    the gate and the worker would otherwise be sealed under them.
+12. **A refusal crosses with its symbol.** 02-architecture.md:1060 lets five `DriverError` fields
+    cross a `RESULT`, and none is a symbol. `refusal_message()` puts the symbol and the fix
+    first, one line each, so the worker's bound on a message cuts only the text, and
+    `refusal_of()` reads them back on the host as a `TargetError`. A message in another shape is
+    no refusal, and reads back as `None`.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import ClassVar, Never, Protocol
+from typing import ClassVar, Final, Never, Protocol
 
-from omniweave_ports import DriverIO, DriverResult, ProbeEnv, ProbeVerdict, Scalar
+from omniweave_ports import (
+    ArtifactKind,
+    ArtifactRef,
+    DriverIO,
+    DriverResult,
+    ProbeEnv,
+    ProbeVerdict,
+    Scalar,
+)
 
 from omniweave_core.clock import Clock
-from omniweave_core.errors import TargetError
+from omniweave_core.errors import OwError, TargetError
 from omniweave_core.model.doc import Doc
 from omniweave_core.out.brief import Brief
 from omniweave_core.out.carrier import CarrierDoc, CarrierNode
@@ -52,16 +79,26 @@ from omniweave_core.out.cites import NO_CITES, CiteResolver
 from omniweave_core.out.constructs import ConstructTable
 from omniweave_core.out.finding import FindingSet
 from omniweave_core.out.gate import GateStatus, exit_code
-from omniweave_core.out.job import ILBundle
-from omniweave_core.out.ledger import AssetLedger
+from omniweave_core.out.job import ILBundle, Job
+from omniweave_core.out.ledger import AssetLedger, BlobReader, FrozenLedger
 from omniweave_core.out.plan import OutUnit, Plan
 from omniweave_core.out.receipt import Receipt
 from omniweave_core.out.report import OutReport, SkippedCheck
 from omniweave_core.out.rules import Box, DocIndex, RuleCtx, RuleSpec, TextMeasure, run_pack
 
-__all__ = ["CheckResult", "CompileV1", "check"]
+__all__ = [
+    "CheckResult",
+    "CompileV1",
+    "artefact",
+    "check",
+    "lower_job",
+    "ref_bytes",
+    "refusal_message",
+    "refusal_of",
+]
 
 _MARKER_FIX = "ow out check --markers   # names the marker; re-place it or remove its line"
+_SYMBOL: Final = re.compile(r"OW_[A-Z0-9_]+")
 
 
 class CompileV1(Protocol):
@@ -222,3 +259,83 @@ def _same_roster(bundle: Iterable[str], plan: Iterable[str]) -> None:
 
 def _mismatch(msg: str) -> Never:
     raise TargetError(msg, symbol="OW_TARGET_ROSTER_MISMATCH", fix="ow explain OW-T-507")
+
+
+# ---------------------------------------------------------------------------------------------
+# The worker's half: lower() and postflight() over a gated JobDir (D771)
+# ---------------------------------------------------------------------------------------------
+
+
+def lower_job(
+    compiler: CompileV1,
+    job: Job,
+    job_dir: Path,
+    *,
+    constructs: ConstructTable,
+    suffix: str,
+    io: DriverIO,
+) -> DriverResult:
+    """Rulings 10 and 11: the bundle the host gated, lowered, staged and post-flighted."""
+    plan = job.plan
+    bundle = ILBundle.load(job_dir / "il", carrier=compiler.carrier, constructs=constructs)
+    ledger = FrozenLedger.of(job_dir, io.blobs)
+    computed = {
+        "il_digest": bundle.il_digest,
+        "constructs_digest": constructs.digest(),
+        "ledger_digest": ledger.digest(),
+    }
+    changed = [
+        f"{name} is {value}, and the plan says {getattr(plan, name)}"
+        for name, value in computed.items()
+        if getattr(plan, name) != value
+    ]
+    if changed:
+        raise TargetError(
+            "the JobDir is not the one the host gated: " + "; ".join(changed),
+            symbol="OW_TARGET_JOB_CHANGED",
+            fix="ow out check --stage final",
+        )
+    result = compiler.lower(plan, bundle, ledger, io)
+    ref, body = artefact(result, io.blobs)
+    staged = Path(io.tmpdir) / f"{plan.slug}{suffix}"
+    staged.write_bytes(body)
+    receipt = compiler.postflight(str(staged), plan)
+    return replace(
+        result, produced=(ref, ArtifactRef.of(ArtifactKind.RECEIPT, receipt.to_bytes(), io))
+    )
+
+
+def artefact(result: DriverResult, blobs: BlobReader) -> tuple[ArtifactRef, bytes]:
+    """`lower()`'s one `artifact` ref and its bytes, read inline or from the CAS (D755)."""
+    refs = [r for r in result.produced if r.kind == ArtifactKind.ARTIFACT]
+    if len(refs) != 1:
+        raise TargetError(
+            f"lower() returned {len(refs)} artifact refs; a compile produces exactly one",
+            symbol="OW_TARGET_PACKAGE_CORRUPT",
+            fix="report the target: its lower() must return one artifact",
+        )
+    [ref] = refs
+    return ref, ref_bytes(ref, blobs)
+
+
+def ref_bytes(ref: ArtifactRef, blobs: BlobReader) -> bytes:
+    """One ref's bytes: inline, or out of the CAS by its digest (D772)."""
+    if ref.inline is not None:
+        return ref.inline
+    #  `cas://<hex>` or the sharded `cas://bb/18/<hex>` a worker's put returns: the digest is last.
+    with blobs.open((ref.blob or "").rsplit("/", 1)[-1]) as handle:
+        return handle.read()
+
+
+def refusal_message(error: OwError) -> str:
+    """Ruling 12: the symbol, the fix, then the text, each of the first two on one line."""
+    return f"{error.code()}\n{' '.join(error.fix.split())}\n{error}"
+
+
+def refusal_of(message: str) -> TargetError | None:
+    """Ruling 12: `refusal_message()` read back, or `None` for a message it did not write."""
+    symbol, _, rest = message.partition("\n")
+    fix, found, text = rest.partition("\n")
+    if _SYMBOL.fullmatch(symbol) is None or not found or not fix.strip():
+        return None
+    return TargetError(text, symbol=symbol, fix=fix)

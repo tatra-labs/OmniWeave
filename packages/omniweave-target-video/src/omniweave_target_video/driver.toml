@@ -1,0 +1,88 @@
+# compile.video.native — the v2 target, shipped at release 1 with [compile] implemented = false
+# (09-generation.md section 12.4; 16-roadmap.md W9.6). The seam is fully specified even though
+# the target is not: html / owmotion/1, unit `scene`, frame determinism, sidecar citations, an
+# ffmpeg the operator installs, vp9 and never a silent h264 fallback.
+card_schema = 1
+
+[driver]
+id = "compile.video.native"
+port = "compile/1"
+version = "0.1.0"
+schema_version = 1
+entrypoint = "omniweave_target_video.driver:VideoCompiler"
+granularity = "document"
+replay_class = "unpinnable"            # a lossy encode; `frame` is the class it would promise
+title = "owmotion/1 to video (not implemented at release 1)"
+summary = "The v2 target's seam, carded and refusing: ow out targets prints why it is not implemented."
+
+[capability]
+consumes = ["il_bundle", "asset"]
+produces = ["artifact", "receipt"]
+
+[capability.compile]
+determinism = ["part", "frame"]        # `part` is every target's floor; `frame` is 12 sampled
+                                       #   decoded frames plus the full PCM, pinned (ffmpeg,
+                                       #   codec, threads) (09 section 12.4)
+assets = ["image", "font", "video", "audio"]
+
+[compile]
+# An unknown key here is a HARD ERROR: an older core must not drop `implemented = false`.
+target = "video"
+unit = "scene"
+carrier = "html"
+il = "owmotion/1"
+constructs = ""                        # never written: a table designed from an index page is the
+constructs_digest = ""                 #   speculative generality 09 section D8 refuses
+citations = "sidecar"                  # a container has no provenance part that survives a re-encode
+provenance_part = ""
+bake = "unavailable"
+measure = "none"
+runtime_rules = false
+toolchain = "video"                    # `ffmpeg = "system"`, never bundled: libx264 makes a
+                                       #   deploy artefact GPL-2.0-or-later
+implemented = false
+max_units = 64
+reason = "the hyperframes mining for owmotion/1 was never written, so there is no construct table; designing one from an index page is the speculative generality section D8 refuses"
+
+[compile.round_trip]
+read_back = ""
+project = false
+fidelity = "none"                      # a lossy encode is not idempotent: R3 is refused
+laws = ["r1", "r5", "r6", "r7"]        # 09 lists R2 too; R2 needs fidelity != none, so a card
+                                       #   claiming it at none is a card error (section 11.4)
+kind_map = ""
+
+[hardware]
+gpu            = "none"
+vram_gb_min    = 0
+ram_gb_min     = 1
+cpu_arch       = ["x86_64", "aarch64"]
+os             = ["linux", "darwin", "windows"]
+needs_network  = false
+needs_binaries = ["ffmpeg"]
+imports_torch  = false
+install_bytes  = 40000
+services       = []
+
+[isolation]
+requires        = "subproc"
+memory_mb       = 2048
+progress_ms     = 15000
+wall_ms_hard    = 600000
+batch_max_units = 64
+
+[limits]
+max_input_bytes = 4194304
+max_parts       = 64
+
+[licence.code]
+spdx = "Apache-2.0"
+redistribution = "allowed"
+output_share_alike = false
+competitor_bar = false
+requires_credential = false
+revenue_gate_usd = 0
+mau_gate = 0
+territory_excluded = []
+field_of_use_excluded = []
+attribution_per_output = false

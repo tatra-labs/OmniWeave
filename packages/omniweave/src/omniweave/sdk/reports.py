@@ -57,7 +57,16 @@ __all__ = [
     "AddCompleted",
     "AddPending",
     "AddReport",
+    "ArtifactListing",
+    "ArtifactsReport",
+    "AssetListing",
+    "AssetsReport",
+    "BackReport",
     "CodeRow",
+    "CompileReport",
+    "ConstructBake",
+    "ConstructListing",
+    "ConstructsReport",
     "CorporaReport",
     "CorpusCard",
     "DoctorFinding",
@@ -66,9 +75,23 @@ __all__ = [
     "GraphDoctorReport",
     "HooksCheckReport",
     "InstallReport",
+    "NormalizeReport",
+    "NormalizedRow",
+    "OutCheckReport",
+    "RestrictedItem",
+    "ScaffoldReport",
+    "ScaffoldUnit",
     "ServeReport",
     "SkillsReport",
+    "SlotOwner",
+    "SlotUser",
+    "StampReport",
+    "StampedUnit",
     "SurfaceReport",
+    "TargetListing",
+    "TargetsReport",
+    "VerifiedClass",
+    "VerifyReport",
 ]
 
 
@@ -391,3 +414,336 @@ class CodeRow:
     meaning: str
     fix: str
     owner_doc: str
+
+
+@dataclass(frozen=True, slots=True)
+class TargetListing:
+    """One artefact kind this deployment knows: what `ow out targets` prints a row of. D761.
+
+    `omniweave_core.out.card.TargetRow`'s fields, plus `enabled`: whether `[targets] enabled`
+    lists the kind (09-generation.md section 1's artefact-kind allowlist). It is a separate class
+    so the registry's type graph does not import `omniweave_core.out`, the reason
+    `HooksCheckReport` gives for the same arrangement.
+    """
+
+    target: str
+    driver: str
+    implemented: bool
+    reason: str
+    enabled: bool
+    determinism: tuple[str, ...]
+    carrier: str
+    il: str
+    fidelity: str
+    laws: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class TargetsReport:
+    """What `ow_targets` / `ow out targets` returns: every compile card, one row each. D761.
+
+    10-interfaces.md's `full` roster: "which artefact kinds this deployment can compile, and their
+    determinism class". A kind can compile when it is `implemented` and `enabled`. Each row says
+    which of the two is missing, so a `video` row names its reason rather than vanishing.
+    """
+
+    targets: tuple[TargetListing, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactListing:
+    """One sealed artefact generation, as `ow out list` prints it. D769.
+
+    10's roster row names three things, and they are all here: the artefact, its gate
+    status, and `read_back_doc_ord`, the foreign key that closes the loop. The digests are
+    the row's own and are `ow out verify`'s business, so they are not repeated.
+    """
+
+    slug: str
+    artifact_gen: int
+    parent_artifact_gen: int | None
+    origin: str
+    target: str
+    compile_driver: str
+    delivery: str
+    gate_status: str
+    media_type: str
+    path: str
+    byte_len: int
+    restriction_bits: int
+    read_back_doc_ord: int | None
+    sealed_at_ns: int
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactsReport:
+    """What `ow_artifacts` / `ow out list` returns: one corpus's sealed artefacts. D769."""
+
+    corpus: str
+    artifacts: tuple[ArtifactListing, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class OutCheckReport:
+    """What `ow out check` decides: the stage, the gate status and the exit. D766.
+
+    The findings are `validation/<stage>.json`'s, at `report_path`. `--render json` prints
+    that whole document (09 section 4.2), so this is the summary an SDK caller reads, and
+    the status is returned, never raised (10 section 9.3).
+    """
+
+    stage: str
+    target: str
+    status: str
+    exit: int
+    report_path: str
+    errors: int
+    warnings: int
+    infos: int
+
+
+@dataclass(frozen=True, slots=True)
+class RestrictedItem:
+    """One barred source the restriction aggregate named: an asset or a cited block. D773."""
+
+    what: str
+    id: int
+    bits: int
+    cite: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class CompileReport:
+    """What `ow out compile` decided, and the artefact it sealed when it sealed one. D773.
+
+    A closed gate is a status and an exit, never a raise (10 section 9.3): `exit` is
+    09 section 15's, `path` is `None` and nothing was lowered. `hit` is the lookup-before-build's
+    answer: the bytes are an earlier compile's, placed again and not rebuilt (OUT12).
+    """
+
+    target: str
+    slug: str
+    delivery: str
+    status: str
+    exit: int
+    artifact_gen: int | None = None
+    path: str | None = None
+    sha256: str | None = None
+    hit: bool = False
+    postflight: str | None = None
+    restricted: tuple[RestrictedItem, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class AssetListing:
+    """One frozen asset of one artefact, with its licence and its named restrictions. D778."""
+
+    asset_id: int
+    sha256: str
+    slot: str
+    role: str
+    units: tuple[str, ...]
+    media_type: str
+    byte_len: int
+    doc_ord: int
+    licence: str | None
+    spdx: str | None
+    restriction_bits: int
+    restrictions: tuple[str, ...]
+    """Each set bit's `Restriction` name, lower-case; an unallocated bit is `bit_<n>`."""
+
+
+@dataclass(frozen=True, slots=True)
+class SlotUser:
+    """One artefact generation that slots the bytes `--slot` names. D778."""
+
+    slug: str
+    artifact_gen: int
+    role: str
+    units: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SlotOwner:
+    """One corpus document that owns an `asset` row of those bytes. D778."""
+
+    doc_ord: int
+    uri: str
+    asset_id: int
+
+
+@dataclass(frozen=True, slots=True)
+class AssetsReport:
+    """What `ow out assets` read: one artefact's ledger, or one slot's users and owners. D778."""
+
+    slug: str | None
+    artifact_gen: int | None
+    slot: str | None
+    assets: tuple[AssetListing, ...] = ()
+    users: tuple[SlotUser, ...] = ()
+    owners: tuple[SlotOwner, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class BackReport:
+    """What `ow out back` restored, and whether the contract moved since the seal. D777.
+
+    `contract_unchanged` compares the artefact's recorded `constructs_digest` with the installed
+    table's. On a difference the rows that moved cannot be listed: 09 section 3.6 counts them from
+    the artefact's recorded table version, and nothing records that version (D776).
+    """
+
+    slug: str
+    from_gen: int
+    artifact_gen: int
+    job_dir: str
+    run_id: str
+    contract_unchanged: bool
+    recorded_digest: str
+    installed_digest: str
+    units: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class VerifiedClass:
+    """One declared determinism class and what the recompile found: `held`, `differs`, or
+    `unchecked` for a class no comparison here can reach. D774."""
+
+    name: str
+    held: str
+
+
+@dataclass(frozen=True, slots=True)
+class VerifyReport:
+    """What `ow out verify` found: R1 class by class, and R7's two counts. D774.
+
+    A law that fails is a status and an exit, 8, never a raise (10 section 9.3).
+    """
+
+    slug: str
+    artifact_gen: int
+    exit: int
+    r1: bool
+    classes: tuple[VerifiedClass, ...]
+    r7: bool
+    units_sealed: int
+    unit_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class NormalizedRow:
+    """One unit and one `normalize` row: how many values were rewritten. D768."""
+
+    unit: str
+    construct: str
+    count: int
+
+
+@dataclass(frozen=True, slots=True)
+class NormalizeReport:
+    """What `ow out normalize` did. Nothing changed is a success that wrote nothing. D768."""
+
+    written: tuple[str, ...]
+    changed: tuple[NormalizedRow, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class StampedUnit:
+    """One unit a stamp wrote: the addresses it minted, in document order. D767."""
+
+    unit: str
+    addresses: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class StampReport:
+    """What `ow out stamp` did. Nothing minted is a success that wrote nothing. D767."""
+
+    written: tuple[str, ...]
+    units: tuple[StampedUnit, ...]
+    stale_lock: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ScaffoldUnit:
+    """One commissioned unit of a scaffolded JobDir: `OutUnit`'s four plan-time fields. D765."""
+
+    id: str
+    ord: int
+    il_path: str
+    anchor: str
+
+
+@dataclass(frozen=True, slots=True)
+class ScaffoldReport:
+    """What `ow out scaffold` returns: the JobDir it wrote and the roster it commissioned. D765.
+
+    `job_dir` is absolute. `artifact_gen` is the proposed generation, one past the corpus
+    store's newest; the seal allocates the real one (09 section 5.4).
+    """
+
+    job_dir: str
+    run_id: str
+    target: str
+    slug: str
+    artifact_gen: int
+    corpus: str
+    traceparent: str
+    units: tuple[ScaffoldUnit, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ConstructBake:
+    """A `bake` row's `{ renderer, dpi, role }`. D762."""
+
+    renderer: str
+    dpi: int
+    role: str
+
+
+@dataclass(frozen=True, slots=True)
+class ConstructListing:
+    """One ConstructTable row, as `ow out constructs` prints it. D762.
+
+    `omniweave_core.out.constructs.Construct`'s fields, plus `group` (the id's first dotted
+    segment, 09-generation.md section 3.3's `--group`) and `numeric`, the register's spelling of
+    `code`, resolved at render time as the table's own file comment says. A separate class for
+    `TargetListing`'s reason: the registry's type graph does not import `omniweave_core.out`.
+    """
+
+    id: str
+    group: str
+    disposition: str
+    round_trip: str
+    code: str
+    numeric: str
+    since: str
+    selector: str
+    canonical: str | None
+    maps_to: str | None
+    normalizes_to: str | None
+    normalizer: str | None
+    bake: ConstructBake | None
+    forbidden_when: str | None
+    msg: str | None
+    severity: str | None
+    visible: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ConstructsReport:
+    """What `ow out constructs <target>` returns: the target's table and the rows selected. D762.
+
+    09-generation.md section 3.3. `agent_doc_tokens_max` is the card's ceiling on the
+    `--format md` document, counted in CI and never at runtime (`omniweave_core.out.agentdoc`).
+    """
+
+    target: str
+    driver: str
+    il: str
+    carrier: str
+    version: int
+    digest: str
+    agent_doc_tokens_max: int
+    ignore: tuple[str, ...]
+    rows: tuple[ConstructListing, ...]

@@ -44,7 +44,9 @@ class GateStatus(StrEnum):
     PASSED = "passed"
 
 
-_CHECK: Final = "ow out check --target {target} --stage final --json"
+_CHECK: Final = "ow out check --target {target} --stage final --render json"
+"""09 prints `--json`; the CLI's flag is the global `--render json` (18:889), and a fix is a
+command that parses (D766)."""
 
 CLEARS: Final[dict[GateStatus, tuple[str, str]]] = {
     GateStatus.NOT_PROVIDED: ("the gate was never run", _CHECK),
