@@ -126,8 +126,11 @@ CREATE TABLE eval_flake (
 -- `m.run_id` is D828's: a published row carries its run's MeasuredOn, not_measured and
 -- confounders (13 section 11.1), and the view is the only home of `standing`, so the row has
 -- to name the run it joins to rather than a second query recomputing the CASE below.
+-- `r.corpus_id` is D829's: Q-G27 counts a metric's releases one corpus at a time, and a
+-- version string alone does not say whose release it is.
 CREATE VIEW eval_scoreboard AS
-SELECT m.run_id, m.metric, m.slice_key, r.suite, r.subject, r.subject_version, r.corpus_version,
+SELECT m.run_id, m.metric, m.slice_key, r.suite, r.subject, r.subject_version, r.corpus_id,
+       r.corpus_version,
        r.witness, r.unpinned, r.entrant_bias, m.value, m.ci_lo, m.ci_hi, m.n, m.method,
        m.truth_kind, c.publishable,
        CASE WHEN m.state = 'unknown'                              THEN 'UNKNOWN'
