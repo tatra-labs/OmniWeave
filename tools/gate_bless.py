@@ -24,7 +24,9 @@ the standing pattern (ledger D25).
    adds must parse. A rewritten or deleted log fails and is judged no further.
 4. **Each guarded change needs an added row whose glob matches it, and each added row must match
    a guarded change.** A row that blesses nothing is a finding: the log is append-only, so a stray
-   row can never be removed once it lands.
+   row can never be removed once it lands. **A changed `eval/inventory.toml` is blessable too**
+   (D846): Q-G24 asks for a row covering it when a test count falls, so a row matching it is not
+   idle. It is not guarded, though: an inventory that only grew needs no row.
 5. **An added row with `unexplained` above 0 fails.** Requirement 4 has no override.
 6. **An added row whose `structural` share is above 20% prints that it needs a second reviewer.**
    Counting reviews needs the forge, which an offline gate cannot read, so this is a note and the
@@ -99,6 +101,8 @@ EXIT_NOT_RUN: Final = 2
 LOG: Final = "eval/BLESS.log"
 _REDUCTIONS: Final = ("fixtures/goldens/", (".shape", ".pages", ".outline"))
 _FOOTED: Final = ("schema/expected/", "eval/baselines/")
+REGISTERS: Final = frozenset({"eval/inventory.toml"})
+"""Ruling 4: what a row may bless without being guarded: Q-G24's inventory (D846)."""
 _FOOTER: Final = re.compile(r"^Bless:[ \t]*(.*?)[ \t]*$", re.MULTILINE)
 _EMPTY_TREE: Final = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 _BLESS_FIX: Final = (
@@ -151,13 +155,14 @@ def judge(
     except QualityError as exc:
         return [*findings, Finding(True, LOG, f"{exc}; restore the old rows and append")]
     coverage = covers(paths, added)
+    blessable = sorted({*paths, *(path for path in changed if path in REGISTERS)})
     findings += [
         Finding(True, path, f"changed with no {LOG} row whose glob matches it; {_BLESS_FIX}")
         for path in coverage.unblessed
     ]
     findings += [
         Finding(True, f"{LOG} row {row.glob}", "blesses no guarded change in this commit")
-        for row in coverage.idle
+        for row in covers(blessable, added).idle
     ]
     for row in added:
         findings.extend(_row(row))

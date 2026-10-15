@@ -51,6 +51,7 @@ key can grant one.
 | `doc.diff` | `ow_diff` | `ow doc diff` | full | `free` | Compare two generations of one document: what carried, what was revised, what is new, and whether the newer generation was quarantined rather than committed |
 | `doc.grid` | `ow_grid` | `ow doc grid` | full | `free` | Read one table as an exactly-once grid: every cell at its slot, the header row and column, and the merges that would otherwise be counted twice |
 | `doctor` | `ow_doctor` | `ow doctor` | full | `free` | Check this deployment: every resolved configuration value with its source, the driver and toolchain probes, and a fix command for every warning |
+| `eval.bless` | — | `ow eval bless` | — | `free` | Rewrite eval/inventory.toml from the test collection and append the BLESS.log row a fall in its counts needs; OMNIWEAVE_BLESS=1 and a reason are required |
 | `eval.publish` | — | `ow eval publish` | — | `free` | Export the .oweval scoreboard into the committed eval/results tree, every row whatever its direction, or with --check report which files differ |
 | `eval.release_check` | — | `ow eval release-check` | — | `free` | Refuse a release on any unknown run, metric or perf row, and on any hard eval/gates.toml gate off its budget or unmeasured; --strict also on a suite never run |
 | `explain` | `ow_explain` | `ow explain` | full | `free` | Resolve an OW-* code or symbol to what it means and the exact command that clears it; reads no corpus, so it answers on a machine with no store at all |

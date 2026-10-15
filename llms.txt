@@ -285,6 +285,8 @@ cli.doc.grid: ow doc grid REF
 cli.doc.grid.actions: doc.grid
 cli.doctor: ow doctor [--runtime]
 cli.doctor.actions: doctor
+cli.eval.bless: ow eval bless [--counters] [--inventory] [--reason REASON]
+cli.eval.bless.actions: eval.bless
 cli.eval.publish: ow eval publish [--oweval OWEVAL] [--results RESULTS] [--check]
 cli.eval.publish.actions: eval.publish
 cli.eval.release-check: ow eval release-check [--oweval OWEVAL] [--gates GATES] [--strict]

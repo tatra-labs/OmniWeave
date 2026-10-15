@@ -200,7 +200,8 @@ def test_the_actions_with_no_sdk_entry_point_are_the_document_pair_and_the_insta
     (D838) and `eval.release_check` (D840)."""
     missing = sorted(name for name, spec in ACTIONS.items() if spec.cli and name not in SDK_HOMES)
     assert missing == [
-        "cost.report", "doc.diff", "doc.grid", "eval.publish", "eval.release_check",
+        "cost.report", "doc.diff", "doc.grid", "eval.bless", "eval.publish",
+        "eval.release_check",
         "graph.doctor", "graph.locate", "graph.merge", "graph.merges",
         "graph.plan", "graph.residue", "graph.review", "graph.split", "graph.types", "graph.why",
         "hooks.check",
