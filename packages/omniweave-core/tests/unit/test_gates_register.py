@@ -149,7 +149,7 @@ QG_SERIES_SCRIPTS: dict[str, str] = {
     "tools/gate_flake.py": "Q-G18 (13-quality.md:273-296, :2002; 16-roadmap.md:983)",
     "tools/gate_bless.py": "Q-G3 (13-quality.md:94, :797-811, :1987; 16-roadmap.md:979)",
     "tools/gate_parity.py": "Q-G22 (13-quality.md:70-71, :987-989, :2006; 16-roadmap.md:984)",
-    "tools/gate_fixtures.py": "Q-G1 (13-quality.md:92, :454-462, :491-495, :1985)",
+    "tools/gate_fixtures.py": "Q-G1 and Q-G2 (13-quality.md:92-93, :433-436, :491-495, :1985-1986)",
 }
 
 GR_SERIES_SCRIPTS: dict[str, str] = {

@@ -1,4 +1,4 @@
-"""Q-G1 tested as a program: `tools/gate_fixtures.py`, and the PDF fixtures' generator. D843.
+"""Q-G1 and Q-G2 tested as a program: `tools/gate_fixtures.py`, and the PDF generator. D843, D844.
 
 The gate is held to its docstring rule by rule:
 - the scope, over listings with no git;
@@ -245,8 +245,14 @@ def _tree(root: Path, sidecar: str | None = None) -> list[str]:
     return [GENERATOR, PDF, PDF + ".meta.toml"]
 
 
-def _main(root: Path, listed: list[str], capsys: pytest.CaptureFixture[str], *argv: str) -> Any:
-    code = GATE.main(["--root", str(root), *argv], committed=listed)
+def _main(
+    root: Path,
+    listed: list[str],
+    capsys: pytest.CaptureFixture[str],
+    *argv: str,
+    kib: int = 1234,
+) -> Any:
+    code = GATE.main(["--root", str(root), *argv], committed=listed, pack=lambda _root: kib)
     return code, capsys.readouterr().out
 
 
@@ -254,11 +260,13 @@ def test_write_then_check_is_clean_and_a_stale_index_fails(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     listed = _tree(tmp_path)
-    assert _main(tmp_path, listed, capsys, "--write") == (
-        0,
+    code, out = _main(tmp_path, listed, capsys, "--write")
+    assert code == 0
+    assert out.startswith(
         "Q-G1  1 fixture(s), 1 sidecar(s), 1 indexed\n  wrote fixtures/index.toml\n"
-        "Q-G1 ok  0 finding(s)\n",
+        "Q-G1 ok  0 finding(s)\nQ-G2  Tier A "
     )
+    assert out.endswith("Q-G2 ok  0 finding(s)\n")
     assert _main(tmp_path, listed, capsys)[0] == 0
     index = tmp_path / "fixtures" / "index.toml"
     index.write_bytes(index.read_bytes().replace(b"Apache-2.0", b"MIT"))
@@ -339,7 +347,7 @@ def test_a_bad_flag_did_not_run(capsys: pytest.CaptureFixture[str]) -> None:
 
 
 def test_this_repository_passes_q_g1(capsys: pytest.CaptureFixture[str]) -> None:
-    assert GATE.main([]) == 0, capsys.readouterr().out
+    assert GATE.main(["--skip-pack"]) == 0, capsys.readouterr().out
     rows = tomllib.loads((REPO / "fixtures" / "index.toml").read_text(encoding="utf-8"))["fixture"]
     assert len(rows) == 37
     assert {row["provenance"] for row in rows} == {"generated"}
@@ -367,3 +375,196 @@ def test_a_byte_the_generator_changes_is_a_mismatch(
     monkeypatch.setattr(GEN, "BUILDS", builds)
     assert GEN.main([]) == 1
     assert "MISMATCH  not_a_pdf.bin: " in capsys.readouterr().out
+
+
+# --- Q-G2 (D844) -----------------------------------------------------------------------------
+
+CASSETTE = "fixtures/cassettes/agent/00/k.json"
+SHAPE = "fixtures/goldens/core@2026.09/parse.pdf.pdfium@1/report.shape"
+
+
+def test_tier_a_is_every_committed_byte_under_a_fixtures_tree() -> None:
+    listed = [
+        "fixtures/gen/gen_x.py",
+        "fixtures/index.toml",
+        CASSETTE,
+        "packages/omniweave-pdf/fixtures/a.pdf",
+        "packages/omniweave-pdf/fixtures/README.md",
+        "packages/omniweave/src/omniweave/hooks/fixtures/start.json",
+        "packages/omniweave-pdf/README.md",
+        "tools/gate_fixtures.py",
+    ]
+    assert GATE.tier_a(listed) == [
+        CASSETTE,
+        "fixtures/gen/gen_x.py",
+        "fixtures/index.toml",
+        "packages/omniweave-pdf/fixtures/README.md",
+        "packages/omniweave-pdf/fixtures/a.pdf",
+    ]
+
+
+def _budget(sizes: dict[str, int], fixtures: tuple[str, ...] = ()) -> list[tuple[str, str]]:
+    return [(one.path, one.detail) for one in GATE.budget(sizes, list(fixtures)).findings]
+
+
+def test_a_tier_a_within_every_cap_is_clean_and_says_what_it_did_not_run() -> None:
+    spent = GATE.budget({PDF: 100, CASSETTE: 50, SHAPE: 10, "fixtures/index.toml": 5}, [PDF])
+    assert (spent.tier_a, spent.cassettes, spent.cassette_bytes, spent.reductions) == (
+        165,
+        1,
+        50,
+        1,
+    )
+    assert spent.findings == ()
+    assert spent.notes == (
+        "the 40% scan floor: fixtures/docs/ holds no fixture to measure",
+        "orphan cassettes: not run, because nothing writes eval/cassette-usage.toml yet",
+    )
+
+
+def test_tier_a_is_at_most_sixty_four_million_bytes() -> None:
+    assert _budget({"fixtures/a": 32_000_000, "fixtures/b": 32_000_000}) == []
+    assert _budget({"fixtures/a": 32_000_000, "fixtures/b": 32_000_001}) == [
+        ("fixtures/", "Tier A is 64000001 bytes, over 64000000")
+    ]
+
+
+def test_a_fixture_is_at_most_four_million_bytes_and_other_files_are_not_binaries() -> None:
+    assert _budget({PDF: 4_000_000}, (PDF,)) == []
+    assert _budget({PDF: 4_000_001}, (PDF,)) == [(PDF, "4000001 bytes, over 4000000 per binary")]
+    assert _budget({"fixtures/gen/big.py": 4_000_001}) == []
+
+
+def test_a_reduction_is_at_most_max_reduction_bytes() -> None:
+    cap = GATE.MAX_REDUCTION_BYTES
+    assert _budget({SHAPE: cap, "fixtures/goldens/DECOMPOSITION.toml": cap + 1}) == []
+    for suffix in (".shape", ".pages", ".outline"):
+        path = SHAPE.removesuffix(".shape") + suffix
+        assert _budget({path: cap + 1}) == [
+            (path, f"{cap + 1} bytes, over MAX_REDUCTION_BYTES ({cap})")
+        ]
+
+
+def test_a_cassette_and_the_cassette_store_have_their_caps() -> None:
+    each, total = GATE.MAX_CASSETTE_BYTES, GATE.MAX_CASSETTE_BYTES_TOTAL
+    assert _budget({CASSETTE: each}) == []
+    assert _budget({CASSETTE: each + 1}) == [
+        (CASSETTE, f"{each + 1} bytes, over MAX_CASSETTE_BYTES ({each})")
+    ]
+    many = {f"fixtures/cassettes/agent/{n:02x}/k.json": each for n in range(total // each)}
+    assert _budget(many) == []
+    many["fixtures/cassettes/agent/ff/k.json"] = 1
+    assert _budget(many) == [
+        ("fixtures/cassettes/", f"{total + 1} bytes, over MAX_CASSETTE_BYTES_TOTAL ({total})")
+    ]
+
+
+def test_a_docs_fixture_makes_the_scan_floor_fail_closed() -> None:
+    doc = "fixtures/docs/sec-10k.pdf"
+    spent = GATE.budget({doc: 10}, [doc])
+    assert [(one.path, one.detail) for one in spent.findings] == [
+        (
+            "fixtures/docs/",
+            "1 fixture(s), and the 40% scan floor cannot be measured: no sidecar key says a "
+            "document is a scan (13-quality.md section 4.4)",
+        )
+    ]
+    assert not any("scan floor" in note for note in spent.notes)
+
+
+def test_main_reports_q_g2_after_q_g1(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    listed = _tree(tmp_path)
+    _main(tmp_path, listed, capsys, "--write")
+    code, out = _main(tmp_path, listed, capsys, kib=200_000)
+    assert code == 0
+    tier = sum((tmp_path / path).stat().st_size for path in listed)
+    assert out.splitlines()[2:] == [
+        f"Q-G2  Tier A {tier} of 64000000 bytes; 0 cassette(s), 0 of 33554432 bytes;"
+        " 0 Reduction(s)",
+        "  size-pack 200000 of 200000 KiB after git gc --auto",
+        "  note  the 40% scan floor: fixtures/docs/ holds no fixture to measure",
+        "  note  orphan cassettes: not run, because nothing writes eval/cassette-usage.toml yet",
+        "Q-G2 ok  0 finding(s)",
+    ]
+
+
+def test_a_pack_over_its_ceiling_fails_q_g2_alone(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    listed = _tree(tmp_path)
+    _main(tmp_path, listed, capsys, "--write")
+    code, out = _main(tmp_path, listed, capsys, kib=200_001)
+    assert code == 1
+    assert "Q-G1 ok  0 finding(s)" in out
+    assert "  FAIL  size-pack: 200001 KiB after git gc, over 200000" in out
+    assert out.endswith("Q-G2 FAIL  1 finding(s)\n")
+
+
+def test_skip_pack_leaves_the_clause_out_and_says_so(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    listed = _tree(tmp_path)
+    _main(tmp_path, listed, capsys, "--write")
+
+    def never(_root: Path) -> int:
+        raise AssertionError("--skip-pack ran the pack")
+
+    code = GATE.main(["--root", str(tmp_path), "--skip-pack"], committed=listed, pack=never)
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "  note  size-pack: not measured (--skip-pack)" in out
+
+
+def test_a_pack_that_cannot_be_measured_did_not_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    listed = _tree(tmp_path)
+    _main(tmp_path, listed, capsys, "--write")
+
+    def broken(_root: Path) -> int:
+        raise OSError("git gc: no repository")
+
+    code = GATE.main(["--root", str(tmp_path)], committed=listed, pack=broken)
+    assert code == 2
+    assert capsys.readouterr().out.endswith("Q-G2 DID NOT RUN  size-pack: git gc: no repository\n")
+
+
+def test_size_pack_reads_a_real_repository(tmp_path: Path) -> None:
+    git = GATE.shutil.which("git")
+    if git is None:
+        pytest.skip("git is not on PATH")
+    repo, plain = tmp_path / "repo", tmp_path / "plain"
+    repo.mkdir()
+    plain.mkdir()
+    for args in (
+        ["init", "-q"],
+        ["-c", "user.name=q", "-c", "user.email=q@example.org", "commit", "-q", "--allow-empty",
+         "-m", "start"],
+    ):  # fmt: skip
+        GATE.subprocess.run([git, *args], cwd=repo, check=True, capture_output=True)
+    assert GATE.size_pack(repo) >= 0
+    with pytest.raises(OSError, match="git gc: "):
+        GATE.size_pack(plain)
+
+
+def test_size_pack_runs_gc_first_and_reads_the_kib(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Section 4.6: the `gc` is load-bearing, so the order is asserted, not only the number."""
+    calls: list[tuple[str, ...]] = []
+
+    def fake(_root: Path, *arguments: str) -> bytes:
+        calls.append(arguments)
+        return (
+            b"count: 3\nsize: 1\nin-pack: 9\npacks: 1\nsize-pack: 7\n"
+            if arguments[0] == "count-objects"
+            else b""
+        )
+
+    monkeypatch.setattr(GATE, "_git", fake)
+    assert GATE.size_pack(Path()) == 7
+    assert calls == [("gc", "--auto", "--quiet"), ("count-objects", "-v")]
+
+
+def test_a_count_with_no_size_pack_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(GATE, "_git", lambda _root, *_arguments: b"count: 3\n")
+    with pytest.raises(OSError, match="git count-objects -v reported no size-pack"):
+        GATE.size_pack(Path())
