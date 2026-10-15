@@ -108,6 +108,7 @@ CRITERIA: tuple[Criterion, ...] = (
             tool("gate_placement.py"),
             tool("gate_metric_rot.py"),
             tool("gate_flake.py", "--window", "30d"),
+            tool("gate_bless.py"),
             pytest(
                 f"{CONF}/test_conform_release.py",
                 f"{CLI}/test_eval_release_check_verb.py",
