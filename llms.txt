@@ -26,8 +26,8 @@ mcp.instructions: delivered on `initialize`, <= 1000 chars, generated, bound to 
 # Listing model — READ THIS BEFORE ASSUMING A TOOL DOES NOT EXIST
 mcp.profiles: default, full
 mcp.profile.default: ow_add, ow_corpora, ow_open, ow_query
-mcp.profile.full: ow_add, ow_artifacts, ow_corpora, ow_coverage, ow_diff, ow_doctor, ow_explain,
-  ow_grid, ow_locate, ow_open, ow_query, ow_targets
+mcp.profile.full: ow_add, ow_artifacts, ow_corpora, ow_cost, ow_coverage, ow_diff, ow_doctor,
+  ow_explain, ow_grid, ow_locate, ow_open, ow_query, ow_targets
 mcp.listed_note: an unlisted tool is DEFINED and DISPATCHABLE when enabled, never refused for
   being unlisted. Widen with OMNIWEAVE_MCP_LISTED, authorise with OMNIWEAVE_MCP_ENABLED.
 mcp.enabled_default: read_only+add
@@ -36,13 +36,13 @@ mcp.human_only_note: these have no MCP name and are unreachable from any agent s
 
 # Tools — every Action with an MCP name. `listed_in` says which profiles LIST it;
 # every one of them is DISPATCHABLE when enabled, listed or not.
-mcp.tools: ow_add, ow_artifacts, ow_corpora, ow_coverage, ow_diff, ow_doctor, ow_explain,
-  ow_grid, ow_hooks_check, ow_locate, ow_open, ow_query, ow_skills_check, ow_skills_hash,
-  ow_skills_ls, ow_skills_verify, ow_targets
-mcp.tools.unbounded: ow_artifacts, ow_coverage, ow_diff, ow_doctor, ow_explain, ow_grid,
-  ow_hooks_check, ow_locate, ow_skills_check, ow_skills_hash, ow_skills_ls, ow_skills_verify,
-  ow_targets — no inputSchema is published for these yet, so their input lines carry a type and
-  no bounds
+mcp.tools: ow_add, ow_artifacts, ow_corpora, ow_cost, ow_coverage, ow_diff, ow_doctor,
+  ow_explain, ow_grid, ow_hooks_check, ow_locate, ow_open, ow_query, ow_skills_check,
+  ow_skills_hash, ow_skills_ls, ow_skills_verify, ow_targets
+mcp.tools.unbounded: ow_artifacts, ow_cost, ow_coverage, ow_diff, ow_doctor, ow_explain,
+  ow_grid, ow_hooks_check, ow_locate, ow_skills_check, ow_skills_hash, ow_skills_ls,
+  ow_skills_verify, ow_targets — no inputSchema is published for these yet, so their input lines
+  carry a type and no bounds
 
 mcp.tool.ow_add.action: add
 mcp.tool.ow_add.description: Index files, directories or URLs into a corpus so ow_query can cite
@@ -83,6 +83,19 @@ mcp.tool.ow_corpora.input.corpus: string, optional
 mcp.tool.ow_corpora.input.detail: string, optional, default=list,
   enum=list|card|coverage|actions
 mcp.tool.ow_corpora.output: schema/corpora-out-v1.json
+
+mcp.tool.ow_cost.action: cost.report
+mcp.tool.ow_cost.description: Spend by driver over a corpus's ledger or one run, with what the
+  cache saved, and the run's reconcile against its manifest
+mcp.tool.ow_cost.decision: you want to know what a corpus or a run cost, and which driver spent
+  it
+mcp.tool.ow_cost.listed_in: full
+mcp.tool.ow_cost.state_changing: false
+mcp.tool.ow_cost.cost_class: free
+mcp.tool.ow_cost.input.by: string, optional, default=driver
+mcp.tool.ow_cost.input.run: string, optional
+mcp.tool.ow_cost.input.corpus: string, optional
+mcp.tool.ow_cost.output: CostReport, no outputSchema declared
 
 mcp.tool.ow_coverage.action: corpus.coverage
 mcp.tool.ow_coverage.description: What a scope holds and what is missing from it: discovered
@@ -263,6 +276,8 @@ cli.add.actions: add
 cli.corpora: ow corpora CORPUS [--detail list|card|coverage|actions] [--summarize] [--scope
   SCOPE]
 cli.corpora.actions: corpora, corpus.coverage
+cli.cost: ow cost [--by BY] [--run RUN]
+cli.cost.actions: cost.report
 cli.doc.diff: ow doc diff REF [--from-gen FROM_GEN] [--to-gen TO_GEN]
 cli.doc.diff.actions: doc.diff
 cli.doc.grid: ow doc grid REF

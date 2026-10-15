@@ -21,6 +21,7 @@
       ],
       "unpublished": [
         "ow_artifacts",
+        "ow_cost",
         "ow_coverage",
         "ow_diff",
         "ow_doctor",

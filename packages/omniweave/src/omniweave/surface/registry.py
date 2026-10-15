@@ -132,6 +132,7 @@ from omniweave.sdk.reports import (
     CompileReport,
     ConstructsReport,
     CorporaReport,
+    CostReport,
     DoctorReport,
     EvalPublishReport,
     GraphDoctorReport,
@@ -156,6 +157,7 @@ from omniweave.surface.inputs import (
     CompileIn,
     ConstructsIn,
     CorporaIn,
+    CostIn,
     CoverageIn,
     DiffIn,
     DoctorIn,
@@ -799,16 +801,17 @@ the eighteen `ActionSpec`s exist, not typed by hand"*. So this tuple is what tel
 its day has come: `len(FULL_ROSTER) == len(listed("full")) - len(listed("default"))` is the
 condition, and `_unrostered_full()` is the distance from it.
 
-**Six have rows today and twelve do not**, and the reason is never that the Action is unclear. It
+**Nine have rows today and nine do not**, and the reason is never that the Action is unclear. It
 is that `ActionSpec.out` is a `type` -- an OBJECT, evaluated at import -- so a row cannot be written
 before something in this process can name what it returns. Seven of the thirteen once waited on
 P8's L3 types, and `graph.locate` landed with its `Located` (D694); six still do, as
 do two on P9's OUT framework (16:190-191), both of which exit after v0.1 ships at week 42;
-three -- `ow_verify`, `ow_fields` and `ow_cost` -- wait on a shape no module defines, and one of
-those three is `QuoteVerdict` (03:1706), which `omniweave_core/model/doc.py` already
-forward-references twice under `noqa: F821`. The thirteenth, `route.explain`, waits on nothing but
-the cost of naming `RouteDecision` here. D298 is that entry and it is the one worth reading, because
-it is a property of this mechanism rather than of the schedule; D300 is the other twelve.
+two -- `ow_verify` and `ow_fields` -- wait on a shape no module defines (`ow_cost`, once the
+third, landed with `CostReport` in D838), and one of those two is `QuoteVerdict` (03:1706),
+which `omniweave_core/model/doc.py` already forward-references twice under `noqa: F821`. The
+thirteenth, `route.explain`, waits on nothing but the cost of naming `RouteDecision` here. D298
+is that entry and it is the one worth reading, because it is a property of this mechanism rather
+than of the schedule; D300 is the other twelve.
 """
 
 
@@ -2112,6 +2115,26 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=ArtifactsReport,
             advanced=frozenset(),
             cli=("out", "list"),
+        ),
+        ActionSpec(
+            name="cost.report",
+            mcp_name="ow_cost",
+            listed_in=_FULL_ONLY,
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Spend by driver over a corpus's ledger or one run, with what the cache saved, "
+                "and the run's reconcile against its manifest"
+            ),
+            decision="you want to know what a corpus or a run cost, and which driver spent it",
+            example={},
+            inp=CostIn,
+            out=CostReport,
+            advanced=frozenset(),
+            cli=("cost",),
         ),
         ActionSpec(
             name="eval.publish",

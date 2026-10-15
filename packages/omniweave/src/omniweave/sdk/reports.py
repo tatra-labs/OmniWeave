@@ -69,6 +69,8 @@ __all__ = [
     "ConstructsReport",
     "CorporaReport",
     "CorpusCard",
+    "CostListing",
+    "CostReport",
     "DoctorFinding",
     "DoctorReport",
     "EvalPublishReport",
@@ -776,3 +778,43 @@ class EvalPublishReport:
     rows: int
     changed: tuple[str, ...]
     written: bool
+
+
+@dataclass(frozen=True, slots=True)
+class CostListing:
+    """One `ow cost --by driver` row: 15-observability.md section 5.4's ten columns. D838.
+
+    `omniweave.run.cost.DriverCost`'s fields, kept as a separate class so the registry's type
+    graph does not import the runtime, the reason `TargetListing` gives for the same arrangement.
+    """
+
+    driver: str
+    cost_class: str
+    units: int
+    calls: int
+    tokens_in: int
+    tokens_out: int
+    gpu_ms: int
+    micros: int
+    hits: int
+    saved: int
+
+
+@dataclass(frozen=True, slots=True)
+class CostReport:
+    """What `ow_cost` / `ow cost` returns: spend by driver, and what the cache saved. D838.
+
+    10-interfaces.md's `full` roster: *"spend by driver, corpus and window, plus
+    `would_have_been_micros_if_uncached`"*. `total_micros` is the sum of the `micros` column and
+    `saved_micros` of the `saved` column (15 section 5.4: *"checkable rather than decorative"*).
+    `billed_micros` is `Σ route_spend.micros` over the window; `manifest_billed_micros` is the
+    run manifest's own figure, and `None` unless `run_id` names a run whose manifest reads.
+    """
+
+    corpus: str
+    run_id: str | None
+    rows: tuple[CostListing, ...]
+    total_micros: int
+    saved_micros: int
+    billed_micros: int
+    manifest_billed_micros: int | None

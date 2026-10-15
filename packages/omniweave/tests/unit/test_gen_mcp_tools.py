@@ -138,6 +138,7 @@ def test_the_five_narrow_rows_that_landed_are_not_published_yet() -> None:
     """
     assert mcp_tools_module.unpublished() == (
         "ow_artifacts",
+        "ow_cost",
         "ow_coverage",
         "ow_diff",
         "ow_doctor",
