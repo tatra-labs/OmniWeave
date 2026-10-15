@@ -204,6 +204,10 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 default="driver",
             ),
             Argument(
+                spelling=("--since",),
+                metavar="SINCE",
+            ),
+            Argument(
                 spelling=("--run",),
                 metavar="RUN",
             ),

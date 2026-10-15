@@ -93,6 +93,7 @@ mcp.tool.ow_cost.listed_in: full
 mcp.tool.ow_cost.state_changing: false
 mcp.tool.ow_cost.cost_class: free
 mcp.tool.ow_cost.input.by: string, optional, default=driver
+mcp.tool.ow_cost.input.since: string, optional
 mcp.tool.ow_cost.input.run: string, optional
 mcp.tool.ow_cost.input.corpus: string, optional
 mcp.tool.ow_cost.output: CostReport, no outputSchema declared
@@ -276,7 +277,7 @@ cli.add.actions: add
 cli.corpora: ow corpora CORPUS [--detail list|card|coverage|actions] [--summarize] [--scope
   SCOPE]
 cli.corpora.actions: corpora, corpus.coverage
-cli.cost: ow cost [--by BY] [--run RUN]
+cli.cost: ow cost [--by BY] [--since SINCE] [--run RUN]
 cli.cost.actions: cost.report
 cli.doc.diff: ow doc diff REF [--from-gen FROM_GEN] [--to-gen TO_GEN]
 cli.doc.diff.actions: doc.diff
