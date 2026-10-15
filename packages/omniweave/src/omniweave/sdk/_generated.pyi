@@ -16,6 +16,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     add               AddIn               AddReport
     corpora           CorporaIn           CorporaReport
     corpus.coverage   CoverageIn          Coverage
+    cost.report       CostIn              CostReport
     doc.diff          DiffIn              RebindReport
     doc.grid          GridIn              Grid
     doctor            DoctorIn            DoctorReport
