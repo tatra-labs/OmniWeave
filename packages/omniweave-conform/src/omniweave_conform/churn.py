@@ -41,6 +41,12 @@ before and after (D817, D818), and `shape_delta()` is the first of section 5.3's
    `pages=` or `blocks=` changed only its would-be size: digest-only. A count change, or a file
    suppressed on one side only, is a structural change to it, and `pages` cannot be cross-checked
    then. The report says so in its reasons.
+8. **`explain()` is ruling 6 written out, key by key** (D851). Section 5.5's `--explain <file>`
+   *"prints the arithmetic disagreement between `shape` and `pages` for that file"*. For every
+   `page_wise` key `pages` prints that moved in either file, it prints the `shape` move beside the
+   move summed over `pages`, and whether they agree. Moves, not totals, because the classifier
+   judges moves. A last line counts the disagreements, or says nothing page-wise moved, which is
+   the `outline`-only case. A suppressed `pages` has nothing to sum, and the explanation says so.
 
 Specified in 13-quality.md sections 5.3 and 5.4.
 """
@@ -69,6 +75,7 @@ __all__ = [
     "Reductions",
     "Row",
     "classify",
+    "explain",
     "load_decomposition",
     "parse_pages",
     "refuse_unexplained",
@@ -228,6 +235,39 @@ def classify(old: Reductions, new: Reductions, decomposition: Decomposition) -> 
     return Churn("structural", delta, tuple(reasons))
 
 
+def explain(old: Reductions, new: Reductions, decomposition: Decomposition) -> tuple[str, ...]:
+    """Ruling 8: each moved page-wise counter, its `shape` move beside its `pages` move."""
+    if suppressed(old.pages) is not None or suppressed(new.pages) is not None:
+        return ("pages is SUPPRESSED on a side, so no counter sums over its pages",)
+    shape_a, shape_b = _shape(old.shape), _shape(new.shape)
+    pages_a, pages_b = _page_sums(old.pages), _page_sums(new.pages)
+    keys = sorted(
+        key
+        for key in shape_a.keys() | shape_b.keys() | pages_a.keys() | pages_b.keys()
+        if _printed(key) and _page_wise(key, decomposition)
+    )
+    lines: list[str] = []
+    disagree = 0
+    for key in keys:
+        a, b = _count(shape_a.get(key)), _count(shape_b.get(key))
+        pa, pb = pages_a.get(key, 0), pages_b.get(key, 0)
+        if a == b and pa == pb:
+            continue
+        gap = (pb - pa) - (b - a)
+        disagree += gap != 0
+        verdict = f"DISAGREES by {gap:+d}" if gap else "agrees"
+        lines.append(
+            f"{key} shape {a} -> {b} ({b - a:+d}), pages {pa} -> {pb} ({pb - pa:+d}): {verdict}"
+        )
+    if disagree:
+        lines.append(f"{disagree} page-wise counter(s) disagree between shape and pages")
+    elif lines:
+        lines.append("every page-wise counter that moved agrees between shape and pages")
+    else:
+        lines.append("no page-wise counter moved in shape or over pages")
+    return tuple(lines)
+
+
 def refuse_unexplained(churn: Churn, file: str) -> None:
     """`OW-Q-012`: an `unexplained` class fails the build, and there is no override."""
     if churn.cls == "unexplained":
@@ -354,6 +394,19 @@ def _page_counts(fields: Mapping[str, str]) -> dict[str, int]:
             bucket, _, value = pair.rpartition(":")
             out[prefix + bucket] = int(value)
     return out
+
+
+def _page_sums(text: str) -> Counter[str]:
+    """Ruling 8: a whole `pages` file's counts summed over its pages, under `shape`'s keys."""
+    sums: Counter[str] = Counter()
+    for fields in parse_pages(text).values():
+        sums.update(_page_counts(fields))
+    return sums
+
+
+def _count(value: str | None) -> int:
+    """A page-wise `shape` value, which is always a count; absent is 0."""
+    return 0 if value is None else int(value)
 
 
 def _changed_fields(a: Mapping[str, str], b: Mapping[str, str]) -> set[str]:
