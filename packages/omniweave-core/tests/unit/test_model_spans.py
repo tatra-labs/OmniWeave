@@ -738,10 +738,12 @@ DECODERS = frozenset(
         "packages/omniweave-core/src/omniweave_core/store/doc.py",
         "packages/omniweave-core/src/omniweave_core/store/portable.py",
         "packages/omniweave-core/src/omniweave_core/archive/owdoc.py",
+        "packages/omniweave-core/src/omniweave_core/store/export_source.py",
     }
 )
-"""The three sites that turn a stored 8 x i32 value back into a `Quad`: the store's block read,
-the portable export's read, and the `.owdoc` archive's decoder. Each is a decode, and each is
+"""The four sites that turn a stored 8 x i32 value back into a `Quad`: the store's block read,
+the portable export's read, the `.owdoc` archive's decoder, and the store-backed
+`ExportSource` (D847: G28's test-local adapter, shipped). Each is a decode, and each is
 held to the one decode shape, a single starred argument. `spans.py` defines the type, and
 `from_driver` builds through `cls(...)`, which is the sanctioned constructor itself."""
 
@@ -795,7 +797,7 @@ def _quad_constructions(source: str) -> list[tuple[int, str]]:
 def test_nothing_in_library_code_synthesizes_a_quad(repo_root: Path) -> None:
     """INV-9, 01:1191: *"synthesizes a `Quad` ... | grep for `Quad(` outside `Quad.from_driver`"*,
     and V01-6's second clause (00:707). Every `Quad` built in `packages/*/src` outside `spans.py`
-    is a decode at one of the three decoders, so no library code assembles a rectangle."""
+    is a decode at one of the four decoders, so no library code assembles a rectangle."""
     wrong: list[str] = []
     decoders_seen: set[str] = set()
     for path in sorted(repo_root.glob("packages/*/src/**/*.py")):
