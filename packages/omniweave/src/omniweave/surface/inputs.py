@@ -96,6 +96,7 @@ __all__ = [
     "DiffIn",
     "DoctorIn",
     "EvalPublishIn",
+    "EvalReleaseCheckIn",
     "ExplainIn",
     "GraphDoctorIn",
     "GraphPlanIn",
@@ -815,6 +816,21 @@ class EvalPublishIn:
     oweval: str = "eval/omniweave.oweval"
     results: str = "eval/results"
     check: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class EvalReleaseCheckIn:
+    """`ow eval release-check`. 13-quality.md:1881 and 16-roadmap.md:978. D840.
+
+    `oweval` is the store judged and `gates` the metric register whose hard rows are held, both
+    relative to the working directory and defaulting to the repository's `eval/`, as
+    `EvalPublishIn`'s do. `strict` is 16:978's `--strict`: a suite of the seven with no run at
+    all is refused too.
+    """
+
+    oweval: str = "eval/omniweave.oweval"
+    gates: str = "eval/gates.toml"
+    strict: bool = False
 
 
 @dataclass(frozen=True, slots=True)
