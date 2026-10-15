@@ -36,11 +36,18 @@ script until `ow eval golden` is an Action.
    comment. It is printed as it is, after the class lines and before the last line, in either
    mode, and changes no exit code: it is a display of what the class lines judged. A new or lost
    document is diffed against three empty files. (D850.)
+5. **`--explain FILE` narrows the check to one document and explains it.** It is `OW-Q-012`'s fix,
+   *"`ow eval golden --explain {file}`"*: the document's class line, then `churn.explain()`'s
+   arithmetic, `shape` against `pages` for each page-wise counter that moved, then the verdict
+   over that one document. `FILE` names the document or any of its three files, with or without
+   `fixtures/goldens/`. A name that is a document in neither the goldens nor the ingest means the
+   gate did not run. It is a check, so it may not be given with `--bless`. (D851.)
 
 ## Exit codes
 
 `0` the goldens match, or were blessed. `1` they differ (`--check`), or the bless was refused.
-`2` the gate did not run: the ingest failed, or an argument it cannot read.
+`2` the gate did not run: the ingest failed, an argument it cannot read, or an `--explain` name
+that is no document.
 
 Specified in 13-quality.md sections 5.1-5.5, and 16-roadmap.md W10.2.
 """
@@ -66,10 +73,11 @@ for _dist in sorted((REPO / "packages").iterdir()) if (REPO / "packages").is_dir
         sys.path.insert(0, str(_src))
 
 from omniweave_conform.bless import BLESS_ENV, blessing, parse_log, plan  # noqa: E402
-from omniweave_conform.churn import Reductions, load_decomposition  # noqa: E402
+from omniweave_conform.churn import Reductions, explain, load_decomposition  # noqa: E402
 from omniweave_conform.golden import (  # noqa: E402
     CORPUS,
     GOLDENS,
+    KINDS,
     changes,
     document_paths,
     read_tree,
@@ -152,7 +160,9 @@ def main(argv: list[str] | None = None) -> int:
         prog="ow_golden.py", description="The Tier-A golden Reductions: --check, or --bless."
     )
     parser.add_argument("--root", type=Path, default=REPO, metavar="PATH")
-    parser.add_argument("--bless", action="store_true", help="write the goldens and their row")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--bless", action="store_true", help="write the goldens and their row")
+    mode.add_argument("--explain", default=None, metavar="FILE", help="one document, explained")
     parser.add_argument("--reason", default=None, metavar="TEXT")
     parser.add_argument("--diff", action="store_true", help="print each change's three-part diff")
     try:
@@ -168,12 +178,21 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_NOT_RUN
     committed = read_tree(root)
     moved = changes(committed, fresh, decomposition)
+    before, after = document_paths(committed), document_paths(fresh)
     _say(f"golden  {CORPUS}: {len(fresh)} file(s) from the ingest, {len(committed)} committed")
+    doc = None if args.explain is None else _document(args.explain)
+    if doc is not None:
+        if doc not in before and doc not in after:
+            _say(f"golden DID NOT RUN  {args.explain} is no document in {GOLDENS}/ or the ingest")
+            return EXIT_NOT_RUN
+        moved = [change for change in moved if change.doc == doc]
     for change in moved:
         why = "; ".join(change.churn.reasons) or ", ".join(d.key for d in change.churn.delta)
         _say(f"  {change.churn.cls:<12} {change.doc}: {why}")
+    if doc is not None:
+        for line in explain(before.get(doc, NOTHING), after.get(doc, NOTHING), decomposition):
+            _say(f"  explain  {line}")
     if args.diff:
-        before, after = document_paths(committed), document_paths(fresh)
         sys.stdout.write(
             comment((c.doc, before.get(c.doc, NOTHING), after.get(c.doc, NOTHING)) for c in moved)
         )
@@ -181,6 +200,14 @@ def main(argv: list[str] | None = None) -> int:
         _say(f"golden {'FAIL' if moved else 'ok'}  {len(moved)} document(s) changed")
         return EXIT_FAIL if moved else EXIT_CLEAN
     return _bless(root, committed, fresh, moved, args.reason)
+
+
+def _document(name: str) -> str:
+    """Ruling 5: `<corpus>/<driver>/<file>` from a document's name or one of its files."""
+    text = name.replace("\\", "/").removeprefix(f"{GOLDENS}/")
+    for kind in KINDS:
+        text = text.removesuffix(f".{kind}")
+    return text
 
 
 def _bless(
