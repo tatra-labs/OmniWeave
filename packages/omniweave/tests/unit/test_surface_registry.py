@@ -217,7 +217,8 @@ def test_add_is_the_one_writer_and_the_only_open_world_action() -> None:
     rewrites normalize rows' values in it (D768), `out.compile` seals an `artifact` row and
     places its bytes under `[roots] output` (D773), and `out.back` writes the edit's JobDir under
     the cache root (D777). `eval.publish` writes the committed `eval/results` tree, and is a
-    maintainer's command rather than a tool (D833).
+    maintainer's command rather than a tool (D833), as is `eval.bless`, which writes
+    `eval/inventory.toml` and a `BLESS.log` row (D846).
     """
     writers = [spec.name for spec in ACTIONS.values() if not spec.read_only]
     open_world = [spec.name for spec in ACTIONS.values() if spec.open_world]
@@ -225,6 +226,7 @@ def test_add_is_the_one_writer_and_the_only_open_world_action() -> None:
         "add", "graph.merge", "graph.split", "graph.types", "install", "uninstall", "serve",
         "skills.install", "skills.remove", "skills.update", "surface.emit", "out.scaffold",
         "out.check", "out.compile", "out.stamp", "out.back", "out.normalize", "eval.publish",
+        "eval.bless",
     ]  # fmt: skip
     assert [name for name in writers if ACTIONS[name].mcp_name is not None] == ["add"]
     #  `hooks.check` runs the installed commands, which are outside the store (10:157-158); it
@@ -251,10 +253,11 @@ def test_every_listed_action_is_idempotent() -> None:
 
     `out.scaffold` and `out.back` are the Actions that are not: each call mints a run id and
     writes a new JobDir, which is what a run-scoped directory is for (09 section 5.4). Each is a
-    command, so no tool carries the hint (D765, D777)."""
+    command, so no tool carries the hint (D765, D777). `eval.bless` is not either: a second
+    call finds nothing fallen and refuses (D846)."""
     assert all(ACTIONS[name].idempotent for name in LISTED_NAMES)
     not_idempotent = [spec.name for spec in ACTIONS.values() if not spec.idempotent]
-    assert not_idempotent == ["out.scaffold", "out.back"]
+    assert not_idempotent == ["out.scaffold", "out.back", "eval.bless"]
     assert all(ACTIONS[name].mcp_name is None for name in not_idempotent)
 
 
@@ -302,7 +305,7 @@ def test_the_human_only_actions_are_the_install_and_skills_verbs_and_none_of_the
     `out.constructs` is read-only and 10:807 names no tool for it either: 02's step 3 has
     the agent run it as a command (D762), and `out.compile`, `out.verify`, `out.back` and
     `out.assets` are a user's commands too (D773, D774, D777, D778), as are `eval.publish`
-    (D833) and `eval.release_check` (D840)."""
+    (D833), `eval.release_check` (D840) and `eval.bless` (D846)."""
     unreachable = [spec.name for spec in ACTIONS.values() if spec.human_only]
     assert unreachable == [
         "graph.why", "graph.merges", "graph.merge", "graph.split", "graph.residue",
@@ -310,7 +313,7 @@ def test_the_human_only_actions_are_the_install_and_skills_verbs_and_none_of_the
         "serve", "skills.install", "skills.remove", "skills.update", "surface.emit",
         "out.constructs", "out.scaffold", "out.check", "out.compile", "out.stamp",
         "out.assets", "out.back", "out.verify", "out.normalize", "eval.publish",
-        "eval.release_check",
+        "eval.release_check", "eval.bless",
     ]  # fmt: skip
     assert set(ACTIONS) & HUMAN_ONLY == {"uninstall", "skills.remove"}
     assert not any(ACTIONS[name].human_only for name in LISTED_NAMES)
@@ -664,6 +667,7 @@ def test_the_required_parameter_of_each_tool_is_the_one_the_schema_requires() ->
         "out.list": set(),
         "eval.publish": set(),
         "eval.release_check": set(),
+        "eval.bless": set(),
         "install": set(),
         "uninstall": set(),
         "serve": set(),
@@ -1184,7 +1188,8 @@ def test_two_actions_need_no_corpus_and_both_reasons_are_stated() -> None:
         name for name, spec in ACTIONS.items() if "corpus" not in {f.name for f in fields(spec.inp)}
     )
     assert without_corpus == [
-        "doctor", "eval.publish", "eval.release_check", "explain", "hooks.check", "install",
+        "doctor", "eval.bless", "eval.publish", "eval.release_check", "explain", "hooks.check",
+        "install",
         "out.check", "out.compile",
         "out.constructs", "out.normalize", "out.stamp", "out.targets", "out.verify",
         "serve", "skills.check", "skills.hash",
@@ -1371,7 +1376,7 @@ def test_the_unrostered_cli_count_is_the_distance_to_the_registry() -> None:
     tables and usage rather than from a numeral, and a numeral is a second copy of an enumeration.
     """
     waiting = _unrostered_cli(ACTIONS)
-    assert len(waiting) == 113, "D840 landed `ow eval release-check`"
+    assert len(waiting) == 112, "D846 landed `ow eval bless`"
     have = {spec.cli for spec in ACTIONS.values()}
     assert not set(waiting) & have
     assert len(waiting) + len(have) == sum(max(1, len(v)) for v in CLI_ROSTER.values())

@@ -130,6 +130,17 @@ def test_an_added_row_that_does_not_parse_fails() -> None:
     assert "has 3 fields, not 5" in detail
 
 
+def test_a_row_for_a_changed_inventory_is_not_idle_and_the_inventory_is_not_guarded() -> None:
+    """D846: Q-G24 asks for this row when a count falls, so it blesses something."""
+    row = _row("eval/inventory.toml")
+    assert not GATE.guarded("eval/inventory.toml")
+    assert _judge(["eval/inventory.toml"], row) == []
+    assert _judge(["eval/inventory.toml"]) == []
+    assert _judge(["README.md"], row) == [
+        (True, "eval/BLESS.log row eval/inventory.toml", "blesses no guarded change in this commit")
+    ]
+
+
 def test_an_unexplained_row_fails_with_no_override() -> None:
     [(failing, _, detail)] = _judge([SHAPE], _row(unexplained=1))
     assert failing

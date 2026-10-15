@@ -73,6 +73,7 @@ __all__ = [
     "CostReport",
     "DoctorFinding",
     "DoctorReport",
+    "EvalBlessReport",
     "EvalPublishReport",
     "EvalReleaseCheckReport",
     "EvalReleaseFinding",
@@ -780,6 +781,24 @@ class EvalPublishReport:
     rows: int
     changed: tuple[str, ...]
     written: bool
+
+
+@dataclass(frozen=True, slots=True)
+class EvalBlessReport:
+    """What `ow eval bless --inventory` returns. D846.
+
+    13-quality.md:1847 makes the verb OW-Q-013's fix. `inventory` and `log` are the two files it
+    wrote. `row` is the `BLESS.log` line it appended, without its LF. `fell` names each area whose
+    tests or properties fell, the decreases the row blesses, and `changed` names every area that
+    moved. `tests` is the new collection's count.
+    """
+
+    inventory: str
+    log: str
+    row: str
+    fell: tuple[str, ...]
+    changed: tuple[str, ...]
+    tests: int
 
 
 @dataclass(frozen=True, slots=True)

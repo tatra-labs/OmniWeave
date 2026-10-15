@@ -107,7 +107,7 @@ GLOBAL_FLAGS: Final[tuple[Argument, ...]] = (
 
 GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
-    "eval": "publish · release-check",
+    "eval": "bless · publish · release-check",
     "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
     "hooks": "check",
     "out": (
@@ -263,6 +263,30 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 spelling=("--runtime",),
                 kind="switch",
                 default=False,
+            ),
+        ),
+    ),
+    Command(
+        words=("eval", "bless"),
+        actions=("eval.bless",),
+        help=(
+            "Rewrite eval/inventory.toml from the test collection and append the BLESS.log row "
+            "a fall in its counts needs; OMNIWEAVE_BLESS=1 and a reason are required"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--counters",),
+                kind="switch",
+                default=False,
+            ),
+            Argument(
+                spelling=("--inventory",),
+                kind="switch",
+                default=False,
+            ),
+            Argument(
+                spelling=("--reason",),
+                metavar="REASON",
             ),
         ),
     ),

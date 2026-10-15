@@ -134,6 +134,7 @@ from omniweave.sdk.reports import (
     CorporaReport,
     CostReport,
     DoctorReport,
+    EvalBlessReport,
     EvalPublishReport,
     EvalReleaseCheckReport,
     GraphDoctorReport,
@@ -162,6 +163,7 @@ from omniweave.surface.inputs import (
     CoverageIn,
     DiffIn,
     DoctorIn,
+    EvalBlessIn,
     EvalPublishIn,
     EvalReleaseCheckIn,
     ExplainIn,
@@ -2178,6 +2180,27 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=EvalReleaseCheckReport,
             advanced=frozenset(),
             cli=("eval", "release-check"),
+        ),
+        ActionSpec(
+            name="eval.bless",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=False,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Rewrite eval/inventory.toml from the test collection and append the "
+                "BLESS.log row a fall in its counts needs; OMNIWEAVE_BLESS=1 and a reason "
+                "are required"
+            ),
+            decision="tests were removed on purpose and Q-G24 refuses the decrease",
+            example={},
+            inp=EvalBlessIn,
+            out=EvalBlessReport,
+            advanced=frozenset(),
+            cli=("eval", "bless"),
         ),
     )
 )
