@@ -30,7 +30,7 @@ and a reviewer checks them the way a register row is checked. A row moves up a c
 the commit that lands its instrument.
 
     uv run tools/acceptance_v10.py              # every row but the slow ones
-    uv run tools/acceptance_v10.py --slow       # also G19, G22, GR8 and the damage suite (minutes)
+    uv run tools/acceptance_v10.py --slow       # also G19, G22, GR8, damage, an ingest (minutes)
     uv run tools/acceptance_v10.py --only V10-5,V10-16
     uv run tools/acceptance_v10.py --json
 
@@ -88,6 +88,7 @@ CORE = "packages/omniweave-core/tests/unit"
 CLI = "packages/omniweave/tests/unit"
 CONF = "packages/omniweave-conform/tests/unit"
 T3 = "packages/omniweave/tests/conform"
+CORE_T3 = "packages/omniweave-core/tests/conform"
 
 
 # ---------------------------------------------------------------------------
@@ -117,14 +118,16 @@ CRITERIA: tuple[Criterion, ...] = (
                 label="ow eval release-check refuses on unknown and on hard gates (D840)",
             ),
             pytest(f"{CORE}/test_gate_parity.py", label="Q-G22's gate and its blocker (D842)"),
+            pytest(f"{CORE}/test_gate_frozen_stability.py", label="Q-G4's gate, on cells (D849)"),
         ),
         Coverage.PARTIAL,
         "no `v*` tag to be green on, and no committed `.oweval` for `ow eval release-check` "
         "to judge, so its tests run and the verb does not; G13 and G25 have no runner "
-        "and G29 is planned only; Q-G4, 16, 20 and 26 have no instrument, Q-G2 runs without "
+        "and G29 is planned only; Q-G16, 20 and 26 have no instrument, Q-G2 runs without "
         "its orphan-cassette sweep, and "
-        "Q-G8, 19 and 25 run their static halves only; Q-G22's gate runs the T1/T2 suite, so "
-        "this row runs its tests and not it; the `gates` CI job is off. This row runs the Q-G "
+        "Q-G8, 19 and 25 run their static halves only; Q-G22's gate runs the T1/T2 suite and "
+        "Q-G4's reads the CI cells, so this row runs their tests and not them; the `gates` CI "
+        "job is off. This row runs the Q-G "
         "scripts that exist, and the register test, not every G runner",
     ),
     Criterion(
@@ -314,12 +317,27 @@ CRITERIA: tuple[Criterion, ...] = (
                 f"{CORE}/test_ow_golden.py",
                 label="the Tier-A goldens and their bless (D848)",
             ),
+            pytest(f"{CORE}/test_gate_frozen_stability.py", label="Q-G4's gate, on cells (D849)"),
+            Instrument(
+                "pytest this machine's cell: a real ingest, its goldens and its shapes (T3)",
+                (
+                    "-m",
+                    "pytest",
+                    "-q",
+                    "-p",
+                    "no:cacheprovider",
+                    f"{CORE_T3}/test_golden_process.py",
+                    f"{CORE_T3}/test_frozen_stability_process.py",
+                ),
+                slow=True,
+            ),
         ),
         Coverage.PARTIAL,
-        "the goldens exist (D848: 26 documents, 78 Reductions) and a real ingest reproduces them "
-        "on this machine, which the conform tier asserts; nothing compares their shape across two "
-        "pdfium minors or the nine cells, Q-G4's tools/gate_frozen_stability.py is not built, "
-        "and the row rests on F31",
+        "the goldens exist (D848: 26 documents, 78 Reductions), and Q-G4's "
+        "tools/gate_frozen_stability.py (D849) compares the shapes each cell emits with them; "
+        "this machine is one cell, which the conform tier holds to the goldens. No CI job emits "
+        "two pdfium builds or the nine cells (the `golden` job and the `test` matrix are off), "
+        "so the gate has never read enough cells to run, and the row rests on F31",
     ),
     Criterion(
         "V10-15",

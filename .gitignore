@@ -53,3 +53,6 @@ fixtures/generated/
 # in". A coverage-guided corpus grows without bound and is a derived artefact of the seeds plus
 # the run that produced it, so committing one would commit a search result as if it were input.
 fuzz/corpus/
+
+# A CI job's downloaded artefacts, e.g. Q-G4's cells (tools/gate_frozen_stability.py, D849).
+/artifacts/
