@@ -42,12 +42,20 @@ script until `ow eval golden` is an Action.
    over that one document. `FILE` names the document or any of its three files, with or without
    `fixtures/goldens/`. A name that is a document in neither the goldens nor the ingest means the
    gate did not run. It is a check, so it may not be given with `--bless`. (D851.)
+6. **`--bless --schema-bump OLD->NEW` is section 5.6's one-row regeneration.** Every document that
+   moved must move in its headers alone, and every file that moved must be masked-equal under
+   `schema_v` (`bless.schema_bump()`), from exactly `OLD` to exactly `NEW`. A new or lost
+   document, a counter, a line, or another version pair refuses the whole bless, which then goes
+   through the ordinary path with `--diff` to show why. The row's reason ends `(schema bump
+   OLD->NEW)`, so it names both versions, and the second reviewer is waived because masking
+   proved the change unreadable by nobody. The reason's 20 characters are still the person's
+   own. `--schema-bump` without `--bless` is a usage error. (D852.)
 
 ## Exit codes
 
 `0` the goldens match, or were blessed. `1` they differ (`--check`), or the bless was refused.
-`2` the gate did not run: the ingest failed, an argument it cannot read, or an `--explain` name
-that is no document.
+`2` the gate did not run: the ingest failed, an argument it cannot read, an `--explain` name
+that is no document, or a `--schema-bump` that is not `OLD->NEW` or is given without `--bless`.
 
 Specified in 13-quality.md sections 5.1-5.5, and 16-roadmap.md W10.2.
 """
@@ -55,6 +63,7 @@ Specified in 13-quality.md sections 5.1-5.5, and 16-roadmap.md W10.2.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import datetime as dt
 import os
 import shutil
@@ -72,7 +81,13 @@ for _dist in sorted((REPO / "packages").iterdir()) if (REPO / "packages").is_dir
     if _src.is_dir() and str(_src) not in sys.path:
         sys.path.insert(0, str(_src))
 
-from omniweave_conform.bless import BLESS_ENV, blessing, parse_log, plan  # noqa: E402
+from omniweave_conform.bless import (  # noqa: E402
+    BLESS_ENV,
+    blessing,
+    parse_log,
+    plan,
+    schema_bump,
+)
 from omniweave_conform.churn import Reductions, explain, load_decomposition  # noqa: E402
 from omniweave_conform.golden import (  # noqa: E402
     CORPUS,
@@ -99,6 +114,8 @@ PROJECT: Final = (
 """Ruling 3: the project file a scratch ingest runs under, as the conform tests' (D576)."""
 LOG: Final = "eval/BLESS.log"
 INGEST_TIMEOUT_S: Final = 1800
+EXAMPLES: Final = 10
+"""Ruling 6: how many refused files a schema bump names."""
 NOTHING: Final = Reductions("", "", "")
 """Ruling 4: the side a new or a lost document does not have."""
 
@@ -165,11 +182,21 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--explain", default=None, metavar="FILE", help="one document, explained")
     parser.add_argument("--reason", default=None, metavar="TEXT")
     parser.add_argument("--diff", action="store_true", help="print each change's three-part diff")
+    parser.add_argument("--schema-bump", default=None, metavar="OLD->NEW", help="section 5.6")
     try:
         args = parser.parse_args(argv)
     except SystemExit:
         return EXIT_NOT_RUN
     root: Path = args.root
+    bump = None
+    if args.schema_bump is not None:
+        bump = _bump(args.schema_bump)
+        if bump is None or not args.bless:
+            _say(
+                f"golden DID NOT RUN  --schema-bump {args.schema_bump!r}: it is OLD->NEW, two"
+                " different versions, and it is given with --bless"
+            )
+            return EXIT_NOT_RUN
     try:
         fresh = ingest(root)
         decomposition = load_decomposition(root / GOLDENS / "DECOMPOSITION.toml")
@@ -199,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.bless:
         _say(f"golden {'FAIL' if moved else 'ok'}  {len(moved)} document(s) changed")
         return EXIT_FAIL if moved else EXIT_CLEAN
-    return _bless(root, committed, fresh, moved, args.reason)
+    return _bless(root, committed, fresh, moved, args.reason, bump=bump)
 
 
 def _document(name: str) -> str:
@@ -210,10 +237,58 @@ def _document(name: str) -> str:
     return text
 
 
+def _bump(text: str) -> tuple[str, str] | None:
+    """Ruling 6: `OLD->NEW`, two different versions without spaces, or `None`."""
+    old, sep, new = text.partition("->")
+    if not sep or not old or not new or old == new or any(c.isspace() for c in text):
+        return None
+    return old, new
+
+
+def _not_a_bump(
+    committed: dict[str, str], fresh: dict[str, str], moved: list, bump: tuple[str, str]
+) -> list[str]:
+    """Ruling 6: each document or file that moved by more than `schema_v` OLD->NEW."""
+    out = []
+    for change in moved:
+        for kind in KINDS:
+            path = f"{change.doc}.{kind}"
+            before, after = committed.get(path), fresh.get(path)
+            if before is None or after is None:
+                out.append(f"{path} is new or gone")
+            elif before != after and schema_bump(before, after) != bump:
+                pair = schema_bump(before, after)
+                why = f"schema_v {pair[0]}->{pair[1]}" if pair else "more than schema_v moved"
+                out.append(f"{path}: {why}")
+    return out
+
+
+def _bump_refused(
+    committed: dict[str, str], fresh: dict[str, str], moved: list, bump: tuple[str, str]
+) -> bool:
+    """Ruling 6: say why a schema bump is refused, or nothing when it is not."""
+    wrong = _not_a_bump(committed, fresh, moved, bump)
+    if wrong:
+        _say(
+            f"golden FAIL  the schema bump is refused: {len(wrong)} file(s) moved by more"
+            f" than schema_v {bump[0]}->{bump[1]}"
+        )
+        for line in wrong[:EXAMPLES]:
+            _say(f"  {line}")
+        _say("  fix   bless it without --schema-bump; --diff shows what else moved")
+    return bool(wrong)
+
+
 def _bless(
-    root: Path, committed: dict[str, str], fresh: dict[str, str], moved: list, reason: str | None
+    root: Path,
+    committed: dict[str, str],
+    fresh: dict[str, str],
+    moved: list,
+    reason: str | None,
+    *,
+    bump: tuple[str, str] | None = None,
 ) -> int:
-    """Ruling 2."""
+    """Rulings 2 and 6."""
     if not moved:
         _say("golden ok  nothing to bless: the goldens already match the ingest")
         return EXIT_CLEAN
@@ -227,6 +302,8 @@ def _bless(
         _say("golden FAIL  the bless is refused: `git config user.email` names no author")
         _say("  fix   git config user.email <your address>")
         return EXIT_FAIL
+    if bump is not None and _bump_refused(committed, fresh, moved, bump):
+        return EXIT_FAIL
     try:
         blessed = plan(
             {change.doc: change.churn for change in moved},
@@ -236,6 +313,11 @@ def _bless(
             glob=f"{GOLDENS}/{CORPUS}/*",
             reason=reason or "",
         )
+        if bump is not None:
+            row = dataclasses.replace(
+                blessed.row, reason=f"{blessed.row.reason} (schema bump {bump[0]}->{bump[1]})"
+            )
+            blessed = dataclasses.replace(blessed, row=row, second_reviewer=False)
         log = root / LOG
         old = log.read_text(encoding="utf-8") if log.is_file() else ""
         parse_log(old)
@@ -252,6 +334,8 @@ def _bless(
         (base / path).write_bytes(text.encode("utf-8"))
     log.parent.mkdir(parents=True, exist_ok=True)
     log.write_bytes((old + blessed.row.line()).encode("utf-8"))
+    if bump is not None:
+        _say("  note  no second reviewer: masking schema_v leaves every diff empty (section 5.6)")
     if blessed.second_reviewer:
         _say(
             f"  note  a second reviewer is required: {blessed.structural}/{blessed.touched}"

@@ -42,6 +42,7 @@ make the diff empty.
    blesses nothing.
 6. **A schema bump is masked on `schema_v=` in the header alone.** Every other byte must be equal.
    One that is not is an ordinary `structural` change, and goes through the ordinary path.
+   `schema_bump()` names the two versions such a file moved between (D852).
 
 Specified in 13-quality.md sections 5.5 and 5.6.
 """
@@ -76,6 +77,7 @@ __all__ = [
     "covers",
     "parse_log",
     "plan",
+    "schema_bump",
     "schema_bump_only",
 ]
 
@@ -208,7 +210,7 @@ def parse_log(text: str) -> tuple[BlessRow, ...]:
             _refuse(
                 f"BLESS.log:{number} counts {counts!r} are not incidental=,structural=,unexplained="
             )
-        tally = dict(zip(CLASSES, (int(n) for n in match.groups()), strict=True))
+        tally: dict[str, int] = dict(zip(CLASSES, map(int, match.groups()), strict=True))
         rows.append(BlessRow(date=date, author=author, glob=glob, counts=tally, reason=reason))
     return tuple(rows)
 
@@ -238,6 +240,17 @@ def schema_bump_only(old: str, new: str) -> bool:
         return _SCHEMA_V.sub("schema_v=*", head) + sep + body
 
     return old != new and masked(old) == masked(new)
+
+
+def schema_bump(old: str, new: str) -> tuple[str, str] | None:
+    """Ruling 6: the `schema_v` pair a masked-equal file moved between, or `None`."""
+    if not schema_bump_only(old, new):
+        return None
+    before = _SCHEMA_V.search(old.partition("\n")[0])
+    after = _SCHEMA_V.search(new.partition("\n")[0])
+    if before is None or after is None:
+        return None
+    return before.group().partition("=")[2], after.group().partition("=")[2]
 
 
 def _refuse(message: str) -> NoReturn:
