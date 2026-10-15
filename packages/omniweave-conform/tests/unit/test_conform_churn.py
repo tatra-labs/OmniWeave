@@ -384,3 +384,68 @@ def test_explain_of_a_suppressed_pages_has_nothing_to_sum(table: Decomposition) 
     expected = ("pages is SUPPRESSED on a side, so no counter sums over its pages",)
     assert explain(BASE, gone, table) == expected
     assert explain(gone, BASE, table) == expected
+
+
+# ---------------------------------------------------------------------------
+# A moved header is a change (ruling 9). D852.
+# ---------------------------------------------------------------------------
+
+
+def _bumped(r: Reductions, old: str = "schema_v=1", new: str = "schema_v=2") -> Reductions:
+    return Reductions(*(text.replace(old, new, 1) for text in r))
+
+
+def test_a_header_moving_alone_is_structural_and_named(table: Decomposition) -> None:
+    """Before D852 every reader skipped line 0, so this was `unchanged` and `--check` passed."""
+    got = classify(BASE, _bumped(BASE), table)
+    assert got.cls == "structural"
+    assert got.delta == ()
+    assert got.reasons == (
+        "shape header moved: schema_v 1 -> 2",
+        "pages header moved: schema_v 1 -> 2",
+        "outline header moved: schema_v 1 -> 2",
+    )
+
+
+def test_a_header_names_each_field_and_its_format(table: Decomposition) -> None:
+    new = BASE._replace(
+        shape=BASE.shape.replace("owshape/1", "owshape/2", 1).replace("doc=k", "doc=j", 1),
+        outline=BASE.outline.replace("schema_v=1", "schema_v=1  lang=en", 1),
+    )
+    assert classify(BASE, new, table).reasons == (
+        "shape header moved: doc k -> j, format owshape/1 -> owshape/2",
+        "outline header moved: lang - -> en",
+    )
+
+
+def test_a_header_makes_a_digest_change_structural(table: Decomposition) -> None:
+    digest = Reductions(
+        BASE.shape,
+        _text(PAGES_HEAD, _page(cdig="cccccccc")),
+        _outline(first="99999999 - Net revenue rose by a tenth"),
+    )
+    assert classify(BASE, digest, table).cls == "incidental"
+    got = classify(BASE, _bumped(digest), table)
+    assert got.cls == "structural"
+    assert got.reasons[-1] == "outline header moved: schema_v 1 -> 2"
+
+
+def test_a_header_keeps_any_other_class_and_adds_its_reason(table: Decomposition) -> None:
+    unexplained = BASE._replace(pages=_text(PAGES_HEAD, _page(kind="heading:1,paragraph:2")))
+    got = classify(BASE, _bumped(unexplained), table)
+    assert got.cls == "unexplained"
+    assert "shape header moved: schema_v 1 -> 2" in got.reasons
+    structural = BASE._replace(shape=_shape(grid__tables_with_merges="1"))
+    got = classify(BASE, _bumped(structural), table)
+    assert got.cls == "structural"
+    assert [d.key for d in got.delta] == ["grid.tables_with_merges"]
+
+
+def test_a_suppressed_file_has_no_header_to_compare(table: Decomposition) -> None:
+    """Ruling 7 compares its one line by count; ruling 9 does not read it a second time."""
+    one = "owpages/1 SUPPRESSED reason=bytes pages=1 would_be_bytes=300000\n"
+    old = BASE._replace(pages=one)
+    new = old._replace(pages=one.replace("300000", "300100"))
+    got = classify(old, new, table)
+    assert got.cls == "incidental"
+    assert not any("header" in reason for reason in got.reasons)

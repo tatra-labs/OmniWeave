@@ -270,6 +270,122 @@ def test_explain_beside_diff_diffs_its_document_alone(
     )
 
 
+def _bumped(tree: dict[str, str], new: str = "schema_v=2") -> dict[str, str]:
+    """Section 5.6's event: every header's `schema_v` moved, and nothing else."""
+    return {path: text.replace("schema_v=1", new, 1) for path, text in tree.items()}
+
+
+def test_a_schema_bump_fails_the_check(root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """D852: header-only moves were `unchanged`, so this passed with every byte different."""
+    code, out = _main(root, capsys, _bumped(_committed()))
+    assert code == 1
+    assert f"  structural   {PDF}: shape header moved: schema_v 1 -> 2; pages header" in out
+    assert out.splitlines()[-1] == "golden FAIL  26 document(s) changed"
+
+
+def test_a_schema_bump_blesses_in_one_row_without_a_second_reviewer(
+    root: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OMNIWEAVE_BLESS", "1")
+    _author(monkeypatch)
+    fresh = _bumped(_committed())
+    code, out = _main(root, capsys, fresh, "--bless", "--schema-bump", "1->2", "--reason", REASON)
+    assert code == 0, out
+    assert "a second reviewer is required" not in out
+    assert "  note  no second reviewer: masking schema_v leaves every diff empty" in out
+    [row] = (root / "eval" / "BLESS.log").read_text(encoding="utf-8").splitlines()
+    assert row.split("\t")[3:] == [
+        "incidental=0,structural=26,unexplained=0",
+        f"{REASON} (schema bump 1->2)",
+    ]
+    assert (root / "fixtures" / "goldens" / f"{PDF}.pages").read_text(encoding="utf-8") == (
+        fresh[f"{PDF}.pages"]
+    )
+    assert _main(root, capsys, fresh)[0] == 0
+
+
+def test_the_ordinary_bless_of_a_schema_bump_asks_for_a_second_reviewer(
+    root: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OMNIWEAVE_BLESS", "1")
+    _author(monkeypatch)
+    code, out = _main(root, capsys, _bumped(_committed()), "--bless", "--reason", REASON)
+    assert code == 0, out
+    assert "a second reviewer is required: 26/26 structural is above 20%" in out
+    assert "(schema bump" not in (root / "eval" / "BLESS.log").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("fresh", "says"),
+    [
+        (lambda: _bumped(_marked()), f"  {PDF}.shape: more than schema_v moved"),
+        (
+            lambda: _bumped(_committed(), "schema_v=3"),
+            f"  {min(_committed()).rsplit('.', 1)[0]}.shape: schema_v 1->3",
+        ),
+        (
+            lambda: {k: v for k, v in _bumped(_committed()).items() if not k.startswith(PDF)},
+            f"  {PDF}.shape is new or gone",
+        ),
+    ],
+    ids=["a-counter-too", "another-version", "a-lost-document"],
+)
+def test_a_schema_bump_that_is_more_than_one_is_refused(
+    root: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    fresh: Any,
+    says: str,
+) -> None:
+    monkeypatch.setenv("OMNIWEAVE_BLESS", "1")
+    _author(monkeypatch)
+    code, out = _main(root, capsys, fresh(), "--bless", "--schema-bump", "1->2", "--reason", REASON)
+    assert code == 1
+    assert says in out.splitlines()
+    assert "golden FAIL  the schema bump is refused: " in out
+    assert out.splitlines()[-1] == (
+        "  fix   bless it without --schema-bump; --diff shows what else moved"
+    )
+    assert not (root / "eval" / "BLESS.log").exists()
+    assert _main(root, capsys, _committed())[0] == 0
+
+
+def test_a_refused_schema_bump_names_ten_files_at_most(
+    root: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OMNIWEAVE_BLESS", "1")
+    _author(monkeypatch)
+    fresh = _bumped(_committed(), "schema_v=3")
+    code, out = _main(root, capsys, fresh, "--bless", "--schema-bump", "1->2", "--reason", REASON)
+    assert code == 1
+    assert "78 file(s) moved by more than schema_v 1->2" in out
+    assert sum(1 for line in out.splitlines() if line.endswith(": schema_v 1->3")) == 10
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--bless", "--schema-bump", "1-2"],
+        ["--bless", "--schema-bump", "1->1"],
+        ["--bless", "--schema-bump=->2"],
+        ["--bless", "--schema-bump", "1->"],
+        ["--bless", "--schema-bump", "1 ->2"],
+        ["--schema-bump", "1->2"],
+    ],
+    ids=["no-arrow", "same", "no-old", "no-new", "a-space", "without-bless"],
+)
+def test_a_schema_bump_that_does_not_read_did_not_run(
+    root: Path, capsys: pytest.CaptureFixture[str], argv: list[str]
+) -> None:
+    code, out = _main(root, capsys, _bumped(_committed()), *argv, "--reason", REASON)
+    assert code == 2
+    value = argv[-1].removeprefix("--schema-bump=")
+    assert out.splitlines() == [
+        f"golden DID NOT RUN  --schema-bump {value!r}: it is OLD->NEW, two different"
+        " versions, and it is given with --bless"
+    ]
+
+
 def test_a_bless_needs_the_flag(
     root: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:

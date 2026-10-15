@@ -14,6 +14,7 @@ from omniweave_conform.bless import (
     covers,
     parse_log,
     plan,
+    schema_bump,
     schema_bump_only,
 )
 from omniweave_conform.churn import CHURN_SYMBOL, Churn
@@ -191,3 +192,12 @@ def test_a_schema_bump_is_the_header_field_alone() -> None:
     assert not schema_bump_only(old, old)
     body_mention = old + "achieved.note schema_v=1\n"
     assert not schema_bump_only(body_mention, body_mention.replace("schema_v=1", "schema_v=2"))
+
+
+def test_a_schema_bump_names_its_two_versions() -> None:
+    """D852: the pair `--schema-bump OLD->NEW` is held to, and `None` for anything else."""
+    old = "owshape/1  corpus=c  doc=k  driver=d@1  schema_v=1\nblocks.total 5\n"
+    assert schema_bump(old, old.replace("schema_v=1", "schema_v=12")) == ("1", "12")
+    assert schema_bump(old, old.replace("schema_v=1", "schema_v=2").replace("5", "6")) is None
+    assert schema_bump(old, old) is None
+    assert schema_bump(old, old.replace("doc=k", "doc=j")) is None
