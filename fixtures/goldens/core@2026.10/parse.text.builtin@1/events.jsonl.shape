@@ -1,0 +1,26 @@
+owshape/1  corpus=core@2026.10  doc=7d99b35cdd5dab7f986f49d6bad69ae3  driver=parse.text.builtin@1  schema_v=1
+achieved.asset_origin false
+achieved.assets none
+achieved.confidence none
+achieved.forfeits ["spatial"]
+achieved.furniture destroyed
+achieved.marks false
+achieved.math []
+achieved.notes none
+achieved.origin_span none
+achieved.reading_order source
+achieved.round_trip structure
+achieved.sections outline_from_source
+achieved.spatial none
+achieved.tables none
+achieved.text_span false
+blocks.kind.document 1
+blocks.kind.paragraph 2
+blocks.layer.body 3
+blocks.total 3
+grid.tables_with_merges 0
+pages.total 1
+quad.present_frac 0.0000
+quote.normalized 2
+quote.synthetic 1
+trust.extracted 3

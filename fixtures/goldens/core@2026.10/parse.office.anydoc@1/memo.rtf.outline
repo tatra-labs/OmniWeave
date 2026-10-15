@@ -1,0 +1,5 @@
+owoutline/1  corpus=core@2026.10  doc=1bc77f2fd63595dd187df4126555cfc6  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic fd0aa8f0 -
+p0/0 paragraph body extracted normalized c891a860 - Memo
+p0/1 paragraph body extracted normalized 6e246889 - Plain text, then italic and bold.
+p0/2 paragraph body extracted normalized 44b2c71a - A second paragraph.

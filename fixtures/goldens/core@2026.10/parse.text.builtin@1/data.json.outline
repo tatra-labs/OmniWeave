@@ -1,0 +1,8 @@
+owoutline/1  corpus=core@2026.10  doc=b05503f3e74bf43467377a814bf58e2b  driver=parse.text.builtin@1  schema_v=1
+doc document body extracted synthetic 49b7cbf2 -
+p0/0 paragraph body extracted normalized 76964658 - service: billing
+p0/1 paragraph body extracted normalized c4e8233c - owners[0]: Ana
+p0/2 paragraph body extracted normalized e9a8ec80 - owners[1]: Bo
+p0/3 paragraph body extracted normalized bab35665 - limits.rps: 1200
+p0/4 paragraph body extracted normalized bf65d576 - limits.burst: true
+p0/5 paragraph body extracted normalized f60819fa - region: null

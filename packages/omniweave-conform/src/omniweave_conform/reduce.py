@@ -62,8 +62,10 @@ hand-written source alike.
    - **A diag with no page counts in `shape` and on no page line.**
 8. **An `outline` line is `addr kind layer trust quote cdig[:8] ldig[:8] preview`**, single-spaced,
    the preview last because it may hold spaces. The preview is the block's text with every
-   whitespace run collapsed to one space, cut at 48 characters; a block with no text has none, and
-   one with no layout digest prints `-`. Lines follow the source's order, which `ExportSource`
+   whitespace run collapsed to one space, cut at 48 characters, and stripped of the trailing space
+   a cut can leave (D848): a committed line never ends in whitespace, which an editor or a
+   whitespace check would remove and so change a golden's bytes. A block with no text has none,
+   and one with no layout digest prints `-`. Lines follow the source's order, which `ExportSource`
    fixes as frame order, so a reordering is a real diff.
 9. **Above 500 pages, `outline` is suppressed before a line is built.** 13:686 makes the page rule
    a performance guard and *"not a second threshold"*, so the file is the one line
@@ -266,7 +268,7 @@ def _outline_line(block: Block) -> str:
         block.content_digest.hex()[:DIGEST_HEX],
         layout,
     )
-    preview = " ".join((block.text or "").split())[:PREVIEW_CHARS]
+    preview = " ".join((block.text or "").split())[:PREVIEW_CHARS].rstrip()
     return " ".join((*fields, preview)) if preview else " ".join(fields)
 
 

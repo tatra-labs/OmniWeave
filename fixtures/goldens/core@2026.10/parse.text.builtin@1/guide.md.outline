@@ -1,0 +1,48 @@
+owoutline/1  corpus=core@2026.10  doc=befa4c3d7745dc18a62c2f87ab79ea47  driver=parse.text.builtin@1  schema_v=1
+doc document body extracted synthetic 0b5bccae -
+p0/0 code body extracted normalized c6495a4a - title: Onboarding guide owner: platform
+p0/4/0 list_item body extracted normalized 6af00709 -
+p0/4/0/0 paragraph body extracted normalized 05148d55 - Install the toolchain.
+p0/4/1/0 paragraph body extracted normalized 63122c6f - Clone the repository: it lives on the internal h
+p0/4/2/0 paragraph body extracted normalized d8adf7f7 - Run the tests.
+p0/5/0 list_item body extracted normalized 704e9967 -
+p0/5/0/0 paragraph body extracted normalized 9c937161 - Editors
+p0/5/0/1/0 list_item body extracted normalized c31e4504 -
+p0/5/0/1/0/0 paragraph body extracted normalized d0e4fb14 - VS Code
+p0/5/0/1/1/0 paragraph body extracted normalized dcfc7008 - JetBrains
+p0/5/1/0 paragraph body extracted normalized eced1451 - Terminals
+p0/6/0 paragraph body extracted normalized dfbbd06f - The on-call rota starts in your second week. Ask
+p0/8/r0c0 table_cell body extracted normalized 6a4a3217 -
+p0/8/r0c0/0 paragraph body extracted normalized 0a08dcda - service
+p0/8/r0c1/0 paragraph body extracted normalized ee470ff5 - owner
+p0/8/r0c2/0 paragraph body extracted normalized 91404208 - tier
+p0/8/r1c0/0 paragraph body extracted normalized c1a7482b - billing
+p0/8/r1c1/0 paragraph body extracted normalized c3e4e76b - Ana
+p0/8/r1c2/0 paragraph body extracted normalized cd4caa36 - 1
+p0/8/r2c0/0 paragraph body extracted normalized 8b67add4 - search
+p0/8/r2c1/0 paragraph body extracted normalized 7e343d77 - Bo
+p0/8/r2c2/0 paragraph body extracted normalized 224c7b9e - 2
+p0/1 heading body extracted normalized b00e1d4e - Onboarding guide
+p0/4/1 list_item body extracted normalized 02959514 -
+p0/5/0/1 list body extracted normalized 68eb8d0f -
+p0/5/0/1/1 list_item body extracted normalized 7550cbbb -
+p0/5/1 list_item body extracted normalized 9ef54532 -
+p0/8/r0c1 table_cell body extracted normalized c8ade6f0 -
+p0/2 paragraph body extracted normalized 216719ca - Welcome to the **platform** team. Read this firs
+p0/4/2 list_item body extracted normalized 36b5faf3 -
+p0/8/r0c2 table_cell body extracted normalized bdbe3370 -
+p0/3 heading body extracted normalized e60dbb22 - Setup
+p0/8/r1c0 table_cell body extracted normalized b02701fa -
+p0/4 list body extracted normalized ddcde738 -
+p0/8/r1c1 table_cell body extracted normalized 0ffb91b0 -
+p0/5 list body extracted normalized 74285610 -
+p0/8/r1c2 table_cell body extracted normalized e4b6fb0b -
+p0/6 blockquote body extracted normalized 89df70f7 -
+p0/8/r2c0 table_cell body extracted normalized e846288f -
+p0/7 code body extracted normalized 81f2a968 - def hello() -> str: return "hi"
+p0/8/r2c1 table_cell body extracted normalized 7c1b3ca7 -
+p0/8 table body extracted normalized 29bd797a -
+p0/8/r2c2 table_cell body extracted normalized 75d48b7f -
+p0/9 rule body extracted normalized 1dfda048 -
+p0/10 heading body extracted normalized 2fbda2b0 - Escalation
+p0/11 paragraph body extracted normalized 36c080d6 - Page the secondary if the primary does not answe

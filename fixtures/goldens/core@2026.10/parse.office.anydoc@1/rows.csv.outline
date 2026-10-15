@@ -1,0 +1,26 @@
+owoutline/1  corpus=core@2026.10  doc=e1ad87e12d9991b3b2d06e1350d41400  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic df1f718a -
+p0/0 table body extracted normalized b1f92966 -
+p0/0/r0c0 table_cell body extracted normalized e8b67472 -
+p0/0/r0c0/0 paragraph body extracted normalized 867a6f78 - region
+p0/0/r0c1/0 paragraph body extracted normalized eede6e6c - units
+p0/0/r0c2/0 paragraph body extracted normalized b10384e9 - note
+p0/0/r1c0/0 paragraph body extracted normalized f0d89226 - north
+p0/0/r1c1/0 paragraph body extracted normalized b06b3998 - 17
+p0/0/r1c2/0 paragraph body extracted normalized e569ce86 - steady
+p0/0/r2c0/0 paragraph body extracted normalized 817bf4fa - south
+p0/0/r2c1/0 paragraph body extracted normalized 8ce705da - 4
+p0/0/r2c2/0 paragraph body extracted normalized c0f2ddfc - a note, with a comma
+p0/0/r3c0/0 paragraph body extracted normalized 36b86774 - east
+p0/0/r3c1/0 paragraph body extracted normalized 01afa71c - 0
+p0/0/r0c1 table_cell body extracted normalized 49aeb053 -
+p0/0/r0c2 table_cell body extracted normalized 56366c82 -
+p0/0/r1c0 table_cell body extracted normalized 2e1a1dcd -
+p0/0/r1c1 table_cell body extracted normalized adbf8029 -
+p0/0/r1c2 table_cell body extracted normalized 2be7b2f9 -
+p0/0/r2c0 table_cell body extracted normalized 2eeccc56 -
+p0/0/r2c1 table_cell body extracted normalized 4f8db1a8 -
+p0/0/r2c2 table_cell body extracted normalized b509cd0f -
+p0/0/r3c0 table_cell body extracted normalized 4f12cf0c -
+p0/0/r3c1 table_cell body extracted normalized fbeb202a -
+p0/0/r3c2 table_cell body extracted normalized f130a8d4 -
