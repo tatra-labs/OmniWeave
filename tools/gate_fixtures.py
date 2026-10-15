@@ -1,4 +1,4 @@
-"""Q-G1, corpus licence, as a program: every fixture byte has a manifest row. **D843.**
+"""Q-G1 and Q-G2: every fixture byte has a manifest row, and the bytes fit their budget. **D843.**
 
 13-quality.md:92: *"`Q-G1` | `fixtures/index.toml` | every fixture byte has a manifest row
 `{spdx, source_url, retrieved_at, sha256}`"*. :1985 names this file: *"`tools/gate_fixtures.py`
@@ -8,7 +8,9 @@ the sidecars -- sorted by relpath, LF, no timestamps -- and byte-diff gated"*. S
 the four admissible provenances, *"and no fifth"*, with what each must record.
 
 This file generates the index, byte-diffs it, and holds every row to its file, following the
-standing pattern (ledger D25).
+standing pattern (ledger D25). D844 adds Q-G2, which :1986 makes *"the same gate: 64 MB total,
+256 KiB per Reduction, ≥ 40% real scans, ≤ 32 MiB of Cassettes, no orphan cassette,
+`size-pack ≤ 200_000` KiB after `git gc`"*, with section 4.1's *"≤ 4 MB per binary"*.
 
 ## Rulings
 
@@ -53,10 +55,42 @@ standing pattern (ledger D25).
 6. **Not judged here:** the SPDX allowlist, which is Q-G7's, and `review_by`, which is Q-G17's.
    `tools/gate_gate_rot.py` (D830) already reads the sidecars for the latter.
 
+## Q-G2's rulings (D844)
+
+7. **Tier A is every committed byte under `fixtures/` or a `packages/<dist>/fixtures/` tree.**
+   Section 4.1 writes Tier A as *"`fixtures/` -- bytes in the repository"*. The drivers'
+   conformance fixtures are bytes in the repository too, under a `fixtures/` of their own, so
+   the generators, cassettes, index and package fixtures all count.
+8. **`MB` is a million bytes.** The same table row writes `KiB` and `MiB` where it means binary
+   units, so its `64 MB` and `4 MB` are the decimal ones, which are also the stricter reading.
+9. **The caps:**
+   - Tier A at most 64 MB;
+   - each Q-G1 fixture at most 4 MB, section 4.1's *"per binary"*;
+   - each `.shape`, `.pages` or `.outline` under `fixtures/goldens/` at most
+     `MAX_REDUCTION_BYTES`;
+   - each committed cassette at most `MAX_CASSETTE_BYTES`, and all of them together at most
+     `MAX_CASSETTE_BYTES_TOTAL`.
+
+   The limits come from `omniweave_core.limits`, where they are declared, and are not written
+   twice. The `golden` job's cassette audit (D650) holds the same two cassette caps, which
+   :1986 lists here as well.
+10. **The 40% scan floor is measured over `fixtures/docs/`.** With no fixture there it has
+    nothing to measure, which is printed. With one, it fails closed: section 4.4's sidecar has no
+    key that says a document is a scan, so the floor cannot be measured until one is ruled.
+11. **`size-pack` is read after `git gc --auto --quiet`, and is at most 200,000 KiB.** Section
+    4.6 calls the `gc` *"load-bearing"*. `--skip-pack` leaves the clause out for a run that must
+    not touch the object store, and the report says it was left out. A pack the gate cannot
+    measure means the gate did not run.
+12. **Not run, and printed as not run:**
+    - the orphan-cassette sweep, which reads `eval/cassette-usage.toml`, and nothing writes that
+      yet;
+    - the pack ratchet, which needs a recorded baseline to ratchet against.
+
 ## Exit codes
 
 `0` every fixture has a well-formed row and the index matches. `1` a finding, named with its path
-and the fix. `2` the gate did not run, because git could not list the tree.
+and the fix, or a budget clause is over. `2` the gate did not run: git could not list the tree, or
+the pack could not be measured.
 
 Specified in 13-quality.md sections 2.1, 4.2, 4.4 and 14.
 """
@@ -72,24 +106,42 @@ import shutil
 import subprocess  # noqa: TID251 - "committed" is git's answer, and `git` is its only reader.
 import sys
 import tomllib
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
 REPO = Path(__file__).resolve().parent.parent
 
+for _dist in sorted((REPO / "packages").iterdir()) if (REPO / "packages").is_dir() else []:
+    _src = _dist / "src"
+    if _src.is_dir() and str(_src) not in sys.path:
+        sys.path.insert(0, str(_src))
+
+from omniweave_core.limits import (  # noqa: E402
+    MAX_CASSETTE_BYTES,
+    MAX_CASSETTE_BYTES_TOTAL,
+    MAX_REDUCTION_BYTES,
+)
+
 __all__ = [
     "EXIT_CLEAN",
     "EXIT_FAIL",
     "EXIT_NOT_RUN",
     "INDEX",
+    "MAX_BINARY_BYTES",
     "PROVENANCES",
+    "SIZE_PACK_KIB",
+    "TIER_A_BYTES",
+    "Budget",
     "Finding",
+    "budget",
     "check_row",
     "main",
     "render",
     "scope",
+    "size_pack",
+    "tier_a",
 ]
 
 EXIT_CLEAN: Final = 0
@@ -117,6 +169,18 @@ HEADER: Final = (
 _DATE: Final = re.compile(r"\d{4}-\d{2}-\d{2}")
 _BARE: Final = re.compile(r"[A-Za-z0-9_-]+")
 _FIX_ROW: Final = "mend the sidecar, then run `uv run tools/gate_fixtures.py --write`"
+
+TIER_A_BYTES: Final = 64_000_000
+"""Ruling 8: section 4.1's 64 MB, decimal."""
+MAX_BINARY_BYTES: Final = 4_000_000
+"""Ruling 8: section 4.1's 4 MB per binary, decimal."""
+SIZE_PACK_KIB: Final = 200_000
+"""Ruling 11: section 4.6's `size-pack` ceiling, in the KiB `git count-objects -v` reports."""
+SCAN_FLOOR: Final = 0.40
+REDUCTIONS: Final = ("fixtures/goldens/", (".shape", ".pages", ".outline"))
+CASSETTES: Final = "fixtures/cassettes/"
+DOCS: Final = "fixtures/docs/"
+_SIZE_PACK: Final = re.compile(r"^size-pack:\s*(\d+)\s*$", re.MULTILINE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -232,32 +296,126 @@ def render(rows: Sequence[tuple[str, Mapping[str, Any]]]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _committed(root: Path) -> list[str]:
+@dataclass(frozen=True, slots=True)
+class Budget:
+    """What Q-G2 measured, its findings, and the clauses it could not run."""
+
+    tier_a: int
+    cassettes: int
+    cassette_bytes: int
+    reductions: int
+    findings: tuple[Finding, ...]
+    notes: tuple[str, ...]
+
+
+def tier_a(committed: Sequence[str]) -> list[str]:
+    """Ruling 7: every committed path under `fixtures/` or a `packages/<dist>/fixtures/` tree."""
+    out = []
+    for path in committed:
+        parts = path.split("/")
+        in_package = len(parts) > 3 and parts[0] == "packages" and parts[2] == "fixtures"  # noqa: PLR2004
+        if in_package or path.startswith("fixtures/"):
+            out.append(path)
+    return sorted(out)
+
+
+def budget(sizes: Mapping[str, int], fixtures: Sequence[str]) -> Budget:
+    """Rulings 7-10 over `{path: bytes}` for Tier A and the Q-G1 fixtures within it."""
+    findings: list[Finding] = []
+    total = sum(sizes.values())
+    if total > TIER_A_BYTES:
+        findings.append(Finding("fixtures/", f"Tier A is {total} bytes, over {TIER_A_BYTES}"))
+    findings += [
+        Finding(path, f"{sizes[path]} bytes, over {MAX_BINARY_BYTES} per binary")
+        for path in fixtures
+        if sizes.get(path, 0) > MAX_BINARY_BYTES
+    ]
+    root, suffixes = REDUCTIONS
+    reductions = [path for path in sizes if path.startswith(root) and path.endswith(suffixes)]
+    findings += [
+        Finding(path, f"{sizes[path]} bytes, over MAX_REDUCTION_BYTES ({MAX_REDUCTION_BYTES})")
+        for path in sorted(reductions)
+        if sizes[path] > MAX_REDUCTION_BYTES
+    ]
+    cassettes = sorted(path for path in sizes if path.startswith(CASSETTES))
+    findings += [
+        Finding(path, f"{sizes[path]} bytes, over MAX_CASSETTE_BYTES ({MAX_CASSETTE_BYTES})")
+        for path in cassettes
+        if sizes[path] > MAX_CASSETTE_BYTES
+    ]
+    cassette_bytes = sum(sizes[path] for path in cassettes)
+    if cassette_bytes > MAX_CASSETTE_BYTES_TOTAL:
+        findings.append(
+            Finding(
+                CASSETTES,
+                f"{cassette_bytes} bytes, over MAX_CASSETTE_BYTES_TOTAL"
+                f" ({MAX_CASSETTE_BYTES_TOTAL})",
+            )
+        )
+    notes = []
+    docs = [path for path in fixtures if path.startswith(DOCS)]
+    if docs:
+        findings.append(
+            Finding(
+                DOCS,
+                f"{len(docs)} fixture(s), and the {SCAN_FLOOR:.0%} scan floor cannot be measured: "
+                "no sidecar key says a document is a scan (13-quality.md section 4.4)",
+            )
+        )
+    else:
+        notes.append(f"the {SCAN_FLOOR:.0%} scan floor: {DOCS} holds no fixture to measure")
+    notes.append("orphan cassettes: not run, because nothing writes eval/cassette-usage.toml yet")
+    return Budget(
+        total, len(cassettes), cassette_bytes, len(reductions), tuple(findings), tuple(notes)
+    )
+
+
+def size_pack(root: Path) -> int:
+    """Ruling 11: `size-pack` in KiB after `git gc --auto --quiet`, or `OSError`."""
+    _git(root, "gc", "--auto", "--quiet")
+    match = _SIZE_PACK.search(_git(root, "count-objects", "-v").decode("utf-8", "replace"))
+    if match is None:
+        message = "git count-objects -v reported no size-pack"
+        raise OSError(message)
+    return int(match.group(1))
+
+
+def _git(root: Path, *arguments: str) -> bytes:
     git = shutil.which("git")
     if git is None:
         message = "git is not on PATH"
         raise OSError(message)
     done = subprocess.run(  # noqa: S603 - argv[0] from `shutil.which`, no shell.
-        [git, "ls-files", "-z"], cwd=root, capture_output=True, check=False
+        [git, *arguments], cwd=root, capture_output=True, check=False
     )
     if done.returncode != 0:
-        message = "git ls-files: " + done.stderr.decode("utf-8", "replace").strip()
+        message = f"git {arguments[0]}: " + done.stderr.decode("utf-8", "replace").strip()
         raise OSError(message)
-    return [path for path in done.stdout.decode("utf-8").split("\0") if path]
+    return done.stdout
+
+
+def _committed(root: Path) -> list[str]:
+    return [path for path in _git(root, "ls-files", "-z").decode("utf-8").split("\0") if path]
 
 
 def _say(line: str) -> None:
     sys.stdout.write(line + "\n")
 
 
-def main(argv: list[str] | None = None, *, committed: Sequence[str] | None = None) -> int:
+def main(
+    argv: list[str] | None = None,
+    *,
+    committed: Sequence[str] | None = None,
+    pack: Callable[[Path], int] = size_pack,
+) -> int:
     """0 clean, 1 a finding, 2 the gate did not run."""
     parser = argparse.ArgumentParser(
         prog="gate_fixtures.py",
-        description="Q-G1: every fixture byte has a manifest row, and fixtures/index.toml is them.",
+        description="Q-G1 and Q-G2: every fixture byte has a manifest row and fits its budget.",
     )
     parser.add_argument("--root", type=Path, default=REPO, metavar="PATH")
     parser.add_argument("--write", action="store_true", help=f"regenerate {INDEX}")
+    parser.add_argument("--skip-pack", action="store_true", help="leave out git gc and size-pack")
     try:
         args = parser.parse_args(argv)
     except SystemExit:
@@ -285,7 +443,48 @@ def main(argv: list[str] | None = None, *, committed: Sequence[str] | None = Non
     if args.write:
         _say(f"  wrote {INDEX}")
     _say(f"Q-G1 {'FAIL' if findings else 'ok'}  {len(findings)} finding(s)")
-    return EXIT_FAIL if findings else EXIT_CLEAN
+    over = _q_g2(root, listed, fixtures, pack if not args.skip_pack else None)
+    if over is None:
+        return EXIT_NOT_RUN
+    return EXIT_FAIL if findings or over else EXIT_CLEAN
+
+
+def _q_g2(
+    root: Path, listed: Sequence[str], fixtures: Sequence[str], pack: Callable[[Path], int] | None
+) -> list[Finding] | None:
+    """Rulings 7-12, printed: the findings, or `None` when the pack could not be measured."""
+    spent = budget({path: _size(root / path) for path in tier_a(listed)}, fixtures)
+    over = list(spent.findings)
+    _say(
+        f"Q-G2  Tier A {spent.tier_a} of {TIER_A_BYTES} bytes; {spent.cassettes} cassette(s),"
+        f" {spent.cassette_bytes} of {MAX_CASSETTE_BYTES_TOTAL} bytes; {spent.reductions}"
+        " Reduction(s)"
+    )
+    if pack is None:
+        _say("  note  size-pack: not measured (--skip-pack)")
+    else:
+        try:
+            kib = pack(root)
+        except OSError as exc:
+            _say(f"Q-G2 DID NOT RUN  size-pack: {exc}")
+            return None
+        if kib > SIZE_PACK_KIB:
+            over.append(Finding("size-pack", f"{kib} KiB after git gc, over {SIZE_PACK_KIB}"))
+        _say(f"  size-pack {kib} of {SIZE_PACK_KIB} KiB after git gc --auto")
+    for one in over:
+        _say(f"  FAIL  {one.path}: {one.detail}")
+    for note in spent.notes:
+        _say(f"  note  {note}")
+    _say(f"Q-G2 {'FAIL' if over else 'ok'}  {len(over)} finding(s)")
+    return over
+
+
+def _size(path: Path) -> int:
+    """A committed file's bytes in the working tree; 0 for one the checkout deleted."""
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0
 
 
 def _rows(
