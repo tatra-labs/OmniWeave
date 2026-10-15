@@ -1,0 +1,13 @@
+owoutline/1  corpus=core@2026.10  doc=076bc84a7d8dca6ac018a16c1af9125b  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic 59e08489 -
+p0/0 table body extracted normalized e5988194 -
+p0/0/r0c0 table_cell body extracted normalized af92f1fa -
+p0/0/r0c0/0 paragraph body extracted normalized 7852d555 - Region
+p0/0/r0c1/0 paragraph body extracted normalized 43d45bc2 - Units
+p0/0/r1c0/0 paragraph body extracted normalized c97d0c56 - North
+p0/0/r1c1/0 paragraph body extracted normalized b06b3998 - 17
+p0/0/r2c0/0 paragraph body extracted normalized 446c8464 - Total for all regions
+p0/0/r0c1 table_cell body extracted normalized c3515c9c -
+p0/0/r1c0 table_cell body extracted normalized 787fb036 -
+p0/0/r1c1 table_cell body extracted normalized adbf8029 -
+p0/0/r2c0 table_cell body extracted normalized 6a8312d4 -

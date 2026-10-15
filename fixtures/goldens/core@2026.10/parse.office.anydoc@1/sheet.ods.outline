@@ -1,0 +1,13 @@
+owoutline/1  corpus=core@2026.10  doc=9bebb0ab7dce6312a34f6ef2121be572  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic d854cf60 -
+p0/0 table body extracted normalized d4020a4a -
+p0/0/r0c0 table_cell body extracted normalized 7199c8db -
+p0/0/r0c0/0 paragraph body extracted normalized 379a6400 - Site
+p0/0/r0c1/0 paragraph body extracted normalized d9823564 - Uptime
+p0/0/r1c0/0 paragraph body extracted normalized 0082c0c6 - eu-west
+p0/0/r1c1/0 paragraph body extracted normalized 20653f50 - 99.9
+p0/0/r2c0/0 paragraph body extracted normalized 6b345711 - Across every site
+p0/0/r0c1 table_cell body extracted normalized ec6283f2 -
+p0/0/r1c0 table_cell body extracted normalized fe34ef52 -
+p0/0/r1c1 table_cell body extracted normalized 04c73adf -
+p0/0/r2c0 table_cell body extracted normalized 034d45ac -

@@ -1,0 +1,26 @@
+owoutline/1  corpus=core@2026.10  doc=1720932978b82a736faa268d6c00cef9  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic 73037940 -
+p0/0 heading body extracted normalized 4ee4af18 - Quarterly report
+p0/5/r0c0 table_cell body extracted normalized e9e1753d -
+p0/5/r0c0/0 paragraph body extracted normalized c51c304d - Quarter
+p0/5/r0c1/0 paragraph body extracted normalized 5580f171 - Revenue
+p0/5/r1c0/0 paragraph body extracted normalized 11992f44 - Q1
+p0/5/r1c1/0 paragraph body extracted normalized 1abad851 - 120
+p0/5/r2c0/0 paragraph body extracted normalized d66602b9 - Total across both quarters
+p0/7/0 list_item body extracted normalized 9fda4d0a -
+p0/7/0/0 paragraph body extracted normalized e80bcf1c - first item
+p0/7/1/0 paragraph body extracted normalized c62e853e - second item
+p0/8/0 paragraph note extracted normalized 00ce7f99 - Unaudited figures.
+p0/1 paragraph body extracted normalized d64df762 - Plain, bold, italic and struck. See the site.
+p0/5/r0c1 table_cell body extracted normalized d87f73f9 -
+p0/7/1 list_item body extracted normalized 4ff72519 -
+p0/2 heading body extracted normalized 40b510dc - Figures
+p0/5/r1c0 table_cell body extracted normalized 301a82ac -
+p0/3 formula body extracted normalized 5f471fbe - x^{2}+1
+p0/5/r1c1 table_cell body extracted normalized 239af342 -
+p0/4 paragraph body extracted normalized 5262d379 - The ratio \frac{a}{b}
+p0/5/r2c0 table_cell body extracted normalized ec961205 -
+p0/5 table body extracted normalized 8509eedd -
+p0/6 picture body extracted normalized 2b40cbbd -
+p0/7 list body extracted normalized 993330dd -
+p0/8 footnote note extracted normalized dcb14891 -

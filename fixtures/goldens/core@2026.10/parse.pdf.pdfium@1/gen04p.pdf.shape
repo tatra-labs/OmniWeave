@@ -1,0 +1,26 @@
+owshape/1  corpus=core@2026.10  doc=9627dbfabe6436931252c5067c658775  driver=parse.pdf.pdfium@1  schema_v=1
+achieved.asset_origin false
+achieved.assets none
+achieved.confidence none
+achieved.forfeits []
+achieved.furniture destroyed
+achieved.marks false
+achieved.math []
+achieved.notes none
+achieved.origin_span none
+achieved.reading_order char_stream
+achieved.round_trip text
+achieved.sections none
+achieved.spatial block_bbox
+achieved.tables none
+achieved.text_span false
+blocks.kind.document 1
+blocks.kind.paragraph 168
+blocks.layer.body 169
+blocks.total 169
+grid.tables_with_merges 0
+pages.total 4
+quad.present_frac 0.9941
+quote.synthetic 1
+quote.verbatim 168
+trust.extracted 169

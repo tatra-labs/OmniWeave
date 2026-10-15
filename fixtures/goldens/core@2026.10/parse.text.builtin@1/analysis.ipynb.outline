@@ -1,0 +1,6 @@
+owoutline/1  corpus=core@2026.10  doc=9f9b275b23a81a1b6006a175a53ffd69  driver=parse.text.builtin@1  schema_v=1
+doc document body extracted synthetic 8731f879 -
+p0/0 heading body extracted normalized 3eb26faf - Churn analysis
+p0/1 paragraph body extracted normalized 5ab9ab4f - Monthly churn by plan.
+p0/2 code body extracted normalized a17b01b1 - rate = 42 / 1000 print(rate)
+p0/3 code body extracted normalized 9c257c5a - 0.042
