@@ -86,10 +86,13 @@ __all__ = [
     "Metric",
     "Perf",
     "Run",
+    "RunStatus",
     "Standing",
     "Verdict",
     "flakes",
     "open_oweval",
+    "perf",
+    "run_statuses",
     "runs",
     "scoreboard",
     "user_version",
@@ -564,6 +567,50 @@ def runs(connection: sqlite3.Connection) -> dict[str, dict[str, Any]]:
             "fairness": json.loads(fairness),
         }
     return out
+
+
+@dataclass(frozen=True, slots=True)
+class RunStatus:
+    """One `eval_run` row's identity and status: what `ow eval release-check` refuses on. D840."""
+
+    run_id: str
+    suite: str
+    subject: str
+    corpus_id: str
+    started_ns: int
+    status: str
+    not_measured: tuple[str, ...]
+
+
+def run_statuses(connection: sqlite3.Connection) -> tuple[RunStatus, ...]:
+    """Every run, `unknown` ones included, in `run_id` order (D840). The scoreboard view leaves an
+    `unknown` run out, so a release check that read only the view could not see one."""
+    return tuple(
+        RunStatus(
+            str(run_id),
+            str(suite),
+            str(subject),
+            str(corpus_id),
+            int(started_ns),
+            str(status),
+            tuple(json.loads(missing)),
+        )
+        for run_id, suite, subject, corpus_id, started_ns, status, missing in connection.execute(
+            "SELECT run_id, suite, subject, corpus_id, started_ns, status, not_measured"
+            " FROM eval_run ORDER BY run_id"
+        )
+    )
+
+
+def perf(connection: sqlite3.Connection) -> tuple[Perf, ...]:
+    """Every `eval_perf` row in key order (D840)."""
+    names = [f.name for f in fields(Perf)]
+    return tuple(
+        Perf(*row)
+        for row in connection.execute(
+            f"SELECT {', '.join(names)} FROM eval_perf ORDER BY run_id, budget_id"  # noqa: S608
+        )
+    )
 
 
 def flakes(connection: sqlite3.Connection) -> tuple[Flake, ...]:
