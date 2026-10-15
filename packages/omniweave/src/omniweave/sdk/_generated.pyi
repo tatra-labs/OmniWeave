@@ -20,6 +20,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     doc.diff          DiffIn              RebindReport
     doc.grid          GridIn              Grid
     doctor            DoctorIn            DoctorReport
+    eval.bless        EvalBlessIn         EvalBlessReport
     eval.publish      EvalPublishIn       EvalPublishReport
     eval.release_check EvalReleaseCheckIn  EvalReleaseCheckReport
     explain           ExplainIn           CodeRow

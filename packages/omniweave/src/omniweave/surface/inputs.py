@@ -95,6 +95,7 @@ __all__ = [
     "CoverageIn",
     "DiffIn",
     "DoctorIn",
+    "EvalBlessIn",
     "EvalPublishIn",
     "EvalReleaseCheckIn",
     "ExplainIn",
@@ -816,6 +817,21 @@ class EvalPublishIn:
     oweval: str = "eval/omniweave.oweval"
     results: str = "eval/results"
     check: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class EvalBlessIn:
+    """`ow eval bless [--counters] [--inventory] --reason TEXT`. 13-quality.md:1872. D846.
+
+    `inventory` rewrites `eval/inventory.toml` from the collection and appends the `BLESS.log` row
+    that Q-G24's decrease needs. That is OW-Q-013's fix, 13:1847. `counters` is parsed and refused:
+    nothing writes a counter baseline yet. `reason` is required, at least 20 characters, as
+    section 5.5's row grammar has it.
+    """
+
+    counters: bool = False
+    inventory: bool = False
+    reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

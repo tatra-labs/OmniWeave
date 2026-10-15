@@ -137,8 +137,9 @@ def test_the_arity_rule_is_reported_and_not_raised() -> None:
     #  (D696) made it three, the arity 10:1413 asks for, so it left this list.
     #  `out` joined with `targets`, one of its twelve (D761), and `constructs` (D762);
     #  `scaffold` (D765) made it three, so it left this list.
-    #  `eval` joined with `publish`, one of its thirteen (D833), and `release-check` (D840).
-    assert unrostered_groups() == ("doc (2)", "eval (2)", "hooks (1)", "surface (1)")
+    #  `eval` joined with `publish`, one of its thirteen (D833), and `release-check` (D840);
+    #  `bless` (D846) made it three, so it left this list.
+    assert unrostered_groups() == ("doc (2)", "hooks (1)", "surface (1)")
     assert _grammar_failures() == ()
 
 
@@ -364,7 +365,7 @@ def test_a_group_advertises_the_verbs_it_has_and_not_the_ones_it_is_owed() -> No
     against a parser with neither is LEANN's `llms.txt` in one line, and G25 is named after it."""
     assert GROUP_HELP == {
         "doc": "diff · grid",
-        "eval": "publish · release-check",
+        "eval": "bless · publish · release-check",
         "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
         "hooks": "check",
         "out": (

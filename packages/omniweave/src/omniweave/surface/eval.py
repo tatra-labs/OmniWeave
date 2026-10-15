@@ -1,4 +1,4 @@
-"""`ow eval <verb>`: the eval verbs this build dispatches. D833: `publish`; D840: `release-check`.
+"""`ow eval <verb>`: `publish` (D833), `release-check` (D840) and `bless` (D846).
 
 10-interfaces.md section 2.5: *"`omniweave-conform` implements the `eval` Action group"*. Every
 `eval` row stays in `ACTIONS` here, and the work happens across an entry point,
@@ -10,6 +10,10 @@ committed JSON tree"*, which Q-G19 byte-diff gates. Section 13.3 prints the verb
 
 13-quality.md:1881: *"`ow eval release-check` # exit 0 iff zero `unknown`, zero hard-gate
 failures"*. `omniweave_conform.release` holds what a finding is; this module prints them.
+
+13-quality.md:1847 makes `ow eval bless --inventory --reason '<>'` OW-Q-013's fix: Q-G24 refuses
+a fall in the test inventory with no `BLESS.log` row, and this verb writes the inventory and
+the row together.
 
 ## Rulings
 
@@ -32,6 +36,11 @@ failures"*. `omniweave_conform.release` holds what a finding is; this module pri
    object: `ok`, `strict`, `runs`, `superseded`, `gates` and `findings`. A missing `.oweval`
    or register exits 2, as ruling 1. A register the check cannot read is a refusal, exit 1,
    as ruling 3.
+7. **`bless --inventory` is OW-Q-013's fix (13:1847).** It needs `OMNIWEAVE_BLESS=1` in the
+   environment, which is section 5.5's first requirement, and a `--reason`. `--counters` is
+   refused by name, as nothing writes a counter baseline yet. The date is today's, UTC, read
+   once here from `SystemClock` as the other surfaces read the wall clock. A refusal in the
+   bless is `QualityError`, exit 1, as in ruling 3.
 """
 
 from __future__ import annotations
@@ -42,7 +51,12 @@ from typing import TYPE_CHECKING, Final, TextIO
 
 from omniweave_core.errors import InternalError, NotFoundError, OwError, QualityError, UsageError
 
-from omniweave.sdk.reports import EvalPublishReport, EvalReleaseCheckReport, EvalReleaseFinding
+from omniweave.sdk.reports import (
+    EvalBlessReport,
+    EvalPublishReport,
+    EvalReleaseCheckReport,
+    EvalReleaseFinding,
+)
 from omniweave.surface.dispatch import eval_entry
 from omniweave.surface.query import parse
 from omniweave.surface.switches import check, report
@@ -56,6 +70,7 @@ __all__ = ["EVAL_WORD", "main"]
 EVAL_WORD: Final[str] = "eval"
 _PUBLISH_FIX: Final[str] = "ow eval publish [--oweval PATH] [--results DIR] [--check]"
 _RELEASE_FIX: Final[str] = "ow eval release-check [--oweval PATH] [--gates PATH] [--strict]"
+_BLESS_FIX: Final[str] = "OMNIWEAVE_BLESS=1 ow eval bless --inventory --reason '<why>'"
 _STALE: Final[int] = 1
 _REFUSED: Final[int] = 1
 
@@ -64,13 +79,12 @@ def main(
     argv: Sequence[str], *, cwd: Path, env: Mapping[str, str], stdout: TextIO, stderr: TextIO
 ) -> int:
     """`ow eval ...` from argv (starting at the root word). Exit 0, or the refusal's exit."""
-    del env  # Nothing an `ow eval` verb does depends on the environment.
     parsed = parse(argv, stderr)
     if isinstance(parsed, int):
         return parsed
     try:
         check(EVAL_WORD, parsed)
-        return _VERBS[parsed.ow_action](parsed, cwd=cwd, stdout=stdout)
+        return _VERBS[parsed.ow_action](parsed, cwd=cwd, env=env, stdout=stdout)
     except QualityError as error:
         report(error, parsed, stdout=stdout, stderr=stderr)
         return _REFUSED
@@ -78,7 +92,10 @@ def main(
         return report(error, parsed, stdout=stdout, stderr=stderr)
 
 
-def _publish(parsed: argparse.Namespace, *, cwd: Path, stdout: TextIO) -> int:
+def _publish(
+    parsed: argparse.Namespace, *, cwd: Path, env: Mapping[str, str], stdout: TextIO
+) -> int:
+    del env  # `publish` reads no environment.
     if parsed.render in ("jsonl", "rows"):
         raise UsageError(
             f"--render {parsed.render} is parsed and not served by ow eval publish",
@@ -146,8 +163,11 @@ def _lines(done: EvalPublishReport, *, results: str, check: bool) -> list[str]:
     return lines
 
 
-def _release_check(parsed: argparse.Namespace, *, cwd: Path, stdout: TextIO) -> int:
+def _release_check(
+    parsed: argparse.Namespace, *, cwd: Path, env: Mapping[str, str], stdout: TextIO
+) -> int:
     """Ruling 6."""
+    del env  # `release-check` reads no environment.
     if parsed.render in ("jsonl", "rows"):
         raise UsageError(
             f"--render {parsed.render} is parsed and not served by ow eval release-check",
@@ -249,7 +269,91 @@ def _release_lines(done: EvalReleaseCheckReport) -> list[str]:
     return lines
 
 
+def _bless(parsed: argparse.Namespace, *, cwd: Path, env: Mapping[str, str], stdout: TextIO) -> int:
+    """Ruling 7."""
+    if parsed.render in ("jsonl", "rows"):
+        raise UsageError(
+            f"--render {parsed.render} is parsed and not served by ow eval bless", fix=_BLESS_FIX
+        )
+    if parsed.counters:
+        raise UsageError(
+            "--counters is parsed and not served by ow eval bless: nothing writes a counter "
+            "baseline yet",
+            fix=_BLESS_FIX,
+        )
+    if not parsed.inventory:
+        raise UsageError(
+            "ow eval bless needs --inventory, the one thing it blesses", fix=_BLESS_FIX
+        )
+    if not parsed.reason:
+        raise UsageError("ow eval bless needs --reason, the row's why", fix=_BLESS_FIX)
+    done = _blessed(
+        eval_entry("bless")(root=str(cwd), reason=parsed.reason, date=_today(), env=dict(env))
+    )
+    if parsed.render == "json":
+        stdout.write(json.dumps(_bless_row(done), ensure_ascii=False) + "\n")
+        return 0
+    for line in done.fell:
+        stdout.write(f"  fell     {line}\n")
+    stdout.write(f"  row      {done.row}\n")
+    stdout.write(
+        f"blessed {done.inventory}: {len(done.changed)} area(s) moved, {len(done.fell)} fell,"
+        f" {done.tests} test(s); wrote {done.inventory} and a row in {done.log}\n"
+    )
+    return 0
+
+
+def _today() -> str:
+    """Ruling 7: the row's date, UTC, from the one wall-clock read."""
+    import datetime as dt  # noqa: PLC0415 -- only `bless` pays
+
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415
+
+    seconds = SystemClock().wall_ns() / 1e9
+    return dt.datetime.fromtimestamp(seconds, tz=dt.UTC).date().isoformat()
+
+
+def _blessed(result: Mapping[str, object]) -> EvalBlessReport:
+    """The entry point's builtins as this side's report. Anything else is a broken install."""
+    inventory, log, row = (result.get(k) for k in ("inventory", "log", "row"))
+    fell, changed, tests = result.get("fell"), result.get("changed"), result.get("tests")
+    if not (
+        isinstance(inventory, str)
+        and isinstance(log, str)
+        and isinstance(row, str)
+        and isinstance(fell, list)
+        and isinstance(changed, list)
+        and isinstance(tests, int)
+        and all(isinstance(x, str) for x in (*fell, *changed))
+    ):
+        raise InternalError(
+            "the [omniweave.eval] bless entry point returned no inventory, log, row, fell, changed"
+            " and tests",
+            fix="pip install --force-reinstall omniweave-conform",
+        )
+    return EvalBlessReport(
+        inventory=inventory,
+        log=log,
+        row=row,
+        fell=tuple(str(x) for x in fell),
+        changed=tuple(str(x) for x in changed),
+        tests=tests,
+    )
+
+
+def _bless_row(done: EvalBlessReport) -> dict[str, object]:
+    return {
+        "inventory": done.inventory,
+        "log": done.log,
+        "row": done.row,
+        "fell": list(done.fell),
+        "changed": list(done.changed),
+        "tests": done.tests,
+    }
+
+
 _VERBS: Final[Mapping[str, Callable[..., int]]] = {
     "eval.publish": _publish,
     "eval.release_check": _release_check,
+    "eval.bless": _bless,
 }

@@ -205,8 +205,8 @@ def test_a_decrease_without_a_bless_row_fails(
     assert code == 1
     assert "  fell  omniweave-core/unit: tests 9 -> 2" in out
     assert (
-        "  FAIL  decrease omniweave-core/unit: tests 9 -> 2; add a BLESS.log row whose glob "
-        "matches eval/inventory.toml, naming why the tests went" in out
+        "  FAIL  OW-Q-013 decrease omniweave-core/unit: tests 9 -> 2; "
+        "OMNIWEAVE_BLESS=1 ow eval bless --inventory --reason '<why the tests went>'" in out
     )
 
 
