@@ -84,8 +84,11 @@ __all__ = [
     "EXIT_NOT_RUN",
     "LOG",
     "Finding",
+    "GitError",
+    "file_at",
     "guarded",
     "judge",
+    "landed",
     "main",
 ]
 
@@ -219,12 +222,12 @@ def _rev(repo: Path, ref: str) -> str:
     return _git(repo, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").decode().strip()
 
 
-def _log_at(repo: Path, rev: str) -> str:
-    """`eval/BLESS.log` at `rev`, or empty when it does not exist there."""
+def file_at(repo: Path, rev: str, path: str) -> str:
+    """`path` at `rev`, or empty when it does not exist there. Q-G24 reads it too (D845)."""
     if rev == _EMPTY_TREE:
         return ""
-    listed = _git(repo, "ls-tree", "--name-only", rev, "--", LOG).decode().strip()
-    return _git(repo, "show", f"{rev}:{LOG}").decode("utf-8") if listed else ""
+    listed = _git(repo, "ls-tree", "--name-only", rev, "--", path).decode().strip()
+    return _git(repo, "show", f"{rev}:{path}").decode("utf-8") if listed else ""
 
 
 def landed(repo: Path, base: str, head: str) -> tuple[str, str]:
@@ -266,7 +269,7 @@ def main(argv: list[str] | None = None, env: Mapping[str, str] | None = None) ->
             if old != _EMPTY_TREE
             else [_git(args.repo, "log", "-1", "--format=%B", new).decode("utf-8")]
         )
-        old_log, new_log = _log_at(args.repo, old), _log_at(args.repo, new)
+        old_log, new_log = file_at(args.repo, old, LOG), file_at(args.repo, new, LOG)
     except (GitError, UnicodeDecodeError) as exc:
         _say(f"Q-G3 DID NOT RUN  {exc}")
         return EXIT_NOT_RUN
