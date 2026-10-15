@@ -47,6 +47,14 @@ before and after (D817, D818), and `shape_delta()` is the first of section 5.3's
    move summed over `pages`, and whether they agree. Moves, not totals, because the classifier
    judges moves. A last line counts the disagreements, or says nothing page-wise moved, which is
    the `outline`-only case. A suppressed `pages` has nothing to sum, and the explanation says so.
+9. **A moved header is a change** (D852). Every reader above skips a file's first line, so a
+   change confined to the headers, such as section 5.6's `schema_v` bump or a new `doc=` key,
+   classified `unchanged`. `--check` passed while the bytes differed, and `--bless` could not
+   write them. A header that moved now makes an `unchanged` or `incidental` document
+   `structural`, with a reason naming the fields that moved, and adds that reason to any other
+   class. Section 5.6's masked path (`bless.schema_bump()`) is what blesses a `schema_v`-only move
+   without a second reviewer. A suppressed file's one line is its count, compared by ruling 7, so
+   it has no header to compare.
 
 Specified in 13-quality.md sections 5.3 and 5.4.
 """
@@ -102,6 +110,8 @@ OUTLINE_DIGESTS: Final = frozenset({5, 6, 7})
 """`cdig`, `ldig` and the preview, by field position in an `outline` line (ruling 4)."""
 
 SUPPRESSED: Final = "SUPPRESSED"
+ABSENT_FIELD: Final = "-"
+"""Ruling 9: a header field one side does not have."""
 _FIX: Final = "ow eval golden --explain {file}"
 
 
@@ -208,7 +218,47 @@ def shape_delta(old: str, new: str) -> tuple[Delta, ...]:
 
 
 def classify(old: Reductions, new: Reductions, decomposition: Decomposition) -> Churn:
-    """The class of one document's change (rulings 3-7)."""
+    """The class of one document's change (rulings 3-7 and 9)."""
+    churn = _classify_bodies(old, new, decomposition)
+    heads = _header_moves(old, new)
+    if not heads:
+        return churn
+    cls = "structural" if churn.cls in {"unchanged", "incidental"} else churn.cls
+    return Churn(cls, churn.delta, (*churn.reasons, *heads))
+
+
+def _header_moves(old: Reductions, new: Reductions) -> tuple[str, ...]:
+    """Ruling 9: each whole file whose first line moved, and the fields that moved in it."""
+    out = []
+    for kind, a, b in zip(Reductions._fields, old, new, strict=True):
+        if suppressed(a) is not None or suppressed(b) is not None:
+            continue
+        head_a, head_b = a.split("\n", 1)[0], b.split("\n", 1)[0]
+        if head_a == head_b:
+            continue
+        fields_a, fields_b = _header_fields(head_a), _header_fields(head_b)
+        moved = ", ".join(
+            f"{name} {fields_a.get(name, ABSENT_FIELD)} -> {fields_b.get(name, ABSENT_FIELD)}"
+            for name in sorted(fields_a.keys() | fields_b.keys())
+            if fields_a.get(name) != fields_b.get(name)
+        )
+        out.append(f"{kind} header moved: {moved}")
+    return tuple(out)
+
+
+def _header_fields(head: str) -> dict[str, str]:
+    """A header's `name=value` fields, its first token under `format`."""
+    tokens = head.split()
+    fields = {"format": tokens[0]} if tokens else {}
+    for token in tokens[1:]:
+        name, sep, value = token.partition("=")
+        if sep:
+            fields[name] = value
+    return fields
+
+
+def _classify_bodies(old: Reductions, new: Reductions, decomposition: Decomposition) -> Churn:
+    """Rulings 3-7, which read every line but the first."""
     for key in _shape(new.shape):
         decomposition.row_for(key)
     delta = shape_delta(old.shape, new.shape)
