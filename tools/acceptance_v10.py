@@ -110,6 +110,7 @@ CRITERIA: tuple[Criterion, ...] = (
             tool("gate_flake.py", "--window", "30d"),
             tool("gate_bless.py"),
             tool("gate_fixtures.py"),
+            tool("gate_inventory.py"),
             pytest(
                 f"{CONF}/test_conform_release.py",
                 f"{CLI}/test_eval_release_check_verb.py",
@@ -120,7 +121,7 @@ CRITERIA: tuple[Criterion, ...] = (
         Coverage.PARTIAL,
         "no `v*` tag to be green on, and no committed `.oweval` for `ow eval release-check` "
         "to judge, so its tests run and the verb does not; G13 and G25 have no runner "
-        "and G29 is planned only; Q-G4, 16, 20, 24 and 26 have no instrument, Q-G2 runs without "
+        "and G29 is planned only; Q-G4, 16, 20 and 26 have no instrument, Q-G2 runs without "
         "its orphan-cassette sweep, and "
         "Q-G8, 19 and 25 run their static halves only; Q-G22's gate runs the T1/T2 suite, so "
         "this row runs its tests and not it; the `gates` CI job is off. This row runs the Q-G "
