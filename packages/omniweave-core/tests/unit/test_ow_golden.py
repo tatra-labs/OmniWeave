@@ -99,6 +99,77 @@ def test_a_moved_document_fails_the_check_and_names_its_class(
     assert out.splitlines()[-1] == "golden FAIL  1 document(s) changed"
 
 
+def _marked() -> dict[str, str]:
+    fresh = _committed()
+    fresh[f"{PDF}.shape"] = fresh[f"{PDF}.shape"].replace(
+        "achieved.marks false", "achieved.marks true"
+    )
+    return fresh
+
+
+def test_diff_prints_the_change_between_its_class_and_the_verdict(
+    root: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Ruling 4: section 5.3's comment, after the class lines and before the last line."""
+    code, out = _main(root, capsys, _marked(), "--diff")
+    assert code == 1
+    assert out.splitlines()[1:] == [
+        f"  structural   {PDF}: achieved.marks",
+        f"document {PDF}:",
+        "shape delta (1 counters):",
+        "  achieved.marks false -> true",
+        "golden FAIL  1 document(s) changed",
+    ]
+
+
+def test_without_diff_no_document_is_diffed(root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    code, out = _main(root, capsys, _marked())
+    assert code == 1
+    assert "document " not in out
+    assert "shape delta" not in out
+
+
+def test_diff_with_nothing_changed_adds_nothing(
+    root: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, out = _main(root, capsys, _committed(), "--diff")
+    assert code == 0
+    assert out.splitlines() == [
+        f"golden  {CORPUS}: 78 file(s) from the ingest, 78 committed",
+        "golden ok  0 document(s) changed",
+    ]
+
+
+def test_diff_shows_a_lost_and_a_new_document_against_nothing(
+    root: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    renamed = PDF.replace("gen01p.pdf", "gen01q.pdf")
+    fresh = {k.replace(PDF, renamed): v for k, v in _committed().items()}
+    code, out = _main(root, capsys, fresh, "--diff")
+    assert code == 1
+    lines = out.splitlines()
+    lost, new = lines.index(f"document {PDF}:"), lines.index(f"document {renamed}:")
+    assert lost < new
+    assert lines[lost + 1].startswith("shape delta (")
+    assert "  achieved.marks false -> -" in lines[lost:new]
+    assert "  achieved.marks - -> false" in lines[new:]
+    assert lines[-1] == "golden FAIL  2 document(s) changed"
+
+
+def test_diff_beside_a_bless_shows_what_it_blessed(
+    root: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OMNIWEAVE_BLESS", "1")
+    _author(monkeypatch)
+    code, out = _main(root, capsys, _marked(), "--bless", "--reason", REASON, "--diff")
+    assert code == 0, out
+    lines = out.splitlines()
+    assert lines.index(f"document {PDF}:") < len(lines) - 1
+    assert "  achieved.marks false -> true" in lines
+    assert lines[-1].startswith("golden blessed  1 document(s)")
+    assert _main(root, capsys, _marked())[0] == 0
+
+
 def test_a_bless_needs_the_flag(
     root: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:

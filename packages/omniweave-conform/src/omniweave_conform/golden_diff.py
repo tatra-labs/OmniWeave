@@ -10,8 +10,9 @@ density, and the PR comment is capped at 400 lines"*:
 3. **the first 40 changed `outline` lines**, unfolded, as a unified diff.
 
 `render()` writes the three for one document from its Reductions before and after (D817, D818),
-the delta from `churn.shape_delta()` (D819). 16-roadmap.md W10.2's *"the PR-comment differ led by
-the `shape` delta"* is this module.
+the delta from `churn.shape_delta()` (D819). `comment()` writes them for every document a change
+moved, which is what a PR comment carries (D850). 16-roadmap.md W10.2's *"the PR-comment differ led
+by the `shape` delta"* is this module.
 
 ## Rulings
 
@@ -25,11 +26,15 @@ the `shape` delta"* is this module.
 3. **The `outline` part is `difflib.unified_diff` with no context**, its `---`/`+++` header kept,
    cut after 40 `+` or `-` lines; a cut says how many more there were.
 4. **A suppressed `pages` or `outline` diffs as its one line.** A count is all a suppressed file
-   has.
+   has. A side that does not exist, for a new or a lost document, has no line (D850).
 5. **400 lines is the comment's, not a part's.** The parts are written in order, and a comment
    that would pass 400 is cut at 399 with a last line counting what was left out. A diff is a
    display, so cutting it loses nothing the files do not still hold.
 6. **No change, no comment.** Three unchanged files render as the empty string.
+7. **A comment over several documents is one comment.** Each document that changed is headed
+   `document <path>:`, in the order given, and ruling 5's 400 lines bound the whole comment, not
+   each document. A document with no change has no header. A new or lost document is diffed
+   against three empty files, so its whole `shape` reads as the delta. (D850.)
 
 Specified in 13-quality.md section 5.3.
 """
@@ -45,9 +50,11 @@ from omniweave_core.out.finding import EXAMPLES_MAX
 from omniweave_conform.churn import parse_pages, shape_delta, suppressed
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from omniweave_conform.churn import Delta, Reductions
 
-__all__ = ["ABSENT", "COMMENT_LINES", "OUTLINE_LINES", "render"]
+__all__ = ["ABSENT", "COMMENT_LINES", "OUTLINE_LINES", "comment", "render"]
 
 COMMENT_LINES: Final = 400
 """13:714: *"the PR comment is capped at 400 lines"*."""
@@ -62,11 +69,31 @@ REMOVED: Final = "-page"
 
 def render(old: Reductions, new: Reductions, *, max_lines: int = COMMENT_LINES) -> str:
     """The three parts for one document, densest first, under the comment's cap (rulings 1-6)."""
-    lines = [
+    return _capped(_parts(old, new), max_lines)
+
+
+def comment(
+    documents: Iterable[tuple[str, Reductions, Reductions]], *, max_lines: int = COMMENT_LINES
+) -> str:
+    """Ruling 7: every changed document's parts under its header, and one cap for them all."""
+    lines: list[str] = []
+    for doc, old, new in documents:
+        parts = _parts(old, new)
+        if parts:
+            lines += [f"document {doc}:", *parts]
+    return _capped(lines, max_lines)
+
+
+def _parts(old: Reductions, new: Reductions) -> list[str]:
+    return [
         *_shape_part(old.shape, new.shape),
         *_pages_part(old.pages, new.pages),
         *_outline_part(old.outline, new.outline),
     ]
+
+
+def _capped(lines: list[str], max_lines: int) -> str:
+    """Ruling 5."""
     if len(lines) > max_lines:
         kept = lines[: max_lines - 1]
         lines = [*kept, f"... {len(lines) - len(kept)} more lines past the {max_lines}-line cap"]
@@ -140,8 +167,9 @@ def _outline_part(old: str, new: str) -> list[str]:
 
 
 def _one_line_diff(old: str, new: str) -> list[str]:
-    """Ruling 4: a suppressed side is its one line, and the other side its header."""
-    return [f"  -{old.splitlines()[0]}", f"  +{new.splitlines()[0]}"]
+    """Ruling 4: a suppressed side is its one line, the other side its header, and a side that
+    does not exist nothing."""
+    return [f"  {sign}{text.splitlines()[0]}" for sign, text in (("-", old), ("+", new)) if text]
 
 
 def _page_number(label: str) -> int:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from omniweave_conform.churn import Reductions
-from omniweave_conform.golden_diff import COMMENT_LINES, OUTLINE_LINES, render
+from omniweave_conform.golden_diff import COMMENT_LINES, OUTLINE_LINES, comment, render
 from omniweave_core.out.finding import EXAMPLES_MAX
 
 SHAPE_HEAD = "owshape/1  corpus=c  doc=k  driver=d@1  schema_v=1"
@@ -145,3 +145,74 @@ def test_a_comment_at_the_cap_is_not_cut() -> None:
     assert len(lines) == 400
     assert lines[-1] == "  diag.OW_C0398 - -> 1 (+1)"
     assert len(render(BASE, _with_counters(400)).splitlines()) == 400
+
+
+# ---------------------------------------------------------------------------
+# comment(): every changed document, one cap. D850.
+# ---------------------------------------------------------------------------
+
+NOTHING = Reductions("", "", "")
+SUPPRESSED_PAGES = "owpages/1 SUPPRESSED reason=bytes pages=9 would_be_bytes=300000\n"
+
+
+def test_a_comment_is_render_under_a_header() -> None:
+    new = _with_counters(2)
+    assert comment([("c/d@1/k.pdf", BASE, new)]) == "document c/d@1/k.pdf:\n" + render(BASE, new)
+
+
+def test_a_comment_heads_each_changed_document_in_the_order_given() -> None:
+    heads = [
+        line
+        for line in comment(
+            [("b", BASE, _with_counters(1)), ("a", BASE, BASE), ("c", BASE, _with_counters(2))]
+        ).splitlines()
+        if line.startswith("document ")
+    ]
+    assert heads == ["document b:", "document c:"]
+
+
+def test_no_changed_document_no_comment() -> None:
+    assert comment([("a", BASE, BASE)]) == ""
+    assert comment([]) == ""
+
+
+def test_one_cap_bounds_the_whole_comment() -> None:
+    """Ruling 7: two documents of 252 lines each are 504, cut at 399 and a count."""
+    one = render(BASE, _with_counters(250)).splitlines()
+    assert len(one) == 251
+    lines = comment([("a", BASE, _with_counters(250)), ("b", BASE, _with_counters(250))])
+    assert len(lines.splitlines()) == COMMENT_LINES
+    assert lines.splitlines()[-1] == f"... {504 - 399} more lines past the 400-line cap"
+    assert len(comment([("a", BASE, _with_counters(250))], max_lines=10).splitlines()) == 10
+
+
+def test_a_new_document_is_diffed_against_nothing() -> None:
+    lines = comment([("k", NOTHING, BASE)]).splitlines()
+    assert lines[:6] == [
+        "document k:",
+        "shape delta (3 counters):",
+        "  blocks.total - -> 30 (+30)",
+        "  quad.present_frac - -> 0.5000",
+        "  trust.extracted - -> 30 (+30)",
+        "pages (10 lines changed in 1 groups):",
+    ]
+    assert lines[6] == f"  +page x10 {' '.join(f'p{p:04d}' for p in range(EXAMPLES_MAX))}"
+    assert lines[7:10] == [
+        f"outline (first {OUTLINE_LINES} changed lines):",
+        "--- outline",
+        "+++ outline",
+    ]
+    assert lines[-1] == "+p0/2 paragraph body extracted normalized 00000000 - line 2"
+
+
+def test_a_lost_document_reads_every_counter_as_gone() -> None:
+    lines = comment([("k", BASE, NOTHING)]).splitlines()
+    assert lines[2] == "  blocks.total 30 -> - (-30)"
+    assert f"  -page x10 {' '.join(f'p{p:04d}' for p in range(EXAMPLES_MAX))}" in lines
+
+
+def test_a_suppressed_side_against_nothing_is_its_one_line() -> None:
+    """Ruling 4: the side that does not exist has no line, rather than an index error."""
+    suppressed = Reductions("", SUPPRESSED_PAGES, "")
+    assert render(NOTHING, suppressed).splitlines() == ["pages:", f"  +{SUPPRESSED_PAGES.strip()}"]
+    assert render(suppressed, NOTHING).splitlines() == ["pages:", f"  -{SUPPRESSED_PAGES.strip()}"]

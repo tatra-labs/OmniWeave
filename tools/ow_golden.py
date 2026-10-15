@@ -31,6 +31,11 @@ script until `ow eval golden` is an Action.
    the gate did not run. `ow add` exits 0 when it finishes, even with the refused fixtures
    (corrupt, encrypted, not a document): each refusal is recorded per unit and reported as
    `partial`, which is this corpus's normal state.
+4. **`--diff` adds section 5.3's diff for every changed document.** It is
+   `golden_diff.comment()`, three parts per document, densest first, 400 lines for the whole
+   comment. It is printed as it is, after the class lines and before the last line, in either
+   mode, and changes no exit code: it is a display of what the class lines judged. A new or lost
+   document is diffed against three empty files. (D850.)
 
 ## Exit codes
 
@@ -61,8 +66,16 @@ for _dist in sorted((REPO / "packages").iterdir()) if (REPO / "packages").is_dir
         sys.path.insert(0, str(_src))
 
 from omniweave_conform.bless import BLESS_ENV, blessing, parse_log, plan  # noqa: E402
-from omniweave_conform.churn import load_decomposition  # noqa: E402
-from omniweave_conform.golden import CORPUS, GOLDENS, changes, read_tree, reductions  # noqa: E402
+from omniweave_conform.churn import Reductions, load_decomposition  # noqa: E402
+from omniweave_conform.golden import (  # noqa: E402
+    CORPUS,
+    GOLDENS,
+    changes,
+    document_paths,
+    read_tree,
+    reductions,
+)
+from omniweave_conform.golden_diff import comment  # noqa: E402
 from omniweave_core.errors import QualityError  # noqa: E402
 from omniweave_core.store import sqlite as ow  # noqa: E402
 
@@ -78,6 +91,8 @@ PROJECT: Final = (
 """Ruling 3: the project file a scratch ingest runs under, as the conform tests' (D576)."""
 LOG: Final = "eval/BLESS.log"
 INGEST_TIMEOUT_S: Final = 1800
+NOTHING: Final = Reductions("", "", "")
+"""Ruling 4: the side a new or a lost document does not have."""
 
 
 def ingest(root: Path, corpus: str = CORPUS) -> dict[str, str]:
@@ -139,6 +154,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", type=Path, default=REPO, metavar="PATH")
     parser.add_argument("--bless", action="store_true", help="write the goldens and their row")
     parser.add_argument("--reason", default=None, metavar="TEXT")
+    parser.add_argument("--diff", action="store_true", help="print each change's three-part diff")
     try:
         args = parser.parse_args(argv)
     except SystemExit:
@@ -156,6 +172,11 @@ def main(argv: list[str] | None = None) -> int:
     for change in moved:
         why = "; ".join(change.churn.reasons) or ", ".join(d.key for d in change.churn.delta)
         _say(f"  {change.churn.cls:<12} {change.doc}: {why}")
+    if args.diff:
+        before, after = document_paths(committed), document_paths(fresh)
+        sys.stdout.write(
+            comment((c.doc, before.get(c.doc, NOTHING), after.get(c.doc, NOTHING)) for c in moved)
+        )
     if not args.bless:
         _say(f"golden {'FAIL' if moved else 'ok'}  {len(moved)} document(s) changed")
         return EXIT_FAIL if moved else EXIT_CLEAN
