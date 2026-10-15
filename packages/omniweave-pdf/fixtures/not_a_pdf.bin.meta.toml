@@ -1,0 +1,9 @@
+# not_a_pdf.bin.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# a zip header: sniff() returns (), a legitimate not mine
+[fixture]
+sha256 = "c625c6db3df90af9a7f5ac22119d7aa908a4272acb3de1af56ab3df0dc576605"
+bytes = 42
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_pdf_fixtures.py"

@@ -400,6 +400,19 @@ jobs:
         # it is why "the corpus half is pending" is still a true sentence about a gate whose
         # generated corpus already runs.
         #
+        # fixtures/index.toml LANDED AT D843 AND MANIFESTS NO LICENSED DOCUMENT, so its test is on
+        # CONTENT and not on existence. Q-G1's index lists every fixture under
+        # packages/<dist>/fixtures/ -- the drivers' conformance fixtures, all 37 of them
+        # `generated` -- and none of them is the licensed corpus this tripwire waits for. Firing on
+        # the file would be P2's fixtures/gen/ regression again: a tripwire broader than its
+        # subject, red for a reason no PR reader could connect to the change. So the step greps
+        # the index for a row whose provenance is one of section 4.2's four external ones, which is
+        # exactly a licensed fixture, and the three corpus directories keep their existence test.
+        # Round-tripping the conformance fixtures is not wired either, and not for want of trying:
+        # D843 ran them through `ow add` and this step's export/import, and all 26 parsed documents
+        # came back different -- a cite re-minted on its new doc_ord, the routing-decision `dc`
+        # dropped, the importing sink's producer stamped -- which are rulings, not wiring.
+        #
         # 45 s IS THE ROW'S BUDGET AND THE COST IS MEASURED, not estimated: three runs of the whole
         # file at 6.46 / 5.98 / 6.19 s wall on the P2 build machine, ~4.4 s of it the nine corpus
         # tests. So section 6.4's pre-committed fallback -- move the row to the test job beside
@@ -408,7 +421,7 @@ jobs:
         # line each in tools/gates.toml rather than a change to this file.
         run: |
           uv run pytest packages/omniweave-core/tests/unit/test_owdoc_roundtrip.py -q
-          for path in fixtures/index.toml fixtures/docs fixtures/office-200 fixtures/regressions
+          for path in fixtures/docs fixtures/office-200 fixtures/regressions
           do
             if [ -e "$path" ]
             then
@@ -416,8 +429,13 @@ jobs:
               exit 1
             fi
           done
+          if grep -Eq '^provenance = "(public_domain|cc0|cc_by|authored)"$' fixtures/index.toml
+          then
+            echo "fixtures/index.toml lists a licensed fixture: widen G28 over it (ADR-2 dec. 4)"
+            exit 1
+          fi
           echo "G28 enforced: round trip + generated corpus (127p, 8,256 blocks, 2 frames);" \
-            "licensed-corpus half pending fixtures/index.toml (ADR-2 dec. 4)" \
+            "licensed-corpus half pending a licensed row in fixtures/index.toml (ADR-2 dec. 4)" \
             | tee -a "$GITHUB_STEP_SUMMARY"
       - name: "G29 -- the redaction canary under four forced faults"
         # 15-observability.md section 8.3 is the assertion's sole home. Both it (:1447) and section
