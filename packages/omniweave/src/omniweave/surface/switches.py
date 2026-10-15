@@ -66,6 +66,7 @@ cannot tell from `Path.replace` (`test_this_package_can_write_no_file_at_all`)."
 _ROOTS: Final[tuple[str, ...]] = (
     "add",
     "corpora",
+    "cost",
     "doc",
     "doctor",
     "eval",
@@ -96,6 +97,7 @@ READS: Final[Mapping[str, frozenset[str]]] = {
     "add": _READER | {"offline"},
     "open": _READER,
     "corpora": _READER,
+    "cost": _READER,
     "doc": _READER,
     "graph": _READER,
     "explain": _READS_ALL | {"render", "quiet"},

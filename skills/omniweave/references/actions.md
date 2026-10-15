@@ -9,8 +9,8 @@ decision.
 ## Before deciding a capability is missing
 
 default     ow_add, ow_corpora, ow_open, ow_query
-full        ow_add, ow_artifacts, ow_corpora, ow_coverage, ow_diff, ow_doctor, ow_explain,
-            ow_grid, ow_locate, ow_open, ow_query, ow_targets
+full        ow_add, ow_artifacts, ow_corpora, ow_cost, ow_coverage, ow_diff, ow_doctor,
+            ow_explain, ow_grid, ow_locate, ow_open, ow_query, ow_targets
 
 an unlisted tool is DEFINED and DISPATCHABLE when enabled, never refused for being unlisted.
 Widen with OMNIWEAVE_MCP_LISTED, authorise with OMNIWEAVE_MCP_ENABLED.
@@ -51,6 +51,18 @@ cost        free
 pick it     ow_query said absent and you need to know why
 it does     What a scope holds and what is missing from it: discovered against indexed, the gap
             list behind a low or absent verdict, and the command that clears each gap
+
+## ow cost
+
+### ow_cost
+
+action      cost.report
+cli         ow cost
+listed      full
+cost        free
+pick it     you want to know what a corpus or a run cost, and which driver spent it
+it does     Spend by driver over a corpus's ledger or one run, with what the cache saved, and
+            the run's reconcile against its manifest
 
 ## ow doc
 

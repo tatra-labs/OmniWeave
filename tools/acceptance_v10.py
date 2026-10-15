@@ -284,10 +284,14 @@ CRITERIA: tuple[Criterion, ...] = (
                 f"{CLI}/test_spend_rows.py",
                 label="billed calls priced and their cache savings recorded",
             ),
+            pytest(
+                f"{CLI}/test_cost_verb.py", label="ow cost --by driver and its reconcile (D838)"
+            ),
         ),
         Coverage.PARTIAL,
-        "there is no `ow cost` verb, so the --by driver reconciliation is unmeasured, and no test "
-        "reads every manifest the run emits",
+        "`ow cost --by driver` reconciles a run against its manifest over a seeded ledger, never a "
+        "real run's; `--verify` (exit on a mismatch) is not served; and no test reads every "
+        "manifest a run emits",
     ),
     Criterion(
         "V10-14",

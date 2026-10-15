@@ -91,6 +91,7 @@ __all__ = [
     "CompileIn",
     "ConstructsIn",
     "CorporaIn",
+    "CostIn",
     "CoverageIn",
     "DiffIn",
     "DoctorIn",
@@ -514,6 +515,22 @@ class ArtifactsIn:
     """
 
     slug: str | None = None
+    corpus: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CostIn:
+    """`ow_cost` / `ow cost [--by driver] [--run R]`. 15-observability.md section 5.4. D838.
+
+    `by` is the slicing. Section 5.4 prints seven, `driver|document|provider|lane|rung|slice|day`,
+    and this build serves `driver`; the rest are refused by name. `run` scopes the window to one
+    run's generation and is what makes the reconcile line possible. `corpus` is the store the
+    ledger lives in. Section 5.4's `--since`, `--currency` and `--verify` are not fields yet: a
+    field the schema publishes is a promise, and those three are not served.
+    """
+
+    by: str = "driver"
+    run: str | None = None
     corpus: str | None = None
 
 
