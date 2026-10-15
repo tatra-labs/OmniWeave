@@ -3,3 +3,8 @@
 # against them. `-text` is scoped to this directory; 11-repo-layout.md section 1.9's eol contract
 # still governs every other file in the tree.
 * -text
+#
+# `.meta.toml` sidecars are exempt, as in the office fixtures: they are this repository's own
+# text, read by tomllib, and an LF contract is exactly what should apply to them (D843).
+*.meta.toml text eol=lf
+README.md text eol=lf

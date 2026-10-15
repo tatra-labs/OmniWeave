@@ -93,10 +93,13 @@ Specified in 11-repo-layout.md sections 1.1, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 
 
 from __future__ import annotations
 
+import importlib.util
 import re
+import sys
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -165,11 +168,12 @@ LANDED_PHASES: tuple[str, ...] = ("P1", "P2")
 # actually written in `ci.yml` (the table is not describing a step somebody deleted). Keys are the
 # step the path belongs to, so a failure names the step to wire.
 CI_TRIPWIRE_PATHS: dict[str, tuple[str, ...]] = {
-    # ADR-2 decision 4's corpus half. `fixtures/index.toml` is Q-G1's generated manifest
-    # (13-quality.md:92, :1985); the three directories are the corpus members of
-    # 11-repo-layout.md:383-384 that hold documents. `fixtures/gen/` is deliberately NOT here.
+    # ADR-2 decision 4's corpus half: the three corpus members of 11-repo-layout.md:383-384
+    # that hold documents. `fixtures/gen/` is deliberately NOT here, and since D843 neither is
+    # `fixtures/index.toml`: Q-G1's index landed manifesting 37 GENERATED conformance fixtures,
+    # so the step tests its CONTENT for a licensed row instead of its existence, and
+    # `test_g28s_index_tripwire_reads_content_and_is_not_firing` holds that test.
     "G28": (
-        "fixtures/index.toml",
         "fixtures/docs",
         "fixtures/office-200",
         "fixtures/regressions",
@@ -313,6 +317,20 @@ def _repo_root() -> Path:
 
 
 REPO = _repo_root()
+
+
+def _load_gate_fixtures() -> ModuleType:
+    """`tools/gate_fixtures.py`, by path and at module scope, for its `PROVENANCES` (D843)."""
+    path = REPO / "tools" / "gate_fixtures.py"
+    spec = importlib.util.spec_from_file_location("_owgate_gate_fixtures_ci", path)
+    assert spec is not None and spec.loader is not None, path
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+GATE_FIXTURES = _load_gate_fixtures()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1106,6 +1124,33 @@ def test_no_tripwire_is_already_firing_on_this_checkout() -> None:
     )
 
 
+_INDEX_TRIPWIRE = re.compile(
+    r"grep -Eq '\^provenance = \"\((?P<names>[a-z0-9_|]+)\)\"\$' fixtures/index\.toml"
+)
+
+
+def test_g28s_index_tripwire_reads_content_and_is_not_firing(ci: Workflow) -> None:
+    """D843: `fixtures/index.toml` exists, and G28's tripwire on it is a test of its CONTENT.
+
+    Q-G1's index manifests every fixture under `packages/<dist>/fixtures/`, all of them
+    `generated`, and the licensed corpus G28 waits for is the rows whose provenance is one of
+    13-quality.md section 4.2's external four. Three things are held here.
+    - The step greps for exactly those four, read off `tools/gate_fixtures.py`'s own
+      `PROVENANCES` rather than written twice, so a fifth admissible provenance the gate learns is
+      a provenance this tripwire must learn too.
+    - The grep sits in the step's `run:` body, so it runs.
+    - No row on this checkout carries one of them, which is the runner's question asked here.
+    """
+    body = ci.step_run_bodies("gates")[CI_TRIPWIRE_STEPS["G28"][1]]
+    match = _INDEX_TRIPWIRE.search(body)
+    assert match is not None, "G28's step no longer greps fixtures/index.toml for a licensed row"
+    licensed = set(GATE_FIXTURES.PROVENANCES) - {"generated"}
+    assert set(match.group("names").split("|")) == licensed
+    rows = tomllib.loads((REPO / "fixtures" / "index.toml").read_text(encoding="utf-8"))["fixture"]
+    firing = sorted(row["path"] for row in rows if row["provenance"] in licensed)
+    assert not firing, f"G28's index tripwire fires on {firing}: widen the round trip over them"
+
+
 def test_every_tripwire_path_is_written_in_the_workflow(ci: Workflow) -> None:
     """The anti-vacuity half. A table of paths nothing in `ci.yml` tests is a table that will go
     on passing after the step it describes has been deleted or rewritten.
@@ -1156,7 +1201,7 @@ def test_g28s_tripwire_does_not_fire_on_the_generator_directory(ci: Workflow) ->
     body = ci.run_bodies("gates")
     assert "-d fixtures ]" not in body, "G28's tripwire is back to the whole fixtures/ tree"
     assert "G28 enforced: round trip + generated corpus" in body
-    assert "licensed-corpus half pending fixtures/index.toml" in body
+    assert "licensed-corpus half pending a licensed row in fixtures/index.toml" in body
     region = _job_region(ci, "gates")
     assert "13-quality.md:586-589 puts the deterministic generator" in region, (
         "the step no longer says why fixtures/gen/ is not the corpus"
