@@ -1,0 +1,10 @@
+# gen01p.pdf.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# born-digital, one page with a real text layer
+[fixture]
+sha256 = "5bcea55e1344a5e7931d766fb546eff1581e07ef3c1e1041e5b9e948fb0e607e"
+bytes = 6513
+media_type = "application/pdf"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_pdf_fixtures.py"

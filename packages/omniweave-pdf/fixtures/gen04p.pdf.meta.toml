@@ -1,0 +1,10 @@
+# gen04p.pdf.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# born-digital, four pages: cost's curve needs spread
+[fixture]
+sha256 = "9627dbfabe6436931252c5067c658775c5f0f375d45401e3864c6b7826c7b8a6"
+bytes = 24172
+media_type = "application/pdf"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_pdf_fixtures.py"

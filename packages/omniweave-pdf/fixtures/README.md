@@ -26,8 +26,17 @@ $ uv run python fixtures/gen/gen_5000p_pdf.py --pages <N> --out packages/omniwea
 ```
 
 It is deterministic, so `EXPECTED.sha256` is checkable and the generator is the record of how to
-rebuild them. `no_text_layer.pdf` and `not_a_pdf.bin` are hand-written; `truncated.pdf` is the
+rebuild them. `no_text_layer.pdf` and `not_a_pdf.bin` were hand-written, and `truncated.pdf` is the
 first half of `gen02p.pdf`'s bytes.
+
+`fixtures/gen/gen_pdf_fixtures.py` now reproduces all seven, byte for byte, and checks each against
+`EXPECTED.sha256` (D843). So every file here is `generated`, and each has the `.meta.toml` sidecar
+`Q-G1` reads (13-quality.md section 4.4):
+
+```console
+$ uv run python fixtures/gen/gen_pdf_fixtures.py              # verify the seven against the pins
+$ uv run python fixtures/gen/gen_pdf_fixtures.py --sidecars   # rewrite the sidecars
+```
 
 ## They are bytes
 

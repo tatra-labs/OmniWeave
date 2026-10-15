@@ -1,0 +1,10 @@
+# no_text_layer.pdf.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# zero characters: NEEDS_OCR, not CORRUPT_INPUT
+[fixture]
+sha256 = "24ef6cf2ee99ba57e68f03b86d833cfa7684cd7c43356d821971d0cc0e42bc23"
+bytes = 444
+media_type = "application/pdf"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_pdf_fixtures.py"
