@@ -308,10 +308,18 @@ CRITERIA: tuple[Criterion, ...] = (
     Criterion(
         "V10-14",
         "the frozen golden's shape is byte-identical across two pdfium minors x 9 cells",
-        (),
-        Coverage.NONE,
-        "Q-G4 has no instrument: it needs two pdfium minors and the nine-cell matrix, and rests "
-        "on F31",
+        (
+            pytest(
+                f"{CONF}/test_conform_golden.py",
+                f"{CORE}/test_ow_golden.py",
+                label="the Tier-A goldens and their bless (D848)",
+            ),
+        ),
+        Coverage.PARTIAL,
+        "the goldens exist (D848: 26 documents, 78 Reductions) and a real ingest reproduces them "
+        "on this machine, which the conform tier asserts; nothing compares their shape across two "
+        "pdfium minors or the nine cells, Q-G4's tools/gate_frozen_stability.py is not built, "
+        "and the row rests on F31",
     ),
     Criterion(
         "V10-15",

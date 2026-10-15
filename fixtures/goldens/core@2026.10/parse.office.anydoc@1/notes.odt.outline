@@ -1,0 +1,9 @@
+owoutline/1  corpus=core@2026.10  doc=9341c1ab75932890f5867c53289965cf  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic 75f87d9e -
+p0/0 heading body extracted normalized 18666632 - Field notes
+p0/2/0 list_item body extracted normalized 45279ecb -
+p0/2/0/0 paragraph body extracted normalized b58db75c - the first
+p0/2/1/0 paragraph body extracted normalized 0c2cf557 - the second
+p0/1 paragraph body extracted normalized 2d87bca7 - Two observations, in order.
+p0/2/1 list_item body extracted normalized c13168b5 -
+p0/2 list body extracted normalized 82ffce9c -

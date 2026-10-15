@@ -1,0 +1,2 @@
+owpages/1  corpus=core@2026.10  doc=befa4c3d7745dc18a62c2f87ab79ea47  driver=parse.text.builtin@1  schema_v=1
+p0000 n=47 kind{blockquote:1,code:2,document:1,heading:3,list:3,list_item:7,paragraph:19,rule:1,table:1,table_cell:9} layer{body:47} trust{extracted:47} quote{normalized:46,synthetic:1} cdig=4c5c3a0a ldig=84af99c2 diag{}

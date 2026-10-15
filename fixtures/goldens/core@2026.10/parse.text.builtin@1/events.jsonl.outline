@@ -1,0 +1,4 @@
+owoutline/1  corpus=core@2026.10  doc=7d99b35cdd5dab7f986f49d6bad69ae3  driver=parse.text.builtin@1  schema_v=1
+doc document body extracted synthetic 5ac0d416 -
+p0/0 paragraph body extracted normalized 2d0f3b53 - at: 2026-03-01T09:00:00Z; event: deploy; service
+p0/1 paragraph body extracted normalized 42b2c482 - at: 2026-03-01T09:05:00Z; event: rollback; servi
