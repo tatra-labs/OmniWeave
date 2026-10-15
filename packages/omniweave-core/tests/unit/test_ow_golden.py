@@ -170,6 +170,106 @@ def test_diff_beside_a_bless_shows_what_it_blessed(
     assert _main(root, capsys, _marked())[0] == 0
 
 
+def _contradicted() -> dict[str, str]:
+    """The PDF's first page claims nine more blocks than its `shape` counts."""
+    fresh = _committed()
+    fresh[f"{PDF}.pages"] = fresh[f"{PDF}.pages"].replace(" n=", " n=9", 1)
+    return fresh
+
+
+def test_explain_prints_the_arithmetic_for_one_document(
+    root: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Ruling 5: OW-Q-012's fix, the class line, then shape against pages, then the verdict."""
+    code, out = _main(root, capsys, _contradicted(), "--explain", PDF)
+    assert code == 1
+    lines = out.splitlines()
+    assert lines[1].startswith(f"  unexplained  {PDF}: ")
+    [total] = [line for line in lines if line.startswith("  explain  blocks.total ")]
+    assert total.endswith(": DISAGREES by +" + total.split("(+")[2].split(")")[0])
+    assert lines[-2] == "  explain  1 page-wise counter(s) disagree between shape and pages"
+    assert lines[-1] == "golden FAIL  1 document(s) changed"
+
+
+def test_explain_narrows_the_check_to_its_document(
+    root: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    other = next(k for k in _committed() if not k.startswith(PDF)).rsplit(".", 1)[0]
+    fresh = _contradicted()
+    fresh[f"{other}.shape"] = fresh[f"{other}.shape"] + "diag.OW_EXTRA 1\n"
+    assert "2 document(s) changed" in _main(root, capsys, fresh)[1]
+    code, out = _main(root, capsys, fresh, "--explain", other)
+    assert code == 1
+    assert PDF not in out
+    assert out.splitlines()[-1] == "golden FAIL  1 document(s) changed"
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        f"{PDF}.pages",
+        f"{PDF}.shape",
+        f"fixtures/goldens/{PDF}.outline",
+        f"fixtures\\goldens\\{PDF}",
+    ],
+)
+def test_explain_takes_a_document_or_any_of_its_files(
+    root: Path, capsys: pytest.CaptureFixture[str], name: str
+) -> None:
+    want = _main(root, capsys, _contradicted(), "--explain", PDF)
+    assert _main(root, capsys, _contradicted(), "--explain", name) == want
+
+
+def test_explain_of_an_unchanged_document_passes(
+    root: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, out = _main(root, capsys, _committed(), "--explain", PDF)
+    assert code == 0
+    assert out.splitlines()[1:] == [
+        "  explain  no page-wise counter moved in shape or over pages",
+        "golden ok  0 document(s) changed",
+    ]
+
+
+def test_explain_of_no_document_did_not_run(root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    code, out = _main(root, capsys, _committed(), "--explain", "core@2026.10/nope@1/x.pdf")
+    assert code == 2
+    assert out.splitlines()[-1] == (
+        "golden DID NOT RUN  core@2026.10/nope@1/x.pdf is no document in fixtures/goldens/"
+        " or the ingest"
+    )
+
+
+def test_explain_is_a_check_and_never_a_bless(
+    root: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OMNIWEAVE_BLESS", "1")
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(TOOL, "ingest", lambda _root: _marked())
+        code = TOOL.main(["--root", str(root), "--bless", "--reason", REASON, "--explain", PDF])
+    assert code == 2
+    assert "not allowed with argument --bless" in capsys.readouterr().err
+    assert (root / "fixtures" / "goldens" / f"{PDF}.shape").read_text(
+        encoding="utf-8"
+    ) == _committed()[f"{PDF}.shape"]
+
+
+def test_explain_beside_diff_diffs_its_document_alone(
+    root: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    other = next(k for k in _committed() if not k.startswith(PDF)).rsplit(".", 1)[0]
+    fresh = _marked()
+    fresh[f"{other}.shape"] = fresh[f"{other}.shape"] + "diag.OW_EXTRA 1\n"
+    code, out = _main(root, capsys, fresh, "--explain", PDF, "--diff")
+    assert code == 1
+    lines = out.splitlines()
+    assert f"document {PDF}:" in lines
+    assert f"document {other}:" not in lines
+    assert lines.index("  explain  no page-wise counter moved in shape or over pages") < (
+        lines.index(f"document {PDF}:")
+    )
+
+
 def test_a_bless_needs_the_flag(
     root: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
