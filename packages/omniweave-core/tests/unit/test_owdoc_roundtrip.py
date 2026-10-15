@@ -174,25 +174,18 @@ from typing import Any, Final
 import pytest
 from omniweave_core.archive import (
     FRAME_TARGET_BLOCKS,
-    AssetRow,
-    BlockExport,
     DocHeader,
     GridRow,
     OwdocReader,
-    PartRow,
-    RelRow,
     export,
     import_,
     open_owdoc,
     owcheck_archive,
 )
 from omniweave_core.blobs import BlobStore
-from omniweave_core.errors import ModelError
+from omniweave_core.errors import ModelError, NotFoundError
 from omniweave_core.model import (
-    Addr,
-    BlockId,
     Capabilities,
-    Cite,
     Kind,
     Layer,
     Method,
@@ -202,7 +195,7 @@ from omniweave_core.model import (
     RelKind,
     Trust,
 )
-from omniweave_core.model.block import Block, BlockDraft, CellPos, Mark
+from omniweave_core.model.block import BlockDraft, CellPos, Mark
 from omniweave_core.model.grid import build_grid
 from omniweave_core.model.records import AssetDraft, Diag, DocRecord, PageRecord
 from omniweave_core.model.spans import (
@@ -216,6 +209,7 @@ from omniweave_core.model.spans import (
 from omniweave_core.store import migrate
 from omniweave_core.store import sqlite as ow
 from omniweave_core.store.doc import DocSink
+from omniweave_core.store.export_source import StoreExportSource
 
 NOW_NS = 1_757_400_000_000_000_000
 """A fixed timestamp. `time.time()` is banned in library code and injected everywhere in the
@@ -489,341 +483,16 @@ def _write_source_document(root: Path) -> tuple[Path, Path]:
 # ---------------------------------------------------------------------------------------------
 # 2. The store -> archive adapter. `export()` takes an `ExportSource`, never a connection.
 # ---------------------------------------------------------------------------------------------
+#
+# `StoreExportSource` lived here until D847 and now ships as
+# `omniweave_core.store.export_source.StoreExportSource`. Every test below that found one of
+# its decoding defects (the `nodepath` string, the `pd` index, `os_b` as a length) now holds the
+# shipped class instead of a copy.
 
 
 def _unquad(blob: bytes) -> tuple[int, ...]:
-    """`quad`'s column encoding: 8 x i32 LE (`0001_init.sql`'s `block.quad` comment)."""
+    """`quad`'s column encoding, 8 x i32 LE, decoded here independently of the adapter."""
     return struct.unpack("<8i", blob)
-
-
-_ORIGIN_DECODERS = MappingProxyType(
-    {
-        "bytes": lambda r: OriginBytes(
-            part=r["os_part"], start=r["os_a"], length=r["os_b"], codec=r["os_codec"]
-        ),
-        "nodepath": lambda r: OriginNodePath(
-            part=r["os_part"], path=tuple(int(step) for step in r["os_path"].split("."))
-        ),
-        "glyphs": lambda r: OriginGlyphs(
-            part=r["os_part"], extractor=r["os_extractor"], start=r["os_a"], length=r["os_b"]
-        ),
-        "pixels": lambda r: OriginPixels(page=r["page"], quad=Quad(*_unquad(r["quad"]))),
-        "none": lambda _r: OriginNone(),
-    }
-)
-"""The seven `os_*` columns back to one `OriginSpan`, per 03 section 7.2's mapping.
-
-The inverse of what `DocSink.add_block` writes, and the reason `os_b` is passed as `length` and
-`ts_b` as a range end: 03:671-675 makes the two different quantities and reusing one letter for
-both is the bug that section says costs a week.
-
-**`nodepath` is a DOT-JOINED STRING and was decoded here with `json.loads` until section 6
-landed.** `spans.py:518` fixes the storage form as `os_path = '0.3.1.7'` and
-`store/doc.py:457` writes exactly `".".join(str(step) for step in origin.path)`, so
-`json.loads("1.4.3")` raises `JSONDecodeError: Extra data`. This adapter could not export any
-`nodepath` block at all. Nothing caught it because neither the hand-built document of section 1
-nor the 127-page corpus of section 5 emits one: every block in both carries `bytes` or `none`,
-so three of the five `os` variants had never travelled a real store round trip.
-`_write_rich_document` emits all five and
-`test_all_five_origin_span_variants_survive_a_real_store_round_trip` is where they are cashed.
-"""
-
-
-class StoreExportSource:
-    """One document's committed generation, read out of a real `.owstore` as an `ExportSource`.
-
-    **This adapter belongs in the tree and does not yet exist there.** `export(store, path)`
-    (02-architecture.md:249) is typed against `ExportSource`, whose own docstring names the type
-    that will satisfy it structurally: `Doc`, the lazy read handle of 03:2584-2606. `Doc` is not
-    in the tree, so G28 has no shipped way to point `export()` at a store and this class is the
-    stand-in. It reads `[SOR]` tables only (03:2474) and it is the SAME code for both stores, so
-    a difference between the two projections is a difference between the stores.
-    """
-
-    def __init__(self, connection: sqlite3.Connection, cas: Path, doc_ord: int = 1) -> None:
-        self._connection = connection
-        self._connection.row_factory = sqlite3.Row
-        self._cas = cas
-        self._doc_ord = doc_ord
-        row = connection.execute("SELECT * FROM doc WHERE doc_ord = ?", (doc_ord,)).fetchone()
-        if row is None:
-            message = f"no doc row at doc_ord {doc_ord}"
-            raise AssertionError(message)
-        self._doc = row
-        self._gen = int(row["gen"])
-        self._enum: dict[str, dict[int, str]] = {}
-        for domain, ordinal, name in connection.execute("SELECT domain, ord, name FROM enum_val"):
-            self._enum.setdefault(domain, {})[ordinal] = name
-
-    # -- 1/9 ---------------------------------------------------------------------------------
-
-    def header(self) -> DocHeader:
-        row = self._doc
-        return DocHeader(
-            doc_key=bytes(row["doc_key"]).hex(),
-            gen=self._gen,
-            status=row["status"],
-            source={
-                "uri": row["uri"],
-                "media_type": row["media_type"],
-                "format": row["format"],
-                "source_sha256": bytes(row["source_sha256"]).hex(),
-                "source_bytes": row["source_bytes"],
-                "normalizer": row["normalizer"],
-                "format_evidence": json.loads(row["format_evidence"]),
-                "page_count": row["page_count"],
-                "model_version": row["model_version"],
-            },
-            declared=json.loads(row["declared"]),
-            achieved=json.loads(row["achieved"]),
-            producers=self._producers(),
-            confidence=json.loads(row["confidence"]),
-            timings_ms=json.loads(row["timings_ms"]),
-            x=json.loads(row["x"]),
-        )
-
-    def _producers(self) -> list[dict[str, Any]]:
-        """`manifest.producers[]`: the reproduction tuples this generation's blocks name."""
-        return [
-            {
-                "operator": row["operator"],
-                "op_version": row["op_version"],
-                "code_fingerprint": row["code_fingerprint"],
-            }
-            for row in self._connection.execute(
-                "SELECT DISTINCT p.producer_id, p.operator, p.op_version, p.code_fingerprint "
-                "FROM producer p JOIN block b ON b.producer_id = p.producer_id "
-                "WHERE b.doc_ord = ? AND b.gen = ? ORDER BY p.producer_id",
-                (self._doc_ord, self._gen),
-            )
-        ]
-
-    def _producer_index(self) -> dict[int, int]:
-        """`pd` is an INDEX into `manifest.producers[]` and never a `producer_id` (03:666)."""
-        rows = self._connection.execute(
-            "SELECT DISTINCT p.producer_id FROM producer p JOIN block b "
-            "ON b.producer_id = p.producer_id WHERE b.doc_ord = ? AND b.gen = ? "
-            "ORDER BY p.producer_id",
-            (self._doc_ord, self._gen),
-        ).fetchall()
-        return {int(row["producer_id"]): index for index, row in enumerate(rows)}
-
-    def _addresses(self) -> dict[int, str]:
-        return {
-            int(row["block_id"]): row["addr"]
-            for row in self._connection.execute(
-                "SELECT block_id, addr FROM block WHERE doc_ord = ? AND gen = ?",
-                (self._doc_ord, self._gen),
-            )
-        }
-
-    # -- 2/9 ---------------------------------------------------------------------------------
-
-    def blocks(self) -> Any:
-        """`(page, ord)` order, which is a Frame's order by definition (03:2528)."""
-        index = self._producer_index()
-        marks = self._marks()
-        rows = self._connection.execute(
-            "SELECT * FROM block WHERE doc_ord = ? AND gen = ? ORDER BY page, ord, block_id",
-            (self._doc_ord, self._gen),
-        ).fetchall()
-        for row in rows:
-            os_kind = self._enum["origin_span_kind"][int(row["os_kind"])]
-            block = Block(
-                id=BlockId(int(row["block_id"])),
-                addr=Addr(row["addr"]),
-                cite=Cite(row["cite"]),
-                doc_ord=int(row["doc_ord"]),
-                gen=int(row["gen"]),
-                page=int(row["page"]),
-                parent=None if row["parent_id"] is None else BlockId(int(row["parent_id"])),
-                ord=int(row["ord"]),
-                kind=Kind(self._enum["kind"][int(row["kind"])]),
-                raw_kind=row["raw_kind"],
-                layer=Layer(self._enum["layer"][int(row["layer"])]),
-                label=row["label"],
-                text=row["text"],
-                content_digest=bytes(row["content_digest"]),
-                layout_digest=(
-                    None if row["layout_digest"] is None else bytes(row["layout_digest"])
-                ),
-                revision=int(row["revision"]),
-                quad=None if row["quad"] is None else Quad(*_unquad(row["quad"])),
-                origin=_ORIGIN_DECODERS[os_kind](row),
-                span=None if row["ts_a"] is None else TextSpan(row["ts_a"], row["ts_b"]),
-                producer_id=int(row["producer_id"]),
-                method=Method(self._enum["method"][int(row["method"])]),
-                trust=Trust(int(row["trust"])),
-                quote=Quote(int(row["quote"])),
-                score=row["score"],
-                score_kind=row["score_kind"],
-                origin_operator=row["origin_operator"],
-                origin_driver=row["origin_driver"],
-                driver_schema_v=int(row["driver_schema_v"]),
-                restriction_bits=int(row["restriction_bits"]),
-                marks=tuple(marks.get(int(row["block_id"]), ())),
-                tombstoned=bool(row["state"]),
-                x=MappingProxyType(json.loads(row["x"])),
-            )
-            yield BlockExport(
-                block=block,
-                producer=index[int(row["producer_id"])],
-                payload=None if row["payload"] is None else json.loads(row["payload"]),
-                decision_id=row["decision_id"],
-            )
-
-    def _marks(self) -> dict[int, list[Mark]]:
-        marks: dict[int, list[Mark]] = {}
-        for row in self._connection.execute(
-            "SELECT m.block_id, m.a, m.b, m.kind, m.value FROM mark m "
-            "JOIN block b ON b.block_id = m.block_id WHERE b.doc_ord = ? AND b.gen = ? "
-            "ORDER BY m.block_id, m.a, m.b, m.mark_id",
-            (self._doc_ord, self._gen),
-        ):
-            value = None if row["value"] is None else json.loads(row["value"])
-            marks.setdefault(int(row["block_id"]), []).append(
-                Mark(int(row["a"]), int(row["b"]), row["kind"], value)
-            )
-        return marks
-
-    # -- 3/9 ---------------------------------------------------------------------------------
-
-    def rels(self) -> Any:
-        index = self._producer_index()
-        address = self._addresses()
-        for row in self._connection.execute(
-            "SELECT * FROM rel WHERE doc_ord = ? AND gen = ? ORDER BY src_id, dst_id, kind",
-            (self._doc_ord, self._gen),
-        ):
-            yield RelRow(
-                src=Addr(address[int(row["src_id"])]),
-                dst=Addr(address[int(row["dst_id"])]),
-                kind=RelKind(self._enum["rel_kind"][int(row["kind"])]),
-                producer=index[int(row["producer_id"])],
-                trust=Trust(int(row["trust"])),
-                origin_operator=row["origin_operator"],
-                score=row["score"],
-                score_kind=row["score_kind"],
-                x=json.loads(row["x"]),
-            )
-
-    # -- 4/9 ---------------------------------------------------------------------------------
-
-    def grids(self) -> Any:
-        """`table_meta` plus its ORIGIN `cell` rows. `grid_slot` is `[DER]` and never exported."""
-        address = self._addresses()
-        for row in self._connection.execute(
-            "SELECT tm.* FROM table_meta tm JOIN block b ON b.block_id = tm.block_id "
-            "WHERE b.doc_ord = ? AND b.gen = ? ORDER BY tm.block_id",
-            (self._doc_ord, self._gen),
-        ).fetchall():
-            cells = tuple(
-                (int(c["r"]), int(c["c"]), int(c["row_span"]), int(c["col_span"]))
-                for c in self._connection.execute(
-                    "SELECT r, c, row_span, col_span FROM cell WHERE table_id = ? ORDER BY r, c",
-                    (row["block_id"],),
-                )
-            )
-            yield GridRow(
-                table=Addr(address[int(row["block_id"])]),
-                n_rows=int(row["n_rows"]),
-                n_cols=int(row["n_cols"]),
-                row_len=tuple(json.loads(row["row_len"])),
-                kind=self._enum["table_kind"][int(row["kind"])],
-                cells=cells,
-                header_rows=int(row["header_rows"]),
-                header_cols=int(row["header_cols"]),
-                recon_strategy=row["recon_strategy"],
-                recon_score=row["recon_score"],
-                has_merges=bool(row["has_merges"]),
-                native_part=row["native_part"],
-                native_sha256=(
-                    None if row["native_sha256"] is None else bytes(row["native_sha256"]).hex()
-                ),
-            )
-
-    # -- 5/9, 6/9 --------------------------------------------------------------------------
-
-    def parts(self) -> Any:
-        for row in self._connection.execute(
-            "SELECT * FROM part WHERE doc_ord = ? ORDER BY path", (self._doc_ord,)
-        ):
-            digest = bytes(row["sha256"])
-            present = row["store_ref"] is not None
-            payload = self._cas_bytes(digest) if present else b""
-            yield (
-                PartRow(
-                    path=row["path"],
-                    sha256=digest.hex(),
-                    byte_len=int(row["byte_len"]),
-                    present=present,
-                ),
-                payload,
-            )
-
-    def assets(self) -> Any:
-        roles = self._roles()
-        for row in self._connection.execute(
-            "SELECT * FROM asset WHERE doc_ord = ? ORDER BY asset_id", (self._doc_ord,)
-        ):
-            digest = bytes(row["sha256"])
-            yield (
-                AssetRow(
-                    sha256=digest.hex(),
-                    media_type=row["media_type"],
-                    byte_len=int(row["byte_len"]),
-                    present=True,
-                    origin_part=row["origin_part"],
-                    width=row["width"],
-                    height=row["height"],
-                    licence=row["licence"],
-                    spdx=row["spdx"],
-                    source_url=row["source_url"],
-                    restriction_bits=int(row["restriction_bits"]),
-                    roles=roles.get(int(row["asset_id"]), ()),
-                ),
-                self._cas_bytes(digest),
-            )
-
-    def _roles(self) -> dict[int, tuple[tuple[Addr, str], ...]]:
-        found: dict[int, list[tuple[Addr, str]]] = {}
-        for row in self._connection.execute(
-            "SELECT ba.asset_id, b.addr, ba.role FROM block_asset ba "
-            "JOIN block b ON b.block_id = ba.block_id WHERE b.doc_ord = ? AND b.gen = ? "
-            "ORDER BY ba.asset_id, b.addr, ba.role",
-            (self._doc_ord, self._gen),
-        ):
-            found.setdefault(int(row["asset_id"]), []).append((Addr(row["addr"]), row["role"]))
-        return {key: tuple(value) for key, value in found.items()}
-
-    def _cas_bytes(self, digest: bytes) -> bytes:
-        with BlobStore(self._cas).open(digest) as handle:
-            return handle.read()
-
-    # -- 7/9, 8/9, 9/9 -----------------------------------------------------------------------
-
-    def views(self) -> Any:
-        """No views. `serialize()` is W2.8's and `view` is not an L2 table."""
-        return ()
-
-    def diags(self) -> Any:
-        """`diag` rows for this generation, as the wire objects `diags.json` holds."""
-        return [
-            {
-                "code": row["code"],
-                "severity": row["severity"],
-                "component": row["component"],
-                "message": row["message"],
-            }
-            for row in self._connection.execute(
-                "SELECT code, severity, component, message FROM diag "
-                "WHERE doc_ord = ? AND gen = ? ORDER BY rowid",
-                (self._doc_ord, self._gen),
-            )
-        ]
-
-    def toc(self) -> Any:
-        return ()
 
 
 def _export_store(store: Path, cas: Path, target: Path) -> Path:
@@ -1546,6 +1215,87 @@ def test_the_archive_never_names_a_block_id_of_either_store(trip: RoundTrip) -> 
         assert isinstance(row["src"], str) and isinstance(row["dst"], str)
 
 
+def test_the_export_source_ships_in_the_store() -> None:
+    """D847: the class every test here exports through is the one `omniweave_core` ships."""
+    assert StoreExportSource.__module__ == "omniweave_core.store.export_source"
+
+
+def test_a_document_the_store_does_not_hold_is_not_found(trip: RoundTrip) -> None:
+    """D847's ruling 3: a store fact, not a test's assertion."""
+    connection = ow.connect_readonly(trip.source)
+    try:
+        with pytest.raises(
+            NotFoundError, match="no document at doc_ord 99 in this store"
+        ) as raised:
+            StoreExportSource(connection, trip.source_cas, 99)
+    finally:
+        connection.close()
+    assert raised.value.fix.startswith("ow corpora")
+
+
+_EVIDENCE_SQL = (
+    "INSERT INTO route_evidence(evidence_digest, payload, first_seen_at) VALUES('ev', X'00', 1)"
+)
+_DECISION_SQL = (
+    "INSERT INTO route_decision(decision_id, content_sha256, unit_part, lane, rung, policy_digest,"
+    " pricebook_digest, hints_digest, read_set_digest, driver, cost_class, rule_id, rule_origin,"
+    " slice_key, evidence_digest, est_spend, est_micros, reserved_micros, admission, generation,"
+    " decided_at) VALUES('dec_rt', 'c0', 'pdf/source.pdf', 'parse', 1, 'pd', 'pb', 'hd', 'rd',"
+    " 'drv', 'local_compute', 'r1', 'test:1', 'sk', 'ev', '{}', 0, 0, 'admitted', 1, 1)"
+)
+
+
+def test_the_export_source_carries_a_blocks_routing_decision(
+    trip: RoundTrip, tmp_path: Path
+) -> None:
+    """D847: `dc` is the store's `decision_id`, read for the block that holds one and no other.
+
+    Every document in this file is written through a sink built with no decision, so before
+    this test an adapter that dropped `decision_id` was green everywhere. The G28 probe found
+    real `ow add` stores carry it on every block.
+    """
+    copy = _copy_store(trip.source, tmp_path / "decided.owstore")
+    connection = sqlite3.connect(copy)
+    try:
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute(_EVIDENCE_SQL)
+        connection.execute(_DECISION_SQL)
+        connection.execute("UPDATE block SET decision_id = 'dec_rt' WHERE addr = 'p0/0'")
+        connection.commit()
+    finally:
+        connection.close()
+    rows = _records(_export_store(copy, trip.source_cas, tmp_path / "decided.owdoc"))
+    decided = {row["i"]: row["dc"] for row in rows["blocks/000000.ndjson"]}
+    assert decided["p0/0"] == "dec_rt"
+    assert {dc for addr, dc in decided.items() if addr != "p0/0"} == {None}
+
+
+def test_the_export_source_carries_a_tombstone(trip: RoundTrip, tmp_path: Path) -> None:
+    """D847: `st` is the store's `state`. No document in this file tombstones a block, so before
+    this test an adapter that called every block live was green everywhere."""
+    copy = _copy_store(trip.source, tmp_path / "tombstoned.owstore")
+    connection = sqlite3.connect(copy)
+    try:
+        connection.execute("UPDATE block SET state = 1 WHERE addr = 'p0/0'")
+        connection.commit()
+    finally:
+        connection.close()
+    rows = _records(_export_store(copy, trip.source_cas, tmp_path / "tombstoned.owdoc"))
+    states = {row["i"]: row["st"] for row in rows["blocks/000000.ndjson"]}
+    assert states["p0/0"] == 1
+    assert {st for addr, st in states.items() if addr != "p0/0"} == {0}
+
+
+def test_the_export_source_has_no_views_and_no_toc(trip: RoundTrip) -> None:
+    """D847's ruling 2: `serialize()` is not an L2 table, so neither member is read from one."""
+    connection = ow.connect_readonly(trip.source)
+    try:
+        source = StoreExportSource(connection, trip.source_cas)
+        assert (tuple(source.views()), tuple(source.toc())) == ((), ())
+    finally:
+        connection.close()
+
+
 def test_the_export_source_is_the_same_code_on_both_sides(trip: RoundTrip) -> None:
     """One exporter reads both stores, so a difference in the projections IS a difference in the
     stores -- and that is only true if the exporter actually read something from each.
@@ -2248,7 +1998,7 @@ def test_the_imported_corpus_store_is_internally_consistent(corpus: CorpusTrip) 
 # `json.loads`, and `os_path` is a dot-joined string (`spans.py:518`, `store/doc.py:457`), so
 # this file could not export a `nodepath` block at all -- it raised `JSONDecodeError`. The
 # defect had sat in the adapter unexercised because no block in either document has that
-# origin. See `_ORIGIN_DECODERS`.
+# origin. See `omniweave_core.store.export_source`'s `_ORIGIN_DECODERS`.
 #
 # `_write_rich_document` is therefore a THIRD document, small and deliberate: six blocks, one
 # frame, one page, every optional key but `dc` carrying a value this file wrote down, and all
@@ -2257,11 +2007,12 @@ def test_the_imported_corpus_store_is_internally_consistent(corpus: CorpusTrip) 
 # renumbering them, and it keeps "what a round trip must carry" apart from "what a container
 # must hold".
 #
-# `dc` is the one key left null, and it is null by construction rather than by omission:
-# `decision_id` is one of the two `block` columns 03:311 leaves off `Block`, `BlockDraft` has no
-# field for it, and `DocSink.add_block` therefore has no way to write one. That is a store-side
-# gap, not a codec one, and `test_the_rich_document_populates_every_optional_wire_key_but_one`
-# pins it so that closing it is visible here.
+# `dc` is the one key left null. `decision_id` is one of the two `block` columns 03:311 leaves
+# off `Block`, and `BlockDraft` has no field for it, so no draft carries one. `DocSink` stamps
+# it from its CONSTRUCTION (`decision_id=`), which a real `ow add` passes and these sinks do
+# not (D847 corrects "no writer" here). The adapter's `dc` read is held by
+# `test_the_export_source_carries_a_blocks_routing_decision`, and the importer's loss of it is
+# one of D843's three G28 findings, owed a ruling.
 
 
 RICH_QUAD: Final = Quad(10_000, 20_000, 90_000, 20_000, 90_000, 44_000, 10_000, 44_000)
@@ -2507,7 +2258,9 @@ def test_the_rich_document_populates_every_optional_wire_key_but_one(rich_trip: 
     assert len(rows) == RICH_BLOCKS
     heading = next(row for row in rows if row["i"] == "p0/0")
     assert {key: heading[key] for key in RICH_OPTIONAL_KEYS} == dict(RICH_OPTIONAL_KEYS)
-    assert [row["dc"] for row in rows] == [None] * RICH_BLOCKS, "`dc` has no writer; see 03:311"
+    assert [row["dc"] for row in rows] == [None] * RICH_BLOCKS, (
+        "this sink was built with no decision"
+    )
     assert {row["ly"] for row in rows} == {"body", "note"}, "`ly` is not one value on every row"
     assert [row["t"] for row in rows].count("the body paragraph text") == 2, (
         "two records share a content_digest and differ only in `os`"
