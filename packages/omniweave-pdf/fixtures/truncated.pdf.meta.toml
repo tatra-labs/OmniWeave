@@ -1,0 +1,10 @@
+# truncated.pdf.meta.toml -- 13-quality.md section 4.4's fixture manifest.
+#
+# gen02p.pdf cut in half: sniff() claims it, parse() refuses
+[fixture]
+sha256 = "dd76a48581127705d09d06ab3ea473dff48d1e03c5ba9374340d3735420f6d6f"
+bytes = 6211
+media_type = "application/pdf"
+provenance = "generated"
+spdx = "Apache-2.0"
+generator = "fixtures/gen/gen_pdf_fixtures.py"
