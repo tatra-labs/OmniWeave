@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D850: build note on 13-quality.md:725 (section 5.3), golden_diff.comment() and ow_golden.py --diff
+# blessed-because: D851: build note on 13-quality.md:811 (section 5.5 requirement 4), churn.explain() and ow_golden.py --explain
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -39,7 +39,7 @@ documents-frozen  be04e76a5fed4eab2256414da0fe06ee96a0d12943d0cc1c4897742d692e77
 documents-frozen  29dede9032961fe4626fd71ee38b394d3154faabf67c17aafbea15015044e781  10-interfaces.md
 documents-frozen  76a694bf0b19b60ba35d2246f6b36466ca990f318f51e0a292c388ec0e78bc68  11-repo-layout.md
 documents-frozen  44a9d2b810b0850205912449e6337423f3db837c1f75f2d580c91b25353752c2  12-performance.md
-documents-frozen  b291f5c1359a0d63bf04e35a8fdd4d6cb5df8df8ba0b7b3bbd27d62fc232a103  13-quality.md
+documents-frozen  740b598c1a91d749d2f5501fed5de287a4dca5b5fe4c724a73ccf704de2dd8e1  13-quality.md
 documents-frozen  667161a8bd206b5805998a289f7679f80dc3a8ea6910c52ea8345bfe9562d721  14-security.md
 documents-frozen  0b340b805dbbf70a91c9c138663dd8917f69823885a93432b36dfc21c1451ac5  15-observability.md
 documents-frozen  6655c980e87e68f150804f78bfed62bcbef18dd366710105c2aea6bf1d40bef8  16-roadmap.md
