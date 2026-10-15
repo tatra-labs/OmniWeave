@@ -135,6 +135,7 @@ from omniweave.sdk.reports import (
     CostReport,
     DoctorReport,
     EvalPublishReport,
+    EvalReleaseCheckReport,
     GraphDoctorReport,
     HooksCheckReport,
     InstallReport,
@@ -162,6 +163,7 @@ from omniweave.surface.inputs import (
     DiffIn,
     DoctorIn,
     EvalPublishIn,
+    EvalReleaseCheckIn,
     ExplainIn,
     GraphDoctorIn,
     GraphPlanIn,
@@ -2155,6 +2157,27 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=EvalPublishReport,
             advanced=frozenset(),
             cli=("eval", "publish"),
+        ),
+        ActionSpec(
+            name="eval.release_check",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Refuse a release on any unknown run, metric or perf row, and on any hard "
+                "eval/gates.toml gate off its budget or unmeasured; --strict also on a suite "
+                "never run"
+            ),
+            decision="a release is about to be tagged and every eval result must be known",
+            example={},
+            inp=EvalReleaseCheckIn,
+            out=EvalReleaseCheckReport,
+            advanced=frozenset(),
+            cli=("eval", "release-check"),
         ),
     )
 )

@@ -107,7 +107,7 @@ GLOBAL_FLAGS: Final[tuple[Argument, ...]] = (
 
 GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
-    "eval": "publish",
+    "eval": "publish · release-check",
     "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
     "hooks": "check",
     "out": (
@@ -286,6 +286,32 @@ COMMANDS: Final[tuple[Command, ...]] = (
             ),
             Argument(
                 spelling=("--check",),
+                kind="switch",
+                default=False,
+            ),
+        ),
+    ),
+    Command(
+        words=("eval", "release-check"),
+        actions=("eval.release_check",),
+        help=(
+            "Refuse a release on any unknown run, metric or perf row, and on any hard "
+            "eval/gates.toml gate off its budget or unmeasured; --strict also on a suite never "
+            "run"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--oweval",),
+                metavar="OWEVAL",
+                default="eval/omniweave.oweval",
+            ),
+            Argument(
+                spelling=("--gates",),
+                metavar="GATES",
+                default="eval/gates.toml",
+            ),
+            Argument(
+                spelling=("--strict",),
                 kind="switch",
                 default=False,
             ),

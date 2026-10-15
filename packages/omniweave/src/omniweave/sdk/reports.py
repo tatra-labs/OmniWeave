@@ -74,6 +74,8 @@ __all__ = [
     "DoctorFinding",
     "DoctorReport",
     "EvalPublishReport",
+    "EvalReleaseCheckReport",
+    "EvalReleaseFinding",
     "Gap",
     "GraphDoctorReport",
     "HooksCheckReport",
@@ -778,6 +780,41 @@ class EvalPublishReport:
     rows: int
     changed: tuple[str, ...]
     written: bool
+
+
+@dataclass(frozen=True, slots=True)
+class EvalReleaseFinding:
+    """One reason `ow eval release-check` refuses a release. D840.
+
+    `kind` is what was judged: `run` (a latest run whose status is `unknown`), `metric` (an
+    `UNKNOWN` scoreboard row), `perf` (an `eval_perf` row not `pass`), `gate` (a hard gate's value
+    off its budget), `unmeasured` (a hard gate no row measured) or `suite` (under `--strict`, a
+    suite with no run). `names` says which, `why` what was found, and `fix` what clears it.
+    """
+
+    kind: str
+    names: str
+    why: str
+    fix: str
+
+
+@dataclass(frozen=True, slots=True)
+class EvalReleaseCheckReport:
+    """What `ow eval release-check` returns. D840.
+
+    13-quality.md:1881: *"exit 0 iff zero `unknown`, zero hard-gate failures"*. `ok` is exactly
+    that: no finding. `runs` is how many latest runs were judged and `superseded` how many older
+    ones a later run of the same suite, subject and corpus replaced. `gates` is how many hard,
+    blocking `eval/gates.toml` rows were held. `strict` says whether a suite with no run was a
+    finding.
+    """
+
+    ok: bool
+    strict: bool
+    runs: int
+    superseded: int
+    gates: int
+    findings: tuple[EvalReleaseFinding, ...]
 
 
 @dataclass(frozen=True, slots=True)
