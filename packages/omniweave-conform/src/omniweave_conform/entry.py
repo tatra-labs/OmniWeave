@@ -1,6 +1,6 @@
 """The `omniweave.eval` entry points: what `ow eval <verb>` calls in this distribution. **D833.**
 
-D833 is `publish`; D840 adds `release_check`.
+D833 is `publish`; D840 adds `release_check`, and D846 `bless`.
 
 10-interfaces.md section 2.5: *"`omniweave-conform` implements the `eval` Action group"*, and
 the split between the two distributions is a dispatch fact. `omniweave` may not import this
@@ -20,15 +20,20 @@ Specified in 10-interfaces.md section 2.5 and 13-quality.md sections 11.1 and 13
 
 from __future__ import annotations
 
+import shutil
 import tomllib
 from pathlib import Path
 
 from omniweave_core.errors import QualityError
+from omniweave_core.host.subproc import run_captured
 from omniweave_core.store.oweval import open_oweval
 
-from omniweave_conform import release, scoreboard
+from omniweave_conform import inventory, release, scoreboard
+from omniweave_conform.bless import BLESS_ENV, BLESS_ON, blessing
 
-__all__ = ["publish", "release_check"]
+__all__ = ["bless", "publish", "release_check"]
+
+GIT_TIMEOUT_S = 30.0
 
 
 def publish(*, oweval: str, results: str, check: bool) -> dict[str, object]:
@@ -70,4 +75,42 @@ def release_check(*, oweval: str, gates: str, strict: bool) -> dict[str, object]
         "findings": [
             {"kind": f.kind, "names": f.names, "why": f.why, "fix": f.fix} for f in judged.findings
         ],
+    }
+
+
+def bless(*, root: str, reason: str, date: str, env: dict[str, str]) -> dict[str, object]:
+    """`ow eval bless --inventory` (13:1847, :1872): `bless_inventory()` as builtins. D846.
+
+    13-quality.md section 5.5's first requirement holds here as for a golden bless:
+    *"`OMNIWEAVE_BLESS=1` in the environment"*, read from the `env` the CLI passes. The row's
+    author is `<git-author-email>` (:804), read from `git config user.email` in `root`, because
+    that is the address the commit carrying the row will be authored as.
+    """
+    if not blessing(env):
+        raise QualityError(
+            f"ow eval bless refuses: {BLESS_ENV}={BLESS_ON} is not in the environment",
+            fix=f"{BLESS_ENV}={BLESS_ON} ow eval bless --inventory --reason '<why the tests went>'",
+        )
+    git = shutil.which("git", path=next((v for k, v in env.items() if k.upper() == "PATH"), None))
+    found = (
+        run_captured(
+            (git, "config", "user.email"), stdin=b"", cwd=root, env=env, timeout_s=GIT_TIMEOUT_S
+        )
+        if git is not None
+        else None
+    )
+    author = found.stdout.decode("utf-8", "replace").strip() if found is not None else ""
+    if not author:
+        raise QualityError(
+            "the BLESS.log row needs an author, and `git config user.email` names none",
+            fix="git config user.email <your address>",
+        )
+    done = inventory.bless_inventory(Path(root), reason=reason, date=date, author=author, env=env)
+    return {
+        "inventory": inventory.INVENTORY,
+        "log": inventory.LOG,
+        "row": done.row,
+        "fell": list(done.fell),
+        "changed": list(done.changed),
+        "tests": done.tests,
     }

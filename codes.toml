@@ -1546,6 +1546,18 @@ fix     = "move the test, do not move the marker"
 raised_by = "QualityError"
 sites   = ["13-quality.md:1849", "13-quality.md:266", "13-quality.md:1830"]
 
+# ── D846. Q-G24's decrease: 13-quality.md section 13.2's thirteenth row, printed by
+# tools/gate_inventory.py for each area whose count fell with no BLESS.log row, and cleared by
+# `ow eval bless --inventory`, which writes the inventory and the row together.
+
+[[code]]
+numeric = "OW-Q-013"
+symbol  = "OW_TEST_INVENTORY_DECREASED"
+meaning = "the test inventory decreased in an area: fewer tests or properties were collected than eval/inventory.toml holds at the base, and the change adds no BLESS.log row for the inventory, so a skipif, a broken marker or a deleted conftest.py may have removed them silently (Q-G24)"
+fix     = "OMNIWEAVE_BLESS=1 ow eval bless --inventory --reason '<why the tests went>'"
+raised_by = "QualityError"
+sites   = ["13-quality.md:1847", "13-quality.md:1829", "13-quality.md:80"]
+
 # ---------------------------------------------------------------------------
 # THE EXIT TABLE. 18-api-sketch.md section 2.3; 10-interfaces.md section 6.2.
 #
