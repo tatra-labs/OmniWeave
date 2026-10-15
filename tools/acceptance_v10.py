@@ -114,13 +114,15 @@ CRITERIA: tuple[Criterion, ...] = (
                 f"{CLI}/test_eval_release_check_verb.py",
                 label="ow eval release-check refuses on unknown and on hard gates (D840)",
             ),
+            pytest(f"{CORE}/test_gate_parity.py", label="Q-G22's gate and its blocker (D842)"),
         ),
         Coverage.PARTIAL,
         "no `v*` tag to be green on, and no committed `.oweval` for `ow eval release-check` "
         "to judge, so its tests run and the verb does not; G13 and G25 have no runner "
-        "and G29 is planned only; Q-G1, 2, 4, 16, 20, 22, 24 and 26 have no instrument and "
-        "Q-G8, 19 and 25 run their static halves only; the `gates` CI job is off. This row runs "
-        "the Q-G scripts that exist, and the register test, not every G runner",
+        "and G29 is planned only; Q-G1, 2, 4, 16, 20, 24 and 26 have no instrument and "
+        "Q-G8, 19 and 25 run their static halves only; Q-G22's gate runs the T1/T2 suite, so "
+        "this row runs its tests and not it; the `gates` CI job is off. This row runs the Q-G "
+        "scripts that exist, and the register test, not every G runner",
     ),
     Criterion(
         "V10-2",
