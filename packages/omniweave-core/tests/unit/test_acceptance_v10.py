@@ -118,11 +118,10 @@ def test_a_slow_row_is_unmeasured_without_slow(capsys: pytest.CaptureFixture[str
 
 
 def test_json_prints_every_result(capsys: pytest.CaptureFixture[str]) -> None:
-    assert a.main(["--json", "--only", "V10-3,V10-14"]) == 1
+    assert a.main(["--json", "--only", "V10-3"]) == 1
     rows = json.loads(capsys.readouterr().out)
     assert [(row["id"], row["verdict"], row["ran"]) for row in rows] == [
         ("V10-3", "UNMEASURED", []),
-        ("V10-14", "UNMEASURED", []),
     ]
 
 

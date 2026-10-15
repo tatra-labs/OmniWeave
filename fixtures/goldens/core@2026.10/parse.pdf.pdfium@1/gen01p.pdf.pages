@@ -1,0 +1,2 @@
+owpages/1  corpus=core@2026.10  doc=5bcea55e1344a5e7931d766fb546eff1  driver=parse.pdf.pdfium@1  schema_v=1
+p0000 n=43 kind{document:1,paragraph:42} layer{body:43} trust{extracted:43} quote{synthetic:1,verbatim:42} cdig=754082a8 ldig=ff4ee338 diag{}

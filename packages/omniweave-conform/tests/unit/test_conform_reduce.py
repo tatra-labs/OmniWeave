@@ -398,6 +398,16 @@ def test_an_outline_preview_is_one_line_of_48() -> None:
     assert line == f"p0/0 paragraph body extracted normalized {'0' * 8} aa03f7de {preview}"
 
 
+def test_an_outline_line_never_ends_in_whitespace() -> None:
+    """D848: a cut that lands on a space leaves none behind, so no editor can change the bytes."""
+    text = "a" * 47 + " " + "b" * 10
+    line = reduce_outline(Source([_block("p0/0", text=text)]), corpus="c", driver="d").splitlines()[
+        -1
+    ]
+    assert line.endswith("a" * 47)
+    assert line == line.rstrip()
+
+
 def test_the_outline_keeps_the_sources_order() -> None:
     forward = _outline(_document()).splitlines()[1:]
     backward = _outline(Source(reversed(tuple(_document().blocks())))).splitlines()[1:]

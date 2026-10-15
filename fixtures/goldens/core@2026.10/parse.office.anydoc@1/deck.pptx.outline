@@ -1,0 +1,7 @@
+owoutline/1  corpus=core@2026.10  doc=e9c3b8f8f7274179f2373d8931099d92  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic 074e5317 -
+p0/0 heading body extracted normalized a1b75a0f - Pipeline status
+p0/3/0 paragraph body extracted normalized 6773c8f0 - Mention the backlog only if asked.
+p0/1 paragraph body extracted normalized 5269db92 - ingest is green
+p0/2 paragraph body extracted normalized 0c0cb56a - compile is amber
+p0/3 blockquote body extracted normalized 05805c38 -

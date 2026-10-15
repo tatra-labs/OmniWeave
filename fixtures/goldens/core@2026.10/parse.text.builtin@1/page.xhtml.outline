@@ -1,0 +1,9 @@
+owoutline/1  corpus=core@2026.10  doc=89809849fb44d8bfde042aa447e6f913  driver=parse.text.builtin@1  schema_v=1
+doc document body extracted synthetic 22d9f3a2 -
+p0/0 heading body extracted normalized c7fceac5 - Travel policy
+p0/2/0 list_item body extracted normalized 3a7a5217 -
+p0/2/0/0 paragraph body extracted normalized 87b7373b - Book through the portal.
+p0/2/1/0 paragraph body extracted normalized 5bd67d28 - Keep the receipts.
+p0/1 paragraph body extracted normalized 438736f3 - Economy class for flights under six hours. Busin
+p0/2/1 list_item body extracted normalized 383c75b5 -
+p0/2 list body extracted normalized bec0f761 -

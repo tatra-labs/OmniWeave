@@ -1,0 +1,15 @@
+owoutline/1  corpus=core@2026.10  doc=ade0136bacc215f10dcbaa69c2e9ccdc  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic 69258a7f -
+p0/0 heading body extracted normalized 346dd28c - A very short book
+p0/5/0 paragraph body extracted normalized cec5c99f - Quoted material.
+p0/6/0 list_item body extracted normalized 03371cdb -
+p0/6/0/0 paragraph body extracted normalized 99c01f3b - alpha
+p0/6/1/0 paragraph body extracted normalized f1914006 - beta
+p0/1 heading body extracted normalized 7b9b5948 - Chapter one
+p0/6/1 list_item body extracted normalized 236f81fe -
+p0/2 paragraph body extracted normalized 4b1f689c - A short paragraph with emphasis and a relative l
+p0/3 rule body extracted normalized 1dfda048 -
+p0/4 code body extracted normalized 716d89bc - print("hi")
+p0/5 blockquote body extracted normalized 73aee394 -
+p0/6 list body extracted normalized ca7e6403 -
+p0/7 paragraph body extracted normalized 4a066fde - The end.
