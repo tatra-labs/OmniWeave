@@ -520,16 +520,18 @@ class ArtifactsIn:
 
 @dataclass(frozen=True, slots=True)
 class CostIn:
-    """`ow_cost` / `ow cost [--by driver] [--run R]`. 15-observability.md section 5.4. D838.
+    """`ow_cost` / `ow cost [--by B] [--since D | --run R]`. 15 section 5.4. D838, D839.
 
     `by` is the slicing. Section 5.4 prints seven, `driver|document|provider|lane|rung|slice|day`,
-    and this build serves `driver`; the rest are refused by name. `run` scopes the window to one
-    run's generation and is what makes the reconcile line possible. `corpus` is the store the
-    ledger lives in. Section 5.4's `--since`, `--currency` and `--verify` are not fields yet: a
-    field the schema publishes is a promise, and those three are not served.
+    and this build serves all but `document`, which is refused by name. `since` is a duration
+    back from now, `<n>m|h|d`; `run` scopes the window to one run's generation and is what makes
+    the reconcile line possible; the two are exclusive, as 5.4's grammar prints them. `corpus` is
+    the store the ledger lives in. `--currency` and `--verify` are not fields yet: a field the
+    schema publishes is a promise, and those two are not served.
     """
 
     by: str = "driver"
+    since: str | None = None
     run: str | None = None
     corpus: str | None = None
 

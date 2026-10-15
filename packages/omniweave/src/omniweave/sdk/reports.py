@@ -782,13 +782,15 @@ class EvalPublishReport:
 
 @dataclass(frozen=True, slots=True)
 class CostListing:
-    """One `ow cost --by driver` row: 15-observability.md section 5.4's ten columns. D838.
+    """One `ow cost` row: 15-observability.md section 5.4's ten columns. D838, D839.
 
-    `omniweave.run.cost.DriverCost`'s fields, kept as a separate class so the registry's type
-    graph does not import the runtime, the reason `TargetListing` gives for the same arrangement.
+    `key` is the row's value of the slicing `CostReport.by` names: a driver under `--by driver`,
+    a provider, a lane, a rung, a slice or a UTC date otherwise. `omniweave.run.cost.RowCost`'s
+    fields, kept as a separate class so the registry's type graph does not import the runtime,
+    the reason `TargetListing` gives for the same arrangement.
     """
 
-    driver: str
+    key: str
     cost_class: str
     units: int
     calls: int
@@ -802,16 +804,19 @@ class CostListing:
 
 @dataclass(frozen=True, slots=True)
 class CostReport:
-    """What `ow_cost` / `ow cost` returns: spend by driver, and what the cache saved. D838.
+    """What `ow_cost` / `ow cost` returns: spend, sliced, and what the cache saved. D838, D839.
 
     10-interfaces.md's `full` roster: *"spend by driver, corpus and window, plus
     `would_have_been_micros_if_uncached`"*. `total_micros` is the sum of the `micros` column and
     `saved_micros` of the `saved` column (15 section 5.4: *"checkable rather than decorative"*).
     `billed_micros` is `Σ route_spend.micros` over the window; `manifest_billed_micros` is the
     run manifest's own figure, and `None` unless `run_id` names a run whose manifest reads.
+    `by` is the slicing, and `since` the `--since` duration as given, or `None`.
     """
 
     corpus: str
+    by: str
+    since: str | None
     run_id: str | None
     rows: tuple[CostListing, ...]
     total_micros: int

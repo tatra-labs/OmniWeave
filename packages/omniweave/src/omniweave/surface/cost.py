@@ -1,4 +1,4 @@
-"""`ow cost`: what a corpus or a run spent, by driver, and what the cache saved. **D838.**
+"""`ow cost`: what a corpus or a run spent, sliced, and what the cache saved. **D838, D839.**
 
 15-observability.md section 5.4 is the specification:
 
@@ -11,13 +11,19 @@ corpus and window, plus `would_have_been_micros_if_uncached`"*. The rows are
 
 ## Rulings
 
-1. **`--by driver` is served; the other six slicings are refused by name.** Exit 1, with what is
-   served as the fix. A slicing that printed `driver`'s rows under another name would be a bill
-   that lies about its own axis.
-2. **The window is the whole ledger, or one run.** `--run R` keeps run R's generation. A run the
-   store does not hold is `NotFoundError`, exit 2. `--since` waits on a clock this surface does not
-   take, and `--currency` and `--verify` on I30's audit (`work` records no outcome, and parse rows
-   carry no spend yet: 05:2596). None of the three is a field, so none is published as a promise.
+1. **Six of section 5.4's seven slicings are served; `document` is refused by name.** Exit 1,
+   with what is served as the fix. One decision serves several documents, so a per-document bill
+   needs section 5.3's apportionment, and a table summing past its own bill would be one that lies
+   about its axis.
+2. **The window is the whole ledger, one run, or `--since <dur>` back from now.**
+   - `--run R` keeps run R's generation. A run the store does not hold is `NotFoundError`, exit 2.
+   - `--since` is `<n>m|h|d`, measured back from the wall clock read once here, `SystemClock`, as
+     the other surfaces read it. A `--since` that reaches past the ledger's earliest decision says
+     so, because section 5.4 calls a bill that silently starts where the sweep stopped *"a bill
+     with a hole"*.
+   - `--since` and `--run` together are refused, as 5.4's grammar prints them as alternatives.
+   - `--currency` and `--verify` wait on I30's audit (`work` records no outcome, and parse rows
+     carry no spend yet: 05:2596). Neither is a field, so neither is published as a promise.
 3. **The four checkable lines of section 5.4's output are printed and checkable:**
    - `TOTAL` is the sum of the `micros` column;
    - `saved` is the sum of the `saved` column, and its ratio is `saved / TOTAL`;
@@ -36,6 +42,7 @@ corpus and window, plus `would_have_been_micros_if_uncached`"*. The rows are
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 from dataclasses import asdict
 from pathlib import Path
@@ -51,16 +58,17 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Mapping, Sequence
 
-__all__ = ["COST_WORD", "SERVED", "SLICINGS", "cost_report", "main"]
+__all__ = ["COST_WORD", "SLICINGS", "cost_report", "main"]
 
 COST_WORD: Final[str] = "cost"
 SLICINGS: Final = ("driver", "document", "provider", "lane", "rung", "slice", "day")
-"""Section 5.4's `--by` vocabulary, in its order."""
-SERVED: Final = frozenset({"driver"})
-"""Ruling 1."""
-_FIX: Final[str] = "ow cost [--by driver] [--run R] [--corpus N] [--render json]"
-_HEADER: Final = (
-    "driver",
+"""Section 5.4's `--by` vocabulary, in its order. `omniweave.run.cost.SLICINGS` is what is
+served."""
+_FIX: Final[str] = (
+    "ow cost [--by driver|provider|lane|rung|slice|day] [--since 7d | --run R] [--corpus N] "
+    "[--render json]"
+)
+_COLUMNS: Final = (
     "class",
     "units",
     "calls",
@@ -84,30 +92,64 @@ def main(
         check(COST_WORD, parsed)
         _refuse_unserved(parsed)
         explicit = Path(parsed.config) if parsed.config else None
-        bill = cost_report(
-            cwd=cwd, env=env, explicit=explicit, run=parsed.run, corpus=parsed.corpus
+        now_ms = None if parsed.since is None else _wall_ms()
+        bill, earliest = cost_report(
+            cwd=cwd,
+            env=env,
+            explicit=explicit,
+            by=parsed.by,
+            since=parsed.since,
+            now_ms=now_ms,
+            run=parsed.run,
+            corpus=parsed.corpus,
         )
     except OwError as error:
         return report(error, parsed, stdout=stdout, stderr=stderr)
     if parsed.render == "json":
         stdout.write(json.dumps(asdict(bill), ensure_ascii=False) + "\n")
     else:
-        for line in _lines(bill):
+        for line in _lines(bill, now_ms=now_ms, earliest=earliest):
             stdout.write(line + "\n")
     return 0
 
 
 def cost_report(
-    *, cwd: Path, env: Mapping[str, str], explicit: Path | None, run: str | None, corpus: str | None
-) -> CostReport:
-    """Rulings 2 and 3: one corpus's ledger, or one run of it, read-only."""
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    explicit: Path | None,
+    by: str,
+    since: str | None,
+    now_ms: int | None,
+    run: str | None,
+    corpus: str | None,
+) -> tuple[CostReport, int | None]:
+    """Rulings 1-3: one corpus's ledger, sliced and windowed, read-only.
+
+    Returns the report and the ledger's earliest `decided_at`, which only a `--since` line reads.
+    `now_ms` is the wall clock in milliseconds, required with `since` and read by the caller.
+    """
     from omniweave_core import config  # noqa: PLC0415 -- only this verb pays
     from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
 
-    from omniweave.run.cost import by_driver, manifest_billed, run_window  # noqa: PLC0415
+    from omniweave.run.cost import (  # noqa: PLC0415
+        by_key,
+        earliest_decision,
+        manifest_billed,
+        run_window,
+        since_ms,
+    )
     from omniweave.surface.opening import corpus_for  # noqa: PLC0415
     from omniweave.surface.query import store_of  # noqa: PLC0415
 
+    cutoff = None
+    if since is not None:
+        if now_ms is None:
+            raise UsageError("--since needs the wall clock", fix=_FIX)
+        try:
+            cutoff = now_ms - since_ms(since)
+        except ValueError as exc:
+            raise UsageError(str(exc), fix=_FIX) from exc
     resolved = config.load(cwd=cwd, env=env, explicit=explicit)
     name = corpus_for(resolved, [], corpus, verb="ow cost")
     connection = store_sqlite.connect_readonly(store_of(resolved, name, cwd=cwd))
@@ -117,23 +159,50 @@ def cost_report(
             raise NotFoundError(
                 f"no run {run!r} in corpus {name!r}", fix=f"ow cost --corpus {name}"
             )
-        rows = by_driver(connection, generation=None if window is None else window.generation)
+        rows = by_key(
+            connection,
+            by,
+            generation=None if window is None else window.generation,
+            cutoff_ms=cutoff,
+        )
+        earliest = earliest_decision(connection)
+        billed = by_key(
+            connection,
+            "driver",
+            generation=None if window is None else window.generation,
+            cutoff_ms=cutoff,
+        )
     finally:
         connection.close()
     listed = tuple(CostListing(**asdict(row)) for row in rows)
-    billed = sum(row.micros for row in rows if not row.driver.startswith("op."))
-    return CostReport(
-        corpus=name,
-        run_id=run,
-        rows=listed,
-        total_micros=sum(row.micros for row in listed),
-        saved_micros=sum(row.saved for row in listed),
-        billed_micros=billed,
-        manifest_billed_micros=None if window is None else manifest_billed(window.manifest_path),
+    return (
+        CostReport(
+            corpus=name,
+            by=by,
+            since=since,
+            run_id=run,
+            rows=listed,
+            total_micros=sum(row.micros for row in listed),
+            saved_micros=sum(row.saved for row in listed),
+            billed_micros=sum(row.micros for row in billed if not row.key.startswith("op.")),
+            manifest_billed_micros=(
+                None if window is None else manifest_billed(window.manifest_path)
+            ),
+        ),
+        earliest,
     )
 
 
+def _wall_ms() -> int:
+    """Ruling 2: the one wall-clock read, as the other surfaces make it."""
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415 -- only --since pays
+
+    return SystemClock().wall_ns() // 1_000_000
+
+
 def _refuse_unserved(parsed: argparse.Namespace) -> None:
+    from omniweave.run.cost import SLICINGS as SERVED  # noqa: PLC0415
+
     named = ["--quiet"] if parsed.quiet else []
     if parsed.by not in SERVED:
         named.append(f"--by {parsed.by}")
@@ -142,23 +211,21 @@ def _refuse_unserved(parsed: argparse.Namespace) -> None:
     if named:
         raise UsageError(
             f"{', '.join(named)} is parsed and not served by ow cost in this build; "
-            f"--by takes one of {', '.join(SLICINGS)}, and serves {', '.join(sorted(SERVED))}",
+            f"--by takes one of {', '.join(SLICINGS)}, and serves {', '.join(SERVED)}",
             fix=_FIX,
         )
+    if parsed.since is not None and parsed.run is not None:
+        raise UsageError("--since and --run are two windows; give one", fix=_FIX)
 
 
-def _lines(bill: CostReport) -> list[str]:
+def _lines(bill: CostReport, *, now_ms: int | None, earliest: int | None) -> list[str]:
     """Ruling 3's text form: the table, its total, what the cache saved, and the window."""
-    window = (
-        f"window: run {bill.run_id}'s generation"
-        if bill.run_id is not None
-        else "window: every generation in the ledger"
-    )
+    window = _window(bill, now_ms=now_ms, earliest=earliest)
     if not bill.rows:
-        return [f"{bill.corpus}: no decision and no op row in this window", window]
+        return [f"{bill.corpus}: no decision and no op row in this window", *window]
     cells = [
         [
-            row.driver,
+            row.key,
             row.cost_class,
             *(
                 f"{value:,}"
@@ -189,15 +256,36 @@ def _lines(bill: CostReport) -> list[str]:
         "",
         f"{bill.saved_micros:,}",
     ]
-    table = [list(_HEADER), *cells, totals]
-    widths = [max(len(cell[at]) for cell in table) for at in range(len(_HEADER))]
+    table = [[bill.by, *_COLUMNS], *cells, totals]
+    widths = [max(len(cell[at]) for cell in table) for at in range(len(_COLUMNS) + 1)]
     lines = [_row(cell, widths) for cell in table]
     ratio = f" ({bill.saved_micros / bill.total_micros:.1f}x the bill)" if bill.total_micros else ""
     lines.append(f"cache saved {bill.saved_micros:,}µ{ratio}.")
-    lines.append(window)
+    lines.extend(window)
     if bill.run_id is not None:
         lines.append(_reconcile(bill))
     return lines
+
+
+def _window(bill: CostReport, *, now_ms: int | None, earliest: int | None) -> list[str]:
+    """Ruling 2's window line, and the hole a `--since` past the ledger's start would hide."""
+    if bill.run_id is not None:
+        return [f"window: run {bill.run_id}'s generation"]
+    if bill.since is None or now_ms is None:
+        return ["window: every generation in the ledger"]
+    from omniweave.run.cost import since_ms  # noqa: PLC0415
+
+    cutoff = now_ms - since_ms(bill.since)
+    lines = [f"window: since {_date(cutoff)} ({bill.since})"]
+    if earliest is not None and earliest > cutoff:
+        lines.append(
+            f"the ledger's earliest decision is {_date(earliest)}: nothing older is held to count"
+        )
+    return lines
+
+
+def _date(ms: int) -> str:
+    return dt.datetime.fromtimestamp(ms / 1000, tz=dt.UTC).strftime("%Y-%m-%d %H:%M UTC")
 
 
 def _row(cells: Sequence[str], widths: Sequence[int]) -> str:
