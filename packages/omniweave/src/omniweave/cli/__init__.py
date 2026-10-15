@@ -191,6 +191,25 @@ COMMANDS: Final[tuple[Command, ...]] = (
         ),
     ),
     Command(
+        words=("cost",),
+        actions=("cost.report",),
+        help=(
+            "Spend by driver over a corpus's ledger or one run, with what the cache saved, and "
+            "the run's reconcile against its manifest"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--by",),
+                metavar="BY",
+                default="driver",
+            ),
+            Argument(
+                spelling=("--run",),
+                metavar="RUN",
+            ),
+        ),
+    ),
+    Command(
         words=("doc", "diff"),
         actions=("doc.diff",),
         help=(

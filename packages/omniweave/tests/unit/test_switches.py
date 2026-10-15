@@ -33,6 +33,7 @@ ROOTS = sorted({command.words[0] for command in COMMANDS})
 MINIMAL: dict[str, list[str]] = {
     "add": ["add", "x.txt"],
     "corpora": ["corpora"],
+    "cost": ["cost"],
     "doc": ["doc", "grid", "d#1"],
     "doctor": ["doctor"],
     "eval": ["eval", "publish"],
@@ -126,6 +127,7 @@ def test_the_refused_set_is_what_the_audit_found() -> None:
     assert by_root == {
         "add": reader,
         "corpora": reader,
+        "cost": reader,
         "doc": reader,
         "graph": reader,
         "open": reader,

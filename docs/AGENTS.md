@@ -47,6 +47,7 @@ key can grant one.
 | `add` | `ow_add` | `ow add` | default, full | `billed_api` | Index files, directories or URLs into a corpus so ow_query can cite them; billable work defers with the command that approves it |
 | `corpora` | `ow_corpora` | `ow corpora` | default, full | `free` | List what this server can read and what is in each corpus: counts, formats, known gaps, freshness and the capability floor |
 | `corpus.coverage` | `ow_coverage` | `ow corpora` | full | `free` | What a scope holds and what is missing from it: discovered against indexed, the gap list behind a low or absent verdict, and the command that clears each gap |
+| `cost.report` | `ow_cost` | `ow cost` | full | `free` | Spend by driver over a corpus's ledger or one run, with what the cache saved, and the run's reconcile against its manifest |
 | `doc.diff` | `ow_diff` | `ow doc diff` | full | `free` | Compare two generations of one document: what carried, what was revised, what is new, and whether the newer generation was quarantined rather than committed |
 | `doc.grid` | `ow_grid` | `ow doc grid` | full | `free` | Read one table as an exactly-once grid: every cell at its slot, the header row and column, and the merges that would otherwise be counted twice |
 | `doctor` | `ow_doctor` | `ow doctor` | full | `free` | Check this deployment: every resolved configuration value with its source, the driver and toolchain probes, and a fix command for every warning |

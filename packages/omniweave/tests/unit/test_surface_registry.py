@@ -101,16 +101,17 @@ rather than budget: the default surface is measured at 850 tokens of a 1,900 cei
 MCP_NAMES = ("ow_add", "ow_corpora", "ow_open", "ow_query")
 
 NARROW_NAMES = (
-    "corpus.coverage", "doc.diff", "doc.grid", "doctor", "explain", "graph.locate", "out.list",
-    "out.targets",
+    "corpus.coverage", "cost.report", "doc.diff", "doc.grid", "doctor", "explain",
+    "graph.locate", "out.list", "out.targets",
 )  # fmt: skip
-"""The eight of 10:807's eighteen that have rows, sorted as `listed()` returns them.
+"""The nine of 10:807's eighteen that have rows, sorted as `listed()` returns them.
 
-Eight and not eighteen because `ActionSpec.out` is a `type` and ten output types have no home
-in this process yet -- six in P8, one in P9, three forward-referenced by their own document, and
+Nine and not eighteen because `ActionSpec.out` is a `type` and nine output types have no home
+in this process yet -- six in P8, one in P9, two forward-referenced by their own document, and
 `route.explain`'s deferred for a measured import cost (D298). `_unrostered_full()` names them.
 `graph.locate` was P8's first: its `Located` landed in D694. `out.targets` was P9's first:
-its `TargetsReport` landed in D761, and `out.list`'s `ArtifactsReport` in D769."""
+its `TargetsReport` landed in D761, and `out.list`'s `ArtifactsReport` in D769. `cost.report`'s
+`CostReport` landed in D838."""
 
 FULL_ROSTER_NAMES = (
     "doc.outline",
@@ -632,6 +633,7 @@ def test_the_required_parameter_of_each_tool_is_the_one_the_schema_requires() ->
         "query": {"query"},
         "open": {"ref"},
         "corpora": set(),
+        "cost.report": set(),
         "add": {"source"},
         "doc.grid": {"ref"},
         "graph.locate": set(),
@@ -834,6 +836,7 @@ def test_this_package_can_write_no_file_at_all() -> None:
         "add.py",
         "authority.py",
         "corpora.py",
+        "cost.py",
         "dispatch.py",
         "doc.py",
         "eval.py",
@@ -903,7 +906,7 @@ def test_the_roster_names_each_action_once_and_each_tool_once() -> None:
     assert len({mcp for mcp, _ in FULL_ROSTER}) == len(FULL_ROSTER)
 
 
-def test_ten_of_the_eighteen_are_still_waiting_on_an_output_type() -> None:
+def test_nine_of_the_eighteen_are_still_waiting_on_an_output_type() -> None:
     """`_unrostered_full()` is schedule, not defect, and reports in the table's order.
 
     The day this becomes `()` is the day 10:833's `ow surface budget --bless` has its condition:
@@ -920,11 +923,10 @@ def test_ten_of_the_eighteen_are_still_waiting_on_an_output_type() -> None:
         "doc.xrefs",
         "route.explain",
         "doc.verify_quote",
-        "cost.report",
     )
 
 
-def test_the_landed_eight_are_the_roster_minus_the_ten() -> None:
+def test_the_landed_nine_are_the_roster_minus_the_nine() -> None:
     waiting = set(_unrostered_full(ACTIONS))
     landed = tuple(sorted(name for _, name in FULL_ROSTER if name not in waiting))
     assert landed == NARROW_NAMES
@@ -1075,7 +1077,7 @@ def test_the_shipped_roots_still_contain_no_trailing_s_collision() -> None:
     roots = {spec.cli[0] for spec in ACTIONS.values() if spec.cli}
     assert roots == {
         "query", "open", "corpora", "add", "doc", "doctor", "explain", "install", "uninstall",
-        "hooks", "skills", "serve", "surface", "graph", "out", "eval",
+        "hooks", "skills", "serve", "surface", "graph", "out", "eval", "cost",
     }  # fmt: skip
     assert not {root for root in roots if root + "s" in roots}
     assert roots <= GROUPS
@@ -1366,7 +1368,7 @@ def test_the_unrostered_cli_count_is_the_distance_to_the_registry() -> None:
     tables and usage rather than from a numeral, and a numeral is a second copy of an enumeration.
     """
     waiting = _unrostered_cli(ACTIONS)
-    assert len(waiting) == 115, "D833 landed `ow eval publish`"
+    assert len(waiting) == 114, "D838 landed `ow cost`"
     have = {spec.cli for spec in ACTIONS.values()}
     assert not set(waiting) & have
     assert len(waiting) + len(have) == sum(max(1, len(v)) for v in CLI_ROSTER.values())
