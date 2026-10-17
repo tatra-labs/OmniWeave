@@ -197,11 +197,11 @@ def test_the_actions_with_no_sdk_entry_point_are_the_document_pair_and_the_insta
     `out.stamp` and `out.normalize` ones 18 never prints (D767, D768), as are `out.list` (D769),
     `out.compile` (D773), `out.verify` (D774), `out.back` (D777) and `out.assets` (D778).
     `eval.publish` is a command 18 never prints as a method (D833), and so are `cost.report`
-    (D838) and `eval.release_check` (D840)."""
+    (D838), `eval.release_check` (D840) and `eval.run` (D868)."""
     missing = sorted(name for name, spec in ACTIONS.items() if spec.cli and name not in SDK_HOMES)
     assert missing == [
         "cost.report", "doc.diff", "doc.grid", "eval.bless", "eval.publish",
-        "eval.release_check",
+        "eval.release_check", "eval.run",
         "graph.doctor", "graph.locate", "graph.merge", "graph.merges",
         "graph.plan", "graph.residue", "graph.review", "graph.split", "graph.types", "graph.why",
         "hooks.check",

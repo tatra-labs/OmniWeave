@@ -852,6 +852,30 @@ class EvalReleaseCheckIn:
 
 
 @dataclass(frozen=True, slots=True)
+class EvalRunIn:
+    """`ow eval run [--suite S] [--subject D] [--witness W] [--cassette MODE]`. 13:1873. D868.
+
+    `suite` is one of 13's seven; omitted, it is every suite this build measures, which is
+    `parse`. `subject` keeps the register's `[[subject]]` rows whose driver id it names. `witness`
+    and `cassette` go into `eval_run` as given, each checked against its column's CHECK.
+    `validate_judge` and `emit` are 13:1873's other two flags, parsed and refused by name: nothing
+    here runs a judge or writes a result file. `oweval` and `gates` are the store written and the
+    register read, relative to the working directory, as `EvalReleaseCheckIn`'s are. 13:1873's
+    `--corpus C@V` is the global flag, refused by this verb: each subject's corpus is its own
+    fixture set.
+    """
+
+    suite: str | None = None
+    subject: str | None = None
+    witness: str = "self"
+    cassette: str = "off"
+    validate_judge: bool = False
+    emit: str | None = None
+    oweval: str = "eval/omniweave.oweval"
+    gates: str = "eval/gates.toml"
+
+
+@dataclass(frozen=True, slots=True)
 class ServeIn:
     """`ow serve`. 10:1426's flags, in its order, every one an option.
 
