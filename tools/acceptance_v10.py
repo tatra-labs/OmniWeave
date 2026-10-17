@@ -358,8 +358,8 @@ CRITERIA: tuple[Criterion, ...] = (
             ),
         ),
         Coverage.PARTIAL,
-        "the written paths are checked against describe_paths rather than the receipt, "
-        "sha256_after is tested on a receipt row's shape only, and G-install has no gate row "
+        "every written path is held to a receipt row and each file's newest sha256_after to its "
+        "bytes, over a fixture home (D856), never a real host's config; G-install has no gate row "
         "(D484) and no CI",
     ),
     Criterion(
