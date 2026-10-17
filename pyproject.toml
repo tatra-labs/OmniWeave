@@ -138,6 +138,15 @@ ban-relative-imports = "all"
 # the AST. Everything the loop drives still takes its streams as arguments.
 "packages/omniweave-serve/src/omniweave_serve/launch.py" = ["TID251"]
 
+# D863: `omniweave.aio`, 18-api-sketch.md section 1.5's async twins, which 18 prints as
+# "`asyncio.to_thread` wrappers, and the documentation says so". D344's decision a fourth time, and
+# as narrow as `launch.py`'s: one attribute, `to_thread`, which `test_sdk_aio.py` asserts over the
+# AST. It is in `omniweave`, never core, and nothing imports it but a caller who names it, so G23's
+# `import omniweave_core` is untouched. Its test drives the twins with `asyncio.run`, as the
+# transports' tests do.
+"packages/omniweave/src/omniweave/aio.py" = ["TID251"]
+"packages/omniweave/tests/unit/test_sdk_aio.py" = ["TID251"]
+
 # The transport's tests drive the loop with `asyncio.run` and nothing else. There is no
 # pytest-asyncio in the ten-package dev group (02-architecture.md section 3.3 fixes it), so a
 # test of an `async def` either starts a loop by name or does not test it. Same escape and same
