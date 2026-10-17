@@ -415,6 +415,9 @@ rules:
         - "packages/*/src/**"
       exclude:
         - "packages/*/src/**/__main__.py"
+        # D858: the SDK's entry point, `omniweave.corpus()`, reads the directory a caller did not
+        # name here and nowhere else. Its own docstring says why it is an entry point.
+        - "packages/omniweave/src/omniweave/sdk/_ambient.py"
     metadata:
       gate: G8
       ban: "os.getcwd() in library code"
