@@ -644,9 +644,11 @@ def test_a_priced_run_bills_each_call_and_records_what_the_cache_saved(
     report = _run(tmp_path, store, config)
     assert report.status == "ok", report.lines()
     calls = len(_Model.asked)
-    assert _rows(store, "SELECT DISTINCT micros, would_have_been_micros FROM route_spend") == [
-        (120, 0)
-    ]
+    assert _rows(
+        store,
+        "SELECT DISTINCT r.micros, r.would_have_been_micros FROM route_spend AS r"
+        " JOIN work AS w ON w.decision_id = r.decision_id WHERE w.operator = 'derive.entity.llm'",
+    ) == [(120, 0)], "the billed operator's rows; the parse attempts bill 0 beside them (D854)"
     digest = PriceBook.loads(PRICEBOOK).digest
     assert _rows(
         store,
