@@ -260,6 +260,16 @@ The `omniweave.serve` entry point `ow serve --mcp` loads (W7.3p), and the one pl
 The row exists because `asyncio` CAN dial -- `asyncio.open_connection` is two attributes away -- and clause 1 is a declaration rule rather than a usage analysis (14:779). `ow serve --http` is refused by the CLI before this function is reached, so no listener is started from here."""
 
 [[client]]
+module = "asyncio"
+path = "packages/omniweave/src/omniweave/aio.py"
+why = """
+`omniweave.aio`, 18-api-sketch.md section 1.5's async twins of the SDK (D863), which 18 prints as "`asyncio.to_thread` wrappers, and the documentation says so". It is D344's decision a fourth time, and `pyproject.toml`'s `TID251` per-file-ignore is scoped to this one file and says why there.
+
+**What is imported is `to_thread`, and only `to_thread`,** wrapping a call to the module's synchronous twin in `omniweave.sdk.api` -- a read of a local store, or `ow add`'s in-process drain. A test asserts that single attribute over the AST: no `open_connection`, no `create_server`, no `loop.sock_*`, no `create_subprocess_*`. The sync twins it calls open nothing this register does not already account for.
+
+The row exists because `asyncio` CAN dial -- `asyncio.open_connection` is two attributes away -- and clause 1 is a declaration rule rather than a usage analysis (14:779)."""
+
+[[client]]
 module = "socket"
 path = "packages/omniweave-core/src/omniweave_core/host/subproc.py"
 why = """
