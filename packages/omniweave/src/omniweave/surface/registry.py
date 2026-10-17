@@ -137,6 +137,7 @@ from omniweave.sdk.reports import (
     EvalBlessReport,
     EvalPublishReport,
     EvalReleaseCheckReport,
+    EvalRunReport,
     GraphDoctorReport,
     HooksCheckReport,
     InstallReport,
@@ -166,6 +167,7 @@ from omniweave.surface.inputs import (
     EvalBlessIn,
     EvalPublishIn,
     EvalReleaseCheckIn,
+    EvalRunIn,
     ExplainIn,
     GraphDoctorIn,
     GraphPlanIn,
@@ -2159,6 +2161,26 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=EvalPublishReport,
             advanced=frozenset(),
             cli=("eval", "publish"),
+        ),
+        ActionSpec(
+            name="eval.run",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=False,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Run one eval suite over the metric register's subjects and write its runs and "
+                "metrics to the .oweval in one transaction; this build measures parse"
+            ),
+            decision="the eval store needs the measurements a release check will judge",
+            example={},
+            inp=EvalRunIn,
+            out=EvalRunReport,
+            advanced=frozenset(),
+            cli=("eval", "run"),
         ),
         ActionSpec(
             name="eval.release_check",

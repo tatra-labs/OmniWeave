@@ -807,6 +807,39 @@ class EvalBlessReport:
 
 
 @dataclass(frozen=True, slots=True)
+class EvalRunRow:
+    """One subject's run in `ow eval run`'s report. D868.
+
+    `value` is the metric's rate over `n` sampled claims, or `None` when the subject claimed
+    nothing and the rate is vacuous, which writes no metric row. `parsed` and `refused` are the
+    fixtures the driver parsed and the ones it refused, each refusal named with its class.
+    """
+
+    run_id: str
+    subject: str
+    slice: str
+    corpus: str
+    metric: str
+    value: float | None
+    n: int
+    parsed: int
+    refused: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class EvalRunReport:
+    """What `ow eval run` returns. D868.
+
+    `suite` is the suite measured and `oweval` the store its rows went into, in one transaction.
+    `runs` is one row per subject.
+    """
+
+    suite: str
+    oweval: str
+    runs: tuple[EvalRunRow, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class EvalReleaseFinding:
     """One reason `ow eval release-check` refuses a release. D840.
 

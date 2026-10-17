@@ -25,11 +25,12 @@ dependencies = [
 # import it (tools/layers.toml): the Action rows stay in `omniweave`'s ACTIONS whether or not this
 # is installed, and the dispatcher loads the verb by name at call time (10-interfaces.md section
 # 2.5, D512's entry-point route). One entry point per verb, named as the verb is typed; builtin
-# values cross. D833, D840, D846.
+# values cross. D833, D840, D846, D868.
 [project.entry-points."omniweave.eval"]
 publish = "omniweave_conform.entry:publish"
 bless = "omniweave_conform.entry:bless"
 release-check = "omniweave_conform.entry:release_check"
+run = "omniweave_conform.entry:run"
 
 # The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
 [tool.hatch.build.targets.wheel]

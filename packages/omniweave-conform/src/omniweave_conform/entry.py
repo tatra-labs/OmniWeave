@@ -1,6 +1,6 @@
 """The `omniweave.eval` entry points: what `ow eval <verb>` calls in this distribution. **D833.**
 
-D833 is `publish`; D840 adds `release_check`, and D846 `bless`.
+D833 is `publish`; D840 adds `release_check`, D846 `bless`, and D868 `run`.
 
 10-interfaces.md section 2.5: *"`omniweave-conform` implements the `eval` Action group"*, and
 the split between the two distributions is a dispatch fact. `omniweave` may not import this
@@ -8,9 +8,9 @@ package (`tools/layers.toml`), so `omniweave.surface.dispatch.eval_entry()` load
 here by its entry-point name at call time, as it loads `ow serve`'s.
 
 **Only builtin values cross**, as across `ow serve`'s boundary. A type defined on either side is
-one the other side cannot import, so arguments are `str` and `bool`, and the result is a `dict` of
-`str`, `int`, `bool`, and lists of `str` or of `dict`s of `str`. The CLI builds its own report
-from that.
+one the other side cannot import, so arguments are `str`, `bool` and `None`, and the result is a
+`dict` of `str`, `int`, `float`, `bool`, `None`, and lists of `str` or of `dict`s of those. The CLI
+builds its own report from that.
 
 **Paths arrive absolute.** The CLI resolves each against its working directory, so this side
 never reads one.
@@ -24,14 +24,15 @@ import shutil
 import tomllib
 from pathlib import Path
 
+from omniweave_core.clock import SystemClock
 from omniweave_core.errors import QualityError
 from omniweave_core.host.subproc import run_captured
-from omniweave_core.store.oweval import open_oweval
+from omniweave_core.store.oweval import open_oweval, write
 
-from omniweave_conform import inventory, release, scoreboard
+from omniweave_conform import eval_run, inventory, release, scoreboard
 from omniweave_conform.bless import BLESS_ENV, BLESS_ON, blessing
 
-__all__ = ["bless", "publish", "release_check"]
+__all__ = ["bless", "publish", "release_check", "run"]
 
 GIT_TIMEOUT_S = 30.0
 
@@ -44,6 +45,66 @@ def publish(*, oweval: str, results: str, check: bool) -> dict[str, object]:
         "rows": done.rows,
         "changed": list(done.changed),
         "written": done.written,
+    }
+
+
+def run(
+    *,
+    oweval: str,
+    gates: str,
+    root: str,
+    suite: str,
+    subject: str | None,
+    witness: str,
+    cassette: str,
+) -> dict[str, object]:
+    """`ow eval run`: one suite's rows, written to `oweval` in one transaction. D868.
+
+    `root` is the directory the register's `card` and `fixtures` paths are relative to, the
+    working directory. The `.oweval` is created when it does not exist: a run is its writer. The
+    clock is read here, at the edge, as `started_ns` and `ended_ns` for each run.
+    """
+    register = Path(gates)
+    if not register.is_file():
+        raise QualityError(
+            f"no file at {register}", fix="pass --gates PATH naming the metric register"
+        )
+    if suite not in eval_run.BUILT:
+        raise QualityError(
+            f"ow eval run measures {', '.join(eval_run.BUILT)} in this build, not {suite}",
+            fix="ow eval run --suite parse",
+        )
+    batch, done = eval_run.parse(
+        tomllib.loads(register.read_text(encoding="utf-8")),
+        root=Path(root),
+        subject=subject,
+        witness=witness,
+        cassette=cassette,
+        now_ns=SystemClock().wall_ns,
+    )
+    connection = open_oweval(Path(oweval))
+    try:
+        write(connection, batch)
+    finally:
+        connection.close()
+    metric = next(iter(eval_run.MEASURED))
+    return {
+        "suite": suite,
+        "oweval": oweval,
+        "runs": [
+            {
+                "run_id": row.run_id,
+                "subject": row.subject,
+                "slice": row.slice_key,
+                "corpus": row.corpus_id,
+                "metric": metric,
+                "value": row.value,
+                "n": row.n,
+                "parsed": row.parsed,
+                "refused": list(row.refused),
+            }
+            for row in done
+        ],
     }
 
 
