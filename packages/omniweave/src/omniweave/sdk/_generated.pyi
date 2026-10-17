@@ -62,7 +62,9 @@ The Actions this surface comes from, with the declaration behind each promise:
 """
 
 from omniweave.sdk.api import Corpus as Corpus
+from omniweave.sdk.api import corpora as corpora
 from omniweave.sdk.api import corpus as corpus
+from omniweave.sdk.api import doctor as doctor
 from omniweave.sdk.api import explain as explain
 from omniweave.sdk.reports import AddCompleted as AddCompleted
 from omniweave.sdk.reports import AddPending as AddPending
@@ -85,6 +87,8 @@ __all__ = [
     "DoctorFinding",
     "DoctorReport",
     "Gap",
+    "corpora",
     "corpus",
+    "doctor",
     "explain",
 ]

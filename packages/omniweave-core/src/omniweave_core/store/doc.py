@@ -198,6 +198,7 @@ __all__ = [
     "DocSink",
     "StoreGridReader",
     "block_kind",
+    "capabilities_from",
     "diff_generations",
     "head_documents",
     "locate_block",
@@ -2497,8 +2498,9 @@ def _forfeited(declared: Capabilities, computed: Capabilities) -> frozenset[str]
     return frozenset(absent)
 
 
-def _capabilities_from(obj: Mapping[str, Any]) -> Capabilities:
-    """A `Capabilities` back out of a `doc.declared` / `doc.achieved` column."""
+def capabilities_from(obj: Mapping[str, Any]) -> Capabilities:
+    """A `Capabilities` back out of a `doc.declared` / `doc.achieved` column, or a corpus card's
+    `achieved` floor, which carries the same fifteen fields (D860)."""
     return Capabilities(
         spatial=obj["spatial"],
         origin_span=obj["origin_span"],
@@ -2545,8 +2547,8 @@ def _read_doc_record(connection: sqlite3.Connection, doc_ord: int) -> DocRecord:
         status=row[10],
         page_count=None if row[11] is None else int(row[11]),
         model_version=row[12],
-        declared=_capabilities_from(json.loads(row[13])),
-        achieved=_capabilities_from(json.loads(row[14])),
+        declared=capabilities_from(json.loads(row[13])),
+        achieved=capabilities_from(json.loads(row[14])),
         confidence=MappingProxyType(json.loads(row[15])),
         timings_ms=MappingProxyType(json.loads(row[16])),
         x=MappingProxyType(json.loads(row[17])),
