@@ -19,9 +19,10 @@ three surfaces return one `Answer` for one question, and none of them imports an
    differences (D324), not the SDK's.
 2. **What the read path cannot yet honour is refused by name, never ignored.** `refs`, `scope`,
    `expand`, `route_hints`, a `want` other than `passages` and a `max_blocks` other than its default
-   on `query`, `raw` and `want_impact` on `open`, and `readonly=False` on `corpus()` are each a
-   `UsageError` naming the parameter. That is `ow query`'s and `ow_query`'s rule (10:946): a
-   parameter accepted and dropped answers a different question than the one asked. An unknown
+   on `query`, and `raw` and `want_impact` on `open`, are each a `UsageError` naming the
+   parameter, and so are `add()`'s four that `ow add` refuses (ruling 8). That is `ow query`'s
+   and `ow_query`'s rule (10:946): a parameter accepted and dropped answers a different question
+   than the one asked. An unknown
    `want` names the five members (18:279), and an unknown `mode` the four, which `ow query`'s
    parser refuses and `Query` itself does not.
 3. **The working directory is an argument, and only the entry point may default it.** 18:154
@@ -54,6 +55,16 @@ three surfaces return one `Answer` for one question, and none of them imports an
    with `card_stale` set rather than recomputed. `coverage()` is `Reader.coverage()` over the whole
    corpus in one snapshot, 18:464's gap list for absence gates 4-9, read fresh on every call because
    it is what changes while a handle is held. `scope_rows == 0` is coverage UNKNOWN, as 18 warns.
+8. **`Corpus.add()` is `ow add`, in the caller's process** (D862). 18:399 prints a detached
+   `ow ingest --scope` child polled under `wait_ms`, and no module in this build spawns a detached
+   child (D554, D433), so the one write path is `ow add`'s: roster, drain in-process, read the
+   roster back, through `surface.add.add_report()`, which `ow add` now calls too. The run's
+   `run.trigger` is `sdk`, never `cli` (18:440). A handle opened `readonly=True`, the default,
+   refuses with `OW_READONLY_HANDLE` (`OW-A-019`), naming `readonly=False`. A writable handle may
+   name a corpus whose store does not exist yet, because `add()` is what creates it; it then has
+   generation 0. `schema`, a nonzero `allow_cost`, `allow_egress` and `wait_ms` are refused by name,
+   for the reasons `ow add` refuses them: nothing reads `unit.schema_requested`, nothing is priced,
+   no connector fetches, and the drain is synchronous, so there is no deadline to wait to.
 
 Specified in 18-api-sketch.md section 1.1-1.2 and 10-interfaces.md section 9.1.
 """
@@ -75,7 +86,7 @@ if TYPE_CHECKING:
     from omniweave_core.model.enums import Layer
     from omniweave_core.store.types import Coverage, Expand, Filters
 
-    from omniweave.sdk.reports import CodeRow, CorpusCard, DoctorReport
+    from omniweave.sdk.reports import AddReport, CodeRow, CorpusCard, DoctorReport
 
 __all__ = ["MODES", "WANTS", "Corpus", "corpora", "corpus", "doctor", "explain"]
 
@@ -101,11 +112,6 @@ def corpus(
     env: Mapping[str, str] | None = None,
 ) -> Corpus:
     """18:154: open one corpus for reading (rulings 3 and 4). `None` is `[serve] default_corpus`."""
-    if not readonly:
-        raise UsageError(
-            "readonly=False is not served: a Corpus opened here only reads",
-            fix="ow add <path> --corpus <name> writes, as a command",
-        )
     from omniweave_core.config import load  # noqa: PLC0415 -- an import of omniweave never pays
 
     from omniweave.surface.query import corpus_of, store_of  # noqa: PLC0415
@@ -120,9 +126,27 @@ def corpus(
         explicit=None if config is None else Path(config),
     )
     chosen = corpus_of(resolved, name, verb="omniweave.corpus")
-    store = store_of(resolved, chosen, cwd=cwd)
-    generation, schema = _identity(store)
-    return Corpus(name=chosen, schema=schema, generation=generation, _store=store, _config=resolved)
+    env_used = os.environ if env is None else env
+    if readonly:
+        store = store_of(resolved, chosen, cwd=cwd)
+        generation, schema = _identity(store)
+    else:
+        from omniweave_core.contract import SCHEMA  # noqa: PLC0415
+
+        from omniweave.surface.serve import stores  # noqa: PLC0415
+
+        store = Path(stores(resolved, [chosen], cwd=cwd)[chosen])
+        generation, schema = _identity(store) if store.is_file() else (0, SCHEMA)
+    return Corpus(
+        name=chosen,
+        schema=schema,
+        generation=generation,
+        _store=store,
+        _config=resolved,
+        _cwd=cwd,
+        _env=env_used,
+        _writable=not readonly,
+    )
 
 
 def corpora(
@@ -226,6 +250,9 @@ class Corpus:
     generation: int
     _store: Path
     _config: Config
+    _cwd: Path
+    _env: Mapping[str, str] = field(repr=False)
+    _writable: bool = False
     _memo: dict[str, Any] = field(default_factory=dict, compare=False, repr=False)
 
     def query(
@@ -296,6 +323,50 @@ class Corpus:
             pack_open, opening, corpus=self.name, qualify=self._qualify(), max_chars=max_chars
         )
 
+    def add(
+        self,
+        source: str | Sequence[str],
+        *,
+        dry_run: bool = False,
+        schema: Mapping[str, Any] | None = None,
+        allow_cost: int = 0,
+        allow_egress: str | None = None,
+        wait_ms: int | None = None,
+    ) -> AddReport:
+        """18:399: index files and directories into this corpus, as `ow add` does (ruling 8)."""
+        if not self._writable:
+            raise UsageError(
+                "Corpus.add writes, and this handle was opened readonly=True",
+                symbol="OW_READONLY_HANDLE",
+                fix=f"omniweave.corpus({self.name!r}, readonly=False).add(...)",
+            )
+        _refuse(
+            schema=schema is not None,
+            allow_cost=allow_cost != 0,
+            allow_egress=allow_egress is not None,
+            wait_ms=wait_ms is not None,
+        )
+        import shlex  # noqa: PLC0415
+
+        from omniweave.surface.add import add_report  # noqa: PLC0415
+
+        sources = (source,) if isinstance(source, str) else tuple(source)
+        report, _ = add_report(
+            self._config,
+            self.name,
+            sources,
+            cwd=self._cwd,
+            env=self._env,
+            dry_run=dry_run,
+            offline=False,
+            argv=("omniweave.corpus.add", *sources),
+            sweep_ms=None,
+            trigger="sdk",
+            rerun=shlex.join(["ow", "add", *sources, "--corpus", self.name]),
+            verb="Corpus.add",
+        )
+        return _added(report)
+
     def card(self) -> CorpusCard:
         """18:460: this corpus's card, read on the first call and kept (ruling 7)."""
         if "card" not in self._memo:
@@ -347,6 +418,25 @@ class Corpus:
         return len(corpora(self._config)) > 1
 
 
+def _added(report: Mapping[str, Any]) -> AddReport:
+    """`add-out-v1`'s object as 18:706's `AddReport` (ruling 8)."""
+    from omniweave.sdk.reports import AddCompleted, AddPending, AddReport  # noqa: PLC0415
+
+    return AddReport(
+        scope_id=report["scope_id"],
+        corpus=report["corpus"],
+        discovered=report["discovered"],
+        unchanged=report["unchanged"],
+        queued=report["queued"],
+        skipped=report["skipped"],
+        completed=tuple(AddCompleted(**row) for row in report["completed"]),
+        pending=tuple(AddPending(**row) for row in report["pending"]),
+        degradations=tuple(report["degradations"]),
+        deadline_reached=report["deadline_reached"],
+        schema=report["schema"],
+    )
+
+
 def _identity(store: Path) -> tuple[int, int]:
     """Ruling 4: the store's `generation` and schema major, read once and closed."""
     from omniweave_core.store import reader as store_reader  # noqa: PLC0415
@@ -377,7 +467,7 @@ def _refuse(**given: bool) -> None:
     named = [name for name, used in given.items() if used]
     if named:
         raise UsageError(
-            f"{', '.join(named)} {'is' if len(named) == 1 else 'are'} not served by this build's "
-            "read path; it would be dropped, so it is refused",
+            f"{', '.join(named)} {'is' if len(named) == 1 else 'are'} not served by this build; "
+            "it would be dropped, so it is refused",
             fix=_FIX,
         )
