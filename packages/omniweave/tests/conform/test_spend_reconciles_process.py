@@ -72,6 +72,10 @@ def test_a_real_ingest_bills_every_parse_attempt_and_verifies(project: Path) -> 
     verified = _ow(project, "cost", "--verify")
     out = verified.stdout.decode("utf-8", "replace")
     assert verified.returncode == 0, out + verified.stderr.decode("utf-8", "replace")
+    #  D855: the run's op rows are its, though completion cleared their claimed_gen.
+    assert [line.split()[:3] for line in out.splitlines() if line.startswith("op.")] == [
+        ["op.identify", "free", "3"]
+    ]
     assert [
         line.rsplit("  ", 1)[-1] for line in out.splitlines() if line.startswith("verify: run")
     ] == [

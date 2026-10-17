@@ -197,20 +197,10 @@ def cost_report(
             raise NotFoundError(
                 f"no run {run!r} in corpus {name!r}", fix=f"ow cost --corpus {name}"
             )
-        rows = by_key(
-            connection,
-            by,
-            generation=None if window is None else window.generation,
-            cutoff_ms=cutoff,
-        )
+        rows = by_key(connection, by, run=window, cutoff_ms=cutoff)
         earliest = earliest_decision(connection)
         missing = None if window is None or not verify else unspent(connection, window.generation)
-        billed = by_key(
-            connection,
-            "driver",
-            generation=None if window is None else window.generation,
-            cutoff_ms=cutoff,
-        )
+        billed = by_key(connection, "driver", run=window, cutoff_ms=cutoff)
     finally:
         connection.close()
     listed = tuple(CostListing(**asdict(row)) for row in rows)

@@ -21,8 +21,10 @@ This module reads; `omniweave.surface.cost` prints.
 2. **The class is `route_decision.cost_class`, frozen at decision time** (05's DDL comment): the
    live catalogue would re-label history after a card upgrade. Every slicing keeps it, so a row is
    always `(key, class)`.
-3. **Every decision is a row, spend or not.** A `free` driver writes no spend row and still parsed
-   units, which is why the plan's sample prints `parse.pdf.pdfium  free  18,402 ... 0`. An empty
+3. **Every decision is a row, spend or not.** A `free` driver's attempt bills 0 and it still
+   parsed units, which is why the plan's sample prints `parse.pdf.pdfium  free  18,402 ... 0`.
+   Since D854 such an attempt writes a zero spend row; a decision may still have none, a gate
+   refusal for one. An empty
    key has a name: a decision with `driver = ''` (a gate refusal) is `(no driver)`, and a provider
    of `''` is `local`, the ledger's own convention for it.
 4. **`op.*` rows.** Under `--by driver` each is named for its operator, as the plan's sample prints
@@ -31,9 +33,13 @@ This module reads; `omniweave.surface.cost` prints.
    provider, lane, rung or slice. Their figures are `work`'s, the units they ran over and
    `Σ cost_micros`.
 5. **A window is a generation, a time, or the whole ledger.**
-   - `--run R` keeps run R's generation: its decisions, and the `op.*` rows claimed in it
-     (`claimed_gen`). `route_spend` has no `run_id`, so this inherits D158's limit, and the
-     reconcile line uses the same join, so it agrees with itself.
+   - `--run R` keeps run R's generation's decisions. `route_spend` has no `run_id`, so this
+     inherits D158's limit, and the reconcile line uses the same join, so it agrees with itself.
+   - Its `op.*` rows are those whose `last_attempt_at` falls in the run's span, from
+     `started_ns` to `ended_ns` (open while it runs), in milliseconds (D855). An `op.*` row has no
+     decision and so no generation, and completing a work row clears its `claimed_gen`, so D838's
+     filter on that column dropped every finished op row from a run's table. One store has one
+     writer, so two runs' spans do not overlap.
    - `--since` keeps decisions whose `decided_at` (wall ms) is at or after the cutoff, and
      `op.*` rows whose `last_attempt_at` is.
 6. **The slicings are `SLICINGS`' keys, each a fixed SQL expression, and never a caller's text.**
@@ -104,7 +110,9 @@ _WINDOW: Final = (
     " AND (:since_ms IS NULL OR d.decided_at >= :since_ms)"
 )
 
-_RUN_SQL: Final = "SELECT generation, manifest_path FROM run WHERE run_id = :run_id"
+_RUN_SQL: Final = (
+    "SELECT generation, manifest_path, started_ns, ended_ns FROM run WHERE run_id = :run_id"
+)
 _LATEST_SQL: Final = "SELECT run_id FROM run ORDER BY generation DESC, started_ns DESC LIMIT 1"
 _UNSPENT_SQL: Final = """
 SELECT COUNT(*) FROM work AS w JOIN route_decision AS d ON d.decision_id = w.decision_id
@@ -137,6 +145,8 @@ class RunWindow:
     run_id: str
     generation: int
     manifest_path: str
+    started_ms: int = 0
+    ended_ms: int | None = None
 
 
 def since_ms(text: str) -> int:
@@ -151,17 +161,22 @@ def by_key(
     connection: Any,
     by: str,
     *,
-    generation: int | None = None,
+    run: RunWindow | None = None,
     cutoff_ms: int | None = None,
 ) -> tuple[RowCost, ...]:
     """Rulings 1-7: every row of the slicing `by` over the window, costliest first.
 
     `connection` is the store's read-only connection; its type is not named here, because
     `sqlite3` is the store's alone. `cutoff_ms` is the wall-clock millisecond a `--since` window
-    starts at, computed by the caller from its injected clock.
+    starts at, computed by the caller from its injected clock. `run` is ruling 5's run window.
     """
     key = SLICINGS[by]
-    params = {"generation": generation, "since_ms": cutoff_ms}
+    params = {
+        "generation": None if run is None else run.generation,
+        "since_ms": cutoff_ms,
+        "span_start": None if run is None else run.started_ms,
+        "span_end": None if run is None else run.ended_ms,
+    }
     spend_sql = (
         f"SELECT {key}, d.cost_class, COALESCE(SUM(s.calls), 0), COALESCE(SUM(s.tokens_in), 0),"  # noqa: S608 -- `key` is a SLICINGS value, never input
         " COALESCE(SUM(s.tokens_out), 0), COALESCE(SUM(s.gpu_ms), 0), COALESCE(SUM(s.micros), 0),"
@@ -181,7 +196,8 @@ def by_key(
         f"SELECT {op_key}, cost_class,"  # noqa: S608 -- as above
         " COUNT(DISTINCT unit_uri || char(0) || unit_part), COALESCE(SUM(cost_micros), 0)"
         " FROM work WHERE operator LIKE 'op.%'"
-        " AND (:generation IS NULL OR claimed_gen = :generation)"
+        " AND (:span_start IS NULL OR last_attempt_at >= :span_start)"
+        " AND (:span_end IS NULL OR last_attempt_at <= :span_end)"
         " AND (:since_ms IS NULL OR last_attempt_at >= :since_ms)"
         " GROUP BY 1, 2"
     )
@@ -216,7 +232,10 @@ def by_key(
 def run_window(connection: Any, run_id: str) -> RunWindow | None:
     """Ruling 5: the run's generation and manifest path, or `None` for a run the store lacks."""
     row = connection.execute(_RUN_SQL, {"run_id": run_id}).fetchone()
-    return None if row is None else RunWindow(run_id, int(row[0]), str(row[1]))
+    if row is None:
+        return None
+    ended = None if row[3] is None else int(row[3]) // 1_000_000
+    return RunWindow(run_id, int(row[0]), str(row[1]), int(row[2]) // 1_000_000, ended)
 
 
 def latest_run(connection: Any) -> str | None:
