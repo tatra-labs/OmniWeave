@@ -550,6 +550,14 @@ meaning = "a route_decision child row at a rung at or below its parent's"
 sites   = ["01-principles.md:399", "05-ingest-and-routing.md:2709", "05-ingest-and-routing.md:3348"]
 
 [[code]]
+numeric = "OW-R-031"
+symbol  = "OW_ROUTE_SPEND_UNRECONCILED"
+meaning = "a run's bill does not reconcile: route_spend disagrees with its manifest, or a finished decided work row has no spend row"
+# I30's two self-checks, run by `ow cost --verify` (15 section 5.4, D853). 15:808: "A mismatch is
+# `OW-R-*` and names the run." The plan numbers no OW-R code but 030, so this takes the next.
+sites   = ["01-principles.md:1036", "15-observability.md:805"]
+
+[[code]]
 numeric = "OW-S-010"
 symbol  = "OW_SNAPSHOT_EXPIRED"
 sites   = ["07-store-and-retrieval.md:1820", "18-api-sketch.md:331", "_notes/terminology.md:70", "glossary.md:72"]

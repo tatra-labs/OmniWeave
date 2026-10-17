@@ -105,6 +105,12 @@ _WINDOW: Final = (
 )
 
 _RUN_SQL: Final = "SELECT generation, manifest_path FROM run WHERE run_id = :run_id"
+_LATEST_SQL: Final = "SELECT run_id FROM run ORDER BY generation DESC, started_ns DESC LIMIT 1"
+_UNSPENT_SQL: Final = """
+SELECT COUNT(*) FROM work AS w JOIN route_decision AS d ON d.decision_id = w.decision_id
+ WHERE w.status = 'done' AND d.generation = :generation
+   AND NOT EXISTS (SELECT 1 FROM route_spend AS s WHERE s.decision_id = w.decision_id)
+"""
 _EARLIEST_SQL: Final = "SELECT MIN(decided_at) FROM route_decision"
 
 
@@ -211,6 +217,20 @@ def run_window(connection: Any, run_id: str) -> RunWindow | None:
     """Ruling 5: the run's generation and manifest path, or `None` for a run the store lacks."""
     row = connection.execute(_RUN_SQL, {"run_id": run_id}).fetchone()
     return None if row is None else RunWindow(run_id, int(row[0]), str(row[1]))
+
+
+def latest_run(connection: Any) -> str | None:
+    """The run with the highest generation, or `None` for a store no run has written (D853)."""
+    row = connection.execute(_LATEST_SQL).fetchone()
+    return None if row is None else str(row[0])
+
+
+def unspent(connection: Any, generation: int) -> int:
+    """I30's second self-check, D853: finished work rows of `generation` that name a decision
+    and have no `route_spend` row. 15:806 says *"every `ok`/`ok_partial` work row with a
+    `decision_id` has at least one spend row"*; `work.status` spells a finished row `done`. The
+    generation is the decision's: completing a row clears its `claimed_gen`."""
+    return int(connection.execute(_UNSPENT_SQL, {"generation": generation}).fetchone()[0])
 
 
 def earliest_decision(connection: Any) -> int | None:

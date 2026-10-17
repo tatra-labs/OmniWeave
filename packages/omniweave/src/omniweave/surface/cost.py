@@ -22,8 +22,8 @@ corpus and window, plus `would_have_been_micros_if_uncached`"*. The rows are
      so, because section 5.4 calls a bill that silently starts where the sweep stopped *"a bill
      with a hole"*.
    - `--since` and `--run` together are refused, as 5.4's grammar prints them as alternatives.
-   - `--currency` and `--verify` wait on I30's audit (`work` records no outcome, and parse rows
-     carry no spend yet: 05:2596). Neither is a field, so neither is published as a promise.
+   - `--currency` waits on a priced run, and is not a field, so it is not published as a
+     promise. `--verify` is ruling 6.
 3. **The four checkable lines of section 5.4's output are printed and checkable:**
    - `TOTAL` is the sum of the `micros` column;
    - `saved` is the sum of the `saved` column, and its ratio is `saved / TOTAL`;
@@ -35,9 +35,25 @@ corpus and window, plus `would_have_been_micros_if_uncached`"*. The rows are
 4. **`--render json` prints one object:** the report's fields with the rows as an array.
    `--render jsonl|rows` has no writer and is refused by name, as `ow out list` refuses them,
    and so is `--quiet`: a bill has no scalar to print alone.
-5. **A mismatch is printed, not exited on.** Exiting non-zero on it is `--verify`'s job, and
-   `--verify` is not served. A reconcile that failed the command without being asked would make
-   reading a bill depend on the bill being right.
+5. **A mismatch is printed, not exited on.** Exiting non-zero on it is `--verify`'s job. A
+   reconcile that failed the command without being asked would make reading a bill depend on the
+   bill being right.
+6. **`--verify` runs I30's two self-checks over one run and fails on either** (15 section 5.4,
+   D853). The bill is printed first, then one `verify` line per check, then the failure:
+   - `Σ route_spend.micros == manifest.cost.billed_micros`, exactly. A run with no readable
+     manifest fails, because a check that could not be made did not pass;
+   - every finished work row of the run's generation that names a decision has a `route_spend`
+     row (`run.cost.unspent()`).
+
+   Under `--render json` the output stays ruling 4's one object: the report when the run
+   reconciles, and the error object alone when it does not.
+
+   It checks the run `--run` names, or, without one, the latest run, so one command audits the
+   last ingest. `--since` is refused beside it, since the checks are a run's. A failure is
+   `RouteError` `OW_ROUTE_SPEND_UNRECONCILED` (`OW-R-031`), naming the run and each failed check.
+   Section 5.4's third check, a Sequence's apportionment summing to its session within 1 micro,
+   is not made: the session's own micros are not recorded apart from its parts, so there is
+   nothing to sum against. The verify lines say so.
 """
 
 from __future__ import annotations
@@ -48,7 +64,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, TextIO
 
-from omniweave_core.errors import NotFoundError, OwError, UsageError
+from omniweave_core.errors import NotFoundError, OwError, RouteError, UsageError
 
 from omniweave.sdk.reports import CostListing, CostReport
 from omniweave.surface.query import parse
@@ -58,7 +74,7 @@ if TYPE_CHECKING:
     import argparse
     from collections.abc import Mapping, Sequence
 
-__all__ = ["COST_WORD", "SLICINGS", "cost_report", "main"]
+__all__ = ["COST_WORD", "SLICINGS", "UNRECONCILED", "cost_report", "main"]
 
 COST_WORD: Final[str] = "cost"
 SLICINGS: Final = ("driver", "document", "provider", "lane", "rung", "slice", "day")
@@ -66,8 +82,10 @@ SLICINGS: Final = ("driver", "document", "provider", "lane", "rung", "slice", "d
 served."""
 _FIX: Final[str] = (
     "ow cost [--by driver|provider|lane|rung|slice|day] [--since 7d | --run R] [--corpus N] "
-    "[--render json]"
+    "[--verify] [--render json]"
 )
+UNRECONCILED: Final = "OW_ROUTE_SPEND_UNRECONCILED"
+"""Ruling 6's code, `OW-R-031`."""
 _COLUMNS: Final = (
     "class",
     "units",
@@ -93,7 +111,7 @@ def main(
         _refuse_unserved(parsed)
         explicit = Path(parsed.config) if parsed.config else None
         now_ms = None if parsed.since is None else _wall_ms()
-        bill, earliest = cost_report(
+        bill, earliest, unspent = cost_report(
             cwd=cwd,
             env=env,
             explicit=explicit,
@@ -102,15 +120,25 @@ def main(
             now_ms=now_ms,
             run=parsed.run,
             corpus=parsed.corpus,
+            verify=parsed.verify,
         )
     except OwError as error:
         return report(error, parsed, stdout=stdout, stderr=stderr)
+    lines, failed = ([], []) if unspent is None else _verify(bill, unspent)
     if parsed.render == "json":
-        stdout.write(json.dumps(asdict(bill), ensure_ascii=False) + "\n")
+        if not failed:
+            stdout.write(json.dumps(asdict(bill), ensure_ascii=False) + "\n")
     else:
-        for line in _lines(bill, now_ms=now_ms, earliest=earliest):
+        for line in [*_lines(bill, now_ms=now_ms, earliest=earliest), *lines]:
             stdout.write(line + "\n")
-    return 0
+    if not failed:
+        return 0
+    error = RouteError(
+        f"run {bill.run_id} does not reconcile (I30): {'; '.join(failed)}",
+        symbol=UNRECONCILED,
+        fix=f"ow cost --run {bill.run_id} --by driver",
+    )
+    return report(error, parsed, stdout=stdout, stderr=stderr)
 
 
 def cost_report(
@@ -123,11 +151,13 @@ def cost_report(
     now_ms: int | None,
     run: str | None,
     corpus: str | None,
-) -> tuple[CostReport, int | None]:
-    """Rulings 1-3: one corpus's ledger, sliced and windowed, read-only.
+    verify: bool = False,
+) -> tuple[CostReport, int | None, int | None]:
+    """Rulings 1-3 and 6: one corpus's ledger, sliced and windowed, read-only.
 
-    Returns the report and the ledger's earliest `decided_at`, which only a `--since` line reads.
-    `now_ms` is the wall clock in milliseconds, required with `since` and read by the caller.
+    Returns the report, the ledger's earliest `decided_at`, which only a `--since` line reads, and
+    under `verify` the run's unspent count (ruling 6), else `None`. `now_ms` is the wall clock in
+    milliseconds, required with `since` and read by the caller.
     """
     from omniweave_core import config  # noqa: PLC0415 -- only this verb pays
     from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
@@ -135,9 +165,11 @@ def cost_report(
     from omniweave.run.cost import (  # noqa: PLC0415
         by_key,
         earliest_decision,
+        latest_run,
         manifest_billed,
         run_window,
         since_ms,
+        unspent,
     )
     from omniweave.surface.opening import corpus_for  # noqa: PLC0415
     from omniweave.surface.query import store_of  # noqa: PLC0415
@@ -154,6 +186,12 @@ def cost_report(
     name = corpus_for(resolved, [], corpus, verb="ow cost")
     connection = store_sqlite.connect_readonly(store_of(resolved, name, cwd=cwd))
     try:
+        if verify and run is None:
+            run = latest_run(connection)
+            if run is None:
+                raise NotFoundError(
+                    f"corpus {name!r} has no run to verify", fix=f"ow ingest --corpus {name}"
+                )
         window = None if run is None else run_window(connection, run)
         if run is not None and window is None:
             raise NotFoundError(
@@ -166,6 +204,7 @@ def cost_report(
             cutoff_ms=cutoff,
         )
         earliest = earliest_decision(connection)
+        missing = None if window is None or not verify else unspent(connection, window.generation)
         billed = by_key(
             connection,
             "driver",
@@ -190,6 +229,31 @@ def cost_report(
             ),
         ),
         earliest,
+        missing,
+    )
+
+
+def _verify(bill: CostReport, missing: int) -> tuple[list[str], list[str]]:
+    """Ruling 6: the verify lines, and each failed check named for the error."""
+    failed = []
+    if bill.manifest_billed_micros is None:
+        failed.append("its manifest does not read, so the bill cannot be checked against it")
+    elif bill.manifest_billed_micros != bill.billed_micros:
+        failed.append(
+            f"Σ route_spend.micros {bill.billed_micros:,} != manifest.cost.billed_micros "
+            f"{bill.manifest_billed_micros:,}"
+        )
+    if missing:
+        failed.append(f"{missing:,} finished work row(s) name a decision and have no spend row")
+    one = "OK" if not failed or not failed[0].startswith(("its manifest", "Σ")) else "FAIL"
+    two = "FAIL" if missing else "OK"
+    return (
+        [
+            f"verify: run {bill.run_id}: Σ route_spend.micros == manifest billed  {one}",
+            f"verify: run {bill.run_id}: every finished decided work row has a spend row  {two}",
+            "verify: a Sequence's apportionment is not checked: no session total is recorded",
+        ],
+        failed,
     )
 
 
@@ -216,6 +280,8 @@ def _refuse_unserved(parsed: argparse.Namespace) -> None:
         )
     if parsed.since is not None and parsed.run is not None:
         raise UsageError("--since and --run are two windows; give one", fix=_FIX)
+    if parsed.verify and parsed.since is not None:
+        raise UsageError("--verify checks a run, and --since is not one; give --run R", fix=_FIX)
 
 
 def _lines(bill: CostReport, *, now_ms: int | None, earliest: int | None) -> list[str]:

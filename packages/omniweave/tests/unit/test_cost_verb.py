@@ -26,9 +26,11 @@ from omniweave.run.cost import (
     RowCost,
     by_key,
     earliest_decision,
+    latest_run,
     manifest_billed,
     run_window,
     since_ms,
+    unspent,
 )
 from omniweave.surface import cost as verb
 from omniweave.surface.registry import ACTIONS
@@ -373,7 +375,7 @@ def test_the_reconcile_sums_spend_whatever_the_slicing(project: Path) -> None:
 
 
 def test_a_mismatch_is_printed_and_not_exited_on(project: Path) -> None:
-    """Ruling 5: exiting on it is `--verify`'s, which is not served."""
+    """Ruling 5: exiting on it is `--verify`'s (ruling 6)."""
     (project / "runs" / "r1.json").write_bytes(b'{"cost": {"billed_micros": 2400}}')
     code, out, _ = _run(["--run", "r1"], project)
     assert code == 0
@@ -469,3 +471,137 @@ def test_the_launcher_routes_cost(
         monkeypatch.setenv(key, value)
     assert launcher.main(["cost", "--run", "nope"]) == 2
     assert "no run 'nope'" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# --verify: I30's two self-checks over one run (ruling 6). D853.
+# ---------------------------------------------------------------------------
+
+_DECIDED = """INSERT INTO work(unit_uri, unit_part, operator, op_version, cache_key, cost_class,
+    status, decision_id, driver, dispatch_key)
+  VALUES (:unit, '', 'parse.' || :key, 1, :key, 'free', :status, :decision, 'd', 'k')"""
+
+
+def _decided(project: Path, *rows: tuple[str, str, str, str]) -> None:
+    """Work rows naming a decision: `(unit, cache_key, status, decision_id)`."""
+    connection = store_sqlite.connect(project / ".omniweave" / "index.owstore")
+    try:
+        connection.executemany(
+            _DECIDED,
+            [dict(zip(("unit", "key", "status", "decision"), row, strict=True)) for row in rows],
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def test_verify_passes_a_run_whose_bill_reconciles(project: Path) -> None:
+    _decided(project, ("file:///a", "v1", "done", "dA"), ("file:///b", "v2", "done", "dB"))
+    code, out, err = _run(["--run", "r1", "--verify"], project)
+    assert (code, err) == (0, "")
+    assert out.splitlines()[-3:] == [
+        "verify: run r1: Σ route_spend.micros == manifest billed  OK",
+        "verify: run r1: every finished decided work row has a spend row  OK",
+        "verify: a Sequence's apportionment is not checked: no session total is recorded",
+    ]
+
+
+def test_verify_fails_a_finished_decided_row_with_no_spend(project: Path) -> None:
+    """dC decided a free parse and billed nothing: I30 still wants its attempt on the bill."""
+    _decided(project, ("file:///a", "v1", "done", "dA"), ("file:///b", "v2", "done", "dC"))
+    code, out, err = _run(["--run", "r1", "--verify"], project)
+    assert code == 70
+    assert out.splitlines()[-2] == (
+        "verify: run r1: every finished decided work row has a spend row  FAIL"
+    )
+    assert err.splitlines() == [
+        "ow: OW-R-031: run r1 does not reconcile (I30): 1 finished work row(s) name a decision "
+        "and have no spend row",
+        "  fix: ow cost --run r1 --by driver",
+    ]
+
+
+def test_verify_counts_only_finished_rows_of_the_runs_generation(project: Path) -> None:
+    """A failed attempt need not be billed, and dE is generation 2's, not r1's."""
+    _decided(
+        project,
+        ("file:///a", "v1", "failed_permanent", "dC"),
+        ("file:///b", "v2", "pending", "dD"),
+        ("file:///c", "v3", "done", "dE"),
+    )
+    assert _run(["--run", "r1", "--verify"], project)[0] == 0
+    assert (_unspent(project, 1), _unspent(project, 2)) == (0, 0)
+    _decided(project, ("file:///c", "v4", "done", "dD"))
+    assert (_unspent(project, 1), _unspent(project, 2)) == (1, 0)
+
+
+def _unspent(project: Path, generation: int) -> int:
+    connection = store_sqlite.connect_readonly(project / ".omniweave" / "index.owstore")
+    try:
+        return unspent(connection, generation)
+    finally:
+        connection.close()
+
+
+def test_verify_fails_a_bill_its_manifest_disagrees_with(project: Path) -> None:
+    (project / "runs" / "r1.json").write_bytes(b'{"cost": {"billed_micros": 2400}}')
+    code, out, err = _run(["--run", "r1", "--verify"], project)
+    assert code == 70
+    assert out.splitlines()[-3] == "verify: run r1: Σ route_spend.micros == manifest billed  FAIL"
+    assert "Σ route_spend.micros 2,500 != manifest.cost.billed_micros 2,400" in err
+
+
+def test_verify_fails_a_run_with_no_manifest_to_check_against(project: Path) -> None:
+    code, out, err = _run(["--run", "r2", "--verify"], project)
+    assert code == 70
+    assert out.splitlines()[-3] == "verify: run r2: Σ route_spend.micros == manifest billed  FAIL"
+    assert "its manifest does not read, so the bill cannot be checked against it" in err
+
+
+def test_verify_without_a_run_checks_the_latest(project: Path) -> None:
+    code, out, _ = _run(["--verify"], project)
+    assert code == 70
+    assert "window: run r2's generation" in out.splitlines()
+    assert out.splitlines()[-3].startswith("verify: run r2: ")
+
+
+def test_verify_beside_render_json_prints_one_object(project: Path) -> None:
+    """Ruling 4's one object: the report when the run reconciles, the error when it does not."""
+    _decided(project, ("file:///a", "v1", "done", "dA"))
+    code, out, _ = _run(["--run", "r1", "--verify", "--render", "json"], project)
+    assert code == 0
+    assert json.loads(out)["run_id"] == "r1"
+    code, out, _ = _run(["--run", "r2", "--verify", "--render", "json"], project)
+    assert code == 70
+    [line] = out.splitlines()
+    assert json.loads(line)["error"]["code"] == verb.UNRECONCILED
+
+
+@pytest.mark.usefixtures("now")
+def test_verify_is_a_runs_and_not_a_windows(project: Path) -> None:
+    code, out, err = _run(["--verify", "--since", "7d"], project)
+    assert (code, out) == (1, "")
+    assert "--verify checks a run, and --since is not one; give --run R" in err
+
+
+def test_verify_with_no_run_in_the_store_is_not_found(tmp_path: Path) -> None:
+    (tmp_path / "omniweave.toml").write_text(
+        '[corpora.handbook]\npath = ".omniweave/index.owstore"\n', encoding="utf-8"
+    )
+    (tmp_path / ".omniweave").mkdir()
+    connection = store_sqlite.connect(tmp_path / ".omniweave" / "index.owstore")
+    try:
+        migrate.apply_pending(connection, now_ns=1)
+    finally:
+        connection.close()
+    code, out, err = _run(["--verify"], tmp_path)
+    assert (code, out) == (2, "")
+    assert "corpus 'handbook' has no run to verify" in err
+
+
+def test_the_latest_run_is_the_highest_generation(project: Path) -> None:
+    connection = store_sqlite.connect_readonly(project / ".omniweave" / "index.owstore")
+    try:
+        assert latest_run(connection) == "r2"
+    finally:
+        connection.close()

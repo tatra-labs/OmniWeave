@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D852: build note on 13-quality.md:826 (section 5.6), header moves are structural and ow_golden.py --bless --schema-bump
+# blessed-because: D853: build note on 15-observability.md:808 (section 5.4), ow cost --verify and the real-run finding
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -41,7 +41,7 @@ documents-frozen  76a694bf0b19b60ba35d2246f6b36466ca990f318f51e0a292c388ec0e78bc
 documents-frozen  44a9d2b810b0850205912449e6337423f3db837c1f75f2d580c91b25353752c2  12-performance.md
 documents-frozen  a007d54a1e0629e69c50547757e010aef353349d781216f834549000c69313e4  13-quality.md
 documents-frozen  667161a8bd206b5805998a289f7679f80dc3a8ea6910c52ea8345bfe9562d721  14-security.md
-documents-frozen  0b340b805dbbf70a91c9c138663dd8917f69823885a93432b36dfc21c1451ac5  15-observability.md
+documents-frozen  f517a9f0bb69c22ecd3c237cd1999ab9edd923607b760ffbe986ab3ebed78ad3  15-observability.md
 documents-frozen  6655c980e87e68f150804f78bfed62bcbef18dd366710105c2aea6bf1d40bef8  16-roadmap.md
 documents-frozen  df4d16ec9e95851ee78fec9cf1fee599488fef474c9f1ee90d9da73bdca32405  17-risks.md
 documents-frozen  c1ff89073826beac5570f91e2542a03608e5f17ff8498f96c98dda9ccdd20842  18-api-sketch.md
