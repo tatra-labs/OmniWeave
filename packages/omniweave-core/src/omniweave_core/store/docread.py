@@ -30,11 +30,29 @@ Every Block comes through `portable.BlockDecoder`, the store's one decode (SV19)
 5. **Filters bind the store's own `enum_val` codes** through `BlockDecoder.ordinal()`, never this
    build's enum positions. `trust` and `quote` are stored as values (`0001_init.sql`), so
    `trust_below` binds `int(trust)`.
-6. **Five reads are refused by name**, each a `UsageError` saying why, because this build has no
+6. **Four reads are refused by name**, each a `UsageError` saying why, because this build has no
    store for them: `frames()` (Frames are a `.owdoc` archive's, located through `frames.json`),
    `page_render()` (no renderer is reachable from a read), `asset()` (the bytes are in the CAS,
-   which a connection does not reach), `verify_quote()` (`QuoteVerdict` has no module, 03:1706),
-   and `resolve_scope()`, so `Doc.serialize()`, until its satellites are read.
+   which a connection does not reach) and `verify_quote()` (`QuoteVerdict` has no module,
+   03:1706).
+7. **`resolve_scope()` is the RESOLVE query behind `Doc.serialize()`** (D866). It returns a
+   `ViewScope` that `model.serialize` turns into text with no further read, which is projection
+   law rule 4 (03:2970). Every part of it is read in one snapshot:
+   - **`blocks`** are every live block of the scope, in every layer, because `layers` is an
+     argument of `serialize()` and not of the scope (03:2810). They are in PRE-ORDER over the
+     whole generation's `block_parent` spine, children by `(ord, block_id)`, the serializer's own
+     child order. The order matters only for the blocks whose parent is outside the scope, which
+     the serializer emits as roots in the order given (`model.serialize._forest`). A page range
+     that cuts a table keeps the table's in-range cells, in place.
+   - **`payloads`**, **`tables`** (`table_meta`'s `kind`, `header_rows` and `header_cols`),
+     **`cells`** and **`continues`** are one statement each, keyed to the scope's blocks.
+   - **`heading_paths`** are `segment.heading_path`'s computation (07:577-578, X26): each block's
+     `block_sec.sec_path`, its ancestor paths through `sections.sec_path_ancestors()`, and the
+     text of the section block at each. A section block's own heading is not on its own path,
+     because step 5 prefixes a unit with the headings ABOVE it (03:2842). A block with no
+     `block_sec` row has an empty path, as `ViewScope` defines an absent entry.
+   - **`kind`** is `subtree` when `under` is given, else `pages` when `pages` is, else `document`.
+     **`corpus_id`** is the store's `meta` row, and **`gen`** the handle's.
 
 A missing block in `payload()` and `grid()` is `NotFoundError`. `Doc.payload()` documents an empty
 mapping for a NULL column, not for an absent block, and `Doc.grid()` has no `None` to return.
@@ -47,18 +65,20 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, NoReturn
 
 from omniweave_core.errors import NotFoundError, UsageError
-from omniweave_core.model.block import BlockId
-from omniweave_core.model.enums import RelKind, Trust
+from omniweave_core.model.block import BlockId, CellPos
+from omniweave_core.model.enums import Layer, RelKind, TableKind, Trust
 from omniweave_core.model.records import Rel
+from omniweave_core.model.serialize import TableFacts, ViewScope
 from omniweave_core.store.doc import read_doc_record, read_grid
 from omniweave_core.store.portable import BlockDecoder
+from omniweave_core.store.sections import sec_path_ancestors
 
 if TYPE_CHECKING:
     import sqlite3
     from collections.abc import Iterator, Mapping
 
     from omniweave_core.model.block import Addr, Block, Cite
-    from omniweave_core.model.enums import Kind, Layer
+    from omniweave_core.model.enums import Kind
     from omniweave_core.model.grid import Grid
     from omniweave_core.model.records import AssetRef, DocRecord
 
@@ -70,6 +90,8 @@ MARK_WINDOW: Final = 512
 _FIX_SHOW: Final = "ow doc show d<doc_ord>  # list the document's blocks"
 
 _LIVE: Final = "doc_ord = ? AND gen = ? AND state = 0"
+
+_LIVE_B: Final = "b.doc_ord = ? AND b.gen = ? AND b.state = 0"
 
 
 class StoreDocReader:
@@ -226,15 +248,147 @@ class StoreDocReader:
     def verify_quote(self, doc_ord: int, gen: int, block: BlockId) -> NoReturn:  # noqa: ARG002
         _refuse("verify_quote()", "QuoteVerdict (03:1706) has no module in this build")
 
+    # -- the view scope (ruling 7) ---------------------------------------------------------------
+
     def resolve_scope(
-        self,
-        doc_ord: int,  # noqa: ARG002 -- the Protocol's names
-        gen: int,  # noqa: ARG002
-        *,
-        pages: range | None,  # noqa: ARG002
-        under: BlockId | None,  # noqa: ARG002
-    ) -> NoReturn:
-        _refuse("serialize()", "the view scope's satellites are not read from a store yet")
+        self, doc_ord: int, gen: int, *, pages: range | None, under: BlockId | None
+    ) -> ViewScope:
+        """`Doc.serialize()`'s one read: the scope's blocks in pre-order, and their satellites."""
+        connection = self._connection
+        owned = not connection.in_transaction
+        if owned:
+            connection.execute("BEGIN DEFERRED")
+        try:
+            return self._scope(doc_ord, gen, pages=pages, under=under)
+        finally:
+            if owned and connection.in_transaction:
+                connection.execute("COMMIT")
+
+    def _scope(
+        self, doc_ord: int, gen: int, *, pages: range | None, under: BlockId | None
+    ) -> ViewScope:
+        decoder = self._decode()
+        rank = self._preorder(doc_ord, gen)
+        blocks = sorted(
+            self.blocks(
+                doc_ord,
+                gen,
+                pages=pages,
+                kinds=None,
+                layers=frozenset(Layer),
+                under=under,
+                trust_below=None,
+            ),
+            key=lambda block: rank[int(block.id)],
+        )
+        ids = {block.id for block in blocks}
+        key = (doc_ord, gen)
+        query = self._connection.execute
+        payloads = {
+            BlockId(int(row[0])): MappingProxyType(json.loads(str(row[1])))
+            for row in query(
+                f"SELECT block_id, payload FROM block WHERE {_LIVE} AND payload IS NOT NULL",  # noqa: S608 -- constants
+                key,
+            )
+            if BlockId(int(row[0])) in ids
+        }
+        tables = {
+            BlockId(int(row[0])): TableFacts(
+                kind=TableKind(decoder.member("table_kind", int(row[1]))),
+                header_rows=int(row[2]),
+                header_cols=int(row[3]),
+            )
+            for row in query(
+                "SELECT t.block_id, t.kind, t.header_rows, t.header_cols FROM table_meta t "  # noqa: S608 -- constants
+                f"JOIN block b ON b.block_id = t.block_id WHERE {_LIVE_B}",
+                key,
+            )
+            if BlockId(int(row[0])) in ids
+        }
+        cells = {
+            BlockId(int(row[0])): CellPos(int(row[1]), int(row[2]), int(row[3]), int(row[4]))
+            for row in query(
+                "SELECT c.block_id, c.r, c.c, c.row_span, c.col_span FROM cell c "  # noqa: S608 -- constants
+                f"JOIN block b ON b.block_id = c.block_id WHERE {_LIVE_B}",
+                key,
+            )
+            if BlockId(int(row[0])) in ids
+        }
+        continues = {
+            BlockId(int(row[0])): BlockId(int(row[1]))
+            for row in query(
+                "SELECT src_id, dst_id FROM rel WHERE doc_ord = ? AND gen = ? AND kind = ? "
+                "ORDER BY src_id, dst_id",
+                (*key, decoder.ordinal("rel_kind", RelKind.CONTINUES.value)),
+            )
+            if BlockId(int(row[0])) in ids
+        }
+        meta = query("SELECT v FROM meta WHERE k = 'corpus_id'").fetchone()
+        if under is not None:
+            kind = "subtree"
+        elif pages is not None:
+            kind = "pages"
+        else:
+            kind = "document"
+        return ViewScope(
+            blocks=tuple(blocks),
+            kind=kind,
+            corpus_id="" if meta is None else str(meta[0]),
+            gen=gen,
+            payloads=MappingProxyType(payloads),
+            tables=MappingProxyType(tables),
+            cells=MappingProxyType(cells),
+            continues=MappingProxyType(continues),
+            heading_paths=MappingProxyType(self._heading_paths(doc_ord, gen, ids)),
+        )
+
+    def _preorder(self, doc_ord: int, gen: int) -> dict[int, int]:
+        """Each live block's position in a pre-order walk of the generation's spine."""
+        children: dict[int | None, list[tuple[tuple[int, int], int]]] = {}
+        rows = self._connection.execute(
+            f"SELECT block_id, parent_id, page, ord FROM block WHERE {_LIVE}",  # noqa: S608 -- constants
+            (doc_ord, gen),
+        ).fetchall()
+        live = {int(row[0]) for row in rows}
+        for block_id, parent, page, ord_ in rows:
+            up = None if parent is None or int(parent) not in live else int(parent)
+            # roots by (page, ord), as the cursor reads; siblings by (ord, block_id), as serialize
+            # orders them
+            order = (int(page), int(ord_)) if up is None else (int(ord_), int(block_id))
+            children.setdefault(up, []).append((order, int(block_id)))
+        rank: dict[int, int] = {}
+        stack = [entry[-1] for entry in sorted(children.get(None, ()), reverse=True)]
+        while stack:
+            block_id = stack.pop()
+            rank[block_id] = len(rank)
+            stack.extend(entry[-1] for entry in sorted(children.get(block_id, ()), reverse=True))
+        return rank
+
+    def _heading_paths(
+        self, doc_ord: int, gen: int, ids: set[BlockId]
+    ) -> dict[BlockId, tuple[str, ...]]:
+        """`segment.heading_path`'s computation over `block_sec`, for the scope's blocks."""
+        rows = self._connection.execute(
+            "SELECT s.block_id, s.sec_id, s.sec_path, b.text, b.label FROM block_sec s "  # noqa: S608 -- constants
+            f"JOIN block b ON b.block_id = s.block_id WHERE {_LIVE_B}",
+            (doc_ord, gen),
+        ).fetchall()
+        heading = {
+            str(row[2]): str(row[3] if row[3] is not None else row[4] or "")
+            for row in rows
+            if int(row[0]) == int(row[1])
+        }
+        paths: dict[BlockId, tuple[str, ...]] = {}
+        for block_id, sec_id, sec_path, _text, _label in rows:
+            if BlockId(int(block_id)) not in ids:
+                continue
+            ancestors = sec_path_ancestors(str(sec_path))
+            if int(block_id) == int(sec_id):
+                ancestors = ancestors[:-1]
+            path = tuple(heading[p] for p in ancestors if heading.get(p))
+            if path:
+                paths[BlockId(int(block_id))] = path
+        return paths
 
     # -- the machinery ---------------------------------------------------------------------------
 

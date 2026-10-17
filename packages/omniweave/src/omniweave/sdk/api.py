@@ -72,7 +72,7 @@ three surfaces return one `Answer` for one question, and none of them imports an
    each of the `Doc`'s reads opens one read-only connection and closes it, and `blocks()` holds
    its connection until the cursor is exhausted or closed. So a `Doc` kept across a re-parse
    reads the retired generation's rows as misses, and its record as `NotFoundError`, rather than
-   another generation's rows under its old identity. What `StoreDocReader` refuses, `serialize()`
+   another generation's rows under its old identity. What `StoreDocReader` refuses, `frames()`
    among them, the `Doc` refuses too.
 
 Specified in 18-api-sketch.md section 1.1-1.2 and 10-interfaces.md section 9.1.
