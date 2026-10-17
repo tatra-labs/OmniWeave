@@ -163,6 +163,41 @@ def test_a_deck_is_compiled_and_read_back_once_its_addresses_mapped(tmp_path: Pa
     ]
 
 
+@WINDOWS_ONLY
+def test_a_corpus_holding_its_own_deck_reports_its_generated_share(tmp_path: Path) -> None:
+    """V10-17 (07 section 6.7), D857: the store holds the deck it compiled, read back as
+    `roundtrip` blocks. Asked about it, the read-back is the evidence and `generated_share` says
+    so; denying `roundtrip`, nothing generated answers and the share is 0.0."""
+    from omniweave_core.model.enums import Method  # noqa: PLC0415
+    from omniweave_core.retrieve import retrieve  # noqa: PLC0415
+    from omniweave_core.retrieve.types import Query, RetrievalPolicy  # noqa: PLC0415
+    from omniweave_core.store import reader as rd  # noqa: PLC0415
+    from omniweave_core.store.types import Filters  # noqa: PLC0415
+
+    project = _project(tmp_path, font_dir=True)
+    job = _authored(project)
+    _ok(["check", "--stage", "final", "--job", str(job)], project)
+    _ok(["compile", "--job", str(job)], project)
+    _ok(["back", "deck"], project)
+    store = project / ".omniweave" / "index.owstore"
+
+    def ask(filters: Filters) -> Any:
+        reader = rd.SqliteReader(store_sqlite.connect_readonly(store), now_ns=1)
+        return retrieve(
+            reader,
+            Query(text="Revenue rose", filters=filters),
+            RetrievalPolicy(),
+            monotonic_ns=lambda: 0,
+        )
+
+    open_ = ask(Filters())
+    assert open_.hits, "the read-back answers"
+    assert open_.verdict.generated_share == 1.0
+    denied = ask(Filters(deny_methods=frozenset({Method.ROUNDTRIP})))
+    assert denied.hits == ()
+    assert denied.verdict.generated_share == 0.0
+
+
 def _slide(n: int, words: str) -> str:
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" data-ow-el="u0{n}/e1">'
