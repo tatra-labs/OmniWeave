@@ -365,7 +365,7 @@ def test_a_group_advertises_the_verbs_it_has_and_not_the_ones_it_is_owed() -> No
     against a parser with neither is LEANN's `llms.txt` in one line, and G25 is named after it."""
     assert GROUP_HELP == {
         "doc": "diff · grid",
-        "eval": "bless · publish · release-check",
+        "eval": "bless · publish · release-check · run",
         "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
         "hooks": "check",
         "out": (
