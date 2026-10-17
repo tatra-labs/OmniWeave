@@ -390,10 +390,22 @@ CRITERIA: tuple[Criterion, ...] = (
                 label="the method filter narrows",
             ),
             tool("schemagen.py", "emit", "--check"),
+            pytest(
+                f"{CORE}/test_retrieve_execute.py",
+                "-k",
+                "generated_share or read_back",
+                label="generated_share over a seeded read-back: its exact share, and 0.0 denied",
+            ),
+            pytest(
+                "packages/omniweave-target-pptx/tests/unit/test_pptx_out_loop.py::"
+                "test_a_corpus_holding_its_own_deck_reports_its_generated_share",
+                label="a corpus holding its own compiled deck: 1.0 open, 0.0 denied (D857)",
+            ),
         ),
         Coverage.PARTIAL,
-        "no test asserts a generated_share value: no fixture corpus holds its own compiled "
-        "artefact, so neither 0.0 under the restriction nor > 0 without it is checked",
+        "the self-ingesting corpus is asserted on Windows only, as the pptx loop's S4 arm is, so a "
+        "Linux or macOS cell skips it; and the CLI has no spelling for `deny_methods` (07:1663), "
+        "so the restriction is an SDK caller's",
     ),
 )
 

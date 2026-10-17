@@ -813,3 +813,88 @@ def test_a_tied_score_reaches_the_answer_in_the_order_the_channel_placed_it(buil
     response = retrieve(reader, Query(text="fees payable"), POLICY, monotonic_ns=_frozen)  # type: ignore[arg-type]
     assert [hit.block_id for hit in response.hits][:2] == [3, 2]
     assert response.hits[0].score == response.hits[1].score
+
+
+# ---------------------------------------------------------------------------------------------
+# V10-17: generated_share over a corpus holding its own read-back (07 section 6.7). D857.
+# ---------------------------------------------------------------------------------------------
+
+READ_BACK = "Fees are payable monthly in arrears, as the compiled deck says."
+
+
+def _seed_read_back(built: Built, text: str = READ_BACK) -> None:
+    """A second document whose one block a compile's read-back wrote: `method = roundtrip`."""
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    producer = int(conn.execute("SELECT producer_id FROM producer").fetchone()[0])
+    conn.execute(
+        "INSERT INTO doc(doc_ord, doc_key, source_sha256, uri, media_type, format, "
+        "                format_evidence, source_bytes, gen, status, model_version, declared, "
+        "                achieved) "
+        "VALUES(2, ?, ?, 'file:///corpus/deck.pptx', 'application/vnd.openxmlformats-"
+        "officedocument.presentationml.presentation', 'pptx', '{}', 1, 1, 'ok', '1.1', '{}', '{}')",
+        (b"\x02" * 16, DIGEST),
+    )
+    roundtrip = _code(conn, "method", "roundtrip")
+    conn.execute(
+        "INSERT INTO page(doc_ord, gen, page, page_kind, method, producer_id) "
+        "VALUES(2, 1, 1, ?, ?, ?)",
+        (_code(conn, "page_kind", "slide"), roundtrip, producer),
+    )
+    conn.execute(
+        "INSERT INTO block(block_id, doc_ord, gen, page, addr, cite, ord, kind, layer, "
+        "                  label, text, content_digest, os_kind, producer_id, method, trust, "
+        "                  quote, origin_operator, origin_driver, driver_schema_v, "
+        "                  restriction_bits, state) "
+        "VALUES(10, 2, 1, 1, 'p1/10', 'd2#10', 1, ?, ?, NULL, ?, ?, ?, ?, ?, 1, 4, 'op.parse', "
+        "       'parse.pptx.native', 1, 0, 0)",
+        (
+            _code(conn, "kind", "paragraph"),
+            _code(conn, "layer", "body"),
+            text,
+            DIGEST,
+            _code(conn, "origin_span_kind", "none"),
+            producer,
+            roundtrip,
+        ),
+    )
+    conn.execute("COMMIT")
+
+
+def _share(hits: tuple[Hit, ...], generated: set[int]) -> float:
+    """07:2103's formula, recomputed from the hits: generated characters over all of them."""
+    total = sum(len(h.text or "") for h in hits)
+    return sum(len(h.text or "") for h in hits if h.block_id in generated) / total if total else 0.0
+
+
+def test_generated_share_is_the_read_backs_share_of_the_evidence(built: Built) -> None:
+    """V10-17's `> 0` half: the read-back competes, and the Verdict says how much it supplied."""
+    _seed(built)
+    _seed_read_back(built)
+    response = _ask(built, Query(text="fees payable monthly arrears"))
+    assert {h.block_id for h in response.hits} == {3, 10}
+    expected = len(READ_BACK) / (len(READ_BACK) + len(TEXTS[3]))
+    assert response.verdict.generated_share == pytest.approx(expected)
+    assert response.verdict.generated_share == pytest.approx(_share(response.hits, {10}))
+    assert 0.0 < response.verdict.generated_share < 1.0
+
+
+def test_denying_roundtrip_leaves_a_generated_share_of_zero(built: Built) -> None:
+    """V10-17's `== 0.0` half, over the same corpus and question: the source still answers."""
+    _seed(built)
+    _seed_read_back(built)
+    denied = Query(
+        text="fees payable monthly arrears",
+        filters=Filters(deny_methods=frozenset({Method.ROUNDTRIP})),
+    )
+    response = _ask(built, denied)
+    assert [h.block_id for h in response.hits] == [3]
+    assert response.verdict.generated_share == 0.0
+
+
+def test_a_read_back_alone_is_the_whole_share(built: Built) -> None:
+    _seed(built, texts={1: "Termination"})
+    _seed_read_back(built)
+    response = _ask(built, Query(text="fees payable monthly arrears"))
+    assert [h.block_id for h in response.hits] == [10]
+    assert response.verdict.generated_share == 1.0
