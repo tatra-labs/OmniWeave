@@ -28,17 +28,22 @@ def _layers_row() -> list[str]:
     return tomllib.loads(text)[PKG]
 
 
-def test_init_is_a_home_and_not_a_body() -> None:
-    """P1 creates the homes; the module bodies are later phases' (16-roadmap.md section 4).
-
-    A docstring-only __init__.py is also what makes G17 true for omniweave_core by
-    construction: a module with no import statement can import no subpackage.
+def test_init_is_a_home_with_only_the_lazy_alias() -> None:
+    """P1 created the home with a docstring and no body (16-roadmap.md section 4). D858 gives it
+    18:149's alias, a module `__getattr__`, and nothing else: no import runs at `import omniweave`
+    but `__future__` and `typing`, so the package still imports no subpackage eagerly (G17's
+    reason) and the CLI's cold start is what it was.
     """
     source = (DIST_ROOT / "src" / PKG / "__init__.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
     assert ast.get_docstring(tree), f"{PKG}/__init__.py must cite the plan section it serves"
     body = [node for node in tree.body if not isinstance(node, ast.Expr)]
-    assert body == [], f"{DIST} __init__.py carries a body at P1: {body!r}"
+    imports = [node for node in body if isinstance(node, ast.ImportFrom | ast.Import)]
+    assert {getattr(node, "module", None) for node in imports} == {"__future__", "typing"}
+    rest = [node for node in body if node not in imports]
+    assert [type(node).__name__ for node in rest] == ["FunctionDef"]
+    assert isinstance(rest[0], ast.FunctionDef)
+    assert rest[0].name == "__getattr__"
 
 
 def test_first_party_dependencies_are_exactly_the_layers_row() -> None:

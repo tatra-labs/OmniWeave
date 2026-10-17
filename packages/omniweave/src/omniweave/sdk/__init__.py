@@ -5,6 +5,10 @@
 call `omniweave_core.retrieve.retrieve()` and `omniweave_core.answer.render()`, which SV19 makes the
 single implementation under all three surfaces, through a dispatcher that is W7.2's.
 
+**D858 lands three of the five entry points** -- `corpus`, `Corpus` and `explain` -- in `api.py`,
+composing the core calls `ow query` and `ow open` compose. `corpora` and `doctor` stay owed
+(`gen.sdk_stub.owed()`).
+
 What is here is `reports.py`, and it arrived with W7.1 rather than with the API around it because
 `ActionSpec.out` is a `type` (10:137) and two of the four listed Actions declare an `outputSchema`.
 `omniweave_core/store/card.py` already names this module as the reflection source: its
@@ -25,6 +29,7 @@ and `name`, and G25 byte-diffs it. Nothing in this package may be hand-written i
 
 from __future__ import annotations
 
+from omniweave.sdk.api import Corpus, corpus, explain
 from omniweave.sdk.reports import (
     AddCompleted,
     AddPending,
@@ -43,8 +48,11 @@ __all__ = [
     "AddReport",
     "CodeRow",
     "CorporaReport",
+    "Corpus",
     "CorpusCard",
     "DoctorFinding",
     "DoctorReport",
     "Gap",
+    "corpus",
+    "explain",
 ]
