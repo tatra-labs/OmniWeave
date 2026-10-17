@@ -312,7 +312,7 @@ CRITERIA: tuple[Criterion, ...] = (
         "a real `ow add` of three drivers' documents reconciles under `ow cost --verify` (D854), "
         "but the first-party drivers report no physical metrics, so every parse bill is a "
         "measured zero and a PriceBook pricing wall or CPU time would price nothing; "
-        "`ow cost --run` drops `op.*` rows (D853); no run is priced, so the 0-micro equality is "
+        "no run is priced, so the 0-micro equality is "
         "0 == 0; and no test reads every manifest a run emits",
     ),
     Criterion(
