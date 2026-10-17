@@ -898,3 +898,55 @@ def test_a_read_back_alone_is_the_whole_share(built: Built) -> None:
     response = _ask(built, Query(text="fees payable monthly arrears"))
     assert [h.block_id for h in response.hits] == [10]
     assert response.verdict.generated_share == 1.0
+
+
+# ---------------------------------------------------------------------------------------------
+# D859: the policy's mask reaches retrieval, and what it withholds is counted (gate 10)
+# ---------------------------------------------------------------------------------------------
+
+
+def _restrict(built: Built, block_id: int, bits: int) -> None:
+    built.writer.execute(
+        "UPDATE block SET restriction_bits = ? WHERE block_id = ?", (bits, block_id)
+    )
+    built.writer.commit()
+
+
+def test_a_policy_mask_bars_the_block_and_the_answer_says_policy_withheld_it(
+    built: Built,
+) -> None:
+    """D780 set the mask on the plan and `execute()` narrowed on the caller's filters, so it barred
+    nothing. Barred now, the answer is DEGRADED by gate 10 -- never `absent`, because the corpus
+    holds the text and the policy withheld it."""
+    from omniweave_core.drivers.licence import Restriction  # noqa: PLC0415
+
+    _seed(built)
+    bit = Restriction.NO_MODEL_TRAINING.bit
+    _restrict(built, 3, bit)
+    question = Query(text="fees payable monthly arrears")
+    open_ = _ask(built, question)
+    assert [h.block_id for h in open_.hits] == [3]
+    barred = _ask(built, question, RetrievalPolicy(deny_restriction_bits=bit))
+    assert barred.hits == ()
+    assert barred.verdict.state is VerdictState.DEGRADED
+    assert "restricted_withheld" in barred.verdict.gates
+    assert dict(barred.verdict.withheld) == {"rows": 1, "NO_MODEL_TRAINING": 1}
+    assert not barred.verdict.citable_as_absence
+
+
+def test_a_mask_that_removes_nothing_withholds_nothing(built: Built) -> None:
+    from omniweave_core.drivers.licence import Restriction  # noqa: PLC0415
+
+    _seed(built)
+    policy = RetrievalPolicy(deny_restriction_bits=Restriction.NO_MODEL_TRAINING.bit)
+    response = _ask(built, Query(text="unicorn"), policy)
+    assert dict(response.verdict.withheld) == {"rows": 0}
+    assert response.verdict.state is VerdictState.ABSENT
+    assert "restricted_withheld" not in response.verdict.gates
+
+
+def test_the_caller_still_may_not_set_the_mask(built: Built) -> None:
+    """DR17: `deny_restriction_bits` is policy's alone; D859 changes where it applies, not who."""
+    _seed(built)
+    with pytest.raises(UsageError, match="deny_restriction_bits"):
+        _ask(built, Query(text="fees", filters=Filters(deny_restriction_bits=128)))
