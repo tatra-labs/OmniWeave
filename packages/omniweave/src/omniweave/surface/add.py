@@ -68,9 +68,10 @@ if TYPE_CHECKING:
     from omniweave_core.acquire import Added
     from omniweave_core.config import Config
 
+    from omniweave.run.manifest import Trigger
     from omniweave.run.passwords import Passwords
 
-__all__ = ["ADD_WORD", "REASONS", "SCHEMA_VERSION", "TEXT_PENDING_MAX", "main"]
+__all__ = ["ADD_WORD", "REASONS", "SCHEMA_VERSION", "TEXT_PENDING_MAX", "add_report", "main"]
 
 ADD_WORD: Final[str] = "add"
 
@@ -129,57 +130,29 @@ def _add(
     out: tuple[TextIO, TextIO],
     sweep_ms: int | None,
 ) -> int:
-    from omniweave_core.acquire import add_sources  # noqa: PLC0415 -- a usage error never pays
-    from omniweave_core.clock import SystemClock  # noqa: PLC0415
-    from omniweave_core.modelserver import services_root  # noqa: PLC0415
-
-    from omniweave.run import discover  # noqa: PLC0415
-    from omniweave.run.routing import max_parts_of  # noqa: PLC0415
-
     stdout, stderr = out
     _refuse_unserved(parsed)
     explicit = Path(parsed.config) if parsed.config else None
     config = load(cwd=cwd, env=env, explicit=explicit)
     name = _corpus(config, parsed.corpus)
-    store = Path(stores(config, [name], cwd=cwd)[name])
-    source = Path(stores(config, [name], cwd=cwd, field="source")[name])
-    paths = tuple(
-        contained(Path(raw), source=source, cwd=cwd, verb="ow add") for raw in parsed.source
-    )
-    #  ADR-15 D15.3: `[ingest] password_file`, and an encrypted unit it maps is queued again.
-    #  D644: so is one `gate.too-many-parts` refused, once `[ingest] max_parts` admits its count.
-    passwords = passwords_of(config, override=None, source=source, env=env, cwd=cwd)
-    added = add_sources(
-        store,
-        paths,
-        now_ns=SystemClock().wall_ns(),
+    report, drain = add_report(
+        config,
+        name,
+        parsed.source,
+        cwd=cwd,
+        env=env,
         dry_run=parsed.dry_run,
-        reopens=discover.reopens_of(
-            None if passwords is None else passwords.reopens,
-            _raised(store, max_parts=max_parts_of(config)),
-        ),
+        offline=parsed.offline,
+        argv=argv,
+        sweep_ms=sweep_ms,
+        trigger="cli",
+        rerun=_rerun(parsed),
+        verb="ow add",
     )
-    states: dict[str, str] = {}
-    completed: list[dict[str, Any]] = []
-    if not parsed.dry_run and added.queued:
-        drain = _drain(
-            store,
-            config,
-            roots=(source, cwd),
-            paths=paths,
-            argv=argv,
-            sweep_ms=sweep_ms,
-            offline=parsed.offline,
-            passwords=passwords,
-            services_root=services_root(env),
-        )
-        if not parsed.quiet:
-            #  10:1565: a long verb's progress is stderr's, so stdout stays the report alone.
-            for line in drain:
-                stderr.write(line + "\n")
-        states = _states(store, added.queued)
-        completed = _completed(store, [uri for uri in added.queued if states.get(uri) == _SETTLED])
-    report = _report(name, added, states, completed, parsed=parsed)
+    if not parsed.quiet:
+        #  10:1565: a long verb's progress is stderr's, so stdout stays the report alone.
+        for line in drain:
+            stderr.write(line + "\n")
     if parsed.quiet:
         stdout.write(f"{report['queued']}\n")
     elif parsed.render == "json":
@@ -188,6 +161,71 @@ def _add(
         for line in _text(report, dry_run=parsed.dry_run):
             stdout.write(line + "\n")
     return 0
+
+
+def add_report(
+    config: Config,
+    name: str,
+    sources: Sequence[str],
+    *,
+    cwd: Path,
+    env: Mapping[str, str],
+    dry_run: bool,
+    offline: bool,
+    argv: Sequence[str],
+    sweep_ms: int | None,
+    trigger: Trigger,
+    rerun: str,
+    verb: str,
+) -> tuple[dict[str, Any], tuple[str, ...]]:
+    """Steps (a)-(c) for one declared corpus: the `add-out-v1` report, and the drain's progress.
+
+    `ow add` and the SDK's `Corpus.add()` both call this (D862), so they roster, drain and report
+    one way. `trigger` is the run's `run.trigger`, `rerun` the command a dry run names, and `verb`
+    the name a source outside the corpus's root is refused under.
+    """
+    from omniweave_core.acquire import add_sources  # noqa: PLC0415 -- a usage error never pays
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415
+    from omniweave_core.modelserver import services_root  # noqa: PLC0415
+
+    from omniweave.run import discover  # noqa: PLC0415
+    from omniweave.run.routing import max_parts_of  # noqa: PLC0415
+
+    store = Path(stores(config, [name], cwd=cwd)[name])
+    source = Path(stores(config, [name], cwd=cwd, field="source")[name])
+    paths = tuple(contained(Path(raw), source=source, cwd=cwd, verb=verb) for raw in sources)
+    #  ADR-15 D15.3: `[ingest] password_file`, and an encrypted unit it maps is queued again.
+    #  D644: so is one `gate.too-many-parts` refused, once `[ingest] max_parts` admits its count.
+    passwords = passwords_of(config, override=None, source=source, env=env, cwd=cwd)
+    added = add_sources(
+        store,
+        paths,
+        now_ns=SystemClock().wall_ns(),
+        dry_run=dry_run,
+        reopens=discover.reopens_of(
+            None if passwords is None else passwords.reopens,
+            _raised(store, max_parts=max_parts_of(config)),
+        ),
+    )
+    states: dict[str, str] = {}
+    completed: list[dict[str, Any]] = []
+    drain: tuple[str, ...] = ()
+    if not dry_run and added.queued:
+        drain = _drain(
+            store,
+            config,
+            roots=(source, cwd),
+            paths=paths,
+            argv=argv,
+            sweep_ms=sweep_ms,
+            offline=offline,
+            passwords=passwords,
+            services_root=services_root(env),
+            trigger=trigger,
+        )
+        states = _states(store, added.queued)
+        completed = _completed(store, [uri for uri in added.queued if states.get(uri) == _SETTLED])
+    return _report(name, added, states, completed, dry_run=dry_run, rerun=rerun), drain
 
 
 def _refuse_unserved(parsed: argparse.Namespace) -> None:
@@ -260,6 +298,7 @@ def _drain(
     offline: bool = False,
     passwords: Passwords | None = None,
     services_root: Path | None = None,
+    trigger: Trigger = "cli",
 ) -> tuple[str, ...]:
     """Step (b): the drain `ow ingest <path>...` runs, over the paths (a) just rostered.
 
@@ -281,6 +320,7 @@ def _drain(
         offline=offline,
         passwords=passwords,
         services_root=services_root,
+        trigger=trigger,
     )
     return report.lines()
 
@@ -328,7 +368,8 @@ def _report(
     states: Mapping[str, str],
     completed: Sequence[Mapping[str, Any]],
     *,
-    parsed: argparse.Namespace,
+    dry_run: bool,
+    rerun: str,
 ) -> dict[str, Any]:
     """`add-out-v1`, as `ow_add` writes it, `schema` first (10:1530).
 
@@ -337,8 +378,8 @@ def _report(
     """
     pending: list[dict[str, Any]] = []
     for uri in added.queued:
-        if parsed.dry_run:
-            reason, approve = DRY_RUN, _rerun(parsed)
+        if dry_run:
+            reason, approve = DRY_RUN, rerun
         elif states.get(uri) == _SETTLED:
             continue
         else:
@@ -359,7 +400,7 @@ def _report(
         "corpus": corpus,
         "discovered": added.discovered,
         "unchanged": added.unchanged,
-        "queued": 0 if parsed.dry_run else len(added.queued),
+        "queued": 0 if dry_run else len(added.queued),
         "skipped": added.skipped,
         "completed": list(completed),
         "pending": pending,

@@ -199,11 +199,6 @@ def test_a_corpus_whose_store_is_missing_is_not_found(project: Path) -> None:
         _corpus(project)
 
 
-def test_a_writable_corpus_is_refused_by_name(project: Path) -> None:
-    with pytest.raises(UsageError, match="readonly=False is not served"):
-        omniweave.corpus("handbook", readonly=False, cwd=project, env=_env(project))
-
-
 def test_without_a_cwd_the_entry_point_reads_the_process_directory(
     project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -592,3 +587,141 @@ def test_coverage_is_read_fresh_on_every_call(here: Path) -> None:
     finally:
         conn.close()
     assert handle.coverage().scope_rows == 0
+
+
+# --- Corpus.add(): ow add's write path, in the caller's process (D862) ----------------------
+
+PAST_NS = 1_700_000_000_000_000_000
+"""An mtime far enough behind the add that `stat_fresh()`'s granularity clause holds (05:344)."""
+
+
+@pytest.fixture
+def fresh(tmp_path: Path) -> Path:
+    """A project with two `.txt` files and no store, as `test_add_verb.py` makes one. The quiet
+    poll is shortened in config, since `add()` has no `sweep_ms` (D564)."""
+    import os  # noqa: PLC0415
+
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "omniweave.toml").write_text(
+        '[corpora.handbook]\npath = ".omniweave/index.owstore"\n'
+        "[runtime]\ndeferred_sweep_ms = 20\n",
+        encoding="utf-8",
+    )
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    for name, body in (("a.txt", "Fees are payable monthly."), ("b.txt", "Notice is 30 days.")):
+        (docs / name).write_text(body, encoding="utf-8")
+        os.utime(docs / name, ns=(PAST_NS, PAST_NS))
+    return tmp_path
+
+
+def _writer(project: Path) -> api.Corpus:
+    return omniweave.corpus("handbook", readonly=False, cwd=project, env=_env(project))
+
+
+def _triggers(project: Path) -> list[str]:
+    conn = sqlite3.connect(project / ".omniweave" / "index.owstore")
+    try:
+        return [row[0] for row in conn.execute("SELECT trigger FROM run ORDER BY generation")]
+    finally:
+        conn.close()
+
+
+def test_a_writer_may_open_a_corpus_whose_store_add_will_create(fresh: Path) -> None:
+    from omniweave_core.contract import SCHEMA  # noqa: PLC0415
+
+    handle = _writer(fresh)
+    assert (handle.generation, handle.schema) == (0, SCHEMA)
+    assert not (fresh / ".omniweave" / "index.owstore").exists()
+    #  A reader still refuses a store that is not there.
+    with pytest.raises(NotFoundError):
+        _corpus(fresh)
+
+
+def test_add_rosters_drains_and_reports_as_ow_add_does_with_an_sdk_trigger(fresh: Path) -> None:
+    report = _writer(fresh).add("docs")
+    assert (report.corpus, report.discovered, report.queued) == ("handbook", 2, 2)
+    assert report.deadline_reached is False
+    assert {p.uri.rsplit("/", 1)[-1] for p in report.pending} == {"a.txt", "b.txt"}
+    assert {p.reason for p in report.pending} == {"no_driver"}, "parse.text.builtin is absent"
+    assert _triggers(fresh) == ["sdk"], "18:440: never cli, the consent a human gave by typing"
+
+
+def test_ow_add_still_records_cli(fresh: Path) -> None:
+    from omniweave.surface import add as add_verb  # noqa: PLC0415
+
+    out, err = io.StringIO(), io.StringIO()
+    code = add_verb.main(
+        ["add", "docs"], env=_env(fresh), cwd=fresh, stdout=out, stderr=err, sweep_ms=20
+    )
+    assert code == 0, err.getvalue()
+    assert _triggers(fresh) == ["cli"]
+
+
+def test_a_second_add_of_the_same_sources_is_unchanged(fresh: Path) -> None:
+    """18:445: idempotency is the store's -- the second call's rows collide and are unchanged."""
+    _writer(fresh).add("docs")
+    again = _writer(fresh).add(["docs/a.txt", "docs/b.txt"])
+    assert (again.queued, again.unchanged) == (0, 2)
+
+
+def test_a_dry_run_writes_nothing_and_names_the_command_that_would(fresh: Path) -> None:
+    report = _writer(fresh).add("docs", dry_run=True)
+    assert (report.discovered, report.queued) == (2, 0)
+    assert {p.reason for p in report.pending} == {"dry_run"}
+    assert {p.approve for p in report.pending} == {"ow add docs --corpus handbook"}
+    assert not (fresh / ".omniweave" / "index.owstore").exists()
+
+
+def test_a_readonly_handle_refuses_to_add(project: Path) -> None:
+    with pytest.raises(UsageError) as refused:
+        _corpus(project).add("docs")
+    assert refused.value.code() == "OW_READONLY_HANDLE"
+    assert "readonly=False" in refused.value.fix
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "named"),
+    [
+        ({"schema": {"type": "object"}}, "schema"),
+        ({"allow_cost": 1000}, "allow_cost"),
+        ({"allow_egress": "example"}, "allow_egress"),
+        ({"wait_ms": 5000}, "wait_ms"),
+    ],
+)
+def test_an_add_parameter_ow_add_refuses_is_refused(
+    fresh: Path, kwargs: dict[str, object], named: str
+) -> None:
+    with pytest.raises(UsageError, match=f"^{named} is not served"):
+        _writer(fresh).add("docs", **kwargs)  # type: ignore[arg-type]
+    assert not (fresh / ".omniweave" / "index.owstore").exists()
+
+
+def test_a_source_outside_the_corpus_is_refused(
+    fresh: Path, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    from omniweave_core.errors import PolicyRefusal  # noqa: PLC0415
+
+    elsewhere = tmp_path_factory.mktemp("elsewhere")
+    with pytest.raises(PolicyRefusal):
+        _writer(fresh).add(str(elsewhere))
+
+
+def test_a_trigger_outside_run_triggers_check_never_opens_a_run(tmp_path: Path) -> None:
+    """`run.trigger`'s CHECK, held before anything opens: a typo is a ValueError, not a row."""
+    from omniweave.run import ingest as run_ingest  # noqa: PLC0415
+
+    assert {"cli", "hook", "upstream", "watch", "mcp", "sdk"} == run_ingest.TRIGGERS
+    store = tmp_path / "index.owstore"
+    with pytest.raises(ValueError, match="trigger 'bogus' is not one of"):
+        run_ingest.ingest(
+            store,
+            config=None,  # type: ignore[arg-type]
+            source_root=tmp_path,
+            output_root=tmp_path,
+            cache_root=tmp_path,
+            argv=[],
+            paths=(tmp_path,),
+            trigger="bogus",  # type: ignore[arg-type]
+        )
+    assert not store.exists()
