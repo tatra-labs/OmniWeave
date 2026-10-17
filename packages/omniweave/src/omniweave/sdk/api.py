@@ -65,6 +65,15 @@ three surfaces return one `Answer` for one question, and none of them imports an
    generation 0. `schema`, a nonzero `allow_cost`, `allow_egress` and `wait_ms` are refused by name,
    for the reasons `ow add` refuses them: nothing reads `unit.schema_requested`, nothing is priced,
    no connector fetches, and the drain is synchronous, so there is no deadline to wait to.
+9. **`Corpus.doc(ref)` is 18:500's lazy handle, a `model.doc.Doc` over the store** (D865), read
+   through `store.docread.StoreDocReader` (D864). `ref` is `d<doc_ord>`, or anything `ow open`
+   resolves to one document: a cite, a URI, a file name. Resolving it reads the head generation,
+   and the `Doc` is pinned to that generation. The handle still holds no connection (ruling 4):
+   each of the `Doc`'s reads opens one read-only connection and closes it, and `blocks()` holds
+   its connection until the cursor is exhausted or closed. So a `Doc` kept across a re-parse
+   reads the retired generation's rows as misses, and its record as `NotFoundError`, rather than
+   another generation's rows under its old identity. What `StoreDocReader` refuses, `serialize()`
+   among them, the `Doc` refuses too.
 
 Specified in 18-api-sketch.md section 1.1-1.2 and 10-interfaces.md section 9.1.
 """
@@ -72,6 +81,7 @@ Specified in 18-api-sketch.md section 1.1-1.2 and 10-interfaces.md section 9.1.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, cast
@@ -79,11 +89,16 @@ from typing import TYPE_CHECKING, Any, Final, cast
 from omniweave_core.errors import UsageError
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
+    from collections.abc import Iterable, Iterator, Mapping, Sequence
 
     from omniweave_core.answer.render import Answer
     from omniweave_core.config import Config
-    from omniweave_core.model.enums import Layer
+    from omniweave_core.model.block import Addr, Block, BlockId, Cite
+    from omniweave_core.model.doc import Doc
+    from omniweave_core.model.enums import Kind, Layer, RelKind, Trust
+    from omniweave_core.model.grid import Grid
+    from omniweave_core.model.records import AssetRef, DocRecord, Rel
+    from omniweave_core.store.reader import SqliteReader
     from omniweave_core.store.types import Coverage, Expand, Filters
 
     from omniweave.sdk.reports import AddReport, CodeRow, CorpusCard, DoctorReport
@@ -390,15 +405,29 @@ class Corpus:
 
         return cast("Coverage", self._read(read))
 
+    def doc(self, ref: str) -> Doc:
+        """18:500: a document's lazy handle, by `d<doc_ord>`, cite, URI or file (ruling 9)."""
+        from omniweave_core.model.doc import Doc  # noqa: PLC0415
+
+        doc_ord, gen = self._connected(
+            lambda connection, reader: _document(connection, reader, ref)
+        )
+        return Doc(_DocRead(self._store), doc_ord, gen)
+
     def _read(self, call: Any) -> Any:
         """One read-only connection and reader for one call, closed before returning."""
+        return self._connected(lambda _connection, reader: call(reader))
+
+    def _connected(self, call: Any) -> Any:
+        """`_read()`, handing the call the connection as well as the reader."""
         from omniweave_core.clock import SystemClock  # noqa: PLC0415
         from omniweave_core.store import reader as store_reader  # noqa: PLC0415
         from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
 
         connection = store_sqlite.connect_readonly(self._store)
         try:
-            return call(store_reader.SqliteReader(connection, now_ns=SystemClock().wall_ns()))
+            reader = store_reader.SqliteReader(connection, now_ns=SystemClock().wall_ns())
+            return call(connection, reader)
         finally:
             connection.close()
 
@@ -416,6 +445,128 @@ class Corpus:
         from omniweave.surface.startup import corpora  # noqa: PLC0415
 
         return len(corpora(self._config)) > 1
+
+
+_DOC_ORD: Final = re.compile(r"d([0-9]+)")
+"""18:500's `d7`: a document by its `doc_ord`, which no form of `ow open`'s ladder spells."""
+
+
+def _document(connection: Any, reader: SqliteReader, ref: str) -> tuple[int, int]:
+    """`ref` as `(doc_ord, head gen)`: `d<doc_ord>`, else `ow open`'s ladder (ruling 9)."""
+    from omniweave_core.errors import NotFoundError  # noqa: PLC0415
+    from omniweave_core.model.enums import Layer  # noqa: PLC0415
+    from omniweave_core.store import resolve  # noqa: PLC0415
+
+    named = _DOC_ORD.fullmatch(ref)
+    if named is not None:
+        doc_ord = int(named[1])
+    else:
+        with reader.snapshot() as state:
+            (found,) = reader.resolve_refs(state, [ref], context=0, layers=frozenset(Layer))
+        if isinstance(found, resolve.Missed):
+            raise found.error
+        (doc_ord,) = found.doc_ords
+    row = connection.execute("SELECT gen FROM doc WHERE doc_ord = ?", (doc_ord,)).fetchone()
+    if row is None:
+        raise NotFoundError(
+            f"no document d{doc_ord} in this corpus", fix="ow corpora --detail card"
+        )
+    return doc_ord, int(row[0])
+
+
+class _DocRead:
+    """`DocReadSide` over a store path: one read-only connection per read (ruling 9)."""
+
+    __slots__ = ("_store",)
+
+    def __init__(self, store: Path) -> None:
+        self._store = store
+
+    def doc_record(self, doc_ord: int, gen: int) -> DocRecord:
+        return self._call("doc_record", doc_ord, gen)
+
+    def block(self, doc_ord: int, gen: int, block: BlockId) -> Block | None:
+        return self._call("block", doc_ord, gen, block)
+
+    def block_at_addr(self, doc_ord: int, gen: int, addr: Addr) -> Block | None:
+        return self._call("block_at_addr", doc_ord, gen, addr)
+
+    def block_at_cite(self, doc_ord: int, gen: int, cite: Cite) -> Block | None:
+        return self._call("block_at_cite", doc_ord, gen, cite)
+
+    def blocks(
+        self,
+        doc_ord: int,
+        gen: int,
+        *,
+        pages: range | None,
+        kinds: frozenset[Kind] | None,
+        layers: frozenset[Layer],
+        under: BlockId | None,
+        trust_below: Trust | None,
+    ) -> Iterator[Block]:
+        """The cursor, holding its one connection until it is exhausted or closed."""
+        from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+        from omniweave_core.store.docread import StoreDocReader  # noqa: PLC0415
+
+        connection = store_sqlite.connect_readonly(self._store)
+        try:
+            cursor = StoreDocReader(connection).blocks(
+                doc_ord,
+                gen,
+                pages=pages,
+                kinds=kinds,
+                layers=layers,
+                under=under,
+                trust_below=trust_below,
+            )
+            try:
+                yield from cursor
+            finally:
+                close = getattr(cursor, "close", None)
+                if close is not None:
+                    close()
+        finally:
+            connection.close()
+
+    def payload(self, doc_ord: int, gen: int, block: BlockId) -> Mapping[str, Any]:
+        return self._call("payload", doc_ord, gen, block)
+
+    def frames(self, doc_ord: int, gen: int) -> Iterator[Any]:
+        return self._call("frames", doc_ord, gen)
+
+    def rels(
+        self, doc_ord: int, gen: int, block: BlockId, kind: RelKind | None, *, inbound: bool
+    ) -> Iterator[Rel]:
+        return iter(list(self._call("rels", doc_ord, gen, block, kind, inbound=inbound)))
+
+    def grid(self, doc_ord: int, gen: int, table: BlockId) -> Grid:
+        return self._call("grid", doc_ord, gen, table)
+
+    def page_render(self, doc_ord: int, page: int, dpi: int) -> AssetRef:
+        return self._call("page_render", doc_ord, page, dpi)
+
+    def asset(self, ref: AssetRef) -> Any:
+        return self._call("asset", ref)
+
+    def verify_quote(self, doc_ord: int, gen: int, block: BlockId) -> Any:
+        return self._call("verify_quote", doc_ord, gen, block)
+
+    def resolve_scope(
+        self, doc_ord: int, gen: int, *, pages: range | None, under: BlockId | None
+    ) -> Any:
+        return self._call("resolve_scope", doc_ord, gen, pages=pages, under=under)
+
+    def _call(self, read: str, *args: Any, **kw: Any) -> Any:
+        """One `StoreDocReader` read on its own read-only connection, closed before returning."""
+        from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+        from omniweave_core.store.docread import StoreDocReader  # noqa: PLC0415
+
+        connection = store_sqlite.connect_readonly(self._store)
+        try:
+            return getattr(StoreDocReader(connection), read)(*args, **kw)
+        finally:
+            connection.close()
 
 
 def _added(report: Mapping[str, Any]) -> AddReport:

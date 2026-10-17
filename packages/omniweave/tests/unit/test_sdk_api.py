@@ -725,3 +725,127 @@ def test_a_trigger_outside_run_triggers_check_never_opens_a_run(tmp_path: Path) 
             trigger="bogus",  # type: ignore[arg-type]
         )
     assert not store.exists()
+
+
+# --- Corpus.doc(): the L2 lazy handle over the store (ruling 9) ---------------------------------
+
+
+@pytest.mark.parametrize("ref", ["d1", "d1#2", "file:///corpus/contract.pdf", "contract.pdf"])
+def test_doc_resolves_a_doc_ord_a_cite_a_uri_and_a_file_name(project: Path, ref: str) -> None:
+    doc = _corpus(project).doc(ref)
+    assert (doc.doc_ord, doc.gen) == (1, 1)
+
+
+def test_a_doc_reads_the_stored_document(project: Path) -> None:
+    from omniweave_core.model.block import Cite  # noqa: PLC0415
+    from omniweave_core.model.enums import Kind  # noqa: PLC0415
+
+    doc = _corpus(project).doc("contract.pdf")
+    assert [block.text for block in doc.blocks()] == [TEXTS[1], TEXTS[2], TEXTS[3]]
+    assert [block.cite for block in doc.blocks(kinds=[Kind.HEADING])] == ["d1#1"]
+    found = doc.by_cite(Cite("d1#3"))
+    assert found is not None
+    assert found.text == TEXTS[3]
+    assert doc.block(found.id) == found
+
+
+def test_the_ladder_names_the_document_it_resolves(project: Path) -> None:
+    conn = sqlite3.connect(project / ".omniweave" / "index.owstore")
+    try:
+        conn.execute(
+            "INSERT INTO doc(doc_ord, doc_key, source_sha256, uri, media_type, format, "
+            "                format_evidence, source_bytes, gen, status, model_version, declared, "
+            "                achieved) "
+            "VALUES(2, ?, ?, 'file:///corpus/other.pdf', 'application/pdf', 'pdf', '{}', 1, 1,"
+            "       'ok', '1.1', '{}', '{}')",
+            (b"" * 16, DIGEST),
+        )
+        conn.execute(
+            "INSERT INTO page(doc_ord, gen, page, page_kind, method, producer_id) "
+            "SELECT 2, 1, 1, page_kind, method, producer_id FROM page WHERE doc_ord = 1"
+        )
+        conn.execute(
+            "INSERT INTO block(block_id, doc_ord, gen, page, addr, cite, ord, kind, layer, text, "
+            "                  content_digest, os_kind, producer_id, method, trust, quote, "
+            "                  origin_operator, origin_driver, driver_schema_v, state) "
+            "SELECT 4, 2, 1, 1, 'p1/1', 'd2#1', 1, kind, layer, 'Other.', content_digest, "
+            "       os_kind, producer_id, method, trust, quote, origin_operator, origin_driver, "
+            "       driver_schema_v, 0 FROM block WHERE block_id = 2"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    handle = _corpus(project)
+    for ref in ("other.pdf", "d2#1", "file:///corpus/other.pdf", "d2"):
+        doc = handle.doc(ref)
+        assert doc.doc_ord == 2
+        assert [block.text for block in doc.blocks()] == ["Other."]
+    assert handle.doc("contract.pdf").doc_ord == 1
+
+
+@pytest.mark.parametrize("ref", ["d9", "nothing.pdf", "d9#1"])
+def test_a_ref_that_names_no_document_is_refused(project: Path, ref: str) -> None:
+    from omniweave_core.errors import OwError  # noqa: PLC0415
+
+    with pytest.raises(OwError):
+        _corpus(project).doc(ref)
+
+
+def test_every_read_closes_its_connection_and_the_cursor_holds_one(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omniweave_core.model.block import Cite  # noqa: PLC0415
+    from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+
+    opened: list[sqlite3.Connection] = []
+    connect = store_sqlite.connect_readonly
+
+    def counting(*args: object, **kw: object) -> sqlite3.Connection:
+        connection = connect(*args, **kw)  # type: ignore[arg-type]
+        opened.append(connection)
+        return connection
+
+    def open_ones() -> int:
+        live = 0
+        for connection in opened:
+            try:
+                connection.execute("SELECT 1")
+            except sqlite3.ProgrammingError:
+                continue
+            live += 1
+        return live
+
+    monkeypatch.setattr(store_sqlite, "connect_readonly", counting)
+    doc = _corpus(project).doc("d1")
+    assert doc.by_cite(Cite("d1#2")) is not None
+    assert opened
+    assert open_ones() == 0
+    cursor = doc.blocks()
+    next(cursor)
+    assert open_ones() == 1
+    list(cursor)
+    assert open_ones() == 0
+
+
+def test_a_doc_kept_across_a_reparse_misses_rather_than_reads_another_generation(
+    project: Path,
+) -> None:
+    from omniweave_core.model.block import Cite  # noqa: PLC0415
+
+    doc = _corpus(project).doc("d1")
+    conn = sqlite3.connect(project / ".omniweave" / "index.owstore")
+    try:
+        conn.execute("UPDATE block SET state = 1")
+        conn.execute("UPDATE doc SET gen = 2")
+        conn.commit()
+    finally:
+        conn.close()
+    assert doc.by_cite(Cite("d1#1")) is None
+    assert list(doc.blocks()) == []
+    with pytest.raises(NotFoundError, match="generation"):
+        _ = doc.rec
+
+
+def test_what_the_store_reader_refuses_the_doc_refuses(project: Path) -> None:
+    with pytest.raises(UsageError, match=r"Doc\.serialize\(\) is not built"):
+        _corpus(project).doc("d1").serialize("md")
