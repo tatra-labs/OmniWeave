@@ -19,7 +19,8 @@ import pytest
 from omniweave_core.errors import NotFoundError, StoreError, UsageError
 from omniweave_core.model.block import Addr, BlockId, Cite
 from omniweave_core.model.doc import Doc
-from omniweave_core.model.enums import Kind, Layer, RelKind, Trust
+from omniweave_core.model.enums import Kind, Layer, RelKind, TableKind, Trust
+from omniweave_core.model.serialize import TableFacts, ViewScope, serialize
 from omniweave_core.store import docread
 from omniweave_core.store import sqlite as ow
 from omniweave_core.store.doc import read_doc_record, read_grid
@@ -245,10 +246,9 @@ def test_grid_is_read_grids_from_the_table_or_a_cell(written: Any) -> None:
         (lambda doc: doc.page_render(0, 72), "page_render()"),
         (lambda doc: doc.asset(object()), "asset()"),
         (lambda doc: doc.verify_quote(BlockId(1)), "verify_quote()"),
-        (lambda doc: doc.serialize("md"), "serialize()"),
     ],
 )
-def test_the_five_unbuilt_reads_are_refused_by_name(written: Any, call: Any, read: str) -> None:
+def test_the_four_unbuilt_reads_are_refused_by_name(written: Any, call: Any, read: str) -> None:
     with pytest.raises(UsageError, match=re.escape(f"Doc.{read} is not built")):
         call(_doc(written))
 
@@ -260,3 +260,92 @@ def test_a_member_the_store_does_not_name_is_refused(written: Any) -> None:
         decoder.ordinal("kind", "sonnet")
     with pytest.raises(StoreError, match="kind code 999"):
         decoder.member("kind", 999)
+
+
+# --- resolve_scope: Doc.serialize()'s one read (ruling 7) -----------------------------------------
+
+
+def _scope(written: Any, **kw: Any) -> ViewScope:
+    first, connection = written
+    return StoreDocReader(connection).resolve_scope(
+        first.record.doc_ord, first.record.gen, pages=kw.get("pages"), under=kw.get("under")
+    )
+
+
+def test_the_scope_is_the_generation_in_pre_order(written: Any) -> None:
+    first, _connection = written
+    scope = _scope(written)
+    assert [int(block.id) for block in scope.blocks] == [
+        int(first.root),
+        int(first.heading),
+        int(first.table),
+        *(int(cell) for cell in first.cells),
+        int(first.paragraph),
+    ]
+    assert (scope.kind, scope.gen) == ("document", first.record.gen)
+
+
+def test_the_scope_carries_every_satellite_serialize_reads(written: Any) -> None:
+    first, connection = written
+    scope = _scope(written)
+    assert dict(scope.payload(first.heading)) == {"level": 1}
+    assert first.root not in scope.payloads
+    assert scope.table(first.table) == TableFacts(TableKind.DATA, header_rows=1, header_cols=0)
+    assert [scope.cells[cell] for cell in first.cells] == list(_sd.POSITIONS)
+    assert scope.continues == {}
+    assert scope.heading_paths[first.paragraph] == ("Master Services Agreement",)
+    assert first.heading not in scope.heading_paths
+    assert first.root not in scope.heading_paths
+    connection.execute("INSERT INTO meta(k, v) VALUES('corpus_id', 'handbook-7')")
+    assert _scope(written).corpus_id == "handbook-7"
+
+
+def test_a_continues_rel_reaches_the_scope(written: Any) -> None:
+    first, connection = written
+    code = BlockDecoder(connection).ordinal("rel_kind", RelKind.CONTINUES.value)
+    connection.execute(
+        "INSERT INTO rel(doc_ord, gen, src_id, dst_id, kind, producer_id, trust, origin_operator) "
+        "SELECT doc_ord, gen, ?, ?, ?, producer_id, 2, 'parse.pdf' FROM block WHERE block_id = ?",
+        (int(first.cells[1]), int(first.cells[2]), code, int(first.cells[1])),
+    )
+    assert _scope(written).continues == {first.cells[1]: first.cells[2]}
+
+
+def test_a_page_range_and_a_subtree_are_their_blocks_in_pre_order(written: Any) -> None:
+    first, _connection = written
+    pages = _scope(written, pages=range(1, 2))
+    assert [int(b.id) for b in pages.blocks] == [int(first.cells[2]), int(first.paragraph)]
+    assert pages.kind == "pages"
+    assert first.heading not in pages.payloads
+    assert first.table not in pages.tables
+    subtree = _scope(written, under=first.table)
+    assert [int(b.id) for b in subtree.blocks] == [
+        int(first.table),
+        *(int(cell) for cell in first.cells),
+    ]
+    assert subtree.kind == "subtree"
+
+
+def test_a_retired_block_leaves_the_scope(written: Any) -> None:
+    first, connection = written
+    connection.execute("UPDATE block SET state = 1 WHERE block_id = ?", (int(first.paragraph),))
+    scope = _scope(written)
+    assert int(first.paragraph) not in [int(block.id) for block in scope.blocks]
+    assert first.paragraph not in scope.heading_paths
+
+
+def test_serialize_renders_the_stored_document(written: Any) -> None:
+    _first, connection = written
+    text, spans = _doc(written).serialize("md")
+    assert text == serialize(_scope(written), "md")[0]
+    assert text.startswith("# **Master** Services Agreement\n")
+    assert "| Region | FY2024 |" in text
+    assert text.endswith("Fees are payable within 30 days.")
+    assert spans.is_synthetic(0)
+    assert not connection.in_transaction
+
+
+def test_contextualize_prefixes_each_top_level_unit_with_its_heading_path(written: Any) -> None:
+    text, _spans = _doc(written).serialize("md", pages=range(1, 2), contextualize=True)
+    assert text.count("Master Services Agreement\n") == 2
+    assert text.endswith("Master Services Agreement\nFees are payable within 30 days.")
