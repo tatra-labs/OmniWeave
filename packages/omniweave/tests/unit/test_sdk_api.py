@@ -320,6 +320,9 @@ def test_the_projects_policy_is_the_one_ow_query_reads(
     assert policy.deny_restriction_bits == bit  # type: ignore[attr-defined]
     monkeypatch.setattr(ex, "execute", real)
     assert answer_json(answer) == _cli(project, "fees payable monthly arrears")
+    #  D859: and core now bars it, saying the policy withheld it rather than claiming absence.
+    assert "d1#3" not in json.dumps(answer_json(answer))
+    assert answer.state == "degraded"
 
 
 def test_a_too_small_budget_is_a_usage_error(project: Path) -> None:

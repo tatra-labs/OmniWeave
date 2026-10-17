@@ -718,11 +718,16 @@ def test_every_added_field_names_a_field_the_shape_really_has() -> None:
             assert len(why) > 40, f"{name}.{field} is added with no stated reason"
 
 
-def test_narrowing_is_a_named_tuple_with_the_plans_three_fields(plan) -> None:
-    """07:1579 prints `class Narrowing(NamedTuple)`, not a dataclass, and the tag is field zero."""
+def test_narrowing_is_a_named_tuple_with_the_plans_three_fields_first(plan) -> None:
+    """07:1579 prints `class Narrowing(NamedTuple)`, not a dataclass, and the tag is field zero.
+
+    D859 appends gate 10's exclusion count (07:2190's *"the narrowing statement's ... exclusion
+    count"*), defaulted, after the printed three, so every positional read of them is unchanged."""
     printed = _printed_class(plan, "07-store-and-retrieval.md", "Narrowing")
     assert _printed_fields(printed) == ("kind", "table", "n")
-    assert Narrowing._fields == ("kind", "table", "n")
+    assert Narrowing._fields[:3] == ("kind", "table", "n")
+    assert Narrowing._fields[3:] == ("withheld_rows", "withheld_bits")
+    assert Narrowing("set", "tmp_narrow", 1)[3:] == (0, ())
     assert issubclass(Narrowing, tuple)
 
 

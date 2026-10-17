@@ -200,11 +200,20 @@ class Narrowing(NamedTuple):
     `table` is `'tmp_narrow'` iff `kind == "set"`, and `n` is EXACT in that case -- the
     `LIMIT PREFILTER_MAX + 1` probe either returns the candidate set or PROVES it too big, with no
     histogram, no independence assumption and no cost-based optimiser (07:1592-1597).
+
+    **`withheld_rows` and `withheld_bits` are 07:2190's count** (D859): *"the narrowing
+    statement's `(b.restriction_bits & :deny)` exclusion count, aggregated into
+    `Verdict.withheld`"*. `withheld_rows` is the distinct blocks the policy's mask removed from
+    this narrowing, and `withheld_bits` is `(bit, count)` for each denied bit that removed any,
+    exact and uncapped. Both are zero unless `Filters.deny_restriction_bits` is set. They are
+    appended with defaults so the printed three fields stay the first three.
     """
 
     kind: Literal["all", "set", "empty"]
     table: str | None
     n: int
+    withheld_rows: int = 0
+    withheld_bits: tuple[tuple[int, int], ...] = ()
 
 
 # ---------------------------------------------------------------------------
