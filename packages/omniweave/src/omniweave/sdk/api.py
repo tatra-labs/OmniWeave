@@ -1,9 +1,9 @@
-"""The SDK read path: `omniweave.corpus()`, `Corpus.query()` and `.open()`, `explain()`. D858.
+"""The SDK entry points: `corpus()` with `query()`/`open()`, `corpora()`, `doctor()`, `explain()`.
 
 18-api-sketch.md section 1 prints the Python API, and until this module none of its entry points
-existed: `gen.sdk_stub.owed()` named five, and D323 recorded that no work item landed them. This
-lands three of the five -- `corpus`, `Corpus` and `explain` -- with `Corpus.query` and
-`Corpus.open` as the two methods a reader needs. `corpora` and `doctor` stay owed.
+existed: `gen.sdk_stub.owed()` named five, and D323 recorded that no work item landed them. D858
+landed three -- `corpus`, `Corpus` and `explain` -- with `Corpus.query` and `Corpus.open` as the two
+methods a reader needs, and D860 the other two, `corpora` and `doctor`. None is owed now.
 
 **One implementation under every surface** (SV19, 10:101-102). Each method composes the core calls
 `ow query` and `ow open` compose, in the same order: the config loaded once, the corpus resolved,
@@ -35,6 +35,19 @@ three surfaces return one `Answer` for one question, and none of them imports an
    the store once to read `generation` and `schema` (18:265), then closes it. Each `query` and
    `open` opens one read-only snapshot and closes it before returning (18:257, ST2). The handle
    holds no connection, so it is safe to keep.
+5. **`corpora()` is the list's order, every card, uncapped** (D860). 18:180 prints
+   `tuple[CorpusCard, ...]`, each corpus's whole card: `store.card.corpora_cards()`, the entries
+   `ow corpora --detail card` prints, default first, then `card_gen` descending, then name. A
+   tuple has no field to say it was cut at `CORPORA_LIST_MAX`, and that cap guards a wire budget
+   the SDK does not spend, so nothing is cut. A store that will not open is a card with
+   `readable=False` and its `reason`, never a raise (10:1032). A corpus with no card has the empty
+   values and `achieved=None`, the same `None` `capability_floor()` returns for no documents: the
+   bottom of every ladder would claim the corpus is incapable rather than unread.
+   `corpora(names=[...])` is 18:186's fan-out handle, `CorpusSet`, which rank-merges N queries; no
+   rank-merge is built (`ow query`'s comma list refuses it too), so it is refused by name.
+6. **`doctor()` is `ow doctor`'s `run()`**, the checks and the report the verb prints (D860). Like
+   `corpora()`, its printed signature has no directory, so both read the process's directory
+   through `sdk._ambient`, the one read G8 exempts, and the process environment.
 
 Specified in 18-api-sketch.md section 1.1-1.2 and 10-interfaces.md section 9.1.
 """
@@ -44,7 +57,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, cast
 
 from omniweave_core.errors import UsageError
 
@@ -56,9 +69,9 @@ if TYPE_CHECKING:
     from omniweave_core.model.enums import Layer
     from omniweave_core.store.types import Expand, Filters
 
-    from omniweave.sdk.reports import CodeRow
+    from omniweave.sdk.reports import CodeRow, CorpusCard, DoctorReport
 
-__all__ = ["MODES", "WANTS", "Corpus", "corpus", "explain"]
+__all__ = ["MODES", "WANTS", "Corpus", "corpora", "corpus", "doctor", "explain"]
 
 WANTS: Final[tuple[str, ...]] = ("passages", "table", "fields", "outline", "related")
 """18:267's five packing presets, in printed order."""
@@ -104,6 +117,82 @@ def corpus(
     store = store_of(resolved, chosen, cwd=cwd)
     generation, schema = _identity(store)
     return Corpus(name=chosen, schema=schema, generation=generation, _store=store, _config=resolved)
+
+
+def corpora(
+    names: Sequence[str] | None = None, *, config: str | Path | None = None
+) -> tuple[CorpusCard, ...]:
+    """18:180: every declared corpus's card, in the list's order (ruling 5)."""
+    if names is not None:
+        raise UsageError(
+            "corpora(names=[...]) is the cross-corpus fan-out handle, CorpusSet, and the "
+            "rank-merge it needs is not built; open each corpus on its own",
+            fix="omniweave.corpora() lists them; omniweave.corpus(name).query(...) asks one",
+        )
+    from omniweave_core.config import load  # noqa: PLC0415
+    from omniweave_core.store import card as store_card  # noqa: PLC0415
+
+    from omniweave.sdk._ambient import process_cwd  # noqa: PLC0415
+    from omniweave.surface.serve import stores  # noqa: PLC0415
+    from omniweave.surface.startup import corpora as declared  # noqa: PLC0415
+    from omniweave.surface.startup import declared_corpus  # noqa: PLC0415
+
+    cwd = process_cwd()
+    resolved = load(cwd=cwd, env=os.environ, explicit=None if config is None else Path(config))
+    paths = {
+        name: Path(path) for name, path in stores(resolved, declared(resolved), cwd=cwd).items()
+    }
+    default, _ = declared_corpus(resolved)
+    document = store_card.corpora_cards(paths, default=default)
+    rows = cast("list[Mapping[str, Any]]", document["corpora"])
+    return tuple(_card(row) for row in rows)
+
+
+def doctor(*, runtime: bool = False) -> DoctorReport:
+    """18:211: the environment report `ow doctor` prints; never raises on a warning (ruling 6)."""
+    from omniweave.doctor import run  # noqa: PLC0415
+    from omniweave.sdk._ambient import process_cwd  # noqa: PLC0415
+
+    return run(cwd=process_cwd(), env=os.environ, runtime=runtime)
+
+
+def _card(row: Mapping[str, Any]) -> CorpusCard:
+    """One `card` entry as 18:688's `CorpusCard`, a corpus with no card filled empty (ruling 5)."""
+    from omniweave_core.model.records import Producer  # noqa: PLC0415
+    from omniweave_core.store.card import Gap  # noqa: PLC0415
+    from omniweave_core.store.doc import capabilities_from  # noqa: PLC0415
+
+    from omniweave.sdk.reports import CorpusCard  # noqa: PLC0415
+
+    achieved = row.get("achieved")
+    producer = row.get("abstract_producer")
+    return CorpusCard(
+        name=row["name"],
+        default=row["default"],
+        readable=row["readable"],
+        reason=row["reason"],
+        card_stale=row["card_stale"],
+        card_gen=row["card_gen"],
+        built_at_ns=row.get("built_at_ns", 0),
+        writer_version=row.get("writer_version", ""),
+        counts=row.get("counts", {}),
+        formats=row.get("formats", {}),
+        langs=row.get("langs", {}),
+        date_range=row.get("date_range", {}),
+        outline=tuple(row.get("outline", ())),
+        top_terms=tuple(row.get("top_terms", ())),
+        achieved=None if achieved is None else capabilities_from(achieved),
+        trust_hist=row.get("trust_hist", {}),
+        quote_hist=row.get("quote_hist", {}),
+        verbatim_fraction=row.get("verbatim_fraction", 0.0),
+        restriction_bits=row.get("restriction_bits", 0),
+        embedding=row.get("embedding"),
+        gaps=tuple(Gap(**gap) for gap in row.get("gaps", ())),
+        abstract=row.get("abstract"),
+        abstract_producer=None
+        if producer is None
+        else Producer(**{**producer, "options_digest": bytes.fromhex(producer["options_digest"])}),
+    )
 
 
 def explain(code: str) -> CodeRow:
