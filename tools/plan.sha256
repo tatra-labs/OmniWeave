@@ -22,14 +22,14 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D865: build note on 18 section 1.2, Corpus.doc lands
+# blessed-because: D866: build note on 03 section 16.1, the stored ViewScope
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
 documents-frozen  47fddfabf24a37948ddd8b8f2d7da02e19864cfb4c42a352e951a85b3158ba21  00-vision.md
 documents-frozen  6ffc2070193630b39f15385fc8640ec7b1a3e242ef098426f2754d4070a8026d  01-principles.md
 documents-frozen  1dad5c8ef798764c3bd3cc772210f6085569c8d38c4d272db6444575171efbff  02-architecture.md
-documents-frozen  30024cf23a161b7f84d822c8b5ddcd55f8ee923b77ab7817306234bd9ba6092f  03-document-model.md
+documents-frozen  df252315b17cd3b51f235d2f752d22bf4f01f5b0ceb735724680f4bc002514ea  03-document-model.md
 documents-frozen  6e98c953433a016cb1ec27c4373ce9462f2c7ef2b2ff0337f80fff67c72ed29b  04-driver-system.md
 documents-frozen  4db10013935a3de62e8cee075a463e94ef2ee414ae33a98365f41be562ec7183  05-ingest-and-routing.md
 documents-frozen  7c4c7946cad37746e602ef662e72d6a75ee43cc6b9367173c906cddc6d9f763e  06-structure-extraction.md

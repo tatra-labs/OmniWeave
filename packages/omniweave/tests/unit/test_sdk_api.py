@@ -847,5 +847,10 @@ def test_a_doc_kept_across_a_reparse_misses_rather_than_reads_another_generation
 
 
 def test_what_the_store_reader_refuses_the_doc_refuses(project: Path) -> None:
-    with pytest.raises(UsageError, match=r"Doc\.serialize\(\) is not built"):
-        _corpus(project).doc("d1").serialize("md")
+    with pytest.raises(UsageError, match=r"Doc\.frames\(\) is not built"):
+        _corpus(project).doc("d1").frames()
+
+
+def test_a_doc_serializes_the_stored_document(project: Path) -> None:
+    text, _spans = _corpus(project).doc("contract.pdf").serialize("text")
+    assert [line for line in text.splitlines() if line] == [TEXTS[1], TEXTS[2], TEXTS[3]]
