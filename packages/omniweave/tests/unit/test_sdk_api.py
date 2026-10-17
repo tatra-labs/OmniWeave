@@ -135,9 +135,9 @@ def test_each_method_takes_exactly_the_parameters_18_prints(action: str, member:
     assert taken == printed
 
 
-def test_three_entry_points_land_and_two_stay_owed() -> None:
-    assert {"Corpus", "corpus", "explain"} <= set(sdk.__all__)
-    assert owed() == ("corpora", "doctor")
+def test_all_five_entry_points_land() -> None:
+    assert {"Corpus", "corpus", "corpora", "doctor", "explain"} <= set(sdk.__all__)
+    assert owed() == ()
 
 
 def test_the_top_level_package_is_an_alias_for_the_sdk() -> None:
@@ -369,3 +369,168 @@ def test_an_open_parameter_not_served_is_refused(
 def test_two_refusals_are_named_together(project: Path) -> None:
     with pytest.raises(UsageError, match=r"^refs, scope are not served"):
         _corpus(project).query("fees", refs=("d1#2",), scope="x")
+
+
+# --- corpora() and doctor(): the last two entry points (D860) -------------------------------
+
+
+def _card(project: Path) -> None:
+    """The store's own builder and writer, as `test_serve_corpora.py` makes a card."""
+    from omniweave_core.store import card as store_card  # noqa: PLC0415
+
+    conn = sqlite3.connect(project / ".omniweave" / "index.owstore")
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = store_card.build_card(
+            conn,
+            name="handbook",
+            root="/corpus",
+            card_gen=3,
+            built_at_ns=NOW_NS,
+            writer_version="0.1.0",
+        )
+        store_card.write_card(conn, row)
+        conn.execute("COMMIT")
+    finally:
+        conn.close()
+
+
+@pytest.fixture
+def here(project: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """The entry points with no `cwd` parameter read it through `sdk._ambient` (ruling 6)."""
+    from omniweave.sdk import _ambient  # noqa: PLC0415
+
+    monkeypatch.setattr(_ambient, "process_cwd", lambda: project)
+    for key, value in _env(project).items():
+        monkeypatch.setenv(key, value)
+    return project
+
+
+def _cli_cards(project: Path) -> list[dict[str, object]]:
+    from omniweave.surface import corpora as corpora_verb  # noqa: PLC0415
+
+    out, err = io.StringIO(), io.StringIO()
+    code = corpora_verb.main(
+        ["corpora", "handbook", "--detail", "card", "--render", "json"],
+        cwd=project,
+        env=_env(project),
+        stdout=out,
+        stderr=err,
+    )
+    assert code == 0, err.getvalue()
+    return json.loads(out.getvalue())["corpora"]
+
+
+def test_corpora_is_every_card_ow_corpora_prints(here: Path) -> None:
+    _card(here)
+    [card] = omniweave.corpora()
+    [printed] = _cli_cards(here)
+    assert (card.name, card.default, card.readable, card.card_gen) == ("handbook", True, True, 3)
+    for field in ("counts", "formats", "langs", "date_range", "verbatim_fraction", "card_stale"):
+        assert getattr(card, field) == printed[field], field
+    assert card.achieved is not None
+    assert card.achieved.spatial == printed["achieved"]["spatial"]  # type: ignore[index]
+    assert tuple(card.outline) == tuple(printed["outline"])  # type: ignore[arg-type]
+
+
+@pytest.mark.usefixtures("here")
+def test_a_corpus_with_no_card_is_a_card_with_nothing_achieved() -> None:
+    """Ruling 5: `achieved=None`, as `capability_floor()` and `ow_corpora` say it, never the bottom
+    of every ladder."""
+    [card] = omniweave.corpora()
+    assert (card.card_gen, card.achieved, card.counts, card.gaps) == (0, None, {}, ())
+
+
+def test_a_store_that_will_not_open_is_a_card_saying_why(here: Path) -> None:
+    toml = here / "omniweave.toml"
+    toml.write_text(
+        toml.read_text(encoding="utf-8") + '\n[corpora.contracts]\npath = "missing.owstore"\n',
+        encoding="utf-8",
+    )
+    cards = omniweave.corpora()
+    assert [c.name for c in cards] == ["handbook", "contracts"], "default first"
+    broken = cards[1]
+    assert (broken.readable, broken.achieved) == (False, None)
+    assert broken.reason
+
+
+@pytest.mark.usefixtures("here")
+def test_corpora_of_names_is_the_fan_out_handle_and_is_refused() -> None:
+    with pytest.raises(UsageError, match="cross-corpus fan-out handle, CorpusSet"):
+        omniweave.corpora(["handbook"])
+
+
+def test_corpora_reads_an_explicit_config(project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from omniweave.sdk import _ambient  # noqa: PLC0415
+
+    monkeypatch.setattr(_ambient, "process_cwd", lambda: project.parent)
+    for key, value in _env(project).items():
+        monkeypatch.setenv(key, value)
+    [card] = omniweave.corpora(config=project / "omniweave.toml")
+    assert card.name == "handbook"
+
+
+def test_doctor_is_ow_doctors_report(here: Path) -> None:
+    from omniweave import doctor as doctor_package  # noqa: PLC0415
+
+    report = sdk.doctor()
+    assert report == doctor_package.run(cwd=here, env=_env(here) | dict(__import__("os").environ))
+    assert report == sdk.doctor(runtime=True), "runtime changes nothing yet (D-10 is unbuilt)"
+
+
+def test_a_submodule_name_is_the_submodule_not_the_sdk_function() -> None:
+    """D860: `omniweave.doctor` is the `ow doctor` package; the SDK's is `omniweave.sdk.doctor`."""
+    import types  # noqa: PLC0415
+
+    from omniweave import doctor  # noqa: PLC0415
+
+    assert isinstance(doctor, types.ModuleType)
+    assert callable(sdk.doctor) and not isinstance(sdk.doctor, types.ModuleType)
+    assert omniweave.corpora is api.corpora
+
+
+def test_corpora_is_never_cut_at_the_list_cap(here: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ruling 5: a tuple has no `truncated`, so the SDK returns every corpus the list would cut."""
+    from omniweave_core.store import card as store_card  # noqa: PLC0415
+
+    toml = here / "omniweave.toml"
+    toml.write_text(
+        toml.read_text(encoding="utf-8") + '\n[corpora.contracts]\npath = "missing.owstore"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(store_card, "CORPORA_LIST_MAX", 1)
+    assert len(omniweave.corpora()) == 2
+
+
+def test_a_cards_gaps_arrive_as_gap_records(here: Path) -> None:
+    """10:1085: a gap carries both spellings of its code, and the SDK hands it on typed."""
+    import dataclasses  # noqa: PLC0415
+
+    from omniweave_core.store import card as store_card  # noqa: PLC0415
+
+    gap = {
+        "code": "OW-A-013",
+        "symbol": "OW_PARSE_GAP_IN_SCOPE",
+        "meaning": "a parse gap in scope",
+        "docs": 1,
+        "pages": 2,
+        "severity": "blocking",
+        "fix": "ow ingest",
+    }
+    conn = sqlite3.connect(here / ".omniweave" / "index.owstore")
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = store_card.build_card(
+            conn,
+            name="handbook",
+            root="/corpus",
+            card_gen=4,
+            built_at_ns=NOW_NS,
+            writer_version="0.1.0",
+        )
+        store_card.write_card(conn, dataclasses.replace(row, gaps_json=json.dumps([gap])))
+        conn.execute("COMMIT")
+    finally:
+        conn.close()
+    [card] = omniweave.corpora()
+    assert card.gaps == (store_card.Gap(**gap),)
