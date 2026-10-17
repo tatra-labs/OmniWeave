@@ -142,6 +142,9 @@ class CorpusCard:
     Six fields carry more weight than their size suggests (10:1075) and two are worth restating
     here, because a caller who misreads either draws a false conclusion from a true payload:
 
+    - **`achieved` is `None` for a corpus with no indexed document** (D860), as
+      `store.card.capability_floor()` returns it and `ow_corpora` has always printed it: the
+      bottom of every ladder would claim the corpus incapable rather than unread.
     - **`achieved` is the MIN over indexed drivers**, not a card's claim -- the corpus's real
       capability floor. Serve reads `doc.achieved` per document for the byte-exactness predicate;
       this aggregate is what an agent uses to decide whether verbatim quoting is possible in this
@@ -169,7 +172,7 @@ class CorpusCard:
     date_range: Mapping[str, str | None]
     outline: tuple[str, ...]
     top_terms: tuple[str, ...]
-    achieved: Capabilities
+    achieved: Capabilities | None
     trust_hist: Mapping[str, int]
     quote_hist: Mapping[str, int]
     verbatim_fraction: float

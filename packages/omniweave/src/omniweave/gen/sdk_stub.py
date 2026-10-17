@@ -244,11 +244,11 @@ if _FAILURES:  # pragma: no cover -- the package agrees with itself; a test buil
 def owed() -> tuple[str, ...]:
     """Symbols 18 section 1 prints that `omniweave.sdk` does not export yet, sorted.
 
-    Two today -- `corpora` and `doctor`. D858 landed `Corpus`, `corpus` and `explain` in `sdk.api`.
-    Every one was waiting on the same thing: 02:719's ordered sequence, which the CLI needs for
-    `main()` and the SDK needs for a method body. `sdk/__init__.py`'s own docstring said so at
-    W7.1 (*"None of them exists yet -- they call `omniweave_core.retrieve.retrieve()` ... through
-    a dispatcher that is W7.2's"*), and D323 records that no work item lands it.
+    None today: D858 landed `Corpus`, `corpus` and `explain` in `sdk.api`, and D860 `corpora` and
+    `doctor`. Every one had been waiting on the same thing: 02:719's ordered sequence, which the
+    CLI needs for `main()` and the SDK needs for a method body. `sdk/__init__.py`'s own docstring
+    said so at W7.1 (*"None of them exists yet -- they call `omniweave_core.retrieve.retrieve()`
+    ... through a dispatcher that is W7.2's"*), and D323 records that no work item lands it.
 
     A register rather than a comment, so the distance is a number a test pins. The stub grows by
     itself when they arrive: `render()` reads `__all__`, so an entry point exported by the package

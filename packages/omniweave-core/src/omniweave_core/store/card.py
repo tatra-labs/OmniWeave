@@ -104,6 +104,7 @@ __all__ = [
     "capability_floor",
     "card_stale",
     "corpora_card",
+    "corpora_cards",
     "corpora_coverage",
     "corpora_list",
     "inspect",
@@ -676,12 +677,31 @@ def corpora_list(
             if named.endswith(WILDCARD)
             else [n for n in names if n == named]
         )
-    stores = [_Store(name=n, default=n == default, read=inspect(corpora[n])) for n in names]
-    stores.sort(key=lambda s: (not s.default, -_card_gen(s.read.row), s.name))
+    stores = _ordered(corpora, names, default=default)
     shown = stores[:CORPORA_LIST_MAX]
     return _corpora_document(
         [_list_row(entry) for entry in shown], shown, truncated=len(stores) > len(shown)
     )
+
+
+def corpora_cards(corpora: Mapping[str, Path], *, default: str | None) -> dict[str, object]:
+    """Every corpus's whole `card` entry, in the list's order and uncapped: `omniweave.corpora()`.
+
+    D860. 18:180 prints the SDK's `corpora()` as `tuple[CorpusCard, ...]`, which has no field to
+    say it was cut at `CORPORA_LIST_MAX`. That cap guards a wire budget the SDK does not spend, so
+    it returns every declared corpus rather than a silently shortened tuple.
+    """
+    stores = _ordered(corpora, sorted(corpora), default=default)
+    return _corpora_document([_full_row(entry) for entry in stores], stores)
+
+
+def _ordered(
+    corpora: Mapping[str, Path], names: Sequence[str], *, default: str | None
+) -> list[_Store]:
+    """10:1023's order: `default` first, then `card_gen` descending, then name."""
+    stores = [_Store(name=n, default=n == default, read=inspect(corpora[n])) for n in names]
+    stores.sort(key=lambda s: (not s.default, -_card_gen(s.read.row), s.name))
+    return stores
 
 
 def corpora_card(name: str, path: Path, *, default: str | None) -> dict[str, object]:

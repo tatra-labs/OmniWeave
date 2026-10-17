@@ -39,11 +39,15 @@ def test_init_is_a_home_with_only_the_lazy_alias() -> None:
     assert ast.get_docstring(tree), f"{PKG}/__init__.py must cite the plan section it serves"
     body = [node for node in tree.body if not isinstance(node, ast.Expr)]
     imports = [node for node in body if isinstance(node, ast.ImportFrom | ast.Import)]
-    assert {getattr(node, "module", None) for node in imports} == {"__future__", "typing"}
+    assert {getattr(node, "module", None) for node in imports} == {
+        "__future__",
+        "pathlib",
+        "typing",
+    }
     rest = [node for node in body if node not in imports]
-    assert [type(node).__name__ for node in rest] == ["FunctionDef"]
-    assert isinstance(rest[0], ast.FunctionDef)
-    assert rest[0].name == "__getattr__"
+    assert [type(node).__name__ for node in rest] == ["Assign", "FunctionDef"]
+    assert isinstance(rest[1], ast.FunctionDef)
+    assert rest[1].name == "__getattr__"
 
 
 def test_first_party_dependencies_are_exactly_the_layers_row() -> None:

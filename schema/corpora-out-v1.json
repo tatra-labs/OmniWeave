@@ -237,7 +237,14 @@
           }
         },
         "achieved": {
-          "$ref": "#/$defs/Capabilities"
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Capabilities"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "trust_hist": {
           "type": "object",
