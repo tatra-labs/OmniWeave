@@ -24,6 +24,7 @@ import pytest
 from omniweave.run.cost import (
     NO_DRIVER,
     RowCost,
+    RunWindow,
     by_key,
     earliest_decision,
     latest_run,
@@ -59,8 +60,15 @@ _SPEND = """INSERT INTO route_spend(decision_id, attempt, provider, calls, token
   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ok')"""
 _RUN = """INSERT INTO run(run_id, generation, trigger, argv, config_digest, semantic_digest,
     policy_digest, pricebook_digest, lock_digest, omniweave_version, contract, schema, started_ns,
-    status, manifest_path) VALUES (?, ?, 'cli', '[]', 'c', 's', 'p', '', 'l', '0.1.0', 1, 1, 0,
-    'ok', ?)"""
+    ended_ns, status, manifest_path) VALUES (?, ?, 'cli', '[]', 'c', 's', 'p', '', 'l', '0.1.0', 1,
+    1, ?, ?, 'ok', ?)"""
+HOUR_MS = 3_600_000
+
+
+def _ns(ms: int) -> int:
+    return ms * 1_000_000
+
+
 _WORK = """INSERT INTO work(unit_uri, unit_part, operator, op_version, cache_key, cost_class,
     status, cost_micros, claimed_gen, last_attempt_at)
   VALUES (?, '', ?, 1, ?, ?, 'done', ?, ?, ?)"""
@@ -119,18 +127,20 @@ def _seed(connection: Any, manifest: str) -> None:
             ("dE", 1, "", 1, 0, 0, 0, 700, 0, 0),
         ],
     )
-    # unit, operator, cache_key, class, micros, claimed_gen, last_attempt_at
+    # unit, operator, cache_key, class, micros, claimed_gen, last_attempt_at. A finished row's
+    # claimed_gen is NULL, as completion leaves it: a run owns its op rows by time (D855).
     connection.executemany(
         _WORK,
         [
-            ("file:///a", "op.cluster", "k1", "local_compute", 250, 1, OCT_1),
-            ("file:///b", "op.cluster", "k2", "local_compute", 50, 2, OCT_10),
-            ("file:///a", "op.identify", "k3", "free", 0, 1, OCT_1),
-            ("file:///b", "op.identify", "k4", "free", 0, 1, OCT_1),
+            ("file:///a", "op.cluster", "k1", "local_compute", 250, None, OCT_1),
+            ("file:///b", "op.cluster", "k2", "local_compute", 50, None, OCT_10),
+            ("file:///a", "op.identify", "k3", "free", 0, None, OCT_1),
+            ("file:///b", "op.identify", "k4", "free", 0, None, OCT_1),
         ],
     )
-    connection.execute(_RUN, ("r1", 1, manifest))
-    connection.execute(_RUN, ("r2", 2, ""))
+    # r1 ran an hour either side of 2026-10-01 noon; r2 started before 2026-10-10 noon, still open.
+    connection.execute(_RUN, ("r1", 1, _ns(OCT_1 - HOUR_MS), _ns(OCT_1 + HOUR_MS), manifest))
+    connection.execute(_RUN, ("r2", 2, _ns(OCT_10 - HOUR_MS), None, ""))
     connection.commit()
 
 
@@ -183,11 +193,42 @@ def test_every_driver_and_operator_over_the_whole_ledger(project: Path) -> None:
     assert _rows(project, "driver") == WHOLE
 
 
-def test_a_generation_keeps_its_own_decisions_and_op_rows(project: Path) -> None:
-    rows = {row.key: row for row in _rows(project, "driver", generation=1)}
+def _window(project: Path, run_id: str) -> RunWindow:
+    connection = store_sqlite.connect_readonly(project / ".omniweave" / "index.owstore")
+    try:
+        found = run_window(connection, run_id)
+    finally:
+        connection.close()
+    assert found is not None
+    return found
+
+
+def test_a_run_keeps_its_generations_decisions_and_the_op_rows_in_its_span(
+    project: Path,
+) -> None:
+    """Ruling 5: the op rows' claimed_gen is NULL, as a real run leaves it; the span decides."""
+    rows = {row.key: row for row in _rows(project, "driver", run=_window(project, "r1"))}
     assert (rows["derive.entity.llm"].units, rows["derive.entity.llm"].micros) == (1, 1500)
     assert (rows["op.cluster"].units, rows["op.cluster"].micros) == (1, 250)
+    assert (rows["op.identify"].units, rows["op.identify"].micros) == (2, 0)
     assert rows["parse.page.olmocr"].micros == 1000
+    later = {row.key: row for row in _rows(project, "driver", run=_window(project, "r2"))}
+    assert sorted(later) == ["derive.entity.llm", "op.cluster"]
+    assert (later["op.cluster"].units, later["op.cluster"].micros) == (1, 50)
+
+
+def test_a_run_span_is_closed_at_both_ends(project: Path) -> None:
+    """An op row a millisecond outside r1's span is not r1's; one on its edge is."""
+    r1 = _window(project, "r1")
+    assert r1.ended_ms is not None
+    edge = RunWindow("r1", 1, "", r1.started_ms, OCT_1)
+    assert "op.identify" in {row.key for row in _rows(project, "driver", run=edge)}
+    shut = RunWindow("r1", 1, "", r1.started_ms, OCT_1 - 1)
+    assert "op.identify" not in {row.key for row in _rows(project, "driver", run=shut)}
+    begun = RunWindow("r1", 1, "", OCT_1, None)
+    assert "op.identify" in {row.key for row in _rows(project, "driver", run=begun)}
+    late = RunWindow("r1", 1, "", OCT_1 + 1, None)
+    assert "op.identify" not in {row.key for row in _rows(project, "driver", run=late)}
 
 
 def test_since_keeps_decisions_and_op_rows_at_or_after_the_cutoff(project: Path) -> None:
@@ -280,6 +321,8 @@ def test_the_earliest_decision_and_a_run_window(project: Path) -> None:
         connection.close()
     assert r1 is not None and r2 is not None
     assert (r1.generation, r2.generation, r2.manifest_path) == (1, 2, "")
+    assert (r1.started_ms, r1.ended_ms) == (OCT_1 - HOUR_MS, OCT_1 + HOUR_MS)
+    assert (r2.started_ms, r2.ended_ms) == (OCT_10 - HOUR_MS, None)
     assert manifest_billed(r1.manifest_path) == 2500
 
 
