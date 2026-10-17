@@ -92,7 +92,7 @@ import threading
 from dataclasses import dataclass, field, replace
 from importlib import metadata
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final, cast, get_args
 
 from omniweave_core.acquire import (
     IngestGuards,
@@ -135,6 +135,7 @@ from omniweave.run.manifest import (
     ManifestWriter,
     Provenance,
     RunTally,
+    Trigger,
     manifest_path,
 )
 from omniweave.run.operators import lexicon as op_lexicon
@@ -209,8 +210,14 @@ TRIGGER: Final[str] = "cli"
 
 `hook` and `mcp` are the rows a `PostToolUse` drain and an `ow_add` child would write, and neither
 exists: no module in the workspace may spawn a detached child (D554, D433), so every `ow ingest`
-this build runs was typed by someone.
+this build runs was typed by someone. The one exception is `sdk` (D862): `omniweave.corpus(...,
+readonly=False).add()` runs this drain in its caller's process and passes `trigger="sdk"`, 18:440's
+*"never `cli`, which is the consent a human gave by typing"*.
 """
+
+TRIGGERS: Final[frozenset[str]] = frozenset(get_args(Trigger))
+"""`run.trigger`'s CHECK (0004_runtime.sql:257), as `run.manifest.Trigger` spells it; a caller's
+trigger is held to it before a run opens."""
 
 STOPPED_AT: Final[str] = (
     "planned and not parsed by this run: its row is retrying (see the parse lines above)"
@@ -566,8 +573,13 @@ def ingest(
     accept_partial: bool = False,
     passwords: Passwords | None = None,
     services_root: Path | None = None,
+    trigger: Trigger = "cli",
 ) -> IngestReport:
     """Run hops 1-4 over one store, under `store.write`, and report where every unit stopped.
+
+    `trigger` is the `run.trigger` the run records, `cli` unless a caller says otherwise; the SDK's
+    `Corpus.add()` says `sdk` (D862). One outside `run.trigger`'s CHECK is a `ValueError` before
+    anything opens.
 
     `offline` is `ow add --offline`: routing's `ProbeEnv.offline`, so a driver that needs the
     network does not resolve (`routing.resolve_policy`, D631). `ignore_evidence_cache` is `ow
@@ -588,6 +600,9 @@ def ingest(
     rostered and nothing to walk has no work that could exist -- and creating an empty store as a
     side effect of a typo in `--corpus` would leave a file that says a corpus is there.
     """
+    if trigger not in TRIGGERS:
+        message = f"trigger {trigger!r} is not one of {', '.join(sorted(TRIGGERS))}"
+        raise ValueError(message)
     ticking = SystemClock() if clock is None else clock
     if not store.exists():
         if not paths:
@@ -599,7 +614,14 @@ def ingest(
     host = sup.HostFacts.measure(store.parent)
     lock = store_write_lock(store, now_ns=ticking.wall_ns)
     with ow.StoreThread(lambda: ow.connect(store), lock=lock) as thread:
-        opened = open_run(thread, config=config, argv=argv, clock=ticking, output_root=output_root)
+        opened = open_run(
+            thread,
+            config=config,
+            argv=argv,
+            clock=ticking,
+            output_root=output_root,
+            trigger=trigger,
+        )
         book = _Book(opened, config=config, host=host, clock=ticking)
         book.write()
         try:
@@ -668,6 +690,7 @@ class OpenedRun:
     started_ns: int
     provenance: Provenance
     manifest: Path | None
+    trigger: Trigger = "cli"
 
 
 def open_run(
@@ -677,6 +700,7 @@ def open_run(
     argv: Sequence[str],
     clock: Clock,
     output_root: Path | None = None,
+    trigger: Trigger = "cli",
 ) -> OpenedRun:
     """Hop 1. The `run` row, `status = 'running'`, and the generation it minted.
 
@@ -691,7 +715,7 @@ def open_run(
     started_ns = clock.wall_ns()
     params = {
         "run_id": run_id,
-        "trigger": TRIGGER,
+        "trigger": trigger,
         "argv": json.dumps(list(argv), separators=(",", ":")),
         "config_digest": config.config_digest,
         "semantic_digest": config.semantic_digest,
@@ -722,7 +746,7 @@ def open_run(
         semantic_digest=config.semantic_digest,
         policy_digest=str(params["policy_digest"]),
     )
-    return OpenedRun(run_id, generation, started_ns, provenance, manifest)
+    return OpenedRun(run_id, generation, started_ns, provenance, manifest, trigger)
 
 
 def close_run(
@@ -810,7 +834,13 @@ def _hops(
     )
     opened = book.stage(Stage.DISCOVER, opened)
     context = _context(
-        run_id, generation, config=config, roots=roots, clock=clock, services_root=services_root
+        run_id,
+        generation,
+        config=config,
+        roots=roots,
+        clock=clock,
+        services_root=services_root,
+        trigger=book.trigger,
     )
     enqueued, unsalted = _enqueue(thread, context, plan_batch=plan_batch)
     book.catalog(inputs.catalog.catalog_digest)
@@ -1358,6 +1388,7 @@ def _context(
     roots: Roots,
     clock: Clock,
     services_root: Path,
+    trigger: Trigger = "cli",
 ) -> RunContext:
     """The `RunContext` for hop 4. Three fields are `None`, and the type says each is unread.
 
@@ -1376,7 +1407,7 @@ def _context(
     return RunContext(
         run_id=run_id,
         generation=generation,
-        trigger=TRIGGER,  # type: ignore[arg-type]
+        trigger=trigger,
         roots=roots,
         config_digest=config.config_digest,
         semantic_digest=config.semantic_digest,
@@ -1875,6 +1906,11 @@ class _Book:
         self.tally = RunTally()
 
     @property
+    def trigger(self) -> Trigger:
+        """The run's `run.trigger`, which the manifest and the `RunContext` repeat (D862)."""
+        return self._opened.trigger
+
+    @property
     def path(self) -> str:
         """The manifest's path, or the empty string for a run that keeps none."""
         return "" if self._writer is None else str(self._writer.path)
@@ -1905,7 +1941,7 @@ class _Book:
             self.tally.snapshot(
                 run_id=opened.run_id,
                 generation=opened.generation,
-                trigger=TRIGGER,
+                trigger=opened.trigger,
                 status=status,
                 started_ns=opened.started_ns,
                 ended_ns=ended_ns,

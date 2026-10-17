@@ -94,8 +94,8 @@ def test_ow_add_under_render_json_reports_the_completed_document(project: Path) 
     assert added.returncode == 0, added.stderr.decode("utf-8", "replace")
     document: dict[str, Any] = json.loads(added.stdout.decode("utf-8"))
     schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
-    #  D555: `scope_id` is the store's text prefix, `ow_add`'s own deviation; the rest validates.
-    Draft202012Validator(schema).validate({**document, "scope_id": 0})
+    #  D862: `scope_id` is `str | None`, D555's text prefix, so the document validates as it is.
+    Draft202012Validator(schema).validate(document)
     (completed,) = document["completed"]
     assert completed["uri"].endswith(f"/{CJK}/rich.docx")
     assert (completed["doc_ord"], completed["gen"]) == (1, 1)
