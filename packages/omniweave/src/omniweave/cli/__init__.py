@@ -211,6 +211,11 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 spelling=("--run",),
                 metavar="RUN",
             ),
+            Argument(
+                spelling=("--verify",),
+                kind="switch",
+                default=False,
+            ),
         ),
     ),
     Command(

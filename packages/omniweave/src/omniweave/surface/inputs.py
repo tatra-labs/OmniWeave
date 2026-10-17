@@ -528,14 +528,16 @@ class CostIn:
     and this build serves all but `document`, which is refused by name. `since` is a duration
     back from now, `<n>m|h|d`; `run` scopes the window to one run's generation and is what makes
     the reconcile line possible; the two are exclusive, as 5.4's grammar prints them. `corpus` is
-    the store the ledger lives in. `--currency` and `--verify` are not fields yet: a field the
-    schema publishes is a promise, and those two are not served.
+    the store the ledger lives in. `verify` runs I30's self-checks over one run and fails on a
+    mismatch (D853). `--currency` is not a field yet: a field the schema publishes is a promise,
+    and it is not served.
     """
 
     by: str = "driver"
     since: str | None = None
     run: str | None = None
     corpus: str | None = None
+    verify: bool = False
 
 
 @dataclass(frozen=True, slots=True)
