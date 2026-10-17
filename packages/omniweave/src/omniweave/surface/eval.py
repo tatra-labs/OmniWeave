@@ -1,4 +1,4 @@
-"""`ow eval <verb>`: `publish` (D833), `release-check` (D840) and `bless` (D846).
+"""`ow eval <verb>`: `publish` (D833), `release-check` (D840), `bless` (D846) and `run` (D868).
 
 10-interfaces.md section 2.5: *"`omniweave-conform` implements the `eval` Action group"*. Every
 `eval` row stays in `ACTIONS` here, and the work happens across an entry point,
@@ -41,6 +41,15 @@ the row together.
    refused by name, as nothing writes a counter baseline yet. The date is today's, UTC, read
    once here from `SystemClock` as the other surfaces read the wall clock. A refusal in the
    bless is `QualityError`, exit 1, as in ruling 3.
+8. **`run` measures one suite and writes it** (13:1873, D868). `--suite` omitted is every suite
+   this build measures, which is `parse`; another of the seven is refused by name, as is a name
+   outside them. `--witness` and `--cassette` must be values their `eval_run` columns admit.
+   `--validate-judge` and `--emit` are refused by name, and so is the global `--corpus`, which
+   13:1873 gives this verb as `--corpus C@V`: a subject's corpus is its own fixture set, so a
+   corpus named here would be ignored. The `.oweval` is created when it does not exist, because
+   a run is what writes one. Each subject prints as a line, then one verdict line. `--render json`
+   prints one object: `suite`, `oweval` and `runs`. A refusal from the suite, such as a register
+   with no `[[subject]]`, is `QualityError`, exit 1, as in ruling 3.
 """
 
 from __future__ import annotations
@@ -56,6 +65,8 @@ from omniweave.sdk.reports import (
     EvalPublishReport,
     EvalReleaseCheckReport,
     EvalReleaseFinding,
+    EvalRunReport,
+    EvalRunRow,
 )
 from omniweave.surface.dispatch import eval_entry
 from omniweave.surface.query import parse
@@ -71,6 +82,21 @@ EVAL_WORD: Final[str] = "eval"
 _PUBLISH_FIX: Final[str] = "ow eval publish [--oweval PATH] [--results DIR] [--check]"
 _RELEASE_FIX: Final[str] = "ow eval release-check [--oweval PATH] [--gates PATH] [--strict]"
 _BLESS_FIX: Final[str] = "OMNIWEAVE_BLESS=1 ow eval bless --inventory --reason '<why>'"
+_RUN_FIX: Final[str] = "ow eval run --suite parse [--subject D] [--witness W] [--cassette MODE]"
+SUITES: Final[tuple[str, ...]] = (
+    "parse",
+    "extract",
+    "retrieve",
+    "absence",
+    "roundtrip",
+    "portability",
+    "perf",
+)
+"""13:237-242's seven suites, the `eval_run.suite` CHECK, in that order."""
+RUN_SUITES: Final[tuple[str, ...]] = ("parse",)
+"""Ruling 8: the suites `ow eval run` measures in this build."""
+WITNESSES: Final[tuple[str, ...]] = ("ci", "self", "third_party")
+CASSETTES: Final[tuple[str, ...]] = ("off", "allow", "required")
 _STALE: Final[int] = 1
 _REFUSED: Final[int] = 1
 
@@ -352,7 +378,145 @@ def _bless_row(done: EvalBlessReport) -> dict[str, object]:
     }
 
 
+def _run(parsed: argparse.Namespace, *, cwd: Path, env: Mapping[str, str], stdout: TextIO) -> int:
+    """Ruling 8."""
+    del env  # `run` reads no environment.
+    if parsed.render in ("jsonl", "rows"):
+        raise UsageError(
+            f"--render {parsed.render} is parsed and not served by ow eval run", fix=_RUN_FIX
+        )
+    named = [
+        flag
+        for flag, given in (
+            ("--corpus", parsed.corpus is not None),
+            ("--validate-judge", parsed.validate_judge),
+            ("--emit", parsed.emit is not None),
+        )
+        if given
+    ]
+    if named:
+        raise UsageError(
+            f"{', '.join(named)} is parsed and not served by ow eval run in this build: each "
+            "subject's corpus is its own fixture set, no judge runs, and no result file is written",
+            fix=_RUN_FIX,
+        )
+    suite = parsed.suite or RUN_SUITES[0]
+    if suite not in SUITES:
+        raise UsageError(f"--suite {suite!r} is not one of {', '.join(SUITES)}", fix=_RUN_FIX)
+    if suite not in RUN_SUITES:
+        raise UsageError(
+            f"--suite {suite} is not measured in this build; ow eval run measures "
+            f"{', '.join(RUN_SUITES)}",
+            fix=_RUN_FIX,
+        )
+    for flag, value, allowed in (
+        ("--witness", parsed.witness, WITNESSES),
+        ("--cassette", parsed.cassette, CASSETTES),
+    ):
+        if value not in allowed:
+            raise UsageError(f"{flag} {value!r} is not one of {', '.join(allowed)}", fix=_RUN_FIX)
+    gates = cwd / parsed.gates
+    if not gates.is_file():
+        raise NotFoundError(
+            f"no metric register at {gates}",
+            fix="pass --gates PATH naming the eval/gates.toml register",
+        )
+    oweval = cwd / parsed.oweval
+    done = _ran(
+        eval_entry("run")(
+            oweval=str(oweval),
+            gates=str(gates),
+            root=str(cwd),
+            suite=suite,
+            subject=parsed.subject,
+            witness=parsed.witness,
+            cassette=parsed.cassette,
+        )
+    )
+    if parsed.render == "json":
+        stdout.write(json.dumps(_run_row(done), ensure_ascii=False) + "\n")
+        return 0
+    for row in done.runs:
+        rate = "vacuous" if row.value is None else f"{row.value:.4f} over {row.n}"
+        stdout.write(
+            f"  {row.subject:<24} {row.slice:<20} {row.metric} {rate}; "
+            f"{row.parsed} parsed, {len(row.refused)} refused\n"
+        )
+    stdout.write(
+        f"ow eval run --suite {done.suite}: {len(done.runs)} run(s) written to {parsed.oweval}\n"
+    )
+    return 0
+
+
+def _ran(result: Mapping[str, object]) -> EvalRunReport:
+    """The entry point's builtins as this side's report. Anything else is a broken install."""
+    suite, oweval, runs = (result.get(k) for k in ("suite", "oweval", "runs"))
+    if not (
+        isinstance(suite, str)
+        and isinstance(oweval, str)
+        and isinstance(runs, list)
+        and all(_run_shape(row) for row in runs)
+    ):
+        raise InternalError(
+            "the [omniweave.eval] run entry point returned no suite, oweval and runs",
+            fix="pip install --force-reinstall omniweave-conform",
+        )
+    return EvalRunReport(
+        suite=suite,
+        oweval=oweval,
+        runs=tuple(
+            EvalRunRow(
+                run_id=row["run_id"],
+                subject=row["subject"],
+                slice=row["slice"],
+                corpus=row["corpus"],
+                metric=row["metric"],
+                value=row["value"],
+                n=row["n"],
+                parsed=row["parsed"],
+                refused=tuple(row["refused"]),
+            )
+            for row in runs
+        ),
+    )
+
+
+def _run_shape(row: object) -> bool:
+    return (
+        isinstance(row, dict)
+        and all(
+            isinstance(row.get(k), str) for k in ("run_id", "subject", "slice", "corpus", "metric")
+        )
+        and (row.get("value") is None or isinstance(row.get("value"), float))
+        and all(isinstance(row.get(k), int) for k in ("n", "parsed"))
+        and isinstance(row.get("refused"), list)
+        and all(isinstance(x, str) for x in row["refused"])
+    )
+
+
+def _run_row(done: EvalRunReport) -> dict[str, object]:
+    return {
+        "suite": done.suite,
+        "oweval": done.oweval,
+        "runs": [
+            {
+                "run_id": row.run_id,
+                "subject": row.subject,
+                "slice": row.slice,
+                "corpus": row.corpus,
+                "metric": row.metric,
+                "value": row.value,
+                "n": row.n,
+                "parsed": row.parsed,
+                "refused": list(row.refused),
+            }
+            for row in done.runs
+        ],
+    }
+
+
 _VERBS: Final[Mapping[str, Callable[..., int]]] = {
+    "eval.run": _run,
     "eval.publish": _publish,
     "eval.release_check": _release_check,
     "eval.bless": _bless,

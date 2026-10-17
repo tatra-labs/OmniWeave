@@ -54,6 +54,7 @@ key can grant one.
 | `eval.bless` | — | `ow eval bless` | — | `free` | Rewrite eval/inventory.toml from the test collection and append the BLESS.log row a fall in its counts needs; OMNIWEAVE_BLESS=1 and a reason are required |
 | `eval.publish` | — | `ow eval publish` | — | `free` | Export the .oweval scoreboard into the committed eval/results tree, every row whatever its direction, or with --check report which files differ |
 | `eval.release_check` | — | `ow eval release-check` | — | `free` | Refuse a release on any unknown run, metric or perf row, and on any hard eval/gates.toml gate off its budget or unmeasured; --strict also on a suite never run |
+| `eval.run` | — | `ow eval run` | — | `free` | Run one eval suite over the metric register's subjects and write its runs and metrics to the .oweval in one transaction; this build measures parse |
 | `explain` | `ow_explain` | `ow explain` | full | `free` | Resolve an OW-* code or symbol to what it means and the exact command that clears it; reads no corpus, so it answers on a machine with no store at all |
 | `graph.doctor` | — | `ow graph doctor` | — | `free` | Check the graph's operability: the residue signals against their thresholds, the trust clamp, the entropy gate, anchor counts, candidate pairs and report states |
 | `graph.locate` | `ow_locate` | `ow graph locate` | full | `free` | Find where on the page an entity, claim, edge or mention was witnessed: one location per witness, with its page, its span and its polygon or the reason none |

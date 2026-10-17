@@ -107,7 +107,7 @@ GLOBAL_FLAGS: Final[tuple[Argument, ...]] = (
 
 GROUP_HELP: Final[dict[str, str]] = {
     "doc": "diff · grid",
-    "eval": "bless · publish · release-check",
+    "eval": "bless · publish · release-check · run",
     "graph": "doctor · locate · merge · merges · plan · residue · review · split · types · why",
     "hooks": "check",
     "out": (
@@ -343,6 +343,53 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 spelling=("--strict",),
                 kind="switch",
                 default=False,
+            ),
+        ),
+    ),
+    Command(
+        words=("eval", "run"),
+        actions=("eval.run",),
+        help=(
+            "Run one eval suite over the metric register's subjects and write its runs and "
+            "metrics to the .oweval in one transaction; this build measures parse"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--suite",),
+                metavar="SUITE",
+            ),
+            Argument(
+                spelling=("--subject",),
+                metavar="SUBJECT",
+            ),
+            Argument(
+                spelling=("--witness",),
+                metavar="WITNESS",
+                default="self",
+            ),
+            Argument(
+                spelling=("--cassette",),
+                metavar="CASSETTE",
+                default="off",
+            ),
+            Argument(
+                spelling=("--validate-judge",),
+                kind="switch",
+                default=False,
+            ),
+            Argument(
+                spelling=("--emit",),
+                metavar="EMIT",
+            ),
+            Argument(
+                spelling=("--oweval",),
+                metavar="OWEVAL",
+                default="eval/omniweave.oweval",
+            ),
+            Argument(
+                spelling=("--gates",),
+                metavar="GATES",
+                default="eval/gates.toml",
             ),
         ),
     ),

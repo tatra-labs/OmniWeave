@@ -23,6 +23,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     eval.bless        EvalBlessIn         EvalBlessReport
     eval.publish      EvalPublishIn       EvalPublishReport
     eval.release_check EvalReleaseCheckIn  EvalReleaseCheckReport
+    eval.run          EvalRunIn           EvalRunReport
     explain           ExplainIn           CodeRow
     graph.doctor      GraphDoctorIn       GraphDoctorReport
     graph.locate      LocateIn            Located
