@@ -241,8 +241,10 @@ class AddReport:
     **There is no `verdict` field**, and 18:1525 gives the reason: `ow_add` writes the roster rather
     than the queue, so it has no verdict to report -- *"`deadline_reached` plus the four counts plus
     `pending[].reason` say everything a `verdict` enum would have, without inventing a fifth state
-    vocabulary"*. `scope_id` is an integer because it is the `ingest_scope` row id and
-    `ow queue status --scope <id>` takes it.
+    vocabulary"*. `scope_id` is the `ingest_scope` row's id, which `ow queue status --scope <id>`
+    takes. It is `str | None` (D862): `ingest_scope.scope_id` is `TEXT`, D555's prefix of the one
+    directory added, and `null` when the sources were not one directory -- what `ow add` and
+    `ow_add` have always emitted, against an `int` the type had said.
 
     The deadline is `[serve] add_deadline_ms`, default 20,000 (10:1120). `ow_add` always returns
     inside it, with `deadline_reached = True` and everything still in flight under `pending` with
@@ -251,7 +253,7 @@ class AddReport:
     running"*.
     """
 
-    scope_id: int
+    scope_id: str | None
     corpus: str
     discovered: int
     unchanged: int

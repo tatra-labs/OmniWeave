@@ -77,9 +77,10 @@ def _schema() -> dict[str, Any]:
 
 
 def _validate(document: dict[str, Any]) -> None:
-    """`add-out-v1.json`, with D555's one deviation put back: `scope_id` is the store's prefix."""
+    """`add-out-v1.json`, as it is. D862 typed `scope_id` `str | None`, D555's text prefix, so the
+    document validates without the deviation this helper used to put back."""
     assert document["scope_id"] is None or isinstance(document["scope_id"], str)
-    Draft202012Validator(_schema()).validate({**document, "scope_id": 0})
+    Draft202012Validator(_schema()).validate(document)
 
 
 # ---------------------------------------------------------------------------------------------

@@ -20,7 +20,10 @@
   ],
   "properties": {
     "scope_id": {
-      "type": "integer"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "corpus": {
       "type": "string"
