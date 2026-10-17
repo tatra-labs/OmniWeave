@@ -303,11 +303,17 @@ CRITERIA: tuple[Criterion, ...] = (
                 f"{CLI}/test_cost_verb.py",
                 label="ow cost --by driver, its reconcile and --verify (D838, D853)",
             ),
+            pytest(
+                f"{T3}/test_spend_reconciles_process.py",
+                label="a real ow add verifies under ow cost --verify (D854)",
+            ),
         ),
         Coverage.PARTIAL,
-        "`ow cost --by driver --verify` holds a run to I30's two self-checks over a seeded ledger, "
-        "never a real run's; a real `ow add` fails the second today, since parse attempts write "
-        "no spend row (D853); and no test reads every manifest a run emits",
+        "a real `ow add` of three drivers' documents reconciles under `ow cost --verify` (D854), "
+        "but the first-party drivers report no physical metrics, so every parse bill is a "
+        "measured zero and a PriceBook pricing wall or CPU time would price nothing; "
+        "`ow cost --run` drops `op.*` rows (D853); no run is priced, so the 0-micro equality is "
+        "0 == 0; and no test reads every manifest a run emits",
     ),
     Criterion(
         "V10-14",

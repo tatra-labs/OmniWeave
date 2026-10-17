@@ -85,10 +85,10 @@ properties = 0
 
 [[area]]
 area = "omniweave/conform"
-tests = 95
+tests = 96
 properties = 0
 
 [[area]]
 area = "omniweave/unit"
-tests = 4164
+tests = 4167
 properties = 0
