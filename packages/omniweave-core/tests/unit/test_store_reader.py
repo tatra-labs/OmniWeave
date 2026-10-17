@@ -445,7 +445,7 @@ def test_the_narrowing_probe_runs_on_a_read_only_connection_and_leaves_no_temp_f
     assert reader._connection.execute("PRAGMA temp_store").fetchone()[0] == 2
     with reader.snapshot() as state:
         narrowing = reader.narrow(state, Filters())
-        assert narrowing == ("set", "tmp_narrow", 1)
+        assert narrowing[:3] == ("set", "tmp_narrow", 1)
         temp_objects = {
             str(row[0]) for row in reader._connection.execute("SELECT name FROM temp.sqlite_master")
         }
@@ -466,12 +466,12 @@ def test_all_three_narrowing_kinds_are_reachable(
     monkeypatch.setattr(rd, "PREFILTER_MAX", 1)
     reader = _reader(built)
     with reader.snapshot() as state:
-        assert reader.narrow(state, Filters()) == ("empty", None, 0)
+        assert reader.narrow(state, Filters())[:3] == ("empty", None, 0)
 
     _seed_one_block(built)
     reader = _reader(built)
     with reader.snapshot() as state:
-        assert reader.narrow(state, Filters()) == ("set", "tmp_narrow", 1)
+        assert reader.narrow(state, Filters())[:3] == ("set", "tmp_narrow", 1)
 
     conn = built.writer
     conn.execute("BEGIN IMMEDIATE")
@@ -480,7 +480,7 @@ def test_all_three_narrowing_kinds_are_reachable(
     conn.execute("COMMIT")
     reader = _reader(built)
     with reader.snapshot() as state:
-        assert reader.narrow(state, Filters()) == ("all", None, 2)
+        assert reader.narrow(state, Filters())[:3] == ("all", None, 2)
 
 
 def test_an_empty_filter_set_short_circuits_before_any_statement_runs(built: Built) -> None:
@@ -499,7 +499,7 @@ def test_an_empty_filter_set_short_circuits_before_any_statement_runs(built: Bui
     with reader.snapshot() as state:
         statements: list[str] = []
         reader._connection.set_trace_callback(statements.append)
-        assert reader.narrow(state, Filters(kinds=frozenset())) == ("empty", None, 0)
+        assert reader.narrow(state, Filters(kinds=frozenset()))[:3] == ("empty", None, 0)
         assert statements == []
         assert reader.narrow(state, Filters()).kind == "set"
         reader._connection.set_trace_callback(None)
@@ -522,7 +522,7 @@ def test_every_positively_empty_set_filter_narrows_to_empty(
     _seed_one_block(built)
     reader = _reader(built)
     with reader.snapshot() as state:
-        assert reader.narrow(state, empty_filter) == ("empty", None, 0)
+        assert reader.narrow(state, empty_filter)[:3] == ("empty", None, 0)
 
 
 def test_the_filters_that_narrow_actually_narrow(built: Built) -> None:
@@ -561,7 +561,7 @@ def test_the_filters_that_narrow_actually_narrow(built: Built) -> None:
         assert reader.narrow(state, Filters(uri_prefix="file:///corpus/")).n == 5
         assert reader.narrow(state, Filters(formats=frozenset({"markdown"}))).n == 1
         assert reader.narrow(state, Filters(doc_keys=frozenset({bytes([2]) * 16}))).n == 1
-        assert reader.narrow(state, Filters(gen=2)) == ("empty", None, 0)
+        assert reader.narrow(state, Filters(gen=2))[:3] == ("empty", None, 0)
 
 
 def test_a_uri_prefix_range_still_contains_a_supplementary_plane_character(
@@ -660,7 +660,7 @@ def test_a_tombstoned_or_superseded_block_is_not_a_candidate(built: Built) -> No
     conn.execute("COMMIT")
     reader = _reader(built)
     with reader.snapshot() as state:
-        assert reader.narrow(state, Filters()) == ("set", "tmp_narrow", 1)
+        assert reader.narrow(state, Filters())[:3] == ("set", "tmp_narrow", 1)
         assert reader.narrow(state, Filters(gen=1)).n == 1
 
 
@@ -679,7 +679,7 @@ def test_doc_keys_above_the_cap_become_a_second_temp_table_and_not_an_in_list(
     keys = frozenset({bytes([1]) * 16, *(bytes([2, i // 256, i % 256]) * 5 for i in range(4))})
     with reader.snapshot() as state:
         below = reader.narrow(state, Filters(doc_keys=keys))
-        assert below == ("set", "tmp_narrow", 1)
+        assert below[:3] == ("set", "tmp_narrow", 1)
         temp_before = {
             str(row[0]) for row in reader._connection.execute("SELECT name FROM temp.sqlite_master")
         }
@@ -3520,4 +3520,63 @@ def test_an_order_for_a_block_the_channel_did_not_return_is_refused() -> None:
     with pytest.raises(ValueError, match="placed blocks it did not rank"):
         rd.ChannelOutcome(
             name="lexical", status="ok", ranked=(1,), order={1: (1, 0, 0), 2: (1, 0, 1)}
+        )
+
+
+# --- D859: the narrowing statement's exclusion count (07:2190) ------------------------------
+
+
+def test_the_mask_counts_what_it_removes_once_per_block_and_once_per_bit(built: Built) -> None:
+    """A block carrying two denied bits is one row and one count under each bit; an allowed bit,
+    another layer's block and another filter's exclusion are not the policy's."""
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    producer_id = _producer(conn)
+    _doc(conn, 1, uri="file:///corpus/a.pdf", fmt="pdf")
+    _block(conn, block_id=1, doc_ord=1, producer_id=producer_id, page=0)
+    _block(conn, block_id=2, doc_ord=1, producer_id=producer_id, page=0, ord_=1, restriction_bits=2)
+    _block(conn, block_id=3, doc_ord=1, producer_id=producer_id, page=0, ord_=2, restriction_bits=6)
+    _block(conn, block_id=4, doc_ord=1, producer_id=producer_id, page=0, ord_=3, restriction_bits=8)
+    _block(
+        conn,
+        block_id=5,
+        doc_ord=1,
+        producer_id=producer_id,
+        page=0,
+        ord_=4,
+        restriction_bits=2,
+        layer="furniture",
+    )
+    _block(
+        conn,
+        block_id=6,
+        doc_ord=1,
+        producer_id=producer_id,
+        page=0,
+        ord_=5,
+        restriction_bits=2,
+        kind="heading",
+    )
+    conn.execute("COMMIT")
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        masked = reader.narrow(state, Filters(deny_restriction_bits=6))
+        assert masked[:3] == ("set", "tmp_narrow", 2)
+        assert (masked.withheld_rows, masked.withheld_bits) == (3, ((2, 3), (4, 1)))
+        para = reader.narrow(
+            state, Filters(deny_restriction_bits=6, kinds=frozenset({Kind.PARAGRAPH}))
+        )
+        assert (para.withheld_rows, para.withheld_bits) == (2, ((2, 2), (4, 1)))
+        open_ = reader.narrow(state, Filters())
+        assert (open_.withheld_rows, open_.withheld_bits) == (0, ())
+        nothing = reader.narrow(state, Filters(deny_restriction_bits=16))
+        assert (nothing.withheld_rows, nothing.withheld_bits) == (0, ())
+        one_idle = reader.narrow(state, Filters(deny_restriction_bits=2 | 16))
+        assert one_idle.withheld_bits == ((2, 3),), "a denied bit that removed nothing is absent"
+        everything = reader.narrow(
+            state, Filters(deny_restriction_bits=2, kinds=frozenset({Kind.HEADING}))
+        )
+        assert everything[:3] == ("empty", None, 0)
+        assert (everything.withheld_rows, everything.withheld_bits) == (1, ((2, 1),)), (
+            "all the filter selected was barred: empty, and the count still says why"
         )

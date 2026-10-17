@@ -1508,11 +1508,42 @@ class SqliteReader:
             (*params, cap),
         )
         n = _one_int(connection, f"SELECT count(*) FROM {_TMP_NARROW}")  # noqa: S608
+        rows, bits = self._withheld(connection, f, joins)
         if n == 0:
-            return Narrowing(kind="empty", table=None, n=0)
+            return Narrowing("empty", None, 0, rows, bits)
         if n >= cap:
-            return Narrowing(kind="all", table=None, n=n)
-        return Narrowing(kind="set", table=_TMP_NARROW, n=n)
+            return Narrowing("all", None, n, rows, bits)
+        return Narrowing("set", _TMP_NARROW, n, rows, bits)
+
+    def _withheld(
+        self, connection: sqlite3.Connection, f: Filters, joins: str
+    ) -> tuple[int, tuple[tuple[int, int], ...]]:
+        """07:2190's exclusion count: what the policy's mask removed from this narrowing (D859).
+
+        The same predicates without the mask, and `(b.restriction_bits & ?) <> 0` in its place, so
+        a block counts once however many denied bits it carries (`rows`), and once per bit it
+        carries (`bits`). Exact, not capped at `PREFILTER_MAX`: gate 10 reports a count, and the
+        `block_restricted` partial index serves it. Nothing runs when the mask is zero.
+        """
+        mask = int(f.deny_restriction_bits)
+        if not mask:
+            return 0, ()
+        where, params = self._narrow_predicates(replace(f, deny_restriction_bits=0))
+        base = (
+            f"SELECT count(*) FROM block b JOIN doc d USING (doc_ord){joins} "  # noqa: S608
+            f"WHERE {' AND '.join(where)} AND (b.restriction_bits & ?) <> 0"
+        )
+        rows = int(connection.execute(base, (*params, mask)).fetchone()[0])
+        if not rows:
+            return 0, ()
+        bits = []
+        for shift in range(mask.bit_length()):
+            bit = 1 << shift
+            if mask & bit:
+                count = int(connection.execute(base, (*params, bit)).fetchone()[0])
+                if count:
+                    bits.append((bit, count))
+        return rows, tuple(bits)
 
     @staticmethod
     def _refuse_bad_filters(f: Filters) -> None:
