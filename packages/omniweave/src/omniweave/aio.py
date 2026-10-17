@@ -20,6 +20,10 @@ thing here most likely to change.
 4. **A single handle is not safe to share across concurrent tasks** (18:810): one call runs one
    snapshot on one thread at a time. Take a handle per task. And cancelling an awaitable does not
    interrupt a statement already running on its thread (18:812).
+5. **`AsyncCorpus.doc()` resolves on a worker thread and returns the sync `Doc`** (D865). 18:797's
+   rule is a twin for every `Corpus` method and module-level function, and `Doc` is neither: its
+   accessors are 03 section 13.5's, iterators over the store. A caller on a loop that walks a large
+   document wraps that walk in `asyncio.to_thread` itself.
 
 `omniweave_core` stays asyncio-free (G23): this module is in `omniweave`, and nothing imports it
 but a caller who names it.
@@ -38,6 +42,7 @@ if TYPE_CHECKING:
     from types import TracebackType
 
     from omniweave_core.answer.render import Answer, RenderedBlock
+    from omniweave_core.model.doc import Doc
     from omniweave_core.model.enums import Layer
     from omniweave_core.store.types import Coverage, Expand, Filters
 
@@ -191,6 +196,10 @@ class AsyncCorpus:
     async def coverage(self) -> Coverage:
         """`Corpus.coverage()` on a worker thread (ruling 1)."""
         return await asyncio.to_thread(self._inner.coverage)
+
+    async def doc(self, ref: str) -> Doc:
+        """`Corpus.doc()` on a worker thread; the `Doc` it returns is synchronous (ruling 5)."""
+        return await asyncio.to_thread(self._inner.doc, ref)
 
 
 class AsyncAnswer:
