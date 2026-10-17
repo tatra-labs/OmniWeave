@@ -48,6 +48,12 @@ three surfaces return one `Answer` for one question, and none of them imports an
 6. **`doctor()` is `ow doctor`'s `run()`**, the checks and the report the verb prints (D860). Like
    `corpora()`, its printed signature has no directory, so both read the process's directory
    through `sdk._ambient`, the one read G8 exempts, and the process environment.
+7. **`Corpus.card()` and `Corpus.coverage()` are the handle's two reads of itself** (D861).
+   `card()` is 18:460's *"`corpus_card` row at `card_gen`, read once and memoised for the
+   handle's life"*: the entry `corpora()` returns for this corpus, read on the first call and kept,
+   with `card_stale` set rather than recomputed. `coverage()` is `Reader.coverage()` over the whole
+   corpus in one snapshot, 18:464's gap list for absence gates 4-9, read fresh on every call because
+   it is what changes while a handle is held. `scope_rows == 0` is coverage UNKNOWN, as 18 warns.
 
 Specified in 18-api-sketch.md section 1.1-1.2 and 10-interfaces.md section 9.1.
 """
@@ -55,7 +61,7 @@ Specified in 18-api-sketch.md section 1.1-1.2 and 10-interfaces.md section 9.1.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, cast
 
@@ -67,7 +73,7 @@ if TYPE_CHECKING:
     from omniweave_core.answer.render import Answer
     from omniweave_core.config import Config
     from omniweave_core.model.enums import Layer
-    from omniweave_core.store.types import Expand, Filters
+    from omniweave_core.store.types import Coverage, Expand, Filters
 
     from omniweave.sdk.reports import CodeRow, CorpusCard, DoctorReport
 
@@ -220,6 +226,7 @@ class Corpus:
     generation: int
     _store: Path
     _config: Config
+    _memo: dict[str, Any] = field(default_factory=dict, compare=False, repr=False)
 
     def query(
         self,
@@ -288,6 +295,29 @@ class Corpus:
         return _packed(
             pack_open, opening, corpus=self.name, qualify=self._qualify(), max_chars=max_chars
         )
+
+    def card(self) -> CorpusCard:
+        """18:460: this corpus's card, read on the first call and kept (ruling 7)."""
+        if "card" not in self._memo:
+            from omniweave_core.store import card as store_card  # noqa: PLC0415
+
+            from omniweave.surface.startup import declared_corpus  # noqa: PLC0415
+
+            default, _ = declared_corpus(self._config)
+            document = store_card.corpora_card(self.name, self._store, default=default)
+            [row] = cast("list[Mapping[str, Any]]", document["corpora"])
+            self._memo["card"] = _card(row)
+        return cast("CorpusCard", self._memo["card"])
+
+    def coverage(self) -> Coverage:
+        """18:464: the gap list absence gates 4-9 read, over the whole corpus (ruling 7)."""
+        from omniweave_core.store.types import Filters  # noqa: PLC0415
+
+        def read(reader: Any) -> Coverage:
+            with reader.snapshot() as state:
+                return reader.coverage(state, Filters())
+
+        return cast("Coverage", self._read(read))
 
     def _read(self, call: Any) -> Any:
         """One read-only connection and reader for one call, closed before returning."""
