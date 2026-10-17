@@ -127,7 +127,14 @@ def _corpus(project: Path, name: str | None = "handbook") -> api.Corpus:
 
 @pytest.mark.parametrize(
     ("action", "member"),
-    [("query", api.Corpus.query), ("open", api.Corpus.open), ("explain", api.explain)],
+    [
+        ("query", api.Corpus.query),
+        ("open", api.Corpus.open),
+        ("explain", api.explain),
+        ("corpus.coverage", api.Corpus.coverage),
+        ("corpora", api.corpora),
+        ("doctor", api.doctor),
+    ],
 )
 def test_each_method_takes_exactly_the_parameters_18_prints(action: str, member: object) -> None:
     printed = SDK_HOMES[action].parameters
@@ -534,3 +541,54 @@ def test_a_cards_gaps_arrive_as_gap_records(here: Path) -> None:
         conn.close()
     [card] = omniweave.corpora()
     assert card.gaps == (store_card.Gap(**gap),)
+
+
+# --- Corpus.card() and Corpus.coverage() (D861) ---------------------------------------------
+
+
+def test_card_is_this_corpus_entry_and_is_kept_for_the_handles_life(here: Path) -> None:
+    _card(here)
+    handle = _corpus(here)
+    first = handle.card()
+    assert first == omniweave.corpora()[0]
+    assert first.card_gen == 3
+    conn = sqlite3.connect(here / ".omniweave" / "index.owstore")
+    try:
+        conn.execute("UPDATE corpus_card SET card_gen = 9")
+        conn.commit()
+    finally:
+        conn.close()
+    assert handle.card() is first, "18:460: read once and memoised"
+    assert _corpus(here).card().card_gen == 9, "a new handle reads it again"
+
+
+def test_coverage_is_the_live_gap_list_ow_corpora_prints(here: Path) -> None:
+    from omniweave.surface import corpora as corpora_verb  # noqa: PLC0415
+
+    out, err = io.StringIO(), io.StringIO()
+    code = corpora_verb.main(
+        ["corpora", "handbook", "--detail", "coverage", "--render", "json"],
+        cwd=here,
+        env=_env(here),
+        stdout=out,
+        stderr=err,
+    )
+    assert code == 0, err.getvalue()
+    [printed] = json.loads(out.getvalue())["corpora"]
+    coverage = _corpus(here).coverage()
+    for name in ("discovered", "indexed", "complete", "scope_rows", "pending_work"):
+        assert getattr(coverage, name) == printed["coverage"][name], name
+    assert coverage.scope_rows == 1
+
+
+def test_coverage_is_read_fresh_on_every_call(here: Path) -> None:
+    """A held handle sees the scan go missing: `scope_rows == 0` is coverage UNKNOWN."""
+    handle = _corpus(here)
+    assert handle.coverage().scope_rows == 1
+    conn = sqlite3.connect(here / ".omniweave" / "index.owstore")
+    try:
+        conn.execute("DELETE FROM ingest_scope")
+        conn.commit()
+    finally:
+        conn.close()
+    assert handle.coverage().scope_rows == 0
