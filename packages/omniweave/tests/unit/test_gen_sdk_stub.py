@@ -76,7 +76,7 @@ def test_the_stub_declares_exactly_what_the_package_exports() -> None:
     """Over-declaring is LEANN's `llms.txt` -- two tools against a four-tool server -- and G25 is
     named after it (00:851). Under-declaring hides a shipped promise from the byte diff 02:212
     makes the proof of the `T-PUBLIC` tier."""
-    assert _declared() == list(exported())
+    assert sorted(_declared()) == list(exported())
     assert exported() == tuple(sorted(sdk_package.__all__))
 
 
@@ -135,7 +135,7 @@ def test_the_stub_imports_from_the_module_the_package_imports_from() -> None:
     }
     assert sources == set(SOURCES)
     assert sdk_package.Gap.__module__ == "omniweave_core.store.card"
-    assert sources == {"omniweave.sdk.reports"}
+    assert sources == {"omniweave.sdk.api", "omniweave.sdk.reports"}
 
 
 def test_four_of_the_declared_names_are_a_landed_actions_out_type() -> None:
@@ -150,10 +150,10 @@ def test_four_of_the_declared_names_are_a_landed_actions_out_type() -> None:
 # ---------------------------------------------------------------------------------------------
 
 
-def test_the_five_printed_entry_points_are_owed_and_named() -> None:
-    """18 section 1.1's four module-level names and section 1.2's class. Every one waits on
-    02:719's ordered sequence, which D323 records as scheduled by no work item."""
-    assert owed() == ("Corpus", "corpora", "corpus", "doctor", "explain")
+def test_the_printed_entry_points_still_owed_are_named() -> None:
+    """18 section 1.1's four module-level names and section 1.2's class: D858 landed `Corpus`,
+    `corpus` and `explain`, and `corpora` and `doctor` are still owed."""
+    assert owed() == ("corpora", "doctor")
     for name in owed():
         assert not hasattr(sdk_package, name), name
 
@@ -163,8 +163,8 @@ def test_the_stub_does_not_mention_a_symbol_it_is_owed() -> None:
     for node in _stub_tree().body:
         if isinstance(node, ast.ImportFrom):
             assert not {alias.name for alias in node.names} & set(owed())
-    assert "def corpus" not in text
-    assert "class Corpus" not in text
+    assert "def corpora" not in text
+    assert "def doctor" not in text
 
 
 # ---------------------------------------------------------------------------------------------

@@ -88,6 +88,15 @@ from exactly those two rules and no others, so the ambient reads of a whole dist
 visible in one file per distribution.
 """
 
+SDK_ENTRY = "packages/omniweave/src/omniweave/sdk/_ambient.py"
+"""The SDK's entry point's one ambient read. D858.
+
+18:154 prints `omniweave.corpus(name=None, *, config=None, readonly=True)`, and a `None` config
+walks up from the process's directory. `omniweave.corpus()` is where a user's process meets the
+library, as `__main__.py` is where a shell does, so it reads that directory -- in this one file,
+and only when the caller passed no `cwd`. Exempted from the getcwd rule alone.
+"""
+
 STORE = "packages/omniweave-core/src/omniweave_core/store/**"
 HOST = "packages/omniweave-core/src/omniweave_core/host/**"
 DRIVERS = "packages/omniweave-core/src/omniweave_core/drivers/**"
@@ -347,7 +356,7 @@ AST_BANS: tuple[AstBan, ...] = (
         rule_id="omniweave-no-getcwd-in-library-code",
         ban="os.getcwd() in library code",
         include=LIBRARY,
-        exclude=(ENTRY,),
+        exclude=(ENTRY, SDK_ENTRY),
         calls=frozenset({"os.getcwd", "os.getcwdb", "Path.cwd", "pathlib.Path.cwd"}),
         bare_calls=frozenset({"getcwd"}),
     ),
