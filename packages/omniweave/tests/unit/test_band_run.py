@@ -215,8 +215,9 @@ def test_a_row_the_cache_answers_whole_calls_nothing(tmp_path: Path, judge: str)
     assert _rows(store, f"SELECT status FROM work WHERE operator = '{MERGE}'") == [("done",)]  # noqa: S608
     assert _rows(
         store,
-        "SELECT attempt, tokens_in, tokens_out, calls, was_cache_hit, outcome FROM route_spend"
-        " ORDER BY attempt",
+        "SELECT DISTINCT r.attempt, r.tokens_in, r.tokens_out, r.calls, r.was_cache_hit,"
+        " r.outcome FROM route_spend AS r JOIN work AS w ON w.decision_id = r.decision_id"
+        " WHERE w.operator = 'derive.merge.llm' ORDER BY r.attempt",
     ) == [(1, 400, 40, 1, 0, "ok"), (2, 400, 40, 1, 1, "skipped_cached")], (
         "D733: the same decision's second attempt, a hit replaying the pair's Spend"
     )

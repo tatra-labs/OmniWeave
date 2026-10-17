@@ -89,6 +89,16 @@ The derived rows read it from their sources (`store.segments`, `store.graph`), a
 restriction aggregate (OUT11) reads it from the blocks an artefact cites. Until D811 the sink was
 handed nothing, so every ingested block carried 0 and the aggregate had nothing to bar.
 
+## The attempt's bill (I30, D854)
+
+A parsed document's `StepMetrics` carries the attempt's `Spend`: the seven physical dimensions of
+the unit's `DriverResult.metrics`, as the driver reported them (05 section 6.4: *"written by the
+runner on **every attempt**"*). Until D854 it carried none, D733 writes a `route_spend` row only
+for a measured Spend, and so a real ingest wrote no spend row at all: `ow cost --verify` failed
+every run on I30's second self-check (D853). A driver that reports zeros is a measured zero, a row
+that bills nothing, which is not the same fact as no row. The micros stay the runner's to price
+(INV-15). A unit whose result is absent from the report is a zero Spend too: the attempt ran.
+
 Specified in 02-architecture.md section 4.1 rows 10-17, 08-runtime.md sections 1.3 and 6.1, and
 04-driver-system.md section 6.2.
 """
@@ -129,6 +139,7 @@ from omniweave_ports.types import (
     UnitRef,
 )
 
+from omniweave.route.spend import Spend
 from omniweave.run import pipeline
 from omniweave.run.dispatch import (
     AimdRegistry,
@@ -150,7 +161,7 @@ if TYPE_CHECKING:
     from omniweave_core.drivers.resolve import Policy
     from omniweave_core.host.inproc import DriverGuard
     from omniweave_core.host.worker import WorkerBlobs
-    from omniweave_core.operator import RunContext
+    from omniweave_core.operator import RunContext, SpendVector
     from omniweave_core.store.queue import StepResultView, WorkRow
 
     from omniweave.run.dispatch import Batch
@@ -1029,7 +1040,11 @@ class ParseOperator:
             cache_key=row.cache_key,
             produced=tuple(produced),
             partial_reason="the driver reported a partial document" if partial else None,
-            metrics=StepMetrics(rows_written=decoded.blocks, peak_rss_bytes=_peak_of(reply, slot)),
+            metrics=StepMetrics(
+                spend=cast("SpendVector", _spend_of(reply, slot)),
+                rows_written=decoded.blocks,
+                peak_rss_bytes=_peak_of(reply, slot),
+            ),
         )
 
     def _unsettled(
@@ -1447,6 +1462,25 @@ def declared(card: DriverCard) -> Capabilities:
             fix=f"ow drivers verify {card.identity.id}",
         )
     return Capabilities(**{name: getattr(caps, name) for name in names if hasattr(caps, name)})
+
+
+def _spend_of(reply: Reply, slot: int) -> Spend:
+    """The attempt's bill (D854): the unit's `DriverResult.metrics` as a `Spend`, zero when the
+    report holds no result for it."""
+    results = reply.report.results if reply.report is not None else ()
+    found = results[slot] if slot < len(results) else None
+    if found is None:
+        return Spend()
+    metrics = found.metrics
+    return Spend(
+        wall_ms=max(0, int(metrics.wall_ms)),
+        cpu_ms=max(0, int(metrics.cpu_ms)),
+        gpu_ms=max(0, int(metrics.gpu_ms)),
+        tokens_in=max(0, int(metrics.tokens_in)),
+        tokens_out=max(0, int(metrics.tokens_out)),
+        calls=max(0, int(metrics.calls)),
+        bytes_egress=max(0, int(metrics.bytes_egress)),
+    )
 
 
 def _peak_of(reply: Reply, slot: int) -> int:
