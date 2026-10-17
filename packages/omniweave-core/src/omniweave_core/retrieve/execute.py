@@ -642,6 +642,22 @@ class Retrieval:
     and `Verdict.channels` carries the status and not the reason, so the reason rides here."""
 
 
+def _withheld(narrowing: Narrowing) -> Mapping[str, int]:
+    """07:2078's `Verdict.withheld`: `rows`, and each denied `Restriction` that removed a block,
+    by member name, present only when nonzero. D859: until then this was `{"rows": 0}`, so gate 10
+    could not fire, and once the policy's mask reached retrieval a barred answer would have read as
+    citable absence."""
+    if not narrowing.withheld_rows:
+        return MappingProxyType({"rows": 0})
+    from omniweave_core.drivers.licence import Restriction  # noqa: PLC0415 -- a masked query only
+
+    names = {member.bit: member.name for member in Restriction}
+    counts: dict[str, int] = {"rows": narrowing.withheld_rows}
+    for bit, count in narrowing.withheld_bits:
+        counts[names.get(bit, f"bit_{bit}")] = count
+    return MappingProxyType(counts)
+
+
 def retrieve(
     r: Reader,
     q: Query,
@@ -669,6 +685,12 @@ def execute(
     material = _material(q)
     caps = r.capabilities()
     query_plan = plan(material.query, caps, pol)
+    #  D859: the plan's filters carry the policy's `deny_restriction_bits` (D780), and the
+    #  caller's do not. Narrowing, every Channel and the coverage scan read `material.bound`, so
+    #  it is rebound to the plan's here; before D859 `[licence] deny_restrictions` barred nothing.
+    material = dataclasses.replace(
+        material, bound=dataclasses.replace(material.bound, filters=query_plan.filters)
+    )
     budget = material.query.budget or pol.budget or QueryBudget()
     started = monotonic_ns()
     with r.snapshot() as s:
@@ -710,7 +732,7 @@ def execute(
         fused=fused,
         returned=len(hits),
         freshness=freshness(coverage),
-        withheld=MappingProxyType({"rows": 0}),
+        withheld=_withheld(narrowing),
         snapshot_gen=snapshot_gen,
         generation_at_pack=generation_at_pack,
         snapshot_expired=run.expired,
