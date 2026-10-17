@@ -115,7 +115,7 @@ import sqlite3
 import struct
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
-from typing import Any, Final, NamedTuple
+from typing import Any, ClassVar, Final, NamedTuple
 
 from omniweave_core.archive.manifest import Manifest
 from omniweave_core.archive.owdoc import (
@@ -145,6 +145,7 @@ from omniweave_core.model.spans import (
 
 __all__ = [
     "ARCHIVE_SUFFIX",
+    "BlockDecoder",
     "PortableArtefact",
     "PortableExport",
     "export_portable",
@@ -297,11 +298,6 @@ _BLOCK_SQL: Final = f"SELECT {_BLOCK_COLUMNS}, doc_ord, gen FROM block WHERE blo
 Derived from `_BLOCKS_SQL` rather than restated, so `_decode_block`'s positional reads rest on one
 column list and not on two that could drift apart.
 """
-
-_BLOCK_MARKS_SQL: Final = (
-    "SELECT a, b, kind, value FROM mark WHERE block_id = ? ORDER BY a, b, mark_id"
-)
-"""One block's marks, in `_MARKS_SQL`'s order within a block."""
 
 _MARKS_SQL: Final = """
 SELECT m.block_id, m.a, m.b, m.kind, m.value
@@ -772,27 +768,83 @@ def read_block(connection: sqlite3.Connection, block_id: int) -> Block | None:
     row = connection.execute(_BLOCK_SQL, (block_id,)).fetchone()
     if row is None:
         return None
-    enums = _enum_map(connection)
+    decoder = BlockDecoder(connection)
+    return decoder.decode(row, decoder.marks((block_id,)).get(block_id, ()))
 
-    def member(domain: str, code: int) -> str:
-        name = enums.get((domain, code))
+
+class BlockDecoder:
+    """The store's one decode of a Block (SV19), for a reader that runs its own `SELECT`. D864.
+
+    `read_block()` decodes one row through it and `store.docread.StoreDocReader` streams many.
+    A row is `COLUMNS` in order: `_BLOCKS_SQL`'s columns, then `doc_ord` and `gen`, which place
+    the row's generation. The column list is derived from `_BLOCKS_SQL` and not restated, so the
+    positional reads in `_decode_block()` rest on one list.
+
+    The store's own `enum_val` is read once, at construction. `member()` names a stored code and
+    `ordinal()` goes the other way, for a filter: a `WHERE kind IN (...)` must bind the store's
+    numbering, not this build's, for the reason the decode reads names and not positions. A code
+    or a member the store does not name is refused, never guessed.
+    """
+
+    COLUMNS: ClassVar[str] = f"{_BLOCK_COLUMNS}, doc_ord, gen"
+
+    __slots__ = ("_connection", "_enums", "_ordinals")
+
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = connection
+        self._enums = _enum_map(connection)
+        self._ordinals = {(domain, name): code for (domain, code), name in self._enums.items()}
+
+    def member(self, domain: str, code: int) -> str:
+        """The `enum_val` name of one stored code."""
+        name = self._enums.get((domain, code))
         if name is None:
             raise StoreError(
                 f"this store holds {domain} code {code}, which its own enum_val does not name: "
-                f"reading block {block_id} with a guessed member would answer with this build's "
-                f"numbering",
+                f"reading a block with a guessed member would answer with this build's numbering",
                 fix="ow store verify",
             )
         return name
 
-    marks = tuple(
-        Mark(a=int(a), b=int(b), kind=str(kind), value=None if value is None else str(value))
-        for a, b, kind, value in connection.execute(_BLOCK_MARKS_SQL, (block_id,))
-    )
-    width = len(row) - 2
-    return _decode_block(
-        row[:width], doc_ord=int(row[width]), gen=int(row[width + 1]), member=member, marks=marks
-    )
+    def ordinal(self, domain: str, name: str) -> int:
+        """The store's code for one member name, for a filter to bind."""
+        code = self._ordinals.get((domain, name))
+        if code is None:
+            raise StoreError(
+                f"this store's enum_val has no {domain} member {name!r}, so a filter on it "
+                f"would match by this build's numbering",
+                fix="ow store verify",
+            )
+        return code
+
+    def marks(self, block_ids: Sequence[int]) -> dict[int, tuple[Mark, ...]]:
+        """The marks of up to one window of blocks, in one statement, grouped by `block_id`."""
+        grouped: dict[int, list[Mark]] = {}
+        if not block_ids:
+            return {}
+        holes = ", ".join("?" * len(block_ids))
+        for block_id, a, b, kind, value in self._connection.execute(
+            f"SELECT block_id, a, b, kind, value FROM mark WHERE block_id IN ({holes}) "  # noqa: S608 -- placeholders
+            f"ORDER BY block_id, a, b, mark_id",
+            tuple(block_ids),
+        ):
+            grouped.setdefault(int(block_id), []).append(
+                Mark(
+                    a=int(a), b=int(b), kind=str(kind), value=None if value is None else str(value)
+                )
+            )
+        return {block_id: tuple(marks) for block_id, marks in grouped.items()}
+
+    def decode(self, row: Sequence[Any], marks: tuple[Mark, ...]) -> Block:
+        """One row of `COLUMNS` as a model `Block`, through `_decode_block()`."""
+        width = len(row) - 2
+        return _decode_block(
+            row[:width],
+            doc_ord=int(row[width]),
+            gen=int(row[width + 1]),
+            member=self.member,
+            marks=marks,
+        )
 
 
 # ---------------------------------------------------------------------------------------------

@@ -202,6 +202,7 @@ __all__ = [
     "diff_generations",
     "head_documents",
     "locate_block",
+    "read_doc_record",
     "read_grid",
 ]
 
@@ -1957,7 +1958,7 @@ class DocSink:
                     "doc_ord": doc.doc_ord,
                 },
             )
-        return _read_doc_record(connection, doc.doc_ord)
+        return read_doc_record(connection, doc.doc_ord)
 
     def _quarantine_diag(
         self, doc: _DocState, owcheck_ok: bool, rebound: RebindReport | None
@@ -2520,7 +2521,7 @@ def capabilities_from(obj: Mapping[str, Any]) -> Capabilities:
     )
 
 
-def _read_doc_record(connection: sqlite3.Connection, doc_ord: int) -> DocRecord:
+def read_doc_record(connection: sqlite3.Connection, doc_ord: int) -> DocRecord:
     """The `doc` row as a `DocRecord`. What `end_doc` returns: the record at the committed head.
 
     Read back rather than reconstructed, so a quarantined generation returns the OLD `gen`,
