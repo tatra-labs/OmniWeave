@@ -24,6 +24,10 @@ thing here most likely to change.
    rule is a twin for every `Corpus` method and module-level function, and `Doc` is neither: its
    accessors are 03 section 13.5's, iterators over the store. A caller on a loop that walks a large
    document wraps that walk in `asyncio.to_thread` itself.
+6. **`AsyncCorpus.session()` is an async context manager over `Corpus.session()`** (D867), and
+   the `AsyncSession` it yields runs `Session.query()` and `Session.open()` on a worker thread,
+   with the same signatures. `stats()` and `clear()` touch only the in-memory ledger, so they stay
+   synchronous. One session is one ledger, so its calls are awaited one at a time (ruling 4).
 
 `omniweave_core` stays asyncio-free (G23): this module is in `omniweave`, and nothing imports it
 but a caller who names it.
@@ -32,6 +36,7 @@ but a caller who names it.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from typing import TYPE_CHECKING, Any
 
 from omniweave.sdk import api
@@ -47,8 +52,9 @@ if TYPE_CHECKING:
     from omniweave_core.store.types import Coverage, Expand, Filters
 
     from omniweave.sdk.reports import AddReport, CodeRow, CorpusCard, DoctorReport
+    from omniweave.sdk.session import Session
 
-__all__ = ["AsyncAnswer", "AsyncCorpus", "corpora", "corpus", "doctor", "explain"]
+__all__ = ["AsyncAnswer", "AsyncCorpus", "AsyncSession", "corpora", "corpus", "doctor", "explain"]
 
 
 async def corpus(
@@ -200,6 +206,85 @@ class AsyncCorpus:
     async def doc(self, ref: str) -> Doc:
         """`Corpus.doc()` on a worker thread; the `Doc` it returns is synchronous (ruling 5)."""
         return await asyncio.to_thread(self._inner.doc, ref)
+
+    @contextlib.asynccontextmanager
+    async def session(self, key: str | None = None) -> AsyncIterator[AsyncSession]:
+        """`Corpus.session()`, its calls on a worker thread (ruling 6)."""
+        with self._inner.session(key) as inner:
+            yield AsyncSession(inner)
+
+
+class AsyncSession:
+    """The async view of one `Session` (ruling 6)."""
+
+    __slots__ = ("_inner",)
+
+    def __init__(self, inner: Session) -> None:
+        self._inner = inner
+
+    @property
+    def key(self) -> str:
+        return self._inner.key
+
+    async def query(
+        self,
+        text: str = "",
+        *,
+        refs: Sequence[str] = (),
+        scope: str | None = None,
+        want: str = "passages",
+        filters: Filters | None = None,
+        mode: str = "find",
+        k: int = 20,
+        max_blocks: int = api.MAX_BLOCKS,
+        max_chars: int = 24_000,
+        expand: Expand | None = None,
+        route_hints: object | None = None,
+    ) -> AsyncAnswer:
+        """`Session.query()` on a worker thread (ruling 6)."""
+        answer = await asyncio.to_thread(
+            self._inner.query,
+            text,
+            refs=refs,
+            scope=scope,
+            want=want,
+            filters=filters,
+            mode=mode,
+            k=k,
+            max_blocks=max_blocks,
+            max_chars=max_chars,
+            expand=expand,
+            route_hints=route_hints,
+        )
+        return AsyncAnswer(answer)
+
+    async def open(
+        self,
+        ref: str | Sequence[str],
+        *,
+        context: int = 1,
+        layers: Iterable[Layer] | None = None,
+        raw: bool = False,
+        want_impact: bool = False,
+        max_chars: int = 24_000,
+    ) -> AsyncAnswer:
+        """`Session.open()` on a worker thread (ruling 6)."""
+        answer = await asyncio.to_thread(
+            self._inner.open,
+            ref,
+            context=context,
+            layers=layers,
+            raw=raw,
+            want_impact=want_impact,
+            max_chars=max_chars,
+        )
+        return AsyncAnswer(answer)
+
+    def stats(self) -> Mapping[str, int]:
+        return self._inner.stats()
+
+    def clear(self) -> None:
+        self._inner.clear()
 
 
 class AsyncAnswer:
