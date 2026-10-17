@@ -146,6 +146,9 @@ ban-relative-imports = "all"
 # transports' tests do.
 "packages/omniweave/src/omniweave/aio.py" = ["TID251"]
 "packages/omniweave/tests/unit/test_sdk_aio.py" = ["TID251"]
+# D867: the session test drives `AsyncSession` with `asyncio.run`, as its twin's test does, and
+# lengthens a real store's block with `sqlite3`, as `test_sdk_api.py` seeds one.
+"packages/omniweave/tests/unit/test_sdk_session.py" = ["TID251"]
 
 # The transport's tests drive the loop with `asyncio.run` and nothing else. There is no
 # pytest-asyncio in the ten-package dev group (02-architecture.md section 3.3 fixes it), so a
