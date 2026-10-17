@@ -65,6 +65,7 @@ def _parameters(member: Any) -> list[tuple[str, Any, Any]]:
         (aio.AsyncCorpus.add, api.Corpus.add),
         (aio.AsyncCorpus.card, api.Corpus.card),
         (aio.AsyncCorpus.coverage, api.Corpus.coverage),
+        (aio.AsyncCorpus.doc, api.Corpus.doc),
     ],
     ids=lambda member: getattr(member, "__qualname__", str(member)),
 )
@@ -116,6 +117,19 @@ def test_open_card_and_coverage_are_their_sync_twins(project: Path) -> None:
     assert card == handle.card()
     assert coverage == handle.coverage()
     assert name == "handbook"
+
+
+def test_doc_resolves_on_a_thread_and_returns_the_sync_doc(project: Path) -> None:
+    from omniweave_core.model.doc import Doc  # noqa: PLC0415
+
+    async def resolve() -> Any:
+        c = await aio.corpus("handbook", cwd=project, env=SYNC._env(project))
+        return await c.doc("contract.pdf")
+
+    doc = asyncio.run(resolve())
+    assert isinstance(doc, Doc)
+    assert (doc.doc_ord, doc.gen) == (1, 1)
+    assert list(doc.blocks()) == list(SYNC._corpus(project).doc("d1").blocks())
 
 
 def test_an_error_is_the_sync_twins(project: Path) -> None:
