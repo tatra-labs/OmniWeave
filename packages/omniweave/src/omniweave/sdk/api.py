@@ -74,12 +74,18 @@ three surfaces return one `Answer` for one question, and none of them imports an
    reads the retired generation's rows as misses, and its record as `NotFoundError`, rather than
    another generation's rows under its old identity. What `StoreDocReader` refuses, `frames()`
    among them, the `Doc` refuses too.
+10. **`Corpus.session(key=None)` opens 18:470's emission ledger** (D867), `sdk.session.Session`,
+    as a context manager whose exit clears it. `Session.query()` and `Session.open()` run
+    `_query()` and `_open()`, the bodies of `query()` and `open()`, with the ledger passed to
+    `pack()`. So outside a session dedup is off, and inside one the only difference is what it
+    withholds.
 
 Specified in 18-api-sketch.md section 1.1-1.2 and 10-interfaces.md section 9.1.
 """
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 from dataclasses import dataclass, field
@@ -91,6 +97,7 @@ from omniweave_core.errors import UsageError
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Mapping, Sequence
 
+    from omniweave_core.answer.pack import Packed
     from omniweave_core.answer.render import Answer
     from omniweave_core.config import Config
     from omniweave_core.model.block import Addr, Block, BlockId, Cite
@@ -102,6 +109,7 @@ if TYPE_CHECKING:
     from omniweave_core.store.types import Coverage, Expand, Filters
 
     from omniweave.sdk.reports import AddReport, CodeRow, CorpusCard, DoctorReport
+    from omniweave.sdk.session import Session
 
 __all__ = ["MODES", "WANTS", "Corpus", "corpora", "corpus", "doctor", "explain"]
 
@@ -286,6 +294,37 @@ class Corpus:
         route_hints: object | None = None,
     ) -> Answer:
         """18:267: retrieve, fuse, gate and pack in one call, as `ow query` does (ruling 2)."""
+        return self._query(
+            text,
+            refs=refs,
+            scope=scope,
+            want=want,
+            filters=filters,
+            mode=mode,
+            k=k,
+            max_blocks=max_blocks,
+            max_chars=max_chars,
+            expand=expand,
+            route_hints=route_hints,
+        ).answer
+
+    def _query(
+        self,
+        text: str,
+        *,
+        refs: Sequence[str],
+        scope: str | None,
+        want: str,
+        filters: Filters | None,
+        mode: str,
+        k: int,
+        max_blocks: int,
+        max_chars: int,
+        expand: Expand | None,
+        route_hints: object | None,
+        **packing: Any,
+    ) -> Packed:
+        """`query()`'s body, `packing` passed on to `pack()`: a session's ledger (ruling 10)."""
         if want not in WANTS:
             raise UsageError(
                 f"want={want!r} is not a packing preset; it is one of {', '.join(WANTS)}",
@@ -310,7 +349,12 @@ class Corpus:
             fields["filters"] = filters
         retrieval = self._read(lambda reader: execute(reader, Query(**fields), self._policy()))
         return _packed(
-            pack, retrieval, corpus=self.name, qualify=self._qualify(), max_chars=max_chars
+            pack,
+            retrieval,
+            corpus=self.name,
+            qualify=self._qualify(),
+            max_chars=max_chars,
+            **packing,
         )
 
     def open(
@@ -324,6 +368,27 @@ class Corpus:
         max_chars: int = 24_000,
     ) -> Answer:
         """18:343: resolve addresses the caller already holds, as `ow open` does (ruling 2)."""
+        return self._open(
+            ref,
+            context=context,
+            layers=layers,
+            raw=raw,
+            want_impact=want_impact,
+            max_chars=max_chars,
+        ).answer
+
+    def _open(
+        self,
+        ref: str | Sequence[str],
+        *,
+        context: int,
+        layers: Iterable[Layer] | None,
+        raw: bool,
+        want_impact: bool,
+        max_chars: int,
+        **packing: Any,
+    ) -> Packed:
+        """`open()`'s body, `packing` passed on to `pack_open()` (ruling 10)."""
         _refuse(raw=raw, want_impact=want_impact)
         from omniweave_core.answer.pack import pack_open  # noqa: PLC0415
         from omniweave_core.model.enums import Layer  # noqa: PLC0415
@@ -335,7 +400,12 @@ class Corpus:
             lambda reader: resolve.fetch(reader, refs, context=context, layers=wanted)
         )
         return _packed(
-            pack_open, opening, corpus=self.name, qualify=self._qualify(), max_chars=max_chars
+            pack_open,
+            opening,
+            corpus=self.name,
+            qualify=self._qualify(),
+            max_chars=max_chars,
+            **packing,
         )
 
     def add(
@@ -413,6 +483,22 @@ class Corpus:
             lambda connection, reader: _document(connection, reader, ref)
         )
         return Doc(_DocRead(self._store), doc_ord, gen)
+
+    @contextlib.contextmanager
+    def session(self, key: str | None = None) -> Iterator[Session]:
+        """18:470: the emission ledger across calls, cleared when the block exits (ruling 10)."""
+        from omniweave_core.clock import SystemClock  # noqa: PLC0415
+
+        from omniweave.hooks.session import sessions_dir  # noqa: PLC0415
+        from omniweave.sdk.session import Session  # noqa: PLC0415
+
+        opened = Session(
+            self, key, sessions=sessions_dir(self._cwd), opened_ns=SystemClock().wall_ns()
+        )
+        try:
+            yield opened
+        finally:
+            opened.clear()
 
     def _read(self, call: Any) -> Any:
         """One read-only connection and reader for one call, closed before returning."""
@@ -605,10 +691,12 @@ def _identity(store: Path) -> tuple[int, int]:
     return generation, schema
 
 
-def _packed(pack: Any, result: Any, *, corpus: str, qualify: bool, max_chars: int) -> Answer:
+def _packed(
+    pack: Any, result: Any, *, corpus: str, qualify: bool, max_chars: int, **packing: Any
+) -> Packed:
     """`pack()` or `pack_open()`, its budget refusal a usage error, as both verbs make it."""
     try:
-        return pack(result, corpus=corpus, qualify=qualify, max_chars=max_chars).answer
+        return pack(result, corpus=corpus, qualify=qualify, max_chars=max_chars, **packing)
     except ValueError as error:
         raise UsageError(str(error), fix="pass max_chars between 1000 and 24000") from error
 
