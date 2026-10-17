@@ -17,6 +17,12 @@ Beyond the four: every target installed together and uninstalled in every order 
 (10:1641), and install writing nothing that `describe_paths` does not name -- the list 10:1775
 records, which is only a gate if nothing escapes it.
 
+V10-15's own clause is held against the receipt itself (D856): every path an install writes is
+named by one of its rows, and each file's newest row carries the sha256 of the bytes the file now
+holds. Only the newest can: a second row written into the same file changes the file, and
+`install.receipt`'s header explains why the first row's whole-file digest is then stale by
+construction.
+
 G-install has no row in `tools/gates.toml` and no rendering in 11 section 6.4 (D484), so this
 module is the gate until one is registered.
 """
@@ -33,7 +39,7 @@ import pytest
 from omniweave.install import verbs
 from omniweave.install.engine import HostEnv
 from omniweave.install.primitives import render_json
-from omniweave.install.receipt import expand, load
+from omniweave.install.receipt import expand, file_sha256, load
 from omniweave.install.registry import BUILT, TARGETS, build
 from omniweave.install.types import LOCATIONS, TARGET_IDS, InstallOptions
 
@@ -220,6 +226,58 @@ def test_install_writes_nothing_describe_paths_does_not_name(
             path == one or one in path.parents or path in one.parents for one in described
         )
         assert covered, f"{key} was written and describe_paths does not name it"
+
+
+def _rows(tmp: Path, target: str) -> list[Any]:
+    return [one for one in load(tmp / "owhome", pid=PID).receipt.entries if one.target == target]
+
+
+def _named(path: Path, row: Any, home: Path) -> bool:
+    """Whether a receipt row names `path`: its own path, inside a `dir` row's bundle, or a
+    directory the write created on the way."""
+    own = expand(row.path, home)
+    made = [expand(one, home) for one in (*row.created_parents, *row.created_dirs)]
+    return path == own or own in path.parents or path in made
+
+
+@pytest.mark.parametrize(("target", "loc", "name"), GRID)
+def test_every_path_an_install_writes_is_named_by_its_receipt(
+    tmp_path: Path, target: str, loc: Location, name: str
+) -> None:
+    """V10-15, D856: the receipt is the list uninstall reads, so it is what must be complete."""
+    host = _host(target, tmp_path, loc)
+    before = _state(tmp_path)
+    _ok(host.install(loc, OPTIONS[name]))
+    after = _state(tmp_path)
+    rows = _rows(tmp_path, target)
+    home = tmp_path / "home"
+    changed = [key for key in after if after[key] != before.get(key, b"\0absent")]
+    assert changed, "the install wrote nothing to check"
+    for key in changed:
+        path = tmp_path / key
+        named = any(_named(path, row, home) for row in rows)
+        assert named, f"{key} was written and no receipt row names it"
+
+
+@pytest.mark.parametrize(("target", "loc", "name"), GRID)
+def test_each_files_newest_row_is_the_sha256_of_its_bytes(
+    tmp_path: Path, target: str, loc: Location, name: str
+) -> None:
+    """10:1729's post-write sha256, against the file on disk: before and after a re-install that
+    changes nothing, and stale the moment someone else writes the file."""
+    host = _host(target, tmp_path, loc)
+    home = tmp_path / "home"
+    _ok(host.install(loc, OPTIONS[name]))
+    newest = {row.path: row for row in _rows(tmp_path, target) if row.mode != "dir"}
+    assert newest, "every install writes at least one file row"
+    for stored, row in newest.items():
+        assert row.sha256_after == file_sha256(expand(stored, home)), stored
+    _ok(host.install(loc, OPTIONS[name]))
+    for stored, row in {r.path: r for r in _rows(tmp_path, target) if r.mode != "dir"}.items():
+        assert row.sha256_after == file_sha256(expand(stored, home)), stored
+    for stored, row in newest.items():
+        _second_tool(expand(stored, home))
+        assert row.sha256_after != file_sha256(expand(stored, home)), stored
 
 
 # ---------------------------------------------------------------------------------------------
