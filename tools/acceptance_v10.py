@@ -17,7 +17,7 @@ two have no instrument at all, because what v1.0 is measured by does not exist y
 - the 14-wheel build;
 - the Tier A and golden corpora;
 - the nine-cell matrix and the pinned runner;
-- `ow eval release-check`.
+- a `--strict` pass of `ow eval release-check`, which needs the three suites no harness measures.
 
 The P10 exit command is meant to fail until v1.0 is actually accepted, and the report says which
 clause each row is missing.
@@ -119,10 +119,24 @@ CRITERIA: tuple[Criterion, ...] = (
             ),
             pytest(f"{CORE}/test_gate_parity.py", label="Q-G22's gate and its blocker (D842)"),
             pytest(f"{CORE}/test_gate_frozen_stability.py", label="Q-G4's gate, on cells (D849)"),
+            Instrument(
+                "pytest ow eval run, then ow eval release-check exits 0 (D868-D872)",
+                (
+                    "-m",
+                    "pytest",
+                    "-q",
+                    "-p",
+                    "no:cacheprovider",
+                    f"{T3}/test_eval_run_process.py",
+                ),
+                slow=True,
+            ),
         ),
         Coverage.PARTIAL,
-        "no `v*` tag to be green on, and no committed `.oweval` for `ow eval release-check` "
-        "to judge, so its tests run and the verb does not; G13 and G25 have no runner "
+        "no `v*` tag to be green on; `ow eval run` measures parse, absence, retrieve and "
+        "roundtrip and `ow eval release-check` passes over them (D868-D871), but `--strict` "
+        "refuses on extract, portability and perf, which no harness measures (D872), and no "
+        "`.oweval` is committed for a tag; G13 and G25 have no runner "
         "and G29 is planned only; Q-G16, 20 and 26 have no instrument, Q-G2 runs without "
         "its orphan-cassette sweep, and "
         "Q-G8, 19 and 25 run their static halves only; Q-G22's gate runs the T1/T2 suite and "
@@ -155,9 +169,11 @@ CRITERIA: tuple[Criterion, ...] = (
         "honesty ceilings: hallucination_rate, false_confident_zero, degradation_detection == 1",
         (tool("ow_damage.py", "--deterministic-half", slow=True),),
         Coverage.PARTIAL,
-        "degradation_detection runs over 4 of 13 Injectors and the deterministic half only; "
-        "hallucination_rate, false_confident_zero and citability_violations have no gate row "
-        "and nothing computes them over a corpus",
+        "degradation_detection runs over 4 of 13 Injectors and the deterministic half only, "
+        "now as `ow eval run --suite absence` too (D869); citability_violations is a hard row "
+        "measured over the adoption catalogue (D870), which V10-1's instrument runs; "
+        "hallucination_rate and false_confident_zero have no gate row and nothing computes them "
+        "over a corpus",
     ),
     Criterion(
         "V10-5",
