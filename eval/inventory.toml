@@ -5,7 +5,7 @@
 
 [[area]]
 area = "omniweave-conform/unit"
-tests = 586
+tests = 595
 properties = 0
 
 [[area]]
@@ -85,10 +85,10 @@ properties = 0
 
 [[area]]
 area = "omniweave/conform"
-tests = 96
+tests = 97
 properties = 0
 
 [[area]]
 area = "omniweave/unit"
-tests = 4317
+tests = 4323
 properties = 0

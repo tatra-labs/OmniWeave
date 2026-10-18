@@ -350,13 +350,18 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("eval", "run"),
         actions=("eval.run",),
         help=(
-            "Run one eval suite over the metric register's subjects and write its runs and "
-            "metrics to the .oweval in one transaction; this build measures parse"
+            "Run eval suites over the metric register's subjects and write their runs and "
+            "metrics to the .oweval in one transaction; this build measures parse and absence"
         ),
         arguments=(
             Argument(
                 spelling=("--suite",),
                 metavar="SUITE",
+            ),
+            Argument(
+                spelling=("--deterministic-half",),
+                kind="switch",
+                default=False,
             ),
             Argument(
                 spelling=("--subject",),

@@ -855,8 +855,10 @@ class EvalReleaseCheckIn:
 class EvalRunIn:
     """`ow eval run [--suite S] [--subject D] [--witness W] [--cassette MODE]`. 13:1873. D868.
 
-    `suite` is one of 13's seven; omitted, it is every suite this build measures, which is
-    `parse`. `subject` keeps the register's `[[subject]]` rows whose driver id it names. `witness`
+    `suite` is one of 13's seven; omitted, it is every suite this build measures, `parse` then
+    `absence` (D869). `deterministic_half` is 16:690's `--suite absence --deterministic-half`, the
+    one half of that suite built, so it is refused beside any other suite and changes nothing for
+    `absence`. `subject` keeps the register's `[[subject]]` rows whose driver id it names. `witness`
     and `cassette` go into `eval_run` as given, each checked against its column's CHECK.
     `validate_judge` and `emit` are 13:1873's other two flags, parsed and refused by name: nothing
     here runs a judge or writes a result file. `oweval` and `gates` are the store written and the
@@ -866,6 +868,7 @@ class EvalRunIn:
     """
 
     suite: str | None = None
+    deterministic_half: bool = False
     subject: str | None = None
     witness: str = "self"
     cassette: str = "off"

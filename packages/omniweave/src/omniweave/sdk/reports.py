@@ -808,14 +808,16 @@ class EvalBlessReport:
 
 @dataclass(frozen=True, slots=True)
 class EvalRunRow:
-    """One subject's run in `ow eval run`'s report. D868.
+    """One subject's run in `ow eval run`'s report. D868, D869.
 
-    `value` is the metric's rate over `n` sampled claims, or `None` when the subject claimed
-    nothing and the rate is vacuous, which writes no metric row. `parsed` and `refused` are the
-    fixtures the driver parsed and the ones it refused, each refusal named with its class.
+    `value` is the metric's rate over `n`, or `None` when it is vacuous and writes no metric row.
+    For `parse`, `n` counts sampled claims, and `parsed` and `refused` are the fixtures the driver
+    parsed and the ones it refused, each with its class. For `absence`, `n` counts
+    `(Injector, fixture)` pairs, `parsed` the pairs that passed and `refused` the ones that failed.
     """
 
     run_id: str
+    suite: str
     subject: str
     slice: str
     corpus: str
@@ -828,13 +830,13 @@ class EvalRunRow:
 
 @dataclass(frozen=True, slots=True)
 class EvalRunReport:
-    """What `ow eval run` returns. D868.
+    """What `ow eval run` returns. D868, D869.
 
-    `suite` is the suite measured and `oweval` the store its rows went into, in one transaction.
-    `runs` is one row per subject.
+    `suites` are the suites measured, in run order, and `oweval` the store their rows went into,
+    in one transaction. `runs` is one row per subject of each suite.
     """
 
-    suite: str
+    suites: tuple[str, ...]
     oweval: str
     runs: tuple[EvalRunRow, ...]
 
