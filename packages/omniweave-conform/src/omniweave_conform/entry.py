@@ -69,11 +69,11 @@ def run(
 
     `suites` are run in the order given, every one of them built (`eval_run.BUILT`). `root` is the
     directory the register's `card` and `fixtures` paths are relative to, the working directory.
-    `subject` narrows the parse suite's drivers and is refused for the absence and retrieve
-    suites, whose subject is the product. `admit` is `omniweave.surface.admit.admit`, 13:1306's
-    check of a fix against the `ow` Action registry: the one callable that crosses, because this
-    distribution may not import the registry, and it takes and returns builtins (`absence`
-    ruling 1). The `.oweval` is created
+    `subject` narrows the parse suite's drivers and is refused for every other suite, whose
+    subjects are its own: the product, or a target's compile driver. `admit` is
+    `omniweave.surface.admit.admit`, 13:1306's check of a fix against the `ow` Action registry:
+    the one callable that crosses, because this distribution may not import the registry, and
+    it takes and returns builtins (`absence` ruling 1). The `.oweval` is created
     when it does not exist: a run is its writer. The clock is read here, at the edge.
     """
     register = Path(gates)
@@ -88,11 +88,10 @@ def run(
             f"{', '.join(unbuilt) or 'nothing'}",
             fix="ow eval run --suite parse",
         )
-    product = [suite for suite in suites if suite in ("absence", "retrieve")]
+    product = [suite for suite in suites if suite != "parse"]
     if subject is not None and product:
         raise QualityError(
-            f"--subject names a parse driver, and the {product[0]} suite's subject is omniweave "
-            "itself",
+            f"--subject names a parse driver, and the {product[0]} suite's subjects are its own",
             fix=f"ow eval run --suite {product[0]}  # without --subject",
         )
     rows = tomllib.loads(register.read_text(encoding="utf-8"))
@@ -113,8 +112,12 @@ def run(
             batch, measured = eval_run.absence(
                 rows, root=Path(root), witness=witness, cassette=cassette, now_ns=clock, admit=admit
             )
-        else:
+        elif suite == "retrieve":
             batch, measured = eval_run.retrieve(
+                rows, root=Path(root), witness=witness, cassette=cassette, now_ns=clock
+            )
+        else:
+            batch, measured = eval_run.roundtrip(
                 rows, root=Path(root), witness=witness, cassette=cassette, now_ns=clock
             )
         batches.append(batch)
@@ -150,7 +153,9 @@ def _merged(batches: Sequence[Batch]) -> Batch:
     corpora = {(corpus.corpus_id, corpus.version): corpus for b in batches for corpus in b.corpora}
     return Batch(
         corpora=tuple(corpora.values()),
+        assertions=tuple(assertion for b in batches for assertion in b.assertions),
         runs=tuple(run for b in batches for run in b.runs),
+        verdicts=tuple(verdict for b in batches for verdict in b.verdicts),
         metrics=tuple(metric for b in batches for metric in b.metrics),
     )
 

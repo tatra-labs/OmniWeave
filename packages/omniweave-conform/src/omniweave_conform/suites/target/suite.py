@@ -139,7 +139,16 @@ if TYPE_CHECKING:
     from omniweave_core.out.ledger import AssetLedger
     from omniweave_ports import DriverResult, ParseV1
 
-__all__ = ["ASSETS", "CITES", "EDIT", "GOLDEN_CLOCK_NS", "LawOutcome", "TargetReport", "run_target"]
+__all__ = [
+    "ASSETS",
+    "CITES",
+    "EDIT",
+    "GOLDEN_CLOCK_NS",
+    "LawOutcome",
+    "TargetReport",
+    "addressed",
+    "run_target",
+]
 
 CITES: Final = "cites.json"
 ASSETS: Final = "assets"
@@ -478,13 +487,11 @@ def _r2(
         if record.get("t") == "block"
     ]
     return LawOutcome(
-        "r2", "checked", r2(_addressed(bundle, compiler, constructs), blocks, kind_map)
+        "r2", "checked", r2(addressed(bundle, compiler, constructs), blocks, kind_map)
     )
 
 
-def _addressed(
-    bundle: ILBundle, compiler: CompileV1, constructs: ConstructTable
-) -> list[ILElement]:
+def addressed(bundle: ILBundle, compiler: CompileV1, constructs: ConstructTable) -> list[ILElement]:
     """Ruling 13: every element carrying `data-ow-el`, under its construct."""
     rows = [
         (row.id, parse_selector(row.selector, constructs.carrier))
