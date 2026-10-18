@@ -818,6 +818,8 @@ class EvalRunRow:
     `n` Answers; `parsed` counts the cites that resolve and `refused` names the ones that do not.
     For `roundtrip`, `value` is the share of a golden's `n` addressed elements that survive R2,
     `parsed` counts them and `refused` names the ones that fail, or why R2 was not judged.
+    For a suite this build cannot measure, `metric` is `none`, `value` is `None`, and `refused`
+    holds the one reason its `unknown` run names.
     """
 
     run_id: str
