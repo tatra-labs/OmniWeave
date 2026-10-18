@@ -1,4 +1,4 @@
-"""`ow eval run`: parse (D868), absence (D869), retrieve (D870) and roundtrip (D871).
+"""`ow eval run`: four suites measured (D868-D871), and the other three reported unknown (D872).
 
 13-quality.md:1873 prints `ow eval run [--suite S] [--corpus C@V] [--subject D] [--witness W]
 [--cassette MODE] [--validate-judge] [--emit PATH]`, and 16-roadmap.md:942 makes it W10.6's
@@ -101,6 +101,18 @@ returns it as `store.oweval` rows for one `write()`.
     confounders. An R2 the suite could not judge (a gate short of `lower()`, OUT23) is a run with
     status `unknown` and the suite's reason, which `release-check` does refuse.
 
+## The three suites this build cannot measure (D872)
+
+17. **Every suite can report `unknown`.** 16-roadmap.md:942: *"`skip` is not a state, so every
+    suite must be able to report `unknown` and `release-check` must refuse on it."* So
+    `ow eval run --suite extract`, `portability` or `perf` writes one run with status `unknown`
+    whose `not_measured` says, in `UNMEASURABLE`, exactly what is missing. Nothing is measured and
+    nothing is pretended: the run has no corpus row, no metric and no perf row, its corpus fields
+    say `none`, and its one confounder says it exists only to name the gap. `release-check`
+    then refuses it by that reason, where `--strict` alone would have said *"no run at all"*.
+18. **They are named, never run by default.** `--suite` omitted runs `BUILT`, the suites whose
+    runs this machine can judge; an `unknown` run is written only when a caller asks for one.
+
 Specified in 13-quality.md sections 2.10, 8.3, 8.6, 8.8, 9 and 13.3, and 16-roadmap.md W10.6.
 """
 
@@ -139,18 +151,41 @@ __all__ = [
     "BUILT",
     "MEASURED",
     "PARSE_UNMEASURED",
+    "SUITES",
     "TRUTH_KINDS",
     "TRUTH_OF",
+    "UNMEASURABLE",
     "Measured",
     "absence",
     "corpus_digest",
     "parse",
     "retrieve",
     "roundtrip",
+    "unknown",
 ]
 
 BUILT: Final[tuple[str, ...]] = ("parse", "absence", "retrieve", "roundtrip")
 """The suites `ow eval run` measures in this build, in run order. The other three are refused."""
+
+UNMEASURABLE: Final[Mapping[str, str]] = {
+    "extract": (
+        "no extraction harness and no labelled extraction corpus: field_acc, doc_acc and "
+        "hallucination_rate need one (13-quality.md:1179-1192, W10.8)"
+    ),
+    "portability": (
+        "13-quality.md defines the portability suite by its name alone (13:238, 13:2056): there "
+        "is nothing to run until the plan says what it measures"
+    ),
+    "perf": (
+        "eval_perf rows pass or fail against 7-run rolling medians on the pinned runner "
+        "ow-bench-1 (eval/perf.toml [pacer], 12-performance.md section 7), which this machine is "
+        "not; one paced reading is unknown by definition"
+    ),
+}
+"""Ruling 17: each suite this build cannot measure, and exactly why."""
+
+SUITES: Final[tuple[str, ...]] = (*BUILT, *UNMEASURABLE)
+"""Every suite `ow eval run` accepts: the four it measures, then the three it reports unknown."""
 
 ROUNDTRIP_CONFOUNDER: Final = (
     "no eval/gates.toml row folds R2 into a metric (13-quality.md:1564 names the roundtrip "
@@ -747,6 +782,73 @@ def roundtrip(
         verdicts=tuple(verdicts),
     )
     return batch, tuple(done)
+
+
+def unknown(
+    suite: str, *, witness: str, cassette: str, now_ns: Callable[[], int]
+) -> tuple[Batch, tuple[Measured, ...]]:
+    """Ruling 17: one `unknown` run naming why `suite` cannot be measured here."""
+    reason = UNMEASURABLE.get(suite)
+    if reason is None:
+        raise QualityError(
+            f"{suite!r} is a suite this build measures or none of the seven",
+            fix=f"ow eval run --suite {suite}",
+        )
+    started = now_ns()
+    digest = hashlib.sha256(b"").hexdigest()
+    corpus = Corpus(
+        corpus_id="none",
+        version="none",
+        corpus_digest=digest,
+        tier="A",
+        n_docs=0,
+        n_assertions=0,
+        n_checked=0,
+        document_redistributable=True,
+        assertions_redistributable=True,
+        publishable=False,
+    )
+    run_id = _run_id(suite, "omniweave", digest, started)
+    run = Run(
+        run_id=run_id,
+        suite=suite,
+        corpus_id=corpus.corpus_id,
+        corpus_version=corpus.version,
+        corpus_digest=digest,
+        subject="omniweave",
+        subject_version=_version("omniweave"),
+        producer_id=None,
+        measured_on=_measured_on(corpus),
+        timing_basis="in_process",
+        witness=witness,
+        cassette=cassette,
+        policy_digest=None,
+        pricebook_digest=None,
+        harness_version=kit_version(),
+        code_fingerprint=code_fingerprint(_core_sources()),
+        hardware=_hardware(),
+        started_ns=started,
+        ended_ns=now_ns(),
+        status="unknown",
+        not_measured=(reason,),
+        confounders=(
+            "nothing was measured: this run exists so release-check names the gap, as 16:942 "
+            "requires of every suite",
+        ),
+    )
+    done = Measured(
+        run_id=run_id,
+        suite=suite,
+        subject="omniweave",
+        slice_key="none",
+        corpus_id=corpus.corpus_id,
+        metric="none",
+        value=None,
+        n=0,
+        parsed=0,
+        refused=(reason,),
+    )
+    return Batch(runs=(run,)), (done,)
 
 
 def _truth(row: Mapping[str, Any], metric: str) -> str:

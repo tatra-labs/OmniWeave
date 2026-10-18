@@ -43,11 +43,12 @@ the row together.
    bless is `QualityError`, exit 1, as in ruling 3.
 8. **`run` measures suites and writes them** (13:1873, D868, D869). `--suite` omitted is every
    suite this build measures, `parse`, `absence`, `retrieve` (D870) then `roundtrip` (D871),
-   written in one transaction; another of the seven is refused by name, as is a name outside
-   them. `--deterministic-half` names the only half of `absence` built, so it is refused beside
-   any other suite, and `--subject`, a parse driver, beside any suite but `parse`, whose subjects
-   are its own. The absence harness is handed
-   `surface.admit.admit`, 13:1306's check of each fix against this registry. `--witness` and
+   written in one transaction. Another of the seven writes an `unknown` run naming why this
+   build cannot measure it (D872), and a name outside them is refused. `--deterministic-half`
+   names the only half of `absence` built, so it is refused beside any other suite, and
+   `--subject`, a parse driver, beside any suite but `parse`, whose subjects are its own. The
+   absence harness is handed `surface.admit.admit`, 13:1306's check of each fix against this
+   registry. `--witness` and
    `--cassette` must be values their `eval_run` columns admit. `--validate-judge` and `--emit`
    are refused by name, and so is the global `--corpus`, which 13:1873 gives this verb as
    `--corpus C@V`: each suite's corpus is its own, so a corpus named here would be ignored. The
@@ -408,12 +409,6 @@ def _run(parsed: argparse.Namespace, *, cwd: Path, env: Mapping[str, str], stdou
     suite = parsed.suite
     if suite is not None and suite not in SUITES:
         raise UsageError(f"--suite {suite!r} is not one of {', '.join(SUITES)}", fix=_RUN_FIX)
-    if suite is not None and suite not in RUN_SUITES:
-        raise UsageError(
-            f"--suite {suite} is not measured in this build; ow eval run measures "
-            f"{', '.join(RUN_SUITES)}",
-            fix=_RUN_FIX,
-        )
     suites = RUN_SUITES if suite is None else (suite,)
     if parsed.deterministic_half and suites != ("absence",):
         raise UsageError(
@@ -469,6 +464,8 @@ def _run(parsed: argparse.Namespace, *, cwd: Path, env: Mapping[str, str], stdou
 def _run_line(row: EvalRunRow) -> str:
     """One subject's line: its rate, then what it read, in the suite's own terms."""
     rate = "vacuous" if row.value is None else f"{row.value:.4f} over {row.n}"
+    if row.metric == "none":
+        return f"  {row.subject:<24} {row.slice:<20} {row.suite} unknown: {row.refused[0]}"
     if row.suite == "absence":
         tail = f"{row.parsed} of {row.n} pair(s) passed" + (
             f"; failed: {', '.join(row.refused)}" if row.refused else ""
