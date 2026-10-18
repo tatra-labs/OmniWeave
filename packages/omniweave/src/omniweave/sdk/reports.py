@@ -816,6 +816,8 @@ class EvalRunRow:
     `(Injector, fixture)` pairs, `parsed` the pairs that passed and `refused` the ones that failed.
     For `retrieve`, `value` is `citability_violations`, the Answers with an unresolved cite, over
     `n` Answers; `parsed` counts the cites that resolve and `refused` names the ones that do not.
+    For `roundtrip`, `value` is the share of a golden's `n` addressed elements that survive R2,
+    `parsed` counts them and `refused` names the ones that fail, or why R2 was not judged.
     """
 
     run_id: str
