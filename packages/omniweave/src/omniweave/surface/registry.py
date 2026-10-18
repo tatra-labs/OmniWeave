@@ -2172,8 +2172,8 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             destructive=False,
             cost_class=CostClass.FREE,
             summary=(
-                "Run one eval suite over the metric register's subjects and write its runs and "
-                "metrics to the .oweval in one transaction; this build measures parse"
+                "Run eval suites over the metric register's subjects and write their runs and "
+                "metrics to the .oweval in one transaction; this build measures parse and absence"
             ),
             decision="the eval store needs the measurements a release check will judge",
             example={},

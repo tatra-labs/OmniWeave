@@ -14,10 +14,31 @@ import json
 from pathlib import Path
 
 import pytest
+from omniweave.surface import admit as admission
 from omniweave.surface import eval as verb
+from omniweave_conform import absence as absence_harness
+from omniweave_conform.damage import Assessment, Clause
 
 REPO = Path(__file__).resolve().parents[4]
 PDFIUM = "parse.pdf.pdfium"
+
+
+def _fake_suite(monkeypatch: pytest.MonkeyPatch, *oks: bool) -> list[object]:
+    """The absence harness, faked: a unit test spawns no `ow` (Q-G25). Returns its `admit`s."""
+    handed: list[object] = []
+
+    def fake(_chosen: object, **kw: object) -> absence_harness.Suite:
+        handed.append(kw["admit"])
+        return absence_harness.Suite(
+            assessments=tuple(
+                Assessment(f"inj{index}", "corpus/doc.pdf", (Clause("degraded", ok, "why"),))
+                for index, ok in enumerate(oks)
+            ),
+            documents={"corpus/doc.pdf": b"%PDF-"},
+        )
+
+    monkeypatch.setattr(absence_harness, "run_suite", fake)
+    return handed
 
 
 def _eval(*argv: str, cwd: Path = REPO) -> tuple[int, str, str]:
@@ -28,7 +49,7 @@ def _eval(*argv: str, cwd: Path = REPO) -> tuple[int, str, str]:
 
 def test_run_writes_the_store_and_prints_a_line_per_subject(tmp_path: Path) -> None:
     store = tmp_path / "new.oweval"
-    code, out, err = _eval("run", "--subject", PDFIUM, "--oweval", str(store))
+    code, out, err = _eval("run", "--suite", "parse", "--subject", PDFIUM, "--oweval", str(store))
     assert (code, err) == (0, "")
     first, last = out.splitlines()
     assert first.split()[:4] == [PDFIUM, "pdf/born_digital", "span_exact_rate", "1.0000"]
@@ -44,9 +65,10 @@ def test_render_json_prints_one_object(tmp_path: Path) -> None:
     )
     assert code == 0
     done = json.loads(out)
-    assert (done["suite"], done["oweval"]) == ("parse", str(store))
+    assert (done["suites"], done["oweval"]) == (["parse"], str(store))
     [row] = done["runs"]
-    assert (row["subject"], row["slice"], row["metric"], row["value"]) == (
+    assert (row["suite"], row["subject"], row["slice"], row["metric"], row["value"]) == (
+        "parse",
         PDFIUM,
         "pdf/born_digital",
         "span_exact_rate",
@@ -56,9 +78,9 @@ def test_render_json_prints_one_object(tmp_path: Path) -> None:
     assert len(row["run_id"]) == 32
 
 
-def test_release_check_then_wants_only_the_absence_gate(tmp_path: Path) -> None:
+def test_release_check_after_parse_alone_wants_the_absence_gate(tmp_path: Path) -> None:
     store = tmp_path / "x.oweval"
-    assert _eval("run", "--oweval", str(store))[0] == 0
+    assert _eval("run", "--suite", "parse", "--oweval", str(store))[0] == 0
     code, out, _ = _eval("release-check", "--oweval", str(store))
     assert code == 1
     assert out.splitlines() == [
@@ -69,10 +91,61 @@ def test_release_check_then_wants_only_the_absence_gate(tmp_path: Path) -> None:
     ]
 
 
+def test_every_built_suite_by_default_and_release_check_then_passes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    handed = _fake_suite(monkeypatch, True, True)
+    store = tmp_path / "x.oweval"
+    code, out, _ = _eval("run", "--oweval", str(store))
+    assert code == 0
+    lines = out.splitlines()
+    assert lines[2].split() == [
+        "omniweave",
+        "deterministic_half",
+        "degradation_detection",
+        "1.0000",
+        "over",
+        "2;",
+        "2",
+        "of",
+        "2",
+        "pair(s)",
+        "passed",
+    ]
+    assert lines[3].startswith("ow eval run --suite parse,absence: 3 run(s) written to ")
+    assert handed == [admission.admit]
+    assert _eval("release-check", "--oweval", str(store)) == (
+        0,
+        "ow eval release-check: ok; 3 latest run(s), 0 superseded, 2 hard gate(s)\n",
+        "",
+    )
+
+
+def test_a_failed_pair_is_printed_and_release_check_refuses_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fake_suite(monkeypatch, True, False)
+    store = tmp_path / "x.oweval"
+    code, out, _ = _eval(
+        "run", "--suite", "absence", "--deterministic-half", "--oweval", str(store)
+    )
+    assert code == 0
+    assert out.splitlines()[0].endswith(
+        "0.5000 over 2; 1 of 2 pair(s) passed; failed: inj1 x corpus/doc.pdf"
+    )
+    code, out, _ = _eval("release-check", "--oweval", str(store))
+    assert code == 1
+    assert "0.5 is not the hard budget 1.0" in out
+
+
 @pytest.mark.parametrize(
     ("argv", "says"),
     [
-        (["--suite", "absence"], "--suite absence is not measured in this build"),
+        (["--suite", "extract"], "--suite extract is not measured in this build"),
+        (["--suite", "parse", "--deterministic-half"], "--deterministic-half names the half"),
+        (["--deterministic-half"], "--deterministic-half names the half"),
+        (["--suite", "absence", "--subject", PDFIUM], "--subject names a parse driver"),
+        (["--subject", PDFIUM], "--subject names a parse driver"),
         (["--suite", "bogus"], "--suite 'bogus' is not one of parse, extract"),
         (["--witness", "me"], "--witness 'me' is not one of ci, self, third_party"),
         (["--cassette", "on"], "--cassette 'on' is not one of off, allow, required"),
@@ -100,6 +173,8 @@ def test_a_missing_register_exits_2(tmp_path: Path) -> None:
 
 
 def test_a_subject_the_register_lacks_is_a_refusal_exit_1(tmp_path: Path) -> None:
-    code, _, err = _eval("run", "--subject", "parse.nothing", "--oweval", str(tmp_path / "x"))
+    code, _, err = _eval(
+        "run", "--suite", "parse", "--subject", "parse.nothing", "--oweval", str(tmp_path / "x")
+    )
     assert code == 1
     assert "no [[subject]] in the metric register is driver 'parse.nothing'" in err
