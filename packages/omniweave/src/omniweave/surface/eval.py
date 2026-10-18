@@ -42,10 +42,11 @@ the row together.
    once here from `SystemClock` as the other surfaces read the wall clock. A refusal in the
    bless is `QualityError`, exit 1, as in ruling 3.
 8. **`run` measures suites and writes them** (13:1873, D868, D869). `--suite` omitted is every
-   suite this build measures, `parse` then `absence`, written in one transaction; another of the
-   seven is refused by name, as is a name outside them. `--deterministic-half` names the only
-   half of `absence` built, so it is refused beside any other suite, and `--subject`, a parse
-   driver, beside `absence`, whose subject is the product. The absence harness is handed
+   suite this build measures, `parse`, `absence` then `retrieve` (D870), written in one
+   transaction; another of the seven is refused by name, as is a name outside them.
+   `--deterministic-half` names the only half of `absence` built, so it is refused beside any
+   other suite, and `--subject`, a parse driver, beside `absence` and `retrieve`, whose subject is
+   the product. The absence harness is handed
    `surface.admit.admit`, 13:1306's check of each fix against this registry. `--witness` and
    `--cassette` must be values their `eval_run` columns admit. `--validate-judge` and `--emit`
    are refused by name, and so is the global `--corpus`, which 13:1873 gives this verb as
@@ -97,7 +98,7 @@ SUITES: Final[tuple[str, ...]] = (
     "perf",
 )
 """13:237-242's seven suites, the `eval_run.suite` CHECK, in that order."""
-RUN_SUITES: Final[tuple[str, ...]] = ("parse", "absence")
+RUN_SUITES: Final[tuple[str, ...]] = ("parse", "absence", "retrieve")
 """Ruling 8: the suites `ow eval run` measures in this build."""
 WITNESSES: Final[tuple[str, ...]] = ("ci", "self", "third_party")
 CASSETTES: Final[tuple[str, ...]] = ("off", "allow", "required")
@@ -420,9 +421,11 @@ def _run(parsed: argparse.Namespace, *, cwd: Path, env: Mapping[str, str], stdou
             "given only with --suite absence",
             fix="ow eval run --suite absence --deterministic-half",
         )
-    if parsed.subject is not None and "absence" in suites:
+    product = [one for one in suites if one in ("absence", "retrieve")]
+    if parsed.subject is not None and product:
         raise UsageError(
-            "--subject names a parse driver, and the absence suite's subject is omniweave itself",
+            f"--subject names a parse driver, and the {product[0]} suite's subject is omniweave "
+            "itself",
             fix="ow eval run --suite parse --subject <driver id>",
         )
     for flag, value, allowed in (
@@ -470,6 +473,12 @@ def _run_line(row: EvalRunRow) -> str:
     if row.suite == "absence":
         tail = f"{row.parsed} of {row.n} pair(s) passed" + (
             f"; failed: {', '.join(row.refused)}" if row.refused else ""
+        )
+    elif row.suite == "retrieve":
+        cites = row.parsed + len(row.refused)
+        rate = f"{int(row.value or 0)} over {row.n} answer(s)"
+        tail = f"{row.parsed} of {cites} cite(s) resolve" + (
+            f"; unresolved: {', '.join(row.refused)}" if row.refused else ""
         )
     else:
         tail = f"{row.parsed} parsed, {len(row.refused)} refused"

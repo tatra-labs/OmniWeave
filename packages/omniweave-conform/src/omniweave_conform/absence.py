@@ -77,6 +77,7 @@ __all__ = [
     "build",
     "documents_digest",
     "documents_of",
+    "generator",
     "run_pair",
     "run_suite",
 ]
@@ -181,7 +182,8 @@ class Suite:
     """Every document any pair read, keyed `<corpus>/<path>`, for the corpus digest."""
 
 
-def _generator(root: Path) -> ModuleType:
+def generator(root: Path) -> ModuleType:
+    """The checkout's reference-corpus generator, loaded once by path (ruling 4)."""
     path = root / GENERATOR
     spec = importlib.util.spec_from_file_location("omniweave_gen_reference_corpora", path)
     if spec is None or spec.loader is None or not path.is_file():
@@ -200,7 +202,7 @@ def documents_of(fixture: Fixture, root: Path) -> dict[str, bytes]:
     wanted = set(fixture.paths)
     found = {
         doc.path: doc.to_bytes()
-        for doc in _generator(root).documents(fixture.corpus, "quick")
+        for doc in generator(root).documents(fixture.corpus, "quick")
         if doc.path in wanted
     }
     missing = wanted - set(found)

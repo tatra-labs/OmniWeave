@@ -814,6 +814,8 @@ class EvalRunRow:
     For `parse`, `n` counts sampled claims, and `parsed` and `refused` are the fixtures the driver
     parsed and the ones it refused, each with its class. For `absence`, `n` counts
     `(Injector, fixture)` pairs, `parsed` the pairs that passed and `refused` the ones that failed.
+    For `retrieve`, `value` is `citability_violations`, the Answers with an unresolved cite, over
+    `n` Answers; `parsed` counts the cites that resolve and `refused` names the ones that do not.
     """
 
     run_id: str
