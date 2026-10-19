@@ -286,10 +286,13 @@ CRITERIA: tuple[Criterion, ...] = (
                 "test_the_plan_lowered_carries_each_cite_pinned_at_its_generation",
                 label="the read-back and the pinned cites, one cell",
             ),
+            tool("check_out_determinism.py"),
         ),
         Coverage.PARTIAL,
-        "no 40-unit golden exists (the goldens carry two units), the nine OS/Python cells run "
-        "nowhere, and the reader cards never go through the testkit",
+        "OUT13's in-cell half runs: each golden compiled twice here and under three "
+        "PYTHONHASHSEEDs in fresh processes, diffed member by member (D878); but no 40-unit "
+        "golden exists (the goldens carry two units), the nine OS/Python cells run nowhere, and "
+        "the reader cards never go through the testkit",
     ),
     Criterion(
         "V10-11",
