@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D879: the licence suite reads [normalise]
+# blessed-because: D880: D40 pinned, G19 build note
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -33,7 +33,7 @@ documents-frozen  df252315b17cd3b51f235d2f752d22bf4f01f5b0ceb735724680f4bc002514
 documents-frozen  7c1f16e67a5873f55387b21b72e2527ac41685595692f68288471588f4a0bda0  04-driver-system.md
 documents-frozen  4db10013935a3de62e8cee075a463e94ef2ee414ae33a98365f41be562ec7183  05-ingest-and-routing.md
 documents-frozen  7c4c7946cad37746e602ef662e72d6a75ee43cc6b9367173c906cddc6d9f763e  06-structure-extraction.md
-documents-frozen  0490cf3f951ec33439e6bf225ae76d955f7741dcebfcc788cddaa4fd3359239d  07-store-and-retrieval.md
+documents-frozen  761ba9fea95f9a375fdff3c2e98377fa0e5c73b009064cb72d1bcc7c122b85a2  07-store-and-retrieval.md
 documents-frozen  3b78dc5495b60c008dea14242c2dd56a9ee67f8996e1f61b66791fc5e78a1d0f  08-runtime.md
 documents-frozen  c3bf922c2cbf2ae472bd9cd587ce700d724fa6b6cb6203ada6d1ef11a86a92df  09-generation.md
 documents-frozen  4f58f4814cd10a876f6a6856aaf0879ad0d1287fc78d5a4fcd0e05271fa2d962  10-interfaces.md
