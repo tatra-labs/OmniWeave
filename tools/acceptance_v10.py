@@ -294,12 +294,19 @@ CRITERIA: tuple[Criterion, ...] = (
                 label="the read-back and the pinned cites, one cell",
             ),
             tool("check_out_determinism.py"),
+            pytest(
+                "packages/omniweave-conform/tests/conform/test_out_determinism_process.py::"
+                "test_the_forty_unit_golden_compiles_to_one_part_digest_five_ways",
+                "packages/omniweave-target-pptx/tests/unit/test_golden40.py",
+                label="the 40-unit golden: generated, pinned, gated, compiled five ways (D881)",
+            ),
         ),
         Coverage.PARTIAL,
-        "OUT13's in-cell half runs: each golden compiled twice here and under three "
-        "PYTHONHASHSEEDs in fresh processes, diffed member by member (D878); but no 40-unit "
-        "golden exists (the goldens carry two units), the nine OS/Python cells run nowhere, and "
-        "the reader cards never go through the testkit",
+        "OUT13's in-cell half runs over the register's goldens and over the 40-unit deck "
+        "`fixtures/gen/gen_golden40.py` generates: twice here and under three PYTHONHASHSEEDs in "
+        "fresh processes, one part_digest across 116 parts (D878, D881). The nine OS/Python cells "
+        "run nowhere, and of the reader cards docx's passes the testkit's mandatory tier and "
+        "pptx's fails licence on Pillow's MIT-CMU, G3's open question (D879)",
     ),
     Criterion(
         "V10-11",

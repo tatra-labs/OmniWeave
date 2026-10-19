@@ -75,3 +75,21 @@ def test_no_such_target_or_no_register_exits_2(
     assert "names no [[target]] among ['video']" in capsys.readouterr().out
     assert TOOL.main(["--register", str(tmp_path / "absent.toml")]) == 2
     assert capsys.readouterr().out.startswith("OUT13 did not run: FileNotFoundError")
+
+
+def test_a_golden_override_names_one_target_and_reaches_run_resolved(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """D881: `--golden DIR` compiles DIR in place of the register's golden, for one target."""
+    seen: list[Path] = []
+
+    def fake(target: Any, **_kw: Any) -> Any:
+        seen.append(target.golden)
+        return judge(target.target, ("part",), [A, A])
+
+    monkeypatch.setattr(TOOL, "run", fake)
+    assert TOOL.main(["--target", "pptx", "--golden", "deck"]) == 0
+    assert seen == [Path("deck").resolve()]
+    capsys.readouterr()
+    assert TOOL.main(["--golden", "deck"]) == 2
+    assert "one --target" in capsys.readouterr().out
