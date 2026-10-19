@@ -238,13 +238,23 @@ def test_an_unknown_latest_run_refuses_naming_what_it_did_not_measure(tmp_path: 
         "run",
         "absence/omniweave.absence run r2",
         "status unknown; not measured: handwriting",
-        "fix what stopped the run, then ow eval run --suite absence --subject omniweave.absence",
+        "fix what stopped the run, then ow eval run --suite absence",
     )
     #  The view leaves an unknown run out, so its hard gate is unmeasured too.
     assert _kinds(judged) == [
         ("run", "absence/omniweave.absence run r2"),
         ("unmeasured", "hard gate degradation_detection@*"),
     ]
+
+
+def test_an_unknown_parse_run_s_fix_names_its_driver_and_no_other_suite_s_does(
+    tmp_path: Path,
+) -> None:
+    """D872: `ow eval run` takes `--subject` for a parse driver alone, so only there is it named."""
+    judged = _judge(tmp_path, (replace(_PARSE, status="unknown"), _ABSENCE))
+    assert judged.findings[0].fix == (
+        "fix what stopped the run, then ow eval run --suite parse --subject parse.pdf.pdfium"
+    )
 
 
 def test_an_unknown_run_that_names_nothing_says_so(tmp_path: Path) -> None:

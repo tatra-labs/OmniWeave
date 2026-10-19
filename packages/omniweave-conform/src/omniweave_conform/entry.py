@@ -67,7 +67,8 @@ def run(
 ) -> dict[str, object]:
     """`ow eval run`: each named suite's rows, written to `oweval` in one transaction. D868, D869.
 
-    `suites` are run in the order given, every one of them built (`eval_run.BUILT`). `root` is the
+    `suites` are run in the order given, each one of the seven (`eval_run.SUITES`); the three this
+    build cannot measure write an `unknown` run naming why (D872). `root` is the
     directory the register's `card` and `fixtures` paths are relative to, the working directory.
     `subject` narrows the parse suite's drivers and is refused for every other suite, whose
     subjects are its own: the product, or a target's compile driver. `admit` is
@@ -81,11 +82,10 @@ def run(
         raise QualityError(
             f"no file at {register}", fix="pass --gates PATH naming the metric register"
         )
-    unbuilt = [suite for suite in suites if suite not in eval_run.BUILT]
+    unbuilt = [suite for suite in suites if suite not in eval_run.SUITES]
     if unbuilt or not suites:
         raise QualityError(
-            f"ow eval run measures {', '.join(eval_run.BUILT)} in this build, not "
-            f"{', '.join(unbuilt) or 'nothing'}",
+            f"ow eval run runs {', '.join(eval_run.SUITES)}, not {', '.join(unbuilt) or 'nothing'}",
             fix="ow eval run --suite parse",
         )
     product = [suite for suite in suites if suite != "parse"]
@@ -111,6 +111,10 @@ def run(
         elif suite == "absence":
             batch, measured = eval_run.absence(
                 rows, root=Path(root), witness=witness, cassette=cassette, now_ns=clock, admit=admit
+            )
+        elif suite in eval_run.UNMEASURABLE:
+            batch, measured = eval_run.unknown(
+                suite, witness=witness, cassette=cassette, now_ns=clock
             )
         elif suite == "retrieve":
             batch, measured = eval_run.retrieve(
