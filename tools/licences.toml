@@ -92,6 +92,7 @@ module = ["cairosvg", "fitz", "pymupdf", "marker", "surya", "texify", "lift", "m
 
 [normalise]
 "Apache 2.0" = ["Apache-2.0"]
+"Apache-2" = ["Apache-2.0"]
 "Apache 2.0 License" = ["Apache-2.0"]
 "Apache License 2.0" = ["Apache-2.0"]
 "Apache Software License" = ["Apache-2.0"]
@@ -104,6 +105,7 @@ module = ["cairosvg", "fitz", "pymupdf", "marker", "surya", "texify", "lift", "m
 "PSF" = ["PSF-2.0"]
 "PSFL" = ["PSF-2.0"]
 "Python Software Foundation License" = ["PSF-2.0"]
+"The Unlicense" = ["Unlicense"]
 # pypdfium2 ships a comma list with a prose tail rather than an SPDX expression. The two ids are
 # the wrapper's; "dependency licenses" is PDFium's bundled FreeType / libjpeg-turbo / lcms2 /
 # zlib / libopenjpeg set, which 14-security.md section 9.4 marks VERIFY and hands to the
