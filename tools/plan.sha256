@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D873: build note on 16 section 13's demo, the eval pair runs
+# blessed-because: D874: the script is tools/check_build.py
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -37,7 +37,7 @@ documents-frozen  0490cf3f951ec33439e6bf225ae76d955f7741dcebfcc788cddaa4fd335923
 documents-frozen  3b78dc5495b60c008dea14242c2dd56a9ee67f8996e1f61b66791fc5e78a1d0f  08-runtime.md
 documents-frozen  be04e76a5fed4eab2256414da0fe06ee96a0d12943d0cc1c4897742d692e7753  09-generation.md
 documents-frozen  4f58f4814cd10a876f6a6856aaf0879ad0d1287fc78d5a4fcd0e05271fa2d962  10-interfaces.md
-documents-frozen  76a694bf0b19b60ba35d2246f6b36466ca990f318f51e0a292c388ec0e78bc68  11-repo-layout.md
+documents-frozen  cf64ef1d8afd094009f7136d5e229eea2b4c361f5f01875f045260af741728f3  11-repo-layout.md
 documents-frozen  44a9d2b810b0850205912449e6337423f3db837c1f75f2d580c91b25353752c2  12-performance.md
 documents-frozen  8102713ddd7fa8893937933598504864315044ee70867e4c4adbc6ab81ee99ce  13-quality.md
 documents-frozen  667161a8bd206b5805998a289f7679f80dc3a8ea6910c52ea8345bfe9562d721  14-security.md
