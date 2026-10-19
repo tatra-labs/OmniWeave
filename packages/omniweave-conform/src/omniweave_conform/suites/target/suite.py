@@ -79,6 +79,15 @@ checking and compiling the golden fixture in a scratch directory.
     it was is an `unedited` failure, since R4(b) would then hold of no edit. A golden with no
     `edit/` leaves R4 `unknown` when (a) holds, saying so. R4 reads no artefact back: an
     owsvg/1 edit restores the retained IL, and so does this.
+
+## Rulings (D878)
+
+17. **`compile_golden()` is R1's compile, once, for a caller that compares it elsewhere.**
+    09:1597 has the determinism suite compile the golden *"twice in one process and once in a
+    fresh process"*, which this module cannot do alone, so it hands the bytes and the receipt's
+    `part_digest` out. It prepares the job exactly as `run_target()` does (one `_prepared()`
+    serves both), so the bytes are the ones R1 compares. A golden whose gate does not reach
+    `lower()` is a `QualityError` naming the status (OUT23), never a compile of something else.
 """
 
 from __future__ import annotations
@@ -95,7 +104,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal
 
-from omniweave_core.errors import TargetError
+from omniweave_core.errors import QualityError, TargetError
 from omniweave_core.events import traceparent
 from omniweave_core.model.block import Cite
 from omniweave_core.model.enums import Quote
@@ -144,9 +153,11 @@ __all__ = [
     "CITES",
     "EDIT",
     "GOLDEN_CLOCK_NS",
+    "Compiled",
     "LawOutcome",
     "TargetReport",
     "addressed",
+    "compile_golden",
     "run_target",
 ]
 
@@ -186,6 +197,26 @@ class LawOutcome:
 
 
 @dataclass(frozen=True, slots=True)
+class Compiled:
+    """Ruling 17: one golden compile's artefact and the receipt's `part_digest` (hex)."""
+
+    body: bytes
+    part_digest: str
+
+
+@dataclass(frozen=True, slots=True)
+class _Prepared:
+    """What `run_target()` and `compile_golden()` both build before the first law."""
+
+    target: str
+    gate: GateStatus
+    bundle: ILBundle | None
+    ledger: AssetLedger | None
+    plan: Plan | None
+    job: Path
+
+
+@dataclass(frozen=True, slots=True)
 class TargetReport:
     """Ruling 1: the `target` suite's report, one outcome per law."""
 
@@ -214,35 +245,14 @@ def run_target(
     sibling = dict(card.compile_sibling)
     round_trip: Mapping[str, Any] = sibling.get("round_trip", {})  # type: ignore[assignment]
     claim = applicable(round_trip.get("laws", ()), str(round_trip.get("fidelity", "none")))
-    target = str(sibling.get("target", ""))
-    job = workdir / "job"
-    shutil.copytree(golden / "il", job / "il")
-    checked = check(
-        job,
-        compiler,
-        target=target,
-        constructs=constructs,
-        stage="final",
-        cites=_FixtureCites(golden / CITES),
-    )
+    prepared = _prepared(compiler, card, constructs, golden, workdir=workdir)
+    target, job = prepared.target, prepared.job
     outcomes = {law: LawOutcome(law, "not-applicable") for law in claim.not_applicable}
-    if checked.status not in {GateStatus.PASSED, GateStatus.MANUAL_REQUIRED}:
-        reason = f"the golden fixture's gate is {checked.status}; lower() is unreachable (OUT23)"
+    bundle, ledger, plan = prepared.bundle, prepared.ledger, prepared.plan
+    if bundle is None or ledger is None or plan is None:
+        reason = f"the golden fixture's gate is {prepared.gate}; lower() is unreachable (OUT23)"
         outcomes |= {law: LawOutcome(law, "unknown", reason=reason) for law in claim.applies}
-        return _report(target, checked.status, outcomes)
-
-    bundle = ILBundle.load(job / "il", carrier=compiler.carrier, constructs=constructs)
-    ledger = _golden_ledger(golden / ASSETS, bundle)
-    cites = _FixtureCites(golden / CITES)
-    plan = _plan(
-        target,
-        bundle,
-        constructs,
-        checked.status,
-        ledger=ledger,
-        pins=_pins(bundle, compiler, cites),
-    )
-    Job(JOB_SCHEMA, plan, _TRACEPARENT, JobDeterminism(GOLDEN_CLOCK_NS)).write(job)
+        return _report(target, prepared.gate, outcomes)
     capability = dict(card.compile_capability)
     declared = tuple(str(c) for c in capability.get("determinism", ()))  # type: ignore[union-attr]
     for law in claim.applies:
@@ -262,7 +272,65 @@ def run_target(
             part_of=CompileCard.of(card).part_of,
             golden=golden,
         )
-    return _report(target, checked.status, outcomes)
+    return _report(target, prepared.gate, outcomes)
+
+
+def compile_golden(
+    compiler: CompileV1,
+    card: DriverCard,
+    constructs: ConstructTable,
+    golden: Path,
+    *,
+    workdir: Path,
+) -> Compiled:
+    """Ruling 17: the golden compiled once, as R1 compiles it, in `workdir`."""
+    prepared = _prepared(compiler, card, constructs, golden, workdir=workdir)
+    if prepared.bundle is None or prepared.ledger is None or prepared.plan is None:
+        raise QualityError(
+            f"the {prepared.target} golden fixture's gate is {prepared.gate}; lower() is "
+            "unreachable (OUT23)",
+            fix=f"ow conform --target {prepared.target}  # the golden must pass its own gate",
+        )
+    scratch = workdir / "compile"
+    body, receipt = _compiled(compiler, prepared.plan, prepared.bundle, prepared.ledger, scratch)
+    return Compiled(body, receipt.part_digest)
+
+
+def _prepared(
+    compiler: CompileV1,
+    card: DriverCard,
+    constructs: ConstructTable,
+    golden: Path,
+    *,
+    workdir: Path,
+) -> _Prepared:
+    """Rulings 2, 9, 10 and 11: the checked job, and its bundle, ledger and Plan once it passes."""
+    target = str(dict(card.compile_sibling).get("target", ""))
+    job = workdir / "job"
+    shutil.copytree(golden / "il", job / "il")
+    checked = check(
+        job,
+        compiler,
+        target=target,
+        constructs=constructs,
+        stage="final",
+        cites=_FixtureCites(golden / CITES),
+    )
+    if checked.status not in {GateStatus.PASSED, GateStatus.MANUAL_REQUIRED}:
+        return _Prepared(target, checked.status, None, None, None, job)
+    bundle = ILBundle.load(job / "il", carrier=compiler.carrier, constructs=constructs)
+    ledger = _golden_ledger(golden / ASSETS, bundle)
+    cites = _FixtureCites(golden / CITES)
+    plan = _plan(
+        target,
+        bundle,
+        constructs,
+        checked.status,
+        ledger=ledger,
+        pins=_pins(bundle, compiler, cites),
+    )
+    Job(JOB_SCHEMA, plan, _TRACEPARENT, JobDeterminism(GOLDEN_CLOCK_NS)).write(job)
+    return _Prepared(target, checked.status, bundle, ledger, plan, job)
 
 
 def _report(target: str, gate: GateStatus, outcomes: Mapping[str, LawOutcome]) -> TargetReport:
@@ -557,16 +625,23 @@ def _compile(
     compiler: CompileV1, plan: Plan, bundle: ILBundle, ledger: AssetLedger, scratch: Path
 ) -> tuple[dict[str, str], Any]:
     """Ruling 4: one in-process compile, and the digests R1 compares."""
-    io = make_io(MemoryBlobStore(scratch / "kit"), scratch / "io")
-    body = _artefact(compiler.lower(plan, bundle, ledger, io), io)
-    staged = scratch / f"{plan.slug}.artefact"
-    staged.write_bytes(body)
-    receipt = compiler.postflight(str(staged), plan)
+    body, receipt = _compiled(compiler, plan, bundle, ledger, scratch)
     digests = {
         "part": "sha256:" + receipt.part_digest,
         "byte": "sha256:" + hashlib.sha256(body).hexdigest(),
     }
     return digests, receipt
+
+
+def _compiled(
+    compiler: CompileV1, plan: Plan, bundle: ILBundle, ledger: AssetLedger, scratch: Path
+) -> tuple[bytes, Any]:
+    """Rulings 4 and 17: `lower()`, the artefact staged, and `postflight()`'s receipt."""
+    io = make_io(MemoryBlobStore(scratch / "kit"), scratch / "io")
+    body = _artefact(compiler.lower(plan, bundle, ledger, io), io)
+    staged = scratch / f"{plan.slug}.artefact"
+    staged.write_bytes(body)
+    return body, compiler.postflight(str(staged), plan)
 
 
 def _artefact(result: DriverResult, io: Any) -> bytes:
