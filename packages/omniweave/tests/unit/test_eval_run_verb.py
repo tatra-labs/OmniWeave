@@ -18,6 +18,7 @@ from omniweave.surface import admit as admission
 from omniweave.surface import eval as verb
 from omniweave_conform import absence as absence_harness
 from omniweave_conform import retrieval as cite_harness
+from omniweave_conform import roundtrip as r2_harness
 from omniweave_conform.damage import Assessment, Clause
 
 REPO = Path(__file__).resolve().parents[4]
@@ -53,6 +54,26 @@ def _fake_cites(monkeypatch: pytest.MonkeyPatch, *unsound: str) -> None:
         skipped=6,
     )
     monkeypatch.setattr(cite_harness, "run_suite", lambda *_a, **_k: checked)
+
+
+def _fake_roundtrip(monkeypatch: pytest.MonkeyPatch, *, survive: bool = True) -> None:
+    """The roundtrip harness, faked: each target one addressed element, surviving or not."""
+
+    def judge(target: r2_harness.Target) -> r2_harness.Judged:
+        return r2_harness.Judged(
+            target=target,
+            driver=f"compile.{target.target}.native",
+            version="0.1.0",
+            gate="manual-required",
+            elements=(
+                r2_harness.Element("u01/e1", "heading", survive, "" if survive else "kind: it"),
+            ),
+            unknown=None,
+            il_units=(),
+            fingerprint="f" * 64,
+        )
+
+    monkeypatch.setattr(r2_harness, "judge", judge)
 
 
 def _eval(*argv: str, cwd: Path = REPO) -> tuple[int, str, str]:
@@ -112,6 +133,7 @@ def test_every_built_suite_by_default_and_release_check_then_passes(
 ) -> None:
     handed = _fake_suite(monkeypatch, True, True)
     _fake_cites(monkeypatch)
+    _fake_roundtrip(monkeypatch)
     store = tmp_path / "x.oweval"
     code, out, _ = _eval("run", "--oweval", str(store))
     assert code == 0
@@ -137,13 +159,34 @@ def test_every_built_suite_by_default_and_release_check_then_passes(
         "over",
     ]
     assert lines[3].endswith("2 answer(s); 4 of 4 cite(s) resolve")
-    assert lines[4].startswith("ow eval run --suite parse,absence,retrieve: 4 run(s) written to ")
+    assert lines[4].endswith("r2 1.0000 over 1; 1 of 1 element(s) survive")
+    assert lines[4].split()[:2] == ["compile.docx.native", "docx"]
+    assert lines[5].split()[:2] == ["compile.pptx.native", "pptx"]
+    assert lines[6].startswith(
+        "ow eval run --suite parse,absence,retrieve,roundtrip: 6 run(s) written to "
+    )
     assert handed == [admission.admit]
     assert _eval("release-check", "--oweval", str(store)) == (
         0,
-        "ow eval release-check: ok; 4 latest run(s), 0 superseded, 3 hard gate(s)\n",
+        "ow eval release-check: ok; 6 latest run(s), 0 superseded, 3 hard gate(s)\n",
         "",
     )
+
+
+def test_a_failed_element_is_printed_and_does_not_refuse_a_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D871 ruling 16: 13 names no metric for R2, so a failed verdict is no gate."""
+    _fake_roundtrip(monkeypatch, survive=False)
+    store = tmp_path / "x.oweval"
+    code, out, _ = _eval("run", "--suite", "roundtrip", "--oweval", str(store))
+    assert code == 0
+    assert out.splitlines()[0].endswith(
+        "r2 0.0000 over 1; 0 of 1 element(s) survive; failed: u01/e1 (kind: it)"
+    )
+    code, out, _ = _eval("release-check", "--oweval", str(store))
+    assert "hard gate span_exact_rate@*: no parse run measured it" in out
+    assert "u01/e1" not in out
 
 
 def test_an_unresolved_cite_is_printed_and_release_check_refuses_it(
@@ -186,7 +229,8 @@ def test_a_failed_pair_is_printed_and_release_check_refuses_it(
         (["--deterministic-half"], "--deterministic-half names the half"),
         (["--suite", "absence", "--subject", PDFIUM], "--subject names a parse driver"),
         (["--subject", PDFIUM], "--subject names a parse driver"),
-        (["--suite", "retrieve", "--subject", PDFIUM], "the retrieve suite's subject"),
+        (["--suite", "retrieve", "--subject", PDFIUM], "the retrieve suite's subjects"),
+        (["--suite", "roundtrip", "--subject", PDFIUM], "the roundtrip suite's subjects"),
         (["--suite", "bogus"], "--suite 'bogus' is not one of parse, extract"),
         (["--witness", "me"], "--witness 'me' is not one of ci, self, third_party"),
         (["--cassette", "on"], "--cassette 'on' is not one of off, allow, required"),

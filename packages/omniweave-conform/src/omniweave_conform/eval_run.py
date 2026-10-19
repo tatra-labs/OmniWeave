@@ -1,4 +1,4 @@
-"""`ow eval run`: the parse suite (D868), the absence half (D869) and the retrieve half (D870).
+"""`ow eval run`: parse (D868), absence (D869), retrieve (D870) and roundtrip (D871).
 
 13-quality.md:1873 prints `ow eval run [--suite S] [--corpus C@V] [--subject D] [--witness W]
 [--cassette MODE] [--validate-judge] [--emit PATH]`, and 16-roadmap.md:942 makes it W10.6's
@@ -86,7 +86,22 @@ returns it as `store.oweval` rows for one `write()`.
     (16:689's `golden-queries.jsonl`); OUT11's artefact half of `citability_violations`; and the
     `damaged` tasks.
 
-Specified in 13-quality.md sections 2.10, 8.3, 8.6, 8.8 and 13.3, and 16-roadmap.md W10.6.
+## The roundtrip suite (D871)
+
+15. **One run per register `[[target]]`**, its subject the compile driver, over `roundtrip.judge()`:
+    the target's golden compiled, read back, and law R2 stated for every element carrying
+    `data-ow-el`. Each element is one `eval_assertion` of 13:1011's `roundtrip` type and one
+    `owdoc` verdict, passed when no R2 failure names it. The golden is the corpus, Tier A and not
+    publishable, as ruling 3, and an assertion's id carries the corpus version, so a changed golden
+    names new assertions rather than editing immutable ones. An assertion's `checked` is NULL: it is
+    derived from the golden's IL by the harness, and no reviewer verified it.
+16. **No metric row, because the plan names none.** 13:1564 gives R2 *"the `roundtrip` assertion
+    type"* and no metric, so a failed element is a failed verdict on the record and not a gate:
+    `release-check` refuses on a metric or a run, never on a verdict. That is named in every run's
+    confounders. An R2 the suite could not judge (a gate short of `lower()`, OUT23) is a run with
+    status `unknown` and the suite's reason, which `release-check` does refuse.
+
+Specified in 13-quality.md sections 2.10, 8.3, 8.6, 8.8, 9 and 13.3, and 16-roadmap.md W10.6.
 """
 
 from __future__ import annotations
@@ -101,11 +116,12 @@ from typing import TYPE_CHECKING, Any, Final
 from omniweave_core.drivers.card import MeasuredOn
 from omniweave_core.errors import QualityError
 from omniweave_core.host.activate import code_fingerprint
-from omniweave_core.store.oweval import Batch, Corpus, Metric, Run
+from omniweave_core.store.oweval import Assertion, Batch, Corpus, Metric, Run, Verdict
 from omniweave_ports.types import DriverError
 
 from omniweave_conform import absence as damage_half
 from omniweave_conform import retrieval as cite_half
+from omniweave_conform import roundtrip as r2_half
 from omniweave_conform.badge import kit_version
 from omniweave_conform.damage import INJECTORS, TABLE
 from omniweave_conform.evaluate import span_exact_rate
@@ -130,10 +146,18 @@ __all__ = [
     "corpus_digest",
     "parse",
     "retrieve",
+    "roundtrip",
 ]
 
-BUILT: Final[tuple[str, ...]] = ("parse", "absence", "retrieve")
-"""The suites `ow eval run` measures in this build, in run order. The other four are refused."""
+BUILT: Final[tuple[str, ...]] = ("parse", "absence", "retrieve", "roundtrip")
+"""The suites `ow eval run` measures in this build, in run order. The other three are refused."""
+
+ROUNDTRIP_CONFOUNDER: Final = (
+    "no eval/gates.toml row folds R2 into a metric (13-quality.md:1564 names the roundtrip "
+    "assertion type and no metric), so a failed element is a failed verdict and does not refuse "
+    "a release"
+)
+"""Ruling 16, said in every roundtrip run."""
 
 VIOLATIONS: Final = "citability_violations"
 SOUNDNESS: Final = "citation_soundness"
@@ -588,6 +612,141 @@ def retrieve(
         refused=unsound,
     )
     return Batch(corpora=(corpus,), runs=(run,), metrics=metrics), (done,)
+
+
+def roundtrip(
+    register: Mapping[str, Any],
+    *,
+    root: Path,
+    witness: str,
+    cassette: str,
+    now_ns: Callable[[], int],
+) -> tuple[Batch, tuple[Measured, ...]]:
+    """One run per register `[[target]]`, its R2 as one verdict per element (rulings 15-16)."""
+    rows = r2_half.targets(register, root)
+    if not rows:
+        raise QualityError(
+            "the metric register names no [[target]] for the roundtrip suite to read back",
+            fix="add a [[target]] row: a card, its read_back card and a golden, to eval/gates.toml",
+        )
+    corpora: list[Corpus] = []
+    assertions: list[Assertion] = []
+    runs: list[Run] = []
+    verdicts: list[Verdict] = []
+    done: list[Measured] = []
+    for target in rows:
+        started = now_ns()
+        try:
+            judged = r2_half.judge(target)
+        except (RuntimeError, OSError, TypeError) as error:
+            raise QualityError(
+                f"the roundtrip suite could not run {target.target}: "
+                f"{type(error).__name__}: {error}",
+                fix=f"ow conform --target {target.target}  # the target suite, every law",
+            ) from error
+        ended = now_ns()
+        digest = r2_half.golden_digest(target.golden)
+        corpus = Corpus(
+            corpus_id=target.golden.relative_to(root).as_posix(),
+            version=digest[:16],
+            corpus_digest=digest,
+            tier="A",
+            n_docs=len(judged.il_units),
+            n_assertions=len(judged.elements),
+            n_checked=0,
+            document_redistributable=True,
+            assertions_redistributable=True,
+            publishable=False,
+        )
+        corpora.append(corpus)
+        run_id = _run_id("roundtrip", judged.driver, digest, started)
+        failed = tuple(f"{e.el} ({e.explanation})" for e in judged.elements if not e.passed)
+        runs.append(
+            Run(
+                run_id=run_id,
+                suite="roundtrip",
+                corpus_id=corpus.corpus_id,
+                corpus_version=corpus.version,
+                corpus_digest=digest,
+                subject=judged.driver,
+                subject_version=judged.version,
+                producer_id=None,
+                measured_on=_measured_on(corpus),
+                timing_basis="in_process",
+                witness=witness,
+                cassette=cassette,
+                policy_digest=None,
+                pricebook_digest=None,
+                harness_version=kit_version(),
+                code_fingerprint=judged.fingerprint,
+                hardware=_hardware(),
+                started_ns=started,
+                ended_ns=ended,
+                status="unknown" if judged.unknown is not None else "ok",
+                not_measured=(
+                    *((f"R2: {judged.unknown}",) if judged.unknown is not None else ()),
+                    "R1 and R3-R7 are the target suite's to judge (ow conform --target); this run "
+                    "states R2, 13's roundtrip assertion type",
+                ),
+                confounders=(
+                    f"the golden is the target's own fixture, its gate {judged.gate}",
+                    ROUNDTRIP_CONFOUNDER,
+                    f"{len(failed)} element(s) failed R2"
+                    + (f": {', '.join(failed)}" if failed else ""),
+                ),
+            )
+        )
+        for element in judged.elements:
+            assertion_id = f"roundtrip/{target.target}@{corpus.version}/{element.el}"
+            assertions.append(
+                Assertion(
+                    assertion_id=assertion_id,
+                    corpus_id=corpus.corpus_id,
+                    corpus_version=corpus.version,
+                    doc=f"il/{element.el.split('/', 1)[0]}",
+                    page=None,
+                    type="roundtrip",
+                    spec={"law": r2_half.LAW, "construct": element.construct},
+                    addr=element.el,
+                    evaluable_in="owdoc",
+                    checked=None,
+                    derived_from_sha256=digest,
+                    slices=(target.target,),
+                )
+            )
+            verdicts.append(
+                Verdict(
+                    run_id=run_id,
+                    assertion_id=assertion_id,
+                    evaluator="owdoc",
+                    passed=element.passed,
+                    score=None,
+                    slice_key=target.target,
+                    explanation=element.explanation,
+                )
+            )
+        survived = sum(1 for e in judged.elements if e.passed)
+        done.append(
+            Measured(
+                run_id=run_id,
+                suite="roundtrip",
+                subject=judged.driver,
+                slice_key=target.target,
+                corpus_id=corpus.corpus_id,
+                metric=r2_half.LAW,
+                value=None if not judged.elements else survived / len(judged.elements),
+                n=len(judged.elements),
+                parsed=survived,
+                refused=failed if judged.unknown is None else (f"unknown: {judged.unknown}",),
+            )
+        )
+    batch = Batch(
+        corpora=tuple(corpora),
+        assertions=tuple(assertions),
+        runs=tuple(runs),
+        verdicts=tuple(verdicts),
+    )
+    return batch, tuple(done)
 
 
 def _truth(row: Mapping[str, Any], metric: str) -> str:
