@@ -120,7 +120,9 @@ def test_only_the_damaged_build_carries_the_injector_s_config(
         ran.append(tuple(argv))
         return Captured(0)
 
-    monkeypatch.setattr(tool, "_ow", fake_ow)
+    from omniweave_conform import absence  # noqa: PLC0415 -- the harness the script calls (D869)
+
+    monkeypatch.setattr(absence, "_ow", fake_ow)
     tool.build(tmp_path / "pristine", {"a.pdf": b"%PDF-"})
     tool.build(tmp_path / "damaged", {"a.pdf": b"%PDF-"}, config=INJECTORS["inflate"].config)
     pristine = (tmp_path / "pristine" / "project" / "omniweave.toml").read_text(encoding="utf-8")
