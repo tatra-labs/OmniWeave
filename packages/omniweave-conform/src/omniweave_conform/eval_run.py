@@ -94,7 +94,9 @@ returns it as `store.oweval` rows for one `write()`.
     `owdoc` verdict, passed when no R2 failure names it. The golden is the corpus, Tier A and not
     publishable, as ruling 3, and an assertion's id carries the corpus version, so a changed golden
     names new assertions rather than editing immutable ones. An assertion's `checked` is NULL: it is
-    derived from the golden's IL by the harness, and no reviewer verified it.
+    derived from the golden's IL by the harness, and no reviewer verified it. Its
+    `derived_from_sha256` is the sha256 of the IL unit file its element lives in, the bytes it was
+    written from (D875), so Q-G26 can hold it to its own corpus; D871 wrote the golden's digest.
 16. **No metric row, because the plan names none.** 13:1564 gives R2 *"the `roundtrip` assertion
     type"* and no metric, so a failed element is a failed verdict on the record and not a gate:
     `release-check` refuses on a metric or a run, never on a verdict. That is named in every run's
@@ -731,21 +733,27 @@ def roundtrip(
                 ),
             )
         )
+        units = {path.stem: path for path in judged.il_units}
         for element in judged.elements:
             assertion_id = f"roundtrip/{target.target}@{corpus.version}/{element.el}"
+            unit = units.get(element.el.split("/", 1)[0])
             assertions.append(
                 Assertion(
                     assertion_id=assertion_id,
                     corpus_id=corpus.corpus_id,
                     corpus_version=corpus.version,
-                    doc=f"il/{element.el.split('/', 1)[0]}",
+                    doc=f"il/{unit.name if unit is not None else element.el.split('/', 1)[0]}",
                     page=None,
                     type="roundtrip",
                     spec={"law": r2_half.LAW, "construct": element.construct},
                     addr=element.el,
                     evaluable_in="owdoc",
                     checked=None,
-                    derived_from_sha256=digest,
+                    derived_from_sha256=(
+                        hashlib.sha256(unit.read_bytes()).hexdigest()
+                        if unit is not None
+                        else digest
+                    ),
                     slices=(target.target,),
                 )
             )

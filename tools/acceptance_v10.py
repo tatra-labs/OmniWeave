@@ -112,6 +112,7 @@ CRITERIA: tuple[Criterion, ...] = (
             tool("gate_bless.py"),
             tool("gate_fixtures.py"),
             tool("gate_inventory.py"),
+            tool("gate_leakage.py"),
             pytest(
                 f"{CONF}/test_conform_release.py",
                 f"{CLI}/test_eval_release_check_verb.py",
@@ -137,7 +138,8 @@ CRITERIA: tuple[Criterion, ...] = (
         "roundtrip and `ow eval release-check` passes over them (D868-D871), but `--strict` "
         "refuses on extract, portability and perf, which no harness measures (D872), and no "
         "`.oweval` is committed for a tag; G13 and G25 have no runner "
-        "and G29 is planned only; Q-G16, 20 and 26 have no instrument, Q-G2 runs without "
+        "and G29 is planned only; Q-G16 and 20 have no instrument, Q-G26 runs its assertion "
+        "clause only (D875), Q-G2 runs without "
         "its orphan-cassette sweep, and "
         "Q-G8, 19 and 25 run their static halves only; Q-G22's gate runs the T1/T2 suite and "
         "Q-G4's reads the CI cells, so this row runs their tests and not them; the `gates` CI "

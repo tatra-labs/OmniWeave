@@ -152,6 +152,7 @@ QG_SERIES_SCRIPTS: dict[str, str] = {
     "tools/gate_fixtures.py": "Q-G1 and Q-G2 (13-quality.md:92-93, :433-436, :491-495, :1985-1986)",
     "tools/gate_inventory.py": "Q-G24 (13-quality.md:78-80, :100, :1829, :2008)",
     "tools/gate_frozen_stability.py": "Q-G4 (13-quality.md:671-677, :1988; 16-roadmap.md:980)",
+    "tools/gate_leakage.py": "Q-G26 (13-quality.md:102, :1431-1435, :1831, :2010)",
 }
 
 GR_SERIES_SCRIPTS: dict[str, str] = {
