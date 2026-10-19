@@ -7,14 +7,18 @@ not (13:661). The parse runs once per module; each test reads the batch it produ
 
 from __future__ import annotations
 
+import importlib.util
+import sys
 import tomllib
 from itertools import count
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from omniweave_conform import absence as absence_harness
 from omniweave_conform import eval_run
+from omniweave_conform import retrieval as cite_harness
 from omniweave_conform.damage import INJECTORS, TABLE, Assessment, Clause
 from omniweave_conform.entry import run as entry_run
 from omniweave_conform.release import check_release
@@ -129,7 +133,7 @@ def test_the_run_id_is_a_digest_of_what_ran_and_when() -> None:
     assert len(first.runs[0].run_id) == 32
 
 
-def test_the_batch_writes_and_release_check_wants_only_the_absence_gate(
+def test_the_batch_writes_and_release_check_wants_the_other_two_gates(
     parsed: Any, tmp_path: Path
 ) -> None:
     batch, _ = parsed
@@ -141,7 +145,8 @@ def test_the_batch_writes_and_release_check_wants_only_the_absence_gate(
     finally:
         connection.close()
     assert [(f.kind, f.names) for f in judged.findings] == [
-        ("unmeasured", "hard gate degradation_detection@*")
+        ("unmeasured", "hard gate degradation_detection@*"),
+        ("unmeasured", "hard gate citability_violations@*"),
     ]
 
 
@@ -278,36 +283,38 @@ def test_the_register_row_and_its_truth_kind_are_required(monkeypatch: pytest.Mo
         _absence(monkeypatch, _suite(True), bad)
 
 
-def test_the_entry_point_runs_both_suites_in_one_write(
+def test_the_entry_point_runs_every_suite_in_one_write(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(absence_harness, "run_suite", lambda *_a, **_k: _suite(True, True))
+    monkeypatch.setattr(cite_harness, "run_suite", lambda *_a, **_k: _checked(()))
     store = tmp_path / "both.oweval"
     done = entry_run(
         oweval=str(store),
         gates=str(REPO / "eval" / "gates.toml"),
         root=str(REPO),
-        suites=["parse", "absence"],
+        suites=["parse", "absence", "retrieve"],
         subject=None,
         witness="self",
         cassette="off",
         admit=lambda _argv: None,
     )
-    assert done["suites"] == ["parse", "absence"]
+    assert done["suites"] == ["parse", "absence", "retrieve"]
     rows: Any = done["runs"]
-    assert [row["suite"] for row in rows] == ["parse", "parse", "absence"]
+    assert [row["suite"] for row in rows] == ["parse", "parse", "absence", "retrieve"]
     connection = open_oweval(store)
     try:
         judged = check_release(connection, REGISTER, strict=False)
     finally:
         connection.close()
-    assert (judged.ok, judged.runs) == (True, 3)
+    assert (judged.ok, judged.runs) == (True, 4)
 
 
 @pytest.mark.parametrize(
     ("suites", "subject", "says"),
     [
-        (["extract"], None, "measures parse, absence in this build, not extract"),
+        (["extract"], None, "measures parse, absence, retrieve in this build, not extract"),
+        (["retrieve"], PDFIUM, "the retrieve suite's subject is omniweave itself"),
         ([], None, "not nothing"),
         (["absence"], PDFIUM, "the absence suite's subject is omniweave itself"),
     ],
@@ -334,3 +341,146 @@ def test_the_generated_documents_digest_is_their_names_and_bytes() -> None:
     assert one == absence_harness.documents_digest({"b": b"2", "a": b"1"})
     assert one != absence_harness.documents_digest({"a": b"1", "c": b"2"})
     assert one != absence_harness.documents_digest({"a": b"1", "b": b"3"})
+
+
+# --- the retrieve suite's self-verifying half (D870) --------------------------------------------
+
+
+def _checked(unsound: tuple[tuple[str, ...], ...]) -> cite_harness.Checked:
+    """Three Answers of two cites each; `unsound[i]` names the cites of Answer i that failed."""
+    rows = list(unsound) + [()] * (3 - len(unsound))
+    return cite_harness.Checked(
+        asked=tuple(
+            cite_harness.Asked(f"task-{index}", ("d1#1", "d1#2"), bad)
+            for index, bad in enumerate(rows)
+        ),
+        documents={"legal_matter/msa.pdf": b"one", "data_room/x.xlsx": b"two"},
+        skipped=6,
+    )
+
+
+def _retrieve(monkeypatch: pytest.MonkeyPatch, checked: Any, register: Any = REGISTER) -> Any:
+    def fake(root: Path, **kw: Any) -> Any:
+        assert root == REPO
+        assert kw["work"].is_dir()
+        if isinstance(checked, Exception):
+            raise checked
+        return checked
+
+    monkeypatch.setattr(cite_harness, "run_suite", fake)
+    return eval_run.retrieve(register, root=REPO, witness="self", cassette="off", now_ns=_clock())
+
+
+def test_the_retrieve_half_counts_violations_and_rates_soundness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    batch, (done,) = _retrieve(monkeypatch, _checked((("d1#2",),)))
+    (run,) = batch.runs
+    assert (run.suite, run.subject, run.timing_basis) == (
+        "retrieve",
+        "omniweave",
+        "spawn_inclusive",
+    )
+    assert batch.corpora[0].corpus_id == run.corpus_id == "reference_corpora/quick"
+    assert run.not_measured[0].startswith("6 damaged task(s)")
+    assert eval_run.RETRIEVE_UNMEASURED[0] in run.not_measured
+    assert run.confounders[1] == "1 cite(s) did not resolve: task-0: d1#2"
+    violations, soundness = batch.metrics
+    assert (violations.metric, violations.value, violations.n, violations.method) == (
+        "citability_violations",
+        1.0,
+        3,
+        "exact",
+    )
+    assert (violations.ci_lo, violations.ci_hi, violations.truth_kind) == (None, None, "native_run")
+    assert (soundness.metric, soundness.value, soundness.n, soundness.method) == (
+        "citation_soundness",
+        5 / 6,
+        6,
+        "closed_form",
+    )
+    assert {m.slice_key for m in batch.metrics} == {"born_digital"}
+    assert (done.suite, done.value, done.n, done.parsed, done.refused) == (
+        "retrieve",
+        1.0,
+        3,
+        5,
+        ("task-0: d1#2",),
+    )
+
+
+def test_a_clean_retrieve_run_meets_the_hard_gate(monkeypatch: pytest.MonkeyPatch) -> None:
+    batch, _ = _retrieve(monkeypatch, _checked(()))
+    assert [m.value for m in batch.metrics] == [0.0, 1.0]
+    assert batch.runs[0].confounders[1] == "0 cite(s) did not resolve"
+
+
+def test_the_retrieve_rows_must_be_in_the_register(monkeypatch: pytest.MonkeyPatch) -> None:
+    without = {"gate": [row for row in REGISTER["gate"] if row["suite"] != "retrieve"]}
+    with pytest.raises(QualityError, match="no retrieve citability_violations, citation_soundness"):
+        _retrieve(monkeypatch, _checked(()), without)
+    renamed = {
+        "gate": [
+            {**row, "truth_kind": "oracle"} if row["suite"] == "retrieve" else row
+            for row in REGISTER["gate"]
+        ]
+    }
+    with pytest.raises(QualityError, match="truth_kind 'oracle' is not one of"):
+        _retrieve(monkeypatch, _checked(()), renamed)
+
+
+def test_a_retrieve_suite_that_could_not_run_is_a_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(QualityError, match="the retrieve suite could not run: OSError: disk"):
+        _retrieve(monkeypatch, OSError("disk"))
+
+
+def test_the_catalogue_asks_every_task_but_the_damaged() -> None:
+    tasks, skipped = cite_harness.load_tasks(REPO)
+    rows = tomllib.loads((REPO / cite_harness.CATALOG).read_text(encoding="utf-8"))["task"]
+    assert len(tasks) + skipped == len(rows)
+    assert skipped == sum(1 for row in rows if row["class"] == "damaged") > 0
+    assert {task.corpus for task in tasks} == {"legal_matter", "data_room", "personal_archive"}
+    with pytest.raises(RuntimeError, match="no adoption catalogue"):
+        cite_harness.load_tasks(REPO / "nowhere")
+
+
+def _load_store_doc() -> Any:
+    path = REPO / "packages" / "omniweave-core" / "tests" / "unit" / "test_store_doc.py"
+    spec = importlib.util.spec_from_file_location("_test_store_doc_for_retrieval", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_sd = _load_store_doc()
+harness = _sd.harness
+
+
+def test_a_cite_is_sound_when_it_resolves_to_a_placed_live_block(harness: Any) -> None:
+    from omniweave_core.store import sqlite as ow  # noqa: PLC0415
+
+    written = _sd.write_happy_path(harness)
+    connection = ow.connect(harness.path)
+    try:
+        cite = connection.execute(
+            "SELECT cite FROM block WHERE block_id = ?", (int(written.paragraph),)
+        ).fetchone()[0]
+        plain = SimpleNamespace(evidence=(SimpleNamespace(cite=cite, byte_exact=False),))
+        exact = SimpleNamespace(evidence=(SimpleNamespace(cite=cite, byte_exact=True),))
+        assert cite_harness.check(connection, cite, plain)  # type: ignore[arg-type]
+        assert not cite_harness.check(connection, "d999#1", plain)  # type: ignore[arg-type]
+        assert not cite_harness.check(connection, cite, exact)  # type: ignore[arg-type]
+        connection.execute("UPDATE block SET state = 1 WHERE cite = ?", (cite,))
+        assert not cite_harness.check(connection, cite, plain)  # type: ignore[arg-type]
+    finally:
+        connection.close()
+
+
+def test_an_answer_s_cites_are_its_headers_then_its_pointers_once_each() -> None:
+    answer = SimpleNamespace(
+        pointers=(SimpleNamespace(cites=("d1#3", "d1#1")),),
+        withheld=(SimpleNamespace(cites=("d2#1",)),),
+    )
+    assert cite_harness._cites(answer, ("d1#1", "d1#2")) == ("d1#1", "d1#2", "d1#3", "d2#1")  # type: ignore[arg-type]

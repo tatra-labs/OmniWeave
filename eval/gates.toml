@@ -9,7 +9,8 @@
 #   > twenty-nine CI gates of §6.4 — and is owned here. **Neither file may name a row the other
 #   > owns.**
 #
-# Read by `tools/ow_eval.py`, and by `tools/ow_damage.py` for the `degradation_detection` row.
+# Read by `ow eval run` (D868-D870) for every suite it measures, and by `ow eval release-check` for
+# every `hard` row; by `tools/ow_eval.py`, and by `tools/ow_damage.py` for `degradation_detection`.
 #
 # WHY EVERY ROW CARRIES AN OWNER AND A `review_by`. 13-quality.md:1082: "every gate row carries an
 # owner and a `review_by`, and a row past its date fails (`Q-G17`). There is no `--warn-only`
@@ -96,6 +97,44 @@ computed = """
 over every `(Injector, fixture)` pair in §8.6, the fraction where all three clauses hold: `Verdict.state == degraded`, the expected gate appears in `Verdict.gates` in precedence order, and the emitted `DegradeCause.fix` command, executed, produces an undamaged run. (13-quality.md:1093, verbatim.)"""
 guard_absent_because = """
 A `hard` row has no guard band. 13-quality.md:1314: "A gate at 1.000 admits no partial coverage, so 'add the Injector now and make it pass next release' is not a state the gate can express.""""
+
+[[gate]]
+metric = "citability_violations"
+suite = "retrieve"
+slice = "*"
+kind = "hard"
+budget = 0
+truth_kind = "self_verifying"
+class = "blocking"
+owner = "quality"
+reviewed_at = "2026-10-17"
+review_by = "2027-01-15"
+computed = """
+a **count**, not a rate: rendered Answers containing a `cite` that does not resolve, plus \
+artefacts containing a restricted item with no policy (OUT11). (13-quality.md:1094, verbatim.)\
+"""
+guard_absent_because = """
+A `hard` row has no guard band. A cite that does not resolve is a citation the reader cannot \
+follow, and 13-quality.md:51 sets this row's ceiling at 0: one such Answer is the gate red.\
+"""
+
+[[gate]]
+metric = "citation_soundness"
+suite = "retrieve"
+slice = "*"
+kind = "floor"
+budget = 0.995
+guard = 0.002
+truth_kind = "self_verifying"
+class = "blocking"
+owner = "quality"
+reviewed_at = "2026-10-17"
+review_by = "2027-01-15"
+computed = """
+over every `cite` emitted in a scored run, the fraction resolving to a Block, a page and either \
+a `Quad` or a `Locus.reason`, **and** whose `byte_exact` bit, where set, re-grounds under \
+`normalize_k`. (13-quality.md:1101, verbatim.)\
+"""
 
 # ---------------------------------------------------------------------------
 # The subjects `span_exact_rate` is measured over.

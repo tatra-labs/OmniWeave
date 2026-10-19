@@ -388,11 +388,13 @@ def test_a_register_whose_gate_is_not_an_array_of_tables_is_refused() -> None:
         hard_gates({"gate": [{"kind": "floor"}, "span_exact_rate"]})
 
 
-def test_the_shipped_register_names_its_two_hard_gates() -> None:
+def test_the_shipped_register_names_its_three_hard_gates() -> None:
+    """D870 added `citability_violations`, 13:1094's hard count at 0."""
     shipped = tomllib.loads((REPO / "eval" / "gates.toml").read_text(encoding="utf-8"))
     assert {(g.metric, g.suite, g.slice, g.budget) for g in hard_gates(shipped)} == {
         ("span_exact_rate", "parse", "*", 1.0),
         ("degradation_detection", "absence", "*", 1.0),
+        ("citability_violations", "retrieve", "*", 0.0),
     }
 
 
@@ -427,10 +429,20 @@ def test_a_finding_prints_as_one_line() -> None:
 # --- the entry point ---------------------------------------------------------------------------
 
 
-def _files(tmp_path: Path, *runs: Run, metrics: tuple[Metric, ...] = _CLEAN[1]) -> Path:
+_RETRIEVE = _run("r3", suite="retrieve", subject="omniweave")
+_NO_VIOLATION = _metric("r3", "citability_violations", value=0.0)
+"""The shipped register's third hard gate, met (D870)."""
+
+
+def _files(
+    tmp_path: Path, *runs: Run, metrics: tuple[Metric, ...] = (*_CLEAN[1], _NO_VIOLATION)
+) -> Path:
     connection = open_oweval(tmp_path / "e.oweval")
     try:
-        store(connection, Batch(corpora=(_CORPUS,), runs=runs or _CLEAN[0], metrics=metrics))
+        store(
+            connection,
+            Batch(corpora=(_CORPUS,), runs=runs or (*_CLEAN[0], _RETRIEVE), metrics=metrics),
+        )
     finally:
         connection.close()
     (tmp_path / "gates.toml").write_bytes((REPO / "eval" / "gates.toml").read_bytes())
@@ -438,15 +450,15 @@ def _files(tmp_path: Path, *runs: Run, metrics: tuple[Metric, ...] = _CLEAN[1]) 
 
 
 def test_the_entry_point_returns_builtins(tmp_path: Path) -> None:
-    root = _files(tmp_path, metrics=(_metric("r1", value=0.5), _CLEAN[1][1]))
+    root = _files(tmp_path, metrics=(_metric("r1", value=0.5), _CLEAN[1][1], _NO_VIOLATION))
     done = entry.release_check(
         oweval=str(root / "e.oweval"), gates=str(root / "gates.toml"), strict=False
     )
     assert done == {
         "ok": False,
-        "runs": 2,
+        "runs": 3,
         "superseded": 0,
-        "gates": 2,
+        "gates": 3,
         "findings": [
             {
                 "kind": "gate",
@@ -464,7 +476,7 @@ def test_the_entry_point_passes_a_clean_store_and_strict_reaches_it(tmp_path: Pa
     assert entry.release_check(**paths, strict=False)["ok"] is True
     findings = entry.release_check(**paths, strict=True)["findings"]
     assert isinstance(findings, list)
-    assert len(findings) == len(SUITES) - 2
+    assert len(findings) == len(SUITES) - 3
 
 
 @pytest.mark.parametrize(("missing", "fix"), [("e.oweval", "--oweval"), ("gates.toml", "--gates")])

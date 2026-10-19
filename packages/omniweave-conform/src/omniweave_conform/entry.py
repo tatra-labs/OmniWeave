@@ -69,10 +69,11 @@ def run(
 
     `suites` are run in the order given, every one of them built (`eval_run.BUILT`). `root` is the
     directory the register's `card` and `fixtures` paths are relative to, the working directory.
-    `subject` narrows the parse suite's drivers and is refused for the absence suite, whose subject
-    is the product. `admit` is `omniweave.surface.admit.admit`, 13:1306's check of a fix against the
-    `ow` Action registry: the one callable that crosses, because this distribution may not import
-    the registry, and it takes and returns builtins (`absence` ruling 1). The `.oweval` is created
+    `subject` narrows the parse suite's drivers and is refused for the absence and retrieve
+    suites, whose subject is the product. `admit` is `omniweave.surface.admit.admit`, 13:1306's
+    check of a fix against the `ow` Action registry: the one callable that crosses, because this
+    distribution may not import the registry, and it takes and returns builtins (`absence`
+    ruling 1). The `.oweval` is created
     when it does not exist: a run is its writer. The clock is read here, at the edge.
     """
     register = Path(gates)
@@ -87,10 +88,12 @@ def run(
             f"{', '.join(unbuilt) or 'nothing'}",
             fix="ow eval run --suite parse",
         )
-    if subject is not None and "absence" in suites:
+    product = [suite for suite in suites if suite in ("absence", "retrieve")]
+    if subject is not None and product:
         raise QualityError(
-            "--subject names a parse driver, and the absence suite's subject is omniweave itself",
-            fix="ow eval run --suite absence  # without --subject",
+            f"--subject names a parse driver, and the {product[0]} suite's subject is omniweave "
+            "itself",
+            fix=f"ow eval run --suite {product[0]}  # without --subject",
         )
     rows = tomllib.loads(register.read_text(encoding="utf-8"))
     clock = SystemClock().wall_ns
@@ -106,9 +109,13 @@ def run(
                 cassette=cassette,
                 now_ns=clock,
             )
-        else:
+        elif suite == "absence":
             batch, measured = eval_run.absence(
                 rows, root=Path(root), witness=witness, cassette=cassette, now_ns=clock, admit=admit
+            )
+        else:
+            batch, measured = eval_run.retrieve(
+                rows, root=Path(root), witness=witness, cassette=cassette, now_ns=clock
             )
         batches.append(batch)
         done.extend(measured)
