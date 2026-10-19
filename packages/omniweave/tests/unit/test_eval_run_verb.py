@@ -224,7 +224,6 @@ def test_a_failed_pair_is_printed_and_release_check_refuses_it(
 @pytest.mark.parametrize(
     ("argv", "says"),
     [
-        (["--suite", "extract"], "--suite extract is not measured in this build"),
         (["--suite", "parse", "--deterministic-half"], "--deterministic-half names the half"),
         (["--deterministic-half"], "--deterministic-half names the half"),
         (["--suite", "absence", "--subject", PDFIUM], "--subject names a parse driver"),
@@ -263,3 +262,20 @@ def test_a_subject_the_register_lacks_is_a_refusal_exit_1(tmp_path: Path) -> Non
     )
     assert code == 1
     assert "no [[subject]] in the metric register is driver 'parse.nothing'" in err
+
+
+@pytest.mark.parametrize("suite", ["extract", "portability", "perf"])
+def test_an_unmeasurable_suite_is_one_unknown_run_and_release_check_refuses_it(
+    tmp_path: Path, suite: str
+) -> None:
+    """D872: 16:942, *"every suite must be able to report `unknown`"*."""
+    store = tmp_path / "x.oweval"
+    code, out, _ = _eval("run", "--suite", suite, "--oweval", str(store))
+    assert code == 0
+    first, last = out.splitlines()
+    assert first.split()[:4] == ["omniweave", "none", suite, "unknown:"]
+    assert last == f"ow eval run --suite {suite}: 1 run(s) written to {store}"
+    code, out, _ = _eval("release-check", "--oweval", str(store))
+    assert code == 1
+    assert f"  run         {suite}/omniweave run " in out
+    assert f"fix: fix what stopped the run, then ow eval run --suite {suite}\n" in out

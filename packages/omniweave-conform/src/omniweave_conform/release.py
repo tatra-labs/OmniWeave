@@ -67,7 +67,7 @@ SUITES: Final = ("parse", "extract", "retrieve", "absence", "roundtrip", "portab
 """The seven suites (13-quality.md:1881, 16-roadmap.md W10.6), as `eval_run.suite` spells them."""
 
 _FIX: Final = {
-    "run": "fix what stopped the run, then ow eval run --suite {suite} --subject {subject}",
+    "run": "fix what stopped the run, then ow eval run --suite {suite}{subject}",
     "metric": "fix what kept the metric from computing, then run its suite again",
     "perf": "fix the Runner or the regression the budget names, then run ow bench again",
     "gate": "fix the regression; a hard budget moves only by a reviewed eval/gates.toml diff",
@@ -147,6 +147,11 @@ def hard_gates(register: Mapping[str, Any]) -> tuple[Gate, ...]:
     return tuple(gates)
 
 
+def _subject_flag(suite: str, subject: str) -> str:
+    """A run finding's `--subject`, only where `ow eval run` takes one: a parse driver (D872)."""
+    return f" --subject {subject}" if suite == "parse" else ""
+
+
 def check_release(connection: Any, register: Mapping[str, Any], *, strict: bool) -> Release:
     """Rulings 1-7 over one `.oweval` and the metric register."""
     gates = hard_gates(register)
@@ -158,7 +163,7 @@ def check_release(connection: Any, register: Mapping[str, Any], *, strict: bool)
             "run",
             f"{run.suite}/{run.subject} run {run.run_id}",
             "status unknown; not measured: " + (", ".join(run.not_measured) or "(none named)"),
-            _FIX["run"].format(suite=run.suite, subject=run.subject),
+            _FIX["run"].format(suite=run.suite, subject=_subject_flag(run.suite, run.subject)),
         )
         for run in runs
         if run.status == "unknown"

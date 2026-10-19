@@ -22,6 +22,7 @@ from omniweave_conform import retrieval as cite_harness
 from omniweave_conform import roundtrip as r2_harness
 from omniweave_conform.damage import INJECTORS, TABLE, Assessment, Clause
 from omniweave_conform.entry import run as entry_run
+from omniweave_conform.release import SUITES as SUITES_SEVEN
 from omniweave_conform.release import check_release
 from omniweave_core.errors import QualityError
 from omniweave_core.store.oweval import Batch, open_oweval, scoreboard, write
@@ -314,7 +315,7 @@ def test_the_entry_point_runs_every_suite_in_one_write(
 @pytest.mark.parametrize(
     ("suites", "subject", "says"),
     [
-        (["extract"], None, "measures parse, absence, retrieve, roundtrip in this build, not"),
+        (["chemistry"], None, "roundtrip, extract, portability, perf, not chemistry"),
         (["retrieve"], PDFIUM, "the retrieve suite's subjects are its own"),
         (["roundtrip"], PDFIUM, "the roundtrip suite's subjects are its own"),
         ([], None, "not nothing"),
@@ -649,3 +650,57 @@ def test_the_entry_point_writes_a_roundtrip_run_s_assertions_and_verdicts(
     finally:
         connection.close()
     assert counts == [2, 2, 2]
+
+
+# --- the three suites this build cannot measure (D872) ------------------------------------------
+
+
+@pytest.mark.parametrize("suite", ["extract", "portability", "perf"])
+def test_an_unmeasurable_suite_writes_one_unknown_run_naming_why(suite: str) -> None:
+    batch, (done,) = eval_run.unknown(suite, witness="self", cassette="off", now_ns=_clock())
+    (run,) = batch.runs
+    assert (run.suite, run.subject, run.status, run.corpus_id) == (
+        suite,
+        "omniweave",
+        "unknown",
+        "none",
+    )
+    assert run.not_measured == (eval_run.UNMEASURABLE[suite],)
+    assert run.confounders[0].startswith("nothing was measured")
+    assert (batch.corpora, batch.metrics, batch.perf, batch.verdicts) == ((), (), (), ())
+    assert (done.metric, done.value, done.refused) == (
+        "none",
+        None,
+        (eval_run.UNMEASURABLE[suite],),
+    )
+
+
+def test_every_suite_is_measured_or_says_why_it_cannot_be() -> None:
+    assert set(eval_run.SUITES) == set(SUITES_SEVEN)
+    assert set(eval_run.BUILT).isdisjoint(eval_run.UNMEASURABLE)
+    with pytest.raises(QualityError, match="'parse' is a suite this build measures"):
+        eval_run.unknown("parse", witness="self", cassette="off", now_ns=_clock())
+
+
+def test_release_check_refuses_an_unknown_run_by_its_reason(tmp_path: Path) -> None:
+    store = tmp_path / "u.oweval"
+    done = entry_run(
+        oweval=str(store),
+        gates=str(REPO / "eval" / "gates.toml"),
+        root=str(REPO),
+        suites=["perf"],
+        subject=None,
+        witness="self",
+        cassette="off",
+        admit=lambda _argv: None,
+    )
+    assert done["suites"] == ["perf"]
+    connection = open_oweval(store)
+    try:
+        judged = check_release(connection, {"gate": []}, strict=False)
+    finally:
+        connection.close()
+    [finding] = judged.findings
+    assert finding.kind == "run"
+    assert finding.why == "status unknown; not measured: " + eval_run.UNMEASURABLE["perf"]
+    assert finding.fix == "fix what stopped the run, then ow eval run --suite perf"
