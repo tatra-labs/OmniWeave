@@ -239,10 +239,17 @@ CRITERIA: tuple[Criterion, ...] = (
                 f"{CORE}/test_fixture_incremental.py",
                 f"{CLI}/test_gate_incremental_graph.py",
             ),
+            pytest(
+                "packages/omniweave/tests/conform/test_add_edit_identity.py",
+                label="what a real `ow add` does with an edited file: D40, pinned (D880)",
+            ),
         ),
         Coverage.PARTIAL,
         "G19 indexes through `tools/p2_stub_parse.py` and a DocSink, not the product's `ow add`, "
-        "and reports gen and revision differences without failing on them unless --strict (D187)",
+        "and reports gen and revision differences without failing on them unless --strict (D187). "
+        "Through `ow add` it could not pass: an edited file re-added is a second doc row beside "
+        "the first, both live, because doc_key is a content hash (D40, unruled since P2; D880 "
+        "pins it)",
     ),
     Criterion(
         "V10-9",
