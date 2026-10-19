@@ -150,11 +150,14 @@ CRITERIA: tuple[Criterion, ...] = (
         (
             tool("gate_weights.py"),
             pytest(f"{CORE}/test_gates_packaging.py", f"{CORE}/test_sdist_shape.py"),
+            tool("check_build.py", slow=True),
         ),
         Coverage.PARTIAL,
-        "the ceilings are checked as declared, not measured: nothing builds the 28 artefacts or "
-        "checks `py3-none-any`, the 250 MB union needs `--measure` over the `build` job's "
-        "wheelhouse, and `ow doctor --runtime`'s vision size (D-10) is unbuilt",
+        "tools/check_build.py builds the 28 artefacts twice and checks every wheel `py3-none-any` "
+        "and the two passes byte-identical (D874), but the weight ceilings are checked as "
+        "declared, not measured: the 250 MB union needs `--measure` over an installed "
+        "`[recommended]` environment, the three offline wheelhouse profiles are unwired, and "
+        "`ow doctor --runtime`'s vision size (D-10) is unbuilt",
     ),
     Criterion(
         "V10-3",
