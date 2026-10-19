@@ -17,6 +17,7 @@ import pytest
 from omniweave.surface import admit as admission
 from omniweave.surface import eval as verb
 from omniweave_conform import absence as absence_harness
+from omniweave_conform import retrieval as cite_harness
 from omniweave_conform.damage import Assessment, Clause
 
 REPO = Path(__file__).resolve().parents[4]
@@ -39,6 +40,19 @@ def _fake_suite(monkeypatch: pytest.MonkeyPatch, *oks: bool) -> list[object]:
 
     monkeypatch.setattr(absence_harness, "run_suite", fake)
     return handed
+
+
+def _fake_cites(monkeypatch: pytest.MonkeyPatch, *unsound: str) -> None:
+    """The retrieve harness, faked: two Answers of two cites, the first's `unsound` failing."""
+    checked = cite_harness.Checked(
+        asked=(
+            cite_harness.Asked("t0", ("d1#1", unsound[0] if unsound else "d1#2"), unsound),
+            cite_harness.Asked("t1", ("d1#3", "d1#4"), ()),
+        ),
+        documents={"data_room/a.xlsx": b"x"},
+        skipped=6,
+    )
+    monkeypatch.setattr(cite_harness, "run_suite", lambda *_a, **_k: checked)
 
 
 def _eval(*argv: str, cwd: Path = REPO) -> tuple[int, str, str]:
@@ -78,7 +92,7 @@ def test_render_json_prints_one_object(tmp_path: Path) -> None:
     assert len(row["run_id"]) == 32
 
 
-def test_release_check_after_parse_alone_wants_the_absence_gate(tmp_path: Path) -> None:
+def test_release_check_after_parse_alone_wants_the_other_two_gates(tmp_path: Path) -> None:
     store = tmp_path / "x.oweval"
     assert _eval("run", "--suite", "parse", "--oweval", str(store))[0] == 0
     code, out, _ = _eval("release-check", "--oweval", str(store))
@@ -86,8 +100,10 @@ def test_release_check_after_parse_alone_wants_the_absence_gate(tmp_path: Path) 
     assert out.splitlines() == [
         "  unmeasured  hard gate degradation_detection@*: no absence run measured it",
         "              fix: run the gate's suite: ow eval run --suite absence",
-        "ow eval release-check: refused, 1 finding(s); 2 latest run(s), 0 superseded,"
-        " 2 hard gate(s)",
+        "  unmeasured  hard gate citability_violations@*: no retrieve run measured it",
+        "              fix: run the gate's suite: ow eval run --suite retrieve",
+        "ow eval release-check: refused, 2 finding(s); 2 latest run(s), 0 superseded,"
+        " 3 hard gate(s)",
     ]
 
 
@@ -95,6 +111,7 @@ def test_every_built_suite_by_default_and_release_check_then_passes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     handed = _fake_suite(monkeypatch, True, True)
+    _fake_cites(monkeypatch)
     store = tmp_path / "x.oweval"
     code, out, _ = _eval("run", "--oweval", str(store))
     assert code == 0
@@ -112,13 +129,36 @@ def test_every_built_suite_by_default_and_release_check_then_passes(
         "pair(s)",
         "passed",
     ]
-    assert lines[3].startswith("ow eval run --suite parse,absence: 3 run(s) written to ")
+    assert lines[3].split()[:5] == [
+        "omniweave",
+        "born_digital",
+        "citability_violations",
+        "0",
+        "over",
+    ]
+    assert lines[3].endswith("2 answer(s); 4 of 4 cite(s) resolve")
+    assert lines[4].startswith("ow eval run --suite parse,absence,retrieve: 4 run(s) written to ")
     assert handed == [admission.admit]
     assert _eval("release-check", "--oweval", str(store)) == (
         0,
-        "ow eval release-check: ok; 3 latest run(s), 0 superseded, 2 hard gate(s)\n",
+        "ow eval release-check: ok; 4 latest run(s), 0 superseded, 3 hard gate(s)\n",
         "",
     )
+
+
+def test_an_unresolved_cite_is_printed_and_release_check_refuses_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fake_cites(monkeypatch, "d1#9")
+    store = tmp_path / "x.oweval"
+    code, out, _ = _eval("run", "--suite", "retrieve", "--oweval", str(store))
+    assert code == 0
+    assert out.splitlines()[0].endswith(
+        "citability_violations 1 over 2 answer(s); 3 of 4 cite(s) resolve; unresolved: t0: d1#9"
+    )
+    code, out, _ = _eval("release-check", "--oweval", str(store))
+    assert code == 1
+    assert "1.0 is not the hard budget 0.0" in out
 
 
 def test_a_failed_pair_is_printed_and_release_check_refuses_it(
@@ -146,6 +186,7 @@ def test_a_failed_pair_is_printed_and_release_check_refuses_it(
         (["--deterministic-half"], "--deterministic-half names the half"),
         (["--suite", "absence", "--subject", PDFIUM], "--subject names a parse driver"),
         (["--subject", PDFIUM], "--subject names a parse driver"),
+        (["--suite", "retrieve", "--subject", PDFIUM], "the retrieve suite's subject"),
         (["--suite", "bogus"], "--suite 'bogus' is not one of parse, extract"),
         (["--witness", "me"], "--witness 'me' is not one of ci, self, third_party"),
         (["--cassette", "on"], "--cassette 'on' is not one of off, allow, required"),

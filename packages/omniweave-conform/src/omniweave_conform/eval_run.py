@@ -1,4 +1,4 @@
-"""`ow eval run`: the parse suite (D868) and the absence suite's deterministic half (D869).
+"""`ow eval run`: the parse suite (D868), the absence half (D869) and the retrieve half (D870).
 
 13-quality.md:1873 prints `ow eval run [--suite S] [--corpus C@V] [--subject D] [--witness W]
 [--cassette MODE] [--validate-judge] [--emit PATH]`, and 16-roadmap.md:942 makes it W10.6's
@@ -66,7 +66,27 @@ returns it as `store.oweval` rows for one `write()`.
     `absent_recall`), which need the T4 absence corpus. A failed pair is a confounder, by name,
     and lowers the rate, which `release-check` then refuses as off its hard budget.
 
-Specified in 13-quality.md sections 2.10, 8.3, 8.6 and 13.3, and 16-roadmap.md W10.6.
+## The retrieve suite's self-verifying half (D870)
+
+12. **It is `retrieval.run_suite()`**: the adoption catalogue's questions, every one but the
+    `damaged`, asked of the three generated corpora at `quick` scale, each built by a real `ow add`.
+    Its two metrics are the register's two self-verifying retrieve rows. `citability_violations` is
+    a **count** (13:1094), so its value is the number of Answers with an unresolved cite, its `n`
+    the Answers asked, its method `exact` and its interval none. `citation_soundness` is the sound
+    cites over the cites, as `stats.rate()`. Both are sliced `born_digital`, the catalogue's only
+    `source` in the tree, the six scanned tasks being owed.
+13. **The register's `self_verifying` is `native_run` here too** (ruling 4): a cite resolving to
+    the block it names is checked against the store the Answer was read from, which is fidelity.
+    One map, `TRUTH_OF`, carries the register's word to a `TruthKind`; any other word must already
+    be one.
+14. **The subject is `omniweave` and the corpus `reference_corpora/quick`**, as rulings 9 and 10
+    hold for the absence half; its documents are all three corpora's, so its digest, and so its
+    version, differ from the absence half's. What the half does not measure is named: the
+    relevance metrics (`recall_at_10`, `ndcg_at_10`, `qa_accuracy`), which need relevance labels
+    (16:689's `golden-queries.jsonl`); OUT11's artefact half of `citability_violations`; and the
+    `damaged` tasks.
+
+Specified in 13-quality.md sections 2.10, 8.3, 8.6, 8.8 and 13.3, and 16-roadmap.md W10.6.
 """
 
 from __future__ import annotations
@@ -85,6 +105,7 @@ from omniweave_core.store.oweval import Batch, Corpus, Metric, Run
 from omniweave_ports.types import DriverError
 
 from omniweave_conform import absence as damage_half
+from omniweave_conform import retrieval as cite_half
 from omniweave_conform.badge import kit_version
 from omniweave_conform.damage import INJECTORS, TABLE
 from omniweave_conform.evaluate import span_exact_rate
@@ -103,14 +124,30 @@ __all__ = [
     "MEASURED",
     "PARSE_UNMEASURED",
     "TRUTH_KINDS",
+    "TRUTH_OF",
     "Measured",
     "absence",
     "corpus_digest",
     "parse",
+    "retrieve",
 ]
 
-BUILT: Final[tuple[str, ...]] = ("parse", "absence")
-"""The suites `ow eval run` measures in this build, in run order. The other five are refused."""
+BUILT: Final[tuple[str, ...]] = ("parse", "absence", "retrieve")
+"""The suites `ow eval run` measures in this build, in run order. The other four are refused."""
+
+VIOLATIONS: Final = "citability_violations"
+SOUNDNESS: Final = "citation_soundness"
+"""Ruling 12: the retrieve half's two metrics, the register's two self-verifying retrieve rows."""
+
+RETRIEVE_UNMEASURED: Final[tuple[str, ...]] = (
+    "recall_at_10, ndcg_at_10, qa_accuracy: no relevance labels exist to score them "
+    "(16-roadmap.md:689's golden-queries.jsonl)",
+    "citability_violations' artefact half, OUT11's restricted items: no compile is run",
+)
+"""Ruling 14: what every retrieve run names in `not_measured`, after the damaged tasks."""
+
+TRUTH_OF: Final[Mapping[str, str]] = {"self_verifying": "native_run"}
+"""Rulings 4 and 13: the register's one word that is not a `TruthKind`, and the one it means."""
 
 DETECTION: Final = "degradation_detection"
 """Ruling 8: the absence half's one metric, the register's hard row."""
@@ -430,6 +467,140 @@ def absence(
         refused=failed,
     )
     return Batch(corpora=(corpus,), runs=(run,), metrics=metrics), (done,)
+
+
+def retrieve(
+    register: Mapping[str, Any],
+    *,
+    root: Path,
+    witness: str,
+    cassette: str,
+    now_ns: Callable[[], int],
+) -> tuple[Batch, tuple[Measured, ...]]:
+    """The retrieve suite's self-verifying half as one `Batch` (rulings 12-14)."""
+    rows = {
+        str(row.get("metric")): row
+        for row in register.get("gate", [])
+        if row.get("suite") == "retrieve" and row.get("metric") in (VIOLATIONS, SOUNDNESS)
+    }
+    missing = [metric for metric in (VIOLATIONS, SOUNDNESS) if metric not in rows]
+    if missing:
+        raise QualityError(
+            f"the metric register has no retrieve {', '.join(missing)} row to measure against",
+            fix="add the retrieve [[gate]] rows 13-quality.md:1094 and :1101 define",
+        )
+    truth = {metric: _truth(rows[metric], metric) for metric in rows}
+    started = now_ns()
+    try:
+        with tempfile.TemporaryDirectory(prefix="ow-eval-retrieve-") as work:
+            checked = cite_half.run_suite(root, work=Path(work), now_ns=now_ns)
+    except (RuntimeError, OSError) as error:
+        raise QualityError(
+            f"the retrieve suite could not run: {type(error).__name__}: {error}",
+            fix="python fixtures/gen/gen_reference_corpora.py --all  # every corpus generates?",
+        ) from error
+    ended = now_ns()
+    digest = damage_half.documents_digest(checked.documents)
+    corpus = Corpus(
+        corpus_id="reference_corpora/quick",
+        version=digest[:16],
+        corpus_digest=digest,
+        tier="A",
+        n_docs=len(checked.documents),
+        n_assertions=0,
+        n_checked=0,
+        document_redistributable=True,
+        assertions_redistributable=True,
+        publishable=False,
+    )
+    unsound = tuple(f"{one.task_id}: {cite}" for one in checked.asked for cite in one.unsound)
+    run_id = _run_id("retrieve", "omniweave", digest, started)
+    run = Run(
+        run_id=run_id,
+        suite="retrieve",
+        corpus_id=corpus.corpus_id,
+        corpus_version=corpus.version,
+        corpus_digest=digest,
+        subject="omniweave",
+        subject_version=_version("omniweave"),
+        producer_id=None,
+        measured_on=_measured_on(corpus),
+        timing_basis="spawn_inclusive",
+        witness=witness,
+        cassette=cassette,
+        policy_digest=None,
+        pricebook_digest=None,
+        harness_version=kit_version(),
+        code_fingerprint=code_fingerprint(_core_sources()),
+        hardware=_hardware(),
+        started_ns=started,
+        ended_ns=ended,
+        status="ok",
+        not_measured=(
+            f"{checked.skipped} damaged task(s): each needs a damaged corpus, the absence "
+            "suite's business",
+            *RETRIEVE_UNMEASURED,
+        ),
+        confounders=(
+            "the questions are the adoption catalogue's and the documents the repository's own "
+            "generated reference corpora, quick scale",
+            f"{len(unsound)} cite(s) did not resolve"
+            + (f": {', '.join(unsound)}" if unsound else ""),
+        ),
+    )
+    soundness = rate(checked.sound, checked.cites)
+    metrics = (
+        Metric(
+            run_id=run_id,
+            metric=VIOLATIONS,
+            value=float(checked.violations),
+            n=len(checked.asked),
+            ci_lo=None,
+            ci_hi=None,
+            method="exact",
+            truth_kind=truth[VIOLATIONS],
+            state="ok",
+            slice_key="born_digital",
+        ),
+        Metric(
+            run_id=run_id,
+            metric=SOUNDNESS,
+            value=soundness.value,
+            n=soundness.n,
+            ci_lo=soundness.ci_lo,
+            ci_hi=soundness.ci_hi,
+            method=soundness.method,
+            truth_kind=truth[SOUNDNESS],
+            state="ok" if soundness.value is not None else "unknown",
+            slice_key="born_digital",
+        ),
+    )
+    done = Measured(
+        run_id=run_id,
+        suite="retrieve",
+        subject="omniweave",
+        slice_key="born_digital",
+        corpus_id=corpus.corpus_id,
+        metric=VIOLATIONS,
+        value=float(checked.violations),
+        n=len(checked.asked),
+        parsed=checked.sound,
+        refused=unsound,
+    )
+    return Batch(corpora=(corpus,), runs=(run,), metrics=metrics), (done,)
+
+
+def _truth(row: Mapping[str, Any], metric: str) -> str:
+    """Ruling 13: a register row's `truth_kind` as a `TruthKind`, or a refusal naming it."""
+    word = str(row.get("truth_kind", ""))
+    truth = TRUTH_OF.get(word, word)
+    if truth not in TRUTH_KINDS:
+        raise QualityError(
+            f"the register's {metric} truth_kind {word!r} is not one of "
+            f"{', '.join(sorted(TRUTH_KINDS))}",
+            fix="name one of the six TruthKinds (13-quality.md:1452) in eval/gates.toml",
+        )
+    return truth
 
 
 def _version(distribution: str) -> str:

@@ -351,7 +351,7 @@ COMMANDS: Final[tuple[Command, ...]] = (
         actions=("eval.run",),
         help=(
             "Run eval suites over the metric register's subjects and write their runs and "
-            "metrics to the .oweval in one transaction; this build measures parse and absence"
+            "metrics to the .oweval in one transaction; this build measures three of seven"
         ),
         arguments=(
             Argument(
