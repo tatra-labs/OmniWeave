@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D877: cell_rel build note on 13 section 8.5's planted defects
+# blessed-because: D878: OUT13 harness build note on 09 section 5.4's determinism suite
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -35,7 +35,7 @@ documents-frozen  4db10013935a3de62e8cee075a463e94ef2ee414ae33a98365f41be562ec71
 documents-frozen  7c4c7946cad37746e602ef662e72d6a75ee43cc6b9367173c906cddc6d9f763e  06-structure-extraction.md
 documents-frozen  0490cf3f951ec33439e6bf225ae76d955f7741dcebfcc788cddaa4fd3359239d  07-store-and-retrieval.md
 documents-frozen  3b78dc5495b60c008dea14242c2dd56a9ee67f8996e1f61b66791fc5e78a1d0f  08-runtime.md
-documents-frozen  4b49f0c4e1ef80f07ea925243e2bb1a303cd5c9895dbc587f0a9098e1c94146f  09-generation.md
+documents-frozen  c3bf922c2cbf2ae472bd9cd587ce700d724fa6b6cb6203ada6d1ef11a86a92df  09-generation.md
 documents-frozen  4f58f4814cd10a876f6a6856aaf0879ad0d1287fc78d5a4fcd0e05271fa2d962  10-interfaces.md
 documents-frozen  cf64ef1d8afd094009f7136d5e229eea2b4c361f5f01875f045260af741728f3  11-repo-layout.md
 documents-frozen  44a9d2b810b0850205912449e6337423f3db837c1f75f2d580c91b25353752c2  12-performance.md
