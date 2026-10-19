@@ -35,7 +35,8 @@ where a second copy of a row's selector could disagree with the row.
    a construct with a defined raster degradation is a `warning` when the card's `[compile] bake`
    is `available`, and an `error` when it is `unavailable`. The row has no `msg` (09 section 3.4
    forbids one), so the finding names its renderer and dpi. Without this rule a bake construct
-   passed the gate and was refused only at preflight 5, after the gate had said `passed`.
+   passed the gate and was refused only at preflight 5, after the gate had said `passed`. The
+   error names both exits, `manual.BAKE_EXITS` (D876).
 7. **D791: the cite rules are the framework's, built from the table** (`cite_pack()`). `ow:cite`
    is mandatory in every table, so its two checks are every target's, and a copy in each target
    could disagree with the next (INV-21). `<target>.cite.facts@1` (order 58, the grammar band's
@@ -57,6 +58,7 @@ from omniweave_core.out.carrier import CarrierNode, Selector, parse_selector, st
 from omniweave_core.out.cites import CITE_KINDS
 from omniweave_core.out.constructs import Construct, ConstructTable, Disposition
 from omniweave_core.out.finding import Finding, Provenance, Severity
+from omniweave_core.out.manual import BAKE_EXITS
 from omniweave_core.out.rules import RuleCtx, RuleSpec
 
 __all__ = ["CITE_FACTS", "CITE_UNRESOLVED", "NOT_IN_TABLE", "cite_pack", "table_pack", "undeclared"]
@@ -393,7 +395,7 @@ def _bake_rule(
                 f"{row.selector} is baked{how}, a lossy raster degradation"
                 if available
                 else f"{row.selector} needs the bake tier{how}, and this target's bake is "
-                "unavailable"
+                f"unavailable; {BAKE_EXITS}"
             )
             for n in ctx.doc.select(row.selector):
                 yield _row_finding(

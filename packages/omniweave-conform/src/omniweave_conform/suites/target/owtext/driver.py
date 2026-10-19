@@ -19,7 +19,7 @@ contract's refusal branches in CI without a browser: `citations = "sidecar"`, `f
    says `bake` must be reachable for every unit that needs it, and `bake = "unavailable"`, so a
    unit carrying `text-shadow` is refused before a byte is written. The refusal is a
    `TargetError` carrying `OW_TARGET_BAKE_UNAVAILABLE`, because `DriverError` has no field for an
-   `OW-T` code.
+   `OW-T` code. Its message names both exits, `manual.BAKE_EXITS` (D876).
 4. **`project()` refuses by name.** The card says `project = false`, so the call is
    `OW_TARGET_PROJECT_UNAVAILABLE` naming the card key: the honest answer for `fidelity = none`.
 5. **The receipt reports the framework's classification** (D777). The sketch writes each unit
@@ -59,6 +59,7 @@ from omniweave_core.out import (
     html_carrier,
     part_digest,
 )
+from omniweave_core.out.manual import BAKE_EXITS
 from omniweave_core.out.receipt import receipt_part_digest
 from omniweave_ports import (
     ArtifactRef,
@@ -263,7 +264,7 @@ class OwTextCompiler:
             if shadowed:
                 raise TargetError(
                     f"{unit.id}: text-shadow needs its bake row, and this card's bake is "
-                    f'"unavailable" (at {shadowed[0].at})',
+                    f'"unavailable" (at {shadowed[0].at}); {BAKE_EXITS}',
                     symbol="OW_TARGET_BAKE_UNAVAILABLE",
                     fix="ow out constructs owtext --construct style.text-shadow",
                 )
