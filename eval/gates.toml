@@ -169,3 +169,31 @@ will bring first. 17-risks.md R-T16: "The framework's two hardest fidelity gates
 on the format family most users will bring first" — the disclosure is the mitigation, so the \
 slice has to appear and has to say `vacuous`.\
 """
+
+# ---------------------------------------------------------------------------
+# The targets the roundtrip suite reads back (D871).
+# ---------------------------------------------------------------------------
+#
+# A row per target: its compile card, the `read_back` card its `[compile.round_trip]` names, and
+# its golden fixture. `ow eval run --suite roundtrip` compiles each golden, reads it back, and
+# states law R2 (13-quality.md:1564) for every element carrying `data-ow-el`. `paths` are config
+# values resolved against the checkout's root, because a driver resolves no path against the
+# working directory.
+
+[[target]]
+target = "docx"
+card = "packages/omniweave-target-docx/src/omniweave_target_docx/driver.toml"
+read_back = "packages/omniweave-target-docx/src/omniweave_target_docx/read/driver.toml"
+golden = "fixtures/out/golden/docx"
+
+[[target]]
+target = "pptx"
+card = "packages/omniweave-target-pptx/src/omniweave_target_pptx/driver.toml"
+read_back = "packages/omniweave-target-pptx/src/omniweave_target_pptx/back/driver.toml"
+golden = "fixtures/out/golden/pptx"
+paths = { font_dir = "fixtures/out/golden/pptx/fonts" }
+why = """
+The golden names the face `Probe Sans`, so its measurement band runs and its gate is not \
+`unverified` (D805). The face is committed under the golden's `fonts/`, written by \
+`packages/omniweave-target-pptx/tests/fontkit.py` with its defaults (D871).\
+"""

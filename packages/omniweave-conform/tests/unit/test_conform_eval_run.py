@@ -19,6 +19,7 @@ import pytest
 from omniweave_conform import absence as absence_harness
 from omniweave_conform import eval_run
 from omniweave_conform import retrieval as cite_harness
+from omniweave_conform import roundtrip as r2_harness
 from omniweave_conform.damage import INJECTORS, TABLE, Assessment, Clause
 from omniweave_conform.entry import run as entry_run
 from omniweave_conform.release import check_release
@@ -313,10 +314,11 @@ def test_the_entry_point_runs_every_suite_in_one_write(
 @pytest.mark.parametrize(
     ("suites", "subject", "says"),
     [
-        (["extract"], None, "measures parse, absence, retrieve in this build, not extract"),
-        (["retrieve"], PDFIUM, "the retrieve suite's subject is omniweave itself"),
+        (["extract"], None, "measures parse, absence, retrieve, roundtrip in this build, not"),
+        (["retrieve"], PDFIUM, "the retrieve suite's subjects are its own"),
+        (["roundtrip"], PDFIUM, "the roundtrip suite's subjects are its own"),
         ([], None, "not nothing"),
-        (["absence"], PDFIUM, "the absence suite's subject is omniweave itself"),
+        (["absence"], PDFIUM, "the absence suite's subjects are its own"),
     ],
 )
 def test_the_entry_point_refuses_what_it_cannot_run(
@@ -484,3 +486,166 @@ def test_an_answer_s_cites_are_its_headers_then_its_pointers_once_each() -> None
         withheld=(SimpleNamespace(cites=("d2#1",)),),
     )
     assert cite_harness._cites(answer, ("d1#1", "d1#2")) == ("d1#1", "d1#2", "d1#3", "d2#1")  # type: ignore[arg-type]
+
+
+# --- the roundtrip suite (D871) -----------------------------------------------------------------
+
+
+def test_a_target_row_resolves_its_paths_and_its_path_valued_config() -> None:
+    docx, pptx = r2_harness.targets(REGISTER, REPO)
+    assert (docx.target, pptx.target) == ("docx", "pptx")
+    assert docx.card == REPO / REGISTER["target"][0]["card"]
+    assert docx.golden == REPO / "fixtures" / "out" / "golden" / "docx"
+    assert docx.config == {}
+    assert pptx.config == {"font_dir": str(REPO / "fixtures" / "out" / "golden" / "pptx" / "fonts")}
+    assert r2_harness.targets({}, REPO) == ()
+
+
+def test_the_docx_golden_compiles_reads_back_and_every_address_survives() -> None:
+    docx = r2_harness.targets(REGISTER, REPO)[0]
+    judged = r2_harness.judge(docx)
+    assert (judged.driver, judged.gate, judged.unknown) == (
+        "compile.docx.native",
+        "manual-required",
+        None,
+    )
+    assert judged.elements
+    assert all(element.passed for element in judged.elements)
+    assert {element.el.split("/", 1)[0] for element in judged.elements} == {"u01", "u02"}
+    assert len(judged.fingerprint) == 64
+    assert [path.name for path in judged.il_units] == ["il.toml", "u01.html", "u02.html"]
+
+
+def _judged(target: Any, *elements: Any, unknown: str | None = None) -> r2_harness.Judged:
+    return r2_harness.Judged(
+        target=target,
+        driver=f"compile.{target.target}.native",
+        version="0.1.0",
+        gate="manual-required",
+        elements=tuple(elements),
+        unknown=unknown,
+        il_units=(target.golden / "il" / "u01.html",),
+        fingerprint="f" * 64,
+    )
+
+
+def _roundtrip(monkeypatch: pytest.MonkeyPatch, judge: Any) -> Any:
+    monkeypatch.setattr(r2_harness, "judge", judge)
+    return eval_run.roundtrip(REGISTER, root=REPO, witness="self", cassette="off", now_ns=_clock())
+
+
+def test_each_element_is_one_roundtrip_assertion_and_one_verdict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def judge(target: Any) -> Any:
+        if target.target == "pptx":
+            return _judged(target, unknown="the gate is unverified; lower() is unreachable")
+        return _judged(
+            target,
+            r2_harness.Element("u01/e1", "heading", True, ""),
+            r2_harness.Element("u01/e2", "para", False, "missing: no read-back Block carries it"),
+        )
+
+    batch, done = _roundtrip(monkeypatch, judge)
+    docx_run, pptx_run = batch.runs
+    assert (docx_run.suite, docx_run.subject, docx_run.status) == (
+        "roundtrip",
+        "compile.docx.native",
+        "ok",
+    )
+    assert docx_run.code_fingerprint == "f" * 64
+    assert eval_run.ROUNDTRIP_CONFOUNDER in docx_run.confounders
+    assert docx_run.confounders[2].startswith("1 element(s) failed R2: u01/e2 (missing:")
+    assert pptx_run.status == "unknown"
+    assert pptx_run.not_measured[0] == "R2: the gate is unverified; lower() is unreachable"
+    docx_corpus = next(c for c in batch.corpora if c.corpus_id == docx_run.corpus_id)
+    assert docx_run.corpus_id == "fixtures/out/golden/docx"
+    assert (docx_corpus.n_assertions, docx_corpus.n_checked, docx_corpus.publishable) == (
+        2,
+        0,
+        False,
+    )
+    ids = [a.assertion_id for a in batch.assertions]
+    assert ids == [
+        f"roundtrip/docx@{docx_corpus.version}/u01/e1",
+        f"roundtrip/docx@{docx_corpus.version}/u01/e2",
+    ]
+    first = batch.assertions[0]
+    assert (first.type, first.addr, first.doc, first.evaluable_in, first.checked) == (
+        "roundtrip",
+        "u01/e1",
+        "il/u01",
+        "owdoc",
+        None,
+    )
+    assert dict(first.spec) == {"law": "r2", "construct": "heading"}
+    assert [(v.assertion_id, v.passed, v.slice_key) for v in batch.verdicts] == [
+        (ids[0], True, "docx"),
+        (ids[1], False, "docx"),
+    ]
+    assert batch.verdicts[1].explanation == "missing: no read-back Block carries it"
+    assert batch.metrics == ()
+    assert [(d.value, d.n, d.parsed) for d in done] == [(0.5, 2, 1), (None, 0, 0)]
+    assert done[1].refused == ("unknown: the gate is unverified; lower() is unreachable",)
+
+
+def test_an_unjudged_target_is_an_unknown_run_release_check_refuses(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    batch, _ = _roundtrip(monkeypatch, lambda target: _judged(target, unknown="no reader"))
+    connection = open_oweval(tmp_path / "r.oweval")
+    try:
+        write(connection, batch)
+        judged = check_release(connection, {"gate": []}, strict=False)
+    finally:
+        connection.close()
+    assert [f.kind for f in judged.findings] == ["run", "run"]
+    assert "R2: no reader" in judged.findings[0].why
+
+
+def test_a_roundtrip_suite_with_no_target_or_a_failing_target_is_a_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(QualityError, match="names no \\[\\[target\\]\\]"):
+        eval_run.roundtrip({"gate": []}, root=REPO, witness="self", cassette="off", now_ns=_clock())
+
+    def broken(_target: Any) -> Any:
+        raise TypeError("not a driver card")
+
+    with pytest.raises(QualityError, match="could not run docx: TypeError: not a driver card"):
+        _roundtrip(monkeypatch, broken)
+
+
+def test_the_entry_point_writes_a_roundtrip_run_s_assertions_and_verdicts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        r2_harness,
+        "judge",
+        lambda target: _judged(target, r2_harness.Element("u01/e1", "heading", True, "")),
+    )
+    store = tmp_path / "rt.oweval"
+    done = entry_run(
+        oweval=str(store),
+        gates=str(REPO / "eval" / "gates.toml"),
+        root=str(REPO),
+        suites=["roundtrip"],
+        subject=None,
+        witness="self",
+        cassette="off",
+        admit=lambda _argv: None,
+    )
+    rows: Any = done["runs"]
+    assert [(row["suite"], row["slice"], row["value"]) for row in rows] == [
+        ("roundtrip", "docx", 1.0),
+        ("roundtrip", "pptx", 1.0),
+    ]
+    connection = open_oweval(store)
+    try:
+        counts = [
+            connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]  # noqa: S608
+            for table in ("eval_assertion", "eval_verdict", "eval_run")
+        ]
+    finally:
+        connection.close()
+    assert counts == [2, 2, 2]
