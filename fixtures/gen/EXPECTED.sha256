@@ -39,6 +39,12 @@
 #                  ::test_the_pin_is_the_digest_of_a_freshly_generated_corpus
 #                  ~5 s. F2's 200 office documents (D656), pinned through a MANIFEST as the
 #                  reference corpora are; `uv run python fixtures/gen/gen_office200.py --print-sha256`.
+#   golden40       packages/omniweave-target-pptx/tests/unit/test_golden40.py
+#                  ::test_the_pin_is_the_digest_of_a_freshly_generated_deck
+#                  ~0.1 s. V10-10's 40-unit golden OUT fixture (D881), a forty-slide owsvg/1
+#                  deck pinned through its MANIFEST; `uv run python fixtures/gen/gen_golden40.py
+#                  --print-sha256`. Its il.toml carries compile.pptx.native's ConstructTable
+#                  digest, so a table change moves this pin too, as it should.
 #   all of them    ::test_the_pin_file_names_every_generated_output_in_sha256sum_format asserts
 #                  that this file names exactly these outputs and nothing else.
 #
@@ -62,3 +68,4 @@ b8adadd720185a6f563a76347fff454e3ec2d7a4a5111572a20c183ee3e76820  fixtures/gener
 7f308765d0099f149bfe5a5f06cf81460f95428b5da5107fd5faf91781f9b4d6  fixtures/generated/reference/personal_archive-full.manifest
 026a46036821d8229f41ef7cacded6e0fd541ad1d4e88cce63427e2688116769  fixtures/generated/reference/personal_archive-quick.manifest
 9e4cc7f1be74a8b0bb787c20931835b2c631c638d88f8b0143ed9c7eb27ba84a  fixtures/generated/office-200.manifest
+343a4e446f69b5be772859f61342a6aa6acfc2bcc30920f1d51ad6c32422f59b  fixtures/generated/out/golden40/pptx.manifest

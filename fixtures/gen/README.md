@@ -67,3 +67,20 @@ uv run python fixtures/gen/gen_reference_corpora.py --all --print-sha256   # all
   file is identified and never parsed (D567).
 - **Each corpus is pinned through its manifest**, one `sha256  relpath` line per file, as the
   incremental roster is. `bench/serve/test_corpora.py` checks the six pins.
+
+## `gen_golden40.py`
+
+V10-10's *"40-unit golden"* OUT fixture (D881): a forty-slide owsvg/1 deck for
+`compile.pptx.native`, a quarterly review cycling seven layouts built only from constructs the
+two-unit `fixtures/out/golden/pptx/` already exercises. It passes the pptx gate as a release, and
+`tools/check_out_determinism.py --target pptx --golden fixtures/generated/out/golden40/pptx`
+compiles it five ways.
+
+```bash
+uv run python fixtures/gen/gen_golden40.py --print-sha256
+uv run pytest packages/omniweave-target-pptx/tests/unit/test_golden40.py -q
+```
+
+- **The one product import** is the pptx ConstructTable, whose digest `il.toml` must carry, so a
+  table change moves the pin. That is the honest coupling: the deck is IL written against it.
+- **Pinned through its manifest**, `fixtures/generated/out/golden40/pptx.manifest`.

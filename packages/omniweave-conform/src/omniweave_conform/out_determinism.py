@@ -18,7 +18,9 @@ compares whole digests; this module is the rest.
    prints one JSON object. There is no `__main__` block: library code may not call `sys.exit()`
    (G8), and an exception in the child is its non-zero exit.
 2. **A target is a register `[[target]]` row** (`roundtrip.targets()`), its compiler built from
-   the card with the row's `config`, as the roundtrip suite builds it. Each compile is
+   the card with the row's `config`, as the roundtrip suite builds it. Its golden may be another
+   directory (D881: the 40-unit deck), and every child is handed the golden by path, so all five
+   compiles read one fixture. Each compile is
    `suites.target.suite.compile_golden()`, which is R1's compile, so the bytes are the ones R1
    compares.
 3. **The members are the package's parts, each by sha256.** An OPC artefact is read by
@@ -46,7 +48,7 @@ import os
 import sys
 import tomllib
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
@@ -156,7 +158,15 @@ def compile_here(target: Target, workdir: Path, *, label: str) -> Compile:
     )
 
 
-def compile_fresh(target: str, *, root: Path, register: Path, workdir: Path, seed: str) -> Compile:
+def compile_fresh(
+    target: str,
+    *,
+    root: Path,
+    register: Path,
+    workdir: Path,
+    seed: str,
+    golden: Path | None = None,
+) -> Compile:
     """Ruling 1: one compile in a child under `seed`, its own cwd and TMPDIR (ruling 5)."""
     cwd, tmp, work = workdir / "cwd", workdir / "tmp", workdir / "work"
     for path in (cwd, tmp, work):
@@ -179,6 +189,7 @@ def compile_fresh(target: str, *, root: Path, register: Path, workdir: Path, see
         str(root),
         "--register",
         str(register),
+        *(("--golden", str(golden.resolve())) if golden is not None else ()),
         "--workdir",
         str(work),
         "--label",
@@ -222,7 +233,12 @@ def run(target: Target, *, root: Path, register: Path, workdir: Path) -> Judged:
     ]
     compiles += [
         compile_fresh(
-            target.target, root=root, register=register, workdir=workdir / f"seed-{seed}", seed=seed
+            target.target,
+            root=root,
+            register=register,
+            workdir=workdir / f"seed-{seed}",
+            seed=seed,
+            golden=target.golden,
         )
         for seed in SEEDS
     ]
@@ -237,9 +253,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--register", type=Path, required=True)
     parser.add_argument("--workdir", type=Path, required=True)
     parser.add_argument("--label", required=True)
+    parser.add_argument("--golden", type=Path, default=None)
     args = parser.parse_args(argv)
     register = tomllib.loads(args.register.read_text(encoding="utf-8"))
     [target] = [t for t in targets(register, args.root) if t.target == args.target]
+    if args.golden is not None:
+        target = replace(target, golden=args.golden)
     done = compile_here(target, args.workdir, label=args.label)
     sys.stdout.write(
         json.dumps(
