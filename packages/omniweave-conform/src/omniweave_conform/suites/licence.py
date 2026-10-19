@@ -19,6 +19,17 @@ failure mode is a driver that passes the kit and fails the gate, or the reverse.
 does NOT do is re-implement `compute_tier`: the driver's own licence facts are `[licence.code]`'s
 and `omniweave_core.drivers.licence.tier_from_card` computes the tier from them. One home each.
 
+## The spellings are the same file's `[normalise]`, read the way G3 reads them (D879)
+
+Most distributions predate PEP 639 and write prose where an SPDX id belongs (`Apache License 2.0`,
+`PSFL`). `tools/licences.toml`'s `[normalise]` maps each such spelling to a list of candidates, and
+G3 requires every candidate to clear. This suite kept its own `ALIASES` table in code instead, and
+the two drifted: `uharfbuzz` declares `Apache License 2.0`, which `[normalise]` has and `ALIASES`
+did not, so the kit failed `compile.pptx.native`'s reader on a licence the policy permits. A
+spelling is now looked up in `[normalise]` alone, first as the whole field, as G3 does, and then
+term by term. The two spellings only `ALIASES` held, `Apache-2` and `The Unlicense`, moved into
+`[normalise]`, so nothing the kit read before reads differently.
+
 ## What "fails, never warns" costs, and why it is still right
 
 An author whose driver depends on something outside the allowlist gets a failing mandatory suite
@@ -50,6 +61,7 @@ import re
 import sys
 import time
 import tomllib
+from dataclasses import dataclass
 from importlib import metadata
 from pathlib import Path
 from types import MappingProxyType
@@ -79,31 +91,15 @@ duration."""
 _ALLOWLIST_NAME: Final = "licences.toml"
 _STDLIB: Final = frozenset(sys.stdlib_module_names)
 
-ALIASES: Final[Mapping[str, str]] = MappingProxyType(
-    {
-        "psfl": "PSF-2.0",
-        "psf": "PSF-2.0",
-        "python software foundation license": "PSF-2.0",
-        "apache software license": "Apache-2.0",
-        "apache 2.0": "Apache-2.0",
-        "apache-2": "Apache-2.0",
-        "mit license": "MIT",
-        "bsd license": "BSD-3-Clause",
-        "the unlicense": "Unlicense",
-    }
-)
-"""Spellings PyPI metadata actually uses, mapped to the SPDX ids `[allow] spdx` names.
 
-**This widens no policy.** Every value is an identifier already on the allowlist; the keys are
-the strings distributions write instead of it. `defusedxml` declares `PSFL` and the allowlist
-names `PSF-2.0`; they are one licence with two spellings, and refusing the first would refuse
-a licence the policy permits for a reason that is about typography.
+@dataclass(frozen=True, slots=True)
+class Policy:
+    """`tools/licences.toml`'s `[allow] spdx` and `[normalise]`, and the file they came from."""
 
-**Why it is here and not in `tools/licences.toml`.** That file's `[allow]` is "VERBATIM from
-14-security.md section 9.2" and is the POLICY. A spelling table is input normalisation, which
-is the reader's job rather than the policy's. Ledger D9 already records that G3's own scan
-trips on the same class of thing -- four permissive ids absent from the allowlist -- and the
-resolution there is the user's, because it is a policy question. This one is not."""
+    permitted: frozenset[str]
+    normalise: Mapping[str, tuple[str, ...]]
+    source: str
+
 
 _EXPRESSION_SPLIT: Final = re.compile(r"\s+OR\s+|\s+AND\s+|\s*[,;/]\s*", re.IGNORECASE)
 _NOISE: Final = frozenset({"", "dependency licenses", "see license", "other/proprietary"})
@@ -121,11 +117,11 @@ def run(subject: Subject) -> SuiteResult:
     started = time.monotonic_ns()
     elapsed = lambda: (time.monotonic_ns() - started) / _NS_PER_MS  # noqa: E731
 
-    allow, allow_source = _allowlist(subject)
+    policy = _policy(subject)
     checks = list(_card_assertions(subject))
     declared = _declared_dependencies(subject)
     imported = _imported_roots(subject)
-    checks.extend(_graph_assertions(declared, imported, allow, allow_source))
+    checks.extend(_graph_assertions(declared, imported, policy))
     summary = (
         f"resolved graph {len(declared)} dists, import graph {len(imported)} roots, "
         f"tier={_tier(subject).value}"
@@ -172,8 +168,8 @@ def _card_assertions(subject: Subject) -> Iterator[Assertion]:
         )
 
 
-def _allowlist(subject: Subject) -> tuple[frozenset[str], str]:
-    """`tools/licences.toml`'s `[allow] spdx` list, and where it was found.
+def _policy(subject: Subject) -> Policy:
+    """`tools/licences.toml`'s `[allow] spdx` list and `[normalise]` table, and where they were.
 
     Searched in three places, nearest first: up from the driver's distribution root, up from the
     card itself, and finally up from **this package**. The third is not a fallback of convenience.
@@ -183,7 +179,8 @@ def _allowlist(subject: Subject) -> tuple[frozenset[str], str]:
     that lives anywhere at all, which is every third-party card by definition.
 
     Returns an empty set and an empty source when nothing is found, and the graph assertions then
-    report having had no policy to check against rather than reporting a pass.
+    report having had no policy to check against rather than reporting a pass. `[normalise]`'s
+    keys are matched case-insensitively on the stripped string, as G3 matches them.
     """
     here = Path(__file__).resolve()
     for start in (subject.dist_root, subject.card_path.parent, here.parent):
@@ -199,8 +196,18 @@ def _allowlist(subject: Subject) -> tuple[frozenset[str], str]:
                 # an allowlist of exactly {"spdx"}, which no real licence matches and which
                 # would fail every driver ever written. It did; this comment is the receipt.
                 if isinstance(allow, dict) and isinstance(allow.get("spdx"), list):
-                    return frozenset(str(x) for x in allow["spdx"]), str(candidate)
-    return frozenset(), ""
+                    spellings = document.get("normalise", {})
+                    return Policy(
+                        frozenset(str(x) for x in allow["spdx"]),
+                        MappingProxyType(
+                            {
+                                str(key).strip().lower(): tuple(str(v) for v in values)
+                                for key, values in spellings.items()
+                            }
+                        ),
+                        str(candidate),
+                    )
+    return Policy(frozenset(), MappingProxyType({}), "")
 
 
 def _declared_dependencies(subject: Subject) -> dict[str, str]:
@@ -295,8 +302,12 @@ def _licence_of_root(root: str) -> str:
     return _licence_of(root)
 
 
-def _terms(licence: str) -> list[str]:
+def _terms(licence: str, normalise: Mapping[str, tuple[str, ...]]) -> list[str]:
     """Split a licence metadata value into the SPDX identifiers it actually names.
+
+    A value `[normalise]` names whole is its candidates, as G3 reads it: `pypdfium2`'s comma list
+    has its own row. Otherwise each term is looked up there, and a term it does not name is
+    itself, to be judged against the allowlist as written.
 
     A distribution's `License` or `License-Expression` is not one identifier. `pypdfium2`
     declares `BSD-3-Clause, Apache-2.0, dependency licenses`; an SPDX expression joins terms
@@ -310,12 +321,15 @@ def _terms(licence: str) -> list[str]:
     whose other half is unacceptable is a dependency whose acceptability depends on a choice
     nobody recorded, and DR18 makes a violation a failure rather than a warning.
     """
+    whole = normalise.get((licence or "").strip().lower())
+    if whole is not None:
+        return list(whole)
     terms: list[str] = []
     for raw in _EXPRESSION_SPLIT.split(licence or ""):
         term = raw.strip().strip("()").strip()
         if term.lower() in _NOISE:
             continue
-        terms.append(ALIASES.get(term.lower(), term))
+        terms.extend(normalise.get(term.lower(), (term,)))
     return terms
 
 
@@ -362,10 +376,10 @@ def _imports_in(path: Path) -> Iterable[str]:
 def _graph_assertions(
     declared: dict[str, str],
     imported: dict[str, str],
-    permitted: frozenset[str],
-    allow_source: str,
+    policy: Policy,
 ) -> Iterator[Assertion]:
     """Both graphs against the allowlist, and the two graphs against each other."""
+    permitted = policy.permitted
     if not permitted:
         yield Assertion(
             "the allowlist was found, so there is a policy to check against",
@@ -380,13 +394,15 @@ def _graph_assertions(
     yield Assertion(
         "the allowlist was found",
         ok=True,
-        detail=f"{len(permitted)} identifiers from {allow_source}",
+        detail=f"{len(permitted)} identifiers from {policy.source}",
         locus="allowlist",
     )
     for graph, rows in (("resolved", declared), ("import", imported)):
         offenders = []
         for name, licence in sorted(rows.items()):
-            unmatched = [term for term in _terms(licence) if term not in permitted]
+            unmatched = [
+                term for term in _terms(licence, policy.normalise) if term not in permitted
+            ]
             if licence and unmatched:
                 offenders.append(f"{name} ({', '.join(unmatched)})")
         yield Assertion(
