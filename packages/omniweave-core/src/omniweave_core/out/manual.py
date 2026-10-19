@@ -28,6 +28,15 @@ reviews.
    z-order. A key naming a realization choice, a prompt, an output file or an IL binding is an
    unknown key and refused. Keeping the observation free of decisions is what makes it
    re-reviewable (09 section 9).
+5. **An unreachable `bake` names its two exits, and both are this module's** (D876). 00-vision.md
+   V10-9 and 16-roadmap.md:920 want `bake` `unavailable` *"with both exits named in the error"*,
+   and 09 section 9's table gives the second: *"a construct with no `native` row and no reachable
+   `bake`"* is `unrepresentable`, never silently dropped. So the exits are a spelling the table
+   maps natively, or an `ow:manual` region with that reason standing in for the construct, which
+   the gate holds at `manual-required` until `--accept-manual` (`gate.CLEARS`). The region must
+   replace the construct, not wrap it: an error inside a region still fails the gate first.
+   `BAKE_EXITS` is the one wording, so the table's finding and a target's preflight refusal
+   cannot name different exits.
 """
 
 from __future__ import annotations
@@ -44,6 +53,7 @@ if TYPE_CHECKING:
     from omniweave_core.out.carrier import CarrierDoc
 
 __all__ = [
+    "BAKE_EXITS",
     "EVIDENCE_SCHEMA",
     "MANUAL_ATTRIBUTE",
     "REASON_UNKNOWN",
@@ -58,6 +68,12 @@ REASON_UNKNOWN: Final = "OW_TARGET_MANUAL_REASON_UNKNOWN"
 EVIDENCE_SCHEMA: Final = "omniweave.out-manual-evidence/1"
 _REASONS: Final = frozenset(r.value for r in ManualReason)
 _HEX64: Final = re.compile(r"[0-9a-f]{64}")
+BAKE_EXITS: Final = (
+    "two exits: rewrite it as a construct this target's table maps natively, or replace it with "
+    f'an ow:manual region, {MANUAL_ATTRIBUTE}="{ManualReason.UNREPRESENTABLE.value}", and '
+    "compile with --accept-manual"
+)
+"""Ruling 5: what an unreachable `bake` tells its author, in every error that reports one."""
 _REGION_ID: Final = re.compile(r"[A-Za-z0-9_.-]{1,64}")
 
 
