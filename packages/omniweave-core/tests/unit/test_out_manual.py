@@ -16,8 +16,10 @@ from omniweave_core.out.carrier import CarrierDoc
 from omniweave_core.out.carrier.html import html_carrier
 from omniweave_core.out.constructs import ConstructTable
 from omniweave_core.out.finding import Provenance, Severity
+from omniweave_core.out.gate import CLEARS, GateStatus
 from omniweave_core.out.job import ILBundle
 from omniweave_core.out.manual import (
+    BAKE_EXITS,
     EVIDENCE_SCHEMA,
     EvidenceRegion,
     ManualEvidence,
@@ -260,3 +262,10 @@ def test_evidence_refuses_what_cannot_have_been_observed(doc: dict[str, Any], sa
 def test_evidence_is_exactly_its_shape(doc: Any, error: type[Exception], said: str) -> None:
     with pytest.raises(error, match=said):
         ManualEvidence.from_json(doc)
+
+
+def test_the_bake_exits_name_the_reason_and_the_flag_the_gate_clears_with() -> None:
+    """Ruling 5: 09 section 9's `unrepresentable` row, and `gate.CLEARS`'s own flag."""
+    assert BAKE_EXITS.startswith("two exits: rewrite it as a construct this target's table maps")
+    assert f'data-ow-manual="{ManualReason.UNREPRESENTABLE.value}"' in BAKE_EXITS
+    assert CLEARS[GateStatus.MANUAL_REQUIRED][1].split()[-1] == BAKE_EXITS.split()[-1]

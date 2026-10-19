@@ -261,10 +261,18 @@ CRITERIA: tuple[Criterion, ...] = (
                 f"{CONF}/test_target_owtext.py::test_an_unreachable_bake_is_refused_before_a_byte",
                 label="video's reason and the unavailable bake",
             ),
+            pytest(
+                "packages/omniweave-target-pptx/tests/unit/test_pptx_target.py::"
+                "test_an_unavailable_bake_names_both_exits_and_each_one_clears_it",
+                f"{CORE}/test_out_manual.py::"
+                "test_the_bake_exits_name_the_reason_and_the_flag_the_gate_clears_with",
+                label="the bake error's two exits, each clearing it (D876)",
+            ),
         ),
         Coverage.PARTIAL,
         "the pptx and docx goldens reach MANUAL_REQUIRED, not passed; omniweave-target-deck is a "
-        "skeleton with no driver; nothing asserts the bake error names both exits",
+        "skeleton with no driver; the bake error's two exits are asserted on pptx and owtext, the "
+        "targets with a bake row (D876)",
     ),
     Criterion(
         "V10-10",
