@@ -61,7 +61,17 @@ from omniweave_conform.tables import Grid, html_tables, tables
 if TYPE_CHECKING:
     from omniweave_core.store.oweval import Assertion
 
-__all__ = ["OWDOC_ONLY", "TEXT_TYPES", "Match", "TextVerdict", "evaluate_text", "find", "nearest"]
+__all__ = [
+    "OWDOC_ONLY",
+    "RELATIONS",
+    "TEXT_TYPES",
+    "Match",
+    "TextVerdict",
+    "distance",
+    "evaluate_text",
+    "find",
+    "nearest",
+]
 
 TEXT_TYPES: Final = frozenset({"present", "absent", "order", "table"})
 """The four this evaluator judges (rulings 2, 3 and 6)."""

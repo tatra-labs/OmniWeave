@@ -26,6 +26,10 @@ anchored on page 7 fail; `34/40 = 0.850`; the six ids are named in the report"*.
    D816 use. `explanation` is the evaluator's: empty on a pass.
 6. **Verdicts come back in assertion-id order**, so a run's verdict list is the same whatever order
    its assertions arrived in.
+7. **A `cell_rel` assertion runs on the owdoc evaluator when its document is given** (D877).
+   `docs` maps a doc name to what `cells.evaluate_cell_rel` reads, a `Doc`. Its verdict's
+   `evaluator` is `owdoc`, and it needs no page text: the Grid is the document's, not the
+   candidate's rendering. Without its document a `cell_rel` is not run, as ruling 4 says.
 
 Specified in 13-quality.md sections 8.1, 8.5 and 2.10.
 """
@@ -39,15 +43,20 @@ from omniweave_core.errors import QualityError
 from omniweave_core.store.oweval import Verdict
 
 from omniweave_conform.assertions import evaluate_text
+from omniweave_conform.cells import TYPE as CELL_REL
+from omniweave_conform.cells import evaluate_cell_rel
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
     from omniweave_core.store.oweval import Assertion
 
-__all__ = ["EVALUATOR", "UNSLICED", "Judged", "judge"]
+    from omniweave_conform.cells import TableSource
+
+__all__ = ["EVALUATOR", "OWDOC", "UNSLICED", "Judged", "judge"]
 
 EVALUATOR: Final = "text"
+OWDOC: Final = "owdoc"
 UNSLICED: Final = "*"
 REJECTED: Final = "rejected"
 PAGE_JOIN: Final = "\n\n"
@@ -71,14 +80,21 @@ def judge(
     pages: Mapping[tuple[str, int], str],
     *,
     run_id: str,
+    docs: Mapping[str, TableSource] | None = None,
 ) -> Judged:
-    """Every assertion over its page of the candidate (rulings 1-6)."""
+    """Every assertion over its page of the candidate (rulings 1-7)."""
     verdicts, failed, not_run = [], [], []
     for assertion in sorted(assertions, key=lambda a: a.assertion_id):
         if assertion.checked == REJECTED:
             continue
+        doc = (docs or {}).get(assertion.doc) if assertion.type == CELL_REL else None
         text = _text(assertion, pages)
-        if text is None:
+        if doc is not None:
+            got = evaluate_cell_rel(assertion, doc)
+            verdict = _verdict(
+                assertion, run_id, passed=got.passed, why=got.explanation, evaluator=OWDOC
+            )
+        elif text is None:
             verdict = _verdict(
                 assertion,
                 run_id,
@@ -106,12 +122,14 @@ def _text(assertion: Assertion, pages: Mapping[tuple[str, int], str]) -> str | N
     return PAGE_JOIN.join(text for _, text in ours)
 
 
-def _verdict(assertion: Assertion, run_id: str, *, passed: bool, why: str) -> Verdict:
-    """Ruling 5."""
+def _verdict(
+    assertion: Assertion, run_id: str, *, passed: bool, why: str, evaluator: str = EVALUATOR
+) -> Verdict:
+    """Rulings 5 and 7."""
     return Verdict(
         run_id=run_id,
         assertion_id=assertion.assertion_id,
-        evaluator=EVALUATOR,
+        evaluator=evaluator,
         passed=passed,
         score=None,
         slice_key=assertion.slices[0] if assertion.slices else UNSLICED,

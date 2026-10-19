@@ -403,11 +403,17 @@ CRITERIA: tuple[Criterion, ...] = (
                 "test_a_fabricated_quote_fails_alone_and_prints_both_strings",
                 label="Q-G23's three planted defects (D827)",
             ),
+            pytest(
+                f"{CONF}/test_conform_cells.py::"
+                "test_a_transposed_table_fails_every_cell_rel_on_the_owdoc_evaluator",
+                label="the transposed table's cell_rel half, on the owdoc evaluator (D877)",
+            ),
         ),
         Coverage.PARTIAL,
         "the planted defects are synthetic stand-ins for sec-exhibit-scan and "
-        "xlsx-merged-4m-cells, which are not in the tree; cell_rel is not run, so the table "
-        "count is the table relation's; hallucination_rate == 1/1 is not asserted",
+        "xlsx-merged-4m-cells, which are not in the tree; cell_rel runs over a hand-built Doc's "
+        "Grid (D877), and no suite yet hands judge() a parsed Doc; hallucination_rate == 1/1 is "
+        "not asserted, and 13:1096 defines it over field assertions, not present ones",
     ),
     Criterion(
         "V10-17",
