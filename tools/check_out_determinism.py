@@ -9,6 +9,10 @@ disagreement, and exits, following the standing pattern (ledger D25).
 **One cell.** The nine OS/Python cells V10-10 names, and the two pdfium minors, are CI's matrix,
 which is off. This runs the in-cell half wherever it is invoked, and says so on its last line.
 
+**`--golden DIR` with one `--target`** compiles that directory instead of the register's golden
+(D881): `fixtures/gen/gen_golden40.py`'s forty-slide deck is V10-10's *"40-unit golden"*, and it
+is generated rather than committed, so the register cannot name it.
+
 **A `check_` script, not a `gate_` one.** A `tools/gate_*.py` must have a register row whose
 runner CI invokes (`test_gates_register.py`), and OUT13 is a law with no gate row. V10-10 runs it
 as a slow instrument.
@@ -28,6 +32,7 @@ import argparse
 import sys
 import tempfile
 import tomllib
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -72,6 +77,9 @@ def main(argv: Sequence[str] | None = None, *, root: Path = REPO) -> int:
     parser = argparse.ArgumentParser(prog="check_out_determinism", description="OUT13, one cell.")
     parser.add_argument("--register", type=Path, default=None, help="the metric register")
     parser.add_argument("--target", action="append", default=None, help="only these targets")
+    parser.add_argument(
+        "--golden", type=Path, default=None, help="this golden instead, for one --target (D881)"
+    )
     args = parser.parse_args(argv)
     register = args.register if args.register is not None else root / REGISTER
     try:
@@ -80,6 +88,11 @@ def main(argv: Sequence[str] | None = None, *, root: Path = REPO) -> int:
         sys.stdout.write(f"OUT13 did not run: {type(error).__name__}: {error}\n")
         return EXIT_NOT_RUN
     chosen = [t for t in rows if args.target is None or t.target in args.target]
+    if args.golden is not None:
+        if len(chosen) != 1:
+            sys.stdout.write("OUT13 did not run: --golden names one fixture, so one --target\n")
+            return EXIT_NOT_RUN
+        chosen = [replace(chosen[0], golden=args.golden.resolve())]
     if not chosen:
         among = f" among {args.target}" if args.target else ""
         sys.stdout.write(f"OUT13 did not run: {register} names no [[target]]{among}\n")
