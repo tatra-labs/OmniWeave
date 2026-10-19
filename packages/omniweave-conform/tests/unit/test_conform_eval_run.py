@@ -7,6 +7,7 @@ not (13:661). The parse runs once per module; each test reads the batch it produ
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import sys
 import tomllib
@@ -448,12 +449,32 @@ def test_the_catalogue_asks_every_task_but_the_damaged() -> None:
 
 
 def _load_store_doc() -> Any:
-    path = REPO / "packages" / "omniweave-core" / "tests" / "unit" / "test_store_doc.py"
+    """`test_store_doc.py`, by path, with omniweave-core's `conftest` as the one it imports.
+
+    That file does `from conftest import PlanDocs`, and which `conftest` a bare import finds
+    depends on which test pytest collected first: run alone, this file collected
+    `packages/conftest.py` under that name and the import failed (D875).
+    """
+    tests = REPO / "packages" / "omniweave-core" / "tests"
+    own = importlib.util.spec_from_file_location("_core_tests_conftest", tests / "conftest.py")
+    assert own is not None and own.loader is not None
+    conftest = importlib.util.module_from_spec(own)
+    sys.modules[own.name] = conftest
+    own.loader.exec_module(conftest)
+    path = tests / "unit" / "test_store_doc.py"
     spec = importlib.util.spec_from_file_location("_test_store_doc_for_retrieval", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
+    previous = sys.modules.get("conftest")
+    sys.modules["conftest"] = conftest
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        if previous is not None:
+            sys.modules["conftest"] = previous
+        else:
+            del sys.modules["conftest"]
     return module
 
 
@@ -525,7 +546,7 @@ def _judged(target: Any, *elements: Any, unknown: str | None = None) -> r2_harne
         gate="manual-required",
         elements=tuple(elements),
         unknown=unknown,
-        il_units=(target.golden / "il" / "u01.html",),
+        il_units=(target.golden / "il" / ("u01.svg" if target.target == "pptx" else "u01.html"),),
         fingerprint="f" * 64,
     )
 
@@ -575,10 +596,12 @@ def test_each_element_is_one_roundtrip_assertion_and_one_verdict(
     assert (first.type, first.addr, first.doc, first.evaluable_in, first.checked) == (
         "roundtrip",
         "u01/e1",
-        "il/u01",
+        "il/u01.html",
         "owdoc",
         None,
     )
+    unit = REPO / "fixtures" / "out" / "golden" / "docx" / "il" / "u01.html"
+    assert first.derived_from_sha256 == hashlib.sha256(unit.read_bytes()).hexdigest()
     assert dict(first.spec) == {"law": "r2", "construct": "heading"}
     assert [(v.assertion_id, v.passed, v.slice_key) for v in batch.verdicts] == [
         (ids[0], True, "docx"),
