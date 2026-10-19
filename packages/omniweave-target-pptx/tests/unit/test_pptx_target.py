@@ -29,7 +29,8 @@ from omniweave_core.out.cites import CitedBlock
 from omniweave_core.out.compile import CheckResult, CompileV1, check
 from omniweave_core.out.constructs import Disposition
 from omniweave_core.out.finding import Severity
-from omniweave_core.out.gate import GateStatus
+from omniweave_core.out.gate import CLEARS, GateStatus
+from omniweave_core.out.manual import BAKE_EXITS
 from omniweave_core.out.plan import OutUnit
 from omniweave_core.out.roundtrip import applicable
 from omniweave_ports import ProbeStatus
@@ -525,3 +526,52 @@ def test_an_undeclared_size_across_slides_is_a_warning_then_an_error(tmp_path: P
         ("OW_TARGET_TYPE_SIZE_UNDECLARED", Severity.ERROR)
     ]
     assert failed.status is GateStatus.FAILED
+
+
+# ---------------------------------------------------------------------------------------------
+# D876: an unavailable bake names both exits, and each exit clears the error
+# ---------------------------------------------------------------------------------------------
+
+PLAIN = f'{SVG}><text x="64" y="120" font-family="Probe Sans">fine</text></svg>'
+
+
+def _gate(tmp_path: Path, u01: str) -> CheckResult:
+    return check(
+        _job(tmp_path, **{"u01.svg": u01, "u02.svg": PLAIN}),
+        _measured(tmp_path),
+        target="pptx",
+        constructs=TABLE,
+        stage="final",
+        brief=BRIEF,
+        cites=_Cites(),
+    )
+
+
+def test_an_unavailable_bake_names_both_exits_and_each_one_clears_it(tmp_path: Path) -> None:
+    """00-vision.md V10-9: `bake` unavailable on every target, *"with both exits named"*."""
+    blended = f'{SVG}><circle cx="1" cy="1" r="1" style="mix-blend-mode: multiply"/></svg>'
+    failed = _gate(tmp_path / "blended", blended)
+    assert failed.status is GateStatus.FAILED
+    [finding] = [f for f in failed.report.findings if f.code == "OW_TARGET_BLEND_REQUIRES_BAKE"]
+    assert finding.msg.endswith(f"this target's bake is unavailable; {BAKE_EXITS}")
+
+    native = _gate(tmp_path / "native", f'{SVG}><circle cx="1" cy="1" r="1"/></svg>')
+    assert (native.status, native.report.findings) == (GateStatus.PASSED, ())
+
+    region = f'{SVG}><g data-ow-el="u01/e1" data-ow-manual="unrepresentable"/></svg>'
+    manual = _gate(tmp_path / "manual", region)
+    assert (manual.status, manual.report.findings) == (GateStatus.MANUAL_REQUIRED, ())
+    assert manual.report.manual_units == (
+        {"unit": "u01", "el": "u01/e1", "reason": "unrepresentable"},
+    )
+    assert CLEARS[GateStatus.MANUAL_REQUIRED][1].endswith("--accept-manual")
+    assert "--accept-manual" in BAKE_EXITS
+
+
+def test_wrapping_the_construct_in_a_region_is_not_an_exit(tmp_path: Path) -> None:
+    """Ruling 5 of `out.manual`: the region replaces the construct, because an error fails first."""
+    wrapped = (
+        f'{SVG}><g data-ow-manual="unrepresentable">'
+        '<circle cx="1" cy="1" r="1" style="mix-blend-mode: multiply"/></g></svg>'
+    )
+    assert _gate(tmp_path, wrapped).status is GateStatus.FAILED

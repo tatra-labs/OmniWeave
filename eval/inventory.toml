@@ -20,7 +20,7 @@ properties = 0
 
 [[area]]
 area = "omniweave-core/unit"
-tests = 9489
+tests = 9490
 properties = 18
 
 [[area]]
@@ -70,7 +70,7 @@ properties = 0
 
 [[area]]
 area = "omniweave-target-pptx/unit"
-tests = 797
+tests = 799
 properties = 0
 
 [[area]]

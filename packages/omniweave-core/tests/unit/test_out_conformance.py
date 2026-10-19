@@ -28,6 +28,7 @@ from omniweave_core.out.conformance import (
 )
 from omniweave_core.out.constructs import ConstructTable
 from omniweave_core.out.finding import Finding, Severity
+from omniweave_core.out.manual import BAKE_EXITS
 from omniweave_core.out.plan import OutUnit
 from omniweave_core.out.rules import RuleSpec
 
@@ -350,7 +351,7 @@ def test_a_bake_row_is_an_error_while_the_cards_bake_is_unavailable() -> None:
     )
     assert found.msg == (
         "<p>: @style|text-shadow needs the bake tier (raster at 192 dpi), and this target's bake "
-        "is unavailable"
+        f"is unavailable; {BAKE_EXITS}"
     )
 
 

@@ -25,6 +25,7 @@ from omniweave_core.out.compile import CheckResult, CompileV1, check
 from omniweave_core.out.constructs import ConstructTable
 from omniweave_core.out.gate import GateStatus
 from omniweave_core.out.job import ILBundle
+from omniweave_core.out.manual import BAKE_EXITS
 from omniweave_core.out.plan import Plan
 from omniweave_core.out.receipt import ArtefactDeterminism
 from omniweave_core.out.roundtrip import applicable
@@ -273,6 +274,7 @@ def test_an_unreachable_bake_is_refused_before_a_byte(tmp_path: Path) -> None:
     with pytest.raises(TargetError, match="text-shadow") as caught:
         _lowered(tmp_path, **{"u02.html": shadowed})
     assert caught.value.code() == "OW_TARGET_BAKE_UNAVAILABLE"
+    assert f"; {BAKE_EXITS}" in str(caught.value)
 
 
 def test_project_refuses_by_the_card_key() -> None:
