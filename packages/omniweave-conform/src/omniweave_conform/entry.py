@@ -1,6 +1,7 @@
 """The `omniweave.eval` entry points: what `ow eval <verb>` calls in this distribution. **D833.**
 
-D833 is `publish`; D840 adds `release_check`, D846 `bless`, and D868 `run`.
+D833 is `publish`; D840 adds `release_check`, D846 `bless`, and D868 `run`, which D869 widens
+to the absence suite.
 
 10-interfaces.md section 2.5: *"`omniweave-conform` implements the `eval` Action group"*, and
 the split between the two distributions is a dispatch fact. `omniweave` may not import this
@@ -10,7 +11,8 @@ here by its entry-point name at call time, as it loads `ow serve`'s.
 **Only builtin values cross**, as across `ow serve`'s boundary. A type defined on either side is
 one the other side cannot import, so arguments are `str`, `bool` and `None`, and the result is a
 `dict` of `str`, `int`, `float`, `bool`, `None`, and lists of `str` or of `dict`s of those. The CLI
-builds its own report from that.
+builds its own report from that. The one exception is `run`'s `admit`, a function over
+builtins, D869.
 
 **Paths arrive absolute.** The CLI resolves each against its working directory, so this side
 never reads one.
@@ -23,14 +25,18 @@ from __future__ import annotations
 import shutil
 import tomllib
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from omniweave_core.clock import SystemClock
 from omniweave_core.errors import QualityError
 from omniweave_core.host.subproc import run_captured
-from omniweave_core.store.oweval import open_oweval, write
+from omniweave_core.store.oweval import Batch, open_oweval, write
 
 from omniweave_conform import eval_run, inventory, release, scoreboard
 from omniweave_conform.bless import BLESS_ENV, BLESS_ON, blessing
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
 
 __all__ = ["bless", "publish", "release_check", "run"]
 
@@ -53,51 +59,75 @@ def run(
     oweval: str,
     gates: str,
     root: str,
-    suite: str,
+    suites: list[str],
     subject: str | None,
     witness: str,
     cassette: str,
+    admit: Callable[[Sequence[str]], str | None],
 ) -> dict[str, object]:
-    """`ow eval run`: one suite's rows, written to `oweval` in one transaction. D868.
+    """`ow eval run`: each named suite's rows, written to `oweval` in one transaction. D868, D869.
 
-    `root` is the directory the register's `card` and `fixtures` paths are relative to, the
-    working directory. The `.oweval` is created when it does not exist: a run is its writer. The
-    clock is read here, at the edge, as `started_ns` and `ended_ns` for each run.
+    `suites` are run in the order given, every one of them built (`eval_run.BUILT`). `root` is the
+    directory the register's `card` and `fixtures` paths are relative to, the working directory.
+    `subject` narrows the parse suite's drivers and is refused for the absence suite, whose subject
+    is the product. `admit` is `omniweave.surface.admit.admit`, 13:1306's check of a fix against the
+    `ow` Action registry: the one callable that crosses, because this distribution may not import
+    the registry, and it takes and returns builtins (`absence` ruling 1). The `.oweval` is created
+    when it does not exist: a run is its writer. The clock is read here, at the edge.
     """
     register = Path(gates)
     if not register.is_file():
         raise QualityError(
             f"no file at {register}", fix="pass --gates PATH naming the metric register"
         )
-    if suite not in eval_run.BUILT:
+    unbuilt = [suite for suite in suites if suite not in eval_run.BUILT]
+    if unbuilt or not suites:
         raise QualityError(
-            f"ow eval run measures {', '.join(eval_run.BUILT)} in this build, not {suite}",
+            f"ow eval run measures {', '.join(eval_run.BUILT)} in this build, not "
+            f"{', '.join(unbuilt) or 'nothing'}",
             fix="ow eval run --suite parse",
         )
-    batch, done = eval_run.parse(
-        tomllib.loads(register.read_text(encoding="utf-8")),
-        root=Path(root),
-        subject=subject,
-        witness=witness,
-        cassette=cassette,
-        now_ns=SystemClock().wall_ns,
-    )
+    if subject is not None and "absence" in suites:
+        raise QualityError(
+            "--subject names a parse driver, and the absence suite's subject is omniweave itself",
+            fix="ow eval run --suite absence  # without --subject",
+        )
+    rows = tomllib.loads(register.read_text(encoding="utf-8"))
+    clock = SystemClock().wall_ns
+    batches: list[Batch] = []
+    done: list[eval_run.Measured] = []
+    for suite in suites:
+        if suite == "parse":
+            batch, measured = eval_run.parse(
+                rows,
+                root=Path(root),
+                subject=subject,
+                witness=witness,
+                cassette=cassette,
+                now_ns=clock,
+            )
+        else:
+            batch, measured = eval_run.absence(
+                rows, root=Path(root), witness=witness, cassette=cassette, now_ns=clock, admit=admit
+            )
+        batches.append(batch)
+        done.extend(measured)
     connection = open_oweval(Path(oweval))
     try:
-        write(connection, batch)
+        write(connection, _merged(batches))
     finally:
         connection.close()
-    metric = next(iter(eval_run.MEASURED))
     return {
-        "suite": suite,
+        "suites": list(suites),
         "oweval": oweval,
         "runs": [
             {
                 "run_id": row.run_id,
+                "suite": row.suite,
                 "subject": row.subject,
                 "slice": row.slice_key,
                 "corpus": row.corpus_id,
-                "metric": metric,
+                "metric": row.metric,
                 "value": row.value,
                 "n": row.n,
                 "parsed": row.parsed,
@@ -106,6 +136,16 @@ def run(
             for row in done
         ],
     }
+
+
+def _merged(batches: Sequence[Batch]) -> Batch:
+    """Several suites' rows as one `Batch`, so one run is one transaction (13:385)."""
+    corpora = {(corpus.corpus_id, corpus.version): corpus for b in batches for corpus in b.corpora}
+    return Batch(
+        corpora=tuple(corpora.values()),
+        runs=tuple(run for b in batches for run in b.runs),
+        metrics=tuple(metric for b in batches for metric in b.metrics),
+    )
 
 
 def release_check(*, oweval: str, gates: str, strict: bool) -> dict[str, object]:

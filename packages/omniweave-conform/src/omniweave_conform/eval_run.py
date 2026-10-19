@@ -1,4 +1,4 @@
-"""`ow eval run --suite parse`: the register's parse metrics, measured and written as rows. D868.
+"""`ow eval run`: the parse suite (D868) and the absence suite's deterministic half (D869).
 
 13-quality.md:1873 prints `ow eval run [--suite S] [--corpus C@V] [--subject D] [--witness W]
 [--cassette MODE] [--validate-judge] [--emit PATH]`, and 16-roadmap.md:942 makes it W10.6's
@@ -45,7 +45,28 @@ returns it as `store.oweval` rows for one `write()`.
    and the start time, so no RNG is involved (13 section 3). `confounders` names the fixtures'
    authorship and every refusal, because Q-G19 refuses a published row without one.
 
-Specified in 13-quality.md sections 2.10, 8.3 and 13.3, and 16-roadmap.md W10.6.
+## The absence suite's deterministic half (D869)
+
+8. **It is `absence.run_suite()` over every built Injector**, the harness `tools/ow_damage.py`
+   ran, and its one metric is `degradation_detection`: the pairs whose four clauses all hold, over
+   the pairs, as `stats.rate()`, against the register's `degradation_detection` row and that row's
+   `truth_kind`. Ruling 6 holds: the row is hard and fidelity-shaped, so no `min_slice_n`. Its
+   slice is `deterministic_half`, the half measured.
+9. **The subject is `omniweave`, the product**: absence gates fire in a store `ow add` wrote and a
+   query read, so no single driver is measured. `subject_version` is the installed `omniweave`'s,
+   read from distribution metadata without importing it, and `code_fingerprint` is over
+   `omniweave_core`'s `*.py`, where the fifteen gates are. Each `ow` is a child, so the timing
+   basis is `spawn_inclusive`.
+10. **The corpus is the generated reference documents**: `reference_corpora/quick`, from the
+    repository's `fixtures/gen/gen_reference_corpora.py` at `quick` scale. That generator is
+    committed under `fixtures/`, Tier A (D844), and its documents are digested by name and bytes,
+    so a generator change is a new corpus version. Not `publishable`, as ruling 3.
+11. **What the half does not measure is named**: the Injectors the table owes and nothing builds,
+    and the absence-corpus half's metrics (`false_confident_zero`, `absent_precision`,
+    `absent_recall`), which need the T4 absence corpus. A failed pair is a confounder, by name,
+    and lowers the rate, which `release-check` then refuses as off its hard budget.
+
+Specified in 13-quality.md sections 2.10, 8.3, 8.6 and 13.3, and 16-roadmap.md W10.6.
 """
 
 from __future__ import annotations
@@ -63,7 +84,9 @@ from omniweave_core.host.activate import code_fingerprint
 from omniweave_core.store.oweval import Batch, Corpus, Metric, Run
 from omniweave_ports.types import DriverError
 
+from omniweave_conform import absence as damage_half
 from omniweave_conform.badge import kit_version
+from omniweave_conform.damage import INJECTORS, TABLE
 from omniweave_conform.evaluate import span_exact_rate
 from omniweave_conform.harness import run_parse
 from omniweave_conform.stats import rate
@@ -74,10 +97,34 @@ if TYPE_CHECKING:
 
     from omniweave_conform.evaluate import MetricResult
 
-__all__ = ["BUILT", "MEASURED", "PARSE_UNMEASURED", "Measured", "corpus_digest", "parse"]
+__all__ = [
+    "ABSENCE_UNMEASURED",
+    "BUILT",
+    "MEASURED",
+    "PARSE_UNMEASURED",
+    "TRUTH_KINDS",
+    "Measured",
+    "absence",
+    "corpus_digest",
+    "parse",
+]
 
-BUILT: Final[tuple[str, ...]] = ("parse",)
-"""The suites `ow eval run` measures in this build. The other six are refused by name."""
+BUILT: Final[tuple[str, ...]] = ("parse", "absence")
+"""The suites `ow eval run` measures in this build, in run order. The other five are refused."""
+
+DETECTION: Final = "degradation_detection"
+"""Ruling 8: the absence half's one metric, the register's hard row."""
+
+ABSENCE_UNMEASURED: Final[tuple[str, ...]] = (
+    "false_confident_zero, absent_precision, absent_recall: the absence corpus half needs the "
+    "T4 absence corpus, which does not exist (13 section 8.6)",
+)
+"""Ruling 11: the half not run, named in every absence run's `not_measured`."""
+
+TRUTH_KINDS: Final[frozenset[str]] = frozenset(
+    {"human", "rendered", "native_run", "synth_ocr", "agreement", "self"}
+)
+"""`eval_metric.truth_kind`'s CHECK, the six `TruthKind`s 13:1452 tabulates."""
 
 MEASURED: Final[Mapping[str, tuple[Callable[..., MetricResult], str]]] = {
     "span_exact_rate": (span_exact_rate, "native_run"),
@@ -98,13 +145,17 @@ class Measured:
     """One subject's run, for the verb to print."""
 
     run_id: str
+    suite: str
     subject: str
     slice_key: str
     corpus_id: str
+    metric: str
     value: float | None
     n: int
     parsed: int
+    """Parse: the fixtures the driver parsed. Absence: the pairs that passed."""
     refused: tuple[str, ...]
+    """Parse: the fixtures the driver refused, each with its class. Absence: the failed pairs."""
 
 
 def corpus_digest(root: Path, files: Sequence[Path]) -> str:
@@ -237,9 +288,11 @@ def parse(
         done.append(
             Measured(
                 run_id=run_id,
+                suite="parse",
                 subject=found.driver_id,
                 slice_key=slice_key,
                 corpus_id=corpus.corpus_id,
+                metric=next(iter(MEASURED)),
                 value=value,
                 n=sampled,
                 parsed=len(parses),
@@ -253,6 +306,147 @@ def parse(
         )
     batch = Batch(corpora=tuple(corpora.values()), runs=tuple(runs), metrics=tuple(metrics))
     return batch, tuple(done)
+
+
+def absence(
+    register: Mapping[str, Any],
+    *,
+    root: Path,
+    witness: str,
+    cassette: str,
+    now_ns: Callable[[], int],
+    admit: Callable[[Sequence[str]], str | None],
+    workers: int = 4,
+) -> tuple[Batch, tuple[Measured, ...]]:
+    """The absence suite's deterministic half as one `Batch` (rulings 8-11)."""
+    gate = next(
+        (
+            row
+            for row in register.get("gate", [])
+            if row.get("suite") == "absence" and row.get("metric") == DETECTION
+        ),
+        None,
+    )
+    if gate is None:
+        raise QualityError(
+            f"the metric register has no absence {DETECTION} row to measure against",
+            fix=f"add a [[gate]] row with metric = {DETECTION!r} and suite = 'absence'",
+        )
+    truth = str(gate.get("truth_kind", ""))
+    if truth not in TRUTH_KINDS:
+        raise QualityError(
+            f"the register's {DETECTION} truth_kind {truth!r} is not one of "
+            f"{', '.join(sorted(TRUTH_KINDS))}",
+            fix="name one of the six TruthKinds (13-quality.md:1452) in eval/gates.toml",
+        )
+    started = now_ns()
+    try:
+        suite = damage_half.run_suite(
+            list(INJECTORS), root=root, admit=admit, now_ns=now_ns, workers=workers
+        )
+    except (RuntimeError, OSError) as error:
+        raise QualityError(
+            f"the absence suite could not run: {type(error).__name__}: {error}",
+            fix="python tools/ow_damage.py --deterministic-half --keep <dir>  # every clause, kept",
+        ) from error
+    ended = now_ns()
+    digest = damage_half.documents_digest(suite.documents)
+    corpus = Corpus(
+        corpus_id="reference_corpora/quick",
+        version=digest[:16],
+        corpus_digest=digest,
+        tier="A",
+        n_docs=len(suite.documents),
+        n_assertions=0,
+        n_checked=0,
+        document_redistributable=True,
+        assertions_redistributable=True,
+        publishable=False,
+    )
+    failed = tuple(
+        f"{result.injector} x {result.fixture}" for result in suite.assessments if not result.ok
+    )
+    owed = [row.name for row in TABLE if row.name not in INJECTORS]
+    subject_version = _version("omniweave")
+    run_id = _run_id("absence", "omniweave", digest, started)
+    run = Run(
+        run_id=run_id,
+        suite="absence",
+        corpus_id=corpus.corpus_id,
+        corpus_version=corpus.version,
+        corpus_digest=digest,
+        subject="omniweave",
+        subject_version=subject_version,
+        producer_id=None,
+        measured_on=_measured_on(corpus),
+        timing_basis="spawn_inclusive",
+        witness=witness,
+        cassette=cassette,
+        policy_digest=None,
+        pricebook_digest=None,
+        harness_version=kit_version(),
+        code_fingerprint=code_fingerprint(_core_sources()),
+        hardware=_hardware(),
+        started_ns=started,
+        ended_ns=ended,
+        status="ok",
+        not_measured=(
+            f"{len(owed)} of {len(TABLE)} Injectors are not built: {', '.join(owed)}",
+            *ABSENCE_UNMEASURED,
+        ),
+        confounders=(
+            "the documents are the repository's own generated reference corpora, quick scale",
+            f"{len(failed)} pair(s) failed" + (f": {', '.join(failed)}" if failed else ""),
+        ),
+    )
+    passed = len(suite.assessments) - len(failed)
+    estimate = rate(passed, len(suite.assessments))
+    metrics: tuple[Metric, ...] = ()
+    if suite.assessments:
+        metrics = (
+            Metric(
+                run_id=run_id,
+                metric=DETECTION,
+                value=estimate.value,
+                n=estimate.n,
+                ci_lo=estimate.ci_lo,
+                ci_hi=estimate.ci_hi,
+                method=estimate.method,
+                truth_kind=truth,
+                state="ok",
+                slice_key="deterministic_half",
+            ),
+        )
+    done = Measured(
+        run_id=run_id,
+        suite="absence",
+        subject="omniweave",
+        slice_key="deterministic_half",
+        corpus_id=corpus.corpus_id,
+        metric=DETECTION,
+        value=estimate.value,
+        n=len(suite.assessments),
+        parsed=passed,
+        refused=failed,
+    )
+    return Batch(corpora=(corpus,), runs=(run,), metrics=metrics), (done,)
+
+
+def _version(distribution: str) -> str:
+    """Ruling 9: an installed distribution's version, read without importing it."""
+    from importlib.metadata import PackageNotFoundError, version  # noqa: PLC0415
+
+    try:
+        return version(distribution)
+    except PackageNotFoundError:
+        return "0+unknown"
+
+
+def _core_sources() -> tuple[Path, ...]:
+    """Ruling 9: `omniweave_core`'s `*.py`, where the absence gates are."""
+    import omniweave_core  # noqa: PLC0415
+
+    return tuple(sorted(Path(omniweave_core.__file__).parent.rglob("*.py")))
 
 
 def _corpus(root: Path, fixtures_dir: Path, files: Sequence[Path]) -> Corpus:

@@ -41,15 +41,19 @@ the row together.
    refused by name, as nothing writes a counter baseline yet. The date is today's, UTC, read
    once here from `SystemClock` as the other surfaces read the wall clock. A refusal in the
    bless is `QualityError`, exit 1, as in ruling 3.
-8. **`run` measures one suite and writes it** (13:1873, D868). `--suite` omitted is every suite
-   this build measures, which is `parse`; another of the seven is refused by name, as is a name
-   outside them. `--witness` and `--cassette` must be values their `eval_run` columns admit.
-   `--validate-judge` and `--emit` are refused by name, and so is the global `--corpus`, which
-   13:1873 gives this verb as `--corpus C@V`: a subject's corpus is its own fixture set, so a
-   corpus named here would be ignored. The `.oweval` is created when it does not exist, because
-   a run is what writes one. Each subject prints as a line, then one verdict line. `--render json`
-   prints one object: `suite`, `oweval` and `runs`. A refusal from the suite, such as a register
-   with no `[[subject]]`, is `QualityError`, exit 1, as in ruling 3.
+8. **`run` measures suites and writes them** (13:1873, D868, D869). `--suite` omitted is every
+   suite this build measures, `parse` then `absence`, written in one transaction; another of the
+   seven is refused by name, as is a name outside them. `--deterministic-half` names the only
+   half of `absence` built, so it is refused beside any other suite, and `--subject`, a parse
+   driver, beside `absence`, whose subject is the product. The absence harness is handed
+   `surface.admit.admit`, 13:1306's check of each fix against this registry. `--witness` and
+   `--cassette` must be values their `eval_run` columns admit. `--validate-judge` and `--emit`
+   are refused by name, and so is the global `--corpus`, which 13:1873 gives this verb as
+   `--corpus C@V`: each suite's corpus is its own, so a corpus named here would be ignored. The
+   `.oweval` is created when it does not exist, because a run is what writes one. Each subject
+   prints as a line in its suite's terms, then one verdict line. `--render json` prints one
+   object: `suites`, `oweval` and `runs`. A refusal from a suite, such as a register with no
+   `[[subject]]`, is `QualityError`, exit 1, as in ruling 3.
 """
 
 from __future__ import annotations
@@ -93,7 +97,7 @@ SUITES: Final[tuple[str, ...]] = (
     "perf",
 )
 """13:237-242's seven suites, the `eval_run.suite` CHECK, in that order."""
-RUN_SUITES: Final[tuple[str, ...]] = ("parse",)
+RUN_SUITES: Final[tuple[str, ...]] = ("parse", "absence")
 """Ruling 8: the suites `ow eval run` measures in this build."""
 WITNESSES: Final[tuple[str, ...]] = ("ci", "self", "third_party")
 CASSETTES: Final[tuple[str, ...]] = ("off", "allow", "required")
@@ -400,14 +404,26 @@ def _run(parsed: argparse.Namespace, *, cwd: Path, env: Mapping[str, str], stdou
             "subject's corpus is its own fixture set, no judge runs, and no result file is written",
             fix=_RUN_FIX,
         )
-    suite = parsed.suite or RUN_SUITES[0]
-    if suite not in SUITES:
+    suite = parsed.suite
+    if suite is not None and suite not in SUITES:
         raise UsageError(f"--suite {suite!r} is not one of {', '.join(SUITES)}", fix=_RUN_FIX)
-    if suite not in RUN_SUITES:
+    if suite is not None and suite not in RUN_SUITES:
         raise UsageError(
             f"--suite {suite} is not measured in this build; ow eval run measures "
             f"{', '.join(RUN_SUITES)}",
             fix=_RUN_FIX,
+        )
+    suites = RUN_SUITES if suite is None else (suite,)
+    if parsed.deterministic_half and suites != ("absence",):
+        raise UsageError(
+            "--deterministic-half names the half of the absence suite this build runs, and is "
+            "given only with --suite absence",
+            fix="ow eval run --suite absence --deterministic-half",
+        )
+    if parsed.subject is not None and "absence" in suites:
+        raise UsageError(
+            "--subject names a parse driver, and the absence suite's subject is omniweave itself",
+            fix="ow eval run --suite parse --subject <driver id>",
         )
     for flag, value, allowed in (
         ("--witness", parsed.witness, WITNESSES),
@@ -422,51 +438,65 @@ def _run(parsed: argparse.Namespace, *, cwd: Path, env: Mapping[str, str], stdou
             fix="pass --gates PATH naming the eval/gates.toml register",
         )
     oweval = cwd / parsed.oweval
+    from omniweave.surface.admit import admit  # noqa: PLC0415 -- only `run` pays
+
     done = _ran(
         eval_entry("run")(
             oweval=str(oweval),
             gates=str(gates),
             root=str(cwd),
-            suite=suite,
+            suites=list(suites),
             subject=parsed.subject,
             witness=parsed.witness,
             cassette=parsed.cassette,
+            admit=admit,
         )
     )
     if parsed.render == "json":
         stdout.write(json.dumps(_run_row(done), ensure_ascii=False) + "\n")
         return 0
     for row in done.runs:
-        rate = "vacuous" if row.value is None else f"{row.value:.4f} over {row.n}"
-        stdout.write(
-            f"  {row.subject:<24} {row.slice:<20} {row.metric} {rate}; "
-            f"{row.parsed} parsed, {len(row.refused)} refused\n"
-        )
+        stdout.write(_run_line(row) + "\n")
     stdout.write(
-        f"ow eval run --suite {done.suite}: {len(done.runs)} run(s) written to {parsed.oweval}\n"
+        f"ow eval run --suite {','.join(done.suites)}: {len(done.runs)} run(s) written to "
+        f"{parsed.oweval}\n"
     )
     return 0
 
 
+def _run_line(row: EvalRunRow) -> str:
+    """One subject's line: its rate, then what it read, in the suite's own terms."""
+    rate = "vacuous" if row.value is None else f"{row.value:.4f} over {row.n}"
+    if row.suite == "absence":
+        tail = f"{row.parsed} of {row.n} pair(s) passed" + (
+            f"; failed: {', '.join(row.refused)}" if row.refused else ""
+        )
+    else:
+        tail = f"{row.parsed} parsed, {len(row.refused)} refused"
+    return f"  {row.subject:<24} {row.slice:<20} {row.metric} {rate}; {tail}"
+
+
 def _ran(result: Mapping[str, object]) -> EvalRunReport:
     """The entry point's builtins as this side's report. Anything else is a broken install."""
-    suite, oweval, runs = (result.get(k) for k in ("suite", "oweval", "runs"))
+    suites, oweval, runs = (result.get(k) for k in ("suites", "oweval", "runs"))
     if not (
-        isinstance(suite, str)
+        isinstance(suites, list)
+        and all(isinstance(one, str) for one in suites)
         and isinstance(oweval, str)
         and isinstance(runs, list)
         and all(_run_shape(row) for row in runs)
     ):
         raise InternalError(
-            "the [omniweave.eval] run entry point returned no suite, oweval and runs",
+            "the [omniweave.eval] run entry point returned no suites, oweval and runs",
             fix="pip install --force-reinstall omniweave-conform",
         )
     return EvalRunReport(
-        suite=suite,
+        suites=tuple(suites),
         oweval=oweval,
         runs=tuple(
             EvalRunRow(
                 run_id=row["run_id"],
+                suite=row["suite"],
                 subject=row["subject"],
                 slice=row["slice"],
                 corpus=row["corpus"],
@@ -485,7 +515,8 @@ def _run_shape(row: object) -> bool:
     return (
         isinstance(row, dict)
         and all(
-            isinstance(row.get(k), str) for k in ("run_id", "subject", "slice", "corpus", "metric")
+            isinstance(row.get(k), str)
+            for k in ("run_id", "suite", "subject", "slice", "corpus", "metric")
         )
         and (row.get("value") is None or isinstance(row.get("value"), float))
         and all(isinstance(row.get(k), int) for k in ("n", "parsed"))
@@ -496,11 +527,12 @@ def _run_shape(row: object) -> bool:
 
 def _run_row(done: EvalRunReport) -> dict[str, object]:
     return {
-        "suite": done.suite,
+        "suites": list(done.suites),
         "oweval": done.oweval,
         "runs": [
             {
                 "run_id": row.run_id,
+                "suite": row.suite,
                 "subject": row.subject,
                 "slice": row.slice,
                 "corpus": row.corpus,

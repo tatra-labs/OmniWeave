@@ -843,6 +843,7 @@ def test_this_package_can_write_no_file_at_all() -> None:
     assert [path.name for path in sources] == [
         "__init__.py",
         "add.py",
+        "admit.py",
         "authority.py",
         "corpora.py",
         "cost.py",

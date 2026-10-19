@@ -13,7 +13,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from omniweave_conform import absence as absence_harness
 from omniweave_conform import eval_run
+from omniweave_conform.damage import INJECTORS, TABLE, Assessment, Clause
 from omniweave_conform.entry import run as entry_run
 from omniweave_conform.release import check_release
 from omniweave_core.errors import QualityError
@@ -149,12 +151,13 @@ def test_the_entry_point_writes_the_store_and_returns_builtins(tmp_path: Path) -
         oweval=str(store),
         gates=str(REPO / "eval" / "gates.toml"),
         root=str(REPO),
-        suite="parse",
+        suites=["parse"],
         subject=PDFIUM,
         witness="ci",
         cassette="required",
+        admit=lambda _argv: None,
     )
-    assert done["suite"] == "parse"
+    assert done["suites"] == ["parse"]
     [row] = done["runs"]  # type: ignore[misc]
     assert (row["subject"], row["metric"], row["value"]) == (PDFIUM, "span_exact_rate", 1.0)
     connection = open_oweval(store)
@@ -163,23 +166,171 @@ def test_the_entry_point_writes_the_store_and_returns_builtins(tmp_path: Path) -
     finally:
         connection.close()
     assert stored == [(row["run_id"], "ci", "required")]
-    with pytest.raises(QualityError, match="measures parse in this build, not absence"):
-        entry_run(
-            oweval=str(store),
-            gates=str(REPO / "eval" / "gates.toml"),
-            root=str(REPO),
-            suite="absence",
-            subject=None,
-            witness="self",
-            cassette="off",
-        )
     with pytest.raises(QualityError, match="no file at"):
         entry_run(
             oweval=str(store),
             gates=str(tmp_path / "missing.toml"),
             root=str(REPO),
-            suite="parse",
+            suites=["parse"],
             subject=None,
             witness="self",
             cassette="off",
+            admit=lambda _argv: None,
         )
+
+
+# --- the absence suite's deterministic half (D869) ----------------------------------------------
+
+
+def _suite(*oks: bool) -> absence_harness.Suite:
+    return absence_harness.Suite(
+        assessments=tuple(
+            Assessment(
+                injector=f"inj{index}",
+                fixture="personal_archive/medical/lab-results-2024.pdf",
+                clauses=(Clause("counterfactual", ok, "why"),),
+            )
+            for index, ok in enumerate(oks)
+        ),
+        documents={"personal_archive/a.pdf": b"one", "data_room/b.xlsx": b"two"},
+    )
+
+
+def _absence(monkeypatch: pytest.MonkeyPatch, suite: Any, register: Any = REGISTER) -> Any:
+    seen: dict[str, Any] = {}
+
+    def fake(chosen: Any, **kw: Any) -> Any:
+        seen.update(chosen=list(chosen), **kw)
+        if isinstance(suite, Exception):
+            raise suite
+        return suite
+
+    monkeypatch.setattr(absence_harness, "run_suite", fake)
+    batch, done = eval_run.absence(
+        register,
+        root=REPO,
+        witness="ci",
+        cassette="off",
+        now_ns=_clock(),
+        admit=lambda _argv: None,
+    )
+    return batch, done, seen
+
+
+def test_the_absence_half_is_one_run_of_omniweave_over_every_built_injector(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    batch, (done,), seen = _absence(monkeypatch, _suite(True, True, True))
+    assert seen["chosen"] == list(INJECTORS)
+    assert seen["root"] == REPO
+    assert seen["admit"](("ow", "x")) is None
+    (run,) = batch.runs
+    (corpus,) = batch.corpora
+    assert (run.suite, run.subject, run.timing_basis, run.status) == (
+        "absence",
+        "omniweave",
+        "spawn_inclusive",
+        "ok",
+    )
+    assert run.started_ns < run.ended_ns  # type: ignore[operator]
+    assert corpus.corpus_id == run.corpus_id == "reference_corpora/quick"
+    assert corpus.version == corpus.corpus_digest[:16]
+    assert corpus.corpus_digest == absence_harness.documents_digest(_suite().documents)
+    assert (corpus.n_docs, corpus.tier, corpus.publishable) == (2, "A", False)
+    assert run.not_measured[0].startswith(f"{len(TABLE) - len(INJECTORS)} of {len(TABLE)}")
+    assert eval_run.ABSENCE_UNMEASURED[0] in run.not_measured
+    assert run.confounders[1] == "0 pair(s) failed"
+    (metric,) = batch.metrics
+    assert (metric.metric, metric.slice_key, metric.value, metric.n) == (
+        "degradation_detection",
+        "deterministic_half",
+        1.0,
+        3,
+    )
+    assert (metric.truth_kind, metric.method) == ("rendered", "closed_form")
+    assert (done.suite, done.parsed, done.refused) == ("absence", 3, ())
+
+
+def test_a_failed_pair_lowers_the_rate_and_is_named(monkeypatch: pytest.MonkeyPatch) -> None:
+    batch, (done,), _ = _absence(monkeypatch, _suite(True, False))
+    (metric,) = batch.metrics
+    assert metric.value == 0.5
+    assert done.refused == ("inj1 x personal_archive/medical/lab-results-2024.pdf",)
+    assert batch.runs[0].confounders[1].startswith("1 pair(s) failed: inj1 x ")
+
+
+def test_a_suite_that_could_not_run_is_a_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(QualityError, match="the absence suite could not run: RuntimeError: boom"):
+        _absence(monkeypatch, RuntimeError("boom"))
+
+
+def test_the_register_row_and_its_truth_kind_are_required(monkeypatch: pytest.MonkeyPatch) -> None:
+    no_row = {"gate": [row for row in REGISTER["gate"] if row["suite"] != "absence"]}
+    with pytest.raises(QualityError, match="no absence degradation_detection row"):
+        _absence(monkeypatch, _suite(True), no_row)
+    bad = {
+        "gate": [
+            {**row, "truth_kind": "self_verifying"} if row["suite"] == "absence" else row
+            for row in REGISTER["gate"]
+        ]
+    }
+    with pytest.raises(QualityError, match="truth_kind 'self_verifying' is not one of"):
+        _absence(monkeypatch, _suite(True), bad)
+
+
+def test_the_entry_point_runs_both_suites_in_one_write(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(absence_harness, "run_suite", lambda *_a, **_k: _suite(True, True))
+    store = tmp_path / "both.oweval"
+    done = entry_run(
+        oweval=str(store),
+        gates=str(REPO / "eval" / "gates.toml"),
+        root=str(REPO),
+        suites=["parse", "absence"],
+        subject=None,
+        witness="self",
+        cassette="off",
+        admit=lambda _argv: None,
+    )
+    assert done["suites"] == ["parse", "absence"]
+    rows: Any = done["runs"]
+    assert [row["suite"] for row in rows] == ["parse", "parse", "absence"]
+    connection = open_oweval(store)
+    try:
+        judged = check_release(connection, REGISTER, strict=False)
+    finally:
+        connection.close()
+    assert (judged.ok, judged.runs) == (True, 3)
+
+
+@pytest.mark.parametrize(
+    ("suites", "subject", "says"),
+    [
+        (["extract"], None, "measures parse, absence in this build, not extract"),
+        ([], None, "not nothing"),
+        (["absence"], PDFIUM, "the absence suite's subject is omniweave itself"),
+    ],
+)
+def test_the_entry_point_refuses_what_it_cannot_run(
+    tmp_path: Path, suites: list[str], subject: str | None, says: str
+) -> None:
+    with pytest.raises(QualityError, match=says):
+        entry_run(
+            oweval=str(tmp_path / "x.oweval"),
+            gates=str(REPO / "eval" / "gates.toml"),
+            root=str(REPO),
+            suites=suites,
+            subject=subject,
+            witness="self",
+            cassette="off",
+            admit=lambda _argv: None,
+        )
+    assert not (tmp_path / "x.oweval").exists()
+
+
+def test_the_generated_documents_digest_is_their_names_and_bytes() -> None:
+    one = absence_harness.documents_digest({"a": b"1", "b": b"2"})
+    assert one == absence_harness.documents_digest({"b": b"2", "a": b"1"})
+    assert one != absence_harness.documents_digest({"a": b"1", "c": b"2"})
+    assert one != absence_harness.documents_digest({"a": b"1", "b": b"3"})
