@@ -607,6 +607,9 @@ def test_the_pin_file_names_every_generated_output_in_sha256sum_format() -> None
         ),
         #  F2's office corpus (D656), checked by omniweave-office's test_gen_office200.py.
         "fixtures/generated/office-200.manifest",
+        #  V10-10's 40-unit golden OUT fixture (D881), checked by omniweave-target-pptx's
+        #  test_golden40.py.
+        "fixtures/generated/out/golden40/pptx.manifest",
     }
 
 
