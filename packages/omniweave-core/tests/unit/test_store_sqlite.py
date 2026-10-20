@@ -1296,3 +1296,39 @@ def test_immediate_owns_a_transaction_rolls_back_on_error_and_joins_a_callers() 
     assert conn.in_transaction, "a joined transaction is left to its owner"
     conn.execute("ROLLBACK")
     assert conn.execute("SELECT v FROM t").fetchall() == [(1,)]
+
+
+class _Flaky:
+    """A connection whose `PRAGMA journal_mode` refuses `failures` times with `name`."""
+
+    def __init__(self, failures: int, name: str) -> None:
+        self.failures = failures
+        self.name = name
+        self.calls: list[str] = []
+
+    def execute(self, sql: str) -> None:
+        self.calls.append(sql)
+        if "journal_mode" in sql and self.failures:
+            self.failures -= 1
+            error = sqlite3.OperationalError("disk I/O error")
+            error.sqlite_errorname = self.name  # type: ignore[attr-defined]
+            raise error
+
+
+def test_a_wal_truncate_refusal_is_waited_out_and_any_other_is_raised_naming_itself(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """D886: Windows refuses to truncate a mapped file; that one refusal is retried, briefly."""
+    from omniweave_core.store import sqlite as ow_sqlite  # noqa: PLC0415
+
+    monkeypatch.setattr(ow_sqlite, "TRUNCATE_PAUSE_S", 0.0)
+    flaky = _Flaky(2, "SQLITE_IOERR_TRUNCATE")
+    ow_sqlite._apply(flaky, ("busy_timeout = 1", "journal_mode = WAL"))  # type: ignore[arg-type]
+    assert flaky.calls.count("PRAGMA journal_mode = WAL") == 3
+    stuck = _Flaky(ow_sqlite.TRUNCATE_TRIES, "SQLITE_IOERR_TRUNCATE")
+    with pytest.raises(sqlite3.OperationalError, match=r"PRAGMA journal_mode = WAL: .*TRUNCATE"):
+        ow_sqlite._apply(stuck, ("journal_mode = WAL",))  # type: ignore[arg-type]
+    other = _Flaky(1, "SQLITE_IOERR_READ")
+    with pytest.raises(sqlite3.OperationalError, match="SQLITE_IOERR_READ"):
+        ow_sqlite._apply(other, ("journal_mode = WAL",))  # type: ignore[arg-type]
+    assert other.calls == ["PRAGMA journal_mode = WAL"], "no other error is retried"
