@@ -51,9 +51,9 @@ def test_the_two_spellings_only_the_kit_had_now_live_in_the_table() -> None:
     assert (table["apache-2"], table["the unlicense"]) == (("Apache-2.0",), ("Unlicense",))
 
 
-def test_the_pptx_readers_resolved_graph_fails_on_pillow_alone(tmp_path: Path) -> None:
-    """`uharfbuzz` clears; `Pillow`'s MIT-CMU is G3's open policy question (ledger D9)."""
+def test_the_pptx_readers_resolved_graph_clears_the_allowlist(tmp_path: Path) -> None:
+    """`uharfbuzz` clears by spelling (D879), and `Pillow`'s MIT-CMU by D884's allowlist row."""
     result = run_suite("licence", Subject.of(PPTX_BACK, workdir=tmp_path))
     [resolved] = [a for a in result.assertions if a.locus == "scan:resolved"]
-    assert not resolved.ok
-    assert resolved.actual == "Pillow (MIT-CMU)"
+    assert resolved.ok, resolved.actual
+    assert resolved.actual == "none"
