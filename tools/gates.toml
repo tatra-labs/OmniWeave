@@ -104,7 +104,7 @@
 schema = 1
 
 # The nineteen-job graph of section 6.2, by job name. `test` is nine cells
-# ({ubuntu, macos, windows} x {3.11, 3.12, 3.13}), which is why section 6.4 renders its two rows
+# ({ubuntu, macos, windows} x {3.12, 3.13, 3.14}), which is why section 6.4 renders its two rows
 # as "`test` (9)"; every other job is one cell. `ci-ok` is the single required status check and the
 # aggregator, so no `[[gate]]` may name it -- a gate running inside `ci-ok` would be a check that
 # `ci-ok.skips_declared` had to inspect itself.

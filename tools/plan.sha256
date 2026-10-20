@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D882: correct D880, the old version is retired
+# blessed-because: D883: the 3.12 floor and plan-less CI
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -37,7 +37,7 @@ documents-frozen  97aa422fb509a6de8657eefa2a765553f09d0f47b873c2e5ea40025ff82520
 documents-frozen  3b78dc5495b60c008dea14242c2dd56a9ee67f8996e1f61b66791fc5e78a1d0f  08-runtime.md
 documents-frozen  53b3297ec0222522f8a910f82d2fa02ad8b911a6ae634adfaa866971069d1bbb  09-generation.md
 documents-frozen  4f58f4814cd10a876f6a6856aaf0879ad0d1287fc78d5a4fcd0e05271fa2d962  10-interfaces.md
-documents-frozen  cf64ef1d8afd094009f7136d5e229eea2b4c361f5f01875f045260af741728f3  11-repo-layout.md
+documents-frozen  8e82628b992c64436fb969dd4d66bd8650c075ee7f2a8bc44660beac47449535  11-repo-layout.md
 documents-frozen  44a9d2b810b0850205912449e6337423f3db837c1f75f2d580c91b25353752c2  12-performance.md
 documents-frozen  f2d31d7aecd6c4995011d7fdcbd8219b0c2e93b8fdac158f9ac924664e61afa1  13-quality.md
 documents-frozen  667161a8bd206b5805998a289f7679f80dc3a8ea6910c52ea8345bfe9562d721  14-security.md

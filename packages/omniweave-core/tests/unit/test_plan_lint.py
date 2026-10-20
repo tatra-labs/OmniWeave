@@ -212,7 +212,12 @@ def _the_real_plan_is_left_byte_identical() -> Iterator[None]:
     The claim used to be a sentence in a docstring. `_plan/` is gitignored (`.gitignore:3`), so
     git could not restore a file a runaway test damaged -- which is C55's exposure, one level up
     from the gate. Digesting the whole tree before and after the module costs one pass over ~5 MB.
+    A checkout without `_plan/` (every CI checkout, D883) has no settled law to protect, and the
+    tests that read the real tree are marked `plan` and skip there.
     """
+    if not REAL_PLAN.is_dir():
+        yield
+        return
     before = pl.build_manifest(REAL_PLAN)
     yield
     after = pl.build_manifest(REAL_PLAN)
@@ -237,6 +242,7 @@ def blessed(tmp_path: Path) -> tuple[Path, Path]:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.plan
 def test_the_real_plan_passes_every_rule_against_the_committed_manifest() -> None:
     """The gate this repository ships runs clean on the tree it ships with.
 
@@ -471,6 +477,7 @@ def test_deleting_the_section_nine_heading_altogether_fails_rather_than_digestin
     assert "matches 0 lines" in report
 
 
+@pytest.mark.plan
 def test_the_frozen_boundary_is_the_line_the_real_charter_itself_names() -> None:
     """The two numbers this wave's brief stated, verified against the document.
 
@@ -582,6 +589,7 @@ def test_the_row_count_comes_from_the_table_and_a_heading_that_disagrees_is_a_fa
     assert any("claims 4 statements and its own table holds 3 rows" in d for d in details), details
 
 
+@pytest.mark.plan
 def test_the_real_charters_heading_count_agrees_with_its_own_table() -> None:
     """Derived, not transcribed: 23 rows, anchors E1..E23 dense and unique, heading says 23."""
     text = REAL_CHARTER.read_text(encoding="utf-8")
@@ -594,6 +602,7 @@ def test_the_real_charters_heading_count_agrees_with_its_own_table() -> None:
     assert len({row.code for row in rows}) == len(rows)
 
 
+@pytest.mark.plan
 def test_the_six_column_rows_survive_an_escaped_pipe_inside_a_code_span() -> None:
     """Charter `E22` prints ``Rung \\| None``; a naive split reads that row as seven cells."""
     row = '| <a id="e22"></a>**E22** | :2485-2486 | `a: b;` | `Rung \\| None` | five | six |'
@@ -721,6 +730,7 @@ def test_a_third_symbol_on_a_superseded_numeric_still_fails(blessed) -> None:
     assert "OW_FIXTURE_THIRD" in findings[0].detail
 
 
+@pytest.mark.plan
 def test_the_corpus_is_the_plans_own_corpus_clause_and_excludes_snapshots(tmp_path: Path) -> None:
     """18:3238: *"`_plan/*.md` plus `_plan/_notes/charter.md` and `_plan/_notes/terminology.md`;
     snapshots under `_plan/_notes/.snapshots/` are excluded"*."""
@@ -747,6 +757,7 @@ def test_the_corpus_is_the_plans_own_corpus_clause_and_excludes_snapshots(tmp_pa
     assert real[:2] == ("00-vision.md", "01-principles.md")
 
 
+@pytest.mark.plan
 def test_the_token_shapes_are_the_ones_the_plan_prints_rather_than_the_ones_we_wrote() -> None:
     """Rule 5: both sides of `SCAN_NUMERIC == errors.NUMERIC_RE` come from us, so that equality
     pins agreement and not value. The VALUE is pinned against 18-api-sketch.md's own cell."""
@@ -879,6 +890,7 @@ def test_the_manifest_is_not_itself_gitignored() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.plan
 def test_every_writable_row_names_a_file_this_project_actually_writes() -> None:
     """Without this the allow-list is a way to switch the gate off.
 
@@ -948,6 +960,7 @@ def test_a_forged_allow_list_row_over_settled_law_is_reported_by_the_gate_itself
     assert any(forged in message for message in messages), messages
 
 
+@pytest.mark.plan
 def test_the_covered_set_is_a_difference_and_partitions_the_real_tree() -> None:
     """Computed, never declared -- and every file under `_plan/` lands in exactly one bucket."""
     paths = pl.plan_files(REAL_PLAN)
@@ -1132,6 +1145,7 @@ def test_bless_is_deterministic_so_a_manifest_diff_is_a_real_diff(tmp_path: Path
     assert one.read_bytes() == two.read_bytes()
 
 
+@pytest.mark.plan
 def test_the_shipped_manifest_is_the_one_bless_would_write_for_the_real_plan() -> None:
     """The committed manifest is current: every digest in it is the tree's digest today.
 
@@ -1163,6 +1177,7 @@ def test_the_manifest_row_grammar_round_trips(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.plan
 def test_the_plan_names_this_verb_at_the_two_lines_the_module_cites() -> None:
     """`ow plan lint` is transcribed, not invented. Both loci are read out of the plan."""
     charter_lines = REAL_CHARTER.read_text(encoding="utf-8").splitlines()
@@ -1232,6 +1247,7 @@ CITATION: Final = re.compile(r"18(?:-api-sketch\.md)?:(\d{4})(?:-(\d{4}))?")
 CLAUSE_TABLE: Final = range(3236, 3245)
 
 
+@pytest.mark.plan
 def test_every_clause_line_this_gate_cites_holds_the_clause_it_is_cited_for() -> None:
     """The mutation: none needed. Four of these citations were WRONG when this was written.
 
@@ -1262,6 +1278,7 @@ def test_every_clause_line_this_gate_cites_holds_the_clause_it_is_cited_for() ->
             )
 
 
+@pytest.mark.plan
 def test_every_charter_line_this_gate_cites_holds_what_it_is_cited_for() -> None:
     """The mutation: none needed. The charter half of the same claim.
 
@@ -1296,6 +1313,7 @@ def test_the_gitignore_line_this_gate_cites_is_the_line_that_ignores_the_plan() 
         assert ".gitignore:3" in text, where
 
 
+@pytest.mark.plan
 def test_the_pinned_digest_is_sha256_over_every_byte_and_not_over_a_first_block() -> None:
     """The mutation: digest `read_bytes(...)[:4096]` in both `--bless` and the check.
 
@@ -1491,6 +1509,7 @@ def test_the_frozen_region_is_the_anchored_one_because_the_manifest_cannot_disag
 # ---------------------------------------------------------------------------------------------
 
 
+@pytest.mark.plan
 def test_every_cli_spelling_the_real_plan_writes_resolves_against_the_register() -> None:
     """d2's own assertion, over the tree this repository ships.
 
@@ -1504,6 +1523,7 @@ def test_every_cli_spelling_the_real_plan_writes_resolves_against_the_register()
     assert "0 unresolved" in notes[0], notes[0]
 
 
+@pytest.mark.plan
 def test_the_note_reports_the_corpus_and_both_exception_registers() -> None:
     _, notes = pl.check_cli_verbs(REAL_PLAN)
     assert "43 roots" in notes[0]
@@ -1512,6 +1532,7 @@ def test_the_note_reports_the_corpus_and_both_exception_registers() -> None:
     assert len(notes) == 1 + len(CLI_UNROSTERED), "every owed row is named, not counted"
 
 
+@pytest.mark.plan
 def test_every_unrostered_row_is_a_spelling_the_real_plan_actually_writes() -> None:
     """The ratchet, from the other side: a row recording a defect must have one."""
     written = set()

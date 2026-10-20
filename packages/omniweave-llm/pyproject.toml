@@ -9,7 +9,7 @@ name = "omniweave-llm"
 version = "0.1.0"                     # == RELEASE. G5.
 description = "The four billed_api derive/1 passes, reaching a model through io.service()."
 license = "Apache-2.0"
-requires-python = ">=3.11"           # NO upper bound. charter.md D1.
+requires-python = ">=3.12"           # NO upper bound. charter.md D1.
 dependencies = [
   "omniweave-ports >=1,<2",
   # NO THIRD PARTY: a model is reached through io.service(), not a client library.

@@ -158,6 +158,7 @@ def plan_frame_table() -> list[tuple[int, str, str]]:
     return rows
 
 
+@pytest.mark.plan
 def test_the_frame_table_this_file_reads_is_the_one_the_plan_prints() -> None:
     """The regex finds eleven rows and no more, so the derivation below is over the right table.
 
@@ -169,6 +170,7 @@ def test_the_frame_table_this_file_reads_is_the_one_the_plan_prints() -> None:
     assert [number for number, _, _ in rows] == list(range(1, 12))
 
 
+@pytest.mark.plan
 def test_the_eleven_kinds_are_named_and_numbered_as_the_plans_table_names_them() -> None:
     """04-driver-system.md:1695-1705. The number is the table's first column and the name its
     second, so `FrameKind` is that table and not a re-invention of it."""
@@ -177,6 +179,7 @@ def test_the_eleven_kinds_are_named_and_numbered_as_the_plans_table_names_them()
     }
 
 
+@pytest.mark.plan
 def test_each_kinds_direction_is_the_one_the_plans_table_gives_it() -> None:
     """The third column, mapped `host→drv` -> `HOST_TO_DRIVER` and `drv→host` -> its converse."""
     arrows = {"host→drv": Direction.HOST_TO_DRIVER, "drv→host": Direction.DRIVER_TO_HOST}
@@ -185,6 +188,7 @@ def test_each_kinds_direction_is_the_one_the_plans_table_gives_it() -> None:
     )
 
 
+@pytest.mark.plan
 def test_the_prose_count_of_frame_kinds_agrees_with_the_table_beneath_it() -> None:
     """04-driver-system.md:1690 says "Eleven frame kinds" and its table prints eleven rows.
 
@@ -258,6 +262,7 @@ S4_CELL: Final = re.compile(
 """02-architecture.md:831's S4 cell, which prints all three caps in one sentence."""
 
 
+@pytest.mark.plan
 def test_the_three_caps_are_the_three_numbers_the_plans_s4_cell_prints() -> None:
     """02-architecture.md:831 is the definition site that carries all three in one clause."""
     found = [S4_CELL.search(line) for line in plan_lines("02-architecture.md")]
@@ -432,6 +437,7 @@ def test_encode_refuses_a_header_deeper_than_the_depth_cap_and_accepts_one_exact
     assert "33" in str(caught.value)
 
 
+@pytest.mark.plan
 def test_the_protocol_name_is_the_one_the_plan_prints() -> None:
     """04-driver-system.md:1671 names the protocol `omniweave-driver/1`.
 

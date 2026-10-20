@@ -123,7 +123,8 @@ CI_OK_NEEDS: tuple[str, ...] = (
 )
 
 # Section 6.2's axis table, 11-repo-layout.md:1464-1471: OS over three values in `test` (9 cells)
-# and `nightly`, Python over 3.11/3.12/3.13 in `test` (9 cells). Transcribed, not parsed out of
+# and `nightly`, Python over 3.12/3.13/3.14 in `test` (9 cells; 3.11/3.12/3.13 until D883 raised
+# the floor to 3.12). Transcribed, not parsed out of
 # either the plan or the workflow, so a drift between the three has somewhere to fail.
 MATRIX_OS: tuple[str, ...] = ("ubuntu-latest", "macos-latest", "windows-latest")
 
@@ -135,11 +136,12 @@ MATRIX_OS: tuple[str, ...] = ("ubuntu-latest", "macos-latest", "windows-latest")
 # phase, and `test_every_python_axis_value_names_the_phase_that_landed_it` refuses a row whose
 # phase has not landed.
 PYTHON_AXIS_BY_PHASE: dict[str, str] = {
-    "3.11": "P1 -- the single value 16-roadmap.md section 4's non-goal allowed",
-    "3.12": "P2 -- 16-roadmap.md:340, `test` (9 cells) is first green in P2",
+    "3.12": "P2 -- 16-roadmap.md:340, `test` (9 cells) is first green in P2; the floor since D883",
     "3.13": "P2 -- 16-roadmap.md:340, the third value of section 6.2's axis table",
+    "3.14": "P2 -- 16-roadmap.md:340's nine cells; 3.14 replaced 3.11 in D883, when the user "
+    "raised the floor to 3.12 (3.11 rejects the packages' MappingProxyType dataclass defaults)",
 }
-MATRIX_PYTHON: tuple[str, ...] = ("3.11", "3.12", "3.13")
+MATRIX_PYTHON: tuple[str, ...] = ("3.12", "3.13", "3.14")
 
 # Section 6.2's job graph prints the number out loud: "`test` -- {ubuntu, macos, windows} x
 # {3.11,3.12,3.13} = 9 cells". A literal, so the product below is checked against the plan's
@@ -879,15 +881,15 @@ def test_publish_is_the_only_job_behind_the_approval_pause(release: Workflow) ->
 # tuples would agree with itself whatever either tuple said; nine names cannot.
 NINE_CELLS: frozenset[str] = frozenset(
     {
-        "ubuntu-latest py3.11",
         "ubuntu-latest py3.12",
         "ubuntu-latest py3.13",
-        "macos-latest py3.11",
+        "ubuntu-latest py3.14",
         "macos-latest py3.12",
         "macos-latest py3.13",
-        "windows-latest py3.11",
+        "macos-latest py3.14",
         "windows-latest py3.12",
         "windows-latest py3.13",
+        "windows-latest py3.14",
     }
 )
 

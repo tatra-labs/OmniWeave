@@ -673,6 +673,7 @@ def test_the_listener_needs_six_operator_decisions_and_no_channel_carries_them()
         assert present in KEYS
 
 
+@pytest.mark.plan
 def test_the_flag_that_selects_the_response_shape_is_in_one_flag_table_and_not_the_other() -> None:
     """D393's sharpest row, read from the two documents. 10:2317 branches the whole POST response
     on `--json-response`; 18:916's flag list has it and 10:1426's does not."""

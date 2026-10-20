@@ -2042,6 +2042,7 @@ def _plan_table_rows() -> dict[int, tuple[str, str]]:
     return rows
 
 
+@pytest.mark.plan
 def test_every_decomposition_row_is_transcribed_from_the_line_it_names() -> None:
     """`DECOMPOSITION` is a transcription, and this is its cross-check against `_plan/`.
 
@@ -2058,6 +2059,7 @@ def test_every_decomposition_row_is_transcribed_from_the_line_it_names() -> None
         assert byte_cell == f"~{int(spec.estimated)}", f"{spec.key}: byte cell drifted"
 
 
+@pytest.mark.plan
 def test_the_subtotal_and_total_lines_are_the_plans_and_their_estimates_add_up() -> None:
     """07:1030 and 07:1037, and the arithmetic that ties them to the rows above them.
 
@@ -2076,6 +2078,7 @@ def test_the_subtotal_and_total_lines_are_the_plans_and_their_estimates_add_up()
     assert sum(spec.estimated for spec in DECOMPOSITION) == TOTAL_ESTIMATE
 
 
+@pytest.mark.plan
 def test_the_nine_block_indexes_are_derived_from_the_register_and_are_07_1031s_nine() -> None:
     """`BLOCK_INDEXES` is `INDEX_REGISTER` filtered, and 07:1031 names the same nine.
 
@@ -2665,6 +2668,7 @@ def test_the_report_carries_every_row_of_the_plans_table_in_one_fixed_order(
         assert f"{spec.plan_line:>6}" in rendered, spec.key
 
 
+@pytest.mark.plan
 def test_the_plans_table_has_no_component_row_the_transcription_left_out() -> None:
     """The transcription cross-check, run in the direction section 5 does not run it.
 
