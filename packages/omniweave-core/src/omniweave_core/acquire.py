@@ -1861,6 +1861,32 @@ def unit_states(store: Path, uris: Sequence[str]) -> dict[str, str]:
     return {uri: state for uri, (_, state, _cls) in _known(store, uris).items()}
 
 
+def unit_media_types(store: Path, uris: Sequence[str]) -> dict[str, str]:
+    """Each rostered unit's `unit.media_type`, read-only and in batches; absent where none is set.
+
+    D887: `ow add` names the distribution to install for a unit that stopped at `identified`, and
+    the media type detection stamped is what says which one. A unit detection has not reached, or
+    that it could not type, has no media type and therefore no entry.
+    """
+    if not store.exists() or not uris:
+        return {}
+    out: dict[str, str] = {}
+    connection = connect_readonly(store)
+    try:
+        for start in range(0, len(uris), _KNOWN_BATCH):
+            chunk = list(uris[start : start + _KNOWN_BATCH])
+            marks = ", ".join("?" for _ in chunk)
+            rows = connection.execute(
+                f"SELECT unit_uri, media_type FROM unit WHERE unit_uri IN ({marks}) "  # noqa: S608
+                "AND media_type IS NOT NULL",
+                chunk,
+            ).fetchall()
+            out.update({str(uri): str(media) for uri, media in rows})
+    finally:
+        connection.close()
+    return out
+
+
 def _generation(store: Path) -> int:
     """The store's committed generation, which `unit.last_seen_gen` is stamped with."""
     if not store.exists():
