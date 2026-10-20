@@ -1,0 +1,1658 @@
+# codes.toml — THE error-code register. Append-only against the last tag (G13).
+#
+# Every row carries a numeric OW-<AREA>-nnn (the human form), a stable OW_SCREAMING_SNAKE
+# symbol (the stored and wire form, charter.md section 5 C9), a one-line meaning and the
+# exact command that clears it. Specified in 02-architecture.md section 7.2 and
+# 11-repo-layout.md sections 1.1 and 1.7. A row is NEVER renumbered and NEVER reused.
+#
+# SEEDED AT P1 with every definition site the plan already allocates — a numeric
+# textually adjacent to its symbol, under the `codes-unique` adjacency rule of
+# 18-api-sketch.md section 9 item 7. `sites` records where the plan binds the pair, so a
+# later reader can check a row against its warrant rather than trusting this file.
+#
+# `fix` is DELIBERATELY ABSENT from every seeded row and is not an empty string: charter
+# section 6.4 makes the fix the exact command that clears the error, OwError.__init__
+# refuses an empty one, and inventing 85 of them here would be fabrication. Filling
+# `meaning` and `fix` is W1.3 (16-roadmap.md section 4) — the half of that work item its
+# estimation basis calls "the half that takes the time". `ow explain --check` is the
+# gate that closes it.
+
+# The ten area letters are exactly the ten OwError subclasses of 02-architecture.md
+# section 7.2. ResourceLimit is cross-area and allocates no letter of its own.
+
+[area.C]
+error_class = "ConfigError"
+default_symbol = "OW_CONFIG"
+covers = "configuration, startup only"
+
+[area.M]
+error_class = "ModelError"
+default_symbol = "OW_MODEL"
+covers = "model and L2"
+
+[area.D]
+error_class = "DriverHostError"
+default_symbol = "OW_DRIVER_HOST"
+covers = "driver resolution and the driver host"
+
+[area.R]
+error_class = "RouteError"
+default_symbol = "OW_ROUTE"
+covers = "runtime, budget, cache, routing"
+
+[area.S]
+error_class = "StoreError"
+default_symbol = "OW_STORE"
+covers = "store"
+
+[area.G]
+error_class = "GraphError"
+default_symbol = "OW_GRAPH"
+covers = "graph"
+
+[area.T]
+error_class = "TargetError"
+default_symbol = "OW_TARGET"
+covers = "OUT targets and constructs"
+
+[area.A]
+error_class = "SurfaceError"
+default_symbol = "OW_SURFACE"
+covers = "answer, serve and the agent surfaces"
+
+[area.P]
+error_class = "PolicyRefusal"
+default_symbol = "OW_POLICY"
+covers = "policy and licence refusals"
+
+[area.Q]
+error_class = "QualityError"
+default_symbol = "OW_QUALITY"
+covers = "quality, cassette, eval"
+
+[[code]]
+numeric = "OW-A-001"
+symbol  = "OW_NO_CORPUS_CONFIGURED"
+meaning = "no corpus configured"
+sites   = ["18-api-sketch.md:166", "_notes/charter.md:6868"]
+
+[[code]]
+numeric = "OW-A-002"
+symbol  = "OW_CORPUS_NOT_FOUND"
+meaning = "corpus not found (lists the [corpora] names)"
+sites   = ["18-api-sketch.md:167", "18-api-sketch.md:330", "_notes/charter.md:6869"]
+
+[[code]]
+numeric = "OW-A-003"
+symbol  = "OW_TOOL_NOT_LISTED"
+meaning = "names the config key and the env var"
+sites   = ["10-interfaces.md:797", "18-api-sketch.md:1441", "_notes/charter.md:6870"]
+
+[[code]]
+numeric = "OW-A-004"
+symbol  = "OW_ACTION_NOT_ENABLED"
+meaning = "action not enabled"
+sites   = ["10-interfaces.md:791", "_notes/charter.md:6871"]
+
+[[code]]
+numeric = "OW-A-005"
+symbol  = "OW_COST_APPROVAL_REQUIRED"
+meaning = "action requires --allow-cost"
+sites   = ["_notes/charter.md:6872"]
+
+[[code]]
+numeric = "OW-A-006"
+symbol  = "OW_HUMAN_ONLY_ACTION"
+meaning = "unreachable from an agent surface [isError, no retry]"
+sites   = ["18-api-sketch.md:1439", "_notes/charter.md:6873"]
+
+[[code]]
+numeric = "OW-A-007"
+symbol  = "OW_PATH_OUTSIDE_ROOTS"
+meaning = "path outside every [roots] source [isError, no retry]"
+sites   = ["05-ingest-and-routing.md:78", "10-interfaces.md:486", "14-security.md:1751", "18-api-sketch.md:445", "18-api-sketch.md:1440", "_notes/charter.md:6874"]
+
+[[code]]
+numeric = "OW-A-008"
+symbol  = "OW_QUERY_TOO_LONG"
+meaning = "query too long"
+sites   = ["18-api-sketch.md:319", "_notes/charter.md:6875"]
+
+[[code]]
+numeric = "OW-A-009"
+symbol  = "OW_SCOPE_MATCHED_NOTHING"
+sites   = ["10-interfaces.md:413", "18-api-sketch.md:303"]
+
+[[code]]
+numeric = "OW-A-010"
+symbol  = "OW_RESPONSE_TRUNCATED"
+meaning = "response truncated by budget"
+sites   = ["10-interfaces.md:458", "18-api-sketch.md:361", "_notes/charter.md:6876"]
+
+[[code]]
+numeric = "OW-A-011"
+symbol  = "OW_CITATION_FORFEITED"
+meaning = "the driver forfeits citation (names the driver)"
+sites   = ["18-api-sketch.md:391", "_notes/charter.md:6877"]
+
+[[code]]
+numeric = "OW-A-012"
+symbol  = "OW_SPANMAP_UNAVAILABLE"
+meaning = "block not citable (names the serializer)"
+sites   = ["03-document-model.md:2867", "18-api-sketch.md:393", "_notes/charter.md:1331", "_notes/charter.md:6878"]
+
+[[code]]
+numeric = "OW-A-013"
+symbol  = "OW_PARSE_GAP_IN_SCOPE"
+meaning = "names the pages and the fix"
+sites   = ["18-api-sketch.md:1181", "18-api-sketch.md:1198", "_notes/charter.md:6879"]
+
+[[code]]
+numeric = "OW-A-014"
+symbol  = "OW_CITE_AMBIGUOUS_CORPUS"
+meaning = "lists the qualified candidates. NEVER a silent resolve"
+sites   = ["01-principles.md:282", "18-api-sketch.md:338", "_notes/charter.md:6880", "_notes/charter.md:8351"]
+
+[[code]]
+numeric = "OW-A-015"
+symbol  = "OW_CROSS_CORPUS_UNSUPPORTED"
+meaning = "one query addresses one corpus; name it"
+sites   = ["18-api-sketch.md:335", "_notes/charter.md:6881"]
+
+[[code]]
+numeric = "OW-A-016"
+symbol  = "OW_REF_UNPARSEABLE"
+sites   = ["10-interfaces.md:452", "18-api-sketch.md:389"]
+
+[[code]]
+numeric = "OW-A-017"
+symbol  = "OW_SCHEMA_SUBSET_VIOLATION"
+meaning = "add(schema=…) outside the closed subset"
+raised_by = "UsageError"
+sites   = ["18-api-sketch.md:3202"]
+
+[[code]]
+numeric = "OW-A-018"
+symbol  = "OW_SECTION_NOT_DROPPABLE"
+meaning = "Answer.render(sections=…) naming a never-dropped section"
+raised_by = "UsageError"
+sites   = ["18-api-sketch.md:3203"]
+
+[[code]]
+numeric = "OW-A-019"
+symbol  = "OW_READONLY_HANDLE"
+meaning = "add on a readonly=True handle"
+raised_by = "UsageError"
+sites   = ["18-api-sketch.md:453", "18-api-sketch.md:3204"]
+
+[[code]]
+numeric = "OW-A-020"
+symbol  = "OW_UNTRUSTED_DEFANGED"
+meaning = "markers defanged in a served block (count + cite)"
+sites   = ["_notes/charter.md:6882", "_notes/charter.md:8735"]
+
+[[code]]
+numeric = "OW-A-021"
+symbol  = "OW_UNTRUSTED_INSTRUCTION_SHAPED"
+note    = "charter.md erratum E18: a symbol RENAME, not two conditions on one numeric. 14-security.md section 3.2 owns the spelling because OW-A-020 OW_UNTRUSTED_DEFANGED is its pair. This is the `codes-unique` exception list, and it has exactly one entry."
+sites   = ["14-security.md:594", "14-security.md:1751"]
+
+[[code]]
+numeric = "OW-A-022"
+symbol  = "OW_SERVE_OVERLOADED"
+meaning = "the server is at an admission ceiling and the call was not started: either [serve] max_concurrent_queries snapshots are held with max_queued_queries already waiting (10:958), or max_sessions stateful sessions exist and a new initialize was refused (10:2399). Carries a retry_after_ms computed from the observed p95, so it is a WAIT and never a rejection of the request itself"
+raised_by = "ResourceLimit"
+fix     = "ow config set serve.max_queued_queries <n>   # or retry after retry_after_ms"
+sites   = ["10-interfaces.md:2400", "18-api-sketch.md:1443"]
+
+[[code]]
+numeric = "OW-A-023"
+symbol  = "OW_BAD_SCOPE_FORM"
+meaning = "scope matching none of the four shapes"
+raised_by = "UsageError"
+sites   = ["18-api-sketch.md:322", "18-api-sketch.md:3205", "18-api-sketch.md:3343"]
+
+[[code]]
+numeric = "OW-A-024"
+symbol  = "OW_BAD_FILTER_VALUE"
+meaning = "a Filters value outside its enum"
+raised_by = "UsageError"
+sites   = ["18-api-sketch.md:324", "18-api-sketch.md:3206"]
+
+[[code]]
+numeric = "OW-A-025"
+symbol  = "OW_UNKNOWN_RELATION"
+meaning = "an Expand.relations member absent from relation_vocab"
+raised_by = "UsageError"
+sites   = ["18-api-sketch.md:327", "18-api-sketch.md:3207"]
+
+[[code]]
+numeric = "OW-A-026"
+symbol  = "OW_UNKNOWN_CODE"
+meaning = "explain() on an unregistered code"
+raised_by = "NotFoundError"
+sites   = ["18-api-sketch.md:3208"]
+
+[[code]]
+numeric = "OW-A-027"
+symbol  = "OW_EVAL_NOT_INSTALLED"
+sites   = ["10-interfaces.md:298", "10-interfaces.md:2804"]
+
+[[code]]
+numeric = "OW-A-028"
+symbol  = "OW_SURFACE_REGISTRY_INVALID"
+meaning = "the Action registry failed one of its eleven import-time checks (names every failing row)"
+raised_by = "SurfaceError"
+sites   = ["10-interfaces.md:179"]
+
+[[code]]
+numeric = "OW-A-030"
+symbol  = "OW_HOOK_NOT_RESOLVABLE"
+meaning = "hook command not resolvable"
+sites   = ["10-interfaces.md:2082", "_notes/charter.md:6884"]
+
+[[code]]
+numeric = "OW-A-031"
+symbol  = "OW_SKILL_HASH_MISMATCH"
+meaning = "skill bundle hash mismatch"
+sites   = ["10-interfaces.md:1369", "_notes/charter.md:6885"]
+
+[[code]]
+numeric = "OW-A-032"
+symbol  = "OW_INSTALL_CONFIG_UNPARSEABLE"
+meaning = "backed up to <path>.backup"
+sites   = ["_notes/charter.md:6886"]
+
+[[code]]
+numeric = "OW-A-033"
+symbol  = "OW_INSTALL_RECEIPT_LOCKED"
+sites   = ["10-interfaces.md:1746"]
+
+[[code]]
+numeric = "OW-A-040"
+symbol  = "OW_HTTP_BIND_UNAUTHENTICATED"
+meaning = "non-loopback bind without --api-key [A REFUSAL]. The listener does not open: a warning on a line nobody reads is how an unauthenticated corpus reaches the network (10:2340). A LOOPBACK bind with no key is the sanctioned case and is one of exactly two loopback TCP endpoints the framework allows"
+raised_by = "UsageError"
+fix     = "ow serve --http --api-key <key>   # or set OMNIWEAVE_API_KEY, or bind 127.0.0.1"
+sites   = ["15-observability.md:1492", "18-api-sketch.md:1207", "_notes/charter.md:6887"]
+
+[[code]]
+numeric = "OW-A-041"
+symbol  = "OW_HTTP_ORIGIN_REJECTED"
+meaning = "the DNS-rebinding guard: an Origin header present and not in [serve] allowed_origins (default EMPTY, so ANY Origin is rejected - an MCP client is not a browser and sends none), or a Host whose name is neither a literal loopback address nor a member of [serve] allowed_hosts. Answered 403 BEFORE the API-key comparison, and the body names no origin, no host and no code"
+note    = "an HTTP status and not a raised OwError: the middleware short-circuits before the JSON-RPC layer, so the symbol reaches the log and never the wire"
+fix     = "ow config set serve.allowed_origins <the origin>   # or serve.allowed_hosts for a Host"
+sites   = ["10-interfaces.md:2357", "18-api-sketch.md:1206", "18-api-sketch.md:3344", "18-api-sketch.md:3350"]
+
+[[code]]
+numeric = "OW-A-042"
+symbol  = "OW_LOCATOR_AMBIGUOUS"
+sites   = ["14-security.md:766"]
+
+[[code]]
+numeric = "OW-A-043"
+symbol  = "OW_SERVE_COPYLEFT_NETWORK"
+meaning = "ow serve --http refusing at listener start when any driver in [drivers] enabled computes to a tier carrying copyleft_network. The shipped acknowledgement covers a LOCAL run; a listening transport engages the clause the ack disclaims. The refusal names every offending driver, its SPDX expression and the licence_sha256 the ack is bound to. stdio and ow query are unaffected"
+raised_by = "PolicyRefusal"
+fix     = "ow config set drivers.enabled <the roster without it>   # or serve over stdio"
+sites   = ["10-interfaces.md:2349", "10-interfaces.md:2803"]
+
+[[code]]
+numeric = "OW-A-044"
+symbol  = "OW_UNSUPPORTED_LOCATOR_SCHEME"
+sites   = ["05-ingest-and-routing.md:85", "14-security.md:756", "14-security.md:1748"]
+
+[[code]]
+numeric = "OW-C-042"
+symbol  = "OW_GRAPH_DISABLED"
+meaning = "Corpus.graph() with [graph] enabled = false"
+raised_by = "ConfigError"
+sites   = ["18-api-sketch.md:3209"]
+
+[[code]]
+numeric = "OW-C-043"
+symbol  = "OW_SQLITE_TOO_OLD"
+meaning = "SQLite below MIN_SQLITE"
+raised_by = "ConfigError"
+sites   = ["18-api-sketch.md:168", "18-api-sketch.md:3210"]
+
+[[code]]
+numeric = "OW-D-009"
+symbol  = "OW_DRIVER_FORMAT_UNSUPPORTED"
+sites   = ["18-api-sketch.md:2158"]
+
+[[code]]
+numeric = "OW-M-030"
+symbol  = "OW_CITE_RETIRED"
+sites   = ["00-vision.md:363", "01-principles.md:725", "03-document-model.md:1161", "07-store-and-retrieval.md:1873", "09-generation.md:2050", "10-interfaces.md:445", "14-security.md:1145", "14-security.md:1169", "14-security.md:1752", "18-api-sketch.md:385", "_notes/charter.md:1286"]
+
+[[code]]
+numeric = "OW-M-031"
+symbol  = "OW_BLOCK_REDACTED"
+sites   = ["14-security.md:1139", "14-security.md:1750"]
+
+[[code]]
+numeric = "OW-M-032"
+symbol  = "OW_ADDR_NOT_FOUND"
+meaning = "no block at that addr in the head generation"
+raised_by = "NotFoundError"
+sites   = ["18-api-sketch.md:387", "18-api-sketch.md:3211"]
+
+[[code]]
+numeric = "OW-M-033"
+symbol  = "OW_FRAGMENT_DANGLING_TMP"
+meaning = "a fragment references a tmp id it never defined, or defines one twice; the whole document fails"
+raised_by = "ModelError"
+sites   = ["03-document-model.md:2673", "03-document-model.md:2985", "04-driver-system.md:1798"]
+
+[[code]]
+numeric = "OW-M-034"
+symbol  = "OW_FRAGMENT_OUT_OF_SCOPE"
+meaning = "a fragment names a page outside the PartSelector it was given; nothing is committed"
+raised_by = "ModelError"
+sites   = ["03-document-model.md:2986", "04-driver-system.md:204", "04-driver-system.md:1797"]
+
+# ── D753. A symbol store/doc.py raised from P2 and nothing registered, appended now that the
+# asset ledger raises it too. 03 and 09 name it; neither gives it a number.
+
+[[code]]
+numeric = "OW-M-035"
+symbol  = "OW_ASSET_DIGEST_MISMATCH"
+meaning = "an asset whose claimed sha256 disagrees with the stream the host hashed; the asset is rejected, because a content-addressed store with an unverified writer is a substitution oracle"
+fix     = "re-export the asset and freeze it again"
+raised_by = "ModelError"
+sites   = ["03-document-model.md:2131", "09-generation.md:1657"]
+
+[[code]]
+numeric = "OW-P-016"
+symbol  = "OW_EGRESS_GRANT_MISSING"
+meaning = "a URL source with bytes_egress = 0"
+raised_by = "PolicyRefusal"
+sites   = ["18-api-sketch.md:447", "18-api-sketch.md:3212"]
+
+[[code]]
+numeric = "OW-P-005"
+symbol  = "OW_POLICY_RUNG_NOT_FORWARD"
+meaning = "an escalate_to or a skip_rungs member at or below the rule's own rung"
+raised_by = "PolicyRefusal"
+# RT8's FIRST enforcer. 05-ingest-and-routing.md:3348: the compiler rejects it "at load", and the
+# charter's `route_decision_monotone` trigger is the second -- "CI parity ... rather than a second
+# opinion" (05:2708). DEGRADE = 5 is a FORWARD move while running a cheaper driver, which is why
+# the check is on the Rung ordinal and never on cost.
+sites   = ["05-ingest-and-routing.md:1778", "05-ingest-and-routing.md:1940", "05-ingest-and-routing.md:2007", "05-ingest-and-routing.md:3348"]
+
+[[code]]
+numeric = "OW-P-013"
+symbol  = "OW_POLICY_RULE_DOES_NOTHING"
+meaning = "a rule whose `then` holds neither an action key nor a modifier key"
+raised_by = "PolicyRefusal"
+# 05:1028 names the rule this exists for: a `then` of only `reason` MATCHES, pre-empts every later
+# rule at its (rung, lane, phase) under first-match-wins, and does nothing -- which is what the
+# draft `gate.untrusted-raises-audit` was. A load error and not a lint warning, because the failure
+# is invisible at runtime: the policy routes, and one guard below it never fires.
+sites   = ["05-ingest-and-routing.md:1028", "05-ingest-and-routing.md:1785"]
+
+[[code]]
+numeric = "OW-P-020"
+symbol  = "OW_POLICY_BUDGET_RAISED"
+meaning = "a project layer raising a budget above the site layer's"
+raised_by = "PolicyRefusal"
+# 05:959: "a `micros_max` above the site layer's is `OW-P-020` AT LOAD, not a silent clamp." The
+# third option -- clamping quietly -- is the worst of the three, because the file then reads as a
+# raise and behaves as a no-op, and nothing in a diff shows the difference.
+sites   = ["05-ingest-and-routing.md:959"]
+
+[[code]]
+numeric = "OW-P-023"
+symbol  = "OW_POLICY_RUNG_SPELLING"
+meaning = "a lower-case Rung literal in a policy file"
+raised_by = "PolicyRefusal"
+# 05:1219: `.omniweave/policy.d/*.toml` is "an author-facing config artefact and not a wire", so the
+# author writes SCREAMING_SNAKE and reads it against section 4.2's ladder, while every GENERATED
+# artefact emits the lower-case member name the terminology lock requires. Refusing the lower-case
+# form at load is what keeps it at ONE authored spelling rather than two.
+sites   = ["05-ingest-and-routing.md:1219", "05-ingest-and-routing.md:3383"]
+
+[[code]]
+numeric = "OW-P-022"
+symbol  = "OW_SIGNAL_PROVIDER_CONFLICT"
+meaning = "two signal providers claim one (key, format), or disagree about a per-key column"
+raised_by = "PolicyRefusal"
+# RENUMBERED FROM OW-P-021, which lint check 13 now carries -- 05-ingest-and-routing.md:3524 and
+# glossary.md:1015 both record the renumbering, so the pair is the one thing about this row a
+# reader should not have to reconstruct. The symbol is minted here because the plan allocates the
+# numeric and no symbol; `omniweave/route/evidence.py` is the only raise site.
+#
+# The `meaning` covers more than 05 section 5.2's sentence: the plan's case is two providers naming
+# one (key, format), and `build_registry()` additionally refuses two fallback rows for one key, one
+# provider registering a key twice, and two rows disagreeing about any of the seven columns 05
+# section 5.1's table gives per KEY rather than per provider. All four are the same defect --
+# "exactly one provider serves a key for a given `unit.format`" -- and none of the last three is
+# distinguishable from the first by a reader looking at a routing decision.
+sites   = ["05-ingest-and-routing.md:2114", "05-ingest-and-routing.md:2220", "05-ingest-and-routing.md:3359", "05-ingest-and-routing.md:3524", "glossary.md:1015"]
+
+[[code]]
+numeric = "OW-P-030"
+symbol  = "OW_POLICY_EGRESS_DENIED"
+sites   = ["14-security.md:1747"]
+
+[[code]]
+numeric = "OW-P-031"
+symbol  = "OW_POLICY_PRIVATE_DESTINATION"
+sites   = ["14-security.md:446", "14-security.md:1747"]
+
+[[code]]
+numeric = "OW-P-032"
+symbol  = "OW_POLICY_WEIGHTS_UNPINNED"
+sites   = ["14-security.md:1343", "18-api-sketch.md:3241"]
+
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+# `ow route lint`'s six. 05-ingest-and-routing.md section 4.5 (:1767-1800) allocates fourteen
+# numerics and NO symbols, so each of the six below is minted at its definition site the way
+# OW-P-022 was, and the `meaning` is that table's own one-line check.
+#
+# NO `raised_by` ON ANY OF THE SIX, and the omission is the point: these are REPORTED by
+# `omniweave/route/lint.py` as `Finding.code` and never raised. A lint that raised on its first
+# finding would report one of fourteen checks and stop, which is the opposite of what section 4.5
+# asks a policy-wide check for. The rows exist so `ow explain OW-P-011` answers -- a linter that
+# prints a code the register cannot explain is the gap 02-architecture.md section 7.2 closes.
+#
+# The other eight of the fourteen are NOT here. OW-P-003 belongs to the retrieval surface,
+# OW-P-005 and OW-P-013 already have rows above because the loader RAISES them, and OW-P-006,
+# OW-P-012, OW-P-015, OW-P-021 and OW-P-024 each need a driver card or `[drivers] enabled` and
+# have no definition site in this repository yet. `lint.NOT_RUN` carries that list as data.
+# ─────────────────────────────────────────────────────────────────────────────────────────────
+
+[[code]]
+numeric = "OW-P-001"
+symbol  = "OW_POLICY_KEY_UNKNOWN"
+meaning = "a key in `[slice] by` or in a `when` clause that no SignalSpec registers"
+# Check 1, and the charter's. 05:1768 states the whole family's warrant in one line: "A policy that
+# gates money must not be able to name something that does not exist."
+sites   = ["05-ingest-and-routing.md:1774"]
+
+[[code]]
+numeric = "OW-P-002"
+symbol  = "OW_POLICY_LITERAL_OFF_DOMAIN"
+meaning = "a literal compared against a str-dtype signal that is not in that signal's domain"
+# Check 2. For `unit.format` the comparison is against the COMPUTED domain -- core's 48 union the
+# enabled cards' contributed tokens -- and 05:1786 says why it can never be the literal 48: a check
+# equal to 48 would fail a third party's `warc` card whichever way its author turned.
+sites   = ["05-ingest-and-routing.md:1775"]
+
+[[code]]
+numeric = "OW-P-004"
+symbol  = "OW_POLICY_ON_UNKNOWN_MISSING"
+meaning = "a rule reading a nullable key without an `on_unknown`; an exists-only `when` is exempt"
+# Check 4 and RT7. 05:3409 states the shipped policy's count as a measured number -- seven rules of
+# the charter's retired policy fail it "against zero in section 4.4".
+sites   = ["05-ingest-and-routing.md:1777", "05-ingest-and-routing.md:3347"]
+
+[[code]]
+numeric = "OW-P-010"
+symbol  = "OW_POLICY_KEY_NEEDS_LATER_RUNG"
+meaning = "a rule reading a key whose `requires` names a rung strictly greater than the rule's own"
+# Check 7. 05:1144 calls it "the only way this can go wrong" about the derived select/settle phase:
+# the key cannot have a value in EITHER phase of the rule's rung, so the guard never fires.
+sites   = ["05-ingest-and-routing.md:1144", "05-ingest-and-routing.md:1780"]
+
+[[code]]
+numeric = "OW-P-011"
+symbol  = "OW_POLICY_RULE_UNREACHABLE"
+meaning = "an action rule subsumed by an earlier action rule at the same (rung, lane, phase)"
+# Check 8, and the one W5.2 exists to ship. 05:1169: a subsumed rule "is a silently disabled guard,
+# which is worse than a missing rule" -- worse because a missing rule is visible in a diff and a
+# shadowed one reads as present. The compiler additionally drops it from the demand plan with a
+# `Degradation(kind="policy_pruned")` naming the subsuming rule (15-observability.md:1077).
+#
+# MODIFIER RULES ARE EXEMPT ON BOTH SIDES. 05:1174: they "are meant to overlap", and 05:1023's
+# evaluation order is why that is not merely a convenience -- a matched action does not stop a later
+# modifier contributing, so a modifier inside another's box is a working policy.
+#
+# The report is SOUND AND INCOMPLETE BY DESIGN (F30, 17-risks.md:890): interval-box subsumption is
+# "incomplete over open string domains -- exactly where policy authors collide", and the shipped
+# behaviour is that "the linter reports only the complete cases AND SAYS SO", because a lint that
+# overclaims is worse than none. `lint.Undecided` is the saying-so.
+sites   = ["05-ingest-and-routing.md:1169", "05-ingest-and-routing.md:1781", "15-observability.md:1077", "17-risks.md:890"]
+
+[[code]]
+numeric = "OW-P-014"
+symbol  = "OW_POLICY_FORMAT_UNROUTED"
+meaning = "a format token in the computed domain that no GATE or DECODE rule names"
+# Check 10, which 05:1790 calls "the one that would have caught the largest class of silent bug:
+# `mp3`, `eml`, `zip`, `doc` and six more tokens exist in the detection vocabulary, and a policy that
+# never names them routes them nowhere." Both directions are the check; the other direction -- a
+# rule literal outside the domain -- fails as OW-P-002 rather than as a second code.
+sites   = ["05-ingest-and-routing.md:1786", "05-ingest-and-routing.md:1790"]
+
+# ───────────────────────────────────────────────────────────────────────────────────────────
+# The R area's first row. `route_decision_monotone` has raised this string since W2.2 and
+# `0004_runtime.sql:364` carried a comment saying it had no row here yet; W5.4 closes that, because
+# `tools/gate_trigger_parity.py` now asserts the string 49 times and `ow explain OW-R-030` has to
+# answer for a code a gate prints.
+#
+# NO `raised_by`, for a reason unlike the lint six's. Those are reported and never raised; this one
+# IS raised, by `RAISE(ABORT, ...)` inside a trigger, and reaches Python as a `sqlite3.
+# IntegrityError` carrying the message. Naming `RouteError` here would claim a mapping that does not
+# exist -- nothing in this repository converts that IntegrityError into an OwError subclass, and
+# `raised_by` is read as "this class raises it", not as "this area would own it if something did".
+# The area letter already records the ownership: `[area.R]` is `RouteError`.
+# ───────────────────────────────────────────────────────────────────────────────────────────
+
+[[code]]
+numeric = "OW-R-030"
+symbol  = "OW_ROUTE_ESCALATION_NOT_MONOTONE"
+meaning = "a route_decision child row at a rung at or below its parent's"
+# INV-13's `S` enforcer, raised by the generated BEFORE INSERT trigger on the parent join. It cannot
+# be a CHECK -- 05:2705, "subqueries prohibited in CHECK constraints" -- which is why the second
+# enforcer is a trigger and why RT8 (05:3348) calls the compiler's OW-P-005 "CI parity ... rather
+# than a second opinion". G32 holds the two to one verdict on all 49 rung pairs.
+sites   = ["01-principles.md:399", "05-ingest-and-routing.md:2709", "05-ingest-and-routing.md:3348"]
+
+[[code]]
+numeric = "OW-R-031"
+symbol  = "OW_ROUTE_SPEND_UNRECONCILED"
+meaning = "a run's bill does not reconcile: route_spend disagrees with its manifest, or a finished decided work row has no spend row"
+# I30's two self-checks, run by `ow cost --verify` (15 section 5.4, D853). 15:808: "A mismatch is
+# `OW-R-*` and names the run." The plan numbers no OW-R code but 030, so this takes the next.
+sites   = ["01-principles.md:1036", "15-observability.md:805"]
+
+[[code]]
+numeric = "OW-S-010"
+symbol  = "OW_SNAPSHOT_EXPIRED"
+sites   = ["07-store-and-retrieval.md:1820", "18-api-sketch.md:331", "_notes/terminology.md:70", "glossary.md:72"]
+
+[[code]]
+numeric = "OW-S-016"
+symbol  = "OW_STORE_BUSY"
+meaning = "another writer holds the corpus"
+raised_by = "StoreBusy"
+sites   = ["18-api-sketch.md:450", "18-api-sketch.md:3213"]
+
+[[code]]
+numeric = "OW-S-030"
+symbol  = "OW_SCHEMA_AHEAD"
+sites   = ["07-store-and-retrieval.md:287", "11-repo-layout.md:1307", "18-api-sketch.md:172", "18-api-sketch.md:3220"]
+
+[[code]]
+numeric = "OW-S-033"
+symbol  = "OW_UNICODE_DRIFT"
+sites   = ["07-store-and-retrieval.md:3089"]
+
+[[code]]
+numeric = "OW-S-034"
+symbol  = "OW_SCHEMA_SECOND_HOME"
+sites   = ["07-store-and-retrieval.md:3199", "07-store-and-retrieval.md:3211"]
+
+[[code]]
+numeric = "OW-S-060"
+symbol  = "OW_STORE_TRACKED_IN_GIT"
+meaning = "a .owstore file is tracked in git: a corpus committed to a repository"
+fix     = "git rm --cached -- <the tracked .owstore paths>"
+# The symbol is minted here, because the plan allocates the numeric and no symbol. OW-P-022 is the
+# precedent. The `fix` is plan-stated: 15-observability.md:1515 gives D-02's "`OW-S-060`;
+# `git rm --cached`". `ow doctor` prints it with the actual paths filled in.
+#
+# `raised_by` IS DELIBERATELY ABSENT. D-02 REPORTS a `DoctorFinding` and raises nothing, and
+# 02-architecture.md:724's store-open refusal, the one place this code would be raised, is not
+# built. Omitted rather than guessed, as the OW-D rows below explain. W7.8c, D610.
+sites   = ["00-vision.md:717", "02-architecture.md:724", "02-architecture.md:1168", "07-store-and-retrieval.md:3102", "10-interfaces.md:1789", "11-repo-layout.md:90", "14-security.md:887", "14-security.md:1752", "15-observability.md:1515", "17-risks.md:255"]
+
+[[code]]
+numeric = "OW-S-070"
+symbol  = "OW_ERASURE_INCOMPLETE"
+sites   = ["14-security.md:1208", "14-security.md:1749"]
+
+[[code]]
+numeric = "OW-S-071"
+symbol  = "OW_REKEY_INTERRUPTED"
+sites   = ["14-security.md:1031", "14-security.md:1749"]
+
+[[code]]
+numeric = "OW-T-001"
+symbol  = "OW_TARGET_CONSTRUCT_UNMAPPED"
+meaning = "a maps_to that does not resolve in lower/"
+sites   = ["09-generation.md:2729"]
+
+[[code]]
+numeric = "OW-T-002"
+symbol  = "OW_TARGET_CONSTRUCT_UNDECLARED"
+meaning = "a lowering symbol with no ConstructTable row"
+sites   = ["09-generation.md:2730"]
+
+[[code]]
+numeric = "OW-T-003"
+symbol  = "OW_TARGET_CHECK_SKIPPED"
+meaning = "a rule's needs was unmet; the gate is unverified"
+sites   = ["09-generation.md:2731"]
+
+[[code]]
+numeric = "OW-T-004"
+symbol  = "OW_TARGET_RULE_FORGED_PROVENANCE"
+meaning = "a rule emitted a non-INTRODUCED provenance (§4.1)"
+sites   = ["09-generation.md:2732"]
+
+[[code]]
+numeric = "OW-T-005"
+symbol  = "OW_TARGET_UNIT_UNCLASSIFIED"
+meaning = "a unit landed in no UnitOutcome; FATAL"
+sites   = ["09-generation.md:2733"]
+
+[[code]]
+numeric = "OW-T-006"
+symbol  = "OW_TARGET_FINDINGS_TRUNCATED"
+meaning = "a rule passed MAX_FINDINGS_PER_RULE, or the report re-folded"
+sites   = ["09-generation.md:2734"]
+
+[[code]]
+numeric = "OW-T-007"
+symbol  = "OW_TARGET_SELECTOR_INVALID"
+meaning = "a selector, a forbidden_when or a select() literal that does not parse as §3.1's carrier selector grammar; raised, never an empty match"
+sites   = ["09-generation.md:372", "09-generation.md:511", "09-generation.md:2735"]
+
+# ── D740. Two contract-meta rows the OUT loaders raise, appended under 09 section 15's "+" rule.
+
+[[code]]
+numeric = "OW-T-008"
+symbol  = "OW_TARGET_BRIEF_INVALID"
+meaning = "a Brief parse_brief() refuses: line 1 is not the brief/1 comment, a line outside the two productions, a missing, unknown or repeated section, a missing required key, a closed value outside its set, a primary_language that is not canonical BCP-47 or is und or script-less Chinese, an untagged prohibition outside the ConstructTable's baseline, or a malformed ## template"
+fix     = "ow out check --target <target> --stage early   # names the Brief line; the authoring agent does not edit the Brief"
+raised_by = "TargetError"
+sites   = ["09-generation.md:2465", "09-generation.md:2475"]
+
+[[code]]
+numeric = "OW-T-009"
+symbol  = "OW_TARGET_CONSTRUCTS_INVALID"
+meaning = "a constructs.toml ConstructTable.load() refuses: an unknown key, a missing or forbidden key for the row's disposition, a normalize row not pointing at a native row, a normalizer the target does not ship, a duplicate id, a missing mandatory attribute, or unknown_construct other than forbidden"
+fix     = "ow out constructs <target>   # loads the table and names the row and the key"
+raised_by = "TargetError"
+sites   = ["09-generation.md:493", "09-generation.md:502"]
+
+# ── D742. Two rows the rule runner mints, appended under 09 section 15's "+" rule: order 0's parse
+# failure (the invalid band) and section 14.4's raising rule (contract meta).
+
+[[code]]
+numeric = "OW-T-010"
+symbol  = "OW_TARGET_RULE_RAISED"
+meaning = "a rule raised instead of returning findings; run_pack() records one framework error naming the rule and the exception type, the run goes on, and the gate is failed"
+fix     = "ow out check --target <target> --stage final --json   # names the rule; report it to its target"
+raised_by = "TargetError"
+sites   = ["09-generation.md:2682"]
+
+[[code]]
+numeric = "OW-T-400"
+symbol  = "OW_TARGET_IL_MALFORMED"
+meaning = "an IL file the carrier's parse refuses or had to recover: order 0, one error a problem at its position, and the unit's remaining rules are skipped"
+fix     = "ow out check --target <target> --stage unit --unit <id>   # after repairing the named line"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1166", "09-generation.md:2681"]
+
+# ── D744. The bundle's own roster file, appended under 09 section 15's "+" rule.
+
+[[code]]
+numeric = "OW-T-011"
+symbol  = "OW_TARGET_IL_TOML_INVALID"
+meaning = "an il/il.toml ILBundle.load() refuses: unreadable, another schema, no il or constructs_digest, an origin other than project, an unknown key, a [[unit]] that is not an OutUnit with a basename file, ords that are not 1..n, a repeated id or file, or a template.nsig line that is not 8 hex"
+fix     = "ow out scaffold <target>   # writes il.toml; the authoring agent adds [[unit]] rows"
+raised_by = "TargetError"
+sites   = ["09-generation.md:388", "09-generation.md:677"]
+
+[[code]]
+numeric = "OW-T-101"
+symbol  = "OW_TARGET_CITE_UNRESOLVED"
+meaning = "a data-ow-cite naming no block in this corpus, at --stage final"
+sites   = ["09-generation.md:2057", "09-generation.md:2736"]
+
+[[code]]
+numeric = "OW-T-102"
+symbol  = "OW_TARGET_CITE_NOT_VERBATIM"
+meaning = "kind=\"quote\" over text that is not the block's span"
+sites   = ["09-generation.md:2737"]
+
+[[code]]
+numeric = "OW-T-112"
+symbol  = "OW_TARGET_IL_ASSET_URI"
+meaning = "an http(s)/file:/data:/path in IL text"
+sites   = ["09-generation.md:2738"]
+
+[[code]]
+numeric = "OW-T-141"
+symbol  = "OW_TARGET_MARKER_UNRESOLVED"
+meaning = "assert_clean() found a marker at compile"
+sites   = ["09-generation.md:2739"]
+
+[[code]]
+numeric = "OW-T-151"
+symbol  = "OW_TARGET_MARKER_AMBIGUOUS"
+meaning = "multiple text candidates and no prev"
+sites   = ["09-generation.md:1877", "09-generation.md:2740"]
+
+[[code]]
+numeric = "OW-T-152"
+symbol  = "OW_TARGET_MARKER_ORPHAN"
+meaning = "no element carries the marker's el"
+sites   = ["09-generation.md:1875", "09-generation.md:2741"]
+
+[[code]]
+numeric = "OW-T-153"
+symbol  = "OW_TARGET_MARKER_STALE"
+meaning = "the element's nsig moved since placement"
+sites   = ["09-generation.md:1874", "09-generation.md:2742"]
+
+[[code]]
+numeric = "OW-T-154"
+symbol  = "OW_TARGET_MARKER_BUDGET"
+meaning = "MAX_MARKERS_PER_UNIT exceeded"
+sites   = ["09-generation.md:2743"]
+
+[[code]]
+numeric = "OW-T-210"
+symbol  = "OW_TARGET_FILL_NOT_UPPER_HEX"
+meaning = "the reference normalize row"
+sites   = ["09-generation.md:2744"]
+
+[[code]]
+numeric = "OW-T-311"
+symbol  = "OW_TARGET_BLEND_REQUIRES_BAKE"
+meaning = "the reference bake row"
+sites   = ["09-generation.md:2745"]
+
+[[code]]
+numeric = "OW-T-401"
+symbol  = "OW_TARGET_SCRIPT_FORBIDDEN"
+meaning = "<script> or an event attribute"
+sites   = ["09-generation.md:2746"]
+
+[[code]]
+numeric = "OW-T-402"
+symbol  = "OW_TARGET_ID_WITH_STYLE"
+meaning = "the reference conditional prohibition"
+sites   = ["09-generation.md:2747"]
+
+[[code]]
+numeric = "OW-T-405"
+symbol  = "OW_TARGET_EL_DUPLICATE"
+meaning = "two elements with one data-ow-el"
+sites   = ["09-generation.md:2748"]
+
+[[code]]
+numeric = "OW-T-410"
+symbol  = "OW_TARGET_FILL_INVALID"
+meaning = "the reference native row's grammar"
+sites   = ["09-generation.md:2749"]
+
+[[code]]
+numeric = "OW-T-411"
+symbol  = "OW_TARGET_PROJECT_UNAVAILABLE"
+meaning = "project() with project = false on the card"
+raised_by = "TargetError"
+sites   = ["18-api-sketch.md:2630", "18-api-sketch.md:3214"]
+
+[[code]]
+numeric = "OW-T-501"
+symbol  = "OW_TARGET_PACKAGE_CORRUPT"
+meaning = "a member does not decompress; names it"
+sites   = ["09-generation.md:2750"]
+
+[[code]]
+numeric = "OW-T-502"
+symbol  = "OW_TARGET_UNIT_COUNT_MISMATCH"
+meaning = "output units ≠ plan.unit_count; prints both"
+sites   = ["09-generation.md:2751"]
+
+[[code]]
+numeric = "OW-T-503"
+symbol  = "OW_TARGET_DANGLING_REL"
+meaning = "a relationship target that is not a member"
+sites   = ["09-generation.md:2752"]
+
+[[code]]
+numeric = "OW-T-504"
+symbol  = "OW_TARGET_CONTENT_TYPE_GAP"
+meaning = "a part with no declared content type"
+sites   = ["09-generation.md:2753"]
+
+[[code]]
+numeric = "OW-T-505"
+symbol  = "OW_TARGET_NORMALIZE_AT_COMPILE"
+meaning = "a normalize construct reached lower() without --accept-normalization"
+sites   = ["09-generation.md:2754"]
+
+[[code]]
+numeric = "OW-T-506"
+symbol  = "OW_TARGET_ASSET_UNFROZEN"
+meaning = "preflight 2"
+sites   = ["09-generation.md:2755"]
+
+[[code]]
+numeric = "OW-T-507"
+symbol  = "OW_TARGET_ROSTER_MISMATCH"
+meaning = "ILBundle.load() for the bundle-versus-filesystem difference (§3.2, §3.7), preflight 3 for the Plan-versus-bundle one; names the ids in each of the three directions"
+sites   = ["09-generation.md:697", "09-generation.md:2756"]
+
+[[code]]
+numeric = "OW-T-508"
+symbol  = "OW_TARGET_TOO_MANY_UNITS"
+meaning = "preflight 4"
+sites   = ["09-generation.md:2757"]
+
+[[code]]
+numeric = "OW-T-509"
+symbol  = "OW_TARGET_BAKE_UNAVAILABLE"
+meaning = "preflight 5"
+sites   = ["09-generation.md:2758"]
+
+[[code]]
+numeric = "OW-T-510"
+symbol  = "OW_TARGET_GEN_CONTENDED"
+meaning = "§5.4 rule 2"
+sites   = ["09-generation.md:2759"]
+
+# ── D750. The sealed-row trigger's code, appended under 09 section 15's "+" rule.
+
+[[code]]
+numeric = "OW-T-511"
+symbol  = "OW_TARGET_ARTIFACT_SEALED"
+meaning = "an UPDATE or DELETE of a sealed artifact row, refused by 0005_out.sql's triggers: OUT edits always write a new artifact_gen and a sealed generation is never patched (OUT24)"
+fix     = "ow out compile --target <target>   # a new artifact_gen; the sealed row stays as it is"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1474"]
+
+# ── D752. The retained bundle's refusal, appended under 09 section 15's "+" rule.
+
+[[code]]
+numeric = "OW-T-512"
+symbol  = "OW_TARGET_IL_MOVED"
+meaning = "an IL file's bytes differ from the row the gate passed when the compile freezes the bundle into CAS, or the row is past MAX_IL_FILE_BYTES: the compile never seals bytes no gate saw"
+fix     = "ow out check --stage final"
+raised_by = "TargetError"
+sites   = ["09-generation.md:199"]
+
+# ── D756. The ow:manual reader's refusal, appended under 09 section 15's "+" rule. The reference
+# target's ConstructTable already names the symbol (18-api-sketch.md's elem.ow-manual row).
+
+[[code]]
+numeric = "OW-T-513"
+symbol  = "OW_TARGET_MANUAL_REASON_UNKNOWN"
+meaning = "a data-ow-manual value outside ManualReason: a framework error finding, so the gate fails instead of asking a human to act on an undefined reason"
+fix     = "ow out constructs --construct ow:manual"
+sites   = ["09-generation.md:1956"]
+
+# ── D758. The reference target's construct codes (18-api-sketch.md section 6.2's
+# constructs.toml), appended under 09 section 15's "+" rule. Its table holds SYMBOLS and "the
+# numeric OW-T-nnn is resolved from codes.toml at RENDER time", so every symbol a shipped
+# ConstructTable names is registered. Each numeric sits in the band its siblings use: 1xx cites,
+# 2xx normalize, 3xx bake, 4xx constructs.
+
+[[code]]
+numeric = "OW-T-103"
+symbol  = "OW_TARGET_CITE_MALFORMED"
+meaning = "a data-ow-cite value that is not a space-separated list of cite tokens"
+fix     = "ow out check --stage unit --unit <unit>"
+sites   = ["18-api-sketch.md:2315"]
+
+[[code]]
+numeric = "OW-T-211"
+symbol  = "OW_TARGET_CLASS_NOT_LOWER"
+meaning = "owtext/1's normalize row: a class attribute that is not lower-case ASCII; a warning, folded"
+fix     = "ow out normalize <il file>"
+sites   = ["18-api-sketch.md:2387", "18-api-sketch.md:2484"]
+
+[[code]]
+numeric = "OW-T-312"
+symbol  = "OW_TARGET_SHADOW_REQUIRES_BAKE"
+meaning = "owtext/1's bake row: text-shadow has no native mapping and needs a bake the card says is unavailable"
+fix     = "ow out normalize <il file>   # drop the shadow"
+sites   = ["18-api-sketch.md:2407"]
+
+[[code]]
+numeric = "OW-T-403"
+symbol  = "OW_TARGET_UNIT_MALFORMED"
+meaning = "a unit's root is not the one element its target's unit construct names"
+fix     = "ow out check --stage unit --unit <unit>"
+sites   = ["18-api-sketch.md:2345"]
+
+[[code]]
+numeric = "OW-T-404"
+symbol  = "OW_TARGET_TEXT_INVALID"
+meaning = "block text that is not NFC, or that nests a block element"
+fix     = "ow out check --stage unit --unit <unit>"
+sites   = ["18-api-sketch.md:2355"]
+
+[[code]]
+numeric = "OW-T-406"
+symbol  = "OW_TARGET_CLASS_INVALID"
+meaning = "a class attribute outside its construct's canonical form"
+fix     = "ow out check --stage unit --unit <unit>"
+sites   = ["18-api-sketch.md:2378"]
+
+# ── D760. The unimplemented target's refusal (09-generation.md section 12.4).
+
+[[code]]
+numeric = "OW-T-514"
+symbol  = "OW_TARGET_NOT_IMPLEMENTED"
+meaning = "a call into a target whose card says [compile] implemented = false; the refusal carries the card's reason (D760, appended under 09 section 15's \"+\" rule)"
+fix     = "ow out targets"
+raised_by = "TargetError"
+sites   = ["09-generation.md:2351"]
+
+[[code]]
+numeric = "OW-T-515"
+symbol  = "OW_TARGET_UNKNOWN"
+meaning = "a target no discovered compile card declares; the refusal names the kinds the cards found do declare (D762, appended under 09 section 15's \"+\" rule)"
+fix     = "ow out targets"
+raised_by = "NotFoundError"
+sites   = ["09-generation.md:439"]
+
+[[code]]
+numeric = "OW-T-516"
+symbol  = "OW_CONSTRUCT_UNKNOWN"
+meaning = "a --group or --construct no row of the target's ConstructTable carries; the refusal names the groups or the ids the table has (D762)"
+fix     = "ow out constructs <target>"
+raised_by = "NotFoundError"
+sites   = ["09-generation.md:439"]
+
+[[code]]
+numeric = "OW-T-517"
+symbol  = "OW_TARGET_AMBIGUOUS"
+meaning = "two or more compile cards declare one target, so which table documents it is not this verb's choice; the refusal names every driver (D762)"
+fix     = "keep one card for the target on OMNIWEAVE_DRIVER_PATH or in .omniweave/drivers/"
+raised_by = "ConfigError"
+sites   = ["09-generation.md:439"]
+
+[[code]]
+numeric = "OW-T-518"
+symbol  = "OW_TARGET_JOB_INVALID"
+meaning = "a job.json Job.load() refuses: unreadable, another schema, an unknown or missing key at any level (a nullable one included), a value outside its grammar, a Plan that Plan refuses, or an embedded Brief that does not digest to plan.brief_digest (D763, closing 09 Q11)"
+fix     = "ow explain OW-T-518"
+raised_by = "TargetError"
+sites   = ["09-generation.md:2894"]
+
+[[code]]
+numeric = "OW-T-519"
+symbol  = "OW_TARGET_SLUG_INVALID"
+meaning = "an artefact slug that is not lower-case letters, digits and hyphens, 1 to 64 long: it becomes the JobDir's <slug>@<gen> segment and artifact.slug, and the plan gives it no grammar (D764)"
+fix     = "ow out scaffold <target> --slug q3-board"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1496"]
+
+[[code]]
+numeric = "OW-T-520"
+symbol  = "OW_TARGET_JOB_EXISTS"
+meaning = "a JobDir, or its staged copy, already exists where a scaffold would write one: a scaffold never writes over a JobDir (D764)"
+fix     = "ow out scaffold <target> --slug <slug>   # a fresh run id"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1496"]
+
+[[code]]
+numeric = "OW-T-521"
+symbol  = "OW_TARGET_STAMP_LOCKED"
+meaning = "il/.stamp.lock is held by a stamp younger than 300 s: two stampers would both mint max(existing ordinal) + 1 (D767)"
+fix     = "wait for the other ow out stamp, or delete il/.stamp.lock if no stamp runs"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1038"]
+
+[[code]]
+numeric = "OW-T-522"
+symbol  = "OW_TARGET_STAMP_REFUSED"
+meaning = "a unit ow out stamp cannot write: its read had to recover, its bytes do not decode, or the stamped text does not reparse; nothing was written (D767)"
+fix     = "ow out check --stage unit --unit <id>"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1028"]
+
+[[code]]
+numeric = "OW-T-523"
+symbol  = "OW_TARGET_NORMALIZE_STALE"
+meaning = "ow out normalize was given a stage whose validation/<stage>.json is absent, unreadable, or describes other bytes than the bundle's (D768)"
+fix     = "ow out check --stage <stage>"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1031"]
+
+[[code]]
+numeric = "OW-T-524"
+symbol  = "OW_TARGET_NORMALIZE_REFUSED"
+meaning = "a normalize nothing may write: a normalizer that is not idempotent on a value or is not loaded, a row selecting an element or a style sub-property, an attribute without quotes, or a unit that does not read or reparse (D768)"
+fix     = "ow out check --stage early"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1029"]
+
+[[code]]
+numeric = "OW-T-525"
+symbol  = "OW_TARGET_JOB_CHANGED"
+meaning = "a compile worker found a JobDir other than the one the host gated: its il_digest, constructs_digest or ledger_digest is not the Plan's, so nothing is lowered (D771)"
+fix     = "ow out check --stage final"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1701"]
+
+[[code]]
+numeric = "OW-T-526"
+symbol  = "OW_TARGET_COMPILE_FAILED"
+meaning = "a compile worker answered with a failure that is not a target refusal: it crashed, timed out, ran past a resource limit or raised a bug, or never answered; nothing was sealed and no artefact was placed (D772)"
+fix     = "ow explain OW-T-526"
+raised_by = "TargetError"
+sites   = ["09-generation.md:173"]
+
+[[code]]
+numeric = "OW-T-527"
+symbol  = "OW_TARGET_VERIFY_INPUTS"
+meaning = "ow out verify was asked to recompile an artefact over inputs other than the ones it was sealed over: the JobDir names another slug or target, its Brief or ledger digests otherwise, or the installed card or construct table is not the one that compiled it (D774)"
+fix     = "ow out verify --job <the JobDir that compiled it>"
+raised_by = "TargetError"
+sites   = ["09-generation.md:2131"]
+
+# ── D781. owflow/1, the docx target's table and rules (09-generation.md section 12.3), and the
+# closed set every table promises (section 3.5 item 1). Each numeric sits in its siblings' band:
+# 2xx normalize, 4xx constructs.
+
+[[code]]
+numeric = "OW-T-212"
+symbol  = "OW_TARGET_CITE_SPACING"
+meaning = "owflow/1's normalize row: a data-ow-cite list with more than one space between tokens, or any at either end; a warning, folded"
+fix     = "ow out normalize --construct ow.cite.spacing"
+sites   = ["09-generation.md:2324"]
+
+[[code]]
+numeric = "OW-T-213"
+symbol  = "OW_TARGET_SPAN_NOT_CANONICAL"
+meaning = "owflow/1's normalize rows: a colspan or rowspan written with a sign, a space or a leading zero; a warning, folded"
+fix     = "ow out normalize --construct table.colspan.form"
+sites   = ["09-generation.md:2324"]
+
+[[code]]
+numeric = "OW-T-214"
+symbol  = "OW_TARGET_LANG_CASE"
+meaning = "owflow/1's normalize row: a lang tag outside BCP-47's conventional case; a warning, folded"
+fix     = "ow out normalize --construct lang.tag.case"
+sites   = ["09-generation.md:2324"]
+
+[[code]]
+numeric = "OW-T-412"
+symbol  = "OW_TARGET_CONSTRUCT_NOT_IN_TABLE"
+meaning = "an element, attribute or style property no row of the target's ConstructTable declares: unknown_construct = \"forbidden\" (D781)"
+fix     = "ow out constructs <target>   # the constructs its IL has"
+sites   = ["09-generation.md:527"]
+
+[[code]]
+numeric = "OW-T-413"
+symbol  = "OW_TARGET_HEADING_SKIP"
+meaning = "a heading more than one level deeper than the heading before it in its unit, an h1 followed by an h3"
+fix     = "ow out check --stage unit --unit <unit>"
+sites   = ["09-generation.md:2324"]
+
+[[code]]
+numeric = "OW-T-414"
+symbol  = "OW_TARGET_TABLE_TOPOLOGY"
+meaning = "a table whose cells do not cover one grid exactly: rows of different widths, overlapping cells, a rowspan past its group, a span that is not an integer from 1, or a row or cell outside its parent"
+fix     = "ow out check --stage unit --unit <unit>"
+sites   = ["09-generation.md:2324"]
+
+[[code]]
+numeric = "OW-T-415"
+symbol  = "OW_TARGET_NOTE_UNRESOLVED"
+meaning = "a note reference with no body in its unit, a body referenced other than once, a duplicate note id, a reference with content, or a body that is not a child of the unit's section"
+fix     = "ow out check --stage unit --unit <unit>"
+sites   = ["09-generation.md:2324"]
+
+[[code]]
+numeric = "OW-T-416"
+symbol  = "OW_TARGET_LIST_MALFORMED"
+meaning = "a list nested past the declared depth (nine, WordprocessingML's levels), a list item outside its container, another child inside one, or a start that is not a decimal integer on an ol"
+fix     = "ow out check --stage unit --unit <unit>"
+sites   = ["09-generation.md:2324"]
+
+[[code]]
+numeric = "OW-T-417"
+symbol  = "OW_TARGET_POSITIONING_FORBIDDEN"
+meaning = "a positioning or geometry construct in a flow carrier's IL: position, float, an offset, a transform, a z-index, a width or height, a page break, or align"
+fix     = "ow out constructs docx --group pos"
+sites   = ["09-generation.md:2324"]
+
+[[code]]
+numeric = "OW-T-418"
+symbol  = "OW_TARGET_CONSTRUCT_FORBIDDEN"
+meaning = "a construct the target's ConstructTable declares forbidden, with no more specific code; the row's msg says what to write instead"
+fix     = "ow out constructs <target> --construct <id>"
+sites   = ["09-generation.md:2324"]
+
+# ── D782. The docx target's lowering (09-generation.md section 12.3).
+
+[[code]]
+numeric = "OW-T-528"
+symbol  = "OW_TARGET_ASSET_FORMAT"
+meaning = "a frozen asset whose bytes the target cannot hold: for docx, a picture that is not PNG, JPEG, GIF, BMP or TIFF; refused by preflight before a byte is written (D782)"
+fix     = "ow out assets --slot <slot>   # then freeze the picture in a format the target holds"
+raised_by = "TargetError"
+sites   = ["09-generation.md:2330"]
+
+# ── D788. `ow out back` closes the loop through the target's read_back (02-architecture.md
+# section 4.3, 09-generation.md Q4).
+
+[[code]]
+numeric = "OW-T-529"
+symbol  = "OW_TARGET_READ_BACK_FAILED"
+meaning = "ow out back ran the target's read_back over a sealed artefact and could not close the loop: the worker failed, its fragment was refused, an address stood on two blocks or named no sealed unit, or the store quarantined the read-back as a re-parse of a document it already held; read_back_doc_ord stays NULL and no artifact_el row is written (D788)"
+fix     = "ow explain OW-T-529"
+raised_by = "TargetError"
+sites   = ["02-architecture.md:631"]
+
+# ── D809. R4(a) at the seal: a copied unit's part is its parent's (09-generation.md
+# section 5.5).
+
+[[code]]
+numeric = "OW-T-530"
+symbol  = "OW_TARGET_COPY_MOVED"
+meaning = "an edit's compile classified a unit passthrough or cloned_passthrough, whose part the card's unit_part names, and that part is not byte for byte the part its source_ord lowered to in the parent generation, or one of the two packages lacks it; nothing is sealed (D809)"
+fix     = "ow explain OW-T-530"
+raised_by = "TargetError"
+sites   = ["09-generation.md:1509"]
+
+# ── D810. `omniweave_core.toolchain.run()`: seam S2, one Toolchain invocation over
+# omniweave-target/1 (11-repo-layout.md section 3.2, 02-architecture.md section 2 row 16).
+
+[[code]]
+numeric = "OW-T-531"
+symbol  = "OW_TARGET_TOOLCHAIN_MISSING"
+meaning = "a Toolchain target cannot run: no node satisfies its node_range on the ladder (OMNIWEAVE_NODE, an installed runtime, node on PATH), its bundle is not installed, or the child exited 64 because its own runtime is missing; the target is pruned, never an ImportError (D810)"
+fix     = "ow targets install <name>"
+raised_by = "CapabilityMissing"
+sites   = ["11-repo-layout.md:851"]
+
+[[code]]
+numeric = "OW-T-532"
+symbol  = "OW_TARGET_TOOLCHAIN_DIGEST"
+meaning = "an installed Toolchain bundle does not hash to the register's full sha256, or is too large to verify; it is not run and nothing is fetched (D810)"
+fix     = "ow targets install <name>   # a fresh copy, verified against the register"
+raised_by = "TargetError"
+sites   = ["11-repo-layout.md:858"]
+
+[[code]]
+numeric = "OW-T-533"
+symbol  = "OW_TARGET_TOOLCHAIN_FAILED"
+meaning = "a Toolchain child broke omniweave-target/1: it would not start, its bundle held no entry, a stdout line was not a JSON object or stdout passed 1 MiB, its first frame was not its ready, it answered with something other than progress and one result, it missed its deadline, or its exit status disagreed with its receipt; the child is reaped and nothing is sealed (D810)"
+fix     = "ow explain OW-T-533"
+raised_by = "TargetError"
+sites   = ["11-repo-layout.md:860"]
+
+# ── D789. owsvg/1, the pptx target's table and structural rules (09-generation.md section
+# 12.1). 2xx normalize, 4xx constructs; the grammar codes are named by the table's rows now
+# and emitted by the grammar band.
+
+[[code]]
+numeric = "OW-T-215"
+symbol  = "OW_TARGET_LENGTH_UNIT"
+meaning = "owsvg/1's normalize rows: a user-unit length or font size written with a px suffix, which an owsvg/1 user unit already is; a warning, folded"
+fix     = "ow out normalize --construct geom.x.px"
+sites   = ["09-generation.md:2232"]
+
+[[code]]
+numeric = "OW-T-216"
+symbol  = "OW_TARGET_OPACITY_PERCENT"
+meaning = "owsvg/1's normalize rows: an opacity written as a percentage, whose canonical form is a fraction 0-1; a warning, folded"
+fix     = "ow out normalize --construct paint.opacity.percent"
+sites   = ["09-generation.md:2232"]
+
+[[code]]
+numeric = "OW-T-419"
+symbol  = "OW_TARGET_CANVAS_MISMATCH"
+meaning = "an owsvg/1 slide whose root viewBox is not '0 0 W H' in positive integers, whose W or H is outside a PowerPoint slide's 96-5376 user units, whose root transform, width or height rescales it, or whose W:H is not the Brief's canvas format (D789)"
+fix     = "ow out constructs pptx --construct canvas.viewbox"
+sites   = ["09-generation.md:2230"]
+
+[[code]]
+numeric = "OW-T-420"
+symbol  = "OW_TARGET_GEOMETRY_INVALID"
+meaning = "an owsvg/1 length, point list or aspect value outside its row's grammar: a negative width, a polygon of two points, an unknown preserveAspectRatio"
+fix     = "ow out constructs pptx --group geom"
+sites   = ["09-generation.md:2232"]
+
+[[code]]
+numeric = "OW-T-421"
+symbol  = "OW_TARGET_PATH_INVALID"
+meaning = "owsvg/1 path data that is incomplete or outside SVG's command grammar: a path not starting with M, a command missing an argument"
+fix     = "ow out constructs pptx --construct geom.d"
+sites   = ["09-generation.md:2232"]
+
+[[code]]
+numeric = "OW-T-422"
+symbol  = "OW_TARGET_TRANSFORM_INVALID"
+meaning = "an owsvg/1 transform outside the four operations DrawingML can hold (translate, scale, rotate, matrix), a skew or shear, or a matrix on text"
+fix     = "ow out constructs pptx --construct geom.transform"
+sites   = ["09-generation.md:2232"]
+
+[[code]]
+numeric = "OW-T-423"
+symbol  = "OW_TARGET_OPACITY_INVALID"
+meaning = "an owsvg/1 opacity that is not a number from 0 to 1"
+fix     = "ow out constructs pptx --group paint"
+sites   = ["09-generation.md:2232"]
+
+[[code]]
+numeric = "OW-T-424"
+symbol  = "OW_TARGET_STROKE_INVALID"
+meaning = "an owsvg/1 stroke value outside its row's grammar: a negative width, a dash array with a zero or negative entry, an unknown cap, join or vector-effect"
+fix     = "ow out constructs pptx --group stroke"
+sites   = ["09-generation.md:2232"]
+
+[[code]]
+numeric = "OW-T-425"
+symbol  = "OW_TARGET_FONT_INVALID"
+meaning = "an owsvg/1 text property outside its row's grammar: a font size DrawingML cannot hold, a weight that is not 100-900, text-anchor on a tspan"
+fix     = "ow out constructs pptx --group text"
+sites   = ["09-generation.md:2232"]
+
+[[code]]
+numeric = "OW-T-426"
+symbol  = "OW_TARGET_GRADIENT_INVALID"
+meaning = "an owsvg/1 gradient DrawingML cannot hold: fewer than two stops, offsets that decrease, coordinates outside the bounding box, a focus outside the circle"
+fix     = "ow out constructs pptx --group def"
+sites   = ["09-generation.md:2232"]
+
+[[code]]
+numeric = "OW-T-427"
+symbol  = "OW_TARGET_REFERENCE_UNRESOLVED"
+meaning = "an owsvg/1 url(#id) or href=\"#id\" naming no local definition of the kind it needs, or a link target that is neither #u<NN> nor https:"
+fix     = "ow out constructs pptx --construct geom.href"
+sites   = ["09-generation.md:2234"]
+
+[[code]]
+numeric = "OW-T-428"
+symbol  = "OW_TARGET_EFFECT_INVALID"
+meaning = "an owsvg/1 filter, marker or clip path DrawingML cannot hold: more than one effect primitive, a marker on a shape that is not a line or path, a clip on a shape that is not an image"
+fix     = "ow out constructs pptx --group effect"
+sites   = ["09-generation.md:2232"]
+
+# ── D793. owsvg/1's measurement band (09-generation.md section 12.1).
+
+[[code]]
+numeric = "OW-T-429"
+symbol  = "OW_TARGET_TEXT_OFF_CANVAS"
+meaning = "an owsvg/1 <text> whose measured lines run past the slide's viewBox, under measure.py's shaping: single-line width per positioned line, vertical wrapping not modeled (D793)"
+fix     = "ow out constructs pptx --construct text.text"
+sites   = ["09-generation.md:2233"]
+
+[[code]]
+numeric = "OW-T-430"
+symbol  = "OW_TARGET_TYPE_SIZE_UNDECLARED"
+meaning = "a type size within 2 user units of no typography anchor in the Brief, counted across the deck: the second occurrence a warning, the third an error, as RuleCtx.limits[\"undeclared_size_max\"] = 2 sets (D794)"
+fix     = "ow out check --stage final   # after naming the size in brief.md's ## typography"
+sites   = ["09-generation.md:2235"]
+
+# ── W1.5, the driver card grammar (04-driver-system.md sections 2.1-2.8, 4.5, 5.3, 7.5). The
+# three discovery-point refusals of section 5.3 step 1, plus the two numerics the plan already
+# binds. `meaning` and `fix` are FILLED here rather than deferred to W1.3: these five are raised
+# by code landing in this same change, so the command that clears each one is known now.
+
+[[code]]
+numeric = "OW-D-010"
+symbol  = "OW_CARD_INVALID"
+meaning = "a driver.toml the loader refuses: an unknown top-level table or key, a value outside a closed vocabulary, a section 4.5 cap breach naming the key and the cap, a [limits] value above HOST_MAX (DR20), a [config] keyword outside the closed JSON-Schema subset, an empty [deprecation] or [licence.weights], revision=\"main\", or a benchmark row with n < 30 or an incomplete measured_on"
+fix     = "ow drivers check <path/to/driver.toml>"
+raised_by = "DriverHostError"
+sites   = ["04-driver-system.md:1523", "04-driver-system.md:1196", "04-driver-system.md:1562"]
+
+[[code]]
+numeric = "OW-D-011"
+symbol  = "OW_CARD_ENTRYPOINT_MALFORMED"
+meaning = "[driver] entrypoint is not <dotted.module>:<Attr> - it lacks exactly one ':' or carries a '/'. The entry-point VALUE is a colon-free dotted package and is a different name with a different grammar; activate() is the only site that resolves the colon form"
+fix     = "ow drivers check <path/to/driver.toml>"
+raised_by = "DriverHostError"
+sites   = ["04-driver-system.md:1053", "04-driver-system.md:1524", "04-driver-system.md:1562"]
+
+[[code]]
+numeric = "OW-D-012"
+symbol  = "OW_CARD_SCHEMA_TOO_NEW"
+meaning = "card_schema is above max(CARDS_SUPPORTED): the card is well-formed in a grammar this build does not implement, so the fix is an upgrade and never an edit to the card"
+fix     = "pip install --upgrade omniweave-core"
+raised_by = "DriverHostError"
+sites   = ["04-driver-system.md:1499", "04-driver-system.md:1522", "04-driver-system.md:1344"]
+
+[[code]]
+numeric = "OW-D-024"
+symbol  = "OW_FORMAT_TOKEN_COLLISION"
+meaning = "a media type mapping to two format tokens across enabled cards: two [capability.parse] format_tokens pairs give one media_type two tokens, which would make routing's format_token_for(media_type) ambiguous. Refused at ACTIVATION, naming both drivers and both pairs, rather than resolved by precedence"
+fix     = "ow config set drivers.enabled <the one driver of the pair to keep>"
+raised_by = "DriverHostError"
+sites   = ["04-driver-system.md:546", "05-ingest-and-routing.md:666", "05-ingest-and-routing.md:3505"]
+
+[[code]]
+numeric = "OW-D-051"
+symbol  = "OW_DRIVER_MESSAGE_UNCLASSIFIED"
+meaning = "a driver failure reached tier 3 of the classifier - neither a structured FailureClass nor a status code - so the raw message was matched against the substring table. Recorded as a warning Diag naming the raw string: fail toward retryable, and report the gap"
+fix     = "ow doctor --deep --render json   # attach the report so the message gains a tier-1 or tier-2 classification"
+raised_by = "DriverHostError"
+sites   = ["08-runtime.md:549", "08-runtime.md:570"]
+
+# ── W1.5, the registry (04-driver-system.md sections 4.5 and 12's DR3 row). A fresh numeric:
+# the plan binds `DuplicateDriver` to `omniweave_core/registry.py` and names no code for it.
+# `ID_COLLISION_UNQUALIFIED` is a different row — resolve()'s RejectCode, allocated at W3.1 —
+# because a raise at registration and a rejection at resolution are two sites, not one.
+
+[[code]]
+numeric = "OW-D-013"
+symbol  = "OW_DRIVER_DUPLICATE_ID"
+meaning = "two distributions declare one driver id and no [drivers.resolve] row says which wins. Both distributions are named, because the operator cannot write the disambiguation without knowing both. A duplicate id NEVER wins silently (DR3): DataFlow's registry, keyed on a bare __name__, is first-wins and silent, so one plugin vanishes with no diagnostic"
+fix     = "ow config set drivers.resolve.\"<id>\" <distribution>"
+raised_by = "DriverHostError"
+sites   = ["04-driver-system.md:1217", "04-driver-system.md:2675", "02-architecture.md:235"]
+
+# ── W3.1, resolve()'s RejectCode (04-driver-system.md sections 4.8 and 5.3). TWENTY-TWO fresh
+# numerics, and the register's own W1.5 note above scheduled them here: "`ID_COLLISION_UNQUALIFIED`
+# is a different row — resolve()'s RejectCode, allocated at W3.1".
+#
+# WHY THESE ROWS ARE TRANSCRIPTION AND THE NUMERIC IS ALLOCATION. 04-driver-system.md:1444 states
+# the rule — "Every `RejectCode` member has a row in `codes.toml` under `OW-D-nnn` with the symbol
+# `OW_DRIVER_<MEMBER>`, so the enum is a typed view over the one register rather than a second
+# register" — and :1557-1558 repeats it ("each with an `OW-D-nnn` row"). So the row's EXISTENCE and
+# its SYMBOL are both plan-stated; 01-principles.md:605 names "a new `RejectCode` member with no
+# `OW-D-nnn` row" as a defect class by name, which makes the gap a defect and not a deferral. The
+# three digits are the only free field, and they are this register's to allocate: of the seven
+# `OW-D` rows above, only `OW-D-009` (18-api-sketch.md:2158), `OW-D-024` and `OW-D-051` have a
+# numeric the plan binds — `OW-D-010`, `-011`, `-012` and `-013` were allocated here, from
+# conditions the plan states, exactly as these are. 18-api-sketch.md:3197 sanctions the shape: "a
+# new row in an existing class breaks no clause where a new *class letter* would".
+#
+# ALLOCATED FROM 052 UPWARD, above the highest existing `OW-D`, and deliberately NOT into the
+# 014-023 / 025-050 gaps: the plan allocates numerics in adjacent clusters and moves rows to keep a
+# cluster intact (18-api-sketch.md section 9 item 7's table), so the gaps are where a plan-stated
+# numeric is most likely to land next. One contiguous block also matches the "signature block"
+# practice of 18-api-sketch.md:3200.
+#
+# ORDER is section 5.3's own table order (04-driver-system.md:1563-1568): identity, fit, policy,
+# environment, preflight, activate. `FORMAT_UNSUPPORTED` is absent because it already holds
+# `OW-D-009`, and the three discovery members already hold `OW-D-010`/`-011`/`-012`.
+#
+# `fix` IS DELIBERATELY ABSENT, following `OW-D-009` and this file's header: a `fix` is the exact
+# command that clears the error, and `ow drivers explain <code>` is the verb 04:1445-1447 assigns
+# to resolve it. Inventing twenty-two commands here is the fabrication the header refuses. Filling
+# them is W1.3's other half, closed by `ow explain --check`.
+#
+# `raised_by` IS DELIBERATELY ABSENT TOO, and that is a claim about control flow: resolve() RETURNS
+# a `Rejection` and raises nothing (04:1574-1575 — `PORT_MISMATCH` is "raised as a rejection rather
+# than an exception so a mis-wired policy rule produces a report instead of a traceback"). Writing
+# `raised_by = "DriverHostError"` on a row no exception carries would be a false statement about
+# the code, so the field is omitted rather than guessed. Area D's `[area.D]` table already names
+# `DriverHostError` for the rows that DO raise.
+#
+# TWO SYMBOL CONFLICTS FOUND IN THE PLAN AND NOT SMOOTHED, both reported to the ledger:
+#   * `COST_CLASS_NOT_PERMITTED` is the member at 04:1565 and the gate at 04:1351, so :1444's rule
+#     gives `OW_DRIVER_COST_CLASS_NOT_PERMITTED` — but 08-runtime.md:2073 prints
+#     `OW_DRIVER_COST_CLASS_FORBIDDEN` for that exact condition ("billed_api not in [drivers.cost]
+#     allow_classes") inside a `resolution_report.pruned` payload. The definition site wins over
+#     the illustrative payload; NO second row is written, because one condition on two numerics is
+#     the `codes-unique` defect 18-api-sketch.md section 9 item 7 records twice already.
+#   * `CARD_CODE_MISMATCH` takes `OW_CARD_CODE_MISMATCH` and not :1444's literal
+#     `OW_DRIVER_CARD_CODE_MISMATCH`, because the four card rows this register already carries
+#     spell themselves `OW_CARD_*` and `card.py` raises those spellings. :1444's wording is
+#     therefore inexact for the members that already name the card.
+#
+# `OW_DRIVER_PROBE_UNAVAILABLE` is the one symbol below the plan prints verbatim
+# (08-runtime.md:2075), which is an independent check on the derivation.
+
+[[code]]
+numeric = "OW-D-052"
+symbol  = "OW_DRIVER_PORT_UNSUPPORTED"
+meaning = "this core does not implement that Port major at all. The first filter in resolve()'s order, and the reason both majors of a Port can coexist in a catalog while only one is resolvable"
+sites   = ["04-driver-system.md:1341", "04-driver-system.md:1563", "04-driver-system.md:1571"]
+
+[[code]]
+numeric = "OW-D-053"
+symbol  = "OW_DRIVER_PORT_MISMATCH"
+meaning = "the caller asked for derive/1 and the card is a parse/1 - a caller bug, raised as a rejection rather than an exception so a mis-wired policy rule produces a report instead of a traceback. Not redundant beside PORT_UNSUPPORTED: that one means the major is unimplemented, this one means the port is the wrong port"
+sites   = ["04-driver-system.md:1563", "04-driver-system.md:1572"]
+
+[[code]]
+numeric = "OW-D-054"
+symbol  = "OW_DRIVER_ID_COLLISION_UNQUALIFIED"
+meaning = "two distributions declare the same driver id and no [drivers.resolve] row disambiguates, so resolve() refuses the unqualified id rather than picking one. The registration-time half of the same fact is OW-D-013 OW_DRIVER_DUPLICATE_ID: a raise at registration and a rejection at resolution are two sites, not one"
+sites   = ["04-driver-system.md:1218", "04-driver-system.md:1563", "04-driver-system.md:2675"]
+
+[[code]]
+numeric = "OW-D-055"
+symbol  = "OW_DRIVER_TOMBSTONED"
+meaning = "the id is in the shipped tombstone set, refused with the quoted reason from the tombstone card. Installation is not consent: a tombstoned driver present on disk is still not resolvable"
+sites   = ["04-driver-system.md:1342", "04-driver-system.md:1563"]
+
+[[code]]
+numeric = "OW-D-056"
+symbol  = "OW_DRIVER_DEPRECATED_REMOVED"
+meaning = "RELEASE >= the card's [deprecation] removed_in, so the driver is past the release at which it stops resolving. Below removed_in the card still runs and records a deprecation Degradation instead"
+sites   = ["04-driver-system.md:1563", "04-driver-system.md:1584", "04-driver-system.md:1590"]
+
+[[code]]
+numeric = "OW-D-057"
+symbol  = "OW_DRIVER_PRODUCES_INSUFFICIENT"
+meaning = "the requirement's requires_produces is not a subset of the card's [capability] produces, so the driver cannot emit something the caller declared it needs"
+sites   = ["04-driver-system.md:1345", "04-driver-system.md:1564"]
+
+[[code]]
+numeric = "OW-D-058"
+symbol  = "OW_DRIVER_CAPABILITY_BELOW_FLOOR"
+meaning = "a requested capability floor is not met by the card's [capability.*] declaration, compared per the field semantics of section 2.2 - ladders by rank, sets by superset, booleans by implication, and forfeits inverted"
+sites   = ["04-driver-system.md:1347", "04-driver-system.md:1564"]
+
+[[code]]
+numeric = "OW-D-059"
+symbol  = "OW_DRIVER_GRANULARITY_MISMATCH"
+meaning = "the requirement named a granularity and the card does not offer it. Checked only when requested, so a requirement that names none cannot be refused on this gate"
+sites   = ["04-driver-system.md:1346", "04-driver-system.md:1564"]
+
+[[code]]
+numeric = "OW-D-060"
+symbol  = "OW_DRIVER_NO_WITNESS_SET"
+meaning = "a billed corpus-granularity requirement reached a driver with neither a witness set nor a cohort, so the spend would be unattributable"
+sites   = ["04-driver-system.md:1352", "04-driver-system.md:1564"]
+
+[[code]]
+numeric = "OW-D-061"
+symbol  = "OW_DRIVER_LICENCE_TIER_NOT_ALLOWED"
+meaning = "the tier compute_tier() derives from the card's licence facts is not in [licence] allow_tiers. The tier is always computed and never declared (DR15), so this cannot be cleared by editing the card. Also carries the local [licence] jurisdiction and fields_of_use exclusions, which the plan gives no code of their own"
+sites   = ["04-driver-system.md:1348", "04-driver-system.md:1565", "04-driver-system.md:1918"]
+
+[[code]]
+numeric = "OW-D-062"
+symbol  = "OW_DRIVER_LICENCE_ACK_MISSING"
+meaning = "a restricted-or-above driver has no acknowledgement row in omniweave.acks.toml. A fresh install of a restricted driver is refused twice over - once by the tier allowlist and once by the missing ack"
+sites   = ["04-driver-system.md:1349", "04-driver-system.md:1565"]
+
+[[code]]
+numeric = "OW-D-063"
+symbol  = "OW_DRIVER_LICENCE_ACK_STALE"
+meaning = "the acknowledgement exists but its recorded licence_sha256 no longer matches the installed licence text, so the operator acknowledged different terms than the ones now on disk. The refusal prints both digests"
+sites   = ["04-driver-system.md:1350", "04-driver-system.md:1565", "04-driver-system.md:1913"]
+
+[[code]]
+numeric = "OW-D-064"
+symbol  = "OW_DRIVER_COST_CLASS_NOT_PERMITTED"
+meaning = "the card's cost class is not in [drivers.cost] allow_classes - a billed_api driver on a host that permits only free ones. 08-runtime.md:2073 prints this condition under the spelling OW_DRIVER_COST_CLASS_FORBIDDEN; the member name at 04-driver-system.md:1565 is the definition site and governs"
+sites   = ["04-driver-system.md:1351", "04-driver-system.md:1565"]
+
+[[code]]
+numeric = "OW-D-065"
+symbol  = "OW_DRIVER_NOT_IN_LOCKFILE"
+meaning = "require_lock is set and the driver has no row in omniweave.lock, so a card appeared that the lockfile never pinned"
+sites   = ["04-driver-system.md:1357", "04-driver-system.md:1565"]
+
+[[code]]
+numeric = "OW-D-066"
+symbol  = "OW_DRIVER_UNATTESTED"
+meaning = "the card's recomputed attestation does not match the recorded one and the requirement did not explicitly pin the driver. Attestation is tamper-evidence and not authentication, so a pin is the sanctioned override"
+sites   = ["04-driver-system.md:1356", "04-driver-system.md:1565"]
+
+[[code]]
+numeric = "OW-D-067"
+symbol  = "OW_DRIVER_HARDWARE_ABSENT"
+meaning = "the card's [requires] hardware is not satisfiable on this host - no GPU, or too little VRAM for the declared floor"
+sites   = ["04-driver-system.md:1353", "04-driver-system.md:1566"]
+
+[[code]]
+numeric = "OW-D-068"
+symbol  = "OW_DRIVER_BINARY_ABSENT"
+meaning = "a binary the card declares it needs is not on PATH. The other half of the hardware-satisfiable gate, split from HARDWARE_ABSENT because the fix is an install and not a machine"
+sites   = ["04-driver-system.md:1353", "04-driver-system.md:1566"]
+
+[[code]]
+numeric = "OW-D-069"
+symbol  = "OW_DRIVER_ISOLATION_NOT_PERMITTED"
+meaning = "no isolation mode the card can run under is grantable under policy - wasm is in the vocabulary and not built at v1, so the grantable set is inproc and subproc"
+sites   = ["04-driver-system.md:1358", "04-driver-system.md:1566", "04-driver-system.md:1650"]
+
+[[code]]
+numeric = "OW-D-070"
+symbol  = "OW_DRIVER_TRUST_INSUFFICIENT"
+meaning = "an operator named this id in [drivers] inproc but its computed trust does not clear the six conjuncts inproc requires, so the config line is refused loudly rather than silently ignored. A card that merely REQUESTS inproc is degraded to subproc instead, recording Degradation(kind=\"isolation_shortfall\")"
+sites   = ["04-driver-system.md:1358", "04-driver-system.md:1566", "04-driver-system.md:1646"]
+
+[[code]]
+numeric = "OW-D-071"
+symbol  = "OW_DRIVER_QUARANTINED"
+meaning = "the driver was quarantined earlier in this run after a crash, so it is not offered again for the remainder of the run"
+sites   = ["04-driver-system.md:1355", "04-driver-system.md:1566"]
+
+[[code]]
+numeric = "OW-D-072"
+symbol  = "OW_DRIVER_PROBE_UNAVAILABLE"
+meaning = "the capability probe returned status unavailable. missing[] is machine-actionable and fix_hint is printed, so the refusal names the thing to install. Runs in a worker that imports the driver's own dependencies and never the framework's"
+sites   = ["04-driver-system.md:1354", "04-driver-system.md:1539", "04-driver-system.md:1567"]
+
+[[code]]
+numeric = "OW-D-073"
+symbol  = "OW_CARD_CODE_MISMATCH"
+meaning = "the loaded class or the worker's HELLO_ACK disagrees with the card on port, schema_version, driver_id or version. Checked twice on purpose - an inproc driver has no HELLO_ACK, an exec driver has no importable class, and a subproc worker may be a different build than the card the host read from disk. Refused BEFORE any work"
+sites   = ["04-driver-system.md:1544", "04-driver-system.md:1548", "04-driver-system.md:1568"]
+
+[[code]]
+numeric = "OW-G-001"
+symbol  = "OW_GRAPH_TOO_LARGE"
+meaning = "op.cluster refuses a graph above MAX_CLUSTER_EDGES = 8,000,000 node pairs: pure-Python Louvain stops at the cap, and omniweave-driver-leiden is the driver seam named above it"
+raised_by = "GraphError"
+fix     = "ow config set graph.passes.enable <the roster without the Pass writing the most edges>   # or omniweave-driver-leiden, the seam above MAX_CLUSTER_EDGES"
+# The numeric is minted here, because the plan allocates the symbol and no numeric: the mirror of
+# OW-S-060, whose symbol was minted for a plan-allocated numeric. It is the first OW-G row. The
+# leiden driver is out of tree and its licence unverified (charter F40), so the fix names the
+# roster first. D690.
+sites   = ["06-structure-extraction.md:702", "06-structure-extraction.md:1944", "12-performance.md:1149"]
+
+# ── D819. The first OW-Q row: 13-quality.md section 13.2 allocates OW-Q-012..018 with
+# their meanings, and section 5.4 makes 012 the class that fails the golden build.
+
+[[code]]
+numeric = "OW-Q-012"
+symbol  = "OW_GOLDEN_CHURN_UNEXPLAINED"
+meaning = "unexplained golden churn: a pages or outline change with an empty shape delta, or a shape delta the page-wise sums of pages contradict; a non-deterministic reducer, an order leak or a rollup that disagrees with the counters it sums to. There is no override (D819)"
+fix     = "ow eval golden --explain <file>"
+raised_by = "QualityError"
+sites   = ["13-quality.md:1845", "13-quality.md:737"]
+
+# ── D834. Q-G25's marker check: 13-quality.md section 13.2's fourteenth row, printed by
+# tools/gate_placement.py over every test file it finds misplaced.
+
+[[code]]
+numeric = "OW-Q-014"
+symbol  = "OW_TEST_MISPLACED"
+meaning = "a test marked for a tier lives outside that tier's directory, or a test file inside a tier's directory does not carry its marker, so the tier selection runs it in the wrong job (Q-G25)"
+fix     = "move the test, do not move the marker"
+raised_by = "QualityError"
+sites   = ["13-quality.md:1849", "13-quality.md:266", "13-quality.md:1830"]
+
+# ── D846. Q-G24's decrease: 13-quality.md section 13.2's thirteenth row, printed by
+# tools/gate_inventory.py for each area whose count fell with no BLESS.log row, and cleared by
+# `ow eval bless --inventory`, which writes the inventory and the row together.
+
+[[code]]
+numeric = "OW-Q-013"
+symbol  = "OW_TEST_INVENTORY_DECREASED"
+meaning = "the test inventory decreased in an area: fewer tests or properties were collected than eval/inventory.toml holds at the base, and the change adds no BLESS.log row for the inventory, so a skipif, a broken marker or a deleted conftest.py may have removed them silently (Q-G24)"
+fix     = "OMNIWEAVE_BLESS=1 ow eval bless --inventory --reason '<why the tests went>'"
+raised_by = "QualityError"
+sites   = ["13-quality.md:1847", "13-quality.md:1829", "13-quality.md:80"]
+
+# ---------------------------------------------------------------------------
+# THE EXIT TABLE. 18-api-sketch.md section 2.3; 10-interfaces.md section 6.2.
+#
+# Twelve rows, beside the OW-* register because both answer "what happened", and because
+# 18-api-sketch.md:996 fixes the home: "One table, in codes.toml beside the OW-* register, so
+# `ow explain` prints it and `ow surface emit` generates it into docs/AGENTS.md."
+#
+# The PYTHON form is omniweave_core.errors.EXIT_CODES, and the two are not a duplication that
+# nobody noticed: a generator may not read a file (10-interfaces.md:229), so the artefact side
+# needs a constant, and `check_register()` holds this array to that tuple in both directions
+# and in this order. Same arrangement the [area.*] tables have with AREA_CLASSES.
+#
+# `classes` names the OwError leaves whose EXIT is this code; test_errors.py asserts each one.
+# Five rows name none, and 18-api-sketch.md:1016 says why: the exit code is a pure function of
+# the EXCEPTION class, and 3, 4, 8 and 9 are not exceptions. `note` carries what they are
+# instead. `slug` is the short form llms.txt publishes (10-interfaces.md:2526).
+# ---------------------------------------------------------------------------
+
+[[exit]]
+code    = 0
+slug    = "ok"
+meaning = "ok — also `low_confidence`, and also `absent` unless `--fail-on` names it"
+note    = "—"
+
+[[exit]]
+code    = 1
+slug    = "usage"
+meaning = "usage or configuration error"
+classes = ["UsageError", "ConfigError", "ResourceLimit"]
+
+[[exit]]
+code    = 2
+slug    = "not-found"
+meaning = "not found: no such corpus, cite, addr, document or Action"
+classes = ["NotFoundError"]
+
+[[exit]]
+code    = 3
+slug    = "absent"
+meaning = "`verdict = absent` (only with `--fail-on absent`)"
+note    = "a `Verdict`, not an exception"
+
+[[exit]]
+code    = 4
+slug    = "degraded"
+meaning = "`verdict = degraded` (only with `--fail-on degraded`)"
+note    = "a `Verdict`, not an exception"
+
+[[exit]]
+code    = 5
+slug    = "budget"
+meaning = "budget exhausted / `DEFERRED_BUDGET` — the message names the approving command"
+classes = ["BudgetExhausted"]
+
+[[exit]]
+code    = 6
+slug    = "policy"
+meaning = "policy refusal: licence tier, `restriction_bits`, a missing egress grant, a path outside roots"
+classes = ["PolicyRefusal"]
+
+[[exit]]
+code    = 7
+slug    = "store-busy"
+meaning = "store busy: another writer holds the corpus (names host, pid, age)"
+classes = ["StoreBusy"]
+
+[[exit]]
+code    = 8
+slug    = "out-gate-refused"
+meaning = "an OUT gate did not return `passed` — `ow out check`, `ow out verify --class render`"
+note    = "a `GateStatus`, not an exception"
+
+[[exit]]
+code    = 9
+slug    = "not-configured"
+meaning = "not configured (`ow install --check`)"
+note    = "a detection result, not an exception"
+
+[[exit]]
+code    = 64
+slug    = "capability-missing"
+meaning = "required capability missing — matches `omniweave-target/1`'s exit 64"
+classes = ["CapabilityMissing"]
+
+[[exit]]
+code    = 70
+slug    = "internal"
+meaning = "internal error (prints the `OW-*` code and the report command)"
+classes = ["InternalError"]
+note    = "and `OwError`'s floor"

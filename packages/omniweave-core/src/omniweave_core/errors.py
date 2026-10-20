@@ -544,9 +544,15 @@ def register_path() -> Path:
     """Locate `codes.toml`.
 
     Read through `importlib.resources.files()` and never `__file__` or `__path__[0]`
-    (11-repo-layout.md section 2.6 rule 1). The register is not among the five packaged files
-    that section enumerates, so a workspace checkout falls back to the repo root, which is where
-    11-repo-layout.md section 1.1 puts it.
+    (11-repo-layout.md section 2.6 rule 1).
+
+    **The register ships in core's wheel** (D897), as `omniweave_core/codes.toml`, a committed copy
+    of the repo-root file that 11-repo-layout.md section 1.1 makes the register's home and G13
+    diffs. Section 2.6 enumerates five packaged files and this is not among them, but an installed
+    release that could not read it printed every error by symbol alone and `ow explain` resolved
+    nothing, while section 2.4's minimum profile asks for the `OW-D-*` code as declared.
+    `test_codes_packaged.py` holds the copy byte-identical to the root. The ancestor walk remains
+    for a tree that has only the root file.
     """
     anchor = resources.files("omniweave_core")
     packaged = anchor.joinpath(_REGISTER_NAME)

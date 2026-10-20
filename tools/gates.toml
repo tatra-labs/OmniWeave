@@ -1011,6 +1011,7 @@ the three offline install-profile installs and their per-profile assertions"""
 # The minimum profile's refusal message earns its own assertion because it is the only thing
 # standing between the smallest install and a user who concludes the framework is broken.
 profiles      = ["laptop-minimum", "laptop-working", "all-packages-minus-vision"]
+runner        = ["tools/check_wheelhouse.py"]
 step          = """
 fresh venvs from an offline wheelhouse, built in the `build` job from the wheels that release will \
 publish (section 2.4)"""
