@@ -15,6 +15,8 @@ import json
 import os
 import sqlite3  # noqa: TID251 -- the assertions read the store the verb wrote.
 import time
+import tomllib
+import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -22,6 +24,7 @@ import omniweave.__main__ as launcher
 import pytest
 from jsonschema import Draft202012Validator
 from omniweave.surface import add as verb
+from omniweave_core.acquire import Added, unit_media_types
 from omniweave_core.locks import store_write_lock
 
 if TYPE_CHECKING:
@@ -300,3 +303,180 @@ def test_python_m_omniweave_dispatches_add(
     monkeypatch.setattr("os.environ", {"OMNIWEAVE_HOME": str(project / "owhome")})
     assert launcher.main(["add", "docs", "--dry-run", "--quiet"]) == 0
     assert capsys.readouterr().out == "0\n"
+
+
+# ---------------------------------------------------------------------------------------------
+# D887: a driver that is not installed is named, with the install that reads it
+# ---------------------------------------------------------------------------------------------
+
+CARDS = {
+    "omniweave-pdf": ["omniweave-pdf/src/omniweave_pdf/driver.toml"],
+    "omniweave-office": [
+        "omniweave-office/src/omniweave_office/driver.toml",
+        "omniweave-office/src/omniweave_office/text/driver.toml",
+    ],
+    "omniweave-vision": ["omniweave-vision/src/omniweave_vision/driver.toml"],
+}
+
+
+def _formats(relative: str) -> list[str]:
+    root = Path(__file__).resolve().parents[4] / "packages"
+    card = tomllib.loads((root / relative).read_text(encoding="utf-8"))
+    return list(card["capability"]["formats"])
+
+
+def test_installs_is_the_shipped_ingest_cards_formats_in_both_directions() -> None:
+    """Every format an ingest card reads has a remedy, and every remedy names a card that reads
+    it. `application/pdf` is read by two; its remedy is `omniweave-pdf`, OCR its fallback."""
+    read_by: dict[str, set[str]] = {}
+    for dist, cards in CARDS.items():
+        for card in cards:
+            for media in _formats(card):
+                read_by.setdefault(media, set()).add(dist)
+    assert set(verb.INSTALLS) == set(read_by)
+    for media, dist in verb.INSTALLS.items():
+        assert dist in read_by[media], media
+    assert read_by["application/pdf"] == {"omniweave-pdf", "omniweave-vision"}
+    assert verb.INSTALLS["application/pdf"] == "omniweave-pdf"
+
+
+@pytest.fixture
+def uninstalled(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """`omniweave-office` reported absent, so the `.txt` units wait for its install."""
+    asked: list[str] = []
+
+    def installed(distribution: str) -> bool:
+        asked.append(distribution)
+        return distribution != "omniweave-office"
+
+    monkeypatch.setattr(verb, "_installed", installed)
+    return asked
+
+
+def test_nothing_completed_and_all_waiting_for_an_install_is_64_naming_it(
+    project: Path, uninstalled: list[str]
+) -> None:
+    """11-repo-layout.md section 2.4's minimum-profile refusal: exit 64, `OW-D-009`, the install,
+    no traceback -- and the drain still ran, so the units wait at `identified` for the ingest."""
+    code, out, err = _run(["docs"], project)
+    assert (code, out) == (64, "")
+    assert "ow: OW-D-009: no driver for .txt is installed, so 2 unit(s) stopped at identify" in err
+    assert "fix: pip install omniweave-office   # then: ow ingest --corpus handbook" in err
+    assert "Traceback" not in err
+    assert err.startswith("ow ingest  run "), "the drain's progress is printed first"
+    assert _states(project) == [("identified", 2)]
+    assert uninstalled == ["omniweave-office"], "asked once per distribution"
+
+
+def test_the_refusal_is_the_error_object_under_render_json_and_json_errors(
+    project: Path, uninstalled: list[str]
+) -> None:
+    del uninstalled
+    code, out, _ = _run(["docs", "--render", "json"], project)
+    assert code == 64
+    error = json.loads(out)["error"]
+    assert (error["code"], error["numeric"]) == ("OW_DRIVER_FORMAT_UNSUPPORTED", "OW-D-009")
+    (project / "docs" / "c.txt").write_text("A new file, so the add queues it.", encoding="utf-8")
+    code, _, err = _run(["docs/c.txt", "--json-errors", "--quiet"], project)
+    assert code == 64
+    assert json.loads(err.splitlines()[-1])["exit"] == 64
+
+
+def test_a_unit_waiting_for_something_else_keeps_exit_0_and_each_row_its_own_fix(
+    project: Path, uninstalled: list[str]
+) -> None:
+    """A `.zip` no first-party distribution reads, and a `.bin` the drain fails: an install is not
+    ALL that is owed, so the add answers 0 and the rows say what each one waits for."""
+    del uninstalled
+    (project / "docs" / "c.bin").write_bytes(bytes(range(256)) * 4)
+    with zipfile.ZipFile(project / "docs" / "d.zip", "w") as archive:
+        archive.writestr("inner.txt", "zipped")
+    code, out, _ = _run(["docs", "--render", "json"], project)
+    assert code == 0
+    approve = {row["uri"].rsplit("/", 1)[-1]: row["approve"] for row in json.loads(out)["pending"]}
+    assert approve == {
+        "a.txt": "pip install omniweave-office",
+        "b.txt": "pip install omniweave-office",
+        "c.bin": "ow ingest --corpus handbook",
+        "d.zip": "ow ingest --corpus handbook",
+    }
+    reasons = {row["uri"].rsplit("/", 1)[-1]: row["reason"] for row in json.loads(out)["pending"]}
+    assert reasons["d.zip"] == "no_driver", "application/zip: typed, and no remedy to name"
+
+
+def test_an_installed_distribution_that_routes_nothing_is_configuration_and_exit_0(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """02 section 7.4: installed and not enabled is not an install's to fix."""
+    monkeypatch.setattr(verb, "_installed", lambda _distribution: True)
+    code, out, _ = _run(["docs"], project)
+    assert code == 0
+    assert out.splitlines()[-1] == "  ow ingest --corpus handbook"
+
+
+def test_installed_reads_the_environment() -> None:
+    assert verb._installed("omniweave") is True
+    assert verb._installed("omniweave-not-a-distribution") is False
+
+
+def test_the_kind_is_the_extension_or_the_name() -> None:
+    assert verb._kind("file:///c:/docs/Report%20Q3.PDF") == ".pdf"
+    assert verb._kind("file:///docs/Makefile") == "Makefile"
+
+
+def test_unit_media_types_reads_only_what_detection_stamped(project: Path) -> None:
+    assert _run(["docs", "--quiet"], project)[0] == 0
+    store = _store(project)
+    conn = sqlite3.connect(store)
+    try:
+        uris = [row[0] for row in conn.execute("SELECT unit_uri FROM unit ORDER BY unit_uri")]
+        conn.execute("UPDATE unit SET media_type = NULL WHERE unit_uri = ?", (uris[1],))
+        conn.commit()
+    finally:
+        conn.close()
+    found = unit_media_types(store, [*uris, "file:///nowhere.txt"])
+    assert found == {uris[0]: "text/plain"}
+    assert unit_media_types(project / "absent.owstore", uris) == {}
+
+
+def test_the_refusal_is_only_for_an_add_that_did_nothing_but_wait_for_an_install() -> None:
+    waiting = {
+        "uri": "file:///d/r.pdf",
+        "reason": "no_driver",
+        "approve": "pip install omniweave-pdf",
+    }
+    report: dict[str, Any] = {"corpus": "c", "completed": [], "pending": [waiting]}
+    with pytest.raises(verb.CapabilityMissing) as refused:
+        verb._refuse_uninstalled(report)
+    assert refused.value.missing == ("omniweave-pdf",)
+    assert type(refused.value).EXIT == 64
+    verb._refuse_uninstalled({**report, "completed": [{"uri": "file:///d/a.pdf"}]})
+    verb._refuse_uninstalled({**report, "pending": []})
+    failed = {**waiting, "reason": "failed"}
+    verb._refuse_uninstalled({**report, "pending": [waiting, failed]})
+
+
+def test_only_a_no_driver_row_names_the_install() -> None:
+    """A unit the drain failed is owed a retry, not an install, whatever its media type reads."""
+    added = Added(
+        scopes=(),
+        discovered=2,
+        skipped=0,
+        unchanged=0,
+        queued=("file:///d/a.pdf", "file:///d/b.pdf"),
+        skipped_why={},
+        written=True,
+    )
+    built = verb._report(
+        "c",
+        added,
+        {"file:///d/a.pdf": "identified", "file:///d/b.pdf": "failed"},
+        [],
+        dry_run=False,
+        rerun="ow add d",
+        installs=dict.fromkeys(added.queued, "omniweave-pdf"),
+    )
+    assert [(row["reason"], row["approve"]) for row in built["pending"]] == [
+        ("no_driver", "pip install omniweave-pdf"),
+        ("failed", "ow ingest --corpus c"),
+    ]
