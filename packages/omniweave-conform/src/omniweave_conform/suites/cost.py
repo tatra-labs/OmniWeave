@@ -45,11 +45,13 @@ from omniweave_core.drivers.card import COST_SHAPES
 from omniweave_core.errors import DriverHostError
 from omniweave_ports.types import CostClass, DriverError, Port
 
+from omniweave_conform.compile_harness import golden_of, run_compile
 from omniweave_conform.harness import run_parse
 from omniweave_conform.result import Assertion, SuiteResult
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
+    from pathlib import Path
 
     from omniweave_conform.subject import Subject
 
@@ -137,7 +139,8 @@ def run(subject: Subject) -> SuiteResult:
 
     checks = list(_declaration_assertions(subject, model))
     fit = ""
-    if subject.card.identity.port is Port.PARSE and subject.fixtures:
+    golden = golden_of(subject) if subject.card.identity.port is Port.COMPILE else None
+    if (subject.card.identity.port is Port.PARSE and subject.fixtures) or golden is not None:
         try:
             driver = subject.instantiate()
         except (DriverHostError, DriverError, TypeError, ValueError) as exc:
@@ -145,7 +148,14 @@ def run(subject: Subject) -> SuiteResult:
                 Assertion("the driver constructs", ok=False, detail=str(exc), locus="construct")
             )
         else:
-            runtime, fit = _runtime_assertions(subject, driver, model)
+            if golden is not None:
+                runtime, fit = _runtime_assertions(
+                    model, lambda: _compile_points(subject, driver, golden), per="plan units"
+                )
+            else:
+                runtime, fit = _runtime_assertions(
+                    model, lambda: _parse_points(subject, driver), per="input bytes"
+                )
             checks.extend(runtime)
     else:
         checks.append(
@@ -153,8 +163,8 @@ def run(subject: Subject) -> SuiteResult:
                 "there is a run to price",
                 ok=False,
                 detail=(
-                    "no parse/1 fixtures; the egress, GPU and curve halves of this row are "
-                    "measured over a run and were not measured"
+                    "no parse/1 fixtures and no compile/1 golden; the egress, GPU and curve "
+                    "halves of this row are measured over a run and were not measured"
                 ),
                 locus="runtime",
             )
@@ -222,23 +232,46 @@ def _declaration_assertions(subject: Subject, model: Any) -> Iterator[Assertion]
         )
 
 
-def _runtime_assertions(
-    subject: Subject, driver: object, model: Any
-) -> tuple[list[Assertion], str]:
-    """Run the fixtures, count sockets and GPU imports, and fit the declared shape."""
-    free = model.cost_class is CostClass.FREE
+def _parse_points(subject: Subject, driver: object) -> list[tuple[int, float]]:
+    """Each fixture parsed once: `(input bytes, ms)`."""
     scratch = subject.scratch(SUITE)
-    before = frozenset(sys.modules)
     points: list[tuple[int, float]] = []
+    for index, fixture in enumerate(subject.fixtures):
+        at = time.monotonic_ns()
+        try:
+            run_parse(driver, fixture, scratch / f"f{index}")
+        except Exception as exc:
+            del exc  # A refusal is `contract`'s finding; it costs nothing and prices nothing.
+            continue
+        points.append((fixture.byte_len, (time.monotonic_ns() - at) / _NS_PER_MS))
+    return points
+
+
+def _compile_points(subject: Subject, driver: object, golden: Path) -> list[tuple[int, float]]:
+    """D893: the golden compiled once: `(plan units, ms)`.
+
+    One point, so the fit reports that a line needs three and fails nothing; the egress and GPU
+    halves are what one compile can price. A golden that will not compile is `contract`'s and the
+    target suite's finding, and prices nothing.
+    """
+    at = time.monotonic_ns()
+    try:
+        compiled = run_compile(driver, subject.card, golden, subject.scratch(SUITE) / "golden")
+    except Exception as exc:
+        del exc
+        return []
+    units = len(compiled.plan.units) if compiled.plan is not None else 0
+    return [(units, (time.monotonic_ns() - at) / _NS_PER_MS)]
+
+
+def _runtime_assertions(
+    model: Any, measure: Callable[[], list[tuple[int, float]]], *, per: str
+) -> tuple[list[Assertion], str]:
+    """Run `measure`, count sockets and GPU imports across it, and fit the declared shape."""
+    free = model.cost_class is CostClass.FREE
+    before = frozenset(sys.modules)
     with _counting_sockets() as sockets:
-        for index, fixture in enumerate(subject.fixtures):
-            at = time.monotonic_ns()
-            try:
-                run_parse(driver, fixture, scratch / f"f{index}")
-            except Exception as exc:
-                del exc  # A refusal is `contract`'s finding; it costs nothing and prices nothing.
-                continue
-            points.append((fixture.byte_len, (time.monotonic_ns() - at) / _NS_PER_MS))
+        points = measure()
     gained = sorted(
         name for name in frozenset(sys.modules) - before if name.split(".")[0] in _GPU_MODULES
     )
@@ -256,7 +289,7 @@ def _runtime_assertions(
             locus="gpu",
         ),
     ]
-    fit, note = _fit(points)
+    fit, note = _fit(points, per=per)
     # The ONLY failable direction. A `constant` claim against a curve that visibly grows with
     # input is a card that will under-reserve on every large document; a `linear_*` claim
     # measured over ten small fixtures is dominated by per-call overhead and a low r2 says
@@ -281,7 +314,7 @@ def _runtime_assertions(
     return checks, f" fits at r2={fit:.2f}" if fit is not None else ""
 
 
-def _fit(points: list[tuple[int, float]]) -> tuple[float | None, str]:
+def _fit(points: list[tuple[int, float]], *, per: str = "input bytes") -> tuple[float | None, str]:
     """R-squared of `ms = a + b*bytes` over the fixtures that ran. Reported; asserted one way.
 
     Over a handful of small fixtures, per-call overhead dominates and a genuinely linear parser
@@ -301,4 +334,4 @@ def _fit(points: list[tuple[int, float]]) -> tuple[float | None, str]:
     if sxx == 0 or syy == 0:
         return None, "every fixture is the same size, or every run took the same time"
     r2 = (sxy * sxy) / (sxx * syy)
-    return r2, f"{n} points, r2 = {r2:.3f} of ms against input bytes"
+    return r2, f"{n} points, r2 = {r2:.3f} of ms against {per}"
