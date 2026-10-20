@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import io
 import json
 import os
 import re
 import subprocess  # noqa: TID251 - a second interpreter is the only witness for PYTHONHASHSEED.
 import sys
 import tomllib
+import zipfile
 from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -51,6 +53,7 @@ from omniweave_core.out.receipt import Receipt
 from omniweave_ports import ArtifactKind
 from omniweave_target_pptx.driver import HERE, NORMALIZERS, PROVENANCE, PptxCompiler
 from omniweave_target_pptx.lower import _pack
+from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE, MSO_SHAPE_TYPE
 
 # ---------------------------------------------------------------------------------------------
@@ -820,3 +823,22 @@ def test_a_width_grows_with_the_scale_unless_the_node_says_it_does_not(
     tmp_path: Path, body: str, width: int
 ) -> None:
     assert line_of(lowered(tmp_path, slide(body)).first()).get("w") == str(width)
+
+
+def _unzipped(raw: bytes) -> dict[str, bytes]:
+    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+        return {info.filename: zf.read(info) for info in zf.infolist()}
+
+
+def test_the_collected_members_are_what_deck_save_zips(monkeypatch: pytest.MonkeyPatch) -> None:
+    """D887: `_members()` walks python-pptx's private writer steps; this is what notices a
+    python-pptx that moves them. Then the package builds under 09 section 6's
+    `SOURCE_DATE_EPOCH=0`, which 3.14's `zipfile` turned into a `struct.error` inside `save()`."""
+    deck = Presentation()
+    deck.slides.add_slide(deck.slide_layouts[6])
+    monkeypatch.delenv("SOURCE_DATE_EPOCH", raising=False)
+    saved = io.BytesIO()
+    deck.save(saved)
+    assert _pack._members(deck) == _unzipped(saved.getvalue())
+    monkeypatch.setenv("SOURCE_DATE_EPOCH", "0")
+    assert set(_unzipped(_pack._package(deck))) == set(_unzipped(saved.getvalue()))

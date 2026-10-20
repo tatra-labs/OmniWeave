@@ -70,12 +70,12 @@ properties = 0
 
 [[area]]
 area = "omniweave-target-docx/unit"
-tests = 149
+tests = 150
 properties = 0
 
 [[area]]
 area = "omniweave-target-pptx/unit"
-tests = 803
+tests = 804
 properties = 0
 
 [[area]]
