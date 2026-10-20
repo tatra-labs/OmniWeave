@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D893: 04-driver-system.md:2087 build note -- cost priced over a compile card's golden
+# blessed-because: D894: 04-driver-system.md:2101 build note -- D576 rulings: RECORD dist_sha256; the manifest pins first-party cards; require_lock refuses unpinned/local
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -30,7 +30,7 @@ documents-frozen  47fddfabf24a37948ddd8b8f2d7da02e19864cfb4c42a352e951a85b3158ba
 documents-frozen  6ffc2070193630b39f15385fc8640ec7b1a3e242ef098426f2754d4070a8026d  01-principles.md
 documents-frozen  1dad5c8ef798764c3bd3cc772210f6085569c8d38c4d272db6444575171efbff  02-architecture.md
 documents-frozen  df252315b17cd3b51f235d2f752d22bf4f01f5b0ceb735724680f4bc002514ea  03-document-model.md
-documents-frozen  6b2ab36ef6b295c6242ff512a16e3619caf5782af924f32628ea31aace0b1db6  04-driver-system.md
+documents-frozen  ddcd4cbc6fd9e3021239d04b94bbdef9ff81bb750a574fc105179017a4d5dc72  04-driver-system.md
 documents-frozen  4db10013935a3de62e8cee075a463e94ef2ee414ae33a98365f41be562ec7183  05-ingest-and-routing.md
 documents-frozen  7c4c7946cad37746e602ef662e72d6a75ee43cc6b9367173c906cddc6d9f763e  06-structure-extraction.md
 documents-frozen  97aa422fb509a6de8657eefa2a765553f09d0f47b873c2e5ea40025ff8252007  07-store-and-retrieval.md
