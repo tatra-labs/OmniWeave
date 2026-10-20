@@ -79,7 +79,7 @@ def test_origin_span_is_none_and_the_reason_is_checkable() -> None:
     """
     from anydoc import _anydoc  # noqa: PLC0415 -- the installed wheel, read for its shape.
 
-    stub = Path(_anydoc.__file__).with_suffix(".pyi")
+    stub = Path(_anydoc.__file__).parent / "_anydoc.pyi"  # D886: not `.abi3.pyi` on POSIX
     text = stub.read_text(encoding="utf-8")
     block = text.split("class Block:", 1)[1].split("@final", 1)[0]
     fields = re.findall(r"^\s{4}(\w+):", block, re.MULTILINE)

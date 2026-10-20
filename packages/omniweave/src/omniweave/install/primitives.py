@@ -90,7 +90,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "BACKUP_LIMIT",
-    "BEGIN",
+    "BEGIN",  # nosemgrep: omniweave-no-sql-begin-outside-store -- a marker's name, not SQL
     "BOM",
     "DEFAULT_STYLE",
     "END",

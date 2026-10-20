@@ -104,6 +104,7 @@ __all__ = [
     "connect",
     "connect_readonly",
     "heal_wal",
+    "immediate",
     "process_create_time",
     "readonly_target",
     "refuse_missing_fts5",
@@ -1136,6 +1137,37 @@ def _snapshot_ms(requested: int | None) -> int:
             fix="[retrieval] snapshot_ms = 2000",
         )
     return min(want, MAX_SNAPSHOT_MS)
+
+
+class _Transacting(Protocol):
+    """What `immediate()` needs of a connection: `execute` and `in_transaction`."""
+
+    @property
+    def in_transaction(self) -> bool: ...
+
+    def execute(self, sql: str, /) -> object: ...
+
+
+@contextmanager
+def immediate(connection: _Transacting) -> Iterator[None]:
+    """One `BEGIN IMMEDIATE` ... `COMMIT` for a caller holding no transaction; joins one it holds.
+
+    **D886: the demarcation is the store's** (INV-17, ST1; G8's `no-sql-begin-outside-store`). A
+    writer outside `omniweave_core/store/` that must be atomic on its own, and must also join a
+    caller's transaction when there is one (05:2884's three `route_threshold` rows with the policy
+    install), states that here rather than issuing its own `BEGIN`. A joined transaction is left
+    to its owner: nothing is committed or rolled back on its behalf.
+    """
+    if connection.in_transaction:
+        yield
+        return
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        yield
+    except BaseException:
+        connection.execute("ROLLBACK")
+        raise
+    connection.execute("COMMIT")
 
 
 @contextmanager

@@ -105,7 +105,9 @@ rules:
     languages: [python]
     severity: ERROR
     patterns:
-      - pattern-regex: "['\"]\\s*(?i:BEGIN)(\\s+(?i:DEFERRED|IMMEDIATE|EXCLUSIVE|TRANSACTION))?\\b"
+      # D886: `[ \t]`, not `\s`. `\s*` let a docstring's closing quotes and a `begin: str` field
+      # on the next line match, which CI's first Linux run reported in install/primitives.py.
+      - pattern-regex: "['\"][ \\t]*(?i:BEGIN)([ \\t]+(?i:DEFERRED|IMMEDIATE|EXCLUSIVE|TRANSACTION))?\\b"
     paths:
       include:
         - "packages/*/src/**"

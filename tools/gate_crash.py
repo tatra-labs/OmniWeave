@@ -83,6 +83,7 @@ __all__ = [
     "child",
     "main",
     "spawn_kill",
+    "wait_released",
 ]
 
 EXIT_CLEAN = 0
@@ -185,6 +186,34 @@ def child(root: Path, mode: str, boundary: str, *, emit: Emit) -> int:
 # ---------------------------------------------------------------------------------------------
 
 
+RELEASE_TIMEOUT_S = 10.0
+"""D886: how long a killed child's store files may stay held by the OS before that is a failure."""
+
+
+def wait_released(store: Path, *, seconds: float = RELEASE_TIMEOUT_S) -> None:
+    """Return once the store and its `-wal` and `-shm` sidecars can be opened read-write again.
+
+    D886. `Popen.wait()` returns when a killed child has exited, and on CI's hosted Windows runners
+    the files it held stayed unopenable a moment longer: three cells of three, the reopen's first
+    `PRAGMA journal_mode = WAL` failed with `disk I/O error` after SQLite's own short retry. The
+    probe is a plain `open(..., "r+b")` and never SQLite, because closing the last WAL connection
+    can checkpoint and delete the very `-wal` these tests assert a killed writer leaves behind.
+    """
+    deadline = time.monotonic() + seconds
+    while True:
+        try:
+            for path in (store, Path(f"{store}-wal"), Path(f"{store}-shm")):
+                if path.exists():
+                    with path.open("r+b"):
+                        pass
+        except OSError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.05)
+        else:
+            return
+
+
 def spawn_kill(*, timeout_s: float = CHILD_PARK_TIMEOUT_S) -> Killer:
     """Build the `kill` callable `crashmatrix.verify_boundary()` takes. Real processes, real signal.
 
@@ -230,6 +259,7 @@ def spawn_kill(*, timeout_s: float = CHILD_PARK_TIMEOUT_S) -> Killer:
             raise ChildNeverParkedError(f"the child for {mode}/{boundary} never parked")
         proc.kill()
         proc.wait(timeout=30)
+        wait_released(path)
         ready.unlink(missing_ok=True)
         return cm.RunReport(
             scenario=str(mode),

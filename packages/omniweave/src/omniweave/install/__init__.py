@@ -82,7 +82,7 @@ from omniweave.install.types import (
 
 __all__ = [
     "ACTIONS",
-    "BEGIN",
+    "BEGIN",  # nosemgrep: omniweave-no-sql-begin-outside-store -- a marker's name, not SQL
     "BUILT",
     "END",
     "HOOK_SETS",

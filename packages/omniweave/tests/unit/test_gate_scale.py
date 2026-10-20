@@ -553,7 +553,9 @@ def test_the_claim_width_table_measures_one_row_per_width_and_costs_less_as_it_w
         assert width.calls == -(-gate.WIDTH_PROBE_ROWS // width.width) + 1, "plus the empty claim"
         assert width.ms_per_row > 0
     costs = [width.ms_per_row for width in measured.widths]
-    assert costs == sorted(costs, reverse=True), "a wider claim costs LESS per row, always"
+    # D886: the extremes, not every adjacent pair. A shared CI runner reordered 8 and 64 rows
+    # once; what the gate reports, and D190's finding, is that width 1 is the expensive claim.
+    assert costs[-1] < costs[0], f"a wider claim costs LESS per row: {costs}"
 
 
 def test_the_queue_depth_table_measures_one_claim_at_each_depth(tmp_path: Path) -> None:
