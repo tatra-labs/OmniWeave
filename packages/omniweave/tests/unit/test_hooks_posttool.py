@@ -127,9 +127,12 @@ def test_the_plans_own_isabs_accepts_a_path_this_rule_exists_to_reject() -> None
     """
     drive_relative = (chr(92) + "ow.exe", "/usr/bin/ow")
 
+    # D887: Python 3.13 stopped calling a rooted, driveless path absolute on Windows, so the plan's
+    # function and this module agree from 3.13 on; the module's own answer is held on every version.
+    accepted_by_isabs = sys.version_info < (3, 13)
     for candidate in drive_relative:
         #  PTH117 wants `Path.is_absolute()`; calling the plan's function is the point here.
-        assert os.path.isabs(candidate) is True  # noqa: PTH117
+        assert os.path.isabs(candidate) is accepted_by_isabs  # noqa: PTH117
         assert Path(candidate).is_absolute() is False
         assert command(candidate)[0] != candidate  # the module rejects what the plan would accept
 

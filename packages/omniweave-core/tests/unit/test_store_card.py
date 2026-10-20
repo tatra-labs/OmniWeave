@@ -32,6 +32,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3  # noqa: TID251 -- see the note below
+from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 import pytest
@@ -76,9 +77,22 @@ checker and swallows the next real citation. The bound is generous: the longest 
 shipped DDL is under 200 characters."""
 
 
+_OPENED: list[sqlite3.Connection] = []
+"""D887: every connection this module's helpers open, closed after each test. Python 3.13 warns
+on an unclosed `sqlite3.Connection`, and `filterwarnings = error` makes that a failure."""
+
+
+@pytest.fixture(autouse=True)
+def _close_what_the_helpers_opened() -> Iterator[None]:
+    yield
+    while _OPENED:
+        _OPENED.pop().close()
+
+
 def _open(path: Path) -> sqlite3.Connection:
     """A migrated `.owstore`, the same way `test_store_maintenance.py` opens one."""
     conn = sqlite3.connect(path)
+    _OPENED.append(conn)
     conn.execute("PRAGMA foreign_keys = ON")
     for migration in migration_files():
         conn.executescript(migration.read_text(encoding="utf-8"))

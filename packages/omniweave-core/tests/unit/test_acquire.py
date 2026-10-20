@@ -1858,7 +1858,9 @@ def test_a_bounded_read_allocates_what_the_file_holds_and_not_what_the_bound_all
         _now, peak = tracemalloc.get_traced_memory()
     finally:
         tracemalloc.stop()
-    assert peak < 1 << 16
+    # D887: a buffer or two, not the bound. 3.14 raised `io.DEFAULT_BUFFER_SIZE` to 128 KiB, so
+    # 64 KiB stopped holding on the peak while the 2 GiB request D566 caught stays far away.
+    assert peak < max(1 << 16, 2 * io.DEFAULT_BUFFER_SIZE), peak
 
 
 def test_a_bounded_read_past_one_chunk_is_whole_and_still_bounded(tmp_path: Path) -> None:

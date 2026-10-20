@@ -121,13 +121,28 @@ def store(tmp_path: Path) -> Iterator[ow.StoreThread]:
         yield thread
 
 
+_OPENED: list[Any] = []
+"""D887: every connection `_reader()` opens, closed after each test. Python 3.13 warns on an
+unclosed connection, and `filterwarnings = error` makes that a failure. `Any` for the TID251
+reason `_reader()`'s own docstring gives."""
+
+
+@pytest.fixture(autouse=True)
+def _close_what_the_helpers_opened() -> Iterator[None]:
+    yield
+    while _OPENED:
+        _OPENED.pop().close()
+
+
 def _reader(tmp_path: Path) -> Any:
     """A second connection for reading back what the store thread committed.
 
     `Any` for `test_run_manifest.py`'s reason: it is a `sqlite3.Connection` and TID251 bans naming
     that module here, and a ban a type annotation could step around would not be one.
     """
-    return ow.connect(tmp_path / "index.owstore")
+    connection = ow.connect(tmp_path / "index.owstore")
+    _OPENED.append(connection)
+    return connection
 
 
 @dataclass

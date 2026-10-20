@@ -36,6 +36,7 @@ from __future__ import annotations
 import ast
 import inspect
 import sqlite3  # noqa: TID251
+from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -60,10 +61,23 @@ CONN_PRAGMAS = ("busy_timeout = 5000", "foreign_keys = ON", "journal_mode = WAL"
 """The head of 07:168-171's list -- the three these tests actually depend on, in that order."""
 
 
+_OPENED: list[sqlite3.Connection] = []
+"""D887: every connection this module's helpers open, closed after each test. Python 3.13 warns
+on an unclosed `sqlite3.Connection`, and `filterwarnings = error` makes that a failure."""
+
+
+@pytest.fixture(autouse=True)
+def _close_what_the_helpers_opened() -> Iterator[None]:
+    yield
+    while _OPENED:
+        _OPENED.pop().close()
+
+
 def _open(path: Path) -> sqlite3.Connection:
     """A connection with the shipped migrations applied, in the order the prefixes fix."""
     fresh = not path.exists()
     conn = sqlite3.connect(path)
+    _OPENED.append(conn)
     if fresh:
         for pragma in CREATE_PRAGMAS:
             conn.execute(f"PRAGMA {pragma}")
