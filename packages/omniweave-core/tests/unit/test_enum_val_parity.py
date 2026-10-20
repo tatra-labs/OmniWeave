@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import re
 import sqlite3  # noqa: TID251 -- see WHY THIS APPLIES THE MIGRATIONS, in the docstring.
+from collections.abc import Iterator
 
 import pytest
 from omniweave_core.model.enums import ENUM_DOMAINS, enum_val_rows
@@ -69,7 +70,7 @@ _SEED = re.compile(r"\('(?P<domain>[a-z_]+)',\s*(?P<ord>\d+),\s*'(?P<name>[a-z_0
 
 
 @pytest.fixture(scope="module")
-def applied() -> sqlite3.Connection:
+def applied() -> Iterator[sqlite3.Connection]:
     """The four migrations applied in numeric order onto an empty database.
 
     Numeric order matters and is not cosmetic: 11-repo-layout.md:1188 fixes it because L4's indexes
@@ -79,7 +80,8 @@ def applied() -> sqlite3.Connection:
     con.execute("PRAGMA foreign_keys = ON")
     for path in sorted(MIGRATIONS.glob("[0-9][0-9][0-9][0-9]_*.sql")):
         con.executescript(path.read_text(encoding="utf-8"))
-    return con
+    yield con
+    con.close()  # D887
 
 
 def _seeded_text() -> list[tuple[str, int, str]]:

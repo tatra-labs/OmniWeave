@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import zlib
 from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
@@ -48,8 +49,20 @@ def corpus(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, str]:
     return dest, digest
 
 
+ZLIB_NG: Final = "zlib-ng" in zlib.ZLIB_VERSION
+"""CPython 3.14's Windows build links zlib-ng, whose deflate stream differs from zlib's at every
+level but 0, and every package here is a deflated zip. The pin is zlib's stream: it is checked on
+every cell that links zlib (Windows 3.12 and 3.13, every Linux and macOS cell), and a zlib-ng cell
+checks the generator is still deterministic rather than comparing a stream it cannot produce."""
+
+
 def test_the_pin_is_the_digest_of_a_freshly_generated_corpus(corpus: tuple[Path, str]) -> None:
     """13-quality.md:588: a generator change is a one-line visible diff in EXPECTED.sha256."""
+    if ZLIB_NG:
+        assert gen.manifest_bytes(gen.documents()[:10]) == gen.manifest_bytes(gen.documents()[:10])
+        pytest.skip(
+            f"the pin is zlib's deflate stream and this interpreter links {zlib.ZLIB_VERSION}"
+        )
     pins = {
         path: digest
         for digest, _, path in (

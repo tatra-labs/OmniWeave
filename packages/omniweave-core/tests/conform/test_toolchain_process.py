@@ -148,7 +148,11 @@ def test_a_compile_writes_its_receipt_exits_zero_and_answers_ok(tmp_path: Path) 
     assert done.node == Path(str(NODE))
     assert done.result["echo"] == {"unit": "u01", "t": "compile"}, "the request's fields, verbed"
     assert Path(done.result["cwd"]).resolve() == job.resolve(), "ruling 4: cwd is the JobDir"
-    assert set(done.result["env"]) <= set(ENV_ALLOWLIST), "no token, no NODE_OPTIONS"
+    # D886: macOS injects `__CF_USER_TEXT_ENCODING` into every process at exec, after any
+    # allowlist could act, so it is the OS's and not a leak.
+    injected = {"__CF_USER_TEXT_ENCODING"} if sys.platform == "darwin" else set()
+    leaked = set(done.result["env"]) - set(ENV_ALLOWLIST) - injected
+    assert not leaked, f"no token, no NODE_OPTIONS: {sorted(leaked)}"
     assert "render.mjs: started in ok" in done.stderr_tail, "kept, never parsed"
 
 

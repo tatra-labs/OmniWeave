@@ -1279,6 +1279,11 @@ class Supervisor:
                         self._closed_queue and await self._drained()
                     ):
                         return
+                    #  D887: the batch that finished DURING this claim set `_progress`, and this
+                    #  count already saw it finish (`_in_flight == 0`). Left set, it woke the next
+                    #  `_settle()` at once and the quiet tail lost a sweep. Nothing is in flight to
+                    #  set it again, so the next quiet pass is a whole sweep interval.
+                    self._progress.clear()
                 await self._settle()
                 continue
             empty = 0

@@ -1217,8 +1217,9 @@ def peak_rss_bytes(pid: int) -> tuple[int | None, str]:
     available on any platform: the POSIX arms read `/proc/<pid>/statm` (Linux, 04:1751) and
     return a stated shortfall on darwin, where the plan's recipe is `ps -o rss= -p <pid>` -- *"a
     G8-permitted `subprocess` site inside `host/subproc.py`"*, which this file is. The darwin
-    arm is written as a stated shortfall and not as a `ps` call, because a shell-out this machine
-    cannot exercise is worse than a recorded gap.
+    arm was written as a stated shortfall and not as a `ps` call, because a shell-out this machine
+    cannot exercise is worse than a recorded gap; D886 wrote the `ps` call once CI's macOS cells
+    could run it (`_peak_rss_darwin`).
 
     Never raising is deliberate. A watchdog that raised while sampling would turn a memory
     question into a host crash, and 04:1769's whole argument for the watchdog is that it is free.
@@ -1232,10 +1233,33 @@ def peak_rss_bytes(pid: int) -> tuple[int | None, str]:
         return _peak_rss_win32(pid)
     if sys.platform == "linux":  # pragma: no cover -- not the machine this was built on
         return _peak_rss_linux(pid)
-    return (  # pragma: no cover -- darwin, which this machine is not
-        None,
-        "darwin samples with `ps -o rss= -p <pid>` (04-driver-system.md:1751); not run here",
+    return _peak_rss_darwin(pid)  # pragma: no cover -- darwin, which CI's macOS cells run
+
+
+DARWIN_PS: Final = "/bin/ps"
+"""D886: an absolute path, so the darwin arm never searches `PATH`."""
+
+
+def _peak_rss_darwin(pid: int) -> tuple[int | None, str]:  # pragma: no cover -- darwin only
+    """The darwin arm, 04-driver-system.md:1751's recipe: `ps -o rss= -p <pid>`. D886.
+
+    Written as a stated shortfall until CI's macOS cells existed to run it, because a shell-out
+    nothing could exercise was worse than a recorded gap. `ps` prints the CURRENT resident set in
+    KILOBYTES, as procfs gives a current one in pages, so the tuple's second element says so.
+    """
+    done = run_captured(
+        (DARWIN_PS, "-o", "rss=", "-p", str(pid)),
+        stdin=b"",
+        cwd="/",
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+        timeout_s=5.0,
     )
+    if done.returncode != 0:
+        return (None, f"{DARWIN_PS} exited {done.returncode}")
+    text = done.stdout.decode("ascii", "replace").strip()
+    if not text.isdigit():
+        return (None, f"{DARWIN_PS} printed {text!r}")
+    return (int(text) * 1024, "ps -o rss= (current, kilobytes)")
 
 
 class _JobObjectBasicProcessIdList(ctypes.Structure):

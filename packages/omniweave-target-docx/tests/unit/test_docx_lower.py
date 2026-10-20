@@ -888,3 +888,24 @@ def test_the_part_maps_every_address_to_its_construct(tmp_path: Path) -> None:
         "u01/e6": "table.td",
         "u01/e7": "note.footnote",
     }
+
+
+def _unzipped(raw: bytes) -> dict[str, bytes]:
+    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+        return {info.filename: zf.read(info) for info in zf.infolist()}
+
+
+def test_the_collected_members_are_what_document_save_zips(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """D887: `_members()` walks python-docx's private writer steps; this is what notices a
+    python-docx that moves them. Then the package builds under 09 section 6's
+    `SOURCE_DATE_EPOCH=0`, which 3.14's `zipfile` turned into a `struct.error` inside `save()`."""
+    document = docx.Document()
+    document.add_paragraph("one")
+    monkeypatch.delenv("SOURCE_DATE_EPOCH", raising=False)
+    saved = io.BytesIO()
+    document.save(saved)
+    assert _pack._members(document) == _unzipped(saved.getvalue())
+    monkeypatch.setenv("SOURCE_DATE_EPOCH", "0")
+    assert set(_unzipped(_pack._package(document))) == set(_unzipped(saved.getvalue()))

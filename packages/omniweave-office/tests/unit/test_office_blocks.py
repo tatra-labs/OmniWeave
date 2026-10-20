@@ -54,7 +54,8 @@ def test_every_anydoc_variant_maps_to_a_kind_the_plan_names() -> None:
     """`BLOCK_KINDS` covers exactly the wheel's eight, with the plan's two renames."""
     from anydoc import _anydoc  # noqa: PLC0415
 
-    stub = Path(_anydoc.__file__).with_suffix(".pyi").read_text(encoding="utf-8")
+    # D886: `_anydoc.abi3.so` on POSIX, so `with_suffix` named `_anydoc.abi3.pyi`; the stub is bare.
+    stub = (Path(_anydoc.__file__).parent / "_anydoc.pyi").read_text(encoding="utf-8")
     section = stub.split("class Block:", 1)[1]
     literal = section.split("Literal[", 1)[1].split("]", 1)[0]
     variants = {piece.strip().strip('"') for piece in literal.split(",") if piece.strip()}

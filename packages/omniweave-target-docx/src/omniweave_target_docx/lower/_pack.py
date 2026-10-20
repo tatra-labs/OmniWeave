@@ -11,11 +11,9 @@ sorted, and `write_opc()` decides the member order and every ZIP field.
 from __future__ import annotations
 
 import datetime as dt
-import io
-import zipfile
 from collections.abc import Callable, Mapping, Sequence
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Any, Final, cast
 
 import docx
 from docx.enum.section import WD_SECTION
@@ -23,6 +21,7 @@ from docx.enum.style import WD_STYLE_TYPE
 from docx.image.exceptions import UnrecognizedImageError
 from docx.image.image import Image
 from docx.opc.constants import RELATIONSHIP_TYPE
+from docx.opc.pkgwriter import PackageWriter
 from docx.oxml.ns import qn
 from docx.shared import Inches, Mm, Pt, RGBColor
 from lxml import etree  # type: ignore[attr-defined] -- lxml ships no stubs
@@ -56,6 +55,7 @@ from omniweave_target_docx.lower._stories import KINDS, STYLE_IDS, Notes
 
 if TYPE_CHECKING:
     from docx.document import Document
+    from docx.opc.package import OpcPackage
     from docx.styles.style import CharacterStyle, ParagraphStyle
     from omniweave_core.out import AssetLedger, CarrierDoc, ILBundle, Plan
     from omniweave_core.out.carrier import CarrierNode
@@ -259,11 +259,44 @@ def _core(document: Document, title: str, clock_ns: int) -> None:
     core.modified = when
 
 
+class _Members:
+    """The physical writer python-docx's `PackageWriter` writes through, keeping each member.
+
+    D887: `document.save()` zips every member by bare name, and from 3.14 `zipfile` stamps a bare
+    name with `SOURCE_DATE_EPOCH` (gh-91279) and no 1980 floor. Under 09 section 6's
+    `SOURCE_DATE_EPOCH=0` the save raised `struct.error`, and so would any epoch before 1980 in the
+    local time zone. The members were only ever unzipped again for `write_opc()`, which pins every
+    date itself, so they are collected instead and that first zip is never built.
+    """
+
+    def __init__(self) -> None:
+        self.members: dict[str, bytes] = {}
+
+    def write(self, pack_uri: Any, blob: bytes) -> None:
+        self.members[str(pack_uri.membername)] = blob
+
+
+def _members(document: Document) -> dict[str, bytes]:
+    """What `document.save()` would zip, member for member: `OpcPackage.save()`'s marshal, then
+    `PackageWriter.write()`'s three steps.
+
+    The steps are python-docx's own, private, methods; `test_docx_lower.py` holds the result equal
+    to an unzipped `document.save()`, so a python-docx that moves them fails there and not in a
+    user's compile.
+    """
+    package = cast("OpcPackage", document.part.package)  # a Document is always in one
+    parts = package.parts
+    for part in parts:
+        part.before_marshal()
+    sink = _Members()
+    PackageWriter._write_content_types_stream(sink, parts)
+    PackageWriter._write_pkg_rels(sink, package.rels)
+    PackageWriter._write_parts(sink, parts)  # type: ignore[arg-type]
+    return sink.members
+
+
 def _package(document: Document) -> bytes:
-    buffer = io.BytesIO()
-    document.save(buffer)
-    with zipfile.ZipFile(io.BytesIO(buffer.getvalue())) as zf:
-        members = {info.filename: zf.read(info) for info in zf.infolist()}
+    members = _members(document)
     members["docProps/app.xml"] = _app(members["docProps/app.xml"])
     return write_opc({name: _canonical(name, data) for name, data in members.items()})
 

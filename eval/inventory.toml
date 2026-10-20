@@ -25,7 +25,7 @@ properties = 0
 
 [[area]]
 area = "omniweave-core/unit"
-tests = 9494
+tests = 9498
 properties = 18
 
 [[area]]
@@ -70,12 +70,12 @@ properties = 0
 
 [[area]]
 area = "omniweave-target-docx/unit"
-tests = 149
+tests = 150
 properties = 0
 
 [[area]]
 area = "omniweave-target-pptx/unit"
-tests = 803
+tests = 804
 properties = 0
 
 [[area]]
@@ -95,5 +95,5 @@ properties = 0
 
 [[area]]
 area = "omniweave/unit"
-tests = 4329
+tests = 4330
 properties = 0

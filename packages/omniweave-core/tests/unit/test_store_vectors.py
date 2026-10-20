@@ -15,6 +15,7 @@ Specified in 07-store-and-retrieval.md sections 1.1, 3.7 and 3.9, and 16-roadmap
 from __future__ import annotations
 
 import sqlite3  # noqa: TID251 -- see the module docstring: the fixtures write a REAL sidecar.
+from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 import pytest
@@ -50,7 +51,7 @@ MANIFEST: dict[str, str] = {
 
 
 @pytest.fixture
-def sidecar(tmp_path: Path) -> sqlite3.Connection:
+def sidecar(tmp_path: Path) -> Iterator[sqlite3.Connection]:
     """A connection with an empty `vec` sidecar ATTACHed, and the DDL the module ships applied.
 
     ATTACHed rather than opened as the main schema, because that is the only way the backend is
@@ -64,7 +65,8 @@ def sidecar(tmp_path: Path) -> sqlite3.Connection:
     connection.executemany(
         "INSERT INTO vec.vec_manifest(k, v) VALUES(?, ?)", list(MANIFEST.items())
     )
-    return connection
+    yield connection
+    connection.close()  # D887
 
 
 def _digest(n: int) -> bytes:

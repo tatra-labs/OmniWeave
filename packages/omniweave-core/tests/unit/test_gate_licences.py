@@ -773,3 +773,32 @@ def test_all_three_surfaces_do_measurable_work_on_head(gate: ModuleType, policy:
     artefacts = gate.unpacked_artifacts(graph, policy)
     assert {f.severity for f in artefacts} <= {gate.NOTICE, gate.DENY}
     assert any("bundled notice file" in f.detail for f in artefacts)
+
+
+def test_a_dev_only_package_is_reported_and_never_judged(gate: ModuleType) -> None:
+    """D886: semgrep (LGPL-2.1, dev group only) is a notice; a runtime twin stays a denial."""
+    graph = {
+        "semgrep": gate.Resolved("semgrep", "1.0", frozenset({"dev"}), conditional=False),
+        "lgplrt": gate.Resolved("lgplrt", "1.0", frozenset({"runtime"}), conditional=False),
+        "both": gate.Resolved("both", "1.0", frozenset({"dev", "runtime"}), conditional=False),
+        "marker-pdf": gate.Resolved("marker-pdf", "1.0", frozenset({"dev"}), conditional=False),
+    }
+    deny = "LGPL-2.1-or-later trips [deny] LGPL-2.1-or-later"
+    findings = [
+        gate.Finding("resolved-graph", gate.DENY, "semgrep==1.0", deny),
+        gate.Finding("unpacked-artifacts", gate.UNREVIEWED, "semgrep==1.0", "no licence text"),
+        gate.Finding("resolved-graph", gate.DENY, "lgplrt==1.0", deny),
+        gate.Finding("resolved-graph", gate.DENY, "both==1.0", deny),
+        gate.Finding("resolved-graph", gate.DENY, "marker-pdf==1.0", "[deny] name -- see R-L1"),
+        gate.Finding("import-graph", gate.DENY, "semgrep==1.0", "imports a denied module"),
+    ]
+    out = gate.dev_only_notices(findings, graph)
+    assert [f.severity for f in out] == [
+        gate.NOTICE,
+        gate.NOTICE,
+        gate.DENY,
+        gate.DENY,
+        gate.DENY,
+        gate.DENY,
+    ]
+    assert out[0].detail == f"dev scope only, in no wheel (D886): {deny}"

@@ -23,7 +23,7 @@ import os
 import string
 import unicodedata
 from collections.abc import Mapping, Sequence
-from pathlib import Path, PurePath
+from pathlib import Path, PurePath, PureWindowsPath
 from typing import TYPE_CHECKING, Literal
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
@@ -136,9 +136,21 @@ def _join_under(target: str, ident: str) -> str:
 
     `Path(root) / "/abs"` silently yields `/abs`, which is how a connector-supplied id would
     walk out of `[roots] source` before `confine()` ever saw it.
+
+    **The refusal is the same on every platform** (D886). On POSIX `PurePath("C:/windows")` is a
+    relative path, so a drive-qualified id joined harmlessly under the root there and re-rooted on
+    Windows: one corpus, two behaviours. CI's first Linux run caught it. Windows path syntax is
+    checked everywhere, so an id is either portable or refused.
     """
     relative = PurePath(ident)
-    if relative.is_absolute() or relative.drive or ident.startswith(("/", "\\")):
+    windows = PureWindowsPath(ident)
+    if (
+        relative.is_absolute()
+        or relative.drive
+        or windows.is_absolute()
+        or windows.drive
+        or ident.startswith(("/", "\\"))
+    ):
         raise ValueError(f"canonical_uri: {ident!r} is not relative to the locator target")
     return os.fspath(Path(target) / relative)
 

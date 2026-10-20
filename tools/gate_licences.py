@@ -67,6 +67,7 @@ import tomllib
 from dataclasses import dataclass
 from importlib.metadata import Distribution, distributions, packages_distributions
 from pathlib import Path
+from typing import Final
 
 __all__ = [
     "DENY",
@@ -84,6 +85,7 @@ __all__ = [
     "Waiver",
     "classify_licence_text",
     "denied_reason",
+    "dev_only_notices",
     "expression_alternatives",
     "import_graph",
     "load_policy",
@@ -887,6 +889,47 @@ def _report(findings: list[Finding], *, show_notices: bool) -> None:
         _emit(f"{len(notices)} notice(s) across {subjects} subject(s); --notices to list them")
 
 
+DEV_ONLY: Final = frozenset({"dev"})
+
+
+def dev_only_notices(findings: list[Finding], graph: dict[str, Resolved]) -> list[Finding]:
+    """D886: a distribution reachable from the dev group alone is reported, never judged.
+
+    The `licences.toml` header gives G3 its scope: what omniweave *"may depend on"*. A package
+    only the workspace root's dev group reaches (`semgrep`, `atheris` and their closures) ships in
+    no wheel. CI's first Linux run made this concrete: `semgrep` is LGPL-2.1, which `[deny]`
+    forbids, and the charter puts it in the dev group, so the plan contradicted itself on that
+    one package. The register's own route, an `[exception.<name>]` with `scope = "dev"`, is an
+    approval, and the register ships none at release 1. So a dev-only package's denial or
+    unreviewed licence is a notice that names the original finding.
+    - **Name denials stay total.** The four R-L1 datalab distributions are refused in every scope,
+      because their detector is written over the whole graph.
+    - **The import graph is untouched.** It judges first-party code, which ships.
+    """
+    by_subject = {f"{r.name}=={r.version}": r for r in graph.values()}
+    out: list[Finding] = []
+    for finding in findings:
+        resolved = by_subject.get(finding.subject)
+        dev_only = (
+            resolved is not None
+            and resolved.scopes == DEV_ONLY
+            and finding.surface != "import-graph"
+            and finding.severity in {DENY, UNREVIEWED}
+            and not finding.detail.startswith("[deny] name")
+        )
+        out.append(
+            Finding(
+                finding.surface,
+                NOTICE,
+                finding.subject,
+                f"dev scope only, in no wheel (D886): {finding.detail}",
+            )
+            if dev_only
+            else finding
+        )
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run all three surfaces. Exit 1 on a blocker, 2 on an unreviewed licence, 0 otherwise."""
     parser = argparse.ArgumentParser(description="G3 -- the build-time licence gate.")
@@ -899,6 +942,7 @@ def main(argv: list[str] | None = None) -> int:
     findings = scan_resolved_graph(graph, policy)
     findings += import_graph(policy, graph)
     findings += unpacked_artifacts(graph, policy, deep=args.deep)
+    findings = dev_only_notices(findings, graph)
 
     runtime = sum(1 for r in graph.values() if "runtime" in r.scopes)
     conditional = sum(1 for r in graph.values() if r.conditional)

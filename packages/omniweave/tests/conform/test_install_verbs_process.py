@@ -98,11 +98,31 @@ def test_a_word_that_is_no_root_still_names_what_is(tmp_path: Path) -> None:
     #  `hook` and `ingest` are not listed: 18:923 and 18:928 hide them from the tree.
     refused = _ow(tmp_path, "frobnicate")
     assert refused.returncode == 1
-    named = (
-        b"(choose from 'add', 'corpora', 'cost', 'doc', 'doctor', 'eval', 'explain', 'graph', "
-        b"'hooks', 'install', 'open', 'out', 'query', 'serve', 'skills', 'surface', 'uninstall')"
-    )
-    assert named in refused.stderr
+    roots = [
+        "add",
+        "corpora",
+        "cost",
+        "doc",
+        "doctor",
+        "eval",
+        "explain",
+        "graph",
+        "hooks",
+        "install",
+        "open",
+        "out",
+        "query",
+        "serve",
+        "skills",
+        "surface",
+        "uninstall",
+    ]
+    # D886: argparse quoted each choice until a later 3.12 patch release dropped the quotes;
+    # CI's 3.12.15 prints them bare. The list is what is asserted, in either spelling.
+    quoted = "(choose from " + ", ".join(f"'{r}'" for r in roots) + ")"
+    bare = "(choose from " + ", ".join(roots) + ")"
+    stderr = refused.stderr.decode("utf-8", "replace")
+    assert quoted in stderr or bare in stderr, stderr
 
 
 def test_hooks_check_runs_the_installed_hooks_the_receipt_names(tmp_path: Path) -> None:
