@@ -1483,6 +1483,28 @@ def test_a_closed_queue_holding_a_deferred_row_keeps_its_quiet_tail() -> None:
     assert seconds >= 0.3, f"{seconds:.2f} s"
 
 
+class _ClaimsAcrossTheFinish(FakeQueue):
+    """The claim after the row's returns only once its batch has completed and the worker has
+    set `_progress`: the interleaving CI's ubuntu 3.14 cell met, which cut the tail to a sweep."""
+
+    def claim(self, batch: int, gen: int, worker: str, lease_ms: int) -> Sequence[WorkRow]:
+        rows = super().claim(batch, gen, worker, lease_ms)
+        if len(self.widths) == 2:
+            deadline = time.monotonic() + 5.0
+            while not self.completed and time.monotonic() < deadline:
+                time.sleep(0.005)
+            time.sleep(0.05)  # the worker's `finally`: `_in_flight -= 1`, then `_progress.set()`
+        return rows
+
+
+def test_a_batch_finishing_during_the_counted_claim_does_not_shorten_the_quiet_tail() -> None:
+    """D887: three empty claims a sweep apart, even when the batch finished inside the first."""
+    queue = _ClaimsAcrossTheFinish([[work_row(1)]], counts={"deferred": 1})
+    built = harness(queue, timings=loop_timings(deferred_sweep_ms=200), closed_queue=True)
+    _report, seconds = _timed(built)
+    assert seconds >= 0.35, f"{seconds:.2f} s: one sweep of the tail was skipped"
+
+
 def test_the_next_stage_a_slow_batch_enqueues_is_claimed_in_the_same_drain() -> None:
     """An empty claim counts toward the end only while nothing is in flight. A batch slower than
     the whole quiet tail used to outlive the claimer, and the rows it enqueued waited for the next
