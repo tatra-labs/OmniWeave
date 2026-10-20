@@ -710,3 +710,62 @@ def test_the_root_is_io_tmpdir_exactly_and_not_the_kits_scratch(
     result = run_suite("sandbox", _owtext(tmp_path))
     assert _failed(result, "write:owtext")
     assert "beside-tmp.txt" in result.failures()[0].detail
+
+
+# ---------------------------------------------------------------------------------------------
+# D892: fuzz over a compile card's IL and its compiled artefact
+
+
+def _contained(tmp_path: Path) -> Subject:
+    return _owtext(tmp_path, {fuzz.SEGFAULT_KEY: True})
+
+
+def test_the_owtext_compile_refuses_malformed_il_and_artefacts_by_type(tmp_path: Path) -> None:
+    result = run_suite("fuzz", _contained(tmp_path))
+    assert result.verdict is Verdict.PASS, [a.line() for a in result.assertions]
+    assert "over carrier() and postflight()" in result.summary
+
+
+class _UntypedCarrier(OwTextCompiler):
+    def carrier(self, path: str, text: str) -> Any:
+        if "\x00" in text:
+            raise KeyError("a nul in the IL")
+        return super().carrier(path, text)
+
+
+class _UntypedPostflight(OwTextCompiler):
+    def postflight(self, artifact: str, plan: Any) -> Any:
+        if Path(artifact).name.startswith("artefact-"):
+            raise IndexError("a malformed artefact")
+        return super().postflight(artifact, plan)
+
+
+@pytest.mark.parametrize(
+    ("compiler", "where"),
+    [(_UntypedCarrier, "carrier:"), (_UntypedPostflight, "postflight:")],
+)
+def test_an_untyped_failure_in_either_parser_fails_naming_where(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, compiler: type, where: str
+) -> None:
+    monkeypatch.setattr(Subject, "instantiate", lambda _self, **_kw: compiler())
+    result = run_suite("fuzz", _contained(tmp_path))
+    assert _failed(result, "typed")
+    (failure,) = result.failures()
+    assert where in failure.detail, failure.detail
+
+
+def test_an_input_over_the_hang_budget_fails_the_compile_fuzz(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(fuzz, "HANG_BUDGET_NS", -1)
+    assert _failed(run_suite("fuzz", _contained(tmp_path)), "hang")
+
+
+def test_a_compile_card_with_no_golden_has_nothing_to_malform(tmp_path: Path) -> None:
+    subject = Subject.of(OWTEXT_CARD, fixtures_dir=None, workdir=tmp_path)
+    assert run_suite("fuzz", subject).verdict is Verdict.UNKNOWN
+
+
+def test_the_compile_fuzz_still_asks_for_the_tools_contained_segfault(tmp_path: Path) -> None:
+    """Containment is a process's to show, for a compile card as for a parse card."""
+    assert _failed(run_suite("fuzz", _owtext(tmp_path)), "segfault")

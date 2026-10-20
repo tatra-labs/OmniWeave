@@ -44,17 +44,19 @@ Specified in 04-driver-system.md section 8.2 row 11; 03-document-model.md P28.
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_core.errors import DriverHostError, OwError
+from omniweave_core.out.carrier import CarrierParseError
 from omniweave_ports.types import DriverError, Port
 
+from omniweave_conform.compile_harness import GOLDEN_IL, golden_of, run_compile
 from omniweave_conform.harness import Fixture, MemoryBlobStore, run_parse
 from omniweave_conform.mutate import count, mutations
 from omniweave_conform.result import Assertion, SuiteResult
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from omniweave_conform.subject import Subject
 
@@ -108,6 +110,8 @@ def run(subject: Subject) -> SuiteResult:
     started = time.monotonic_ns()
     elapsed = lambda: (time.monotonic_ns() - started) / _NS_PER_MS  # noqa: E731
 
+    if subject.card.identity.port is Port.COMPILE:
+        return _compile(subject, elapsed)
     if subject.card.identity.port is not Port.PARSE:
         return SuiteResult.of(
             SUITE,
@@ -135,27 +139,148 @@ def run(subject: Subject) -> SuiteResult:
         )
 
     checks, tally = _assertions(subject, driver)
-    survived = subject.measurements.get(SEGFAULT_KEY)
-    checks.append(
-        Assertion(
-            "the deliberate segfault was contained and the run completed",
-            ok=survived is True,
-            detail=(
-                "a child dereferenced address 1 and the run continued around it"
-                if survived is True
-                else "a segfault must be survived by something OUTSIDE the segfaulting "
-                "process, and this library may not create one. Run "
-                "`python tools/ow_conform.py --card <card> --fixtures <dir>`, which spawns "
-                "the crash and reports whether the parent was still there afterwards"
-            ),
-            locus="segfault",
-            expected="a contained crash",
-            actual="contained" if survived is True else "not measured from in-process",
-        )
-    )
+    checks.append(_segfault(subject))
     summary = (
         f"{tally['execs']} execs, {tally['refused']} typed refusals, {tally['crashes']} crashes "
         f"contained, {tally['hangs']} hangs"
+    )
+    return SuiteResult.of(SUITE, checks, summary=summary, elapsed_ms=elapsed())
+
+
+def _segfault(subject: Subject) -> Assertion:
+    """The deliberate segfault, which only `tools/ow_conform.py`'s child can stage."""
+    survived = subject.measurements.get(SEGFAULT_KEY)
+    return Assertion(
+        "the deliberate segfault was contained and the run completed",
+        ok=survived is True,
+        detail=(
+            "a child dereferenced address 1 and the run continued around it"
+            if survived is True
+            else "a segfault must be survived by something OUTSIDE the segfaulting "
+            "process, and this library may not create one. Run "
+            "`python tools/ow_conform.py --card <card> --fixtures <dir>`, which spawns "
+            "the crash and reports whether the parent was still there afterwards"
+        ),
+        locus="segfault",
+        expected="a contained crash",
+        actual="contained" if survived is True else "not measured from in-process",
+    )
+
+
+COMPILE_TYPED: Final = (DriverError, OwError, CarrierParseError)
+"""D892: a compile driver's typed refusals. `DriverError` is every port's; `OwError` carries the
+`OW_TARGET_*` codes 09 gives a target's failures; `CarrierParseError` is `carrier()`'s declared
+refusal, the `ParseError` the framework's check records as order 0."""
+
+
+def _compile(subject: Subject, elapsed: Callable[[], float]) -> SuiteResult:
+    """D892: malformed IL through `carrier()`, and a malformed artefact through `postflight()`.
+
+    A compile driver's own parsers are its carrier, which reads the IL a caller hands it, and its
+    `postflight()`, which reads back the artefact it wrote. The corpus is the parse half's: every
+    mutation of every file under the golden's `il/`, and of the golden's compiled artefact. The
+    rule is the row's: a crash is allowed, a hang is not, and every refusal is typed.
+    """
+    golden = golden_of(subject)
+    if golden is None:
+        return SuiteResult.of(
+            SUITE,
+            [],
+            unknown="--fixtures named no golden fixture (a directory holding il/); the corpus "
+            "is generated FROM it, so there is nothing to malform",
+            elapsed_ms=elapsed(),
+        )
+    try:
+        driver: Any = subject.instantiate()
+    except (DriverHostError, DriverError, TypeError, ValueError) as exc:
+        return SuiteResult.of(
+            SUITE,
+            [Assertion("the driver constructs", ok=False, detail=str(exc), locus="construct")],
+            elapsed_ms=elapsed(),
+        )
+    scratch = subject.scratch(SUITE)
+    tally = {"execs": 0, "refused": 0, "crashes": 0, "hangs": 0, "ok": 0}
+    hangs: list[str] = []
+    untyped: list[str] = []
+    expected = 0
+
+    def attempt(where: str, call: Callable[[], object]) -> None:
+        at = time.monotonic_ns()
+        try:
+            call()
+            tally["ok"] += 1
+        except COMPILE_TYPED:
+            tally["refused"] += 1
+        except (RecursionError, MemoryError):
+            tally["crashes"] += 1
+        except Exception as exc:
+            untyped.append(f"{where}: {type(exc).__name__}: {exc}"[:100])
+        finally:
+            tally["execs"] += 1
+        if time.monotonic_ns() - at > HANG_BUDGET_NS:
+            hangs.append(where)
+            tally["hangs"] += 1
+
+    for source in sorted(path for path in (golden / GOLDEN_IL).rglob("*") if path.is_file()):
+        data = source.read_bytes()
+        expected += count(data)
+        for label, body in mutations(data):
+            text = body.decode("utf-8", "replace")
+            attempt(
+                f"carrier:{source.name}:{label}",
+                lambda t=text, n=source.name: driver.carrier(n, t),
+            )
+
+    try:
+        compiled = run_compile(driver, subject.card, golden, scratch / "golden")
+    except Exception as exc:  # attributed by `contract` and the target suite.
+        untyped.append(f"the golden itself: {type(exc).__name__}: {exc}"[:100])
+    else:
+        expected += count(compiled.body)
+        for number, (label, body) in enumerate(mutations(compiled.body)):
+            staged = scratch / f"artefact-{number}"
+            staged.write_bytes(body)
+            attempt(
+                f"postflight:{label}",
+                lambda a=str(staged), plan=compiled.plan: driver.postflight(a, plan),
+            )
+
+    checks = [
+        Assertion(
+            "no input took longer than the hang budget",
+            ok=not hangs,
+            detail=(
+                f"over {HANG_BUDGET_S}s: {', '.join(hangs[:4])}"
+                if hangs
+                else f"{tally['execs']} execs, none over {HANG_BUDGET_S}s"
+            ),
+            locus="hang",
+        ),
+        Assertion(
+            "every failure is a typed refusal: DriverError, an OwError, or CarrierParseError",
+            ok=not untyped,
+            detail=(
+                f"untyped: {'; '.join(untyped[:4])}"
+                if untyped
+                else f"{tally['refused']} typed refusals, {tally['crashes']} contained crashes"
+            ),
+            locus="typed",
+            expected="DriverError, OwError, CarrierParseError, RecursionError or MemoryError",
+            actual="; ".join(untyped[:3]) or "none",
+        ),
+        Assertion(
+            "every generated mutation was actually run",
+            ok=tally["execs"] >= expected,
+            detail=f"{tally['execs']} execs of {expected} mutations",
+            locus="corpus",
+            expected=str(expected),
+            actual=str(tally["execs"]),
+        ),
+        _segfault(subject),
+    ]
+    summary = (
+        f"{tally['execs']} execs over carrier() and postflight(), {tally['refused']} typed "
+        f"refusals, {tally['crashes']} crashes contained, {tally['hangs']} hangs"
     )
     return SuiteResult.of(SUITE, checks, summary=summary, elapsed_ms=elapsed())
 

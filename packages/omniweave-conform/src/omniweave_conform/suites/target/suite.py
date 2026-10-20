@@ -202,10 +202,14 @@ class LawOutcome:
 
 @dataclass(frozen=True, slots=True)
 class Compiled:
-    """Ruling 17: one golden compile's artefact and the receipt's `part_digest` (hex)."""
+    """Ruling 17: one golden compile's artefact and the receipt's `part_digest` (hex).
+
+    `plan` is the Plan `postflight()` was handed, so a caller can hand it the same one again
+    (D892: the kit's `fuzz` suite gives `postflight()` malformed artefacts under it)."""
 
     body: bytes
     part_digest: str
+    plan: Plan | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -305,7 +309,7 @@ def compile_golden(
     body, receipt = _compiled(
         compiler, prepared.plan, prepared.bundle, prepared.ledger, scratch, guard=guard
     )
-    return Compiled(body, receipt.part_digest)
+    return Compiled(body, receipt.part_digest, prepared.plan)
 
 
 def _prepared(

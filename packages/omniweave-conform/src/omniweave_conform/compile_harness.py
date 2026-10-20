@@ -52,6 +52,8 @@ class CompileRun:
 
     body: bytes
     part_digest: str
+    plan: Any = None
+    """The Plan `postflight()` was handed, for a suite that hands it a malformed artefact (D892)."""
 
     @property
     def byte_digest(self) -> str:
@@ -83,4 +85,4 @@ def run_compile(
     compiled = compile_golden(
         compiler, card, constructs_of(card), golden, workdir=workdir, guard=guard
     )
-    return CompileRun(compiled.body, compiled.part_digest)
+    return CompileRun(compiled.body, compiled.part_digest, compiled.plan)
