@@ -388,9 +388,20 @@ def refuse_missing_fts5(connection: sqlite3.Connection) -> None:
 
 
 def _apply(connection: sqlite3.Connection, pragmas: Sequence[str]) -> None:
-    """Issue `PRAGMA <p>` for each, in the given order, discarding the readings."""
+    """Issue `PRAGMA <p>` for each, in the given order, discarding the readings.
+
+    D886: a failure names the pragma and SQLite's extended error. CI's hosted Windows runners
+    failed a reopen after a kill-9 with a bare `disk I/O error`, which says neither which of the
+    six pragmas refused nor which of SQLite's dozens of `SQLITE_IOERR_*` causes it was. The
+    exception type is unchanged, so every caller's `except` still matches.
+    """
     for pragma in pragmas:
-        connection.execute(f"PRAGMA {pragma}")
+        try:
+            connection.execute(f"PRAGMA {pragma}")
+        except sqlite3.OperationalError as error:
+            name = getattr(error, "sqlite_errorname", None) or "unknown"
+            msg = f"PRAGMA {pragma}: {error} ({name})"
+            raise sqlite3.OperationalError(msg) from error
 
 
 def connect(
