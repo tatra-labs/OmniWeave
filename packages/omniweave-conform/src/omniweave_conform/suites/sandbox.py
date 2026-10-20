@@ -51,11 +51,12 @@ from typing import TYPE_CHECKING, Any, Final
 from omniweave_core.errors import DriverHostError
 from omniweave_ports.types import DriverError, Port
 
+from omniweave_conform.compile_harness import golden_of, run_compile
 from omniweave_conform.harness import run_parse
 from omniweave_conform.result import Assertion, SuiteResult
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from omniweave_conform.subject import Subject
 
@@ -180,6 +181,8 @@ def run(subject: Subject) -> SuiteResult:
     elapsed = lambda: (time.monotonic_ns() - started) / _NS_PER_MS  # noqa: E731
     needs_network = subject.card.hardware.needs_network
 
+    if subject.card.identity.port is Port.COMPILE:
+        return _compile(subject, elapsed, block=not needs_network)
     if subject.card.identity.port is not Port.PARSE:
         return SuiteResult.of(
             SUITE,
@@ -207,6 +210,82 @@ def run(subject: Subject) -> SuiteResult:
     writes = sum(1 for a in checks if a.locus.startswith("write:") and not a.ok)
     state = "socket-blocked" if not needs_network else "egress declared and recorded"
     summary = f"{state}; {writes} writes outside tmp"
+    return SuiteResult.of(SUITE, checks, summary=summary, elapsed_ms=elapsed())
+
+
+def _compile(subject: Subject, elapsed: Callable[[], float], *, block: bool) -> SuiteResult:
+    """D891: a `compile/1` card's golden, compiled with the driver's own calls sandboxed.
+
+    The sandbox is entered around `lower()` and `postflight()` alone, rooted at the driver's
+    `io.tmpdir`, so the kit's own writes between them (the job it prepares, the artefact it
+    stages for `postflight()` to read) are never the driver's finding. Reading the staged artefact
+    is a read, and only a write mode is a finding.
+    """
+    golden = golden_of(subject)
+    if golden is None:
+        return SuiteResult.of(
+            SUITE,
+            [],
+            unknown="--fixtures named no golden fixture (a directory holding il/); a sandbox "
+            "needs a run to contain",
+            elapsed_ms=elapsed(),
+        )
+    try:
+        driver = subject.instantiate()
+    except (DriverHostError, DriverError, TypeError, ValueError) as exc:
+        return SuiteResult.of(
+            SUITE,
+            [Assertion("the driver constructs", ok=False, detail=str(exc), locus="construct")],
+            elapsed_ms=elapsed(),
+        )
+    name = golden.name
+    watches: list[Watch] = []
+
+    @contextmanager
+    def guard(tmpdir: Path) -> Iterator[None]:
+        with _sandboxed(tmpdir, block=block) as watch:
+            watches.append(watch)
+            yield
+
+    checks: list[Assertion] = []
+    try:
+        run_compile(driver, subject.card, golden, subject.scratch(SUITE) / "compile", guard=guard)
+    except (EgressBlocked, DriverError):
+        pass  # a refusal under the sandbox is still a run; what it touched is the finding
+    except Exception as exc:
+        checks.append(
+            Assertion(
+                "the compile completes or refuses cleanly under the sandbox",
+                ok=False,
+                detail=f"{type(exc).__name__}: {exc}"[:160],
+                fixture=name,
+                locus="run",
+            )
+        )
+    writes = [path for watch in watches for path in watch.writes]
+    egress = [dial for watch in watches for dial in watch.egress]
+    checks.append(
+        Assertion(
+            "no write outside io.tmpdir",
+            ok=not writes,
+            detail=", ".join(writes[:3]) if writes else "0 writes outside tmp",
+            fixture=name,
+            locus=f"write:{name}",
+        )
+    )
+    checks.append(
+        Assertion(
+            "no egress under needs_network = false"
+            if block
+            else "egress is declared, and is recorded here rather than forbidden",
+            ok=not egress if block else True,
+            detail=", ".join(egress[:3]) if egress else "0 sockets opened during the compile",
+            fixture=name,
+            locus=f"egress:{name}",
+        )
+    )
+    state = "socket-blocked" if block else "egress declared and recorded"
+    summary = f"{state} around lower() and postflight(); {len(writes)} writes outside tmp"
     return SuiteResult.of(SUITE, checks, summary=summary, elapsed_ms=elapsed())
 
 
