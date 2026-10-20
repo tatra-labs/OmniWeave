@@ -86,6 +86,19 @@ batch_max_units = 2000
 max_input_bytes = 4194304              # MAX_IL_FILE_BYTES: one IL file at a time
 max_parts       = 2000                 # [compile] max_units
 
+[cost.model]                       # D889: the kit's cost suite requires one; a card with no
+                                   #   price is one the router cannot read, not a free one.
+class   = "free"
+shape   = "linear_per_part"
+unit    = "part"                   # One IL unit of the plan: a slide, a section, a scene.
+per_part    = { wall_ms = 45 }      # 12-performance.md B37: one pptx unit from retained IL,
+                                   #   p50 45 ms. A WALL CLOCK on the caller's machine;
+                                   #   `ow conform` writes the measured half.
+per_session = { }
+scaling     = { key = "plan.units", exponent = 1.0, reference = 1 }
+tokens_out_p95_multiple = 1.0
+max_retries = 0                    # The only value a first release accepts.
+
 [licence.code]
 spdx = "Apache-2.0"
 redistribution = "allowed"
