@@ -1273,17 +1273,18 @@ class Supervisor:
                 self._timings.lease_ms,
             )
             if not rows:
-                if self._inbox.empty() and self._in_flight == 0:
+                #  D898: a batch that finished DURING this claim may have enqueued the next
+                #  stage's rows after the claim looked, so this claim proves nothing quiet: it is
+                #  not counted, and `_settle()` returns at once (`_progress` is set) to claim
+                #  again. Counting it cost the quiet tail a sweep (D887's race); clearing
+                #  `_progress` instead, as D887 did, made every stage wait a sweep for the last.
+                finished_meanwhile = self._progress.is_set()
+                if self._inbox.empty() and self._in_flight == 0 and not finished_meanwhile:
                     empty += 1
                     if empty > QUIET_POLLS_BEFORE_SHED or (
                         self._closed_queue and await self._drained()
                     ):
                         return
-                    #  D887: the batch that finished DURING this claim set `_progress`, and this
-                    #  count already saw it finish (`_in_flight == 0`). Left set, it woke the next
-                    #  `_settle()` at once and the quiet tail lost a sweep. Nothing is in flight to
-                    #  set it again, so the next quiet pass is a whole sweep interval.
-                    self._progress.clear()
                 await self._settle()
                 continue
             empty = 0
