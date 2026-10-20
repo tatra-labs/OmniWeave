@@ -43,17 +43,29 @@ question than the one asked (`ow query`'s rule, D614):
 Exits are 10:1425's `0/5/6/7`, plus 1 for usage and 2 for a corpus that is not declared. 5 is
 never reached, because nothing is deferred for budget. 6 is a source outside the corpus's source
 root (`OW-A-007`), and 7 is the store's write lock held past its wait.
+
+**64 is a driver that is not installed** (D887, 11-repo-layout.md section 2.4's minimum profile:
+*"the 'no driver for `.pdf`' refusal **naming `pip install omniweave-pdf`**"*). A `no_driver` unit
+whose media type a first-party distribution reads (`INSTALLS`), and whose distribution is not
+installed, is pending with `approve = "pip install <distribution>"`. When nothing completed and
+EVERY pending unit is such a unit, the add is refused with `CapabilityMissing` (`OW-D-009`,
+`OW_DRIVER_FORMAT_UNSUPPORTED`, exit 64) naming the install, then the `ow ingest` that reads the
+units it left at `identified` -- a second `ow add` would count them `unchanged`. A driver that IS
+installed and still routes nothing (not enabled, or a licence tier not allowed) stays 02 section
+7.4's exit 0: that cause is configuration, which `ow doctor` names, and no install fixes it.
 """
 
 from __future__ import annotations
 
 import json
 import shlex
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final, TextIO
+from urllib.parse import unquote, urlsplit
 
 from omniweave_core.config import load
-from omniweave_core.errors import NotFoundError, OwError, UsageError
+from omniweave_core.errors import CapabilityMissing, NotFoundError, OwError, UsageError
 
 from omniweave.surface.ingest import contained, passwords_of, root_of
 from omniweave.surface.query import parse
@@ -71,7 +83,15 @@ if TYPE_CHECKING:
     from omniweave.run.manifest import Trigger
     from omniweave.run.passwords import Passwords
 
-__all__ = ["ADD_WORD", "REASONS", "SCHEMA_VERSION", "TEXT_PENDING_MAX", "add_report", "main"]
+__all__ = [
+    "ADD_WORD",
+    "INSTALLS",
+    "REASONS",
+    "SCHEMA_VERSION",
+    "TEXT_PENDING_MAX",
+    "add_report",
+    "main",
+]
 
 ADD_WORD: Final[str] = "add"
 
@@ -93,7 +113,54 @@ reach. Any other state is one the drain did not take the unit past, which is `no
 NOT_DRAINED: Final[str] = "not_drained"
 DRY_RUN: Final[str] = "dry_run"
 
+NO_DRIVER: Final[str] = "no_driver"
+
+_PDF: Final = ("application/pdf",)
+_OFFICE: Final = (
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.oasis.opendocument.text",
+    "application/vnd.oasis.opendocument.spreadsheet",
+    "application/vnd.oasis.opendocument.presentation",
+    "application/rtf",
+    "application/epub+zip",
+    "text/csv",
+)
+_TEXT: Final = (
+    "text/html",
+    "application/xhtml+xml",
+    "application/xml",
+    "text/markdown",
+    "text/plain",
+    "application/json",
+    "application/jsonl",
+    "application/x-ipynb+json",
+    "text/tab-separated-values",
+    "image/svg+xml",
+)
+_IMAGES: Final = ("image/png", "image/jpeg", "image/webp", "image/tiff", "image/bmp", "image/gif")
+
+INSTALLS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        **dict.fromkeys(_PDF, "omniweave-pdf"),
+        **dict.fromkeys(_OFFICE, "omniweave-office"),
+        **dict.fromkeys(_TEXT, "omniweave-office"),
+        **dict.fromkeys(_IMAGES, "omniweave-vision"),
+    }
+)
+"""D887: media type -> the first-party distribution whose parse driver reads it, for the remedy a
+`no_driver` unit names. Static, because the distribution is the one that is NOT installed, so its
+card cannot be read here; `test_add_verb.py` holds it equal to the shipped cards' `[capability]
+formats` in both directions. A type two distributions read names the one meant for it:
+`application/pdf` is `omniweave-pdf`'s, and `omniweave-vision`'s OCR is its fallback, not its
+remedy. The target packages' `read`/`back` cards are the OUT loop's read-back, never a remedy."""
+
 _SETTLED: Final[str] = "settled"
+_PIP: Final[str] = "pip install"
 _COST_CLASS: Final[str] = "free"
 _REFUSED_FIX: Final[str] = "omit it; this build ingests local files at no cost and waits for them"
 
@@ -153,6 +220,7 @@ def _add(
         #  10:1565: a long verb's progress is stderr's, so stdout stays the report alone.
         for line in drain:
             stderr.write(line + "\n")
+    _refuse_uninstalled(report)
     if parsed.quiet:
         stdout.write(f"{report['queued']}\n")
     elif parsed.render == "json":
@@ -210,6 +278,7 @@ def add_report(
     states: dict[str, str] = {}
     completed: list[dict[str, Any]] = []
     drain: tuple[str, ...] = ()
+    installs: dict[str, str]
     if not dry_run and added.queued:
         drain = _drain(
             store,
@@ -225,7 +294,11 @@ def add_report(
         )
         states = _states(store, added.queued)
         completed = _completed(store, [uri for uri in added.queued if states.get(uri) == _SETTLED])
-    return _report(name, added, states, completed, dry_run=dry_run, rerun=rerun), drain
+        installs = _installs(store, added.queued)
+    else:
+        installs = {}
+    built = _report(name, added, states, completed, dry_run=dry_run, rerun=rerun, installs=installs)
+    return built, drain
 
 
 def _refuse_unserved(parsed: argparse.Namespace) -> None:
@@ -350,6 +423,68 @@ def _states(store: Path, uris: Sequence[str]) -> dict[str, str]:
     return unit_states(store, uris)
 
 
+def _installed(distribution: str) -> bool:
+    """Whether `distribution` is installed in this environment. A test replaces it (D887)."""
+    from importlib import metadata  # noqa: PLC0415 -- only a no_driver unit pays for it
+
+    try:
+        metadata.distribution(distribution)
+    except metadata.PackageNotFoundError:
+        return False
+    return True
+
+
+def _installs(store: Path, uris: Sequence[str]) -> dict[str, str]:
+    """`uri -> distribution` for each unit an install would read (D887).
+
+    A unit whose media type no first-party distribution reads, or whose distribution is already
+    installed, has no entry: an install is not what it is waiting for. `_report` names the install
+    only for a `no_driver` unit, so a settled or failed unit's entry is never read.
+    """
+    from omniweave_core.acquire import unit_media_types  # noqa: PLC0415
+
+    wanted = {
+        uri: INSTALLS[media]
+        for uri, media in unit_media_types(store, uris).items()
+        if media in INSTALLS
+    }
+    absent = {dist for dist in set(wanted.values()) if not _installed(dist)}
+    return {uri: dist for uri, dist in wanted.items() if dist in absent}
+
+
+def _refuse_uninstalled(report: Mapping[str, Any]) -> None:
+    """D887: nothing completed and every pending unit waits for an install -> exit 64, named.
+
+    A report with anything completed, or any unit pending for another reason, is answered with
+    exit 0 and its `pending[].approve` rows, because the add did something or something else is
+    owed. The message names the extensions, as section 2.4's *"no driver for `.pdf`"* does.
+    """
+    pending: list[Mapping[str, Any]] = report["pending"]
+    if report["completed"] or not pending:
+        return
+    if not all(
+        row["reason"] == NO_DRIVER and str(row["approve"]).startswith(f"{_PIP} ") for row in pending
+    ):
+        return
+    dists = tuple(sorted({str(row["approve"]).removeprefix(f"{_PIP} ") for row in pending}))
+    kinds = ", ".join(sorted({_kind(str(row["uri"])) for row in pending}))
+    first = str(pending[0]["uri"])
+    raise CapabilityMissing(
+        f"no driver for {kinds} is installed, so {len(pending)} unit(s) stopped at identify "
+        f"(first: {first}); {', '.join(dists)} reads them",
+        missing=dists,
+        symbol="OW_DRIVER_FORMAT_UNSUPPORTED",
+        fix=f"{_PIP} {' '.join(dists)}   # then: ow ingest --corpus {report['corpus']}",
+    )
+
+
+def _kind(uri: str) -> str:
+    """A unit's extension as the refusal names it (`.pdf`), or its file name when it has none."""
+    name = PurePosixPath(unquote(urlsplit(uri).path)).name
+    suffix = PurePosixPath(name).suffix.lower()
+    return suffix or name
+
+
 def _completed(store: Path, uris: Sequence[str]) -> list[dict[str, Any]]:
     """`add-out-v1`'s `AddCompleted` rows: each settled unit's head document, by `doc.uri`."""
     from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
@@ -370,12 +505,17 @@ def _report(
     *,
     dry_run: bool,
     rerun: str,
+    installs: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """`add-out-v1`, as `ow_add` writes it, `schema` first (10:1530).
 
     `scope_id` is D555's text prefix, or `null` for anything but one directory, which is the
     one field that does not validate against the schema file -- and it is `ow_add`'s own.
+
+    `installs` is `uri -> distribution` for the `no_driver` units an install would read (D887):
+    their `approve` is that `pip install`, which is the command that fixes them.
     """
+    to_install = installs or {}
     pending: list[dict[str, Any]] = []
     for uri in added.queued:
         if dry_run:
@@ -385,6 +525,8 @@ def _report(
         else:
             reason = REASONS.get(states.get(uri, ""), NOT_DRAINED)
             approve = f"ow ingest --corpus {corpus}"
+            if reason == NO_DRIVER and uri in to_install:
+                approve = f"{_PIP} {to_install[uri]}"
         pending.append(
             {
                 "uri": uri,
