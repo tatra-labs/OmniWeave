@@ -1505,6 +1505,27 @@ def test_a_batch_finishing_during_the_counted_claim_does_not_shorten_the_quiet_t
     assert seconds >= 0.35, f"{seconds:.2f} s: one sweep of the tail was skipped"
 
 
+class _CountsWhatIsLeft(_ClaimsAcrossTheFinish):
+    """`counts_by_status()` as a store answers it: the scripted rows not yet claimed are pending."""
+
+    def counts_by_status(self) -> Mapping[str, int]:
+        return {"pending": sum(len(rows) for rows in self.claims)}
+
+
+def test_the_row_a_batch_enqueues_while_a_claim_looks_is_claimed_at_once() -> None:
+    """D898: the claim that overlapped the finish proves nothing quiet, so it is not counted and
+    the claimer claims again at once. D887 counted it and cleared `_progress`, so the next stage's
+    row waited a whole sweep interval -- the shipped five seconds -- before anything claimed it.
+    The stall watcher polls at production scale here, so the wait is all this measures."""
+    queue = _CountsWhatIsLeft([[work_row(1)], [], [work_row(2)]])
+    timings = loop_timings(deferred_sweep_ms=5_000, stall_poll_ms=30_000)
+    built = harness(queue, timings=timings, closed_queue=True)
+    report, seconds = _timed(built)
+    assert [row_id for row_id, _, _ in queue.completed] == [1, 2]
+    assert report.completed == 2
+    assert seconds < 2.0, f"{seconds:.2f} s: the follow-on row waited for a sweep"
+
+
 def test_the_next_stage_a_slow_batch_enqueues_is_claimed_in_the_same_drain() -> None:
     """An empty claim counts toward the end only while nothing is in flight. A batch slower than
     the whole quiet tail used to outlive the claimer, and the rows it enqueued waited for the next
