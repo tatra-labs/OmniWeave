@@ -25,10 +25,11 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+import socket
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 from omniweave_conform import Subject, Verdict, run
@@ -44,6 +45,7 @@ from omniweave_conform.suites import (
     purity,
     run_suite,
 )
+from omniweave_conform.suites.target.owtext.driver import OwTextCompiler
 from omniweave_core.drivers.card import DriverCard, load_card
 from omniweave_ports.types import Port
 
@@ -641,3 +643,70 @@ def test_an_ambient_read_fails_determinism(tmp_path: Path, monkeypatch: pytest.M
 
     monkeypatch.setattr(determinism, "run_compile", reads_tz)
     assert _failed(run_suite("determinism", _owtext(tmp_path)), "ambient:owtext")
+
+
+# ---------------------------------------------------------------------------------------------
+# D891: sandbox over a compile card's golden, around the driver's own calls
+
+
+def test_the_owtext_compile_is_socket_blocked_and_writes_nowhere_but_tmp(tmp_path: Path) -> None:
+    """The kit's own writes between `lower()` and `postflight()` (the staged artefact) are not
+    the driver's, so a target that writes nothing passes."""
+    result = run_suite("sandbox", _owtext(tmp_path))
+    assert result.verdict is Verdict.PASS, [a.line() for a in result.assertions]
+    assert "0 writes outside tmp" in result.summary
+
+
+class _WritesOutside(OwTextCompiler):
+    outside: ClassVar[Path]
+
+    def lower(self, plan: Any, il: Any, ledger: Any, io: Any) -> Any:
+        self.outside.write_text("leaked", encoding="utf-8")
+        return super().lower(plan, il, ledger, io)
+
+
+class _DialsOut(OwTextCompiler):
+    def postflight(self, artifact: str, plan: Any) -> Any:
+        socket.create_connection(("192.0.2.1", 443), timeout=0.01)  # TEST-NET-1: never routed
+        return super().postflight(artifact, plan)
+
+
+def test_a_compile_that_writes_outside_its_tmpdir_fails_naming_the_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _WritesOutside.outside = tmp_path / "elsewhere.txt"
+    monkeypatch.setattr(Subject, "instantiate", lambda _self, **_kw: _WritesOutside())
+    result = run_suite("sandbox", _owtext(tmp_path / "s"))
+    assert _failed(result, "write:owtext")
+    (failure,) = result.failures()
+    assert "elsewhere.txt" in failure.detail
+
+
+def test_a_compile_that_dials_out_in_postflight_fails_and_is_blocked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(Subject, "instantiate", lambda _self, **_kw: _DialsOut())
+    result = run_suite("sandbox", _owtext(tmp_path))
+    assert _failed(result, "egress:owtext")
+    assert not _failed(result, "run"), "the blocked dial is a refusal, not a crash"
+
+
+def test_a_compile_card_with_no_golden_has_no_sandbox_to_run(tmp_path: Path) -> None:
+    subject = Subject.of(OWTEXT_CARD, fixtures_dir=None, workdir=tmp_path)
+    assert run_suite("sandbox", subject).verdict is Verdict.UNKNOWN
+
+
+class _WritesBesideTmp(OwTextCompiler):
+    def lower(self, plan: Any, il: Any, ledger: Any, io: Any) -> Any:
+        (Path(io.tmpdir).parent / "beside-tmp.txt").write_text("kit's, not mine", encoding="utf-8")
+        return super().lower(plan, il, ledger, io)
+
+
+def test_the_root_is_io_tmpdir_exactly_and_not_the_kits_scratch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A write beside `io.tmpdir`, inside the kit's own scratch, is still outside tmp."""
+    monkeypatch.setattr(Subject, "instantiate", lambda _self, **_kw: _WritesBesideTmp())
+    result = run_suite("sandbox", _owtext(tmp_path))
+    assert _failed(result, "write:owtext")
+    assert "beside-tmp.txt" in result.failures()[0].detail

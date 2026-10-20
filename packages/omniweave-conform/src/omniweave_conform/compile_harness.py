@@ -33,7 +33,7 @@ from omniweave_core.host.activate import normalizers
 from omniweave_core.out.card import CompileCard
 from omniweave_core.out.constructs import ConstructTable
 
-from omniweave_conform.suites.target.suite import compile_golden
+from omniweave_conform.suites.target.suite import Guard, compile_golden
 
 if TYPE_CHECKING:
     from omniweave_core.drivers.card import DriverCard
@@ -74,7 +74,13 @@ def constructs_of(card: DriverCard) -> ConstructTable:
     )
 
 
-def run_compile(compiler: Any, card: DriverCard, golden: Path, workdir: Path) -> CompileRun:
-    """The golden compiled once by `compiler`, in `workdir`, which must not exist yet."""
-    compiled = compile_golden(compiler, card, constructs_of(card), golden, workdir=workdir)
+def run_compile(
+    compiler: Any, card: DriverCard, golden: Path, workdir: Path, *, guard: Guard | None = None
+) -> CompileRun:
+    """The golden compiled once by `compiler`, in `workdir`, which must not exist yet.
+
+    `guard` is `compile_golden`'s: entered around the driver's own calls alone (D891)."""
+    compiled = compile_golden(
+        compiler, card, constructs_of(card), golden, workdir=workdir, guard=guard
+    )
     return CompileRun(compiled.body, compiled.part_digest)
