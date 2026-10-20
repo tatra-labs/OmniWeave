@@ -37,11 +37,12 @@ from typing import TYPE_CHECKING, Final
 from omniweave_core.errors import DriverHostError
 from omniweave_ports.types import DriverError, Port
 
+from omniweave_conform.compile_harness import golden_of, run_compile
 from omniweave_conform.harness import run_parse
 from omniweave_conform.result import Assertion, SuiteResult
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
     from pathlib import Path
 
     from omniweave_conform.harness import Fixture
@@ -72,6 +73,8 @@ def run(subject: Subject) -> SuiteResult:
     started = time.monotonic_ns()
     elapsed = lambda: (time.monotonic_ns() - started) / _NS_PER_MS  # noqa: E731
 
+    if subject.card.identity.port is Port.COMPILE:
+        return _compile(subject, elapsed)
     if subject.card.identity.port is not Port.PARSE:
         return SuiteResult.of(
             SUITE,
@@ -100,6 +103,76 @@ def run(subject: Subject) -> SuiteResult:
     compared = sum(1 for a in checks if a.locus.startswith("same:"))
     summary = (
         f"{compared} fixtures x 2 calls on one instance and 1 on a second, byte-identical; "
+        f"{_cross_process_state(subject)}"
+    )
+    return SuiteResult.of(SUITE, checks, summary=summary, elapsed_ms=elapsed())
+
+
+def _compile(subject: Subject, elapsed: Callable[[], float]) -> SuiteResult:
+    """D890: a `compile/1` card's golden, compiled as the parse half runs its fixtures.
+
+    The same instance twice, a second instance once, and a second process's digest when the tool
+    supplied it, all compared by `part_digest`: the class every compile card promises, where
+    `byte` is recorded and never promised (09 section 6).
+    """
+    golden = golden_of(subject)
+    if golden is None:
+        return SuiteResult.of(
+            SUITE,
+            [],
+            unknown="--fixtures named no golden fixture (a directory holding il/); there is "
+            "nothing to compile twice",
+            elapsed_ms=elapsed(),
+        )
+    try:
+        first = subject.instantiate()
+        second = subject.instantiate()
+    except (DriverHostError, DriverError, TypeError, ValueError) as exc:
+        return SuiteResult.of(
+            SUITE,
+            [Assertion("two instances construct", ok=False, detail=str(exc), locus="construct")],
+            elapsed_ms=elapsed(),
+        )
+    scratch = subject.scratch(SUITE)
+    name = golden.name
+    try:
+        run_a = run_compile(first, subject.card, golden, scratch / "a")
+        run_b = run_compile(first, subject.card, golden, scratch / "b")
+        run_c = run_compile(second, subject.card, golden, scratch / "c")
+    except Exception as exc:  # attributed by `contract` and the target suite.
+        failed = Assertion(
+            "the golden compiles, so two runs can be compared",
+            ok=False,
+            detail=f"{type(exc).__name__}: {exc}"[:160],
+            fixture=name,
+            locus="run",
+        )
+        return SuiteResult.of(SUITE, [failed], elapsed_ms=elapsed())
+    checks = [
+        Assertion(
+            "the same instance compiling twice produces one part digest",
+            ok=run_a.part_digest == run_b.part_digest,
+            detail="catches per-instance state: a cache, a counter, a list appended to",
+            fixture=name,
+            locus=f"same:{name}",
+            expected=run_a.part_digest,
+            actual=run_b.part_digest,
+        ),
+        Assertion(
+            "a second instance produces the same part digest",
+            ok=run_a.part_digest == run_c.part_digest,
+            detail="catches class-scope state: a mutable default, a module global, a lazy table",
+            fixture=name,
+            locus=f"fresh:{name}",
+            expected=run_a.part_digest,
+            actual=run_c.part_digest,
+        ),
+        *_cross_process_assertions(subject, {name: run_a.part_digest}),
+    ]
+    same_bytes = len({run.byte_digest for run in (run_a, run_b, run_c)}) == 1
+    summary = (
+        f"the golden x 2 compiles on one instance and 1 on a second, one part digest; bytes "
+        f"{'identical' if same_bytes else 'differ (recorded, never promised)'}; "
         f"{_cross_process_state(subject)}"
     )
     return SuiteResult.of(SUITE, checks, summary=summary, elapsed_ms=elapsed())

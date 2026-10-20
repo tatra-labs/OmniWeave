@@ -89,6 +89,7 @@ for _dist in sorted((REPO / "packages").iterdir()) if (REPO / "packages").is_dir
         sys.path.insert(0, str(_src))
 
 from omniweave_conform import Subject, badge, report_lines, run, sentence  # noqa: E402
+from omniweave_conform.compile_harness import golden_of, run_compile  # noqa: E402
 from omniweave_conform.harness import load_fixtures, run_parse  # noqa: E402
 from omniweave_conform.publish import check as publish_check  # noqa: E402
 from omniweave_conform.publish import write_results  # noqa: E402
@@ -98,6 +99,7 @@ from omniweave_conform.suites import determinism as determinism_suite  # noqa: E
 from omniweave_conform.suites import fuzz as fuzz_suite  # noqa: E402
 from omniweave_conform.suites import idempotence as idempotence_suite  # noqa: E402
 from omniweave_conform.suites import purity as purity_suite  # noqa: E402
+from omniweave_ports.types import Port  # noqa: E402
 
 EXIT_OK = 0
 EXIT_FAIL = 1
@@ -107,6 +109,13 @@ CHILD_TIMEOUT_S = 120
 """Wall clock for a child. Generous against the five-minute mandatory budget, and finite because
 this tool is the thing that enforces "a hang is not allowed" -- a hang detector that can itself
 hang is a hang detector with an extra process."""
+
+CONFIG: dict[str, str] = {}
+"""D890: the driver's `[config]` values, from `--config KEY=VALUE`, for the parent and every child.
+
+A compile target can need one to compile its golden at all: pptx's measurement reads the faces
+`font_dir` names, which the metric register passes as `paths = { font_dir = ... }`. The children
+are handed the same values, so the cross-process digest is of the same configuration."""
 
 VARIED_ENV = {
     "PYTHONHASHSEED": "1",
@@ -141,6 +150,8 @@ def _spawn(
     ]
     if fixtures is not None:
         argv += ["--fixtures", str(fixtures)]
+    for key, value in sorted(CONFIG.items()):
+        argv += ["--config", f"{key}={value}"]
     return subprocess.run(  # noqa: S603 -- argv is built here, never from the card or a fixture.
         argv,
         check=False,
@@ -160,11 +171,22 @@ def _spawn(
 
 
 def _child_digests(card: Path, fixtures: Path) -> int:
-    """Parse every fixture and print `{fixture name: sha256(fragment body)}`."""
+    """Parse every fixture and print `{fixture name: sha256(fragment body)}`.
+
+    A compile card's fixture is its golden (D890), and its digest is the golden's `part_digest`,
+    the class the idempotence suite compares a compile by.
+    """
     with tempfile.TemporaryDirectory() as scratch:
-        subject = Subject.of(card, fixtures_dir=fixtures, workdir=Path(scratch))
+        subject = Subject.of(card, fixtures_dir=fixtures, workdir=Path(scratch), config=CONFIG)
         driver = subject.instantiate()
         out: dict[str, str] = {}
+        golden = golden_of(subject)
+        if subject.card.identity.port is Port.COMPILE and golden is not None:
+            with contextlib.suppress(Exception):  # the parent's suite reports the refusal
+                compiled = run_compile(driver, subject.card, golden, Path(scratch) / "compile")
+                out[golden.name] = compiled.part_digest
+            print(json.dumps(out))  # noqa: T201 -- this IS the child's return value.
+            return EXIT_OK
         for index, fixture in enumerate(subject.fixtures):
             try:
                 result = run_parse(driver, fixture, Path(scratch) / f"f{index}")
@@ -181,7 +203,7 @@ def _child_digests(card: Path, fixtures: Path) -> int:
 def _child_purity(card: Path, fixtures: Path | None) -> int:
     """Run the `purity` suite in an interpreter that has imported no driver module."""
     with tempfile.TemporaryDirectory() as scratch:
-        subject = Subject.of(card, fixtures_dir=fixtures, workdir=Path(scratch))
+        subject = Subject.of(card, fixtures_dir=fixtures, workdir=Path(scratch), config=CONFIG)
         result = purity_suite.run(subject)
     print(  # noqa: T201
         json.dumps(
@@ -208,7 +230,7 @@ def _child_segfault(card: Path, fixtures: Path) -> int:
     import ctypes  # noqa: PLC0415 -- only this mode needs it.
 
     with tempfile.TemporaryDirectory() as scratch:
-        subject = Subject.of(card, fixtures_dir=fixtures, workdir=Path(scratch))
+        subject = Subject.of(card, fixtures_dir=fixtures, workdir=Path(scratch), config=CONFIG)
         driver = subject.instantiate()
         if subject.fixtures:
             # The crash below is the subject; whether the parse succeeded is irrelevant to it, and
@@ -303,9 +325,21 @@ def main(argv: list[str] | None = None) -> int:
         help="write [quality.suites] and a recomputed attestation into the card",
     )
     parser.add_argument("--json", action="store_true", help="print the report as JSON")
+    parser.add_argument(
+        "--config",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="a driver [config] value, repeatable; a path is absolute (font_dir=<abs dir>)",
+    )
     parser.add_argument("--bench", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--child-mode", choices=sorted(CHILD_MODES), help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    for pair in args.config:
+        key, sep, value = pair.partition("=")
+        if not sep or not key:
+            parser.error(f"--config {pair!r} is not KEY=VALUE")
+        CONFIG[key] = value
 
     if args.template:
         args.card = args.card or TEMPLATE / "driver.toml"
@@ -373,7 +407,11 @@ def _run(args: argparse.Namespace) -> int:
 
     with tempfile.TemporaryDirectory() as workdir:
         subject = Subject.of(
-            args.card, fixtures_dir=fixtures, workdir=Path(workdir), measurements=measured
+            args.card,
+            fixtures_dir=fixtures,
+            workdir=Path(workdir),
+            measurements=measured,
+            config=CONFIG,
         )
         report = run(subject)
 
