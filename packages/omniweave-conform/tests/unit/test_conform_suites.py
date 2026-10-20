@@ -26,6 +26,7 @@ import hashlib
 import shutil
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -34,12 +35,15 @@ from omniweave_conform.harness import run_parse
 from omniweave_conform.result import MANDATORY, SUITES
 from omniweave_conform.suites import (
     SUITE_RUNNERS,
+    contract,
     determinism,
     fuzz,
     idempotence,
     purity,
     run_suite,
 )
+from omniweave_core.drivers.card import DriverCard, load_card
+from omniweave_ports.types import Port
 
 if TYPE_CHECKING:
     from omniweave_conform.result import SuiteResult
@@ -487,3 +491,73 @@ def test_quality_is_unknown_rather_than_failing_when_there_is_no_benchmark(
     assert result.verdict is Verdict.UNKNOWN
     assert not result.mandatory
     assert "ow conform --bench" in result.summary
+
+
+# ---------------------------------------------------------------------------------------------
+# D889: compile/1 is checked against CompileV1, and a refused activation is reported
+
+
+OWTEXT_CARD = TEMPLATE.parent / "suites/target/owtext/driver.toml"
+
+
+def test_contract_checks_a_compile_driver_against_compile_v1(tmp_path: Path) -> None:
+    """`CompileV1` landed in `omniweave_core.out.compile`; a compile card is held to its methods
+    as every other port's card is held to its Protocol. `probe` is a classmethod, which
+    `_protocol_methods` passes over for every port alike."""
+    result = run_suite("contract", Subject.of(OWTEXT_CARD, fixtures_dir=None, workdir=tmp_path))
+    assert result.verdict is Verdict.PASS, [a.line() for a in result.assertions]
+    checked = {a.locus.removeprefix("signature:") for a in result.assertions}
+    assert {"carrier", "rules", "measure", "lower", "postflight", "project"} <= checked
+
+
+def test_contract_fails_a_compile_driver_whose_lower_renames_a_parameter() -> None:
+    class Renamed:
+        PORT = "compile/1"
+
+        def lower(self, plan: object, il: object, assets: object, io: object) -> None: ...
+
+    subject = SimpleNamespace(card=SimpleNamespace(identity=SimpleNamespace(port=Port.COMPILE)))
+    checks = list(contract._signature_assertions(subject, Renamed))  # type: ignore[arg-type]
+    lower = next(c for c in checks if c.locus == "signature:lower")
+    assert (lower.ok, lower.expected, lower.actual) == (
+        False,
+        "(plan, il, ledger, io)",
+        "(plan, il, assets, io)",
+    )
+    assert not next(c for c in checks if c.locus == "signature:project").ok, "absent is a failure"
+
+
+def test_a_card_whose_entrypoint_will_not_activate_is_reported_by_its_code(
+    tmp_path: Path,
+) -> None:
+    """The suite read `exc.symbol`, which no `OwError` has: the refusal it meant to report
+    raised `AttributeError` instead."""
+    subject = _variant(
+        tmp_path,
+        "noclass",
+        card=("driver:PlainTextParser", "driver:NoSuchParser"),
+    )
+    result = run_suite("contract", subject)
+    (failure,) = result.failures()
+    assert failure.locus == "activate"
+    assert failure.detail.startswith("OW_DRIVER"), failure.detail
+
+
+def test_every_shipped_compile_card_declares_a_free_per_part_cost_model() -> None:
+    """The cost suite fails a card with no `[cost.model]`; every shipped compile card has one."""
+    packages = Path(__file__).resolve().parents[3]
+    cards = [
+        load_card(path.read_bytes(), origin="driver_path", source=str(path))
+        for path in sorted(packages.glob("*/src/**/driver.toml"))
+        if 'port = "compile/1"' in path.read_text(encoding="utf-8")
+    ]
+    assert len(cards) >= 4
+    for card in cards:
+        assert isinstance(card, DriverCard)
+        model = card.cost_model
+        assert model is not None, card.identity.id
+        assert (model.cost_class.value, model.shape, model.unit) == (
+            "free",
+            "linear_per_part",
+            "part",
+        ), card.identity.id
