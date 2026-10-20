@@ -100,6 +100,7 @@ import shutil
 import tomllib
 import zipfile
 from collections.abc import Callable, Mapping
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal
@@ -154,6 +155,7 @@ __all__ = [
     "EDIT",
     "GOLDEN_CLOCK_NS",
     "Compiled",
+    "Guard",
     "LawOutcome",
     "TargetReport",
     "addressed",
@@ -166,6 +168,8 @@ ASSETS: Final = "assets"
 EDIT: Final = "edit"
 """Ruling 16: the golden's edited units, one IL file each, which R4(b) recompiles."""
 _COPIED: Final = frozenset({UnitOutcome.PASSTHROUGH, UnitOutcome.CLONED_PASSTHROUGH})
+Guard = Callable[[Path], AbstractContextManager[object]]
+"""D891: what `compile_golden` enters around the driver's own calls, given the driver's tmpdir."""
 GOLDEN_CLOCK_NS: Final = 1_700_000_000_000_000_000
 """Ruling 10: the instant every golden compile's `job.json` names."""
 _TRACEPARENT: Final = traceparent("0" * 31 + "1", "0" * 15 + "1")
@@ -282,8 +286,14 @@ def compile_golden(
     golden: Path,
     *,
     workdir: Path,
+    guard: Guard | None = None,
 ) -> Compiled:
-    """Ruling 17: the golden compiled once, as R1 compiles it, in `workdir`."""
+    """Ruling 17: the golden compiled once, as R1 compiles it, in `workdir`.
+
+    `guard(io_tmpdir)` is entered around the driver's own two calls, `lower()` and `postflight()`,
+    and around nothing the kit does between them (D891): the kit's `sandbox` suite watches exactly
+    what the driver writes and dials, with the driver's `io.tmpdir` as its one writable root.
+    """
     prepared = _prepared(compiler, card, constructs, golden, workdir=workdir)
     if prepared.bundle is None or prepared.ledger is None or prepared.plan is None:
         raise QualityError(
@@ -292,7 +302,9 @@ def compile_golden(
             fix=f"ow conform --target {prepared.target}  # the golden must pass its own gate",
         )
     scratch = workdir / "compile"
-    body, receipt = _compiled(compiler, prepared.plan, prepared.bundle, prepared.ledger, scratch)
+    body, receipt = _compiled(
+        compiler, prepared.plan, prepared.bundle, prepared.ledger, scratch, guard=guard
+    )
     return Compiled(body, receipt.part_digest)
 
 
@@ -634,14 +646,25 @@ def _compile(
 
 
 def _compiled(
-    compiler: CompileV1, plan: Plan, bundle: ILBundle, ledger: AssetLedger, scratch: Path
+    compiler: CompileV1,
+    plan: Plan,
+    bundle: ILBundle,
+    ledger: AssetLedger,
+    scratch: Path,
+    *,
+    guard: Guard | None = None,
 ) -> tuple[bytes, Any]:
     """Rulings 4 and 17: `lower()`, the artefact staged, and `postflight()`'s receipt."""
     io = make_io(MemoryBlobStore(scratch / "kit"), scratch / "io")
-    body = _artefact(compiler.lower(plan, bundle, ledger, io), io)
+    tmpdir = Path(io.tmpdir)
+    with guard(tmpdir) if guard is not None else nullcontext():
+        lowered = compiler.lower(plan, bundle, ledger, io)
+    body = _artefact(lowered, io)
     staged = scratch / f"{plan.slug}.artefact"
     staged.write_bytes(body)
-    return body, compiler.postflight(str(staged), plan)
+    with guard(tmpdir) if guard is not None else nullcontext():
+        receipt = compiler.postflight(str(staged), plan)
+    return body, receipt
 
 
 def _artefact(result: DriverResult, io: Any) -> bytes:
