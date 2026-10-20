@@ -39,6 +39,7 @@ from omniweave_conform.result import MANDATORY, SUITES
 from omniweave_conform.suites import (
     SUITE_RUNNERS,
     contract,
+    cost,
     determinism,
     fuzz,
     idempotence,
@@ -769,3 +770,46 @@ def test_a_compile_card_with_no_golden_has_nothing_to_malform(tmp_path: Path) ->
 def test_the_compile_fuzz_still_asks_for_the_tools_contained_segfault(tmp_path: Path) -> None:
     """Containment is a process's to show, for a compile card as for a parse card."""
     assert _failed(run_suite("fuzz", _owtext(tmp_path)), "segfault")
+
+
+# ---------------------------------------------------------------------------------------------
+# D893: cost priced over a compile card's golden
+
+
+def test_the_owtext_compile_is_priced_free_with_no_socket(tmp_path: Path) -> None:
+    result = run_suite("cost", _owtext(tmp_path))
+    assert result.verdict is Verdict.PASS, [a.line() for a in result.assertions]
+    shape = next(a for a in result.assertions if a.locus == "shape")
+    assert shape.detail.startswith("1 points; a line through fewer than 3"), shape.detail
+    assert next(a for a in result.assertions if a.locus == "egress").detail == "0 sockets"
+
+
+def test_a_free_compile_that_dials_out_fails_cost(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(Subject, "instantiate", lambda _self, **_kw: _DialsOut())
+    assert _failed(run_suite("cost", _owtext(tmp_path)), "egress")
+
+
+def test_a_compile_card_with_no_golden_has_no_run_to_price(tmp_path: Path) -> None:
+    subject = Subject.of(OWTEXT_CARD, fixtures_dir=None, workdir=tmp_path)
+    result = run_suite("cost", subject)
+    assert _failed(result, "runtime")
+    assert "no compile/1 golden" in result.failures()[0].detail
+
+
+def test_the_parse_half_still_fits_its_fixtures_curve(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The refactor that let a compile be priced kept the parse half's own measurement. Fixed
+    points, because the template's sub-millisecond parses can all read one clock tick."""
+    asked: list[int] = []
+
+    def points(subject: Subject, _driver: object) -> list[tuple[int, float]]:
+        asked.append(len(subject.fixtures))
+        return [(1, 1.0), (2, 2.0), (3, 3.0)]
+
+    monkeypatch.setattr(cost, "_parse_points", points)
+    result = run_suite("cost", _subject(tmp_path))
+    assert asked, "the parse half was not measured"
+    assert "fits at r2=1.00" in result.summary, result.summary
