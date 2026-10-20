@@ -288,3 +288,37 @@ def test_the_pdf_drivers_dependency_graph_is_licence_clean(
     rows = {row["suite"]: row for row in pdf_report["suites"]}  # type: ignore[index]
     assert rows["licence"]["verdict"] == "pass", rows["licence"]["failures"]
     assert "tier=open" in str(rows["licence"]["summary"])
+
+
+# ---------------------------------------------------------------------------------------------
+# D890: a compile card's golden, through the real tool and its child
+
+PPTX_CARD = REPO / "packages/omniweave-target-pptx/src/omniweave_target_pptx/driver.toml"
+PPTX_GOLDEN = REPO / "fixtures/out/golden/pptx"
+
+
+def test_a_compile_card_is_idempotent_and_deterministic_across_two_processes() -> None:
+    """The pptx golden needs its `font_dir`, which `--config` hands the parent and the child
+    alike, so the cross-process digest is of the same configuration."""
+    done = _run(
+        "--card",
+        str(PPTX_CARD),
+        "--fixtures",
+        str(PPTX_GOLDEN),
+        "--config",
+        f"font_dir={PPTX_GOLDEN / 'fonts'}",
+        "--json",
+    )
+    assert done.returncode in (0, 1), done.stderr
+    report = json.loads(done.stdout)
+    rows = {row["suite"]: row for row in report["suites"]}
+    for suite in ("contract", "idempotence", "determinism"):
+        assert rows[suite]["verdict"] == "pass", rows[suite]
+    assert "cross-process compared" in rows["idempotence"]["summary"]
+    assert any(note.startswith("cross-process: 1 fixtures") for note in report["children"])
+
+
+def test_a_config_that_is_not_key_value_is_a_usage_error() -> None:
+    done = _run("--template", "--config", "font_dir")
+    assert done.returncode == 2
+    assert "is not KEY=VALUE" in done.stderr
