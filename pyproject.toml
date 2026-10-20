@@ -6,7 +6,7 @@
 name = "omniweave-monorepo"
 version = "0.0.0"
 description = "The omniweave workspace root. Holds no code and is never published."
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 classifiers = ["Private :: Do Not Upload"]
 
 # ---------------------------------------------------------------------------
@@ -66,7 +66,7 @@ dev = [
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 src = ["packages"]
 # `vendor/` is third-party source at a recorded SHA (11-repo-layout.md section 1.7, G12), and its
 # bytes ARE the artefact: `vendor/anydoc/anydoc.sha256` digests every one of them so a reviewer can
@@ -80,7 +80,11 @@ exclude = ["vendor", "packages/*/fixtures"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "DTZ", "T20", "SIM",
           "TID", "PTH", "RUF", "ANN", "S", "PL", "ARG", "RET", "TRY"]
-ignore = ["ANN401", "TRY003", "PLR0913"]
+# UP040/UP046/UP047 arrived with `target-version = "py312"` (D883, the 3.12 floor). Each asks for
+# PEP 695 syntax, which is not a spelling change: a `type X = ...` alias is a runtime
+# `TypeAliasType`, not the aliased object, and schemagen and the surface registry introspect
+# aliases by value. Moving the forty sites is its own reviewed change, not a side effect of a floor.
+ignore = ["ANN401", "TRY003", "PLR0913", "UP040", "UP046", "UP047"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
