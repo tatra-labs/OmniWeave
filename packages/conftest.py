@@ -46,6 +46,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 from hypothesis import settings
@@ -69,12 +70,31 @@ CHANNEL_KEY = "retrieval.budget.channel_ms"
 SNAPSHOT_KEY = "retrieval.snapshot_ms"
 
 
+PLAN_ROOT = Path(__file__).resolve().parent.parent / "_plan"
+"""The design tree. `.gitignore`d, so absent from every CI checkout (D883)."""
+
+
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",
         "shipped_budgets: runs with the shipped latency budgets, not packages/conftest.py's "
         "(D689).",
     )
+    config.addinivalue_line(
+        "markers",
+        "plan: reads `_plan/` directly, so it is skipped where the tree is absent (D883).",
+    )
+
+
+def pytest_runtest_setup(item: pytest.Item) -> None:
+    """D883: a test marked `plan` skips when `_plan/` is not in this checkout.
+
+    `_plan/` is `.gitignore`d and the repository is public, so CI never has it. A test that
+    compares code with the plan's own text is a local check, as `plan.require()` already makes
+    the fixture's readers. This marker is the same rule for a test that reads the tree by path.
+    """
+    if item.get_closest_marker("plan") is not None and not PLAN_ROOT.is_dir():
+        pytest.skip("_plan/ is .gitignore'd and absent from this checkout")
 
 
 def _generous() -> dict[str, object]:

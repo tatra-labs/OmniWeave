@@ -9,7 +9,7 @@ name = "omniweave-conform"
 version = "0.1.0"                     # == RELEASE. G5.
 description = "The twelve conformance suites, the driver testkit, the eval harness and the reference target compile.text.owtext."
 license = "Apache-2.0"
-requires-python = ">=3.11"           # NO upper bound. charter.md D1.
+requires-python = ">=3.12"           # NO upper bound. charter.md D1.
 dependencies = [
   "omniweave-core ~= 0.1.0",
   # The compile row of tools/layers.toml, because this distribution ships the

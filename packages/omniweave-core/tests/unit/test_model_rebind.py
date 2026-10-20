@@ -864,6 +864,7 @@ def test_the_printed_signature_is_the_plans_signature() -> None:
     assert parameters["allow_unexplained"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
+@pytest.mark.plan
 def test_the_report_field_set_is_the_plans_field_set_in_the_plans_order() -> None:
     """03:1245-1250, transcribed. A report that grew a field would be a second tolerance to drift.
 

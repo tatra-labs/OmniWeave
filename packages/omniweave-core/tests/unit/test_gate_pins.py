@@ -36,7 +36,7 @@ script, in five parts:
   which is the outcome the gate exists to produce. So the tree-facing tests pin only what the plan
   itself rules on: `packages/omniweave-office/pyproject.toml`'s `firecrawl-anydoc == 0.2.4` is
   asserted to PASS, because 11-repo-layout.md:2337-2339 states it *"carries its justification in
-  the `pyproject.toml` comment"*; `hatchling>=1.27` and `>=3.11` are asserted to be parsed and to
+  the `pyproject.toml` comment"*; `hatchling>=1.27` and `>=3.12` are asserted to be parsed and to
   be no finding, because they are floors; and `omniweave-ports >=1,<2` is asserted to be a
   tightened bound, because section 8.5 grants a first-party sibling no exemption. Everything else
   the fourteen files happen to say is checked on a FIXTURE, in a `tmp_path` workspace this file
@@ -552,7 +552,7 @@ def test_every_shipped_pyproject_parses_and_carries_constraints(
 def test_the_floors_the_whole_tree_carries_are_never_a_finding(
     gate: ModuleType, repo_root: Path
 ) -> None:
-    """`hatchling>=1.27` and `requires-python = ">=3.11"` are in all fourteen, and both are floors.
+    """`hatchling>=1.27` and `requires-python = ">=3.12"` are in all fourteen, and both are floors.
 
     11-repo-layout.md:225 reads *"`hatchling>=1.27` is a floor with a reason, which G7 requires"* --
     which would make a bare `>=` line a G7 finding and fail all fourteen files at once. Every other
@@ -568,10 +568,10 @@ def test_the_floors_the_whole_tree_carries_are_never_a_finding(
         # `build-system.requires`, would leave this test green and the floor rule untested.
         # So the floors are asserted PRESENT among the parsed constraints first.
         assert "hatchling>=1.27" in parsed, path
-        assert ">=3.11" in parsed, path
+        assert ">=3.12" in parsed, path
         raws = {occurrence.raw for occurrence in report.occurrences}
         assert "hatchling>=1.27" not in raws, path
-        assert ">=3.11" not in raws, path
+        assert ">=3.12" not in raws, path
 
 
 def test_the_plans_own_exact_pin_carries_its_justification(

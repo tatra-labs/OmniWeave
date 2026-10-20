@@ -10,7 +10,7 @@ name = "omniweave-core"
 version = "0.1.0"                     # == RELEASE. G5.
 description = "The omniweave host substrate: digests, identity, errors, limits, config, probes, discovery, resolution and the four seam clients."
 license = "Apache-2.0"
-requires-python = ">=3.11"           # NO upper bound. charter.md D1.
+requires-python = ">=3.12"           # NO upper bound. charter.md D1.
 dependencies = [
   "omniweave-ports >=1,<2",
   # THE ONLY dependency, and it is first-party and stdlib-only. Zero third

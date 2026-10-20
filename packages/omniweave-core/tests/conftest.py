@@ -148,7 +148,13 @@ class PlanDocs:
             pytest.skip("_plan/ is .gitignore'd and absent from this checkout")
 
     def documents(self) -> tuple[str, ...]:
-        """Every current plan document, as a `_plan/`-relative POSIX path."""
+        """Every current plan document, as a `_plan/`-relative POSIX path.
+
+        Like `text()`, this calls `require()` itself (D883): every reader skips the calling test
+        when the tree is absent, so a test that forgot the call cannot fail a checkout without
+        `_plan/`, which is every CI checkout.
+        """
+        self.require()
         found = (
             path.relative_to(self.root).as_posix()
             for path in self.root.rglob("*.md")
@@ -157,6 +163,8 @@ class PlanDocs:
         return tuple(sorted(found))
 
     def text(self, document: str) -> str:
+        """One plan document's text; skips the calling test when `_plan/` is absent (D883)."""
+        self.require()
         return (self.root / document).read_text(encoding="utf-8")
 
     def lines(self, document: str) -> tuple[str, ...]:
