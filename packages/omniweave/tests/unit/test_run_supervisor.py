@@ -758,7 +758,9 @@ def test_the_loop_claims_dispatches_and_completes_every_row() -> None:
 
     assert report.status == "done"
     assert (report.claimed, report.batches, report.completed) == (3, 2, 3)
-    assert [row_id for row_id, _, _ in queue.completed] == [1, 2, 3]
+    # D886: every row, in no promised order. Two batches complete concurrently, and macOS ran
+    # the second's row before the first's last on CI's first run.
+    assert sorted(row_id for row_id, _, _ in queue.completed) == [1, 2, 3]
     assert {gen for _, gen, _ in queue.completed} == {7}, "the run's generation, on every commit"
     assert kinds(events).count("work.claim") == 3
     assert kinds(events).count("work.complete") == 3

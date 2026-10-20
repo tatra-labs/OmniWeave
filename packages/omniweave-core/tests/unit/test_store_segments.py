@@ -429,7 +429,8 @@ def test_the_segmenter_runs_in_a_real_worker_and_its_answer_is_written(
         connection.close()
     digest = blobs.put(io.BytesIO(view.body))
     (tmp_path / "tmp").mkdir()
-    address = f"\\\\.\\pipe\\ow-test-segment-{time.monotonic_ns()}"
+    # D886: the platform's own spelling, so POSIX cells run the AF_UNIX arm, not a pipe name.
+    address = sp.local_address(f"ow-test-segment-{time.monotonic_ns()}")
     worker, _ack = sp.launch(
         sp.WorkerKey(card.identity.id, "0" * 64),
         sp.SpawnRequest(

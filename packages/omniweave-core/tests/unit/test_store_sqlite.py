@@ -1274,3 +1274,25 @@ def test_an_interrupt_is_not_an_absent_table() -> None:
         assert _index_state(connection, "generation") is None
     finally:
         connection.close()
+
+
+def test_immediate_owns_a_transaction_rolls_back_on_error_and_joins_a_callers() -> None:
+    """D886: the store demarcates a writer's transaction, and never ends one it did not open."""
+    from omniweave_core.store.sqlite import immediate  # noqa: PLC0415 -- the helper under test.
+
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    conn.execute("CREATE TABLE t (v INTEGER)")
+    with immediate(conn):
+        assert conn.in_transaction
+        conn.execute("INSERT INTO t VALUES (1)")
+    assert not conn.in_transaction
+    with pytest.raises(RuntimeError, match="boom"), immediate(conn):
+        conn.execute("INSERT INTO t VALUES (2)")
+        raise RuntimeError("boom")
+    assert conn.execute("SELECT v FROM t").fetchall() == [(1,)]
+    conn.execute("BEGIN")
+    with immediate(conn):
+        conn.execute("INSERT INTO t VALUES (3)")
+    assert conn.in_transaction, "a joined transaction is left to its owner"
+    conn.execute("ROLLBACK")
+    assert conn.execute("SELECT v FROM t").fetchall() == [(1,)]

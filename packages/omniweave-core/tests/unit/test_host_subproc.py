@@ -2951,12 +2951,18 @@ def test_a_below_normal_worker_s_interpreter_is_below_normal_too(tmp_path: Path)
 
 @WINDOWS_ONLY
 def test_a_worker_not_asked_for_below_normal_keeps_the_normal_class(tmp_path: Path) -> None:
-    """The flag is the caller's, not a default: a spawn without it is `NORMAL` all the way down."""
+    """The flag is the caller's, not a default: a spawn without it keeps its parent's class.
+
+    D886: the parent's, not `NORMAL`. A Windows child inherits its parent's class, and CI's hosted
+    runner runs below normal, where this test read 16384 (`BELOW_NORMAL`) on its first run.
+    """
+    parent = sp.priority_class(os.getpid())
     job = sp.JobObject()
     proc, interpreter = _spawn_reporting_pid(tmp_path, job, below_normal=False)
     try:
-        assert sp.priority_class(proc.pid) == NORMAL_PRIORITY_CLASS
-        assert sp.priority_class(interpreter) == NORMAL_PRIORITY_CLASS
+        assert parent is not None
+        assert sp.priority_class(proc.pid) == parent
+        assert sp.priority_class(interpreter) == parent
     finally:
         job.terminate()
         proc.wait(timeout=10)

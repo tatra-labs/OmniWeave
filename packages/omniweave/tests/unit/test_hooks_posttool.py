@@ -77,7 +77,9 @@ class Spawns:
 
 
 def test_an_absolute_argv0_is_used_directly() -> None:
-    assert command("C:/tools/ow.exe") == ("C:/tools/ow.exe", "ingest")
+    """In this host's absolute form (D886): `C:/` is a relative path on POSIX."""
+    absolute = "C:/tools/ow.exe" if os.name == "nt" else "/opt/tools/ow"
+    assert command(absolute) == (absolute, "ingest")
 
 
 @pytest.mark.parametrize("argv0", ["ow", "./ow", "", "bin/ow", "..\\ow.exe"])

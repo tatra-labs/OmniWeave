@@ -216,19 +216,12 @@ def install_thresholds(conn: Connection, policy: RoutePolicy) -> tuple[tuple[str
     `policy_digest` install to be atomic with each other, so a function that always opened its own
     would have made the sentence unsatisfiable for every caller that also writes something else.
     """
+    from omniweave_core.store.sqlite import immediate  # noqa: PLC0415 -- keeps route's import cost.
+
     rows = threshold_rows(policy)
-    joined = conn.in_transaction
-    if not joined:
-        conn.execute("BEGIN IMMEDIATE")
-    try:
+    with immediate(conn):  # D886: the store demarcates; this joins a caller's transaction.
         for key, value in rows:
             conn.execute(_UPSERT, (key, value))
-    except Exception:
-        if not joined:
-            conn.execute("ROLLBACK")
-        raise
-    if not joined:
-        conn.execute("COMMIT")
     return rows
 
 
