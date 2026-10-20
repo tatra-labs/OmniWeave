@@ -400,9 +400,14 @@ def _apply(connection: sqlite3.Connection, pragmas: Sequence[str]) -> None:
     recovery truncates a sidecar. Windows refuses to truncate a file while ANY process holds a
     mapped view of it, and on the hosted runners something did (antivirus scanning the freshly
     written files is the usual holder), for longer than SQLite's own short retry. A user's machine
-    after a crash is the same case. So that one error, on that one pragma, is retried for at most
+    after a crash is the same case. So that one error is retried for at most
     `TRUNCATE_TRIES x TRUNCATE_PAUSE_S`, as `blobs` waits out a rename's sharing denial. Anything
     else, or a refusal that outlasts the wait, is raised.
+
+    **On any pragma, not only `journal_mode`** (D887). Recovery runs on whichever statement first
+    reads the database, and the run after that named `synchronous = NORMAL`: `journal_mode` had
+    answered from the file header. Every pragma this module issues sets a value, so issuing one
+    again is safe.
     """
     for pragma in pragmas:
         for attempt in range(TRUNCATE_TRIES):
@@ -411,7 +416,7 @@ def _apply(connection: sqlite3.Connection, pragmas: Sequence[str]) -> None:
                 break
             except sqlite3.OperationalError as error:
                 name = getattr(error, "sqlite_errorname", None) or "unknown"
-                transient = name == "SQLITE_IOERR_TRUNCATE" and pragma.startswith("journal_mode")
+                transient = name == "SQLITE_IOERR_TRUNCATE"
                 if transient and attempt < TRUNCATE_TRIES - 1:
                     time.sleep(TRUNCATE_PAUSE_S)
                     continue
@@ -419,9 +424,10 @@ def _apply(connection: sqlite3.Connection, pragmas: Sequence[str]) -> None:
                 raise sqlite3.OperationalError(msg) from error
 
 
-TRUNCATE_TRIES: Final = 40
+TRUNCATE_TRIES: Final = 100
 TRUNCATE_PAUSE_S: Final = 0.05
-"""D886: up to two seconds for another process to release its mapped view of a WAL sidecar."""
+"""D886, D887: up to five seconds for another process to release its mapped view of a WAL
+sidecar. Two seconds was D886's; the hosted runner's view then outlasted the first statement."""
 
 
 def connect(
