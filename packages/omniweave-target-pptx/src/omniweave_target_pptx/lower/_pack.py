@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import datetime as dt
 import io
-import zipfile
 from collections.abc import Callable, Mapping, Sequence
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
@@ -43,6 +42,7 @@ from omniweave_core.out.lowering import (
 from omniweave_core.out.opc import check_package, write_opc
 from pptx import Presentation
 from pptx.opc.constants import RELATIONSHIP_TYPE
+from pptx.opc.serialized import PackageWriter
 from pptx.oxml.ns import qn
 from pptx.parts.image import Image
 from pptx.util import Emu
@@ -292,11 +292,41 @@ def _core(deck: Any, title: str, clock_ns: int) -> None:
     core.modified = when
 
 
+class _Members:
+    """The physical writer python-pptx's `PackageWriter` writes through, keeping each member.
+
+    D887: `deck.save()` zips every member by bare name, and from 3.14 `zipfile` stamps a bare name
+    with `SOURCE_DATE_EPOCH` (gh-91279) and no 1980 floor. Under 09 section 6's
+    `SOURCE_DATE_EPOCH=0` the save raised `struct.error`, and so would any epoch before 1980 in the
+    local time zone. The members were only ever unzipped again for `write_opc()`, which pins every
+    date itself, so they are collected instead and that first zip is never built.
+    """
+
+    def __init__(self) -> None:
+        self.members: dict[str, bytes] = {}
+
+    def write(self, pack_uri: Any, blob: bytes) -> None:
+        self.members[str(pack_uri.membername)] = blob
+
+
+def _members(deck: Any) -> dict[str, bytes]:
+    """What `deck.save()` would zip, member for member: `PackageWriter._write()`'s three steps.
+
+    The steps are python-pptx's own, private, methods; `test_pptx_lower.py` holds the result equal
+    to an unzipped `deck.save()`, so a python-pptx that moves them fails there and not in a user's
+    compile.
+    """
+    package = deck.part.package
+    writer = PackageWriter(io.BytesIO(), package._rels, tuple(package.iter_parts()))
+    sink = _Members()
+    writer._write_content_types_stream(sink)  # type: ignore[arg-type]
+    writer._write_pkg_rels(sink)  # type: ignore[arg-type]
+    writer._write_parts(sink)  # type: ignore[arg-type]
+    return sink.members
+
+
 def _package(deck: Any) -> bytes:
-    buffer = io.BytesIO()
-    deck.save(buffer)
-    with zipfile.ZipFile(io.BytesIO(buffer.getvalue())) as zf:
-        members = {info.filename: zf.read(info) for info in zf.infolist()}
+    members = _members(deck)
     members["docProps/app.xml"] = _app(members["docProps/app.xml"])
     members[_PRESENTATION] = _sized(members[_PRESENTATION])
     packed = write_opc({name: _canonical(name, data) for name, data in members.items()})
