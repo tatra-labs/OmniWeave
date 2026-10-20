@@ -149,6 +149,8 @@ __all__ = [
     "GATE_ORDER",
     "INPROC_TRUST",
     "ISOLATION_CONTAINMENT",
+    "LOCK_SATISFIED",
+    "MANIFEST_PINNED",
     "OS_ALIASES",
     "PORT_MAJORS_SUPPORTED",
     "RESOLVE_DEGRADATION_KINDS",
@@ -210,6 +212,27 @@ INPROC_TRUST: Final[frozenset[TrustTier]] = frozenset({TrustTier.FIRST_PARTY, Tr
 
 "No config key widens the first four" (:1645), which is why the isolation gate reads this set and
 never a config key."""
+
+MANIFEST_PINNED: Final[frozenset[TrustTier]] = INPROC_TRUST
+"""The tiers the release manifest pins: `first_party` and `vendored`, each a distribution whose
+`dist_sha256` matched `first_party.toml` (04-driver-system.md section 4.2, rows 1-2).
+
+**A user ruling of 2026-10-20 (D576, ruling 2): the manifest is the pin that waives `UNATTESTED`
+for a first-party card.** 04-driver-system.md:2100 waives it "only by an explicit pin"; the
+release manifest is one, written by the release from the wheels it published and verified here
+against the installed `RECORD`. A third party's card still needs its attestation."""
+
+LOCK_SATISFIED: Final[frozenset[TrustTier]] = frozenset(
+    {TrustTier.FIRST_PARTY, TrustTier.VENDORED, TrustTier.PINNED}
+)
+"""The tiers `require_lock` accepts without an `omniweave.lock` row of their own (D894).
+
+04-driver-system.md section 4.2: *"`unpinned` is not a rejection by itself -- `require_lock = true`
+(the shipped default) turns it into `NOT_IN_LOCKFILE`"*, and 11-repo-layout.md section 7.2: a
+distribution that leaves the manifest *"flips from `first_party` to `unpinned` -- which, under
+`require_lock = true`, turns into `NOT_IN_LOCKFILE`"*. So the refusal is `unpinned`'s, and
+`local`'s, which *"can never ... satisfy `require_lock = true`"*. `pinned` is a lock row by
+definition, and the two manifest tiers are pinned by the release."""
 
 ISOLATION_CONTAINMENT: Final[tuple[Isolation, ...]] = (Isolation.INPROC, Isolation.SUBPROC)
 """The isolation modes this build can grant, weakest containment first.
@@ -1467,7 +1490,13 @@ def _pin_names(subject: _Subject) -> bool:
 
 
 def _gate_attested(subject: _Subject) -> Rejection | None:
-    if subject.card.attested or subject.policy.allow_unattested or _pin_names(subject):
+    """`UNATTESTED`, waived by `allow_unattested`, an explicit pin, or the release manifest's."""
+    if (
+        subject.card.attested
+        or subject.policy.allow_unattested
+        or _pin_names(subject)
+        or subject.trust in MANIFEST_PINNED
+    ):
         return None
     return _reject(
         subject,
@@ -1479,7 +1508,12 @@ def _gate_attested(subject: _Subject) -> Rejection | None:
 
 
 def _gate_lockfile(subject: _Subject) -> Rejection | None:
-    if not subject.policy.require_lock or subject.driver_id in subject.policy.locked_ids:
+    """`NOT_IN_LOCKFILE`: an `unpinned` or `local` driver under `require_lock` (D894)."""
+    if (
+        not subject.policy.require_lock
+        or subject.driver_id in subject.policy.locked_ids
+        or subject.trust in LOCK_SATISFIED
+    ):
         return None
     return _reject(
         subject,
