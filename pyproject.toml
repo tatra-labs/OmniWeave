@@ -40,6 +40,16 @@ omniweave-target-docx = { workspace = true }
 omniweave-target-pptx = { workspace = true }
 omniweave-target-video = { workspace = true }
 omniweave-vision = { workspace = true }
+# D886: on Linux, `torch` (omniweave-vision's only route in) resolves from PyTorch's CPU index.
+# PyPI's Linux wheel pulls fifteen NVIDIA CUDA distributions under proprietary licences, which
+# G3 cannot admit and the GPU-free `parity` job never needs. A GPU user installs CUDA torch
+# themselves; Windows and macOS PyPI wheels are CPU builds already.
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 # [dependency-groups], the whole of it. Membership is charter.md D1's exactly; the two markers
 # are 11-repo-layout.md section 6.2's addition, because semgrep publishes no Windows wheel and
