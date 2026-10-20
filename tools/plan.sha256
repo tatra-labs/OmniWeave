@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D883: the 3.12 floor and plan-less CI
+# blessed-because: D884: allow MIT-0, MIT-CMU, CNRI-Python, BSL-1.0
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -40,7 +40,7 @@ documents-frozen  4f58f4814cd10a876f6a6856aaf0879ad0d1287fc78d5a4fcd0e05271fa2d9
 documents-frozen  8e82628b992c64436fb969dd4d66bd8650c075ee7f2a8bc44660beac47449535  11-repo-layout.md
 documents-frozen  44a9d2b810b0850205912449e6337423f3db837c1f75f2d580c91b25353752c2  12-performance.md
 documents-frozen  f2d31d7aecd6c4995011d7fdcbd8219b0c2e93b8fdac158f9ac924664e61afa1  13-quality.md
-documents-frozen  667161a8bd206b5805998a289f7679f80dc3a8ea6910c52ea8345bfe9562d721  14-security.md
+documents-frozen  78a3474b788625971c7a7fed610ef3c6518e9330bfd87e8411fbc744666b43d1  14-security.md
 documents-frozen  dc12dc92f5690bb2747048244ce1113803c4f03c67e21917574c2c9db7ba221a  15-observability.md
 documents-frozen  e3b844a6c8df19f75f94726fb8db8afe888d901e533ab0092d1c7072283d40d3  16-roadmap.md
 documents-frozen  df4d16ec9e95851ee78fec9cf1fee599488fef474c9f1ee90d9da73bdca32405  17-risks.md
