@@ -50,6 +50,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_core.errors import DriverHostError
+from omniweave_core.out.compile import CompileV1
 from omniweave_ports.ports import AcquireV1, DeriveV1, EmbedV1, ParseV1
 from omniweave_ports.types import DriverError, DriverResult, FailureClass, Port
 
@@ -77,14 +78,15 @@ PROTOCOL_FOR_PORT: dict[Port, type] = {
     Port.PARSE: ParseV1,
     Port.DERIVE: DeriveV1,
     Port.EMBED: EmbedV1,
+    Port.COMPILE: CompileV1,
 }
-"""Port to Protocol. `Port.COMPILE` is absent on purpose.
+"""Port to Protocol, all five.
 
 04-driver-system.md:379-383: `CompileV1` "lives in `omniweave_core.out.compile`, NOT here", because
 its signature mixes ports types with `Plan`, `ILBundle`, `AssetLedger`, `RuleSpec` and `CarrierDoc`
-and a Protocol has to live in the one distribution holding both halves. That module is P5's, so a
-`compile/1` card gets an `unknown` naming what is missing rather than a signature check against a
-Protocol this kit would have had to invent."""
+and a Protocol has to live in the one distribution holding both halves. Until that module landed a
+`compile/1` card failed here naming what was missing; it has landed, so a compile driver's seven
+methods are compared against it as every other port's are (D889)."""
 
 _MODEL_MODULES = ("torch",)
 """What `[hardware] imports_torch = false` is a claim about. One entry because the card has one
@@ -159,7 +161,7 @@ def run(subject: Subject) -> SuiteResult:
                 Assertion(
                     "the card's entrypoint activates and its PORT/SCHEMA_VERSION match the card",
                     ok=False,
-                    detail=f"{exc.symbol}: {exc}",
+                    detail=f"{exc.code()}: {exc}",
                     locus="activate",
                 )
             ],
