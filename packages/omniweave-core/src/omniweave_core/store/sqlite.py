@@ -104,6 +104,7 @@ __all__ = [
     "connect",
     "connect_readonly",
     "heal_wal",
+    "immediate",
     "process_create_time",
     "readonly_target",
     "refuse_missing_fts5",
@@ -387,9 +388,46 @@ def refuse_missing_fts5(connection: sqlite3.Connection) -> None:
 
 
 def _apply(connection: sqlite3.Connection, pragmas: Sequence[str]) -> None:
-    """Issue `PRAGMA <p>` for each, in the given order, discarding the readings."""
+    """Issue `PRAGMA <p>` for each, in the given order, discarding the readings.
+
+    D886: a failure names the pragma and SQLite's extended error. CI's hosted Windows runners
+    failed a reopen after a kill-9 with a bare `disk I/O error`, which says neither which of the
+    six pragmas refused nor which of SQLite's dozens of `SQLITE_IOERR_*` causes it was. The
+    exception type is unchanged, so every caller's `except` still matches.
+
+    **One cause is waited out, briefly** (D886). The next run named it: `journal_mode = WAL` ->
+    `SQLITE_IOERR_TRUNCATE`. Opening a WAL database a killed writer left behind recovers it, and
+    recovery truncates a sidecar. Windows refuses to truncate a file while ANY process holds a
+    mapped view of it, and on the hosted runners something did (antivirus scanning the freshly
+    written files is the usual holder), for longer than SQLite's own short retry. A user's machine
+    after a crash is the same case. So that one error is retried for at most
+    `TRUNCATE_TRIES x TRUNCATE_PAUSE_S`, as `blobs` waits out a rename's sharing denial. Anything
+    else, or a refusal that outlasts the wait, is raised.
+
+    **On any pragma, not only `journal_mode`** (D887). Recovery runs on whichever statement first
+    reads the database, and the run after that named `synchronous = NORMAL`: `journal_mode` had
+    answered from the file header. Every pragma this module issues sets a value, so issuing one
+    again is safe.
+    """
     for pragma in pragmas:
-        connection.execute(f"PRAGMA {pragma}")
+        for attempt in range(TRUNCATE_TRIES):
+            try:
+                connection.execute(f"PRAGMA {pragma}")
+                break
+            except sqlite3.OperationalError as error:
+                name = getattr(error, "sqlite_errorname", None) or "unknown"
+                transient = name == "SQLITE_IOERR_TRUNCATE"
+                if transient and attempt < TRUNCATE_TRIES - 1:
+                    time.sleep(TRUNCATE_PAUSE_S)
+                    continue
+                msg = f"PRAGMA {pragma}: {error} ({name})"
+                raise sqlite3.OperationalError(msg) from error
+
+
+TRUNCATE_TRIES: Final = 100
+TRUNCATE_PAUSE_S: Final = 0.05
+"""D886, D887: up to five seconds for another process to release its mapped view of a WAL
+sidecar. Two seconds was D886's; the hosted runner's view then outlasted the first statement."""
 
 
 def connect(
@@ -1136,6 +1174,37 @@ def _snapshot_ms(requested: int | None) -> int:
             fix="[retrieval] snapshot_ms = 2000",
         )
     return min(want, MAX_SNAPSHOT_MS)
+
+
+class _Transacting(Protocol):
+    """What `immediate()` needs of a connection: `execute` and `in_transaction`."""
+
+    @property
+    def in_transaction(self) -> bool: ...
+
+    def execute(self, sql: str, /) -> object: ...
+
+
+@contextmanager
+def immediate(connection: _Transacting) -> Iterator[None]:
+    """One `BEGIN IMMEDIATE` ... `COMMIT` for a caller holding no transaction; joins one it holds.
+
+    **D886: the demarcation is the store's** (INV-17, ST1; G8's `no-sql-begin-outside-store`). A
+    writer outside `omniweave_core/store/` that must be atomic on its own, and must also join a
+    caller's transaction when there is one (05:2884's three `route_threshold` rows with the policy
+    install), states that here rather than issuing its own `BEGIN`. A joined transaction is left
+    to its owner: nothing is committed or rolled back on its behalf.
+    """
+    if connection.in_transaction:
+        yield
+        return
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        yield
+    except BaseException:
+        connection.execute("ROLLBACK")
+        raise
+    connection.execute("COMMIT")
 
 
 @contextmanager

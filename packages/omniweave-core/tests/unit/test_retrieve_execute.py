@@ -145,8 +145,22 @@ def _frozen() -> int:
     return 0
 
 
+_OPENED: list[sqlite3.Connection] = []
+"""D887: every connection this module's helpers open, closed after each test. Python 3.13 warns
+on an unclosed `sqlite3.Connection`, and `filterwarnings = error` makes that a failure."""
+
+
+@pytest.fixture(autouse=True)
+def _close_what_the_helpers_opened() -> Iterator[None]:
+    yield
+    while _OPENED:
+        _OPENED.pop().close()
+
+
 def _reader(built: Built) -> rd.SqliteReader:
-    return rd.SqliteReader(ow.connect_readonly(built.path), now_ns=NOW_NS)
+    connection = ow.connect_readonly(built.path)
+    _OPENED.append(connection)
+    return rd.SqliteReader(connection, now_ns=NOW_NS)
 
 
 def _ask(built: Built, q: Query, pol: RetrievalPolicy = POLICY) -> Response:

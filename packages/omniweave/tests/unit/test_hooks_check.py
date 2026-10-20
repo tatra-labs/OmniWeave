@@ -12,6 +12,7 @@ real children is `tests/conform/test_hooks_process.py`.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import tomllib
@@ -196,12 +197,17 @@ def test_the_backslash_bug_is_named_as_itself_and_not_as_a_path_problem() -> Non
 
 
 def test_a_quoted_forward_slash_path_survives_the_same_shell() -> None:
-    found = resolve("'C:/Program Files/ow/ow.exe' hook x", path="", exists=_exists)
+    """The head is this host's absolute form (D886): `C:/` is relative on POSIX, as it should be."""
+    spaced = "C:/Program Files/ow/ow.exe" if os.name == "nt" else "/opt/Program Files/ow/ow"
+    found = resolve(f"'{spaced}' hook x", path="", exists=_exists)
 
     assert found.ok()
-    assert found.argv == ("C:/Program Files/ow/ow.exe", "hook", "x")
+    assert found.argv == (spaced, "hook", "x")
 
 
+@pytest.mark.skipif(
+    os.name != "nt", reason="a Windows shell split; a drive path is relative on POSIX"
+)
 def test_a_windows_split_keeps_the_backslashes() -> None:
     found = resolve("C:\\tools\\ow.exe hook x", path="", posix=False, exists=_exists)
 
@@ -210,11 +216,12 @@ def test_a_windows_split_keeps_the_backslashes() -> None:
 
 
 def test_a_stale_absolute_path_is_not_resolvable() -> None:
-    """The `pipx reinstall` case: the path was right once."""
-    found = resolve(f"{EXE} hook x", path="", exists=lambda _p: False)
+    """The `pipx reinstall` case: the path was right once. In this host's absolute form (D886)."""
+    stale = EXE if os.name == "nt" else "/opt/tools/ow"
+    found = resolve(f"{stale} hook x", path="", exists=lambda _p: False)
 
     assert not found.ok()
-    assert found.reason == f"{EXE} does not exist"
+    assert found.reason == f"{stale} does not exist"
 
 
 @pytest.mark.parametrize("head", ["./ow", "bin/ow", "..\\ow.exe"])

@@ -92,7 +92,7 @@ def test_wilson_is_not_the_normal_approximation_at_p_one() -> None:
     assert hi == 1.0
     assert lo == pytest.approx(30 / (30 + _Z * _Z), rel=1e-12)
     lo0, hi0 = wilson(0, 30)
-    assert lo0 == 0.0
+    assert lo0 == pytest.approx(0.0, abs=1e-15)  # D886: macOS's libm gives 1.4e-17
     assert hi0 == pytest.approx(1 - lo, rel=1e-12)
 
 

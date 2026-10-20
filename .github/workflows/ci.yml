@@ -694,7 +694,10 @@ jobs:
     name: "test (${{ matrix.os }} py${{ matrix.py }})"
     needs: [versions]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 8 # 2x the 240 s per-cell budget of section 6.2.
+    # D886: section 6.2's 240 s per cell predates a 17,000-test suite. Run serially on a
+    # 4-core hosted runner the T1/T2 step was cancelled at 8 minutes on its first CI run; with
+    # `-n auto` it is measured, and 45 minutes is the ceiling until a cell's median says less.
+    timeout-minutes: 45
     permissions:
       contents: read
     strategy:
@@ -749,7 +752,7 @@ jobs:
       - name: "the test suite, T1 and T2 -- everything not marked conform"
         # testpaths = ["packages"] in the workspace root, so this is every tier the tree carries
         # except T3, which the next step runs on its own.
-        run: uv run pytest -q -m "not conform"
+        run: uv run pytest -q -n auto -m "not conform"
       - name: "T3 -- tests/conform/, the tests that spawn a subprocess or a Driver host"
         # 13-quality.md section 2.7 places them at T3 and section 11.2 runs T3 as its own job. They
         # stay in THIS matrix rather than moving to the `conform` job below, because that job is
@@ -912,14 +915,15 @@ jobs:
         # 16-roadmap.md:517-518 gives the two invocations verbatim at the P3 exit.
         # packages/omniweave-conform exists as a distribution; its suites and "ow" do not.
         run: |
-          if uv run ow --version > /dev/null 2>&1
-          then
-            uv run ow conform packages/omniweave-office --suites mandatory
-            uv run ow conform packages/omniweave-pdf --suites mandatory
-          else
-            echo "conform NOT ENFORCED: the twelve suites land at P3 (16-roadmap.md:517)" \
-              | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
+          # D886: the kit is `tools/ow_conform.py`; there is no `ow conform` verb, and the
+          # first CI run failed on it. Each driver runs over its own committed fixtures, and the
+          # tool exits non-zero unless the mandatory tier passes.
+          uv run tools/ow_conform.py \
+            --card packages/omniweave-office/src/omniweave_office/driver.toml \
+            --fixtures packages/omniweave-office/fixtures
+          uv run tools/ow_conform.py \
+            --card packages/omniweave-pdf/src/omniweave_pdf/driver.toml \
+            --fixtures packages/omniweave-pdf/fixtures
 
   # ==========================================================================================
   # incremental -- ubuntu x 3.12, G19 alone, <= 8 min. Its own job because section 6.2's "Extends
@@ -942,6 +946,17 @@ jobs:
           fetch-depth: 1
       - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
       - run: uv python install "$UV_PYTHON"
+      - id: uv-cache-dir
+        run: echo "dir=$(uv cache dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          path: ${{ steps.uv-cache-dir.outputs.dir }}
+          key: "uv-${{ runner.os }}-py3.12-${{ hashFiles('uv.lock') }}"
+          restore-keys: "uv-${{ runner.os }}-py3.12-"
+      - name: "install the workspace and the dev group"
+        # D886: without this the job ran `uv run` against the workspace root, which installs no
+        # member, and failed on its first CI run with `No module named 'omniweave_core'`.
+        run: uv sync --frozen --all-packages --group dev
       - name: "G19 -- incremental == full over 300 docs and 40 mutations"
         # Two arrival dates, both stated by the plan, and BOTH have now passed: the harness
         # landed at the P2 exit as "gate_incremental.py --smoke" with the note "G19's harness
@@ -981,6 +996,17 @@ jobs:
           fetch-depth: 1
       - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
       - run: uv python install "$UV_PYTHON"
+      - id: uv-cache-dir
+        run: echo "dir=$(uv cache dir)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          path: ${{ steps.uv-cache-dir.outputs.dir }}
+          key: "uv-${{ runner.os }}-py3.12-${{ hashFiles('uv.lock') }}"
+          restore-keys: "uv-${{ runner.os }}-py3.12-"
+      - name: "install the workspace and the dev group"
+        # D886: without this the job ran `uv run` against the workspace root, which installs no
+        # member, and failed on its first CI run with `No module named 'omniweave_core'`.
+        run: uv sync --frozen --all-packages --group dev
       - name: "G21 -- kill-9 at three points, ow resume, store equals an uninterrupted run"
         # LANDED at W2.9, so the existence guard is gone: a step that passes when its runner is
         # missing is section 6.8's check that cannot fail. Three blake2b-drawn points, printed by

@@ -758,7 +758,9 @@ def test_the_loop_claims_dispatches_and_completes_every_row() -> None:
 
     assert report.status == "done"
     assert (report.claimed, report.batches, report.completed) == (3, 2, 3)
-    assert [row_id for row_id, _, _ in queue.completed] == [1, 2, 3]
+    # D886: every row, in no promised order. Two batches complete concurrently, and macOS ran
+    # the second's row before the first's last on CI's first run.
+    assert sorted(row_id for row_id, _, _ in queue.completed) == [1, 2, 3]
     assert {gen for _, gen, _ in queue.completed} == {7}, "the run's generation, on every commit"
     assert kinds(events).count("work.claim") == 3
     assert kinds(events).count("work.complete") == 3
@@ -1479,6 +1481,28 @@ def test_a_closed_queue_holding_a_deferred_row_keeps_its_quiet_tail() -> None:
     built = harness(queue, timings=loop_timings(deferred_sweep_ms=200), closed_queue=True)
     _report, seconds = _timed(built)
     assert seconds >= 0.3, f"{seconds:.2f} s"
+
+
+class _ClaimsAcrossTheFinish(FakeQueue):
+    """The claim after the row's returns only once its batch has completed and the worker has
+    set `_progress`: the interleaving CI's ubuntu 3.14 cell met, which cut the tail to a sweep."""
+
+    def claim(self, batch: int, gen: int, worker: str, lease_ms: int) -> Sequence[WorkRow]:
+        rows = super().claim(batch, gen, worker, lease_ms)
+        if len(self.widths) == 2:
+            deadline = time.monotonic() + 5.0
+            while not self.completed and time.monotonic() < deadline:
+                time.sleep(0.005)
+            time.sleep(0.05)  # the worker's `finally`: `_in_flight -= 1`, then `_progress.set()`
+        return rows
+
+
+def test_a_batch_finishing_during_the_counted_claim_does_not_shorten_the_quiet_tail() -> None:
+    """D887: three empty claims a sweep apart, even when the batch finished inside the first."""
+    queue = _ClaimsAcrossTheFinish([[work_row(1)]], counts={"deferred": 1})
+    built = harness(queue, timings=loop_timings(deferred_sweep_ms=200), closed_queue=True)
+    _report, seconds = _timed(built)
+    assert seconds >= 0.35, f"{seconds:.2f} s: one sweep of the tail was skipped"
 
 
 def test_the_next_stage_a_slow_batch_enqueues_is_claimed_in_the_same_drain() -> None:

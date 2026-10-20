@@ -691,10 +691,13 @@ def _invoke(
             # The scratch goes BEFORE the frame: once the host has read a unit's RESULT it may
             # reuse or inspect the tmp root, and nothing a RESULT names lives in scratch -- every
             # produced ref is inline or in the CAS by now.
+            # The invoke's own directory goes with the last unit's scratch, for the same reason:
+            # removing it after the final RESULT raced a host that inspects the tmp root on it.
             _CALLS.pop(io_obj, None)
             shutil.rmtree(scratch, ignore_errors=True)
+            if index == len(units) - 1:
+                shutil.rmtree(scratch.parent, ignore_errors=True)
         wired.send(wire.FrameKind.RESULT, header, body)
-    shutil.rmtree(Path(session.tmp) / invoke_id, ignore_errors=True)
 
 
 _SERVICE_RETRY_MS: Final = 1000

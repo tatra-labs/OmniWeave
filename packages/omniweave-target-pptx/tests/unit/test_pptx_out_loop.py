@@ -182,13 +182,16 @@ def test_a_corpus_holding_its_own_deck_reports_its_generated_share(tmp_path: Pat
     store = project / ".omniweave" / "index.owstore"
 
     def ask(filters: Filters) -> Any:
-        reader = rd.SqliteReader(store_sqlite.connect_readonly(store), now_ns=1)
-        return retrieve(
-            reader,
-            Query(text="Revenue rose", filters=filters),
-            RetrievalPolicy(),
-            monotonic_ns=lambda: 0,
-        )
+        connection = store_sqlite.connect_readonly(store)
+        try:  # D887: closed here, not left to the collector
+            return retrieve(
+                rd.SqliteReader(connection, now_ns=1),
+                Query(text="Revenue rose", filters=filters),
+                RetrievalPolicy(),
+                monotonic_ns=lambda: 0,
+            )
+        finally:
+            connection.close()
 
     open_ = ask(Filters())
     assert open_.hits, "the read-back answers"

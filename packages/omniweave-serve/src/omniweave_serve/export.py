@@ -292,7 +292,10 @@ class UrllibTransport:
             with urllib.request.urlopen(request, timeout=self._timeout_s) as answer:  # noqa: S310
                 return Response(status=answer.status, reason=answer.reason or "")
         except urllib.error.HTTPError as exc:
-            return Response(status=exc.code, reason=exc.reason or "")
+            # The error IS the response, body and all; closed here because nothing reads the body
+            # (3.14 backs a body-less one with a temporary file, which would leak unclosed).
+            with exc:
+                return Response(status=exc.code, reason=exc.reason or "")
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             return Response(status=0, reason=str(exc))
 

@@ -35,6 +35,7 @@ import hashlib
 import json
 import pathlib
 import re
+from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any, cast, get_args
 
 import pytest
@@ -761,6 +762,18 @@ def test_reconcile_names_the_direction_because_the_two_have_different_causes() -
     assert "manifest claims more" in str(behind.value)
 
 
+_OPENED: list[Any] = []
+"""D887: every connection `_ledger()` opens, closed after each test. Python 3.13 warns on an
+unclosed connection, and `filterwarnings = error` fails it. `Any` for `_ledger()`'s reason."""
+
+
+@pytest.fixture(autouse=True)
+def _close_what_the_helpers_opened() -> Iterator[None]:
+    yield
+    while _OPENED:
+        _OPENED.pop().close()
+
+
 def _ledger(tmp_path: Path) -> Any:
     """A real `.owstore` with the four migrations applied, opened the way the store opens one.
 
@@ -774,6 +787,7 @@ def _ledger(tmp_path: Path) -> Any:
     step around would not be one.
     """
     connection = ow.connect(tmp_path / "index.owstore")
+    _OPENED.append(connection)
     assert len(migrate.apply_pending(connection, now_ns=1)) == 5
     return connection
 

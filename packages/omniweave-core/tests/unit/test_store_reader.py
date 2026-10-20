@@ -92,9 +92,28 @@ def built(tmp_path: Path) -> Iterator[Built]:
         writer.close()
 
 
+_OPENED: list[sqlite3.Connection] = []
+"""D887: every connection this module's helpers open, closed after each test. Python 3.13 warns
+on an unclosed `sqlite3.Connection`, and `filterwarnings = error` makes that a failure."""
+
+
+@pytest.fixture(autouse=True)
+def _close_what_the_helpers_opened() -> Iterator[None]:
+    yield
+    while _OPENED:
+        _OPENED.pop().close()
+
+
+def _keep(connection: sqlite3.Connection) -> sqlite3.Connection:
+    """`connection`, registered to be closed after the test (D887)."""
+    _OPENED.append(connection)
+    return connection
+
+
 def _reader(built: Built, *, now_ns: int = NOW_NS) -> rd.SqliteReader:
-    """A `Reader` on a fresh read-only connection to the built store."""
-    return rd.SqliteReader(ow.connect_readonly(built.path), now_ns=now_ns)
+    """A `Reader` on a fresh read-only connection to the built store, closed after the test."""
+    connection = _keep(ow.connect_readonly(built.path))
+    return rd.SqliteReader(connection, now_ns=now_ns)
 
 
 def _code(conn: sqlite3.Connection, domain: str, name: str) -> int:
@@ -371,9 +390,9 @@ def test_the_caps_digest_moves_when_the_channels_do(built: Built) -> None:
 
 def test_the_caps_digest_moves_with_the_clock_because_stat_age_is_inside_it(built: Built) -> None:
     """`stat_age_ns` is a field of `IndexCaps`, so two opens a day apart are two capabilities."""
-    early = rd.SqliteReader(ow.connect_readonly(built.path), now_ns=NOW_NS).capabilities()
+    early = rd.SqliteReader(_keep(ow.connect_readonly(built.path)), now_ns=NOW_NS).capabilities()
     late = rd.SqliteReader(
-        ow.connect_readonly(built.path), now_ns=NOW_NS + 86_400_000_000_000
+        _keep(ow.connect_readonly(built.path)), now_ns=NOW_NS + 86_400_000_000_000
     ).capabilities()
     assert late.stat_age_ns > early.stat_age_ns
     assert late.caps_digest != early.caps_digest
@@ -1141,7 +1160,7 @@ def test_the_cite_lookup_supplies_both_columns_of_the_two_column_index(built: Bu
     rollback.
     """
     _seed_identity(built)
-    connection = ow.connect_readonly(built.path)
+    connection = _keep(ow.connect_readonly(built.path))
     reader = rd.SqliteReader(connection, now_ns=NOW_NS)
     executed: list[str] = []
 
@@ -1989,7 +2008,7 @@ def test_a_channel_over_its_own_budget_is_unavailable_with_the_one_reason_gate_o
     _seed_links(built)
     ticks = iter([0, 30_000_000])
     reader = rd.SqliteReader(
-        ow.connect_readonly(built.path),
+        _keep(ow.connect_readonly(built.path)),
         now_ns=NOW_NS,
         monotonic_ns=lambda: next(ticks, 30_000_000),
     )
@@ -2186,7 +2205,7 @@ def _vec_reader(built: Built, path: pathlib.Path | None, backend: object | None)
     open"* (07:3272) and `caps_digest` memoises `plan()` -- a sidecar that appeared mid-`Reader`
     would make two `capabilities()` calls disagree about a store the plan was built against.
     """
-    connection = ow.connect_readonly(built.path)
+    connection = _keep(ow.connect_readonly(built.path))
     if path is not None:
         connection.execute("ATTACH DATABASE ? AS vec", (str(path),))
     return rd.SqliteReader(connection, now_ns=NOW_NS, vectors=backend)  # type: ignore[arg-type]
@@ -2486,7 +2505,7 @@ def test_a_rank_below_one_is_refused_because_fuse_reads_it_as_absent() -> None:
 def test_attach_vec_answers_false_for_a_sidecar_that_is_not_there(built: Built) -> None:
     """The sidecar is *"[DER] Optional. Deletable."* (07:789), so its absence is the shipped
     default's ordinary state and not a condition anything should have to catch."""
-    connection = ow.connect_readonly(built.path)
+    connection = _keep(ow.connect_readonly(built.path))
     assert ow.attach_vec(connection, vec.vec_path(built.path)) is False
     assert ow.attach_vec(connection, _seed_sidecar(built)) is True
     assert [row[1] for row in connection.execute("PRAGMA database_list")] == ["main", "vec"]
@@ -2519,7 +2538,7 @@ def test_the_stdlib_backend_drives_the_semantic_channel_end_to_end(built: Built)
     finally:
         writer.close()
 
-    connection = ow.connect_readonly(built.path)
+    connection = _keep(ow.connect_readonly(built.path))
     assert ow.attach_vec(connection, path) is True
     reader = rd.SqliteReader(connection, now_ns=NOW_NS, vectors=vec.BruteVectors(connection))
     with reader.snapshot() as state:
@@ -3292,7 +3311,7 @@ def test_every_method_refuses_a_snapshot_issued_by_another_store(
     other_writer = ow.connect(other_path)
     try:
         migrate.apply_pending(other_writer, now_ns=NOW_NS)
-        other = rd.SqliteReader(ow.connect_readonly(other_path), now_ns=NOW_NS)
+        other = rd.SqliteReader(_keep(ow.connect_readonly(other_path)), now_ns=NOW_NS)
         mine = _reader(built)
         with other.snapshot() as foreign:
             for name, call in _every_snapshot_method(mine, foreign):

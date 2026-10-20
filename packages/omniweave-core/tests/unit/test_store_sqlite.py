@@ -1274,3 +1274,69 @@ def test_an_interrupt_is_not_an_absent_table() -> None:
         assert _index_state(connection, "generation") is None
     finally:
         connection.close()
+
+
+def test_immediate_owns_a_transaction_rolls_back_on_error_and_joins_a_callers() -> None:
+    """D886: the store demarcates a writer's transaction, and never ends one it did not open."""
+    from omniweave_core.store.sqlite import immediate  # noqa: PLC0415 -- the helper under test.
+
+    conn = sqlite3.connect(":memory:", isolation_level=None)
+    conn.execute("CREATE TABLE t (v INTEGER)")
+    with immediate(conn):
+        assert conn.in_transaction
+        conn.execute("INSERT INTO t VALUES (1)")
+    assert not conn.in_transaction
+    with pytest.raises(RuntimeError, match="boom"), immediate(conn):
+        conn.execute("INSERT INTO t VALUES (2)")
+        raise RuntimeError("boom")
+    assert conn.execute("SELECT v FROM t").fetchall() == [(1,)]
+    conn.execute("BEGIN")
+    with immediate(conn):
+        conn.execute("INSERT INTO t VALUES (3)")
+    assert conn.in_transaction, "a joined transaction is left to its owner"
+    conn.execute("ROLLBACK")
+    assert conn.execute("SELECT v FROM t").fetchall() == [(1,)]
+    conn.close()
+
+
+class _Flaky:
+    """A connection whose `PRAGMA <which>` refuses `failures` times with `name`."""
+
+    def __init__(self, failures: int, name: str, which: str = "journal_mode") -> None:
+        self.failures = failures
+        self.name = name
+        self.which = which
+        self.calls: list[str] = []
+
+    def execute(self, sql: str) -> None:
+        self.calls.append(sql)
+        if self.which in sql and self.failures:
+            self.failures -= 1
+            error = sqlite3.OperationalError("disk I/O error")
+            error.sqlite_errorname = self.name  # type: ignore[attr-defined]
+            raise error
+
+
+@pytest.mark.parametrize("pragma", ["journal_mode = WAL", "synchronous = NORMAL"])
+def test_a_wal_truncate_refusal_is_waited_out_and_any_other_is_raised_naming_itself(
+    pragma: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D886: Windows refuses to truncate a mapped file; that one refusal is retried, briefly.
+
+    D887: on whichever pragma first reads the database and so runs the recovery -- CI's next run
+    met it on `synchronous`, after `journal_mode` had answered from the header."""
+    from omniweave_core.store import sqlite as ow_sqlite  # noqa: PLC0415
+
+    which = pragma.split(" ", 1)[0]
+    monkeypatch.setattr(ow_sqlite, "TRUNCATE_PAUSE_S", 0.0)
+    flaky = _Flaky(2, "SQLITE_IOERR_TRUNCATE", which)
+    ow_sqlite._apply(flaky, ("busy_timeout = 1", pragma))  # type: ignore[arg-type]
+    assert flaky.calls == ["PRAGMA busy_timeout = 1"] + [f"PRAGMA {pragma}"] * 3
+    stuck = _Flaky(ow_sqlite.TRUNCATE_TRIES, "SQLITE_IOERR_TRUNCATE", which)
+    with pytest.raises(sqlite3.OperationalError, match=rf"PRAGMA {pragma}: .*TRUNCATE"):
+        ow_sqlite._apply(stuck, (pragma,))  # type: ignore[arg-type]
+    assert len(stuck.calls) == ow_sqlite.TRUNCATE_TRIES
+    other = _Flaky(1, "SQLITE_IOERR_READ", which)
+    with pytest.raises(sqlite3.OperationalError, match="SQLITE_IOERR_READ"):
+        ow_sqlite._apply(other, (pragma,))  # type: ignore[arg-type]
+    assert other.calls == [f"PRAGMA {pragma}"], "no other error is retried"

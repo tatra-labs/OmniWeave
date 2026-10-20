@@ -40,6 +40,7 @@ from __future__ import annotations
 # narrowest form of the exemption: one line, in one file, with the reason attached.
 import re
 import sqlite3  # noqa: TID251
+from collections.abc import Iterator
 from typing import TYPE_CHECKING
 
 import pytest
@@ -258,6 +259,18 @@ def _ord(domain: str, name: str) -> int:
     raise LookupError(message)
 
 
+_OPENED: list[sqlite3.Connection] = []
+"""D887: every connection this module's helpers open, closed after each test. Python 3.13 warns
+on an unclosed `sqlite3.Connection`, and `filterwarnings = error` makes that a failure."""
+
+
+@pytest.fixture(autouse=True)
+def _close_what_the_helpers_opened() -> Iterator[None]:
+    yield
+    while _OPENED:
+        _OPENED.pop().close()
+
+
 def _apply(sql: str) -> sqlite3.Connection:
     """`sql` applied to an empty in-memory database with foreign keys ON.
 
@@ -298,9 +311,11 @@ def migration_bytes() -> bytes:
 
 
 @pytest.fixture(scope="module")
-def applied(migration_sql: str) -> sqlite3.Connection:
+def applied(migration_sql: str) -> Iterator[sqlite3.Connection]:
     """The schema, once, for the read-only introspection tests."""
-    return _apply(migration_sql)
+    connection = _apply(migration_sql)
+    yield connection
+    connection.close()  # D887: at the module's end, not each test's
 
 
 # The minimum stand-in for 0004_runtime.sql's `route_decision` (charter.md:2811), whose
@@ -324,6 +339,7 @@ def store(migration_sql: str) -> sqlite3.Connection:
     PREPARES a DML statement on the child.
     """
     connection = _apply(migration_sql)
+    _OPENED.append(connection)
     connection.executescript(ROUTE_DECISION_STANDIN)
     return connection
 
@@ -521,6 +537,7 @@ def test_a_block_row_needs_0004s_route_decision_to_exist_at_all(
     unused.
     """
     connection = _apply(migration_sql)
+    _OPENED.append(connection)
     _seed_one_page(connection)  # `doc`, `producer` and `page` all insert cleanly
     missing = re.escape("no such table: main.route_decision")
     with pytest.raises(sqlite3.OperationalError, match=missing):

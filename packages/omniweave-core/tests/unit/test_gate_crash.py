@@ -223,6 +223,7 @@ def test_a_killed_child_dies_holding_an_uncommitted_transaction(tmp_path: Path) 
     finally:
         proc.kill()
         proc.wait(timeout=30)
+        gate.wait_released(path)
     assert proc.returncode != 0, "a killed process does not exit cleanly"
     assert (tmp_path / "index.owstore-wal").exists(), "a killed writer leaves its WAL behind"
     assert _status(path, FIRST.part) == ("claimed", "planned")
@@ -287,6 +288,7 @@ def _leak(root: Path, *, rows: int) -> tuple[Path, int]:
     finally:
         proc.kill()
         proc.wait(timeout=30)
+        gate.wait_released(path)
     return path, ow.wal_bytes(path)
 
 
