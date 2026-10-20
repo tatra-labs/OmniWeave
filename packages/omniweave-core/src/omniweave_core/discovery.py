@@ -1228,6 +1228,26 @@ def discover(
     )
 
 
+def _manifest_digests(
+    found: Sequence[DiscoveredCard], manifest: FirstPartyManifest | None
+) -> dict[str, str]:
+    """D894: `dist_sha256` for each distribution the release manifest names and a card came from.
+
+    One `RECORD` read each, so at most the thirteen first-party distributions, and none without
+    a manifest. The digest is `drivers.digest`'s, which the manifest was written with.
+    """
+    if manifest is None:
+        return {}
+    from omniweave_core.drivers.digest import installed_digest  # noqa: PLC0415 -- release only
+
+    names = {
+        entry.source.dist_name
+        for entry in found
+        if entry.source.origin == "entry_point" and entry.source.dist_name in manifest.dists
+    }
+    return {name: installed_digest(name) for name in sorted(names)}
+
+
 def catalog(
     *,
     probe_status: Mapping[str, str] | None = None,
@@ -1254,11 +1274,14 @@ def catalog(
         manifest: the release manifest. `None` reads the shipped one, which every workspace
             checkout lacks — `read_first_party()` returns `None` there and trust falls to row 5.
         dist_sha256: `distribution name -> dist_sha256`, the attestation rows 1-3 of section 4.2's
-            trust table compare against. **This module computes none of them**: a distribution
-            digest is a hash over installed files, which is the `RECORD` walk section 4.1 forbids
-            on the discovery path. Absent, every `entry_point` card computes `unpinned`, which is
-            the safe direction — `unpinned` is the tier `require_lock` refuses and the one that
-            grants no `inproc`.
+            trust table compare against. **Absent, they are computed for the manifest's
+            distributions alone** (D894, `omniweave_core.drivers.digest`): one `RECORD` read for
+            each distribution the release manifest names and a card here came from, and nothing
+            when there is no manifest, which is every workspace checkout. That is not the walk
+            section 4.1 forbids: it reads no `Distribution.files` to FIND cards, and it hashes no
+            installed file. A distribution with no digest (editable, absent) computes `unpinned`,
+            the safe direction — the tier `require_lock` refuses and the one that grants no
+            `inproc`.
         **discovery: forwarded verbatim to `discover()`.
 
     A **duplicate id** keeps the first card in discovery order — entry points, then
@@ -1273,8 +1296,12 @@ def catalog(
     wrapper narrows, and it must be replaced by `Registry` when that lands.
     """
     result = discover(**discovery)  # type: ignore[arg-type]
-    digests = dist_sha256 or {}
     resolved_manifest = read_first_party() if manifest is None else manifest
+    digests = (
+        dist_sha256
+        if dist_sha256 is not None
+        else _manifest_digests(result.found, resolved_manifest)
+    )
 
     cards: dict[str, DriverCard] = {}
     trust: dict[str, TrustTier] = {}

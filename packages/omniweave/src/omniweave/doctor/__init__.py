@@ -153,6 +153,7 @@ def check_driver_cards(
     G11 reads the same pair the same way. Neither pass imports a card's entrypoint (INV-4).
     """
     from omniweave_core.discovery import catalog, discover  # noqa: PLC0415 -- the verb pays
+    from omniweave_core.drivers.resolve import MANIFEST_PINNED  # noqa: PLC0415
 
     faults = discover(env=env, project_root=project_root).faults
     built = catalog(env=env, project_root=project_root)
@@ -175,7 +176,14 @@ def check_driver_cards(
     )
     carded = sorted(one for one in enabled if one in built.cards)
     absent = sorted(one for one in enabled if one not in built.cards)
-    unattested = [one for one in carded if not built.cards[one].attested]
+    #  D894: the release manifest is the pin that waives attestation for a first-party card
+    #  (D576, a user ruling of 2026-10-20), as `resolve()`'s gate waives it.
+    pinned = sorted(
+        one
+        for one in carded
+        if not built.cards[one].attested and built.trust.get(one) in MANIFEST_PINNED
+    )
+    unattested = [one for one in carded if not built.cards[one].attested and one not in pinned]
     if unattested and not allow_unattested:
         findings.extend(
             DoctorFinding(
@@ -191,6 +199,8 @@ def check_driver_cards(
         )
         return tuple(findings)
     waived = f"; attestation waived for {', '.join(unattested)}" if unattested else ""
+    if pinned:
+        waived += f"; the release manifest pins {', '.join(pinned)}"
     missing = (
         f"; {len(absent)} enabled id(s) have no installed card and resolve as unavailable: "
         f"{', '.join(absent)}"

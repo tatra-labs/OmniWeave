@@ -720,7 +720,7 @@ def test_a_driver_failing_both_the_lockfile_and_the_isolation_gates_reports_the_
     subject = card('\n[isolation]\nrequires = "wasm"\n')
     resolution = resolve(
         parse_requirement(),
-        catalog_of(subject),
+        catalog_of(subject, trust={subject.identity.id: TrustTier.UNPINNED}),
         policy(
             require_lock=True,
         ),
@@ -1415,7 +1415,9 @@ def test_two_requirements_differing_only_in_one_omitted_field_resolve_differentl
         id="parse.pdf.pdfium",
         granularity="document",
     )
-    library = catalog_of(subject)
+    #  `pinned` (a lock row, D894): it satisfies require_lock and, unlike the manifest's tiers,
+    #  does not waive attestation, so `pinned` the requirement field is what decides.
+    library = catalog_of(subject, trust={subject.identity.id: TrustTier.PINNED})
     rules = policy(allow_unattested=not strict)
     one = parse_requirement(**{field_name: left})
     two = parse_requirement(**{field_name: right})
@@ -1992,7 +1994,7 @@ def test_a_quarantined_driver_is_refused_for_the_rest_of_the_run() -> None:
 def test_an_unattested_card_is_refused_unless_explicitly_pinned() -> None:
     subject = card()
     assert subject.attested is False
-    library = catalog_of(subject)
+    library = catalog_of(subject, trust={subject.identity.id: TrustTier.PINNED})
     strict = policy(allow_unattested=False)
     rejection = only_rejection(resolve(parse_requirement(), library, strict))
     assert rejection.code is RejectCode.UNATTESTED
@@ -2018,7 +2020,7 @@ def test_an_unlocked_id_is_refused_when_require_lock_is_the_shipped_default() ->
     rejection = only_rejection(
         resolve(
             parse_requirement(),
-            catalog_of(subject),
+            catalog_of(subject, trust={subject.identity.id: TrustTier.UNPINNED}),
             policy(
                 require_lock=True,
             ),
@@ -2687,3 +2689,49 @@ def test_the_office_card_passes_the_hardware_gate_on_a_windows_x64_host() -> Non
         "parse.docx.native",
         "parse.office.anydoc",
     ]
+
+
+# ---------------------------------------------------------------------------------------------
+# D894: the release manifest pins first-party cards (D576's two rulings of 2026-10-20)
+
+
+@pytest.mark.parametrize("tier", [TrustTier.FIRST_PARTY, TrustTier.VENDORED])
+def test_the_manifest_is_the_pin_that_waives_attestation_for_a_first_party_card(
+    tier: TrustTier,
+) -> None:
+    subject = card()
+    assert subject.attested is False
+    library = catalog_of(subject, trust={subject.identity.id: tier})
+    resolution = resolve(parse_requirement(), library, policy(allow_unattested=False))
+    assert len(resolution.candidates) == 1, resolution.rejected
+
+
+@pytest.mark.parametrize("tier", [TrustTier.UNPINNED, TrustTier.LOCAL, TrustTier.PINNED])
+def test_no_other_tier_waives_attestation(tier: TrustTier) -> None:
+    subject = card()
+    library = catalog_of(subject, trust={subject.identity.id: tier})
+    rules = policy(allow_unattested=False, require_lock=False)
+    assert only_rejection(resolve(parse_requirement(), library, rules)).code is (
+        RejectCode.UNATTESTED
+    )
+
+
+@pytest.mark.parametrize(
+    ("tier", "refused"),
+    [
+        (TrustTier.FIRST_PARTY, False),
+        (TrustTier.VENDORED, False),
+        (TrustTier.PINNED, False),
+        (TrustTier.UNPINNED, True),
+        (TrustTier.LOCAL, True),
+    ],
+)
+def test_require_lock_refuses_only_unpinned_and_local(tier: TrustTier, refused: bool) -> None:
+    """04-driver-system.md section 4.2: `unpinned` is what require_lock turns into a refusal."""
+    subject = card()
+    library = catalog_of(subject, trust={subject.identity.id: tier})
+    resolution = resolve(
+        parse_requirement(), library, policy(require_lock=True, allow_unattested=True)
+    )
+    codes = [r.code for r in resolution.rejected]
+    assert (RejectCode.NOT_IN_LOCKFILE in codes) is refused, codes
