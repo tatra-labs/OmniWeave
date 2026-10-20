@@ -1296,6 +1296,7 @@ def test_immediate_owns_a_transaction_rolls_back_on_error_and_joins_a_callers() 
     assert conn.in_transaction, "a joined transaction is left to its owner"
     conn.execute("ROLLBACK")
     assert conn.execute("SELECT v FROM t").fetchall() == [(1,)]
+    conn.close()
 
 
 class _Flaky:

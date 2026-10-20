@@ -517,7 +517,9 @@ def test_the_sampler_does_not_shadow_threads_own_stop(tmp_path: Path) -> None:
     """
     del tmp_path
     sampler = gate.Sampler(lambda: 0)
-    assert callable(sampler._stop), "Thread._stop must still be the method Thread defines"
+    # D887: the instance must not carry its own `_stop`. Python 3.13 removed `Thread._stop`, so
+    # "it is still the method Thread defines" no longer holds anywhere; shadowing still would.
+    assert "_stop" not in vars(sampler), "Sampler shadows threading.Thread._stop"
 
 
 def test_the_claimable_set_is_pending_plus_failed_transient_and_excludes_deferred() -> None:

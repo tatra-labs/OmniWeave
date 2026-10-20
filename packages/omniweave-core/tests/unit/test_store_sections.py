@@ -588,7 +588,9 @@ def test_the_root_prefix_degenerates_to_the_whole_corpus__07_3173(built: Built) 
     assert everything == int(conn.execute("SELECT count(*) FROM block_sec").fetchone()[0]) == 26
 
 
-def test_the_shipped_reader_narrows_on_the_rows_the_derivation_wrote(built: Built) -> None:
+def test_the_shipped_reader_narrows_on_the_rows_the_derivation_wrote(
+    built: Built, request: pytest.FixtureRequest
+) -> None:
     """The P2 -> P6 edge, end to end: `Filters.sec_path_prefix` over a derived index.
 
     16-roadmap.md:1034 bounds retrieval to *"`Reader`, `block_fts` and `block_sec`, and nothing
@@ -602,7 +604,9 @@ def test_the_shipped_reader_narrows_on_the_rows_the_derivation_wrote(built: Buil
     sec.derive_block_sec(conn, 1, 1)
     conn.execute("COMMIT")
 
-    reader = rd.SqliteReader(ow.connect_readonly(built.path), now_ns=NOW_NS)
+    connection = ow.connect_readonly(built.path)
+    request.addfinalizer(connection.close)  # D887: closed, not left to the collector
+    reader = rd.SqliteReader(connection, now_ns=NOW_NS)
     with reader.snapshot() as state:
         assert reader.narrow(state, Filters(sec_path_prefix="/0001/0001")).n == 2
         assert reader.narrow(state, Filters(sec_path_prefix="/0001/0010")).n == 2

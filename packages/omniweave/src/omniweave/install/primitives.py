@@ -198,9 +198,14 @@ def _through(path: Path) -> Path | str:
     try:
         if not path.is_symlink():
             return path
-        return path.resolve(strict=False)
+        resolved = path.resolve(strict=False)
     except (OSError, RuntimeError) as error:  # a loop is RuntimeError on 3.12
         return f"cannot follow the link at {path}: {type(error).__name__}"
+    if resolved.is_symlink():
+        # D887: from 3.13 `resolve()` no longer raises on a loop; it returns a member of it, which
+        # is still a link. A chain that ends at a link reached no file, so it is refused the same.
+        return f"cannot follow the link at {path}: a symlink loop"
+    return resolved
 
 
 def atomic_write(

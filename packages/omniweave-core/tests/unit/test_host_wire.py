@@ -473,10 +473,15 @@ def test_a_header_nested_to_the_cap_is_accepted_and_one_deeper_is_refused() -> N
 def test_a_header_nested_ten_thousand_deep_raises_a_named_error_and_not_a_recursion_error() -> None:
     """04-driver-system.md:1792's second hostile row, and the reason the cap precedes the parse.
 
-    `json.loads` takes no depth parameter, so a 10,000-deep header is a `RecursionError` -- which
+    `json.loads` takes no depth parameter, so a deep enough header is a `RecursionError` -- which
     is not a NAMED protocol error and is exactly what the sweep below forbids. The assertion is
     therefore about the TYPE of the failure and not only about the fact of one: a
     `DriverHostError` naming `header_too_deep`, with no `RecursionError` anywhere in its chain.
+
+    How deep is "deep enough" moved under the cap: 3.12 and 3.13 count C recursion, and 10,000
+    levels exceed the count; 3.14 measures the C stack instead, and a large stack parses 10,000
+    levels whole. The uncapped parse is therefore shown failing at a million levels, which no
+    thread's stack holds -- the cap is what keeps 10,000 from depending on the interpreter.
     """
     deep = nested(10_000)
     with pytest.raises(DriverHostError) as caught:
@@ -484,8 +489,9 @@ def test_a_header_nested_ten_thousand_deep_raises_a_named_error_and_not_a_recurs
     assert fault_of(caught.value) == WireFault.HEADER_TOO_DEEP.value
     assert caught.value.__cause__ is None
     assert not isinstance(caught.value.__context__, RecursionError)
+    levels = 1_000_000
     with pytest.raises(RecursionError):
-        json.loads(deep)
+        json.loads(b'{"a":' * levels + b"1" + b"}" * levels)
 
 
 @pytest.mark.parametrize(
