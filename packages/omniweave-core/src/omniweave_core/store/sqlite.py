@@ -394,14 +394,34 @@ def _apply(connection: sqlite3.Connection, pragmas: Sequence[str]) -> None:
     failed a reopen after a kill-9 with a bare `disk I/O error`, which says neither which of the
     six pragmas refused nor which of SQLite's dozens of `SQLITE_IOERR_*` causes it was. The
     exception type is unchanged, so every caller's `except` still matches.
+
+    **One cause is waited out, briefly** (D886). The next run named it: `journal_mode = WAL` ->
+    `SQLITE_IOERR_TRUNCATE`. Opening a WAL database a killed writer left behind recovers it, and
+    recovery truncates a sidecar. Windows refuses to truncate a file while ANY process holds a
+    mapped view of it, and on the hosted runners something did (antivirus scanning the freshly
+    written files is the usual holder), for longer than SQLite's own short retry. A user's machine
+    after a crash is the same case. So that one error, on that one pragma, is retried for at most
+    `TRUNCATE_TRIES x TRUNCATE_PAUSE_S`, as `blobs` waits out a rename's sharing denial. Anything
+    else, or a refusal that outlasts the wait, is raised.
     """
     for pragma in pragmas:
-        try:
-            connection.execute(f"PRAGMA {pragma}")
-        except sqlite3.OperationalError as error:
-            name = getattr(error, "sqlite_errorname", None) or "unknown"
-            msg = f"PRAGMA {pragma}: {error} ({name})"
-            raise sqlite3.OperationalError(msg) from error
+        for attempt in range(TRUNCATE_TRIES):
+            try:
+                connection.execute(f"PRAGMA {pragma}")
+                break
+            except sqlite3.OperationalError as error:
+                name = getattr(error, "sqlite_errorname", None) or "unknown"
+                transient = name == "SQLITE_IOERR_TRUNCATE" and pragma.startswith("journal_mode")
+                if transient and attempt < TRUNCATE_TRIES - 1:
+                    time.sleep(TRUNCATE_PAUSE_S)
+                    continue
+                msg = f"PRAGMA {pragma}: {error} ({name})"
+                raise sqlite3.OperationalError(msg) from error
+
+
+TRUNCATE_TRIES: Final = 40
+TRUNCATE_PAUSE_S: Final = 0.05
+"""D886: up to two seconds for another process to release its mapped view of a WAL sidecar."""
 
 
 def connect(
