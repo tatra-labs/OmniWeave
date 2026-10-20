@@ -240,15 +240,15 @@ def _cpus() -> int:
 
     08:663 prescribes one call: `cpus: int  # os.process_cpu_count() -- respects cgroup +
     affinity`. **`os.process_cpu_count()` was added in Python 3.13**, and this workspace's floor
-    is 3.11 -- `target-version = "py311"`, and the `test` matrix runs 3.11, 3.12 and 3.13
-    (11-repo-layout.md section 6.2). On two of the three cells the prescribed call raises
+    is 3.12 (D883; 3.11 before) -- `target-version = "py312"`, and the `test` matrix runs 3.12,
+    3.13 and 3.14 (11-repo-layout.md section 6.2). On the floor's cells the prescribed call raises
     `AttributeError`, which would make the Supervisor unconstructible there. Filed; the ladder is
     what ships meanwhile, and it preserves the intent rather than the spelling:
 
     1. `os.process_cpu_count()` -- 3.13+, and 08:663's own answer where it exists.
-    2. `len(os.sched_getaffinity(0))` -- Linux on 3.11/3.12, which is the affinity half exactly.
+    2. `len(os.sched_getaffinity(0))` -- Linux on 3.12, which is the affinity half exactly.
        It is what `process_cpu_count` itself calls on Linux, so rung 2 and rung 1 agree.
-    3. `os.cpu_count()` -- macOS and Windows on 3.11/3.12, where neither of the first two exists.
+    3. `os.cpu_count()` -- macOS and Windows on 3.12, where neither of the first two exists.
        This rung does NOT respect affinity, and saying so is the point: a run pinned to two cores
        on a 3.12 macOS box derives the box's count and over-admits. The manifest records
        `HostFacts` so the number is at least attributable.

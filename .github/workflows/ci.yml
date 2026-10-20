@@ -157,7 +157,7 @@ jobs:
           fi
 
   # ==========================================================================================
-  # gates -- ubuntu x 3.11, "G1..G29 minus the OS-matrix and long-running rows", ~3 min against a
+  # gates -- ubuntu x 3.12, "G1..G29 minus the OS-matrix and long-running rows", ~3 min against a
   # 180 s ceiling (V01-14). Checks out at depth 0 because TWO of section 6.2's three history
   # readers live here: G13 diffs codes.toml against the previous tag and G27(b) diffs the migration
   # set against it. "Getting this wrong does not produce a wrong answer; it produces 'fatal: no
@@ -171,7 +171,7 @@ jobs:
     permissions:
       contents: read
     env:
-      UV_PYTHON: "3.11"
+      UV_PYTHON: "3.12"
       # Section 8.2: "pyright runs only in gates. The PyPI pyright shim downloads a Node runtime
       # into a cache on first use unless PYRIGHT_PYTHON_GLOBAL_NODE=1 finds a node on PATH. The
       # gates job sets that variable against the runner's Node." Every GitHub-hosted ubuntu image
@@ -196,8 +196,8 @@ jobs:
           # matrix.py: "a lock change invalidates exactly one key, and the prefix fallback turns it
           # into a partial hit rather than a cold miss."
           path: ${{ steps.uv-cache-dir.outputs.dir }}
-          key: "uv-${{ runner.os }}-py3.11-${{ hashFiles('uv.lock') }}"
-          restore-keys: "uv-${{ runner.os }}-py3.11-"
+          key: "uv-${{ runner.os }}-py3.12-${{ hashFiles('uv.lock') }}"
+          restore-keys: "uv-${{ runner.os }}-py3.12-"
       - name: "install the workspace and the dev group"
         # --frozen is the gate lockfile drift cannot slip past (section 6.6): it fails on a stale
         # lock rather than resolving around it.
@@ -704,9 +704,14 @@ jobs:
       matrix:
         # THE NINE-CELL MATRIX, LANDED BY P2. Section 6.2's axis table
         # (11-repo-layout.md:1464-1471) is the definition of the cross product: OS over
-        # ubuntu-latest, macos-latest, windows-latest, and Python over 3.11, 3.12, 3.13, for
+        # ubuntu-latest, macos-latest, windows-latest, and Python over 3.12, 3.13, 3.14, for
         # 3 x 3 = 9 cells -- which is section 6.4's "test (9)" column and what section 6.6's
         # 747 s of cache saving is measured against.
+        #
+        # THE PYTHON AXIS MOVED UP ONE MINOR IN D883. The floor is now 3.12 (`requires-python`
+        # in every pyproject): 3.11 rejects the `MappingProxyType` dataclass defaults the packages
+        # use, so CI on 3.11 could never pass. The axis is the floor and the two newer
+        # releases, which keeps it nine cells.
         #
         # WHY IT IS NINE NOW AND WAS THREE BEFORE, since a reader meeting the P1 non-goal next
         # will otherwise read this as a divergence. 16-roadmap.md:340 is the row: "test (9
@@ -717,7 +722,7 @@ jobs:
         # determinism work" -- is a statement about P1, it is still true of P1, and it names P2
         # as the phase that expands the matrix. This is that expansion, not a breach of it.
         os: [ubuntu-latest, macos-latest, windows-latest]
-        py: ["3.11", "3.12", "3.13"]
+        py: ["3.12", "3.13", "3.14"]
     env:
       UV_PYTHON: ${{ matrix.py }}
     steps:
@@ -796,7 +801,7 @@ jobs:
           fi
 
   # ==========================================================================================
-  # golden -- ubuntu x 3.11, Reductions + Counters + Cassette replay, <= 4 min. Section 6.4
+  # golden -- ubuntu x 3.12, Reductions + Counters + Cassette replay, <= 4 min. Section 6.4
   # numbers none of it, and the register records that as an omission of section 6.4's rather than
   # a transcription loss. At P1 there is nothing to run: 16-roadmap.md section 4's non-goals are
   # "no store beyond M0's six-table sketch, no omniweave_core.model, no parse of any real document
@@ -811,7 +816,7 @@ jobs:
     permissions:
       contents: read
     env:
-      UV_PYTHON: "3.11"
+      UV_PYTHON: "3.12"
     steps:
       - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
         with:
@@ -824,8 +829,8 @@ jobs:
       - uses: actions/cache@v4 # TODO: pin to a 40-hex SHA -- owner: release
         with:
           path: ${{ steps.uv-cache-dir.outputs.dir }}
-          key: "uv-${{ runner.os }}-py3.11-${{ hashFiles('uv.lock') }}"
-          restore-keys: "uv-${{ runner.os }}-py3.11-"
+          key: "uv-${{ runner.os }}-py3.12-${{ hashFiles('uv.lock') }}"
+          restore-keys: "uv-${{ runner.os }}-py3.12-"
       - name: "install the workspace and the dev group"
         run: uv sync --frozen --all-packages --group dev
       - name: "the Tier-B corpus has not landed unwired"
@@ -853,7 +858,7 @@ jobs:
         run: uv run python bench/serve/run.py --audit-cassettes
 
   # ==========================================================================================
-  # conform -- ubuntu x 3.11, "the twelve suites + G15's socket-blocked run + G16", <= 5 min.
+  # conform -- ubuntu x 3.12, "the twelve suites + G15's socket-blocked run + G16", <= 5 min.
   # Depth 0 because G16 is the third of section 6.2's history readers: it builds the previous TWO
   # releases' template drivers from source in a git worktree at each tag (section 4.4) and loads
   # them against HEAD. Building from PyPI instead would let a yanked release break an unrelated
@@ -867,7 +872,7 @@ jobs:
     permissions:
       contents: read
     env:
-      UV_PYTHON: "3.11"
+      UV_PYTHON: "3.12"
     steps:
       - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
         with:
@@ -881,8 +886,8 @@ jobs:
       - uses: actions/cache@v4 # TODO: pin to a 40-hex SHA -- owner: release
         with:
           path: ${{ steps.uv-cache-dir.outputs.dir }}
-          key: "uv-${{ runner.os }}-py3.11-${{ hashFiles('uv.lock') }}"
-          restore-keys: "uv-${{ runner.os }}-py3.11-"
+          key: "uv-${{ runner.os }}-py3.12-${{ hashFiles('uv.lock') }}"
+          restore-keys: "uv-${{ runner.os }}-py3.12-"
       - name: "install the workspace and the dev group"
         run: uv sync --frozen --all-packages --group dev
       - name: "G15 socket-blocked half -- the conformance suites with no socket"
@@ -917,7 +922,7 @@ jobs:
           fi
 
   # ==========================================================================================
-  # incremental -- ubuntu x 3.11, G19 alone, <= 8 min. Its own job because section 6.2's "Extends
+  # incremental -- ubuntu x 3.12, G19 alone, <= 8 min. Its own job because section 6.2's "Extends
   # the charter" note says 300 documents in 40 scripted mutations does not fit inside golden's
   # 4 min, and shrinking the fixture would change a gate the charter says owns its two numbers.
   # ==========================================================================================
@@ -929,7 +934,7 @@ jobs:
     permissions:
       contents: read
     env:
-      UV_PYTHON: "3.11"
+      UV_PYTHON: "3.12"
     steps:
       - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
         with:
@@ -956,7 +961,7 @@ jobs:
         run: uv run tools/gate_incremental.py
 
   # ==========================================================================================
-  # crash -- ubuntu x 3.11, G21 alone, <= 5 min. The PR job takes three random kill points; the
+  # crash -- ubuntu x 3.12, G21 alone, <= 5 min. The PR job takes three random kill points; the
   # nightly ow-bench-1 row takes the whole matrix (section 6.5), which the register carries as
   # nightly_note = "full matrix".
   # ==========================================================================================
@@ -968,7 +973,7 @@ jobs:
     permissions:
       contents: read
     env:
-      UV_PYTHON: "3.11"
+      UV_PYTHON: "3.12"
     steps:
       - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
         with:
@@ -993,7 +998,7 @@ jobs:
   #
   # At P1 the three claims this job exists to make are provable WITHOUT installing anything, and
   # that is the form below: omniweave-core is stdlib-only (G1, INV-2), so importing it off
-  # PYTHONPATH in a bare python:3.11-slim container with nothing installed is a stronger offline
+  # PYTHONPATH in a bare python:3.12-slim container with nothing installed is a stronger offline
   # proof than any sync. The pytest half waits on the parity Dockerfile of section 7.1, which
   # 16-roadmap.md W10.9 owns.
   # ==========================================================================================
@@ -1011,7 +1016,7 @@ jobs:
       # (ghcr.io/omniweave/omniweave, built from the parity Dockerfile, non-root USER 65532, no
       # EXPOSE, ENTRYPOINT ["ow"]); it does not exist yet, so the stock slim image stands in and
       # carries the same two properties that matter here: no Node and no CUDA.
-      image: python:3.11-slim
+      image: python:3.12-slim
     steps:
       - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
         with:
@@ -1131,7 +1136,7 @@ jobs:
             | tee -a "$GITHUB_STEP_SUMMARY"
 
   # ==========================================================================================
-  # build -- ubuntu x 3.11, "two-pass build of 14 sdists + 14 wheels + the wheelhouse profile
+  # build -- ubuntu x 3.12, "two-pass build of 14 sdists + 14 wheels + the wheelhouse profile
   # installs + G2", <= 6 min. Section 6.6's four steps, in order, "because the order is the
   # mechanism". Steps 1 and 3 are real here; step 2 (gen_first_party.py) and step 4 (the offline
   # wheelhouse installs) are marked, because their runners and their profiles do not exist.
@@ -1144,7 +1149,7 @@ jobs:
     permissions:
       contents: read
     env:
-      UV_PYTHON: "3.11"
+      UV_PYTHON: "3.12"
     steps:
       - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
         with:
@@ -1157,8 +1162,8 @@ jobs:
       - uses: actions/cache@v4 # TODO: pin to a 40-hex SHA -- owner: release
         with:
           path: ${{ steps.uv-cache-dir.outputs.dir }}
-          key: "uv-${{ runner.os }}-py3.11-${{ hashFiles('uv.lock') }}"
-          restore-keys: "uv-${{ runner.os }}-py3.11-"
+          key: "uv-${{ runner.os }}-py3.12-${{ hashFiles('uv.lock') }}"
+          restore-keys: "uv-${{ runner.os }}-py3.12-"
       - name: "install the workspace and the dev group"
         run: uv sync --frozen --all-packages --group dev
       - name: "section 6.6 step 1 -- SOURCE_DATE_EPOCH, then 14 sdists and 14 wheels"

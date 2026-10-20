@@ -223,7 +223,7 @@ COVERED_SITES: Final[tuple[str, ...]] = (
 looks. Printed on every run, so the scope of a green result is never a matter of trust.
 
 `project.requires-python` is a bare specifier rather than a requirement and is checked all the
-same: the fourteen files all carry `>=3.11` with `# NO upper bound. charter.md D1.` beside it, and
+same: the fourteen files all carry `>=3.12` with `# NO upper bound. charter.md D1.` beside it, and
 charter D1's no-upper-bound rule is exactly the rule a `,<3.14` appended one afternoon would break.
 `[project.optional-dependencies]` is where 00-vision.md:585 records DataFlow's *"four incompatible
 vLLM pins"*, so an extra is not a lesser site. `[build-system] requires` is where `hatchling>=1.27`

@@ -524,6 +524,7 @@ def test_a_guard_outcome_carries_exactly_one_of_result_and_failure() -> None:
 # --------------------------------------------------------------------------------------------
 
 
+@pytest.mark.plan
 def test_the_three_deadlines_are_named_exactly_as_the_plan_names_them() -> None:
     """04-driver-system.md:1733-1735 and the `limit` strings its section 6.3 table prints.
 

@@ -10,7 +10,7 @@ name = "omniweave-office"
 version = "0.1.0"                     # == RELEASE. G5.
 description = "parse.office.anydoc and parse.text.builtin: the office family over anydoc, and ten text formats over the standard library."
 license = "Apache-2.0"
-requires-python = ">=3.11"           # NO upper bound. charter.md D1.
+requires-python = ">=3.12"           # NO upper bound. charter.md D1.
 dependencies = [
   "omniweave-ports >=1,<2",
   # NEVER omniweave-core (charter.md section 5 X4, layers.toml rule 3).

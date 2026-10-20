@@ -10,7 +10,7 @@ name = "omniweave-pdf"
 version = "0.1.0"                     # == RELEASE. G5.
 description = "parse.pdf.pdfium — text layer, glyph runs, page geometry, rasters."
 license = "Apache-2.0"
-requires-python = ">=3.11"           # NO upper bound. charter.md D1.
+requires-python = ">=3.12"           # NO upper bound. charter.md D1.
 dependencies = [
   # ROLE: THE PORT-MAJOR CEILING, which bounds a type vocabulary and not a release. Section 4.4's
   # support table: "`omniweave-ports >=1,<2` for the life of Port 1 ... a Port 2 is a new
