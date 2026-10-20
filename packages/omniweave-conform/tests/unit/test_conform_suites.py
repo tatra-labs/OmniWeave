@@ -23,6 +23,7 @@ Specified in 04-driver-system.md section 8.2; 13-quality.md section 12.
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -31,6 +32,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from omniweave_conform import Subject, Verdict, run
+from omniweave_conform.compile_harness import CompileRun, golden_of, run_compile
 from omniweave_conform.harness import run_parse
 from omniweave_conform.result import MANDATORY, SUITES
 from omniweave_conform.suites import (
@@ -561,3 +563,81 @@ def test_every_shipped_compile_card_declares_a_free_per_part_cost_model() -> Non
             "linear_per_part",
             "part",
         ), card.identity.id
+
+
+# ---------------------------------------------------------------------------------------------
+# D890: the compile/1 harness, and idempotence and determinism over a compile card's golden
+
+OWTEXT_GOLDEN = Path(__file__).resolve().parents[4] / "fixtures/out/golden/owtext"
+
+
+def _owtext(tmp_path: Path, measured: dict[str, object] | None = None) -> Subject:
+    return Subject.of(
+        OWTEXT_CARD, fixtures_dir=OWTEXT_GOLDEN, workdir=tmp_path, measurements=measured or {}
+    )
+
+
+def test_a_golden_is_a_directory_holding_il(tmp_path: Path) -> None:
+    assert golden_of(_owtext(tmp_path)) == OWTEXT_GOLDEN.resolve()
+    assert golden_of(Subject.of(OWTEXT_CARD, fixtures_dir=None, workdir=tmp_path)) is None
+    assert golden_of(Subject.of(OWTEXT_CARD, fixtures_dir=FIXTURES, workdir=tmp_path)) is None
+
+
+def test_a_compile_card_with_no_golden_is_unknown_naming_what_is_missing(tmp_path: Path) -> None:
+    subject = Subject.of(OWTEXT_CARD, fixtures_dir=None, workdir=tmp_path)
+    for suite in ("idempotence", "determinism"):
+        result = run_suite(suite, subject)
+        assert result.verdict is Verdict.UNKNOWN, suite
+        assert "golden fixture" in result.summary, suite
+
+
+def test_the_owtext_golden_is_idempotent_and_deterministic_by_part_digest(tmp_path: Path) -> None:
+    once = run_compile(
+        _owtext(tmp_path).instantiate(), _owtext(tmp_path).card, OWTEXT_GOLDEN, tmp_path / "x"
+    )
+    supplied = {"owtext": once.part_digest}
+    subject = _owtext(
+        tmp_path / "s",
+        {idempotence.CROSS_PROCESS_KEY: supplied, determinism.CROSS_PROCESS_KEY: supplied},
+    )
+    for suite in ("idempotence", "determinism"):
+        result = run_suite(suite, subject)
+        assert result.verdict is Verdict.PASS, [a.line() for a in result.assertions]
+        assert "cross:owtext" in {a.locus for a in result.assertions}, suite
+
+
+def test_a_second_process_with_another_part_digest_fails_both(tmp_path: Path) -> None:
+    other = {"owtext": "sha256:" + "0" * 64}
+    subject = _owtext(
+        tmp_path, {idempotence.CROSS_PROCESS_KEY: other, determinism.CROSS_PROCESS_KEY: other}
+    )
+    for suite in ("idempotence", "determinism"):
+        assert _failed(run_suite(suite, subject), "cross:owtext"), suite
+
+
+class _Drifting:
+    """A stand-in for `run_compile` whose part digest moves with each call."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def __call__(self, *_args: object) -> CompileRun:
+        self.calls += 1
+        return CompileRun(b"same bytes", f"sha256:{self.calls:064d}")
+
+
+def test_per_instance_state_fails_the_same_and_the_fresh_halves(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(idempotence, "run_compile", _Drifting())
+    result = run_suite("idempotence", _owtext(tmp_path))
+    assert _failed(result, "same:owtext")
+    assert _failed(result, "fresh:owtext")
+
+
+def test_an_ambient_read_fails_determinism(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def reads_tz(*_args: object) -> CompileRun:
+        return CompileRun(b"x", "sha256:" + os.environ.get("TZ", "unset").ljust(64, "0")[:64])
+
+    monkeypatch.setattr(determinism, "run_compile", reads_tz)
+    assert _failed(run_suite("determinism", _owtext(tmp_path)), "ambient:owtext")

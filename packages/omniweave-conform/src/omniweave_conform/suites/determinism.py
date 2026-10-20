@@ -46,11 +46,12 @@ from typing import TYPE_CHECKING, Final
 from omniweave_core.errors import DriverHostError
 from omniweave_ports.types import DriverError, Port, ReplayClass
 
+from omniweave_conform.compile_harness import golden_of, run_compile
 from omniweave_conform.harness import run_parse
 from omniweave_conform.result import Assertion, SuiteResult
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from omniweave_conform.subject import Subject
 
@@ -123,6 +124,8 @@ def run(subject: Subject) -> SuiteResult:
             summary="replay_class=unpinnable, declared and not measured",
             elapsed_ms=elapsed(),
         )
+    if subject.card.identity.port is Port.COMPILE:
+        return _compile(subject, elapsed, replay)
     if subject.card.identity.port is not Port.PARSE:
         return SuiteResult.of(
             SUITE,
@@ -149,6 +152,68 @@ def run(subject: Subject) -> SuiteResult:
     checks = list(_assertions(subject, driver, replay))
     varied = ", ".join(["TMPDIR", *sorted(_VARIED)])
     summary = f"replay_class={replay.value} across {varied}; PYTHONHASHSEED and cwd are the tool's"
+    return SuiteResult.of(SUITE, checks, summary=summary, elapsed_ms=elapsed())
+
+
+def _compile(subject: Subject, elapsed: Callable[[], float], replay: ReplayClass) -> SuiteResult:
+    """D890: a `compile/1` card's golden, compiled under the parse half's ambient variation.
+
+    Compared by `part_digest`, the class every compile card promises (09 section 6); `byte` is
+    recorded and never promised, so a byte difference is reported in the summary and fails
+    nothing. `PYTHONHASHSEED` and cwd are the tool's child, as for a parse card. 09:1597's
+    forty-unit, five-way run is `tools/check_out_determinism.py`'s, which may spawn.
+    """
+    golden = golden_of(subject)
+    if golden is None:
+        return SuiteResult.of(
+            SUITE,
+            [],
+            unknown="--fixtures named no golden fixture (a directory holding il/); ambient "
+            "variation needs a subject",
+            elapsed_ms=elapsed(),
+        )
+    try:
+        driver = subject.instantiate()
+    except (DriverHostError, DriverError, TypeError, ValueError) as exc:
+        return SuiteResult.of(
+            SUITE,
+            [Assertion("the driver constructs", ok=False, detail=str(exc), locus="construct")],
+            elapsed_ms=elapsed(),
+        )
+    scratch = subject.scratch(SUITE)
+    name = golden.name
+    try:
+        base = run_compile(driver, subject.card, golden, scratch / "base")
+        with _ambient(_VARIED):
+            varied = run_compile(driver, subject.card, golden, scratch / "varied-deeper-path")
+    except Exception as exc:  # attributed by `contract` and the target suite.
+        failed = Assertion(
+            "the golden compiles under varied TMPDIR, TZ and LC_ALL",
+            ok=False,
+            detail=f"{type(exc).__name__}: {exc}"[:160],
+            fixture=name,
+            locus=f"ambient:{name}",
+        )
+        return SuiteResult.of(SUITE, [failed], elapsed_ms=elapsed())
+    checks = [
+        Assertion(
+            "varying TMPDIR, TZ and LC_ALL produces the same part digest",
+            ok=varied.part_digest == base.part_digest,
+            detail="a difference is an ambient read: a scratch path, a local date, a locale fold",
+            fixture=name,
+            locus=f"ambient:{name}",
+            expected=base.part_digest,
+            actual=varied.part_digest,
+        ),
+        *_seeded_assertion(subject, replay),
+        *_cross_process_assertions(subject, {name: base.part_digest}, replay),
+    ]
+    same = "identical" if varied.byte_digest == base.byte_digest else "differ (never promised)"
+    varied_names = ", ".join(["TMPDIR", *sorted(_VARIED)])
+    summary = (
+        f"replay_class={replay.value}, part digest across {varied_names}; bytes {same}; "
+        "PYTHONHASHSEED and cwd are the tool's"
+    )
     return SuiteResult.of(SUITE, checks, summary=summary, elapsed_ms=elapsed())
 
 
