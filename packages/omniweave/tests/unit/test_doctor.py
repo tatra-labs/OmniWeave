@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 import omniweave.__main__ as launcher
 import pytest
 from omniweave_core.errors import explain
+from omniweave_ports.types import TrustTier
 
 from omniweave import doctor
 
@@ -37,12 +38,12 @@ def roster(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     """
     from omniweave_core import discovery  # noqa: PLC0415
 
-    state = SimpleNamespace(cards={}, faults=(), calls=[])
+    state = SimpleNamespace(cards={}, trust={}, faults=(), calls=[])
 
     def fake_catalog(**kwargs: object) -> SimpleNamespace:
         state.calls.append(("catalog", kwargs))
         cards = {k: SimpleNamespace(attested=v) for k, v in state.cards.items()}
-        return SimpleNamespace(cards=cards)
+        return SimpleNamespace(cards=cards, trust=dict(state.trust))
 
     def fake_discover(**kwargs: object) -> SimpleNamespace:
         state.calls.append(("discover", kwargs))
@@ -218,6 +219,23 @@ def test_allow_unattested_waives_d08_and_says_so(roster: SimpleNamespace) -> Non
     assert "2 enabled driver(s) have a valid card; attestation waived for parse.office.anydoc" in (
         only.detail
     )
+
+
+def test_the_release_manifest_pins_a_first_party_card_and_d08_says_so(
+    roster: SimpleNamespace,
+) -> None:
+    """D894: D576's ruling 2. A manifest-pinned card is not a D-08 failure; an unpinned one is."""
+    roster.cards = {"parse.office.anydoc": False, "parse.pdf.pdfium": False}
+    roster.trust = {
+        "parse.office.anydoc": TrustTier.VENDORED,
+        "parse.pdf.pdfium": TrustTier.UNPINNED,
+    }
+    (failed,) = [one for one in _d08() if one.severity == "error"]
+    assert failed.detail.startswith("parse.pdf.pdfium is in [drivers] enabled")
+    roster.trust["parse.pdf.pdfium"] = TrustTier.FIRST_PARTY
+    (only,) = _d08()
+    assert only.severity == "ok"
+    assert "the release manifest pins parse.office.anydoc, parse.pdf.pdfium" in only.detail
 
 
 def test_attested_cards_pass_d08_with_nothing_waived(roster: SimpleNamespace) -> None:
