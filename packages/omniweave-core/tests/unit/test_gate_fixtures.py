@@ -76,6 +76,8 @@ def test_the_scope_is_package_fixtures_and_fixtures_docs_less_their_housekeeping
         "packages/omniweave-pdf/README.md",
         "fixtures/docs/sec.pdf",
         "fixtures/docs/sec.pdf.meta.toml",
+        "fixtures/docs/sec.pdf.assertions.toml",  # D912: its labels, no fixture of their own
+        "packages/omniweave-pdf/fixtures/b.pdf.assertions.toml",
         "fixtures/cassettes/agent/00/x.json",
         "fixtures/gen/gen_x.py",
         "fixtures/goldens/DECOMPOSITION.toml",

@@ -117,6 +117,22 @@ returns it as `store.oweval` rows for one `write()`.
 18. **They are named, never run by default.** `--suite` omitted runs `BUILT`, the suites whose
     runs this machine can judge; an `unknown` run is written only when a caller asks for one.
 
+## The parse suite's labelled half (D912)
+
+22. **A fixture's labels are judged over the parse's own pages.** A fixture with a
+    `<file>.assertions.toml` (`omniweave_conform.labels`) has its assertions loaded under the
+    subject's corpus, and its parse is decoded into a scratch store and served page by page as
+    Markdown, the text a reader gets. `judge()` (D827) runs them and `rollup()` (D816) turns the
+    verdicts into each of `RATES`' metrics that some assertion's type feeds: `table_rel_acc`,
+    `order_acc` and `field_acc`. The verdicts and the assertions are written with the run.
+23. **The labels are the corpus.** The assertions files are digested with the fixtures, so a
+    relabel is a new corpus version, and `n_assertions` and `n_checked` count them. An unverified
+    assertion runs and never scores (13:1022), so a corpus with none verified writes `unknown`
+    rows, which `release-check` refuses: drafted labels are a corpus nobody has vouched for.
+    Each run's `not_measured` says how many ran unscored and which were not run and why.
+24. **`structure_f1` is still not measured**: it scores against a `structure.jsonl` reference
+    (13:1104) no fixture carries, and the run says so.
+
 ## The portability suite (D903)
 
 19. **Portability is the same inputs giving identical results on every cell** (a user ruling of
@@ -143,7 +159,7 @@ import hashlib
 import platform
 import tempfile
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
@@ -154,6 +170,7 @@ from omniweave_core.store.oweval import Assertion, Batch, Corpus, Metric, Run, V
 from omniweave_ports.types import DriverError
 
 from omniweave_conform import absence as damage_half
+from omniweave_conform import labels
 from omniweave_conform import portability as cell_half
 from omniweave_conform import retrieval as cite_half
 from omniweave_conform import roundtrip as r2_half
@@ -161,6 +178,8 @@ from omniweave_conform.badge import kit_version
 from omniweave_conform.damage import INJECTORS, TABLE
 from omniweave_conform.evaluate import span_exact_rate
 from omniweave_conform.harness import run_parse
+from omniweave_conform.judge import judge
+from omniweave_conform.rollup import RATES, rollup
 from omniweave_conform.stats import rate
 from omniweave_conform.subject import Subject
 
@@ -256,9 +275,12 @@ MEASURED: Final[Mapping[str, tuple[Callable[..., MetricResult], str]]] = {
 """Each parse metric this build computes, with its `TruthKind` (rulings 2 and 4)."""
 
 PARSE_UNMEASURED: Final[tuple[str, ...]] = (
-    "structure_f1, table_rel_acc, order_acc: no labelled corpus exists to score them (W10.8)",
+    "structure_f1: no fixture carries the structure.jsonl reference it scores against (13:1104)",
 )
-"""Ruling 2: the parse suite's accuracy metrics, named in every parse run's `not_measured`."""
+"""Rulings 2 and 24: the parse suite's accuracy metric no labels feed yet, named in every parse
+run's `not_measured`. The rates a fixture's assertions feed are ruling 22's."""
+UNLABELLED: Final = "{metrics}: no fixture in {corpus} carries an assertions file to score them"
+"""Ruling 22: what a parse run over a fixture set with no labels says it did not measure."""
 
 NOT_APPLICABLE: Final = "n/a"
 """A `MeasuredOn` field a parse driver has no value for: it runs no model (ruling 7)."""
@@ -293,7 +315,7 @@ def corpus_digest(root: Path, files: Sequence[Path]) -> str:
     return framed.hexdigest()
 
 
-def parse(
+def parse(  # noqa: PLR0915 -- one subject's run, its metrics and its labels, rulings 1-7 and 22
     register: Mapping[str, Any],
     *,
     root: Path,
@@ -319,6 +341,8 @@ def parse(
     corpora: dict[tuple[str, str], Corpus] = {}
     runs: list[Run] = []
     metrics: list[Metric] = []
+    assertions: list[Assertion] = []
+    verdicts: list[Verdict] = []
     done: list[Measured] = []
     matched = 0
     for row in rows:
@@ -349,7 +373,7 @@ def parse(
                 for gate in computed
             ]
             fingerprint = code_fingerprint(found.source_files())
-        corpus = _corpus(root, fixtures_dir, [fixture.path for fixture in found.fixtures])
+            corpus, labelled, pages = _labelled(root, fixtures_dir, found, parses, workdir)
         corpora[corpus.corpus_id, corpus.version] = corpus
         slice_key = str(row.get("slice", "*"))
         run_id = _run_id("parse", found.driver_id, corpus.corpus_digest, started)
@@ -359,36 +383,39 @@ def parse(
             for _gate, result in results
             if result.value is None
         ]
-        runs.append(
-            Run(
-                run_id=run_id,
-                suite="parse",
-                corpus_id=corpus.corpus_id,
-                corpus_version=corpus.version,
-                corpus_digest=corpus.corpus_digest,
-                subject=found.driver_id,
-                subject_version=found.card.identity.version,
-                producer_id=None,
-                measured_on=_measured_on(corpus),
-                timing_basis="in_process",
-                witness=witness,
-                cassette=cassette,
-                policy_digest=None,
-                pricebook_digest=None,
-                harness_version=kit_version(),
-                code_fingerprint=fingerprint,
-                hardware=_hardware(),
-                started_ns=started,
-                ended_ns=now_ns(),
-                status="ok",
-                not_measured=(*vacuous, *unmeasured, *PARSE_UNMEASURED),
-                confounders=(
-                    "the fixtures are the driver's own, written by its authors",
-                    f"{len(refused)} fixture(s) refused by the driver"
-                    + (f": {', '.join(refused)}" if refused else ""),
-                ),
-            )
+        run = Run(
+            run_id=run_id,
+            suite="parse",
+            corpus_id=corpus.corpus_id,
+            corpus_version=corpus.version,
+            corpus_digest=corpus.corpus_digest,
+            subject=found.driver_id,
+            subject_version=found.card.identity.version,
+            producer_id=None,
+            measured_on=_measured_on(corpus),
+            timing_basis="in_process",
+            witness=witness,
+            cassette=cassette,
+            policy_digest=None,
+            pricebook_digest=None,
+            harness_version=kit_version(),
+            code_fingerprint=fingerprint,
+            hardware=_hardware(),
+            started_ns=started,
+            ended_ns=now_ns(),
+            status="ok",
+            not_measured=(*vacuous, *unmeasured, *PARSE_UNMEASURED),
+            confounders=(
+                "the fixtures are the driver's own, written by its authors",
+                f"{len(refused)} fixture(s) refused by the driver"
+                + (f": {', '.join(refused)}" if refused else ""),
+            ),
         )
+        rates, judged, run = _rates(run, labelled, pages)
+        runs.append(run)
+        metrics.extend(rates)
+        assertions.extend(labelled)
+        verdicts.extend(judged)
         for gate, result in results:
             if result.value is None:
                 continue
@@ -428,8 +455,67 @@ def parse(
             f"no [[subject]] in the metric register is driver {subject!r}",
             fix="ow eval run --suite parse --subject <a driver id the register names>",
         )
-    batch = Batch(corpora=tuple(corpora.values()), runs=tuple(runs), metrics=tuple(metrics))
+    batch = Batch(
+        corpora=tuple(corpora.values()),
+        assertions=tuple(assertions),
+        runs=tuple(runs),
+        verdicts=tuple(verdicts),
+        metrics=tuple(metrics),
+    )
     return batch, tuple(done)
+
+
+def _labelled(
+    root: Path, fixtures_dir: Path, found: Subject, parses: Sequence[Any], workdir: Path
+) -> tuple[Corpus, tuple[Assertion, ...], dict[tuple[str, int], str]]:
+    """Rulings 22 and 23: the corpus with its labels digested, its assertions, and the pages
+    each labelled fixture's parse serves."""
+    base = fixtures_dir.resolve()
+    files = [fixture.path for fixture in found.fixtures]
+    labels_files = [labels.labels_of(path) for path in files if labels.labels_of(path).is_file()]
+    corpus = _corpus(root, fixtures_dir, [*files, *labels_files], n_docs=len(files))
+    loaded = tuple(
+        one
+        for path in files
+        for one in labels.load(
+            path, fixtures_dir=base, corpus_id=corpus.corpus_id, corpus_version=corpus.version
+        )
+    )
+    wanted = {one.doc for one in loaded}
+    pages: dict[tuple[str, int], str] = {}
+    for index, parse in enumerate(parses):
+        doc = parse.fixture.path.relative_to(base).as_posix()
+        if doc in wanted:
+            pages |= labels.candidate(
+                parse, found.card, doc=doc, workdir=workdir / f"candidate-{index}"
+            )
+    checked = sum(1 for one in loaded if one.checked == "verified")
+    return replace(corpus, n_assertions=len(loaded), n_checked=checked), loaded, pages
+
+
+def _rates(
+    run: Run, labelled: Sequence[Assertion], pages: Mapping[tuple[str, int], str]
+) -> tuple[list[Metric], tuple[Verdict, ...], Run]:
+    """Rulings 22 and 23: the verdicts, each fed rate's rows, and the run saying what they did not
+    score."""
+    if not labelled:
+        corpus = run.corpus_id
+        said = UNLABELLED.format(metrics=", ".join(sorted(RATES)), corpus=corpus)
+        return [], (), replace(run, not_measured=(*run.not_measured, said))
+    judged = judge(labelled, pages, run_id=run.run_id)
+    rows: list[Metric] = []
+    notes = [f"assertion {aid} not run: {why}" for aid, why in judged.not_run]
+    for spec in RATES.values():
+        if not any(one.type in spec.types for one in labelled):
+            continue
+        rolled = rollup(run, spec, judged.verdicts, labelled, evaluator="text")
+        rows.extend(rolled.metrics)
+        if rolled.unscored:
+            notes.append(
+                f"{spec.metric}: {rolled.unscored} unverified assertion(s) ran and were not "
+                f"scored (13:1022)"
+            )
+    return rows, judged.verdicts, replace(run, not_measured=(*run.not_measured, *notes))
 
 
 def absence(
@@ -1167,15 +1253,17 @@ def _core_sources() -> tuple[Path, ...]:
     return tuple(sorted(Path(omniweave_core.__file__).parent.rglob("*.py")))
 
 
-def _corpus(root: Path, fixtures_dir: Path, files: Sequence[Path]) -> Corpus:
-    """Ruling 3: a fixture set as a Tier A corpus, versioned by its digest."""
+def _corpus(
+    root: Path, fixtures_dir: Path, files: Sequence[Path], *, n_docs: int | None = None
+) -> Corpus:
+    """Rulings 3 and 23: a fixture set as a Tier A corpus, versioned by its digest."""
     digest = corpus_digest(fixtures_dir, files)
     return Corpus(
         corpus_id=fixtures_dir.relative_to(root).as_posix(),
         version=digest[:16],
         corpus_digest=digest,
         tier="A",
-        n_docs=len(files),
+        n_docs=len(files) if n_docs is None else n_docs,
         n_assertions=0,
         n_checked=0,
         document_redistributable=True,
