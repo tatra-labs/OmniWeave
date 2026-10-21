@@ -40,6 +40,9 @@ def test_every_declared_law_is_checked_or_says_why_not(tmp_path: Path) -> None:
         DocxCompiler(), _card(), table(), GOLDEN, workdir=tmp_path / "work", reader=DocxReader()
     )
     assert (report.target, report.gate) == ("docx", GateStatus.MANUAL_REQUIRED)
+    #  D911: the release gate. u02 carries the golden's one ow:manual region; withheld, u01
+    #  passes the gate and compiles as a release (V10-9).
+    assert report.release is GateStatus.PASSED
     assert {o.law: o.status for o in report.laws} == {
         "r1": "checked",
         "r2": "checked",

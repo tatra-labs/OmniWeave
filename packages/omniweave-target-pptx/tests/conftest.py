@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -35,6 +36,8 @@ class RuleContext:
     brief: Any = None
     constructs: Any = field(default_factory=table)
     estimator: Any = None
+    index: Any = field(default_factory=lambda: SimpleNamespace(units=("u01", "u02", "u03")))
+    """D911: the roster a slide link is checked against, three units."""
 
     def measure(self, n: Any) -> Any:
         """`RuleCtx.measure(n)`, as `check()` builds it: the estimator's box, or `None`."""

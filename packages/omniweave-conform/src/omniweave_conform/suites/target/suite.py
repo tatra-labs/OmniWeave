@@ -88,6 +88,22 @@ checking and compiling the golden fixture in a scratch directory.
     `part_digest` out. It prepares the job exactly as `run_target()` does (one `_prepared()`
     serves both), so the bytes are the ones R1 compares. A golden whose gate does not reach
     `lower()` is a `QualityError` naming the status (OUT23), never a compile of something else.
+
+## Rulings (D911)
+
+18. **The release gate is the golden's, its manual units set aside.** V10-9 asks each target to
+    reach `GateStatus == passed` on this suite, and ruling 2 makes that unreachable over the
+    golden as authored: R5 asks the golden to exercise every exact row, `ow:manual` is mandatory
+    in every table (09 section 3.4), and a unit carrying an `ow:manual` region is
+    `manual-required` by definition. So `TargetReport.release` is the gate of the golden with
+    each unit its check lists in `manual_units` withheld: their files left out and `il.toml`'s
+    roster renumbered 1..n, as an author removing the region's unit would leave it. A unit is
+    withheld whole, never edited. When that gate passes, the remainder is compiled once as a
+    `release` Plan, and the receipt `postflight()` writes must carry `delivery = "release"` and
+    `passed`; a receipt that does not makes the release `unverified`. A golden whose own gate is
+    `passed` is its own release, and one whose gate is neither `passed` nor `manual-required`
+    has no release to set apart, so `release` is that gate. With every unit manual there is
+    nothing to release, and `release` is `not-provided`.
 """
 
 from __future__ import annotations
@@ -117,7 +133,7 @@ from omniweave_core.out.cites import CitedBlock
 from omniweave_core.out.compile import check
 from omniweave_core.out.constructs import Disposition, RoundTrip
 from omniweave_core.out.gate import GateStatus
-from omniweave_core.out.job import JOB_SCHEMA, ILBundle, Job, JobDeterminism
+from omniweave_core.out.job import IL_TOML, JOB_SCHEMA, ILBundle, Job, JobDeterminism
 from omniweave_core.out.ledger import FrozenLedger, LedgerRow, slot
 from omniweave_core.out.plan import Plan, UnitOutcome, classify_and_assert
 from omniweave_core.out.roundtrip import (
@@ -222,6 +238,8 @@ class _Prepared:
     ledger: AssetLedger | None
     plan: Plan | None
     job: Path
+    manual: frozenset[str] = frozenset()
+    """Ruling 18: the units the golden's check lists in `manual_units`."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,6 +249,8 @@ class TargetReport:
     target: str
     gate: GateStatus
     laws: tuple[LawOutcome, ...]
+    release: GateStatus = GateStatus.NOT_PROVIDED
+    """Ruling 18: the golden's gate with its manual units withheld, compiled as a release."""
 
     @property
     def verdict(self) -> Verdict:
@@ -257,10 +277,11 @@ def run_target(
     target, job = prepared.target, prepared.job
     outcomes = {law: LawOutcome(law, "not-applicable") for law in claim.not_applicable}
     bundle, ledger, plan = prepared.bundle, prepared.ledger, prepared.plan
+    release = _release(compiler, constructs, golden, prepared, workdir=workdir)
     if bundle is None or ledger is None or plan is None:
         reason = f"the golden fixture's gate is {prepared.gate}; lower() is unreachable (OUT23)"
         outcomes |= {law: LawOutcome(law, "unknown", reason=reason) for law in claim.applies}
-        return _report(target, prepared.gate, outcomes)
+        return _report(target, prepared.gate, outcomes, release)
     capability = dict(card.compile_capability)
     declared = tuple(str(c) for c in capability.get("determinism", ()))  # type: ignore[union-attr]
     for law in claim.applies:
@@ -280,7 +301,7 @@ def run_target(
             part_of=CompileCard.of(card).part_of,
             golden=golden,
         )
-    return _report(target, prepared.gate, outcomes)
+    return _report(target, prepared.gate, outcomes, release)
 
 
 def compile_golden(
@@ -332,8 +353,9 @@ def _prepared(
         stage="final",
         cites=_FixtureCites(golden / CITES),
     )
+    manual = frozenset(str(m["unit"]) for m in checked.report.manual_units)
     if checked.status not in {GateStatus.PASSED, GateStatus.MANUAL_REQUIRED}:
-        return _Prepared(target, checked.status, None, None, None, job)
+        return _Prepared(target, checked.status, None, None, None, job, manual)
     bundle = ILBundle.load(job / "il", carrier=compiler.carrier, constructs=constructs)
     ledger = _golden_ledger(golden / ASSETS, bundle)
     cites = _FixtureCites(golden / CITES)
@@ -346,11 +368,74 @@ def _prepared(
         pins=_pins(bundle, compiler, cites),
     )
     Job(JOB_SCHEMA, plan, _TRACEPARENT, JobDeterminism(GOLDEN_CLOCK_NS)).write(job)
-    return _Prepared(target, checked.status, bundle, ledger, plan, job)
+    return _Prepared(target, checked.status, bundle, ledger, plan, job, manual)
 
 
-def _report(target: str, gate: GateStatus, outcomes: Mapping[str, LawOutcome]) -> TargetReport:
-    return TargetReport(target, gate, tuple(outcomes[law] for law in sorted(outcomes)))
+def _report(
+    target: str,
+    gate: GateStatus,
+    outcomes: Mapping[str, LawOutcome],
+    release: GateStatus = GateStatus.NOT_PROVIDED,
+) -> TargetReport:
+    return TargetReport(target, gate, tuple(outcomes[law] for law in sorted(outcomes)), release)
+
+
+def _release(
+    compiler: CompileV1,
+    constructs: ConstructTable,
+    golden: Path,
+    prepared: _Prepared,
+    *,
+    workdir: Path,
+) -> GateStatus:
+    """Ruling 18: the golden's gate with its manual units withheld, and a release compile."""
+    if prepared.gate is not GateStatus.MANUAL_REQUIRED:
+        return prepared.gate
+    roster = tomllib.loads((golden / "il" / IL_TOML).read_text(encoding="utf-8"))
+    kept = [dict(row) for row in roster.get("unit", []) if str(row["id"]) not in prepared.manual]
+    if not kept:
+        return GateStatus.NOT_PROVIDED
+    job = workdir / "release"
+    (job / "il").mkdir(parents=True)
+    for ord_, row in enumerate(kept, start=1):
+        row["ord"] = ord_
+        name = str(row["file"])
+        (job / "il" / name).write_bytes((golden / "il" / name).read_bytes())
+    (job / "il" / IL_TOML).write_bytes(_roster_toml(roster, kept).encode())
+    cites = _FixtureCites(golden / CITES)
+    checked = check(
+        job,
+        compiler,
+        target=prepared.target,
+        constructs=constructs,
+        stage="final",
+        cites=cites,
+    )
+    if checked.status is not GateStatus.PASSED:
+        return checked.status
+    bundle = ILBundle.load(job / "il", carrier=compiler.carrier, constructs=constructs)
+    ledger = _golden_ledger(golden / ASSETS, bundle)
+    plan = _plan(
+        prepared.target,
+        bundle,
+        constructs,
+        GateStatus.PASSED,
+        ledger=ledger,
+        pins=_pins(bundle, compiler, cites),
+    )
+    Job(JOB_SCHEMA, plan, _TRACEPARENT, JobDeterminism(GOLDEN_CLOCK_NS)).write(job)
+    _, receipt = _compiled(compiler, plan, bundle, ledger, workdir / "release-compile")
+    if (receipt.delivery, receipt.gate_status) != ("release", GateStatus.PASSED):
+        return GateStatus.UNVERIFIED
+    return GateStatus.PASSED
+
+
+def _roster_toml(roster: Mapping[str, Any], units: list[dict[str, Any]]) -> str:
+    """Ruling 18: `il.toml` again, its top-level keys as they were and `units` its roster."""
+    lines = [f"{key} = {json.dumps(value)}" for key, value in roster.items() if key != "unit"]
+    for unit in units:
+        lines += ["", "[[unit]]", *(f"{key} = {json.dumps(value)}" for key, value in unit.items())]
+    return "\n".join(lines) + "\n"
 
 
 def _law(

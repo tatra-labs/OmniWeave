@@ -11,8 +11,9 @@ could not say.
 definition of what PASS means. The four verdicts are that file's: PASS, PARTIAL (green, but a
 clause nothing asserts, named), FAIL (an instrument exited non-zero) and UNMEASURED.
 
-**Exit 0 only when all seventeen are PASS.** Today none is. Fifteen rows are PARTIAL at best and
-two have no instrument at all, because what v1.0 is measured by does not exist yet:
+**Exit 0 only when all seventeen are PASS.** When D835 wrote this none was; V10-9 is the first
+(D911). The rest are PARTIAL at best or have no instrument, because what v1.0 is measured by did
+not exist:
 - a release tag;
 - the 14-wheel build;
 - the Tier A and golden corpora;
@@ -266,6 +267,13 @@ CRITERIA: tuple[Criterion, ...] = (
                 label="the target goldens, and video's and deck's cards",
             ),
             pytest(
+                "packages/omniweave-target-pptx/tests/unit/test_golden40.py::"
+                "test_the_conformance_suite_releases_the_deck_its_gate_passed",
+                f"{CONF}/test_target_suite.py",
+                label="the suite's release gate: pptx's 40-unit golden, docx's less its manual "
+                "unit (D911)",
+            ),
+            pytest(
                 f"{CLI}/test_out_targets_verb.py::test_the_text_form_says_which_of_the_two_stops_a_kind",
                 f"{CORE}/test_out_conformance.py::"
                 "test_a_bake_row_is_an_error_while_the_cards_bake_is_unavailable",
@@ -280,12 +288,15 @@ CRITERIA: tuple[Criterion, ...] = (
                 label="the bake error's two exits, each clearing it (D876)",
             ),
         ),
-        Coverage.PARTIAL,
-        "the pptx and docx goldens reach MANUAL_REQUIRED, not passed; deck ships at "
-        "`implemented = false` with its reason, like video, by a user ruling of 2026-10-21 that "
-        "took 16-roadmap.md R-Q8's fallback (D910), so `pptx` and `docx` are the two that must "
-        "pass; the bake error's two exits are asserted on pptx and owtext, the "
-        "targets with a bake row (D876)",
+        # FULL by two rulings, each in the plan's notes. Deck ships at `implemented = false` with
+        # its reason, like video: a user ruling of 2026-10-21 took 16-roadmap.md R-Q8's fallback
+        # (D910), so pptx and docx are the targets that must pass. And `passed` is the suite's
+        # release gate (D911): a golden carries an `ow:manual` region by design, since R5 needs
+        # every exact row exercised, so its own gate is manual-required; set aside, docx's
+        # remainder passes and compiles as a release, and pptx's 40-unit golden passes outright.
+        # The bake exits are asserted on pptx and owtext, the targets with a bake row (D876).
+        Coverage.FULL,
+        "",
     ),
     Criterion(
         "V10-10",
