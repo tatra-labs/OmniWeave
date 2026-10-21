@@ -109,3 +109,29 @@ def test_the_deck_passes_the_pptx_gate_as_a_release(tmp_path: Path) -> None:
     )
     assert (result.status, result.report.findings) == (GateStatus.PASSED, ())
     assert result.report.summary["units"] == 40
+
+
+def test_the_conformance_suite_releases_the_deck_its_gate_passed(tmp_path: Path) -> None:
+    """D911, V10-9: over the 40-unit golden the suite's gate and its release are both `passed`,
+    and R1, R2 and R7 hold of a release compile. R5 is the two-unit golden's, which exercises
+    every exact row, `ow:manual` included (test_pptx_golden.py)."""
+    from omniweave_conform.result import Verdict  # noqa: PLC0415
+    from omniweave_conform.suites.target.suite import run_target  # noqa: PLC0415
+    from omniweave_core.drivers.card import load_card  # noqa: PLC0415
+    from omniweave_target_pptx.back.driver import PptxReader  # noqa: PLC0415
+    from omniweave_target_pptx.driver import CARD  # noqa: PLC0415
+
+    out = tmp_path / "pptx"
+    GEN.write(out)
+    card = load_card(CARD.read_bytes(), origin="driver_path", source=str(CARD))
+    report = run_target(
+        PptxCompiler(font_dir=str(FONTS)),
+        card,  # type: ignore[arg-type]
+        table(),
+        out,
+        workdir=tmp_path / "work",
+        reader=PptxReader(),
+    )
+    assert (report.gate, report.release) == (GateStatus.PASSED, GateStatus.PASSED)
+    for law in ("r1", "r2", "r7"):
+        assert report.law(law).verdict is Verdict.PASS, law

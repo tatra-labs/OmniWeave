@@ -10,7 +10,8 @@ resolves". ppt-master's paint contexts (`drawingml/utils.py:2226-2347`) and use 
   `<marker>` and a `<clipPath>`;
 - a `<use>` names a local shape, group, text, image or symbol, and an `<image>` names its
   picture as `asset-slot:<sha256>` (`OW_TARGET_IL_ASSET_URI`, the same grammar docx holds);
-- an `<a>` links to a slide, `#u<NN>`, or to an `https:` page.
+- an `<a>` links to a slide of the deck, `#u<NN>` naming a unit of its roster (D911), or to an
+  `https:` page.
 """
 
 from __future__ import annotations
@@ -125,6 +126,13 @@ def _href(ctx: RuleCtx, v: Value, defined: Mapping[str, CarrierNode]) -> Iterato
     elif tag == "svg|a":
         if _LINK.fullmatch(value) is None:
             yield said(ctx, v, rule=RULE, code=CODE, why="a link is #u<NN>, a slide, or https:")
+        elif value.startswith("#") and value[1:] not in ctx.index.units:
+            #  D911: `lower()` refuses a jump to a slide the deck does not hold, so the gate does
+            #  first: a passed gate whose compile refuses is OUT23's promise broken.
+            yield said(
+                ctx, v, rule=RULE, code=CODE,
+                why=f"names no slide in this deck; its units are {', '.join(ctx.index.units)}",
+            )  # fmt: skip
     else:
         yield said(ctx, v, rule=RULE, code=CODE, why="href belongs to <use>, <image> or <a>")
 
