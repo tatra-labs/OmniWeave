@@ -41,7 +41,7 @@ def _ow(*argv: str) -> tuple[int, str]:
     return (-1 if done.returncode is None else done.returncode), shown
 
 
-def test_a_full_run_passes_release_check_and_strict_names_the_unrun_suites(
+def test_a_full_run_holds_every_hard_gate_and_refuses_only_the_unverified_labels(
     tmp_path: Path,
 ) -> None:
     store = tmp_path / "release.oweval"
@@ -85,13 +85,23 @@ def test_a_full_run_passes_release_check_and_strict_names_the_unrun_suites(
         )
         assert same["n"] == same["parsed"] > 0
     code, shown = _ow("eval", "release-check", "--oweval", str(store))
-    assert (code, shown) == (
-        0,
-        "ow eval release-check: ok; 9 latest run(s), 0 superseded, 5 hard gate(s)\n",
+    #  D913: every hard gate holds. The drafted labels' three rates are unknown until a reviewer
+    #  verifies them, and each refusal names that as its fix.
+    assert code == 1
+    refused = [line.split()[1] for line in shown.splitlines()[:-1:2]]
+    assert refused == [
+        "order_acc@__macro__",
+        "order_acc@__macro__",
+        "table_rel_acc@__macro__",
+    ], shown
+    assert shown.count('fix: verify its labels: write checked = "verified"') == 3
+    assert shown.splitlines()[-1] == (
+        "ow eval release-check: refused, 3 finding(s); 9 latest run(s), 0 superseded, "
+        "5 hard gate(s)"
     )
     code, shown = _ow("eval", "release-check", "--oweval", str(store), "--strict")
     assert code == 1
-    assert [line.split()[1] for line in shown.splitlines()[:-1:2]] == [
+    assert [line.split()[1] for line in shown.splitlines()[:-1:2]][-2:] == [
         "extract:",
         "perf:",
     ]
