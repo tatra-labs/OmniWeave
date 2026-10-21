@@ -5,6 +5,10 @@ D903. `ow eval run --suite portability` holds this cell's compiled parts to
 one writer. It compiles each register `[[target]]`'s golden once, as the suite does, and either
 compares the members with the committed table or, under `--write`, writes the table.
 
+D914: the register's `pptx` row also yields `pptx@golden40`, the 40-unit golden V10-10 names
+(`fixtures/gen/gen_golden40.py`, generated into a scratch directory and compiled with the `pptx`
+row's card and config), so each CI cell holds V10-10's deck to the committed table too.
+
 Write it on the cell that blessed the goldens, `win32` (D886), and only when a target's output
 moved on purpose: the diff is the review, and a table rewritten to match a drifted cell makes the
 suite agree with the drift.
@@ -19,8 +23,11 @@ failed.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import sys
+import tempfile
 import tomllib
+from dataclasses import replace
 from pathlib import Path
 from typing import Final
 
@@ -38,7 +45,7 @@ from omniweave_conform.portability import (  # noqa: E402
     read_parts,
     render_parts,
 )
-from omniweave_conform.roundtrip import targets  # noqa: E402
+from omniweave_conform.roundtrip import Target, targets  # noqa: E402
 from omniweave_core.errors import QualityError  # noqa: E402
 
 __all__ = ["EXIT_CLEAN", "EXIT_FAIL", "EXIT_NOT_RUN", "main"]
@@ -46,6 +53,8 @@ __all__ = ["EXIT_CLEAN", "EXIT_FAIL", "EXIT_NOT_RUN", "main"]
 EXIT_CLEAN: Final = 0
 EXIT_FAIL: Final = 1
 EXIT_NOT_RUN: Final = 2
+GOLDEN40: Final = "pptx@golden40"
+"""D914: V10-10's 40-unit golden, compiled with the register's `pptx` row."""
 
 
 def _say(line: str) -> None:
@@ -70,7 +79,8 @@ def main(argv: list[str] | None = None) -> int:
         _say("portability DID NOT RUN  the register names no [[target]]")
         return EXIT_NOT_RUN
     try:
-        found = {row.target: parts(row)[3] for row in rows}
+        with tempfile.TemporaryDirectory(prefix="ow-portability-golden40-") as scratch:
+            found = {row.target: parts(row)[3] for row in (*rows, *_golden40(root, rows, scratch))}
     except (QualityError, RuntimeError, OSError, TypeError) as error:
         _say(f"portability DID NOT RUN  a compile failed: {type(error).__name__}: {error}")
         return EXIT_NOT_RUN
@@ -80,6 +90,22 @@ def main(argv: list[str] | None = None) -> int:
         _say(f"portability  wrote {PARTS}: {len(found)} target(s), {cell}")
         return EXIT_CLEAN
     return _check(root, found)
+
+
+def _golden40(root: Path, rows: tuple[Target, ...], scratch: str) -> tuple[Target, ...]:
+    """D914: the 40-unit golden written under `scratch`, as a target of the `pptx` row's card."""
+    pptx = next((row for row in rows if row.target == "pptx"), None)
+    generator = root / "fixtures" / "gen" / "gen_golden40.py"
+    if pptx is None or not generator.is_file():
+        return ()
+    spec = importlib.util.spec_from_file_location("_ow_portability_golden40", generator)
+    if spec is None or spec.loader is None:
+        return ()
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    module.write(Path(scratch) / "pptx")
+    return (replace(pptx, target=GOLDEN40, golden=Path(scratch) / "pptx"),)
 
 
 def _check(root: Path, found: dict[str, dict[str, str]]) -> int:

@@ -136,16 +136,17 @@ CRITERIA: tuple[Criterion, ...] = (
         ),
         Coverage.PARTIAL,
         "no `v*` tag to be green on; `ow eval run` measures parse, absence, retrieve, "
-        "roundtrip and portability and `ow eval release-check` passes over them (D868-D871, "
-        "D903), but `--strict` refuses on extract and perf, which no harness measures (D872), "
+        "roundtrip and portability, every hard gate holds over them, and `ow eval release-check` "
+        "refuses only the drafted labels' unverified rates (D868-D871, D903, D913); `--strict` "
+        "also refuses extract and perf, which no harness measures (D872), "
         "and no "
         "`.oweval` is committed for a tag; G13 and G25 have no runner "
         "and G29 is planned only; Q-G16 and 20 have no instrument, Q-G26 runs its assertion "
         "clause only (D875), Q-G2 runs without "
         "its orphan-cassette sweep, and "
         "Q-G8, 19 and 25 run their static halves only; Q-G22's gate runs the T1/T2 suite and "
-        "Q-G4's reads the CI cells, so this row runs their tests and not them; the `gates` CI "
-        "job is off. This row runs the Q-G "
+        "Q-G4's reads the CI cells, so this row runs their tests and not them. The `gates` CI "
+        "job runs on every push and nightly (D886, D908). This row runs the Q-G "
         "scripts that exist, and the register test, not every G runner",
     ),
     Criterion(
@@ -158,10 +159,11 @@ CRITERIA: tuple[Criterion, ...] = (
         ),
         Coverage.PARTIAL,
         "tools/check_build.py builds the 28 artefacts twice and checks every wheel `py3-none-any` "
-        "and the two passes byte-identical (D874), but the weight ceilings are checked as "
-        "declared, not measured: the 250 MB union needs `--measure` over an installed "
-        "`[recommended]` environment, the three offline wheelhouse profiles are unwired, and "
-        "`ow doctor --runtime`'s vision size (D-10) is unbuilt",
+        "and the two passes byte-identical (D874). CI's `build` job measures the rest: "
+        "tools/check_wheelhouse.py installs the three offline profiles from the built wheels and "
+        "runs G2's measured half and the 250 MB `[recommended]` union over them (D897-D899); "
+        "this row runs the declared half and the build here. `ow doctor --runtime`'s vision size "
+        "(D-10) is unbuilt",
     ),
     Criterion(
         "V10-3",
@@ -326,8 +328,9 @@ CRITERIA: tuple[Criterion, ...] = (
         "OUT13's in-cell half runs over the register's goldens and over the 40-unit deck "
         "`fixtures/gen/gen_golden40.py` generates: twice here and under three PYTHONHASHSEEDs in "
         "fresh processes, one part_digest across 116 parts (D878, D881). Across cells, the "
-        "portability suite holds each target's parts to eval/portability.toml (D903): two cells, "
-        "win32 on 3.12 and linux on 3.13, matched by hand, and the nine run nowhere. Of the "
+        "portability suite holds each target's parts to eval/portability.toml (D903), and every "
+        "CI test cell, three OSes by three Pythons, now holds the register's goldens and the "
+        "40-unit deck to it (D914), written on win32 3.12 and matched on linux 3.13 here. Of the "
         "reader cards docx's passes the testkit's mandatory tier and "
         "pptx's fails licence on Pillow's MIT-CMU, G3's open question (D879)",
     ),
@@ -411,9 +414,10 @@ CRITERIA: tuple[Criterion, ...] = (
         Coverage.PARTIAL,
         "the goldens exist (D848: 26 documents, 78 Reductions), and Q-G4's "
         "tools/gate_frozen_stability.py (D849) compares the shapes each cell emits with them; "
-        "this machine is one cell, which the conform tier holds to the goldens. No CI job emits "
-        "two pdfium builds or the nine cells (the `golden` job and the `test` matrix are off), "
-        "so the gate has never read enough cells to run, and the row rests on F31",
+        "this machine is one cell, which the conform tier holds to the goldens. The `test` "
+        "matrix and the `golden` job run on every push, but no job emits each cell's shapes for "
+        "the gate to read, and no cell runs a second pdfium minor, so the gate has never read "
+        "enough cells to run, and the row rests on F31",
     ),
     Criterion(
         "V10-15",
