@@ -59,6 +59,15 @@ path = "packages/omniweave-core/src/omniweave_core/config.py"
 why = "The IPv6 half of `serve.allowed_hosts` above. Bracketed because a Host header is."
 
 [[literal]]
+value = "127.0.0.1"
+path = "packages/omniweave-core/src/omniweave_core/codes.toml"
+why = """
+Prose in `OW-A-040`'s `fix` string -- "or bind 127.0.0.1" -- telling an operator to keep `ow serve` \
+on loopback rather than open it without an API key. The packaged copy of the root register (D897), \
+read by `errors.load_register()` to print a code's numeric and fix; nothing parses it as an \
+address, and nothing dials it."""
+
+[[literal]]
 value = "localhost"
 path = "packages/omniweave-serve/src/omniweave_serve/guard.py"
 why = """
