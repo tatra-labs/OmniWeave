@@ -1224,23 +1224,23 @@ jobs:
         run: uv run tools/gate_weights.py
       - name: "section 6.6 step 2 -- build.first_party_manifest"
         # Thirteen rows, omniweave-core absent, every row's digest matching dist/ (section 7.2).
-        # Section 7.3 prints the three commands this step becomes:
-        #     python tools/gen_first_party.py --dist dist/ --release "$RELEASE"
-        #     rm dist/omniweave_core-* dist/omniweave-core-*
-        #     SOURCE_DATE_EPOCH=... uv build --package omniweave-core
-        # and they are NOT run here, because the ordering problem section 7.2 exists to solve --
-        # core's own wheel carries the manifest that names the other twenty-six, so core is always
-        # rebuilt after them -- also changes what step 3 compares: 26 files against pass 1 and
-        # core's two against pass 2, not 28 against 28. Wiring this is one edit to two steps, and
-        # a tripwire is what forces it to be one edit rather than a silently wrong diff.
+        # Section 7.3's three commands, then the assertion: the manifest is written from pass 1's
+        # 26 non-core files, core alone is rebuilt so its two files carry it, and --check compares
+        # the written manifest with dist/ again. The manifest stays in src/ for step 3, so pass 2
+        # rebuilds core with it too: 26 files are compared against pass 1 and core's two against
+        # this step, as section 6.6 says, by one 28-file diff. D895.
         run: |
-          if [ -f tools/gen_first_party.py ]
+          uv run tools/gen_first_party.py --dist dist
+          rm dist/omniweave_core-*
+          uv build --package omniweave-core --out-dir dist
+          uv run tools/gen_first_party.py --dist dist --check
+          carried="omniweave_core/drivers/first_party.toml"
+          if ! unzip -l dist/omniweave_core-*.whl | grep -q "$carried"
           then
-            echo "tools/gen_first_party.py exists: wire section 6.6 steps 2 AND 3 together"
+            echo "build.first_party_manifest FAILED: core's rebuilt wheel carries no manifest"
             exit 1
           fi
-          echo "build.first_party_manifest NOT ENFORCED: tools/gen_first_party.py (s. 7.2)" \
-            | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "build.first_party_manifest: 13 rows, carried by core's rebuilt wheel"
       - name: "section 6.6 step 3 -- build.reproducible: two passes, 28 identical sha256s"
         # "A non-reproducible wheel means SLSA provenance names a digest nobody else can produce",
         # and section 7.4 shows the second thing it buys: a blown five-day approval window becomes
