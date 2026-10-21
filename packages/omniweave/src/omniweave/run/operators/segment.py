@@ -94,10 +94,13 @@ ON CONFLICT(unit_uri, unit_part, operator, op_version) DO NOTHING
 """
 
 _UNIT_SQL: Final = "SELECT content_sha256 FROM unit WHERE unit_uri = ?"
-_DOC_SQL: Final = "SELECT doc_ord, gen FROM doc WHERE doc_key = ?"
-"""The unit's document by `doc_key`, the parse Operator's own derivation of it: the first sixteen
-bytes of the unit's `content_sha256`. A file that changed is a new `doc_key` and a new document,
-and `discover.retire_replaced` retires the old one's Segments with it."""
+_DOC_SQL: Final = (
+    "SELECT doc_ord, gen FROM doc WHERE uri = ? AND json_extract(x, '$.\"x.ow.retired\"') IS NULL"
+    " ORDER BY doc_ord DESC LIMIT 1"
+)
+"""The unit's document: the live one at its path (D905). An edited file is the same document at
+its next generation, so its Segments are re-cut over that generation; one whose new bytes failed
+is retired by `discover.retire_replaced`, Segments and all."""
 
 
 def is_segment(operator: str) -> bool:
@@ -235,7 +238,7 @@ class SegmentOperator:
             unit = connection.execute(_UNIT_SQL, (unit_uri,)).fetchone()
             if unit is None or not unit[0]:
                 return None
-            found = connection.execute(_DOC_SQL, (bytes.fromhex(str(unit[0]))[:16],)).fetchone()
+            found = connection.execute(_DOC_SQL, (unit_uri,)).fetchone()
             if found is None:
                 return None
             return build_view(connection, int(found[0]), int(found[1]))

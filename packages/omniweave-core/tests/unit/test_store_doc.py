@@ -130,7 +130,7 @@ def harness(tmp_path: Path) -> Harness:
     connection = ow.connect(path)
     try:
         applied = migrate.apply_pending(connection, now_ns=NOW_NS)
-        assert len(applied) == 5, f"expected five migrations, applied {len(applied)}"
+        assert len(applied) == 6, f"expected six migrations, applied {len(applied)}"
         cursor = connection.execute(
             "INSERT INTO producer(operator, op_version, code_fingerprint, options_digest) "
             "VALUES('parse.pdf', 1, 'abc123', X'00')"
@@ -705,6 +705,46 @@ def test_a_re_parse_that_matches_nothing_quarantines_and_does_not_move_the_head(
         harness, "SELECT severity, fatal FROM diag WHERE code = 'OW_REBIND_UNEXPLAINED'"
     )
     assert quarantine == [("error", 1)]
+
+
+def _rewritten(harness: Harness, record: DocRecord) -> DocRecord:
+    """A head at generation 1, then `record`'s document re-parsed to text matching none of it."""
+    write_happy_path(harness)
+    with open_store(harness) as thread:
+        writer = sink(harness, thread)
+        writer.begin_doc(record)
+        writer.begin_page(page_record(0))
+        root = writer.add_block(root_draft())
+        for n in range(6):
+            writer.add_block(text_draft(root, Kind.PARAGRAPH, f"entirely different text {n}"))
+        writer.end_page({})
+        return writer.end_doc("ok")
+
+
+def test_an_edit_that_matches_little_commits_because_its_new_bytes_explain_it(
+    harness: Harness,
+) -> None:
+    """D905: the quarantine is for a re-parse of the same bytes. Other source bytes are a file
+    that says something else, so its generation commits however little it matches, and the
+    blocks it no longer holds are retired with their history rather than served."""
+    returned = _rewritten(harness, doc_record(source_sha256=b"\xee" * 32))
+    assert returned.gen == 2
+    assert read(harness, "SELECT gen, source_sha256 FROM doc") == [(2, b"\xee" * 32)]
+    assert read(harness, "SELECT count(*) FROM diag WHERE code = 'OW_REBIND_UNEXPLAINED'") == [(0,)]
+    assert read(harness, "SELECT count(*) FROM block_history") != [(0,)]
+
+
+def test_a_quarantined_re_parse_puts_back_the_facts_of_the_head_it_did_not_move(
+    harness: Harness,
+) -> None:
+    """D905: `begin_doc` writes the record's facts over the row before the generation is judged; a
+    quarantine leaves the head where it was, so the row describes that head again."""
+    returned = _rewritten(harness, doc_record(model_version="9.9", format_evidence={"magic": "x"}))
+    assert returned.gen == 1
+    assert read(harness, "SELECT gen, model_version, format_evidence FROM doc") == [
+        (1, "1.1", '{"magic":"%PDF-1.7"}')
+    ]
+    assert read(harness, "SELECT count(*) FROM diag WHERE code = 'OW_REBIND_UNEXPLAINED'") == [(1,)]
 
 
 # ---------------------------------------------------------------------------------------------

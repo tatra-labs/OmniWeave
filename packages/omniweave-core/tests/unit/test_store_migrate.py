@@ -69,10 +69,12 @@ SHIPPED = (
     "0003_index.sql",
     "0004_runtime.sql",
     "0005_out.sql",
+    "0006_doc_uri.sql",
 )
-"""The five shipped files (07-store-and-retrieval.md section 3's table): the four P2 ships and
-`0005_out.sql`, [generation](09-generation.md)'s, which P9 appended (D750). A sixth would be a
-claim about unwritten work."""
+"""The six shipped files (07-store-and-retrieval.md section 3's table): the four P2 ships,
+`0005_out.sql`, [generation](09-generation.md)'s, which P9 appended (D750), and `0006_doc_uri.sql`,
+the index a document's lookup by path needs since identity follows location (D905). A seventh
+would be a claim about unwritten work."""
 
 
 # --------------------------------------------------------------------------------------------
@@ -195,7 +197,7 @@ def test_the_shipped_set_is_the_four_p2_files_dense_from_one() -> None:
     """11-repo-layout.md section 5.2: unique and dense, and the prefix IS the apply order."""
     found = migrations()
     assert [item.name for item in found] == list(SHIPPED)
-    assert [item.version for item in found] == [1, 2, 3, 4, 5]
+    assert [item.version for item in found] == [1, 2, 3, 4, 5, 6]
     assert all(NAME.match(item.name) for item in found)
 
 
@@ -259,7 +261,7 @@ def test_the_shipped_set_applies_to_a_fresh_store_and_the_result_is_clean(tmp_pa
     try:
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
         assert connection.execute("PRAGMA integrity_check").fetchall() == [("ok",)]
-        assert applied_versions(connection) == frozenset({1, 2, 3, 4, 5})
+        assert applied_versions(connection) == frozenset({1, 2, 3, 4, 5, 6})
     finally:
         connection.close()
 
@@ -275,7 +277,7 @@ def test_re_opening_applies_nothing_a_second_time(tmp_path: Path) -> None:
     path = tmp_path / "index.owstore"
     first = connect(path)
     try:
-        assert len(apply_pending(first, now_ns=NOW_NS, corpus_id="c")) == 5
+        assert len(apply_pending(first, now_ns=NOW_NS, corpus_id="c")) == 6
     finally:
         first.close()
     second = connect(path)
@@ -283,7 +285,7 @@ def test_re_opening_applies_nothing_a_second_time(tmp_path: Path) -> None:
         assert apply_pending(second, now_ns=NOW_NS + 999, corpus_id="c") == ()
         stamps = second.execute("SELECT DISTINCT applied_at_ns FROM migration").fetchall()
         assert stamps == [(NOW_NS,)]
-        assert second.execute("SELECT count(*) FROM migration").fetchone()[0] == 5
+        assert second.execute("SELECT count(*) FROM migration").fetchone()[0] == 6
     finally:
         second.close()
 
@@ -312,7 +314,7 @@ def test_every_applied_file_gets_a_migration_row_carrying_its_three_declared_fac
             assert means, "unbackfilled_means is required prose and may not be empty"
             assert name in means
             assert means.startswith("undeclared: ")
-            assert version in (1, 2, 3, 4, 5)
+            assert version in (1, 2, 3, 4, 5, 6)
     finally:
         connection.close()
 
@@ -410,6 +412,7 @@ def test_a_later_migration_never_resets_the_generation_counter(tmp_path: Path) -
         assert [item.version for item in apply_pending(rest, now_ns=NOW_NS, corpus_id="other")] == [
             4,
             5,
+            6,
         ]
         state = dict(rest.execute("SELECT k, v FROM index_state").fetchall())
         assert state["generation"] == "17"
@@ -496,19 +499,20 @@ def test_a_pending_migration_numbered_below_an_applied_one_refuses(tmp_path: Pat
 
     *"PRs adding `0004` and `0006` with `0005` never landing produce a set that applies fine to an
     empty file and applies out of intended order on a store that received `0006` in an earlier
-    release and `0004` in a later one."* The fixture is that store, one number up since 0005
-    shipped (D750): the five shipped files plus a `0007`, and then a `0006` offered afterwards.
+    release and `0004` in a later one."* The fixture is that store, two numbers up since 0005 and
+    0006 shipped (D750, D905): the six shipped files plus an `0008`, and then a `0007` offered
+    afterwards.
     """
     connection = connect(tmp_path / "index.owstore")
-    seven = source(7, "0007_early.sql", "CREATE TABLE arrived_early(x);\n")
-    six = source(6, "0006_late.sql", "CREATE TABLE arrived_late(x);\n")
+    eight = source(8, "0008_early.sql", "CREATE TABLE arrived_early(x);\n")
+    seven = source(7, "0007_late.sql", "CREATE TABLE arrived_late(x);\n")
     try:
-        apply_pending(connection, now_ns=NOW_NS, sources=[*migrations(), seven])
-        assert applied_versions(connection) == frozenset({1, 2, 3, 4, 5, 7})
+        apply_pending(connection, now_ns=NOW_NS, sources=[*migrations(), eight])
+        assert applied_versions(connection) == frozenset({1, 2, 3, 4, 5, 6, 8})
         with pytest.raises(StoreError) as caught:
-            apply_pending(connection, now_ns=NOW_NS, sources=[*migrations(), six, seven])
+            apply_pending(connection, now_ns=NOW_NS, sources=[*migrations(), seven, eight])
         assert "forward-only" in str(caught.value)
-        assert "0006_late.sql" in str(caught.value)
+        assert "0007_late.sql" in str(caught.value)
     finally:
         connection.close()
 

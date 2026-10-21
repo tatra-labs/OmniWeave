@@ -242,16 +242,16 @@ CRITERIA: tuple[Criterion, ...] = (
             ),
             pytest(
                 "packages/omniweave/tests/conform/test_add_edit_identity.py",
-                label="what a real `ow add` does with an edited file (D880, D882)",
+                label="what a real `ow add` does with an edited file (D880, D882, D905)",
             ),
         ),
         Coverage.PARTIAL,
         "G19 indexes through `tools/p2_stub_parse.py` and a DocSink, not the product's `ow add`, "
         "and reports gen and revision differences without failing on them unless --strict (D187). "
-        "Whether G19 holds through `ow add` is unmeasured: there an edited file re-added is a new "
-        "doc_ord with its predecessor retired (D645), so the live text is right but no cite "
-        "carries across an edit, as 03's worked example says it should (D40, pinned by D880 and "
-        "corrected by D882)",
+        "Through `ow add` an edited file is now its document's next generation and `rebind()` "
+        "carries every unchanged cite, as 03's worked example says it should (D40, resolved by "
+        "D905); whether G19 itself holds through `ow add` is unmeasured until its harness indexes "
+        "that way",
     ),
     Criterion(
         "V10-9",

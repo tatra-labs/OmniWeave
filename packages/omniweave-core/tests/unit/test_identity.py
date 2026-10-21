@@ -25,6 +25,7 @@ from omniweave_core.identity import (
     canonical_uri,
     config_digest,
     content_digest,
+    location_key,
     semantic_digest,
 )
 
@@ -571,3 +572,39 @@ def test_every_identity_is_identical_across_processes_and_hash_seeds() -> None:
     assert first["semantic"] == semantic_digest(values, axes)  # type: ignore[arg-type]
     assert first["content"] == content_digest(3, 1, "héllo", {"z": 1, "a": [None, ""]}).hex()
     assert first["uri"] == "https://ex.com/A/b?a=2&z=1"
+
+
+# --------------------------------------------------------------------------------------------
+# location_key -- a document's identity is its place in its corpus (D905)
+# --------------------------------------------------------------------------------------------
+
+
+def test_location_key_is_the_path_under_the_source_root_wherever_the_root_is(
+    tmp_path: Path,
+) -> None:
+    """The same corpus checked out in two places keys its documents alike, so goldens and
+    `.owdoc` names do not depend on the checkout."""
+    one, two = tmp_path / "one", tmp_path / "two"
+    here = location_key(canonical_uri(one / "docs" / "a.pdf"), one)
+    there = location_key(canonical_uri(two / "docs" / "a.pdf"), two)
+    assert here == there
+    assert len(here) == 16
+    assert location_key(canonical_uri(one / "docs" / "b.pdf"), one) != here
+    assert location_key(canonical_uri(one / "docs" / "a.pdf"), one / "docs") != here
+
+
+def test_a_unit_outside_the_root_is_keyed_by_its_whole_uri(tmp_path: Path) -> None:
+    """A connector id, a URL or a file named by an absolute path elsewhere has no relative path."""
+    uri = "s3://bucket/contracts/a.pdf"
+    assert location_key(uri, tmp_path / "one") == location_key(uri, tmp_path / "two")
+    elsewhere = canonical_uri(tmp_path / "elsewhere" / "a.pdf")
+    assert location_key(elsewhere, tmp_path / "one") == location_key(elsewhere, tmp_path / "two")
+
+
+def test_a_location_key_is_never_a_content_key(tmp_path: Path) -> None:
+    """The domain prefix: a key is not the sha256 of the path, nor of anything a content key
+    hashes, so a read-back artefact keyed by its bytes cannot collide with a corpus file."""
+    import hashlib  # noqa: PLC0415
+
+    key = location_key(canonical_uri(tmp_path / "a.pdf"), tmp_path)
+    assert key != hashlib.sha256(b"a.pdf").digest()[:16]

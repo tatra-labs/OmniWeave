@@ -49,7 +49,7 @@ def owstore(tmp_path: Path) -> Path:
     path = tmp_path / "index.owstore"
     connection = ow.connect(path)
     try:
-        assert len(migrate.apply_pending(connection, now_ns=NOW_NS)) == 5
+        assert len(migrate.apply_pending(connection, now_ns=NOW_NS)) == 6
     finally:
         connection.close()
     return path

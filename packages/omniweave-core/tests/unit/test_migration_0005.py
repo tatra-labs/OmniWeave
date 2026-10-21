@@ -30,7 +30,7 @@ def store(tmp_path: Path) -> Iterator[sqlite3.Connection]:
     connection = sqlite3.connect(tmp_path / "index.owstore", isolation_level=None)
     connection.execute("PRAGMA foreign_keys = ON")
     applied = migrate.apply_pending(connection, now_ns=NOW_NS)
-    assert [m.version for m in applied] == [1, 2, 3, 4, 5]
+    assert [m.version for m in applied] == [1, 2, 3, 4, 5, 6]
     connection.execute(
         "INSERT INTO producer(producer_id, operator, op_version, code_fingerprint, options_digest)"
         " VALUES (1, 'compile.text.owtext', 1, 'f', ?)",

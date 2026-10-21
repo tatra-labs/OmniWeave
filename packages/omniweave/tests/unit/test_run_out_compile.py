@@ -407,7 +407,7 @@ def world(tmp_path: Path) -> Iterator[World]:
     owstore = tmp_path / "index.owstore"
     connection = ow.connect(owstore)
     try:
-        assert len(migrate.apply_pending(connection, now_ns=NOW_NS)) == 5
+        assert len(migrate.apply_pending(connection, now_ns=NOW_NS)) == 6
         connection.execute("BEGIN IMMEDIATE")
         _seed(connection)
         connection.execute("COMMIT")
