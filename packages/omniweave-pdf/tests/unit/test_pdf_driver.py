@@ -70,8 +70,8 @@ def test_the_card_loads_through_the_real_loader_with_no_degradations() -> None:
     assert card.identity.id == "parse.pdf.pdfium"
     assert card.identity.entrypoint == "omniweave_pdf.driver:PdfiumParser"
     assert card.degradations == ()
-    assert card.attestation is None, "a card carries no attestation until a run writes one"
-    assert card.quality.benchmarks == (), "and no [quality] block either (DR13)"
+    assert card.attested, "D896: `ow conform --write` attested it, and nothing moved since"
+    assert card.quality.benchmarks == (), "the run wrote suites; no benchmark has been measured"
 
 
 def test_every_one_of_the_fifteen_declares_what_the_code_achieves() -> None:
