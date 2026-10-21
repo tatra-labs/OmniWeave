@@ -338,7 +338,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--dist", type=Path, default=REPO / "dist", help="the built wheels")
     parser.add_argument("--baselines", type=Path, default=REPO / "eval" / "baselines")
     args = parser.parse_args(argv)
-    dist: Path = args.dist
+    #  Absolute from here: `pip download` and the installs run with cwd set to a temp directory,
+    #  where CI's relative `--dist dist` named nothing (D897's first CI run).
+    dist: Path = args.dist.resolve()
     pdf = REPO / "packages" / "omniweave-pdf" / "fixtures" / "gen01p.pdf"
     if not any(dist.glob("*.whl")):
         sys.stdout.write(
