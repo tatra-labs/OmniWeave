@@ -51,11 +51,12 @@ EXIT_OK, EXIT_FINDING, EXIT_NOT_RUN = 0, 1, 2
 
 
 def members(root: Path = REPO) -> dict[str, Path]:
-    """Every workspace member's distribution name -> its `pyproject.toml`."""
+    """Every workspace member's name -> its `pyproject.toml`, but an attachment (D909)."""
     out = {}
     for pyproject in sorted((root / "packages").glob("*/pyproject.toml")):
-        name = tomllib.loads(pyproject.read_text(encoding="utf-8")).get("project", {}).get("name")
-        if name:
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        name = data.get("project", {}).get("name")
+        if name and data.get("tool", {}).get("omniweave", {}).get("attachment") is not True:
             out[str(name)] = pyproject
     return out
 

@@ -57,7 +57,14 @@ def _load(name: str) -> ModuleType:
 cv = _load("check_versions")
 gw = _load("gate_weights")
 
-DISTS = tuple(sorted(p.parent.name for p in REPO.glob("packages/*/pyproject.toml")))
+DISTS = tuple(
+    sorted(p.parent.name for p in REPO.glob("packages/*/pyproject.toml") if not cv.is_attachment(p))
+)
+"""The fourteen: every workspace member but an attachment (D909)."""
+BUILT_ATTACHMENTS = tuple(
+    sorted(p.parent.name for p in REPO.glob("packages/*/pyproject.toml") if cv.is_attachment(p))
+)
+"""The attachments built in this workspace, each declaring itself one."""
 
 SITE_COUNTS: tuple[tuple[str, int, bool], ...] = (
     ("dist [project] version", 13, True),
@@ -228,6 +235,14 @@ def test_the_repository_has_the_fourteen_distributions_the_plan_names() -> None:
     assert set(DISTS) == set(CEILINGS)
 
 
+def test_g5_s_fourteen_leave_an_attachment_out() -> None:
+    """Section 1.10: an attachment is not `RELEASE`-versioned and in no extra, so none of G5's
+    sites reaches it; its marker is the distribution's own statement of that (D909)."""
+    assert set(cv._dists(REPO)) == set(DISTS)
+    assert "omniweave-langchain" not in cv._dists(REPO)
+    assert cv.is_attachment(REPO / "packages" / "omniweave-langchain" / "pyproject.toml")
+
+
 def test_bound_derives_the_tilde_equals_constraint() -> None:
     assert cv.bound("0.4.2") == "0.4.0"
     assert cv.bound("1.0.0") == "1.0.0"
@@ -256,13 +271,14 @@ def test_the_core_bound_seven_are_the_compile_dists_plus_serve_and_the_cli() -> 
 
     Re-derived from `tools/layers.toml`'s rule-4 rows — the distributions allowed to import
     `omniweave_core` — rather than trusted from the constant, because that is the same derivation
-    G4 makes from entry points and the two must agree.
+    G4 makes from entry points and the two must agree. An attachment's row is not one of the seven:
+    it pins `omniweave`, released with core, never core itself (D909).
     """
     layers = tomllib.loads((REPO / "tools" / "layers.toml").read_text(encoding="utf-8"))
     rule_four = {
         name.replace("_", "-").replace("omniweave-target", "omniweave-target")
         for name, roots in layers.items()
-        if "omniweave_core" in roots
+        if "omniweave_core" in roots and name.replace("_", "-") not in BUILT_ATTACHMENTS
     }
     assert rule_four == {d.replace("_", "-") for d in cv.CORE_BOUND_DISTS}
     assert len(cv.CORE_BOUND_DISTS) == 7
@@ -557,13 +573,19 @@ def test_require_all_sites_fails_on_a_p1_checkout(capsys: pytest.CaptureFixture[
 # ---------------------------------------------------------------------------------------------
 
 
-def test_weights_declares_one_row_per_distribution_and_no_attachment() -> None:
+def test_weights_declares_one_row_per_distribution_and_per_built_attachment() -> None:
+    """An attachment built here is a workspace member, and an unlisted member fails closed
+    (section 1.10 row 4), so it carries a row: `omniweave-langchain`'s 30 is a user ruling of
+    2026-10-21 (D909). One planned but not built has none, and no profile's sum counts either."""
     schema, aggregate, rows = gw.load_weights(REPO / "tools" / "weights.toml")
     assert schema == 1
     assert aggregate == 250
-    assert set(rows) == set(DISTS) == set(CEILINGS)
-    assert len(rows) == 14
-    assert not set(rows) & set(ATTACHMENTS)
+    assert set(rows) - set(BUILT_ATTACHMENTS) == set(DISTS) == set(CEILINGS)
+    assert len(DISTS) == 14
+    assert BUILT_ATTACHMENTS == ("omniweave-langchain",)
+    assert set(rows) & set(ATTACHMENTS) == set(BUILT_ATTACHMENTS)
+    assert rows["omniweave-langchain"].marginal_mb == 30
+    assert "omniweave-langchain" not in gw.profile_roots(REPO, "recommended")
 
 
 def test_every_ceiling_is_the_one_the_distribution_table_prints() -> None:

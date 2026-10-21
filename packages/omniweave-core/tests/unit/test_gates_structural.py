@@ -613,14 +613,15 @@ def test_g4_holds_rows_1_and_2_as_the_charter_rather_than_a_derivation(
 def test_g4_agrees_with_the_layers_toml_the_repository_ships(
     gates: dict[str, ModuleType], sources: SourceIndex, repo_root: Path
 ) -> None:
-    """The gate and `tests/test_layers.py` read the same fourteen rows the same way.
+    """The gate and `tests/test_layers.py` read the same rows the same way: the fourteen and
+    `omniweave-langchain`'s attachment row (D909).
 
     Two readers of one declaration is one chance for them to disagree about it; this is where that
     would surface, rather than as a green gate beside a red test.
     """
     workspace = gates["gate_layers"].Workspace(root=repo_root)
     assert workspace.layers() == sources.layers()
-    assert len(workspace.layers()) == 14
+    assert len(workspace.layers()) == 14 + 1
 
 
 # ---------------------------------------------------------------------------

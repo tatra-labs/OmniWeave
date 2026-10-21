@@ -318,7 +318,25 @@ def _requirements(data: dict[str, object], key: str) -> list[str]:
 
 
 def _dists(repo: Path) -> dict[str, Path]:
-    return {p.parent.name: p for p in sorted(repo.glob("packages/*/pyproject.toml"))}
+    """The fourteen: every workspace member but an attachment (`[tool.omniweave] attachment`).
+
+    11-repo-layout.md section 1.10: an attachment distribution is "not `RELEASE`-versioned ... not
+    in an extra", so it is outside every count and bound this gate asserts (D909).
+    """
+    return {
+        p.parent.name: p
+        for p in sorted(repo.glob("packages/*/pyproject.toml"))
+        if not is_attachment(p)
+    }
+
+
+def is_attachment(pyproject: Path) -> bool:
+    """D909: a distribution that declares `[tool.omniweave] attachment = true` about itself."""
+    try:
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return False
+    return data.get("tool", {}).get("omniweave", {}).get("attachment") is True
 
 
 def _check_sibling_bounds(

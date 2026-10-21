@@ -73,13 +73,19 @@ def test_codes_unique_holds_in_both_directions() -> None:
     assert len(set(symbols)) == len(symbols)
 
 
+def _attachment(pyproject: Path) -> bool:
+    """D909: a member declaring `[tool.omniweave] attachment = true`, outside the fourteen."""
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    return data.get("tool", {}).get("omniweave", {}).get("attachment") is True
+
+
 def test_the_layer_graph_has_one_row_per_distribution() -> None:
     """The number fourteen is a literal in 11-repo-layout.md section 1.2, in charter section
     3.2 and in docs/ARCHITECTURE.md; section 1.10 resolves it against the package count so the
     literal cannot drift silently."""
-    dists = sorted(p.parent.name for p in (REPO / "packages").glob("*/pyproject.toml"))
-    assert len(dists) == 14
-    assert sorted(_layers()) == sorted(name.replace("-", "_") for name in dists)
+    pyprojects = sorted((REPO / "packages").glob("*/pyproject.toml"))
+    assert len([p for p in pyprojects if not _attachment(p)]) == 14
+    assert sorted(_layers()) == sorted(p.parent.name.replace("-", "_") for p in pyprojects)
 
 
 def test_every_layer_row_names_only_declared_packages_and_never_itself() -> None:
