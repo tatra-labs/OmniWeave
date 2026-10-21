@@ -411,8 +411,8 @@ answer.sections: ow:blocking ow:evidence ow:provenance ow:related ow:impact ow:s
 # Notes
 note: reads are sub-millisecond; the index lags writes until `ow_add` or `ow ingest` runs.
 note: no egress by default (bytes_egress = 0); a billable driver needs --allow-cost and a Grant.
-note: one query addresses ONE corpus; cross-corpus work is N CLI/SDK calls the surface
-  rank-merges, and it is not reachable from ow_query.
+note: one query addresses ONE corpus; cross-corpus fan-out is deferred past v1.0, so ask each
+  corpus in its own call; it is not reachable from ow_query.
 note: the eval group is implemented by omniweave-conform, not omniweave. The verbs are always
   listed; without that distribution each refuses with OW-A-027 and exit 64, naming `pip install
   omniweave-conform`.
