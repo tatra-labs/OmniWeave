@@ -7,9 +7,11 @@
 # `html.parser`, `xml.etree` via `defusedxml`. Serves the ten tokens `decode.text-native` names".
 # ADR-3 D3.1 enabled it; this card is the driver that row and that rule named (D646).
 #
-# [cost.measured], [quality] and attestation are ABSENT: they are written by `ow conform` and author
-# values are rejected by the publish gate (DR13).
+# [quality] and attestation are WRITTEN BY `ow conform` (`tools/ow_conform.py --write` over
+# packages/omniweave-office/fixtures/text, D896): author values are rejected by the publish gate
+# (DR13). [cost.measured] stays absent until a benchmark run measures it.
 card_schema = 1
+attestation = "sha256:b2361a5c0f6fe95329c14d34e926c138029010d0378dbc9033163bb8adbb1eb0"  # WRITTEN BY `ow conform` (04:859-862).
 
 [driver]
 id = "parse.text.builtin"
@@ -137,3 +139,22 @@ per_session = { }
 scaling     = { key = "input_bytes", exponent = 1.0, reference = 65536 }
 tokens_out_p95_multiple = 1.0
 max_retries = 0                    # Retry is the runtime's, with the runtime's budget and ledger.
+
+# ========================================================================================
+# EVERYTHING BELOW IS WRITTEN BY `ow conform`. AUTHOR VALUES ARE REJECTED (DR13).
+# ========================================================================================
+[quality]
+kit_version = "0.1.0"
+[quality.suites]
+card = "pass"
+purity = "pass"
+contract = "pass"
+capability = "pass"
+idempotence = "pass"
+determinism = "pass"
+limits = "pass"
+sandbox = "pass"
+cost = "pass"
+licence = "pass"
+fuzz = "pass"
+quality = "unknown"
