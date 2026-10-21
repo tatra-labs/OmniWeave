@@ -136,6 +136,33 @@ a `Quad` or a `Locus.reason`, **and** whose `byte_exact` bit, where set, re-grou
 `normalize_k`. (13-quality.md:1101, verbatim.)\
 """
 
+# R2 address survival as a hard row: a user ruling of 2026-10-19 (D902). 13-quality.md:1564 gives
+# R2 an evaluation obligation and the `roundtrip` assertion type but no metric, so a failed element
+# was a failed verdict and refused nothing (D871's ruling 16). The ruling makes survival a gate.
+[[gate]]
+metric = "address_survival"
+suite = "roundtrip"
+slice = "*"
+kind = "hard"
+budget = 1.000
+truth_kind = "self_verifying"
+class = "blocking"
+owner = "quality"
+reviewed_at = "2026-10-21"
+review_by = "2027-01-19"
+computed = """
+over every IL element of each register `[[target]]`'s golden that carries `data-ow-el`, the \
+fraction for which law R2 holds after compile then `read_back`: exactly one Block carries \
+`x["x.ow.el"] == e.el`, with the kind `kind_map` gives the element's construct, NFC-equal text \
+and the element's cites (13-quality.md:1564 and :1011). One value per target, its slice the \
+target's name.\
+"""
+guard_absent_because = """
+A `hard` row has no guard band. An address that does not survive the round trip is a citation \
+that points at nothing once the artefact is read back, and there is no acceptable fraction of \
+those.\
+"""
+
 # ---------------------------------------------------------------------------
 # The subjects `span_exact_rate` is measured over.
 # ---------------------------------------------------------------------------
