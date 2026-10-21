@@ -398,13 +398,15 @@ def test_a_register_whose_gate_is_not_an_array_of_tables_is_refused() -> None:
         hard_gates({"gate": [{"kind": "floor"}, "span_exact_rate"]})
 
 
-def test_the_shipped_register_names_its_three_hard_gates() -> None:
-    """D870 added `citability_violations`, 13:1094's hard count at 0."""
+def test_the_shipped_register_names_its_four_hard_gates() -> None:
+    """D870 added `citability_violations`, 13:1094's hard count at 0; D902 added R2's
+    `address_survival` at 1.000, by a user ruling."""
     shipped = tomllib.loads((REPO / "eval" / "gates.toml").read_text(encoding="utf-8"))
     assert {(g.metric, g.suite, g.slice, g.budget) for g in hard_gates(shipped)} == {
         ("span_exact_rate", "parse", "*", 1.0),
         ("degradation_detection", "absence", "*", 1.0),
         ("citability_violations", "retrieve", "*", 0.0),
+        ("address_survival", "roundtrip", "*", 1.0),
     }
 
 
@@ -442,16 +444,25 @@ def test_a_finding_prints_as_one_line() -> None:
 _RETRIEVE = _run("r3", suite="retrieve", subject="omniweave")
 _NO_VIOLATION = _metric("r3", "citability_violations", value=0.0)
 """The shipped register's third hard gate, met (D870)."""
+_ROUNDTRIP = _run("r4", suite="roundtrip", subject="compile.docx.native")
+_SURVIVED = _metric("r4", "address_survival", value=1.0, slice_key="docx")
+"""The shipped register's fourth hard gate, met: every docx address survived (D902)."""
 
 
 def _files(
-    tmp_path: Path, *runs: Run, metrics: tuple[Metric, ...] = (*_CLEAN[1], _NO_VIOLATION)
+    tmp_path: Path,
+    *runs: Run,
+    metrics: tuple[Metric, ...] = (*_CLEAN[1], _NO_VIOLATION, _SURVIVED),
 ) -> Path:
     connection = open_oweval(tmp_path / "e.oweval")
     try:
         store(
             connection,
-            Batch(corpora=(_CORPUS,), runs=runs or (*_CLEAN[0], _RETRIEVE), metrics=metrics),
+            Batch(
+                corpora=(_CORPUS,),
+                runs=runs or (*_CLEAN[0], _RETRIEVE, _ROUNDTRIP),
+                metrics=metrics,
+            ),
         )
     finally:
         connection.close()
@@ -460,15 +471,17 @@ def _files(
 
 
 def test_the_entry_point_returns_builtins(tmp_path: Path) -> None:
-    root = _files(tmp_path, metrics=(_metric("r1", value=0.5), _CLEAN[1][1], _NO_VIOLATION))
+    root = _files(
+        tmp_path, metrics=(_metric("r1", value=0.5), _CLEAN[1][1], _NO_VIOLATION, _SURVIVED)
+    )
     done = entry.release_check(
         oweval=str(root / "e.oweval"), gates=str(root / "gates.toml"), strict=False
     )
     assert done == {
         "ok": False,
-        "runs": 3,
+        "runs": 4,
         "superseded": 0,
-        "gates": 3,
+        "gates": 4,
         "findings": [
             {
                 "kind": "gate",
@@ -486,7 +499,7 @@ def test_the_entry_point_passes_a_clean_store_and_strict_reaches_it(tmp_path: Pa
     assert entry.release_check(**paths, strict=False)["ok"] is True
     findings = entry.release_check(**paths, strict=True)["findings"]
     assert isinstance(findings, list)
-    assert len(findings) == len(SUITES) - 3
+    assert len(findings) == len(SUITES) - 4
 
 
 @pytest.mark.parametrize(("missing", "fix"), [("e.oweval", "--oweval"), ("gates.toml", "--gates")])
@@ -501,3 +514,16 @@ def test_the_entry_point_refuses_a_missing_file_and_creates_none(
         )
     assert fix in raised.value.fix
     assert not (root / missing).exists()
+
+
+def test_one_element_that_did_not_survive_refuses_the_release(tmp_path: Path) -> None:
+    """D902: R2 is hard at 1.000, so 0.5 on one target is a gate finding."""
+    lost = _metric("r4", "address_survival", value=0.5, slice_key="docx")
+    root = _files(tmp_path, metrics=(*_CLEAN[1], _NO_VIOLATION, lost))
+    done = entry.release_check(
+        oweval=str(root / "e.oweval"), gates=str(root / "gates.toml"), strict=False
+    )
+    assert done["ok"] is False
+    (finding,) = done["findings"]  # type: ignore[misc]
+    assert finding["names"] == "address_survival@docx in roundtrip/compile.docx.native run r4"
+    assert finding["why"] == "0.5 is not the hard budget 1.0"

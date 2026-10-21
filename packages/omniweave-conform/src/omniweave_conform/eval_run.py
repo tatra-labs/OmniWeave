@@ -97,11 +97,13 @@ returns it as `store.oweval` rows for one `write()`.
     derived from the golden's IL by the harness, and no reviewer verified it. Its
     `derived_from_sha256` is the sha256 of the IL unit file its element lives in, the bytes it was
     written from (D875), so Q-G26 can hold it to its own corpus; D871 wrote the golden's digest.
-16. **No metric row, because the plan names none.** 13:1564 gives R2 *"the `roundtrip` assertion
-    type"* and no metric, so a failed element is a failed verdict on the record and not a gate:
-    `release-check` refuses on a metric or a run, never on a verdict. That is named in every run's
-    confounders. An R2 the suite could not judge (a gate short of `lower()`, OUT23) is a run with
-    status `unknown` and the suite's reason, which `release-check` does refuse.
+16. **R2 is the hard `address_survival` row** (D902, a user ruling of 2026-10-19). 13:1564 gives
+    R2 *"the `roundtrip` assertion type"* and no metric, so until the ruling a failed element was
+    a failed verdict on the record and refused nothing. Each judged target's run now writes one
+    `address_survival` metric, its slice the target, the surviving fraction of its elements; the
+    register's row is `hard` at 1.000, so `release-check` refuses on any element that did not
+    survive. An R2 the suite could not judge (a gate short of `lower()`, OUT23) writes no metric
+    and is a run with status `unknown` and the suite's reason, which `release-check` refuses too.
 
 ## The three suites this build cannot measure (D872)
 
@@ -189,10 +191,12 @@ UNMEASURABLE: Final[Mapping[str, str]] = {
 SUITES: Final[tuple[str, ...]] = (*BUILT, *UNMEASURABLE)
 """Every suite `ow eval run` accepts: the four it measures, then the three it reports unknown."""
 
+ADDRESS: Final = "address_survival"
+"""Ruling 16: R2's hard row in the metric register (D902)."""
+
 ROUNDTRIP_CONFOUNDER: Final = (
-    "no eval/gates.toml row folds R2 into a metric (13-quality.md:1564 names the roundtrip "
-    "assertion type and no metric), so a failed element is a failed verdict and does not refuse "
-    "a release"
+    "R2 is the hard address_survival row at 1.000 (D902), so a single element that does not "
+    "survive the round trip refuses a release"
 )
 """Ruling 16, said in every roundtrip run."""
 
@@ -666,6 +670,8 @@ def roundtrip(
             "the metric register names no [[target]] for the roundtrip suite to read back",
             fix="add a [[target]] row: a card, its read_back card and a golden, to eval/gates.toml",
         )
+    truth = _address_truth(register)
+    metrics: list[Metric] = []
     corpora: list[Corpus] = []
     assertions: list[Assertion] = []
     runs: list[Run] = []
@@ -769,6 +775,23 @@ def roundtrip(
                 )
             )
         survived = sum(1 for e in judged.elements if e.passed)
+        #  An R2 the suite could not judge carries no elements (`roundtrip.judge`), so writes none.
+        if judged.elements:
+            estimate = rate(survived, len(judged.elements))
+            metrics.append(
+                Metric(
+                    run_id=run_id,
+                    metric=ADDRESS,
+                    value=estimate.value,
+                    n=estimate.n,
+                    ci_lo=estimate.ci_lo,
+                    ci_hi=estimate.ci_hi,
+                    method=estimate.method,
+                    truth_kind=truth,
+                    state="ok",
+                    slice_key=target.target,
+                )
+            )
         done.append(
             Measured(
                 run_id=run_id,
@@ -776,7 +799,7 @@ def roundtrip(
                 subject=judged.driver,
                 slice_key=target.target,
                 corpus_id=corpus.corpus_id,
-                metric=r2_half.LAW,
+                metric=ADDRESS,
                 value=None if not judged.elements else survived / len(judged.elements),
                 n=len(judged.elements),
                 parsed=survived,
@@ -788,8 +811,34 @@ def roundtrip(
         assertions=tuple(assertions),
         runs=tuple(runs),
         verdicts=tuple(verdicts),
+        metrics=tuple(metrics),
     )
     return batch, tuple(done)
+
+
+def _address_truth(register: Mapping[str, Any]) -> str:
+    """Ruling 16: the register's `address_survival` row's TruthKind, or a refusal naming it."""
+    gate = next(
+        (
+            row
+            for row in register.get("gate", [])
+            if row.get("suite") == "roundtrip" and row.get("metric") == ADDRESS
+        ),
+        None,
+    )
+    if gate is None:
+        raise QualityError(
+            f"the metric register has no roundtrip {ADDRESS} row to measure against",
+            fix=f"add a [[gate]] row with metric = {ADDRESS!r} and suite = 'roundtrip'",
+        )
+    truth = TRUTH_OF.get(str(gate.get("truth_kind", "")), str(gate.get("truth_kind", "")))
+    if truth not in TRUTH_KINDS:
+        raise QualityError(
+            f"the register's {ADDRESS} truth_kind {truth!r} is not one of "
+            f"{', '.join(sorted(TRUTH_KINDS))}",
+            fix="name one of the six TruthKinds (13-quality.md:1452) in eval/gates.toml",
+        )
+    return truth
 
 
 def unknown(
