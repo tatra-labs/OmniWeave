@@ -73,7 +73,7 @@ def test_the_registry_it_builds_is_the_day_one_fifty_three() -> None:
     assert "layout.class_hist" not in keys
 
 
-def test_the_cards_it_finds_are_the_twenty_first_party_drivers() -> None:
+def test_the_cards_it_finds_are_the_twenty_one_first_party_drivers() -> None:
     """W5.6 added the third. Before it, checks 9, 11 and 13 all deferred on `parse.page.olmocr`
     and the linter reported six undecidables; with the card on disk it reports three, and none of
     the three is olmocr's. D646 added the fourth, `parse.text.builtin`, whose card is one package
@@ -88,9 +88,10 @@ def test_the_cards_it_finds_are_the_twenty_first_party_drivers() -> None:
     seventeenth, `compile.docx.native`, whose table gates owflow/1 before it lowers; D786 the
     eighteenth, `parse.docx.native`, its read_back; D789 the nineteenth, `compile.pptx.native`,
     whose table gates owsvg/1 before it lowers; D804 the twentieth, `parse.pptx.native`, its
-    read_back."""
+    read_back; D910 the twenty-first, `compile.deck.native`, at `implemented = false` as video."""
     cards = tool.installed_cards()
     assert sorted(cards) == [
+        "compile.deck.native",
         "compile.docx.native",
         "compile.pptx.native",
         "compile.video.native",
