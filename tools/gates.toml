@@ -494,6 +494,8 @@ release        = true
 # exists, `test_gates_register.py`'s "every `runner_planned` path does NOT exist" forces this move,
 # and the row's assertion is unchanged: the unflagged run exits 2 (DID NOT RUN) until W4.10 lands
 # `fixtures/incremental/`, so nothing here claims the gate is enforcing yet.
+# D908: OQ-6's fallback, taken with a number. Through `ow add` the 300/40 run measured ~24 min,
+# so the PR runs `--through-add --subset <commit>` (60/8) and the nightly the full script.
 runner         = ["tools/gate_incremental.py"]
 # 17-risks.md section 1.3: `runtime` owns "the Supervisor, `work`, the claim, ... the cache".
 owner          = "runtime"
