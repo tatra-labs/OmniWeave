@@ -40,7 +40,7 @@ properties = 0
 
 [[area]]
 area = "omniweave-langchain/unit"
-tests = 13
+tests = 14
 properties = 0
 
 [[area]]

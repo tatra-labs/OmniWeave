@@ -325,3 +325,10 @@ def test_the_tool_takes_one_argument_and_names_itself() -> None:
     assert list(ask.args) == ["question"]
     assert ask.response_format == "content_and_artifact"
     assert create_omniweave_tool().description == tool.DESCRIPTION
+
+
+def test_the_refusal_the_loader_skips_is_bound_when_the_loader_is_imported() -> None:
+    """`test_errors.py` reloads `omniweave_core.errors`, so an `except NotFoundError` imported at
+    call time catches a different class than one bound at import, and the loader then raised on a
+    refused file under some xdist orders (CI, py3.13/3.14). Bound at import, as here, it cannot."""
+    assert loader.NotFoundError is NotFoundError
