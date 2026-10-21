@@ -277,8 +277,8 @@ SECTION_NOTE: Final[str] = "fixed order; a truncation cuts whole blocks, never m
 NOTES: Final[tuple[str, ...]] = (
     "reads are sub-millisecond; the index lags writes until `ow_add` or `ow ingest` runs.",
     "no egress by default (bytes_egress = 0); a billable driver needs --allow-cost and a Grant.",
-    "one query addresses ONE corpus; cross-corpus work is N CLI/SDK calls the surface rank-merges, "
-    "and it is not reachable from ow_query.",
+    "one query addresses ONE corpus; cross-corpus fan-out is deferred past v1.0, so ask each "
+    "corpus in its own call; it is not reachable from ow_query.",
     "the eval group is implemented by omniweave-conform, not omniweave. The verbs are always "
     "listed; without that distribution each refuses with OW-A-027 and exit 64, naming "
     "`pip install omniweave-conform`.",
