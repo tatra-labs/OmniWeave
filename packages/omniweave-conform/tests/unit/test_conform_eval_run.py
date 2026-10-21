@@ -32,6 +32,22 @@ from omniweave_core.store.oweval import Batch, open_oweval, scoreboard, write
 REPO = Path(__file__).resolve().parents[4]
 REGISTER: dict[str, Any] = tomllib.loads((REPO / "eval" / "gates.toml").read_text(encoding="utf-8"))
 PDFIUM, OFFICE = "parse.pdf.pdfium", "parse.office.anydoc"
+SPAN = "span_exact_rate"
+DRAFTED = (
+    ("metric", "order_acc@__macro__ in parse/parse.office.anydoc"),
+    ("metric", "order_acc@__macro__ in parse/parse.pdf.pdfium"),
+    ("metric", "table_rel_acc@__macro__ in parse/parse.office.anydoc"),
+)
+"""D913: the drafted labels' rates, `unknown` until a reviewer verifies 30 in a slice, and each
+one a refusal, run id aside."""
+
+
+def _labels(fixtures: str) -> int:
+    """D913: the `[[assertion]]` rows the subject's committed labels files hold."""
+    return sum(
+        len(tomllib.loads(path.read_text(encoding="utf-8")).get("assertion", []))
+        for path in (REPO / fixtures).glob("*.assertions.toml")
+    )
 
 
 def _clock(start: int = 1_000) -> Any:
@@ -56,7 +72,12 @@ def test_each_subject_is_one_run_over_its_own_tier_a_corpus(parsed: Any) -> None
     for run, row in zip(batch.runs, REGISTER["subject"], strict=True):
         (corpus,) = [c for c in batch.corpora if c.corpus_id == run.corpus_id]
         assert corpus.corpus_id == row["fixtures"]
-        assert (corpus.tier, corpus.publishable, corpus.n_assertions) == ("A", False, 0)
+        assert (corpus.tier, corpus.publishable) == ("A", False)
+        assert (corpus.n_assertions, corpus.n_checked) == (_labels(row["fixtures"]), 0)
+        assert corpus.n_assertions > 0, "D913 drafted labels for both fixture sets"
+        judged = [v for v in batch.verdicts if v.run_id == run.run_id]
+        assert len(judged) == corpus.n_assertions
+        assert [v.assertion_id for v in judged if not v.passed] == [], "every drafted label holds"
         assert corpus.version == corpus.corpus_digest[:16] == run.corpus_version
         assert run.measured_on.corpus == f"{corpus.corpus_id}@{corpus.version}"
         assert (run.suite, run.status, run.timing_basis) == ("parse", "ok", "in_process")
@@ -69,7 +90,7 @@ def test_each_subject_is_one_run_over_its_own_tier_a_corpus(parsed: Any) -> None
 
 def test_a_measured_rate_is_one_native_run_metric_on_its_slice(parsed: Any) -> None:
     batch, done = parsed
-    (metric,) = batch.metrics
+    (metric,) = [m for m in batch.metrics if m.metric == SPAN]
     assert metric.run_id == batch.runs[0].run_id
     assert (metric.metric, metric.slice_key) == ("span_exact_rate", "pdf/born_digital")
     assert (metric.value, metric.truth_kind, metric.method, metric.state) == (
@@ -89,7 +110,7 @@ def test_a_measured_rate_is_one_native_run_metric_on_its_slice(parsed: Any) -> N
 def test_a_vacuous_rate_writes_no_metric_and_says_why(parsed: Any) -> None:
     batch, done = parsed
     office = batch.runs[1]
-    assert not [m for m in batch.metrics if m.run_id == office.run_id]
+    assert not [m for m in batch.metrics if m.run_id == office.run_id and m.metric == SPAN]
     assert done[1].value is None
     assert office.not_measured[0].startswith("span_exact_rate: vacuous, no block claims")
 
@@ -144,11 +165,16 @@ def test_the_batch_writes_and_release_check_wants_the_other_four_gates(
     connection = open_oweval(tmp_path / "x.oweval")
     try:
         write(connection, batch)
-        assert [row.standing for row in scoreboard(connection)] == ["WITHHELD"]
+        standing = {(row.metric, row.standing) for row in scoreboard(connection)}
         judged = check_release(connection, REGISTER, strict=False)
     finally:
         connection.close()
-    assert [(f.kind, f.names) for f in judged.findings] == [
+    assert standing == {(SPAN, "WITHHELD"), ("order_acc", "UNKNOWN"), ("table_rel_acc", "UNKNOWN")}
+    drafted = judged.findings[: len(DRAFTED)]
+    assert all(f.fix.startswith('verify its labels: write checked = "verified"') for f in drafted)
+    assert all("unverified assertion(s) ran and were not scored" in f.why for f in drafted)
+    assert [(f.kind, f.names.split(" run ")[0]) for f in judged.findings] == [
+        *DRAFTED,
         ("unmeasured", "hard gate degradation_detection@*"),
         ("unmeasured", "hard gate citability_violations@*"),
         ("unmeasured", "hard gate address_survival@*"),
@@ -326,7 +352,10 @@ def test_the_entry_point_runs_every_suite_in_one_write(
         judged = check_release(connection, REGISTER, strict=False)
     finally:
         connection.close()
-    assert (judged.ok, judged.runs) == (True, 9)
+    assert judged.runs == 9
+    assert [(f.kind, f.names.split(" run ")[0]) for f in judged.findings] == list(DRAFTED), (
+        "D913: every suite's hard gate holds; only the drafted labels' unverified rates refuse"
+    )
 
 
 @pytest.mark.parametrize(

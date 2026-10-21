@@ -1,0 +1,33 @@
+# rows.csv.assertions.toml -- 13-quality.md section 8.1's assertions about rows.csv.
+#
+# DRAFTED by Claude on 2026-10-21 (D913, a user ruling of 2026-10-21: Claude drafts, the
+# user verifies). Each claim was read off fixtures/gen/gen_office_fixtures.py's csv_rows(),
+# never off a parse. None is checked: a reviewer who confirms a row against the file adds
+# `checked = "verified"`, or `checked = "rejected"` for a wrong one. An unchecked row runs
+# and never scores.
+schema = "omniweave.assertions/1"
+
+[[assertion]]
+id = "north-units"
+type = "table"
+page = 1
+cell = "north"
+right = "17"
+up = "region"
+slices = ["office/csv"]
+
+[[assertion]]
+id = "south-units"
+type = "table"
+page = 1
+cell = "4"
+left = "south"
+up = "17"
+slices = ["office/csv"]
+
+[[assertion]]
+id = "quoted-comma"
+type = "present"
+page = 1
+text = "a note, with a comma"
+slices = ["office/csv"]

@@ -1,0 +1,31 @@
+# memo.rtf.assertions.toml -- 13-quality.md section 8.1's assertions about memo.rtf.
+#
+# DRAFTED by Claude on 2026-10-21 (D913, a user ruling of 2026-10-21: Claude drafts, the
+# user verifies). Each claim was read off fixtures/gen/gen_office_fixtures.py's rtf_memo(),
+# never off a parse. None is checked: a reviewer who confirms a row against the file adds
+# `checked = "verified"`, or `checked = "rejected"` for a wrong one. An unchecked row runs
+# and never scores.
+schema = "omniweave.assertions/1"
+
+[[assertion]]
+id = "title"
+type = "present"
+page = 1
+text = "Memo"
+slices = ["office/rtf"]
+
+[[assertion]]
+id = "title-body"
+type = "order"
+page = 1
+before = "Memo"
+after = "Plain text, then italic and bold."
+slices = ["office/rtf"]
+
+[[assertion]]
+id = "body-order"
+type = "order"
+page = 1
+before = "Plain text, then italic and bold."
+after = "A second paragraph."
+slices = ["office/rtf"]
