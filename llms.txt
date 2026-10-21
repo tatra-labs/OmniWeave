@@ -353,7 +353,8 @@ cli.out.verify: ow out verify [--job JOB]
 cli.out.verify.actions: out.verify
 cli.query: ow query QUERY [--scope SCOPE] [--want passages|table|fields|outline|related]
   [--max-rung gate|decode|repair|page|regen|degrade|enrich] [--max-chars MAX_CHARS] [--k N]
-  [--mode find|cite|explore|prove_absent] [--fail-on STATE[,STATE]] [--explain]
+  [--mode find|cite|explore|prove_absent] [--fail-on STATE[,STATE]] [--explain] [--deny-method
+  M[,M]]
 cli.query.actions: query
 cli.serve: ow serve [--mcp] [--http] [--host HOST] [--port PORT] [--path PATH] [--api-key
   API_KEY] [--stateless] [--session-timeout SESSION_TIMEOUT] [--profile PROFILE]
