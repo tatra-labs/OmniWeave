@@ -24,7 +24,13 @@ import tomllib
 from pathlib import Path
 
 import pytest
-from omniweave_core.drivers.card import PARSE_BOOLS, PARSE_LADDERS, PARSE_SETS, load_card
+from omniweave_core.drivers.card import (
+    PARSE_BOOLS,
+    PARSE_LADDERS,
+    PARSE_SETS,
+    attestation_of,
+    load_card,
+)
 from omniweave_office.driver import ACHIEVED_CONSTANTS, MEDIA_TYPES, AnydocParser
 
 DIST_ROOT = Path(__file__).resolve().parents[2]
@@ -169,15 +175,20 @@ def test_achieved_constants_are_a_subset_of_the_fifteen_and_never_exceed_the_car
             assert set(claimed) <= set(declared), key  # type: ignore[arg-type]
 
 
-def test_the_card_is_not_signed_by_its_author(raw: dict[str, object]) -> None:
+def test_the_card_is_signed_by_the_kit_and_not_by_its_author(raw: dict[str, object]) -> None:
     """DR13: `[cost.measured]`, `[quality]` and the attestation are the KIT's regions.
 
-    A card carrying them before a run has made a claim no run backed, and the publish gate rejects
-    author values in those blocks. Asserting their absence here is cheaper than discovering it at
-    publish time.
+    D896 ran `tools/ow_conform.py --write` over the office fixtures, so `[quality]` and the
+    attestation are a run's: the attestation is the card's own digest with the key removed, which
+    an author's hand-written value would not be after any later edit, and every mandatory suite
+    the run reports passed. `[cost.measured]` waits for a benchmark run.
     """
-    assert "quality" not in raw
-    assert "attestation" not in raw
+    assert raw["attestation"] == attestation_of(raw)  # type: ignore[arg-type]
+    quality = raw["quality"]
+    assert isinstance(quality, dict)
+    suites = quality["suites"]
+    assert isinstance(suites, dict)
+    assert {verdict for suite, verdict in suites.items() if suite != "quality"} == {"pass"}
     assert "measured" not in raw.get("cost", {})  # type: ignore[union-attr]
 
 

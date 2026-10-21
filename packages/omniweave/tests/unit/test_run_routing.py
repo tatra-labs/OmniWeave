@@ -226,12 +226,13 @@ def test_a_text_file_is_planned_to_the_stdlib_driver_and_read(tmp_path: Path) ->
 
 
 def test_by_the_shipped_driver_defaults_nothing_on_a_checkout_resolves(tmp_path: Path) -> None:
-    """D576: no attestation (`ow conform` writes it), no `omniweave.lock` writer, and an `inproc`
-    driver whose editable install cannot be pinned. Reported per driver, never waived."""
+    """D576: no `omniweave.lock` writer, and an `inproc` driver whose editable install cannot be
+    pinned. Reported per driver, never waived. The parse cards are attested since D896 (`ow
+    conform --write`), so the lock is the refusal a checkout's defaults meet first."""
     store, config = _project(tmp_path, drivers="")
     report = _run(tmp_path, store, config)
     assert not report.routed.planned  # type: ignore[attr-defined]
-    assert report.routed.unrouted["parse.office.anydoc: unattested"] == 1  # type: ignore[attr-defined]
+    assert report.routed.unrouted["parse.office.anydoc: not_in_lockfile"] == 1  # type: ignore[attr-defined]
     assert _unit(store, "memo.docx") == ("identified",)
 
 

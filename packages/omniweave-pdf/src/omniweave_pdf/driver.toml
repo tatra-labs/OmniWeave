@@ -6,10 +6,12 @@
 # key there is an ordered or set-valued FLOOR and an unrecognised one can only make the driver look
 # LESS capable.
 #
-# [cost.measured], [quality] and attestation are ABSENT: they are written by `ow conform` and
-# author values are rejected by the publish gate (DR13). A card carrying them before a run has
-# made a claim no run backed.
+# [quality] and attestation are WRITTEN BY `ow conform` (`tools/ow_conform.py --write` over
+# packages/omniweave-pdf/fixtures, D896): author values are rejected by the publish gate (DR13),
+# because a card carrying them before a run makes a claim no run backed. [cost.measured] stays
+# absent until a benchmark run measures it.
 card_schema = 1
+attestation = "sha256:1b0c1864b2c8111ac649ce2889b02971e3053b78701a9eff80665a5e41ac6d99"  # WRITTEN BY `ow conform` (04:859-862).
 
 [driver]
 id = "parse.pdf.pdfium"
@@ -150,3 +152,22 @@ scaling     = { key = "input_bytes", exponent = 1.0, reference = 65536 }
 tokens_out_p95_multiple = 1.0
 max_retries = 0                    # The only value a first release accepts: retry is the
                                    #   runtime's, with the runtime's budget and ledger.
+
+# ========================================================================================
+# EVERYTHING BELOW IS WRITTEN BY `ow conform`. AUTHOR VALUES ARE REJECTED (DR13).
+# ========================================================================================
+[quality]
+kit_version = "0.1.0"
+[quality.suites]
+card = "pass"
+purity = "pass"
+contract = "pass"
+capability = "pass"
+idempotence = "pass"
+determinism = "pass"
+limits = "pass"
+sandbox = "pass"
+cost = "pass"
+licence = "pass"
+fuzz = "pass"
+quality = "unknown"
