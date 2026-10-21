@@ -319,7 +319,22 @@ def everything(work: Path, house: Path, dist: Path) -> Outcome:
     done = _install(bindir, house, dist, list(names))
     if done.returncode != 0:
         return Outcome("all-but-vision", False, f"offline install failed: {done.stderr[-800:]}")
-    return Outcome("all-but-vision", True, f"{len(names)} bounded distributions installed together")
+    #  D899: G2's measured half, which section 2.5 runs "in the `build` job over an offline
+    #  wheelhouse install" -- this one, the thirteen bounded distributions installed together.
+    python = bindir / ("python.exe" if os.name == "nt" else "python")
+    site = _must(
+        (str(python), "-c", "import sysconfig; print(sysconfig.get_paths()['purelib'])"),
+        "purelib",
+    ).stdout.strip()
+    weighed = _run((sys.executable, str(REPO / "tools" / "gate_weights.py"), "--measure", site))
+    if weighed.returncode != 0:
+        failures = [line.strip() for line in weighed.stdout.splitlines() if "FAIL" in line]
+        return Outcome("all-but-vision", False, "G2 measured: " + "; ".join(failures)[:800])
+    return Outcome(
+        "all-but-vision",
+        True,
+        f"{len(names)} bounded distributions installed together; G2 measured every ceiling",
+    )
 
 
 def _record_bytes(site: Path) -> int:
