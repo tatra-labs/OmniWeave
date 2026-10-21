@@ -1024,7 +1024,7 @@ name           = "build.first_party_manifest"
 job            = "build"
 asserts        = """
 thirteen rows, `omniweave-core` absent, every row's digest matches `dist/`"""
-runner_planned = ["tools/gen_first_party.py"]
+runner         = ["tools/gen_first_party.py"]
 step           = "checklist step 13 is the release-side half of the same assertion"
 owner          = "release"
 reviewed_at    = "2026-09-07"

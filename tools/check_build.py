@@ -4,10 +4,12 @@
 whole point of the py3-none-any decision."* Section 6.6 step 3, `build.reproducible`: *"two build
 passes produce 28 identical sha256s"*. `ci.yml`'s `build` job asserts both in shell, and the `ci`
 workflow is off, so V10-2 (*"14 sdists and 14 wheels, py3-none-any"*) had no instrument that ran.
-This script is the same two assertions for a machine with no CI. `ci.yml` keeps its shell steps:
-section 6.6's step 2, the first-party manifest, sits between them and will change what step 3
-compares (its own comment says so), so folding both into one call belongs to the cell that wires
-step 2. Until then the two are one rule in two spellings, and this file says which job it mirrors.
+This script is the same two assertions for a machine with no CI. `ci.yml` keeps its shell steps.
+Section 6.6's step 2, the first-party manifest, is wired between them there (D895), and this script
+deliberately does NOT run it: step 2 writes `first_party.toml` into core's `src/`, and a local check
+that left one behind would turn every later run on this machine into a release-shaped install
+(`catalog()` reads the manifest, and editable members then compute `unpinned` against it). With the
+manifest absent from both passes, the 28-file and reproducibility assertions are the same ones.
 
 It is `check_build.py` and not `gate_build.py` for the same reason: a `tools/gate_*.py` is a
 registered gate whose register row's runner CI invokes (`test_gates_register.py`), and the
