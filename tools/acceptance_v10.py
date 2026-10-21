@@ -454,11 +454,15 @@ CRITERIA: tuple[Criterion, ...] = (
                 "test_a_corpus_holding_its_own_deck_reports_its_generated_share",
                 label="a corpus holding its own compiled deck: 1.0 open, 0.0 denied (D857)",
             ),
+            pytest(
+                "packages/omniweave/tests/unit/test_query_verb.py::"
+                "test_deny_method_roundtrip_reaches_the_filters",
+                label="the CLI spelling: ow query ... --deny-method roundtrip (D901)",
+            ),
         ),
         Coverage.PARTIAL,
         "the self-ingesting corpus is asserted on Windows only, as the pptx loop's S4 arm is, so a "
-        "Linux or macOS cell skips it; and the CLI has no spelling for `deny_methods` (07:1663), "
-        "so the restriction is an SDK caller's",
+        "Linux or macOS cell skips it (the CLI spelling, `--deny-method roundtrip`, is D901's)",
     ),
 )
 

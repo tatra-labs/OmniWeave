@@ -17,6 +17,7 @@ import omniweave.__main__ as launcher
 import pytest
 from jsonschema import Draft202012Validator
 from omniweave.surface import query as verb
+from omniweave_core.model.enums import Method
 from omniweave_core.store import sqlite as ow
 
 if TYPE_CHECKING:
@@ -259,3 +260,53 @@ def test_the_projects_deny_policy_reaches_the_policy(
     )
     _run(["terminate"], project)
     assert seen[0].deny_restriction_bits == 1 << 5
+
+
+# ---------------------------------------------------------------------------------------------
+# D901: --deny-method, 07:1652-1656's requirement on 10 section 6.1
+
+
+def _spied(project: Path, monkeypatch: pytest.MonkeyPatch, argv: list[str]) -> Any:
+    from omniweave_core.retrieve import execute as execute_module  # noqa: PLC0415
+
+    seen: list[Any] = []
+    real = execute_module.execute
+
+    def spy(reader: Any, query: Any, policy: Any, **kwargs: Any) -> Any:
+        seen.append(query)
+        return real(reader, query, policy, **kwargs)
+
+    monkeypatch.setattr(execute_module, "execute", spy)
+    assert _run(argv, project)[0] == 0
+    (query,) = seen
+    return query
+
+
+def test_deny_method_roundtrip_reaches_the_filters(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """V10-17's invocation: `ow query "..." --deny-method roundtrip`."""
+    query = _spied(project, monkeypatch, ["terminate", "--deny-method", "roundtrip"])
+    assert query.filters.deny_methods == frozenset({Method.ROUNDTRIP})
+
+
+def test_deny_method_is_repeatable_and_comma_accepting(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    argv = ["terminate", "--deny-method", "roundtrip,llm", "--deny-method", "ocr_page"]
+    query = _spied(project, monkeypatch, argv)
+    assert query.filters.deny_methods == {Method.ROUNDTRIP, Method.LLM, Method.OCR_PAGE}
+
+
+def test_without_the_flag_the_filters_are_the_default(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    query = _spied(project, monkeypatch, ["terminate"])
+    assert query.filters.deny_methods == frozenset()
+
+
+def test_an_unknown_method_is_usage_naming_the_ten(project: Path) -> None:
+    code, out, err = _run(["terminate", "--deny-method", "roundtrips"], project)
+    assert (code, out) == (1, "")
+    assert "roundtrips" in err
+    assert all(member.value in err for member in Method)
