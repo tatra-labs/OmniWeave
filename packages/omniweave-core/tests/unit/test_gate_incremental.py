@@ -762,3 +762,132 @@ def test_the_default_builder_is_the_indexer_and_is_named_exactly_once() -> None:
         "a gate that imported a distribution at module scope would be a gate that cannot run "
         "in a checkout where the distribution does not build"
     )
+
+
+# ---------------------------------------------------------------------------
+# D908: both stores built by `ow add`
+# ---------------------------------------------------------------------------
+
+
+def _with_uri(archive: Path, target: Path, uri: str) -> Path:
+    """`archive`, its manifest's `source.uri` set to `uri`, written to `target`."""
+    with zipfile.ZipFile(archive) as source:
+        payloads = {name: source.read(name) for name in source.namelist()}
+    manifest = json.loads(payloads["manifest.json"])
+    manifest["source"] = {**manifest.get("source", {}), "uri": uri}
+    payloads["manifest.json"] = json.dumps(manifest).encode("utf-8")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(target, "w") as package:
+        for name, payload in payloads.items():
+            package.writestr(name, payload)
+    return target
+
+
+def test_each_projects_root_is_relocated_out_of_the_source_uri(tmp_path: Path) -> None:
+    """Under `ow add` a document's uri is its absolute path, so two projects print two uris for
+    one file; relative to its own project root, each side names it alike."""
+    incremental, full, _ = gate._smoke_archives(tmp_path)
+    left = _with_uri(incremental, tmp_path / "l" / "a.owdoc", "c:/work/inc/docs/a.pdf")
+    right = _with_uri(full, tmp_path / "r" / "a.owdoc", "c:/work/full-8/docs/a.pdf")
+    assert [d.field for d in gate.diff_exports(left, right)] == ["source"]
+    assert gate.diff_exports(left, right, roots=("c:/work/inc", "c:/work/full-8")) == ()
+    moved = _with_uri(full, tmp_path / "m" / "a.owdoc", "c:/work/full-8/docs/b.pdf")
+    assert [
+        d.field for d in gate.diff_exports(left, moved, roots=("c:/work/inc", "c:/work/full-8"))
+    ] == ["source"], "a document at another place is still a difference"
+
+
+class _Builder:
+    """`tools/incremental_add.py`'s shape, over archives already on disk."""
+
+    def __init__(self, pairs: Sequence[tuple[Path, Path]], *, fail: bool = False) -> None:
+        self.pairs = pairs
+        self.fail = fail
+        self.asked: list[tuple[int, ...]] = []
+
+    def fixture(self) -> object:
+        return type(
+            "Corpus",
+            (),
+            {"SCRIPT": tuple(range(gate.MUTATIONS)), "script_for": staticmethod(self._script)},
+        )()
+
+    @staticmethod
+    def _script(documents: int, mix: dict[str, int], seed: str) -> tuple[int, ...]:
+        del documents, seed
+        return tuple(range(sum(mix.values())))
+
+    def build(self, root: Path, steps: Sequence[int], **_: object) -> Iterator[object]:
+        del root
+        self.asked.append(tuple(steps))
+        if self.fail:
+            message = "ow add in incremental exited 1: boom"
+            raise RuntimeError(message)
+        for step, (incremental, full) in zip(steps, self.pairs, strict=False):
+            yield type(
+                "Built",
+                (),
+                {"step": step, "incremental": incremental, "full": full, "roots": ("x", "y")},
+            )()
+
+
+def _directory(archive: Path, target: Path) -> Path:
+    target.mkdir(parents=True, exist_ok=True)
+    (target / "k.owdoc").write_bytes(archive.read_bytes())
+    return target
+
+
+def test_the_subset_is_eight_mutations_checked_at_the_last(tmp_path: Path) -> None:
+    """OQ-6's PR path: 60 documents, 8 mutations, one rebuild at the end, named in the report."""
+    incremental, full, _ = gate._smoke_archives(tmp_path)
+    builder = _Builder(
+        [(_directory(incremental, tmp_path / "i"), _directory(full, tmp_path / "f"))]
+    )
+    report = gate.run_through_add(
+        REGISTER, root=tmp_path / "w", subset="9ce1138abc", builder=builder
+    )
+    assert builder.asked == [(8,)]
+    assert report.checks == ("step 8: 1 archive(s) agree",)
+    assert gate.exit_code(report) == gate.EXIT_CLEAN
+    assert "60 documents, 8 mutations (OQ-6's subset, seeded from 9ce1138abc)" in report.detail[0]
+
+
+def test_the_nightly_is_the_registers_script_checked_every_ten(tmp_path: Path) -> None:
+    builder = _Builder([])
+    gate.run_through_add(REGISTER, root=tmp_path / "w", builder=builder)
+    assert builder.asked == [(10, 20, 30, 40)]
+
+
+def test_a_build_that_fails_did_not_run(tmp_path: Path) -> None:
+    report = gate.run_through_add(
+        REGISTER, root=tmp_path / "w", subset="c", builder=_Builder([], fail=True)
+    )
+    assert report.not_run == "the build failed: ow add in incremental exited 1: boom"
+    assert gate.exit_code(report) == gate.EXIT_NOT_RUN
+
+
+def test_a_divergence_through_add_fails(tmp_path: Path) -> None:
+    incremental, _, diverged = gate._smoke_archives(tmp_path)
+    builder = _Builder(
+        [(_directory(incremental, tmp_path / "i"), _directory(diverged, tmp_path / "d"))]
+    )
+    report = gate.run_through_add(REGISTER, root=tmp_path / "w", subset="c", builder=builder)
+    assert report.differences
+    assert gate.exit_code(report) == gate.EXIT_FAIL
+
+
+def test_the_subset_seed_is_the_fixtures_namespace_and_the_commits_digest() -> None:
+    import hashlib  # noqa: PLC0415
+
+    seed = gate.subset_seed("9ce1138")
+    assert (
+        seed
+        == "omniweave/gen_incremental/1/" + hashlib.blake2b(b"9ce1138", digest_size=8).hexdigest()
+    )
+    assert gate.subset_seed("9ce1139") != seed
+
+
+def test_subset_without_through_add_did_not_run() -> None:
+    code, out = _run(["--subset", "9ce1138"])
+    assert code == gate.EXIT_NOT_RUN
+    assert "--subset seeds the --through-add run" in out

@@ -94,6 +94,8 @@ __all__ = [
     "MUTATIONS",
     "NOT_CHECKED_BY_SMOKE",
     "PROVENANCE",
+    "SUBSET_DOCUMENTS",
+    "SUBSET_MIX",
     "Absence",
     "Checkpoint",
     "Difference",
@@ -110,6 +112,8 @@ __all__ = [
     "render",
     "run_full",
     "run_smoke",
+    "run_through_add",
+    "subset_seed",
 ]
 
 GATE = "G19"
@@ -364,7 +368,25 @@ def _strip_cite_ordinals(archive: dict[str, Any]) -> str:
     return ordinals.pop() if len(ordinals) == 1 else "<mixed>"
 
 
-def diff_exports(incremental: Path, full: Path) -> tuple[Difference, ...]:
+def _relocate(archive: dict[str, Any], root: str) -> None:
+    """D908: a document's `source.uri` relative to the project it was added in.
+
+    Under `ow add` a document's uri is its absolute path, so two projects in two directories print
+    two uris for one file. The location key that names the archive is already relative (D905);
+    this is the one field that is not, and comparing it relative is comparing what the files are
+    called in their corpus.
+    """
+    manifest = archive.get("manifest.json")
+    source = manifest.get("source") if isinstance(manifest, dict) else None
+    if isinstance(source, dict) and isinstance(source.get("uri"), str):
+        uri = str(source["uri"])
+        prefix = root.rstrip("/") + "/"
+        source["uri"] = uri[len(prefix) :] if uri.startswith(prefix) else uri
+
+
+def diff_exports(
+    incremental: Path, full: Path, *, roots: tuple[str, str] | None = None
+) -> tuple[Difference, ...]:
     """G19's comparison: every way two `.owdoc` exports of one corpus disagree.
 
     The argument order is the gate's own reading: the first archive is the store built
@@ -377,6 +399,9 @@ def diff_exports(incremental: Path, full: Path) -> tuple[Difference, ...]:
     act on. `ow bench incremental` (12-performance.md:1520) calls this at P7.
     """
     left, right = read_archive(incremental), read_archive(full)
+    if roots is not None:
+        _relocate(left, roots[0])
+        _relocate(right, roots[1])
     _resolve_producers(left)
     _resolve_producers(right)
     ordinals = (_strip_cite_ordinals(left), _strip_cite_ordinals(right))
@@ -904,6 +929,8 @@ class Checkpoint:
     step: int
     incremental: Path
     full: Path
+    roots: tuple[str, str] | None = None
+    """Each side's project root when the builder was `ow add` (D908), for `diff_exports`."""
 
 
 Builder = Callable[[Path, Sequence[int]], Iterator[Checkpoint]]
@@ -971,8 +998,13 @@ def build_with_index(root: Path, steps: Sequence[int]) -> Iterator[Checkpoint]:
 
 def _load_index() -> ModuleType:
     """`tools/incremental_index.py`. One site, so the harness names the indexer exactly once."""
-    path = Path(__file__).resolve().parent / "incremental_index.py"
-    spec = importlib.util.spec_from_file_location("omniweave_incremental_index", path)
+    return _load_tool("incremental_index.py")
+
+
+def _load_tool(name: str) -> ModuleType:
+    """A sibling `tools/` module, loaded by path: the one loader both builders go through."""
+    path = Path(__file__).resolve().parent / name
+    spec = importlib.util.spec_from_file_location(f"omniweave_{path.stem}", path)
     if spec is None or spec.loader is None:  # pragma: no cover -- a broken checkout.
         message = f"cannot load {path}"
         raise ValueError(message)
@@ -1002,7 +1034,7 @@ def _diff_checkpoint(checkpoint: Checkpoint) -> tuple[list[Difference], list[Dif
         if name not in left:
             divergences.append(Difference(where, "<archive>", "<archive>", "absent", "present"))
             continue
-        for difference in diff_exports(left[name], right[name]):
+        for difference in diff_exports(left[name], right[name], roots=checkpoint.roots):
             relocated = Difference(
                 f"{where} :: {difference.where}",
                 difference.subject,
@@ -1099,6 +1131,101 @@ def run_full(
     )
 
 
+SUBSET_DOCUMENTS: Final = 60
+SUBSET_MIX: Final[Mapping[str, int]] = {
+    "edit": 3,
+    "add": 1,
+    "delete": 1,
+    "touch": 1,
+    "rename": 1,
+    "driver_version": 1,
+}
+"""11-repo-layout.md OQ-6's PR path: *"a deterministic 60-document/8-mutation subset with the
+mutation seed derived from `blake2b(commit_sha)`"*. Every kind the 40-step mix has, once, and the
+edit three times as the 40's leading kind; adds and deletes balance as they do there. A user ruling
+of 2026-10-21 took the fallback when G19 through `ow add` measured ~24 min at 300/40 (D908)."""
+
+
+def subset_seed(commit: str) -> str:
+    """OQ-6's seed: the fixture's own namespace, then `blake2b(commit_sha)`."""
+    digest = hashlib.blake2b(commit.encode("utf-8"), digest_size=8).hexdigest()
+    return f"omniweave/gen_incremental/1/{digest}"
+
+
+def run_through_add(
+    register: Path | None = None,
+    *,
+    root: Path | None = None,
+    subset: str | None = None,
+    every: int = CHECKPOINT_EVERY,
+    strict: bool = False,
+    builder: ModuleType | None = None,
+) -> Report:
+    """G19 over stores `ow add` built (D908): the register's 300/40, or OQ-6's seeded 60/8.
+
+    `subset` is the commit the PR path seeds from; `None` is the nightly's full script, which is
+    the committed one. Both sides are real `ow add` children (`tools/incremental_add.py`), the
+    diff is `_diff_checkpoint`'s, and each side's project root is relocated out of the one field
+    that prints it. `builder` is `tools/incremental_add.py`, injectable as `run_full`'s is.
+    """
+    complaints = check_register(register)
+    if complaints:
+        return Report(mode="add", complaints=complaints, absences=NOT_CHECKED_BY_SMOKE)
+    builder = _load_add() if builder is None else builder
+    corpus = builder.fixture()
+    if subset is None:
+        documents, mutations = DOCUMENTS, corpus.SCRIPT
+    else:
+        documents = SUBSET_DOCUMENTS
+        mutations = corpus.script_for(documents, SUBSET_MIX, subset_seed(subset))
+    workspace = Path(tempfile.mkdtemp(prefix="ow-g19-add-")) if root is None else root
+    try:
+        steps = checkpoint_steps(len(mutations), every)
+        divergences: list[Difference] = []
+        provenance: list[Difference] = []
+        checks: list[str] = []
+        archives = records = 0
+        for built in builder.build(
+            workspace, steps, documents=documents, mutations=mutations, corpus=corpus
+        ):
+            checkpoint = Checkpoint(built.step, built.incremental, built.full, built.roots)
+            found, carried, seen, compared = _diff_checkpoint(checkpoint)
+            divergences.extend(found)
+            provenance.extend(carried)
+            archives += seen
+            records += compared
+            if not found:
+                checks.append(f"step {built.step}: {seen} archive(s) agree")
+    except (OSError, ValueError, RuntimeError) as error:
+        return Report(mode="add", not_run=f"the build failed: {error}")
+    finally:
+        if root is None:
+            shutil.rmtree(workspace, ignore_errors=True)
+    if not checks and not divergences:
+        return Report(mode="add", not_run="the builder produced no checkpoints")
+    if strict:
+        divergences.extend(provenance)
+        provenance = []
+    shape = "the register's" if subset is None else f"OQ-6's subset, seeded from {subset[:12]}"
+    return Report(
+        mode="add",
+        checks=tuple(checks),
+        differences=tuple(divergences),
+        provenance=tuple(provenance),
+        documents_compared=archives,
+        records_compared=records,
+        detail=(
+            f"through `ow add`: {documents} documents, {len(mutations)} mutations ({shape}), "
+            f"rebuilt at step(s) {', '.join(str(step) for step in steps)}.",
+        ),
+    )
+
+
+def _load_add() -> ModuleType:
+    """`tools/incremental_add.py`, the `ow add` builder (D908)."""
+    return _load_tool("incremental_add.py")
+
+
 def run_diff(incremental: Path, full: Path) -> Report:
     """The comparator over two archives a caller names. What P4's runner will call per document."""
     for path in (incremental, full):
@@ -1177,6 +1304,17 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="fail on the provenance pass too -- V10-8's literal reading; see PROVENANCE",
     )
+    parser.add_argument(
+        "--through-add",
+        action="store_true",
+        help="build both stores with real `ow add` children (D908) instead of the stub indexer",
+    )
+    parser.add_argument(
+        "--subset",
+        default=None,
+        metavar="COMMIT",
+        help=f"with --through-add: OQ-6's {SUBSET_DOCUMENTS}-document subset, seeded from COMMIT",
+    )
     return parser
 
 
@@ -1198,6 +1336,9 @@ def main(
     writer = sys.stdout if out is None else out
     namespace = _parser().parse_args(sys.argv[1:] if argv is None else list(argv))
 
+    if namespace.subset is not None and not namespace.through_add:
+        _emit(writer, f"{GATE} DID NOT RUN  --subset seeds the --through-add run; add it.")
+        return EXIT_NOT_RUN
     if namespace.diff is not None and namespace.smoke:
         _emit(writer, f"{GATE} DID NOT RUN  --diff and --smoke are different runs; pick one.")
         return EXIT_NOT_RUN
@@ -1212,6 +1353,14 @@ def main(
 
             with tempfile.TemporaryDirectory(prefix="ow-g19-") as scratch:
                 report = run_smoke(Path(scratch), namespace.register)
+    elif namespace.through_add:
+        report = run_through_add(
+            namespace.register,
+            root=namespace.root,
+            subset=namespace.subset,
+            every=namespace.checkpoint_every,
+            strict=namespace.strict,
+        )
     else:
         fixture = namespace.fixture if namespace.fixture is not None else _REPO / FIXTURE_DIR
         report = run_full(

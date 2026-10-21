@@ -194,7 +194,7 @@ visible as a digest change rather than inferred from a diff."""
 Kind = Literal["edit", "add", "delete", "touch", "rename", "driver_version"]
 
 
-def _draw(question: str, modulus: int) -> int:
+def _draw(question: str, modulus: int, seed: str = _SEED) -> int:
     """A deterministic integer in `[0, modulus)`, from `blake2b` over the seed and the question.
 
     `blake2b` and not `hash()`: 12-performance.md:1546 makes `blake2b(work_id ‖ salt)` the
@@ -202,7 +202,7 @@ def _draw(question: str, modulus: int) -> int:
     path"* -- and Python's `hash()` is salted per process, which would make this corpus a function
     of the interpreter that generated it.
     """
-    digest = hashlib.blake2b(f"{_SEED}/{question}".encode(), digest_size=8).digest()
+    digest = hashlib.blake2b(f"{seed}/{question}".encode(), digest_size=8).digest()
     return int.from_bytes(digest, "big") % modulus
 
 
@@ -303,7 +303,7 @@ class Mutation:
         return replace(self, name=label)
 
 
-def _kinds() -> tuple[Kind, ...]:
+def _kinds(mix: Mapping[str, int] = MIX, seed: str = _SEED) -> tuple[Kind, ...]:
     """The 40 kinds in a deterministic shuffled order. GR8's *"20 shuffled steps"*, at G19's size.
 
     Shuffled rather than grouped, and that is the point of the word: forty edits followed by seven
@@ -312,29 +312,38 @@ def _kinds() -> tuple[Kind, ...]:
     Fisher-Yates over `_draw`, so it is a pure function of `_SEED` and reproduces on every machine.
     """
     deck: list[Kind] = []
-    for kind, count in MIX.items():
+    for kind, count in mix.items():
         deck.extend([kind] * count)  # type: ignore[list-item]
     for index in range(len(deck) - 1, 0, -1):
-        swap = _draw(f"shuffle/{index}", index + 1)
+        swap = _draw(f"shuffle/{index}", index + 1, seed)
         deck[index], deck[swap] = deck[swap], deck[index]
     return tuple(deck)
 
 
 def script() -> tuple[Mutation, ...]:
-    """The 40 mutations, each bound to a document that exists when its step runs.
+    """The 40 mutations: `script_for` at the register's two numbers and this module's seed."""
+    return script_for(DOCUMENTS, MIX, _SEED)
+
+
+def script_for(documents: int, mix: Mapping[str, int], seed: str = _SEED) -> tuple[Mutation, ...]:
+    """A script of `sum(mix.values())` mutations over `documents`, each bound to a live document.
+
+    D908: G19 through `ow add` runs the register's 300/40 nightly and a 60-document/8-mutation
+    subset on a PR, its seed derived from the commit (11-repo-layout.md OQ-6). The subset is this
+    walk at other sizes and another seed; the defaults are the committed script, unchanged.
 
     **Targets are chosen against the LIVE roster, one step at a time**, which is why this is a walk
     and not a table. A delete of a document a previous delete already removed is not a mutation, and
     a script that contained one would be a script whose 40 steps were not 40 mutations. The live set
     is kept sorted so the choice is a function of the corpus state rather than of dict ordering.
     """
-    live: list[int] = list(range(DOCUMENTS))
+    live: list[int] = list(range(documents))
     revisions: dict[int, int] = dict.fromkeys(live, 0)
     renames: dict[int, int] = dict.fromkeys(live, 0)
-    next_slot = DOCUMENTS
+    next_slot = documents
     out: list[Mutation] = []
 
-    for step, kind in enumerate(_kinds()):
+    for step, kind in enumerate(_kinds(mix, seed)):
         if kind == "driver_version":
             out.append(Mutation(kind).labelled())
             continue
@@ -345,7 +354,7 @@ def script() -> tuple[Mutation, ...]:
             renames[next_slot] = 0
             next_slot += 1
             continue
-        target = live[_draw(f"target/{step}", len(live))]
+        target = live[_draw(f"target/{step}", len(live), seed)]
         out.append(Mutation(kind, target).labelled())
         if kind == "delete":
             live.remove(target)
@@ -369,11 +378,16 @@ def corpus_at(step: int) -> tuple[Document, ...]:
     and an export order that is a function of the key means the gate compares two stores that
     agreed on neither, so an ordering bug cannot be hidden by both sides making it.
     """
-    if not 0 <= step <= len(SCRIPT):
-        message = f"step must be in [0, {len(SCRIPT)}], got {step}"
+    return corpus_for(DOCUMENTS, SCRIPT, step)
+
+
+def corpus_for(documents: int, mutations: Sequence[Mutation], step: int) -> tuple[Document, ...]:
+    """The roster of `documents` after the first `step` of `mutations`. See `corpus_at`."""
+    if not 0 <= step <= len(mutations):
+        message = f"step must be in [0, {len(mutations)}], got {step}"
         raise ValueError(message)
-    live: dict[int, Document] = {slot: Document(slot=slot, revision=0) for slot in range(DOCUMENTS)}
-    for mutation in SCRIPT[:step]:
+    live: dict[int, Document] = {slot: Document(slot=slot, revision=0) for slot in range(documents)}
+    for mutation in mutations[:step]:
         if mutation.kind in ("driver_version", "touch"):
             continue
         if mutation.kind == "add":

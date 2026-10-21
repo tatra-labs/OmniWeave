@@ -234,6 +234,7 @@ CRITERIA: tuple[Criterion, ...] = (
         "incremental == full: 300 documents, 40 mutations; the graph at 60 and 20 steps",
         (
             tool("gate_incremental.py", slow=True),
+            tool("gate_incremental.py", "--through-add", "--subset", "v10-acceptance", slow=True),
             tool("gate_incremental_graph.py", slow=True),
             pytest(
                 f"{CORE}/test_gate_incremental.py",
@@ -246,12 +247,12 @@ CRITERIA: tuple[Criterion, ...] = (
             ),
         ),
         Coverage.PARTIAL,
-        "G19 indexes through `tools/p2_stub_parse.py` and a DocSink, not the product's `ow add`, "
-        "and reports gen and revision differences without failing on them unless --strict (D187). "
-        "Through `ow add` an edited file is now its document's next generation and `rebind()` "
-        "carries every unchanged cite, as 03's worked example says it should (D40, resolved by "
-        "D905); whether G19 itself holds through `ow add` is unmeasured until its harness indexes "
-        "that way",
+        "G19 now holds through the product: both stores built by real `ow add` children, on a PR "
+        "OQ-6's seeded 60/8 subset and nightly the full 300/40 (D908, which this row runs as the "
+        "subset), and an edited file is its document's next generation with every unchanged cite "
+        "carried (D40, resolved by D905). It reports gen, revision and carried-cite differences "
+        "without failing on them unless --strict (D187), so V10-8's literal 'identical' is not "
+        "claimed",
     ),
     Criterion(
         "V10-9",
