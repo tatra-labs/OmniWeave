@@ -273,15 +273,17 @@ def test_route_hints_publishes_only_max_rung() -> None:
     assert published.isdisjoint({"--lane", "--deadline-ms", "--route-hints"})
 
 
-def test_the_eleven_cli_only_flags_are_published_and_have_no_input_field() -> None:
+def test_the_twelve_cli_only_flags_are_published_and_have_no_input_field() -> None:
     """D321. 10:210 says the tree comes from `cli` tuples plus `inp` fields; eleven flags 18:910
-    prints come from neither."""
+    prints come from neither, and `--deny-method` is 07:1652's requirement on 10 section 6.1
+    (D901), a CLI spelling for `Filters.deny_methods` with no MCP input field."""
     spellings = {flag.spelling[0] for flags in CLI_ONLY.values() for flag in flags}
     assert spellings == {
         "--k",
         "--mode",
         "--fail-on",
         "--explain",
+        "--deny-method",
         "--raw",
         "--want-impact",
         "--summarize",

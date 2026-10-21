@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D900: 13-quality.md:1262 amended by user ruling (the fabricated quote's hallucination_rate claim dropped); build note on :1265
+# blessed-because: D901: 10-interfaces.md:1422 gains --deny-method (user ruling); build notes there and on 07:1663
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -33,10 +33,10 @@ documents-frozen  df252315b17cd3b51f235d2f752d22bf4f01f5b0ceb735724680f4bc002514
 documents-frozen  ddcd4cbc6fd9e3021239d04b94bbdef9ff81bb750a574fc105179017a4d5dc72  04-driver-system.md
 documents-frozen  4db10013935a3de62e8cee075a463e94ef2ee414ae33a98365f41be562ec7183  05-ingest-and-routing.md
 documents-frozen  7c4c7946cad37746e602ef662e72d6a75ee43cc6b9367173c906cddc6d9f763e  06-structure-extraction.md
-documents-frozen  97aa422fb509a6de8657eefa2a765553f09d0f47b873c2e5ea40025ff8252007  07-store-and-retrieval.md
+documents-frozen  dc5797dfb98d267e7b163b6953e6fe7fa70eec0a7badde09eb91f9f1d111c29b  07-store-and-retrieval.md
 documents-frozen  3b78dc5495b60c008dea14242c2dd56a9ee67f8996e1f61b66791fc5e78a1d0f  08-runtime.md
 documents-frozen  53b3297ec0222522f8a910f82d2fa02ad8b911a6ae634adfaa866971069d1bbb  09-generation.md
-documents-frozen  4f58f4814cd10a876f6a6856aaf0879ad0d1287fc78d5a4fcd0e05271fa2d962  10-interfaces.md
+documents-frozen  e52048ad6085bf7a21ee39d56315329778926785978f65e712edfe25c4b97a36  10-interfaces.md
 documents-frozen  04146f076b50862b7f53b41ea125927bd80ad11b99db6c59137ae9b83849dfda  11-repo-layout.md
 documents-frozen  44a9d2b810b0850205912449e6337423f3db837c1f75f2d580c91b25353752c2  12-performance.md
 documents-frozen  75ec1839366266f8b76a336bfea286021178e364c0ee62ecddaabf606c1f7b83  13-quality.md

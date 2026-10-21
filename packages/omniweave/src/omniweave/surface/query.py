@@ -10,6 +10,8 @@ imports the other: `omniweave` may not import `omniweave_serve` (02:356).
 **What is served**, by flag:
 - `--corpus N`: one declared corpus, or `[serve] default_corpus`.
 - `--k`, `--mode`: passed to `Query` as they are.
+- `--deny-method M[,M]`, repeatable: `Filters.deny_methods`, an unknown Method a usage error
+  naming the ten (07:1652, D901). `--deny-method roundtrip` is V10-17's invocation.
 - `--max-chars`: passed to `pack()`. Below 1,000 is refused (10:476); above the tier is clamped
   and disclosed in the trailer.
 - `--fail-on absent,degraded`: exit 3 or 4 (10:1486-1487).
@@ -58,6 +60,7 @@ if TYPE_CHECKING:
 
     from omniweave_core.answer.render import Answer
     from omniweave_core.config import Config
+    from omniweave_core.model.enums import Method
 
 __all__ = [
     "ABSENT_EXIT",
@@ -109,11 +112,12 @@ def _query(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, std
     from omniweave_core.answer.render import render  # noqa: PLC0415
 
     fail_on = _refuse_unserved(parsed)
+    denied = deny_methods_of(getattr(parsed, "deny_method", None))
     explicit = Path(parsed.config) if parsed.config else None
     config = load(cwd=cwd, env=env, explicit=explicit)
     name = corpus_of(config, parsed.corpus, verb="ow query")
     store = store_of(config, name, cwd=cwd)
-    retrieval = _retrieve(store, parsed, config)
+    retrieval = _retrieve(store, parsed, config, deny_methods=denied)
     try:
         #  `qualify` is `ow_query`'s rule: with more than one corpus declared, every cite names
         #  its corpus, so a cite pasted into `ow open` cannot resolve against the wrong one.
@@ -138,7 +142,34 @@ def _query(parsed: argparse.Namespace, *, env: Mapping[str, str], cwd: Path, std
     return fail_on.get(answer.state, 0)
 
 
-def _retrieve(store: Path, parsed: argparse.Namespace, config: Config | None = None) -> Any:
+def deny_methods_of(values: Sequence[str] | None) -> frozenset[Method]:
+    """`--deny-method M[,M...]`, repeatable, as 07:1652-1656 requires of 10 section 6.1 (D901).
+
+    Each value may carry a comma list; every name is a lowercase `Method` member, and an unknown
+    one is a usage error naming the ten, before anything is read. The set is
+    `Filters.deny_methods`, so it sits in the plan's filter fields like any other filter.
+    """
+    from omniweave_core.model.enums import Method  # noqa: PLC0415 -- only a query pays
+
+    names = [one.strip() for value in values or () for one in value.split(",") if one.strip()]
+    known = {member.value: member for member in Method}
+    unknown = [name for name in names if name not in known]
+    if unknown:
+        raise UsageError(
+            f"--deny-method takes Method names, not {', '.join(unknown)}; the ten are "
+            f"{', '.join(known)}",
+            fix='ow query "<question>" --deny-method roundtrip',
+        )
+    return frozenset(known[name] for name in names)
+
+
+def _retrieve(
+    store: Path,
+    parsed: argparse.Namespace,
+    config: Config | None = None,
+    *,
+    deny_methods: frozenset[Method] = frozenset(),
+) -> Any:
     """One read-only `execute()` over one store, as `ow_query` makes it (serve's `_retrieve`)."""
     from omniweave_core.clock import SystemClock  # noqa: PLC0415
     from omniweave_core.retrieve.execute import execute  # noqa: PLC0415
@@ -146,12 +177,15 @@ def _retrieve(store: Path, parsed: argparse.Namespace, config: Config | None = N
     from omniweave_core.retrieve.types import Query, RetrievalPolicy  # noqa: PLC0415
     from omniweave_core.store import reader as store_reader  # noqa: PLC0415
     from omniweave_core.store import sqlite as store_sqlite  # noqa: PLC0415
+    from omniweave_core.store.types import Filters  # noqa: PLC0415
 
     fields: dict[str, Any] = {"text": parsed.query}
     if parsed.k is not None:
         fields["k"] = parsed.k
     if parsed.mode is not None:
         fields["mode"] = parsed.mode
+    if deny_methods:
+        fields["filters"] = Filters(deny_methods=deny_methods)
     clock = SystemClock()
     connection = store_sqlite.connect_readonly(store)
     try:

@@ -50,10 +50,11 @@ Four things that rule cannot produce, all recorded in D321 and D322:
 2. **`route_hints` is an object.** 18:910's `ow query` row publishes exactly one of its three
    fields, `--max-rung`, and no rule in any document says which of a nested object's fields become
    flags.
-3. **Eleven published flags have no `inp` field at all** -- `--k`, `--mode`, `--fail-on`,
-   `--explain`, `--raw`, `--want-impact`, `--summarize`, `--schema`, `--allow-cost`,
-   `--allow-egress`, `--wait`. `surface/inputs.py` says so of the first three by name. They are
-   transcribed in `CLI_ONLY` below.
+3. **Twelve published flags have no `inp` field at all** -- `--k`, `--mode`, `--fail-on`,
+   `--explain`, `--deny-method`, `--raw`, `--want-impact`, `--summarize`, `--schema`,
+   `--allow-cost`, `--allow-egress`, `--wait`. `surface/inputs.py` says so of the first three by
+   name. They are transcribed in `CLI_ONLY` below. `--deny-method` is 07:1652's requirement on
+   10 section 6.1 (D901), the one `append` kind: repeatable, and comma-accepting in the verb.
 4. **`ow open` declares `max_chars` and 18:911 does not print `--max-chars` for it**, although
    18:910 prints it for `ow query` and the two fields are the same parameter with the same bounds.
    The rule wins here and the table is the defect, because the handler honours the parameter either
@@ -215,6 +216,12 @@ CLI_ONLY: Final[Mapping[tuple[str, ...], tuple[Flag, ...]]] = {
             help="exit 3 on absent, 4 on degraded, instead of 0",
         ),
         Flag(("--explain",), kind="switch", help="print the routing decision with the answer"),
+        Flag(
+            ("--deny-method",),
+            kind="append",
+            metavar="M[,M]",
+            help="leave out blocks a Method made, e.g. roundtrip; repeatable",
+        ),
     ),
     ("open",): (
         Flag(("--raw",), kind="switch", help="the retained bytes, without the packer's rendering"),
@@ -245,7 +252,7 @@ CLI_ONLY: Final[Mapping[tuple[str, ...], tuple[Flag, ...]]] = {
 }
 """Published flags with no `inp` field, transcribed from 18:910-913's command table.
 
-Eleven of them, and they are not an oversight in `surface/inputs.py`: that module states three by
+Twelve of them, and they are not an oversight in `surface/inputs.py`: that module states three by
 name -- *"**No `k`, `mode` or `fail_on`.** Those are `ow query` CLI flags (18:910)"* -- and the
 reason generalises. `--want-impact` is absent from `OpenIn` because 18:1365 has the MCP handler set
 it by default for a single-block ref; `--allow-cost` is absent from `AddIn` because 10:1131 makes
@@ -660,6 +667,10 @@ def _add(parser: argparse.ArgumentParser, argument: Argument, *, suppress: bool 
         options["action"] = "store_true"
     elif argument.kind == "count":
         options["action"] = "count"
+    elif argument.kind == "append":
+        options["action"] = "append"
+        if argument.metavar is not None:
+            options["metavar"] = argument.metavar
     else:
         if argument.kind == "int":
             options["type"] = int
