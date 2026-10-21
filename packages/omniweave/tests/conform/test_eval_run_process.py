@@ -5,9 +5,10 @@ over the repository's own register: the parse suite over both `[[subject]]` driv
 suite's deterministic half, every built Injector damaged, read, fixed and read again, and the
 retrieve suite's self-verifying half (D870), every catalogue question asked and every cite
 resolved, and the roundtrip suite (D871), each target's golden compiled, read back and held to
-law R2 as the hard `address_survival` row (D902), all through real `ow add` children. It spawns
-workers, so it is the conform tier's by Q-G25's rule. `--strict` still refuses, naming the three
-suites nothing runs; that is asserted too, so the day a suite lands the count moves here.
+law R2 as the hard `address_survival` row (D902), and the portability suite (D903), the Tier-A
+shapes and each target's parts held to their frozen values, all through real `ow add` children.
+It spawns workers, so it is the conform tier's by Q-G25's rule. `--strict` still refuses, naming
+the two suites nothing runs; that is asserted too, so the day a suite lands the count moves here.
 """
 
 from __future__ import annotations
@@ -47,7 +48,7 @@ def test_a_full_run_passes_release_check_and_strict_names_the_unrun_suites(
     code, shown = _ow("eval", "run", "--oweval", str(store), "--render", "json")
     assert code == 0, shown[-4000:]
     done = json.loads(shown)
-    assert done["suites"] == ["parse", "absence", "retrieve", "roundtrip"]
+    assert done["suites"] == ["parse", "absence", "retrieve", "roundtrip", "portability"]
     by_run = {(row["suite"], row["subject"]): row for row in done["runs"]}
     assert by_run["parse", "parse.pdf.pdfium"]["value"] == 1.0
     assert by_run["parse", "parse.office.anydoc"]["value"] is None
@@ -70,15 +71,27 @@ def test_a_full_run_passes_release_check_and_strict_names_the_unrun_suites(
             [],
         )
         assert survived["n"] == survived["parsed"] > 0
+    for subject, slice_key in (
+        ("omniweave", "shape"),
+        ("compile.docx.native", "docx"),
+        ("compile.pptx.native", "pptx"),
+    ):
+        same = by_run["portability", subject]
+        assert (same["metric"], same["slice"], same["value"], same["refused"]) == (
+            "cell_identity",
+            slice_key,
+            1.0,
+            [],
+        )
+        assert same["n"] == same["parsed"] > 0
     code, shown = _ow("eval", "release-check", "--oweval", str(store))
     assert (code, shown) == (
         0,
-        "ow eval release-check: ok; 6 latest run(s), 0 superseded, 4 hard gate(s)\n",
+        "ow eval release-check: ok; 9 latest run(s), 0 superseded, 5 hard gate(s)\n",
     )
     code, shown = _ow("eval", "release-check", "--oweval", str(store), "--strict")
     assert code == 1
     assert [line.split()[1] for line in shown.splitlines()[:-1:2]] == [
         "extract:",
-        "portability:",
         "perf:",
     ]

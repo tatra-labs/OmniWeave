@@ -18,6 +18,8 @@ from types import ModuleType
 from typing import Any
 
 import pytest
+from omniweave_conform import golden
+from omniweave_core.host.subproc import Captured
 
 REPO = Path(__file__).resolve().parents[4]
 
@@ -494,11 +496,10 @@ def test_an_ingest_whose_child_fails_raises_with_its_tail(
     (tmp_path / "fixtures").mkdir()
     (tmp_path / "fixtures" / "index.toml").write_bytes(b"")
 
-    def fails(_argv: object, *, stdout: Any, **_: object) -> int:
-        stdout.write(b"route  started\nboom: the store is locked\n")
-        return 1
+    def fails(_argv: object, **_: object) -> Captured:
+        return Captured(1, b"route  started\n", b"boom: the store is locked\n")
 
-    monkeypatch.setattr(TOOL.subprocess, "call", fails)
+    monkeypatch.setattr(golden, "run_captured", fails)
     with pytest.raises(
         OSError, match=r"ow add exited 1: route  started \| boom: the store is locked"
     ):

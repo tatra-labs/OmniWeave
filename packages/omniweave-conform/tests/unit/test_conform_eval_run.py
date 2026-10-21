@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 from omniweave_conform import absence as absence_harness
 from omniweave_conform import eval_run
+from omniweave_conform import portability as cell_harness
 from omniweave_conform import retrieval as cite_harness
 from omniweave_conform import roundtrip as r2_harness
 from omniweave_conform.damage import INJECTORS, TABLE, Assessment, Clause
@@ -136,7 +137,7 @@ def test_the_run_id_is_a_digest_of_what_ran_and_when() -> None:
     assert len(first.runs[0].run_id) == 32
 
 
-def test_the_batch_writes_and_release_check_wants_the_other_three_gates(
+def test_the_batch_writes_and_release_check_wants_the_other_four_gates(
     parsed: Any, tmp_path: Path
 ) -> None:
     batch, _ = parsed
@@ -151,6 +152,7 @@ def test_the_batch_writes_and_release_check_wants_the_other_three_gates(
         ("unmeasured", "hard gate degradation_detection@*"),
         ("unmeasured", "hard gate citability_violations@*"),
         ("unmeasured", "hard gate address_survival@*"),
+        ("unmeasured", "hard gate cell_identity@*"),
     ]
 
 
@@ -294,18 +296,19 @@ def test_the_entry_point_runs_every_suite_in_one_write(
     monkeypatch.setattr(cite_harness, "run_suite", lambda *_a, **_k: _checked(()))
     survived = r2_harness.Element("u01/e1", "heading", True, "")
     monkeypatch.setattr(r2_harness, "judge", lambda target: _judged(target, survived))
+    _fake_cells(monkeypatch)
     store = tmp_path / "both.oweval"
     done = entry_run(
         oweval=str(store),
         gates=str(REPO / "eval" / "gates.toml"),
         root=str(REPO),
-        suites=["parse", "absence", "retrieve", "roundtrip"],
+        suites=["parse", "absence", "retrieve", "roundtrip", "portability"],
         subject=None,
         witness="self",
         cassette="off",
         admit=lambda _argv: None,
     )
-    assert done["suites"] == ["parse", "absence", "retrieve", "roundtrip"]
+    assert done["suites"] == ["parse", "absence", "retrieve", "roundtrip", "portability"]
     rows: Any = done["runs"]
     assert [row["suite"] for row in rows] == [
         "parse",
@@ -314,19 +317,23 @@ def test_the_entry_point_runs_every_suite_in_one_write(
         "retrieve",
         "roundtrip",
         "roundtrip",
+        "portability",
+        "portability",
+        "portability",
     ]
     connection = open_oweval(store)
     try:
         judged = check_release(connection, REGISTER, strict=False)
     finally:
         connection.close()
-    assert (judged.ok, judged.runs) == (True, 6)
+    assert (judged.ok, judged.runs) == (True, 9)
 
 
 @pytest.mark.parametrize(
     ("suites", "subject", "says"),
     [
-        (["chemistry"], None, "roundtrip, extract, portability, perf, not chemistry"),
+        (["chemistry"], None, "roundtrip, portability, extract, perf, not chemistry"),
+        (["portability"], PDFIUM, "the portability suite's subjects are its own"),
         (["retrieve"], PDFIUM, "the retrieve suite's subjects are its own"),
         (["roundtrip"], PDFIUM, "the roundtrip suite's subjects are its own"),
         ([], None, "not nothing"),
@@ -694,10 +701,10 @@ def test_the_entry_point_writes_a_roundtrip_run_s_assertions_and_verdicts(
     assert counts == [2, 2, 2]
 
 
-# --- the three suites this build cannot measure (D872) ------------------------------------------
+# --- the suites this build cannot measure (D872) ------------------------------------------------
 
 
-@pytest.mark.parametrize("suite", ["extract", "portability", "perf"])
+@pytest.mark.parametrize("suite", ["extract", "perf"])
 def test_an_unmeasurable_suite_writes_one_unknown_run_naming_why(suite: str) -> None:
     batch, (done,) = eval_run.unknown(suite, witness="self", cassette="off", now_ns=_clock())
     (run,) = batch.runs
@@ -756,3 +763,145 @@ def test_a_register_without_the_address_survival_row_is_a_refusal(
     without = {**REGISTER, "gate": [g for g in REGISTER["gate"] if g["suite"] != "roundtrip"]}
     with pytest.raises(QualityError, match="no roundtrip address_survival row"):
         eval_run.roundtrip(without, root=REPO, witness="self", cassette="off", now_ns=_clock())
+
+
+# --- the portability suite (D903) ---------------------------------------------------------------
+
+_FROZEN_PARTS = cell_harness.read_parts(REPO)
+
+
+def _fake_cells(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    shapes: tuple[dict[str, str], dict[str, str]] = ({"a.shape": "1"}, {"a.shape": "1"}),
+    parts: dict[str, dict[str, str]] | None = None,
+) -> None:
+    """The two halves, faked: the shapes as given, each target's parts its frozen ones or these."""
+    produced = parts if parts is not None else _FROZEN_PARTS
+    monkeypatch.setattr(cell_harness, "shapes", lambda _root: shapes)
+    monkeypatch.setattr(
+        cell_harness,
+        "parts",
+        lambda target: (
+            f"compile.{target.target}.native",
+            "0.1.0",
+            "f" * 64,
+            produced[target.target],
+        ),
+    )
+
+
+def _portability(register: dict[str, Any] = REGISTER) -> tuple[Batch, tuple[Any, ...]]:
+    return eval_run.portability(
+        register, root=REPO, witness="self", cassette="off", now_ns=_clock()
+    )
+
+
+def test_portability_is_a_shape_run_then_one_run_per_target(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _fake_cells(monkeypatch)
+    batch, done = _portability()
+    assert [(r.subject, r.timing_basis, r.status) for r in batch.runs] == [
+        ("omniweave", "spawn_inclusive", "ok"),
+        ("compile.docx.native", "in_process", "ok"),
+        ("compile.pptx.native", "in_process", "ok"),
+    ]
+    assert [run.corpus_id for run in batch.runs] == [
+        "fixtures/index.toml",
+        "fixtures/out/golden/docx",
+        "fixtures/out/golden/pptx",
+    ]
+    assert {c.corpus_id: (c.tier, c.publishable) for c in batch.corpora} == {
+        run.corpus_id: ("A", False) for run in batch.runs
+    }
+    assert [(m.metric, m.slice_key, m.value, m.truth_kind) for m in batch.metrics] == [
+        ("cell_identity", "shape", 1.0, "native_run"),
+        ("cell_identity", "docx", 1.0, "native_run"),
+        ("cell_identity", "pptx", 1.0, "native_run"),
+    ]
+    assert [m.n for m in batch.metrics] == [1, *(len(p) for p in _FROZEN_PARTS.values())]
+    assert all(run.confounders[0] == eval_run.CELL_CONFOUNDER for run in batch.runs)
+    assert [(row.slice_key, row.refused) for row in done] == [
+        ("shape", ()),
+        ("docx", ()),
+        ("pptx", ()),
+    ]
+    connection = open_oweval(tmp_path / "p.oweval")
+    try:
+        write(connection, batch)
+        judged = check_release(connection, REGISTER, strict=False)
+    finally:
+        connection.close()
+    assert "hard gate cell_identity@*" not in [f.names for f in judged.findings]
+
+
+def test_a_shape_or_part_that_moved_lowers_the_rate_and_is_named(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    docx = dict(_FROZEN_PARTS["docx"])
+    docx.pop("word/document.xml")
+    _fake_cells(
+        monkeypatch,
+        shapes=({"a.shape": "1", "b.shape": "2"}, {"a.shape": "1", "b.shape": "3", "c.shape": "4"}),
+        parts={**_FROZEN_PARTS, "docx": docx},
+    )
+    batch, done = _portability()
+    shape, word = batch.metrics[0], batch.metrics[1]
+    assert (shape.value, shape.n) == (pytest.approx(1 / 3), 3)
+    assert done[0].refused == ("b.shape: differs", "c.shape: not frozen")
+    assert word.n == len(_FROZEN_PARTS["docx"])
+    assert word.value == pytest.approx((word.n - 1) / word.n)
+    assert done[1].refused == ("word/document.xml: missing",)
+    assert batch.runs[1].confounders[1] == (f"1 of {word.n} differ: word/document.xml: missing")
+
+
+def test_no_frozen_shape_is_an_unknown_run_with_no_metric(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_cells(monkeypatch, shapes=({}, {}))
+    batch, done = _portability()
+    assert batch.runs[0].status == "unknown"
+    assert batch.runs[0].not_measured[0].startswith("nothing frozen to compare")
+    assert [m.slice_key for m in batch.metrics] == ["docx", "pptx"]
+    assert done[0].value is None
+
+
+def test_a_target_the_parts_table_lacks_is_refused_before_anything_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def never(_root: Path) -> Any:
+        raise AssertionError("ingested before the refusal")
+
+    monkeypatch.setattr(cell_harness, "read_parts", lambda _root: {"docx": {"x": "y"}})
+    monkeypatch.setattr(cell_harness, "shapes", never)
+    with pytest.raises(QualityError, match=r"eval/portability.toml has no row for pptx") as raised:
+        _portability()
+    assert "tools/ow_portability.py --write" in raised.value.fix
+
+
+def test_an_ingest_or_a_compile_that_fails_is_a_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fails(_root: Path) -> Any:
+        raise OSError("ow add exited 70: boom")
+
+    _fake_cells(monkeypatch)
+    monkeypatch.setattr(cell_harness, "shapes", fails)
+    with pytest.raises(QualityError, match="could not ingest the Tier-A fixtures: ow add exited"):
+        _portability()
+
+    def broken(_target: Any) -> Any:
+        raise RuntimeError("no compiler")
+
+    _fake_cells(monkeypatch)
+    monkeypatch.setattr(cell_harness, "parts", broken)
+    with pytest.raises(QualityError, match="could not compile docx: RuntimeError: no compiler"):
+        _portability()
+
+
+def test_a_register_without_the_cell_identity_row_is_a_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_cells(monkeypatch)
+    without = {**REGISTER, "gate": [g for g in REGISTER["gate"] if g["suite"] != "portability"]}
+    with pytest.raises(QualityError, match="no portability cell_identity row"):
+        _portability(without)

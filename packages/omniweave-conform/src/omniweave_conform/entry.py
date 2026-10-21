@@ -67,7 +67,7 @@ def run(
 ) -> dict[str, object]:
     """`ow eval run`: each named suite's rows, written to `oweval` in one transaction. D868, D869.
 
-    `suites` are run in the order given, each one of the seven (`eval_run.SUITES`); the three this
+    `suites` are run in the order given, each one of the seven (`eval_run.SUITES`); the two this
     build cannot measure write an `unknown` run naming why (D872). `root` is the
     directory the register's `card` and `fixtures` paths are relative to, the working directory.
     `subject` narrows the parse suite's drivers and is refused for every other suite, whose
@@ -120,8 +120,12 @@ def run(
             batch, measured = eval_run.retrieve(
                 rows, root=Path(root), witness=witness, cassette=cassette, now_ns=clock
             )
-        else:
+        elif suite == "roundtrip":
             batch, measured = eval_run.roundtrip(
+                rows, root=Path(root), witness=witness, cassette=cassette, now_ns=clock
+            )
+        else:
+            batch, measured = eval_run.portability(
                 rows, root=Path(root), witness=witness, cassette=cassette, now_ns=clock
             )
         batches.append(batch)

@@ -398,15 +398,16 @@ def test_a_register_whose_gate_is_not_an_array_of_tables_is_refused() -> None:
         hard_gates({"gate": [{"kind": "floor"}, "span_exact_rate"]})
 
 
-def test_the_shipped_register_names_its_four_hard_gates() -> None:
+def test_the_shipped_register_names_its_five_hard_gates() -> None:
     """D870 added `citability_violations`, 13:1094's hard count at 0; D902 added R2's
-    `address_survival` at 1.000, by a user ruling."""
+    `address_survival` at 1.000, and D903 portability's `cell_identity`, each by a user ruling."""
     shipped = tomllib.loads((REPO / "eval" / "gates.toml").read_text(encoding="utf-8"))
     assert {(g.metric, g.suite, g.slice, g.budget) for g in hard_gates(shipped)} == {
         ("span_exact_rate", "parse", "*", 1.0),
         ("degradation_detection", "absence", "*", 1.0),
         ("citability_violations", "retrieve", "*", 0.0),
         ("address_survival", "roundtrip", "*", 1.0),
+        ("cell_identity", "portability", "*", 1.0),
     }
 
 
@@ -447,12 +448,15 @@ _NO_VIOLATION = _metric("r3", "citability_violations", value=0.0)
 _ROUNDTRIP = _run("r4", suite="roundtrip", subject="compile.docx.native")
 _SURVIVED = _metric("r4", "address_survival", value=1.0, slice_key="docx")
 """The shipped register's fourth hard gate, met: every docx address survived (D902)."""
+_PORTABLE = _run("r5", suite="portability", subject="omniweave")
+_IDENTICAL = _metric("r5", "cell_identity", value=1.0, slice_key="shape")
+"""The fifth, met: every shape identical to its frozen value (D903)."""
 
 
 def _files(
     tmp_path: Path,
     *runs: Run,
-    metrics: tuple[Metric, ...] = (*_CLEAN[1], _NO_VIOLATION, _SURVIVED),
+    metrics: tuple[Metric, ...] = (*_CLEAN[1], _NO_VIOLATION, _SURVIVED, _IDENTICAL),
 ) -> Path:
     connection = open_oweval(tmp_path / "e.oweval")
     try:
@@ -460,7 +464,7 @@ def _files(
             connection,
             Batch(
                 corpora=(_CORPUS,),
-                runs=runs or (*_CLEAN[0], _RETRIEVE, _ROUNDTRIP),
+                runs=runs or (*_CLEAN[0], _RETRIEVE, _ROUNDTRIP, _PORTABLE),
                 metrics=metrics,
             ),
         )
@@ -472,16 +476,17 @@ def _files(
 
 def test_the_entry_point_returns_builtins(tmp_path: Path) -> None:
     root = _files(
-        tmp_path, metrics=(_metric("r1", value=0.5), _CLEAN[1][1], _NO_VIOLATION, _SURVIVED)
+        tmp_path,
+        metrics=(_metric("r1", value=0.5), _CLEAN[1][1], _NO_VIOLATION, _SURVIVED, _IDENTICAL),
     )
     done = entry.release_check(
         oweval=str(root / "e.oweval"), gates=str(root / "gates.toml"), strict=False
     )
     assert done == {
         "ok": False,
-        "runs": 4,
+        "runs": 5,
         "superseded": 0,
-        "gates": 4,
+        "gates": 5,
         "findings": [
             {
                 "kind": "gate",
@@ -499,7 +504,7 @@ def test_the_entry_point_passes_a_clean_store_and_strict_reaches_it(tmp_path: Pa
     assert entry.release_check(**paths, strict=False)["ok"] is True
     findings = entry.release_check(**paths, strict=True)["findings"]
     assert isinstance(findings, list)
-    assert len(findings) == len(SUITES) - 4
+    assert len(findings) == len(SUITES) - 5
 
 
 @pytest.mark.parametrize(("missing", "fix"), [("e.oweval", "--oweval"), ("gates.toml", "--gates")])
@@ -519,7 +524,7 @@ def test_the_entry_point_refuses_a_missing_file_and_creates_none(
 def test_one_element_that_did_not_survive_refuses_the_release(tmp_path: Path) -> None:
     """D902: R2 is hard at 1.000, so 0.5 on one target is a gate finding."""
     lost = _metric("r4", "address_survival", value=0.5, slice_key="docx")
-    root = _files(tmp_path, metrics=(*_CLEAN[1], _NO_VIOLATION, lost))
+    root = _files(tmp_path, metrics=(*_CLEAN[1], _NO_VIOLATION, lost, _IDENTICAL))
     done = entry.release_check(
         oweval=str(root / "e.oweval"), gates=str(root / "gates.toml"), strict=False
     )
@@ -527,3 +532,16 @@ def test_one_element_that_did_not_survive_refuses_the_release(tmp_path: Path) ->
     (finding,) = done["findings"]  # type: ignore[misc]
     assert finding["names"] == "address_survival@docx in roundtrip/compile.docx.native run r4"
     assert finding["why"] == "0.5 is not the hard budget 1.0"
+
+
+def test_one_part_that_differs_on_this_cell_refuses_the_release(tmp_path: Path) -> None:
+    """D903: portability is hard at 1.000, so one differing part on one target is a finding."""
+    moved = _metric("r5", "cell_identity", value=0.975, slice_key="shape")
+    root = _files(tmp_path, metrics=(*_CLEAN[1], _NO_VIOLATION, _SURVIVED, moved))
+    done = entry.release_check(
+        oweval=str(root / "e.oweval"), gates=str(root / "gates.toml"), strict=False
+    )
+    assert done["ok"] is False
+    (finding,) = done["findings"]  # type: ignore[misc]
+    assert finding["names"] == "cell_identity@shape in portability/omniweave run r5"
+    assert finding["why"] == "0.975 is not the hard budget 1.0"
