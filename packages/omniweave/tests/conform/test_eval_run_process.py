@@ -5,9 +5,9 @@ over the repository's own register: the parse suite over both `[[subject]]` driv
 suite's deterministic half, every built Injector damaged, read, fixed and read again, and the
 retrieve suite's self-verifying half (D870), every catalogue question asked and every cite
 resolved, and the roundtrip suite (D871), each target's golden compiled, read back and held to
-law R2, all through real `ow add` children. It spawns workers, so it is the conform tier's by
-Q-G25's rule. `--strict` still refuses, naming the three suites nothing runs; that is asserted too,
-so the day a suite lands the count moves here.
+law R2 as the hard `address_survival` row (D902), all through real `ow add` children. It spawns
+workers, so it is the conform tier's by Q-G25's rule. `--strict` still refuses, naming the three
+suites nothing runs; that is asserted too, so the day a suite lands the count moves here.
 """
 
 from __future__ import annotations
@@ -64,12 +64,16 @@ def test_a_full_run_passes_release_check_and_strict_names_the_unrun_suites(
     assert retrieve["parsed"] > 0
     for target in ("docx", "pptx"):
         survived = by_run["roundtrip", f"compile.{target}.native"]
-        assert (survived["value"], survived["refused"]) == (1.0, [])
+        assert (survived["metric"], survived["value"], survived["refused"]) == (
+            "address_survival",
+            1.0,
+            [],
+        )
         assert survived["n"] == survived["parsed"] > 0
     code, shown = _ow("eval", "release-check", "--oweval", str(store))
     assert (code, shown) == (
         0,
-        "ow eval release-check: ok; 6 latest run(s), 0 superseded, 3 hard gate(s)\n",
+        "ow eval release-check: ok; 6 latest run(s), 0 superseded, 4 hard gate(s)\n",
     )
     code, shown = _ow("eval", "release-check", "--oweval", str(store), "--strict")
     assert code == 1

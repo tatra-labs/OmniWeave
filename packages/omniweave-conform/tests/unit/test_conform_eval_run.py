@@ -136,7 +136,7 @@ def test_the_run_id_is_a_digest_of_what_ran_and_when() -> None:
     assert len(first.runs[0].run_id) == 32
 
 
-def test_the_batch_writes_and_release_check_wants_the_other_two_gates(
+def test_the_batch_writes_and_release_check_wants_the_other_three_gates(
     parsed: Any, tmp_path: Path
 ) -> None:
     batch, _ = parsed
@@ -150,6 +150,7 @@ def test_the_batch_writes_and_release_check_wants_the_other_two_gates(
     assert [(f.kind, f.names) for f in judged.findings] == [
         ("unmeasured", "hard gate degradation_detection@*"),
         ("unmeasured", "hard gate citability_violations@*"),
+        ("unmeasured", "hard gate address_survival@*"),
     ]
 
 
@@ -291,26 +292,35 @@ def test_the_entry_point_runs_every_suite_in_one_write(
 ) -> None:
     monkeypatch.setattr(absence_harness, "run_suite", lambda *_a, **_k: _suite(True, True))
     monkeypatch.setattr(cite_harness, "run_suite", lambda *_a, **_k: _checked(()))
+    survived = r2_harness.Element("u01/e1", "heading", True, "")
+    monkeypatch.setattr(r2_harness, "judge", lambda target: _judged(target, survived))
     store = tmp_path / "both.oweval"
     done = entry_run(
         oweval=str(store),
         gates=str(REPO / "eval" / "gates.toml"),
         root=str(REPO),
-        suites=["parse", "absence", "retrieve"],
+        suites=["parse", "absence", "retrieve", "roundtrip"],
         subject=None,
         witness="self",
         cassette="off",
         admit=lambda _argv: None,
     )
-    assert done["suites"] == ["parse", "absence", "retrieve"]
+    assert done["suites"] == ["parse", "absence", "retrieve", "roundtrip"]
     rows: Any = done["runs"]
-    assert [row["suite"] for row in rows] == ["parse", "parse", "absence", "retrieve"]
+    assert [row["suite"] for row in rows] == [
+        "parse",
+        "parse",
+        "absence",
+        "retrieve",
+        "roundtrip",
+        "roundtrip",
+    ]
     connection = open_oweval(store)
     try:
         judged = check_release(connection, REGISTER, strict=False)
     finally:
         connection.close()
-    assert (judged.ok, judged.runs) == (True, 4)
+    assert (judged.ok, judged.runs) == (True, 6)
 
 
 @pytest.mark.parametrize(
@@ -608,8 +618,17 @@ def test_each_element_is_one_roundtrip_assertion_and_one_verdict(
         (ids[1], False, "docx"),
     ]
     assert batch.verdicts[1].explanation == "missing: no read-back Block carries it"
-    assert batch.metrics == ()
+    (metric,) = batch.metrics  # the unjudged pptx run writes none (D902)
+    assert (metric.run_id, metric.metric, metric.slice_key, metric.value, metric.n) == (
+        docx_run.run_id,
+        "address_survival",
+        "docx",
+        0.5,
+        2,
+    )
+    assert (metric.truth_kind, metric.state) == ("native_run", "ok")
     assert [(d.value, d.n, d.parsed) for d in done] == [(0.5, 2, 1), (None, 0, 0)]
+    assert {d.metric for d in done} == {"address_survival"}
     assert done[1].refused == ("unknown: the gate is unverified; lower() is unreachable",)
 
 
@@ -727,3 +746,13 @@ def test_release_check_refuses_an_unknown_run_by_its_reason(tmp_path: Path) -> N
     assert finding.kind == "run"
     assert finding.why == "status unknown; not measured: " + eval_run.UNMEASURABLE["perf"]
     assert finding.fix == "fix what stopped the run, then ow eval run --suite perf"
+
+
+def test_a_register_without_the_address_survival_row_is_a_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ruling 16: the roundtrip suite measures against its hard row, as absence does its own."""
+    monkeypatch.setattr(r2_harness, "judge", _judged)
+    without = {**REGISTER, "gate": [g for g in REGISTER["gate"] if g["suite"] != "roundtrip"]}
+    with pytest.raises(QualityError, match="no roundtrip address_survival row"):
+        eval_run.roundtrip(without, root=REPO, witness="self", cassette="off", now_ns=_clock())
