@@ -383,9 +383,10 @@ to catch it (`*.md`, `*.sha256`) would also catch a Markdown fixture, which is a
 
 
 def load_fixtures(directory: Path) -> tuple[Fixture, ...]:
-    """Every regular file under `directory`, sorted, minus the three kinds that are not inputs.
+    """Every regular file under `directory`, sorted, minus the four kinds that are not inputs.
 
-    `*.meta.toml` is 13-quality.md section 4.4's fixture manifest -- metadata *about* a fixture --
+    `*.meta.toml` is 13-quality.md section 4.4's fixture manifest and `*.assertions.toml` its labels
+    (D912) -- metadata *about* a fixture --
     a dotfile is the toolchain's, and `NOT_INPUTS` is the corpus's own bookkeeping. Feeding any of
     them to a driver would be feeding it this repository's paperwork and calling the result a parse
     failure.
@@ -397,7 +398,7 @@ def load_fixtures(directory: Path) -> tuple[Fixture, ...]:
         for path in sorted(directory.rglob("*"))
         if path.is_file()
         and not path.name.startswith(".")
-        and not path.name.endswith(".meta.toml")
+        and not path.name.endswith((".meta.toml", ".assertions.toml"))
         and path.name not in NOT_INPUTS
     ]
     return tuple(Fixture.of(path) for path in found)
@@ -500,6 +501,8 @@ class ParseRun:
     fragment: Fragment
     call: Call
     body: bytes
+    blobs: MemoryBlobStore | None = None
+    """D912: the store the parse wrote into, so a caller can read the assets it produced."""
 
     @property
     def blocks(self) -> tuple[Mapping[str, Any], ...]:
@@ -555,10 +558,10 @@ def run_parse(
     fragments = [ref for ref in produced if ref.kind == "doc_fragment"]
     if not fragments:
         empty = Fragment((), None, (), (), (), None, ())
-        return ParseRun(fixture, result, empty, io_obj.call(), b"")
+        return ParseRun(fixture, result, empty, io_obj.call(), b"", blobs)
     ref = fragments[0]
     body = ref.inline if ref.inline is not None else _blob_bytes(ref, blobs)
-    return ParseRun(fixture, result, decode_fragment(body), io_obj.call(), body)
+    return ParseRun(fixture, result, decode_fragment(body), io_obj.call(), body, blobs)
 
 
 def _blob_bytes(ref: ArtifactRef, blobs: MemoryBlobStore) -> bytes:
