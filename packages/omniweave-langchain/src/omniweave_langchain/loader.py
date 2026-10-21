@@ -29,6 +29,8 @@ from typing import TYPE_CHECKING
 
 from langchain_core.document_loaders import BaseBlobParser, BaseLoader
 from langchain_core.documents import Document
+from omniweave_core.errors import NotFoundError
+from omniweave_core.identity import canonical_uri
 
 from omniweave_langchain._common import FORMAT, document_metadata, open_corpus
 
@@ -51,9 +53,6 @@ def _files(paths: Sequence[Path]) -> list[Path]:
 
 def _documents(corpus: Corpus, files: Sequence[Path]) -> Iterator[Document]:
     """Rulings 2 and 4: one Document per file that has a document, in path order."""
-    from omniweave_core.errors import NotFoundError  # noqa: PLC0415
-    from omniweave_core.identity import canonical_uri  # noqa: PLC0415
-
     for path in files:
         try:
             doc = corpus.doc(canonical_uri(path.resolve()))
