@@ -113,7 +113,7 @@ def test_render_json_prints_one_object(tmp_path: Path) -> None:
     assert len(row["run_id"]) == 32
 
 
-def test_release_check_after_parse_alone_wants_the_other_two_gates(tmp_path: Path) -> None:
+def test_release_check_after_parse_alone_wants_the_other_three_gates(tmp_path: Path) -> None:
     store = tmp_path / "x.oweval"
     assert _eval("run", "--suite", "parse", "--oweval", str(store))[0] == 0
     code, out, _ = _eval("release-check", "--oweval", str(store))
@@ -123,8 +123,10 @@ def test_release_check_after_parse_alone_wants_the_other_two_gates(tmp_path: Pat
         "              fix: run the gate's suite: ow eval run --suite absence",
         "  unmeasured  hard gate citability_violations@*: no retrieve run measured it",
         "              fix: run the gate's suite: ow eval run --suite retrieve",
-        "ow eval release-check: refused, 2 finding(s); 2 latest run(s), 0 superseded,"
-        " 3 hard gate(s)",
+        "  unmeasured  hard gate address_survival@*: no roundtrip run measured it",
+        "              fix: run the gate's suite: ow eval run --suite roundtrip",
+        "ow eval release-check: refused, 3 finding(s); 2 latest run(s), 0 superseded,"
+        " 4 hard gate(s)",
     ]
 
 
@@ -159,7 +161,7 @@ def test_every_built_suite_by_default_and_release_check_then_passes(
         "over",
     ]
     assert lines[3].endswith("2 answer(s); 4 of 4 cite(s) resolve")
-    assert lines[4].endswith("r2 1.0000 over 1; 1 of 1 element(s) survive")
+    assert lines[4].endswith("address_survival 1.0000 over 1; 1 of 1 element(s) survive")
     assert lines[4].split()[:2] == ["compile.docx.native", "docx"]
     assert lines[5].split()[:2] == ["compile.pptx.native", "pptx"]
     assert lines[6].startswith(
@@ -168,25 +170,26 @@ def test_every_built_suite_by_default_and_release_check_then_passes(
     assert handed == [admission.admit]
     assert _eval("release-check", "--oweval", str(store)) == (
         0,
-        "ow eval release-check: ok; 6 latest run(s), 0 superseded, 3 hard gate(s)\n",
+        "ow eval release-check: ok; 6 latest run(s), 0 superseded, 4 hard gate(s)\n",
         "",
     )
 
 
-def test_a_failed_element_is_printed_and_does_not_refuse_a_release(
+def test_a_failed_element_is_printed_and_release_check_refuses_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """D871 ruling 16: 13 names no metric for R2, so a failed verdict is no gate."""
+    """D902: R2 is the hard `address_survival` row, so one lost address refuses a release."""
     _fake_roundtrip(monkeypatch, survive=False)
     store = tmp_path / "x.oweval"
     code, out, _ = _eval("run", "--suite", "roundtrip", "--oweval", str(store))
     assert code == 0
     assert out.splitlines()[0].endswith(
-        "r2 0.0000 over 1; 0 of 1 element(s) survive; failed: u01/e1 (kind: it)"
+        "address_survival 0.0000 over 1; 0 of 1 element(s) survive; failed: u01/e1 (kind: it)"
     )
     code, out, _ = _eval("release-check", "--oweval", str(store))
-    assert "hard gate span_exact_rate@*: no parse run measured it" in out
-    assert "u01/e1" not in out
+    assert code == 1
+    assert "address_survival@docx in roundtrip/compile.docx.native run" in out
+    assert "0.0 is not the hard budget 1.0" in out
 
 
 def test_an_unresolved_cite_is_printed_and_release_check_refuses_it(

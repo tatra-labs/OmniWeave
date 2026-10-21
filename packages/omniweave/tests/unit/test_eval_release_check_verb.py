@@ -93,10 +93,13 @@ _GATE_FIX = "fix the regression; a hard budget moves only by a reviewed eval/gat
 _RETRIEVE = replace(_PARSE, run_id="r3", suite="retrieve", subject="omniweave")
 _CITES = replace(_SPAN, run_id="r3", metric="citability_violations", value=0.0)
 """The shipped register's third hard gate, met in every store here (D870)."""
+_ROUNDTRIP = replace(_PARSE, run_id="r4", suite="roundtrip", subject="compile.docx.native")
+_SURVIVED = replace(_SPAN, run_id="r4", metric="address_survival", slice_key="docx")
+"""The fourth, R2's address survival, met in every store here (D902)."""
 
 
 def _eval_dir(
-    root: Path, *metrics: Metric, runs: tuple[Run, ...] = (_PARSE, _ABSENCE, _RETRIEVE)
+    root: Path, *metrics: Metric, runs: tuple[Run, ...] = (_PARSE, _ABSENCE, _RETRIEVE, _ROUNDTRIP)
 ) -> None:
     (root / "eval").mkdir(parents=True, exist_ok=True)
     (root / "eval" / "gates.toml").write_bytes((REPO / "eval" / "gates.toml").read_bytes())
@@ -107,7 +110,7 @@ def _eval_dir(
             Batch(
                 corpora=(_CORPUS,),
                 runs=runs,
-                metrics=(*(metrics or (_SPAN, _DETECT)), _CITES),
+                metrics=(*(metrics or (_SPAN, _DETECT)), _CITES, _SURVIVED),
             ),
         )
     finally:
@@ -127,7 +130,7 @@ def test_a_clean_store_exits_0_with_one_line(tmp_path: Path) -> None:
     _eval_dir(tmp_path)
     assert _run(tmp_path) == (
         0,
-        "ow eval release-check: ok; 3 latest run(s), 0 superseded, 3 hard gate(s)\n",
+        "ow eval release-check: ok; 4 latest run(s), 0 superseded, 4 hard gate(s)\n",
         "",
     )
 
@@ -139,8 +142,8 @@ def test_a_finding_exits_1_printing_it_and_its_fix(tmp_path: Path) -> None:
     assert out.splitlines() == [
         f"  gate        {_OFF}: 0.98 is not the hard budget 1.0",
         f"              fix: {_GATE_FIX}",
-        "ow eval release-check: refused, 1 finding(s); 3 latest run(s), 0 superseded,"
-        " 3 hard gate(s)",
+        "ow eval release-check: refused, 1 finding(s); 4 latest run(s), 0 superseded,"
+        " 4 hard gate(s)",
     ]
 
 
@@ -151,23 +154,23 @@ def test_strict_refuses_the_suites_nothing_ran(tmp_path: Path) -> None:
     lines = out.splitlines()
     assert [line.split()[1] for line in lines[:-1:2]] == [
         "extract:",
-        "roundtrip:",
         "portability:",
         "perf:",
     ]
-    assert lines[-1].endswith("finding(s); 3 latest run(s), 0 superseded, 3 hard gate(s), --strict")
+    assert lines[-1].endswith("finding(s); 4 latest run(s), 0 superseded, 4 hard gate(s), --strict")
 
 
 def test_the_paths_are_options_relative_to_the_working_directory(tmp_path: Path) -> None:
     _eval_dir(
-        tmp_path, runs=(_PARSE, _ABSENCE, _RETRIEVE, replace(_PARSE, run_id="r0", started_ns=0))
+        tmp_path,
+        runs=(_PARSE, _ABSENCE, _RETRIEVE, _ROUNDTRIP, replace(_PARSE, run_id="r0", started_ns=0)),
     )
     (tmp_path / "eval" / "omniweave.oweval").rename(tmp_path / "nightly.oweval")
     (tmp_path / "eval" / "gates.toml").rename(tmp_path / "metrics.toml")
     code, out, _ = _run(tmp_path, "--oweval", "nightly.oweval", "--gates", "metrics.toml")
     assert (code, out) == (
         0,
-        "ow eval release-check: ok; 3 latest run(s), 1 superseded, 3 hard gate(s)\n",
+        "ow eval release-check: ok; 4 latest run(s), 1 superseded, 4 hard gate(s)\n",
     )
 
 
@@ -178,9 +181,9 @@ def test_render_json_prints_one_object(tmp_path: Path) -> None:
     assert json.loads(out) == {
         "ok": False,
         "strict": False,
-        "runs": 3,
+        "runs": 4,
         "superseded": 0,
-        "gates": 3,
+        "gates": 4,
         "findings": [
             {
                 "kind": "gate",
