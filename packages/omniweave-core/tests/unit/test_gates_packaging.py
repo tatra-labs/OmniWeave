@@ -74,7 +74,7 @@ independently of `check_versions.SITE_CLASSES` so the two can be compared."""
 
 CEILINGS: dict[str, int | None] = {
     "omniweave-ports": 1,
-    "omniweave-core": 3,
+    "omniweave-core": 6,  # raised from 3 by a user ruling of 2026-10-19 (D899)
     "omniweave": 25,
     "omniweave-office": 15,
     "omniweave-pdf": 30,
@@ -86,18 +86,18 @@ CEILINGS: dict[str, int | None] = {
     "omniweave-target-deck": 1,
     "omniweave-target-video": 1,
     "omniweave-vision": None,
-    "omniweave-conform": 5,
+    "omniweave-conform": 8,  # raised from 5 by a user ruling of 2026-10-20 (D899)
 }
 """The `ceiling` column of 11-repo-layout.md section 1.2's fourteen-row table, in its order.
 `None` is that table's literal **UNBOUNDED** — the only one, and the only distribution exempt from
 the 250 MB aggregate gate."""
 
 PROFILE_SUMS: dict[str, int] = {
-    "minimum": 44,
-    "recommended": 174,
-    "cpu-server": 201,
-    "gpu-server": 181,
-    "ci": 208,
+    "minimum": 47,
+    "recommended": 177,
+    "cpu-server": 204,
+    "gpu-server": 184,
+    "ci": 214,
 }
 """Section 2.3's `ceiling sum` column. The **GPU server** row is deliberately smaller than the
 **CPU server** row above it: it drops `docx` (20 MB) and adds `vision` (0 MB bounded), which is the
@@ -106,7 +106,14 @@ magnitude."""
 
 PLAN_WHY: dict[str, str] = {
     "omniweave-ports": "pure typing, no third party",
-    "omniweave-core": "stdlib only; the number is the source tree plus generated data",
+    "omniweave-core": (
+        "stdlib only; the number is the source tree plus generated and packaged data (the "
+        "migrations, the schema, the error-code register). Raised from 3 MB by a user ruling of"
+        " 2026-10-19 (option a, reviewed): release 1's core measures 4.64 MB installed, the "
+        "store, retrieval, host and OUT framework having grown past the section 1.2 estimate, "
+        "and 6 MB is that with headroom, not a licence to vendor anything heavy -- core still "
+        "imports no third-party module (G9)."
+    ),
     "omniweave-pdf": "pypdfium2 bundles the pdfium binary; defusedxml is negligible",
     "omniweave-vision": (
         "torch + transformers; ow doctor prints the resolved size (the G2 exemption)"
@@ -601,7 +608,7 @@ def test_every_install_profile_reproduces_its_ceiling_sum() -> None:
 
 def test_the_ci_profile_is_the_thirteen_bounded_rows_summed_longhand() -> None:
     """Section 2.3 spells this one out because reading the table wrong is easy."""
-    assert PROFILE_SUMS["ci"] == 1 + 3 + 25 + 15 + 30 + 40 + 5 + 2 + 60 + 20 + 1 + 1 + 5
+    assert PROFILE_SUMS["ci"] == 1 + 6 + 25 + 15 + 30 + 40 + 5 + 2 + 60 + 20 + 1 + 1 + 8
     assert gw.profile_roots(REPO, "ci") == set(DISTS) - {"omniweave-vision"}
 
 
@@ -617,7 +624,7 @@ def test_the_recommended_closure_is_seven_distributions_with_headroom() -> None:
         "omniweave-target-pptx",
     }
     _, aggregate, rows = gw.load_weights(REPO / "tools" / "weights.toml")
-    assert aggregate - sum(rows[d].marginal_mb for d in members) == 76
+    assert aggregate - sum(rows[d].marginal_mb for d in members) == 73
 
 
 def test_the_minimum_profile_is_the_four_a_bare_pip_install_gets() -> None:

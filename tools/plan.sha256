@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D897: 11-repo-layout.md:725 and :809 build notes -- the wheelhouse harness and the packaged register
+# blessed-because: D899: 11-repo-layout.md sections 1.2, 2.3 and 2.5 amended for the core (6 MB) and conform (8 MB) ceilings, by user rulings
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -37,7 +37,7 @@ documents-frozen  97aa422fb509a6de8657eefa2a765553f09d0f47b873c2e5ea40025ff82520
 documents-frozen  3b78dc5495b60c008dea14242c2dd56a9ee67f8996e1f61b66791fc5e78a1d0f  08-runtime.md
 documents-frozen  53b3297ec0222522f8a910f82d2fa02ad8b911a6ae634adfaa866971069d1bbb  09-generation.md
 documents-frozen  4f58f4814cd10a876f6a6856aaf0879ad0d1287fc78d5a4fcd0e05271fa2d962  10-interfaces.md
-documents-frozen  f7ce0d68843372218c56ecdc940a89ba2196ece5c1abd732cea57b2ca666217e  11-repo-layout.md
+documents-frozen  04146f076b50862b7f53b41ea125927bd80ad11b99db6c59137ae9b83849dfda  11-repo-layout.md
 documents-frozen  44a9d2b810b0850205912449e6337423f3db837c1f75f2d580c91b25353752c2  12-performance.md
 documents-frozen  f2d31d7aecd6c4995011d7fdcbd8219b0c2e93b8fdac158f9ac924664e61afa1  13-quality.md
 documents-frozen  78a3474b788625971c7a7fed610ef3c6518e9330bfd87e8411fbc744666b43d1  14-security.md
