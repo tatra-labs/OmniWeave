@@ -168,8 +168,10 @@ CRITERIA: tuple[Criterion, ...] = (
         "accuracy floors from eval/gates.toml: structure_f1, order_acc, table_rel_acc, ...",
         (),
         Coverage.NONE,
-        "eval/gates.toml carries no accuracy floor and no Tier A corpus exists to score; "
-        "`omniweave_conform.rollup` computes the rates (D816) over nothing yet",
+        "eval/gates.toml carries no accuracy floor. `ow eval run --suite parse` now scores "
+        "`order_acc`, `table_rel_acc` and `field_acc` from a fixture's `.assertions.toml` over "
+        "the Markdown `ow` serves (D912), but no fixture carries labels yet, only verified ones "
+        "score, and `structure_f1` and `doc_acc` have no harness",
     ),
     Criterion(
         "V10-4",
