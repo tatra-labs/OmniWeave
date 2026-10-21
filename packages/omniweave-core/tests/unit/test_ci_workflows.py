@@ -1258,30 +1258,28 @@ def test_the_p2_measurement_is_wired_as_a_mechanism_and_never_as_a_budget_verdic
     assert "12-performance.md:1966" in body
 
 
-def test_the_absence_of_a_nightly_job_is_recorded_where_the_smoke_replaces_it(
+def test_the_nightly_is_g19s_alone_and_the_bench_cells_stay_a_stated_gap(
     ci: Workflow,
 ) -> None:
     """16-roadmap.md:343 puts `store.bytes_per_block` and `rss.gen5000p_peak_bytes` on a nightly
-    `ow-bench-1` job that is first green in P2, and this repository has no such job.
+    `ow-bench-1` job that is first green in P2, and this repository has no such runner.
 
     It cannot be a third workflow file -- 11-repo-layout.md:1360 fixes `.github/workflows/` at two
-    and the `gates` job fails a third -- so it would have to be a `schedule:`-triggered job in
-    this file with a `runs-on: ow-bench-1` label. Neither exists. That is a gap, and a PR-path
-    smoke that quietly stood in for it would be the worst outcome available: it would look like
-    the budget was being checked.
-
-    So the test asserts the gap is stated at the place a reader meets the substitute, and it
-    fails the day a `schedule:` trigger lands -- at which point section 6.5's three nightly cells
-    are the thing to write and this test is the thing to rewrite.
+    and the `gates` job fails a third -- so a nightly is a `schedule:` trigger in this file. D908
+    added one for G19 alone: OQ-6's fallback, the full 300/40 through `ow add` nightly and a seeded
+    60/8 subset on a PR, which the `incremental` job chooses by event. The `ow-bench-1` cells are
+    still absent, and a PR-path smoke that quietly stood in for them would look like the budget was
+    being checked, so the gap stays stated where a reader meets the substitute.
     """
     region = _job_region(ci, "gates")
     assert "NO NIGHTLY WORKFLOW" in region
     assert "16-roadmap.md:343" in region
     assert "ow-bench-1" in region
     header = ci.text.split("\njobs:", 1)[0]
-    assert "schedule:" not in header, (
-        "a schedule: trigger landed -- wire section 6.5's nightly cells and rewrite this test"
-    )
+    assert "schedule:" in header and "D908" in header
+    incremental = _job_region(ci, "incremental")
+    assert 'if [ "$EVENT" = "schedule" ]; then' in incremental
+    assert '--through-add --subset "$COMMIT"' in incremental
     # `code_lines()` and not `ci.text`: the comment above the P2 steps names the label it is
     # explaining the absence of, and a file-text search would match that explanation. Mentions
     # are not definition sites -- the module docstring's own rule, applied to a comment this

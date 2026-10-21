@@ -400,3 +400,30 @@ def test_a_touch_step_re_parses_nothing(
 
     assert (report.added, report.changed, report.removed) == (0, 0, 0)
     assert report.reparsed == 0
+
+
+def test_script_for_at_the_registers_numbers_is_the_committed_script(
+    corpus: types.ModuleType,
+) -> None:
+    """D908 parametrized the walk; its defaults are the script `plan.toml` was generated from."""
+    assert corpus.script_for(corpus.DOCUMENTS, corpus.MIX) == corpus.SCRIPT
+    assert corpus.corpus_for(corpus.DOCUMENTS, corpus.SCRIPT, 7) == corpus.corpus_at(7)
+
+
+def test_the_pr_subset_is_eight_seeded_mutations_over_sixty_live_documents(
+    corpus: types.ModuleType, gate: types.ModuleType
+) -> None:
+    """OQ-6's subset: the mix's every kind, a script that is a pure function of the commit, and
+    a different one for another commit. Every mutation targets a document live at its step,
+    which `corpus_for` refuses otherwise."""
+    seed = gate.subset_seed("9ce1138")
+    script = corpus.script_for(gate.SUBSET_DOCUMENTS, gate.SUBSET_MIX, seed)
+    assert len(script) == sum(gate.SUBSET_MIX.values()) == 8
+    assert collections.Counter(m.kind for m in script) == collections.Counter(gate.SUBSET_MIX)
+    assert script == corpus.script_for(gate.SUBSET_DOCUMENTS, gate.SUBSET_MIX, seed)
+    assert script != corpus.script_for(
+        gate.SUBSET_DOCUMENTS, gate.SUBSET_MIX, gate.subset_seed("9ce1139")
+    )
+    for step, mutation in enumerate(script):
+        live = {d.slot for d in corpus.corpus_for(gate.SUBSET_DOCUMENTS, script, step)}
+        assert mutation.kind in {"add", "driver_version"} or mutation.slot in live, mutation
