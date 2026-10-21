@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING, Any
 import omniweave_core.store.sqlite as ow
 import pytest
 from omniweave.run import discover as discover_module
+from omniweave.run.converge import retire_undefined_entities, unbind_removed_names
 from omniweave.run.discover import (
     ACCEPT_PARTIAL_CLASSES,
     ACQ_FAILED_SQL,
@@ -66,6 +67,7 @@ from omniweave.run.discover import (
     acq_retryable,
     acquire_pending,
     acquire_unit,
+    adopt_moved,
     content_digest,
     discover,
     freshness,
@@ -73,6 +75,7 @@ from omniweave.run.discover import (
     observe,
     pending_params,
     raw,
+    rekey_documents,
     reopen_changed_failures,
     reset_stale_acquiring,
     roster_rows,
@@ -93,6 +96,7 @@ from omniweave_core.acquire import (
 from omniweave_core.cache import unit_salt
 from omniweave_core.errors import RouteError
 from omniweave_core.events import EVENTS, EventKind
+from omniweave_core.identity import canonical_uri, location_key
 from omniweave_core.store import migrate
 from omniweave_ports.types import DriverError, FailureClass
 
@@ -1344,13 +1348,14 @@ def _doc(
     reader: Any, doc_ord: int, uri: str, key: str, *, fmt: str = "pdf", block: bool = False
 ) -> None:
     """One `doc` row whose `doc_key` is `key` (32 hex digits), and optionally one live block and
-    one live segment at its head generation."""
+    one live segment at its head generation. Its head was parsed from the bytes `key` names: the
+    row's `x.ow.content` is `key` (D905), as the old content key was the same digest."""
     reader.execute(
         "INSERT INTO doc(doc_ord, doc_key, source_sha256, uri, media_type, format, "
         "format_evidence, source_bytes, gen, status, model_version, declared, achieved, x) "
         "VALUES(?, ?, X'00', ?, 'application/pdf', ?, '{}', 1, 1, 'ok', '1.1', '{}', '{}', "
-        "'{\"x.ow.decrypted\": true}')",
-        (doc_ord, bytes.fromhex(key), uri, fmt),
+        "json_object('x.ow.decrypted', json('true'), 'x.ow.content', ?))",
+        (doc_ord, bytes.fromhex(key), uri, fmt, key),
     )
     if not block:
         return
@@ -1462,14 +1467,14 @@ def _unit_with(reader: Any, uri: str, digest: str | None, *, state: str = "settl
 def test_the_version_an_edit_replaced_leaves_every_read_and_its_cite_still_resolves(
     store: ow.StoreThread, tmp_path: Path
 ) -> None:
-    """D645. A document is its bytes (03:162), so an edited file is a new document and the old one
-    kept answering with what the file used to say. It is retired the way `rebind()` retires a row:
-    `state = 1` and a `block_history` row (`source_deleted`, no successor), its segment with it, and
-    `doc.x` says so. Nothing is deleted, and a second pass retires nothing more."""
+    """D645, narrowed by D905. An edit that parses is the document's next generation; one whose
+    new bytes failed leaves a document saying what the file used to. It is retired the way
+    `rebind()` retires a row: `state = 1` and a `block_history` row (`source_deleted`, no
+    successor), its segment with it, and `doc.x` says so. Nothing is deleted, and a second pass
+    retires nothing more."""
     reader = _reader(tmp_path)
-    _unit_with(reader, "c:/docs/note.pdf", NEW)
+    _unit_with(reader, "c:/docs/note.pdf", NEW, state="failed")
     _doc(reader, 1, "c:/docs/note.pdf", OLD, block=True)
-    _doc(reader, 2, "c:/docs/note.pdf", NEW)
     reader.commit()
     assert discover_module.retire_replaced(store) == 1
     reader = _reader(tmp_path)
@@ -1481,9 +1486,9 @@ def test_the_version_an_edit_replaced_leaves_every_read_and_its_cite_still_resol
     xs = dict(reader.execute("SELECT doc_ord, x FROM doc").fetchall())
     assert json.loads(xs[1]) == {
         "x.ow.decrypted": True,
+        "x.ow.content": OLD,
         "x.ow.retired": {"reason": "source_deleted", "gen": 1},
     }
-    assert json.loads(xs[2]) == {"x.ow.decrypted": True}
     assert discover_module.retire_replaced(store) == 0
 
 
@@ -1536,7 +1541,7 @@ def test_the_version_an_edit_replaced_leaves_the_reference_graph_in_the_same_uni
     blocks, and its occurrences stayed in `ref_unresolved` one copy per edit. Retiring it now takes
     its anchors, its occurrences and every link either makes out of the live graph."""
     reader = _reader(tmp_path)
-    _unit_with(reader, "c:/docs/note.pdf", NEW)
+    _unit_with(reader, "c:/docs/note.pdf", NEW, state="failed")
     _doc(reader, 1, "c:/docs/note.pdf", OLD, block=True)
     _unit_with(reader, "c:/docs/other.pdf", COPY)
     _doc(reader, 2, "c:/docs/other.pdf", COPY, block=True)
@@ -1609,7 +1614,7 @@ def test_the_replaced_versions_defined_terms_are_retired_with_it(
     """D675. An edited file's old version kept its defined terms as live entities, so a store built
     through an edit held each of them twice; GR8's projection is what saw it."""
     reader = _reader(tmp_path)
-    _unit_with(reader, "c:/docs/note.pdf", NEW)
+    _unit_with(reader, "c:/docs/note.pdf", NEW, state="failed")
     _doc(reader, 1, "c:/docs/note.pdf", OLD, block=True)
     _owned_entity(reader)
     reader.commit()
@@ -1862,13 +1867,17 @@ def test_the_first_run_on_a_segment_replaces_nothing(store: ow.StoreThread, tmp_
 def test_a_version_some_file_still_holds_is_not_retired(
     store: ow.StoreThread, tmp_path: Path
 ) -> None:
-    """The three cases the scan exists to leave alone: a copy of the old bytes in another file; a
-    deleted file, whose unit is `out_of_scope` with its digest kept, since 05:370 and 08:1883 make
-    a deletion explicit and never inferred; and a document no unit rostered, or a job document."""
+    """The cases the scan leaves alone: an edit not yet read, or read and not failed, which is
+    the document's next generation (D905); a failed unit whose bytes are the head's, a parse that
+    regressed and not a file that changed; a deleted file, whose unit is `out_of_scope` with its
+    digest kept, since 05:370 and 08:1883 make a deletion explicit and never inferred; and a
+    document no unit rostered, or a job document."""
     reader = _reader(tmp_path)
     _unit_with(reader, "c:/docs/a.pdf", NEW)
     _unit_with(reader, "c:/docs/copy-of-a.pdf", COPY)
     _doc(reader, 1, "c:/docs/a.pdf", COPY)
+    _unit_with(reader, "c:/docs/regressed.pdf", "99" * 16, state="failed")
+    _doc(reader, 6, "c:/docs/regressed.pdf", "99" * 16)
     _unit_with(reader, "c:/docs/deleted.pdf", OLD, state="out_of_scope")
     _doc(reader, 2, "c:/docs/deleted.pdf", OLD)
     _doc(reader, 3, "c:/kit/fixture.pdf", "dd" * 16)
@@ -1939,3 +1948,129 @@ def test_the_free_rung_skips_only_a_unit_whose_bytes_were_read_before(tmp_path: 
         max_unit_bytes=64,
     )
     assert (read_before.skipped, read_before.bytes_read) == (True, 0)
+
+
+# ---------------------------------------------------------------------------------------------
+# D905: a document is its place, so a store is rekeyed and an edit is its next generation
+# ---------------------------------------------------------------------------------------------
+
+
+def test_the_rekey_gives_each_live_corpus_document_its_location_key(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """A document keyed by its content (before D905) takes `location_key(uri, root)`, and its old
+    key, which was that content's digest, becomes `x.ow.content`. A retired document, a job
+    document and one no unit rostered keep theirs; a second pass moves nothing."""
+    root = tmp_path / "corpus"
+    note = canonical_uri(root / "docs" / "note.pdf")
+    gone = canonical_uri(root / "docs" / "gone.pdf")
+    job = canonical_uri(root / "docs" / "job.pdf")
+    reader = _reader(tmp_path)
+    _unit_with(reader, note, OLD)
+    reader.execute(
+        "INSERT INTO doc(doc_ord, doc_key, source_sha256, uri, media_type, format, "
+        "format_evidence, source_bytes, gen, status, model_version, declared, achieved, x) "
+        "VALUES(1, ?, X'00', ?, 'application/pdf', 'pdf', '{}', 1, 1, 'ok', '1.1', '{}', '{}', "
+        "'{}')",
+        (bytes.fromhex(OLD), note),
+    )
+    _unit_with(reader, gone, NEW)
+    _doc(reader, 2, gone, NEW)
+    reader.execute(
+        "UPDATE doc SET x = json_set(x, '$.\"x.ow.retired\"', json_object('reason', "
+        "'source_deleted', 'gen', 1)) WHERE doc_ord = 2"
+    )
+    _unit_with(reader, job, COPY)
+    _doc(reader, 3, job, COPY, fmt="owjob")
+    _doc(reader, 4, canonical_uri(root / "kit" / "fixture.pdf"), "dd" * 16)
+    reader.commit()
+    assert rekey_documents(store, source_root=root) == 1
+    rows = dict(_reader(tmp_path).execute("SELECT doc_ord, doc_key FROM doc").fetchall())
+    assert bytes(rows[1]) == location_key(note, root)
+    assert [bytes(rows[n]).hex() for n in (2, 3, 4)] == [NEW, COPY, "dd" * 16]
+    x = _reader(tmp_path).execute("SELECT x FROM doc WHERE doc_ord = 1").fetchone()[0]
+    assert json.loads(x) == {"x.ow.content": OLD}
+    assert rekey_documents(store, source_root=root) == 0
+
+
+def test_a_moved_source_root_moves_every_key_with_it(store: ow.StoreThread, tmp_path: Path) -> None:
+    """The key is relative to the root, so a corpus whose root moved is rekeyed, content kept."""
+    old_root, new_root = tmp_path / "corpus", tmp_path / "moved"
+    uri = canonical_uri(old_root / "a.pdf")
+    reader = _reader(tmp_path)
+    _unit_with(reader, uri, OLD)
+    _doc(reader, 1, uri, location_key(uri, old_root).hex())
+    reader.commit()
+    assert rekey_documents(store, source_root=old_root) == 0
+    assert rekey_documents(store, source_root=new_root) == 1
+    key = _reader(tmp_path).execute("SELECT doc_key FROM doc").fetchone()[0]
+    assert bytes(key) == location_key(uri, new_root)
+
+
+def test_a_link_whose_anchor_the_head_no_longer_defines_is_unbound(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """06:2299's REMOVED arm at a document's next generation. Document 1 moves to generation 2
+    without its section `1`: the link that name bound into it goes, and the one into document 2,
+    whose head still defines `gl_4471`, stays."""
+    del store
+    reader = _reader(tmp_path)
+    _doc(reader, 1, "c:/docs/note.pdf", OLD, block=True)
+    _doc(reader, 2, "c:/docs/other.pdf", COPY, block=True)
+    _references(reader)
+    reader.execute("UPDATE doc SET gen = 2 WHERE doc_ord = 1")
+    assert unbind_removed_names(reader) == 1
+    assert _graph(reader)["block_link"] == [(10, 20, "gl_4471")]
+    assert unbind_removed_names(reader) == 0
+
+
+def test_an_entity_the_head_no_longer_defines_is_retired_and_one_it_does_is_kept(
+    store: ow.StoreThread, tmp_path: Path
+) -> None:
+    """A defined term an edit deleted would stay live, which a full rebuild never creates (GR8).
+    Its document's head generation has no anchor of that name, so it is retired and historied."""
+    del store
+    reader = _reader(tmp_path)
+    _doc(reader, 1, "c:/docs/note.pdf", OLD, block=True)
+    _owned_entity(reader)
+    reader.execute(
+        "INSERT INTO anchor(doc_ord, gen, name_norm, akind, surface, block_id, scope, run_id) "
+        "VALUES(1, 1, 'lender', 'defined_term', 'Lender', 10, 'document', 7)"
+    )
+    assert retire_undefined_entities(reader) == 0, "the head defines it"
+    reader.execute("UPDATE doc SET gen = 2 WHERE doc_ord = 1")
+    assert retire_undefined_entities(reader) == 1
+    assert reader.execute("SELECT state FROM entity").fetchall() == [(2,)]
+    assert reader.execute("SELECT kind, row_id FROM graph_history").fetchall() == [("entity", 1)]
+    assert retire_undefined_entities(reader) == 0
+
+
+def test_a_moved_file_s_document_takes_its_new_place(store: ow.StoreThread, tmp_path: Path) -> None:
+    """D905: a live document whose unit is gone, and a present unit with its bytes and no document,
+    are one file moved. One adoption per document and per unit; a present file is never moved."""
+    root = tmp_path / "corpus"
+    gone, moved, copy = (canonical_uri(root / name) for name in ("a.pdf", "b.pdf", "c.pdf"))
+    kept, other = canonical_uri(root / "kept.pdf"), canonical_uri(root / "other.pdf")
+    reader = _reader(tmp_path)
+    _unit_with(reader, gone, OLD, state="out_of_scope")
+    _doc(reader, 1, gone, location_key(gone, root).hex())
+    reader.execute(
+        "UPDATE doc SET x = json_set(x, '$.\"x.ow.content\"', ?) WHERE doc_ord = 1", (OLD,)
+    )
+    _unit_with(reader, moved, OLD)
+    _unit_with(reader, copy, OLD)
+    holder = canonical_uri(root / "a0.pdf")  # first by path, the same bytes, its own document
+    _unit_with(reader, holder, OLD)
+    _doc(reader, 3, holder, location_key(holder, root).hex())
+    _unit_with(reader, kept, NEW)
+    _doc(reader, 2, kept, location_key(kept, root).hex())
+    reader.execute(
+        "UPDATE doc SET x = json_set(x, '$.\"x.ow.content\"', ?) WHERE doc_ord = 2", (NEW,)
+    )
+    _unit_with(reader, other, NEW)
+    reader.commit()
+    assert adopt_moved(store, source_root=root) == 1
+    keys = dict(_reader(tmp_path).execute("SELECT doc_ord, doc_key FROM doc").fetchall())
+    assert bytes(keys[1]) == location_key(moved, root), "first by path"
+    assert bytes(keys[2]) == location_key(kept, root), "its file is present, so it did not move"
+    assert adopt_moved(store, source_root=root) == 0

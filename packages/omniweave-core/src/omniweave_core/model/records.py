@@ -180,13 +180,16 @@ def _refuse_member(value: object, allowed: tuple[str, ...], what: str, fix: str)
 # ---------------------------------------------------------------------------
 
 DocKey = NewType("DocKey", bytes)
-"""`sha256(NORMALIZED source bytes)[:16]`. 03:162; `doc.doc_key` is `BLOB NOT NULL UNIQUE`.
+"""16 bytes; `doc.doc_key` is `BLOB NOT NULL UNIQUE`. **Since D905, `identity.location_key()`.**
 
-The **document** identity, and the reason `doc` has one row per `doc_key` rather than one per
-URI: a re-ingest of the same bytes from a second path is the same document, keeps its `doc_ord`,
-and therefore keeps every `cite` ever handed to a model. Normalised bytes and not raw, so a
-metadata-only touch (a PDF `/ModDate`, an OOXML `w:rsid*`) is not a new document;
-`DocRecord.source_sha256` keeps the raw digest beside it for the audit.
+The **document** identity. 03:162 printed `sha256(NORMALIZED source bytes)[:16]`, which made an
+edited file a new document whose cites all died; a user ruling of 2026-10-19 (D40's option a)
+moved it to the file's place in its corpus, its `unit_uri` relative to the source root, so an
+edit keeps its `doc_ord` and `rebind()` carries every unchanged block's `cite`, as 03:1340-1364's
+worked example always showed. Two files with the same bytes are two documents. The head's
+normalised digest is still kept, as `doc.x.ow.content` (`store.fragment.CONTENT_X`), and
+`DocRecord.source_sha256` keeps the raw one beside it for the audit. A read-back artefact's
+document is still keyed by its bytes (`run.out_back`).
 
 Declared here rather than in `block.py` beside the other three identities of 03 section 2.2,
 because a `Block` never carries it and `DocRecord` is its only consumer -- the reasoning

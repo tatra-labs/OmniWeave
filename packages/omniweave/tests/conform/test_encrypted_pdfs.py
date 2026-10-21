@@ -73,6 +73,13 @@ def _gates(answer: dict[str, object]) -> str:
     return next(value for key, value in answer["trailer_extra"] if key == "verdict.gates")  # type: ignore[union-attr]
 
 
+def _host_facts(x: str) -> dict[str, object]:
+    """A document's `x`, less the head's digest every parse records (`x.ow.content`, D905)."""
+    facts = json.loads(x)
+    assert facts.pop("x.ow.content"), "every parsed document records its head's digest"
+    return facts
+
+
 def test_a_locked_pdf_is_named_opened_once_its_password_is_given_and_a_restricted_one_is_read(
     tmp_path: Path,
 ) -> None:
@@ -147,8 +154,8 @@ def test_a_locked_pdf_is_named_opened_once_its_password_is_given_and_a_restricte
         diags = connection.execute("SELECT code, page FROM diag").fetchall()
     finally:
         connection.close()
-    assert json.loads(docs["s/locked.pdf"]) == {"x.ow.decrypted": True}
-    assert json.loads(docs["stricted.pdf"]) == {}
+    assert _host_facts(docs["s/locked.pdf"]) == {"x.ow.decrypted": True}
+    assert _host_facts(docs["stricted.pdf"]) == {}
     assert diags == [("OW_DOC_DECRYPTED", 0)]
 
     #  4. Nothing the build wrote holds the password: not the store, not a manifest, not scratch.

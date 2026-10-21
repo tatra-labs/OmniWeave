@@ -759,6 +759,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 0, 0, 0, 0, ?, ?, NULL, 0, '{}')
 """
 
 _LOWER_ENTITY_TRUST: Final = "UPDATE entity SET trust = MIN(trust, ?) WHERE entity_id = ?"
+_REVIVE_ENTITY: Final = "UPDATE entity SET state = 0 WHERE entity_id = ? AND state = 2"
+"""D905: a retired entity proposed again is live again; `2` is the DDL's *"retired"*."""
 
 _STAMP_ENTITY_BITS: Final = """
 UPDATE entity SET restriction_bits = restriction_bits | ?, taint = taint | ?, mention_digest = ?
@@ -1791,7 +1793,13 @@ class SqliteGraphSink:
     # -- private: writes -----------------------------------------------------------------------
 
     def _converge(self, entity_id: int, trust: Trust) -> EntityId:
-        """A second Pass proposing an entity that already exists. Trust may only go down."""
+        """A second Pass proposing an entity that already exists. Trust may only go down.
+
+        A retired one is live again (D905): its name came back, in the document that defined it
+        at a later generation or in another that mentions a corpus-wide one, and `_SELECT_ENTITY`
+        finds it by `(scope, etype, key)` whatever its state.
+        """
+        self._connection.execute(_REVIVE_ENTITY, (entity_id,))
         self._connection.execute(_LOWER_ENTITY_TRUST, (int(trust), entity_id))
         return EntityId(entity_id)
 

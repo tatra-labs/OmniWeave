@@ -70,7 +70,7 @@ def built(tmp_path: Path) -> Iterator[Built]:
     path = tmp_path / "index.owstore"
     writer = ow.connect(path)
     applied = migrate.apply_pending(writer, now_ns=NOW_NS)
-    assert len(applied) == 5, f"expected five migrations, applied {len(applied)}"
+    assert len(applied) == 6, f"expected six migrations, applied {len(applied)}"
     try:
         yield Built(path=path, writer=writer)
     finally:

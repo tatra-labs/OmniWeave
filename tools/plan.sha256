@@ -22,18 +22,18 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D904: 10:1443 and 16:1210 build notes, the CorpusSet fan-out deferred past v1.0 by a user ruling of 2026-10-19
+# blessed-because: D905: 03:1364's build note names move detection, a renamed file keeping its document
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
 documents-frozen  47fddfabf24a37948ddd8b8f2d7da02e19864cfb4c42a352e951a85b3158ba21  00-vision.md
 documents-frozen  6ffc2070193630b39f15385fc8640ec7b1a3e242ef098426f2754d4070a8026d  01-principles.md
 documents-frozen  1dad5c8ef798764c3bd3cc772210f6085569c8d38c4d272db6444575171efbff  02-architecture.md
-documents-frozen  df252315b17cd3b51f235d2f752d22bf4f01f5b0ceb735724680f4bc002514ea  03-document-model.md
+documents-frozen  501d1d2ba47a7fc974ce7952032ac1e458aaa6fdbebedf3f2154d7c05cf331c7  03-document-model.md
 documents-frozen  ddcd4cbc6fd9e3021239d04b94bbdef9ff81bb750a574fc105179017a4d5dc72  04-driver-system.md
 documents-frozen  4db10013935a3de62e8cee075a463e94ef2ee414ae33a98365f41be562ec7183  05-ingest-and-routing.md
 documents-frozen  7c4c7946cad37746e602ef662e72d6a75ee43cc6b9367173c906cddc6d9f763e  06-structure-extraction.md
-documents-frozen  dc5797dfb98d267e7b163b6953e6fe7fa70eec0a7badde09eb91f9f1d111c29b  07-store-and-retrieval.md
+documents-frozen  847d8c57c551f7fb644106f511d1b18867b9758ac43e3a20c1026e63eb18c6d0  07-store-and-retrieval.md
 documents-frozen  3b78dc5495b60c008dea14242c2dd56a9ee67f8996e1f61b66791fc5e78a1d0f  08-runtime.md
 documents-frozen  53b3297ec0222522f8a910f82d2fa02ad8b911a6ae634adfaa866971069d1bbb  09-generation.md
 documents-frozen  ccacc94e84a50b2c6502e5c7a5af939f140a5ebe4d228d5c77ebf152f7194e2c  10-interfaces.md

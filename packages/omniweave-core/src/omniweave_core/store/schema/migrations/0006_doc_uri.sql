@@ -1,0 +1,23 @@
+-- 0006_doc_uri.sql -- an index on doc(uri), because a document is now found by where it lives.
+--
+-- D905, a user ruling of 2026-10-19 (D40's option a): `doc_key` is
+-- `identity.location_key(unit_uri, source_root)`, the file's place in its corpus, and no longer
+-- the first sixteen bytes of its content digest. Every reader that asked "which document is this
+-- unit's?" derived the content key from `unit.content_sha256` and probed the UNIQUE index on
+-- `doc_key`; now it asks by `doc.uri = unit.unit_uri`, which 0001 never indexed, so each probe was
+-- a scan of `doc`. The ingest's rekey pass (`run.discover.rekey_documents`) moves an older store's
+-- keys on its next `ow add`; nothing here rewrites a row.
+--
+-- Not UNIQUE: a retired document keeps its `uri`, so one path can name a retired row and the
+-- live one beside it. Readers filter `x.ow.retired` as they already do.
+--
+-- This file adds one index and no column to any table, so it is no SCHEMA minor.
+--
+-- NO PRAGMA BLOCK HERE and NO `migration` ROW: the pragma sequence is 0001_init.sql's, and the
+-- migration row is the applier's for every file (0004_runtime.sql states both rules). For this
+-- file: cost_class = 'ddl', resumable = 0, unbackfilled_means = "not applicable: 0006 is one
+-- index and writes no rows".
+--
+-- HOUSE STYLE: ASCII only, LF, `--` never an em-dash.
+
+CREATE INDEX doc_uri ON doc(uri);

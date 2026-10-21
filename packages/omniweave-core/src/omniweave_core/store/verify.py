@@ -92,6 +92,7 @@ from omniweave_core.identity import content_digest as ow_content_digest
 from omniweave_core.limits import MAX_SEGMENT_BLOCKS
 from omniweave_core.model import Kind, Layer, Quote, RelKind
 from omniweave_core.model.block import Addr
+from omniweave_core.store.fragment import CONTENT_X, RETIRED_X
 from omniweave_core.store.indexlock import (
     LOCK_PATH,
     NO_SEGMENTER,
@@ -195,7 +196,7 @@ _FIX_LOCK: Final = "ow store lock"
 _HEX_DIGITS: Final = frozenset("0123456789abcdef")
 _SHA256_HEX_LEN: Final = 64
 _DOC_KEY_BYTES: Final = 16
-"""`doc.doc_key` is `sha256(NORMALIZED source bytes)[:16]` (`0001_init.sql:150`)."""
+"""`doc.doc_key` and `doc.x.ow.content` are 16 bytes of a digest (`0001_init.sql:150`, D905)."""
 
 _ROOT_ADDR: Final = "doc"
 """03:816 -- the document root block's `addr` is the literal `doc`."""
@@ -782,7 +783,7 @@ def _hash_blob(blobs: BlobStore, digest: bytes) -> bytes:
 
 
 def _content_sha256(connection: sqlite3.Connection) -> ClauseResult:
-    """Every `content_sha256` column: its shape, and `unit`'s agreement with `doc.doc_key`.
+    """Every `content_sha256` column: its shape, and `unit`'s agreement with its document's.
 
     **The honest reading of "re-derives every `content_sha256` from stored bytes".** A
     `content_sha256` is *"over the unit's NORMALISED load-bearing bytes"* (`0004_runtime.sql:53`,
@@ -790,12 +791,16 @@ def _content_sha256(connection: sqlite3.Connection) -> ClauseResult:
     `[roots] source` is not `[roots] state`. So there is nothing in the database to re-hash, and a
     clause that claimed to re-derive it would be claiming to have read a file it never opened.
 
-    What the store does hold is the *other* digest of the same bytes: `doc.doc_key` is
-    *"sha256(NORMALIZED source bytes)[:16]"* (`0001_init.sql:150`) and 05:258 fixes the two as
-    hashes of one normalisation -- *"`unit.content_sha256` is over the normalised load-bearing
-    bytes; `doc.source_sha256` is the raw bytes"*. So `fromhex(unit.content_sha256)[:16]` **is**
-    `doc.doc_key` for the document that unit produced, and 16-roadmap.md:435's "and compares" is
-    that comparison. It is guarded on the two rows naming the same normaliser: a unit hashed raw
+    What the store does hold is the *other* digest of the same bytes: the head's
+    `doc.x.ow.content` (`store.fragment.CONTENT_X`), *"sha256(NORMALIZED source bytes)[:16]"* in
+    hex, and 05:258 fixes the two as hashes of one normalisation -- *"`unit.content_sha256` is
+    over the normalised load-bearing bytes; `doc.source_sha256` is the raw bytes"*. So
+    `unit.content_sha256[:32]` **is** that value for the document the unit produced, and
+    16-roadmap.md:435's "and compares" is that comparison. It was `doc.doc_key` itself until
+    D905 keyed a document by its location (`identity.location_key`); a document written before
+    the ingest's rekey has no `CONTENT_X` and its key is still that digest, so it is compared by
+    key. A retired document is not compared: its file now says something else, which is why it
+    was retired. It is guarded on the two rows naming the same normaliser: a unit hashed raw
     (`normalizer IS NULL`, `OW-C-041`) and a document hashed under `pdf_trailer_v1` are two
     different byte streams and their digests are *supposed* to differ.
 
@@ -833,24 +838,25 @@ def _content_sha256(connection: sqlite3.Connection) -> ClauseResult:
                 )
     compared = 0
     if _has_table(connection, "unit"):
-        for uri, content, doc_key in connection.execute(
-            "SELECT u.unit_uri, u.content_sha256, d.doc_key FROM unit u JOIN doc d "
-            "ON d.uri = u.unit_uri WHERE u.content_sha256 IS NOT NULL "
-            "AND u.normalizer IS d.normalizer"
+        for uri, content, head in connection.execute(
+            "SELECT u.unit_uri, u.content_sha256, "  # noqa: S608 -- two module constants only
+            f"IFNULL(json_extract(d.x, '$.\"{CONTENT_X}\"'), lower(hex(d.doc_key))) "
+            "FROM unit u JOIN doc d ON d.uri = u.unit_uri WHERE u.content_sha256 IS NOT NULL "
+            f"AND u.normalizer IS d.normalizer AND json_extract(d.x, '$.\"{RETIRED_X}\"') IS NULL"
         ):
             if not _is_sha256_hex(str(content)):
                 continue
             compared += 1
-            derived = bytes.fromhex(str(content))[:_DOC_KEY_BYTES]
-            if derived != bytes(doc_key):
+            derived = bytes.fromhex(str(content))[:_DOC_KEY_BYTES].hex()
+            if derived != str(head):
                 findings.append(
                     Finding(
                         VerifyClause.CONTENT_SHA256,
                         _INTEGRITY,
                         str(uri),
-                        f"unit.content_sha256 truncates to {derived.hex()} but the document it "
-                        f"produced has doc_key {bytes(doc_key).hex()}; one normalisation cannot "
-                        f"have two digests (05:258)",
+                        f"unit.content_sha256 truncates to {derived} but the document it "
+                        f"produced was parsed from {head}; one normalisation cannot have two "
+                        f"digests (05:258)",
                     )
                 )
     return _result(VerifyClause.CONTENT_SHA256, checked, findings, unit_doc_pairs=compared)
@@ -1208,7 +1214,7 @@ def _fts_rowcount(connection: sqlite3.Connection) -> ClauseResult:
         }
         counts[f"{table}_indexed"] = len(indexed)
         counts[f"{table}_live"] = len(live)
-        findings.extend(_fts_set_findings(table, indexed, live))
+        findings.extend(_fts_set_findings(table, indexed, frozenset(live)))
     return _result(VerifyClause.FTS_ROWCOUNT, checked, findings, **counts)
 
 

@@ -3,7 +3,7 @@
 09-generation.md section 2 (the seal), section 5.4 (the lookup-before-build and the three race
 rules), section 7.3 (the restriction aggregate) and section 10 (the citation ledger and its
 query). Every behaviour is a property of statements running against rows, so every test runs them
-against a store with all five migrations applied and a seeded document, block set and asset set.
+against a store with all six migrations applied and a seeded document, block set and asset set.
 """
 
 from __future__ import annotations
@@ -122,7 +122,7 @@ def owstore(tmp_path: Path) -> Path:
     path = tmp_path / "index.owstore"
     connection = ow.connect(path)
     try:
-        assert len(migrate.apply_pending(connection, now_ns=NOW_NS)) == 5
+        assert len(migrate.apply_pending(connection, now_ns=NOW_NS)) == 6
         connection.execute("BEGIN IMMEDIATE")
         _seed(connection)
         connection.execute("COMMIT")

@@ -299,6 +299,19 @@ keeps it, which is what makes `Layer.HIDDEN` reachable at all -- no kind implies
 _LAYOUT_DOMAIN: Final = b"ow.layout.1"
 _MPT_PER_POINT: Final = 1_000
 _SEQUENCE_BITS: Final = 48
+_FACTS: Final[tuple[str, ...]] = (
+    "source_sha256",
+    "normalizer",
+    "uri",
+    "media_type",
+    "format",
+    "format_evidence",
+    "source_bytes",
+    "model_version",
+    "declared",
+    "x",
+)
+"""The `doc` columns `begin_doc` writes over an existing row, which D905 restores on quarantine."""
 _MAX_SHARD_ORD: Final = 32_767
 _MAX_ADDR_CHARS: Final = 512
 _MAX_RAW_KIND_CHARS: Final = 128
@@ -621,6 +634,10 @@ class _DocState:
     next_asset_id: int
     declared: Capabilities
     assets: dict[tuple[bytes, str], int]
+    edited: bool = False
+    """D905: the head was parsed from other source bytes, so the edit explains what moved."""
+    previous: dict[str, Any] | None = None
+    """D905: the head's facts `begin_doc` overwrote, put back if the generation is quarantined."""
     between_pages: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
 
 
@@ -1411,7 +1428,8 @@ class DocSink:
     def _begin_doc(self, connection: sqlite3.Connection, rec: DocRecord) -> _DocState:
         """The `doc` insert-or-lookup, and the three high-water marks the document then advances."""
         row = connection.execute(
-            "SELECT doc_ord, gen, next_cite_n FROM doc WHERE doc_key = ?", (bytes(rec.doc_key),)
+            f"SELECT doc_ord, gen, next_cite_n, {', '.join(_FACTS)} FROM doc WHERE doc_key = ?",  # noqa: S608 -- _FACTS only
+            (bytes(rec.doc_key),),
         ).fetchone()
         facts = {
             "source_sha256": bytes(rec.source_sha256),
@@ -1445,8 +1463,10 @@ class DocSink:
             doc_ord = int(cursor.lastrowid or 0)
             head_gen = 0
             next_cite_n = 1
+            previous: dict[str, Any] | None = None
         else:
             doc_ord, head_gen, next_cite_n = int(row[0]), int(row[1]), int(row[2])
+            previous = dict(zip(_FACTS, row[3:], strict=True))
             connection.execute(
                 "UPDATE doc SET source_sha256 = :source_sha256, normalizer = :normalizer, "
                 "uri = :uri, media_type = :media_type, format = :format, "
@@ -1480,6 +1500,8 @@ class DocSink:
             next_asset_id=1 if top_asset is None else int(top_asset) + 1,
             declared=rec.declared,
             assets=assets,
+            edited=previous is not None and previous["source_sha256"] != facts["source_sha256"],
+            previous=previous,
         )
 
     def _free_ord(self, connection: sqlite3.Connection) -> int | None:
@@ -1921,17 +1943,27 @@ class DocSink:
         quarantined = not report.ok
         rebound: RebindReport | None = None
         if not quarantined:
+            #  D905: an edit is its own explanation. The quarantine is for a re-parse of the same
+            #  bytes, where a low match means the parse moved; new bytes that match little are
+            #  a file that says something else, and holding them back would serve what it said.
             rebound = rebind(
                 _Rebind(connection),
                 doc.doc_ord,
                 doc.target_gen,
                 threshold=self._rebind_threshold,
-                allow_unexplained=self._allow_unexplained,
+                allow_unexplained=self._allow_unexplained or doc.edited,
             )
             quarantined = rebound.quarantined
         self._page_table_scores(connection, doc)
         if quarantined:
             _execute(connection, [self._quarantine_diag(doc, report.ok, rebound)])
+            if doc.previous is not None:
+                #  D905: the head did not move, so neither do the facts that describe it.
+                connection.execute(
+                    f"UPDATE doc SET {', '.join(f'{c} = :{c}' for c in _FACTS)} "  # noqa: S608 -- _FACTS only
+                    "WHERE doc_ord = :doc_ord",
+                    doc.previous | {"doc_ord": doc.doc_ord},
+                )
         else:
             #  `block_sec` for the generation becoming the head, in its own transaction (D660).
             #  `derive_block_sec`'s docstring always said this pass called it; nothing did, so

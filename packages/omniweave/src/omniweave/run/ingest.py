@@ -625,6 +625,10 @@ def ingest(
         book = _Book(opened, config=config, host=host, clock=ticking)
         book.write()
         try:
+            #  D905: a document is keyed by its place under the source root; a store keyed by
+            #  content, or under another root, is rekeyed before anything parses, so an edit finds
+            #  its document.
+            discover.rekey_documents(thread, source_root=source_root)
             report = _hops(
                 thread,
                 run_id=opened.run_id,
@@ -851,7 +855,7 @@ def _hops(
         pricebook_digest="" if inputs.prices is None else inputs.prices.digest,
     )
     tally = ParseTally()
-    ordinals = Ordinals()
+    ordinals = Ordinals(roots.source)
     executor = _Executors(
         thread,
         context,
@@ -886,8 +890,9 @@ def _hops(
         opened = book.stage(Stage.PLAN, opened)
         if _pending_parse(thread):
             #  D654: every unit this run parses is routed now, so its document's ordinal is fixed
-            #  in path order before the first parse settles, on however many workers.
-            ordinals.reserve(thread)
+            #  in path order before the first parse settles, on however many workers. D905: a
+            #  file moved since the last run keeps its document first.
+            _reserve(thread, ordinals, roots.source)
             drain()
             book.stage(Stage.PARSE, opened)
         #  D645: the documents whose file now says something else leave every read.
@@ -968,6 +973,12 @@ def _hops(
         band=band,
         bill=bill,
     )
+
+
+def _reserve(thread: ow.StoreThread, ordinals: Ordinals, source_root: Path) -> int:
+    """D905 then D654: a moved file's document takes its new place, then ordinals are reserved."""
+    discover.adopt_moved(thread, source_root=source_root)
+    return ordinals.reserve(thread)
 
 
 GRAPH_ROUNDS: Final = 4

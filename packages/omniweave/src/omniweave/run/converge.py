@@ -149,7 +149,9 @@ __all__ = [
     "requeue",
     "requeue_params",
     "retire_document_entities",
+    "retire_undefined_entities",
     "unbind_document",
+    "unbind_removed_names",
 ]
 
 
@@ -746,6 +748,82 @@ def unbind_document(connection: _Rows, doc_ord: int) -> Unbound:
         links=links,
         disambiguated=disambiguated,
     )
+
+
+_REMOVED_LINKS_SQL: Final[str] = """
+SELECT l.link_id, l.bound_by FROM block_link AS l
+ WHERE l.bound_by IS NOT NULL
+   AND NOT EXISTS (
+       SELECT 1 FROM block AS b
+         JOIN doc AS d ON d.doc_ord = b.doc_ord
+         JOIN anchor AS n ON n.doc_ord = d.doc_ord AND n.gen = d.gen AND n.name_norm = l.bound_by
+        WHERE b.block_id = l.dst_block AND n.block_id = b.block_id)
+ ORDER BY l.link_id
+"""
+"""Every anchor-bound link whose target no longer defines the name at its document's head."""
+
+_DELETE_LINK_SQL: Final[str] = "DELETE FROM block_link WHERE link_id = :link_id"
+
+
+def unbind_removed_names(connection: _Rows) -> int:
+    """06:2299's REMOVED arm for a document at its next generation. **D905.** Returns the links.
+
+    Since D905 an edit is its document's next generation, and `rebind()` carries every block whose
+    content did not move, so a link between two carried blocks outlives the anchor that bound it:
+    a heading renumbered from `1.` to `3.` keeps its `block_id`, and *"subject to Section 1"* kept
+    pointing at it. `anchor_delta`'s removed half is the rule (06:2297-2299, *"removed names
+    unbind every edge and `block_link` carrying that `bound_by`"*), and anchors are per generation
+    (`replace_prior_runs`), so the head generation's anchors are the after-set. A link whose
+    target block does not define its `bound_by` at its document's head is unbound, whatever moved
+    it. Restorable, as 06:1249 requires of every `bound_by` row: binding writes it again the moment
+    that name is defined there. The same names are then disambiguated as `unbind_document` does.
+    """
+    removed = connection.execute(_REMOVED_LINKS_SQL, {}).fetchall()
+    for link_id, _name in removed:
+        connection.execute(_DELETE_LINK_SQL, {"link_id": int(str(link_id))})
+    for name in sorted({str(name) for _link, name in removed}):
+        connection.execute(_DISAMBIGUATE_SQL, {"name": name})
+    return len(removed)
+
+
+_UNDEFINED_ENTITIES_SQL: Final[str] = """
+SELECT e.entity_id, d.gen FROM entity AS e
+  JOIN doc AS d ON d.doc_ord = e.scope
+ WHERE e.state = 0 AND e.scope <> 0
+   AND EXISTS (SELECT 1 FROM anchor AS n
+                WHERE n.doc_ord = e.scope AND n.name_norm = e.key AND n.akind = e.etype)
+   AND NOT EXISTS (SELECT 1 FROM anchor AS n
+                    WHERE n.doc_ord = e.scope AND n.gen = d.gen
+                      AND n.name_norm = e.key AND n.akind = e.etype)
+ ORDER BY e.entity_id
+"""
+"""Every live document-scoped entity its document defined once and does not define at its head.
+
+An entity and the anchor that defines it share a name: `(scope, etype, key)` is the document's
+`(doc_ord, akind, name_norm)` (`anchor.entity_id` is not always set), and the head probe is
+`anchor`'s primary key."""
+
+
+def retire_undefined_entities(connection: _Rows) -> int:
+    """Retire each entity whose defining anchor its document's head no longer has. **D905.**
+
+    A defined term is an entity its document's anchor defines under the same name, and anchors
+    are per generation. Before D905 an edited file was a new document, and
+    `retire_document_entities` retired every entity the old one owned. Now the edit is the
+    document's next generation: a term the edit deleted keeps its entity, live and unmentioned,
+    which a full rebuild of the same corpus never creates (GR8 found `holding_company`). An
+    entity some anchor defined at an earlier generation and none defines at the head is retired,
+    historied with its document's head generation as `retire_document_entities` historises one.
+    A retired document's anchors are deleted by `unbind_document`, so this never reaches one. A
+    Pass that proposes the entity again revives it (`SqliteGraphSink._converge`). Returns how
+    many.
+    """
+    found = connection.execute(_UNDEFINED_ENTITIES_SQL, {}).fetchall()
+    for entity_id, gen in found:
+        params = {"entity_id": int(str(entity_id)), "gen": int(str(gen))}
+        connection.execute(_HISTORY_ENTITY_SQL, params)
+        connection.execute(_RETIRE_ENTITY_SQL, params)
+    return len(found)
 
 
 _DOC_GEN_SQL: Final[str] = "SELECT gen FROM doc WHERE doc_ord = :doc_ord"
