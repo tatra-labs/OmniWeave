@@ -1259,17 +1259,9 @@ jobs:
         # The three offline install-profile installs of section 2.4, from a wheelhouse built out of
         # the wheels this release will publish. "Offline is load-bearing: with an index reachable, a
         # sibling constraint could be satisfied by a previously published wheel and a broken
-        # dependencies entry would pass." Each profile's own assertion names ow parse, ow doctor
-        # and a resolver-backtracking check, which arrive at P3 and P7.
-        run: |
-          if uv run ow --version > /dev/null 2>&1
-          then
-            echo "build.wheelhouse_profiles NOT ENFORCED: the three profile assertions of"
-            echo "section 2.4 need an offline wheelhouse harness; ow exists, so wire it."
-            exit 1
-          fi
-          echo "build.wheelhouse_profiles NOT ENFORCED: section 2.4's assertions name ow parse" \
-            "and ow doctor, which land at P3/P7" | tee -a "$GITHUB_STEP_SUMMARY"
+        # dependencies entry would pass." dist/ holds step 2's core, so the working profile's
+        # `ow doctor` runs against first-party trust as a user's install computes it. D897.
+        run: uv run tools/check_wheelhouse.py --dist dist
 
   # ==========================================================================================
   # ci-ok -- THE ONE REQUIRED STATUS CHECK. Section 6.2: "A conditional job that does not run
