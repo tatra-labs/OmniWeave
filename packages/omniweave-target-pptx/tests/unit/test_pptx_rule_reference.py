@@ -59,6 +59,8 @@ def test_references_that_resolve_say_nothing(slide: Any, body: str) -> None:
         ('<use href="#f"/>', "names a <filter>, and href takes"),
         ('<a href="http://example.org"><rect/></a>', "a link is #u<NN>, a slide, or https:"),
         ('<a href="#u3"><rect/></a>', "a link is #u<NN>"),
+        ('<a href="#u09"><rect/></a>',
+         "<a> href='#u09': names no slide in this deck; its units are u01, u02, u03"),
         ('<rect href="#g"/>', "href belongs to <use>, <image> or <a>"),
         ("<image/>", "a <image> names its picture as href=asset-slot:<sha256>"),
         ("<use/>", "a <use> names href=#id"),
