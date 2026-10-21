@@ -163,6 +163,35 @@ that points at nothing once the artefact is read back, and there is no acceptabl
 those.\
 """
 
+# The portability suite, defined by a user ruling of 2026-10-19 (D903): the same inputs give
+# identical results across the OS/Python cells. 13-quality.md:238 named the suite and nothing said
+# what it measures, so it reported `unknown` (D872). One machine is one cell, so a run holds this
+# cell to committed frozen values; `omniweave_conform.portability` states the two halves.
+[[gate]]
+metric = "cell_identity"
+suite = "portability"
+slice = "*"
+kind = "hard"
+budget = 1.000
+truth_kind = "self_verifying"
+class = "blocking"
+owner = "quality"
+reviewed_at = "2026-10-21"
+review_by = "2027-01-19"
+computed = """
+over this cell's results for the committed inputs, the fraction identical to the committed \
+frozen value: each Tier-A `.shape` Reduction against `fixtures/goldens/` (Q-G4's frozen kind, \
+13-quality.md:671), and each register target's compiled parts, by sha256, against \
+`eval/portability.toml`. The denominator is the union of frozen and produced names, so a missing \
+or extra one is a difference. One value for the shapes, slice `shape`, and one per target, its \
+slice the target's name.\
+"""
+guard_absent_because = """
+A `hard` row has no guard band. 13-quality.md:2056: "`portability`/`perf` failing means the \
+runner changed rather than the model", and a runner that changes one shape or one part has \
+changed what every later number on it means.\
+"""
+
 # ---------------------------------------------------------------------------
 # The subjects `span_exact_rate` is measured over.
 # ---------------------------------------------------------------------------

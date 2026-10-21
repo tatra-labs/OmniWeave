@@ -1,0 +1,72 @@
+# eval/portability.toml -- written by tools/ow_portability.py --write. Do not edit.
+#
+# The portability suite's part half (D903): each register [[target]]'s golden compiled
+# once, each member's sha256. Every cell must reproduce them; `byte` is not read.
+# Written on win32, Python 3.12.
+
+[[target]]
+target = "docx"
+
+[target.parts]
+"[Content_Types].xml" = "6a64cd710a383ed1a55740d79ab6243b78b20f56c96036ca3d9b6a0a501a08e9"
+"_rels/.rels" = "7bd9315622c92db90092e437ba627b99f6a32303975c8dd63226ab6b8aba1b03"
+"customXml/omniweave-provenance.json" = "e7eaed089106115c69427960c9f47f6fdd86989f61a324c6df3b79592453b815"
+"docProps/app.xml" = "59055bf570e56ce30c2ebc621ebf2e7a64ed2345e2e21899997b714a9c915e71"
+"docProps/core.xml" = "f86c31b16b6074dc54760f9fc5a9791ef7f7806254b10c2a8a9ddd1139eca12c"
+"word/_rels/document.xml.rels" = "13b5884dba4467b7f075e497127fb90aa6f32d17e4c43d058b77783e01c8d9e3"
+"word/comments.xml" = "099e757249630e975189cb9eb893e93cf396f24a1a846e191f7bda084998e997"
+"word/document.xml" = "804e96f8389fda4c1112a67ce6089c18238b5198d083335a22efb3028aaffaea"
+"word/endnotes.xml" = "724314e430998e65b5a4133a8ce705933bb063fcc41591cf2326dc82be94cac5"
+"word/fontTable.xml" = "bba551b946f06e4194f4e5acbb4d8ba102413d2c62022eb7f22c842d5da6a96b"
+"word/footnotes.xml" = "e6b4ae090d6c565c67c2086071067eb2636b3c94bf94aa41103b3bb654206340"
+"word/media/image1.png" = "d49f80f301b74b0f7e5d5afdf48877f8c32a207ec0c05bfd4e2dae2fe33aa579"
+"word/numbering.xml" = "2d43a0a10a0eaf9ebe091e0ab0da3a2915599031e2b568c83915bb0c8ab098c8"
+"word/settings.xml" = "95e77a7ab8d0e09b8b08b18091dffe035e37e9c7a132992dcde501464f9421d4"
+"word/styles.xml" = "e2eac26ae808989c9659de5cfbecd816181fb6e34d8ce604d9f672159c29c0a7"
+"word/theme/theme1.xml" = "294d1074d6f5102f7be20c4adf067209554da2fac745fad465aa245a769acfd0"
+"word/webSettings.xml" = "d3ce45f6280d816d0bfebc60803d7e7f3b6824ae661bf98a3f76b4d9a24cd619"
+
+[[target]]
+target = "pptx"
+
+[target.parts]
+"[Content_Types].xml" = "875f2da1ea1e8258ce163ed1b63517c519134aa6d84ec49d005acea83a2f89d6"
+"_rels/.rels" = "076781e5eb35a9ae30bb46688c0a9eece7fc974c9b420694f60d953b1120fa1f"
+"customXml/omniweave-provenance.json" = "b94b837eda46a2752e7090f6093d9eb7f38505e6be818a17be79d1de25e5595b"
+"docProps/app.xml" = "ed282841d4b6033f9e3c5931a40017b3db6a2798affa5f3d07e7e435f4251ce6"
+"docProps/core.xml" = "f86c31b16b6074dc54760f9fc5a9791ef7f7806254b10c2a8a9ddd1139eca12c"
+"ppt/_rels/presentation.xml.rels" = "eafc832ebfd33fe8b237bc8319c9de4f548c4938c29eaf74997483e2a8436cd6"
+"ppt/media/image1.png" = "d49f80f301b74b0f7e5d5afdf48877f8c32a207ec0c05bfd4e2dae2fe33aa579"
+"ppt/presProps.xml" = "5cb1b16a0bc7f1869f6fd42a5f96973f68028b3fa043b8f6fd4be4d879ea80ea"
+"ppt/presentation.xml" = "46ba9acae5b7a13e1ff4d1af4cf42f0046728f61b9ad0dbd62afd3249780d4ec"
+"ppt/slideLayouts/_rels/slideLayout1.xml.rels" = "7404f50c86914727df9690b65fdd3497948a8ed5efc6787df89f5e178a1cf07c"
+"ppt/slideLayouts/_rels/slideLayout10.xml.rels" = "7404f50c86914727df9690b65fdd3497948a8ed5efc6787df89f5e178a1cf07c"
+"ppt/slideLayouts/_rels/slideLayout11.xml.rels" = "7404f50c86914727df9690b65fdd3497948a8ed5efc6787df89f5e178a1cf07c"
+"ppt/slideLayouts/_rels/slideLayout2.xml.rels" = "7404f50c86914727df9690b65fdd3497948a8ed5efc6787df89f5e178a1cf07c"
+"ppt/slideLayouts/_rels/slideLayout3.xml.rels" = "7404f50c86914727df9690b65fdd3497948a8ed5efc6787df89f5e178a1cf07c"
+"ppt/slideLayouts/_rels/slideLayout4.xml.rels" = "7404f50c86914727df9690b65fdd3497948a8ed5efc6787df89f5e178a1cf07c"
+"ppt/slideLayouts/_rels/slideLayout5.xml.rels" = "7404f50c86914727df9690b65fdd3497948a8ed5efc6787df89f5e178a1cf07c"
+"ppt/slideLayouts/_rels/slideLayout6.xml.rels" = "7404f50c86914727df9690b65fdd3497948a8ed5efc6787df89f5e178a1cf07c"
+"ppt/slideLayouts/_rels/slideLayout7.xml.rels" = "7404f50c86914727df9690b65fdd3497948a8ed5efc6787df89f5e178a1cf07c"
+"ppt/slideLayouts/_rels/slideLayout8.xml.rels" = "7404f50c86914727df9690b65fdd3497948a8ed5efc6787df89f5e178a1cf07c"
+"ppt/slideLayouts/_rels/slideLayout9.xml.rels" = "7404f50c86914727df9690b65fdd3497948a8ed5efc6787df89f5e178a1cf07c"
+"ppt/slideLayouts/slideLayout1.xml" = "047d8498e5810e7bb0d3e8c4ad14f91d2f3ed4c1206c4fd74332ec83d1028885"
+"ppt/slideLayouts/slideLayout10.xml" = "245b9748a9e0e2e06b77cb2ee022f0e19a1d5dcce228d0134d731db1995d9a6d"
+"ppt/slideLayouts/slideLayout11.xml" = "ec0de15c45429cba3a1504538132299958bc7dbe3a823657840a979ce3f31e07"
+"ppt/slideLayouts/slideLayout2.xml" = "074ef0d5ba6a24df721e3a5903100152679985cc69ea37aa1bd31ca3c0e25e0e"
+"ppt/slideLayouts/slideLayout3.xml" = "1e8ae5add25eb12a0da66b0627a858cb54f352320f11df9937ef4d1c3fc0cad8"
+"ppt/slideLayouts/slideLayout4.xml" = "34a5cdb44f0fc00df6ad13ec82af5647207c18c4899bd5a147cf7c045552c215"
+"ppt/slideLayouts/slideLayout5.xml" = "52780a4eba80339c9ebf0698242d6d6f92f5bc1beac4443872180c9a73614391"
+"ppt/slideLayouts/slideLayout6.xml" = "701752aa0a17b10f10c9b9fb5956e98c97052bcc138705d97b26b24d764efabf"
+"ppt/slideLayouts/slideLayout7.xml" = "ee7419079176e876579c2fe804468f63b6ae20a6a2a2cfe4fe221ec6e0e8b512"
+"ppt/slideLayouts/slideLayout8.xml" = "5b40cbfcb765096196814792749463d8f5667d56b13f2ad923a00b46aab4580a"
+"ppt/slideLayouts/slideLayout9.xml" = "87509578c3b00feaf70acdc0163577ac72a80ce6db10b32633d3e1e725698a02"
+"ppt/slideMasters/_rels/slideMaster1.xml.rels" = "2c132c00e2d4cb084c49b6b38fd86c7a7c14c32a943e91cea56e417255257be8"
+"ppt/slideMasters/slideMaster1.xml" = "5ee38f3bc08182a73b7e28138ea00460c004d67e5fbdac1baf62ff027a1d471e"
+"ppt/slides/_rels/slide1.xml.rels" = "57066027d24907fffc18e1db3da77603c486247bf281a7c44addbaa1d647edde"
+"ppt/slides/_rels/slide2.xml.rels" = "5cdc6c2fa97ef0a4961ebb8f0786b516b1d849f4d6dea1208e1efab8f40ac4e5"
+"ppt/slides/slide1.xml" = "910cb8312659496f49daaba4b267512ad04e6bc8f145cc71cbc6b198dc75585c"
+"ppt/slides/slide2.xml" = "13b49738c8d43022a3de2852ea2de6acd3b44d0bbc1eee4939eedc40c23070b3"
+"ppt/tableStyles.xml" = "373aa748e8d479f4859591fdfd8c8ededaa5fbeca51d1356a12fedb1ff89e4ef"
+"ppt/theme/theme1.xml" = "d3d9438ffdf404c92f44e38d896a0e28154e7c6d51c252fe64889e760875965b"
+"ppt/viewProps.xml" = "c802af6e2f2098e524d56e19991c5e6bae5adab7f13cab43ef303fb377741895"

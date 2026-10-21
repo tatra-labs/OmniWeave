@@ -17,6 +17,7 @@ import pytest
 from omniweave.surface import admit as admission
 from omniweave.surface import eval as verb
 from omniweave_conform import absence as absence_harness
+from omniweave_conform import portability as cell_harness
 from omniweave_conform import retrieval as cite_harness
 from omniweave_conform import roundtrip as r2_harness
 from omniweave_conform.damage import Assessment, Clause
@@ -76,6 +77,22 @@ def _fake_roundtrip(monkeypatch: pytest.MonkeyPatch, *, survive: bool = True) ->
     monkeypatch.setattr(r2_harness, "judge", judge)
 
 
+def _fake_cells(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The portability harness, faked: one identical shape, and each target's frozen parts."""
+    frozen = cell_harness.read_parts(REPO)
+    monkeypatch.setattr(cell_harness, "shapes", lambda _root: ({"a.shape": "1"}, {"a.shape": "1"}))
+    monkeypatch.setattr(
+        cell_harness,
+        "parts",
+        lambda target: (
+            f"compile.{target.target}.native",
+            "0.1.0",
+            "f" * 64,
+            frozen[target.target],
+        ),
+    )
+
+
 def _eval(*argv: str, cwd: Path = REPO) -> tuple[int, str, str]:
     out, err = io.StringIO(), io.StringIO()
     code = verb.main(["eval", *argv], cwd=cwd, env={}, stdout=out, stderr=err)
@@ -113,7 +130,7 @@ def test_render_json_prints_one_object(tmp_path: Path) -> None:
     assert len(row["run_id"]) == 32
 
 
-def test_release_check_after_parse_alone_wants_the_other_three_gates(tmp_path: Path) -> None:
+def test_release_check_after_parse_alone_wants_the_other_four_gates(tmp_path: Path) -> None:
     store = tmp_path / "x.oweval"
     assert _eval("run", "--suite", "parse", "--oweval", str(store))[0] == 0
     code, out, _ = _eval("release-check", "--oweval", str(store))
@@ -125,8 +142,10 @@ def test_release_check_after_parse_alone_wants_the_other_three_gates(tmp_path: P
         "              fix: run the gate's suite: ow eval run --suite retrieve",
         "  unmeasured  hard gate address_survival@*: no roundtrip run measured it",
         "              fix: run the gate's suite: ow eval run --suite roundtrip",
-        "ow eval release-check: refused, 3 finding(s); 2 latest run(s), 0 superseded,"
-        " 4 hard gate(s)",
+        "  unmeasured  hard gate cell_identity@*: no portability run measured it",
+        "              fix: run the gate's suite: ow eval run --suite portability",
+        "ow eval release-check: refused, 4 finding(s); 2 latest run(s), 0 superseded,"
+        " 5 hard gate(s)",
     ]
 
 
@@ -136,6 +155,7 @@ def test_every_built_suite_by_default_and_release_check_then_passes(
     handed = _fake_suite(monkeypatch, True, True)
     _fake_cites(monkeypatch)
     _fake_roundtrip(monkeypatch)
+    _fake_cells(monkeypatch)
     store = tmp_path / "x.oweval"
     code, out, _ = _eval("run", "--oweval", str(store))
     assert code == 0
@@ -164,13 +184,16 @@ def test_every_built_suite_by_default_and_release_check_then_passes(
     assert lines[4].endswith("address_survival 1.0000 over 1; 1 of 1 element(s) survive")
     assert lines[4].split()[:2] == ["compile.docx.native", "docx"]
     assert lines[5].split()[:2] == ["compile.pptx.native", "pptx"]
-    assert lines[6].startswith(
-        "ow eval run --suite parse,absence,retrieve,roundtrip: 6 run(s) written to "
+    assert lines[6].split()[:3] == ["omniweave", "shape", "cell_identity"]
+    assert lines[6].endswith("1.0000 over 1; 1 of 1 identical to the frozen values")
+    assert [line.split()[1] for line in lines[7:9]] == ["docx", "pptx"]
+    assert lines[9].startswith(
+        "ow eval run --suite parse,absence,retrieve,roundtrip,portability: 9 run(s) written to "
     )
     assert handed == [admission.admit]
     assert _eval("release-check", "--oweval", str(store)) == (
         0,
-        "ow eval release-check: ok; 6 latest run(s), 0 superseded, 4 hard gate(s)\n",
+        "ow eval release-check: ok; 9 latest run(s), 0 superseded, 5 hard gate(s)\n",
         "",
     )
 
@@ -189,6 +212,25 @@ def test_a_failed_element_is_printed_and_release_check_refuses_it(
     code, out, _ = _eval("release-check", "--oweval", str(store))
     assert code == 1
     assert "address_survival@docx in roundtrip/compile.docx.native run" in out
+    assert "0.0 is not the hard budget 1.0" in out
+
+
+def test_a_shape_that_moved_on_this_cell_is_printed_and_release_check_refuses_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D903: portability is the hard `cell_identity` row, so one moved shape refuses a release."""
+    _fake_cells(monkeypatch)
+    monkeypatch.setattr(cell_harness, "shapes", lambda _root: ({"a.shape": "1"}, {"a.shape": "2"}))
+    store = tmp_path / "x.oweval"
+    code, out, _ = _eval("run", "--suite", "portability", "--oweval", str(store))
+    assert code == 0
+    assert out.splitlines()[0].endswith(
+        "cell_identity 0.0000 over 1; 0 of 1 identical to the frozen values;"
+        " differ: a.shape: differs"
+    )
+    code, out, _ = _eval("release-check", "--oweval", str(store))
+    assert code == 1
+    assert "cell_identity@shape in portability/omniweave run" in out
     assert "0.0 is not the hard budget 1.0" in out
 
 
@@ -267,7 +309,7 @@ def test_a_subject_the_register_lacks_is_a_refusal_exit_1(tmp_path: Path) -> Non
     assert "no [[subject]] in the metric register is driver 'parse.nothing'" in err
 
 
-@pytest.mark.parametrize("suite", ["extract", "portability", "perf"])
+@pytest.mark.parametrize("suite", ["extract", "perf"])
 def test_an_unmeasurable_suite_is_one_unknown_run_and_release_check_refuses_it(
     tmp_path: Path, suite: str
 ) -> None:

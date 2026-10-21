@@ -1,4 +1,4 @@
-"""`ow eval run`: four suites measured (D868-D871), and the other three reported unknown (D872).
+"""`ow eval run`: five suites measured (D868-D871, D903), and the other two reported unknown.
 
 13-quality.md:1873 prints `ow eval run [--suite S] [--corpus C@V] [--subject D] [--witness W]
 [--cassette MODE] [--validate-judge] [--emit PATH]`, and 16-roadmap.md:942 makes it W10.6's
@@ -105,17 +105,34 @@ returns it as `store.oweval` rows for one `write()`.
     survive. An R2 the suite could not judge (a gate short of `lower()`, OUT23) writes no metric
     and is a run with status `unknown` and the suite's reason, which `release-check` refuses too.
 
-## The three suites this build cannot measure (D872)
+## The suites this build cannot measure (D872)
 
 17. **Every suite can report `unknown`.** 16-roadmap.md:942: *"`skip` is not a state, so every
     suite must be able to report `unknown` and `release-check` must refuse on it."* So
-    `ow eval run --suite extract`, `portability` or `perf` writes one run with status `unknown`
+    `ow eval run --suite extract` or `perf` writes one run with status `unknown`
     whose `not_measured` says, in `UNMEASURABLE`, exactly what is missing. Nothing is measured and
     nothing is pretended: the run has no corpus row, no metric and no perf row, its corpus fields
     say `none`, and its one confounder says it exists only to name the gap. `release-check`
     then refuses it by that reason, where `--strict` alone would have said *"no run at all"*.
 18. **They are named, never run by default.** `--suite` omitted runs `BUILT`, the suites whose
     runs this machine can judge; an `unknown` run is written only when a caller asks for one.
+
+## The portability suite (D903)
+
+19. **Portability is the same inputs giving identical results on every cell** (a user ruling of
+    2026-10-19, #7.4; `omniweave_conform.portability`). Until then it was the third suite
+    reported `unknown`. A run holds this cell to committed frozen values, so its metric is the
+    register's hard `cell_identity` row: the share of names identical to the frozen ones. A
+    missing or extra name counts against it, and every difference is a confounder, by name.
+20. **One run for the shape half, then one per register `[[target]]` for the part half.** The
+    shape run's subject is `omniweave`, its corpus the Tier-A fixtures `fixtures/index.toml`
+    lists, its slice `shape`, and its timing `spawn_inclusive`, because the ingest is a child
+    `ow add`. A target's run is its compile driver over its golden, as ruling 15's, sliced by
+    the target, `in_process`. Neither is publishable (ruling 3).
+21. **What cannot be compared is refused or unknown, never passed.** A target with no row in
+    `eval/portability.toml` is a `QualityError` before anything runs. An ingest that fails is one
+    too, as a compile that fails is in ruling 15. No committed shape at all writes no metric and
+    an `unknown` run.
 
 Specified in 13-quality.md sections 2.10, 8.3, 8.6, 8.8, 9 and 13.3, and 16-roadmap.md W10.6.
 """
@@ -125,6 +142,7 @@ from __future__ import annotations
 import hashlib
 import platform
 import tempfile
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
@@ -136,6 +154,7 @@ from omniweave_core.store.oweval import Assertion, Batch, Corpus, Metric, Run, V
 from omniweave_ports.types import DriverError
 
 from omniweave_conform import absence as damage_half
+from omniweave_conform import portability as cell_half
 from omniweave_conform import retrieval as cite_half
 from omniweave_conform import roundtrip as r2_half
 from omniweave_conform.badge import kit_version
@@ -163,22 +182,19 @@ __all__ = [
     "absence",
     "corpus_digest",
     "parse",
+    "portability",
     "retrieve",
     "roundtrip",
     "unknown",
 ]
 
-BUILT: Final[tuple[str, ...]] = ("parse", "absence", "retrieve", "roundtrip")
-"""The suites `ow eval run` measures in this build, in run order. The other three are refused."""
+BUILT: Final[tuple[str, ...]] = ("parse", "absence", "retrieve", "roundtrip", "portability")
+"""The suites `ow eval run` measures in this build, in run order. The other two are unknown."""
 
 UNMEASURABLE: Final[Mapping[str, str]] = {
     "extract": (
         "no extraction harness and no labelled extraction corpus: field_acc, doc_acc and "
         "hallucination_rate need one (13-quality.md:1179-1192, W10.8)"
-    ),
-    "portability": (
-        "13-quality.md defines the portability suite by its name alone (13:238, 13:2056): there "
-        "is nothing to run until the plan says what it measures"
     ),
     "perf": (
         "eval_perf rows pass or fail against 7-run rolling medians on the pinned runner "
@@ -189,7 +205,7 @@ UNMEASURABLE: Final[Mapping[str, str]] = {
 """Ruling 17: each suite this build cannot measure, and exactly why."""
 
 SUITES: Final[tuple[str, ...]] = (*BUILT, *UNMEASURABLE)
-"""Every suite `ow eval run` accepts: the four it measures, then the three it reports unknown."""
+"""Every suite `ow eval run` accepts: the five it measures, then the two it reports unknown."""
 
 ADDRESS: Final = "address_survival"
 """Ruling 16: R2's hard row in the metric register (D902)."""
@@ -199,6 +215,12 @@ ROUNDTRIP_CONFOUNDER: Final = (
     "survive the round trip refuses a release"
 )
 """Ruling 16, said in every roundtrip run."""
+
+CELL_CONFOUNDER: Final = (
+    "one cell, this machine's, held to frozen values blessed on win32 (D886); the other cells "
+    "are CI's matrix, each running this suite against the same values"
+)
+"""Ruling 19, said in every portability run."""
 
 VIOLATIONS: Final = "citability_violations"
 SOUNDNESS: Final = "citation_soundness"
@@ -670,7 +692,7 @@ def roundtrip(
             "the metric register names no [[target]] for the roundtrip suite to read back",
             fix="add a [[target]] row: a card, its read_back card and a golden, to eval/gates.toml",
         )
-    truth = _address_truth(register)
+    truth = _row_truth(register, "roundtrip", ADDRESS)
     metrics: list[Metric] = []
     corpora: list[Corpus] = []
     assertions: list[Assertion] = []
@@ -816,29 +838,236 @@ def roundtrip(
     return batch, tuple(done)
 
 
-def _address_truth(register: Mapping[str, Any]) -> str:
-    """Ruling 16: the register's `address_survival` row's TruthKind, or a refusal naming it."""
+def _row_truth(register: Mapping[str, Any], suite: str, metric: str) -> str:
+    """Rulings 16 and 19: a hard row's TruthKind, or a refusal naming the missing row."""
     gate = next(
         (
             row
             for row in register.get("gate", [])
-            if row.get("suite") == "roundtrip" and row.get("metric") == ADDRESS
+            if row.get("suite") == suite and row.get("metric") == metric
         ),
         None,
     )
     if gate is None:
         raise QualityError(
-            f"the metric register has no roundtrip {ADDRESS} row to measure against",
-            fix=f"add a [[gate]] row with metric = {ADDRESS!r} and suite = 'roundtrip'",
+            f"the metric register has no {suite} {metric} row to measure against",
+            fix=f"add a [[gate]] row with metric = {metric!r} and suite = {suite!r}",
         )
-    truth = TRUTH_OF.get(str(gate.get("truth_kind", "")), str(gate.get("truth_kind", "")))
-    if truth not in TRUTH_KINDS:
+    return _truth(gate, metric)
+
+
+def portability(
+    register: Mapping[str, Any],
+    *,
+    root: Path,
+    witness: str,
+    cassette: str,
+    now_ns: Callable[[], int],
+) -> tuple[Batch, tuple[Measured, ...]]:
+    """Rulings 19-21: the shape half's run, then one run per register `[[target]]`'s parts."""
+    truth = _row_truth(register, "portability", cell_half.METRIC)
+    rows = r2_half.targets(register, root)
+    frozen_parts = cell_half.read_parts(root)
+    unwritten = [target.target for target in rows if target.target not in frozen_parts]
+    if unwritten:
         raise QualityError(
-            f"the register's {ADDRESS} truth_kind {truth!r} is not one of "
-            f"{', '.join(sorted(TRUTH_KINDS))}",
-            fix="name one of the six TruthKinds (13-quality.md:1452) in eval/gates.toml",
+            f"{cell_half.PARTS} has no row for {', '.join(unwritten)}",
+            fix="uv run tools/ow_portability.py --write  # on the cell that blessed the goldens",
         )
-    return truth
+    batch, shape = _shape_half(root, truth=truth, witness=witness, cassette=cassette, now_ns=now_ns)
+    runs, metrics, corpora, done = (
+        list(batch.runs),
+        list(batch.metrics),
+        list(batch.corpora),
+        [shape],
+    )
+    for target in rows:
+        started = now_ns()
+        try:
+            driver, version, fingerprint, members = cell_half.parts(target)
+        except (QualityError, RuntimeError, OSError, TypeError) as error:
+            raise QualityError(
+                f"the portability suite could not compile {target.target}: "
+                f"{type(error).__name__}: {error}",
+                fix=f"ow conform --target {target.target}  # the target suite, every law",
+            ) from error
+        held = cell_half.differences(frozen_parts[target.target], members)
+        digest = r2_half.golden_digest(target.golden)
+        corpus = _golden_corpus(root, target.golden, digest)
+        corpora.append(corpus)
+        run_id = _run_id("portability", driver, digest, started)
+        runs.append(
+            _cell_run(
+                run_id,
+                corpus,
+                subject=driver,
+                subject_version=version,
+                fingerprint=fingerprint,
+                timing="in_process",
+                started=started,
+                ended=now_ns(),
+                held=held,
+                witness=witness,
+                cassette=cassette,
+            )
+        )
+        metrics.append(_cell_metric(run_id, held, truth=truth, slice_key=target.target))
+        done.append(_cell_measured(run_id, driver, target.target, corpus, held))
+    return Batch(corpora=tuple(corpora), runs=tuple(runs), metrics=tuple(metrics)), tuple(done)
+
+
+def _shape_half(
+    root: Path, *, truth: str, witness: str, cassette: str, now_ns: Callable[[], int]
+) -> tuple[Batch, Measured]:
+    """Ruling 20: the Tier-A fixtures ingested, each `.shape` held to the committed goldens."""
+    started = now_ns()
+    try:
+        frozen, found = cell_half.shapes(root)
+    except OSError as error:
+        raise QualityError(
+            f"the portability suite could not ingest the Tier-A fixtures: {error}",
+            fix="uv run tools/ow_golden.py  # the same ingest, its refusal printed",
+        ) from error
+    ended = now_ns()
+    held = cell_half.differences(frozen, found)
+    index = tomllib.loads((root / "fixtures" / "index.toml").read_text(encoding="utf-8"))
+    files = [root / str(row["path"]) for row in index.get("fixture", [])]
+    digest = corpus_digest(root, files)
+    corpus = Corpus(
+        corpus_id="fixtures/index.toml",
+        version=digest[:16],
+        corpus_digest=digest,
+        tier="A",
+        n_docs=len(files),
+        n_assertions=0,
+        n_checked=0,
+        document_redistributable=True,
+        assertions_redistributable=True,
+        publishable=False,
+    )
+    run_id = _run_id("portability", "omniweave", corpus.corpus_digest, started)
+    run = _cell_run(
+        run_id,
+        corpus,
+        subject="omniweave",
+        subject_version=_version("omniweave"),
+        fingerprint=code_fingerprint(_core_sources()),
+        timing="spawn_inclusive",
+        started=started,
+        ended=ended,
+        held=held,
+        witness=witness,
+        cassette=cassette,
+    )
+    metrics = (
+        (_cell_metric(run_id, held, truth=truth, slice_key=cell_half.SHAPE),) if frozen else ()
+    )
+    batch = Batch(corpora=(corpus,), runs=(run,), metrics=metrics)
+    return batch, _cell_measured(run_id, "omniweave", cell_half.SHAPE, corpus, held)
+
+
+def _cell_run(
+    run_id: str,
+    corpus: Corpus,
+    *,
+    subject: str,
+    subject_version: str,
+    fingerprint: str,
+    timing: str,
+    started: int,
+    ended: int,
+    held: cell_half.Held,
+    witness: str,
+    cassette: str,
+) -> Run:
+    """Rulings 19-21: one half's run; no frozen value at all is `unknown`."""
+    nothing = held.compared == 0
+    return Run(
+        run_id=run_id,
+        suite="portability",
+        corpus_id=corpus.corpus_id,
+        corpus_version=corpus.version,
+        corpus_digest=corpus.corpus_digest,
+        subject=subject,
+        subject_version=subject_version,
+        producer_id=None,
+        measured_on=_measured_on(corpus),
+        timing_basis=timing,
+        witness=witness,
+        cassette=cassette,
+        policy_digest=None,
+        pricebook_digest=None,
+        harness_version=kit_version(),
+        code_fingerprint=fingerprint,
+        hardware=_hardware(),
+        started_ns=started,
+        ended_ns=ended,
+        status="unknown" if nothing else "ok",
+        not_measured=(
+            *(
+                ("nothing frozen to compare: no committed value and nothing produced",)
+                if nothing
+                else ()
+            ),
+            "pages and outline Reductions, and byte digests: tracked or pinned-only, so not "
+            "promised across cells (D886, 13:1568)",
+        ),
+        confounders=(
+            CELL_CONFOUNDER,
+            f"{len(held.differences)} of {held.compared} differ"
+            + (f": {', '.join(held.differences)}" if held.differences else ""),
+        ),
+    )
+
+
+def _cell_metric(run_id: str, held: cell_half.Held, *, truth: str, slice_key: str) -> Metric:
+    """Ruling 19: the identical share, as `stats.rate()`."""
+    estimate = rate(held.matched, held.compared)
+    return Metric(
+        run_id=run_id,
+        metric=cell_half.METRIC,
+        value=estimate.value,
+        n=estimate.n,
+        ci_lo=estimate.ci_lo,
+        ci_hi=estimate.ci_hi,
+        method=estimate.method,
+        truth_kind=truth,
+        state="ok",
+        slice_key=slice_key,
+    )
+
+
+def _cell_measured(
+    run_id: str, subject: str, slice_key: str, corpus: Corpus, held: cell_half.Held
+) -> Measured:
+    return Measured(
+        run_id=run_id,
+        suite="portability",
+        subject=subject,
+        slice_key=slice_key,
+        corpus_id=corpus.corpus_id,
+        metric=cell_half.METRIC,
+        value=held.matched / held.compared if held.compared else None,
+        n=held.compared,
+        parsed=held.matched,
+        refused=held.differences,
+    )
+
+
+def _golden_corpus(root: Path, golden: Path, digest: str) -> Corpus:
+    """Ruling 20: a target's golden as a Tier A corpus, versioned by its digest, as ruling 15's."""
+    return Corpus(
+        corpus_id=golden.relative_to(root).as_posix(),
+        version=digest[:16],
+        corpus_digest=digest,
+        tier="A",
+        n_docs=sum(1 for path in (golden / "il").iterdir() if path.is_file()),
+        n_assertions=0,
+        n_checked=0,
+        document_redistributable=True,
+        assertions_redistributable=True,
+        publishable=False,
+    )
 
 
 def unknown(
