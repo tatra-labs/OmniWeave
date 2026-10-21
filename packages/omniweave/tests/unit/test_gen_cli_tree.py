@@ -500,3 +500,17 @@ def test_the_parser_argparse_builds_is_the_one_the_table_describes() -> None:
     assert isinstance(parser, argparse.ArgumentParser)
     assert parser.prog == PROG
     assert len(commands()) == len(COMMANDS)
+
+
+def test_a_field_is_one_line_up_to_ruffs_width_and_each_wrapped_piece_fills_it() -> None:
+    """D906: decided at `ruff format`'s 100, not 96. A 100-column field stays one line; a longer
+    one wraps, and every piece but the last fills the line, so the formatter joins none of them."""
+    indent = "        "
+    at = "x" * (100 - len(f'{indent}help="",'))
+    assert cli_tree_module._field_lines("help", at, indent) == [f'{indent}help="{at}",']
+    over = cli_tree_module._field_lines("help", at + "x", indent)
+    assert over[0] == f"{indent}help=(" and over[-1] == f"{indent}),"
+    words = "word " * 80
+    pieces = cli_tree_module._wrap(words, indent)
+    assert all(len(line) <= 100 for line in pieces)
+    assert all(len(line) + len("word") >= 100 for line in pieces[:-1]), "no two pieces fit as one"
