@@ -514,8 +514,15 @@ def commands() -> tuple[tuple[tuple[str, ...], tuple[str, ...], str, tuple[Flag,
 # 3. The bytes
 # =============================================================================================
 
-_WIDTH: Final[int] = 96
-"""The column a wrapped string literal stops at, leaving room for the closing quote inside 100."""
+_LINE: Final[int] = 100
+"""`pyproject.toml`'s `[tool.ruff] line-length`, the one width every decision below is made at.
+
+D906: this was a 96-column budget, used both for "does the one-line form fit" and for each wrapped
+piece. `ruff format` decides at 100, so a field whose one-line form was 97 to 100 columns came out
+in parentheses the formatter joined back, and a string just past 96 was split into pieces it
+joined again. Either made a generated module G25 accepted and the formatter rewrote (D901's
+`--deny-method` help was shortened to dodge it). At ruff's own width the two agree: a line that
+fits stays one line, and every wrapped piece but the last fills the line, so no two fit together."""
 
 
 def _wrap(body: str, indent: str) -> list[str]:
@@ -526,7 +533,7 @@ def _wrap(body: str, indent: str) -> list[str]:
     file here, and a byte-diff gate over source that the formatter would rewrite is a gate that
     fails on the first `ruff format` run.
     """
-    budget = _WIDTH - len(indent) - 2
+    budget = _LINE - len(indent) - 2
     pieces: list[str] = []
     rest = body
     while rest:
@@ -567,7 +574,7 @@ def _value(value: object) -> str:
 def _field_lines(name: str, value: object, indent: str) -> list[str]:
     """One `name=value,` line, or several when the value is a string that does not fit."""
     rendered = _value(value)
-    if len(indent) + len(name) + len(rendered) + 2 <= _WIDTH:
+    if len(indent) + len(name) + len(rendered) + 2 <= _LINE:
         return [f"{indent}{name}={rendered},"]
     if isinstance(value, str):
         return [f"{indent}{name}=(", *_wrap(value, indent + "    "), f"{indent}),"]
@@ -791,7 +798,7 @@ def render() -> bytes:
     for root, verbs in group_help().items():
         line = f"    {_literal(root)}: {_literal(verbs)},"
         #  D777: a group's verb list past the line width wraps as a long `help=` does.
-        fits = len(line) <= _WIDTH
+        fits = len(line) <= _LINE
         lines.extend(
             [line] if fits else [f"    {_literal(root)}: (", *_wrap(verbs, " " * 8), "    ),"]
         )

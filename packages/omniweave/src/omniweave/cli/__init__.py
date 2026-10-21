@@ -123,8 +123,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("add",),
         actions=("add",),
         help=(
-            "Index files, directories or URLs into a corpus so ow_query can cite them; "
-            "billable work defers with the command that approves it"
+            "Index files, directories or URLs into a corpus so ow_query can cite them; billable "
+            "work defers with the command that approves it"
         ),
         arguments=(
             Argument(
@@ -194,8 +194,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("cost",),
         actions=("cost.report",),
         help=(
-            "Spend by driver over a corpus's ledger or one run, with what the cache saved, and "
-            "the run's reconcile against its manifest"
+            "Spend by driver over a corpus's ledger or one run, with what the cache saved, and the "
+            "run's reconcile against its manifest"
         ),
         arguments=(
             Argument(
@@ -222,8 +222,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("doc", "diff"),
         actions=("doc.diff",),
         help=(
-            "Compare two generations of one document: what carried, what was revised, what is "
-            "new, and whether the newer generation was quarantined rather than committed"
+            "Compare two generations of one document: what carried, what was revised, what is new, "
+            "and whether the newer generation was quarantined rather than committed"
         ),
         arguments=(
             Argument(
@@ -246,8 +246,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("doc", "grid"),
         actions=("doc.grid",),
         help=(
-            "Read one table as an exactly-once grid: every cell at its slot, the header row "
-            "and column, and the merges that would otherwise be counted twice"
+            "Read one table as an exactly-once grid: every cell at its slot, the header row and "
+            "column, and the merges that would otherwise be counted twice"
         ),
         arguments=(
             Argument(
@@ -260,8 +260,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("doctor",),
         actions=("doctor",),
         help=(
-            "Check this deployment: every resolved configuration value with its source, the "
-            "driver and toolchain probes, and a fix command for every warning"
+            "Check this deployment: every resolved configuration value with its source, the driver "
+            "and toolchain probes, and a fix command for every warning"
         ),
         arguments=(
             Argument(
@@ -275,8 +275,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("eval", "bless"),
         actions=("eval.bless",),
         help=(
-            "Rewrite eval/inventory.toml from the test collection and append the BLESS.log row "
-            "a fall in its counts needs; OMNIWEAVE_BLESS=1 and a reason are required"
+            "Rewrite eval/inventory.toml from the test collection and append the BLESS.log row a "
+            "fall in its counts needs; OMNIWEAVE_BLESS=1 and a reason are required"
         ),
         arguments=(
             Argument(
@@ -325,8 +325,7 @@ COMMANDS: Final[tuple[Command, ...]] = (
         actions=("eval.release_check",),
         help=(
             "Refuse a release on any unknown run, metric or perf row, and on any hard "
-            "eval/gates.toml gate off its budget or unmeasured; --strict also on a suite never "
-            "run"
+            "eval/gates.toml gate off its budget or unmeasured; --strict also on a suite never run"
         ),
         arguments=(
             Argument(
@@ -350,8 +349,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("eval", "run"),
         actions=("eval.run",),
         help=(
-            "Run eval suites over the metric register's subjects and write their runs and "
-            "metrics to the .oweval in one transaction; this build measures four of seven"
+            "Run eval suites over the metric register's subjects and write their runs and metrics "
+            "to the .oweval in one transaction; this build measures four of seven"
         ),
         arguments=(
             Argument(
@@ -402,8 +401,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("explain",),
         actions=("explain",),
         help=(
-            "Resolve an OW-* code or symbol to what it means and the exact command that clears "
-            "it; reads no corpus, so it answers on a machine with no store at all"
+            "Resolve an OW-* code or symbol to what it means and the exact command that clears it; "
+            "reads no corpus, so it answers on a machine with no store at all"
         ),
         arguments=(
             Argument(
@@ -430,8 +429,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("graph", "locate"),
         actions=("graph.locate",),
         help=(
-            "Find where on the page an entity, claim, edge or mention was witnessed: one "
-            "location per witness, with its page, its span and its polygon or the reason none"
+            "Find where on the page an entity, claim, edge or mention was witnessed: one location "
+            "per witness, with its page, its span and its polygon or the reason none"
         ),
         arguments=(
             Argument(
@@ -480,8 +479,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("graph", "merges"),
         actions=("graph.merges",),
         help=(
-            "Show the resolution decision log: each closure's members, and every merge or "
-            "split decision with its stage, score, guards and the generation it was decided in"
+            "Show the resolution decision log: each closure's members, and every merge or split "
+            "decision with its stage, score, guards and the generation it was decided in"
         ),
         arguments=(
             Argument(
@@ -503,8 +502,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("graph", "residue"),
         actions=("graph.residue",),
         help=(
-            "Show what the graph could not place: unresolved references grouped by kind and "
-            "name, and quarantined rows grouped by code and kind"
+            "Show what the graph could not place: unresolved references grouped by kind and name, "
+            "and quarantined rows grouped by code and kind"
         ),
         arguments=(
             Argument(
@@ -532,8 +531,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("graph", "split"),
         actions=("graph.split",),
         help=(
-            "Record that one entity is two or more, named by the blocks each is witnessed in, "
-            "with a reason, and settle the graph again as an ingest would"
+            "Record that one entity is two or more, named by the blocks each is witnessed in, with "
+            "a reason, and settle the graph again as an ingest would"
         ),
         arguments=(
             Argument(
@@ -554,8 +553,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("graph", "types"),
         actions=("graph.types",),
         help=(
-            "List the entity-type vocabulary with each type's live entities, or promote "
-            "proposed types into it, with a reason"
+            "List the entity-type vocabulary with each type's live entities, or promote proposed "
+            "types into it, with a reason"
         ),
         arguments=(
             Argument(
@@ -591,8 +590,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("hooks", "check"),
         actions=("hooks.check",),
         help=(
-            "Run each installed hook command as its host would, with a probe payload in a "
-            "scratch project, and say which failed and why"
+            "Run each installed hook command as its host would, with a probe payload in a scratch "
+            "project, and say which failed and why"
         ),
         arguments=(),
     ),
@@ -651,8 +650,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("open",),
         actions=("open",),
         help=(
-            "Fetch the exact passages behind an address you already hold: a cite, a page "
-            "range, or a whole document"
+            "Fetch the exact passages behind an address you already hold: a cite, a page range, or "
+            "a whole document"
         ),
         arguments=(
             Argument(
@@ -696,8 +695,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("out", "assets"),
         actions=("out.assets",),
         help=(
-            "List a sealed artefact's frozen assets with their licences and restrictions, or "
-            "every artefact and document that holds one asset's bytes"
+            "List a sealed artefact's frozen assets with their licences and restrictions, or every "
+            "artefact and document that holds one asset's bytes"
         ),
         arguments=(
             Argument(
@@ -724,8 +723,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("out", "back"),
         actions=("out.back",),
         help=(
-            "Read a sealed artefact back into the corpus once, then restore its retained IL, "
-            "Brief and assets into a JobDir for its next generation"
+            "Read a sealed artefact back into the corpus once, then restore its retained IL, Brief "
+            "and assets into a JobDir for its next generation"
         ),
         arguments=(
             Argument(
@@ -769,8 +768,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("out", "compile"),
         actions=("out.compile",),
         help=(
-            "Lower a JobDir whose final gate passed into its artefact in an S4 worker, seal "
-            "the artifact row, and place the bytes under [roots] output"
+            "Lower a JobDir whose final gate passed into its artefact in an S4 worker, seal the "
+            "artifact row, and place the bytes under [roots] output"
         ),
         arguments=(
             Argument(
@@ -815,8 +814,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("out", "list"),
         actions=("out.list",),
         help=(
-            "List the compiled artefacts sealed in a corpus, with each generation's gate "
-            "status, delivery and read_back_doc_ord"
+            "List the compiled artefacts sealed in a corpus, with each generation's gate status, "
+            "delivery and read_back_doc_ord"
         ),
         arguments=(
             Argument(
@@ -877,8 +876,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("out", "stamp"),
         actions=("out.stamp",),
         help=(
-            "Mint a data-ow-el address on every citable, text-bearing IL element that has "
-            "none, never renumbering one, all units or none"
+            "Mint a data-ow-el address on every citable, text-bearing IL element that has none, "
+            "never renumbering one, all units or none"
         ),
         arguments=(
             Argument(
@@ -891,8 +890,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("out", "targets"),
         actions=("out.targets",),
         help=(
-            "List the artefact kinds this deployment can compile, whether each is implemented "
-            "and enabled, and the determinism class its card declares"
+            "List the artefact kinds this deployment can compile, whether each is implemented and "
+            "enabled, and the determinism class its card declares"
         ),
         arguments=(),
     ),
@@ -900,8 +899,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("out", "verify"),
         actions=("out.verify",),
         help=(
-            "Recompile a sealed artefact from its retained IL in an S4 worker and compare it "
-            "at its declared determinism classes (R1), and count its units (R7)"
+            "Recompile a sealed artefact from its retained IL in an S4 worker and compare it at "
+            "its declared determinism classes (R1), and count its units (R7)"
         ),
         arguments=(
             Argument(
@@ -914,8 +913,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("query",),
         actions=("query",),
         help=(
-            "Ask an indexed corpus a question and get cited passages, a verdict, and the gaps "
-            "that could be hiding an answer"
+            "Ask an indexed corpus a question and get cited passages, a verdict, and the gaps that "
+            "could be hiding an answer"
         ),
         arguments=(
             Argument(
@@ -1025,8 +1024,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("skills", "check"),
         actions=("skills.check",),
         help=(
-            "Say whether the installed skills are this release's: a stale or missing core "
-            "skill fails, an outdated or orphaned on-demand one is reported"
+            "Say whether the installed skills are this release's: a stale or missing core skill "
+            "fails, an outdated or orphaned on-demand one is reported"
         ),
         arguments=(
             Argument(
@@ -1064,8 +1063,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("skills", "ls"),
         actions=("skills.ls",),
         help=(
-            "List the skills this release ships, with tier and digest, and which agent-host "
-            "skills directories hold each one and on whose record"
+            "List the skills this release ships, with tier and digest, and which agent-host skills "
+            "directories hold each one and on whose record"
         ),
         arguments=(),
     ),
@@ -1073,8 +1072,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("skills", "remove"),
         actions=("skills.remove",),
         help=(
-            "Take a skill out of every directory skills-lock.json says ow skills install put "
-            "it in, on its digest; a modified or foreign copy is kept"
+            "Take a skill out of every directory skills-lock.json says ow skills install put it "
+            "in, on its digest; a modified or foreign copy is kept"
         ),
         arguments=(
             Argument(
@@ -1093,8 +1092,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("skills", "update"),
         actions=("skills.update",),
         help=(
-            "Refresh every skill skills-lock.json records to this release's bundle and prune "
-            "the ones this release no longer ships; a modified copy is kept"
+            "Refresh every skill skills-lock.json records to this release's bundle and prune the "
+            "ones this release no longer ships; a modified copy is kept"
         ),
         arguments=(),
     ),
@@ -1137,8 +1136,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("uninstall",),
         actions=("uninstall",),
         help=(
-            "Take omniweave out of agent hosts exactly: every path the install receipt names, "
-            "on its digest, and never the corpus index"
+            "Take omniweave out of agent hosts exactly: every path the install receipt names, on "
+            "its digest, and never the corpus index"
         ),
         arguments=(
             Argument(
