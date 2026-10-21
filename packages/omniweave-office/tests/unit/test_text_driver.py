@@ -357,3 +357,12 @@ def test_the_fragment_is_json_lines_with_no_ascii_escaping(tmp_path: Path) -> No
     body = run("latin1.txt", tmp_path).body
     assert "Café".encode() in body
     assert all(json.loads(line) for line in body.decode().splitlines())
+
+
+def test_the_card_is_attested_by_the_kits_run() -> None:
+    """D896: `tools/ow_conform.py --write` over `fixtures/text` wrote `[quality]` and the
+    attestation, and the attestation is still the card's own digest: nothing moved since the run."""
+    from omniweave_core.drivers.card import load_card, read_card_bytes  # noqa: PLC0415
+
+    card = load_card(read_card_bytes(CARD), origin="driver_path", source=str(CARD))
+    assert card.attested
