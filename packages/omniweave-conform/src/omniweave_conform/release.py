@@ -19,7 +19,9 @@ on the tagged commit. `check_release()` reads one `.oweval` and the metric regis
    read from `eval_run` itself, because the scoreboard view leaves an `unknown` run out.
 3. **A scoreboard row whose `standing` is `UNKNOWN` refuses** (13:1691: a metric that failed to
    compute *"appears as `UNKNOWN`, and `ow eval release-check` **refuses** the release on it"*).
-   `WITHHELD` and `UNRANKED` are publication standings, not outcomes, and do not.
+   `WITHHELD` and `UNRANKED` are publication standings, not outcomes, and do not. The refusal
+   carries what the run said about that metric, and a rate over labels nobody has verified names
+   the verification as its fix (D913): running the suite again cannot compute it.
 4. **An `eval_perf` row refuses unless its `status` is `pass`.** `unstable` is `unknown` (13:332)
    and `unknown` is `unknown`. `stale` and `fail` refuse too: 12-performance.md:78 says *"there is
    no sixth value that lets a warning survive without failing"*, and a release that shipped past
@@ -53,13 +55,14 @@ from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from typing import TYPE_CHECKING, Any, Final
 
+from omniweave_core.drivers.card import MIN_SLICE_N
 from omniweave_core.errors import QualityError
 from omniweave_core.store.oweval import perf, run_statuses, scoreboard
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Iterable, Mapping, Sequence
 
-    from omniweave_core.store.oweval import RunStatus
+    from omniweave_core.store.oweval import RunStatus, Standing
 
 __all__ = ["SUITES", "Finding", "Gate", "Release", "check_release", "hard_gates", "latest"]
 
@@ -69,6 +72,10 @@ SUITES: Final = ("parse", "extract", "retrieve", "absence", "roundtrip", "portab
 _FIX: Final = {
     "run": "fix what stopped the run, then ow eval run --suite {suite}{subject}",
     "metric": "fix what kept the metric from computing, then run its suite again",
+    "labels": (
+        'verify its labels: write checked = "verified" on each .assertions.toml row you confirm '
+        "against its document, {n} or more a slice, then ow eval run --suite {suite}"
+    ),
     "perf": "fix the Runner or the regression the budget names, then run ow bench again",
     "gate": "fix the regression; a hard budget moves only by a reviewed eval/gates.toml diff",
     "unmeasured": "run the gate's suite: ow eval run --suite {suite}",
@@ -126,6 +133,21 @@ def latest(runs: Iterable[RunStatus]) -> tuple[RunStatus, ...]:
     return tuple(sorted(best.values(), key=lambda run: run.run_id))
 
 
+def _unknown(row: Standing, notes: Sequence[str]) -> Finding:
+    """Ruling 3's refusal, saying why when the run said (D913): a rate over labels nobody has
+    verified names the verification as its fix, since no rerun can compute it."""
+    named = f"{row.metric}@{row.slice_key} in {row.suite}/{row.subject} run {row.run_id}"
+    why = [note for note in notes if note.startswith(f"{row.metric}: ")]
+    if not why:
+        return Finding("metric", named, "UNKNOWN", _FIX["metric"])
+    detail = "UNKNOWN; " + "; ".join(note.removeprefix(f"{row.metric}: ") for note in why)
+    if any("unverified assertion" in note for note in why):
+        return Finding(
+            "metric", named, detail, _FIX["labels"].format(n=MIN_SLICE_N, suite=row.suite)
+        )
+    return Finding("metric", named, detail, _FIX["metric"])
+
+
 def hard_gates(register: Mapping[str, Any]) -> tuple[Gate, ...]:
     """Ruling 5: the register's hard blocking gates, or `QualityError` naming the first bad row."""
     rows = register.get("gate", [])
@@ -169,15 +191,9 @@ def check_release(connection: Any, register: Mapping[str, Any], *, strict: bool)
         if run.status == "unknown"
     ]
     board = [row for row in scoreboard(connection) if row.run_id in judged]
+    said = {run.run_id: run.not_measured for run in runs}
     findings += [
-        Finding(
-            "metric",
-            f"{row.metric}@{row.slice_key} in {row.suite}/{row.subject} run {row.run_id}",
-            "UNKNOWN",
-            _FIX["metric"],
-        )
-        for row in board
-        if row.standing == "UNKNOWN"
+        _unknown(row, said.get(row.run_id, ())) for row in board if row.standing == "UNKNOWN"
     ]
     findings += [
         Finding(

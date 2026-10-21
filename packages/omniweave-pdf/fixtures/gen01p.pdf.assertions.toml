@@ -1,0 +1,53 @@
+# gen01p.pdf.assertions.toml -- 13-quality.md section 8.1's assertions about gen01p.pdf.
+#
+# DRAFTED by Claude on 2026-10-21 (D913, a user ruling of 2026-10-21: Claude drafts, the
+# user verifies). Each claim was written from fixtures/gen/gen_5000p_pdf.py's own text
+# functions, heading_text, body_text and cell_text, never from a parse. None is checked:
+# a reviewer who confirms a row against the PDF adds `checked = "verified"`, or
+# `checked = "rejected"` for a wrong one. An unchecked row runs and never scores.
+schema = "omniweave.assertions/1"
+
+[[assertion]]
+id = "p1-heading"
+type = "present"
+page = 1
+text = "Article 1. Schedule and severance"
+slices = ["pdf/born_digital/contracts"]
+
+[[assertion]]
+id = "p1-heading-first"
+type = "order"
+page = 1
+before = "Article 1. Schedule and severance"
+after = "schedule severance inspection counterpart custody effective"
+slices = ["pdf/born_digital/contracts"]
+
+[[assertion]]
+id = "p1-first-fifth"
+type = "order"
+page = 1
+before = "schedule severance inspection counterpart custody effective"
+after = "deliverable assignment resolution quarterly termination liability"
+slices = ["pdf/born_digital/contracts"]
+
+[[assertion]]
+id = "p1-fifth-last"
+type = "order"
+page = 1
+before = "deliverable assignment resolution quarterly termination liability"
+after = "effective escalation breach priority threshold condition warranty exhibit"
+slices = ["pdf/born_digital/contracts"]
+
+[[assertion]]
+id = "p1-last-cell"
+type = "order"
+page = 1
+before = "effective escalation breach priority threshold condition warranty exhibit"
+after = "R0C0-0031"
+slices = ["pdf/born_digital/contracts"]
+
+[[assertion]]
+id = "no-further-article"
+type = "absent"
+text = "Article 2."
+slices = ["pdf/born_digital/contracts"]

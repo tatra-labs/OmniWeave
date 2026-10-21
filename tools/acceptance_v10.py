@@ -170,8 +170,9 @@ CRITERIA: tuple[Criterion, ...] = (
         Coverage.NONE,
         "eval/gates.toml carries no accuracy floor. `ow eval run --suite parse` now scores "
         "`order_acc`, `table_rel_acc` and `field_acc` from a fixture's `.assertions.toml` over "
-        "the Markdown `ow` serves (D912), but no fixture carries labels yet, only verified ones "
-        "score, and `structure_f1` and `doc_acc` have no harness",
+        "the Markdown `ow` serves (D912). D913 drafted 110 labels over 14 fixtures, every one "
+        "passing and none verified, so every rate is unknown until a reviewer signs them; "
+        "`structure_f1` and `doc_acc` have no harness",
     ),
     Criterion(
         "V10-4",
