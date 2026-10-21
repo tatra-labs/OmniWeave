@@ -286,7 +286,7 @@ def test_a_malformed_claim_batch_table_is_a_config_error_naming_the_knob() -> No
 def test_a_short_store_is_refused_rather_than_measured(tmp_path: Path) -> None:
     """`open_store` asserts the shipped four. A store with no `work_claimable` index would be
     measured as an index scan and reported as a scheduler."""
-    assert bench.SHIPPED_MIGRATIONS == 5
+    assert bench.SHIPPED_MIGRATIONS == 6
     bench.open_store(tmp_path)
     with pytest.raises(StoreError, match="migrations"):
         bench.open_store(tmp_path)

@@ -92,7 +92,7 @@ def owstore(tmp_path: Path) -> Path:
     connection = ow.connect(path)
     try:
         applied = migrate.apply_pending(connection, now_ns=NOW_NS)
-        assert len(applied) == 5
+        assert len(applied) == 6
         connection.execute(_RUN_SQL, {"run_id": RUN_ID})
         connection.execute(_UNIT_SQL, {"uri": URI})
         connection.execute(_EVIDENCE_SQL)

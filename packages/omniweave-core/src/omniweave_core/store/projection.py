@@ -18,11 +18,11 @@ return equal values whatever order their rows were written in.
 ## The readings this module takes where the box is silent
 
 1. **A document is its `doc_key`, never its `doc_ord`.** `doc_ord` is a surrogate (`doc_ord INTEGER
-   PRIMARY KEY`, corpus-local): an edited file is a new document with a new ordinal in an
-   incremental store and the first ordinal in a full rebuild of the same bytes. `doc_key` is
-   `sha256(normalised source bytes)[:16]` (03:162) and is equal in both. So the entity member's
-   `scope` is `"corpus"` or the owning document's `doc_key` in hex, and the anchor member's `doc`
-   is the defining document's.
+   PRIMARY KEY`, corpus-local): a file added late takes a later ordinal in an incremental store
+   than in a full rebuild of the same corpus. `doc_key` is the file's place in the corpus
+   (`identity.location_key`, D905; it was its content digest) and is equal in both. So the
+   entity member's `scope` is `"corpus"` or the owning document's `doc_key` in hex, and the
+   anchor member's `doc` is the defining document's.
 2. **An observed location is `(doc_key, addr)`, not a cite.** A cite (`d7#412`) carries the
    `doc_ord` and a counter that numbers parses, so it is a surrogate twice over; `addr` is
    type-free and a function of the parse (`block.addr`, 0001:240).

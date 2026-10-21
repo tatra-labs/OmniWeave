@@ -109,7 +109,7 @@ SELECT DISTINCT u.unit_uri, h.key FROM community_member AS cm
   JOIN mention AS m ON m.entity_id = e.entity_id AND m.state = 0
   JOIN block AS b ON b.block_id = m.block_id AND b.state = 0
   JOIN doc AS d ON d.doc_ord = b.doc_ord
-  JOIN unit AS u ON substr(u.content_sha256, 1, 32) = lower(hex(d.doc_key))
+  JOIN unit AS u ON u.unit_uri = d.uri
  WHERE cm.community_id = ? AND u.state <> 'out_of_scope'
  ORDER BY u.unit_uri, h.key
 """

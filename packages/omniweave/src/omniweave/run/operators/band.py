@@ -152,7 +152,7 @@ _UNITS_SQL: Final = """
 SELECT DISTINCT u.unit_uri FROM mention AS m
   JOIN block AS b ON b.block_id = m.block_id AND b.state = 0
   JOIN doc AS d ON d.doc_ord = b.doc_ord
-  JOIN unit AS u ON substr(u.content_sha256, 1, 32) = lower(hex(d.doc_key))
+  JOIN unit AS u ON u.unit_uri = d.uri
  WHERE m.entity_id = ? AND m.state = 0 AND u.state <> 'out_of_scope'
  ORDER BY u.unit_uri
 """

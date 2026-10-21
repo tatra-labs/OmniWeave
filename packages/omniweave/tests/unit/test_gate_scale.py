@@ -185,7 +185,7 @@ def test_the_roster_is_written_as_discovered_units_one_per_work_row(tmp_path: Pa
 
 def test_the_store_carries_all_four_migrations_and_a_short_one_is_refused(tmp_path: Path) -> None:
     """`build()` asserts the shipped set rather than trusting it. See `SHIPPED_MIGRATIONS`."""
-    assert gate.SHIPPED_MIGRATIONS == 5
+    assert gate.SHIPPED_MIGRATIONS == 6
     gate.build(tmp_path)
     with pytest.raises(StoreError, match="migrations"):
         gate.build(tmp_path)  # the second call finds four applied and applies none

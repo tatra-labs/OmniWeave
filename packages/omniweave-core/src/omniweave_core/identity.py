@@ -1,6 +1,7 @@
-"""The four identity recipes: one locator normaliser and three digests.
+"""The five identity recipes: one locator normaliser, one location key and three digests.
 
-`canonical_uri()` is the ONE function that produces a `unit_uri`; `content_digest()` is the
+`canonical_uri()` is the ONE function that produces a `unit_uri`; `location_key()` is a
+document's `doc_key`, its `unit_uri` relative to the corpus (D905); `content_digest()` is the
 merkle recipe every `block`/`segment` row carries; `config_digest()` and `semantic_digest()` are
 the two halves of the `semantic`/`operational` config axis. Naming rows is NOT this module's
 job -- `block_id`, `addr` and `cite` are L2's to mint (02-architecture.md section 2 row 4).
@@ -32,7 +33,13 @@ from omniweave_core.canonical import JsonValue, canonical, ow128, sha256_canonic
 if TYPE_CHECKING:  # pragma: no cover - `omniweave_ports` carries no behaviour to import
     from omniweave_ports.ports import Locator
 
-__all__ = ["canonical_uri", "config_digest", "content_digest", "semantic_digest"]
+__all__ = [
+    "canonical_uri",
+    "config_digest",
+    "content_digest",
+    "location_key",
+    "semantic_digest",
+]
 
 ConfigAxis = Literal["semantic", "operational"]
 
@@ -305,6 +312,36 @@ def _trim_partial_escape(text: str) -> str:
         if len(text) >= back and text[-back] == "%":
             return text[:-back]
     return text
+
+
+# --------------------------------------------------------------------------------------------
+# 1b. location_key -- a document's identity, from where it lives in its corpus (D905)
+# --------------------------------------------------------------------------------------------
+
+_LOCATION_DOMAIN = b"ow.location.1\x00"
+_DOC_KEY_BYTES = 16
+
+
+def location_key(unit_uri: str, source_root: str | os.PathLike[str]) -> bytes:
+    """A document's `doc_key`: its `unit_uri` relative to the corpus's source root, hashed.
+
+    **D905, a user ruling of 2026-10-19 (D40's option a): identity follows the file's location.**
+    03:162 printed `sha256(normalised source bytes)[:16]`, which made an edited file a new
+    document: a new `doc_ord`, and every cite into the old one retired, the unchanged blocks'
+    with the rest. 03:1340-1364's worked example keeps `d7` across the edit and lets `rebind()`
+    carry each unchanged block, and only a key the edit does not move can do that.
+
+    The path is relative to `canonical_uri(source_root)` so the key, and every golden header and
+    `.owdoc` name that prints it, does not depend on where the corpus is checked out. A unit
+    outside the root -- a URL, a connector id, a stream, a file named by an absolute path -- is
+    keyed by its whole `unit_uri`. The domain prefix keeps a location key from ever equalling a
+    content key, which a read-back artefact's document still uses. The path is the canonical
+    form, so it is case-folded where `canonical_uri` folds it (Windows), and a corpus moved from
+    a case-folding OS to a case-sensitive one keeps its keys for lowercase paths only.
+    """
+    root = canonical_uri(source_root).rstrip("/")
+    relative = unit_uri[len(root) + 1 :] if unit_uri.startswith(root + "/") else unit_uri
+    return hashlib.sha256(_LOCATION_DOMAIN + relative.encode("utf-8")).digest()[:_DOC_KEY_BYTES]
 
 
 # --------------------------------------------------------------------------------------------

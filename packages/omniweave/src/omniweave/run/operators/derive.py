@@ -146,11 +146,16 @@ SELECT u.unit_uri, u.content_sha256, IFNULL(u.bytes, 0) FROM unit AS u
                     AND operator = :reader)
  ORDER BY u.unit_uri
 """
-_DOC_SQL: Final = "SELECT doc_ord, gen FROM doc WHERE doc_key = ?"
+_DOC_SQL: Final = (
+    "SELECT doc_ord, gen FROM doc WHERE uri = ? AND json_extract(x, '$.\"x.ow.retired\"') IS NULL"
+    " ORDER BY doc_ord DESC LIMIT 1"
+)
+"""The unit's document: the live one at its path (D905), not the one its digest would key."""
 _PART_SQL: Final = """
 SELECT s.segment_id FROM segment AS s
   JOIN doc AS d ON d.doc_ord = s.doc_ord AND d.gen = s.gen
- WHERE d.doc_key = ? AND s.state = 0 AND substr(lower(hex(s.content_digest)), 1, 16) = ?
+ WHERE d.uri = ? AND json_extract(d.x, '$."x.ow.retired"') IS NULL
+   AND s.state = 0 AND substr(lower(hex(s.content_digest)), 1, 16) = ?
 """
 _BILLED: Final = {billed.pass_id: billed for billed in BILLED_PASSES}
 _PRODUCER_INSERT_SQL: Final = """
@@ -583,7 +588,7 @@ class DeriveOperator:
             unit = connection.execute(_UNIT_SQL, (unit_uri,)).fetchone()
             if unit is None or not unit[0]:
                 return ()
-            found = connection.execute(_DOC_SQL, (bytes.fromhex(str(unit[0]))[:16],)).fetchone()
+            found = connection.execute(_DOC_SQL, (unit_uri,)).fetchone()
             if found is None:
                 return ()
             return document_views(connection, int(found[0]), int(found[1]))
@@ -602,7 +607,7 @@ class DeriveOperator:
             unit = connection.execute(_UNIT_SQL, (row.unit_uri,)).fetchone()
             if unit is None or not unit[0] or not row.unit_part.startswith("seg:"):
                 return ()
-            key = (bytes.fromhex(str(unit[0]))[:16], row.unit_part.removeprefix("seg:"))
+            key = (row.unit_uri, row.unit_part.removeprefix("seg:"))
             found = connection.execute(_PART_SQL, key).fetchone()
             if found is None:
                 return ()

@@ -132,7 +132,11 @@ SELECT u.unit_uri, u.content_sha256, IFNULL(u.bytes, 0) FROM unit AS u
                 AND operator = 'derive.segment' AND status = 'done')
  ORDER BY u.unit_uri
 """
-_DOC_SQL: Final = "SELECT doc_ord FROM doc WHERE doc_key = ?"
+_DOC_SQL: Final = (
+    "SELECT doc_ord FROM doc WHERE uri = ? AND json_extract(x, '$.\"x.ow.retired\"') IS NULL"
+    " ORDER BY doc_ord DESC LIMIT 1"
+)
+"""The unit's document: the live one at its path (D905)."""
 
 
 @dataclass(slots=True)
@@ -271,7 +275,7 @@ def enqueue_billed(
         billed = by_id[candidate.card.identity.id]
         place = place_of(connection, billed)
         for uri, sha, size in units:
-            found = connection.execute(_DOC_SQL, (bytes.fromhex(str(sha))[:16],)).fetchone()
+            found = connection.execute(_DOC_SQL, (uri,)).fetchone()
             if found is None:
                 continue
             handed = list(

@@ -217,7 +217,7 @@ def connection(tmp_path: Path) -> Iterator[sqlite3.Connection]:
     conn = ow.connect(path)
     try:
         applied = migrate.apply_pending(conn, now_ns=NOW_NS)
-        assert len(applied) == 5, f"expected five migrations, applied {len(applied)}"
+        assert len(applied) == 6, f"expected six migrations, applied {len(applied)}"
         conn.execute("BEGIN IMMEDIATE")
         _seed(conn)
         yield conn
@@ -1291,6 +1291,16 @@ def test_a_second_pass_proposing_the_same_entity_converges_and_may_only_weaken_t
     assert first == again
     row = connection.execute("SELECT count(*), min(trust), min(title) FROM entity").fetchone()
     assert row == (1, int(Trust.AMBIGUOUS), "Acme Corp"), "trust fell; the title did not move"
+
+
+def test_a_retired_entity_proposed_again_is_live_again(connection: sqlite3.Connection) -> None:
+    """D905: an edit that deletes a defined term retires its entity, and one that restores it
+    proposes the same `(scope, etype, key)`; the row found is the retired one, so it revives."""
+    sink = _open(connection)
+    first = sink.entity(_org("e1"))
+    connection.execute("UPDATE entity SET state = 2 WHERE entity_id = ?", (int(first),))
+    assert sink.entity(_org("e2")) == first
+    assert connection.execute("SELECT state FROM entity").fetchall() == [(0,)]
 
 
 # ---------------------------------------------------------------------------------------------

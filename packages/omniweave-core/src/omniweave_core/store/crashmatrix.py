@@ -336,8 +336,8 @@ FIXTURE_URI: Final = "file:///corpus/crash-matrix.pdf"
 FIXTURE_DOC_KEY: Final = bytes.fromhex("c9a5") * 8
 """`doc.doc_key`, 16 bytes.
 
-A LITERAL and not a hash of anything. In production `doc_key` is `sha256(normalized source
-bytes)[:16]`; the matrix has no source bytes, and what it needs is a value that is identical in
+A LITERAL and not a hash of anything. In production `doc_key` is `identity.location_key()`
+(D905); the matrix has no corpus, and what it needs is a value that is identical in
 the interrupted and the uninterrupted store."""
 
 FIXTURE_CACHE_KEY: Final = "c" * CACHE_KEY_HEX_LEN
@@ -398,8 +398,8 @@ bytes and this is ten."""
 PR_POINTS: Final = 3
 """G21's assertion is *"kill-9 at three points"*; its nightly cell reads `full matrix`."""
 
-SHIPPED_MIGRATIONS: Final = 5
-"""`store/schema/migrations/` holds `0001..0005`. A fixture store that applied a different number
+SHIPPED_MIGRATIONS: Final = 6
+"""`store/schema/migrations/` holds `0001..0006`. A fixture store that applied a different number
 applied a different schema, and every column name below would be a guess."""
 
 _TRANSACTION_BEGIN: Final = 2
@@ -734,7 +734,7 @@ def seed(path: Path, cas: Path, *, now_ns: int, scenarios: Sequence[Scenario] = 
         if len(applied) != SHIPPED_MIGRATIONS:
             raise StoreError(
                 f"the crash-matrix fixture applied {len(applied)} migrations and the shipped set "
-                f"is four",
+                f"is {SHIPPED_MIGRATIONS}",
                 fix="ow store migrate",
             )
         connection.execute(_PRODUCER_SQL, FIXTURE_PRODUCER)

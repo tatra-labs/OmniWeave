@@ -103,7 +103,7 @@ The `ow` vendor segment is the framework's, so no third party can collide with i
 
 _VERSION_RE: Final = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 _DOC_KEY_RE: Final = re.compile(r"^[0-9a-f]{32}$")
-"""`doc_key` is `sha256(NORMALIZED source bytes)[:16]` -- 16 bytes, so 32 hex characters.
+"""`doc_key` is 16 bytes (`identity.location_key`, D905), so 32 hex characters.
 
 The width is `CREATE TABLE doc`'s comment in the store's `0001_init.sql`; hex rather than base64
 because 03-document-model.md:665 fixes hex as the wire spelling of every digest.

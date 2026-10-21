@@ -3,22 +3,24 @@
 D654. `doc_ord` was the row a document's first write inserted, so it was the order parses settled
 in, which as many threads as a class has workers race. `Ordinals.reserve` numbers the run's
 unparsed documents in `unit_uri` order once routing has finished, and a parse takes its
-document's. The end-to-end half, two drivers on their own workers, is
-`tests/conform/test_add_process.py`.
+document's. Since D905 a document is keyed by its place (`identity.location_key`), so two files
+holding the same bytes are two documents, and an edited file is a known one. The end-to-end half,
+two drivers on their own workers, is `tests/conform/test_add_process.py`.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import omniweave_core.store.sqlite as ow
 import pytest
 from omniweave.run.operators.parse import Ordinals
+from omniweave_core.identity import location_key
 from omniweave_core.store import migrate
 
 if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from collections.abc import Iterator
-    from pathlib import Path
 
 NOW_NS = 1_757_400_000_000_000_000
 
@@ -27,8 +29,14 @@ def _sha(name: str) -> str:
     return name.encode().hex().ljust(64, "0")[:64]
 
 
+ROOT = Path(__file__).resolve().parent / "corpus-root"
+"""No unit is under it, so each is keyed by its whole `unit_uri`; the ordering is the same."""
+
+
 def _key(name: str) -> bytes:
-    return bytes.fromhex(_sha(name))[:16]
+    """The document key of the unit named `name` (`c` is `file:///corpus/c.pdf`)."""
+    uri = next((u for u, *_ in UNITS if u.rsplit("/", 1)[-1].split(".")[0] == name), None)
+    return location_key(uri or f"file:///corpus/{name}.pdf", ROOT)
 
 
 UNITS = (
@@ -36,7 +44,7 @@ UNITS = (
     ("file:///corpus/c.pdf", "c", "pending"),
     ("file:///corpus/a.docx", "a", "pending"),
     ("file:///corpus/b.pdf", "b", "failed_transient"),
-    ("file:///corpus/d.docx", "a", "pending"),  # a's bytes again: one document
+    ("file:///corpus/d.docx", "a", "pending"),  # a's bytes again, at another place: two documents
     ("file:///corpus/e.xlsx", "e", "pending"),  # already stored, at doc_ord 5
     ("file:///corpus/f.pptx", "f", "done"),  # parsed by an earlier run
     ("file:///corpus/g.csv", "g", "claimed"),
@@ -105,11 +113,12 @@ def thread(tmp_path: Path) -> Iterator[ow.StoreThread]:
 def test_the_unparsed_documents_are_numbered_in_path_order_past_the_highest(
     thread: ow.StoreThread,
 ) -> None:
-    """a, b, c, g in path order from 6, whatever order their parses settle in. d is a's bytes,
-    so the same document; e is in the store and keeps 5; f's row is done and is not this run's."""
-    ordinals = Ordinals()
-    assert ordinals.reserve(thread) == 4
-    assert [ordinals.take(_key(name)) for name in "gcab"] == [9, 8, 6, 7]
+    """a, b, c, d, g in path order from 6, whatever order their parses settle in. d holds a's
+    bytes and is its own document, since a document is its place (D905); e is in the store and
+    keeps 5; f's row is done and is not this run's."""
+    ordinals = Ordinals(ROOT)
+    assert ordinals.reserve(thread) == 5
+    assert [ordinals.take(_key(name)) for name in "gcabd"] == [10, 8, 6, 7, 9]
     assert ordinals.take(_key("a")) == 6, "a parse retried in the same run takes the same number"
 
 
@@ -118,14 +127,14 @@ def test_a_document_the_reservation_did_not_see_takes_the_next_number_past_it(
 ) -> None:
     """A parse row written after `reserve` never takes a reserved number, which would make the
     reserved document fall back to SQLite's choice; it takes the next one, and keeps it."""
-    ordinals = Ordinals()
+    ordinals = Ordinals(ROOT)
     ordinals.reserve(thread)
-    assert ordinals.take(_key("late")) == 10
-    assert ordinals.take(_key("later")) == 11
-    assert ordinals.take(_key("late")) == 10
+    assert ordinals.take(_key("late")) == 11
+    assert ordinals.take(_key("later")) == 12
+    assert ordinals.take(_key("late")) == 11
 
 
 def test_before_reserve_nothing_is_reserved_and_sqlite_chooses() -> None:
     """The drain that finishes an interrupted run's parses runs before routing; `take` answers
     `None` there and `DocSink` leaves the rowid to SQLite."""
-    assert Ordinals().take(_key("a")) is None
+    assert Ordinals(ROOT).take(_key("a")) is None
