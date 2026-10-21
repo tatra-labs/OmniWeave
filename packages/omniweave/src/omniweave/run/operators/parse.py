@@ -120,6 +120,7 @@ from typing import TYPE_CHECKING, Any, BinaryIO, Final, cast
 from omniweave_core.drivers.licence import card_restriction_bits
 from omniweave_core.errors import ModelError, RouteError
 from omniweave_core.host import keystore, subproc
+from omniweave_core.identity import location_key
 from omniweave_core.limits import MAX_ASSET_TOTAL_BYTES, MAX_ENTRY_BYTES
 from omniweave_core.model.block import Capabilities
 from omniweave_core.model.records import Producer
@@ -244,7 +245,7 @@ def is_parse(operator: str) -> bool:
 # =============================================================================================
 
 _TO_PARSE_SQL: Final[str] = """
-SELECT u.content_sha256 FROM work AS w JOIN unit AS u USING (unit_uri)
+SELECT u.unit_uri FROM work AS w JOIN unit AS u USING (unit_uri)
  WHERE w.operator LIKE 'parse.%' AND w.status IN ('pending', 'claimed', 'failed_transient')
    AND u.content_sha256 IS NOT NULL
  ORDER BY w.unit_uri, w.unit_part
@@ -264,16 +265,19 @@ class Ordinals:
     every unit the run will parse is in `work` by then: `reserve` numbers the documents not yet in
     the store in `unit_uri` order, from the next free ordinal, and a parse takes its document's.
 
-    A unit that fails keeps its number unused, so a store's ordinals can have gaps, as they already
-    do after `ow corpus rm`. A document the reservation did not see -- one whose parse row was
+    A document is keyed by where it lives (`identity.location_key`, D905), so an edited file is a
+    known key and takes no new number: it is its document's next generation. A unit that fails
+    keeps its number unused, so a store's ordinals can have gaps, as they already do after
+    `ow corpus rm`. A document the reservation did not see -- one whose parse row was
     written after it -- takes the next number past the reserved ones. Before `reserve`, as in the
     drain that finishes an interrupted run before routing, nothing is reserved and `take` answers
     `None`, which is SQLite's own choice.
     """
 
-    __slots__ = ("_guard", "_next", "_reserved")
+    __slots__ = ("_guard", "_next", "_reserved", "_root")
 
-    def __init__(self) -> None:
+    def __init__(self, source_root: Path) -> None:
+        self._root = source_root
         self._reserved: dict[bytes, int] = {}
         self._next: int | None = None
         self._guard = threading.Lock()
@@ -283,12 +287,13 @@ class Ordinals:
         found = thread.run(
             ow.Unit(
                 name="parse.reserve_ordinals",
-                run=_to_number,
+                run=lambda connection: _to_number(connection, self._root),
                 cost_class="free",
                 wait_ms=ow.BATCH_WAIT_MS,
             )
         )
-        keys, start, known = cast("tuple[list[bytes], int, set[bytes]]", found)
+        uris, start, known = cast("tuple[list[str], int, set[bytes]]", found)
+        keys = [location_key(uri, self._root) for uri in uris]
         reserved: dict[bytes, int] = {}
         for key in keys:
             if key not in known and key not in reserved:
@@ -310,10 +315,11 @@ class Ordinals:
             return found
 
 
-def _to_number(connection: object) -> tuple[list[bytes], int, set[bytes]]:
-    """The doc keys of the run's parse rows in path order, the next ordinal, and those stored."""
+def _to_number(connection: object, root: Path) -> tuple[list[str], int, set[bytes]]:
+    """The run's parse rows' units in path order, the next ordinal, and the keys already stored."""
     rows = connection.execute(_TO_PARSE_SQL).fetchall()  # type: ignore[attr-defined]
-    keys = [bytes.fromhex(str(row[0]))[:16] for row in rows]
+    uris = [str(row[0]) for row in rows]
+    keys = [location_key(uri, root) for uri in uris]
     start = int(connection.execute(_NEXT_ORD_SQL).fetchone()[0])  # type: ignore[attr-defined]
     known: set[bytes] = set()
     distinct = list(dict.fromkeys(keys))
@@ -325,7 +331,7 @@ def _to_number(connection: object) -> tuple[list[bytes], int, set[bytes]]:
             chunk,
         )
         known.update(bytes(row[0]) for row in found)
-    return keys, start, known
+    return uris, start, known
 
 
 # =============================================================================================
@@ -977,7 +983,8 @@ class ParseOperator:
         refused = self._first_pass(fragment)
         if refused is not None:
             return self._failed(row, unit, producer, *refused)
-        doc_key = bytes.fromhex(unit.content_sha256)[:16]
+        #  D905: a document is where it lives in its corpus, so an edit is its next generation.
+        doc_key = location_key(unit.uri, self._ctx.roots.source)
         sink = DocSink(
             self._thread,
             producer_id=self._producer_id(producer),
@@ -1009,6 +1016,7 @@ class ParseOperator:
                         source_sha256=staged.raw_digest,
                         normalizer=staged.normalizer,
                         uri=unit.uri,
+                        content_sha256=unit.content_sha256,
                         source_bytes=unit.byte_len,
                         declared=declared(granted.card),
                         model_version=MODEL_VERSION,

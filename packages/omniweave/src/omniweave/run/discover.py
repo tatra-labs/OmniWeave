@@ -151,13 +151,19 @@ from omniweave_core.acquire import (
 )
 from omniweave_core.errors import RouteError
 from omniweave_core.events import EventKind
-from omniweave_core.store.fragment import RETIRED_X
+from omniweave_core.identity import location_key
+from omniweave_core.store.fragment import CONTENT_X, RETIRED_X
 from omniweave_core.store.reader import PartsRefused, parts_refused
 from omniweave_core.store.sqlite import BATCH_WAIT_MS, Unit
 from omniweave_core.work import MAX_ATTEMPTS_TODAY, STORE_NOW_MS
 from omniweave_ports.types import DriverError, FailureClass
 
-from omniweave.run.converge import retire_document_entities, unbind_document
+from omniweave.run.converge import (
+    retire_document_entities,
+    retire_undefined_entities,
+    unbind_document,
+    unbind_removed_names,
+)
 
 if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from collections.abc import Iterator, Mapping, Sequence
@@ -207,6 +213,7 @@ __all__ = [
     "acq_retryable",
     "acquire_pending",
     "acquire_unit",
+    "adopt_moved",
     "content_digest",
     "discover",
     "freshness",
@@ -217,6 +224,7 @@ __all__ = [
     "raw",
     "reenter_changed",
     "reenter_reparsed",
+    "rekey_documents",
     "reopen_changed_failures",
     "reopens_of",
     "reset_stale_acquiring",
@@ -1412,27 +1420,146 @@ REPLACED_SCAN_SQL: Final[str] = """
 SELECT d.doc_ord, d.gen FROM doc AS d JOIN unit AS u ON u.unit_uri = d.uri
  WHERE d.format <> 'owjob'
    AND json_extract(d.x, :retired) IS NULL
+   AND u.state = 'failed'
    AND u.content_sha256 IS NOT NULL
-   AND lower(hex(d.doc_key)) NOT IN (
-       SELECT substr(content_sha256, 1, 32) FROM unit WHERE content_sha256 IS NOT NULL)
+   AND substr(u.content_sha256, 1, 32) <> IFNULL(json_extract(d.x, :content), '')
 """
-"""The documents whose file now holds other bytes, and that no file holds any more. **D645.**
+"""The documents whose file now holds bytes that did not parse. **D645, narrowed by D905.**
 
-A document is its bytes: `doc_key` is `sha256(normalised source bytes)[:16]` (03:162). So an edited
-file is a new document, and the old one is still in the store, still answering queries with what
-the file used to say. Three conditions name it, and each is there for a case:
+Until D905 a document was its bytes, so an edited file was a new document and this retired the
+old one whatever happened to the new. Now a document is its place in the corpus
+(`identity.location_key`): an edit that parses is the same document at its next generation, and
+`rebind()` carries every block whose content did not move. What is left is the edit that failed.
+Its document still says what the file used to say, and gate 9 names the failure; serving the old
+text beside it would answer from bytes no file holds. Four conditions name it:
 
-- **its `uri` is a unit's, and that unit now holds other bytes.** A store whose documents no unit
-  rostered (a kit fixture, an archive restored by hand) is never touched;
-- **no unit holds its bytes**, whatever its state: a copy of the file elsewhere keeps it live, and
-  so does a deleted file, whose unit is `out_of_scope` with its digest kept. 05:370 and 08:1883
-  make deletion explicit (`ow store gc --unseen-for`) and never inferred, and this does not infer
-  one: the file is there, and says something else;
-- **not retired already** (`RETIRED_X`).
+- **its `uri` is a unit's, and that unit is `failed`.** A unit re-entered but not yet read is not,
+  and its document is served under gates 5 and 6 until the read; a store whose documents no unit
+  rostered is never touched;
+- **the unit's digest is not the head's** (`CONTENT_X`, the head's normalised digest): a unit that
+  failed on the bytes the head was parsed from, say a driver that regressed, keeps its document;
+- **not a synthetic `owjob`**, and **not retired already** (`RETIRED_X`).
 
-A unit re-entered but not yet read still holds its old digest, so its document stays until the
-read. A unit whose new bytes failed is `failed` with the new digest, so its old document goes, and
-gate 9 names the failure: the old text is not what the file says either."""
+A document written before D905 carries no `CONTENT_X` until `rekey_documents` backfills it, so the
+comparison treats a missing value as a mismatch only for a failed unit, which is the conservative
+reading: it retires text whose file said something else and failed."""
+
+_REKEY_SCAN_SQL: Final[str] = """
+SELECT d.doc_ord, d.doc_key, d.uri, json_extract(d.x, :content) FROM doc AS d
+  JOIN unit AS u ON u.unit_uri = d.uri
+ WHERE d.format <> 'owjob' AND json_extract(d.x, :retired) IS NULL
+ ORDER BY d.doc_ord DESC
+"""
+_REKEY_SQL: Final[str] = """
+UPDATE doc SET doc_key = :doc_key,
+       x = CASE WHEN json_extract(x, :content) IS NULL
+                THEN json_set(x, :content, :content_hex) ELSE x END
+ WHERE doc_ord = :doc_ord
+   AND NOT EXISTS (SELECT 1 FROM doc WHERE doc_key = :doc_key)
+"""
+
+
+def rekey_documents(thread: StoreThread, *, source_root: Path, wait_ms: int = BATCH_WAIT_MS) -> int:
+    """Give each live corpus document its location key. **D905.** Returns how many moved.
+
+    Before D905 a document's `doc_key` was its content digest's first sixteen bytes, so a store
+    written then finds an edited file under no key and would open a second document. This pass
+    runs before any parse of an ingest: every live document whose `uri` is a unit's, and whose key
+    is not `location_key(uri, source_root)`, takes that key, and its old key -- which WAS the
+    head's normalised digest -- becomes `CONTENT_X` if the row has none. The same pass moves every
+    key when the corpus's source root moves, since the key is relative to it.
+
+    Newest first, so where an older store holds two live rows for one path (an edit from before
+    D645) the newer takes the key and the other keeps its own, unread by any lookup by key. A
+    synthetic `owjob` and a read-back artefact's document have no unit, so they keep theirs: an
+    artefact's identity is its bytes. One transaction for the lot.
+    """
+    moved = 0
+    content, retired = f'$."{CONTENT_X}"', f'$."{RETIRED_X}"'
+
+    def run(connection: _Rows) -> None:
+        nonlocal moved
+        rows = connection.execute(
+            _REKEY_SCAN_SQL, {"content": content, "retired": retired}
+        ).fetchall()
+        for doc_ord, doc_key, uri, _held in rows:
+            key = location_key(str(uri), source_root)
+            if bytes(doc_key) == key:
+                continue
+            changed = connection.execute(
+                _REKEY_SQL,
+                {
+                    "doc_key": key,
+                    "doc_ord": int(doc_ord),
+                    "content": content,
+                    "content_hex": bytes(doc_key).hex(),
+                },
+            )
+            moved += changed.rowcount
+
+    thread.run(Unit(name="discover.rekey", run=run, cost_class="free", wait_ms=wait_ms))
+    return moved
+
+
+_MOVED_SQL: Final[str] = """
+SELECT d.doc_ord, d.doc_key, d.uri, json_extract(d.x, :content) FROM doc AS d
+  JOIN unit AS u ON u.unit_uri = d.uri
+ WHERE u.state = 'out_of_scope' AND d.format <> 'owjob'
+   AND json_extract(d.x, :retired) IS NULL AND json_extract(d.x, :content) IS NOT NULL
+ ORDER BY d.doc_ord
+"""
+_MOVED_TO_SQL: Final[str] = """
+SELECT unit_uri FROM unit
+ WHERE state <> 'out_of_scope' AND substr(content_sha256, 1, 32) = :content
+ ORDER BY unit_uri
+"""
+_ADOPT_SQL: Final[str] = (
+    "UPDATE doc SET doc_key = :doc_key WHERE doc_ord = :doc_ord"
+    " AND NOT EXISTS (SELECT 1 FROM doc WHERE doc_key = :doc_key)"
+)
+"""A place some document already stands at is not free: the rekey ran first, so that is every
+present unit that has a document, and the adoption tries the next."""
+
+
+def adopt_moved(thread: StoreThread, *, source_root: Path, wait_ms: int = BATCH_WAIT_MS) -> int:
+    """A file moved or renamed keeps its document. **D905.** Returns how many were adopted.
+
+    A document is its place (`identity.location_key`), so a renamed file is a new place, and a new
+    document beside the old one: deletion is never inferred (05:370, 08:1883), so the old one,
+    whose unit is now `out_of_scope` with its digest kept, would go on answering with the same
+    text. Before D905 the two shared a content key and were one document. So, after the walk and
+    before any parse: a live document whose file is gone, and a present unit holding the same
+    bytes (`CONTENT_X`) that no document stands at yet, are one file moved. The document takes the
+    new place's key, its parse there is its next generation, and `rebind()` carries every cite.
+
+    One document per unit and one unit per document, first by path, so a file copied twice before
+    the original went is adopted once. A file moved and edited in one run holds other bytes, is
+    not adopted, and is a new document, as it was before D905.
+    """
+    adopted = 0
+    content, retired = f'$."{CONTENT_X}"', f'$."{RETIRED_X}"'
+
+    def run(connection: _Rows) -> None:
+        nonlocal adopted
+        taken: set[str] = set()
+        for doc_ord, doc_key, at, held in connection.execute(
+            _MOVED_SQL, {"content": content, "retired": retired}
+        ).fetchall():
+            if bytes(doc_key) != location_key(str(at), source_root):
+                continue  # adopted already, by a pass whose parse has not run yet
+            for (uri,) in connection.execute(_MOVED_TO_SQL, {"content": str(held)}).fetchall():
+                if str(uri) in taken:
+                    continue
+                key = location_key(str(uri), source_root)
+                done = connection.execute(_ADOPT_SQL, {"doc_key": key, "doc_ord": int(doc_ord)})
+                if done.rowcount:
+                    taken.add(str(uri))
+                    adopted += 1
+                    break
+
+    thread.run(Unit(name="discover.adopt_moved", run=run, cost_class="free", wait_ms=wait_ms))
+    return adopted
+
 
 _RETIRE_HISTORY_SQL: Final[str] = """
 INSERT OR REPLACE INTO block_history(block_id, doc_ord, retired_gen, superseded_by, reason)
@@ -1487,15 +1614,17 @@ def retire_document(connection: _Rows, doc_ord: int, gen: int) -> None:
 
 
 def retire_replaced(thread: StoreThread, *, wait_ms: int = BATCH_WAIT_MS) -> int:
-    """Take each document no file holds any more out of every read. **D645.** Returns how many.
+    """Take each document whose file's new bytes failed out of every read. **D645, D905.**
+
+    Returns how many. `REPLACED_SCAN_SQL` says which, and why an edit that parses is no longer one.
 
     The rows are retired the way `rebind()` retires one (03:1259, 03:310): `state = 1` and a
     `block_history` row, never a `DELETE`, so a cite already shipped still resolves and says it was
     retired. `reason` is `source_deleted`, one of the four the DDL names, since the bytes it was
     parsed from are gone from their source; `superseded_by` is NULL, *"retired with no defensible
-    successor"*, because the new document is other bytes and `rebind()` matches within one
-    document only. Its segments go to `state = 1` with it, and `doc.x` records it (`RETIRED_X`),
-    which is what gate 9 and the coverage counts read. One transaction for the lot.
+    successor"*, because the file's new bytes produced no generation for `rebind()` to match.
+    Its segments go to `state = 1` with it, and `doc.x` records it (`RETIRED_X`), which is what
+    gate 9 and the coverage counts read. One transaction for the lot.
 
     **And out of the reference graph, in the same transaction** (D673): `converge.unbind_document`
     removes the document's anchors and occurrences and unbinds every link they made, so no reader
@@ -1509,7 +1638,9 @@ def retire_replaced(thread: StoreThread, *, wait_ms: int = BATCH_WAIT_MS) -> int
 
     def run(connection: _Rows) -> None:
         nonlocal retired
-        found = connection.execute(REPLACED_SCAN_SQL, {"retired": key}).fetchall()
+        found = connection.execute(
+            REPLACED_SCAN_SQL, {"retired": key, "content": f'$."{CONTENT_X}"'}
+        ).fetchall()
         for doc_ord, gen in found:
             retire_document(connection, int(doc_ord), int(gen))
             retired += 1
@@ -1518,6 +1649,11 @@ def retire_replaced(thread: StoreThread, *, wait_ms: int = BATCH_WAIT_MS) -> int
         ).fetchall():
             unbind_document(connection, int(doc_ord))
             retire_document_entities(connection, int(doc_ord))
+        #  D905: an edit is its document's next generation, so a link between two blocks it
+        #  carried can outlive the anchor that bound it; unbind every one the head does not define,
+        #  and retire every entity the head no longer defines.
+        unbind_removed_names(connection)
+        retire_undefined_entities(connection)
 
     thread.run(Unit(name="discover.retire_replaced", run=run, cost_class="free", wait_ms=wait_ms))
     return retired
@@ -1530,7 +1666,12 @@ UPDATE unit SET indexed_at_ns = :at_ns WHERE unit_uri = :unit_uri AND state = 's
 
 `UNCHANGED_SQL`'s write for a unit that is not being acquired. D645."""
 
-_SOURCE_DIGEST_SQL: Final[str] = "SELECT source_sha256 FROM doc WHERE doc_key = :doc_key"
+_SOURCE_DIGEST_SQL: Final[str] = (
+    "SELECT source_sha256 FROM doc WHERE uri = :uri AND json_extract(x, :retired) IS NULL"
+    " ORDER BY doc_ord DESC LIMIT 1"
+)
+"""The head document of a unit: since D905 the one at the unit's path, not the one its old digest
+named. A document written before D905 is found the same way, so the check needs no rekey."""
 
 
 def _raw_sha256(path: Path) -> bytes | None:
@@ -1551,12 +1692,14 @@ def _confirmed_unchanged(
     """Of `units`, those whose raw bytes hash to their head document's `source_sha256`. D645."""
     if not units:
         return frozenset()
-    keys = {uri: bytes.fromhex(str(stored.content_sha256))[:16] for uri, stored in units}
     found: dict[str, bytes] = {}
+    retired = f'$."{RETIRED_X}"'
 
     def run(connection: _Rows) -> None:
-        for uri, key in keys.items():
-            row = connection.execute(_SOURCE_DIGEST_SQL, {"doc_key": key}).fetchone()
+        for uri, _stored in units:
+            row = connection.execute(
+                _SOURCE_DIGEST_SQL, {"uri": uri, "retired": retired}
+            ).fetchone()
             if row is not None and row[0] is not None:
                 found[uri] = bytes(row[0])
 

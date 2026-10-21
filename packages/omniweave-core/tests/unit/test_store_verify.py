@@ -149,7 +149,7 @@ def blank(tmp_path: Path) -> Path:
     connection = ow.connect(path)
     try:
         applied = migrate.apply_pending(connection, now_ns=NOW_NS)
-        assert len(applied) == 5, f"expected five migrations, applied {len(applied)}"
+        assert len(applied) == 6, f"expected six migrations, applied {len(applied)}"
     finally:
         connection.close()
     return path
@@ -437,7 +437,8 @@ def _add_unit(path: Path, content_sha256: str) -> None:
 def test_a_content_sha256_altered_in_the_row_disagrees_with_the_doc_key_it_produced(
     store: Path,
 ) -> None:
-    """05:258 -- one normalisation, two digests of it, and they cannot disagree."""
+    """05:258 -- one normalisation, two digests of it, and they cannot disagree. The fixture's
+    document predates D905, so it carries no `x.ow.content` and its key is still the digest."""
     _add_unit(store, ("07" * 16) + ("ff" * 16))  # the right doc_key prefix, then anything.
     assert _run(store, VerifyClause.CONTENT_SHA256).state is ClauseState.PASSED
 
@@ -445,8 +446,34 @@ def test_a_content_sha256_altered_in_the_row_disagrees_with_the_doc_key_it_produ
     result = _run(store, VerifyClause.CONTENT_SHA256)
     assert result.state is ClauseState.FAILED
     assert result.counts["unit_doc_pairs"] == 1
-    assert "doc_key" in result.findings[0].detail
+    assert "was parsed from " + "07" * 16 in result.findings[0].detail
     assert result.findings[0].where == "file:///corpus/contract.pdf"
+
+
+def test_a_location_keyed_document_is_compared_by_its_content_fact(store: Path) -> None:
+    """D905: the key is the file's place, and `x.ow.content` carries the digest it used to."""
+    _add_unit(store, ("0e" * 16) + ("ff" * 16))
+    _corrupt(
+        store,
+        "UPDATE doc SET doc_key = X'" + "ab" * 16 + "', "
+        "x = json_set(x, '$.\"x.ow.content\"', '" + "0e" * 16 + "')",
+    )
+    assert _run(store, VerifyClause.CONTENT_SHA256).state is ClauseState.PASSED
+    _corrupt(store, "UPDATE doc SET x = json_set(x, '$.\"x.ow.content\"', '" + "07" * 16 + "')")
+    assert _run(store, VerifyClause.CONTENT_SHA256).state is ClauseState.FAILED
+
+
+def test_a_retired_document_is_not_compared(store: Path) -> None:
+    """D905: a retired document's file says something else, which is why it was retired."""
+    _add_unit(store, "0e" * 32)
+    _corrupt(
+        store,
+        "UPDATE doc SET x = json_set(x, '$.\"x.ow.retired\"', json_object('reason', "
+        "'source_deleted', 'gen', 1))",
+    )
+    result = _run(store, VerifyClause.CONTENT_SHA256)
+    assert result.state is ClauseState.PASSED
+    assert result.counts["unit_doc_pairs"] == 0
 
 
 def test_a_content_sha256_that_is_not_64_hex_characters_is_caught_by_shape(store: Path) -> None:

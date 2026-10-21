@@ -19,7 +19,8 @@ caller.
 2. **The bytes read are the sealed ones**, out of the corpus CAS by the row's `sha256`. The copy
    placed on `output_root` is not read, because a user may have saved over it. The document's URI
    is that placed path, the one an ingest of the output root would give the same bytes, and its
-   key is the content's (`sha256[:16]`), as an ingest's is.
+   key is the content's (`sha256[:16]`): an artefact's identity is its bytes, where an ingested
+   file's has been its place since D905 (`identity.location_key`).
 3. **Where the read_back runs is the caller's**, as a compile's `Lowering` is (D772). A `Reading`
    takes the unit and returns the parse's one `doc_fragment`. `in_process()` runs the driver here,
    the tests' seam. `ReadWorker` runs it in an S4 worker launched for one read and stopped after

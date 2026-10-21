@@ -112,6 +112,7 @@ if TYPE_CHECKING:
     from omniweave_core.store import DocSink
 
 __all__ = [
+    "CONTENT_X",
     "DANGLING_TMP",
     "DECRYPTED_X",
     "OUT_OF_SCOPE",
@@ -133,9 +134,17 @@ DECRYPTED_X: Final[str] = "x.ow.decrypted"
 """05:476's `doc.x.ow.decrypted`: the document was opened with a password (ADR-15 D15.4)."""
 
 RETIRED_X: Final[str] = "x.ow.retired"
-"""`doc.x.ow.retired`: no file holds this document's bytes any more, because the one it came from
-was edited, so its head rows are retired and no Channel or gate reads it (D645). The host writes
-it, never a driver, and a later parse of the same bytes rewrites `doc.x` and clears it."""
+"""`doc.x.ow.retired`: no file holds what this document says any more, so its head rows are
+retired and no Channel or gate reads it (D645). Since D905 that is a file whose new bytes failed
+to parse: an edit that parses is the same document at its next generation. The host writes it,
+never a driver, and a later parse of the file rewrites `doc.x` and clears it."""
+
+CONTENT_X: Final[str] = "x.ow.content"
+"""`doc.x.ow.content`: the first sixteen bytes of the head's normalised source digest, lowercase
+hex -- the unit's `content_sha256[:32]`. **D905.** It was the `doc_key` until identity moved to
+the file's location (`identity.location_key`), and what the key used to answer -- which bytes is
+the head? -- is still asked, by `run.discover.retire_replaced` and `ow store verify`. The host
+writes it, never a driver."""
 
 RECORD_KINDS: Final[frozenset[str]] = frozenset(
     {"doc", "part", "page", "block", "asset", "block_asset", "diag", "end"}
@@ -161,8 +170,10 @@ _SEVERITY: Final[dict[str, Literal["error", "warning", "info"]]] = {
 class FragmentDoc:
     """What the HOST knows about the document before the fragment is read. Never the driver's.
 
-    `doc_key` is `sha256(NORMALIZED source bytes)[:16]` (03:162), `source_sha256` the raw digest
-    beside it, `declared` the card's `[capability.parse]` copied at parse time (03 section 2.9).
+    `doc_key` is the document's identity: `identity.location_key()` for a corpus file (D905), the
+    artefact's digest for a read-back. `source_sha256` is the raw digest, `content_sha256` the
+    unit's normalised one when the host has it (`CONTENT_X`), `declared` the card's
+    `[capability.parse]` copied at parse time (03 section 2.9).
     The fragment's `doc` record supplies `format`, `media_type` and `page_count`, which are the
     driver's reading of the bytes and are cross-checked by nothing here -- detection already wrote
     the unit's own, and `route_decision` recorded which the router believed.
@@ -176,6 +187,7 @@ class FragmentDoc:
     declared: Capabilities
     model_version: str
     format_evidence: Mapping[str, Any] = MappingProxyType({})
+    content_sha256: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -340,7 +352,10 @@ def _doc_record(first: Mapping[str, Any], doc: FragmentDoc) -> DocRecord:
     framework's (03:2745), so the host writes the key and the driver proposes the fact.
     """
     page_count = first.get("page_count")
-    extra = MappingProxyType({DECRYPTED_X: True} if first.get("decrypted") is True else {})
+    facts: dict[str, Any] = {DECRYPTED_X: True} if first.get("decrypted") is True else {}
+    if doc.content_sha256:
+        facts[CONTENT_X] = doc.content_sha256[:32].lower()
+    extra = MappingProxyType(facts)
     return DocRecord(
         doc_ord=0,
         doc_key=doc.doc_key,  # type: ignore[arg-type]

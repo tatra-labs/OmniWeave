@@ -59,13 +59,13 @@ THE THREE PROPERTIES THE PLAN CLAIMS, AND WHERE EACH IS MADE TRUE
 
 WHAT AN ARTEFACT IS CALLED, AND WHY IT IS NOT NAMED BY `doc_ord`
 -----------------------------------------------------------------
-`<doc_key hex>.owdoc`, lower-case, in the caller's directory. `doc_key` is
-`sha256(NORMALIZED source bytes)[:16]` (`0001_init.sql:150`) and is the same value in every store
-that ever ingested those bytes; `doc_ord` is *"corpus-local; the number inside a `cite`"* (:149)
-and would name the same document differently in two corpora, which is precisely the property
-07:3078 says an archive must not carry. The file name is therefore a fact about the document and
-not about this store, and two exports of one corpus from two machines produce the same set of
-names.
+`<doc_key hex>.owdoc`, lower-case, in the caller's directory. `doc_key` is the document's place in
+its corpus (`identity.location_key`, D905; `0001_init.sql:150` printed its content digest) and is
+the same value in every store that ingested that corpus; `doc_ord` is *"corpus-local; the number
+inside a `cite`"* (:149) and would name the same document differently in two corpora, which is
+precisely the property 07:3078 says an archive must not carry. The file name is therefore a fact
+about the document and not about this store, and two exports of one corpus from two machines
+produce the same set of names.
 
 WHAT IS EXPORTED, AND THE FOUR THINGS THAT ARE NOT
 ----------------------------------------------------

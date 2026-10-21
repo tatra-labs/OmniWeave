@@ -1,2 +1,2 @@
-owpages/1  corpus=core@2026.10  doc=89809849fb44d8bfde042aa447e6f913  driver=parse.text.builtin@1  schema_v=1
+owpages/1  corpus=core@2026.10  doc=5ab93961d38e50931e214e708217476b  driver=parse.text.builtin@1  schema_v=1
 p0000 n=8 kind{document:1,heading:1,list:1,list_item:2,paragraph:3} layer{body:8} trust{extracted:8} quote{normalized:7,synthetic:1} cdig=a3bf4ef4 ldig=4864729a diag{}

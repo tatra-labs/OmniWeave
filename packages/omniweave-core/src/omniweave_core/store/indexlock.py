@@ -29,7 +29,7 @@ and `_escape_uri` below closes the rest.
 Every column is a stored field, so the receipt is re-derivable from the store by
 `ow store verify --lock` and never needs a re-parse. Each has a definition site:
 
-* `doc_key` -- `doc.doc_key`, `BLOB NOT NULL UNIQUE`, `sha256(NORMALIZED source bytes)[:16]`, so 16
+* `doc_key` -- `doc.doc_key`, `BLOB NOT NULL UNIQUE`, `identity.location_key()` since D905, so 16
   bytes and 32 hex characters (`0001_init.sql:150`).
 * `gen` -- `doc.gen`, *"the parse generation, and nothing else"* (07:2919, `0001_init.sql:158`).
 * `status` -- `DocRecord.status: Literal["ok","partial","failed","skipped"]`
@@ -314,7 +314,7 @@ MARKERS: Final = ("<", "=", ">")
 """The three conflict-marker characters, in git's order: ours, separator, theirs."""
 
 _KEY_HEX_LEN: Final = 32
-"""`doc_key` is `sha256(...)[:16]` -- 16 bytes, 32 hex characters (`0001_init.sql:150`)."""
+"""`doc_key` is 16 bytes, 32 hex characters (`0001_init.sql:150`; `identity.location_key`)."""
 
 _DIGEST_HEX_LEN: Final = 32
 """`content_digest` is an `ow128`: *"32 hex chars (a 16-byte `ow128`)"*, 03-document-model.md:665.
