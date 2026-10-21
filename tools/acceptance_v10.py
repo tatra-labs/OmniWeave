@@ -430,8 +430,8 @@ CRITERIA: tuple[Criterion, ...] = (
         Coverage.PARTIAL,
         "the planted defects are synthetic stand-ins for sec-exhibit-scan and "
         "xlsx-merged-4m-cells, which are not in the tree; cell_rel runs over a hand-built Doc's "
-        "Grid (D877), and no suite yet hands judge() a parsed Doc; hallucination_rate == 1/1 is "
-        "not asserted, and 13:1096 defines it over field assertions, not present ones",
+        "Grid (D877), and no suite yet hands judge() a parsed Doc (13:1262's hallucination_rate "
+        "claim was dropped by ruling, D900: 13:1096 defines it over field assertions)",
     ),
     Criterion(
         "V10-17",
