@@ -618,7 +618,7 @@ jobs:
       # :1360 is "`.github/workflows/` holds exactly two files: `ci.yml` and `release.yml`", which
       # the `gates` job asserts above and fails on a third. Section 6.5's nightly cells therefore
       # have to be jobs inside this file with a `schedule:` trigger and a `runs-on: ow-bench-1`
-      # label, and none of that exists: there is no `schedule:` in `on:` and no nightly job. That
+      # label. D908 added the `schedule:`; no job runs on ow-bench-1, and none is the bench. That
       # is a real gap against 16-roadmap.md:343 ("nightly on ow-bench-1 is first green in P2, with
       # store.bytes_per_block and rss.gen5000p_peak_bytes as its first two budgets") and it is
       # recorded here rather than papered over, because the two steps below are deliberately NOT
@@ -781,10 +781,16 @@ jobs:
         # This is the REPLAY half. The search half is atheris, which the root pyproject.toml pins
         # `sys_platform == 'linux'` because it needs clang and publishes no Windows wheel
         # (11-repo-layout.md:1480) -- so six of these nine cells cannot install it at all. Running
-        # it is 14-security.md:477's "nightly", and there is no `schedule:` in this file's `on:`
-        # block; that gap is the same one recorded above for ow-bench-1 and it is stated rather
-        # than papered over with a job that would never fire.
+        # it is 14-security.md:477's "nightly". D908's `schedule:` replays this corpus nightly too,
+        # but no job runs the search half on it; that gap is stated rather than papered over with
+        # a job that would never fire.
         run: uv run pytest fuzz/ -q
+      - name: "portability -- this cell's compiled parts against eval/portability.toml (V10-10)"
+        # D914. 00-vision.md's V10-10 asks the 40-unit golden's two compiles to be equal at part
+        # "on all 9 cells", and D903 committed the parts table from two cells matched by hand.
+        # Each cell now compiles every register target's golden and holds its members to the
+        # committed table, so a cell that drifts fails by name. Under a second a cell.
+        run: uv run tools/ow_portability.py
 
       - name: "G10 -- cold start against this OS's baseline, 25% band plus a hard module count"
         # The HARD assertion is the module count from "python -X importtime -c 'import
