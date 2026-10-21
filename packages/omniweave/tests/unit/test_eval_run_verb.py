@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -130,12 +131,35 @@ def test_render_json_prints_one_object(tmp_path: Path) -> None:
     assert len(row["run_id"]) == 32
 
 
+LABELS_FIX = (
+    '              fix: verify its labels: write checked = "verified" on each .assertions.toml '
+    "row you confirm against its document, 30 or more a slice, then ow eval run --suite parse"
+)
+DRAFTED = [
+    "  metric      order_acc@__macro__ in parse/parse.office.anydoc run <id>: UNKNOWN; 15 "
+    "unverified assertion(s) ran and were not scored (13:1022)",
+    LABELS_FIX,
+    "  metric      order_acc@__macro__ in parse/parse.pdf.pdfium run <id>: UNKNOWN; 60 "
+    "unverified assertion(s) ran and were not scored (13:1022)",
+    LABELS_FIX,
+    "  metric      table_rel_acc@__macro__ in parse/parse.office.anydoc run <id>: UNKNOWN; 10 "
+    "unverified assertion(s) ran and were not scored (13:1022)",
+    LABELS_FIX,
+]
+"""D913: the drafted labels' three rates, each refused and naming the verification as its fix."""
+
+
+def _masked(out: str) -> list[str]:
+    return [re.sub(r" run [0-9a-f]{32}", " run <id>", line) for line in out.splitlines()]
+
+
 def test_release_check_after_parse_alone_wants_the_other_four_gates(tmp_path: Path) -> None:
     store = tmp_path / "x.oweval"
     assert _eval("run", "--suite", "parse", "--oweval", str(store))[0] == 0
     code, out, _ = _eval("release-check", "--oweval", str(store))
     assert code == 1
-    assert out.splitlines() == [
+    assert _masked(out) == [
+        *DRAFTED,
         "  unmeasured  hard gate degradation_detection@*: no absence run measured it",
         "              fix: run the gate's suite: ow eval run --suite absence",
         "  unmeasured  hard gate citability_violations@*: no retrieve run measured it",
@@ -144,12 +168,12 @@ def test_release_check_after_parse_alone_wants_the_other_four_gates(tmp_path: Pa
         "              fix: run the gate's suite: ow eval run --suite roundtrip",
         "  unmeasured  hard gate cell_identity@*: no portability run measured it",
         "              fix: run the gate's suite: ow eval run --suite portability",
-        "ow eval release-check: refused, 4 finding(s); 2 latest run(s), 0 superseded,"
+        "ow eval release-check: refused, 7 finding(s); 2 latest run(s), 0 superseded,"
         " 5 hard gate(s)",
     ]
 
 
-def test_every_built_suite_by_default_and_release_check_then_passes(
+def test_every_built_suite_by_default_and_release_check_refuses_only_the_drafted_labels(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     handed = _fake_suite(monkeypatch, True, True)
@@ -191,11 +215,13 @@ def test_every_built_suite_by_default_and_release_check_then_passes(
         "ow eval run --suite parse,absence,retrieve,roundtrip,portability: 9 run(s) written to "
     )
     assert handed == [admission.admit]
-    assert _eval("release-check", "--oweval", str(store)) == (
-        0,
-        "ow eval release-check: ok; 9 latest run(s), 0 superseded, 5 hard gate(s)\n",
-        "",
-    )
+    code, out, err = _eval("release-check", "--oweval", str(store))
+    assert (code, err) == (1, "")
+    assert _masked(out) == [
+        *DRAFTED,
+        "ow eval release-check: refused, 3 finding(s); 9 latest run(s), 0 superseded,"
+        " 5 hard gate(s)",
+    ], "D913: every hard gate holds; only the unverified labels' rates refuse"
 
 
 def test_a_failed_element_is_printed_and_release_check_refuses_it(

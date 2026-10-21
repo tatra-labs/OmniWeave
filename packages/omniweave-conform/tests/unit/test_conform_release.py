@@ -275,6 +275,30 @@ def test_an_unknown_metric_refuses_once_even_under_a_hard_gate(tmp_path: Path) -
     assert {f.why for f in judged.findings} == {"UNKNOWN"}
 
 
+def test_an_unknown_metric_says_what_its_run_said_and_unverified_labels_name_their_fix(
+    tmp_path: Path,
+) -> None:
+    """D913: a rate over labels nobody verified cannot be computed by running it again."""
+    run = replace(
+        _PARSE,
+        not_measured=(
+            "order_acc: 12 unverified assertion(s) ran and were not scored (13:1022)",
+            "table_rel_acc: below min_slice_n in every slice",
+            "span_exact_rate: vacuous",
+        ),
+    )
+    metrics = (_unknown("r1", "order_acc"), _unknown("r1", "table_rel_acc"), _CLEAN[1][1])
+    found = _judge(tmp_path, (run, _ABSENCE), metrics).findings
+    order, table = [f for f in found if f.kind == "metric"]
+    assert order.why == "UNKNOWN; 12 unverified assertion(s) ran and were not scored (13:1022)"
+    assert order.fix == (
+        'verify its labels: write checked = "verified" on each .assertions.toml row you confirm '
+        "against its document, 30 or more a slice, then ow eval run --suite parse"
+    )
+    assert table.why == "UNKNOWN; below min_slice_n in every slice"
+    assert table.fix == "fix what kept the metric from computing, then run its suite again"
+
+
 def test_withheld_and_unranked_standings_are_not_outcomes(tmp_path: Path) -> None:
     runs = (
         replace(_PARSE, witness="self"),

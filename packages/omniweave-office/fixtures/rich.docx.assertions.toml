@@ -1,0 +1,56 @@
+# rich.docx.assertions.toml -- 13-quality.md section 8.1's assertions about rich.docx.
+#
+# DRAFTED by Claude on 2026-10-21 (D913, a user ruling of 2026-10-21: Claude drafts, the
+# user verifies). Each claim was read off fixtures/gen/gen_office_fixtures.py's docx_rich(),
+# never off a parse. None is checked: a reviewer who confirms a row against the file adds
+# `checked = "verified"`, or `checked = "rejected"` for a wrong one. An unchecked row runs
+# and never scores.
+schema = "omniweave.assertions/1"
+
+[[assertion]]
+id = "title"
+type = "present"
+page = 1
+text = "Quarterly report"
+slices = ["office/docx"]
+
+[[assertion]]
+id = "title-figures"
+type = "order"
+page = 1
+before = "Quarterly report"
+after = "Figures"
+slices = ["office/docx"]
+
+[[assertion]]
+id = "figures-list"
+type = "order"
+page = 1
+before = "Figures"
+after = "first item"
+slices = ["office/docx"]
+
+[[assertion]]
+id = "list-order"
+type = "order"
+page = 1
+before = "first item"
+after = "second item"
+slices = ["office/docx"]
+
+[[assertion]]
+id = "q1-revenue"
+type = "table"
+page = 1
+cell = "Q1"
+right = "120"
+up = "Quarter"
+slices = ["office/docx"]
+
+[[assertion]]
+id = "merged-total"
+type = "table"
+page = 1
+cell = "Total across both quarters"
+up = "Q1"
+slices = ["office/has_merges=1"]

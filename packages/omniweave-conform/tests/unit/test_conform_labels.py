@@ -262,3 +262,19 @@ def test_a_quarantined_parse_is_refused_never_an_empty_document(tmp_path: Path) 
     forged = dataclasses.replace(parse, fixture=dataclasses.replace(fixture, digest="0" * 64))
     with pytest.raises(QualityError, match=r"the store quarantined parse\.pdf\.pdfium's parse"):
         labels.candidate(forged, found.card, doc=GEN01P.name, workdir=tmp_path / "candidate")
+
+
+@pytest.mark.parametrize(
+    "path",
+    sorted(REPO.glob("packages/*/fixtures/**/*.assertions.toml")),
+    ids=lambda p: p.name,
+)
+def test_every_committed_labels_file_loads_beside_its_fixture(path: Path) -> None:
+    """D913: a malformed label would refuse the whole parse suite, so each is held here."""
+    fixture = path.with_name(path.name.removesuffix(labels.SUFFIX))
+    assert fixture.is_file(), f"{path.name} labels no fixture"
+    loaded = labels.load(
+        fixture, fixtures_dir=fixture.parent, corpus_id="committed", corpus_version="v"
+    )
+    assert loaded, f"{path.name} holds no assertion"
+    assert all(one.slices for one in loaded), "a committed label names its slice"
