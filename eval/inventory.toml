@@ -75,7 +75,7 @@ properties = 0
 
 [[area]]
 area = "omniweave-target-deck/unit"
-tests = 2
+tests = 13
 properties = 0
 
 [[area]]

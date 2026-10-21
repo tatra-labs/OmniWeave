@@ -1,0 +1,99 @@
+# compile.deck.native — a v1 target, shipped at release 1 with [compile] implemented = false by a
+# user ruling of 2026-10-21 (D910), which took 16-roadmap.md R-Q8's named fallback: "demotes to
+# `[compile] implemented = false` like `video`". The seam stays as 09-generation.md section 12
+# fixes it -- html / owdeck/1, unit `page`, `data-ow-cite` citations, runtime rules, a Toolchain
+# under toolchains/deck/ on node >= 20 -- so building W9.5 later is filling in this card, not
+# redesigning it.
+card_schema = 1
+
+[driver]
+id = "compile.deck.native"
+port = "compile/1"
+version = "0.1.0"
+schema_version = 1
+entrypoint = "omniweave_target_deck.driver:DeckCompiler"
+granularity = "document"
+replay_class = "unpinnable"            # a browser render; `render` is the class it would promise
+title = "owdeck/1 to an HTML deck (not implemented at release 1)"
+summary = "The Toolchain target's seam, carded and refusing: ow out targets prints why it is not implemented."
+
+[capability]
+consumes = ["il_bundle", "asset"]
+produces = ["artifact", "receipt"]
+
+[capability.compile]
+determinism = ["part", "render"]       # `part` is every target's floor; `render` is 09 section
+                                       #   12's second class for a deck
+assets = ["image", "font"]
+
+[compile]
+# An unknown key here is a HARD ERROR: an older core must not drop `implemented = false`.
+target = "deck"
+unit = "page"
+carrier = "html"
+il = "owdeck/1"
+constructs = ""                        # 09 section 12 budgets ~90 rows; none is written until
+constructs_digest = ""                 #   the Toolchain that renders them exists
+citations = "embedded"                 # `data-ow-cite` on every citable element (09 section 12)
+provenance_part = ""
+bake = "unavailable"
+measure = "none"                       # a deck measures at runtime, in the Toolchain's browser
+runtime_rules = true                   # `getBoundingClientRect` capacity, off-canvas measure
+toolchain = "deck"                     # toolchains/deck/, installed by `ow targets install deck`
+implemented = false
+max_units = 200
+reason = "the deck Toolchain (16-roadmap.md W9.5: node >= 20 under toolchains/deck/, the owdeck/1 construct table and the parse.deck.native reader) is not built for release 1; a user ruling of 2026-10-21 took R-Q8's fallback, and pptx is the slide target that is implemented"
+
+[compile.round_trip]
+read_back = ""                         # parse.deck.native, the reader 09 names, is W9.5b's and
+project = false                        #   unbuilt, so no law here is claimed against a reader
+fidelity = "structure"                 # 09 section 12's deck column
+laws = ["r1", "r2", "r3", "r5", "r6", "r7"]
+kind_map = ""
+
+[hardware]
+gpu            = "none"
+vram_gb_min    = 0
+ram_gb_min     = 1
+cpu_arch       = ["x86_64", "aarch64"]
+os             = ["linux", "darwin", "windows"]
+needs_network  = false
+needs_binaries = ["node"]
+imports_torch  = false
+install_bytes  = 1000000               # 09 section 12: "a 1 MB manifest plus a $OMNIWEAVE_HOME bundle"
+services       = []
+
+[isolation]
+requires        = "subproc"
+memory_mb       = 2048
+progress_ms     = 15000
+wall_ms_hard    = 600000
+batch_max_units = 200
+
+[limits]
+max_input_bytes = 4194304
+max_parts       = 200
+
+[cost.model]                       # D889: the kit's cost suite requires one; a card with no
+                                   #   price is one the router cannot read, not a free one.
+class   = "free"
+shape   = "linear_per_part"
+unit    = "part"                   # One IL unit of the plan: a slide, a section, a page.
+per_part    = { }                  # 12-performance.md budgets no deck unit; `ow conform`
+                                   #   writes the measured half rather than a guess here.
+per_session = { }
+scaling     = { key = "plan.units", exponent = 1.0, reference = 1 }
+tokens_out_p95_multiple = 1.0
+max_retries = 0                    # The only value a first release accepts.
+
+[licence.code]
+spdx = "Apache-2.0"
+redistribution = "allowed"
+output_share_alike = false
+competitor_bar = false
+requires_credential = false
+revenue_gate_usd = 0
+mau_gate = 0
+territory_excluded = []
+field_of_use_excluded = []
+attribution_per_output = false

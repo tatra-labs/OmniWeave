@@ -261,7 +261,7 @@ def test_a_corpus_with_no_store_is_not_found(project: Path) -> None:
 
 
 def test_an_unknown_target_is_its_code(project: Path) -> None:
-    code, _, err = _run(["deck", "--brief", "brief.md", "--slug", "q3-board"], project)
+    code, _, err = _run(["slides", "--brief", "brief.md", "--slug", "q3-board"], project)
     assert code == NotFoundError.EXIT
     assert "OW-T-515" in err
 
