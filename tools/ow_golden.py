@@ -26,11 +26,12 @@ script until `ow eval golden` is an Action.
    The row's glob is `fixtures/goldens/<corpus>/*`, its author `git config user.email`, its date
    today's, UTC. Files no document produces any more are removed, so the tree is exactly the
    ingest's.
-3. **The ingest is a child process with the three `[drivers]` opt-ins a checkout needs** (D576),
-   in a scratch directory that is removed afterwards. Its exit must be 0, and anything else means
-   the gate did not run. `ow add` exits 0 when it finishes, even with the refused fixtures
-   (corrupt, encrypted, not a document): each refusal is recorded per unit and reported as
-   `partial`, which is this corpus's normal state.
+3. **The ingest is `omniweave_conform.golden.ingest()`**, a child `ow add` with the three
+   `[drivers]` opt-ins a checkout needs (D576), in a scratch directory that is removed afterwards
+   (D903 moved it there, so the portability suite reaches it). Its exit must be 0, and anything
+   else means the gate did not run. `ow add` exits 0 when it finishes, even with the refused
+   fixtures (corrupt, encrypted, not a document): each refusal is recorded per unit and reported
+   as `partial`, which is this corpus's normal state.
 4. **`--diff` adds section 5.3's diff for every changed document.** It is
    `golden_diff.comment()`, three parts per document, densest first, 400 lines for the whole
    comment. It is printed as it is, after the class lines and before the last line, in either
@@ -67,10 +68,8 @@ import dataclasses
 import datetime as dt
 import os
 import shutil
-import subprocess  # noqa: TID251 - the ingest is a real `ow add` child, and git names the author.
+import subprocess  # noqa: TID251 - git names the author.
 import sys
-import tempfile
-import tomllib
 from pathlib import Path
 from typing import Final
 
@@ -93,68 +92,25 @@ from omniweave_conform.golden import (  # noqa: E402
     CORPUS,
     GOLDENS,
     KINDS,
+    PROJECT,
     changes,
     document_paths,
+    ingest,
     read_tree,
-    reductions,
 )
 from omniweave_conform.golden_diff import comment  # noqa: E402
 from omniweave_core.errors import QualityError  # noqa: E402
-from omniweave_core.store import sqlite as ow  # noqa: E402
 
 __all__ = ["EXIT_CLEAN", "EXIT_FAIL", "EXIT_NOT_RUN", "PROJECT", "ingest", "main"]
 
 EXIT_CLEAN: Final = 0
 EXIT_FAIL: Final = 1
 EXIT_NOT_RUN: Final = 2
-PROJECT: Final = (
-    '[corpora.handbook]\npath = ".omniweave/index.owstore"\n'
-    "[drivers]\nallow_unattested = true\nrequire_lock = false\ninproc = []\n"
-)
-"""Ruling 3: the project file a scratch ingest runs under, as the conform tests' (D576)."""
 LOG: Final = "eval/BLESS.log"
-INGEST_TIMEOUT_S: Final = 1800
 EXAMPLES: Final = 10
 """Ruling 6: how many refused files a schema bump names."""
 NOTHING: Final = Reductions("", "", "")
 """Ruling 4: the side a new or a lost document does not have."""
-
-
-def ingest(root: Path, corpus: str = CORPUS) -> dict[str, str]:
-    """Rulings 3 and 1: every `fixtures/index.toml` fixture ingested and reduced, or `OSError`."""
-    rows = tomllib.loads((root / "fixtures" / "index.toml").read_text(encoding="utf-8"))
-    scratch = Path(tempfile.mkdtemp(prefix="ow-golden-"))
-    try:
-        for row in rows.get("fixture", []):
-            source = root / row["path"]
-            parts = Path(row["path"]).parts
-            target = scratch / "docs" / Path(*parts[1:2], *parts[3:])
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy(source, target)
-        (scratch / "omniweave.toml").write_text(PROJECT, encoding="utf-8")
-        env = {k: v for k, v in os.environ.items() if k not in {"PYTHONUTF8", "PYTHONIOENCODING"}}
-        env["OMNIWEAVE_HOME"] = str(scratch / "owhome")
-        log = scratch / "add.log"
-        with log.open("wb") as sink:
-            code = subprocess.call(
-                [sys.executable, "-m", "omniweave", "add", "docs"],
-                cwd=scratch,
-                env=env,
-                stdout=sink,
-                stderr=subprocess.STDOUT,
-                timeout=INGEST_TIMEOUT_S,
-            )
-        if code != 0:
-            tail = log.read_text(encoding="utf-8", errors="replace").splitlines()[-5:]
-            message = f"ow add exited {code}: " + " | ".join(tail)
-            raise OSError(message)
-        connection = ow.connect_readonly(scratch / ".omniweave" / "index.owstore")
-        try:
-            return reductions(connection, scratch / ".omniweave" / "cas", corpus=corpus)
-        finally:
-            connection.close()
-    finally:
-        shutil.rmtree(scratch, ignore_errors=True)
 
 
 def _say(line: str) -> None:

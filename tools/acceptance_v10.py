@@ -134,9 +134,10 @@ CRITERIA: tuple[Criterion, ...] = (
             ),
         ),
         Coverage.PARTIAL,
-        "no `v*` tag to be green on; `ow eval run` measures parse, absence, retrieve and "
-        "roundtrip and `ow eval release-check` passes over them (D868-D871), but `--strict` "
-        "refuses on extract, portability and perf, which no harness measures (D872), and no "
+        "no `v*` tag to be green on; `ow eval run` measures parse, absence, retrieve, "
+        "roundtrip and portability and `ow eval release-check` passes over them (D868-D871, "
+        "D903), but `--strict` refuses on extract and perf, which no harness measures (D872), "
+        "and no "
         "`.oweval` is committed for a tag; G13 and G25 have no runner "
         "and G29 is planned only; Q-G16 and 20 have no instrument, Q-G26 runs its assertion "
         "clause only (D875), Q-G2 runs without "
@@ -295,6 +296,7 @@ CRITERIA: tuple[Criterion, ...] = (
                 label="the read-back and the pinned cites, one cell",
             ),
             tool("check_out_determinism.py"),
+            tool("ow_portability.py"),
             pytest(
                 "packages/omniweave-conform/tests/conform/test_out_determinism_process.py::"
                 "test_the_forty_unit_golden_compiles_to_one_part_digest_five_ways",
@@ -305,8 +307,10 @@ CRITERIA: tuple[Criterion, ...] = (
         Coverage.PARTIAL,
         "OUT13's in-cell half runs over the register's goldens and over the 40-unit deck "
         "`fixtures/gen/gen_golden40.py` generates: twice here and under three PYTHONHASHSEEDs in "
-        "fresh processes, one part_digest across 116 parts (D878, D881). The nine OS/Python cells "
-        "run nowhere, and of the reader cards docx's passes the testkit's mandatory tier and "
+        "fresh processes, one part_digest across 116 parts (D878, D881). Across cells, the "
+        "portability suite holds each target's parts to eval/portability.toml (D903): two cells, "
+        "win32 on 3.12 and linux on 3.13, matched by hand, and the nine run nowhere. Of the "
+        "reader cards docx's passes the testkit's mandatory tier and "
         "pptx's fails licence on Pillow's MIT-CMU, G3's open question (D879)",
     ),
     Criterion(
