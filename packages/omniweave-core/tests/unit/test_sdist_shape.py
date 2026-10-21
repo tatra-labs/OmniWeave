@@ -64,9 +64,17 @@ def _force_includes(build: dict) -> list[tuple[str, str]]:
     return found
 
 
+def _attachment(pyproject: Path) -> bool:
+    """D909: a member declaring `[tool.omniweave] attachment = true`, outside the fourteen."""
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    return data.get("tool", {}).get("omniweave", {}).get("attachment") is True
+
+
 def test_the_repository_has_fourteen_distributions_to_check() -> None:
-    """Guards every test below against silently iterating an empty glob."""
-    assert len(PYPROJECTS) == 14, [p.parent.name for p in PYPROJECTS]
+    """Guards every test below against silently iterating an empty glob. An attachment (D909) is
+    checked too: it ships an sdist and a wheel of its own, released separately."""
+    fourteen = [p for p in PYPROJECTS if not _attachment(p)]
+    assert len(fourteen) == 14, [p.parent.name for p in PYPROJECTS]
 
 
 @pytest.mark.parametrize("path", PYPROJECTS, ids=lambda p: p.parent.name)

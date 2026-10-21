@@ -519,8 +519,10 @@ def test_a_bad_argument_is_the_gate_not_running(
 # ---------------------------------------------------------------------------
 
 # 16-roadmap.md:363 (W1.7): "The workspace: 14 `pyproject.toml`, `uv.lock`, hatchling, the 1:1
-# extra alias map, and gates G2, G3, G4, G5, G7, G13, G14". The count is a plan literal.
-WORKSPACE_MEMBERS = 14
+# extra alias map, and gates G2, G3, G4, G5, G7, G13, G14". The count is a plan literal. An
+# attachment (11-repo-layout.md section 1.2's second table) is a workspace member G7 reads too:
+# `omniweave-langchain`'s `langchain-core <2` is a tightened bound like any other (D909).
+WORKSPACE_MEMBERS = 14 + 1
 
 
 def test_the_gate_reads_all_fourteen_shipped_pyproject_files(

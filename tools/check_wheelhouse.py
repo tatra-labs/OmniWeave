@@ -49,7 +49,7 @@ import tempfile
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from omniweave_core.errors import CapabilityMissing
 
@@ -79,12 +79,18 @@ class Outcome:
     detail: str
 
 
+def _attachment(data: dict[str, Any]) -> bool:
+    """D909: a member declaring `[tool.omniweave] attachment = true` is none of the fourteen."""
+    return data.get("tool", {}).get("omniweave", {}).get("attachment") is True
+
+
 def members(root: Path = REPO) -> tuple[str, ...]:
     """Every workspace member's distribution name."""
     names = []
     for pyproject in sorted((root / "packages").glob("*/pyproject.toml")):
-        project = tomllib.loads(pyproject.read_text(encoding="utf-8")).get("project", {})
-        if "name" in project:
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        project = data.get("project", {})
+        if "name" in project and not _attachment(data):
             names.append(str(project["name"]))
     return tuple(names)
 

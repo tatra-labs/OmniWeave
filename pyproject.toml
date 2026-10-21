@@ -30,6 +30,7 @@ omniweave = { workspace = true }
 omniweave-conform = { workspace = true }
 omniweave-core = { workspace = true }
 omniweave-graph = { workspace = true }
+omniweave-langchain = { workspace = true }
 omniweave-llm = { workspace = true }
 omniweave-office = { workspace = true }
 omniweave-pdf = { workspace = true }

@@ -70,6 +70,10 @@ why = "the mcp SDK and its closure, carrying both the stdio and http transports;
 marginal_mb = 5
 why = "the seven free derive/1 passes and no third party at all; the number is source plus their shipped data"
 
+[dist."omniweave-langchain"]
+marginal_mb = 30
+why = "an attachment (11-repo-layout.md section 1.2): langchain-core's closure measured 24.3 MB (pydantic-core, langsmith and its HTTP stack); 30 by a user ruling of 2026-10-21 (D909) for its minor series' growth. Optional, never in [recommended]"
+
 [dist."omniweave-llm"]
 marginal_mb = 2
 why = "the four billed_api derive/1 passes and no third party at all — a model is reached through io.service(), never a client library"

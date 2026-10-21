@@ -65,6 +65,7 @@ def test_thirteen_rows_core_absent_every_digest_the_wheels(dist: Path, tmp_path:
     manifest = read_first_party(out)
     assert manifest is not None
     assert len(manifest.dists) == 13 == len(GEN.members()) - 1
+    assert "omniweave-langchain" not in GEN.members(), "an attachment is not first party (D909)"
     assert GEN.CORE not in manifest.dists
     for wheel in dist.glob("*.whl"):
         name, version = GEN.wheel_identity(wheel)

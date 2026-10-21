@@ -1,0 +1,41 @@
+# packages/omniweave-langchain/pyproject.toml -- an ATTACHMENT distribution (11-repo-layout.md
+# section 1.2's second table): omniweave as LangChain loaders, a retriever and a tool.
+#
+# Outside the fourteen: not RELEASE-versioned, not in first_party.toml, not in an extra and not in
+# the --all-packages wheelhouse (section 1.10, sites 5, 6, 7, 9 and 10 skipped). It tracks
+# langchain-core's minor series, so its version is its own. It imports the `omniweave` SDK by a
+# user ruling of 2026-10-21 (D909): section 1.2 printed core and ports only, and the adapter's
+# whole job is what `omniweave.corpus()` already does.
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "omniweave-langchain"
+version = "0.1.0"                     # its own series, not RELEASE (section 1.2).
+description = "omniweave as LangChain document loaders, a retriever and a tool."
+license = "Apache-2.0"
+requires-python = ">=3.12"           # NO upper bound. charter.md D1.
+dependencies = [
+  # ROLE: the SDK this adapter wraps. `~= 0.1.0` is `>= 0.1.0, == 0.1.*`: the minor it was built
+  # against and no further, as every first-party sibling bound is (11-repo-layout.md:610).
+  "omniweave ~= 0.1.0",
+  # ROLE: the LangChain abstractions (BaseLoader, BaseBlobParser, BaseRetriever, StructuredTool).
+  # A floor and a major ceiling: 1.x is the series whose `response_format="content_and_artifact"`
+  # and `ToolMessage.artifact` the tool relies on, and a 2.0 may move them.
+  "langchain-core >=1.0,<2",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/omniweave_langchain"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "LICENSE", "NOTICE", "THIRD_PARTY.md", "LICENSES", "pyproject.toml"]
+
+# THE ATTACHMENT MARKER (D909). The tools that enumerate `packages/*/pyproject.toml` -- G5's count
+# of fourteen and its extras, the build and wheelhouse checks, the first-party manifest -- read
+# this key and leave the distribution out, which is section 1.10's "skips 5, 6, 7, 9 and 10" as a
+# fact the distribution states about itself rather than a list kept somewhere else.
+[tool.omniweave]
+attachment = true

@@ -37,3 +37,11 @@ omniweave_target_deck  = ["omniweave_core", "omniweave_ports"]
 omniweave_target_video = ["omniweave_core", "omniweave_ports"]
 omniweave_conform      = ["omniweave_core", "omniweave_ports"]
 omniweave              = ["omniweave_core", "omniweave_ports", "omniweave_office"]
+
+# THE ATTACHMENT ROWS (11-repo-layout.md section 1.2's second table), outside the fourteen above and
+# outside 02-architecture.md section 3.2's fence. Section 1.2 gives each one
+# ["omniweave_core", "omniweave_ports"]; a user ruling of 2026-10-21 (D909) widened
+# omniweave-langchain's to the SDK, because its whole job is what `omniweave.corpus()` already does
+# and an adapter that re-composed it from core would be a second resolver to keep in step; the row
+# is closed over omniweave's own, as rule 2 requires of every row.
+omniweave_langchain    = ["omniweave", "omniweave_core", "omniweave_ports", "omniweave_office"]
