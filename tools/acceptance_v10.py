@@ -262,7 +262,8 @@ CRITERIA: tuple[Criterion, ...] = (
                 "packages/omniweave-target-pptx/tests/unit/test_pptx_golden.py",
                 "packages/omniweave-target-docx/tests/unit/test_docx_golden.py",
                 "packages/omniweave-target-video/tests/unit/test_video_driver.py",
-                label="the target goldens and video's card",
+                "packages/omniweave-target-deck/tests/unit/test_deck_driver.py",
+                label="the target goldens, and video's and deck's cards",
             ),
             pytest(
                 f"{CLI}/test_out_targets_verb.py::test_the_text_form_says_which_of_the_two_stops_a_kind",
@@ -280,8 +281,10 @@ CRITERIA: tuple[Criterion, ...] = (
             ),
         ),
         Coverage.PARTIAL,
-        "the pptx and docx goldens reach MANUAL_REQUIRED, not passed; omniweave-target-deck is a "
-        "skeleton with no driver; the bake error's two exits are asserted on pptx and owtext, the "
+        "the pptx and docx goldens reach MANUAL_REQUIRED, not passed; deck ships at "
+        "`implemented = false` with its reason, like video, by a user ruling of 2026-10-21 that "
+        "took 16-roadmap.md R-Q8's fallback (D910), so `pptx` and `docx` are the two that must "
+        "pass; the bake error's two exits are asserted on pptx and owtext, the "
         "targets with a bake row (D876)",
     ),
     Criterion(

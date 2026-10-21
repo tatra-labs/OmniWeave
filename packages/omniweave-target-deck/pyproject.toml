@@ -10,7 +10,7 @@ build-backend = "hatchling.build"
 [project]
 name = "omniweave-target-deck"
 version = "0.1.0"                     # == RELEASE. G5.
-description = "compile.deck.native and parse.deck.native — a card plus a ToolchainSpec, no renderer."
+description = "compile.deck.native — a card at implemented = false and a driver that refuses with its reason."
 license = "Apache-2.0"
 requires-python = ">=3.12"           # NO upper bound. charter.md D1.
 dependencies = [
@@ -29,6 +29,14 @@ dependencies = [
   # REQUIRES this ceiling rather than permitting it, and `--set` never rewrites it (4.2 row 2).
   "omniweave-ports >=1,<2",
 ]
+
+# The card, and the artefact kind it serves (09-generation.md section 1): `omniweave.targets` lets
+# `ow out targets` list `deck` without resolving a driver. D910, as video's D760.
+[project.entry-points."omniweave.drivers"]
+"compile.deck.native" = "omniweave_target_deck"
+
+[project.entry-points."omniweave.targets"]
+"deck" = "omniweave_target_deck"
 
 # The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
 [tool.hatch.build.targets.wheel]
