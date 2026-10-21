@@ -962,6 +962,12 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 kind="switch",
                 help="print the routing decision with the answer",
             ),
+            Argument(
+                spelling=("--deny-method",),
+                kind="append",
+                metavar="M[,M]",
+                help="leave out blocks a Method made, e.g. roundtrip; repeatable",
+            ),
         ),
     ),
     Command(
@@ -1166,6 +1172,10 @@ def _add(parser: argparse.ArgumentParser, argument: Argument, *, suppress: bool 
         options["action"] = "store_true"
     elif argument.kind == "count":
         options["action"] = "count"
+    elif argument.kind == "append":
+        options["action"] = "append"
+        if argument.metavar is not None:
+            options["metavar"] = argument.metavar
     else:
         if argument.kind == "int":
             options["type"] = int
