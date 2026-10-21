@@ -86,6 +86,9 @@ def test_every_declared_law_is_checked_or_says_why_not(tmp_path: Path) -> None:
         reader=PptxReader(),
     )
     assert (report.target, report.gate) == ("pptx", GateStatus.MANUAL_REQUIRED)
+    #  D911: u01 links to #u02, the manual unit the release withholds, so the remainder fails
+    #  the gate naming the link; pptx's release is the 40-unit golden's (test_golden40.py).
+    assert report.release is GateStatus.FAILED
     assert {o.law: o.status for o in report.laws} == {
         "r1": "checked",
         "r2": "checked",

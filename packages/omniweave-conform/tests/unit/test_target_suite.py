@@ -10,6 +10,7 @@ import dataclasses
 import hashlib
 import shutil
 import tomllib
+from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -25,11 +26,13 @@ from omniweave_conform.suites.target.suite import (
 )
 from omniweave_core.drivers.card import DriverCard, load_card
 from omniweave_core.out.constructs import ConstructTable
+from omniweave_core.out.finding import Finding, Provenance, Severity
 from omniweave_core.out.gate import GateStatus
 from omniweave_core.out.job import ILBundle, Job
 from omniweave_core.out.ledger import LedgerRow, ledger_digest, slot
 from omniweave_core.out.plan import Plan, UnitOutcome
 from omniweave_core.out.receipt import Receipt
+from omniweave_core.out.rules import RuleSpec
 from omniweave_ports import ArtifactRef, DriverResult
 
 GOLDEN = Path(__file__).resolve().parents[4] / "fixtures" / "out" / "golden" / "owtext"
@@ -254,3 +257,106 @@ def test_a_narrow_claim_can_pass_and_its_narrowness_is_visible(tmp_path: Path) -
         "r5",
         "r6",
     ]
+
+
+# ---------------------------------------------------------------------------
+# Ruling 18 (D911): the release gate, the golden's manual units set aside
+# ---------------------------------------------------------------------------
+
+_PLAIN_U02 = (
+    '<section data-ow-el="u02/e1">\n  <p data-ow-el="u02/e2">Margins held.</p>\n</section>\n'
+)
+_MANUAL_U01 = (
+    '<section data-ow-el="u01/e1">\n'
+    '  <div data-ow-el="u01/e2" data-ow-manual="unverifiable_data">a chart</div>\n</section>\n'
+)
+
+
+def test_the_release_is_the_golden_less_its_manual_unit_compiled_as_a_release(
+    tmp_path: Path,
+) -> None:
+    report = run(tmp_path)
+    assert (report.gate, report.release) == (GateStatus.MANUAL_REQUIRED, GateStatus.PASSED)
+    release = tmp_path / "work" / "release"
+    assert sorted(p.name for p in (release / "il").iterdir()) == ["il.toml", "u01.html"]
+    roster = tomllib.loads((release / "il" / "il.toml").read_text(encoding="utf-8"))
+    assert roster["unit"] == [{"id": "u01", "ord": 1, "file": "u01.html"}]
+    assert {k: v for k, v in roster.items() if k != "unit"} == {
+        k: v
+        for k, v in tomllib.loads((GOLDEN / "il" / "il.toml").read_text(encoding="utf-8")).items()
+        if k != "unit"
+    }
+    plan = Job.load(release).plan
+    assert (plan.delivery, plan.gate_status, plan.unit_count) == ("release", GateStatus.PASSED, 1)
+
+
+def test_a_withheld_first_unit_leaves_the_roster_renumbered(tmp_path: Path) -> None:
+    golden = golden_copy(tmp_path, **{"u01.html": _MANUAL_U01, "u02.html": _PLAIN_U02})
+    report = run(tmp_path, golden=golden)
+    assert (report.gate, report.release) == (GateStatus.MANUAL_REQUIRED, GateStatus.PASSED)
+    roster = tomllib.loads(
+        (tmp_path / "work" / "release" / "il" / "il.toml").read_text(encoding="utf-8")
+    )
+    assert roster["unit"] == [{"id": "u02", "ord": 1, "file": "u02.html"}]
+
+
+def test_a_golden_that_passes_its_own_gate_is_its_own_release(tmp_path: Path) -> None:
+    report = run(tmp_path, golden=golden_copy(tmp_path, **{"u02.html": _PLAIN_U02}))
+    assert (report.gate, report.release) == (GateStatus.PASSED, GateStatus.PASSED)
+    assert not (tmp_path / "work" / "release").exists()
+
+
+def test_with_every_unit_manual_there_is_nothing_to_release(tmp_path: Path) -> None:
+    report = run(tmp_path, golden=golden_copy(tmp_path, **{"u01.html": _MANUAL_U01}))
+    assert (report.gate, report.release) == (GateStatus.MANUAL_REQUIRED, GateStatus.NOT_PROVIDED)
+
+
+def test_a_failed_golden_has_no_release_to_set_apart(tmp_path: Path) -> None:
+    bad = '<section data-ow-el="u01/e1"><p>x</p><script>alert(1)</script></section>'
+    report = run(tmp_path, golden=golden_copy(tmp_path, **{"u01.html": bad}))
+    assert (report.gate, report.release) == (GateStatus.FAILED, GateStatus.FAILED)
+
+
+class _TwoOrNone(OwTextCompiler):
+    """A document-scope rule that refuses a roster of one: withholding the manual unit is what
+    breaks the remainder, as pptx's link to the withheld slide does."""
+
+    def rules(self) -> Mapping[str, Sequence[RuleSpec]]:
+        def both(ctx: Any) -> Iterator[Finding]:
+            if len(ctx.index.units) < 2:
+                yield Finding(
+                    code="OW_TARGET_REFERENCE_UNRESOLVED",
+                    severity=Severity.ERROR,
+                    provenance=Provenance.INTRODUCED,
+                    rule="test.two@1",
+                    unit="",
+                    construct="",
+                    msg="u01 names u02",
+                    fix="ow out check --stage final",
+                )
+
+        spec = RuleSpec(
+            "test.two@1", 90, "document", frozenset({"OW_TARGET_REFERENCE_UNRESOLVED"}), both
+        )
+        return {**super().rules(), "document": (spec,)}
+
+
+def test_a_remainder_that_fails_its_gate_is_that_release(tmp_path: Path) -> None:
+    """The golden's own gate is manual-required; set apart, the remainder is checked alone."""
+    report = run(tmp_path, compiler=_TwoOrNone())
+    assert (report.gate, report.release) == (GateStatus.MANUAL_REQUIRED, GateStatus.FAILED)
+    assert not (tmp_path / "work" / "release-compile").exists()
+
+
+class _Drafting(OwTextCompiler):
+    """A `postflight()` that writes a draft receipt whatever the Plan asked for."""
+
+    def postflight(self, artifact: str, plan: Plan) -> Receipt:
+        receipt = super().postflight(artifact, plan)
+        return dataclasses.replace(
+            receipt, delivery="draft", gate_status=GateStatus.MANUAL_REQUIRED
+        )
+
+
+def test_a_release_compile_whose_receipt_is_not_a_release_is_unverified(tmp_path: Path) -> None:
+    assert run(tmp_path, compiler=_Drafting()).release is GateStatus.UNVERIFIED
