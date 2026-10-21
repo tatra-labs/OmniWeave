@@ -26,15 +26,30 @@ reduces every document a store holds and compares a fresh set with a committed o
 4. **A change is judged per document, by `churn.classify()` over its three files.** A document
    that appears or disappears is `structural`: a new frozen `shape` is a new claim about the
    corpus, and a lost one is a claim withdrawn. `unchanged` documents are not changes.
+5. **`ingest()` is the Tier-A ingest, a child `ow add`** (D903, moved here from
+   `tools/ow_golden.py` so the portability suite reaches it). Every fixture `fixtures/index.toml`
+   lists is copied into a scratch project with the three `[drivers]` opt-ins a checkout needs
+   (D576), `python -m omniweave add docs` runs through `host.subproc.run_captured()`, and the store
+   is reduced. A child that exits anything but 0 is `OSError` with its last lines, so the caller
+   reports that it did not run. `ow add` exits 0 with refused fixtures, which are recorded per
+   unit as `partial`: this corpus's normal state.
 
 Specified in 13-quality.md sections 5.1 to 5.5, and 16-roadmap.md W10.2.
 """
 
 from __future__ import annotations
 
+import os
+import shutil
+import sys
+import tempfile
+import tomllib
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
+from omniweave_core.host.subproc import run_captured
+from omniweave_core.store import sqlite as ow
 from omniweave_core.store.export_source import StoreExportSource
 
 from omniweave_conform.churn import Churn, Decomposition, Reductions, classify
@@ -42,15 +57,17 @@ from omniweave_conform.reduce import reduce_outline, reduce_pages, reduce_shape
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from pathlib import Path
 
 __all__ = [
     "CORPUS",
     "GOLDENS",
+    "INGEST_TIMEOUT_S",
     "KINDS",
+    "PROJECT",
     "Change",
     "changes",
     "document_paths",
+    "ingest",
     "read_tree",
     "reductions",
 ]
@@ -58,6 +75,12 @@ __all__ = [
 GOLDENS: Final = "fixtures/goldens"
 CORPUS: Final = "core@2026.10"
 KINDS: Final = ("shape", "pages", "outline")
+PROJECT: Final = (
+    '[corpora.handbook]\npath = ".omniweave/index.owstore"\n'
+    "[drivers]\nallow_unattested = true\nrequire_lock = false\ninproc = []\n"
+)
+"""Ruling 5: the project file a scratch ingest runs under, as the conform tests' (D576)."""
+INGEST_TIMEOUT_S: Final = 1800.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +111,41 @@ def reductions(connection: Any, cas: Path, *, corpus: str = CORPUS) -> dict[str,
         for kind, text in zip(KINDS, texts, strict=True):
             out[f"{base}.{kind}"] = text
     return out
+
+
+def ingest(root: Path, corpus: str = CORPUS) -> dict[str, str]:
+    """Rulings 5 and 1: every `fixtures/index.toml` fixture ingested and reduced, or `OSError`."""
+    rows = tomllib.loads((root / "fixtures" / "index.toml").read_text(encoding="utf-8"))
+    scratch = Path(tempfile.mkdtemp(prefix="ow-golden-"))
+    try:
+        for row in rows.get("fixture", []):
+            source = root / row["path"]
+            parts = Path(row["path"]).parts
+            target = scratch / "docs" / Path(*parts[1:2], *parts[3:])
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(source, target)
+        (scratch / "omniweave.toml").write_bytes(PROJECT.encode("utf-8"))
+        env = {k: v for k, v in os.environ.items() if k not in {"PYTHONUTF8", "PYTHONIOENCODING"}}
+        env["OMNIWEAVE_HOME"] = str(scratch / "owhome")
+        done = run_captured(
+            (sys.executable, "-m", "omniweave", "add", "docs"),
+            stdin=b"",
+            cwd=str(scratch),
+            env=env,
+            timeout_s=INGEST_TIMEOUT_S,
+        )
+        if done.returncode != 0:
+            shown = (done.stdout + done.stderr).decode("utf-8", errors="replace")
+            status = done.returncode if done.returncode is not None else done.failed
+            message = f"ow add exited {status}: " + " | ".join(shown.splitlines()[-5:])
+            raise OSError(message)
+        connection = ow.connect_readonly(scratch / ".omniweave" / "index.owstore")
+        try:
+            return reductions(connection, scratch / ".omniweave" / "cas", corpus=corpus)
+        finally:
+            connection.close()
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
 
 
 def read_tree(root: Path, corpus: str = CORPUS) -> dict[str, str]:

@@ -42,10 +42,11 @@ the row together.
    once here from `SystemClock` as the other surfaces read the wall clock. A refusal in the
    bless is `QualityError`, exit 1, as in ruling 3.
 8. **`run` measures suites and writes them** (13:1873, D868, D869). `--suite` omitted is every
-   suite this build measures, `parse`, `absence`, `retrieve` (D870) then `roundtrip` (D871),
-   written in one transaction. Another of the seven writes an `unknown` run naming why this
-   build cannot measure it (D872), and a name outside them is refused. `--deterministic-half`
-   names the only half of `absence` built, so it is refused beside any other suite, and
+   suite this build measures, `parse`, `absence`, `retrieve` (D870), `roundtrip` (D871) then
+   `portability` (D903), written in one transaction. Another of the seven writes an `unknown`
+   run naming why this build cannot measure it (D872), and a name outside them is refused.
+   `--deterministic-half` names the only half of `absence` built, so it is refused beside any
+   other suite, and
    `--subject`, a parse driver, beside any suite but `parse`, whose subjects are its own. The
    absence harness is handed `surface.admit.admit`, 13:1306's check of each fix against this
    registry. `--witness` and
@@ -99,7 +100,7 @@ SUITES: Final[tuple[str, ...]] = (
     "perf",
 )
 """13:237-242's seven suites, the `eval_run.suite` CHECK, in that order."""
-RUN_SUITES: Final[tuple[str, ...]] = ("parse", "absence", "retrieve", "roundtrip")
+RUN_SUITES: Final[tuple[str, ...]] = ("parse", "absence", "retrieve", "roundtrip", "portability")
 """Ruling 8: the suites `ow eval run` measures in this build."""
 WITNESSES: Final[tuple[str, ...]] = ("ci", "self", "third_party")
 CASSETTES: Final[tuple[str, ...]] = ("off", "allow", "required")
@@ -473,6 +474,10 @@ def _run_line(row: EvalRunRow) -> str:
     elif row.suite == "roundtrip":
         tail = f"{row.parsed} of {row.n} element(s) survive" + (
             f"; failed: {', '.join(row.refused)}" if row.refused else ""
+        )
+    elif row.suite == "portability":
+        tail = f"{row.parsed} of {row.n} identical to the frozen values" + (
+            f"; differ: {', '.join(row.refused)}" if row.refused else ""
         )
     elif row.suite == "retrieve":
         cites = row.parsed + len(row.refused)
