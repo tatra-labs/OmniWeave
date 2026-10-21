@@ -47,8 +47,8 @@ marginal_mb = 1
 why = "pure typing, no third party"
 
 [dist."omniweave-core"]
-marginal_mb = 3
-why = "stdlib only; the number is the source tree plus generated data"
+marginal_mb = 6
+why = """stdlib only; the number is the source tree plus generated and packaged data (the migrations, the schema, the error-code register). Raised from 3 MB by a user ruling of 2026-10-19 (option a, reviewed): release 1's core measures 4.64 MB installed, the store, retrieval, host and OUT framework having grown past the section 1.2 estimate, and 6 MB is that with headroom, not a licence to vendor anything heavy -- core still imports no third-party module (G9)."""
 
 [dist."omniweave"]
 marginal_mb = 25
@@ -96,5 +96,5 @@ unbounded = true
 why = "torch + transformers; ow doctor prints the resolved size (the G2 exemption)"
 
 [dist."omniweave-conform"]
-marginal_mb = 5
-why = "the twelve suites, the testkit, the eval harness, the reducers, the Cassette codec, the calibrator, the scoreboard generator and compile.text.owtext, over pytest alone"
+marginal_mb = 8
+why = "the twelve suites, the testkit, the eval harness, the reducers, the Cassette codec, the calibrator, the scoreboard generator and compile.text.owtext, over pytest alone. Raised from 5 MB by a user ruling of 2026-10-20 (reviewed): G2's first measured run charged pytest's closure to this row at 7.48 MB, most of it Pygments' lexers, which pytest 9 requires. Dev-only for driver authors and in no user profile, so no user install grows."
