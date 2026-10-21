@@ -91,6 +91,7 @@ def test_the_record_union_counts_each_path_once(tmp_path: Path) -> None:
 def test_the_bounded_set_is_every_member_but_vision() -> None:
     members = HARNESS.members()
     assert len(members) == 14
+    assert "omniweave-langchain" not in members, "an attachment is in no profile (D909)"
     assert set(HARNESS.bounded()) == set(members) - {"omniweave-vision"}
 
 

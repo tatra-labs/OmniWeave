@@ -216,6 +216,19 @@ def _dist_paths(repo: Path) -> dict[str, Path]:
     return {p.parent.name: p for p in sorted(repo.glob("packages/*/pyproject.toml"))}
 
 
+def _attachments(paths: Mapping[str, Path]) -> set[str]:
+    """D909: the members declaring `[tool.omniweave] attachment = true` about themselves."""
+    return {
+        dist
+        for dist, path in paths.items()
+        if tomllib.loads(path.read_text(encoding="utf-8"))
+        .get("tool", {})
+        .get("omniweave", {})
+        .get("attachment")
+        is True
+    }
+
+
 def first_party_closure(repo: Path, roots: Iterable[str]) -> set[str]:
     """Every first-party distribution a set of roots pulls in, transitively.
 
@@ -262,11 +275,12 @@ def profile_roots(repo: Path, profile: str) -> set[str]:
     `omniweave-vision`, which section 2.3's row states as "all 14 except vision" and section 6.5
     confirms from the other end: `ow-gpu-1` is *"the only cell where `omniweave-vision` is
     installed"*. The dev group's own weight is not gated, is not shipped, and the `parity` container
-    installs `pytest` alone, so it contributes nothing here.
+    installs `pytest` alone, so it contributes nothing here. An attachment (D909) is installed by
+    the sync too and is none of the 14: its own row bounds it, and no profile's sum counts it.
     """
     paths = _dist_paths(repo)
     if profile == "ci":
-        return set(paths) - {"omniweave-vision"}
+        return set(paths) - {"omniweave-vision"} - _attachments(paths)
     extras = (
         tomllib.loads(
             (repo / "packages" / "omniweave" / "pyproject.toml").read_text(encoding="utf-8")

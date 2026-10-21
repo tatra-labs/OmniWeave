@@ -25,13 +25,23 @@ properties = 0
 
 [[area]]
 area = "omniweave-core/unit"
-tests = 9554
+tests = 9560
 properties = 18
 
 [[area]]
 area = "omniweave-graph/unit"
 tests = 472
 properties = 1
+
+[[area]]
+area = "omniweave-langchain/conform"
+tests = 3
+properties = 0
+
+[[area]]
+area = "omniweave-langchain/unit"
+tests = 13
+properties = 0
 
 [[area]]
 area = "omniweave-llm/unit"

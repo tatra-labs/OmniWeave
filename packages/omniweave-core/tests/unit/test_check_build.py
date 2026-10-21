@@ -50,6 +50,45 @@ def test_the_members_are_the_workspace_s_fourteen() -> None:
     assert all(name.startswith("omniweave") for name in members)
 
 
+def test_an_attachment_is_none_of_the_28() -> None:
+    """Ruling 4 (D909): it declares `[tool.omniweave] attachment = true`, and is released alone."""
+    assert "omniweave-langchain" not in GATE.members(REPO)
+    assert GATE.attachments(REPO) == ("omniweave-langchain",)
+
+
+def test_prune_deletes_an_attachment_s_two_artefacts_and_nothing_else(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    kept = (*GOOD, ".gitignore", "omniweave_langchainx-0.1.0.tar.gz")
+    for name in (*kept, "omniweave_langchain-0.1.0-py3-none-any.whl"):
+        (tmp_path / name).write_bytes(b"x")
+    (tmp_path / "omniweave_langchain-0.1.0.tar.gz").write_bytes(b"x")
+    assert GATE.main(["--prune", str(tmp_path)]) == 0
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted(kept)
+    assert capsys.readouterr().out == (
+        "check_build: pruned 2 attachment file(s): "
+        "omniweave_langchain-0.1.0-py3-none-any.whl omniweave_langchain-0.1.0.tar.gz\n"
+    )
+
+
+def test_every_build_pass_is_pruned_before_it_is_judged(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """`--all-packages` builds the attachment; the 28 are judged without it."""
+
+    def run(argv: list[str], **_: object) -> Any:
+        out = Path(argv[argv.index("--out-dir") + 1])
+        out.mkdir(parents=True, exist_ok=True)
+        for name in ("omniweave_langchain-0.1.0.tar.gz", "omniweave-0.1.0.tar.gz"):
+            (out / name).write_bytes(b"x")
+        return GATE.subprocess.CompletedProcess(argv, 0, b"", b"")
+
+    monkeypatch.setattr(GATE.shutil, "which", lambda _name: "uv")
+    monkeypatch.setattr(GATE.subprocess, "run", run)
+    GATE.build(REPO, tmp_path / "pass", "0")
+    assert [p.name for p in (tmp_path / "pass").iterdir()] == ["omniweave-0.1.0.tar.gz"]
+
+
 def test_one_sdist_and_one_pure_wheel_per_member_is_clean() -> None:
     assert GATE.judge(NAMES, GOOD) == []
 
