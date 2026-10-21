@@ -209,6 +209,17 @@ def test_a_parsed_flag_this_build_cannot_serve_is_refused_by_name(
     assert named in err
 
 
+def test_a_comma_list_in_corpus_is_the_deferred_fan_out_and_its_fix_is_one_call(
+    project: Path,
+) -> None:
+    """D904: the fan-out is deferred past v1.0, so the fix asks one corpus, not a narrower query."""
+    code, out, err = _run(["terminate", "--corpus", "handbook,contracts"], project)
+    assert (code, out) == (1, "")
+    assert "cross-corpus fan-out, deferred past v1.0" in err
+    assert 'ow query "<question>" --corpus handbook  # one corpus per call' in err
+    assert "kind:, page: and sec:" not in err
+
+
 @pytest.mark.parametrize(
     "flags",
     [

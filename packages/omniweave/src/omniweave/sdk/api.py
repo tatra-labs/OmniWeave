@@ -45,7 +45,8 @@ three surfaces return one `Answer` for one question, and none of them imports an
    values and `achieved=None`, the same `None` `capability_floor()` returns for no documents: the
    bottom of every ladder would claim the corpus is incapable rather than unread.
    `corpora(names=[...])` is 18:186's fan-out handle, `CorpusSet`, which rank-merges N queries; no
-   rank-merge is built (`ow query`'s comma list refuses it too), so it is refused by name.
+   rank-merge is built (`ow query`'s comma list refuses it too), so it is refused by name. A user
+   ruling of 2026-10-19 defers it past v1.0 (D904): it is not in V10's acceptance list.
 6. **`doctor()` is `ow doctor`'s `run()`**, the checks and the report the verb prints (D860). Like
    `corpora()`, its printed signature has no directory, so both read the process's directory
    through `sdk._ambient`, the one read G8 exempts, and the process environment.
@@ -178,8 +179,8 @@ def corpora(
     """18:180: every declared corpus's card, in the list's order (ruling 5)."""
     if names is not None:
         raise UsageError(
-            "corpora(names=[...]) is the cross-corpus fan-out handle, CorpusSet, and the "
-            "rank-merge it needs is not built; open each corpus on its own",
+            "corpora(names=[...]) is the cross-corpus fan-out handle, CorpusSet, deferred past "
+            "v1.0: the rank-merge it needs is not built; open each corpus on its own",
             fix="omniweave.corpora() lists them; omniweave.corpus(name).query(...) asks one",
         )
     from omniweave_core.config import load  # noqa: PLC0415

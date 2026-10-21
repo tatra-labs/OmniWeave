@@ -23,7 +23,9 @@ the verb ignores answers a different question than the one asked (the MCP handle
 - `--scope`, `--want` other than `passages`, `--max-rung`: the planner that reads them is not
   wired, as `ow_query` refuses them too.
 - `--explain`: nothing prints a routing decision for a query.
-- a comma list in `--corpus`: the rank-merged fan-out of 10:1440-1443 is not built.
+- a comma list in `--corpus`: the rank-merged fan-out of 10:1440-1443 is not built, and a user
+  ruling of 2026-10-19 defers it past v1.0 (D904). Its refusal is its own, because its fix is one
+  call per corpus rather than a narrower query.
 - `--render jsonl` and `--render rows`: `owrows/1` and the progress stream have no writer here.
 - `--quiet` with `--render json`: 10:1546 makes them exclusive.
 - `--verbose`, and any other global flag `switches.READS` does not give this verb (D631).
@@ -218,7 +220,12 @@ def _refuse_unserved(parsed: argparse.Namespace) -> dict[str, int]:
     if parsed.render in ("jsonl", "rows"):
         named.append(f"--render {parsed.render}")
     if parsed.corpus is not None and "," in parsed.corpus:
-        named.append("a comma list in --corpus")
+        first = parsed.corpus.split(",", 1)[0].strip() or "<name>"
+        raise UsageError(
+            "a comma list in --corpus is the cross-corpus fan-out, deferred past v1.0: the "
+            "rank-merge it needs is not built",
+            fix=f'ow query "<question>" --corpus {first}  # one corpus per call',
+        )
     if named:
         raise UsageError(
             f"{', '.join(named)} is parsed and not served by this build; answering without it "

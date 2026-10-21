@@ -458,7 +458,7 @@ def test_a_store_that_will_not_open_is_a_card_saying_why(here: Path) -> None:
 
 @pytest.mark.usefixtures("here")
 def test_corpora_of_names_is_the_fan_out_handle_and_is_refused() -> None:
-    with pytest.raises(UsageError, match="cross-corpus fan-out handle, CorpusSet"):
+    with pytest.raises(UsageError, match=r"fan-out handle, CorpusSet, deferred past v1.0"):
         omniweave.corpora(["handbook"])
 
 
