@@ -307,13 +307,20 @@ def test_the_mit_text_is_mit_and_nothing_copyleft(gate: ModuleType) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _attachment(pyproject: Path) -> bool:
+    """D909: a member declaring `[tool.omniweave] attachment = true`, outside the fourteen."""
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    return data.get("tool", {}).get("omniweave", {}).get("attachment") is True
+
+
 def test_the_resolved_graph_holds_the_fourteen_members_at_runtime_scope(
     gate: ModuleType, repo_root: Path
 ) -> None:
     """And never the workspace root, which is `virtual` and would drag `ruff` into the wheel."""
     graph = gate.resolved_graph()
-    members = sorted(p.parent.name for p in (repo_root / "packages").glob("*/pyproject.toml"))
-    assert len(members) == 14
+    pyprojects = sorted((repo_root / "packages").glob("*/pyproject.toml"))
+    members = [p.parent.name for p in pyprojects]
+    assert len([p for p in pyprojects if not _attachment(p)]) == 14
     for member in members:
         entry = graph[gate.pep503(member)]
         assert "runtime" in entry.scopes, member

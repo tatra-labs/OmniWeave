@@ -83,6 +83,13 @@ def _driver_entry_points(dist: Distribution) -> dict[str, str]:
     return {str(key): str(value) for key, value in table.items()}
 
 
+def _tool_table(pyproject: dict[str, object]) -> dict[str, object]:
+    """That `pyproject.toml`'s `[tool.omniweave]` table, `{}` when it declares none."""
+    tool = pyproject.get("tool")
+    table = tool.get("omniweave") if isinstance(tool, dict) else None
+    return table if isinstance(table, dict) else {}
+
+
 def _row_from_entry_points(entry_points: dict[str, str]) -> tuple[str, ...]:
     """Rule 3 / rule 4, derived from the declared driver ids.
 
@@ -109,10 +116,16 @@ def test_layers_toml_is_verbatim_the_charters_import_dag(
     02-architecture.md section 3.2 introduces its block as "verbatim from charter
     section 3.3". Three copies of one graph is two chances to edit the wrong one, and
     the copy CI reads is the file — so the file is the subject and the documents are
-    the assertion.
+    the assertion. An attachment's row (D909) is outside the fence: the plan prints it in
+    11-repo-layout.md section 1.2's second table, not in the fourteen's graph.
     """
     plan.require()
-    declared = {key: list(value) for key, value in sources.layers().items()}
+    attached = {
+        dist.layer_key
+        for dist in sources.distributions()
+        if _tool_table(dist.pyproject()).get("attachment") is True
+    }
+    declared = {key: list(value) for key, value in sources.layers().items() if key not in attached}
     for document in LAYERS_FENCE_SITES:
         printed = [
             fence

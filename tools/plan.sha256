@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D908: 11:2617 build note, G19 through ow add takes OQ-6's fallback by a user ruling of 2026-10-21
+# blessed-because: D909: the LangChain attachment's layering, weight and build-carve-out note at 11:163
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -37,7 +37,7 @@ documents-frozen  847d8c57c551f7fb644106f511d1b18867b9758ac43e3a20c1026e63eb18c6
 documents-frozen  3b78dc5495b60c008dea14242c2dd56a9ee67f8996e1f61b66791fc5e78a1d0f  08-runtime.md
 documents-frozen  53b3297ec0222522f8a910f82d2fa02ad8b911a6ae634adfaa866971069d1bbb  09-generation.md
 documents-frozen  ccacc94e84a50b2c6502e5c7a5af939f140a5ebe4d228d5c77ebf152f7194e2c  10-interfaces.md
-documents-frozen  abf9ed85719b87898543f4e67f2bdd8c6d4f2a94054de1f46ec82bb221f32bf2  11-repo-layout.md
+documents-frozen  02e7a92b746f777fa0aaeca8f149542cc3d849be2e209dc4bd0660e5d1aa7232  11-repo-layout.md
 documents-frozen  44a9d2b810b0850205912449e6337423f3db837c1f75f2d580c91b25353752c2  12-performance.md
 documents-frozen  12ccee966582610a6ee96f43df4a33a819dfb3e89cf489a15e8f6d66515d3e52  13-quality.md
 documents-frozen  78a3474b788625971c7a7fed610ef3c6518e9330bfd87e8411fbc744666b43d1  14-security.md

@@ -188,6 +188,9 @@ jobs:
           SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
           export SOURCE_DATE_EPOCH
           uv build --all-packages --out-dir dist
+          # An attachment (D909) is separately released: none of the 28. check_build.py --prune
+          # reads only the standard library, so no project environment is synced for it.
+          uv run --no-project tools/check_build.py --prune dist
           if [ -f tools/gen_first_party.py ]
           then
             echo "tools/gen_first_party.py exists: wire section 7.3's four-command build block"

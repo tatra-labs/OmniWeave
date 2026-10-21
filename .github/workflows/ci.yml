@@ -1205,7 +1205,13 @@ jobs:
         # five-day gap produces a different byte.
         run: |
           echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
-      - run: uv build --all-packages --out-dir dist
+      - name: "every member built, then the attachments pruned (D909)"
+        # An attachment (11-repo-layout.md sections 1.2 and 1.10, `[tool.omniweave] attachment`)
+        # is a workspace member, so --all-packages builds it, and it is separately released: it is
+        # none of the 28, and leaving it in dist would publish it with them.
+        run: |
+          uv build --all-packages --out-dir dist
+          uv run tools/check_build.py --prune dist
       - name: "28 files, zero platform wheels"
         # Section 7.1: "28 PyPI files, zero platform wheels, one runner. That is the whole point of
         # the py3-none-any decision." A count is the guard section 6.8 requires on any gate that
@@ -1254,6 +1260,7 @@ jobs:
         # "press the button again" instead of "cut a new PATCH".
         run: |
           uv build --all-packages --out-dir dist-second
+          uv run tools/check_build.py --prune dist-second
           (cd dist && sha256sum -- * | sort -k2) > pass1.sha256
           (cd dist-second && sha256sum -- * | sort -k2) > pass2.sha256
           if ! diff -u pass1.sha256 pass2.sha256

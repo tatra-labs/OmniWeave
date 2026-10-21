@@ -17,6 +17,7 @@ registered gate whose register row's runner CI invokes (`test_gates_register.py`
 
     uv run tools/check_build.py                  # pass one and pass two, in a scratch directory
     uv run tools/check_build.py --dist dist      # pass one already built, as the job builds it
+    uv run tools/check_build.py --prune dist     # an attachment's artefacts out of `dist`
 
 ## Rulings
 
@@ -29,7 +30,11 @@ registered gate whose register row's runner CI invokes (`test_gates_register.py`
    scratch directory. Both passes run under one `SOURCE_DATE_EPOCH`, the commit's date, as
    section 7.4 requires, so nothing before the approval pause depends on the wall clock; a value
    already in the environment is kept, as CI sets it.
-4. **Exit codes:** `0` every assertion holds; `1` a finding; `2` the build could not run (no `uv`,
+4. **An attachment is not one of the 28** (D909; 11-repo-layout.md sections 1.2 and 1.10). A
+   member declaring `[tool.omniweave] attachment = true` is separately versioned and released,
+   but `uv build --all-packages` builds it, so its artefacts are pruned from every pass, and
+   `--prune` is the same pruning for the `build` job and the release, ahead of their count.
+5. **Exit codes:** `0` every assertion holds; `1` a finding; `2` the build could not run (no `uv`,
    no git, or `uv build` failed).
 
 Specified in 11-repo-layout.md sections 6.6 and 7.1-7.4, and V10-2 (00-vision.md section 9.2).
@@ -47,12 +52,12 @@ import tempfile
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-__all__ = ["Finding", "expected", "judge", "main", "members"]
+__all__ = ["Finding", "attachments", "expected", "judge", "main", "members", "prune"]
 
 REPO: Final = Path(__file__).resolve().parent.parent
 PURE: Final = "-py3-none-any.whl"
@@ -68,14 +73,36 @@ class Finding:
     names: str
 
 
-def members(root: Path) -> tuple[str, ...]:
-    """Every workspace member's distribution name, from `packages/*/pyproject.toml` (ruling 1)."""
-    names = []
+def _declared(root: Path) -> list[tuple[str, bool]]:
+    """Each workspace member's distribution name, and whether it declares itself an attachment."""
+    out = []
     for pyproject in sorted((root / "packages").glob("*/pyproject.toml")):
-        project = tomllib.loads(pyproject.read_text(encoding="utf-8")).get("project", {})
+        data: dict[str, Any] = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        project = data.get("project", {})
         if "name" in project:
-            names.append(str(project["name"]))
-    return tuple(names)
+            marker = data.get("tool", {}).get("omniweave", {}).get("attachment")
+            out.append((str(project["name"]), marker is True))
+    return out
+
+
+def members(root: Path) -> tuple[str, ...]:
+    """Every workspace member's distribution name, attachments aside (rulings 1 and 4)."""
+    return tuple(name for name, attachment in _declared(root) if not attachment)
+
+
+def attachments(root: Path) -> tuple[str, ...]:
+    """Ruling 4: the members built by `--all-packages` that are not the 28's."""
+    return tuple(name for name, attachment in _declared(root) if attachment)
+
+
+def prune(root: Path, out: Path) -> list[str]:
+    """Ruling 4: delete every attachment's artefacts from `out`; the names deleted."""
+    gone = []
+    for name in attachments(root):
+        for path in sorted(out.glob(f"{expected(name)}-*")):
+            path.unlink()
+            gone.append(path.name)
+    return gone
 
 
 def expected(name: str) -> str:
@@ -158,7 +185,7 @@ def _epoch(root: Path, env: Mapping[str, str]) -> str:
 
 
 def build(root: Path, out: Path, epoch: str) -> None:
-    """`uv build --all-packages --out-dir out` under one `SOURCE_DATE_EPOCH`."""
+    """`uv build --all-packages --out-dir out` under one `SOURCE_DATE_EPOCH`, pruned (ruling 4)."""
     uv = shutil.which("uv")
     if uv is None:
         raise BuildError("no uv on PATH")
@@ -173,6 +200,7 @@ def build(root: Path, out: Path, epoch: str) -> None:
     if done.returncode != 0:
         tail = done.stderr.decode(errors="replace")[-1500:]
         raise BuildError(f"uv build exited {done.returncode}:\n{tail}")
+    prune(root, out)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -182,7 +210,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--dist", type=Path, help="pass one's directory, already built (CI); else built here"
     )
+    parser.add_argument(
+        "--prune", type=Path, metavar="DIR", help="only delete attachments' artefacts from DIR"
+    )
     args = parser.parse_args(argv)
+    if args.prune is not None:
+        gone = prune(REPO, args.prune)
+        sys.stdout.write(f"check_build: pruned {len(gone)} attachment file(s): {' '.join(gone)}\n")
+        return EXIT_OK
     names = members(REPO)
     with tempfile.TemporaryDirectory(prefix="ow-gate-build-") as scratch:
         work = Path(scratch)
