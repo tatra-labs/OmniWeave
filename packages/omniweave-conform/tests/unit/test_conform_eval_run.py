@@ -20,6 +20,7 @@ import pytest
 from omniweave_conform import absence as absence_harness
 from omniweave_conform import eval_run
 from omniweave_conform import portability as cell_harness
+from omniweave_conform import removal as removal_harness
 from omniweave_conform import retrieval as cite_harness
 from omniweave_conform import roundtrip as r2_harness
 from omniweave_conform.damage import INJECTORS, TABLE, Assessment, Clause
@@ -40,6 +41,8 @@ DRAFTED = (
 )
 """D913: the drafted labels' rates, `unknown` until a reviewer verifies 30 in a slice, and each
 one a refusal, run id aside."""
+UNDER_MIN = ("metric", "false_confident_zero@removal in absence/omniweave")
+"""D933: the removal half's ceiling, `unknown` over the catalogue's 13 answerable questions."""
 
 
 def _labels(fixtures: str) -> int:
@@ -53,6 +56,37 @@ def _labels(fixtures: str) -> int:
 def _clock(start: int = 1_000) -> Any:
     ticks = count(start, 7)
     return lambda: next(ticks)
+
+
+def _removal(
+    answerable: int = 13, wrong: int = 0, absent: int = 17, found: int = 0
+) -> removal_harness.Removal:
+    """D933: a removal half's run, its counts chosen. The default is the repository's: 13
+    answerable questions and 17 genuinely absent ones, none answered `absent`."""
+
+    def asked(population: str, n: int, hits: int, stem: str) -> list[removal_harness.Asked]:
+        return [
+            removal_harness.Asked(
+                removal_harness.Question(f"{stem}{i}", "data_room", "q?", population),
+                "absent" if i < hits else "low_confidence",
+            )
+            for i in range(n)
+        ]
+
+    return removal_harness.Removal(
+        asked=(
+            *asked(removal_harness.ANSWERABLE, answerable, wrong, "a"),
+            *asked(removal_harness.REMOVED, absent, found, "r"),
+        ),
+        shared=("data-ret-indexed-cap",),
+        documents={"data_room/a.docx": b"one", "data_room-removed/a.docx": b"two"},
+    )
+
+
+@pytest.fixture(autouse=True)
+def _no_removal_builds(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The removal half builds six stores; a test that wants another run patches over this."""
+    monkeypatch.setattr(removal_harness, "run_suite", lambda *_a, **_k: _removal())
 
 
 def _parse(register: dict[str, Any] = REGISTER, **kw: Any) -> tuple[Batch, tuple[Any, ...]]:
@@ -233,7 +267,13 @@ def _suite(*oks: bool) -> absence_harness.Suite:
     )
 
 
-def _absence(monkeypatch: pytest.MonkeyPatch, suite: Any, register: Any = REGISTER) -> Any:
+def _absence(
+    monkeypatch: pytest.MonkeyPatch,
+    suite: Any,
+    register: Any = REGISTER,
+    *,
+    deterministic_half: bool = True,
+) -> Any:
     seen: dict[str, Any] = {}
 
     def fake(chosen: Any, **kw: Any) -> Any:
@@ -250,6 +290,7 @@ def _absence(monkeypatch: pytest.MonkeyPatch, suite: Any, register: Any = REGIST
         cassette="off",
         now_ns=_clock(),
         admit=lambda _argv: None,
+        deterministic_half=deterministic_half,
     )
     return batch, done, seen
 
@@ -257,6 +298,10 @@ def _absence(monkeypatch: pytest.MonkeyPatch, suite: Any, register: Any = REGIST
 def test_the_absence_half_is_one_run_of_omniweave_over_every_built_injector(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    def never(*_a: Any, **_k: Any) -> Any:
+        raise AssertionError("--deterministic-half runs no removal half")
+
+    monkeypatch.setattr(removal_harness, "run_suite", never)
     batch, (done,), seen = _absence(monkeypatch, _suite(True, True, True))
     assert seen["chosen"] == list(INJECTORS)
     assert seen["root"] == REPO
@@ -315,6 +360,99 @@ def test_the_register_row_and_its_truth_kind_are_required(monkeypatch: pytest.Mo
         _absence(monkeypatch, _suite(True), bad)
 
 
+# --- the absence suite's removal half (D933) -----------------------------------------------------
+
+
+def test_the_removal_half_is_its_own_run_over_its_own_corpus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rulings 25-28 over the repository's counts: 13 answerable, so the ceiling is unknown."""
+    batch, (damaged, done), _ = _absence(monkeypatch, _suite(True), deterministic_half=False)
+    first, run = batch.runs
+    assert eval_run.ABSENCE_UNMEASURED[0] not in first.not_measured
+    corpus = batch.corpora[1]
+    assert corpus.corpus_id == run.corpus_id == "absence_corpus/quick" != first.corpus_id
+    assert corpus.corpus_digest == absence_harness.documents_digest(_removal().documents)
+    assert (corpus.n_docs, corpus.tier, corpus.publishable) == (2, "A", False)
+    assert (run.suite, run.subject, run.timing_basis, run.status) == (
+        "absence",
+        "omniweave",
+        "spawn_inclusive",
+        "ok",
+    )
+    assert run.not_measured == (
+        "false_confident_zero: 0 of 13 answerable question(s) answered absent, under "
+        "min_slice_n = 30 (13:1088)",
+        "absent_recall: 0 of 17 genuinely absent question(s) answered absent, under "
+        "min_slice_n = 30 (13:1088)",
+        "absent_precision: no question was in its denominator, so it has no rate",
+        eval_run.REMOVAL_UNMEASURED,
+    )
+    assert run.confounders[2].startswith("kept answerable: data-ret-indexed-cap: its answer")
+    assert run.confounders[3] == "0 answerable question(s) answered absent"
+    (_detection, ceiling) = batch.metrics
+    assert (ceiling.metric, ceiling.slice_key, ceiling.value, ceiling.n, ceiling.state) == (
+        "false_confident_zero",
+        "removal",
+        None,
+        13,
+        "unknown",
+    )
+    assert (ceiling.truth_kind, ceiling.method, ceiling.ci_lo) == ("human", "none", None)
+    assert (done.metric, done.value, done.n, done.parsed, done.refused) == (
+        "false_confident_zero",
+        None,
+        13,
+        13,
+        (),
+    )
+    assert damaged.metric == "degradation_detection"
+
+
+def test_a_measured_removal_half_writes_its_rates(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ruling 27: at 30 or more a rate is written, each with its interval; the ungated precision
+    over four answered `absent` is named instead, and the wrong answers are named by task."""
+    monkeypatch.setattr(
+        removal_harness,
+        "run_suite",
+        lambda *_a, **_k: _removal(answerable=40, wrong=1, absent=30, found=3),
+    )
+    batch, (_damaged, done), _ = _absence(monkeypatch, _suite(True), deterministic_half=False)
+    rows = {m.metric: m for m in batch.metrics if m.slice_key == "removal"}
+    assert set(rows) == {"false_confident_zero", "absent_recall"}
+    assert (rows["false_confident_zero"].value, rows["false_confident_zero"].n) == (0.025, 40)
+    assert (rows["absent_recall"].value, rows["absent_recall"].n) == (0.1, 30)
+    for row in rows.values():
+        assert (row.state, row.method, row.truth_kind) == ("ok", "closed_form", "human")
+        assert row.ci_lo is not None
+        assert row.ci_hi is not None
+        assert row.ci_lo <= row.value <= row.ci_hi  # type: ignore[operator]
+    run = batch.runs[1]
+    assert run.not_measured == (
+        "absent_precision: 3 of 4 question(s) answered absent genuinely absent, under "
+        "min_slice_n = 30 (13:1088)",
+        eval_run.REMOVAL_UNMEASURED,
+    )
+    assert run.confounders[3] == "1 answerable question(s) answered absent: a0"
+    assert (done.value, done.n, done.parsed, done.refused) == (0.025, 40, 39, ("a0",))
+
+
+def test_a_removal_half_that_could_not_run_is_a_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(*_a: Any, **_k: Any) -> Any:
+        raise RuntimeError("no catalogue")
+
+    monkeypatch.setattr(removal_harness, "run_suite", boom)
+    with pytest.raises(QualityError, match="removal half could not run: RuntimeError: no cat"):
+        _absence(monkeypatch, _suite(True), deterministic_half=False)
+
+
+def test_the_removal_half_needs_its_register_row(monkeypatch: pytest.MonkeyPatch) -> None:
+    no_row = {"gate": [r for r in REGISTER["gate"] if r["metric"] != "false_confident_zero"]}
+    with pytest.raises(QualityError, match="no absence false_confident_zero row"):
+        _absence(monkeypatch, _suite(True), no_row, deterministic_half=False)
+    _absence(monkeypatch, _suite(True), no_row)
+
+
 def test_the_entry_point_runs_every_suite_in_one_write(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -340,6 +478,7 @@ def test_the_entry_point_runs_every_suite_in_one_write(
         "parse",
         "parse",
         "absence",
+        "absence",
         "retrieve",
         "roundtrip",
         "roundtrip",
@@ -352,9 +491,13 @@ def test_the_entry_point_runs_every_suite_in_one_write(
         judged = check_release(connection, REGISTER, strict=False)
     finally:
         connection.close()
-    assert judged.runs == 9
-    assert [(f.kind, f.names.split(" run ")[0]) for f in judged.findings] == list(DRAFTED), (
-        "D913: every suite's hard gate holds; only the drafted labels' unverified rates refuse"
+    assert judged.runs == 10
+    assert [(f.kind, f.names.split(" run ")[0]) for f in judged.findings] == [
+        UNDER_MIN,
+        *DRAFTED,
+    ], (
+        "D913: every suite's hard gate holds; only the drafted labels' unverified rates refuse, "
+        "and D933's ceiling over 13 answerable questions, under min_slice_n"
     )
 
 

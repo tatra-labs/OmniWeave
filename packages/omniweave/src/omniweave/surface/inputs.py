@@ -857,9 +857,9 @@ class EvalRunIn:
 
     `suite` is one of 13's seven; omitted, it is every suite this build measures, `parse` then
     `absence` (D869). `deterministic_half` is 16:690's `--suite absence --deterministic-half`, the
-    one half of that suite built, so it is refused beside any other suite and changes nothing for
-    `absence`. `subject` keeps the register's `[[subject]]` rows whose driver id it names. `witness`
-    and `cassette` go into `eval_run` as given, each checked against its column's CHECK.
+    paired-damage half alone, leaving out the removal half (D933), so it is refused beside any
+    other suite. `subject` keeps the register's `[[subject]]` rows whose driver id it names.
+    `witness` and `cassette` go into `eval_run` as given, each checked against its column's CHECK.
     `validate_judge` and `emit` are 13:1873's other two flags, parsed and refused by name: nothing
     here runs a judge or writes a result file. `oweval` and `gates` are the store written and the
     register read, relative to the working directory, as `EvalReleaseCheckIn`'s are. 13:1873's

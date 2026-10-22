@@ -2,7 +2,8 @@
 
 16-roadmap.md section 13's demo is `ow eval release-check` exiting 0. This is that pair end to end
 over the repository's own register: the parse suite over both `[[subject]]` drivers, the absence
-suite's deterministic half, every built Injector damaged, read, fixed and read again, and the
+suite's two halves, every built Injector damaged, read, fixed and read again and every
+catalogue question asked of its corpus with its answer removed (D933), and the
 retrieve suite's self-verifying half (D870), every catalogue question asked and every cite
 resolved, and the roundtrip suite (D871), each target's golden compiled, read back and held to
 law R2 as the hard `address_survival` row (D902), and the portability suite (D903), the Tier-A
@@ -50,11 +51,22 @@ def test_a_full_run_holds_every_hard_gate_and_refuses_only_the_unverified_labels
     done = json.loads(shown)
     assert done["suites"] == ["parse", "absence", "retrieve", "roundtrip", "portability"]
     by_run = {(row["suite"], row["subject"]): row for row in done["runs"]}
+    by_slice = {(row["suite"], row["slice"]): row for row in done["runs"]}
     assert by_run["parse", "parse.pdf.pdfium"]["value"] == 1.0
     assert by_run["parse", "parse.office.anydoc"]["value"] is None
-    absence = by_run["absence", "omniweave"]
+    absence = by_slice["absence", "deterministic_half"]
     assert (absence["metric"], absence["value"]) == ("degradation_detection", 1.0)
     assert absence["n"] == absence["parsed"] == sum(1 for _ in INJECTORS) * 2
+    removal = by_slice["absence", "removal"]
+    #  D933: no answerable catalogue question is answered `absent`, and 13 is under
+    #  min_slice_n, so the ceiling is unknown.
+    assert (removal["metric"], removal["value"], removal["refused"]) == (
+        "false_confident_zero",
+        None,
+        [],
+    )
+    assert removal["n"] == removal["parsed"] == 13
+    assert removal["corpus"] == "absence_corpus/quick"
     retrieve = by_run["retrieve", "omniweave"]
     assert (retrieve["metric"], retrieve["value"], retrieve["refused"]) == (
         "citability_violations",
@@ -86,17 +98,19 @@ def test_a_full_run_holds_every_hard_gate_and_refuses_only_the_unverified_labels
         assert same["n"] == same["parsed"] > 0
     code, shown = _ow("eval", "release-check", "--oweval", str(store))
     #  D913: every hard gate holds. The drafted labels' three rates are unknown until a reviewer
-    #  verifies them, and each refusal names that as its fix.
+    #  verifies them, and each refusal names that as its fix. D933: false_confident_zero is
+    #  unknown over 13 answerable questions, and its refusal names more questions as the fix.
     assert code == 1
     refused = [line.split()[1] for line in shown.splitlines()[:-1:2]]
     assert refused == [
+        "false_confident_zero@removal",
         "order_acc@__macro__",
         "order_acc@__macro__",
         "table_rel_acc@__macro__",
     ], shown
     assert shown.count('fix: verify its labels: write checked = "verified"') == 3
     assert shown.splitlines()[-1] == (
-        "ow eval release-check: refused, 3 finding(s); 9 latest run(s), 0 superseded, "
+        "ow eval release-check: refused, 4 finding(s); 10 latest run(s), 0 superseded, "
         "5 hard gate(s)"
     )
     code, shown = _ow("eval", "release-check", "--oweval", str(store), "--strict")
