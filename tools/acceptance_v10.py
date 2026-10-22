@@ -432,8 +432,8 @@ CRITERIA: tuple[Criterion, ...] = (
         "V10-15",
         "ow install records each path's post-write sha256; ow uninstall restores byte-identity",
         (
+            tool("gate_install.py"),
             pytest(
-                f"{CLI}/test_gate_install.py",
                 f"{CLI}/test_install_receipt.py",
                 f"{CLI}/test_install_verbs.py",
                 f"{T3}/test_install_verbs_process.py",
@@ -441,8 +441,9 @@ CRITERIA: tuple[Criterion, ...] = (
         ),
         Coverage.PARTIAL,
         "every written path is held to a receipt row and each file's newest sha256_after to its "
-        "bytes, over a fixture home (D856), never a real host's config; G-install has no gate row "
-        "(D484) and no CI",
+        "bytes, over a fixture home (D856), never a real host's config. G-install is G35 (D920), "
+        "run on all nine cells, but `registered` and not law: its ADR and section 6.4's row are "
+        "owed",
     ),
     Criterion(
         "V10-16",

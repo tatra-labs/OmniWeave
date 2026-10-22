@@ -972,6 +972,42 @@ pending       = """
 an ADR allocating the number (section 8.7 "add a gate") and a row in section 6.4's table. 16-roadmap.md:694 already invokes the script by name in P6's exit criteria and 16-roadmap.md:674 makes the property part of P6's freeze."""
 section       = "07-store-and-retrieval.md section 6.1; 18-api-sketch.md section 1; 16-roadmap.md section 9"
 
+# ------------------------------------------------------------------------------------------------
+# G35 -- G-install, appended under the same caveat as G30 through G34 (D920).
+#
+# 10-interfaces.md:1775 names "The symmetry gate (G-install)" and 16-roadmap.md:719 calls it W7.5's
+# "byte-identity reversal gate"; section 6.4's table numbers neither, which is D484. The gate has
+# been `packages/omniweave/tests/unit/test_gate_install.py` since W7.5, standing in until a row
+# named it. V10-15 is the acceptance clause it carries.
+#
+# IN THE `test` JOB AND NOT `gates`. What an install writes differs by OS (the hook command is
+# quoted for cmd.exe on Windows, `install.hookrules.hook_command(..., windows=)`, and a file held
+# open there cannot be replaced until it closes), so the reversal has to hold on all nine cells,
+# which only the matrix runs. `gates` is one ubuntu cell, and 13-quality.md:109-113
+# already puts that job past V01-14's 180 s.
+# ------------------------------------------------------------------------------------------------
+
+[[gate]]
+id            = "G35"
+assertion     = "`ow install` then `ow uninstall` leaves every built host's files byte-identical, and the receipt names every written path with its post-write sha256"
+jobs          = ["test"]
+# The module runs 117 cases in 8.5-9.0 s on the P2 build machine; 30 s is three times that, for a
+# hosted macOS cell's slower filesystem.
+budget_s      = 30
+pr            = true
+nightly       = true
+release       = true
+runner        = ["tools/gate_install.py"]
+# 17-risks.md section 1.3: `surface` owns "hooks", and an install writes the hooks, the MCP entry
+# and the skills; it is the same owner as G26's.
+owner         = "surface"
+reviewed_at   = "2026-10-22"
+review_by     = "2027-01-22"
+status        = "registered"
+pending       = """
+an ADR allocating the number (section 8.7 "add a gate") and a row in section 6.4's table. 10-interfaces.md:1775 already names the gate G-install and 16-roadmap.md:719 makes it W7.5's exit, so the row records a gate the plan was running without a number (D484)."""
+section       = "10-interfaces.md section 7.4"
+
 # =============================================================================================
 # THE JOB ASSERTIONS. Nine at release 1, in section 6.4's rendering order.
 #
