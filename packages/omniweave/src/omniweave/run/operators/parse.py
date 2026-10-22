@@ -117,6 +117,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, BinaryIO, Final, cast
 
+from omniweave_core.clock import thread_cpu_ns
 from omniweave_core.drivers.licence import card_restriction_bits
 from omniweave_core.errors import ModelError, RouteError
 from omniweave_core.host import keystore, subproc
@@ -656,6 +657,10 @@ class ParseOperator:
 
     def _now_ms(self) -> int:
         return self._ctx.clock.monotonic_ns() // 1_000_000
+
+    def _cpu_ns(self) -> int:
+        """The calling thread's CPU, which an in-process call is charged from. D945."""
+        return thread_cpu_ns()
 
     def close(self) -> None:
         """Stop every worker. `SHUTDOWN`, then the uncatchable step (`Worker.stop`)."""
@@ -1409,12 +1414,14 @@ class _Guarded:
         secret = self._operator.secret_for(unit.uri)
 
         now_ms = self._operator._now_ms
+        cpu_ns = self._operator._cpu_ns
 
         def work(io_obj: DriverIO) -> DriverResult:
             if secret is not None:
                 keystore.write_password(Path(io_obj.tmpdir), secret)
-            started = now_ms()
-            return with_wall(parse_one(parse, unit, io_obj), now_ms() - started)
+            started, cpu_started = now_ms(), cpu_ns()
+            result = parse_one(parse, unit, io_obj)
+            return with_metered(result, now_ms() - started, (cpu_ns() - cpu_started) // 1_000_000)
 
         return work
 
@@ -1442,17 +1449,22 @@ class _Guarded:
 # =============================================================================================
 
 
-def with_wall(result: DriverResult, wall_ms: int) -> DriverResult:
-    """An in-process call's wall time as the RUN measured it, over the driver's own figure. D921.
+def with_metered(result: DriverResult, wall_ms: int, cpu_ms: int) -> DriverResult:
+    """An in-process call's wall and CPU time as the RUN measured them. D921, D945.
 
-    `subproc._with_metered`'s rule for `wall_ms`, for S1: the driver's report is a claim by the
-    code being timed, and the run's clock is the one a `PriceBook` rate for `wall_ms` should price
-    (V10-13). Measured here rather than in `DriverGuard`, which hands the driver's result back
-    unchanged by contract. CPU is not read: an in-process call shares the supervisor's process
-    with every other thread, so no process-level reading belongs to one unit, and the driver's
-    own `cpu_ms` stands.
+    `subproc._with_metered`'s rule, for S1. The driver's report is a claim by the code being timed,
+    and the run's readings are what a `PriceBook` rate should price (V10-13). So wall is the run's
+    clock, over the driver's figure. CPU is the larger of the calling thread's (`clock.
+    thread_cpu_ns`) and the driver's own. No process reading belongs to one in-process call, but
+    the driver runs on the thread that called it, so that thread's CPU is the call's. The driver's
+    figure stays as a floor for work it handed to a thread of its own. Measured here rather than
+    in `DriverGuard`, which hands the driver's result back unchanged by contract.
     """
-    return replace(result, metrics=replace(result.metrics, wall_ms=max(0, wall_ms)))
+    metrics = result.metrics
+    return replace(
+        result,
+        metrics=replace(metrics, wall_ms=max(0, wall_ms), cpu_ms=max(metrics.cpu_ms, cpu_ms, 0)),
+    )
 
 
 def _address(run_id: str, ordinal: int) -> str:
