@@ -472,6 +472,37 @@ def test_anything_that_is_not_a_driver_error_becomes_driver_bug(raised: Exceptio
     assert outcome.failure.detected_by == HOST, "the guard decided the class, not the driver"
 
 
+def test_a_bug_crosses_as_its_type_and_place_and_never_its_args() -> None:
+    """D934, 15:1366: `int(page_text)` puts the page in the `ValueError`, and the failure names
+    the type and where it was raised instead."""
+
+    def work(_io: DriverIO) -> DriverResult:
+        page_text = "Total due OWCANARY-7f3a91 on receipt"
+        int(page_text)
+        raise AssertionError("int() of a page never returns")
+
+    outcome = run(guard(), work)
+    assert outcome.failure is not None
+    assert outcome.failure.message.startswith("ValueError at test_host_inproc.py:")
+    assert outcome.failure.message.endswith(" in work")
+    assert "OWCANARY" not in outcome.failure.message
+
+
+def test_a_driver_errors_message_is_redacted_at_the_guard() -> None:
+    """D934, 15:1336: a `DriverError.message` passes `redact()` before it is a ledger value."""
+
+    def work(_io: DriverIO) -> DriverResult:
+        raise DriverError(
+            cls=FailureClass.AUTH,
+            message="refused with Authorization: Bearer abc.def for sk-" + "x" * 20,
+        )
+
+    outcome = run(guard(), work)
+    assert outcome.failure is not None
+    assert outcome.failure.message == "refused with Authorization: <redacted> for <redacted:token>"
+    assert outcome.failure.detected_by == DRIVER
+
+
 @pytest.mark.parametrize("raised", [SystemExit(3), KeyboardInterrupt()])
 def test_a_base_exception_from_the_driver_does_not_propagate_into_the_loop(
     raised: BaseException,
