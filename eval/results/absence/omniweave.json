@@ -1,0 +1,44 @@
+[
+  {
+    "ci_hi": 1.0,
+    "ci_lo": 0.6755924351161198,
+    "confounders": [
+      "the documents are the repository's own generated reference corpora, quick scale",
+      "0 pair(s) failed"
+    ],
+    "corpus_id": "reference_corpora/quick",
+    "corpus_version": "e138b1d7bb98259e",
+    "entrant_bias": false,
+    "fairness": {},
+    "measured_on": {
+      "corpus": "reference_corpora/quick@e138b1d7bb98259e",
+      "corpus_digest": "e138b1d7bb98259eac4e2a652d05394122f2e92c7716b4af794e4b30740acf6f",
+      "hardware": "windows-amd64",
+      "harness_version": "0.1.0",
+      "prompt_version": "n/a",
+      "runtime": "cpython",
+      "runtime_version": "3.12.0",
+      "sampling": "n/a",
+      "weights": "n/a",
+      "weights_revision": "n/a"
+    },
+    "method": "closed_form",
+    "metric": "degradation_detection",
+    "n": 8,
+    "not_measured": [
+      "9 of 13 Injectors are not built: strip_text_layer, drop_part, budget, deny_probe, downgrade_origin_span, rotate_embedder, stall, strip_integrity, synopsize",
+      "false_confident_zero, absent_precision, absent_recall: the absence corpus half needs the T4 absence corpus, which does not exist (13 section 8.6)"
+    ],
+    "publishable": false,
+    "run_id": "104b0df2ec5ca3c0f5da48617239d150",
+    "slice_key": "deterministic_half",
+    "standing": "WITHHELD",
+    "subject": "omniweave",
+    "subject_version": "0.1.0",
+    "suite": "absence",
+    "truth_kind": "rendered",
+    "unpinned": false,
+    "value": 1.0,
+    "witness": "self"
+  }
+]

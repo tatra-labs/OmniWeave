@@ -1,0 +1,88 @@
+[
+  {
+    "ci_hi": 0.0,
+    "ci_lo": 0.0,
+    "confounders": [
+      "the questions are the adoption catalogue's and the documents the repository's own generated reference corpora, quick scale",
+      "0 cite(s) did not resolve"
+    ],
+    "corpus_id": "reference_corpora/quick",
+    "corpus_version": "60b7d5f36dc55d7b",
+    "entrant_bias": false,
+    "fairness": {},
+    "measured_on": {
+      "corpus": "reference_corpora/quick@60b7d5f36dc55d7b",
+      "corpus_digest": "60b7d5f36dc55d7b7473090fc4e92f20cc962fed55df688fa83a58759f948588",
+      "hardware": "windows-amd64",
+      "harness_version": "0.1.0",
+      "prompt_version": "n/a",
+      "runtime": "cpython",
+      "runtime_version": "3.12.0",
+      "sampling": "n/a",
+      "weights": "n/a",
+      "weights_revision": "n/a"
+    },
+    "method": "exact",
+    "metric": "citability_violations",
+    "n": 18,
+    "not_measured": [
+      "6 damaged task(s): each needs a damaged corpus, the absence suite's business",
+      "recall_at_10, ndcg_at_10, qa_accuracy: no relevance labels exist to score them (16-roadmap.md:689's golden-queries.jsonl)",
+      "citability_violations' artefact half, OUT11's restricted items: no compile is run"
+    ],
+    "publishable": false,
+    "run_id": "06e1a8d783ed5b89b9d12fe0bff8b734",
+    "slice_key": "born_digital",
+    "standing": "WITHHELD",
+    "subject": "omniweave",
+    "subject_version": "0.1.0",
+    "suite": "retrieve",
+    "truth_kind": "native_run",
+    "unpinned": false,
+    "value": 0.0,
+    "witness": "self"
+  },
+  {
+    "ci_hi": 1.0,
+    "ci_lo": 0.986746344583262,
+    "confounders": [
+      "the questions are the adoption catalogue's and the documents the repository's own generated reference corpora, quick scale",
+      "0 cite(s) did not resolve"
+    ],
+    "corpus_id": "reference_corpora/quick",
+    "corpus_version": "60b7d5f36dc55d7b",
+    "entrant_bias": false,
+    "fairness": {},
+    "measured_on": {
+      "corpus": "reference_corpora/quick@60b7d5f36dc55d7b",
+      "corpus_digest": "60b7d5f36dc55d7b7473090fc4e92f20cc962fed55df688fa83a58759f948588",
+      "hardware": "windows-amd64",
+      "harness_version": "0.1.0",
+      "prompt_version": "n/a",
+      "runtime": "cpython",
+      "runtime_version": "3.12.0",
+      "sampling": "n/a",
+      "weights": "n/a",
+      "weights_revision": "n/a"
+    },
+    "method": "closed_form",
+    "metric": "citation_soundness",
+    "n": 286,
+    "not_measured": [
+      "6 damaged task(s): each needs a damaged corpus, the absence suite's business",
+      "recall_at_10, ndcg_at_10, qa_accuracy: no relevance labels exist to score them (16-roadmap.md:689's golden-queries.jsonl)",
+      "citability_violations' artefact half, OUT11's restricted items: no compile is run"
+    ],
+    "publishable": false,
+    "run_id": "06e1a8d783ed5b89b9d12fe0bff8b734",
+    "slice_key": "born_digital",
+    "standing": "WITHHELD",
+    "subject": "omniweave",
+    "subject_version": "0.1.0",
+    "suite": "retrieve",
+    "truth_kind": "native_run",
+    "unpinned": false,
+    "value": 1.0,
+    "witness": "self"
+  }
+]

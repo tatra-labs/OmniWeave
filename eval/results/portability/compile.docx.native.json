@@ -1,0 +1,43 @@
+[
+  {
+    "ci_hi": 0.9999999999999998,
+    "ci_lo": 0.8156818649911481,
+    "confounders": [
+      "one cell, this machine's, held to frozen values blessed on win32 (D886); the other cells are CI's matrix, each running this suite against the same values",
+      "0 of 17 differ"
+    ],
+    "corpus_id": "fixtures/out/golden/docx",
+    "corpus_version": "46ffbb4c6c836b5d",
+    "entrant_bias": false,
+    "fairness": {},
+    "measured_on": {
+      "corpus": "fixtures/out/golden/docx@46ffbb4c6c836b5d",
+      "corpus_digest": "46ffbb4c6c836b5d02326115725dd82fa0b91ae115aafedde8a56190bf650c25",
+      "hardware": "windows-amd64",
+      "harness_version": "0.1.0",
+      "prompt_version": "n/a",
+      "runtime": "cpython",
+      "runtime_version": "3.12.0",
+      "sampling": "n/a",
+      "weights": "n/a",
+      "weights_revision": "n/a"
+    },
+    "method": "closed_form",
+    "metric": "cell_identity",
+    "n": 17,
+    "not_measured": [
+      "pages and outline Reductions, and byte digests: tracked or pinned-only, so not promised across cells (D886, 13:1568)"
+    ],
+    "publishable": false,
+    "run_id": "7e0477fee8da9385aefaf7abcc607d8b",
+    "slice_key": "docx",
+    "standing": "WITHHELD",
+    "subject": "compile.docx.native",
+    "subject_version": "0.1.0",
+    "suite": "portability",
+    "truth_kind": "native_run",
+    "unpinned": false,
+    "value": 1.0,
+    "witness": "self"
+  }
+]
