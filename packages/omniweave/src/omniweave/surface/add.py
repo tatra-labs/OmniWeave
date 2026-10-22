@@ -257,6 +257,7 @@ def add_report(
     from omniweave_core.modelserver import services_root  # noqa: PLC0415
 
     from omniweave.run import discover  # noqa: PLC0415
+    from omniweave.run.ingest import parse_keys_moved  # noqa: PLC0415
     from omniweave.run.routing import max_parts_of  # noqa: PLC0415
 
     store = Path(stores(config, [name], cwd=cwd)[name])
@@ -279,7 +280,9 @@ def add_report(
     completed: list[dict[str, Any]] = []
     drain: tuple[str, ...] = ()
     installs: dict[str, str]
-    if not dry_run and added.queued:
+    #  D930: a driver that moved its key re-parses settled units (D679), and only a run does
+    #  that, so an `ow add` over unchanged files still opens one when a key moved.
+    if not dry_run and (added.queued or parse_keys_moved(store, config, offline=offline)):
         drain = _drain(
             store,
             config,

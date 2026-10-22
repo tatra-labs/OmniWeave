@@ -197,6 +197,7 @@ __all__ = [
     "REPARSE_SCAN_SQL",
     "REPLACED_SCAN_SQL",
     "RESET_ACQUIRING_SQL",
+    "SETTLED_KEYS_SQL",
     "SKIP_REASON_CLASSES",
     "STALE_SCAN_SQL",
     "UNCHANGED_SQL",
@@ -219,6 +220,7 @@ __all__ = [
     "freshness",
     "mark_stale",
     "observe",
+    "parse_keys_moved",
     "pending_params",
     "raised_parts",
     "raw",
@@ -1343,6 +1345,40 @@ and the two inputs 08:1550-1556 says a parse driver's upgrade or config moves. T
 `done` work row of the producer's operator. A unit is one row per distinct key, NULLs where it
 has none (a unit identified as nothing parseable), so a page of units is one `LIMIT` of units
 and never splits one across two pages."""
+
+
+SETTLED_KEYS_SQL: Final[str] = """
+SELECT DISTINCT w.driver, p.op_version, lower(hex(p.options_digest))
+  FROM unit AS u
+  JOIN doc AS d ON d.uri = u.unit_uri AND json_extract(d.x, :retired) IS NULL
+  JOIN page AS g ON g.doc_ord = d.doc_ord AND g.gen = d.gen
+  JOIN producer AS p ON p.producer_id = g.producer_id
+  JOIN work AS w ON w.unit_uri = u.unit_uri AND w.operator = p.operator
+       AND w.status = 'done' AND w.driver IS NOT NULL
+ WHERE u.connector = :connector AND u.state = 'settled'
+"""
+"""Every distinct `(driver, schema_version, config_digest)` a settled unit's head was parsed
+under: `REPARSE_SCAN_SQL`'s join, without its walk-generation filter or its paging, because a
+store holds a handful of distinct keys however many units it holds. **D930.**"""
+
+
+def parse_keys_moved(
+    connection: _Rows, keys: Mapping[str, tuple[int, str]], *, connector: str = CONNECTOR
+) -> bool:
+    """Whether any settled unit's parse driver now keys it differently. Read-only. **D930.**
+
+    `reenter_reparsed()`'s question asked without acting on it, so a caller can tell whether a
+    run has D679's work to do before it opens one. `ow add` asks it when no file changed: the
+    change-detection ladder never sees a driver's config or `schema_version` move, so an `ow add`
+    over unchanged files used to open no run, and D679's re-entry, which only runs inside one,
+    never ran. A driver this run's catalog does not hold is ignored, as it is there.
+    """
+    rows = connection.execute(
+        SETTLED_KEYS_SQL, {"connector": connector, "retired": f'$."{RETIRED_X}"'}
+    ).fetchall()
+    return any(
+        driver in keys and (version, digest) != keys[driver] for driver, version, digest in rows
+    )
 
 
 def reenter_reparsed(
