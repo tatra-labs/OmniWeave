@@ -259,7 +259,10 @@ class PlainTextParser:
                         "part": PART,
                         "start": byte_a,
                         "length": byte_len,
-                        "codec": "utf-8",
+                        # 03:1466: `<codec>/<errors>`, the policy the bytes were decoded
+                        # under, so a re-verifier decodes them the same way. A bare "utf-8"
+                        # names no errors policy and `OriginBytes` refuses it (D938).
+                        "codec": f"utf-8/{self.errors}",
                     },
                     "quad": None,
                     "marks": [],

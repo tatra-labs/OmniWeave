@@ -270,7 +270,8 @@ def test_an_empty_selector_is_the_whole_document(tmp_path: Path) -> None:
         ([*HEAD, END, _block("b1")], "after `end`"),
         ([*HEAD, HEAD[0], END], "second `doc`"),
         ([*HEAD, _block("b1", kind="document"), END], "the host mints the root"),
-        ([*HEAD, _block("b1", os={"k": "bytes"}), END], "this decoder reads none"),
+        ([*HEAD, _block("b1", os={"k": "bytes"}), END], "bytes origin"),
+        ([*HEAD, _block("b1", os={"k": "nodepath"}), END], "reads none, bytes and glyphs"),
         ([*HEAD, _block("b1", trust="certain"), END], "not a Trust member"),
         ([*HEAD, _block("b1", page=3), END], "names page 3 while page 0 is open"),
     ],
@@ -470,6 +471,36 @@ def test_an_origin_or_a_quad_the_model_refuses_refuses_the_document(
     records = [*head, _block("b1", method="text_layer", **block), END]
     with pytest.raises(ModelError, match=said):
         _run(tmp_path, records)
+
+
+BYTES = {"k": "bytes", "part": "text/body.txt", "start": 4, "length": 5, "codec": "utf-8/strict"}
+
+
+def test_a_bytes_origin_is_stored_with_its_part_span_and_codec(tmp_path: Path) -> None:
+    """D938: flat text's `OriginBytes`, the conformance template's, read from the fragment's long
+    keys into 03 section 7.2's columns: `os_kind` bytes, the part, `os_a`/`os_b` as offset and
+    length, and the `<codec>/<errors>` a re-verifier decodes under."""
+    _decoded, path = _run(tmp_path, [*HEAD, _block("b1", quote="verbatim", os=BYTES), END])
+    assert _rows(path, "SELECT os_part, os_a, os_b, os_codec FROM block WHERE text = 'words'") == [
+        ("text/body.txt", 4, 5, "utf-8/strict")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("os", "said"),
+    [
+        ({**BYTES, "codec": "utf-8"}, "'<codec>/<errors>'"),
+        ({**BYTES, "length": 0}, "LENGTH and must be >= 1"),
+        ({**BYTES, "start": -1}, "bytes origin"),
+        ({**BYTES, "part": ""}, "bytes origin"),
+    ],
+)
+def test_a_bytes_origin_the_model_refuses_refuses_the_document(
+    tmp_path: Path, os: dict[str, Any], said: str
+) -> None:
+    """The fail-closed direction: a span the model would not hold is no span to store as none."""
+    with pytest.raises(ModelError, match=said):
+        _run(tmp_path, [*HEAD, _block("b1", os=os), END])
 
 
 # ---------------------------------------------------------------------------------------------

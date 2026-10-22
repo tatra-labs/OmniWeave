@@ -394,7 +394,10 @@ CRITERIA: tuple[Criterion, ...] = (
         "a temp directory, importable only through its author's PYTHONPATH) passes 11/11 through "
         "`tools/ow_conform.py` (D923), but its code is the template's under its own names, not "
         "an independent implementation, and no third party has run the kit; `--bench` refuses "
-        "until `ow eval fetch`, so no [quality] block or MeasuredOn is written",
+        "until `ow eval fetch`, so no [quality] block or MeasuredOn is written. Passing the kit "
+        "did not mean `ow add` could ingest the result: the template passed 11/11 and was refused "
+        "three ways, which D935 and D938 fixed. P16 now asks the document model's own types, but "
+        "the kit still never decodes a fragment into a store",
     ),
     Criterion(
         "V10-13",

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import sys
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,7 @@ pytestmark = pytest.mark.conform
 
 REPO = Path(__file__).resolve().parents[4]
 CARD = REPO / "packages/omniweave-office/src/omniweave_office/text/driver.toml"
+TEMPLATE = REPO / "packages/omniweave-conform/src/omniweave_conform/template/driver.toml"
 PROJECT_DRIVER = "parse.text.project"
 RULE = f"""surface = "route"
 
@@ -37,15 +39,17 @@ then = {{ driver = "{PROJECT_DRIVER}", terminal = true }}
 """
 
 
-def _project(root: Path, *, rule: bool) -> Path:
+def _project(
+    root: Path, *, rule: bool, card: Path = CARD, card_id: str = "parse.text.builtin"
+) -> Path:
     project = root / "project"
     (project / "docs").mkdir(parents=True)
     cards = project / ".omniweave" / "drivers" / "text"
     cards.mkdir(parents=True)
-    card = CARD.read_text(encoding="utf-8")
-    assert card.count('id = "parse.text.builtin"') == 1
+    text = card.read_text(encoding="utf-8")
+    assert text.count(f'id = "{card_id}"') == 1
     (cards / "driver.toml").write_text(
-        card.replace('id = "parse.text.builtin"', f'id = "{PROJECT_DRIVER}"'), encoding="utf-8"
+        text.replace(f'id = "{card_id}"', f'id = "{PROJECT_DRIVER}"'), encoding="utf-8"
     )
     enabled = ", ".join(f'"{driver}"' for driver in (*SHIPPED_DRIVERS, PROJECT_DRIVER))
     (project / "omniweave.toml").write_text(
@@ -102,3 +106,30 @@ def test_a_project_rule_routes_a_format_to_the_projects_own_driver(
     config = load(cwd=project, env={"OMNIWEAVE_HOME": str(tmp_path / "home")})
     expected = compile_policy(route_layers(config, policy_dir=project / POLICY_D))
     assert digest == expected.policy_digest, "the run's policy_digest covers the project's rules"
+
+
+def test_the_conformance_template_is_ingested_and_its_byte_spans_re_verify(tmp_path: Path) -> None:
+    """D938: the kit's own template under a project card. Its stream page carried a box (D935)
+    and its byte origins a bare codec and a kind the decoder refused; each passed all eleven
+    suites, and `ow add` refused the document. Now it parses, and every stored `bytes` origin
+    decodes from the retained part to its block's text, which is P7 read off the store."""
+    project = _project(tmp_path, rule=True, card=TEMPLATE, card_id="parse.text.plain")
+    shown, drivers, _digest = _run(project, "add")
+    assert f"parse     1 parsed ({PROJECT_DRIVER} 1)" in shown, shown[-3000:]
+    assert drivers == [PROJECT_DRIVER]
+    connection = ow.connect_readonly(project / ".omniweave" / "docs.owstore")
+    try:
+        spans = connection.execute(
+            "SELECT b.text, b.os_a, b.os_b, b.os_codec, p.store_ref FROM block AS b "
+            "JOIN part AS p ON p.doc_ord = b.doc_ord AND p.path = b.os_part "
+            "WHERE b.os_codec IS NOT NULL"
+        ).fetchall()
+    finally:
+        connection.close()
+    assert spans
+    for text, start, length, codec, ref in spans:
+        digest = str(ref).removeprefix("cas://").split("/")[-1]
+        data = (project / ".omniweave" / "cas" / digest[:2] / digest[2:4] / digest).read_bytes()
+        name, errors = str(codec).split("/", 1)
+        decoded = data[start : start + length].decode(name, errors)
+        assert unicodedata.normalize("NFC", decoded) == text
