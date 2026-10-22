@@ -58,8 +58,9 @@ for each (INV-21), so a draft that `add_block` refuses raises out of `add_block`
 `parse.pdf.pdfium` is the one driver whose blocks carry an address, and three things arrive with it:
 
 - **`os.k = "glyphs"`** becomes `OriginGlyphs(part, extractor, start, length)` -- the fragment's
-  long keys (03:632-634), the model's field names. The other three addressed variants are still
-  refused: no routed driver emits them, and a block that claimed `bytes` and was stored as
+  long keys (03:632-634), the model's field names. `bytes` is read too (D938), into
+  `OriginBytes(part, start, length, codec)`. The other two addressed variants are still
+  refused: no routed driver emits them, and a block that claimed `nodepath` and was stored as
   something else would be a quote tier nobody earned.
 - **`quad`** is four `(x, y)` pairs in the driver's own frame, and `Quad.from_driver` is the only
   constructor that takes one (INV-9, 03:178). Its five other inputs are the open page record's:
@@ -103,7 +104,7 @@ from omniweave_core.model.block import BlockDraft, CellPos, Mark
 from omniweave_core.model.enums import Kind, Layer, Method, PageKind, Quote, RelKind, Trust
 from omniweave_core.model.grid import build_grid
 from omniweave_core.model.records import AssetDraft, Diag, DocRecord, PageRecord
-from omniweave_core.model.spans import OriginGlyphs, OriginNone, Quad
+from omniweave_core.model.spans import OriginBytes, OriginGlyphs, OriginNone, Quad
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -609,19 +610,33 @@ def _read(ref: ArtifactRef, open_ref: Callable[[ArtifactRef], BinaryIO] | None) 
         return handle.read()
 
 
-def _origin(raw: object, tmp: str) -> OriginNone | OriginGlyphs:
-    """`os` -> an `OriginSpan`: `none`, or the PDF driver's `glyphs` (the module docstring).
+def _origin(raw: object, tmp: str) -> OriginNone | OriginGlyphs | OriginBytes:
+    """`os` -> an `OriginSpan`: `none`, the PDF driver's `glyphs`, or flat text's `bytes`.
 
-    The office driver's every block is `{"k": "none"}` (its card's `origin_span = "none"`). The
-    other three addressed variants are refused, the fail-closed direction -- a block that claimed
-    `bytes` and was silently stored as `none` would be a quote tier nobody earned.
+    The office driver's every block is `{"k": "none"}` (its card's `origin_span = "none"`).
+    `bytes` (D938) is the conformance template's, `OriginBytes(part, start, length, codec)` under
+    the fragment's long keys, `codec` as 03:1466's `<codec>/<errors>`. The other two addressed
+    variants are refused, the fail-closed direction -- a block that claimed `nodepath` and was
+    silently stored as `none` would be a quote tier nobody earned. So is a malformed `bytes`.
     """
     kind = raw.get("k") if isinstance(raw, dict) else None
     if kind in (None, "none"):
         return OriginNone()
+    if kind == "bytes":
+        assert isinstance(raw, dict)  # noqa: S101 -- `kind` came out of it
+        try:
+            return OriginBytes(
+                part=str(raw.get("part") or ""),
+                start=raw.get("start"),  # type: ignore[arg-type]
+                length=raw.get("length"),  # type: ignore[arg-type]
+                codec=raw.get("codec"),  # type: ignore[arg-type]
+            )
+        except (ValueError, TypeError) as bad:
+            raise _refuse("OW_MODEL", f"block {tmp!r}'s bytes origin: {bad}") from bad
     if kind != "glyphs":
         raise _refuse(
-            "OW_MODEL", f"block {tmp!r} carries os.k={kind!r}; this decoder reads none and glyphs"
+            "OW_MODEL",
+            f"block {tmp!r} carries os.k={kind!r}; this decoder reads none, bytes and glyphs",
         )
     assert isinstance(raw, dict)  # noqa: S101 -- `kind` came out of it
     try:
