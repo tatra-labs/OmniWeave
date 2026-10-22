@@ -43,7 +43,7 @@ import sqlite3  # noqa: TID251 -- see the module docstring: the fixtures seed a 
 import sys
 from collections.abc import Iterator
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import pytest
 from omniweave_core.errors import StoreError, UsageError
@@ -500,6 +500,73 @@ def test_all_three_narrowing_kinds_are_reachable(
     reader = _reader(built)
     with reader.snapshot() as state:
         assert reader.narrow(state, Filters())[:3] == ("all", None, 2)
+
+
+def _live_blocks_stat(built: Built, value: int | None) -> None:
+    """D918: set or clear `stat.live_blocks`, the hint `narrow()` orders its statements by."""
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    conn.execute("DELETE FROM stat WHERE k = 'live_blocks'")
+    if value is not None:
+        conn.execute("INSERT INTO stat(k, v, computed_ns) VALUES('live_blocks', ?, 0)", (value,))
+    conn.execute("COMMIT")
+
+
+def _copied(reader: Any) -> int:
+    return int(reader._connection.execute("SELECT count(*) FROM temp.tmp_narrow").fetchone()[0])
+
+
+@pytest.mark.parametrize("stat", [None, 0, 1_000_000])
+def test_the_tag_is_the_same_whichever_order_the_stat_picks(
+    built: Built, monkeypatch: pytest.MonkeyPatch, stat: int | None
+) -> None:
+    """D918, a user ruling of 2026-10-21 on F50: `stat.live_blocks` picks whether the capped probe
+    is copied first or counted first, never what it answers. Missing, under the cap and far over
+    it, the three kinds come out as the exact count says."""
+    monkeypatch.setattr(rd, "PREFILTER_MAX", 1)
+    _live_blocks_stat(built, stat)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        assert reader.narrow(state, Filters())[:3] == ("empty", None, 0)
+    _seed_one_block(built)
+    _live_blocks_stat(built, stat)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        assert reader.narrow(state, Filters())[:3] == ("set", "tmp_narrow", 1)
+        assert _copied(reader) == 1, "a set is materialised either way"
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    producer_id = int(conn.execute("SELECT producer_id FROM producer").fetchone()[0])
+    _block(conn, block_id=2, doc_ord=1, producer_id=producer_id, ord_=1)
+    conn.execute("COMMIT")
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        assert reader.narrow(state, Filters())[:3] == ("all", None, 2)
+
+
+def test_a_store_past_the_cap_counts_and_copies_nothing(
+    built: Built, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D918: the saving itself. With the stat at or past the cap, an `all` is proved by a count,
+    and the TEMP table is left empty; under it the probe is the copy, as before D918."""
+    monkeypatch.setattr(rd, "PREFILTER_MAX", 1)
+    _seed_one_block(built)
+    conn = built.writer
+    conn.execute("BEGIN IMMEDIATE")
+    producer_id = int(conn.execute("SELECT producer_id FROM producer").fetchone()[0])
+    _block(conn, block_id=2, doc_ord=1, producer_id=producer_id, ord_=1)
+    conn.execute("COMMIT")
+    for stat in (2, None):
+        _live_blocks_stat(built, stat)
+        reader = _reader(built)
+        with reader.snapshot() as state:
+            assert reader.narrow(state, Filters())[0] == "all"
+            assert _copied(reader) == 0, f"stat {stat}: counted, never copied"
+    _live_blocks_stat(built, 0)
+    reader = _reader(built)
+    with reader.snapshot() as state:
+        assert reader.narrow(state, Filters())[0] == "all", "a stale stat cannot change the tag"
+        assert _copied(reader) == 2, "the capped copy was the probe"
 
 
 def test_an_empty_filter_set_short_circuits_before_any_statement_runs(built: Built) -> None:

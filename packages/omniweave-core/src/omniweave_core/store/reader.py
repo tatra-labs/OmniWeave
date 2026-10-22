@@ -682,6 +682,16 @@ def _stat_rows(connection: sqlite3.Connection) -> Mapping[str, tuple[int, int]]:
     return {str(k): (int(v), int(c)) for k, v, c in rows}
 
 
+def _stat_live_blocks(connection: sqlite3.Connection) -> int:
+    """D918: `stat.live_blocks`, or `PREFILTER_MAX + 1` when it was never computed.
+
+    A HINT for `narrow()`'s statement order and nothing else, so its age does not matter: a missing
+    key reads as past the cap, which takes the count-first path that is right for any size.
+    """
+    row = connection.execute("SELECT v FROM stat WHERE k = 'live_blocks'").fetchone()
+    return PREFILTER_MAX + 1 if row is None or row[0] is None else int(row[0])
+
+
 def _one_int(connection: sqlite3.Connection, sql: str, params: Sequence[object] = ()) -> int:
     """The first column of the first row as an `int`, or 0 when the statement returned nothing."""
     row = connection.execute(sql, tuple(params)).fetchone()
@@ -1484,6 +1494,16 @@ class SqliteReader:
         to the temp schema, which `temp_store = MEMORY` makes legal on a `mode=ro` connection
         (07:186-190). That pragma's second job is the reason this method works at all on a
         read-only mount.
+
+        **The probe counts before it copies when the store may be past the cap** (D918, a user
+        ruling of 2026-10-21 on F50). Copying `PREFILTER_MAX + 1` rows into the TEMP table only to
+        learn the set is `all` cost 62 ms of a 95 ms warm query at 210,001 blocks (D915). So when
+        `stat.live_blocks` is missing or at least the cap, the same capped statement is counted
+        first and copied only when the count is under it; when the stat says the store is under
+        the cap, the copy is the probe, as it was, and a store that grew past a stale stat is
+        still tagged exactly, since the copy is capped and counted. The stat chooses the ORDER of
+        two exact statements and never the answer, so 07:1593's "no histogram, no independence
+        assumption" holds: the tag is a function of the count either way.
         """
         connection = self._bound(s)
         self._refuse_bad_filters(f)
@@ -1501,13 +1521,17 @@ class SqliteReader:
         if f.doc_keys is not None and len(f.doc_keys) > MAX_FILTER_DOC_KEYS:
             self._fill_tmp_docs(connection, f.doc_keys)
         cap = PREFILTER_MAX + 1
-        connection.execute(
-            f"INSERT INTO {_TMP_NARROW} "  # noqa: S608
-            f"SELECT b.block_id FROM block b JOIN doc d USING (doc_ord){joins} "
-            f"WHERE {' AND '.join(where)} LIMIT ?",
-            (*params, cap),
+        probe = (
+            f"SELECT b.block_id FROM block b JOIN doc d USING (doc_ord){joins} "  # noqa: S608
+            f"WHERE {' AND '.join(where)} LIMIT ?"
         )
-        n = _one_int(connection, f"SELECT count(*) FROM {_TMP_NARROW}")  # noqa: S608
+        if _stat_live_blocks(connection) < cap:
+            connection.execute(f"INSERT INTO {_TMP_NARROW} {probe}", (*params, cap))
+            n = _one_int(connection, f"SELECT count(*) FROM {_TMP_NARROW}")  # noqa: S608
+        else:
+            n = _one_int(connection, f"SELECT count(*) FROM ({probe})", (*params, cap))  # noqa: S608
+            if 0 < n < cap:
+                connection.execute(f"INSERT INTO {_TMP_NARROW} {probe}", (*params, cap))
         rows, bits = self._withheld(connection, f, joins)
         if n == 0:
             return Narrowing("empty", None, 0, rows, bits)
