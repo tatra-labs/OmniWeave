@@ -228,7 +228,9 @@ CRITERIA: tuple[Criterion, ...] = (
         "warm p50 measured 95 ms on a developer machine, inside 180, end-to-end only. It runs "
         "nightly on a GitHub-hosted runner and is kept as an eval_perf row (D916, a user ruling "
         "of 2026-10-21), whose status stays unknown: `ow-bench-1` and the Pacer's seven-run "
-        "median do not exist. The `parse` subject is blocked and no 4M-cell fixture exists",
+        "median do not exist. The `parse` subject is blocked, and the 4M-cell sheet's fixture "
+        "exists (D929) but no shipped reader admits it: anydoc refuses it on max_xml_nodes, and "
+        "the office worker's RSS (~3.7 KB a cell) passes its 1 GiB from ~280k cells (F2)",
     ),
     Criterion(
         "V10-7",

@@ -45,6 +45,13 @@
 #                  deck pinned through its MANIFEST; `uv run python fixtures/gen/gen_golden40.py
 #                  --print-sha256`. Its il.toml carries compile.pptx.native's ConstructTable
 #                  digest, so a table change moves this pin too, as it should.
+#   sheet/*        packages/omniweave-core/tests/unit/test_fixture_sheet.py
+#                  ::test_the_small_pin_is_the_manifest_of_a_freshly_generated_sheet and
+#                  ::test_the_default_pin_is_the_manifest_of_the_four_million_cell_sheet
+#                  ~0.1 s and ~6 s. 12-performance.md section 4.3's merge-free 4M-cell sheet (D929),
+#                  pinned through a MANIFEST over the members' uncompressed bytes, because deflate's
+#                  bytes differ across zlib builds; `uv run python fixtures/gen/gen_4m_cell_sheet.py
+#                  [--cells 2000] --print-sha256`.
 #   all of them    ::test_the_pin_file_names_every_generated_output_in_sha256sum_format asserts
 #                  that this file names exactly these outputs and nothing else.
 #
@@ -69,3 +76,5 @@ b8adadd720185a6f563a76347fff454e3ec2d7a4a5111572a20c183ee3e76820  fixtures/gener
 026a46036821d8229f41ef7cacded6e0fd541ad1d4e88cce63427e2688116769  fixtures/generated/reference/personal_archive-quick.manifest
 9e4cc7f1be74a8b0bb787c20931835b2c631c638d88f8b0143ed9c7eb27ba84a  fixtures/generated/office-200.manifest
 343a4e446f69b5be772859f61342a6aa6acfc2bcc30920f1d51ad6c32422f59b  fixtures/generated/out/golden40/pptx.manifest
+8f286b2fe502e993a17f01651b525ca1f2cbbb9da816f60daf27f6bb7d5a0fdc  fixtures/generated/sheet/sheet_2000c.manifest
+02395480875d736334d30674eb3a2ca6369fdb4a7f9bc6ed3c32b9f611b4df97  fixtures/generated/sheet/sheet_4000000c.manifest
