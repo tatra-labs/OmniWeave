@@ -171,7 +171,14 @@ def child(root: Path, mode: str, boundary: str, *, emit: Emit) -> int:
     def park(name: str) -> None:
         if name != boundary:
             return
-        ready.write_text(f"{mode}\n{boundary}\n", encoding="utf-8")
+        # Written beside, closed, then renamed into place (D928): the parent kills on the
+        # name's existence, so the name must never exist while this process holds it open. A
+        # write straight to `ready` let a hosted Windows parent kill a child still holding the
+        # file, and the killed tree's handle outlived it long enough for the parent's own
+        # `unlink` to fail with WinError 32 and the cycle to read as "did not run".
+        staged = root / f"{_READY}.partial"
+        staged.write_text(f"{mode}\n{boundary}\n", encoding="utf-8")
+        staged.replace(ready)
         threading.Event().wait()  # forever: the parent kills this process.
 
     if mode == cm.GROUP_MODE:

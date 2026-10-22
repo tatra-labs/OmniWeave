@@ -42,6 +42,8 @@ import time
 import tomllib
 from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from omniweave_core.store import crashmatrix as cm
@@ -222,10 +224,17 @@ def test_a_killed_child_dies_holding_an_uncommitted_transaction(tmp_path: Path) 
     proc = _child(tmp_path, FIRST.mode, "after:work_transition/work_update")
     try:
         assert _wait_for(tmp_path / "ready"), "the child never parked at its boundary"
+        #  D928: the marker appears whole or not at all, renamed into place after it was closed.
+        assert (tmp_path / "ready").read_text(encoding="utf-8") == (
+            f"{FIRST.mode}\nafter:work_transition/work_update\n"
+        )
+        assert not (tmp_path / "ready.partial").exists()
     finally:
         proc.kill()
         proc.wait(timeout=30)
         gate.wait_released(path)
+    #  ...so the killed child held no handle on it, and it goes at once (WinError 32 before D928).
+    (tmp_path / "ready").unlink()
     assert proc.returncode != 0, "a killed process does not exit cleanly"
     assert (tmp_path / "index.owstore-wal").exists(), "a killed writer leaves its WAL behind"
     assert _status(path, FIRST.part) == ("claimed", "planned")
@@ -234,6 +243,43 @@ def test_a_killed_child_dies_holding_an_uncommitted_transaction(tmp_path: Path) 
         assert connection.execute("SELECT count(*) FROM dep").fetchone()[0] == 0
     finally:
         connection.close()
+
+
+def test_the_child_never_writes_the_ready_name_it_is_killed_on(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D928: the parent kills on `ready`'s existence, so `ready` must appear only by a rename of a
+    closed file. A direct write let a hosted Windows parent kill a child mid-write, and the killed
+    handle failed the parent's `unlink` (WinError 32). The race is timing, so the kill test above
+    cannot see a regression; this pins the mechanism instead."""
+    path = tmp_path / "index.owstore"
+    cm.seed(path, tmp_path / "cas", now_ns=gate.NOW_NS)
+    written: list[str] = []
+    real_write = Path.write_text
+
+    def recording(self: Path, *args: Any, **kwargs: Any) -> int:
+        written.append(self.name)
+        return real_write(self, *args, **kwargs)
+
+    class _Event:
+        """`gate_crash`'s own `threading.Event`, and only its own: the store thread waits on real
+        events, and patching the class would park those too. Returning at once lets the child
+        run on to its end, where it reports the boundary as never reached; the writes are what
+        this test reads."""
+
+        def wait(self, timeout: float | None = None) -> bool:
+            del timeout
+            parked.append(True)
+            return True
+
+    parked: list[bool] = []
+    monkeypatch.setattr(Path, "write_text", recording)
+    monkeypatch.setattr(gate, "threading", SimpleNamespace(Event=_Event))
+    gate.child(tmp_path, FIRST.mode, "after:work_transition/work_update", emit=lambda _l: None)
+    assert parked == [True], "the child parked once, at its boundary"
+    assert "ready" not in written, written
+    assert "ready.partial" in written
+    assert (tmp_path / "ready").read_text(encoding="utf-8").endswith("work_update\n")
 
 
 def test_a_reopen_after_a_real_kill_heals_an_oversized_wal(tmp_path: Path) -> None:
