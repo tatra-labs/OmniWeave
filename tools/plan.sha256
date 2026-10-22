@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D918: count-first narrowing, 07:1140
+# blessed-because: D919: G22 figure is a seven-run median, not one run
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -34,11 +34,11 @@ documents-frozen  ddcd4cbc6fd9e3021239d04b94bbdef9ff81bb750a574fc105179017a4d5dc
 documents-frozen  4db10013935a3de62e8cee075a463e94ef2ee414ae33a98365f41be562ec7183  05-ingest-and-routing.md
 documents-frozen  7c4c7946cad37746e602ef662e72d6a75ee43cc6b9367173c906cddc6d9f763e  06-structure-extraction.md
 documents-frozen  25666745a9572e7eadf017b6988a2216744cc3eca5a3f572d45da8f1b8c3e161  07-store-and-retrieval.md
-documents-frozen  3fe50b218701a6f3ff1752e45e7a501e4d57dccc9f88e2326f9b62721905d3af  08-runtime.md
+documents-frozen  ccb53a627e0cc60e78674f84f667da550d61dc03c3acf329fe1e0e4ddcf3edc0  08-runtime.md
 documents-frozen  e3d9414cd24b29681c2da184fffa9c3fbc33e4d066f831fe9d8113b159e0ab08  09-generation.md
 documents-frozen  ccacc94e84a50b2c6502e5c7a5af939f140a5ebe4d228d5c77ebf152f7194e2c  10-interfaces.md
 documents-frozen  02e7a92b746f777fa0aaeca8f149542cc3d849be2e209dc4bd0660e5d1aa7232  11-repo-layout.md
-documents-frozen  6ee772c461bc79c51ad4599b985d714829f0e8fd5948f0d21e9407aa57d7be8a  12-performance.md
+documents-frozen  c59a51d9b477184b6b6114eb97eb17404699d196b5d17acb22095e8f8aaccca5  12-performance.md
 documents-frozen  ef16ccea8ee513a0c83133633a2e9b6169404e78e3e0cd57245ca5a3a3339138  13-quality.md
 documents-frozen  78a3474b788625971c7a7fed610ef3c6518e9330bfd87e8411fbc744666b43d1  14-security.md
 documents-frozen  dc12dc92f5690bb2747048244ce1113803c4f03c67e21917574c2c9db7ba221a  15-observability.md

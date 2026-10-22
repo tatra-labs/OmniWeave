@@ -140,6 +140,10 @@ __all__ = [
     "FIXTURE_LEASE_MS",
     "FIXTURE_URI",
     "FIXTURE_WORKER",
+    "GROUP",
+    "GROUP_MODE",
+    "GROUP_PR_POINTS",
+    "GROUP_SCENARIOS",
     "MATRIX_SALT",
     "PR_POINTS",
     "SCENARIOS",
@@ -157,16 +161,21 @@ __all__ = [
     "crash_matrix",
     "derive",
     "fingerprint",
+    "group_boundaries",
+    "group_points",
     "kill_points",
     "matrix_boundaries",
     "owdoc_bytes",
     "plan_of",
     "reopen",
     "resume",
+    "run_group",
     "run_scenario",
     "seed",
+    "simulate_group_kill_at",
     "simulate_kill_at",
     "verify_boundary",
+    "verify_group_boundary",
 ]
 
 
@@ -1763,3 +1772,276 @@ def crash_matrix(
             )
         )
     return MatrixReport(results=tuple(results), baseline=base)
+
+
+# ---------------------------------------------------------------------------------------------
+# 10. A torn group (D919): `complete_group()` killed at every statement boundary.
+# ---------------------------------------------------------------------------------------------
+
+GROUP_MODE: Final = "group_commit"
+"""The matrix's name for the group-commit fixture, beside the eight `CheckpointFailureMode.id`s.
+
+D919 is a user ruling of 2026-10-22 on F8: zero-derived-row transitions of one operator may share
+a transaction, and *"G21's crash matrix must show that a torn group leaves no half-done unit"*.
+This section is that showing. It is a ninth fixture rather than a ninth failure mode, because the
+property is the store's own (a group commits whole or not at all) and not one of DataFlow's."""
+
+GROUP_SCENARIOS: Final[tuple[Scenario, ...]] = tuple(
+    Scenario(mode=f"{GROUP_MODE}.{index}", part=f"g{index}") for index in range(3)
+)
+"""The group: three zero-derived-row transitions of one operator and one cost class.
+
+No `deps`, so each plan is the `work` transition alone and `SqliteStore.groupable()` says yes; all
+`free`, so they share a durability (ST14). Three, because the property is about a group torn
+BETWEEN its units and three units have two such boundaries: one unit written, then two."""
+
+GROUP: Final = Scenario(mode=GROUP_MODE, part="")
+"""What a `kill` seam is handed for a group cycle. The seam takes one scenario and a group is
+three, so the group travels by name, and `tools/gate_crash.py`'s child reads the name. Never
+seeded: `GROUP_SCENARIOS` are."""
+
+GROUP_PR_POINTS: Final = 1
+"""How many group boundaries G21's PR cell draws beside its three. `--all` takes all five."""
+
+
+def group_boundaries(scenarios: Sequence[Scenario] = GROUP_SCENARIOS) -> tuple[str, ...]:
+    """`complete_group()`'s crash boundaries, in order: `len(scenarios) + 2` of them.
+
+    After `BEGIN IMMEDIATE`, after each unit's one statement, after `COMMIT`, as
+    `complete_boundaries()` gives a single unit's. Every unit of a group runs the same statement,
+    so a group boundary also names the unit it follows (`after:g1:work_transition/...`), which is
+    what makes "torn between g0 and g1" a point a report can print and `--point` can replay.
+    """
+    names: list[str] = [AFTER_BEGIN]
+    for scenario in scenarios:
+        plan = plan_of(scenario)
+        if len(plan) != 1:
+            raise StoreError(
+                f"group scenario {scenario.mode!r} has a {len(plan)}-statement plan; a group "
+                f"commit is for zero-derived-row transitions only (08:2600)",
+                fix="give every GROUP_SCENARIOS entry an empty deps",
+            )
+        names.append(f"after:{scenario.part}:{plan[0].participant}/{plan[0].name}")
+    return (*names, AFTER_COMMIT)
+
+
+def group_points(scenarios: Sequence[Scenario] = GROUP_SCENARIOS) -> tuple[tuple[str, str], ...]:
+    """Every `(GROUP_MODE, boundary)` pair: the group's population, as `matrix_boundaries()` is
+    the eight fixtures'. Kept apart from it so the PR cell's three-point draw is unchanged."""
+    return tuple((GROUP_MODE, boundary) for boundary in group_boundaries(scenarios))
+
+
+def _drive_group(
+    thread: ow.StoreThread,
+    cas: Path,
+    scenarios: Sequence[Scenario],
+    *,
+    hook: Callable[[str], None],
+    abandon: bool = False,
+) -> tuple[bool, tuple[bool, ...], _Tracer, bool]:
+    """Claim every unit, derive, arm the tracer, group-commit. `_drive()`'s shape, for a group.
+
+    Each unit is claimed on its own (`batch=1`), as the supervisor's single-row batches are, and
+    the group is then committed in one `complete_group()`. That is the D919 path: a group spans
+    batches, which is the whole of the saving. `abandon` is `_drive()`'s, for the same reason.
+    """
+    producer_id = thread.run(ow.Unit(name="crash.producer", run=_producer_id, cost_class="free"))
+    derived = derive(thread, cas, scenarios[0], producer_id=int(producer_id))  # type: ignore[arg-type]
+    store = SqliteStore(thread)
+    by_part = {
+        row.unit_part: row
+        for _ in scenarios
+        for row in store.claim(
+            batch=1, gen=FIXTURE_GEN, worker=FIXTURE_WORKER, lease_ms=FIXTURE_LEASE_MS
+        )
+    }
+    tracer = _Tracer(group_boundaries(scenarios), hook)
+    if any(scenario.part not in by_part for scenario in scenarios):
+        return derived, (), tracer, False
+    thread.run(
+        ow.Unit(
+            name="crash.arm",
+            run=lambda connection: connection.set_trace_callback(tracer),
+            cost_class="free",
+        )
+    )
+    items = [(by_part[scenario.part].id, FIXTURE_GEN, _result(scenario)) for scenario in scenarios]
+    try:
+        answers = store.complete_group(items)
+    except sqlite3.Error:
+        answers = ()
+    if not abandon:
+        thread.run(
+            ow.Unit(
+                name="crash.disarm",
+                run=lambda connection: connection.set_trace_callback(None),
+                cost_class="free",
+            )
+        )
+    return derived, answers, tracer, True
+
+
+def run_group(
+    path: Path,
+    cas: Path,
+    *,
+    on_boundary: Callable[[str], None] | None = None,
+    scenarios: Sequence[Scenario] = GROUP_SCENARIOS,
+    wal_heal_mb: int | None = None,
+) -> RunReport:
+    """Claim, derive and group-commit `scenarios` against the store at `path`. No kill.
+
+    `run_scenario()` for a group: `on_boundary` is called on the store thread before each
+    statement of `complete_group()`'s transaction, and once more with `after:commit`.
+    """
+    with reopen(path, wal_heal_mb=wal_heal_mb) as thread:
+        derived, answers, tracer, claimed = _drive_group(
+            thread, cas, scenarios, hook=on_boundary or _ignore
+        )
+    if on_boundary is not None and claimed:
+        on_boundary(AFTER_COMMIT)
+    completed = claimed and len(answers) == len(scenarios) and all(answers)
+    return RunReport(
+        scenario=GROUP_MODE,
+        derived=derived,
+        completed=completed,
+        superseded=claimed and not completed,
+        reached=(*tracer.seen, AFTER_COMMIT) if claimed else (),
+        killed_at=None,
+    )
+
+
+def simulate_group_kill_at(
+    path: Path,
+    cas: Path,
+    scenario: Scenario,
+    boundary: str,
+    *,
+    wal_heal_mb: int | None = None,
+) -> RunReport:
+    """`simulate_kill_at()` for a group: abort `complete_group()`'s transaction AT `boundary`.
+
+    Takes the `kill` seam's four arguments so `verify_group_boundary()` can be handed either this
+    or `tools/gate_crash.py`'s real kill; `scenario` must be `GROUP`. A MODEL, as
+    `simulate_kill_at()` is and for the reasons its docstring gives.
+    """
+    if scenario.mode != GROUP_MODE:
+        raise StoreError(
+            f"simulate_group_kill_at() kills the group and was handed {scenario.mode!r}",
+            fix="pass crashmatrix.GROUP",
+        )
+    known = group_boundaries()
+    if boundary not in known:
+        raise StoreError(
+            f"{boundary!r} is not a boundary of the group commit: {known}",
+            fix="pass a name from group_boundaries()",
+        )
+    if boundary == AFTER_COMMIT:
+        clean = run_group(path, cas, wal_heal_mb=wal_heal_mb)
+        return RunReport(
+            scenario=GROUP_MODE,
+            derived=clean.derived,
+            completed=clean.completed,
+            superseded=clean.superseded,
+            reached=clean.reached,
+            killed_at=AFTER_COMMIT,
+        )
+    handle: dict[str, sqlite3.Connection | None] = {"connection": None}
+
+    def hook(name: str) -> None:
+        connection = handle["connection"]
+        if name == boundary and connection is not None:
+            connection.interrupt()
+
+    with reopen(path, wal_heal_mb=wal_heal_mb) as thread:
+        thread.run(
+            ow.Unit(
+                name="crash.handle",
+                run=lambda connection: handle.__setitem__("connection", connection),
+                cost_class="free",
+            )
+        )
+        derived, _answers, tracer, claimed = _drive_group(
+            thread, cas, GROUP_SCENARIOS, hook=hook, abandon=True
+        )
+    return RunReport(
+        scenario=GROUP_MODE,
+        derived=derived,
+        completed=False,
+        superseded=False,
+        reached=tuple(tracer.seen) if claimed else (),
+        killed_at=boundary,
+    )
+
+
+def _done_parts(connection: sqlite3.Connection) -> tuple[str, ...]:
+    """`work.unit_part` for every `done` row: what a killed group left committed."""
+    return tuple(
+        str(part)
+        for (part,) in connection.execute(
+            "SELECT unit_part FROM work WHERE status = 'done' ORDER BY unit_part"
+        )
+    )
+
+
+def _torn(done: Sequence[str], boundary: str, scenarios: Sequence[Scenario]) -> tuple[str, ...]:
+    """The ruling's assertion, as a difference: a torn group left no unit half-done.
+
+    A unit of a group is one statement, so it cannot be half-done on its own; what could be is the
+    GROUP, with some units committed and the rest not. So a kill at any boundary before `COMMIT`
+    must find no unit of the group done, and a kill after it must find every one done. Anything
+    between is the half-done group the ruling forbids, named.
+    """
+    expected = tuple(sorted(s.part for s in scenarios)) if boundary == AFTER_COMMIT else ()
+    if tuple(done) == expected:
+        return ()
+    want = f"all of {list(expected)}" if expected else "none of them"
+    return (
+        f"torn group: units {list(done)} were done after a kill at {boundary}, and a group "
+        f"commits whole or not at all ({want} expected)",
+    )
+
+
+def verify_group_boundary(
+    root: Path,
+    boundary: str,
+    *,
+    now_ns: int,
+    now_ms: int,
+    baseline: Fingerprint,
+    wal_heal_mb: int | None = None,
+    kill: Callable[[Path, Path, Scenario, str], RunReport] = simulate_group_kill_at,
+) -> BoundaryResult:
+    """One torn-group cycle: seed, group-commit, kill at `boundary`, check, resume, compare.
+
+    `verify_boundary()`'s cycle with one step added: between the kill and the resume, the store is
+    read for the half-done group `_torn()` forbids. Then `ow resume` and a re-run converge, and the
+    store is compared to `baseline`, which is `baseline(scenarios=GROUP_SCENARIOS)`: the three
+    committed ONE AT A TIME through `complete()`. So a converged cycle also shows that a group
+    commit writes exactly what three single commits write.
+
+    `kill` is the same seam `verify_boundary()` has, handed `GROUP`.
+    """
+    path = root / "index.owstore"
+    cas = root / "cas"
+    seed(path, cas, now_ns=now_ns, scenarios=GROUP_SCENARIOS)
+    report = kill(path, cas, GROUP, boundary)
+    opened = reopen(path, wal_heal_mb=wal_heal_mb)
+    with opened as thread:
+        done = thread.run(ow.Unit(name="crash.done", run=_done_parts, cost_class="free"))
+    torn = _torn(done, boundary, GROUP_SCENARIOS)  # type: ignore[arg-type]
+    resume(path, cas, now_ms=now_ms, scenarios=GROUP_SCENARIOS, wal_heal_mb=wal_heal_mb)
+    for scenario in GROUP_SCENARIOS:
+        run_scenario(path, cas, scenario, wal_heal_mb=wal_heal_mb)
+    integrity = _integrity(path)
+    got = fingerprint(path, root / "resumed.owdoc")
+    differences = (*torn, *got.differences(baseline))
+    return BoundaryResult(
+        mode=GROUP_MODE,
+        boundary=boundary,
+        ok=not differences and integrity == "ok",
+        reached=report.reached,
+        differences=differences,
+        integrity=integrity,
+        reclaimed_wal_bytes=opened.reclaimed,
+    )
