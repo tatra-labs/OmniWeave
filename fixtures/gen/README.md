@@ -84,3 +84,22 @@ uv run pytest packages/omniweave-target-pptx/tests/unit/test_golden40.py -q
 - **The one product import** is the pptx ConstructTable, whose digest `il.toml` must carry, so a
   table change moves the pin. That is the honest coupling: the deck is IL written against it.
 - **Pinned through its manifest**, `fixtures/generated/out/golden40/pptx.manifest`.
+
+## `gen_4m_cell_sheet.py`
+
+12-performance.md section 4.3's *"merge-free 4M-cell spreadsheet"* (D929): one sheet, 200,000 rows
+of 20 cells, no merged region, a text label in column A and integers that are a pure function of
+the row and column. It is the fixture of `rss.merged4mcell_peak_bytes` and F29's cell-count sweep.
+
+```bash
+uv run python fixtures/gen/gen_4m_cell_sheet.py --print-sha256              # 4M cells, ~6 s, ~16 MB
+uv run python fixtures/gen/gen_4m_cell_sheet.py --cells 2000 --print-sha256 # the cheap pin
+```
+
+- **Deflated, because stored it is ~120 MB** and the office card's `max_input_bytes` is 64 MiB.
+- **Pinned through a manifest** over the members' uncompressed bytes, since deflate's bytes differ
+  across zlib builds; `test_fixture_sheet.py` checks both pins.
+- **What it measured on first use (D929)**, through a real `ow add` with the office driver in a
+  worker: peak worker RSS 214 MB at 50k cells, 390 MB at 100k and 757 MB at 200k, about 3.7 KB a
+  cell, so the card's `memory_mb = 1024` refuses from ~280k cells; at 4M cells anydoc refuses
+  first, on its own `max_xml_nodes = 2,000,000`, in 12 s. F2 and F29 are where those numbers go.

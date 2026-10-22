@@ -24,12 +24,14 @@ point of the registry:
 | `scheduler` | a store, a roster, a loop, a no-op operator | all four are here |
 | `inproc` | `fixtures/office-200` -- and nothing else | no cell in the plan produces it |
 | `service` | 2,000 rendered pages and a model server | S3 landed at W4.9; the GPU card did not |
-| `rss` | the 5,000-page PDF, the 4M-cell sheet, a 100k roster | two of three exist, and see below |
+| `rss` | the 5,000-page PDF, the 4M-cell sheet, a 100k roster | the sheet has no reader |
 
 `rss` is the interesting absence. Its first clause is measured today by `tools/measure_store.py`
 (`rss.gen5000p_peak_bytes`, printed INFORMATIONAL by CI) and its third by `tools/gate_scale.py`
 (G22's supervisor RSS, which this module's `scheduler` harness feeds). Its second -- the 4M-cell
-merge-free sheet -- has neither a fixture nor a reader. A subject that measured two of its three
+merge-free sheet -- has a fixture since D929 and no reader that admits it: anydoc refuses it on
+`max_xml_nodes`, and the office worker passes its 1 GiB `memory_mb` from ~280k cells, about 3.7 KB
+a cell (F2). A subject that measured two of its three
 clauses and reported one number would be worse than one that does not exist, so it does not exist
 and `blocked_by` says which clause is missing.
 
@@ -306,8 +308,11 @@ SUBJECTS: Final[Mapping[str, Subject]] = MappingProxyType(
                 "100k roster",
                 "the two pathological fixtures",
                 "rss.gen5000p_peak_bytes, rss.merged4mcell_peak_bytes, G22",
-                blocked_by="the 4M-cell merge-free sheet, which has neither a fixture nor a "
-                "reader. Its other two clauses are measured by tools/measure_store.py and "
+                blocked_by="the 4M-cell merge-free sheet, whose fixture exists "
+                "(fixtures/gen/gen_4m_cell_sheet.py, D929) and which no shipped reader admits: "
+                "anydoc refuses it on max_xml_nodes = 2,000,000, and the office worker's peak RSS "
+                "grows ~3.7 KB a cell, past its card's memory_mb = 1024 from ~280k cells (F2). "
+                "Its other two clauses are measured by tools/measure_store.py and "
                 "tools/gate_scale.py; see this module's docstring for why two of three is not a "
                 "subject",
             ),
