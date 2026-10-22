@@ -94,7 +94,7 @@ def test_every_subject_names_itself_and_carries_all_three_of_its_cells() -> None
 def test_the_subjects_that_run_are_the_ones_with_no_blocker() -> None:
     """`runnable` is derived from `blocked_by` and from nothing else, in both directions.
     `pacer` joined `scheduler` and `inproc` at D822."""
-    assert bench.runnable() == ("pacer", "scheduler", "inproc")
+    assert bench.runnable() == ("pacer", "scheduler", "inproc", "query")
     for subject in bench.SUBJECTS.values():
         assert subject.runnable == (not subject.blocked_by)
     assert bench.SUBJECTS["scheduler"].blocked_by == ""

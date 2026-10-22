@@ -8,9 +8,10 @@
 > `packages/omniweave/src/omniweave/run/bench.py`, so adding a subject is one function plus one row
 > in the closed set.
 
-`SUBJECTS` is that closed set, all thirteen rows of section 7.1's table transcribed. Ten of them
+`SUBJECTS` is that closed set, all thirteen rows of section 7.1's table transcribed. Nine of them
 carry a `blocked_by` naming what they need and do not have; `scheduler` does not and is here,
-`inproc` joined it at D656, and `pacer` at D822 (section 5 below).
+`inproc` joined it at D656, `pacer` at D822 (section 5 below), and `query` at D915, end-to-end
+only (`omniweave.run.benchquery`).
 
 ## Why the set is here and only one function is
 
@@ -148,6 +149,7 @@ __all__ = [
     "paced",
     "pacer",
     "percentile",
+    "query",
     "run_context",
     "runnable",
     "scheduler",
@@ -270,7 +272,6 @@ SUBJECTS: Final[Mapping[str, Subject]] = MappingProxyType(
                 "Blocks, vectors off and on, each scale measured after an FTS5 'merge'",
                 "generated stores plus fixtures/store/golden-queries.jsonl",
                 "query.warm_p50_ms, B26, B27; F50, P-Q8",
-                blocked_by="the retrieval Channels and the golden query set",
             ),
             _subject(
                 "encoding",
@@ -778,6 +779,21 @@ class SchedulerResult:
         this is a share of the run and not a share of some total CPU.
         """
         return (self.claim.total / 1e3) / self.drain_s if self.drain_s > 0 else math.nan
+
+
+def query(root: Path, project: Path, *, pages: int, runs: int) -> object:
+    """`ow bench query`: build, merge, then time the golden set warm. D915.
+
+    `omniweave.run.benchquery` measures it, as `inproc` delegates: the store is built by the SDK's
+    `Corpus.add`, which this module's scheduler harness has no reason to import. End-to-end only;
+    what section 7.1's row asks beyond that is named in the result's `not_measured`.
+    """
+    from omniweave.run import benchquery  # noqa: PLC0415 -- the query subject only
+
+    queries = benchquery.load_queries(root)
+    store = benchquery.build(root, project, pages=pages)
+    merged = benchquery.merge(store)
+    return benchquery.query(project, queries, pages=pages, runs=runs, merged=merged)
 
 
 def inproc(corpus: Path, *, workspace: Path, worker: bool = True) -> object:

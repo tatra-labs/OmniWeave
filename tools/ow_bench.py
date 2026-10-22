@@ -111,6 +111,8 @@ BENCH_SCOPE: Final = "bench"
 machine, and a bench that took the store's lock would block an ingest it is not running."""
 
 HOME_ENV: Final = "OMNIWEAVE_HOME"
+RUNNER_ENV: Final = "OMNIWEAVE_RUNNER"
+"""The machine a report names (D915), as `tools/gate_coldstart.py` reads it: unset is unpinned."""
 """Where section 1.2 puts `bench.lock`. Read from the environment, never from an ambient default."""
 
 DEFAULT_PACER_RUNS: Final = 5
@@ -143,6 +145,14 @@ OFFICE_200: Final = REPO / "fixtures" / "generated" / "office-200"
 another (D656)."""
 
 OFFICE_200_ROW: Final = "rss.office200_peak_bytes"
+QUERY_ROW: Final = "query.warm_p50_ms"
+"""B27's budget, printed beside `query`'s p50 as an indication (D915)."""
+DEFAULT_PAGES: Final = 5_000
+"""`query`'s store: `gen_5000p_pdf` at its own default, about 210,000 blocks (D915). Section 7.1's
+smallest scale is 10k blocks and its next 1M; this is between them, and the largest a nightly can
+build on a hosted runner in minutes."""
+DEFAULT_QUERY_RUNS: Final = 5
+"""`query`'s timed passes over the 40-query set: 200 samples."""
 K9_MARSHAL_SHARE: Final = 0.30
 """17-risks.md K-9's first conjunct: *"F2 shows the anydoc eager marshal exceeding 30% of wall
 time"*. Printed against, never enforced: a bench has no verdict, and K-9's second conjunct -- the
@@ -259,6 +269,51 @@ def _office_row() -> tuple[int, float] | None:
         if row.get("id") == OFFICE_200_ROW:
             return int(row["value"]), float(row.get("tol_pct", 0))
     return None
+
+
+def _budget_row(budget_id: str) -> tuple[float, float] | None:
+    """A `[[budget]]` row's `(value, tol_pct)` from `eval/perf.toml`, or `None`."""
+    table = tomllib.loads((REPO / "eval" / "perf.toml").read_text(encoding="utf-8"))
+    for row in table.get("budget", []):
+        if row.get("id") == budget_id:
+            return float(row["value"]), float(row.get("tol_pct", 0))
+    return None
+
+
+def report_query(result: object, out: TextIO, *, runner: str) -> None:
+    """End-to-end and per-kind percentiles, F50's scale column, and B27 as an indication."""
+    total = result.total  # type: ignore[attr-defined]
+    print(
+        f"ow bench query -- {result.pages:,} pages, {result.blocks:,} live blocks,"  # type: ignore[attr-defined]
+        f" {result.runs} warm pass(es), FTS {'merged' if result.merged else 'NOT fully merged'}",  # type: ignore[attr-defined]
+        file=out,
+    )
+    print("", file=out)
+    for series in (total, *result.by_kind):  # type: ignore[attr-defined]
+        print(
+            f"  {series.name:<12} n = {series.n:>4}   p50 {series.p50:7.1f}   p95 {series.p95:7.1f}"
+            f"   p99 {series.p99:7.1f}   max {series.worst:7.1f} ms",
+            file=out,
+        )
+    print("", file=out)
+    narrowing = "exceeds" if result.narrowing_all else "is within"  # type: ignore[attr-defined]
+    print(
+        f"  F50: {result.blocks:,} blocks; the default narrowing {narrowing} PREFILTER_MAX",  # type: ignore[attr-defined]
+        file=out,
+    )
+    row = _budget_row(QUERY_ROW)
+    if row is not None:
+        value, tol = row
+        within = total.p50 <= value * (1 + tol / 100)
+        print(
+            f"  {QUERY_ROW} = {value:g} +/- {tol:g}%: p50 {total.p50:.1f} ms is"
+            f" {'within' if within else 'OUTSIDE'} it -- INDICATION, measured on {runner},"
+            " not the pinned ow-bench-1",
+            file=out,
+        )
+    for gap in result.not_measured:  # type: ignore[attr-defined]
+        for line in _wrapped("  not measured: ", gap):
+            print(line, file=out)
 
 
 def _mib(value: int | None) -> str:
@@ -445,6 +500,18 @@ def _parser() -> argparse.ArgumentParser:
         default=DEFAULT_PACER_RUNS,
         help=f"how many times `pacer` runs its workload (default {DEFAULT_PACER_RUNS})",
     )
+    parser.add_argument(
+        "--pages",
+        type=int,
+        default=DEFAULT_PAGES,
+        help=f"`query`'s generated document, in pages (default {DEFAULT_PAGES:,})",
+    )
+    parser.add_argument(
+        "--passes",
+        type=int,
+        default=DEFAULT_QUERY_RUNS,
+        help=f"`query`'s timed passes over the golden set (default {DEFAULT_QUERY_RUNS})",
+    )
     parser.add_argument("--root", type=Path, default=None, help="where to build the store")
     parser.add_argument("--home", type=Path, default=None, help=f"overrides ${HOME_ENV}")
     return parser
@@ -562,6 +629,33 @@ def _pacer(
     return EXIT_CLEAN
 
 
+def _query(
+    args: argparse.Namespace,
+    root: Path,
+    *,
+    temporary: bool,
+    lock: locks.FileScopedLock,
+    out: TextIO,
+) -> int:
+    """`query`: build the store, merge it, time the golden set warm (D915)."""
+    import os  # noqa: PLC0415 -- the runner's label, read beside its only use
+
+    try:
+        if args.pages < 1:
+            print(f"DID NOT RUN: --pages {args.pages}; the store needs a page", file=out)
+            return EXIT_NOT_RUN
+        measured = bench.query(REPO, root, pages=args.pages, runs=args.passes)
+    except (OwError, ValueError, OSError) as exc:
+        print(f"DID NOT RUN: {exc}", file=out)
+        return EXIT_NOT_RUN
+    finally:
+        lock.release()
+        if temporary:
+            shutil.rmtree(root, ignore_errors=True)
+    report_query(measured, out, runner=os.environ.get(RUNNER_ENV) or "an unpinned machine")
+    return EXIT_CLEAN
+
+
 def report_pacer(readings: Sequence[bench.PacerReading], out: TextIO) -> None:
     """Each run's three thirds and total, then the widest disagreement between two runs."""
     print(
@@ -616,7 +710,7 @@ def main(argv: Sequence[str] | None = None, *, out: TextIO = sys.stdout) -> int:
 
     temporary = args.root is None
     root = Path(tempfile.mkdtemp(prefix="ow-bench-")) if temporary else Path(args.root)
-    run = {"inproc": _inproc, "pacer": _pacer}.get(subject.name, _scheduler)
+    run = {"inproc": _inproc, "pacer": _pacer, "query": _query}.get(subject.name, _scheduler)
     return run(args, root, temporary=temporary, lock=lock, out=out)
 
 
