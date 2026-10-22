@@ -29,6 +29,12 @@ for a driver whose `parse` takes `(self, unit)` and blows up at the third argume
   driver that raises something other than `DriverError` is the failure named in the row, and the
   kit does not need to know which fixture is the bad one to find it.
 
+* **The host stores what the driver returned (D939).** Every fixture that parses to blocks is
+  decoded through the host's own `store.fragment` into a real `DocSink` (`stored.into_store`).
+  The template passed all eleven suites with a page box 03:470 forbids, a byte origin the decoder
+  did not read and a codec `OriginBytes` refuses, and `ow add` refused it for each (D935, D938):
+  a driver's conformance is a claim about the documents the host will hold, so the kit asks.
+
 And one more the row implies rather than states: **cancellation is checked at every loop top**
 (04-driver-system.md:1738, and the template driver's own `io.cancelled()` call). `KitIO` can cancel
 after the Nth progress report, which turns "does it check" into a deterministic question with no
@@ -49,17 +55,19 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
-from omniweave_core.errors import DriverHostError
+from omniweave_core.errors import DriverHostError, ModelError
 from omniweave_core.out.compile import CompileV1
 from omniweave_ports.ports import AcquireV1, DeriveV1, EmbedV1, ParseV1
 from omniweave_ports.types import DriverError, DriverResult, FailureClass, Port
 
 from omniweave_conform.harness import run_parse
 from omniweave_conform.result import Assertion, SuiteResult
+from omniweave_conform.stored import into_store
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from omniweave_conform.harness import ParseRun
     from omniweave_conform.subject import Subject
 
 SUITE = "contract"
@@ -388,9 +396,34 @@ def _outcome_assertions(subject: Subject, driver: object) -> Iterator[Assertion]
                 fixture=fixture.name,
                 locus="outcome:empty",
             )
+        if blocks:
+            yield _stored_assertion(subject, run_result, scratch / f"s{index}")
         if best is None or blocks > best[0]:
             best = (blocks, fixture)
     yield from _cancellation_assertion(subject, driver, best)
+
+
+def _stored_assertion(subject: Subject, run_result: ParseRun, workdir: Path) -> Assertion:
+    """The fragment is a document the host stores: decoded through `store.fragment` into a real
+    `DocSink` (`stored.into_store`), refused by nothing and quarantined by nothing. **D939.**"""
+    try:
+        stored = into_store(run_result, subject.card, workdir=workdir)
+    except ModelError as refused:
+        ok, detail = False, f"the host refused it: {refused}"[:240]
+    else:
+        ok = not stored.quarantined
+        detail = (
+            f"stored as generation {stored.record.gen}, {stored.pages} page(s)"
+            if ok
+            else "the host quarantined it: no generation of the document is visible"
+        )
+    return Assertion(
+        "the host stores the document the fragment describes",
+        ok=ok,
+        detail=detail,
+        fixture=run_result.fixture.name,
+        locus="outcome:stored",
+    )
 
 
 def _cancellation_assertion(
