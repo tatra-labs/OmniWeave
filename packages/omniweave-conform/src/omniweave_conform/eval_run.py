@@ -174,11 +174,12 @@ from omniweave_conform import labels
 from omniweave_conform import portability as cell_half
 from omniweave_conform import retrieval as cite_half
 from omniweave_conform import roundtrip as r2_half
+from omniweave_conform.assertions import OWDOC_ONLY
 from omniweave_conform.badge import kit_version
 from omniweave_conform.damage import INJECTORS, TABLE
 from omniweave_conform.evaluate import span_exact_rate
 from omniweave_conform.harness import run_parse
-from omniweave_conform.judge import judge
+from omniweave_conform.judge import Judged, judge
 from omniweave_conform.rollup import RATES, rollup
 from omniweave_conform.stats import rate
 from omniweave_conform.subject import Subject
@@ -373,10 +374,15 @@ def parse(  # noqa: PLR0915 -- one subject's run, its metrics and its labels, ru
                 for gate in computed
             ]
             fingerprint = code_fingerprint(found.source_files())
-            corpus, labelled, pages = _labelled(root, fixtures_dir, found, parses, workdir)
+            corpus, labelled, pages, stores = _labelled(root, fixtures_dir, found, parses, workdir)
+            run_id = _run_id("parse", found.driver_id, corpus.corpus_digest, started)
+            #  D932: an owdoc-only assertion reads the parsed document, so it is judged here,
+            #  while the candidate stores still exist, and not after the workdir is gone.
+            wanted = {one.doc for one in labelled if one.type in OWDOC_ONLY}
+            with labels.opened({doc: stores[doc] for doc in wanted if doc in stores}) as docs:
+                judged = judge(labelled, pages, run_id=run_id, docs=docs)
         corpora[corpus.corpus_id, corpus.version] = corpus
         slice_key = str(row.get("slice", "*"))
-        run_id = _run_id("parse", found.driver_id, corpus.corpus_digest, started)
         vacuous = [
             f"{result.metric}: vacuous, no block claims verbatimness, so nothing could fail "
             f"(13:661, R-T16); {result.blocks_seen} block(s) seen"
@@ -411,11 +417,11 @@ def parse(  # noqa: PLR0915 -- one subject's run, its metrics and its labels, ru
                 + (f": {', '.join(refused)}" if refused else ""),
             ),
         )
-        rates, judged, run = _rates(run, labelled, pages)
+        rates, judged_verdicts, run = _rates(run, labelled, judged)
         runs.append(run)
         metrics.extend(rates)
         assertions.extend(labelled)
-        verdicts.extend(judged)
+        verdicts.extend(judged_verdicts)
         for gate, result in results:
             if result.value is None:
                 continue
@@ -467,9 +473,9 @@ def parse(  # noqa: PLR0915 -- one subject's run, its metrics and its labels, ru
 
 def _labelled(
     root: Path, fixtures_dir: Path, found: Subject, parses: Sequence[Any], workdir: Path
-) -> tuple[Corpus, tuple[Assertion, ...], dict[tuple[str, int], str]]:
-    """Rulings 22 and 23: the corpus with its labels digested, its assertions, and the pages
-    each labelled fixture's parse serves."""
+) -> tuple[Corpus, tuple[Assertion, ...], dict[tuple[str, int], str], dict[str, Path]]:
+    """Rulings 22 and 23: the corpus with its labels digested, its assertions, the pages each
+    labelled fixture's parse serves, and the candidate store each was written to (D932)."""
     base = fixtures_dir.resolve()
     files = [fixture.path for fixture in found.fixtures]
     labels_files = [labels.labels_of(path) for path in files if labels.labels_of(path).is_file()]
@@ -483,18 +489,19 @@ def _labelled(
     )
     wanted = {one.doc for one in loaded}
     pages: dict[tuple[str, int], str] = {}
+    stores: dict[str, Path] = {}
     for index, parse in enumerate(parses):
         doc = parse.fixture.path.relative_to(base).as_posix()
         if doc in wanted:
-            pages |= labels.candidate(
-                parse, found.card, doc=doc, workdir=workdir / f"candidate-{index}"
-            )
+            where = workdir / f"candidate-{index}"
+            pages |= labels.candidate(parse, found.card, doc=doc, workdir=where)
+            stores[doc] = where / labels.STORE
     checked = sum(1 for one in loaded if one.checked == "verified")
-    return replace(corpus, n_assertions=len(loaded), n_checked=checked), loaded, pages
+    return replace(corpus, n_assertions=len(loaded), n_checked=checked), loaded, pages, stores
 
 
 def _rates(
-    run: Run, labelled: Sequence[Assertion], pages: Mapping[tuple[str, int], str]
+    run: Run, labelled: Sequence[Assertion], judged: Judged
 ) -> tuple[list[Metric], tuple[Verdict, ...], Run]:
     """Rulings 22 and 23: the verdicts, each fed rate's rows, and the run saying what they did not
     score."""
@@ -502,7 +509,6 @@ def _rates(
         corpus = run.corpus_id
         said = UNLABELLED.format(metrics=", ".join(sorted(RATES)), corpus=corpus)
         return [], (), replace(run, not_measured=(*run.not_measured, said))
-    judged = judge(labelled, pages, run_id=run.run_id)
     rows: list[Metric] = []
     notes = [f"assertion {aid} not run: {why}" for aid, why in judged.not_run]
     for spec in RATES.values():

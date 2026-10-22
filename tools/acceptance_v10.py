@@ -473,11 +473,18 @@ CRITERIA: tuple[Criterion, ...] = (
                 "test_a_transposed_table_fails_every_cell_rel_on_the_owdoc_evaluator",
                 label="the transposed table's cell_rel half, on the owdoc evaluator (D877)",
             ),
+            pytest(
+                f"{CONF}/test_conform_cell_rel_parsed.py",
+                label="cell_rel over a parsed DOCX, the table and its transpose (D932)",
+            ),
         ),
         Coverage.PARTIAL,
         "the planted defects are synthetic stand-ins for sec-exhibit-scan and "
-        "xlsx-merged-4m-cells, which are not in the tree; cell_rel runs over a hand-built Doc's "
-        "Grid (D877), and no suite yet hands judge() a parsed Doc (13:1262's hallucination_rate "
+        "xlsx-merged-4m-cells, which are not in the tree. Since D932 the parse suite hands "
+        "judge() each labelled fixture's parsed Doc, and a transposed table in a real parsed DOCX "
+        "fails every cell_rel while the untouched one passes; no committed label is a cell_rel "
+        "yet, and table_rel_acc rolls up the text evaluator's verdicts only (D816 ruling 1), so a "
+        "cell_rel's owdoc verdict is recorded and not in that rate (13:1262's hallucination_rate "
         "claim was dropped by ruling, D900: 13:1096 defines it over field assertions)",
     ),
     Criterion(

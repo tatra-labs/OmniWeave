@@ -28,8 +28,11 @@ there"*.
    cell, and an assertion names one. A table that declares no header rows has no `top_heading`,
    which is where `cell_rel` and `table` part: the text evaluator reads row 0 as a heading
    because a markdown table always has one.
-4. **The page is the assertion's**, compared with `Block.page` as the same integer. An assertion
-   with no page reads every TABLE Block in the document.
+4. **The page is the assertion's, 1-based as a reader counts it, and `Block.page` is 0-based**,
+   the original source index (`PageRecord.page`), so page N reads the Doc's page N - 1. Until
+   D932 the two were compared as the same integer: every test fed a hand-built Doc that numbered
+   its pages from 1, and against a parsed document a page-1 assertion read the second page. An
+   assertion with no page reads every TABLE Block in the document.
 5. **A failure names the table by its Block id and the cell by `r<r>c<c>`**, with the relations
    it missed, both strings quoted, or says no cell matched, or that the page has no table.
 """
@@ -61,12 +64,32 @@ class TableSource(Protocol):
     """What `cell_rel` reads of a document: `omniweave_core.model.doc.Doc` is one."""
 
     def blocks(
-        self, *, pages: range | None = None, kinds: Iterable[Kind] | None = None
+        self,
+        *,
+        pages: range | None = None,
+        kinds: Iterable[Kind] | None = None,
+        under: BlockId | None = None,
     ) -> Iterator[Block]: ...
 
     def block(self, id: BlockId) -> Block: ...  # noqa: A002 -- Doc.block's own parameter name.
 
     def grid(self, id: BlockId) -> Grid: ...  # noqa: A002 -- Doc.grid's own parameter name.
+
+
+def _cell_text(doc: TableSource, cell: BlockId) -> str:
+    """A cell's text: its own, or its descendants' joined in reading order. **D932.**
+
+    A parsed cell is a `TABLE_CELL` Block holding no text: what it says is in its child
+    paragraphs, as `Doc.serialize` reads it. Until D932 only the cell's own `text` was read, which
+    a hand-built Doc carries and a parsed one does not, so against a real document every cell read
+    as empty and no `cell_rel` could pass.
+    """
+    own = doc.block(cell).text
+    if own:
+        return own
+    return " ".join(
+        block.text for block in doc.blocks(under=cell) if block.id != cell and block.text
+    )
 
 
 def evaluate_cell_rel(assertion: Assertion, doc: TableSource) -> TextVerdict:
@@ -82,7 +105,7 @@ def evaluate_cell_rel(assertion: Assertion, doc: TableSource) -> TextVerdict:
     threshold = max(0.5, 1.0 - assertion.max_diffs / len(cell))
     wanted = {rel: normalize_eval(str(spec[rel])) for rel in RELATIONS if spec.get(rel)}
     page = assertion.page
-    pages = range(page, page + 1) if page is not None else None
+    pages = range(page - 1, page) if page is not None else None
     tables = list(doc.blocks(pages=pages, kinds=(Kind.TABLE,)))
     if not tables:
         where = f"page {page}" if page is not None else "the document"
@@ -91,7 +114,7 @@ def evaluate_cell_rel(assertion: Assertion, doc: TableSource) -> TextVerdict:
 
     def text(origin: Origin) -> str:
         if origin.block not in texts:
-            texts[origin.block] = normalize_eval(doc.block(origin.block).text or "")
+            texts[origin.block] = normalize_eval(_cell_text(doc, origin.block))
         return texts[origin.block]
 
     best: tuple[int, str] | None = None

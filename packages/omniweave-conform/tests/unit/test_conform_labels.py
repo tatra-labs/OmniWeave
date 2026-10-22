@@ -278,3 +278,17 @@ def test_every_committed_labels_file_loads_beside_its_fixture(path: Path) -> Non
     )
     assert loaded, f"{path.name} holds no assertion"
     assert all(one.slices for one in loaded), "a committed label names its slice"
+
+
+def test_a_cell_rel_label_is_judged_on_the_parsed_document(tmp_path: Path) -> None:
+    """D932: the parse suite hands `judge()` each labelled fixture's parsed Doc, so an owdoc-only
+    label runs on the owdoc evaluator instead of being reported as not run."""
+    fixtures = _corpus(
+        tmp_path,
+        '[[assertion]]\nid = "cell-120"\ntype = "cell_rel"\npage = 1\ncell = "120"\n'
+        'top_heading = "Revenue"\nleft = "Q1"\n',
+    )
+    batch = _run(tmp_path, fixtures)
+    (verdict,) = [v for v in batch.verdicts if "#cell-120@" in v.assertion_id]
+    assert (verdict.evaluator, verdict.passed, verdict.explanation) == ("owdoc", True, "")
+    assert not any("cell-120" in note for run in batch.runs for note in run.not_measured)

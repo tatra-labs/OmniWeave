@@ -86,17 +86,23 @@ class _Doc:
                 rs, cs = (spans or {}).get((r, c), (1, 1))
                 covered |= {(r + i, c + j) for i in range(rs) for j in range(cs)}
                 block = table + 10 * r + c + 1
-                self.cells[block] = _block(block, page, value)
+                self.cells[block] = _block(block, page - 1, value)
                 drafts.append(_Draft(BlockId(block), CellPos(r, c, rs, cs)))
-        self.tables.append(_block(table, page, "", Kind.TABLE))
+        #  D932: `page` is a label's, 1-based; a Doc numbers its pages from 0, as this does.
+        self.tables.append(_block(table, page - 1, "", Kind.TABLE))
         self.grids[table] = build_grid(
             drafts, header_rows=header_rows, header_cols=header_cols, diag=lambda _d: None
         )
         return table
 
     def blocks(
-        self, *, pages: range | None = None, kinds: Iterable[Kind] | None = None
+        self,
+        *,
+        pages: range | None = None,
+        kinds: Iterable[Kind] | None = None,
+        under: BlockId | None = None,
     ) -> Iterator[Block]:
+        del under  # a hand-built cell carries its own text, so nothing reads under it
         wanted = set(kinds) if kinds is not None else None
         for block in self.tables:
             if pages is not None and block.page not in pages:

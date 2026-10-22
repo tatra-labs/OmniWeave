@@ -50,6 +50,7 @@ import hashlib
 import io
 import re
 import tomllib
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Final, cast
 
 from omniweave_core.blobs import BlobStore
@@ -68,6 +69,7 @@ from omniweave_core.store.oweval import Assertion
 from omniweave_conform.assertions import OWDOC_ONLY
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator, Mapping
     from pathlib import Path
     from typing import BinaryIO
 
@@ -76,7 +78,7 @@ if TYPE_CHECKING:
 
     from omniweave_conform.harness import ParseRun
 
-__all__ = ["SCHEMA", "SUFFIX", "TYPES", "candidate", "labels_of", "load"]
+__all__ = ["SCHEMA", "STORE", "SUFFIX", "TYPES", "candidate", "labels_of", "load", "opened"]
 
 SUFFIX: Final = ".assertions.toml"
 """Ruling 1: `<file>.assertions.toml` beside the fixture."""
@@ -227,7 +229,7 @@ def candidate(
     parse: ParseRun, card: DriverCard, *, doc: str, workdir: Path
 ) -> dict[tuple[str, int], str]:
     """Ruling 6: each page of the parse as `ow` serves it, keyed `(doc, page)`, 1-based."""
-    path = workdir / "candidate.owstore"
+    path = workdir / STORE
     cas = workdir / "cas"
     cas.mkdir(parents=True, exist_ok=True)
     connection = store_sqlite.connect(path)
@@ -300,6 +302,39 @@ def candidate(
         }
     finally:
         reader.close()
+
+
+STORE: Final = "candidate.owstore"
+"""The store `candidate()` writes into its `workdir`, which `opened()` reads back."""
+
+
+@contextmanager
+def opened(stores: Mapping[str, Path]) -> Iterator[dict[str, Doc]]:
+    """Each labelled document's candidate store, read back as the `Doc` it holds. **D932.**
+
+    `stores` maps a doc name to the `STORE` path `candidate()` wrote. The page text `candidate()`
+    returns is what the text evaluator reads; an owdoc-only assertion (`cell_rel`) reads the
+    document itself, its TABLE Blocks and Grids, so `judge()` is handed these. Until D932 no
+    suite handed `judge()` a parsed document, and a `cell_rel` label could only run against a
+    hand-built one. Each store holds one document, read at its head generation; the readers
+    close when the block ends.
+    """
+    readers: list[Any] = []
+    try:
+        docs: dict[str, Doc] = {}
+        for doc, path in stores.items():
+            reader = store_sqlite.connect_readonly(path)
+            readers.append(reader)
+            row = reader.execute(
+                "SELECT doc_ord, gen FROM doc ORDER BY doc_ord DESC LIMIT 1"
+            ).fetchone()
+            if row is None:
+                raise QualityError(f"{doc}: its candidate store holds no document", fix=_FIX)
+            docs[doc] = Doc(StoreDocReader(reader), int(row[0]), int(row[1]))
+        yield docs
+    finally:
+        for reader in readers:
+            reader.close()
 
 
 def _open(parse: ParseRun, ref: ArtifactRef) -> BinaryIO:

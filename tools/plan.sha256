@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D931: Q-G4 wired across the nine cells (13:1988 build note)
+# blessed-because: D932: cell_rel over a parsed Doc (13:1261 build note)
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -39,7 +39,7 @@ documents-frozen  e3d9414cd24b29681c2da184fffa9c3fbc33e4d066f831fe9d8113b159e0ab
 documents-frozen  76979acde0cc3dcf5b9559dceb3e72fb9d0a70c91e1c03eec01e67fd4159a101  10-interfaces.md
 documents-frozen  0c6548840fb0910938c046372eaf172acc26dede00c771f8b2879d68bb872572  11-repo-layout.md
 documents-frozen  2fe653d5ac8031388b9a25e2d7464c4921e22b0aa78e2f4dabb531186219c6a5  12-performance.md
-documents-frozen  74710773d02c472b6929ec6d058ae5d4917fb3f957cace8c30ed5930c7c5a577  13-quality.md
+documents-frozen  b8e57f8303403e714afd3a24d1b285897c1efc0bef4d57e5094b6fcb3aed87f4  13-quality.md
 documents-frozen  78a3474b788625971c7a7fed610ef3c6518e9330bfd87e8411fbc744666b43d1  14-security.md
 documents-frozen  dc12dc92f5690bb2747048244ce1113803c4f03c67e21917574c2c9db7ba221a  15-observability.md
 documents-frozen  5cf9671f6a3972ec5c0462eaf6ad35ad2da2190c9772330c6280d1f085af90f6  16-roadmap.md
