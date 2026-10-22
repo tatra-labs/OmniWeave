@@ -47,34 +47,25 @@ Specified in 13-quality.md sections 4.4, 8.1 and 8.3, and the charter's `eval_as
 from __future__ import annotations
 
 import hashlib
-import io
 import re
 import tomllib
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Final, cast
+from typing import TYPE_CHECKING, Any, Final
 
-from omniweave_core.blobs import BlobStore
 from omniweave_core.errors import ModelError, QualityError
-from omniweave_core.model.block import Capabilities
 from omniweave_core.model.doc import Doc
-from omniweave_core.model.records import Producer
-from omniweave_core.store import migrate
 from omniweave_core.store import sqlite as store_sqlite
-from omniweave_core.store.artifact import ensure_producer
-from omniweave_core.store.doc import DocSink
 from omniweave_core.store.docread import StoreDocReader
-from omniweave_core.store.fragment import FragmentDoc, decode, records_of
 from omniweave_core.store.oweval import Assertion
 
 from omniweave_conform.assertions import OWDOC_ONLY
+from omniweave_conform.stored import STORE, into_store
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
     from pathlib import Path
-    from typing import BinaryIO
 
     from omniweave_core.drivers.card import DriverCard
-    from omniweave_ports import ArtifactRef
 
     from omniweave_conform.harness import ParseRun
 
@@ -95,8 +86,6 @@ _ROW: Final = frozenset({"id", "type", "page", "checked", "max_diffs", "slices",
 _EVALUABLE: Final = frozenset({"owdoc", "text", "both"})
 _ID: Final = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
 _SIDECAR: Final = ".meta.toml"
-_NOW_NS: Final = 0
-"""The scratch store's migration clock: the store is thrown away, so no instant is recorded."""
 _FIX: Final = "see packages/omniweave-conform/src/omniweave_conform/labels.py's rulings"
 
 
@@ -229,70 +218,20 @@ def candidate(
     parse: ParseRun, card: DriverCard, *, doc: str, workdir: Path
 ) -> dict[tuple[str, int], str]:
     """Ruling 6: each page of the parse as `ow` serves it, keyed `(doc, page)`, 1-based."""
-    path = workdir / STORE
-    cas = workdir / "cas"
-    cas.mkdir(parents=True, exist_ok=True)
-    connection = store_sqlite.connect(path)
     try:
-        migrate.apply_pending(connection, now_ns=_NOW_NS)
-    finally:
-        connection.close()
-    operator = ".".join(card.identity.id.split(".")[:2])
-    producer = Producer(
-        operator=operator,
-        op_version=card.identity.schema_version,
-        code_fingerprint="",
-        options_digest=b"\0",
-    )
-    sha = bytes.fromhex(parse.fixture.digest.removeprefix("sha256:"))
-    with store_sqlite.StoreThread(lambda: store_sqlite.connect(path)) as thread:
-        producer_id = cast(
-            "int",
-            thread.run(
-                store_sqlite.Unit(
-                    name="labels.producer",
-                    run=lambda conn: ensure_producer(conn, producer),
-                    cost_class="free",
-                )
-            ),
-        )
-        sink = DocSink(
-            thread,
-            producer_id=producer_id,
-            origin_operator=operator,
-            origin_driver=card.identity.id,
-            driver_schema_v=card.identity.schema_version,
-            blobs=BlobStore(cas),
-        )
-        try:
-            decoded = decode(
-                list(records_of(parse.body)),
-                sink=sink,
-                assets=[ref for ref in parse.result.produced if ref.kind == "asset"],
-                open_ref=lambda ref: _open(parse, ref),
-                open_part=lambda digest: io.BytesIO(parse.fixture.data) if digest == sha else None,
-                doc=FragmentDoc(
-                    doc_key=sha[:16],
-                    source_sha256=sha,
-                    normalizer=None,
-                    uri=parse.fixture.path.as_uri(),
-                    source_bytes=len(parse.fixture.data),
-                    declared=_declared(card),
-                    model_version="1.1",
-                ),
-            )
-        except ModelError as refused:
-            raise QualityError(
-                f"{doc}: the store refused {card.identity.id}'s fragment: {refused}",
-                fix=f"ow conform {card.identity.id}   # the fragment suite names the record",
-            ) from refused
-    record, pages = decoded.record, decoded.pages
-    if record.gen == 0:
+        stored = into_store(parse, card, workdir=workdir)
+    except ModelError as refused:
+        raise QualityError(
+            f"{doc}: the store refused {card.identity.id}'s fragment: {refused}",
+            fix=f"ow conform {card.identity.id}   # the fragment suite names the record",
+        ) from refused
+    if stored.quarantined:
         raise QualityError(
             f"{doc}: the store quarantined {card.identity.id}'s parse, so there is no page to "
             "judge; a quarantined parse is not an empty one",
             fix=f"ow conform {card.identity.id}   # the fragment suite names the failed clause",
         )
+    path, record, pages = stored.path, stored.record, stored.pages
     reader = store_sqlite.connect_readonly(path)
     try:
         handle = Doc(StoreDocReader(reader), record.doc_ord, record.gen)
@@ -302,10 +241,6 @@ def candidate(
         }
     finally:
         reader.close()
-
-
-STORE: Final = "candidate.owstore"
-"""The store `candidate()` writes into its `workdir`, which `opened()` reads back."""
 
 
 @contextmanager
@@ -335,18 +270,3 @@ def opened(stores: Mapping[str, Path]) -> Iterator[dict[str, Doc]]:
     finally:
         for reader in readers:
             reader.close()
-
-
-def _open(parse: ParseRun, ref: ArtifactRef) -> BinaryIO:
-    """Ruling 6: a blob-backed asset's bytes, from the store the parse wrote it into."""
-    if parse.blobs is None:
-        raise QualityError("the parse kept no blob store to read its assets from", fix=_FIX)
-    return parse.blobs.open(str(ref.blob).removeprefix("cas://"))
-
-
-def _declared(card: DriverCard) -> Capabilities:
-    """Ruling 6: the card's `[capability.parse]` as the fifteen fields, as the host builds them
-    (`omniweave.run.operators.parse.declared`, which this layer may not import)."""
-    caps: Any = card.parse
-    names = Capabilities.__dataclass_fields__
-    return Capabilities(**{name: getattr(caps, name) for name in names if hasattr(caps, name)})
