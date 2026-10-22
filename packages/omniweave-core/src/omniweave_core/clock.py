@@ -31,8 +31,9 @@ handed rather than trusting it.
 ## The per-OS ladder, and the ban that cannot be followed literally (D154)
 
 `tools/semgrep/omniweave.yaml`'s `omniweave-no-time-time-in-library-code` bans `time.time`,
-`time.time_ns`, `time.perf_counter`, `time.perf_counter_ns`, `time.process_time` and
-`time.process_time_ns` in `packages/*/src/**`, and its message prescribes the replacement:
+`time.time_ns`, `time.perf_counter`, `time.perf_counter_ns`, `time.process_time`,
+`time.process_time_ns` and (D945) `time.thread_time[_ns]` in `packages/*/src/**`, and its
+message prescribes the replacement:
 *"the clock is injected -- `ctx.clock.wall_ns()` for a wall reading, **`time.monotonic_ns()` for a
 duration**"*.
 
@@ -58,6 +59,8 @@ zero reads as *free* rather than as *unmeasured*.
 This file carries a **scoped** G8 exemption for exactly those two calls, in `tools/egress.toml`'s
 style and for `toolchain.py`'s reason: one module is entitled to read the machine, and every other
 module injects. `time.time()` stays banned here too -- `wall_ns()` is `time.time_ns()`.
+D945 adds a third reading, `thread_cpu_ns()`, which is `time.thread_time_ns()`: a CPU
+figure rather than a clock, read here for the same reason and injected the same way.
 
 Stdlib plus `time` (INV-2, G1). Not one of the nine LAZY names: this is a Protocol plus a small
 class and importing it costs nothing.
@@ -81,6 +84,7 @@ __all__ = [
     "ClockFacts",
     "SystemClock",
     "clock_facts",
+    "thread_cpu_ns",
 ]
 
 
@@ -242,3 +246,19 @@ class SystemClock:
         takes a `Clock`, so there is exactly one call site to audit and it is this line.
         """
         return time.time_ns()
+
+
+def thread_cpu_ns() -> int:
+    """User plus kernel CPU time of the CALLING thread, in nanoseconds. D945.
+
+    The in-process half of D921's metering. A worker's CPU is read from outside the worker, but an
+    in-process (S1) call shares the supervisor's process with every other thread, so no process
+    reading belongs to one call. The driver runs on the thread that called it, with only the
+    deadline watchdog on another, so this thread's CPU across `parse()` is the call's own.
+
+    `time.thread_time_ns()`, which joins the G8 ban beside `process_time` and is read here for the
+    same reason `wall_ns()` reads `time.time_ns()`. The caller injects this function, so a test
+    hands it a counter. On Windows it is `GetThreadTimes`, whose figure moves in 15.6 ms ticks, so
+    a call shorter than a tick may read 0 there.
+    """
+    return time.thread_time_ns()

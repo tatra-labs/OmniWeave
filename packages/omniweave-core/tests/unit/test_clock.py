@@ -229,7 +229,7 @@ def test_the_clock_carries_no_settable_state() -> None:
 # =============================================================================================
 
 
-def test_this_module_calls_only_the_four_time_functions_it_is_exempted_for() -> None:
+def test_this_module_calls_only_the_five_time_functions_it_is_exempted_for() -> None:
     """The exemption is path-scoped, so the file's own discipline is asserted here instead.
 
     `tools/gate_semgrep.py`'s `CLOCK` docstring points at this test by name. Without it, excluding
@@ -248,7 +248,8 @@ def test_this_module_calls_only_the_four_time_functions_it_is_exempted_for() -> 
             and node.value.id == "time"
         ):
             called.add(node.attr)
-    assert called <= {"time_ns", "monotonic_ns", "perf_counter_ns", "get_clock_info"}, called
+    allowed = {"time_ns", "monotonic_ns", "perf_counter_ns", "thread_time_ns", "get_clock_info"}
+    assert called <= allowed, called
     assert "time" not in called, "time.time() stays banned here too"
     assert "process_time" not in called
     assert "process_time_ns" not in called
