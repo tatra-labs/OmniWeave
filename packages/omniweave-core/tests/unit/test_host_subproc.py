@@ -2676,7 +2676,6 @@ def test_peak_rss_of_a_process_that_does_not_exist_is_a_reason_and_never_a_raise
     assert "OpenProcess" in why
 
 
-@WINDOWS_ONLY
 def test_the_watchdog_fires_when_the_sampled_rss_is_over_the_cards_memory_mb() -> None:
     """04-driver-system.md:1730: `FAILED_PERMANENT{RESOURCE_LIMIT}`, `limit = "memory_mb"`.
 
@@ -3320,7 +3319,6 @@ def test_the_only_popen_in_the_module_passes_cwd_env_and_shell_false() -> None:
     assert isinstance(stdin, ast.Attribute) and stdin.attr == "DEVNULL"
 
 
-@WINDOWS_ONLY
 def test_a_real_spawn_runs_in_the_cwd_we_passed_and_not_in_ours(tmp_path: Path) -> None:
     """The graphify defect, as a live test.
 
@@ -3348,7 +3346,6 @@ def test_a_real_spawn_runs_in_the_cwd_we_passed_and_not_in_ours(tmp_path: Path) 
     assert reported != Path.cwd().resolve()
 
 
-@WINDOWS_ONLY
 def test_a_spawn_does_not_inherit_the_hosts_environment(tmp_path: Path) -> None:
     """`env` is a complete mapping and not an overlay: an inherited environment carries the
     host's `PYTHONPATH`, its proxy variables and its tokens into a third party's process."""
@@ -3378,7 +3375,6 @@ def test_a_spawn_does_not_inherit_the_hosts_environment(tmp_path: Path) -> None:
         del os.environ["OW_HOST_SECRET"]
 
 
-@WINDOWS_ONLY
 def test_a_real_crash_is_synthesised_from_the_exit_status_and_the_tail() -> None:
     """02-architecture.md:831 over a real process: 9 KiB of stderr, exit 3, a 4 KiB tail.
 
