@@ -61,10 +61,10 @@ returns it as `store.oweval` rows for one `write()`.
     repository's `fixtures/gen/gen_reference_corpora.py` at `quick` scale. That generator is
     committed under `fixtures/`, Tier A (D844), and its documents are digested by name and bytes,
     so a generator change is a new corpus version. Not `publishable`, as ruling 3.
-11. **What the half does not measure is named**: the Injectors the table owes and nothing builds,
-    and the absence-corpus half's metrics (`false_confident_zero`, `absent_precision`,
-    `absent_recall`), which need the T4 absence corpus. A failed pair is a confounder, by name,
-    and lowers the rate, which `release-check` then refuses as off its hard budget.
+11. **What the half does not measure is named**: the Injectors the table owes and nothing builds.
+    A failed pair is a confounder, by name, and lowers the rate, which `release-check` then
+    refuses as off its hard budget. The absence corpus's metrics are the removal half's
+    (rulings 25-28), and a `--deterministic-half` run names them as left out.
 
 ## The retrieve suite's self-verifying half (D870)
 
@@ -133,6 +133,29 @@ returns it as `store.oweval` rows for one `write()`.
 24. **`structure_f1` is still not measured**: it scores against a `structure.jsonl` reference
     (13:1104) no fixture carries, and the run says so.
 
+## The absence suite's removal half (D933)
+
+25. **`--suite absence` runs both halves, and `--deterministic-half` the paired-damage half
+    alone**, the half 16:690 names. The removal half is `removal.run_suite()`: 13 section 8.6's
+    Construction 1 over the adoption catalogue, each answerable question asked of its corpus as
+    generated and with its planted sentence deleted. It is its own run, over its own corpus,
+    `absence_corpus/quick`: `release.latest()` keeps one run per `(suite, subject, corpus)`, so
+    sharing the damage half's corpus id would supersede it.
+26. **Three metrics, each from `Verdict.state` alone.** `false_confident_zero` is the
+    answerable questions answered `absent`, over the answerable (13:1095), against the register's
+    ceiling row, whose `truth_kind` all three carry. `absent_recall` is the genuinely-absent
+    questions answered `absent`, over the genuinely absent, and `absent_precision` the answered-
+    `absent` that are genuinely absent, over the answered `absent`: both ungated (13:1137).
+27. **`min_slice_n` applies**: none of the three is a hard row, and 13:1088 macro-averages every
+    other row at 30 a slice. Below it, `false_confident_zero` is written `unknown`, which
+    `release-check` refuses, because a ceiling no row can judge is not met. The two ungated rates
+    are written only when measured, so an ungated rate cannot refuse a release; below it, each is
+    named in `not_measured` with its counts.
+28. **What the half is not is said**: the corpus is Tier A and generated where 13 section 8.6
+    names a Tier-B document; the answer key is the catalogue's, which no reviewer has verified;
+    and the task `removal.SHARED` keeps answerable is named. `qa_accuracy` needs a judge and is
+    named as not measured.
+
 ## The portability suite (D903)
 
 19. **Portability is the same inputs giving identical results on every cell** (a user ruling of
@@ -163,7 +186,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
-from omniweave_core.drivers.card import MeasuredOn
+from omniweave_core.drivers.card import MIN_SLICE_N, MeasuredOn
 from omniweave_core.errors import QualityError
 from omniweave_core.host.activate import code_fingerprint
 from omniweave_core.store.oweval import Assertion, Batch, Corpus, Metric, Run, Verdict
@@ -172,6 +195,7 @@ from omniweave_ports.types import DriverError
 from omniweave_conform import absence as damage_half
 from omniweave_conform import labels
 from omniweave_conform import portability as cell_half
+from omniweave_conform import removal as removal_half
 from omniweave_conform import retrieval as cite_half
 from omniweave_conform import roundtrip as r2_half
 from omniweave_conform.assertions import OWDOC_ONLY
@@ -260,10 +284,24 @@ DETECTION: Final = "degradation_detection"
 """Ruling 8: the absence half's one metric, the register's hard row."""
 
 ABSENCE_UNMEASURED: Final[tuple[str, ...]] = (
-    "false_confident_zero, absent_precision, absent_recall: the absence corpus half needs the "
-    "T4 absence corpus, which does not exist (13 section 8.6)",
+    "false_confident_zero, absent_precision, absent_recall: the removal half, which "
+    "--deterministic-half leaves out (D933)",
 )
-"""Ruling 11: the half not run, named in every absence run's `not_measured`."""
+"""Ruling 11: the half not run, named in a `--deterministic-half` run's `not_measured`."""
+
+FALSE_CONFIDENT: Final = "false_confident_zero"
+ABSENT_RECALL: Final = "absent_recall"
+ABSENT_PRECISION: Final = "absent_precision"
+"""Ruling 26: the removal half's three metrics. The first is the register's ceiling row."""
+
+REMOVAL_CORPUS: Final = "absence_corpus/quick"
+REMOVAL_SLICE: Final = "removal"
+"""Ruling 25: the removal half's corpus id, never the damage half's, and its slice."""
+
+REMOVAL_UNMEASURED: Final = (
+    "qa_accuracy: the absence corpus's judge-graded metric, and no judge runs here (13 section 8.6)"
+)
+"""Ruling 28: named in every removal run's `not_measured`."""
 
 TRUTH_KINDS: Final[frozenset[str]] = frozenset(
     {"human", "rendered", "native_run", "synth_ocr", "agreement", "self"}
@@ -533,8 +571,10 @@ def absence(
     now_ns: Callable[[], int],
     admit: Callable[[Sequence[str]], str | None],
     workers: int = 4,
+    deterministic_half: bool = False,
 ) -> tuple[Batch, tuple[Measured, ...]]:
-    """The absence suite's deterministic half as one `Batch` (rulings 8-11)."""
+    """The absence suite as one `Batch`: the paired-damage half (rulings 8-11), then, unless
+    `deterministic_half`, the removal half (rulings 25-28)."""
     gate = next(
         (
             row
@@ -608,7 +648,7 @@ def absence(
         status="ok",
         not_measured=(
             f"{len(owed)} of {len(TABLE)} Injectors are not built: {', '.join(owed)}",
-            *ABSENCE_UNMEASURED,
+            *(ABSENCE_UNMEASURED if deterministic_half else ()),
         ),
         confounders=(
             "the documents are the repository's own generated reference corpora, quick scale",
@@ -645,7 +685,164 @@ def absence(
         parsed=passed,
         refused=failed,
     )
-    return Batch(corpora=(corpus,), runs=(run,), metrics=metrics), (done,)
+    damaged = Batch(corpora=(corpus,), runs=(run,), metrics=metrics)
+    if deterministic_half:
+        return damaged, (done,)
+    removed, measured = _removal(
+        register, root=root, witness=witness, cassette=cassette, now_ns=now_ns
+    )
+    return (
+        Batch(
+            corpora=(*damaged.corpora, *removed.corpora),
+            runs=(*damaged.runs, *removed.runs),
+            metrics=(*damaged.metrics, *removed.metrics),
+        ),
+        (done, measured),
+    )
+
+
+def _removal(
+    register: Mapping[str, Any],
+    *,
+    root: Path,
+    witness: str,
+    cassette: str,
+    now_ns: Callable[[], int],
+) -> tuple[Batch, Measured]:
+    """The absence suite's removal half as one run (rulings 25-28)."""
+    truth = _row_truth(register, "absence", FALSE_CONFIDENT)
+    started = now_ns()
+    try:
+        with tempfile.TemporaryDirectory(prefix="ow-eval-removal-") as work:
+            removal = removal_half.run_suite(root, work=Path(work), now_ns=now_ns)
+    except (RuntimeError, OSError) as error:
+        raise QualityError(
+            f"the absence suite's removal half could not run: {type(error).__name__}: {error}",
+            fix="python fixtures/gen/gen_reference_corpora.py --all  # every corpus generates?",
+        ) from error
+    ended = now_ns()
+    digest = damage_half.documents_digest(removal.documents)
+    corpus = Corpus(
+        corpus_id=REMOVAL_CORPUS,
+        version=digest[:16],
+        corpus_digest=digest,
+        tier="A",
+        n_docs=len(removal.documents),
+        n_assertions=0,
+        n_checked=0,
+        document_redistributable=True,
+        assertions_redistributable=True,
+        publishable=False,
+    )
+    run_id = _run_id("absence", "omniweave", digest, started)
+    answerable = removal.answerable
+    wrong = tuple(one.question.task_id for one in answerable if one.answered_absent)
+    absent = removal.genuinely_absent
+    called = removal.called_absent
+    counted = (
+        (FALSE_CONFIDENT, len(wrong), len(answerable), "answerable question(s) answered absent"),
+        (
+            ABSENT_RECALL,
+            sum(1 for one in absent if one.answered_absent),
+            len(absent),
+            "genuinely absent question(s) answered absent",
+        ),
+        (
+            ABSENT_PRECISION,
+            sum(1 for one in called if one.question.genuinely_absent),
+            len(called),
+            "question(s) answered absent genuinely absent",
+        ),
+    )
+    notes: list[str] = []
+    metrics: list[Metric] = []
+    headline: float | None = None
+    for metric, hits, n, said in counted:
+        if n < MIN_SLICE_N:
+            notes.append(
+                f"{metric}: {hits} of {n} {said}, under min_slice_n = {MIN_SLICE_N} (13:1088)"
+                if n
+                else f"{metric}: no question was in its denominator, so it has no rate"
+            )
+            if metric == FALSE_CONFIDENT:
+                metrics.append(
+                    Metric(
+                        run_id=run_id,
+                        metric=metric,
+                        value=None,
+                        n=n,
+                        ci_lo=None,
+                        ci_hi=None,
+                        method="none",
+                        truth_kind=truth,
+                        state="unknown",
+                        slice_key=REMOVAL_SLICE,
+                    )
+                )
+            continue
+        estimate = rate(hits, n)
+        if metric == FALSE_CONFIDENT:
+            headline = estimate.value
+        metrics.append(
+            Metric(
+                run_id=run_id,
+                metric=metric,
+                value=estimate.value,
+                n=estimate.n,
+                ci_lo=estimate.ci_lo,
+                ci_hi=estimate.ci_hi,
+                method=estimate.method,
+                truth_kind=truth,
+                state="ok",
+                slice_key=REMOVAL_SLICE,
+            )
+        )
+    kept = [f"{task}: {removal_half.SHARED[task]}" for task in removal.shared]
+    run = Run(
+        run_id=run_id,
+        suite="absence",
+        corpus_id=corpus.corpus_id,
+        corpus_version=corpus.version,
+        corpus_digest=digest,
+        subject="omniweave",
+        subject_version=_version("omniweave"),
+        producer_id=None,
+        measured_on=_measured_on(corpus),
+        timing_basis="spawn_inclusive",
+        witness=witness,
+        cassette=cassette,
+        policy_digest=None,
+        pricebook_digest=None,
+        harness_version=kit_version(),
+        code_fingerprint=code_fingerprint(_core_sources()),
+        hardware=_hardware(),
+        started_ns=started,
+        ended_ns=ended,
+        status="ok",
+        not_measured=(*notes, REMOVAL_UNMEASURED),
+        confounders=(
+            "the documents are the repository's own generated reference corpora, quick scale "
+            "and Tier A, where 13 section 8.6 removes a section of a Tier-B document",
+            "the answer key is the adoption catalogue's, written against the generator's "
+            "PLANTED table, and no reviewer has verified it",
+            *(f"kept answerable: {line}" for line in kept),
+            f"{len(wrong)} answerable question(s) answered absent"
+            + (f": {', '.join(wrong)}" if wrong else ""),
+        ),
+    )
+    done = Measured(
+        run_id=run_id,
+        suite="absence",
+        subject="omniweave",
+        slice_key=REMOVAL_SLICE,
+        corpus_id=corpus.corpus_id,
+        metric=FALSE_CONFIDENT,
+        value=headline,
+        n=len(answerable),
+        parsed=len(answerable) - len(wrong),
+        refused=wrong,
+    )
+    return Batch(corpora=(corpus,), runs=(run,), metrics=tuple(metrics)), done
 
 
 def retrieve(
@@ -934,7 +1131,7 @@ def roundtrip(
 
 
 def _row_truth(register: Mapping[str, Any], suite: str, metric: str) -> str:
-    """Rulings 16 and 19: a hard row's TruthKind, or a refusal naming the missing row."""
+    """Rulings 16, 19 and 26: a row's TruthKind, or a refusal naming the missing row."""
     gate = next(
         (
             row

@@ -64,6 +64,7 @@ def run(
     witness: str,
     cassette: str,
     admit: Callable[[Sequence[str]], str | None],
+    deterministic_half: bool = False,
 ) -> dict[str, object]:
     """`ow eval run`: each named suite's rows, written to `oweval` in one transaction. D868, D869.
 
@@ -74,7 +75,8 @@ def run(
     subjects are its own: the product, or a target's compile driver. `admit` is
     `omniweave.surface.admit.admit`, 13:1306's check of a fix against the `ow` Action registry:
     the one callable that crosses, because this distribution may not import the registry, and
-    it takes and returns builtins (`absence` ruling 1). The `.oweval` is created
+    it takes and returns builtins (`absence` ruling 1). `deterministic_half` keeps the absence
+    suite to its paired-damage half (`eval_run` ruling 25). The `.oweval` is created
     when it does not exist: a run is its writer. The clock is read here, at the edge.
     """
     register = Path(gates)
@@ -110,7 +112,13 @@ def run(
             )
         elif suite == "absence":
             batch, measured = eval_run.absence(
-                rows, root=Path(root), witness=witness, cassette=cassette, now_ns=clock, admit=admit
+                rows,
+                root=Path(root),
+                witness=witness,
+                cassette=cassette,
+                now_ns=clock,
+                admit=admit,
+                deterministic_half=deterministic_half,
             )
         elif suite in eval_run.UNMEASURABLE:
             batch, measured = eval_run.unknown(
