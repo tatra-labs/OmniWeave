@@ -13,13 +13,11 @@ import dataclasses
 import io
 import json
 import sqlite3  # noqa: TID251 -- the assertions read the rows the loop wrote.
-import sys
 import zipfile
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-import pytest
 from fontkit import tiny_font, write_font  # type: ignore[import-not-found]  # tests/fontkit.py
 from omniweave.surface import out as verb
 from omniweave.surface.out import _need_fixes  # pyright: ignore[reportPrivateUsage]
@@ -31,7 +29,6 @@ from omniweave_core.store import migrate
 from omniweave_core.store import sqlite as store_sqlite
 from omniweave_target_pptx.driver import CARD
 
-WINDOWS_ONLY = pytest.mark.skipif(sys.platform != "win32", reason="the named-pipe arm")
 BRIEF = (
     f"{BRIEF_SCHEMA}\n## canvas\n- format: 16:9\n- unit: slide\n## communication\n"
     "- primary_language: en-GB\n## direction\n## density\n- per_unit: light\n## motion\n"
@@ -131,7 +128,6 @@ def test_with_its_font_dir_the_deck_passes_the_gate(tmp_path: Path) -> None:
     assert json.loads(out)["gate"]["status"] == "passed"
 
 
-@WINDOWS_ONLY
 def test_a_deck_is_compiled_and_read_back_once_its_addresses_mapped(tmp_path: Path) -> None:
     """D806: the loop D788 closed for docx, through parse.pptx.native in an S4 worker."""
     project = _project(tmp_path, font_dir=True)
@@ -163,7 +159,6 @@ def test_a_deck_is_compiled_and_read_back_once_its_addresses_mapped(tmp_path: Pa
     ]
 
 
-@WINDOWS_ONLY
 def test_a_corpus_holding_its_own_deck_reports_its_generated_share(tmp_path: Path) -> None:
     """V10-17 (07 section 6.7), D857: the store holds the deck it compiled, read back as
     `roundtrip` blocks. Asked about it, the read-back is the evidence and `generated_share` says
@@ -214,7 +209,6 @@ def _members(path: Path) -> dict[str, bytes]:
         return {info.filename: zf.read(info) for info in zf.infolist()}
 
 
-@WINDOWS_ONLY
 def test_an_edited_slide_is_rebuilt_and_its_neighbour_copied_byte_for_byte(tmp_path: Path) -> None:
     """D809, P9's demo: one slide's IL edited by hand and recompiled. The untouched slide is
     `passthrough`, its part its parent's, and the row names the generation it edits."""

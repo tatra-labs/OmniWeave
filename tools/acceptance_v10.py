@@ -505,8 +505,10 @@ CRITERIA: tuple[Criterion, ...] = (
             ),
         ),
         Coverage.PARTIAL,
-        "the self-ingesting corpus is asserted on Windows only, as the pptx loop's S4 arm is, so a "
-        "Linux or macOS cell skips it (the CLI spelling, `--deny-method roundtrip`, is D901's)",
+        "the self-ingesting corpus is no longer skipped off Windows (D926: the pptx loop's S4 arm "
+        "ran on Linux once a stale named-pipe skip was lifted); it has passed on Windows and "
+        "Linux, and its first macOS run is CI's (the CLI spelling, `--deny-method roundtrip`, "
+        "is D901's)",
     ),
 )
 
