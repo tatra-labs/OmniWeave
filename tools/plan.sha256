@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D923: an external driver passes the mandatory tier (04:2399 build note)
+# blessed-because: D924: G22 nightly on a hosted runner (11:1659 build note)
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -37,7 +37,7 @@ documents-frozen  25666745a9572e7eadf017b6988a2216744cc3eca5a3f572d45da8f1b8c3e1
 documents-frozen  ccb53a627e0cc60e78674f84f667da550d61dc03c3acf329fe1e0e4ddcf3edc0  08-runtime.md
 documents-frozen  e3d9414cd24b29681c2da184fffa9c3fbc33e4d066f831fe9d8113b159e0ab08  09-generation.md
 documents-frozen  76979acde0cc3dcf5b9559dceb3e72fb9d0a70c91e1c03eec01e67fd4159a101  10-interfaces.md
-documents-frozen  02e7a92b746f777fa0aaeca8f149542cc3d849be2e209dc4bd0660e5d1aa7232  11-repo-layout.md
+documents-frozen  0c6548840fb0910938c046372eaf172acc26dede00c771f8b2879d68bb872572  11-repo-layout.md
 documents-frozen  c59a51d9b477184b6b6114eb97eb17404699d196b5d17acb22095e8f8aaccca5  12-performance.md
 documents-frozen  d2eaec8e14c54ffd323fccee7f2c5c6a3724c198b335204a7c6213aa73db148f  13-quality.md
 documents-frozen  78a3474b788625971c7a7fed610ef3c6518e9330bfd87e8411fbc744666b43d1  14-security.md

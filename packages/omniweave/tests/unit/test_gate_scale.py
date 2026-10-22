@@ -783,13 +783,21 @@ def test_the_bounds_in_this_script_are_the_bounds_the_register_asserts() -> None
     assert gate.TRANSITIONS_PER_S == 2_000
 
 
-def test_nothing_in_ci_runs_this_gate_and_that_is_the_register_speaking() -> None:
+def test_no_pr_runs_this_gate_and_the_nightly_reads_a_breach_as_an_indication() -> None:
     """Section 6.4: G22 *"is deliberately absent from `ci-ok`'s required set."* Asserted against
     the workflow, because the absence is what makes a red G22 a release matter and not a merge
-    one -- and an accidental step here would quietly make it both."""
+    one -- and an accidental step here would quietly make it both.
+
+    D924, a user ruling of 2026-10-21: one schedule-only step runs it on a hosted runner as a
+    labelled indication. So the invocation appears exactly once, in a step gated on `schedule`,
+    which tolerates exit 1 (a breached bound) by name and still fails on any other exit."""
     workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert "uv run tools/gate_scale.py" not in workflow
-    assert "gate_scale" in workflow, "its absence is DOCUMENTED there, which is not the same thing"
+    assert workflow.count("uv run tools/gate_scale.py") == 1
+    step = workflow.split('- name: "G22 (nightly)', 1)[1].split("\n      - name:", 1)[0]
+    assert "uv run tools/gate_scale.py --roster 100000" in step
+    assert "if: github.event_name == 'schedule'" in step
+    assert 'OMNIWEAVE_RUNNER: "github-hosted ubuntu-latest"' in step
+    assert 'if [ "$code" -ne 0 ] && [ "$code" -ne 1 ]; then exit "$code"; fi' in step
 
 
 def test_the_gate_is_not_a_second_home_for_a_bound_the_register_already_carries() -> None:

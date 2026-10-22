@@ -592,6 +592,10 @@ release        = true
 # It was red until then, and red was the correct state for it. A nightly cell with `jobs = []` blocks the release (section 7.6
 # step 11) and no merge, and section 6.8 refuses the alternative: "There is no --warn-only
 # anywhere", and a gate that cannot fail is a rejectable defect on its own.
+# Since D924, by the same user ruling of 2026-10-21 as the hosted query bench, a schedule-only
+# step in `gates` runs it nightly on a GitHub-hosted runner as a labelled indication: a breached
+# bound is reported, a run that did not happen fails, and `jobs` stays empty because no PR cell
+# and no verdict is the hosted runner's.
 runner         = ["tools/gate_scale.py"]
 step           = "uv run tools/gate_scale.py --roster 100000 on ow-bench-1 (16-roadmap.md:578)"
 owner          = "runtime"

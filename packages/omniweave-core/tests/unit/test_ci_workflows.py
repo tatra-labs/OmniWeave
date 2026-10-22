@@ -711,7 +711,7 @@ def test_every_pr_blocking_row_is_invoked_in_the_job_its_row_names(
     assert not missing, missing
 
 
-def test_g22_is_invoked_nowhere(ci: Workflow, register: dict[str, object]) -> None:
+def test_g22_runs_in_no_pr_cell(ci: Workflow, register: dict[str, object]) -> None:
     """Section 6.4: `G22` "is a nightly 100k-roster scale run with no PR cell, so it blocks the
     *release* (checklist step 11) and is deliberately absent from `ci-ok`'s required set."
 
@@ -727,14 +727,26 @@ def test_g22_is_invoked_nowhere(ci: Workflow, register: dict[str, object]) -> No
     NOT arm a step. That is the case this docstring's second sentence anticipated, arriving for the
     script path instead of for the `G` number. What the guard catches is unchanged -- a step that
     invokes the gate is a `run:` body, and a comment that names it is not.
+
+    **D924, a user ruling of 2026-10-21:** one schedule-only step in `gates` now runs it on a
+    hosted runner as a labelled indication, with its report kept by a second step. So the guard is
+    "no PR cell", made precise: every other job names G22 nowhere, `gates` names it in exactly
+    those two steps, the runner is invoked once, and that step is gated on `schedule`.
     """
     absent = [row for row in _gate_rows(register) if not row["pr"]]
     assert [str(row["id"]) for row in absent] == ["G22"], absent
+    nightly = ("G22 (nightly)", "keep G22's nightly report")
     for job in ci.job_blocks():
-        names = " | ".join(ci.step_names(job))
-        assert not re.search(r"\bG22\b", names), f"G22 named in a {job} step"
-        assert not re.search(r"\bG22\b", ci.run_bodies(job)), f"G22 invoked in {job}"
-        assert "gate_scale.py" not in ci.run_bodies(job), f"G22's runner runs in {job}"
+        named = [n for n in ci.step_names(job) if re.search(r"\bG22\b", n)]
+        if job != "gates":
+            assert not named, f"G22 named in a {job} step"
+            assert not re.search(r"\bG22\b", ci.run_bodies(job)), f"G22 invoked in {job}"
+            assert "gate_scale.py" not in ci.run_bodies(job), f"G22's runner runs in {job}"
+            continue
+        assert [n for n in named if not n.startswith(nightly)] == [], named
+        assert ci.run_bodies(job).count("tools/gate_scale.py") == 1
+    step = ci.text.split('- name: "G22 (nightly)', 1)[1].split("\n      - name:", 1)[0]
+    assert "if: github.event_name == 'schedule'" in step
 
 
 def test_every_job_assertions_job_is_a_job_and_its_name_is_written_down(
@@ -1274,6 +1286,9 @@ def test_the_nightly_is_g19_and_the_hosted_query_bench_and_ow_bench_1_stays_a_st
     D916 added the second nightly step, by a user ruling of 2026-10-21: `ow bench query` on the
     hosted runner the `gates` job already uses, schedule-only, its report naming that runner and
     its eval_perf row kept with a status that is never a pass.
+
+    D924 added the third and fourth, under the same ruling: G22's 100,000-unit run and its kept
+    report, schedule-only on the same runner (`test_g22_runs_in_no_pr_cell` holds its shape).
     """
     region = _job_region(ci, "gates")
     assert "NO NIGHTLY WORKFLOW" in region
@@ -1290,9 +1305,10 @@ def test_the_nightly_is_g19_and_the_hosted_query_bench_and_ow_bench_1_stays_a_st
     # test's own subject wrote.
     assert "runs-on: ow-bench-1" not in "\n".join(ci.code_lines())
     assert "uv run tools/ow_bench.py query --oweval bench-query.oweval" in region
-    assert region.count("if: github.event_name == 'schedule'") == 2
+    assert region.count("if: github.event_name == 'schedule'") == 4
+    assert "uv run tools/gate_scale.py --roster 100000" in region
     assert 'OMNIWEAVE_RUNNER: "github-hosted ubuntu-latest"' in region
-    assert "timeout-minutes: ${{ github.event_name == 'schedule' && 40 || 6 }}" in region
+    assert "timeout-minutes: ${{ github.event_name == 'schedule' && 60 || 6 }}" in region
 
 
 # ---------------------------------------------------------------------------
