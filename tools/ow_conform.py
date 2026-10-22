@@ -128,11 +128,19 @@ reproduces: a parent that cannot tell you which seed broke the child has reporte
 
 
 def _child_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    """The child's environment: `VARIED_ENV`, this repository's sources, and the CALLER's path.
+
+    The caller's `PYTHONPATH` is kept after the repository's own entries (D923). A driver
+    authored outside this repository is importable in the parent because its author put it on
+    the path, and a child that dropped that path could not import it: `idempotence` and
+    `determinism` then reported a cross-process child that died at `activate()`, a harness
+    failure dressed as the driver's.
+    """
     env = dict(os.environ)
     env.update(VARIED_ENV)
-    env["PYTHONPATH"] = os.pathsep.join(
-        str(d / "src") for d in sorted((REPO / "packages").iterdir()) if (d / "src").is_dir()
-    )
+    own = [str(d / "src") for d in sorted((REPO / "packages").iterdir()) if (d / "src").is_dir()]
+    callers = [p for p in os.environ.get("PYTHONPATH", "").split(os.pathsep) if p]
+    env["PYTHONPATH"] = os.pathsep.join([*own, *(p for p in callers if p not in own)])
     env.update(extra or {})
     return env
 

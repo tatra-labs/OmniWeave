@@ -26,6 +26,8 @@ Specified in 04-driver-system.md section 8; ledger D25.
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess  # noqa: TID251 -- the subject of this file is a tool that spawns.
 import sys
 from pathlib import Path
@@ -91,6 +93,76 @@ def test_the_template_driver_passes_the_mandatory_tier_through_the_real_tool(
         if row["failures"]  # type: ignore[index]
     }
     assert failures == {}, failures
+
+
+def _external_driver(root: Path) -> Path:
+    """A driver project OUTSIDE this repository: its own package, card, `pyproject.toml` and
+    fixtures under `root`, importable only through its author's `PYTHONPATH`. D923.
+
+    Its code starts as the template's, the way a scaffold hands an author a working driver, under
+    a package, class and driver id of its own; nothing in it names `omniweave_conform`.
+    """
+    package = root / "src" / "acme_plaintext"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    code = (TEMPLATE / "driver.py").read_text(encoding="utf-8")
+    (package / "driver.py").write_text(code.replace("PlainTextParser", "AcmeParser"), "utf-8")
+    card = (TEMPLATE / "driver.toml").read_text(encoding="utf-8")
+    card = card.replace('id = "parse.text.plain"', 'id = "parse.text.acme"').replace(
+        '"omniweave_conform.template.driver:PlainTextParser"', '"acme_plaintext.driver:AcmeParser"'
+    )
+    (package / "driver.toml").write_text(card, encoding="utf-8")
+    (root / "pyproject.toml").write_text(
+        '[project]\nname = "acme-plaintext"\nversion = "0.1.0"\nlicense = "Apache-2.0"\n'
+        'dependencies = ["omniweave-ports"]\n',
+        encoding="utf-8",
+    )
+    shutil.copytree(TEMPLATE / "fixtures", root / "fixtures")
+    return package / "driver.toml"
+
+
+def test_a_driver_authored_outside_this_repository_passes_the_mandatory_tier(
+    tmp_path: Path,
+) -> None:
+    """V10-12: *"a Driver authored outside this repository passes the eleven mandatory suites"*.
+
+    The two cross-process suites are the ones an external driver exposes: their child must import
+    the driver from the path its author set, and until D923 the child's `PYTHONPATH` was this
+    repository's alone, so `idempotence` and `determinism` failed on a child that died at
+    `activate()`. `licence` reads the author's own `pyproject.toml`.
+    """
+    card = _external_driver(tmp_path)
+    assert REPO not in card.parents
+    env = {**os.environ, "PYTHONPATH": str(tmp_path / "src")}
+    done = subprocess.run(  # noqa: S603 -- argv is built here, from literals and tmp_path.
+        [
+            sys.executable,
+            str(TOOL),
+            "--card",
+            str(card),
+            "--fixtures",
+            str(tmp_path / "fixtures"),
+            "--json",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=str(REPO),
+        env=env,
+        timeout=TIMEOUT_S,
+    )
+    assert done.returncode == 0, f"exit {done.returncode}\n{done.stdout}\n{done.stderr}"
+    external = json.loads(done.stdout)
+    assert (external["driver_id"], external["mandatory"], external["passed"]) == (
+        "parse.text.acme",
+        "11/11",
+        True,
+    )
+    suites = {row["suite"]: row for row in external["suites"]}  # type: ignore[union-attr]
+    assert "cross-process compared" in str(suites["idempotence"]["summary"])  # type: ignore[index]
+    assert "resolved graph 1 dists" in str(suites["licence"]["summary"])  # type: ignore[index]
 
 
 def test_quality_is_unknown_and_does_not_stop_the_run(report: dict[str, object]) -> None:
