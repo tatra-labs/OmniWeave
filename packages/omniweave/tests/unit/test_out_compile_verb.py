@@ -11,7 +11,6 @@ from __future__ import annotations
 import io
 import json
 import shutil
-import sys
 import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -30,7 +29,6 @@ if TYPE_CHECKING:
 
 SUITES = Path(target_suites.__file__).parent
 GOLDEN = Path(__file__).resolve().parents[4] / "fixtures" / "out" / "golden" / "owtext" / "il"
-WINDOWS_ONLY = pytest.mark.skipif(sys.platform != "win32", reason="the named-pipe arm")
 BRIEF = (
     f"{BRIEF_SCHEMA}\n## canvas\n- format: 16:9\n- unit: section\n## communication\n"
     "- primary_language: en-GB\n## direction\n## density\n- per_unit: light\n## motion\n"
@@ -114,7 +112,6 @@ def _compile(project: Path, job: Path, *argv: str) -> tuple[int, dict[str, Any]]
 # ---------------------------------------------------------------------------------------------
 
 
-@WINDOWS_ONLY
 def test_a_passed_gate_is_lowered_in_a_worker_sealed_and_placed(project: Path) -> None:
     job = _checked(project)
     code, out, err = _run(["compile", "--job", str(job)], project)
@@ -130,7 +127,6 @@ def test_a_passed_gate_is_lowered_in_a_worker_sealed_and_placed(project: Path) -
     assert (row["slug"], row["artifact_gen"], row["gate_status"]) == ("q3", 1, "passed")
 
 
-@WINDOWS_ONLY
 def test_the_json_report_and_a_second_compile_that_is_the_lookup(project: Path) -> None:
     job = _checked(project)
     code, first = _compile(project, job)
@@ -153,7 +149,6 @@ def test_the_json_report_and_a_second_compile_that_is_the_lookup(project: Path) 
     assert out.splitlines() == ["lookup hit: q3@1 is an earlier compile's bytes, placed again"]
 
 
-@WINDOWS_ONLY
 def test_the_store_holds_one_producer_row_for_the_card(project: Path) -> None:
     job = _checked(project)
     _compile(project, job)
@@ -220,7 +215,6 @@ def test_an_unimplemented_target_is_refused_before_its_gate(project: Path) -> No
     assert not (project / ".omniweave" / "out").exists()
 
 
-@WINDOWS_ONLY
 def test_a_docx_job_compiles_in_a_worker_and_seals(project: Path) -> None:
     """D783: owflow/1 through the S4 worker, sealed, placed, and a Word package with its note."""
     job = _docx(project)
@@ -249,7 +243,6 @@ def test_il_edited_after_the_check_is_stale(project: Path) -> None:
     assert (code, document["status"], document["path"]) == (8, "stale", None)
 
 
-@WINDOWS_ONLY
 def test_a_manual_gate_is_closed_until_accept_manual_asks_for_its_draft(project: Path) -> None:
     job = _checked(project, manual=True)
     code, out, err = _run(["compile", "--job", str(job)], project)
@@ -412,7 +405,6 @@ def test_a_cite_the_policy_bars_is_restricted_and_nothing_is_lowered(project: Pa
     assert not (project / ".omniweave" / "out").exists()
 
 
-@WINDOWS_ONLY
 def test_a_cite_the_policy_does_not_bar_compiles(project: Path) -> None:
     from omniweave_ports import Restriction  # noqa: PLC0415
 
