@@ -433,10 +433,11 @@ CRITERIA: tuple[Criterion, ...] = (
         Coverage.PARTIAL,
         "the goldens exist (D848: 26 documents, 78 Reductions), and Q-G4's "
         "tools/gate_frozen_stability.py (D849) compares the shapes each cell emits with them; "
-        "this machine is one cell, which the conform tier holds to the goldens. The `test` "
-        "matrix and the `golden` job run on every push, but no job emits each cell's shapes for "
-        "the gate to read, and no cell runs a second pdfium minor, so the gate has never read "
-        "enough cells to run, and the row rests on F31",
+        "this machine is one cell, which the conform tier holds to the goldens. Since D931 each "
+        "of the nine `test` cells emits its shapes and the `golden` job compares all nine at one "
+        "pinned pdfium (13:673-677's fallback); two cells matched locally (win32 py3.12, linux "
+        "py3.13). No cell runs a second pdfium build, so the pdfium axis is unmeasured and the "
+        "row still rests on F31 for it",
     ),
     Criterion(
         "V10-15",

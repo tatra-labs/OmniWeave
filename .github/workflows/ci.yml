@@ -889,6 +889,18 @@ jobs:
         # It runs on every cell because what an install writes differs by OS; the runner reads
         # the gate module's verdict and calls a run that checked no host "did not run".
         run: uv run tools/gate_install.py
+      - name: "Q-G4 emit -- this cell's shape Reductions, for the golden job to compare"
+        # D931. 13-quality.md:1988 places Q-G4 at "the golden job x two pdfium minors, plus the
+        # nine-cell test matrix", and V10-14 read "no job emits each cell's shapes for the gate to
+        # read". Each cell ingests the golden corpus and writes its 26 shapes under shapes/<cell>/
+        # with a cell.toml naming (os, python, pdfium); the golden job compares all nine.
+        run: uv run tools/gate_frozen_stability.py --emit shapes
+      - name: "keep this cell's shapes"
+        uses: actions/upload-artifact@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          name: "shapes-${{ matrix.os }}-py${{ matrix.py }}"
+          path: shapes
+          retention-days: 7
 
   # ==========================================================================================
   # golden -- ubuntu x 3.12, Reductions + Counters + Cassette replay, <= 4 min. Section 6.4
@@ -900,7 +912,8 @@ jobs:
   # ==========================================================================================
   golden:
     name: "golden (Reductions + Counters + Cassette replay)"
-    needs: [versions]
+    # `test` since D931: Q-G4 compares the shapes every test cell emitted, so it runs after them.
+    needs: [versions, test]
     runs-on: ubuntu-latest
     timeout-minutes: 8 # 2x the 240 s budget of section 6.2.
     permissions:
@@ -946,6 +959,18 @@ jobs:
         # than this job's budget, and is the nightly job's (ADR-14 D14.5): `required`, a miss is
         # OW-Q-004 and never a live call.
         run: uv run python bench/serve/run.py --audit-cassettes
+      - name: "fetch every test cell's shapes"
+        uses: actions/download-artifact@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          pattern: "shapes-*"
+          path: shapes
+          merge-multiple: true
+      - name: "Q-G4 -- shape byte-identical across the nine cells, at one pinned pdfium"
+        # D931. `--pdfium-minors 1` is 13-quality.md:673-677's stated fallback, "nine cells at one
+        # pinned pdfium": no cell runs a second pdfium build, so the pdfium axis is not measured
+        # and this says so rather than passing it. `--cells 9` makes a missing cell a "did not
+        # run" (exit 2), never a pass over fewer cells.
+        run: uv run tools/gate_frozen_stability.py --artifacts shapes --pdfium-minors 1 --cells 9
 
   # ==========================================================================================
   # conform -- ubuntu x 3.12, "the twelve suites + G15's socket-blocked run + G16", <= 5 min.
