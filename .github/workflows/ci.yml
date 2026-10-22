@@ -821,6 +821,16 @@ jobs:
           restore-keys: "uv-${{ runner.os }}-py${{ matrix.py }}-"
       - name: "install the workspace and the dev group"
         run: uv sync --frozen --all-packages --group dev
+      - name: "on Linux, tests write under the runner's disk, not /tmp"
+        # D937: ubuntu-latest moved to ubuntu-26.04 on 2026-10-22, and every Linux cell's T1/T2
+        # then failed with ResourceLimit: free space under /tmp/pytest-of-runner fell below
+        # [cache] min_free_bytes (5 GiB), the product's own floor for a CAS write. Each test's
+        # store is under tmp_path, which follows TMPDIR, so it moves to RUNNER_TEMP. Both are
+        # printed, so the log says what each has free.
+        if: runner.os == 'Linux'
+        run: |
+          df -h /tmp "$RUNNER_TEMP"
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
       - name: "the test suite, T1 and T2 -- everything not marked conform"
         # testpaths = ["packages"] in the workspace root, so this is every tier the tree carries
         # except T3, which the next step runs on its own.
