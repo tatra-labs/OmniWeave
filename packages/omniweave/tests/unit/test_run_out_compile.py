@@ -1080,12 +1080,11 @@ def _worker(world: World, card: Any) -> CompileWorker:
         ),
         executable=sys.executable,
         env={key: os.environ[key] for key in ("SYSTEMROOT", "PATH") if key in os.environ},
-        address=f"\\\\.\\pipe\\ow-test-compile-{time.monotonic_ns()}",
+        address=subproc.local_address(f"ow-test-compile-{time.monotonic_ns()}"),
         now_ms=lambda: time.monotonic_ns() // 1_000_000,
     )
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="the named-pipe arm")
 def test_the_reference_target_compiles_in_an_s4_worker(world: World) -> None:
     """Rulings 11-13 across a process boundary: the host gates, the worker lowers and
     post-flights the job document, and the host seals and places what came back."""
@@ -1115,7 +1114,6 @@ def test_the_reference_target_compiles_in_an_s4_worker(world: World) -> None:
     assert not any((world.tmp / "s4").iterdir()), "the worker's scratch is gone"
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="the named-pipe arm")
 def test_a_refusal_in_the_worker_reaches_the_compile_and_seals_nothing(world: World) -> None:
     """A JobDir edited after the host loaded it: the worker's refusal is the compile's error."""
     from omniweave_core.events import traceparent  # noqa: PLC0415

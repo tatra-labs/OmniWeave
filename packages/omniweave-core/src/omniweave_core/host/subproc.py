@@ -116,9 +116,10 @@ module produces the verdict and never the row.
 ## Windows, and the six things this platform does not give us
 
 02-architecture.md:428 calls the transport *"a 0600 unix socket or an owner-only named pipe"*. We
-develop and test on Windows 11, so **the named-pipe arm is the arm that runs here and the AF_UNIX
-arm is the one this machine cannot test**; `NamedPipeListener` and `UnixSocketListener` are both
-written and only the first is exercised, which is stated rather than hidden.
+develop on Windows 11, so **the named-pipe arm is the arm that runs here and the AF_UNIX arm runs on
+CI's Linux and macOS cells**. Until D926 the worker tests behind both were skipped off Windows for
+"the named-pipe arm", so `UnixSocketListener` went unexercised by them on six of the nine cells;
+they all passed on Linux once the skips were lifted, and now run there.
 `store/crashmatrix.py`'s docstring is the precedent for that idiom and this file follows it.
 04-driver-system.md:1745 requires the shortfalls be *"recorded rather than claimed"* (DR10), so
 `CONTROLS_BY_PLATFORM` transcribes section 6.4's per-OS table and `grant_isolation()` turns each
@@ -4093,7 +4094,7 @@ def local_address(name: str) -> str:
     """
     if sys.platform == "win32":
         return f"\\\\.\\pipe\\{name}"
-    return f"/tmp/{name}.sock"  # noqa: S108 -- pragma: POSIX arm, untested here
+    return f"/tmp/{name}.sock"  # noqa: S108 -- the POSIX arm, run on CI's Linux and macOS cells
 
 
 def worker_argv(executable: str, address: str) -> tuple[str, ...]:

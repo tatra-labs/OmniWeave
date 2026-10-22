@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import io
 import json
-import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -37,7 +36,6 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 SUITES = Path(target_suites.__file__).parent
-WINDOWS_ONLY = pytest.mark.skipif(sys.platform != "win32", reason="the named-pipe arm")
 BRIEF = (
     f"{BRIEF_SCHEMA}\n## canvas\n- format: 16:9\n- unit: section\n## communication\n"
     "- primary_language: en-GB\n## direction\n## density\n- per_unit: light\n## motion\n"
@@ -145,7 +143,6 @@ def _direct(project: Path, job: Path, *, compiler: Any = None, **changes: Any) -
 # ---------------------------------------------------------------------------------------------
 
 
-@WINDOWS_ONLY
 def test_a_sealed_artefact_recompiles_to_itself_in_a_worker(project: Path) -> None:
     job = _compiled(project)
     code, document = _verify(project, job)
@@ -170,7 +167,6 @@ def test_a_sealed_artefact_recompiles_to_itself_in_a_worker(project: Path) -> No
     assert not (project / ".omniweave" / "cache" / "tmp" / "verify" / "q3@1").exists()
 
 
-@WINDOWS_ONLY
 def test_il_edited_since_the_seal_does_not_move_r1(project: Path) -> None:
     """Ruling 1: the retained IL is recompiled, never the JobDir's."""
     job = _compiled(project)
@@ -179,7 +175,6 @@ def test_il_edited_since_the_seal_does_not_move_r1(project: Path) -> None:
     assert (code, document["r1"]) == (0, True)
 
 
-@WINDOWS_ONLY
 def test_a_recompile_that_differs_fails_r1_at_every_class(project: Path) -> None:
     class Other(OwTextCompiler):
         def lower(self, plan: Any, il: Any, ledger: Any, io: Any) -> DriverResult:
@@ -192,7 +187,6 @@ def test_a_recompile_that_differs_fails_r1_at_every_class(project: Path) -> None
     assert (found.r1, found.r7, found.passed) == (False, True, False)
 
 
-@WINDOWS_ONLY
 def test_a_class_no_comparison_reaches_is_unchecked_and_never_a_pass(project: Path) -> None:
     job = _compiled(project)
     row, _units = _sealed(project)
@@ -203,14 +197,12 @@ def test_a_class_no_comparison_reaches_is_unchecked_and_never_a_pass(project: Pa
     assert (dict(alone.classes), alone.r1) == ({"render": "unchecked"}, False)
 
 
-@WINDOWS_ONLY
 def test_r7_counts_the_sealed_unit_rows_against_the_roster(project: Path) -> None:
     job = _compiled(project)
     found = _direct(project, job, units=())
     assert (found.units_sealed, found.unit_count, found.r7, found.passed) == (0, 1, False, False)
 
 
-@WINDOWS_ONLY
 def test_a_failing_law_exits_8_and_says_fail(
     project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -248,7 +240,6 @@ def _refused(project: Path, job: Path, **changes: Any) -> str:
     return str(caught.value)
 
 
-@WINDOWS_ONLY
 def test_another_brief_is_refused(project: Path) -> None:
     job = _compiled(project)
     loaded = Job.load(job)
@@ -261,7 +252,6 @@ def test_another_brief_is_refused(project: Path) -> None:
     assert "OW-T-527" in err
 
 
-@WINDOWS_ONLY
 def test_a_ledger_changed_since_the_seal_is_refused(project: Path) -> None:
     job = _compiled(project)
     sha = "c" * 64
@@ -270,7 +260,6 @@ def test_a_ledger_changed_since_the_seal_is_refused(project: Path) -> None:
     assert not (project / "scratch" / "q3@1").exists(), "the scratch goes on every exit path"
 
 
-@WINDOWS_ONLY
 def test_another_card_or_table_is_refused(project: Path) -> None:
     job = _compiled(project)
     assert "installed card is" in _refused(project, job, card_sha256="sha256:" + "0" * 64)
