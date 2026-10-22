@@ -452,15 +452,12 @@ jobs:
       - name: "G29 -- the redaction canary under four forced faults"
         # 15-observability.md section 8.3 is the assertion's sole home. Both it (:1447) and section
         # 6.4 write the path root-relative as tests/test_no_content_in_artefacts.py and neither
-        # says which tests/ root; the register records that ambiguity verbatim rather than
-        # resolving it, so this step looks for the path the plan names and nothing else.
+        # says which tests/ root. D936 landed it under the omniweave package's tests/conform/:
+        # it spawns `ow`, so Q-G25 makes it T3. It forces two of the four faults; the test's own
+        # docstring names the two nothing in this build can force.
         run: |
-          if [ -f tests/test_no_content_in_artefacts.py ]
-          then uv run pytest tests/test_no_content_in_artefacts.py -q
-          else
-            echo "G29 NOT ENFORCED: tests/test_no_content_in_artefacts.py is not written" \
-              | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
+          uv run pytest -q -m conform \
+            packages/omniweave/tests/conform/test_no_content_in_artefacts.py
       - name: "G30 -- every framework tombstone's review_by is in the future"
         # An append tools/gates.toml makes that section 6.4 does not yet render (status =
         # "registered"). 04-driver-system.md section 7.5: "CI FAILS a tombstone past its review_by
