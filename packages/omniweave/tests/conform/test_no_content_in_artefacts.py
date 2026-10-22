@@ -28,8 +28,8 @@ Not forced, because nothing in this build can force them:
   one, so no payload is written for the canary to be allowed in.
 
 Not grepped, because this build does not produce them; `test_the_artefacts_not_built_are_absent`
-fails the day one appears, so the grep grows with it:
-- the NDJSON event shards: `ow add` constructs no `NdjsonSink`;
+fails the day one appears, so the grep grows with it (the NDJSON event shard is written since
+D941, and is grepped with everything else under `.omniweave/`):
 - `{run_id}.paths.json`;
 - `ow trace export --file`.
 
@@ -40,6 +40,7 @@ content store (`cas/`, the retained source, which is the document itself), the h
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -203,11 +204,31 @@ def test_the_failure_names_its_class_and_its_place_not_the_page(tmp_path: Path, 
         assert died in messages, messages
 
 
+def test_the_run_writes_its_event_shard_and_the_shard_is_grepped(tmp_path: Path) -> None:
+    """D941: `ow add` writes `.omniweave/events/{run_id}.ndjson`, which the grep above reads as
+    everything else under `.omniweave/`. It opens with `run.start`, holds one `unit.failed` per
+    failed page carrying the stored, redacted message, and closes with `run.end`."""
+    project, _driver = _project(tmp_path, "bug")
+    assert _ow(project, "add", "docs")[0] == 0
+    (shard,) = (project / ".omniweave" / "events").glob("*.ndjson")
+    records = [json.loads(line) for line in shard.read_text(encoding="utf-8").splitlines()]
+    kinds = [record["kind"] for record in records]
+    assert kinds[0] == "run.start"
+    assert kinds[-1] == "run.end"
+    failed = [record for record in records if record["kind"] == "unit.failed"]
+    assert len(failed) == len(PAGES)
+    for record in failed:
+        assert record["fields"]["failure_class"] == "driver_bug"
+        assert record["fields"]["message"].startswith("ValueError at canary.py:")
+        assert record["parent_span_id"] == records[0]["span_id"]
+    assert records[-1]["fields"]["failures"] == len(PAGES)
+    assert CANARY not in shard.read_text(encoding="utf-8")
+
+
 def test_the_artefacts_not_built_are_absent(tmp_path: Path) -> None:
-    """The three artefacts 15:1450-1452 greps that this build does not produce. The day one is,
+    """The two artefacts 15:1450-1452 greps that this build does not produce. The day one is,
     this fails, and the grep above must grow to read it."""
     project, _driver = _project(tmp_path, "bug")
     assert _ow(project, "add", "docs")[0] == 0
     state = project / ".omniweave"
-    assert not (state / "events").exists(), "ow add writes event shards now: grep them"
     assert not list(state.rglob("*.paths.json")), "a paths.json exists now: grep it"
