@@ -2722,6 +2722,64 @@ def test_the_watchdog_fires_when_the_sampled_rss_is_over_the_cards_memory_mb() -
     uncapped.close()
 
 
+def test_a_progress_flood_cannot_hold_off_the_memory_watchdog() -> None:
+    """D944: 04-driver-system.md:1769's RSS sampling is a 250 ms cadence, not a quiet-tick
+    courtesy. The watchdog sampled only on a tick that found no frame, so a queue that never ran
+    dry was never sampled, and the invocation that is over its cap at the first sample ran on
+    to its wall clock. `ReadyReader` never runs dry, so this ends as `RESOURCE_LIMIT` only if a
+    frame tick samples."""
+    worker, _proc, _clock = worker_on(
+        FakeChannel(), clock=Clock(step=50), proc=FakeProcess(pid=os.getpid())
+    )
+    reader = ReadyReader(one_frame(wire.FrameKind.PROGRESS, {"done": 1, "total": 2}))
+    worker._reader = reader  # type: ignore[assignment] -- never empty: no quiet tick, ever
+    report = invoke_bounded(
+        worker,
+        invocation(1),
+        limits=deadlines(progress=100_000, wall=100_000),
+        memory_mb=1,
+        patience_s=5.0,
+    )
+    verdict = report.failures[0]
+    assert verdict is not None
+    assert verdict.failure_class is FailureClass.RESOURCE_LIMIT
+    assert verdict.limit == "memory_mb"
+    assert worker.stopped is True
+
+
+def test_a_frame_tick_samples_on_the_cadence_and_not_per_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """D944's cost half: a flood pays one RSS sample per `tick_ms`, not one `OpenProcess` per
+    frame. A `PROGRESS` frame costs two clock reads, the tick's and `note_progress`'s, at 50 ms a
+    read here, so 4,000 ms of flood is about 40 frames. A 1,000 ms tick allows the first sample
+    and one more per tick after it; sampling per frame would take about 40."""
+    samples: list[int] = []
+
+    def counted(_self: sp.Worker) -> tuple[int | None, str]:
+        samples.append(1)
+        return (1, "test")
+
+    monkeypatch.setattr(sp.Worker, "peak_rss", counted)
+    worker, _proc, _clock = worker_on(
+        FakeChannel(), clock=Clock(step=50), host=settings(tick_ms=1_000)
+    )
+    reader = ReadyReader(one_frame(wire.FrameKind.PROGRESS, {"done": 1, "total": 2}))
+    worker._reader = reader  # type: ignore[assignment] -- never empty: no quiet tick, ever
+    report = invoke_bounded(
+        worker,
+        invocation(1),
+        limits=deadlines(progress=100_000, wall=4_000),
+        memory_mb=1,
+        patience_s=5.0,
+    )
+    verdict = report.failures[0]
+    assert verdict is not None
+    assert verdict.limit == "wall_ms_hard", "1 byte is under a 1 MiB cap: the clock ends it"
+    assert reader.gets >= 30
+    assert 1 <= len(samples) <= 5, f"{len(samples)} samples over {reader.gets} frames"
+
+
 @WINDOWS_ONLY
 def test_a_job_object_holds_the_child_and_says_so_when_asked() -> None:
     """04-driver-system.md:1728's *"whole process group"* has no Windows counterpart, and this is
