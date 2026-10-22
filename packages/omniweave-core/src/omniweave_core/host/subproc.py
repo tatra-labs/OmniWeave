@@ -1240,6 +1240,133 @@ DARWIN_PS: Final = "/bin/ps"
 """D886: an absolute path, so the darwin arm never searches `PATH`."""
 
 
+_HUNDRED_NS: Final = 100
+"""A `FILETIME` and a job's accounting count 100-nanosecond intervals."""
+
+_STAT_UTIME_FIELD: Final = 11
+"""`/proc/<pid>/stat`'s `utime` is field 14 (one-based), index 11 of the fields after `comm`'s
+closing parenthesis, which itself may hold spaces. `stime`, `cutime` and `cstime` follow it."""
+
+
+class _FileTime(ctypes.Structure):
+    """`FILETIME`: two 32-bit halves of a count of 100 ns intervals."""
+
+    _fields_ = (("low", ctypes.c_uint32), ("high", ctypes.c_uint32))
+
+    @property
+    def ns(self) -> int:
+        return ((self.high << 32) | self.low) * _HUNDRED_NS
+
+
+def _cpu_win32(pid: int) -> tuple[int | None, str]:
+    """`GetProcessTimes`: the user plus kernel time of one live process. D921."""
+    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    kernel32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+    handle = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, 0, pid)
+    if not handle:
+        return (None, f"OpenProcess({pid}) failed, GetLastError {kernel32.GetLastError()}")
+    try:
+        created, exited, kernel, user = _FileTime(), _FileTime(), _FileTime(), _FileTime()
+        kernel32.GetProcessTimes.restype = ctypes.c_int
+        kernel32.GetProcessTimes.argtypes = [ctypes.c_void_p, *[ctypes.POINTER(_FileTime)] * 4]
+        if not kernel32.GetProcessTimes(
+            handle,
+            ctypes.byref(created),
+            ctypes.byref(exited),
+            ctypes.byref(kernel),
+            ctypes.byref(user),
+        ):
+            return (None, f"GetProcessTimes failed, GetLastError {kernel32.GetLastError()}")
+        return (kernel.ns + user.ns, "GetProcessTimes user+kernel")
+    finally:
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel32.CloseHandle(handle)
+
+
+def proc_stat_cpu_ticks(text: str) -> int | None:
+    """`utime + stime + cutime + cstime` from one `/proc/<pid>/stat` line, in clock ticks. PURE.
+
+    The children's two fields are counted because a driver that runs a helper (a tesseract, a
+    LibreOffice) and waits for it has spent that time too, and procfs gives it to the parent only
+    once the helper is reaped. `None` for a line that does not parse.
+    """
+    _, sep, rest = text.rpartition(")")
+    fields = rest.split()
+    if not sep or len(fields) < _STAT_UTIME_FIELD + 4:
+        return None
+    try:
+        return sum(int(field) for field in fields[_STAT_UTIME_FIELD : _STAT_UTIME_FIELD + 4])
+    except ValueError:
+        return None
+
+
+def _cpu_linux(pid: int) -> tuple[int | None, str]:  # pragma: no cover -- not this machine
+    """The procfs arm: `/proc/<pid>/stat`, ticks over `SC_CLK_TCK`. D921."""
+    try:
+        with open(f"/proc/{pid}/stat", "rb") as stat:  # noqa: PTH123 -- procfs, not a path
+            text = stat.read().decode("ascii", "replace")
+    except OSError as exc:
+        return (None, f"/proc/{pid}/stat unreadable: {exc}")
+    ticks = proc_stat_cpu_ticks(text)
+    if ticks is None:
+        return (None, f"/proc/{pid}/stat did not parse")
+    hertz = os.sysconf("SC_CLK_TCK")  # type: ignore[attr-defined] -- POSIX; this arm is Linux's
+    return (ticks * 1_000_000_000 // hertz, "/proc/<pid>/stat utime+stime+cutime+cstime")
+
+
+def ps_cputime_ns(text: str) -> int | None:
+    """`ps -o cputime=`'s `[[dd-]hh:]mm:ss[.cc]`, in nanoseconds. PURE. `None` if it does not
+    parse."""
+    text = text.strip()
+    days, _, clock = text.rpartition("-")
+    parts = clock.split(":")
+    try:
+        seconds = float(parts[-1])
+        minutes = int(parts[-2]) if len(parts) > 1 else 0
+        hours = int(parts[-3]) if len(parts) > 2 else 0  # noqa: PLR2004 -- hh:mm:ss
+        whole_days = int(days) if days else 0
+    except ValueError:
+        return None
+    if not text or len(parts) > 3:  # noqa: PLR2004 -- hh:mm:ss
+        return None
+    total = ((whole_days * 24 + hours) * 60 + minutes) * 60
+    return total * 1_000_000_000 + round(seconds * 1_000_000_000)
+
+
+def _cpu_darwin(pid: int) -> tuple[int | None, str]:  # pragma: no cover -- darwin only
+    """The darwin arm, `ps -o cputime= -p <pid>`, as `_peak_rss_darwin` reads `rss=`. D921."""
+    done = run_captured(
+        (DARWIN_PS, "-o", "cputime=", "-p", str(pid)),
+        stdin=b"",
+        cwd="/",
+        env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+        timeout_s=5.0,
+    )
+    if done.returncode != 0:
+        return (None, f"{DARWIN_PS} exited {done.returncode}")
+    text = done.stdout.decode("ascii", "replace")
+    value = ps_cputime_ns(text)
+    if value is None:
+        return (None, f"{DARWIN_PS} printed {text.strip()!r}")
+    return (value, "ps -o cputime= (centiseconds)")
+
+
+def cpu_ns(pid: int) -> tuple[int | None, str]:
+    """`(CPU time in ns, how it was obtained)` of ANOTHER process, or `(None, why not)`. D921.
+
+    `peak_rss_bytes()`'s shape and its reason: the host meters the worker from outside, because
+    a figure the bounded process reports about itself is a claim (04:1765). Never raises. The
+    time is user plus kernel; procfs adds the children the process has reaped, which Windows
+    has only through a job's accounting (`JobObject.cpu_ns`) and darwin's `ps` not at all.
+    """
+    if sys.platform == "win32":
+        return _cpu_win32(pid)
+    if sys.platform == "linux":  # pragma: no cover -- not the machine this was built on
+        return _cpu_linux(pid)
+    return _cpu_darwin(pid)  # pragma: no cover -- darwin, which CI's macOS cells run
+
+
 def _peak_rss_darwin(pid: int) -> tuple[int | None, str]:  # pragma: no cover -- darwin only
     """The darwin arm, 04-driver-system.md:1751's recipe: `ps -o rss= -p <pid>`. D886.
 
@@ -1323,6 +1450,25 @@ _JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: Final = 9
 
 _JOB_OBJECT_BASIC_PROCESS_ID_LIST: Final = 3
 """`JobObjectBasicProcessIdList`. This is the one that makes the assignment OBSERVABLE."""
+
+_JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION: Final = 1
+"""`JobObjectBasicAccountingInformation`: the job's CPU time, exited processes included (D921)."""
+
+
+class _JobObjectBasicAccounting(ctypes.Structure):
+    """`JOBOBJECT_BASIC_ACCOUNTING_INFORMATION`, winnt.h. Times are 100 ns intervals."""
+
+    _fields_ = (
+        ("TotalUserTime", ctypes.c_int64),
+        ("TotalKernelTime", ctypes.c_int64),
+        ("ThisPeriodTotalUserTime", ctypes.c_int64),
+        ("ThisPeriodTotalKernelTime", ctypes.c_int64),
+        ("TotalPageFaultCount", ctypes.c_uint32),
+        ("TotalProcesses", ctypes.c_uint32),
+        ("ActiveProcesses", ctypes.c_uint32),
+        ("TotalTerminatedProcesses", ctypes.c_uint32),
+    )
+
 
 BELOW_NORMAL_PRIORITY_CLASS: Final = 0x00004000
 """04-driver-system.md:1754's Windows priority row: `SetPriorityClass(BELOW_NORMAL)`, which is
@@ -1550,6 +1696,32 @@ class JobObject:
         )
         count = min(int(info.NumberOfProcessIdsInList), len(info.ProcessIdList))
         return tuple(int(info.ProcessIdList[i] or 0) for i in range(count))
+
+    def cpu_ns(self) -> int | None:
+        """User plus kernel time of every process the job has held, exited ones included. D921.
+
+        The one reading that charges a driver for a helper it started and that has since exited:
+        `GetProcessTimes` on the live pids would miss it. `None` when the query fails.
+        """
+        info = _JobObjectBasicAccounting()
+        self._kernel32.QueryInformationJobObject.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_int,
+            ctypes.c_void_p,
+            ctypes.c_uint32,
+            ctypes.POINTER(ctypes.c_uint32),
+        ]
+        returned = ctypes.c_uint32(0)
+        ok = self._kernel32.QueryInformationJobObject(
+            self._handle,
+            _JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION,
+            ctypes.byref(info),
+            ctypes.sizeof(info),
+            ctypes.byref(returned),
+        )
+        if not ok:
+            return None
+        return (int(info.TotalUserTime) + int(info.TotalKernelTime)) * _HUNDRED_NS
 
     def terminate(self, exit_code: int = 1) -> None:
         """`TerminateJobObject` -- the whole tree, uncatchably. :1728's reap, Windows arm."""
@@ -3079,6 +3251,17 @@ class Worker:
         )
         return (self._peak, how)
 
+    def cpu_ns(self) -> int | None:
+        """The CPU this worker has spent since it started, read from outside. D921.
+
+        The job's accounting where there is a job (Windows: every process it ever held, so a
+        helper that already exited still counts), otherwise the child's own `cpu_ns()`. `None`
+        when neither could be read, which leaves a unit's CPU to the driver's own report.
+        """
+        if self._job is not None and not self._job.closed:
+            return self._job.cpu_ns()
+        return cpu_ns(self._proc.pid)[0]
+
     def touch(self) -> None:
         """Mark the worker used now. What `worker_idle_ttl_s` is measured from."""
         self._last_used_ms = self._now_ms()
@@ -3256,6 +3439,7 @@ class Worker:
         event = BatchEvent.CLEAN
         self.send(wire.FrameKind.INVOKE, invocation.as_header(), invocation.body)
         countdown = Countdown(deadlines, started_ms=self._now_ms())
+        meter = _Meter(self._now_ms(), self.cpu_ns())
         while any(r is None and f is None for r, f in zip(results, failures, strict=True)):
             awaited = self._await_frame(countdown, memory_mb=memory_mb)
             if awaited.verdict is not None:
@@ -3285,7 +3469,10 @@ class Worker:
                 )
             index = _unit_index(frame, count=count, worker=self)
             outcome, verdict = _result_of(frame)
-            results[index] = _with_peak(outcome, self.peak_rss()[0])
+            wall_ms, cpu_ms = meter.unit(self._now_ms(), self.cpu_ns())
+            results[index] = _with_metered(
+                outcome, peak=self.peak_rss()[0], wall_ms=wall_ms, cpu_ms=cpu_ms
+            )
             failures[index] = verdict
             if verdict is not None and event is BatchEvent.CLEAN:
                 #  The first verdict that moves the batch size is kept: a later `encrypted` on
@@ -3457,18 +3644,64 @@ def _unit_index(frame: wire.Frame, *, count: int, worker: Worker) -> int:
     return raw
 
 
-def _with_peak(result: DriverResult | None, peak: int | None) -> DriverResult | None:
-    """`DriverMetrics.peak_rss_bytes` as the HOST sampled it (04:1765, 14:474-475).
+class _Meter:
+    """D921: one `INVOKE`'s running marks, so each `RESULT` is charged what passed since the last.
+
+    The worker runs its units one after another and sends each `RESULT` as the unit ends, so the
+    time between two `RESULT`s is the second unit's. It is read when the host reads the frame,
+    not when the worker wrote it, so a unit may carry a sliver of its successor's start; the
+    deltas still sum to the whole `INVOKE`, so no time is lost or counted twice across a batch.
+    """
+
+    __slots__ = ("_cpu_ns", "_wall_ms")
+
+    def __init__(self, wall_ms: int, cpu: int | None) -> None:
+        self._wall_ms = wall_ms
+        self._cpu_ns = cpu
+
+    def unit(self, wall_ms: int, cpu: int | None) -> tuple[int, int | None]:
+        """`(wall_ms, cpu_ms)` since the previous mark, and move the marks. CPU `None` when
+        either reading is missing."""
+        spent_wall = max(0, wall_ms - self._wall_ms)
+        spent_cpu = (
+            None if cpu is None or self._cpu_ns is None else max(0, cpu - self._cpu_ns) // 1_000_000
+        )
+        self._wall_ms = wall_ms
+        if cpu is not None:
+            self._cpu_ns = cpu
+        return spent_wall, spent_cpu
+
+
+def _with_metered(
+    result: DriverResult | None, *, peak: int | None, wall_ms: int, cpu_ms: int | None
+) -> DriverResult | None:
+    """The host's own readings written into a unit's `DriverMetrics` (04:1765, D629, D921).
 
     *"`DriverMetrics.peak_rss_bytes` carries the sampled peak into the ledger so an OOM is
     diagnosable before it happens"* -- the host's sample, and not the driver's own figure, which is
     a claim by the process being bounded. A driver's value survives only where the host could not
     sample at all. The peak is the worker's since it started, so a unit late in a long-lived worker
     carries the largest of every unit before it, and never less than its own (D629).
+
+    D921 adds the two time dimensions on the same footing, so a `PriceBook` that rates them prices
+    something (V10-13):
+
+    * **`wall_ms` is always the host's.** The worker cannot see the frame's transit or the time it
+      waited to be read, and a driver's own wall figure is the bounded process's claim again.
+    * **`cpu_ms` is the larger of the two.** The host reads the worker's process (and, on
+      Windows, everything its job ever held); a driver that knows of CPU the host cannot see -- a
+      helper on darwin, where `ps` reports no children -- may report more and keeps it. A host
+      reading that failed (`None`) leaves the driver's figure as it was.
     """
-    if result is None or peak is None:
+    if result is None:
         return result
-    return replace(result, metrics=replace(result.metrics, peak_rss_bytes=peak))
+    metrics = result.metrics
+    changes: dict[str, int] = {"wall_ms": wall_ms}
+    if peak is not None:
+        changes["peak_rss_bytes"] = peak
+    if cpu_ms is not None:
+        changes["cpu_ms"] = max(metrics.cpu_ms, cpu_ms)
+    return replace(result, metrics=replace(metrics, **changes))
 
 
 def _result_of(frame: wire.Frame) -> tuple[DriverResult | None, HostVerdict | None]:

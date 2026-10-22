@@ -82,3 +82,39 @@ def test_a_real_ingest_bills_every_parse_attempt_and_verifies(project: Path) -> 
         "OK",
         "OK",
     ]
+
+
+PRICEBOOK = (
+    'version = 1\ncurrency = "USD"\neffective_from = "2026-10-22"\n'
+    "[local]\nwall_ms_micros = 1.0\ncpu_ms_micros = 2.0\n"
+)
+"""A book that prices the two time dimensions, so a parse bill is money and not a measured zero."""
+
+
+def test_a_priced_ingest_bills_the_host_s_time_and_still_reconciles(project: Path) -> None:
+    """D921, V10-13: the host meters each worker's wall and CPU time from outside, so a
+    `PriceBook` that rates them prices every parse, and `ow cost --verify` reconciles a bill that
+    is not 0 == 0. Each attempt's `micros` is its own wall and CPU at the book's two rates."""
+    (project / ".omniweave").mkdir()
+    (project / ".omniweave" / "pricebook.toml").write_text(PRICEBOOK, encoding="utf-8")
+    added = _ow(project, "add", "docs")
+    assert added.returncode == 0, added.stderr.decode("utf-8", "replace")
+    rows = _rows(
+        project,
+        "SELECT d.driver, s.wall_ms, s.cpu_ms, s.micros FROM route_spend AS s"
+        " JOIN route_decision AS d USING (decision_id) ORDER BY 1",
+    )
+    assert [driver for driver, *_ in rows] == [
+        "parse.office.anydoc",
+        "parse.pdf.pdfium",
+        "parse.text.builtin",
+    ]
+    for driver, wall_ms, cpu_ms, micros in rows:
+        assert int(wall_ms) > 0, f"{driver}: the host measured no wall time"  # type: ignore[call-overload]
+        assert int(micros) == int(wall_ms) + 2 * int(cpu_ms), driver  # type: ignore[call-overload]
+    verified = _ow(project, "cost", "--verify")
+    out = verified.stdout.decode("utf-8", "replace")
+    assert verified.returncode == 0, out + verified.stderr.decode("utf-8", "replace")
+    assert [
+        line.rsplit("  ", 1)[-1] for line in out.splitlines() if line.startswith("verify: run")
+    ] == ["OK", "OK"]

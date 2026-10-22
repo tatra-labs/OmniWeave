@@ -112,7 +112,7 @@ import shutil
 import sys
 import threading
 from collections import Counter, deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, BinaryIO, Final, cast
@@ -1397,10 +1397,13 @@ class _Guarded:
         unit = call.units[index]
         secret = self._operator.secret_for(unit.uri)
 
+        now_ms = self._operator._now_ms
+
         def work(io_obj: DriverIO) -> DriverResult:
             if secret is not None:
                 keystore.write_password(Path(io_obj.tmpdir), secret)
-            return parse_one(parse, unit, io_obj)
+            started = now_ms()
+            return with_wall(parse_one(parse, unit, io_obj), now_ms() - started)
 
         return work
 
@@ -1426,6 +1429,19 @@ class _Guarded:
 # =============================================================================================
 # Small pieces
 # =============================================================================================
+
+
+def with_wall(result: DriverResult, wall_ms: int) -> DriverResult:
+    """An in-process call's wall time as the RUN measured it, over the driver's own figure. D921.
+
+    `subproc._with_metered`'s rule for `wall_ms`, for S1: the driver's report is a claim by the
+    code being timed, and the run's clock is the one a `PriceBook` rate for `wall_ms` should price
+    (V10-13). Measured here rather than in `DriverGuard`, which hands the driver's result back
+    unchanged by contract. CPU is not read: an in-process call shares the supervisor's process
+    with every other thread, so no process-level reading belongs to one unit, and the driver's
+    own `cpu_ms` stands.
+    """
+    return replace(result, metrics=replace(result.metrics, wall_ms=max(0, wall_ms)))
 
 
 def _address(run_id: str, ordinal: int) -> str:
