@@ -24,10 +24,14 @@ page text. That string became `work.failure_message`. `described()` is the repla
    `tools/events.toml` is from `EVENTS`: 15:1376 makes `redact()` *"PURE, no clock, no IO, no
    env"*, and a wheel carries no `tools/`. `test_redact.py` holds the file byte-equal to
    `render()`, so an edit to either side alone fails.
-3. **Only mode `"none"` is built**: rules 3 and 4, the credential and marker shapes, which
-   15:1395 makes *"unconditional"*. Rules 1 and 2, the path digest and the long-run rule, are
-   mode `"paths"`'s, and need the `[roots]` entries and the identifier shapes a call does not yet
-   carry; `redact()` refuses that mode by name rather than returning text it did not redact.
+3. **Mode `"paths"` adds rules 1 and 2 (D943).** Rule 1: an absolute path or `file://` URI
+   under one of the caller's `roots` becomes `path_token()`, `u:` + `blake2b(path || salt)` to 12
+   hex, over the path normalised as a `unit_uri` is (forward slashes, a drive path lower-cased),
+   so a path in a message and the same unit's envelope field are one token. Each replaced path is
+   recorded in `seen`, which is how a run writes its `paths.json`. Rule 2: a whitespace-free run
+   of 24 or more characters that is no known identifier shape (a `DriverId`, a code, a cite, a
+   config key, a token or marker this function wrote) becomes `<redacted:{n}chars>`. A digest is
+   rule 3's, which runs after, so a declared digest column keeps its exemption.
 4. **A source location is the innermost frame's file name, line and function**, never its
    directory: a driver installed under a user's home would put the user's name in the path.
 5. **`authorization_header` also takes the scheme word.** 15:1411 prints
@@ -40,12 +44,25 @@ Specified in 15-observability.md section 8.3.
 
 from __future__ import annotations
 
+import hashlib
 import re
+from collections.abc import MutableMapping, Sequence
 from dataclasses import dataclass
 from pathlib import PurePath
 from typing import Final, Literal
 
-__all__ = ["FAILURE_FIELD", "SHAPES", "Shape", "described", "redact", "render"]
+__all__ = [
+    "FAILURE_FIELD",
+    "LONG_RUN",
+    "SHAPES",
+    "TOKEN_HEX",
+    "Shape",
+    "described",
+    "normalized",
+    "path_token",
+    "redact",
+    "render",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,27 +138,111 @@ FAILURE_FIELD: Final = "failure_message"
 Mode = Literal["none", "paths"]
 
 
-def redact(s: str, *, mode: Mode, salt: bytes, field: str | None = None) -> tuple[str, int]:
-    """`(redacted, n_removed)`: `s` with every unconditional shape replaced, in `SHAPES` order.
+def redact(
+    s: str,
+    *,
+    mode: Mode,
+    salt: bytes,
+    field: str | None = None,
+    roots: Sequence[str] = (),
+    seen: MutableMapping[str, str] | None = None,
+) -> tuple[str, int]:
+    """`(redacted, n_removed)`: rules 1 and 2 in mode `"paths"` (ruling 3), then every
+    unconditional shape, in `SHAPES` order.
 
     `field` names the column being written, so a declared digest column is exempt from the
-    hex-run rule and nothing else is (15:1439). `salt` is mode `"paths"`'s, which ruling 3 refuses.
+    hex-run rule and nothing else is (15:1439). `salt` is the run's, `roots` the configured
+    `[roots]` entries, and `seen` collects each replaced path under its token.
     """
-    if mode != "none":
-        msg = (
-            f"redact(mode={mode!r}) is not built: rules 1 and 2 of 15-observability.md section "
-            "8.3, the path digest and the long-run rule, need the [roots] entries and the "
-            "identifier shapes no call carries yet"
-        )
+    if mode not in ("none", "paths"):
+        msg = f"redact mode {mode!r} is not one of none, paths ([observe] redact)"
         raise ValueError(msg)
-    del salt
     removed = 0
+    if mode == "paths":
+        s, n = _paths(s, salt=salt, roots=roots, seen=seen)
+        removed += n
+        s, n = _long_runs(s)
+        removed += n
     for shape, pattern in _COMPILED:
         if field is not None and field in shape.exempt_fields:
             continue
         s, n = pattern.subn(shape.replace, s)
         removed += n
     return s, removed
+
+
+TOKEN_HEX: Final = 12
+"""15:1331's `[:12]`: the hex characters of a `u:` token."""
+
+LONG_RUN: Final = 24
+"""Rule 2's threshold, 15:1386: a run of this many characters or more."""
+
+_PATH: Final = re.compile(r"(?<![\w/\\:.])(?:file://)?(?:[A-Za-z]:[\\/]|/)[^\s'\"<>|]+")
+"""Rule 1's candidates: an absolute POSIX or drive path, or a `file://` URI, not inside a word."""
+_TRAILING: Final = ".,;:)]}"
+"""Punctuation that ends a sentence around a path rather than the path itself."""
+
+_RUN: Final = re.compile(rf"\S{{{LONG_RUN},}}")
+_IDENTIFIER: Final = re.compile(
+    r"(?:"
+    r"u:[0-9a-f]{12}"  # a token this function wrote
+    r"|<redacted:[^>]*>"  # a marker this function wrote
+    r"|[a-z][a-z0-9_]*(?:\.[a-z0-9_-]+)+"  # a DriverId or a dotted config key
+    r"|OW[_-][A-Z0-9_-]+"  # a codes.toml symbol or number
+    r"|d\d+#\d+(?:[.#]\d+)*"  # a cite
+    r"|[0-9a-fA-F]+"  # a digest, which rule 3 judges
+    r")[.,;:)\]]*"
+)
+
+
+def normalized(path: str) -> str:
+    """A path as a `unit_uri` spells it: no `file://`, forward slashes, a drive path lower-cased."""
+    text = path.removeprefix("file://").replace("\\", "/")
+    if len(text) > 1 and text[1] == ":":
+        text = text.lower()
+    return text
+
+
+def path_token(path: str, *, salt: bytes) -> str:
+    """Rule 1's replacement: `u:` + `blake2b(normalized(path) || salt)`, to `TOKEN_HEX` hex."""
+    digest = hashlib.blake2b(normalized(path).encode("utf-8") + salt).hexdigest()
+    return "u:" + digest[:TOKEN_HEX]
+
+
+def _paths(
+    s: str, *, salt: bytes, roots: Sequence[str], seen: MutableMapping[str, str] | None
+) -> tuple[str, int]:
+    prefixes = tuple(normalized(root).rstrip("/") + "/" for root in roots if root)
+    count = 0
+
+    def swap(match: re.Match[str]) -> str:
+        nonlocal count
+        whole = match.group(0)
+        found = whole.rstrip(_TRAILING)  # "a.txt:" names a.txt; the colon is the sentence's
+        key = normalized(found)
+        if not any(key.startswith(prefix) or key + "/" == prefix for prefix in prefixes):
+            return whole
+        token = path_token(found, salt=salt)
+        if seen is not None:
+            seen[token] = key
+        count += 1
+        return token + whole[len(found) :]
+
+    return _PATH.sub(swap, s), count
+
+
+def _long_runs(s: str) -> tuple[str, int]:
+    count = 0
+
+    def swap(match: re.Match[str]) -> str:
+        nonlocal count
+        found = match.group(0)
+        if _IDENTIFIER.fullmatch(found):
+            return found
+        count += 1
+        return f"<redacted:{len(found)}chars>"
+
+    return _RUN.sub(swap, s), count
 
 
 def described(exc: BaseException) -> str:

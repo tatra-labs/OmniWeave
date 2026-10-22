@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import os
+import stat
 from pathlib import Path
 
 from omniweave.run.trace import RunTrace, shard_of
@@ -81,3 +84,54 @@ def test_the_spine_is_start_failures_end_and_every_record_is_valid(tmp_path: Pat
     }
     assert dict(end.fields)["events_dropped"] == 0
     assert [record.seq for record in records if record is not None] == [1, 2, 3]
+
+
+def test_redact_paths_tokenises_the_shard_and_writes_the_map_beside_the_manifest(
+    tmp_path: Path,
+) -> None:
+    """D943, 15:1330: under `[observe] redact = "paths"` a unit and the paths in a message become
+    one `u:` token each, the shard holds no path, and `{run_id}.paths.json` maps them back."""
+    config = _config(tmp_path, '[observe]\nredact = "paths"\n')
+    source, output = tmp_path / "docs", tmp_path / ".omniweave" / "out"
+    unit = (source / "a.txt").as_posix().lower()
+    trace = RunTrace.open(
+        config,  # type: ignore[arg-type]
+        run_id="r_02",
+        worker="host:42:12.5",
+        clock=SystemClock(),
+        roots=(source, output),
+        output_root=output,
+    )
+    assert trace is not None
+    trace.failed([(unit, None, "corrupt_input", f"{unit}: refused as corrupt_input")])
+    trace.end(status="partial", units=1, failures=1, micros=0)
+    trace.close()
+    shard = trace.path.read_text(encoding="utf-8")
+    assert "a.txt" not in shard
+    (failed,) = [r for r in map(parse_line, shard.splitlines()) if r and r.kind == "unit.failed"]
+    token = failed.unit
+    assert token is not None
+    assert token.startswith("u:")
+    assert dict(failed.fields)["message"] == f"{token}: refused as corrupt_input"
+    mapping = output / "runs" / "r_02.paths.json"
+    assert json.loads(mapping.read_text(encoding="utf-8")) == {token: unit}
+    if os.name == "posix":
+        assert stat.S_IMODE(mapping.stat().st_mode) == 0o600
+
+
+def test_the_default_mode_writes_no_path_map(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    output = tmp_path / ".omniweave" / "out"
+    trace = RunTrace.open(
+        config,  # type: ignore[arg-type]
+        run_id="r_03",
+        worker="host:42:12.5",
+        clock=SystemClock(),
+        roots=(tmp_path,),
+        output_root=output,
+    )
+    assert trace is not None
+    trace.failed([("c:/x/a.txt", None, "corrupt_input", "c:/x/a.txt: refused")])
+    trace.close()
+    assert not (output / "runs").exists()
+    assert "c:/x/a.txt" in trace.path.read_text(encoding="utf-8")

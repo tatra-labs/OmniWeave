@@ -26,7 +26,9 @@ Specified in 15-observability.md sections 1-3 and 8.1.
 
 from __future__ import annotations
 
+import json
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
@@ -41,15 +43,23 @@ from omniweave_core.events import (
     RunRecorder,
     writer_id,
 )
+from omniweave_core.redact import normalized, path_token, redact
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Iterable, Mapping, Sequence
 
     from omniweave_core.clock import Clock
     from omniweave_core.config import Config
     from omniweave_core.events import Scalar
 
-__all__ = ["CLOSE_TIMEOUT_MS", "RunTrace", "shard_of"]
+__all__ = [
+    "CLOSE_TIMEOUT_MS",
+    "PATHS_FILE_MODE",
+    "PATHS_MODE",
+    "PathRedaction",
+    "RunTrace",
+    "shard_of",
+]
 
 CLOSE_TIMEOUT_MS: Final = 5_000
 """Ruling 4: how long `close()` waits for the writer thread to drain."""
@@ -78,13 +88,71 @@ def shard_of(config: Config, run_id: str, *, env: Mapping[str, str] | None = Non
     return path if path.is_absolute() else root / path
 
 
+PATHS_MODE: Final = "paths"
+PATHS_FILE_MODE: Final = 0o600
+"""15:1330: `{run_id}.paths.json` is mode 0600, and it is not in the event stream."""
+
+
+@dataclass(slots=True)
+class PathRedaction:
+    """Ruling 5: `[observe] redact = "paths"` for one run. D943.
+
+    15:1330: the `unit` a record names becomes `u:` + `blake2b(unit_uri || run_salt)[:12]`
+    (`redact.path_token`), and a message passes `redact()` in mode `"paths"` against the run's
+    `[roots]`, so a path in it becomes the same token. The token -> path mapping is written to
+    `{output_root}/runs/{run_id}.paths.json`, mode 0600, beside the manifest and never in the
+    stream; the salt is the run's own and is written nowhere.
+    """
+
+    salt: bytes
+    roots: tuple[str, ...]
+    out: Path
+    seen: dict[str, str] = field(default_factory=dict)
+
+    @classmethod
+    def of(
+        cls, config: Config, *, run_id: str, roots: Sequence[Path], output_root: Path | None
+    ) -> PathRedaction | None:
+        if str(config.get("observe.redact")) != PATHS_MODE or output_root is None:
+            return None
+        return cls(
+            salt=os.urandom(16),
+            roots=tuple(str(root) for root in roots),
+            out=output_root / "runs" / f"{run_id}.paths.json",
+        )
+
+    def unit(self, uri: str) -> str:
+        token = path_token(uri, salt=self.salt)
+        self.seen[token] = normalized(uri)
+        return token
+
+    def text(self, message: str) -> str:
+        return redact(message, mode=PATHS_MODE, salt=self.salt, roots=self.roots, seen=self.seen)[0]
+
+    def write(self) -> None:
+        """The mapping, sorted, created at mode 0600 rather than chmodded after."""
+        self.out.parent.mkdir(parents=True, exist_ok=True)
+        body = json.dumps(dict(sorted(self.seen.items())), indent=2, sort_keys=True) + "\n"
+        fd = os.open(self.out, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, PATHS_FILE_MODE)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(body)
+
+
 class RunTrace:
     """One run's recorder over its NDJSON shard, and the run span every record hangs from."""
 
-    __slots__ = ("_closed", "_recorder", "_sink", "_span", "_trace", "path")
+    __slots__ = ("_closed", "_recorder", "_redaction", "_sink", "_span", "_trace", "path")
 
     def __init__(
-        self, path: Path, *, run_id: str, writer: str, clock: Clock, level: Level, shard_bytes: int
+        self,
+        path: Path,
+        *,
+        run_id: str,
+        writer: str,
+        clock: Clock,
+        level: Level,
+        shard_bytes: int,
+        redaction: PathRedaction | None = None,
     ) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
@@ -95,6 +163,7 @@ class RunTrace:
         self._trace = os.urandom(TRACE_ID_HEX_LEN // 2).hex()
         self._span = os.urandom(SPAN_ID_HEX_LEN // 2).hex()
         self._closed = False
+        self._redaction = redaction
 
     @classmethod
     def open(
@@ -105,8 +174,11 @@ class RunTrace:
         worker: str,
         clock: Clock,
         env: Mapping[str, str] | None = None,
+        roots: Sequence[Path] = (),
+        output_root: Path | None = None,
     ) -> RunTrace | None:
-        """Ruling 1. `worker` is `supervisor.worker_identity()`, `host:pid:create_time`."""
+        """Ruling 1. `worker` is `supervisor.worker_identity()`, `host:pid:create_time`. Ruling 5:
+        `roots` and `output_root` are the run's `[roots]`, which `redact = "paths"` reads."""
         path = shard_of(config, run_id, env=env)
         if path is None:
             return None
@@ -118,6 +190,7 @@ class RunTrace:
             clock=clock,
             level=Level(str(config.get("observe.level"))),
             shard_bytes=int(config.get("observe.shard_bytes")),  # type: ignore[arg-type]
+            redaction=PathRedaction.of(config, run_id=run_id, roots=roots, output_root=output_root),
         )
 
     def _emit(
@@ -176,13 +249,17 @@ class RunTrace:
     def failed(self, failures: Iterable[tuple[str, str | None, str, str]]) -> int:
         """One `unit.failed` per `(unit, driver, failure_class, message)`. Returns the count."""
         count = 0
+        redaction = self._redaction
         for unit, driver, failure_class, message in failures:
             self._emit(
                 EventKind.UNIT_FAILED,
                 "point",
-                unit=unit,
+                unit=unit if redaction is None else redaction.unit(unit),
                 driver=driver,
-                fields={"failure_class": failure_class, "message": message},
+                fields={
+                    "failure_class": failure_class,
+                    "message": message if redaction is None else redaction.text(message),
+                },
             )
             count += 1
         return count
@@ -208,4 +285,6 @@ class RunTrace:
         if self._closed:
             return 0
         self._closed = True
+        if self._redaction is not None:
+            self._redaction.write()
         return self._sink.close(timeout_ms=CLOSE_TIMEOUT_MS)
