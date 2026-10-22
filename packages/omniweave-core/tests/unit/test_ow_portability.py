@@ -81,3 +81,28 @@ def test_what_cannot_be_compared_did_not_run(
     assert TOOL.main(["--root", str(root)]) == TOOL.EXIT_NOT_RUN
     assert "names no [[target]]" in capsys.readouterr().out
     assert TOOL.main(["--bogus"]) == TOOL.EXIT_NOT_RUN
+
+
+def test_the_pptx_row_also_yields_v10_10_s_forty_unit_golden(tmp_path: Path) -> None:
+    """D914: the 40-unit golden, generated under the scratch directory, compiled with the `pptx`
+    row's card and config, so every CI cell holds V10-10's deck to the committed table."""
+    register = TOOL.tomllib.loads((REPO / "eval" / "gates.toml").read_text(encoding="utf-8"))
+    rows = TOOL.targets(register, REPO)
+    (golden40,) = TOOL._golden40(REPO, rows, str(tmp_path))
+    (pptx,) = [row for row in rows if row.target == "pptx"]
+    assert golden40.target == TOOL.GOLDEN40 == "pptx@golden40"
+    assert (golden40.card, golden40.config) == (pptx.card, pptx.config)
+    assert golden40.golden == tmp_path / "pptx"
+    assert len(list((tmp_path / "pptx" / "il").glob("u*.svg"))) == 40
+    assert "pptx@golden40" in portability.read_parts(REPO)
+    assert TOOL._golden40(REPO, tuple(r for r in rows if r.target != "pptx"), str(tmp_path)) == ()
+
+
+def test_this_cell_reproduces_the_committed_table_forty_unit_deck_included(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """D914: the CI step's own command, here: real in-process compiles against the real table."""
+    assert TOOL.main([]) == TOOL.EXIT_CLEAN
+    out = capsys.readouterr().out.splitlines()
+    assert "portability  pptx@golden40: 116 of 116 part(s) match" in out
+    assert out[-1] == "portability ok  every part matches"
