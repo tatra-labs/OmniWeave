@@ -22,7 +22,9 @@ Specified in 04-driver-system.md section 8.2; 13-quality.md section 12.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
+import json
 import os
 import shutil
 import socket
@@ -49,7 +51,7 @@ from omniweave_conform.suites import (
 )
 from omniweave_conform.suites.target.owtext.driver import OwTextCompiler
 from omniweave_core.drivers.card import DriverCard, load_card
-from omniweave_ports.types import Port
+from omniweave_ports.types import DriverError, Port
 
 if TYPE_CHECKING:
     from omniweave_conform.result import SuiteResult
@@ -187,6 +189,46 @@ def test_the_template_emits_a_stream_page_with_no_box(tmp_path: Path) -> None:
     (page,) = run_parse(subject.instantiate(), subject.fixtures[0], tmp_path / "p").fragment.pages
     assert page["page_kind"] == "stream"
     assert (page["w_mpt"], page["h_mpt"], page["quad_origin"]) == (None, None, None)
+
+
+def test_contract_stores_each_parse_through_the_hosts_own_sink(tmp_path: Path) -> None:
+    """D939: `contract` decodes a parse through `store.fragment` into a real `DocSink`. The
+    template's parse is stored as a visible generation; the same parse with D935's defect put
+    back (a stream page with a box, 03:470) is the host's refusal, named, and the suite fails."""
+    subject = _subject(tmp_path)
+    run = run_parse(subject.instantiate(), subject.fixtures[0], tmp_path / "p")
+    good = contract._stored_assertion(subject, run, tmp_path / "good")
+    assert good.ok, good.detail
+    assert good.detail.startswith("stored as generation 1, 1 page(s)")
+    lines = []
+    for line in run.body.splitlines():
+        record = json.loads(line) if line.strip() else None
+        if isinstance(record, dict) and record.get("t") == "page":
+            record = {**record, "w_mpt": 0, "h_mpt": 0}
+        lines.append(json.dumps(record).encode() if record is not None else line)
+    boxed = dataclasses.replace(run, body=b"\n".join(lines))
+    bad = contract._stored_assertion(subject, boxed, tmp_path / "bad")
+    assert not bad.ok
+    assert bad.locus == "outcome:stored"
+    assert "the host refused it" in bad.detail
+    assert "carries no page box" in bad.detail
+
+
+def test_contract_asks_the_host_of_every_fixture_that_parses(tmp_path: Path) -> None:
+    """D939: one `outcome:stored` per fixture the template parses to blocks, every one passing."""
+    subject = _subject(tmp_path)
+    driver = subject.instantiate()
+    parsed = set()
+    for index, fixture in enumerate(subject.fixtures):
+        try:
+            if run_parse(driver, fixture, tmp_path / f"f{index}").blocks:
+                parsed.add(fixture.name)
+        except DriverError:  # a refused fixture is not one the host is asked about
+            continue
+    stored = [a for a in contract.run(subject).assertions if a.locus == "outcome:stored"]
+    assert parsed
+    assert {a.fixture for a in stored} == parsed
+    assert all(a.ok for a in stored), [a.detail for a in stored if not a.ok]
 
 
 def test_the_templates_byte_origins_name_their_errors_policy(tmp_path: Path) -> None:
