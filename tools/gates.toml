@@ -832,9 +832,11 @@ release        = true
 # rule fired" and "content leaked into an artefact".
 #
 # The path is verbatim from section 6.4 and from 15-observability.md:1447, which write it
-# root-relative as `tests/...` and never say which `tests/` root. Recorded as written; resolving it
-# belongs to whoever lands the test.
-runner_planned = ["tests/test_no_content_in_artefacts.py"]
+# root-relative as `tests/...` and never say which `tests/` root. D936 resolved it on landing the
+# test: it spawns `ow`, so it is T3, and Q-G25 puts a T3 test under a `tests/conform/`. It forces
+# two of the four faults, a driver bug holding the page and a crash; the budget denial and the
+# quarantine have nothing in this build that can force them, which its docstring names.
+runner         = ["packages/omniweave/tests/conform/test_no_content_in_artefacts.py"]
 owner          = "licence"
 reviewed_at    = "2026-09-07"
 review_by      = "2026-12-03"
