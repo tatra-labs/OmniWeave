@@ -160,6 +160,7 @@ from omniweave.run.routing import (
     route_layers,
 )
 from omniweave.run.spend_rows import priced
+from omniweave.run.trace import RunTrace
 
 if TYPE_CHECKING:  # pragma: no cover -- typing only.
     from collections.abc import Callable, Mapping, Sequence
@@ -634,6 +635,7 @@ def ingest(
         )
         book = _Book(opened, config=config, host=host, clock=ticking)
         book.write()
+        trace = _trace_start(config, opened, argv=argv, clock=ticking, env=env)
         try:
             #  D905: a document is keyed by its place under the source root; a store keyed by
             #  content, or under another root, is rekeyed before anything parses, so an edit finds
@@ -663,12 +665,14 @@ def ingest(
             pending = _receipt(thread, source_root=source_root)
         except BaseException:
             ended = ticking.wall_ns()
+            _trace_end(trace, thread, opened, status="failed")
             close_run(thread, opened.run_id, status="failed", ended_ns=ended)
             with contextlib.suppress(OSError):
                 book.write(status="failed", ended_ns=ended)
             raise
         receipt = pending.receipt
         ended = ticking.wall_ns()
+        _trace_end(trace, thread, opened, status=report.status)
         close_run(
             thread,
             opened.run_id,
@@ -685,6 +689,79 @@ def ingest(
                 status=cast("RunStatus", report.status), ended_ns=ended, lock_digest=receipt.digest
             )
     return replace(report, manifest=book.path, receipt=receipt)
+
+
+RUN_WORK_SQL: Final[str] = """
+SELECT count(DISTINCT unit_uri), coalesce(sum(cost_micros), 0) FROM work
+ WHERE last_attempt_at >= :since_ms
+"""
+"""D941: the units a run attempted and what they cost, for `run.end`. A `work` row carries no
+run id; `last_attempt_at` (ms) at or after the run's start is this run's attempt."""
+
+RUN_FAILED_SQL: Final[str] = """
+SELECT unit_uri, driver, coalesce(failure_class, ''), coalesce(failure_message, '') FROM work
+ WHERE last_attempt_at >= :since_ms AND status IN ('failed', 'failed_permanent')
+ ORDER BY unit_uri, id
+"""
+"""D941: this run's failed attempts, for one `unit.failed` each."""
+
+
+def _trace_start(
+    config: Config,
+    opened: OpenedRun,
+    *,
+    argv: Sequence[str],
+    clock: Clock,
+    env: Mapping[str, str] | None = None,
+) -> RunTrace | None:
+    """D941: the run's event shard opened, and `run.start` written, when the run has one."""
+    trace = RunTrace.open(
+        config, run_id=opened.run_id, worker=sup.worker_identity(), clock=clock, env=env
+    )
+    if trace is not None:
+        trace.start(
+            trigger=opened.trigger,
+            argv_digest=hashlib.sha256(
+                json.dumps(list(argv), separators=(",", ":")).encode()
+            ).hexdigest(),
+            config_digest=config.config_digest,
+            semantic_digest=config.semantic_digest,
+            generation=opened.generation,
+        )
+    return trace
+
+
+def _trace_end(
+    trace: RunTrace | None, thread: ow.StoreThread, opened: OpenedRun, *, status: str
+) -> None:
+    """D941: each failed unit's `unit.failed`, then `run.end`, then the shard closed.
+
+    Telemetry never fails a run (15:47), so a read that fails here closes the shard without the
+    records rather than raising out of the run's close.
+    """
+    if trace is None:
+        return
+    since = {"since_ms": opened.started_ns // 1_000_000}
+    try:
+
+        def read(connection: object) -> tuple[Any, list[Any]]:
+            totals = connection.execute(RUN_WORK_SQL, since).fetchone()  # type: ignore[attr-defined]
+            failed = connection.execute(RUN_FAILED_SQL, since).fetchall()  # type: ignore[attr-defined]
+            return totals, failed
+
+        totals, failed = cast(
+            "tuple[Any, list[Any]]",
+            thread.run(
+                ow.Unit(name="ingest.run.trace", run=read, cost_class="free", wait_ms=BATCH_WAIT_MS)
+            ),
+        )
+        count = trace.failed(
+            (str(uri), None if drv is None else str(drv), str(cls), str(msg))
+            for uri, drv, cls, msg in failed
+        )
+        trace.end(status=status, units=int(totals[0]), failures=count, micros=int(totals[1]))
+    finally:
+        trace.close()
 
 
 def _create(store: Path, *, now_ns: int) -> None:
