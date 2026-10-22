@@ -216,11 +216,16 @@ CRITERIA: tuple[Criterion, ...] = (
                 f"{CLI}/test_route_checks.py::test_one_millisecond_over_is_a_finding",
                 label="the budgets fit the deadline, statically",
             ),
+            pytest(
+                f"{CLI}/test_bench_query.py",
+                label="`ow bench query`'s set, harness and report (D915)",
+            ),
         ),
         Coverage.PARTIAL,
-        "every timing is unmeasured: the `query` and `parse` bench subjects are blocked, no "
-        "4M-cell fixture exists, and `ow-bench-1`, the Pacer's seven-run median and the nightly "
-        "do not; what runs is the static budget arithmetic",
+        "`ow bench query` runs (D915): over `ow add`'s store of gen_5000p_pdf, 210,001 blocks, "
+        "warm p50 measured 95 ms on a developer machine, inside 180, end-to-end only. No run "
+        "is persisted and no nightly runs it, the `parse` subject is blocked, no 4M-cell "
+        "fixture exists, and `ow-bench-1` and the Pacer's seven-run median do not",
     ),
     Criterion(
         "V10-7",
