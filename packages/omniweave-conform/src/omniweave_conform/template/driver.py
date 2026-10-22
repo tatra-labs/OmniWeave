@@ -203,14 +203,17 @@ class PlainTextParser:
             # `page = 0`, not 1. 03-document-model.md:2275: a `stream` page_kind means "there are
             # no pages: HTML, markdown, code, plain text, email. Always `page = 0`", and :2277
             # adds that `page` is never a batch index. 18-api-sketch.md:2047 prints `1` here and
-            # is wrong on both counts (ledger D121).
+            # is wrong on both counts (ledger D121). A stream page has no box: `w_mpt`/`h_mpt`
+            # "are NULL exactly when `page_kind == STREAM`" (03:470), and so is its quad origin.
+            # Zeros here passed every conformance suite and were refused by the first real
+            # `ow add` (`store.doc`, OW_MODEL; ledger D935).
             {
                 "t": "page",
                 "page": 0,
                 "page_kind": "stream",
-                "w_mpt": 0,
-                "h_mpt": 0,
-                "quad_origin": "topleft",
+                "w_mpt": None,
+                "h_mpt": None,
+                "quad_origin": None,
                 "rotation": 0,
                 "method": "native",
             },

@@ -113,8 +113,10 @@ __all__ = [
     "ON_UNKNOWN",
     "OPS",
     "ORDERED_OPS",
+    "OTHER_SURFACES",
     "PIN_REJECTIONS",
     "POLICIES",
+    "POLICY_D",
     "PROFILE_FAST",
     "SURFACE",
     "THRESHOLD_PREFIX",
@@ -130,6 +132,7 @@ __all__ = [
     "compile_policy",
     "load_layer",
     "phase_of",
+    "project_layers",
     "rules_needing_on_unknown",
 ]
 
@@ -766,6 +769,41 @@ def builtin_layer() -> Layer:
         layer="builtin",
         origin=f"omniweave/route/policies/{BUILTIN_POLICY.name}",
     )
+
+
+POLICY_D: Final[Path] = Path(".omniweave") / "policy.d"
+"""05:941's `project` layer: `.omniweave/policy.d/*.toml`, relative to the project. D935."""
+
+OTHER_SURFACES: Final[frozenset[str]] = frozenset({"retrieval", "graph"})
+"""The two other surfaces 07:143 and 06:1545 put in the same directory, which routing skips."""
+
+
+def project_layers(directory: Path) -> list[Layer]:
+    """05:941's `project` layer: each route file in `directory`, in basename order. D935.
+
+    05:950: *"Within a layer, files load in lexicographic order of basename and rules concatenate
+    in file order."* A file declaring `surface = "retrieval"` or `"graph"` is another policy's and
+    is skipped: 05:952 makes the declaration *"what lets the routing, retrieval and graph policies
+    share one directory without any of them silently governing the others"*. A file declaring
+    neither, nor `"route"`, is refused by `load_layer()`. No directory is no project rules.
+
+    `origin` is the path as 05:1933's `rule_origin` prints it, `.omniweave/policy.d/<name>`, so
+    `_rule()`'s `project:` prefix and line number make the column a reader can grep.
+    """
+    if not directory.is_dir():
+        return []
+    layers: list[Layer] = []
+    for path in sorted(directory.glob("*.toml"), key=lambda one: one.name):
+        raw = path.read_bytes()
+        origin = (POLICY_D / path.name).as_posix()
+        try:
+            surface = tomllib.loads(raw.decode("utf-8")).get("surface")
+        except (UnicodeDecodeError, tomllib.TOMLDecodeError):
+            surface = None  # load_layer() refuses it, naming the file
+        if surface in OTHER_SURFACES:
+            continue
+        layers.append(load_layer(raw, layer="project", origin=origin))
+    return layers
 
 
 def load_layer(raw: bytes, *, layer: str, origin: str) -> Layer:

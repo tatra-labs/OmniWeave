@@ -1267,6 +1267,11 @@ class ParseOperator:
                 "traceparent": "",
                 "max_output_bytes": MAX_OUTPUT_BYTES,
                 "egress_mode": DEFAULT_EGRESS_MODE,
+                #  D935: the card the catalog read, as the compile and read-back hosts send it,
+                #  so a card under `.omniweave/drivers/` or OMNIWEAVE_DRIVER_PATH is one the
+                #  worker can load; a worker finds an entry point's card by its id alone.
+                "card_source": card.source,
+                "card_origin": card.origin,
             }
             expect = {
                 "driver_id": card.identity.id,

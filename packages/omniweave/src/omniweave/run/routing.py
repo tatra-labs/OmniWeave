@@ -84,12 +84,13 @@ from omniweave.route.demand import compile_demand, plan_for
 from omniweave.route.eval import evaluate, pending_deferrals
 from omniweave.route.evidence import Evidence
 from omniweave.route.ledger import payload_bytes
-from omniweave.route.policy import Layer, builtin_layer
+from omniweave.route.policy import Layer, builtin_layer, project_layers
 from omniweave.route.rung import Rung
 from omniweave.run import expand
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+    from pathlib import Path
 
     from omniweave_core.canonical import JsonValue
     from omniweave_core.config import Config
@@ -326,17 +327,24 @@ def max_parts_of(config: Config) -> int:
     return value
 
 
-def route_layers(config: Config) -> list[Layer]:
-    """The layers routing compiles: the shipped `builtin`, and `[ingest] max_parts`. **D644.**
+def route_layers(config: Config, *, policy_dir: Path | None = None) -> list[Layer]:
+    """The layers routing compiles: the shipped `builtin`, the project's `policy.d` files, and
+    `[ingest] max_parts`. **D644, D935.**
 
     `gate.too-many-parts` refuses `unit.part_count > @thresholds.max_parts` (05:3037), and the
     threshold is substituted when the policy compiles (05:977). So the configured cap is one
     `project`-layer scalar, which wins over the builtin's `10_000` by 05:958's last-write-wins,
     and `policy_digest` covers it: a decision taken under one cap is not a decision under another.
     At the default the merged scalars are the builtin's, and so is the digest.
+
+    **`policy_dir` is the project's `.omniweave/policy.d`** (05:941), whose rules prepend to the
+    builtin's: the builtin's own `decode.text-native` says a third party's driver takes a format
+    that way. Its files load before the `max_parts` layer, so `[ingest] max_parts` stays the cap
+    `omniweave.toml` sets. `None`, or no directory, is the builtin alone, as before D935.
     """
     return [
         builtin_layer(),
+        *(() if policy_dir is None else project_layers(policy_dir)),
         Layer(
             layer="project",
             origin="[ingest] max_parts",

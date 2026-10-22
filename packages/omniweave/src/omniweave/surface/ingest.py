@@ -134,6 +134,7 @@ def _ingest(
     stderr: TextIO,
     sweep_ms: int | None,
 ) -> int:
+    from omniweave_core.config import project_root  # noqa: PLC0415
     from omniweave_core.modelserver import services_root  # noqa: PLC0415
 
     from omniweave.run.ingest import ingest  # noqa: PLC0415 -- a usage error never pays for it
@@ -168,6 +169,8 @@ def _ingest(
         accept_partial=parsed.accept_partial,
         passwords=passwords,
         services_root=services_root(env),
+        project_root=project_root(config),
+        env=env,
     )
     for line in report.lines():
         stdout.write(_ascii(line) + "\n")
