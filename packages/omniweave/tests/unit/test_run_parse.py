@@ -16,7 +16,6 @@ import io
 import json
 import shutil
 import sqlite3  # noqa: TID251 -- the assertions read the store the run wrote.
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -54,8 +53,6 @@ from omniweave_core.store.indexlock import FIELD_SEP, LOCK_PATH
 from omniweave_core.store.queue import SqliteStore
 from omniweave_core.store.verify import VerifyClause, verify_store
 from omniweave_ports.types import FailureClass, UnitRef
-
-pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="the named-pipe arm of S4")
 
 FIXTURES = Path(__file__).resolve().parents[3] / "omniweave-office" / "fixtures"
 PROJECT = '[corpora.handbook]\npath = ".omniweave/index.owstore"\n'

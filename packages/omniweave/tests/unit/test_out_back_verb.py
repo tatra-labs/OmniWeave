@@ -11,7 +11,6 @@ from __future__ import annotations
 import io
 import json
 import sqlite3  # noqa: TID251 -- the assertions read the rows the loop wrote.
-import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -33,7 +32,6 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 SUITES = Path(target_suites.__file__).parent
-WINDOWS_ONLY = pytest.mark.skipif(sys.platform != "win32", reason="the named-pipe arm")
 BRIEF = (
     f"{BRIEF_SCHEMA}\n## canvas\n- format: 16:9\n- unit: section\n## communication\n"
     "- primary_language: en-GB\n## direction\n## density\n- per_unit: light\n## motion\n"
@@ -116,7 +114,6 @@ def _back(project: Path, *argv: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------------------------
 
 
-@WINDOWS_ONLY
 def test_back_restores_the_newest_generation_into_the_next_ones_jobdir(project: Path) -> None:
     first = _sealed(project)
     out = _ok(["back", "q3"], project)
@@ -148,7 +145,6 @@ def test_back_restores_the_newest_generation_into_the_next_ones_jobdir(project: 
     assert brief.digest() == Job.load(first).plan.brief_digest
 
 
-@WINDOWS_ONLY
 def test_the_json_report_names_both_generations_and_the_contract(project: Path) -> None:
     _sealed(project)
     document = _back(project)
@@ -165,7 +161,6 @@ def test_the_json_report_names_both_generations_and_the_contract(project: Path) 
     assert document["loop_open"] == OPEN
 
 
-@WINDOWS_ONLY
 def test_an_unedited_restore_compiles_to_the_lookup_and_an_edit_seals_the_next(
     project: Path,
 ) -> None:
@@ -185,7 +180,6 @@ def test_an_unedited_restore_compiles_to_the_lookup_and_an_edit_seals_the_next(
     assert placed.read_text(encoding="utf-8") == "== u01 ==\nRevenue rose 15% in Q3.\n"
 
 
-@WINDOWS_ONLY
 def test_gen_names_an_older_generation_and_the_next_is_still_one_past_the_newest(
     project: Path,
 ) -> None:
@@ -204,7 +198,6 @@ def test_gen_names_an_older_generation_and_the_next_is_still_one_past_the_newest
     assert sealed == [(1, None), (2, 1)]
 
 
-@WINDOWS_ONLY
 def test_a_moved_contract_is_said_first(project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from omniweave_core.out import agentdoc  # noqa: PLC0415
 
@@ -252,7 +245,6 @@ def _store_rows(project: Path, sql: str, *params: object) -> list[tuple[Any, ...
         connection.close()
 
 
-@WINDOWS_ONLY
 def test_a_docx_generation_is_read_back_once_and_its_addresses_mapped(project: Path) -> None:
     """D788: parse.docx.native in an S4 worker, one corpus document, one block per address."""
     _memo(project)
@@ -287,7 +279,6 @@ def test_a_docx_generation_is_read_back_once_and_its_addresses_mapped(project: P
     assert _store_rows(project, "SELECT count(*), max(gen) FROM doc") == [(1, 1)], "read once"
 
 
-@WINDOWS_ONLY
 def test_a_failed_read_back_restores_nothing(
     project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -308,7 +299,6 @@ def test_a_failed_read_back_restores_nothing(
 # ---------------------------------------------------------------------------------------------
 
 
-@WINDOWS_ONLY
 def test_a_brief_missing_from_cas_is_a_dangling_row(project: Path) -> None:
     from omniweave.run.out_compile import store_cas  # noqa: PLC0415
 
@@ -322,7 +312,6 @@ def test_a_brief_missing_from_cas_is_a_dangling_row(project: Path) -> None:
     assert "no CAS blob" in err
 
 
-@WINDOWS_ONLY
 def test_a_row_naming_no_brief_has_no_contract_to_restore(
     project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
