@@ -1719,6 +1719,10 @@ def test_versions_is_a_predecessor_of_every_other_job(ci: Workflow) -> None:
 
     `ci-ok` is exempt because it is the successor, and its own `needs` is pinned by
     `test_ci_ok_needs_every_job_but_itself` against `CI_OK_NEEDS`.
+
+    **`versions` first, not alone, since D931:** `golden` waits on `test` too, because Q-G4
+    compares the shapes every test cell emitted. A `needs` list must still name `versions`, and
+    first, so the fan-out root stays the first thing every job waits on.
     """
     blocks = ci.job_blocks()
     assert "versions" in blocks and "ci-ok" in blocks, sorted(blocks)
@@ -1729,7 +1733,7 @@ def test_versions_is_a_predecessor_of_every_other_job(ci: Workflow) -> None:
         job
         for job, body in blocks.items()
         if job not in {"versions", "ci-ok"}
-        and not any(line.strip() == "needs: [versions]" for line in body)
+        and not any(re.fullmatch(r"needs: \[versions(, [a-z-]+)*\]", line.strip()) for line in body)
     ]
     assert not orphans, (
         f"{orphans} do not wait on versions (11-repo-layout.md:1415-1416). A job that skips the "

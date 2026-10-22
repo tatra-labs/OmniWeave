@@ -327,3 +327,20 @@ def test_a_bad_command_line_did_not_run(
 ) -> None:
     assert GATE.main(argv) == 2
     assert "usage: gate_frozen_stability.py" in capsys.readouterr().err
+
+
+def test_every_test_cell_emits_its_shapes_and_the_golden_job_compares_all_nine() -> None:
+    """D931: V10-14 read "no job emits each cell's shapes for the gate to read". Each `test`
+    cell emits and uploads its shapes, and `golden` waits on `test`, gathers them and runs the
+    comparison over nine cells at one pinned pdfium, so a missing cell is "did not run"."""
+    workflow = (REPO / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    test_job = workflow.split("\n  test:\n", 1)[1].split("\n  golden:\n", 1)[0]
+    golden_job = workflow.split("\n  golden:\n", 1)[1].split("\n  conform:\n", 1)[0]
+    assert "run: uv run tools/gate_frozen_stability.py --emit shapes" in test_job
+    assert 'name: "shapes-${{ matrix.os }}-py${{ matrix.py }}"' in test_job
+    assert "needs: [versions, test]" in golden_job
+    assert 'pattern: "shapes-*"' in golden_job and "merge-multiple: true" in golden_job
+    assert (
+        "run: uv run tools/gate_frozen_stability.py --artifacts shapes --pdfium-minors 1 --cells 9"
+        in golden_job
+    )
