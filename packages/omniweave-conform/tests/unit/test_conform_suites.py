@@ -38,6 +38,7 @@ from omniweave_conform.harness import run_parse
 from omniweave_conform.result import MANDATORY, SUITES
 from omniweave_conform.suites import (
     SUITE_RUNNERS,
+    capability,
     contract,
     cost,
     determinism,
@@ -186,6 +187,37 @@ def test_the_template_emits_a_stream_page_with_no_box(tmp_path: Path) -> None:
     (page,) = run_parse(subject.instantiate(), subject.fixtures[0], tmp_path / "p").fragment.pages
     assert page["page_kind"] == "stream"
     assert (page["w_mpt"], page["h_mpt"], page["quad_origin"]) == (None, None, None)
+
+
+def test_the_templates_byte_origins_name_their_errors_policy(tmp_path: Path) -> None:
+    """03:1466: a `bytes` origin's codec is `<codec>/<errors>`. The template sent a bare
+    `"utf-8"`, which `OriginBytes` refuses, so `ow add` refused its document (D938)."""
+    subject = _subject(tmp_path)
+    run = run_parse(subject.instantiate(), subject.fixtures[0], tmp_path / "p")
+    codecs = {block["os"]["codec"] for block in run.blocks if block["os"]["k"] == "bytes"}
+    assert codecs == {"utf-8/strict"}
+
+
+@pytest.mark.parametrize(
+    ("os", "said"),
+    [
+        ({"k": "bytes", "part": "p", "start": 0, "length": 3, "codec": "utf-8"}, "<errors>"),
+        ({"k": "bytes", "part": "p", "start": 0, "length": 0, "codec": "utf-8/strict"}, ">= 1"),
+        ({"k": "glyphs", "part": "p", "extractor": "x", "start": -1, "length": 3}, "start"),
+        ({"k": "bytes", "part": "p", "start": 0, "length": 3, "codec": "utf-8/strict"}, ""),
+        ({"k": "none"}, ""),
+    ],
+)
+def test_p16_asks_the_models_own_type_what_the_host_would_store(
+    os: dict[str, object], said: str
+) -> None:
+    """D938: P16's third clause refuses a `bytes` or `glyphs` origin `store.fragment` refuses."""
+    why = capability._model_refuses({"tmp": "b1", "os": os})
+    if said:
+        assert why.startswith("b1: ")
+        assert said in why
+    else:
+        assert why == ""
 
 
 def _digests(subject: Subject) -> dict[str, str]:
