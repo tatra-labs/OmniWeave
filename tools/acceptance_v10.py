@@ -386,15 +386,16 @@ CRITERIA: tuple[Criterion, ...] = (
             ),
             pytest(
                 f"{T3}/test_spend_reconciles_process.py",
-                label="a real ow add verifies under ow cost --verify (D854)",
+                label="a real ow add verifies under ow cost --verify, unpriced and priced (D854, "
+                "D921)",
             ),
         ),
         Coverage.PARTIAL,
-        "a real `ow add` of three drivers' documents reconciles under `ow cost --verify` (D854), "
-        "but the first-party drivers report no physical metrics, so every parse bill is a "
-        "measured zero and a PriceBook pricing wall or CPU time would price nothing; "
-        "no run is priced, so the 0-micro equality is "
-        "0 == 0; and no test reads every manifest a run emits",
+        "a real `ow add` of three drivers' documents is priced by a PriceBook that rates wall and "
+        "CPU time, since the host meters each worker from outside (D921), and `ow cost --verify` "
+        "reconciles both of its runs against their manifests to 0 micros. What is not metered: an "
+        "in-process (S1) call's CPU, which shares the supervisor's process, and CPU under one "
+        "accounting tick, which Windows reports as 0 (the office and text units measured 0 ms)",
     ),
     Criterion(
         "V10-14",

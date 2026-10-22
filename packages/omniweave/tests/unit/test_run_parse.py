@@ -625,9 +625,35 @@ def test_in_process_the_password_is_written_into_the_tmpdir_the_guard_hands_the_
             seen.append((Path(io_obj.tmpdir) / PASSWORD_FILENAME).read_bytes())
             raise RuntimeError("stop here: the file was read")
 
-    operator = SimpleNamespace(secret_for=_secret_for, _driver=lambda _granted: _Driver())
+    operator = SimpleNamespace(
+        secret_for=_secret_for, _driver=lambda _granted: _Driver(), _now_ms=lambda: 0
+    )
     call = SimpleNamespace(units=_units("locked.pdf"))
     work = parse_module._Guarded(operator, None, []).work(call, 0)  # type: ignore[arg-type]
     with pytest.raises(RuntimeError, match="the file was read"):
         work(SimpleNamespace(tmpdir=str(tmp_path / "scratch")))  # type: ignore[arg-type]
     assert seen == [b"s3cret"]
+
+
+def test_in_process_the_run_s_clock_charges_the_call_s_wall_time(tmp_path: Path) -> None:
+    """D921: an S1 call's `wall_ms` is the run's reading around `parse()`, over the driver's own
+    figure, and the driver's `cpu_ms` stands because no process reading belongs to one call."""
+    from omniweave_ports.types import DriverMetrics, DriverResult  # noqa: PLC0415
+
+    class _Driver:
+        def parse(self, unit: UnitRef, parts: object, io_obj: Any) -> DriverResult:
+            del unit, parts, io_obj
+            return DriverResult(
+                outcome="ok", produced=(), metrics=DriverMetrics(wall_ms=1, cpu_ms=7)
+            )
+
+    ticks = iter((1_000, 1_040))
+    operator = SimpleNamespace(
+        secret_for=lambda _uri: None,
+        _driver=lambda _granted: _Driver(),
+        _now_ms=lambda: next(ticks),
+    )
+    call = SimpleNamespace(units=_units("open.pdf"))
+    work = parse_module._Guarded(operator, None, []).work(call, 0)  # type: ignore[arg-type]
+    result = work(SimpleNamespace(tmpdir=str(tmp_path)))  # type: ignore[arg-type]
+    assert (result.metrics.wall_ms, result.metrics.cpu_ms) == (40, 7)

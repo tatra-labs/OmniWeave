@@ -3700,6 +3700,29 @@ def test_the_peak_is_the_largest_process_in_the_job_and_never_falls(
     assert worker.peak_rss()[0] == 310_000_000, "a lower second sample does not lower the peak"
 
 
+def test_a_worker_s_cpu_is_its_job_s_accounting_and_else_its_own_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """D921: with a job the reading is the job's, which counts helpers that already exited; with
+    none it is the child's own; a job that cannot be read leaves `None`, never a guess."""
+    monkeypatch.setattr(sp, "cpu_ns", lambda pid: (pid * 1_000, "GetProcessTimes user+kernel"))
+    worker, _proc, _clock = worker_on(FakeChannel(), proc=FakeProcess(pid=11))
+    assert worker.cpu_ns() == 11_000, "no job: the child's own process"
+
+    class _AccountedJob(_FakeJob):
+        def __init__(self, spent: int | None) -> None:
+            super().__init__((11, 12))
+            self.spent = spent
+
+        def cpu_ns(self) -> int | None:
+            return self.spent
+
+    worker._job = _AccountedJob(9_000_000)  # type: ignore[assignment]
+    assert worker.cpu_ns() == 9_000_000
+    worker._job = _AccountedJob(None)  # type: ignore[assignment]
+    assert worker.cpu_ns() is None
+
+
 def test_with_no_job_the_child_itself_is_sampled_and_no_sample_is_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3716,11 +3739,96 @@ def test_a_result_carries_the_host_s_sample_over_the_driver_s_own_figure() -> No
     from omniweave_ports.types import DriverMetrics, DriverResult  # noqa: PLC0415
 
     claimed = DriverResult(outcome="ok", produced=(), metrics=DriverMetrics(peak_rss_bytes=7))
-    sampled = sp._with_peak(claimed, 42_000_000)
+    sampled = sp._with_metered(claimed, peak=42_000_000, wall_ms=0, cpu_ms=None)
     assert sampled is not None
     assert sampled.metrics.peak_rss_bytes == 42_000_000
-    assert sp._with_peak(claimed, None) is claimed
-    assert sp._with_peak(None, 1) is None
+    unsampled = sp._with_metered(claimed, peak=None, wall_ms=0, cpu_ms=None)
+    assert unsampled is not None and unsampled.metrics.peak_rss_bytes == 7
+    assert sp._with_metered(None, peak=1, wall_ms=1, cpu_ms=1) is None
+
+
+def test_a_result_carries_the_host_s_wall_time_and_the_larger_cpu_time() -> None:
+    """D921: `wall_ms` is the host's always; `cpu_ms` is the larger of the host's reading and the
+    driver's own, and a host reading that failed leaves the driver's figure."""
+    from omniweave_ports.types import DriverMetrics, DriverResult  # noqa: PLC0415
+
+    claimed = DriverResult(
+        outcome="ok", produced=(), metrics=DriverMetrics(wall_ms=1, cpu_ms=50, bytes_read=9)
+    )
+    lower = sp._with_metered(claimed, peak=None, wall_ms=120, cpu_ms=30)
+    higher = sp._with_metered(claimed, peak=None, wall_ms=120, cpu_ms=80)
+    unread = sp._with_metered(claimed, peak=None, wall_ms=120, cpu_ms=None)
+    assert lower is not None and higher is not None and unread is not None
+    assert (lower.metrics.wall_ms, lower.metrics.cpu_ms) == (120, 50)
+    assert (higher.metrics.wall_ms, higher.metrics.cpu_ms) == (120, 80)
+    assert (unread.metrics.wall_ms, unread.metrics.cpu_ms) == (120, 50)
+    assert higher.metrics.bytes_read == 9, "only the host's three readings are written"
+
+
+def test_each_result_is_charged_what_passed_since_the_one_before() -> None:
+    """D921: `_Meter` charges each unit the gap since the previous mark, so a batch's units sum to
+    the whole `INVOKE`; CPU is `None` when either reading is missing."""
+    meter = sp._Meter(1_000, 5_000_000)
+    assert meter.unit(1_250, 105_000_000) == (250, 100)
+    assert meter.unit(1_300, None) == (50, None)
+    assert meter.unit(1_400, 125_000_000) == (100, 20), "a missing reading keeps the old mark"
+    assert sp._Meter(10, None).unit(5, 7) == (0, None), "never negative"
+
+
+@pytest.mark.parametrize(
+    ("line", "ticks"),
+    [
+        ("4242 (python) S 1 2 3 4 5 6 7 8 9 10 100 20 3 4 20 0 1 0", 127),
+        ("4242 (a) b (c d) R 1 2 3 4 5 6 7 8 9 10 7 1 0 0 20 0", 8),
+        ("4242 (python) S 1 2", None),
+        ("no parenthesis here", None),
+    ],
+)
+def test_proc_stat_cpu_is_the_four_time_fields_after_the_command_name(
+    line: str, ticks: int | None
+) -> None:
+    """`utime + stime + cutime + cstime`, read after `comm`'s LAST `)`, which may hold spaces."""
+    assert sp.proc_stat_cpu_ticks(line) == ticks
+
+
+@pytest.mark.parametrize(
+    ("text", "ns"),
+    [
+        ("0:00.12\n", 120_000_000),
+        ("12:34.50", (12 * 60 + 34) * 1_000_000_000 + 500_000_000),
+        ("1:02:03", ((1 * 60 + 2) * 60 + 3) * 1_000_000_000),
+        ("2-01:00:00", (2 * 24 + 1) * 3_600_000_000_000),
+        ("", None),
+        ("abc", None),
+        ("1:2:3:4", None),
+    ],
+)
+def test_ps_cputime_reads_days_hours_minutes_and_seconds(text: str, ns: int | None) -> None:
+    assert sp.ps_cputime_ns(text) == ns
+
+
+@WINDOWS_ONLY
+def test_a_worker_that_burns_cpu_is_metered_from_outside() -> None:
+    """D921's reading, real: a child that spins until IT has spent a quarter second of CPU shows
+    at least that much through the job's accounting, read after the child has exited."""
+    job = sp.JobObject()
+    try:
+        spin = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                "import time\nwhile time.process_time() < 0.25: pass",
+            ],
+            creationflags=sp.CREATE_SUSPENDED,
+        )
+        job.admit(spin.pid)
+        spin.wait(timeout=30)
+        spent = job.cpu_ns()
+    finally:
+        job.close()
+    assert spent is not None and spent >= 200_000_000, spent
+    own = sp.cpu_ns(os.getpid())
+    assert own[0] is not None and own[0] > 0 and own[1] == "GetProcessTimes user+kernel"
 
 
 @WINDOWS_ONLY
