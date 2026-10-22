@@ -27,11 +27,9 @@ Not forced, because nothing in this build can force them:
 - the **quarantine**: it is a derive draft's, and no derive pass in a model-free run produces
   one, so no payload is written for the canary to be allowed in.
 
-Not grepped, because this build does not produce them; `test_the_artefacts_not_built_are_absent`
-fails the day one appears, so the grep grows with it (the NDJSON event shard is written since
-D941, and is grepped with everything else under `.omniweave/`):
-- `{run_id}.paths.json`;
-- `ow trace export --file`.
+Not grepped, because this build does not produce it: `ow trace export --file`. The NDJSON event
+shard is written since D941, and `{run_id}.paths.json` under `[observe] redact = "paths"` since
+D943; both are grepped with everything else under `.omniweave/`.
 
 What is grepped: both commands' console, every byte under the project's `.omniweave/` but the
 content store (`cas/`, the retained source, which is the document itself), the home and
@@ -69,7 +67,7 @@ FAULTS = {
 }
 
 
-def _project(root: Path, fault: str) -> tuple[Path, str]:
+def _project(root: Path, fault: str, *, extra: str = "") -> tuple[Path, str]:
     """A project whose `txt` goes to the fault's canary driver, through a card and a rule."""
     cls, _failure = FAULTS[fault]
     driver = f"parse.text.canary{fault}"
@@ -89,7 +87,7 @@ def _project(root: Path, fault: str) -> tuple[Path, str]:
     (project / "omniweave.toml").write_text(
         '[corpora.docs]\npath = ".omniweave/docs.owstore"\n[serve]\ndefault_corpus = "docs"\n'
         "[drivers]\nallow_unattested = true\nrequire_lock = false\ninproc = []\n"
-        f"enabled = [{enabled}]\n",
+        f"enabled = [{enabled}]\n" + extra,
         encoding="utf-8",
     )
     (project / POLICY_D).mkdir(parents=True)
@@ -225,10 +223,26 @@ def test_the_run_writes_its_event_shard_and_the_shard_is_grepped(tmp_path: Path)
     assert CANARY not in shard.read_text(encoding="utf-8")
 
 
-def test_the_artefacts_not_built_are_absent(tmp_path: Path) -> None:
-    """The two artefacts 15:1450-1452 greps that this build does not produce. The day one is,
-    this fails, and the grep above must grow to read it."""
+def test_redact_paths_keeps_the_pages_paths_out_of_the_shard_too(tmp_path: Path) -> None:
+    """D943, 15:1330: under `[observe] redact = "paths"` the shard names each unit by its `u:`
+    token, `{run_id}.paths.json` maps them back, and neither holds the canary."""
+    project, _driver = _project(tmp_path, "bug", extra='[observe]\nredact = "paths"\n')
+    code, added = _ow(project, "add", "docs")
+    assert code == 0, added[-3000:]
+    (shard,) = (project / ".omniweave" / "events").glob("*.ndjson")
+    text = shard.read_text(encoding="utf-8")
+    assert all(name not in text for name in PAGES)
+    (mapping,) = (project / ".omniweave" / "out" / "runs").glob("*.paths.json")
+    tokens = json.loads(mapping.read_text(encoding="utf-8"))
+    assert sorted(path.rsplit("/", 1)[-1] for path in tokens.values()) == sorted(PAGES)
+    failed = [json.loads(line) for line in text.splitlines() if '"unit.failed"' in line]
+    assert {record["unit"] for record in failed} == set(tokens)
+    leaked = [str(path) for path in _files(project) if CANARY.encode() in path.read_bytes()]
+    assert leaked == [], f"the page reached {leaked}"
+
+
+def test_the_default_mode_writes_no_path_map(tmp_path: Path) -> None:
+    """`[observe] redact` defaults to `"none"` for the CLI (15:1330), which writes no map."""
     project, _driver = _project(tmp_path, "bug")
     assert _ow(project, "add", "docs")[0] == 0
-    state = project / ".omniweave"
-    assert not list(state.rglob("*.paths.json")), "a paths.json exists now: grep it"
+    assert not list((project / ".omniweave").rglob("*.paths.json"))

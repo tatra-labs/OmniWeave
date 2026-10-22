@@ -635,7 +635,15 @@ def ingest(
         )
         book = _Book(opened, config=config, host=host, clock=ticking)
         book.write()
-        trace = _trace_start(config, opened, argv=argv, clock=ticking, env=env)
+        trace = _trace_start(
+            config,
+            opened,
+            argv=argv,
+            clock=ticking,
+            env=env,
+            roots=(source_root, output_root, cache_root),
+            output_root=output_root,
+        )
         try:
             #  D905: a document is keyed by its place under the source root; a store keyed by
             #  content, or under another root, is rekeyed before anything parses, so an edit finds
@@ -713,10 +721,18 @@ def _trace_start(
     argv: Sequence[str],
     clock: Clock,
     env: Mapping[str, str] | None = None,
+    roots: Sequence[Path] = (),
+    output_root: Path | None = None,
 ) -> RunTrace | None:
     """D941: the run's event shard opened, and `run.start` written, when the run has one."""
     trace = RunTrace.open(
-        config, run_id=opened.run_id, worker=sup.worker_identity(), clock=clock, env=env
+        config,
+        run_id=opened.run_id,
+        worker=sup.worker_identity(),
+        clock=clock,
+        env=env,
+        roots=roots,
+        output_root=output_root,
     )
     if trace is not None:
         trace.start(

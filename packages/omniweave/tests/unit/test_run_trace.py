@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import json
+import os
+import stat
 from pathlib import Path
 
+import pytest
 from omniweave.run.trace import RunTrace, shard_of
 from omniweave_core.clock import SystemClock
 from omniweave_core.config import load
 from omniweave_core.events import parse_line
+from omniweave_core.identity import canonical_uri
 
 
 def _config(tmp_path: Path, observe: str = "") -> object:
@@ -81,3 +86,87 @@ def test_the_spine_is_start_failures_end_and_every_record_is_valid(tmp_path: Pat
     }
     assert dict(end.fields)["events_dropped"] == 0
     assert [record.seq for record in records if record is not None] == [1, 2, 3]
+
+
+def test_redact_paths_tokenises_the_shard_and_writes_the_map_beside_the_manifest(
+    tmp_path: Path,
+) -> None:
+    """D943, 15:1330: under `[observe] redact = "paths"` a unit and the paths in a message become
+    one `u:` token each, the shard holds no path, and `{run_id}.paths.json` maps them back."""
+    config = _config(tmp_path, '[observe]\nredact = "paths"\n')
+    source, output = tmp_path / "docs", tmp_path / ".omniweave" / "out"
+    unit = canonical_uri(source / "a.txt")  # a unit_uri's own form, as a real run writes it
+    trace = RunTrace.open(
+        config,  # type: ignore[arg-type]
+        run_id="r_02",
+        worker="host:42:12.5",
+        clock=SystemClock(),
+        roots=(source, output),
+        output_root=output,
+    )
+    assert trace is not None
+    trace.failed([(unit, None, "corrupt_input", f"{unit}: refused as corrupt_input")])
+    trace.end(status="partial", units=1, failures=1, micros=0)
+    trace.close()
+    shard = trace.path.read_text(encoding="utf-8")
+    assert "a.txt" not in shard
+    (failed,) = [r for r in map(parse_line, shard.splitlines()) if r and r.kind == "unit.failed"]
+    token = failed.unit
+    assert token is not None
+    assert token.startswith("u:")
+    assert dict(failed.fields)["message"] == f"{token}: refused as corrupt_input"
+    mapping = output / "runs" / "r_02.paths.json"
+    assert json.loads(mapping.read_text(encoding="utf-8")) == {token: unit}
+    if os.name == "posix":
+        assert stat.S_IMODE(mapping.stat().st_mode) == 0o600
+
+
+def test_the_default_mode_writes_no_path_map(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    output = tmp_path / ".omniweave" / "out"
+    trace = RunTrace.open(
+        config,  # type: ignore[arg-type]
+        run_id="r_03",
+        worker="host:42:12.5",
+        clock=SystemClock(),
+        roots=(tmp_path,),
+        output_root=output,
+    )
+    assert trace is not None
+    trace.failed([("c:/x/a.txt", None, "corrupt_input", "c:/x/a.txt: refused")])
+    trace.close()
+    assert not (output / "runs").exists()
+    assert "c:/x/a.txt" in trace.path.read_text(encoding="utf-8")
+
+
+def test_a_root_given_through_a_symlink_still_tokenises_the_units_under_it(tmp_path: Path) -> None:
+    """D943, macOS's case: `/var` is a symlink to `/private/var`, and a `unit_uri` is resolved
+    (`canonical_uri` takes the realpath). A root held as given missed every unit under it, and the
+    path fell to rule 2's `<redacted:{n}chars>`, hidden but in no token and no map."""
+    real = tmp_path / "real"
+    (real / "docs").mkdir(parents=True)
+    link = tmp_path / "link"
+    try:
+        link.symlink_to(real, target_is_directory=True)
+    except OSError:
+        pytest.skip("this account may not create a symlink")
+    config = _config(tmp_path, '[observe]\nredact = "paths"\n')
+    output = tmp_path / ".omniweave" / "out"
+    unit = canonical_uri(real / "docs" / "a.txt")
+    trace = RunTrace.open(
+        config,  # type: ignore[arg-type]
+        run_id="r_04",
+        worker="host:42:12.5",
+        clock=SystemClock(),
+        roots=(link / "docs",),
+        output_root=output,
+    )
+    assert trace is not None
+    trace.failed([(unit, None, "corrupt_input", f"{unit}: refused as corrupt_input")])
+    trace.close()
+    (failed,) = [
+        r
+        for r in map(parse_line, trace.path.read_text(encoding="utf-8").splitlines())
+        if r and r.kind == "unit.failed"
+    ]
+    assert dict(failed.fields)["message"] == f"{failed.unit}: refused as corrupt_input"
