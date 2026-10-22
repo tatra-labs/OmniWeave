@@ -178,6 +178,16 @@ def test_the_template_driver_passes_every_mandatory_suite(tmp_path: Path) -> Non
     assert report.verdict_of("quality") is Verdict.UNKNOWN
 
 
+def test_the_template_emits_a_stream_page_with_no_box(tmp_path: Path) -> None:
+    """03:470: `w_mpt`/`h_mpt` *"are NULL exactly when `page_kind == STREAM`"*. The template
+    emitted zeros and a quad origin, passed all eleven suites, and the first real `ow add` of a
+    card naming it was refused by `store.doc` (OW_MODEL; D935). No suite decodes into a store."""
+    subject = _subject(tmp_path)
+    (page,) = run_parse(subject.instantiate(), subject.fixtures[0], tmp_path / "p").fragment.pages
+    assert page["page_kind"] == "stream"
+    assert (page["w_mpt"], page["h_mpt"], page["quad_origin"]) == (None, None, None)
+
+
 def _digests(subject: Subject) -> dict[str, str]:
     """What a second process would have produced: this process's own digests.
 

@@ -129,6 +129,7 @@ from omniweave.graph import resolve as op_resolve
 from omniweave.graph import salience as op_salience
 from omniweave.graph.settle import Settled, settle
 from omniweave.route.detect import Detection, detect
+from omniweave.route.policy import POLICY_D
 from omniweave.run import discover, expand
 from omniweave.run import supervisor as sup
 from omniweave.run.manifest import (
@@ -576,6 +577,8 @@ def ingest(
     passwords: Passwords | None = None,
     services_root: Path | None = None,
     trigger: Trigger = "cli",
+    project_root: Path | None = None,
+    env: Mapping[str, str] | None = None,
 ) -> IngestReport:
     """Run hops 1-4 over one store, under `store.write`, and report where every unit stopped.
 
@@ -592,6 +595,10 @@ def ingest(
     its secret at routing and at parse, and an `encrypted` unit it maps is read again.
     `[ingest] max_parts` is the cap `gate.too-many-parts` compiles in (`routing.route_layers`,
     D644), and a unit it refused whose count the cap now admits is read again.
+
+    `project_root` and `env` are what `ow doctor` discovers drivers with (D935): the catalog
+    reads `.omniweave/drivers/` under the first and `OMNIWEAVE_DRIVER_PATH` from the second, and
+    routing adds the project's `.omniweave/policy.d` rules, which prepend to the builtin's.
 
     `sweep_ms` replaces `[runtime] deferred_sweep_ms` for this run's loop when given. It is the
     interval `Supervisor._settle()` waits between empty claims, and 08:915's two quiet polls mean a
@@ -623,6 +630,7 @@ def ingest(
             clock=ticking,
             output_root=output_root,
             trigger=trigger,
+            policy_dir=None if project_root is None else project_root / POLICY_D,
         )
         book = _Book(opened, config=config, host=host, clock=ticking)
         book.write()
@@ -649,6 +657,8 @@ def ingest(
                 accept_partial=accept_partial,
                 passwords=passwords,
                 services_root=cache_root / "services" if services_root is None else services_root,
+                project_root=project_root,
+                env=env,
             )
             pending = _receipt(thread, source_root=source_root)
         except BaseException:
@@ -707,6 +717,7 @@ def open_run(
     clock: Clock,
     output_root: Path | None = None,
     trigger: Trigger = "cli",
+    policy_dir: Path | None = None,
 ) -> OpenedRun:
     """Hop 1. The `run` row, `status = 'running'`, and the generation it minted.
 
@@ -725,7 +736,7 @@ def open_run(
         "argv": json.dumps(list(argv), separators=(",", ":")),
         "config_digest": config.config_digest,
         "semantic_digest": config.semantic_digest,
-        "policy_digest": compile_policy(route_layers(config)).policy_digest,
+        "policy_digest": compile_policy(route_layers(config, policy_dir=policy_dir)).policy_digest,
         "version": metadata.version("omniweave"),
         "contract": CONTRACT,
         "started_ns": started_ns,
@@ -799,6 +810,8 @@ def _hops(
     accept_partial: bool = False,
     passwords: Passwords | None = None,
     services_root: Path,
+    project_root: Path | None = None,
+    env: Mapping[str, str] | None = None,
 ) -> IngestReport:
     now_ns = clock.wall_ns()
     plan_batch = int(config.get("runtime.plan_batch"))  # type: ignore[arg-type]
@@ -824,7 +837,7 @@ def _hops(
         thread, generation=generation, at_ns=now_ns, plan_batch=plan_batch
     )
     inputs = replace(
-        _routing_inputs(config, offline=offline),
+        _routing_inputs(config, offline=offline, project_root=project_root, env=env),
         ignore_evidence_cache=ignore_evidence_cache,
         accept_partial=accept_partial,
         passwords=passwords,
@@ -1262,7 +1275,14 @@ def _keys_of(
     return keys
 
 
-def parse_keys_moved(store: Path, config: Config, *, offline: bool = False) -> bool:
+def parse_keys_moved(
+    store: Path,
+    config: Config,
+    *,
+    offline: bool = False,
+    project_root: Path | None = None,
+    env: Mapping[str, str] | None = None,
+) -> bool:
     """Whether a run would re-parse a settled unit because its parse driver moved. **D930.**
 
     The keys are `_parse_keys()`'s (`_keys_of`), over the same catalog and the same resolved
@@ -1278,7 +1298,8 @@ def parse_keys_moved(store: Path, config: Config, *, offline: bool = False) -> b
         return False
     from omniweave_core.discovery import catalog as build_catalog  # noqa: PLC0415
 
-    keys = _keys_of(build_catalog().cards, resolve_policy(config, offline=offline).driver_config)
+    cards = build_catalog(env=env, project_root=project_root).cards
+    keys = _keys_of(cards, resolve_policy(config, offline=offline).driver_config)
     connection = ow.connect_readonly(store)
     try:
         return discover.parse_keys_moved(connection, keys)  # type: ignore[arg-type]
@@ -1286,7 +1307,13 @@ def parse_keys_moved(store: Path, config: Config, *, offline: bool = False) -> b
         connection.close()
 
 
-def _routing_inputs(config: Config, *, offline: bool = False) -> _RoutingInputs:
+def _routing_inputs(
+    config: Config,
+    *,
+    offline: bool = False,
+    project_root: Path | None = None,
+    env: Mapping[str, str] | None = None,
+) -> _RoutingInputs:
     from importlib.metadata import distributions  # noqa: PLC0415 -- the routing path only
 
     from omniweave_core.discovery import catalog as build_catalog  # noqa: PLC0415
@@ -1302,8 +1329,13 @@ def _routing_inputs(config: Config, *, offline: bool = False) -> _RoutingInputs:
     registry = build_registry((*builtin_specs(), *installed.specs))
     return _RoutingInputs(
         registry=registry,
-        catalog=build_catalog(),
-        policy=compile_policy(route_layers(config), registry=registry),
+        catalog=build_catalog(env=env, project_root=project_root),
+        policy=compile_policy(
+            route_layers(
+                config, policy_dir=None if project_root is None else project_root / POLICY_D
+            ),
+            registry=registry,
+        ),
         resolving=resolve_policy(config, offline=offline),
         computers=dict(installed.computers),
         passes=frozenset(str(p) for p in config.get("graph.passes.enable")),  # type: ignore[union-attr]

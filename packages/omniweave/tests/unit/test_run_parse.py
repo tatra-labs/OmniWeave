@@ -384,7 +384,7 @@ def test_a_released_office_driver_parses_in_process_and_commits_what_a_worker_co
     released = "[drivers]\nallow_unattested = true\nrequire_lock = false\n"
     (inproc_root / "omniweave.toml").write_text(PROJECT + released, encoding="utf-8")
     s1_config = load(cwd=inproc_root, env={"OMNIWEAVE_HOME": str(inproc_root / "owhome")})
-    monkeypatch.setattr("omniweave_core.discovery.catalog", lambda: released_catalog)
+    monkeypatch.setattr("omniweave_core.discovery.catalog", lambda **_k: released_catalog)
     s1_store = inproc_root / ".omniweave" / "index.owstore"
     s1 = _run(inproc_root, s1_store, s1_config)
 
@@ -426,7 +426,7 @@ def test_a_restricted_card_stamps_what_it_parses_and_the_compile_bars_it(
         trust=dict(released_catalog.trust),
         tombstones=released_catalog.tombstones.values(),
     )
-    monkeypatch.setattr("omniweave_core.discovery.catalog", lambda: stamped)
+    monkeypatch.setattr("omniweave_core.discovery.catalog", lambda **_k: stamped)
     root = tmp_path / "project"
     (root / "docs").mkdir(parents=True)
     shutil.copy(FIXTURES / "rich.docx", root / "docs" / "rich.docx")

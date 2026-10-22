@@ -36,8 +36,6 @@ from omniweave.sdk.reports import DoctorFinding, DoctorReport
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-    from omniweave_core import config
-
 __all__ = [
     "BUILT",
     "DOCTOR_WORD",
@@ -251,7 +249,7 @@ def run(
         findings.extend(
             check_driver_cards(
                 env=env,
-                project_root=_project_root(resolved),
+                project_root=config.project_root(resolved),
                 enabled=[str(one) for one in enabled] if isinstance(enabled, tuple) else [],
                 allow_unattested=resolved.get("drivers.allow_unattested") is True,
             )
@@ -319,20 +317,6 @@ def main(
         for line in render(report):
             stdout.write(line.encode("ascii", "backslashreplace").decode("ascii") + "\n")
     return FAILED if report.failed else OK
-
-
-def _project_root(resolved: config.Config) -> Path | None:
-    """The directory of the `omniweave.toml` that supplied any value, or None when none did.
-
-    `discover()` resolves `.omniweave/drivers/` against it, and takes None as "no project" --
-    it never defaults to the working directory, and neither does this.
-    """
-    from omniweave_core.config import ConfigLayer  # noqa: PLC0415
-
-    for source in resolved.sources.values():
-        if source.layer is ConfigLayer.PROJECT_FILE and source.path is not None:
-            return source.path.parent
-    return None
 
 
 def _quoted(path: str) -> str:

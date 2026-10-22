@@ -254,6 +254,7 @@ def add_report(
     """
     from omniweave_core.acquire import add_sources  # noqa: PLC0415 -- a usage error never pays
     from omniweave_core.clock import SystemClock  # noqa: PLC0415
+    from omniweave_core.config import project_root  # noqa: PLC0415
     from omniweave_core.modelserver import services_root  # noqa: PLC0415
 
     from omniweave.run import discover  # noqa: PLC0415
@@ -282,7 +283,12 @@ def add_report(
     installs: dict[str, str]
     #  D930: a driver that moved its key re-parses settled units (D679), and only a run does
     #  that, so an `ow add` over unchanged files still opens one when a key moved.
-    if not dry_run and (added.queued or parse_keys_moved(store, config, offline=offline)):
+    if not dry_run and (
+        added.queued
+        or parse_keys_moved(
+            store, config, offline=offline, project_root=project_root(config), env=env
+        )
+    ):
         drain = _drain(
             store,
             config,
@@ -294,6 +300,7 @@ def add_report(
             passwords=passwords,
             services_root=services_root(env),
             trigger=trigger,
+            env=env,
         )
         states = _states(store, added.queued)
         completed = _completed(store, [uri for uri in added.queued if states.get(uri) == _SETTLED])
@@ -375,12 +382,15 @@ def _drain(
     passwords: Passwords | None = None,
     services_root: Path | None = None,
     trigger: Trigger = "cli",
+    env: Mapping[str, str] | None = None,
 ) -> tuple[str, ...]:
     """Step (b): the drain `ow ingest <path>...` runs, over the paths (a) just rostered.
 
     `roots` is the corpus's source root and the working directory `[roots] output` and `cache`
     resolve against when no file declared them, as `ow ingest` resolves them.
     """
+    from omniweave_core.config import project_root  # noqa: PLC0415
+
     from omniweave.run.ingest import ingest  # noqa: PLC0415 -- a dry run never pays for it
 
     source, cwd = roots
@@ -397,6 +407,8 @@ def _drain(
         passwords=passwords,
         services_root=services_root,
         trigger=trigger,
+        project_root=project_root(config),
+        env=env,
     )
     return report.lines()
 
