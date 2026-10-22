@@ -54,7 +54,6 @@ OFFICE = "parse.office.anydoc"
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 REPO = Path(__file__).resolve().parents[4]
-WINDOWS_ONLY = pytest.mark.skipif(sys.platform != "win32", reason="the named-pipe arm")
 
 
 def _card() -> Any:
@@ -464,7 +463,6 @@ def test_the_armed_hook_refuses_egress_in_a_real_interpreter() -> None:
     assert unarmed.stdout.strip() == "allowed"
 
 
-@WINDOWS_ONLY
 def test_the_host_launches_a_real_worker_that_parses_a_real_document(tmp_path: Path) -> None:
     """Hops 12-14 across a process boundary: `launch()` listens, spawns
     `python -m omniweave_core.host.worker`, puts it in a job object, accepts, and exchanges
@@ -474,7 +472,7 @@ def test_the_host_launches_a_real_worker_that_parses_a_real_document(tmp_path: P
     cas = BlobStore(tmp_path / "cas")
     with (FIXTURES / "rich.docx").open("rb") as source:
         digest = cas.put(source)
-    address = f"\\\\.\\pipe\\ow-test-worker-{time.monotonic_ns()}"
+    address = sp.local_address(f"ow-test-worker-{time.monotonic_ns()}")
     settings = sp.HostSettings(
         worker_idle_ttl_s=300, crash_threshold=3, crash_window_s=60, tick_ms=50,
         max_workers={"free": 4},
@@ -496,11 +494,14 @@ def test_the_host_launches_a_real_worker_that_parses_a_real_document(tmp_path: P
     )  # fmt: skip
     try:
         assert ack.driver_id == OFFICE
-        #  D636: `launch()` spawned the child suspended INTO its job, so the job holds it.
-        assert worker._job is not None
-        assert worker.pid in worker._job.pids()
-        #  D637: and at 04-driver-system.md:1754's priority, set at creation.
-        assert sp.priority_class(worker.pid) == sp.BELOW_NORMAL_PRIORITY_CLASS
+        if sys.platform == "win32":
+            #  D636: `launch()` spawned the child suspended INTO its job, so the job holds it.
+            #  D637: and at 04-driver-system.md:1754's priority, set at creation. Both are the
+            #  Windows cells of S4; POSIX has neither (D927), and the rest of this test is
+            #  the same worker on either transport.
+            assert worker._job is not None
+            assert worker.pid in worker._job.pids()
+            assert sp.priority_class(worker.pid) == sp.BELOW_NORMAL_PRIORITY_CLASS
         unit = UnitRef(
             uri=str(FIXTURES / "rich.docx"), part="", content_sha256=digest.hex(),
             byte_len=(FIXTURES / "rich.docx").stat().st_size, media_type=DOCX,
@@ -554,7 +555,6 @@ def test_a_memory_error_in_the_driver_is_resource_limit_on_memory_mb(
     assert box["outcome"]["status"] == 0
 
 
-@WINDOWS_ONLY
 def test_a_worker_the_watchdog_finds_over_memory_mb_is_ended_with_the_call(
     tmp_path: Path,
 ) -> None:
@@ -581,7 +581,7 @@ def test_a_worker_the_watchdog_finds_over_memory_mb_is_ended_with_the_call(
     cas = BlobStore(tmp_path / "cas")
     with big.open("rb") as source:
         digest = cas.put(source)
-    address = f"\\\\.\\pipe\\ow-test-worker-{time.monotonic_ns()}"
+    address = sp.local_address(f"ow-test-worker-{time.monotonic_ns()}")
     settings = sp.HostSettings(
         worker_idle_ttl_s=300, crash_threshold=3, crash_window_s=60, tick_ms=50,
         max_workers={"free": 4},
