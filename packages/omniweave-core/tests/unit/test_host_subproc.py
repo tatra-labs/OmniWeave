@@ -3120,6 +3120,85 @@ def test_a_cancelled_accept_releases_the_pipe_name_for_the_next_attempt() -> Non
     second.close()
 
 
+class _FakeKernel32:
+    """`ConnectNamedPipe` that blocks until cancelled; every call recorded. For `_PendingConnect`
+    on any OS: the race D940 fixed is in the waiter's ordering, not in Windows."""
+
+    def __init__(self, *, ignore_first_cancel: bool = False) -> None:
+        self.cancelled = threading.Event()
+        self.connects = 0
+        self.cancels = 0
+        self._ignore = ignore_first_cancel
+
+        def connect(_handle: object, _overlapped: object) -> int:
+            self.connects += 1
+            self.cancelled.wait(5.0)
+            return 0
+
+        def cancel(_thread: object) -> int:
+            self.cancels += 1
+            if self._ignore and self.cancels == 1:
+                return 0  # the cancel that lands before the waiter is inside the call
+            self.cancelled.set()
+            return 1
+
+        self.ConnectNamedPipe = connect
+        self.CancelSynchronousIo = cancel
+        self.GetLastError = lambda: 0
+
+
+class _FakeListener:
+    def __init__(self, kernel32: _FakeKernel32, *, hold: threading.Event | None = None) -> None:
+        self._kernel32 = kernel32
+        self.closed: list[int] = []
+        self._hold = hold
+
+    @property
+    def kernel32(self) -> _FakeKernel32:
+        """The waiter's first act: `hold` keeps it here, before it ever takes the lock."""
+        if self._hold is not None and threading.current_thread().name.startswith("ow-s4-accept"):
+            self._hold.wait(5.0)
+        return self._kernel32
+
+    def duplicate_current_thread(self) -> int:
+        return 99
+
+    def close_handle(self, handle: int) -> None:
+        self.closed.append(handle)
+
+
+def test_a_wait_given_up_before_it_began_never_begins() -> None:
+    """D940: `give_up()` ran before the waiter reached `ConnectNamedPipe`, so no cancel could stop
+    it, and it parked holding the pipe name. It now checks first, and never begins."""
+    hold = threading.Event()
+    kernel32 = _FakeKernel32()
+    listener = _FakeListener(kernel32, hold=hold)
+    pending = sp._PendingConnect(listener, 7, name="-h2d")  # type: ignore[arg-type]
+    giver = threading.Thread(target=pending.give_up)
+    giver.start()
+    while not pending._state["gave_up"]:
+        time.sleep(0.001)
+    hold.set()
+    giver.join(10.0)
+    assert not giver.is_alive()
+    assert kernel32.connects == 0
+    assert listener.closed == [7, 99], "the pipe handle, then the thread handle"
+
+
+def test_give_up_returns_only_once_the_pipe_handle_is_closed() -> None:
+    """D940: one cancel can miss; `give_up()` cancels again until the waiter has closed the
+    handle, so the NAME is free when it returns and a new listener can take it."""
+    kernel32 = _FakeKernel32(ignore_first_cancel=True)
+    listener = _FakeListener(kernel32)
+    pending = sp._PendingConnect(listener, 7, name="-d2h")  # type: ignore[arg-type]
+    while kernel32.connects == 0:
+        time.sleep(0.001)
+    pending.give_up()
+    assert kernel32.cancels >= 2
+    assert 7 in listener.closed
+    assert not pending.wait(0)
+
+
 @WINDOWS_ONLY
 def test_a_frame_crosses_the_real_transport_in_both_directions() -> None:
     """The round trip, over two real owner-only pipes: `HELLO` out, `HELLO_ACK` back.
