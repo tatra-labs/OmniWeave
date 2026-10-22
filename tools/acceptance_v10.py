@@ -240,7 +240,9 @@ CRITERIA: tuple[Criterion, ...] = (
             pytest(f"{CLI}/test_gate_scale.py", label="G22's mechanism, 40-300 units"),
         ),
         Coverage.PARTIAL,
-        "no nightly runs G22; the run is op.identify only, and the default asserts high_water "
+        "G22 runs nightly on a GitHub-hosted runner as a labelled indication (D924, a user "
+        "ruling of 2026-10-21), whose breach is reported and not a verdict; no ow-bench-1 runs "
+        "it. The run is op.identify only, and the default asserts high_water "
         "plus one plan batch rather than the literal bound (`--strict` overshoots "
         "structurally). Throughput passes 2,000 on the median since D919's group commit, "
         "2,651 transitions/s over seven local runs (870 after D917's claim rulings, 504 "

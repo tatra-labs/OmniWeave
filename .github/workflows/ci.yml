@@ -50,13 +50,15 @@
 #     G25 G26           P7 (16-roadmap.md:742-743)
 #     G27 (a a2 a3 c d) tools/gate_docs.py lands "with P1's gate harness" (section 6.4 on a2)
 #     G29               ADR-2's second append; the plan states no phase for it
-#   DELIBERATELY ABSENT: G22, whose runner `tools/gate_scale.py` LANDED at W4.10 and is still not
-#   run here. Section 6.4: it "is a nightly 100k-roster scale run with no PR cell, so it blocks the
+#   DELIBERATELY ABSENT FROM EVERY PR CELL: G22, whose runner `tools/gate_scale.py` LANDED at
+#   W4.10. Section 6.4: it "is a nightly 100k-roster scale run with no PR cell, so it blocks the
 #   *release* (checklist step 11) and is deliberately absent from ci-ok's required set."
-#   tools/gates.toml says the same as jobs = [] and pr = false. It belongs to section 6.5's nightly
-#   ow-bench-1 row, which is not this file -- so G22 is the one row where a runner existing does NOT
-#   arm a step, and `packages/omniweave/tests/unit/test_gate_scale.py` asserts that against this
-#   file in both directions: the script is named here and never invoked here.
+#   tools/gates.toml says the same as jobs = [] and pr = false. Its verdict belongs to section
+#   6.5's nightly ow-bench-1 row, which is not this file. Since D924, by a user ruling of
+#   2026-10-21, ONE schedule-only step in `gates` runs it on a hosted runner as a labelled
+#   indication: a breached bound (exit 1) is reported and does not fail, and a run that did not
+#   happen does. `test_gate_scale.py` and `test_ci_workflows.py` assert exactly that shape: no
+#   PR runs it, and the one step that does is schedule-gated.
 #
 # There is no continue-on-error and no "|| true" anywhere below, because section 6.8 refuses a
 # check that cannot fail: "There is no --warn-only anywhere." A guarded step is not that -- when
@@ -174,8 +176,10 @@ jobs:
     needs: [versions]
     runs-on: ubuntu-latest
     # 2x the 180 s budget of section 6.2 on a PR. The nightly adds `ow bench query` over a
-    # 5,000-page store, which `ow add` built in ~8 min on a workstation (D915), so it gets 40.
-    timeout-minutes: ${{ github.event_name == 'schedule' && 40 || 6 }}
+    # 5,000-page store, which `ow add` built in ~8 min on a workstation (D915), and G22's
+    # 100,000-unit run, 35-56 s on the same workstation and several times that on a hosted
+    # runner (D924), so it gets 60.
+    timeout-minutes: ${{ github.event_name == 'schedule' && 60 || 6 }}
     permissions:
       contents: read
     env:
@@ -679,6 +683,38 @@ jobs:
           path: bench-query.oweval
           # Thirty nights, so a seven-run median can be read off the artefacts once something
           # computes one; nothing does yet, and the report says so.
+          retention-days: 30
+      - name: "G22 (nightly) -- the 100k roster on a hosted runner, an indication"
+        # D924, under the same user ruling of 2026-10-21 as the step above, which covers V10-7:
+        # until an ow-bench-1 exists, G22's 100,000-unit run goes nightly on a GitHub-hosted
+        # runner, labelled as such. A BREACHED BOUND IS AN INDICATION and not a verdict: exit 1
+        # is reported beside its runner and does not fail the step, because section 6.4 keeps
+        # G22 out of ci-ok and makes it a release matter on the pinned machine (section 7.6 step
+        # 11), and one hosted night is neither. A RUN THAT DID NOT HAPPEN still fails: exit 2,
+        # or any other, is the harness broken, and section 6.8's check that cannot fail would be
+        # a step that hid that. So this is not the "|| true" the header refuses: one exit code is
+        # read, by name, and the rest still fail. A PR does not run it.
+        if: github.event_name == 'schedule'
+        env:
+          OMNIWEAVE_RUNNER: "github-hosted ubuntu-latest"
+        run: |
+          code=0
+          uv run tools/gate_scale.py --roster 100000 > g22.txt 2>&1 || code=$?
+          cat g22.txt
+          {
+            echo '```'
+            cat g22.txt
+            echo '```'
+            echo "G22 exited $code on $OMNIWEAVE_RUNNER: an indication, not the verdict, which" \
+              "is ow-bench-1's (11-repo-layout.md section 6.5)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" -ne 0 ] && [ "$code" -ne 1 ]; then exit "$code"; fi
+      - name: "keep G22's nightly report"
+        if: github.event_name == 'schedule'
+        uses: actions/upload-artifact@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          name: g22-nightly
+          path: g22.txt
           retention-days: 30
 
       - name: "fuzz/seeds is still the vendored corpus"
