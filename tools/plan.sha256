@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D921: host-metered wall and CPU time (04:1765 build note)
+# blessed-because: D922: eval/results published (13:95 build note)
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -39,7 +39,7 @@ documents-frozen  e3d9414cd24b29681c2da184fffa9c3fbc33e4d066f831fe9d8113b159e0ab
 documents-frozen  76979acde0cc3dcf5b9559dceb3e72fb9d0a70c91e1c03eec01e67fd4159a101  10-interfaces.md
 documents-frozen  02e7a92b746f777fa0aaeca8f149542cc3d849be2e209dc4bd0660e5d1aa7232  11-repo-layout.md
 documents-frozen  c59a51d9b477184b6b6114eb97eb17404699d196b5d17acb22095e8f8aaccca5  12-performance.md
-documents-frozen  ef16ccea8ee513a0c83133633a2e9b6169404e78e3e0cd57245ca5a3a3339138  13-quality.md
+documents-frozen  d2eaec8e14c54ffd323fccee7f2c5c6a3724c198b335204a7c6213aa73db148f  13-quality.md
 documents-frozen  78a3474b788625971c7a7fed610ef3c6518e9330bfd87e8411fbc744666b43d1  14-security.md
 documents-frozen  dc12dc92f5690bb2747048244ce1113803c4f03c67e21917574c2c9db7ba221a  15-observability.md
 documents-frozen  5cf9671f6a3972ec5c0462eaf6ad35ad2da2190c9772330c6280d1f085af90f6  16-roadmap.md
