@@ -1845,6 +1845,14 @@ _ERROR_PIPE_CONNECTED: Final = 535
 """`ConnectNamedPipe` returning FALSE with this code means the client connected BEFORE the call,
 which is success. Treating it as failure is the classic named-pipe race."""
 
+_GIVE_UP_STEP_S: Final = 0.05
+_GIVE_UP_STEPS: Final = 100
+"""`_PendingConnect.give_up()` cancels, then waits up to this many steps of this long (5 s) for
+the waiter to close its handle, cancelling again each step. **D940.** A cancel that lands before
+the waiter is inside `ConnectNamedPipe` cancels nothing, so one cancel is not enough, and a
+`give_up()` that returned before the handle closed left the NAME held: the next listener's
+`CreateNamedPipeW` failed with `ERROR_PIPE_BUSY` (231), 7 to 9 times in 200 under load."""
+
 _DUPLICATE_SAME_ACCESS: Final = 0x00000002
 """`DuplicateHandle`'s flag for "same access as the source". The source is the calling thread's
 pseudo-handle, whose access is full, so the duplicate can be passed to `CancelSynchronousIo`."""
@@ -2142,9 +2150,15 @@ class _PendingConnect:
         kernel32 = self._listener.kernel32
         with self._lock:
             self._state["thread"] = self._listener.duplicate_current_thread()
-        kernel32.ConnectNamedPipe.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
-        ok = bool(kernel32.ConnectNamedPipe(self._handle, None))
-        ok = ok or kernel32.GetLastError() == _ERROR_PIPE_CONNECTED
+            abandoned = bool(self._state["gave_up"])
+        if abandoned:
+            #  D940: `give_up()` ran before this thread began: no cancel could reach a wait that
+            #  had not started, so it must never start.
+            ok = False
+        else:
+            kernel32.ConnectNamedPipe.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+            ok = bool(kernel32.ConnectNamedPipe(self._handle, None))
+            ok = ok or kernel32.GetLastError() == _ERROR_PIPE_CONNECTED
         with self._lock:
             self._state["ok"] = ok
             orphaned = bool(self._state["gave_up"]) or not ok
@@ -2167,18 +2181,29 @@ class _PendingConnect:
             return self._state["ok"] is True
 
     def give_up(self) -> None:
-        """Abandon a wait that did not complete. Never blocks; never closes a live connection."""
+        """Abandon a wait that did not complete, and return once the pipe NAME is free. **D940.**
+
+        Never closes a live connection. It cancels the waiter's `ConnectNamedPipe` and waits, at
+        most `_GIVE_UP_STEPS` x `_GIVE_UP_STEP_S`, for the waiter to close the handle, cancelling
+        again each step, because a cancel that lands before the waiter is inside the call cancels
+        nothing. Returning earlier is what left a recreated listener `ERROR_PIPE_BUSY`.
+        """
         with self._lock:
             if self._state["ok"] is True:
                 return  # connected after all: the handle belongs to the caller now
             self._state["gave_up"] = True
-            thread_handle = self._state["thread"]
-            self._state["thread"] = None
-        if isinstance(thread_handle, int):
-            kernel32 = self._listener.kernel32
-            kernel32.CancelSynchronousIo.argtypes = [ctypes.c_void_p]
-            kernel32.CancelSynchronousIo(thread_handle)
-            self._listener.close_handle(thread_handle)
+        kernel32 = self._listener.kernel32
+        kernel32.CancelSynchronousIo.argtypes = [ctypes.c_void_p]
+        for _step in range(_GIVE_UP_STEPS):
+            with self._lock:
+                #  Under the lock: the waiter closes its thread handle under it too, so the cancel
+                #  can never reach a closed handle whose value the process has since reused.
+                thread_handle = self._state["thread"]
+                if isinstance(thread_handle, int):
+                    kernel32.CancelSynchronousIo(thread_handle)
+            self._thread.join(_GIVE_UP_STEP_S)
+            if not self._thread.is_alive():
+                break
 
 
 class NamedPipeListener:
