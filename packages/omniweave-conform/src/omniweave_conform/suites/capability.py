@@ -26,7 +26,8 @@ numbers, so a reader can go from an assertion name back to one row of that table
 | | formula block carries a notation, `assets = "none"` asserts zero asset drafts |
 | P15 | `achieved <= declared`, field by field: ordered keys with `>=`, `math` with superset, |
 | | booleans with implication |
-| P16 | `os_*` matches one row of section 7.2's mapping; `os_kind = pixels` implies a quad |
+| P16 | `os_*` matches one row of section 7.2's mapping; `os_kind = pixels` implies a quad; |
+| | a `bytes` or `glyphs` origin is one the model's own type holds (D938) |
 | P32 | `origin_span = "normalized"`: an address that LOCATES and does not prove |
 
 Plus the sixteenth key's obligation, which 04-driver-system.md:512 states as a conformance failure
@@ -376,6 +377,48 @@ def _origin_column_assertions(run_result: ParseRun) -> Iterator[Assertion]:
         fixture=name,
         locus="P16:length",
     )
+    refused = [why for block in run_result.blocks if (why := _model_refuses(block))]
+    yield Assertion(
+        "every bytes and glyphs origin is one the document model holds",
+        ok=not refused,
+        detail="; ".join(refused[:3]) if refused else "none",
+        fixture=name,
+        locus="P16:model",
+    )
+
+
+def _model_refuses(block: Mapping[str, Any]) -> str:
+    """Why `OriginBytes`/`OriginGlyphs` would refuse this block's `os`, or `""`. **D938.**
+
+    The two clauses above are the fragment's; this one is the host's. `store.fragment` builds a
+    `bytes` or `glyphs` origin through the model's own type, which refuses what 03 section 7.2's
+    mapping does not hold -- a `codec` that is not `<codec>/<errors>` (03:1466), a zero length --
+    and refusing it refuses the document. The template's bare `"utf-8"` passed this suite and was
+    refused by the first `ow add` of a card naming it, so the kit now asks the same question.
+    """
+    from omniweave_core.model.spans import OriginBytes, OriginGlyphs  # noqa: PLC0415
+
+    found = block.get("os")
+    origin: Mapping[str, Any] = found if isinstance(found, dict) else {}
+    kind = origin.get("k")
+    try:
+        if kind == "bytes":
+            OriginBytes(
+                part=str(origin.get("part") or ""),
+                start=origin.get("start"),  # type: ignore[arg-type]
+                length=origin.get("length"),  # type: ignore[arg-type]
+                codec=origin.get("codec"),  # type: ignore[arg-type]
+            )
+        elif kind == "glyphs":
+            OriginGlyphs(
+                part=str(origin.get("part") or ""),
+                extractor=str(origin.get("extractor") or ""),
+                start=origin.get("start"),  # type: ignore[arg-type]
+                length=origin.get("length"),  # type: ignore[arg-type]
+            )
+    except (ValueError, TypeError) as bad:
+        return f"{block.get('tmp', '?')}: {bad}"
+    return ""
 
 
 def _text_span_assertions(subject: Subject, run_result: ParseRun) -> Iterator[Assertion]:
