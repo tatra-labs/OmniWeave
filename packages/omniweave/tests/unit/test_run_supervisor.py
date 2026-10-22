@@ -766,6 +766,39 @@ def test_the_loop_claims_dispatches_and_completes_every_row() -> None:
     assert kinds(events).count("work.complete") == 3
 
 
+def test_the_claim_width_follows_the_class_the_last_claim_returned() -> None:
+    """D917, a user ruling of 2026-10-21 (D192): the first claim asks for the narrowest class's
+    width; each later one for the configured width of the class the claim before it returned."""
+    free = [[work_row(1, cost_class="free")], [work_row(2, cost_class="free")]]
+    billed = [[work_row(3, cost_class="billed_api")], [work_row(4, cost_class="free")]]
+    queue = FakeQueue([*free, *billed])
+    admission = Admission(
+        class_sem={c: asyncio.BoundedSemaphore(8) for c in ("free", "billed_api")},
+        worker_sem={c: asyncio.BoundedSemaphore(2) for c in ("free", "billed_api")},
+        render_sem=asyncio.BoundedSemaphore(1),
+        workers={"free": 2, "billed_api": 2},
+        inflight={"free": 8, "billed_api": 8},
+    )
+    report = asyncio.run(harness(queue, admission=admission).supervisor.run())
+    assert report.claimed == 4
+    assert queue.widths[:5] == [8, 256, 256, 8, 256]
+
+
+def test_a_claim_of_two_classes_sends_the_next_back_to_the_narrowest() -> None:
+    """D917: rows of two classes say nothing about the next head's, so the width is the safe one."""
+    mixed = [work_row(1, cost_class="free"), work_row(2, cost_class="billed_api")]
+    queue = FakeQueue([[work_row(9, cost_class="free")], mixed])
+    admission = Admission(
+        class_sem={c: asyncio.BoundedSemaphore(8) for c in ("free", "billed_api")},
+        worker_sem={c: asyncio.BoundedSemaphore(2) for c in ("free", "billed_api")},
+        render_sem=asyncio.BoundedSemaphore(1),
+        workers={"free": 2, "billed_api": 2},
+        inflight={"free": 8, "billed_api": 8},
+    )
+    asyncio.run(harness(queue, admission=admission).supervisor.run())
+    assert queue.widths[:3] == [8, 256, 8]
+
+
 def test_one_transition_per_unit_and_the_batch_is_invisible() -> None:
     """I24, as 08:782-784 states the test: a batch of 32 is 32 transitions and 32 events.
 
@@ -1062,8 +1095,9 @@ def test_the_exclusion_is_released_so_a_later_run_is_admitted() -> None:
 # -- the claim width --------------------------------------------------------
 
 
-def test_the_claim_asks_for_the_narrowest_class_because_it_cannot_name_one() -> None:
-    """`Store.claim` takes no cost class, so 256 free rows could come back as 256 billed ones."""
+def test_the_first_claim_asks_for_the_narrowest_class_because_it_cannot_name_one() -> None:
+    """`Store.claim` takes no cost class, so a run's first claim asks for `billed_api`'s 8; the
+    claims after it ask for the width of the class it returned (D917)."""
     queue = FakeQueue([[work_row(1)]])
     supervisor, _, _ = harness(
         queue, claim_batch={"free": 256, "local_compute": 32, "billed_api": 8}
@@ -1071,7 +1105,8 @@ def test_the_claim_asks_for_the_narrowest_class_because_it_cannot_name_one() -> 
 
     asyncio.run(supervisor.run())
 
-    assert set(queue.widths) == {8}, "billed_api's 8, not free's 256"
+    assert queue.widths[0] == 8, "billed_api's 8 before any class is known"
+    assert set(queue.widths[1:]) == {256}, "then free's 256, the class that came back"
 
 
 # -- the reaper and the sweeper ---------------------------------------------
