@@ -587,7 +587,7 @@ def test_the_part_count_and_the_work_transition_commit_or_roll_back_together(
     ledger = IdentifyLedger()
     store = SqliteStore(thread, derived_rows=ledger)
     claimed = store.claim(batch=8, gen=3, worker="host:1:t", lease_ms=60_000)
-    assert len(claimed) == 1, "a NULL dispatch_key batches alone (08:755)"
+    assert len(claimed) == 1, "one identify row is queued"
     row = claimed[0]
     assert row.operator == OP_IDENTIFY
 

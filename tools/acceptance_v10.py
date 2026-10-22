@@ -232,14 +232,17 @@ CRITERIA: tuple[Criterion, ...] = (
         "V10-7",
         "a nightly 100k-roster run within queue_high_water and 600 MB supervisor RSS",
         (
-            # G22's whole run is about 21 minutes here (the ledger's measurement) inside a 90-
-            # minute nightly cell, so the runner's 600 s default would fail it on time alone.
+            # G22's whole run was about 21 minutes here (the ledger's measurement) and is about
+            # two since D917, inside a 90-minute nightly cell; the hour is the older margin.
             Instrument("tools/gate_scale.py", ("tools/gate_scale.py",), slow=True, timeout_s=3600),
             pytest(f"{CLI}/test_gate_scale.py", label="G22's mechanism, 40-300 units"),
         ),
         Coverage.PARTIAL,
-        "no nightly; the run is op.identify only, and the default asserts high_water plus one "
-        "plan batch rather than the literal bound (`--strict` overshoots structurally)",
+        "no nightly runs G22; the run is op.identify only, and the default asserts high_water "
+        "plus one plan batch rather than the literal bound (`--strict` overshoots "
+        "structurally). Throughput is red: 870 transitions/s against 2,000 since D917's claim "
+        "rulings (504 before), bound now by Store.complete's one transaction a unit, whose "
+        "remedy is F8's group commit",
     ),
     Criterion(
         "V10-8",

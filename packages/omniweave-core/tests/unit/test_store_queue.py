@@ -117,7 +117,7 @@ class Queued:
 
     `operator` starting `op.` forces `decision_id`, `driver` and `dispatch_key` to NULL together --
     0004_runtime.sql:118-124's three CHECKs make the triple structural, so an `op.*` row is the only
-    way to seed a NULL `dispatch_key` and the "a NULL batches alone" test has no other shape.
+    way to seed a NULL `dispatch_key`, and the NULL-key claim test has no other shape.
     """
 
     part: str
@@ -497,15 +497,16 @@ def test_a_batch_is_coherent_on_dispatch_key(
     assert len(rows) == 3
 
 
-def test_a_null_dispatch_key_batches_alone(
+def test_null_dispatch_key_rows_are_claimed_together_and_nothing_else_with_them(
     owstore: Path, opened: tuple[SqliteStore, ow.StoreThread]
 ) -> None:
     """0004_runtime.sql:104-105: *"NULL for an `op.*` row, AND A NULL BATCHES ALONE"*.
 
-    This is the half the charter's printed `w.dispatch_key = head.dispatch_key` gets wrong twice
-    over: `=` matches no NULL at all, so `op.identify` would be unclaimable, and a plain `IS` would
-    batch every `op.*` row together. Both `op.*` rows here have priority 300, so the head is one of
-    them whatever else is queued -- and exactly one must come back.
+    The charter's printed `w.dispatch_key = head.dispatch_key` matches no NULL at all, so
+    `op.identify` would be unclaimable; `IS` matches NULL to NULL. Until D917 the claim also
+    collapsed to one row for a NULL head. A user ruling of 2026-10-21 (D191) binds *"batches
+    alone"* at the invoke instead, where `dispatch.form_batches()` gives each NULL-key row its own
+    batch, so a NULL head now claims every `op.*` row up to the width -- and no keyed row with it.
     """
     store, _ = opened
     seed(
@@ -517,9 +518,11 @@ def test_a_null_dispatch_key_batches_alone(
         ],
     )
     rows = store.claim(batch=10, gen=1, worker=WORKER, lease_ms=60_000)
-    assert len(rows) == 1, "a NULL dispatch_key must batch alone"
-    assert rows[0].operator == "op.identify"
-    assert rows[0].dispatch_key is None
+    assert sorted(row.unit_part for row in rows) == ["i0", "i1"], (
+        "both op.* rows, not the keyed one"
+    )
+    assert all(row.operator == "op.identify" and row.dispatch_key is None for row in rows)
+    assert store.claim(batch=1, gen=1, worker=WORKER, lease_ms=60_000)[0].unit_part == "p0"
 
 
 def test_priority_survives_batching(

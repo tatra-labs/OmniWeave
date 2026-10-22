@@ -574,7 +574,7 @@ def test_the_queue_depth_table_measures_one_claim_at_each_depth(tmp_path: Path) 
     assert [depth.claimable for depth in depths] == [2_000, 250], "deepest first"
     for depth in depths:
         assert depth.claims == 40
-        assert depth.rows == 40, "one row per claim: a NULL dispatch_key batches alone"
+        assert depth.rows == 40, "one row per claim: the diagnostic asks each for one"
         assert depth.ms_per_claim > 0
 
 
@@ -684,7 +684,8 @@ def test_the_report_prints_the_machine_it_measured_on(tmp_path: Path, monkeypatc
     _code, output = _run(["--roster", "100000", "--root", str(tmp_path)])
     assert "8 cpus" in output
     assert "queue_high_water 50,000 / queue_low_water 25,000" in output
-    assert "_next_width() asks for 8" in output
+    assert "_next_width() asks for 8 first" in output
+    assert "then the class it got (D917)" in output
 
 
 def test_the_split_is_printed_on_a_green_run_too(tmp_path: Path, monkeypatch) -> None:

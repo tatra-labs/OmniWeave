@@ -55,12 +55,13 @@ constrain, so the claim scanned and sorted the whole claimable set twice: O(clai
 the depth `[runtime] queue_high_water` holds the queue at. D837 gave the claim two indexes it
 seeks, `work_claim_head` and `work_claim_key`, and this table is now what shows the cost flat.
 
-**`claim_widths()` -- what one claim BUYS for that cost.** `op.identify` carries
-`dispatch_key IS NULL`, and `CLAIM_SQL`'s `LIMIT` subquery collapses to `1` for a NULL head
-(`0004_runtime.sql:104-105`, *"A NULL BATCHES ALONE"*, enforced at the claim). So each of the
-100,000 rows pays a whole scan for one row. D191. And `Supervisor._next_width()` asks for
-`min([runtime.claim] batch)` -- 8, which is `billed_api`'s -- because the narrow `claim` takes no
-cost class, so even rows that CAN batch amortise the scan over 8 and not over `free`'s 256. D192.
+**`claim_widths()` -- what one claim BUYS for that cost.** Until D917 two rulings owed to the plan
+kept the claim narrow. `CLAIM_SQL`'s `LIMIT` collapsed to `1` for a NULL head, so each of the
+100,000 `op.identify` rows paid a whole statement for one row (D191); and `Supervisor._next_width()`
+asked for `min([runtime.claim] batch)`, `billed_api`'s 8, for every claim (D192). A user ruling of
+2026-10-21 took both: *"a NULL batches alone"* binds at the invoke, so a NULL head claims at the
+asked width, and the width is the configured one of the class the last claim returned. This table
+is what that buys per row.
 
 ## Two bounds the plan states and one the plan's own producer cannot hold
 
@@ -937,8 +938,8 @@ def _machine_lines(measured: Measured) -> list[str]:
         f"  derived       workers {_table(measured.workers)}",
         f"                inflight {_table(measured.inflight)}",
         f"                [runtime.claim] batch {_table(measured.claim_batch)}",
-        f"                _next_width() asks for {measured.claim_width}"
-        f", which is min() of that table",
+        f"                _next_width() asks for {measured.claim_width} first, then the class"
+        f" it got (D917)",
         f"  water         queue_high_water {measured.high_water:,}"
         f" / queue_low_water {measured.low_water:,}"
         f", [runtime] plan_batch {measured.plan_batch}",
@@ -1016,9 +1017,9 @@ def _split_lines(measured: Measured) -> list[str]:
 def _width_note(width: Width, measured: Measured) -> str:
     """Which knob each width is, so a number in the table resolves to something a reader can set."""
     if width.width == 1:
-        return "what CLAIM_SQL gives a NULL dispatch_key, whatever is asked for -- D191"
+        return "one row a claim: what a NULL dispatch_key got until D917 (D191)"
     if width.width == measured.claim_width:
-        return "what Supervisor._next_width() asks for: min([runtime.claim] batch) -- D192"
+        return "Supervisor._next_width()'s first claim, min([runtime.claim] batch) -- D192, D917"
     for name, configured in sorted(measured.claim_batch.items()):
         if configured == width.width:
             return f"[runtime.claim] batch.{name}"
