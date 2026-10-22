@@ -173,7 +173,9 @@ jobs:
     name: "gates (G1 G3 G4 G6-G9 G11-G15 G17 G18 G20 G23-G25 G27-G30)"
     needs: [versions]
     runs-on: ubuntu-latest
-    timeout-minutes: 6 # 2x the 180 s budget of section 6.2.
+    # 2x the 180 s budget of section 6.2 on a PR. The nightly adds `ow bench query` over a
+    # 5,000-page store, which `ow add` built in ~8 min on a workstation (D915), so it gets 40.
+    timeout-minutes: ${{ github.event_name == 'schedule' && 40 || 6 }}
     permissions:
       contents: read
     env:
@@ -656,6 +658,28 @@ jobs:
           echo "store.bytes_per_block MEASUREMENT mechanism enforced; NOT a budget verdict --" \
             "12-performance.md:1966 pins Budgets to ow-bench-1, which this runner is not" \
             | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: "ow bench query (nightly) -- query.warm_p50_ms on a hosted runner, an indication"
+        # D916, by a user ruling of 2026-10-21: V10-6's warm query runs nightly on a GitHub-hosted
+        # runner, labelled as such, until an ow-bench-1 exists. `ow add` builds gen_5000p_pdf's
+        # 5,000 pages (~210,000 blocks), the FTS indexes are merged, and the 40 golden queries are
+        # timed warm. The report names this runner beside the budget, and the run is kept as an
+        # eval_perf row whose status is `unknown` or `unstable`: a pass or fail is the seven-run
+        # median's on the pinned machine, which one hosted night is not. A PR does not run it.
+        if: github.event_name == 'schedule'
+        env:
+          OMNIWEAVE_RUNNER: "github-hosted ubuntu-latest"
+        run: |
+          uv run tools/ow_bench.py query --oweval bench-query.oweval | tee bench-query.txt
+          { echo '```'; cat bench-query.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: "keep the query bench's rows (nightly)"
+        if: github.event_name == 'schedule'
+        uses: actions/upload-artifact@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        with:
+          name: bench-query
+          path: bench-query.oweval
+          # Thirty nights, so a seven-run median can be read off the artefacts once something
+          # computes one; nothing does yet, and the report says so.
+          retention-days: 30
 
       - name: "fuzz/seeds is still the vendored corpus"
         # 13-quality.md:163 and 11-repo-layout.md:390: `fuzz/seeds/` "holds the atheris corpus,

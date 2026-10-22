@@ -223,9 +223,10 @@ CRITERIA: tuple[Criterion, ...] = (
         ),
         Coverage.PARTIAL,
         "`ow bench query` runs (D915): over `ow add`'s store of gen_5000p_pdf, 210,001 blocks, "
-        "warm p50 measured 95 ms on a developer machine, inside 180, end-to-end only. No run "
-        "is persisted and no nightly runs it, the `parse` subject is blocked, no 4M-cell "
-        "fixture exists, and `ow-bench-1` and the Pacer's seven-run median do not",
+        "warm p50 measured 95 ms on a developer machine, inside 180, end-to-end only. It runs "
+        "nightly on a GitHub-hosted runner and is kept as an eval_perf row (D916, a user ruling "
+        "of 2026-10-21), whose status stays unknown: `ow-bench-1` and the Pacer's seven-run "
+        "median do not exist. The `parse` subject is blocked and no 4M-cell fixture exists",
     ),
     Criterion(
         "V10-7",

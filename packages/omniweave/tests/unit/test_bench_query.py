@@ -184,3 +184,82 @@ def test_a_page_count_below_one_does_not_run(tmp_path: Path) -> None:
     )
     assert code == RUNNER.EXIT_NOT_RUN
     assert "DID NOT RUN: --pages 0" in out.getvalue()
+
+
+# ---------------------------------------------------------------------------------------------
+# D916: the run kept as .oweval rows
+# ---------------------------------------------------------------------------------------------
+
+
+def _measured(*, before: int = 1_000_000_000, after: int = 1_010_000_000) -> Any:
+    return benchquery.QueryResult(
+        pages=5_000,
+        blocks=210_001,
+        runs=5,
+        total=bench.Series.of("end-to-end", [95.0, 95.1, 96.0]),
+        by_kind=(),
+        merged=True,
+        narrowing_all=True,
+        not_measured=("vectors on: no encoder is installed by default",),
+        pacer_before_ns=before,
+        pacer_after_ns=after,
+    )
+
+
+def test_a_kept_run_is_one_corpus_one_perf_run_and_its_budget_row() -> None:
+    kept = benchquery.batch_of(
+        REPO, _measured(), machine="github-hosted ubuntu-latest", started_ns=1, ended_ns=2
+    )
+    (corpus,) = kept.corpora
+    (run,) = kept.runs
+    (row,) = kept.perf
+    assert corpus.corpus_id == "fixtures/store/golden-queries.jsonl"
+    assert corpus.version == corpus.corpus_digest[:16]
+    assert (run.suite, run.subject, run.timing_basis, run.status) == (
+        "perf",
+        "omniweave",
+        "in_process",
+        "ok",
+    )
+    assert run.hardware.startswith("github-hosted ubuntu-latest (")
+    assert run.measured_on.hardware == run.hardware
+    assert any("seven-run rolling median on ow-bench-1" in gap for gap in run.not_measured)
+    assert (row.budget_id, row.work_ns, row.status) == ("query.warm_p50_ms", 95_100_000, "unknown")
+    assert row.run_id == run.run_id
+    assert row.time_ratio == pytest.approx(95_100_000 / 1_005_000_000)
+
+
+def test_pacer_readings_that_disagree_make_the_row_unstable_never_a_pass() -> None:
+    kept = benchquery.batch_of(
+        REPO, _measured(after=2_000_000_000), machine="m", started_ns=1, ended_ns=2
+    )
+    assert kept.perf[0].status == "unstable"
+
+
+def test_a_run_whose_pacer_was_not_read_is_not_kept() -> None:
+    with pytest.raises(ValueError, match="needs the Pacer read before and after"):
+        benchquery.batch_of(REPO, _measured(before=0), machine="m", started_ns=1, ended_ns=2)
+
+
+def test_the_runner_keeps_the_run_and_release_check_refuses_its_unknown_row(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from omniweave_core.store.oweval import open_oweval  # noqa: PLC0415
+
+    monkeypatch.setattr(RUNNER.bench, "query", lambda *_a, **_k: _measured())
+    monkeypatch.setenv("OMNIWEAVE_RUNNER", "github-hosted ubuntu-latest")
+    store = tmp_path / "bench.oweval"
+    out = StringIO()
+    code = RUNNER.main(
+        ["query", "--oweval", str(store), "--root", str(tmp_path / "r"), "--home", str(tmp_path)],
+        out=out,
+    )
+    assert code == RUNNER.EXIT_CLEAN
+    assert "kept: query.warm_p50_ms in" in out.getvalue()
+    assert "measured on github-hosted ubuntu-latest, not the pinned ow-bench-1" in out.getvalue()
+    connection = open_oweval(store)
+    try:
+        rows = connection.execute("SELECT budget_id, status FROM eval_perf").fetchall()
+    finally:
+        connection.close()
+    assert rows == [("query.warm_p50_ms", "unknown")]
