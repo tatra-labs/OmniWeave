@@ -43,6 +43,7 @@ from omniweave_core.events import (
     RunRecorder,
     writer_id,
 )
+from omniweave_core.identity import canonical_uri
 from omniweave_core.redact import normalized, path_token, redact
 
 if TYPE_CHECKING:
@@ -102,6 +103,11 @@ class PathRedaction:
     `[roots]`, so a path in it becomes the same token. The token -> path mapping is written to
     `{output_root}/runs/{run_id}.paths.json`, mode 0600, beside the manifest and never in the
     stream; the salt is the run's own and is written nowhere.
+
+    The roots are held in `canonical_uri`'s form, because that is the form a `unit_uri` and a
+    driver's message take: resolved through symlinks and case-folded where the platform folds.
+    A root given as macOS's `/var/...` would otherwise miss every unit under `/private/var/...`,
+    and those paths would fall to rule 2's `<redacted:{n}chars>` with no token in the map.
     """
 
     salt: bytes
@@ -117,7 +123,7 @@ class PathRedaction:
             return None
         return cls(
             salt=os.urandom(16),
-            roots=tuple(str(root) for root in roots),
+            roots=tuple(canonical_uri(root) for root in roots),
             out=output_root / "runs" / f"{run_id}.paths.json",
         )
 
