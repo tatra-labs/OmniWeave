@@ -22,7 +22,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
-from omniweave.hooks.session import CONTROL_DIR, SESSIONS_DIR, read
+from omniweave.hooks.session import CONTROL_DIR, PID, SEQ, SESSIONS_DIR, read
 
 NOW: int = 1_800_000_000_000_000_000
 WRITERS: int = 4
@@ -83,9 +83,20 @@ def test_concurrent_appends_are_either_intact_or_counted_and_never_silently_lost
 
     assert all(child.returncode == 0 for child in children)
     assert missing >= 0
-    #  Every writer's last record can be lost invisibly -- a gap needs a survivor on both sides --
-    #  so the accounted-for figure is allowed to fall short by at most one record per writer.
-    assert journal.gaps + journal.skipped + WRITERS >= missing
+    #  A gap needs a survivor on both sides, so a writer's records lost before its first survivor
+    #  or after its last are invisible to `gaps` -- and there may be more than one at either end
+    #  (D925: a hosted Windows run lost 125 against 120 + 0 + 4, two at one writer's tail). Each
+    #  writer's `seq` runs 0..EACH-1, so those ends are COUNTED here rather than allowed for, and
+    #  every other loss is inside a span, where `gaps` must count it exactly: a malformed line
+    #  costs its record too and lands in one of the two, so `skipped` is extra, not a substitute.
+    seen: dict[int, list[int]] = {}
+    for record in journal.records:
+        seen.setdefault(int(record[PID]), []).append(int(record[SEQ]))
+    ends = sum(
+        min(seqs) + (EACH - 1 - max(seqs)) if (seqs := seen.get(writer)) else EACH
+        for writer in range(WRITERS)
+    )
+    assert journal.gaps + ends == missing, (journal.gaps, journal.skipped, ends, missing)
 
 
 def test_every_surviving_record_is_a_whole_record(tmp_path: Path) -> None:
