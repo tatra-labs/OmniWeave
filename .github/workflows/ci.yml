@@ -714,6 +714,15 @@ jobs:
         # `tools/ow_eval.py` exits 2 on a register row it cannot compute, so a row added here
         # without an implementation fails this step rather than passing quietly.
         run: uv run tools/ow_eval.py golden --check span_exact_rate
+      - name: "Q-G8, Q-G19, Q-G21, Q-G27 -- the committed eval/results tree's static checks"
+        # D922. Until the tree existed these four passed over nothing and no step ran them; now
+        # eval/results holds `ow eval publish`'s rows, and a row edited by hand, a MeasuredOn cut
+        # short, a metric shipped without its partner or left ungated past two releases fails
+        # here. Each reads committed bytes only, under a second together.
+        run: |
+          uv run tools/gate_measured_on.py
+          uv run tools/gate_results.py
+          uv run tools/gate_metric_rot.py
 
   # ==========================================================================================
   # test -- the OS/Python matrix. NINE CELLS since P2; see the matrix comment. Carries

@@ -197,9 +197,11 @@ CRITERIA: tuple[Criterion, ...] = (
             pytest(f"{CORE}/test_calibration.py", label="Q-G14's shape over CalStatus"),
         ),
         Coverage.PARTIAL,
-        "no `eval/results/` tree is committed yet, so both static gates pass over nothing; a "
-        "number published outside it (a card's [quality] block, docs, release notes) is "
-        "scanned by nothing",
+        "`eval/results/` holds 12 rows from 9 runs of `ow eval run` on a developer machine "
+        "(D922), each with its ten-field MeasuredOn, and both static gates hold over them; a "
+        "card's [[quality.benchmark]] row cannot load without a complete MeasuredOn, and no "
+        "shipped card carries one. A number in docs or release notes is scanned by nothing, "
+        "and the tree is to be republished from the release commit",
     ),
     Criterion(
         "V10-6",

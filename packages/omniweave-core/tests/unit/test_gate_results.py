@@ -152,3 +152,23 @@ def test_a_file_that_is_not_rows_did_not_run(
 def test_a_bad_argument_did_not_run(capsys: pytest.CaptureFixture[str]) -> None:
     assert GATE.main(["--no-such-flag"]) == GATE.EXIT_NOT_RUN
     capsys.readouterr()
+
+
+def test_the_committed_tree_holds_and_the_gates_job_checks_it() -> None:
+    """D922: `eval/results` is published, so the gates job runs the static checks over it and the
+    committed rows hold them here too, rather than a CI step being the only place they are read."""
+    assert (REPO / "eval" / "results").is_dir()
+    assert GATE.main([]) == GATE.EXIT_CLEAN
+    for name in ("gate_measured_on", "gate_metric_rot"):
+        spec = importlib.util.spec_from_file_location(
+            f"_owgate_{name}", REPO / "tools" / f"{name}.py"
+        )
+        assert spec is not None and spec.loader is not None, name
+        other = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = other
+        spec.loader.exec_module(other)
+        assert other.main([]) == other.EXIT_CLEAN, name
+    workflow = (REPO / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    gates_job = workflow.split("\n  gates:\n", 1)[1].split("\n  test:\n", 1)[0]
+    for script in ("gate_measured_on.py", "gate_results.py", "gate_metric_rot.py"):
+        assert f"uv run tools/{script}" in gates_job, script

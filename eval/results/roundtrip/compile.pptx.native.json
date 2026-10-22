@@ -1,0 +1,44 @@
+[
+  {
+    "ci_hi": 1.0,
+    "ci_lo": 0.8712710781407849,
+    "confounders": [
+      "the golden is the target's own fixture, its gate manual-required",
+      "R2 is the hard address_survival row at 1.000 (D902), so a single element that does not survive the round trip refuses a release",
+      "0 element(s) failed R2"
+    ],
+    "corpus_id": "fixtures/out/golden/pptx",
+    "corpus_version": "e747c3471968c47f",
+    "entrant_bias": false,
+    "fairness": {},
+    "measured_on": {
+      "corpus": "fixtures/out/golden/pptx@e747c3471968c47f",
+      "corpus_digest": "e747c3471968c47f2bd423592209126c71a65307b247581e3859f738a25d4b4c",
+      "hardware": "windows-amd64",
+      "harness_version": "0.1.0",
+      "prompt_version": "n/a",
+      "runtime": "cpython",
+      "runtime_version": "3.12.0",
+      "sampling": "n/a",
+      "weights": "n/a",
+      "weights_revision": "n/a"
+    },
+    "method": "closed_form",
+    "metric": "address_survival",
+    "n": 26,
+    "not_measured": [
+      "R1 and R3-R7 are the target suite's to judge (ow conform --target); this run states R2, 13's roundtrip assertion type"
+    ],
+    "publishable": false,
+    "run_id": "3f5f199978e9225c704dcc6713ea2177",
+    "slice_key": "pptx",
+    "standing": "WITHHELD",
+    "subject": "compile.pptx.native",
+    "subject_version": "0.1.0",
+    "suite": "roundtrip",
+    "truth_kind": "native_run",
+    "unpinned": false,
+    "value": 1.0,
+    "witness": "self"
+  }
+]

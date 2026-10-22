@@ -334,9 +334,10 @@ STORAGE_MEDIA: Final = ("nvme", "spinning", "smb", "unknown")
 PUBLICATION: Final = (
     "12-performance.md section 7.4 publishes a bench through an `eval_perf` row into a committed "
     "`eval/results/**.json` tree, byte-diff gated. The row's table is `.oweval`'s since D814 and "
-    "`paced()` builds one since D822, but no bench writes it and the tree does not exist: `eval/` "
-    "holds gates.toml, perf.toml and baselines/ and no results. A result is returned as a value "
-    "for the caller to render, and a number printed here reaches no scoreboard."
+    "`paced()` builds one since D822. The tree holds `ow eval publish`'s scoreboard rows since "
+    "D922, and no `eval_perf` row is among them: `scheduler()` writes none, and the query "
+    "bench's (D916) stays in the `.oweval` it was given. A result is returned as a value for the "
+    "caller to render, and a number printed here reaches no scoreboard."
 )
 """Why `scheduler()` returns a value instead of writing one. Printed by the runner, not a comment.
 

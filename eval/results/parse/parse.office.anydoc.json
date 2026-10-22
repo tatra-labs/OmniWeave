@@ -1,0 +1,90 @@
+[
+  {
+    "ci_hi": null,
+    "ci_lo": null,
+    "confounders": [
+      "the fixtures are the driver's own, written by its authors",
+      "19 fixture(s) refused by the driver: deepxml.docx (resource_limit), encrypted.odt (encrypted), memo.doc (corrupt_input), not_a_document.bin (unsupported_format), analysis.ipynb (unsupported_format), broken.json (unsupported_format), catalog.xml (unsupported_format), data.json (unsupported_format), entities.xml (unsupported_format), events.jsonl (unsupported_format), guide.md (unsupported_format), latin1.txt (unsupported_format), logo.svg (unsupported_format), not_a_document.bin (unsupported_format), notes.txt (unsupported_format), page.html (unsupported_format), page.xhtml (unsupported_format), rows.tsv (unsupported_format), truncated.docx (corrupt_input)"
+    ],
+    "corpus_id": "packages/omniweave-office/fixtures",
+    "corpus_version": "5accffe345ca212d",
+    "entrant_bias": false,
+    "fairness": {},
+    "measured_on": {
+      "corpus": "packages/omniweave-office/fixtures@5accffe345ca212d",
+      "corpus_digest": "5accffe345ca212db698ed3fd66f1dac72fd8c620a7f64419321c257a94449ee",
+      "hardware": "windows-amd64",
+      "harness_version": "0.1.0",
+      "prompt_version": "n/a",
+      "runtime": "cpython",
+      "runtime_version": "3.12.0",
+      "sampling": "n/a",
+      "weights": "n/a",
+      "weights_revision": "n/a"
+    },
+    "method": "none",
+    "metric": "order_acc",
+    "n": 0,
+    "not_measured": [
+      "span_exact_rate: vacuous, no block claims verbatimness, so nothing could fail (13:661, R-T16); 109 block(s) seen",
+      "structure_f1: no fixture carries the structure.jsonl reference it scores against (13:1104)",
+      "table_rel_acc: 10 unverified assertion(s) ran and were not scored (13:1022)",
+      "order_acc: 15 unverified assertion(s) ran and were not scored (13:1022)"
+    ],
+    "publishable": false,
+    "run_id": "ac9f2d2ca7288f2052565324c92a0c0d",
+    "slice_key": "__macro__",
+    "standing": "UNKNOWN",
+    "subject": "parse.office.anydoc",
+    "subject_version": "0.1.0",
+    "suite": "parse",
+    "truth_kind": "rendered",
+    "unpinned": false,
+    "value": null,
+    "witness": "self"
+  },
+  {
+    "ci_hi": null,
+    "ci_lo": null,
+    "confounders": [
+      "the fixtures are the driver's own, written by its authors",
+      "19 fixture(s) refused by the driver: deepxml.docx (resource_limit), encrypted.odt (encrypted), memo.doc (corrupt_input), not_a_document.bin (unsupported_format), analysis.ipynb (unsupported_format), broken.json (unsupported_format), catalog.xml (unsupported_format), data.json (unsupported_format), entities.xml (unsupported_format), events.jsonl (unsupported_format), guide.md (unsupported_format), latin1.txt (unsupported_format), logo.svg (unsupported_format), not_a_document.bin (unsupported_format), notes.txt (unsupported_format), page.html (unsupported_format), page.xhtml (unsupported_format), rows.tsv (unsupported_format), truncated.docx (corrupt_input)"
+    ],
+    "corpus_id": "packages/omniweave-office/fixtures",
+    "corpus_version": "5accffe345ca212d",
+    "entrant_bias": false,
+    "fairness": {},
+    "measured_on": {
+      "corpus": "packages/omniweave-office/fixtures@5accffe345ca212d",
+      "corpus_digest": "5accffe345ca212db698ed3fd66f1dac72fd8c620a7f64419321c257a94449ee",
+      "hardware": "windows-amd64",
+      "harness_version": "0.1.0",
+      "prompt_version": "n/a",
+      "runtime": "cpython",
+      "runtime_version": "3.12.0",
+      "sampling": "n/a",
+      "weights": "n/a",
+      "weights_revision": "n/a"
+    },
+    "method": "none",
+    "metric": "table_rel_acc",
+    "n": 0,
+    "not_measured": [
+      "span_exact_rate: vacuous, no block claims verbatimness, so nothing could fail (13:661, R-T16); 109 block(s) seen",
+      "structure_f1: no fixture carries the structure.jsonl reference it scores against (13:1104)",
+      "table_rel_acc: 10 unverified assertion(s) ran and were not scored (13:1022)",
+      "order_acc: 15 unverified assertion(s) ran and were not scored (13:1022)"
+    ],
+    "publishable": false,
+    "run_id": "ac9f2d2ca7288f2052565324c92a0c0d",
+    "slice_key": "__macro__",
+    "standing": "UNKNOWN",
+    "subject": "parse.office.anydoc",
+    "subject_version": "0.1.0",
+    "suite": "parse",
+    "truth_kind": "human",
+    "unpinned": false,
+    "value": null,
+    "witness": "self"
+  }
+]

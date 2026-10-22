@@ -442,7 +442,8 @@ def test_the_retrieve_half_counts_violations_and_rates_soundness(
         3,
         "exact",
     )
-    assert (violations.ci_lo, violations.ci_hi, violations.truth_kind) == (None, None, "native_run")
+    #  D922: an exact count's interval is the count itself, never null (Q-G19's row clause).
+    assert (violations.ci_lo, violations.ci_hi, violations.truth_kind) == (1.0, 1.0, "native_run")
     assert (soundness.metric, soundness.value, soundness.n, soundness.method) == (
         "citation_soundness",
         5 / 6,
