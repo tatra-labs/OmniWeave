@@ -20,8 +20,12 @@ the `test` job's T1 run and this step.
 2. **A run that collected nothing did not run.** `pytest` exits 5 when no test is collected, and
    a module that skips every test is the same silence. Either is exit 2 here, never 0: a symmetry
    gate that checked no host is 11-repo-layout.md section 6.8's check that cannot fail.
-3. **One child, bounded.** The child is killed past `--timeout-s` (the row's budget, doubled)
-   and that is a FAIL, not a hang: a reversal that never finishes has not reversed.
+3. **One child, bounded.** The child is killed past `--timeout-s` and that is a FAIL, not a
+   hang: a reversal that never finishes has not reversed. The bound is a hang guard and not the
+   budget: hosted Windows cells ran the module in 43-51 s where Linux and macOS took 5-7 s, and
+   a 60 s bound killed two of them (D920's follow-up on #178).
+4. **The scratch directory never decides the verdict.** On Windows a killed process tree can
+   still hold the log for a moment, so its removal ignores errors; the log is read first.
 
 ## Exit codes
 
@@ -54,8 +58,9 @@ EXIT_NOT_RUN: Final = 2
 MODULE: Final = "packages/omniweave/tests/unit/test_gate_install.py"
 """Ruling 1: the gate's one body."""
 
-TIMEOUT_S: Final = 60.0
-"""Twice G35's `budget_s = 30` in `tools/gates.toml`."""
+TIMEOUT_S: Final = 600.0
+"""A hang guard: five times G35's `budget_s = 120`, which is itself over twice the slowest cell
+measured (hosted Windows, 51 s)."""
 
 PYTEST_NO_TESTS: Final = 5
 """`pytest.ExitCode.NO_TESTS_COLLECTED`, spelled here so the runner imports nothing from pytest."""
@@ -117,7 +122,9 @@ def main(argv: list[str] | None = None) -> int:
     if not (module if module.is_absolute() else REPO / module).is_file():
         _say(f"G35 DID NOT RUN  {args.module} does not exist")
         return EXIT_NOT_RUN
-    with tempfile.TemporaryDirectory(prefix="ow-install-gate-") as scratch:
+    with tempfile.TemporaryDirectory(
+        prefix="ow-install-gate-", ignore_cleanup_errors=True
+    ) as scratch:
         log = Path(scratch) / "pytest.log"
         argv_child = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(module)]
         code = _run(argv_child, log, args.timeout_s)

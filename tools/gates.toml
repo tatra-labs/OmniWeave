@@ -991,9 +991,9 @@ section       = "07-store-and-retrieval.md section 6.1; 18-api-sketch.md section
 id            = "G35"
 assertion     = "`ow install` then `ow uninstall` leaves every built host's files byte-identical, and the receipt names every written path with its post-write sha256"
 jobs          = ["test"]
-# The module runs 117 cases in 8.5-9.0 s on the P2 build machine; 30 s is three times that, for a
-# hosted macOS cell's slower filesystem.
-budget_s      = 30
+# The module runs 117 cases in 8.5-9.0 s on the P2 build machine, 5-7 s on hosted Linux and
+# macOS cells and 43-51 s on hosted Windows ones (#178's run). 120 s is over twice the slowest.
+budget_s      = 120
 pr            = true
 nightly       = true
 release       = true
