@@ -838,6 +838,12 @@ jobs:
             echo "G26 NOT ENFORCED: lands at P7 (16-roadmap.md:743)" \
               | tee -a "$GITHUB_STEP_SUMMARY"
           fi
+      - name: "G35 -- ow install then ow uninstall is byte-identical on every built host"
+        # The sixth append to tools/gates.toml, on the same terms as G30 through G34: registered,
+        # not yet rendered in section 6.4 (D484, D920). 10-interfaces.md:1775 names it G-install.
+        # It runs on every cell because what an install writes differs by OS; the runner reads
+        # the gate module's verdict and calls a run that checked no host "did not run".
+        run: uv run tools/gate_install.py
 
   # ==========================================================================================
   # golden -- ubuntu x 3.12, Reductions + Counters + Cassette replay, <= 4 min. Section 6.4
