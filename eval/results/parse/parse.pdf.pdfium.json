@@ -1,0 +1,86 @@
+[
+  {
+    "ci_hi": null,
+    "ci_lo": null,
+    "confounders": [
+      "the fixtures are the driver's own, written by its authors",
+      "3 fixture(s) refused by the driver: no_text_layer.pdf (needs_ocr), not_a_pdf.bin (corrupt_input), truncated.pdf (corrupt_input)"
+    ],
+    "corpus_id": "packages/omniweave-pdf/fixtures",
+    "corpus_version": "c89c2278ec67a06f",
+    "entrant_bias": false,
+    "fairness": {},
+    "measured_on": {
+      "corpus": "packages/omniweave-pdf/fixtures@c89c2278ec67a06f",
+      "corpus_digest": "c89c2278ec67a06f7c21b01d1a9ab5eae8a36f3096caf557d515b58b9371f92b",
+      "hardware": "windows-amd64",
+      "harness_version": "0.1.0",
+      "prompt_version": "n/a",
+      "runtime": "cpython",
+      "runtime_version": "3.12.0",
+      "sampling": "n/a",
+      "weights": "n/a",
+      "weights_revision": "n/a"
+    },
+    "method": "none",
+    "metric": "order_acc",
+    "n": 0,
+    "not_measured": [
+      "structure_f1: no fixture carries the structure.jsonl reference it scores against (13:1104)",
+      "order_acc: 60 unverified assertion(s) ran and were not scored (13:1022)"
+    ],
+    "publishable": false,
+    "run_id": "4ba571c3bcdfe27249d5839ea589b042",
+    "slice_key": "__macro__",
+    "standing": "UNKNOWN",
+    "subject": "parse.pdf.pdfium",
+    "subject_version": "0.1.0",
+    "suite": "parse",
+    "truth_kind": "rendered",
+    "unpinned": false,
+    "value": null,
+    "witness": "self"
+  },
+  {
+    "ci_hi": 1.0,
+    "ci_lo": 0.9939394011432428,
+    "confounders": [
+      "the fixtures are the driver's own, written by its authors",
+      "3 fixture(s) refused by the driver: no_text_layer.pdf (needs_ocr), not_a_pdf.bin (corrupt_input), truncated.pdf (corrupt_input)"
+    ],
+    "corpus_id": "packages/omniweave-pdf/fixtures",
+    "corpus_version": "c89c2278ec67a06f",
+    "entrant_bias": false,
+    "fairness": {},
+    "measured_on": {
+      "corpus": "packages/omniweave-pdf/fixtures@c89c2278ec67a06f",
+      "corpus_digest": "c89c2278ec67a06f7c21b01d1a9ab5eae8a36f3096caf557d515b58b9371f92b",
+      "hardware": "windows-amd64",
+      "harness_version": "0.1.0",
+      "prompt_version": "n/a",
+      "runtime": "cpython",
+      "runtime_version": "3.12.0",
+      "sampling": "n/a",
+      "weights": "n/a",
+      "weights_revision": "n/a"
+    },
+    "method": "closed_form",
+    "metric": "span_exact_rate",
+    "n": 630,
+    "not_measured": [
+      "structure_f1: no fixture carries the structure.jsonl reference it scores against (13:1104)",
+      "order_acc: 60 unverified assertion(s) ran and were not scored (13:1022)"
+    ],
+    "publishable": false,
+    "run_id": "4ba571c3bcdfe27249d5839ea589b042",
+    "slice_key": "pdf/born_digital",
+    "standing": "WITHHELD",
+    "subject": "parse.pdf.pdfium",
+    "subject_version": "0.1.0",
+    "suite": "parse",
+    "truth_kind": "native_run",
+    "unpinned": false,
+    "value": 1.0,
+    "witness": "self"
+  }
+]

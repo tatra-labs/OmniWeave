@@ -728,8 +728,11 @@ def retrieve(
             metric=VIOLATIONS,
             value=float(checked.violations),
             n=len(checked.asked),
-            ci_lo=None,
-            ci_hi=None,
+            #  D922: a count over every answer asked has no sampling error, so its interval is
+            #  the count itself. Null bounds with an `exact` method fail Q-G19's row clause,
+            #  which keeps null for a row whose method is `none` (`scoreboard` ruling 5).
+            ci_lo=float(checked.violations),
+            ci_hi=float(checked.violations),
             method="exact",
             truth_kind=truth[VIOLATIONS],
             state="ok",
