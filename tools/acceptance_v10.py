@@ -428,9 +428,11 @@ CRITERIA: tuple[Criterion, ...] = (
         Coverage.PARTIAL,
         "a real `ow add` of three drivers' documents is priced by a PriceBook that rates wall and "
         "CPU time, since the host meters each worker from outside (D921), and `ow cost --verify` "
-        "reconciles both of its runs against their manifests to 0 micros. What is not metered: an "
-        "in-process (S1) call's CPU, which shares the supervisor's process, and CPU under one "
-        "accounting tick, which Windows reports as 0 (the office and text units measured 0 ms)",
+        "reconciles both of its runs against their manifests to 0 micros. An in-process (S1) "
+        "parse is charged its calling thread's CPU across the call, since the driver runs on that "
+        "thread (D945). What is not metered: CPU under one accounting tick, which Windows reports "
+        "as 0 (the office and text units measured 0 ms), and the segment and derive operators' "
+        "calls, which the run does not meter (derive bills the driver's own figures)",
     ),
     Criterion(
         "V10-14",

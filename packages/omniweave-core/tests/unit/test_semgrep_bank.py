@@ -425,6 +425,13 @@ POSITIVE: tuple[tuple[str, str, str, str | None], ...] = (
         None,
     ),
     ("omniweave-no-time-time-in-library-code", "import time\nt = time.time()\n", PLAIN, None),
+    # D945: a thread's CPU is clock.thread_cpu_ns(), injected, and read nowhere else.
+    (
+        "omniweave-no-time-time-in-library-code",
+        "import time\nc = time.thread_time_ns()\n",
+        PLAIN,
+        None,
+    ),
     ("omniweave-no-random-in-library-code", "import random\n", PLAIN, None),
     ("omniweave-no-secrets-in-library-code", "import secrets\nsecrets.token_hex()\n", PLAIN, None),
     ("omniweave-no-uuid4-in-library-code", "import uuid\ni = uuid.uuid4()\n", PLAIN, None),
