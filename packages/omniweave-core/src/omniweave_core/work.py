@@ -1028,8 +1028,7 @@ WHERE id IN (SELECT w.id FROM work w JOIN head h ON w.dispatch_key IS h.dispatch
                 AND (w.retry_after IS NULL OR w.retry_after <= {STORE_NOW_MS})
                 AND w.attempts_total < {MAX_WORK_ATTEMPTS} AND w.claimed_by IS NOT :worker
               ORDER BY w.priority DESC, w.id
-              LIMIT IFNULL(
-                (SELECT CASE WHEN dispatch_key IS NULL THEN 1 ELSE :batch END FROM head), 0))
+              LIMIT IFNULL((SELECT :batch FROM head), 0))
 RETURNING {", ".join(WORK_COLUMNS)}
 """  # noqa: S608 -- see the docstring: no caller input.
 """THE BATCH-COHERENT CLAIM. One statement. Priority survives. charter.md:4083-4102.
@@ -1041,16 +1040,19 @@ Transcribed from the charter's block with exactly three deviations, each forced 
 `store/queue.py`'s module docstring argues why nothing is lost: one `dispatch_key` is one
 `cost_class`.
 
-**(b) `JOIN head h ON w.dispatch_key IS h.dispatch_key`, not `w.dispatch_key = head.dispatch_key`,
-and a `LIMIT` that collapses to 1 for a NULL head.** This is a defect in the printed statement.
+**(b) `JOIN head h ON w.dispatch_key IS h.dispatch_key`, not `w.dispatch_key = head.dispatch_key`.**
+This is a defect in the printed statement.
 `dispatch_key` is *"NULL for an `op.*` row, AND A NULL BATCHES ALONE"* (0004_runtime.sql:104-105),
 and `=` is never true of two NULLs -- so under the charter's SQL an `op.identify` row selected as
 the head matches no row in the `picked` subquery, the UPDATE claims nothing, and `op.identify` is
 unclaimable forever. Since `op.identify` *"is what CREATES the part rows the queue then drains"*
 (08:619) and carries priority 300, the head is exactly where it would appear. `IS` matches NULL to
-NULL, which alone would batch every `op.*` row together; the `LIMIT` subquery is what makes a NULL
-head *"batch alone"* as the DDL requires. `ORDER BY w.priority DESC, w.id` then picks the head row
-itself. Reported.
+NULL, so a NULL head claims up to `:batch` `op.*` rows together. *"A NULL batches alone"* binds at
+the INVOKE, by a user ruling of 2026-10-21 (D191, D917): `dispatch.form_batches()` gives every
+NULL-key row a batch of its own, as 02:238's *"batch"* (one `DriverHost.invoke`) reads, so the claim
+need not enforce it a second time. Until D917 the `LIMIT` collapsed to 1 for a NULL head, and every
+`op.identify` row paid a whole claim statement: 0.48 ms a row against 0.012 at a width of 256
+(D191's table). Reported.
 
 The `IFNULL(..., 0)` around that subquery is not decoration. When nothing is claimable the `head`
 CTE is empty, the scalar subquery is NULL, and **SQLite raises `datatype mismatch` on a NULL

@@ -1069,6 +1069,7 @@ class Supervisor:
         "_sweep",
         "_swept",
         "_timings",
+        "_width_class",
         "_worker",
         "_workers",
     )
@@ -1113,6 +1114,7 @@ class Supervisor:
         self._timings = timings
         self._worker = worker
         self._start_batch = dict(claim_batch)
+        self._width_class: str | None = None
         self._sweep = sweep
         self._emit = emit
         self._closed_queue = closed_queue
@@ -1288,6 +1290,7 @@ class Supervisor:
                 await self._settle()
                 continue
             empty = 0
+            self._width_class = _one_class(rows)
             self._claimed += len(rows)
             self._announce_claim(rows)
             for batch in form_batches(rows, mint=self._mint):
@@ -1296,16 +1299,28 @@ class Supervisor:
                 await self._inbox.put(batch)
 
     def _next_width(self) -> int:
-        """How many rows the next claim asks for: the NARROWEST class, because a claim names none.
+        """How many rows the next claim asks for: the class the last claim returned, else the
+        narrowest. D917, by a user ruling of 2026-10-21 (D192).
 
         `Store.claim(batch, gen, worker, lease_ms)` takes no cost class -- the charter's
         four-parameter form is what ships, and `store/__init__.py`'s `Store` docstring records the
         disagreement with 08:2478's wider print. So the width cannot be chosen for the class that is
-        about to come back, and the only safe choice is the smallest configured one: asking for 256
-        because `free` allows it, and getting 256 `billed_api` rows because those happened to be the
-        highest-priority, would take 256 leases for a class bounded at two units in flight.
+        about to come back. Until D917 it was always the smallest configured one, `billed_api`'s 8,
+        which made a run of `free` work pay a 5.8x claim per row (D192's measurement).
+
+        Now the first claim of a run, and any claim after one that returned more than one class,
+        asks for the narrowest; every other asks for the configured width of the class the last
+        claim returned, since work of one class arrives in runs (`priority DESC, dispatch_key`).
+        A claim that guesses wide and meets a narrower class takes more leases than that class has
+        units in flight, which the plan feared. It costs nothing but waiting: admission still gates
+        each batch on its class's semaphore (`_serve`), the sweep extends every lease this worker
+        holds (`extend_live_leases`), and INV-17 makes this process the store's one claimer, so no
+        other worker is kept from those rows.
         """
-        return max(1, min(self._start_batch.values(), default=1))
+        narrowest = max(1, min(self._start_batch.values(), default=1))
+        if self._width_class is None:
+            return narrowest
+        return max(1, self._start_batch.get(self._width_class, narrowest))
 
     async def _settle(self) -> None:
         """One quiet pass: a sweep interval, or until the run closes or a batch finishes. D676."""
@@ -1742,6 +1757,12 @@ def _blocker(counts: Mapping[str, int]) -> str:
     claimable set with none of them is a quarantine.
     """
     return "budget" if counts.get("deferred", 0) > 0 else "quarantine"
+
+
+def _one_class(rows: Sequence[WorkRow]) -> str | None:
+    """D917: the one cost class `rows` share, or `None` when they carry more than one."""
+    classes = {row.cost_class for row in rows}
+    return classes.pop() if len(classes) == 1 else None
 
 
 def _default_mint(ctx: RunContext) -> Callable[[], str]:

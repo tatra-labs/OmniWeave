@@ -579,7 +579,11 @@ release        = true
 # backpressure holds the queue AT). D837 added `work_claim_head` and `work_claim_key`, which the
 # claim seeks: 0.28 ms at that depth, and the run went from 81 to 504 transitions/s. What is left
 # is that a NULL `dispatch_key` claims one row per statement, so `op.identify` pays a claim per
-# row (D191), and `_next_width()`'s `min()` (D192); both are rulings owed to the plan.
+# row (D191), and `_next_width()`'s `min()` (D192); both are rulings owed to the plan. A user
+# ruling of 2026-10-21 took both (D917): a NULL head claims at the asked width, and the width
+# follows the class the last claim returned. 504 -> 870 transitions/s at 100,000 units, the claim
+# 4% of the drain; what is left is `Store.complete`, one transaction per unit (08:919), whose
+# remedy is F8's group commit.
 #
 # Red is the correct state for it. A nightly cell with `jobs = []` blocks the release (section 7.6
 # step 11) and no merge, and section 6.8 refuses the alternative: "There is no --warn-only
