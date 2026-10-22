@@ -89,6 +89,7 @@ from __future__ import annotations
 import argparse
 import asyncio  # noqa: TID251 -- gate harness; see the module docstring's last section.
 import contextlib
+import dataclasses
 import os
 import shutil
 import sys
@@ -302,6 +303,7 @@ class Timed:
         "completes",
         "completes_s",
         "counts",
+        "groups",
         "reaps",
     )
 
@@ -312,6 +314,7 @@ class Timed:
         self.claim_s = 0.0
         self.completes = 0
         self.completes_s = 0.0
+        self.groups = 0
         self.reaps = 0
         self.counts = 0
 
@@ -329,6 +332,19 @@ class Timed:
         self.completes_s += time.perf_counter() - at
         self.completes += 1
         return committed
+
+    def groupable(self, row_id: int, result: object) -> bool:
+        """D919: forwarded, so a timed store group-commits as the real one does."""
+        return self._inner.groupable(row_id, result)  # type: ignore[arg-type]
+
+    def complete_group(self, items: Sequence[tuple[int, int, object]]) -> tuple[bool, ...]:
+        """D919: a group's wall time, shared over its units in `complete_ms`."""
+        at = time.perf_counter()
+        answers = self._inner.complete_group(items)  # type: ignore[arg-type]
+        self.completes_s += time.perf_counter() - at
+        self.completes += len(items)
+        self.groups += 1
+        return answers
 
     def reap_expired_leases(self, now_ms: int) -> int:
         self.reaps += 1
@@ -610,14 +626,7 @@ async def run_scale(
     host = sup.HostFacts.measure(root)
     admission = sup.derive_admission(config, host)
     shipped = sup.LoopTimings.of(config)
-    timings = sup.LoopTimings(
-        lease_ms=shipped.lease_ms,
-        lease_extend_ms=shipped.lease_extend_ms,
-        stall_poll_ms=shipped.stall_poll_ms,
-        deferred_sweep_ms=SWEEP_MS,
-        shutdown_grace_ms=shipped.shutdown_grace_ms,
-        loop_lag_max_ms=shipped.loop_lag_max_ms,
-    )
+    timings = dataclasses.replace(shipped, deferred_sweep_ms=SWEEP_MS)
     claim_batch = _claim_batch(config)
     plan_batch = int(config.get("runtime.plan_batch"))  # type: ignore[attr-defined]
     events: dict[str, int] = {}

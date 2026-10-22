@@ -853,14 +853,7 @@ async def scheduler(
     host = sup.HostFacts.measure(root)
     admission = sup.derive_admission(config, host)
     shipped = sup.LoopTimings.of(config)
-    timings = sup.LoopTimings(
-        lease_ms=shipped.lease_ms,
-        lease_extend_ms=shipped.lease_extend_ms,
-        stall_poll_ms=shipped.stall_poll_ms,
-        deferred_sweep_ms=SWEEP_MS,
-        shutdown_grace_ms=shipped.shutdown_grace_ms,
-        loop_lag_max_ms=shipped.loop_lag_max_ms,
-    )
+    timings = dataclasses.replace(shipped, deferred_sweep_ms=SWEEP_MS)
     batch_widths = claim_batch_of(config)
     plan_batch = int(config.get("runtime.plan_batch"))  # type: ignore[attr-defined]
 

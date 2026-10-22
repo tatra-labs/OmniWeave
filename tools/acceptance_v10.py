@@ -240,9 +240,9 @@ CRITERIA: tuple[Criterion, ...] = (
         Coverage.PARTIAL,
         "no nightly runs G22; the run is op.identify only, and the default asserts high_water "
         "plus one plan batch rather than the literal bound (`--strict` overshoots "
-        "structurally). Throughput is red: 870 transitions/s against 2,000 since D917's claim "
-        "rulings (504 before), bound now by Store.complete's one transaction a unit, whose "
-        "remedy is F8's group commit",
+        "structurally). Throughput passes 2,000 on the median since D919's group commit, "
+        "2,651 transitions/s over seven local runs (870 after D917's claim rulings, 504 "
+        "before), but two of the seven fell under it, on a workstation and not the nightly",
     ),
     Criterion(
         "V10-8",
