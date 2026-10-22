@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D934: redact() and described() at the Driver host seams, 15:1335
+# blessed-because: D935: the project route layer, 05:941
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -31,7 +31,7 @@ documents-frozen  6ffc2070193630b39f15385fc8640ec7b1a3e242ef098426f2754d4070a802
 documents-frozen  1dad5c8ef798764c3bd3cc772210f6085569c8d38c4d272db6444575171efbff  02-architecture.md
 documents-frozen  501d1d2ba47a7fc974ce7952032ac1e458aaa6fdbebedf3f2154d7c05cf331c7  03-document-model.md
 documents-frozen  3cbd900af170ad12de0e8beeb8411b159f9ae84aaa01386b81ffce8e72a470a9  04-driver-system.md
-documents-frozen  4db10013935a3de62e8cee075a463e94ef2ee414ae33a98365f41be562ec7183  05-ingest-and-routing.md
+documents-frozen  6faee32ebeeacc759b93cf797dd650d38bb61bb790addd4078495633494d052f  05-ingest-and-routing.md
 documents-frozen  7c4c7946cad37746e602ef662e72d6a75ee43cc6b9367173c906cddc6d9f763e  06-structure-extraction.md
 documents-frozen  25666745a9572e7eadf017b6988a2216744cc3eca5a3f572d45da8f1b8c3e161  07-store-and-retrieval.md
 documents-frozen  0541d4740ec76c7114191fa15550a12bab09abdfb29eb2706d6d59f13db398e3  08-runtime.md

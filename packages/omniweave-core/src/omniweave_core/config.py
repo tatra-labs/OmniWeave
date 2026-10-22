@@ -58,6 +58,7 @@ __all__ = [
     "join_key",
     "key_of_env_name",
     "load",
+    "project_root",
     "resolve_key",
     "scan_lines",
     "split_key",
@@ -1500,3 +1501,16 @@ def _is_inside(cwd: Path, inner: str, outer: str) -> bool:
         return False
     relative = a[len(b.rstrip("/")) + 1 :]
     return relative.split("/", 1)[0] != CONTROL_DIR
+
+
+def project_root(resolved: Config) -> Path | None:
+    """The directory of the `omniweave.toml` that supplied any value, or None when none did.
+
+    Where `.omniweave/drivers/` and `.omniweave/policy.d/` resolve: `discovery.discover()` takes
+    it as `project_root`, and routing's `project` layer is under it (D935). It never defaults to
+    the working directory, because a command run outside a project has no project.
+    """
+    for source in resolved.sources.values():
+        if source.layer is ConfigLayer.PROJECT_FILE and source.path is not None:
+            return source.path.parent
+    return None

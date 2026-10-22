@@ -742,23 +742,14 @@ def _need_fixes(driver: DriverCard, card: CompileCard) -> dict[str, str]:
 
 
 def _discover(resolved: config.Config, env: Mapping[str, str]) -> Any:
+    from omniweave_core.config import project_root  # noqa: PLC0415
     from omniweave_core.discovery import discover  # noqa: PLC0415
 
-    return discover(env=env, project_root=_project_root(resolved))
+    return discover(env=env, project_root=project_root(resolved))
 
 
 def _explicit(parsed: argparse.Namespace) -> Path | None:
     return Path(parsed.config) if parsed.config else None
-
-
-def _project_root(resolved: config.Config) -> Path | None:
-    """The directory of the `omniweave.toml` that supplied a value, as `doctor` resolves it."""
-    from omniweave_core.config import ConfigLayer  # noqa: PLC0415
-
-    for source in resolved.sources.values():
-        if source.layer is ConfigLayer.PROJECT_FILE and source.path is not None:
-            return source.path.parent
-    return None
 
 
 def _refuse_unserved(parsed: argparse.Namespace, *, verb: str, fix: str) -> None:
