@@ -93,7 +93,7 @@ import threading
 from dataclasses import dataclass, field, replace
 from importlib import metadata
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, cast, get_args
+from typing import TYPE_CHECKING, Any, Final, cast, get_args
 
 from omniweave_core.acquire import (
     IngestGuards,
@@ -202,6 +202,7 @@ __all__ = [
     "close_run",
     "ingest",
     "open_run",
+    "parse_keys_moved",
     "row_as_explicit",
     "sources_of",
 ]
@@ -1240,17 +1241,49 @@ def _parse_keys(inputs: _RoutingInputs) -> dict[str, tuple[int, str]]:
     stamps on a document's `producer` (`_granted`'s digest, over the same card and the same
     `[drivers]` config). A card whose config does not validate is left out: `resolve()` rejects
     it, so nothing would parse under it. **D679.**"""
+    return _keys_of(inputs.catalog.cards, inputs.resolving.driver_config)
+
+
+def _keys_of(
+    cards: Mapping[str, Any], driver_config: Mapping[str, Mapping[str, object]]
+) -> dict[str, tuple[int, str]]:
+    """`_parse_keys()`'s body over the two inputs it reads, so D930's check can build only
+    those two and not the evidence registry and the compiled policy routing needs."""
     from omniweave_core.canonical import sha256_canonical  # noqa: PLC0415
     from omniweave_core.errors import ConfigError  # noqa: PLC0415
 
     keys: dict[str, tuple[int, str]] = {}
-    for driver, card in inputs.catalog.cards.items():
+    for driver, card in cards.items():
         try:
-            effective = card.config.effective(inputs.resolving.driver_config.get(driver, {}))
+            effective = card.config.effective(driver_config.get(driver, {}))
         except ConfigError:
             continue
         keys[driver] = (card.identity.schema_version, sha256_canonical(effective))
     return keys
+
+
+def parse_keys_moved(store: Path, config: Config, *, offline: bool = False) -> bool:
+    """Whether a run would re-parse a settled unit because its parse driver moved. **D930.**
+
+    The keys are `_parse_keys()`'s (`_keys_of`), over the same catalog and the same resolved
+    `[drivers]` config the drain builds, so this agrees with the D679 re-entry the drain would
+    perform; the registry and the policy, which routing needs and the keys do not, are not
+    built. `ow add` asks it when no file was queued: before D930 such an `ow add` opened no run,
+    so a driver's `schema_version` bump or semantic config change never re-parsed an unchanged
+    file. GR8's driver-version step passed only when the step before it left a file inside the
+    racy-mtime window, which queued it and opened a run by accident; under load it did not, and
+    the step failed. A missing store has nothing settled.
+    """
+    if not store.is_file():
+        return False
+    from omniweave_core.discovery import catalog as build_catalog  # noqa: PLC0415
+
+    keys = _keys_of(build_catalog().cards, resolve_policy(config, offline=offline).driver_config)
+    connection = ow.connect_readonly(store)
+    try:
+        return discover.parse_keys_moved(connection, keys)  # type: ignore[arg-type]
+    finally:
+        connection.close()
 
 
 def _routing_inputs(config: Config, *, offline: bool = False) -> _RoutingInputs:
