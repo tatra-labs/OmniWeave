@@ -682,6 +682,101 @@ class SqliteStore:
             return False
         return True
 
+    def groupable(self, row_id: int, result: StepResultView) -> bool:
+        """Whether `row_id`'s completion is a zero-derived-row transition (D919). PURE.
+
+        08:2600's `[runtime] store_group_commit_ms` is *"the group-commit window, for zero-derived-
+        row transitions **only**"*: a completion whose plan is the `work` transition alone, with no
+        derived rows, deps, reservation commit or spend row beside it. Such a unit's writes are one
+        statement, so a group of them in one transaction leaves each unit all-or-nothing, which is
+        the one property a group may not weaken (I20 holds trivially, having no spend row to hold).
+        """
+        return len(self.complete_plan(row_id, result)) == 1
+
+    def complete_group(self, items: Sequence[tuple[int, int, StepResultView]]) -> tuple[bool, ...]:
+        """Group commit (D919, a user ruling of 2026-10-22 on F8): many zero-derived-row
+        transitions of one cost class in ONE transaction; each answer as `complete()` gives it.
+
+        `items` is `(row_id, gen, result)` per unit. Every one must be `groupable()`, since a unit
+        with derived rows owes them its own transaction, and all must share a cost class, since
+        `Unit.durable` follows the class and is set before `BEGIN` (ST14). A unit whose commit
+        predicate matches nothing is superseded and answers `False` WITHOUT rolling the group back:
+        its one statement wrote nothing, so the others are untouched, which is the difference from
+        `complete()`, where the zero rows abort the unit's other participants. A row that does not
+        exist raises for the whole group, as `complete()` raises for it alone.
+
+        The cost class is read for every row in one statement rather than one unit a row, which
+        with the single transaction is the whole saving: `complete()` is two store-thread units a
+        unit, and a group of n is two.
+        """
+        if not items:
+            return ()
+        plans = [(row_id, gen, self.complete_plan(row_id, result)) for row_id, gen, result in items]
+        derived = [row_id for row_id, _gen, plan in plans if len(plan) != 1]
+        if derived:
+            raise StoreError(
+                f"work rows {derived} write derived rows, and a group commit is for "
+                f"zero-derived-row transitions only (08:2600)",
+                fix="complete each of those rows on its own with Store.complete()",
+            )
+        ids = [row_id for row_id, _gen, _plan in plans]
+        classes = self._cost_classes(ids)
+        missing = sorted(set(ids) - set(classes))
+        if missing:
+            raise StoreError(
+                f"work rows {missing} do not exist, so completing them is not a lost race",
+                fix="complete only row_ids returned by Store.claim()",
+            )
+        kinds = sorted(set(classes.values()))
+        if len(kinds) != 1:
+            raise StoreError(
+                f"a group commit carries one cost class and these rows carry {kinds}; durability "
+                f"is set per class before BEGIN (ST14)",
+                fix="group completions by cost class before calling complete_group()",
+            )
+        bound = [
+            (row_id, MappingProxyType({**plan[0].params, "gen": gen}), plan[0].sql)
+            for row_id, gen, plan in plans
+        ]
+
+        def run(connection: sqlite3.Connection) -> object:
+            return tuple(
+                connection.execute(sql, dict(params)).rowcount == 1 for _id, params, sql in bound
+            )
+
+        answered = self._thread.run(
+            Unit(
+                name="store.complete_group",
+                run=run,
+                cost_class=kinds[0],
+                wait_ms=self._wait_ms,
+                on_commit=self._on_commit,
+            )
+        )
+        if not isinstance(answered, tuple):  # pragma: no cover -- `Unit.run` is typed `-> object`.
+            raise StoreError("the group commit returned no answers", fix="report this as a bug")
+        return tuple(bool(one) for one in answered)
+
+    def _cost_classes(self, row_ids: Sequence[int]) -> dict[int, str]:
+        """`work.cost_class` for every row in `row_ids` that exists, in one statement (D919)."""
+
+        def run(connection: sqlite3.Connection) -> object:
+            marks = ",".join("?" * len(row_ids))
+            return connection.execute(
+                f"SELECT id, cost_class FROM work WHERE id IN ({marks})",  # noqa: S608
+                tuple(row_ids),
+            ).fetchall()
+
+        rows = self._thread.run(
+            Unit(
+                name="store.complete_group.cost_class",
+                run=run,
+                cost_class="free",
+                wait_ms=self._wait_ms,
+            )
+        )
+        return {int(row[0]): str(row[1]) for row in rows}  # type: ignore[union-attr]
+
     def _cost_class(self, row_id: int) -> str:
         """`work.cost_class` for `row_id`, or a raise. ST14's read; see `COST_CLASS_SQL`."""
 

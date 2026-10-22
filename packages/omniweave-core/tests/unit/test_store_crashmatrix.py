@@ -669,3 +669,114 @@ def test_reopen_records_the_wal_it_found_and_carries_the_threshold_through(
     with opened:
         pass
     assert opened.reclaimed == 0, "a store with no oversized WAL has nothing to reclaim"
+
+
+# ---------------------------------------------------------------------------------------------
+# A torn group (D919)
+# ---------------------------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def group_run(tmp_path_factory: pytest.TempPathFactory) -> cm.Fingerprint:
+    """The three group units committed ONE AT A TIME: what a group commit must equal."""
+    root = tmp_path_factory.mktemp("crash-group-baseline")
+    return cm.baseline(root, now_ns=NOW_NS, scenarios=cm.GROUP_SCENARIOS)
+
+
+def test_the_group_is_three_zero_derived_row_units_with_five_boundaries() -> None:
+    """D919, a user ruling of 2026-10-22 on F8: a group carries zero-derived-row transitions
+    only, so each unit is one statement and the group's boundaries are its units plus two."""
+    assert [len(cm.plan_of(s)) for s in cm.GROUP_SCENARIOS] == [1, 1, 1]
+    assert {s.cost_class for s in cm.GROUP_SCENARIOS} == {"free"}
+    boundaries = cm.group_boundaries()
+    assert len(boundaries) == len(cm.GROUP_SCENARIOS) + 2
+    assert (boundaries[0], boundaries[-1]) == (cm.AFTER_BEGIN, cm.AFTER_COMMIT)
+    assert [b.split(":")[1] for b in boundaries[1:-1]] == ["g0", "g1", "g2"]
+    assert cm.group_points() == tuple((cm.GROUP_MODE, b) for b in boundaries)
+
+
+def test_a_group_scenario_with_derived_rows_is_refused() -> None:
+    wide = cm.Scenario(mode="wide", part="w", deps=(("unit", "file:///w#a", "dwa"),))
+    with pytest.raises(StoreError, match="zero-derived-row"):
+        cm.group_boundaries((wide,))
+
+
+@pytest.mark.parametrize("boundary", cm.group_boundaries(), ids=lambda v: v.replace("/", "."))
+def test_every_group_boundary_converges_and_leaves_no_half_done_unit(
+    tmp_path: Path, group_run: cm.Fingerprint, boundary: str
+) -> None:
+    """The ruling's assertion: *"a torn group leaves no half-done unit"*, then `ow resume`
+    converges to the three committed one at a time."""
+    result = cm.verify_group_boundary(
+        tmp_path, boundary, now_ns=NOW_NS, now_ms=NOW_MS, baseline=group_run
+    )
+    assert result.ok, (result.differences, result.integrity)
+    names = cm.group_boundaries()
+    assert result.reached == names[: names.index(boundary) + 1]
+
+
+def test_a_kill_inside_the_group_leaves_every_unit_claimed_and_none_done(tmp_path: Path) -> None:
+    path, cas = tmp_path / "index.owstore", tmp_path / "cas"
+    cm.seed(path, cas, now_ns=NOW_NS, scenarios=cm.GROUP_SCENARIOS)
+    cm.simulate_group_kill_at(path, cas, cm.GROUP, cm.group_boundaries()[2])
+    connection = ow.connect_readonly(path)
+    try:
+        states = connection.execute("SELECT status FROM work ORDER BY id").fetchall()
+    finally:
+        connection.close()
+    assert [state for (state,) in states] == ["claimed"] * 3
+
+
+def test_an_uninterrupted_group_answers_true_for_every_unit(tmp_path: Path) -> None:
+    path, cas = tmp_path / "index.owstore", tmp_path / "cas"
+    cm.seed(path, cas, now_ns=NOW_NS, scenarios=cm.GROUP_SCENARIOS)
+    report = cm.run_group(path, cas, on_boundary=lambda _name: None)
+    assert report.completed and not report.superseded
+    assert report.reached == cm.group_boundaries()
+
+
+def _torn_group_kill(path: Path, cas: Path, scenario: cm.Scenario, boundary: str) -> cm.RunReport:
+    """A group that is NOT one transaction: g0 commits on its own, then the process dies."""
+    with cm.reopen(path) as thread:
+        producer = thread.run(ow.Unit(name="torn.producer", run=cm._producer_id, cost_class="free"))
+        cm.derive(thread, cas, cm.GROUP_SCENARIOS[0], producer_id=int(producer))
+        store = SqliteStore(thread)
+        rows = [
+            row
+            for _ in cm.GROUP_SCENARIOS
+            for row in store.claim(
+                batch=1, gen=cm.FIXTURE_GEN, worker=cm.FIXTURE_WORKER, lease_ms=cm.FIXTURE_LEASE_MS
+            )
+        ]
+        store.complete(rows[0].id, cm.FIXTURE_GEN, cm._result(cm.GROUP_SCENARIOS[0]))
+    return cm.RunReport(scenario.mode, False, False, False, (), boundary)
+
+
+def test_the_group_check_goes_red_when_a_group_is_committed_unit_by_unit(
+    tmp_path: Path, group_run: cm.Fingerprint
+) -> None:
+    """The check that cannot fail is not a check. A torn group converges after `ow resume`, so
+    only the between-kill-and-resume read can see it, and this shows that read does."""
+    result = cm.verify_group_boundary(
+        tmp_path,
+        cm.group_boundaries()[2],
+        now_ns=NOW_NS,
+        now_ms=NOW_MS,
+        baseline=group_run,
+        kill=_torn_group_kill,
+    )
+    assert not result.ok
+    assert result.differences == (
+        f"torn group: units ['g0'] were done after a kill at {cm.group_boundaries()[2]}, and a "
+        f"group commits whole or not at all (none of them expected)",
+    )
+
+
+def test_the_group_kill_refuses_a_scenario_or_boundary_that_is_not_the_groups(
+    store: tuple[Path, Path],
+) -> None:
+    path, cas = store
+    with pytest.raises(StoreError, match="kills the group"):
+        cm.simulate_group_kill_at(path, cas, FIRST, cm.AFTER_BEGIN)
+    with pytest.raises(StoreError, match="not a boundary of the group"):
+        cm.simulate_group_kill_at(path, cas, cm.GROUP, "after:nowhere")

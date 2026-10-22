@@ -618,6 +618,20 @@ class LeaseExtender(Protocol):
     def extend_live_leases(self, holder: str, now_ms: int, until_ms: int) -> tuple[int, ...]: ...
 
 
+@runtime_checkable
+class GroupCommitter(Protocol):
+    """A queue that can commit many zero-derived-row transitions in one transaction (D919).
+
+    Apart from `Store`, as `LeaseExtender` is: `Store`'s four methods are frozen (02:702), and the
+    loop asks for this by name. `SqliteStore` has it; a queue that has not commits every unit on
+    its own, as it did before D919.
+    """
+
+    def groupable(self, row_id: int, result: StepResult) -> bool: ...
+
+    def complete_group(self, items: Sequence[tuple[int, int, StepResult]]) -> tuple[bool, ...]: ...
+
+
 class Dispatcher(Protocol):
     """A `Batch` in, one `StepResult` per row out, in batch order. The loop's dispatch step.
 
@@ -721,8 +735,17 @@ class LoopTimings:
     deferred_sweep_ms: int
     shutdown_grace_ms: int
     loop_lag_max_ms: int
+    group_commit_ms: int
+    """08:2600's `[runtime] store_group_commit_ms`, the group-commit window for zero-derived-row
+    transitions (D919). 0 commits every unit on its own, as before D919."""
 
     def __post_init__(self) -> None:
+        if self.group_commit_ms < 0:
+            raise ConfigError(
+                f"[runtime] store_group_commit_ms is {self.group_commit_ms}; a window cannot be "
+                f"negative",
+                fix="set [runtime] store_group_commit_ms to 0 (off) or a positive ms count",
+            )
         for name in ("lease_ms", "lease_extend_ms", "stall_poll_ms", "deferred_sweep_ms"):
             value = getattr(self, name)
             if value <= 0:
@@ -734,7 +757,7 @@ class LoopTimings:
 
     @classmethod
     def of(cls, cfg: object) -> LoopTimings:
-        """The six `[runtime]` keys, read once. The only place their names are spelled."""
+        """The seven `[runtime]` keys, read once. The only place their names are spelled."""
         get = cfg.get  # type: ignore[attr-defined]
         return cls(
             lease_ms=int(get("runtime.lease_ms")),
@@ -743,6 +766,7 @@ class LoopTimings:
             deferred_sweep_ms=int(get("runtime.deferred_sweep_ms")),
             shutdown_grace_ms=int(get("runtime.shutdown_grace_ms")),
             loop_lag_max_ms=int(get("runtime.loop_lag_max_ms")),
+            group_commit_ms=int(get("runtime.store_group_commit_ms")),
         )
 
 
@@ -960,6 +984,9 @@ _ONE_PER_PROCESS: Final = _Exclusion()
 """The process-wide latch. See `_Exclusion` for why this is not the module global 08:291 bans."""
 
 _STOP: Final = object()
+GROUP_COMMIT_MAX: Final = 512
+"""D919: the most completions one group commit carries, `[runtime] plan_batch`'s 512, so one
+transaction never grows with the queue."""
 """The inbox sentinel: one per worker, put once the claimer has stopped claiming.
 
 A sentinel rather than a poll, because the alternative -- a worker that wakes on a timer to ask
@@ -1048,10 +1075,12 @@ class Supervisor:
         "_claimed",
         "_closed_queue",
         "_closing",
+        "_commits",
         "_completed",
         "_crashed",
         "_ctx",
         "_dispatch",
+        "_dispatching",
         "_emit",
         "_extended",
         "_gates",
@@ -1115,6 +1144,7 @@ class Supervisor:
         self._worker = worker
         self._start_batch = dict(claim_batch)
         self._width_class: str | None = None
+        self._commits: asyncio.Queue[object] = asyncio.Queue()
         self._sweep = sweep
         self._emit = emit
         self._closed_queue = closed_queue
@@ -1128,6 +1158,7 @@ class Supervisor:
         self._closing = asyncio.Event()
         self._progress = asyncio.Event()
         self._in_flight = 0
+        self._dispatching = 0
         self._claimed = 0
         self._batches = 0
         self._completed = 0
@@ -1208,6 +1239,7 @@ class Supervisor:
                 group.create_task(self._worker_loop(), name=f"worker_loop.{index}")
                 for index in range(self._workers)
             )
+            committer = group.create_task(self._committer(), name="group_committer")
             try:
                 await self._claimer()
             finally:
@@ -1215,7 +1247,9 @@ class Supervisor:
                 for _ in workers:
                     await self._inbox.put(_STOP)
                 await self._await_workers(workers)
-                for task in (*watchers, *workers):
+                self._commits.put_nowait(_STOP)
+                await asyncio.wait((committer,), timeout=self._timings.shutdown_grace_ms / 1000)
+                for task in (*watchers, *workers, committer):
                     task.cancel()
         return self._report()
 
@@ -1395,14 +1429,21 @@ class Supervisor:
             if self._ctx.cancel.cancelled():
                 self._abandon(batch)
                 return
-            results = await asyncio.to_thread(self._dispatch, batch)
+            self._dispatching += 1
+            try:
+                results = await asyncio.to_thread(self._dispatch, batch)
+            finally:
+                self._dispatching -= 1
         await self._commit(batch, results)
 
     async def _commit(self, batch: Batch, results: Sequence[StepResult]) -> None:
-        """One `Store.complete()` per row. I24's width is checked here, not assumed.
+        """One `Store.complete()` per row, or a group commit. I24's width is checked here.
 
         One transaction per unit, which is INV-17's -- 08:919 makes the commit *"the ingest
-        throughput ceiling"* and says so rather than batching it away. A `False` is SUPERSEDED and
+        throughput ceiling"* and says so rather than batching it away. Except, since D919 (a user
+        ruling of 2026-10-22 on F8), a zero-derived-row transition: those go to `_committer` and
+        share a transaction with others of their operator within 08:2600's window. Each is still
+        one statement, so a unit is all-or-nothing either way. A `False` is SUPERSEDED and
         nothing else (08:2486), so it is counted rather than raised: the row moved out from under
         this generation, which is what a second run starting mid-flight looks like, and 08:2413
         records it as `work.cancel{work_id, generation}`.
@@ -1414,9 +1455,22 @@ class Supervisor:
                 f"leaves a claimed row to its lease",
                 fix="build the answer with dispatch.fan_out(), which answers for every unit",
             )
-        for row, result in zip(batch.rows, results, strict=True):
-            committed = await asyncio.to_thread(
-                self._queue.complete, row.id, self._ctx.generation, result
+        pairs = list(zip(batch.rows, results, strict=True))
+        grouped: dict[int, asyncio.Future[bool]] = {}
+        if self._grouping():
+            queue = cast("GroupCommitter", self._queue)
+            loop = asyncio.get_running_loop()
+            for row, result in pairs:
+                if queue.groupable(row.id, result):
+                    grouped[row.id] = loop.create_future()
+                    self._commits.put_nowait((row, result, grouped[row.id]))
+        for row, result in pairs:
+            committed = (
+                await grouped[row.id]
+                if row.id in grouped
+                else await asyncio.to_thread(
+                    self._queue.complete, row.id, self._ctx.generation, result
+                )
             )
             if committed:
                 self._completed += 1
@@ -1424,6 +1478,71 @@ class Supervisor:
             else:
                 self._superseded += 1
                 self._announce_superseded(row)
+
+    def _grouping(self) -> bool:
+        """D919: whether this run group-commits: a window above zero and a queue that can."""
+        return self._timings.group_commit_ms > 0 and isinstance(self._queue, GroupCommitter)
+
+    async def _committer(self) -> None:
+        """D919: gather groupable completions for up to `group_commit_ms`, commit them by group.
+        08:2600's window, for zero-derived-row transitions only (`GroupCommitter.groupable`). The
+        first completion opens a window; everything already queued joins it at once, and while a
+        batch is still dispatching the window waits for more, up to `group_commit_ms` or
+        `GROUP_COMMIT_MAX`. With none dispatching nothing more can arrive -- every other worker is
+        waiting on a commit -- so it closes at once: a window held open then is only latency, and 16
+        workers each waiting out 20 ms measured 496 transitions/s against 1,025 without it. A window
+        is committed one group per `(operator, cost_class)`, so a group is one operator's
+        transitions (the ruling's narrow reading of F8) and one durability (ST14). Each completion's
+        future gets its own answer, `False` for superseded as `complete()` gives it, or the group's
+        exception.
+        """
+        loop = asyncio.get_running_loop()
+        window = self._timings.group_commit_ms / 1000
+        while True:
+            first = await self._commits.get()
+            if first is _STOP:
+                return
+            items = [first]
+            deadline = loop.time() + window
+            stopping = False
+            while len(items) < GROUP_COMMIT_MAX:
+                try:
+                    item = self._commits.get_nowait()
+                except asyncio.QueueEmpty:
+                    remaining = deadline - loop.time()
+                    if remaining <= 0 or self._dispatching == 0:
+                        break
+                    try:
+                        item = await asyncio.wait_for(self._commits.get(), remaining)
+                    except TimeoutError:
+                        break
+                if item is _STOP:
+                    stopping = True
+                    break
+                items.append(item)
+            await self._flush(items)
+            if stopping:
+                return
+
+    async def _flush(self, items: Sequence[object]) -> None:
+        """D919: one `complete_group` per `(operator, cost_class)`, answering every future."""
+        queue = cast("GroupCommitter", self._queue)
+        groups: dict[tuple[str, str], list[tuple[WorkRow, StepResult, asyncio.Future[bool]]]] = {}
+        for item in items:
+            row, result, future = cast("tuple[WorkRow, StepResult, asyncio.Future[bool]]", item)
+            groups.setdefault((row.operator, row.cost_class), []).append((row, result, future))
+        for members in groups.values():
+            batch = [(row.id, self._ctx.generation, result) for row, result, _ in members]
+            try:
+                answers = await asyncio.to_thread(queue.complete_group, batch)
+            except Exception as error:
+                for _, _, future in members:
+                    if not future.done():
+                        future.set_exception(error)
+                continue
+            for (_, _, future), answer in zip(members, answers, strict=True):
+                if not future.done():
+                    future.set_result(answer)
 
     def _cost_class(self, batch: Batch) -> str:
         """The batch's class, refusing a batch that carries two.

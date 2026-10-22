@@ -101,7 +101,7 @@ def test_the_pr_half_draws_three_points_kills_a_real_process_at_each_and_converg
     code, report = _run(["--workspace", str(tmp_path), "--keep"])
     assert code == gate.EXIT_CLEAN, report
     assert "kill=SIGKILL" in report
-    assert report.count("  ok  ") == cm.PR_POINTS
+    assert report.count("  ok  ") == cm.PR_POINTS + cm.GROUP_PR_POINTS
     assert "byte for byte in the .owdoc export" in report
 
 
@@ -121,8 +121,10 @@ def test_list_prints_the_whole_matrix_and_the_three_it_would_draw() -> None:
     """`--list` is the reproduction aid: forty candidates, then the three this salt selects."""
     code, report = _run(["--list"])
     assert code == gate.EXIT_CLEAN
-    assert report.count("\n") >= len(cm.matrix_boundaries()) + cm.PR_POINTS
-    assert report.count("drawn  ") == cm.PR_POINTS
+    assert report.count("\n") >= (
+        len(cm.matrix_boundaries()) + len(cm.group_points()) + cm.PR_POINTS + cm.GROUP_PR_POINTS
+    )
+    assert report.count("drawn  ") == cm.PR_POINTS + cm.GROUP_PR_POINTS
     for mode, boundary in cm.matrix_boundaries():
         assert f"{mode}/{boundary}" in report
 
@@ -139,7 +141,7 @@ def test_the_nightly_half_runs_every_boundary_of_every_fixture(tmp_path: Path) -
     """
     code, report = _run(["--workspace", str(tmp_path), "--all", "--in-process"])
     assert code == gate.EXIT_CLEAN, report
-    assert report.count("  ok  ") == len(cm.matrix_boundaries()) == 40
+    assert report.count("  ok  ") == len(cm.matrix_boundaries()) + len(cm.group_points()) == 45
     assert "full matrix in" in report
 
 
@@ -468,3 +470,19 @@ def test_the_crash_job_invokes_the_runner_unconditionally() -> None:
     assert "uv run tools/gate_crash.py" in text
     assert "if [ -f tools/gate_crash.py ]" not in text
     assert "G21 NOT ENFORCED" not in text
+
+
+def test_the_group_commit_is_killed_beside_the_eight_and_its_point_is_printed(
+    tmp_path: Path,
+) -> None:
+    """D919, a user ruling of 2026-10-22 on F8: *"G21's crash matrix must show that a torn group
+    leaves no half-done unit"*. The PR job draws one group point beside its three, with a real
+    kill, and `--point` replays any of the five."""
+    drawn = cm.kill_points(cm.group_points(), count=cm.GROUP_PR_POINTS)
+    code, report = _run(["--workspace", str(tmp_path), "--point", "/".join(drawn[0])])
+    assert code == gate.EXIT_CLEAN, report
+    assert "  ok  " in report and f"{cm.GROUP_MODE}/" in report
+    _code, listed = _run(["--list"])
+    for mode, boundary in cm.group_points():
+        assert f"{mode}/{boundary}" in listed
+    assert f"drawn  {drawn[0][0]}/{drawn[0][1]}" in listed

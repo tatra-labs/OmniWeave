@@ -1352,3 +1352,67 @@ def test_a_live_holders_unexpired_lease_is_left_where_it_is(
     assert store.extend_live_leases(WORKER, lease, lease + 60_000) == ()
     assert read_work(owstore, mine.id)["lease_expires"] == lease
     assert store.extend_live_leases("another:1:1.0", lease + 1, lease + 60_000) == ()
+
+
+# -- D919: group commit, zero-derived-row transitions only ----------------------------------
+
+
+def test_a_group_commits_every_unit_in_one_transaction(
+    owstore: Path, opened: tuple[SqliteStore, ow.StoreThread]
+) -> None:
+    """08:2600's window: three plain transitions, one `complete_group`, three answers."""
+    store, _ = opened
+    seed(owstore, [Queued(part=f"p{n}") for n in range(3)])
+    rows = store.claim(batch=3, gen=7, worker=WORKER, lease_ms=60_000)
+    assert all(store.groupable(row.id, result("ok")) for row in rows)
+    answers = store.complete_group([(row.id, 7, result("ok")) for row in rows])
+    assert answers == (True, True, True)
+    assert {read_work(owstore, row.id)["status"] for row in rows} == {"done"}
+
+
+def test_a_superseded_unit_answers_false_and_leaves_the_others_committed(
+    owstore: Path, opened: tuple[SqliteStore, ow.StoreThread]
+) -> None:
+    """Unlike `complete()`, a zero-row predicate does not roll the group back: that unit's one
+    statement wrote nothing, so the rest of the transaction is untouched."""
+    store, _ = opened
+    seed(owstore, [Queued(part=f"p{n}") for n in range(2)])
+    first, second = store.claim(batch=2, gen=7, worker=WORKER, lease_ms=60_000)
+    answers = store.complete_group([(first.id, 7, result("ok")), (second.id, 8, result("ok"))])
+    assert answers == (True, False), "generation 8 never claimed the second row"
+    assert read_work(owstore, first.id)["status"] == "done"
+    assert read_work(owstore, second.id)["status"] == "claimed"
+
+
+def test_a_unit_with_derived_rows_is_not_groupable_and_is_refused_in_a_group(
+    opened_with: object,
+) -> None:
+    """A unit that writes dep rows owes them its own transaction (07:2730-2733)."""
+    deps = [("unit", "k0", "d")]
+    store, path = opened_with(dep_rows=lambda row_id, _r: dep_statements(row_id, deps))  # type: ignore[operator]
+    seed(path, [Queued(part="p0")])
+    row = claim_one(store)
+    assert not store.groupable(row.id, result("ok"))
+    with pytest.raises(StoreError, match="zero-derived-row transitions only"):
+        store.complete_group([(row.id, 7, result("ok"))])
+    assert read_work(path, row.id)["status"] == "claimed"
+
+
+def test_a_group_of_two_cost_classes_or_a_missing_row_is_refused(
+    owstore: Path, opened: tuple[SqliteStore, ow.StoreThread]
+) -> None:
+    store, _ = opened
+    seed(
+        owstore,
+        [
+            Queued(part="p0"),
+            Queued(part="p1", cost_class="billed_api", dispatch_key="dk2"),
+        ],
+    )
+    free = store.claim(batch=1, gen=7, worker=WORKER, lease_ms=60_000)
+    billed = store.claim(batch=1, gen=7, worker=WORKER, lease_ms=60_000)
+    with pytest.raises(StoreError, match="one cost class"):
+        store.complete_group([(free[0].id, 7, result("ok")), (billed[0].id, 7, result("ok"))])
+    with pytest.raises(StoreError, match=r"work rows \[999\] do not exist"):
+        store.complete_group([(999, 7, result("ok"))])
+    assert store.complete_group([]) == ()
