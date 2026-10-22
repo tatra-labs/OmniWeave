@@ -176,6 +176,7 @@ __all__ = [
     "MODEL_VERSION",
     "PARSE_FAILED_SQL",
     "SETTLED_SQL",
+    "UNANSWERED",
     "Ordinals",
     "ParseLedger",
     "ParseOperator",
@@ -198,6 +199,11 @@ MODEL_VERSION: Final[str] = "1.1"
 DEFAULT_EGRESS_MODE: Final[str] = "granted"
 """14:829's default `[egress] mode`, sent on `HELLO` (14:867). `config.py` declares no
 `egress.mode` key yet, so the shipped default is the only value there is to send (D584)."""
+
+UNANSWERED: Final[str] = "the worker died before it answered this unit"
+"""A unit's failure message when its worker left no verdict for it: a crash in the same
+batch, before this unit was reached. D936: the message was empty, so `work.failure_message`
+said nothing of a `driver_crashed` row the unit itself did not cause."""
 
 SETTLED_SQL: Final[str] = """
 UPDATE unit SET state = 'settled', settled_gen = :gen, stale_since = NULL
@@ -1068,7 +1074,7 @@ class ParseOperator:
         """A unit the worker did not answer `ok` for: its verdict, transient or permanent."""
         verdict = None if reply.report is None else reply.report.failures[slot]
         failure = FailureClass.DRIVER_CRASHED if verdict is None else verdict.failure_class
-        message = "" if verdict is None else verdict.message
+        message = UNANSWERED if verdict is None else verdict.message
         if outcome is Outcome.FAILED_TRANSIENT:
             self._tally.failed[str(failure)] += 1
             rung = rung_for(str(failure), _source_of(verdict))
