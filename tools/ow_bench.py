@@ -71,11 +71,12 @@ import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, TextIO
 
-from omniweave.run import bench
+from omniweave.run import bench, benchquery
 from omniweave_core import config as configmod
 from omniweave_core import locks
 from omniweave_core.clock import SystemClock
 from omniweave_core.errors import OwError, StoreBusy
+from omniweave_core.store.oweval import open_oweval, write
 
 if TYPE_CHECKING:  # pragma: no cover -- annotations only.
     from collections.abc import Sequence
@@ -512,6 +513,12 @@ def _parser() -> argparse.ArgumentParser:
         default=DEFAULT_QUERY_RUNS,
         help=f"`query`'s timed passes over the golden set (default {DEFAULT_QUERY_RUNS})",
     )
+    parser.add_argument(
+        "--oweval",
+        type=Path,
+        default=None,
+        help="`query` keeps its run as .oweval rows here: a perf run and its eval_perf row (D916)",
+    )
     parser.add_argument("--root", type=Path, default=None, help="where to build the store")
     parser.add_argument("--home", type=Path, default=None, help=f"overrides ${HOME_ENV}")
     return parser
@@ -640,11 +647,15 @@ def _query(
     """`query`: build the store, merge it, time the golden set warm (D915)."""
     import os  # noqa: PLC0415 -- the runner's label, read beside its only use
 
+    machine = os.environ.get(RUNNER_ENV) or "an unpinned machine"
+    clock = SystemClock()
     try:
         if args.pages < 1:
             print(f"DID NOT RUN: --pages {args.pages}; the store needs a page", file=out)
             return EXIT_NOT_RUN
+        started = clock.wall_ns()
         measured = bench.query(REPO, root, pages=args.pages, runs=args.passes)
+        ended = clock.wall_ns()
     except (OwError, ValueError, OSError) as exc:
         print(f"DID NOT RUN: {exc}", file=out)
         return EXIT_NOT_RUN
@@ -652,7 +663,22 @@ def _query(
         lock.release()
         if temporary:
             shutil.rmtree(root, ignore_errors=True)
-    report_query(measured, out, runner=os.environ.get(RUNNER_ENV) or "an unpinned machine")
+    report_query(measured, out, runner=machine)
+    if args.oweval is not None:
+        kept = benchquery.batch_of(
+            REPO, measured, machine=machine, started_ns=started, ended_ns=ended
+        )
+        connection = open_oweval(args.oweval)
+        try:
+            write(connection, kept)
+        finally:
+            connection.close()
+        (row,) = kept.perf
+        print(
+            f"  kept: {row.budget_id} in {args.oweval}, run {row.run_id}, status {row.status}"
+            " (a pass or fail is the seven-run median's, on ow-bench-1)",
+            file=out,
+        )
     return EXIT_CLEAN
 
 

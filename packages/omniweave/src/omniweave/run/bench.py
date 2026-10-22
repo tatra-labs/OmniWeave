@@ -85,6 +85,7 @@ from __future__ import annotations
 import array
 import asyncio
 import contextlib
+import dataclasses
 import hashlib
 import math
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -119,6 +120,8 @@ if TYPE_CHECKING:  # pragma: no cover -- annotations only.
 
     from omniweave_core.clock import Clock
     from omniweave_core.work import WorkRow
+
+    from omniweave.run.benchquery import QueryResult
 
 __all__ = [
     "CACHE_KEY",
@@ -781,19 +784,24 @@ class SchedulerResult:
         return (self.claim.total / 1e3) / self.drain_s if self.drain_s > 0 else math.nan
 
 
-def query(root: Path, project: Path, *, pages: int, runs: int) -> object:
+def query(root: Path, project: Path, *, pages: int, runs: int) -> QueryResult:
     """`ow bench query`: build, merge, then time the golden set warm. D915.
 
     `omniweave.run.benchquery` measures it, as `inproc` delegates: the store is built by the SDK's
     `Corpus.add`, which this module's scheduler harness has no reason to import. End-to-end only;
-    what section 7.1's row asks beyond that is named in the result's `not_measured`.
+    what section 7.1's row asks beyond that is named in the result's `not_measured`. The Pacer
+    is read just before and just after the timed passes, for the perf row
+    `benchquery.batch_of` keeps (D916).
     """
     from omniweave.run import benchquery  # noqa: PLC0415 -- the query subject only
 
     queries = benchquery.load_queries(root)
     store = benchquery.build(root, project, pages=pages)
     merged = benchquery.merge(store)
-    return benchquery.query(project, queries, pages=pages, runs=runs, merged=merged)
+    before = pacer(project).total_ns
+    measured = benchquery.query(project, queries, pages=pages, runs=runs, merged=merged)
+    after = pacer(project).total_ns
+    return dataclasses.replace(measured, pacer_before_ns=before, pacer_after_ns=after)
 
 
 def inproc(corpus: Path, *, workspace: Path, worker: bool = True) -> object:
