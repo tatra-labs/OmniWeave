@@ -476,6 +476,9 @@ rules:
           - pattern: time.perf_counter_ns()
           - pattern: time.process_time()
           - pattern: time.process_time_ns()
+          # D945: a thread's CPU is read once, in clock.py's `thread_cpu_ns()`, and injected.
+          - pattern: time.thread_time()
+          - pattern: time.thread_time_ns()
     paths:
       include:
         - "packages/*/src/**"

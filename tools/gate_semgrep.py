@@ -115,8 +115,8 @@ interpreter itself reports as monotonic.
 
 Scoped exactly like `TOOLCHAIN` and `SUBPROC`: one module is entitled to the banned call and
 every other module injects. `test_clock.py` asserts this file's own discipline -- it calls
-only `time_ns`, `monotonic_ns`, `perf_counter_ns` and `get_clock_info` -- so the path-level
-exemption does not become a blanket one.
+only `time_ns`, `monotonic_ns`, `perf_counter_ns`, `thread_time_ns` (D945) and
+`get_clock_info` -- so the path-level exemption does not become a blanket one.
 """
 OWDOC = "packages/omniweave-core/src/omniweave_core/archive/owdoc.py"
 """The SECOND module permitted to open a ZIP for writing, and the reason it had to become two.
@@ -210,6 +210,8 @@ _AMBIENT_ATTRS: frozenset[str] = frozenset(
         "time.perf_counter_ns",
         "time.process_time",
         "time.process_time_ns",
+        "time.thread_time",
+        "time.thread_time_ns",
         "uuid.uuid4",
         "uuid.uuid1",
         "datetime.now",
@@ -373,6 +375,8 @@ AST_BANS: tuple[AstBan, ...] = (
                 "time.perf_counter_ns",
                 "time.process_time",
                 "time.process_time_ns",
+                "time.thread_time",
+                "time.thread_time_ns",
             }
         ),
     ),

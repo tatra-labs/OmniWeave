@@ -623,7 +623,10 @@ def test_in_process_the_password_is_written_into_the_tmpdir_the_guard_hands_the_
             raise RuntimeError("stop here: the file was read")
 
     operator = SimpleNamespace(
-        secret_for=_secret_for, _driver=lambda _granted: _Driver(), _now_ms=lambda: 0
+        secret_for=_secret_for,
+        _driver=lambda _granted: _Driver(),
+        _now_ms=lambda: 0,
+        _cpu_ns=lambda: 0,
     )
     call = SimpleNamespace(units=_units("locked.pdf"))
     work = parse_module._Guarded(operator, None, []).work(call, 0)  # type: ignore[arg-type]
@@ -632,9 +635,13 @@ def test_in_process_the_password_is_written_into_the_tmpdir_the_guard_hands_the_
     assert seen == [b"s3cret"]
 
 
-def test_in_process_the_run_s_clock_charges_the_call_s_wall_time(tmp_path: Path) -> None:
+@pytest.mark.parametrize(("thread_ns", "cpu_ms"), [(30_000_000, 30), (2_000_000, 7)])
+def test_in_process_the_run_s_readings_charge_the_call_s_wall_and_cpu(
+    tmp_path: Path, thread_ns: int, cpu_ms: int
+) -> None:
     """D921: an S1 call's `wall_ms` is the run's reading around `parse()`, over the driver's own
-    figure, and the driver's `cpu_ms` stands because no process reading belongs to one call."""
+    figure. D945: its `cpu_ms` is the larger of the calling thread's CPU across the call and the
+    driver's own 7 ms, which stays as a floor for work the driver handed to a thread of its own."""
     from omniweave_ports.types import DriverMetrics, DriverResult  # noqa: PLC0415
 
     class _Driver:
@@ -645,12 +652,41 @@ def test_in_process_the_run_s_clock_charges_the_call_s_wall_time(tmp_path: Path)
             )
 
     ticks = iter((1_000, 1_040))
+    cpu = iter((5_000_000, 5_000_000 + thread_ns))
     operator = SimpleNamespace(
         secret_for=lambda _uri: None,
         _driver=lambda _granted: _Driver(),
         _now_ms=lambda: next(ticks),
+        _cpu_ns=lambda: next(cpu),
     )
     call = SimpleNamespace(units=_units("open.pdf"))
     work = parse_module._Guarded(operator, None, []).work(call, 0)  # type: ignore[arg-type]
     result = work(SimpleNamespace(tmpdir=str(tmp_path)))  # type: ignore[arg-type]
-    assert (result.metrics.wall_ms, result.metrics.cpu_ms) == (40, 7)
+    assert (result.metrics.wall_ms, result.metrics.cpu_ms) == (40, cpu_ms)
+
+
+def test_in_process_a_driver_that_burns_cpu_is_charged_for_it(tmp_path: Path) -> None:
+    """D945 over the real reading: a driver that reports no CPU, spinning for 200 ms of its own
+    thread's CPU, is charged at least a Windows accounting tick (15.6 ms) of it. Before, the
+    driver's 0 stood and V10-13's PriceBook priced an in-process parse's CPU as free."""
+    from omniweave_core.clock import thread_cpu_ns  # noqa: PLC0415
+    from omniweave_ports.types import DriverMetrics, DriverResult  # noqa: PLC0415
+
+    class _Driver:
+        def parse(self, unit: UnitRef, parts: object, io_obj: Any) -> DriverResult:
+            del unit, parts, io_obj
+            until = thread_cpu_ns() + 200_000_000
+            while thread_cpu_ns() < until:
+                pass
+            return DriverResult(outcome="ok", produced=(), metrics=DriverMetrics(cpu_ms=0))
+
+    operator = SimpleNamespace(
+        secret_for=lambda _uri: None,
+        _driver=lambda _granted: _Driver(),
+        _now_ms=lambda: 0,
+        _cpu_ns=thread_cpu_ns,
+    )
+    call = SimpleNamespace(units=_units("open.pdf"))
+    work = parse_module._Guarded(operator, None, []).work(call, 0)  # type: ignore[arg-type]
+    result = work(SimpleNamespace(tmpdir=str(tmp_path)))  # type: ignore[arg-type]
+    assert result.metrics.cpu_ms >= 15, result.metrics
