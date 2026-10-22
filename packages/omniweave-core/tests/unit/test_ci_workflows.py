@@ -1258,7 +1258,7 @@ def test_the_p2_measurement_is_wired_as_a_mechanism_and_never_as_a_budget_verdic
     assert "12-performance.md:1966" in body
 
 
-def test_the_nightly_is_g19s_alone_and_the_bench_cells_stay_a_stated_gap(
+def test_the_nightly_is_g19_and_the_hosted_query_bench_and_ow_bench_1_stays_a_stated_gap(
     ci: Workflow,
 ) -> None:
     """16-roadmap.md:343 puts `store.bytes_per_block` and `rss.gen5000p_peak_bytes` on a nightly
@@ -1270,6 +1270,10 @@ def test_the_nightly_is_g19s_alone_and_the_bench_cells_stay_a_stated_gap(
     60/8 subset on a PR, which the `incremental` job chooses by event. The `ow-bench-1` cells are
     still absent, and a PR-path smoke that quietly stood in for them would look like the budget was
     being checked, so the gap stays stated where a reader meets the substitute.
+
+    D916 added the second nightly step, by a user ruling of 2026-10-21: `ow bench query` on the
+    hosted runner the `gates` job already uses, schedule-only, its report naming that runner and
+    its eval_perf row kept with a status that is never a pass.
     """
     region = _job_region(ci, "gates")
     assert "NO NIGHTLY WORKFLOW" in region
@@ -1285,6 +1289,10 @@ def test_the_nightly_is_g19s_alone_and_the_bench_cells_stay_a_stated_gap(
     # are not definition sites -- the module docstring's own rule, applied to a comment this
     # test's own subject wrote.
     assert "runs-on: ow-bench-1" not in "\n".join(ci.code_lines())
+    assert "uv run tools/ow_bench.py query --oweval bench-query.oweval" in region
+    assert region.count("if: github.event_name == 'schedule'") == 2
+    assert 'OMNIWEAVE_RUNNER: "github-hosted ubuntu-latest"' in region
+    assert "timeout-minutes: ${{ github.event_name == 'schedule' && 40 || 6 }}" in region
 
 
 # ---------------------------------------------------------------------------

@@ -28,25 +28,44 @@ the golden query set"*: the Channels have since landed, and D915 commits the que
    (12-performance.md:1966); this harness returns a value, and the runner prints the budget beside
    it as an indication, naming the machine.
 
-Specified in 12-performance.md sections 7.1 and 7.4, rows B26, B27 and F50, and
+## Rulings (D916)
+
+7. **A run is kept as `.oweval` rows**, `batch_of()`: one `eval_corpus` row for the query set and
+   the generator it reads (digested, so a changed set or generator is a new version), one
+   `eval_run` of suite `perf` whose `hardware` names the machine, and one `eval_perf` row for
+   `query.warm_p50_ms`, its `work_ns` the warm p50.
+8. **The perf row's status is `unstable` or `unknown`, never `pass` or `fail`.** 12-performance.md
+   section 1.2 judges a budget against its seven-run rolling median on `ow-bench-1`, and one hosted
+   run is neither seven runs nor that machine. So the Pacer is read before and after the timed
+   passes and the row is `unstable` when the two disagree past `INSTABILITY_PCT`, as `bench.paced`
+   rules, and `unknown` otherwise. `release-check` refuses both, which is what an unpinned number
+   is owed.
+
+Specified in 12-performance.md sections 1.2, 7.1 and 7.4, rows B26, B27 and F50, and
 07-store-and-retrieval.md section 4.4.
 """
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
+import platform
 import sys
 from dataclasses import dataclass
+from importlib.metadata import version
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
 from omniweave_core.clock import SystemClock
+from omniweave_core.drivers.card import MeasuredOn
+from omniweave_core.host.activate import code_fingerprint
 from omniweave_core.limits import PREFILTER_MAX
 from omniweave_core.store import sqlite as store_sqlite
 from omniweave_core.store.maintenance import fts_merge
+from omniweave_core.store.oweval import Batch, Corpus, Perf, Run
 
-from omniweave.run.bench import Series
+from omniweave.run.bench import INSTABILITY_PCT, Series, disagreement, time_ratio
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -54,10 +73,12 @@ if TYPE_CHECKING:
     from omniweave_core.clock import Clock
 
 __all__ = [
+    "BUDGET",
     "PROJECT",
     "QUERIES",
     "Query",
     "QueryResult",
+    "batch_of",
     "build",
     "load_queries",
     "merge",
@@ -75,6 +96,9 @@ PROJECT: Final = (
 )
 """Ruling 1's project: one corpus, and the three `[drivers]` opt-ins a scratch project needs."""
 STORE: Final = Path(".omniweave") / "docs.owstore"
+BUDGET: Final = "query.warm_p50_ms"
+"""Ruling 7's `eval_perf.budget_id`, B27's committed budget."""
+NOT_APPLICABLE: Final = "n/a"
 MAX_MERGE_WINDOWS: Final = 64
 """Ruling 2's bound: windows of `fts_merge` before the index is reported still unmerged."""
 
@@ -100,6 +124,9 @@ class QueryResult:
     merged: bool
     narrowing_all: bool
     not_measured: tuple[str, ...]
+    pacer_before_ns: int = 0
+    pacer_after_ns: int = 0
+    """Ruling 8: the Pacer read just before and just after the timed passes; 0 is not read."""
 
 
 def load_queries(root: Path) -> tuple[Query, ...]:
@@ -194,3 +221,103 @@ def _blocks(store: Path) -> int:
         return int(row[0]) if row else 0
     finally:
         connection.close()
+
+
+def batch_of(
+    root: Path, result: QueryResult, *, machine: str, started_ns: int, ended_ns: int
+) -> Batch:
+    """Rulings 7 and 8: the corpus, the `perf` run and its `query.warm_p50_ms` row."""
+    pacer_before_ns, pacer_after_ns = result.pacer_before_ns, result.pacer_after_ns
+    if pacer_before_ns <= 0 or pacer_after_ns <= 0:
+        msg = "a perf row needs the Pacer read before and after the timed passes"
+        raise ValueError(msg)
+    digest = _digest(root, (QUERIES, GENERATOR))
+    corpus = Corpus(
+        corpus_id=QUERIES.as_posix(),
+        version=digest[:16],
+        corpus_digest=digest,
+        tier="A",
+        n_docs=1,
+        n_assertions=0,
+        n_checked=0,
+        document_redistributable=True,
+        assertions_redistributable=True,
+        publishable=False,
+    )
+    hardware = f"{machine} ({platform.system().lower()}-{platform.machine().lower()})"
+    run_id = hashlib.blake2b(
+        f"perf\x00omniweave\x00{digest}\x00{started_ns}".encode(), digest_size=16
+    ).hexdigest()
+    run = Run(
+        run_id=run_id,
+        suite="perf",
+        corpus_id=corpus.corpus_id,
+        corpus_version=corpus.version,
+        corpus_digest=digest,
+        subject="omniweave",
+        subject_version=version("omniweave"),
+        producer_id=None,
+        measured_on=MeasuredOn(
+            weights=NOT_APPLICABLE,
+            weights_revision=NOT_APPLICABLE,
+            runtime=platform.python_implementation().lower(),
+            runtime_version=platform.python_version(),
+            sampling=NOT_APPLICABLE,
+            prompt_version=NOT_APPLICABLE,
+            hardware=hardware,
+            corpus=f"{corpus.corpus_id}@{corpus.version}",
+            corpus_digest=digest,
+            harness_version=version("omniweave"),
+        ),
+        timing_basis="in_process",
+        witness="self",
+        cassette="off",
+        policy_digest=None,
+        pricebook_digest=None,
+        harness_version=version("omniweave"),
+        code_fingerprint=code_fingerprint(_sources()),
+        hardware=hardware,
+        started_ns=started_ns,
+        ended_ns=ended_ns,
+        status="ok",
+        not_measured=(
+            *result.not_measured,
+            f"{BUDGET} pass or fail: the seven-run rolling median on ow-bench-1, which one run "
+            f"on {machine} is not",
+        ),
+        confounders=(
+            f"{result.blocks:,} blocks from {result.pages:,} generated pages, "
+            f"FTS {'merged' if result.merged else 'not fully merged'}",
+        ),
+    )
+    unstable = disagreement(pacer_before_ns, pacer_after_ns) * 100 > INSTABILITY_PCT
+    work_ns = round(result.total.p50 * 1e6)
+    perf = Perf(
+        run_id=run_id,
+        budget_id=BUDGET,
+        pacer_before_ns=pacer_before_ns,
+        pacer_after_ns=pacer_after_ns,
+        work_ns=work_ns,
+        time_ratio=time_ratio(work_ns, pacer_before_ns, pacer_after_ns),
+        peak_rss_bytes=None,
+        peak_wal_bytes=None,
+        status="unstable" if unstable else "unknown",
+    )
+    return Batch(corpora=(corpus,), runs=(run,), perf=(perf,))
+
+
+def _digest(root: Path, files: Sequence[Path]) -> str:
+    """Ruling 7: sha256 over each file's path and bytes, NUL-framed, in the order given."""
+    framed = hashlib.sha256()
+    for relpath in files:
+        framed.update(relpath.as_posix().encode() + b"\x00")
+        framed.update(hashlib.sha256((root / relpath).read_bytes()).hexdigest().encode() + b"\x00")
+    return framed.hexdigest()
+
+
+def _sources() -> list[Path]:
+    """Ruling 7's fingerprint: the store and retrieval code a query runs through."""
+    import omniweave_core  # noqa: PLC0415 -- its path, not its contents
+
+    base = Path(omniweave_core.__file__).parent
+    return sorted(path for sub in ("store", "retrieve") for path in (base / sub).rglob("*.py"))
