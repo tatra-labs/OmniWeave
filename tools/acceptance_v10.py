@@ -363,8 +363,11 @@ CRITERIA: tuple[Criterion, ...] = (
             pytest(f"{CORE}/test_ow_conform.py", "-k", "mandatory_tier or bench_refuses"),
         ),
         Coverage.PARTIAL,
-        "the template driver is authored inside this repository and no external one exists; "
-        "`--bench` refuses until `ow eval fetch`, so no [quality] block or MeasuredOn is written",
+        "a driver project outside the checkout (its own package, card, pyproject and fixtures in "
+        "a temp directory, importable only through its author's PYTHONPATH) passes 11/11 through "
+        "`tools/ow_conform.py` (D923), but its code is the template's under its own names, not "
+        "an independent implementation, and no third party has run the kit; `--bench` refuses "
+        "until `ow eval fetch`, so no [quality] block or MeasuredOn is written",
     ),
     Criterion(
         "V10-13",
