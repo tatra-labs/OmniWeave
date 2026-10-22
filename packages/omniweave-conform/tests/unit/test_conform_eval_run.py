@@ -849,7 +849,7 @@ def test_portability_is_a_shape_run_then_one_run_per_target(
         ("cell_identity", "docx", 1.0, "native_run"),
         ("cell_identity", "pptx", 1.0, "native_run"),
     ]
-    assert [m.n for m in batch.metrics] == [1, *(len(p) for p in _FROZEN_PARTS.values())]
+    assert [m.n for m in batch.metrics] == [1, *(len(_FROZEN_PARTS[t]) for t in ("docx", "pptx"))]
     assert all(run.confounders[0] == eval_run.CELL_CONFOUNDER for run in batch.runs)
     assert [(row.slice_key, row.refused) for row in done] == [
         ("shape", ()),

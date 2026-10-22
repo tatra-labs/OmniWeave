@@ -72,5 +72,9 @@ def test_an_unreadable_or_partial_table_is_refused(tmp_path: Path, body: bytes |
 def test_the_committed_table_names_every_register_target() -> None:
     register = tomllib.loads((REPO / "eval" / "gates.toml").read_text(encoding="utf-8"))
     committed = portability.read_parts(REPO)
-    assert set(committed) == {target.target for target in targets(register, REPO)}
+    #  D914: the `pptx` row also freezes V10-10's 40-unit golden, `tools/ow_portability.py`'s
+    #  GOLDEN40, which no register row names and every CI cell checks.
+    assert set(committed) == {target.target for target in targets(register, REPO)} | {
+        "pptx@golden40"
+    }
     assert all(len(sha) == 64 for members in committed.values() for sha in members.values())
