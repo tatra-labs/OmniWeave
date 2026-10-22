@@ -1,0 +1,37 @@
+# tools/redact.toml -- APPEND-ONLY, like codes.toml. The one register redact() reads.
+#
+# GENERATED from omniweave_core.redact.SHAPES (D934); do not edit. A wheel carries no tools/, so
+# the shapes are declared in the module and this file is their rendering, held byte-equal by
+# packages/omniweave-core/tests/unit/test_redact.py. Specified in 15-observability.md section 8.3.
+# Patterns are TOML LITERAL strings: a backslash is a backslash and needs no escaping.
+[[shape]]
+id = "authorization_header"
+unconditional = true
+pattern = '(?i)\bauthorization\s*[:=]\s*(?:(?:bearer|basic|digest|token)\s+)?\S+'
+replace = "Authorization: <redacted>"
+[[shape]]
+id = "prefixed_token"
+unconditional = true
+pattern = '\b(sk|rk|ghp|gho|ghu|ghs|glpat|xoxb|xoxp|AKIA)[-_][A-Za-z0-9_-]{16,}'
+replace = "<redacted:token>"
+[[shape]]
+id = "jwt"
+unconditional = true
+pattern = '\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}'
+replace = "<redacted:jwt>"
+[[shape]]
+id = "hex_run"
+unconditional = true
+pattern = '\b[0-9a-fA-F]{32,}\b'
+replace = "<redacted:hex>"
+exempt_fields = ["cache_key", "content_sha256", "config_digest", "semantic_digest", "policy_digest", "pricebook_digest", "lock_digest", "evidence_digest", "read_set_digest", "hints_digest", "card_sha256", "code_fp", "options_digest", "plan_digest", "argv_digest", "catalog_digest", "trace_id", "span_id", "parent_span_id", "member_sha256"]
+[[shape]]
+id = "untrusted_marker"
+unconditional = true
+pattern = '</?ow:untrusted[^>]*>'
+replace = "<redacted:marker>"
+[[shape]]
+id = "chat_sentinel"
+unconditional = true
+pattern = '<\|(im_start|im_end|endoftext|eot_id|start_header_id|end_header_id)\|>'
+replace = "<redacted:sentinel>"

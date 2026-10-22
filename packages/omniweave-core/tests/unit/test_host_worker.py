@@ -321,7 +321,35 @@ def test_a_driver_that_raises_anything_else_is_a_driver_bug_on_that_unit(
     host.send(wire.FrameKind.INVOKE, {"invoke_id": "i", "units": [unit], "deadline_ms": 0})
     (result,) = host.until(wire.FrameKind.RESULT)
     assert result.header["failure_class"] == "driver_bug"
-    assert result.header["message"] == "ValueError: a bug in the driver"
+    #  D934: the type and where it was raised, never the exception's text (15:1366).
+    line = broken.__code__.co_firstlineno + 2
+    assert result.header["message"] == f"ValueError at test_host_worker.py:{line} in broken"
+    assert "a bug in the driver" not in str(result.header["message"])
+    host.send(wire.FrameKind.SHUTDOWN, {"grace_ms": 0})
+    thread.join(10)
+    assert box["outcome"]["status"] == 0
+
+
+def test_a_driver_errors_message_is_redacted_before_it_crosses_the_pipe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D934, 15:1336: `redact()` runs in the worker, so a credential a driver put in its own
+    message never reaches the host, and the driver's class and words otherwise stand."""
+    from omniweave_office.driver import AnydocParser  # noqa: PLC0415
+
+    def refused(self: object, unit: UnitRef, parts: object, io: object) -> None:
+        del self, unit, parts, io
+        raise DriverError(cls=FailureClass.AUTH, message="denied: Authorization: Bearer s3cr3t")
+
+    monkeypatch.setattr(AnydocParser, "parse", refused)
+    host, box, thread, _order = _serve(monkeypatch)
+    host.send(wire.FrameKind.HELLO, _hello(tmp_path))
+    host.next()
+    unit = {"uri": "u", "part": "", "content_sha256": "0" * 64, "byte_len": 1}
+    host.send(wire.FrameKind.INVOKE, {"invoke_id": "i", "units": [unit], "deadline_ms": 0})
+    (result,) = host.until(wire.FrameKind.RESULT)
+    assert result.header["failure_class"] == "auth"
+    assert result.header["message"] == "denied: Authorization: <redacted>"
     host.send(wire.FrameKind.SHUTDOWN, {"grace_ms": 0})
     thread.join(10)
     assert box["outcome"]["status"] == 0
@@ -1046,7 +1074,9 @@ def test_a_compile_bug_is_the_drivers_bug_not_a_refusal(
     host.send(wire.FrameKind.INVOKE, _compile_invoke(job, job_dir))
     [result] = host.until(wire.FrameKind.RESULT)
     assert result.header["failure_class"] == "driver_bug"
-    assert result.header["message"] == "KeyError: 'u03'"
+    said = str(result.header["message"])
+    assert said.startswith("KeyError at test_host_worker.py:")
+    assert "u03" not in said
     _shut(host, thread, box)
 
 

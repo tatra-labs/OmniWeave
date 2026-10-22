@@ -78,6 +78,7 @@ from omniweave_ports.types import (
 
 from omniweave_core.errors import DriverHostError, OwError, TargetError
 from omniweave_core.host import subproc, wire
+from omniweave_core.redact import FAILURE_FIELD, described, redact
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -427,7 +428,10 @@ def failure_header(invoke_id: str, unit_index: int, error: DriverError) -> dict[
         "invoke_id": invoke_id,
         subproc.RESULT_UNIT_INDEX_KEY: unit_index,
         "failure_class": error.cls.value,
-        "message": error.message[:MESSAGE_MAX_CHARS],
+        #  D934: redacted here, in the worker, so a credential never crosses the pipe.
+        "message": redact(error.message, mode="none", salt=b"", field=FAILURE_FIELD)[0][
+            :MESSAGE_MAX_CHARS
+        ],
         "retry_after_ms": error.retry_after_ms,
         "pages": list(error.pages),
         "limit": error.limit,
@@ -446,18 +450,19 @@ def _bug(exc: BaseException) -> DriverError:
     as the watchdog's verdict -- the same ceiling by the other road. Filed as `driver_bug` it was
     permanent and blamed the driver for a number on its card. As `resource_limit` it takes
     08-runtime.md:567's row: transient at its first cooldown, and the batch halves.
+
+    **The message is `redact.described()`: the type and where it was raised, never `str(exc)`**
+    (D934, 15:1366). An exception's args are whatever the driver's frame held, and
+    `int(page_text)` puts the page in them.
     """
     if isinstance(exc, MemoryError):
         return DriverError(
             cls=FailureClass.RESOURCE_LIMIT,
-            message=f"MemoryError under [isolation] memory_mb: {exc}"[:MESSAGE_MAX_CHARS],
+            message=f"{described(exc)}, under [isolation] memory_mb"[:MESSAGE_MAX_CHARS],
             retry_after_ms=MEMORY_COOLDOWN_MS,
             limit="memory_mb",
         )
-    return DriverError(
-        cls=FailureClass.DRIVER_BUG,
-        message=f"{type(exc).__name__}: {exc}"[:MESSAGE_MAX_CHARS],
-    )
+    return DriverError(cls=FailureClass.DRIVER_BUG, message=described(exc)[:MESSAGE_MAX_CHARS])
 
 
 # =============================================================================================
