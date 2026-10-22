@@ -32,6 +32,15 @@ now calls it.
 4. **The fixtures are generated** by the repository's `fixtures/gen/gen_reference_corpora.py` at
    `quick` scale, loaded from `root`, so the suite runs from a checkout, as the register's
    `[[subject]]` paths require too.
+5. **A question is asked under `HARNESS_BUDGET_SCALE` times the shipped query budget** (D942).
+   The suite judges honesty, not latency. Under the shipped 15-80 ms channel budgets, a slow CI
+   runner's first query after a fresh `ow add` overran one, and gate 1 `timed_out` fired on a
+   run that was otherwise its pristine self, so `mask_format`'s fix read as failing twice on
+   Windows CI. Scaling every figure keeps the channels plus the reserve equal to `query_ms`, as
+   `ow route lint` check 3 requires; the snapshot is held at `MAX_SNAPSHOT_MS`. The test tree's
+   own scaling (`packages/conftest.py`, D689) never reached here: the suite runs as
+   `tools/ow_damage.py` or `ow eval run`, a process of its own with the shipped defaults. The
+   `stall` Injector, when built, damages a deadline of its own.
 
 Specified in 13-quality.md sections 8.6 and 13.3, and 16-roadmap.md section 9's P6 exit line.
 """
@@ -66,10 +75,13 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
     from types import ModuleType
 
+    from omniweave_core.retrieve.types import QueryBudget
+
 __all__ = [
     "ADD_TIMEOUT_S",
     "FIXTURES",
     "GENERATOR",
+    "HARNESS_BUDGET_SCALE",
     "PROJECT",
     "Damaged",
     "Fixture",
@@ -78,6 +90,7 @@ __all__ = [
     "documents_digest",
     "documents_of",
     "generator",
+    "harness_budget",
     "run_pair",
     "run_suite",
 ]
@@ -246,6 +259,27 @@ def build(work: Path, documents: Mapping[str, bytes], *, config: str = "") -> No
         raise RuntimeError(msg)
 
 
+HARNESS_BUDGET_SCALE: Final = 20
+"""Ruling 5: the factor every figure of the shipped `QueryBudget` is multiplied by."""
+
+
+def harness_budget() -> QueryBudget:
+    """Ruling 5: the shipped budget, every figure scaled, the snapshot at its cap."""
+    from omniweave_core.limits import MAX_SNAPSHOT_MS  # noqa: PLC0415
+    from omniweave_core.retrieve.types import QueryBudget  # noqa: PLC0415
+
+    shipped = QueryBudget()
+    scale = HARNESS_BUDGET_SCALE
+    return QueryBudget(
+        query_ms=shipped.query_ms * scale,
+        hydration_reserve_ms=shipped.hydration_reserve_ms * scale,
+        embed_ms=shipped.embed_ms * scale,
+        snapshot_ms=MAX_SNAPSHOT_MS,
+        federate_ms=shipped.federate_ms * scale,
+        channel_ms={name: ms * scale for name, ms in shipped.channel_ms.items()},
+    )
+
+
 def ask(work: Path, question: str, *, now_ns: Callable[[], int]) -> Observed:
     """One read-only `execute()` over the fixture's store: `ow query`'s own read (ruling 3)."""
     from omniweave_core.retrieve.execute import execute  # noqa: PLC0415
@@ -256,7 +290,9 @@ def ask(work: Path, question: str, *, now_ns: Callable[[], int]) -> Observed:
     connection = store_sqlite.connect_readonly(work / "project" / ".omniweave" / "docs.owstore")
     try:
         reader = store_reader.SqliteReader(connection, now_ns=now_ns())
-        retrieval = execute(reader, Query(text=question), RetrievalPolicy())
+        retrieval = execute(
+            reader, Query(text=question, budget=harness_budget()), RetrievalPolicy()
+        )
     finally:
         connection.close()
     return observed(retrieval.response.verdict)
