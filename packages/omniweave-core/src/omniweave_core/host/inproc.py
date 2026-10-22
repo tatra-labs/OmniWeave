@@ -145,6 +145,7 @@ from omniweave_core.drivers.card import DriverCard, IsolationSpec
 from omniweave_core.drivers.resolve import Candidate
 from omniweave_core.errors import CapabilityMissing, DriverHostError
 from omniweave_core.host.activate import check_card_code
+from omniweave_core.redact import FAILURE_FIELD, described, redact
 
 __all__ = [
     "DRIVER",
@@ -261,10 +262,12 @@ class GuardFailure:
 
     @classmethod
     def of_driver_error(cls, exc: DriverError) -> GuardFailure:
-        """The driver's own five fields, unchanged. The guard never rewrites an attribution."""
+        """The driver's own five fields. The guard never rewrites an attribution; the message
+        passes `redact()`, the construction boundary 15:1336 names for `DriverError.message`
+        (D934)."""
         return cls(
             failure_class=exc.cls,
-            message=exc.message,
+            message=redact(exc.message, mode="none", salt=b"", field=FAILURE_FIELD)[0],
             retry_after_ms=exc.retry_after_ms,
             pages=exc.pages,
             limit=exc.limit,
@@ -582,10 +585,9 @@ class DriverGuard:
         except DriverError as exc:
             failure = GuardFailure.of_driver_error(exc)
         except BaseException as exc:
-            failure = GuardFailure(
-                failure_class=FailureClass.DRIVER_BUG,
-                message=f"{type(exc).__name__}: {exc}",
-            )
+            #  D934: the type and where it was raised, never `str(exc)`, whose args may hold
+            #  the page the driver was reading (15:1366).
+            failure = GuardFailure(failure_class=FailureClass.DRIVER_BUG, message=described(exc))
         breach = self._breach(state)
         with state.lock:
             cancelled = state.cancelled
