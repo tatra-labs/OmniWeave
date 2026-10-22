@@ -216,8 +216,8 @@ def test_list_names_every_subject_and_marks_the_runnable_ones() -> None:
     assert code == runner.EXIT_CLEAN
     for name in bench.SUBJECTS:
         assert name in output
-    assert output.count("RUNS") == len(bench.runnable()) == 3
-    assert "13 subjects, 3 runnable" in output
+    assert output.count("RUNS") == len(bench.runnable()) == 4
+    assert "13 subjects, 4 runnable" in output
 
 
 def test_pacer_runs_its_workload_n_times_and_reports_the_spread(tmp_path: Path) -> None:
