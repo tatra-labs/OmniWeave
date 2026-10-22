@@ -638,6 +638,7 @@ def loop_timings(**overrides: int) -> LoopTimings:
         "deferred_sweep_ms": 10,
         "shutdown_grace_ms": 200,
         "loop_lag_max_ms": 250,
+        "group_commit_ms": 0,
     }
     values.update(overrides)
     return LoopTimings(**values)  # type: ignore[arg-type]
@@ -1226,8 +1227,9 @@ def test_the_three_keys_08_introduces_are_declared_where_their_reader_is(cfg: An
         assert key.env == "OMNIWEAVE_" + name.upper().replace(".", "_")
 
 
-def test_loop_timings_reads_the_six_keys_from_the_shipped_example(cfg: Any) -> None:
-    """`of()` is the only place the six names are spelled, so this is the whole mapping."""
+def test_loop_timings_reads_the_seven_keys_from_the_shipped_example(cfg: Any) -> None:
+    """`of()` is the only place the seven names are spelled, so this is the whole mapping. The
+    seventh is 08:2600's group-commit window, D919."""
     timings = LoopTimings.of(cfg)
 
     assert timings == LoopTimings(
@@ -1237,6 +1239,7 @@ def test_loop_timings_reads_the_six_keys_from_the_shipped_example(cfg: Any) -> N
         deferred_sweep_ms=5_000,
         shutdown_grace_ms=5_000,
         loop_lag_max_ms=250,
+        group_commit_ms=20,
     )
 
 
@@ -1259,12 +1262,29 @@ def test_a_cadence_of_zero_is_a_config_error_naming_the_knob(name: str) -> None:
         "deferred_sweep_ms": 1,
         "shutdown_grace_ms": 1,
         "loop_lag_max_ms": 1,
+        "group_commit_ms": 0,
     }
     values[name] = 0
     with pytest.raises(ConfigError) as caught:
         LoopTimings(**values)  # type: ignore[arg-type]
     assert name in str(caught.value)
     assert name in caught.value.fix
+
+
+def test_a_negative_group_commit_window_is_a_config_error_and_zero_turns_it_off() -> None:
+    """D919: 0 commits every unit on its own, as before; below it is no window at all."""
+    values = {
+        "lease_ms": 1,
+        "lease_extend_ms": 1,
+        "stall_poll_ms": 1,
+        "deferred_sweep_ms": 1,
+        "shutdown_grace_ms": 1,
+        "loop_lag_max_ms": 1,
+        "group_commit_ms": -1,
+    }
+    with pytest.raises(ConfigError, match="store_group_commit_ms is -1"):
+        LoopTimings(**values)  # type: ignore[arg-type]
+    assert LoopTimings(**{**values, "group_commit_ms": 0}).group_commit_ms == 0  # type: ignore[arg-type]
 
 
 # -- the class gate: units, not batches -------------------------------------
@@ -1632,3 +1652,80 @@ def test_a_queue_that_cannot_extend_is_only_reaped() -> None:
     supervisor, _, events = harness(queue)
     assert supervisor._lease_sweep(1_000) == ((), 3)
     assert "work.lease_extend" not in kinds(events)
+
+
+# -- D919: group commit -------------------------------------------------------------------
+
+
+class GroupingQueue(FakeQueue):
+    """`FakeQueue` that can group-commit, recording each group and answering as told."""
+
+    def __init__(self, *args: Any, plain: frozenset[int] = frozenset(), **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.groups: list[list[int]] = []
+        self._plain = plain
+        self.raise_on_group = False
+
+    def groupable(self, row_id: int, result: StepResult) -> bool:  # noqa: ARG002
+        return row_id not in self._plain
+
+    def complete_group(self, items: Sequence[tuple[int, int, StepResult]]) -> tuple[bool, ...]:
+        if self.raise_on_group:
+            raise StoreError("the disk is full", fix="free some space")
+        self.groups.append([row_id for row_id, _gen, _result in items])
+        for row_id, gen, result in items:
+            self.completed.append((row_id, gen, str(result.outcome)))
+        return tuple(row_id not in self._superseded for row_id, _gen, _result in items)
+
+
+def test_zero_derived_row_transitions_are_committed_in_groups() -> None:
+    """D919, a user ruling of 2026-10-22 on F8: groupable completions share a transaction."""
+    queue = GroupingQueue([[work_row(n)] for n in range(1, 9)], superseded=frozenset({4}))
+    built = harness(queue, timings=loop_timings(group_commit_ms=20))
+    report = asyncio.run(built.supervisor.run())
+    assert sorted(row for group in queue.groups for row in group) == list(range(1, 9))
+    assert (report.completed, report.superseded) == (7, 1)
+    assert kinds(built.events).count("work.complete") == 7
+
+
+def test_a_unit_with_derived_rows_still_commits_on_its_own() -> None:
+    queue = GroupingQueue([[work_row(1)], [work_row(2)]], plain=frozenset({2}))
+    report = asyncio.run(harness(queue, timings=loop_timings(group_commit_ms=20)).supervisor.run())
+    assert [row for group in queue.groups for row in group] == [1]
+    assert report.completed == 2, "row 2 went through Store.complete()"
+
+
+def test_a_window_of_zero_commits_every_unit_on_its_own() -> None:
+    queue = GroupingQueue([[work_row(1)], [work_row(2)]])
+    report = asyncio.run(harness(queue, timings=loop_timings(group_commit_ms=0)).supervisor.run())
+    assert queue.groups == []
+    assert report.completed == 2
+
+
+def test_a_group_that_raises_costs_its_batches_and_not_the_run() -> None:
+    """02:653: one crash costs one unit. A failed group answers each waiter with the error, and
+    each batch is crashed as a raising dispatcher's would be."""
+    queue = GroupingQueue([[work_row(1)], [work_row(2)]])
+    queue.raise_on_group = True
+    report = asyncio.run(harness(queue, timings=loop_timings(group_commit_ms=20)).supervisor.run())
+    assert report.status == "done"
+    assert (report.completed, report.superseded, report.crashed) == (0, 0, 2)
+
+
+def test_a_group_never_mixes_cost_classes() -> None:
+    """ST14: durability is set per class before BEGIN, so a window splits by class (and by
+    operator, the ruling's narrow reading of F8) before it commits."""
+    rows = [[work_row(n, cost_class="free" if n % 2 else "billed_api")] for n in range(1, 13)]
+    queue = GroupingQueue(rows)
+    admission = Admission(
+        class_sem={c: asyncio.BoundedSemaphore(8) for c in ("free", "billed_api")},
+        worker_sem={c: asyncio.BoundedSemaphore(4) for c in ("free", "billed_api")},
+        render_sem=asyncio.BoundedSemaphore(1),
+        workers={"free": 4, "billed_api": 4},
+        inflight={"free": 8, "billed_api": 8},
+    )
+    built = harness(queue, admission=admission, timings=loop_timings(group_commit_ms=50))
+    report = asyncio.run(built.supervisor.run())
+    assert report.completed == 12
+    assert all(len({row % 2 for row in group}) == 1 for group in queue.groups), queue.groups
+    assert any(len(group) > 1 for group in queue.groups), "no window ever grouped two units"

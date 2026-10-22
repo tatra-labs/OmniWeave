@@ -7,6 +7,12 @@ here and they are one code path: **no arguments** draws three points and is the 
 walks every boundary of every fixture and is the nightly `ow-bench-1` row (11-repo-layout.md
 section 6.5, *"the full G21 crash matrix"*).
 
+Since D919 (a user ruling of 2026-10-22 on F8) the matrix also kills `Store.complete_group()`:
+three zero-derived-row transitions committed in one transaction, torn at each of its five
+boundaries. The ruling asks the matrix to show *"a torn group leaves no half-done unit"*, so a
+group cycle checks the killed store for one before it resumes (`crashmatrix.verify_group_boundary`).
+The PR job draws one group point beside its three; `--all` runs all five.
+
 16-roadmap.md:445 spells P2's exit line as `uv run ow test crash-matrix
 --statement-boundaries all` followed by `uv run tools/gate_crash.py   # G21`. `ow` is P7's
 (16 section 10) and does not exist yet, exactly as `tools/schemagen.py` is `ow schema emit`'s
@@ -160,14 +166,6 @@ def child(root: Path, mode: str, boundary: str, *, emit: Emit) -> int:
     as a harness failure. A cycle that silently did not kill anything is the check that cannot
     fail.
     """
-    by_mode = {scenario.mode: scenario for scenario in cm.SCENARIOS}
-    if mode not in by_mode:
-        emit(f"child: no scenario {mode!r}")
-        return EXIT_NOT_RUN
-    scenario = by_mode[mode]
-    if boundary not in cm.boundaries_of(scenario):
-        emit(f"child: {boundary!r} is not a boundary of {mode!r}")
-        return EXIT_NOT_RUN
     ready = root / _READY
 
     def park(name: str) -> None:
@@ -176,6 +174,21 @@ def child(root: Path, mode: str, boundary: str, *, emit: Emit) -> int:
         ready.write_text(f"{mode}\n{boundary}\n", encoding="utf-8")
         threading.Event().wait()  # forever: the parent kills this process.
 
+    if mode == cm.GROUP_MODE:
+        if boundary not in cm.group_boundaries():
+            emit(f"child: {boundary!r} is not a boundary of the group commit")
+            return EXIT_NOT_RUN
+        cm.run_group(root / "index.owstore", root / "cas", on_boundary=park)
+        emit(f"child: finished without reaching {boundary!r}")
+        return EXIT_FAIL
+    by_mode = {scenario.mode: scenario for scenario in cm.SCENARIOS}
+    if mode not in by_mode:
+        emit(f"child: no scenario {mode!r}")
+        return EXIT_NOT_RUN
+    scenario = by_mode[mode]
+    if boundary not in cm.boundaries_of(scenario):
+        emit(f"child: {boundary!r} is not a boundary of {mode!r}")
+        return EXIT_NOT_RUN
     cm.run_scenario(root / "index.owstore", root / "cas", scenario, on_boundary=park)
     emit(f"child: finished without reaching {boundary!r}")
     return EXIT_FAIL
@@ -300,8 +313,12 @@ class Cycle:
 
 
 def _points(args: argparse.Namespace) -> tuple[tuple[str, str], ...]:
-    """Which cycles to run: `--all`, an explicit `--point`, or the blake2b-drawn three."""
-    population = cm.matrix_boundaries()
+    """Which cycles to run: `--all`, an explicit `--point`, or the blake2b-drawn three plus one.
+
+    The group's points (D919) are a population of their own, so adding them left the three the
+    salt draws from the eight fixtures where they were; the PR job draws `GROUP_PR_POINTS` more.
+    """
+    population = cm.matrix_boundaries() + cm.group_points()
     if args.point:
         chosen: list[tuple[str, str]] = []
         for spec in args.point:
@@ -313,7 +330,15 @@ def _points(args: argparse.Namespace) -> tuple[tuple[str, str], ...]:
         return tuple(chosen)
     if args.all:
         return population
-    return cm.kill_points(population, salt=args.salt.encode(), count=args.points)
+    return _drawn(args)
+
+
+def _drawn(args: argparse.Namespace) -> tuple[tuple[str, str], ...]:
+    """The PR job's points: `--points` from the eight fixtures, `GROUP_PR_POINTS` from the group."""
+    salt = args.salt.encode()
+    return cm.kill_points(cm.matrix_boundaries(), salt=salt, count=args.points) + cm.kill_points(
+        cm.group_points(), salt=salt, count=cm.GROUP_PR_POINTS
+    )
 
 
 def _run(args: argparse.Namespace, workspace: Path, emit: Emit) -> tuple[list[Cycle], float]:
@@ -321,6 +346,7 @@ def _run(args: argparse.Namespace, workspace: Path, emit: Emit) -> tuple[list[Cy
     chosen = _points(args)
     emit(
         f"crash matrix  {len(cm.SCENARIOS)} fixtures, {len(cm.matrix_boundaries())} boundaries, "
+        f"and a group commit of {len(cm.GROUP_SCENARIOS)} with {len(cm.group_points())}; "
         f"running {len(chosen)}"
     )
     emit(f"  salt={args.salt!r}  kill={'in-process model' if args.in_process else 'SIGKILL'}")
@@ -333,21 +359,38 @@ def _run(args: argparse.Namespace, workspace: Path, emit: Emit) -> tuple[list[Cy
     started = time.perf_counter()
     baseline = cm.baseline(base_dir, now_ns=NOW_NS, scenarios=cm.SCENARIOS)
     emit(f"baseline  owdoc={baseline.owdoc[:16]}  work={baseline.work[:16]}")
+    group_dir = workspace / "group-baseline"
+    group_dir.mkdir(parents=True)
+    group_baseline = cm.baseline(group_dir, now_ns=NOW_NS, scenarios=cm.GROUP_SCENARIOS)
+    emit(f"group     owdoc={group_baseline.owdoc[:16]}  work={group_baseline.work[:16]}")
 
-    killer = cm.simulate_kill_at if args.in_process else spawn_kill(timeout_s=args.park_timeout_s)
+    real = spawn_kill(timeout_s=args.park_timeout_s)
+    killer = cm.simulate_kill_at if args.in_process else real
+    group_killer = cm.simulate_group_kill_at if args.in_process else real
     cycles: list[Cycle] = []
     for index, (mode, boundary) in enumerate(chosen):
         cycle_dir = workspace / f"cycle{index:03d}"
         cycle_dir.mkdir(parents=True)
         at = time.perf_counter()
-        result = cm.verify_boundary(
-            cycle_dir,
-            mode,
-            boundary,
-            now_ns=NOW_NS,
-            now_ms=NOW_MS,
-            baseline=baseline,
-            kill=killer,  # type: ignore[arg-type]
+        result = (
+            cm.verify_group_boundary(
+                cycle_dir,
+                boundary,
+                now_ns=NOW_NS,
+                now_ms=NOW_MS,
+                baseline=group_baseline,
+                kill=group_killer,  # type: ignore[arg-type]
+            )
+            if mode == cm.GROUP_MODE
+            else cm.verify_boundary(
+                cycle_dir,
+                mode,
+                boundary,
+                now_ns=NOW_NS,
+                now_ms=NOW_MS,
+                baseline=baseline,
+                kill=killer,  # type: ignore[arg-type]
+            )
         )
         cycles.append(
             Cycle(
@@ -420,10 +463,10 @@ def _parser() -> argparse.ArgumentParser:
 
 def _list(args: argparse.Namespace, emit: Emit) -> int:
     """`--list`: the whole matrix, then the points this salt draws. Reproducibility, printed."""
-    for mode, boundary in cm.matrix_boundaries():
+    for mode, boundary in cm.matrix_boundaries() + cm.group_points():
         emit(f"{mode}/{boundary}")
     emit("")
-    for mode, boundary in cm.kill_points(salt=args.salt.encode(), count=args.points):
+    for mode, boundary in _drawn(args):
         emit(f"drawn  {mode}/{boundary}")
     return EXIT_CLEAN
 

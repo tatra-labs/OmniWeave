@@ -583,9 +583,13 @@ release        = true
 # ruling of 2026-10-21 took both (D917): a NULL head claims at the asked width, and the width
 # follows the class the last claim returned. 504 -> 870 transitions/s at 100,000 units, the claim
 # 4% of the drain; what is left is `Store.complete`, one transaction per unit (08:919), whose
-# remedy is F8's group commit.
+# remedy is F8's group commit. A user ruling of 2026-10-22 took it narrow (D919): zero-derived-row
+# transitions of one operator share a transaction within 08:2600's 20 ms window, and G21 kills the
+# group at every boundary. 870 -> a median of 2,651 transitions/s over seven runs at 100,000
+# units, five of them over 2,000 and two under (1,771 the lowest): green on the median, not
+# on every run, and on a workstation rather than `ow-bench-1`.
 #
-# Red is the correct state for it. A nightly cell with `jobs = []` blocks the release (section 7.6
+# It was red until then, and red was the correct state for it. A nightly cell with `jobs = []` blocks the release (section 7.6
 # step 11) and no merge, and section 6.8 refuses the alternative: "There is no --warn-only
 # anywhere", and a gate that cannot fail is a rejectable defect on its own.
 runner         = ["tools/gate_scale.py"]

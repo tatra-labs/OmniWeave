@@ -84,6 +84,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import glob
 import hashlib
 import json
@@ -1840,16 +1841,7 @@ async def _drain(
     admission = sup.derive_admission(config, host)
     shipped = sup.LoopTimings.of(config)
     timings = (
-        shipped
-        if sweep_ms is None
-        else sup.LoopTimings(
-            lease_ms=shipped.lease_ms,
-            lease_extend_ms=shipped.lease_extend_ms,
-            stall_poll_ms=shipped.stall_poll_ms,
-            deferred_sweep_ms=sweep_ms,
-            shutdown_grace_ms=shipped.shutdown_grace_ms,
-            loop_lag_max_ms=shipped.loop_lag_max_ms,
-        )
+        shipped if sweep_ms is None else dataclasses.replace(shipped, deferred_sweep_ms=sweep_ms)
     )
     queue = _Forgetting(
         SqliteStore(
