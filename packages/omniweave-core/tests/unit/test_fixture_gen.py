@@ -610,6 +610,10 @@ def test_the_pin_file_names_every_generated_output_in_sha256sum_format() -> None
         #  V10-10's 40-unit golden OUT fixture (D881), checked by omniweave-target-pptx's
         #  test_golden40.py.
         "fixtures/generated/out/golden40/pptx.manifest",
+        #  12-performance.md section 4.3's merge-free 4M-cell sheet (D929), checked by
+        #  test_fixture_sheet.py.
+        "fixtures/generated/sheet/sheet_2000c.manifest",
+        "fixtures/generated/sheet/sheet_4000000c.manifest",
     }
 
 
