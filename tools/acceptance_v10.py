@@ -179,13 +179,35 @@ CRITERIA: tuple[Criterion, ...] = (
     Criterion(
         "V10-4",
         "honesty ceilings: hallucination_rate, false_confident_zero, degradation_detection == 1",
-        (tool("ow_damage.py", "--deterministic-half", slow=True),),
+        (
+            tool("ow_damage.py", "--deterministic-half", slow=True),
+            pytest(
+                f"{CONF}/test_conform_removal.py",
+                label="the removal half's populations and removed corpora (D933)",
+            ),
+            Instrument(
+                "pytest no answerable question answered absent, over real stores (D933)",
+                (
+                    "-m",
+                    "pytest",
+                    "-q",
+                    "-p",
+                    "no:cacheprovider",
+                    f"{T3}/test_absence_removal.py",
+                ),
+                slow=True,
+            ),
+        ),
         Coverage.PARTIAL,
-        "degradation_detection runs over 4 of 13 Injectors and the deterministic half only, "
-        "now as `ow eval run --suite absence` too (D869); citability_violations is a hard row "
-        "measured over the adoption catalogue (D870), which V10-1's instrument runs; "
-        "hallucination_rate and false_confident_zero have no gate row and nothing computes them "
-        "over a corpus",
+        "degradation_detection runs over 4 of 13 Injectors in the paired-damage half, now as "
+        "`ow eval run --suite absence` too (D869); citability_violations is a hard row "
+        "measured over the adoption catalogue (D870), which V10-1's instrument runs. "
+        "false_confident_zero is a ceiling row computed by the removal half (D933): the "
+        "catalogue's 13 answerable questions asked of their corpora, and again with each "
+        "planted answer deleted. None is answered absent, but 13 is under min_slice_n, so the "
+        "rate is unknown and release-check refuses it; no question at all reads absent, so "
+        "absent_recall is 0 of 17. hallucination_rate needs the extraction harness, which does "
+        "not exist",
     ),
     Criterion(
         "V10-5",

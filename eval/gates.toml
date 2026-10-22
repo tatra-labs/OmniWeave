@@ -35,8 +35,9 @@
 # rather than present-and-unenforced: a register row naming a metric nothing computes is a claim
 # that something is being measured. They land with the harness that measures them —
 # `structure_f1`, `order_acc` and `table_rel_acc` need the Tier A corpus and T4's assertions;
-# `hallucination_rate` and `false_confident_zero` need the absence corpus; `citability_violations`
-# and `degradation_detection` need L4 and `Verdict`, which are P5's and P6's.
+# `hallucination_rate` needs an extraction harness; `citability_violations` and
+# `degradation_detection` need L4 and `Verdict`, which are P5's and P6's. `false_confident_zero`
+# landed with the absence corpus's removal half (D933).
 
 [[gate]]
 metric = "span_exact_rate"
@@ -97,6 +98,30 @@ computed = """
 over every `(Injector, fixture)` pair in §8.6, the fraction where all three clauses hold: `Verdict.state == degraded`, the expected gate appears in `Verdict.gates` in precedence order, and the emitted `DegradeCause.fix` command, executed, produces an undamaged run. (13-quality.md:1093, verbatim.)"""
 guard_absent_because = """
 A `hard` row has no guard band. 13-quality.md:1314: "A gate at 1.000 admits no partial coverage, so 'add the Injector now and make it pass next release' is not a state the gate can express.""""
+
+# The absence corpus's removal half (13-quality.md section 8.6, Construction 1; ledger D933). Its
+# harness is `omniweave_conform.removal`, run by `ow eval run --suite absence` beside the paired-
+# damage half. A ceiling, not hard, so `min_slice_n` applies: below 30 answerable questions a slice
+# is `unknown`, and `ow eval release-check` refuses it.
+
+[[gate]]
+metric = "false_confident_zero"
+suite = "absence"
+slice = "*"
+kind = "ceiling"
+budget = 0.01
+truth_kind = "human"
+class = "blocking"
+owner = "quality"
+reviewed_at = "2026-10-22"
+review_by = "2027-01-20"
+computed = """
+over the absence corpus's **answerable** questions only (the counterfactual half of the removal \
+construction), the fraction answered with `state == absent`. (13-quality.md:1095, verbatim.)\
+"""
+guard_absent_because = """
+13-quality.md:1095 gives this row no guard band ("—"): its budget is the whole of the claim.\
+"""
 
 [[gate]]
 metric = "citability_violations"

@@ -19,6 +19,7 @@ from omniweave.surface import admit as admission
 from omniweave.surface import eval as verb
 from omniweave_conform import absence as absence_harness
 from omniweave_conform import portability as cell_harness
+from omniweave_conform import removal as removal_harness
 from omniweave_conform import retrieval as cite_harness
 from omniweave_conform import roundtrip as r2_harness
 from omniweave_conform.damage import Assessment, Clause
@@ -42,7 +43,22 @@ def _fake_suite(monkeypatch: pytest.MonkeyPatch, *oks: bool) -> list[object]:
         )
 
     monkeypatch.setattr(absence_harness, "run_suite", fake)
+    monkeypatch.setattr(removal_harness, "run_suite", lambda *_a, **_k: _removal())
     return handed
+
+
+def _removal() -> removal_harness.Removal:
+    """The removal half, faked at the repository's counts (D933): 13 answerable questions and 17
+    genuinely absent, none answered `absent`."""
+    return removal_harness.Removal(
+        asked=tuple(
+            removal_harness.Asked(removal_harness.Question(f"t{i}", "c", "q?", population), state)
+            for population, n in ((removal_harness.ANSWERABLE, 13), (removal_harness.REMOVED, 17))
+            for i, state in enumerate(["low_confidence"] * n)
+        ),
+        shared=(),
+        documents={"c/a.docx": b"one", "c-removed/a.docx": b"two"},
+    )
 
 
 def _fake_cites(monkeypatch: pytest.MonkeyPatch, *unsound: str) -> None:
@@ -147,6 +163,13 @@ DRAFTED = [
     LABELS_FIX,
 ]
 """D913: the drafted labels' three rates, each refused and naming the verification as its fix."""
+UNDER_MIN = [
+    "  metric      false_confident_zero@removal in absence/omniweave run <id>: UNKNOWN; 0 of 13 "
+    "answerable question(s) answered absent, under min_slice_n = 30 (13:1088)",
+    "              fix: measure 30 or more a slice: add questions to the suite's corpus, then ow "
+    "eval run --suite absence",
+]
+"""D933: the removal half's ceiling over 13 answerable questions, naming more as its fix."""
 
 
 def _masked(out: str) -> list[str]:
@@ -197,31 +220,67 @@ def test_every_built_suite_by_default_and_release_check_refuses_only_the_drafted
         "pair(s)",
         "passed",
     ]
-    assert lines[3].split()[:5] == [
+    assert lines[3].split() == [
+        "omniweave",
+        "removal",
+        "false_confident_zero",
+        "unknown",
+        "over",
+        "13;",
+        "0",
+        "of",
+        "13",
+        "answerable",
+        "question(s)",
+        "answered",
+        "absent",
+    ]
+    assert lines[4].split()[:5] == [
         "omniweave",
         "born_digital",
         "citability_violations",
         "0",
         "over",
     ]
-    assert lines[3].endswith("2 answer(s); 4 of 4 cite(s) resolve")
-    assert lines[4].endswith("address_survival 1.0000 over 1; 1 of 1 element(s) survive")
-    assert lines[4].split()[:2] == ["compile.docx.native", "docx"]
-    assert lines[5].split()[:2] == ["compile.pptx.native", "pptx"]
-    assert lines[6].split()[:3] == ["omniweave", "shape", "cell_identity"]
-    assert lines[6].endswith("1.0000 over 1; 1 of 1 identical to the frozen values")
-    assert [line.split()[1] for line in lines[7:9]] == ["docx", "pptx"]
-    assert lines[9].startswith(
-        "ow eval run --suite parse,absence,retrieve,roundtrip,portability: 9 run(s) written to "
+    assert lines[4].endswith("2 answer(s); 4 of 4 cite(s) resolve")
+    assert lines[5].endswith("address_survival 1.0000 over 1; 1 of 1 element(s) survive")
+    assert lines[5].split()[:2] == ["compile.docx.native", "docx"]
+    assert lines[6].split()[:2] == ["compile.pptx.native", "pptx"]
+    assert lines[7].split()[:3] == ["omniweave", "shape", "cell_identity"]
+    assert lines[7].endswith("1.0000 over 1; 1 of 1 identical to the frozen values")
+    assert [line.split()[1] for line in lines[8:10]] == ["docx", "pptx"]
+    assert lines[10].startswith(
+        "ow eval run --suite parse,absence,retrieve,roundtrip,portability: 10 run(s) written to "
     )
     assert handed == [admission.admit]
     code, out, err = _eval("release-check", "--oweval", str(store))
     assert (code, err) == (1, "")
     assert _masked(out) == [
+        *UNDER_MIN,
         *DRAFTED,
-        "ow eval release-check: refused, 3 finding(s); 9 latest run(s), 0 superseded,"
+        "ow eval release-check: refused, 4 finding(s); 10 latest run(s), 0 superseded,"
         " 5 hard gate(s)",
-    ], "D913: every hard gate holds; only the unverified labels' rates refuse"
+    ], "D913: every hard gate holds; the unverified labels' rates refuse, and D933's ceiling"
+
+
+def test_deterministic_half_runs_the_damage_half_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D933: `--deterministic-half` is 16:690's paired-damage half, and leaves the removal half."""
+    _fake_suite(monkeypatch, True)
+
+    def never(*_a: object, **_k: object) -> removal_harness.Removal:
+        raise AssertionError("--deterministic-half runs no removal half")
+
+    monkeypatch.setattr(removal_harness, "run_suite", never)
+    store = tmp_path / "x.oweval"
+    code, out, _ = _eval(
+        "run", "--suite", "absence", "--deterministic-half", "--oweval", str(store)
+    )
+    assert code == 0
+    first, last = out.splitlines()
+    assert first.split()[1:3] == ["deterministic_half", "degradation_detection"]
+    assert last == f"ow eval run --suite absence: 1 run(s) written to {store}"
 
 
 def test_a_failed_element_is_printed_and_release_check_refuses_it(
@@ -295,8 +354,11 @@ def test_a_failed_pair_is_printed_and_release_check_refuses_it(
 @pytest.mark.parametrize(
     ("argv", "says"),
     [
-        (["--suite", "parse", "--deterministic-half"], "--deterministic-half names the half"),
-        (["--deterministic-half"], "--deterministic-half names the half"),
+        (
+            ["--suite", "parse", "--deterministic-half"],
+            "--deterministic-half keeps the absence suite",
+        ),
+        (["--deterministic-half"], "--deterministic-half keeps the absence suite"),
         (["--suite", "absence", "--subject", PDFIUM], "--subject names a parse driver"),
         (["--subject", PDFIUM], "--subject names a parse driver"),
         (["--suite", "retrieve", "--subject", PDFIUM], "the retrieve suite's subjects"),

@@ -45,8 +45,8 @@ the row together.
    suite this build measures, `parse`, `absence`, `retrieve` (D870), `roundtrip` (D871) then
    `portability` (D903), written in one transaction. Another of the seven writes an `unknown`
    run naming why this build cannot measure it (D872), and a name outside them is refused.
-   `--deterministic-half` names the only half of `absence` built, so it is refused beside any
-   other suite, and
+   `--deterministic-half` keeps `absence` to its paired-damage half, leaving out the removal
+   half (D933), so it is refused beside any other suite, and
    `--subject`, a parse driver, beside any suite but `parse`, whose subjects are its own. The
    absence harness is handed `surface.admit.admit`, 13:1306's check of each fix against this
    registry. `--witness` and
@@ -102,6 +102,8 @@ SUITES: Final[tuple[str, ...]] = (
 """13:237-242's seven suites, the `eval_run.suite` CHECK, in that order."""
 RUN_SUITES: Final[tuple[str, ...]] = ("parse", "absence", "retrieve", "roundtrip", "portability")
 """Ruling 8: the suites `ow eval run` measures in this build."""
+FALSE_CONFIDENT: Final[str] = "false_confident_zero"
+"""The absence suite's removal half's metric (D933), whose line counts questions, not pairs."""
 WITNESSES: Final[tuple[str, ...]] = ("ci", "self", "third_party")
 CASSETTES: Final[tuple[str, ...]] = ("off", "allow", "required")
 _STALE: Final[int] = 1
@@ -413,7 +415,7 @@ def _run(parsed: argparse.Namespace, *, cwd: Path, env: Mapping[str, str], stdou
     suites = RUN_SUITES if suite is None else (suite,)
     if parsed.deterministic_half and suites != ("absence",):
         raise UsageError(
-            "--deterministic-half names the half of the absence suite this build runs, and is "
+            "--deterministic-half keeps the absence suite to its paired-damage half, and is "
             "given only with --suite absence",
             fix="ow eval run --suite absence --deterministic-half",
         )
@@ -448,6 +450,7 @@ def _run(parsed: argparse.Namespace, *, cwd: Path, env: Mapping[str, str], stdou
             witness=parsed.witness,
             cassette=parsed.cassette,
             admit=admit,
+            deterministic_half=parsed.deterministic_half,
         )
     )
     if parsed.render == "json":
@@ -467,7 +470,12 @@ def _run_line(row: EvalRunRow) -> str:
     rate = "vacuous" if row.value is None else f"{row.value:.4f} over {row.n}"
     if row.metric == "none":
         return f"  {row.subject:<24} {row.slice:<20} {row.suite} unknown: {row.refused[0]}"
-    if row.suite == "absence":
+    if row.metric == FALSE_CONFIDENT:
+        rate = f"unknown over {row.n}" if row.value is None else rate
+        tail = f"{row.n - row.parsed} of {row.n} answerable question(s) answered absent" + (
+            f": {', '.join(row.refused)}" if row.refused else ""
+        )
+    elif row.suite == "absence":
         tail = f"{row.parsed} of {row.n} pair(s) passed" + (
             f"; failed: {', '.join(row.refused)}" if row.refused else ""
         )
