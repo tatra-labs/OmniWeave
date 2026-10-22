@@ -205,26 +205,20 @@ def test_a_run_drains_every_unit_and_keeps_one_sample_per_call(tmp_path: Path) -
     assert result.drain_s > 0
 
 
-def test_every_op_identify_row_pays_a_whole_claim_statement(tmp_path: Path) -> None:
-    """D191, measured directly: `CLAIM_SQL`'s LIMIT collapses to 1 for a NULL dispatch_key.
+def test_op_identify_rows_are_claimed_many_a_statement(tmp_path: Path) -> None:
+    """D917: a NULL head claims at the asked width (D191's ruling), so the identify phase is no
+    longer one statement a row. Until D917 `CLAIM_SQL`'s LIMIT collapsed to 1 for a NULL
+    dispatch_key, and every unit cost its own claim.
 
-    Stated as "every row cost its own statement" rather than as `rows_per_claim == 1.00`, because
-    the claimer also issues EMPTY claims -- `QUIET_POLLS_BEFORE_SHED + 1` of them -- before it
-    decides the run is over, and those are statements that returned nothing. At 100,000 units they
-    are three in a hundred thousand and the ratio reads 1.00; at forty they are three in
-    forty-three and it reads 0.93. The ratio is the honest one to REPORT and the wrong one to
-    assert a mechanism with.
-
-    Since D676 a batch that finishes wakes the claimer, so the last batches in flight can each
-    cost one more empty claim before the quiet tail: at most one per batch that can be in flight,
-    which is one per worker plus a full inbox of the same size.
+    The claimer also issues EMPTY claims before it decides the run is over (the quiet tail, and
+    one per batch that can be in flight since D676), so the bound counts those beside the claims
+    that returned rows.
     """
     result = _run(tmp_path)
     assert result.claim_rows == SMALL, "every unit was claimed"
-    empty = result.claim.n - result.claim_rows
     in_flight = 2 * sum(result.workers.values())
-    assert 0 <= empty <= QUIET_TAIL + in_flight, f"{result.claim.n} claims for {SMALL} rows"
-    assert result.rows_per_claim <= 1.0, "a claim never returned two rows"
+    assert result.claim.n <= SMALL // 2 + QUIET_TAIL + in_flight, f"{result.claim.n} claims"
+    assert result.rows_per_claim > 1.0, "a claim returned more than one row"
 
 
 def test_the_store_carries_only_op_identify_rows_and_none_has_a_driver(tmp_path: Path) -> None:
