@@ -3211,6 +3211,7 @@ class Worker:
         "_peak",
         "_proc",
         "_reader",
+        "_sampled_ms",
         "_settings",
         "_stderr",
         "_stopped",
@@ -3238,6 +3239,7 @@ class Worker:
         self._last_used_ms = now_ms()
         self._stopped = False
         self._peak: int | None = None
+        self._sampled_ms: int | None = None
 
     @property
     def key(self) -> WorkerKey:
@@ -3330,9 +3332,16 @@ class Worker:
         one that arrived just after, and a superseded result *"writes nothing"* anyway
         (04-driver-system.md:1741, the generation predicate).
 
-        RSS is sampled only on a tick that found nothing, which keeps the flood spin free of a
-        per-frame `OpenProcess`; 04-driver-system.md:1769 puts the sampler on the supervisor's
-        250 ms wake and that wake is this branch.
+        RSS is sampled on every tick that found nothing, and on a tick that found a frame once
+        `tick_ms` has passed since the last sample. 04-driver-system.md:1769 puts the sampler on
+        the supervisor's 250 ms wake, and calls that wake a cadence. D944: sampling only on an
+        empty tick was the `LOG`-flood hole above, facing the memory cap. A worker whose frames
+        never let the queue run dry was never sampled, and under a loaded suite the office
+        driver's own `PROGRESS` did that for a whole 20,000-row unit. The frame tick reuses the
+        reading taken before the queue read, so it still reads no clock of its own and the flood
+        spin pays one `OpenProcess` per tick, not per frame. A frame taken on the tick that finds
+        the worker over its cap is dropped with the worker, as a `RESULT` queued past its deadline
+        is.
         """
         now = self._now_ms()
         fired = countdown.expired(now)
@@ -3343,7 +3352,9 @@ class Worker:
             )
         item = self._reader.get(timeout_ms=countdown.wait_ms(now, tick_ms=self._settings.tick_ms))
         if isinstance(item, wire.Frame):
-            return _Awaited(frame=item, verdict=None)
+            due = self._sampled_ms is None or now - self._sampled_ms >= self._settings.tick_ms
+            over = self._watchdog(memory_mb, now) if memory_mb > 0 and due else None
+            return _Awaited(frame=item if over is None else None, verdict=over)
         if isinstance(item, _Terminal):
             if item.error is not None:
                 raise item.error
@@ -3359,14 +3370,16 @@ class Worker:
                 frame=None,
                 verdict=HostVerdict.timed_out(fired, elapsed_ms=countdown.elapsed_ms(now)),
             )
-        if memory_mb > 0:
-            observed, _how = self.peak_rss()
-            if observed is not None and observed > memory_mb * 1_048_576:
-                return _Awaited(
-                    frame=None,
-                    verdict=HostVerdict.over_memory(observed_bytes=observed, cap_mb=memory_mb),
-                )
-        return _Awaited(frame=None, verdict=None)
+        over = self._watchdog(memory_mb, now) if memory_mb > 0 else None
+        return _Awaited(frame=None, verdict=over)
+
+    def _watchdog(self, memory_mb: int, now: int) -> HostVerdict | None:
+        """One RSS sample against `memory_mb`, stamped `now` for the frame tick's cadence."""
+        self._sampled_ms = now
+        observed, _how = self.peak_rss()
+        if observed is not None and observed > memory_mb * 1_048_576:
+            return HostVerdict.over_memory(observed_bytes=observed, cap_mb=memory_mb)
+        return None
 
     def hello(
         self,
