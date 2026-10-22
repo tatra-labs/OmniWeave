@@ -76,6 +76,10 @@ _FIX: Final = {
         'verify its labels: write checked = "verified" on each .assertions.toml row you confirm '
         "against its document, {n} or more a slice, then ow eval run --suite {suite}"
     ),
+    "population": (
+        "measure {n} or more a slice: add questions to the suite's corpus, then ow eval run "
+        "--suite {suite}"
+    ),
     "perf": "fix the Runner or the regression the budget names, then run ow bench again",
     "gate": "fix the regression; a hard budget moves only by a reviewed eval/gates.toml diff",
     "unmeasured": "run the gate's suite: ow eval run --suite {suite}",
@@ -135,7 +139,8 @@ def latest(runs: Iterable[RunStatus]) -> tuple[RunStatus, ...]:
 
 def _unknown(row: Standing, notes: Sequence[str]) -> Finding:
     """Ruling 3's refusal, saying why when the run said (D913): a rate over labels nobody has
-    verified names the verification as its fix, since no rerun can compute it."""
+    verified names the verification as its fix, since no rerun can compute it, and a rate over
+    fewer questions than `min_slice_n` names more questions as its fix (D933)."""
     named = f"{row.metric}@{row.slice_key} in {row.suite}/{row.subject} run {row.run_id}"
     why = [note for note in notes if note.startswith(f"{row.metric}: ")]
     if not why:
@@ -144,6 +149,10 @@ def _unknown(row: Standing, notes: Sequence[str]) -> Finding:
     if any("unverified assertion" in note for note in why):
         return Finding(
             "metric", named, detail, _FIX["labels"].format(n=MIN_SLICE_N, suite=row.suite)
+        )
+    if any("under min_slice_n" in note for note in why):
+        return Finding(
+            "metric", named, detail, _FIX["population"].format(n=MIN_SLICE_N, suite=row.suite)
         )
     return Finding("metric", named, detail, _FIX["metric"])
 
