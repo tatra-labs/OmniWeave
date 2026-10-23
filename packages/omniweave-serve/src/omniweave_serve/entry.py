@@ -60,6 +60,26 @@ pre-order, oldest child first, each with its depth and its duration in ms:
 - `--slow` keeps the spans at least that slow, with their ancestors;
 - `--depth` cuts every node deeper than N, the run span being depth 0.
 
+## `prune`, D951
+
+15:398: *"Retention is `[observe] retain_days = 14`, swept by `ow trace prune`"*, and 15:1468:
+*"`ow trace prune` can unlink a rolled shard while `ow trace export --follow` holds the live
+one"*. `prune()` removes every shard in the events directory, live or rolled, last written at
+least `older_than_ns` before `now_ns`:
+- age is the shard's own modification time. A rolled shard is never written after its roll, so
+  its time is its roll's; a live shard's moves with every record, so a run still writing is
+  never old;
+- `now_ns` arrives from the caller's injected clock, because this module reads none;
+- an unlink that fails, which on Windows is a shard a reader still holds open, is counted and
+  named and left for the next sweep, never raised (15:1471-1475);
+- `dry_run` names what would go and removes nothing;
+- the export cursor and anything that is not a shard are never touched.
+
+15:398 exempts *"a run whose manifest is still referenced by an open `eval_run`"*. No
+`eval_run` row names an ingest run's manifest in this build (its `run_id` is the eval run's
+own), so no shard is exempt yet. 15:1474's `gc.sweep` event is not written either: a prune
+holds no recorder, and its report carries the count instead.
+
 Specified in 15-observability.md section 2.6 (:213-262).
 """
 
@@ -90,7 +110,7 @@ _NS_PER_MS: Final = 1_000_000
 if TYPE_CHECKING:
     from omniweave_core.events import Event
 
-__all__ = ["export", "stat", "tree"]
+__all__ = ["export", "prune", "stat", "tree"]
 
 
 def export(
@@ -338,3 +358,32 @@ def _visit(
             continue
         out.append({**nodes[child], "depth": level})
         _visit(child, level + 1, children=children, nodes=nodes, keep=keep, depth=depth, out=out)
+
+
+def prune(*, events_dir: str, now_ns: int, older_than_ns: int, dry_run: bool) -> dict[str, object]:
+    """`ow trace prune`: the shards last written `older_than_ns` or more ago, removed or named."""
+    root = Path(events_dir)
+    try:
+        entries = sorted(entry for entry in root.iterdir() if entry.is_file())
+    except OSError:
+        entries = []
+    removed: list[str] = []
+    failed: list[str] = []
+    freed = 0
+    kept = 0
+    for entry in entries:
+        if not (entry.name.endswith(LIVE_SUFFIX) or entry.name.endswith(GZ_SUFFIX)):
+            continue
+        facts = entry.stat()
+        if now_ns - facts.st_mtime_ns < older_than_ns:
+            kept += 1
+            continue
+        if not dry_run:
+            try:
+                entry.unlink()
+            except OSError:
+                failed.append(entry.name)
+                continue
+        removed.append(entry.name)
+        freed += facts.st_size
+    return {"removed": removed, "failed": failed, "kept": kept, "bytes": freed}

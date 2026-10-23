@@ -70,7 +70,7 @@ properties = 0
 
 [[area]]
 area = "omniweave-serve/unit"
-tests = 736
+tests = 740
 properties = 0
 
 [[area]]
@@ -105,5 +105,5 @@ properties = 0
 
 [[area]]
 area = "omniweave/unit"
-tests = 4446
+tests = 4449
 properties = 0

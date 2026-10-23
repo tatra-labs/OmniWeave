@@ -60,6 +60,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     skills.verify     SkillsVerifyIn      SkillsReport
     surface.emit      SurfaceEmitIn       SurfaceReport
     trace.export      TraceExportIn       TraceExportReport
+    trace.prune       TracePruneIn        TracePruneReport
     trace.stat        TraceStatIn         TraceStatReport
     trace.tree        TraceTreeIn         TraceTreeReport
     uninstall         UninstallIn         InstallReport

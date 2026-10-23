@@ -1,4 +1,4 @@
-"""`ow trace export`, `stat` and `tree`: a run's event shards, sent, counted or nested. D947-D950.
+"""`ow trace export`, `stat`, `tree` and `prune`: a run's event shards. D947-D951.
 
 15-observability.md:233 prints the verb and section 2.6 its mapping. The reader, the pairer and
 the payload builder live in `omniweave-serve` beside the OTLP code (02-architecture.md row 40),
@@ -37,6 +37,12 @@ this closes: every part was built, and no command reached them.
    two spaces a level: a span's name and its ms, `open` when it never ended, and a point's
    kind, each with its outcome and its unit when it has them. `--depth` and `--slow` below 0
    are refused; a run with no shard is ruling 3's `NotFoundError`.
+9. **`ow trace prune` removes the shards older than retention** (D951). The age is
+   `--older-than`, `<n>m|h|d` as `ow cost --since` parses it, or `[observe] retain_days`. The
+   wall clock is read once here, from `SystemClock`, as `ow cost` reads it. A shard the
+   platform would not unlink is named and exits 0, because 15:1471-1475 retries it on the next
+   sweep rather than failing. `--dry-run` names and removes nothing. A project with no events
+   directory removes nothing.
 """
 
 from __future__ import annotations
@@ -59,6 +65,7 @@ from omniweave.run.trace import shard_of
 from omniweave.sdk.reports import (
     TraceExportReport,
     TraceKindRow,
+    TracePruneReport,
     TraceShardRow,
     TraceSpanRow,
     TraceStatReport,
@@ -87,6 +94,7 @@ _ROLLED_GLOB: Final[str] = ".*.ndjson.gz"
 _PROBE_RUN: Final[str] = "r_0"
 """A run id to resolve `[observe] ndjson_path` with when no run is named, for its directory."""
 _NS_PER_MS: Final[int] = 1_000_000
+_MS_PER_DAY: Final[int] = 86_400_000
 
 
 def main(
@@ -98,7 +106,8 @@ def main(
         return parsed
     try:
         check(TRACE_WORD, parsed)
-        verb = {"trace.stat": _stat, "trace.tree": _tree}.get(parsed.ow_action, _export)
+        verbs = {"trace.stat": _stat, "trace.tree": _tree, "trace.prune": _prune}
+        verb = verbs.get(parsed.ow_action, _export)
         return verb(parsed, cwd=cwd, env=env, stdout=stdout)
     except OwError as error:
         return report(error, parsed, stdout=stdout, stderr=stderr)
@@ -417,3 +426,96 @@ def _tree_line(node: TraceTreeNode) -> str:
     outcome = f"  {node.outcome}" if node.outcome else ""
     unit = f"  {node.unit}" if node.unit else ""
     return "  " * (node.depth + 1) + f"{node.name}{took}{outcome}{unit}"
+
+
+def _prune(parsed: argparse.Namespace, *, cwd: Path, env: Mapping[str, str], stdout: TextIO) -> int:
+    """Ruling 9."""
+    from omniweave.run.cost import since_ms  # noqa: PLC0415 -- only prune pays for the parser
+
+    fix = "ow trace prune [--older-than 14d] [--dry-run]"
+    if parsed.render in ("jsonl", "rows"):
+        raise UsageError(
+            f"--render {parsed.render} is parsed and not served by ow trace prune", fix=fix
+        )
+    explicit = Path(parsed.config) if parsed.config else None
+    config = load(cwd=cwd, env=env, explicit=explicit)
+    if parsed.older_than is None:
+        older_ms = int(config.get("observe.retain_days")) * _MS_PER_DAY  # type: ignore[arg-type]
+    else:
+        try:
+            older_ms = since_ms(parsed.older_than)
+        except ValueError as error:
+            raise UsageError(str(error), fix=fix) from error
+    events_dir = _shard_path(config, _PROBE_RUN, env=env).parent
+    done = _prune_report(
+        trace_entry("prune")(
+            events_dir=str(events_dir),
+            now_ns=_wall_ns(),
+            older_than_ns=older_ms * _NS_PER_MS,
+            dry_run=bool(parsed.dry_run),
+        ),
+        older_ms=older_ms,
+        dry_run=bool(parsed.dry_run),
+    )
+    if parsed.render == "json":
+        stdout.write(json.dumps(asdict(done), ensure_ascii=False) + "\n")
+    else:
+        for line in _prune_lines(done):
+            stdout.write(line + "\n")
+    return 0
+
+
+def _wall_ns() -> int:
+    """Ruling 9: the one wall-clock read, as `ow cost` makes it."""
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415 -- only prune pays
+
+    return SystemClock().wall_ns()
+
+
+def _prune_report(
+    result: Mapping[str, object], *, older_ms: int, dry_run: bool
+) -> TracePruneReport:
+    """The `prune` entry point's builtins as this side's report; else a broken install."""
+    removed, failed = result.get("removed"), result.get("failed")
+    kept, freed = result.get("kept"), result.get("bytes")
+    if not (
+        isinstance(removed, list)
+        and isinstance(failed, list)
+        and isinstance(kept, int)
+        and isinstance(freed, int)
+    ):
+        raise InternalError(
+            "the [omniweave.trace] prune entry point returned an unreadable report",
+            fix="pip install --force-reinstall omniweave-serve",
+        )
+    return TracePruneReport(
+        removed=tuple(str(name) for name in removed),
+        failed=tuple(str(name) for name in failed),
+        kept=kept,
+        bytes=freed,
+        older_than_ms=older_ms,
+        dry_run=dry_run,
+    )
+
+
+def _prune_lines(done: TracePruneReport) -> list[str]:
+    """Ruling 9's text form: each shard, then one verdict line."""
+    verb = "would remove" if done.dry_run else "removed"
+    lines = [f"  {verb}  {name}" for name in done.removed]
+    lines.extend(
+        f"  held     {name}  not removed; the next sweep retries it" for name in done.failed
+    )
+    lines.append(
+        f"ow trace prune  {verb} {len(done.removed)} shard(s), {done.bytes} bytes, older than "
+        f"{_age(done.older_than_ms)}; kept {done.kept}"
+        + (f"; {len(done.failed)} held" if done.failed else "")
+    )
+    return lines
+
+
+def _age(ms: int) -> str:
+    """An age in the largest whole unit `--older-than` takes: `14d`, `6h` or `90m`."""
+    for unit, size in (("d", _MS_PER_DAY), ("h", _MS_PER_DAY // 24), ("m", 60_000)):
+        if ms % size == 0:
+            return f"{ms // size}{unit}"
+    return f"{ms} ms"

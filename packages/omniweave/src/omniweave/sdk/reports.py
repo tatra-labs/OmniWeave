@@ -98,6 +98,7 @@ __all__ = [
     "TargetsReport",
     "TraceExportReport",
     "TraceKindRow",
+    "TracePruneReport",
     "TraceShardRow",
     "TraceSpanRow",
     "TraceStatReport",
@@ -1028,3 +1029,20 @@ class TraceTreeReport:
     run_id: str
     spans: int
     nodes: tuple[TraceTreeNode, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class TracePruneReport:
+    """What `ow trace prune` returns. 15:398, :1471-1475. D951.
+
+    `removed` names each shard removed, or under `dry_run` each that would be; `failed` each the
+    platform would not unlink, left for the next sweep; `kept` counts the younger ones; `bytes` is
+    what the removed shards held. `older_than_ms` is the age that was applied.
+    """
+
+    removed: tuple[str, ...]
+    failed: tuple[str, ...]
+    kept: int
+    bytes: int
+    older_than_ms: int
+    dry_run: bool
