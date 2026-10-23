@@ -375,8 +375,8 @@ cli.skills.verify: ow skills verify [--all]
 cli.skills.verify.actions: skills.verify
 cli.surface.emit: ow surface emit [--check] [--bless]
 cli.surface.emit.actions: surface.emit
-cli.trace.export: ow trace export [--run RUN] [--file FILE] [--dry-run] [--print-payload]
-  [--max-batch MAX_BATCH]
+cli.trace.export: ow trace export [--run RUN] [--file FILE] [--otlp OTLP] [--dry-run]
+  [--print-payload] [--max-batch MAX_BATCH]
 cli.trace.export.actions: trace.export
 cli.uninstall: ow uninstall [--target TARGET] [--location LOCATION] [--keep-cli] [--yes]
 cli.uninstall.actions: uninstall

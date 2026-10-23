@@ -620,3 +620,62 @@ def test_the_trace_group_declares_export_and_it_is_the_entry_function() -> None:
     row = project["project"]["entry-points"]["omniweave.trace"]
     assert row == {"export": "omniweave_serve.entry:export"}
     assert callable(export)
+
+
+# ---------------------------------------------------------------------------------------------
+# D948: `--otlp`, the send path through `export_once()` and the cursor
+# ---------------------------------------------------------------------------------------------
+
+
+def _patched(monkeypatch: pytest.MonkeyPatch, recorder: Recorder) -> list[float]:
+    """The entry's transport is the recorder, and its ladder's waits are recorded, not slept."""
+    import omniweave_serve.entry as entry_module  # noqa: PLC0415
+
+    waits: list[float] = []
+    monkeypatch.setattr(entry_module, "UrllibTransport", lambda: recorder)
+    monkeypatch.setattr(entry_module.time, "sleep", waits.append)
+    return waits
+
+
+def test_otlp_posts_each_request_and_a_second_pass_resumes_past_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`entry`'s ruling 5: each body is `payload()`'s, POSTed to `{endpoint}/v1/traces`, and the
+    cursor is committed after it, so a re-run sends nothing it already sent (15:255)."""
+    from omniweave_serve.entry import export  # noqa: PLC0415
+
+    live = _run_shard(tmp_path)
+    recorder = Recorder()
+    _patched(monkeypatch, recorder)
+    done = export(
+        live=str(live), config_digest="3b8a1f4c" * 8, file=None, max_batch=1,
+        endpoint=ENDPOINT, run_id=RUN,
+    )  # fmt: skip
+    assert [url for url, _, _ in recorder.calls] == [URL, URL]
+    assert (done["sent_requests"], done["sent_spans"], done["halted"]) == (2, 2, "")
+    assert done["payloads"] == []
+    assert read_cursor(cursor_path(live.parent), endpoint=ENDPOINT, run_id=RUN) is not None
+    again = export(
+        live=str(live), config_digest="3b8a1f4c" * 8, file=None, max_batch=1,
+        endpoint=ENDPOINT, run_id=RUN,
+    )  # fmt: skip
+    assert len(recorder.calls) == 2, "the committed requests were not sent twice"
+    assert again["sent_requests"] == 0
+
+
+def test_otlp_that_never_answers_halts_with_the_message_and_commits_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """15:254-255: three retries on the ladder, then a stop naming where it committed (D363)."""
+    from omniweave_serve.entry import export  # noqa: PLC0415
+
+    live = _run_shard(tmp_path)
+    waits = _patched(monkeypatch, Recorder(default=Response(503, "Service Unavailable")))
+    done = export(
+        live=str(live), config_digest="3b8a1f4c" * 8, file=None, max_batch=512,
+        endpoint=ENDPOINT, run_id=RUN,
+    )  # fmt: skip
+    assert waits == [1.0, 2.0, 4.0]
+    assert str(done["halted"]).startswith("trace export stopped after 4 attempts against HTTP 503")
+    assert done["sent_requests"] == 0
+    assert read_cursor(cursor_path(live.parent), endpoint=ENDPOINT, run_id=RUN) is None
