@@ -73,11 +73,13 @@ import tempfile
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Final
 
 __all__ = [
     "CARD_RELATIVE",
     "CONTRACT_RELATIVE",
     "DEFAULT_GLOB",
+    "GIT_TIMEOUT_S",
     "Finding",
     "Release",
     "check_release",
@@ -187,13 +189,19 @@ def _tool(name: str) -> str:
     return shutil.which(name) or name
 
 
+GIT_TIMEOUT_S: Final = 300
+"""One `git` call's ceiling. D962 (a user ruling of 2026-10-23): 120 s timed out
+`git worktree add --detach` twice on windows-latest under `-n auto` (#211, #213), checking
+out the full tree for a tag while Defender scanned it; both reruns passed."""
+
+
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(  # noqa: S603 -- a fixed argv, no shell, absolute argv[0].
         [_tool("git"), "-C", str(repo), *args],
         capture_output=True,
         text=True,
         check=False,
-        timeout=120,
+        timeout=GIT_TIMEOUT_S,
     )
 
 

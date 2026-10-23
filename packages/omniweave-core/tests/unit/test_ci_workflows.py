@@ -656,6 +656,13 @@ def test_every_job_carries_a_timeout(ci: Workflow) -> None:
     assert f"timeout-minutes: {PARITY_TIMEOUT_MINUTES}" in parity
 
 
+def test_windows_test_cells_get_60_minutes_and_the_rest_45(ci: Workflow) -> None:
+    """D962, a user ruling of 2026-10-23: Windows cells run 30-40 minutes and a queue pushed them
+    past 45 (#206, the merge of #218), each rerun passing. Linux and macOS keep 45."""
+    test = "\n".join(ci.job_blocks()["test"])
+    assert "timeout-minutes: ${{ startsWith(matrix.os, 'windows') && 60 || 45 }}" in test
+
+
 def test_fetch_depth_zero_is_exactly_the_registers_history_readers(
     ci: Workflow, register: dict[str, object]
 ) -> None:
