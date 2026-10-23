@@ -101,6 +101,8 @@ __all__ = [
     "TraceShardRow",
     "TraceSpanRow",
     "TraceStatReport",
+    "TraceTreeNode",
+    "TraceTreeReport",
     "VerifiedClass",
     "VerifyReport",
 ]
@@ -1000,3 +1002,29 @@ class TraceStatReport:
     kinds: tuple[TraceKindRow, ...]
     spans: tuple[TraceSpanRow, ...]
     dropped: int
+
+
+@dataclass(frozen=True, slots=True)
+class TraceTreeNode:
+    """One line of `ow trace tree`: a span or a point record, where it sits, and what it took.
+
+    `kind` is `span` or `point`. `ms` is a span's monotonic duration, `None` for a span with no
+    `end` (open) and for a point. `outcome` is the span's `outcome` or `status`, or a point's
+    `failure_class`, and `""` when it has none. D950.
+    """
+
+    name: str
+    kind: str
+    depth: int
+    ms: int | None
+    outcome: str
+    unit: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class TraceTreeReport:
+    """What `ow trace tree` returns: the run's nodes in pre-order, and its span count. D950."""
+
+    run_id: str
+    spans: int
+    nodes: tuple[TraceTreeNode, ...]
