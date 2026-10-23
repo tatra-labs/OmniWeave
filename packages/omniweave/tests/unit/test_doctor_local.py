@@ -1,4 +1,4 @@
-"""`ow doctor`'s four local rows: D-01, D-05, D-11 and D-15. D953.
+"""`ow doctor`'s local rows: D-01, D-05, D-11 and D-15 (D953), and D-10 (D958).
 
 Each row is asked of a configuration `load()` resolved from a temp project, with the two machine
 readings (the SQLite version and a volume's free bytes) handed in where a test cannot choose them.
@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from omniweave.doctor import local
+from omniweave.run.supervisor import HostFacts
 from omniweave_core.config import load
 
 if TYPE_CHECKING:
@@ -152,3 +153,58 @@ def test_d15_an_unwritable_directory_warns(tmp_path: Path, monkeypatch: pytest.M
     found = local.check_events_dir(config, env={}, posix=False)
     assert found.severity == "warning"
     assert "is not writable, so a run's events degrade to the console" in found.detail
+
+
+# --- D-10 (D958) ----------------------------------------------------------------------------
+
+GB = 1 << 30
+ROSTER = {"free": 450, "local_compute": 1_800, "billed_api": 260}
+"""08:717-723's roster: each cost class's heaviest enabled card's `[isolation] memory_mb`."""
+
+
+def test_d10_the_laptop_fits_with_its_workers_clamped_to_its_cpus(tmp_path: Path) -> None:
+    """08:729: 3 x 450 + 2 x 1800 + 8 x 260 = 7,030 MB against 0.8 x 16 GB."""
+    laptop = HostFacts(cpus=4, ram_bytes=16 * GB, free_disk_bytes=GB)
+    found = local.check_ram(_config(tmp_path / "p"), memory_mb=ROSTER, cwd=tmp_path, host=laptop)
+    assert (found.check, found.severity, found.fix) == ("D-10", "ok", "")
+    assert found.detail == (
+        "the enabled drivers' worker processes fit: free 3 x 450 MB + local_compute 2 x 1800 MB "
+        "+ billed_api 8 x 260 MB = 7030 MB, against 0.8 of this machine's 16384 MB (13107 MB)"
+    )
+
+
+def test_d10_the_container_fails_and_names_max_workers(tmp_path: Path) -> None:
+    """08:731: eight visible CPUs inside a 4 GB limit need 11,080 MB, over 3,276 MB."""
+    container = HostFacts(cpus=8, ram_bytes=4 * GB, free_disk_bytes=GB)
+    found = local.check_ram(_config(tmp_path / "p"), memory_mb=ROSTER, cwd=tmp_path, host=container)
+    assert found.severity == "error"
+    assert "need more RAM than this machine has" in found.detail
+    assert "= 11080 MB, against 0.8 of this machine's 4096 MB (3276 MB)" in found.detail
+    assert found.fix == (
+        "lower max_workers under [drivers] in omniweave.toml "
+        "(here it runs free = 4, local_compute = 4, billed_api = 8)"
+    )
+
+
+def test_d10_the_configured_workers_are_what_it_sums(tmp_path: Path) -> None:
+    """08:735's own fix, `{free = 2, local_compute = 1, billed_api = 2}`, is 3,220 MB: it fits."""
+    text = "[drivers]\nmax_workers = { free = 2, local_compute = 1, billed_api = 2 }\n"
+    container = HostFacts(cpus=8, ram_bytes=4 * GB, free_disk_bytes=GB)
+    found = local.check_ram(
+        _config(tmp_path / "p", text), memory_mb=ROSTER, cwd=tmp_path, host=container
+    )
+    assert found.severity == "ok"
+    assert "= 3220 MB" in found.detail
+
+
+def test_d10_a_machine_that_will_not_say_its_ram_warns(tmp_path: Path) -> None:
+    unknown = HostFacts(cpus=4, ram_bytes=0, free_disk_bytes=GB)
+    found = local.check_ram(_config(tmp_path / "p"), memory_mb=ROSTER, cwd=tmp_path, host=unknown)
+    assert found.severity == "warning"
+    assert "does not report physical RAM" in found.detail
+    assert found.fix.startswith("compare free 3 x 450 MB + ")
+
+
+def test_d10_measures_this_machine_when_no_host_is_handed_in(tmp_path: Path) -> None:
+    found = local.check_ram(_config(tmp_path / "p"), memory_mb=ROSTER, cwd=tmp_path / "p")
+    assert found.severity in {"ok", "error"}, "every CI cell reports its RAM (D958)"

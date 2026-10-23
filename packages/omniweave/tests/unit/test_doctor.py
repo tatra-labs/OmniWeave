@@ -34,12 +34,13 @@ if TYPE_CHECKING:
 def roster(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     """The catalog D-08 reads, replaced, so no test here depends on what this machine installed.
 
-    A test sets `cards` (id -> attested), `trust`, `ports` (id -> port, `parse` when unset) and
-    `faults`. `calls` records what each pass was given.
+    A test sets `cards` (id -> attested), `trust`, `ports` (id -> port, `parse` when unset),
+    `faults`, and for D-10 `memory` (id -> `[isolation] memory_mb`) and `costs` (id -> cost
+    class; no `[cost.model]` when unset). `calls` records what each pass was given.
     """
     from omniweave_core import discovery  # noqa: PLC0415
 
-    state = SimpleNamespace(cards={}, trust={}, ports={}, faults=(), calls=[])
+    state = SimpleNamespace(cards={}, trust={}, ports={}, faults=(), memory={}, costs={}, calls=[])
 
     def fake_catalog(**kwargs: object) -> SimpleNamespace:
         state.calls.append(("catalog", kwargs))
@@ -47,6 +48,10 @@ def roster(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
             k: SimpleNamespace(
                 attested=v,
                 identity=SimpleNamespace(port=SimpleNamespace(value=state.ports.get(k, "parse"))),
+                isolation=SimpleNamespace(memory_mb=state.memory.get(k, 0)),
+                cost_model=(
+                    SimpleNamespace(cost_class=state.costs[k]) if k in state.costs else None
+                ),
             )
             for k, v in state.cards.items()
         }
@@ -183,7 +188,18 @@ def test_the_verb_exits_0_and_names_every_row_it_did_not_run(repo: Any) -> None:
     code, out, _ = _main(["doctor", "--runtime"], repo(["src/a.py"]))
     assert code == doctor.OK == 0
     assert "ok   D-02: no .owstore is tracked" in out
-    assert f"17 of 27 checks are not built yet and were not run: {', '.join(doctor.UNBUILT)}" in out
+    assert f"16 of 27 checks are not built yet and were not run: {', '.join(doctor.UNBUILT)}" in out
+    assert "ok   D-10: the enabled drivers' worker processes fit: " in out
+    assert "runs only with --runtime" not in out
+    assert out.rstrip().endswith("doctor: passes the 11 check(s) it ran")
+
+
+def test_without_runtime_d10_is_named_as_not_run(repo: Any) -> None:
+    """D958: D-10 is built and runs only under `--runtime` (15:1523), so a plain run says so."""
+    code, out, _ = _main(["doctor"], repo(["src/a.py"]))
+    assert code == doctor.OK
+    assert "D-10:" not in out
+    assert "doctor: D-10 runs only with --runtime\ndoctor: passes the 10 check(s) it ran" in out
 
 
 def test_an_unknown_flag_is_argparses_usage_error(tmp_path: Path) -> None:
@@ -327,6 +343,28 @@ def test_a_configuration_that_fails_says_d08_did_not_run(
     #  D-16 and D-17 read no configuration and run; with no HOME each says it could not.
     assert [one.check for one in report.warned[-2:]] == ["D-16", "D-17"]
     assert roster.calls == []
+    runtime = doctor.run(cwd=tmp_path, env={}, runtime=True)
+    assert [one.check for one in runtime.warned][:7] == [
+        "D-05", "D-06", "D-08", "D-10", "D-11", "D-13", "D-15"
+    ]  # fmt: skip
+
+
+# ---------------------------------------------------------------------------------------------
+# D958: D-10 weighs each cost class by its heaviest enabled card
+# ---------------------------------------------------------------------------------------------
+
+
+def test_class_memory_is_the_heaviest_enabled_card_per_cost_class(
+    roster: SimpleNamespace,
+) -> None:
+    roster.cards = {"a": True, "b": True, "c": True, "d": True, "off": True}
+    roster.memory = {"a": 450, "b": 300, "c": 1_800, "d": 260, "off": 9_999}
+    roster.costs = {"b": "free", "c": "local_compute", "d": "billed_api"}
+    weights = doctor.class_memory_mb(
+        env={}, project_root=None, enabled=["a", "b", "c", "d", "no-card"]
+    )
+    #  `a` has no [cost.model] and counts as free; `off` is not enabled; `no-card` weighs nothing.
+    assert weights == {"free": 450, "local_compute": 1_800, "billed_api": 260}
 
 
 # ---------------------------------------------------------------------------------------------
@@ -334,7 +372,7 @@ def test_a_configuration_that_fails_says_d08_did_not_run(
 # ---------------------------------------------------------------------------------------------
 
 
-def _gated(**policy: object) -> list[DoctorFinding]:
+def _gated(**policy: Any) -> list[DoctorFinding]:
     found = doctor.check_driver_cards(
         env={}, project_root=None, enabled=ENABLED, allow_unattested=True, **policy
     )

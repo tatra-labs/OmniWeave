@@ -164,7 +164,7 @@ CRITERIA: tuple[Criterion, ...] = (
         "tools/check_wheelhouse.py installs the three offline profiles from the built wheels and "
         "runs G2's measured half and the 250 MB `[recommended]` union over them (D897-D899); "
         "this row runs the declared half and the build here. `ow doctor --runtime`'s vision size "
-        "(D-10) is unbuilt",
+        "(D-19) is unbuilt",
     ),
     Criterion(
         "V10-3",

@@ -477,7 +477,10 @@ def test_doctor_is_ow_doctors_report(here: Path) -> None:
 
     report = sdk.doctor()
     assert report == doctor_package.run(cwd=here, env=_env(here) | dict(__import__("os").environ))
-    assert report == sdk.doctor(runtime=True), "runtime changes nothing yet (D-10 is unbuilt)"
+    runtime = sdk.doctor(runtime=True)
+    rows = [(*one.ok, *one.warned, *one.failed) for one in (report, runtime)]
+    assert [one for one in rows[1] if one.check != "D-10"] == list(rows[0])
+    assert [one.check for one in rows[1] if one.check == "D-10"] == ["D-10"], "D958: --runtime"
 
 
 def test_a_submodule_name_is_the_submodule_not_the_sdk_function() -> None:

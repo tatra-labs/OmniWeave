@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import Any, NamedTuple, cast
 
 import pytest
+from omniweave.run import supervisor
 from omniweave.run.supervisor import (
     COST_CLASSES,
     CRASH_DEGRADATION_KIND,
@@ -455,12 +456,34 @@ def test_host_facts_measures_this_machine(tmp_path: Path) -> None:
     facts = HostFacts.measure(tmp_path)
     assert facts.cpus >= 1
     assert facts.free_disk_bytes > 0
-    assert facts.ram_bytes >= 0
+    assert facts.ram_bytes > 0, "D958: Windows reads GlobalMemoryStatusEx, POSIX os.sysconf"
     assert facts.gpus == ()
 
 
+def test_a_cgroup_limit_below_physical_ram_is_the_ram(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D958: 08:731's container row, a 4 GB limit on a bigger host, reads as 4 GB."""
+    pages = {"SC_PHYS_PAGES": 16 * GB // 4096, "SC_PAGE_SIZE": 4096}
+    monkeypatch.setattr(supervisor.os, "sysconf", pages.__getitem__, raising=False)
+    assert supervisor._ram_bytes(tmp_path) == 16 * GB, "no cgroup file: physical RAM"
+    (tmp_path / "memory.max").write_text("max\n", encoding="ascii")
+    assert supervisor._ram_bytes(tmp_path) == 16 * GB, "v2 `max` is no limit"
+    (tmp_path / "memory.max").write_text(f"{4 * GB}\n", encoding="ascii")
+    assert supervisor._ram_bytes(tmp_path) == 4 * GB
+    (tmp_path / "memory.max").write_text(f"{32 * GB}\n", encoding="ascii")
+    assert supervisor._ram_bytes(tmp_path) == 16 * GB, "a limit above the machine changes nothing"
+
+
+def test_a_cgroup_v1_limit_is_read_too(tmp_path: Path) -> None:
+    (tmp_path / "memory").mkdir()
+    (tmp_path / "memory" / "memory.limit_in_bytes").write_text(f"{2 * GB}\n", encoding="ascii")
+    assert supervisor._cgroup_limit(tmp_path) == 2 * GB
+    assert supervisor._cgroup_limit(tmp_path / "absent") == 0
+
+
 def test_an_unknown_ram_reading_is_not_an_ok_verdict() -> None:
-    """`_ram_bytes` returns 0 where the platform will not answer — Windows has no `os.sysconf`.
+    """`_ram_bytes` returns 0 where the platform will not answer (D958 reads Windows too).
 
     Reading that as "it fits" would make 08:703's refusal vacuous on exactly the platform where
     the measurement was hardest, so `unknown` is a third verdict and `refuses` is false for it:
