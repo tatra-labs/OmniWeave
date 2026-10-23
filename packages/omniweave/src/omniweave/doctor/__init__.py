@@ -14,7 +14,7 @@ its rogue fixture (D612).
 
 D953 adds four rows that read only this machine and the configuration: D-01, D-05, D-11 and
 D-15, in `omniweave.doctor.local`. D956 adds three that read what the project declares: D-06,
-D-13 and D-17, in `omniweave.doctor.project`.
+D-13 and D-17, in `omniweave.doctor.project`, and D957 D-16 beside them.
 
 **The rows of 15:1514-1540 not built are named, not skipped silently.** Every run prints the
 ids it did not check, because a doctor that exits 0 is read as *"this deployment is fine"*,
@@ -343,6 +343,7 @@ def run(
             project.check_named_drivers(resolved, project_root=config.project_root(resolved))
         )
         findings.extend(project.check_pricebooks(resolved, cwd=cwd, today=_today()))
+    findings.append(project.check_hooks(env, cwd=cwd))
     findings.append(project.check_skills(env, cwd=cwd))
     findings.append(local.check_sqlite())
     findings.append(check_tracked_store(cwd))
