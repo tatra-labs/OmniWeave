@@ -304,8 +304,13 @@ def test_report_writes_prose_json_or_both_as_the_flags_ask() -> None:
 # ---------------------------------------------------------------------------------------------
 
 
-ATTESTED = {doctor.ALLOW_UNATTESTED: "true"}
-"""So D-08 passes over this workspace's two unattested first-party cards (D576)."""
+ATTESTED = {
+    doctor.ALLOW_UNATTESTED: "true",
+    doctor.REQUIRE_LOCK: "false",
+    doctor.INPROC: "[]",
+}
+"""So D-08 passes over this checkout: its first-party cards are unattested (D576) and, with no
+release manifest, unpinned, which the shipped `require_lock` and `inproc` refuse (D954)."""
 
 
 def _doctor(argv: list[str], cwd: Path) -> tuple[int, str, str]:

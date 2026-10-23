@@ -34,15 +34,22 @@ if TYPE_CHECKING:
 def roster(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
     """The catalog D-08 reads, replaced, so no test here depends on what this machine installed.
 
-    A test sets `cards` (id -> attested) and `faults`. `calls` records what each pass was given.
+    A test sets `cards` (id -> attested), `trust`, `ports` (id -> port, `parse` when unset) and
+    `faults`. `calls` records what each pass was given.
     """
     from omniweave_core import discovery  # noqa: PLC0415
 
-    state = SimpleNamespace(cards={}, trust={}, faults=(), calls=[])
+    state = SimpleNamespace(cards={}, trust={}, ports={}, faults=(), calls=[])
 
     def fake_catalog(**kwargs: object) -> SimpleNamespace:
         state.calls.append(("catalog", kwargs))
-        cards = {k: SimpleNamespace(attested=v) for k, v in state.cards.items()}
+        cards = {
+            k: SimpleNamespace(
+                attested=v,
+                identity=SimpleNamespace(port=SimpleNamespace(value=state.ports.get(k, "parse"))),
+            )
+            for k, v in state.cards.items()
+        }
         return SimpleNamespace(cards=cards, trust=dict(state.trust))
 
     def fake_discover(**kwargs: object) -> SimpleNamespace:
@@ -290,6 +297,8 @@ def test_run_reads_the_opt_in_and_the_project_from_the_resolved_config(
     sub = tmp_path / "deeper"
     sub.mkdir()
     roster.cards = {"parse.office.anydoc": False}
+    #  An install's anydoc is vendored; the shipped `inproc` names it, which D954 checks (D-08).
+    roster.trust = {"parse.office.anydoc": TrustTier.VENDORED}
     env = {"OMNIWEAVE_DRIVERS_ALLOW_UNATTESTED": "true"}
     report = doctor.run(cwd=sub, env=env)
     assert [one.check for one in report.failed] == []
@@ -316,3 +325,82 @@ def test_a_configuration_that_fails_says_d08_did_not_run(
         for row in ("D-05", "D-08", "D-11", "D-15")
     ]
     assert roster.calls == []
+
+
+# ---------------------------------------------------------------------------------------------
+# D954: D-08 asks the two trust gates resolve() applies after attestation
+# ---------------------------------------------------------------------------------------------
+
+
+def _gated(**policy: object) -> list[DoctorFinding]:
+    found = doctor.check_driver_cards(
+        env={}, project_root=None, enabled=ENABLED, allow_unattested=True, **policy
+    )
+    return [one for one in found if one.check == "D-08"]
+
+
+def test_require_lock_fails_an_unpinned_routed_card_with_the_lock_fix(
+    roster: SimpleNamespace,
+) -> None:
+    """A source checkout has no release manifest, so a first-party card computes as unpinned and
+    `require_lock` refuses it: `_gate_lockfile`'s `NOT_IN_LOCKFILE`, now D-08's too."""
+    roster.cards = {"parse.office.anydoc": True, "parse.pdf.pdfium": True}
+    roster.trust = {
+        "parse.office.anydoc": TrustTier.FIRST_PARTY,
+        "parse.pdf.pdfium": TrustTier.UNPINNED,
+    }
+    (failed,) = _gated(require_lock=True)
+    assert failed.severity == "error"
+    assert failed.detail.startswith("parse.pdf.pdfium computes as 'unpinned'")
+    assert failed.detail.endswith("so resolve() routes nothing to it (NOT_IN_LOCKFILE)")
+    assert failed.fix.startswith("OMNIWEAVE_DRIVERS_REQUIRE_LOCK=false")
+    assert [one.severity for one in _gated(require_lock=False)] == ["ok"]
+
+
+def test_a_card_resolve_never_routes_is_not_failed_on_the_lock(roster: SimpleNamespace) -> None:
+    """A derive pass is pinned by its operator; `resolve()` never sees it, so neither gate does."""
+    roster.cards = {"parse.office.anydoc": True}
+    roster.ports = {"parse.office.anydoc": "derive"}
+    roster.trust = {"parse.office.anydoc": TrustTier.UNPINNED}
+    assert [one.severity for one in _gated(require_lock=True, inproc=ENABLED)] == ["ok"]
+
+
+def test_an_unrouted_unattested_card_fails_without_claiming_resolve_refuses_it(
+    roster: SimpleNamespace,
+) -> None:
+    roster.cards = {"parse.office.anydoc": False, "parse.pdf.pdfium": False}
+    roster.ports = {"parse.office.anydoc": "derive"}
+    derive, parse = _d08()
+    assert derive.detail.endswith("no release manifest pins it (D576)")
+    assert parse.detail.endswith("so resolve() refuses it as unattested")
+
+
+def test_inproc_naming_a_card_outside_inproc_trust_fails_with_the_inproc_fix(
+    roster: SimpleNamespace,
+) -> None:
+    """`_gate_isolation`'s `TRUST_INSUFFICIENT`: the shipped `inproc = ["parse.office.anydoc"]`
+    needs `vendored` or `first_party`, which a checkout's unpinned anydoc is not."""
+    roster.cards = {"parse.office.anydoc": True}
+    roster.trust = {"parse.office.anydoc": TrustTier.UNPINNED}
+    (failed,) = _gated(inproc=("parse.office.anydoc",))
+    assert failed.detail.startswith("[drivers] inproc names parse.office.anydoc, which computes")
+    assert failed.detail.endswith("so resolve() refuses it (TRUST_INSUFFICIENT)")
+    assert failed.fix.startswith("OMNIWEAVE_DRIVERS_INPROC=[]")
+    roster.trust = {"parse.office.anydoc": TrustTier.VENDORED}
+    assert [one.severity for one in _gated(inproc=("parse.office.anydoc",))] == ["ok"]
+
+
+def test_run_reads_require_lock_and_inproc_from_the_configuration(
+    roster: SimpleNamespace, tmp_path: Path
+) -> None:
+    roster.cards = {"parse.text.builtin": True}
+    roster.trust = {"parse.text.builtin": TrustTier.UNPINNED}
+    (tmp_path / "omniweave.toml").write_text(
+        '[drivers]\nenabled = ["parse.text.builtin"]\n', "utf-8"
+    )
+    report = doctor.run(cwd=tmp_path, env={})
+    assert [(one.check, "NOT_IN_LOCKFILE" in one.detail) for one in report.failed] == [
+        ("D-08", True)
+    ]
+    report = doctor.run(cwd=tmp_path, env={"OMNIWEAVE_DRIVERS_REQUIRE_LOCK": "false"})
+    assert report.failed == ()
