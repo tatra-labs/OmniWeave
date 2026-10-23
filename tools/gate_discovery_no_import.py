@@ -53,9 +53,10 @@ the file on disk is the instrument that survives both.
    gate that can only pass is not a gate: without this clause an inert fixture, a site that was
    never on `sys.path`, and a typo in the module prefix all read as a pass.
 6. **`ow doctor`, as a process** -- `python -m omniweave doctor` over the same installations, with
-   D576's `allow_unattested` opt-in so its exit measures the rogues and not the shipped card's
-   missing attestation. It must exit 0, leave no sentinel, and name both rogue ids on its
-   `catalog` line, which is the vacuity check clause 1 is for the probe (00-vision.md V01-4).
+   D576's `allow_unattested` opt-in, and D954's two checkout opt-ins, so its exit measures the
+   rogues and not the shipped cards' missing attestation and manifest. It must exit 0, leave no
+   sentinel, and name both rogue ids on its `catalog` line, which is the vacuity check clause 1
+   is for the probe (00-vision.md V01-4).
 
 **What is deliberately not asserted.** That no *other* module was imported. A discovery pass imports
 `tomllib`, `importlib.metadata` and the rest of core, so a gate counting `sys.modules` wholesale
@@ -451,9 +452,14 @@ class DoctorRun:
     stderr: str = ""
 
 
-DOCTOR_ENV: dict[str, str] = {"OMNIWEAVE_DRIVERS_ALLOW_UNATTESTED": "true"}
-"""D576's opt-in. Without it `ow doctor` exits 1 on every checkout, because no first-party card is
-attested, and clause 6 would be measuring that rather than the rogues."""
+DOCTOR_ENV: dict[str, str] = {
+    "OMNIWEAVE_DRIVERS_ALLOW_UNATTESTED": "true",
+    "OMNIWEAVE_DRIVERS_REQUIRE_LOCK": "false",
+    "OMNIWEAVE_DRIVERS_INPROC": "[]",
+}
+"""D576's opt-in, and D954's two. Without them `ow doctor` exits 1 on every checkout: no
+first-party card is attested, and with no release manifest every one is unpinned, which the
+shipped `require_lock` and `inproc` refuse. Clause 6 would be measuring that, not the rogues."""
 
 
 def observe_doctor(fixture: Site, project: Path) -> DoctorRun:

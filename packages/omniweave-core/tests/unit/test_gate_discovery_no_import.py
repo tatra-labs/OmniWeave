@@ -324,8 +324,13 @@ def test_a_doctor_that_never_saw_the_rogues_is_a_finding(gate: ModuleType) -> No
 
 
 def test_doctor_runs_with_the_d576_opt_in_and_nothing_else(gate: ModuleType) -> None:
-    """Its exit must measure the rogues, not the shipped cards' missing attestation."""
-    assert gate.DOCTOR_ENV == {"OMNIWEAVE_DRIVERS_ALLOW_UNATTESTED": "true"}
+    """Its exit must measure the rogues, not the shipped cards' missing attestation and
+    manifest (D576, D954)."""
+    assert gate.DOCTOR_ENV == {
+        "OMNIWEAVE_DRIVERS_ALLOW_UNATTESTED": "true",
+        "OMNIWEAVE_DRIVERS_REQUIRE_LOCK": "false",
+        "OMNIWEAVE_DRIVERS_INPROC": "[]",
+    }
 
 
 def test_the_gate_passes_on_this_machine(gate: ModuleType) -> None:
