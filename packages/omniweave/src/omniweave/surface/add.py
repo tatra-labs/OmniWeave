@@ -51,8 +51,11 @@ installed, is pending with `approve = "pip install <distribution>"`. When nothin
 EVERY pending unit is such a unit, the add is refused with `CapabilityMissing` (`OW-D-009`,
 `OW_DRIVER_FORMAT_UNSUPPORTED`, exit 64) naming the install, then the `ow ingest` that reads the
 units it left at `identified` -- a second `ow add` would count them `unchanged`. A driver that IS
-installed and still routes nothing (not enabled, or a licence tier not allowed) stays 02 section
-7.4's exit 0: that cause is configuration, which `ow doctor` names, and no install fixes it.
+installed and still routes nothing (not enabled, a licence tier not allowed, or, in a source
+checkout with no release manifest, `require_lock` and `inproc`) stays 02 section 7.4's exit 0:
+that cause is configuration, and no install fixes it. **D955: its row's `approve` is
+`ow doctor`**, whose D-08 names the `[drivers]` setting since D954. It was `ow ingest`, which
+routes the unit through the same refusal again.
 """
 
 from __future__ import annotations
@@ -161,6 +164,8 @@ remedy. The target packages' `read`/`back` cards are the OUT loop's read-back, n
 
 _SETTLED: Final[str] = "settled"
 _PIP: Final[str] = "pip install"
+DOCTOR: Final[str] = "ow doctor"
+"""D955: the fix for a unit an installed driver did not take, which is configuration."""
 _COST_CLASS: Final[str] = "free"
 _REFUSED_FIX: Final[str] = "omit it; this build ingests local files at no cost and waits for them"
 
@@ -304,10 +309,19 @@ def add_report(
         )
         states = _states(store, added.queued)
         completed = _completed(store, [uri for uri in added.queued if states.get(uri) == _SETTLED])
-        installs = _installs(store, added.queued)
+        installs, configured = _installs(store, added.queued)
     else:
-        installs = {}
-    built = _report(name, added, states, completed, dry_run=dry_run, rerun=rerun, installs=installs)
+        installs, configured = {}, frozenset()
+    built = _report(
+        name,
+        added,
+        states,
+        completed,
+        dry_run=dry_run,
+        rerun=rerun,
+        installs=installs,
+        configured=configured,
+    )
     return built, drain
 
 
@@ -449,12 +463,13 @@ def _installed(distribution: str) -> bool:
     return True
 
 
-def _installs(store: Path, uris: Sequence[str]) -> dict[str, str]:
-    """`uri -> distribution` for each unit an install would read (D887).
+def _installs(store: Path, uris: Sequence[str]) -> tuple[dict[str, str], frozenset[str]]:
+    """`uri -> distribution` for each unit an install would read (D887), and the units whose
+    first-party distribution is already installed (D955).
 
-    A unit whose media type no first-party distribution reads, or whose distribution is already
-    installed, has no entry: an install is not what it is waiting for. `_report` names the install
-    only for a `no_driver` unit, so a settled or failed unit's entry is never read.
+    A unit whose media type no first-party distribution reads has neither: neither an install
+    nor a setting is known to be what it waits for. `_report` reads both only for a `no_driver`
+    unit, so a settled or failed unit's entry is never read.
     """
     from omniweave_core.acquire import unit_media_types  # noqa: PLC0415
 
@@ -464,7 +479,8 @@ def _installs(store: Path, uris: Sequence[str]) -> dict[str, str]:
         if media in INSTALLS
     }
     absent = {dist for dist in set(wanted.values()) if not _installed(dist)}
-    return {uri: dist for uri, dist in wanted.items() if dist in absent}
+    to_install = {uri: dist for uri, dist in wanted.items() if dist in absent}
+    return to_install, frozenset(uri for uri in wanted if uri not in to_install)
 
 
 def _refuse_uninstalled(report: Mapping[str, Any]) -> None:
@@ -521,6 +537,7 @@ def _report(
     dry_run: bool,
     rerun: str,
     installs: Mapping[str, str] | None = None,
+    configured: frozenset[str] = frozenset(),
 ) -> dict[str, Any]:
     """`add-out-v1`, as `ow_add` writes it, `schema` first (10:1530).
 
@@ -528,7 +545,9 @@ def _report(
     one field that does not validate against the schema file -- and it is `ow_add`'s own.
 
     `installs` is `uri -> distribution` for the `no_driver` units an install would read (D887):
-    their `approve` is that `pip install`, which is the command that fixes them.
+    their `approve` is that `pip install`, which is the command that fixes them. `configured`
+    names the `no_driver` units whose first-party distribution IS installed: configuration
+    stopped them, and their `approve` is `ow doctor` (D955).
     """
     to_install = installs or {}
     pending: list[dict[str, Any]] = []
@@ -542,6 +561,8 @@ def _report(
             approve = f"ow ingest --corpus {corpus}"
             if reason == NO_DRIVER and uri in to_install:
                 approve = f"{_PIP} {to_install[uri]}"
+            elif reason == NO_DRIVER and uri in configured:
+                approve = DOCTOR
         pending.append(
             {
                 "uri": uri,
