@@ -85,6 +85,14 @@ unattested card today. 15:1521's fix cell names `ow drivers verify`, which check
 attests nothing (`tools/ow_drivers.py`), and `ow conform`, which writes attestations, is not
 built."""
 
+REQUIRE_LOCK: Final = "OMNIWEAVE_DRIVERS_REQUIRE_LOCK"
+INPROC: Final = "OMNIWEAVE_DRIVERS_INPROC"
+"""`drivers.require_lock` and `drivers.inproc`'s declared twins: the fixes D954's two trust
+findings print, beside the `omniweave.toml` lines that do the same."""
+
+PARSE_PORT: Final = "parse"
+"""The one Port `resolve()` is asked for (`run.routing.PORT`, `parse/1`)."""
+
 
 def check_tracked_store(cwd: Path) -> DoctorFinding:
     """D-02: *"no `.owstore` is tracked in git"* (15:1515), for the work tree containing `cwd`."""
@@ -133,6 +141,8 @@ def check_driver_cards(
     project_root: Path | None,
     enabled: Sequence[str],
     allow_unattested: bool,
+    require_lock: bool = False,
+    inproc: Sequence[str] = (),
 ) -> tuple[DoctorFinding, ...]:
     """The catalog rebuild, and D-08 over it (15:1521).
 
@@ -140,6 +150,19 @@ def check_driver_cards(
     `allow_unattested`"*. A card in the catalog has validated, because `load_card()` is the only
     constructor of `DriverCard`. So the row's question is attestation, asked of every enabled id
     that has a card.
+
+    **D954: and the two trust gates `resolve()` applies after it.** A doctor that passed D-08 while
+    `resolve()` routed nothing was the failure a fresh source checkout showed: every first-party
+    distribution computes as `unpinned` there, because the release manifest is written at build
+    time, and `[drivers] require_lock = true` (the shipped default) refuses an unpinned driver as
+    `NOT_IN_LOCKFILE`. `ow add` left a text file `no_driver`, and `ow doctor` passed the very parse
+    drivers it refused. So, for every enabled card `resolve()` routes (a `parse` card; the derive
+    passes are pinned by their operators and never resolved):
+    - `require_lock` with a trust tier outside `resolve.LOCK_SATISFIED` fails, as `_gate_lockfile`
+      refuses it, with `require_lock = false` as the fix;
+    - an id in `[drivers] inproc` with a trust tier outside `resolve.INPROC_TRUST` fails, as
+      `_gate_isolation` refuses it, with `inproc = []` as the fix.
+    The attestation finding no longer says `resolve()` refuses a card it never routes.
 
     **An enabled id with no card is not a D-08 failure.** 00:116 names `parse.page.olmocr` in
     `[drivers] enabled` *"so the escalation rule can fire even where the distribution is absent"*,
@@ -154,7 +177,11 @@ def check_driver_cards(
     G11 reads the same pair the same way. Neither pass imports a card's entrypoint (INV-4).
     """
     from omniweave_core.discovery import catalog, discover  # noqa: PLC0415 -- the verb pays
-    from omniweave_core.drivers.resolve import MANIFEST_PINNED  # noqa: PLC0415
+    from omniweave_core.drivers.resolve import (  # noqa: PLC0415
+        INPROC_TRUST,
+        LOCK_SATISFIED,
+        MANIFEST_PINNED,
+    )
 
     faults = discover(env=env, project_root=project_root).faults
     built = catalog(env=env, project_root=project_root)
@@ -185,19 +212,51 @@ def check_driver_cards(
         if not built.cards[one].attested and built.trust.get(one) in MANIFEST_PINNED
     )
     unattested = [one for one in carded if not built.cards[one].attested and one not in pinned]
-    if unattested and not allow_unattested:
-        findings.extend(
+    failures: list[DoctorFinding] = []
+    if not allow_unattested:
+        failures.extend(
             DoctorFinding(
                 check="D-08",
                 detail=(
-                    f"{one} is in [drivers] enabled and its card carries no attestation, so "
-                    "resolve() refuses it as unattested (D576)"
+                    f"{one} is in [drivers] enabled and its card carries no attestation, and no "
+                    "release manifest pins it (D576)"
+                    + (", so resolve() refuses it as unattested" if _routed(built, one) else "")
                 ),
                 severity="error",
                 fix=f"{ALLOW_UNATTESTED}=true   # or allow_unattested = true under [drivers]",
             )
             for one in unattested
         )
+    routed = [one for one in carded if _routed(built, one)]
+    failures.extend(
+        DoctorFinding(
+            check="D-08",
+            detail=(
+                f"{one} computes as {_tier(built, one)!r}: no release manifest pins it, which a "
+                "source checkout never has, and [drivers] require_lock = true refuses an unpinned "
+                "driver, so resolve() routes nothing to it (NOT_IN_LOCKFILE)"
+            ),
+            severity="error",
+            fix=f"{REQUIRE_LOCK}=false   # or require_lock = false under [drivers]",
+        )
+        for one in routed
+        if require_lock and built.trust.get(one) not in LOCK_SATISFIED
+    )
+    failures.extend(
+        DoctorFinding(
+            check="D-08",
+            detail=(
+                f"[drivers] inproc names {one}, which computes as {_tier(built, one)!r} and not "
+                "first_party or vendored, so resolve() refuses it (TRUST_INSUFFICIENT)"
+            ),
+            severity="error",
+            fix=f"{INPROC}=[]   # or inproc = [] under [drivers]",
+        )
+        for one in routed
+        if one in inproc and built.trust.get(one) not in INPROC_TRUST
+    )
+    if failures:
+        findings.extend(failures)
         return tuple(findings)
     waived = f"; attestation waived for {', '.join(unattested)}" if unattested else ""
     if pinned:
@@ -217,6 +276,20 @@ def check_driver_cards(
         )
     )
     return tuple(findings)
+
+
+def _routed(built: object, driver_id: str) -> bool:
+    """Whether `resolve()` routes this card: a `parse` card. A derive pass is pinned and is not."""
+    card = built.cards[driver_id]  # type: ignore[attr-defined]
+    identity = getattr(card, "identity", None)
+    port = getattr(identity, "port", None)
+    return getattr(port, "value", port) == PARSE_PORT
+
+
+def _tier(built: object, driver_id: str) -> str:
+    """The computed trust tier's name, or `unpinned` when the catalog computed none."""
+    tier = built.trust.get(driver_id)  # type: ignore[attr-defined]
+    return str(getattr(tier, "value", tier or "unpinned"))
 
 
 def run(
@@ -251,12 +324,15 @@ def run(
         sources = {key: source.render() for key, source in sorted(resolved.sources.items())}
         config_digest, semantic_digest = resolved.config_digest, resolved.semantic_digest
         enabled = resolved.get("drivers.enabled")
+        inproc = resolved.get("drivers.inproc")
         findings.extend(
             check_driver_cards(
                 env=env,
                 project_root=config.project_root(resolved),
                 enabled=[str(one) for one in enabled] if isinstance(enabled, tuple) else [],
                 allow_unattested=resolved.get("drivers.allow_unattested") is True,
+                require_lock=resolved.get("drivers.require_lock") is True,
+                inproc=[str(one) for one in inproc] if isinstance(inproc, tuple) else [],
             )
         )
         findings.extend(local.check_corpora(resolved, cwd=cwd))

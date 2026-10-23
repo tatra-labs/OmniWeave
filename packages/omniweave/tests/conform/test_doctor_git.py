@@ -142,7 +142,12 @@ def _doctor(tree: Path, env: dict[str, str]) -> Captured:
         (sys.executable, "-m", "omniweave", "doctor"),
         stdin=b"",
         cwd=str(tree),
-        env=env | {"OMNIWEAVE_DRIVERS_ALLOW_UNATTESTED": "true"},
+        env=env
+        | {
+            "OMNIWEAVE_DRIVERS_ALLOW_UNATTESTED": "true",
+            "OMNIWEAVE_DRIVERS_REQUIRE_LOCK": "false",  # D954: a checkout has no manifest
+            "OMNIWEAVE_DRIVERS_INPROC": "[]",
+        },
         timeout_s=TIMEOUT_S,
     )
 
