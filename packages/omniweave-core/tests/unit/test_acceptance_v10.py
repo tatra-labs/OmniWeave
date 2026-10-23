@@ -87,6 +87,19 @@ def test_the_machinery_is_acceptance_v01s() -> None:
     assert a.Verdict is v01.Verdict
     assert a.judge is v01.judge
     assert a.evaluate is v01.evaluate
+    assert a.module is v01.module
+
+
+def test_v10_1_runs_g25_as_the_ci_step_runs_it() -> None:
+    """D960: G25 is a CI step, `ow surface emit --check`, and not a `tools/` script, so V10-1
+    runs the step. The `gates` job's G25 step (`.github/workflows/ci.yml`) is the same command."""
+    (v10_1,) = (row for row in a.CRITERIA if row.id == "V10-1")
+    argvs = [one.argv for one in v10_1.instruments]
+    assert ("-m", "omniweave", "surface", "emit", "--check") in argvs
+    workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "then uv run ow surface emit --check" in workflow
+    assert "G13 has no runner" in v10_1.gap
+    assert not any(f"G25 {verb} no runner" in v10_1.gap for verb in ("has", "have"))
 
 
 def test_no_row_claims_full_coverage_it_does_not_have() -> None:
