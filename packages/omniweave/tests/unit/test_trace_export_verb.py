@@ -111,6 +111,7 @@ def test_render_json_prints_one_object_with_the_counts(tmp_path: Path) -> None:
         "sent_requests": 0,
         "sent_spans": 0,
         "halted": "",
+        "runs": [RUN],
     }
 
 
@@ -120,7 +121,9 @@ def test_render_json_prints_one_object_with_the_counts(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("argv", "says"),
     [
-        (("--file", "x.jsonl"), "needs --run"),
+        (("--file", "x.jsonl"), "takes --run or --since, one of the two"),
+        (("--run", RUN, "--since", "1h", "--dry-run"), "takes --run or --since"),
+        (("--since", "soon", "--dry-run"), "'soon' is not a duration"),
         (("--run", RUN), "takes --file, --otlp or --dry-run"),
         (("--run", RUN, "--file", "x.jsonl", "--otlp", "http://c"), "one destination"),
         (("--run", RUN, "--file", "x.jsonl", "--dry-run"), "one of the two"),
@@ -462,3 +465,24 @@ def test_prune_older_than_is_a_duration_or_refused(tmp_path: Path) -> None:
     assert code == 0
     assert "older than 1d; kept 0" in out
     assert not shard.exists()
+
+
+# --- --since (D952) --------------------------------------------------------------------------
+
+
+def test_since_reads_every_run_in_the_window(tmp_path: Path) -> None:
+    """Ruling 1: `--since` is 15:233's other selection. `RunTrace` stamps records with the machine
+    clock, so an hour's window holds the run, and the report names it."""
+    project = _project(tmp_path)
+    code, out, err = _run(project, "--since", "1h", "--dry-run", "--render", "json")
+    assert (code, err) == (0, "")
+    row = json.loads(out)
+    assert (row["run_id"], row["runs"], row["spans"]) == ("", [RUN], 1)
+
+
+def test_since_text_names_how_many_runs_the_window_read(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+    code, out, _ = _run(project, "--since", "1h", "--file", "spans.jsonl")
+    assert code == 0
+    assert out.startswith("1 run(s) in the window: 1 span(s) in 1 request(s) from 1 shard(s), ")
+    assert (project / "spans.jsonl").read_text(encoding="utf-8").count("\n") == 1

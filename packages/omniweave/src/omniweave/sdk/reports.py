@@ -944,7 +944,9 @@ class TraceExportReport:
     so a hole is named rather than silent (15:199). `file` is the path written, or `""` under
     `--dry-run`, when `payloads` holds the request bodies instead. Under `--otlp` (D948),
     `sent_requests` and `sent_spans` are what this pass delivered from the committed cursor,
-    and `halted` is the stop's message, `""` when every batch arrived.
+    and `halted` is the stop's message, `""` when every batch arrived. `runs` names the runs
+    read, the one `--run` names or every run a `--since` window covered (D952); `run_id` is
+    `""` under `--since`.
     """
 
     run_id: str
@@ -959,6 +961,7 @@ class TraceExportReport:
     sent_requests: int = 0
     sent_spans: int = 0
     halted: str = ""
+    runs: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

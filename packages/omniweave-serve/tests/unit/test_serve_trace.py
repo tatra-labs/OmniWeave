@@ -974,3 +974,51 @@ def test_prune_over_a_missing_directory_removes_nothing(tmp_path: Path) -> None:
         events_dir=str(tmp_path / "events"), now_ns=_NOW_NS, older_than_ns=_DAY_NS, dry_run=False
     )
     assert done == {"removed": [], "failed": [], "kept": 0, "bytes": 0}
+
+
+# ---------------------------------------------------------------------------------------------
+# D952: `ow trace export --since`
+# ---------------------------------------------------------------------------------------------
+
+
+def test_since_exports_every_run_each_kept_to_the_window(tmp_path: Path) -> None:
+    """`entry`'s ruling 6: with no `live`, every run in the directory, each from `since_wall_ns`."""
+    from omniweave_serve.entry import export  # noqa: PLC0415
+
+    events = tmp_path / "events"
+    _write(events / LIVE, [*_span_pair("00000000000000a1", begin=1, end=2)])
+    _write(
+        events / "r_other.ndjson",
+        [
+            *_span_pair("00000000000000b1", begin=3, end=4),
+            *_span_pair("00000000000000b2", begin=8, end=9),
+        ],
+    )
+    window = _event(5).ts_wall_ns
+    done = export(
+        live=None, config_digest="0" * 64, file=None, max_batch=512,
+        since_wall_ns=window, events_dir=str(events),
+    )  # fmt: skip
+    assert done["runs"] == [RUN, "r_other"]
+    assert done["spans"] == 1, "only r_other's second span starts in the window"
+    assert done["shards"] == [LIVE, "r_other.ndjson"]
+
+
+def test_since_sends_each_run_under_its_own_cursor_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omniweave_serve.entry import export  # noqa: PLC0415
+
+    events = tmp_path / "events"
+    _write(events / LIVE, [*_span_pair("00000000000000a1", begin=1, end=2)])
+    _write(events / "r_other.ndjson", [*_span_pair("00000000000000b1", begin=3, end=4)])
+    recorder = Recorder()
+    _patched(monkeypatch, recorder)
+    done = export(
+        live=None, config_digest="0" * 64, file=None, max_batch=512,
+        since_wall_ns=0, endpoint=ENDPOINT, events_dir=str(events),
+    )  # fmt: skip
+    assert (done["sent_requests"], done["sent_spans"]) == (2, 2)
+    cursor = cursor_path(events)
+    assert read_cursor(cursor, endpoint=ENDPOINT, run_id=RUN) is not None
+    assert read_cursor(cursor, endpoint=ENDPOINT, run_id="r_other") is not None
