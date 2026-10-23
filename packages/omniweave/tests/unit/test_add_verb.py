@@ -100,7 +100,9 @@ def test_a_directory_is_rostered_drained_and_reported(project: Path) -> None:
     )
     assert second == "completed 0   pending 2 (2 no_driver)   deadline_reached false"
     assert [line.split()[-1] for line in rest[:2]] == ["no_driver", "no_driver"]
-    assert rest[-1] == "  ow ingest --corpus handbook"
+    #  D955: the text reader is installed here and configuration stops it (this checkout has no
+    #  release manifest), so the fix is the doctor, which names the setting since D954.
+    assert rest[-1] == "  ow doctor"
     #  (b) ran: the drain read and identified both, and its report is stderr's (10:1565).
     assert _states(project) == [("identified", 2)]
     assert err.startswith("ow ingest  run ")
@@ -118,7 +120,7 @@ def test_render_json_is_add_out_v1_with_schema_first(project: Path) -> None:
     assert document["scope_id"].endswith("/docs/")
     assert document["completed"] == []
     assert {row["reason"] for row in document["pending"]} == {"no_driver"}
-    assert {row["approve"] for row in document["pending"]} == {"ow ingest --corpus handbook"}
+    assert {row["approve"] for row in document["pending"]} == {"ow doctor"}  # D955
     assert document["deadline_reached"] is False
 
 
@@ -407,11 +409,31 @@ def test_a_unit_waiting_for_something_else_keeps_exit_0_and_each_row_its_own_fix
 def test_an_installed_distribution_that_routes_nothing_is_configuration_and_exit_0(
     project: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """02 section 7.4: installed and not enabled is not an install's to fix."""
+    """02 section 7.4: installed and not enabled is not an install's to fix. D955: it is the
+    doctor's, whose D-08 names the `[drivers]` setting; `ow ingest` would route it through the
+    same refusal again."""
     monkeypatch.setattr(verb, "_installed", lambda _distribution: True)
     code, out, _ = _run(["docs"], project)
     assert code == 0
-    assert out.splitlines()[-1] == "  ow ingest --corpus handbook"
+    assert out.splitlines()[-1] == "  ow doctor"
+
+
+def test_only_a_unit_a_first_party_reader_would_take_is_sent_to_the_doctor(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D955: `ow doctor` is the fix only where an installed reader exists and configuration
+    stopped it. A `.zip` no first-party distribution reads keeps its row's own fix."""
+    monkeypatch.setattr(verb, "_installed", lambda _distribution: True)
+    with zipfile.ZipFile(project / "docs" / "d.zip", "w") as archive:
+        archive.writestr("inner.txt", "zipped")
+    code, out, _ = _run(["docs", "--render", "json"], project)
+    assert code == 0
+    approve = {row["uri"].rsplit("/", 1)[-1]: row["approve"] for row in json.loads(out)["pending"]}
+    assert approve == {
+        "a.txt": "ow doctor",
+        "b.txt": "ow doctor",
+        "d.zip": "ow ingest --corpus handbook",
+    }
 
 
 def test_installed_reads_the_environment() -> None:
