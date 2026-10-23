@@ -126,6 +126,7 @@ __all__ = [
     "SurfaceEmitIn",
     "TargetsIn",
     "TraceExportIn",
+    "TraceStatIn",
     "TypesIn",
     "UninstallIn",
     "VerifyIn",
@@ -897,6 +898,17 @@ class TraceExportIn:
     dry_run: bool = False
     print_payload: bool = False
     max_batch: int = 512
+
+
+@dataclass(frozen=True, slots=True)
+class TraceStatIn:
+    """`ow trace stat [--run R]`. 15:236. D949.
+
+    `run` narrows the report to one run's shards; without it, every run whose shards are in the
+    project's events directory is read.
+    """
+
+    run: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

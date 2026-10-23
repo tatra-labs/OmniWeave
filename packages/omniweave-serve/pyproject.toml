@@ -42,6 +42,7 @@ mcp = "omniweave_serve.launch:run"
 # values across (15-observability.md:233, D369's gap). D947.
 [project.entry-points."omniweave.trace"]
 export = "omniweave_serve.entry:export"
+stat = "omniweave_serve.entry:stat"
 
 # The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
 [tool.hatch.build.targets.wheel]

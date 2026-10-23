@@ -150,6 +150,7 @@ from omniweave.sdk.reports import (
     SurfaceReport,
     TargetsReport,
     TraceExportReport,
+    TraceStatReport,
     VerifyReport,
 )
 from omniweave.surface.inputs import (
@@ -197,6 +198,7 @@ from omniweave.surface.inputs import (
     SurfaceEmitIn,
     TargetsIn,
     TraceExportIn,
+    TraceStatIn,
     TypesIn,
     UninstallIn,
     VerifyIn,
@@ -2245,6 +2247,26 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=TraceExportReport,
             advanced=frozenset(),
             cli=("trace", "export"),
+        ),
+        ActionSpec(
+            name="trace.stat",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Count what one run's event shards hold, or every run's: records per kind, spans "
+                "and wall per name, dropped records, and each shard's bytes and deflate ratio"
+            ),
+            decision="a trace is bigger or slower than expected, or the sample rate is in question",
+            example={},
+            inp=TraceStatIn,
+            out=TraceStatReport,
+            advanced=frozenset(),
+            cli=("trace", "stat"),
         ),
     )
 )
