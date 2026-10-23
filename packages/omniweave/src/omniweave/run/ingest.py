@@ -2051,7 +2051,16 @@ class _Book:
     fills when its producer runs, through the `RunTally` method already waiting for it.
     """
 
-    __slots__ = ("_clock", "_host", "_opened", "_provenance", "_timings", "_writer", "tally")
+    __slots__ = (
+        "_clock",
+        "_host",
+        "_opened",
+        "_otlp_endpoint_set",
+        "_provenance",
+        "_timings",
+        "_writer",
+        "tally",
+    )
 
     def __init__(
         self, opened: OpenedRun, *, config: Config, host: sup.HostFacts, clock: Clock
@@ -2061,6 +2070,7 @@ class _Book:
         self._host = host
         self._clock = clock
         self._timings: Timings = cast("Timings", str(config.get("observe.timings")))
+        self._otlp_endpoint_set = bool(str(config.get("observe.otlp_endpoint") or "").strip())
         self._writer = (
             None if opened.manifest is None else ManifestWriter(opened.manifest, clock=clock)
         )
@@ -2109,6 +2119,7 @@ class _Book:
                 provenance=self._provenance,
                 host=self._host,
                 timings=self._timings,
+                otlp_endpoint_set=self._otlp_endpoint_set,
             )
         )
 
