@@ -12,10 +12,13 @@ take down: *"`ow doctor` exits 0 and the file is absent"*. So the rebuild is `di
 `catalog()` with this run's environment and project, and G11 now runs this verb as a process over
 its rogue fixture (D612).
 
-**The other twenty-five rows of 15:1514-1540 are named, not skipped silently.** Every run prints
-the ids it did not check, because a doctor that exits 0 is read as *"this deployment is fine"*,
-and here it can only mean that D-02 and D-08 are. `UNBUILT` is that list, and it shrinks as rows
-land.
+D953 adds four rows that read only this machine and the configuration: D-01, D-05, D-11 and
+D-15, in `omniweave.doctor.local`.
+
+**The rows of 15:1514-1540 not built are named, not skipped silently.** Every run prints the
+ids it did not check, because a doctor that exits 0 is read as *"this deployment is fine"*,
+and here it can only mean that the rows in `BUILT` are. `UNBUILT` is that list, and it
+shrinks as rows land.
 
 Exit 0 or 1, 18:222's rule: 1 exactly when `DoctorReport.failed` is non-empty. A warning never
 fails the run (10:1785). 15:1509's exit 6, 7 and 9 belong to D-20, D-24 and an unconfigured
@@ -30,7 +33,7 @@ import fnmatch
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, TextIO
 
-from omniweave.doctor import gitindex
+from omniweave.doctor import gitindex, local
 from omniweave.sdk.reports import DoctorFinding, DoctorReport
 
 if TYPE_CHECKING:
@@ -68,7 +71,7 @@ STORE_GLOB: Final = "*.owstore*"
 (`index.vec.owstore`, `events.owstore`) and SQLite's `-wal` and `-shm` files. It is matched
 against the final path component, as a `.gitignore` line with no slash is."""
 
-BUILT: Final[tuple[str, ...]] = ("D-02", "D-08")
+BUILT: Final[tuple[str, ...]] = tuple(sorted(("D-02", "D-08", *local.LOCAL)))
 UNBUILT: Final[tuple[str, ...]] = tuple(
     f"D-{n:02d}" for n in range(1, 28) if f"D-{n:02d}" not in BUILT
 )
@@ -238,9 +241,11 @@ def run(
         #  A configuration that does not resolve is 15:1509's exit-1 class. The two digests stay
         #  empty rather than naming a configuration that never existed.
         findings.append(DoctorFinding("config", str(exc), "error", exc.fix))
-        #  D-08 reads `[drivers] enabled`, so it cannot run, and says so rather than going quiet.
-        findings.append(
-            DoctorFinding("D-08", "not run: the configuration did not resolve", "warning", exc.fix)
+        #  D-05, D-08, D-11 and D-15 read the configuration, so they cannot run, and say so
+        #  rather than going quiet.
+        findings.extend(
+            DoctorFinding(row, "not run: the configuration did not resolve", "warning", exc.fix)
+            for row in ("D-05", "D-08", "D-11", "D-15")
         )
     else:
         sources = {key: source.render() for key, source in sorted(resolved.sources.items())}
@@ -254,6 +259,10 @@ def run(
                 allow_unattested=resolved.get("drivers.allow_unattested") is True,
             )
         )
+        findings.extend(local.check_corpora(resolved, cwd=cwd))
+        findings.extend(local.check_free_space(resolved, cwd=cwd))
+        findings.append(local.check_events_dir(resolved, env=env))
+    findings.append(local.check_sqlite())
     findings.append(check_tracked_store(cwd))
     return DoctorReport(
         ok=tuple(one for one in findings if one.severity == "ok"),
