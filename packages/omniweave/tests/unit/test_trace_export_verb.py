@@ -400,3 +400,65 @@ def test_a_malformed_tree_reply_is_an_internal_error(
     code, _, err = _tree(project, RUN)
     assert code == 70
     assert "tree entry point returned an unreadable report" in err
+
+
+# --- ow trace prune (D951) -------------------------------------------------------------------
+
+
+def _prune(cwd: Path, *argv: str) -> tuple[int, str, str]:
+    out, err = io.StringIO(), io.StringIO()
+    env = {"OMNIWEAVE_HOME": str(cwd.parent / "home")}
+    code = verb.main(["trace", "prune", *argv], cwd=cwd, env=env, stdout=out, stderr=err)
+    return code, out.getvalue(), err.getvalue()
+
+
+def _aged_project(tmp_path: Path, *, days: int) -> tuple[Path, Path]:
+    """`_project`'s shard, last written `days` ago by the machine's own clock, as prune reads it."""
+    import os  # noqa: PLC0415
+    import time  # noqa: PLC0415
+
+    project = _project(tmp_path)
+    (shard,) = (project / ".omniweave" / "events").glob("*.ndjson")
+    stamp = time.time_ns() - days * 86_400 * 1_000_000_000
+    os.utime(shard, ns=(stamp, stamp))
+    return project, shard
+
+
+def test_prune_removes_a_shard_older_than_the_shipped_fourteen_days(tmp_path: Path) -> None:
+    project, shard = _aged_project(tmp_path, days=15)
+    size = shard.stat().st_size
+    code, out, err = _prune(project)
+    assert (code, err) == (0, "")
+    assert not shard.exists()
+    assert out.splitlines() == [
+        f"  removed  {shard.name}",
+        f"ow trace prune  removed 1 shard(s), {size} bytes, older than 14d; kept 0",
+    ]
+
+
+def test_prune_dry_run_and_a_longer_retention_keep_the_shard(tmp_path: Path) -> None:
+    project, shard = _aged_project(tmp_path, days=15)
+    code, out, _ = _prune(project, "--dry-run")
+    assert code == 0
+    assert out.startswith(f"  would remove  {shard.name}\n")
+    assert shard.exists()
+    settings = project / "omniweave.toml"
+    settings.write_text(
+        settings.read_text(encoding="utf-8") + "[observe]\nretain_days = 30\n", encoding="utf-8"
+    )
+    code, out, _ = _prune(project, "--render", "json")
+    assert code == 0
+    row = json.loads(out)
+    assert (row["removed"], row["kept"], row["older_than_ms"]) == ([], 1, 30 * 86_400_000)
+    assert shard.exists()
+
+
+def test_prune_older_than_is_a_duration_or_refused(tmp_path: Path) -> None:
+    project, shard = _aged_project(tmp_path, days=2)
+    code, _, err = _prune(project, "--older-than", "soon")
+    assert code == 1
+    assert "'soon' is not a duration" in err
+    code, out, _ = _prune(project, "--older-than", "1d")
+    assert code == 0
+    assert "older than 1d; kept 0" in out
+    assert not shard.exists()

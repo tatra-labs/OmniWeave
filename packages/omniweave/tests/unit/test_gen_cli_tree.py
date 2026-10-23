@@ -378,7 +378,7 @@ def test_a_group_advertises_the_verbs_it_has_and_not_the_ones_it_is_owed() -> No
         ),
         "skills": "check · hash · install · ls · remove · update · verify",
         "surface": "emit",
-        "trace": "export · stat · tree",
+        "trace": "export · prune · stat · tree",
     }
     assert group_help() == GROUP_HELP
     text = _help(["doc"])

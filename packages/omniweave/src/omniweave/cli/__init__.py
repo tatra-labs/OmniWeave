@@ -116,7 +116,7 @@ GROUP_HELP: Final[dict[str, str]] = {
     ),
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
-    "trace": "export · stat · tree",
+    "trace": "export · prune · stat · tree",
 }
 
 COMMANDS: Final[tuple[Command, ...]] = (
@@ -1168,6 +1168,25 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 kind="int",
                 metavar="MAX_BATCH",
                 default=512,
+            ),
+        ),
+    ),
+    Command(
+        words=("trace", "prune"),
+        actions=("trace.prune",),
+        help=(
+            "Remove the event shards older than [observe] retain_days, or --older-than, or with "
+            "--dry-run name them; a shard the platform holds open is left"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--older-than",),
+                metavar="OLDER_THAN",
+            ),
+            Argument(
+                spelling=("--dry-run",),
+                kind="switch",
+                default=False,
             ),
         ),
     ),

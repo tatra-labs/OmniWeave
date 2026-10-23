@@ -620,6 +620,7 @@ def test_the_trace_group_declares_export_and_it_is_the_entry_function() -> None:
     row = project["project"]["entry-points"]["omniweave.trace"]
     assert row == {
         "export": "omniweave_serve.entry:export",
+        "prune": "omniweave_serve.entry:prune",
         "stat": "omniweave_serve.entry:stat",
         "tree": "omniweave_serve.entry:tree",
     }
@@ -882,3 +883,94 @@ def test_tree_depth_cuts_below_the_level(tmp_path: Path) -> None:
     assert [row[:2] for row in _shape(tree(live=str(_tree_shard(tmp_path)), depth=0))] == [
         (0, "run")
     ]
+
+
+# ---------------------------------------------------------------------------------------------
+# D951: `ow trace prune`
+# ---------------------------------------------------------------------------------------------
+
+_NOW_NS = 1_800_000_000_000_000_000
+_DAY_NS = 86_400 * 1_000_000_000
+
+
+def _aged(path: Path, data: bytes, *, days: int) -> Path:
+    """A file whose modification time is `days` before `_NOW_NS`."""
+    import os  # noqa: PLC0415
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    stamp = _NOW_NS - days * _DAY_NS
+    os.utime(path, ns=(stamp, stamp))
+    return path
+
+
+def _events(tmp_path: Path) -> Path:
+    events = tmp_path / "events"
+    _aged(events / "r_old.ndjson", b"x" * 10, days=20)
+    _aged(events / "r_old.0001.ndjson.gz", b"y" * 7, days=30)
+    _aged(events / "r_new.ndjson", b"z" * 5, days=1)
+    _aged(events / ".export_cursor.json", b"{}", days=90)
+    _aged(events / "notes.txt", b"n", days=90)
+    return events
+
+
+def test_prune_removes_the_old_shards_and_nothing_else(tmp_path: Path) -> None:
+    """15:398: retention by age. The cursor and a stray file are not shards, however old."""
+    from omniweave_serve.entry import prune  # noqa: PLC0415
+
+    events = _events(tmp_path)
+    done = prune(events_dir=str(events), now_ns=_NOW_NS, older_than_ns=14 * _DAY_NS, dry_run=False)
+    assert done == {
+        "removed": ["r_old.0001.ndjson.gz", "r_old.ndjson"],
+        "failed": [],
+        "kept": 1,
+        "bytes": 17,
+    }
+    assert sorted(path.name for path in events.iterdir()) == [
+        ".export_cursor.json",
+        "notes.txt",
+        "r_new.ndjson",
+    ]
+
+
+def test_prune_dry_run_names_the_same_shards_and_removes_none(tmp_path: Path) -> None:
+    from omniweave_serve.entry import prune  # noqa: PLC0415
+
+    events = _events(tmp_path)
+    before = sorted(path.name for path in events.iterdir())
+    done = prune(events_dir=str(events), now_ns=_NOW_NS, older_than_ns=14 * _DAY_NS, dry_run=True)
+    assert done["removed"] == ["r_old.0001.ndjson.gz", "r_old.ndjson"]
+    assert sorted(path.name for path in events.iterdir()) == before
+
+
+def test_a_shard_the_platform_will_not_unlink_is_named_and_not_raised(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """15:1471-1475: on Windows a held shard's unlink fails, and the next sweep retries it."""
+    from omniweave_serve.entry import prune  # noqa: PLC0415
+
+    events = _events(tmp_path)
+    real = Path.unlink
+
+    def unlink(self: Path, missing_ok: bool = False) -> None:
+        if self.name == "r_old.ndjson":
+            raise PermissionError(13, "held open by a reader")
+        real(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", unlink)
+    done = prune(events_dir=str(events), now_ns=_NOW_NS, older_than_ns=14 * _DAY_NS, dry_run=False)
+    assert (done["removed"], done["failed"], done["bytes"]) == (
+        ["r_old.0001.ndjson.gz"],
+        ["r_old.ndjson"],
+        7,
+    )
+    assert (events / "r_old.ndjson").exists()
+
+
+def test_prune_over_a_missing_directory_removes_nothing(tmp_path: Path) -> None:
+    from omniweave_serve.entry import prune  # noqa: PLC0415
+
+    done = prune(
+        events_dir=str(tmp_path / "events"), now_ns=_NOW_NS, older_than_ns=_DAY_NS, dry_run=False
+    )
+    assert done == {"removed": [], "failed": [], "kept": 0, "bytes": 0}
