@@ -115,6 +115,7 @@ def test_a_word_that_is_no_root_still_names_what_is(tmp_path: Path) -> None:
         "serve",
         "skills",
         "surface",
+        "trace",
         "uninstall",
     ]
     # D886: argparse quoted each choice until a later 3.12 patch release dropped the quotes;

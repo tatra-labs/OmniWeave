@@ -59,6 +59,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     skills.update     SkillsUpdateIn      SkillsReport
     skills.verify     SkillsVerifyIn      SkillsReport
     surface.emit      SurfaceEmitIn       SurfaceReport
+    trace.export      TraceExportIn       TraceExportReport
     uninstall         UninstallIn         InstallReport
 """
 

@@ -90,6 +90,7 @@ key can grant one.
 | `skills.update` | — | `ow skills update` | — | `free` | Refresh every skill skills-lock.json records to this release's bundle and prune the ones this release no longer ships; a modified copy is kept |
 | `skills.verify` | `ow_skills_verify` | `ow skills verify` | — | `free` | Re-hash every skill bundle skills-lock.json says was installed and name each mismatch: expected digest, observed digest, first differing path |
 | `surface.emit` | — | `ow surface emit` | — | `free` | Write the artefacts generated from this registry, or with --check byte-diff them against the committed files and fail on any drift (gate G25) |
+| `trace.export` | — | `ow trace export` | — | `free` | Rebuild one run's spans from its event shards as OTLP JSON, written to a file one request per line, or printed with --dry-run --print-payload |
 | `uninstall` | — | `ow uninstall` | — | `free` | Take omniweave out of agent hosts exactly: every path the install receipt names, on its digest, and never the corpus index |
 
 ## Human-only Actions

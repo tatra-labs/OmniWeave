@@ -80,6 +80,7 @@ _ROOTS: Final[tuple[str, ...]] = (
     "serve",
     "skills",
     "surface",
+    "trace",
     "uninstall",
 )
 
@@ -110,6 +111,7 @@ READS: Final[Mapping[str, frozenset[str]]] = {
     "hooks": _READS_ALL,
     "skills": _READS_ALL,
     "surface": _READS_ALL,
+    "trace": _READS_ALL | {"config", "render"},
 }
 """The flags each root reads. `add` carries `--offline` into routing's `ProbeEnv`, so a card with
 `[hardware] needs_network = true` resolves out (04:150). `doctor` loads `--config` and prints
@@ -117,7 +119,9 @@ nothing under `--quiet` (10:1543). `serve` loads `--config`. `out` loads `--conf
 `[targets] enabled` and the project's `.omniweave/drivers/` (D761), and `--corpus` for
 `ow out scaffold`'s store (D765). `targets` and `constructs` print nothing that depends on
 `--corpus`, so they accept it, as an inert flag is accepted. `eval` reads `--render` for
-`ow eval publish`'s JSON report (D833)."""
+`ow eval publish`'s JSON report (D833). `trace` loads `--config` for `[observe]
+ndjson_path` and the config digest, and reads `--render` for `ow trace export`'s JSON
+report (D947)."""
 
 INERT: Final[Mapping[str, Mapping[str, str]]] = {
     root: {
