@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D958: D-10 build note at 15:1523
+# blessed-because: D959: D-24 build note at 15:1537
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -41,7 +41,7 @@ documents-frozen  0c6548840fb0910938c046372eaf172acc26dede00c771f8b2879d68bb8725
 documents-frozen  2fe653d5ac8031388b9a25e2d7464c4921e22b0aa78e2f4dabb531186219c6a5  12-performance.md
 documents-frozen  4efd47131f37f4f27b33663382f07fec0ce9fd0ed34bf1fe2337835d4d5ec842  13-quality.md
 documents-frozen  78a3474b788625971c7a7fed610ef3c6518e9330bfd87e8411fbc744666b43d1  14-security.md
-documents-frozen  c27dcab87943c1a68577b106231c98604f8020500f8be05b605b6fd8c5033edb  15-observability.md
+documents-frozen  f84be9b3bdf4e801cafe68b759e6f963cecad1190d41b1c2a0682146a32f191d  15-observability.md
 documents-frozen  5cf9671f6a3972ec5c0462eaf6ad35ad2da2190c9772330c6280d1f085af90f6  16-roadmap.md
 documents-frozen  df4d16ec9e95851ee78fec9cf1fee599488fef474c9f1ee90d9da73bdca32405  17-risks.md
 documents-frozen  51deca62fb9bb17e63d26b961521e4c628644a11bbb6a70d4e76b801f17b5e16  18-api-sketch.md
