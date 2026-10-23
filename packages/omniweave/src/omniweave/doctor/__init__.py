@@ -14,7 +14,8 @@ its rogue fixture (D612).
 
 D953 adds four rows that read only this machine and the configuration: D-01, D-05, D-11 and
 D-15, in `omniweave.doctor.local`. D956 adds three that read what the project declares: D-06,
-D-13 and D-17, in `omniweave.doctor.project`, and D957 D-16 beside them.
+D-13 and D-17, in `omniweave.doctor.project`, and D957 D-16 beside them. D958 adds D-10, the
+one row only `--runtime` runs (`local.RUNTIME`); a run without the flag names it as not run.
 
 **The rows of 15:1514-1540 not built are named, not skipped silently.** Every run prints the
 ids it did not check, because a doctor that exits 0 is read as *"this deployment is fine"*,
@@ -51,6 +52,7 @@ __all__ = [
     "UNBUILT",
     "check_driver_cards",
     "check_tracked_store",
+    "class_memory_mb",
     "main",
     "run",
 ]
@@ -72,7 +74,9 @@ STORE_GLOB: Final = "*.owstore*"
 (`index.vec.owstore`, `events.owstore`) and SQLite's `-wal` and `-shm` files. It is matched
 against the final path component, as a `.gitignore` line with no slash is."""
 
-BUILT: Final[tuple[str, ...]] = tuple(sorted(("D-02", "D-08", *local.LOCAL, *project.PROJECT)))
+BUILT: Final[tuple[str, ...]] = tuple(
+    sorted(("D-02", "D-08", *local.LOCAL, *local.RUNTIME, *project.PROJECT))
+)
 UNBUILT: Final[tuple[str, ...]] = tuple(
     f"D-{n:02d}" for n in range(1, 28) if f"D-{n:02d}" not in BUILT
 )
@@ -279,6 +283,31 @@ def check_driver_cards(
     return tuple(findings)
 
 
+def class_memory_mb(
+    *, env: Mapping[str, str], project_root: Path | None, enabled: Sequence[str]
+) -> dict[str, int]:
+    """D-10's `memory_mb`: per cost class, the heaviest enabled card's `[isolation] memory_mb`.
+
+    08:707's `max(card.isolation.memory_mb for card in catalog.enabled_in(c))`: a worker runs one
+    driver at a time, so a class's worst case is its heaviest member. A card with no `[cost.model]`
+    is `free`, as `resolve()` reads it. An enabled id with no card weighs nothing here, as it
+    routes nothing (D-08).
+    """
+    from omniweave_core.discovery import catalog  # noqa: PLC0415 -- only --runtime pays
+
+    cards = catalog(env=env, project_root=project_root).cards
+    heaviest: dict[str, int] = {}
+    for one in enabled:
+        card = cards.get(one)
+        if card is None:
+            continue
+        model = getattr(card, "cost_model", None)
+        cost = str(getattr(model, "cost_class", "free")) if model is not None else "free"
+        weight = int(getattr(getattr(card, "isolation", None), "memory_mb", 0))
+        heaviest[cost] = max(heaviest.get(cost, 0), weight)
+    return heaviest
+
+
 def _routed(built: object, driver_id: str) -> bool:
     """Whether `resolve()` routes this card: a `parse` card. A derive pass is pinned and is not."""
     card = built.cards[driver_id]  # type: ignore[attr-defined]
@@ -298,14 +327,13 @@ def run(
 ) -> DoctorReport:
     """The Action: load the configuration, run every built check, sort the findings three ways.
 
-    `runtime` is accepted and changes nothing yet: D-10, the only `--runtime` row, is in `UNBUILT`.
+    `runtime` runs D-10 (D958), the only `--runtime` row, over the catalog D-08 rebuilt.
     `explicit` is `--config`, 18:891's *"highest-precedence config source; skips the upward
     walk"*. Before W7.8x the verb dropped it and checked the configuration the walk found (D631).
     """
     from omniweave_core import config  # noqa: PLC0415 -- only the doctor verb pays for the loader
     from omniweave_core.errors import OwError  # noqa: PLC0415
 
-    del runtime
     findings: list[DoctorFinding] = []
     sources: dict[str, str] = {}
     config_digest = semantic_digest = ""
@@ -315,11 +343,18 @@ def run(
         #  A configuration that does not resolve is 15:1509's exit-1 class. The two digests stay
         #  empty rather than naming a configuration that never existed.
         findings.append(DoctorFinding("config", str(exc), "error", exc.fix))
-        #  D-05, D-08, D-11 and D-15 read the configuration, so they cannot run, and say so
-        #  rather than going quiet.
+        #  The rows that read the configuration cannot run, and say so rather than going quiet.
         findings.extend(
             DoctorFinding(row, "not run: the configuration did not resolve", "warning", exc.fix)
-            for row in ("D-05", "D-06", "D-08", "D-11", "D-13", "D-15")
+            for row in (
+                "D-05",
+                "D-06",
+                "D-08",
+                *(local.RUNTIME if runtime else ()),
+                "D-11",
+                "D-13",
+                "D-15",
+            )
         )
     else:
         sources = {key: source.render() for key, source in sorted(resolved.sources.items())}
@@ -336,6 +371,18 @@ def run(
                 inproc=[str(one) for one in inproc] if isinstance(inproc, tuple) else [],
             )
         )
+        if runtime:
+            findings.append(
+                local.check_ram(
+                    resolved,
+                    memory_mb=class_memory_mb(
+                        env=env,
+                        project_root=config.project_root(resolved),
+                        enabled=[str(one) for one in enabled] if isinstance(enabled, tuple) else [],
+                    ),
+                    cwd=cwd,
+                )
+            )
         findings.extend(local.check_corpora(resolved, cwd=cwd))
         findings.extend(local.check_free_space(resolved, cwd=cwd))
         findings.append(local.check_events_dir(resolved, env=env))
@@ -374,8 +421,12 @@ def render(report: DoctorReport) -> tuple[str, ...]:
         f"doctor: {len(UNBUILT)} of 27 checks are not built yet and were not run: "
         f"{', '.join(UNBUILT)}"
     )
+    checked = {one.check for one in (*report.ok, *report.warned, *report.failed)}
+    waiting = [row for row in local.RUNTIME if row not in checked]
+    if waiting:
+        lines.append(f"doctor: {', '.join(waiting)} runs only with --runtime")
     verdict = "fails" if report.failed else "passes"
-    lines.append(f"doctor: {verdict} the {len(BUILT)} check(s) it ran")
+    lines.append(f"doctor: {verdict} the {len(BUILT) - len(waiting)} check(s) it ran")
     return tuple(lines)
 
 
