@@ -150,6 +150,7 @@ from omniweave.sdk.reports import (
     SurfaceReport,
     TargetsReport,
     TraceExportReport,
+    TracePruneReport,
     TraceStatReport,
     TraceTreeReport,
     VerifyReport,
@@ -199,6 +200,7 @@ from omniweave.surface.inputs import (
     SurfaceEmitIn,
     TargetsIn,
     TraceExportIn,
+    TracePruneIn,
     TraceStatIn,
     TraceTreeIn,
     TypesIn,
@@ -2269,6 +2271,26 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=TraceStatReport,
             advanced=frozenset(),
             cli=("trace", "stat"),
+        ),
+        ActionSpec(
+            name="trace.prune",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            destructive=True,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Remove the event shards older than [observe] retain_days, or --older-than, "
+                "or with --dry-run name them; a shard the platform holds open is left"
+            ),
+            decision="the events directory has grown and retention is owed, by hand or by cron",
+            example={},
+            inp=TracePruneIn,
+            out=TracePruneReport,
+            advanced=frozenset(),
+            cli=("trace", "prune"),
         ),
         ActionSpec(
             name="trace.tree",
