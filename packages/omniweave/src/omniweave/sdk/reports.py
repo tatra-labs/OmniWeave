@@ -97,6 +97,10 @@ __all__ = [
     "TargetListing",
     "TargetsReport",
     "TraceExportReport",
+    "TraceKindRow",
+    "TraceShardRow",
+    "TraceSpanRow",
+    "TraceStatReport",
     "VerifiedClass",
     "VerifyReport",
 ]
@@ -952,3 +956,47 @@ class TraceExportReport:
     sent_requests: int = 0
     sent_spans: int = 0
     halted: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class TraceShardRow:
+    """One shard `ow trace stat` read. `uncompressed_bytes / bytes` is the deflate ratio 15:432
+    asks for, 1.0 for the live shard, which is never deflated. D949."""
+
+    name: str
+    records: int
+    bytes: int
+    uncompressed_bytes: int
+
+
+@dataclass(frozen=True, slots=True)
+class TraceKindRow:
+    """How many records of one `kind` the shards hold. D949."""
+
+    kind: str
+    records: int
+
+
+@dataclass(frozen=True, slots=True)
+class TraceSpanRow:
+    """Every span of one name: a `plan/<stage>` name is a Stage, so these are 15:236's per-Stage
+    wall times, `total_ns` summed from each span's own duration. D949."""
+
+    name: str
+    spans: int
+    total_ns: int
+
+
+@dataclass(frozen=True, slots=True)
+class TraceStatReport:
+    """What `ow trace stat` returns. 15:236. D949.
+
+    `runs` names the runs read, `shards` each file, `kinds` the records per kind, `spans` the
+    paired spans per name, and `dropped` the records the runs' `run.end` say were dropped.
+    """
+
+    runs: tuple[str, ...]
+    shards: tuple[TraceShardRow, ...]
+    kinds: tuple[TraceKindRow, ...]
+    spans: tuple[TraceSpanRow, ...]
+    dropped: int

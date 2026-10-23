@@ -313,7 +313,8 @@ def test_the_human_only_actions_are_the_install_and_skills_verbs_and_none_of_the
     the agent run it as a command (D762), and `out.compile`, `out.verify`, `out.back` and
     `out.assets` are a user's commands too (D773, D774, D777, D778), as are `eval.publish`
     (D833), `eval.run` (D868), `eval.release_check` (D840) and `eval.bless` (D846), and
-    `trace.export`, which 14:802 makes an explicit command (D947)."""
+    `trace.export`, which 14:802 makes an explicit command (D947), and `trace.stat`, a
+    read-only user verb 10:807 gives no tool (D949)."""
     unreachable = [spec.name for spec in ACTIONS.values() if spec.human_only]
     assert unreachable == [
         "graph.why", "graph.merges", "graph.merge", "graph.split", "graph.residue",
@@ -321,7 +322,7 @@ def test_the_human_only_actions_are_the_install_and_skills_verbs_and_none_of_the
         "serve", "skills.install", "skills.remove", "skills.update", "surface.emit",
         "out.constructs", "out.scaffold", "out.check", "out.compile", "out.stamp",
         "out.assets", "out.back", "out.verify", "out.normalize", "eval.publish",
-        "eval.run", "eval.release_check", "eval.bless", "trace.export",
+        "eval.run", "eval.release_check", "eval.bless", "trace.export", "trace.stat",
     ]  # fmt: skip
     assert set(ACTIONS) & HUMAN_ONLY == {"uninstall", "skills.remove"}
     assert not any(ACTIONS[name].human_only for name in LISTED_NAMES)
@@ -678,6 +679,7 @@ def test_the_required_parameter_of_each_tool_is_the_one_the_schema_requires() ->
         "eval.release_check": set(),
         "eval.bless": set(),
         "trace.export": set(),
+        "trace.stat": set(),
         "install": set(),
         "uninstall": set(),
         "serve": set(),
@@ -1197,7 +1199,8 @@ def test_two_actions_need_no_corpus_and_both_reasons_are_stated() -> None:
     `out.compile` (D773) and `out.verify` (D774) do. `eval.publish` names its `.oweval` and its
     results tree by path (D833), `eval.release_check` its `.oweval` and register (D840), and
     `eval.run` both too, its corpora being the register's fixture sets (D868). `trace.export`
-    reads a run's event shards, which belong to a project and not a corpus (D947)."""
+    reads a run's event shards, which belong to a project and not a corpus (D947), as
+    `trace.stat` does (D949)."""
     without_corpus = sorted(
         name for name, spec in ACTIONS.items() if "corpus" not in {f.name for f in fields(spec.inp)}
     )
@@ -1209,7 +1212,7 @@ def test_two_actions_need_no_corpus_and_both_reasons_are_stated() -> None:
         "out.constructs", "out.normalize", "out.stamp", "out.targets", "out.verify",
         "serve", "skills.check", "skills.hash",
         "skills.install", "skills.ls", "skills.remove", "skills.update", "skills.verify",
-        "surface.emit", "trace.export", "uninstall",
+        "surface.emit", "trace.export", "trace.stat", "uninstall",
     ]  # fmt: skip
 
 
@@ -1391,7 +1394,7 @@ def test_the_unrostered_cli_count_is_the_distance_to_the_registry() -> None:
     tables and usage rather than from a numeral, and a numeral is a second copy of an enumeration.
     """
     waiting = _unrostered_cli(ACTIONS)
-    assert len(waiting) == 110, "D947 landed `ow trace export`"
+    assert len(waiting) == 109, "D949 landed `ow trace stat`"
     have = {spec.cli for spec in ACTIONS.values()}
     assert not set(waiting) & have
     assert len(waiting) + len(have) == sum(max(1, len(v)) for v in CLI_ROSTER.values())

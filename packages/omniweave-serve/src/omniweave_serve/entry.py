@@ -31,6 +31,23 @@ the pairer, the batcher and the payload builder were here, and no command reache
    was sent comes from the `Delivered` or `Halted` the export returns, and a `Halted` is returned
    as its `message()`, never raised, for the CLI to turn into its exit (D363).
 
+## `stat`, D949
+
+15:236: `ow trace stat [--run <run_id>]  # per-kind counts, per-Stage wall, dropped, shard bytes`,
+and 15:432 asks it for the observed deflate ratio per shard, so the charter's ~8.7x stops being
+an assumption. `stat()` reads every shard of the run, or of every run in the events directory,
+once and in place:
+- per shard, its records, its bytes on disk and its uncompressed bytes, whose quotient is the
+  ratio (1.0 for the live shard, which is never deflated);
+- per kind, its records;
+- per span name, its count and total wall time. A `plan/<stage>` name is a Stage, so this is
+  15:236's per-Stage wall, and every other level comes with it. A duration is `Span`'s own,
+  the monotonic delta when the wall clock stepped;
+- the run's dropped records, which `run.end` carries as `events_dropped`.
+
+The reader's own wall time per shard, 15:2165's closing condition, is not here: this module
+reads no clock, and a figure from the caller's clock would time the whole call, not a shard.
+
 Specified in 15-observability.md section 2.6 (:213-262).
 """
 
@@ -38,6 +55,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from omniweave_serve.export import (
     Exporter,
@@ -50,10 +68,13 @@ from omniweave_serve.export import (
     traces_url,
 )
 from omniweave_serve.otlp import MAX_BATCH_BYTES, Resource, batches, pair
-from omniweave_serve.shards import shards_for, walk
+from omniweave_serve.shards import GZ_SUFFIX, LIVE_SUFFIX, Shard, read_shard, shards_for, walk
 from omniweave_serve.trace import Selection, export_once
 
-__all__ = ["export"]
+if TYPE_CHECKING:
+    from omniweave_core.events import Event
+
+__all__ = ["export", "stat"]
 
 
 def export(
@@ -124,3 +145,74 @@ def _send(
         "halted": done.message() if isinstance(done, Halted) else "",
         "pinned_by": step.pinned_by,
     }
+
+
+def stat(*, events_dir: str, live: str | None) -> dict[str, object]:
+    """`ow trace stat [--run R]`: one run's shards when `live` names its live shard, else every
+    run's in `events_dir`. Builtins out, as `export()`'s."""
+    root = Path(events_dir)
+    runs = (
+        [Path(live)] if live is not None else [root / (stem + LIVE_SUFFIX) for stem in _stems(root)]
+    )
+    shards: list[dict[str, object]] = []
+    kinds: dict[str, int] = {}
+    spans: dict[str, list[int]] = {}
+    dropped = 0
+    for run in runs:
+        found = shards_for(run.parent, run)
+        records: list[Event] = []
+        for shard in found:
+            row, events = _read(shard)
+            shards.append(row)
+            records.extend(events)
+        pairing = pair(records)
+        for event in records:
+            kinds[event.kind] = kinds.get(event.kind, 0) + 1
+            if event.kind == "run.end":
+                value = event.fields.get("events_dropped", 0)
+                dropped += value if isinstance(value, int) else 0
+        for span in pairing.spans:
+            total = spans.setdefault(span.name, [0, 0])
+            total[0] += 1
+            total[1] += span.end_wall_ns - span.start_wall_ns
+    return {
+        "runs": [run.name.removesuffix(LIVE_SUFFIX) for run in runs],
+        "shards": shards,
+        "kinds": [[kind, kinds[kind]] for kind in sorted(kinds)],
+        "spans": [[name, spans[name][0], spans[name][1]] for name in sorted(spans)],
+        "dropped": dropped,
+    }
+
+
+def _stems(root: Path) -> list[str]:
+    """Every run with a live or a rolled shard in `root`, by its live shard's stem, sorted."""
+    try:
+        names = [entry.name for entry in root.iterdir() if entry.is_file()]
+    except OSError:
+        return []
+    stems = {name.removesuffix(LIVE_SUFFIX) for name in names if name.endswith(LIVE_SUFFIX)}
+    for name in names:
+        if name.endswith(GZ_SUFFIX):
+            stem, _, _ordinal = name.removesuffix(GZ_SUFFIX).rpartition(".")
+            if stem:
+                stems.add(stem)
+    return sorted(stems)
+
+
+def _read(shard: Shard) -> tuple[dict[str, object], list[Event]]:
+    """One shard's row and its records. The last position is its uncompressed size."""
+    events: list[Event] = []
+    uncompressed = 0
+    for position, event in read_shard(shard):
+        events.append(event)
+        uncompressed = position.offset
+    on_disk = shard.path.stat().st_size
+    return (
+        {
+            "name": shard.name,
+            "records": len(events),
+            "bytes": on_disk,
+            "uncompressed_bytes": uncompressed,
+        },
+        events,
+    )

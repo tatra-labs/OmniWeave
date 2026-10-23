@@ -284,3 +284,62 @@ def test_a_dry_run_beside_otlp_rehearses_and_sends_nothing(
     assert collector.urls == []
     assert len(out.splitlines()) == 1
     assert json.loads(out)["resourceSpans"]
+
+
+# --- ow trace stat (D949) --------------------------------------------------------------------
+
+
+def _stat(cwd: Path, *argv: str) -> tuple[int, str, str]:
+    out, err = io.StringIO(), io.StringIO()
+    env = {"OMNIWEAVE_HOME": str(cwd.parent / "home")}
+    code = verb.main(["trace", "stat", *argv], cwd=cwd, env=env, stdout=out, stderr=err)
+    return code, out.getvalue(), err.getvalue()
+
+
+def test_stat_prints_a_line_per_shard_the_kinds_the_spans_and_the_drops(tmp_path: Path) -> None:
+    """Ruling 7 over the shard a real `RunTrace` wrote."""
+    project = _project(tmp_path)
+    code, out, err = _stat(project, "--run", RUN)
+    assert (code, err) == (0, "")
+    lines = out.splitlines()
+    assert lines[0] == "ow trace stat  1 run(s), 1 shard(s)"
+    assert lines[1].startswith(f"  shard   {RUN}.ndjson  3 record(s), ")
+    assert lines[1].endswith(" uncompressed, ratio 1.00")
+    assert lines[2] == "  kinds   run.end 1, run.start 1, unit.failed 1"
+    assert lines[3].startswith("  span    run  1 span(s), ")
+    assert lines[4] == "  dropped 0 record(s)"
+
+
+def test_stat_with_no_run_reads_every_run_and_writes_nothing(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+    before = sorted(path.name for path in project.rglob("*"))
+    code, out, _ = _stat(project, "--render", "json")
+    assert code == 0
+    row = json.loads(out)
+    assert row["runs"] == [RUN]
+    assert [kind["kind"] for kind in row["kinds"]] == ["run.end", "run.start", "unit.failed"]
+    assert sorted(path.name for path in project.rglob("*")) == before
+
+
+def test_stat_of_an_unknown_run_is_not_found(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+    code, _, err = _stat(project, "--run", "r_nope")
+    assert code == 2
+    assert "run r_nope has no event shard at" in err
+
+
+def test_stat_with_no_project_is_not_found(tmp_path: Path) -> None:
+    code, _, err = _stat(tmp_path)
+    assert code == 2
+    assert "has no event shard: no project is in view" in err
+
+
+def test_a_malformed_stat_reply_is_an_internal_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _project(tmp_path)
+    reply = {"runs": [], "shards": [{"name": "x"}], "kinds": [], "spans": [], "dropped": 0}
+    monkeypatch.setattr(verb, "trace_entry", lambda _name: lambda **_: reply)
+    code, _, err = _stat(project, "--run", RUN)
+    assert code == 70
+    assert "stat entry point returned an unreadable report" in err
