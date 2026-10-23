@@ -84,6 +84,7 @@ judge = V01.judge
 evaluate = V01.evaluate
 tool = V01.tool
 pytest = V01.pytest
+module = V01.module
 
 CORE = "packages/omniweave-core/tests/unit"
 CLI = "packages/omniweave/tests/unit"
@@ -114,6 +115,7 @@ CRITERIA: tuple[Criterion, ...] = (
             tool("gate_fixtures.py"),
             tool("gate_inventory.py"),
             tool("gate_leakage.py"),
+            module("omniweave", "surface", "emit", "--check"),
             pytest(
                 f"{CONF}/test_conform_release.py",
                 f"{CLI}/test_eval_release_check_verb.py",
@@ -140,8 +142,9 @@ CRITERIA: tuple[Criterion, ...] = (
         "refuses only the drafted labels' unverified rates (D868-D871, D903, D913); `--strict` "
         "also refuses extract and perf, which no harness measures (D872), "
         "and no "
-        "`.oweval` is committed for a tag; G13 and G25 have no runner "
-        "and G29 forces two of its four faults, a driver bug and a crash, with no budget denial "
+        "`.oweval` is committed for a tag; G13 has no runner, and G25, a CI step and not a "
+        "`tools/` script, is `ow surface emit --check`, run here (D960). "
+        "G29 forces two of its four faults, a driver bug and a crash, with no budget denial "
         "or quarantine to force (D936); Q-G16 and 20 have no instrument, Q-G26 runs its assertion "
         "clause only (D875), Q-G2 runs without "
         "its orphan-cassette sweep, and "
