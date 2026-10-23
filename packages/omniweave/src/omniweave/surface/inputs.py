@@ -127,6 +127,7 @@ __all__ = [
     "TargetsIn",
     "TraceExportIn",
     "TraceStatIn",
+    "TraceTreeIn",
     "TypesIn",
     "UninstallIn",
     "VerifyIn",
@@ -909,6 +910,21 @@ class TraceStatIn:
     """
 
     run: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TraceTreeIn:
+    """`ow trace tree <run_id> [--unit U] [--depth N] [--slow MS]`. 15:235. D950.
+
+    `run_id` is the run whose spans are nested. `unit` keeps the nodes of one `unit_uri` with
+    their ancestors and descendants, `slow` the spans at least that many ms with their
+    ancestors, and `depth` cuts below that level, the run span being level 0.
+    """
+
+    run_id: str
+    unit: str | None = None
+    depth: int | None = None
+    slow: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

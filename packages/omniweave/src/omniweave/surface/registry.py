@@ -151,6 +151,7 @@ from omniweave.sdk.reports import (
     TargetsReport,
     TraceExportReport,
     TraceStatReport,
+    TraceTreeReport,
     VerifyReport,
 )
 from omniweave.surface.inputs import (
@@ -199,6 +200,7 @@ from omniweave.surface.inputs import (
     TargetsIn,
     TraceExportIn,
     TraceStatIn,
+    TraceTreeIn,
     TypesIn,
     UninstallIn,
     VerifyIn,
@@ -2267,6 +2269,26 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=TraceStatReport,
             advanced=frozenset(),
             cli=("trace", "stat"),
+        ),
+        ActionSpec(
+            name="trace.tree",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=True,
+            idempotent=True,
+            open_world=False,
+            destructive=False,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Print one run's spans as a tree with each duration, its point records under them, "
+                "narrowed to a unit, a depth or the slow spans"
+            ),
+            decision="a run was slow or failed and where it went wrong is the question",
+            example={"run_id": "r_01J9ZQ4X8T2M6N0B3C5D7E9F1G"},
+            inp=TraceTreeIn,
+            out=TraceTreeReport,
+            advanced=frozenset(),
+            cli=("trace", "tree"),
         ),
     )
 )

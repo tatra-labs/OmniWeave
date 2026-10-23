@@ -343,3 +343,60 @@ def test_a_malformed_stat_reply_is_an_internal_error(
     code, _, err = _stat(project, "--run", RUN)
     assert code == 70
     assert "stat entry point returned an unreadable report" in err
+
+
+# --- ow trace tree (D950) --------------------------------------------------------------------
+
+
+def _tree(cwd: Path, *argv: str) -> tuple[int, str, str]:
+    out, err = io.StringIO(), io.StringIO()
+    env = {"OMNIWEAVE_HOME": str(cwd.parent / "home")}
+    code = verb.main(["trace", "tree", *argv], cwd=cwd, env=env, stdout=out, stderr=err)
+    return code, out.getvalue(), err.getvalue()
+
+
+def test_tree_prints_the_run_span_and_the_failure_under_it(tmp_path: Path) -> None:
+    """Ruling 8 over the shard a real `RunTrace` wrote: a `unit.failed` is a point under the run."""
+    project = _project(tmp_path)
+    code, out, err = _tree(project, RUN)
+    assert (code, err) == (0, "")
+    header, run, failed = out.splitlines()
+    assert header == f"ow trace tree  run {RUN}, 1 span(s)"
+    assert run.startswith("  run  ")
+    assert run.endswith(" ms  partial")
+    assert failed == "    unit.failed  driver_bug  u/a.txt"
+
+
+def test_tree_render_json_is_the_report(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+    code, out, _ = _tree(project, RUN, "--render", "json", "--depth", "0")
+    assert code == 0
+    row = json.loads(out)
+    assert (row["run_id"], row["spans"]) == (RUN, 1)
+    assert [(node["name"], node["depth"]) for node in row["nodes"]] == [("run", 0)]
+
+
+@pytest.mark.parametrize("flag", ["--depth", "--slow"])
+def test_tree_refuses_a_negative_count(tmp_path: Path, flag: str) -> None:
+    project = _project(tmp_path)
+    code, _, err = _tree(project, RUN, flag, "-1")
+    assert code == 1
+    assert f"{flag} is -1; it is a count and never below 0" in err
+
+
+def test_tree_of_an_unknown_run_is_not_found(tmp_path: Path) -> None:
+    project = _project(tmp_path)
+    code, _, err = _tree(project, "r_nope")
+    assert code == 2
+    assert "run r_nope has no event shard at" in err
+
+
+def test_a_malformed_tree_reply_is_an_internal_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _project(tmp_path)
+    reply = {"nodes": [{"name": "run"}], "spans": 1}
+    monkeypatch.setattr(verb, "trace_entry", lambda _name: lambda **_: reply)
+    code, _, err = _tree(project, RUN)
+    assert code == 70
+    assert "tree entry point returned an unreadable report" in err
