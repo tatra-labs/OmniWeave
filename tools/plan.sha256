@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D945: in-process CPU note
+# blessed-because: D946: deferred sweep count note
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -34,7 +34,7 @@ documents-frozen  5385c024f295e69a40e13752fc000d4a473260014614b32f45fafc33e3e883
 documents-frozen  6faee32ebeeacc759b93cf797dd650d38bb61bb790addd4078495633494d052f  05-ingest-and-routing.md
 documents-frozen  7c4c7946cad37746e602ef662e72d6a75ee43cc6b9367173c906cddc6d9f763e  06-structure-extraction.md
 documents-frozen  25666745a9572e7eadf017b6988a2216744cc3eca5a3f572d45da8f1b8c3e161  07-store-and-retrieval.md
-documents-frozen  0541d4740ec76c7114191fa15550a12bab09abdfb29eb2706d6d59f13db398e3  08-runtime.md
+documents-frozen  763b79b99b4084da8e73024e6595541b8735941fe069d92119535eca88843ca9  08-runtime.md
 documents-frozen  e3d9414cd24b29681c2da184fffa9c3fbc33e4d066f831fe9d8113b159e0ab08  09-generation.md
 documents-frozen  76979acde0cc3dcf5b9559dceb3e72fb9d0a70c91e1c03eec01e67fd4159a101  10-interfaces.md
 documents-frozen  0c6548840fb0910938c046372eaf172acc26dede00c771f8b2879d68bb872572  11-repo-layout.md
