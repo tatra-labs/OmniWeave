@@ -38,6 +38,13 @@ whichever the metadata listed first.
 `eval_entry(verb)` is the same route for 10:286's group. `omniweave-conform` declares one
 `[omniweave.eval]` entry point per verb, named for it, and `_load()` is shared, so both refusals
 read alike. `eval`'s carries `OW_EVAL_NOT_INSTALLED` and `serve`'s its area's default.
+
+## `trace`, D947
+
+`trace_entry(verb)` is the route for 15-observability.md:233's `ow trace` group, which lives in
+`omniweave-serve` beside the OTLP code it drives (02-architecture.md row 40). `omniweave-serve`
+declares one `[omniweave.trace]` entry point per verb. No register row names its refusal, so it
+carries the area's default symbol, as `serve`'s does.
 """
 
 from __future__ import annotations
@@ -58,11 +65,14 @@ __all__ = [
     "SERVE_DISTRIBUTION",
     "SERVE_GROUP",
     "SERVE_NAME",
+    "TRACE_GROUP",
     "Entry",
     "EvalEntry",
     "ServeEntry",
+    "TraceEntry",
     "eval_entry",
     "serve_entry",
+    "trace_entry",
 ]
 
 SERVE_GROUP: Final[str] = "omniweave.serve"
@@ -74,6 +84,9 @@ EVAL_GROUP: Final[str] = "omniweave.eval"
 EVAL_DISTRIBUTION: Final[str] = "omniweave-conform"
 EVAL_MISSING: Final[str] = "OW_EVAL_NOT_INSTALLED"
 """`OW-A-027`, the register row 10:286 gives `eval`'s refusal."""
+
+TRACE_GROUP: Final[str] = "omniweave.trace"
+"""`ow trace`'s group: one entry point per verb, in `omniweave-serve`. D947."""
 
 
 class ServeEntry(Protocol):
@@ -122,6 +135,14 @@ class EvalEntry(Protocol):
         ...
 
 
+class TraceEntry(Protocol):
+    """An `omniweave.trace` entry point: builtin keywords in, a `dict` of builtins out. D947."""
+
+    def __call__(self, **kwargs: object) -> Mapping[str, object]:
+        """Run one `ow trace` verb in `omniweave-serve`."""
+        ...
+
+
 def _installed(group: str = SERVE_GROUP) -> Iterable[Entry]:
     from importlib.metadata import entry_points  # noqa: PLC0415 -- call time, never import time
 
@@ -143,6 +164,15 @@ def eval_entry(verb: str, entries: Iterable[Entry] | None = None) -> EvalEntry:
     return _load(  # type: ignore[return-value]
         rows, EVAL_GROUP, verb, EVAL_DISTRIBUTION, f"ow eval {verb}", symbol=EVAL_MISSING
     )
+
+
+def trace_entry(verb: str, entries: Iterable[Entry] | None = None) -> TraceEntry:
+    """`ow trace <verb>`'s entry point, loaded (15-observability.md:233, D947).
+
+    No entry point is `CapabilityMissing`, exit 64, naming `pip install omniweave-serve`.
+    """
+    rows = _installed(TRACE_GROUP) if entries is None else entries
+    return _load(rows, TRACE_GROUP, verb, SERVE_DISTRIBUTION, f"ow trace {verb}")  # type: ignore[return-value]
 
 
 def _load(

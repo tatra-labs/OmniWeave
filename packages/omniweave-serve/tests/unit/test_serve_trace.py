@@ -543,3 +543,80 @@ def test_the_optional_extra_refusal_has_a_code_for_eval_and_none_for_serve(symbo
     symbols = {row["symbol"] for row in register["code"]}
     assert symbol in symbols
     assert not [name for name in symbols if "SERVE_NOT_INSTALLED" in name]
+
+
+# ---------------------------------------------------------------------------------------------
+# D947: the `omniweave.trace` entry point, `ow trace export --file` and `--dry-run`
+# ---------------------------------------------------------------------------------------------
+
+
+def _run_shard(tmp_path: Path) -> Path:
+    """Two spans, one point record and a start whose end never came, in one live shard."""
+    live = tmp_path / "events" / LIVE
+    _write(
+        live,
+        [
+            *_span_pair("00000000000000a1", begin=1, end=2),
+            _event(3),
+            *_span_pair("00000000000000a2", begin=4, end=5),
+            _event(6, EventKind.UNIT_BEGIN, span="00000000000000a3"),
+        ],
+    )
+    return live
+
+
+def test_the_file_holds_one_request_per_line_each_the_body_a_send_would_post(
+    tmp_path: Path,
+) -> None:
+    """`entry`'s ruling 1: each line is `export.payload()`'s body, the one builder a send uses."""
+    from omniweave_serve.entry import export  # noqa: PLC0415
+    from omniweave_serve.otlp import pair  # noqa: PLC0415
+    from omniweave_serve.shards import walk  # noqa: PLC0415
+
+    live = _run_shard(tmp_path)
+    out = tmp_path / "out" / "spans.jsonl"
+    done = export(live=str(live), config_digest="3b8a1f4c" * 8, file=str(out), max_batch=1)
+    spans = pair(event for _, event in walk(shards_for(live.parent, live))).spans
+    lines = out.read_text(encoding="utf-8").splitlines()
+    assert lines == [export_module.payload(_resource(), (span,)).decode() for span in spans]
+    assert (done["spans"], done["batches"]) == (2, 2)
+    assert (done["points"], done["unterminated"], done["orphaned"]) == (1, 1, 0)
+    assert (done["file"], done["payloads"], done["shards"]) == (str(out), [], [LIVE])
+
+
+def test_a_dry_run_returns_the_same_bodies_and_writes_nothing(tmp_path: Path) -> None:
+    """Ruling 2: `--dry-run --print-payload` is `rehearse()`'s promise with no exporter."""
+    from omniweave_serve.entry import export  # noqa: PLC0415
+
+    live = _run_shard(tmp_path)
+    out = tmp_path / "spans.jsonl"
+    export(live=str(live), config_digest="3b8a1f4c" * 8, file=str(out), max_batch=512)
+    before = sorted(path.name for path in tmp_path.rglob("*"))
+    done = export(live=str(live), config_digest="3b8a1f4c" * 8, file=None, max_batch=512)
+    assert sorted(path.name for path in tmp_path.rglob("*")) == before
+    assert done["payloads"] == out.read_text(encoding="utf-8").splitlines()
+    assert (done["batches"], done["file"]) == (1, "")
+
+
+def test_a_run_with_no_shard_left_writes_an_empty_file_and_counts_nothing(tmp_path: Path) -> None:
+    from omniweave_serve.entry import export  # noqa: PLC0415
+
+    out = tmp_path / "spans.jsonl"
+    done = export(
+        live=str(tmp_path / "events" / LIVE), config_digest="0" * 64, file=str(out), max_batch=8
+    )
+    assert out.read_bytes() == b""
+    assert (done["shards"], done["spans"], done["batches"]) == ([], 0, 0)
+
+
+def test_the_trace_group_declares_export_and_it_is_the_entry_function() -> None:
+    """`omniweave.surface.dispatch.trace_entry("export")` loads this row (D947)."""
+    from omniweave_serve.entry import export  # noqa: PLC0415
+
+    repo = Path(__file__).resolve().parents[4]
+    project = tomllib.loads(
+        (repo / "packages" / "omniweave-serve" / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    row = project["project"]["entry-points"]["omniweave.trace"]
+    assert row == {"export": "omniweave_serve.entry:export"}
+    assert callable(export)

@@ -436,6 +436,7 @@ def test_ingest_is_dispatched_and_the_spawn_that_would_start_it_is_still_unwired
             *("doctor", "query", "add", "open", "corpora", "explain", "doc", "graph", "out"),
             "eval",
             "cost",
+            "trace",
         }
     )
     assert roots == launcher.DISPATCHED

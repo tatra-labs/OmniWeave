@@ -47,6 +47,7 @@ MINIMAL: dict[str, list[str]] = {
     "serve": ["serve", "--mcp"],
     "skills": ["skills", "ls"],
     "surface": ["surface", "emit", "--check"],
+    "trace": ["trace", "export", "--run", "r1", "--dry-run"],
     "uninstall": ["uninstall"],
 }
 """The shortest command line each root parses. None of them is run past the refusal."""
@@ -138,6 +139,7 @@ def test_the_refused_set_is_what_the_audit_found() -> None:
         "doctor": ["corpus", "render", "verbose"],
         "serve": ["corpus", "render", "quiet", "verbose"],
         "surface": ["render", "quiet", "verbose"],
+        "trace": ["corpus", "quiet", "verbose"],
         "install": installer,
         "uninstall": installer,
         "hooks": installer,

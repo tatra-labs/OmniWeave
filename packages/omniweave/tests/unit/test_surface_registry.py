@@ -219,7 +219,8 @@ def test_add_is_the_one_writer_and_the_only_open_world_action() -> None:
     the cache root (D777). `eval.publish` writes the committed `eval/results` tree, and is a
     maintainer's command rather than a tool (D833), as is `eval.bless`, which writes
     `eval/inventory.toml` and a `BLESS.log` row (D846), and `eval.run`, which writes the
-    `.oweval` (D868).
+    `.oweval` (D868). `trace.export` writes the OTLP file `--file` names, and is a command
+    too (D947).
     """
     writers = [spec.name for spec in ACTIONS.values() if not spec.read_only]
     open_world = [spec.name for spec in ACTIONS.values() if spec.open_world]
@@ -227,7 +228,7 @@ def test_add_is_the_one_writer_and_the_only_open_world_action() -> None:
         "add", "graph.merge", "graph.split", "graph.types", "install", "uninstall", "serve",
         "skills.install", "skills.remove", "skills.update", "surface.emit", "out.scaffold",
         "out.check", "out.compile", "out.stamp", "out.back", "out.normalize", "eval.publish",
-        "eval.run", "eval.bless",
+        "eval.run", "eval.bless", "trace.export",
     ]  # fmt: skip
     assert [name for name in writers if ACTIONS[name].mcp_name is not None] == ["add"]
     #  `hooks.check` runs the installed commands, which are outside the store (10:157-158); it
@@ -244,7 +245,10 @@ def test_no_listed_tool_is_destructive_including_the_writer() -> None:
     destructive = [spec.name for spec in ACTIONS.values() if spec.destructive]
     #  `eval.publish` removes a results file no export names, which is what makes the tree
     #  exactly the export (D833). It has no `mcp_name`, so no host is asked.
-    assert destructive == ["uninstall", "skills.remove", "skills.update", "eval.publish"]
+    #  `trace.export` replaces the file `--file` names (D947), and has no `mcp_name` either.
+    assert destructive == [
+        "uninstall", "skills.remove", "skills.update", "eval.publish", "trace.export",
+    ]  # fmt: skip
     assert [name for name in LISTED_NAMES if ACTIONS[name].destructive] == []
 
 
@@ -307,7 +311,8 @@ def test_the_human_only_actions_are_the_install_and_skills_verbs_and_none_of_the
     `out.constructs` is read-only and 10:807 names no tool for it either: 02's step 3 has
     the agent run it as a command (D762), and `out.compile`, `out.verify`, `out.back` and
     `out.assets` are a user's commands too (D773, D774, D777, D778), as are `eval.publish`
-    (D833), `eval.run` (D868), `eval.release_check` (D840) and `eval.bless` (D846)."""
+    (D833), `eval.run` (D868), `eval.release_check` (D840) and `eval.bless` (D846), and
+    `trace.export`, which 14:802 makes an explicit command (D947)."""
     unreachable = [spec.name for spec in ACTIONS.values() if spec.human_only]
     assert unreachable == [
         "graph.why", "graph.merges", "graph.merge", "graph.split", "graph.residue",
@@ -315,7 +320,7 @@ def test_the_human_only_actions_are_the_install_and_skills_verbs_and_none_of_the
         "serve", "skills.install", "skills.remove", "skills.update", "surface.emit",
         "out.constructs", "out.scaffold", "out.check", "out.compile", "out.stamp",
         "out.assets", "out.back", "out.verify", "out.normalize", "eval.publish",
-        "eval.run", "eval.release_check", "eval.bless",
+        "eval.run", "eval.release_check", "eval.bless", "trace.export",
     ]  # fmt: skip
     assert set(ACTIONS) & HUMAN_ONLY == {"uninstall", "skills.remove"}
     assert not any(ACTIONS[name].human_only for name in LISTED_NAMES)
@@ -671,6 +676,7 @@ def test_the_required_parameter_of_each_tool_is_the_one_the_schema_requires() ->
         "eval.run": set(),
         "eval.release_check": set(),
         "eval.bless": set(),
+        "trace.export": set(),
         "install": set(),
         "uninstall": set(),
         "serve": set(),
@@ -862,6 +868,7 @@ def test_this_package_can_write_no_file_at_all() -> None:
         "serve.py",
         "startup.py",
         "switches.py",
+        "trace.py",
     ]
     for path in sources:
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
@@ -1087,7 +1094,7 @@ def test_the_shipped_roots_still_contain_no_trailing_s_collision() -> None:
     roots = {spec.cli[0] for spec in ACTIONS.values() if spec.cli}
     assert roots == {
         "query", "open", "corpora", "add", "doc", "doctor", "explain", "install", "uninstall",
-        "hooks", "skills", "serve", "surface", "graph", "out", "eval", "cost",
+        "hooks", "skills", "serve", "surface", "graph", "out", "eval", "cost", "trace",
     }  # fmt: skip
     assert not {root for root in roots if root + "s" in roots}
     assert roots <= GROUPS
@@ -1188,7 +1195,8 @@ def test_two_actions_need_no_corpus_and_both_reasons_are_stated() -> None:
     from the JobDir's `job.json` (D766), as `out.stamp` (D767), `out.normalize` (D768),
     `out.compile` (D773) and `out.verify` (D774) do. `eval.publish` names its `.oweval` and its
     results tree by path (D833), `eval.release_check` its `.oweval` and register (D840), and
-    `eval.run` both too, its corpora being the register's fixture sets (D868)."""
+    `eval.run` both too, its corpora being the register's fixture sets (D868). `trace.export`
+    reads a run's event shards, which belong to a project and not a corpus (D947)."""
     without_corpus = sorted(
         name for name, spec in ACTIONS.items() if "corpus" not in {f.name for f in fields(spec.inp)}
     )
@@ -1200,7 +1208,7 @@ def test_two_actions_need_no_corpus_and_both_reasons_are_stated() -> None:
         "out.constructs", "out.normalize", "out.stamp", "out.targets", "out.verify",
         "serve", "skills.check", "skills.hash",
         "skills.install", "skills.ls", "skills.remove", "skills.update", "skills.verify",
-        "surface.emit", "uninstall",
+        "surface.emit", "trace.export", "uninstall",
     ]  # fmt: skip
 
 
@@ -1382,7 +1390,7 @@ def test_the_unrostered_cli_count_is_the_distance_to_the_registry() -> None:
     tables and usage rather than from a numeral, and a numeral is a second copy of an enumeration.
     """
     waiting = _unrostered_cli(ACTIONS)
-    assert len(waiting) == 111, "D868 landed `ow eval run`"
+    assert len(waiting) == 110, "D947 landed `ow trace export`"
     have = {spec.cli for spec in ACTIONS.values()}
     assert not set(waiting) & have
     assert len(waiting) + len(have) == sum(max(1, len(v)) for v in CLI_ROSTER.values())
