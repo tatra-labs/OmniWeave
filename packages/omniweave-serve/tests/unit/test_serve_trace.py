@@ -621,6 +621,7 @@ def test_the_trace_group_declares_export_and_it_is_the_entry_function() -> None:
     assert row == {
         "export": "omniweave_serve.entry:export",
         "stat": "omniweave_serve.entry:stat",
+        "tree": "omniweave_serve.entry:tree",
     }
     assert callable(export)
 
@@ -765,3 +766,119 @@ def test_stat_over_a_directory_holding_no_shard_is_zero_runs(tmp_path: Path) -> 
 
     done = stat(events_dir=str(tmp_path / "events"), live=None)
     assert (done["runs"], done["shards"], done["kinds"], done["dropped"]) == ([], [], [], 0)
+
+
+# ---------------------------------------------------------------------------------------------
+# D950: `ow trace tree`
+# ---------------------------------------------------------------------------------------------
+
+_RUN_SPAN = "00000000000000r1"
+
+
+def _child(event: Event, *, parent: str, unit: str | None = None) -> Event:
+    from dataclasses import replace  # noqa: PLC0415
+
+    return replace(event, parent_span_id=parent, unit=unit)
+
+
+def _tree_shard(tmp_path: Path) -> Path:
+    """The run span holding a 1 ms unit with a failed point and a unitless point under it, a 5 ms
+    unit, and a unit
+    whose `end` never came; the run itself ends at 20 ms."""
+    from dataclasses import replace  # noqa: PLC0415
+
+    failed = replace(
+        _event(3, EventKind.UNIT_FAILED, span="00000000000000p1"),
+        parent_span_id="00000000000000a1",
+        unit="u/a",
+        fields={"failure_class": "driver_bug", "message": "ValueError at d.py:3 in p"},
+    )
+    live = tmp_path / "events" / LIVE
+    _write(
+        live,
+        [
+            _event(0, EventKind.RUN_START, span=_RUN_SPAN),
+            _child(
+                _event(1, EventKind.UNIT_BEGIN, span="00000000000000a1"),
+                parent=_RUN_SPAN,
+                unit="u/a",
+            ),
+            failed,
+            _child(_event(3, span="00000000000000c1"), parent="00000000000000a1"),
+            _child(
+                _event(2, EventKind.UNIT_COMPLETE, span="00000000000000a1"),
+                parent=_RUN_SPAN,
+                unit="u/a",
+            ),
+            _child(
+                _event(4, EventKind.UNIT_BEGIN, span="00000000000000a2"),
+                parent=_RUN_SPAN,
+                unit="u/b",
+            ),
+            _child(
+                _event(9, EventKind.UNIT_COMPLETE, span="00000000000000a2"),
+                parent=_RUN_SPAN,
+                unit="u/b",
+            ),
+            _child(
+                _event(10, EventKind.UNIT_BEGIN, span="00000000000000a3"),
+                parent=_RUN_SPAN,
+                unit="u/c",
+            ),
+            _event(20, EventKind.RUN_END, span=_RUN_SPAN),
+        ],
+    )
+    return live
+
+
+def _shape(done: dict[str, object]) -> list[tuple[int, str, object, str, object]]:
+    return [
+        (n["depth"], n["name"], n["ms"], n["outcome"], n["unit"])  # type: ignore[index]
+        for n in done["nodes"]  # type: ignore[union-attr]
+    ]
+
+
+def test_tree_nests_spans_and_points_with_monotonic_durations(tmp_path: Path) -> None:
+    """15:207: durations from monotonic deltas; 15:199: an unended span is listed, open."""
+    from omniweave_serve.entry import tree  # noqa: PLC0415
+
+    done = tree(live=str(_tree_shard(tmp_path)))
+    assert done["spans"] == 4
+    assert _shape(done) == [
+        (0, "run", 20, "ok", None),
+        (1, "unit/", 1, "ok", "u/a"),
+        (2, EventKind.UNIT_FAILED, None, "driver_bug", "u/a"),
+        (2, EventKind.CACHE_HIT, None, "", None),
+        (1, "unit/", 5, "ok", "u/b"),
+        (1, "unit/", None, "", "u/c"),
+    ]
+
+
+def test_tree_unit_keeps_its_nodes_their_ancestors_and_what_they_did(tmp_path: Path) -> None:
+    from omniweave_serve.entry import tree  # noqa: PLC0415
+
+    done = tree(live=str(_tree_shard(tmp_path)), unit="u/a")
+    assert [(depth, name) for depth, name, *_ in _shape(done)] == [
+        (0, "run"),
+        (1, "unit/"),
+        (2, EventKind.UNIT_FAILED),
+        (2, EventKind.CACHE_HIT),
+    ]
+
+
+def test_tree_slow_keeps_the_slow_spans_and_their_ancestors(tmp_path: Path) -> None:
+    from omniweave_serve.entry import tree  # noqa: PLC0415
+
+    done = tree(live=str(_tree_shard(tmp_path)), slow_ms=5)
+    assert [(depth, name, ms) for depth, name, ms, *_ in _shape(done)] == [
+        (0, "run", 20),
+        (1, "unit/", 5),
+    ]
+
+
+def test_tree_depth_cuts_below_the_level(tmp_path: Path) -> None:
+    from omniweave_serve.entry import tree  # noqa: PLC0415
+
+    assert [row[:2] for row in _shape(tree(live=str(_tree_shard(tmp_path)), depth=0))] == [
+        (0, "run")
+    ]

@@ -92,6 +92,7 @@ key can grant one.
 | `surface.emit` | — | `ow surface emit` | — | `free` | Write the artefacts generated from this registry, or with --check byte-diff them against the committed files and fail on any drift (gate G25) |
 | `trace.export` | — | `ow trace export` | — | `free` | Rebuild one run's spans from its event shards as OTLP JSON: a file, one request per line, a collector's /v1/traces, or printed with --dry-run --print-payload |
 | `trace.stat` | — | `ow trace stat` | — | `free` | Count what one run's event shards hold, or every run's: records per kind, spans and wall per name, dropped records, and each shard's bytes and deflate ratio |
+| `trace.tree` | — | `ow trace tree` | — | `free` | Print one run's spans as a tree with each duration, its point records under them, narrowed to a unit, a depth or the slow spans |
 | `uninstall` | — | `ow uninstall` | — | `free` | Take omniweave out of agent hosts exactly: every path the install receipt names, on its digest, and never the corpus index |
 
 ## Human-only Actions

@@ -116,7 +116,7 @@ GROUP_HELP: Final[dict[str, str]] = {
     ),
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
-    "trace": "export · stat",
+    "trace": "export · stat · tree",
 }
 
 COMMANDS: Final[tuple[Command, ...]] = (
@@ -1182,6 +1182,34 @@ COMMANDS: Final[tuple[Command, ...]] = (
             Argument(
                 spelling=("--run",),
                 metavar="RUN",
+            ),
+        ),
+    ),
+    Command(
+        words=("trace", "tree"),
+        actions=("trace.tree",),
+        help=(
+            "Print one run's spans as a tree with each duration, its point records under them, "
+            "narrowed to a unit, a depth or the slow spans"
+        ),
+        arguments=(
+            Argument(
+                spelling=("run_id",),
+                metavar="RUN_ID",
+            ),
+            Argument(
+                spelling=("--unit",),
+                metavar="UNIT",
+            ),
+            Argument(
+                spelling=("--depth",),
+                kind="int",
+                metavar="DEPTH",
+            ),
+            Argument(
+                spelling=("--slow",),
+                kind="int",
+                metavar="SLOW",
             ),
         ),
     ),

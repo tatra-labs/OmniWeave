@@ -61,6 +61,7 @@ The Actions this surface comes from, with the declaration behind each promise:
     surface.emit      SurfaceEmitIn       SurfaceReport
     trace.export      TraceExportIn       TraceExportReport
     trace.stat        TraceStatIn         TraceStatReport
+    trace.tree        TraceTreeIn         TraceTreeReport
     uninstall         UninstallIn         InstallReport
 """
 

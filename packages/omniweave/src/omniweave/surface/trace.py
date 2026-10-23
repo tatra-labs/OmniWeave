@@ -1,4 +1,4 @@
-"""`ow trace export` and `ow trace stat`: a run's event shards, sent or counted. D947-D949.
+"""`ow trace export`, `stat` and `tree`: a run's event shards, sent, counted or nested. D947-D950.
 
 15-observability.md:233 prints the verb and section 2.6 its mapping. The reader, the pairer and
 the payload builder live in `omniweave-serve` beside the OTLP code (02-architecture.md row 40),
@@ -33,6 +33,10 @@ this closes: every part was built, and no command reached them.
    ndjson_path` resolves to, and a directory holding none is a report of zero runs, not a
    refusal. The text form is a line per shard with its deflate ratio, one of kinds, a line
    per span name with its wall, and the dropped total; `--render json` is the report.
+8. **`ow trace tree <run_id>` nests and writes nothing** (D950). Each node is a line indented
+   two spaces a level: a span's name and its ms, `open` when it never ended, and a point's
+   kind, each with its outcome and its unit when it has them. `--depth` and `--slow` below 0
+   are refused; a run with no shard is ruling 3's `NotFoundError`.
 """
 
 from __future__ import annotations
@@ -58,6 +62,8 @@ from omniweave.sdk.reports import (
     TraceShardRow,
     TraceSpanRow,
     TraceStatReport,
+    TraceTreeNode,
+    TraceTreeReport,
 )
 from omniweave.surface.dispatch import trace_entry
 from omniweave.surface.query import parse
@@ -92,7 +98,7 @@ def main(
         return parsed
     try:
         check(TRACE_WORD, parsed)
-        verb = _stat if parsed.ow_action == "trace.stat" else _export
+        verb = {"trace.stat": _stat, "trace.tree": _tree}.get(parsed.ow_action, _export)
         return verb(parsed, cwd=cwd, env=env, stdout=stdout)
     except OwError as error:
         return report(error, parsed, stdout=stdout, stderr=stderr)
@@ -346,3 +352,68 @@ def _stat_lines(done: TraceStatReport) -> list[str]:
         )
     lines.append(f"  dropped {done.dropped} record(s)")
     return lines
+
+
+def _tree(parsed: argparse.Namespace, *, cwd: Path, env: Mapping[str, str], stdout: TextIO) -> int:
+    """Ruling 8."""
+    fix = "ow trace tree RUN_ID [--unit URI] [--depth N] [--slow MS]"
+    if parsed.render in ("jsonl", "rows"):
+        raise UsageError(
+            f"--render {parsed.render} is parsed and not served by ow trace tree", fix=fix
+        )
+    for flag, value in (("--depth", parsed.depth), ("--slow", parsed.slow)):
+        if value is not None and value < 0:
+            raise UsageError(f"{flag} is {value}; it is a count and never below 0", fix=fix)
+    explicit = Path(parsed.config) if parsed.config else None
+    config = load(cwd=cwd, env=env, explicit=explicit)
+    live = _run_shard(config, parsed.run_id, env=env)
+    done = _tree_report(
+        parsed.run_id,
+        trace_entry("tree")(
+            live=str(live), unit=parsed.unit, depth=parsed.depth, slow_ms=parsed.slow
+        ),
+    )
+    if parsed.render == "json":
+        stdout.write(json.dumps(asdict(done), ensure_ascii=False) + "\n")
+    else:
+        stdout.write(f"ow trace tree  run {done.run_id}, {done.spans} span(s)\n")
+        for node in done.nodes:
+            stdout.write(_tree_line(node) + "\n")
+    return 0
+
+
+def _tree_report(run_id: str, result: Mapping[str, object]) -> TraceTreeReport:
+    """The `tree` entry point's builtins as this side's report; else a broken install."""
+    nodes, spans = result.get("nodes"), result.get("spans")
+    broken = InternalError(
+        "the [omniweave.trace] tree entry point returned an unreadable report",
+        fix="pip install --force-reinstall omniweave-serve",
+    )
+    if not (isinstance(nodes, list) and isinstance(spans, int)):
+        raise broken
+    try:
+        return TraceTreeReport(
+            run_id=run_id,
+            spans=spans,
+            nodes=tuple(
+                TraceTreeNode(
+                    name=str(node["name"]),
+                    kind=str(node["kind"]),
+                    depth=int(node["depth"]),
+                    ms=None if node["ms"] is None else int(node["ms"]),
+                    outcome=str(node["outcome"]),
+                    unit=None if node["unit"] is None else str(node["unit"]),
+                )
+                for node in nodes
+            ),
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise broken from error
+
+
+def _tree_line(node: TraceTreeNode) -> str:
+    """One node, indented two spaces a level beneath the header."""
+    took = "" if node.kind == "point" else ("  open" if node.ms is None else f"  {node.ms} ms")
+    outcome = f"  {node.outcome}" if node.outcome else ""
+    unit = f"  {node.unit}" if node.unit else ""
+    return "  " * (node.depth + 1) + f"{node.name}{took}{outcome}{unit}"

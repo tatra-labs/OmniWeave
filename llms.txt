@@ -380,6 +380,8 @@ cli.trace.export: ow trace export [--run RUN] [--file FILE] [--otlp OTLP] [--dry
 cli.trace.export.actions: trace.export
 cli.trace.stat: ow trace stat [--run RUN]
 cli.trace.stat.actions: trace.stat
+cli.trace.tree: ow trace tree RUN_ID [--unit UNIT] [--depth DEPTH] [--slow SLOW]
+cli.trace.tree.actions: trace.tree
 cli.uninstall: ow uninstall [--target TARGET] [--location LOCATION] [--keep-cli] [--yes]
 cli.uninstall.actions: uninstall
 cli.groups: add audit-config bench cache check conform corpora cost deps doc doctor drivers eval
