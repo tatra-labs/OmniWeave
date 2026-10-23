@@ -1146,6 +1146,10 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 metavar="RUN",
             ),
             Argument(
+                spelling=("--since",),
+                metavar="SINCE",
+            ),
+            Argument(
                 spelling=("--file",),
                 metavar="FILE",
             ),

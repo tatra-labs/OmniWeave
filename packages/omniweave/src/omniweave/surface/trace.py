@@ -9,8 +9,9 @@ this closes: every part was built, and no command reached them.
 
 ## Rulings
 
-1. **`--run` is required.** 15:233 offers `--run` or `--since`; `--since` is not served, so a run
-   is the only selection, and none is refused naming the flag.
+1. **`--run` or `--since`, one of the two.** 15:233 prints them as alternatives. `--run` reads
+   one run; `--since <n>m|h|d` reads every run in the events directory, each kept to records
+   at or after the window's start, the wall clock read once from `SystemClock` (D952).
 2. **One destination: `--file P`, `--otlp E`, or `--dry-run`.** `--file` writes the requests, one
    per line (`omniweave_serve.entry`'s ruling 1), and `P` is relative to the working directory.
    `--otlp` sends them to `E/v1/traces` (D948). `--dry-run` writes and sends nothing and reports
@@ -86,7 +87,7 @@ __all__ = ["TRACE_WORD", "main"]
 
 TRACE_WORD: Final[str] = "trace"
 _EXPORT_FIX: Final[str] = (
-    "ow trace export --run RUN_ID (--file PATH | --otlp URL | --dry-run [--print-payload])"
+    "ow trace export (--run RUN_ID | --since 2h) (--file PATH | --otlp URL | --dry-run)"
 )
 _ENDPOINT_KEY: Final[str] = "observe.otlp_endpoint"
 _LIVE_SUFFIX: Final[str] = ".ndjson"
@@ -120,8 +121,8 @@ def _refuse_usage(parsed: argparse.Namespace) -> None:
             f"--render {parsed.render} is parsed and not served by ow trace export",
             fix=_EXPORT_FIX,
         )
-    if not parsed.run:
-        raise UsageError("ow trace export needs --run: --since is not served", fix=_EXPORT_FIX)
+    if bool(parsed.run) == (parsed.since is not None):
+        raise UsageError("ow trace export takes --run or --since, one of the two", fix=_EXPORT_FIX)
     if parsed.file is not None and parsed.otlp is not None:
         raise UsageError("ow trace export takes one destination, --file or --otlp", fix=_EXPORT_FIX)
     if parsed.file is not None and parsed.dry_run:
@@ -155,18 +156,26 @@ def _export(
     explicit = Path(parsed.config) if parsed.config else None
     config = load(cwd=cwd, env=env, explicit=explicit)
     endpoint = _endpoint(parsed, config)
-    live = _run_shard(config, parsed.run, env=env)
+    since_ns = None if parsed.since is None else _window_start(parsed.since)
+    if parsed.run:
+        live: Path | None = _run_shard(config, parsed.run, env=env)
+        events_dir = live.parent
+    else:
+        live = None
+        events_dir = _shard_path(config, _PROBE_RUN, env=env).parent
     target = None if parsed.file is None else cwd / parsed.file
     sending = endpoint is not None and not parsed.dry_run
     done = _report(
-        parsed.run,
+        parsed.run or "",
         trace_entry("export")(
-            live=str(live),
+            live=_or_none(live),
             config_digest=config.config_digest,
             file=None if target is None else str(target),
             max_batch=parsed.max_batch,
+            since_wall_ns=since_ns,
             endpoint=endpoint if sending else None,
-            run_id=parsed.run,
+            run_id=parsed.run or "",
+            events_dir=str(events_dir),
         ),
     )
     if done.halted:
@@ -174,8 +183,8 @@ def _export(
             done.halted,
             limit=_ENDPOINT_KEY,
             fix=(
-                f"run ow trace export --run {parsed.run} again once the collector answers; it "
-                "resumes at the committed offset"
+                "run the same ow trace export again once the collector answers; it resumes at "
+                "the committed offset"
             ),
         )
     if parsed.print_payload:
@@ -200,8 +209,10 @@ def _report(run_id: str, result: Mapping[str, object]) -> TraceExportReport:
         **{key: result.get(key, 0) for key in ("sent_requests", "sent_spans")},
     }
     written, halted = result.get("file"), result.get("halted", "")
+    runs = result.get("runs", [])
     if not (
         isinstance(shards, list)
+        and isinstance(runs, list)
         and isinstance(payloads, list)
         and isinstance(written, str)
         and isinstance(halted, str)
@@ -222,6 +233,7 @@ def _report(run_id: str, result: Mapping[str, object]) -> TraceExportReport:
         orphaned=number["orphaned"],
         file=written,
         payloads=tuple(str(body) for body in payloads),
+        runs=tuple(str(run) for run in runs),
         sent_requests=number["sent_requests"],
         sent_spans=number["sent_spans"],
         halted=halted,
@@ -247,9 +259,25 @@ def _line(done: TraceExportReport, *, file: str | None, sent: bool) -> str:
     ]
     rest = f"; not exported: {', '.join(held)}" if held else ""
     return (
-        f"run {done.run_id}: {done.spans} span(s) in {done.batches} request(s) from "
+        f"{_selected(done)}: {done.spans} span(s) in {done.batches} request(s) from "
         f"{len(done.shards)} shard(s), {where}{rest}"
     )
+
+
+def _selected(done: TraceExportReport) -> str:
+    """`run R`, or under `--since` how many runs the window read."""
+    return f"run {done.run_id}" if done.run_id else f"{len(done.runs)} run(s) in the window"
+
+
+def _window_start(since: str) -> int:
+    """Ruling 1: `--since`'s start as a wall-clock ns, from the one clock read."""
+    from omniweave.run.cost import since_ms  # noqa: PLC0415 -- only --since pays
+
+    try:
+        window = since_ms(since)
+    except ValueError as error:
+        raise UsageError(str(error), fix=_EXPORT_FIX) from error
+    return _wall_ns() - window * _NS_PER_MS
 
 
 def _shard_path(config: Config, run: str, *, env: Mapping[str, str]) -> Path:
