@@ -126,6 +126,7 @@ __all__ = [
     "SurfaceEmitIn",
     "TargetsIn",
     "TraceExportIn",
+    "TracePruneIn",
     "TraceStatIn",
     "TraceTreeIn",
     "TypesIn",
@@ -899,6 +900,18 @@ class TraceExportIn:
     dry_run: bool = False
     print_payload: bool = False
     max_batch: int = 512
+
+
+@dataclass(frozen=True, slots=True)
+class TracePruneIn:
+    """`ow trace prune [--older-than D] [--dry-run]`. 15:237, :398. D951.
+
+    `older_than` is `<n>m|h|d`, as `ow cost --since` takes it; without it the age is
+    `[observe] retain_days`. `dry_run` names what would be removed and removes nothing.
+    """
+
+    older_than: str | None = None
+    dry_run: bool = False
 
 
 @dataclass(frozen=True, slots=True)

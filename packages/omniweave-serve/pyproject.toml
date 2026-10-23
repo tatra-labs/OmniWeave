@@ -42,6 +42,7 @@ mcp = "omniweave_serve.launch:run"
 # values across (15-observability.md:233, D369's gap). D947.
 [project.entry-points."omniweave.trace"]
 export = "omniweave_serve.entry:export"
+prune = "omniweave_serve.entry:prune"
 stat = "omniweave_serve.entry:stat"
 tree = "omniweave_serve.entry:tree"
 
