@@ -17,6 +17,7 @@ D-15, in `omniweave.doctor.local`. D956 adds three that read what the project de
 D-13 and D-17, in `omniweave.doctor.project`, and D957 D-16 beside them. D958 adds D-10, the
 one row only `--runtime` runs (`local.RUNTIME`); a run without the flag names it as not run.
 D959 adds D-24, a live `store.write` lock, in `omniweave.doctor.store`.
+D961 adds D-25, the redaction canary over the newest event shard, in `local`.
 
 **The rows of 15:1514-1540 not built are named, not skipped silently.** Every run prints the
 ids it did not check, because a doctor that exits 0 is read as *"this deployment is fine"*,
@@ -356,6 +357,7 @@ def run(
                 "D-13",
                 "D-15",
                 "D-24",
+                "D-25",
             )
         )
     else:
@@ -388,6 +390,7 @@ def run(
         findings.extend(local.check_corpora(resolved, cwd=cwd))
         findings.extend(local.check_free_space(resolved, cwd=cwd))
         findings.append(local.check_events_dir(resolved, env=env))
+        findings.append(local.check_canary(resolved, env=env, cwd=cwd))
         findings.extend(
             project.check_named_drivers(resolved, project_root=config.project_root(resolved))
         )

@@ -52,6 +52,7 @@ from pathlib import PurePath
 from typing import Final, Literal
 
 __all__ = [
+    "CANARY",
     "FAILURE_FIELD",
     "LONG_RUN",
     "SHAPES",
@@ -130,6 +131,12 @@ SHAPES: Final[tuple[Shape, ...]] = (
 shapes (rule 4). Every one is unconditional. APPEND-ONLY, as the register it renders."""
 
 _COMPILED: Final = tuple((shape, re.compile(shape.pattern)) for shape in SHAPES)
+
+CANARY: Final = "OWCANARY-7f3a91"
+"""15:1448's canary: every page of G29's corpus carries it, and it must reach no event, ledger
+column, console line or export. Here, in core, because two layers grep for it: G29
+(`omniweave_conform.canary`, which re-exports it) and `ow doctor` D-25 (D961), which may not
+import `omniweave_conform`."""
 
 FAILURE_FIELD: Final = "failure_message"
 """The ledger column a `DriverError.message` is written to (`work.failure_message`), which is the
