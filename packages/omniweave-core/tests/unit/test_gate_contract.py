@@ -133,6 +133,14 @@ def clauses(findings: list[Any]) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+def test_every_git_call_waits_the_ruled_300_s(gate: ModuleType) -> None:
+    """D962, a user ruling of 2026-10-23: 120 s timed out `git worktree add` on windows-latest."""
+    assert gate.GIT_TIMEOUT_S == 300
+    source = Path(gate.__file__).read_text(encoding="utf-8")
+    assert "timeout=GIT_TIMEOUT_S" in source
+    assert "timeout=120" not in source
+
+
 def test_no_tags_is_vacuous_and_exits_zero(gate: ModuleType, capsys: Any) -> None:
     """`16-roadmap.md:516` marks G16 "vacuous at P3; wired for later", so exit 0 is correct."""
     assert gate.main(["--releases", "2"]) == 0
