@@ -22,20 +22,36 @@ the pairer, the batcher and the payload builder were here, and no command reache
    `--otlp` path sends `ExportTraceServiceRequest`s only, and a file that held more than a send
    would not be "what would be sent". An unterminated `start` or an orphaned `end` is counted and
    named, never dropped silently (`otlp.Pairing`, D357).
-4. **No cursor.** A file or a rehearsal is a whole-run snapshot. 15:255's cursor belongs to the
-   `--otlp` path, where a resume matters.
+4. **No cursor for a file.** A file or a rehearsal is a whole-run snapshot. 15:255's cursor
+   belongs to the `--otlp` path, where a resume matters.
+5. **`--otlp` sends through `trace.export_once()`, from the committed cursor.** D948. The transport
+   is `export.UrllibTransport`, the one thing in this distribution that dials, and the ladder's
+   waits are real seconds (`time.sleep`, injected here as the composition root, as
+   `omniweave.install` injects it). The run's counts come from one pairing of the whole run; what
+   was sent comes from the `Delivered` or `Halted` the export returns, and a `Halted` is returned
+   as its `message()`, never raised, for the CLI to turn into its exit (D363).
 
 Specified in 15-observability.md section 2.6 (:213-262).
 """
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
-from omniweave_serve.export import _replace, payload
+from omniweave_serve.export import (
+    Exporter,
+    Halted,
+    UrllibTransport,
+    _replace,
+    cursor_path,
+    payload,
+    read_cursor,
+    traces_url,
+)
 from omniweave_serve.otlp import MAX_BATCH_BYTES, Resource, batches, pair
 from omniweave_serve.shards import shards_for, walk
-from omniweave_serve.trace import Selection
+from omniweave_serve.trace import Selection, export_once
 
 __all__ = ["export"]
 
@@ -47,12 +63,16 @@ def export(
     file: str | None,
     max_batch: int,
     since_wall_ns: int | None = None,
+    endpoint: str | None = None,
+    run_id: str = "",
 ) -> dict[str, object]:
-    """`ow trace export --file P` or `--dry-run --print-payload`, over one run's shards.
+    """`ow trace export --file P`, `--otlp E` or `--dry-run --print-payload`, over one run.
 
     `live` is the run's resolved live shard path, which the CLI computes from `[observe]
     ndjson_path` (`omniweave.run.trace.shard_of`); its rolled siblings are found beside it.
     `file` is an absolute path to write (ruling 1), or `None` to return the bodies (ruling 2).
+    `endpoint` sends instead (ruling 5), keyed in the cursor by `run_id`; it and `file` are
+    exclusive.
     """
     shard = Path(live)
     selection = Selection(live=shard, since_wall_ns=since_wall_ns)
@@ -65,6 +85,7 @@ def export(
     ]
     if file is not None:
         _replace(Path(file), "".join(body + "\n" for body in bodies))
+    sent = _send(resource, selection, endpoint, run_id, max_batch) if endpoint else {}
     return {
         "shards": [one.name for one in found],
         "spans": len(pairing.spans),
@@ -73,5 +94,33 @@ def export(
         "unterminated": len(pairing.unterminated),
         "orphaned": len(pairing.orphaned),
         "file": "" if file is None else file,
-        "payloads": [] if file is not None else bodies,
+        "payloads": [] if file is not None or endpoint else bodies,
+        **sent,
+    }
+
+
+def _send(
+    resource: Resource, selection: Selection, endpoint: str, run_id: str, max_batch: int
+) -> dict[str, object]:
+    """Ruling 5: one pass from the committed cursor, as builtins."""
+    events_dir = selection.live.parent
+    cursor = cursor_path(events_dir)
+    step = export_once(
+        Exporter(transport=UrllibTransport(), sleep=time.sleep),
+        resource,
+        selection,
+        events_dir=events_dir,
+        url=traces_url(endpoint),
+        cursor=cursor,
+        endpoint=endpoint,
+        run_id=run_id,
+        resume=read_cursor(cursor, endpoint=endpoint, run_id=run_id),
+        max_spans=max_batch,
+    )
+    done = step.result
+    return {
+        "sent_requests": done.requests,
+        "sent_spans": done.spans,
+        "halted": done.message() if isinstance(done, Halted) else "",
+        "pinned_by": step.pinned_by,
     }

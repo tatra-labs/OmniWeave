@@ -2232,12 +2232,12 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             listed_in=frozenset(),
             read_only=False,
             idempotent=True,
-            open_world=False,
+            open_world=True,
             destructive=True,
             cost_class=CostClass.FREE,
             summary=(
-                "Rebuild one run's spans from its event shards as OTLP JSON, written to a file "
-                "one request per line, or printed with --dry-run --print-payload"
+                "Rebuild one run's spans from its event shards as OTLP JSON: a file, one request "
+                "per line, a collector's /v1/traces, or printed with --dry-run --print-payload"
             ),
             decision="a run must be read in a tracing tool, or its spans checked offline",
             example={},

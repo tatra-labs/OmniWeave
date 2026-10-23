@@ -935,7 +935,9 @@ class TraceExportReport:
     `shards` are the run's shard names, oldest first. `spans` were paired and written in `batches`
     requests; `points`, `unterminated` and `orphaned` are what was read and not written, counted
     so a hole is named rather than silent (15:199). `file` is the path written, or `""` under
-    `--dry-run`, when `payloads` holds the request bodies instead.
+    `--dry-run`, when `payloads` holds the request bodies instead. Under `--otlp` (D948),
+    `sent_requests` and `sent_spans` are what this pass delivered from the committed cursor,
+    and `halted` is the stop's message, `""` when every batch arrived.
     """
 
     run_id: str
@@ -947,3 +949,6 @@ class TraceExportReport:
     orphaned: int
     file: str
     payloads: tuple[str, ...]
+    sent_requests: int = 0
+    sent_spans: int = 0
+    halted: str = ""
