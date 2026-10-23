@@ -116,7 +116,7 @@ GROUP_HELP: Final[dict[str, str]] = {
     ),
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
-    "trace": "export",
+    "trace": "export · stat",
 }
 
 COMMANDS: Final[tuple[Command, ...]] = (
@@ -1168,6 +1168,20 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 kind="int",
                 metavar="MAX_BATCH",
                 default=512,
+            ),
+        ),
+    ),
+    Command(
+        words=("trace", "stat"),
+        actions=("trace.stat",),
+        help=(
+            "Count what one run's event shards hold, or every run's: records per kind, spans and "
+            "wall per name, dropped records, and each shard's bytes and deflate ratio"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--run",),
+                metavar="RUN",
             ),
         ),
     ),
