@@ -268,23 +268,83 @@ def _cpus() -> int:
     return max(1, os.cpu_count() or 1)
 
 
-def _ram_bytes() -> int:
-    """Physical RAM, or 0 when the platform will not say.
+CGROUP_ROOT: Final = Path("/sys/fs/cgroup")
+"""Where a cgroup v2 `memory.max`, or v1's `memory/memory.limit_in_bytes`, is read from."""
 
-    `os.sysconf` carries it on Linux and macOS and does not exist on Windows, where the answer
-    needs `ctypes` into `GlobalMemoryStatusEx`. Zero rather than a guess: `check_ram` reads a zero
-    as "unknown" and reports that it could not decide, which is a different answer from "it fits".
-    A fabricated number here would make the refusal 08:703 asks for either vacuous or wrong.
+
+def _ram_bytes(cgroup: Path = CGROUP_ROOT) -> int:
+    """The RAM this process may use: physical RAM, under a cgroup memory limit, or 0.
+
+    `os.sysconf` carries physical RAM on Linux and macOS and does not exist on Windows, where
+    `_ram_bytes_win32` asks `GlobalMemoryStatusEx` (D958). Zero rather than a guess: `check_ram`
+    reads a zero as "unknown" and reports that it could not decide, which is a different answer
+    from "it fits". A fabricated number here would make the refusal 08:703 asks for either vacuous
+    or wrong.
+
+    **D958: a cgroup limit below physical RAM is the answer.** 08:731's container row refuses
+    because the container is limited to 4 GB, and `SC_PHYS_PAGES` reads the host's RAM through
+    that limit, so without this the row 08:735 calls *"the point of a refusal"* passed.
     """
     sysconf = getattr(os, "sysconf", None)
-    if sysconf is None:  # Windows: the answer needs ctypes into GlobalMemoryStatusEx.
-        return 0
+    if sysconf is None:
+        return _ram_bytes_win32() if os.name == "nt" else 0
     try:
         pages = sysconf("SC_PHYS_PAGES")
         page_size = sysconf("SC_PAGE_SIZE")
     except (ValueError, OSError):
         return 0
-    return int(pages) * int(page_size) if pages > 0 and page_size > 0 else 0
+    physical = int(pages) * int(page_size) if pages > 0 and page_size > 0 else 0
+    limit = _cgroup_limit(cgroup)
+    return min(physical, limit) if physical and limit else physical
+
+
+def _cgroup_limit(root: Path) -> int:
+    """This process's cgroup memory limit in bytes, or 0 when none is set or none can be read.
+
+    v2 writes `max` for no limit; v1 writes a page-rounded `LONG_MAX` instead, which is larger
+    than any machine's RAM and so loses the `min()` above without a special case.
+    """
+    for name in ("memory.max", "memory/memory.limit_in_bytes"):
+        try:
+            text = (root / name).read_text(encoding="ascii").strip()
+        except (OSError, ValueError):
+            continue
+        if text.isdigit() and int(text) > 0:
+            return int(text)
+    return 0
+
+
+def _ram_bytes_win32() -> int:
+    """`GlobalMemoryStatusEx`'s `ullTotalPhys`, or 0 when the call fails.
+
+    `ctypes` is imported here, not at module scope: the module's header measures what an import
+    of `omniweave.run` costs, and only `HostFacts.measure` on Windows needs it. `subproc`'s
+    psapi arm reads another process's memory the same way, for the same reason: `psutil` is not
+    a dependency (INV-2/G1).
+    """
+    import ctypes  # noqa: PLC0415 -- Windows only, and only when the machine is measured
+
+    class _MemoryStatus(ctypes.Structure):
+        """`MEMORYSTATUSEX` (sysinfoapi.h); `DWORDLONG` is `c_uint64`."""
+
+        _fields_ = (
+            ("dwLength", ctypes.c_uint32),
+            ("dwMemoryLoad", ctypes.c_uint32),
+            ("ullTotalPhys", ctypes.c_uint64),
+            ("ullAvailPhys", ctypes.c_uint64),
+            ("ullTotalPageFile", ctypes.c_uint64),
+            ("ullAvailPageFile", ctypes.c_uint64),
+            ("ullTotalVirtual", ctypes.c_uint64),
+            ("ullAvailVirtual", ctypes.c_uint64),
+            ("ullAvailExtendedVirtual", ctypes.c_uint64),
+        )
+
+    status = _MemoryStatus()
+    status.dwLength = ctypes.sizeof(status)
+    call = ctypes.windll.kernel32.GlobalMemoryStatusEx  # type: ignore[attr-defined]
+    call.restype = ctypes.c_int
+    call.argtypes = [ctypes.POINTER(_MemoryStatus)]
+    return int(status.ullTotalPhys) if call(ctypes.byref(status)) else 0
 
 
 def _is_container() -> bool:
@@ -454,9 +514,9 @@ def check_ram(required_bytes: int, host: HostFacts) -> RamVerdict:
             required_bytes=required_bytes,
             ceiling_bytes=0,
             detail=(
-                "this platform does not report physical RAM through os.sysconf, so the "
-                f"{required_bytes // 1_048_576} MB the enabled roster declares could not be "
-                "checked against it"
+                "this platform does not report physical RAM to os.sysconf or "
+                f"GlobalMemoryStatusEx, so the {required_bytes // 1_048_576} MB the enabled "
+                "roster declares could not be checked against it"
             ),
         )
     ceiling = int(host.ram_bytes * RAM_HEADROOM_FRACTION)

@@ -21,6 +21,9 @@ it (15:1510):
   warning: a run that cannot write its shard degrades to the console and continues (15:402-404).
   A project with no `ndjson` sink, or no project, writes no shard, and that is reported as fine.
 
+D958 adds D-10, the one `--runtime` row (15:1523): the enabled roster's worker memory against
+this machine's RAM, in `RUNTIME`.
+
 Every path is resolved as a run resolves it (`surface.ingest.root_of`, `surface.serve.stores`,
 `run.trace.shard_of`), so the doctor and the run cannot disagree about where a root is. Nothing
 here writes, and the two machine readings are arguments, so a test hands in a version or a
@@ -45,23 +48,33 @@ if TYPE_CHECKING:
 
     from omniweave_core.config import Config
 
+    from omniweave.run.supervisor import HostFacts
+
 __all__ = [
     "LOCAL",
     "OUTPUT_MIN_FREE_BYTES",
+    "RUNTIME",
     "check_corpora",
     "check_events_dir",
     "check_free_space",
+    "check_ram",
     "check_sqlite",
 ]
 
 LOCAL: Final[tuple[str, ...]] = ("D-01", "D-05", "D-11", "D-15")
 """The rows this module checks."""
 
+RUNTIME: Final[tuple[str, ...]] = ("D-10",)
+"""The rows only `ow doctor --runtime` checks. 15:1523 gives D-10 the severity *"fail
+(`--runtime`)"*, and 10:1436 makes `--runtime` the flag that measures this machine's roster."""
+
 OUTPUT_MIN_FREE_BYTES: Final[int] = 1 << 30
 """15:1524's *"on `output` >= 1 GiB"*. No key carries it; the cache's floor is `[cache]
 min_free_bytes`."""
 
 _PRIVATE: Final[int] = 0o077
+
+_MB: Final[int] = 1_048_576
 
 
 def check_sqlite(version: tuple[int, ...] | None = None) -> DoctorFinding:
@@ -213,6 +226,58 @@ def check_events_dir(
         )
     state = "exists" if directory.is_dir() else "is created by the first run"
     return DoctorFinding("D-15", f"{directory.as_posix()} is writable and {state}", "ok", "")
+
+
+def check_ram(
+    config: Config, *, memory_mb: Mapping[str, int], cwd: Path, host: HostFacts | None = None
+) -> DoctorFinding:
+    """D-10 (15:1523): summed over classes, `max_workers * memory_mb <= 0.8 * RAM`, or it fails.
+
+    The arithmetic is the Supervisor's, so the doctor and a run cannot disagree about it:
+    `derive_admission` clamps `[drivers] max_workers` to this machine's CPUs as a run's preflight
+    does (08:731's laptop row runs 3 free workers, not the configured 4), and `ram_required` and
+    `check_ram` are 08:702-709's sum and refusal. `memory_mb` is each cost class's heaviest
+    enabled card's `[isolation] memory_mb`, which the caller reads from the catalog. `host` is
+    measured here unless a test hands one in.
+
+    A machine that will not report its RAM is a warning, not a pass: `check_ram`'s third
+    verdict, `unknown`, exists so that a doctor that could not measure says so.
+    """
+    from omniweave_core.errors import ConfigError  # noqa: PLC0415
+
+    from omniweave.run import supervisor  # noqa: PLC0415 -- only --runtime pays for the loop
+    from omniweave.surface.ingest import root_of  # noqa: PLC0415
+
+    facts = (
+        host
+        if host is not None
+        else supervisor.HostFacts.measure(_nearest(root_of(config, "roots.cache", cwd)))
+    )
+    try:
+        workers = supervisor.derive_admission(config, facts).workers
+    except ConfigError as exc:
+        return DoctorFinding("D-10", f"not run: {exc}", "error", exc.fix)
+    verdict = supervisor.check_ram(supervisor.ram_required(workers, memory_mb), facts)
+    terms = " + ".join(
+        f"{name} {workers[name]} x {memory_mb.get(name, 0)} MB" for name in supervisor.COST_CLASSES
+    )
+    if verdict.verdict == "unknown":
+        return DoctorFinding(
+            "D-10", verdict.detail, "warning", f"compare {terms} with this machine's RAM by hand"
+        )
+    sums = (
+        f"{terms} = {verdict.required_bytes // _MB} MB, against 0.8 of this machine's "
+        f"{facts.ram_bytes // _MB} MB ({verdict.ceiling_bytes // _MB} MB)"
+    )
+    if verdict.refuses:
+        current = ", ".join(f"{name} = {workers[name]}" for name in supervisor.COST_CLASSES)
+        return DoctorFinding(
+            "D-10",
+            f"the enabled drivers' worker processes need more RAM than this machine has: {sums}",
+            "error",
+            f"lower max_workers under [drivers] in omniweave.toml (here it runs {current})",
+        )
+    return DoctorFinding("D-10", f"the enabled drivers' worker processes fit: {sums}", "ok", "")
 
 
 def _nearest(path: Path) -> Path:
