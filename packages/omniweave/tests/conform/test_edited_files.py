@@ -110,7 +110,11 @@ def test_an_edited_file_is_read_again_and_its_old_version_leaves_search(tmp_path
     assert _texts(found) == ["The launch code is ZEBRAFISH now."]
     assert str(found["evidence"][0]["cite"]) == old_cite  # type: ignore[index]
     gone = _answer(project, env, "AARDVARK")
-    assert (gone["state"], _texts(gone)) == ("absent", [])
+    #  D961: seen `degraded` twice in 100+ runs, once in a full T3 round, and never reproduced
+    #  (alone or under 6 and 16 CPU burners). The answer, evidence aside, names the gate that fired.
+    assert (gone["state"], _texts(gone)) == ("absent", []), {
+        key: value for key, value in gone.items() if key != "evidence"
+    }
 
     #  3. The old cite resolves, to the paragraph's new revision.
     opened = _run(project, env, "open", old_cite)

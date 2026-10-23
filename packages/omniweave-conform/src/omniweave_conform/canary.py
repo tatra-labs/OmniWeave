@@ -25,15 +25,14 @@ import os
 import sys
 from typing import TYPE_CHECKING, Final, NoReturn
 
+from omniweave_core.redact import CANARY
+
 from omniweave_conform.template.driver import PlainTextParser
 
 if TYPE_CHECKING:
     from omniweave_ports import DriverIO, PartSelector, UnitRef
 
 __all__ = ["CANARY", "CRASH_STATUS", "BugParser", "CrashParser"]
-
-CANARY: Final = "OWCANARY-7f3a91"
-"""15:1448's canary. Every page of G29's corpus carries it."""
 
 CRASH_STATUS: Final = 70
 """`CrashParser`'s exit status: EX_SOFTWARE, which `driver_crashed` synthesises a message from."""
