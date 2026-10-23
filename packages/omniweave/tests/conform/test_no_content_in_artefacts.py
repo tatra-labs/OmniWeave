@@ -27,9 +27,9 @@ Not forced, because nothing in this build can force them:
 - the **quarantine**: it is a derive draft's, and no derive pass in a model-free run produces
   one, so no payload is written for the canary to be allowed in.
 
-Not grepped, because this build does not produce it: `ow trace export --file`. The NDJSON event
-shard is written since D941, and `{run_id}.paths.json` under `[observe] redact = "paths"` since
-D943; both are grepped with everything else under `.omniweave/`.
+Since D947 `ow trace export --file` is produced too: after each fault the run's spans are
+exported under `.omniweave/` and grepped with the rest. The NDJSON event shard is written since
+D941, and `{run_id}.paths.json` under `[observe] redact = "paths"` since D943.
 
 What is grepped: both commands' console, every byte under the project's `.omniweave/` but the
 content store (`cas/`, the retained source, which is the document itself), the home and
@@ -166,7 +166,16 @@ def test_a_failing_driver_leaves_its_page_in_no_artefact(tmp_path: Path, fault: 
     assert code == 0, added[-3000:]
     assert f"route     {len(PAGES)} planned ({driver} {len(PAGES)})" in added, added[-3000:]
     _code, queried = _ow(project, "query", "Total due")
-    for name, console in (("ow add", added), ("ow query", queried)):
+    #  D947: 15:1453's `ow trace export --file` payload, written under `.omniweave/` so the grep
+    #  below reads it with everything else.
+    (shard,) = (project / ".omniweave" / "events").glob("*.ndjson")
+    exported = project / ".omniweave" / "trace-export.jsonl"
+    code, traced = _ow(
+        project, "trace", "export", "--run", shard.stem, "--file", ".omniweave/trace-export.jsonl"
+    )
+    assert code == 0, traced[-3000:]
+    assert exported.read_bytes(), "the run's span was exported"
+    for name, console in (("ow add", added), ("ow query", queried), ("ow trace", traced)):
         assert CANARY not in console, f"{name}'s console carries the page"
     leaked = [str(path) for path in _files(project) if CANARY.encode() in path.read_bytes()]
     assert leaked == [], f"the page reached {leaked}"

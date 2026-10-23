@@ -116,6 +116,7 @@ GROUP_HELP: Final[dict[str, str]] = {
     ),
     "skills": "check · hash · install · ls · remove · update · verify",
     "surface": "emit",
+    "trace": "export",
 }
 
 COMMANDS: Final[tuple[Command, ...]] = (
@@ -1129,6 +1130,40 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 spelling=("--bless",),
                 kind="switch",
                 default=False,
+            ),
+        ),
+    ),
+    Command(
+        words=("trace", "export"),
+        actions=("trace.export",),
+        help=(
+            "Rebuild one run's spans from its event shards as OTLP JSON, written to a file one "
+            "request per line, or printed with --dry-run --print-payload"
+        ),
+        arguments=(
+            Argument(
+                spelling=("--run",),
+                metavar="RUN",
+            ),
+            Argument(
+                spelling=("--file",),
+                metavar="FILE",
+            ),
+            Argument(
+                spelling=("--dry-run",),
+                kind="switch",
+                default=False,
+            ),
+            Argument(
+                spelling=("--print-payload",),
+                kind="switch",
+                default=False,
+            ),
+            Argument(
+                spelling=("--max-batch",),
+                kind="int",
+                metavar="MAX_BATCH",
+                default=512,
             ),
         ),
     ),

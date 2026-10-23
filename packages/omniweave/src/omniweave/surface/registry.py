@@ -149,6 +149,7 @@ from omniweave.sdk.reports import (
     StampReport,
     SurfaceReport,
     TargetsReport,
+    TraceExportReport,
     VerifyReport,
 )
 from omniweave.surface.inputs import (
@@ -195,6 +196,7 @@ from omniweave.surface.inputs import (
     StampIn,
     SurfaceEmitIn,
     TargetsIn,
+    TraceExportIn,
     TypesIn,
     UninstallIn,
     VerifyIn,
@@ -2223,6 +2225,26 @@ ACTIONS: Final[Mapping[str, ActionSpec]] = _index(
             out=EvalBlessReport,
             advanced=frozenset(),
             cli=("eval", "bless"),
+        ),
+        ActionSpec(
+            name="trace.export",
+            mcp_name=None,
+            listed_in=frozenset(),
+            read_only=False,
+            idempotent=True,
+            open_world=False,
+            destructive=True,
+            cost_class=CostClass.FREE,
+            summary=(
+                "Rebuild one run's spans from its event shards as OTLP JSON, written to a file "
+                "one request per line, or printed with --dry-run --print-payload"
+            ),
+            decision="a run must be read in a tracing tool, or its spans checked offline",
+            example={},
+            inp=TraceExportIn,
+            out=TraceExportReport,
+            advanced=frozenset(),
+            cli=("trace", "export"),
         ),
     )
 )

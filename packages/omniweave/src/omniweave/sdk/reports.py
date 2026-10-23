@@ -96,6 +96,7 @@ __all__ = [
     "SurfaceReport",
     "TargetListing",
     "TargetsReport",
+    "TraceExportReport",
     "VerifiedClass",
     "VerifyReport",
 ]
@@ -925,3 +926,24 @@ class CostReport:
     saved_micros: int
     billed_micros: int
     manifest_billed_micros: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class TraceExportReport:
+    """What `ow trace export --file` or `--dry-run --print-payload` returns. D947.
+
+    `shards` are the run's shard names, oldest first. `spans` were paired and written in `batches`
+    requests; `points`, `unterminated` and `orphaned` are what was read and not written, counted
+    so a hole is named rather than silent (15:199). `file` is the path written, or `""` under
+    `--dry-run`, when `payloads` holds the request bodies instead.
+    """
+
+    run_id: str
+    shards: tuple[str, ...]
+    spans: int
+    batches: int
+    points: int
+    unterminated: int
+    orphaned: int
+    file: str
+    payloads: tuple[str, ...]
