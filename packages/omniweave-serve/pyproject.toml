@@ -43,6 +43,7 @@ mcp = "omniweave_serve.launch:run"
 [project.entry-points."omniweave.trace"]
 export = "omniweave_serve.entry:export"
 stat = "omniweave_serve.entry:stat"
+tree = "omniweave_serve.entry:tree"
 
 # The build half, identical in shape in all fourteen. 11-repo-layout.md section 1.3.
 [tool.hatch.build.targets.wheel]

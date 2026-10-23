@@ -48,6 +48,18 @@ once and in place:
 The reader's own wall time per shard, 15:2165's closing condition, is not here: this module
 reads no clock, and a figure from the caller's clock would time the whole call, not a shard.
 
+## `tree`, D950
+
+15:235: `ow trace tree <run_id> [--unit <uri>] [--depth N] [--slow <ms>]`, and 15:207: it
+*"computes every duration from host monotonic deltas only"*. `tree()` nests every span under
+its `parent_span_id` and every point record under the span it names, and lists the nodes in
+pre-order, oldest child first, each with its depth and its duration in ms:
+- a span with no `end` is listed with `ms = None`, open, rather than dropped (15:199);
+- `--unit` keeps the nodes whose envelope `unit` is that uri, with their ancestors for the
+  path to them and their descendants for what they did;
+- `--slow` keeps the spans at least that slow, with their ancestors;
+- `--depth` cuts every node deeper than N, the run span being depth 0.
+
 Specified in 15-observability.md section 2.6 (:213-262).
 """
 
@@ -55,7 +67,9 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
+
+from omniweave_core.events import is_span_kind
 
 from omniweave_serve.export import (
     Exporter,
@@ -67,14 +81,16 @@ from omniweave_serve.export import (
     read_cursor,
     traces_url,
 )
-from omniweave_serve.otlp import MAX_BATCH_BYTES, Resource, batches, pair
+from omniweave_serve.otlp import MAX_BATCH_BYTES, Resource, batches, pair, span_name
 from omniweave_serve.shards import GZ_SUFFIX, LIVE_SUFFIX, Shard, read_shard, shards_for, walk
 from omniweave_serve.trace import Selection, export_once
+
+_NS_PER_MS: Final = 1_000_000
 
 if TYPE_CHECKING:
     from omniweave_core.events import Event
 
-__all__ = ["export", "stat"]
+__all__ = ["export", "stat", "tree"]
 
 
 def export(
@@ -216,3 +232,109 @@ def _read(shard: Shard) -> tuple[dict[str, object], list[Event]]:
         },
         events,
     )
+
+
+def tree(
+    *, live: str, unit: str | None = None, depth: int | None = None, slow_ms: int | None = None
+) -> dict[str, object]:
+    """`ow trace tree <run_id>`: one run's spans and points as a pre-order list. Builtins out."""
+    shard = Path(live)
+    nodes: dict[str, dict[str, object]] = {}
+    order: list[str] = []
+    started: dict[str, int] = {}
+    children: dict[str | None, list[str]] = {}
+    for _, event in walk(shards_for(shard.parent, shard)):
+        if is_span_kind(event.kind):
+            if event.phase == "start":
+                key = event.span_id
+                nodes[key] = _node(key, event.parent_span_id, span_name(event), event.unit, "span")
+                started[key] = event.ts_mono_ns
+                order.append(key)
+            elif event.span_id in started:
+                node = nodes[event.span_id]
+                node["ms"] = (event.ts_mono_ns - started[event.span_id]) // _NS_PER_MS
+                node["outcome"] = str(
+                    event.fields.get("outcome") or event.fields.get("status") or ""
+                )
+            continue
+        key = f"{event.span_id}:{len(order)}"
+        parent = event.parent_span_id if event.parent_span_id in nodes else None
+        nodes[key] = _node(key, parent, event.kind, event.unit, "point")
+        nodes[key]["outcome"] = str(event.fields.get("failure_class") or "")
+        order.append(key)
+    for key in order:
+        children.setdefault(_parent(nodes[key], nodes), []).append(key)
+    keep = _kept(nodes, children, unit=unit, slow_ms=slow_ms)
+    listed: list[dict[str, object]] = []
+    _visit(None, 0, children=children, nodes=nodes, keep=keep, depth=depth, out=listed)
+    return {"nodes": listed, "spans": sum(1 for n in nodes.values() if n["kind"] == "span")}
+
+
+def _node(
+    key: str, parent: str | None, name: str, unit: str | None, kind: str
+) -> dict[str, object]:
+    return {
+        "id": key,
+        "parent": parent,
+        "name": name,
+        "unit": unit,
+        "kind": kind,
+        "ms": None,
+        "outcome": "",
+    }
+
+
+def _parent(node: dict[str, object], nodes: dict[str, dict[str, object]]) -> str | None:
+    """A node's parent in the tree: its recorded parent when that was read, else the root."""
+    parent = node["parent"]
+    return parent if isinstance(parent, str) and parent in nodes else None
+
+
+def _kept(
+    nodes: dict[str, dict[str, object]],
+    children: dict[str | None, list[str]],
+    *,
+    unit: str | None,
+    slow_ms: int | None,
+) -> set[str]:
+    """The nodes `--unit` and `--slow` keep: each match, its ancestors, and under `--unit` its
+    descendants. Neither filter keeps everything."""
+    if unit is None and slow_ms is None:
+        return set(nodes)
+    keep: set[str] = set()
+    for key, node in nodes.items():
+        ms = node["ms"]
+        by_unit = unit is None or node["unit"] == unit
+        by_slow = slow_ms is None or (isinstance(ms, int) and ms >= slow_ms)
+        if not (by_unit and by_slow):
+            continue
+        keep.add(key)
+        up = _parent(node, nodes)
+        while up is not None and up not in keep:
+            keep.add(up)
+            up = _parent(nodes[up], nodes)
+        if unit is not None:
+            stack = list(children.get(key, ()))
+            while stack:
+                below = stack.pop()
+                keep.add(below)
+                stack.extend(children.get(below, ()))
+    return keep
+
+
+def _visit(
+    key: str | None,
+    level: int,
+    *,
+    children: dict[str | None, list[str]],
+    nodes: dict[str, dict[str, object]],
+    keep: set[str],
+    depth: int | None,
+    out: list[dict[str, object]],
+) -> None:
+    """Pre-order, oldest child first, stopping below `depth`."""
+    for child in children.get(key, ()):
+        if child not in keep or (depth is not None and level > depth):
+            continue
+        out.append({**nodes[child], "depth": level})
+        _visit(child, level + 1, children=children, nodes=nodes, keep=keep, depth=depth, out=out)
