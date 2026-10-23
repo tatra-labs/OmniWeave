@@ -22,7 +22,8 @@ it (15:1510):
   A project with no `ndjson` sink, or no project, writes no shard, and that is reported as fine.
 
 D958 adds D-10, the one `--runtime` row (15:1523): the enabled roster's worker memory against
-this machine's RAM, in `RUNTIME`.
+this machine's RAM, in `RUNTIME`. D961 adds D-25 (15:1538): the redaction canary grepped over
+the newest event shard, and that run's `{run_id}.paths.json` held to mode 0600.
 
 Every path is resolved as a run resolves it (`surface.ingest.root_of`, `surface.serve.stores`,
 `run.trace.shard_of`), so the doctor and the run cannot disagree about where a root is. Nothing
@@ -54,6 +55,7 @@ __all__ = [
     "LOCAL",
     "OUTPUT_MIN_FREE_BYTES",
     "RUNTIME",
+    "check_canary",
     "check_corpora",
     "check_events_dir",
     "check_free_space",
@@ -61,7 +63,7 @@ __all__ = [
     "check_sqlite",
 ]
 
-LOCAL: Final[tuple[str, ...]] = ("D-01", "D-05", "D-11", "D-15")
+LOCAL: Final[tuple[str, ...]] = ("D-01", "D-05", "D-11", "D-15", "D-25")
 """The rows this module checks."""
 
 RUNTIME: Final[tuple[str, ...]] = ("D-10",)
@@ -278,6 +280,80 @@ def check_ram(
             f"lower max_workers under [drivers] in omniweave.toml (here it runs {current})",
         )
     return DoctorFinding("D-10", f"the enabled drivers' worker processes fit: {sums}", "ok", "")
+
+
+def check_canary(
+    config: Config, *, env: Mapping[str, str], cwd: Path, posix: bool | None = None
+) -> DoctorFinding:
+    """D-25 (15:1538): *"the canary grep of section 8.3 over the **newest** event shard, plus
+    `{run_id}.paths.json` mode"*, fail, fix *"delete the shards; file a bug"*.
+
+    15:1446's operator check: ingest a corpus whose every page carries `redact.CANARY`, then ask
+    the doctor. The newest shard is the newest `.ndjson` or rolled `.ndjson.gz` in the events
+    directory, by mtime; a rolled shard is read through `gzip`. The canary in it is a redaction
+    failure. The mapping a `redact = "paths"` run writes beside its manifest, read for the same
+    run, must be mode 0600 on POSIX (15:1330), since it maps every token back to a path.
+    """
+    import gzip  # noqa: PLC0415 -- the doctor verb pays
+
+    from omniweave_core.redact import CANARY  # noqa: PLC0415
+
+    from omniweave.run.trace import PATHS_FILE_MODE, shard_of  # noqa: PLC0415
+    from omniweave.surface.ingest import root_of  # noqa: PLC0415
+
+    probe = shard_of(config, "r_0", env=env)
+    events = None if probe is None else probe.parent
+    shards = (
+        []
+        if events is None or not events.is_dir()
+        else [
+            one for one in events.iterdir() if one.is_file() and one.name.endswith((_LIVE, _ROLLED))
+        ]
+    )
+    if not shards:
+        return DoctorFinding("D-25", "no event shard to grep: no run wrote one here", "ok", "")
+    newest = max(shards, key=lambda one: (one.stat().st_mtime_ns, one.name))
+    try:
+        raw = (
+            gzip.decompress(newest.read_bytes())
+            if newest.name.endswith(_ROLLED)
+            else newest.read_bytes()
+        )
+    except (OSError, EOFError) as exc:
+        return DoctorFinding(
+            "D-25",
+            f"the newest event shard {newest.as_posix()} could not be read: {exc}",
+            "warning",
+            f"delete {newest.as_posix()} if it is damaged",
+        )
+    if CANARY.encode() in raw:
+        return DoctorFinding(
+            "D-25",
+            f"the redaction canary {CANARY} is in the newest event shard {newest.as_posix()}, so "
+            "page text reached the event stream",
+            "error",
+            f"delete the shards under {newest.parent.as_posix()}, and file a bug",
+        )
+    run_id = newest.name.split(".", 1)[0]
+    mapping = root_of(config, "roots.output", cwd) / "runs" / f"{run_id}.paths.json"
+    on_posix = (sys.platform != "win32") if posix is None else posix
+    if on_posix and mapping.is_file() and stat.S_IMODE(mapping.stat().st_mode) != PATHS_FILE_MODE:
+        return DoctorFinding(
+            "D-25",
+            f"{mapping.as_posix()} is mode {stat.S_IMODE(mapping.stat().st_mode):o}; 15:1330 makes "
+            "the token-to-path map 0600",
+            "error",
+            f"chmod 600 {mapping.as_posix()}",
+        )
+    return DoctorFinding(
+        "D-25", f"the newest event shard {newest.name} carries no redaction canary", "ok", ""
+    )
+
+
+_LIVE: Final = ".ndjson"
+_ROLLED: Final = ".ndjson.gz"
+"""A live shard and a rolled one (`omniweave_serve.shards`' `LIVE_SUFFIX` and `GZ_SUFFIX`, which
+`omniweave` may not import)."""
 
 
 def _nearest(path: Path) -> Path:

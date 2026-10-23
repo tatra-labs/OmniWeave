@@ -1,4 +1,4 @@
-"""`ow doctor`'s local rows: D-01, D-05, D-11 and D-15 (D953), and D-10 (D958).
+"""`ow doctor`'s local rows: D-01, D-05, D-11 and D-15 (D953), D-10 (D958) and D-25 (D961).
 
 Each row is asked of a configuration `load()` resolved from a temp project, with the two machine
 readings (the SQLite version and a volume's free bytes) handed in where a test cannot choose them.
@@ -6,12 +6,15 @@ readings (the SQLite version and a volume's free bytes) handed in where a test c
 
 from __future__ import annotations
 
+import gzip
+import os
 from typing import TYPE_CHECKING
 
 import pytest
 from omniweave.doctor import local
 from omniweave.run.supervisor import HostFacts
 from omniweave_core.config import load
+from omniweave_core.redact import CANARY
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -208,3 +211,78 @@ def test_d10_a_machine_that_will_not_say_its_ram_warns(tmp_path: Path) -> None:
 def test_d10_measures_this_machine_when_no_host_is_handed_in(tmp_path: Path) -> None:
     found = local.check_ram(_config(tmp_path / "p"), memory_mb=ROSTER, cwd=tmp_path / "p")
     assert found.severity in {"ok", "error"}, "every CI cell reports its RAM (D958)"
+
+
+# --- D-25 (D961) ----------------------------------------------------------------------------
+
+
+def _shard(project: Path, name: str, body: bytes, *, mtime_s: int) -> Path:
+    events = project / ".omniweave" / "events"
+    events.mkdir(parents=True, exist_ok=True)
+    shard = events / name
+    shard.write_bytes(gzip.compress(body) if name.endswith(".gz") else body)
+    os.utime(shard, (mtime_s, mtime_s))
+    return shard
+
+
+def test_d25_no_shard_is_nothing_to_grep(tmp_path: Path) -> None:
+    found = local.check_canary(_config(tmp_path / "p"), env={}, cwd=tmp_path / "p")
+    assert (found.check, found.severity) == ("D-25", "ok")
+    assert found.detail == "no event shard to grep: no run wrote one here"
+
+
+def test_d25_only_the_newest_shard_is_grepped(tmp_path: Path) -> None:
+    project = tmp_path / "p"
+    config = _config(project)
+    _shard(project, "r_old.ndjson", f'{{"m":"{CANARY}"}}\n'.encode(), mtime_s=1_000)
+    _shard(project, "r_new.ndjson", b'{"m":"clean"}\n', mtime_s=2_000)
+    found = local.check_canary(config, env={}, cwd=project, posix=False)
+    assert (found.severity, found.detail) == (
+        "ok",
+        "the newest event shard r_new.ndjson carries no redaction canary",
+    )
+
+
+def test_d25_the_canary_in_the_newest_shard_fails(tmp_path: Path) -> None:
+    project = tmp_path / "p"
+    config = _config(project)
+    shard = _shard(project, "r_1.ndjson", f'{{"m":"page {CANARY}"}}\n'.encode(), mtime_s=2_000)
+    found = local.check_canary(config, env={}, cwd=project)
+    assert found.severity == "error"
+    assert found.detail.startswith(f"the redaction canary {CANARY} is in the newest event shard")
+    assert found.fix == f"delete the shards under {shard.parent.as_posix()}, and file a bug"
+
+
+def test_d25_a_rolled_shard_is_read_through_gzip(tmp_path: Path) -> None:
+    project = tmp_path / "p"
+    config = _config(project)
+    _shard(project, "r_1.0001.ndjson.gz", f"{CANARY}\n".encode(), mtime_s=2_000)
+    assert local.check_canary(config, env={}, cwd=project).severity == "error"
+
+
+def test_d25_a_damaged_rolled_shard_warns(tmp_path: Path) -> None:
+    project = tmp_path / "p"
+    config = _config(project)
+    events = project / ".omniweave" / "events"
+    events.mkdir(parents=True)
+    (events / "r_1.0001.ndjson.gz").write_bytes(b"not gzip")
+    found = local.check_canary(config, env={}, cwd=project)
+    assert found.severity == "warning"
+    assert "could not be read" in found.detail
+
+
+def test_d25_the_newest_runs_path_map_must_be_0600(tmp_path: Path) -> None:
+    """15:1330: `{run_id}.paths.json` maps every token back to a path; only its owner reads it."""
+    from omniweave.surface.ingest import root_of  # noqa: PLC0415
+
+    project = tmp_path / "p"
+    config = _config(project)
+    _shard(project, "r_7.ndjson", b"{}\n", mtime_s=2_000)
+    mapping = root_of(config, "roots.output", project) / "runs" / "r_7.paths.json"
+    mapping.parent.mkdir(parents=True)
+    mapping.write_text("{}", encoding="utf-8")
+    mapping.chmod(0o644)
+    found = local.check_canary(config, env={}, cwd=project, posix=True)
+    assert found.severity == "error"
+    assert found.fix == f"chmod 600 {mapping.as_posix()}"
+    assert local.check_canary(config, env={}, cwd=project, posix=False).severity == "ok"
