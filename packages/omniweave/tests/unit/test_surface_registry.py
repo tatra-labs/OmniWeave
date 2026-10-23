@@ -233,7 +233,8 @@ def test_add_is_the_one_writer_and_the_only_open_world_action() -> None:
     assert [name for name in writers if ACTIONS[name].mcp_name is not None] == ["add"]
     #  `hooks.check` runs the installed commands, which are outside the store (10:157-158); it
     #  reads and writes nothing of the deployment, so it is open-world and read-only.
-    assert open_world == ["add", "hooks.check"]
+    #  `trace.export` posts to a collector under `--otlp` (D948), a command and not a tool.
+    assert open_world == ["add", "hooks.check", "trace.export"]
 
 
 def test_no_listed_tool_is_destructive_including_the_writer() -> None:

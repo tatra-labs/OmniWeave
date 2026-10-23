@@ -1137,8 +1137,8 @@ COMMANDS: Final[tuple[Command, ...]] = (
         words=("trace", "export"),
         actions=("trace.export",),
         help=(
-            "Rebuild one run's spans from its event shards as OTLP JSON, written to a file one "
-            "request per line, or printed with --dry-run --print-payload"
+            "Rebuild one run's spans from its event shards as OTLP JSON: a file, one request per "
+            "line, a collector's /v1/traces, or printed with --dry-run --print-payload"
         ),
         arguments=(
             Argument(
@@ -1148,6 +1148,10 @@ COMMANDS: Final[tuple[Command, ...]] = (
             Argument(
                 spelling=("--file",),
                 metavar="FILE",
+            ),
+            Argument(
+                spelling=("--otlp",),
+                metavar="OTLP",
             ),
             Argument(
                 spelling=("--dry-run",),
