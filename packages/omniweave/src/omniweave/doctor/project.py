@@ -1,4 +1,5 @@
-"""Three `ow doctor` rows that read what the project declares: D-06, D-13 and D-17. D956.
+"""Four `ow doctor` rows that read what the project declares: D-06, D-13, D-16 and D-17.
+D956, D957.
 
 15-observability.md:1514-1540 is the table. Each row here asks a question the project's own files
 answer, through the code a run uses, and each failing row names the command that clears it:
@@ -16,6 +17,11 @@ answer, through the code a run uses, and each failing row names the command that
   with its own fix, and its `effective_from` is not after today. An absent pricebook is reported,
   not warned: every attempt is then unpriced, and nothing in this build admits `billed_api`
   against it.
+- **D-16** (warn): the installed hooks resolve **and execute** against a probe payload, which
+  is `ow hooks check`'s own run (`install.verbs.hooks_check`, 10:2078), each probe in a
+  scratch project removed after. No hook recorded is not a failure here, though `ow hooks
+  check` exits 1 for it: a doctor asks whether what is installed works. Any other failure
+  is `OW-A-030`, with `ow hooks check` as 15:1531's fix. D957.
 - **D-17** (warn): the installed skill bundles match the hashes `skills-lock.json` recorded,
   which is `ow skills verify`'s own check (`install.skillcheck.verify`), with `ow skills update`,
   15:1532's fix, for a mismatch.
@@ -31,13 +37,13 @@ from typing import TYPE_CHECKING, Final
 from omniweave.sdk.reports import DoctorFinding
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
     from omniweave_core.config import Config
 
-__all__ = ["PROJECT", "check_named_drivers", "check_pricebooks", "check_skills"]
+__all__ = ["PROJECT", "check_hooks", "check_named_drivers", "check_pricebooks", "check_skills"]
 
-PROJECT: Final[tuple[str, ...]] = ("D-06", "D-13", "D-17")
+PROJECT: Final[tuple[str, ...]] = ("D-06", "D-13", "D-16", "D-17")
 """The rows this module checks."""
 
 _PASSES_KEY: Final = "graph.passes.enable"
@@ -168,3 +174,37 @@ def check_skills(env: Mapping[str, str], *, cwd: Path) -> DoctorFinding:
         return DoctorFinding("D-17", detail, "ok", "")
     bad = [line for line in lines if MISMATCH_SYMBOL in line or "MISSING" in line] or lines
     return DoctorFinding("D-17", "; ".join(bad), "warning", "ow skills update")
+
+
+HOOK_FAILED: Final = "OW-A-030"
+"""`OW_HOOK_NOT_RESOLVABLE`, `codes.toml`'s row for 15:1531."""
+
+_NO_HOOK: Final = "no installed hook to check"
+
+
+def check_hooks(env: Mapping[str, str], *, cwd: Path) -> DoctorFinding:
+    """D-16 (15:1531), through `ow hooks check`'s own run."""
+    import tempfile  # noqa: PLC0415
+
+    from omniweave_core.host.subproc import Captured, run_captured  # noqa: PLC0415
+
+    from omniweave.install.run import host_env  # noqa: PLC0415 -- the verb pays
+    from omniweave.install.verbs import OK, hooks_check  # noqa: PLC0415
+
+    host = host_env(env, cwd)
+    if isinstance(host, str):
+        return DoctorFinding("D-16", f"not run: {host}", "warning", "set HOME or USERPROFILE")
+
+    def runner(
+        argv: Sequence[str], stdin: bytes, cwd: Path, environ: Mapping[str, str], timeout: float
+    ) -> Captured:
+        return run_captured(argv, stdin=stdin, cwd=str(cwd), env=environ, timeout_s=timeout)
+
+    with tempfile.TemporaryDirectory(prefix="ow-doctor-hooks-") as scratch:
+        outcome = hooks_check(host, environ=env, runner=runner, scratch=Path(scratch))
+    lines = [line.strip() for line in outcome.lines if line.strip()]
+    if outcome.exit_code == OK:
+        return DoctorFinding("D-16", "every installed hook resolved and ran its probe", "ok", "")
+    if lines and lines[0].startswith(_NO_HOOK):
+        return DoctorFinding("D-16", "no hook is installed, so none was probed", "ok", "")
+    return DoctorFinding("D-16", f"{HOOK_FAILED}: " + "; ".join(lines), "warning", "ow hooks check")

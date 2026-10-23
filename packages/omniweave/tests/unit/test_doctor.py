@@ -176,14 +176,14 @@ def test_the_verb_exits_1_on_a_tracked_store_and_prints_the_fix(repo: Any) -> No
     assert code == doctor.FAILED == 1
     assert "FAIL D-02: OW-S-060 OW_STORE_TRACKED_IN_GIT" in out
     assert "fix: git rm --cached -- .omniweave/index.owstore" in out
-    assert out.rstrip().endswith("doctor: fails the 9 check(s) it ran")
+    assert out.rstrip().endswith("doctor: fails the 10 check(s) it ran")
 
 
 def test_the_verb_exits_0_and_names_every_row_it_did_not_run(repo: Any) -> None:
     code, out, _ = _main(["doctor", "--runtime"], repo(["src/a.py"]))
     assert code == doctor.OK == 0
     assert "ok   D-02: no .owstore is tracked" in out
-    assert f"18 of 27 checks are not built yet and were not run: {', '.join(doctor.UNBUILT)}" in out
+    assert f"17 of 27 checks are not built yet and were not run: {', '.join(doctor.UNBUILT)}" in out
 
 
 def test_an_unknown_flag_is_argparses_usage_error(tmp_path: Path) -> None:
@@ -320,12 +320,12 @@ def test_a_configuration_that_fails_says_d08_did_not_run(
     (tmp_path / "omniweave.toml").write_text("[drivers]\nallow_unattested = 7\n", "utf-8")
     report = doctor.run(cwd=tmp_path, env={})
     assert [one.check for one in report.failed] == ["config"]
-    assert [(one.check, one.detail) for one in report.warned][:-1] == [
+    assert [(one.check, one.detail) for one in report.warned][:-2] == [
         (row, "not run: the configuration did not resolve")
         for row in ("D-05", "D-06", "D-08", "D-11", "D-13", "D-15")
     ]
-    #  D-17 reads no configuration and runs; with no HOME it says it could not (D956).
-    assert report.warned[-1].check == "D-17"
+    #  D-16 and D-17 read no configuration and run; with no HOME each says it could not.
+    assert [one.check for one in report.warned[-2:]] == ["D-16", "D-17"]
     assert roster.calls == []
 
 
