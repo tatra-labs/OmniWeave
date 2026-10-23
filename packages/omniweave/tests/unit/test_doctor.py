@@ -150,7 +150,7 @@ def test_run_sorts_findings_three_ways_and_fix_is_empty_only_at_ok(repo: Any) ->
     assert [one.check for one in report.failed] == ["D-02"]
     #  D-11 reads this machine's free space, so it may warn on a full disk; D953.
     assert [one.check for one in report.ok if one.check != "D-11"] == [
-        "catalog", "D-08", "D-05", "D-15", "D-01",
+        "catalog", "D-08", "D-05", "D-15", "D-13", "D-01",
     ]  # fmt: skip
     assert [one.check for one in _all(report)].count("D-11") == 2
     for one in _all(report):
@@ -176,14 +176,14 @@ def test_the_verb_exits_1_on_a_tracked_store_and_prints_the_fix(repo: Any) -> No
     assert code == doctor.FAILED == 1
     assert "FAIL D-02: OW-S-060 OW_STORE_TRACKED_IN_GIT" in out
     assert "fix: git rm --cached -- .omniweave/index.owstore" in out
-    assert out.rstrip().endswith("doctor: fails the 6 check(s) it ran")
+    assert out.rstrip().endswith("doctor: fails the 9 check(s) it ran")
 
 
 def test_the_verb_exits_0_and_names_every_row_it_did_not_run(repo: Any) -> None:
     code, out, _ = _main(["doctor", "--runtime"], repo(["src/a.py"]))
     assert code == doctor.OK == 0
     assert "ok   D-02: no .owstore is tracked" in out
-    assert f"21 of 27 checks are not built yet and were not run: {', '.join(doctor.UNBUILT)}" in out
+    assert f"18 of 27 checks are not built yet and were not run: {', '.join(doctor.UNBUILT)}" in out
 
 
 def test_an_unknown_flag_is_argparses_usage_error(tmp_path: Path) -> None:
@@ -320,10 +320,12 @@ def test_a_configuration_that_fails_says_d08_did_not_run(
     (tmp_path / "omniweave.toml").write_text("[drivers]\nallow_unattested = 7\n", "utf-8")
     report = doctor.run(cwd=tmp_path, env={})
     assert [one.check for one in report.failed] == ["config"]
-    assert [(one.check, one.detail) for one in report.warned] == [
+    assert [(one.check, one.detail) for one in report.warned][:-1] == [
         (row, "not run: the configuration did not resolve")
-        for row in ("D-05", "D-08", "D-11", "D-15")
+        for row in ("D-05", "D-06", "D-08", "D-11", "D-13", "D-15")
     ]
+    #  D-17 reads no configuration and runs; with no HOME it says it could not (D956).
+    assert report.warned[-1].check == "D-17"
     assert roster.calls == []
 
 
@@ -399,8 +401,19 @@ def test_run_reads_require_lock_and_inproc_from_the_configuration(
         '[drivers]\nenabled = ["parse.text.builtin"]\n', "utf-8"
     )
     report = doctor.run(cwd=tmp_path, env={})
-    assert [(one.check, "NOT_IN_LOCKFILE" in one.detail) for one in report.failed] == [
-        ("D-08", True)
-    ]
+    #  D-06 also fails here: the shipped policy names drivers this `enabled` leaves out (D956).
+    d08 = [one for one in report.failed if one.check == "D-08"]
+    assert [("NOT_IN_LOCKFILE" in one.detail) for one in d08] == [True]
     report = doctor.run(cwd=tmp_path, env={"OMNIWEAVE_DRIVERS_REQUIRE_LOCK": "false"})
-    assert report.failed == ()
+    assert [one for one in report.failed if one.check == "D-08"] == []
+
+
+def test_run_reports_the_project_rows_d956(repo: Any) -> None:
+    """D-06 over the shipped policy warns for `fields.extract`'s expected absence, and D-13 and
+    D-17 run beside it."""
+    report = doctor.run(cwd=repo([]), env={})
+    d06 = [one for one in _all(report) if one.check == "D-06"]
+    assert [(one.severity, one.detail.split(" is named")[0]) for one in d06] == [
+        ("warning", "parse.fields.lift")
+    ]
+    assert {one.check for one in _all(report)} >= {"D-13", "D-17"}
