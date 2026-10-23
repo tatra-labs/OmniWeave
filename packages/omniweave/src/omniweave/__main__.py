@@ -107,6 +107,8 @@ _EVAL_ROOT: Final[str] = "eval"
 
 _COST_ROOT: Final[str] = "cost"
 
+_TRACE_ROOT: Final[str] = "trace"
+
 DISPATCHED: Final[frozenset[str]] = frozenset(
     {
         HOOK_WORD,
@@ -125,13 +127,14 @@ DISPATCHED: Final[frozenset[str]] = frozenset(
         _OUT_ROOT,
         _EVAL_ROOT,
         _COST_ROOT,
+        _TRACE_ROOT,
     }
 )
 """The roots this build can run. `ingest` joined in W7.3w; nothing spawns it yet (D433, D554).
 `surface` joined in W7.1e (D334), `doctor` in W7.8c (D610), `query` in W7.8g (D614), `add` in
 W7.8h (D615), `open` in W7.8i (D616), `corpora` in W7.8j (D617), `explain` in W7.8k
 (D618), `doc` in W7.8n (D621), `graph` in D694, `out` in D761 (`ow out targets`), `eval` in
-D833 (`ow eval publish`), and `cost` in D838."""
+D833 (`ow eval publish`), `cost` in D838, and `trace` in D947 (`ow trace export`)."""
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -186,6 +189,8 @@ def _route(root: str, args: list[str]) -> int:  # noqa: PLR0911, PLR0912 -- one 
         return _eval(args)
     if root == _COST_ROOT:
         return _cost(args)
+    if root == _TRACE_ROOT:
+        return _trace(args)
 
     from omniweave_core.errors import InternalError  # noqa: PLC0415 -- only the refusal pays
 
@@ -359,6 +364,16 @@ def _cost(args: list[str]) -> int:
     _utf8()
     #  The fourteenth read of the working directory under D435's exemption: `./omniweave.toml`,
     #  for the corpus whose ledger is read.
+    return run(args, env=os.environ, cwd=Path.cwd(), stdout=sys.stdout, stderr=sys.stderr)
+
+
+def _trace(args: list[str]) -> int:
+    from omniweave.surface.trace import main as run  # noqa: PLC0415 -- the hook path never pays
+
+    #  A refusal names the shard's path, which is the user's.
+    _utf8()
+    #  The fifteenth read of the working directory under D435's exemption: `./omniweave.toml`, for
+    #  `[observe] ndjson_path`, and `--file`, which is relative to it.
     return run(args, env=os.environ, cwd=Path.cwd(), stdout=sys.stdout, stderr=sys.stderr)
 
 

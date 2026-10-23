@@ -125,6 +125,7 @@ __all__ = [
     "StampIn",
     "SurfaceEmitIn",
     "TargetsIn",
+    "TraceExportIn",
     "TypesIn",
     "UninstallIn",
     "VerifyIn",
@@ -876,6 +877,24 @@ class EvalRunIn:
     emit: str | None = None
     oweval: str = "eval/omniweave.oweval"
     gates: str = "eval/gates.toml"
+
+
+@dataclass(frozen=True, slots=True)
+class TraceExportIn:
+    """`ow trace export --run R (--file P | --dry-run --print-payload)`. 15:233. D947.
+
+    `run` names the run whose shards are read, at `[observe] ndjson_path`. `file` is where the
+    OTLP JSON goes, one `ExportTraceServiceRequest` per line, relative to the working directory.
+    `dry_run` with `print_payload` prints those bodies and writes nothing. `max_batch` is 15:254's
+    span bound per request. 15:233's `--since`, `--otlp` and `--follow` are not fields yet: a
+    field the schema publishes is a promise, and the network and tail paths are not served.
+    """
+
+    run: str | None = None
+    file: str | None = None
+    dry_run: bool = False
+    print_payload: bool = False
+    max_batch: int = 512
 
 
 @dataclass(frozen=True, slots=True)
