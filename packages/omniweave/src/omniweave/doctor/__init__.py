@@ -13,7 +13,8 @@ take down: *"`ow doctor` exits 0 and the file is absent"*. So the rebuild is `di
 its rogue fixture (D612).
 
 D953 adds four rows that read only this machine and the configuration: D-01, D-05, D-11 and
-D-15, in `omniweave.doctor.local`.
+D-15, in `omniweave.doctor.local`. D956 adds three that read what the project declares: D-06,
+D-13 and D-17, in `omniweave.doctor.project`.
 
 **The rows of 15:1514-1540 not built are named, not skipped silently.** Every run prints the
 ids it did not check, because a doctor that exits 0 is read as *"this deployment is fine"*,
@@ -33,7 +34,7 @@ import fnmatch
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, TextIO
 
-from omniweave.doctor import gitindex, local
+from omniweave.doctor import gitindex, local, project
 from omniweave.sdk.reports import DoctorFinding, DoctorReport
 
 if TYPE_CHECKING:
@@ -71,7 +72,7 @@ STORE_GLOB: Final = "*.owstore*"
 (`index.vec.owstore`, `events.owstore`) and SQLite's `-wal` and `-shm` files. It is matched
 against the final path component, as a `.gitignore` line with no slash is."""
 
-BUILT: Final[tuple[str, ...]] = tuple(sorted(("D-02", "D-08", *local.LOCAL)))
+BUILT: Final[tuple[str, ...]] = tuple(sorted(("D-02", "D-08", *local.LOCAL, *project.PROJECT)))
 UNBUILT: Final[tuple[str, ...]] = tuple(
     f"D-{n:02d}" for n in range(1, 28) if f"D-{n:02d}" not in BUILT
 )
@@ -318,7 +319,7 @@ def run(
         #  rather than going quiet.
         findings.extend(
             DoctorFinding(row, "not run: the configuration did not resolve", "warning", exc.fix)
-            for row in ("D-05", "D-08", "D-11", "D-15")
+            for row in ("D-05", "D-06", "D-08", "D-11", "D-13", "D-15")
         )
     else:
         sources = {key: source.render() for key, source in sorted(resolved.sources.items())}
@@ -338,6 +339,11 @@ def run(
         findings.extend(local.check_corpora(resolved, cwd=cwd))
         findings.extend(local.check_free_space(resolved, cwd=cwd))
         findings.append(local.check_events_dir(resolved, env=env))
+        findings.extend(
+            project.check_named_drivers(resolved, project_root=config.project_root(resolved))
+        )
+        findings.extend(project.check_pricebooks(resolved, cwd=cwd, today=_today()))
+    findings.append(project.check_skills(env, cwd=cwd))
     findings.append(local.check_sqlite())
     findings.append(check_tracked_store(cwd))
     return DoctorReport(
@@ -407,3 +413,13 @@ def main(
 def _quoted(path: str) -> str:
     """A path as one shell word. Git's own `ls-files` quoting is not reproduced; spaces are."""
     return f'"{path}"' if any(ch in path for ch in " \t'") else path
+
+
+def _today() -> str:
+    """D-13's date: today, UTC, read once from `SystemClock` as the other surfaces read the wall."""
+    import datetime as dt  # noqa: PLC0415
+
+    from omniweave_core.clock import SystemClock  # noqa: PLC0415
+
+    seconds = SystemClock().wall_ns() // 1_000_000_000
+    return dt.datetime.fromtimestamp(seconds, tz=dt.UTC).date().isoformat()
