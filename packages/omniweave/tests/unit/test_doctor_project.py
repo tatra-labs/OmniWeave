@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
 from omniweave.doctor import project
 from omniweave.route.policy import POLICY_D
 from omniweave_core.config import load
@@ -170,3 +171,42 @@ def test_d17_with_no_home_says_it_did_not_run(tmp_path: Path) -> None:
     found = project.check_skills({}, cwd=tmp_path)
     assert (found.severity, found.fix) == ("warning", "set HOME or USERPROFILE")
     assert found.detail.startswith("not run: neither HOME nor USERPROFILE is set")
+
+
+# --- D-16 (D957) ----------------------------------------------------------------------------
+
+
+def _home(tmp_path: Path) -> dict[str, str]:
+    return {"HOME": str(tmp_path / "u"), "OMNIWEAVE_HOME": str(tmp_path / "ow")}
+
+
+def test_d16_no_hook_installed_is_ok_though_ow_hooks_check_would_exit_1(tmp_path: Path) -> None:
+    found = project.check_hooks(_home(tmp_path), cwd=tmp_path)
+    assert (found.severity, found.detail) == ("ok", "no hook is installed, so none was probed")
+
+
+def test_d16_reports_ow_hooks_checks_own_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The row maps `hooks_check`'s outcome; the probing is `test_install_verbs`'."""
+    from omniweave.install import verbs  # noqa: PLC0415
+
+    def failing(*_args: object, **_kwargs: object) -> object:
+        return verbs.Outcome(
+            verbs.USAGE, ("claude-code global  ~/.claude/settings.json", "PostToolUse  exit 127")
+        )
+
+    monkeypatch.setattr(verbs, "hooks_check", failing)
+    found = project.check_hooks(_home(tmp_path), cwd=tmp_path)
+    assert found.severity == "warning"
+    assert found.detail == (
+        "OW-A-030: claude-code global  ~/.claude/settings.json; PostToolUse  exit 127"
+    )
+    assert found.fix == "ow hooks check"
+    monkeypatch.setattr(verbs, "hooks_check", lambda *_a, **_k: verbs.Outcome(verbs.OK, ("ok",)))
+    assert project.check_hooks(_home(tmp_path), cwd=tmp_path).severity == "ok"
+
+
+def test_d16_with_no_home_says_it_did_not_run(tmp_path: Path) -> None:
+    found = project.check_hooks({}, cwd=tmp_path)
+    assert (found.severity, found.fix) == ("warning", "set HOME or USERPROFILE")
