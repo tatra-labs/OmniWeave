@@ -4,7 +4,7 @@
   "title": "RunManifest",
   "type": "object",
   "additionalProperties": false,
-  "description": "One run, as twenty-one members. The declaration `schema/run-manifest-v1.json` is emitted from.",
+  "description": "One run, as twenty-two members. The declaration `schema/run-manifest-v1.json` is emitted from.",
   "required": [
     "run_id",
     "generation",
@@ -26,7 +26,8 @@
     "cache",
     "cost",
     "degradations",
-    "observe"
+    "observe",
+    "otlp_endpoint_set"
   ],
   "properties": {
     "run_id": {
@@ -218,6 +219,9 @@
       "additionalProperties": {
         "type": "integer"
       }
+    },
+    "otlp_endpoint_set": {
+      "type": "boolean"
     }
   },
   "$defs": {

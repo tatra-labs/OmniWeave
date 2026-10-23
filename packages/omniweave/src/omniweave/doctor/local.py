@@ -23,7 +23,9 @@ it (15:1510):
 
 D958 adds D-10, the one `--runtime` row (15:1523): the enabled roster's worker memory against
 this machine's RAM, in `RUNTIME`. D961 adds D-25 (15:1538): the redaction canary grepped over
-the newest event shard, and that run's `{run_id}.paths.json` held to mode 0600.
+the newest event shard, and that run's `{run_id}.paths.json` held to mode 0600. D963 adds
+D-26 (15:1539): whether `[observe] otlp_endpoint` is set, from which source, and how many
+runs recorded it set, never the URL.
 
 Every path is resolved as a run resolves it (`surface.ingest.root_of`, `surface.serve.stores`,
 `run.trace.shard_of`), so the doctor and the run cannot disagree about where a root is. Nothing
@@ -59,11 +61,12 @@ __all__ = [
     "check_corpora",
     "check_events_dir",
     "check_free_space",
+    "check_otlp",
     "check_ram",
     "check_sqlite",
 ]
 
-LOCAL: Final[tuple[str, ...]] = ("D-01", "D-05", "D-11", "D-15", "D-25")
+LOCAL: Final[tuple[str, ...]] = ("D-01", "D-05", "D-11", "D-15", "D-25", "D-26")
 """The rows this module checks."""
 
 RUNTIME: Final[tuple[str, ...]] = ("D-10",)
@@ -347,6 +350,53 @@ def check_canary(
         )
     return DoctorFinding(
         "D-25", f"the newest event shard {newest.name} carries no redaction canary", "ok", ""
+    )
+
+
+def check_otlp(config: Config, *, cwd: Path) -> DoctorFinding:
+    """D-26 (15:1539): *"`[observe] otlp_endpoint`, if set, is printed with its config source and
+    the count of runs that had it set"*, info, so every finding is `ok`.
+
+    A user ruling of 2026-10-23 prints set or unset and never the URL, which `ow trace export`
+    never prints either (D948): an endpoint may carry a token, and a doctor's output is pasted
+    into bug reports. The count reads every run manifest under `{output}/runs/`: a manifest's
+    `otlp_endpoint_set` (D963) says whether that run's configuration set it. A manifest written
+    before D963 has no such member and is counted as not saying, so the count never claims more
+    history than was recorded (15:2031).
+    """
+    import json  # noqa: PLC0415 -- the doctor verb pays
+
+    from omniweave.run.manifest import MANIFEST_DIR, MANIFEST_SUFFIX  # noqa: PLC0415
+    from omniweave.surface.ingest import root_of  # noqa: PLC0415
+
+    key = "observe.otlp_endpoint"
+    runs = root_of(config, "roots.output", cwd) / MANIFEST_DIR
+    said = recorded = 0
+    if runs.is_dir():
+        for one in sorted(runs.glob(f"*{MANIFEST_SUFFIX}")):
+            if one.name.endswith(".paths.json"):
+                continue
+            try:
+                body = json.loads(one.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if isinstance(body, dict) and "otlp_endpoint_set" in body:
+                recorded += 1
+                said += body["otlp_endpoint_set"] is True
+    history = (
+        f"{said} of {recorded} recorded run(s) had it set"
+        if recorded
+        else "no run manifest here records it yet"
+    )
+    if not str(config.get(key) or "").strip():
+        return DoctorFinding("D-26", f"[observe] otlp_endpoint is not set; {history}", "ok", "")
+    source = config.source_of(key).render()
+    return DoctorFinding(
+        "D-26",
+        f"[observe] otlp_endpoint is set, from {source}, and only ow trace export reads it; the "
+        f"URL is not printed; {history}",
+        "ok",
+        "",
     )
 
 

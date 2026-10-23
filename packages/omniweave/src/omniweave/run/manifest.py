@@ -433,7 +433,7 @@ def _unmeasured_host() -> HostFacts:
 
 @dataclass(frozen=True, slots=True)
 class RunManifest:
-    """One run, as twenty-one members. The declaration `schema/run-manifest-v1.json` is emitted
+    """One run, as twenty-two members. The declaration `schema/run-manifest-v1.json` is emitted
     from.
 
     Field order is the reading order of the document: who ran, then what it did, then what it cost,
@@ -469,6 +469,15 @@ class RunManifest:
     cost: CostBlock = field(default_factory=CostBlock)
     degradations: Mapping[DegradationKind, DegradationRollup] = field(default_factory=dict)
     observe: Mapping[str, int] = field(default_factory=dict)
+    otlp_endpoint_set: bool = False
+    """Whether this run's configuration set `[observe] otlp_endpoint`. **D963.**
+
+    15:2029-2031: the endpoint is *"visible in the `run` row of every run that had it set, and
+    reported by `ow doctor` D-26 with the count of such runs. An endpoint cannot be configured
+    invisibly, and it cannot be configured *historically* without a record."* A run never reads
+    the endpoint (15:260), so a flag is the whole record, and the URL is written nowhere: `ow
+    trace export` never prints it either (D948), and a user ruling of 2026-10-23 keeps D-26 to
+    set or unset."""
 
     def __post_init__(self) -> None:
         if not self.run_id:
@@ -1046,6 +1055,7 @@ class RunTally:
         host: HostFacts | None = None,
         timings: Timings = "always",
         observe: Mapping[str, int] | None = None,
+        otlp_endpoint_set: bool = False,
     ) -> RunManifest:
         """Freeze the counters into the document. Called at every Stage boundary and every
         `degrade()`.
@@ -1084,6 +1094,7 @@ class RunTally:
             ),
             degradations={kind: entry.entry() for kind, entry in self._degradations.items()},
             observe=dict(observe or {}),
+            otlp_endpoint_set=otlp_endpoint_set,
         )
 
 

@@ -167,6 +167,20 @@ def test_the_manifest_is_the_closed_run_with_its_counts_and_its_provenance(tmp_p
     assert not list(Path(report.manifest).parent.glob("*.tmp")), "the replace left no sibling"
 
 
+def test_the_manifest_records_whether_an_otlp_endpoint_was_set(tmp_path: Path) -> None:
+    """D963: 15:2030's *"visible in the `run` row of every run that had it set"*, as a flag; a run
+    never reads the endpoint and its URL is written nowhere."""
+    store, config = _project(tmp_path, "a.txt")
+    first = _run(tmp_path, store, config, paths=(tmp_path / "docs",))
+    assert json.loads(Path(first.manifest).read_bytes())["otlp_endpoint_set"] is False
+    endpoint = "http://collector.invalid:4318"
+    env = {"OMNIWEAVE_HOME": str(tmp_path / "owhome"), "OMNIWEAVE_OBSERVE_OTLP_ENDPOINT": endpoint}
+    second = _run(tmp_path, store, load(cwd=tmp_path, env=env))
+    written = Path(second.manifest).read_bytes()
+    assert json.loads(written)["otlp_endpoint_set"] is True
+    assert endpoint.encode() not in written
+
+
 def test_a_second_run_mints_the_next_generation_and_reads_nothing_it_read(tmp_path: Path) -> None:
     """08:1622's `old.generation + 1`, and 08:1623: `index_state.generation` is not bumped by a run
     whose rows no query can see."""
