@@ -139,8 +139,8 @@ def test_the_arity_rule_is_reported_and_not_raised() -> None:
     #  `scaffold` (D765) made it three, so it left this list.
     #  `eval` joined with `publish`, one of its thirteen (D833), and `release-check` (D840);
     #  `bless` (D846) made it three, so it left this list.
-    #  `trace` joined with `export`, one of the four 15:233 prints (D947).
-    assert unrostered_groups() == ("doc (2)", "hooks (1)", "surface (1)", "trace (1)")
+    #  `trace` joined with `export`, one of the four 15:233 prints (D947), and `stat` (D949).
+    assert unrostered_groups() == ("doc (2)", "hooks (1)", "surface (1)", "trace (2)")
     assert _grammar_failures() == ()
 
 
@@ -377,7 +377,7 @@ def test_a_group_advertises_the_verbs_it_has_and_not_the_ones_it_is_owed() -> No
         ),
         "skills": "check · hash · install · ls · remove · update · verify",
         "surface": "emit",
-        "trace": "export",
+        "trace": "export · stat",
     }
     assert group_help() == GROUP_HELP
     text = _help(["doc"])

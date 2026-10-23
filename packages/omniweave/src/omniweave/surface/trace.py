@@ -1,4 +1,4 @@
-"""`ow trace export`: one run's spans as OTLP JSON, to a file, a collector, or printed. D947, D948.
+"""`ow trace export` and `ow trace stat`: a run's event shards, sent or counted. D947-D949.
 
 15-observability.md:233 prints the verb and section 2.6 its mapping. The reader, the pairer and
 the payload builder live in `omniweave-serve` beside the OTLP code (02-architecture.md row 40),
@@ -28,6 +28,11 @@ this closes: every part was built, and no command reached them.
    left the code unallocated and pointed at `ResourceLimit`'s shape, a refusal that names a knob,
    here `[observe] otlp_endpoint`; it carries that class's own symbol rather than one minted
    here. The endpoint itself is never printed: an operator's URL may carry a credential.
+7. **`ow trace stat` reads, and writes nothing** (D949). With `--run`, that run's shards, which
+   must exist as ruling 3 says; without it, every run's in the events directory `[observe]
+   ndjson_path` resolves to, and a directory holding none is a report of zero runs, not a
+   refusal. The text form is a line per shard with its deflate ratio, one of kinds, a line
+   per span name with its wall, and the dropped total; `--render json` is the report.
 """
 
 from __future__ import annotations
@@ -47,7 +52,13 @@ from omniweave_core.errors import (
 )
 
 from omniweave.run.trace import shard_of
-from omniweave.sdk.reports import TraceExportReport
+from omniweave.sdk.reports import (
+    TraceExportReport,
+    TraceKindRow,
+    TraceShardRow,
+    TraceSpanRow,
+    TraceStatReport,
+)
 from omniweave.surface.dispatch import trace_entry
 from omniweave.surface.query import parse
 from omniweave.surface.switches import check, report
@@ -67,6 +78,9 @@ _EXPORT_FIX: Final[str] = (
 _ENDPOINT_KEY: Final[str] = "observe.otlp_endpoint"
 _LIVE_SUFFIX: Final[str] = ".ndjson"
 _ROLLED_GLOB: Final[str] = ".*.ndjson.gz"
+_PROBE_RUN: Final[str] = "r_0"
+"""A run id to resolve `[observe] ndjson_path` with when no run is named, for its directory."""
+_NS_PER_MS: Final[int] = 1_000_000
 
 
 def main(
@@ -78,7 +92,8 @@ def main(
         return parsed
     try:
         check(TRACE_WORD, parsed)
-        return _export(parsed, cwd=cwd, env=env, stdout=stdout)
+        verb = _stat if parsed.ow_action == "trace.stat" else _export
+        return verb(parsed, cwd=cwd, env=env, stdout=stdout)
     except OwError as error:
         return report(error, parsed, stdout=stdout, stderr=stderr)
 
@@ -125,19 +140,7 @@ def _export(
     explicit = Path(parsed.config) if parsed.config else None
     config = load(cwd=cwd, env=env, explicit=explicit)
     endpoint = _endpoint(parsed, config)
-    live = shard_of(config, parsed.run, env=env)
-    if live is None:
-        raise NotFoundError(
-            f"run {parsed.run} has no event shard: no project is in view, or [observe] sinks "
-            f"leaves out ndjson",
-            fix="run ow trace export from the project the run belongs to",
-        )
-    stem = live.name.removesuffix(_LIVE_SUFFIX)
-    if not (live.is_file() or any(live.parent.glob(stem + _ROLLED_GLOB))):
-        raise NotFoundError(
-            f"run {parsed.run} has no event shard at {live.as_posix()}",
-            fix="check the run id against ow cost or the run manifests",
-        )
+    live = _run_shard(config, parsed.run, env=env)
     target = None if parsed.file is None else cwd / parsed.file
     sending = endpoint is not None and not parsed.dry_run
     done = _report(
@@ -232,3 +235,114 @@ def _line(done: TraceExportReport, *, file: str | None, sent: bool) -> str:
         f"run {done.run_id}: {done.spans} span(s) in {done.batches} request(s) from "
         f"{len(done.shards)} shard(s), {where}{rest}"
     )
+
+
+def _shard_path(config: Config, run: str, *, env: Mapping[str, str]) -> Path:
+    """Where `run`'s live shard would be, or ruling 3's refusal when no project writes one."""
+    live = shard_of(config, run, env=env)
+    if live is None:
+        raise NotFoundError(
+            f"run {run} has no event shard: no project is in view, or [observe] sinks leaves out "
+            "ndjson",
+            fix="run ow trace from the project the run belongs to",
+        )
+    return live
+
+
+def _run_shard(config: Config, run: str, *, env: Mapping[str, str]) -> Path:
+    """Ruling 3: the run's live shard path, which it or a rolled sibling must exist at."""
+    live = _shard_path(config, run, env=env)
+    stem = live.name.removesuffix(_LIVE_SUFFIX)
+    if not (live.is_file() or any(live.parent.glob(stem + _ROLLED_GLOB))):
+        raise NotFoundError(
+            f"run {run} has no event shard at {live.as_posix()}",
+            fix="check the run id against ow cost or the run manifests",
+        )
+    return live
+
+
+def _stat(parsed: argparse.Namespace, *, cwd: Path, env: Mapping[str, str], stdout: TextIO) -> int:
+    """Ruling 7."""
+    if parsed.render in ("jsonl", "rows"):
+        raise UsageError(
+            f"--render {parsed.render} is parsed and not served by ow trace stat",
+            fix="ow trace stat [--run RUN_ID] [--render json]",
+        )
+    explicit = Path(parsed.config) if parsed.config else None
+    config = load(cwd=cwd, env=env, explicit=explicit)
+    if parsed.run:
+        live: Path | None = _run_shard(config, parsed.run, env=env)
+        events_dir = live.parent
+    else:
+        live = None
+        events_dir = _shard_path(config, _PROBE_RUN, env=env).parent
+    done = _stat_report(trace_entry("stat")(events_dir=str(events_dir), live=_or_none(live)))
+    if parsed.render == "json":
+        stdout.write(json.dumps(asdict(done), ensure_ascii=False) + "\n")
+    else:
+        for line in _stat_lines(done):
+            stdout.write(line + "\n")
+    return 0
+
+
+def _or_none(path: Path | None) -> str | None:
+    return None if path is None else str(path)
+
+
+def _stat_report(result: Mapping[str, object]) -> TraceStatReport:
+    """The `stat` entry point's builtins as this side's report; else a broken install."""
+    runs, shards, kinds, spans = (result.get(key) for key in ("runs", "shards", "kinds", "spans"))
+    dropped = result.get("dropped")
+    broken = InternalError(
+        "the [omniweave.trace] stat entry point returned an unreadable report",
+        fix="pip install --force-reinstall omniweave-serve",
+    )
+    if not (
+        isinstance(runs, list)
+        and isinstance(shards, list)
+        and isinstance(kinds, list)
+        and isinstance(spans, list)
+        and isinstance(dropped, int)
+    ):
+        raise broken
+    try:
+        return TraceStatReport(
+            runs=tuple(str(run) for run in runs),
+            shards=tuple(
+                TraceShardRow(
+                    name=str(row["name"]),
+                    records=int(row["records"]),
+                    bytes=int(row["bytes"]),
+                    uncompressed_bytes=int(row["uncompressed_bytes"]),
+                )
+                for row in shards
+            ),
+            kinds=tuple(TraceKindRow(kind=str(kind), records=int(n)) for kind, n in kinds),
+            spans=tuple(
+                TraceSpanRow(name=str(name), spans=int(n), total_ns=int(ns))
+                for name, n, ns in spans
+            ),
+            dropped=dropped,
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        raise broken from error
+
+
+def _stat_lines(done: TraceStatReport) -> list[str]:
+    """Ruling 7's text form."""
+    lines = [f"ow trace stat  {len(done.runs)} run(s), {len(done.shards)} shard(s)"]
+    for shard in done.shards:
+        ratio = shard.uncompressed_bytes / shard.bytes if shard.bytes else 0.0
+        lines.append(
+            f"  shard   {shard.name}  {shard.records} record(s), {shard.bytes} bytes on disk, "
+            f"{shard.uncompressed_bytes} uncompressed, ratio {ratio:.2f}"
+        )
+    if done.kinds:
+        shown = ", ".join(f"{row.kind} {row.records}" for row in done.kinds)
+        lines.append(f"  kinds   {shown}")
+    for span in done.spans:
+        lines.append(
+            f"  span    {span.name}  {span.spans} span(s), {span.total_ns // _NS_PER_MS} ms"
+        )
+    lines.append(f"  dropped {done.dropped} record(s)")
+    return lines

@@ -618,7 +618,10 @@ def test_the_trace_group_declares_export_and_it_is_the_entry_function() -> None:
         (repo / "packages" / "omniweave-serve" / "pyproject.toml").read_text(encoding="utf-8")
     )
     row = project["project"]["entry-points"]["omniweave.trace"]
-    assert row == {"export": "omniweave_serve.entry:export"}
+    assert row == {
+        "export": "omniweave_serve.entry:export",
+        "stat": "omniweave_serve.entry:stat",
+    }
     assert callable(export)
 
 
@@ -679,3 +682,86 @@ def test_otlp_that_never_answers_halts_with_the_message_and_commits_nothing(
     assert str(done["halted"]).startswith("trace export stopped after 4 attempts against HTTP 503")
     assert done["sent_requests"] == 0
     assert read_cursor(cursor_path(live.parent), endpoint=ENDPOINT, run_id=RUN) is None
+
+
+# ---------------------------------------------------------------------------------------------
+# D949: `ow trace stat`
+# ---------------------------------------------------------------------------------------------
+
+
+def _rolled_and_live(tmp_path: Path) -> Path:
+    """A rolled, deflated shard holding the run span's start and a closed unit span, and the live
+    shard holding a point and the run's end, which says two records were dropped."""
+    import gzip  # noqa: PLC0415
+    from dataclasses import replace  # noqa: PLC0415
+
+    events = tmp_path / "events"
+    events.mkdir()
+    rolled = [
+        _event(1, EventKind.RUN_START, span="00000000000000r1"),
+        *_span_pair("00000000000000b1", begin=2, end=7),
+    ]
+    with gzip.open(events / ARCHIVE, "wb") as handle:
+        for event in rolled:
+            handle.write(serialise(event))
+    end = _event(9, EventKind.RUN_END, span="00000000000000r1")
+    _write(events / LIVE, [_event(8), replace(end, fields={"status": "ok", "events_dropped": 2})])
+    return events / LIVE
+
+
+def test_stat_counts_a_runs_records_spans_and_drops_across_its_shards(tmp_path: Path) -> None:
+    """15:236: per-kind counts, wall per span name, dropped, and each shard's bytes."""
+    from omniweave_serve.entry import stat  # noqa: PLC0415
+
+    live = _rolled_and_live(tmp_path)
+    done = stat(events_dir=str(live.parent), live=str(live))
+    assert done["runs"] == [RUN]
+    archive, current = done["shards"]  # type: ignore[misc]
+    assert (archive["name"], archive["records"]) == (ARCHIVE, 3)
+    assert archive["bytes"] == (live.parent / ARCHIVE).stat().st_size
+    assert archive["uncompressed_bytes"] == sum(
+        len(serialise(event))
+        for event in (
+            _event(1, EventKind.RUN_START, span="00000000000000r1"),
+            *_span_pair("00000000000000b1", begin=2, end=7),
+        )
+    )
+    assert (current["name"], current["records"]) == (LIVE, 2)
+    assert current["bytes"] == current["uncompressed_bytes"] == live.stat().st_size
+    assert done["kinds"] == [
+        [EventKind.CACHE_HIT, 1],
+        [EventKind.RUN_END, 1],
+        [EventKind.RUN_START, 1],
+        [EventKind.UNIT_BEGIN, 1],
+        [EventKind.UNIT_COMPLETE, 1],
+    ]
+    assert done["spans"] == [["run", 1, 8_000_000], ["unit/", 1, 5_000_000]]
+    assert done["dropped"] == 2
+
+
+def test_stat_with_no_run_reads_every_run_in_the_directory(tmp_path: Path) -> None:
+    from omniweave_serve.entry import stat  # noqa: PLC0415
+
+    live = _rolled_and_live(tmp_path)
+    _write(live.parent / "r_other.ndjson", [_event(1)])
+    done = stat(events_dir=str(live.parent), live=None)
+    assert done["runs"] == [RUN, "r_other"]
+    assert [row["name"] for row in done["shards"]] == [ARCHIVE, LIVE, "r_other.ndjson"]  # type: ignore[index, union-attr]
+
+
+def test_stat_finds_a_run_whose_only_shard_is_rolled(tmp_path: Path) -> None:
+    """A run is named by its rolled shards too: its live file may be gone, and its records not."""
+    from omniweave_serve.entry import stat  # noqa: PLC0415
+
+    live = _rolled_and_live(tmp_path)
+    live.unlink()
+    done = stat(events_dir=str(live.parent), live=None)
+    assert done["runs"] == [RUN]
+    assert [row["name"] for row in done["shards"]] == [ARCHIVE]  # type: ignore[index, union-attr]
+
+
+def test_stat_over_a_directory_holding_no_shard_is_zero_runs(tmp_path: Path) -> None:
+    from omniweave_serve.entry import stat  # noqa: PLC0415
+
+    done = stat(events_dir=str(tmp_path / "events"), live=None)
+    assert (done["runs"], done["shards"], done["kinds"], done["dropped"]) == ([], [], [], 0)
