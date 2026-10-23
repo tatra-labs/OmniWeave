@@ -108,6 +108,9 @@ def test_render_json_prints_one_object_with_the_counts(tmp_path: Path) -> None:
         "orphaned": 0,
         "file": "",
         "payloads": 1,
+        "sent_requests": 0,
+        "sent_spans": 0,
+        "halted": "",
     }
 
 
@@ -118,7 +121,8 @@ def test_render_json_prints_one_object_with_the_counts(tmp_path: Path) -> None:
     ("argv", "says"),
     [
         (("--file", "x.jsonl"), "needs --run"),
-        (("--run", RUN), "takes --file or --dry-run, one of the two"),
+        (("--run", RUN), "takes --file, --otlp or --dry-run"),
+        (("--run", RUN, "--file", "x.jsonl", "--otlp", "http://c"), "one destination"),
         (("--run", RUN, "--file", "x.jsonl", "--dry-run"), "one of the two"),
         (("--run", RUN, "--file", "x.jsonl", "--print-payload"), "what --dry-run would send"),
         (("--run", RUN, "--dry-run", "--render", "jsonl"), "--render jsonl is parsed and not"),
@@ -195,3 +199,88 @@ def test_the_workspace_installs_the_export_entry_point() -> None:
     from omniweave_serve.entry import export  # noqa: PLC0415
 
     assert dispatch.trace_entry("export") is export
+
+
+# --- --otlp (D948) ---------------------------------------------------------------------------
+
+ENDPOINT = "https://user:secret@collector.internal:4318"
+
+
+class _Collector:
+    """A `Transport` that answers every POST with one status and keeps the URLs."""
+
+    def __init__(self, status: int = 200) -> None:
+        self.status = status
+        self.urls: list[str] = []
+
+    def post(self, url: str, body: bytes, headers: object) -> object:
+        from omniweave_serve.export import Response  # noqa: PLC0415
+
+        del body, headers
+        self.urls.append(url)
+        return Response(self.status, "OK" if self.status == 200 else "Unavailable")
+
+
+def _collector(monkeypatch: pytest.MonkeyPatch, status: int = 200) -> _Collector:
+    import omniweave_serve.entry as entry_module  # noqa: PLC0415
+
+    collector = _Collector(status)
+    monkeypatch.setattr(entry_module, "UrllibTransport", lambda: collector)
+    monkeypatch.setattr(entry_module.time, "sleep", lambda _seconds: None)
+    return collector
+
+
+def test_otlp_sends_the_run_to_the_collector_and_never_prints_the_endpoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _project(tmp_path)
+    collector = _collector(monkeypatch)
+    code, out, err = _run(project, "--run", RUN, "--otlp", ENDPOINT)
+    assert (code, err) == (0, "")
+    assert collector.urls == [f"{ENDPOINT}/v1/traces"]
+    assert "sent 1 request(s), 1 span(s), to the collector" in out
+    assert "secret" not in out
+    assert "collector.internal" not in out
+
+
+def test_with_no_destination_the_configured_endpoint_is_the_collector(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ruling 2: 15:260's `[observe] otlp_endpoint`, honoured by this verb alone."""
+    project = _project(tmp_path)
+    settings = project / "omniweave.toml"
+    settings.write_text(
+        settings.read_text(encoding="utf-8") + f'[observe]\notlp_endpoint = "{ENDPOINT}"\n',
+        encoding="utf-8",
+    )
+    collector = _collector(monkeypatch)
+    code, _, err = _run(project, "--run", RUN)
+    assert (code, err) == (0, "")
+    assert collector.urls == [f"{ENDPOINT}/v1/traces"]
+
+
+def test_a_collector_that_never_answers_is_a_resource_limit_naming_the_offset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ruling 6: exit 1, `ResourceLimit`'s symbol, the committed offset, and no endpoint."""
+    project = _project(tmp_path)
+    collector = _collector(monkeypatch, status=503)
+    code, out, err = _run(project, "--run", RUN, "--otlp", ENDPOINT)
+    assert code == 1
+    assert out == ""
+    assert err.startswith("ow: OW_RESOURCE_LIMIT: trace export stopped after 4 attempts")
+    assert "the cursor is committed at nothing" in err
+    assert "secret" not in err
+    assert len(collector.urls) == 4
+
+
+def test_a_dry_run_beside_otlp_rehearses_and_sends_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _project(tmp_path)
+    collector = _collector(monkeypatch)
+    code, out, _ = _run(project, "--run", RUN, "--otlp", ENDPOINT, "--dry-run", "--print-payload")
+    assert code == 0
+    assert collector.urls == []
+    assert len(out.splitlines()) == 1
+    assert json.loads(out)["resourceSpans"]

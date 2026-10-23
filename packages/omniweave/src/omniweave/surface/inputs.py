@@ -881,17 +881,19 @@ class EvalRunIn:
 
 @dataclass(frozen=True, slots=True)
 class TraceExportIn:
-    """`ow trace export --run R (--file P | --dry-run --print-payload)`. 15:233. D947.
+    """`ow trace export --run R (--file P | --otlp E | --dry-run)`. 15:233. D947, D948.
 
     `run` names the run whose shards are read, at `[observe] ndjson_path`. `file` is where the
     OTLP JSON goes, one `ExportTraceServiceRequest` per line, relative to the working directory.
     `dry_run` with `print_payload` prints those bodies and writes nothing. `max_batch` is 15:254's
-    span bound per request. 15:233's `--since`, `--otlp` and `--follow` are not fields yet: a
-    field the schema publishes is a promise, and the network and tail paths are not served.
+    span bound per request. `otlp` is the collector to send to (D948), defaulting to
+    `[observe] otlp_endpoint` when no destination is given. 15:233's `--since` and `--follow`
+    are not fields yet: a field the schema publishes is a promise, and neither is served.
     """
 
     run: str | None = None
     file: str | None = None
+    otlp: str | None = None
     dry_run: bool = False
     print_payload: bool = False
     max_batch: int = 512
