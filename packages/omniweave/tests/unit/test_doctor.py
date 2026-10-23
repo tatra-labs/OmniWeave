@@ -141,7 +141,11 @@ def test_a_store_seen_before_the_read_stopped_still_fails(repo: Any) -> None:
 def test_run_sorts_findings_three_ways_and_fix_is_empty_only_at_ok(repo: Any) -> None:
     report = doctor.run(cwd=repo(["a.owstore"]), env={})
     assert [one.check for one in report.failed] == ["D-02"]
-    assert [one.check for one in report.ok] == ["catalog", "D-08"]
+    #  D-11 reads this machine's free space, so it may warn on a full disk; D953.
+    assert [one.check for one in report.ok if one.check != "D-11"] == [
+        "catalog", "D-08", "D-05", "D-15", "D-01",
+    ]  # fmt: skip
+    assert [one.check for one in _all(report)].count("D-11") == 2
     for one in _all(report):
         assert (one.fix == "") is (one.severity == "ok"), one
 
@@ -165,14 +169,14 @@ def test_the_verb_exits_1_on_a_tracked_store_and_prints_the_fix(repo: Any) -> No
     assert code == doctor.FAILED == 1
     assert "FAIL D-02: OW-S-060 OW_STORE_TRACKED_IN_GIT" in out
     assert "fix: git rm --cached -- .omniweave/index.owstore" in out
-    assert out.rstrip().endswith("doctor: fails the 2 check(s) it ran")
+    assert out.rstrip().endswith("doctor: fails the 6 check(s) it ran")
 
 
 def test_the_verb_exits_0_and_names_every_row_it_did_not_run(repo: Any) -> None:
     code, out, _ = _main(["doctor", "--runtime"], repo(["src/a.py"]))
     assert code == doctor.OK == 0
     assert "ok   D-02: no .owstore is tracked" in out
-    assert f"25 of 27 checks are not built yet and were not run: {', '.join(doctor.UNBUILT)}" in out
+    assert f"21 of 27 checks are not built yet and were not run: {', '.join(doctor.UNBUILT)}" in out
 
 
 def test_an_unknown_flag_is_argparses_usage_error(tmp_path: Path) -> None:
@@ -308,6 +312,7 @@ def test_a_configuration_that_fails_says_d08_did_not_run(
     report = doctor.run(cwd=tmp_path, env={})
     assert [one.check for one in report.failed] == ["config"]
     assert [(one.check, one.detail) for one in report.warned] == [
-        ("D-08", "not run: the configuration did not resolve")
+        (row, "not run: the configuration did not resolve")
+        for row in ("D-05", "D-08", "D-11", "D-15")
     ]
     assert roster.calls == []
