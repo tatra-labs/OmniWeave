@@ -1670,10 +1670,19 @@ class Supervisor:
         still needs a terminal answer"* -- the mechanism proper is edge-triggered on every
         `budget.commit` and `budget.release` that lowers a held sum. What runs here is the backstop;
         `Sweeper` says what is not built and `RunReport.sweeper_wired` discloses it.
+
+        **A sweep in flight when this task is cancelled is still counted (D946)**, for the reaper's
+        reason (D606): the sweep runs in a thread and the ledger commits it whether or not this
+        task survives. CI caught the unshielded `await` dropping one call's rows at run end.
         """
         async for _ in self._every(self._timings.deferred_sweep_ms):
             now_ms = self._ctx.clock.wall_ns() // 1_000_000
-            self._swept += await asyncio.to_thread(self._sweep, now_ms)
+            sweep = asyncio.ensure_future(asyncio.to_thread(self._sweep, now_ms))
+            try:
+                self._swept += await asyncio.shield(sweep)
+            except asyncio.CancelledError:
+                self._swept += await sweep
+                raise
 
     async def _stall_detector(self) -> None:
         """Every `stall_poll_ms`: two quiet polls with claimable rows and nothing claimed end it.
