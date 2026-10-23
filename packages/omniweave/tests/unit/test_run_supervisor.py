@@ -1174,6 +1174,33 @@ def test_the_default_sweeper_is_disclosed_rather_than_reported_as_a_zero() -> No
     assert report.complete is False
 
 
+def test_a_deferred_sweep_in_flight_when_cancelled_is_still_counted() -> None:
+    """D946, D606's race in the other sweeper. The deferred sweep runs in a thread and the ledger
+    commits it whether or not the task awaiting it survives, so cancelling `_deferred_sweeper`
+    mid-sweep dropped that sweep's count. CI's ubuntu py3.13 cell caught it on master as `swept`
+    14 against 8 calls of 2: one call ran and was never counted. This makes it happen every time."""
+    started, release = threading.Event(), threading.Event()
+
+    def sweep(now_ms: int) -> int:
+        del now_ms
+        started.set()
+        release.wait(5)
+        return 3
+
+    supervisor, _, _ = harness(FakeQueue(), timings=loop_timings(deferred_sweep_ms=5), sweep=sweep)
+
+    async def scenario() -> None:
+        sweeper = asyncio.create_task(supervisor._deferred_sweeper())
+        await asyncio.to_thread(started.wait, 5)
+        sweeper.cancel()
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await sweeper
+
+    asyncio.run(scenario())
+    assert supervisor._swept == 3, "the sweep ran in the ledger; its rows are the report's"
+
+
 def test_a_wired_sweeper_is_called_and_its_count_is_reported() -> None:
     """The seam W4.5's ledger fills. What it returns is `stall_verdict`'s fourth conjunct."""
     calls: list[int] = []
@@ -1714,7 +1741,13 @@ def test_a_group_that_raises_costs_its_batches_and_not_the_run() -> None:
 
 def test_a_group_never_mixes_cost_classes() -> None:
     """ST14: durability is set per class before BEGIN, so a window splits by class (and by
-    operator, the ruling's narrow reading of F8) before it commits."""
+    operator, the ruling's narrow reading of F8) before it commits.
+
+    D946: the last assertion is the vacuity guard, and it raced. A window closes as soon as nothing
+    is dispatching, so with an instant dispatch two completions shared one only if both reached
+    the committer before it woke, and CI's ubuntu py3.13 cell once saw twelve windows of one. A
+    20 ms dispatch keeps several workers dispatching while the first window is open, and the
+    1,000 ms window costs nothing, since it closes early once dispatching stops."""
     rows = [[work_row(n, cost_class="free" if n % 2 else "billed_api")] for n in range(1, 13)]
     queue = GroupingQueue(rows)
     admission = Admission(
@@ -1724,7 +1757,12 @@ def test_a_group_never_mixes_cost_classes() -> None:
         workers={"free": 4, "billed_api": 4},
         inflight={"free": 8, "billed_api": 8},
     )
-    built = harness(queue, admission=admission, timings=loop_timings(group_commit_ms=50))
+    built = harness(
+        queue,
+        admission=admission,
+        dispatch=sleepy(20),
+        timings=loop_timings(group_commit_ms=1_000),
+    )
     report = asyncio.run(built.supervisor.run())
     assert report.completed == 12
     assert all(len({row % 2 for row in group}) == 1 for group in queue.groups), queue.groups
