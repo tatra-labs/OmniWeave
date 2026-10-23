@@ -16,6 +16,7 @@ D953 adds four rows that read only this machine and the configuration: D-01, D-0
 D-15, in `omniweave.doctor.local`. D956 adds three that read what the project declares: D-06,
 D-13 and D-17, in `omniweave.doctor.project`, and D957 D-16 beside them. D958 adds D-10, the
 one row only `--runtime` runs (`local.RUNTIME`); a run without the flag names it as not run.
+D959 adds D-24, a live `store.write` lock, in `omniweave.doctor.store`.
 
 **The rows of 15:1514-1540 not built are named, not skipped silently.** Every run prints the
 ids it did not check, because a doctor that exits 0 is read as *"this deployment is fine"*,
@@ -35,7 +36,7 @@ import fnmatch
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, TextIO
 
-from omniweave.doctor import gitindex, local, project
+from omniweave.doctor import gitindex, local, project, store
 from omniweave.sdk.reports import DoctorFinding, DoctorReport
 
 if TYPE_CHECKING:
@@ -75,7 +76,7 @@ STORE_GLOB: Final = "*.owstore*"
 against the final path component, as a `.gitignore` line with no slash is."""
 
 BUILT: Final[tuple[str, ...]] = tuple(
-    sorted(("D-02", "D-08", *local.LOCAL, *local.RUNTIME, *project.PROJECT))
+    sorted(("D-02", "D-08", *local.LOCAL, *local.RUNTIME, *project.PROJECT, *store.STORE))
 )
 UNBUILT: Final[tuple[str, ...]] = tuple(
     f"D-{n:02d}" for n in range(1, 28) if f"D-{n:02d}" not in BUILT
@@ -354,6 +355,7 @@ def run(
                 "D-11",
                 "D-13",
                 "D-15",
+                "D-24",
             )
         )
     else:
@@ -390,6 +392,7 @@ def run(
             project.check_named_drivers(resolved, project_root=config.project_root(resolved))
         )
         findings.extend(project.check_pricebooks(resolved, cwd=cwd, today=_today()))
+        findings.extend(store.check_write_locks(resolved, cwd=cwd, now_ns=_wall_ns()))
     findings.append(project.check_hooks(env, cwd=cwd))
     findings.append(project.check_skills(env, cwd=cwd))
     findings.append(local.check_sqlite())
@@ -471,7 +474,12 @@ def _today() -> str:
     """D-13's date: today, UTC, read once from `SystemClock` as the other surfaces read the wall."""
     import datetime as dt  # noqa: PLC0415
 
+    seconds = _wall_ns() // 1_000_000_000
+    return dt.datetime.fromtimestamp(seconds, tz=dt.UTC).date().isoformat()
+
+
+def _wall_ns() -> int:
+    """The wall clock D-13's date and D-24's lock ages are read against: `SystemClock`'s."""
     from omniweave_core.clock import SystemClock  # noqa: PLC0415
 
-    seconds = SystemClock().wall_ns() // 1_000_000_000
-    return dt.datetime.fromtimestamp(seconds, tz=dt.UTC).date().isoformat()
+    return SystemClock().wall_ns()
