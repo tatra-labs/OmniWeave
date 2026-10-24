@@ -471,18 +471,14 @@ CRITERIA: tuple[Criterion, ...] = (
                 ),
                 slow=True,
             ),
+            tool("ci_nightly_step.py"),
         ),
-        Coverage.PARTIAL,
-        "the goldens exist (D848: 26 documents, 78 Reductions), and Q-G4's "
-        "tools/gate_frozen_stability.py (D849) compares the shapes each cell emits with them; "
-        "this machine is one cell, which the conform tier holds to the goldens. Since D931 each "
-        "of the nine `test` cells emits its shapes and the `golden` job compares all nine at one "
-        "pinned pdfium (13:673-677's fallback); two cells matched locally (win32 py3.12, linux "
-        "py3.13). The pdfium axis is one nightly cell (D966, a user ruling of 2026-10-23): on the "
-        "schedule `golden` installs pypdfium2 5.12.1 (pdfium 152) over the lock's 5.13.0 (153), "
-        "emits a tenth cell and compares two builds across the nine. 152 and 153 emitted "
-        "byte-identical shapes on win32 py3.12 here; the row waits on that nightly's first green "
-        "run on master",
+        # D974: FULL. The pdfium axis is one nightly cell beside the nine test cells (D966, a user
+        # ruling of 2026-10-23), and the first nightly since then (run 40058737353, aecf5a1,
+        # 2026-10-24) passed it: 26 shapes, 2 pdfium builds of 2, 9 cells of 9. The instrument
+        # reads the latest nightly's step through `gh`, as V01-14's reads its timings (D970).
+        Coverage.FULL,
+        "",
     ),
     Criterion(
         "V10-15",
