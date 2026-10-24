@@ -344,3 +344,33 @@ def test_every_test_cell_emits_its_shapes_and_the_golden_job_compares_all_nine()
         "run: uv run tools/gate_frozen_stability.py --artifacts shapes --pdfium-minors 1 --cells 9"
         in golden_job
     )
+
+
+def test_the_nightly_golden_run_adds_the_previous_pdfium_minor() -> None:
+    """D966, a user ruling of 2026-10-23: on the schedule, `golden` installs the previous
+    pypdfium2 minor over the lock, emits a tenth cell and compares two pdfium builds across the
+    nine cells. A plain `uv run` would sync back to the lock, so every call is `--no-sync`."""
+    import re  # noqa: PLC0415
+    import tomllib  # noqa: PLC0415
+
+    workflow = (REPO / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    golden_job = workflow.split("\n  golden:\n", 1)[1].split("\n  conform:\n", 1)[0]
+    step = golden_job.split('name: "Q-G4 pdfium axis (nightly)', 1)[1]
+    assert "if: github.event_name == 'schedule'" in step
+    previous = re.search(r'PREVIOUS_PYPDFIUM2: "([0-9.]+)"', step)
+    assert previous is not None
+    block = step.split("run: |", 1)[1].split("\n\n", 1)[0]
+    run = " ".join(block.replace("\\\n", " ").split())
+    assert run == (
+        'uv pip install "pypdfium2==$PREVIOUS_PYPDFIUM2" '
+        "uv run --no-sync tools/gate_frozen_stability.py --emit shapes "
+        "uv run --no-sync tools/gate_frozen_stability.py "
+        "--artifacts shapes --pdfium-minors 2 --cells 9"
+    )
+    lock = tomllib.loads((REPO / "uv.lock").read_text(encoding="utf-8"))
+    (locked,) = [one["version"] for one in lock["package"] if one["name"] == "pypdfium2"]
+
+    def major_minor(version: str) -> tuple[int, ...]:
+        return tuple(int(x) for x in version.split(".")[:2])
+
+    assert major_minor(previous.group(1)) < major_minor(locked), (previous.group(1), locked)
