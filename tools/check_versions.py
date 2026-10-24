@@ -267,6 +267,9 @@ class Report:
     release: str = ""
     port_major: int = 0
     checked: list[str] = field(default_factory=list)
+    asserted: list[str] = field(default_factory=list)
+    """Section 4.2's asserted-never-written sites that held. They count toward no total, so they
+    are kept out of `checked`, which is counted against `TOTAL_SITES` (D973)."""
     findings: list[Finding] = field(default_factory=list)
     pending: list[Pending] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
@@ -634,7 +637,7 @@ def _check_asserted_never_written(
     if tag is not None and tag != f"v{release}":
         report.findings.append(Finding("git tag", f"v{release}", tag))
     elif tag is not None:
-        report.checked.append(f"git tag = {tag} (asserted, never written)")
+        report.asserted.append(f"git tag = {tag} (asserted, never written)")
 
     changelog = repo / "CHANGELOG.md"
     if not changelog.is_file():
@@ -648,7 +651,7 @@ def _check_asserted_never_written(
             Finding("CHANGELOG.md: topmost heading", f"names {release}", heading or "no heading")
         )
     else:
-        report.checked.append(f"CHANGELOG.md: topmost heading names {release}")
+        report.asserted.append(f"CHANGELOG.md: topmost heading names {release}")
 
 
 def check(
@@ -866,6 +869,8 @@ def _render(report: Report, *, require_all_sites: bool, verbose: bool) -> None:
     if verbose:
         for line in report.checked:
             _say(f"    ok  {line}")
+    for line in report.asserted:
+        _say(f"  asserted: {line}")
     for note in report.notes:
         _say(f"  note: {note}")
     for pend in report.pending:
