@@ -225,6 +225,37 @@ def test_an_independent_driver_for_another_format_passes_the_mandatory_tier(
     assert "resolved graph 1 dists" in str(suites["licence"]["summary"])  # type: ignore[index]
 
 
+@pytest.mark.parametrize("target", ["docx", "pptx"])
+def test_each_target_reader_passes_the_mandatory_tier_over_its_compiled_golden(
+    tmp_path: Path, target: str
+) -> None:
+    """V10-10 (D968): a target's reader card, the sibling `parse/1` driver its read-back runs, is a
+    driver like any other, so it goes through the kit, over the artefact its own compiler makes of
+    the register's golden. D879 found pptx's failing `licence` on Pillow's MIT-CMU, G3's open
+    question until a user ruling of 2026-10-19 (D884) admitted the id; both now pass 11/11."""
+    import tomllib  # noqa: PLC0415
+
+    from omniweave_conform.compile_harness import run_compile  # noqa: PLC0415
+    from omniweave_core.host.activate import construct  # noqa: PLC0415
+
+    register = tomllib.loads((REPO / "eval" / "gates.toml").read_text(encoding="utf-8"))
+    (row,) = [one for one in register["target"] if one["target"] == target]
+    card_path = REPO / row["card"]
+    card = load_card(read_card_bytes(card_path), origin="entry_point", source=str(card_path))
+    config = dict(row.get("config", {}))
+    config.update({key: str(REPO / value) for key, value in row.get("paths", {}).items()})
+    compiled = run_compile(construct(card, config), card, REPO / row["golden"], tmp_path / "work")
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    (fixtures / f"golden.{target}").write_bytes(compiled.body)
+    done = _run("--card", str(REPO / row["read_back"]), "--fixtures", str(fixtures), "--json")
+    assert done.returncode == 0, f"exit {done.returncode}\n{done.stdout}\n{done.stderr}"
+    result = json.loads(done.stdout)
+    assert (result["mandatory"], result["passed"]) == ("11/11", True), result
+    suites = {row["suite"]: row for row in result["suites"]}  # type: ignore[union-attr]
+    assert suites["licence"]["verdict"] == "pass"  # type: ignore[index]
+
+
 def test_quality_is_unknown_and_does_not_stop_the_run(report: dict[str, object]) -> None:
     """The twelfth suite is not mandatory, and a run that passes while it is unknown is correct."""
     rows = {row["suite"]: row for row in report["suites"]}  # type: ignore[index]

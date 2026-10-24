@@ -111,6 +111,9 @@ def test_the_rows_the_2026_10_23_rulings_settled() -> None:
     assert rows["V10-13"].coverage is a.Coverage.FULL
     #  D967: the independent SubRip driver is V10-12's evidence, selected by its pytest -k.
     assert rows["V10-12"].coverage is a.Coverage.FULL
+    #  D968: V10-10, its reader cards now through the kit.
+    assert rows["V10-10"].coverage is a.Coverage.FULL
+    assert any("reader_passes" in one.argv for one in rows["V10-10"].instruments)
     (selector,) = [one.argv for one in rows["V10-12"].instruments if "-k" in one.argv]
     assert "mandatory_tier" in selector[selector.index("-k") + 1]
     tests = Path(__file__).with_name("test_ow_conform.py").read_text(encoding="utf-8")

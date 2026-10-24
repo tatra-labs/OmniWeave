@@ -367,16 +367,21 @@ CRITERIA: tuple[Criterion, ...] = (
                 "packages/omniweave-target-pptx/tests/unit/test_golden40.py",
                 label="the 40-unit golden: generated, pinned, gated, compiled five ways (D881)",
             ),
+            pytest(
+                f"{CORE}/test_ow_conform.py",
+                "-k",
+                "reader_passes",
+                label="each target's reader card through the kit, over its compiled golden (D968)",
+            ),
         ),
-        Coverage.PARTIAL,
-        "OUT13's in-cell half runs over the register's goldens and over the 40-unit deck "
-        "`fixtures/gen/gen_golden40.py` generates: twice here and under three PYTHONHASHSEEDs in "
-        "fresh processes, one part_digest across 116 parts (D878, D881). Across cells, the "
-        "portability suite holds each target's parts to eval/portability.toml (D903), and every "
-        "CI test cell, three OSes by three Pythons, now holds the register's goldens and the "
-        "40-unit deck to it (D914), written on win32 3.12 and matched on linux 3.13 here. Of the "
-        "reader cards docx's passes the testkit's mandatory tier and "
-        "pptx's fails licence on Pillow's MIT-CMU, G3's open question (D879)",
+        # D968: every clause is measured. OUT13's in-cell half compiles the register's goldens
+        # and the 40-unit deck twice and under three PYTHONHASHSEEDs to one part_digest (D878,
+        # D881); every CI test cell, three OSes by three Pythons, holds them to
+        # eval/portability.toml (D903, D914); and both reader cards pass the kit's mandatory
+        # tier over their own compiled goldens, pptx's licence clear since D884 admitted
+        # Pillow's MIT-CMU (D879 had found it failing).
+        Coverage.FULL,
+        "",
     ),
     Criterion(
         "V10-11",
