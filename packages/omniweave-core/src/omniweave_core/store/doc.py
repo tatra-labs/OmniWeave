@@ -189,6 +189,7 @@ if TYPE_CHECKING:  # pragma: no cover - annotations only.
     from omniweave_core.model.grid import Grid
 
 __all__ = [
+    "ABANDONED_SQL",
     "ASSET_DIGEST_MISMATCH",
     "LAYER_NOT_INHERITED",
     "QUOTE_CLAMPED",
@@ -204,6 +205,7 @@ __all__ = [
     "locate_block",
     "read_doc_record",
     "read_grid",
+    "sweep_abandoned",
 ]
 
 
@@ -653,6 +655,50 @@ class _PageState:
     the scan was linear in the page, so a 20,000-row sheet -- one table, 320,000 blocks on one page,
     every cell a child of the same table -- spent 87% of its ingest in it (D658)."""
     satellites: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
+
+
+ABANDONED_SQL: Final = """
+SELECT d.uri, count(*), EXISTS (
+         SELECT 1 FROM diag AS q
+          WHERE q.doc_ord = d.doc_ord AND q.gen > d.gen AND q.code = 'OW_REBIND_UNEXPLAINED')
+  FROM page AS p JOIN doc AS d ON d.doc_ord = p.doc_ord
+ WHERE p.gen > d.gen GROUP BY d.doc_ord ORDER BY d.uri
+"""
+"""Each document holding pages above its committed `doc.gen`: its uri, how many, and whether that
+generation is QUARANTINED. Rows above `doc.gen` are durable and invisible (03:75-80), and they are
+one of three things: an abandoned parse, a parse in flight, or a quarantined generation 03:1298-1302
+keeps *"for inspection by `ow doc diff`"*, which the third column tells apart by its
+`OW_REBIND_UNEXPLAINED` diagnostic. `ow doctor` D-23 reads it (D969)."""
+
+_STAGED_ONLY: Final[tuple[str, ...]] = ("page_render", "diag", "segment")
+"""The tables that carry `(doc_ord, gen)` and do NOT cascade from `page`. `block` does (its key is
+`(doc_ord, gen, page)`), and `rel` and `anchor` follow `block`, each with its FTS triggers."""
+
+
+def sweep_abandoned(connection: sqlite3.Connection, doc_ord: int, head_gen: int) -> int:
+    """Delete one document's rows above its committed generation; return the pages deleted. D969.
+
+    08:480-484: *"Readers resolve at the committed `doc.gen`, so those 40 pages were never
+    visible. The sweep deletes them through `ON DELETE CASCADE` and the previous generation still
+    serves every shipped `cite`."* `begin_doc` targets `head_gen + 1` again on a re-parse, so a
+    parse that committed pages and never reached `end_doc` (a crash, or a write that failed
+    mid-document and is retried) left rows at that very generation, and the next parse failed
+    `UNIQUE constraint failed: page.doc_ord, page.gen, page.page`. The document could not be read
+    again until something removed them.
+
+    It runs per document, as the re-parse opens, inside `begin_doc`'s transaction, so it catches a
+    retry in the same run, which a sweep at store open would not. Rows at or below `doc.gen` are
+    the committed history and are never touched.
+    """
+    for table in _STAGED_ONLY:
+        connection.execute(
+            f"DELETE FROM {table} WHERE doc_ord = ? AND gen > ?",  # noqa: S608 -- names above
+            (doc_ord, head_gen),
+        )
+    cursor = connection.execute(
+        "DELETE FROM page WHERE doc_ord = ? AND gen > ?", (doc_ord, head_gen)
+    )
+    return int(cursor.rowcount)
 
 
 # ---------------------------------------------------------------------------
@@ -1475,6 +1521,7 @@ class DocSink:
                 "WHERE doc_ord = :doc_ord",
                 facts | {"doc_ord": doc_ord},
             )
+            sweep_abandoned(connection, doc_ord, head_gen)
         prefix = self._shard_ord << _SEQUENCE_BITS
         top = connection.execute(
             "SELECT MAX(block_id) FROM block WHERE (block_id >> ?) = ?",

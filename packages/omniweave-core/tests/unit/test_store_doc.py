@@ -51,9 +51,11 @@ from omniweave_core.model.block import (
 )
 from omniweave_core.model.enums import Kind, Layer, Method, PageKind, Quote, RelKind, Trust
 from omniweave_core.model.grid import Grid, build_grid
+from omniweave_core.model.rebind import REBIND_UNEXPLAINED
 from omniweave_core.model.records import AssetDraft, Diag, DocRecord, PageRecord
 from omniweave_core.model.spans import OriginBytes, OriginNone, OriginPixels, Quad, TextSpan
 from omniweave_core.store import DocSink as DocSinkProtocol
+from omniweave_core.store import doc as doc_module
 from omniweave_core.store import migrate
 from omniweave_core.store import sqlite as ow
 from omniweave_core.store.doc import (
@@ -601,6 +603,84 @@ def test_a_diagnostic_about_page_three_survives_a_crash_during_page_four(harness
         # No end_page for page 4.
 
     assert read(harness, "SELECT code, page FROM diag ORDER BY rowid") == [("OW_QUAD_NO_DPI", 3)]
+
+
+def test_a_reparse_after_a_crash_sweeps_the_abandoned_generation(harness: Harness) -> None:
+    """D969, 08:480-484's sweep. A parse that committed page 0 and never reached `end_doc` left
+    page and block rows at `g_t`, and the re-parse, which targets the same `g_t`, failed
+    `UNIQUE constraint failed: page.doc_ord, page.gen, page.page`. `begin_doc` now deletes the
+    document's rows above its committed generation first, FTS triggers and cascades included."""
+    write_happy_path(harness, stop_after_page=0)
+    assert read(harness, "SELECT gen, page FROM page") == [(1, 0)]
+    assert read(harness, "SELECT gen FROM doc") == [(0,)]
+
+    write_happy_path(harness)
+
+    assert read(harness, "SELECT gen FROM doc") == [(1,)]
+    assert read(harness, "SELECT gen, page FROM page ORDER BY page") == [(1, 0), (1, 1)]
+    blocks = read(harness, "SELECT count(*) FROM block")
+    assert blocks == read(harness, "SELECT count(*) FROM ow_block_head"), "nothing invisible left"
+    orphans = "SELECT count(*) FROM block_fts WHERE rowid NOT IN (SELECT block_id FROM block)"
+    assert read(harness, orphans) == [(0,)], "the FTS index followed the swept blocks out"
+    found = """SELECT count(*) FROM block_fts WHERE block_fts MATCH '"Master Services"'"""
+    assert read(harness, found) == [(1,)], "the heading is indexed once, not once per attempt"
+    assert read(harness, "PRAGMA foreign_key_check") == []
+
+
+def test_the_sweep_takes_a_staged_diag_and_never_the_committed_generation(
+    harness: Harness,
+) -> None:
+    """A `diag` is staged with its page (03:593) but keyed to the document, not the page, so the
+    cascade does not reach it; the sweep deletes it by name. Rows at or below `doc.gen` are the
+    committed history and stay."""
+    write_happy_path(harness)
+    committed_pages = read(harness, "SELECT count(*) FROM page WHERE gen = 1")
+    committed_diags = read(harness, "SELECT count(*) FROM diag WHERE gen = 1")
+    write_happy_path(harness, stop_after_page=0)
+    assert read(harness, "SELECT count(*) FROM page WHERE gen = 2") == [(1,)]
+    assert read(harness, "SELECT count(*) FROM diag WHERE gen = 2") != [(0,)]
+
+    with open_store(harness) as thread:
+
+        def sweep(connection: Any) -> int:
+            return doc_module.sweep_abandoned(connection, 1, 1)
+
+        swept = thread.run(ow.Unit(name="test.sweep", run=sweep, cost_class="free", wait_ms=0))
+
+    assert swept == 1
+    assert read(harness, "SELECT count(*) FROM page WHERE gen = 2") == [(0,)]
+    assert read(harness, "SELECT count(*) FROM diag WHERE gen = 2") == [(0,)]
+    assert read(harness, "SELECT count(*) FROM page WHERE gen = 1") == committed_pages
+    assert read(harness, "SELECT count(*) FROM diag WHERE gen = 1") == committed_diags
+
+
+def test_abandoned_sql_names_each_document_with_pages_above_its_generation(
+    harness: Harness,
+) -> None:
+    """`ow doctor` D-23's query (D969): the abandoned pages, by document."""
+    write_happy_path(harness, key=1)
+    write_happy_path(harness, key=2, stop_after_page=0)
+    rows = read(harness, doc_module.ABANDONED_SQL)
+    assert [(count, quarantined) for _uri, count, quarantined in rows] == [(1, 0)]
+    assert f"'{REBIND_UNEXPLAINED}'" in doc_module.ABANDONED_SQL, "the code the quarantine writes"
+
+
+def test_a_quarantined_generation_is_named_as_quarantined_not_abandoned(
+    harness: Harness,
+) -> None:
+    """03:1298-1302 keeps a quarantined generation *"for inspection by `ow doc diff`"*, so D-23
+    must not call it abandoned: `ABANDONED_SQL`'s third column says which (D969)."""
+    write_happy_path(harness)
+    with open_store(harness) as thread:
+        writer = sink(harness, thread)
+        writer.begin_doc(doc_record())
+        writer.begin_page(page_record(0))
+        root = writer.add_block(root_draft())
+        for n in range(6):
+            writer.add_block(text_draft(root, Kind.PARAGRAPH, f"entirely different text {n}"))
+        writer.end_page({})
+        writer.end_doc("ok")
+    assert [row[1:] for row in read(harness, doc_module.ABANDONED_SQL)] == [(1, 1)]
 
 
 # ---------------------------------------------------------------------------------------------
