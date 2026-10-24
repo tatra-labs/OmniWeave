@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D968: V10-10 note
+# blessed-because: D969: sweep note at 08:485, D-23 at 15:1536
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -34,14 +34,14 @@ documents-frozen  5385c024f295e69a40e13752fc000d4a473260014614b32f45fafc33e3e883
 documents-frozen  07a3ca86fdd4aca98fdddd42a02a163404e9468669e7de1ad5a6277fcfefbda6  05-ingest-and-routing.md
 documents-frozen  7c4c7946cad37746e602ef662e72d6a75ee43cc6b9367173c906cddc6d9f763e  06-structure-extraction.md
 documents-frozen  25666745a9572e7eadf017b6988a2216744cc3eca5a3f572d45da8f1b8c3e161  07-store-and-retrieval.md
-documents-frozen  763b79b99b4084da8e73024e6595541b8735941fe069d92119535eca88843ca9  08-runtime.md
+documents-frozen  4c02f71d665332330bf423ac063a1678887ae6f3004d01d7b799e9991f414df3  08-runtime.md
 documents-frozen  e3d9414cd24b29681c2da184fffa9c3fbc33e4d066f831fe9d8113b159e0ab08  09-generation.md
 documents-frozen  7045e57d63450411e13e7d0bac60aaed64db257c224ced3682c667ee1ff39b34  10-interfaces.md
 documents-frozen  83692665bf186524ae27a7c8a89c89e526e6e3a0b197ea8635db758643569a18  11-repo-layout.md
 documents-frozen  2fe653d5ac8031388b9a25e2d7464c4921e22b0aa78e2f4dabb531186219c6a5  12-performance.md
 documents-frozen  e8e2facfab683281f8d9eb126c6ab13dd88950428f35e8201a5292d0c7d4758d  13-quality.md
 documents-frozen  78a3474b788625971c7a7fed610ef3c6518e9330bfd87e8411fbc744666b43d1  14-security.md
-documents-frozen  c256333201fb077ba900930a115f85f468124d59f9e3ca0b88c9691effc7002e  15-observability.md
+documents-frozen  2cddc08dab8833611e0180e474ea2106c43dfbdb57e710b3578ffcaef764614f  15-observability.md
 documents-frozen  5cf9671f6a3972ec5c0462eaf6ad35ad2da2190c9772330c6280d1f085af90f6  16-roadmap.md
 documents-frozen  df4d16ec9e95851ee78fec9cf1fee599488fef474c9f1ee90d9da73bdca32405  17-risks.md
 documents-frozen  51deca62fb9bb17e63d26b961521e4c628644a11bbb6a70d4e76b801f17b5e16  18-api-sketch.md
