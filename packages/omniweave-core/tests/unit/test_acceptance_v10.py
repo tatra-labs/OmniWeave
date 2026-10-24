@@ -102,6 +102,18 @@ def test_v10_1_runs_g25_as_the_ci_step_runs_it() -> None:
     assert not any(f"G25 {verb} no runner" in v10_1.gap for verb in ("has", "have"))
 
 
+def test_the_rows_the_2026_10_23_rulings_settled() -> None:
+    """D964: V10-8 claims content identity over the full 300/40, and V10-13 the reconciliation,
+    with free passes out of scope; V10-4 and V10-6 keep their other gaps and cite the ruling."""
+    rows = {row.id: row for row in a.CRITERIA}
+    assert rows["V10-8"].coverage is a.Coverage.FULL
+    assert ("tools/gate_incremental.py",) in [one.argv for one in rows["V10-8"].instruments]
+    assert rows["V10-13"].coverage is a.Coverage.FULL
+    for row in ("V10-4", "V10-6"):
+        assert rows[row].coverage is a.Coverage.PARTIAL
+        assert "a user ruling of 2026-10-23" in rows[row].gap
+
+
 def test_no_row_claims_full_coverage_it_does_not_have() -> None:
     """A FULL row has no gap and at least one instrument; every other row names its gap."""
     for row in a.CRITERIA:

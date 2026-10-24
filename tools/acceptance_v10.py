@@ -203,8 +203,10 @@ CRITERIA: tuple[Criterion, ...] = (
             ),
         ),
         Coverage.PARTIAL,
-        "degradation_detection runs over 4 of 13 Injectors in the paired-damage half, now as "
-        "`ow eval run --suite absence` too (D869); citability_violations is a hard row "
+        "degradation_detection is measured over the 4 built Injectors of 13, in the paired-damage "
+        "half and as `ow eval run --suite absence` (D869); the other nine damage features this "
+        "build does not have, and are disclosed as such (D964, a user ruling of 2026-10-23). "
+        "citability_violations is a hard row "
         "measured over the adoption catalogue (D870), which V10-1's instrument runs. "
         "false_confident_zero is a ceiling row computed by the removal half (D933): the "
         "catalogue's 13 answerable questions asked of their corpora, and again with each "
@@ -256,7 +258,9 @@ CRITERIA: tuple[Criterion, ...] = (
         "of 2026-10-21), whose status stays unknown: `ow-bench-1` and the Pacer's seven-run "
         "median do not exist. The `parse` subject is blocked, and the 4M-cell sheet's fixture "
         "exists (D929) but no shipped reader admits it: anydoc refuses it on max_xml_nodes, and "
-        "the office worker's RSS (~3.7 KB a cell) passes its 1 GiB from ~280k cells (F2)",
+        "the office worker's RSS (~3.7 KB a cell) passes its 1 GiB from ~280k cells. That sheet is "
+        "a declared v1.0 limitation (F2), with the shipped limits kept (D964, a user ruling of "
+        "2026-10-23)",
     ),
     Criterion(
         "V10-7",
@@ -293,13 +297,12 @@ CRITERIA: tuple[Criterion, ...] = (
                 label="what a real `ow add` does with an edited file (D880, D882, D905)",
             ),
         ),
-        Coverage.PARTIAL,
-        "G19 now holds through the product: both stores built by real `ow add` children, on a PR "
-        "OQ-6's seeded 60/8 subset and nightly the full 300/40 (D908, which this row runs as the "
-        "subset), and an edited file is its document's next generation with every unchanged cite "
-        "carried (D40, resolved by D905). It reports gen, revision and carried-cite differences "
-        "without failing on them unless --strict (D187), so V10-8's literal 'identical' is not "
-        "claimed",
+        # D964, a user ruling of 2026-10-23: 'identical' is content identity, the same blocks with
+        # every cite resolving, which G19 fails on over the full 300/40 (the first instrument).
+        # Generation and revision counters are parse history and excluded; --strict, which folds
+        # them back in (D187), stays a report.
+        Coverage.FULL,
+        "",
     ),
     Criterion(
         "V10-9",
@@ -428,14 +431,13 @@ CRITERIA: tuple[Criterion, ...] = (
                 "D921)",
             ),
         ),
-        Coverage.PARTIAL,
-        "a real `ow add` of three drivers' documents is priced by a PriceBook that rates wall and "
-        "CPU time, since the host meters each worker from outside (D921), and `ow cost --verify` "
-        "reconciles both of its runs against their manifests to 0 micros. An in-process (S1) "
-        "parse is charged its calling thread's CPU across the call, since the driver runs on that "
-        "thread (D945). What is not metered: CPU under one accounting tick, which Windows reports "
-        "as 0 (the office and text units measured 0 ms), and the segment and derive operators' "
-        "calls, which the run does not meter (derive bills the driver's own figures)",
+        # D964, a user ruling of 2026-10-23: a real `ow add` priced by wall and CPU time reconciles
+        # to 0 micros (D921, D945). The free segment and derive passes are host-metered but have
+        # no route_decision, which every route_spend row keys on (D665), so their spend is out of
+        # v1.0's scope and disclosed; a pass_spend table comes after. CPU under one accounting
+        # tick reads 0 on Windows, a platform's resolution and not a reconciliation gap.
+        Coverage.FULL,
+        "",
     ),
     Criterion(
         "V10-14",
