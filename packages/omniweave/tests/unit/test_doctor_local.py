@@ -1,4 +1,5 @@
-"""`ow doctor`'s local rows: D-01, D-05, D-11 and D-15 (D953), D-10 (D958) and D-25 (D961).
+"""`ow doctor`'s local rows: D-01, D-05, D-11 and D-15 (D953), D-10 (D958), D-25 (D961) and
+D-26 (D963).
 
 Each row is asked of a configuration `load()` resolved from a temp project, with the two machine
 readings (the SQLite version and a volume's free bytes) handed in where a test cannot choose them.
@@ -7,6 +8,7 @@ readings (the SQLite version and a volume's free bytes) handed in where a test c
 from __future__ import annotations
 
 import gzip
+import json
 import os
 from typing import TYPE_CHECKING
 
@@ -286,3 +288,56 @@ def test_d25_the_newest_runs_path_map_must_be_0600(tmp_path: Path) -> None:
     assert found.severity == "error"
     assert found.fix == f"chmod 600 {mapping.as_posix()}"
     assert local.check_canary(config, env={}, cwd=project, posix=False).severity == "ok"
+
+
+# --- D-26 (D963) ----------------------------------------------------------------------------
+
+ENDPOINT = "http://collector.invalid:4318/v1/traces?token=secret"
+
+
+def _manifests(project: Path, config: Config, bodies: dict[str, object]) -> Path:
+    from omniweave.surface.ingest import root_of  # noqa: PLC0415
+
+    runs = root_of(config, "roots.output", project) / "runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    for name, body in bodies.items():
+        (runs / name).write_text(body if isinstance(body, str) else json.dumps(body), "utf-8")
+    return runs
+
+
+def test_d26_unset_says_so_and_counts_the_recorded_runs(tmp_path: Path) -> None:
+    project = tmp_path / "p"
+    config = _config(project)
+    found = local.check_otlp(config, cwd=project)
+    assert (found.check, found.severity, found.fix) == ("D-26", "ok", "")
+    assert found.detail == (
+        "[observe] otlp_endpoint is not set; no run manifest here records it yet"
+    )
+    _manifests(
+        project,
+        config,
+        {
+            "r_1.json": {"run_id": "r_1", "otlp_endpoint_set": True},
+            "r_2.json": {"run_id": "r_2", "otlp_endpoint_set": False},
+            "r_3.json": {"run_id": "r_3"},
+            "r_1.paths.json": {"otlp_endpoint_set": True},
+            "r_4.json": "not json",
+        },
+    )
+    found = local.check_otlp(config, cwd=project)
+    assert found.detail.endswith("; 1 of 2 recorded run(s) had it set"), found.detail
+
+
+def test_d26_set_names_its_source_and_never_its_url(tmp_path: Path) -> None:
+    project = tmp_path / "p"
+    project.mkdir()
+    (project / "omniweave.toml").write_text(
+        CORPUS + f'[observe]\notlp_endpoint = "{ENDPOINT}"\n', encoding="utf-8"
+    )
+    config = load(cwd=project, env={"OMNIWEAVE_HOME": str(tmp_path / "home")})
+    found = local.check_otlp(config, cwd=project)
+    assert found.severity == "ok"
+    assert found.detail.startswith("[observe] otlp_endpoint is set, from ")
+    assert "omniweave.toml" in found.detail
+    assert "collector.invalid" not in found.detail
+    assert "secret" not in found.detail
