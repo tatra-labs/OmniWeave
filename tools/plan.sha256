@@ -22,16 +22,16 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D966: pdfium axis notes at 13:677 and 00 V10-14
+# blessed-because: D967: independent driver notes at 05:593 and 00 V10-12
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
-documents-frozen  f14c3489fe418452d2c30daaa0ec02e85bda55fecccb7b20b17c24d5fa0510dc  00-vision.md
+documents-frozen  e5d5e98695553dcec456c34c03dcd53f1230087d035a1788ce11c3e2643f11f0  00-vision.md
 documents-frozen  6ffc2070193630b39f15385fc8640ec7b1a3e242ef098426f2754d4070a8026d  01-principles.md
 documents-frozen  1dad5c8ef798764c3bd3cc772210f6085569c8d38c4d272db6444575171efbff  02-architecture.md
 documents-frozen  5d6c4a77eb200156e970cfb9d64312d8da3e799be493d75ee304d608418cc396  03-document-model.md
 documents-frozen  5385c024f295e69a40e13752fc000d4a473260014614b32f45fafc33e3e8837c  04-driver-system.md
-documents-frozen  6faee32ebeeacc759b93cf797dd650d38bb61bb790addd4078495633494d052f  05-ingest-and-routing.md
+documents-frozen  07a3ca86fdd4aca98fdddd42a02a163404e9468669e7de1ad5a6277fcfefbda6  05-ingest-and-routing.md
 documents-frozen  7c4c7946cad37746e602ef662e72d6a75ee43cc6b9367173c906cddc6d9f763e  06-structure-extraction.md
 documents-frozen  25666745a9572e7eadf017b6988a2216744cc3eca5a3f572d45da8f1b8c3e161  07-store-and-retrieval.md
 documents-frozen  763b79b99b4084da8e73024e6595541b8735941fe069d92119535eca88843ca9  08-runtime.md

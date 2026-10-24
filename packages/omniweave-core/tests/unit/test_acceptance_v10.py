@@ -109,6 +109,12 @@ def test_the_rows_the_2026_10_23_rulings_settled() -> None:
     assert rows["V10-8"].coverage is a.Coverage.FULL
     assert ("tools/gate_incremental.py",) in [one.argv for one in rows["V10-8"].instruments]
     assert rows["V10-13"].coverage is a.Coverage.FULL
+    #  D967: the independent SubRip driver is V10-12's evidence, selected by its pytest -k.
+    assert rows["V10-12"].coverage is a.Coverage.FULL
+    (selector,) = [one.argv for one in rows["V10-12"].instruments if "-k" in one.argv]
+    assert "mandatory_tier" in selector[selector.index("-k") + 1]
+    tests = Path(__file__).with_name("test_ow_conform.py").read_text(encoding="utf-8")
+    assert "def test_an_independent_driver_for_another_format_passes_the_mandatory_tier(" in tests
     for row in ("V10-4", "V10-6"):
         assert rows[row].coverage is a.Coverage.PARTIAL
         assert "a user ruling of 2026-10-23" in rows[row].gap

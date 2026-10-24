@@ -165,6 +165,66 @@ def test_a_driver_authored_outside_this_repository_passes_the_mandatory_tier(
     assert "resolved graph 1 dists" in str(suites["licence"]["summary"])  # type: ignore[index]
 
 
+SUBRIP = Path(__file__).resolve().parent / "external_driver_subrip"
+"""An independent driver project, for SubRip subtitles: its own code, card, `pyproject.toml` and
+fixtures, written against `omniweave_ports` alone (D967, a user ruling of 2026-10-23)."""
+
+
+def test_an_independent_driver_for_another_format_passes_the_mandatory_tier(
+    tmp_path: Path,
+) -> None:
+    """V10-12 with an independent implementation: D923's external driver was the template under
+    new names. This one is a SubRip parser that shares no code with the template, run from a copy
+    outside this repository, the way its author would: from the project's own directory, with
+    `PYTHONPATH=src`. A relative entry broke the cross-process child until D967, since the child
+    runs in another cwd."""
+    project = tmp_path / "subrip-cues"
+    shutil.copytree(SUBRIP, project, ignore=shutil.ignore_patterns("__pycache__"))
+    assert REPO not in project.parents
+    code = (project / "src" / "subrip_cues" / "driver.py").read_text(encoding="utf-8")
+    template = (TEMPLATE / "driver.py").read_text(encoding="utf-8")
+    assert "omniweave_conform" not in code
+    #  The port contract forces signatures, imports and record keys on every driver; the
+    #  template's own logic is its names, and none of them is here.
+    own = ("PlainTextParser", "_PARAGRAPH_BREAK", "_TXT_SUFFIXES", "cursor_chars", "_NUL")
+    assert all(name in template for name in own)
+    assert not [name for name in own if name in code]
+    assert "def cues(raw: bytes)" in code, "the cue grammar is this driver's own"
+    env = {**os.environ, "PYTHONPATH": "src"}
+    done = subprocess.run(  # noqa: S603 -- argv is built here, from literals and tmp_path.
+        [
+            sys.executable,
+            str(TOOL),
+            "--card",
+            "src/subrip_cues/driver.toml",
+            "--fixtures",
+            "fixtures",
+            "--json",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=str(project),
+        env=env,
+        timeout=TIMEOUT_S,
+    )
+    assert done.returncode == 0, f"exit {done.returncode}\n{done.stdout}\n{done.stderr}"
+    result = json.loads(done.stdout)
+    assert (result["driver_id"], result["mandatory"], result["passed"]) == (
+        "parse.subtitle.subrip",
+        "11/11",
+        True,
+    )
+    suites = {row["suite"]: row for row in result["suites"]}  # type: ignore[union-attr]
+    assert "cross-process compared" in str(suites["idempotence"]["summary"])  # type: ignore[index]
+    assert "origin_span=exact checked on 10 of 10 blocks" in str(
+        suites["capability"]["summary"]  # type: ignore[index]
+    )
+    assert "resolved graph 1 dists" in str(suites["licence"]["summary"])  # type: ignore[index]
+
+
 def test_quality_is_unknown_and_does_not_stop_the_run(report: dict[str, object]) -> None:
     """The twelfth suite is not mandatory, and a run that passes while it is unknown is correct."""
     rows = {row["suite"]: row for row in report["suites"]}  # type: ignore[index]
