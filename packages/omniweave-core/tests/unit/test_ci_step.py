@@ -87,6 +87,46 @@ def test_several_steps_take_the_worst_verdict_and_print_each() -> None:
     assert tool.judge([_build("skipped", "failure", "success")], "build (", BUILD_STEPS)[0] == 2
 
 
+def test_a_prefix_naming_several_jobs_judges_every_one() -> None:
+    """V10-17 names a matrix's three macOS cells (D976): one red cell fails it, and each line
+    names its cell."""
+    step = "the test suite, T1 and T2 -- everything not marked conform"
+
+    def cell(python: str, conclusion: str) -> dict[str, Any]:
+        return {
+            "name": f"test (macos-latest {python})",
+            "steps": [{"name": step, "conclusion": conclusion}],
+        }
+
+    green = [cell(py, "success") for py in ("py3.12", "py3.13", "py3.14")]
+    code, lines = tool.judge(green, "test (macos-latest", (step,))
+    assert code == 0
+    assert lines == [
+        f"test (macos-latest {py}): {step}: success" for py in ("py3.12", "py3.13", "py3.14")
+    ]
+    assert (
+        tool.judge([*green[:2], cell("py3.14", "failure")], "test (macos-latest", (step,))[0] == 1
+    )
+
+
+def test_v10_17s_self_ingesting_test_cannot_skip_where_ci_runs_it() -> None:
+    """A green macOS cell proves V10-17's corpus test passed there only if the test cannot skip:
+    D926 lifted a stale named-pipe skip, and none may return unnoticed. It carries no `conform`
+    mark, so it is in the T1/T2 step V10-17 reads."""
+    source = (REPO / "packages/omniweave-target-pptx/tests/unit/test_pptx_out_loop.py").read_text(
+        encoding="utf-8"
+    )
+    above, body = source.split(
+        "def test_a_corpus_holding_its_own_deck_reports_its_generated_share", 1
+    )
+    decorators = above.rstrip().rsplit("\n\n", 1)[-1]
+    body = body.split("\ndef ", 1)[0]
+    head = source.split("\ndef ", 1)[0]
+    for text in (decorators, body, head):
+        assert "skip" not in text and "xfail" not in text
+    assert "pytestmark" not in source and "mark.conform" not in source
+
+
 def test_main_reads_a_saved_document(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     saved = tmp_path / "jobs.json"
     saved.write_text(json.dumps({"jobs": [_golden("success")]}), encoding="utf-8")
