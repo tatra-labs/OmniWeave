@@ -162,14 +162,29 @@ CRITERIA: tuple[Criterion, ...] = (
             tool("gate_weights.py"),
             pytest(f"{CORE}/test_gates_packaging.py", f"{CORE}/test_sdist_shape.py"),
             tool("check_build.py", slow=True),
+            tool(
+                "ci_step.py",
+                "--label",
+                "V10-2",
+                "--event",
+                "push",
+                "--job",
+                "build (",
+                "--step",
+                "28 files, zero platform wheels",
+                "--step",
+                "G2 -- the fourteen weight ceilings and the 250 MB [recommended] union",
+                "--step",
+                "section 6.6 step 4 -- build.wheelhouse_profiles",
+            ),
         ),
-        Coverage.PARTIAL,
-        "tools/check_build.py builds the 28 artefacts twice and checks every wheel `py3-none-any` "
-        "and the two passes byte-identical (D874). CI's `build` job measures the rest: "
-        "tools/check_wheelhouse.py installs the three offline profiles from the built wheels and "
-        "runs G2's measured half and the 250 MB `[recommended]` union over them (D897-D899); "
-        "this row runs the declared half and the build here. `ow doctor --runtime` measures the "
-        "vision install's size (D-19, D965)",
+        # D975: FULL. tools/check_build.py builds the 28 artefacts twice here and checks every
+        # wheel `py3-none-any` and both passes byte-identical (D874). The measured half is CI's
+        # `build` job, where tools/check_wheelhouse.py installs the three offline profiles from
+        # the built wheels and runs G2's measured half and the 250 MB `[recommended]` union
+        # (D897-D899). tools/ci_step.py reads those steps off master's newest green push run.
+        Coverage.FULL,
+        "",
     ),
     Criterion(
         "V10-3",
@@ -471,7 +486,7 @@ CRITERIA: tuple[Criterion, ...] = (
                 ),
                 slow=True,
             ),
-            tool("ci_nightly_step.py"),
+            tool("ci_step.py"),
         ),
         # D974: FULL. The pdfium axis is one nightly cell beside the nine test cells (D966, a user
         # ruling of 2026-10-23), and the first nightly since then (run 40058737353, aecf5a1,
