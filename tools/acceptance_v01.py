@@ -264,10 +264,18 @@ CRITERIA: tuple[Criterion, ...] = (
     Criterion(
         "V01-14",
         "CI: gates <= 3 min, conform <= 5 min, contributor-parity clean, <= 7 min (600 s ceiling)",
-        (),
-        Coverage.NONE,
-        "job timings exist only in CI, which is off until P10; `ci.job_seconds` and "
-        "`eval/counters.toml` do not exist",
+        (
+            tool("ci_job_seconds.py"),
+            pytest(
+                f"{CORE}/unit/test_ci_job_seconds.py", label="the three budgets, offline (D970)"
+            ),
+        ),
+        Coverage.PARTIAL,
+        "the timings are read off master's latest green CI run through `gh` (D970): gates, "
+        "conform and parity each against its budget. The `parity` job is the light half (no "
+        "node, no GPU, core importing offline in a bare container), not a contributor's full "
+        "offline suite, and `ci.job_seconds.*` is registered in eval/counters.toml with no "
+        "writer, so no ratchet holds the timings between runs",
     ),
     Criterion(
         "V01-15",
