@@ -52,13 +52,13 @@ into editable PPTX and DOCX. It is local-first and makes no network calls by def
     unknown;
   - `hallucination_rate` does not apply, because no field-extraction driver ships;
   - judge agreement (Q-G20) needs 100 double-labelled items and is deferred past 1.0.
-- **Performance figures are indications, not budgets.** They come from a developer workstation
-  and GitHub-hosted runners: warm `ow query` p50 was 95 ms on a 5,000-page, 210,001-block store.
-  The pinned benchmark machine the budgets are defined on does not exist yet. The 100,000-unit
-  scale run executes nightly on a hosted runner as an indication.
+- **No performance figure is published with this release.** The latency and memory budgets are
+  defined on a pinned benchmark machine, which does not exist yet. `ow bench query` and the
+  100,000-unit scale run execute nightly on a GitHub-hosted runner, as indications whose recorded
+  status is never a pass.
 - **Very large spreadsheets are refused.** A sheet of about 4 million cells exceeds anydoc's
-  `max_xml_nodes` limit, and the office worker's 1 GiB memory limit is reached from about 280,000
-  cells. Both limits are kept as shipped.
+  `max_xml_nodes` limit, and the office worker reaches its 1 GiB memory limit well below that
+  size. Both limits are kept as shipped.
 - **Two compile targets are declared but not implemented.** `compile.deck.native` and
   `compile.video.native` refuse with their reason.
 - **The query ledger is off.** The `events.owstore` sidecar, and `ow doctor`'s D-14 check of it,
