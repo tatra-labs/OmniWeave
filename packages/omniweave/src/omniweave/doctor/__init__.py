@@ -18,7 +18,8 @@ D-13 and D-17, in `omniweave.doctor.project`, and D957 D-16 beside them. D958 ad
 one row only `--runtime` runs (`local.RUNTIME`); a run without the flag names it as not run.
 D959 adds D-24, a live `store.write` lock, in `omniweave.doctor.store`.
 D961 adds D-25, the redaction canary over the newest event shard, in `local`, and D963
-D-26, whether an OTLP endpoint is set and how many runs recorded it.
+D-26, whether an OTLP endpoint is set and how many runs recorded it. D965 adds D-19,
+`omniweave-vision`'s resolved installed size, the second row only `--runtime` runs.
 
 **The rows of 15:1514-1540 not built are named, not skipped silently.** Every run prints the
 ids it did not check, because a doctor that exits 0 is read as *"this deployment is fine"*,
@@ -330,7 +331,7 @@ def run(
 ) -> DoctorReport:
     """The Action: load the configuration, run every built check, sort the findings three ways.
 
-    `runtime` runs D-10 (D958), the only `--runtime` row, over the catalog D-08 rebuilt.
+    `runtime` runs D-10 (D958) over the catalog D-08 rebuilt, and D-19 (D965).
     `explicit` is `--config`, 18:891's *"highest-precedence config source; skips the upward
     walk"*. Before W7.8x the verb dropped it and checked the configuration the walk found (D631).
     """
@@ -353,7 +354,7 @@ def run(
                 "D-05",
                 "D-06",
                 "D-08",
-                *(local.RUNTIME if runtime else ()),
+                *(("D-10",) if runtime else ()),  # D-19 reads no configuration, and runs
                 "D-11",
                 "D-13",
                 "D-15",
@@ -399,6 +400,9 @@ def run(
         )
         findings.extend(project.check_pricebooks(resolved, cwd=cwd, today=_today()))
         findings.extend(store.check_write_locks(resolved, cwd=cwd, now_ns=_wall_ns()))
+    if runtime:
+        #  D965: D-19 reads installed metadata and no configuration.
+        findings.append(local.check_vision_size())
     findings.append(project.check_hooks(env, cwd=cwd))
     findings.append(project.check_skills(env, cwd=cwd))
     findings.append(local.check_sqlite())
@@ -433,7 +437,8 @@ def render(report: DoctorReport) -> tuple[str, ...]:
     checked = {one.check for one in (*report.ok, *report.warned, *report.failed)}
     waiting = [row for row in local.RUNTIME if row not in checked]
     if waiting:
-        lines.append(f"doctor: {', '.join(waiting)} runs only with --runtime")
+        verb = "runs" if len(waiting) == 1 else "run"
+        lines.append(f"doctor: {' and '.join(waiting)} {verb} only with --runtime")
     verdict = "fails" if report.failed else "passes"
     lines.append(f"doctor: {verdict} the {len(BUILT) - len(waiting)} check(s) it ran")
     return tuple(lines)

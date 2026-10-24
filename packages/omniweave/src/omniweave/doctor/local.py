@@ -25,7 +25,8 @@ D958 adds D-10, the one `--runtime` row (15:1523): the enabled roster's worker m
 this machine's RAM, in `RUNTIME`. D961 adds D-25 (15:1538): the redaction canary grepped over
 the newest event shard, and that run's `{run_id}.paths.json` held to mode 0600. D963 adds
 D-26 (15:1539): whether `[observe] otlp_endpoint` is set, from which source, and how many
-runs recorded it set, never the URL.
+runs recorded it set, never the URL. D965 adds D-19 (15:1532), the second `--runtime` row:
+`omniweave-vision`'s resolved installed size.
 
 Every path is resolved as a run resolves it (`surface.ingest.root_of`, `surface.serve.stores`,
 `run.trace.shard_of`), so the doctor and the run cannot disagree about where a root is. Nothing
@@ -36,6 +37,7 @@ volume's free bytes.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import stat
 import sys
@@ -48,6 +50,7 @@ from omniweave.sdk.reports import DoctorFinding
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
+    from importlib.metadata import Distribution
 
     from omniweave_core.config import Config
 
@@ -57,6 +60,7 @@ __all__ = [
     "LOCAL",
     "OUTPUT_MIN_FREE_BYTES",
     "RUNTIME",
+    "VISION",
     "check_canary",
     "check_corpora",
     "check_events_dir",
@@ -64,12 +68,13 @@ __all__ = [
     "check_otlp",
     "check_ram",
     "check_sqlite",
+    "check_vision_size",
 ]
 
 LOCAL: Final[tuple[str, ...]] = ("D-01", "D-05", "D-11", "D-15", "D-25", "D-26")
 """The rows this module checks."""
 
-RUNTIME: Final[tuple[str, ...]] = ("D-10",)
+RUNTIME: Final[tuple[str, ...]] = ("D-10", "D-19")
 """The rows only `ow doctor --runtime` checks. 15:1523 gives D-10 the severity *"fail
 (`--runtime`)"*, and 10:1436 makes `--runtime` the flag that measures this machine's roster."""
 
@@ -398,6 +403,94 @@ def check_otlp(config: Config, *, cwd: Path) -> DoctorFinding:
         "ok",
         "",
     )
+
+
+VISION: Final = "omniweave-vision"
+"""The one distribution exempt from G2 (02:267, 11:142): its weight is `torch`'s, so the plan
+promises no number and makes `ow doctor` print the resolved one."""
+
+_EXTRA: Final = re.compile(r"\bextra\s*==")
+_NAME: Final = re.compile(r"\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
+
+
+def check_vision_size(*, find: Callable[[str], Distribution] | None = None) -> DoctorFinding:
+    """D-19 (15:1532): *"`omniweave-vision`'s resolved installed size, printed"*, info.
+
+    A user ruling of 2026-10-23 (item 14): a targeted read of this one distribution's own `RECORD`
+    and its requirement closure, under `--runtime` only. 11 section 2.3's ban is on walking every
+    installed distribution as discovery (2,124 ms over 328 measured); this reads the handful the
+    vision driver pulls in, by name.
+
+    The closure follows each requirement that is installed, skipping one that only an extra
+    asks for; an unconditional requirement that is not installed is named, since a size without
+    `torch` is not the size the plan means. Each installed path counts once, as G2's union does.
+    An editable install's `RECORD` lists its link files rather than its source, which the detail
+    says.
+    """
+    from importlib import metadata  # noqa: PLC0415 -- only --runtime pays
+
+    lookup = metadata.distribution if find is None else find
+    try:
+        root = lookup(VISION)
+    except metadata.PackageNotFoundError:
+        return DoctorFinding("D-19", f"{VISION} is not installed, so it weighs nothing", "ok", "")
+    seen: dict[str, int] = {}
+    names: list[str] = []
+    missing: list[str] = []
+    queue = [root]
+    visited: set[str] = set()
+    while queue:
+        one = queue.pop(0)
+        name = _canonical(str(one.metadata["Name"]))
+        if name in visited:
+            continue
+        visited.add(name)
+        names.append(name)
+        for file in one.files or ():
+            if file.size:
+                seen[str(one.locate_file(file))] = int(file.size)
+        for requirement in one.requires or ():
+            head, _, marker = requirement.partition(";")
+            matched = _NAME.match(head)
+            if matched is None or _EXTRA.search(marker):
+                continue
+            wanted = _canonical(matched.group(1))
+            if wanted in visited:
+                continue
+            try:
+                queue.append(lookup(wanted))
+            except metadata.PackageNotFoundError:
+                #  A marked requirement (`platform_system == "Linux"`, `python_version < "3.11"`)
+                #  absent here was most likely excluded by its marker, which this reader does not
+                #  evaluate (`packaging` is no dependency), so only an unconditional one is named.
+                if not marker.strip() and wanted not in missing:
+                    missing.append(wanted)
+    mb = sum(seen.values()) / 1_048_576
+    detail = (
+        f"{VISION} {root.version} resolves to {mb:.1f} MB installed across {len(names)} "
+        f"distribution(s), the one exempt from G2"
+    )
+    if missing:
+        detail += f"; required and not installed here: {', '.join(sorted(missing))}"
+    if _editable(root.read_text("direct_url.json")):
+        detail += f"; {VISION} is an editable install, whose RECORD lists links, not its source"
+    return DoctorFinding("D-19", detail, "ok", "")
+
+
+def _editable(direct_url: str | None) -> bool:
+    """PEP 610's `dir_info.editable`, read from `direct_url.json` as JSON, never as text."""
+    import json  # noqa: PLC0415
+
+    try:
+        info = json.loads(direct_url or "{}").get("dir_info", {})
+    except (ValueError, AttributeError):
+        return False
+    return isinstance(info, dict) and info.get("editable") is True
+
+
+def _canonical(name: str) -> str:
+    """PEP 503's normalised name, so `Torch`, `torch_x` and `torch.x` meet as one."""
+    return re.sub(r"[-_.]+", "-", name).lower()
 
 
 _LIVE: Final = ".ndjson"
