@@ -469,8 +469,11 @@ CRITERIA: tuple[Criterion, ...] = (
         "this machine is one cell, which the conform tier holds to the goldens. Since D931 each "
         "of the nine `test` cells emits its shapes and the `golden` job compares all nine at one "
         "pinned pdfium (13:673-677's fallback); two cells matched locally (win32 py3.12, linux "
-        "py3.13). No cell runs a second pdfium build, so the pdfium axis is unmeasured and the "
-        "row still rests on F31 for it",
+        "py3.13). The pdfium axis is one nightly cell (D966, a user ruling of 2026-10-23): on the "
+        "schedule `golden` installs pypdfium2 5.12.1 (pdfium 152) over the lock's 5.13.0 (153), "
+        "emits a tenth cell and compares two builds across the nine. 152 and 153 emitted "
+        "byte-identical shapes on win32 py3.12 here; the row waits on that nightly's first green "
+        "run on master",
     ),
     Criterion(
         "V10-15",

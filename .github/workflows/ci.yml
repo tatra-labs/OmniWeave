@@ -981,6 +981,20 @@ jobs:
         # and this says so rather than passing it. `--cells 9` makes a missing cell a "did not
         # run" (exit 2), never a pass over fewer cells.
         run: uv run tools/gate_frozen_stability.py --artifacts shapes --pdfium-minors 1 --cells 9
+      - name: "Q-G4 pdfium axis (nightly) -- the same shapes under the previous pdfium minor"
+        # D966, a user ruling of 2026-10-23: one nightly cell at the previous pdfium minor, beside
+        # the nine test cells at the locked one, is V10-14's pdfium axis (13-quality.md:673-677).
+        # pypdfium2 5.12.1 carries pdfium 152.0.7947.0 and the lock's 5.13.0 carries 153.0.7999.0;
+        # the two emitted byte-identical shapes on win32 py3.12 when this step was written.
+        # `--no-sync` because a plain `uv run` would sync the environment back to the lock.
+        if: github.event_name == 'schedule'
+        env:
+          PREVIOUS_PYPDFIUM2: "5.12.1"
+        run: |
+          uv pip install "pypdfium2==$PREVIOUS_PYPDFIUM2"
+          uv run --no-sync tools/gate_frozen_stability.py --emit shapes
+          uv run --no-sync tools/gate_frozen_stability.py \
+            --artifacts shapes --pdfium-minors 2 --cells 9
 
   # ==========================================================================================
   # conform -- ubuntu x 3.12, "the twelve suites + G15's socket-blocked run + G16", <= 5 min.
