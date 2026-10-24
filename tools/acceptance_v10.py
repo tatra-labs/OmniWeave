@@ -145,7 +145,9 @@ CRITERIA: tuple[Criterion, ...] = (
         "`.oweval` is committed for a tag; G13 has no runner, and G25, a CI step and not a "
         "`tools/` script, is `ow surface emit --check`, run here (D960). "
         "G29 forces two of its four faults, a driver bug and a crash, with no budget denial "
-        "or quarantine to force (D936); Q-G16 and 20 have no instrument, Q-G26 runs its assertion "
+        "or quarantine to force (D936); Q-G16 has no instrument and Q-G20, which needs 100 "
+        "double-labelled items, is deferred past v1.0 (D971, a user ruling of 2026-10-23); "
+        "Q-G26 runs its assertion "
         "clause only (D875), Q-G2 runs without "
         "its orphan-cassette sweep, and "
         "Q-G8, 19 and 25 run their static halves only; Q-G22's gate runs the T1/T2 suite and "
@@ -212,8 +214,9 @@ CRITERIA: tuple[Criterion, ...] = (
         "catalogue's 13 answerable questions asked of their corpora, and again with each "
         "planted answer deleted. None is answered absent, but 13 is under min_slice_n, so the "
         "rate is unknown and release-check refuses it; no question at all reads absent, so "
-        "absent_recall is 0 of 17. hallucination_rate needs the extraction harness, which does "
-        "not exist",
+        "absent_recall is 0 of 17. hallucination_rate is not applicable at v1.0: it is defined "
+        "over field extraction and no field-extraction driver ships (`parse.fields.lift` is a "
+        "tombstone with no successor), D971, a user ruling of 2026-10-23",
     ),
     Criterion(
         "V10-5",
@@ -492,11 +495,13 @@ CRITERIA: tuple[Criterion, ...] = (
                 f"{T3}/test_install_verbs_process.py",
             ),
         ),
-        Coverage.PARTIAL,
-        "every written path is held to a receipt row and each file's newest sha256_after to its "
-        "bytes, over a fixture home (D856), never a real host's config. G-install is G35 (D920), "
-        "run on all nine cells, but `registered` and not law: its ADR and section 6.4's row are "
-        "owed",
+        # D971: G35 is law. ADR-16, accepted on 2026-10-23 (a user ruling), allocated the number
+        # and section 6.4's row, and its D16.3 makes the fixture home the gate's definition: a CI
+        # runner may not write into a person's agent configuration, so "never a real host's
+        # config" is the measurement and not its gap. Every written path is held to a receipt row
+        # and each file's newest sha256_after to its bytes (D856), on all nine cells (D920).
+        Coverage.FULL,
+        "",
     ),
     Criterion(
         "V10-16",
