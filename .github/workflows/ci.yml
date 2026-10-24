@@ -769,7 +769,10 @@ jobs:
     # D886: section 6.2's 240 s per cell predates a 17,000-test suite. Run serially on a
     # 4-core hosted runner the T1/T2 step was cancelled at 8 minutes on its first CI run; with
     # `-n auto` it is measured, and 45 minutes is the ceiling until a cell's median says less.
-    timeout-minutes: 45
+    # D962 (a user ruling of 2026-10-23): Windows cells get 60. They run 30-40 minutes, so a
+    # queue of concurrent runs pushed them past 45 and GitHub cancelled them mid-T3 (#206, the
+    # merge of #218); every rerun passed. Linux and macOS cells keep 45.
+    timeout-minutes: ${{ startsWith(matrix.os, 'windows') && 60 || 45 }}
     permissions:
       contents: read
     strategy:
