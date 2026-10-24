@@ -24,9 +24,9 @@ Five properties, and the middle two are the ones that earn the file:
   the path from `runner_planned` to `runner`, so the register cannot quietly keep describing a
   future that arrived.
 * **the register agrees with the rendering row for row, in order** -- gate cell, job cell, `s`
-  cell, nightly cell, release cell, for all twenty-nine `law` rows.
-* **the counted claims section 6.4 states in prose are asserted as numbers** -- twenty-nine
-  rendered rows, twenty-eight with a PR job, exactly one without, nine job assertions.
+  cell, nightly cell, release cell, for all thirty `law` rows.
+* **the counted claims section 6.4 states in prose are asserted as numbers** -- thirty
+  rendered rows, twenty-nine with a PR job, exactly one without, nine job assertions.
 
 Two deliberate departures from a naive reading, both stated in the register's own header:
 
@@ -274,18 +274,18 @@ def test_g_numbers_are_dense_and_unique(gates: list[dict[str, Any]]) -> None:
     assert sorted(numbers) == list(range(1, len(numbers) + 1)), f"not dense: {sorted(numbers)}"
 
 
-def test_the_rendering_holds_twenty_nine_rows(law_gates: list[dict[str, Any]]) -> None:
-    """Section 6.4 and `V10-1`:724 both say twenty-nine at release 1; nothing else may."""
-    assert len(law_gates) == 29
+def test_the_rendering_holds_thirty_rows(law_gates: list[dict[str, Any]]) -> None:
+    """Section 6.4 says thirty at release 1 since ADR-16 made G35 law (D971); nothing else may."""
+    assert len(law_gates) == 30
 
 
 def test_exactly_one_row_has_no_pr_job(law_gates: list[dict[str, Any]]) -> None:
-    """Section 6.4: "Twenty-eight of the twenty-nine have a PR job and therefore block a
+    """Section 6.4: "Twenty-nine of the thirty have a PR job and therefore block a
     merge. **G22 does not**."
     """
     without = [row["id"] for row in law_gates if not row["pr"]]
     assert without == ["G22"]
-    assert sum(1 for row in law_gates if row["pr"]) == 28
+    assert sum(1 for row in law_gates if row["pr"]) == 29
 
 
 def test_pr_agrees_with_having_a_job(gates: list[dict[str, Any]]) -> None:

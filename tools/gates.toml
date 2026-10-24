@@ -1009,9 +1009,8 @@ runner        = ["tools/gate_install.py"]
 owner         = "surface"
 reviewed_at   = "2026-10-22"
 review_by     = "2027-01-22"
-status        = "registered"
-pending       = """
-an ADR allocating the number (section 8.7 "add a gate") and a row in section 6.4's table. 10-interfaces.md:1775 already names the gate G-install and 16-roadmap.md:719 makes it W7.5's exit, so the row records a gate the plan was running without a number (D484)."""
+status        = "law"
+# ADR-16 (accepted 2026-10-23, D971) allocated the number and section 6.4's row.
 section       = "10-interfaces.md section 7.4"
 
 # =============================================================================================

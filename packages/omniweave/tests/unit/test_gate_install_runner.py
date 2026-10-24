@@ -102,7 +102,7 @@ def test_the_register_row_and_the_test_job_step_name_this_runner() -> None:
     row = next(g for g in register["gate"] if g["id"] == "G35")
     assert row["runner"] == ["tools/gate_install.py"]
     assert row["jobs"] == ["test"]
-    assert row["status"] == "registered" and "ADR" in row["pending"]
+    assert row["status"] == "law" and "pending" not in row, "ADR-16 made it law (D971)"
     workflow = (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     test_job = workflow.split("\n  test:\n", 1)[1].split("\n  golden:\n", 1)[0]
     assert "run: uv run tools/gate_install.py" in test_job
