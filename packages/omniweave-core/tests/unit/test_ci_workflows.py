@@ -1296,6 +1296,9 @@ def test_the_nightly_is_g19_and_the_hosted_query_bench_and_ow_bench_1_stays_a_st
 
     D924 added the third and fourth, under the same ruling: G22's 100,000-unit run and its kept
     report, schedule-only on the same runner (`test_g22_runs_in_no_pr_cell` holds its shape).
+
+    D972 added the fifth, by a user ruling of 2026-10-23: the agent cassette replay that
+    regenerates `eval/cassette-usage.toml` (`test_the_nightly_replay_regenerates_the_usage_file`).
     """
     region = _job_region(ci, "gates")
     assert "NO NIGHTLY WORKFLOW" in region
@@ -1312,10 +1315,28 @@ def test_the_nightly_is_g19_and_the_hosted_query_bench_and_ow_bench_1_stays_a_st
     # test's own subject wrote.
     assert "runs-on: ow-bench-1" not in "\n".join(ci.code_lines())
     assert "uv run tools/ow_bench.py query --oweval bench-query.oweval" in region
-    assert region.count("if: github.event_name == 'schedule'") == 4
+    assert region.count("if: github.event_name == 'schedule'") == 5
     assert "uv run tools/gate_scale.py --roster 100000" in region
     assert 'OMNIWEAVE_RUNNER: "github-hosted ubuntu-latest"' in region
     assert "timeout-minutes: ${{ github.event_name == 'schedule' && 60 || 6 }}" in region
+
+
+def test_the_nightly_replay_regenerates_the_usage_file(ci: Workflow) -> None:
+    """D972: 13-quality.md:622's T3 run writes `eval/cassette-usage.toml`. On the schedule, every
+    committed model set the bench README names replays into one fresh file, and the step fails on
+    any miss or on a byte of difference from the committed file, after all three have run."""
+    region = _job_region(ci, "gates")
+    step = region.split('- name: "Q-G2 orphan sweep (nightly)', 1)[1].split("\n      - ", 1)[0]
+    assert "if: github.event_name == 'schedule'" in step
+    assert "rm -f usage.toml" in step
+    assert "uv run python bench/serve/run.py --usage usage.toml || code=1" in step
+    assert "for model in gpt-5-mini qwen3:4b" in step
+    assert "--max-tokens 8192 --usage usage.toml || code=1" in step
+    assert "cmp -s usage.toml eval/cassette-usage.toml" in step
+    assert step.rstrip().endswith('exit "$code"')
+    readme = (REPO / "bench" / "serve" / "README.md").read_text(encoding="utf-8")
+    assert "--model gpt-5-mini --max-tokens 8192" in readme
+    assert "--model qwen3:4b --max-tokens 8192" in readme
 
 
 # ---------------------------------------------------------------------------

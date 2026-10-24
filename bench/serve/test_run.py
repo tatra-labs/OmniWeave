@@ -15,6 +15,7 @@ import pytest
 import run
 import serve_harness as h
 from agent import LoopSettings, ToolServer
+from agent_cassette import USAGE_HEADER
 from corpora import Prepared, generator, key_of
 from models import ModelRequest, ToolResult, ToolSpec, ToolUse, Turn
 from omniweave_conform.damage import INJECTORS
@@ -245,3 +246,28 @@ def test_prepare_only_needs_no_recording_and_no_key(
     )
     assert code == 0, out
     assert built == ["personal_archive/full"]
+
+
+def test_usage_adds_the_keys_a_run_hit_or_recorded_to_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D972: `--usage` is the half of Q-G2's orphan sweep a replay writes (13-quality.md:622)."""
+    hit, recorded, earlier = "a" * 64, "b" * 64, "c" * 64
+    cassette = run.AgentCassette(run.CassetteMode.REQUIRED, tmp_path)
+    cassette.hits.append(hit)
+    cassette.recorded.append(recorded)
+    started = run.Started(ac.resolve(flags={}), CATALOG, (), (), cassette, None, {})
+    monkeypatch.setattr(run, "_start", lambda _args, _emit: started)
+
+    async def nothing(*_args: object, **_kwargs: object) -> tuple[list[Any], list[Any]]:
+        return [], []
+
+    monkeypatch.setattr(run, "run_all", nothing)
+    usage = tmp_path / "eval" / "cassette-usage.toml"
+    usage.parent.mkdir()
+    usage.write_text(f'[agent]\nhit = ["{earlier}"]\n', encoding="utf-8")
+    code, out = _main("--usage", str(usage))
+    assert code == 0, out
+    assert out[-1] == f"bench/serve: 3 key(s) used, in {usage.as_posix()}"
+    rows = "".join(f'    "{key}",\n' for key in (hit, recorded, earlier))
+    assert usage.read_bytes() == f"{USAGE_HEADER}\n[agent]\nhit = [\n{rows}]\n".encode()

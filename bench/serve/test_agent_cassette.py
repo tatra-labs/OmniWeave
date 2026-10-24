@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import dataclasses
+import importlib.util
 import json
 import sys
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 
 import agent_cassette as ca
@@ -304,3 +306,33 @@ def test_a_case_folded_turn_recorded_on_windows_replays_as_a_path_on_linux(
     local = ca._local(f"open {tag}/docs/tax.docx", root)
     assert "{bench-cache" not in local
     assert ca._neutral(local, ca._spellings(root)) == f"open {ca.CORPORA}/docs/tax.docx"
+
+
+def _gate() -> Any:
+    """`tools/gate_fixtures.py`, the usage file's reader, loaded by path: `tools/` is no package."""
+    path = Path(__file__).resolve().parents[2] / "tools" / "gate_fixtures.py"
+    spec = importlib.util.spec_from_file_location("_owbench_gate_fixtures", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_usage_file_is_a_sorted_union_q_g2_reads_back(tmp_path: Path) -> None:
+    """D972: `merge_usage` writes what `Q-G2` sweeps, so the two spellings are tested as one."""
+    first, second, third = "c" * 64, "a" * 64, "b" * 64
+    usage = tmp_path / "eval" / "cassette-usage.toml"
+    assert ca.merge_usage(usage, [first, second, first]) == 2
+    assert ca.merge_usage(usage, [third]) == 3, "a second model set adds to the first"
+    assert ca.merge_usage(usage, [second], service="judge") == 1
+    raw = usage.read_bytes()
+    assert raw.startswith(ca.USAGE_HEADER.encode())
+    assert raw.index(b"[agent]") < raw.index(b"[judge]")
+    assert raw.index(second.encode()) < raw.index(third.encode()) < raw.index(first.encode())
+    assert _gate().read_usage(raw) == {
+        "agent": frozenset({first, second, third}),
+        "judge": frozenset({second}),
+    }
+    assert ca.merge_usage(usage, []) == 3
+    assert usage.read_bytes() == raw, "one spelling: rewriting the same keys changes no byte"
