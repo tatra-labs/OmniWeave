@@ -22,11 +22,11 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D965: G35 note moved out of the 6.4 table
+# blessed-because: D966: pdfium axis notes at 13:677 and 00 V10-14
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
-documents-frozen  b95bc41422b758209364b1a6102964dc3d9e8f13080ec99eef0f7cd0f48edb6a  00-vision.md
+documents-frozen  f14c3489fe418452d2c30daaa0ec02e85bda55fecccb7b20b17c24d5fa0510dc  00-vision.md
 documents-frozen  6ffc2070193630b39f15385fc8640ec7b1a3e242ef098426f2754d4070a8026d  01-principles.md
 documents-frozen  1dad5c8ef798764c3bd3cc772210f6085569c8d38c4d272db6444575171efbff  02-architecture.md
 documents-frozen  5d6c4a77eb200156e970cfb9d64312d8da3e799be493d75ee304d608418cc396  03-document-model.md
@@ -39,7 +39,7 @@ documents-frozen  e3d9414cd24b29681c2da184fffa9c3fbc33e4d066f831fe9d8113b159e0ab
 documents-frozen  7045e57d63450411e13e7d0bac60aaed64db257c224ced3682c667ee1ff39b34  10-interfaces.md
 documents-frozen  83692665bf186524ae27a7c8a89c89e526e6e3a0b197ea8635db758643569a18  11-repo-layout.md
 documents-frozen  2fe653d5ac8031388b9a25e2d7464c4921e22b0aa78e2f4dabb531186219c6a5  12-performance.md
-documents-frozen  4efd47131f37f4f27b33663382f07fec0ce9fd0ed34bf1fe2337835d4d5ec842  13-quality.md
+documents-frozen  e8e2facfab683281f8d9eb126c6ab13dd88950428f35e8201a5292d0c7d4758d  13-quality.md
 documents-frozen  78a3474b788625971c7a7fed610ef3c6518e9330bfd87e8411fbc744666b43d1  14-security.md
 documents-frozen  c256333201fb077ba900930a115f85f468124d59f9e3ca0b88c9691effc7002e  15-observability.md
 documents-frozen  5cf9671f6a3972ec5c0462eaf6ad35ad2da2190c9772330c6280d1f085af90f6  16-roadmap.md
