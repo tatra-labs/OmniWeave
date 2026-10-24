@@ -571,12 +571,23 @@ CRITERIA: tuple[Criterion, ...] = (
                 "test_deny_method_roundtrip_reaches_the_filters",
                 label="the CLI spelling: ow query ... --deny-method roundtrip (D901)",
             ),
+            tool(
+                "ci_step.py",
+                "--label",
+                "V10-17",
+                "--event",
+                "push",
+                "--job",
+                "test (macos-latest",
+                "--step",
+                "the test suite, T1 and T2",
+            ),
         ),
-        Coverage.PARTIAL,
-        "the self-ingesting corpus is no longer skipped off Windows (D926: the pptx loop's S4 arm "
-        "ran on Linux once a stale named-pipe skip was lifted); it has passed on Windows and "
-        "Linux, and its first macOS run is CI's (the CLI spelling, `--deny-method roundtrip`, "
-        "is D901's)",
+        # D976: FULL. The self-ingesting corpus test passed on Windows and Linux here (D926), and
+        # CI's three macOS cells run it in their T1/T2 step: tools/ci_step.py reads that step off
+        # master's newest green push run, and test_ci_step.py holds the test free of any skip.
+        Coverage.FULL,
+        "",
     ),
 )
 
