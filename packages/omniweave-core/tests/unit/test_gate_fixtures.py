@@ -420,7 +420,7 @@ def test_a_tier_a_within_every_cap_is_clean_and_says_what_it_did_not_run() -> No
     assert spent.findings == ()
     assert spent.notes == (
         "the 40% scan floor: fixtures/docs/ holds no fixture to measure",
-        "orphan cassettes: not run, because nothing writes eval/cassette-usage.toml yet",
+        "orphan cassettes: not run, because no eval/cassette-usage.toml was read",
     )
 
 
@@ -485,7 +485,7 @@ def test_main_reports_q_g2_after_q_g1(tmp_path: Path, capsys: pytest.CaptureFixt
         " 0 Reduction(s)",
         "  size-pack 200000 of 200000 KiB after git gc --auto",
         "  note  the 40% scan floor: fixtures/docs/ holds no fixture to measure",
-        "  note  orphan cassettes: not run, because nothing writes eval/cassette-usage.toml yet",
+        "  note  orphan cassettes: not run, because no eval/cassette-usage.toml was read",
         "Q-G2 ok  0 finding(s)",
     ]
 
@@ -570,3 +570,110 @@ def test_a_count_with_no_size_pack_is_refused(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(GATE, "_git", lambda _root, *_arguments: b"count: 3\n")
     with pytest.raises(OSError, match="git count-objects -v reported no size-pack"):
         GATE.size_pack(Path())
+
+
+# --- ruling 12: the orphan sweep over eval/cassette-usage.toml (D972) ------------------------
+
+HIT = "a" * 64
+UNHIT = "b" * 64
+
+
+def _cassette(key: str, service: str = "agent") -> str:
+    return f"fixtures/cassettes/{service}/{key[:2]}/{key}.json"
+
+
+def _usage(*keys: str, service: str = "agent") -> bytes:
+    rows = "".join(f'    "{key}",\n' for key in keys)
+    return f"# generated\n\n[{service}]\nhit = [\n{rows}]\n".encode()
+
+
+def test_the_usage_file_reads_as_each_services_hit_keys() -> None:
+    assert GATE.read_usage(_usage(HIT, UNHIT)) == {"agent": frozenset({HIT, UNHIT})}
+    assert GATE.read_usage(b"# nothing hit yet\n") == {}
+
+
+@pytest.mark.parametrize(
+    ("raw", "names"),
+    [
+        (b"[agent\n", "does not parse"),
+        (b'[agent]\nhit = "aa"\n', "[agent] holds anything but one `hit` list"),
+        (b"[agent]\nhit = []\nmiss = []\n", "[agent] holds anything but one `hit` list"),
+        (b'agent = ["aa"]\n', "[agent] holds anything but one `hit` list"),
+        (b'[agent]\nhit = ["AA"]\n', "[agent] hit 'AA' is not a 64-hex cassette key"),
+        (b"[agent]\nhit = [1]\n", "[agent] hit 1 is not a 64-hex cassette key"),
+    ],
+)
+def test_a_usage_file_that_is_not_one_hit_list_per_service_is_refused(
+    raw: bytes, names: str
+) -> None:
+    with pytest.raises(ValueError, match="^" + names.replace("[", r"\[").replace("]", r"\]")):
+        GATE.read_usage(raw)
+
+
+def test_a_committed_cassette_no_replay_hit_is_ow_q_018() -> None:
+    usage = {"agent": frozenset({HIT})}
+    assert GATE.orphans([_cassette(HIT)], usage) == []
+    assert [(one.path, one.detail) for one in GATE.orphans([_cassette(UNHIT)], usage)] == [
+        (
+            _cassette(UNHIT),
+            f"OW-Q-018 cassette {UNHIT} committed but never hit; delete it, or regenerate"
+            " eval/cassette-usage.toml if a replay still hits it",
+        ),
+        (
+            "eval/cassette-usage.toml",
+            f"[agent] lists 1 key(s) with no committed cassette, the first {HIT}; regenerate"
+            " it with `bench/serve/run.py --usage`",
+        ),
+    ]
+
+
+def test_a_hit_counts_only_under_its_own_service() -> None:
+    found = GATE.orphans([_cassette(HIT, "judge")], {"agent": frozenset({HIT})})
+    assert [one.path for one in found] == [_cassette(HIT, "judge"), "eval/cassette-usage.toml"]
+
+
+def test_the_budget_sweeps_only_when_a_usage_file_was_read() -> None:
+    sizes = {_cassette(HIT): 10, _cassette(UNHIT): 10}
+    unread = GATE.budget(sizes, [])
+    assert unread.findings == ()
+    assert "orphan cassettes: not run, because no eval/cassette-usage.toml was read" in unread.notes
+    read = GATE.budget(sizes, [], {"agent": frozenset({HIT})})
+    assert [one.path for one in read.findings] == [_cassette(UNHIT)]
+    assert not any("orphan" in note for note in read.notes)
+
+
+def test_main_sweeps_the_committed_usage_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    listed = [*_tree(tmp_path), _cassette(HIT), _cassette(UNHIT)]
+    for key in (HIT, UNHIT):
+        path = tmp_path / _cassette(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"{}\n")
+    _main(tmp_path, listed, capsys, "--write")
+    (tmp_path / "eval").mkdir()
+    (tmp_path / "eval" / "cassette-usage.toml").write_bytes(_usage(HIT, UNHIT))
+    code, out = _main(tmp_path, listed, capsys)
+    assert code == 0, out
+    assert "orphan" not in out
+    (tmp_path / "eval" / "cassette-usage.toml").write_bytes(_usage(HIT))
+    code, out = _main(tmp_path, listed, capsys)
+    assert code == 1
+    assert f"  FAIL  {_cassette(UNHIT)}: OW-Q-018 cassette {UNHIT} committed but never hit" in out
+
+
+def test_an_unreadable_usage_file_fails_alone_without_a_sweep(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Swept as `{}`, a typo would name every committed cassette an orphan."""
+    listed = [*_tree(tmp_path), _cassette(HIT)]
+    (tmp_path / _cassette(HIT)).parent.mkdir(parents=True)
+    (tmp_path / _cassette(HIT)).write_bytes(b"{}\n")
+    _main(tmp_path, listed, capsys, "--write")
+    (tmp_path / "eval").mkdir()
+    (tmp_path / "eval" / "cassette-usage.toml").write_bytes(b"[agent\n")
+    code, out = _main(tmp_path, listed, capsys)
+    assert code == 1
+    assert "  FAIL  eval/cassette-usage.toml: does not parse" in out
+    assert "OW-Q-018" not in out
+    assert out.endswith("Q-G2 FAIL  1 finding(s)\n")

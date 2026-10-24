@@ -713,6 +713,30 @@ jobs:
           name: g22-nightly
           path: g22.txt
           retention-days: 30
+      - name: "Q-G2 orphan sweep (nightly) -- replay every agent cassette, regenerate the usage"
+        # D972, a user ruling of 2026-10-23: 13-quality.md:620-623's "T3 jobs write
+        # eval/cassette-usage.toml". The three committed model sets replay under `required` (no
+        # provider and no key; a miss is OW-Q-004, never a live call) over the full-scale corpora,
+        # each adding the keys it hit to one fresh file, which must equal the committed file byte
+        # for byte. A pull request sweeps the committed file in Q-G1/Q-G2's own step; this is the
+        # run that keeps the file true, and a recording a prompt or answer change orphaned shows
+        # here first. Every set runs before the step fails, so one miss does not hide another.
+        if: github.event_name == 'schedule'
+        run: |
+          code=0
+          rm -f usage.toml
+          uv run python bench/serve/run.py --usage usage.toml || code=1
+          for model in gpt-5-mini qwen3:4b
+          do
+            uv run python bench/serve/run.py --provider openai --model "$model" \
+              --max-tokens 8192 --usage usage.toml || code=1
+          done
+          if ! cmp -s usage.toml eval/cassette-usage.toml
+          then
+            echo "usage.toml differs from eval/cassette-usage.toml:"
+            diff usage.toml eval/cassette-usage.toml || code=1
+          fi
+          exit "$code"
 
       - name: "fuzz/seeds is still the vendored corpus"
         # 13-quality.md:163 and 11-repo-layout.md:390: `fuzz/seeds/` "holds the atheris corpus,
@@ -967,7 +991,7 @@ jobs:
         # away from <service>/<key[:2]>/<key>.json, a hand edit, or a store over 13-quality.md:614's
         # 32 MiB. The full two-arm replay needs the full-scale corpora ingested, which is longer
         # than this job's budget, and is the nightly job's (ADR-14 D14.5): `required`, a miss is
-        # OW-Q-004 and never a live call.
+        # OW-Q-004 and never a live call. Since D972 it is the gates job's nightly Q-G2 step.
         run: uv run python bench/serve/run.py --audit-cassettes
       - name: "fetch every test cell's shapes"
         uses: actions/download-artifact@v4 # TODO: pin to a 40-hex SHA -- owner: release

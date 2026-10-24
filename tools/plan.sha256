@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D971: notes on V10-1, V10-4, V10-15
+# blessed-because: D972: Q-G2's orphan sweep reads eval/cassette-usage.toml, written by bench/serve/run.py --usage (13-quality.md:623 build note)
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -39,7 +39,7 @@ documents-frozen  e3d9414cd24b29681c2da184fffa9c3fbc33e4d066f831fe9d8113b159e0ab
 documents-frozen  7045e57d63450411e13e7d0bac60aaed64db257c224ced3682c667ee1ff39b34  10-interfaces.md
 documents-frozen  3233f6f9520ce4f986769b09b7b5cf9203c146bb81eca82ac011f2c8cae5806a  11-repo-layout.md
 documents-frozen  2fe653d5ac8031388b9a25e2d7464c4921e22b0aa78e2f4dabb531186219c6a5  12-performance.md
-documents-frozen  e8e2facfab683281f8d9eb126c6ab13dd88950428f35e8201a5292d0c7d4758d  13-quality.md
+documents-frozen  5e39a623b6e6922a8e3dd6432a97567ac2260048ecf2c0e1f7c760224e9416db  13-quality.md
 documents-frozen  78a3474b788625971c7a7fed610ef3c6518e9330bfd87e8411fbc744666b43d1  14-security.md
 documents-frozen  2cddc08dab8833611e0180e474ea2106c43dfbdb57e710b3578ffcaef764614f  15-observability.md
 documents-frozen  5cf9671f6a3972ec5c0462eaf6ad35ad2da2190c9772330c6280d1f085af90f6  16-roadmap.md
