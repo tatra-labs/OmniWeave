@@ -22,11 +22,11 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D970: V01-14 note
+# blessed-because: D971: notes on V10-1, V10-4, V10-15
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
-documents-frozen  12a2dc159e4212bf89d350d9f10eb00017369403910ec1f678f24225ec094453  00-vision.md
+documents-frozen  0754010de340ee97be79af71d1b4474d8d422ba2777526ded5d8747ed24a7a09  00-vision.md
 documents-frozen  6ffc2070193630b39f15385fc8640ec7b1a3e242ef098426f2754d4070a8026d  01-principles.md
 documents-frozen  1dad5c8ef798764c3bd3cc772210f6085569c8d38c4d272db6444575171efbff  02-architecture.md
 documents-frozen  5d6c4a77eb200156e970cfb9d64312d8da3e799be493d75ee304d608418cc396  03-document-model.md
@@ -37,7 +37,7 @@ documents-frozen  25666745a9572e7eadf017b6988a2216744cc3eca5a3f572d45da8f1b8c3e1
 documents-frozen  4c02f71d665332330bf423ac063a1678887ae6f3004d01d7b799e9991f414df3  08-runtime.md
 documents-frozen  e3d9414cd24b29681c2da184fffa9c3fbc33e4d066f831fe9d8113b159e0ab08  09-generation.md
 documents-frozen  7045e57d63450411e13e7d0bac60aaed64db257c224ced3682c667ee1ff39b34  10-interfaces.md
-documents-frozen  83692665bf186524ae27a7c8a89c89e526e6e3a0b197ea8635db758643569a18  11-repo-layout.md
+documents-frozen  3233f6f9520ce4f986769b09b7b5cf9203c146bb81eca82ac011f2c8cae5806a  11-repo-layout.md
 documents-frozen  2fe653d5ac8031388b9a25e2d7464c4921e22b0aa78e2f4dabb531186219c6a5  12-performance.md
 documents-frozen  e8e2facfab683281f8d9eb126c6ab13dd88950428f35e8201a5292d0c7d4758d  13-quality.md
 documents-frozen  78a3474b788625971c7a7fed610ef3c6518e9330bfd87e8411fbc744666b43d1  14-security.md
@@ -591,6 +591,6 @@ documents-frozen  67ab77cff65a136c53dc2a9ab596d47a79f1280f256ab2d4f2b0db27902d65
 documents-frozen  12fc0c8d85f1154acaf955a75e91aa494cc33da25579c4b3e0e45863f2a07c32  adr/0013-v01-acceptance-reconciliation.md
 documents-frozen  c8a782100e58dd58b26dd53cbd783ade2250631ca92cd8e7ad322044de82ba56  adr/0014-reference-corpora-and-control-arm.md
 documents-frozen  bb695279ba04a31dee3e3a386ef93c48ac64362faa86a58716083ebd9e940236  adr/0015-encrypted-pdfs-and-document-passwords.md
-documents-frozen  647e07fd7a873de31c9deb781187eb4d0fec3cd41c81ce8fa73d7a2ed092d8c7  adr/0016-g35-install-round-trip.md
+documents-frozen  41d8565378a593ea6b62fef8fcad1158e0a4aa42d6de599e4f3db3e4d64bf9a7  adr/0016-g35-install-round-trip.md
 documents-frozen  6701d73176a3f11680934b001febadd9ece95925c42adcfb476717af345be1b0  adr/README.md
 documents-frozen  b96e182d1c0b4cee6e3ca29a39db7dc20781c331e51bd6d304bf93ddb274e558  glossary.md
