@@ -1,0 +1,5 @@
+[project]
+name = "subrip-cues"
+version = "0.1.0"
+license = "MIT"
+dependencies = ["omniweave-ports"]

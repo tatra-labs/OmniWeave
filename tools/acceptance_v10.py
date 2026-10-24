@@ -395,15 +395,16 @@ CRITERIA: tuple[Criterion, ...] = (
             tool("ow_conform.py", "--template"),
             pytest(f"{CORE}/test_ow_conform.py", "-k", "mandatory_tier or bench_refuses"),
         ),
-        Coverage.PARTIAL,
-        "a driver project outside the checkout (its own package, card, pyproject and fixtures in "
-        "a temp directory, importable only through its author's PYTHONPATH) passes 11/11 through "
-        "`tools/ow_conform.py` (D923), but its code is the template's under its own names, not "
-        "an independent implementation, and no third party has run the kit; `--bench` refuses "
-        "until `ow eval fetch`, so no [quality] block or MeasuredOn is written. Passing the kit "
-        "did not mean `ow add` could ingest the result: the template passed 11/11 and was refused "
-        "three ways, which D935 and D938 fixed. P16 now asks the document model's own types, and "
-        "`contract` stores every fixture's parse through the host's own DocSink (D939)",
+        # D967, a user ruling of 2026-10-23: an independent driver is v1.0's evidence and a third
+        # party's run comes after release. `external_driver_subrip/` is a SubRip parser that
+        # shares no code with the template, and it passes 11/11 from a copy outside the checkout,
+        # run from its own directory with `PYTHONPATH=src` (D923 ran the template under new
+        # names). `quality` is not mandatory: `--bench` refuses until `ow eval fetch`. Ingesting
+        # a new format through `ow add` needs two things beyond the kit, recorded in D967: the
+        # driver installed in the environment (a worker inherits no PYTHONPATH, by design), and
+        # drivers' `sniff()` in detection (05:567 step 4, deferred by D568).
+        Coverage.FULL,
+        "",
     ),
     Criterion(
         "V10-13",
