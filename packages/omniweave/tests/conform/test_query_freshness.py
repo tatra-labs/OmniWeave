@@ -22,10 +22,18 @@ from omniweave_core.host.subproc import Captured, run_captured
 
 pytestmark = pytest.mark.conform
 
+# Generous Channel budgets, because this file asserts the freshness gate and not latency. Under
+# the shipped 15-80 ms per Channel, a loaded runner added gate 1 (`timed_out`) beside gate 6: three
+# times locally and once on master's Windows py3.12 cell (D977). These are about ten times the
+# shipped ones, and sum(channel_ms) + hydration_reserve_ms <= query_ms stays under the shipped
+# 2,000 ms snapshot, whose expiry is gate 1 too.
 PROJECT = (
     '[corpora.docs]\npath = ".omniweave/docs.owstore"\n'
     '[serve]\ndefault_corpus = "docs"\n'
     "[drivers]\nallow_unattested = true\nrequire_lock = false\ninproc = []\n"
+    "[retrieval.budget]\nquery_ms = 1900\nhydration_reserve_ms = 40\n"
+    "channel_ms = { identity = 200, exact = 300, lexical = 600, structural = 400, "
+    "semantic = 300 }\n"
 )
 TIMEOUT_S = 300
 
