@@ -1,4 +1,5 @@
-"""`ow doctor`'s store rows: D-24, a live `store.write` lock. D959.
+"""`ow doctor`'s store rows: D-24, a live `store.write` lock (D959), and D-23, an abandoned
+parse's pages (D969).
 
 Each row is asked of a configuration `load()` resolved from a temp project. The lock files are
 real: one acquired in this process through `store_write_lock`, and one written by a holder that
@@ -108,3 +109,85 @@ def test_d24_asks_each_corpus_its_own_lock(tmp_path: Path) -> None:
         "no store.write lock is held",
         "store.write is held",
     ]
+
+
+# --- D-23 (D969) ----------------------------------------------------------------------------
+
+
+def _store(project: Path) -> Path:
+    from omniweave_core.store import migrate  # noqa: PLC0415
+    from omniweave_core.store import sqlite as ow  # noqa: PLC0415
+
+    path = project / ".omniweave" / "docs.owstore"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    connection = ow.connect(path)
+    try:
+        migrate.apply_pending(connection, now_ns=1)
+    finally:
+        connection.close()
+    return path
+
+
+def test_d23_a_real_store_with_nothing_staged_is_ok(tmp_path: Path) -> None:
+    project = tmp_path / "p"
+    config = _config(project)
+    _store(project)
+    (found,) = store.check_abandoned(config, cwd=project)
+    assert (found.check, found.severity, found.fix) == ("D-23", "ok", "")
+    assert found.detail == ("corpus 'docs': no page sits above its document's committed generation")
+
+
+def test_d23_abandoned_pages_warn_with_the_re_add(tmp_path: Path) -> None:
+    project = tmp_path / "p"
+    config = _config(project)
+    path = _store(project)
+    rows = [("/w/a.pdf", 40, False), ("/w/b.pdf", 1, False), ("/w/c.pdf", 2, False)]
+    rows += [("/w/d.pdf", 3, False)]
+    (found,) = store.check_abandoned(config, cwd=project, read=lambda _store: rows)
+    assert found.severity == "warning"
+    assert found.detail == (
+        "corpus 'docs': 46 page(s) of an abandoned parse in 4 document(s), invisible to every "
+        "reader: /w/a.pdf (40), /w/b.pdf (1), /w/c.pdf (2), and 1 more"
+    )
+    assert found.fix == "ow add /w/a.pdf   # a re-parse sweeps the abandoned generation"
+    assert path.is_file()
+
+
+def test_d23_a_run_holding_the_store_is_a_parse_in_flight(tmp_path: Path) -> None:
+    project = tmp_path / "p"
+    config = _config(project)
+    path = _store(project)
+    lock = store_write_lock(path, now_ns=lambda: ACQUIRED_NS)
+    lock.acquire(wait_ms=0)
+    try:
+        staged = [("/w/a.pdf", 3, False)]
+        (found,) = store.check_abandoned(config, cwd=project, read=lambda _s: staged)
+    finally:
+        lock.release()
+    assert found.severity == "ok"
+    assert "a run holds store.write, so they may be a parse in flight" in found.detail
+
+
+def test_d23_no_store_yet_and_no_corpus(tmp_path: Path) -> None:
+    (found,) = store.check_abandoned(_config(tmp_path / "p"), cwd=tmp_path / "p")
+    assert found.detail == "corpus 'docs': no store yet"
+    (none,) = store.check_abandoned(_config(tmp_path / "q", ""), cwd=tmp_path / "q")
+    assert none.detail == "no corpus is declared, so no generation is staged"
+
+
+def test_d23_a_quarantined_generation_is_kept_for_doc_diff_not_warned(tmp_path: Path) -> None:
+    """03:1298-1302: a quarantined generation stays *"for inspection by `ow doc diff`"*."""
+    project = tmp_path / "p"
+    config = _config(project)
+    _store(project)
+    found = store.check_abandoned(
+        config, cwd=project, read=lambda _s: [("/w/q.pdf", 7, True), ("/w/a.pdf", 2, False)]
+    )
+    assert [(one.severity, one.detail) for one in found] == [
+        ("ok", "corpus 'docs': 7 page(s) of 1 quarantined generation(s), kept for `ow doc diff` "
+         "(03:1298-1302)"),
+        ("warning", "corpus 'docs': 2 page(s) of an abandoned parse in 1 document(s), invisible "
+         "to every reader: /w/a.pdf (2)"),
+    ]  # fmt: skip
+    (only,) = store.check_abandoned(config, cwd=project, read=lambda _s: [("/w/q.pdf", 7, True)])
+    assert only.severity == "ok", "quarantined alone is no warning"

@@ -16,7 +16,8 @@ D953 adds four rows that read only this machine and the configuration: D-01, D-0
 D-15, in `omniweave.doctor.local`. D956 adds three that read what the project declares: D-06,
 D-13 and D-17, in `omniweave.doctor.project`, and D957 D-16 beside them. D958 adds D-10, the
 one row only `--runtime` runs (`local.RUNTIME`); a run without the flag names it as not run.
-D959 adds D-24, a live `store.write` lock, in `omniweave.doctor.store`.
+D959 adds D-24, a live `store.write` lock, in `omniweave.doctor.store`, and D969 D-23,
+pages an abandoned parse left above their document's committed generation.
 D961 adds D-25, the redaction canary over the newest event shard, in `local`, and D963
 D-26, whether an OTLP endpoint is set and how many runs recorded it. D965 adds D-19,
 `omniweave-vision`'s resolved installed size, the second row only `--runtime` runs.
@@ -358,6 +359,7 @@ def run(
                 "D-11",
                 "D-13",
                 "D-15",
+                "D-23",
                 "D-24",
                 "D-25",
                 "D-26",
@@ -399,6 +401,7 @@ def run(
             project.check_named_drivers(resolved, project_root=config.project_root(resolved))
         )
         findings.extend(project.check_pricebooks(resolved, cwd=cwd, today=_today()))
+        findings.extend(store.check_abandoned(resolved, cwd=cwd))
         findings.extend(store.check_write_locks(resolved, cwd=cwd, now_ns=_wall_ns()))
     if runtime:
         #  D965: D-19 reads installed metadata and no configuration.
