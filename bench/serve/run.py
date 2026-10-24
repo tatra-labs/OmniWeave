@@ -40,7 +40,14 @@ from typing import Any, Final
 
 import anyio
 from agent import AgentRun, LoopSettings, OwServer, ToolServer, TurnFn, run_task
-from agent_cassette import CASSETTE_ROOT, SERVICE, AgentCassette, CassetteMissError, audit
+from agent_cassette import (
+    CASSETTE_ROOT,
+    SERVICE,
+    AgentCassette,
+    CassetteMissError,
+    audit,
+    merge_usage,
+)
 from agent_config import BenchConfigError, Config, resolve
 from corpora import CorpusError, Prepared, damage_of, default_cache, key_of, prepare
 from host_tools import HostTools
@@ -306,6 +313,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     run.add_argument("--cassettes", type=Path, default=CASSETTE_ROOT, help="recordings root")
     run.add_argument("--json", type=Path, help="also write the report as JSON here")
+    run.add_argument(
+        "--usage",
+        type=Path,
+        metavar="PATH",
+        help="add the keys this run hit or recorded to a usage file (eval/cassette-usage.toml)",
+    )
     return parser
 
 
@@ -450,6 +463,9 @@ def main(argv: Sequence[str] | None = None, *, out: Callable[[str], None] = _emi
         f"{len(cassette.recorded)} recorded, {cassette.live_calls} live calls"
     )
     out(f"bench/serve: {'passed' if passed else 'FAILED'}")
+    if args.usage is not None:
+        count = merge_usage(args.usage, [*cassette.hits, *cassette.recorded])
+        out(f"bench/serve: {count} key(s) used, in {args.usage.as_posix()}")
     if args.json is not None:
         args.json.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return 0 if passed else 1

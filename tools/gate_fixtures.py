@@ -23,7 +23,7 @@ standing pattern (ledger D25). D844 adds Q-G2, which :1986 makes *"the same gate
    - `cassettes/` is out of scope **pending a ruling**. Section 4.7 says *"`Q-G1`'s manifest
      rule applies to it"*, but none of section 4.2's five provenances fits a recorded model
      response. A cassette is content-addressed, its name the digest of its inputs, and the
-     560 committed ones have no sidecar. Bringing them in needs that provenance decided first;
+     committed ones have no sidecar. Bringing them in needs that provenance decided first;
    - `goldens/` holds Reductions, Q-G3's;
    - `out/` holds target goldens, and `incremental/` a plan.
 
@@ -82,10 +82,13 @@ standing pattern (ledger D25). D844 adds Q-G2, which :1986 makes *"the same gate
     4.6 calls the `gc` *"load-bearing"*. `--skip-pack` leaves the clause out for a run that must
     not touch the object store, and the report says it was left out. A pack the gate cannot
     measure means the gate did not run.
-12. **Not run, and printed as not run:**
-    - the orphan-cassette sweep, which reads `eval/cassette-usage.toml`, and nothing writes that
-      yet;
-    - the pack ratchet, which needs a recorded baseline to ratchet against.
+12. **The orphan sweep reads `eval/cassette-usage.toml`** (section 4.7, :620-623). A committed
+    cassette whose key the file does not list under its service is `OW-Q-018`, and so is a
+    listed key with no committed cassette, since the file is then stale. `bench/serve/run.py
+    --usage` writes it from a replay (D972). With no file the sweep has nothing to read, and the
+    report prints it as not run; a file that does not parse fails alone, without a sweep.
+13. **Not run, and printed as not run:** the pack ratchet, which needs a recorded baseline to
+    ratchet against.
 
 ## Exit codes
 
@@ -134,11 +137,14 @@ __all__ = [
     "PROVENANCES",
     "SIZE_PACK_KIB",
     "TIER_A_BYTES",
+    "USAGE",
     "Budget",
     "Finding",
     "budget",
     "check_row",
     "main",
+    "orphans",
+    "read_usage",
     "render",
     "scope",
     "size_pack",
@@ -183,6 +189,8 @@ SCAN_FLOOR: Final = 0.40
 REDUCTIONS: Final = ("fixtures/goldens/", (".shape", ".pages", ".outline"))
 CASSETTES: Final = "fixtures/cassettes/"
 DOCS: Final = "fixtures/docs/"
+USAGE: Final = "eval/cassette-usage.toml"
+_KEY: Final = re.compile(r"[0-9a-f]{64}")
 _SIZE_PACK: Final = re.compile(r"^size-pack:\s*(\d+)\s*$", re.MULTILINE)
 
 
@@ -322,8 +330,65 @@ def tier_a(committed: Sequence[str]) -> list[str]:
     return sorted(out)
 
 
-def budget(sizes: Mapping[str, int], fixtures: Sequence[str]) -> Budget:
-    """Rulings 7-10 over `{path: bytes}` for Tier A and the Q-G1 fixtures within it."""
+def read_usage(raw: bytes) -> dict[str, frozenset[str]]:
+    """`eval/cassette-usage.toml` as `{service: hit keys}`, or `ValueError` naming what is wrong."""
+    try:
+        table = tomllib.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        message = f"does not parse: {exc}"
+        raise ValueError(message) from exc
+    usage: dict[str, frozenset[str]] = {}
+    for service, body in table.items():
+        hits = body.get("hit") if isinstance(body, dict) else None
+        if not isinstance(hits, list) or set(body) != {"hit"}:
+            message = f"[{service}] holds anything but one `hit` list"
+            raise ValueError(message)
+        bad = [key for key in hits if not isinstance(key, str) or not _KEY.fullmatch(key)]
+        if bad:
+            message = f"[{service}] hit {bad[0]!r} is not a 64-hex cassette key"
+            raise ValueError(message)
+        usage[service] = frozenset(hits)
+    return usage
+
+
+def orphans(cassettes: Sequence[str], usage: Mapping[str, frozenset[str]]) -> list[Finding]:
+    """Ruling 12: each committed cassette nothing hit, and each listed key nothing commits."""
+    findings = []
+    committed: dict[str, set[str]] = {}
+    for path in cassettes:
+        service, _, name = path.removeprefix(CASSETTES).partition("/")
+        key = name.rpartition("/")[2].removesuffix(".json")
+        committed.setdefault(service, set()).add(key)
+        if key not in usage.get(service, frozenset()):
+            findings.append(
+                Finding(
+                    path,
+                    f"OW-Q-018 cassette {key} committed but never hit; delete it, or regenerate"
+                    f" {USAGE} if a replay still hits it",
+                )
+            )
+    for service, hits in sorted(usage.items()):
+        stale = sorted(hits - committed.get(service, set()))
+        if stale:
+            findings.append(
+                Finding(
+                    USAGE,
+                    f"[{service}] lists {len(stale)} key(s) with no committed cassette, the"
+                    f" first {stale[0]}; regenerate it with `bench/serve/run.py --usage`",
+                )
+            )
+    return findings
+
+
+def budget(
+    sizes: Mapping[str, int],
+    fixtures: Sequence[str],
+    usage: Mapping[str, frozenset[str]] | None = None,
+) -> Budget:
+    """Rulings 7-12 over `{path: bytes}` for Tier A and the Q-G1 fixtures within it.
+
+    `usage` is the parsed `eval/cassette-usage.toml`, and `None` when there is none to read.
+    """
     findings: list[Finding] = []
     total = sum(sizes.values())
     if total > TIER_A_BYTES:
@@ -367,7 +432,10 @@ def budget(sizes: Mapping[str, int], fixtures: Sequence[str]) -> Budget:
         )
     else:
         notes.append(f"the {SCAN_FLOOR:.0%} scan floor: {DOCS} holds no fixture to measure")
-    notes.append("orphan cassettes: not run, because nothing writes eval/cassette-usage.toml yet")
+    if usage is None:
+        notes.append(f"orphan cassettes: not run, because no {USAGE} was read")
+    else:
+        findings += orphans(cassettes, usage)
     return Budget(
         total, len(cassettes), cassette_bytes, len(reductions), tuple(findings), tuple(notes)
     )
@@ -456,8 +524,15 @@ def _q_g2(
     root: Path, listed: Sequence[str], fixtures: Sequence[str], pack: Callable[[Path], int] | None
 ) -> list[Finding] | None:
     """Rulings 7-12, printed: the findings, or `None` when the pack could not be measured."""
-    spent = budget({path: _size(root / path) for path in tier_a(listed)}, fixtures)
-    over = list(spent.findings)
+    usage = None
+    unread = []
+    if (root / USAGE).is_file():
+        try:
+            usage = read_usage((root / USAGE).read_bytes())
+        except ValueError as exc:
+            unread.append(Finding(USAGE, str(exc)))
+    spent = budget({path: _size(root / path) for path in tier_a(listed)}, fixtures, usage)
+    over = unread + list(spent.findings)
     _say(
         f"Q-G2  Tier A {spent.tier_a} of {TIER_A_BYTES} bytes; {spent.cassettes} cassette(s),"
         f" {spent.cassette_bytes} of {MAX_CASSETTE_BYTES_TOTAL} bytes; {spent.reductions}"

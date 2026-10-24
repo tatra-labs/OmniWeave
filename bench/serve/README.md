@@ -37,8 +37,17 @@ uv run pytest bench/serve -q --tasks all    # 16-roadmap.md:745's P7 exit comman
 uv run python bench/serve/first_answer.py   # V01-15 and P7's demo, over 100 generated documents
 ```
 
-**What `--tasks all` says today.** There are no committed recordings yet, so the default replay
-stops at once and prints how to record. Recording needs a model, and a local one needs no key.
+**What the replay says today.** Each of the three committed sets replays, except the citation
+tasks `legal-cite-termination`, `legal-cite-liability-cap`, `data-cite-nda-term` and
+`home-cite-flood` (three of them for `qwen3:4b`). Their `ow_query` answer changed with #67, which
+D972 found by bisection, so they miss with `OW-Q-004` until they are re-recorded. Recording needs a
+model, and a local one needs no key.
+
+**Which recordings are used (D972).** `--usage eval/cassette-usage.toml` adds every key a run hit
+or recorded to that file, and `tools/gate_fixtures.py` (Q-G2) sweeps it on every pull request: a
+committed recording no replay reaches is `OW-Q-018`, and deleting it is the fix. To regenerate the
+file, delete it and replay the three sets above, each with `--usage`. The nightly `gates` job does
+exactly that, then compares the result with the committed file byte for byte.
 
 **What is held back, and why.**
 - The six `damaged` tasks need 13 section 8.6's Injectors, which are P6's absence suite
