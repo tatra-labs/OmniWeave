@@ -1,4 +1,4 @@
-"""CI steps' verdicts, read off master's latest run. **D974, D975.**
+"""CI steps' verdicts, read off master's latest run. **D974, D975, D976.**
 
 Some acceptance rows are measured by a CI step that no local instrument can run:
 - **V10-14's pdfium axis** runs only on `ci.yml`'s `schedule:` trigger. By a user ruling of
@@ -105,11 +105,19 @@ def judge_step(job: dict[str, Any], step: str) -> tuple[int, str]:
 def judge(
     jobs: Sequence[dict[str, Any]], job: str = JOB, steps: Sequence[str] = (STEP,)
 ) -> tuple[int, list[str]]:
-    """Every named step in the named job: the worst code, and one line per step."""
+    """Every named step in every job the prefix names: the worst code, and one line per step.
+
+    A prefix may name several jobs, such as a matrix's cells (`test (macos-latest`, D976). Each
+    line then names its job.
+    """
     found = [one for one in jobs if str(one.get("name", "")).startswith(job)]
     if not found:
         return 2, [f"no job named {job!r}... in the run"]
-    verdicts = [judge_step(found[0], step) for step in steps]
+    verdicts = [
+        (code, f"{one['name']}: {line}" if len(found) > 1 else line)
+        for one in found
+        for code, line in (judge_step(one, step) for step in steps)
+    ]
     return max(code for code, _ in verdicts), [line for _, line in verdicts]
 
 
