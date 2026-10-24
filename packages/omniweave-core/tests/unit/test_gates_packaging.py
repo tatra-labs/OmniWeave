@@ -295,6 +295,7 @@ def test_the_real_workspace_passes_and_accounts_for_all_forty_sites() -> None:
     assert len(report.checked) + report.pending_sites == cv.TOTAL_SITES
     assert report.release == "0.1.0"
     assert report.port_major == 1
+    assert report.asserted == ["CHANGELOG.md: topmost heading names 0.1.0"]
 
 
 def test_the_five_absent_sites_are_reported_as_pending_and_never_skipped() -> None:
@@ -442,6 +443,19 @@ def test_a_changelog_whose_heading_names_another_release_fails(complete: Path) -
     assert "CHANGELOG.md: topmost heading" in _where(cv.check(complete))
     (complete / "CHANGELOG.md").write_text("# 0.1.0 - first\n", encoding="utf-8")
     assert cv.check(complete).ok()
+
+
+def test_the_tag_and_the_changelog_count_toward_no_total(complete: Path) -> None:
+    """Section 4.2: both are "asserted and never written, and count toward no total". Kept in
+    `checked`, they made a checkout with a CHANGELOG print 36/40 and a miscount (D973)."""
+    (complete / "CHANGELOG.md").write_text("# 0.1.0 - first\n", encoding="utf-8")
+    report = cv.check(complete, tag="v0.1.0")
+    assert len(report.checked) == cv.TOTAL_SITES
+    assert report.asserted == [
+        "git tag = v0.1.0 (asserted, never written)",
+        "CHANGELOG.md: topmost heading names 0.1.0",
+    ]
+    assert report.ok(require_all_sites=True)
 
 
 # ---------------------------------------------------------------------------------------------
