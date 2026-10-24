@@ -168,8 +168,8 @@ CRITERIA: tuple[Criterion, ...] = (
         "and the two passes byte-identical (D874). CI's `build` job measures the rest: "
         "tools/check_wheelhouse.py installs the three offline profiles from the built wheels and "
         "runs G2's measured half and the 250 MB `[recommended]` union over them (D897-D899); "
-        "this row runs the declared half and the build here. `ow doctor --runtime`'s vision size "
-        "(D-19) is unbuilt",
+        "this row runs the declared half and the build here. `ow doctor --runtime` measures the "
+        "vision install's size (D-19, D965)",
     ),
     Criterion(
         "V10-3",
