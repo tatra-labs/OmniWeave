@@ -1,5 +1,5 @@
-"""`ow doctor`'s local rows: D-01, D-05, D-11 and D-15 (D953), D-10 (D958), D-25 (D961) and
-D-26 (D963).
+"""`ow doctor`'s local rows: D-01, D-05, D-11 and D-15 (D953), D-10 (D958), D-25 (D961),
+D-26 (D963) and D-19 (D965).
 
 Each row is asked of a configuration `load()` resolved from a temp project, with the two machine
 readings (the SQLite version and a volume's free bytes) handed in where a test cannot choose them.
@@ -10,7 +10,7 @@ from __future__ import annotations
 import gzip
 import json
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from omniweave.doctor import local
@@ -341,3 +341,89 @@ def test_d26_set_names_its_source_and_never_its_url(tmp_path: Path) -> None:
     assert "omniweave.toml" in found.detail
     assert "collector.invalid" not in found.detail
     assert "secret" not in found.detail
+
+
+# --- D-19 (D965) ----------------------------------------------------------------------------
+
+
+class _File:
+    def __init__(self, name: str, size: int) -> None:
+        self.name, self.size = name, size
+
+
+class _Dist:
+    """Just what `check_vision_size` reads of an `importlib.metadata.Distribution`."""
+
+    def __init__(
+        self, name: str, files: dict[str, int], requires: list[str], *, editable: bool = False
+    ) -> None:
+        self.metadata = {"Name": name}
+        self.version = "9.9"
+        self.files = [_File(path, size) for path, size in files.items()]
+        self.requires = requires
+        self._editable = editable
+
+    def locate_file(self, file: _File) -> str:
+        return f"site/{file.name}"
+
+    def read_text(self, name: str) -> str | None:
+        if name == "direct_url.json" and self._editable:
+            return '{"url":"file:///w","dir_info":{"editable":true}}'
+        return None
+
+
+MB = 1_048_576
+
+
+def _finder(*dists: _Dist) -> Any:
+    from importlib import metadata  # noqa: PLC0415
+
+    by_name = {local._canonical(str(one.metadata["Name"])): one for one in dists}
+
+    def find(name: str) -> _Dist:
+        try:
+            return by_name[local._canonical(name)]
+        except KeyError:
+            raise metadata.PackageNotFoundError(name) from None
+
+    return find
+
+
+def test_d19_not_installed_weighs_nothing() -> None:
+    found = local.check_vision_size(find=_finder())
+    assert (found.check, found.severity, found.fix) == ("D-19", "ok", "")
+    assert found.detail == "omniweave-vision is not installed, so it weighs nothing"
+
+
+def test_d19_sums_the_installed_closure_once_per_path() -> None:
+    vision = _Dist(
+        "omniweave-vision",
+        {"vision/a.py": 1 * MB},
+        [
+            "Torch_Core>=2",  # named in another spelling than its own metadata
+            "extras-only; extra == 'cuda'",
+            "linux-only; platform_system == 'Linux'",
+            "never-installed",
+        ],
+    )
+    torch = _Dist("torch-core", {"torch/x.so": 3 * MB, "shared/lib.so": 2 * MB}, ["helper"])
+    helper = _Dist("helper", {"shared/lib.so": 2 * MB, "helper/y.py": MB // 2}, [])
+    extra = _Dist("extras-only", {"big.bin": 100 * MB}, [])
+    found = local.check_vision_size(find=_finder(vision, torch, helper, extra))
+    assert found.detail == (
+        "omniweave-vision 9.9 resolves to 6.5 MB installed across 3 distribution(s), the one "
+        "exempt from G2; required and not installed here: never-installed"
+    )
+
+
+def test_d19_says_an_editable_install_records_links() -> None:
+    vision = _Dist("omniweave-vision", {"v.pth": 100}, [], editable=True)
+    found = local.check_vision_size(find=_finder(vision))
+    assert found.detail.endswith(
+        "; omniweave-vision is an editable install, whose RECORD lists links, not its source"
+    )
+
+
+def test_d19_reads_this_machines_install() -> None:
+    found = local.check_vision_size()
+    assert found.check == "D-19" and found.severity == "ok"

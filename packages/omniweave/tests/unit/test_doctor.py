@@ -188,10 +188,10 @@ def test_the_verb_exits_0_and_names_every_row_it_did_not_run(repo: Any) -> None:
     code, out, _ = _main(["doctor", "--runtime"], repo(["src/a.py"]))
     assert code == doctor.OK == 0
     assert "ok   D-02: no .owstore is tracked" in out
-    assert f"13 of 27 checks are not built yet and were not run: {', '.join(doctor.UNBUILT)}" in out
+    assert f"12 of 27 checks are not built yet and were not run: {', '.join(doctor.UNBUILT)}" in out
     assert "ok   D-10: the enabled drivers' worker processes fit: " in out
     assert "runs only with --runtime" not in out
-    assert out.rstrip().endswith("doctor: passes the 14 check(s) it ran")
+    assert out.rstrip().endswith("doctor: passes the 15 check(s) it ran")
 
 
 def test_without_runtime_d10_is_named_as_not_run(repo: Any) -> None:
@@ -199,7 +199,9 @@ def test_without_runtime_d10_is_named_as_not_run(repo: Any) -> None:
     code, out, _ = _main(["doctor"], repo(["src/a.py"]))
     assert code == doctor.OK
     assert "D-10:" not in out
-    assert "doctor: D-10 runs only with --runtime\ndoctor: passes the 13 check(s) it ran" in out
+    assert "D-19:" not in out
+    tail = "doctor: D-10 and D-19 run only with --runtime\ndoctor: passes the 13 check(s) it ran"
+    assert tail in out
 
 
 def test_an_unknown_flag_is_argparses_usage_error(tmp_path: Path) -> None:
@@ -347,6 +349,7 @@ def test_a_configuration_that_fails_says_d08_did_not_run(
     assert [one.check for one in runtime.warned][:10] == [
         "D-05", "D-06", "D-08", "D-10", "D-11", "D-13", "D-15", "D-24", "D-25", "D-26"
     ]  # fmt: skip
+    assert "D-19" in [one.check for one in runtime.ok], "D965: it reads no configuration"
 
 
 # ---------------------------------------------------------------------------------------------

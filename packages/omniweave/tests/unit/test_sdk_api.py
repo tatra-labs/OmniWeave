@@ -479,8 +479,9 @@ def test_doctor_is_ow_doctors_report(here: Path) -> None:
     assert report == doctor_package.run(cwd=here, env=_env(here) | dict(__import__("os").environ))
     runtime = sdk.doctor(runtime=True)
     rows = [(*one.ok, *one.warned, *one.failed) for one in (report, runtime)]
-    assert [one for one in rows[1] if one.check != "D-10"] == list(rows[0])
-    assert [one.check for one in rows[1] if one.check == "D-10"] == ["D-10"], "D958: --runtime"
+    runtime_rows = {"D-10", "D-19"}  # D958, D965: the rows only --runtime runs
+    assert [one for one in rows[1] if one.check not in runtime_rows] == list(rows[0])
+    assert sorted(one.check for one in rows[1] if one.check in runtime_rows) == sorted(runtime_rows)
 
 
 def test_a_submodule_name_is_the_submodule_not_the_sdk_function() -> None:
