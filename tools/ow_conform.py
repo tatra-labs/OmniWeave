@@ -135,11 +135,18 @@ def _child_env(extra: dict[str, str] | None = None) -> dict[str, str]:
     the path, and a child that dropped that path could not import it: `idempotence` and
     `determinism` then reported a cross-process child that died at `activate()`, a harness
     failure dressed as the driver's.
+
+    **Each caller entry is made absolute against the caller's cwd (D967).** The child runs in a
+    different cwd on purpose, so a relative entry such as `PYTHONPATH=src`, which is how an author
+    types it in their own project, named a directory that did not exist there, and the same two
+    suites failed for the same harness reason.
     """
     env = dict(os.environ)
     env.update(VARIED_ENV)
     own = [str(d / "src") for d in sorted((REPO / "packages").iterdir()) if (d / "src").is_dir()]
-    callers = [p for p in os.environ.get("PYTHONPATH", "").split(os.pathsep) if p]
+    callers = [
+        str(Path(p).resolve()) for p in os.environ.get("PYTHONPATH", "").split(os.pathsep) if p
+    ]
     env["PYTHONPATH"] = os.pathsep.join([*own, *(p for p in callers if p not in own)])
     env.update(extra or {})
     return env

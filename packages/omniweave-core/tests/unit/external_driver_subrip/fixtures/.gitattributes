@@ -1,0 +1,3 @@
+# Driver fixtures are BYTES, not text: crlf.srt proves CRLF cues, and the repo-root eol rule
+# would rewrite it to LF on checkout. Scoped to this directory, as the template's is.
+* -text
