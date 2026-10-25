@@ -5,12 +5,18 @@ releases' conformance-template drivers against HEAD, so the window in which a th
 keeps working without a rebuild is two minor releases — stated as a number so an author can plan"* —
 and `11-repo-layout.md:1124` adds the consequence: *"a failure blocks the merge"*.
 
-**This repository has no `v*` tag, so the gate is vacuous here and every interesting path is dead
-code.** That is the problem this file exists to solve. `16-roadmap.md:516` asks for G16 at P3
-precisely so the mechanism is not written under pressure at the first release, and a mechanism that
-has never executed is written rather than wired. So the fixture below clones this repository into
-`tmp_path` — locally, no network — tags five commits, and drives the real
+**This repository reaches one release tag and the gate wants two, so every interesting path is
+still dead code here.** That is the problem this file exists to solve. `16-roadmap.md:516` asks for
+G16 at P3 precisely so the mechanism is not written under pressure at the first release, and a
+mechanism that has never executed is written rather than wired. So the fixture below clones this
+repository into `tmp_path` — locally, no network — tags five commits, and drives the real
 `git worktree` → `uv build` → load-against-HEAD path against them.
+
+**The vacuous cases take a tagless clone, not this repository.** D979 tagged master `v0.1.0`, and
+two tests here used to assert against the live tree that the gate found *zero* tags. That was a
+claim about this repository's release history rather than about the gate, and the first tag turned
+it red. They now run against `tagless`, which is this clone with no tags at all, so the vacuous
+path is tested where it is a property of the input and not of the calendar.
 
 Five tags, one clean pair and three sabotages, each aimed at one clause:
 
@@ -120,6 +126,34 @@ def clone(repo_root: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     return target
 
 
+@pytest.fixture(scope="session")
+def tagless(repo_root: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """This repository with no tags, which is where the vacuous path is a property of the input.
+
+    `--no-tags` is the whole point: a plain local clone copies `v0.1.0` across, and then the
+    vacuous assertions below would be measuring the release history again.
+    """
+    target = tmp_path_factory.mktemp("g16-tagless") / "clone"
+    subprocess.run(  # noqa: S603 — a fixed argv, no shell, and no network: `--local`.
+        [  # noqa: S607
+            "git",
+            "clone",
+            "--quiet",
+            "--local",
+            "--no-hardlinks",
+            "--no-tags",
+            str(repo_root),
+            str(target),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=600,
+    )
+    assert git(target, "tag", "--list").strip() == "", "a tagless clone kept a tag"
+    return target
+
+
 def run(gate: ModuleType, clone: Path, glob: str, releases: int = 1) -> int:
     return gate.main(["--repo", str(clone), "--tag-glob", glob, "--releases", str(releases)])
 
@@ -129,7 +163,7 @@ def clauses(findings: list[Any]) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# the vacuous path — which is the only one this repository can take today
+# the vacuous path — one tag short of the window this gate is specified over
 # ---------------------------------------------------------------------------
 
 
@@ -141,18 +175,18 @@ def test_every_git_call_waits_the_ruled_300_s(gate: ModuleType) -> None:
     assert "timeout=120" not in source
 
 
-def test_no_tags_is_vacuous_and_exits_zero(gate: ModuleType, capsys: Any) -> None:
+def test_no_tags_is_vacuous_and_exits_zero(gate: ModuleType, tagless: Path, capsys: Any) -> None:
     """`16-roadmap.md:516` marks G16 "vacuous at P3; wired for later", so exit 0 is correct."""
-    assert gate.main(["--releases", "2"]) == 0
+    assert gate.main(["--repo", str(tagless), "--releases", "2"]) == 0
     assert "vacuous" in capsys.readouterr().out
 
 
 def test_a_vacuous_run_says_what_it_searched_and_what_it_would_have_done(
-    gate: ModuleType, capsys: Any
+    gate: ModuleType, tagless: Path, capsys: Any
 ) -> None:
     """A gate indistinguishable from a gate nobody wired up is a gate nobody notices has stopped
     running. Exit 0 is shared with a real pass; the output must not be."""
-    gate.main(["--releases", "2"])
+    gate.main(["--repo", str(tagless), "--releases", "2"])
     out = capsys.readouterr().out
     assert "0 release tag(s) matching 'v*', 2 wanted" in out
     assert "git worktree add" in out
