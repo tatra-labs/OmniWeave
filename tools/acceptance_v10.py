@@ -406,10 +406,21 @@ CRITERIA: tuple[Criterion, ...] = (
         "the previous two releases' template Drivers load against HEAD (G16)",
         (
             tool("gate_contract.py", "--releases", "2", "--offline"),
+            tool("gate_contract.py", "--releases", "1", "--offline"),
             pytest(f"{CORE}/test_gate_contract.py", label="G16 over two locally tagged commits"),
         ),
         Coverage.PARTIAL,
-        "there is no `v*` tag, so the gate loads no previous release and passes vacuously",
+        # D979 tagged master `v0.1.0` on the user's ruling of 2026-10-23, and `--releases 1` now
+        # takes the real path over it: `git worktree add` at the tag, `uv build --package
+        # omniweave-conform` in that tree, then HEAD's `load_card()` and `activate()` over the
+        # tagged wheel's own template -- `parse.text.plain -> PlainTextParser`, its CONTRACT in
+        # HEAD's CONTRACTS_SUPPORTED. The row's clause is two releases, so `--releases 2` is still
+        # vacuous, and both runs exit 0 either way: a vacuous G16 is a pass by 16-roadmap.md:516.
+        "the clause is two releases and master carries one tag, so the `--releases 2` run stays "
+        "vacuous until the next milestone tag; `--releases 1` loads `v0.1.0`'s template Driver "
+        "against HEAD for real (D979). The tag is local until `release.yml`'s third-party actions "
+        "are pinned, because pushing a `v*` tag starts the publish workflow, so a CI or "
+        "fresh-clone run of this row finds no tag and passes vacuously",
     ),
     Criterion(
         "V10-12",
