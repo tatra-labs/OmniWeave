@@ -11,6 +11,9 @@ provenance = "generated"
 sha256 = "ade0136bacc215f10dcbaa69c2e9ccdc9526b5cc716ea57496efc7c3da873859"
 spdx = "Apache-2.0"
 
+[fixture.tests]
+slices = ["office/epub"]
+
 [[fixture]]
 path = "packages/omniweave-office/fixtures/deck.odp"
 bytes = 1450
@@ -19,6 +22,9 @@ media_type = "application/vnd.oasis.opendocument.presentation"
 provenance = "generated"
 sha256 = "98df9af755ba966d309cede887dfb5a419736aa882a3c90ca4c057c08929abf2"
 spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/odp"]
 
 [[fixture]]
 path = "packages/omniweave-office/fixtures/deck.ppt"
@@ -37,6 +43,9 @@ media_type = "application/vnd.openxmlformats-officedocument.presentationml.prese
 provenance = "generated"
 sha256 = "e9c3b8f8f7274179f2373d8931099d921b8cc035f477c9e2af76754d1389eeff"
 spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/pptx"]
 
 [[fixture]]
 path = "packages/omniweave-office/fixtures/deepxml.docx"
@@ -74,6 +83,9 @@ provenance = "generated"
 sha256 = "1bc77f2fd63595dd187df4126555cfc68d05fee4a6be1dd8a4af183c9bf1382d"
 spdx = "Apache-2.0"
 
+[fixture.tests]
+slices = ["office/rtf"]
+
 [[fixture]]
 path = "packages/omniweave-office/fixtures/not_a_document.bin"
 bytes = 40
@@ -91,6 +103,9 @@ provenance = "generated"
 sha256 = "9341c1ab75932890f5867c53289965cf95117d60452bd09d16604c702aaa8852"
 spdx = "Apache-2.0"
 
+[fixture.tests]
+slices = ["office/odt"]
+
 [[fixture]]
 path = "packages/omniweave-office/fixtures/rich.docx"
 bytes = 6040
@@ -99,6 +114,9 @@ media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.doc
 provenance = "generated"
 sha256 = "1720932978b82a736faa268d6c00cef94a29a14f2c377c93cd01bd807ef0202e"
 spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/docx/has_merges=1", "office/docx"]
 
 [[fixture]]
 path = "packages/omniweave-office/fixtures/rows.csv"
@@ -109,6 +127,9 @@ provenance = "generated"
 sha256 = "e1ad87e12d9991b3b2d06e1350d41400ec3d27ca48a874d6c407d5baa5b45b18"
 spdx = "Apache-2.0"
 
+[fixture.tests]
+slices = ["office/csv"]
+
 [[fixture]]
 path = "packages/omniweave-office/fixtures/sheet.ods"
 bytes = 1968
@@ -117,6 +138,9 @@ media_type = "application/vnd.oasis.opendocument.spreadsheet"
 provenance = "generated"
 sha256 = "9bebb0ab7dce6312a34f6ef2121be5725fdbb0648064553b0aa3c3da0b870990"
 spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/ods/has_merges=1", "office/ods"]
 
 [[fixture]]
 path = "packages/omniweave-office/fixtures/sheet.xls"
@@ -127,6 +151,9 @@ provenance = "generated"
 sha256 = "87ba735fbe74190d4d293c20157cb82ee2201e7caef8cfe733c57859faf86a9d"
 spdx = "Apache-2.0"
 
+[fixture.tests]
+slices = ["office/xls"]
+
 [[fixture]]
 path = "packages/omniweave-office/fixtures/sheet.xlsx"
 bytes = 2592
@@ -135,6 +162,9 @@ media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 provenance = "generated"
 sha256 = "076bc84a7d8dca6ac018a16c1af9125bf4b61be0274a567c2a3a423d1a8e3fc5"
 spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/xlsx/has_merges=1", "office/xlsx"]
 
 [[fixture]]
 path = "packages/omniweave-office/fixtures/text/analysis.ipynb"
@@ -279,6 +309,9 @@ provenance = "generated"
 sha256 = "5bcea55e1344a5e7931d766fb546eff1581e07ef3c1e1041e5b9e948fb0e607e"
 spdx = "Apache-2.0"
 
+[fixture.tests]
+slices = ["pdf/born_digital/gen"]
+
 [[fixture]]
 path = "packages/omniweave-pdf/fixtures/gen02p.pdf"
 bytes = 12422
@@ -287,6 +320,9 @@ media_type = "application/pdf"
 provenance = "generated"
 sha256 = "ca9aef47d81d268269a6c0d45bc52430d93109745144d659f8961456cacf8aea"
 spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["pdf/born_digital/gen"]
 
 [[fixture]]
 path = "packages/omniweave-pdf/fixtures/gen04p.pdf"
@@ -297,6 +333,9 @@ provenance = "generated"
 sha256 = "9627dbfabe6436931252c5067c658775c5f0f375d45401e3864c6b7826c7b8a6"
 spdx = "Apache-2.0"
 
+[fixture.tests]
+slices = ["pdf/born_digital/gen"]
+
 [[fixture]]
 path = "packages/omniweave-pdf/fixtures/gen08p.pdf"
 bytes = 47725
@@ -305,6 +344,9 @@ media_type = "application/pdf"
 provenance = "generated"
 sha256 = "933849098664005d04cc8f4d57880069dd5f25963ebc3fc05842ded8a71ddc72"
 spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["pdf/born_digital/gen"]
 
 [[fixture]]
 path = "packages/omniweave-pdf/fixtures/no_text_layer.pdf"

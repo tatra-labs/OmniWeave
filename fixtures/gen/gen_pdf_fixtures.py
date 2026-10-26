@@ -111,6 +111,25 @@ BUILDS: Final = {
     "not_a_pdf.bin": (not_a_pdf, None, "a zip header: sniff() returns (), a legitimate not mine"),
 }
 
+SLICES: Final[dict[str, tuple[str, ...]]] = {
+    "gen01p.pdf": ("pdf/born_digital/gen",),
+    "gen02p.pdf": ("pdf/born_digital/gen",),
+    "gen04p.pdf": ("pdf/born_digital/gen",),
+    "gen08p.pdf": ("pdf/born_digital/gen",),
+}
+"""D983: `[fixture.tests] slices` for the four labelled fixtures, the corpus vocabulary
+13-quality.md:1148-1152 matches a `[[gate]]` row's `slice` glob against. `order_acc`'s row is
+`pdf/born_digital/*` verbatim from :1099, and `fnmatchcase` wants a segment under it, so the four
+born-digital generated pages declare `pdf/born_digital/gen`. `no_text_layer.pdf` declares none: it
+carries no label, and a slice nothing scores names nothing."""
+
+TESTS: Final = """
+[fixture.tests]
+# 13-quality.md section 4.4's block, and :1150's vocabulary: the corpus declares the slice and a
+# `[[gate]]` row's `slice` glob is matched against it, never the router's Slice.
+slices = [{slices}]
+"""
+
 SIDECAR: Final = """\
 # {name}.meta.toml -- 13-quality.md section 4.4's fixture manifest.
 #
@@ -121,7 +140,7 @@ bytes = {size}
 {media}provenance = "generated"
 spdx = "Apache-2.0"
 generator = "{generator}"
-"""
+{tests}"""
 
 
 def pins() -> dict[str, str]:
@@ -137,6 +156,8 @@ def pins() -> dict[str, str]:
 def sidecar(name: str, data: bytes, media_type: str | None, purpose: str) -> str:
     """One `.meta.toml`. `media_type` is omitted, not empty, when nothing would route the bytes."""
     media = f'media_type = "{media_type}"\n' if media_type else ""
+    slices = SLICES.get(name, ())
+    tests = TESTS.format(slices=", ".join(f'"{one}"' for one in slices)) if slices else ""
     return SIDECAR.format(
         name=name,
         purpose=purpose,
@@ -144,6 +165,7 @@ def sidecar(name: str, data: bytes, media_type: str | None, purpose: str) -> str
         size=len(data),
         media=media,
         generator=GENERATOR,
+        tests=tests,
     )
 
 
