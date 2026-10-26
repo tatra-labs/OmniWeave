@@ -123,3 +123,236 @@ def test_a_file_that_is_not_rows_did_not_run(
 def test_a_bad_argument_did_not_run(capsys: pytest.CaptureFixture[str]) -> None:
     assert GATE.main(["--no-such-flag"]) == GATE.EXIT_NOT_RUN
     capsys.readouterr()
+
+
+# ---------------------------------------------------------------------------
+# --prose: V10-5's other half. D981.
+# ---------------------------------------------------------------------------
+
+REGISTER = """schema = "omniweave.published-numbers/1"
+
+[[limit]]
+path = "CHANGELOG.md"
+text = "1 GiB"
+source = "cards/office.toml"
+key = "isolation.memory_mb"
+value = 1024
+reason = "the shipped ceiling"
+"""
+
+
+def _tree(root: Path, files: dict[str, str]) -> None:
+    for name, text in files.items():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+
+def _prose(root: Path) -> list[str]:
+    return ["--prose", "--root", str(root)]
+
+
+def _perf_row(measured_on: dict[str, Any] | None = None) -> dict[str, Any]:
+    """One results row, whose `measured_on` is complete unless a short one is passed."""
+    return {
+        "metric": "warm_p50_ms",
+        "slice_key": "__macro__",
+        "measured_on": dict(MEASURED if measured_on is None else measured_on),
+    }
+
+
+def test_the_committed_tree_backs_every_figure_it_publishes(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The real register against the real prose. This is the row V10-5 runs."""
+    assert GATE.main(["--prose"]) == GATE.EXIT_CLEAN
+    out = capsys.readouterr().out
+    assert "V10-5 prose ok" in out
+    assert "0 unbacked figure(s)" in out
+
+
+def test_a_configured_limit_passes_when_its_key_still_holds_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _tree(
+        tmp_path,
+        {
+            "CHANGELOG.md": "- the office worker reaches its 1 GiB memory limit\n",
+            "cards/office.toml": "[isolation]\nmemory_mb = 1024\n",
+            "eval/published_numbers.toml": REGISTER,
+        },
+    )
+    assert GATE.main(_prose(tmp_path)) == GATE.EXIT_CLEAN
+    assert "1 figure(s) published" in capsys.readouterr().out
+
+
+def test_a_limit_that_drifted_from_its_card_fails(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The whole point of naming the key: prose and card cannot part company quietly."""
+    _tree(
+        tmp_path,
+        {
+            "CHANGELOG.md": "- the office worker reaches its 1 GiB memory limit\n",
+            "cards/office.toml": "[isolation]\nmemory_mb = 2048\n",
+            "eval/published_numbers.toml": REGISTER,
+        },
+    )
+    assert GATE.main(_prose(tmp_path)) == GATE.EXIT_FAIL
+    out = capsys.readouterr().out
+    assert "isolation.memory_mb is 2048, and this row says 1024" in out
+
+
+def test_a_figure_nothing_registers_fails_with_its_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """D978's defect, caught by a gate this time."""
+    _tree(
+        tmp_path,
+        {
+            "CHANGELOG.md": "- notes\n- warm query p50 is 95 ms on a developer machine\n",
+            "eval/published_numbers.toml": 'schema = "omniweave.published-numbers/1"\n',
+        },
+    )
+    assert GATE.main(_prose(tmp_path)) == GATE.EXIT_FAIL
+    out = capsys.readouterr().out
+    assert "CHANGELOG.md:2 publishes 'p50' with nothing behind it" in out
+    assert "CHANGELOG.md:2 publishes '95 ms' with nothing behind it" in out
+    assert "fix: state what backs it in eval/published_numbers.toml" in out
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "- 13 questions, below the minimum sample",
+        "- release 1.0 ships fourteen wheels",
+        "- `max_xml_nodes` closes a 1073741824-column sheet",
+        "- reviewed on 2026-10-23",
+    ],
+)
+def test_a_count_a_version_and_a_date_are_not_figures(tmp_path: Path, line: str) -> None:
+    """A gate that flagged every integer is a gate a reviewer learns to skip."""
+    _tree(
+        tmp_path,
+        {
+            "CHANGELOG.md": line + "\n",
+            "eval/published_numbers.toml": 'schema = "omniweave.published-numbers/1"\n',
+        },
+    )
+    assert GATE.main(_prose(tmp_path)) == GATE.EXIT_CLEAN
+
+
+def test_a_measured_figure_needs_a_complete_measured_on(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    register = (
+        'schema = "omniweave.published-numbers/1"\n\n'
+        "[[measured]]\n"
+        'path = "CHANGELOG.md"\n'
+        'text = "95 ms"\n'
+        'results = "eval/results/perf.json"\n'
+        "row = 1\n"
+        'reason = "the nightly"\n'
+    )
+    short = dict(MEASURED)
+    del short["weights"]
+
+    _tree(
+        tmp_path,
+        {
+            "CHANGELOG.md": "- warm query p50 is 95 ms\n",
+            "eval/published_numbers.toml": register,
+            "eval/results/perf.json": json.dumps([_perf_row(short)]),
+        },
+    )
+    assert GATE.main(_prose(tmp_path)) == GATE.EXIT_FAIL
+    out = capsys.readouterr().out
+    assert "eval/results/perf.json row 1:" in out
+    assert "p50" in out
+
+
+def test_a_measured_figure_passes_on_a_complete_row(tmp_path: Path) -> None:
+    register = (
+        'schema = "omniweave.published-numbers/1"\n\n'
+        "[[measured]]\n"
+        'path = "CHANGELOG.md"\n'
+        'text = "95 ms"\n'
+        'results = "eval/results/perf.json"\n'
+        "row = 1\n"
+        'reason = "the nightly"\n'
+        "\n[[measured]]\n"
+        'path = "CHANGELOG.md"\n'
+        'text = "p50"\n'
+        'results = "eval/results/perf.json"\n'
+        "row = 1\n"
+        'reason = "the same row"\n'
+    )
+    _tree(
+        tmp_path,
+        {
+            "CHANGELOG.md": "- warm query p50 is 95 ms\n",
+            "eval/published_numbers.toml": register,
+            "eval/results/perf.json": json.dumps([_perf_row()]),
+        },
+    )
+    assert GATE.main(_prose(tmp_path)) == GATE.EXIT_CLEAN
+
+
+def test_a_row_the_prose_does_not_carry_is_pruned(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _tree(
+        tmp_path,
+        {
+            "CHANGELOG.md": "- nothing numeric here\n",
+            "cards/office.toml": "[isolation]\nmemory_mb = 1024\n",
+            "eval/published_numbers.toml": REGISTER,
+        },
+    )
+    assert GATE.main(_prose(tmp_path)) == GATE.EXIT_FAIL
+    assert "is published nowhere -- prune the row" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("register", "match"),
+    [
+        (None, "published_numbers.toml"),
+        ('schema = "omniweave.published-numbers/2"\n', "schema is"),
+        ("schema = [\n", "not TOML"),
+        ('schema = "omniweave.published-numbers/1"\nlimit = [1]\n', "is not a table"),
+    ],
+)
+def test_a_register_that_cannot_be_read_did_not_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], register: str | None, match: str
+) -> None:
+    """An absent register is not a pass: prose exists the moment someone writes a figure."""
+    files = {"CHANGELOG.md": "- 1 GiB\n"}
+    if register is not None:
+        files["eval/published_numbers.toml"] = register
+    _tree(tmp_path, files)
+    assert GATE.main(_prose(tmp_path)) == GATE.EXIT_NOT_RUN
+    out = capsys.readouterr().out
+    assert out.startswith("V10-5 prose DID NOT RUN  ")
+    assert match in out
+
+
+def test_no_published_prose_at_all_did_not_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _tree(tmp_path, {"eval/published_numbers.toml": 'schema = "omniweave.published-numbers/1"\n'})
+    assert GATE.main(_prose(tmp_path)) == GATE.EXIT_NOT_RUN
+    assert "is there to read" in capsys.readouterr().out
+
+
+def test_docs_markdown_is_published_prose_too(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _tree(
+        tmp_path,
+        {
+            "docs/AGENTS.md": "- the cache holds 100 MiB\n",
+            "eval/published_numbers.toml": 'schema = "omniweave.published-numbers/1"\n',
+        },
+    )
+    assert GATE.main(_prose(tmp_path)) == GATE.EXIT_FAIL
+    assert "docs/AGENTS.md:1 publishes '100 MiB'" in capsys.readouterr().out

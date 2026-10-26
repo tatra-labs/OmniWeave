@@ -1,0 +1,37 @@
+# eval/published_numbers.toml -- V10-5: every number this project publishes in prose, and what
+# backs it. **D981.**
+#
+# 00-vision.md section 9.2's V10-5 is "every published number carries its provenance tuple".
+# `tools/gate_measured_on.py` held that over `eval/results/**.json` only, so a figure in the
+# release notes was scanned by nothing -- which is how the 0.1.0 notes came to publish a 95 ms
+# query p50 and a ~280,000-cell memory limit with no committed MeasuredOn behind either (D978
+# removed them by hand). This file is the register that stops the next one.
+#
+# `uv run tools/gate_measured_on.py --prose` reads CHANGELOG.md, llms.txt and docs/*.md, finds
+# every figure (a number against a unit, or a percentile), and requires a row here for each:
+#
+#   [[limit]]     a CONFIGURED limit, not a measurement. The row names the file and key that
+#                 holds it, and the gate reads that key: a limit this project states in prose
+#                 and a limit it ships cannot drift apart silently.
+#   [[measured]]  a MEASURED figure. The row names the `eval/results/**.json` row behind it, and
+#                 the gate holds that row to `unmeasured()` -- the same ten-field `MeasuredOn`
+#                 rule as the static half. A measurement with no complete row cannot be published.
+#
+# A row that matches no prose is a finding too, as `tools/egress.toml`'s literals are: a register
+# nobody prunes stops being a register.
+
+schema = "omniweave.published-numbers/1"
+
+[[limit]]
+path = "CHANGELOG.md"
+text = "1 GiB"
+source = "packages/omniweave-office/src/omniweave_office/driver.toml"
+key = "isolation.memory_mb"
+value = 1024
+reason = """
+The office worker's shipped memory ceiling, stated in the 1.0 notes' known-limitation list as the
+reason a 4-million-cell sheet is refused (F2, a user ruling of 2026-10-23 keeps both limits as
+shipped). 1024 MiB is 1 GiB; the prose says GiB because a reader of release notes thinks in GiB.
+It is a configured bound and not a measurement, so no MeasuredOn applies -- what applies is that
+the card still carries 1024, which this row's `key` makes the gate check.
+"""

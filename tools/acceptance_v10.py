@@ -248,16 +248,25 @@ CRITERIA: tuple[Criterion, ...] = (
         "every published number carries its provenance tuple; a short MeasuredOn is a TypeError",
         (
             tool("gate_measured_on.py"),
+            tool("gate_measured_on.py", "--prose"),
             tool("gate_results.py"),
             pytest(f"{CORE}/test_card.py", "-k", "measured_on", label="MeasuredOn's construction"),
             pytest(f"{CORE}/test_calibration.py", label="Q-G14's shape over CalStatus"),
+            pytest(
+                f"{CORE}/test_gate_measured_on.py",
+                label="both halves, over a register and a drifted card (D981)",
+            ),
         ),
         Coverage.PARTIAL,
         "`eval/results/` holds 12 rows from 9 runs of `ow eval run` on a developer machine "
         "(D922), each with its ten-field MeasuredOn, and both static gates hold over them; a "
         "card's [[quality.benchmark]] row cannot load without a complete MeasuredOn, and no "
-        "shipped card carries one. A number in docs or release notes is scanned by nothing, "
-        "and the tree is to be republished from the release commit",
+        "shipped card carries one. Since D981 a figure in CHANGELOG.md, llms.txt or docs/*.md "
+        "is scanned too: `--prose` requires a row in eval/published_numbers.toml for each, "
+        "reads the card key a [[limit]] names and holds a [[measured]] row's results row to "
+        "`unmeasured()`. The published prose carries one figure, a configured limit; a release "
+        "note that quotes a measurement will be the first row that has to name a results row. "
+        "The tree is to be republished from the release commit",
     ),
     Criterion(
         "V10-6",
