@@ -376,10 +376,15 @@ def parse(  # noqa: PLR0915 -- one subject's run, its metrics and its labels, ru
     """The parse suite over the register's subjects, as one `Batch` (rulings 1-7)."""
     gates = [row for row in register.get("gate", []) if row.get("suite") == "parse"]
     computed = [row for row in gates if row.get("metric") in MEASURED]
+    #  D983: `MEASURED` is the metrics this function measures from the parses themselves. The
+    #  labelled half computes three more -- `RATES`' verdict rollups and `structure.METRIC` -- and
+    #  since their register rows landed, reading `MEASURED` alone made a run claim it does not
+    #  compute `order_acc` in the same breath as reporting how many of its assertions ran.
+    computes = {*MEASURED, *RATES, structure.METRIC}
     unmeasured = [
         f"{row.get('metric')}: this build does not compute it"
         for row in gates
-        if row.get("metric") not in MEASURED
+        if row.get("metric") not in computes
     ]
     rows = [row for row in register.get("subject", []) if isinstance(row, dict)]
     if not rows:
