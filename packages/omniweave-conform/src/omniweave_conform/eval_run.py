@@ -130,8 +130,14 @@ returns it as `store.oweval` rows for one `write()`.
     assertion runs and never scores (13:1022), so a corpus with none verified writes `unknown`
     rows, which `release-check` refuses: drafted labels are a corpus nobody has vouched for.
     Each run's `not_measured` says how many ran unscored and which were not run and why.
-24. **`structure_f1` is still not measured**: it scores against a `structure.jsonl` reference
-    (13:1104) no fixture carries, and the run says so.
+24. **`structure_f1` is measured where a reference exists (D982).** `omniweave_conform.structure`
+    loads each fixture's `<file>.structure.jsonl`, scores it against the same candidate store the
+    owdoc evaluator reads, and `structure.metrics()` writes its slice rows. The references are
+    digested with the labels, so adding one is a new corpus version. A subject whose card declares
+    `sections = "none"` with `tables = "none"` is NOT scored: `structure.inapplicable()` has the
+    card's reason and the run's `not_measured` prints it, because scoring a driver that emits no
+    heading or table against a labelled tree measures the declaration. A referenced document whose
+    reference is not fully signed is named unscored, one row per run.
 
 ## The absence suite's removal half (D933)
 
@@ -193,7 +199,7 @@ from omniweave_core.store.oweval import Assertion, Batch, Corpus, Metric, Run, V
 from omniweave_ports.types import DriverError
 
 from omniweave_conform import absence as damage_half
-from omniweave_conform import labels
+from omniweave_conform import labels, structure
 from omniweave_conform import portability as cell_half
 from omniweave_conform import removal as removal_half
 from omniweave_conform import retrieval as cite_half
@@ -210,6 +216,8 @@ from omniweave_conform.subject import Subject
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
+
+    from omniweave_core.model.doc import Doc
 
     from omniweave_conform.evaluate import MetricResult
 
@@ -316,8 +324,10 @@ MEASURED: Final[Mapping[str, tuple[Callable[..., MetricResult], str]]] = {
 PARSE_UNMEASURED: Final[tuple[str, ...]] = (
     "structure_f1: no fixture carries the structure.jsonl reference it scores against (13:1104)",
 )
-"""Rulings 2 and 24: the parse suite's accuracy metric no labels feed yet, named in every parse
-run's `not_measured`. The rates a fixture's assertions feed are ruling 22's."""
+"""Rulings 2 and 24: what a subject with no structure reference at all says it did not measure.
+Since D982 a subject that carries one reports per document instead, and one whose card declares no
+structure reports `structure.inapplicable()`'s reason. The rates a fixture's assertions feed are
+ruling 22's."""
 UNLABELLED: Final = "{metrics}: no fixture in {corpus} carries an assertions file to score them"
 """Ruling 22: what a parse run over a fixture set with no labels says it did not measure."""
 
@@ -412,13 +422,17 @@ def parse(  # noqa: PLR0915 -- one subject's run, its metrics and its labels, ru
                 for gate in computed
             ]
             fingerprint = code_fingerprint(found.source_files())
-            corpus, labelled, pages, stores = _labelled(root, fixtures_dir, found, parses, workdir)
+            corpus, labelled, pages, stores, refs = _labelled(
+                root, fixtures_dir, found, parses, workdir
+            )
             run_id = _run_id("parse", found.driver_id, corpus.corpus_digest, started)
             #  D932: an owdoc-only assertion reads the parsed document, so it is judged here,
-            #  while the candidate stores still exist, and not after the workdir is gone.
-            wanted = {one.doc for one in labelled if one.type in OWDOC_ONLY}
+            #  while the candidate stores still exist, and not after the workdir is gone. D982's
+            #  structure reference reads the same documents, for the same reason.
+            wanted = {one.doc for one in labelled if one.type in OWDOC_ONLY} | set(refs)
             with labels.opened({doc: stores[doc] for doc in wanted if doc in stores}) as docs:
                 judged = judge(labelled, pages, run_id=run_id, docs=docs)
+                structures = _structure(found, refs, docs)
         corpora[corpus.corpus_id, corpus.version] = corpus
         slice_key = str(row.get("slice", "*"))
         vacuous = [
@@ -448,7 +462,7 @@ def parse(  # noqa: PLR0915 -- one subject's run, its metrics and its labels, ru
             started_ns=started,
             ended_ns=now_ns(),
             status="ok",
-            not_measured=(*vacuous, *unmeasured, *PARSE_UNMEASURED),
+            not_measured=(*vacuous, *unmeasured, *_structure_notes(found, structures)),
             confounders=(
                 "the fixtures are the driver's own, written by its authors",
                 f"{len(refused)} fixture(s) refused by the driver"
@@ -458,6 +472,8 @@ def parse(  # noqa: PLR0915 -- one subject's run, its metrics and its labels, ru
         rates, judged_verdicts, run = _rates(run, labelled, judged)
         runs.append(run)
         metrics.extend(rates)
+        if structures and not structure.inapplicable(found.card):
+            metrics.extend(structure.metrics(run, structures))
         assertions.extend(labelled)
         verdicts.extend(judged_verdicts)
         for gate, result in results:
@@ -511,13 +527,25 @@ def parse(  # noqa: PLR0915 -- one subject's run, its metrics and its labels, ru
 
 def _labelled(
     root: Path, fixtures_dir: Path, found: Subject, parses: Sequence[Any], workdir: Path
-) -> tuple[Corpus, tuple[Assertion, ...], dict[tuple[str, int], str], dict[str, Path]]:
-    """Rulings 22 and 23: the corpus with its labels digested, its assertions, the pages each
-    labelled fixture's parse serves, and the candidate store each was written to (D932)."""
+) -> tuple[
+    Corpus,
+    tuple[Assertion, ...],
+    dict[tuple[str, int], str],
+    dict[str, Path],
+    dict[str, tuple[structure.Triple, ...]],
+]:
+    """Rulings 22, 23 and 29: the corpus with its labels and structure references digested, its
+    assertions, the pages each labelled fixture's parse serves, the candidate store each was
+    written to (D932), and each fixture's structure reference (D982)."""
     base = fixtures_dir.resolve()
     files = [fixture.path for fixture in found.fixtures]
     labels_files = [labels.labels_of(path) for path in files if labels.labels_of(path).is_file()]
-    corpus = _corpus(root, fixtures_dir, [*files, *labels_files], n_docs=len(files))
+    reference_files = [
+        structure.reference_of(path) for path in files if structure.reference_of(path).is_file()
+    ]
+    corpus = _corpus(
+        root, fixtures_dir, [*files, *labels_files, *reference_files], n_docs=len(files)
+    )
     loaded = tuple(
         one
         for path in files
@@ -525,7 +553,12 @@ def _labelled(
             path, fixtures_dir=base, corpus_id=corpus.corpus_id, corpus_version=corpus.version
         )
     )
-    wanted = {one.doc for one in loaded}
+    refs = {
+        path.relative_to(base).as_posix(): structure.load(path)
+        for path in files
+        if structure.reference_of(path).is_file()
+    }
+    wanted = {one.doc for one in loaded} | set(refs)
     pages: dict[tuple[str, int], str] = {}
     stores: dict[str, Path] = {}
     for index, parse in enumerate(parses):
@@ -535,7 +568,56 @@ def _labelled(
             pages |= labels.candidate(parse, found.card, doc=doc, workdir=where)
             stores[doc] = where / labels.STORE
     checked = sum(1 for one in loaded if one.checked == "verified")
-    return replace(corpus, n_assertions=len(loaded), n_checked=checked), loaded, pages, stores
+    return (
+        replace(corpus, n_assertions=len(loaded), n_checked=checked),
+        loaded,
+        pages,
+        stores,
+        refs,
+    )
+
+
+def _structure(
+    found: Subject, refs: Mapping[str, tuple[structure.Triple, ...]], docs: Mapping[str, Doc]
+) -> tuple[structure.Scored, ...]:
+    """Ruling 29: each referenced document's `structure_f1`, or why it does not score (D982).
+
+    A subject whose card declares no structure is scored nowhere: `structure.inapplicable()` has
+    the reason and `_structure_notes()` prints it, so the rows are absent rather than zero.
+    """
+    if structure.inapplicable(found.card):
+        return ()
+    return tuple(
+        structure.score(doc, docs[doc], reference)
+        for doc, reference in sorted(refs.items())
+        if doc in docs
+    )
+
+
+def _structure_notes(found: Subject, scored: Sequence[structure.Scored]) -> tuple[str, ...]:
+    """Ruling 29: what this run did not measure about `structure_f1` (D982)."""
+    why = structure.inapplicable(found.card)
+    if why:
+        return (f"{structure.METRIC}: not applicable -- {why}",)
+    if not scored:
+        return PARSE_UNMEASURED
+    unscored = [one for one in scored if not one.scored]
+    if not unscored:
+        return ()
+    #  One line, whatever the corpus size: naming ten documents and their row counts made a
+    #  release-check line nobody reads. The aggregate says what to do; `ow eval explain` and the
+    #  reference files say which rows.
+    unsigned = [one for one in unscored if "unsigned" in one.why]
+    said = [
+        f"{len(unscored)} of {len(scored)} referenced document(s) not scored",
+        *(
+            [f"{sum(one.reference for one in unsigned)} reference row(s) unsigned (ruling 3)"]
+            if unsigned
+            else []
+        ),
+        *(f"{one.doc}: {one.why}" for one in unscored if one not in unsigned),
+    ]
+    return (f"{structure.METRIC}: " + "; ".join(said),)
 
 
 def _rates(
