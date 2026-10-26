@@ -30,7 +30,8 @@ standing pattern (ledger D25). D844 adds Q-G2, which :1986 makes *"the same gate
    A `fixtures/` directory under `src/` ships in a wheel, so it is package data, not the corpus.
 2. **A fixture's sidecar is `<file>.meta.toml` beside it, with a `[fixture]` table.** A fixture
    with no sidecar fails, and so does a sidecar with no file. Its labels, `<file>.assertions.toml`
-   (D912), are about it as its sidecar is, so they are no fixture of their own.
+   (D912), and its structure reference, `<file>.structure.jsonl` (D982), are about it as its
+   sidecar is, so they are no fixture of their own.
 3. **A row holds its file and its provenance to account.**
    - `sha256` and `bytes` equal the file's.
    - `provenance` is one of section 4.2's five spellings: `generated`, `public_domain`, `cc0`,
@@ -159,6 +160,10 @@ INDEX: Final = "fixtures/index.toml"
 SIDECAR: Final = ".meta.toml"
 LABELS: Final = ".assertions.toml"
 """Ruling 2: a fixture's assertions file (D912, `omniweave_conform.labels`), not a fixture."""
+REFERENCE: Final = ".structure.jsonl"
+"""Ruling 2: a fixture's `structure_f1` reference (D982, `omniweave_conform.structure`), not a
+fixture. Without this row the ten office references counted as ten fixtures with no sidecar, which
+is how Q-G1 read "47 fixture(s), 37 sidecar(s)" on the commit that added them."""
 HOUSEKEEPING: Final = frozenset({"README.md", ".gitattributes", "EXPECTED.sha256"})
 PROVENANCES: Final[Mapping[str, tuple[str, ...]]] = {
     "generated": ("generator",),
@@ -212,7 +217,7 @@ def scope(committed: Sequence[str]) -> tuple[list[str], list[str]]:
             continue
         if path.endswith(SIDECAR):
             sidecars.append(path)
-        elif parts[-1] not in HOUSEKEEPING and not path.endswith(LABELS):
+        elif parts[-1] not in HOUSEKEEPING and not path.endswith((LABELS, REFERENCE)):
             fixtures.append(path)
     return sorted(fixtures), sorted(sidecars)
 
