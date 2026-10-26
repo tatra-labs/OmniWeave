@@ -97,20 +97,25 @@ def test_a_full_run_holds_every_hard_gate_and_refuses_only_the_unverified_labels
         )
         assert same["n"] == same["parsed"] > 0
     code, shown = _ow("eval", "release-check", "--oweval", str(store))
-    #  D913: every hard gate holds. The drafted labels' three rates are unknown until a reviewer
+    #  D913: every hard gate holds. The drafted labels' rates are unknown until a reviewer
     #  verifies them, and each refusal names that as its fix. D933: false_confident_zero is
     #  unknown over 13 answerable questions, and its refusal names more questions as the fix.
+    #  D982 added `structure_f1` over the office fixtures' drafted `structure.jsonl` references:
+    #  unknown for the same reason, one signature short, and its fix names those rows and not the
+    #  assertions file's, because a reference is signed per document in its own file.
     assert code == 1
     refused = [line.split()[1] for line in shown.splitlines()[:-1:2]]
     assert refused == [
         "false_confident_zero@removal",
         "order_acc@__macro__",
         "order_acc@__macro__",
+        "structure_f1@__macro__",
         "table_rel_acc@__macro__",
     ], shown
     assert shown.count('fix: verify its labels: write checked = "verified"') == 3
+    assert shown.count('fix: verify its structure reference: write checked = "verified"') == 1
     assert shown.splitlines()[-1] == (
-        "ow eval release-check: refused, 4 finding(s); 10 latest run(s), 0 superseded, "
+        "ow eval release-check: refused, 5 finding(s); 10 latest run(s), 0 superseded, "
         "5 hard gate(s)"
     )
     code, shown = _ow("eval", "release-check", "--oweval", str(store), "--strict")
