@@ -8,3 +8,8 @@ media_type = "application/pdf"
 provenance = "generated"
 spdx = "Apache-2.0"
 generator = "fixtures/gen/gen_pdf_fixtures.py"
+
+[fixture.tests]
+# 13-quality.md section 4.4's block, and :1150's vocabulary: the corpus declares the slice and a
+# `[[gate]]` row's `slice` glob is matched against it, never the router's Slice.
+slices = ["pdf/born_digital/gen"]

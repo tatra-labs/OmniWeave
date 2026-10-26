@@ -218,6 +218,90 @@ changed what every later number on it means.\
 """
 
 # ---------------------------------------------------------------------------
+# THE THREE ACCURACY FLOORS (ledger D983). 13-quality.md section 8.3's rows, verbatim.
+# ---------------------------------------------------------------------------
+#
+# These are the rows V10-3 names, and the header's rule is why they arrive now and not sooner: a
+# register row naming a metric nothing computes is a claim that something is being measured.
+# `order_acc` and `table_rel_acc` have been computed by `omniweave_conform.rollup` since D912 and
+# `structure_f1` by `omniweave_conform.structure` since D982, so all three now name a harness.
+#
+# WHAT A ROW BINDS TO. `ow eval release-check` matches a row to a measurement with
+# `fnmatchcase(metric_row.slice_key, gate.slice)`, and a metric row's `slice_key` is the corpus's
+# own declaration -- `[fixture.tests] slices` in a Tier A sidecar (13:1150). Until D983 no shipped
+# sidecar declared one, so every verdict landed on `*` and these globs would have matched nothing:
+# the rows would have been law over an empty set. The ten labelled office fixtures now declare
+# `office/<ext>` (with `has_merges=1` first on the three that have a merged cell) and the four
+# labelled PDFs `pdf/born_digital/gen`.
+#
+# WHAT THEY READ TODAY. Nothing is verified, so every rate is `unknown` and `release-check`
+# refuses it by that alone -- these rows do not make a release pass or fail yet. What they do is
+# stop Q-G27's ungated-metric clock (a `[[gate]]` row naming the metric stops it, whatever its
+# standing), put the three floors under Q-G17's rot check with an owner and a date, and bind the
+# budget for the run after the reviewer signs. The numbers are 13-quality.md's, not a measurement
+# anyone took here: 0.90/0.85 for `structure_f1` (:1097-1098), 0.75 for `order_acc` (:1099, which
+# :1110-1114 derives from marker's own 75% char-stream reading-order annotation), 0.70 for
+# `table_rel_acc` (:1100).
+#
+# `structure_f1`'s SECOND row is deliberately absent. :1098 gives `pdf/born_digital/*` a 0.85
+# floor, and `parse.pdf.pdfium` declares `[capability.parse] sections = "none"` with
+# `tables = "none"` (02:266, F4 -- no licence-clean detector), so it emits no heading, table or
+# cell to score: `omniweave_conform.structure.inapplicable()` reports the card's clause and the
+# run writes no row. A floor over a declared capability nobody implements would be a gate that
+# fails for a reason the code already discloses. It lands with a driver that declares structure.
+
+[[gate]]
+metric = "structure_f1"
+suite = "parse"
+slice = "office/*"
+kind = "floor"
+budget = 0.90
+guard = 0.010
+truth_kind = "rendered"
+class = "blocking"
+owner = "quality"
+reviewed_at = "2026-10-26"
+review_by = "2027-01-24"
+computed = """
+F1 over `(kind, layer, parent_kind)` triples: predicted Blocks matched to reference Blocks by \
+`normalize_eval(text)` within the assertion's `max_diffs`, precision and recall over the matched \
+set, macro over documents then over slices. (13-quality.md:1097, verbatim.)\
+"""
+
+[[gate]]
+metric = "order_acc"
+suite = "parse"
+slice = "pdf/born_digital/*"
+kind = "floor"
+budget = 0.75
+guard = 0.015
+truth_kind = "rendered"
+class = "blocking"
+owner = "quality"
+reviewed_at = "2026-10-26"
+review_by = "2027-01-24"
+computed = """
+the fraction of `order` assertions that pass. (13-quality.md:1099, verbatim.)\
+"""
+
+[[gate]]
+metric = "table_rel_acc"
+suite = "parse"
+slice = "*/has_merges=1"
+kind = "floor"
+budget = 0.70
+guard = 0.020
+truth_kind = "human"
+class = "blocking"
+owner = "quality"
+reviewed_at = "2026-10-26"
+review_by = "2027-01-24"
+computed = """
+the fraction of `table` and `cell_rel` assertions that pass. A direct verdict rollup, which is \
+why `TableTest`'s relational shape was worth adopting. (13-quality.md:1100, verbatim.)\
+"""
+
+# ---------------------------------------------------------------------------
 # The subjects `span_exact_rate` is measured over.
 # ---------------------------------------------------------------------------
 #
