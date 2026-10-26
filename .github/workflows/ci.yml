@@ -72,12 +72,17 @@
 # ==========================================================================================
 # ACTION PINS. Section 7.3 rule 2 and the gates.workflow_tools_pinned job assertion require "every
 # third-party action is pinned by full 40-hex commit SHA with the version in a trailing comment. A
-# tag is mutable." THE PLAN NAMES NO SHA -- section 7.3 prints @<40-hex> for every action it lists
-# -- and forty invented hex characters would be a fabricated supply-chain claim, strictly worse
-# than a visibly unpinned one. So every third-party uses: below carries a mutable ref plus a
-# "TODO: pin" marker, and test_ci_workflows.py asserts that every uses: in both workflow files is
-# a local path, a 40-hex SHA, or carries that marker. The owner is release: 17-risks.md section
-# 1.3 gives release "the CI workflows", and section 6.7's rule (a) is the policy.
+# tag is mutable." EVERY ONE IS PINNED (ledger D984, a user ruling of 2026-10-26: the pins and a
+# `release` environment are what unblock pushing a tag). Each SHA is what its ref pointed at on
+# 2026-10-26, read from `repos/<owner>/<repo>/commits/<ref>`, and the ref it replaces stays in the
+# trailing comment -- which is what makes a pin reviewable rather than forty opaque characters.
+# Until D984 the plan named no SHA, so every action carried a mutable ref plus a "TODO: pin"
+# marker: a visibly unpinned ref was the honest state while the alternative was inventing one.
+# Reading the ref from the registry is neither inventing nor trusting the tag at use time.
+# test_ci_workflows.py now asserts every uses: in both files is a local path or a 40-hex SHA, with
+# one named exemption (the SLSA generator, which its own documentation requires be called by tag).
+# The owner is release: 17-risks.md section 1.3 gives release "the CI workflows", and section 6.7's
+# rule (a) is the policy. Bumping a pin is a reviewed diff: a new SHA, its ref, and a new date.
 #
 # ==========================================================================================
 # NOT IMPLEMENTED HERE, AND NAMED SO IT IS NOT MISTAKEN FOR DONE: section 6.6's "each job writes
@@ -142,10 +147,10 @@ jobs:
       # this is a presence test at P1 rather than a changed-paths diff.
       toolchains: ${{ steps.toolchains.outputs.present }}
     steps:
-      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release (section 6.7 (a))
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
       - name: "G5 -- every version-bearing declaration site agrees"
         # 16-roadmap.md:358 is the P1 exit line: "uv run tools/check_versions.py  # G5, CI job 1".
         # --no-project installs nothing: check_versions.py is stdlib-only by design, so CI job 1
@@ -190,7 +195,7 @@ jobs:
       # ships one; the parity container has none by design, which is why pyright may not run there.
       PYRIGHT_PYTHON_GLOBAL_NODE: "1"
     steps:
-      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           persist-credentials: false
           # Section 6.2's gate contract, not a performance knob. blob:none is a blobless clone that
@@ -198,11 +203,11 @@ jobs:
           # so the full-history clone is cheap and the filter keeps it that way.
           fetch-depth: 0
           filter: "blob:none"
-      - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
       - run: uv python install "$UV_PYTHON"
       - id: uv-cache-dir
         run: echo "dir=$(uv cache dir)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
         with:
           # Section 6.6's key verbatim, with this job's single Python cell substituted for
           # matrix.py: "a lock change invalidates exactly one key, and the prefix fallback turns it
@@ -523,10 +528,11 @@ jobs:
         # Section 6.7: zizmor covers the uses: half as a linter and "a ~40-line check covers the
         # run: half, because zizmor does not read shell". Both halves are unenforced here for one
         # reason: section 6.7's own rule (b) is "uvx <name>==<exact version>", the plan names no
-        # zizmor version, and inventing one is the same fabrication as inventing a SHA. The in-repo
-        # half of the assertion -- every uses: in both workflow files is a local path, a 40-hex
-        # SHA, or carries a TODO: pin marker -- is asserted meanwhile by
-        # packages/omniweave-core/tests/unit/test_ci_workflows.py.
+        # zizmor version, and inventing one is the same fabrication as inventing a SHA. What the
+        # in-repo half asserts got stronger at D984: every uses: in both workflow files is now a
+        # local path or a 40-hex SHA, with the SLSA generator the one named exemption, so
+        # packages/omniweave-core/tests/unit/test_ci_workflows.py holds the pin half outright and
+        # what is missing here is zizmor's own findings over the rest of the file.
         run: |
           echo "gates.workflow_tools_pinned NOT ENFORCED: zizmor needs a pinned version" \
             "(section 6.7 rule (b)); test_ci_workflows.py holds the in-repo half" \
@@ -674,7 +680,7 @@ jobs:
           { echo '```'; cat bench-query.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: "keep the query bench's rows (nightly)"
         if: github.event_name == 'schedule'
-        uses: actions/upload-artifact@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: bench-query
           path: bench-query.oweval
@@ -708,7 +714,7 @@ jobs:
           if [ "$code" -ne 0 ] && [ "$code" -ne 1 ]; then exit "$code"; fi
       - name: "keep G22's nightly report"
         if: github.event_name == 'schedule'
-        uses: actions/upload-artifact@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: g22-nightly
           path: g22.txt
@@ -828,17 +834,17 @@ jobs:
     env:
       UV_PYTHON: ${{ matrix.py }}
     steps:
-      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           persist-credentials: false
           # Section 6.2: "Every other job uses fetch-depth: 1." Only the three history-reading
           # gates' jobs (gates, conform) take depth 0.
           fetch-depth: 1
-      - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
       - run: uv python install "$UV_PYTHON"
       - id: uv-cache-dir
         run: echo "dir=$(uv cache dir)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
         with:
           # Section 6.6, verbatim, matrix.py and all. "The nine test cells are 747 s of [the cache
           # saving], which is why they get their own key per Python version rather than sharing
@@ -930,7 +936,7 @@ jobs:
         # with a cell.toml naming (os, python, pdfium); the golden job compares all nine.
         run: uv run tools/gate_frozen_stability.py --emit shapes
       - name: "keep this cell's shapes"
-        uses: actions/upload-artifact@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: "shapes-${{ matrix.os }}-py${{ matrix.py }}"
           path: shapes
@@ -955,15 +961,15 @@ jobs:
     env:
       UV_PYTHON: "3.12"
     steps:
-      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           persist-credentials: false
           fetch-depth: 1
-      - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
       - run: uv python install "$UV_PYTHON"
       - id: uv-cache-dir
         run: echo "dir=$(uv cache dir)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
         with:
           path: ${{ steps.uv-cache-dir.outputs.dir }}
           key: "uv-${{ runner.os }}-py3.12-${{ hashFiles('uv.lock') }}"
@@ -994,7 +1000,7 @@ jobs:
         # OW-Q-004 and never a live call. Since D972 it is the gates job's nightly Q-G2 step.
         run: uv run python bench/serve/run.py --audit-cassettes
       - name: "fetch every test cell's shapes"
-        uses: actions/download-artifact@v4 # TODO: pin to a 40-hex SHA -- owner: release
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           pattern: "shapes-*"
           path: shapes
@@ -1037,16 +1043,16 @@ jobs:
     env:
       UV_PYTHON: "3.12"
     steps:
-      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           persist-credentials: false
           fetch-depth: 0
           filter: "blob:none"
-      - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
       - run: uv python install "$UV_PYTHON"
       - id: uv-cache-dir
         run: echo "dir=$(uv cache dir)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
         with:
           path: ${{ steps.uv-cache-dir.outputs.dir }}
           key: "uv-${{ runner.os }}-py3.12-${{ hashFiles('uv.lock') }}"
@@ -1102,15 +1108,15 @@ jobs:
     env:
       UV_PYTHON: "3.12"
     steps:
-      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           persist-credentials: false
           fetch-depth: 1
-      - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
       - run: uv python install "$UV_PYTHON"
       - id: uv-cache-dir
         run: echo "dir=$(uv cache dir)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
         with:
           path: ${{ steps.uv-cache-dir.outputs.dir }}
           key: "uv-${{ runner.os }}-py3.12-${{ hashFiles('uv.lock') }}"
@@ -1151,15 +1157,15 @@ jobs:
     env:
       UV_PYTHON: "3.12"
     steps:
-      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           persist-credentials: false
           fetch-depth: 1
-      - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
       - run: uv python install "$UV_PYTHON"
       - id: uv-cache-dir
         run: echo "dir=$(uv cache dir)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
         with:
           path: ${{ steps.uv-cache-dir.outputs.dir }}
           key: "uv-${{ runner.os }}-py3.12-${{ hashFiles('uv.lock') }}"
@@ -1205,7 +1211,7 @@ jobs:
       # carries the same two properties that matter here: no Node and no CUDA.
       image: python:3.12-slim
     steps:
-      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           persist-credentials: false
           fetch-depth: 1
@@ -1299,11 +1305,11 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           persist-credentials: false
           fetch-depth: 1
-      - uses: actions/setup-node@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
         with:
           # Section 6.2's axis table: "node 20". The pnpm store cache is keyed on
           # toolchains/pnpm-lock.yaml (section 6.6) and is added with the lockfile.
@@ -1338,15 +1344,15 @@ jobs:
     env:
       UV_PYTHON: "3.12"
     steps:
-      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           persist-credentials: false
           fetch-depth: 1
-      - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
       - run: uv python install "$UV_PYTHON"
       - id: uv-cache-dir
         run: echo "dir=$(uv cache dir)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
         with:
           path: ${{ steps.uv-cache-dir.outputs.dir }}
           key: "uv-${{ runner.os }}-py3.12-${{ hashFiles('uv.lock') }}"
@@ -1455,7 +1461,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           persist-credentials: false
           fetch-depth: 1

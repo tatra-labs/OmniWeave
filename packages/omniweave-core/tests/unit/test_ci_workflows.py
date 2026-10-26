@@ -45,8 +45,9 @@ green before it existed.
 * **no step can pass for the wrong reason**: no `continue-on-error: true`, no `|| true`, no
   `--warn-only`. Section 6.8: "There is no `--warn-only` anywhere. A check that cannot yet fail is
   either quarantined as `informational` with an issue number ... or it is not in CI."
-* **every `uses:` is a local path, a 40-hex SHA, or carries a `TODO: pin` marker.** Section 7.3
-  rule 2 requires the SHA; the plan prints `@<40-hex>` and no actual SHA anywhere, so the marker is
+* **every `uses:` is a local path or a 40-hex SHA**, with the SLSA generator the one named
+  exemption (D984). Section 7.3 rule 2 requires the SHA; until D984 the plan printed `@<40-hex>`
+  and no actual SHA anywhere, so a `TODO: pin` marker was the third arm and
   what stands in until an owner pins them, and this test is what stops the marker being forgotten.
 * **the matrix is nine cells**, section 6.2's full `{3 OS} x {3 Python}` cross product, landed by
   P2 because 16-roadmap.md:340 makes `test (9 cells)` first green there. Each Python axis value is
@@ -298,6 +299,11 @@ _RUN_START = re.compile(r"^\s*-?\s*run:\s*(?P<inline>.*)$")
 _FLOW_LIST = re.compile(r"\[(?P<body>[^]]*)\]")
 _SHA40 = re.compile(r"@[0-9a-f]{40}$")
 _TODO_PIN = re.compile(r"TODO:\s*pin")
+_EXEMPT = ("slsa-github-generator",)
+"""D984: the one `uses:` that may stay on a tag. The SLSA generator verifies its own ref as part of
+the provenance it issues and its documentation requires a semantic version tag -- called by SHA it
+refuses to run -- so section 7.4 rule 2's record is the tag, and `release.yml` says so where the
+reference sits. Any other unpinned action is a finding."""
 # `for path in a b c` and `[ -f a ]` / `[ -e a ]` / `[ -d a ]`, the two shapes the tripwire steps
 # use to name a path. The path class excludes `$`, a quote and `]` so that `[ -e "$path" ]` -- the
 # loop's own body, which names no literal -- contributes nothing.
@@ -802,15 +808,17 @@ def test_no_step_can_pass_for_the_wrong_reason(workflow_name: str) -> None:
 
 
 @pytest.mark.parametrize("workflow_name", ["ci.yml", "release.yml"])
-def test_every_uses_is_local_pinned_or_visibly_unpinned(workflow_name: str) -> None:
+def test_every_uses_is_local_or_pinned_to_a_sha(workflow_name: str) -> None:
     """Section 7.3 rule 2: "Every third-party action is pinned by full 40-hex commit SHA with the
     version in a trailing comment. A tag is mutable."
 
-    The plan prints `@<40-hex>` for every action it names and no actual SHA anywhere in nineteen
-    documents, so nothing here can be pinned without fabricating forty hex characters -- which
-    would be a supply-chain claim that is false, and strictly worse than a visibly unpinned ref.
-    The third arm of this assertion is therefore a `TODO: pin` marker, and this test is what stops
-    the marker being quietly dropped along with the pin it stands for.
+    **D984 pinned them, so the third arm is gone.** Until then the plan printed `@<40-hex>` for
+    every action it names and no actual SHA anywhere in nineteen documents, so nothing could be
+    pinned without fabricating forty hex characters -- false as a supply-chain claim, and strictly
+    worse than a visibly unpinned ref -- and this test's third arm was a `TODO: pin` marker. Each
+    SHA now comes from `repos/<owner>/<repo>/commits/<ref>`, which is reading the ref rather than
+    inventing it, and `_EXEMPT` is the one reference that may stay on a tag. A marker no longer
+    licenses anything: dropping a pin back to a tag fails here.
     """
     workflow = _load(workflow_name)
     unaccounted = [
@@ -818,9 +826,38 @@ def test_every_uses_is_local_pinned_or_visibly_unpinned(workflow_name: str) -> N
         for number, ref, context in workflow.uses()
         if not ref.startswith("./")
         and _SHA40.search(ref) is None
-        and _TODO_PIN.search(context) is None
+        and not any(one in ref for one in _EXEMPT)
     ]
     assert not unaccounted, unaccounted
+
+
+@pytest.mark.parametrize("workflow_name", ["ci.yml", "release.yml"])
+def test_no_pin_marker_survives_the_pins_it_stood_for(workflow_name: str) -> None:
+    """D984: a `TODO: pin` on a `uses:` line is now a contradiction, not a licence.
+
+    The marker's text survives in both headers, which say what the state used to be and why -- so
+    this is asserted over the `uses:` lines and their own comment context, never over the file
+    text.
+    """
+    marked = [
+        (number, ref)
+        for number, ref, context in _load(workflow_name).uses()
+        if _TODO_PIN.search(context) is not None
+    ]
+    assert not marked, marked
+
+
+def test_the_one_exemption_is_the_slsa_generator_and_nothing_else() -> None:
+    """A second action may not hide behind the exemption the generator needs."""
+    assert _EXEMPT == ("slsa-github-generator",)
+    on_a_tag = [
+        ref
+        for name in ("ci.yml", "release.yml")
+        for _, ref, _ in _load(name).uses()
+        if not ref.startswith("./") and _SHA40.search(ref) is None
+    ]
+    assert [ref for ref in on_a_tag if "slsa-github-generator" not in ref] == []
+    assert len(on_a_tag) == 1, on_a_tag
 
 
 def test_the_slsa_generator_is_referenced_at_the_version_section_7_4_verified(
