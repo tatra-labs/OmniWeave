@@ -803,6 +803,38 @@ FIXTURES: dict[str, tuple[object, str | None, str]] = {
 }
 
 
+SLICES: dict[str, tuple[str, ...]] = {
+    "rich.docx": ("office/docx/has_merges=1", "office/docx"),
+    "sheet.xlsx": ("office/xlsx/has_merges=1", "office/xlsx"),
+    "sheet.ods": ("office/ods/has_merges=1", "office/ods"),
+    "deck.pptx": ("office/pptx",),
+    "notes.odt": ("office/odt",),
+    "deck.odp": ("office/odp",),
+    "book.epub": ("office/epub",),
+    "memo.rtf": ("office/rtf",),
+    "rows.csv": ("office/csv",),
+    "sheet.xls": ("office/xls",),
+}
+"""D983: `[fixture.tests] slices`, the corpus vocabulary a `[[gate]]` row's `slice` glob is matched
+against (13-quality.md:1148-1152). Exactly the ten fixtures that carry labels, because a slice
+nothing scores names nothing.
+
+Two things decide the spellings. The register's globs are the plan's verbatim -- `office/*`,
+`pdf/born_digital/*` and `*/has_merges=1` (13:1097-1099) -- and `fnmatchcase` is not path-aware, so
+`office/docx` matches `office/*` while `office/docx/has_merges=1` matches both it and
+`*/has_merges=1`. And a verdict's slice is its assertion's FIRST slice (`judge` ruling 5), so a
+document with a merged cell declares `has_merges=1` first: the slice is a claim about the DOCUMENT,
+which is where 13:1150 puts the corpus's own declaration, and `table_rel_acc` is the row that needs
+it."""
+
+TESTS = """
+[fixture.tests]
+# 13-quality.md section 4.4's block, and :1150's vocabulary: the corpus declares the slice and a
+# `[[gate]]` row's `slice` glob is matched against it. The router's Slice is a different thing and
+# the harness never mixes them.
+slices = [{slices}]
+"""
+
 SIDECAR = """# {name}.meta.toml -- 13-quality.md section 4.4's fixture manifest.
 #
 # {purpose}
@@ -816,7 +848,7 @@ generator = "fixtures/gen/gen_office_fixtures.py"
 # generator path under fixtures/gen/ and the expected output sha256. Both are above. It also
 # carries no `review_by`: the review window is "none for `generated` and `authored`, which have no
 # external dependency to rot", and this file depends on nothing outside this repository.
-"""
+{tests}"""
 
 
 def sidecar(name: str, data: bytes, media_type: str | None, purpose: str) -> str:
@@ -828,12 +860,15 @@ def sidecar(name: str, data: bytes, media_type: str | None, purpose: str) -> str
     for a file it could not route.
     """
     media = f'media_type = "{media_type}"\n' if media_type else ""
+    slices = SLICES.get(name, ())
+    tests = TESTS.format(slices=", ".join(f'"{one}"' for one in slices)) if slices else ""
     return SIDECAR.format(
         name=name,
         purpose=purpose,
         digest=hashlib.sha256(data).hexdigest(),
         size=len(data),
         media=media,
+        tests=tests,
     )
 
 

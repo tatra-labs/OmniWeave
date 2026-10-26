@@ -179,11 +179,17 @@ def test_a_register_with_no_subject_is_refused() -> None:
 
 
 def test_a_parse_gate_this_build_cannot_compute_is_named() -> None:
+    #  D983: `structure_f1` was this test's stand-in until D982 computed it, and `doc_acc` is the
+    #  honest one now -- an `extract` row over `field` assertions, with no harness and none owed
+    #  at v1.0 (a user ruling of 2026-10-26: no field extractor ships).
     register = REGISTER | {
-        "gate": [*REGISTER["gate"], {"metric": "structure_f1", "suite": "parse"}],
+        "gate": [*REGISTER["gate"], {"metric": "doc_acc", "suite": "parse"}],
     }
     batch, _ = _parse(register, subject=PDFIUM)
-    assert "structure_f1: this build does not compute it" in batch.runs[0].not_measured
+    assert "doc_acc: this build does not compute it" in batch.runs[0].not_measured
+    assert [
+        note for note in batch.runs[0].not_measured if "structure_f1: this build" in note
+    ] == [], "D982 computes it, and a run that said otherwise while scoring it would be lying"
 
 
 def test_the_run_id_is_a_digest_of_what_ran_and_when() -> None:

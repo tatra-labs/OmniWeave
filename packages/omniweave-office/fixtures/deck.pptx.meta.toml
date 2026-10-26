@@ -12,3 +12,9 @@ generator = "fixtures/gen/gen_office_fixtures.py"
 # generator path under fixtures/gen/ and the expected output sha256. Both are above. It also
 # carries no `review_by`: the review window is "none for `generated` and `authored`, which have no
 # external dependency to rot", and this file depends on nothing outside this repository.
+
+[fixture.tests]
+# 13-quality.md section 4.4's block, and :1150's vocabulary: the corpus declares the slice and a
+# `[[gate]]` row's `slice` glob is matched against it. The router's Slice is a different thing and
+# the harness never mixes them.
+slices = ["office/pptx"]
