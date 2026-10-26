@@ -110,6 +110,64 @@ def test_every_blocked_subject_names_what_is_in_the_way() -> None:
         assert subject.blocked_by.lower() not in vague, name
 
 
+REPO = Path(__file__).resolve().parents[4]
+LANDED: dict[str, tuple[str, ...]] = {
+    "cold": ("tools/gate_coldstart.py",),
+    "parse": (
+        "fixtures/gen/gen_5000p_pdf.py",
+        "packages/omniweave-pdf/src/omniweave_pdf/driver.toml",
+        "packages/omniweave/src/omniweave/route/rung.py",
+    ),
+    "route": (
+        "packages/omniweave/src/omniweave/route/evidence.py",
+        "packages/omniweave/src/omniweave/route/eval.py",
+        "packages/omniweave/src/omniweave/route/admit.py",
+    ),
+    "embed": ("fixtures/store/golden-queries.jsonl",),
+    "encoding": ("fixtures/store/golden-queries.jsonl",),
+    "incremental": ("fixtures/incremental",),
+    "compile": (
+        "fixtures/out/golden",
+        "packages/omniweave-target-pptx/src/omniweave_target_pptx/driver.toml",
+    ),
+    "rss": ("fixtures/gen/gen_4m_cell_sheet.py",),
+}
+"""D985: what each blocked row says HAS landed. A path here that disappears means the row's own
+account of the build is wrong in the other direction."""
+
+ABSENT: dict[str, tuple[str, ...]] = {
+    "parse": ("fixtures/golden", "fixtures/golden-200"),
+    "rss": ("fixtures/office-4m",),
+}
+"""D985: the inputs a row says are still missing and that a test can see the absence of. The other
+rows' missing halves are a function in this module (`runnable` already says so), a GPU cell, or an
+encoder -- none of which is a path, so none is asserted here."""
+
+
+def test_every_blockers_landed_clause_names_something_this_tree_has() -> None:
+    """D985: seven of the nine blockers were stale -- they named a P2 stub parser, three router
+    modules, the P6 compile path and a golden query set, all of which had since landed.
+
+    This is the ratchet that catches the next one. A `blocked_by` is read by
+    `tools/ow_bench.py --list` and is the only account a developer gets of why thirteen subjects
+    produce four numbers, so a row that reports a build that no longer exists is worse than a row
+    with no reason at all.
+    """
+    for name, paths in LANDED.items():
+        assert not bench.SUBJECTS[name].runnable, f"{name} runs; its blocker should be gone"
+        for path in paths:
+            assert (REPO / path).exists(), f"{name}'s blocker cites {path}, which is not here"
+
+
+def test_every_blockers_missing_clause_names_something_this_tree_lacks() -> None:
+    """The other direction: the day the corpus arrives, the row that waits on it fails here."""
+    for name, paths in ABSENT.items():
+        for path in paths:
+            assert not (REPO / path).exists(), (
+                f"{name}'s blocker says {path} is missing, and it is here now: re-read the row"
+            )
+
+
 def test_the_charter_four_are_the_four_the_roadmap_gives_this_cell() -> None:
     """16-roadmap.md:550: `ow bench scheduler | inproc | service | rss`. Two are blocked."""
     assert bench.CHARTER_FOUR == ("scheduler", "inproc", "service", "rss")
