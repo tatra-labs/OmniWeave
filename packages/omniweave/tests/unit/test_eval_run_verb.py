@@ -151,6 +151,11 @@ LABELS_FIX = (
     '              fix: verify its labels: write checked = "verified" on each .assertions.toml '
     "row you confirm against its document, 30 or more a slice, then ow eval run --suite parse"
 )
+REFERENCE_FIX = (
+    '              fix: verify its structure reference: write checked = "verified" on each '
+    ".structure.jsonl row you confirm against its document -- every row of a document, since a "
+    "part-signed reference has no precision denominator -- then ow eval run --suite parse"
+)
 DRAFTED = [
     "  metric      order_acc@__macro__ in parse/parse.office.anydoc run <id>: UNKNOWN; 15 "
     "unverified assertion(s) ran and were not scored (13:1022)",
@@ -158,11 +163,16 @@ DRAFTED = [
     "  metric      order_acc@__macro__ in parse/parse.pdf.pdfium run <id>: UNKNOWN; 60 "
     "unverified assertion(s) ran and were not scored (13:1022)",
     LABELS_FIX,
+    "  metric      structure_f1@__macro__ in parse/parse.office.anydoc run <id>: UNKNOWN; 10 of "
+    "10 referenced document(s) not scored; 59 reference row(s) unsigned (ruling 3)",
+    REFERENCE_FIX,
     "  metric      table_rel_acc@__macro__ in parse/parse.office.anydoc run <id>: UNKNOWN; 10 "
     "unverified assertion(s) ran and were not scored (13:1022)",
     LABELS_FIX,
 ]
-"""D913: the drafted labels' three rates, each refused and naming the verification as its fix."""
+"""D913: the drafted labels' rates, each refused and naming the verification as its fix. D982
+added `structure_f1` over the ten drafted `.structure.jsonl` references, whose fix names those
+rows and not the assertions file's."""
 UNDER_MIN = [
     "  metric      false_confident_zero@removal in absence/omniweave run <id>: UNKNOWN; 0 of 13 "
     "answerable question(s) answered absent, under min_slice_n = 30 (13:1088)",
@@ -191,7 +201,7 @@ def test_release_check_after_parse_alone_wants_the_other_four_gates(tmp_path: Pa
         "              fix: run the gate's suite: ow eval run --suite roundtrip",
         "  unmeasured  hard gate cell_identity@*: no portability run measured it",
         "              fix: run the gate's suite: ow eval run --suite portability",
-        "ow eval release-check: refused, 7 finding(s); 2 latest run(s), 0 superseded,"
+        "ow eval release-check: refused, 8 finding(s); 2 latest run(s), 0 superseded,"
         " 5 hard gate(s)",
     ]
 
@@ -258,7 +268,7 @@ def test_every_built_suite_by_default_and_release_check_refuses_only_the_drafted
     assert _masked(out) == [
         *UNDER_MIN,
         *DRAFTED,
-        "ow eval release-check: refused, 4 finding(s); 10 latest run(s), 0 superseded,"
+        "ow eval release-check: refused, 5 finding(s); 10 latest run(s), 0 superseded,"
         " 5 hard gate(s)",
     ], "D913: every hard gate holds; the unverified labels' rates refuse, and D933's ceiling"
 

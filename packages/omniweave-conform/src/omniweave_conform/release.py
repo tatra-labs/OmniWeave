@@ -76,6 +76,11 @@ _FIX: Final = {
         'verify its labels: write checked = "verified" on each .assertions.toml row you confirm '
         "against its document, {n} or more a slice, then ow eval run --suite {suite}"
     ),
+    "reference": (
+        'verify its structure reference: write checked = "verified" on each .structure.jsonl row '
+        "you confirm against its document -- every row of a document, since a part-signed "
+        "reference has no precision denominator -- then ow eval run --suite {suite}"
+    ),
     "population": (
         "measure {n} or more a slice: add questions to the suite's corpus, then ow eval run "
         "--suite {suite}"
@@ -150,6 +155,10 @@ def _unknown(row: Standing, notes: Sequence[str]) -> Finding:
         return Finding(
             "metric", named, detail, _FIX["labels"].format(n=MIN_SLICE_N, suite=row.suite)
         )
+    #  D982: a structure reference is signed per document and in its own file, so the labels fix
+    #  would name the wrong file and the wrong unit.
+    if any("reference row(s) unsigned" in note for note in why):
+        return Finding("metric", named, detail, _FIX["reference"].format(suite=row.suite))
     if any("under min_slice_n" in note for note in why):
         return Finding(
             "metric", named, detail, _FIX["population"].format(n=MIN_SLICE_N, suite=row.suite)

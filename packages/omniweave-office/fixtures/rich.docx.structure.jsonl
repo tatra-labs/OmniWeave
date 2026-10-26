@@ -1,0 +1,14 @@
+{"schema": "omniweave.structure/1"}
+{"id": "s01", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "Quarterly report"}
+{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Plain, bold, italic and struck. See the site."}
+{"id": "s03", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "Figures"}
+{"id": "s04", "page": 1, "kind": "formula", "layer": "body", "parent_kind": "document", "text": "x^{2}+1"}
+{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "The ratio \\frac{a}{b}"}
+{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Quarter"}
+{"id": "s07", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Revenue"}
+{"id": "s08", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Q1"}
+{"id": "s09", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "120"}
+{"id": "s10", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Total across both quarters"}
+{"id": "s11", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "first item"}
+{"id": "s12", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "list_item", "text": "second item"}
+{"id": "s13", "page": 1, "kind": "paragraph", "layer": "note", "parent_kind": "footnote", "text": "Unaudited figures."}
