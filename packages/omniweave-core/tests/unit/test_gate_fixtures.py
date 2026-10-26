@@ -78,6 +78,10 @@ def test_the_scope_is_package_fixtures_and_fixtures_docs_less_their_housekeeping
         "fixtures/docs/sec.pdf.meta.toml",
         "fixtures/docs/sec.pdf.assertions.toml",  # D912: its labels, no fixture of their own
         "packages/omniweave-pdf/fixtures/b.pdf.assertions.toml",
+        #  D982: its structure_f1 reference, about the fixture as its sidecar is. Counted as a
+        #  fixture it would be one with no sidecar, which is how Q-G1 first read 47 of 37.
+        "fixtures/docs/sec.pdf.structure.jsonl",
+        "packages/omniweave-pdf/fixtures/b.pdf.structure.jsonl",
         "fixtures/cassettes/agent/00/x.json",
         "fixtures/gen/gen_x.py",
         "fixtures/goldens/DECOMPOSITION.toml",
