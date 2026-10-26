@@ -30,11 +30,15 @@
 # 7.7 says is the one state with no clean recovery."
 #
 # ACTION PINS. Section 7.3 rule 2 requires a full 40-hex commit SHA with the version in a trailing
-# comment, and section 7.3 prints @<40-hex> for every action rather than a SHA. Inventing forty hex
-# characters would be a fabricated supply-chain claim, so every third-party uses: below carries a
-# mutable ref and a "TODO: pin" marker naming its owner (release, which 17-risks.md section 1.3
-# gives "the CI workflows"). This file cannot be trusted for a real release until every one of them
-# is pinned; zizmor and the gates.workflow_tools_pinned job assertion are what will say so.
+# comment. EVERY ACTION IN THIS FILE IS PINNED (ledger D984), each SHA read from
+# `repos/<owner>/<repo>/commits/<ref>` on 2026-10-26 with the ref it replaces kept in the trailing
+# comment. Until D984 they carried mutable refs and a "TODO: pin" marker, and the header said this
+# file "cannot be trusted for a real release until every one of them is pinned" -- that sentence is
+# discharged, and what remains before a tag may be pushed is the `release` environment with a
+# required reviewer, which is a repository setting and not a line in this file. The one exemption
+# is named where it sits: the SLSA generator is called by tag because its own documentation
+# requires it, and the tag the provenance was verified at is recorded there. The owner is release
+# (17-risks.md section 1.3 gives it "the CI workflows").
 #
 # WHAT SECTION 7.3'S PRINTED SHAPE OMITS, and therefore what is marked rather than written here:
 #   * the SBOM GENERATION itself. Rule 4: trivy, SHA-pinned, "its output is sanity-checked before
@@ -90,10 +94,10 @@ jobs:
     outputs:
       release: ${{ steps.release.outputs.release }}
     steps:
-      - uses: step-security/harden-runner@v2 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2  # v2
         with:
           egress-policy: audit
-      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           persist-credentials: false
           # Ancestry is a history question, so this is one more of the fetch-depth: 0 jobs of
@@ -162,18 +166,18 @@ jobs:
     env:
       RELEASE: ${{ needs.tag-guard.outputs.release }}
     steps:
-      - uses: step-security/harden-runner@v2 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2  # v2
         with:
           # Section 7.1: "The repository holds zero publishing secrets" -- PyPI is OIDC Trusted
           # Publishing, cosign is keyless OIDC, GHCR uses the run's GITHUB_TOKEN. That is what
           # makes this egress audit "a meaningful control rather than a formality: the only thing
           # a compromised step could exfiltrate is the run's own short-lived identity token."
           egress-policy: audit
-      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@v5 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
       - name: "the two-pass build, with SOURCE_DATE_EPOCH from the commit and not the clock"
         # Section 7.4's corollary is the rule this step obeys: nothing that produces an artefact
         # the publish job needs may depend on wall-clock time, a network resource that can
@@ -211,7 +215,7 @@ jobs:
         # base64 -w0 keeps the whole list on one line, which is what the generator's
         # base64-subjects input takes.
         run: echo "hashes=$(sha256sum dist/* | base64 -w0)" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: dist
           path: dist/
@@ -240,8 +244,13 @@ jobs:
       actions: read
       id-token: write
       contents: write
-    # TODO: pin to a 40-hex SHA -- owner: release. Section 7.4 rule 2 records the version this was
-    # verified at: v2.1.0.
+    # THE ONE EXEMPTION from section 7.3 rule 2's 40-hex pin, and not an unfinished one (D984).
+    # The SLSA generator verifies its OWN ref as part of the provenance it issues and its
+    # documentation requires a semantic version tag: called by SHA it refuses to run, so a pin here
+    # would not be a stricter version of this line, it would be a broken one. Section 7.4 rule 2's
+    # record is therefore the tag itself -- the version this was verified at: v2.1.0 -- and a bump
+    # is a reviewed diff like any pin. test_ci_workflows.py names this path as the exemption, so a
+    # SECOND unpinned action cannot hide behind it.
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
     with:
       base64-subjects: ${{ needs.build.outputs.hashes }}
@@ -263,20 +272,20 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: step-security/harden-runner@v2 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2  # v2
         with:
           egress-policy: audit
-      - uses: actions/checkout@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           persist-credentials: false
           fetch-depth: 1
-      - uses: actions/download-artifact@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         # Section 7.3 prints "the shape, not the whole file" and elides this; the SBOM is generated
         # over the built distributions, so the job needs them.
         with:
           name: dist
           path: dist
-      - uses: sigstore/cosign-installer@v3 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac  # v3
         with:
           # PINNED TO v2.6.3, NOT THE INSTALLER'S DEFAULT, and section 7.3 rule 1 is precise about
           # why: installer v4.1.2 ships cosign v3 by default, and v3's new-bundle-format changes
@@ -307,7 +316,7 @@ jobs:
             --certificate-identity-regexp '^https://github\.com/omniweave/omniweave/' \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             sbom-spdx.json
-      - uses: actions/upload-artifact@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: sbom
           path: |
@@ -347,10 +356,10 @@ jobs:
       # buys".
       id-token: write
     steps:
-      - uses: step-security/harden-runner@v2 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2  # v2
         with:
           egress-policy: audit
-      - uses: actions/download-artifact@v4 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         # Elided by section 7.3's shape and required by it: this download is what section 7.4 is
         # about. Past the five-day window it fails, the run is dead, and approving late produces a
         # job that cannot download its inputs. The recovery is to re-run the whole release from the
@@ -358,7 +367,7 @@ jobs:
         with:
           name: dist
           path: dist
-      - uses: actions/attest-build-provenance@v1 # TODO: pin to a 40-hex SHA -- owner: release
+      - uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018  # v1
         with:
           subject-path: "dist/*"
       - name: "split dist/ into the four ordered upload groups"
@@ -401,7 +410,7 @@ jobs:
             exit 1
           fi
       - name: "step 1 -- omniweave-ports, if its Port major moved"
-        uses: pypa/gh-action-pypi-publish@release/v1 # TODO: pin to a 40-hex SHA -- owner: release
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # release/v1
         with:
           packages-dir: groups/ports
           # THE ONLY STEP THAT MAY SKIP AN EXISTING FILE, and section 4.1's Port-major exception is
@@ -412,14 +421,14 @@ jobs:
           # defect that must not be skipped past.
           skip-existing: true
       - name: "step 2 -- omniweave-core"
-        uses: pypa/gh-action-pypi-publish@release/v1 # TODO: pin to a 40-hex SHA -- owner: release
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # release/v1
         with:
           packages-dir: groups/core
       - name: "step 3 -- the eleven siblings"
-        uses: pypa/gh-action-pypi-publish@release/v1 # TODO: pin to a 40-hex SHA -- owner: release
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # release/v1
         with:
           packages-dir: groups/siblings
       - name: "step 4 -- omniweave"
-        uses: pypa/gh-action-pypi-publish@release/v1 # TODO: pin to a 40-hex SHA -- owner: release
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # release/v1
         with:
           packages-dir: groups/umbrella
