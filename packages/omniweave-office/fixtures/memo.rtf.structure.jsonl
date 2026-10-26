@@ -1,0 +1,4 @@
+{"schema": "omniweave.structure/1"}
+{"id": "s01", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Memo"}
+{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Plain text, then italic and bold."}
+{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "A second paragraph."}

@@ -37,10 +37,12 @@ SPAN = "span_exact_rate"
 DRAFTED = (
     ("metric", "order_acc@__macro__ in parse/parse.office.anydoc"),
     ("metric", "order_acc@__macro__ in parse/parse.pdf.pdfium"),
+    ("metric", "structure_f1@__macro__ in parse/parse.office.anydoc"),
     ("metric", "table_rel_acc@__macro__ in parse/parse.office.anydoc"),
 )
 """D913: the drafted labels' rates, `unknown` until a reviewer verifies 30 in a slice, and each
-one a refusal, run id aside."""
+one a refusal, run id aside. D982 added `structure_f1` over the office fixtures' drafted
+`structure.jsonl` references: `unknown` for the same reason, one signature short."""
 UNDER_MIN = ("metric", "false_confident_zero@removal in absence/omniweave")
 """D933: the removal half's ceiling, `unknown` over the catalogue's 13 answerable questions."""
 
@@ -118,7 +120,9 @@ def test_each_subject_is_one_run_over_its_own_tier_a_corpus(parsed: Any) -> None
         assert (run.witness, run.cassette) == ("self", "off")
         assert run.started_ns < run.ended_ns  # type: ignore[operator]
         assert len(run.code_fingerprint) == 64
-        assert eval_run.PARSE_UNMEASURED[0] in run.not_measured
+        assert any(note.startswith("structure_f1:") for note in run.not_measured), (
+            "D982: a parse run says what it did not measure about structure_f1"
+        )
         assert run.confounders[0] == "the fixtures are the driver's own, written by its authors"
 
 
@@ -203,10 +207,21 @@ def test_the_batch_writes_and_release_check_wants_the_other_four_gates(
         judged = check_release(connection, REGISTER, strict=False)
     finally:
         connection.close()
-    assert standing == {(SPAN, "WITHHELD"), ("order_acc", "UNKNOWN"), ("table_rel_acc", "UNKNOWN")}
+    assert standing == {
+        (SPAN, "WITHHELD"),
+        ("order_acc", "UNKNOWN"),
+        ("structure_f1", "UNKNOWN"),
+        ("table_rel_acc", "UNKNOWN"),
+    }
     drafted = judged.findings[: len(DRAFTED)]
-    assert all(f.fix.startswith('verify its labels: write checked = "verified"') for f in drafted)
-    assert all("unverified assertion(s) ran and were not scored" in f.why for f in drafted)
+    rates = [f for f in drafted if "structure_f1" not in f.names]
+    assert all(f.fix.startswith('verify its labels: write checked = "verified"') for f in rates)
+    assert all("unverified assertion(s) ran and were not scored" in f.why for f in rates)
+    #  D982: the structure reference is signed per document, in its own file, so it names its own
+    #  fix and not the assertions file's.
+    (shape,) = [f for f in drafted if "structure_f1" in f.names]
+    assert shape.fix.startswith('verify its structure reference: write checked = "verified"')
+    assert "reference row(s) unsigned" in shape.why
     assert [(f.kind, f.names.split(" run ")[0]) for f in judged.findings] == [
         *DRAFTED,
         ("unmeasured", "hard gate degradation_detection@*"),
