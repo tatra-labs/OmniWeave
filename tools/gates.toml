@@ -700,6 +700,16 @@ release        = true
 fetch_depth    = 0
 # Clause b's script landed, so its path moved from `runner_planned` to `runner` in the same commit
 # -- the forcing function the runner columns above describe, exercised for the first time.
+#
+# CLAUSE (d) RUNS IN PART SINCE D986, and `gate_docs.py` is still planned rather than written for a
+# reason outside the script: 11-repo-layout.md section 8.6 walks `docs/ARCHITECTURE.md` AND
+# `docs/plan/*.md`, and the nineteen plan documents are not committed (`.gitignore` holds `_plan/`;
+# section 1.5 says the initial commit was to move them to `docs/plan/`). So the 520-symbol floor
+# below cannot be met by anything in the tree, and the half that can run does:
+# packages/omniweave-core/tests/unit/test_architecture_doc.py parses ARCHITECTURE.md, imports every
+# symbol it names, and checks every `ow` verb, `G<n>` and register path against its own register --
+# d0, d1 and d2's checkable shapes over one document. A test and not a `tools/` script because
+# there is nothing a CI step would add that the suite does not already fail on.
 runner         = ["tools/gate_migrations.py"]
 runner_planned = ["tools/gate_docs.py"]
 owner          = "release"

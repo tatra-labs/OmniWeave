@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D983: 13-quality.md:1154 gains a build note -- the slice vocabulary's two halves now meet (sidecar declarations against the register's globs), and the three accuracy floors landed in eval/gates.toml. A build note, not an amendment: section 8.3's numbers and section 4.4's block are the plan's own.
+# blessed-because: D986: 11-repo-layout.md:2384 gains a build note -- docs/ARCHITECTURE.md is written and G27 clause (d) runs in part as a test; gate_docs.py stays unwritten because its walk includes docs/plan/*.md and section 1.5's move of the nineteen documents has not happened. A build note, not an amendment: section 8.6's clauses and floors are unchanged.
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -37,7 +37,7 @@ documents-frozen  25666745a9572e7eadf017b6988a2216744cc3eca5a3f572d45da8f1b8c3e1
 documents-frozen  4c02f71d665332330bf423ac063a1678887ae6f3004d01d7b799e9991f414df3  08-runtime.md
 documents-frozen  e3d9414cd24b29681c2da184fffa9c3fbc33e4d066f831fe9d8113b159e0ab08  09-generation.md
 documents-frozen  7045e57d63450411e13e7d0bac60aaed64db257c224ced3682c667ee1ff39b34  10-interfaces.md
-documents-frozen  720f16cb45820c91d4b0b9c0478ea962c7d6b6243c1136b049039ac0a002c989  11-repo-layout.md
+documents-frozen  defe0dcd82536d6887d6768648cd31947a4eaa2c7dd98c9d7a1070abe6ba5ded  11-repo-layout.md
 documents-frozen  2fe653d5ac8031388b9a25e2d7464c4921e22b0aa78e2f4dabb531186219c6a5  12-performance.md
 documents-frozen  e472eebcd402b403164bd55a28fe8bc1c476babcc3aa7338648e8ec651b61568  13-quality.md
 documents-frozen  78a3474b788625971c7a7fed610ef3c6518e9330bfd87e8411fbc744666b43d1  14-security.md
