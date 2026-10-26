@@ -136,13 +136,21 @@ def test_no_row_claims_full_coverage_it_does_not_have() -> None:
             assert row.gap, row.id
 
 
+def test_every_row_names_at_least_one_instrument() -> None:
+    """D980 took the last empty one. V10-3 carried `()` until `tools/label_review.py` landed, and
+    a row with no instrument is a row whose verdict is a declaration and nothing else. A new row
+    arriving without one should turn this red rather than report UNMEASURED quietly."""
+    assert [row.id for row in a.CRITERIA if not row.instruments] == []
+
+
 def test_anything_short_of_every_row_passing_exits_one(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    unmeasured = next(row.id for row in a.CRITERIA if row.coverage is a.Coverage.NONE)
-    assert a.main(["--only", unmeasured]) == 1
+    """The P10 exit criterion is meant to fail until v1.0 is accepted. V10-7 is the cheap way to
+    see it: its instruments are all slow, so none runs here and the row reports UNMEASURED."""
+    assert a.main(["--only", "V10-7"]) == 1
     out = capsys.readouterr().out
-    assert f"UNMEASURED {unmeasured}" in out
+    assert "UNMEASURED V10-7" in out
     assert out.splitlines()[-1].startswith("V10: PASS 0  PARTIAL 0  FAIL 0  UNMEASURED 1  of 1")
 
 
@@ -156,10 +164,11 @@ def test_a_slow_row_is_unmeasured_without_slow(capsys: pytest.CaptureFixture[str
 
 
 def test_json_prints_every_result(capsys: pytest.CaptureFixture[str]) -> None:
-    assert a.main(["--json", "--only", "V10-3"]) == 1
+    """A row whose instruments were all skipped prints an empty `ran`, not a missing key."""
+    assert a.main(["--json", "--only", "V10-7"]) == 1
     rows = json.loads(capsys.readouterr().out)
     assert [(row["id"], row["verdict"], row["ran"]) for row in rows] == [
-        ("V10-3", "UNMEASURED", []),
+        ("V10-7", "UNMEASURED", []),
     ]
 
 

@@ -189,12 +189,22 @@ CRITERIA: tuple[Criterion, ...] = (
     Criterion(
         "V10-3",
         "accuracy floors from eval/gates.toml: structure_f1, order_acc, table_rel_acc, ...",
-        (),
-        Coverage.NONE,
+        (
+            tool("label_review.py"),
+            pytest(f"{CORE}/test_label_review.py", label="the review page and its readers (D980)"),
+        ),
+        Coverage.PARTIAL,
+        # D980: the labels' own integrity is now measured, which is a different claim from the
+        # floors. `tools/label_review.py` reads each fixture's committed bytes with its own
+        # readers -- PDF content streams, `zipfile` + `ElementTree` -- and reports 110 of 110
+        # agreeing, 0 contradicted, 0 without evidence. That says the drafted claims are not
+        # wrong about the files; only a reviewer's signature makes one count toward a rate.
         "eval/gates.toml carries no accuracy floor. `ow eval run --suite parse` now scores "
         "`order_acc`, `table_rel_acc` and `field_acc` from a fixture's `.assertions.toml` over "
-        "the Markdown `ow` serves (D912). D913 drafted 110 labels over 14 fixtures, every one "
-        "passing and none verified, so every rate is unknown until a reviewer signs them; "
+        "the Markdown `ow` serves (D912). D913 drafted 110 labels over 14 fixtures and D980 holds "
+        "every one of them against the fixture bytes, read independently of any driver -- 110 "
+        "agree, none is contradicted, none is unreadable -- but not one is signed, so every rate "
+        "is still unknown until the reviewer rules on them (ruling 1 of 2026-10-23); "
         "`structure_f1` and `doc_acc` have no harness",
     ),
     Criterion(
