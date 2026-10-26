@@ -22,9 +22,20 @@ point of the registry:
 | subject | what it needs | where that is |
 |---|---|---|
 | `scheduler` | a store, a roster, a loop, a no-op operator | all four are here |
-| `inproc` | `fixtures/office-200` -- and nothing else | no cell in the plan produces it |
+| `inproc` | `fixtures/office-200` -- and nothing else | generated at D656; this runs |
 | `service` | 2,000 rendered pages and a model server | S3 landed at W4.9; the GPU card did not |
 | `rss` | the 5,000-page PDF, the 4M-cell sheet, a 100k roster | the sheet has no reader |
+
+## The blockers are audited, not written once (D985)
+
+A `blocked_by` is read by `tools/ow_bench.py --list` and is the only thing that tells a developer
+why thirteen subjects produce four numbers, so a stale one is worse than a missing one: it reports
+a build that does not exist. Seven of the nine were stale by D985 -- they named a P2 stub parser
+(`tools/p2_stub_parse.py`), three router modules, the P6 compile path and a golden query set, all
+of which have since landed -- and each now names what is **actually** absent, with the clause that
+arrived and the cell that brought it. `test_run_bench.py` holds the audit: every blocker's landed
+clause names something this tree has, and its missing clause names something it does not, so the
+day one of them arrives the test fails and the row is re-read rather than believed.
 
 `rss` is the interesting absence. Its first clause is measured today by `tools/measure_store.py`
 (`rss.gen5000p_peak_bytes`, printed INFORMATIONAL by CI) and its third by `tools/gate_scale.py`
@@ -217,8 +228,11 @@ SUBJECTS: Final[Mapping[str, Subject]] = MappingProxyType(
                 "a synthetic dist-info tree",
                 "import.omniweave_core_ms, cold.ow_version_ms, cold.ow_help_ms, "
                 "discovery.20dists_ms, B31",
-                blocked_by="`ow` itself: three of the four clauses time a CLI that is P7's "
-                "(16-roadmap.md section 10). tools/gate_coldstart.py measures the first",
+                blocked_by="the distribution: `ow` landed at P7 and all four clauses are "
+                "measured today by tools/gate_coldstart.py -- a hard module count from "
+                "`-X importtime` plus a 25% band over `import omniweave_core`, `ow --version`, "
+                "`ow --help` and discovery at 20 dists (G10, G23) -- so what is missing here is "
+                "the p50/p95/p99 over N runs that a band cannot answer (D985)",
             ),
             _subject(
                 "scheduler",
@@ -241,8 +255,10 @@ SUBJECTS: Final[Mapping[str, Subject]] = MappingProxyType(
                 "per-part decode at each Rung, by format and producer_family",
                 "fixtures/gen/gen_5000p_pdf.py plus ten real 200-page documents",
                 "B04, B23, store.bytes_per_block, F1, P-Q1",
-                blocked_by="a real parse driver: tools/p2_stub_parse.py writes through DocSink "
-                "with no driver host, so there is no Rung to decode at",
+                blocked_by="the ten real 200-page documents. The drivers and the Rungs "
+                "landed at P3 and P5 (parse.pdf.pdfium, parse.office.anydoc, route/rung.py) and "
+                "gen_5000p_pdf.py is here, so the stub this row used to name is gone; the "
+                "real-document half of its corpus is W10.8's omniweave-golden, unbuilt (D985)",
             ),
             _subject(
                 "route",
@@ -250,7 +266,9 @@ SUBJECTS: Final[Mapping[str, Subject]] = MappingProxyType(
                 "rate, and the route_decision count per document",
                 "the same",
                 "B05, B06, B07, P-Q3, P-Q7",
-                blocked_by="route/evidence.py, route/eval.py and route/admit.py: W5.1-W5.3",
+                blocked_by="this module's function: route/evidence.py, route/eval.py and "
+                "route/admit.py landed at P5 with the policy grammar and the ledger, so nothing "
+                "the router owes is missing -- only the harness that times it (D985)",
             ),
             _subject(
                 "service",
@@ -268,8 +286,10 @@ SUBJECTS: Final[Mapping[str, Subject]] = MappingProxyType(
                 "vseg signature scan at 50k/100k/200k/250k",
                 "fixtures/store/",
                 "B18-B21, B28, VEC_BRUTE_MAX",
-                blocked_by="an encoder and fixtures/store/: [retrieval] vectors is off by "
-                "default and nothing in this tree embeds",
+                blocked_by="an encoder: fixtures/store/ exists (golden-queries.jsonl), so "
+                "the fixture half is here, and `[retrieval] vectors` is off by default with "
+                "nothing in this tree that embeds -- F10's licence-clean backend is not in v1.0 "
+                "(D985)",
             ),
             _subject(
                 "query",
@@ -284,7 +304,9 @@ SUBJECTS: Final[Mapping[str, Subject]] = MappingProxyType(
                 "eval/gates.toml floor",
                 "the golden query set",
                 "B36; F51",
-                blocked_by="the golden query set and the tier-1 encoders",
+                blocked_by="the tier-1 encoders. The golden query set landed at D915 "
+                "(fixtures/store/golden-queries.jsonl), so this row's two blockers are now one, "
+                "and it is the same absence `embed` names (D985)",
             ),
             _subject(
                 "incremental",
@@ -292,15 +314,20 @@ SUBJECTS: Final[Mapping[str, Subject]] = MappingProxyType(
                 "10,000 successive single-document ingests into a 1M-block store",
                 "a generated roster plus the 40 scripted mutations of G19's fixture",
                 "B43; F34, F55, and section 6.7's freshness-scan term",
-                blocked_by="lexical p50/p95, which needs the retrieval Channels. G19's fixture "
-                "and its 40 mutations landed at W4.10 and are half of what this needs",
+                blocked_by="a per-Channel number: the Channels landed at P6 but "
+                "`ow bench query` measures end-to-end only (D915), so the lexical p50/p95 this "
+                "shape is stated against is produced nowhere. G19's fixture and its 40 mutations "
+                "landed at W4.10 and are the half that exists (D985)",
             ),
             _subject(
                 "compile",
                 "per-unit and whole-artefact compile, plus Toolchain spawn, per target",
                 "the 40-unit golden OUT fixture",
                 "B37-B40; P-Q2",
-                blocked_by="09-generation.md's compile path, which is P6",
+                blocked_by="this module's function: the compile path landed at P9 "
+                "(compile.pptx.native, compile.docx.native) and the 40-unit golden is in "
+                "fixtures/out/golden, so what is missing is the harness and not the compiler "
+                "(D985)",
             ),
             _subject(
                 "rss",
