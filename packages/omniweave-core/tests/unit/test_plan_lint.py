@@ -56,6 +56,7 @@ import re
 import shutil
 import subprocess  # noqa: TID251 -- a real `git diff` over a real ignored path IS the subject.
 import sys
+import tomllib
 from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType
@@ -1331,6 +1332,39 @@ def test_the_plan_this_gate_guards_is_tracked_and_no_text_still_claims_otherwise
     ):
         assert "only trace" not in text, where
         assert "docs/plan" in text or "D991" in text, where
+
+
+@pytest.mark.plan
+def test_the_formatter_is_excluded_from_exactly_the_tree_this_gate_freezes() -> None:
+    """D991's second regression, and the one CI found rather than the move did.
+
+    `ruff format` reformats the python fences inside a markdown file. While the plan lived in the
+    ignored `_plan/` the formatter never saw it, because ruff respects `.gitignore`; committing it
+    to `docs/plan/` put fifty documents in scope and `ruff format --check .` went red on comment
+    alignment inside quoted design samples.
+
+    Reformatting them was not an option in either direction. Every one of the fifty is a settled
+    document with a digest in `tools/plan.sha256`, so the formatter's edit fails rule
+    `documents-frozen` and the fix is a `--bless` whose recorded reason is "ruff moved a comment"
+    -- a blessing is supposed to record an amendment to the design, and that cheapens it. The
+    fences are not unchecked either: G27 clause (a) parses every fenced block under the parser its
+    fence names and clause (a2) is the brace-balance lint over the toml ones.
+
+    So `[tool.ruff] exclude` carries `docs/plan`, and this asserts the exclusion is exactly the
+    frozen tree in both directions -- it does not reach a document this gate does not freeze, and
+    it is not narrower than the set the formatter would otherwise rewrite.
+    """
+    config = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    excluded = config["tool"]["ruff"]["exclude"]
+    assert "docs/plan" in excluded, (
+        "ruff formats python fences in markdown; without this the frozen plan fails "
+        "`ruff format --check .` and the fix is a bless with the formatter as its reason"
+    )
+    guarded = pl.DEFAULT_PLAN_ROOT.relative_to(REPO_ROOT).as_posix()
+    assert guarded == "docs/plan", "the exclusion and the gate's root are one path or neither holds"
+    #  The other direction: no OTHER markdown under docs/ is excluded, so ARCHITECTURE.md and the
+    #  generated docs/reference/ tree stay formatted. A blanket `docs` would have hidden both.
+    assert "docs" not in excluded and "docs/" not in excluded
 
 
 @pytest.mark.plan
