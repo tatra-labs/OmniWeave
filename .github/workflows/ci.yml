@@ -37,9 +37,10 @@
 #     which is 16-roadmap.md:575's P4 exit line. It branched on fixtures/incremental/ until
 #     W4.10 landed the corpus, the 40-mutation script, the indexer and the rebuilder; the
 #     branch is gone because the absent side of it no longer exists.
-#     G27 is armed in its clause-b half only: tools/gate_migrations.py landed at P2
-#     (16-roadmap.md:453) and runs; tools/gate_docs.py carries a, a2, a3, c and d and does not
-#     exist, so the step runs what is there and says nothing about what is not.
+#     G27 is armed in both runners since D994: tools/gate_migrations.py landed at P2
+#     (16-roadmap.md:453) and carries clause b; tools/gate_docs.py carries a, a2 and a3 plus
+#     clause c's registered-off line, and prints on its own line that clause d's d0-d4 walk is
+#     the next cell -- the step no longer has a tripwire branch because both files exist.
 #   PRESENT, MARKED, NOT YET ENFORCING (for each of these the register lists the runner under
 #   runner_planned, or names no runner at all, and test_gates_register.py asserts every planned
 #   path does NOT exist -- so landing one forces the register edit and arms the step in the same
@@ -48,8 +49,10 @@
 #     G11 G12 G15 G16   P3 (16-roadmap.md:513-516)
 #     G20               P4 (16-roadmap.md:576)
 #     G25 G26           P7 (16-roadmap.md:742-743)
-#     G27 (a a2 a3 c d) tools/gate_docs.py lands "with P1's gate harness" (section 6.4 on a2)
 #     G29               ADR-2's second append; the plan states no phase for it
+#   (G27 left this list at D994: tools/gate_docs.py landed, so its register path moved to
+#   `runner` and its step runs. Clause d's walk is the next cell and the SCRIPT says so, which is
+#   the right place for a bound on one clause of one gate.)
 #   DELIBERATELY ABSENT FROM EVERY PR CELL: G22, whose runner `tools/gate_scale.py` LANDED at
 #   W4.10. Section 6.4: it "is a nightly 100k-roster scale run with no PR cell, so it blocks the
 #   *release* (checklist step 11) and is deliberately absent from ci-ok's required set."
@@ -375,32 +378,16 @@ jobs:
               | tee -a "$GITHUB_STEP_SUMMARY"
           fi
       - name: "G27 -- documents machine-checked (a, a2, a3, b, c, d)"
-        # Two runners. gate_migrations.py carries clause b at the P2 exit (16-roadmap.md:453) and
-        # is here; gate_docs.py carries clauses a, a2, a3, c and d and is the next cell. Its
-        # blocker cleared at D991: section 8.6 walks docs/ARCHITECTURE.md AND docs/plan/*.md, and
-        # the plan documents are committed now, so the 520-symbol floor is meetable. Clause d's
-        # ARCHITECTURE.md half already runs in the test tier (test_architecture_doc.py: every
-        # symbol imports, every `ow` verb, G<n> and register path resolves). Clause c is
-        # registered with enabled = false by ADR-1 decision 6 and must stay off until its four
-        # turn-on conditions hold, which is the script's business and not this file's.
+        # Two runners. gate_migrations.py carries clause b at the P2 exit (16-roadmap.md:453);
+        # gate_docs.py carries clauses a, a2 and a3 plus clause c's registered-off line since
+        # D994, and prints on its own line that clause d's d0-d4 walk is not in it yet. Clause d's
+        # ARCHITECTURE.md half runs in the test tier (test_architecture_doc.py: every symbol
+        # imports, every `ow` verb, G<n> and register path resolves). Clause c is registered with
+        # enabled = false by ADR-1 decision 6 and must stay off until its four turn-on conditions
+        # hold, which is the script's business and not this file's.
         run: |
-          armed=0
-          if [ -f tools/gate_docs.py ]
-          then
-            armed=1
-            uv run tools/gate_docs.py
-          fi
-          if [ -f tools/gate_migrations.py ]
-          then
-            armed=1
-            uv run tools/gate_migrations.py --min-sqlite 3.42
-          fi
-          if [ "$armed" = "0" ]
-          then
-            echo "G27 NOT ENFORCED: gate_docs.py is the next cell (D991 committed its input);" \
-              "clause d's ARCHITECTURE.md half runs in the test tier (D986)" \
-              | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
+          uv run tools/gate_docs.py
+          uv run tools/gate_migrations.py --min-sqlite 3.42
       - name: "G28 -- import(export(store)) == store over the fixture corpus"
         # ADR-2 decision 4 gave charter D2's unnumbered CI gate a number and INV-1 its third
         # enforcer. Do NOT cite G6 for it: G6 is "ow schema emit --check" and is not renumbered.
