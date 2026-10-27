@@ -9,7 +9,8 @@ resolved, and the roundtrip suite (D871), each target's golden compiled, read ba
 law R2 as the hard `address_survival` row (D902), and the portability suite (D903), the Tier-A
 shapes and each target's parts held to their frozen values, all through real `ow add` children.
 It spawns workers, so it is the conform tier's by Q-G25's rule. `--strict` still refuses, naming
-the two suites nothing runs; that is asserted too, so the day a suite lands the count moves here.
+the one suite nothing runs -- `perf`, since D987 made `extract` not applicable rather than
+unmeasured -- and that is asserted too, so the day a suite lands the count moves here.
 """
 
 from __future__ import annotations
@@ -120,7 +121,17 @@ def test_a_full_run_holds_every_hard_gate_and_refuses_only_the_unverified_labels
     )
     code, shown = _ow("eval", "release-check", "--oweval", str(store), "--strict")
     assert code == 1
-    assert [line.split()[1] for line in shown.splitlines()[:-1:2]][-2:] == [
-        "extract:",
-        "perf:",
-    ]
+    #  D987: `--strict` still asks for an `extract` run, and that is the point rather than an
+    #  oversight. Not applicable is a DISCLOSURE and a disclosure is a row -- 16:942's "skip is
+    #  not a state" -- so a store with no extract row is a store that has not said so yet.
+    assert [line.split()[1] for line in shown.splitlines()[:-1:2]][-2:] == ["extract:", "perf:"]
+    assert "  suite       extract: no run at all" in shown
+    #  And once the row exists it is a disclosure rather than a refusal: `extract` leaves the
+    #  findings entirely and `perf` is the only suite still owed.
+    code, shown = _ow("eval", "run", "--suite", "extract", "--oweval", str(store))
+    assert code == 0, shown
+    code, shown = _ow("eval", "release-check", "--oweval", str(store), "--strict")
+    assert code == 1, shown
+    assert "  not-applicable  extract/omniweave run " in shown
+    assert "not applicable at this release" in shown
+    assert [line.split()[1] for line in shown.splitlines()[:-1:2]][-1:] == ["perf:"]

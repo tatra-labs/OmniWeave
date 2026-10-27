@@ -20,6 +20,7 @@ import pytest
 from omniweave_conform import absence as absence_harness
 from omniweave_conform import eval_run
 from omniweave_conform import portability as cell_harness
+from omniweave_conform import release as release_half
 from omniweave_conform import removal as removal_harness
 from omniweave_conform import retrieval as cite_harness
 from omniweave_conform import roundtrip as r2_harness
@@ -908,19 +909,35 @@ def test_an_unmeasurable_suite_writes_one_unknown_run_naming_why(suite: str) -> 
         "unknown",
         "none",
     )
-    assert run.not_measured == (eval_run.UNMEASURABLE[suite],)
+    assert run.not_measured == (eval_run.UNRUNNABLE[suite],)
     assert run.confounders[0].startswith("nothing was measured")
     assert (batch.corpora, batch.metrics, batch.perf, batch.verdicts) == ((), (), (), ())
     assert (done.metric, done.value, done.refused) == (
         "none",
         None,
-        (eval_run.UNMEASURABLE[suite],),
+        (eval_run.UNRUNNABLE[suite],),
     )
+    #  D987: the two reasons are different claims, and the row says which it carries.
+    if suite in eval_run.NOT_APPLICABLE_SUITES:
+        assert "not applicable at this release" in run.not_measured[0]
+        assert run.confounders[-1].startswith("not applicable by a user ruling")
+    else:
+        assert "not applicable" not in run.not_measured[0]
+        assert len(run.confounders) == 1
 
 
 def test_every_suite_is_measured_or_says_why_it_cannot_be() -> None:
     assert set(eval_run.SUITES) == set(SUITES_SEVEN)
     assert set(eval_run.BUILT).isdisjoint(eval_run.UNMEASURABLE)
+    #  D987: the three sets partition the seven, and `extract` is the one that is not applicable
+    #  rather than unmeasured -- a decision with a date, not a gap that stays open.
+    assert set(eval_run.NOT_APPLICABLE_SUITES) == {"extract"}
+    assert set(eval_run.UNMEASURABLE) == {"perf"}
+    assert set(eval_run.BUILT).isdisjoint(eval_run.NOT_APPLICABLE_SUITES)
+    assert set(eval_run.UNRUNNABLE) == {"extract", "perf"}
+    assert set(eval_run.NOT_APPLICABLE_SUITES) == set(release_half.NOT_APPLICABLE), (
+        "the policy and the reason are one fact each and they have to agree"
+    )
     with pytest.raises(QualityError, match="'parse' is a suite this build measures"):
         eval_run.unknown("parse", witness="self", cassette="off", now_ns=_clock())
 

@@ -22,7 +22,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D986: 11-repo-layout.md:2384 gains a build note -- docs/ARCHITECTURE.md is written and G27 clause (d) runs in part as a test; gate_docs.py stays unwritten because its walk includes docs/plan/*.md and section 1.5's move of the nineteen documents has not happened. A build note, not an amendment: section 8.6's clauses and floors are unchanged.
+# blessed-because: D987: 16-roadmap.md:978's P10 exit line takes the amendment a user ruling of 2026-10-26 made -- 'zero unknown outside perf'. extract is not applicable at this release (no field-extraction driver ships) and its run is a disclosure release-check prints without counting; perf stays a refusal because it is measurable and this machine is not the pinned runner. The criterion's other half, 'skip is not a state', is unchanged and is why the disclosure is still a row.
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -42,7 +42,7 @@ documents-frozen  2fe653d5ac8031388b9a25e2d7464c4921e22b0aa78e2f4dabb531186219c6
 documents-frozen  e472eebcd402b403164bd55a28fe8bc1c476babcc3aa7338648e8ec651b61568  13-quality.md
 documents-frozen  78a3474b788625971c7a7fed610ef3c6518e9330bfd87e8411fbc744666b43d1  14-security.md
 documents-frozen  2cddc08dab8833611e0180e474ea2106c43dfbdb57e710b3578ffcaef764614f  15-observability.md
-documents-frozen  5cf9671f6a3972ec5c0462eaf6ad35ad2da2190c9772330c6280d1f085af90f6  16-roadmap.md
+documents-frozen  951494b06763e72c56f486f67760e0304c4f32ba45a4fc0d587a777f6d23521f  16-roadmap.md
 documents-frozen  df4d16ec9e95851ee78fec9cf1fee599488fef474c9f1ee90d9da73bdca32405  17-risks.md
 documents-frozen  51deca62fb9bb17e63d26b961521e4c628644a11bbb6a70d4e76b801f17b5e16  18-api-sketch.md
 documents-frozen  a2725dcf40c073536ff0c049911a27f8b5d7b4938e2116071b53054949c19b7c  README.md

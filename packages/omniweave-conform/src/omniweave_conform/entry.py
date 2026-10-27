@@ -120,7 +120,10 @@ def run(
                 admit=admit,
                 deterministic_half=deterministic_half,
             )
-        elif suite in eval_run.UNMEASURABLE:
+        elif suite in eval_run.UNRUNNABLE:
+            #  D987: `extract` (not applicable) and `perf` (unmeasured here) both write a row and
+            #  measure nothing. Reading `UNMEASURABLE` alone sent `extract` to the final branch,
+            #  which ran the portability suite under its name.
             batch, measured = eval_run.unknown(
                 suite, witness=witness, cassette=cassette, now_ns=clock
             )
@@ -132,9 +135,14 @@ def run(
             batch, measured = eval_run.roundtrip(
                 rows, root=Path(root), witness=witness, cassette=cassette, now_ns=clock
             )
-        else:
+        elif suite == "portability":
             batch, measured = eval_run.portability(
                 rows, root=Path(root), witness=witness, cassette=cassette, now_ns=clock
+            )
+        else:  # pragma: no cover -- `unbuilt` above refuses anything outside SUITES
+            raise QualityError(
+                f"{suite!r} is in SUITES and this dispatch has no branch for it",
+                fix="add the branch, or take the suite out of eval_run.SUITES",
             )
         batches.append(batch)
         done.extend(measured)
@@ -203,6 +211,11 @@ def release_check(*, oweval: str, gates: str, strict: bool) -> dict[str, object]
         "gates": judged.gates,
         "findings": [
             {"kind": f.kind, "names": f.names, "why": f.why, "fix": f.fix} for f in judged.findings
+        ],
+        #  D987: the not-applicable suites, beside the findings and never among them. A key an
+        #  older `omniweave` does not read is a key it ignores, which is why this is additive.
+        "disclosed": [
+            {"kind": f.kind, "names": f.names, "why": f.why, "fix": f.fix} for f in judged.disclosed
         ],
     }
 

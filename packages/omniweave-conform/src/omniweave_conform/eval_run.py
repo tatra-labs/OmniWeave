@@ -225,11 +225,13 @@ __all__ = [
     "ABSENCE_UNMEASURED",
     "BUILT",
     "MEASURED",
+    "NOT_APPLICABLE_SUITES",
     "PARSE_UNMEASURED",
     "SUITES",
     "TRUTH_KINDS",
     "TRUTH_OF",
     "UNMEASURABLE",
+    "UNRUNNABLE",
     "Measured",
     "absence",
     "corpus_digest",
@@ -243,11 +245,23 @@ __all__ = [
 BUILT: Final[tuple[str, ...]] = ("parse", "absence", "retrieve", "roundtrip", "portability")
 """The suites `ow eval run` measures in this build, in run order. The other two are unknown."""
 
-UNMEASURABLE: Final[Mapping[str, str]] = {
+NOT_APPLICABLE_SUITES: Final[Mapping[str, str]] = {
     "extract": (
-        "no extraction harness and no labelled extraction corpus: field_acc, doc_acc and "
-        "hallucination_rate need one (13-quality.md:1179-1192, W10.8)"
+        "not applicable at this release: no field-extraction driver ships, `parse.fields.lift` is "
+        "a tombstone with no successor, so field_acc, doc_acc and hallucination_rate are defined "
+        "over a pass this build does not have (13-quality.md:1096, 1179-1192; a user ruling of "
+        "2026-10-23, and 2026-10-26 for the state)"
     ),
+}
+"""D987: the suites this release does not owe a number for, each with the reason and the ruling.
+
+`release.NOT_APPLICABLE` is the policy -- which suites do not refuse -- and this mapping is the
+reason, one fact each; `test_conform_release.py` asserts the two agree. `extract` moved here from
+`UNMEASURABLE` because the two say different things: "nothing here measures it yet" is a gap that
+stays open, and "no such pass ships" is a decision with a date. Writing the second as the first
+left `ow eval release-check --strict` owing a number for a driver that is a tombstone."""
+
+UNMEASURABLE: Final[Mapping[str, str]] = {
     "perf": (
         "eval_perf rows pass or fail against 7-run rolling medians on the pinned runner "
         "ow-bench-1 (eval/perf.toml [pacer], 12-performance.md section 7), which this machine is "
@@ -256,8 +270,15 @@ UNMEASURABLE: Final[Mapping[str, str]] = {
 }
 """Ruling 17: each suite this build cannot measure, and exactly why."""
 
-SUITES: Final[tuple[str, ...]] = (*BUILT, *UNMEASURABLE)
-"""Every suite `ow eval run` accepts: the five it measures, then the two it reports unknown."""
+UNRUNNABLE: Final[Mapping[str, str]] = {**NOT_APPLICABLE_SUITES, **UNMEASURABLE}
+"""D987: every suite that writes a row and measures nothing, whichever reason it carries. One
+membership test, because the dispatch in `entry.py` read `UNMEASURABLE` alone and `extract` moving
+out of it sent the suite down a fall-through branch that ran `portability` instead -- which is also
+why that branch is now named rather than a default."""
+
+SUITES: Final[tuple[str, ...]] = (*BUILT, "extract", *UNMEASURABLE)
+"""Every suite `ow eval run` accepts, in 13:1881's order: the five it measures, `extract` which it
+reports not applicable (D987), and `perf` which it reports unknown."""
 
 ADDRESS: Final = "address_survival"
 """Ruling 16: R2's hard row in the metric register (D902)."""
@@ -1452,8 +1473,15 @@ def _golden_corpus(root: Path, golden: Path, digest: str) -> Corpus:
 def unknown(
     suite: str, *, witness: str, cassette: str, now_ns: Callable[[], int]
 ) -> tuple[Batch, tuple[Measured, ...]]:
-    """Ruling 17: one `unknown` run naming why `suite` cannot be measured here."""
-    reason = UNMEASURABLE.get(suite)
+    """Ruling 17: one `unknown` run naming why `suite` cannot be measured here.
+
+    D987: a suite in `NOT_APPLICABLE_SUITES` writes the same row with its own reason. The
+    stored `status` stays `unknown` -- the `.oweval` CHECK admits `ok`, `partial` and `unknown`,
+    and a fourth value is a migration plus a `harness_version` bump for a distinction the report
+    carries perfectly well -- and `release.check_release` classifies the row by its suite, which
+    is where the policy lives anyway.
+    """
+    reason = UNRUNNABLE.get(suite)
     if reason is None:
         raise QualityError(
             f"{suite!r} is a suite this build measures or none of the seven",
@@ -1499,6 +1527,11 @@ def unknown(
         confounders=(
             "nothing was measured: this run exists so release-check names the gap, as 16:942 "
             "requires of every suite",
+            *(
+                ("not applicable by a user ruling of 2026-10-26, disclosed and not refused",)
+                if suite in NOT_APPLICABLE_SUITES
+                else ()
+            ),
         ),
     )
     done = Measured(
