@@ -888,6 +888,10 @@ class EvalReleaseCheckReport:
     superseded: int
     gates: int
     findings: tuple[EvalReleaseFinding, ...]
+    disclosed: tuple[EvalReleaseFinding, ...] = ()
+    """D987: the suites that are not applicable at this release, each with its reason and the
+    ruling that made it so. They are reported and do not refuse, so `ok` does not read them -- a
+    reader who could not tell a closed question from an unasked one would be the reason to."""
 
 
 @dataclass(frozen=True, slots=True)
