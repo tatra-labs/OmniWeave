@@ -41,8 +41,13 @@ DRIFT: Final[int] = 1
 _ARGPARSE_USAGE: Final[int] = 2
 
 
-def run(*, check: bool, bless: bool) -> SurfaceReport:
-    """The Action: `check()` and report, or `emit()` and report what changed. Flags, not argv."""
+def run(*, check: bool, bless: bool, docs: bool = False) -> SurfaceReport:
+    """The Action: `check()` and report, or `emit()` and report what changed. Flags, not argv.
+
+    D990: `--docs` switches the output set to `docs/reference/**`, section 1.8's eighth, whose
+    gate is the `gates.reference_docs` assertion and not G25. It composes with `--check` the same
+    way, and with `--bless` for the same reason: there is one writer and the review is its diff.
+    """
     from omniweave.gen import emit  # noqa: PLC0415 -- every generator; only this verb pays
 
     if check and bless:
@@ -50,6 +55,8 @@ def run(*, check: bool, bless: bool) -> SurfaceReport:
             exit_code=_ARGPARSE_USAGE,
             lines=("ow: surface emit takes --check or --bless, not both: a check never writes",),
         )
+    if docs:
+        return _docs(check=check)
     if check:
         findings = emit.check()
         if not findings:
@@ -63,6 +70,34 @@ def run(*, check: bool, bless: bool) -> SurfaceReport:
     changed = emit.emit()
     written = tuple(f"wrote {path}" for path in changed)
     return SurfaceReport(OK, (*written, f"surface emit: {len(changed)} artefact(s) changed"))
+
+
+def _docs(*, check: bool) -> SurfaceReport:
+    """D990: section 1.8's eighth output, written or byte-diffed. Its own function so `run` keeps
+    one return per outcome it owns rather than seven."""
+    from omniweave.gen import emit  # noqa: PLC0415 -- only the docs path pays for the renderers
+
+    if not check:
+        written = emit.emit_docs()
+        return SurfaceReport(
+            OK,
+            (
+                *(f"wrote {path}" for path in written),
+                f"surface emit --docs: {len(written)} document(s) changed",
+            ),
+        )
+    findings = emit.check_docs()
+    if not findings:
+        return SurfaceReport(
+            OK, ("surface emit --docs --check: docs/reference matches the registry",)
+        )
+    return SurfaceReport(
+        DRIFT,
+        (
+            *findings,
+            f"surface emit --docs --check: {len(findings)} finding(s); run ow surface emit --docs",
+        ),
+    )
 
 
 def main(argv: Sequence[str], *, stdout: TextIO, stderr: TextIO) -> int:
@@ -82,7 +117,9 @@ def main(argv: Sequence[str], *, stdout: TextIO, stderr: TextIO) -> int:
     except OwError as error:
         return switches.report(error, parsed, stdout=stdout, stderr=stderr)
     report = run(
-        check=bool(getattr(parsed, "check", False)), bless=bool(getattr(parsed, "bless", False))
+        check=bool(getattr(parsed, "check", False)),
+        bless=bool(getattr(parsed, "bless", False)),
+        docs=bool(getattr(parsed, "docs", False)),
     )
     stream = stderr if report.exit_code == _ARGPARSE_USAGE else stdout
     for line in report.lines:
