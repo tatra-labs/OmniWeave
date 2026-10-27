@@ -531,7 +531,7 @@ def test_the_count_of_seven_is_a_literal_in_this_files_own_source() -> None:
     assert isinstance(value, ast.Constant) and value.value == 7, (
         "FROZEN_SURFACE_COUNT is an integer literal and not an expression over FROZEN_SURFACES; "
         "a derived count pins agreement and not value, and the plan-text backstop skips without "
-        "_plan/. If the plan really froze an eighth surface, write the new number down here."
+        "docs/plan/. If the plan really froze an eighth surface, write the new number down here."
     )
     assert FROZEN_SURFACE_COUNT == 7
 

@@ -80,7 +80,7 @@ from omniweave_ports.types import (
 )
 
 ROOT: Final = Path(__file__).resolve().parents[4]
-PLAN: Final = ROOT / "_plan"
+PLAN: Final = ROOT / "docs" / "plan"
 
 
 MINIMAL_CARD: Final = """card_schema = 1

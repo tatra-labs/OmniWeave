@@ -889,7 +889,8 @@ def _plan_lines(first: int, last: int) -> list[str]:
     The repo root is found from this file, not from the working directory.
     """
     root = Path(__file__).resolve().parents[4]
-    text = (root / "_plan" / "03-document-model.md").read_text(encoding="utf-8").splitlines()
+    document = root / "docs" / "plan" / "03-document-model.md"
+    text = document.read_text(encoding="utf-8").splitlines()
     return text[first - 1 : last - 1]
 
 

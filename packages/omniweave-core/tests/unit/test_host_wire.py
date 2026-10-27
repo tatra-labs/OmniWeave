@@ -86,7 +86,7 @@ from omniweave_core.host.wire import (
 )
 from omniweave_ports.types import DriverError, FailureClass
 
-PLAN: Final = Path(__file__).resolve().parents[4] / "_plan"
+PLAN: Final = Path(__file__).resolve().parents[4] / "docs" / "plan"
 """`packages/omniweave-core/tests/unit/` -> the repo root's `_plan/`. Four parents up."""
 
 
