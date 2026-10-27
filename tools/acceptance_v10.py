@@ -439,9 +439,11 @@ CRITERIA: tuple[Criterion, ...] = (
         # vacuous, and both runs exit 0 either way: a vacuous G16 is a pass by 16-roadmap.md:516.
         "the clause is two releases and master carries one tag, so the `--releases 2` run stays "
         "vacuous until the next milestone tag; `--releases 1` loads `v0.1.0`'s template Driver "
-        "against HEAD for real (D979). The tag is local until `release.yml`'s third-party actions "
-        "are pinned, because pushing a `v*` tag starts the publish workflow, so a CI or "
-        "fresh-clone run of this row finds no tag and passes vacuously",
+        "against HEAD for real (D979). The tag is local, and what keeps it local changed at D984: "
+        "every third-party action in `release.yml` is SHA-pinned now, so the remaining blocker is "
+        "the approval pause itself -- pushing a `v*` tag starts the publish workflow and the "
+        "repository has zero environments, so there is no reviewer gate to pause at. Until the "
+        "tag is pushed, a CI or fresh-clone run of this row finds no tag and passes vacuously",
     ),
     Criterion(
         "V10-12",
