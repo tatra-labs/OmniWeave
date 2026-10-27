@@ -69,6 +69,24 @@ __all__ = ["SUITES", "Finding", "Gate", "Release", "check_release", "hard_gates"
 SUITES: Final = ("parse", "extract", "retrieve", "absence", "roundtrip", "portability", "perf")
 """The seven suites (13-quality.md:1881, 16-roadmap.md W10.6), as `eval_run.suite` spells them."""
 
+NOT_APPLICABLE: Final = frozenset({"extract"})
+"""The suites that are NOT APPLICABLE at this release, and therefore do not refuse one. **D987.**
+
+A user ruling of 2026-10-26: *"a `not-applicable` suite state with a required reason and the ruling
+that made it so -- the target suite already has this vocabulary -- applied to `extract` only. Keep
+`perf` as `unknown` and amend P10's exit criterion to zero unknown outside perf."*
+
+`extract` is not applicable because no field-extraction driver ships: `parse.fields.lift` is a
+tombstone with no successor, so `field_acc`, `doc_acc` and `hallucination_rate` are defined over a
+pass this release does not have (a user ruling of 2026-10-23, D971). That is a different claim from
+`perf`'s, which stays a refusal: perf IS measurable and this machine is not the pinned runner, so
+reporting it as not applicable would retire a number the project still owes.
+
+**This set is the policy and `eval_run.NOT_APPLICABLE` is the reason**, one fact each, and
+`test_conform_release.py` asserts the two agree. A suite named here still has to write its run --
+`--strict` refuses a suite with no run at all, and 16:942's "skip is not a state" is exactly that
+rule -- so the disclosure is a row in the `.oweval` and a line in the report, never an absence."""
+
 _FIX: Final = {
     "run": "fix what stopped the run, then ow eval run --suite {suite}{subject}",
     "metric": "fix what kept the metric from computing, then run its suite again",
@@ -87,6 +105,10 @@ _FIX: Final = {
     ),
     "perf": "fix the Runner or the regression the budget names, then run ow bench again",
     "gate": "fix the regression; a hard budget moves only by a reviewed eval/gates.toml diff",
+    "not_applicable": (
+        "nothing: the suite is not applicable at this release and says why. Removing this line "
+        "means shipping the pass it is about, not editing the register"
+    ),
     "unmeasured": "run the gate's suite: ow eval run --suite {suite}",
     "suite": "run the suite: ow eval run --suite {suite}",
 }
@@ -125,6 +147,9 @@ class Release:
     superseded: int
     gates: int
     findings: tuple[Finding, ...]
+    disclosed: tuple[Finding, ...] = ()
+    """D987: the not-applicable suites, reported and not refused. `ok` does not read them, and the
+    report prints them, because a gap that is a decision is still a thing a reader must see."""
 
     @property
     def ok(self) -> bool:
@@ -198,6 +223,7 @@ def check_release(connection: Any, register: Mapping[str, Any], *, strict: bool)
     every = run_statuses(connection)
     runs = latest(every)
     judged = {run.run_id for run in runs}
+    unknown_runs = [run for run in runs if run.status == "unknown"]
     findings = [
         Finding(
             "run",
@@ -205,9 +231,21 @@ def check_release(connection: Any, register: Mapping[str, Any], *, strict: bool)
             "status unknown; not measured: " + (", ".join(run.not_measured) or "(none named)"),
             _FIX["run"].format(suite=run.suite, subject=_subject_flag(run.suite, run.subject)),
         )
-        for run in runs
-        if run.status == "unknown"
+        for run in unknown_runs
+        if run.suite not in NOT_APPLICABLE
     ]
+    #  D987: a not-applicable suite's run is a disclosure, not a gap. It is printed with its
+    #  reason and the ruling, and it does not refuse the release.
+    disclosed = tuple(
+        Finding(
+            "not-applicable",
+            f"{run.suite}/{run.subject} run {run.run_id}",
+            ", ".join(run.not_measured) or "(no reason named)",
+            _FIX["not_applicable"],
+        )
+        for run in unknown_runs
+        if run.suite in NOT_APPLICABLE
+    )
     board = [row for row in scoreboard(connection) if row.run_id in judged]
     said = {run.run_id: run.not_measured for run in runs}
     findings += [
@@ -254,7 +292,7 @@ def check_release(connection: Any, register: Mapping[str, Any], *, strict: bool)
             for suite in SUITES
             if suite not in ran
         ]
-    return Release(len(runs), len(every) - len(runs), len(gates), tuple(findings))
+    return Release(len(runs), len(every) - len(runs), len(gates), tuple(findings), disclosed)
 
 
 def _text(value: object) -> bool:

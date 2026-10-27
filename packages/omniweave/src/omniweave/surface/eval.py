@@ -242,6 +242,14 @@ def _release(result: Mapping[str, object], *, strict: bool) -> EvalReleaseCheckR
     """The entry point's builtins as this side's report. Anything else is a broken install."""
     ok, runs, superseded, gates = (result.get(k) for k in ("ok", "runs", "superseded", "gates"))
     findings = result.get("findings")
+    #  D987: additive, so an older omniweave-conform that does not send it is a report with no
+    #  disclosure rather than a broken install.
+    disclosed = result.get("disclosed", [])
+    if not (isinstance(disclosed, list) and all(_finding(row) for row in disclosed)):
+        raise InternalError(
+            "the [omniweave.eval] release-check entry point returned a malformed disclosed list",
+            fix="pip install --force-reinstall omniweave-conform",
+        )
     if not (
         isinstance(ok, bool)
         and isinstance(runs, int)
@@ -265,6 +273,10 @@ def _release(result: Mapping[str, object], *, strict: bool) -> EvalReleaseCheckR
             EvalReleaseFinding(kind=row["kind"], names=row["names"], why=row["why"], fix=row["fix"])
             for row in findings
         ),
+        disclosed=tuple(
+            EvalReleaseFinding(kind=row["kind"], names=row["names"], why=row["why"], fix=row["fix"])
+            for row in disclosed
+        ),
     )
 
 
@@ -284,12 +296,28 @@ def _release_row(done: EvalReleaseCheckReport) -> dict[str, object]:
         "findings": [
             {"kind": f.kind, "names": f.names, "why": f.why, "fix": f.fix} for f in done.findings
         ],
+        #  D987: reported beside the findings and never among them, because a not-applicable
+        #  suite is a disclosure and a reader of the JSON has to be able to tell the two apart.
+        "disclosed": [
+            {"kind": f.kind, "names": f.names, "why": f.why, "fix": f.fix} for f in done.disclosed
+        ],
     }
 
 
 def _release_lines(done: EvalReleaseCheckReport) -> list[str]:
-    """Ruling 6's text form: each finding and its fix, then one line of verdict."""
+    """Ruling 6's text form: each finding and its fix, then one line of verdict.
+
+    D987: the not-applicable suites print FIRST, with their reason. They do not refuse, and the
+    verdict line counts only the findings -- but a release whose report did not name them would be
+    one whose reader could not tell a closed question from an unasked one.
+    """
     lines = []
+    for f in done.disclosed:
+        #  Two lines, as a finding prints, because every reader of this report -- including the
+        #  tests that parse it as pairs -- reads it as one row of two. The second line says there
+        #  is nothing to do and what removing the row would actually take.
+        lines.append(f"  {f.kind:<10}  {f.names}: {f.why}")
+        lines.append(f"  {'':<10}  fix: {f.fix}")
     for f in done.findings:
         lines.append(f"  {f.kind:<10}  {f.names}: {f.why}")
         lines.append(f"  {'':<10}  fix: {f.fix}")

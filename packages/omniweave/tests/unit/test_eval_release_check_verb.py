@@ -209,6 +209,9 @@ def test_render_json_prints_one_object(tmp_path: Path) -> None:
                 "fix": _GATE_FIX,
             }
         ],
+        #  D987: present and empty. A reader of the JSON can tell "nothing was disclosed" from
+        #  "this install does not report disclosures", which an omitted key could not.
+        "disclosed": [],
     }
     code, out, _ = _run(tmp_path, "--render", "json", "--strict")
     assert json.loads(out)["strict"] is True
