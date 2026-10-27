@@ -246,11 +246,15 @@ jobs:
         # MIT-CMU, CNRI-Python, BSL-1.0) are absent from 14-security.md section 9.2's verbatim
         # allow list. Section 6.8 forbids the alternative outright.
         run: uv run tools/gate_licences.py
-      - name: "G3 second half -- the fifteen gen_notice.py --check trees"
+      - name: "G3 second half -- the sixteen gen_notice.py --check trees"
         # The register splits G3's row in two for a reason: a row naming only gate_licences.py
         # would make the gate look complete while the most common licence defect in the mined
-        # collection -- attribution drift across the fifteen NOTICE/LICENSES/THIRD_PARTY trees --
-        # went unchecked. gen_notice.py is section 7.6 step 5 and is not written.
+        # collection -- attribution drift across the per-distribution NOTICE/LICENSES/THIRD_PARTY
+        # trees -- went unchecked. gen_notice.py landed at D988 and this step runs it; the guard
+        # below stays because a checkout without the script is still a checkout this job can
+        # report honestly. SIXTEEN and not section 9.1's fifteen: the set is
+        # glob("packages/*/pyproject.toml") plus the root, and the tree gained omniweave-langchain.
+        # --check reads no environment, so it holds on a runner that installs the dev group alone.
         run: |
           if [ -f tools/gen_notice.py ]
           then uv run tools/gen_notice.py --check
