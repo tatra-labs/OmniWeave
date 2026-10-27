@@ -1,0 +1,1863 @@
+# The invariant register. 01-principles.md section 1e is this file's specification and
+# 11-repo-layout.md section "New terms" is its inventory entry; between them they say what it is for:
+# "It exists so G27 clause d2 can resolve an invariant identifier a document names, which is
+# otherwise unimplementable." Two machines read it, on purpose and for different questions --
+# `tools/gate_docs.py` clause d2 asks whether `INV-21` EXISTS, and `tools/gate_invariants.py`, the
+# `[[job_assertion]]` `gates.invariant_register`, asks whether its row is WELL-FORMED (ADR-2
+# decision 2). Append-only against the previous tag, exactly as `tools/gates.toml` is: a family is
+# never dropped and an identifier is never renumbered or reused (11-repo-layout.md:402).
+#
+# ---------------------------------------------------------------------------------------------
+# WHY THERE ARE TWO ROW ARRAYS. 11-repo-layout.md:2695 asks for "one `[[inv]]` row per identifier,
+# in the shape 01-principles.md section 1e specifies, carrying its one-line statement, its force,
+# its classes and its named enforcers", and section 1e's shape carries `classes` -- a ladder letter
+# per enforcer -- and `independent`. Only 01-principles.md states those: each of its twenty-five
+# `### INV-<n>` sections opens its `**Enforced by.**` paragraph with the letter, `` `L` -- ``,
+# `` `G` -- ``, and the ladder is that document's own artefact. The eight other families are
+# assigned by tables that state a one-line invariant and its enforcement and no class at all
+# (charter section "Driver invariants DR1-DR24" and its six siblings; 07-store-and-retrieval.md
+# section 15 for `ST`; 03-document-model.md for `M-INV`). A class invented here would be invented
+# data in the one file whose whole value is that nothing in it is invented.
+#
+# So: `[[inv]]` carries the twenty-five `INV-<n>` rows in section 1e's full shape, and `[[member]]`
+# carries the other 151 identifiers in the shape their own tables state -- id, family, owning
+# document, the source line the statement was read from, the statement, and the enforcement cell.
+# One row per identifier either way, which is what :2695 asks for in substance; and
+# `gates.invariant_register`'s five assertions, every one of which ADR-2 writes in terms of
+# `INV-<n>`, run over the array that has the fields they name. 11-repo-layout.md section 8.6's
+# "five `[[inv]]` rows" for `M-INV` is honoured on its own terms -- that sentence's point is that
+# `M-INV` gets rows "on the same terms" as `DR`, `RT`, `ST`, `I`, `GR`, `OUT` and `SV`, and here it
+# does, in the same array as them.
+#
+# ---------------------------------------------------------------------------------------------
+# ASCII FOLDING, and why a row can still be checked against its source. House style keeps TOML
+# values ASCII and the source cells are not. Every `[[member]]` value carries its cell verbatim
+# under exactly one substitution table, applied nowhere else and re-applied by
+# tools/gate_invariants.py before it compares a row to its `source` line:
+#
+#     U+2014 EM DASH                 ->  " -- "      U+2016 DOUBLE VERTICAL LINE  ->  ||
+#     U+21D2 RIGHTWARDS DOUBLE ARROW ->  =>          U+2026 HORIZONTAL ELLIPSIS   ->  ...
+#     U+00D7 MULTIPLICATION SIGN     ->  x           U+2208 ELEMENT OF            ->  " in "
+#     U+2192 RIGHTWARDS ARROW        ->  ->          U+03A3 GREEK CAPITAL SIGMA   ->  sum
+#     U+2227 LOGICAL AND             ->  and         U+00B1 PLUS-MINUS SIGN       ->  +/-
+#     U+2264 LESS-THAN OR EQUAL      ->  <=          U+00B7 MIDDLE DOT            ->  .
+#     U+2265 GREATER-THAN OR EQUAL   ->  >=          U+2286 SUBSET OF OR EQUAL    ->  subset-of
+#     U+00A7 SECTION SIGN            ->  "section "  U+2229 INTERSECTION          ->  intersect
+#
+# A markdown cell also escapes a pipe as `\|`; a TOML string does not, so the fold unescapes it and
+# collapses runs of whitespace. Nothing else is touched, and any other divergence is a failure --
+# which is the point of checking at all.
+#
+# ---------------------------------------------------------------------------------------------
+# WHAT `independent` COUNTS, and why it is a floor. ADR-2 decision 3 defines the arithmetic:
+# `independent == len(enforcers) + len(sites)`, where `enforcers` holds register ids and `sites`
+# holds the enforcers that have no id -- "each entry is either a dotted `omniweave*` symbol, which
+# `G27(d)` clause `d1` already resolves by importing it, or a repo-relative path". So `independent`
+# is the number of enforcers THIS FILE CAN NAME, and it is at or below the clause count in the
+# document's `**Enforced by.**` paragraph: a clause reading "a monkeypatch test" names an enforcer
+# with neither an id nor a stable path, and it is not counted. That direction is deliberate. A
+# count above the document's claim would be an inflation nobody could check; a count below it
+# understates a row and still has to clear ladder rule 1's `>= min_enforcers`, which is the
+# assertion that matters.
+#
+# `classes`, by contrast, is the DISTINCT set of ladder letters the document's paragraph carries, in
+# ladder order, which is why INV-1's three clauses (`L`, `L`, `G`) give `["L", "G"]` -- ADR-2
+# decision 3 prints that row and this file matches it.
+#
+# ---------------------------------------------------------------------------------------------
+# `[[unbuilt_site]]` IS d1's ESCAPE HATCH, SPELLED FOR SITES. 11-repo-layout.md section 8.6 gives
+# clause d1 one escape and makes it narrow: a symbol a document names that does not exist yet must
+# be "a declared-and-not-yet-built row in `docs/plan/16-roadmap.md`'s milestone table ... not a
+# comment or an allowlist file, so an unbuilt symbol is always also a scheduled one". A `sites`
+# entry is a symbol or a path and needs the same escape for the same reason: INV-14's pure
+# `evaluate()` lives in `omniweave_core.route.eval`, which P5 builds. Each row below therefore
+# carries the phase that builds it, `gate_invariants.py` asserts the phase is one of
+# 16-roadmap.md's eleven ids, and the list shrinking is the only way a phase exit can be claimed.
+# An unbuilt site still counts toward `independent`: the enforcer is named and scheduled, and
+# pretending the row has fewer enforcers than the document claims would hide the gap rather than
+# schedule it.
+
+schema = 1
+
+# 01-principles.md section 1 names the ladder and `min_enforcers`; both live here because
+# `gates.invariant_register` reads them rather than restating them (ADR-2 decision 2, assertion 2).
+ladder = ["A", "S", "L", "G", "X", "R"]
+min_enforcers = 2
+
+# ---------------------------------------------------------------------------------------------
+# THE NINE FAMILIES. glossary.md's prefix map ("Every numbered identifier a document cites belongs
+# to exactly one series, and the owner column names the document that assigns the numbers") is the
+# authority for `assigns`; `gate_docs.py` reads these rows rather than hardcoding the prefix set,
+# which 11-repo-layout.md:2695 requires in those words.
+#
+# `pattern` is the scan, and its left boundary rejects both a word character and `-`:
+# 11-repo-layout.md section 8.6 is explicit that `INV-3` is a proper substring of `M-INV-3` and the
+# two name different statements under different numbering, so a scan without that boundary
+# "resolves `M-INV-3` against the framework register, finds a row, and reports a pass for an
+# identifier it never looked up". Longest match wins, which is why `M-INV` is listed first.
+
+[[family]]
+prefix    = "M-INV"
+pattern   = "(?<![\\w-])M-INV-\\d+"
+numbers   = "document-model-local invariants"
+assigns   = "docs/plan/03-document-model.md"
+rows      = "member"
+assigned  = 5
+# 11-repo-layout.md section 8.6: "Eight families would have left the five model invariants inside a
+# gated document with no row and no existence check -- which is the exact drift d2 exists to catch,
+# and the projection law is not a place to discover it late."
+
+[[family]]
+prefix    = "INV"
+pattern   = "(?<![\\w-])INV-\\d+"
+numbers   = "framework-wide invariants"
+assigns   = "docs/plan/01-principles.md"
+rows      = "inv"
+assigned  = 25
+# glossary.md's map credits the charter and says "extended by 01-principles.md section 1". ADR-2
+# decision 1 settles which of the two this register follows: the charter's section 2 opens "Twenty
+# properties.", that count is superseded by erratum E30, and INV-21..INV-25 "are invariants; sole
+# home 01-principles.md section 1, section 1b, and tools/invariants.toml". So the twenty-five
+# `### INV-<n>` sections of 01-principles.md are the assignment, and assertion 1 reads them.
+
+[[family]]
+prefix    = "DR"
+pattern   = "(?<![\\w-])DR\\d+(?![\\w])"
+numbers   = "driver-system invariants"
+assigns   = "docs/plan/04-driver-system.md"
+rows      = "member"
+assigned  = 24
+# 04-driver-system.md:2669 states where the text is: "DR1-DR24 are stated in the charter and are
+# not restated. What belongs here is the map from invariant to enforcement site." The charter is
+# therefore each row's `source` and 04 is its `owner_doc`, which is the same split section 1e makes
+# for INV-1 (section in 01-principles.md, `owner_doc = "03-document-model.md"`).
+
+[[family]]
+prefix    = "RT"
+pattern   = "(?<![\\w-])RT\\d+(?![\\w])"
+numbers   = "router invariants"
+assigns   = "docs/plan/05-ingest-and-routing.md"
+rows      = "member"
+assigned  = 14
+# The series ends at RT14 and 05-ingest-and-routing.md:3360 says why it is not extended: "Minting
+# `RT15`+ would extend the charter's own register, which is a charter amendment on
+# 01-principles.md section 1b's five-part path and not something a plan document does alone."
+# `RT15` is therefore cited in that document and deliberately has no row -- see `[[absent]]`.
+
+[[family]]
+prefix    = "ST"
+pattern   = "(?<![\\w-])ST\\d+(?![\\w])"
+numbers   = "store invariants"
+assigns   = "docs/plan/07-store-and-retrieval.md"
+rows      = "member"
+assigned  = 24
+# 07-store-and-retrieval.md section 15 is headed "Store invariants ST1-ST24" and restates ST1-ST20
+# from the charter before adding four: "`ST21`-`ST24` ... Each names a hazard the charter's own
+# mechanisms create and does not yet number" (:3374). Section 15 is the fuller home and is the
+# `source` for all twenty-four, so no row is read from the charter's twenty-row table.
+# KNOWN DIVERGENCE: glossary.md's prefix map still reads "`ST1`...`ST22`". Section 15's own heading
+# and its rows are the assignment; the map is one erratum behind and the plan is frozen, so this
+# register follows the table that assigns the numbers.
+
+[[family]]
+prefix    = "I"
+pattern   = "(?<![\\w-])I\\d+(?![\\w])"
+numbers   = "runtime (scheduler) invariants"
+assigns   = "docs/plan/08-runtime.md"
+rows      = "member"
+assigned  = 34
+
+[[family]]
+prefix    = "GR"
+pattern   = "(?<![\\w-])GR\\d+(?![\\w])"
+numbers   = "graph invariants"
+assigns   = "docs/plan/06-structure-extraction.md"
+rows      = "member"
+assigned  = 18
+
+[[family]]
+prefix    = "OUT"
+pattern   = "(?<![\\w-])OUT\\d+(?![\\w])"
+numbers   = "OUT-framework invariants"
+assigns   = "docs/plan/09-generation.md"
+rows      = "member"
+assigned  = 24
+
+[[family]]
+prefix    = "SV"
+pattern   = "(?<![\\w-])SV\\d+(?![\\w])"
+numbers   = "serve-surface invariants"
+assigns   = "docs/plan/10-interfaces.md"
+rows      = "member"
+assigned  = 8
+# The series is SV1-SV19 and EIGHT are assigned in the committed record. The charter's table is
+# headed "Serve invariants SV1-SV19 (a selection; the full list is in the D9 ADR)", and the D9 ADR
+# is a mining-phase panel document that was never committed -- it is not under docs/plan/_notes/.
+# Those eight are also exactly the SV identifiers any committed document cites, so d2 resolves
+# every citation that exists. A document citing `SV3` fails d2, correctly, until its row lands:
+# the alternative is a register that silently passes an identifier it never looked up, which is the
+# failure 11-repo-layout.md section 8.6 wrote the left-boundary rule to prevent.
+
+# ---------------------------------------------------------------------------------------------
+# DELIBERATELY ABSENT. An identifier a document cites in order to say it does NOT exist. Both are
+# in code spans, so d2's scan finds them, and both would otherwise force a register row for a
+# statement nobody has written -- the exact inversion of what this file is for. A row here is the
+# visible form of that: the citation, where it is, and the sentence that makes it hypothetical.
+# `gate_invariants.py` asserts each `cites` line still contains the identifier, so deleting the
+# sentence or minting the identifier for real both force this row to be removed.
+
+[[absent]]
+id    = "RT15"
+cites = "docs/plan/05-ingest-and-routing.md:3361"
+why   = """
+the sentence is about not minting it: "Minting `RT15`+ would extend the charter's own register, \
+which is a charter amendment on 01-principles.md section 1b's five-part path and not something a \
+plan document does alone.\""""
+
+[[absent]]
+id    = "INV-26"
+cites = "docs/plan/01-principles.md:868"
+why   = """
+assertion 5's own worked example: "a pull request that adds `INV-26` and forgets a paragraph fails \
+here". ADR-2:252 states the same example in the same words. Minting INV-26 means deleting this \
+row, which is the forcing function the example describes."""
+
+# ---------------------------------------------------------------------------------------------
+# ASSERTION 5's SCOPE, AND THE SEVEN PHRASES IT DOES NOT COUNT. ADR-2 decision 2 assertion 5:
+# "every spelled-out invariant count in any document equals the number of `[[inv]]` rows whose id
+# matches `^INV-\d+$` and whose `force` is `invariant`". The scan is the bare form -- a spelled-out
+# number, whitespace, `invariant` or `invariants`, nothing in between -- because a phrase with a
+# qualifier in between is counting something else and always was: "five **framework-wide**
+# invariants" is INV-21..INV-25, "eighteen **graph** invariants" is the `GR` series.
+#
+# SCOPE: docs/plan/*.md, docs/plan/adr/*.md and docs/ARCHITECTURE.md. NOT docs/plan/_notes/**,
+# which holds the charter, the terminology lock, the panel records and the rulings -- historical
+# inputs quoted as written, where a superseded count is the whole point of the sentence. The
+# charter's section 2 opens "Twenty properties." and erratum E30 supersedes it; rewriting that
+# sentence would destroy the record the erratum points at. plan_lint.py's charter-frozen and
+# documents-frozen rules draw the same line for the same reason.
+#
+# A phrase below is still a real number in a real sentence, so each row says which series it counts
+# and `gate_invariants.py` asserts the phrase still occurs in that file -- a stale exemption fails,
+# and so does a new unexempted phrase that does not say twenty-five.
+
+[[count_exempt]]
+file   = "docs/plan/01-principles.md"
+phrase = "two invariants"
+why    = """
+section 1c is titled "When two invariants collide" and its first sentence repeats the phrase; the \
+summary at :8 points at the section. A collision is between two of the twenty-five, not a count \
+of them."""
+
+[[count_exempt]]
+file   = "docs/plan/07-store-and-retrieval.md"
+phrase = "Four invariants"
+why    = "the four this document adds to the `ST` series, ST21-ST24, named in the same cell"
+
+[[count_exempt]]
+file   = "docs/plan/11-repo-layout.md"
+phrase = "nine invariant"
+why    = "the nine invariant FAMILIES of section 8.6's clause d2, which is this file's `[[family]]`"
+
+[[count_exempt]]
+file   = "docs/plan/glossary.md"
+phrase = "nine invariant"
+why    = "the same nine families, in the prefix map's own words"
+
+[[count_exempt]]
+file   = "docs/plan/README.md"
+phrase = "two invariants"
+why    = "a pointer to 01-principles.md section 1c, the collision rule"
+
+[[count_exempt]]
+file   = "docs/plan/README.md"
+phrase = "twenty invariants"
+why    = """
+a quotation flagging the contradiction: "11-repo-layout.md section 1.8 still describes \
+`docs/ARCHITECTURE.md` as carrying 'the twenty invariants'." The sentence exists to say the number \
+is wrong."""
+
+[[count_exempt]]
+file   = "docs/plan/adr/0002-invariant-and-gate-registers.md"
+phrase = "twenty invariants"
+why    = """
+four quotations of the three claims this ADR supersedes, plus the amendment table's own row \
+("'the twenty invariants' becomes twenty-five"). An ADR that could not quote the text it amends \
+could not record what it changed."""
+
+# ---------------------------------------------------------------------------------------------
+# UNBUILT SITES. See the header. Every one is a `sites` entry of an `[[inv]]` row below.
+
+[[unbuilt_site]]
+site  = "omniweave_core.answer.prompt"
+phase = "P8"
+of    = "INV-8"
+why   = "the prompt builder that accepts only the four `Cite` NewTypes; L3 and the graph prompts"
+
+[[unbuilt_site]]
+site  = "omniweave_core.retrieve.locate"
+phase = "P6"
+of    = "INV-9"
+why   = "`locate()`, which returns `quad=None` plus a reason on an anydoc-parsed document"
+
+[[unbuilt_site]]
+site  = "omniweave_core.answer.owcheck"
+phase = "P10"
+of    = "INV-10"
+why   = "`owcheck`'s verbatim-implies-retained-part clause"
+
+[[unbuilt_site]]
+site  = "omniweave_core.drivers.testkit"
+phase = "P3"
+of    = "INV-10"
+why   = "the driver testkit that re-reads the retained part on all three OriginSpan branches"
+
+[[unbuilt_site]]
+site  = "omniweave_core.route.eval"
+phase = "P5"
+of    = "INV-14"
+why   = "pure `evaluate()` over `(policy, evidence, hints)`, with no ledger in the signature"
+
+[[unbuilt_site]]
+site  = "omniweave_core.out.lower"
+phase = "P9"
+of    = "INV-23"
+why   = "`lower/`, whose public symbol set OUT1 diffs against `constructs.toml` in both directions"
+
+# =============================================================================================
+# THE TWENTY-FIVE. Assertion 1 is bidirectional against 01-principles.md's `### INV-<n>` headings,
+# assertion 5 counts the rows whose id matches `^INV-\d+$` and whose force is `invariant`, and
+# ADR-2 decision 1 is why every one of those forces reads `invariant` and not `principle`.
+
+[[inv]]
+id          = "INV-1"
+title       = "One representation of a Block"
+force       = "invariant"
+adr         = "ADR-2"
+owner_doc   = "03-document-model.md"
+enforcers   = ["GR15", "G28"]
+sites       = ["tools/semgrep/omniweave.yaml"]
+classes     = ["L", "G"]
+independent = 3
+# ADR-2 decision 3 prints this row and decision 4 is why the third enforcer is `G28` and not `G6`:
+# "The charter's section 2 row credits `G6` with this assertion and is superseded: `G6` is
+# `ow schema emit --check` and nothing else." The site is the bank rather than a per-rule file --
+# the repository ships one semgrep config, `tools/semgrep/omniweave.yaml`, holding rule
+# `omniweave-no-second-text-column`, and naming a file that does not exist would make the row
+# unresolvable by the clause d1 that is supposed to check it.
+
+[[inv]]
+id          = "INV-2"
+title       = "Core imports zero third-party modules"
+force       = "invariant"
+owner_doc   = "11-repo-layout.md"
+enforcers   = ["G1", "G4", "G9"]
+sites       = []
+classes     = ["G"]
+independent = 3
+# "Three gates, three artefacts: a resolved dependency set, an import trace, an entry-point-derived
+# module graph." Three `G`-class enforcers and no `sites`, which is the cleanest shape in the file.
+
+[[inv]]
+id          = "INV-3"
+title       = "`import omniweave_core` is cheap and shallow"
+force       = "invariant"
+owner_doc   = "12-performance.md"
+enforcers   = ["G10", "G17", "G23"]
+sites       = []
+classes     = ["G"]
+independent = 3
+
+[[inv]]
+id          = "INV-4"
+title       = "Discovery never executes driver code"
+force       = "invariant"
+owner_doc   = "04-driver-system.md"
+enforcers   = ["G11", "DR1"]
+sites       = ["tools/semgrep/omniweave.yaml"]
+classes     = ["L", "G", "X"]
+independent = 3
+# The site holds `omniweave-no-entrypoint-load-under-drivers`, the ban on `EntryPoint.load()` under
+# `omniweave_core/drivers/`.
+
+[[inv]]
+id          = "INV-5"
+title       = "Installation is not consent"
+force       = "invariant"
+owner_doc   = "04-driver-system.md"
+enforcers   = ["DR5", "DR16", "DR22"]
+sites       = []
+classes     = ["A", "X"]
+independent = 3
+
+[[inv]]
+id          = "INV-6"
+title       = "A driver receives `DriverIO` and nothing else"
+force       = "invariant"
+owner_doc   = "04-driver-system.md"
+enforcers   = ["DR7"]
+sites       = ["omniweave_ports.DriverIO", "omniweave_core.host.subproc"]
+classes     = ["A", "X"]
+independent = 3
+
+[[inv]]
+id          = "INV-7"
+title       = "A driver cannot forge provenance, a cache hit, a price, a trust level or a citation"
+force       = "invariant"
+owner_doc   = "04-driver-system.md"
+enforcers   = ["GR4"]
+sites       = [
+  "omniweave_ports.DriverResult",
+  "omniweave_ports.DriverMetrics",
+  "omniweave_core.store.doc.DocSink",
+]
+classes     = ["A", "S"]
+independent = 4
+
+[[inv]]
+id          = "INV-8"
+title       = "Only a prompt-safe token may enter a prompt or model output"
+force       = "invariant"
+owner_doc   = "06-structure-extraction.md"
+enforcers   = ["GR11"]
+sites       = ["omniweave_core.answer.prompt", "omniweave_core.answer.render"]
+classes     = ["A", "L", "X"]
+independent = 3
+
+[[inv]]
+id          = "INV-9"
+title       = "A citation resolves to a Block, a page, and a polygon or a stated reason"
+force       = "invariant"
+owner_doc   = "03-document-model.md"
+enforcers   = ["GR1"]
+sites       = ["omniweave_core.model.Quad", "omniweave_core.retrieve.locate"]
+classes     = ["A", "L", "X"]
+independent = 3
+
+[[inv]]
+id          = "INV-10"
+title       = "Byte-exactness is claimed only where it is proved"
+force       = "invariant"
+owner_doc   = "03-document-model.md"
+enforcers   = ["Q-G6"]
+sites       = [
+  "omniweave_core.model.Quote",
+  "omniweave_core.answer.owcheck",
+  "omniweave_core.drivers.testkit",
+]
+classes     = ["A", "G", "X"]
+independent = 4
+# `Quote` is the `A`-class enforcer and the one worth naming: an ordered `IntEnum` with the weakest
+# tier lowest, so `min()` over a Segment returns the weakest and not the best member -- "the bug
+# that let one verbatim Block pass a whole Segment's reflowed and synthetic members through the
+# byte-exactness gate".
+
+[[inv]]
+id          = "INV-11"
+title       = "A zero result is `absent` only after all fifteen absence gates pass"
+force       = "invariant"
+owner_doc   = "07-store-and-retrieval.md"
+enforcers   = ["SV8", "ST9", "Q-G7"]
+sites       = ["omniweave_core.retrieve.verdict.build_verdict"]
+classes     = ["A", "L", "G", "X"]
+independent = 4
+
+[[inv]]
+id          = "INV-12"
+title       = "Unknown is never collapsed into unchanged, absent or clean"
+force       = "invariant"
+owner_doc   = "08-runtime.md"
+enforcers   = ["I11", "G8", "G24", "RT7", "ST8"]
+sites       = []
+classes     = ["A", "L", "X"]
+independent = 5
+# `G8` and `G24` are one clause in the document and both run `tools/gate_semgrep.py` over the one
+# bank, so assertion 4's first decidable case collapses them to one: four independent enforcers,
+# which still clears rule 1. Listing both is the honest record of what the document names.
+
+[[inv]]
+id          = "INV-13"
+title       = "Escalation is per part and monotone, and a clean page costs nothing"
+force       = "invariant"
+owner_doc   = "05-ingest-and-routing.md"
+enforcers   = ["RT4"]
+sites       = ["omniweave_core.store.schema", "eval/counters.toml"]
+classes     = ["S", "L", "X"]
+independent = 3
+# The `S` enforcer is the generated `BEFORE INSERT` trigger `route_decision_monotone` raising
+# `OW-R-030`, "because SQLite prohibits a subquery in a `CHECK`"; the `X` enforcer is the exactness
+# of `service_attaches`, `page_renders` and `signal_computations`, which are Counter rows and so
+# resolve to `eval/counters.toml` rather than to a symbol.
+
+[[inv]]
+id          = "INV-14"
+title       = "Budget never changes which rung is chosen, only whether it runs"
+force       = "invariant"
+owner_doc   = "05-ingest-and-routing.md"
+enforcers   = ["RT1", "RT10"]
+sites       = ["omniweave_core.route.eval", "tools/semgrep/omniweave.yaml"]
+classes     = ["A", "L", "X"]
+independent = 4
+
+[[inv]]
+id          = "INV-15"
+title       = "No driver prices anything"
+force       = "invariant"
+owner_doc   = "04-driver-system.md"
+enforcers   = []
+sites       = [
+  "omniweave_ports.DriverMetrics",
+  "omniweave_core.budget",
+  "tools/semgrep/omniweave.yaml",
+]
+classes     = ["A", "L"]
+independent = 3
+# The only row with no register id at all, and section 1e predicted exactly this shape: "`sites` is
+# the second enforcer list, and it exists because `A`- and `X`-class enforcers have no id." All
+# three enforcers here are the absence of a field or the ban on one, and an absence has no gate
+# number.
+
+[[inv]]
+id          = "INV-16"
+title       = "Restrictions travel to every derived item and block the OUT direction"
+force       = "invariant"
+owner_doc   = "07-store-and-retrieval.md"
+enforcers   = ["OUT11", "DR17"]
+sites       = ["omniweave_core.store.schema"]
+classes     = ["A", "S", "X"]
+independent = 3
+
+[[inv]]
+id          = "INV-17"
+title       = "One writer per store, one thread per connection, one transaction per unit"
+force       = "invariant"
+owner_doc   = "07-store-and-retrieval.md"
+enforcers   = ["G24", "I19"]
+sites       = ["omniweave_core.store.Store.complete", "tools/gate_crash.py"]
+classes     = ["A", "L", "X"]
+independent = 4
+# Five clauses, four named: "a monkeypatch test" has neither an id nor a stable path, so it is not
+# counted. See the header on why `independent` is a floor.
+
+[[inv]]
+id          = "INV-18"
+title       = "An incremental run converges to a full rebuild"
+force       = "invariant"
+owner_doc   = "07-store-and-retrieval.md"
+enforcers   = ["G19", "GR8", "I28"]
+sites       = []
+classes     = ["S", "G"]
+independent = 3
+
+[[inv]]
+id          = "INV-19"
+title       = "Every number carries its evidence, and an uncalibrated confidence renders no digit"
+force       = "invariant"
+adr         = "ADR-2"
+owner_doc   = "13-quality.md"
+enforcers   = ["Q-G8", "Q-G10", "Q-G14"]
+sites       = [
+  "omniweave_core.store.doc.DocSink.add_block",
+  "omniweave_core.drivers.card.MeasuredOn",
+]
+classes     = ["A", "G", "X"]
+independent = 5
+# ADR-2 decision 3 prints this row with its second site as `omniweave_conform.render.MeasuredOn`.
+# `MeasuredOn` is a card type and ships in `omniweave_core.drivers.card`, which is where
+# docs/ARCHITECTURE.md and test_architecture_doc.py also resolve it; the register names where it
+# is, because a site that does not import is a site clause d1 cannot check.
+# This row is also the one that exposed the schema gap: "the raise at `DocSink.add_block` and the
+# frozen `MeasuredOn` are two of its five enforcers and neither has a number", which is why
+# `independent` is 5 against three `enforcers` entries.
+
+[[inv]]
+id          = "INV-20"
+title       = "Nothing agent-facing is written by hand"
+force       = "invariant"
+owner_doc   = "10-interfaces.md"
+enforcers   = ["G25", "G6"]
+sites       = ["omniweave.surface.registry"]
+classes     = ["G", "X"]
+independent = 3
+
+[[inv]]
+id          = "INV-21"
+title       = "One name, one type, one home"
+force       = "invariant"
+adr         = "ADR-2"
+owner_doc   = "11-repo-layout.md"
+enforcers   = ["G27", "G18", "G13"]
+sites       = ["omniweave_core.store.schema"]
+classes     = ["L", "G"]
+independent = 4
+# `G27(c)` is the first enforcer and `G27` is the register id: a clause is a `[[gate.clause]]`
+# sub-table of its gate's row and has no `G<n>` of its own (tools/gates.toml, "CLAUSES ARE NOT
+# ROWS"), so the row resolves to the gate. Clause c is registered with `enabled = false` by ADR-1
+# decision 6 and the other three enforcers are live, which is itself why rule 1 wants more than one.
+
+[[inv]]
+id          = "INV-22"
+title       = "A ceiling is never a target and never a setting"
+force       = "invariant"
+adr         = "ADR-2"
+owner_doc   = "01-principles.md"
+enforcers   = ["DR20"]
+sites       = ["omniweave_core.limits", "tools/semgrep/omniweave.yaml"]
+classes     = ["A", "L", "X"]
+independent = 3
+# "Rejection-list item 24 is the supplementary `R`-class check and does not count toward ladder
+# rule 1" -- so it is not listed, and `classes` carries no `R`.
+
+[[inv]]
+id          = "INV-23"
+title       = "Exactly one implementation of any semantic decision"
+force       = "invariant"
+adr         = "ADR-2"
+owner_doc   = "01-principles.md"
+enforcers   = ["OUT1", "G6", "G20", "G25"]
+sites       = ["omniweave_core.out.lower", "tools/semgrep/omniweave.yaml"]
+classes     = ["A", "L", "G", "X"]
+independent = 6
+
+[[inv]]
+id          = "INV-24"
+title       = "Every committed or shipped artefact is byte-reproducible from declared inputs"
+force       = "invariant"
+adr         = "ADR-2"
+owner_doc   = "11-repo-layout.md"
+enforcers   = ["G6", "G18", "G20", "G25", "Q-G4", "OUT13", "OUT14", "G8"]
+sites       = ["omniweave_core.out.opc"]
+classes     = ["A", "L", "G", "X"]
+independent = 9
+# The longest enforcer list in the file, and it is the document's own list rather than a selection:
+# four byte-diff gates plus `Q-G4`, the determinism harness (`OUT13`), the library-code ban on
+# ambient input (`G8` with `OUT14`), and the one module permitted to open a ZIP for writing
+# (`OUT15`'s subject, named here as the site).
+
+[[inv]]
+id          = "INV-25"
+title       = "Nothing is disposed of silently; every rejection is retained as addressable data"
+force       = "invariant"
+adr         = "ADR-2"
+owner_doc   = "01-principles.md"
+enforcers   = ["ST11"]
+sites       = [
+  "omniweave_core.store.schema",
+  "omniweave_core.store.doc.DocSink",
+  "tools/semgrep/omniweave.yaml",
+]
+classes     = ["A", "S", "L", "X"]
+independent = 4
+
+# =============================================================================================
+# THE OTHER 151. Generated from the tables that assign the numbers, under the fold table above;
+# `source` is the line each `title` and `enforced_by` was read from, and gate_invariants.py checks
+# a row against that line rather than trusting it.
+
+[[member]]
+id          = "DR1"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2270"
+title       = "No driver code is imported before resolve admits it, policy enables it, its tier is allowed and acknowledged, and its probe is requested."
+enforced_by = "`EntryPoint.load()` banned in `core/drivers/` (grep rule); conform `purity` under an import tracer; a core test discovers 30 cards and asserts `sys.modules` gains no `omniweave_driver_*` key"
+
+[[member]]
+id          = "DR2"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2271"
+title       = "An **`omniweave.drivers` entry-point *value*** is a dotted package path; a **card's `entrypoint`** is `module:attr`."
+enforced_by = "Discovery rejects any entry-point value containing `:` or `/`; the card loader rejects an `entrypoint` that does not contain exactly one `:` (or contains a `/`) with `CARD_ENTRYPOINT_MALFORMED`; the packaging test builds a wheel and asserts setuptools accepts the value form"
+
+[[member]]
+id          = "DR3"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2272"
+title       = "A duplicate driver id never wins silently."
+enforced_by = "`Registry.register` raises `DuplicateDriver`; resolve emits `ID_COLLISION_UNQUALIFIED`; only `[drivers.resolve]` proceeds"
+
+[[member]]
+id          = "DR4"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2273"
+title       = "`resolve()` is pure, deterministic and replayable."
+enforced_by = "No `ctx`, clock or network in the signature; a property test shuffles the catalog 100x and asserts an identical `Resolution`; `resolution_digest` in the run manifest"
+
+[[member]]
+id          = "DR5"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2274"
+title       = "Every rejected candidate carries a typed code."
+enforced_by = "`Rejection` required to construct a `Resolution`; a test asserts `len(candidates) + len(rejected) == len(considered)`"
+
+[[member]]
+id          = "DR6"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2275"
+title       = "`resolve()` never ranks and never chooses."
+enforced_by = "`candidates` is documented unordered and sorted lexically on `driver_id` before return, so no caller can depend on an emergent order"
+
+[[member]]
+id          = "DR7"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2276"
+title       = "A driver never receives a writable root, the store, the cache, a sink or the budget ledger."
+enforced_by = "`DriverIO`'s shape; `HELLO` carries only `{source_ro, tmp, blob_base}`; a sandbox test asserts a write outside `tmp` fails"
+
+[[member]]
+id          = "DR8"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2277"
+title       = "A driver cannot forge a cache hit, a budget deferral, a price, a trust level or its own provenance."
+enforced_by = "`DriverResult.outcome in {ok, ok_partial}`; `DriverMetrics` has no currency field; the runner stamps the rest"
+
+[[member]]
+id          = "DR9"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2278"
+title       = "A third-party driver cannot run in-process by its own claim."
+enforced_by = "`inproc` requires first_party/vendored and free and no GPU and no network and green fuzz and the id in config; no key widens the first four"
+
+[[member]]
+id          = "DR10"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2279"
+title       = "An isolation property that was not obtained is recorded, never claimed."
+enforced_by = "`HELLO.isolation_granted` echoed into `degradations[]`; a test on a platform lacking net namespaces asserts the record appears"
+
+[[member]]
+id          = "DR11"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2280"
+title       = "A crashing driver never aborts the run."
+enforced_by = "`FAILED_PERMANENT{DRIVER_CRASHED}` on one unit + a stderr tail; 3 crashes/60 s quarantines the driver; the `fuzz` suite ships a deliberate segfault fixture and asserts the run completes"
+
+[[member]]
+id          = "DR12"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2281"
+title       = "A card claim is a test, in both directions."
+enforced_by = "Conform `capability` derives assertions from the card; `false`/`none`/`[]` is asserted **absent**"
+
+[[member]]
+id          = "DR13"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2282"
+title       = "`[cost.measured]` and `[quality]` are kit-written; `[cost.model]` is author-declared and reconciled."
+enforced_by = "The publish gate rejects author-written measurements; the loader recomputes `attestation`; `ow drivers check --estimates` fails a declared p95 multiple understating measurement by >25%, or an estimate >2x off the 7-day measured median"
+
+[[member]]
+id          = "DR14"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2283"
+title       = "Every benchmark row carries a **complete** `measured_on` -- all ten `MeasuredOn` fields, `corpus` and `corpus_digest` and `harness_version` included."
+enforced_by = "Card schema `required`; conform `card`; `MeasuredOn` is frozen with no defaults, so a partial table is a `TypeError` at construction rather than a blank cell. HunyuanOCR's TensorRT-measured 94.10 against a repo shipping Transformers/vLLM is the cautionary case"
+
+[[member]]
+id          = "DR15"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2284"
+title       = "`licence.tier` is computed, never declared."
+enforced_by = "`compute_tier` in core; `ow drivers check` exits non-zero on a mismatch; index admission re-checks"
+
+[[member]]
+id          = "DR16"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2285"
+title       = "A restricted driver never activates without a valid ack bound to the licence text hash."
+enforced_by = "The resolve gate; mutate the licence file in a test and assert `LICENCE_ACK_STALE` with the hash diff printed"
+
+[[member]]
+id          = "DR17"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2286"
+title       = "Restrictions travel to every derived item and block the OUT direction."
+enforced_by = "`restriction_bits NOT NULL` on every carrier, runner-set; the `compile` host refuses naming the item ids; a test survives parse -> derive -> compile"
+
+[[member]]
+id          = "DR18"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2287"
+title       = "A transitive licence violation fails the build."
+enforced_by = "Conform `licence` resolves the dependency graph **and** scans the import graph; fails, never warns; `cairosvg` is the regression fixture"
+
+[[member]]
+id          = "DR19"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2288"
+title       = "Config never names an import path."
+enforced_by = "The card schema is the only place `entrypoint` exists; a lint rule bans `import_module`/`__import__` outside `host/`; config values naming a driver are validated against registered ids"
+
+[[member]]
+id          = "DR20"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2289"
+title       = "Safety limits are not driver-configurable upward."
+enforced_by = "Limits are host constants enforced at the read boundary with `take(N+1)`-then-check; effective = `min(tenant_cap, declared, HOST_MAX)`; a declaration above `HOST_MAX` is `CARD_INVALID`"
+
+[[member]]
+id          = "DR21"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2290"
+title       = "A missing capability is a pruned plan with a report, never an `ImportError`."
+enforced_by = "`probe()` at preflight; `PROBE_UNAVAILABLE` in `rejected`; `sys.exit` banned in library code"
+
+[[member]]
+id          = "DR22"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2291"
+title       = "A removed driver resolves to a reason, not to \"unknown\"."
+enforced_by = "Framework-shipped tombstones; a test asserts every vetoed id has a tombstone with a non-empty reason and a future `review_by`"
+
+[[member]]
+id          = "DR23"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2292"
+title       = "Conformance is verified from a trusted ref, never from the submission."
+enforced_by = "CI checks the kit out at a tag; `ow drivers verify` re-runs locally; a supplied report alone is never sufficient"
+
+[[member]]
+id          = "DR24"
+family      = "DR"
+owner_doc   = "04-driver-system.md"
+source      = "docs/plan/_notes/charter.md:2293"
+title       = "A benchmark row whose **`measured_on.corpus_digest`** -- the only `corpus_digest` on a card, and there is deliberately no row-level twin for the loader to choose between -- does not match a digest in the omniweave release manifest is treated as `witness = \"self\"` regardless of what it declares; a `witness != \"ci\"` row is **displayed and never ranked**, and is never read by `ow route propose`."
+enforced_by = "The card loader; the scoreboard's `standing` column. Closes the \"run the kit against a locally modified corpus and get a valid attestation\" hole (section 5 C1)"
+
+[[member]]
+id          = "RT1"
+family      = "RT"
+owner_doc   = "05-ingest-and-routing.md"
+source      = "docs/plan/_notes/charter.md:2972"
+title       = "`evaluate()` is pure: no clock, RNG, env, IO, or import of a caller-supplied name."
+enforced_by = "The signature takes no `RunContext`; semgrep bans `time.`, `random.`, `os.environ`, `importlib`, `open(` in `route/eval.py`; a property test evaluates 10k fixtures twice in shuffled order and asserts identity"
+
+[[member]]
+id          = "RT2"
+family      = "RT"
+owner_doc   = "05-ingest-and-routing.md"
+source      = "docs/plan/_notes/charter.md:2973"
+title       = "All sampling is `blake2b(unit_uri||part||salt) % 10000 < rate x 10000`."
+enforced_by = "A cross-process determinism test; a semgrep ban on `random`/`secrets` under `route/`"
+
+[[member]]
+id          = "RT3"
+family      = "RT"
+owner_doc   = "05-ingest-and-routing.md"
+source      = "docs/plan/_notes/charter.md:2974"
+title       = "The decision records the **read set** with provider versions; `read_set_digest` covers the read set only."
+enforced_by = "`Evidence.read()` is the only accessor and appends to the read log; `Evidence` exposes no mapping and no `__getitem__`"
+
+[[member]]
+id          = "RT4"
+family      = "RT"
+owner_doc   = "05-ingest-and-routing.md"
+source      = "docs/plan/_notes/charter.md:2975"
+title       = "No evidence key is computed unless a reachable rule reads it, and keys compute in ascending `cost_class`."
+enforced_by = "The compiler emits a per-rung demand plan; a test asserts a clean born-digital PDF computes **zero** `LOCAL_COMPUTE` signals and spawns no inference server"
+
+[[member]]
+id          = "RT5"
+family      = "RT"
+owner_doc   = "05-ingest-and-routing.md"
+source      = "docs/plan/_notes/charter.md:2976"
+title       = "A classifier signal exposes a probability, not a label."
+enforced_by = "`SignalSpec` registration rejects `kind=\"classifier\"` whose declared domain is not `[0.0, 1.0]` -- **closed on both ends**, because a softmax legitimately returns 0.0 and 1.0; `SignalSpec.domain: tuple[float, float]` is inclusive"
+
+[[member]]
+id          = "RT6"
+family      = "RT"
+owner_doc   = "05-ingest-and-routing.md"
+source      = "docs/plan/_notes/charter.md:2977"
+title       = "A probabilistic signal is calibrated."
+enforced_by = "`ow route lint --calibration`: ECE <= 0.05, Brier <= 0.08 on a held-out set. A regression fails the build"
+
+[[member]]
+id          = "RT7"
+family      = "RT"
+owner_doc   = "05-ingest-and-routing.md"
+source      = "docs/plan/_notes/charter.md:2978"
+title       = "A clause over a missing key is UNKNOWN and the rule takes its declared `on_unknown`."
+enforced_by = "`on_unknown` is **required** on any rule reading a nullable key; `ow route lint` errors otherwise"
+
+[[member]]
+id          = "RT8"
+family      = "RT"
+owner_doc   = "05-ingest-and-routing.md"
+source      = "docs/plan/_notes/charter.md:2979"
+title       = "Escalation is monotone: `child.rung > parent.rung`."
+enforced_by = "A generated `BEFORE INSERT` trigger on the parent join (`route_decision_monotone`, raising `OW-R-030`) -- **not a CHECK**, which SQLite forbids from containing a subquery -- plus the compiler's rejection of a backward `escalate_to`, with CI parity between the two"
+
+[[member]]
+id          = "RT9"
+family      = "RT"
+owner_doc   = "05-ingest-and-routing.md"
+source      = "docs/plan/_notes/charter.md:2980"
+title       = "Budget never changes which rung is chosen."
+enforced_by = "`evaluate()` has no ledger parameter; exhaustion enters as `budget.exhausted`, written by `admit()`"
+
+[[member]]
+id          = "RT10"
+family      = "RT"
+owner_doc   = "05-ingest-and-routing.md"
+source      = "docs/plan/_notes/charter.md:2981"
+title       = "No billable rung is entered without a reservation; a denial is `DEFERRED_BUDGET`, not a failure."
+enforced_by = "`with_budget` inside `with_cache` and outside `with_retries`; a test asserts a denied reservation leaves the `work` row claimable and `cost_micros` unchanged"
+
+[[member]]
+id          = "RT11"
+family      = "RT"
+owner_doc   = "05-ingest-and-routing.md"
+source      = "docs/plan/_notes/charter.md:2982"
+title       = "Retries are serial per `(unit, part)` and share the per-part budget."
+enforced_by = "A semaphore of 1 across a `REGEN` chain; a fault-injection test asserts N *sequential* provider calls"
+
+[[member]]
+id          = "RT12"
+family      = "RT"
+owner_doc   = "05-ingest-and-routing.md"
+source      = "docs/plan/_notes/charter.md:2983"
+title       = "Driver self-report never enters the `Scoreboard`."
+enforced_by = "The view's own `WHERE` filters `source IN ('agree','audit','feedback')`; `source='self'` rows are stored and excluded. The view is threshold-free and reads `route_threshold` rows for `state`, so it is plain byte-diff-gateable SQL"
+
+[[member]]
+id          = "RT13"
+family      = "RT"
+owner_doc   = "05-ingest-and-routing.md"
+source      = "docs/plan/_notes/charter.md:2984"
+title       = "`auto_demote` may only move a slice toward the more expensive driver, with a TTL and hysteresis."
+enforced_by = "The demotion writer accepts only a `then.driver` of strictly greater cost rank; a test attempts a promotion and asserts refusal"
+
+[[member]]
+id          = "RT14"
+family      = "RT"
+owner_doc   = "05-ingest-and-routing.md"
+source      = "docs/plan/_notes/charter.md:2985"
+title       = "A driver whose `weights_revision` is absent or `\"main\"` fails to load with a named error."
+enforced_by = "The card loader; CI asserts a synthetic `revision=\"main\"` driver is refused. `grep -rn \"revision=\" marker/ surya/ lift/` returns zero hits, so those weights were never reproducible even where licensed"
+
+[[member]]
+id          = "I1"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4644"
+title       = "An operator's output for a given `(unit, identity, config)` is derived at most once."
+enforced_by = "The `work_identity` UNIQUE index + the cache-key check in the planner; a `--verify-idempotence` mode"
+
+[[member]]
+id          = "I2"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4645"
+title       = "Re-running an operator never duplicates rows."
+enforced_by = "UNIQUE identity indexes with IFNULL-folded nullable columns + `INSERT OR IGNORE`; a run-twice test asserting equal row counts (codegraph #1034)"
+
+[[member]]
+id          = "I3"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4646"
+title       = "After a successful run at generation G, the pending set contains exactly the units with `last_seen_gen >= G`."
+enforced_by = "The eviction rule in flush; the pending set is never cleared at flush (graphify's `changed.clear()` window silently drops events with nothing to re-arm)"
+
+[[member]]
+id          = "I4"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4647"
+title       = "An operator's re-run replaces only rows whose `origin_operator` is its own."
+enforced_by = "`origin_operator NOT NULL` + every eviction statement filtered on it; a test runs a FREE operator after a BILLED one and asserts the billed rows survive"
+
+[[member]]
+id          = "I5"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4648"
+title       = "An incremental run converges to a full rebuild."
+enforced_by = "An explicit dependency delta + the converge pass + **G19**"
+
+[[member]]
+id          = "I6"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4649"
+title       = "A crash loses no work and creates no phantom completion."
+enforced_by = "One transaction per unit; lease reaping; the pending set is the checkpoint"
+
+[[member]]
+id          = "I7"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4650"
+title       = "Every failure path terminates."
+enforced_by = "`PERMANENT` carries no `retry_after`; `attempts_total < 5` in the claim predicate; `clear_old_permanent(30d)`"
+
+[[member]]
+id          = "I8"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4651"
+title       = "No billable work happens without a reservation."
+enforced_by = "`with_budget` inside the cache and outside retry"
+
+[[member]]
+id          = "I9"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4652"
+title       = "A repair or governor loop cannot make things worse than not running."
+enforced_by = "The futility latch (2 give-ups => 60 s cooldown => degrade), an `armed` log line and a heartbeat"
+
+[[member]]
+id          = "I10"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4653"
+title       = "A read never changes the freshness answer."
+enforced_by = "Freshness from `work`-table state, not file mtimes; `connect_readonly` for every read-only consumer"
+
+[[member]]
+id          = "I11"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4654"
+title       = "\"Unknown\" is never silently collapsed to \"unchanged\" or \"absent\"."
+enforced_by = "Three-valued returns are sum types; every collapse site has a named constant and a justification"
+
+[[member]]
+id          = "I12"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4655"
+title       = "A soft fallback never applies to an identity or safety input."
+enforced_by = "The lint rule of G24"
+
+[[member]]
+id          = "I13"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4656"
+title       = "Model output cannot poison the cache or the store outside its batch."
+enforced_by = "`cache.put(entries, allowed_units=...)`; `DriverIO` carries no cache handle"
+
+[[member]]
+id          = "I14"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4657"
+title       = "No operator reads ambient state."
+enforced_by = "`RunContext` is the only channel; G8's bans"
+
+[[member]]
+id          = "I15"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4658"
+title       = "No synchronous stage exceeds `watchdog_ms / 2`."
+enforced_by = "Cooperative yields every 1,000 items **at the top of the loop body**, so `continue` still yields; a CI timing assertion"
+
+[[member]]
+id          = "I16"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4659"
+title       = "Effective configuration is visible and hashed."
+enforced_by = "`config_digest` in the manifest; `ow show-config` prints resolved values with sources; a change sets the full-scan latch"
+
+[[member]]
+id          = "I17"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4660"
+title       = "Every artifact omniweave commits to a repo is byte-reproducible."
+enforced_by = "Sorted collections before serialisation, pinned hash seeds, frozen float formatting, no wall clock in committed output"
+
+[[member]]
+id          = "I18"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4661"
+title       = "A degraded subsystem is visible in the product surface."
+enforced_by = "A one-way `degrade(reason)` latch + `degradations[]` in the manifest + in every response"
+
+[[member]]
+id          = "I19"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4662"
+title       = "Exactly one thread per process holds a `sqlite3.Connection`."
+enforced_by = "`store/sqlite.py` records `threading.get_ident()` at connect and asserts per call; `check_same_thread` stays True; a 16-runner-thread test asserts every call raises"
+
+[[member]]
+id          = "I20"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4663"
+title       = "A unit's derived rows + work transition + dep rows + reservation commit + spend row commit in ONE transaction."
+enforced_by = "`Store.complete()` is the sole mutation entry; G24; `ow test crash-matrix`. **EXCEPTION:** transitions writing ZERO derived rows may group-commit at `store_group_commit_ms` (a crash => re-check the cache => the same outcome)"
+
+[[member]]
+id          = "I21"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4664"
+title       = "A document-granularity producer's pages are invisible until its work row is done."
+enforced_by = "`staged_gen`; a kill-mid-document test asserts the previous gen still resolves and the staged one is swept"
+
+[[member]]
+id          = "I22"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4665"
+title       = "No unit is claimed twice on EITHER SQLite path, and **for every row with `decision_id IS NOT NULL`** `work.{driver, cost_class, dispatch_key}` agree with `route_decision`."
+enforced_by = "A 16-process hammer over 100k rows; a derived-column consistency test restricted to routed rows, plus the three pairing CHECKs that make an `op.*` row's NULLs structural"
+
+[[member]]
+id          = "I23"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4666"
+title       = "A superseded result writes nothing."
+enforced_by = "The commit predicate on `(id, claimed_gen, status)`; a test bumps the generation mid-flight and asserts CANCELLED and zero rows"
+
+[[member]]
+id          = "I24"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4667"
+title       = "A Batch is invisible to the work table, the spend ledger, the trace and the failure taxonomy."
+enforced_by = "One RESULT per unit; batch attributes on the span; a `batch=32` test asserts 32 transitions, 32 spend rows, 32 unit spans, and exactly one `FAILED_PERMANENT{DRIVER_CRASHED}` after a poison unit"
+
+[[member]]
+id          = "I25"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4668"
+title       = "A cache hit consumes zero budget, zero tokens and zero rate-limit slots, and replays its Spend."
+enforced_by = "The middleware composition test; a zero-headroom-ledger test"
+
+[[member]]
+id          = "I26"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4669"
+title       = "No `operational` config key enters a cache key."
+enforced_by = "G18 + a test mutating every operational key and asserting a byte-identical `cache_key`"
+
+[[member]]
+id          = "I27"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4670"
+title       = "An automatic sweep never deletes a `billed_api` cache entry."
+enforced_by = "`cache_ns` is a partial index on `cost_class='free'`; deletion needs `ow cache prune --allow-rebill`, which prints the count and the `would_have_been_micros` it is about to discard"
+
+[[member]]
+id          = "I28"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4671"
+title       = "Every derivation's cross-unit inputs are recorded, as dep rows or a cohort digest."
+enforced_by = "A driver never touches the store: rows come from what the runner fed it, a declared `witness_set`, or the cohort merkle. **The real enforcer is G19**"
+
+[[member]]
+id          = "I29"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4672"
+title       = "Budget headroom is never leaked by a crash, and billable in-flight is bounded ACROSS processes."
+enforced_by = "Durable reservations reaped with leases in one transaction; headroom in SQL; a SIGKILL test; a two-process test asserts the provider sees <= N"
+
+[[member]]
+id          = "I30"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4673"
+title       = "Every micro is attributable to exactly one `(unit, part, decision, attempt)`."
+enforced_by = "Manifest self-checks: `sum route_spend.micros == manifest.cost.billed_micros` exactly; every ok/ok_partial row has >=1 spend row; a Sequence apportionment sums to the session +/-1 micro"
+
+[[member]]
+id          = "I31"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4674"
+title       = "The supervisor holds no document bytes and stays inside a declared RSS envelope."
+enforced_by = "Semgrep bans `.read()`/`read_bytes()` on a source path outside `omniweave_core.blobs`; anything over `INLINE_MAX` travels as a blob reference; G22"
+
+[[member]]
+id          = "I32"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4675"
+title       = "The event loop is never blocked longer than `loop_lag_max_ms`."
+enforced_by = "`lag_monitor` at 100 ms with a one-way `degrade()`; a CI assertion on p99 loop lag"
+
+[[member]]
+id          = "I33"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4676"
+title       = "Trace context reaches every seam and the span tree has no orphans."
+enforced_by = "`traceparent` in HELLO, in `job.json`, and as an HTTP header to a Service; a CI test rebuilds the tree and asserts zero orphans"
+
+[[member]]
+id          = "I34"
+family      = "I"
+owner_doc   = "08-runtime.md"
+source      = "docs/plan/_notes/charter.md:4677"
+title       = "A `replay_class = byte_exact` driver replays byte-identically over recorded inputs."
+enforced_by = "`ow replay --verify` over the fixture corpus as a CI gate. `seeded` and `unpinnable` yield a normalised-edit-distance DIFF REPORT, never an assertion: continuous batching genuinely makes output batch-composition-dependent"
+
+[[member]]
+id          = "GR1"
+family      = "GR"
+owner_doc   = "06-structure-extraction.md"
+source      = "docs/plan/_notes/charter.md:5658"
+title       = "No L3 table stores geometry."
+enforced_by = "A CI grep of the graph DDL and the generated `schema.json` for `quad|bbox|poly|x0`; a test asserts `locate()` returns `quad=None` + a reason on an anydoc-parsed document"
+
+[[member]]
+id          = "GR2"
+family      = "GR"
+owner_doc   = "06-structure-extraction.md"
+source      = "docs/plan/_notes/charter.md:5659"
+title       = "A billed pass never emits on ground a cheaper pass covered."
+enforced_by = "The input selector **is** the `covered_frac` query; the per-item gate is a `cover_bits` bit test; `test_deterministic_first.py` asserts the join count is 0 on the fixture corpus"
+
+[[member]]
+id          = "GR3"
+family      = "GR"
+owner_doc   = "06-structure-extraction.md"
+source      = "docs/plan/_notes/charter.md:5660"
+title       = "A pass covers only where it emitted, or declares `cover_empty` with a reason."
+enforced_by = "`GraphSink.cover` requires `empty_reason` when the cite set produced nothing; doctor warns above a 0.98 rate -- a pass that finds nothing and claims coverage is silent recall loss shaped exactly like absence"
+
+[[member]]
+id          = "GR4"
+family      = "GR"
+owner_doc   = "06-structure-extraction.md"
+source      = "docs/plan/_notes/charter.md:5661"
+title       = "An LLM/VLM/OCR item never reaches `trust = EXTRACTED`."
+enforced_by = "The `MAX_TRUST_BY_METHOD` clamp in the runner + `OW_GRAPH_TRUST_CLAMPED` + a GENERATED `BEFORE INSERT` trigger with CI parity to the mapping"
+
+[[member]]
+id          = "GR5"
+family      = "GR"
+owner_doc   = "06-structure-extraction.md"
+source      = "docs/plan/_notes/charter.md:5662"
+title       = "Every LLM-emitted row is span-grounded in the block it cited."
+enforced_by = "The sink's grounding gate; `mention.ts_a/ts_b NOT NULL`; a fixture quoting absent text asserts `OW_GRAPH_UNGROUNDED` and `grounded_frac < 1`"
+
+[[member]]
+id          = "GR6"
+family      = "GR"
+owner_doc   = "06-structure-extraction.md"
+source      = "docs/plan/_notes/charter.md:5663"
+title       = "Resolution is order-independent and reversible."
+enforced_by = "Hypothesis shuffles candidates 100x and asserts an identical `canonical_id` map; CI recomputes `canonical_id` from the log and byte-compares; a split round-trip test"
+
+[[member]]
+id          = "GR7"
+family      = "GR"
+owner_doc   = "06-structure-extraction.md"
+source      = "docs/plan/_notes/charter.md:5664"
+title       = "Entity identity is never a surface form."
+enforced_by = "`key` is documented as a BLOCKING key; a test asserts two live entities may share a key and differ"
+
+[[member]]
+id          = "GR8"
+family      = "GR"
+owner_doc   = "06-structure-extraction.md"
+source      = "docs/plan/_notes/charter.md:5665"
+title       = "Incremental converges with full."
+enforced_by = "The **graph-specific** gate, deliberately smaller than G19's 300/40 because it re-runs the whole resolve-and-cluster closure per step: 60 documents, 20 shuffled steps including 3 edits, 2 deletions and 1 driver-version re-parse; equality on `canonical_projection()` modulo surrogate ids. **BLOCKING, not nightly**"
+
+[[member]]
+id          = "GR9"
+family      = "GR"
+owner_doc   = "06-structure-extraction.md"
+source      = "docs/plan/_notes/charter.md:5666"
+title       = "A driver's output may reference only blocks it was handed."
+enforced_by = "`begin_run(allowed_cites=...)`; `OW_GRAPH_OUT_OF_SCOPE_BLOCK`; the conform `derive_scope` suite"
+
+[[member]]
+id          = "GR10"
+family      = "GR"
+owner_doc   = "06-structure-extraction.md"
+source      = "docs/plan/_notes/charter.md:5667"
+title       = "Nothing is deleted; dropped is quarantined and retired is historied."
+enforced_by = "`GraphSink` has no `drop()`; a dangling-tmp draft produces a quarantine row; `owcheck --graph` asserts zero orphans"
+
+[[member]]
+id          = "GR11"
+family      = "GR"
+owner_doc   = "06-structure-extraction.md"
+source      = "docs/plan/_notes/charter.md:5668"
+title       = "No model-returned string is ever an identifier and no prompt carries a surrogate id."
+enforced_by = "Semgrep in `llm/`: a parsed `id`-shaped field may flow only into `normalize_key`; the prompt builder accepts only the four `Cite` NewTypes; a test renders every prompt over a fixture and greps for `p\\d+/\\d+` and bare integers"
+
+[[member]]
+id          = "GR12"
+family      = "GR"
+owner_doc   = "06-structure-extraction.md"
+source      = "docs/plan/_notes/charter.md:5669"
+title       = "Untrusted text reaches a prompt only through `wrap_untrusted()`."
+enforced_by = "Semgrep in `llm/`; the conform `derive_injection` suite over 40 payloads: zero untainted items, and zero false positives on the SOP fixture"
+
+[[member]]
+id          = "GR13"
+family      = "GR"
+owner_doc   = "06-structure-extraction.md"
+source      = "docs/plan/_notes/charter.md:5670"
+title       = "Absent trust is AMBIGUOUS; a migration may only downgrade and may never clear taint."
+enforced_by = "`trust INTEGER NOT NULL` with **no column default**; the wire reader maps missing -> 0; `tools/migration_lint.py` rejects any statement raising trust or clearing taint"
+
+[[member]]
+id          = "GR14"
+family      = "GR"
+owner_doc   = "06-structure-extraction.md"
+source      = "docs/plan/_notes/charter.md:5671"
+title       = "A report is stale iff `member_digest` changed, and a stale report is invisible."
+enforced_by = "Retrieval reads `community_report_fresh`; a test edits one paragraph and asserts `written_at_ns` is unchanged on every row"
+
+[[member]]
+id          = "GR15"
+family      = "GR"
+owner_doc   = "06-structure-extraction.md"
+source      = "docs/plan/_notes/charter.md:5672"
+title       = "`mention` is the only table referencing both a `block_id` and an `entity_id`."
+enforced_by = "A schema lint classifies every FK target L2/L3; both => fail unless the table is `mention`"
+
+[[member]]
+id          = "GR16"
+family      = "GR"
+owner_doc   = "06-structure-extraction.md"
+source      = "docs/plan/_notes/charter.md:5673"
+title       = "Salience is recomputed, all four columns."
+enforced_by = "A post-run assertion FAILS THE RUN when `entity.degree`, `frequency`, `doc_count` or `edge.combined_degree` disagree with a recount"
+
+[[member]]
+id          = "GR17"
+family      = "GR"
+owner_doc   = "06-structure-extraction.md"
+source      = "docs/plan/_notes/charter.md:5674"
+title       = "Every relation has a written direction rule and the prompt is generated from it."
+enforced_by = "`relation_vocab.actor_rule NOT NULL`; the extraction prompt is rendered from the table, so prompt and schema cannot drift"
+
+[[member]]
+id          = "GR18"
+family      = "GR"
+owner_doc   = "06-structure-extraction.md"
+source      = "docs/plan/_notes/charter.md:5675"
+title       = "Deterministic passes and clustering are bit-reproducible."
+enforced_by = "Shuffle block iteration and file order 100x, assert byte-identical rows by natural key; two cluster runs give an identical partition"
+
+[[member]]
+id          = "OUT1"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6314"
+title       = "Every construct the compiler can emit has a row; every native row's `maps_to` resolves."
+enforced_by = "A two-way CI gate: import `lower/`, diff its public symbol set against `constructs.toml`. `OW-T-001 CONSTRUCT_UNMAPPED` . `OW-T-002 CONSTRUCT_UNDECLARED`. BOTH directions"
+
+[[member]]
+id          = "OUT2"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6315"
+title       = "Exactly ONE implementation of \"what does this construct mean\"."
+enforced_by = "`rules/` and `lower/` are modules of ONE distribution; `CompileV1` has no `validate()`; `measure.py` is imported by both; semgrep bans a second carrier parser under `rules/`"
+
+[[member]]
+id          = "OUT3"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6316"
+title       = "A check that could not run is VISIBLE and the gate is `unverified`, never `passed`."
+enforced_by = "`report.skipped_checks[]` required non-null; conform removes uharfbuzz and asserts both"
+
+[[member]]
+id          = "OUT4"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6317"
+title       = "The gate binds to BYTES."
+enforced_by = "`il_digest` recomputed by the SAME function at compile; a mismatch => STALE; the toolchain's TS recomputation is spec'd + parity-fixtured"
+
+[[member]]
+id          = "OUT5"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6318"
+title       = "Exactly ONE `GateStatus` permits a release."
+enforced_by = "A test asserts the other nine are refused with a distinct message AND a fix command. There is no `--force` and no `--no-gate`"
+
+[[member]]
+id          = "OUT6"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6319"
+title       = "Every Finding carries a provenance class and a NON-EMPTY fix."
+enforced_by = "`__post_init__` raises otherwise; ONE function feeds the console and the JSON, so they cannot disagree"
+
+[[member]]
+id          = "OUT7"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6320"
+title       = "Findings FOLD."
+enforced_by = "200 occurrences => one finding, `count=200`, <=3 examples. Asserted"
+
+[[member]]
+id          = "OUT8"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6321"
+title       = "Every unit in exactly one outcome; the sum asserted; unclassifiable is FATAL."
+enforced_by = "`OW-T-005`"
+
+[[member]]
+id          = "OUT9"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6322"
+title       = "No `http(s)://`, `file:`, `data:` URI or filesystem path survives into the IL."
+enforced_by = "`asset-slot:<sha256>` is the ONLY asset syntax; `OW-T-112`; semgrep bans `open()`/`Path()` on an IL-derived string inside `lower/`"
+
+[[member]]
+id          = "OUT10"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6323"
+title       = "Every asset frozen, content-addressed and licence-bearing before compile."
+enforced_by = "`AssetLedger.freeze()` is the only writer; `asset.store_ref NOT NULL`; `MAX_ASSET_BYTES = 268435456` with BOTH a content-length pre-check AND a streaming abort; a compile that must fetch REFUSES with `Degradation(kind=\"grant_missing\")` naming the site Grant and its `dpa_ref`"
+
+[[member]]
+id          = "OUT11"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6324"
+title       = "No artefact contains a restricted item without policy."
+enforced_by = "Gate `RESTRICTED`, naming the offending cites and asset ids; one SQL aggregate at plan AND at compile (DR17, INV-16)"
+
+[[member]]
+id          = "OUT12"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6325"
+title       = "`compile` is a pure function of six digests (il, constructs, ledger, brief, card, toolchain)."
+enforced_by = "A **lookup-before-build** in `omniweave_core.out` keyed on those six, reusing the prior row's bytes and `part_digest`, plus a CI test asserting two compiles of one bundle give an equal `part_digest`. The `artifact_pure` index additionally carries `slug` and `delivery`, so a draft, a re-gated recompile and a second slug are all recordable; `gate_status` advances on a new `artifact_gen` and never in place"
+
+[[member]]
+id          = "OUT13"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6326"
+title       = "A determinism claim is PROVED."
+enforced_by = "`part` is the floor; `byte` is asserted only under a pinned resolution and NEVER promised; 3 x PYTHONHASHSEED, two temp dirs"
+
+[[member]]
+id          = "OUT14"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6327"
+title       = "No compiler reads a clock, cwd, env or RNG."
+enforced_by = "G8 extended to `packages/omniweave-target-*`, plus `random`/`secrets`/`uuid4`/`datetime.now`; the determinism harness monkeypatches them to raise"
+
+[[member]]
+id          = "OUT15"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6328"
+title       = "Only `omniweave_core.out.opc` opens a ZIP for writing."
+enforced_by = "Semgrep on `zipfile.ZipFile(...,'w'/'a'/'x')` and `shutil.make_archive`"
+
+[[member]]
+id          = "OUT16"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6329"
+title       = "An unresolved feedback marker never reaches a release artefact."
+enforced_by = "`OW-T-141`; `marker.assert_clean()` runs inside compile, AFTER the gate, BEFORE `lower()`"
+
+[[member]]
+id          = "OUT17"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6330"
+title       = "A feedback edit is TRANSACTIONAL."
+enforced_by = "collect -> apply back-to-front -> REPARSE -> all-or-nothing; a 10k random-op-batch fuzz asserts the file is always parseable or unchanged"
+
+[[member]]
+id          = "OUT18"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6331"
+title       = "An ambiguous edit address is REFUSED, never guessed."
+enforced_by = "Two-factor: `el` proposes, `nsig` disposes, uniqueness arbitrates; multiple text candidates with no `prev` => `OW-T-151` refusal"
+
+[[member]]
+id          = "OUT19"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6332"
+title       = "Marker PRESENCE IS THE STATE."
+enforced_by = "A base64url payload, a position-derived line, a corrupt payload skipped not fatal, reverse-order application, SKIP IS LEGAL (leave the marker, report it). Present after a claimed application is a failure signal. THERE IS NO SIDE TABLE"
+
+[[member]]
+id          = "OUT20"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6333"
+title       = "The validator NEVER rewrites the IL."
+enforced_by = "Semgrep bans a write under `il/` from `rules/`; `ow out stamp` and `ow out normalize` are separate commands with their own exit codes. **THERE IS NO `--fix`**"
+
+[[member]]
+id          = "OUT21"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6334"
+title       = "`data-ow-el` is minted once and REFUSES on a duplicate."
+enforced_by = "`OW-T-405`. Renumbering would silently invalidate every existing marker and citation"
+
+[[member]]
+id          = "OUT22"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6335"
+title       = "`read_back` NEVER invents provenance."
+enforced_by = "`Method.ROUNDTRIP` always; `Quote.RECONSTRUCTED` unless the text was read from the artefact; `Trust.INFERRED` wherever `kind_map` is many-to-one. The ~120-test driver testkit runs against it UNCHANGED"
+
+[[member]]
+id          = "OUT23"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6336"
+title       = "A target cannot skip its own gate."
+enforced_by = "`lower()` receives an already-gated `Plan` and has no access to the report; a conform test calls `lower()` behind a failing report and asserts the host never reaches it"
+
+[[member]]
+id          = "OUT24"
+family      = "OUT"
+owner_doc   = "09-generation.md"
+source      = "docs/plan/_notes/charter.md:6337"
+title       = "OUT edits ALWAYS write a new `gen`; a sealed generation is never patched."
+enforced_by = "`artifact.sealed_at_ns NOT NULL` + a BEFORE UPDATE/DELETE trigger. **This settles `ord_path` permanently: it stays rejected**"
+
+[[member]]
+id          = "SV1"
+family      = "SV"
+owner_doc   = "10-interfaces.md"
+source      = "docs/plan/_notes/charter.md:6998"
+title       = "`listed subset-of enabled`, and `HUMAN_ONLY intersect enabled = {}`."
+enforced_by = "A startup check; a test per human-only Action asserting `mcp_name is None`"
+
+[[member]]
+id          = "SV2"
+family      = "SV"
+owner_doc   = "10-interfaces.md"
+source      = "docs/plan/_notes/charter.md:6999"
+title       = "The front door fits its token baseline."
+enforced_by = "`benchmarks/serve_schema_baseline.json`, 1,900 total / 700 per tool / 1,000 instruction chars, 5% drift, CI fails"
+
+[[member]]
+id          = "SV4"
+family      = "SV"
+owner_doc   = "10-interfaces.md"
+source      = "docs/plan/_notes/charter.md:7000"
+title       = "Budget tiers are monotone in `chars/doc`."
+enforced_by = "A property test over the tier table"
+
+[[member]]
+id          = "SV8"
+family      = "SV"
+owner_doc   = "10-interfaces.md"
+source      = "docs/plan/_notes/charter.md:7001"
+title       = "Exactly one `return VerdictState.ABSENT` site in the framework."
+enforced_by = "Semgrep, over `omniweave_core/retrieve/verdict.py`"
+
+[[member]]
+id          = "SV12"
+family      = "SV"
+owner_doc   = "10-interfaces.md"
+source      = "docs/plan/_notes/charter.md:7002"
+title       = "A defanged block is never `verbatim`."
+enforced_by = "The renderer re-labels it `normalized`, marks it, and counts it in the trailer"
+
+[[member]]
+id          = "SV13"
+family      = "SV"
+owner_doc   = "10-interfaces.md"
+source      = "docs/plan/_notes/charter.md:7003"
+title       = "The byte-exactness sentence has one call site and is proved against the store."
+enforced_by = "A CI test re-reads `part.store_ref` and byte-compares every block the renderer labelled exact"
+
+[[member]]
+id          = "SV18"
+family      = "SV"
+owner_doc   = "10-interfaces.md"
+source      = "docs/plan/_notes/charter.md:7004"
+title       = "The drop order is fixed and the never-dropped set is charged first."
+enforced_by = "A property test over synthetic answers at every tier"
+
+[[member]]
+id          = "SV19"
+family      = "SV"
+owner_doc   = "10-interfaces.md"
+source      = "docs/plan/_notes/charter.md:7005"
+title       = "One renderer, three surfaces."
+enforced_by = "`omniweave_core.answer.render` is the only implementation; the SDK, the CLI and the MCP server all call it"
+
+[[member]]
+id          = "ST1"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3235"
+title       = "`sqlite3.connect` appears in exactly one module"
+enforced_by = "G24 + the lint rule + a monkeypatch test"
+
+[[member]]
+id          = "ST2"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3236"
+title       = "One query = one snapshot"
+enforced_by = "Channel functions take `Snapshot`, never `Store`/`Connection` (pyright); a test commits a full re-index between Channel 1 and Channel 5 and asserts identical results, **including `Hit.text`**"
+
+[[member]]
+id          = "ST3"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3237"
+title       = "No transaction spans `main` and `vec`"
+enforced_by = "a grep gate over BEGIN-scoped statement groups"
+
+[[member]]
+id          = "ST4"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3238"
+title       = "A stale vector is invisible, never wrong"
+enforced_by = "the semantic Channel's only exit is an inner join `vseg.digests[i] = segment.content_digest` inside the main snapshot; sweeps are an optimisation"
+
+[[member]]
+id          = "ST5"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3239"
+title       = "\"No restriction\" is not \"restrict to nothing\""
+enforced_by = "`Narrowing` is tagged; semgrep bans `if narrowing:`; a nonsense-query fixture asserts 0 hits and `absent`, never the corpus ranked by centrality"
+
+[[member]]
+id          = "ST6"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3240"
+title       = "`fuse()` and `ceiling()` share `_weight()`, `rank` is 1-based, and `OFF(query_deadline)` keeps its ceiling weight while `OFF(vectors)` / `OFF(not_in_plan)` / `OFF(not_built)` do not"
+enforced_by = "the three-part property test of section 5.3, halves (a)/(b)/(c)"
+
+[[member]]
+id          = "ST7"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3241"
+title       = "Every Channel, and `fuse()`, is totally ordered on `(-score, (doc_ord, page, ord), block_id)`: two ingests of one folder rank alike (D655)"
+enforced_by = "a property test shuffles SQL row order 100x, VACUUMs **and runs FTS `'optimize'`**, asserting an identical ranking"
+
+[[member]]
+id          = "ST8"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3242"
+title       = "A Channel failure is never a confident zero"
+enforced_by = "no bare `except` under `retrieve/` (semgrep); a fault-injection test corrupts `block_fts` and asserts `degraded`, not `absent`"
+
+[[member]]
+id          = "ST9"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3243"
+title       = "`absent` requires all fifteen gates"
+enforced_by = "`build_verdict` is the sole constructor; one fixture per gate; semgrep asserts one `return VerdictState.ABSENT` site"
+
+[[member]]
+id          = "ST10"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3244"
+title       = "Every derived row's identity is a schema constraint, and an identity containing an `IFNULL` sentinel is always a separate `CREATE UNIQUE INDEX`"
+enforced_by = "a `<table>_identity` UNIQUE INDEX per derived table; the installing migration GROUP BYs the identical expression; a double-insert test; G27b applies every migration to an empty file"
+
+[[member]]
+id          = "ST11"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3245"
+title       = "An operator's re-run replaces only rows whose `origin_operator` is its own"
+enforced_by = "`NOT NULL` on every derived row; a grep gate over every `DELETE FROM` under `store/` for the predicate"
+
+[[member]]
+id          = "ST12"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3246"
+title       = "Incremental converges with a full rebuild"
+enforced_by = "**G19** -- the gate row owns the fixture size and the batch count"
+
+[[member]]
+id          = "ST13"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3247"
+title       = "A crash inside a bulk window is visible, never silently served"
+enforced_by = "`index_state.bulk_window` written **before** the first DDL; open refuses and names `ow store repair`; a SIGKILL test"
+
+[[member]]
+id          = "ST14"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3248"
+title       = "A `BILLED_API` commit is durable"
+enforced_by = "`synchronous = FULL` set **before** `BEGIN` for that transaction; a test asserts the pragma at commit time"
+
+[[member]]
+id          = "ST15"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3249"
+title       = "A reader cannot pin the WAL indefinitely"
+enforced_by = "`MAX_SNAPSHOT_MS` in the snapshot context manager, enforced by `interrupt()`; the query embedding is outside the snapshot"
+
+[[member]]
+id          = "ST16"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3250"
+title       = "A governor that cannot help gets out of the way"
+enforced_by = "the futility latch: 2 give-ups => 60 s cooldown => degrade to un-valved, with an armed log line and a heartbeat"
+
+[[member]]
+id          = "ST17"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3251"
+title       = "Every shipped index is used and every hot query's plan is reviewed"
+enforced_by = "`tools/indexes.toml` with an owner column; `ow store explain --golden` byte-diff gated"
+
+[[member]]
+id          = "ST18"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3252"
+title       = "Every migration declares its cost class, resumability and what an un-backfilled row means"
+enforced_by = "`NOT NULL` in a STRICT table; the loader refuses a `> WATCHDOG_MS/2` migration that is not resumable"
+
+[[member]]
+id          = "ST19"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3253"
+title       = "The store is never committed"
+enforced_by = "the shipped `.gitignore`; `ow doctor` fails with `OW-S-060`; `ow store verify --lock` refuses a conflict-marked receipt with `OW-S-061`"
+
+[[member]]
+id          = "ST20"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3254"
+title       = "`block_id` carries its minting shard forever"
+enforced_by = "a CREATE-time literal `CHECK ((block_id >> 48) = <shard_ord>)`, re-asserted at open; an append-only shard registry"
+
+[[member]]
+id          = "ST21"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3260"
+title       = "**No FTS-bearing table is ever emptied by a foreign-key cascade.**"
+enforced_by = "a grep gate requiring an explicit `DELETE FROM block WHERE doc_ord = ?` immediately before any `DELETE FROM doc`; `ow store verify --fts` runs `integrity-check` on `block_fts` and `head_fts` and compares row counts; the staged-generation sweep (section 11.1) `'rebuild'`s after a non-zero delete"
+
+[[member]]
+id          = "ST22"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3261"
+title       = "**No `embed/1` Driver call happens inside a read snapshot.**"
+enforced_by = "pyright: the phase-2 embed function does not take a `Snapshot`; semgrep bans a `DriverHost.invoke` call inside a `with reader.snapshot()` block; a test asserts a 3 s stub embedder does not extend `Snapshot.opened_ns`-to-close beyond `snapshot_ms`"
+
+[[member]]
+id          = "ST23"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3262"
+title       = "**`SCHEMA` has one code home and one disk home, and neither gains a second.**"
+enforced_by = "`ow store verify`'s single-homedness check in its default set (section 14): `meta` holds no `schema` key and no other `[SOR]` table carries one, breach `OW-S-034`; a grep gate rejects a version constant added to `omniweave_core.limits`; a migration fixture that writes `meta.schema` is asserted to fail `verify`"
+
+[[member]]
+id          = "ST24"
+family      = "ST"
+owner_doc   = "07-store-and-retrieval.md"
+source      = "docs/plan/07-store-and-retrieval.md:3263"
+title       = "**A store built from the shipped migrations carries exactly one `schema` stamp, and it is this build's.**"
+enforced_by = "`G27(b)`'s assertion at the **end** of the `0001` -> `0005` run on `MIN_SQLITE` -- not after `0001_init.sql`, which is two migrations before `index_state` exists: `index_state` holds exactly one `schema` row whose value equals `f\"{SCHEMA}.{SCHEMA_MINOR}\"` read from `omniweave_core.contract`, and `meta` holds no `schema` key"
+
+[[member]]
+id          = "M-INV-1"
+family      = "M-INV"
+owner_doc   = "03-document-model.md"
+source      = "docs/plan/03-document-model.md:2215"
+title       = "Parent before child: `parent.page <= child.page`, and within a page a parent is written before its children, so a forward reference is impossible."
+enforced_by = "conformance property P4 (`contract` suite), section 17; `end_page()` committing one transaction per page makes `parent_id` always a committed row"
+
+[[member]]
+id          = "M-INV-2"
+family      = "M-INV"
+owner_doc   = "03-document-model.md"
+source      = "docs/plan/03-document-model.md:2219"
+title       = "`addr` anchoring: `addr`'s page component is the page of the block's topmost ancestor below the `document` root, not necessarily `block.page`."
+enforced_by = "conformance property P18 (`contract` suite), section 17: every `addr` matches section 3.2's pattern and its page component equals the page anchor"
+
+[[member]]
+id          = "M-INV-3"
+family      = "M-INV"
+owner_doc   = "03-document-model.md"
+source      = "docs/plan/03-document-model.md:2959"
+title       = "The projection law: a projection reads only committed head rows in one `Snapshot`, writes no [SOR] table, lifts every character to exactly one `(BlockId, TextSpan)` or marks it synthetic, and is pure over `(S, options, snapshot)`."
+enforced_by = "section 16.5's four clauses, of which clause 3 is the conformance property `for every offset i: map.block_at(i) is not None or map.is_synthetic(i)`"
+
+[[member]]
+id          = "M-INV-4"
+family      = "M-INV"
+owner_doc   = "03-document-model.md"
+source      = "docs/plan/03-document-model.md:852"
+title       = "No text is stored twice: a Block's `text` never repeats any descendant's `text`."
+enforced_by = "conformance property P5 (`capability` suite), section 17: no child `paragraph` has `normalize_k(text)[0]` equal to its parent's"
+
+[[member]]
+id          = "M-INV-5"
+family      = "M-INV"
+owner_doc   = "03-document-model.md"
+source      = "docs/plan/03-document-model.md:1022"
+title       = "`layer` is inherited: a block's `layer` equals its parent's except for a page root, where the driver states it and `DocSink` defaults it from the kind."
+enforced_by = "conformance property P17 (`contract` suite), section 17: a fixture whose driver states otherwise gets `OW_LAYER_NOT_INHERITED`"
