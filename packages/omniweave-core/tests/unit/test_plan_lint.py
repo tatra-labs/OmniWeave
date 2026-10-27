@@ -66,8 +66,14 @@ from omniweave.surface import CLI_ABSENT, CLI_UNROSTERED
 from omniweave_core import errors
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[4]
-REAL_PLAN: Final = REPO_ROOT / "_plan"
+REAL_PLAN: Final = REPO_ROOT / "docs" / "plan"
+"""D991: the plan moved out of the gitignored `_plan/`, so the tests that read the real tree read
+it here. Every MUTATION still runs against a fixture in `tmp_path` and never against this."""
 REAL_MANIFEST: Final = REPO_ROOT / "tools" / "plan.sha256"
+ROW: Final = {"_notes/build-defects.md": "a wave appends verified rows to it"}
+"""D991: one allow-list row, for the tests that exercise the mechanism. The production list
+is empty since the plan moved and the ten files it exempted did not, so a test that read it
+would be testing an exemption that no longer exists."""
 API_SKETCH: Final = REAL_PLAN / "18-api-sketch.md"
 REAL_CHARTER: Final = REAL_PLAN / "_notes" / "charter.md"
 
@@ -170,8 +176,10 @@ FIXTURE_DOCS: Final[dict[str, str]] = {
 def build_plan(root: Path) -> Path:
     """A fixture plan tree: settled documents, a charter, and every allow-listed working file.
 
-    The writable files are created by ITERATING `WRITABLE_NOTES` rather than by re-listing it, so
-    a row added to the allow-list cannot make this fixture stale.
+    The writable files are created by ITERATING a row map rather than by re-listing one, so a row
+    added later cannot make this fixture stale. Since D991 that map is this module's `ROW` and
+    not `pl.WRITABLE_NOTES`: the production list is empty, and a fixture that built nothing would
+    silently stop exercising the allow-list at all.
     """
     for rel, text in FIXTURE_DOCS.items():
         target = root / rel
@@ -180,7 +188,7 @@ def build_plan(root: Path) -> Path:
     charter = root / pl.CHARTER_REL
     charter.parent.mkdir(parents=True, exist_ok=True)
     charter.write_text(FIXTURE_CHARTER, encoding="utf-8", newline="\n")
-    for rel in pl.WRITABLE_NOTES:
+    for rel in ROW:
         working = root / rel
         working.parent.mkdir(parents=True, exist_ok=True)
         working.write_text(f"# {rel}\n\nThis project writes this file every wave.\n", "utf-8")
@@ -227,8 +235,15 @@ def _the_real_plan_is_left_byte_identical() -> Iterator[None]:
 
 
 @pytest.fixture
-def blessed(tmp_path: Path) -> tuple[Path, Path]:
-    """A fixture plan tree and a manifest blessed from it, which passes before any mutation."""
+def blessed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+    """A fixture plan tree and a manifest blessed from it, which passes before any mutation.
+
+    D991: the allow-list is patched to `ROW` for the life of the fixture, BEFORE the bless.
+    `build_plan` writes the file that row names, and a tree holding an exempt file while the gate
+    knows of no exemption would pin it -- making every later assertion about exemption read as
+    "pinned and on the allow-list" instead.
+    """
+    monkeypatch.setattr(pl, "WRITABLE_NOTES", dict(ROW))
     plan = build_plan(tmp_path / "plan")
     manifest = tmp_path / "tools" / "plan.sha256"
     bless(plan, manifest)
@@ -320,7 +335,13 @@ def test_an_added_unlisted_file_fails_rather_than_silently_escaping(blessed) -> 
 
 
 def test_a_file_this_project_writes_may_change_without_failing_the_gate(blessed) -> None:
-    """The other side of the allow-list: the ledger grows every wave and must not cry wolf."""
+    """The other side of the allow-list: an exempt file grows and must not cry wolf.
+
+    D991: the production list is empty -- the ten rows it held named drafting files that stayed
+    behind in `_plan/` when the plan moved -- so the MECHANISM is exercised over a row patched in
+    here. A test that could only run while a particular exemption existed would be a test of that
+    exemption rather than of the rule.
+    """
     plan, manifest = blessed
     ledger = plan / "_notes" / "build-defects.md"
     ledger.write_text(ledger.read_text(encoding="utf-8") + "\n### C56. A new row\n", "utf-8")
@@ -331,10 +352,10 @@ def test_a_file_this_project_writes_may_change_without_failing_the_gate(blessed)
 def test_an_allow_listed_file_that_vanished_is_a_stale_row_and_fails(blessed) -> None:
     """A row left behind after a file was removed exempts nothing and reads as coverage."""
     plan, manifest = blessed
-    (plan / "_notes" / "m0-was-skipped.md").unlink()
+    (plan / "_notes" / "build-defects.md").unlink()
     code, report = run(plan, manifest)
     assert code == pl.EXIT_FAIL, report
-    assert "_notes/m0-was-skipped.md: on the writable allow-list and not on disk" in report
+    assert "_notes/build-defects.md: on the writable allow-list and not on disk" in report
 
 
 def test_the_charter_is_covered_by_its_own_rule_and_never_pinned_as_a_whole_document(
@@ -891,43 +912,24 @@ def test_the_manifest_is_not_itself_gitignored() -> None:
 
 
 @pytest.mark.plan
-def test_every_writable_row_names_a_file_this_project_actually_writes() -> None:
-    """Without this the allow-list is a way to switch the gate off.
+def test_the_allow_list_is_empty_and_its_rule_still_bites() -> None:
+    """D991: the list held ten rows and holds none, which is a fact about the move.
 
-    Four properties per row, following `test_core_eager_surface.py`'s
-    `test_the_filled_homes_are_really_filled`: the path exists, the reason is a real sentence
-    naming a writer, the path is under `_notes/`, and the file was written AFTER every settled
-    document -- which is C55's own mtime evidence, used here as the one mechanical witness that a
-    row describes a working file rather than law somebody wanted exempted.
+    Every row named a drafting file under `_notes/` -- the build-defect ledger, the m0 scope note,
+    the eight stage-findings dumps -- and none of them moved to `docs/plan/`, because nothing in
+    the design record cites them. A path outside this gate's root needs no exemption from it, and
+    a row naming one is a finding (`on the writable allow-list and not on disk`), which is how
+    this emptiness was arrived at rather than chosen.
+
+    The rule it enforced is still enforced: `settled_documents` exempts an exact row and nothing
+    else, and `test_the_allow_list_is_matched_exactly_and_never_by_prefix` holds that over a
+    patched row. What is gone is the exemption, not the mechanism.
     """
-    settled = [*REAL_PLAN.glob("*.md"), *(REAL_PLAN / "adr").glob("*.md")]
-    assert len(settled) == 21 + 17, len(settled)
-    #  The witness is the settled documents under `_notes/`, the one directory an allow-list row
-    #  may name. An accepted ADR amends the top-level documents after the notes were written
-    #  (ADR-13 did, 2026-09-29): law changing by the stated procedure, not a note losing its writer.
-    notes = [
-        REAL_PLAN / rel
-        for rel in pl.settled_documents(pl.plan_files(REAL_PLAN))
-        if rel.startswith("_notes/") and rel != "_notes/charter.md"
-    ]
-    newest_settled = max(path.stat().st_mtime for path in notes)
-
-    assert pl.WRITABLE_NOTES, "an empty allow-list would make this test vacuous"
-    for rel, reason in pl.WRITABLE_NOTES.items():
-        path = REAL_PLAN / rel
-        assert path.is_file(), f"{rel} is on the allow-list and does not exist"
-        assert path.stat().st_size > 0, f"{rel} is empty"
-        assert rel.startswith("_notes/"), rel
-        assert len(reason) >= 60, f"{rel}'s reason is too short to be a reason: {reason!r}"
-        assert reason.rstrip().endswith("."), f"{rel}'s reason is not a sentence"
-        assert any(word in reason for word in ("wave", "ledger", "recorder", "stage")), (
-            f"{rel}'s reason names no writer: {reason!r}"
-        )
-        assert path.stat().st_mtime > newest_settled, (
-            f"{rel} is older than the newest settled `_notes/` document, so nothing witnesses that "
-            "this project writes it. If the tree was copied and mtimes were reset, re-establish "
-            "the evidence rather than deleting this assertion."
-        )
+    assert pl.WRITABLE_NOTES == {}
+    assert pl.NEVER_WRITABLE_NOTES, "the other direction still names the charter and terminology"
+    #  And the rule, over a row that is not there: every settled document stays settled.
+    paths = pl.plan_files(REAL_PLAN)
+    assert set(pl.settled_documents(paths)) == set(paths) - {pl.CHARTER_REL}
 
 
 def test_no_allow_list_row_could_ever_switch_off_settled_law() -> None:
@@ -968,14 +970,17 @@ def test_the_covered_set_is_a_difference_and_partitions_the_real_tree() -> None:
     settled = set(pl.settled_documents(paths))
     writable = set(pl.WRITABLE_NOTES)
 
-    assert len(paths) == 579, len(paths)
-    assert len(writable) == 10, len(writable)
+    assert len(paths) == 83, len(paths)
+    assert len(writable) == 0, (
+        "D991: the ten rows named files that stayed in the ignored _plan/ when the plan moved"
+    )
     assert len(settled) == len(paths) - len(writable) - 1
     assert settled == set(manifest.documents)
     assert settled | writable | {pl.CHARTER_REL} == set(paths)
     assert settled & writable == set()
     assert pl.CHARTER_REL not in settled and pl.CHARTER_REL not in writable
-    assert len([rel for rel in paths if rel.startswith(pl.SNAPSHOTS_PREFIX)]) == 423
+    #  D991: the snapshots did not move -- 423 of them were drafting state nothing cites.
+    assert [rel for rel in paths if rel.startswith(pl.SNAPSHOTS_PREFIX)] == []
 
 
 # ---------------------------------------------------------------------------
@@ -1102,11 +1107,17 @@ def test_bless_writes_the_reason_into_the_manifest_where_a_diff_will_show_it(
     text = manifest.read_text(encoding="utf-8")
     assert "# blessed-because: ADR-13 approved the amendment; charter E24 records it" in text
     assert "tools/plan.sha256" in text
-    assert ".gitignore:3" in text
+    #  D991: the header argued from the plan being gitignored; it now says what the manifest
+    #  buys over an ordinary diff, which is deliberateness rather than visibility.
+    assert "docs/plan/" in text
+    assert ".gitignore:3" not in text
 
 
-def test_bless_names_every_digest_it_changes_adds_and_removes(tmp_path: Path) -> None:
+def test_bless_names_every_digest_it_changes_adds_and_removes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """It prints nothing quietly, so a bless that covered more than the author meant is visible."""
+    monkeypatch.setattr(pl, "WRITABLE_NOTES", dict(ROW))
     plan = build_plan(tmp_path / "plan")
     manifest = tmp_path / "plan.sha256"
     first = bless(plan, manifest, "the first bless")
@@ -1157,7 +1168,7 @@ def test_the_shipped_manifest_is_the_one_bless_would_write_for_the_real_plan() -
     assert fresh.documents == pinned.documents
     assert fresh.charter_digest == pinned.charter_digest
     assert fresh.heading_line == pinned.heading_line
-    assert len(fresh.documents) == 568, len(fresh.documents)
+    assert len(fresh.documents) == 82, len(fresh.documents)
 
 
 def test_the_manifest_row_grammar_round_trips(tmp_path: Path) -> None:
@@ -1294,23 +1305,32 @@ def test_every_charter_line_this_gate_cites_holds_what_it_is_cited_for() -> None
     assert header[2] == "search for this phrase"
 
 
-def test_the_gitignore_line_this_gate_cites_is_the_line_that_ignores_the_plan() -> None:
-    """The mutation: reorder `.gitignore` so `_plan/` is no longer its third line.
+def test_the_plan_this_gate_guards_is_tracked_and_no_text_still_claims_otherwise() -> None:
+    """D991 inverted this test, and the inversion is the point.
 
-    Nothing failed. `.gitignore:3` is cited in the module docstring, in the manifest's own header
-    and in what `--bless` PRINTS to a human, and all of those became false at once. The citation
-    is load-bearing here in a way it is not elsewhere: it is the evidence that the directory this
-    gate protects is invisible to git.
+    It used to assert that `.gitignore:3` is `_plan/` and that three texts cite it, because the
+    citation was the EVIDENCE that the guarded directory was invisible to git: a mutation that
+    reordered `.gitignore` made the module docstring, the manifest header and what `--bless`
+    prints all false at once, and nothing failed.
+
+    The plan is tracked now. The same three texts would be false in the other direction if they
+    still said the plan leaves no trace, so this asserts the new state: the root is `docs/plan/`,
+    git does not ignore it, `_plan/` is still ignored for the drafting scaffolding that stayed,
+    and no shipped text claims the manifest is the only record of an amendment.
     """
-    lines = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
-    assert lines[2].strip() == "_plan/", lines[:6]
-    assert pl.DEFAULT_PLAN_ROOT.name == "_plan"
+    assert pl.DEFAULT_PLAN_ROOT.relative_to(REPO_ROOT).as_posix() == "docs/plan"
+    ignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "_plan/" in [line.strip() for line in ignore], "the scaffolding stays ignored"
+    assert not [line for line in ignore if line.strip().startswith(("docs/", "/docs"))], (
+        "a rule ignoring docs/ would put the plan back out of the repository"
+    )
     for where, text in (
         ("the module docstring", pl.__doc__ or ""),
         ("the manifest header", pl.MANIFEST_HEADER),
         ("the shipped manifest", REAL_MANIFEST.read_text(encoding="utf-8")),
     ):
-        assert ".gitignore:3" in text, where
+        assert "only trace" not in text, where
+        assert "docs/plan" in text or "D991" in text, where
 
 
 @pytest.mark.plan
@@ -1416,6 +1436,9 @@ def test_the_allow_list_is_matched_exactly_and_never_by_prefix(
     single `_notes/` row switches every rule off for the charter, the terminology lock and all
     423 snapshots at once, which is the off switch `WRITABLE_NOTES`'s comment says it is not.
     """
+    #  D991: a patched row, because the production list is empty and this is a test of the
+    #  matching rule rather than of any particular exemption.
+    monkeypatch.setattr(pl, "WRITABLE_NOTES", dict(ROW))
     row = next(iter(pl.WRITABLE_NOTES))
     assert pl.settled_documents((row,)) == (), "an exact row is exempt"
     near = (f"{row}.bak", row.removesuffix(".md"), f"{row}/nested.md")

@@ -132,7 +132,7 @@ def test_layers_toml_is_verbatim_the_charters_import_dag(
             for fence in plan.toml_fences(document)
             if fence and all(str(key).startswith("omniweave") for key in fence)
         ]
-        assert len(printed) == 1, f"_plan/{document} prints {len(printed)} layer fences"
+        assert len(printed) == 1, f"docs/plan/{document} prints {len(printed)} layer fences"
         assert printed[0] == declared, f"tools/layers.toml disagrees with _plan/{document}"
 
 

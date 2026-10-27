@@ -123,7 +123,7 @@ class PlanCitation:
     text: str
 
     def __str__(self) -> str:
-        return f"_plan/{self.document}:{self.line}: {self.text.strip()}"
+        return f"docs/plan/{self.document}:{self.line}: {self.text.strip()}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,7 +145,7 @@ class PlanDocs:
     def require(self) -> None:
         """Skip the calling test when the design tree is not in this checkout."""
         if not self.available:
-            pytest.skip("_plan/ is .gitignore'd and absent from this checkout")
+            pytest.skip("docs/plan/ is absent from this checkout")
 
     def documents(self) -> tuple[str, ...]:
         """Every current plan document, as a `_plan/`-relative POSIX path.
@@ -208,7 +208,7 @@ class PlanDocs:
         return tuple(tomllib.loads(body) for body in self.fences(document, "toml"))
 
 
-PLAN: PlanDocs = PlanDocs(root=REPO_ROOT / "_plan")
+PLAN: PlanDocs = PlanDocs(root=REPO_ROOT / "docs" / "plan")
 
 
 # ---------------------------------------------------------------------------

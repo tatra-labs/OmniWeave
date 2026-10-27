@@ -268,7 +268,7 @@ def test_the_text_is_capped_at_the_events_own_number() -> None:
 def test_the_caps_are_the_plans_own_table_and_not_a_transcription() -> None:
     """10:1849's six rows, parsed out of the document rather than retyped, so an amended cap is a
     failing test rather than a number two files disagree about."""
-    text = (REPO / "_plan" / "10-interfaces.md").read_text(encoding="utf-8")
+    text = (REPO / "docs" / "plan" / "10-interfaces.md").read_text(encoding="utf-8")
     declared: dict[str, int] = {}
     for line in text.split("\n"):
         match = re.match(r"^\| `(\w+)` \|.*\| ([\d,]+|—) \|$", line.strip())
@@ -361,7 +361,7 @@ def test_the_key_is_a_safe_filename_on_every_platform() -> None:
 @pytest.mark.plan
 def test_the_worked_counter_names_from_the_plan_are_the_ones_this_module_builds() -> None:
     """10:1990 names seven, spells the first in full and elides the prefix on the other six."""
-    text = (REPO / "_plan" / "10-interfaces.md").read_text(encoding="utf-8")
+    text = (REPO / "docs" / "plan" / "10-interfaces.md").read_text(encoding="utf-8")
     spelled = set(re.findall(r"ow-hook-[a-z-]+", text))
     assert spelled == {"ow-hook-ups-high-cite"}
     elided = {s.lstrip("-") for s in re.findall(r"`(-(?:high|medium|noop)-[a-z-]+)`", text)}
