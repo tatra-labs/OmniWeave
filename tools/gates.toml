@@ -1147,7 +1147,15 @@ every `needs` result is `success`, or `skipped` for `toolchains` alone"""
 # FAILURE, because `if: always()` also fires on cancellation and a bare truthiness check would
 # treat an aborted matrix as green. And SKIPPABLE is a literal set in the script, not a wildcard,
 # so admitting a second conditional job is a reviewable act rather than a silent widening.
-runner_planned = ["tools/ci_ok.py"]
+#
+# THE SCRIPT LANDED AT D989 and its path moved from `runner_planned` to `runner` in that commit.
+# `ci.yml` carried a jq filter with the same three properties until then -- the one guarded step in
+# that file whose fallback was a full reimplementation rather than a NOT ENFORCED line, because a
+# required check that reports green when a job failed is the defect this design exists to prevent
+# -- and the filter is deleted now that one place holds them. A fourth property the filter could
+# not express is in the script: an EMPTY `needs` context fails, because a required check that
+# found nothing to judge and said ok is worse than no check at all.
+runner         = ["tools/ci_ok.py"]
 step           = """
 python3 tools/ci_ok.py with NEEDS=${{ toJSON(needs) }}; SKIPPABLE = {"toolchains"} \
 (section 6.2). The same job prints tools/print_quarantine.py's list on every PR."""

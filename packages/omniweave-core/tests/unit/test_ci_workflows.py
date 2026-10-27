@@ -1608,31 +1608,34 @@ def test_every_named_runner_is_actually_invoked_in_the_job_its_row_names(
     assert not stray, stray
 
 
-def test_the_ci_ok_filter_treats_anything_but_success_as_a_failure(ci: Workflow) -> None:
-    """`ci-ok` is the single required status check, so its jq filter IS the merge contract.
+def test_the_ci_ok_job_delegates_the_merge_contract_to_one_implementation(ci: Workflow) -> None:
+    """`ci-ok` is the single required status check, so what it runs IS the merge contract.
 
-    THE SECOND HOLE FOUND BY MUTATION. Changing `.value.result != "success"` to
+    THE SECOND HOLE FOUND BY MUTATION, and the reason this test still exists after D989 moved the
+    logic into `tools/ci_ok.py`. Changing the old jq filter's `.value.result != "success"` to
     `.value.result == "failure"` made a cancelled, timed-out or unexpectedly skipped job report
     GREEN on the one required check, and all 2,525 tests stayed green -- nothing read the filter's
     body. The polarity is the whole point: GitHub's `needs.*.result` is one of `success`,
     `failure`, `cancelled` or `skipped`, so an allow-list of `success` refuses three bad outcomes
     while a deny-list of `failure` refuses one and waves two through.
 
-    A line-oriented assertion over a shell heredoc containing jq is crude, and it is the honest
-    instrument available: there is no jq and no YAML parser in the dependency set (checked -- see
-    the module docstring), so the alternative is not a better test but no test.
+    What this file can assert is that the job runs the script and keeps no second copy of the
+    rule; the polarity itself is asserted where it now lives, over the function rather than over a
+    shell heredoc, in `test_ci_ok.py` -- which parametrises `cancelled`, `failure`, `skipped` and
+    two results GitHub does not currently emit.
     """
     body = ci.run_bodies("ci-ok")
-    assert '.value.result != "success"' in body, (
-        'ci-ok must select on NOT success. A filter selecting `== "failure"` passes `cancelled` '
-        "and `skipped`, which is how a cancelled run becomes a green required check."
+    assert "python3 tools/ci_ok.py" in body, "the required check must run the one implementation"
+    assert "jq" not in body, (
+        "the inline filter is deleted: two implementations of the merge contract is how they "
+        "diverge, and the jq one is the copy nothing could unit-test"
     )
-    assert '.value.result == "failure"' not in body
-    # The skip exemption must stay scoped to the one job section 6.4 permits to skip. An
-    # unscoped `!= "skipped"` arm would let any job skip itself into a pass.
-    assert '.key != "toolchains"' in body, "the skipped-job exemption must name toolchains"
-    exempted = re.findall(r'\.key\s*!=\s*"([a-z-]+)"', body)
-    assert exempted == ["toolchains"], f"only toolchains may skip; found {exempted}"
+    assert (REPO / "tools" / "ci_ok.py").is_file(), "the register names it as G-series runner"
+    #  And the skip exemption stays scoped to the one job section 6.4 permits to skip, asserted
+    #  over the script's own literal set rather than over a regex across a shell string.
+    script = (REPO / "tools" / "ci_ok.py").read_text(encoding="utf-8")
+    assert 'SKIPPABLE: Final = frozenset({"toolchains"})' in script
+    assert "ci-ok.skips_declared" in script, "the row this script is the runner for"
 
 
 # ---------------------------------------------------------------------------
