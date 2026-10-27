@@ -175,10 +175,10 @@ def render_tree(artefact: Artefact) -> Mapping[str, bytes] | None:
 def emit_docs() -> tuple[str, ...]:
     """Write `docs/reference/**` and return what changed, repo-relative and sorted. **D990.**
 
-    Section 1.8's eighth output. It is here and not in `reference.py` for the reason the module
-    docstring gives for every other write: `_write_bytes` is the one `open(..., "w")` in this
-    package, with `newline="
-"`, and semgrep bans a bare one under `omniweave/gen/`.
+    Section 1.8's eighth output. The write is here and not in `reference.py` for the reason this
+    module's docstring gives for every other one: `_write_bytes` is the single
+    `open(..., "w")` in this package, it fixes the line ending to LF (11:487), and semgrep bans a
+    bare one anywhere under `omniweave/gen/`. `reference.py` renders and this writes.
     """
     from omniweave.gen import reference  # noqa: PLC0415 -- only the docs path pays for it
 
