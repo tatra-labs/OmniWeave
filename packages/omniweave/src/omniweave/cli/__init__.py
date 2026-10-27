@@ -1131,6 +1131,11 @@ COMMANDS: Final[tuple[Command, ...]] = (
                 kind="switch",
                 default=False,
             ),
+            Argument(
+                spelling=("--docs",),
+                kind="switch",
+                default=False,
+            ),
         ),
     ),
     Command(
