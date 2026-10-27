@@ -13,6 +13,7 @@ name = "omniweave-vision"
 version = "0.1.0"                     # == RELEASE. G5.
 description = "parse.page.olmocr, reaching a model through io.service('vlm')."
 license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY.md", "LICENSES/*"]
 requires-python = ">=3.12"           # NO upper bound. charter.md D1.
 dependencies = [
   # ROLE: THE PORT-MAJOR CEILING, which bounds a type vocabulary and not a release. Section 4.4's

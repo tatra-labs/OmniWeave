@@ -17,6 +17,7 @@ name = "omniweave-ports"
 version = "1.0.0"                     # PORT MAJOR. Not RELEASE. G5.
 description = "The omniweave driver-facing type surface. Depends on nothing."
 license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY.md", "LICENSES/*"]
 requires-python = ">=3.12"           # NO upper bound. charter.md D1.
 dependencies = []
 
