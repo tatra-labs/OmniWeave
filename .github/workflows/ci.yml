@@ -1477,30 +1477,14 @@ jobs:
       - name: "assert every job succeeded, and that only toolchains may be skipped"
         env:
           NEEDS: ${{ toJSON(needs) }}
-        # tools/ci_ok.py is runner_planned. Unlike every other guarded step in this file, the
-        # fallback here is a full implementation rather than a NOT ENFORCED line: this is the check
-        # a merge is gated on, and a required check that reports green when a job failed is the one
-        # defect this whole design exists to prevent. The jq filter is the same three properties
-        # the register's ci-ok.skips_declared row states, and it is deleted the day ci_ok.py lands.
-        run: |
-          if [ -f tools/ci_ok.py ]
-          then
-            python3 tools/ci_ok.py
-            exit 0
-          fi
-          bad="$(printf "%s" "$NEEDS" | jq -r '
-            to_entries
-            | map(select(.value.result != "success"
-                         and ((.key != "toolchains") or (.value.result != "skipped"))))
-            | map("\(.key)=\(.value.result)")
-            | join(" ")')"
-          if [ -n "$bad" ]
-          then
-            echo "ci-ok FAILED: $bad"
-            echo "SKIPPABLE is {toolchains} and nothing else; cancelled is a failure, not a pass."
-            exit 1
-          fi
-          echo "ci-ok: every job succeeded, or was toolchains and skipped"
+        # THE CHECK A MERGE IS GATED ON -- the register's ci-ok.skips_declared row -- and the one
+        # step in this file whose guard used to be a full jq reimplementation rather than a NOT
+        # ENFORCED line: a required check that reports green when a job failed is the one defect
+        # this whole design exists to prevent. The script landed at D989, so the filter it stood
+        # in for is deleted and the properties live in one place -- only `success` passes,
+        # SKIPPABLE is {toolchains} literally, a cancelled job fails, and an empty needs context
+        # fails rather than passing vacuously.
+        run: python3 tools/ci_ok.py
       - name: "print the quarantine list"
         # Section 6.2's second ci-ok step, and section 6.8 is why it is here rather than behind a
         # flag: "The quarantine list is printed in the ci-ok job's summary, so its length is
