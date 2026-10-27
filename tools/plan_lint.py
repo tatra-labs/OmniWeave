@@ -1,13 +1,20 @@
 """`ow plan lint` -- the four rules that make "we did not edit settled law" a check.
 
-`_plan/` is settled law and `.gitignore:3` is `_plan/`, so the whole directory is untracked and
-`git diff HEAD -- _plan/` prints nothing whatever the directory contains. Measured:
-`_plan/_notes/build-defects.md` C55 (:5935-5984) is the row -- 1,720 new lines were written into
-`_plan/_notes/` and both `git diff HEAD -- _plan/` and `git status --porcelain -- _plan/`
-returned zero lines, with `git check-ignore -v` naming `.gitignore:3:_plan/` as the cause. Five
-`tools/gate_*.py` files mention `_plan` and every one of them READS it as a source of truth; none
-verifies that it is unchanged. This script is the detector C55 asks for, and it is deliberately
-not a `tools/gate_*.py` file -- see THE FILE NAME below.
+`docs/plan/` is settled law, and this is the gate that makes "we did not edit it" a check rather
+than an assurance. Five `tools/gate_*.py` files read the plan as a source of truth and not one of
+them verifies that it is unchanged, which is the detector `build-defects.md` C55 (:5935-5984)
+asked for. It is deliberately not a `tools/gate_*.py` file -- see THE FILE NAME below.
+
+**The reason changed at D991 and the gate did not.** The plan used to live in a gitignored
+`_plan/`, so `git diff HEAD -- _plan/` printed nothing whatever the directory contained -- 1,720
+new lines were written into it once while `git status --porcelain` reported zero -- and the
+manifest was the ONLY trace an amendment left. A user ruling of 2026-10-27 moved the documents to
+`docs/plan/`, as 11-repo-layout.md:440 always said the initial commit would, so an edit now shows
+in an ordinary diff like any other file. What the manifest buys after the move is narrower and
+still worth having: a digest per settled document, so changing one is a deliberate `--bless` with
+a written reason, rather than a diff among forty that a reviewer skims. Invisibility was the first
+argument for this gate; deliberateness is the one that remains. `.gitignore:3` still ignores
+`_plan/`, which now holds only the drafting scaffolding nothing in the design record cites.
 
 ## Why the manifest lives in `tools/` and not in `_plan/`
 
@@ -155,9 +162,10 @@ absent-mindedly is how a manifest stops meaning anything, so:
    is REQUIRED, is written into the manifest as a comment line, and therefore appears in the
    `git diff` of `tools/plan.sha256` beside the digests it justifies. `--bless` refuses without
    it (exit 2).
-4. **Commit `tools/plan.sha256` in the same commit as the plan edit.** The plan side is
-   gitignored and invisible, so the manifest diff is the only trace the amendment leaves in
-   history. A bless committed separately is a manifest that no longer says when it changed or why.
+4. **Commit `tools/plan.sha256` in the same commit as the plan edit.** Since D991 both sides are
+   tracked, so the commit carries the text AND the digest that justifies it; a bless committed
+   separately is a manifest that no longer says when it changed or why, and a plan edit committed
+   without one is a red gate on the next run.
 5. Re-run the gate with no arguments and confirm exit 0.
 
 `--bless` prints every digest it adds, changes and removes before it writes, and prints nothing
@@ -262,7 +270,11 @@ EXIT_FAIL: Final = 1
 EXIT_NOT_RUN: Final = 2
 
 REPO_ROOT: Final = Path(__file__).resolve().parent.parent
-DEFAULT_PLAN_ROOT: Final = REPO_ROOT / "_plan"
+DEFAULT_PLAN_ROOT: Final = REPO_ROOT / "docs" / "plan"
+"""D991: the plan moved out of the gitignored `_plan/` and into the repository, which is what
+11-repo-layout.md:440 always said the initial commit would do. `_plan/` still exists locally and
+still holds the drafting scaffolding nothing cites -- the mining notes, the digests, the snapshots
+and the scripts -- and it is still ignored."""
 DEFAULT_MANIFEST: Final = REPO_ROOT / "tools" / "plan.sha256"
 
 MANIFEST_VERSION: Final = 1
@@ -353,42 +365,20 @@ NUMBER_WORDS: Final[dict[str, int]] = {
 # Adding a row here switches the gate off for one path, so it is a deliberate act with a reason
 # attached and never a way past a red run. The other direction is `NEVER_WRITABLE_NOTES`.
 # ---------------------------------------------------------------------------------------------
-WRITABLE_NOTES: Final[dict[str, str]] = {
-    "_notes/build-defects.md": (
-        "the build-defect ledger. Every wave appends verified rows to it, and C55 (:5935) -- the "
-        "row that ordered this gate -- was written into it by the wave before this one."
-    ),
-    "_notes/m0-was-skipped.md": (
-        "a scope decision recorded during a build wave: ':3, Recorded 2026-09-09, during P2 stage "
-        "B. Nothing here has been applied to `_plan/`'. A wave note, not plan law."
-    ),
-    "_notes/p2-stage-b1-findings.md": (
-        "P2 stage B wave 1's findings dump -- ':1, every finding the six build agents reported, "
-        "verbatim ... dumped from the workflow journal so they survive the session'."
-    ),
-    "_notes/p2-stage-b2a-findings.md": (
-        "P2 stage B wave 2a's findings dump, written by that wave's recorder on the b1 terms."
-    ),
-    "_notes/p2-stage-b2b-findings.md": (
-        "P2 stage B wave 2b's findings dump, written by that wave's recorder on the b1 terms."
-    ),
-    "_notes/p2-stage-b2c-findings.md": (
-        "P2 stage B wave 2c's findings dump, written by that wave's recorder on the b1 terms."
-    ),
-    "_notes/p2-stage-c-findings.md": (
-        "P2 stage C's findings dump, written by that wave's recorder on the b1 terms."
-    ),
-    "_notes/p2-stage-d-findings.md": (
-        "P2 stage D's findings dump, written by that wave's recorder on the b1 terms."
-    ),
-    "_notes/p3-stage-a-findings.md": (
-        "P3 stage A's findings dump, written by that wave's recorder on the b1 terms."
-    ),
-    "_notes/p3-stage-b-findings.md": (
-        "P3 stage B's findings dump -- ':3, Eighth companion, on the same terms as the b1, b2a, "
-        "b2b, b2c, c, d and P3-stage-A files'."
-    ),
-}
+WRITABLE_NOTES: Final[dict[str, str]] = {}
+"""EMPTY SINCE D991, and the reason is the move rather than a policy change.
+
+Ten rows lived here -- the build-defect ledger, the m0 scope note and the eight stage-findings
+dumps -- each a wave's own append-only record, each switching the freeze off for one path. The
+plan moved to `docs/plan/` (a user ruling of 2026-10-27) and those ten did not: nothing in the
+design record cites them, so they stayed in the still-ignored `_plan/_notes/`, outside this
+gate's root entirely. A path this gate cannot see needs no exemption from it, and leaving the
+rows here made every one of them a finding -- `on the writable allow-list and not on disk` --
+which is the gate correctly refusing to pretend it is guarding something.
+
+The mechanism stays, and `_check_allow_list` still refuses a row naming a file that is not there,
+because the next wave that wants to append to a document under `docs/plan/` has to say so here
+with a reason."""
 
 NEVER_WRITABLE_NOTES: Final[frozenset[str]] = frozenset({CHARTER_REL, TERMINOLOGY_REL})
 """The two `_notes/` files the plan itself names as law. `18-api-sketch.md:3238` prints the
@@ -1064,14 +1054,13 @@ def build_manifest(plan_root: Path) -> Manifest:
 
 
 MANIFEST_HEADER: Final = """\
-# tools/plan.sha256 -- sha256 digests of settled law under `_plan/`, read by tools/plan_lint.py.
+# tools/plan.sha256 -- sha256 digests of settled law under `docs/plan/`, read by plan_lint.py.
 #
-# WHY THIS FILE IS HERE AND NOT UNDER `_plan/`. `.gitignore:3` is `_plan/`, so the whole plan
-# directory is untracked and `git diff HEAD -- _plan/` prints nothing whatever it contains
-# (`_plan/_notes/build-defects.md` C55, :5935). A manifest inside `_plan/` -- C55's own
-# `_plan/PLAN.sha256` -- would be gitignored too, and exactly as invisible as the thing it
-# protects. `tools/` is tracked and already holds this repository's registers, so a digest change
-# here shows up in an ordinary diff. Choosing the path was our call; the plan names the verb.
+# WHY THIS FILE IS HERE AND NOT UNDER THE PLAN. C55 proposed one `PLAN.sha256` inside the plan
+# directory, which was unusable while that directory was gitignored: the manifest would have been
+# as invisible as the thing it protects. Since D991 the plan is tracked at `docs/plan/` and that
+# argument is spent, but the path stays: `tools/` holds this repository's registers, and a digest
+# belongs beside `gates.toml` and `weights.toml` rather than inside the documents it freezes.
 #
 # GENERATED. Never hand-edit a digest. Amend the plan, then run
 #   uv run python tools/plan_lint.py --bless --reason "<why, and what decided it>"
@@ -1230,8 +1219,8 @@ def _bless(plan_root: Path, manifest_path: Path, reason: str, out: TextIO) -> in
     out.write(f"  plan:     {plan_root}\n")
     out.write(f"  manifest: {manifest_path}\n")
     _report_bless(old, fresh, out)
-    out.write("Commit this manifest in the SAME COMMIT as the plan edit: the plan side is\n")
-    out.write("gitignored (.gitignore:3), so this diff is the only trace the change leaves.\n")
+    out.write("Commit this manifest in the SAME COMMIT as the plan edit: the digest and\n")
+    out.write("the text it freezes are one amendment, and the reason above is its record.\n")
     out.write("=" * 94 + "\n")
 
     manifest_path.parent.mkdir(parents=True, exist_ok=True)

@@ -10,16 +10,15 @@ restating it**, so a row added to the table is checked without anyone editing th
 
 Section 8.6 gives the clause five parts over `docs/ARCHITECTURE.md` **and** `docs/plan/*.md`:
 d0 the walk found something, d1 symbols import, d2 registers resolve, d3 links resolve, d4 the
-count ratchets. The plan documents are not committed -- `.gitignore` holds `_plan/`, and
-11-repo-layout.md:440 says the initial commit was to move the nineteen to `docs/plan/` -- so
-`tools/gate_docs.py` cannot walk its full set and does not exist. **This file is the half that can
-run today**: d0, d1 and d2's checkable shapes over the one document that is in the repository, with
-the floor stated for this document rather than for the nineteen.
+count ratchets. **This file is the ARCHITECTURE.md half**: d0, d1 and d2's checkable shapes over
+one document, with the floor stated for that document rather than for the whole set.
 
-That is a deliberate split, not a smaller version of the gate. When the plan documents land, the
-gate walks both sets with `tools/gates.toml`'s 520-symbol floor; until then a regex that matched
-nothing would make every assertion below vacuous, which is exactly the failure clause d0 exists to
-prevent, so the floor here is asserted and not assumed.
+D991 committed the plan documents, so `tools/gate_docs.py` can now walk both sets and the
+520-symbol floor in `tools/gates.toml` is meetable; writing it is the next cell. This file does
+not become redundant then -- it keeps the one document a contributor actually reads honest at the
+test tier, where a failure names the symbol rather than a gate step, and its own floor stays
+asserted because a regex that matched nothing would make every assertion below it vacuous, which
+is exactly the failure clause d0 exists to prevent.
 
 ## Rulings
 

@@ -1552,7 +1552,7 @@ def _repo_root(start: Path) -> Path:
     raise RuntimeError(message)
 
 
-PLAN_07 = _repo_root(Path(__file__).resolve()) / "_plan" / "07-store-and-retrieval.md"
+PLAN_07 = _repo_root(Path(__file__).resolve()) / "docs" / "plan" / "07-store-and-retrieval.md"
 """The plan file `DECOMPOSITION` transcribes. Read, never written (`_plan/` is frozen)."""
 
 SIZING_BLOCKS = 16

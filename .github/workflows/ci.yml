@@ -376,14 +376,13 @@ jobs:
           fi
       - name: "G27 -- documents machine-checked (a, a2, a3, b, c, d)"
         # Two runners. gate_migrations.py carries clause b at the P2 exit (16-roadmap.md:453) and
-        # is here; gate_docs.py carries clauses a, a2, a3, c and d and is still planned, for a
-        # reason outside the script: section 8.6 walks docs/ARCHITECTURE.md AND docs/plan/*.md, and
-        # the nineteen plan documents are not committed, so its 520-symbol floor cannot be met by
-        # anything in the tree. Clause d's ARCHITECTURE.md half runs in the test tier since D986
-        # (packages/omniweave-core/tests/unit/test_architecture_doc.py: every symbol imports, every
-        # `ow` verb, G<n> and register path resolves). Clause c is registered with enabled = false
-        # by ADR-1 decision 6 and must stay off until its four turn-on conditions hold, which is
-        # the script's business and not this file's.
+        # is here; gate_docs.py carries clauses a, a2, a3, c and d and is the next cell. Its
+        # blocker cleared at D991: section 8.6 walks docs/ARCHITECTURE.md AND docs/plan/*.md, and
+        # the plan documents are committed now, so the 520-symbol floor is meetable. Clause d's
+        # ARCHITECTURE.md half already runs in the test tier (test_architecture_doc.py: every
+        # symbol imports, every `ow` verb, G<n> and register path resolves). Clause c is
+        # registered with enabled = false by ADR-1 decision 6 and must stay off until its four
+        # turn-on conditions hold, which is the script's business and not this file's.
         run: |
           armed=0
           if [ -f tools/gate_docs.py ]
@@ -398,7 +397,7 @@ jobs:
           fi
           if [ "$armed" = "0" ]
           then
-            echo "G27 NOT ENFORCED: gate_docs.py waits on docs/plan/ being committed;" \
+            echo "G27 NOT ENFORCED: gate_docs.py is the next cell (D991 committed its input);" \
               "clause d's ARCHITECTURE.md half runs in the test tier (D986)" \
               | tee -a "$GITHUB_STEP_SUMMARY"
           fi

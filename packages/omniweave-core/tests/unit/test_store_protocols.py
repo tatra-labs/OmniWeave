@@ -173,9 +173,9 @@ def _printed_class(plan, document: str, name: str) -> ast.ClassDef:
             continue
         for node in ast.parse(body).body:
             if isinstance(node, ast.ClassDef) and node.name == name:
-                assert found is None, f"_plan/{document} prints class {name} more than once"
+                assert found is None, f"docs/plan/{document} prints class {name} more than once"
                 found = node
-    assert found is not None, f"_plan/{document} prints no class {name}"
+    assert found is not None, f"docs/plan/{document} prints no class {name}"
     return found
 
 

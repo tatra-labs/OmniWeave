@@ -677,8 +677,10 @@ def test_the_listener_needs_six_operator_decisions_and_no_channel_carries_them()
 def test_the_flag_that_selects_the_response_shape_is_in_one_flag_table_and_not_the_other() -> None:
     """D393's sharpest row, read from the two documents. 10:2317 branches the whole POST response
     on `--json-response`; 18:916's flag list has it and 10:1426's does not."""
-    interfaces = (REPO / "_plan" / "10-interfaces.md").read_text(encoding="utf-8").split("\n")
-    sketch = (REPO / "_plan" / "18-api-sketch.md").read_text(encoding="utf-8").split("\n")
+    interfaces = (
+        (REPO / "docs" / "plan" / "10-interfaces.md").read_text(encoding="utf-8").split("\n")
+    )
+    sketch = (REPO / "docs" / "plan" / "18-api-sketch.md").read_text(encoding="utf-8").split("\n")
     rows = [line for line in interfaces if line.startswith("| `ow serve`")]
     other = [line for line in sketch if line.startswith("| `ow serve`")]
     assert len(rows) == 1
