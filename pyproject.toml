@@ -86,7 +86,17 @@ src = ["packages"]
 # not own. Excluded from linting for the same reason it is excluded from `packages/` -- it is not
 # ours to style. A driver's conformance fixtures are excluded for the same reason: their bytes are
 # ground truth pinned by `EXPECTED.sha256`, and one is a notebook ruff would otherwise lint.
-exclude = ["vendor", "packages/*/fixtures"]
+#
+# `docs/plan/` is the design record, and ruff formats the python fences inside a markdown file.
+# Those fences are frozen: `tools/plan.sha256` carries a digest per settled document, so a
+# formatter rewriting one would fail `plan_lint.py` and force a `--bless` -- with "ruff changed its
+# comment alignment" as the recorded reason for editing a document the plan calls settled. The
+# fences are checked, and by the gate that owns them: G27 clause (a) parses every fenced block
+# under the parser its fence names and clause (a2) is the brace-balance lint over the toml ones
+# (11-repo-layout.md section 8.6). Style is not what a quoted design sample is for. The exclusion
+# covers exactly the frozen tree, which
+# packages/omniweave-core/tests/unit/test_plan_lint.py asserts in both directions.
+exclude = ["vendor", "packages/*/fixtures", "docs/plan"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "DTZ", "T20", "SIM",

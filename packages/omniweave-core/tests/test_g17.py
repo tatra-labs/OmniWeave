@@ -150,7 +150,7 @@ def test_the_nine_names_are_the_plans_nine(plan: PlanDocs) -> None:
     missing = sorted(set(LAZY_SET_SITES) - set(printed))
     assert missing == [], f"documents that no longer print the lazy set: {missing}"
     for document, names in sorted(printed.items()):
-        assert names == LAZY, f"_plan/{document} prints {names}, not {LAZY}"
+        assert names == LAZY, f"docs/plan/{document} prints {names}, not {LAZY}"
 
 
 def test_the_lazy_set_has_exactly_nine_members() -> None:

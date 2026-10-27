@@ -1,6 +1,9 @@
 _collections/
 _index/
 _plan/
+# D991: the design record moved to docs/plan/ and is tracked. What is left here is the
+# drafting scaffolding nothing in that record cites -- the mining notes, the digests, the
+# snapshots and the scripts -- which stays out of the repository.
 
 # --- omniweave state that must never reach a pull request -----------------
 # 11-repo-layout.md section 1.1: ".omniweave/ · *.owstore* · $OMNIWEAVE_HOME never inside

@@ -1432,12 +1432,13 @@ def _plan_text(document: str) -> str | None:
     failure naming the document, because a plan document this file reads by name is a dependency
     and a missing dependency is a red test.
     """
-    tree = REPO / "_plan"
+    tree = REPO / "docs" / "plan"
     if not tree.is_dir():
         return None
     path = tree / document
     assert path.is_file(), (
-        f"_plan/ exists but _plan/{document} does not. This test reads that document by name; a "
+        f"docs/plan/ exists but docs/plan/{document} does not. This test reads that document by "
+        "name; a "
         f"rename is a red test here, not a skip -- update the name or say why it is gone."
     )
     return path.read_text(encoding="utf-8")
@@ -1460,8 +1461,8 @@ def test_a_missing_plan_document_is_a_failure_and_never_a_silent_skip() -> None:
     this file reads by name are all there. The second half is the anti-vacuity guard -- without
     it, renaming all three would satisfy the first half trivially.
     """
-    if not (REPO / "_plan").is_dir():
-        pytest.skip("_plan/ is .gitignore'd and absent from this checkout")
+    if not (REPO / "docs" / "plan").is_dir():
+        pytest.skip("docs/plan/ is absent from this checkout")
     with pytest.raises(AssertionError, match=re.escape("16-roadmap-no-such-document.md")):
         _plan_text("16-roadmap-no-such-document.md")
     for document in ("11-repo-layout.md", "16-roadmap.md"):
@@ -1472,7 +1473,7 @@ def test_the_concurrency_line_is_the_one_section_6_3_prints() -> None:
     """Section 6.3 prints the whole setting inline, so it can be compared and not paraphrased."""
     plan = _plan_text("11-repo-layout.md")
     if plan is None:
-        pytest.skip("_plan/ is .gitignore'd and absent from this checkout")
+        pytest.skip("docs/plan/ is absent from this checkout")
     printed = [line for line in plan.splitlines() if "concurrency: { group: ci-" in line]
     assert len(printed) == 1, printed
     assert "cancel-in-progress: true" in printed[0]
@@ -1528,7 +1529,7 @@ def test_the_p1_matrix_non_goal_is_still_what_the_roadmap_says() -> None:
     """
     plan = _plan_text("16-roadmap.md")
     if plan is None:
-        pytest.skip("_plan/ is .gitignore'd and absent from this checkout")
+        pytest.skip("docs/plan/ is absent from this checkout")
     # The sentence wraps in the markdown source, so it is compared against whitespace-flattened
     # text. The clause between the two halves is an em dash, which this ASCII file does not carry.
     p1_section = _plan_section(plan, "## 4. P1")
@@ -1548,7 +1549,7 @@ def test_section_6_1_still_says_exactly_two_files() -> None:
     """The premise of `test_the_workflow_directory_holds_exactly_two_files`, read at its home."""
     plan = _plan_text("11-repo-layout.md")
     if plan is None:
-        pytest.skip("_plan/ is .gitignore'd and absent from this checkout")
+        pytest.skip("docs/plan/ is absent from this checkout")
     flat = " ".join(plan.split())
     assert "holds exactly two files" in flat
     assert "`release.yml` invokes `ci.yml` through `workflow_call`" in flat
