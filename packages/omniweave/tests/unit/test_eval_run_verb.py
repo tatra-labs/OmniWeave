@@ -408,10 +408,14 @@ def test_a_subject_the_register_lacks_is_a_refusal_exit_1(tmp_path: Path) -> Non
 
 
 @pytest.mark.parametrize("suite", ["extract", "perf"])
-def test_an_unmeasurable_suite_is_one_unknown_run_and_release_check_refuses_it(
+def test_a_suite_this_build_cannot_measure_is_one_run_that_says_why(
     tmp_path: Path, suite: str
 ) -> None:
-    """D872: 16:942, *"every suite must be able to report `unknown`"*."""
+    """D872: 16:942, *"every suite must be able to report `unknown`"*. Both write a row.
+
+    D987 is the half that differs: `perf` refuses the release and `extract` does not, because one
+    is a number this build cannot take *here* and the other is a number this release does not owe.
+    """
     store = tmp_path / "x.oweval"
     code, out, _ = _eval("run", "--suite", suite, "--oweval", str(store))
     assert code == 0
@@ -419,6 +423,26 @@ def test_an_unmeasurable_suite_is_one_unknown_run_and_release_check_refuses_it(
     assert first.split()[:4] == ["omniweave", "none", suite, "unknown:"]
     assert last == f"ow eval run --suite {suite}: 1 run(s) written to {store}"
     code, out, _ = _eval("release-check", "--oweval", str(store))
-    assert code == 1
-    assert f"  run         {suite}/omniweave run " in out
-    assert f"fix: fix what stopped the run, then ow eval run --suite {suite}\n" in out
+    assert code == 1, "the hard gates have no run in this store, so it refuses on those"
+    if suite == "perf":
+        assert f"  run         {suite}/omniweave run " in out
+        assert f"fix: fix what stopped the run, then ow eval run --suite {suite}\n" in out
+    else:
+        assert f"  not-applicable  {suite}/omniweave run " in out
+        assert "not applicable at this release" in out
+        assert f"  run         {suite}/omniweave run " not in out, (
+            "a not-applicable suite is disclosed, never a refusal"
+        )
+
+
+def test_a_not_applicable_suites_row_is_printed_and_refuses_nothing(tmp_path: Path) -> None:
+    """D987's whole point, stated as the one line that changes: no `run` finding comes from it.
+
+    The row is still written and still printed -- 16:942's "skip is not a state" -- so a reader
+    sees a closed question rather than an absent one.
+    """
+    store = tmp_path / "x.oweval"
+    assert _eval("run", "--suite", "extract", "--oweval", str(store))[0] == 0
+    _, out, _ = _eval("release-check", "--oweval", str(store))
+    assert "  not-applicable  extract/omniweave run " in out
+    assert [line for line in out.splitlines() if line.startswith("  run ")] == []

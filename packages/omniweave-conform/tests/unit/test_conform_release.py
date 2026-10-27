@@ -519,6 +519,10 @@ def test_the_entry_point_returns_builtins(tmp_path: Path) -> None:
                 "fix": _GATE_FIX,
             }
         ],
+        #  D987: present and empty. A store with no `extract` run discloses nothing, and the key
+        #  is in the contract either way so a reader never has to guess whether it was omitted or
+        #  there was nothing to say.
+        "disclosed": [],
     }
 
 
