@@ -12,6 +12,7 @@ name = "omniweave-target-video"
 version = "0.1.0"                     # == RELEASE. G5.
 description = "compile.video.native — implemented = false at release 1."
 license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY.md", "LICENSES/*"]
 requires-python = ">=3.12"           # NO upper bound. charter.md D1.
 dependencies = [
   # ROLE: A FIRST-PARTY SIBLING ON ONE RELEASE TRAIN, which is why this is `~=` and not a floor.
