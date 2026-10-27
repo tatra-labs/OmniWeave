@@ -526,13 +526,12 @@ jobs:
 
       # --- the four [[job_assertion]] rows whose job cell is gates ----------------------------
       - name: "gates.reference_docs -- ow surface emit --docs --check over docs/reference"
-        run: |
-          if [ -d docs/reference ] && uv run ow --version > /dev/null 2>&1
-          then uv run ow surface emit --docs --check
-          else
-            echo "gates.reference_docs NOT ENFORCED: docs/reference/** lands at P7 (s. 1.8)" \
-              | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
+        # ARMED at D990. Section 1.8's eighth generated output -- the verb tree, the Action surface
+        # and codes.toml rendered -- byte-diffed against what the registry renders, with a stray
+        # file in the directory a finding too. Not G25: that set is the seven agent-facing
+        # artefacts the charter fixes, and this one is written for humans, which is why it is an
+        # unnumbered assertion with its own step.
+        run: uv run ow surface emit --docs --check
       - name: "gates.workflow_tools_pinned -- every action pinned, every run: install exact"
         # Section 6.7: zizmor covers the uses: half as a linter and "a ~40-line check covers the
         # run: half, because zizmor does not read shell". Both halves are unenforced here for one

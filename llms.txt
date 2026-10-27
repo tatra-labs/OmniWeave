@@ -373,7 +373,7 @@ cli.skills.update: ow skills update
 cli.skills.update.actions: skills.update
 cli.skills.verify: ow skills verify [--all]
 cli.skills.verify.actions: skills.verify
-cli.surface.emit: ow surface emit [--check] [--bless]
+cli.surface.emit: ow surface emit [--check] [--bless] [--docs]
 cli.surface.emit.actions: surface.emit
 cli.trace.export: ow trace export [--run RUN] [--since SINCE] [--file FILE] [--otlp OTLP]
   [--dry-run] [--print-payload] [--max-batch MAX_BATCH]

@@ -806,6 +806,13 @@ class SurfaceEmitIn:
 
     check: bool = False
     bless: bool = False
+    docs: bool = False
+    """D990: `--docs` writes `docs/reference/**` instead of the seven, and with `--check`
+    byte-diffs it. 11-repo-layout.md section 1.8 names the command and section 6.4 the assertion
+    that runs it (`gates.reference_docs`), which is deliberately NOT G25: G25's set is the seven
+    agent-facing artefacts the charter fixes, and the reference tree is an eighth output for
+    humans. One verb and two outputs rather than two verbs, because the thing being emitted is the
+    same registry either way."""
 
 
 @dataclass(frozen=True, slots=True)
