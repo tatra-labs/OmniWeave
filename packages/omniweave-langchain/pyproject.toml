@@ -16,6 +16,7 @@ name = "omniweave-langchain"
 version = "0.1.0"                     # its own series, not RELEASE (section 1.2).
 description = "omniweave as LangChain document loaders, a retriever and a tool."
 license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY.md", "LICENSES/*"]
 requires-python = ">=3.12"           # NO upper bound. charter.md D1.
 dependencies = [
   # ROLE: the SDK this adapter wraps. `~= 0.1.0` is `>= 0.1.0, == 0.1.*`: the minor it was built

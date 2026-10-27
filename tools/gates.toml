@@ -192,12 +192,19 @@ budget_s      = 60
 pr            = true
 nightly       = true
 release       = true
-# Two halves and only one is written. `gate_licences.py` is the three-graph scan (16-roadmap.md
-# :391); the fifteen NOTICE/LICENSES/THIRD_PARTY trees are `gen_notice.py --check` (section 1.7,
-# section 7.6 step 5), which does not exist yet. A row that named only the first half would make
-# G3 look complete while the most common licence defect in the mined collection went unchecked.
-runner         = ["tools/gate_licences.py"]
-runner_planned = ["tools/gen_notice.py"]
+# BOTH HALVES ARE WRITTEN since D988, and the second half's path moved from `runner_planned` to
+# `runner` in the same commit -- the forcing function the runner columns describe. `gate_licences.py`
+# is the three-graph scan (16-roadmap.md:391); `gen_notice.py --check` holds the per-distribution
+# NOTICE/LICENSES/THIRD_PARTY trees. A row that named only the first half would make G3 look
+# complete while the most common licence defect in the mined collection went unchecked.
+#
+# THE CELL SAYS FIFTEEN AND THE TREE HOLDS SIXTEEN. Section 9.1 counts "the fourteen
+# `packages/<dist>/` directories plus the repository root", which was right when it was written and
+# is one behind a tree that gained `omniweave-langchain` (an attachment, section 1.2's second
+# table). `gen_notice.py` takes the set from `glob("packages/*/pyproject.toml")` rather than from a
+# number, so it emits sixteen and no distribution ships without a notice; the cell's number is a
+# plan erratum for section 6.4's owner and not a reason to leave one tree out.
+runner         = ["tools/gate_licences.py", "tools/gen_notice.py"]
 # 17-risks.md section 1.3: `licence` owns "`tools/licences.toml`, G3, tombstones".
 owner         = "licence"
 reviewed_at   = "2026-09-07"
