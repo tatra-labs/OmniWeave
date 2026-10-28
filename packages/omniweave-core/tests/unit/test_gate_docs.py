@@ -449,14 +449,412 @@ def test_the_register_row_moved_this_script_from_planned_to_runner() -> None:
             assert clause["runner"] == ["tools/gate_docs.py"]
 
 
-def test_the_gate_says_which_clauses_it_does_not_carry(capsys: pytest.CaptureFixture[str]) -> None:
-    """A check that bounds its own coverage says what it dropped, on its own line. Clause (d)'s
-    line comes out when the d0-d4 walk lands; this asserts it is there until then."""
+def test_the_gate_says_which_clause_it_does_not_carry(capsys: pytest.CaptureFixture[str]) -> None:
+    """A check that bounds its own coverage says what it dropped, on its own line.
+
+    Clause (d)'s line came out at D995, which is this test's own ratchet: it asserted
+    `clause (d)  NOT IN THIS SCRIPT` until the d0-d4 walk landed, and now asserts the opposite in
+    both directions. Clause (b) stays named, because `tools/gate_migrations.py` carries it and a
+    reader of this script's output should not have to infer that.
+    """
     assert gd.main([]) == 0
     printed = capsys.readouterr().out
-    assert "clause (d)  NOT IN THIS SCRIPT" in printed
     assert "clause (b)  NOT IN THIS SCRIPT" in printed
-    assert "test_architecture_doc.py" in printed, "d's half that does run is named"
+    assert "clause (d)  NOT IN THIS SCRIPT" not in printed, "d0-d4 landed at D995"
+    for clause in ("(a)", "(a2)", "(a3)", "(c)", "(d0)", "(d1)", "(d2)", "(d3)", "(d4)"):
+        assert f"clause {clause}" in printed, clause
+
+
+#  ---------------------------------------------------------------------------------------------
+#  Clause (d) - d0 the walk found something, d1 symbols, d2 registers, d3 links, d4 the count
+
+
+@pytest.fixture
+def walk(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """One fixture document, with clause (d)'s walk narrowed to it and every list emptied."""
+    made = tmp_path / "99-walk.md"
+    made.write_text("", encoding="utf-8", newline="\n")
+    #  `REPO` stays pointed at the repository: every register d2 resolves against lives there, and
+    #  a fixture that moved it would be exercising a gate with no registers. `_where` is what lets
+    #  a document outside the tree still produce a locus. `ROOTS` is emptied because d0's
+    #  roots-present assertion is about the real corpus, not about a one-line fixture.
+    monkeypatch.setattr(gd, "walk_documents", lambda: (made,))
+    monkeypatch.setattr(gd, "ROOTS", ())
+    monkeypatch.setattr(gd, "D1_DECLARED", ())
+    monkeypatch.setattr(gd, "D2_PLANNED_PATHS", frozenset())
+    monkeypatch.setattr(gd, "D2_NON_OVERRIDE_ENV", frozenset())
+    monkeypatch.setattr(gd, "D2_UNDOCUMENTED_KEYS", frozenset())
+    monkeypatch.setattr(gd, "_register_value", lambda _key: 0)
+    return made
+
+
+#  --- d0 and d1 ---------------------------------------------------------------------------------
+
+
+def test_the_real_walk_resolves_every_symbol_it_checks() -> None:
+    """Rule 2 for clause (d): the corpus is frozen, so the only thing that can change is d1."""
+    _report, findings = gd.check_clause_d1()
+    assert findings == [], headlines(findings)
+
+
+def test_d0s_floor_is_met_only_with_the_import_expansion() -> None:
+    """The floor's own job. Section 8.6 counts "588 dotted names plus 32 names expanded out of
+    `from <root> import (...)` lines", and over this corpus the two halves are 503 and 45. A d1
+    that skipped the expansion comes in at 503 against a floor of 520 and FAILS rather than
+    passing quietly -- which is why the expansion cannot be dropped as an optimisation."""
+    report, _findings = gd.check_clause_d1()
+    checked = int(report[0].split()[2])
+    expanded = sum(len(gd.expanded_imports(one)) for one in gd.walk_documents())
+    floor = gd._register_value("symbol_floor")
+    assert checked >= floor
+    assert expanded > 0
+    assert checked - expanded < floor, (
+        "if this ever holds the other way the floor has stopped forcing the expansion, and the "
+        "number to raise is symbol_floor"
+    )
+
+
+def test_a_symbol_that_does_not_resolve_fails_and_names_the_locus(walk: Path) -> None:
+    walk.write_text("See `omniweave_core.retrieve.nosuch`.\n", encoding="utf-8", newline="\n")
+    _report, findings = gd.check_clause_d1()
+    assert "99-walk.md:1 omniweave_core.retrieve.nosuch does not resolve." in headlines(findings)
+
+
+def test_a_filename_is_not_a_symbol(walk: Path) -> None:
+    """d1's first rule. Every one of these matches section 8.6's own regex and none is a module."""
+    walk.write_text(
+        "`omniweave.toml`, `omniweave.index.lock`, `omniweave.toml.example`, `omniweave.d.ts`\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    report, findings = gd.check_clause_d1()
+    assert findings == [], headlines(findings)
+    assert "a path, by its tail 4" in "\n".join(report)
+
+
+def test_an_entry_point_group_is_not_a_module(walk: Path) -> None:
+    """d1's second rule, read from the workspace rather than listed in the script."""
+    groups = gd.entry_point_groups()
+    assert "omniweave.drivers" in groups, "the workspace declares it; the gate reads it"
+    assert not gd._resolve_dotted("omniweave.drivers"), "and importing it is the wrong question"
+    walk.write_text("`omniweave.drivers`\n", encoding="utf-8", newline="\n")
+    report, findings = gd.check_clause_d1()
+    assert findings == []
+    assert "an entry-point group 1" in "\n".join(report)
+
+
+def test_the_roadmap_escape_is_a_scheduled_row_and_not_an_allowlist(walk: Path) -> None:
+    """Section 8.6 makes the escape "a declared-and-not-yet-built row in 16-roadmap.md's milestone
+    table ... not a comment or an allowlist file, so an unbuilt symbol is always also a scheduled
+    one". The fixture names a symbol the roadmap names and one it does not."""
+    roadmap = (gd.PLAN / "16-roadmap.md").read_text(encoding="utf-8")
+    assert "omniweave.backends" in roadmap, "an unbuilt symbol the roadmap schedules"
+    assert not gd._resolve_dotted("omniweave.backends")
+    walk.write_text(
+        "`omniweave.backends` and `omniweave_core.nowhere.NoSuchThing`\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    _report, findings = gd.check_clause_d1()
+    assert len(findings) == 1
+    assert "omniweave_core.nowhere.NoSuchThing" in headlines(findings)
+
+
+def test_the_roadmap_escape_matches_the_whole_name_and_not_a_prefix(walk: Path) -> None:
+    """Section 8.6's own failure example is the argument. It prints
+    `omniweave_core.retrieve.rerank` as what a d1 finding looks like, and that name's prefix is a
+    real built module -- so an escape that matched a prefix would let the plan's own example pass.
+    The escape is the exact dotted name, which is also what "a row declaring the symbol" means.
+
+    `omniweave_core.out` is the fixture because the roadmap names it in two rows and does not name
+    any attribute of it."""
+    roadmap = (gd.PLAN / "16-roadmap.md").read_text(encoding="utf-8")
+    assert "omniweave_core.out" in roadmap
+    assert "omniweave_core.out.NoSuchThing" not in roadmap
+    walk.write_text("`omniweave_core.out.NoSuchThing`\n", encoding="utf-8", newline="\n")
+    _report, findings = gd.check_clause_d1()
+    assert "omniweave_core.out.NoSuchThing does not resolve." in headlines(findings)
+
+
+def test_the_import_expansion_checks_each_name_rather_than_discarding_the_line(
+    walk: Path,
+) -> None:
+    """Section 8.6: "a `from <root> import (A, B)` line in a fenced `python` block is expanded to
+    `root.A`, `root.B`, `root.C` before the check, so an import list is verified name by name
+    rather than discarded as one bare root"."""
+    walk.write_text(
+        "```python\nfrom omniweave_ports import CostClass, NoSuchName\n```\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    names = [name for name, _line in gd.expanded_imports(walk)]
+    assert names == ["omniweave_ports.CostClass", "omniweave_ports.NoSuchName"]
+    _report, findings = gd.check_clause_d1()
+    assert len(findings) == 1
+    assert "omniweave_ports.NoSuchName" in headlines(findings)
+
+
+def test_the_expansion_survives_a_fence_that_does_not_parse(walk: Path) -> None:
+    """Clause (a) owns the parse failure and has its own declared exceptions. Dropping those
+    fences here would silently lose their import lines, and 18-api-sketch.md -- which contributes
+    35 of the corpus's 45 -- holds two of the eleven."""
+    walk.write_text(
+        "```python\nclass X: a=1\n       b=2\nfrom omniweave_ports import CostClass\n```\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    names = [name for name, _line in gd.expanded_imports(walk)]
+    assert names == ["omniweave_ports.CostClass"]
+
+
+def test_a_declared_row_that_resolves_now_fails_so_the_list_shrinks(
+    walk: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        gd, "D1_DECLARED", (("omniweave_core.limits", "99-walk.md:1", "a stale row"),)
+    )
+    walk.write_text("`omniweave_core.limits`\n", encoding="utf-8", newline="\n")
+    _report, findings = gd.check_clause_d1()
+    assert "D1_DECLARED omniweave_core.limits resolves now" in headlines(findings)
+
+
+def test_every_declared_row_says_what_the_name_is_and_none_is_a_placeholder() -> None:
+    """The allow-list is the dangerous part, so each row is checked against the document it cites
+    and against the four kinds the list is allowed to hold."""
+    assert len(gd.D1_DECLARED) == 14
+    assert len({one[0] for one in gd.D1_DECLARED}) == 14
+    for dotted, where, why in gd.D1_DECLARED:
+        path, _, line = where.rpartition(":")
+        target = REPO_ROOT / path
+        assert target.is_file(), where
+        text = target.read_text(encoding="utf-8").splitlines()[int(line) - 1]
+        assert dotted in text, f"{where} does not name {dotted}"
+        assert len(why) > 20, f"{dotted} has a placeholder reason"
+        assert not gd._resolve_dotted(dotted), f"{dotted} resolves; the row is stale"
+
+
+def test_the_one_drift_row_records_the_right_symbol_beside_the_wrong_one() -> None:
+    """02-architecture.md:486 names `omniweave_core.model.DocSink`, which is not where `DocSink`
+    is. The row is the only one in the list that says DRIFT, and it carries the right answer, so
+    the erratum can be written from the register rather than rediscovered."""
+    drift = [one for one in gd.D1_DECLARED if one[2].startswith("DRIFT:")]
+    assert len(drift) == 1
+    dotted, where, why = drift[0]
+    assert dotted == "omniweave_core.model.DocSink"
+    assert where.startswith("docs/plan/02-architecture.md:")
+    assert "omniweave_core.store.doc.DocSink" in why
+    assert gd._resolve_dotted("omniweave_core.store.doc.DocSink"), "the right answer resolves"
+
+
+#  --- d2 ----------------------------------------------------------------------------------------
+
+
+def test_the_real_walk_resolves_every_hard_d2_family() -> None:
+    _report, findings = gd.check_clause_d2()
+    assert findings == [], headlines(findings)
+
+
+def test_the_nine_invariant_families_resolve_against_the_register_d992_committed() -> None:
+    """The strongest single number in clause (d): 1,438 occurrences, zero unresolved. Before
+    `tools/invariants.toml` existed, 11-repo-layout.md's own inventory entry said this clause "is
+    otherwise unimplementable"."""
+    report, _findings = gd.check_clause_d2()
+    hard = next(line for line in report if "clause (d2) hard:" in line)
+    assert "invariant families 1438" in hard
+
+
+def test_an_unregistered_gate_or_assertion_or_invariant_fails(walk: Path) -> None:
+    walk.write_text(
+        "`G999` and `gates.no_such_assertion` and `INV-99` and `M-INV-9`\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    _report, findings = gd.check_clause_d2()
+    printed = headlines(findings)
+    assert "G999 is not in tools/gates.toml." in printed
+    assert "gates.no_such_assertion is not a [[job_assertion]] name." in printed
+    assert "INV-99 is not in tools/invariants.toml." in printed
+    assert "M-INV-9 is not in tools/invariants.toml." in printed
+
+
+def test_a_budget_row_is_not_reported_as_an_unregistered_assertion() -> None:
+    """`conform.mandatory_tier_s` is `eval/perf.toml`'s and matches the `<job>.<name>` shape. A
+    check reading only `tools/gates.toml` reported it five times over the corpus."""
+    held = gd._d2_registers()
+    assert "conform.mandatory_tier_s" in held.assertions
+    assert "gates.invariant_register" in held.assertions
+
+
+def test_a_filename_is_not_a_job_assertion(walk: Path) -> None:
+    """`gates.toml` matches `<job>.<name>` exactly. PATH_TAILS already carries the rule."""
+    walk.write_text("`gates.toml` and `eval/gates.toml`\n", encoding="utf-8", newline="\n")
+    _report, findings = gd.check_clause_d2()
+    assert "gates.toml is not a [[job_assertion]] name" not in headlines(findings)
+
+
+def test_a_register_path_that_is_neither_a_file_nor_declared_fails(walk: Path) -> None:
+    walk.write_text("`tools/no_such_register.toml`\n", encoding="utf-8", newline="\n")
+    _report, findings = gd.check_clause_d2()
+    assert "tools/no_such_register.toml is neither a file nor a declared planned register" in (
+        headlines(findings)
+    )
+
+
+def test_every_planned_register_path_is_still_absent_and_still_cited() -> None:
+    """Twenty registers and scripts the plan names and nothing has written. Both directions: a row
+    whose file now exists is stale, and a row no document cites is stale too."""
+    assert len(gd.D2_PLANNED_PATHS) == 20
+    corpus = "\n".join(one.read_text(encoding="utf-8") for one in gd.walk_documents())
+    for one in sorted(gd.D2_PLANNED_PATHS):
+        assert not (REPO_ROOT / one).exists(), f"{one} exists; delete the row"
+        assert one in corpus, f"no document cites {one}; delete the row"
+
+
+def test_an_env_var_that_overrides_nothing_needs_a_row(walk: Path) -> None:
+    walk.write_text("`OMNIWEAVE_MADE_UP`\n", encoding="utf-8", newline="\n")
+    _report, findings = gd.check_clause_d2()
+    assert "OMNIWEAVE_MADE_UP is not a config override and is not declared" in headlines(findings)
+
+
+def test_the_eight_non_override_env_vars_are_not_in_the_override_map() -> None:
+    """`[env]` maps a CONFIG KEY to the variable that overrides it, and all 135 of its rows are
+    derived from the key. These eight override nothing, so the map is the wrong home."""
+    held = gd._d2_registers()
+    assert len(gd.D2_NON_OVERRIDE_ENV) == 8
+    assert not (gd.D2_NON_OVERRIDE_ENV & held.overrides)
+    corpus = "\n".join(one.read_text(encoding="utf-8") for one in gd.walk_documents())
+    for one in sorted(gd.D2_NON_OVERRIDE_ENV):
+        assert one in corpus, f"no document names {one}; delete the row"
+
+
+def test_the_two_ratchets_fail_a_rise_and_an_untightened_ceiling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both directions, over the real gaps. A rise means a document started naming something
+    nobody scheduled; a ceiling nobody lowered is a number nobody is watching."""
+    monkeypatch.setattr(gd, "_register_value", lambda _key: 0)
+    _report, findings = gd._d2_ratchets({"ow made up"}, set())
+    assert "ow verbs: 1 unresolved against a ceiling of 0." in headlines(findings)
+    monkeypatch.setattr(gd, "_register_value", lambda _key: 5)
+    _report, findings = gd._d2_ratchets({"ow made up"}, {"OW-X-001"})
+    printed = headlines(findings)
+    assert "ow verbs: 1 unresolved and the ceiling is still 5." in printed
+    assert "OW-* codes: 1 unresolved and the ceiling is still 5." in printed
+
+
+def test_the_ratchet_ceilings_are_the_measured_gaps_and_live_in_the_register() -> None:
+    """Section 8.6 puts d0's floor in `tools/gates.toml` "so raising it is a reviewable act and
+    lowering it is visible". The two ceilings are there for the same reason and are measured,
+    not chosen: 146 verb spellings against `ACTIONS`' 51, 291 codes against `codes.toml`'s 193."""
+    _hard, verb_gap, code_gap, _findings = gd._d2_scan()
+    assert len(verb_gap) == gd._register_value("verb_gap_max")
+    assert len(code_gap) == gd._register_value("code_gap_max")
+    assert gd._register_value("verb_gap_max") > 0, "a ceiling of zero would be a hard check"
+
+
+def test_the_distribution_count_reports_the_drift_section_eight_six_predicted() -> None:
+    """Section 8.6: "a PR adding a fifteenth distribution and forgetting to update the prose fails
+    on all three files at once, with the count it found and the count it expected in the message."
+    That PR landed. The workspace holds fifteen; the prose says fourteen, and thirteen in the
+    excluding-core form. The check asserts the drift is UNIFORM -- one distribution, both forms --
+    because anything else is two errors rather than one stale number."""
+    report, findings = gd._d2_distributions()
+    assert findings == [], headlines(findings)
+    line = next(one for one in report if "distributions:" in one)
+    disk = len(list((REPO_ROOT / "packages").glob("*/pyproject.toml")))
+    assert f"{disk} on disk" in line
+    assert gd._register_value("dist_count_disk") == disk
+    assert gd._register_value("dist_count_prose") == disk - 1
+
+
+def test_a_count_in_neither_prose_form_fails(walk: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(gd, "_register_value", lambda key: 14 if "prose" in key else 15)
+    walk.write_text("twelve distributions\n", encoding="utf-8", newline="\n")
+    _report, findings = gd._d2_distributions()
+    assert "a document spells a distribution count of [12]" in headlines(findings)
+
+
+def test_the_config_key_check_runs_in_the_decidable_direction_only() -> None:
+    """NOT "every `[section] key` in prose resolves": that spelling is shared by a config key, a
+    DriverCard field and a policy block, and 73 of 134 matches over this corpus are card fields.
+    The decidable direction is the register's own."""
+    report, findings = gd._d2_config_keys()
+    assert findings == [], headlines(findings)
+    assert "135 in the register" in "\n".join(report)
+    assert len(gd.D2_UNDOCUMENTED_KEYS) == 5
+
+
+def test_a_register_key_no_document_names_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(gd, "D2_UNDOCUMENTED_KEYS", frozenset())
+    _report, findings = gd._d2_config_keys()
+    assert "config key(s) no document names" in headlines(findings)
+
+
+#  --- d3 ----------------------------------------------------------------------------------------
+
+
+def test_every_relative_link_and_section_reference_in_the_walk_resolves() -> None:
+    """3,176 links and 1,793 section cross-references, zero unresolved. D991's move is what made
+    this true: its commit computed the transitive link closure rather than picking documents."""
+    report, findings = gd.check_clause_d3()
+    assert findings == [], headlines(findings)
+    line = report[0]
+    assert "3176 relative link(s)" in line
+    assert "1793 section cross-reference(s)" in line
+
+
+def test_a_dangling_relative_link_fails(walk: Path) -> None:
+    walk.write_text("[gone](no-such-file.md)\n", encoding="utf-8", newline="\n")
+    _report, findings = gd.check_clause_d3()
+    assert "links to no-such-file.md, which does not exist." in headlines(findings)
+
+
+def test_a_section_reference_to_a_heading_that_does_not_exist_fails(walk: Path) -> None:
+    target = walk.parent / "98-target.md"
+    target.write_text("## 1.1 Here\n", encoding="utf-8", newline="\n")
+    walk.write_text("[t](98-target.md) section 9.9\n", encoding="utf-8", newline="\n")
+    _report, findings = gd.check_clause_d3()
+    assert "cites 98-target.md section 9.9, which has no heading." in headlines(findings)
+
+
+def test_a_section_reference_resolves_against_a_family_of_headings(walk: Path) -> None:
+    """The prefix rule, and it is not a loosening. 08-runtime.md numbers its headings `### 1.1`
+    under a `## Part 1` title and has no `## 1` at all, so a reference to its section 1 names the
+    section-1 family. An equality test reports four findings over the real corpus and every one of
+    them is a correct reference."""
+    target = walk.parent / "98-target.md"
+    target.write_text("## Part 1\n\n### 1.1 Here\n", encoding="utf-8", newline="\n")
+    walk.write_text("[t](98-target.md) section 1\n", encoding="utf-8", newline="\n")
+    _report, findings = gd.check_clause_d3()
+    assert findings == []
+
+
+#  --- d4 ----------------------------------------------------------------------------------------
+
+
+def test_d4_emits_the_count_as_the_counter_section_eight_six_names() -> None:
+    report, findings = gd.check_clause_d4(548)
+    assert findings == []
+    assert "docs_symbols_checked = 548" in report[0]
+    assert gd.COUNTER == "docs_symbols_checked"
+
+
+def test_the_counter_row_exists_and_ratchets_the_rise_while_the_floor_holds_the_fall() -> None:
+    """Both directions, by different mechanisms, and that is the point. `ratchet` fails a RISE,
+    which is section 8.6's prose-noise worry; the FALL -- "a document that stops naming things to
+    make the gate quiet" -- is `symbol_floor`. One count, two questions, no second home."""
+    counters = tomllib.loads((REPO_ROOT / "eval" / "counters.toml").read_text(encoding="utf-8"))
+    row = next(one for one in counters["counter"] if one["id"] == gd.COUNTER)
+    assert row["class"] == "ratchet"
+    assert 0 < row["tolerance"] < 1
+    assert row["source"] == "ci"
+    assert gd._register_value("symbol_floor") > 0
+
+
+def test_a_missing_counter_row_is_a_finding(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(gd, "COUNTER", "no_such_counter")
+    _report, findings = gd.check_clause_d4(1)
+    assert "eval/counters.toml holds no `no_such_counter` row." in headlines(findings)
 
 
 def test_a_stray_argument_is_a_usage_error_and_not_a_pass() -> None:
