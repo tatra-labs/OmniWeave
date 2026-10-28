@@ -228,18 +228,15 @@ jobs:
         run: uv run ruff format --check .
       - name: "ruff check (section 8.1)"
         run: uv run ruff check .
-      - name: "pyright strict (section 8.2)"
-        # NOT ENFORCED YET, and the blocker is a missing declaration rather than a missing phase:
-        # section 8.1's table says "pyright strict", the workspace root carries no [tool.pyright]
-        # table, and a bare run would type-check under pyright's own defaults -- asserting
-        # something section 8.1 did not ask for. The table belongs in pyproject.toml.
-        run: |
-          if grep -q "^\[tool\.pyright\]" pyproject.toml
-          then uv run pyright
-          else
-            echo "pyright NOT ENFORCED: pyproject.toml carries no [tool.pyright] (section 8.1)" \
-              | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
+      - name: "pyright strict, at its per-rule ceiling (section 8.2)"
+        # ARMED AT D997, and it runs tools/pyright_ceiling.py rather than `uv run pyright` for a
+        # measured reason. pyproject.toml's [tool.pyright] declares strict with nine rules off and
+        # a reason written against each; over the tree that still leaves 157 errors. A bare
+        # `pyright` would therefore be red on every PR, the step would go back off, and the number
+        # would go back to being unmeasured -- which is how it reached 1,722 under full strict
+        # without anyone noticing. The ceiling script fails on a RISE in any rule's count, on a
+        # FALL that nobody recorded, and on a rule appearing that has no row at all.
+        run: uv run tools/pyright_ceiling.py
 
       # --- the G rows whose job cell is gates, in section 6.4's rendering order ---------------
       - name: "G1 -- core resolves to two first-party dists, zero third-party"
