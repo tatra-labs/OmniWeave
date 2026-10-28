@@ -1174,10 +1174,20 @@ asserts        = """
 2's two decidable cases, and every spelled-out invariant count in any document against the row \
 count. Budget 2 s"""
 budget_s       = 2
-runner_planned = ["tools/gate_invariants.py"]
+# The second exercise of the forcing function the runner columns describe: the script landed at
+# D992, so its path moved from `runner_planned` to `runner` in the same commit.
+runner         = ["tools/gate_invariants.py"]
 # ADR-2 decision 2: 01-principles.md open question 3 claimed `G27(d)` for this script and cannot
 # have it, because section 8.6 already spends the clause on `gate_docs.py`. 17-risks.md:578 gives
 # the open question's role as `release`.
+#
+# The register the script reads carries more than the five assertions name, and each addition is
+# its own visible exception rather than a silent allowance: `[[family]]` (the nine prefixes
+# gate_docs.py reads rather than hardcoding, 11-repo-layout.md:2695), `[[member]]` (the 151
+# identifiers of the other eight families, in the shape their own tables state), `[[absent]]` (the
+# two identifiers a document cites in order to say they do not exist), `[[unbuilt_site]]` (clause
+# d1's roadmap escape, spelled for a `sites` entry) and `[[count_exempt]]` (the seven phrases
+# assertion 5's scan does not count, each saying which series it counts instead).
 owner          = "release"
 reviewed_at    = "2026-09-07"
 review_by      = "2026-12-03"
