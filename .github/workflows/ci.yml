@@ -579,14 +579,11 @@ jobs:
           fi
           echo "two workflow files, ci.yml reusable, no publisher inside it"
       - name: "gates.invariant_register -- invariants.toml's five semantic assertions"
-        run: |
-          if [ -f tools/gate_invariants.py ]
-          then uv run tools/gate_invariants.py
-          else
-            echo "gates.invariant_register NOT ENFORCED: tools/gate_invariants.py over" \
-              "tools/invariants.toml (01-principles.md section 1e, ADR-2 decision 2)" \
-              | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
+        # Armed at D992, so the tripwire is gone: the script and the register both exist and
+        # the step runs them. ADR-2 decision 2 is why this is a job assertion and not a G row
+        # -- G27(d) resolves whether INV-21 exists, and this asserts whether its row is
+        # well-formed.
+        run: uv run tools/gate_invariants.py
       - name: "gates.risk_register -- the same five rules over risks.toml's sixty rows"
         # The register's row carries a step and no runner: 17-risks.md section 1.1 sizes the check
         # ("one tomllib.load, five set-membership passes over 60 rows and ~200 question keys, and
