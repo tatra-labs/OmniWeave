@@ -1260,10 +1260,27 @@ asserts       = "the same shape over [risks](17-risks.md)'s register rows"
 # also this register's own rot clock, which is why `tools/risks.toml` is deliberately NOT added to
 # Q-G17's list -- one clock per register.
 budget_s      = 2
+runner        = ["tools/risk_register.py"]
 step          = """
 five rules over tools/risks.toml's sixty `[[risk]]` rows: indicator resolves, \
 likelihood * impact >= 12 carries a contingency, `questions` keys resolve, owner/reviewed_at/\
 review_by present and in window, and `kill` values resolve both ways (17-risks.md section 1)"""
+# THE REGISTER AND ITS RUNNER LANDED AT D998, so this row gained a `runner` beside the `step` the
+# plan already gave it. Not `gate_risks.py`: test_gates_register.py fails on a `tools/gate_*.py`
+# the register does not name by PATH, and this row is a `[[job_assertion]]` rather than a `G` row,
+# so the file is named outside that glob exactly as `tools/plan_lint.py` and
+# `tools/pyright_ceiling.py` are.
+#
+# WHAT THE FIVE RULES MEASURE over the committed register: rule 1 resolves 21 of the 60 indicators
+# and 39 carry an `[[unmetered]]` declaration naming what the cell points at and which kind of
+# instrument it is -- eleven of those because 17-risks.md section 3 marks the id with a dagger,
+# which it defines as an id that "does not yet exist and is added to `eval/counters.toml` or
+# `eval/perf.toml` ... in the same change that merges this document", a change that did not happen.
+# Rule 2 holds over 20 rows at or above 12. Rule 3 resolves the one question key a section 3 cell
+# cites against the 162 that sections 7.2-7.4 define. Rule 4 regenerates section 1.2's derived
+# risks column and byte-diffs it: the SETS and the COUNTS match for all ten roles and the ORDER
+# matches for nine, with `licence`'s hand-ordered cell declared. Rule 5 holds in both directions
+# over section 5's thirteen criteria.
 owner         = "release"
 reviewed_at   = "2026-09-07"
 review_by     = "2026-12-03"
