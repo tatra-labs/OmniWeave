@@ -489,15 +489,47 @@ def test_the_append_only_check_skips_on_its_own_line_with_no_previous_tag() -> N
     assert failures == []
 
 
-def test_the_real_repository_currently_has_no_previous_tag() -> None:
-    """The premise of the test above, asserted rather than assumed.
+def test_check_six_runs_for_real_against_a_tag_and_skips_only_when_there_is_none() -> None:
+    """The premise of the test above, asserted rather than assumed -- in whichever state it is.
 
-    The day this repository is tagged, this test goes red and the SKIP stops being the expected
-    path -- which is the right moment for someone to read `check_append_only` against a real tag.
+    This replaced `test_the_real_repository_currently_has_no_previous_tag`, which asserted
+    `view.tag is None` and said in its own docstring what it wanted to happen next: *"The day this
+    repository is tagged, this test goes red and the SKIP stops being the expected path -- which is
+    the right moment for someone to read `check_append_only` against a real tag."* That day
+    arrived: `v0.1.0` exists in the working clone and the test went red exactly as designed. Doing
+    what it asked is the fix, not deleting it.
+
+    So this reads the real boundary and asserts the branch it is actually on:
+
+    * **no tag** -- `reason` is `"no previous tag"`, the report is the one SKIP line and there are
+      no failures. This is still CI's state, because no tag is pushed; the SKIP line exists so a
+      bounded check says what it dropped rather than passing silently.
+    * **a tag** -- check 6 runs for real: the report names the tag and is not a SKIP, and nothing
+      the tag published was renamed, edited or deleted.
+
+    The tagged branch adds a second, independently computed assertion of the same property. Check
+    6 reads `git diff --name-status` against the tag; this reads the tag's own file list and
+    asserts every published name is still on disk. Two routes to one answer, which is what catches
+    a diff that parses but is read wrong -- the failure mode `_rename_failure`'s `R100` case
+    exists for.
     """
     view = gate.previous_tag()
-    assert view.tag is None, f"the repository now has tag {view.tag}: exercise check 6 for real"
-    assert view.reason == "no previous tag"
+    report, failures = gate.check_append_only(view)
+    if view.tag is None:
+        assert view.reason == "no previous tag"
+        assert report == ["  append-only SKIP (no previous tag)"]
+        assert failures == []
+        return
+    assert view.reason is None, f"{view.tag} was read with a reason: {view.reason}"
+    assert len(report) == 1
+    assert report[0].startswith(f"  append-only {view.tag}: "), report[0]
+    assert "SKIP" not in report[0], (
+        "a reachable tag must exercise check 6; a SKIP here would be the gate reporting that an "
+        "assertion held when it never ran"
+    )
+    assert failures == [], [one.headline for one in failures]
+    on_disk = {one.path.name for one in gate.migration_files(gate.MIGRATIONS)}
+    assert view.files <= on_disk, sorted(view.files - on_disk)
 
 
 @pytest.mark.parametrize(
