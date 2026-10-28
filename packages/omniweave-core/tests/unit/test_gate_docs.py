@@ -701,9 +701,12 @@ def test_a_register_path_that_is_neither_a_file_nor_declared_fails(walk: Path) -
 
 
 def test_every_planned_register_path_is_still_absent_and_still_cited() -> None:
-    """Twenty registers and scripts the plan names and nothing has written. Both directions: a row
-    whose file now exists is stale, and a row no document cites is stale too."""
-    assert len(gd.D2_PLANNED_PATHS) == 20
+    """Nineteen registers and scripts the plan names and nothing has written. Both directions: a
+    row whose file now exists is stale, and a row no document cites is stale too.
+
+    Twenty until D998, when `tools/risks.toml` landed and this test went red -- which is the row's
+    whole purpose, so the fix was to delete it in the commit that created the file."""
+    assert len(gd.D2_PLANNED_PATHS) == 19
     corpus = "\n".join(one.read_text(encoding="utf-8") for one in gd.walk_documents())
     for one in sorted(gd.D2_PLANNED_PATHS):
         assert not (REPO_ROOT / one).exists(), f"{one} exists; delete the row"

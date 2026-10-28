@@ -568,19 +568,11 @@ jobs:
         # -- G27(d) resolves whether INV-21 exists, and this asserts whether its row is
         # well-formed.
         run: uv run tools/gate_invariants.py
-      - name: "gates.risk_register -- the same five rules over risks.toml's sixty rows"
-        # The register's row carries a step and no runner: 17-risks.md section 1.1 sizes the check
-        # ("one tomllib.load, five set-membership passes over 60 rows and ~200 question keys, and
-        # one byte-diff of section 1.2's table") and names no script. So this is a tripwire on the
-        # register file rather than a guess at a filename.
-        run: |
-          if [ -f tools/risks.toml ]
-          then
-            echo "tools/risks.toml exists: wire gates.risk_register (17-risks.md section 1.1)"
-            exit 1
-          fi
-          echo "gates.risk_register NOT ENFORCED: tools/risks.toml is not written" \
-            "(17-risks.md section 1.1)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: "gates.risk_register -- the five rules over risks.toml's sixty rows"
+        # Armed at D998. The tripwire this replaces was deliberate: 17-risks.md section 1.1 sizes
+        # the check and names no script, so the step watched the register file rather than guess a
+        # filename. The register and its runner landed together, so there is nothing left to guess.
+        run: uv run tools/risk_register.py
       - name: "Q-G15 (static half) -- eval/perf.toml's row schema, rss process, tier ceilings"
         # THE STATIC HALF OF Q-G15 AND NOT THE MEASURED HALF, and the split is the whole point.
         #
