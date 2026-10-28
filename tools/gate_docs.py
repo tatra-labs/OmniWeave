@@ -284,6 +284,12 @@ _DIST_COUNT: Final = re.compile(
     r"(?:first-party\s+)?distributions?\b",
     re.IGNORECASE,
 )
+_DIST_ROW: Final = re.compile(r"^\| `(omniweave(?:-[a-z0-9-]+)?)` \|", re.MULTILINE)
+"""One row of either `dist` table of 11-repo-layout.md section 1.2, by its first column."""
+_ATTACHMENT_PARAGRAPH: Final = (
+    "**The attachment distributions, separately versioned and outside the fourteen.**"
+)
+"""The sentence between section 1.2's two tables, which is what splits them."""
 NUMBER_WORDS_VALUE: Final[dict[str, int]] = {
     "twelve": 12,
     "thirteen": 13,
@@ -1328,12 +1334,75 @@ def _d2_ratchets(verb_gap: set[str], code_gap: set[str]) -> tuple[list[str], lis
     return report, findings
 
 
+ATTACHMENT_KEY: Final = "attachment"
+"""`[tool.omniweave] attachment = true`, the key a member uses to say it is not a distribution.
+
+11-repo-layout.md section 1.2: *"The attachment distributions, separately versioned and **outside
+the fourteen**"*. D909's build note names this key and lists who reads it -- *"G5, the build check,
+the wheelhouse and `gen_first_party.py` read that key, so the release still builds 28 files"* --
+and `tools/check_build.py` ruling 4 is the same sentence from the other end: *"An attachment is not
+one of the 28."* This check reads it for the same reason: a count of distributions that counted
+attachments would disagree with the prose, with `check_build.py`, and with the release."""
+
+
+def _members() -> tuple[tuple[str, bool], ...]:
+    """Every workspace member, with whether it declares itself an attachment."""
+    out: list[tuple[str, bool]] = []
+    for path in sorted((REPO / "packages").glob("*/pyproject.toml")):
+        table = tomllib.loads(path.read_text(encoding="utf-8"))
+        tool = table.get("tool")
+        mine = tool.get("omniweave", {}) if isinstance(tool, dict) else {}
+        attachment = bool(mine.get(ATTACHMENT_KEY, False)) if isinstance(mine, dict) else False
+        out.append((path.parent.name, attachment))
+    return tuple(out)
+
+
+def _section_1_2_tables() -> tuple[frozenset[str], frozenset[str]]:
+    """Section 1.2's two `dist` columns: the distributions, then the attachments.
+
+    The paragraph between them is what splits the tables, and it is quoted rather than counted:
+    *"The attachment distributions, separately versioned and outside the fourteen."* A rename of
+    that sentence leaves both sets empty, which the caller reports as a finding rather than as two
+    tables that happen to agree with the workspace.
+    """
+    text = (REPO / "docs" / "plan" / "11-repo-layout.md").read_text(encoding="utf-8")
+    heading = text.find("### 1.2 ")
+    end = text.find("### 1.3 ", heading + 1)
+    if heading < 0 or end < 0:
+        return frozenset(), frozenset()
+    split = text.find(_ATTACHMENT_PARAGRAPH, heading, end)
+    if split < 0:
+        return frozenset(), frozenset()
+    halves = (text[heading:split], text[split:end])
+    return tuple(  # type: ignore[return-value]
+        frozenset(found.group(1) for found in _DIST_ROW.finditer(half)) for half in halves
+    )
+
+
 def _d2_distributions() -> tuple[list[str], list[Finding]]:
     """The distribution-count check, which section 8.6 calls "the one that keeps section 1.10
-    honest" -- and which reports a live discrepancy. The ceilings beside G27's row say what."""
+    honest".
+
+    **D999 corrected what this counts.** It counted `packages/*/pyproject.toml` and called the
+    answer "distributions on disk", which made fifteen members disagree with a prose that says
+    fourteen, and the gate reported a plan erratum that does not exist: `omniweave-langchain` is an
+    ATTACHMENT, section 1.2's second table lists it as one of five, and section 1.2's own words are
+    *"separately versioned and outside the fourteen"*. The prose was right, `check_build.py` ruling
+    4 had already drawn the same line for the 28 artefacts, and the gate was measuring a different
+    population from the one the sentence is about. It now counts members that do not declare
+    `[tool.omniweave] attachment = true`, which is fourteen, and the discrepancy is gone.
+
+    The membership check below is what would have caught that, and is the reason the count is no
+    longer the whole check: every member is in exactly one of section 1.2's two tables, by name. A
+    fifteenth DISTRIBUTION landing fails the count and names itself; an attachment landing fails
+    the membership check until the second table lists it. Section 8.6's predicted case and the case
+    that actually happened are different findings now, where before they were one number.
+    """
     report: list[str] = []
     findings: list[Finding] = []
-    disk = len(list((REPO / "packages").glob("*/pyproject.toml")))
+    members = _members()
+    disk = sum(1 for _name, attachment in members if not attachment)
+    attached = sorted(name for name, attachment in members if attachment)
     expected_disk = _register_value("dist_count_disk")
     prose = _register_value("dist_count_prose")
     spelled = collections.Counter()
@@ -1344,7 +1413,8 @@ def _d2_distributions() -> tuple[list[str], list[Finding]]:
     report.append(
         f"  clause (d2) distributions: {disk} on disk, prose says "
         + ", ".join(f"{count}x{said}" for said, count in sorted(spelled.items()))
-        + f" (register records disk {expected_disk}, prose {prose} and {prose - 1} excluding core)"
+        + f" (register records disk {expected_disk}, prose {prose} and {prose - 1} excluding core; "
+        + f"{len(attached)} attachment(s) outside the count: {', '.join(attached) or 'none'})"
     )
     if disk != expected_disk:
         findings.append(
@@ -1360,9 +1430,8 @@ def _d2_distributions() -> tuple[list[str], list[Finding]]:
     #  The prose says the count two ways. 11-repo-layout.md section 1.2's heading is a TOTAL
     #  ("the fourteen distributions"); :2690 and glossary.md:653 are the first-party release
     #  manifest's count, "the thirteen first-party distributions OTHER THAN `omniweave-core`",
-    #  which is the total minus one. Both are one behind, by exactly the one distribution that
-    #  landed without the prose following, so the check asserts the drift is UNIFORM: anything
-    #  else means two different errors and not one stale number.
+    #  which is the total minus one. A count in neither form is a document that disagrees with the
+    #  register, whichever of the two is wrong.
     off = sorted(said for said in spelled if said not in {prose, prose - 1})
     if off:
         findings.append(
@@ -1375,26 +1444,80 @@ def _d2_distributions() -> tuple[list[str], list[Finding]]:
                 ),
             )
         )
-    if prose == disk:
+    if prose != disk:
         findings.append(
             Finding(
-                "the prose and the disk count agree, so `dist_count_prose` is a stale row.",
-                (FAIL_INDENT + "fix: delete it and let the count resolve against the workspace.",),
-            )
-        )
-    elif prose != disk - 1:
-        findings.append(
-            Finding(
-                f"the prose count {prose} is {disk - prose} behind the workspace's {disk}.",
+                f"the prose count {prose} and the workspace's {disk} disagree.",
                 (
                     FAIL_INDENT
-                    + "section 8.6 wrote this check for a drift of one. A larger gap means more "
-                    + "than one distribution landed unrecorded, and the erratum has to say so.",
+                    + "section 8.6 wrote this check for exactly this: a distribution landed or "
+                    + "left and the prose did not follow. Amend the prose under `plan_lint "
+                    + "--bless`, or `dist_count_prose` if the prose is the half that is right.",
                 ),
             )
         )
-
+    findings.extend(_d2_membership(members))
     return report, findings
+
+
+def _d2_membership(members: tuple[tuple[str, bool], ...]) -> list[Finding]:
+    """Every member in exactly one of section 1.2's two tables, on the side its own key claims.
+
+    The count alone cannot tell "a fifteenth distribution landed unrecorded" from "an attachment
+    landed and was recorded", and reading the first as the second is the error D999 corrected. This
+    reads the two tables by name, so each case is its own finding with its own fix.
+    """
+    findings: list[Finding] = []
+    listed, listed_attachments = _section_1_2_tables()
+    if not listed:
+        return [
+            Finding(
+                "section 1.2's two tables could not be read, so no membership was checked.",
+                (
+                    FAIL_INDENT
+                    + "fix: the split is the paragraph beginning "
+                    + f"{_ATTACHMENT_PARAGRAPH[:40]!r}; a reworded one needs this check reworded "
+                    + "with it. A silent empty set here is d0's lesson over again.",
+                ),
+            )
+        ]
+    for name, attachment in members:
+        where = listed_attachments if attachment else listed
+        other = listed if attachment else listed_attachments
+        side = "second (attachments)" if attachment else "first (distributions)"
+        if name in where:
+            continue
+        said = f"and section 1.2's {'first' if attachment else 'second'} table lists it"
+        findings.append(
+            Finding(
+                f"`{name}` belongs in section 1.2's {side} table and is not there"
+                + (f", {said}" if name in other else ""),
+                (
+                    FAIL_INDENT
+                    + "fix: the table, or `[tool.omniweave] attachment` in the member's own "
+                    + "pyproject.toml -- the key is what decides which table it belongs in.",
+                ),
+            )
+        )
+    #  The FIRST table only. Section 1.2's second table is a schedule as much as a roster -- "these
+    #  five publish later than the fourteen", and four of the five have no directory yet -- so an
+    #  attachment row with nothing on disk is the document being ahead, which is its job. A
+    #  DISTRIBUTION row with nothing on disk is the fourteen disagreeing with the fourteen.
+    strays = sorted(listed - {name for name, _a in members})
+    if strays:
+        findings.append(
+            Finding(
+                f"section 1.2's first table lists {strays}, which no "
+                "`packages/*/pyproject.toml` provides.",
+                (
+                    FAIL_INDENT
+                    + "fix: the table, if the distribution was dropped; or move the row to the "
+                    + "second table, if it became an attachment. A scheduled attachment belongs "
+                    + "there and is not a finding.",
+                ),
+            )
+        )
+    return findings
 
 
 def _d2_config_keys() -> tuple[list[str], list[Finding]]:

@@ -6,7 +6,7 @@ in the mined collection."* Section 9.1 gives the reason there are many copies ra
 639 resolves `license-files` globs relative to the project directory and rejects a pattern that
 escapes it with `..`, so `packages/omniweave-core/` cannot reference the repository root's
 `LICENSE`. Section 7.6 step 5 is the release checklist line this script is, and `tools/gates.toml`
-carries it as G3's second half -- *"the fifteen `gen_notice.py --check` trees"*.
+carries it as G3's second half -- *"the sixteen `gen_notice.py --check` trees"*.
 
 The mined collection is why: codegraph vendors 27 tree-sitter grammars at pinned revisions with a
 node-kind parity test -- careful supply-chain work -- and ships three `LICENSE` files among the 27,
@@ -19,13 +19,16 @@ Generating the files is the only defence that survives a rush.
 ## Rulings
 
 1. **A tree is a project directory**: every `packages/*/pyproject.toml`'s parent, plus the
-   repository root. That is **sixteen** today and section 9.1 says "the fourteen `packages/<dist>/`
-   directories plus the repository root". The number is not edited here and the set is not
-   hard-coded: it is `glob("packages/*/pyproject.toml")`, so it was fifteen when the plan was
-   written, became sixteen when `omniweave-langchain` arrived (an attachment, section 1.2's second
-   table), and will move again with the next distribution. G3's cell text is one number behind the
-   tree and that is a plan erratum for its owner, not a reason for this script to emit fifteen
-   trees and leave one distribution shipping no notice.
+   repository root. That is **sixteen** today, and since D999 (a user ruling of 2026-10-27) so is
+   section 9.1: "the fifteen `packages/<dist>/` directories plus the repository root". The number
+   is not read here and the set is not hard-coded: it is `glob("packages/*/pyproject.toml")`, so it
+   was fifteen when the plan was written, became sixteen when `omniweave-langchain` arrived (an
+   attachment, section 1.2's second table), and will move again with the next distribution. That
+   independence is why the erratum cost nothing: the script emitted sixteen trees throughout the
+   period the plan said fifteen, so no distribution ever shipped without a notice, and what D999
+   amended was four numbers in the prose rather than any behaviour here. `test_gen_notice.py` reads
+   section 9.1's sentence back and compares the number it spells with `len(trees())`, which is the
+   only form in which an amended count can be said to hold.
 2. **`THIRD_PARTY.md` lists what the distribution DECLARES, not its resolved closure.** The
    closure is a property of an environment -- `uv.lock` reaches 68 packages from `omniweave` and 89
    from `omniweave-langchain`, almost all of them behind an extra -- while the artefact introduces
