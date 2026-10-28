@@ -936,10 +936,6 @@ def verdict(measured: Measured, *, strict: bool = False) -> tuple[Check, ...]:
 # =============================================================================================
 
 
-def _mib(value: int) -> str:
-    return f"{value / (1024 * 1024):,.0f} MiB"
-
-
 def _machine_lines(measured: Measured) -> list[str]:
     """What the run was measured ON. 08:661: a performance number is attributable to a machine."""
     return [

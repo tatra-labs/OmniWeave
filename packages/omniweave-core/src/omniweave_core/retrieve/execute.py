@@ -649,7 +649,7 @@ def _withheld(narrowing: Narrowing) -> Mapping[str, int]:
     citable absence."""
     if not narrowing.withheld_rows:
         return MappingProxyType({"rows": 0})
-    from omniweave_core.drivers.licence import Restriction  # noqa: PLC0415 -- a masked query only
+    from omniweave_ports.types import Restriction  # noqa: PLC0415 -- a masked query only
 
     names = {member.bit: member.name for member in Restriction}
     counts: dict[str, int] = {"rows": narrowing.withheld_rows}

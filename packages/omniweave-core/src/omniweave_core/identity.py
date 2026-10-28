@@ -31,7 +31,7 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 from omniweave_core.canonical import JsonValue, canonical, ow128, sha256_canonical
 
 if TYPE_CHECKING:  # pragma: no cover - `omniweave_ports` carries no behaviour to import
-    from omniweave_ports.ports import Locator
+    from omniweave_ports.types import Locator
 
 __all__ = [
     "canonical_uri",

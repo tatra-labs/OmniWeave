@@ -195,7 +195,7 @@ class Brief:
 
 
 def _closed(raw: object, where: str, keys: frozenset[str]) -> dict[str, Any]:
-    if not isinstance(raw, dict) or set(raw) != keys:
+    if not isinstance(raw, dict) or frozenset(raw) != keys:
         got = sorted(raw) if isinstance(raw, dict) else type(raw).__name__
         raise ValueError(f"{where} has {got}, not {sorted(keys)}")
     return raw

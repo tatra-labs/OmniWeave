@@ -239,7 +239,9 @@ def notice(tree: Tree, rows: list[tuple[Requirement, Captured | None]]) -> str:
     return "\n".join(lines)
 
 
-def third_party(tree: Tree, rows: list[tuple[Requirement, Captured | None]], lock: dict) -> str:
+def third_party(
+    tree: Tree, rows: list[tuple[Requirement, Captured | None]], lock: dict[str, object]
+) -> str:
     """The `THIRD_PARTY.md` text: one row per declared requirement (rulings 2, 3 and 5)."""
     out = [_HEADER, f"# Third-party software in {tree.dist}", ""]
     if not rows:

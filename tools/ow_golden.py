@@ -93,6 +93,7 @@ from omniweave_conform.golden import (  # noqa: E402
     GOLDENS,
     KINDS,
     PROJECT,
+    Change,
     changes,
     document_paths,
     ingest,
@@ -202,7 +203,7 @@ def _bump(text: str) -> tuple[str, str] | None:
 
 
 def _not_a_bump(
-    committed: dict[str, str], fresh: dict[str, str], moved: list, bump: tuple[str, str]
+    committed: dict[str, str], fresh: dict[str, str], moved: list[Change], bump: tuple[str, str]
 ) -> list[str]:
     """Ruling 6: each document or file that moved by more than `schema_v` OLD->NEW."""
     out = []
@@ -220,7 +221,7 @@ def _not_a_bump(
 
 
 def _bump_refused(
-    committed: dict[str, str], fresh: dict[str, str], moved: list, bump: tuple[str, str]
+    committed: dict[str, str], fresh: dict[str, str], moved: list[Change], bump: tuple[str, str]
 ) -> bool:
     """Ruling 6: say why a schema bump is refused, or nothing when it is not."""
     wrong = _not_a_bump(committed, fresh, moved, bump)
@@ -239,7 +240,7 @@ def _bless(
     root: Path,
     committed: dict[str, str],
     fresh: dict[str, str],
-    moved: list,
+    moved: list[Change],
     reason: str | None,
     *,
     bump: tuple[str, str] | None = None,
