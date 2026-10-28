@@ -21,7 +21,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D991: the three files that carried CRLF are normalised to LF before pinning. .gitattributes declares * text=auto eol=lf, so git stores and checks out LF; a manifest blessed over CRLF bytes would fail on every fresh checkout, which is the move's one real hazard.
+# blessed-because: D999, correction in the same PR: section 9.1's erratum note claimed the DISTRIBUTION count of section 1.2 is a second erratum. It is not. omniweave-langchain is an attachment, section 1.2's second table lists it under 'separately versioned and outside the fourteen', and the first table lists fourteen. G27 clause d2 was counting packages/*/pyproject.toml and calling the answer a distribution count, which is the mistake, and it is corrected in this commit along with the note. The fifteen packages/<dist>/ directories of section 9.1 are directories, which is why that number stands.
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -36,7 +36,7 @@ documents-frozen  25666745a9572e7eadf017b6988a2216744cc3eca5a3f572d45da8f1b8c3e1
 documents-frozen  4c02f71d665332330bf423ac063a1678887ae6f3004d01d7b799e9991f414df3  08-runtime.md
 documents-frozen  e3d9414cd24b29681c2da184fffa9c3fbc33e4d066f831fe9d8113b159e0ab08  09-generation.md
 documents-frozen  7045e57d63450411e13e7d0bac60aaed64db257c224ced3682c667ee1ff39b34  10-interfaces.md
-documents-frozen  defe0dcd82536d6887d6768648cd31947a4eaa2c7dd98c9d7a1070abe6ba5ded  11-repo-layout.md
+documents-frozen  29c31ff9923e99fa2f4be8f86afc9eceb5d957be7e1903aff17a1973abf369fd  11-repo-layout.md
 documents-frozen  2fe653d5ac8031388b9a25e2d7464c4921e22b0aa78e2f4dabb531186219c6a5  12-performance.md
 documents-frozen  e472eebcd402b403164bd55a28fe8bc1c476babcc3aa7338648e8ec651b61568  13-quality.md
 documents-frozen  78a3474b788625971c7a7fed610ef3c6518e9330bfd87e8411fbc744666b43d1  14-security.md
