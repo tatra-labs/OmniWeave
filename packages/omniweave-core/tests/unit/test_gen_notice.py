@@ -9,10 +9,19 @@ grammars, hyperframes' 212 MB of binaries with no ffmpeg notice anywhere.
 
 Every assertion about the generator's shape runs over a FAKE workspace in `tmp_path`, because a
 test that could only run against this repository's sixteen trees would be a test of this
-repository. The last three run over the real tree: `--check` is clean, every distribution carries
-the four artefacts, and every `pyproject.toml` declares the `license-files` globs that make them
-travel inside the wheel -- which is the whole point, since "a notice that exists only in the git
-repository is a notice that does not travel with the distribution".
+repository. The last four run over the real tree: `--check` is clean, every distribution carries
+the four artefacts, every `pyproject.toml` declares the `license-files` globs that make them travel
+inside the wheel -- which is the whole point, since "a notice that exists only in the git
+repository is a notice that does not travel with the distribution" -- and the four counts the plan
+spells for this set agree with the set.
+
+**D999, a user ruling of 2026-10-27, closed the fifteen-to-sixteen erratum**, and the test that
+recorded it is replaced here rather than deleted. It asserted that the real tree held one more
+than section 9.1 counted, which is a true sentence about a stale document and an unhelpful one
+about an amended one: it passes just as well if the prose drifts a second time. What replaces it
+reads each of the four counts out of the document and compares it with `len(trees())`, so the
+amendment is a measurement and the next distribution to land fails four named cells rather than
+quietly making a fifth number wrong.
 """
 
 from __future__ import annotations
@@ -112,10 +121,77 @@ def test_a_tree_is_every_package_plus_the_root_and_the_count_is_not_written_down
     assert len(trees) == 4, "three packages and the root; adding a fourth needs no edit here"
 
 
-def test_the_real_tree_has_one_more_than_section_9_1_counted() -> None:
-    """The erratum, asserted so it is a fact rather than a remark: sixteen project directories."""
+def test_the_real_tree_is_every_package_plus_the_root() -> None:
+    """Ruling 1 over this workspace, which is the set the four plan counts are checked against."""
     module = _load(REPO)
     assert len(module.trees()) == len(list((REPO / "packages").glob("*/pyproject.toml"))) + 1
+
+
+LAYOUT: Final = REPO / "docs" / "plan" / "11-repo-layout.md"
+
+NUMBER_WORDS: Final[dict[str, int]] = {
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+}
+"""Enough of the ladder to catch a count that moved by one in either direction."""
+
+#  Each pattern is anchored on words the sentence cannot lose without someone noticing, and the
+#  offset says what the count is OF: a tree per project directory, or a project directory.
+PLAN_COUNTS: Final[tuple[tuple[str, str, int], ...]] = (
+    (
+        "section 9.1, the paragraph",
+        r"\*\*There are (\w+) copies of those files and not one",
+        0,
+    ),
+    (
+        "section 9.1, the sentence naming the directories",
+        r"into each of the (\w+) `packages/<dist>/` directories plus the repository root",
+        -1,
+    ),
+    (
+        "section 6.4, G3's cell",
+        r"\*\*and the (\w+) `gen_notice\.py --check` trees\*\*",
+        0,
+    ),
+    (
+        "section 7.6, step 5",
+        r"for all (\w+) `NOTICE`/`LICENSES/`/`THIRD_PARTY\.md` trees",
+        0,
+    ),
+    (
+        "section 1, rule 3",
+        r"why there are (\w+) copies of them and not one",
+        0,
+    ),
+)
+
+
+@pytest.mark.parametrize(("where", "pattern", "offset"), PLAN_COUNTS)
+def test_the_plan_count_for_this_set_is_the_set(where: str, pattern: str, offset: int) -> None:
+    """D999: every count the plan spells for these trees, read back and compared with the trees.
+
+    The offset is the whole content of the check. Four of the five cells count TREES and one counts
+    the `packages/<dist>/` directories inside them, which is one fewer, and a reading that let the
+    two be the same number is the reading that made the erratum invisible for as long as it was.
+    """
+    found = re.search(pattern, LAYOUT.read_text(encoding="utf-8"))
+    assert found is not None, f"{where}: the sentence this count lives in has moved"
+    said = NUMBER_WORDS.get(found.group(1))
+    assert said is not None, f"{where}: spells {found.group(1)!r}, which is not a count"
+    assert said == len(_load(REPO).trees()) + offset, where
+
+
+def test_g3s_assertion_quotes_the_cell_it_came_from() -> None:
+    """The register's string is section 6.4's cell, so a count may not move in only one of them."""
+    rows = tomllib.loads((REPO / "tools" / "gates.toml").read_text(encoding="utf-8"))["gate"]
+    (g3,) = [row for row in rows if row["id"] == "G3"]
+    quoted = re.search(r"\*\*and the (\w+) `gen_notice\.py --check` trees\*\*", g3["assertion"])
+    assert quoted is not None, g3["assertion"]
+    assert NUMBER_WORDS[quoted.group(1)] == len(_load(REPO).trees())
 
 
 # ---------------------------------------------------------------------------
