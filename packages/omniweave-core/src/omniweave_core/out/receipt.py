@@ -184,7 +184,7 @@ class Receipt:
         A compile worker sends its receipt this way, so the host builds it again through
         `__post_init__` and does not trust the worker's word that it is consistent.
         """
-        if not isinstance(raw, dict) or set(raw) != _RECEIPT_KEYS:
+        if not isinstance(raw, dict) or frozenset(raw) != _RECEIPT_KEYS:
             got = sorted(raw) if isinstance(raw, dict) else type(raw).__name__
             raise _corrupt(f"its keys are {got}, not {sorted(_RECEIPT_KEYS)}")
         try:

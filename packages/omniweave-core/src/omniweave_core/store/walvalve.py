@@ -602,7 +602,7 @@ class WalValve:
         thresholds: Thresholds,
         checkpointer: Callable[[CheckpointMode], CheckpointResult],
         park: Park | None = None,
-        submit: Submit = run_inline,
+        submit: Submit[None] = run_inline,
         baseline: MonotoneBaseline | None = None,
         log: Callable[[str], None] | None = None,
         heartbeat: Callable[[], None] | None = None,

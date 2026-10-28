@@ -172,7 +172,7 @@ class CompileCard:
         if not isinstance(round_trip, Mapping):
             _invalid(source, "[compile.round_trip] is not a table")
         rt = dict(round_trip)
-        if set(rt) - {UNIT_PART} != ROUND_TRIP_KEYS:
+        if frozenset(rt) - {UNIT_PART} != ROUND_TRIP_KEYS:
             _invalid(
                 source, f"[compile.round_trip] keys {sorted(rt)} are not {sorted(ROUND_TRIP_KEYS)}"
             )

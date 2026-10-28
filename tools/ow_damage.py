@@ -56,7 +56,12 @@ def emit(line: str = "") -> None:
 
 
 def _documents(fixture: Fixture) -> dict[str, bytes]:
-    """The fixture's documents, generated from this checkout."""
+    """The fixture's documents, generated from this checkout.
+
+    Reached only from `test_ow_damage.py`, which asserts the fixtures are
+    `fixtures/gen/gen_reference_corpora.py`'s files byte for byte. `pyright` reports it
+    unused because the pyright scope excludes the test tier -- see pyproject.toml.
+    """
     return _documents_of(fixture, REPO)
 
 
