@@ -708,18 +708,26 @@ fetch_depth    = 0
 # Clause b's script landed, so its path moved from `runner_planned` to `runner` in the same commit
 # -- the forcing function the runner columns above describe, exercised for the first time.
 #
-# CLAUSE (d) RUNS IN PART SINCE D986 and the blocker on the rest cleared at D991. Section 8.6
-# walks `docs/ARCHITECTURE.md` AND `docs/plan/*.md`; the plan documents were not committed, so the
-# 520-symbol floor could not be met by anything in the tree and `gate_docs.py` would have failed on
-# an input that did not exist. A user ruling of 2026-10-27 moved them out of the ignored `_plan/`,
-# which is what section 1.5 always said the initial commit would do, so the floor is meetable and
-# the script is writable; it is the next cell rather than this one.
-# What runs today is the ARCHITECTURE.md half, at the test tier:
+# TWO RUNNERS AND FIVE CLAUSES, AND THE SCRIPT DOES NOT YET CARRY ALL OF THEM. `gate_docs.py`
+# landed at D994 with clauses (a), (a2) and (a3) plus (c)'s registered-off line, so its path moved
+# out of `runner_planned` in that commit -- the forcing function the runner columns exist for.
+# Clause (d)'s d0-d4 walk of `docs/ARCHITECTURE.md` and `docs/plan/*.md` is the NEXT cell, and the
+# script prints that on its own line rather than leaving a reader to infer it: a check that bounds
+# its own coverage says what it dropped.
+#
+# What (a), (a2) and (a3) measure is ADR-4 decision 1's own four grounds, reproduced: 74 toml
+# fences in the charter and 00-18 all parse (the ADR counted 73, before ADR-2 wrote
+# 01-principles.md section 1e's example), ONE line ends inside braces and it is the `when` of
+# `repair.never-escalate-furniture`, and SEVEN rules fail `ow route lint` check 4 -- every one in
+# the section D4 fence that same decision retires under charter erratum E42, against zero in
+# section 4.4's forty. Those findings are declared in the script with their loci, and a row that
+# stops being a finding fails the gate, so the lists can only shrink.
+#
+# What runs for (d) today is the ARCHITECTURE.md half, at the test tier:
 # packages/omniweave-core/tests/unit/test_architecture_doc.py parses that document, imports every
 # symbol it names, and checks every `ow` verb, `G<n>` and register path against its own register --
 # d0, d1 and d2's checkable shapes over one document.
-runner         = ["tools/gate_migrations.py"]
-runner_planned = ["tools/gate_docs.py"]
+runner         = ["tools/gate_migrations.py", "tools/gate_docs.py"]
 owner          = "release"
 reviewed_at    = "2026-09-07"
 review_by      = "2026-12-03"
