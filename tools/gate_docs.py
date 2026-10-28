@@ -388,7 +388,6 @@ D2_PLANNED_PATHS: Final[frozenset[str]] = frozenset(
         "tools/embeddings.toml",
         "tools/indexes.toml",
         "tools/toolchains.toml",
-        "tools/risks.toml",
         "tools/threats.toml",
         "tools/metrics.toml",
         "tools/codes.toml",
@@ -404,7 +403,11 @@ D2_PLANNED_PATHS: Final[frozenset[str]] = frozenset(
         "schema/degradation-v1.json",
     }
 )
-"""Twenty registers and scripts the plan names and nothing has written yet.
+"""Nineteen registers and scripts the plan names and nothing has written yet.
+
+It was twenty until D998 landed `tools/risks.toml`, which is this list working as intended: the
+row's own test asserts both directions, so the register appearing failed the gate and the fix was
+to delete the row in the commit that created the file.
 
 `tools/codes.toml` is the odd one: the register is at the repository root as `codes.toml`, and
 ADR-9:180 writes it `tools/codes.toml`. Recorded here rather than silently resolved to the root

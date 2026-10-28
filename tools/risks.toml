@@ -1,0 +1,1381 @@
+# The machine-readable risk register. 17-risks.md section 1 is its specification and section 3 is
+# its source: "A risk register that lives in a document rots at the speed of the document."
+#
+# EVERY ROW IS READ OUT OF 17-risks.md SECTION 3's TABLES, not re-authored here. `source` is the
+# line each row was read from and `tools/risk_register.py` checks the row against that line rather
+# than trusting it -- the same mechanism `tools/invariants.toml` uses for its 151 `[[member]]`
+# rows, and for the same reason: sixty rows transcribed by hand would rot.
+#
+# WHAT THE CHECK IS AND IS NOT. Section 1.1 settles it: the five rules are the `[[job_assertion]]`
+# `gates.risk_register`, job `gates`, budget 2 s, and NOT a `G` row. "Repository layout section
+# 8.6 spends `G27(d)` on `gate_docs.py` ... That is the correct home for identifier resolution and
+# the wrong home for semantic assertions over a register's rows." `Q-G17`'s rot clock deliberately
+# does not read this file either, "because the register's rot clock is rule 4 of
+# `gates.risk_register`, and one clock per register is the point of not having two homes for one
+# key."
+#
+# ---------------------------------------------------------------------------------------------
+# ASCII FOLDING. House style keeps TOML values ASCII and section 3's cells are not. Every value
+# carries its cell verbatim under exactly one substitution table, applied nowhere else and
+# re-applied by tools/risk_register.py before it compares a row to its `source` line:
+#
+#     U+2014 EM DASH                 ->  " -- "        U+2026 HORIZONTAL ELLIPSIS   ->  ...
+#     U+2192 RIGHTWARDS ARROW        ->  " -> "        U+2248 ALMOST EQUAL TO       ->  ~
+#     U+2265 GREATER-THAN OR EQUAL   ->  >=            U+00B1 PLUS-MINUS SIGN       ->  +/-
+#     U+2264 LESS-THAN OR EQUAL      ->  <=            U+2212 MINUS SIGN            ->  -
+#     U+00D7 MULTIPLICATION SIGN     ->  x             U+03BA GREEK SMALL KAPPA     ->  kappa
+#     U+2020 DAGGER                  ->  (unbuilt)     U+2019 RIGHT SINGLE QUOTE    ->  '
+#     U+00A7 SECTION SIGN            ->  "section "    U+201C/201D DOUBLE QUOTES    ->  "
+#     U+00A0 NO-BREAK SPACE          ->  a space       U+21D2 DOUBLE ARROW         ->  =>
+#     U+00B5 MICRO SIGN             ->  u
+#
+# THE DAGGER IS NOT DECORATION. Section 3 defines it: an id marked with one "does not yet exist
+# and is added to `eval/counters.toml` or `eval/perf.toml` by 13-quality.md (metrics) and
+# 15-observability.md (event fields) in the same change that merges this document". Eleven rows
+# carry one and that change never happened, so the fold spells it `(unbuilt)` rather than dropping
+# a character a reader needs.
+#
+# ---------------------------------------------------------------------------------------------
+# RULE 1 AND THE THIRTY-NINE. Rule 1: "Every row's `indicator` resolves to a real instrument -- a
+# `[[counter]]` id in `eval/counters.toml`, a `[[budget]]` id in `eval/perf.toml`, a `[[gate]]` id
+# in `eval/gates.toml`, a `G<n>` or `Q-G<n>` row or a `[[job_assertion]]` name in
+# `tools/gates.toml`, or a `Diag` or `Degradation` code in `codes.toml`. A row whose indicator is
+# a sentence is a row nobody will ever notice materialising, and it fails."
+#
+# Measured over section 3's own sixty rows: TWENTY-ONE resolve. The other thirty-nine name a real,
+# leading, specific instrument that is not a row in one of those six registers -- eleven because
+# the document itself marks the id unbuilt, and twenty-eight because what they name is a store
+# column, a conformance suite, a benchmark harness, a receipt field, a register FIELD rather than
+# a row id, a CLI verb's exit, or an observation about the project rather than about a run.
+#
+# So every row still carries its `trigger` verbatim, and the thirty-nine carry an `[[unmetered]]`
+# row naming WHAT the cell names and WHICH kind of instrument it is. Rule 1 is then enforced over
+# the twenty-one and ratcheted over the thirty-nine: `tools/risk_register.py` fails if a row
+# leaves the declared set without resolving, fails if a declared row resolves and keeps its
+# declaration, and fails if the count rises. The alternative -- widening rule 1's six registers
+# until the sentence is true -- would be this file rewriting the rule it is supposed to obey.
+
+schema = 1
+
+[register]
+horizon           = "v1.0"
+review_every_days = 90
+owner_roles       = [
+  "licence", "model", "drivers", "router", "runtime",
+  "retrieval", "out", "surface", "quality", "release",
+]
+# Section 1's printed row, verbatim, including its dates: `reviewed_at = "2026-09-04"` and
+# `review_by = "2026-12-03"`, which is exactly `review_every_days` apart. `owner_roles` is
+# byte-diffed against section 1.2's table by rule 4.
+source = "docs/plan/17-risks.md:19"
+
+
+# =============================================================================================
+# THE SIXTY ROWS, in section 3's own order.
+
+[[risk]]
+id          = "R-T1"
+category    = "technical"
+source      = "docs/plan/17-risks.md:194"
+title       = "**The document model is wrong in a way discovered late.** One `Block` node type, a fifteen-field `Capabilities`, `OriginSpan`'s three branches and a closed `Kind` vocabulary are the pivot; every other layer is a view over them. A late structural miss is not a refactor, it is a `SCHEMA` major plus a re-parse of every corpus in the fleet"
+likelihood  = 3
+impact      = 5
+owner       = "model"
+indicator   = ""
+trigger     = "`owdoc.unknown_kind_rate`(unbuilt) > 0.02 on any format slice, **or** `x.ow.unknown` non-empty on > 1% of Blocks, **or** two independent driver authors asking for the same sixteenth `Capabilities` field"
+mitigation  = "The closed vocabulary has a written rule for adding a member ([document model](03-document-model.md) section 4.2); `unknown` plus `raw_kind` is a real landing place, not a crash; `declared`/`achieved` lets a driver under-deliver without a model change; the `docx` OUT target and a third-party driver are the two independent falsifiers"
+contingency = "A `Kind` addition is a `SCHEMA` MINOR and costs `op.redigest`, not a re-parse -- that is the escape the model already has. A **structural** miss (a second node type, a fourth coordinate system, a time address for media) is a `SCHEMA` major with the two-release deprecation window of charter 6.6, and this register says plainly that it is the most expensive outcome in the plan"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-T2"
+category    = "technical"
+source      = "docs/plan/17-risks.md:195"
+title       = "**The blocks-per-page envelope is off by 3-5x** (charter F1). 60-120/page is an estimate; the pessimistic synthetic corpus measured 912 B/block against a 338 B/block real baseline, and `store.bytes_per_block = 660` sits between them ([performance](12-performance.md)'s `store.bytes_per_block` budget row). Every frame, segment, RSS and storage number scales off it"
+likelihood  = 4
+impact      = 3
+owner       = "quality"
+indicator   = "store.bytes_per_block"
+resolves_in = "budget"
+trigger     = "`store.bytes_per_block` nightly ratchet breaching 660 B +/- 10%, **or** `blocks_per_page_p95`(unbuilt) > 200 on the ten real 200-page documents"
+mitigation  = "The number is a nightly **ratchet** that may fall and never rise, not a one-off measurement; `Frame` is **block-count**-bounded rather than page-bounded, so a 400,000-block page is harmless"
+contingency = "Charter F1's fallback, scheduled at [roadmap](16-roadmap.md) DP8 (P2 exit, week 18): retune the 8,192-block frame target, `rss.gen5000p_peak_bytes` and every storage projection; **T2 arrives at 5M blocks rather than 50M** and [vision](00-vision.md) V20-2 is refit rather than defended"
+kill        = []
+paths       = ["P1"]
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-T3"
+category    = "technical"
+source      = "docs/plan/17-risks.md:196"
+title       = "**The index format needs a breaking migration.** `SCHEMA` versions the L2 model and the store together, `digest_recipe` gates every content-addressed cache in the fleet, and `omniweave.index.lock` is a committed artefact with a registered merge driver"
+likelihood  = 3
+impact      = 4
+owner       = "model"
+indicator   = ""
+trigger     = "`schema.migration_rewrite_rows`(unbuilt) > 0 against `block`, `segment` or `cache_index` in any migration; **or** a proposed `digest_recipe` bump inside 12 months of the last"
+mitigation  = "Geometry is deliberately **not** a `content_digest` input, so a driver's bbox jitter cannot orphan a document; a recipe bump is serviced by `op.redigest` over stored fields rather than a re-parse; migrations apply in numeric order to an empty file under `G27(b)`, which also asserts density and uniqueness; `min_reader` on the archive; `[DER]` objects sit outside the read promise"
+contingency = "`digest_recipe` is budgeted at **at most annually** (charter 6.6) and its cost is stated: every content-addressed cache in the fleet invalidates. A `SCHEMA` major gets the two-release deprecation window and `ow store export --portable` is the transport out. There is no in-place rescue and the plan does not pretend one exists"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-T4"
+category    = "technical"
+source      = "docs/plan/17-risks.md:197"
+title       = "**`part` determinism does not hold for `python-pptx` across nine cells** (charter F16). `byte` is knowingly resolution-scoped; `part` is **promised**"
+likelihood  = 3
+impact      = 3
+owner       = "out"
+indicator   = ""
+trigger     = "`out.part_digest_cell_disagreements`(unbuilt) > 0 on the 40-unit golden fixture across the 9 OS/Python cells"
+mitigation  = "OUT13 proves rather than claims (3 x `PYTHONHASHSEED`, two temp dirs); OUT14 bans clock, cwd, env and RNG in every `omniweave-target-*`; `ArtefactDeterminism` is compared as a superset, so a lower floor is expressible"
+contingency = "Charter F16's fallback: the floor moves from `part` to a normalized-part class -- **a card-visible downgrade, not a silent one**, which means a new `ArtefactDeterminism` member and a card change. Deadline is [roadmap](16-roadmap.md) DP4, P9 week 8 = calendar week 50"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-T5"
+category    = "technical"
+source      = "docs/plan/17-risks.md:198"
+title       = "**Whole-point quantization does not absorb driver geometry jitter** (charter F31), and `Q-G4` is a **hard byte-diff gate** on `shape` across two pdfium minors x nine cells"
+likelihood  = 3
+impact      = 3
+owner       = "model"
+indicator   = ""
+trigger     = "`layout.corner_delta_p99`(unbuilt) > 0.5 pt on the 500-page fixture across two pdfium minors x two layout-model revisions"
+mitigation  = "The gate exists and is hard; the fallback is priced before the golden suite freezes rather than after; [quality](13-quality.md) Q-Q8 names its own dependency on this outcome explicitly"
+contingency = "Charter F31's fallback, scheduled at DP2 (week 53): **widen the quantum** -- one budgeted `digest_recipe` bump -- and demote geometry goldens to `STRICT_BBOX_TOL_RATIO = 0.0025` on every run. **This must be written down before the golden suite is frozen**, or the exit costs a fleet-wide cache invalidation"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-T6"
+category    = "technical"
+source      = "docs/plan/17-risks.md:199"
+title       = "**The OUT contract abstracts three targets into an abstraction that fits none.** `pptx` is a slide canvas with z-order and `passthrough` fidelity; `deck` is an HTML page measured by a browser at runtime; `docx` is a flow document with no canvas and no `bake` -- and there is one `CompileV1`, one ConstructTable loader, one rule runner and one `GateStatus` over all three"
+likelihood  = 2
+impact      = 4
+owner       = "out"
+indicator   = ""
+trigger     = "The `docx` target cannot reach `GateStatus.passed` without a change to `omniweave_core.out`; **or** `out.constructs_shared_frac`(unbuilt) < 0.15 -- three ConstructTables sharing almost no `maps_to` symbol are three products, not one contract"
+mitigation  = "The charter designed the falsifier in: `docx` is in the release-1 set **specifically** to prove the abstraction is not one implementation wearing an interface -- a FLOW carrier, no canvas, no z-order, no bake. `CompileV1` has no `validate()`, so a target cannot skip its own gate (OUT23). `constructs.toml` is data, so per-target divergence is a row count rather than a branch. Determinism, citations, laws and `bake` are all **declared per target** (`deck` omits R4; `video` refuses R3) rather than assumed uniform"
+contingency = "Narrow the contract to what all three genuinely share -- the ConstructTable grammar, `Finding`, `GateStatus`, the `el`/`nsig` two-factor anchor and the six-digest purity law -- and let `measure`, `rules` and `lower` diverge fully per target. The three things that would **not** survive that narrowing are named now so the retreat is bounded: one `Disposition` vocabulary, one marker grammar (`OWC1`), one `ArtefactDeterminism` ladder. A `GeneratorTarget` abstraction over \"generation\" stays rejected either way"
+kill        = []
+paths       = ["P4"]
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-T7"
+category    = "technical"
+source      = "docs/plan/17-risks.md:200"
+title       = "**Scheduler overhead exceeds 0.5 ms/unit** (charter F8), so the 100k-document reference ingest does not hold. Nothing in the mined collection measures a per-unit transactional scheduler"
+likelihood  = 3
+impact      = 2
+owner       = "runtime"
+indicator   = ""
+trigger     = "`sched.claim_p95_ms`(unbuilt) > 1 ms on 1M synthetic units with a no-op operator, across NVMe, spinning disk and SMB"
+mitigation  = "One writer, one thread, one transaction per unit (INV-17) is the property that makes the number knowable at all; `queued_ms` is always separate from `ran_ms`, so a contended lock is distinguishable from slow work"
+contingency = "Charter F8's fallback at DP10 (P4 exit, week 40): group commit widens from zero-derived-row transitions to same-operator batches -- which weakens I20 for the case it protects, **a trade to make with a number in hand**"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-T8"
+category    = "technical"
+source      = "docs/plan/17-risks.md:201"
+title       = "**No licence-clean layout detector ever lands** (charter F4), so `layout.class_hist` is permanently absent and the `REPAIR` rung stays thin on the PDF path"
+likelihood  = 4
+impact      = 2
+owner       = "router"
+indicator   = ""
+trigger     = "`route_decision.cause = 'layout_unavailable'` share(unbuilt) still 1.0 for `REPAIR` at v1.0"
+mitigation  = "The signal registry ships a day-one set needing **no** Datalab weights: `decode.cid_ratio`, `decode.replacement_ratio` and `geometry.overlap_line_frac` are model-free; the veto's cost is recorded per decision"
+contingency = "Charter F4's fallback: ship without it, and every affected decision records `cause = \"layout_unavailable\"` so **the cost of the veto is a number in the scoreboard rather than a rumour**. [Ingest and routing](05-ingest-and-routing.md) Open 6 and 7 name the two capability gaps this leaves -- a handwritten annotation on a born-digital page, and a borderless table"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-T9"
+category    = "technical"
+source      = "docs/plan/17-risks.md:202"
+title       = "**The grounding gate quarantines true facts** (charter F12). Coreference (\"the Company\" to Acme Corp) and every summarisation-shaped fact are quarantined by design"
+likelihood  = 3
+impact      = 3
+owner       = "quality"
+indicator   = ""
+trigger     = "`graph.ungrounded_quarantine_rate`(unbuilt) > 0.15 on the 500-Segment human-labelled audit, split by script and document class"
+mitigation  = "`quarantine` is a table, not a `DELETE` -- graphrag's `filter_orphan_relationships` is the named anti-pattern; the rate is measurable precisely because the rows survive"
+contingency = "Charter F12, scheduled at DP6 (week 46): above ~15% add a second cheap \"quote it again\" repair call; above ~30% the exact `find` gains a bounded fuzzy fallback and a `SPAN_FUZZY` taint bit returns -- **the first fuzzy band in the framework needing calibration**"
+kill        = ["K-8"]
+paths       = ["P3"]
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-T10"
+category    = "technical"
+source      = "docs/plan/17-risks.md:203"
+title       = "**`covered_frac` on real corpora is below 0.2** (charter F13), so deterministic-first is a correctness argument and not an economic one"
+likelihood  = 3
+impact      = 3
+owner       = "quality"
+indicator   = ""
+trigger     = "Median `graph.covered_frac` < 0.2 across the seven document classes (10-K, court filing, scientific review, merger agreement, RFP, technical manual, scanned correspondence)"
+mitigation  = "Coverage is a ledger -- `derive_cover` with a per-block bitmap and an `empty_reason` that is non-NULL exactly when a pass covered ground and emitted nothing -- so the claim is checkable rather than asserted; `cost_rank` is primary in Coverage ordering, so the *ordering* survives even if the economics do not"
+contingency = "Charter F13 at DP6: `llm_coverage_floor` becomes per-corpus and [structure extraction](06-structure-extraction.md) section 2.4 is **rewritten rather than defended**"
+kill        = ["K-6", "K-8"]
+paths       = ["P3"]
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-T11"
+category    = "technical"
+source      = "docs/plan/17-risks.md:204"
+title       = "**Pure-Python MinHash and Louvain are too slow** (charter F15) **and the named escape has an unverified licence** (charter F40, `graspologic-native`)"
+likelihood  = 2
+impact      = 2
+owner       = "quality"
+indicator   = "G3"
+resolves_in = "gate"
+trigger     = "`graph.band_build_s`(unbuilt) > 600 on 1.5M entities, or `graph.cluster_sweep_s`(unbuilt) > 600 on 2M edges, on a 4-core laptop; and F40's G3 scan not clearing"
+mitigation  = "`entity_band` is **persisted**, never an in-memory index -- 128-perm signatures for 1.5M entities is ~1.3 GB of RAM; `MAX_CLUSTER_EDGES` refuses rather than degrades; `datasketch`, `networkx` and `numpy` are rejected with named reasons"
+contingency = "F15 and F40 composed: `NUM_PERM` drops to 64 **and** `MAX_COMMUNITY_SIZE` shrinks, and `MAX_CLUSTER_EDGES` becomes a plain refusal with **no named escape** -- because naming an escape that does not exist is worse than naming none. Never a second in-tree implementation"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-T12"
+category    = "technical"
+source      = "docs/plan/17-risks.md:205"
+title       = "**SQLite cannot hold T2.** 50M Blocks at 660 B/block is a 33 GB store with one writer, a WAL valve and `vectors = \"off\"`"
+likelihood  = 2
+impact      = 3
+owner       = "retrieval"
+indicator   = "query.warm_p50_ms"
+resolves_in = "budget"
+trigger     = "`query.warm_p50_ms` > 250 ms (the G10 ceiling) on the generated 10M-block corpus; `wal.bulk_index_peak_bytes` > 2 GiB"
+mitigation  = "codegraph does 6.4M relationships in SQLite with sub-ms reads; the Bulk window, the `PREFILTER_MAX = 200_000` exact-or-prove probe, one `BEGIN DEFERRED` per query and `MAX_SNAPSHOT_MS = 5_000` are the four mechanisms that keep it bounded; the 16-bit `block_id` minting prefix ships at shard 0 from day one"
+contingency = "T3 -- Postgres behind the same four protocols (`Store` 4, `Reader` 6, `DocSink` 11, `GraphSink` 12 = 33 methods, not four) -- is pulled forward. Charter F28 is settled *structurally* already: the prefix is reserved now, at zero cost, **precisely so this cannot become a migration**"
+kill        = ["K-13"]
+paths       = ["P1"]
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-T13"
+category    = "technical"
+source      = "docs/plan/17-risks.md:206"
+title       = "**A sub-page commit boundary is needed** (charter F29). A 4M-cell sheet is one page, therefore one transaction, therefore a multi-GB WAL and a multi-minute commit -- and the WAL valve cannot help mid-transaction, because its release condition is a full backfill"
+likelihood  = 3
+impact      = 2
+owner       = "model"
+indicator   = "rss.merged4mcell_peak_bytes"
+resolves_in = "budget"
+trigger     = "`loop_lag_max_ms` (250 ms) breached by a single `Store.complete()` on the 4M-cell fixture; `rss.merged4mcell_peak_bytes` > 4 GiB"
+mitigation  = "Generation staging already fixed the 5,000-*page* case; `MAX_RESIDENT_CELLS = 65_536` bounds the out-of-order cell buffer; the residue is narrow and named rather than latent. [Performance](12-performance.md) reads the 4 GiB row as a **worker** peak requiring a declared `memory_mb = 4096`, so `ow doctor`'s refusal fires before the run rather than the OOM killer firing during it"
+contingency = "Charter F29: `MAX_BLOCKS_PER_DOC` plus a `RESOURCE_LIMIT` refusal naming the knob. **A sub-page boundary complicates the work-table unit and is not granted speculatively**"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-T14"
+category    = "technical"
+source      = "docs/plan/17-risks.md:207"
+title       = "**Models do not emit `e412`, `c412` and `k412` reliably** (charter F14). The `short_id` premise is tested only for the block sigil, and C13/C11 made three more load-bearing"
+likelihood  = 3
+impact      = 3
+owner       = "quality"
+indicator   = ""
+trigger     = "`serve.cite_emission_accuracy`(unbuilt) per sigil < 0.98 while the `d<doc>#<n>` form is >= 0.99, over 1,000 generations"
+mitigation  = "INV-8 closes the prompt-safe space, so a mis-emission is a refusal (`OW_CITE_*`) rather than a wrong document; the prompt builder accepts only the four `Cite` NewTypes; [interfaces](10-interfaces.md) F63 makes the three narrow Actions accept a bare integer plus an explicit `kind`, so a sigil change costs a schema regeneration and not a surface redesign"
+contingency = "Charter F14 at DP1 (before the P7 freeze, week 36): **change the sigil before anything ships, never after -- a sigil in a shipped answer is forever.** Unmeasured at week 36, v0.1 ships with no non-Block sigil in a rendered Answer. This is the only row in the register whose contingency becomes **unavailable** after release rather than merely more expensive"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-T15"
+category    = "technical"
+source      = "docs/plan/17-risks.md:208"
+title       = "**`resolve()`'s memo key under-keys four `Requirement` fields** ([driver system](04-driver-system.md) Q2): `input_kind`, `requires_produces`, `granularity` and `pinned` are absent, so two requirements differing only in `granularity` collide and the second silently receives the first's driver"
+likelihood  = 3
+impact      = 4
+owner       = "drivers"
+indicator   = ""
+trigger     = "Any failure of the four memo-key properties in the `capability` conformance suite: two `Requirement`s differing only in `granularity` must resolve to different `Resolution`s, and likewise for `input_kind`, `requires_produces` and `pinned`"
+mitigation  = "**Discharged by ADR-7 D7.1.** `Requirement` gains a derived `digest`, computed at construction over `dataclasses.fields(self)` -- so a ninth field enters the key with nobody remembering it -- and `resolve()` memoises on `(requirement_digest, policy_digest, catalog_digest)`. [Driver system](04-driver-system.md) section 4.8's soundness condition is **struck**, not weakened: with the digest there is no condition left to state. Measured: 187 canonical bytes, 3.58 us per hash, under 0.5 ms per run at the \"fewer than 128 distinct requirements\" bound"
+contingency = "The fix is landed, so what this row now watches is the loss it bought: the early-warning counter `drivers.resolve_memo_collisions` this row used to propose is **retired rather than satisfied**, so no (unbuilt) id is owed to `eval/counters.toml`, and if the digest is ever wrong nothing counts it. **Narrowing `digest` back to a written key list instead of `fields()` reopens this row at its original 3 x 4** -- which is the same mechanism that produced the defect, since the charter's six-tuple was complete when written and went stale as `Requirement` grew (ADR-7)"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-T16"
+category    = "technical"
+source      = "docs/plan/17-risks.md:209"
+title       = "**The citation promise is format-dependent, and both fidelity gates pass anyway.** `firecrawl-anydoc`'s eight `Block` variants carry **no source address of any kind** (`anydoc/src/model/block.rs:5-38`: `Heading`, `Paragraph`, `List`, `Table`, `BlockQuote`, `CodeBlock`, `Rule`, `Math` -- only `Asset` carries `origin_part`), so `parse.office.anydoc` declares `origin_span = \"none\"` honestly. `Q-G6`'s `span_exact_rate == 1.000` therefore holds **vacuously** on every office slice -- [quality](13-quality.md) says so in those words, because the denominator is Blocks that *claim* verbatimness -- and `citation_soundness >= 0.995` is satisfied by a `Locus.reason` in place of a `Quad`. The framework's two hardest fidelity gates are both green on the format family most users will bring first"
+likelihood  = 5
+impact      = 4
+owner       = "model"
+indicator   = "span_exact_rate"
+resolves_in = "metric"
+trigger     = "`corpus_card.verbatim_fraction` < 0.5 on any corpus whose `[corpora]` roster is majority office, **while** `span_exact_rate` reports 1.000 -- the two read together are the finding; plus `quality.verbatim_denominator_frac`(unbuilt) (the `span_exact_rate` denominator as a share of all Blocks) below 0.5 on that slice"
+mitigation  = "Disclosure rather than a gate, which is the honest shape: `corpus_card.verbatim_fraction` prints before any query runs; the card declares `origin_span = \"none\"` and `os = {\"k\": \"none\"}`; `vendor/anydoc/FORK-TRIGGER.md`'s **first named clause** is the source-address fix; `Quote` is an ordered `IntEnum` with the weakest tier lowest, so a segment's `quote_min` is the minimum over its members and an office segment cannot claim more than it has"
+contingency = "Two exits, in order. (1) The fork: anydoc is vendored at a recorded sha and the fork trigger's first clause adds a byte offset per `Block` variant -- a priced option, not a cost paid now. (2) If the fork is not taken, `citation_soundness` gains a **mandatory slice split** on `origin_span`, so the published 0.995 can never be carried by a corpus whose spans are reasons rather than offsets. Until one of the two lands, `K-2` is not a test of the thesis on the office path and this register says so"
+kill        = ["K-2"]
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-T17"
+category    = "technical"
+source      = "docs/plan/17-risks.md:210"
+title       = "**The anydoc eager marshal dominates, and the `inproc` seam earns nothing** (charter F2). `py.detach` returns a fully marshalled document in one call, so `Isolation.INPROC` buys a saved IPC hop against a full copy of the document in the host's address space, and `max_inproc` multiplies that by the worker count"
+likelihood  = 3
+impact      = 2
+owner       = "runtime"
+indicator   = "rss.gen5000p_peak_bytes"
+resolves_in = "budget"
+trigger     = "`ow bench inproc` over `fixtures/office-200` showing eager-marshal wall time > 30% of total at `max_inproc` in {1,2,4,8}; **or** `rss.gen5000p_peak_bytes` breached by the office path alone"
+mitigation  = "The seam is declared per driver rather than assumed: `Isolation` is a card fact, `subproc` is the shipped escalation for every other driver, and the GIL-held fraction is reported beside wall time so a saved hop is distinguishable from a stalled host"
+contingency = "`K-9`: the `inproc` seam (S1) is deleted, office moves to `subproc`, four seams become three -- a charter amendment priced as one. `firecrawl-anydoc`, `omniweave-office` and every card fact survive; only `Isolation.INPROC` eligibility and `max_inproc` go, at the cost of one IPC hop per document. Scheduled at DP9 (P3 exit, week 26)"
+kill        = ["K-9"]
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-T18"
+category    = "technical"
+source      = "docs/plan/17-risks.md:211"
+title       = "**The Toolchain seam puts a second language on the release path and outside every in-process guard.** `deck` needs `target-runtime.ts`, a Node runtime pinned per platform from nodejs.org's own `SHASUMS256.txt`, a `pnpm` lockfile, a `toolchains/` tree and `tools/toolchains.toml`'s two tables -- in a framework that otherwise publishes only `py3-none-any` wheels. [Security](14-security.md) states the containment gap in one sentence: the PEP 578 egress audit hook is armed \"in every omniweave process\" and \"a Toolchain child (S2) is **not** covered at all\""
+likelihood  = 3
+impact      = 3
+owner       = "out"
+indicator   = "toolchains.reproducible"
+resolves_in = "job_assertion"
+trigger     = "The `toolchains.reproducible` job assertion failing on any cell; **or** a `deck` compile reaching `GateStatus.passed` while `[compile] runtime_rules = true` means the child computed findings the Python side cannot recompute ([generation](09-generation.md) Q5); **or** any network syscall observed from the Toolchain child under the `sandbox` conformance suite"
+mitigation  = "The seam is a 0600 unix socket or stdio, never a loopback listener; the app bundle is platform-independent and sha256-pinned; `compile.text.owtext` in `omniweave-conform` exercises the contract's refusal branches with no browser, so the contract stays falsifiable without the seam"
+contingency = "`K-10`: the `deck` Target is cut and with it S2 -- three seams, one language, no `toolchains/` tree, no `pnpm` lockfile in CI. Independently of `K-10`, the egress gap is closed by giving the Toolchain child its own declared `NetworkPolicy` intersected at spawn, because an in-process audit hook cannot reach across a process boundary and pretending otherwise is worse than declaring the hole"
+kill        = ["K-10"]
+paths       = ["P4"]
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-T19"
+category    = "technical"
+source      = "docs/plan/17-risks.md:212"
+title       = "**A port type acquires a second home and the two drift apart, in the one signature a third-party author reads first.** This has already happened once and is recorded here because it was closed rather than because it is hypothetical: `FormatGuess` and `StreamHint` were each declared **three incompatible ways** while both sat in the signature of `sniff()`, the first method a `parse/1` driver implements -- two fields in [driver system](04-driver-system.md) section 1.3, six in [ingest and routing](05-ingest-and-routing.md) section 2.1 including a `basis` a driver has no standing to assert, and a flat \"`(media_type, confidence)`\" in [api sketch](18-api-sketch.md). **Closed** by a single declaration at [04](04-driver-system.md) section 1.3 -- `media_type`, `format_token`, `confidence`, `consumed_bytes` -- with `basis` moved to a host-side `RankedGuess` wrapper in routing"
+likelihood  = 2
+impact      = 4
+owner       = "drivers"
+indicator   = "G27"
+resolves_in = "gate"
+trigger     = "`G27(c)`'s terminology lock resolving any `omniweave_ports` type to more than one home; **or** `ports.type_redeclarations`(unbuilt) > 0 -- a `gate_docs.py` `d2` count of declaring sites per `omniweave_ports` symbol across the plan, which is > 1 exactly when the defect is back"
+mitigation  = "The detector that would have caught it is now armed rather than assumed: both names carry a lock row naming section 1.3 as the single home, and the one-home rule makes a second declaration a check failure rather than a reader's discovery. `RankedGuess(guess, basis, detail)` gives the host a legal place for what the driver may not assert, which is the pressure that produced the six-field version in the first place"
+contingency = "Priced by when it is found, and the price is stated in advance: before [roadmap](16-roadmap.md)'s week-10 freeze of every type in `omniweave_ports` it is a two-engineer-day edit; after it, a `CONTRACT` bump on a `RELEASE` MINOR with the deprecation window of charter 6.6. There is no third option in which the two declarations both stand"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-T20"
+category    = "technical"
+source      = "docs/plan/17-risks.md:213"
+title       = "**A span is written in one coordinate system and read in another, with no database-level detector.** Also already materialised and also closed: `GraphSink.mention` produced `ts_a`/`ts_b` as offsets from `normalize_k`'s **output** space and stored them as offsets into `block.text`, when every one of `normalize_k`'s operations changes length. `mention`'s DDL constrains `ts_a <= ts_b` and nothing more, SQLite cannot call the normaliser, and **no CHECK, invariant or property test in the plan would have caught it** -- the register's only row whose original detector count was zero. **Closed** by `normalize_k` returning `(normalized, back)` with the back-map built during the transform, `ground()` as the sole producer of any span, a round-trip post-condition asserted inside `ground()` rather than only in fixtures, and P-GROUND's seven fixture classes"
+likelihood  = 2
+impact      = 5
+owner       = "model"
+indicator   = ""
+trigger     = "P-GROUND failing on any run -- class 7 in particular, the class whose length delta is largest; **or** [structure extraction](06-structure-extraction.md) section 11's semgrep rule matching an unsubscripted `normalize_k(...)` compared against a `str`, which is statically always `False` and is the exact misuse that produced the defect; **or** `graph.span_roundtrip_failures`(unbuilt) > 0, `ground()`'s post-condition counted rather than only asserted"
+mitigation  = "Three detectors where there were none, each cheap and each fail-closed. The post-condition fires at the one producer. P-GROUND asserts `normalize_k(block_text[ts_a:ts_b])[0] == normalize_k(quote)[0]` over seven classes with **different** length deltas and fails if the set has fewer, so the fixture list cannot be quietly thinned. The semgrep rule is written as an unsubscripted-call match rather than as \"a comparison mentioning `normalize_k`\", so it has no in-plan false positives and will not be switched off within a week. `GR15` keeps `mention` the only table referencing both spaces, so there is exactly one place to check"
+contingency = "If the post-condition's `None` return proves to cost groundable quotes, `ground()` grounds the first occurrence **whose round trip holds** rather than the first occurrence outright -- a loop instead of a branch, no caller change, and [structure extraction](06-structure-extraction.md) already prices it and names the audit that decides it. What does not change under any outcome: `ground()` stays the **sole** producer of a span. A second producer is how this defect happened, and re-admitting one is refused here rather than re-argued later"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-E1"
+category    = "ecosystem"
+source      = "docs/plan/17-risks.md:219"
+title       = "**graphrag is in declared maintenance mode.** It is the design reference for extraction, gleaning, community reports and clustering determinism -- and it is **not** a dependency, which changes the shape of the risk: there is no upstream to track, no CVE channel we consume, and the transitive victim is `graspologic-native`, whose `>=1.2,<1.3` pin exists because 1.3 changes Leiden output and whose licence is unverified (charter F40)"
+likelihood  = 5
+impact      = 2
+owner       = "release"
+indicator   = "G3"
+resolves_in = "gate"
+trigger     = "`tools/vendor.toml` `last_seen` for graphrag past 12 months, **or** `graspologic-native` with no release in 12 months, **or** its G3 scan not clearing"
+mitigation  = "Microsoft's posture is **declared** -- bug fixes and dependency updates, \"particularly to address CVEs as they arise\", MSRC channel, 24 h response -- and a dependency that has told you its policy is more predictable than markitdown's or olmocr's undeclared silence. omniweave imports **no** graphrag package: `graphrag-chunking` is rejected with four specific defects, including `sentence_chunker.py:9` importing nltk that is absent from its own manifest, eight `nltk.download()` calls inside `SentenceChunker.__init__`, and `create_chunk_results.py:19-30` advancing `start_char` as if chunks did not overlap -- **so every provenance offset after the first is wrong and the error accumulates**"
+contingency = "Nothing to do for the design reference: it is read, not imported, and the ideas taken (`RAI_TRANSPARENCY.md` as an artefact type, the extraction schema shape, three-way clustering determinism) do not decay. For `graspologic-native`: F40's fallback, `MAX_CLUSTER_EDGES` becomes a plain refusal with no named escape"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-E2"
+category    = "ecosystem"
+source      = "docs/plan/17-risks.md:220"
+title       = "**Native context windows grow enough to weaken the value proposition.** The real incumbent is the agent reading the file; if a host can hold a 5,000-page matter and index it internally, four of omniweave's five arguments -- routing, an identity-stable store, a citable graph, a corpus card -- get weaker, and only the fifth, **provenance an answer can be challenged on**, survives untouched"
+likelihood  = 4
+impact      = 4
+owner       = "surface"
+indicator   = ""
+trigger     = "`bench/serve/`'s **no-omniweave control arm** reaching within one Wilson width of the omniweave arm's `task_accuracy` on the 30-task harness, **while** `source_reread_rate` fails to fall. Both numbers come from one nightly run under [quality](13-quality.md)'s `Control guard`"
+mitigation  = "The thesis is deliberately not \"context is scarce\". It is that a converted file loses the five things in [vision](00-vision.md) section 1.1 *before* it reaches any context window: a scanned page range returns empty text and the agent reads absence as content, and a citation to a *file* is unfalsifiable at the granularity anyone cares about. No context window makes `import(export(store)) == store`, `rebind()`'s cite carrying, or the fifteen absence gates unnecessary. `first_answer_seconds`, the 1,900-token front door and the four listed tools exist so the comparison is against **cost**, not capability"
+contingency = "Reposition on the two claims a larger window cannot answer: **absence with a reason** -- a zero result that is `absent` only after fifteen gates, with the pages and the fix command named -- and **the OUT direction**, a compiled artefact re-entering as a citable corpus document with `Method.ROUNDTRIP`. Both are structural, not size-dependent. Concretely: drop the context-economy framing from the front door's tool descriptions, and make `false_confident_zero <= 0.01` and `citation_soundness >= 0.995` the headline instead of any latency or token number"
+kill        = ["K-1"]
+paths       = ["P5"]
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-E3"
+category    = "ecosystem"
+source      = "docs/plan/17-risks.md:221"
+title       = "**Bus factor 1 on the two most load-bearing external capabilities.** `olmocr` -- the only permissive high-accuracy OCR, Apache-2.0 code **and** weights -- is 88% one author and 5.2 months quiet; `lift`, the only schema-guaranteed extractor, is **1 author, 24 commits**"
+likelihood  = 4
+impact      = 3
+owner       = "release"
+indicator   = ""
+trigger     = "`tools/vendor.toml` staleness past 12 months for olmocr, **or** a weights revision no longer resolvable at its recorded sha, **or** the `parse.page.olmocr` capability probe failing on a fresh install"
+mitigation  = "The charter's answer is structural: vendor the **inference client and the prompt**, treat the weights as the asset, own the harness, and never put either on the critical path as a floating `pip` dependency. Weights are pinned by exact commit sha plus per-file hashes; `revision=\"main\"` is a G8 lint error and is forbidden framework-wide. A 96%-single-author repo is **prior art, not a dependency**"
+contingency = "For olmocr the harness is already ours, so a dead upstream costs a weights migration and not a rewrite: `omniweave-vision` is one distribution and `parse.page.olmocr` is one card. Mirror the weights by digest into the same ZIP + `manifest.toml` + `.sha256` channel `omniweave-golden` uses (path **P2**; ADR-10 D1 and D6). If no permissive weights family with a pinnable revision exists at all, that is `K-11`. For lift, nothing is taken -- `json-schema-to-pydantic` is third-party and reusable, and `project_schema()` is omniweave's own"
+kill        = ["K-11"]
+paths       = ["P2"]
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-E4"
+category    = "ecosystem"
+source      = "docs/plan/17-risks.md:222"
+title       = "**No third-party Driver ever ships**, so the Port, DriverCard, testkit, attestation and `omniweave-index` apparatus is cost with no return and the ecosystem claim is untested at v1.0"
+likelihood  = 4
+impact      = 4
+owner       = "drivers"
+indicator   = ""
+trigger     = "The `omniweave-index` card-stub index holding **zero** externally-authored attested cards at v1.0. V10-12 makes at least one a release criterion; V20-6 wants >= 5 across >= 3 Ports"
+mitigation  = "Every mechanism a third party needs is cheap by construction: a driver's whole omniweave surface is `omniweave_ports` -- ~40 KB, stdlib only, no first-party dependency of its own -- so it cannot pin the framework and a core upgrade is never blocked by a driver's floor; `ow conform` writes the `[quality]` block; `ow out scaffold` generates a target's shape; G16 loads the previous two releases' template drivers against HEAD"
+contingency = "`K-12`: freeze the apparatus -- no new Ports, no `omniweave-index` fetch path, no attestation registry work, no `ow conform --bench` publishing surface -- and move the effort to first-party format coverage. The Ports themselves stay, because they are also the internal seam that keeps `omniweave-core` at zero third-party dependencies; what stops is the *ecosystem investment*"
+kill        = ["K-12"]
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-E5"
+category    = "ecosystem"
+source      = "docs/plan/17-risks.md:223"
+title       = "**`firecrawl-anydoc` is our only compiled dependency, is three months old, is 91% one author, and sits on the default install path** (charter F33)"
+likelihood  = 3
+impact      = 3
+owner       = "release"
+indicator   = ""
+trigger     = "Platform-support issues attributable to `firecrawl-anydoc` in the first two releases >= 3, **or** an `abi3` break on a supported cell"
+mitigation  = "Source is vendored at a recorded sha with a written `vendor/anydoc/FORK-TRIGGER.md`; the crate has **no HTTP client of any kind** -- no `reqwest`, `hyper` or `ureq` -- so it structurally cannot SSRF or phone home; it carries 12 cargo-fuzz targets, the only fuzzed parser in the collection. **Maturity of practice beats age of repo**"
+contingency = "Charter F33's fallback at DP13 (two releases after v1.0): move office behind `omniweave[office]`, with a one-line remedy printed in the \"no driver for .docx\" error. **The dependency row is the only thing that changes** -- no component in the architecture moves, and [repository layout](11-repo-layout.md) notes the laptop-minimum profile *drops* from 44 MB to 29 MB, so the fallback improves one axis. The fork trigger is a priced option, not a cost paid before shipping"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-E6"
+category    = "ecosystem"
+source      = "docs/plan/17-risks.md:224"
+title       = "**graphify relicenses to source-available.** Apache-2.0 today, **relicensed once already** (MIT to Apache-2.0 in 2026, both texts shipped), single-owner and VC-funded -- which is the standard next step for that profile"
+likelihood  = 3
+impact      = 1
+owner       = "licence"
+indicator   = ""
+trigger     = "The upstream LICENSE digest changing against `vendor/graphify-security/.sha256`"
+mitigation  = "Apache-2.0 is irrevocable for the version received, and the plan takes exactly two files, **vendored at a pinned sha with the header and NOTICE in-tree**: `vendor/graphify-ids/ids.py` and `vendor/graphify-security/llm_wrap.py`. There is no floating PyPI dependency on `graphifyy`"
+contingency = "Nothing. That is the point of vendoring at a sha: a relicense affects future versions we do not take. The residual exposure is that we own the maintenance of two files, which we already do"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-E7"
+category    = "ecosystem"
+source      = "docs/plan/17-risks.md:225"
+title       = "**No ANN library clears G3 with pure wheels for nine cells** (charter F10), so the semantic Channel stays off past v1"
+likelihood  = 3
+impact      = 2
+owner       = "retrieval"
+indicator   = "G3"
+resolves_in = "gate"
+trigger     = "F10's G3 three-way scan not clearing, or no `py3-none-any` wheel for a supported cell -- measured **before the vector phase starts**, at DP3 (week 24)"
+mitigation  = "`vectors = \"off\"` is the shipped **default**, so this is a disclosed product limitation rather than a regression; `VectorBackend` is selected by name in config behind an entry point, so a later library is an install and not a code change; four Channels plus a `Verdict` that says `semantic: off` is a complete answer, and the ceiling arithmetic is `4.6 / 61` rather than `5.4 / 61`"
+contingency = "Charter F10's fallback: `vector.brute` plus the `VEC_BRUTE_MAX = 250_000` refusal. F9 composes with it: below 0.95 recall the stdlib backend ships `sig_full` only, with a smaller ceiling. Below 0.80 it is `K-4`"
+kill        = ["K-4"]
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-E8"
+category    = "ecosystem"
+source      = "docs/plan/17-risks.md:226"
+title       = "**No licence-clean SVG rasterizer for `bake`** (charter F18). `cairosvg` and `svglib` are both LGPL-3.0, and `cairosvg` is G3's named regression fixture"
+likelihood  = 4
+impact      = 1
+owner       = "out"
+indicator   = "G3"
+resolves_in = "gate"
+trigger     = "F18's resolved-candidate G3 scan not clearing at any acceptable bundle delta, measured at DP5 (before P9 starts, week 40)"
+mitigation  = "`bake` ships `unavailable` on every target, **fail-closed, with both exits named in the error** -- the tier is specified and honestly empty rather than half-working"
+contingency = "Charter F18's fallback, promoted here to `K-5`: a disposition with **zero live rows** is a reason to demote `bake` from `unavailable` to `forbidden` and remove it from `Disposition` with a documented degradation, not to keep a vocabulary member nothing implements"
+kill        = ["K-5"]
+paths       = ["P4"]
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-E9"
+category    = "ecosystem"
+source      = "docs/plan/17-risks.md:227"
+title       = "**PDF-parser CVE cadence outruns our release cadence.** `local-deep-research` lists **13 advisories on the `pypdf` pin alone** (`local-deep-research/pyproject.toml`) -- the empirical CVE load of one PDF parser"
+likelihood  = 3
+impact      = 2
+owner       = "release"
+indicator   = ""
+trigger     = "An unpatched critical advisory on `pypdfium2` or `defusedxml` open > 7 days in the weekly advisory check"
+mitigation  = "The pin policy is role-based: anything reachable from untrusted input -- HTTP/TLS/crypto, XML/HTML/PDF parsers, template engines, archive readers, inference servers -- gets a **floor with a CVE comment and no ceiling**, because a ceiling there is an unpatchable CVE. G7 fails a constraint tighter than `>=` with no comment"
+contingency = "The PDF path gets a named owner and a weekly advisory check, not an annual bump. If no fix exists, `parse.pdf.pdfium` leaves `[drivers] enabled` and the router degrades to `decode` with `driver_unavailable` -- a `Degradation`, not a silent miss"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-E10"
+category    = "ecosystem"
+source      = "docs/plan/17-risks.md:228"
+title       = "**`pdf-inspector` is unaudited and sits on the default install line.** It is Firecrawl's own crate, **not vendored in this tree**, reached from `anydoc/src/formats/pdf.rs:9`; its SPDX is unknown and its limit constants are unread. [Security](14-security.md) open question 1 calls it **blocking for release 1** and names the exposure: it is the one dependency that could reintroduce an unbounded parser behind an otherwise-bounded facade"
+likelihood  = 4
+impact      = 3
+owner       = "licence"
+indicator   = ""
+trigger     = "`THIRD_PARTY.md` still carrying no verdict row for `pdf-inspector` at the P3 exit (week 26); **or** any `limits` conformance fixture reaching a `pdf-inspector` code path with no corresponding `MAX_*` assertion"
+mitigation  = "The rest of anydoc's safety story is real -- twelve compile-time limit constants enforced at the read boundary, twelve cargo-fuzz targets, no HTTP client in eight crates -- which is exactly why one unaudited transitive crate is the hole rather than the norm. `THIRD_PARTY.md` states the incompleteness rather than omitting the row, so the gap is disclosed while it is open"
+contingency = "Read the crate's `LICENSE` and its limit constants at the pinned version, land a verdict row, and add its shapes to the `limits` conformance fixtures and the parity test. If the SPDX is not permissive, or if its limits cannot be clamped from the Rust side, the exit is the same as `R-E5`'s: office moves behind `omniweave[office]` and the PDF path uses `parse.pdf.pdfium` only, which is already a separate distribution and a separate card"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-E11"
+category    = "ecosystem"
+source      = "docs/plan/17-risks.md:229"
+title       = "**The numbers that gate release cannot be reproduced by anyone outside the project.** `omniweave-golden` is ~600 documents at ~240 MB, and the corpora that carry the interesting document classes are Tier C: LOCOMO and LongMemEval-S ship `document_redistributable = 0` and `assertions_redistributable = 0`, and merger agreements, RFPs and scanned correspondence are copyrighted by construction. So `citation_soundness`, `structure_f1`, `covered_frac` and `recall_at_10` are all partly measured on corpora a reviewer cannot obtain, which is the one property the whole plan is built to refuse"
+likelihood  = 4
+impact      = 3
+owner       = "quality"
+indicator   = ""
+trigger     = "`eval_corpus` rows with `publishable = 1` covering fewer than five of the seven document classes at v1.0; **or** any `[[gate]]` row in `eval/gates.toml` whose scoring corpus is entirely `document_redistributable = 0`"
+mitigation  = "The machinery is already honest about it: `eval_corpus` carries `document_redistributable`, `assertions_redistributable` and `publishable` as three independent booleans, `Q-G1` gates fixture licence facts, `Q-G26` gates split and corpus leakage, and a corpus whose licence forbids publication renders `withheld: corpus licence` rather than a number with no provenance"
+contingency = "Publish the **assertions** where the documents cannot travel -- `assertions_redistributable = 1` with `document_redistributable = 0` is one of the three legitimate combinations, and it makes a third party able to re-derive a score against their own copy of an EDGAR 10-K or a RECAP filing. Where even that fails, the gate row names the withheld corpus and the scoreboard prints `n` and an interval for the publishable slice alone. **A number nobody outside can challenge is presented as withheld, never as measured**"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-L1"
+category    = "legal"
+source      = "docs/plan/17-risks.md:235"
+title       = "**OpenRAIL-M weight licensing on the highest-accuracy parsers.** `marker/MODEL_LICENSE`, `surya/MODEL_LICENSE` and `lift/MODEL_LICENSE` are **byte-identical** (md5 `e1f69b64dee2f1641a9b1ab12adf24d6`). Attachment A **clause 2(c)** bars use \"for any purpose if You ... provide ... any product or service that **competes** with any product or service offered by ... Licensor\" -- **no revenue threshold, no funding threshold, no research carve-out**. Datalab sells document parsing; so does omniweave. The \"$5M startup exemption\" everyone quotes is clauses 2(a)/(b) at `marker/MODEL_LICENSE:56-57`, a *different* clause. `lift/README.md:232` says it outright: \"cannot be used competitively with our API\". The top-level `LICENSE` is Apache-2.0 and mentions weights nowhere: that is the trap"
+likelihood  = 5
+impact      = 5
+owner       = "licence"
+indicator   = "G3"
+resolves_in = "gate"
+trigger     = "`licence.tombstone_hits`(unbuilt) > 0 -- a `resolve()` rejected by a framework tombstone whose `[licence.weights].licence_sha256` matched -- **or** any G3 hit on `marker-pdf`, `surya-ocr`, `texify` or `lift`"
+mitigation  = "Three independent mechanisms, none of which is a review habit. (1) `tools/licences.toml` is the build-time denylist over the **resolved graph, the import graph and unpacked artifacts** (G3). (2) Framework-shipped **tombstones** are seeded with these weights' `licence_sha256`, so `compute_tier` returns `forbidden` for any card matching one, and a vetoed id resolves to a **quoted reason and a named replacement** rather than \"unknown driver\" (DR22). (3) `omniweave.acks.toml` voids on a `licence_sha256` change, so a mutated licence fails as `LICENCE_ACK_STALE`. The bit is `Restriction.competitor_bar`, one of the 32 reserved codes, so the fact travels as data. omniweave ships no weights at all"
+contingency = "Already taken, and it is a **product** decision recorded once: olmocr weights, Apache-2.0 code **and** weights. The ~4-point olmOCR-bench gap between surya's 83.3% and olmocr's ~79% is **the price of clause 2(c)**, and it is framed to reviewers that way so an accuracy comparison cannot silently reintroduce a licence blocker. The residual risk is reintroduction by a well-meaning benchmark PR, which is precisely what the tombstone seed set catches"
+kill        = ["K-11"]
+paths       = ["P2"]
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-L2"
+category    = "legal"
+source      = "docs/plan/17-risks.md:236"
+title       = "**AGPL enters transitively or by an undeclared import.** PyMuPDF is a **mandatory** dependency of `leann-core` (`LEANN/packages/leann-core/pyproject.toml:38`) and of `markitdown-ocr` (`markitdown/packages/markitdown-ocr/pyproject.toml:31`), both of which advertise MIT; `mineru` is AGPL in DataFlow's PDF extras; and `cairosvg` (LGPL-3.0) is *imported* by ppt-master's `svg_to_pptx/pptx_package/media.py` and declared in **no** requirements file"
+likelihood  = 3
+impact      = 4
+owner       = "licence"
+indicator   = "G3"
+resolves_in = "gate"
+trigger     = "Any new G3 denylist hit. The named regression fixtures are `PyMuPDF`, `mineru`, `pypandoc-binary`, `ffmpeg-static`, `cairosvg`"
+mitigation  = "G3 scans three surfaces, and the **import-graph scan is the one that matters**: `cairosvg` is the proof that manifest-only scanning is insufficient. `markitdown-ocr` self-registers through a `markitdown.plugin` entry point and is invisible once installed -- which is one reason discovery reads `importlib.metadata` and never imports (INV-4)"
+contingency = "Remove the offending distribution; there is no commercial-licence purchase path this plan will take. Where the capability is load-bearing, reimplement -- the plan already does exactly that for LEANN's index algorithm and markitdown's API shape. **If the gate does not catch `cairosvg`, the gate is manifest-only and insufficient**, and that is a gate defect rather than a dependency decision"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-L3"
+category    = "legal"
+source      = "docs/plan/17-risks.md:237"
+title       = "**Output share-alike contaminates the deliverable.** The same Datalab licence, **clause 8** (`marker/MODEL_LICENSE:39`), applies the licence \"to the Output and any derivatives, changes or improvements to or of the Output\", with Output defined at 1(k) as the informational content produced. For a parsing product that is worse than the revenue gate: every parsed customer document would carry OpenRAIL-M restrictions and inherit clause 2(c), and you could place a customer's own parsed contract under neither their EULA nor yours. Clause 7 adds per-Output attribution; clause 9 reserves a remote runtime kill switch"
+likelihood  = 2
+impact      = 5
+owner       = "licence"
+indicator   = ""
+trigger     = "An enabled driver whose `[licence.weights].spdx` is outside the allowlist reaching `achieved` on any document"
+mitigation  = "This is why the licence tier is computed from **card facts** by `compute_tier` in core and gates execution under INV-5 rather than sitting in a footnote: an unacknowledged restricted driver never runs. `restriction_bits` -- carrying `output_share_alike`, `attribution_per_output` and `remote_kill_switch` as named codes -- propagates to every derived row and **blocks the OUT direction** (INV-16), so a contaminated input cannot reach an artefact silently"
+contingency = "Same as `R-L1`: permissive weights only. Recorded separately because the failure mode differs -- `R-L1` stops us shipping; `R-L3` stops our **users** shipping, and a user-facing contamination discovered after ingest is not repairable by a version bump. The one repair that exists is `R-L7`'s: `ow store redact` over the affected `doc_ord` set, which is why the two rows are linked"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-L4"
+category    = "legal"
+source      = "docs/plan/17-risks.md:238"
+title       = "**A GPL binary ends up inside a deploy artefact.** hyperframes embeds `ffmpeg-static` (~80 MB) and `ffprobe-static` (~62 MB) in a ~212 MB Lambda zip with **no ffmpeg NOTICE**; libx264 makes that GPL-2.0-or-later. `local-deep-research` has the same shape via `pypandoc-binary~=1.16`"
+likelihood  = 2
+impact      = 4
+owner       = "out"
+indicator   = "G12"
+resolves_in = "gate"
+trigger     = "G12 finding a vendored artefact missing any of the four required facts: sha256, a parity test, an architecture assertion, a NOTICE row"
+mitigation  = "Bundling `ffmpeg-static`/`ffprobe-static` is **rejected in the charter**. The video target declares `ffmpeg = \"system\"`: spawn the system binary, report its encoders, **refuse rather than substitute**. pandoc is declared external, as ppt-master does correctly"
+contingency = "Withhold the affected Target rather than ship the binary. The video Target already ships `implemented = false`, so this exposure does not exist at release 1 and can only be created by a decision someone takes deliberately"
+kill        = ["K-7"]
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-L5"
+category    = "legal"
+source      = "docs/plan/17-risks.md:239"
+title       = "**Codec patent pools on the video Target.** H.264 and AAC carry Via LA / Via Licensing royalties that bite a commercial video product at volume"
+likelihood  = 2
+impact      = 3
+owner       = "out"
+indicator   = ""
+trigger     = "A shipped `video` receipt declaring `codec != vp9`"
+mitigation  = "Royalty-free by default -- VP9/WebM or AV1, with `libvpx` already in hyperframes' render path -- and H.264 only as an **opt-in the operator's licence covers**, never a substitution the framework makes on their behalf"
+contingency = "The Target refuses rather than substitutes. Where a customer needs H.264 it is a Grant-shaped operator decision with the operator's own pool licence, recorded in the run manifest of every artefact it covers. If no royalty-free path through a **system** ffmpeg exists on the supported cells at v2.0, that is `K-7`"
+kill        = ["K-7"]
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-L6"
+category    = "legal"
+source      = "docs/plan/17-risks.md:240"
+title       = "**Attribution and NOTICE gaps are compliance exposure, not paperwork.** codegraph ships **27 vendored tree-sitter WASM grammars (66 MB; cobol alone 16.4 MB) with 3 grammar LICENSE files** -- plausibly out of compliance with ~24 MIT upstreams, since MIT requires the notice to travel with the binary. Five wheels on our own install line ship compiled third-party code whose notices must travel: `pypdfium2` (PDFium, FreeType, libjpeg-turbo, lcms2, zlib, libopenjpeg), `lxml` (libxml2, libxslt), `skia-pathops`, `uharfbuzz` and `torch` (CUDA and cuDNN, NVIDIA-restricted). Fonts are content too: OFL-1.1 requires the licence and Reserved Font Name to travel with the files, and a subset must not reuse the Reserved Font Name"
+likelihood  = 3
+impact      = 2
+owner       = "licence"
+indicator   = "G12"
+resolves_in = "gate"
+trigger     = "G12; **or** an `asset` row reaching `AssetLedger.freeze()` with unknown licence facts; **or** `THIRD_PARTY.md` missing an enumerated row for any of the five bundled-binary wheels"
+mitigation  = "G12 requires **all four** of sha256, a parity test, an arch assertion and a NOTICE row for every vendored artefact. `asset` carries licence facts and `restriction_bits` as columns, and OUT10 makes every asset frozen, content-addressed and **licence-bearing before compile**; a compile that must fetch **refuses** with `Degradation(kind=\"grant_missing\")` naming the site Grant and its `dpa_ref`. `tree-sitter` and its grammars move out of tree entirely, into `omniweave-driver-code`, with the codegraph outcome named as the thing being avoided"
+contingency = "The pipeline refuses to embed an asset whose licence is unknown. That is a shipped refusal, not a warning -- and it means a licence audit and a takedown request read the same artefact, `artifact_asset`. [Security](14-security.md)'s pre-committed fallback for the wheels applies: a distribution whose notice set cannot be enumerated moves out of `[recommended]` and the obligation is documented as the deployer's"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-L7"
+category    = "legal"
+source      = "docs/plan/17-risks.md:241"
+title       = "**The erasure cascade has fourteen locations and only one of them is a table.** [Security](14-security.md) designed the command the earlier drafts of this register said did not exist: `op.redact` behind `ow store redact` replaces a text range with `REDACTION_FILL` (U+2588, repeated to the original **character** length so every stored `TextSpan` stays valid), resolves intersecting `Mark`s, clamps `quote` **down** to `NORMALIZED` and `origin_span` to `none`, deletes the retained `part`, retires intersecting L3 rows through `graph_history`, and reaches `rebind()` rule 2 so the `block_id` **and the cite** are carried. The residual risk is the other thirteen locations -- `block_fts`, assets, the five cache layers, `vseg`, `quarantine`, route digests, retained IL bundles, exports and backups -- and the two-phase `erasure` row (`phase` in `{store_done, complete}`) that makes it resumable across the store/filesystem boundary"
+likelihood  = 3
+impact      = 3
+owner       = "licence"
+indicator   = ""
+trigger     = "`ow doctor` failing on an `erasure` row not at `complete`; **or** `ow store verify --erased` finding a surviving derivative in any of the fourteen locations"
+mitigation  = "The cascade is enumerated rather than discovered, `ow store verify --erased` re-derives it rather than trusting a checklist, `ow doctor` **fails** while any `erasure` row is incomplete, and the operation's dry-run states that it is irreversible. `block_history` with `superseded_by`, `restriction_bits`, and the `part`/`asset` split into CAS are the substrate that makes a redaction survivable at all"
+contingency = "Where a derivative cannot be reached -- a backup, an already-exported `.owdoc`, an artefact a customer holds -- the honest answer is corpus re-derivation from a filtered roster, and the erasure summary must say which of the fourteen locations were out of reach rather than reporting a clean result. [Security](14-security.md) open question 5 is the live sub-decision: `vseg` rows are **deleted** because embedding inversion is a published attack, which makes an erasure an index rebuild for the affected segments; if inversion recovers under ~5% of content tokens the row becomes a tombstone plus a `k`-day retention, disclosed in the summary"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-L8"
+category    = "legal"
+source      = "docs/plan/17-risks.md:242"
+title       = "**A connector turns ingest into a compliance surface.** LEANN's ingest surface is Apple Mail, browser history, WeChat, iMessage, Slack and Twitter -- special-category personal data, minors' data, third-party subjects who never consented, plus platform-ToS exposure"
+likelihood  = 2
+impact      = 3
+owner       = "licence"
+indicator   = ""
+trigger     = "The first `unit.connector != 'fs'` row with no retention record and no per-source consent record"
+mitigation  = "`acquire/1` ships **no** driver at release 1 and filesystem discovery is core-side `discover.py`, so the surface does not exist yet; `Grant` already carries a required `dpa_ref`, an expiry and an approver, and is printed in the run manifest of every document it covers; `[egress] mode = \"none\"` refuses `SourceKind.URL` and `CRAWL` at the locator and makes a configured `Grant` a startup error"
+contingency = "Any connector of that shape needs a retention policy, a per-source consent record and a deletion path **before it ships** -- the deletion path is `R-L7`'s and now exists, so this is a sequencing constraint rather than a blocker: the connector ships after `ow store verify --erased` is green on a corpus built through it"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-L9"
+category    = "legal"
+source      = "docs/plan/17-risks.md:243"
+title       = "**Generated-content provenance obligations on the OUT direction.** ppt-master ships `scripts/gemini_watermark_remover.py` -- \"a reverse blending algorithm to restore original pixels\" -- a provenance-marker stripper whose mere presence is a breach of Google's generative-AI terms and is adverse to EU AI Act Art. 50 marking duties"
+likelihood  = 1
+impact      = 3
+owner       = "out"
+indicator   = ""
+trigger     = "An `artifact` receipt with no `generated_by` provenance"
+mitigation  = "omniweave builds the **inverse**: `Method.ROUNDTRIP` on every read-back Block, `artifact_cite` as the authoritative citation channel with a `verbatim` bit that is **proved** rather than claimed, and `generated_share` on every `Verdict`. If any part of ppt-master is vendored, the remover is deleted and **the deletion is recorded**; `curl_cffi` (TLS-fingerprint impersonation, auto-used by `web_to_md.py` whenever installed) and `edge-tts` are excised on the same rule"
+contingency = "Add whatever marking the regime requires to the artefact receipt and to the container's metadata. The ledger already exists, so this is a field, not a mechanism"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-L10"
+category    = "legal"
+source      = "docs/plan/17-risks.md:244"
+title       = "**A clean-room reimplementation is contaminated, and nothing records that it was not.** The plan reads five repositories it may not copy from and reimplements their *shape*: `jcodemunch-mcp` is \"Dual-Use License v1.1, All rights reserved\" whose clause (c) forbids publishing \"the software or any derivative or **portion** of it\" to PyPI by name and whose highest $1,999 tier licenses internal deployment only -- **no tier permits redistribution**; `omniparse` is GPLv3 with a `pyproject.toml:7` that says \"Apache\" and no maintainer to ask; DataFlow's operator/registry shape is explicitly \"copy the shape and reimplement\". Every one of those readings is legitimate and none of them leaves an artefact proving no code travelled"
+likelihood  = 2
+impact      = 5
+owner       = "licence"
+indicator   = "G3"
+resolves_in = "gate"
+trigger     = "`vendor/` or `docs/` carrying no `CLEAN-ROOM.md` row for a repository listed at `wrap_verdict = \"reimplement\"` or `\"reject\"` in [roadmap](16-roadmap.md); **or** a G3 hit naming a distribution from the rejected tier"
+mitigation  = "The `Wrap verdict` vocabulary already forces the decision to be recorded per component (`depend / wrap / vendor / reimplement / reject`), and every vendored file carries its upstream header, NOTICE and sha256. `tools/licences.toml`'s denylist covers the *installed* graph, which catches an accidental dependency but says nothing about a copied function body"
+contingency = "One artefact, cheap and written once: `docs/CLEAN-ROOM.md`, one row per `reimplement` or `reject` verdict, naming the repository, its licence, the commit read, what was taken (a shape, a constant, an algorithm from a paper), what was not, and the author's attestation. `G27(d)`'s `d2` register check asserts a row exists for every such verdict in [roadmap](16-roadmap.md)'s build-versus-wrap table. Without it the only defence in a diligence review is memory, and memory is not a defence. **This is the cheapest unwritten artefact in the plan**"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-O1"
+category    = "operational"
+source      = "docs/plan/17-risks.md:250"
+title       = "**VLM cost blowout.** The measured amplifier is olmocr's: `MAX_TOKENS = 8000` x `--max_page_retries` default **8** = 64,000 output tokens/page (`olmocr/pipeline.py:107,1221`) at $0.20/1M output => **$0.0128/page**, against its own published self-hosted baseline of **< $200 per 1M pages** => $0.0002/page (`olmocr/README.md:36`) -- **a 64x amplification**, with remaining retries fired **in parallel** when the queue is idle (`:343-350`) and `--max_concurrent_requests` defaulting to **1600** (`:1224`). Unlimited-OCR's `MAX_RETRIES = 5` x `REQUEST_TIMEOUT = 1200` (`Unlimited-OCR/infer.py:21-36`) is **100 minutes of a GPU per document**. Retries are the largest attacker-controllable amplifier in the design space"
+likelihood  = 4
+impact      = 3
+owner       = "router"
+indicator   = "rebilled_units"
+resolves_in = "counter"
+trigger     = "`cost.would_have_been_micros_if_uncached` p99 per document > 10 x p50 on any corpus; **or** `rebilled_units` > 0 (an **exact** counter -- +/-1 fails)"
+mitigation  = "Five composed mechanisms. (1) The control is a **hard currency budget per document**, not a retry count: `[budget.per_part]` / `[budget.per_unit]` in `.omniweave/policy.d/*.toml`, with the **first exhausted dimension winning**, because a count cannot bound spend when per-attempt cost varies 100x with page density. (2) Reservations are **durable rows** with headroom computed in SQL, so a crash cannot leak headroom and two scheduler processes cannot each admit 2 and show the provider 4. (3) A denial is `DEFERRED_BUDGET`, an `Outcome` rather than a failure, and re-enters the decision as the evidence key `budget.exhausted` (INV-14). (4) INV-13 makes a clean born-digital page cost **zero** `LOCAL_COMPUTE`, render no raster and start no model server, enforced by three **exact** counters. (5) `bytes_egress` defaults to **0**, so the first hosted escalation is deliberate and Grant-gated"
+contingency = "The named override is `--allow-cost`; exit code 5 names the approving command. If the p99/p50 ratio stays above 10x after the budget is enforced, the cheap CPU pre-filter becomes mandatory before any metered tier, with its verdict recorded (`skipped: reason`) so it is auditable and appealable -- olmocr's `PdfFilter` exists and its `--apply_filter` is `action=\"store_true\"`, off by default, which is the inherited anti-pattern"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-O2"
+category    = "operational"
+source      = "docs/plan/17-risks.md:251"
+title       = "**A driver author forgets to bump `schema_version`.** The charter calls this \"the most expensive single mistake available in the design\": it **serves stale billed output forever with no symptom**, because `driver_schema_v` is the only driver version in a cache key"
+likelihood  = 3
+impact      = 4
+owner       = "drivers"
+indicator   = ""
+trigger     = "`ow cost --by driver --since 7d` showing a driver's spend fall by > 90% across a release with no config change -- a **lagging** indicator that requires someone to look"
+mitigation  = "Three named defences, and the charter admits they are weak: review; a testkit check that diffs output across two tagged versions; and the spend report. `cache_index` records the `Spend` that produced each row and the price at creation, so a hit can replay it"
+contingency = "Make the testkit version-diff check **mandatory** in the `conform` tier rather than advisory, and put the spend-cliff report on the release checklist as a named item rather than a habit. This is a place where every defence sits at enforcement class `R` (review), which [principles](01-principles.md)'s ladder calls the weakest available -- recorded rather than papered over, and it is the strongest single argument for `A16` being false"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-O3"
+category    = "operational"
+source      = "docs/plan/17-risks.md:252"
+title       = "**A resident engine holds VRAM after the run exits** (charter F37). `[services.*] keep_alive_s = 300` is an interactive default behind which a 7B engine holds 20-40 GB of VRAM after `ow ingest` returns"
+likelihood  = 3
+impact      = 1
+owner       = "runtime"
+indicator   = ""
+trigger     = "`service.vram_resident_bytes_after_exit`(unbuilt) > 0 measured after `ow ingest` exits on a 24 GB card"
+mitigation  = "S3 is attach-or-spawn with model-id verification on attach and lazy spawn -- nothing resident is started for a clean page (INV-13), and `service_attaches` is an **exact** counter"
+contingency = "Charter F37: if residency blocks the next interactive command, `keep_alive_s` drops to 0 for `trigger.kind in {cli, hook}` and stays 300 for `watch`"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-O4"
+category    = "operational"
+source      = "docs/plan/17-risks.md:253"
+title       = "**Cache and signal disk growth is unbounded** (charter F37). `[cache.max_bytes] signal = 2147483648` ships as a default with `signal_version` sweeping as the only bound"
+likelihood  = 3
+impact      = 1
+owner       = "runtime"
+indicator   = ""
+trigger     = "The `signal` layer of `cache_index` reaching the 2 GiB cap between sweeps"
+mitigation  = "One `cache_index` table for all five layers, one GC, one bill; the growth bound is printed by `ow cache stat` **in these words**: live units x configurations seen"
+contingency = "Charter F37: if sweeping does not bound it, the 2 GiB cap becomes a hard refusal naming `ow cache prune` -- a refusal that names its own remedy, not silent eviction"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-O5"
+category    = "operational"
+source      = "docs/plan/17-risks.md:254"
+title       = "**Document-borne prompt injection succeeds.** Exactly one repo in the collection implements a defence and exactly one tests for the class; graphrag's own posture sentence is \"the system is designed for trusted users\", which is disqualifying for omniweave's premise. codegraph returns verbatim line-numbered source to the agent with **no delimiter at all**"
+likelihood  = 3
+impact      = 3
+owner       = "quality"
+indicator   = ""
+trigger     = "Any escape in the 40-fixture `derive_injection` conformance suite; **or** the suite's SOP fixture -- a manual containing `## Instructions` -- being flagged, which is the false-positive half"
+mitigation  = "Seven layers **and no proof**, which is the honest framing. The taken mechanisms: graphify's `_wrap_untrusted` hash-stamped `<ow:untrusted>` blocks; sentinel defanging by **form** (`<|[A-Za-z0-9_.\\-]{1,64}|>`) applied **on a copy** so byte offsets survive for citation; a forged-closing-delimiter defence; INV-8's closed prompt-safe token space, so an injected identifier cannot name a row; `GR9` rejecting an emitted cite outside `allowed_cites`; `GR5`'s span-grounding gate; and sanitisation in **both** directions, because the index is a persistence layer for attacker text. `UNTRUSTED_FRAME_CHARS = 200` counts the wrapper's worst case inside the Answer budget so the defence cannot silently overrun the window"
+contingency = "graphify's own claim, shipped verbatim: it \"does not make injection impossible, but changes it from 'works on first try' to 'requires evasion.'\" The residual gap is named identically in [principles](01-principles.md) open question 4 and [security](14-security.md) open question 3 -- a cite-shaped injection naming a Block *inside* the handed set re-attributes a claim within it, and nothing detects that yet; the closer is extending `derive_injection` with cite-shaped payloads to see whether `GR5` already catches them, and if not, defanging cite-shaped runs on a copy with the block re-labelled `normalized` and counted under `SV12`"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-O6"
+category    = "operational"
+source      = "docs/plan/17-risks.md:255"
+title       = "**The single-writer / store-per-tenant model is violated in practice.** A store committed to git, two writers, or two tenants sharing a store -- where `segment.content_digest` embedding dedup becomes a covert channel: two tenants observe each other's embeddings as a timing difference (charter F27)"
+likelihood  = 2
+impact      = 4
+owner       = "retrieval"
+indicator   = "OW-S-060"
+resolves_in = "code"
+trigger     = "`ow doctor` raising `OW-S-060` on a tracked `.owstore`; **or** a second holder of a `Connection` detected by the monkeypatch test"
+mitigation  = "INV-17 puts `sqlite3.connect` in exactly one module, makes the store thread the only holder of a `Connection`, and is enforced by G24 semgrep plus a monkeypatch test; the shipped `.gitignore` covers `.owstore` and `ow doctor` **fails** on a tracked one; `ow store export --portable` is the transport artefact, deliberately not a git artefact"
+contingency = "Charter F27 at DP12: **v1 is store-per-tenant**, and row-level tenancy is not designed and **must not be assumed by any plan document** -- there is deliberately no reserved `tenant_id` column, because reserving one would imply a design that does not exist. If a real deployment needs it, the choice is store-per-tenant with its file-descriptor multiplier ([roadmap](16-roadmap.md) R-Q6 measures it at N in {1,8,32,128}) or tenant-scoped `space_id` which **forfeits the dedup**; there is no evidence in the collection for a middle ground"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-O7"
+category    = "operational"
+source      = "docs/plan/17-risks.md:256"
+title       = "**CI time outruns its budget and gates get disabled.** **Twenty-nine** `G` gates (twenty-seven plus `G28` and `G29`, which ADR-2 allocates at 45 s and 60 s), **twenty-seven** `Q-G` gates (twenty-three plus the four [quality](13-quality.md) section 13.1 adds), nine `[[job_assertion]]` rows, twelve conformance suites, nine test cells, a nightly and a weekly soak"
+likelihood  = 3
+impact      = 3
+owner       = "runtime"
+indicator   = "conform.mandatory_tier_s"
+resolves_in = "budget"
+trigger     = "`conform.mandatory_tier_s` > 240, `contributor_parity_s` > 420, or the `gates` job over 3 min; **or** any gate declared `unknown` in a merged PR"
+mitigation  = "Budgets are declared per job rather than aspirational: `gates` <= 3 min, `test` <= 4 min per cell, `golden` <= 4 min, `conform` <= 5 min, `parity` <= 10 min, nightly <= 90 min, with `Q-G22` owning the numbers. `unknown` is the only non-terminal state and `ow eval release-check` refuses on it. **Two workflow files, not sixty**"
+contingency = "Split the tier, never the gate: move a gate from `gates` to `nightly` with a named owner and a `review_by`, and record the move -- `G19` already has that fallback written down at a measured 12 min ([repository layout](11-repo-layout.md) OQ-6). What may not happen is a non-blocking mode, which the charter rejects outright: a warning that cannot fail is a rejectable pull request"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-O8"
+category    = "operational"
+source      = "docs/plan/17-risks.md:257"
+title       = "**Install weight breaches the 250 MB aggregate.** docling's torch is a **base** dependency (~2.5-3.5 GB installed with CUDA wheels, ~700 MB-1 GB with `torch+cpu` pre-installed); local-deep-research is 90 direct dependencies at ~4-6 GB; even markitdown's \"6 dependencies\" is really ~150-250 MB because `magika~=0.6.1` pulls `onnxruntime` and `numpy`"
+likelihood  = 2
+impact      = 2
+owner       = "release"
+indicator   = "G2"
+resolves_in = "gate"
+trigger     = "G2: any distribution over its `tools/weights.toml` ceiling, or `omniweave[recommended]` over 250 MB installed"
+mitigation  = "The architecture is the mitigation: fourteen distributions, all `py3-none-any`; `omniweave-core` at <= 3 MB with **zero** third-party dependencies (INV-2, G1, G9); `omniweave-vision` the only unbounded row, exempt but required to print its resolved installed size during `ow doctor`; G14 forbidding an `[all]` extra; `omniweave-target-docx` deliberately **not** in `[recommended]`. The ceiling is read as **marginal** weight, not closure -- the only self-consistent reading ([repository layout](11-repo-layout.md) OQ-2)"
+contingency = "Drop a row out of `[recommended]`. The extras grammar makes that a one-line change with a printed remedy, which is exactly why `[recommended]` is three named distributions and not a marketing bundle"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-O9"
+category    = "operational"
+source      = "docs/plan/17-risks.md:258"
+title       = "**The plan accumulates recorded defects faster than ADRs are issued.** The nineteen plan documents have recorded **fifty-two** charter or cross-document defects, every one followed rather than fixed per the plan's own rule. `G27(c)` -- the terminology lock's bidirectional check -- **cannot be switched on** for two independent reasons: at least 38 charter class names plus ~70 more from documents 08-18 have no lock row, and [performance](12-performance.md) shows the lock's own check 3 fails on `charter.md`, on `terminology.md` and on `01-principles.md` because a mechanical string check cannot distinguish naming a banned token from using it"
+likelihood  = 4
+impact      = 3
+owner       = "release"
+indicator   = "G27"
+resolves_in = "gate"
+trigger     = "`charter_defects_open`(unbuilt) in `tools/risks.toml` exceeding the count of ADRs in `_plan/adr/` by more than 10; **or** `G27(c)` still disabled at v1.0"
+mitigation  = "The defects are *recorded*, each with a named closer, which is the whole point of the follow-and-record rule; sections 7.3 and 7.4 are the consolidated list, so no ADR author has to re-derive it"
+contingency = "One bulk terminology pass after the documents land plus the check-3 negation fix, then `G27(c)` switched on; and one ADR per defect **class** rather than per defect -- section 7.6 groups the fifty-two into **twelve**, so the ADR count is twelve rather than fifty-two. The ADRs are on the v0.1 critical path and unpriced, which is `RK-Q6`"
+kill        = []
+paths       = ["P6"]
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-O10"
+category    = "operational"
+source      = "docs/plan/17-risks.md:259"
+title       = "**The OUT direction ships active content.** A generated PPTX, HTML or SVG can carry script, external references, embedded objects or outward-pointing OOXML relationships, and **nobody in the mined collection addresses the OUT direction at all**. The inbound half has seven layers; the outbound half has a validator whose specification is a sentence. An artefact compiled from an untrusted corpus and opened by a human in PowerPoint is a delivery vehicle, and it carries omniweave's provenance markers, which makes it more trusted than the source it came from"
+likelihood  = 3
+impact      = 4
+owner       = "out"
+indicator   = ""
+trigger     = "Any `artifact` reaching `GateStatus.passed` while its container holds an external relationship target, an `OLEObject`, a `<script>` element, an `xlink:href` to a non-`cas://` scheme, or a remote font reference; **or** the `sandbox` conformance suite lacking an OUT-direction fixture at the P9 exit"
+mitigation  = "The substrate exists and points the right way: `AssetLedger.freeze()` is the **only** writer of a compile-time asset and **never fetches** -- a compile that must fetch refuses with `Degradation(kind=\"grant_missing\")` -- so every embedded byte is already frozen, content-addressed and licence-bearing; `zipfile.ZipFile` in write mode is forbidden outside `omniweave_core.out.opc`, so there is exactly one container writer to audit; `portability` already records external asset references as a first-class `Receipt` block"
+contingency = "Make the refusal explicit rather than emergent: the OUT validator rejects external references and active content **by default**, as a `Finding` with `Severity` blocking, and the allowance is a Grant-shaped operator decision recorded in the receipt. Concretely, `portability`'s \"external asset references\" row is promoted from a disclosure to a blocking finding for any corpus whose `restriction_bits` or `Trust` tier says the content is untrusted, and the `sandbox` suite gains one fixture per carrier that asserts the refusal"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-A1"
+category    = "adoption"
+source      = "docs/plan/17-risks.md:265"
+title       = "**Scope explosion across the 22 source projects.** The plan is fourteen distributions, five Ports, twenty-five invariants, twenty-nine `G` gates, twenty-seven `Q-G` gates, nine `[[job_assertion]]` rows, twelve conformance suites, ~120 testkit property tests, four Targets, fifteen absence gates, fourteen extraction passes, ninety-one SQL tables, forty-one deferred items and nineteen plan documents -- before one user has an answer, and against a **1.6% schedule buffer** (6 unallocated engineer-weeks of 366, [roadmap](16-roadmap.md) section 3.1)"
+likelihood  = 4
+impact      = 4
+owner       = "release"
+indicator   = ""
+trigger     = "`first_answer_seconds` > 600 s on the V01-15 acceptance path; **or** the v0.1 tier failing to close by its milestone with the IN spine incomplete; **or** P1's actuals landing above 1.4x the 1,250-line/ew rate"
+mitigation  = "The v0.1 tier is defined precisely to be a shippable subset -- L0 `fs` acquire, L1 parse (office plus PDF), L2 `owdoc`, L4 lexical and identity Channels, four listed Actions, **no graph, no OUT, no vectors, no model server** -- with seventeen numbered acceptance criteria. Everything above it is additive, and G4's entry-point-derived dependency rule makes the subset structurally real rather than a promise. [Roadmap](16-roadmap.md)'s response to a rate miss is stated in advance: **rescale every later phase by the P1 ratio, never re-argue each item**"
+contingency = "Cut in this order, and the order is the commitment: `video` (already `implemented = false`), `docx`, the `[75,92)` LLM merge band (charter F39's own pre-committed answer), the `claim` lane, `community_report`, the `deck` Target (which also retires S2 and `R-T18`), then `omniweave-graph` entirely -- L3 degrading to Segments and anchors only, which is `K-8`. What may **not** be cut: the fifteen absence gates, `rebind()`'s cite carrying, `restriction_bits` propagation, and the six provenance axes, because those four **are** the thesis"
+kill        = ["K-6", "K-8"]
+paths       = ["P6"]
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-A2"
+category    = "adoption"
+source      = "docs/plan/17-risks.md:266"
+title       = "**Single maintainer bottleneck.** The framework's own evidence is that this is the dominant failure mode in the collection: ppt-master at 96% one author, olmocr at 88%, Unlimited-OCR at 92% of 13 commits, lift at 1 author / 24 commits, anydoc at 91% -- and open-slide's `SECURITY.md` is the unedited GitHub template, listing versions 4.0.x-5.1.x for a monorepo at `\"version\": \"0.0.0\"`, so a reporter has no address at all"
+likelihood  = 4
+impact      = 4
+owner       = "release"
+indicator   = ""
+trigger     = "One person authoring > 80% of non-merge commits over a release; **or** any `eval/gates.toml`, `eval/counters.toml`, `fixtures/index.toml` or `tools/risks.toml` row past its `review_by`; **or** the `[security] contacts` block empty"
+mitigation  = "Engineered against the symptoms rather than the cause: every gate, counter, fixture, tombstone and risk row carries an **owner and a `review_by`**, and `Q-G17` plus `gates.risk_register` fail a row past its date; `SECURITY.md` is generated from a `[security] contacts` block CI asserts is non-empty, and the supported-versions table is **generated** from the release process; the ten owner roles map onto decisions rather than people, so a handover is a table edit; and INV-20 means no agent-facing artefact is hand-written, so a bus-factor-1 author is never the only person who knows what a surface says"
+contingency = "Reduce surface before reducing rigour: `R-A1`'s cut order, then move gates from `gates` to `nightly` with owners. The one thing that does not scale down is the review load implied by twenty-five invariants, each carrying two independent enforcers -- which is why [principles](01-principles.md)'s ladder mandates the **highest available** enforcement class and treats `R` as the weakest, and why nine of its ten reviewer questions are things CI cannot answer. `licence` and `release` are the two roles that must not be one person (section 1.2)"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-A3"
+category    = "adoption"
+source      = "docs/plan/17-risks.md:267"
+title       = "**The agent does not believe us.** [Vision](00-vision.md) section 10's definition of failure: an agent with omniweave installed still opens the source file with a host tool to check an answer it just received"
+likelihood  = 3
+impact      = 5
+owner       = "surface"
+indicator   = ""
+trigger     = "`source_reread_rate` > 0.25 at v1.0 on the 30-task `bench/serve/` harness with no identified and fixable cause, reported as a **distribution sliced** by born-digital versus scanned and paired with `task_accuracy`"
+mitigation  = "The whole apparatus is the mitigation: `cite` carrying a page and a polygon or a stated reason (INV-9); the Answer's \"treat this as a `Read` you have already performed\" paragraph; `ow_query`'s tool description redirecting the behaviour explicitly; `verbatim` proved rather than claimed (INV-10, `Q-G6` at 1.000). The instrument's own exploit is engineered against by three mechanisms in [quality](13-quality.md): `Q-G21`'s pairing extends to `task_accuracy`, a `Control guard` compares the omniweave arm against the same-run no-omniweave arm at paired `p < 0.01`, and every model call including the scripted agent's goes through a Cassette so a tool-description change is a reviewable diff"
+contingency = "`K-1`. The metric can be driven down by prompt engineering that makes the agent stop checking rather than by provenance that makes checking unnecessary, so **a run in which `source_reread_rate` falls and `task_accuracy` falls with it is a failing run** -- that is the `Control guard`, not a caution. `V-Q1`'s pre-committed fallback re-anchors to a 60% relative reduction against the control arm if the absolute 0.25 is unreachable for reasons unrelated to trust"
+kill        = ["K-1"]
+paths       = ["P5"]
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-A4"
+category    = "adoption"
+source      = "docs/plan/17-risks.md:268"
+title       = "**Nobody reaches the first answer.** `first_answer_seconds <= 600` (V01-15) is a product-adoption promise with no measured basis -- nothing in the collection reports install-to-first-cited-answer"
+likelihood  = 3
+impact      = 3
+owner       = "surface"
+indicator   = ""
+trigger     = "The V01-15 acceptance test exceeding 600 s on a clean 4-core GPU-free machine, offline after install, over 100 born-digital office documents"
+mitigation  = "`[recommended]` capped at 250 MB; `import omniweave_core` <= 80 ms with zero third-party modules; `ow --version` <= 150 ms; discovery over 20 installed distributions <= 20 ms reading dist-info only; `vectors = \"off\"` by default, so no model download is on the first-run path"
+contingency = "[Vision](00-vision.md) V-Q2's fallback: if the dominant term is model download rather than parse, the criterion splits into `install_seconds` and `first_answer_seconds` and only the second is gated. `K-3` applies at 3,600 s"
+kill        = ["K-3"]
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-A5"
+category    = "adoption"
+source      = "docs/plan/17-risks.md:269"
+title       = "**The four listed tools mis-pick** (charter F19): `ow_query` called with a citation-shaped query, or `ow_open` called with prose"
+likelihood  = 3
+impact      = 2
+owner       = "surface"
+indicator   = ""
+trigger     = "The 30-task `bench/serve/` harness with a scripted agent reporting a mis-pick rate > 5%, measured at DP11 (P6 exit, week 40)"
+mitigation  = "Nothing agent-facing is hand-written (INV-20, G25): every tool schema, the `instructions` string, `llms.txt`, `AGENTS.md`, the CLI verb tree and the router skill's action table are generated from the Action registry and byte-diff gated, so a description fix is one edit in one place. The front door is four tools measured at **850 of its 1,900-token budget** (charter SV2) under the shipped `compact_schemas = true`, 44.7% of the ceiling, and 1,031 (54.3%) with compaction off. There are **1,050 tokens of headroom** ([interfaces](10-interfaces.md) section 3.1 reading 1), so a description fix is never budget-constrained"
+contingency = "Charter F19's fallback: above ~5%, `ow_open` folds into `ow_query` as a `ref` parameter and the listed set drops to three. Descriptions are never shortened to buy budget -- [interfaces](10-interfaces.md) F61 pre-commits to dropping three narrow Actions from the `full` profile instead"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-A6"
+category    = "adoption"
+source      = "docs/plan/17-risks.md:270"
+title       = "**`vectors = \"off\"` reads as \"no semantic search\" and loses the evaluation** before the four working Channels are noticed"
+likelihood  = 4
+impact      = 2
+owner       = "retrieval"
+indicator   = ""
+trigger     = "Adoption feedback naming the missing semantic Channel as the reason for rejection; **or** `ChannelStatus.OFF` on `semantic` in > 90% of harness queries at v1.0"
+mitigation  = "The `Verdict` **discloses** it: `off` is an operator choice, it is printed, and it contributes nothing to the ceiling -- so a four-Channel answer honestly reports `4.6 / 61` rather than pretending to five. `corpus_card` states the coverage before any query runs"
+contingency = "Explicitly **not** a stop condition ([vision](00-vision.md) section 10): \"that is a visible product limitation and the correct one; the alternative is a five-second query or numpy in core.\" The lever is F9 and F10 closing so the default can flip, not a change of posture"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-A7"
+category    = "adoption"
+source      = "docs/plan/17-risks.md:271"
+title       = "**The honesty machinery reads as noise.** If most queries return `degraded`, `Verdict` becomes something users learn to ignore and the fifteen absence gates lose their whole value"
+likelihood  = 3
+impact      = 3
+owner       = "retrieval"
+indicator   = ""
+trigger     = "The share of `Verdict`s with `state = degraded` above ~10% on the harness with no unavailable Channel and no blocking `diag`"
+mitigation  = "The charter split the two deadline outcomes precisely for this: a Channel exceeding **its own** `budget_ms` returns `UNAVAILABLE(timeout)` and forces `degraded`, while a Channel pre-empted by the **query** deadline reports its partial ranking with `truncated_at_limit = True` and status `OK`, and the remaining Channels report `OFF(query_deadline)` -- an operator-visible disclosure, not a failure. Absence gate 1 reads **only** the first case. The five Channel budgets sum to `15 + 25 + 50 + 40 + 80 = 210 ms` against `query_ms = 250`, and `ow route lint` refuses a sum >= `query_ms`, so the second case is a safety net rather than the norm"
+contingency = "If the rate is still above ~10%, the Channel budgets are refit from the measured p95 (`07#F50`) before any gate is relaxed -- and `query_ms` is never raised past its G10 row. A `Verdict` that is always `degraded` is worse than no `Verdict`, and the fix is the budgets, never the honesty"
+kill        = []
+paths       = []
+questions   = ["07#F50"]
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-A8"
+category    = "adoption"
+source      = "docs/plan/17-risks.md:272"
+title       = "**The configuration surface is too large to adopt.** One `omniweave.toml`, `.omniweave/policy.d/*.toml`, `omniweave.acks.toml`, seventeen `tools/*.toml`, a `PriceBook`, `[corpora]`, `[targets] enabled`, `[drivers] enabled`, `[graph.passes] enable` -- with two independent enable gates that both apply and neither bypasses"
+likelihood  = 3
+impact      = 2
+owner       = "surface"
+indicator   = ""
+trigger     = "`ow doctor` failing on a fresh install; **or** more than two config keys needing to change before `ow query` returns an Answer"
+mitigation  = "`ow show-config` prints every resolved value **with its source** and `--digest` prints `config_digest`; precedence is stated once and resolved once at startup; every key has exactly one `OMNIWEAVE_*` twin; G18 asserts the config-axes lists cover `omniweave.toml.example` **exactly**, neither over nor under. A `Degradation` message must name a knob that **exists**, and a CI test resolves every quoted key in every message template against the schemas"
+contingency = "The shipped defaults must produce a working `ow query` with **zero** edits, and V01-15 measures exactly that. **The first trigger is discharged by ADR-3** D1-D3 -- `[drivers] enabled` at thirteen ids, a stated scope for `ow doctor`'s activation check with `expect_unavailable = true` as a rule-level declaration, and a key-enumeration rule in `tools/config_axes.toml` -- so the shipped configuration no longer fails its own doctor check. **The second is deferred with a pre-committed fallback:** the defaults are not widened; if V01-15 on the three F20 reference corpora needs more than two edits, the answer is `ow init --profile {laptop,server,ci}` -- three files, one selector -- because widening a default re-bills every corpus whose `semantic` keys move"
+kill        = []
+paths       = []
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+[[risk]]
+id          = "R-A9"
+category    = "adoption"
+source      = "docs/plan/17-risks.md:273"
+title       = "**The measurement backlog is larger than the schedule buffer, and the two documents that price it disagree by 1.65x.** Section 7.2 itemises the forty-one deferred items at **101.5 engineer-days ~ 20.3 engineer-weeks**; [roadmap](16-roadmap.md)'s exclusion 7 prices the same set at \"~14 additional bench-weeks ... plus roughly 0.3 ew of analysis each\", which is `41 x 0.3 = 12.3 ew`. The gap is **8 ew against a 6 ew program buffer**, and it is concentrated in four items the uniform average cannot see: F12+F13 (10 ed, labelling-bound), F17 (8 ed) and F19 (8 ed) are 26 of the 101.5"
+likelihood  = 4
+impact      = 3
+owner       = "release"
+indicator   = ""
+trigger     = "The sum of `closing cost` over `class = \"measurement\"` rows still open at a phase exit exceeding that phase's unallocated engineer-weeks; **or** any decision point in [roadmap](16-roadmap.md)'s decision-point table passing its week with the measurement unrun, which fires its pre-committed action automatically"
+mitigation  = "Both numbers are p50 estimates and both documents say so; the itemisation is the finer instrument and the roadmap's own instruction is to **rescale rather than re-argue**. Every decision point has a pre-committed action that executes if the date passes unmeasured, so an unrun measurement degrades the product rather than stalling the schedule -- which is the design that makes this survivable"
+contingency = "Take the pre-committed fallbacks. That is what they are for, and the register's honest statement is that at 1.6% buffer **the expected outcome is that several deferred items ship on their fallback rather than on a measurement** -- F5, F22, F24 and F30 are already scheduled that way by [roadmap](16-roadmap.md) with no decision point at all. The correction owed is one sentence in exclusion 7 replacing the uniform 0.3 ew with section 7.2's itemisation, which is `RK-Q7`"
+kill        = []
+paths       = ["P6"]
+questions   = []
+reviewed_at = "2026-09-04"
+review_by   = "2026-12-03"
+
+
+# =============================================================================================
+# THE THIRTY-NINE ROWS RULE 1 CANNOT RESOLVE TODAY, each saying what its cell names and which
+# kind of instrument that is. `kind` is one of the eleven below and the reason for each is in
+# tools/risk_register.py's `KIND_REASON`, beside the check that reads it -- one home, not two.
+#
+# This list may shrink and never grow. A row that starts resolving has to lose its declaration in
+# the same change, and that is the forcing function: nine of the eleven `counter_owed` rows become
+# resolvable the moment 13-quality.md's and 15-observability.md's owed ids land in
+# `eval/counters.toml`.
+
+[[unmetered]]
+risk  = "R-T1"
+kind  = "counter_owed"
+names = "owdoc.unknown_kind_rate"
+
+[[unmetered]]
+risk  = "R-T3"
+kind  = "counter_owed"
+names = "schema.migration_rewrite_rows"
+
+[[unmetered]]
+risk  = "R-T4"
+kind  = "counter_owed"
+names = "out.part_digest_cell_disagreements"
+
+[[unmetered]]
+risk  = "R-T5"
+kind  = "counter_owed"
+names = "layout.corner_delta_p99"
+
+[[unmetered]]
+risk  = "R-T7"
+kind  = "counter_owed"
+names = "sched.claim_p95_ms"
+
+[[unmetered]]
+risk  = "R-T8"
+kind  = "counter_owed"
+names = "route_decision.cause share for REPAIR"
+
+[[unmetered]]
+risk  = "R-T9"
+kind  = "counter_owed"
+names = "graph.ungrounded_quarantine_rate"
+
+[[unmetered]]
+risk  = "R-T14"
+kind  = "counter_owed"
+names = "serve.cite_emission_accuracy"
+
+[[unmetered]]
+risk  = "R-O3"
+kind  = "counter_owed"
+names = "service.vram_resident_bytes_after_exit"
+
+[[unmetered]]
+risk  = "R-T6"
+kind  = "target_state"
+names = "the docx target's GateStatus"
+
+[[unmetered]]
+risk  = "R-T10"
+kind  = "store_column"
+names = "graph.covered_frac"
+
+[[unmetered]]
+risk  = "R-E11"
+kind  = "store_column"
+names = "eval_corpus.publishable"
+
+[[unmetered]]
+risk  = "R-L8"
+kind  = "store_column"
+names = "unit.connector"
+
+[[unmetered]]
+risk  = "R-O4"
+kind  = "store_column"
+names = "cache_index's signal layer against the 2 GiB cap"
+
+[[unmetered]]
+risk  = "R-A7"
+kind  = "store_column"
+names = "Verdict.state"
+
+[[unmetered]]
+risk  = "R-T15"
+kind  = "conformance_suite"
+names = "the capability suite's four memo-key properties"
+
+[[unmetered]]
+risk  = "R-O5"
+kind  = "conformance_suite"
+names = "the 40-fixture derive_injection suite"
+
+[[unmetered]]
+risk  = "R-T20"
+kind  = "property_test"
+names = "P-GROUND"
+
+[[unmetered]]
+risk  = "R-E2"
+kind  = "benchmark_harness"
+names = "bench/serve/'s no-omniweave control arm"
+
+[[unmetered]]
+risk  = "R-A3"
+kind  = "benchmark_harness"
+names = "source_reread_rate on the 30-task bench/serve/ harness"
+
+[[unmetered]]
+risk  = "R-A5"
+kind  = "benchmark_harness"
+names = "the 30-task bench/serve/ harness's mis-pick rate"
+
+[[unmetered]]
+risk  = "R-A1"
+kind  = "acceptance_path"
+names = "first_answer_seconds on the V01-15 path"
+
+[[unmetered]]
+risk  = "R-A4"
+kind  = "acceptance_path"
+names = "the V01-15 acceptance test's wall time"
+
+[[unmetered]]
+risk  = "R-E3"
+kind  = "register_field"
+names = "tools/vendor.toml last_seen for olmocr"
+
+[[unmetered]]
+risk  = "R-E6"
+kind  = "register_field"
+names = "vendor/graphify-security/.sha256"
+
+[[unmetered]]
+risk  = "R-E10"
+kind  = "register_field"
+names = "THIRD_PARTY.md's verdict row for pdf-inspector"
+
+[[unmetered]]
+risk  = "R-L3"
+kind  = "register_field"
+names = "[licence.weights].spdx on an enabled driver"
+
+[[unmetered]]
+risk  = "R-L5"
+kind  = "receipt_field"
+names = "a video receipt's codec"
+
+[[unmetered]]
+risk  = "R-L9"
+kind  = "receipt_field"
+names = "an artifact receipt's generated_by"
+
+[[unmetered]]
+risk  = "R-O10"
+kind  = "receipt_field"
+names = "an artifact's GateStatus against its container's relationships"
+
+[[unmetered]]
+risk  = "R-E4"
+kind  = "receipt_field"
+names = "omniweave-index's externally-authored attested cards"
+
+[[unmetered]]
+risk  = "R-L7"
+kind  = "cli_exit"
+names = "ow doctor and ow store verify --erasure"
+
+[[unmetered]]
+risk  = "R-O2"
+kind  = "cli_exit"
+names = "ow cost --by driver --since 7d"
+
+[[unmetered]]
+risk  = "R-A8"
+kind  = "cli_exit"
+names = "ow doctor on a fresh install"
+
+[[unmetered]]
+risk  = "R-E5"
+kind  = "project_observation"
+names = "platform-support issues attributable to firecrawl-anydoc"
+
+[[unmetered]]
+risk  = "R-E9"
+kind  = "project_observation"
+names = "advisory age on pypdfium2 or defusedxml"
+
+[[unmetered]]
+risk  = "R-A2"
+kind  = "project_observation"
+names = "one author's share of non-merge commits"
+
+[[unmetered]]
+risk  = "R-A6"
+kind  = "project_observation"
+names = "adoption feedback naming the missing semantic Channel"
+
+[[unmetered]]
+risk  = "R-A9"
+kind  = "project_observation"
+names = "the sum of closing cost over open measurement rows"

@@ -54,8 +54,9 @@ green before it existed.
   carried in `PYTHON_AXIS_BY_PHASE` next to the phase that landed it, and a second test refuses a
   row that is a placeholder -- see `test_the_matrix_is_nine_cells_landed_by_p2` for why the
   allow-list exists rather than a bare three-value tuple.
-* **no "has not landed unwired" tripwire is already firing.** Four steps are shaped `if the path
-  exists: exit 1`, which is section 6.8's instrument for a check whose input has not arrived. P2
+* **no "has not landed unwired" tripwire is already firing.** Two steps are shaped `if the path
+  exists: exit 1`, which is section 6.8's instrument for a check whose input has not arrived.
+  Two more retired by being honoured -- `eval/gates.toml`'s and, at D998, `tools/risks.toml`'s. P2
   found the failure mode: G28's condition tested the whole `fixtures/` directory, `fixtures/gen/`
   landed under 13-quality.md:586-589, and a real gate would have gone red for a reason unrelated
   to what it guards. `CI_TRIPWIRE_PATHS` transcribes the paths and the test asks the runner's own
@@ -156,7 +157,7 @@ LANDED_PHASES: tuple[str, ...] = ("P1", "P2")
 
 # THE "HAS NOT LANDED UNWIRED" TRIPWIRES, and why they need a test of their own.
 #
-# Four steps in `ci.yml` are shaped `if the path exists: echo "wire me"; exit 1`. They are the
+# Two steps in `ci.yml` are shaped `if the path exists: echo "wire me"; exit 1`. They are the
 # instrument section 6.8 asks for in place of a silent stub: a check that cannot yet run says so
 # and, on the day its input arrives, FAILS the PR that brought it rather than staying green for
 # another release. That design has one failure mode, and P2 hit it: a tripwire whose condition is
@@ -184,8 +185,11 @@ CI_TRIPWIRE_PATHS: dict[str, tuple[str, ...]] = {
     # The `golden` job: the Tier-B corpus digest (sections 6.2, 6.6). `fixtures/cassettes` was its
     # second path until the bench's recordings landed and the job's Cassette step was wired (D650).
     "golden": ("eval/corpora.toml",),
-    # 17-risks.md section 1.1's register, which sizes the check and names no script.
-    "gates.risk_register": ("tools/risks.toml",),
+    # `tools/risks.toml` HAS LANDED and its tripwire is retired, at D998. 17-risks.md section 1.1
+    # sizes the check and names no script, so the step watched the register file rather than guess
+    # a filename; the register and `tools/risk_register.py` landed together, so there is nothing
+    # left to guess and the step runs it. Deleted rather than emptied, for the reason the
+    # `eval/gates.toml` note below gives.
     # `eval/gates.toml` HAS LANDED and its tripwire is retired. The step that replaced it runs
     # `tools/ow_eval.py golden --check span_exact_rate` (11-repo-layout.md:1615-1617,
     # 16-roadmap.md:519), which is the tripwire's own instruction carried out: wire the step it
@@ -198,17 +202,15 @@ CI_TRIPWIRE_PATHS: dict[str, tuple[str, ...]] = {
 # tripwire added with no row in `CI_TRIPWIRE_PATHS` is invisible to the two tests above, so the
 # steps are pinned by name here rather than counted out of the file.
 #
-# THREE, down from four: "the static Q-G series" retired when `eval/gates.toml` landed and its step
-# became `uv run tools/ow_eval.py golden --check span_exact_rate`. A tripwire is supposed to end
-# this way -- it fired, the thing it was waiting for was wired, and the row went. The count below
-# is asserted so the retirement is a decision somebody made rather than a row that fell out.
+# TWO, down from four. "The static Q-G series" retired when `eval/gates.toml` landed and its step
+# became `uv run tools/ow_eval.py golden --check span_exact_rate`; `gates.risk_register` retired at
+# D998 when `tools/risks.toml` and `tools/risk_register.py` landed together and its step became
+# `uv run tools/risk_register.py`. A tripwire is supposed to end this way -- it fired, the thing it
+# was waiting for was wired, and the row went. The count below is asserted so each retirement is a
+# decision somebody made rather than a row that fell out.
 CI_TRIPWIRE_STEPS: dict[str, tuple[str, str]] = {
     "G28": ("gates", "G28 -- import(export(store)) == store over the fixture corpus"),
     "golden": ("golden", "the Tier-B corpus has not landed unwired"),
-    "gates.risk_register": (
-        "gates",
-        "gates.risk_register -- the same five rules over risks.toml's sixty rows",
-    ),
 }
 
 # Section 6.6's two-sided budget rule: "Each job carries `timeout-minutes` at **twice** its stated
@@ -1224,19 +1226,22 @@ def test_every_tripwire_path_is_written_in_the_workflow(ci: Workflow) -> None:
             assert path in body, f"{step}: {path} is in the table and not in {job}'s run: bodies"
 
 
-def test_the_three_tripwire_steps_are_still_the_three(ci: Workflow) -> None:
+def test_the_two_tripwire_steps_are_still_the_two(ci: Workflow) -> None:
     """`CI_TRIPWIRE_STEPS`, against the step names `ci.yml` actually declares.
 
-    THREE and not four. "the static Q-G series" watched for `eval/gates.toml`; that register landed
-    with `span_exact_rate` and its step now runs `tools/ow_eval.py`, so the tripwire retired. The
-    number is pinned on the way down as well as on the way up: a tripwire that quietly disappeared
-    because someone deleted a row is indistinguishable here from one that was honoured, and this
-    assertion is what makes the difference a commit rather than a shrug.
+    TWO, down from four, and each retirement is a commit. "The static Q-G series" watched for
+    `eval/gates.toml`; that register landed with `span_exact_rate` and its step now runs
+    `tools/ow_eval.py`. `gates.risk_register` watched for `tools/risks.toml`; at D998 that register
+    landed together with `tools/risk_register.py` and its step now runs the five rules.
+
+    The number is pinned on the way DOWN as well as on the way up: a tripwire that quietly
+    disappeared because someone deleted a row is indistinguishable here from one that was honoured,
+    and this assertion is what makes the difference a commit rather than a shrug.
     """
     for step, (job, name) in CI_TRIPWIRE_STEPS.items():
         assert name in ci.step_names(job), f"{step}: no step named {name!r} in job {job}"
     assert CI_TRIPWIRE_STEPS.keys() == CI_TRIPWIRE_PATHS.keys()
-    assert len(CI_TRIPWIRE_PATHS) == 3
+    assert len(CI_TRIPWIRE_PATHS) == 2
 
 
 def test_g28s_tripwire_does_not_fire_on_the_generator_directory(ci: Workflow) -> None:
