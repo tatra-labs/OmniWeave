@@ -755,26 +755,105 @@ def test_the_ratchet_ceilings_are_the_measured_gaps_and_live_in_the_register() -
     assert gd._register_value("verb_gap_max") > 0, "a ceiling of zero would be a hard check"
 
 
-def test_the_distribution_count_reports_the_drift_section_eight_six_predicted() -> None:
-    """Section 8.6: "a PR adding a fifteenth distribution and forgetting to update the prose fails
-    on all three files at once, with the count it found and the count it expected in the message."
-    That PR landed. The workspace holds fifteen; the prose says fourteen, and thirteen in the
-    excluding-core form. The check asserts the drift is UNIFORM -- one distribution, both forms --
-    because anything else is two errors rather than one stale number."""
+def test_the_distribution_count_is_members_less_attachments_and_agrees_with_the_prose() -> None:
+    """**D999 corrected what this counts.** It counted `packages/*/pyproject.toml`, called fifteen
+    the distribution count, and reported section 8.6's predicted erratum against a prose that says
+    fourteen. The prose was right: `omniweave-langchain` is an attachment of section 1.2's second
+    table, "separately versioned and outside the fourteen", and `tools/check_build.py` ruling 4 had
+    already drawn the same line -- "An attachment is not one of the 28." The count is the members
+    that do not declare `[tool.omniweave] attachment`, and disk and prose now AGREE, which is the
+    assertion: both rows are kept so a distribution landing or leaving breaks one side."""
     report, findings = gd._d2_distributions()
     assert findings == [], headlines(findings)
     line = next(one for one in report if "distributions:" in one)
-    disk = len(list((REPO_ROOT / "packages").glob("*/pyproject.toml")))
+    members = sorted((REPO_ROOT / "packages").glob("*/pyproject.toml"))
+    attachments = [
+        one.parent.name
+        for one in members
+        if tomllib.loads(one.read_text(encoding="utf-8"))
+        .get("tool", {})
+        .get("omniweave", {})
+        .get("attachment", False)
+    ]
+    disk = len(members) - len(attachments)
     assert f"{disk} on disk" in line
+    assert f"{len(attachments)} attachment(s) outside the count" in line
+    assert attachments, "with no attachment on disk this check cannot tell the two counts apart"
     assert gd._register_value("dist_count_disk") == disk
-    assert gd._register_value("dist_count_prose") == disk - 1
+    assert gd._register_value("dist_count_prose") == disk
+
+
+def test_counting_an_attachment_as_a_distribution_is_what_fails_now(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The mistake itself, driven to fail. A check that read every member as a distribution counts
+    one too many, and the count that was reported as a plan erratum is the finding instead."""
+    every_member_a_distribution = tuple((name, False) for name, _a in gd._members())
+    monkeypatch.setattr(gd, "_members", lambda: every_member_a_distribution)
+    _report, findings = gd._d2_distributions()
+    said = headlines(findings)
+    assert "15 distribution(s) on disk and tools/gates.toml records 14." in said
+    assert "the prose count 14 and the workspace's 15 disagree." in said
+    #  And the membership check says WHICH mistake it is, in one line: the member is missing from
+    #  the table its (mutated) key claims and present in the other. That sentence is the whole
+    #  difference between section 8.6's predicted erratum and what actually happened.
+    assert (
+        "`omniweave-langchain` belongs in section 1.2's first (distributions) table and is not "
+        "there, and section 1.2's second table lists it"
+    ) in said
 
 
 def test_a_count_in_neither_prose_form_fails(walk: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(gd, "_register_value", lambda key: 14 if "prose" in key else 15)
+    """Both recorded counts are 14 now -- disk and prose agree -- so the fixture's "twelve" is in
+    neither the total form nor the excluding-core one, which is what this fails on."""
+    monkeypatch.setattr(gd, "_register_value", lambda _key: 14)
     walk.write_text("twelve distributions\n", encoding="utf-8", newline="\n")
     _report, findings = gd._d2_distributions()
     assert "a document spells a distribution count of [12]" in headlines(findings)
+
+
+def test_a_prose_count_that_no_longer_matches_the_workspace_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Section 8.6's own case, which is still the case this exists for -- now measured against the
+    population the sentence is about rather than against the directory listing."""
+    monkeypatch.setattr(gd, "_register_value", lambda key: 13 if "prose" in key else 14)
+    _report, findings = gd._d2_distributions()
+    assert "the prose count 13 and the workspace's 14 disagree" in headlines(findings)
+
+
+def test_every_member_is_in_exactly_one_of_section_one_twos_two_tables() -> None:
+    """The check that would have caught D999's mistake, and the reason the count is no longer the
+    whole check: a count cannot tell a fifteenth distribution from a recorded attachment."""
+    distributions, attachments = gd._section_1_2_tables()
+    names = {name for name, _a in gd._members()}
+    assert distributions and attachments, "both tables must be read, or nothing is checked"
+    assert not distributions & attachments, "a member cannot be in both tables"
+    assert names <= distributions | attachments
+    assert distributions <= names, "the first table is a roster, not a schedule"
+    assert attachments - names, "section 1.2's second table is a schedule too (four ship later)"
+
+
+def test_an_attachment_the_second_table_does_not_list_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(gd, "_section_1_2_tables", lambda: (frozenset({"x"}), frozenset()))
+    findings = gd._d2_membership(gd._members())
+    assert "belongs in section 1.2's second (attachments) table and is not there" in headlines(
+        findings
+    )
+    assert "section 1.2's first table lists ['x']" in headlines(findings)
+
+
+def test_a_splitting_paragraph_that_moved_is_a_finding_and_not_an_empty_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Clause d0's lesson where it was earned: two sets read out of a document that no longer says
+    what the reader expects agree with every workspace, so the read failing must be the finding."""
+    monkeypatch.setattr(gd, "_ATTACHMENT_PARAGRAPH", "**A paragraph nobody wrote.**")
+    assert gd._section_1_2_tables() == (frozenset(), frozenset())
+    findings = gd._d2_membership(gd._members())
+    assert "section 1.2's two tables could not be read" in headlines(findings)
 
 
 def test_the_config_key_check_runs_in_the_decidable_direction_only() -> None:

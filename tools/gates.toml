@@ -845,22 +845,32 @@ symbol_floor  = 520
 verb_gap_max  = 73
 code_gap_max  = 72
 # ---------------------------------------------------------------------------------------------
-# THE DISTRIBUTION COUNT IS WRONG IN THE PLAN, WHICH IS WHAT d2 EXISTS TO SAY. Section 8.6: "a PR
-# adding a fifteenth distribution and forgetting to update the prose fails on all three files at
-# once, with the count it found and the count it expected in the message." That PR landed. The
-# workspace holds FIFTEEN `packages/*/pyproject.toml`; 11-repo-layout.md section 1.2 is headed
-# "the fourteen distributions" and its own table lists all fifteen, so the count word is one behind
-# the table in the same section. Fourteen appears 15 times across the corpus and "thirteen
-# first-party distributions" twice.
+# THE DISTRIBUTION COUNT IS NOT WRONG IN THE PLAN, AND THE CHECK THAT SAID SO WAS COUNTING THE
+# WRONG POPULATION. Corrected at D999. Section 8.6 wrote the check for one case: "a PR adding a
+# fifteenth distribution and forgetting to update the prose fails on all three files at once, with
+# the count it found and the count it expected in the message." d2 reported exactly that, over
+# fifteen `packages/*/pyproject.toml` against a prose that says fourteen -- and it was wrong,
+# because a workspace member is not a distribution. `omniweave-langchain` is an ATTACHMENT. It is
+# in 11-repo-layout.md section 1.2's SECOND table, under a paragraph headed "The attachment
+# distributions, separately versioned and outside the fourteen", with four more scheduled beside
+# it; section 1.2's FIRST table lists fourteen and always has. `tools/check_build.py` ruling 4 had
+# already drawn the same line from the other end -- "An attachment is not one of the 28" -- and
+# D909's build note lists who else reads `[tool.omniweave] attachment`: G5, the build check, the
+# wheelhouse and `gen_first_party.py`. So the release builds 28 files, the prose says fourteen, and
+# the only thing that disagreed was a gate counting directories.
 #
-# The documents are frozen and amending the prose is a `plan_lint --bless` the repository owner
-# owes, on the terms G3's fifteen-to-sixteen erratum was settled on at D999: a ruling naming the
-# sites, an amendment that leaves the line count alone, and a test that reads the amended sentence
-# back. That one is closed and this one is not. Until it is, the measured count and the
-# expected count are both recorded here, the gate reports the discrepancy on its own line, and
-# `dist_count_prose` failing to match `len(glob("packages/*/pyproject.toml"))` is a finding the
-# moment either number moves -- so this cannot rot into a silent allowance.
-dist_count_disk  = 15
+# `dist_count_disk` is now the members that do NOT declare that key, which is fourteen, and it
+# equals `dist_count_prose`. Keeping both rows is deliberate: the agreement is the assertion, and a
+# distribution that lands or leaves breaks it from one side or the other.
+#
+# THE COUNT IS NO LONGER THE WHOLE CHECK, because a count is what hid this. d2 reads section 1.2's
+# two tables by name and requires every member in exactly one of them, on the side its own
+# pyproject.toml claims. A fifteenth distribution landing fails the count AND names itself in the
+# first table's finding; an attachment landing fails the membership check until the second table
+# lists it. Section 8.6's predicted case and the case that actually happened are two findings now
+# where they were one number, and a reworded splitting paragraph is its own finding rather than two
+# empty sets that agree with everything -- clause d0's lesson, applied where it was earned.
+dist_count_disk  = 14
 dist_count_prose = 14
 
 [[gate]]
