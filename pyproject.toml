@@ -317,3 +317,90 @@ markers = [
   "golden: T2 — reads a byte out of fixtures/. Must live in tests/golden/ (Q-G25).",
   "conform: T3 — spawns a subprocess or a Driver host. Must live in tests/conform/ (Q-G25).",
 ]
+
+# =============================================================================================
+# 11-repo-layout.md section 8.1's table names `pyright` strict as the type checker and section 8.2
+# says where it may run ("only in `gates`", because the PyPI shim fetches a Node runtime and the
+# `parity` container has no Node BY DESIGN). Neither says what it checks, so until D997 there was
+# no `[tool.pyright]` and ci.yml's step printed NOT ENFORCED rather than run a bare pyright under
+# the tool's own defaults -- asserting something section 8.1 did not ask for.
+#
+# SCOPE is a user ruling of 2026-10-27: `packages/*/src` and `tools`, with tests excluded. The
+# reason for the exclusion is not that tests matter less. A test's job is to drive a function to
+# FAIL, which means constructing values a type checker is right to reject: `test_gate_docs.py`
+# hands `check_clause_a` a document with a broken fence, `test_gate_invariants.py` hands the
+# register a row whose `independent` does not add up. Strict over the test tier would turn every
+# one of those into an error and the fix would be a cast per negative case -- which is a lot of
+# noise in exchange for weakening the thing the test is for. `tests/` is reached instead by the
+# per-file pyright runs a contributor and a reviewer do by path, which is how every test in this
+# repository was type-checked as it landed.
+#
+# `strict` IS THE MODE, and five of its rules are off with a reason each. The alternative was
+# `standard`, and it would have been the dishonest choice: `standard` reports 91 errors here and
+# strict reports 1,722, so declaring `standard` records a number that looks finished and hides a
+# gap of 1,631. Naming the rules keeps the gap visible and removable one rule at a time.
+[tool.pyright]
+include = ["packages", "tools"]
+exclude = [
+  "**/tests",
+  "**/fixtures",
+  "**/__pycache__",
+  "vendor",
+  "toolchains",
+]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+pythonPlatform = "All"
+
+# ---------------------------------------------------------------------------------------------
+# THE FIVE UNKNOWN-TYPE RULES, off together because they are one finding: an unannotated local in
+# a function whose signature IS annotated. 1,566 of strict's 1,722 errors are these, and they are
+# a full-annotation pass over working library code rather than a defect -- the signatures, which
+# are what a caller and a type checker read, are annotated throughout. Turning them on is a wave
+# of its own and `tools/gate_pyright.py`'s ceiling is what keeps the number from growing while it
+# waits.
+reportUnknownArgumentType = false
+reportUnknownVariableType = false
+reportUnknownMemberType = false
+reportUnknownParameterType = false
+reportUnknownLambdaType = false
+
+# ---------------------------------------------------------------------------------------------
+# THE FOUR WHERE PYRIGHT ASKS FOR A BREACH OF AN INVARIANT. Each of these is off because obeying
+# it would require editing code an invariant of this project requires, and that is a different
+# thing from a rule this project has not got to yet.
+#
+# `reportUnsupportedDunderAll` -- 9 errors, every one in `omniweave_core/__init__.py`, which lists
+# the nine lazy subpackages in `__all__` and resolves them in `__getattr__`. That IS INV-3 ("it
+# imports none of `model`, `store`, `archive`, `retrieve`, `answer`, `out`, `host`, `toolchain`,
+# `modelserver`") and G17 asserts it by name -- "lazy core: none of the nine subpackages",
+# `tools/gate_lazy_core.py`. Pyright wants the nine imported eagerly so `__all__` resolves; doing
+# that fails G17 and G10's cold-start baseline. The gate that owns this surface is G17.
+reportUnsupportedDunderAll = false
+#
+# `reportPrivateUsage` and `reportUnusedFunction` -- 10 errors, 8 of them the same two functions:
+# `_weight` and `_channel_set`, declared in `retrieve/types.py` and used from `retrieve/fuse.py`
+# and `retrieve/ceiling.py`. ST6 requires exactly that: "`fuse()` and `ceiling()` share
+# `_weight()`", with a three-part property test over it, and INV-23 is the general form -- "what
+# does this mean" has one implementation and every consumer calls it. Pyright's fix is a second
+# public name, which is the second home INV-21 forbids.
+#
+# `reportUnusedFunction` has a SECOND reason, and it was found the expensive way. Because this
+# scope excludes the test tier, the rule cannot tell a test-only helper from dead code: it
+# reported `ow_damage._documents` unused, I deleted it, and
+# `test_ow_damage.py::test_the_fixture_documents_are_the_reference_corpus_s_own` went red --
+# `tool._documents(fixture)` is its only caller and it asserts the fixtures are
+# `gen_reference_corpora.py`'s files byte for byte. The helper is restored with a docstring saying
+# so. One genuinely dead function the rule did find, `gate_scale._mib`, was deleted. A rule whose
+# signal depends on a scope this config deliberately narrows is a rule this config must not act
+# on.
+reportPrivateUsage = false
+reportUnusedFunction = false
+#
+# `reportUnnecessaryIsInstance` -- 26 errors, every one an `isinstance` over a value this code
+# read from a TOML or JSON document. Pyright reads the DECLARED type and calls the check
+# redundant; at runtime the value came out of `tomllib` and can be anything, which is why the
+# check is there. INV-12 is the rule it implements: "no soft fallback ever applies to an identity
+# or safety input", and a narrowing check deleted because a type checker believed the annotation
+# is the softest fallback there is.
+reportUnnecessaryIsInstance = false

@@ -252,7 +252,7 @@ def _row(entry: object, carrier: str, source: str) -> dict[str, Any]:
         _fail(f"{where}: since {entry['since']!r} is not a version (ruling 6)")
     if "bake" in entry:
         bake = entry["bake"]
-        if not isinstance(bake, dict) or set(bake) != _BAKE_KEYS:
+        if not isinstance(bake, dict) or frozenset(bake) != _BAKE_KEYS:
             _fail(f"{where}: bake is {{ renderer, dpi, role }}")
     if "visible" in entry and not isinstance(entry["visible"], bool):
         _fail(f"{where}: visible is true or false")

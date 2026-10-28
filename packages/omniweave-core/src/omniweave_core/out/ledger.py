@@ -215,7 +215,7 @@ def read_index(job_dir: Path) -> tuple[LedgerRow, ...]:
         _bad_index("it is not exactly a schema and a list of rows")
     out: list[LedgerRow] = []
     for row in rows:
-        if not isinstance(row, dict) or set(row) != _ROW_KEYS:
+        if not isinstance(row, dict) or frozenset(row) != _ROW_KEYS:
             _bad_index(f"row {row!r} is not {sorted(_ROW_KEYS)}")
         try:
             out.append(LedgerRow(**row))

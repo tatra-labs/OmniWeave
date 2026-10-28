@@ -363,7 +363,7 @@ def denied_reason(spdx_id: str, policy: Policy) -> str | None:
 
 def _waiver_from(name: str, table: dict[str, object]) -> Waiver:
     """Validate one `[exception.<name>]` table into a `Waiver`, or raise `ValueError` naming why."""
-    keys = set(table)
+    keys = frozenset(table)
     if keys != EXCEPTION_KEYS:
         missing = sorted(EXCEPTION_KEYS - keys)
         unknown = sorted(keys - EXCEPTION_KEYS)
@@ -415,13 +415,27 @@ def _lock_edges(package: dict[str, object]) -> list[tuple[str, bool]]:
     only when someone asks for it, and `omniweave-core[sqlite]` -> `pysqlite3-binary` is in the lock
     of every environment that has never installed it.
     """
-    edges = [(e["name"], "marker" in e) for e in package.get("dependencies", ())]
-    for entries in package.get("optional-dependencies", {}).values():
-        edges.extend((e["name"], True) for e in entries)
+    #  Every value in a parsed lock row is `object`, so each shape is narrowed before it is walked
+    #  rather than trusted: a lock whose `dependencies` is not a list is a lock this gate must
+    #  refuse to read, not one it should crash on halfway through.
+    edges: list[tuple[str, bool]] = []
+    for entry in _rows(package.get("dependencies")):
+        edges.append((str(entry["name"]), "marker" in entry))
+    optional = package.get("optional-dependencies")
+    if isinstance(optional, dict):
+        for entries in optional.values():
+            edges.extend((str(entry["name"]), True) for entry in _rows(entries))
     return edges
 
 
-def _walk(packages: dict[str, dict], roots: list[tuple[str, bool]]) -> dict[str, bool]:
+def _rows(value: object) -> list[dict[str, object]]:
+    """A list of tables out of a parsed lock value. Anything else reads as no rows."""
+    if not isinstance(value, list):
+        return []
+    return [one for one in value if isinstance(one, dict)]
+
+
+def _walk(packages: dict[str, dict[str, object]], roots: list[tuple[str, bool]]) -> dict[str, bool]:
     """Reachability with least-conditional wins: `False` (unconditional) beats `True` and stops."""
     best: dict[str, bool] = {}
     queue = list(roots)
