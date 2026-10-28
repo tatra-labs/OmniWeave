@@ -379,12 +379,12 @@ jobs:
           fi
       - name: "G27 -- documents machine-checked (a, a2, a3, b, c, d)"
         # Two runners. gate_migrations.py carries clause b at the P2 exit (16-roadmap.md:453);
-        # gate_docs.py carries clauses a, a2 and a3 plus clause c's registered-off line since
-        # D994, and prints on its own line that clause d's d0-d4 walk is not in it yet. Clause d's
-        # ARCHITECTURE.md half runs in the test tier (test_architecture_doc.py: every symbol
-        # imports, every `ow` verb, G<n> and register path resolves). Clause c is registered with
-        # enabled = false by ADR-1 decision 6 and must stay off until its four turn-on conditions
-        # hold, which is the script's business and not this file's.
+        # gate_docs.py carries every other clause -- a, a2 and a3 since D994, d's d0-d4 walk since
+        # D995, and clause c's registered-off line. Clause c is registered with enabled = false by
+        # ADR-1 decision 6 and must stay off until its four turn-on conditions hold, which is the
+        # script's business and not this file's. Clause d's ARCHITECTURE.md half ALSO runs in the
+        # test tier and is not redundant: test_architecture_doc.py fails with the symbol's name on
+        # the one document a contributor actually reads, where the gate fails with a gate step.
         run: |
           uv run tools/gate_docs.py
           uv run tools/gate_migrations.py --min-sqlite 3.42
