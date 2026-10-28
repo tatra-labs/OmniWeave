@@ -85,7 +85,7 @@ Four root-level facts that are load-bearing rather than tidy:
    attribution anywhere in `packages/aws-lambda/` — while demonstrably knowing the practice, since
    `skills/talking-head-recut/NOTICE.md` attributes the skill it was adapted from. Both are otherwise
    disciplined repositories. Generating the files is the only defence that survives a rush; §9.1 says
-   why there are fifteen copies of them and not one.
+   why there are sixteen copies of them and not one.
 3. **`.gitignore` must exclude `*.owstore`.** A tracked store is a corpus committed to git — it
    fails `ow doctor` with `OW-S-060` at runtime (00-vision V01-16), and `.gitignore` is what stops it
    reaching a PR at all.
@@ -1544,7 +1544,7 @@ unfalsifiable statement §6.8 refuses.
 | G5 versions ↔ tag | `versions` | 2 | — | yes, against the tag |
 | G1 core resolves to two first-party dists, zero third-party | `gates` | 20 | — | yes |
 | G2 weight ceilings + the 250 MB union | `build` | 90 | — | yes |
-| G3 licences: resolved graph, import graph, unpacked artefacts, **and the fifteen `gen_notice.py --check` trees** | `gates` | 60 | yes | yes |
+| G3 licences: resolved graph, import graph, unpacked artefacts, **and the sixteen `gen_notice.py --check` trees** | `gates` | 60 | yes | yes |
 | G4 the module graph obeys `layers.toml`, rows re-derived from entry points, entry-point values shape-checked | `gates` | 8 | — | — |
 | G6 `ow schema emit --check`, CRLF-normalised | `gates` | 5 | — | — |
 | G7 a constraint tighter than `>=` carries a comment | `gates` | 2 | — | — |
@@ -2119,7 +2119,7 @@ first release, and never again.
 | 2 | `tools/check_versions.py --set <RELEASE>`; it rewrites the 40 version strings across 18 files (§4.2) and runs `uv lock --offline`; commit both | G5, as CI job 1 on the tag — or, if the lock is missed, `uv sync --frozen` failing in all fifteen installing jobs |
 | 3 | write the `CHANGELOG.md` section by hand; a `CONTRACT` or `SCHEMA` move gets a **migration guide** heading, and a `SCHEMA` move leads with the `OW_SCHEMA_AHEAD` downgrade consequence | the two things a consumer must act on read like the twenty they need not |
 | 4 | `ow schema emit --check` and `ow surface emit --check` | G6, G25 — a hand-edited agent-facing artefact |
-| 5 | `tools/gen_notice.py` for all fifteen `NOTICE`/`LICENSES/`/`THIRD_PARTY.md` trees; review the diff line by line | attribution drift, the most common licence defect in the collection |
+| 5 | `tools/gen_notice.py` for all sixteen `NOTICE`/`LICENSES/`/`THIRD_PARTY.md` trees; review the diff line by line | attribution drift, the most common licence defect in the collection |
 | 6 | `ow eval release-check` — refuses on any `EvalStatus.unknown`; publish the scoreboard | a metric nobody measured ships as a number |
 | 7 | confirm no more than one `digest_recipe`/`segment_recipe` bump in the trailing twelve months | the annual budget; two is a process failure, not a technical one |
 | 8 | for a `SCHEMA` move, confirm the migration numbers are dense and unique from 0001 and apply in order to an empty file on `MIN_SQLITE`, that no migration present in the previous tag was renamed or edited, and that every backfill declares `resumable` and `unbackfilled_means` | G27b; a non-resumable long backfill is a SIGKILL after doing the work, charged to whoever runs the next ingest (§5.3) |
@@ -2452,15 +2452,15 @@ license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE", "THIRD_PARTY.md", "LICENSES/*"]
 ```
 
-**There are fifteen copies of those files and not one, and the reason is a PEP 639 rule rather than a
+**There are sixteen copies of those files and not one, and the reason is a PEP 639 rule rather than a
 preference.** `license-files` globs are resolved relative to the *project* directory — the directory
 holding the `pyproject.toml` — and a pattern that escapes it with `..` is rejected by the
 specification. `packages/omniweave-core/` therefore cannot reference the repository root's `LICENSE`,
 and a build that tried would either fail or, worse under a pre-1.27 hatchling, produce a wheel with no
 `License-File` entries at all (§1.3). So `tools/gen_notice.py` writes the four attribution artefacts
-into each of the fourteen `packages/<dist>/` directories plus the repository root, all committed, all
-`--check` gated inside G3. Fifteen copies of the Apache-2.0 text is about 165 KB in the repository and
-is the price of the licence actually shipping.
+into each of the fifteen `packages/<dist>/` directories plus the repository root, all committed, all
+`--check` gated inside G3. Sixteen copies of the Apache-2.0 text is about 177 KB in the repository and
+is the price of the licence actually shipping. *(Erratum, D999, a user ruling of 2026-10-27: the four counts in this document were fifteen and fourteen -- right when they were written, and one behind a tree that gained `omniweave-langchain`. `tools/gen_notice.py` takes the set from `glob("packages/*/pyproject.toml")` rather than from a number, so it always emitted sixteen; the numbers are amended to what it emits, and a test reads this sentence and compares it with the tree. The **distribution** count of §1.2 and §7.2 is a second, separate erratum and is deliberately not touched here.)*
 
 The duplication buys something beyond compliance. `THIRD_PARTY.md` is **per distribution and therefore
 different in each one**: `omniweave-pdf`'s lists pdfium's BSD-3-Clause, `omniweave-target-pptx`'s lists

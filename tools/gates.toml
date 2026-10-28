@@ -69,7 +69,7 @@
 # script with its gate in a trailing comment (:158-160, :389-393, :453-458, :513-516, :574-578,
 # :743), plus 11-repo-layout.md:1443 (`tools/ci_ok.py`), :1265 (`gate_migrations.py`), section 8.6
 # (`gate_docs.py`), 16-roadmap.md:364 (`schemagen.py` for G6) and section 7.6 step 5
-# (`gen_notice.py` for G3's fifteen NOTICE trees). Nothing here is guessed from a filename.
+# (`gen_notice.py` for G3's sixteen NOTICE trees). Nothing here is guessed from a filename.
 #
 # ---------------------------------------------------------------------------------------------
 # OWNERS ARE AUTHORED, NOT QUOTED. Section 6.8 requires that "every `G<n>` row in
@@ -185,7 +185,7 @@ section       = "11-repo-layout.md section 6.4"
 [[gate]]
 id            = "G3"
 assertion     = """
-licences: resolved graph, import graph, unpacked artefacts, **and the fifteen \
+licences: resolved graph, import graph, unpacked artefacts, **and the sixteen \
 `gen_notice.py --check` trees**"""
 jobs          = ["gates"]
 budget_s      = 60
@@ -198,12 +198,17 @@ release       = true
 # NOTICE/LICENSES/THIRD_PARTY trees. A row that named only the first half would make G3 look
 # complete while the most common licence defect in the mined collection went unchecked.
 #
-# THE CELL SAYS FIFTEEN AND THE TREE HOLDS SIXTEEN. Section 9.1 counts "the fourteen
-# `packages/<dist>/` directories plus the repository root", which was right when it was written and
-# is one behind a tree that gained `omniweave-langchain` (an attachment, section 1.2's second
-# table). `gen_notice.py` takes the set from `glob("packages/*/pyproject.toml")` rather than from a
-# number, so it emits sixteen and no distribution ships without a notice; the cell's number is a
-# plan erratum for section 6.4's owner and not a reason to leave one tree out.
+# THE CELL SAID FIFTEEN AND THE TREE HOLDS SIXTEEN, AND THE CELL IS AMENDED (D999, a user
+# ruling of 2026-10-27). `gen_notice.py` takes the set from `glob("packages/*/pyproject.toml")`
+# rather than from a number, so it always emitted sixteen and no distribution has ever shipped
+# without a notice; what was wrong was the four numbers the plan wrote beside it, each right when it
+# was written and each one behind a tree that gained `omniweave-langchain` (an attachment, section
+# 1.2's second table). Section 6.4's cell, section 7.6's step 5, section 1's third rule and section
+# 9.1's paragraph now say sixteen, and section 9.1's "fourteen `packages/<dist>/` directories" says
+# fifteen, which is the one place the two errata touch: a count of trees is a count of distributions
+# plus the root. `test_gen_notice.py` reads that sentence out of the document and compares the
+# number it spells with `len(trees())`, so the amendment is a measurement from here on and not a
+# remark -- and this assertion quotes the amended cell, which is why the string moved with it.
 runner         = ["tools/gate_licences.py", "tools/gen_notice.py"]
 # 17-risks.md section 1.3: `licence` owns "`tools/licences.toml`, G3, tombstones".
 owner         = "licence"
@@ -849,7 +854,9 @@ code_gap_max  = 72
 # first-party distributions" twice.
 #
 # The documents are frozen and amending the prose is a `plan_lint --bless` the repository owner
-# owes, on the same terms as G3's fifteen-to-sixteen erratum. Until then the measured count and the
+# owes, on the terms G3's fifteen-to-sixteen erratum was settled on at D999: a ruling naming the
+# sites, an amendment that leaves the line count alone, and a test that reads the amended sentence
+# back. That one is closed and this one is not. Until it is, the measured count and the
 # expected count are both recorded here, the gate reports the discrepancy on its own line, and
 # `dist_count_prose` failing to match `len(glob("packages/*/pyproject.toml"))` is a finding the
 # moment either number moves -- so this cannot rot into a silent allowance.
