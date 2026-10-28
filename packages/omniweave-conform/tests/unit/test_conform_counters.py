@@ -52,17 +52,33 @@ def _row(**over: object) -> CounterRow:
 # --- the committed register ------------------------------------------------------------------
 
 
-def test_the_register_is_the_charters_fifteen_and_the_ci_row(register: Counters) -> None:
+def test_the_register_is_the_charters_fifteen_and_the_two_ci_rows(register: Counters) -> None:
+    """The charter's fifteen, plus the two counts no eval run records.
+
+    `docs_symbols_checked` joined at D995, when G27 clause d4 landed: section 8.6 emits the symbol
+    count "as the Counter `docs_symbols_checked` with `ratchet` gating", and a count nothing
+    records is a count nothing watches. Its 0.15 is its own -- the count is 548 and one plan
+    document carries up to ~80 symbols, so a tolerance tighter than a document's worth of edits
+    fails on an ordinary amendment -- and the FALL direction is `symbol_floor` beside G27's row,
+    because a `ratchet` guards a rise and section 8.6's named hazard is a document that stops
+    naming things.
+    """
     rows = {row.id: (row.cls, row.tolerance) for row in register.rows}
     assert {k: v for k, v in rows.items() if k in CHARTER_FIFTEEN} == CHARTER_FIFTEEN
-    assert set(rows) - set(CHARTER_FIFTEEN) == {"ci.job_seconds.*"}
+    assert set(rows) - set(CHARTER_FIFTEEN) == {"ci.job_seconds.*", "docs_symbols_checked"}
     assert rows["ci.job_seconds.*"] == ("ratchet", 0.25)
+    assert rows["docs_symbols_checked"] == ("ratchet", 0.15)
     assert (register.owner, register.review_by) == ("team@particle6.com", "2027-06-01")
 
 
 def test_every_row_names_a_source_and_only_ci_is_ci(register: Counters) -> None:
     assert {row.source for row in register.rows} <= set(SOURCES)
-    assert [row.id for row in register.rows if row.source == "ci"] == ["ci.job_seconds.*"]
+    #  Both `ci` rows are counts a GATE computes, which is what the register's SOURCE paragraph
+    #  says a `ci` row means: "A `ci` row never reaches eval_counter, whose run_id is NOT NULL."
+    assert sorted(row.id for row in register.rows if row.source == "ci") == [
+        "ci.job_seconds.*",
+        "docs_symbols_checked",
+    ]
     sourced = {row.id: row.source for row in register.rows}
     assert {k for k, v in sourced.items() if v == "route_spend"} == {
         "llm_calls",

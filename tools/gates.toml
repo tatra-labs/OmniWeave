@@ -708,12 +708,21 @@ fetch_depth    = 0
 # Clause b's script landed, so its path moved from `runner_planned` to `runner` in the same commit
 # -- the forcing function the runner columns above describe, exercised for the first time.
 #
-# TWO RUNNERS AND FIVE CLAUSES, AND THE SCRIPT DOES NOT YET CARRY ALL OF THEM. `gate_docs.py`
-# landed at D994 with clauses (a), (a2) and (a3) plus (c)'s registered-off line, so its path moved
-# out of `runner_planned` in that commit -- the forcing function the runner columns exist for.
-# Clause (d)'s d0-d4 walk of `docs/ARCHITECTURE.md` and `docs/plan/*.md` is the NEXT cell, and the
-# script prints that on its own line rather than leaving a reader to infer it: a check that bounds
-# its own coverage says what it dropped.
+# TWO RUNNERS, SIX CLAUSES, AND EVERY ONE OF THEM NOW RUNS. `gate_docs.py` landed at D994 with
+# clauses (a), (a2) and (a3) plus (c)'s registered-off line -- its path moved out of
+# `runner_planned` in that commit, the forcing function the runner columns exist for -- and D995
+# added clause (d)'s d0-d4 walk of `docs/ARCHITECTURE.md` and `docs/plan/*.md`. The script still
+# prints one bound on its own line: clause (b) is `gate_migrations.py`'s and not its.
+#
+# WHAT CLAUSE (d) MEASURES. d0: 548 symbols checked against the floor below, with all three roots
+# present. d1: three exclusion rules, each a rule and not a list -- a dotted tail that is a file
+# extension makes the name a path (97 occurrences), a declared entry-point group is not a module
+# (22), and section 8.6's roadmap escape (15) -- plus the `from <root> import (...)` expansion the
+# floor forces, leaving fourteen declared names that each say what they are. d2: six families
+# resolve hard, and the invariant families resolve at 0 unresolved over 1,438 occurrences against
+# the register D992 committed, which is what 11-repo-layout.md meant by "otherwise
+# unimplementable". d3: 3,176 relative links and 1,793 section cross-references, none unresolved.
+# d4: the count as the Counter `docs_symbols_checked` in `eval/counters.toml`.
 #
 # What (a), (a2) and (a3) measure is ADR-4 decision 1's own four grounds, reproduced: 74 toml
 # fences in the charter and 00-18 all parse (the ADR counted 73, before ADR-2 wrote
@@ -805,6 +814,47 @@ runner        = ["tools/gate_docs.py"]
 # occurrences the nineteen plan documents match under d1." It moved from 400 to 520 when d1's
 # module group became a `*`; a floor inherited from a narrower match set measures nothing.
 symbol_floor  = 520
+# Measured at 548 when d1 landed (D995): 503 dotted occurrences the scan checks after its two
+# exclusion rules, plus 45 names expanded out of `from <root> import (...)` lines in python fences.
+# The floor is met only WITH that expansion, which is the floor doing its job -- section 8.6 counts
+# "588 dotted names plus 32 names expanded out of `from <root> import (...)` lines", so a d1 that
+# skipped the expansion would come in at 503 and fail here rather than pass quietly.
+#
+# ---------------------------------------------------------------------------------------------
+# TWO CEILINGS, AND WHY THEY ARE CEILINGS AND NOT FLOORS. Section 8.6's d2 resolves "every ...
+# `ow <group> <verb>` ... and `OW-*` code ... named in a document" against its register. Measured
+# over the committed corpus, those two families do not resolve and the reason is not drift: the
+# plan names 146 `ow` spellings against `ACTIONS`' 51, and 291 codes against `codes.toml`'s 193.
+# That is the v1.0-vs-plan gap the acceptance set tracks, not a defect, and 73 of the verbs and 72
+# of the codes are named in no 16-roadmap.md row either, so d1's scheduled-work escape does not
+# reach them. A blocking check would need ~145 declared exceptions, which is an off switch wearing
+# a list.
+#
+# So those two resolve as RATCHETS, which is d4's own mechanism applied to the resolution gap and
+# which lives here for d0's reason: raising a ceiling is a reviewable act and lowering it is
+# visible. A document that starts naming a verb or a code nobody scheduled RAISES the number and
+# fails; the surface catching up LOWERS a number a gate watches. Every other d2 family is a hard
+# check, and three of them resolve clean today -- `G<n>` at 0 unresolved, the nine invariant
+# families at 0 over 1,438 occurrences against `tools/invariants.toml`, and d3's 3,176 relative
+# links and 1,793 section cross-references at 0.
+verb_gap_max  = 73
+code_gap_max  = 72
+# ---------------------------------------------------------------------------------------------
+# THE DISTRIBUTION COUNT IS WRONG IN THE PLAN, WHICH IS WHAT d2 EXISTS TO SAY. Section 8.6: "a PR
+# adding a fifteenth distribution and forgetting to update the prose fails on all three files at
+# once, with the count it found and the count it expected in the message." That PR landed. The
+# workspace holds FIFTEEN `packages/*/pyproject.toml`; 11-repo-layout.md section 1.2 is headed
+# "the fourteen distributions" and its own table lists all fifteen, so the count word is one behind
+# the table in the same section. Fourteen appears 15 times across the corpus and "thirteen
+# first-party distributions" twice.
+#
+# The documents are frozen and amending the prose is a `plan_lint --bless` the repository owner
+# owes, on the same terms as G3's fifteen-to-sixteen erratum. Until then the measured count and the
+# expected count are both recorded here, the gate reports the discrepancy on its own line, and
+# `dist_count_prose` failing to match `len(glob("packages/*/pyproject.toml"))` is a finding the
+# moment either number moves -- so this cannot rot into a silent allowance.
+dist_count_disk  = 15
+dist_count_prose = 14
 
 [[gate]]
 id            = "G28"

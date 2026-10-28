@@ -1207,13 +1207,32 @@ def test_this_script_is_not_in_the_gate_glob_because_no_gates_toml_row_names_it(
     No `G` row names `ow plan lint`, and this wave did not invent one, so the script is named
     outside that glob. If a human adds a row later, this test is what says the file must be
     renamed in the same change.
+
+    **The assertion reads the ROWS and not the file's text, and it did not always.** It was a
+    substring check over the whole register, which is the C13 shape -- an assertion over a
+    container that prose can satisfy or break. D995 added a comment to G27's row saying that
+    amending the plan's distribution count "is a `plan_lint --bless` the repository owner owes",
+    and the substring check failed on the sentence. A row naming the script is the thing this test
+    is about; a comment mentioning it by name is the register explaining itself, which is what the
+    comments in that file are for.
     """
     script = REPO_ROOT / "tools" / "plan_lint.py"
     assert script.is_file()
     assert not script.name.startswith("gate_"), "a gate_*.py needs a tools/gates.toml row"
-    register = (REPO_ROOT / "tools" / "gates.toml").read_text(encoding="utf-8")
-    assert "plan_lint" not in register, "there is now a row: rename the script to gate_plan.py"
-    assert "ow plan lint" not in register
+    register = tomllib.loads((REPO_ROOT / "tools" / "gates.toml").read_text(encoding="utf-8"))
+    named: list[str] = []
+    for table in ("gate", "job_assertion"):
+        for row in register.get(table, []):
+            for key in ("runner", "runner_planned", "step", "assertion", "asserts"):
+                value = row.get(key)
+                named.extend(value if isinstance(value, list) else [value] if value else [])
+            for clause in row.get("clause", []):
+                for key in ("runner", "runner_planned", "asserts"):
+                    value = clause.get(key)
+                    named.extend(value if isinstance(value, list) else [value] if value else [])
+    spelled = " ".join(str(one) for one in named)
+    assert "plan_lint" not in spelled, "there is now a row: rename the script to gate_plan.py"
+    assert "ow plan lint" not in spelled
     on_disk = {path.name for path in (REPO_ROOT / "tools").glob("gate_*.py")}
     assert "gate_plan.py" not in on_disk
 

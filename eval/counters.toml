@@ -123,3 +123,27 @@ class = "ratchet"
 tolerance = 0.25
 source = "ci"
 note = "the slow accumulation no timeout-minutes trips"
+
+# 11-repo-layout.md section 8.6 clause d4: "the number of symbols checked, emitted as the Counter
+# `docs_symbols_checked` with `ratchet` gating", against "a document that stops naming things to
+# make the gate quiet". BOTH DIRECTIONS ARE GATED AND BY DIFFERENT MECHANISMS, on purpose.
+#
+# `ratchet` fails a RISE, and a rise is meaningful here: section 8.6's own worry is that prose
+# noise drowns the signal -- "1,619 bare-root occurrences in `docs_symbols_checked` would drown
+# d4's ratchet". A scan that broadened to match more than it should shows up as a rise.
+#
+# The FALL is `symbol_floor` beside G27's row in tools/gates.toml, which is the direction section
+# 8.6 names in words: "removing a symbol from a document to silence d1 lowers a number a gate
+# watches". One number, two questions, and no second home for either -- a `tolerance` guarding the
+# fall as well would be a ceiling for a count that already has a floor.
+#
+# 0.15 is this row's own, not inherited: the count is 548 and one plan document carries up to ~80
+# symbols, so a tolerance tighter than a document's worth of edits fails on an ordinary amendment
+# and teaches everyone to bless. `ci` because the gate runs in the `gates` job and no eval run
+# records it, which is what the SOURCE paragraph above says a `ci` row means.
+[[counter]]
+id = "docs_symbols_checked"
+class = "ratchet"
+tolerance = 0.15
+source = "ci"
+note = "G27 clause d4; the fall direction is symbol_floor beside G27's row"
