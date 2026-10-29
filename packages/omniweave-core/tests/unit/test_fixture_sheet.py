@@ -15,6 +15,7 @@ import re
 import sys
 import zipfile
 from pathlib import Path
+from types import ModuleType
 from typing import Final
 
 
@@ -31,14 +32,25 @@ REPO_ROOT: Final = _repo_root(Path(__file__).resolve())
 GEN_PATH: Final = REPO_ROOT / "fixtures" / "gen" / "gen_4m_cell_sheet.py"
 EXPECTED_PATH: Final = REPO_ROOT / "fixtures" / "gen" / "EXPECTED.sha256"
 
-# Loaded by path, as `test_fixture_gen.py` loads `gen_5000p_pdf.py`: a script, not a distribution.
-_SPEC = importlib.util.spec_from_file_location("omniweave_gen_4m_cell_sheet", GEN_PATH)
-if _SPEC is None or _SPEC.loader is None:  # pragma: no cover -- the file is in this repository.
-    message = f"cannot load {GEN_PATH}"
-    raise RuntimeError(message)
-gen = importlib.util.module_from_spec(_SPEC)
-sys.modules[_SPEC.name] = gen
-_SPEC.loader.exec_module(gen)
+
+def _load(path: Path, name: str) -> ModuleType:
+    """Load a `tools/` or `fixtures/gen/` script by path: a script, not a distribution.
+
+    As `test_fixture_gen.py` loads `gen_5000p_pdf.py` and `test_gate_fixtures.py` loads the gate.
+    """
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:  # pragma: no cover -- both files are in this repo.
+        message = f"cannot load {path}"
+        raise RuntimeError(message)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+gen = _load(GEN_PATH, "omniweave_gen_4m_cell_sheet")
+GATE = _load(REPO_ROOT / "tools" / "gate_fixtures.py", "_owsheet_gate_fixtures")
+"""Q-G2's own `MAX_BINARY_BYTES`, so the cap this file measures against cannot drift from it."""
 
 
 def _pin(cells: int) -> str:
@@ -63,6 +75,30 @@ def test_the_default_pin_is_the_manifest_of_the_four_million_cell_sheet(tmp_path
     assert (tmp_path / "sheet.xlsx").stat().st_size < 64 * 1024 * 1024, (
         "the office card's max_input_bytes would refuse it before any reader ran"
     )
+
+
+def test_the_four_million_cell_archive_is_over_q_g2s_per_binary_cap(tmp_path: Path) -> None:
+    """~6 s. Why this fixture is generated and never committed, as a measurement. D1010.
+
+    13-quality.md:591 rules that the 4M-cell workbook is *"never in git"* and
+    12-performance.md:1516 writes its size as *"generated"*. This is the arithmetic behind the
+    ruling, and it is asserted rather than recorded so that a future compressor or a narrower
+    `COLUMNS` cannot quietly turn a forced choice into an unexamined one.
+    """
+    gen.generate(tmp_path / "sheet.xlsx", cells=gen.DEFAULT_CELLS)
+    size = (tmp_path / "sheet.xlsx").stat().st_size
+    assert size > GATE.MAX_BINARY_BYTES, (
+        f"{size} bytes now fits {GATE.MAX_BINARY_BYTES}; if this sheet can be committed, "
+        "13-quality.md:591 and 12-performance.md:1516 are the rulings to revisit"
+    )
+
+
+def test_the_small_sheet_is_under_the_cap_so_the_refusal_is_about_size_alone(
+    tmp_path: Path,
+) -> None:
+    """The other direction of D1010: the shape is committable, the cell count is not."""
+    gen.generate(tmp_path / "sheet.xlsx", cells=gen.SMALL_CELLS)
+    assert (tmp_path / "sheet.xlsx").stat().st_size < GATE.MAX_BINARY_BYTES
 
 
 def test_the_manifest_is_over_uncompressed_bytes_so_the_archive_reads_back_to_it(
