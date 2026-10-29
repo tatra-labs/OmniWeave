@@ -20,7 +20,7 @@ type = "order"
 page = 1
 before = "Quarterly report"
 after = "Figures"
-slices = ["office/docx"]
+slices = ["office/labelled", "office/docx"]
 
 [[assertion]]
 id = "figures-list"
@@ -28,7 +28,7 @@ type = "order"
 page = 1
 before = "Figures"
 after = "first item"
-slices = ["office/docx"]
+slices = ["office/labelled", "office/docx"]
 
 [[assertion]]
 id = "list-order"
@@ -36,7 +36,7 @@ type = "order"
 page = 1
 before = "first item"
 after = "second item"
-slices = ["office/docx"]
+slices = ["office/labelled", "office/docx"]
 
 [[assertion]]
 id = "q1-revenue"

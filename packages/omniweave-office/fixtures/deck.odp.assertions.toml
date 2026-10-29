@@ -13,4 +13,4 @@ type = "order"
 page = 1
 before = "Release plan"
 after = "one slide is enough"
-slices = ["office/odp"]
+slices = ["office/labelled", "office/odp"]
