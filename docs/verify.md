@@ -102,14 +102,17 @@ attest, and recipe 4 has nothing to compare against it.
 Two things in the tree still have to be reconciled, and both are named here rather than left for
 whoever runs the checklist to discover:
 
-- **`release.yml`'s `sbom-sign` job exits 1 at the SBOM generation step, deliberately.** The
-  workflow's own header states it: the file cannot complete a release today, because
-  [the roadmap](plan/16-roadmap.md)'s W10.9 — release engineering — is the item that turns the
-  marked steps into commands, and it is not built. Until it is, recipe 3 has no blob to verify for
-  a release cut from this tree.
-- **The repository slug disagrees with itself.** `release.yml:316` pins the cosign identity regexp
-  to `^https://github\.com/omniweave/omniweave/`, and §7.6's step 0 binds the PyPI pending
-  publisher to `omniweave/omniweave`, while this repository is `tatra-labs/OmniWeave` and the
-  generated `llms.txt` already says so. The recipes above use the real one. A signature issued by
-  this repository will not match the regexp the workflow verifies with, so the two sites must agree
-  before a tag is pushed — whichever slug wins.
+- **Recipes 1 and 2 work at v1.0; recipe 3 has nothing to verify yet.** By a user ruling of
+  2026-10-29 the publish half of `release.yml` is gated off — `sbom-sign` and `publish` carry
+  `if: vars.OMNIWEAVE_RELEASE_PUBLISH == 'true'`, an unset repository variable — because
+  [the roadmap](plan/16-roadmap.md)'s W10.9, release engineering, is the item that turns that job's
+  marked steps into commands and it is not built. So a `v*` tag runs tag-guard, ci, build and
+  provenance, and the GitHub release is cut from those artefacts: the 28 reproducible files and
+  `provenance.intoto.jsonl`, which are exactly what recipes 1 and 2 verify. No SBOM is produced,
+  so recipe 3 applies to a later release, and recipe 4's signed asset arrives with it.
+
+  One consequence worth knowing: an environment gates only the jobs that declare it, and `publish`
+  is the only one, so **the `release` environment is not needed for v1.0**.
+- **The slug is settled.** `tatra-labs/OmniWeave` is canonical (a user ruling of 2026-10-29), and
+  `release.yml`, §7.6's step 0 and the generated `llms.txt` now agree on it, so a signature issued
+  by this repository matches the identity the workflow verifies against. The recipes above use it.

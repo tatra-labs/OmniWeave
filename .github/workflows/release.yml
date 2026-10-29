@@ -53,13 +53,28 @@
 #   * the ancestry assertion of section 6.1 IS written, as the tag-guard job, because it is two git
 #     commands and its absence is what checklist step 12 fails on.
 #
-# CONSEQUENCE, STATED PLAINLY: THIS FILE CANNOT COMPLETE A RELEASE TODAY. The sbom-sign job exits 1
-# at the SBOM generation step and says why, and the build job exits 1 the day gen_first_party.py
-# lands without section 7.3's four-command block being wired. Both are deliberate. The alternative
-# is a release workflow that signs a nonexistent SBOM or publishes wheels whose first-party
-# manifest names nothing, and section 6.8 refuses a check that cannot fail. 16-roadmap.md W10.9
-# ("Release engineering: release.yml with OIDC trusted publishing ...") is the item that turns
-# these into commands. Nothing here runs before a v* tag exists, and none exists.
+# CONSEQUENCE, STATED PLAINLY: THE PUBLISH HALF OF THIS FILE CANNOT COMPLETE A RELEASE. The
+# sbom-sign job exits 1 at the SBOM generation step and says why, and the build job exits 1 the day
+# gen_first_party.py lands without section 7.3's four-command block being wired. Both are
+# deliberate. The alternative is a release workflow that signs a nonexistent SBOM or publishes
+# wheels whose first-party manifest names nothing, and section 6.8 refuses a check that cannot
+# fail. 16-roadmap.md W10.9 ("Release engineering: release.yml with OIDC trusted publishing ...")
+# is the item that turns these into commands, and it is not built.
+#
+# WHAT A v* TAG DOES AT v1.0 (D1016, a user ruling of 2026-10-29). v1.0 is a GitHub release and
+# publishes nothing to PyPI, so the publish half is GATED OFF rather than left to fail: `sbom-sign`
+# and `publish` carry `if: vars.OMNIWEAVE_RELEASE_PUBLISH == 'true'`, an unset repository variable,
+# so a tag runs tag-guard -> ci -> build -> provenance and stops. Those four are the ones that
+# work, and the GitHub release is cut from their artefacts: 28 reproducible files from `build` and
+# `provenance.intoto.jsonl` from the SLSA generator, which is what docs/verify.md's recipes 1 and 2
+# verify.
+#
+# TWO CONSEQUENCES WORTH STATING. First, the `release` environment is NO LONGER NEEDED FOR v1.0:
+# an environment is per-job and `publish` is the only job that declares one, so a skipped `publish`
+# never reaches a reviewer gate. That also retires the hazard the old header left open -- a tag
+# push starting a publish run with zero environments configured and therefore no pause. Second,
+# turning the variable on is a repository SETTING and not an edit here, so W10.9 landing is the
+# event that flips it, and until then the two jobs are skipped in the open rather than absent.
 
 name: release
 
@@ -265,6 +280,8 @@ jobs:
   # ==========================================================================================
   sbom-sign:
     name: "sbom-sign (sign and verify in one job)"
+    #  D1016: skipped until W10.9 lands and the repository variable is set. See the header.
+    if: vars.OMNIWEAVE_RELEASE_PUBLISH == 'true'
     needs: [build]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -313,7 +330,7 @@ jobs:
         run: |
           cosign sign-blob --yes --bundle sbom-spdx.json.bundle sbom-spdx.json
           cosign verify-blob --bundle sbom-spdx.json.bundle \
-            --certificate-identity-regexp '^https://github\.com/omniweave/omniweave/' \
+            --certificate-identity-regexp '^https://github\.com/tatra-labs/OmniWeave/' \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             sbom-spdx.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
@@ -346,6 +363,10 @@ jobs:
   # ==========================================================================================
   publish:
     name: "publish (environment: release)"
+    #  D1016: v1.0 publishes nothing to PyPI. `needs: [sbom-sign]` would skip this job anyway
+    #  once that one is skipped; the condition is repeated here because a reader checking whether
+    #  this repository can publish should find the answer on the publish job itself.
+    if: vars.OMNIWEAVE_RELEASE_PUBLISH == 'true'
     needs: [build, provenance, sbom-sign]
     runs-on: ubuntu-latest
     timeout-minutes: 20
