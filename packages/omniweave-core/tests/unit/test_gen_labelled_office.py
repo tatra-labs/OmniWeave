@@ -173,9 +173,14 @@ def test_each_sidecar_joins_its_extension_and_the_coarse_slice(name: str) -> Non
     """D1002: the per-extension key comes from the format, so a new document in an existing
     format joins that slice with no table to update, and the coarse key is what can reach
     `min_slice_n`. Q-G1 ruling 14 holds the pair together from the other side."""
+    outline = GEN.OUTLINES[name]
     sidecar = tomllib.loads((FIXTURES / f"{name}.meta.toml").read_text(encoding="utf-8"))
     declared = sidecar["fixture"]["tests"]["slices"]
-    assert declared == [f"office/{GEN.OUTLINES[name].fmt}", "office/labelled"]
+    facet = [f"office/{outline.fmt}/has_merges=1"] if GEN.merges(outline) else []
+    assert declared == [*facet, f"office/{outline.fmt}", "office/labelled"]
+    assert bool(facet) == any(row.span > 1 for row in outline.rows), (
+        "D1005: the facet is derived from the spans, in both directions"
+    )
 
 
 def test_the_coarse_slice_holds_every_labelled_office_document() -> None:

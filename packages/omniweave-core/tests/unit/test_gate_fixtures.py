@@ -460,10 +460,13 @@ def test_every_labelled_fixture_in_this_repository_declares_its_family() -> None
         assert held == ([GATE.coarse_slice(declared)] if labelled else []), row["path"]
         if held:
             coarse.setdefault(held[0], []).append(row["path"])
-    assert {key: len(paths) for key, paths in coarse.items()} == {
-        "office/labelled": 30,
-        "pdf/born_digital/labelled": 4,
-    }
+    referenced = [row["path"] for row in rows if (REPO / (row["path"] + GATE.REFERENCE)).is_file()]
+    assert sorted(coarse["office/labelled"]) == sorted(referenced), (
+        "the coarse office slice is exactly the documents that carry a structure reference,"
+        " which is what `structure_f1` counts"
+    )
+    assert len(coarse["pdf/born_digital/labelled"]) == 4
+    assert len(coarse["office/labelled"]) >= 30, "min_slice_n, met since D1004"
 
 
 def test_the_sidecars_slices_reach_the_structure_references_and_no_assertion() -> None:
@@ -476,10 +479,10 @@ def test_the_sidecars_slices_reach_the_structure_references_and_no_assertion() -
         for path in assertions
         for row in tomllib.loads(path.read_text(encoding="utf-8"))["assertion"]
     ]
-    assert len(rows) == 110
+    assert len(rows) == 158, "110 drafted by D912/D983, 48 relational rows added by D1005"
     assert [row["id"] for row in rows if not row.get("slices")] == []
     references = sorted(REPO.glob("packages/*/fixtures/*.structure.jsonl"))
-    assert len(references) == 30
+    assert len(references) == 33
     for path in references:
         lines = path.read_text(encoding="utf-8").splitlines()[1:]
         assert [row for row in (json.loads(line) for line in lines) if row.get("slices")] == []
@@ -511,7 +514,9 @@ def test_a_bad_flag_did_not_run(capsys: pytest.CaptureFixture[str]) -> None:
 def test_this_repository_passes_q_g1(capsys: pytest.CaptureFixture[str]) -> None:
     assert GATE.main(["--skip-pack"]) == 0, capsys.readouterr().out
     rows = tomllib.loads((REPO / "fixtures" / "index.toml").read_text(encoding="utf-8"))["fixture"]
-    assert len(rows) == 57
+    sidecars = GATE.scope(GATE._committed(REPO))[1]
+    assert len(rows) == len(sidecars), "every sidecar is one row and no row is spare"
+    assert len(rows) == 60
     assert {row["provenance"] for row in rows} == {"generated"}
 
 

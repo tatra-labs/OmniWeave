@@ -88,6 +88,17 @@ class Row:
     parent_kind: str
     text: str
     layer: str = "body"
+    span: int = 1
+    """Columns this cell covers, for a `table_cell` row only (D1005).
+
+    `table_rel_acc`'s register row is `*/has_merges=1`, and a slice is a claim about the DOCUMENT,
+    so the rate's population is the verdicts on documents that have a merged cell. Three of them
+    did, each with a five-cell table, which is too few cells to carry `min_slice_n = 30` honest
+    relations. A span here is what lets a labelled document have one.
+
+    It does not reach the reference: a covered slot is not a Block, and the row for the origin
+    says what the merged cell holds. 03 section 10's exactly-once invariant is the writers' job.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,10 +155,34 @@ def _runs(rows: tuple[Row, ...]) -> list[tuple[str, list[Row]]]:
 
 
 def _chunks(cells: list[Row], cols: int) -> list[list[Row]]:
+    """The cells grouped into table rows, SPAN-AWARE (D1005).
+
+    A row is closed when its cells' spans sum to `cols`, so a `span = 2` cell fills a two-column
+    row by itself. A row whose spans overshoot is an outline that cannot be laid out, and saying
+    so here beats emitting a table whose grid no reference row describes.
+    """
     if cols < 1:
         message = "a run of table_cell rows needs an Outline.cols to chunk it into table rows"
         raise ValueError(message)
-    return [cells[at : at + cols] for at in range(0, len(cells), cols)]
+    out: list[list[Row]] = []
+    row: list[Row] = []
+    width = 0
+    for cell in cells:
+        if cell.span < 1 or cell.span > cols:
+            message = f"cell {cell.text!r} spans {cell.span} of {cols} column(s)"
+            raise ValueError(message)
+        row.append(cell)
+        width += cell.span
+        if width == cols:
+            out.append(row)
+            row, width = [], 0
+        elif width > cols:
+            message = f"cell {cell.text!r} overshoots the row: {width} of {cols} column(s)"
+            raise ValueError(message)
+    if row:
+        message = f"the last table row is {width} of {cols} column(s) wide"
+        raise ValueError(message)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -200,16 +235,23 @@ def _odf(fmt: str, body: str) -> bytes:
     )
 
 
+def _odf_cell(cell: Row) -> str:
+    """One ODF cell. A span is `table:number-columns-spanned` plus its covered slots, which is
+    ODF's own spelling of the same exactly-once grid `sheet.ods` already carries."""
+    span = ""
+    if cell.span > 1:
+        span = f' table:number-columns-spanned="{cell.span}" table:number-rows-spanned="1"'
+    covered = "<table:covered-table-cell/>" * (cell.span - 1)
+    return (
+        f'<table:table-cell office:value-type="string"{span}>'
+        f"<text:p>{esc(cell.text)}</text:p></table:table-cell>{covered}"
+    )
+
+
 def _odf_table(run: list[Row], cols: int) -> str:
     """One `table:table` from a run of cells, chunked into rows by `cols`."""
     rows = "".join(
-        "<table:table-row>"
-        + "".join(
-            '<table:table-cell office:value-type="string">'
-            f"<text:p>{esc(cell.text)}</text:p></table:table-cell>"
-            for cell in chunk
-        )
-        + "</table:table-row>"
+        "<table:table-row>" + "".join(_odf_cell(cell) for cell in chunk) + "</table:table-row>"
         for chunk in _chunks(run, cols)
     )
     return (
@@ -278,16 +320,21 @@ def as_xlsx(outline: Outline) -> bytes:
     what the reference row spells, which is what makes `tools/label_review.py` able to confirm it.
     """
     cells = [row for _parent, run in _runs(outline.rows) for row in run]
-    sheet_rows = "".join(
-        f'<row r="{at}">'
-        + "".join(
-            f'<c r="{_a1(column, at)}" t="inlineStr"><is><t>{esc(cell.text)}</t></is></c>'
-            for column, cell in enumerate(chunk)
-        )
-        + "</row>"
-        for at, chunk in enumerate(_chunks(cells, outline.cols), start=1)
-    )
-    sheet = XML + f'<worksheet xmlns="{SS}"><sheetData>{sheet_rows}</sheetData></worksheet>'
+    chunks = _chunks(cells, outline.cols)
+    sheet_rows = ""
+    merges = []
+    for at, chunk in enumerate(chunks, start=1):
+        column = 0
+        body = ""
+        for cell in chunk:
+            body += f'<c r="{_a1(column, at)}" t="inlineStr"><is><t>{esc(cell.text)}</t></is></c>'
+            if cell.span > 1:
+                last = _a1(column + cell.span - 1, at)
+                merges.append(f'<mergeCell ref="{_a1(column, at)}:{last}"/>')
+            column += cell.span
+        sheet_rows += f'<row r="{at}">{body}</row>'
+    merged = f'<mergeCells count="{len(merges)}">{"".join(merges)}</mergeCells>' if merges else ""
+    sheet = XML + f'<worksheet xmlns="{SS}"><sheetData>{sheet_rows}</sheetData>{merged}</worksheet>'
     workbook = (
         XML + f'<workbook xmlns="{SS}" xmlns:r="{R}"><sheets>'
         '<sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>'
@@ -383,6 +430,12 @@ def as_pptx(outline: Outline) -> bytes:
     return zip_bytes(entries)
 
 
+def _docx_cell(cell: Row) -> str:
+    """One WordprocessingML cell. A span is `w:gridSpan`, which is what `rich.docx` carries."""
+    pr = f'<w:tcPr><w:gridSpan w:val="{cell.span}"/></w:tcPr>' if cell.span > 1 else ""
+    return f"<w:tc>{pr}<w:p><w:r><w:t>{esc(cell.text)}</w:t></w:r></w:p></w:tc>"
+
+
 def as_docx(outline: Outline) -> bytes:
     """A WordprocessingML document. Headings carry `w:outlineLvl`, list entries `w:numPr`."""
     body: list[str] = []
@@ -397,12 +450,7 @@ def as_docx(outline: Outline) -> bytes:
         elif parent == "table_cell":
             grid = "<w:tblGrid>" + "<w:gridCol/>" * outline.cols + "</w:tblGrid>"
             trs = "".join(
-                "<w:tr>"
-                + "".join(
-                    f"<w:tc><w:p><w:r><w:t>{esc(cell.text)}</w:t></w:r></w:p></w:tc>"
-                    for cell in chunk
-                )
-                + "</w:tr>"
+                "<w:tr>" + "".join(_docx_cell(cell) for cell in chunk) + "</w:tr>"
                 for chunk in _chunks(run, outline.cols)
             )
             body.append(f"<w:tbl><w:tblPr/>{grid}{trs}</w:tbl>")
@@ -860,6 +908,77 @@ OUTLINES: Final[dict[str, Outline]] = {
         ),
         cols=4,
     ),
+    "summary.xlsx": Outline(
+        "xlsx",
+        "a four-column summary with a merged total row, so the grid carries covered slots",
+        (
+            Row("paragraph", "table_cell", "Region"),
+            Row("paragraph", "table_cell", "Spring"),
+            Row("paragraph", "table_cell", "Autumn"),
+            Row("paragraph", "table_cell", "Year"),
+            Row("paragraph", "table_cell", "Northern"),
+            Row("paragraph", "table_cell", "120"),
+            Row("paragraph", "table_cell", "140"),
+            Row("paragraph", "table_cell", "260"),
+            Row("paragraph", "table_cell", "Southern"),
+            Row("paragraph", "table_cell", "90"),
+            Row("paragraph", "table_cell", "110"),
+            Row("paragraph", "table_cell", "200"),
+            Row("paragraph", "table_cell", "Eastern"),
+            Row("paragraph", "table_cell", "70"),
+            Row("paragraph", "table_cell", "80"),
+            Row("paragraph", "table_cell", "150"),
+            Row("paragraph", "table_cell", "Every region", span=2),
+            Row("paragraph", "table_cell", "610", span=2),
+        ),
+        cols=4,
+    ),
+    "rollup.ods": Outline(
+        "ods",
+        "the ODF spelling of the same shape: a merged total row over four columns",
+        (
+            Row("paragraph", "table_cell", "Branch"),
+            Row("paragraph", "table_cell", "Opened"),
+            Row("paragraph", "table_cell", "Closed"),
+            Row("paragraph", "table_cell", "Net"),
+            Row("paragraph", "table_cell", "Harbour"),
+            Row("paragraph", "table_cell", "31"),
+            Row("paragraph", "table_cell", "12"),
+            Row("paragraph", "table_cell", "19"),
+            Row("paragraph", "table_cell", "Uplands"),
+            Row("paragraph", "table_cell", "24"),
+            Row("paragraph", "table_cell", "9"),
+            Row("paragraph", "table_cell", "15"),
+            Row("paragraph", "table_cell", "Riverside"),
+            Row("paragraph", "table_cell", "18"),
+            Row("paragraph", "table_cell", "4"),
+            Row("paragraph", "table_cell", "14"),
+            Row("paragraph", "table_cell", "All branches", span=2),
+            Row("paragraph", "table_cell", "48", span=2),
+        ),
+        cols=4,
+    ),
+    "report.docx": Outline(
+        "docx",
+        "a heading and a three-column table whose last row is one merged cell",
+        (
+            Row("heading", "document", "Conservation report"),
+            Row("paragraph", "table_cell", "Item"),
+            Row("paragraph", "table_cell", "Assessed"),
+            Row("paragraph", "table_cell", "Treated"),
+            Row("paragraph", "table_cell", "Maps"),
+            Row("paragraph", "table_cell", "412"),
+            Row("paragraph", "table_cell", "38"),
+            Row("paragraph", "table_cell", "Ledgers"),
+            Row("paragraph", "table_cell", "96"),
+            Row("paragraph", "table_cell", "11"),
+            Row("paragraph", "table_cell", "Photographs"),
+            Row("paragraph", "table_cell", "1507"),
+            Row("paragraph", "table_cell", "203"),
+            Row("paragraph", "table_cell", "Totalled across every item", span=3),
+        ),
+        cols=3,
+    ),
     "handbook.docx": Outline(
         "docx",
         "three headings and five paragraphs, the longest prose document in the family",
@@ -926,10 +1045,26 @@ slices = [{slices}]
 COARSE: Final = "office/labelled"
 
 
+def merges(outline: Outline) -> bool:
+    """Whether any cell covers more than one column (D1005). DERIVED, never declared twice."""
+    return any(row.span > 1 for row in outline.rows)
+
+
 def sidecar(name: str, outline: Outline, data: bytes) -> str:
     """One `.meta.toml`. The per-extension key comes from the format, so a new document in an
-    existing format joins that slice without a table to update."""
-    names = (f"office/{outline.fmt}", COARSE)
+    existing format joins that slice without a table to update.
+
+    A document with a merged cell declares `office/<ext>/has_merges=1` FIRST (D1005). That order
+    is load-bearing: a verdict takes its assertion's first slice (`judge` ruling 5), an assertion
+    with no slices of its own inherits the sidecar's (`labels` ruling 4), and `table_rel_acc`'s
+    register row is `*/has_merges=1`. The facet is DERIVED from the spans, so a table that gains
+    or loses a merge cannot leave the claim behind.
+    """
+    names = (
+        (f"office/{outline.fmt}/has_merges=1", f"office/{outline.fmt}", COARSE)
+        if merges(outline)
+        else (f"office/{outline.fmt}", COARSE)
+    )
     return SIDECAR.format(
         name=name,
         purpose=outline.purpose,
