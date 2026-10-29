@@ -44,8 +44,13 @@ DRAFTED = (
 """D913: the drafted labels' rates, `unknown` until a reviewer verifies 30 in a slice, and each
 one a refusal, run id aside. D982 added `structure_f1` over the office fixtures' drafted
 `structure.jsonl` references: `unknown` for the same reason, one signature short."""
-UNDER_MIN = ("metric", "false_confident_zero@removal in absence/omniweave")
-"""D933: the removal half's ceiling, `unknown` over the catalogue's 13 answerable questions."""
+UNDER_MIN = ("declared-unknown", "false_confident_zero@removal in absence/omniweave")
+"""D933's ceiling over the catalogue's 13 answerable questions, and since D1017 a DISCLOSURE.
+
+A user ruling of 2026-10-29 declared this metric unknown: 13 is the whole answerable population,
+so no signature and no rerun can compute a rate under `min_slice_n = 30`, and only a bigger
+catalogue can. It is still printed, with the detail the run computed, in `disclosed` rather than
+`findings` -- so it no longer refuses the release."""
 
 
 def _labels(fixtures: str) -> int:
@@ -514,12 +519,12 @@ def test_the_entry_point_runs_every_suite_in_one_write(
     finally:
         connection.close()
     assert judged.runs == 10
-    assert [(f.kind, f.names.split(" run ")[0]) for f in judged.findings] == [
-        UNDER_MIN,
-        *DRAFTED,
-    ], (
-        "D913: every suite's hard gate holds; only the drafted labels' unverified rates refuse, "
-        "and D933's ceiling over 13 answerable questions, under min_slice_n"
+    assert [(f.kind, f.names.split(" run ")[0]) for f in judged.findings] == list(DRAFTED), (
+        "D913: every suite's hard gate holds, and since D1017 ONLY the drafted labels' unverified "
+        "rates refuse -- a reviewer's signature is the one input between this and exit 0"
+    )
+    assert [(f.kind, f.names.split(" run ")[0]) for f in judged.disclosed] == [UNDER_MIN], (
+        "D1017: D933's ceiling over 13 answerable questions is disclosed, not counted"
     )
 
 
