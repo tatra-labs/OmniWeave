@@ -913,6 +913,54 @@ def test_cosign_is_pinned_to_the_version_that_signs_and_verifies(release: Workfl
     assert "cosign verify-blob" in sbom
 
 
+PUBLISH_GATE = "vars.OMNIWEAVE_RELEASE_PUBLISH == 'true'"
+"""D1016's condition. The publish half of `release.yml` is skipped until W10.9 lands."""
+
+PUBLISH_SIDE = ("sbom-sign", "publish")
+"""The two jobs the ruling gates off. Every other job in the file runs on a `v*` tag."""
+
+
+def test_the_publish_side_is_gated_off_and_nothing_else_is(release: Workflow) -> None:
+    """D1016, a user ruling of 2026-10-29: v1.0 is a GitHub release and publishes nothing to PyPI,
+    so a `v*` tag runs tag-guard -> ci -> build -> provenance and stops.
+
+    Checked in BOTH directions, which is what makes this a declared exception rather than a
+    disabled workflow: exactly the two publish-side jobs carry the condition, and the four jobs
+    that produce the release's artefacts must NOT, because a tag that built nothing would make the
+    GitHub release this ruling describes impossible to cut.
+    """
+    blocks = release.job_blocks()
+    gated = [
+        job
+        for job, body in blocks.items()
+        if any(line.strip() == f"if: {PUBLISH_GATE}" for line in body)
+    ]
+    assert gated == list(PUBLISH_SIDE), gated
+    assert set(blocks) - set(gated) == {"tag-guard", "ci", "build", "provenance"}, sorted(blocks)
+
+
+def test_the_header_says_the_release_environment_is_not_needed_at_v1_0(release: Workflow) -> None:
+    """The consequence a reader most needs and would otherwise have to derive: an environment is
+    per-job, `publish` is the only job declaring one, and a skipped `publish` never reaches a
+    reviewer gate. It also retires the hazard of a tag push starting a publish run with zero
+    environments configured, which is what made the `v0.1.0` tag stay local."""
+    assert "NO LONGER NEEDED FOR v1.0" in release.text
+    assert "W10.9" in release.text, "the roadmap item whose landing flips the variable"
+
+
+def test_cosign_verifies_against_the_slug_this_repository_actually_has(release: Workflow) -> None:
+    """D1015, a user ruling of 2026-10-29: `tatra-labs/OmniWeave` is canonical.
+
+    `sbom-sign` signs a blob and then verifies it in the same job (rule 3), and the identity it
+    verifies against is the signing workflow's own. While this read `omniweave/omniweave`, a
+    signature issued by THIS repository could not match it, so rule 3's round trip would have
+    failed the first time it ran -- the defect it exists to catch, pointed at itself.
+    """
+    body = "\n".join(release.code_lines())
+    assert "github\\.com/tatra-labs/OmniWeave/" in body, "the identity regexp names the real repo"
+    assert "omniweave/omniweave" not in body, "the plan's placeholder slug is gone from this file"
+
+
 def test_publish_is_the_only_job_behind_the_approval_pause(release: Workflow) -> None:
     """Section 7.3 rule 7: "`environment: release` gates exactly the jobs that declare it".
 

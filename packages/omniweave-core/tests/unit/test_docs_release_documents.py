@@ -75,16 +75,27 @@ def test_verify_md_carries_section_7_5s_four_recipes_and_its_honest_paragraph() 
     assert "omniweave.lock" in text, "the one thing that does catch a swapped driver wheel"
 
 
-def test_verify_md_says_release_yml_cannot_complete_a_release_yet() -> None:
-    """The workflow's own header says it; a verification document that omitted it would send a
-    reader after a blob no release from this tree produces."""
+def test_verify_md_says_which_recipes_a_v1_0_tag_can_actually_satisfy() -> None:
+    """D1016 changed what this document owes a reader. The publish half of `release.yml` is gated
+    off, so recipes 1 and 2 verify artefacts a `v*` tag really produces -- the 28 reproducible
+    files and `provenance.intoto.jsonl` -- while recipe 3 has no SBOM to verify and recipe 4 no
+    signed asset. A verification document that listed four recipes without saying which two work
+    today would send a reader after a blob no release from this tree produces.
+
+    The condition is asserted as the literal that `release.yml` carries, so the document cannot
+    describe a gate the workflow has stopped applying.
+    """
     text = VERIFY.read_text(encoding="utf-8")
-    assert "sbom-sign" in text and "exits 1" in text
-    assert "W10.9" in text, "the roadmap item that turns the marked steps into commands"
-    workflow = RELEASE_YML.read_text(encoding="utf-8").lower()
-    assert "cannot complete a release today" in workflow, (
-        "if release.yml no longer says this, docs/verify.md's note is the stale one"
+    assert "vars.OMNIWEAVE_RELEASE_PUBLISH == 'true'" in text, "the gate, as the workflow spells it"
+    assert text.count("sbom-sign") >= 1 and "W10.9" in text
+    assert "the `release` environment is not needed for v1.0" in text, (
+        "the consequence a reader would otherwise have to derive from how environments scope"
     )
+    workflow = RELEASE_YML.read_text(encoding="utf-8")
+    assert "if: vars.OMNIWEAVE_RELEASE_PUBLISH == 'true'" in workflow, (
+        "if release.yml no longer gates the publish half, docs/verify.md's note is the stale one"
+    )
+    assert "cannot complete a release" in workflow.lower()
 
 
 def test_ts_sdk_trigger_states_both_halves_of_the_written_condition() -> None:
