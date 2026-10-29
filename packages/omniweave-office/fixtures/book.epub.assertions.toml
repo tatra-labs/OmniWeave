@@ -20,7 +20,7 @@ type = "order"
 page = 1
 before = "Chapter one"
 after = "A short paragraph with"
-slices = ["office/epub"]
+slices = ["office/labelled", "office/epub"]
 
 [[assertion]]
 id = "para-quote"
@@ -28,7 +28,7 @@ type = "order"
 page = 1
 before = "A short paragraph with"
 after = "Quoted material."
-slices = ["office/epub"]
+slices = ["office/labelled", "office/epub"]
 
 [[assertion]]
 id = "list-order"
@@ -36,7 +36,7 @@ type = "order"
 page = 1
 before = "alpha"
 after = "beta"
-slices = ["office/epub"]
+slices = ["office/labelled", "office/epub"]
 
 [[assertion]]
 id = "quote-end"
@@ -44,4 +44,4 @@ type = "order"
 page = 1
 before = "Quoted material."
 after = "The end."
-slices = ["office/epub"]
+slices = ["office/labelled", "office/epub"]

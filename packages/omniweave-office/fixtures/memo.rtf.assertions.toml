@@ -20,7 +20,7 @@ type = "order"
 page = 1
 before = "Memo"
 after = "Plain text, then italic and bold."
-slices = ["office/rtf"]
+slices = ["office/labelled", "office/rtf"]
 
 [[assertion]]
 id = "body-order"
@@ -28,4 +28,4 @@ type = "order"
 page = 1
 before = "Plain text, then italic and bold."
 after = "A second paragraph."
-slices = ["office/rtf"]
+slices = ["office/labelled", "office/rtf"]
