@@ -91,6 +91,42 @@ standing pattern (ledger D25). D844 adds Q-G2, which :1986 makes *"the same gate
 13. **Not run, and printed as not run:** the pack ratchet, which needs a recorded baseline to
     ratchet against.
 
+## The coarse labelled slice (D1002)
+
+14. **A labelled fixture declares its family's coarse slice, and nothing else declares one.**
+    A fixture is labelled when it carries at least one of ruling 2's two label files. A metric
+    that reads `[fixture.tests] slices` macro-averages at `min_slice_n = 30`, and no single
+    extension will hold thirty of whatever it counts, so a per-extension key reports `unknown`
+    for ever; a user ruling of 2026-10-28 adds one coarse slice per family, which is the set that
+    can reach thirty, and leaves the per-extension rows visible saying what they are.
+
+    **What the sidecar's slices reach, exactly.** A `.structure.jsonl` row carries no slices of
+    its own, so every one of them inherits the sidecar's and `structure_f1` groups by it; its
+    `min_slice_n` counts DOCUMENTS (`structure` ruling 7 is the mean of a slice's documents'
+    F1). An assertion's slices are *"its own, else its fixture's sidecar's"* (`labels` ruling 4)
+    and a verdict takes the first of them (`judge` ruling 5); `order_acc` and `table_rel_acc`
+    count VERDICTS, not documents. Every one of the 110 committed assertions declares its own
+    slices, so the coarse key reaches `structure_f1` alone today, and
+    `pdf/born_digital/labelled` -- on four fixtures that carry assertions and no structure
+    reference -- is a declaration ahead of its population: it names the family new born-digital
+    documents join, and no verdict lands on it yet. A test pins that, so an assertion written
+    without `slices` later is a deliberate change rather than a silent one.
+
+    **The family is derived, never typed.** Of a fixture's declared slices, a key whose last
+    segment carries an `=` is a facet (`office/docx/has_merges=1`), not a place in the tree, and
+    is dropped; the family is what remains with its last segment removed, so `office/docx` gives
+    `office` and `pdf/born_digital/gen` gives `pdf/born_digital`. The coarse key is that family
+    and `labelled`. A fixture declaring two families, or only facets, names no family and is a
+    finding of its own: there is nothing to derive the coarse key from.
+
+    **Checked in both directions**, because a declaration only one side of which is enforced
+    drifts the other way: a labelled fixture missing the coarse key fails, and so does a key on
+    a fixture that carries no labels, or one naming a family its own slices do not.
+
+    Unlike rulings 2-4, a finding here does **not** keep the row out of the index. The row is
+    well formed; what disagrees is the declaration and the tree, and dropping the row would make
+    `--write` delete a manifest row over a slice name.
+
 ## Exit codes
 
 `0` every fixture has a well-formed row and the index matches. `1` a finding, named with its path
@@ -143,6 +179,8 @@ __all__ = [
     "Finding",
     "budget",
     "check_row",
+    "coarse_slice",
+    "labelled",
     "main",
     "orphans",
     "read_usage",
@@ -165,6 +203,10 @@ REFERENCE: Final = ".structure.jsonl"
 fixture. Without this row the ten office references counted as ten fixtures with no sidecar, which
 is how Q-G1 read "47 fixture(s), 37 sidecar(s)" on the commit that added them."""
 HOUSEKEEPING: Final = frozenset({"README.md", ".gitattributes", "EXPECTED.sha256"})
+COARSE: Final = "labelled"
+"""Ruling 14: the last segment of the coarse slice a labelled fixture's family declares."""
+FACET: Final = "="
+"""Ruling 14: what makes a slice's last segment a facet rather than a place in the tree."""
 PROVENANCES: Final[Mapping[str, tuple[str, ...]]] = {
     "generated": ("generator",),
     "public_domain": ("source_url", "retrieved_at", "statutory"),
@@ -271,6 +313,48 @@ def check_row(row: Mapping[str, Any], data: bytes | None, committed: frozenset[s
         or (isinstance(retrieved, str) and _DATE.fullmatch(retrieved))
     ):
         why.append(f"retrieved_at {retrieved!r} is not YYYY-MM-DD")
+    return why
+
+
+def labelled(path: str, committed: frozenset[str]) -> bool:
+    """Ruling 14: whether this fixture carries either of ruling 2's two label files."""
+    return any(path + suffix in committed for suffix in (LABELS, REFERENCE))
+
+
+def coarse_slice(declared: Sequence[str]) -> str | None:
+    """Ruling 14: the `<family>/labelled` these slices derive, or `None` when they derive none."""
+    families = {
+        one.rsplit("/", 1)[0]
+        for one in declared
+        if FACET not in one.rsplit("/", 1)[-1] and "/" in one and not one.endswith("/" + COARSE)
+    }
+    if len(families) != 1:
+        return None
+    return f"{families.pop()}/{COARSE}"
+
+
+def check_slices(path: str, row: Mapping[str, Any], committed: frozenset[str]) -> list[str]:
+    """Ruling 14 over one fixture's `[fixture]` table, both directions."""
+    tests = row.get("tests")
+    declared = tests.get("slices") if isinstance(tests, dict) else None
+    if not isinstance(declared, list) or not all(isinstance(one, str) for one in declared):
+        return []
+    held = [one for one in declared if one.endswith("/" + COARSE)]
+    want = coarse_slice(declared)
+    if not labelled(path, committed):
+        return [
+            f"{one} is a coarse slice on a fixture that carries no"
+            f" {LABELS} or {REFERENCE} (ruling 14)"
+            for one in held
+        ]
+    if want is None:
+        return [
+            f"carries labels and declares {', '.join(declared) or 'no slice'}, which names no one"
+            " family to derive a coarse slice from (ruling 14)"
+        ]
+    why = [f"{one} is not this fixture's {want} (ruling 14)" for one in held if one != want]
+    if want not in held:
+        why.append(f"carries labels and does not declare {want} (ruling 14)")
     return why
 
 
@@ -597,6 +681,7 @@ def _rows(
         data = target.read_bytes() if path in committed and target.is_file() else None
         why = check_row(table, data, committed)
         findings += [Finding(sidecar, reason) for reason in why]
+        findings += [Finding(sidecar, reason) for reason in check_slices(path, table, committed)]
         if not why:
             rows.append((path, table))
     return findings, rows
