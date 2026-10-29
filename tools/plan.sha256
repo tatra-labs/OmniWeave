@@ -21,7 +21,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D1017, a user ruling of 2026-10-29: false_confident_zero is a declared unknown that ow eval release-check reports and does not refuse. 16-roadmap.md:978's P10 exit criterion names it beside perf -- 'zero unknown outside perf and false_confident_zero (D987, D1017)'. Its population is the whole answerable set, 13 questions against min_slice_n = 30, so no signature and no rerun can compute it; growing the catalogue is deferred past v1.0. 1308 lines held.
+# blessed-because: D1018, a user ruling of 2026-10-29: the sidecar key is [fixture] imaging = scan | born_digital, required under fixtures/docs/ and optional elsewhere, and Q-G2's 40% scan floor counts it. Recorded as a build note on 13:606's existing line -- the line whose own text said the clause fails closed until a sidecar key says what a scan is -- because code cites this document by line (13:1022, 13:1088, 13:1262) and inserting the key into section 4.4's printed sidecar would move all three. 2124 lines held.
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -38,7 +38,7 @@ documents-frozen  e3d9414cd24b29681c2da184fffa9c3fbc33e4d066f831fe9d8113b159e0ab
 documents-frozen  7045e57d63450411e13e7d0bac60aaed64db257c224ced3682c667ee1ff39b34  10-interfaces.md
 documents-frozen  1f3db693432f2c8aab0a1a12a08682f69fab785634fb251724250bb6cab00202  11-repo-layout.md
 documents-frozen  2fe653d5ac8031388b9a25e2d7464c4921e22b0aa78e2f4dabb531186219c6a5  12-performance.md
-documents-frozen  a5d6a013221333a5d70938bbd7f1e562b040de0ccba50c9582b5ffdefea934a6  13-quality.md
+documents-frozen  b755fa79199d11bbf0335c007cffc8e0c21935483d852f5f184a6757f2756008  13-quality.md
 documents-frozen  78a3474b788625971c7a7fed610ef3c6518e9330bfd87e8411fbc744666b43d1  14-security.md
 documents-frozen  2cddc08dab8833611e0180e474ea2106c43dfbdb57e710b3578ffcaef764614f  15-observability.md
 documents-frozen  d88d138230676efd9a56e0636cf6c08c1228e6cec2b0435dc9e2e14cb074404d  16-roadmap.md
