@@ -63,15 +63,59 @@ def test_the_verdict_is_the_coverage_and_the_exits(
     coverage: str, exits: list[int] | None, verdict: str
 ) -> None:
     """A green run over a partial criterion is PARTIAL, never PASS; any non-zero exit -- pytest's 5,
-    "no tests collected", included -- is FAIL; an instrument not run is UNMEASURED."""
+    "no tests collected", included -- is FAIL; an instrument not run is UNMEASURED.
+
+    The criterion carries one instrument per exit, because `judge` pairs the two positionally
+    (D1008). That is what `evaluate` builds and what `reported` has to be read from.
+    """
     row = a.Criterion(  # type: ignore[attr-defined]
         "V01-x",
         "t",
-        (a.tool("x.py"),),  # type: ignore[attr-defined]
+        tuple(  # type: ignore[attr-defined]
+            a.tool(f"x{at}.py")  # type: ignore[attr-defined]
+            for at in range(len(exits) if exits is not None else 1)
+        ),
         a.Coverage(coverage),  # type: ignore[attr-defined]
         "" if coverage == "full" else "a clause",
     )
     assert str(a.judge(row, exits)) == verdict  # type: ignore[attr-defined]
+
+
+def _row(coverage: str, *instruments: object) -> object:
+    return a.Criterion(  # type: ignore[attr-defined]
+        "V01-x",
+        "t",
+        tuple(instruments),
+        a.Coverage(coverage),  # type: ignore[attr-defined]
+        "" if coverage == "full" else "a clause",
+    )
+
+
+def test_a_reported_exit_is_not_a_failure_and_an_unreported_one_still_is() -> None:
+    """D1008, implementing D924: *"A breached G22 bound is reported beside the runner and does not
+    fail; a run that did not happen does."* `gate_scale.py` exits 1 on a breach and 2 when it did
+    not run, so 1 is reported and 2 is not -- which is the line `ci.yml`'s nightly step already
+    carries. The strictness is per instrument: a second instrument's 1 still fails.
+    """
+    breach = a.Instrument("g", ("tools/gate_scale.py",), reported=frozenset({1}))  # type: ignore[attr-defined]
+    assert str(a.judge(_row("partial", breach), [1])) == "PARTIAL"  # type: ignore[attr-defined]
+    assert str(a.judge(_row("partial", breach), [2])) == "FAIL"  # type: ignore[attr-defined]
+    assert str(a.judge(_row("partial", breach), [0])) == "PARTIAL"  # type: ignore[attr-defined]
+    plain = a.tool("other.py")  # type: ignore[attr-defined]
+    assert str(a.judge(_row("partial", breach, plain), [1, 1])) == "FAIL"  # type: ignore[attr-defined]
+    assert str(a.judge(_row("partial", breach, plain), [1, 0])) == "PARTIAL"  # type: ignore[attr-defined]
+
+
+def test_no_v01_instrument_declares_a_reported_exit() -> None:
+    """A field one ruling opened may not widen quietly. D924 is about G22, which is V10-7's; this
+    table keeps the strict rule everywhere, and `test_acceptance_v10.py` holds the other half."""
+    declared = [
+        (row.id, one.label)
+        for row in a.CRITERIA  # type: ignore[attr-defined]
+        for one in row.instruments
+        if one.reported
+    ]
+    assert declared == []
 
 
 def test_a_criterion_nothing_measures_is_unmeasured_whatever_else() -> None:

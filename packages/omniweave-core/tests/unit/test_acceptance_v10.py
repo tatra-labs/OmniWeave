@@ -39,6 +39,23 @@ def _load() -> ModuleType:
 a = _load()
 
 
+def test_only_v10_7_declares_a_reported_exit_and_only_for_the_breach() -> None:
+    """D1008, implementing D924: *"A breached G22 bound is reported beside the runner and does not
+    fail; a run that did not happen does."* `tools/gate_scale.py` exits 1 on a breach and 2 when
+    it did not run, so exactly 1 is reported -- the line `ci.yml`'s nightly step already carries.
+
+    Nothing else in the table may declare one. A non-zero exit reading as anything but FAIL is
+    what would let a mistyped pytest node pass for green, so the exception stays one row wide.
+    """
+    declared = {
+        (row.id, one.label): one.reported
+        for row in a.CRITERIA
+        for one in row.instruments
+        if one.reported
+    }
+    assert declared == {("V10-7", "tools/gate_scale.py"): frozenset({1})}
+
+
 def test_the_table_is_the_plans_seventeen_in_order() -> None:
     """16:985 and 00-vision.md section 9.2: V10-1 .. V10-17, nothing added, nothing dropped."""
     assert [row.id for row in a.CRITERIA] == [f"V10-{n}" for n in range(1, 18)]
