@@ -1,0 +1,10 @@
+owoutline/1  corpus=core@2026.10  doc=6bd57a675e89dbe0fe14869810a8ba7c  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic 5f9d3d56 -
+p0/0 heading body extracted normalized 0e9d2a6c - Retention policy
+p0/6/0 paragraph note extracted normalized fabe9f93 - Reviewed each January.
+p0/1 paragraph body extracted normalized cc23b58e - This policy covers every document the archive ho
+p0/2 heading body extracted normalized 1ae6263f - How long a record is kept
+p0/3 paragraph body extracted normalized 67d7ea3e - A reader request is kept for two years.
+p0/4 paragraph body extracted normalized e2d54201 - A catalogue record is kept indefinitely.
+p0/5 paragraph body extracted normalized fb5dca31 - Questions go to the records office.
+p0/6 footnote note extracted normalized bb0d7e98 -

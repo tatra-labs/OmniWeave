@@ -1,0 +1,23 @@
+owoutline/1  corpus=core@2026.10  doc=c0df78701d075a66d18af87fddc6cd3b  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic e3d9203f -
+p0/0 heading body extracted normalized 40040eaf - Flatbread, four pieces
+p0/1/r0c0 table_cell body extracted normalized e7faeb9f -
+p0/1/r0c0/0 paragraph body extracted normalized e16c7b24 - Ingredient
+p0/1/r0c1/0 paragraph body extracted normalized c30e85b3 - Amount
+p0/1/r1c0/0 paragraph body extracted normalized 2d492493 - Flour
+p0/1/r1c1/0 paragraph body extracted normalized 1714f459 - 300 g
+p0/1/r2c0/0 paragraph body extracted normalized 9984c625 - Water
+p0/1/r2c1/0 paragraph body extracted normalized 1cbcc640 - 180 ml
+p0/2/0 list_item body extracted normalized af645fff -
+p0/2/0/0 paragraph body extracted normalized d0063b67 - Mix until no dry flour remains.
+p0/2/1/0 paragraph body extracted normalized ed3f5e7a - Rest the dough for twenty minutes.
+p0/2/2/0 paragraph body extracted normalized e65bd5ca - Cook each piece for two minutes a side.
+p0/1 table body extracted normalized 7e3c874a -
+p0/1/r0c1 table_cell body extracted normalized 64cc1135 -
+p0/2/1 list_item body extracted normalized a29a4cde -
+p0/1/r1c0 table_cell body extracted normalized f1ca6c59 -
+p0/2 list body extracted normalized 1e8639d7 -
+p0/2/2 list_item body extracted normalized 2bdaee03 -
+p0/1/r1c1 table_cell body extracted normalized 7db739ce -
+p0/1/r2c0 table_cell body extracted normalized f8f0d33a -
+p0/1/r2c1 table_cell body extracted normalized 2706bd68 -

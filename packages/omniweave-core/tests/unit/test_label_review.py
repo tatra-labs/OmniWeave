@@ -409,14 +409,14 @@ def test_every_committed_reference_row_agrees_with_the_bytes_or_is_named_unconfi
     disagree = [one for one in readings if one.agrees is False]
     assert disagree == [], [one.why for one in disagree]
     unknown = [one.reference.id for one in readings if one.agrees is None]
-    assert len(readings) == 59, "the committed population; a new reference belongs in this count"
+    assert len(readings) == 227, "the committed population; a new reference belongs in this count"
     assert unknown == ["s04", "s05"], "the two OMML rows of rich.docx and nothing else"
 
 
 def test_the_signature_unit_is_the_document_and_nothing_is_signed_yet() -> None:
     """`structure` ruling 3: a document scores only when EVERY row of its reference is verified."""
     grouped = TOOL.documents(TOOL.read_structure(REPO))
-    assert len(grouped) == 10
+    assert len(grouped) == 30
     signed = {one.reference.checked for group in grouped.values() for one in group}
     assert signed == {None}, "this repository has signed no reference row"
 
@@ -595,7 +595,7 @@ def test_one_refused_document_stops_every_write(tmp_path: Path) -> None:
 def test_the_structure_bundle_is_keyed_by_document_and_says_what_it_does_not_judge() -> None:
     data = TOOL.structure_bundle(TOOL.read_structure(REPO), REPO)
     assert data["schema"] == "omniweave.structure-review/1"
-    assert len(data["documents"]) == 10
+    assert len(data["documents"]) == 30
     assert "per DOCUMENT" in data["note"]
     assert "kind, layer, parent_kind) is the reviewer's judgement" in data["note"]
     first = data["documents"][0]

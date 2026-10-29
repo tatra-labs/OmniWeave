@@ -3,6 +3,30 @@
 # 4.4): sorted by path, LF, no timestamps.
 
 [[fixture]]
+path = "packages/omniweave-office/fixtures/agenda.docx"
+bytes = 2918
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+provenance = "generated"
+sha256 = "0e17dff2e68a88ef3b81557b3b5d28da0dbe3692424c37545f074c597309c411"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/docx", "office/labelled"]
+
+[[fixture]]
+path = "packages/omniweave-office/fixtures/anthology.epub"
+bytes = 1521
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "application/epub+zip"
+provenance = "generated"
+sha256 = "e0b8913b69ccb7f47a66bda8382663a96808ecd40ec55c8612a97f86f9c70367"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/epub", "office/labelled"]
+
+[[fixture]]
 path = "packages/omniweave-office/fixtures/book.epub"
 bytes = 1644
 generator = "fixtures/gen/gen_office_fixtures.py"
@@ -13,6 +37,30 @@ spdx = "Apache-2.0"
 
 [fixture.tests]
 slices = ["office/epub", "office/labelled"]
+
+[[fixture]]
+path = "packages/omniweave-office/fixtures/budget.xlsx"
+bytes = 2851
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+provenance = "generated"
+sha256 = "ab54519eeb7340b06ef31d2fd204c2e006415266a3e2f11ceb2e9c9680c65b69"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/xlsx", "office/labelled"]
+
+[[fixture]]
+path = "packages/omniweave-office/fixtures/catalogue.ods"
+bytes = 2474
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "application/vnd.oasis.opendocument.spreadsheet"
+provenance = "generated"
+sha256 = "3c8ca7e2aafbfd56c8633f7f0487edf02a81e1afdc1f8d81efbf911a9ee67174"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/ods", "office/labelled"]
 
 [[fixture]]
 path = "packages/omniweave-office/fixtures/deck.odp"
@@ -66,6 +114,78 @@ sha256 = "5eba0adb0383384e5b4ca7f5c994e8a7fa3cd9fc82b3c4479e59b0a5bfa777b6"
 spdx = "Apache-2.0"
 
 [[fixture]]
+path = "packages/omniweave-office/fixtures/handbook.docx"
+bytes = 2833
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+provenance = "generated"
+sha256 = "4fa9afe05782759dfcc1cad1fd112a35e8ffef0a86ef2f51d8d56d61d4a0f226"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/docx", "office/labelled"]
+
+[[fixture]]
+path = "packages/omniweave-office/fixtures/inventory.xlsx"
+bytes = 2838
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+provenance = "generated"
+sha256 = "0fe5ee4be06d9218572fca127bd34c964ebbd2fd30382b96147bdde683f9ecd3"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/xlsx", "office/labelled"]
+
+[[fixture]]
+path = "packages/omniweave-office/fixtures/invoice.docx"
+bytes = 3022
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+provenance = "generated"
+sha256 = "d83606ac7b49e844f4b98a600fc31e0fbed041732e12b991f729496dc2fefad5"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/docx", "office/labelled"]
+
+[[fixture]]
+path = "packages/omniweave-office/fixtures/kickoff.odp"
+bytes = 1647
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "application/vnd.oasis.opendocument.presentation"
+provenance = "generated"
+sha256 = "c92fb30dfc5a0026e130351ad1dd6e78c0b8dae3525e93fd200e08508fbea143"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/odp", "office/labelled"]
+
+[[fixture]]
+path = "packages/omniweave-office/fixtures/ledger.csv"
+bytes = 143
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "text/csv"
+provenance = "generated"
+sha256 = "3c26025f335bc5e95b57311847d55e63c93127254dd0e20580cb0a968cdec87a"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/csv", "office/labelled"]
+
+[[fixture]]
+path = "packages/omniweave-office/fixtures/letter.rtf"
+bytes = 242
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "application/rtf"
+provenance = "generated"
+sha256 = "0c645c9936564aa00d1318152221cd42393e3caa45358d76c4d8b46649a35658"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/rtf", "office/labelled"]
+
+[[fixture]]
 path = "packages/omniweave-office/fixtures/memo.doc"
 bytes = 5632
 generator = "fixtures/gen/gen_office_fixtures.py"
@@ -85,6 +205,18 @@ spdx = "Apache-2.0"
 
 [fixture.tests]
 slices = ["office/rtf", "office/labelled"]
+
+[[fixture]]
+path = "packages/omniweave-office/fixtures/minutes.odt"
+bytes = 1640
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "application/vnd.oasis.opendocument.text"
+provenance = "generated"
+sha256 = "6d982b336546f1c524f6beeeb2a5428aac7bb77260028590402524e04b2ded3d"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/odt", "office/labelled"]
 
 [[fixture]]
 path = "packages/omniweave-office/fixtures/not_a_document.bin"
@@ -107,6 +239,78 @@ spdx = "Apache-2.0"
 slices = ["office/odt", "office/labelled"]
 
 [[fixture]]
+path = "packages/omniweave-office/fixtures/policy.docx"
+bytes = 3212
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+provenance = "generated"
+sha256 = "8eefff9faa7668c01d656565afa0ba1260f38b2b9348bddff93ce2619f797ea2"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/docx", "office/labelled"]
+
+[[fixture]]
+path = "packages/omniweave-office/fixtures/primer.epub"
+bytes = 1557
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "application/epub+zip"
+provenance = "generated"
+sha256 = "fcea489f9349bb06d0d1cfbb8767c0fb87dcc8be11ee5cf61ed853ef99c5eea0"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/epub", "office/labelled"]
+
+[[fixture]]
+path = "packages/omniweave-office/fixtures/receipt.rtf"
+bytes = 176
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "application/rtf"
+provenance = "generated"
+sha256 = "488ae1657ac2524e2f04d1b78f05432c4a246ff71e87db05f5dada908f53366f"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/rtf", "office/labelled"]
+
+[[fixture]]
+path = "packages/omniweave-office/fixtures/recipe.odt"
+bytes = 2248
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "application/vnd.oasis.opendocument.text"
+provenance = "generated"
+sha256 = "94cb8712fbc217277b77b7337a3af9e40c95167f92cc80aa6f85cd0abdd5b50e"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/odt", "office/labelled"]
+
+[[fixture]]
+path = "packages/omniweave-office/fixtures/retro.odp"
+bytes = 1579
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "application/vnd.oasis.opendocument.presentation"
+provenance = "generated"
+sha256 = "140f6574b0ee3b29cb0f0ef58348942a5b24b3354d66a492a717d58c2b8b71ad"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/odp", "office/labelled"]
+
+[[fixture]]
+path = "packages/omniweave-office/fixtures/review.pptx"
+bytes = 3005
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+provenance = "generated"
+sha256 = "db2501c6adf5242f6cca5cb93ed57ac1673115178697452a4293b994064077d1"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/pptx", "office/labelled"]
+
+[[fixture]]
 path = "packages/omniweave-office/fixtures/rich.docx"
 bytes = 6040
 generator = "fixtures/gen/gen_office_fixtures.py"
@@ -117,6 +321,30 @@ spdx = "Apache-2.0"
 
 [fixture.tests]
 slices = ["office/docx/has_merges=1", "office/docx", "office/labelled"]
+
+[[fixture]]
+path = "packages/omniweave-office/fixtures/roadmap.pptx"
+bytes = 4263
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+provenance = "generated"
+sha256 = "534235e2010b2209dad4f91e163500a3bf1c54b7645081125836a0e9647aa49a"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/pptx", "office/labelled"]
+
+[[fixture]]
+path = "packages/omniweave-office/fixtures/roster.csv"
+bytes = 150
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "text/csv"
+provenance = "generated"
+sha256 = "969ef86d11af0219df71c7385f8673448f78282c717a0cd3d5d19af5279886df"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/csv", "office/labelled"]
 
 [[fixture]]
 path = "packages/omniweave-office/fixtures/rows.csv"
@@ -290,6 +518,18 @@ media_type = "text/tab-separated-values"
 provenance = "generated"
 sha256 = "17f5e99db040c1bff1b6b8791674671ed050e4f939b607c09076449837f85511"
 spdx = "Apache-2.0"
+
+[[fixture]]
+path = "packages/omniweave-office/fixtures/timesheet.ods"
+bytes = 2477
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "application/vnd.oasis.opendocument.spreadsheet"
+provenance = "generated"
+sha256 = "a40e24e59ef74a89392e67a3f70bbc6c5ed26ee1fc53e6e61a82bd164f165261"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/ods", "office/labelled"]
 
 [[fixture]]
 path = "packages/omniweave-office/fixtures/truncated.docx"

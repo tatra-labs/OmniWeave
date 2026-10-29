@@ -1,0 +1,9 @@
+owoutline/1  corpus=core@2026.10  doc=0c95ebfa1243a4be172c17e097ffd22e  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic 15a623ba -
+p0/0 heading body extracted normalized 1a04cf86 - A primer on indexes
+p0/3/0 paragraph body extracted normalized 829ad882 - Order is the first courtesy a reader is owed.
+p0/1 heading body extracted normalized 60fab907 - What an index is for
+p0/2 paragraph body extracted normalized e76b656d - An index answers a question without reading the
+p0/3 blockquote body extracted normalized 3145139c -
+p0/4 code body extracted normalized 63e470a5 - index.lookup('order')
+p0/5 paragraph body extracted normalized 399958cf - The next chapter builds one.

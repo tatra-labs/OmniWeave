@@ -1,0 +1,2 @@
+owpages/1  corpus=core@2026.10  doc=fa2c0ce7ff547024c6f611adfa785c33  driver=parse.office.anydoc@1  schema_v=1
+p0000 n=7 kind{blockquote:1,document:1,heading:1,paragraph:4} layer{body:7} trust{extracted:7} quote{normalized:6,synthetic:1} cdig=2439e110 ldig=c852905c diag{}
