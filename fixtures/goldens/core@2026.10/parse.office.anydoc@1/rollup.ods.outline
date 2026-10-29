@@ -1,0 +1,39 @@
+owoutline/1  corpus=core@2026.10  doc=394601c14ba2a3b6184905941174e20a  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic 7c8fa48e -
+p0/0 table body extracted normalized f68a0db6 -
+p0/0/r0c0 table_cell body extracted normalized 00d6c858 -
+p0/0/r0c0/0 paragraph body extracted normalized 842faa46 - Branch
+p0/0/r0c1/0 paragraph body extracted normalized 1cb17ad9 - Opened
+p0/0/r0c2/0 paragraph body extracted normalized d27d16b0 - Closed
+p0/0/r0c3/0 paragraph body extracted normalized e7a94ec0 - Net
+p0/0/r1c0/0 paragraph body extracted normalized d04c6e27 - Harbour
+p0/0/r1c1/0 paragraph body extracted normalized 0fc675e4 - 31
+p0/0/r1c2/0 paragraph body extracted normalized 3b07e96a - 12
+p0/0/r1c3/0 paragraph body extracted normalized 7c831d50 - 19
+p0/0/r2c0/0 paragraph body extracted normalized 5630363a - Uplands
+p0/0/r2c1/0 paragraph body extracted normalized 287f6ebb - 24
+p0/0/r2c2/0 paragraph body extracted normalized d4980e8b - 9
+p0/0/r2c3/0 paragraph body extracted normalized c6acf98c - 15
+p0/0/r3c0/0 paragraph body extracted normalized 41899b16 - Riverside
+p0/0/r3c1/0 paragraph body extracted normalized 8a00cc5c - 18
+p0/0/r3c2/0 paragraph body extracted normalized 8ce705da - 4
+p0/0/r3c3/0 paragraph body extracted normalized 14afe42c - 14
+p0/0/r4c0/0 paragraph body extracted normalized a305af31 - All branches
+p0/0/r4c2/0 paragraph body extracted normalized c1cbb7fe - 48
+p0/0/r0c1 table_cell body extracted normalized c5300aab -
+p0/0/r0c2 table_cell body extracted normalized ac2915b4 -
+p0/0/r0c3 table_cell body extracted normalized b3dbf2e5 -
+p0/0/r1c0 table_cell body extracted normalized 35838b95 -
+p0/0/r1c1 table_cell body extracted normalized e6b68526 -
+p0/0/r1c2 table_cell body extracted normalized 38fe589e -
+p0/0/r1c3 table_cell body extracted normalized b8f94358 -
+p0/0/r2c0 table_cell body extracted normalized 017fddb1 -
+p0/0/r2c1 table_cell body extracted normalized 92d13bb6 -
+p0/0/r2c2 table_cell body extracted normalized d36f0f72 -
+p0/0/r2c3 table_cell body extracted normalized c95ff18e -
+p0/0/r3c0 table_cell body extracted normalized 41d91213 -
+p0/0/r3c1 table_cell body extracted normalized 979053cf -
+p0/0/r3c2 table_cell body extracted normalized 4f8db1a8 -
+p0/0/r3c3 table_cell body extracted normalized d4c46663 -
+p0/0/r4c0 table_cell body extracted normalized 3765c987 -
+p0/0/r4c2 table_cell body extracted normalized 99db657e -

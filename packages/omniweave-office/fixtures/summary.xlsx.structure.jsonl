@@ -1,0 +1,19 @@
+{"schema": "omniweave.structure/1"}
+{"id": "s01", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Region"}
+{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Spring"}
+{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Autumn"}
+{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Year"}
+{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Northern"}
+{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "120"}
+{"id": "s07", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "140"}
+{"id": "s08", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "260"}
+{"id": "s09", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Southern"}
+{"id": "s10", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "90"}
+{"id": "s11", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "110"}
+{"id": "s12", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "200"}
+{"id": "s13", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Eastern"}
+{"id": "s14", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "70"}
+{"id": "s15", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "80"}
+{"id": "s16", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "150"}
+{"id": "s17", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Every region"}
+{"id": "s18", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "610"}

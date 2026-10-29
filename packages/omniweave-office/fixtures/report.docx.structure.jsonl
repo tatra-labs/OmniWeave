@@ -1,0 +1,15 @@
+{"schema": "omniweave.structure/1"}
+{"id": "s01", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "Conservation report"}
+{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Item"}
+{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Assessed"}
+{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Treated"}
+{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Maps"}
+{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "412"}
+{"id": "s07", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "38"}
+{"id": "s08", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Ledgers"}
+{"id": "s09", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "96"}
+{"id": "s10", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "11"}
+{"id": "s11", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Photographs"}
+{"id": "s12", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "1507"}
+{"id": "s13", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "203"}
+{"id": "s14", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "Totalled across every item"}

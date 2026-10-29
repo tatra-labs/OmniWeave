@@ -1,0 +1,151 @@
+# report.docx.assertions.toml -- 13-quality.md section 8.1's assertions about report.docx.
+#
+# DRAFTED by Claude on 2026-10-28 (D913, a user ruling of 2026-10-21: Claude drafts, the user
+# verifies). Every relation was read off the PARSED document's own `Grid`, not off the outline
+# that wrote the bytes. None is checked; an unchecked row runs and never scores (13:1022).
+#
+# The third encoding of the same grid: `w:gridSpan` over three columns, so the merged row is ONE
+# cell covering the whole width. Its `left` and `right` are therefore `None` -- a span that fills
+# the row has no neighbour either side -- which is why this file asserts the merged cell by its
+# column relations alone, and three cells' `down` instead.
+schema = "omniweave.assertions/1"
+
+[[assertion]]
+id = "t01-item-assessed"
+type = "table"
+page = 1
+cell = "Item"
+right = "Assessed"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t02-assessed-between"
+type = "table"
+page = 1
+cell = "Assessed"
+left = "Item"
+right = "Treated"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t03-item-column"
+type = "table"
+page = 1
+cell = "Item"
+down = "Maps"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t04-maps-row"
+type = "table"
+page = 1
+cell = "Maps"
+right = "412"
+top_heading = "Item"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t05-assessed-maps"
+type = "table"
+page = 1
+cell = "412"
+up = "Assessed"
+left = "Maps"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t06-treated-maps"
+type = "table"
+page = 1
+cell = "38"
+up = "Treated"
+left = "412"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t07-ledgers-between"
+type = "table"
+page = 1
+cell = "Ledgers"
+up = "Maps"
+down = "Photographs"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t08-assessed-ledgers"
+type = "table"
+page = 1
+cell = "96"
+up = "412"
+right = "11"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t09-assessed-photographs"
+type = "table"
+page = 1
+cell = "1507"
+up = "96"
+top_heading = "Assessed"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t10-treated-photographs"
+type = "table"
+page = 1
+cell = "203"
+up = "11"
+left = "1507"
+slices = ["office/has_merges=1"]
+
+# --- the row-wide merge, on the owdoc evaluator ----------------------------------------------
+# One cell covers all three columns, so every cell of the row above answers `down` with it --
+# which is `Grid.down` stepping literally one row onto the covering origin (`cells` ruling 2).
+
+[[assertion]]
+id = "c01-merged-origin"
+type = "cell_rel"
+page = 1
+cell = "Totalled across every item"
+up = "Photographs"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "c02-merged-heading"
+type = "cell_rel"
+page = 1
+cell = "Totalled across every item"
+top_heading = "Item"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "c03-photographs-down"
+type = "cell_rel"
+page = 1
+cell = "Photographs"
+down = "Totalled across every item"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "c04-assessed-down"
+type = "cell_rel"
+page = 1
+cell = "1507"
+down = "Totalled across every item"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "c05-treated-down"
+type = "cell_rel"
+page = 1
+cell = "203"
+down = "Totalled across every item"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "c06-maps-heading"
+type = "cell_rel"
+page = 1
+cell = "Maps"
+top_heading = "Item"
+slices = ["office/has_merges=1"]
