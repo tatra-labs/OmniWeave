@@ -287,6 +287,18 @@ spdx = "Apache-2.0"
 slices = ["office/odt", "office/labelled"]
 
 [[fixture]]
+path = "packages/omniweave-office/fixtures/report.docx"
+bytes = 3148
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+provenance = "generated"
+sha256 = "8facf401b7dee52ffca9f3078dcaf4abb686fa14e985132f8552c334d481a00e"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/docx/has_merges=1", "office/docx", "office/labelled"]
+
+[[fixture]]
 path = "packages/omniweave-office/fixtures/retro.odp"
 bytes = 1579
 generator = "fixtures/gen/gen_labelled_office.py"
@@ -333,6 +345,18 @@ spdx = "Apache-2.0"
 
 [fixture.tests]
 slices = ["office/pptx", "office/labelled"]
+
+[[fixture]]
+path = "packages/omniweave-office/fixtures/rollup.ods"
+bytes = 3196
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "application/vnd.oasis.opendocument.spreadsheet"
+provenance = "generated"
+sha256 = "c9b235328ab0b399dc963fd380c2eb9f8c6be8d561bbae2776ece6655c2165a9"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/ods/has_merges=1", "office/ods", "office/labelled"]
 
 [[fixture]]
 path = "packages/omniweave-office/fixtures/roster.csv"
@@ -389,6 +413,18 @@ generator = "fixtures/gen/gen_office_fixtures.py"
 media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 provenance = "generated"
 sha256 = "076bc84a7d8dca6ac018a16c1af9125bf4b61be0274a567c2a3a423d1a8e3fc5"
+spdx = "Apache-2.0"
+
+[fixture.tests]
+slices = ["office/xlsx/has_merges=1", "office/xlsx", "office/labelled"]
+
+[[fixture]]
+path = "packages/omniweave-office/fixtures/summary.xlsx"
+bytes = 3239
+generator = "fixtures/gen/gen_labelled_office.py"
+media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+provenance = "generated"
+sha256 = "cfea495f90e7c8d2c12bf36f3e941ebf60c886fc034450b8099b6f9f2bc9d13f"
 spdx = "Apache-2.0"
 
 [fixture.tests]

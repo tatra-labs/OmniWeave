@@ -110,9 +110,10 @@ def test_a_merge_bearing_document_declares_has_merges_first() -> None:
         for path in _labelled()
         if any(HAS_MERGES in s for s in _slices(path))
     }
-    assert set(merged) == {"rich.docx", "sheet.xlsx", "sheet.ods"}
+    assert merged, "a floor over an empty set is law over nothing"
     for name, declared in merged.items():
         assert declared[0].endswith(HAS_MERGES), f"{name} declares {declared}"
+        assert sum(1 for one in declared if HAS_MERGES in one) == 1, f"{name} declares {declared}"
 
 
 def test_the_has_merges_glob_reads_only_the_merge_bearing_documents() -> None:
@@ -124,5 +125,12 @@ def test_the_has_merges_glob_reads_only_the_merge_bearing_documents() -> None:
         for path in _labelled()
         if any(fnmatchcase(one, row["slice"]) for one in _slices(path))
     }
-    assert inside == {"rich.docx", "sheet.xlsx", "sheet.ods"}
+    declares = {
+        path.name for path in _labelled() if any(HAS_MERGES in one for one in _slices(path))
+    }
+    assert inside == declares, "the glob reads exactly the documents that declare the facet"
     assert "rows.csv" not in inside and "sheet.xls" not in inside
+    assert len(inside) >= 6, (
+        "D1005 added three merged-cell documents to the three D983 declared, because three"
+        " five-cell tables cannot carry min_slice_n = 30 honest relations"
+    )

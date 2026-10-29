@@ -400,16 +400,16 @@ def test_the_pdf_card_declares_no_structure_and_the_office_card_does() -> None:
 
 def test_every_committed_reference_loads_and_is_unsigned() -> None:
     files = sorted(OFFICE_FIXTURES.glob(f"*{structure.SUFFIX}"))
-    assert len(files) == 30, (
+    assert len(files) == 33, (
         "D982 drafted a reference for each of the ten labelled office fixtures and D1004 added"
-        " twenty more, which is `min_slice_n = 30` met exactly"
+        " twenty more for `min_slice_n = 30`, and D1005 three merged-cell ones"
     )
     rows = [
         row
         for path in files
         for row in structure.load(path.with_name(path.name.removesuffix(structure.SUFFIX)))
     ]
-    assert len(rows) == 227
+    assert len(rows) == 277
     assert [row for row in rows if row.checked is not None] == [], (
         "ruling 3: only the reviewer writes checked"
     )
