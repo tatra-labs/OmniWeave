@@ -158,7 +158,7 @@ REFERENCE_FIX = (
     "part-signed reference has no precision denominator -- then ow eval run --suite parse"
 )
 DRAFTED = [
-    "  metric      order_acc@__macro__ in parse/parse.office.anydoc run <id>: UNKNOWN; 15 "
+    "  metric      order_acc@__macro__ in parse/parse.office.anydoc run <id>: UNKNOWN; 35 "
     "unverified assertion(s) ran and were not scored (13:1022)",
     LABELS_FIX,
     "  metric      order_acc@__macro__ in parse/parse.pdf.pdfium run <id>: UNKNOWN; 60 "
@@ -173,7 +173,15 @@ DRAFTED = [
 ]
 """D913: the drafted labels' rates, each refused and naming the verification as its fix. D982
 added `structure_f1` over the ten drafted `.structure.jsonl` references, whose fix names those
-rows and not the assertions file's."""
+rows and not the assertions file's.
+
+The office `order_acc` population reads 35 and not 15 since D1020 and D1021 (user rulings of
+2026-10-29). 15 was unfixable by any signature: a verdict takes its assertion's FIRST slice only
+(`judge` ruling 5), those 15 led with six per-format keys of 3, 4, 1, 3, 2 and 2, and a macro
+admits no slice under `min_slice_n = 30`. They now lead with `office/labelled`, and
+`gen_labelled_office.py` writes one generated `order` claim for each of the 20 labelled documents
+that had no labels file. So this number IS the thing those rulings changed, and a regression that
+undoes either half lands here as 15 or 20."""
 UNDER_MIN = [
     "  declared-unknown  false_confident_zero@removal in absence/omniweave run <id>: UNKNOWN; "
     "0 of 13 answerable question(s) answered absent, under min_slice_n = 30 (13:1088)",

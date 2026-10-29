@@ -20,7 +20,7 @@ type = "order"
 page = 1
 before = "Pipeline status"
 after = "ingest is green"
-slices = ["office/pptx"]
+slices = ["office/labelled", "office/pptx"]
 
 [[assertion]]
 id = "bullet-order"
@@ -28,4 +28,4 @@ type = "order"
 page = 1
 before = "ingest is green"
 after = "compile is amber"
-slices = ["office/pptx"]
+slices = ["office/labelled", "office/pptx"]

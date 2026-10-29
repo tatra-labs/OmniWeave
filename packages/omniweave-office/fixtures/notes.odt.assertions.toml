@@ -20,7 +20,7 @@ type = "order"
 page = 1
 before = "Field notes"
 after = "Two observations, in order."
-slices = ["office/odt"]
+slices = ["office/labelled", "office/odt"]
 
 [[assertion]]
 id = "lead-list"
@@ -28,7 +28,7 @@ type = "order"
 page = 1
 before = "Two observations, in order."
 after = "the first"
-slices = ["office/odt"]
+slices = ["office/labelled", "office/odt"]
 
 [[assertion]]
 id = "list-order"
@@ -36,4 +36,4 @@ type = "order"
 page = 1
 before = "the first"
 after = "the second"
-slices = ["office/odt"]
+slices = ["office/labelled", "office/odt"]

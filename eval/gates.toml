@@ -245,17 +245,32 @@ changed what every later number on it means.\
 # WHICH ROW THE SIDECAR'S SLICES REACH, AND WHAT EACH ROW COUNTS (D1003, measured, not assumed):
 #
 #   `structure_f1@office/*`      counts DOCUMENTS, and a `.structure.jsonl` row declares no
-#                                slices of its own, so all ten inherit the sidecar's and land on
-#                                `office/labelled`. 10 of 30. This is the row the corpus has to
-#                                GROW for: twenty more labelled office documents.
+#                                slices of its own, so each inherits the sidecar's -- and
+#                                `structure.metrics()` counts a document into EVERY slice it
+#                                declares, not just the first. 33 of 30 since D1004 grew the
+#                                corpus: ADMITTED, and it computes as soon as the references are
+#                                signed. This is the row the corpus had to GROW for, and did.
 #   `order_acc@pdf/born_digital/*`  counts VERDICTS, and an assertion's slices are its own when
 #                                it has any (`labels` ruling 4). All 79 PDF assertions declare
 #                                `pdf/born_digital/contracts`, 60 of them `order`, so this row's
 #                                population is ALREADY over `min_slice_n`: it computes as soon as
 #                                those sixty are verified, and no new PDF is needed for it.
-#   `table_rel_acc@*/has_merges=1`  counts VERDICTS too, and three assertions declare
-#                                `office/has_merges=1`. 3 of 30: twenty-seven more `table` or
-#                                `cell_rel` assertions on documents with a merged cell.
+#   `table_rel_acc@*/has_merges=1`  counts VERDICTS too. D1005 took it from 3 to 51 -- 33 `table`
+#                                and 18 `cell_rel` over three documents with a merged cell --
+#                                so it is ADMITTED and waits only on the signature.
+#
+# AND THE ROW THAT IS NOT HERE: `order_acc` over the OFFICE family. There is no `office/*` floor
+# for it (13:1099's 0.75 is derived from marker's char-stream reading-order annotation and the row
+# above carries it for the PDFs alone), so the office `order_acc` is UNGATED -- and `release-check`
+# still refused it, because its `__macro__` row read `unknown` and *"a metric nobody measured ships
+# as a number"*. It read unknown for a reason no signature could fix: a VERDICT takes its
+# assertion's FIRST slice and only that one (`judge` ruling 5), the 15 drafted office `order`
+# assertions led with `office/docx`, `office/epub`, `office/odp`, `office/odt`, `office/pptx` and
+# `office/rtf` -- 3, 4, 1, 3, 2 and 2 -- and no macro admits a slice under thirty. D1020 and D1021
+# (user rulings of 2026-10-29) fixed the two halves: those 15 now LEAD with `office/labelled`, and
+# `gen_labelled_office.py` writes one generated `order` claim for each of the 20 labelled documents
+# that had no labels file. 35 of 30: ADMITTED. The gated merge key still leads its own rows, which
+# is why `table_rel_acc` above kept its 51.
 #
 # So `pdf/born_digital/labelled` carries no verdict today. It is declared anyway, because the
 # family's name is the corpus's to declare and the next born-digital document joins it.
