@@ -35,11 +35,11 @@ def test_this_cell_emits_the_committed_shapes(
     out = capsys.readouterr().out
     assert code == 0, out
     cell = GATE.here()
-    assert out.splitlines() == [f"Q-G4  emitted 46 shape(s) to {tmp_path / cell.name}"]
+    assert out.splitlines() == [f"Q-G4  emitted 49 shape(s) to {tmp_path / cell.name}"]
     code = GATE.main(["--artifacts", str(tmp_path), "--pdfium-minors", "1", "--cells", "1"])
     out = capsys.readouterr().out
     assert code == 0, out
     assert out.splitlines() == [
-        "Q-G4  46 golden shape(s); 1 cell(s): 1 pdfium build(s) of 1, 1 OS/Python cell(s) of 1",
+        "Q-G4  49 golden shape(s); 1 cell(s): 1 pdfium build(s) of 1, 1 OS/Python cell(s) of 1",
         "Q-G4 ok  every cell matches the goldens",
     ]
