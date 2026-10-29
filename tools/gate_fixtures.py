@@ -76,9 +76,17 @@ standing pattern (ledger D25). D844 adds Q-G2, which :1986 makes *"the same gate
    The limits come from `omniweave_core.limits`, where they are declared, and are not written
    twice. The `golden` job's cassette audit (D650) holds the same two cassette caps, which
    :1986 lists here as well.
-10. **The 40% scan floor is measured over `fixtures/docs/`.** With no fixture there it has
-    nothing to measure, which is printed. With one, it fails closed: section 4.4's sidecar has no
-    key that says a document is a scan, so the floor cannot be measured until one is ruled.
+10. **The 40% scan floor is measured over `fixtures/docs/`, by each document's `imaging`.**
+    Section 4.4's sidecar carries `imaging = "scan" | "born_digital"` (D1018, a user ruling of
+    2026-10-29), REQUIRED for a fixture under `fixtures/docs/` and optional elsewhere, because
+    the floor is a claim about the correctness corpus and a generated office fixture has no
+    imaging to declare. A missing or misspelt value is a Q-G1 finding against the sidecar, which
+    is the one place it is reported; this clause then counts `scan` over the documents that
+    declare. With no fixture there, there is nothing to measure and that is printed -- and with
+    one undeclared, the share is not computed, because a corpus whose provenance is incomplete
+    cannot be shown to meet a floor. Before D1018 there was no key at all, so the clause failed
+    closed the moment any file landed; the ruling is what turned "cannot be measured" into a
+    measurement.
 11. **`size-pack` is read after `git gc --auto --quiet`, and is at most 200,000 KiB.** Section
     4.6 calls the `gc` *"load-bearing"*. `--skip-pack` leaves the clause out for a run that must
     not touch the object store, and the report says it was left out. A pack the gate cannot
@@ -169,6 +177,7 @@ __all__ = [
     "EXIT_CLEAN",
     "EXIT_FAIL",
     "EXIT_NOT_RUN",
+    "IMAGING",
     "INDEX",
     "MAX_BINARY_BYTES",
     "PROVENANCES",
@@ -233,6 +242,13 @@ MAX_BINARY_BYTES: Final = 4_000_000
 SIZE_PACK_KIB: Final = 200_000
 """Ruling 11: section 4.6's `size-pack` ceiling, in the KiB `git count-objects -v` reports."""
 SCAN_FLOOR: Final = 0.40
+IMAGING: Final = ("scan", "born_digital")
+"""Ruling 10: section 4.4's `imaging`, the two spellings and no third. **D1018.**
+
+A document either came off a scanner or it did not, and the distinction is the one 13-quality.md
+section 4.1 prices: a corpus of born-digital files cannot show that the pipeline reads real pages.
+A third value would be a third regime nothing measures."""
+SCAN: Final = IMAGING[0]
 REDUCTIONS: Final = ("fixtures/goldens/", (".shape", ".pages", ".outline"))
 CASSETTES: Final = "fixtures/cassettes/"
 DOCS: Final = "fixtures/docs/"
@@ -331,6 +347,24 @@ def coarse_slice(declared: Sequence[str]) -> str | None:
     if len(families) != 1:
         return None
     return f"{families.pop()}/{COARSE}"
+
+
+def check_imaging(path: str, row: Mapping[str, Any]) -> list[str]:
+    """Ruling 10: a document under `fixtures/docs/` declares whether it is a scan. **D1018.**
+
+    Required there and optional elsewhere. Reported here, against the sidecar, and NOT again by
+    Q-G2's floor: one fact belongs in one place, and a reader mending a sidecar should not have to
+    discover that two clauses were saying the same thing.
+    """
+    value = row.get("imaging")
+    if value is None:
+        if not path.startswith(DOCS):
+            return []
+        spellings = " | ".join(f'"{one}"' for one in IMAGING)
+        return [f"no imaging; a fixture under {DOCS} declares imaging = {spellings}"]
+    if value not in IMAGING:
+        return [f"imaging {value!r} is not one of {', '.join(IMAGING)}"]
+    return []
 
 
 def check_slices(path: str, row: Mapping[str, Any], committed: frozenset[str]) -> list[str]:
@@ -473,10 +507,13 @@ def budget(
     sizes: Mapping[str, int],
     fixtures: Sequence[str],
     usage: Mapping[str, frozenset[str]] | None = None,
+    imaging: Mapping[str, str] | None = None,
 ) -> Budget:
     """Rulings 7-12 over `{path: bytes}` for Tier A and the Q-G1 fixtures within it.
 
     `usage` is the parsed `eval/cassette-usage.toml`, and `None` when there is none to read.
+    `imaging` is `{path: imaging}` for every sidecar that declares one (D1018), which ruling 10
+    counts; a path absent from it declared nothing, and Q-G1 has already said so.
     """
     findings: list[Finding] = []
     total = sum(sizes.values())
@@ -511,16 +548,33 @@ def budget(
         )
     notes = []
     docs = [path for path in fixtures if path.startswith(DOCS)]
-    if docs:
-        findings.append(
-            Finding(
-                DOCS,
-                f"{len(docs)} fixture(s), and the {SCAN_FLOOR:.0%} scan floor cannot be measured: "
-                "no sidecar key says a document is a scan (13-quality.md section 4.4)",
-            )
+    declared = {path: (imaging or {}).get(path) for path in docs}
+    undeclared = [path for path, value in declared.items() if value is None]
+    if not docs:
+        notes.append(f"the {SCAN_FLOOR:.0%} scan floor: {DOCS} holds no fixture to measure")
+    elif undeclared:
+        #  Ruling 10: Q-G1 names each one against its sidecar. Saying it twice would make a
+        #  reader mend one line and expect two findings to clear.
+        notes.append(
+            f"the {SCAN_FLOOR:.0%} scan floor: not computed, {len(undeclared)} of {len(docs)} "
+            f"fixture(s) declare no imaging (Q-G1 names them)"
         )
     else:
-        notes.append(f"the {SCAN_FLOOR:.0%} scan floor: {DOCS} holds no fixture to measure")
+        scans = sum(1 for value in declared.values() if value == SCAN)
+        share = scans / len(docs)
+        if share < SCAN_FLOOR:
+            findings.append(
+                Finding(
+                    DOCS,
+                    f"{scans} of {len(docs)} fixture(s) are {SCAN}s, {share:.0%}, under the "
+                    f"{SCAN_FLOOR:.0%} floor (13-quality.md section 4.1)",
+                )
+            )
+        else:
+            notes.append(
+                f"the {SCAN_FLOOR:.0%} scan floor: {scans} of {len(docs)} fixture(s) "
+                f"are {SCAN}s, {share:.0%}"
+            )
     if usage is None:
         notes.append(f"orphan cassettes: not run, because no {USAGE} was read")
     else:
@@ -603,14 +657,21 @@ def main(
     if args.write:
         _say(f"  wrote {INDEX}")
     _say(f"Q-G1 {'FAIL' if findings else 'ok'}  {len(findings)} finding(s)")
-    over = _q_g2(root, listed, fixtures, pack if not args.skip_pack else None)
+    declared = {
+        path: str(table["imaging"]) for path, table in rows if isinstance(table.get("imaging"), str)
+    }
+    over = _q_g2(root, listed, fixtures, pack if not args.skip_pack else None, declared)
     if over is None:
         return EXIT_NOT_RUN
     return EXIT_FAIL if findings or over else EXIT_CLEAN
 
 
 def _q_g2(
-    root: Path, listed: Sequence[str], fixtures: Sequence[str], pack: Callable[[Path], int] | None
+    root: Path,
+    listed: Sequence[str],
+    fixtures: Sequence[str],
+    pack: Callable[[Path], int] | None,
+    imaging: Mapping[str, str] | None = None,
 ) -> list[Finding] | None:
     """Rulings 7-12, printed: the findings, or `None` when the pack could not be measured."""
     usage = None
@@ -620,7 +681,7 @@ def _q_g2(
             usage = read_usage((root / USAGE).read_bytes())
         except ValueError as exc:
             unread.append(Finding(USAGE, str(exc)))
-    spent = budget({path: _size(root / path) for path in tier_a(listed)}, fixtures, usage)
+    spent = budget({path: _size(root / path) for path in tier_a(listed)}, fixtures, usage, imaging)
     over = unread + list(spent.findings)
     _say(
         f"Q-G2  Tier A {spent.tier_a} of {TIER_A_BYTES} bytes; {spent.cassettes} cassette(s),"
@@ -682,6 +743,7 @@ def _rows(
         why = check_row(table, data, committed)
         findings += [Finding(sidecar, reason) for reason in why]
         findings += [Finding(sidecar, reason) for reason in check_slices(path, table, committed)]
+        findings += [Finding(sidecar, reason) for reason in check_imaging(path, table)]
         if not why:
             rows.append((path, table))
     return findings, rows
