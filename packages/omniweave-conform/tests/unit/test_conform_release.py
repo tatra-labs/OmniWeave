@@ -10,6 +10,8 @@ from typing import Any
 import pytest
 from omniweave_conform import entry
 from omniweave_conform.release import (
+    DECLARED_UNKNOWN,
+    NOT_APPLICABLE,
     SUITES,
     Finding,
     Gate,
@@ -273,6 +275,70 @@ def test_an_unknown_metric_refuses_once_even_under_a_hard_gate(tmp_path: Path) -
         ("metric", "span_exact_rate@__macro__ in parse/parse.pdf.pdfium run r1"),
     ]
     assert {f.why for f in judged.findings} == {"UNKNOWN"}
+
+
+def test_a_declared_unknown_metric_is_disclosed_and_does_not_refuse(tmp_path: Path) -> None:
+    """D1017, a user ruling of 2026-10-29. `false_confident_zero`'s population is the whole
+    answerable set, 13 against `min_slice_n = 30`, so no signature and no rerun can compute it.
+
+    It is DISCLOSED and not refused: `ok` does not read `disclosed`, the report prints it, and the
+    detail the run computed is kept -- a reader has to see "0 of 13", not merely that something was
+    withheld.
+    """
+    run = replace(
+        _ABSENCE,
+        not_measured=(
+            "false_confident_zero: 0 of 13 answerable question(s) answered absent, "
+            "under min_slice_n = 30 (13:1088)",
+        ),
+    )
+    #  `degradation_detection` must be present and scoring: the absence suite IS applicable,
+    #  and a hard gate with no matching row refuses as unmeasured, which would mask the point.
+    metrics = (*_CLEAN[1], _unknown("r2", "false_confident_zero"))
+    judged = _judge(tmp_path, (_PARSE, run), metrics)
+    assert judged.ok, [f.line for f in judged.findings]
+    assert [f.kind for f in judged.disclosed] == ["declared-unknown"]
+    shown = judged.disclosed[0]
+    assert shown.names.startswith("false_confident_zero@")
+    assert shown.why == (
+        "UNKNOWN; 0 of 13 answerable question(s) answered absent, under min_slice_n = 30 (13:1088)"
+    ), shown.why
+    assert shown.fix == DECLARED_UNKNOWN["false_confident_zero"]
+    assert "17 more answerable questions" in shown.fix, "the reason names what would fix it"
+
+
+def test_an_undeclared_unknown_metric_on_the_same_run_still_refuses(tmp_path: Path) -> None:
+    """The other direction, and the one that matters: the exception is one metric wide.
+
+    The `absence` suite IS applicable and DOES run -- this is why D1017 is not `NOT_APPLICABLE`'s
+    suite-level mechanism. `degradation_detection` sharing the run must still refuse when it is
+    unknown, or declaring one rate would quietly retire the other.
+    """
+    metrics = (_unknown("r2", "false_confident_zero"), _unknown("r2", "degradation_detection"))
+    judged = _judge(tmp_path, (_PARSE, _ABSENCE), (_CLEAN[1][0], *metrics))
+    assert not judged.ok
+    assert [f.names.split("@")[0] for f in judged.findings] == ["degradation_detection"]
+    assert [f.names.split("@")[0] for f in judged.disclosed] == ["false_confident_zero"]
+
+
+def test_exactly_one_metric_is_declared_unknown_and_its_reason_is_a_real_one() -> None:
+    """The register is one row wide, and a reason that said nothing would make the mechanism a
+    silent waiver. 13-quality.md:1088's floor and the deferral are both named in it."""
+    assert set(DECLARED_UNKNOWN) == {"false_confident_zero"}, DECLARED_UNKNOWN
+    reason = DECLARED_UNKNOWN["false_confident_zero"]
+    assert "min_slice_n = 30" in reason and "13 questions" in reason
+    assert "deferred past v1.0" in reason
+    assert "Removing this row means publishing the rate" in reason, (
+        "the register's own rule: the fix is the corpus, not the register"
+    )
+
+
+def test_the_declared_metric_is_not_also_a_not_applicable_suite() -> None:
+    """The two mechanisms must not overlap. `absence` runs and scores
+    `degradation_detection`, so reporting the suite not-applicable would retire a number the
+    project has, which is the distinction D987's docstring draws for `perf`."""
+    assert "absence" not in NOT_APPLICABLE
+    assert "absence" in SUITES
 
 
 def test_an_unknown_metric_says_what_its_run_said_and_unverified_labels_name_their_fix(
