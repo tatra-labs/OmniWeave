@@ -234,6 +234,16 @@ changed what every later number on it means.\
 # `office/<ext>` (with `has_merges=1` first on the three that have a merged cell) and the four
 # labelled PDFs `pdf/born_digital/gen`.
 #
+# AND SINCE D1002 each of the fourteen declares its family's COARSE slice beside that key:
+# `office/labelled` on the ten, `pdf/born_digital/labelled` on the four. Every row below
+# macro-averages at `min_slice_n = 30` and no single extension will hold thirty documents, so the
+# per-extension keys report `unknown` for ever; one slice per family is the set that can reach
+# thirty, under a user ruling of 2026-10-28. Both coarse keys match the globs already written
+# here -- `fnmatchcase("office/labelled", "office/*")` -- so no row changes. The per-extension
+# rows stay visible beside them saying `unknown, under min_slice_n`, which is the honest report
+# rather than a hidden one, and Q-G1 ruling 14 holds the coarse key to the labels in both
+# directions: a labelled fixture without it fails, and so does it on a fixture with no labels.
+#
 # WHAT THEY READ TODAY. Nothing is verified, so every rate is `unknown` and `release-check`
 # refuses it by that alone -- these rows do not make a release pass or fail yet. What they do is
 # stop Q-G27's ungated-metric clock (a `[[gate]]` row naming the metric stops it, whatever its

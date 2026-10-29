@@ -123,10 +123,23 @@ SLICES: Final[dict[str, tuple[str, ...]]] = {
 born-digital generated pages declare `pdf/born_digital/gen`. `no_text_layer.pdf` declares none: it
 carries no label, and a slice nothing scores names nothing."""
 
+COARSE: Final = "pdf/born_digital/labelled"
+"""D1002, a user ruling of 2026-10-28: the coarse slice every fixture in `SLICES` also declares.
+
+`SLICES` is exactly the labelled set, and every metric that reads a slice macro-averages at
+`min_slice_n = 30`, which no single extension will ever hold: the per-extension rows report
+`unknown` for ever. One coarse slice per family is the set that can reach thirty, and it is
+appended here rather than written into each row so that the family has one home. Q-G1 ruling 14
+derives the same key from the per-extension ones and holds the pair together in both directions."""
+
 TESTS: Final = """
 [fixture.tests]
 # 13-quality.md section 4.4's block, and :1150's vocabulary: the corpus declares the slice and a
 # `[[gate]]` row's `slice` glob is matched against it, never the router's Slice.
+# `{coarse}` is the coarse slice (D1002, a user ruling of 2026-10-28). The
+# per-extension key beside it will never hold `min_slice_n = 30` documents, so its row reports
+# `unknown` for ever; one slice per family is the set that can reach thirty, and the
+# per-extension rows stay visible saying what they are. Q-G1 holds the pair together.
 slices = [{slices}]
 """
 
@@ -156,8 +169,11 @@ def pins() -> dict[str, str]:
 def sidecar(name: str, data: bytes, media_type: str | None, purpose: str) -> str:
     """One `.meta.toml`. `media_type` is omitted, not empty, when nothing would route the bytes."""
     media = f'media_type = "{media_type}"\n' if media_type else ""
-    slices = SLICES.get(name, ())
-    tests = TESTS.format(slices=", ".join(f'"{one}"' for one in slices)) if slices else ""
+    declared = SLICES.get(name)
+    tests = ""
+    if declared:
+        names = ", ".join(f'"{one}"' for one in (*declared, COARSE))
+        tests = TESTS.format(slices=names, coarse=COARSE)
     return SIDECAR.format(
         name=name,
         purpose=purpose,
