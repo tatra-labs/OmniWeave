@@ -329,6 +329,142 @@ def test_a_bad_sidecar_fails_and_is_left_out_of_the_index(
     assert "[[fixture]]" not in (tmp_path / "fixtures" / "index.toml").read_text(encoding="utf-8")
 
 
+# --- ruling 14: the coarse labelled slice -----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("declared", "want"),
+    [
+        (("office/epub",), "office/labelled"),
+        (("office/docx/has_merges=1", "office/docx"), "office/labelled"),
+        (("pdf/born_digital/gen",), "pdf/born_digital/labelled"),
+        (("office/epub", "office/labelled"), "office/labelled"),
+    ],
+)
+def test_the_family_is_the_per_extension_keys_parent(declared: tuple[str, ...], want: str) -> None:
+    """Ruling 14: derived, never typed. A facet is dropped and the coarse key is not its own
+    family, or every fixture would derive `office/labelled/labelled` from itself."""
+    assert GATE.coarse_slice(declared) == want
+
+
+@pytest.mark.parametrize(
+    "declared",
+    [
+        (),
+        ("office/docx/has_merges=1",),  # a facet alone is no place in the tree
+        ("office",),  # a family with no extension under it
+        ("office/docx", "pdf/born_digital/gen"),  # two families
+        ("office/labelled",),  # the coarse key alone derives nothing
+    ],
+)
+def test_slices_that_name_no_one_family_derive_nothing(declared: tuple[str, ...]) -> None:
+    assert GATE.coarse_slice(declared) is None
+
+
+@pytest.mark.parametrize("suffix", [".assertions.toml", ".structure.jsonl"])
+def test_either_label_file_makes_a_fixture_labelled(suffix: str) -> None:
+    """Ruling 2 names both, and ruling 14 asks for either: the four PDFs carry only assertions."""
+    assert GATE.labelled(PDF, frozenset({PDF, PDF + suffix}))
+
+
+def test_a_fixture_with_neither_label_file_is_not_labelled() -> None:
+    assert not GATE.labelled(PDF, frozenset({PDF, PDF + ".meta.toml"}))
+
+
+def _slices(*declared: str, labels: bool = True) -> list[str]:
+    row = {"tests": {"slices": list(declared)}} if declared else {"tests": {}}
+    committed = frozenset({PDF, *([PDF + ".assertions.toml"] if labels else [])})
+    return GATE.check_slices(PDF, row, committed)
+
+
+def test_a_labelled_fixture_that_declares_its_family_is_clean() -> None:
+    assert _slices("pdf/born_digital/gen", "pdf/born_digital/labelled") == []
+
+
+def test_a_labelled_fixture_without_the_coarse_key_fails() -> None:
+    assert _slices("pdf/born_digital/gen") == [
+        "carries labels and does not declare pdf/born_digital/labelled (ruling 14)"
+    ]
+
+
+def test_a_coarse_key_of_another_family_fails() -> None:
+    """The second direction: the key is there, and it is not this fixture's."""
+    assert _slices("pdf/born_digital/gen", "office/labelled") == [
+        "office/labelled is not this fixture's pdf/born_digital/labelled (ruling 14)",
+        "carries labels and does not declare pdf/born_digital/labelled (ruling 14)",
+    ]
+
+
+def test_the_coarse_key_on_a_fixture_that_carries_no_labels_fails() -> None:
+    assert _slices("pdf/born_digital/gen", "pdf/born_digital/labelled", labels=False) == [
+        "pdf/born_digital/labelled is a coarse slice on a fixture that carries no"
+        " .assertions.toml or .structure.jsonl (ruling 14)"
+    ]
+
+
+def test_an_unlabelled_fixture_may_declare_a_per_extension_key_alone() -> None:
+    """Only the coarse key is held to the labels. `no_text_layer.pdf` declares none at all, and a
+    future unlabelled fixture that declares one is not what ruling 14 is about."""
+    assert _slices("pdf/born_digital/gen", labels=False) == []
+
+
+def test_a_labelled_fixture_that_names_no_family_fails() -> None:
+    assert _slices("pdf/born_digital/gen", "office/docx") == [
+        "carries labels and declares pdf/born_digital/gen, office/docx, which names no one"
+        " family to derive a coarse slice from (ruling 14)"
+    ]
+
+
+def test_a_sidecar_with_no_slices_is_not_asked() -> None:
+    """A fixture that declares nothing is outside ruling 14: it is not in any slice at all."""
+    assert _slices() == []
+    assert GATE.check_slices(PDF, {}, frozenset({PDF, PDF + ".assertions.toml"})) == []
+
+
+def test_a_slice_finding_is_named_and_the_row_still_reaches_the_index(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Unlike rulings 2-4, the row is well formed. Dropping it would make `--write` delete a
+    manifest row over a slice name."""
+    listed = _tree(tmp_path)
+    sidecar = tmp_path / (PDF + ".meta.toml")
+    sidecar.write_bytes(
+        sidecar.read_bytes() + b'\n[fixture.tests]\nslices = ["pdf/born_digital/gen"]\n'
+    )
+    (sidecar.parent / "a.pdf.assertions.toml").write_bytes(b"# labels\n")
+    listed += [PDF + ".assertions.toml"]
+    code, out = _main(tmp_path, listed, capsys, "--write")
+    assert code == 1
+    assert "Q-G1  1 fixture(s), 1 sidecar(s), 1 indexed" in out
+    assert (
+        f"  FAIL  {PDF}.meta.toml: carries labels and does not declare"
+        " pdf/born_digital/labelled (ruling 14)" in out
+    )
+    assert "  fix   mend the sidecar" in out
+    index = (tmp_path / "fixtures" / "index.toml").read_text(encoding="utf-8")
+    assert 'path = "packages/omniweave-x/fixtures/a.pdf"' in index
+
+
+def test_every_labelled_fixture_in_this_repository_declares_its_family() -> None:
+    """The corpus itself, read back: fourteen labelled fixtures, each with its coarse key, and no
+    coarse key anywhere else. Derived from the tree, so a new labelled fixture joins the count."""
+    rows = tomllib.loads((REPO / "fixtures" / "index.toml").read_text(encoding="utf-8"))["fixture"]
+    coarse = {}
+    for row in rows:
+        declared = tuple(row.get("tests", {}).get("slices", ()))
+        held = [one for one in declared if one.endswith("/" + GATE.COARSE)]
+        labelled = any(
+            (REPO / (row["path"] + suffix)).is_file() for suffix in (GATE.LABELS, GATE.REFERENCE)
+        )
+        assert held == ([GATE.coarse_slice(declared)] if labelled else []), row["path"]
+        if held:
+            coarse.setdefault(held[0], []).append(row["path"])
+    assert {key: len(paths) for key, paths in coarse.items()} == {
+        "office/labelled": 10,
+        "pdf/born_digital/labelled": 4,
+    }
+
+
 def test_without_git_the_gate_did_not_run(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
