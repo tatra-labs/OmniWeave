@@ -525,7 +525,8 @@ CRITERIA: tuple[Criterion, ...] = (
         # D974: FULL. The pdfium axis is one nightly cell beside the nine test cells (D966, a user
         # ruling of 2026-10-23), and the first nightly since then (run 40058737353, aecf5a1,
         # 2026-10-24) passed it: 26 shapes, 2 pdfium builds of 2, 9 cells of 9 -- a record of that
-        # run, so the shape count stays as it read; D1004's twenty new office documents make it 46
+        # run, so the shape count stays as it read; D1004's twenty new office documents and
+        # D1005's three make it 49
         # from the next nightly on. The instrument
         # reads the latest nightly's step through `gh`, as V01-14's reads its timings (D970).
         Coverage.FULL,
