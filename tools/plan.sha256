@@ -21,7 +21,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D1015, a user ruling of 2026-10-29: tatra-labs/OmniWeave is the canonical repository slug. 11-repo-layout.md's seven live sites move -- section 7.6 step 0's pending-publisher binding, section 7.3's printed cosign identity, section 7.5's four recipes, the toolchain bundle_url and the container image row (ghcr.io lowercase, since a GHCR reference must be). A signature issued by this repository could not match the identity release.yml verified against. 2697 lines held.
+# blessed-because: D1017, a user ruling of 2026-10-29: false_confident_zero is a declared unknown that ow eval release-check reports and does not refuse. 16-roadmap.md:978's P10 exit criterion names it beside perf -- 'zero unknown outside perf and false_confident_zero (D987, D1017)'. Its population is the whole answerable set, 13 questions against min_slice_n = 30, so no signature and no rerun can compute it; growing the catalogue is deferred past v1.0. 1308 lines held.
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -41,7 +41,7 @@ documents-frozen  2fe653d5ac8031388b9a25e2d7464c4921e22b0aa78e2f4dabb531186219c6
 documents-frozen  a5d6a013221333a5d70938bbd7f1e562b040de0ccba50c9582b5ffdefea934a6  13-quality.md
 documents-frozen  78a3474b788625971c7a7fed610ef3c6518e9330bfd87e8411fbc744666b43d1  14-security.md
 documents-frozen  2cddc08dab8833611e0180e474ea2106c43dfbdb57e710b3578ffcaef764614f  15-observability.md
-documents-frozen  951494b06763e72c56f486f67760e0304c4f32ba45a4fc0d587a777f6d23521f  16-roadmap.md
+documents-frozen  d88d138230676efd9a56e0636cf6c08c1228e6cec2b0435dc9e2e14cb074404d  16-roadmap.md
 documents-frozen  df4d16ec9e95851ee78fec9cf1fee599488fef474c9f1ee90d9da73bdca32405  17-risks.md
 documents-frozen  51deca62fb9bb17e63d26b961521e4c628644a11bbb6a70d4e76b801f17b5e16  18-api-sketch.md
 documents-frozen  63c2a67ba229582db7c0b236a056408df87e9746eed8d7086c11201ed6409e14  README.md
