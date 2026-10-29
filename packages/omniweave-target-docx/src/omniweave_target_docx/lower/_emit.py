@@ -15,7 +15,7 @@ whitespace rule's state, the numbering and the bookmark counter.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Generator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from types import ModuleType
@@ -202,7 +202,7 @@ class Emitter:
         )
 
     @contextmanager
-    def detached(self) -> Iterator[None]:
+    def detached(self) -> Generator[None]:
         """The walk's place set aside while another story is written, then given back: the
         paragraph, the open link, the marks, `pre`, the lists and the scopes."""
         self.flush()
@@ -242,7 +242,7 @@ class Emitter:
                 self.inline(item)
 
     @contextmanager
-    def inherited(self, node: CarrierNode) -> Iterator[None]:
+    def inherited(self, node: CarrierNode) -> Generator[None]:
         """What an element passes to everything inside it: `lang`, `dir` and `text-align`."""
         changes: dict[str, Any] = {}
         lang = node.attr("lang")
@@ -278,7 +278,7 @@ class Emitter:
         style: str | None = None,
         indent: int | None = None,
         number: tuple[int, int] | None = None,
-    ) -> Iterator[_Scope]:
+    ) -> Generator[_Scope]:
         """Paragraphs made inside go into `container`, else the current one, with these defaults."""
         self.end_paragraph()
         outer = self.scopes[-1]
@@ -362,7 +362,7 @@ class Emitter:
         self.at_start, self.pending = True, ""
 
     @contextmanager
-    def marked(self, **changes: Any) -> Iterator[None]:
+    def marked(self, **changes: Any) -> Generator[None]:
         """Marks in force for the runs made inside."""
         outer = self.marks
         self.marks = replace(outer, **changes)

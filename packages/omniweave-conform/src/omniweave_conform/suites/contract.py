@@ -65,7 +65,7 @@ from omniweave_conform.result import Assertion, SuiteResult
 from omniweave_conform.stored import into_store
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Generator, Iterator
 
     from omniweave_conform.harness import ParseRun
     from omniweave_conform.subject import Subject
@@ -103,7 +103,7 @@ driver would fail a claim it was never offered a way to make."""
 
 
 @contextmanager
-def _watching_io() -> Iterator[dict[str, list[str]]]:
+def _watching_io() -> Generator[dict[str, list[str]]]:
     """Record every file open and socket creation, and let all of them succeed.
 
     Recording rather than raising, for the reason in the module docstring. The four patched names

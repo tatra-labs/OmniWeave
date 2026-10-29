@@ -57,7 +57,7 @@ import hashlib
 import io
 import json
 import zipfile
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Generator, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -1502,7 +1502,7 @@ class OwdocReader:
 
 
 @contextmanager
-def open_owdoc(path: str | Path, **kwargs: Any) -> Iterator[OwdocReader]:
+def open_owdoc(path: str | Path, **kwargs: Any) -> Generator[OwdocReader]:
     """`with open_owdoc(p) as reader:` -- the reader holds a ZIP handle, so it must be closed."""
     reader = OwdocReader(path, **kwargs)
     try:
