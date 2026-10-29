@@ -31,6 +31,30 @@ zlib-ng), so the pin is a MANIFEST, as `office-200`'s and the reference corpora'
 `sha256  member` line per archive member over its UNCOMPRESSED bytes, and `EXPECTED.sha256` pins
 the manifest. A content change moves the pin; a compressor change does not.
 
+## Why it is generated and never committed, with the numbers
+
+13-quality.md:591 rules it -- what makes the 5,000-page PDF, *"the 4M-cell workbook and the
+100k-roster fixture affordable: **none of them is ever in git**"* -- and 12-performance.md:1516's
+fixture table writes this one's size as *"generated"*. Measured on 2026-10-29, the arithmetic
+agrees with the ruling, against section 4.1's *"4 MB per binary"* (`MAX_BINARY_BYTES`, 4,000,000
+decimal, which `tools/gate_fixtures.py` ruling 8 enforces over every committed Tier A byte):
+
+| cells | sheet XML | the archive this writes | against the cap |
+|---|---|---|---|
+| 2,000 (`SMALL_CELLS`) | 55,718 | 9,823 | 0.002x |
+| 1,000,000 | 32,047,041 | 4,132,766 | **over by 132,766** |
+| 4,000,000 (`DEFAULT_CELLS`) | 131,133,678 | 16,473,583 | **4.12x over** |
+
+So a committed form of this document does not exist to be built: the full sheet is four times the
+cap, and even a QUARTER of it is over. The merged variant 13-quality.md:488 names,
+`xlsx-merged-4m-cells.xlsx`, is this cell count plus a `mergeCells` list, so the same measurement
+refuses it -- a `mergeCells` run compresses to nothing beside 200,000 rows of cells.
+
+The figures are the ones `zipfile` writes at its default level, not an estimate at level 9: a
+level-9 probe put the 1M archive 21,386 bytes UNDER the cap, and the file the generator actually
+writes is 132,766 over it. `test_fixture_sheet.py` holds the 4M archive above the cap and the
+small one below it, so neither direction of the claim can quietly stop being true.
+
 ## The regime, 13-quality.md:586-589
 
 Deterministic with no clock, no `random`, no ids: every ZIP entry carries `ZIP_DATE`, and the

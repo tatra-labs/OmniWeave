@@ -620,9 +620,15 @@ CRITERIA: tuple[Criterion, ...] = (
             ),
         ),
         Coverage.PARTIAL,
-        "sec-exhibit-scan and xlsx-merged-4m-cells are still not in the tree, so the DROPPED PAGE "
-        "and the FABRICATED QUOTE remain synthetic: Q-G23's planted defects carry them. The "
-        "TRANSPOSED TABLE no longer is. D932 handed judge() each labelled fixture's parsed Doc, "
+        "ONE DOCUMENT IS OWED, NOT TWO: sec-exhibit-scan, which carries the DROPPED PAGE and the "
+        "FABRICATED QUOTE, and until it lands Q-G23's planted defects carry both synthetically. "
+        "xlsx-merged-4m-cells is NOT a pending fixture and this row used to imply it was: "
+        "13-quality.md:591 rules that the 4M-cell workbook is *never in git* and "
+        "12-performance.md:1516 writes its size as generated, and D1010 measured why the ruling "
+        "has no alternative -- the archive the generator writes is 16,473,583 bytes against Q-G2's "
+        "4,000,000 per binary, 4.12x, and even a quarter of that sheet is over by 132,766. AND THE "
+        "TRANSPOSED TABLE IS NO LONGER SYNTHETIC EITHER. D932 handed judge() each labelled "
+        "fixture's parsed Doc, "
         "and D1005 committed the labels that half was waiting for -- 18 cell_rel rows and 30 "
         "table rows over three merged-cell documents in three encodings of one grid "
         "(w:gridSpan, mergeCell, and ODF's spanned-plus-covered pair), every relation read off "
