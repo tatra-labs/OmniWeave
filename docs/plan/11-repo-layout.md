@@ -906,7 +906,7 @@ version = "0.4.2"
 entry = "dist/render.mjs"
 node_range = ">=20.11,<23"
 bundle_sha256 = "sha256:1f0c9a…"
-bundle_url = "https://github.com/omniweave/omniweave/releases/download/v0.4.2/omniweave-toolchain-deck-0.4.2.tar.gz"
+bundle_url = "https://github.com/tatra-labs/OmniWeave/releases/download/v0.4.2/omniweave-toolchain-deck-0.4.2.tar.gz"
 
 [[node]]
 version = "20.18.1"
@@ -1822,7 +1822,7 @@ walk, G8's semgrep run — carries the same guard: an assertion on the count of 
 | SBOMs, SPDX-JSON and CycloneDX-JSON, one pair per install profile (`minimum`, `recommended`, `all-minus-vision`) | GitHub release assets | 2 × 3 = 6 | `cosign sign-blob --bundle` |
 | `provenance.intoto.jsonl` | GitHub release asset | 1, covering all 28 PyPI subjects | SLSA build level 3 |
 | the `deck` Toolchain app bundle `omniweave-toolchain-deck-<RELEASE>.tar.gz` + `.sha256` | GitHub release assets | 2 | `cosign sign-blob --bundle`; the sha256 is also in-tree in `tools/toolchains.toml` |
-| the container image | `ghcr.io/omniweave/omniweave:<RELEASE>` and `:<MAJOR>.<MINOR>` | 1 manifest | `cosign sign` by **digest**, keyless |
+| the container image | `ghcr.io/tatra-labs/omniweave:<RELEASE>` and `:<MAJOR>.<MINOR>` | 1 manifest | `cosign sign` by **digest**, keyless |
 | the data artefacts `omniweave-golden`, `omniweave-index`, each `<name>-<version>.zip` + `manifest.toml` + `<name>-<version>.zip.sha256` | GitHub release assets, only when their digest changes | 0 or 2 | `cosign sign-blob --bundle` |
 | the changelog and the eval scoreboard | the GitHub release body | 1 | — |
 
@@ -1955,7 +1955,7 @@ jobs:
       - run: |
           cosign sign-blob --yes --bundle sbom-spdx.json.bundle sbom-spdx.json
           cosign verify-blob --bundle sbom-spdx.json.bundle \
-            --certificate-identity-regexp '^https://github\.com/omniweave/omniweave/' \
+            --certificate-identity-regexp '^https://github\.com/tatra-labs/OmniWeave/' \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             sbom-spdx.json
 
@@ -2078,16 +2078,16 @@ impose, arriving from a second direction.
 
 ```bash
 # 1. a wheel's build provenance (GitHub attestation)
-gh attestation verify omniweave_core-0.4.2-py3-none-any.whl --repo omniweave/omniweave
+gh attestation verify omniweave_core-0.4.2-py3-none-any.whl --repo tatra-labs/OmniWeave
 
 # 2. the SLSA provenance for the whole release
 slsa-verifier verify-artifact omniweave_core-0.4.2-py3-none-any.whl \
   --provenance-path provenance.intoto.jsonl \
-  --source-uri github.com/omniweave/omniweave --source-tag v0.4.2
+  --source-uri github.com/tatra-labs/OmniWeave --source-tag v0.4.2
 
 # 3. an SBOM, or the first-party manifest (same recipe, different blob)
 cosign verify-blob --bundle sbom-spdx.json.bundle \
-  --certificate-identity-regexp '^https://github\.com/omniweave/omniweave/' \
+  --certificate-identity-regexp '^https://github\.com/tatra-labs/OmniWeave/' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com sbom-spdx.json
 
 # 4. the in-wheel first-party manifest against the signed asset
@@ -2114,7 +2114,7 @@ first release, and never again.
 
 | # | step | fails otherwise |
 |---|---|---|
-| 0 | **first release only:** register all **nineteen** project names on PyPI — the fourteen distributions of §1.2 **plus its five attachment distributions**, which are outside `RELEASE` but not outside the squatting risk — and create a **pending publisher** for each: repository `omniweave/omniweave`, workflow `release.yml`, environment `release`, because Trusted Publishing has no project to bind to until the project exists | the first publish fails with `invalid-publisher` on all fourteen, at the one moment there is no previous release to fall back to; and an unregistered `omniweave-*` name is squattable, since the prefix is reserved by our terminology lock and by nothing PyPI enforces. Omitting the five moves that failure to whichever release first publishes an attachment wheel |
+| 0 | **first release only:** register all **nineteen** project names on PyPI — the fourteen distributions of §1.2 **plus its five attachment distributions**, which are outside `RELEASE` but not outside the squatting risk — and create a **pending publisher** for each: repository `tatra-labs/OmniWeave`, workflow `release.yml`, environment `release`, because Trusted Publishing has no project to bind to until the project exists | the first publish fails with `invalid-publisher` on all fourteen, at the one moment there is no previous release to fall back to; and an unregistered `omniweave-*` name is squattable, since the prefix is reserved by our terminology lock and by nothing PyPI enforces. Omitting the five moves that failure to whichever release first publishes an attachment wheel |
 | 1 | pick `RELEASE`; decide whether `CONTRACT` moves (a MINOR only) and whether `SCHEMA` moves | a `CONTRACT` bump on a PATCH breaks every third-party driver with no announcement |
 | 2 | `tools/check_versions.py --set <RELEASE>`; it rewrites the 40 version strings across 18 files (§4.2) and runs `uv lock --offline`; commit both | G5, as CI job 1 on the tag — or, if the lock is missed, `uv sync --frozen` failing in all fifteen installing jobs |
 | 3 | write the `CHANGELOG.md` section by hand; a `CONTRACT` or `SCHEMA` move gets a **migration guide** heading, and a `SCHEMA` move leads with the `OW_SCHEMA_AHEAD` downgrade consequence | the two things a consumer must act on read like the twenty they need not |

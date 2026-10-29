@@ -21,7 +21,7 @@
 # -- are not pinned. They are named one by one, with a reason each, in tools/plan_lint.py's
 # `WRITABLE_NOTES`. A file under `_plan/` in neither this manifest nor that allow-list FAILS.
 #
-# blessed-because: D1010: 13:1261's build note records that xlsx-merged-4m-cells has no committed form -- 16,473,583 bytes against Q-G2's 4,000,000 per binary, measured, with 13:591's never-in-git ruling and 12:1516's generated size behind it. Appended to the existing line; 2124 lines held.
+# blessed-because: D1015, a user ruling of 2026-10-29: tatra-labs/OmniWeave is the canonical repository slug. 11-repo-layout.md's seven live sites move -- section 7.6 step 0's pending-publisher binding, section 7.3's printed cosign identity, section 7.5's four recipes, the toolchain bundle_url and the container image row (ghcr.io lowercase, since a GHCR reference must be). A signature issued by this repository could not match the identity release.yml verified against. 2697 lines held.
 
 version  1
 charter-frozen  997f686b26f72878f5b68937371847e370e6a88aab190beba64e48dd07db6308  _notes/charter.md  region=1-8686  heading=8687
@@ -36,7 +36,7 @@ documents-frozen  25666745a9572e7eadf017b6988a2216744cc3eca5a3f572d45da8f1b8c3e1
 documents-frozen  4c02f71d665332330bf423ac063a1678887ae6f3004d01d7b799e9991f414df3  08-runtime.md
 documents-frozen  e3d9414cd24b29681c2da184fffa9c3fbc33e4d066f831fe9d8113b159e0ab08  09-generation.md
 documents-frozen  7045e57d63450411e13e7d0bac60aaed64db257c224ced3682c667ee1ff39b34  10-interfaces.md
-documents-frozen  29c31ff9923e99fa2f4be8f86afc9eceb5d957be7e1903aff17a1973abf369fd  11-repo-layout.md
+documents-frozen  1f3db693432f2c8aab0a1a12a08682f69fab785634fb251724250bb6cab00202  11-repo-layout.md
 documents-frozen  2fe653d5ac8031388b9a25e2d7464c4921e22b0aa78e2f4dabb531186219c6a5  12-performance.md
 documents-frozen  a5d6a013221333a5d70938bbd7f1e562b040de0ccba50c9582b5ffdefea934a6  13-quality.md
 documents-frozen  78a3474b788625971c7a7fed610ef3c6518e9330bfd87e8411fbc744666b43d1  14-security.md
