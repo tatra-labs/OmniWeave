@@ -1186,7 +1186,7 @@ jobs:
       contents: read
     container:
       # TODO: pin by digest -- owner: release. The published image is section 7.1's own
-      # (ghcr.io/omniweave/omniweave, built from the parity Dockerfile, non-root USER 65532, no
+      # (ghcr.io/tatra-labs/omniweave, built from the parity Dockerfile, non-root USER 65532, no
       # EXPOSE, ENTRYPOINT ["ow"]); it does not exist yet, so the stock slim image stands in and
       # carries the same two properties that matter here: no Node and no CUDA.
       image: python:3.12-slim

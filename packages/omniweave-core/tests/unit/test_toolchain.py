@@ -47,7 +47,7 @@ version = "0.4.2"
 entry = "dist/render.mjs"
 node_range = ">=20.11,<23"
 bundle_sha256 = "{BUNDLE_SHA}"
-bundle_url = "https://github.com/omniweave/omniweave/releases/download/v0.4.2/omniweave-toolchain-deck-0.4.2.tar.gz"
+bundle_url = "https://github.com/tatra-labs/OmniWeave/releases/download/v0.4.2/omniweave-toolchain-deck-0.4.2.tar.gz"
 
 [[node]]
 version = "20.18.1"
