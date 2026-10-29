@@ -770,11 +770,49 @@ def _neighbours(
     return out
 
 
+def _check_cell_rel(claim: Claim, evidence: Evidence) -> Row:
+    """A `cell_rel` is NO EVIDENCE here, and the reason is the point. **D1005.**
+
+    `cell_rel` is `table`'s relation asked of `Grid.up/down/left_heading` -- a derived cover map
+    with column spans and header CHAINS (`cells` rulings 2 and 3). This file reads a flat cell
+    grid off the bytes, where a span is a blank neighbour rather than a wide origin: `right` of a
+    span-2 cell is `''` here and its last column's neighbour there, and `top_heading` has no
+    meaning in a grid with no declared header rows. Judging one on this grid would call a CORRECT
+    row wrong, which is worse than declining -- the same reasoning that made `rich.docx`'s two
+    OMML rows no evidence rather than disagreements (D1001).
+
+    So the row is reported unjudged, with the grid this reader DID find attached, which is what a
+    reviewer needs to check the relation against the table by eye. The machine check lives where
+    the grid does: `test_conform_table_assertions.py` parses every fixture through
+    `parse.office.anydoc` and judges every committed `table` and `cell_rel` on its real `Grid`.
+    """
+    lines = _grid_lines(evidence.grid) if evidence.grid else ()
+    return Row(
+        claim,
+        evidence,
+        None,
+        "no evidence: a cell_rel is a claim about the parsed Grid's spans and header chains, and"
+        " this reader has a flat cell grid; test_conform_table_assertions.py judges it on the"
+        " real Grid",
+        lines,
+    )
+
+
+DECLARED_UNJUDGED: Final = frozenset({"cell_rel"})
+"""Types whose no-evidence is DECLARED rather than a gap, so `main()` can still exit 0. **D1005.**
+
+Without this the exit code could never be zero once a `cell_rel` was committed, and an exit code
+that can never be zero says nothing at all -- the lesson `TRANSCRIBED` records for the structure
+half. The declaration is checked in both directions: `_check_cell_rel` explains the reason on
+every row, and `test_label_review.py` fails if the tier stops firing, which is what a stale
+declaration looks like. An unknown of any OTHER type still exits `EXIT_NO_EVIDENCE`."""
+
 CHECKS: Final[Mapping[str, Callable[[Claim, Evidence], Row]]] = {
     "present": _check_present,
     "absent": _check_absent,
     "order": _check_order,
     "table": _check_table,
+    "cell_rel": _check_cell_rel,
 }
 """One check per assertion type 13-quality.md section 8.1 defines. A type absent here is reported
 unknown rather than guessed at, so a new assertion type cannot pass by default."""
@@ -1667,6 +1705,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         _say(f"  TRANSCRIBED: {line}")
     _, disagree, unknown = _summary(rows)
     disagree += sum(1 for one in readings if one.agrees is False)
+    unknown -= sum(1 for row in rows if row.agrees is None and row.claim.type in DECLARED_UNJUDGED)
     if unknown or undeclared:
         return EXIT_NO_EVIDENCE
     if disagree:

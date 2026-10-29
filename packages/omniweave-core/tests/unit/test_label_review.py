@@ -82,12 +82,31 @@ def _evidence(*runs: str, grid: tuple[tuple[str, ...], ...] = ()) -> object:
 
 
 def test_every_drafted_label_has_evidence_and_agrees() -> None:
+    """Every label but a `cell_rel` is confirmed against the bytes here.
+
+    A `cell_rel` is DECLARED unjudgeable by this reader (D1005): its relation is asked of the
+    parsed `Grid`'s spans and header chains, and a flat cell grid read off the bytes answers
+    `right` of a span-2 cell with `''` rather than its last column's neighbour -- judging it here
+    would call a correct row wrong. `test_conform_table_assertions.py` judges every one of them
+    on the real `Grid`, so none is taken on trust; what is declined is only this file's reading.
+    """
     rows = TOOL.review(REPO)
     assert rows, "no *.assertions.toml found -- the glob or the tree moved"
     blind = [row.claim.id for row in rows if row.agrees is None]
-    assert blind == [], f"no evidence for {blind}: a reviewer would have to take those on trust"
+    typed = {row.claim.type for row in rows if row.agrees is None}
+    assert typed <= {"cell_rel"}, f"no evidence for {blind}: a reviewer would take those on trust"
+    assert blind, "D1005 committed cell_rel labels; an empty list means the tier stopped firing"
+    declined = [row for row in rows if row.claim.type == "cell_rel"]
+    for row in declined:
+        assert "claim about the parsed Grid" in row.why, row.why
+        assert "test_conform_table_assertions.py" in row.why, (
+            "a declined row that does not say where the real check lives is a row taken on trust"
+        )
+        assert row.excerpt, f"{row.claim.id} declines without showing the table it read"
     wrong = [
-        f"{row.claim.fixture.name}:{row.claim.id} -- {row.why}" for row in rows if not row.agrees
+        f"{row.claim.fixture.name}:{row.claim.id} -- {row.why}"
+        for row in rows
+        if row.agrees is False
     ]
     assert wrong == [], "drafted labels the fixture bytes contradict:\n" + "\n".join(wrong)
 
@@ -409,14 +428,14 @@ def test_every_committed_reference_row_agrees_with_the_bytes_or_is_named_unconfi
     disagree = [one for one in readings if one.agrees is False]
     assert disagree == [], [one.why for one in disagree]
     unknown = [one.reference.id for one in readings if one.agrees is None]
-    assert len(readings) == 227, "the committed population; a new reference belongs in this count"
+    assert len(readings) == 277, "the committed population; a new reference belongs in this count"
     assert unknown == ["s04", "s05"], "the two OMML rows of rich.docx and nothing else"
 
 
 def test_the_signature_unit_is_the_document_and_nothing_is_signed_yet() -> None:
     """`structure` ruling 3: a document scores only when EVERY row of its reference is verified."""
     grouped = TOOL.documents(TOOL.read_structure(REPO))
-    assert len(grouped) == 30
+    assert len(grouped) == 33
     signed = {one.reference.checked for group in grouped.values() for one in group}
     assert signed == {None}, "this repository has signed no reference row"
 
@@ -595,7 +614,7 @@ def test_one_refused_document_stops_every_write(tmp_path: Path) -> None:
 def test_the_structure_bundle_is_keyed_by_document_and_says_what_it_does_not_judge() -> None:
     data = TOOL.structure_bundle(TOOL.read_structure(REPO), REPO)
     assert data["schema"] == "omniweave.structure-review/1"
-    assert len(data["documents"]) == 30
+    assert len(data["documents"]) == 33
     assert "per DOCUMENT" in data["note"]
     assert "kind, layer, parent_kind) is the reviewer's judgement" in data["note"]
     first = data["documents"][0]

@@ -1,0 +1,164 @@
+# summary.xlsx.assertions.toml -- 13-quality.md section 8.1's assertions about summary.xlsx.
+#
+# DRAFTED by Claude on 2026-10-28 (D913, a user ruling of 2026-10-21: Claude drafts, the user
+# verifies). Every relation below was read off the PARSED document's own `Grid` -- the fixture
+# through `parse.office.anydoc`, decoded by `labels.candidate()` and read back by
+# `labels.opened()`, which is what the parse eval suite hands `judge()` -- and not from the
+# outline that wrote the bytes. None is checked: a reviewer who confirms a row adds
+# `checked = "verified"`, or `checked = "rejected"` for a wrong one. An unchecked row runs and
+# never scores (13:1022).
+#
+# `office/has_merges=1` is FIRST on every row, because a verdict takes its assertion's first
+# slice (`judge` ruling 5) and `table_rel_acc`'s register row is `*/has_merges=1`. The slice is a
+# claim about the DOCUMENT -- this one has a merged total row -- not about the cell a row names.
+#
+# The `table` rows are the text evaluator's, judged over the candidate's rendered Markdown, and
+# they stay inside the four unmerged rows: a span renders as one cell followed by empty ones, so
+# a neighbour relation ACROSS a merge is a claim about the renderer rather than the parser. The
+# `cell_rel` rows are the owdoc evaluator's, read against the Grid in O(1), and those are where
+# the merge is asserted (D877, and 13:1007). `table_rel_acc` rolls up the TEXT evaluator only
+# (`rollup` ruling 1 with `eval_run`'s `evaluator="text"`), so a `cell_rel` verdict is recorded
+# and is not in that rate.
+schema = "omniweave.assertions/1"
+
+[[assertion]]
+id = "t01-region-spring"
+type = "table"
+page = 1
+cell = "Region"
+right = "Spring"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t02-spring-between"
+type = "table"
+page = 1
+cell = "Spring"
+left = "Region"
+right = "Autumn"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t03-year-last"
+type = "table"
+page = 1
+cell = "Year"
+left = "Autumn"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t04-region-column"
+type = "table"
+page = 1
+cell = "Region"
+down = "Northern"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t05-northern-row"
+type = "table"
+page = 1
+cell = "Northern"
+right = "120"
+top_heading = "Region"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t06-spring-northern"
+type = "table"
+page = 1
+cell = "120"
+up = "Spring"
+left = "Northern"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t07-autumn-northern"
+type = "table"
+page = 1
+cell = "140"
+right = "260"
+top_heading = "Autumn"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t08-southern-between"
+type = "table"
+page = 1
+cell = "Southern"
+up = "Northern"
+down = "Eastern"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t09-autumn-southern"
+type = "table"
+page = 1
+cell = "110"
+up = "140"
+right = "200"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t10-year-eastern"
+type = "table"
+page = 1
+cell = "150"
+up = "200"
+top_heading = "Year"
+slices = ["office/has_merges=1"]
+
+# --- the merged row, on the owdoc evaluator -------------------------------------------------
+# `cells` ruling 2: a neighbour is asked from the EDGE of the cell the relation faces, so `right`
+# of a span-2 origin is asked from its last column. These are the rows a text rendering cannot
+# answer and a Grid can.
+
+[[assertion]]
+id = "c01-merged-origin"
+type = "cell_rel"
+page = 1
+cell = "Every region"
+up = "Eastern"
+right = "610"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "c02-merged-total"
+type = "cell_rel"
+page = 1
+cell = "610"
+left = "Every region"
+up = "80"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "c03-merged-heading"
+type = "cell_rel"
+page = 1
+cell = "Every region"
+top_heading = "Region"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "c04-total-heading"
+type = "cell_rel"
+page = 1
+cell = "610"
+top_heading = "Autumn"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "c05-eastern-down"
+type = "cell_rel"
+page = 1
+cell = "Eastern"
+down = "Every region"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "c06-autumn-down"
+type = "cell_rel"
+page = 1
+cell = "80"
+down = "610"
+slices = ["office/has_merges=1"]

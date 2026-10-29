@@ -1,0 +1,30 @@
+owoutline/1  corpus=core@2026.10  doc=0337836016af011e85b5e0bdf2b475d6  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic a0b9bdb3 -
+p0/0 heading body extracted normalized 76b10a1e - Conservation report
+p0/1/r0c0 table_cell body extracted normalized 1902f617 -
+p0/1/r0c0/0 paragraph body extracted normalized b767ddda - Item
+p0/1/r0c1/0 paragraph body extracted normalized 88758ccb - Assessed
+p0/1/r0c2/0 paragraph body extracted normalized 204a7b90 - Treated
+p0/1/r1c0/0 paragraph body extracted normalized 309efb73 - Maps
+p0/1/r1c1/0 paragraph body extracted normalized e53af562 - 412
+p0/1/r1c2/0 paragraph body extracted normalized 0afe48af - 38
+p0/1/r2c0/0 paragraph body extracted normalized 86d2f314 - Ledgers
+p0/1/r2c1/0 paragraph body extracted normalized 364457e5 - 96
+p0/1/r2c2/0 paragraph body extracted normalized 34a8c1ed - 11
+p0/1/r3c0/0 paragraph body extracted normalized 71e32273 - Photographs
+p0/1/r3c1/0 paragraph body extracted normalized f35b5b5b - 1507
+p0/1/r3c2/0 paragraph body extracted normalized 3aa8fed6 - 203
+p0/1/r4c0/0 paragraph body extracted normalized bd586b4c - Totalled across every item
+p0/1 table body extracted normalized 9160744f -
+p0/1/r0c1 table_cell body extracted normalized 6ada835b -
+p0/1/r0c2 table_cell body extracted normalized 60cfa6e9 -
+p0/1/r1c0 table_cell body extracted normalized fc416e9a -
+p0/1/r1c1 table_cell body extracted normalized 306f095d -
+p0/1/r1c2 table_cell body extracted normalized b2f16585 -
+p0/1/r2c0 table_cell body extracted normalized 1048d13c -
+p0/1/r2c1 table_cell body extracted normalized 6bc05f1b -
+p0/1/r2c2 table_cell body extracted normalized 9d316742 -
+p0/1/r3c0 table_cell body extracted normalized b10caafe -
+p0/1/r3c1 table_cell body extracted normalized ca52e81c -
+p0/1/r3c2 table_cell body extracted normalized 6cc4196d -
+p0/1/r4c0 table_cell body extracted normalized 295dc707 -

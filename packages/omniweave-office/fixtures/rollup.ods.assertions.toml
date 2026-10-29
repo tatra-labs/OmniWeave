@@ -1,0 +1,150 @@
+# rollup.ods.assertions.toml -- 13-quality.md section 8.1's assertions about rollup.ods.
+#
+# DRAFTED by Claude on 2026-10-28 (D913, a user ruling of 2026-10-21: Claude drafts, the user
+# verifies). Every relation was read off the PARSED document's own `Grid`, not off the outline
+# that wrote the bytes. None is checked; an unchecked row runs and never scores (13:1022).
+#
+# This is the ODF spelling of `summary.xlsx`'s shape -- `table:number-columns-spanned` with its
+# covered slots rather than `mergeCell` -- so the two together say the grid is the same whichever
+# encoding carried it. `office/has_merges=1` is first on every row, for the reason that file's
+# header gives.
+schema = "omniweave.assertions/1"
+
+[[assertion]]
+id = "t01-branch-opened"
+type = "table"
+page = 1
+cell = "Branch"
+right = "Opened"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t02-opened-between"
+type = "table"
+page = 1
+cell = "Opened"
+left = "Branch"
+right = "Closed"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t03-net-last"
+type = "table"
+page = 1
+cell = "Net"
+left = "Closed"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t04-branch-column"
+type = "table"
+page = 1
+cell = "Branch"
+down = "Harbour"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t05-harbour-row"
+type = "table"
+page = 1
+cell = "Harbour"
+right = "31"
+top_heading = "Branch"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t06-opened-harbour"
+type = "table"
+page = 1
+cell = "31"
+up = "Opened"
+left = "Harbour"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t07-closed-harbour"
+type = "table"
+page = 1
+cell = "12"
+right = "19"
+top_heading = "Closed"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t08-uplands-between"
+type = "table"
+page = 1
+cell = "Uplands"
+up = "Harbour"
+down = "Riverside"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t09-closed-uplands"
+type = "table"
+page = 1
+cell = "9"
+up = "12"
+right = "15"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "t10-net-riverside"
+type = "table"
+page = 1
+cell = "14"
+up = "15"
+top_heading = "Net"
+slices = ["office/has_merges=1"]
+
+# --- the merged row, on the owdoc evaluator -------------------------------------------------
+
+[[assertion]]
+id = "c01-merged-origin"
+type = "cell_rel"
+page = 1
+cell = "All branches"
+up = "Riverside"
+right = "48"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "c02-merged-total"
+type = "cell_rel"
+page = 1
+cell = "48"
+left = "All branches"
+up = "4"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "c03-merged-heading"
+type = "cell_rel"
+page = 1
+cell = "All branches"
+top_heading = "Branch"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "c04-total-heading"
+type = "cell_rel"
+page = 1
+cell = "48"
+top_heading = "Closed"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "c05-riverside-down"
+type = "cell_rel"
+page = 1
+cell = "Riverside"
+down = "All branches"
+slices = ["office/has_merges=1"]
+
+[[assertion]]
+id = "c06-closed-down"
+type = "cell_rel"
+page = 1
+cell = "4"
+down = "48"
+slices = ["office/has_merges=1"]

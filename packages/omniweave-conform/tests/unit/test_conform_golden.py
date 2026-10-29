@@ -174,7 +174,7 @@ def test_the_repository_commits_its_goldens() -> None:
     exactly its three Reductions under one of the three drivers, which a literal hides.
     """
     documents = {path.rsplit(".", 1)[0] for path in COMMITTED}
-    assert len(documents) == 46
+    assert len(documents) == 49
     assert len(COMMITTED) == 3 * len(documents)
     for document in documents:
         assert {path for path in COMMITTED if path.rsplit(".", 1)[0] == document} == {
