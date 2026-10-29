@@ -17,6 +17,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import importlib.util
+import json
 import sys
 import tomllib
 from pathlib import Path
@@ -463,6 +464,25 @@ def test_every_labelled_fixture_in_this_repository_declares_its_family() -> None
         "office/labelled": 10,
         "pdf/born_digital/labelled": 4,
     }
+
+
+def test_the_sidecars_slices_reach_the_structure_references_and_no_assertion() -> None:
+    """D1003. `labels` ruling 4 gives an assertion its own slices when it has any, and every one
+    of the committed assertions has. So the coarse key groups `structure_f1` and nothing else
+    today; an assertion written without `slices` later changes that, and this says so out loud."""
+    assertions = sorted(REPO.glob("packages/*/fixtures/*.assertions.toml"))
+    rows = [
+        row
+        for path in assertions
+        for row in tomllib.loads(path.read_text(encoding="utf-8"))["assertion"]
+    ]
+    assert len(rows) == 110
+    assert [row["id"] for row in rows if not row.get("slices")] == []
+    references = sorted(REPO.glob("packages/*/fixtures/*.structure.jsonl"))
+    assert len(references) == 10
+    for path in references:
+        lines = path.read_text(encoding="utf-8").splitlines()[1:]
+        assert [row for row in (json.loads(line) for line in lines) if row.get("slices")] == []
 
 
 def test_without_git_the_gate_did_not_run(

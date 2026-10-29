@@ -94,11 +94,23 @@ standing pattern (ledger D25). D844 adds Q-G2, which :1986 makes *"the same gate
 ## The coarse labelled slice (D1002)
 
 14. **A labelled fixture declares its family's coarse slice, and nothing else declares one.**
-    A fixture is labelled when it carries at least one of ruling 2's two label files. Every
-    metric that reads `[fixture.tests] slices` macro-averages at `min_slice_n = 30`, and no
-    single extension will hold thirty documents, so a per-extension key reports `unknown` for
-    ever; a user ruling of 2026-10-28 adds one coarse slice per family, which is the set that
+    A fixture is labelled when it carries at least one of ruling 2's two label files. A metric
+    that reads `[fixture.tests] slices` macro-averages at `min_slice_n = 30`, and no single
+    extension will hold thirty of whatever it counts, so a per-extension key reports `unknown`
+    for ever; a user ruling of 2026-10-28 adds one coarse slice per family, which is the set that
     can reach thirty, and leaves the per-extension rows visible saying what they are.
+
+    **What the sidecar's slices reach, exactly.** A `.structure.jsonl` row carries no slices of
+    its own, so every one of them inherits the sidecar's and `structure_f1` groups by it; its
+    `min_slice_n` counts DOCUMENTS (`structure` ruling 7 is the mean of a slice's documents'
+    F1). An assertion's slices are *"its own, else its fixture's sidecar's"* (`labels` ruling 4)
+    and a verdict takes the first of them (`judge` ruling 5); `order_acc` and `table_rel_acc`
+    count VERDICTS, not documents. Every one of the 110 committed assertions declares its own
+    slices, so the coarse key reaches `structure_f1` alone today, and
+    `pdf/born_digital/labelled` -- on four fixtures that carry assertions and no structure
+    reference -- is a declaration ahead of its population: it names the family new born-digital
+    documents join, and no verdict lands on it yet. A test pins that, so an assertion written
+    without `slices` later is a deliberate change rather than a silent one.
 
     **The family is derived, never typed.** Of a fixture's declared slices, a key whose last
     segment carries an `=` is a facet (`office/docx/has_merges=1`), not a place in the tree, and
