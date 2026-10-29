@@ -42,10 +42,13 @@ into editable PPTX and DOCX. It is local-first and makes no network calls by def
   drivers to sniff their own formats (step 4 of the detection ladder). A driver for a format the
   host does not already recognise installs and passes conformance, but `ow add` cannot route its
   files to it. This is deferred past 1.0.
-- **Accuracy rates are not published.** The parse suite scores ordering, tables and fields
-  against labelled fixtures, but those labels are drafted and not yet human-verified. Until they
-  are, `ow eval release-check` reports every accuracy rate as unknown. `structure_f1` and
-  `doc_acc` have no harness yet.
+- **Accuracy rates are not published.** The parse suite scores ordering and table relations
+  against labelled fixtures, and `structure_f1` scores document structure against committed
+  references, but every one of those labels is drafted and not yet human-verified. Until a
+  reviewer signs them, `ow eval release-check` reports every accuracy rate as unknown. Field
+  extraction is not scored at all: no field-extraction driver ships, so `field_acc` and
+  `doc_acc` are not applicable rather than unmeasured, and the corpus carries no field
+  assertion for them to score.
 - **Honesty measures are partial:**
   - `degradation_detection` covers 4 of the 13 planned damage types;
   - `false_confident_zero` is measured over 13 questions, below the minimum sample, so it reads
