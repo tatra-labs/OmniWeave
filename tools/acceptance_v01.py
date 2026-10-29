@@ -13,8 +13,10 @@ could not say.
 * **PARTIAL** -- every instrument exits 0, and some clause of the criterion is asserted by none of
   them. The row names the clause. A green test over half a criterion is not the criterion, and a
   roll-up that printed PASS for it would be the defect INV-20 names: a front door that lies.
-* **FAIL** -- an instrument exited non-zero. A mistyped pytest node collects nothing and exits
-  non-zero, so the table cannot silently point at nothing.
+* **FAIL** -- an instrument exited non-zero, unless that code is one the instrument declares
+  as `reported`. A mistyped pytest node collects nothing and exits non-zero, so the table cannot
+  silently point at nothing; `reported` is the one narrow exception, and only a user ruling puts
+  a code in it (see `Instrument.reported`).
 * **UNMEASURED** -- nothing in the tree measures it, or its instrument needs what a local run
   cannot have (CI job timings, a clean machine, recorded agent sessions), or it is slow and
   `--slow` was not passed.
@@ -81,6 +83,20 @@ class Instrument:
     argv: tuple[str, ...]
     slow: bool = False
     timeout_s: int = 600
+    reported: frozenset[int] = frozenset()
+    """Exit codes this instrument REPORTS rather than fails on. Empty for all but one. **D1008.**
+
+    D924, a user ruling of 2026-10-21, on G22: *"A breached G22 bound is reported beside the
+    runner and does not fail; a run that did not happen does."* `ci.yml` implements exactly that
+    for the nightly step -- `if [ "$code" -ne 0 ] && [ "$code" -ne 1 ]; then exit "$code"; fi` --
+    and this field is the same line for the acceptance table, which otherwise renders V10-7 FAIL
+    on a number the ruling says is not a verdict, while CI treats it as an indication.
+
+    A code listed here still PRINTS, with its exit and its last line, so nothing is hidden. What
+    changes is only whether the roll-up claims a verdict that 12-performance.md section 1 gives
+    to `ow-bench-1` alone. Every other instrument keeps the strict rule, which is what stops a
+    mistyped pytest node from reading as green.
+    """
 
 
 def tool(script: str, *args: str, slow: bool = False) -> Instrument:
@@ -404,10 +420,17 @@ def _run(instrument: Instrument) -> dict[str, object]:
 
 
 def judge(criterion: Criterion, exits: list[int] | None) -> Verdict:
-    """The verdict from the declared coverage and the instruments' exits (None: not run). Pure."""
+    """The verdict from the declared coverage and the instruments' exits (None: not run). Pure.
+
+    A non-zero exit is FAIL unless the instrument that produced it declares that code `reported`
+    (D1008). `exits` is positional against `criterion.instruments`, which is how `evaluate` builds
+    it; a length mismatch is a programming error and `zip(strict=True)` says so rather than
+    silently pairing the wrong instrument with the wrong code.
+    """
     if criterion.coverage is Coverage.NONE or exits is None:
         return Verdict.UNMEASURED
-    if any(code != 0 for code in exits):
+    paired = zip(exits, criterion.instruments, strict=True)
+    if any(code != 0 and code not in one.reported for code, one in paired):
         return Verdict.FAIL
     return Verdict.PASS if criterion.coverage is Coverage.FULL else Verdict.PARTIAL
 
