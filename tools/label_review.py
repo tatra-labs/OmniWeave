@@ -109,6 +109,11 @@ _KIDS: Final = re.compile(rb"/Type\s*/Pages[^>]*?/Kids\s*\[([^\]]*)\]", re.DOTAL
 _REF: Final = re.compile(rb"(\d+)\s+0\s+R")
 _OBJ: Final = re.compile(rb"(\d+)\s+0\s+obj(.*?)endobj", re.DOTALL)
 _RTF_WORD: Final = re.compile(r"\\[a-z]+-?\d* ?|\\\n|[{}]", re.IGNORECASE)
+_RTF_ESCAPE: Final = re.compile(r"\\([\\{}])")
+"""RTF's three control symbols: an escaped backslash, open brace or close brace (D1004)."""
+_RTF_HELD: Final[Mapping[str, str]] = {"\\": "\x00", "{": "\x01", "}": "\x02"}
+"""What each stands in as while the control-word pass runs. Three characters no RTF body carries:
+a control symbol is the only way to spell any of them, so a held one cannot be a real one."""
 _RTF_HEADER: Final = re.compile(
     r"\{\\(?:fonttbl|colortbl|stylesheet|info|\*)[^{}]*(?:\{[^{}]*\}[^{}]*)*\}",
     re.IGNORECASE,
@@ -440,12 +445,26 @@ def _rtf_paragraphs(text: str) -> list[str]:
 
     Stripping every control word first would cut a paragraph at each `\\i` and `\\b`, and a claim
     about a whole sentence would then read as false against a file that carries it.
+
+    **RTF's three control SYMBOLS are unescaped** (D1004). `\\{`, `\\}` and `\\\\` are how an RTF
+    file spells a brace or a backslash in running text. Left as they are, a row claiming
+    `Receipt {2026-114}` reads as false against a file that spells exactly that -- the tool
+    calling a reference wrong about a file that carries it, which is the same mistake the DOCX
+    footnote part was.
+
+    They are held aside BEFORE `_RTF_WORD` runs and restored after, rather than unescaped in
+    place, because that pattern's third alternative strips a bare `{` or `}` as a group delimiter:
+    unescaping first would hand it a real brace to eat, and unescaping afterwards finds the brace
+    already gone and only the backslash left. A placeholder is the one order in which neither pass
+    can see the other's work.
     """
-    body = _RTF_HEADER.sub(" ", text)
+    body = _RTF_ESCAPE.sub(lambda hit: _RTF_HELD[hit.group(1)], _RTF_HEADER.sub(" ", text))
     out = []
     for chunk in re.split(r"\\par\b", body):
         line = _RTF_WORD.sub(" ", chunk)
         line = re.sub(r"\s+([.,;:])", r"\1", re.sub(r"\s+", " ", line)).strip()
+        for literal, held in _RTF_HELD.items():
+            line = line.replace(held, literal)
         if line:
             out.append(line)
     return out

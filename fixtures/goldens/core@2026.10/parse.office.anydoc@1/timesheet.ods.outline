@@ -1,0 +1,27 @@
+owoutline/1  corpus=core@2026.10  doc=b71639e0e21cbc8a69316a60e68f3b1e  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic 5df5b4c3 -
+p0/0 table body extracted normalized bf613e06 -
+p0/0/r0c0 table_cell body extracted normalized d5334acf -
+p0/0/r0c0/0 paragraph body extracted normalized ef3cd9de - Day
+p0/0/r0c1/0 paragraph body extracted normalized 5e1122e5 - Desk hours
+p0/0/r0c2/0 paragraph body extracted normalized 36f871b8 - Catalogue hours
+p0/0/r1c0/0 paragraph body extracted normalized 1d22bc27 - Monday
+p0/0/r1c1/0 paragraph body extracted normalized 8ce705da - 4
+p0/0/r1c2/0 paragraph body extracted normalized 96a4f81b - 3
+p0/0/r2c0/0 paragraph body extracted normalized 70aa3afa - Tuesday
+p0/0/r2c1/0 paragraph body extracted normalized b58848ec - 5
+p0/0/r2c2/0 paragraph body extracted normalized 224c7b9e - 2
+p0/0/r3c0/0 paragraph body extracted normalized 0950c700 - Wednesday
+p0/0/r3c1/0 paragraph body extracted normalized 9a82c6ab - 6
+p0/0/r3c2/0 paragraph body extracted normalized cd4caa36 - 1
+p0/0/r0c1 table_cell body extracted normalized 708b6382 -
+p0/0/r0c2 table_cell body extracted normalized 8c582398 -
+p0/0/r1c0 table_cell body extracted normalized fff793f2 -
+p0/0/r1c1 table_cell body extracted normalized 4f8db1a8 -
+p0/0/r1c2 table_cell body extracted normalized 9de58f4a -
+p0/0/r2c0 table_cell body extracted normalized ac691357 -
+p0/0/r2c1 table_cell body extracted normalized e02ccb16 -
+p0/0/r2c2 table_cell body extracted normalized 75d48b7f -
+p0/0/r3c0 table_cell body extracted normalized 284b9960 -
+p0/0/r3c1 table_cell body extracted normalized 550dd261 -
+p0/0/r3c2 table_cell body extracted normalized e4b6fb0b -

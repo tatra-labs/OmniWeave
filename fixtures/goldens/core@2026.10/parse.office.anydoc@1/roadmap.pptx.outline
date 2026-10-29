@@ -1,0 +1,8 @@
+owoutline/1  corpus=core@2026.10  doc=fa2c0ce7ff547024c6f611adfa785c33  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic 77ee150f -
+p0/0 heading body extracted normalized 43f43480 - Roadmap to the spring release
+p0/4/0 paragraph body extracted normalized c9b2eba9 - Do not promise a date for the search page.
+p0/1 paragraph body extracted normalized 5d72a678 - the reader index ships first
+p0/2 paragraph body extracted normalized 7e3be7bb - the catalogue migration follows it
+p0/3 paragraph body extracted normalized 57063992 - the public search page is last
+p0/4 blockquote body extracted normalized 1a646688 -

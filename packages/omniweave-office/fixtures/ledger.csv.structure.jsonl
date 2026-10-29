@@ -1,0 +1,17 @@
+{"schema": "omniweave.structure/1"}
+{"id": "s01", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "date"}
+{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "account"}
+{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "amount"}
+{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "note"}
+{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "2026-10-01"}
+{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "reading room"}
+{"id": "s07", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "120.00"}
+{"id": "s08", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "chairs"}
+{"id": "s09", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "2026-10-08"}
+{"id": "s10", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "catalogue"}
+{"id": "s11", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "64.50"}
+{"id": "s12", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "labels, two boxes"}
+{"id": "s13", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "2026-10-15"}
+{"id": "s14", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "bindery"}
+{"id": "s15", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "0.00"}
+{"id": "s16", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "table_cell", "text": "no spend"}

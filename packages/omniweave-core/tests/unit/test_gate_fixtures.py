@@ -461,7 +461,7 @@ def test_every_labelled_fixture_in_this_repository_declares_its_family() -> None
         if held:
             coarse.setdefault(held[0], []).append(row["path"])
     assert {key: len(paths) for key, paths in coarse.items()} == {
-        "office/labelled": 10,
+        "office/labelled": 30,
         "pdf/born_digital/labelled": 4,
     }
 
@@ -479,7 +479,7 @@ def test_the_sidecars_slices_reach_the_structure_references_and_no_assertion() -
     assert len(rows) == 110
     assert [row["id"] for row in rows if not row.get("slices")] == []
     references = sorted(REPO.glob("packages/*/fixtures/*.structure.jsonl"))
-    assert len(references) == 10
+    assert len(references) == 30
     for path in references:
         lines = path.read_text(encoding="utf-8").splitlines()[1:]
         assert [row for row in (json.loads(line) for line in lines) if row.get("slices")] == []
@@ -511,7 +511,7 @@ def test_a_bad_flag_did_not_run(capsys: pytest.CaptureFixture[str]) -> None:
 def test_this_repository_passes_q_g1(capsys: pytest.CaptureFixture[str]) -> None:
     assert GATE.main(["--skip-pack"]) == 0, capsys.readouterr().out
     rows = tomllib.loads((REPO / "fixtures" / "index.toml").read_text(encoding="utf-8"))["fixture"]
-    assert len(rows) == 37
+    assert len(rows) == 57
     assert {row["provenance"] for row in rows} == {"generated"}
 
 

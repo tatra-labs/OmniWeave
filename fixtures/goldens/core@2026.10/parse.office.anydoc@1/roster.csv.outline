@@ -1,0 +1,33 @@
+owoutline/1  corpus=core@2026.10  doc=242306793663d2d0479c875b3fcde19f  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic 6d897021 -
+p0/0 table body extracted normalized ce6889b5 -
+p0/0/r0c0 table_cell body extracted normalized 0f74e2ea -
+p0/0/r0c0/0 paragraph body extracted normalized a8a4acbd - name
+p0/0/r0c1/0 paragraph body extracted normalized e9d2379f - shift
+p0/0/r0c2/0 paragraph body extracted normalized 86a8a612 - desk
+p0/0/r1c0/0 paragraph body extracted normalized eac9ab0a - Okonkwo
+p0/0/r1c1/0 paragraph body extracted normalized 66daabed - Monday morning
+p0/0/r1c2/0 paragraph body extracted normalized 963f2e0d - desk 1
+p0/0/r2c0/0 paragraph body extracted normalized e5616288 - Haraldsen
+p0/0/r2c1/0 paragraph body extracted normalized e323f237 - Tuesday morning
+p0/0/r2c2/0 paragraph body extracted normalized fb724964 - desk 2
+p0/0/r3c0/0 paragraph body extracted normalized c3e5a053 - Devereux
+p0/0/r3c1/0 paragraph body extracted normalized 41191110 - Wednesday afternoon
+p0/0/r3c2/0 paragraph body extracted normalized d3ce06cc - desk 3
+p0/0/r4c0/0 paragraph body extracted normalized 2ad0465e - Nakamura
+p0/0/r4c1/0 paragraph body extracted normalized 709df8b6 - Thursday afternoon
+p0/0/r4c2/0 paragraph body extracted normalized 6a0232c6 - desk 4
+p0/0/r0c1 table_cell body extracted normalized d19f6b45 -
+p0/0/r0c2 table_cell body extracted normalized 07c5f933 -
+p0/0/r1c0 table_cell body extracted normalized 8b83201b -
+p0/0/r1c1 table_cell body extracted normalized ce5f4fd9 -
+p0/0/r1c2 table_cell body extracted normalized eeb12175 -
+p0/0/r2c0 table_cell body extracted normalized 96b62121 -
+p0/0/r2c1 table_cell body extracted normalized 7f30e61c -
+p0/0/r2c2 table_cell body extracted normalized e3ee2b2d -
+p0/0/r3c0 table_cell body extracted normalized 31f0377f -
+p0/0/r3c1 table_cell body extracted normalized f92ee0b7 -
+p0/0/r3c2 table_cell body extracted normalized 5b43bccc -
+p0/0/r4c0 table_cell body extracted normalized 9bf6de52 -
+p0/0/r4c1 table_cell body extracted normalized 6a29268b -
+p0/0/r4c2 table_cell body extracted normalized ae7b198d -

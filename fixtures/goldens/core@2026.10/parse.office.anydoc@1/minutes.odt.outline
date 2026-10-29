@@ -1,0 +1,12 @@
+owoutline/1  corpus=core@2026.10  doc=03d32867e0d59db6dd056f2e754c28a1  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic 09dd56fe -
+p0/0 heading body extracted normalized fd1e500d - Minutes of the weekly review
+p0/3/0 list_item body extracted normalized 67cdbf92 -
+p0/3/0/0 paragraph body extracted normalized 29a75db4 - the index rebuild finished on Tuesday
+p0/3/1/0 paragraph body extracted normalized e4cf88a9 - the backlog is down to eleven items
+p0/3/2/0 paragraph body extracted normalized 6f9989f4 - the next review is in a fortnight
+p0/1 paragraph body extracted normalized 4e996d7c - Present: three of four members.
+p0/3/1 list_item body extracted normalized c031af94 -
+p0/2 paragraph body extracted normalized d8a655b4 - The previous minutes were accepted without chang
+p0/3/2 list_item body extracted normalized ea42d0dc -
+p0/3 list body extracted normalized ea8f6b72 -

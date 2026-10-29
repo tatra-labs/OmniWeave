@@ -1,0 +1,9 @@
+{"schema": "omniweave.structure/1"}
+{"id": "s01", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "Reading room handbook"}
+{"id": "s02", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "The reading room is open on weekday afternoons."}
+{"id": "s03", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "Before you arrive"}
+{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Order material at least one working day ahead."}
+{"id": "s05", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Bring photographic identification."}
+{"id": "s06", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "In the room"}
+{"id": "s07", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Pencils only, and one box on the desk at a time."}
+{"id": "s08", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "Photography without flash is permitted."}

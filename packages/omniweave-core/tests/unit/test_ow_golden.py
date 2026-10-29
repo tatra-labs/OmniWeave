@@ -50,6 +50,14 @@ def _committed() -> dict[str, str]:
     return read_tree(REPO)
 
 
+_GOLDENS = len(_committed())
+"""The committed Reduction count, DERIVED. D1004 took it from 78 to 138 by adding twenty labelled
+office documents, and a number typed into three assertions is three places to forget."""
+_DOCUMENTS = len({name.rsplit(".", 1)[0] for name in _committed()})
+"""The documents those Reductions reduce -- one `.shape`, `.pages` and `.outline` each, so a third
+of the count above. Derived for the same reason."""
+
+
 @pytest.fixture
 def root(tmp_path: Path) -> Path:
     goldens = tmp_path / "fixtures" / "goldens"
@@ -83,7 +91,7 @@ def test_a_matching_ingest_checks_clean(root: Path, capsys: pytest.CaptureFixtur
     code, out = _main(root, capsys, _committed())
     assert code == 0
     assert out.splitlines() == [
-        f"golden  {CORPUS}: 78 file(s) from the ingest, 78 committed",
+        f"golden  {CORPUS}: {_GOLDENS} file(s) from the ingest, {_GOLDENS} committed",
         "golden ok  0 document(s) changed",
     ]
 
@@ -137,7 +145,7 @@ def test_diff_with_nothing_changed_adds_nothing(
     code, out = _main(root, capsys, _committed(), "--diff")
     assert code == 0
     assert out.splitlines() == [
-        f"golden  {CORPUS}: 78 file(s) from the ingest, 78 committed",
+        f"golden  {CORPUS}: {_GOLDENS} file(s) from the ingest, {_GOLDENS} committed",
         "golden ok  0 document(s) changed",
     ]
 
@@ -282,7 +290,7 @@ def test_a_schema_bump_fails_the_check(root: Path, capsys: pytest.CaptureFixture
     code, out = _main(root, capsys, _bumped(_committed()))
     assert code == 1
     assert f"  structural   {PDF}: shape header moved: schema_v 1 -> 2; pages header" in out
-    assert out.splitlines()[-1] == "golden FAIL  26 document(s) changed"
+    assert out.splitlines()[-1] == f"golden FAIL  {_DOCUMENTS} document(s) changed"
 
 
 def test_a_schema_bump_blesses_in_one_row_without_a_second_reviewer(
@@ -297,7 +305,7 @@ def test_a_schema_bump_blesses_in_one_row_without_a_second_reviewer(
     assert "  note  no second reviewer: masking schema_v leaves every diff empty" in out
     [row] = (root / "eval" / "BLESS.log").read_text(encoding="utf-8").splitlines()
     assert row.split("\t")[3:] == [
-        "incidental=0,structural=26,unexplained=0",
+        f"incidental=0,structural={_DOCUMENTS},unexplained=0",
         f"{REASON} (schema bump 1->2)",
     ]
     assert (root / "fixtures" / "goldens" / f"{PDF}.pages").read_text(encoding="utf-8") == (
@@ -313,7 +321,9 @@ def test_the_ordinary_bless_of_a_schema_bump_asks_for_a_second_reviewer(
     _author(monkeypatch)
     code, out = _main(root, capsys, _bumped(_committed()), "--bless", "--reason", REASON)
     assert code == 0, out
-    assert "a second reviewer is required: 26/26 structural is above 20%" in out
+    assert (
+        f"a second reviewer is required: {_DOCUMENTS}/{_DOCUMENTS} structural is above 20%" in out
+    )
     assert "(schema bump" not in (root / "eval" / "BLESS.log").read_text(encoding="utf-8")
 
 
@@ -360,7 +370,7 @@ def test_a_refused_schema_bump_names_ten_files_at_most(
     fresh = _bumped(_committed(), "schema_v=3")
     code, out = _main(root, capsys, fresh, "--bless", "--schema-bump", "1->2", "--reason", REASON)
     assert code == 1
-    assert "78 file(s) moved by more than schema_v 1->2" in out
+    assert f"{_GOLDENS} file(s) moved by more than schema_v 1->2" in out
     assert sum(1 for line in out.splitlines() if line.endswith(": schema_v 1->3")) == 10
 
 

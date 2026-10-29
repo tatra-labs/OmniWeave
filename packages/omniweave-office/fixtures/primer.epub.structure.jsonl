@@ -1,0 +1,7 @@
+{"schema": "omniweave.structure/1"}
+{"id": "s01", "page": 1, "kind": "title", "layer": "body", "parent_kind": "document", "text": "A primer on indexes"}
+{"id": "s02", "page": 1, "kind": "heading", "layer": "body", "parent_kind": "document", "text": "What an index is for"}
+{"id": "s03", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "An index answers a question without reading the book."}
+{"id": "s04", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "blockquote", "text": "Order is the first courtesy a reader is owed."}
+{"id": "s05", "page": 1, "kind": "code", "layer": "body", "parent_kind": "document", "text": "index.lookup('order')\n"}
+{"id": "s06", "page": 1, "kind": "paragraph", "layer": "body", "parent_kind": "document", "text": "The next chapter builds one."}

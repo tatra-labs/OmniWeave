@@ -1,0 +1,35 @@
+owoutline/1  corpus=core@2026.10  doc=76c8e68eda0ed0164eb0fb49c00d6049  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic 7e6d431b -
+p0/0 table body extracted normalized 03c4eb9d -
+p0/0/r0c0 table_cell body extracted normalized bd0f0353 -
+p0/0/r0c0/0 paragraph body extracted normalized 2f17a939 - date
+p0/0/r0c1/0 paragraph body extracted normalized 3506419e - account
+p0/0/r0c2/0 paragraph body extracted normalized 827174c9 - amount
+p0/0/r0c3/0 paragraph body extracted normalized b10384e9 - note
+p0/0/r1c0/0 paragraph body extracted normalized 835f6774 - 2026-10-01
+p0/0/r1c1/0 paragraph body extracted normalized 9ec9eb2c - reading room
+p0/0/r1c2/0 paragraph body extracted normalized 59254040 - 120.00
+p0/0/r1c3/0 paragraph body extracted normalized 85647b55 - chairs
+p0/0/r2c0/0 paragraph body extracted normalized e2b0a65f - 2026-10-08
+p0/0/r2c1/0 paragraph body extracted normalized 0e72fb11 - catalogue
+p0/0/r2c2/0 paragraph body extracted normalized 47812992 - 64.50
+p0/0/r2c3/0 paragraph body extracted normalized 56d8ccab - labels, two boxes
+p0/0/r3c0/0 paragraph body extracted normalized abe244a7 - 2026-10-15
+p0/0/r3c1/0 paragraph body extracted normalized 4ae5e205 - bindery
+p0/0/r3c2/0 paragraph body extracted normalized 07e29ca4 - 0.00
+p0/0/r3c3/0 paragraph body extracted normalized 876579b5 - no spend
+p0/0/r0c1 table_cell body extracted normalized e57533e8 -
+p0/0/r0c2 table_cell body extracted normalized d09baddc -
+p0/0/r0c3 table_cell body extracted normalized 56366c82 -
+p0/0/r1c0 table_cell body extracted normalized 2bd36ebd -
+p0/0/r1c1 table_cell body extracted normalized 73bb9715 -
+p0/0/r1c2 table_cell body extracted normalized fe4bb044 -
+p0/0/r1c3 table_cell body extracted normalized 3148d5f3 -
+p0/0/r2c0 table_cell body extracted normalized 65a216b7 -
+p0/0/r2c1 table_cell body extracted normalized 37cacbcb -
+p0/0/r2c2 table_cell body extracted normalized 2dbf0074 -
+p0/0/r2c3 table_cell body extracted normalized b0aec9b2 -
+p0/0/r3c0 table_cell body extracted normalized 5dc24048 -
+p0/0/r3c1 table_cell body extracted normalized 86a04f02 -
+p0/0/r3c2 table_cell body extracted normalized ad9f79d9 -
+p0/0/r3c3 table_cell body extracted normalized 8485f0f3 -

@@ -1,0 +1,14 @@
+owoutline/1  corpus=core@2026.10  doc=98514649c0c8e70937803ff5fbff8a3e  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic 6d06104a -
+p0/0 heading body extracted normalized 998adacb - Agenda, 3 November
+p0/1/0 list_item body extracted normalized 4c71925c -
+p0/1/0/0 paragraph body extracted normalized 7f5f9c4a - Apologies
+p0/1/1/0 paragraph body extracted normalized e137c37d - Minutes of the last meeting
+p0/1/2/0 paragraph body extracted normalized 2267da94 - Index rebuild: where it stands
+p0/1/3/0 paragraph body extracted normalized 5aa7dc25 - Budget for the next quarter
+p0/1/4/0 paragraph body extracted normalized 537b53a8 - Any other business
+p0/1 list body extracted normalized a2821c61 -
+p0/1/1 list_item body extracted normalized 993b4fac -
+p0/1/2 list_item body extracted normalized 01ef9fc0 -
+p0/1/3 list_item body extracted normalized fa288726 -
+p0/1/4 list_item body extracted normalized 7c7ae0bc -

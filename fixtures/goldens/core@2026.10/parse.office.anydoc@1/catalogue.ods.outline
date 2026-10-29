@@ -1,0 +1,27 @@
+owoutline/1  corpus=core@2026.10  doc=363cb3f2f1145f729756e292d0e20a24  driver=parse.office.anydoc@1  schema_v=1
+doc document body extracted synthetic 63236615 -
+p0/0 table body extracted normalized 6a05016e -
+p0/0/r0c0 table_cell body extracted normalized 5bbe39e5 -
+p0/0/r0c0/0 paragraph body extracted normalized 355a4ed4 - Reference
+p0/0/r0c1/0 paragraph body extracted normalized 77c3ae86 - Title
+p0/0/r0c2/0 paragraph body extracted normalized 56c2d5bb - Year
+p0/0/r0c3/0 paragraph body extracted normalized feeb3a44 - Boxes
+p0/0/r1c0/0 paragraph body extracted normalized 9bf1bb50 - NA/1/1
+p0/0/r1c1/0 paragraph body extracted normalized bc5072c2 - Harbour board minutes
+p0/0/r1c2/0 paragraph body extracted normalized f770af95 - 1894
+p0/0/r1c3/0 paragraph body extracted normalized ca6b1649 - 7
+p0/0/r2c0/0 paragraph body extracted normalized c330f93c - NA/1/2
+p0/0/r2c1/0 paragraph body extracted normalized 229b9ed5 - Harbour board accounts
+p0/0/r2c2/0 paragraph body extracted normalized 4be02086 - 1897
+p0/0/r2c3/0 paragraph body extracted normalized 96a4f81b - 3
+p0/0/r0c1 table_cell body extracted normalized aa5befba -
+p0/0/r0c2 table_cell body extracted normalized 19167c26 -
+p0/0/r0c3 table_cell body extracted normalized 52c362ea -
+p0/0/r1c0 table_cell body extracted normalized 72fbc388 -
+p0/0/r1c1 table_cell body extracted normalized 3f0ec465 -
+p0/0/r1c2 table_cell body extracted normalized a86b17ad -
+p0/0/r1c3 table_cell body extracted normalized 178c0500 -
+p0/0/r2c0 table_cell body extracted normalized 7657ccdf -
+p0/0/r2c1 table_cell body extracted normalized 1272b391 -
+p0/0/r2c2 table_cell body extracted normalized ee892e01 -
+p0/0/r2c3 table_cell body extracted normalized 9de58f4a -

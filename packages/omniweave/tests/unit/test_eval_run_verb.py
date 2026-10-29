@@ -163,8 +163,8 @@ DRAFTED = [
     "  metric      order_acc@__macro__ in parse/parse.pdf.pdfium run <id>: UNKNOWN; 60 "
     "unverified assertion(s) ran and were not scored (13:1022)",
     LABELS_FIX,
-    "  metric      structure_f1@__macro__ in parse/parse.office.anydoc run <id>: UNKNOWN; 10 of "
-    "10 referenced document(s) not scored; 59 reference row(s) unsigned (ruling 3)",
+    "  metric      structure_f1@__macro__ in parse/parse.office.anydoc run <id>: UNKNOWN; 30 of "
+    "30 referenced document(s) not scored; 227 reference row(s) unsigned (ruling 3)",
     REFERENCE_FIX,
     "  metric      table_rel_acc@__macro__ in parse/parse.office.anydoc run <id>: UNKNOWN; 10 "
     "unverified assertion(s) ran and were not scored (13:1022)",
