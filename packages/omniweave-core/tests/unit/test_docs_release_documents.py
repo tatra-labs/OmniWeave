@@ -1,9 +1,9 @@
-"""`docs/verify.md` and `docs/TS-SDK-TRIGGER.md`, the two release documents. D1012.
+"""`docs/verify.md`, `docs/TS-SDK-TRIGGER.md` and `docs/driver-authors.md`. D1012, D1013.
 
-11-repo-layout.md's `docs/` tree names both (lines 436-437) and the charter §D9 names
+11-repo-layout.md's `docs/` tree names all three (lines 436-438) and the charter §D9 names
 `TS-SDK-TRIGGER.md` itself, but G27 clause (d)'s walk is section 8.6's own words --
-`docs/ARCHITECTURE.md` and `docs/plan/*.md` -- so neither is in it, and widening that walk would
-contradict a plan-stated scope rather than fix a gate. These are their checks instead.
+`docs/ARCHITECTURE.md` and `docs/plan/*.md` -- so none of them is in it, and widening that walk
+would contradict a plan-stated scope rather than fix a gate. These are their checks instead.
 
 The last test is the interesting one. `docs/verify.md`'s recipes name the repository the artefacts
 will actually come from, while `release.yml:316` still pins cosign's identity regexp to a different
@@ -33,6 +33,7 @@ REPO_ROOT: Final = _repo_root(Path(__file__).resolve())
 DOCS: Final = REPO_ROOT / "docs"
 VERIFY: Final = DOCS / "verify.md"
 TRIGGER: Final = DOCS / "TS-SDK-TRIGGER.md"
+AUTHORS: Final = DOCS / "driver-authors.md"
 RELEASE_YML: Final = REPO_ROOT / ".github" / "workflows" / "release.yml"
 LLMS: Final = REPO_ROOT / "packages" / "omniweave" / "src" / "omniweave" / "gen" / "llms.py"
 
@@ -43,14 +44,14 @@ SLUG_NOTE: Final = "The repository slug disagrees with itself."
 """The declared exception in `docs/verify.md`'s "Before the first release" section."""
 
 
-@pytest.mark.parametrize("document", [VERIFY, TRIGGER], ids=lambda one: one.name)
+@pytest.mark.parametrize("document", [VERIFY, TRIGGER, AUTHORS], ids=lambda one: one.name)
 def test_the_document_the_plan_names_exists_and_is_not_a_stub(document: Path) -> None:
-    """11-repo-layout.md:436-437. A named file that is absent is the quiet kind of unbuilt."""
+    """11-repo-layout.md:436-438. A named file that is absent is the quiet kind of unbuilt."""
     assert document.is_file(), f"11-repo-layout.md's docs/ tree names {document.name}"
     assert len(document.read_text(encoding="utf-8").split()) > 200, "a placeholder, not a document"
 
 
-@pytest.mark.parametrize("document", [VERIFY, TRIGGER], ids=lambda one: one.name)
+@pytest.mark.parametrize("document", [VERIFY, TRIGGER, AUTHORS], ids=lambda one: one.name)
 def test_every_relative_link_resolves(document: Path) -> None:
     """What G27 clause (d3) does for the plan, done here, because (d)'s walk excludes these two."""
     missing = [
@@ -93,6 +94,51 @@ def test_ts_sdk_trigger_states_both_halves_of_the_written_condition() -> None:
     assert "non-toolchain in-tree TypeScript consumer" in text
     assert "Three external requests" in text
     assert "ow surface typescript" in text, "what a consumer gets today instead"
+
+
+def test_driver_authors_names_the_runner_that_exists_and_not_the_verb_that_does_not() -> None:
+    """`ow conform` is not a shipped CLI verb, though the plan writes it that way in several
+    places: `omniweave-conform` has no console script and no `__main__`. A document that told an
+    author to run it would be a recipe that fails on its first command.
+    """
+    text = AUTHORS.read_text(encoding="utf-8")
+    assert "tools/ow_conform.py" in text, "the runner that exists"
+    assert "`ow conform` is **not** a shipped CLI verb" in text, "and the document says so"
+    # Every mention of the verb must be the disclaimer itself. An "is it used as a command"
+    # test would pass vacuously here -- the document has no line-initial `ow` command at all --
+    # so the check is over occurrences, which there are, and the count is asserted with them.
+    mentions = [line for line in text.splitlines() if "ow conform" in line]
+    assert len(mentions) == 1, mentions
+    assert "not** a shipped CLI verb" in mentions[0], mentions[0]
+
+
+def test_driver_authors_states_what_the_kit_run_measured() -> None:
+    """The two numbers in the run section are a measurement, and the 8 is the interesting one:
+    a bare `run(subject)` leaves the three cross-process suites failing for harness reasons, which
+    is exactly the failure D923 and D967 record. A document that printed only the 11 would send an
+    author to debug their driver."""
+    text = AUTHORS.read_text(encoding="utf-8")
+    assert "11 of 11 through the script, 8 of 11 through a bare" in text
+    for suite in ("idempotence", "determinism", "fuzz"):
+        assert suite in text, suite
+    assert "tools/ow_conform.py" in text
+
+
+def test_driver_authors_keeps_the_two_grammars_apart() -> None:
+    """The one thing in 11-repo-layout.md section 1.5 worth reading twice: the entry-point value is
+    a colon-free dotted package and the card's `entrypoint` is `module:attr`."""
+    text = AUTHORS.read_text(encoding="utf-8")
+    assert "subrip_cues.driver:SubRipParser" in text, "the card's module:attr form"
+    assert "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*$" in text, "G4's own pattern"
+    assert "no ':' and no '/'" in text.replace("`", "'"), "the colon-free rule, stated"
+
+
+def test_driver_authors_carries_both_honest_limitations() -> None:
+    """Both are already in CHANGELOG.md's known limitations; an author reading only this document
+    has to meet them too, because each one changes what they build."""
+    text = AUTHORS.read_text(encoding="utf-8")
+    assert "cannot be routed yet" in text and "sniff" in text
+    assert "inherits no `PYTHONPATH`" in text
 
 
 def _slug(text: str) -> str | None:
