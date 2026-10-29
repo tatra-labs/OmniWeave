@@ -479,7 +479,10 @@ def test_the_sidecars_slices_reach_the_structure_references_and_no_assertion() -
         for path in assertions
         for row in tomllib.loads(path.read_text(encoding="utf-8"))["assertion"]
     ]
-    assert len(rows) == 158, "110 drafted by D912/D983, 48 relational rows added by D1005"
+    assert len(rows) == 178, (
+        "110 drafted by D912/D983, 48 relational rows added by D1005, and 20 generated `order`"
+        " claims added by D1020 -- one for each labelled office document that had no labels file"
+    )
     assert [row["id"] for row in rows if not row.get("slices")] == []
     references = sorted(REPO.glob("packages/*/fixtures/*.structure.jsonl"))
     assert len(references) == 33
